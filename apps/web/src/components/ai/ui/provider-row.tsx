@@ -35,6 +35,7 @@ interface ProviderRowProps {
   onSetup?: (provider: string) => void
   onEdit?: (provider: string) => void
   onCreateCustomModel?: (provider: string) => void
+  onAddKey?: (provider: string) => void
   disabled?: boolean
   className?: string
 }
@@ -49,6 +50,7 @@ export function ProviderRow({
   onSetup,
   onEdit,
   onCreateCustomModel,
+  onAddKey,
   disabled = false,
   className,
 }: ProviderRowProps) {
@@ -184,6 +186,7 @@ export function ProviderRow({
           onTestConnection={handleTestConnection}
           onRemoveProvider={handleRemoveProvider}
           onCreateCustomModel={onCreateCustomModel}
+          onAddKey={onAddKey}
           disabled={disabled || isProcessing}
         />
 

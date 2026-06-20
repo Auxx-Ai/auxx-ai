@@ -1,10 +1,9 @@
-// ~/app/(protected)/app/settings/aiModels/_components/credential-configuration-dialog.tsx
+// apps/web/src/components/ai/ui/credential-configuration-dialog.tsx
 'use client'
 
-import { isMasked } from '@auxx/credentials/crypto/client'
+import { HIDDEN_VALUE } from '@auxx/credentials/crypto/client'
 import { ModelType } from '@auxx/lib/ai/providers/types'
 import { Button } from '@auxx/ui/components/button'
-import { Checkbox } from '@auxx/ui/components/checkbox'
 import {
   Dialog,
   DialogContent,
@@ -14,135 +13,70 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@auxx/ui/components/dialog'
-import {
-  Form,
-  FormControl,
-  FormDescription,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from '@auxx/ui/components/form'
 import { Input } from '@auxx/ui/components/input'
-import {
-  InputGroup,
-  InputGroupAddon,
-  InputGroupButton,
-  InputGroupInput,
-} from '@auxx/ui/components/input-group'
 import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import { Label } from '@auxx/ui/components/label'
 import { RadioGroup, RadioGroupItem } from '@auxx/ui/components/radio-group'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@auxx/ui/components/select'
 import { Separator } from '@auxx/ui/components/separator'
-import { Textarea } from '@auxx/ui/components/textarea'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
-import { standardSchemaResolver } from '@hookform/resolvers/standard-schema'
-import { Eye, EyeOff, PlusIcon, Trash2 } from 'lucide-react'
+import { PlusIcon, Trash2 } from 'lucide-react'
 import type React from 'react'
-import { useEffect, useMemo, useState } from 'react'
-import { useForm } from 'react-hook-form'
-import { z } from 'zod'
-import { TooltipExplanation } from '~/components/global/tooltip'
+import { type FormEvent, useEffect, useMemo, useState } from 'react'
+import { ConnectionVariableFields } from '~/components/connections/ui/connection-variable-fields'
+import {
+  seedValue,
+  validateConnectionVariables,
+} from '~/components/connections/ui/connection-variable-validation'
 import { AiProviderPicker } from '~/components/pickers/ai-provider-picker'
+import { VarEditorField } from '~/components/workflow/ui/input-editor/var-editor'
 import { useConfirm } from '~/hooks/use-confirm'
 import { api } from '~/trpc/react'
 import type { ProviderConfiguration } from './utils'
 
-/**
- * Configuration mode for the unified dialog
- */
+/** Configuration mode for the unified dialog. */
 type DialogMode = 'provider' | 'custom-model'
-
-/**
- * Operation type for the dialog
- */
+/** Operation type for the dialog. */
 type DialogOperation = 'create' | 'edit'
 
-/**
- * Props for the unified credential configuration dialog
- */
 interface CredentialConfigurationDialogProps {
-  /** Configuration mode */
+  /** Configuration mode. */
   mode: DialogMode
-
-  /** Provider to configure (optional - if not provided, shows provider picker) */
+  /** Provider to configure (optional — if not provided, shows provider picker). */
   provider?: string
-
-  /** Model ID (required for custom-model mode) */
+  /** Model ID (required for custom-model mode). */
   modelId?: string
-
-  /** Operation type */
+  /** Operation type. */
   operation: DialogOperation
-
-  /** Dialog state */
+  /** Dialog state. */
   open: boolean
   onOpenChange: (open: boolean) => void
-
-  /** Callbacks */
+  /** Callbacks. */
   onProviderConfigured?: (provider: string) => void
   onModelCreated?: (modelData: any) => void
-
-  /** Optional trigger */
+  /** Optional trigger. */
   trigger?: React.ReactNode
-
-  /** Providers list passed from parent */
+  /** Providers list passed from parent. */
   providers: ProviderConfiguration[]
 }
 
-/**
- * Model type options for radio group with provider filtering
- */
+/** Model type options for the custom-model radio group (filtered to provider support). */
 const MODEL_TYPE_OPTIONS = [
-  {
-    value: ModelType.LLM,
-    label: 'Language Model (LLM)',
-    description: 'Text generation, chat, and completion models',
-  },
-  {
-    value: ModelType.TEXT_EMBEDDING,
-    label: 'Text Embedding',
-    description: 'Convert text into numerical vectors for similarity search',
-  },
-  {
-    value: ModelType.TTS,
-    label: 'Text-to-Speech',
-    description: 'Convert text into spoken audio',
-  },
-  {
-    value: ModelType.SPEECH2TEXT,
-    label: 'Speech-to-Text',
-    description: 'Convert spoken audio into text',
-  },
-  {
-    value: ModelType.VISION,
-    label: 'Vision',
-    description: 'Analyze and understand images',
-  },
-  {
-    value: ModelType.MODERATION,
-    label: 'Moderation',
-    description: 'Content moderation and safety checks',
-  },
-  {
-    value: ModelType.RERANK,
-    label: 'Rerank',
-    description: 'Reorder search results by relevance',
-  },
+  { value: ModelType.LLM, label: 'Language Model (LLM)' },
+  { value: ModelType.TEXT_EMBEDDING, label: 'Text Embedding' },
+  { value: ModelType.TTS, label: 'Text-to-Speech' },
+  { value: ModelType.SPEECH2TEXT, label: 'Speech-to-Text' },
+  { value: ModelType.VISION, label: 'Vision' },
+  { value: ModelType.MODERATION, label: 'Moderation' },
+  { value: ModelType.RERANK, label: 'Rerank' },
 ] as const
 
+const MODEL_ID_PATTERN = /^[a-zA-Z0-9_-]+$/
+
 /**
- * Unified Credential Configuration Dialog
- *
- * Handles both provider configuration and custom model creation in a single component.
- * Intelligently switches between modes and provides all critical features from both
- * original dialogs including secret field handling, provider deletion, and model type filtering.
+ * AI provider/model credential dialog. A thin wrapper that owns only the AI-specific chrome
+ * (provider picker, custom-model id/type, provider-vs-model scope filtering) and delegates the
+ * credential fields to the shared connections field block (`ConnectionVariableFields`) — one
+ * descriptor, one renderer, one validator across both worlds.
  */
 export function CredentialConfigurationDialog({
   mode,
@@ -156,134 +90,83 @@ export function CredentialConfigurationDialog({
   trigger,
   providers,
 }: CredentialConfigurationDialogProps) {
-  // Component state
-  const [selectedProvider, setSelectedProvider] = useState<string | null>(provider || null)
-  const [visibleSecrets, setVisibleSecrets] = useState<Record<string, boolean>>({})
+  const [selectedProvider, setSelectedProvider] = useState<string | null>(provider ?? null)
+  const [values, setValues] = useState<Record<string, string>>({})
+  const [errors, setErrors] = useState<Record<string, string>>({})
+  const [modelIdValue, setModelIdValue] = useState(modelId ?? '')
+  const [modelTypeValue, setModelTypeValue] = useState<ModelType>(ModelType.LLM)
   const [confirmDelete, ConfirmDialog] = useConfirm()
 
   const utils = api.useUtils()
 
-  // Fetch existing credentials for edit mode
+  // Editing: load the masked stored credentials (secrets as the HIDDEN_VALUE sentinel, plain
+  // fields real). Skipped for a fresh create, so a new provider starts blank.
   const { data: existingCredentials } = api.aiIntegration.getCredentials.useQuery(
     {
       mode: mode === 'custom-model' ? 'model' : 'provider',
-      provider: selectedProvider!,
+      provider: selectedProvider ?? '',
       model: mode === 'custom-model' ? modelId : undefined,
     },
     {
-      enabled: operation === 'edit' && !!selectedProvider,
+      enabled: open && operation === 'edit' && !!selectedProvider,
       select: (data) => data.credentials,
     }
   )
 
-  // Get provider capabilities from passed providers data
-  const providerCapabilities = useMemo(() => {
-    if (!selectedProvider) return null
-    const provider = providers.find((p) => p.provider === selectedProvider)
-    return provider || null
-  }, [selectedProvider, providers])
+  const providerCapabilities = useMemo(
+    () => providers.find((p) => p.provider === selectedProvider) ?? null,
+    [selectedProvider, providers]
+  )
 
-  // Get relevant fields based on mode and unified schema
-  const getRelevantFields = useMemo(() => {
+  // The visible fields for this scope: provider-mode shows provider/both fields, custom-model
+  // shows model/both fields (scope/priority come from the AI-specific fieldMeta map).
+  const currentScope = mode === 'custom-model' ? 'model' : 'provider'
+  const visibleFields = useMemo(() => {
     if (!providerCapabilities) return []
+    const meta = providerCapabilities.fieldMeta ?? {}
+    return providerCapabilities.connectionVariables.filter((v) => {
+      const scope = meta[v.key]?.scope ?? 'provider'
+      return scope === currentScope || scope === 'both'
+    })
+  }, [providerCapabilities, currentScope])
 
-    // Use new unified schema with scope filtering
-    return providerCapabilities.credentialSchema.filter(
-      (field) => field.scope === mode.replace('-', '_') || field.scope === 'both'
-    )
-  }, [providerCapabilities, mode])
-
-  // Filter model types based on provider capabilities
   const availableModelTypes = useMemo(() => {
-    if (!providerCapabilities?.supportedModelTypes) {
-      return MODEL_TYPE_OPTIONS // Fallback to all types
-    }
-
-    return MODEL_TYPE_OPTIONS.filter((option) =>
-      providerCapabilities.supportedModelTypes.includes(option.value)
+    if (!providerCapabilities?.supportedModelTypes) return MODEL_TYPE_OPTIONS
+    return MODEL_TYPE_OPTIONS.filter((o) =>
+      providerCapabilities.supportedModelTypes.includes(o.value)
     )
   }, [providerCapabilities])
 
-  // Dynamic form schema
-  // biome-ignore lint/correctness/useExhaustiveDependencies: operation is intentionally excluded - it is stable for the lifetime of the dialog
-  const formSchema = useMemo(() => {
-    if (!providerCapabilities) return z.object({})
+  // Secret keys that arrived already set (seeded as the sentinel) get a masked Replace/Cancel
+  // affordance instead of an editable box.
+  const savedSecrets = useMemo(() => {
+    const keys = Object.entries(existingCredentials ?? {})
+      .filter(([, v]) => v === HIDDEN_VALUE)
+      .map(([k]) => k)
+    return new Set(keys)
+  }, [existingCredentials])
 
-    // Base credential fields
-    const credentialFields = getRelevantFields.reduce(
-      (acc, field) => {
-        let validator = z.string()
+  // Keep selectedProvider in sync with the prop when it changes.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: selectedProvider excluded to avoid a loop.
+  useEffect(() => {
+    if (provider && provider !== selectedProvider) setSelectedProvider(provider)
+  }, [provider])
 
-        if (field.type === 'secret-input') {
-          // Secret fields: optional, validate only if provided
-          validator = validator.optional().refine(
-            (value) => {
-              if (!value || value.length === 0) return true // Empty is OK
+  // Seed the form on open (and, for an edit, once the masked credentials load). Stored values win
+  // over declared defaults; secrets seed as the sentinel so an untouched key round-trips intact.
+  const needsLoad = operation === 'edit' && !!selectedProvider
+  // biome-ignore lint/correctness/useExhaustiveDependencies: seeds on open / provider / load.
+  useEffect(() => {
+    if (!open || !providerCapabilities) return
+    if (needsLoad && !existingCredentials) return
+    const seeded: Record<string, string> = {}
+    for (const v of visibleFields) seeded[v.key] = seedValue(v, existingCredentials)
+    setValues(seeded)
+    setModelIdValue(modelId ?? '')
+    setModelTypeValue(availableModelTypes[0]?.value ?? ModelType.LLM)
+    setErrors({})
+  }, [open, providerCapabilities, visibleFields, needsLoad, existingCredentials, modelId])
 
-              // Unchanged secret is prefilled as the mask sentinel — skip pattern validation.
-              if (isMasked(value)) return true
-
-              // Apply pattern validation for new/changed values
-              if (field.validation?.pattern) {
-                const regex = new RegExp(field.validation.pattern)
-                return regex.test(value)
-              }
-
-              return true
-            },
-            { message: field.validation?.message || `Invalid ${field.label} format` }
-          )
-        } else {
-          // Non-secret fields: normal validation
-          if (field.required) {
-            validator = validator.min(1, `${field.label} is required`)
-          } else {
-            validator = validator.optional()
-          }
-
-          if (field.validation?.pattern) {
-            const regex = new RegExp(field.validation.pattern)
-            validator = validator.regex(regex, field.validation.message)
-          }
-        }
-
-        if (field.type === 'checkbox') {
-          acc[field.variable] = field.required ? z.boolean() : z.boolean().optional()
-        } else {
-          acc[field.variable] = validator as z.ZodType
-        }
-
-        return acc
-      },
-      {} as Record<string, z.ZodType>
-    )
-
-    // Add mode-specific fields
-    const modeSpecificFields =
-      mode === 'custom-model'
-        ? {
-            modelId: z
-              .string()
-              .min(1, 'Model ID is required')
-              .regex(/^[a-zA-Z0-9_-]+$/, 'Only letters, numbers, hyphens, and underscores allowed'),
-            modelType: z.enum(ModelType),
-          }
-        : {}
-
-    return z.object({
-      ...modeSpecificFields,
-      credentials: z.object(credentialFields),
-    })
-  }, [providerCapabilities, mode, getRelevantFields])
-
-  // React Hook Form setup
-  const form = useForm<Record<string, any>>({
-    resolver: standardSchemaResolver(formSchema),
-    defaultValues: {},
-    mode: 'onChange',
-  })
-
-  // API mutations
   const saveProviderConfiguration = api.aiIntegration.saveProviderConfiguration.useMutation({
     onSuccess: async (result) => {
       await utils.aiIntegration.getUnifiedModelData.invalidate()
@@ -295,11 +178,8 @@ export function CredentialConfigurationDialog({
       })
       onProviderConfigured?.(selectedProvider!)
       onOpenChange(false)
-      resetForm()
     },
-    onError: (error) => {
-      toastError({ title: 'Configuration failed', description: error.message })
-    },
+    onError: (error) => toastError({ title: 'Configuration failed', description: error.message }),
   })
 
   const saveCustomModel = api.aiIntegration.saveCustomModel.useMutation({
@@ -312,30 +192,23 @@ export function CredentialConfigurationDialog({
       })
       onModelCreated?.(result)
       onOpenChange(false)
-      resetForm()
     },
-    onError: (error) => {
+    onError: (error) =>
       toastError({
         title: operation === 'create' ? 'Failed to Create Model' : 'Failed to Update Model',
         description: error.message,
-      })
-    },
+      }),
   })
 
   const deleteProvider = api.aiIntegration.deleteProviderConfiguration.useMutation({
     onSuccess: async (result) => {
       await utils.aiIntegration.getUnifiedModelData.invalidate()
       await utils.aiIntegration.getQuotaStatus.invalidate()
-      toastSuccess({
-        title: 'API key removed',
-        description: result.message,
-      })
+      toastSuccess({ title: 'API key removed', description: result.message })
       onOpenChange(false)
-      resetForm()
     },
-    onError: (error) => {
-      toastError({ title: 'Failed to remove API key', description: error.message })
-    },
+    onError: (error) =>
+      toastError({ title: 'Failed to remove API key', description: error.message }),
   })
 
   const deleteCustomModel = api.aiIntegration.deleteCustomModel.useMutation({
@@ -347,107 +220,56 @@ export function CredentialConfigurationDialog({
         description: result.message || 'The custom model has been removed.',
       })
       onOpenChange(false)
-      resetForm()
     },
-    onError: (error) => {
-      toastError({ title: 'Failed to remove custom model', description: error.message })
-    },
+    onError: (error) =>
+      toastError({ title: 'Failed to remove custom model', description: error.message }),
   })
 
-  // Reset form state
-  const resetForm = () => {
-    form.reset()
-    setSelectedProvider(provider || null)
-    setVisibleSecrets({})
+  // Send each field as-is (omit empties). An unchanged secret carries the sentinel, which the
+  // server drops to preserve the stored value.
+  function collectCredentials(): Record<string, string> {
+    const out: Record<string, string> = {}
+    for (const v of visibleFields) {
+      const value = values[v.key] ?? ''
+      if (value.trim().length === 0) continue
+      out[v.key] = value
+    }
+    return out
   }
 
-  // Handle provider prop changes
-  // biome-ignore lint/correctness/useExhaustiveDependencies: selectedProvider is intentionally excluded to avoid infinite loop
-  useEffect(() => {
-    if (provider && provider !== selectedProvider) {
-      setSelectedProvider(provider)
-    }
-  }, [provider])
-
-  // Setup form with existing credentials when they're loaded
-  useEffect(() => {
-    if (!selectedProvider || !providerCapabilities || !getRelevantFields.length) {
-      return
-    }
-
-    // Build form defaults - just use existing values or field defaults
-    const credentialDefaults = getRelevantFields.reduce(
-      (acc, field) => {
-        acc[field.variable] = existingCredentials?.[field.variable] ?? field.default ?? ''
-        return acc
-      },
-      {} as Record<string, any>
-    )
-
-    const formData =
-      mode === 'custom-model'
-        ? {
-            modelId: modelId || '',
-            modelType: availableModelTypes[0]?.value || 'llm',
-            credentials: credentialDefaults,
-          }
-        : {
-            credentials: credentialDefaults,
-          }
-
-    form.reset(formData)
-  }, [
-    selectedProvider,
-    providerCapabilities,
-    getRelevantFields,
-    existingCredentials,
-    mode,
-    modelId,
-    availableModelTypes,
-    form,
-  ])
-
-  // Submit handler with intelligent credential filtering
-  const onSubmit = async (values: any) => {
+  async function handleSubmit(e: FormEvent) {
+    e.preventDefault()
     if (!selectedProvider || !providerCapabilities) return
 
-    // Send each credential field as-is. An unchanged secret carries the mask sentinel, which
-    // the server drops (preserving the stored value); empty fields are omitted. No client-side
-    // comparison needed — the unified secret-mask lifecycle handles it server-side.
-    const credentials = Object.fromEntries(
-      Object.entries(values.credentials || values)
-        .map(([key, value]) => {
-          const field = getRelevantFields.find((f) => f.variable === key)
-          if (!field) return null
-          if (typeof value === 'string' && value.trim().length === 0) return null
-          return [key, value]
-        })
-        .filter(Boolean) // Remove null entries (unknown or empty fields)
-    )
+    const next = validateConnectionVariables({ variables: visibleFields, values })
+    if (mode === 'custom-model') {
+      if (!modelIdValue.trim()) next.__modelId = 'Model ID is required'
+      else if (!MODEL_ID_PATTERN.test(modelIdValue))
+        next.__modelId = 'Only letters, numbers, hyphens, and underscores allowed'
+    }
+    setErrors(next)
+    if (Object.keys(next).length > 0) return
 
+    const credentials = collectCredentials()
     if (mode === 'provider') {
-      // Provider configuration
       await saveProviderConfiguration.mutateAsync({
         provider: selectedProvider,
         credentials,
         mode: operation,
       })
-    } else if (mode === 'custom-model') {
-      // Custom model save (create or update)
+    } else {
       await saveCustomModel.mutateAsync({
         provider: selectedProvider,
-        modelId: values.modelId,
-        modelType: values.modelType,
+        modelId: modelIdValue,
+        modelType: modelTypeValue,
         credentials,
         mode: operation,
       })
     }
   }
 
-  // Handle provider API key removal
-  const handleDeleteProvider = async () => {
+  async function handleDeleteProvider() {
     if (!selectedProvider || !providerCapabilities) return
-
     const confirmed = await confirmDelete({
       title: `Remove ${providerCapabilities.displayName} API Key?`,
       description:
@@ -456,309 +278,180 @@ export function CredentialConfigurationDialog({
       cancelText: 'Cancel',
       destructive: true,
     })
-
-    if (confirmed) {
-      await deleteProvider.mutateAsync({ provider: selectedProvider })
-    }
+    if (confirmed) await deleteProvider.mutateAsync({ provider: selectedProvider })
   }
 
-  // Handle custom model deletion
-  const handleDeleteCustomModel = async () => {
+  async function handleDeleteCustomModel() {
     if (!selectedProvider || !modelId) return
-
     const confirmed = await confirmDelete({
-      title: `Remove custom model?`,
+      title: 'Remove custom model?',
       description:
         'This will remove the custom model and its configuration. This action cannot be undone.',
       confirmText: 'Remove Model',
       cancelText: 'Cancel',
       destructive: true,
     })
-
-    if (confirmed) {
-      await deleteCustomModel.mutateAsync({
-        provider: selectedProvider,
-        modelId: modelId,
-      })
-    }
+    if (confirmed) await deleteCustomModel.mutateAsync({ provider: selectedProvider, modelId })
   }
 
-  // Toggle secret field visibility
-  const toggleSecretVisibility = (fieldVariable: string) => {
-    setVisibleSecrets((prev) => ({ ...prev, [fieldVariable]: !prev[fieldVariable] }))
-  }
-
-  // Get dialog content based on mode
-  const getDialogContent = () => {
-    if (mode === 'provider') {
-      return {
-        title: `${operation === 'create' ? 'Setup' : 'Edit'} ${providerCapabilities?.displayName || 'Provider'}`,
-        description: selectedProvider
-          ? `Configure your ${providerCapabilities?.displayName} API credentials.`
-          : 'Choose a provider and configure your API credentials.',
-      }
-    } else {
-      // custom-model mode - check operation
-      const isEdit = operation === 'edit'
-      return {
-        title: isEdit
-          ? `Edit Custom ${providerCapabilities?.displayName || ''} Model`
-          : `Add Custom ${providerCapabilities?.displayName || ''} Model`,
-        description: isEdit
-          ? `Update your custom ${providerCapabilities?.displayName || 'model'} configuration.`
-          : `Create a custom model for ${providerCapabilities?.displayName || 'this provider'}-compatible endpoints.`,
-      }
-    }
-  }
-
-  // Render field control
-  const renderFieldControl = (field: any, formField: any) => {
-    switch (field.type) {
-      case 'secret-input':
-        return (
-          <InputGroup>
-            <InputGroupInput
-              {...formField}
-              type={visibleSecrets[field.variable] ? 'text' : 'password'}
-              placeholder={field.placeholder}
-              autoComplete='new-password'
-            />
-            <InputGroupAddon align='inline-end'>
-              <InputGroupButton
-                className='mr-1'
-                aria-label={visibleSecrets[field.variable] ? 'Hide secret' : 'Show secret'}
-                aria-pressed={visibleSecrets[field.variable]}
-                size='icon-xs'
-                onClick={() => toggleSecretVisibility(field.variable)}>
-                {visibleSecrets[field.variable] ? <EyeOff /> : <Eye />}
-              </InputGroupButton>
-            </InputGroupAddon>
-          </InputGroup>
-        )
-
-      case 'select':
-        return (
-          <Select onValueChange={formField.onChange} defaultValue={formField.value}>
-            <SelectTrigger>
-              <SelectValue placeholder={field.placeholder} />
-            </SelectTrigger>
-            <SelectContent>
-              {field.options?.map((option: any) => (
-                <SelectItem key={option.value} value={option.value}>
-                  {option.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        )
-
-      case 'textarea':
-        return <Textarea {...formField} placeholder={field.placeholder} rows={3} />
-
-      case 'checkbox':
-        return (
-          <div className='flex items-center space-x-2'>
-            <Checkbox checked={formField.value} onCheckedChange={formField.onChange} />
-            <Label className='text-sm font-normal'>{field.label}</Label>
-          </div>
-        )
-
-      default:
-        return <Input {...formField} placeholder={field.placeholder} />
-    }
-  }
-
-  // Render form field
-  const renderField = (field: any) => {
-    return (
-      <FormField
-        key={field.variable}
-        control={form.control}
-        name={`credentials.${field.variable}`}
-        render={({ field: formField }) => (
-          <FormItem>
-            <FormLabel className='flex items-center gap-0.5'>
-              {field.label}
-              {field.helpText && <TooltipExplanation text={field.helpText} />}
-              {field.required && <span className='text-destructive ml-1'>*</span>}
-            </FormLabel>
-            <FormControl>{renderFieldControl(field, formField)}</FormControl>
-            <FormMessage />
-          </FormItem>
-        )}
-      />
-    )
-  }
-
-  const { title, description } = getDialogContent()
+  const isProviderMode = mode === 'provider'
+  const title = isProviderMode
+    ? `${operation === 'create' ? 'Setup' : 'Edit'} ${providerCapabilities?.displayName ?? 'Provider'}`
+    : `${operation === 'edit' ? 'Edit' : 'Add'} Custom ${providerCapabilities?.displayName ?? ''} Model`
+  const description = isProviderMode
+    ? selectedProvider
+      ? `Configure your ${providerCapabilities?.displayName} API credentials.`
+      : 'Choose a provider and configure your API credentials.'
+    : `${operation === 'edit' ? 'Update your' : 'Create a'} custom ${providerCapabilities?.displayName ?? 'model'} configuration.`
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       {trigger && <DialogTrigger asChild>{trigger}</DialogTrigger>}
 
-      <DialogContent className=' max-h-[90vh] overflow-y-auto' position='tc' size='lg'>
+      <DialogContent className='max-h-[90vh] overflow-y-auto' position='tc' size='lg'>
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription>{description}</DialogDescription>
         </DialogHeader>
 
-        <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className='space-y-6' autoComplete='off'>
-            {/* Provider Selection (only when no provider specified) */}
-            {mode === 'provider' && operation === 'create' && !provider && (
-              <div className='space-y-2 gap-2 flex items-center'>
-                <Label className='mb-0'>
-                  Provider <span className='text-destructive'>*</span>
-                </Label>
-                <AiProviderPicker
-                  value={selectedProvider}
-                  onChange={setSelectedProvider}
-                  placeholder='Choose an AI provider...'
-                  providers={providers}
-                />
-              </div>
-            )}
+        <form onSubmit={handleSubmit} className='space-y-6' autoComplete='off'>
+          {/* Provider picker (only when no provider is preselected). */}
+          {isProviderMode && operation === 'create' && !provider && (
+            <div className='flex items-center gap-2'>
+              <Label className='mb-0'>
+                Provider <span className='text-destructive'>*</span>
+              </Label>
+              <AiProviderPicker
+                value={selectedProvider}
+                onChange={setSelectedProvider}
+                placeholder='Choose an AI provider...'
+                providers={providers}
+              />
+            </div>
+          )}
 
-            {/* Only show form fields if provider is selected */}
-            {selectedProvider && (
-              <>
-                {/* Model-specific fields (only for custom-model mode) */}
-                {mode === 'custom-model' && (
-                  <div className='space-y-4'>
-                    <h3 className='text-sm font-semibold uppercase text-primary-500 mb-0.5 '>
-                      Model Information
-                    </h3>
-
-                    {/* Model ID Field */}
-                    <FormField
-                      control={form.control}
-                      name='modelId'
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Model ID *</FormLabel>
-                          <FormControl>
-                            <Input {...field} placeholder='my-custom-model' />
-                          </FormControl>
-                          <FormDescription>
-                            Unique identifier that will be used as the model name.
-                          </FormDescription>
-                          <FormMessage />
-                        </FormItem>
-                      )}
+          {selectedProvider && (
+            <>
+              {/* Custom-model chrome. */}
+              {mode === 'custom-model' && (
+                <div className='space-y-4'>
+                  <h3 className='text-sm font-semibold uppercase text-primary-500'>
+                    Model Information
+                  </h3>
+                  <div className='space-y-1'>
+                    <Label htmlFor='modelId'>Model ID *</Label>
+                    <Input
+                      id='modelId'
+                      value={modelIdValue}
+                      onChange={(e) => setModelIdValue(e.target.value)}
+                      placeholder='my-custom-model'
                     />
-
-                    {/* Model Type Radio Group */}
-                    <FormField
-                      control={form.control}
-                      name='modelType'
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Model Type *</FormLabel>
-                          <FormControl>
-                            <RadioGroup
-                              value={field.value}
-                              onValueChange={field.onChange}
-                              className='flex flex-wrap gap-2'>
-                              {availableModelTypes.map((option) => (
-                                <div
-                                  key={option.value}
-                                  className='relative flex items-center gap-2 rounded-md border border-input px-3 py-2 shadow-xs outline-none has-[&_[data-state=checked]]:border-info'>
-                                  <RadioGroupItem
-                                    id={`modelType-${option.value}`}
-                                    value={option.value}
-                                    className='peer after:absolute after:inset-0'
-                                  />
-                                  <Label
-                                    htmlFor={`modelType-${option.value}`}
-                                    className='font-medium whitespace-nowrap cursor-pointer peer-data-[state=checked]:text-info'>
-                                    {option.label}
-                                  </Label>
-                                </div>
-                              ))}
-                            </RadioGroup>
-                          </FormControl>
-                          <FormDescription>
-                            Select the type of AI model you want to create.
-                          </FormDescription>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
+                    {errors.__modelId && (
+                      <p className='text-destructive text-sm'>{errors.__modelId}</p>
+                    )}
                   </div>
-                )}
+                  <div className='space-y-1'>
+                    <Label>Model Type *</Label>
+                    <RadioGroup
+                      value={modelTypeValue}
+                      onValueChange={(v) => setModelTypeValue(v as ModelType)}
+                      className='flex flex-wrap gap-2'>
+                      {availableModelTypes.map((option) => (
+                        <div
+                          key={option.value}
+                          className='relative flex items-center gap-2 rounded-md border border-input px-3 py-2 shadow-xs outline-none has-[&_[data-state=checked]]:border-info'>
+                          <RadioGroupItem
+                            id={`modelType-${option.value}`}
+                            value={option.value}
+                            className='peer after:absolute after:inset-0'
+                          />
+                          <Label
+                            htmlFor={`modelType-${option.value}`}
+                            className='font-medium whitespace-nowrap cursor-pointer peer-data-[state=checked]:text-info'>
+                            {option.label}
+                          </Label>
+                        </div>
+                      ))}
+                    </RadioGroup>
+                  </div>
+                </div>
+              )}
 
-                {/* Credentials Section (always present when provider selected) */}
-                {getRelevantFields.length > 0 && (
-                  <>
-                    <Separator />
-                    <div className='space-y-4'>
-                      <h3 className='text-sm font-semibold uppercase text-primary-500 mb-0.5'>
-                        {mode === 'provider' ? 'Provider Credentials' : 'Model Credentials'}
-                      </h3>
-                      <div className='space-y-4'>{getRelevantFields.map(renderField)}</div>
-                    </div>
-                  </>
-                )}
+              {/* Shared credential field block. */}
+              {visibleFields.length > 0 && (
+                <>
+                  <Separator />
+                  <div className='space-y-4'>
+                    <h3 className='text-sm font-semibold uppercase text-primary-500'>
+                      {isProviderMode ? 'Provider Credentials' : 'Model Credentials'}
+                    </h3>
+                    <VarEditorField
+                      orientation='responsive'
+                      className='p-0 sm:[&_[data-slot=field-row-label]]:w-70!'>
+                      <ConnectionVariableFields
+                        variables={visibleFields}
+                        values={values}
+                        onValueChange={(key, value) =>
+                          setValues((prev) => ({ ...prev, [key]: value }))
+                        }
+                        errors={errors}
+                        savedSecrets={savedSecrets}
+                      />
+                    </VarEditorField>
+                  </div>
+                </>
+              )}
 
-                <DialogFooter className='mt-0'>
-                  {operation === 'edit' && (
-                    <Button
-                      type='button'
-                      size='sm'
-                      variant='destructive-hover'
-                      onClick={mode === 'provider' ? handleDeleteProvider : handleDeleteCustomModel}
-                      loading={deleteProvider.isPending || deleteCustomModel.isPending}
-                      loadingText='Removing...'
-                      className='mr-auto'>
-                      <Trash2 />
-                      {mode === 'provider' ? 'Remove API Key' : 'Remove Model'}
-                    </Button>
-                  )}
+              <DialogFooter className='mt-0'>
+                {operation === 'edit' && (
                   <Button
                     type='button'
-                    variant='ghost'
                     size='sm'
-                    onClick={() => onOpenChange(false)}>
-                    Cancel <Kbd shortcut='esc' variant='ghost' size='sm' />
+                    variant='destructive-hover'
+                    onClick={isProviderMode ? handleDeleteProvider : handleDeleteCustomModel}
+                    loading={deleteProvider.isPending || deleteCustomModel.isPending}
+                    loadingText='Removing...'
+                    className='mr-auto'>
+                    <Trash2 />
+                    {isProviderMode ? 'Remove API Key' : 'Remove Model'}
                   </Button>
-                  <Button
-                    type='submit'
-                    size='sm'
-                    variant='outline'
-                    loading={saveProviderConfiguration.isPending || saveCustomModel.isPending}
-                    loadingText={
-                      mode === 'provider'
-                        ? 'Saving...'
-                        : operation === 'create'
-                          ? 'Creating...'
-                          : 'Updating...'
-                    }>
-                    {mode === 'provider'
-                      ? `${operation === 'create' ? 'Save' : 'Update'} Provider`
-                      : `${operation === 'create' ? 'Create' : 'Update'} Custom Model`}{' '}
-                    <KbdSubmit variant='outline' size='sm' />
-                  </Button>
-                </DialogFooter>
-              </>
-            )}
+                )}
+                <Button type='button' variant='ghost' size='sm' onClick={() => onOpenChange(false)}>
+                  Cancel <Kbd shortcut='esc' variant='ghost' size='sm' />
+                </Button>
+                <Button
+                  type='submit'
+                  size='sm'
+                  variant='outline'
+                  loading={saveProviderConfiguration.isPending || saveCustomModel.isPending}
+                  loadingText={
+                    isProviderMode
+                      ? 'Saving...'
+                      : operation === 'create'
+                        ? 'Creating...'
+                        : 'Updating...'
+                  }>
+                  {isProviderMode
+                    ? `${operation === 'create' ? 'Save' : 'Update'} Provider`
+                    : `${operation === 'create' ? 'Create' : 'Update'} Custom Model`}{' '}
+                  <KbdSubmit variant='outline' size='sm' />
+                </Button>
+              </DialogFooter>
+            </>
+          )}
 
-            {/* Confirmation Dialog for Delete */}
-            <ConfirmDialog />
-          </form>
-        </Form>
+          <ConfirmDialog />
+        </form>
       </DialogContent>
     </Dialog>
   )
 }
 
-/**
- * Convenience component for creating new providers
- */
+/** Convenience component for creating new providers. */
 export function CreateProviderButton(
   props: Omit<CredentialConfigurationDialogProps, 'mode' | 'operation' | 'trigger'>
 ) {
   const [open, setOpen] = useState(false)
-
   return (
     <CredentialConfigurationDialog
       {...props}

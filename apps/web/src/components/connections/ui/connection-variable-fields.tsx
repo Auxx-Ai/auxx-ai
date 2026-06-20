@@ -106,6 +106,8 @@ export function ConnectionVariableFields({
               onChange={(v) => onValueChange(variable.key, fromFieldValue(variable, v))}
               placeholder={variable.placeholder}
               triggerProps={triggerPropsFor(variable)}
+              pattern={variable.validation?.pattern}
+              patternMessage={variable.validation?.message}
               disabled={disabled}
               revertValue={
                 variable.secret && savedSecrets?.has(variable.key) ? HIDDEN_VALUE : undefined

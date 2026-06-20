@@ -1,6 +1,10 @@
 // packages/lib/src/ai/providers/config/mutations.ts
 
-import { deleteCredential } from '@auxx/credentials/store'
+import {
+  deleteCredential,
+  setDefaultWorkflowCredential,
+  updateCredential,
+} from '@auxx/credentials/store'
 import { schema } from '@auxx/database'
 import { and, eq } from 'drizzle-orm'
 import { getProviderByKey } from '../../../connections/providers/provider-registry'
@@ -28,16 +32,27 @@ import { validateModelCredentials, validateProviderCredentials } from './validat
 
 const logger = createScopedLogger('ai-provider-mutations')
 
+/** Options for adding/updating a BYO provider key beyond credential validation. */
+export interface PersistProviderKeyOptions extends ValidationOptions {
+  /**
+   * Mint a NEW key instead of merging over the org's existing one — the "Add another key" path.
+   * Without this, a submission always edits the primary key (so an unchanged secret survives).
+   */
+  forceNew?: boolean
+  /** User-facing label for the key ('Billing-team key'). Names the row in the key picker. */
+  label?: string
+}
+
 /**
  * Persist an org BYO provider key into the unified Credential store and upsert the CUSTOM
  * ProviderConfiguration (blueprint FK, no inline secret). Merges over an existing key when one
- * exists (edit) so an unchanged secret survives; otherwise inserts the first key.
+ * exists (edit) so an unchanged secret survives; `forceNew` mints an additional key instead.
  */
 async function persistProviderCredential(
   ctx: AiProviderCtx,
   provider: string,
   credentials: ProviderCredentials,
-  options: ValidationOptions
+  options: PersistProviderKeyOptions
 ): Promise<void> {
   const resolved = await resolveConnectionDefinition(ctx, provider)
   if (!resolved) {
@@ -48,7 +63,8 @@ async function persistProviderCredential(
     )
   }
   const { providerKey, connectionDefinitionId } = resolved
-  const connectionId = await findOrgProviderCredentialId(ctx, providerKey)
+  // forceNew skips the existing-key lookup so saveConnection inserts a fresh row.
+  const connectionId = options.forceNew ? null : await findOrgProviderCredentialId(ctx, providerKey)
 
   const { secretFields, plainVariables } = splitAiCredentials(providerKey, credentials)
 
@@ -63,10 +79,11 @@ async function persistProviderCredential(
     })
   }
 
+  const label = options.label?.trim()
   const saved = await saveConnection({
     connectionDefinitionId,
     providerKey,
-    name: getProviderByKey(providerKey)?.label ?? provider,
+    name: label || getProviderByKey(providerKey)?.label || provider,
     organizationId: ctx.organizationId,
     createdById: ctx.userId,
     userId: null,
@@ -74,6 +91,12 @@ async function persistProviderCredential(
     connectionData: { secretFields, metadata: { connectionVariables: plainVariables } },
   })
   if (saved.isErr()) throw saved.error
+
+  // Renaming an existing key: saveConnection only dedupes the label on insert, so set it directly.
+  if (connectionId && label) {
+    const renamed = await updateCredential(connectionId, ctx.organizationId, { label })
+    if (renamed.isErr()) throw renamed.error
+  }
 
   const now = new Date()
   await ctx.db
@@ -106,7 +129,7 @@ export async function addCustomProviderCredentials(
   ctx: AiProviderCtx,
   provider: string,
   credentials: ProviderCredentials,
-  options: ValidationOptions = {}
+  options: PersistProviderKeyOptions = {}
 ): Promise<void> {
   try {
     await persistProviderCredential(ctx, provider, credentials, options)
@@ -121,6 +144,26 @@ export async function addCustomProviderCredentials(
       `Failed to add credentials for provider ${provider}`,
       provider,
       'CREDENTIAL_ADD_FAILED'
+    )
+  }
+}
+
+/**
+ * Make one of a provider's BYO keys the org-level default — the key used when a model has no
+ * pool. Scopes siblings by (org, providerKey) in the unified store. The credential must be an
+ * org-scoped workflow key for this provider; the store rejects anything else.
+ */
+export async function setProviderDefaultCredential(
+  ctx: AiProviderCtx,
+  provider: string,
+  credentialId: string
+): Promise<void> {
+  const result = await setDefaultWorkflowCredential(credentialId, ctx.organizationId)
+  if (result.isErr()) {
+    throw new ProviderConfigurationError(
+      `Failed to set default key for provider ${provider}: ${result.error.message}`,
+      provider,
+      'DEFAULT_KEY_SET_FAILED'
     )
   }
 }

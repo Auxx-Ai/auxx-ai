@@ -4,6 +4,7 @@ import { onCacheEvent } from '../../../cache/invalidate'
 import { createScopedLogger } from '../../../logger'
 import { ProviderRegistry } from '../provider-registry'
 import { type ModelType, ProviderConfigurationError, type ProviderType } from '../types'
+import { listOrgProviderCredentials, type ProviderCredentialSummary } from './byo-store'
 import type { AiProviderCtx } from './context'
 import * as mutations from './mutations'
 import { testCredentials } from './validation'
@@ -18,9 +19,31 @@ const logger = createScopedLogger('ai-provider-actions')
 export async function saveProvider(
   ctx: AiProviderCtx,
   provider: string,
-  credentials: Record<string, any>
+  credentials: Record<string, any>,
+  options?: { forceNew?: boolean; label?: string }
 ): Promise<void> {
-  await mutations.addCustomProviderCredentials(ctx, provider, credentials)
+  await mutations.addCustomProviderCredentials(ctx, provider, credentials, options)
+  await onCacheEvent('ai-provider.configured', { orgId: ctx.organizationId })
+}
+
+/**
+ * List the org's BYO keys for a provider (label + which is default). Read-only — the key picker
+ * in settings consumes this. No cache event.
+ */
+export async function listProviderKeys(
+  ctx: AiProviderCtx,
+  provider: string
+): Promise<ProviderCredentialSummary[]> {
+  return listOrgProviderCredentials(ctx, provider)
+}
+
+/** Make one of a provider's BYO keys the org-level default, then recompute cached configs. */
+export async function setProviderDefaultKey(
+  ctx: AiProviderCtx,
+  provider: string,
+  credentialId: string
+): Promise<void> {
+  await mutations.setProviderDefaultCredential(ctx, provider, credentialId)
   await onCacheEvent('ai-provider.configured', { orgId: ctx.organizationId })
 }
 

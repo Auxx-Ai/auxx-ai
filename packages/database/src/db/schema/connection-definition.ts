@@ -78,6 +78,10 @@ export type ConnectionVariable = {
     max?: number
     /** Validate as a TCP port (1–65535). */
     port?: boolean
+    /** Regex the value must match (lifted from AI credential fields). */
+    pattern?: string
+    /** Message shown when `pattern` fails. */
+    message?: string
   }
   /**
    * Conditional visibility. The field is shown only when every key in `show`

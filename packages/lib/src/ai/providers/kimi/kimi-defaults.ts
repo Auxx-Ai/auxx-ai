@@ -13,22 +13,23 @@ export const KIMI_CAPABILITIES: ProviderCapabilities = {
   toolFormat: 'openai',
   configurateMethods: ['predefined-model', 'customizable-model'],
 
-  credentialSchema: [
+  connectionVariables: [
     {
-      variable: 'apiKey',
-      type: 'secret-input',
+      key: 'apiKey',
       label: 'API Key',
       placeholder: 'Enter your Moonshot API Key',
       required: true,
-      scope: 'both',
-      priority: 'model-override',
-      helpText: 'Your API key from the Kimi API Platform console',
+      secret: true,
+      description: 'Your API key from the Kimi API Platform console',
       validation: {
         pattern: '^sk-[a-zA-Z0-9\\-_]{10,}$',
         message: 'API key must start with sk-',
       },
     },
   ],
+  fieldMeta: {
+    apiKey: { scope: 'both', priority: 'model-override' },
+  },
 
   rateLimits: {
     requestsPerMinute: 60,

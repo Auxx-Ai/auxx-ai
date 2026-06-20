@@ -6,11 +6,16 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
-import { MoreVertical, Plus, Settings, Star, Trash2, Zap } from 'lucide-react'
+import { toastError } from '@auxx/ui/components/toast'
+import { KeyRound, MoreVertical, Plus, Settings, Star, Trash2, Zap } from 'lucide-react'
 import type React from 'react'
+import { api } from '~/trpc/react'
 
 interface ProviderActionsProps {
   provider: string
@@ -23,8 +28,58 @@ interface ProviderActionsProps {
   onTestConnection?: (provider: string) => void
   onRemoveProvider?: (provider: string) => void
   onCreateCustomModel?: (provider: string) => void // Custom model creation
+  onAddKey?: (provider: string) => void // Add an additional BYO API key
   disabled?: boolean
   className?: string
+}
+
+/**
+ * The provider's BYO API keys as a radio group: select one to make it the org-level default,
+ * plus an "Add API key" entry. Lives inside the dropdown content, so its query only fires when
+ * the menu opens. The radio group appears once the org has keys; "Add API key" is always shown.
+ */
+const ProviderApiKeysSection: React.FC<{
+  provider: string
+  onAddKey?: (provider: string) => void
+}> = ({ provider, onAddKey }) => {
+  const utils = api.useUtils()
+  const { data: keys } = api.aiIntegration.listProviderKeys.useQuery({ provider })
+
+  const setDefaultKey = api.aiIntegration.setDefaultProviderKey.useMutation({
+    onSuccess: async () => {
+      await Promise.all([
+        utils.aiIntegration.listProviderKeys.invalidate({ provider }),
+        utils.aiIntegration.getUnifiedModelData.invalidate(),
+      ])
+    },
+    onError: (error) => {
+      toastError({ title: 'Failed to set default key', description: error.message })
+    },
+  })
+
+  const defaultKeyId = keys?.find((k) => k.isDefault)?.id
+
+  return (
+    <>
+      <DropdownMenuSeparator />
+      <DropdownMenuLabel className='text-xs text-muted-foreground'>API Keys</DropdownMenuLabel>
+      {keys && keys.length > 0 && (
+        <DropdownMenuRadioGroup
+          value={defaultKeyId}
+          onValueChange={(credentialId) => setDefaultKey.mutate({ provider, credentialId })}>
+          {keys.map((key) => (
+            <DropdownMenuRadioItem key={key.id} value={key.id}>
+              {key.label}
+            </DropdownMenuRadioItem>
+          ))}
+        </DropdownMenuRadioGroup>
+      )}
+      <DropdownMenuItem onClick={() => onAddKey?.(provider)}>
+        <KeyRound />
+        Add API key
+      </DropdownMenuItem>
+    </>
+  )
 }
 
 /**
@@ -41,6 +96,7 @@ export const ProviderActions: React.FC<ProviderActionsProps> = ({
   onTestConnection,
   onRemoveProvider,
   onCreateCustomModel,
+  onAddKey,
   disabled = false,
   className,
 }) => {
@@ -174,6 +230,7 @@ export const ProviderActions: React.FC<ProviderActionsProps> = ({
             <Plus />
             Create Custom Model
           </DropdownMenuItem>
+          <ProviderApiKeysSection provider={provider} onAddKey={onAddKey} />
           <DropdownMenuSeparator />
           <DropdownMenuItem onClick={handleRemoveProviderClick} variant='destructive'>
             <Trash2 />

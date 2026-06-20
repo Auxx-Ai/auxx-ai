@@ -46,6 +46,10 @@ interface StringInputProps extends NodeInputProps {
   minLength?: number
   /** Max length */
   maxLength?: number
+  /** Regex the value must match (validated live as the user edits). */
+  pattern?: string
+  /** Message shown when `pattern` fails. */
+  patternMessage?: string
   /** Additional className for the input */
   className?: string
   /** Enable auto-grow for text inputs */
@@ -72,6 +76,8 @@ export const StringInput = createNodeInput<StringInputProps>(
     validationType,
     minLength,
     maxLength,
+    pattern,
+    patternMessage,
     className,
     autoGrow,
     triggerProps,
@@ -99,6 +105,8 @@ export const StringInput = createNodeInput<StringInputProps>(
         onError(name, `Minimum length is ${minLength}`)
       } else if (maxLength && newValue.length > maxLength) {
         onError(name, `Maximum length is ${maxLength}`)
+      } else if (pattern && newValue && !new RegExp(pattern).test(newValue)) {
+        onError(name, patternMessage ?? 'Invalid format')
       } else {
         onError(name, null) // Clear error
       }

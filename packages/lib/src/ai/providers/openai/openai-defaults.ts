@@ -216,52 +216,49 @@ export const OPENAI_CAPABILITIES: ProviderCapabilities = {
   toolFormat: 'openai',
   configurateMethods: ['predefined-model', 'customizable-model'],
 
-  // NEW: Unified credential schema with scope-based filtering
-  credentialSchema: [
+  // Shared connection-variable descriptors (AI scope/priority lives in fieldMeta).
+  connectionVariables: [
     {
-      variable: 'apiKey',
-      type: 'secret-input',
+      key: 'apiKey',
       label: 'API Key',
       placeholder: 'Enter your OpenAI API Key',
       required: true,
-      scope: 'both', // Available for both provider and model config
-      priority: 'model-override', // Model-level key overrides provider key
-      helpText: 'Your OpenAI API key. Model-specific keys override provider keys.',
+      secret: true,
+      description: 'Your OpenAI API key. Model-specific keys override provider keys.',
       validation: {
         pattern: '^sk-[a-zA-Z0-9\\-_]{10,}$',
         message: 'OpenAI API key must start with sk- followed by at least 10 characters',
       },
     },
     {
-      variable: 'organization',
-      type: 'text-input',
+      key: 'organization',
       label: 'Organization ID',
       placeholder: 'Enter your Organization ID (optional)',
       required: false,
-      scope: 'provider', // Only available at provider level
-      helpText: 'Optional organization ID for enterprise accounts',
+      description: 'Optional organization ID for enterprise accounts',
     },
     {
-      variable: 'apiBase',
-      type: 'text-input',
+      key: 'apiBase',
       label: 'API Base URL',
       placeholder: 'https://api.openai.com/v1',
       required: false,
       default: 'https://api.openai.com/v1',
-      scope: 'both', // Can be overridden per model for custom endpoints
-      priority: 'model-override',
-      helpText: 'API base URL. Use custom URLs for OpenAI-compatible endpoints.',
+      description: 'API base URL. Use custom URLs for OpenAI-compatible endpoints.',
     },
     {
-      variable: 'custom_model_name',
-      type: 'text-input',
+      key: 'custom_model_name',
       label: 'Custom Model Name',
       placeholder: 'gpt-4-custom',
       required: false,
-      scope: 'model', // Only available for model-specific configuration
-      helpText: 'Override the model name sent to the API endpoint',
+      description: 'Override the model name sent to the API endpoint',
     },
   ],
+  fieldMeta: {
+    apiKey: { scope: 'both', priority: 'model-override' },
+    organization: { scope: 'provider' },
+    apiBase: { scope: 'both', priority: 'model-override' },
+    custom_model_name: { scope: 'model' },
+  },
 
   rateLimits: {
     requestsPerMinute: 500,

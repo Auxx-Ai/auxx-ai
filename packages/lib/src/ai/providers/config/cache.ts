@@ -129,10 +129,10 @@ async function obfuscateResult(
   result: CredentialsResponse
 ): Promise<CredentialsResponse> {
   const providerCaps = await ProviderRegistry.getProviderCapabilities(provider)
-  if (providerCaps?.credentialSchema) {
-    const fields = providerCaps.credentialSchema.map((field) => ({
-      key: field.variable,
-      secret: field.type === 'secret-input',
+  if (providerCaps?.connectionVariables) {
+    const fields = providerCaps.connectionVariables.map((field) => ({
+      key: field.key,
+      secret: !!field.secret,
     }))
     return { ...result, credentials: maskForEdit(fields, result.credentials) }
   }
