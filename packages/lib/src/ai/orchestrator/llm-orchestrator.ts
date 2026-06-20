@@ -14,7 +14,7 @@ import type {
   UsageMetrics,
 } from '../clients/base/types'
 import { QuotaExceededError } from '../errors/quota-errors'
-import { ProviderManager } from '../providers/provider-manager'
+import { getCredentials, getSystemCredentials } from '../providers/config'
 import { ProviderRegistry } from '../providers/provider-registry'
 import { type CredentialsResponse, ModelType } from '../providers/types'
 import { QuotaService } from '../quota/quota-service'
@@ -374,16 +374,11 @@ export class LLMOrchestrator {
     providerType: 'SYSTEM' | 'CUSTOM'
     credentialSource: 'SYSTEM' | 'CUSTOM' | 'MODEL_SPECIFIC' | 'LOAD_BALANCED'
   }> {
-    const providerManager = new ProviderManager(this.db!, organizationId, userId)
+    const ctx = { db: this.db!, organizationId, userId }
 
     const credentials = options.forceSystem
-      ? await providerManager.getSystemCredentials(provider)
-      : await providerManager.getCurrentCredentials(
-          provider,
-          model,
-          ModelType.LLM,
-          false // Don't obfuscate - we need real credentials
-        )
+      ? await getSystemCredentials(ctx, provider)
+      : await getCredentials(ctx, provider, model, ModelType.LLM)
 
     // Create specialized LLM client. When the model resolves to a multi-key pool, spread
     // calls across the enabled members; a size-1 pool (a pinned key) is deterministic and
@@ -536,20 +531,6 @@ export class LLMOrchestrator {
   ): Promise<number> {
     try {
       const llmClient = await this.getClient(provider, model, organizationId, userId)
-
-      // Get credentials for the provider
-      // const providerManager = new ProviderManager(this.db!, organizationId, userId)
-      // const credentials = await providerManager.getCurrentCredentials(
-      //   provider,
-      //   model,
-      //   ModelType.LLM
-      // )
-
-      // const providerClient = await ProviderRegistry.createClient(provider, organizationId, userId)
-      // const llmClient = providerClient.getClient(
-      //   ModelType.LLM,
-      //   credentials.credentials
-      // ) as LLMClient
 
       if (llmClient.getNumTokens) {
         return llmClient.getNumTokens(text, model)

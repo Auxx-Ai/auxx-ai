@@ -60,6 +60,30 @@ export { LLMOrchestrator, Speech2TextOrchestrator } from './orchestrator'
 export { AnthropicClient } from './providers/anthropic/anthropic-client'
 // ===== PROVIDER SYSTEM (Existing) =====
 export { ProviderClient } from './providers/base/provider-client'
+// Functional provider config layer (replaces ProviderConfigurationService + ProviderManager)
+export type { AiProviderCtx } from './providers/config'
+export {
+  computeProviderConfig,
+  computeProviderConfigs,
+  deleteCustomModel,
+  deleteProvider,
+  getCredentials,
+  getEffectiveConfig,
+  getModelTypeForModel,
+  getProviderConfig,
+  getProviderConfigs,
+  getSystemCredentials,
+  getUnifiedModelData,
+  isModelCompatible,
+  removeCustomCredentials,
+  resolveCredentials,
+  saveCustomModel,
+  saveProvider,
+  switchProviderType,
+  testProvider,
+  toggleModel,
+  updateModelConfig,
+} from './providers/config'
 export { DeepSeekClient } from './providers/deepseek/deepseek-client'
 export { GoogleClient } from './providers/google/google-client'
 export { GroqClient } from './providers/groq/groq-client'
@@ -74,8 +98,6 @@ export {
   OpenAITextEmbeddingClient,
   OpenAITTSClient,
 } from './providers/openai/specialized-clients'
-export { ProviderConfigurationService } from './providers/provider-configuration-service'
-export { ProviderManager } from './providers/provider-manager'
 export { ProviderRegistry } from './providers/provider-registry'
 export { QwenClient } from './providers/qwen/qwen-client'
 export { type SystemModelDefaultEntity, SystemModelService } from './providers/system-model-service'

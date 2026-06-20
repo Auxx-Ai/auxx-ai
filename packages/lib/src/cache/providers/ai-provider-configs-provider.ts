@@ -7,11 +7,8 @@ import type { CacheProvider } from '../org-cache-provider'
 export const aiProviderConfigsProvider: CacheProvider<Record<string, ProviderConfiguration>> = {
   async compute(orgId, db) {
     // Lazy import to avoid circular dependency at module load time
-    const { ProviderConfigurationService } = await import(
-      '../../ai/providers/provider-configuration-service'
-    )
-    const service = new ProviderConfigurationService(db, orgId, 'system')
-    const result = await service.getConfigurations()
+    const { computeProviderConfigs } = await import('../../ai/providers/config/assemble')
+    const result = await computeProviderConfigs({ db, organizationId: orgId, userId: 'system' })
     return result.configurations
   },
 }

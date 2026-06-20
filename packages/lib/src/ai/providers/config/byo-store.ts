@@ -1,0 +1,165 @@
+// packages/lib/src/ai/providers/config/byo-store.ts
+
+import { isMasked } from '@auxx/credentials/crypto'
+import {
+  deleteCredential,
+  findCredential,
+  listCredentials,
+  revealSecrets,
+} from '@auxx/credentials/store'
+import { schema } from '@auxx/database'
+import { and, eq } from 'drizzle-orm'
+import { getProviderByKey } from '../../../connections/providers/provider-registry'
+import { resolveConnectionForRuntime } from '../../../connections/resolve-connection-for-runtime'
+import { AI_PROVIDER_CONNECTION_KEY } from '../connection-provider-map'
+import type { AiProviderCtx } from './context'
+
+/**
+ * Low-level BYO-key access against the unified `Credential` store. These functions own the
+ * mapping between an AI provider and its seeded platform ConnectionDefinition + stored
+ * credential rows. Higher layers (mutations, runtime-credentials) compose them.
+ */
+
+/**
+ * Resolve the seeded platform ConnectionDefinition for an AI provider. Returns the
+ * blueprint providerKey (e.g. 'openaiApi') + row id, or null when the provider isn't
+ * mapped or its blueprint hasn't been seeded (ensurePlatformProviders).
+ */
+export async function resolveConnectionDefinition(
+  ctx: AiProviderCtx,
+  provider: string
+): Promise<{ providerKey: string; connectionDefinitionId: string } | null> {
+  const providerKey = AI_PROVIDER_CONNECTION_KEY[provider]
+  if (!providerKey) return null
+  const row = await ctx.db.query.ConnectionDefinition.findFirst({
+    where: and(
+      eq(schema.ConnectionDefinition.providerKey, providerKey),
+      eq(schema.ConnectionDefinition.major, 1)
+    ),
+    columns: { id: true },
+  })
+  return row ? { providerKey, connectionDefinitionId: row.id } : null
+}
+
+/**
+ * Split canonical AI credentials into secret-flagged vs plain variables (per the
+ * blueprint's connectionVariables), dropping empty and masked echoes so an unchanged
+ * secret never overwrites the stored value.
+ */
+export function splitAiCredentials(
+  providerKey: string,
+  credentials: Record<string, any>
+): { secretFields: Record<string, string>; plainVariables: Record<string, string> } {
+  const def = getProviderByKey(providerKey)
+  const secretKeys = new Set(
+    (def?.connectionVariables ?? []).filter((v) => v.secret).map((v) => v.key)
+  )
+  const secretFields: Record<string, string> = {}
+  const plainVariables: Record<string, string> = {}
+  for (const [key, value] of Object.entries(credentials)) {
+    if (value === undefined || value === null || value === '') continue
+    const str = String(value)
+    // Never persist a masked echo (HIDDEN_VALUE or the legacy '[**HIDDEN**]' sentinel).
+    if (isMasked(str) || str === '[**HIDDEN**]') continue
+    if (secretKeys.has(key)) secretFields[key] = str
+    else plainVariables[key] = str
+  }
+  return { secretFields, plainVariables }
+}
+
+/** Reveal a credential's canonical field bag (plain connectionVariables + secret fields). */
+export async function revealCredentialFields(
+  ctx: AiProviderCtx,
+  credentialId: string
+): Promise<Record<string, any>> {
+  const revealed = await revealSecrets<{ fields?: Record<string, any> }>(
+    credentialId,
+    ctx.organizationId
+  )
+  if (revealed.isErr()) return {}
+  const plain = (revealed.value.record.metadata?.connectionVariables ?? {}) as Record<string, any>
+  const secretFields = revealed.value.secrets.fields ?? {}
+  return { ...plain, ...secretFields }
+}
+
+/** The org's primary (isDefault/newest) BYO credential id for an AI provider, or null. */
+export async function findOrgProviderCredentialId(
+  ctx: AiProviderCtx,
+  providerKey: string
+): Promise<string | null> {
+  const found = await findCredential({
+    organizationId: ctx.organizationId,
+    kind: 'workflow',
+    type: providerKey,
+    userId: null,
+  })
+  return found.isOk() && found.value ? found.value.id : null
+}
+
+/**
+ * Delete every org-scoped BYO credential for an AI provider from the unified store. The
+ * LoadBalancingConfig.connectionId FK (onDelete: cascade) removes any pool bindings too.
+ */
+export async function deleteOrgProviderCredentials(
+  ctx: AiProviderCtx,
+  provider: string
+): Promise<void> {
+  const providerKey = AI_PROVIDER_CONNECTION_KEY[provider]
+  if (!providerKey) return
+  const existing = await listCredentials({
+    organizationId: ctx.organizationId,
+    kind: 'workflow',
+    type: providerKey,
+    userId: null,
+  })
+  if (existing.isErr()) return
+  for (const cred of existing.value) {
+    await deleteCredential(cred.id, ctx.organizationId)
+  }
+}
+
+/**
+ * Resolve the org's provider-default key fields (the primary among its BYO keys) from the
+ * unified store, by blueprint providerKey. Returns the canonical field bag or null.
+ */
+export async function resolveProviderDefaultFields(
+  ctx: AiProviderCtx,
+  providerKey: string
+): Promise<Record<string, any> | null> {
+  const resolved = await resolveConnectionForRuntime({
+    providerKey,
+    organizationId: ctx.organizationId,
+    userId: ctx.userId,
+    ensureFresh: false,
+  })
+  if (resolved.isErr()) return null
+  return resolved.value.organizationConnection?.fields ?? null
+}
+
+/**
+ * Gather the enabled pool members for a (provider, model, modelType), revealing each
+ * bound credential's canonical fields. A size-1 result is a pinned key.
+ */
+export async function resolveModelPool(
+  ctx: AiProviderCtx,
+  provider: string,
+  model: string,
+  modelType: string
+): Promise<Array<{ id: string; name: string; fields: Record<string, any> }>> {
+  const rows = await ctx.db.query.LoadBalancingConfig.findMany({
+    where: and(
+      eq(schema.LoadBalancingConfig.organizationId, ctx.organizationId),
+      eq(schema.LoadBalancingConfig.provider, provider),
+      eq(schema.LoadBalancingConfig.model, model),
+      eq(schema.LoadBalancingConfig.modelType, modelType),
+      eq(schema.LoadBalancingConfig.enabled, true)
+    ),
+  })
+  const members: Array<{ id: string; name: string; fields: Record<string, any> }> = []
+  for (const row of rows) {
+    if (!row.connectionId) continue
+    const fields = await revealCredentialFields(ctx, row.connectionId)
+    if (Object.keys(fields).length > 0) members.push({ id: row.id, name: row.name, fields })
+  }
+  return members
+}

@@ -3,7 +3,7 @@
 import { createScopedLogger } from '@auxx/logger'
 import type { TextEmbeddingClient } from '../../ai/clients/base/text-embedding-client'
 import { QuotaExceededError } from '../../ai/orchestrator/types'
-import { ProviderManager } from '../../ai/providers/provider-manager'
+import { getCredentials } from '../../ai/providers/config'
 import { ProviderRegistry } from '../../ai/providers/provider-registry'
 import {
   type CredentialSourceType,
@@ -56,7 +56,6 @@ export interface EmbeddingResult {
  * Modern embedding service with smart chunking and multi-provider support
  */
 export class EmbeddingService {
-  private providerManager: ProviderManager
   private usageTracker?: UsageTrackingService
 
   constructor(
@@ -64,7 +63,6 @@ export class EmbeddingService {
     private organizationId: string,
     private userId?: string
   ) {
-    this.providerManager = new ProviderManager(db, organizationId, userId || 'system')
     this.usageTracker = new UsageTrackingService(db)
   }
 
@@ -359,12 +357,12 @@ export class EmbeddingService {
         effectiveUserId
       )
 
-      // Get credentials WITH metadata for quota tracking (don't obfuscate - we need real credentials)
-      const credentialsResponse = await this.providerManager.getCurrentCredentials(
+      // Get credentials WITH metadata for quota tracking (real credentials, not obfuscated)
+      const credentialsResponse = await getCredentials(
+        { db: this.db, organizationId: this.organizationId, userId: effectiveUserId },
         provider,
         model,
-        ModelType.TEXT_EMBEDDING,
-        false // Don't obfuscate - we need real credentials
+        ModelType.TEXT_EMBEDDING
       )
 
       // Get specialized embedding client
