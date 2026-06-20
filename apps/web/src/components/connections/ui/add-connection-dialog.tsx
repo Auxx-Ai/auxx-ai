@@ -383,6 +383,8 @@ function defaultProviderDescription(provider: ProviderRow): string {
   switch (provider.connectionType) {
     case 'oauth2-code':
       return 'Connect with OAuth.'
+    case 'client-credentials':
+      return 'Connect with a client ID and secret.'
     case 'secret':
       return 'Connect with an API key or credentials.'
     default:

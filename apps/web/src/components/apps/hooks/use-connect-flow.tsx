@@ -289,7 +289,9 @@ export function useConnectFlow(options: UseConnectFlowOptions = {}): UseConnectF
         return
       }
       setArgs(next)
-      if (def.connectionType === 'secret') {
+      // `client-credentials` has no browser step — the org enters its id/secret in the same
+      // field form as a secret connection; the runtime mints the bearer lazily on first use.
+      if (def.connectionType === 'secret' || def.connectionType === 'client-credentials') {
         // The one dialog handles both shapes — `ConnectionDetailPage` renders the token row for a
         // bare API key, or one row per connection variable when the def declares them.
         setFormOpen(true)
@@ -354,7 +356,7 @@ export function useConnectFlow(options: UseConnectFlowOptions = {}): UseConnectF
         setError(new Error('Connection not available for this scope'))
         return
       }
-      if (def.connectionType === 'secret') {
+      if (def.connectionType === 'secret' || def.connectionType === 'client-credentials') {
         saveSecretForOwner(a, payload)
         return
       }
@@ -373,7 +375,7 @@ export function useConnectFlow(options: UseConnectFlowOptions = {}): UseConnectF
   const saveOrOauth = useCallback(
     (a: ConnectFlowArgs, payload: { values?: Record<string, string>; secret?: string }) => {
       const def = pickDef(a)
-      if (def?.connectionType === 'secret') {
+      if (def?.connectionType === 'secret' || def?.connectionType === 'client-credentials') {
         saveSecretForOwner(a, payload)
         return
       }

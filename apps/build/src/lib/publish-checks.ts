@@ -85,17 +85,22 @@ export interface ConnectionForPublishCheck {
 }
 
 /**
- * Check if all oauth2-code connections have complete configuration.
- * Connections with type 'secret' or 'none' require no validation.
- * @returns true if no oauth2-code connections exist, or all are properly configured
+ * Check that all token-minting connections (oauth2-code, client-credentials) are fully configured.
+ * Connections with type 'secret' or 'none' require no validation. `client-credentials` mints with
+ * no browser step, so it needs the same fields as oauth2-code minus the Authorize URL.
+ * @returns true if no minting connections exist, or all are properly configured
  */
 export function isConnectionsConfigComplete(connections: ConnectionForPublishCheck[]): boolean {
-  const oauthConnections = connections.filter((c) => c.connectionType === 'oauth2-code')
-  if (oauthConnections.length === 0) return true
+  const mintingConnections = connections.filter(
+    (c) => c.connectionType === 'oauth2-code' || c.connectionType === 'client-credentials'
+  )
+  if (mintingConnections.length === 0) return true
 
-  return oauthConnections.every((c) => {
+  return mintingConnections.every((c) => {
     const checks = {
-      oauth2AuthorizeUrl: isValidStringField(c.oauth2AuthorizeUrl),
+      // Authorize URL is required only for the browser-redirect grant.
+      oauth2AuthorizeUrl:
+        c.connectionType === 'client-credentials' || isValidStringField(c.oauth2AuthorizeUrl),
       oauth2AccessTokenUrl: isValidStringField(c.oauth2AccessTokenUrl),
       oauth2ClientId: c.hasClientId,
       oauth2ClientSecret: c.hasClientSecret,

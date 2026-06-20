@@ -47,7 +47,7 @@ export const mcpServersProvider: CacheProvider<CachedMcpServer[]> = {
         .filter((d) => d.mcpServerId)
         .map((d) => [
           d.mcpServerId as string,
-          d.connectionType as 'oauth2-code' | 'secret' | 'none',
+          d.connectionType as 'oauth2-code' | 'client-credentials' | 'secret' | 'none',
         ])
     )
 

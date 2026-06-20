@@ -16,6 +16,7 @@ export interface ConnectionDefinitionForRefresh {
   oauth2AuthorizeUrl: string | null
   oauth2AccessTokenUrl: string | null
   oauth2RefreshUrl: string | null
+  oauth2Scopes: string[] | null
   oauth2ClientId: string | null
   oauth2ClientSecret: string | null
   oauth2TokenRequestAuthMethod: string | null
@@ -38,6 +39,7 @@ const REFRESH_COLUMNS = {
   oauth2AuthorizeUrl: true,
   oauth2AccessTokenUrl: true,
   oauth2RefreshUrl: true,
+  oauth2Scopes: true,
   oauth2ClientId: true,
   oauth2ClientSecret: true,
   oauth2TokenRequestAuthMethod: true,
@@ -111,6 +113,7 @@ export function resolveOAuth2RefreshConfig(
   clientId: string
   clientSecret: string
   authMethod: string
+  scopes: string[]
 } {
   const resolved = interpolateConnectionFields(def, variables)
 
@@ -127,5 +130,6 @@ export function resolveOAuth2RefreshConfig(
     clientId,
     clientSecret,
     authMethod: def.oauth2TokenRequestAuthMethod || 'request-body',
+    scopes: def.oauth2Scopes ?? [],
   }
 }

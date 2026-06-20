@@ -92,7 +92,7 @@ vi.mock('@auxx/services/app-connections', () => ({
   ) => ({ ...(metadata?.connectionVariables ?? {}), ...(secrets?.fields ?? {}) }),
 }))
 
-import { refreshCredentialTokens } from '../oauth2-workflow'
+import { refreshCredentialTokens } from '../oauth2-token-grants'
 
 const fetchCalls: { url: string; body: URLSearchParams }[] = []
 

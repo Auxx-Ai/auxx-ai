@@ -109,7 +109,7 @@ function redactConnection<
 /** Editable method fields shared by create + update (everything except identity: appId/key/major). */
 const methodFields = {
   global: z.boolean(),
-  connectionType: z.enum(['oauth2-code', 'secret', 'none']),
+  connectionType: z.enum(['oauth2-code', 'client-credentials', 'secret', 'none']),
   label: z.string(),
   description: z.string().optional(),
   oauth2AuthorizeUrl: z.string().optional(),

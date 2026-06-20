@@ -35,14 +35,20 @@ function expirySkewMs(input: {
 }
 
 /**
- * If the credential's access token is expired or within the refresh-ahead window of expiry and a
- * refresh token exists, refresh it — single-flight per credential via a Redis NX lock (refresh
- * tokens may rotate; concurrent refreshes would persist a dead rotation). Kind-agnostic: routes
- * through `refreshCredentialTokens`, which branches on `record.kind` (`mcp` / `app`) itself.
- * Returns `true` when the stored secrets may have changed (a refresh ran here, or another process
- * held the lock) so the caller knows to re-reveal; `false` means the token was fresh and nothing
- * happened. Never throws: a failed refresh leaves the stored token in place for the caller's 401
- * path, and `refreshCredentialTokens` already stamps the breaker.
+ * Ensure the credential carries a fresh access token, producing one when it's expired/near expiry
+ * (single-flight per credential via a Redis NX lock — concurrent mints/refreshes would persist a
+ * dead rotation). Two grants share this seam:
+ *
+ * - `refresh_token` (default): refresh only when a refresh token exists and the token is at/near
+ *   expiry. `!expiresAt` means "can't tell" → leave it to the caller's 401 path.
+ * - `client-credentials`: there is no refresh token and no browser — re-mint from the org's
+ *   id/secret. The trigger inverts: `!expiresAt` (no token minted yet) means "**mint now**", and a
+ *   stored expiry near the skew window re-mints.
+ *
+ * Routes through `refreshCredentialTokens` / `mintClientCredentialToken` accordingly. Returns
+ * `true` when the stored secrets may have changed (work ran here, or another process held the
+ * lock) so the caller knows to re-reveal; `false` means nothing happened. Never throws: a failure
+ * leaves the stored token in place for the caller's 401 path, and the workflow stamps the breaker.
  */
 export async function ensureFreshCredentialToken(input: {
   credentialId: string
@@ -51,20 +57,28 @@ export async function ensureFreshCredentialToken(input: {
   lastRefreshAt?: Date | null
   createdAt?: Date
   hasRefreshToken: boolean
+  /** Which grant produces the fresh token. Default `refresh_token`. */
+  grant?: 'refresh_token' | 'client-credentials'
   /** Skip the expiry check — used by the 401 retry path where the token just failed live. */
   force?: boolean
 }): Promise<boolean> {
   const { credentialId, organizationId, expiresAt, hasRefreshToken, force } = input
+  const grant = input.grant ?? 'refresh_token'
 
-  if (!hasRefreshToken) return false
+  // refresh_token can't proceed without a refresh token; client-credentials always can (it mints).
+  if (grant === 'refresh_token' && !hasRefreshToken) return false
   if (!force) {
-    if (!expiresAt) return false // can't tell — leave it to the 401 path
-    const skew = expirySkewMs({
-      expiresAt,
-      lastRefreshAt: input.lastRefreshAt,
-      createdAt: input.createdAt,
-    })
-    if (expiresAt.getTime() - Date.now() > skew) return false
+    if (!expiresAt) {
+      // refresh: can't tell → 401 path owns it. client-credentials: no token yet → mint now.
+      if (grant === 'refresh_token') return false
+    } else {
+      const skew = expirySkewMs({
+        expiresAt,
+        lastRefreshAt: input.lastRefreshAt,
+        createdAt: input.createdAt,
+      })
+      if (expiresAt.getTime() - Date.now() > skew) return false
+    }
   }
 
   let redis: Awaited<ReturnType<typeof getRedisClient>> | null = null
@@ -92,12 +106,15 @@ export async function ensureFreshCredentialToken(input: {
   }
 
   try {
-    // Lazy import: oauth2-workflow pulls in the heavy workflow-nodes/services graph, which a
+    // Lazy import: oauth2-token-grants pulls in the heavy workflow-nodes/services graph, which a
     // low-level credentials module must not load statically (breaks test mock interception too).
-    const { refreshCredentialTokens } = await import('../workflows/oauth2-workflow')
-    const result = await refreshCredentialTokens(credentialId, organizationId)
+    const grants = await import('../connections/oauth2-token-grants')
+    const result =
+      grant === 'client-credentials'
+        ? await grants.mintClientCredentialToken(credentialId, organizationId)
+        : await grants.refreshCredentialTokens(credentialId, organizationId)
     if (!result.success) {
-      logger.warn('Credential token refresh failed', { credentialId, error: result.error })
+      logger.warn('Credential token refresh failed', { credentialId, grant, error: result.error })
     }
   } catch (error) {
     logger.warn('Credential token refresh threw', {

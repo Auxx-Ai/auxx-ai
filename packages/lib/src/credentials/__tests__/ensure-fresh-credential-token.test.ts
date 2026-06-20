@@ -1,11 +1,12 @@
 // packages/lib/src/credentials/__tests__/ensure-fresh-credential-token.test.ts
 //
-// Redis and the (lazily imported) oauth2-workflow are mocked wholesale; the tests assert the
+// Redis and the (lazily imported) oauth2-token-grants are mocked wholesale; the tests assert the
 // skip/refresh/lock decisions and the adaptive expiry skew.
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const refreshCalls: { credentialId: string; organizationId: string }[] = []
+const mintCalls: { credentialId: string; organizationId: string }[] = []
 const redisState = {
   available: true,
   /** Lock value returned by `set NX` — null simulates "already held". */
@@ -33,9 +34,13 @@ vi.mock('@auxx/redis', () => ({
   },
 }))
 
-vi.mock('../../workflows/oauth2-workflow', () => ({
+vi.mock('../../connections/oauth2-token-grants', () => ({
   refreshCredentialTokens: async (credentialId: string, organizationId: string) => {
     refreshCalls.push({ credentialId, organizationId })
+    return { success: true, expiresAt: new Date(Date.now() + 3600_000) }
+  },
+  mintClientCredentialToken: async (credentialId: string, organizationId: string) => {
+    mintCalls.push({ credentialId, organizationId })
     return { success: true, expiresAt: new Date(Date.now() + 3600_000) }
   },
 }))
@@ -50,6 +55,7 @@ const base = {
 
 beforeEach(() => {
   refreshCalls.length = 0
+  mintCalls.length = 0
   redisState.available = true
   redisState.setResult = 'OK'
   redisState.getResults = []
@@ -144,5 +150,44 @@ describe('ensureFreshCredentialToken', () => {
     })
     expect(changed).toBe(true)
     expect(refreshCalls).toHaveLength(1)
+  })
+
+  describe('client-credentials grant', () => {
+    const cc = { ...base, hasRefreshToken: false, grant: 'client-credentials' as const }
+
+    it('mints when no token has been minted yet (!expiresAt)', async () => {
+      const changed = await ensureFreshCredentialToken({ ...cc, expiresAt: null })
+      expect(changed).toBe(true)
+      expect(mintCalls).toEqual([{ credentialId: 'cred-1', organizationId: 'org-1' }])
+      expect(refreshCalls).toHaveLength(0)
+    })
+
+    it('mints when the token is near expiry', async () => {
+      const changed = await ensureFreshCredentialToken({
+        ...cc,
+        expiresAt: new Date(Date.now() + 60_000),
+        lastRefreshAt: new Date(Date.now() - 3540_000), // 1h lifetime → 120s skew applies
+      })
+      expect(changed).toBe(true)
+      expect(mintCalls).toHaveLength(1)
+    })
+
+    it('does not mint a comfortably fresh token', async () => {
+      const changed = await ensureFreshCredentialToken({
+        ...cc,
+        expiresAt: new Date(Date.now() + 3600_000),
+        createdAt: new Date(),
+      })
+      expect(changed).toBe(false)
+      expect(mintCalls).toHaveLength(0)
+    })
+
+    it('reports a possible rotation under lock contention without minting', async () => {
+      redisState.setResult = null // lock held elsewhere
+      redisState.getResults = ['1', null]
+      const changed = await ensureFreshCredentialToken({ ...cc, expiresAt: null })
+      expect(changed).toBe(true)
+      expect(mintCalls).toHaveLength(0)
+    })
   })
 })

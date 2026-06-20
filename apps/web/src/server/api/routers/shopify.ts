@@ -570,7 +570,7 @@ export const shopifyRouter = createTRPCRouter({
             scope: claim.scope,
             shopDomain: claim.shop,
             // The hourly token refresh interpolates {shop} in the ConnectionDefinition's
-            // access-token URL from `connectionVariables` (oauth2-workflow.ts).
+            // access-token URL from `connectionVariables` (oauth2-token-grants.ts).
             // Without this the App-Store-saved credential refreshes against a literal
             // `https://{shop}.myshopify.com/...` URL and the connection dies an hour after
             // install — store the subdomain exactly as the in-app OAuth callback does.

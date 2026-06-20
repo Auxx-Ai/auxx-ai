@@ -10,6 +10,7 @@ import {
   saveAppConnection,
 } from '@auxx/lib/apps'
 import { getCachedAppBySlug, getOrgCache, onCacheEvent } from '@auxx/lib/cache'
+import { mintClientCredentialToken } from '@auxx/lib/connections'
 import { FeatureKey, FeaturePermissionService } from '@auxx/lib/permissions'
 import { createScopedLogger } from '@auxx/logger'
 import {
@@ -459,6 +460,19 @@ export const appsRouter = createTRPCRouter({
           code: 'INTERNAL_SERVER_ERROR',
           message: result.error.message || 'Failed to save connection',
         })
+      }
+
+      // Connection test for the no-browser `client-credentials` grant: mint once now so a bad
+      // client id/secret surfaces immediately rather than on first runtime use. The minted token
+      // is cached on the credential for reuse.
+      if (def.connectionType === 'client-credentials') {
+        const minted = await mintClientCredentialToken(result.value, organizationId)
+        if (!minted.success) {
+          throw new TRPCError({
+            code: 'BAD_REQUEST',
+            message: `Couldn't authenticate with these credentials: ${minted.error ?? 'mint failed'}`,
+          })
+        }
       }
 
       return { success: true, credentialId: result.value }

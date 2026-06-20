@@ -71,7 +71,7 @@ const connectionFormSchema = z
       .min(1, 'Key is required')
       .regex(KEY_PATTERN, 'Use lowercase letters, digits, and underscores'),
     global: z.boolean(),
-    connectionType: z.enum(['none', 'secret', 'oauth2-code']),
+    connectionType: z.enum(['none', 'secret', 'oauth2-code', 'client-credentials']),
     label: z.string().min(1, 'Label is required'),
     description: z.string().optional().or(z.literal('')),
 
@@ -173,7 +173,7 @@ const connectionFormSchema = z
   })
   .refine(
     (data) => {
-      // If oauth2-code is selected, required OAuth2 fields (except scopes)
+      // oauth2-code needs the full browser flow (authorize URL + token mint).
       if (data.connectionType === 'oauth2-code') {
         return (
           data.oauth2AuthorizeUrl &&
@@ -183,10 +183,19 @@ const connectionFormSchema = z
           data.oauth2TokenRequestAuthMethod
         )
       }
+      // client-credentials mints with no browser step — same fields minus the authorize URL.
+      if (data.connectionType === 'client-credentials') {
+        return (
+          data.oauth2AccessTokenUrl &&
+          data.oauth2ClientId &&
+          data.oauth2ClientSecret &&
+          data.oauth2TokenRequestAuthMethod
+        )
+      }
       return true
     },
     {
-      message: 'Required OAuth2 fields must be filled when OAuth2 is selected',
+      message: 'Required OAuth2 fields must be filled when an OAuth2 method is selected',
       path: ['connectionType'],
     }
   )
@@ -236,6 +245,7 @@ function formatScopesArray(scopes: string[] | null | undefined): string {
 
 const TYPE_LABELS: Record<string, string> = {
   'oauth2-code': 'OAuth 2.0',
+  'client-credentials': 'OAuth 2.0 (Machine-to-machine)',
   secret: 'Secret',
   none: 'None',
 }
@@ -407,7 +417,11 @@ function MethodEditor({
   useEffect(() => {
     if (connection && !hasLoadedConnection.current) {
       const scheduleValue = convertSecondsToSchedule(connection.oauth2RefreshTokenIntervalSeconds)
-      const connectionTypeValue = connection.connectionType as 'none' | 'secret' | 'oauth2-code'
+      const connectionTypeValue = connection.connectionType as
+        | 'none'
+        | 'secret'
+        | 'oauth2-code'
+        | 'client-credentials'
       const features = (connection.oauth2Features as Record<string, unknown>) ?? {}
 
       maskedSecretPrefill.current = connection.oauth2ClientSecret || ''
@@ -505,7 +519,11 @@ function MethodEditor({
   })
 
   const isOAuth2 = connectionType === 'oauth2-code'
+  const isClientCredentials = connectionType === 'client-credentials'
   const isSecret = connectionType === 'secret'
+  // Both OAuth2 grants mint a token (and thus show the token URL / client id+secret / scopes
+  // fields); only oauth2-code additionally drives the browser redirect (authorize URL, PKCE…).
+  const mintsToken = isOAuth2 || isClientCredentials
   const authApplyMode = watch('authApplyMode') || 'none'
 
   const authorizeUrl = watch('oauth2AuthorizeUrl') || ''
@@ -519,12 +537,13 @@ function MethodEditor({
   const secretRegister = register('oauth2ClientSecret')
 
   const detectedPlaceholders = useMemo(() => {
-    const allFields = [authorizeUrl, tokenUrl, clientId, clientSecret].join(' ')
+    // client-credentials interpolates the token URL + client id/secret (no authorize URL).
+    const allFields = [mintsToken ? authorizeUrl : '', tokenUrl, clientId, clientSecret].join(' ')
     const matches = allFields.match(/\{([^}]+)\}/g)
     if (!matches) return []
     const keys = [...new Set(matches.map((m) => m.slice(1, -1)))]
     return keys.filter((k) => !connectionVariables.some((v) => v.key === k))
-  }, [authorizeUrl, tokenUrl, clientId, clientSecret, connectionVariables])
+  }, [mintsToken, authorizeUrl, tokenUrl, clientId, clientSecret, connectionVariables])
 
   const handleVariablesChange = (vars: ConnectionVariable[]) => {
     setConnectionVariables(vars)
@@ -534,6 +553,8 @@ function MethodEditor({
   const onSubmit = async (data: ConnectionFormData) => {
     const scopesArray = parseScopesString(data.oauth2Scopes || '')
     const refreshSeconds = convertScheduleToSeconds(data.oauth2RefreshSchedule)
+    const mintsTokenType =
+      data.connectionType === 'oauth2-code' || data.connectionType === 'client-credentials'
 
     // Fields shared by create + update (everything except identity).
     const fields = {
@@ -542,18 +563,17 @@ function MethodEditor({
       label: data.label,
       description: data.description,
 
-      // Connection variables, request auth, and base-URL template apply to both
-      // oauth2-code (interpolation) and secret (connect form). `none` methods omit them
-      // → the router stores null.
-      ...((data.connectionType === 'oauth2-code' || data.connectionType === 'secret') && {
+      // Connection variables, request auth, and base-URL template apply to every connecting
+      // method (oauth2-code interpolation, client-credentials id/secret, secret connect form).
+      // `none` methods omit them → the router stores null.
+      ...(data.connectionType !== 'none' && {
         connectionVariables,
         authApply: formToAuthApply(data, loadedAuthApply.current),
         baseUrlTemplate: data.baseUrlTemplate || undefined,
       }),
 
-      // Only include OAuth2 fields if connectionType is oauth2-code
-      ...(data.connectionType === 'oauth2-code' && {
-        oauth2AuthorizeUrl: data.oauth2AuthorizeUrl,
+      // Token-minting fields — written for both oauth2-code and client-credentials.
+      ...(mintsTokenType && {
         oauth2AccessTokenUrl: data.oauth2AccessTokenUrl,
         oauth2RefreshUrl: data.oauth2RefreshUrl,
         oauth2ClientId: data.oauth2ClientId,
@@ -564,6 +584,11 @@ function MethodEditor({
         oauth2Scopes: scopesArray,
         oauth2TokenRequestAuthMethod: data.oauth2TokenRequestAuthMethod,
         oauth2RefreshTokenIntervalSeconds: refreshSeconds,
+      }),
+
+      // Browser-redirect fields — oauth2-code only (client-credentials has no authorize step).
+      ...(data.connectionType === 'oauth2-code' && {
+        oauth2AuthorizeUrl: data.oauth2AuthorizeUrl,
         oauth2Features: {
           ...(data.oauth2Pkce && { pkce: true }),
           ...(data.oauth2CallbackBaseUrl && { callbackBaseUrl: data.oauth2CallbackBaseUrl }),
@@ -697,6 +722,9 @@ function MethodEditor({
                           <SelectItem value='none'>None</SelectItem>
                           <SelectItem value='secret'>Secret</SelectItem>
                           <SelectItem value='oauth2-code'>OAuth 2.0</SelectItem>
+                          <SelectItem value='client-credentials'>
+                            OAuth 2.0 (Machine-to-machine)
+                          </SelectItem>
                         </SelectContent>
                       </Select>
                     )}
@@ -707,15 +735,15 @@ function MethodEditor({
                 </Field>
               </FieldGroup>
 
-              {(isOAuth2 || isSecret) && (
+              {(mintsToken || isSecret) && (
                 <FieldGroup>
                   <Field>
                     <FieldLabel className='flex items-center gap-1'>
                       Dynamic Variables
                       <TooltipExplanation
                         text={
-                          isOAuth2
-                            ? 'Define variables that organizations must provide when connecting. Use {variable_name} placeholders in the Authorize URL, Token URL, Client ID, or Client Secret fields below.'
+                          mintsToken
+                            ? 'Define variables that organizations must provide when connecting. Use {variable_name} placeholders in the Token URL, Client ID, or Client Secret fields below (oauth2-code also supports the Authorize URL).'
                             : 'Define the fields organizations fill in when connecting (e.g. client ID, client secret, account number). Secret-flagged fields are masked and stored encrypted.'
                         }
                         side='right'
@@ -736,14 +764,14 @@ function MethodEditor({
                           <div className='flex flex-wrap items-center gap-1'>
                             {connectionVariables.map((v) => (
                               <Badge key={v.key} variant='zinc' size='sm'>
-                                {isOAuth2 ? `{${v.key}}` : v.key}
+                                {mintsToken ? `{${v.key}}` : v.key}
                               </Badge>
                             ))}
                           </div>
                         </>
                       )}
                     </div>
-                    {isOAuth2 && (
+                    {mintsToken && (
                       <FieldDescription>
                         Use these as placeholders in the fields below (e.g.{' '}
                         <code className='text-xs'>
@@ -761,7 +789,7 @@ function MethodEditor({
                     )}
                   </Field>
 
-                  {isOAuth2 && detectedPlaceholders.length > 0 && (
+                  {mintsToken && detectedPlaceholders.length > 0 && (
                     <div className='flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800'>
                       <AlertTriangle className='size-4 shrink-0' />
                       <span>
@@ -779,7 +807,7 @@ function MethodEditor({
                 </FieldGroup>
               )}
 
-              {(isOAuth2 || isSecret) && (
+              {(mintsToken || isSecret) && (
                 <div
                   role='button'
                   tabIndex={0}
@@ -802,28 +830,32 @@ function MethodEditor({
                 </div>
               )}
 
-              {isOAuth2 && (
+              {mintsToken && (
                 <FieldGroup>
-                  <Field>
-                    <FieldLabel htmlFor='app-organization-authorize-url'>Authorize URL</FieldLabel>
-                    <InputGroup>
-                      <InputGroupInput
-                        id='app-organization-authorize-url'
-                        placeholder='https://auth-server.com/oauth/authorize'
-                        aria-invalid={!!errors.oauth2AuthorizeUrl}
-                        {...register('oauth2AuthorizeUrl')}
-                      />
-                      <InputGroupAddon align='inline-end'>
-                        {errors.oauth2AuthorizeUrl && (
-                          <TooltipError text={errors.oauth2AuthorizeUrl.message ?? ''} />
-                        )}
-                        <TooltipExplanation
-                          text='The URL where users are redirected to grant authorization to your app.'
-                          side='right'
+                  {isOAuth2 && (
+                    <Field>
+                      <FieldLabel htmlFor='app-organization-authorize-url'>
+                        Authorize URL
+                      </FieldLabel>
+                      <InputGroup>
+                        <InputGroupInput
+                          id='app-organization-authorize-url'
+                          placeholder='https://auth-server.com/oauth/authorize'
+                          aria-invalid={!!errors.oauth2AuthorizeUrl}
+                          {...register('oauth2AuthorizeUrl')}
                         />
-                      </InputGroupAddon>
-                    </InputGroup>
-                  </Field>
+                        <InputGroupAddon align='inline-end'>
+                          {errors.oauth2AuthorizeUrl && (
+                            <TooltipError text={errors.oauth2AuthorizeUrl.message ?? ''} />
+                          )}
+                          <TooltipExplanation
+                            text='The URL where users are redirected to grant authorization to your app.'
+                            side='right'
+                          />
+                        </InputGroupAddon>
+                      </InputGroup>
+                    </Field>
+                  )}
                   <Field>
                     <FieldLabel htmlFor='app-organization-token-url'>Access token URL</FieldLabel>
                     <InputGroup>
@@ -966,146 +998,153 @@ function MethodEditor({
                       </p>
                     )}
                   </Field>
-                  <FieldSet>
-                    <div className='flex items-center gap-3'>
-                      <Switch
-                        id='app-organization-advanced'
-                        checked={showAdvanced}
-                        onCheckedChange={setShowAdvanced}
-                      />
-                      <FieldLabel htmlFor='app-organization-advanced'>Advanced settings</FieldLabel>
-                    </div>
+                  {isOAuth2 && (
+                    <FieldSet>
+                      <div className='flex items-center gap-3'>
+                        <Switch
+                          id='app-organization-advanced'
+                          checked={showAdvanced}
+                          onCheckedChange={setShowAdvanced}
+                        />
+                        <FieldLabel htmlFor='app-organization-advanced'>
+                          Advanced settings
+                        </FieldLabel>
+                      </div>
 
-                    {showAdvanced && (
-                      <FieldGroup>
-                        <Field>
-                          <div className='flex items-center gap-3'>
-                            <Controller
-                              name='oauth2Pkce'
-                              control={control}
-                              render={({ field }) => (
-                                <Switch
-                                  id='app-organization-pkce'
-                                  checked={field.value ?? false}
-                                  onCheckedChange={field.onChange}
-                                />
-                              )}
+                      {showAdvanced && (
+                        <FieldGroup>
+                          <Field>
+                            <div className='flex items-center gap-3'>
+                              <Controller
+                                name='oauth2Pkce'
+                                control={control}
+                                render={({ field }) => (
+                                  <Switch
+                                    id='app-organization-pkce'
+                                    checked={field.value ?? false}
+                                    onCheckedChange={field.onChange}
+                                  />
+                                )}
+                              />
+                              <FieldLabel htmlFor='app-organization-pkce'>
+                                Use PKCE (S256)
+                              </FieldLabel>
+                            </div>
+                            <FieldDescription>
+                              Enable Proof Key for Code Exchange (RFC 7636). Required by Airtable,
+                              Zoom, Twitter/X, Linear, Figma, and other providers.
+                            </FieldDescription>
+                          </Field>
+                          <Field>
+                            <FieldLabel htmlFor='app-organization-callback-base-url'>
+                              Callback base URL
+                            </FieldLabel>
+                            <Input
+                              id='app-organization-callback-base-url'
+                              placeholder='https://example.ngrok-free.app'
+                              {...register('oauth2CallbackBaseUrl')}
                             />
-                            <FieldLabel htmlFor='app-organization-pkce'>Use PKCE (S256)</FieldLabel>
-                          </div>
-                          <FieldDescription>
-                            Enable Proof Key for Code Exchange (RFC 7636). Required by Airtable,
-                            Zoom, Twitter/X, Linear, Figma, and other providers.
-                          </FieldDescription>
-                        </Field>
-                        <Field>
-                          <FieldLabel htmlFor='app-organization-callback-base-url'>
-                            Callback base URL
-                          </FieldLabel>
-                          <Input
-                            id='app-organization-callback-base-url'
-                            placeholder='https://example.ngrok-free.app'
-                            {...register('oauth2CallbackBaseUrl')}
-                          />
-                          <FieldDescription>
-                            Override the callback redirect URL base. Falls back to WEBAPP_URL if
-                            empty.
-                          </FieldDescription>
-                          {errors.oauth2CallbackBaseUrl && (
-                            <p className='text-sm text-red-600 mt-1'>
-                              {errors.oauth2CallbackBaseUrl.message}
-                            </p>
-                          )}
-                        </Field>
-                        <Field>
-                          <FieldLabel htmlFor='app-organization-refresh-url'>
-                            Refresh URL
-                          </FieldLabel>
-                          <Input
-                            id='app-organization-refresh-url'
-                            placeholder='https://auth-server.com/oauth/refresh'
-                            {...register('oauth2RefreshUrl')}
-                          />
-                          <FieldDescription>
-                            Endpoint used to refresh the access token. Defaults to the Access token
-                            URL when empty. Supports {'{variable}'} placeholders.
-                          </FieldDescription>
-                          {errors.oauth2RefreshUrl && (
-                            <p className='text-sm text-red-600 mt-1'>
-                              {errors.oauth2RefreshUrl.message}
-                            </p>
-                          )}
-                        </Field>
-                        <Field>
-                          <FieldLabel htmlFor='app-organization-scope-separator'>
-                            Scope separator
-                          </FieldLabel>
-                          <Input
-                            id='app-organization-scope-separator'
-                            placeholder='(space by default)'
-                            {...register('oauth2ScopeSeparator')}
-                          />
-                          <FieldDescription>
-                            Character used to separate scopes in the authorize URL. Defaults to a
-                            space if empty.
-                          </FieldDescription>
-                        </Field>
-                        <Field>
-                          <FieldLabel htmlFor='app-organization-additional-authorize-params'>
-                            Additional authorize params
-                          </FieldLabel>
-                          <Textarea
-                            id='app-organization-additional-authorize-params'
-                            placeholder='{"prompt": "consent"}'
-                            rows={3}
-                            {...register('oauth2AdditionalAuthorizeParams')}
-                          />
-                          <FieldDescription>
-                            JSON object of extra query params appended to the authorize URL.
-                          </FieldDescription>
-                          {errors.oauth2AdditionalAuthorizeParams && (
-                            <p className='text-sm text-red-600 mt-1'>
-                              {errors.oauth2AdditionalAuthorizeParams.message}
-                            </p>
-                          )}
-                        </Field>
-                        <Field>
-                          <FieldLabel htmlFor='app-organization-additional-token-params'>
-                            Additional token params
-                          </FieldLabel>
-                          <Textarea
-                            id='app-organization-additional-token-params'
-                            placeholder='{"audience": "https://api.example.com"}'
-                            rows={3}
-                            {...register('oauth2AdditionalTokenParams')}
-                          />
-                          <FieldDescription>
-                            JSON object of extra params appended to the token exchange request body.
-                          </FieldDescription>
-                          {errors.oauth2AdditionalTokenParams && (
-                            <p className='text-sm text-red-600 mt-1'>
-                              {errors.oauth2AdditionalTokenParams.message}
-                            </p>
-                          )}
-                        </Field>
-                        <Field>
-                          <FieldLabel htmlFor='app-organization-callback-metadata-params'>
-                            Callback metadata params
-                          </FieldLabel>
-                          <Input
-                            id='app-organization-callback-metadata-params'
-                            placeholder='realmId, tenantId'
-                            {...register('oauth2CallbackMetadataParams')}
-                          />
-                          <FieldDescription>
-                            Comma-separated list of callback URL query params to capture and store
-                            as connection metadata. These are available at runtime via
-                            connection.metadata.
-                          </FieldDescription>
-                        </Field>
-                      </FieldGroup>
-                    )}
-                  </FieldSet>
+                            <FieldDescription>
+                              Override the callback redirect URL base. Falls back to WEBAPP_URL if
+                              empty.
+                            </FieldDescription>
+                            {errors.oauth2CallbackBaseUrl && (
+                              <p className='text-sm text-red-600 mt-1'>
+                                {errors.oauth2CallbackBaseUrl.message}
+                              </p>
+                            )}
+                          </Field>
+                          <Field>
+                            <FieldLabel htmlFor='app-organization-refresh-url'>
+                              Refresh URL
+                            </FieldLabel>
+                            <Input
+                              id='app-organization-refresh-url'
+                              placeholder='https://auth-server.com/oauth/refresh'
+                              {...register('oauth2RefreshUrl')}
+                            />
+                            <FieldDescription>
+                              Endpoint used to refresh the access token. Defaults to the Access
+                              token URL when empty. Supports {'{variable}'} placeholders.
+                            </FieldDescription>
+                            {errors.oauth2RefreshUrl && (
+                              <p className='text-sm text-red-600 mt-1'>
+                                {errors.oauth2RefreshUrl.message}
+                              </p>
+                            )}
+                          </Field>
+                          <Field>
+                            <FieldLabel htmlFor='app-organization-scope-separator'>
+                              Scope separator
+                            </FieldLabel>
+                            <Input
+                              id='app-organization-scope-separator'
+                              placeholder='(space by default)'
+                              {...register('oauth2ScopeSeparator')}
+                            />
+                            <FieldDescription>
+                              Character used to separate scopes in the authorize URL. Defaults to a
+                              space if empty.
+                            </FieldDescription>
+                          </Field>
+                          <Field>
+                            <FieldLabel htmlFor='app-organization-additional-authorize-params'>
+                              Additional authorize params
+                            </FieldLabel>
+                            <Textarea
+                              id='app-organization-additional-authorize-params'
+                              placeholder='{"prompt": "consent"}'
+                              rows={3}
+                              {...register('oauth2AdditionalAuthorizeParams')}
+                            />
+                            <FieldDescription>
+                              JSON object of extra query params appended to the authorize URL.
+                            </FieldDescription>
+                            {errors.oauth2AdditionalAuthorizeParams && (
+                              <p className='text-sm text-red-600 mt-1'>
+                                {errors.oauth2AdditionalAuthorizeParams.message}
+                              </p>
+                            )}
+                          </Field>
+                          <Field>
+                            <FieldLabel htmlFor='app-organization-additional-token-params'>
+                              Additional token params
+                            </FieldLabel>
+                            <Textarea
+                              id='app-organization-additional-token-params'
+                              placeholder='{"audience": "https://api.example.com"}'
+                              rows={3}
+                              {...register('oauth2AdditionalTokenParams')}
+                            />
+                            <FieldDescription>
+                              JSON object of extra params appended to the token exchange request
+                              body.
+                            </FieldDescription>
+                            {errors.oauth2AdditionalTokenParams && (
+                              <p className='text-sm text-red-600 mt-1'>
+                                {errors.oauth2AdditionalTokenParams.message}
+                              </p>
+                            )}
+                          </Field>
+                          <Field>
+                            <FieldLabel htmlFor='app-organization-callback-metadata-params'>
+                              Callback metadata params
+                            </FieldLabel>
+                            <Input
+                              id='app-organization-callback-metadata-params'
+                              placeholder='realmId, tenantId'
+                              {...register('oauth2CallbackMetadataParams')}
+                            />
+                            <FieldDescription>
+                              Comma-separated list of callback URL query params to capture and store
+                              as connection metadata. These are available at runtime via
+                              connection.metadata.
+                            </FieldDescription>
+                          </Field>
+                        </FieldGroup>
+                      )}
+                    </FieldSet>
+                  )}
                 </FieldGroup>
               )}
             </FieldSet>
