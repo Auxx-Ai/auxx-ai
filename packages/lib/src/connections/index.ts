@@ -10,6 +10,12 @@ export {
   type RuntimeConnectionAuthData,
 } from './auth-apply'
 export {
+  makeClientCredentialsRequest,
+  mintClientCredentialToken,
+  type RefreshTokensResult,
+  refreshCredentialTokens,
+} from './oauth2-token-grants'
+export {
   type ConnectionDefinitionForRefresh,
   type CredentialOwner,
   loadDefinitionForCredential,

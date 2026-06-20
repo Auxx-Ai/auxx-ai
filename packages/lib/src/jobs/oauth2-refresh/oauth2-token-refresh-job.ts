@@ -2,7 +2,7 @@
 
 import { createScopedLogger } from '@auxx/logger'
 import type { Job } from 'bullmq'
-import { refreshCredentialTokens } from '../../workflows/oauth2-workflow'
+import { refreshCredentialTokens } from '../../connections/oauth2-token-grants'
 
 const logger = createScopedLogger('oauth2-token-refresh-job')
 

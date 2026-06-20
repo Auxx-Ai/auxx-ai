@@ -1,7 +1,6 @@
 // packages/lib/src/workflows/index.ts
 
 export { normalizeTemplateGraph } from './normalize-template-graph'
-export { type RefreshTokensResult, refreshCredentialTokens } from './oauth2-workflow'
 export type { WorkflowGraph } from './template-graph-transformer'
 export { TemplateGraphTransformer } from './template-graph-transformer'
 export {

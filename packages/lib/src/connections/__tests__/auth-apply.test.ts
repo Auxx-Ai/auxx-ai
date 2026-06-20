@@ -1,7 +1,7 @@
 // packages/lib/src/connections/__tests__/auth-apply.test.ts
 
 import { describe, expect, it } from 'vitest'
-import { applyAuth } from '../auth-apply'
+import { applyAuth, BEARER_AUTH, defaultAuthApply } from '../auth-apply'
 
 const req = () => ({ headers: {} as Record<string, string>, url: 'https://api.example.com/v1' })
 
@@ -62,6 +62,20 @@ describe('applyAuth', () => {
       { in: 'header', name: 'Authorization', format: 'Bearer {value}' }
     )
     expect(input.headers).toEqual({})
+  })
+
+  describe('defaultAuthApply', () => {
+    it('defaults oauth2-code to a bearer token', () => {
+      expect(defaultAuthApply('oauth2-code')).toEqual(BEARER_AUTH)
+    })
+
+    it('defaults a server-minted client-credentials token to a bearer token', () => {
+      expect(defaultAuthApply('client-credentials')).toEqual(BEARER_AUTH)
+    })
+
+    it('has no default for secret connections (they declare their own)', () => {
+      expect(defaultAuthApply('secret')).toBeNull()
+    })
   })
 
   describe('superset — multi-insertion + static headers', () => {

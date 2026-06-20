@@ -43,6 +43,7 @@ interface ConnectionDetailPageProps {
 /** Short type label shown in parentheses next to the method name. */
 const TYPE_LABEL: Record<string, string> = {
   'oauth2-code': 'OAuth',
+  'client-credentials': 'OAuth (M2M)',
   secret: 'API key',
 }
 
@@ -95,7 +96,7 @@ export function ConnectionDetailPage({
               <RadioGroupItemCard
                 key={method.id}
                 value={method.id}
-                icon={method.connectionType === 'secret' ? <KeyRound /> : <Plug />}
+                icon={method.connectionType === 'oauth2-code' ? <Plug /> : <KeyRound />}
                 label={method.label}
                 sublabel={TYPE_LABEL[method.connectionType]}
                 description={

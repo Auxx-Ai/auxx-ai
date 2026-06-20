@@ -19,6 +19,13 @@ import { defaultAuthApply } from './auth-apply'
 
 const logger = createScopedLogger('resolve-connection-for-runtime')
 
+/**
+ * The runtime connection types. `client-credentials` is a server-minted bearer (no user, no
+ * browser) — downstream it behaves exactly like `oauth2-code`; only the token-production path
+ * (mint vs refresh) differs.
+ */
+type ConnectionType = 'oauth2-code' | 'client-credentials' | 'secret'
+
 /** Secrets no longer carry expiry/metadata — those come from the record columns. */
 type ConnectionSecrets = Pick<
   DecryptedConnectionData,
@@ -32,7 +39,7 @@ type ConnectionSecrets = Pick<
  */
 export interface RuntimeConnectionData {
   id: string
-  type: 'oauth2-code' | 'secret'
+  type: ConnectionType
   value: string
   fields?: Record<string, string>
   /** Declarative spec for putting this connection on an outgoing HTTP request (§3); null for DB/email/none. */
@@ -86,18 +93,29 @@ function connectionFields(
 }
 
 /**
- * Lazy refresh: for an `oauth2-code` connection with a stored refresh token, refresh the access
- * token if it is at/near expiry (single-flight, never throws) and re-reveal the rotated secrets.
- * The hot path (fresh token, or `secret`-type, or `ensureFresh: false`) stays at one reveal.
+ * Lazily produce a fresh token before use, then re-reveal the rotated secrets:
+ *  - `oauth2-code`: refresh against the stored refresh token if it's at/near expiry.
+ *  - `client-credentials`: mint from the org's id/secret when no token has been minted yet
+ *    (`!expiresAt`) or it's near expiry — there is no refresh token to gate on.
+ * Single-flight and never-throwing (see `ensureFreshCredentialToken`). The hot path (fresh token,
+ * or `secret`-type, or `ensureFresh: false`) stays at one reveal.
  */
 async function refreshIfNeeded(
   revealed: RevealedConnection,
   organizationId: string,
-  connectionType: 'oauth2-code' | 'secret',
+  connectionType: ConnectionType,
   ensureFresh: boolean
 ): Promise<RevealedConnection> {
   const { record, secrets } = revealed
-  if (!ensureFresh || connectionType !== 'oauth2-code' || !secrets.refreshToken) {
+  if (!ensureFresh) return revealed
+
+  const isClientCredentials = connectionType === 'client-credentials'
+  // Only the token-minting types do any work here: oauth2-code needs a stored refresh token,
+  // client-credentials always mints from the org's id/secret. Everything else (secret/none/db…)
+  // is a one-reveal hot path.
+  if (connectionType === 'oauth2-code') {
+    if (!secrets.refreshToken) return revealed
+  } else if (!isClientCredentials) {
     return revealed
   }
 
@@ -107,7 +125,8 @@ async function refreshIfNeeded(
     expiresAt: record.expiresAt,
     lastRefreshAt: record.lastRefreshAt,
     createdAt: record.createdAt,
-    hasRefreshToken: true,
+    hasRefreshToken: !!secrets.refreshToken,
+    grant: isClientCredentials ? 'client-credentials' : 'refresh_token',
   })
   if (!changed) return revealed
 
@@ -119,7 +138,7 @@ async function refreshIfNeeded(
 async function shapeFromRevealed(
   revealed: RevealedConnection,
   organizationId: string,
-  connectionType: 'oauth2-code' | 'secret',
+  connectionType: ConnectionType,
   ensureFresh: boolean,
   def: DefinitionRuntime = {}
 ): Promise<RuntimeConnectionData> {
@@ -156,7 +175,7 @@ async function shapeFromRevealed(
 async function toRuntimeConnection(
   credentialId: string,
   organizationId: string,
-  connectionType: 'oauth2-code' | 'secret',
+  connectionType: ConnectionType,
   ensureFresh: boolean,
   def: DefinitionRuntime = {}
 ): Promise<Result<RuntimeConnectionData, ResolveConnectionError>> {
@@ -199,7 +218,7 @@ async function resolveAppCredential(
       cred.connectionDefinitionId ? eq(d.id, cred.connectionDefinitionId) : eq(d.appId, appId),
     columns: { connectionType: true, authApply: true, baseUrlTemplate: true },
   })
-  const connectionType = (def?.connectionType ?? 'secret') as 'oauth2-code' | 'secret'
+  const connectionType = (def?.connectionType ?? 'secret') as ConnectionType
   return toRuntimeConnection(cred.id, organizationId, connectionType, ensureFresh, {
     authApply: def?.authApply ?? null,
     baseUrlTemplate: def?.baseUrlTemplate,
@@ -268,7 +287,7 @@ export async function resolveConnectionForRuntime(
       columns: { connectionType: true, authApply: true, baseUrlTemplate: true },
     })
     const connectionType = (def?.connectionType ??
-      (revealed.value.secrets.accessToken ? 'oauth2-code' : 'secret')) as 'oauth2-code' | 'secret'
+      (revealed.value.secrets.accessToken ? 'oauth2-code' : 'secret')) as ConnectionType
     const resolved = await shapeFromRevealed(
       revealed.value,
       organizationId,
@@ -310,7 +329,7 @@ export async function resolveConnectionForRuntime(
     const resolved = await toRuntimeConnection(
       found.value.id,
       organizationId,
-      (def?.connectionType ?? 'secret') as 'oauth2-code' | 'secret',
+      (def?.connectionType ?? 'secret') as ConnectionType,
       ensureFresh,
       { authApply: def?.authApply ?? null, baseUrlTemplate: def?.baseUrlTemplate }
     )
@@ -339,7 +358,7 @@ export async function resolveConnectionForRuntime(
     const resolved = await toRuntimeConnection(
       found.value.id,
       organizationId,
-      def.connectionType as 'oauth2-code' | 'secret',
+      def.connectionType as ConnectionType,
       ensureFresh,
       { authApply: def.authApply, baseUrlTemplate: def.baseUrlTemplate }
     )

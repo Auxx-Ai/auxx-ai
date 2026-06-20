@@ -9,12 +9,15 @@ import {
   splitSensitiveFields,
   updateCredential,
 } from '@auxx/credentials/store'
-import { saveConnection } from '@auxx/lib/connections'
+import {
+  mintClientCredentialToken,
+  refreshCredentialTokens,
+  saveConnection,
+} from '@auxx/lib/connections'
 import { getAllProviders } from '@auxx/lib/connections/providers'
 import { isAdminOrOwner } from '@auxx/lib/members'
 import { getChannelProviderIcon } from '@auxx/lib/providers'
 import { CredentialTestingService, isCredentialInUse } from '@auxx/lib/workflow-engine'
-import { refreshCredentialTokens } from '@auxx/lib/workflows'
 import { TRPCError } from '@trpc/server'
 import { z } from 'zod'
 import { createTRPCRouter, notDemo, protectedProcedure } from '~/server/api/trpc'
@@ -264,6 +267,19 @@ export const connectionsRouter = createTRPCRouter({
 
       if (result.isErr()) {
         throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: result.error.message })
+      }
+
+      // Connection test for the no-browser grant: mint once now so a bad client id/secret
+      // surfaces immediately rather than on first runtime use (mirrors the oauth2 flow's
+      // validate-on-connect). The minted token is cached on the credential for reuse.
+      if (def.connectionType === 'client-credentials') {
+        const minted = await mintClientCredentialToken(result.value, organizationId)
+        if (!minted.success) {
+          throw new TRPCError({
+            code: 'BAD_REQUEST',
+            message: `Couldn't authenticate with these credentials: ${minted.error ?? 'mint failed'}`,
+          })
+        }
       }
 
       return { credentialId: result.value }

@@ -1,4 +1,10 @@
-// packages/lib/src/workflows/oauth2-workflow.ts
+// packages/lib/src/connections/oauth2-token-grants.ts
+//
+// OAuth2 token production for a credential — the two grants that mint/renew its access token:
+// `refresh_token` (refresh an existing token) and `client_credentials` (mint server-side, no user
+// or browser). Shared by the lazy resolve-on-use seam, the scheduled refresh job, and the connect
+// surface. Lives beside `resolve-connection-definition.ts` because both grants resolve their
+// provider config the same way (by ConnectionDefinition).
 
 import {
   recordRefreshFailure,
@@ -13,9 +19,9 @@ import { eq } from 'drizzle-orm'
 import {
   loadDefinitionForCredential,
   resolveOAuth2RefreshConfig,
-} from '../connections/resolve-connection-definition'
+} from './resolve-connection-definition'
 
-const logger = createScopedLogger('oauth2-workflow')
+const logger = createScopedLogger('oauth2-token-grants')
 
 /** Circuit-breaker threshold mirrored from the store (a permanent failure jumps straight here). */
 const CIRCUIT_OPEN_THRESHOLD = 5
@@ -169,23 +175,118 @@ export async function refreshCredentialTokens(
   }
 }
 
-/** Make a refresh-token request to the provider, handling basic-auth vs request-body. */
-async function makeTokenRefreshRequest(
+/**
+ * Mint a fresh access token for a `client-credentials` credential. There is no user, no browser,
+ * and no refresh token: the org's `client_id`/`client_secret` (stored as secret connection
+ * variables, resolved via the same `resolveOAuth2RefreshConfig` fallback as refresh) are POSTed
+ * straight to the token endpoint. The minted token is rotated onto the credential as
+ * `secrets.accessToken` — `secrets.fields` (the id/secret) are preserved by the spread — and
+ * `expiresAt` is stamped. Shares the breaker + success/failure recording with the refresh path.
+ * Called lazily by the runtime (on first use / near expiry) through `ensureFreshCredentialToken`.
+ */
+export async function mintClientCredentialToken(
+  credentialId: string,
+  organizationId: string
+): Promise<RefreshTokensResult> {
+  const revealed = await revealSecrets<OAuth2Secrets>(credentialId, organizationId)
+  if (revealed.isErr()) {
+    return { success: false, error: revealed.error.message }
+  }
+
+  const { record, secrets } = revealed.value
+  const previousFailureCount = record.consecutiveRefreshFailures
+
+  try {
+    const connDef = await loadDefinitionForCredential({
+      connectionDefinitionId: record.connectionDefinitionId,
+      appId: record.appId,
+      mcpServerId: record.mcpServerId,
+      type: record.type,
+    })
+    if (!connDef) {
+      return { success: false, error: 'ConnectionDefinition not found' }
+    }
+
+    const variables = mergeConnectionVariables(record.metadata, secrets)
+    const oauth = resolveOAuth2RefreshConfig(connDef, variables)
+    if (!oauth.accessTokenUrl) {
+      return { success: false, error: 'ConnectionDefinition not found' }
+    }
+
+    const tokenData = await makeClientCredentialsRequest(
+      oauth.accessTokenUrl,
+      oauth.clientId,
+      oauth.clientSecret,
+      oauth.scopes,
+      oauth.authMethod
+    )
+
+    const newExpiresAt = tokenData.expires_in
+      ? new Date(Date.now() + tokenData.expires_in * 1000)
+      : null
+
+    // No refreshToken written — client_credentials re-mints from the id/secret on expiry.
+    const rotated = await rotateSecrets(credentialId, organizationId, {
+      ...secrets,
+      accessToken: tokenData.access_token,
+    })
+    if (rotated.isErr()) {
+      return { success: false, error: rotated.error.message }
+    }
+
+    await recordRefreshSuccess(credentialId, organizationId, { expiresAt: newExpiresAt })
+
+    logger.info('Client credentials token minted', {
+      credentialId,
+      kind: record.kind,
+      expiresAt: newExpiresAt,
+      previousFailures: previousFailureCount,
+    })
+
+    return { success: true, expiresAt: newExpiresAt }
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error)
+    logger.error('Client credentials mint failed', { credentialId, error: errorMessage })
+
+    await recordRefreshFailure(credentialId, organizationId)
+
+    const newFailureCount = previousFailureCount + 1
+    return {
+      success: false,
+      error: errorMessage,
+      newFailureCount,
+      circuitOpened: newFailureCount >= CIRCUIT_OPEN_THRESHOLD,
+    }
+  }
+}
+
+/** Token response shape shared by the refresh and client-credentials grants. */
+interface TokenResponse {
+  access_token: string
+  refresh_token?: string
+  expires_in?: number
+}
+
+/**
+ * POST a form-encoded OAuth2 token request, applying `basic-auth` vs `request-body` client
+ * authentication uniformly. Shared by the refresh-token and client-credentials grants so the two
+ * never drift on header/auth handling. `body` carries the grant-specific params; the client
+ * id/secret are placed in the body (request-body) or the `Authorization` header (basic-auth).
+ */
+async function postOAuth2TokenRequest(
   tokenUrl: string,
+  body: Record<string, string>,
   clientId: string,
   clientSecret: string | null | undefined,
-  refreshToken: string,
   authMethod: string,
-  resource?: string
-): Promise<{ access_token: string; refresh_token?: string; expires_in?: number }> {
+  failureLabel: string
+): Promise<TokenResponse> {
   const tokenRequestBody: Record<string, string> = {
-    grant_type: 'refresh_token',
-    refresh_token: refreshToken,
+    ...body,
     client_id: clientId,
     // Public clients (e.g. DCR-minted MCP clients, PKCE-only) have no secret — omit the field
     // rather than sending an empty value some ASes reject.
     ...(clientSecret ? { client_secret: clientSecret } : {}),
-    ...(resource ? { resource } : {}),
   }
 
   const headers: Record<string, string> = {
@@ -208,8 +309,57 @@ async function makeTokenRefreshRequest(
 
   if (!response.ok) {
     const errorText = await response.text()
-    throw new Error(`Token refresh failed: ${response.status} ${errorText}`)
+    throw new Error(`${failureLabel}: ${response.status} ${errorText}`)
   }
 
   return response.json()
+}
+
+/** Make a refresh-token request to the provider, handling basic-auth vs request-body. */
+async function makeTokenRefreshRequest(
+  tokenUrl: string,
+  clientId: string,
+  clientSecret: string | null | undefined,
+  refreshToken: string,
+  authMethod: string,
+  resource?: string
+): Promise<TokenResponse> {
+  return postOAuth2TokenRequest(
+    tokenUrl,
+    {
+      grant_type: 'refresh_token',
+      refresh_token: refreshToken,
+      ...(resource ? { resource } : {}),
+    },
+    clientId,
+    clientSecret,
+    authMethod,
+    'Token refresh failed'
+  )
+}
+
+/**
+ * Make a `client_credentials` token request — the no-user, no-browser grant: POST the client
+ * id/secret straight to the token endpoint to mint a short-lived bearer (no refresh token).
+ * `basic-auth` vs `request-body` is handled identically to {@link makeTokenRefreshRequest}.
+ */
+export async function makeClientCredentialsRequest(
+  tokenUrl: string,
+  clientId: string,
+  clientSecret: string | null | undefined,
+  scopes: string[],
+  authMethod: string
+): Promise<TokenResponse> {
+  return postOAuth2TokenRequest(
+    tokenUrl,
+    {
+      grant_type: 'client_credentials',
+      // Scope is optional per RFC 6749 §4.4.2 — omit the param entirely when none are configured.
+      ...(scopes.length > 0 ? { scope: scopes.join(' ') } : {}),
+    },
+    clientId,
+    clientSecret,
+    authMethod,
+    'Client credentials grant failed'
+  )
 }
