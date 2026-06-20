@@ -7,11 +7,12 @@ import { createScopedLogger } from '@auxx/logger'
 import { checkUniqueValue } from '@auxx/services/custom-fields'
 import { getEntityInstance, listEntityInstances } from '@auxx/services/entity-instances'
 import { ModelTypes } from '@auxx/types/custom-field'
+import type { FieldId } from '@auxx/types/field'
 import { createTypedValueInput } from '@auxx/types/field-value'
 import { isEntityDefinitionType } from '@auxx/types/resource'
 import type { SystemAttribute } from '@auxx/types/system-attribute'
 import { type AnyColumn, and, eq, type SQL } from 'drizzle-orm'
-import { findCachedResource, getCachedCustomFields } from '../../cache'
+import { findCachedResource, getCachedCustomFields, getCachedFieldMap } from '../../cache'
 import { type ConditionGroup, resolveConditionContext } from '../../conditions'
 import { BadRequestError } from '../../errors'
 import { publisher } from '../../events/publisher'
@@ -63,24 +64,28 @@ type EntityInstanceEntity = typeof schema.EntityInstance.$inferSelect
 const lookupLogger = createScopedLogger('unified-handler-lookup')
 
 /**
- * Candidate for `lookupByField` — one `(systemAttribute, value)` pair to try.
+ * Candidate for `lookupByField` — one field reference + value to try. Two shapes,
+ * resolved through the same `customFields` org-cache:
+ *  - `{ systemAttribute }` → matched by `CustomField.systemAttribute` (system
+ *    fields / legacy callers: extension, `record.lookupByField`, `findByField`).
+ *  - `{ fieldId }` → matched by `CustomField.id` directly — the only path that
+ *    resolves connector-provisioned custom fields, whose `systemAttribute` is null.
  */
-export type LookupCandidate = {
-  systemAttribute: string
-  value: unknown
-}
+export type LookupCandidate =
+  | { systemAttribute: string; value: unknown }
+  | { fieldId: FieldId; value: unknown }
 
 /**
- * Single match returned by `lookupByField`. `matchedBy` records which
- * candidate hit this record (useful when callers want to know whether
- * dedup succeeded via externalId vs. primary_email). The denormalized
- * display columns from EntityInstance ride along so list-style consumers
- * (e.g. the extension's "N similar found" view) can render an avatar +
+ * Single match returned by `lookupByField`. `matchedBy` echoes the candidate that
+ * hit this record (its `systemAttribute` or `fieldId`), useful when callers want
+ * to know whether dedup succeeded via externalId vs. primary_email. The
+ * denormalized display columns from EntityInstance ride along so list-style
+ * consumers (e.g. the extension's "N similar found" view) can render an avatar +
  * name + subtitle without a second round-trip.
  */
 export type LookupMatch = {
   recordId: RecordId
-  matchedBy: { systemAttribute: string; value: unknown }
+  matchedBy: { systemAttribute?: string; fieldId?: FieldId; value: unknown }
   displayName: string | null
   secondaryDisplayValue: string | null
   avatarUrl: string | null
@@ -339,10 +344,29 @@ export class UnifiedCrudHandler {
     let anyValid = false
     const skipped: Array<{ candidate: LookupCandidate; reason: string }> = []
 
+    // `{ fieldId }` candidates resolve through the same `customFields` cache
+    // `getFieldBySystemAttribute` reads — fetched once here, not per candidate.
+    // Keyed by `CustomField.id` (every DB-backed field, incl. system fields whose
+    // ResourceFieldId carries the UUID); a systemAttribute fallback covers the
+    // pure-static-field edge so a `{ fieldId }` candidate never silently misses.
+    const hasFieldIdCandidate = params.candidates.some((c) => 'fieldId' in c)
+    const fieldMap = hasFieldIdCandidate
+      ? await getCachedFieldMap(this.organizationId, entityDef.id)
+      : null
+    const resolveByFieldId = (fieldId: FieldId): CustomFieldEntity | null => {
+      const byId = fieldMap!.get(fieldId)
+      if (byId) return byId
+      for (const f of fieldMap!.values()) if (f.systemAttribute === fieldId) return f
+      return null
+    }
+
     for (const candidate of params.candidates) {
       if (items.length >= params.limit) break
 
-      const field = await this.getFieldBySystemAttribute(entityDef.id, candidate.systemAttribute)
+      const field =
+        'fieldId' in candidate
+          ? resolveByFieldId(candidate.fieldId)
+          : await this.getFieldBySystemAttribute(entityDef.id, candidate.systemAttribute)
       if (!field) {
         skipped.push({ candidate, reason: 'field not found' })
         continue
@@ -390,7 +414,10 @@ export class UnifiedCrudHandler {
         seen.add(recordId)
         items.push({
           recordId,
-          matchedBy: { systemAttribute: candidate.systemAttribute, value: candidate.value },
+          matchedBy:
+            'fieldId' in candidate
+              ? { fieldId: candidate.fieldId, value: candidate.value }
+              : { systemAttribute: candidate.systemAttribute, value: candidate.value },
           displayName: row.displayName,
           secondaryDisplayValue: row.secondaryDisplayValue,
           avatarUrl: row.avatarUrl,

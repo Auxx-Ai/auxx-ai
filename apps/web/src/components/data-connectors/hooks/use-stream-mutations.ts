@@ -18,13 +18,14 @@ export type FieldMergeStrategy =
   | 'ignore'
 
 /**
- * One binding entry. Identity is the stable `id`; `targetFieldKey` is nullable
- * (`null` = an unassigned draft formula the runtime skips). `match` flags the
- * bound field as a secondary identity key (external id stays primary).
+ * One binding entry. Identity is the stable `id`; `targetFieldRef` is a canonical
+ * `ResourceFieldId` (`${entityDefinitionId}:${fieldId}`), nullable (`null` = an
+ * unassigned draft formula the runtime skips). `match` flags the bound field as a
+ * secondary identity key (external id stays primary).
  */
 export type FieldMapping = {
   id: string
-  targetFieldKey: string | null
+  targetFieldRef: string | null
   expression: string
   sourceFields: Record<string, string>
   match?: { normalize?: 'email' | 'phone' | 'domain' | 'none' }

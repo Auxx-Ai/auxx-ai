@@ -78,7 +78,11 @@ export type {
   ProvisionTarget,
 } from './provisioning'
 // Schema provisioning (owned + contributing, 01 §5)
-export { provisionConnectorMappings, provisionTarget } from './provisioning'
+export {
+  backfillProvisionedFieldRefs,
+  provisionConnectorMappings,
+  provisionTarget,
+} from './provisioning'
 // Orchestrator + passes
 export { handleConnectorDelete, reconcileOrphans } from './reconciliation'
 export { resolveRelationships } from './relationship-pass'

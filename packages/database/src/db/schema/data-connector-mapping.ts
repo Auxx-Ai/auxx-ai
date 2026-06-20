@@ -57,7 +57,8 @@ export const DataConnectorMapping = pgTable(
     }),
 
     // Array of binding entries. Each carries a stable `id` (identity) + a nullable
-    // `targetFieldKey` (a null entry is an unassigned draft the runtime skips), the
+    // `targetFieldRef` (a canonical `ResourceFieldId`; a null entry is an unassigned
+    // draft / provisioned field awaiting its ref, both skipped by the runtime), the
     // CALC shape, its `mergeStrategy`, and `match`/`provision` flags. An array (not
     // a Record) so identity is independent of the target and nothing keys by it;
     // a one-click row is the degenerate single-token `{source}` expression. Empty

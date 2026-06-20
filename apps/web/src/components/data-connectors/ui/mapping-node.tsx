@@ -2,6 +2,7 @@
 'use client'
 
 import type { ResourceField } from '@auxx/lib/resources/client'
+import { toResourceFieldId } from '@auxx/types/field'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { EntityIcon } from '@auxx/ui/components/icons'
@@ -120,21 +121,29 @@ export function MappingNode({
   const targetMode = mapping.targetMode as 'owned' | 'contributing'
   const fieldMappings = (mapping.fieldMappings ?? []) as FieldMapping[]
 
+  // Canonical `ResourceFieldId` for a target field — what bindings store. Prefer
+  // the field's own `resourceFieldId`, else compose it from the mapping's def.
+  const refOf = (f: ResourceField): string =>
+    f.resourceFieldId ?? toResourceFieldId(mapping.entityDefinitionId ?? '', f.id)
+  // Find the target field a stored ref points at (label/normalize resolution).
+  const fieldByRef = (ref: string | null | undefined): ResourceField | undefined =>
+    ref ? targetFields.find((f) => refOf(f) === ref) : undefined
+
   // Persist a new entry array (the single mapping field-write surface).
   const writeEntries = (next: FieldMapping[]) => setFieldMappings(streamId, mapping.id, next)
   // Patch one entry in place by its stable id (used by every per-entry mutation).
   const patchEntry = (id: string, patch: Partial<FieldMapping>) =>
     writeEntries(fieldMappings.map((e) => (e.id === id ? { ...e, ...patch } : e)))
 
-  // Target field keys flagged as secondary identity-match keys (external id is
+  // Target field refs flagged as secondary identity-match keys (external id is
   // always the primary). The blue "Match" badges on leaves reflect this set.
   const matchKeys = new Set(
-    fieldMappings.filter((e) => e.match && e.targetFieldKey != null).map((e) => e.targetFieldKey!)
+    fieldMappings.filter((e) => e.match && e.targetFieldRef != null).map((e) => e.targetFieldRef!)
   )
   // Every target field already bound by SOME entry — the pickers exclude these so
   // two entries can't fight over one field (an array allows it; the UI forbids it).
   const usedTargetKeys = new Set(
-    fieldMappings.map((e) => e.targetFieldKey).filter((k): k is string => k != null)
+    fieldMappings.map((e) => e.targetFieldRef).filter((k): k is string => k != null)
   )
 
   // Slice this mapping's subtree by its FULL absolute prefix (not the bare,
@@ -163,13 +172,13 @@ export function MappingNode({
   }
 
   // Formula rows = computed entries (a multi-source formula has no single leaf to
-  // anchor on) PLUS unassigned drafts (`targetFieldKey: null`), which are persisted
+  // anchor on) PLUS unassigned drafts (`targetFieldRef: null`), which are persisted
   // half-authored formulas with nowhere to live on the source tree yet.
   const formulaEntries = fieldMappings.filter(
-    (e) => !isBareToken(e.expression) || e.targetFieldKey == null
+    (e) => !isBareToken(e.expression) || e.targetFieldRef == null
   )
 
-  const assignTarget = (sourcePath: string, targetKey: string) => {
+  const assignTarget = (sourcePath: string, targetRef: string) => {
     // Drop any prior bare-token entry bound to this source (1 source → 1 target),
     // then append a fresh entry with a stable id.
     const next = fieldMappings.filter(
@@ -177,7 +186,7 @@ export function MappingNode({
     )
     next.push({
       id: generateId(),
-      targetFieldKey: targetKey,
+      targetFieldRef: targetRef,
       expression: `{${sourcePath}}`,
       sourceFields: { [sourcePath]: sourcePath },
     })
@@ -187,12 +196,12 @@ export function MappingNode({
 
   // Re-point a formula at a different target field. Identity is the entry id, so
   // this is a single field set — merge/match ride along, no re-key.
-  const retargetEntry = (id: string, newKey: string) => patchEntry(id, { targetFieldKey: newKey })
+  const retargetEntry = (id: string, newRef: string) => patchEntry(id, { targetFieldRef: newRef })
 
   // Normalizer for a match key, derived from the target field's storage type so
   // the toggle stays one-click (no normalize selector).
-  const deriveNormalize = (targetKey: string): 'email' | 'phone' | 'domain' | 'none' => {
-    const ft = targetFields.find((f) => f.key === targetKey)?.fieldType
+  const deriveNormalize = (targetRef: string): 'email' | 'phone' | 'domain' | 'none' => {
+    const ft = fieldByRef(targetRef)?.fieldType
     if (ft === 'EMAIL') return 'email'
     if (ft === 'PHONE_INTL') return 'phone'
     if (ft === 'URL') return 'domain'
@@ -203,14 +212,14 @@ export function MappingNode({
     const e = fieldMappings.find((x) => x.id === id)
     if (!e) return
     patchEntry(id, {
-      match: e.match ? undefined : { normalize: deriveNormalize(e.targetFieldKey ?? '') },
+      match: e.match ? undefined : { normalize: deriveNormalize(e.targetFieldRef ?? '') },
     })
   }
 
   // Append a persisted draft formula (no target yet) and open the dialog on it.
   const addFormula = () => {
     const id = generateId()
-    writeEntries([...fieldMappings, { id, targetFieldKey: null, expression: '', sourceFields: {} }])
+    writeEntries([...fieldMappings, { id, targetFieldRef: null, expression: '', sourceFields: {} }])
     setCalcEntryId(id)
   }
 
@@ -353,20 +362,17 @@ export function MappingNode({
                 key={e.id}
                 depth={depth + 1}
                 entityDefinitionId={mapping.entityDefinitionId}
-                targetKey={e.targetFieldKey ?? ''}
+                targetKey={e.targetFieldRef ?? ''}
                 label={
-                  e.targetFieldKey
-                    ? (targetFields.find((f) => f.key === e.targetFieldKey)?.label ??
-                      e.targetFieldKey)
-                    : ''
+                  e.targetFieldRef ? (fieldByRef(e.targetFieldRef)?.label ?? e.targetFieldRef) : ''
                 }
                 expression={e.expression}
                 mergeStrategy={e.mergeStrategy ?? 'overwrite'}
                 // Exclude keys other entries already bind, so a formula can't be
                 // retargeted onto a field already in use.
                 excludeKeys={
-                  e.targetFieldKey
-                    ? new Set([...usedTargetKeys].filter((k) => k !== e.targetFieldKey))
+                  e.targetFieldRef
+                    ? new Set([...usedTargetKeys].filter((k) => k !== e.targetFieldRef))
                     : usedTargetKeys
                 }
                 onEdit={() => setCalcEntryId(e.id)}
@@ -422,9 +428,8 @@ export function MappingNode({
         open={calcEntryId !== null}
         onOpenChange={(o) => !o && setCalcEntryId(null)}
         targetLabel={
-          calcEntry?.targetFieldKey
-            ? (targetFields.find((f) => f.key === calcEntry.targetFieldKey)?.label ??
-              calcEntry.targetFieldKey)
+          calcEntry?.targetFieldRef
+            ? (fieldByRef(calcEntry.targetFieldRef)?.label ?? calcEntry.targetFieldRef)
             : ''
         }
         expression={calcEntry?.expression ?? ''}
@@ -527,9 +532,13 @@ function SourceNode(props: SourceNodeProps) {
   }
 
   const entry = sourceToEntry.get(node.path)
-  const assignedTargetKey = entry?.targetFieldKey ?? undefined
+  const assignedTargetKey = entry?.targetFieldRef ?? undefined
   const assignedLabel = assignedTargetKey
-    ? targetFields.find((f) => f.key === assignedTargetKey)?.label
+    ? targetFields.find(
+        (f) =>
+          (f.resourceFieldId ?? toResourceFieldId(mapping.entityDefinitionId ?? '', f.id)) ===
+          assignedTargetKey
+      )?.label
     : undefined
   // Exclude target keys bound elsewhere (keep this leaf's own key selectable).
   const excludeKeys = assignedTargetKey

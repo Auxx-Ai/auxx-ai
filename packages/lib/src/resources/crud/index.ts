@@ -12,7 +12,12 @@ export type {
   TransformedData,
   UpdateRecordOptions,
 } from './types'
-export type { CrudOptions } from './unified-handler'
+export type {
+  CrudOptions,
+  LookupByFieldResult,
+  LookupCandidate,
+  LookupMatch,
+} from './unified-handler'
 // Main handler
 export { UnifiedCrudHandler } from './unified-handler'
 // Mutation utilities (for advanced use cases)
