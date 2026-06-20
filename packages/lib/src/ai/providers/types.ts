@@ -1,5 +1,7 @@
 // packages/lib/src/ai/providers/types.ts
 
+import type { ConnectionVariable } from '@auxx/database'
+
 // ===== CORE ENUMS =====
 
 export enum ModelType {
@@ -154,8 +156,13 @@ export interface ProviderCapabilities {
   toolFormat: 'openai' | 'anthropic' | 'google' | 'custom'
   configurateMethods?: ConfigurateMethod[]
 
-  // NEW: Unified credential schema with scope-based field filtering
-  credentialSchema: CredentialFormField[]
+  /**
+   * Credential field descriptors, shared with the connections field stack (one renderer,
+   * one validator across both worlds). AI-specific scope/priority lives in `fieldMeta`,
+   * keyed by `ConnectionVariable.key`, so this stays a plain connection-variable list.
+   */
+  connectionVariables: ConnectionVariable[]
+  fieldMeta: Record<string, FieldMeta>
   parameterRules?: ParameterRule[] // Provider-wide parameter rules (fallback)
   rateLimits?: {
     requestsPerMinute?: number
@@ -237,21 +244,15 @@ export interface ProviderStatusInfo {
   hasValidCredentials: boolean
 }
 
-export interface CredentialFormField {
-  variable: string
-  type: 'text-input' | 'secret-input' | 'select' | 'textarea' | 'checkbox'
-  label: string
-  placeholder?: string
-  required: boolean
-  default?: string | boolean | null
-  maxLength?: number
-  options?: { label: string; value: string }[]
-  showOn?: { field: string; values: string[] }[] // Conditional display
-  helpText?: string
-  validation?: { pattern?: string; message?: string }
-  // NEW: Enhanced fields for unified credential system
-  scope?: 'provider' | 'model' | 'both' // Where this field applies (default: 'provider')
-  priority?: 'model-override' | 'provider-only' | 'merge' // How conflicts are resolved (default: 'provider-only')
+/**
+ * AI-specific metadata for a credential field, keyed by `ConnectionVariable.key`. Kept
+ * out of `ConnectionVariable` so the descriptor stays shared with the connections stack.
+ */
+export interface FieldMeta {
+  /** Where this field applies (default: 'provider'). */
+  scope: 'provider' | 'model' | 'both'
+  /** How conflicts are resolved when both provider and model define the field. */
+  priority?: 'model-override' | 'provider-only' | 'merge'
 }
 
 export interface RestrictModel {

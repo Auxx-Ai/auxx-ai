@@ -1,20 +1,10 @@
 // packages/lib/src/ai/providers/base/provider-client.ts
 
-import type { Database } from '@auxx/database'
+import type { ConnectionVariable, Database } from '@auxx/database'
 import { createScopedLogger, type Logger } from '@auxx/logger'
 import type { BaseSpecializedClient } from '../../clients/base/base-specialized-client'
-import {
-  type CredentialFormField,
-  type ModelCapabilities,
-  ModelType,
-  type ProviderCapabilities,
-} from '../types'
-import type {
-  ConnectionTestResult,
-  ProviderCredentials,
-  SchemaValidationResult,
-  ValidationResult,
-} from './types'
+import { type ModelCapabilities, ModelType, type ProviderCapabilities } from '../types'
+import type { ConnectionTestResult, ProviderCredentials, ValidationResult } from './types'
 import { ValidationUtils } from './validation'
 
 /**
@@ -78,20 +68,6 @@ export abstract class ProviderClient {
   // ===== CONCRETE METHODS (common implementation) =====
 
   /**
-   * Validate credentials against the provider's schema only (no API calls)
-   */
-  validateSchema(credentials: Record<string, any>): SchemaValidationResult {
-    const schema = this.capabilities.credentialSchema ?? []
-
-    this.logger.debug('Validating credential schema', {
-      provider: this.getProviderId(),
-      fieldsCount: schema.length,
-    })
-
-    return ValidationUtils.validateCredentialSchema(credentials, schema)
-  }
-
-  /**
    * Check if this provider supports a specific model
    */
   supportsModel(model: string): boolean {
@@ -140,13 +116,13 @@ export abstract class ProviderClient {
    * Mask credentials for safe display
    */
   maskCredentials(credentials: Record<string, any>): Record<string, any> {
-    const schema = this.capabilities.credentialSchema ?? []
+    const fields = this.capabilities.connectionVariables ?? []
     const masked: Record<string, any> = {}
 
-    for (const field of schema) {
-      const value = credentials[field.variable]
+    for (const field of fields) {
+      const value = credentials[field.key]
       if (value !== undefined) {
-        masked[field.variable] = ValidationUtils.maskCredentialValue(String(value), field.type)
+        masked[field.key] = ValidationUtils.maskCredentialValue(String(value), !!field.secret)
       }
     }
 
@@ -201,15 +177,15 @@ export abstract class ProviderClient {
    * Get list of required credential fields
    */
   getRequiredFields(): string[] {
-    const schema = this.capabilities.credentialSchema ?? []
-    return schema.filter((field) => field.required).map((field) => field.variable)
+    const fields = this.capabilities.connectionVariables ?? []
+    return fields.filter((field) => field.required !== false).map((field) => field.key)
   }
 
   /**
    * Get all credential fields
    */
-  getCredentialFields(): CredentialFormField[] {
-    return this.capabilities.credentialSchema ?? []
+  getCredentialFields(): ConnectionVariable[] {
+    return this.capabilities.connectionVariables ?? []
   }
 
   /**

@@ -102,6 +102,10 @@ export interface FieldInputAdapterProps {
    * editable box. Only wired into the masked TEXT input.
    */
   revertValue?: string
+  /** Regex a TEXT value must match, validated live (threaded into `StringInput`). */
+  pattern?: string
+  /** Message shown when `pattern` fails. */
+  patternMessage?: string
   /** Callback to check if a dismiss event should be prevented. Return true to prevent closing. */
   shouldPreventDismiss?: (target: HTMLElement) => boolean
   /**
@@ -130,6 +134,8 @@ export function FieldInputAdapter({
   onOpenChange,
   autoGrow,
   revertValue,
+  pattern,
+  patternMessage,
   shouldPreventDismiss,
   allowCurrentUser = false,
 }: FieldInputAdapterProps) {
@@ -340,6 +346,8 @@ export function FieldInputAdapter({
             multiline={fieldOptions?.multiline}
             secret={fieldOptions?.secret}
             revertValue={revertValue}
+            pattern={pattern}
+            patternMessage={patternMessage}
             autoGrow={autoGrow}
             triggerProps={triggerProps}
           />

@@ -1,120 +1,11 @@
 // packages/lib/src/ai/providers/base/validation.ts
 
-import type { CredentialFormField } from '../types'
-import type { ProviderCredentials, SchemaValidationResult } from './types'
+import type { ProviderCredentials } from './types'
 
 /**
  * Common validation utilities for provider credentials
  */
 export class ValidationUtils {
-  /**
-   * Validate credentials against a schema
-   */
-  static validateCredentialSchema(
-    credentials: Record<string, any>,
-    schema: CredentialFormField[]
-  ): SchemaValidationResult {
-    const fieldErrors: Record<string, string> = {}
-    let hasErrors = false
-
-    for (const field of schema) {
-      const value = credentials[field.variable]
-      const fieldError = ValidationUtils.validateField(value, field)
-
-      if (fieldError) {
-        fieldErrors[field.variable] = fieldError
-        hasErrors = true
-      }
-    }
-
-    if (hasErrors) {
-      return {
-        isValid: false,
-        error: 'Credential validation failed',
-        fieldErrors,
-      }
-    }
-
-    return { isValid: true }
-  }
-
-  /**
-   * Validate a single field against its schema
-   */
-  static validateField(value: any, field: CredentialFormField): string | null {
-    // Check required fields
-    if (field.required && ValidationUtils.isEmpty(value)) {
-      return `${field.label} is required`
-    }
-
-    // If field is not required and empty, skip further validation
-    if (!field.required && ValidationUtils.isEmpty(value)) {
-      return null
-    }
-
-    // Type validation
-    switch (field.type) {
-      case 'secret-input':
-      case 'text-input':
-        if (typeof value !== 'string') {
-          return `${field.label} must be a string`
-        }
-        break
-
-      case 'number-input':
-        if (typeof value !== 'number' && !ValidationUtils.isNumericString(value)) {
-          return `${field.label} must be a number`
-        }
-        break
-
-      case 'checkbox':
-        if (typeof value !== 'boolean') {
-          return `${field.label} must be a boolean`
-        }
-        break
-
-      case 'select':
-        if (field.options && !field.options.some((opt) => opt.value === String(value))) {
-          return `${field.label} must be one of: ${field.options.map((opt) => opt.label).join(', ')}`
-        }
-        break
-    }
-
-    // Pattern validation
-    if (field.validation?.pattern && typeof value === 'string') {
-      const regex = new RegExp(field.validation.pattern)
-      if (!regex.test(value)) {
-        return field.validation.message || `${field.label} format is invalid`
-      }
-    }
-
-    // Min/Max validation for numbers
-    if (field.validation && (field.type === 'number-input' || typeof value === 'number')) {
-      const numValue = typeof value === 'number' ? value : parseFloat(value)
-
-      if (field.validation.min !== undefined && numValue < field.validation.min) {
-        return `${field.label} must be at least ${field.validation.min}`
-      }
-
-      if (field.validation.max !== undefined && numValue > field.validation.max) {
-        return `${field.label} must be at most ${field.validation.max}`
-      }
-    }
-
-    // String length validation
-    if (field.validation && typeof value === 'string') {
-      if (field.validation.min !== undefined && value.length < field.validation.min) {
-        return `${field.label} must be at least ${field.validation.min} characters`
-      }
-
-      if (field.validation.max !== undefined && value.length > field.validation.max) {
-        return `${field.label} must be at most ${field.validation.max} characters`
-      }
-    }
-
-    return null
-  }
-
   /**
    * Check if a value is considered empty
    */
@@ -137,14 +28,15 @@ export class ValidationUtils {
   }
 
   /**
-   * Mask sensitive credential values
+   * Mask sensitive credential values. `secret` keys off the `ConnectionVariable.secret`
+   * flag; non-secret fields pass through unmasked.
    */
-  static maskCredentialValue(value: string, fieldType: string = 'secret-input'): string {
+  static maskCredentialValue(value: string, secret = true): string {
     if (!value || typeof value !== 'string') {
       return '••••••••'
     }
 
-    if (fieldType === 'secret-input') {
+    if (secret) {
       if (value.length < 8) {
         return '••••••••'
       }

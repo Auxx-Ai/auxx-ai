@@ -6,12 +6,14 @@ import {
   getCredentials,
   getEffectiveConfig,
   getUnifiedModelData,
+  listProviderKeys,
   ProviderRegistry,
   QuotaService,
   removeCustomCredentials,
   SystemModelService,
   saveCustomModel as saveCustomModelAction,
   saveProvider,
+  setProviderDefaultKey,
   switchProviderType as switchProviderTypeAction,
   testProvider,
   toggleModel as toggleModelAction,
@@ -154,6 +156,10 @@ export const aiIntegrationRouter = createTRPCRouter({
         provider: z.string(),
         credentials: z.record(z.string(), z.any()),
         mode: z.enum(['create', 'edit']),
+        /** User-facing label for the key ('Billing-team key'). */
+        name: z.string().optional(),
+        /** Mint an additional key instead of editing the existing one (the "Add API key" path). */
+        forceNew: z.boolean().optional(),
       })
     )
     .use(notDemo('configure AI providers'))
@@ -164,7 +170,7 @@ export const aiIntegrationRouter = createTRPCRouter({
         throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Organization ID is required.' })
       }
 
-      const { provider, credentials, mode } = input
+      const { provider, credentials, mode, name, forceNew } = input
 
       // Validate provider exists in registry
       const providerCaps = await ProviderRegistry.getProviderCapabilities(provider)
@@ -176,8 +182,11 @@ export const aiIntegrationRouter = createTRPCRouter({
       }
 
       try {
-        // Both create and edit modes can use the same saveProvider action
-        await saveProvider({ db: ctx.db, organizationId, userId }, provider, credentials)
+        // Both create and edit modes can use the same saveProvider action; forceNew mints a new key.
+        await saveProvider({ db: ctx.db, organizationId, userId }, provider, credentials, {
+          forceNew,
+          label: name,
+        })
 
         await recordAuditFromCtx(ctx, {
           organizationId,
@@ -300,6 +309,50 @@ export const aiIntegrationRouter = createTRPCRouter({
         success: true,
         provider: input.provider,
         message: `Provider ${input.provider} set as default. NOT IMPLEMENTED`,
+      }
+    }),
+
+  /**
+   * List the org's BYO keys for a provider (label + which is default). Feeds the key picker in
+   * the provider actions menu.
+   */
+  listProviderKeys: protectedProcedure
+    .input(z.object({ provider: z.string() }))
+    .query(async ({ input, ctx }) => {
+      const { userId, organizationId } = ctx.session
+
+      if (!organizationId) {
+        throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Organization ID is required.' })
+      }
+
+      return listProviderKeys({ db: ctx.db, organizationId, userId }, input.provider)
+    }),
+
+  /**
+   * Make one of a provider's BYO keys the org-level default (used when a model has no pool).
+   */
+  setDefaultProviderKey: protectedProcedure
+    .input(z.object({ provider: z.string(), credentialId: z.string() }))
+    .use(notDemo('set default AI key'))
+    .mutation(async ({ input, ctx }) => {
+      const { userId, organizationId } = ctx.session
+
+      if (!organizationId) {
+        throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Organization ID is required.' })
+      }
+
+      try {
+        await setProviderDefaultKey(
+          { db: ctx.db, organizationId, userId },
+          input.provider,
+          input.credentialId
+        )
+        return { success: true, provider: input.provider, credentialId: input.credentialId }
+      } catch (error) {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: error instanceof Error ? error.message : String(error),
+        })
       }
     }),
 

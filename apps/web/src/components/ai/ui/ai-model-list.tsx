@@ -31,6 +31,9 @@ export function AiModelsList({ initialUnifiedData }: AiModelsListProps) {
   const [isDialogOpen, setIsDialogOpen] = React.useState(false)
   const [dialogMode, setDialogMode] = React.useState<'provider' | 'custom-model'>('provider')
   const [dialogOperation, setDialogOperation] = React.useState<'create' | 'edit'>('create')
+  // When true, the provider dialog mints an additional key (the "Add API key" path) rather than
+  // editing the existing one.
+  const [forceNewKey, setForceNewKey] = React.useState(false)
   const [selectedProvider, setSelectedProvider] = React.useState<string | undefined>()
   const [expandedProviders, setExpandedProviders] = React.useState<Set<string>>(new Set())
   const [showArchivedFor, setShowArchivedFor] = React.useState<Set<string>>(new Set())
@@ -83,6 +86,7 @@ export function AiModelsList({ initialUnifiedData }: AiModelsListProps) {
     // Open provider setup dialog for specific provider
     setDialogMode('provider')
     setDialogOperation('create')
+    setForceNewKey(false)
     setSelectedProvider(provider)
     setIsDialogOpen(true)
   }
@@ -91,6 +95,7 @@ export function AiModelsList({ initialUnifiedData }: AiModelsListProps) {
     // Open provider edit dialog for specific provider
     setDialogMode('provider')
     setDialogOperation('edit')
+    setForceNewKey(false)
     setSelectedProvider(provider)
     setIsDialogOpen(true)
   }
@@ -99,6 +104,16 @@ export function AiModelsList({ initialUnifiedData }: AiModelsListProps) {
     // Open custom model creation dialog for specific provider
     setDialogMode('custom-model')
     setDialogOperation('create')
+    setForceNewKey(false)
+    setSelectedProvider(provider)
+    setIsDialogOpen(true)
+  }
+
+  const handleAddKey = (provider: string) => {
+    // Add an additional BYO key: provider create dialog in force-new mode.
+    setDialogMode('provider')
+    setDialogOperation('create')
+    setForceNewKey(true)
     setSelectedProvider(provider)
     setIsDialogOpen(true)
   }
@@ -111,6 +126,7 @@ export function AiModelsList({ initialUnifiedData }: AiModelsListProps) {
     // Open generic create dialog (no specific provider)
     setDialogMode('provider')
     setDialogOperation('create')
+    setForceNewKey(false)
     setSelectedProvider(undefined)
     setIsDialogOpen(true)
   }
@@ -187,6 +203,7 @@ export function AiModelsList({ initialUnifiedData }: AiModelsListProps) {
                     onSetup={handleSetup}
                     onEdit={handleEdit}
                     onCreateCustomModel={handleCreateCustomModel}
+                    onAddKey={handleAddKey}
                   />
 
                   {/* Expanded Models */}
@@ -306,6 +323,7 @@ export function AiModelsList({ initialUnifiedData }: AiModelsListProps) {
         mode={dialogMode}
         provider={selectedProvider}
         operation={dialogOperation}
+        forceNewKey={forceNewKey}
         open={isDialogOpen}
         onOpenChange={setIsDialogOpen}
         onProviderConfigured={handleProviderConfigured}

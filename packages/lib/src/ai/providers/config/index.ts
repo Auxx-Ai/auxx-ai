@@ -4,9 +4,11 @@
 export {
   deleteCustomModel,
   deleteProvider,
+  listProviderKeys,
   removeCustomCredentials,
   saveCustomModel,
   saveProvider,
+  setProviderDefaultKey,
   switchProviderType,
   testProvider,
   toggleModel,
@@ -14,6 +16,7 @@ export {
 } from './actions'
 // Compute layer (DB-direct) — consumed by cache compute providers
 export { computeProviderConfig, computeProviderConfigs } from './assemble'
+export type { ProviderCredentialSummary } from './byo-store'
 // Public read API (cache-backed)
 export {
   getCredentials,

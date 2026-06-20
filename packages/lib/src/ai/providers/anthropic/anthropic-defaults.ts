@@ -13,32 +13,33 @@ export const ANTHROPIC_CAPABILITIES: ProviderCapabilities = {
   toolFormat: 'anthropic',
   configurateMethods: ['predefined-model', 'customizable-model'],
 
-  // NEW: Unified credential schema with scope-based filtering
-  credentialSchema: [
+  // Shared connection-variable descriptors (AI scope/priority lives in fieldMeta).
+  connectionVariables: [
     {
-      variable: 'apiKey',
-      type: 'secret-input',
+      key: 'apiKey',
       label: 'API Key',
       placeholder: 'Enter your Anthropic API Key',
       required: true,
-      scope: 'both', // Available for both provider and model config
-      priority: 'model-override', // Model-level key overrides provider key
-      helpText: 'Your Anthropic API key from the Anthropic console',
+      secret: true,
+      description: 'Your Anthropic API key from the Anthropic console',
       validation: {
         pattern: '^sk-ant-[a-zA-Z0-9-_]{20,}$',
         message: 'Anthropic API key must start with sk-ant- and be at least 24 characters',
       },
     },
     {
-      variable: 'voyageApiKey',
-      type: 'secret-input',
+      key: 'voyageApiKey',
       label: 'Voyage API Key',
       placeholder: 'Enter your Voyage AI API Key (optional)',
       required: false,
-      scope: 'provider',
-      helpText: 'Optional Voyage AI key used for embeddings.',
+      secret: true,
+      description: 'Optional Voyage AI key used for embeddings.',
     },
   ],
+  fieldMeta: {
+    apiKey: { scope: 'both', priority: 'model-override' },
+    voyageApiKey: { scope: 'provider' },
+  },
 
   rateLimits: {
     requestsPerMinute: 100,

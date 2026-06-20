@@ -13,22 +13,23 @@ export const GOOGLE_CAPABILITIES: ProviderCapabilities = {
   toolFormat: 'google',
   configurateMethods: ['predefined-model', 'customizable-model'],
 
-  credentialSchema: [
+  connectionVariables: [
     {
-      variable: 'apiKey',
-      type: 'secret-input',
+      key: 'apiKey',
       label: 'API Key',
       placeholder: 'Enter your Google AI API Key',
       required: true,
-      scope: 'both',
-      priority: 'model-override',
-      helpText: 'Your Google AI API key from Google AI Studio',
+      secret: true,
+      description: 'Your Google AI API key from Google AI Studio',
       validation: {
         pattern: '^AIza[0-9A-Za-z-_]{35}$',
         message: 'Google AI API key must start with AIza and be 39 characters long',
       },
     },
   ],
+  fieldMeta: {
+    apiKey: { scope: 'both', priority: 'model-override' },
+  },
 
   rateLimits: {
     requestsPerMinute: 60,

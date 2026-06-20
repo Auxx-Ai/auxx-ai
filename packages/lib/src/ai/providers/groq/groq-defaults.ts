@@ -13,23 +13,24 @@ export const GROQ_CAPABILITIES: ProviderCapabilities = {
   toolFormat: 'openai', // Groq uses OpenAI-compatible API
   configurateMethods: ['predefined-model', 'customizable-model'],
 
-  // NEW: Unified credential schema with scope-based filtering
-  credentialSchema: [
+  // Shared connection-variable descriptors (AI scope/priority lives in fieldMeta).
+  connectionVariables: [
     {
-      variable: 'apiKey',
-      type: 'secret-input',
+      key: 'apiKey',
       label: 'API Key',
       placeholder: 'Enter your Groq API Key',
       required: true,
-      scope: 'both', // Available for both provider and model config
-      priority: 'model-override', // Model-level key overrides provider key
-      helpText: 'Your Groq API key from the Groq console',
+      secret: true,
+      description: 'Your Groq API key from the Groq console',
       validation: {
         pattern: '^gsk_[a-zA-Z0-9]{52}$',
         message: 'Groq API key must start with gsk_ and be 56 characters long',
       },
     },
   ],
+  fieldMeta: {
+    apiKey: { scope: 'both', priority: 'model-override' },
+  },
 
   rateLimits: {
     requestsPerMinute: 30,

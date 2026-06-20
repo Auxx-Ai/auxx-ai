@@ -26,14 +26,15 @@ describe('GOOGLE_CAPABILITIES', () => {
     expect(GOOGLE_CAPABILITIES.requiresApiKey).toBe(true)
   })
 
-  it('has valid credential schema', () => {
-    expect(GOOGLE_CAPABILITIES.credentialSchema).toHaveLength(1)
+  it('has valid connection variables', () => {
+    expect(GOOGLE_CAPABILITIES.connectionVariables).toHaveLength(1)
 
-    const apiKeyField = GOOGLE_CAPABILITIES.credentialSchema[0]
-    expect(apiKeyField.variable).toBe('apiKey')
-    expect(apiKeyField.type).toBe('secret-input')
+    const apiKeyField = GOOGLE_CAPABILITIES.connectionVariables[0]
+    expect(apiKeyField.key).toBe('apiKey')
+    expect(apiKeyField.secret).toBe(true)
     expect(apiKeyField.required).toBe(true)
     expect(apiKeyField.validation?.pattern).toBe('^AIza[0-9A-Za-z-_]{35}$')
+    expect(GOOGLE_CAPABILITIES.fieldMeta.apiKey.scope).toBe('both')
   })
 
   it('has rate limits configured', () => {

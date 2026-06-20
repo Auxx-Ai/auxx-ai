@@ -30,19 +30,6 @@ export class QwenClient extends ProviderClient {
   async validateCredentials(credentials: Record<string, any>): Promise<ValidationResult> {
     this.logOperationStart('validateCredentials')
 
-    const schemaResult = this.validateSchema(credentials)
-    if (!schemaResult.isValid) {
-      this.logOperationError('validateCredentials', schemaResult.error, {
-        fieldErrors: schemaResult.fieldErrors,
-        credentialKeys: Object.keys(credentials),
-      })
-      return {
-        isValid: false,
-        error: schemaResult.error,
-        details: { fieldErrors: schemaResult.fieldErrors },
-      }
-    }
-
     try {
       const testResult = await this.testConnection(credentials)
 

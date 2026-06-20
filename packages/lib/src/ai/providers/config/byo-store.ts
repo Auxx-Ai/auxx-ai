@@ -96,6 +96,62 @@ export async function findOrgProviderCredentialId(
   return found.isOk() && found.value ? found.value.id : null
 }
 
+/** A single BYO key in the provider's key list (no secret material). */
+export interface ProviderCredentialSummary {
+  id: string
+  /** User-facing label ('Billing-team key'), falling back to the credential name. */
+  label: string
+  isDefault: boolean
+  createdAt: Date
+}
+
+/**
+ * List the org's provider-level BYO keys for an AI provider (newest first), each with its display
+ * label and whether it is the provider-level default. When no row carries `isDefault`, the newest
+ * is the effective default — mirroring the runtime resolver's `desc(isDefault), desc(createdAt)`.
+ *
+ * Model-pinned keys share the same `(kind, type, userId)` as provider-level keys (they're only
+ * distinguished by a LoadBalancingConfig binding), so they are excluded here — the provider key
+ * picker is for keys that back the provider-level default, not a single pinned model.
+ */
+export async function listOrgProviderCredentials(
+  ctx: AiProviderCtx,
+  provider: string
+): Promise<ProviderCredentialSummary[]> {
+  const providerKey = AI_PROVIDER_CONNECTION_KEY[provider]
+  if (!providerKey) return []
+
+  const [existing, poolBindings] = await Promise.all([
+    listCredentials({
+      organizationId: ctx.organizationId,
+      kind: 'workflow',
+      type: providerKey,
+      userId: null,
+    }),
+    ctx.db.query.LoadBalancingConfig.findMany({
+      where: and(
+        eq(schema.LoadBalancingConfig.organizationId, ctx.organizationId),
+        eq(schema.LoadBalancingConfig.provider, provider)
+      ),
+      columns: { connectionId: true },
+    }),
+  ])
+  if (existing.isErr()) return []
+
+  const pinnedIds = new Set(poolBindings.map((b) => b.connectionId).filter(Boolean))
+  const rows = existing.value.filter((row) => !pinnedIds.has(row.id))
+  if (rows.length === 0) return []
+
+  const hasExplicitDefault = rows.some((row) => row.isDefault)
+  return rows.map((row, index) => ({
+    id: row.id,
+    label: row.label ?? row.name,
+    // No explicit default → the newest (first, since listCredentials is desc createdAt) wins.
+    isDefault: hasExplicitDefault ? row.isDefault : index === 0,
+    createdAt: row.createdAt,
+  }))
+}
+
 /**
  * Delete every org-scoped BYO credential for an AI provider from the unified store. The
  * LoadBalancingConfig.connectionId FK (onDelete: cascade) removes any pool bindings too.

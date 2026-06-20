@@ -75,10 +75,13 @@ export {
   getSystemCredentials,
   getUnifiedModelData,
   isModelCompatible,
+  listProviderKeys,
+  type ProviderCredentialSummary,
   removeCustomCredentials,
   resolveCredentials,
   saveCustomModel,
   saveProvider,
+  setProviderDefaultKey,
   switchProviderType,
   testProvider,
   toggleModel,
@@ -103,7 +106,7 @@ export { QwenClient } from './providers/qwen/qwen-client'
 export { type SystemModelDefaultEntity, SystemModelService } from './providers/system-model-service'
 // ===== PROVIDER TYPES (Existing) =====
 export type {
-  CredentialFormField,
+  FieldMeta,
   ModelCapabilities,
   ModelData,
   ModelType,

@@ -13,22 +13,23 @@ export const DEEPSEEK_CAPABILITIES: ProviderCapabilities = {
   toolFormat: 'openai',
   configurateMethods: ['predefined-model', 'customizable-model'],
 
-  credentialSchema: [
+  connectionVariables: [
     {
-      variable: 'apiKey',
-      type: 'secret-input',
+      key: 'apiKey',
       label: 'API Key',
       placeholder: 'Enter your DeepSeek API Key',
       required: true,
-      scope: 'both',
-      priority: 'model-override',
-      helpText: 'Your DeepSeek API key from the DeepSeek platform',
+      secret: true,
+      description: 'Your DeepSeek API key from the DeepSeek platform',
       validation: {
         pattern: '^sk-[a-zA-Z0-9\\-_]{10,}$',
         message: 'DeepSeek API key must start with sk- followed by at least 10 characters',
       },
     },
   ],
+  fieldMeta: {
+    apiKey: { scope: 'both', priority: 'model-override' },
+  },
 
   rateLimits: {
     requestsPerMinute: 60,

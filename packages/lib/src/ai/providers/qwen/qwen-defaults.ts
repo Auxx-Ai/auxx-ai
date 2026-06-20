@@ -1,5 +1,6 @@
 // packages/lib/src/ai/providers/qwen/qwen-defaults.ts
 
+import { FieldType } from '@auxx/database/enums'
 import { FetchFrom, type ModelCapabilities, ModelType, type ProviderCapabilities } from '../types'
 
 export const QWEN_CAPABILITIES: ProviderCapabilities = {
@@ -13,30 +14,26 @@ export const QWEN_CAPABILITIES: ProviderCapabilities = {
   toolFormat: 'openai',
   configurateMethods: ['predefined-model', 'customizable-model'],
 
-  credentialSchema: [
+  connectionVariables: [
     {
-      variable: 'apiKey',
-      type: 'secret-input',
+      key: 'apiKey',
       label: 'API Key',
       placeholder: 'Enter your DashScope API Key',
       required: true,
-      scope: 'both',
-      priority: 'model-override',
-      helpText: 'Your DashScope API key from Alibaba Cloud Model Studio',
+      secret: true,
+      description: 'Your DashScope API key from Alibaba Cloud Model Studio',
       validation: {
         pattern: '^sk-[a-zA-Z0-9\\-]+$',
         message: 'API key must start with sk-',
       },
     },
     {
-      variable: 'apiBase',
-      type: 'select',
+      key: 'apiBase',
+      type: FieldType.SINGLE_SELECT,
       label: 'Region',
       required: false,
-      scope: 'provider',
-      priority: 'provider-only',
       default: 'https://dashscope-us.aliyuncs.com/compatible-mode/v1',
-      helpText: 'Select your DashScope region. API keys are region-specific.',
+      description: 'Select your DashScope region. API keys are region-specific.',
       options: [
         {
           label: 'US (Virginia)',
@@ -53,6 +50,10 @@ export const QWEN_CAPABILITIES: ProviderCapabilities = {
       ],
     },
   ],
+  fieldMeta: {
+    apiKey: { scope: 'both', priority: 'model-override' },
+    apiBase: { scope: 'provider', priority: 'provider-only' },
+  },
 
   rateLimits: {
     requestsPerMinute: 60,

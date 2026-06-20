@@ -53,6 +53,9 @@ export function validateValue(v: ConnectionVariable, value: string): string | nu
   if (rules.port && (!Number.isInteger(num) || num < 1 || num > 65535)) {
     return `${v.label} must be a valid port number (1-65535)`
   }
+  if (rules.pattern && !new RegExp(rules.pattern).test(value)) {
+    return rules.message ?? `Invalid ${v.label} format`
+  }
   return null
 }
 
