@@ -141,6 +141,8 @@ export {
 export { withRetry } from './retry'
 // String utilities
 export {
+  humanizeFieldName,
+  humanizeFieldPath,
   incrementTitle,
   interpretEscapeSequences,
   pluralize,

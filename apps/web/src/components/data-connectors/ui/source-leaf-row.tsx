@@ -28,6 +28,29 @@ export const MERGE_OPTIONS: Array<{ value: string; label: string }> = [
   { value: 'connector_owned_only', label: 'owned-only' },
 ]
 
+/**
+ * Short type token for the leaf badge. Prefers a detected string `format`
+ * (`uri`/`email`/`date`/…) over the bare JSON type, so the badge matches what
+ * quick-create seeds — a `url`-valued string reads `URL`, not `STRING`. The
+ * badge's `uppercase` class handles casing.
+ */
+function sourceTypeLabel(node: SourcePath): string {
+  switch (node.format) {
+    case 'uri':
+      return 'url'
+    case 'email':
+      return 'email'
+    case 'date-time':
+      return 'datetime'
+    case 'date':
+      return 'date'
+    case 'time':
+      return 'time'
+    default:
+      return node.type
+  }
+}
+
 interface SourceLeafRowProps {
   depth: number
   node: SourcePath
@@ -39,8 +62,10 @@ interface SourceLeafRowProps {
   /** Target keys bound by other entries — excluded from this leaf's picker. */
   excludeKeys?: Set<string>
   mergeStrategy: string
-  /** Owned defs allow inline quick-create (plan decision 3). */
+  /** A target def is set, so inline quick-create can mint a new field. */
   canCreate: boolean
+  /** Owned mapping (the connector is the sole writer) — hides the merge picker. */
+  isOwned: boolean
   /** This bound field is a secondary identity-match key (external id stays primary). */
   isMatch: boolean
   onAssign: (targetKey: string) => void
@@ -65,6 +90,7 @@ export function SourceLeafRow({
   excludeKeys,
   mergeStrategy,
   canCreate,
+  isOwned,
   isMatch,
   onAssign,
   onClear,
@@ -84,7 +110,9 @@ export function SourceLeafRow({
           <span className={`font-mono text-sm ${isMapped ? '' : 'text-muted-foreground'}`}>
             {lastSegment(node.path)}
           </span>
-          <span className='text-[10px] uppercase text-muted-foreground/60'>{node.type}</span>
+          <span className='text-[10px] uppercase text-muted-foreground/60'>
+            {sourceTypeLabel(node)}
+          </span>
         </span>
       }
       cells={[
@@ -103,6 +131,7 @@ export function SourceLeafRow({
           entityDefinitionId={entityDefinitionId}
           sourceType={node.type}
           sourcePath={node.path}
+          sourceFormat={node.format}
           assignedKey={assignedTargetKey}
           assignedLabel={assignedLabel}
           excludeKeys={excludeKeys}
@@ -143,9 +172,9 @@ export function SourceLeafRow({
             )}
           </div>
           {/* Merge strategy only matters when the def is shared. An owned mapping
-              (canCreate) is the sole writer, so every field is an implicit
-              overwrite — no picker. Fixed width so it sits at a consistent x. */}
-          {isMapped && !canCreate && (
+              is the sole writer, so every field is an implicit overwrite — no
+              picker. Fixed width so it sits at a consistent x. */}
+          {isMapped && !isOwned && (
             <Select value={mergeStrategy} onValueChange={onMergeChange}>
               <SelectTrigger variant='transparent' size='sm' className='h-9 w-28 text-xs'>
                 <SelectValue />

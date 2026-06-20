@@ -2,7 +2,12 @@
 
 import { describe, expect, it } from 'vitest'
 import type { KeyValue } from './types'
-import { keyValueToString, parseHeadersToKeyValue } from './utils'
+import {
+  keyValueToRecord,
+  keyValueToString,
+  parseHeadersToKeyValue,
+  recordToKeyValue,
+} from './utils'
 
 describe('HTTP utils serialization', () => {
   it('should handle plain text key-value pairs', () => {
@@ -124,5 +129,43 @@ describe('HTTP utils serialization', () => {
     expect(lines).toHaveLength(2)
     expect(lines[0]).toBe('Header1:Value1')
     expect(lines[1]).toBe('Header3:Value3')
+  })
+})
+
+describe('Record ⇄ KeyValue[] converters', () => {
+  it('keyValueToRecord drops blank keys and keeps the last duplicate', () => {
+    const list: KeyValue[] = [
+      { id: '1', key: 'Authorization', value: 'Bearer a' },
+      { id: '2', key: '  ', value: 'ignored' },
+      { id: '3', key: 'X-Env', value: 'dev' },
+      { id: '4', key: 'X-Env', value: 'prod' },
+    ]
+    expect(keyValueToRecord(list)).toEqual({ Authorization: 'Bearer a', 'X-Env': 'prod' })
+  })
+
+  it('keyValueToRecord trims keys but preserves values verbatim', () => {
+    const list: KeyValue[] = [{ id: '1', key: '  Accept  ', value: ' application/json ' }]
+    expect(keyValueToRecord(list)).toEqual({ Accept: ' application/json ' })
+  })
+
+  it('recordToKeyValue yields a row per entry plus a trailing blank', () => {
+    const rows = recordToKeyValue({ a: '1', b: 2 })
+    expect(rows).toHaveLength(3)
+    expect(rows[0]).toMatchObject({ key: 'a', value: '1' })
+    expect(rows[1]).toMatchObject({ key: 'b', value: '2' }) // non-string coerced
+    expect(rows[2]).toMatchObject({ key: '', value: '' })
+  })
+
+  it('recordToKeyValue returns a single blank row for empty / nullish input', () => {
+    for (const input of [undefined, null, {}]) {
+      const rows = recordToKeyValue(input)
+      expect(rows).toHaveLength(1)
+      expect(rows[0]).toMatchObject({ key: '', value: '' })
+    }
+  })
+
+  it('round-trips a record through KeyValue[] and back', () => {
+    const rec = { Authorization: 'Bearer x', 'X-Api-Version': '2026-06' }
+    expect(keyValueToRecord(recordToKeyValue(rec))).toEqual(rec)
   })
 })

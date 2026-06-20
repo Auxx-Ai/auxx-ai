@@ -88,6 +88,40 @@ export function keyValueToParams(list: KeyValue[]): string {
 }
 
 /**
+ * Convert KeyValue[] to a plain `Record<string, string>` — for callers that
+ * persist a record (e.g. data-connector `requestConfig.headers`/`params`)
+ * rather than the workflow node's serialized string format. Blank-key rows are
+ * dropped and later duplicate keys win.
+ */
+export function keyValueToRecord(list: KeyValue[]): Record<string, string> {
+  const out: Record<string, string> = {}
+  for (const { key, value } of list) {
+    const k = key.trim()
+    if (k) out[k] = value
+  }
+  return out
+}
+
+/**
+ * Convert a persisted `Record` back to KeyValue[] for editing — one row per
+ * entry plus a trailing blank row so the user can always add another. An empty
+ * / absent record yields a single blank row (matches `parseHeadersToKeyValue`).
+ */
+export function recordToKeyValue(rec: Record<string, unknown> | undefined | null): KeyValue[] {
+  const entries = Object.entries(rec ?? {})
+  if (entries.length === 0) {
+    return [{ id: generateId(), key: '', value: '' }]
+  }
+  const rows = entries.map(([key, value]) => ({
+    id: generateId(),
+    key,
+    value: value == null ? '' : String(value),
+  }))
+  rows.push({ id: generateId(), key: '', value: '' })
+  return rows
+}
+
+/**
  * Convert BodyPayload to KeyValue[] for form data and URL encoded body types
  */
 export function parseBodyDataToKeyValue(data: BodyPayload): KeyValue[] {

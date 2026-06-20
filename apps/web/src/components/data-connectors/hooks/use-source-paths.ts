@@ -9,6 +9,8 @@ export interface SourcePath {
   path: string
   /** JSON-schema type at this path (`string` / `number` / `object` / `array`). */
   type: string
+  /** Detected JSON-schema string `format` (`email` / `uri` / `date` / `time` / `date-time`). */
+  format?: string
   /** Depth (for indenting the picker list). */
   depth: number
   /** True for object/array branches (not directly mappable as a value). */
@@ -17,6 +19,7 @@ export interface SourcePath {
 
 interface JsonSchemaNode {
   type?: string | string[]
+  format?: string
   properties?: Record<string, JsonSchemaNode>
   items?: JsonSchemaNode
 }
@@ -53,7 +56,7 @@ export function flattenSourceSchema(
         const childType = typeOf(child)
         const isBranch =
           childType === 'object' || (childType === 'array' && !!child.items?.properties)
-        out.push({ path: childPath, type: childType, depth, isBranch })
+        out.push({ path: childPath, type: childType, format: child.format, depth, isBranch })
         if (childType === 'object') {
           walk(child, childPath, depth + 1)
         } else if (childType === 'array' && child.items) {

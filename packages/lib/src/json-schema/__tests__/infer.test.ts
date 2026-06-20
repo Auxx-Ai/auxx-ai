@@ -21,9 +21,21 @@ describe('inferJsonSchema — primitives', () => {
       type: 'string',
       format: 'date-time',
     })
-    // A bare date is not date-time — no format guessing beyond date-time.
-    expect(inferJsonSchema('2026-06-11')).toEqual({ type: 'string' })
-    expect(inferJsonSchema('not a date')).toEqual({ type: 'string' })
+  })
+
+  it('detects date / time / email / uri string formats', () => {
+    expect(inferJsonSchema('2026-06-19')).toEqual({ type: 'string', format: 'date' })
+    expect(inferJsonSchema('13:45:00')).toEqual({ type: 'string', format: 'time' })
+    expect(inferJsonSchema('13:45')).toEqual({ type: 'string', format: 'time' })
+    expect(inferJsonSchema('a@b.com')).toEqual({ type: 'string', format: 'email' })
+    expect(inferJsonSchema('https://x.com/y')).toEqual({ type: 'string', format: 'uri' })
+    expect(inferJsonSchema('http://x.com')).toEqual({ type: 'string', format: 'uri' })
+  })
+
+  it('stays formatless for non-matching strings (conservative)', () => {
+    expect(inferJsonSchema('hello')).toEqual({ type: 'string' })
+    // No http(s) scheme and no `x@y.z` email shape → not tagged.
+    expect(inferJsonSchema('foo:bar')).toEqual({ type: 'string' })
   })
 })
 
@@ -90,6 +102,30 @@ describe('inferJsonSchema — arrays', () => {
         },
       },
     })
+  })
+
+  it('preserves a shared string format across an array of record objects', () => {
+    const schema = inferJsonSchema([
+      { email: 'a@b.com', when: '2026-06-19' },
+      { email: 'c@d.com', when: '2026-06-20' },
+    ]) as { items: { properties: Record<string, { type: string; format?: string }> } }
+    expect(schema.items.properties.email).toEqual({ type: 'string', format: 'email' })
+    expect(schema.items.properties.when).toEqual({ type: 'string', format: 'date' })
+  })
+
+  it('drops format when samples disagree on it', () => {
+    // One email, one free-text → mixed string formats collapse to a bare type.
+    const schema = inferJsonSchema([{ v: 'a@b.com' }, { v: 'hello' }]) as {
+      items: { properties: Record<string, { type: string; format?: string }> }
+    }
+    expect(schema.items.properties.v).toEqual({ type: 'string' })
+  })
+
+  it('keeps a shared format nullable when null appears alongside', () => {
+    const schema = inferJsonSchema([{ v: 'a@b.com' }, { v: null }]) as {
+      items: { properties: Record<string, { type: string | string[]; format?: string }> }
+    }
+    expect(schema.items.properties.v).toEqual({ type: ['string', 'null'], format: 'email' })
   })
 
   it('collapses mixed scalar arrays to a type union', () => {

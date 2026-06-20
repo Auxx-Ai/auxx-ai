@@ -13,8 +13,9 @@
  * - Arrays infer `items` from a shallow union of the first few elements.
  * - `null` collapses into a `['<seen>', 'null']` type union when mixed with a
  *   concrete type, or a bare `{ type: 'null' }` when that is all we saw.
- * - ISO date-time strings are detected as `format: 'date-time'`; no other
- *   format guessing.
+ * - String `format` is detected from the value: `date-time`, `date`, `time`,
+ *   `email`, and (http/https) `uri`. Conservative on purpose — false positives
+ *   only mis-seed an editable hint.
  *
  * Pure and dependency-free — safe to call from both server and client code via
  * the `@auxx/lib/json-schema/client` export.
@@ -26,8 +27,17 @@ export type JsonSchema = Record<string, unknown>
 /** How many array elements to sample when inferring `items`. */
 const ARRAY_SAMPLE = 5
 
-/** Strict ISO-8601 date-time matcher (the only format we auto-detect). */
+/**
+ * String `format` matchers, checked most-specific first. `uri` requires an
+ * explicit http(s) scheme (so `"foo:bar"` / `"mailto:…"` don't get tagged) and
+ * `email` requires `x@y.z` — conservative so a false positive only mis-seeds an
+ * editable hint, never the sync write path.
+ */
 const ISO_DATE_TIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})?$/
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/
+const ISO_TIME = /^\d{2}:\d{2}(:\d{2})?(\.\d+)?(Z|[+-]\d{2}:\d{2})?$/
+const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+const HTTP_URL = /^https?:\/\/\S+$/i
 
 /**
  * Infer a JSON Schema from a single runtime value.
@@ -62,6 +72,10 @@ function inferNode(value: unknown): JsonSchema {
 
 function inferString(value: string): JsonSchema {
   if (ISO_DATE_TIME.test(value)) return { type: 'string', format: 'date-time' }
+  if (ISO_DATE.test(value)) return { type: 'string', format: 'date' }
+  if (ISO_TIME.test(value)) return { type: 'string', format: 'time' }
+  if (EMAIL.test(value)) return { type: 'string', format: 'email' }
+  if (HTTP_URL.test(value)) return { type: 'string', format: 'uri' }
   return { type: 'string' }
 }
 
@@ -102,6 +116,19 @@ function mergeNodes(nodes: JsonSchema[]): JsonSchema {
       .filter((i): i is JsonSchema => !!i && typeof i === 'object')
     const items = itemNodes.length > 0 ? mergeNodes(itemNodes) : {}
     return maybeNullable({ type: 'array', items }, hasNull)
+  }
+
+  // Same single scalar type sharing the same `format` → keep it (so an array of
+  // record objects preserves `{ type: 'string', format: 'email' }` per field
+  // after the merge, not just single-object responses).
+  const firstType = nonNull[0].type
+  const firstFormat = nonNull[0].format
+  if (
+    typeof firstType === 'string' &&
+    firstFormat !== undefined &&
+    nonNull.every((n) => n.type === firstType && n.format === firstFormat)
+  ) {
+    return maybeNullable({ type: firstType, format: firstFormat }, hasNull)
   }
 
   // Scalars / mixed → collapse to a `type` union (dropping per-node formats,

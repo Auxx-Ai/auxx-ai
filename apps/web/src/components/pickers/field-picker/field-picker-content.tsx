@@ -78,6 +78,7 @@ export function FieldPickerInnerContent({
   closeOnSelect = mode === 'single',
   onClose,
   onCreateField,
+  createLabel = 'Create field',
   onSkip,
   skipLabel = 'Skip',
   searchPlaceholder = 'Search fields...',
@@ -352,7 +353,7 @@ export function FieldPickerInnerContent({
             <CommandGroup>
               <CommandItem onSelect={onCreateField}>
                 <Plus className='size-4' />
-                <span>Create field</span>
+                <span>{createLabel}</span>
               </CommandItem>
             </CommandGroup>
           </>
