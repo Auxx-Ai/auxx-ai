@@ -12,6 +12,9 @@ const rotateSecrets = vi.fn()
 const updateCredential = vi.fn()
 const recordRefreshSuccess = vi.fn()
 const listCredentials = vi.fn()
+const mergeSecretFields = vi.fn()
+const mergeSecrets = vi.fn()
+const getCredential = vi.fn()
 
 vi.mock('@auxx/credentials/store', () => ({
   insertCredential: (input: unknown) => insertCredential(input),
@@ -19,6 +22,9 @@ vi.mock('@auxx/credentials/store', () => ({
   updateCredential: (...args: unknown[]) => updateCredential(...args),
   recordRefreshSuccess: (...args: unknown[]) => recordRefreshSuccess(...args),
   listCredentials: (input: unknown) => listCredentials(input),
+  mergeSecretFields: (...args: unknown[]) => mergeSecretFields(...args),
+  mergeSecrets: (...args: unknown[]) => mergeSecrets(...args),
+  getCredential: (...args: unknown[]) => getCredential(...args),
 }))
 
 vi.mock('@auxx/logger', () => ({
@@ -41,6 +47,11 @@ beforeEach(() => {
   updateCredential.mockReset().mockResolvedValue(ok(undefined))
   recordRefreshSuccess.mockReset().mockResolvedValue(ok(undefined))
   listCredentials.mockReset().mockResolvedValue(ok([]))
+  mergeSecretFields.mockReset().mockResolvedValue(ok(undefined))
+  mergeSecrets.mockReset().mockResolvedValue(ok(undefined))
+  getCredential
+    .mockReset()
+    .mockResolvedValue(ok({ metadata: { connectionVariables: { shop: 'old' } } }))
 })
 
 describe('saveConnection — platform-owner persist', () => {
@@ -145,5 +156,25 @@ describe('saveConnection — platform-owner persist', () => {
     expect(recordRefreshSuccess).toHaveBeenCalledWith('cred-1', 'org-1', {
       expiresAt: new Date('2030-06-01T00:00:00.000Z'),
     })
+  })
+
+  it('manual secret reconnect MERGES (no token → never wipes the stored secret or other vars)', async () => {
+    await saveConnection({
+      ...BASE,
+      userId: null,
+      connectionData: {
+        secretFields: { client_secret: 'rotated' },
+        metadata: { connectionVariables: { shop: 'acme' } },
+      },
+      connectionId: 'cred-1',
+    })
+
+    // No accessToken/refreshToken → manual edit → merge, NOT rotateSecrets full-replace.
+    expect(rotateSecrets).not.toHaveBeenCalled()
+    expect(mergeSecretFields).toHaveBeenCalledWith('cred-1', 'org-1', { client_secret: 'rotated' })
+    expect(updateCredential).toHaveBeenCalledWith('cred-1', 'org-1', {
+      metadata: { connectionVariables: { shop: 'acme' } },
+    })
+    expect(recordRefreshSuccess).toHaveBeenCalledWith('cred-1', 'org-1', { expiresAt: null })
   })
 })

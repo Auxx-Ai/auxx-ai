@@ -1,6 +1,12 @@
 // packages/credentials/src/crypto/index.ts
 
-export { HIDDEN_VALUE } from './client'
+export {
+  HIDDEN_VALUE,
+  isMasked,
+  type MaskField,
+  maskForEdit,
+  resolveForWrite,
+} from './client'
 export {
   decryptSecrets,
   decryptValue,

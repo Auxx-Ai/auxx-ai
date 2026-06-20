@@ -10,7 +10,7 @@ import {
   InputGroupInput,
 } from '@auxx/ui/components/input-group'
 import { cn } from '@auxx/ui/lib/utils'
-import { EyeIcon, EyeOffIcon } from 'lucide-react'
+import { EyeIcon, EyeOffIcon, Undo2Icon } from 'lucide-react'
 import type React from 'react'
 import { useEffect, useState } from 'react'
 import type { PickerTriggerOptions } from '~/components/ui/picker-trigger'
@@ -33,6 +33,13 @@ interface StringInputProps extends NodeInputProps {
   multiline?: boolean
   /** Mask the value (single-line only) and show a reveal toggle. For secrets/passwords. */
   secret?: boolean
+  /**
+   * Marks a secret input as backing a STORED value (the value is this sentinel, e.g. `HIDDEN_VALUE`).
+   * The field then shows a masked placeholder + a "Replace" action instead of an editable box, so
+   * overwriting a stored secret is deliberate; "Cancel" restores this value (keep existing). Omit
+   * for a fresh secret entry (plain editable masked input).
+   */
+  revertValue?: string
   /** Validation type */
   validationType?: 'email' | 'url' | 'phone' | 'text'
   /** Min length */
@@ -61,6 +68,7 @@ export const StringInput = createNodeInput<StringInputProps>(
     placeholder,
     multiline,
     secret,
+    revertValue,
     validationType,
     minLength,
     maxLength,
@@ -130,15 +138,67 @@ export const StringInput = createNodeInput<StringInputProps>(
 
     // Masked single-line input with a reveal toggle (secrets/passwords).
     if (secret) {
+      const groupClassName = cn(
+        baseClassName,
+        // No focus ring — zero out InputGroup's has-[…]:ring-[1px] focus-within ring.
+        'bg-transparent dark:bg-transparent border-0 shadow-none outline-none text-sm px-0 has-[[data-slot=input-group-control]:focus-visible]:ring-0',
+        className,
+        triggerProps?.className
+      )
+
+      // A stored secret the user hasn't touched: the form value is the sentinel (`revertValue`). We
+      // don't expose an editable field over it — show a masked-looking placeholder + an explicit
+      // Replace action, so overwriting a secret is deliberate, not a stray keystroke.
+      const hasSavedSecret = revertValue !== undefined
+      const isSavedUntouched = hasSavedSecret && localValue === revertValue
+
+      if (isSavedUntouched) {
+        return (
+          <InputGroup className={groupClassName}>
+            <InputGroupInput
+              id={inputId}
+              className='pl-0 placeholder:text-primary-400'
+              type='password'
+              value=''
+              readOnly
+              aria-label='Saved secret'
+              placeholder='••••••••••••'
+              disabled={isLoading}
+            />
+            <InputGroupAddon align='inline-end'>
+              <InputGroupButton
+                type='button'
+                className='rounded-lg hover:bg-primary-200'
+                variant='ghost'
+                size='xs'
+                disabled={isLoading}
+                onClick={() => {
+                  debouncedUpdate.cancel()
+                  setRevealed(false)
+                  onError(name, null)
+                  setLocalValue('')
+                  onChange(name, '') // enter edit mode with an empty field
+                  requestAnimationFrame(() => document.getElementById(inputId)?.focus())
+                }}>
+                Replace
+              </InputGroupButton>
+            </InputGroupAddon>
+          </InputGroup>
+        )
+      }
+
+      // Edit mode: a fresh connect, or replacing a stored secret. Editable masked input + reveal
+      // toggle, plus a Cancel that restores the stored secret (when there was one) so the user can
+      // back out of a replace without re-typing.
+      const cancelReplace = () => {
+        debouncedUpdate.cancel()
+        setLocalValue(revertValue as string)
+        setRevealed(false)
+        onError(name, null)
+        onChange(name, revertValue as string)
+      }
       return (
-        <InputGroup
-          className={cn(
-            baseClassName,
-            // No focus ring — zero out InputGroup's has-[…]:ring-[1px] focus-within ring.
-            'bg-transparent dark:bg-transparent border-0 shadow-none outline-none text-sm px-0 has-[[data-slot=input-group-control]:focus-visible]:ring-0',
-            className,
-            triggerProps?.className
-          )}>
+        <InputGroup className={groupClassName}>
           <InputGroupInput
             id={inputId}
             className='pl-0 placeholder:text-primary-400'
@@ -151,7 +211,18 @@ export const StringInput = createNodeInput<StringInputProps>(
             minLength={minLength}
             maxLength={maxLength}
           />
-          <InputGroupAddon align='inline-end'>
+          <InputGroupAddon align='inline-end' className='gap-0'>
+            {hasSavedSecret && (
+              <InputGroupButton
+                type='button'
+                aria-label='Keep saved value'
+                title='Keep saved value'
+                size='icon-xs'
+                disabled={isLoading}
+                onClick={cancelReplace}>
+                <Undo2Icon size={16} aria-hidden='true' />
+              </InputGroupButton>
+            )}
             <InputGroupButton
               type='button'
               aria-label={revealed ? 'Hide value' : 'Show value'}

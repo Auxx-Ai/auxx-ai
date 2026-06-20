@@ -144,6 +144,13 @@ export function AddConnectionDialog({
     },
   })
 
+  // Clear the gallery row's busy spinner whenever the flow settles (success closes the dialog;
+  // a cancelled/failed OAuth popup re-enables the catalog in place). `flow.pending` covers the
+  // secret-save, silent-refresh, and OAuth-popup phases.
+  useEffect(() => {
+    if (!flow.pending) setConnectingId(null)
+  }, [flow.pending])
+
   const items = useMemo<CatalogItem[]>(() => {
     const appItems: CatalogItem[] = installedApps.map((inst) => ({
       id: `app:${inst.installationId}`,
@@ -285,10 +292,20 @@ export function AddConnectionDialog({
     )
   }
 
+  // Dismissing the dialog aborts any in-flight connect — the guaranteed escape when a COOP provider's
+  // popup can't be auto-detected as closed (otherwise the gallery would stay disabled until timeout).
+  function handleOpenChange(next: boolean) {
+    if (!next) {
+      flow.cancel()
+      setConnectingId(null)
+    }
+    onOpenChange(next)
+  }
+
   return (
     <TemplateGalleryDialog<CatalogItem>
       open={open}
-      onOpenChange={onOpenChange}
+      onOpenChange={handleOpenChange}
       title='New connection'
       description='Connect an app or a built-in provider'
       crumbLabel='New connection'

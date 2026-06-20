@@ -47,6 +47,7 @@ vi.mock('@auxx/database', () => {
 
 import { decryptSecrets, encryptSecrets } from '../../crypto'
 import { insertCredential } from '../insert-credential'
+import { mergeSecretFields } from '../merge-secret-fields'
 import { mergeSecrets } from '../merge-secrets'
 import { recordRefreshFailure } from '../record-refresh'
 import { revealSecrets } from '../reveal-secrets'
@@ -122,6 +123,38 @@ describe('mergeSecrets', () => {
     expect(result.isOk()).toBe(true)
     const written = state.updated[0]!.encryptedSecrets as string
     expect(decryptSecrets(written)).toEqual({ apiKey: 'old', host: 'h2', extra: 'new' })
+  })
+})
+
+describe('mergeSecretFields', () => {
+  it('merges into the nested `fields` bag, keeping siblings and untouched fields', async () => {
+    state.selectRows = [
+      {
+        encryptedSecrets: encryptSecrets({
+          secret: 'bare',
+          fields: { apiKey: 'old', host: 'h1' },
+        }),
+      },
+    ]
+    state.writeReturning = [{ id: 'cred-1' }]
+    // Edit only `host`; `apiKey` left blank (keep) and the top-level `secret` sibling untouched.
+    const result = await mergeSecretFields('cred-1', 'org-1', { apiKey: '', host: 'h2' })
+    expect(result.isOk()).toBe(true)
+    expect(decryptSecrets(state.updated[0]!.encryptedSecrets as string)).toEqual({
+      secret: 'bare',
+      fields: { apiKey: 'old', host: 'h2' },
+    })
+  })
+
+  it('round-trips byte-identical when every field is left blank (untouched submit)', async () => {
+    const original = encryptSecrets({ fields: { apiKey: 'keepme', host: 'h1' } })
+    state.selectRows = [{ encryptedSecrets: original }]
+    state.writeReturning = [{ id: 'cred-1' }]
+    const result = await mergeSecretFields('cred-1', 'org-1', { apiKey: '', host: '' })
+    expect(result.isOk()).toBe(true)
+    expect(decryptSecrets(state.updated[0]!.encryptedSecrets as string)).toEqual({
+      fields: { apiKey: 'keepme', host: 'h1' },
+    })
   })
 })
 

@@ -1,9 +1,11 @@
 // apps/web/src/server/api/routers/connections.ts
 
+import { isMasked, type MaskField, maskForEdit, resolveForWrite } from '@auxx/credentials/crypto'
 import {
   deleteCredential,
   listCredentials,
   mergeSecrets,
+  revealSecrets,
   splitSensitiveFields,
   updateCredential,
 } from '@auxx/credentials/store'
@@ -99,9 +101,12 @@ export const connectionsRouter = createTRPCRouter({
           icon: record.type ? getChannelProviderIcon(record.type) : null,
           appId: record.appId,
           appInstallationId: record.appInstallationId,
+          connectionDefinitionId: record.connectionDefinitionId,
           scope: record.userId ? ('user' as const) : ('organization' as const),
           status: expired ? ('expired' as const) : ('connected' as const),
           createdAt: record.createdAt,
+          // Fresh-connect verify polls for a new id; reconnect verify watches this stamp move.
+          updatedAt: record.updatedAt,
           createdBy: { name: record.createdByName },
         }
       })
@@ -125,6 +130,68 @@ export const connectionsRouter = createTRPCRouter({
       category: p.uiMetadata?.category ?? null,
     }))
   ),
+
+  /**
+   * Load a connection's values for the edit/reconnect form, masked so no secret ever leaves the
+   * server. Projects **strictly** through the resolved ConnectionDefinition's `connectionVariables`:
+   * plain vars come back real, secret vars come back as the `HIDDEN_VALUE` sentinel when set (a
+   * boolean "is set" marker, never the value), and any key not declared as a user variable
+   * (`accessToken`, `refreshToken`, `client_id`, `client_secret`, …) is structurally excluded.
+   *
+   * Bare API-key connections (no connection variables, definition-backed or not) return only
+   * `tokenSet` — whether any secret is stored — so the form can show "saved" without re-prompting.
+   */
+  getForEdit: protectedProcedure
+    .input(z.object({ connectionId: z.string().min(1) }))
+    .query(async ({ ctx, input }) => {
+      const { organizationId } = ctx.session
+
+      const revealed = await revealSecrets<Record<string, unknown>>(
+        input.connectionId,
+        organizationId
+      )
+      if (revealed.isErr()) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Connection not found' })
+      }
+      const { record, secrets } = revealed.value
+
+      // Resolve the definition by FK first, then by provider key (Credential.type). Definition-less
+      // connections (plain integration/workflow secrets) have neither and fall through to the
+      // bare-secret branch — never run an unfiltered findFirst that would match an arbitrary def.
+      const def =
+        record.connectionDefinitionId || record.type
+          ? await ctx.db.query.ConnectionDefinition.findFirst({
+              where: (cd, { eq, or }) =>
+                record.connectionDefinitionId
+                  ? eq(cd.id, record.connectionDefinitionId)
+                  : or(eq(cd.id, record.type as string), eq(cd.providerKey, record.type as string)),
+            })
+          : null
+
+      const vars = def?.connectionVariables ?? []
+      if (vars.length > 0) {
+        // Multi-field: project through declared variables only. Plain values live in
+        // `metadata.connectionVariables`; secret presence in the nested `secrets.fields` bag.
+        const metadata = (record.metadata ?? {}) as Record<string, unknown>
+        const plainVars = (metadata.connectionVariables ?? {}) as Record<string, unknown>
+        const secretFields = (secrets.fields ?? {}) as Record<string, unknown>
+        const fields: MaskField[] = vars.map((v) => ({ key: v.key, secret: !!v.secret }))
+        const stored: Record<string, unknown> = {}
+        for (const field of fields) {
+          stored[field.key] = field.secret ? secretFields[field.key] : plainVars[field.key]
+        }
+        return { values: maskForEdit(fields, stored), tokenSet: false }
+      }
+
+      // Bare API-key (or definition-less): report only whether some secret is stored — a boolean,
+      // never a value. Covers both `secrets.secret` and the legacy by-name `secrets.<apiKey>` shape.
+      const tokenSet = Object.values(secrets).some(
+        (v) =>
+          v != null &&
+          (typeof v !== 'object' || Object.keys(v as Record<string, unknown>).length > 0)
+      )
+      return { values: {} as Record<string, string>, tokenSet }
+    }),
 
   /**
    * Persists a non-OAuth secret connection (a single API key, or a multi-field
@@ -162,16 +229,20 @@ export const connectionsRouter = createTRPCRouter({
       }
 
       // Split the provided values by the definition's secret flags: secret-flagged values
-      // encrypt under `secrets.fields`, plain ones ride in plaintext metadata.
-      const secretKeys = new Set(
-        (def.connectionVariables ?? []).filter((v) => v.secret).map((v) => v.key)
+      // encrypt under `secrets.fields`, plain ones ride in plaintext metadata. `resolveForWrite`
+      // drops any masked echo (an unchanged secret submitted as the `HIDDEN_VALUE` sentinel) so the
+      // edit/reconnect merge keeps the stored value instead of overwriting it.
+      const fields: MaskField[] = (def.connectionVariables ?? []).map((v) => ({
+        key: v.key,
+        secret: !!v.secret,
+      }))
+      const { secrets: secretFields, plain: plainVariables } = resolveForWrite(
+        input.values ?? {},
+        fields
       )
-      const secretFields: Record<string, string> = {}
-      const plainVariables: Record<string, string> = {}
-      for (const [key, value] of Object.entries(input.values ?? {})) {
-        if (secretKeys.has(key)) secretFields[key] = value
-        else plainVariables[key] = value
-      }
+      // Bare API-key definitions (no connection variables): drop an unchanged sentinel the same way.
+      const secret =
+        input.secret !== undefined && !isMasked(input.secret) ? input.secret : undefined
 
       const result = await saveConnection({
         connectionDefinitionId: def.id,
@@ -182,7 +253,7 @@ export const connectionsRouter = createTRPCRouter({
         // Scope follows the definition's `global` flag — the resolver queries the credential by it.
         userId: def.global ? null : ctx.session.user.id,
         connectionData: {
-          ...(input.secret && { secret: input.secret }),
+          ...(secret && { secret }),
           ...(Object.keys(secretFields).length > 0 && { secretFields }),
           ...(Object.keys(plainVariables).length > 0 && {
             metadata: { connectionVariables: plainVariables },
@@ -222,6 +293,12 @@ export const connectionsRouter = createTRPCRouter({
       const { secrets, metadata } = input.data
         ? splitSensitiveFields(input.data)
         : { secrets: {}, metadata: undefined }
+
+      // Drop any masked echo (an unchanged secret submitted as the `HIDDEN_VALUE` sentinel) so it's
+      // never written as a literal — mergeSecrets then keeps the existing stored value.
+      for (const [key, value] of Object.entries(secrets)) {
+        if (typeof value === 'string' && isMasked(value)) delete secrets[key]
+      }
 
       const updateResult = await updateCredential(input.id, organizationId, {
         name: input.name,

@@ -96,6 +96,12 @@ export interface FieldInputAdapterProps {
   onOpenChange?: (open: boolean) => void
   /** Enable auto-grow for text inputs */
   autoGrow?: AutoGrowOptions
+  /**
+   * For secret TEXT inputs backed by a STORED value: pass the keep-existing sentinel (e.g.
+   * `HIDDEN_VALUE`). The masked input then shows a placeholder + Replace/Cancel instead of an
+   * editable box. Only wired into the masked TEXT input.
+   */
+  revertValue?: string
   /** Callback to check if a dismiss event should be prevented. Return true to prevent closing. */
   shouldPreventDismiss?: (target: HTMLElement) => boolean
   /**
@@ -123,6 +129,7 @@ export function FieldInputAdapter({
   open,
   onOpenChange,
   autoGrow,
+  revertValue,
   shouldPreventDismiss,
   allowCurrentUser = false,
 }: FieldInputAdapterProps) {
@@ -332,6 +339,7 @@ export function FieldInputAdapter({
             {...nodeInputProps}
             multiline={fieldOptions?.multiline}
             secret={fieldOptions?.secret}
+            revertValue={revertValue}
             autoGrow={autoGrow}
             triggerProps={triggerProps}
           />

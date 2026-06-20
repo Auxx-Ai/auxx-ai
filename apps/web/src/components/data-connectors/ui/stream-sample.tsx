@@ -2,8 +2,8 @@
 'use client'
 
 import { Button } from '@auxx/ui/components/button'
-import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { Sparkles } from 'lucide-react'
+import CodeEditor, { CodeLanguage } from '~/components/workflow/ui/code-editor'
 
 interface StreamSampleProps {
   sample: { response: unknown; recordCount: number } | null
@@ -42,11 +42,14 @@ export function StreamSample({ sample, onUseShape }: StreamSampleProps) {
           Use this shape as the schema
         </Button>
       </div>
-      <ScrollArea className='max-h-72 rounded-md border' scrollbarClassName='w-1.5'>
-        <pre className='whitespace-pre-wrap break-all p-3 font-mono text-[11px] leading-relaxed'>
-          {JSON.stringify(previewResponse(sample.response), null, 2)}
-        </pre>
-      </ScrollArea>
+      <CodeEditor
+        value={JSON.stringify(previewResponse(sample.response), null, 2)}
+        language={CodeLanguage.json}
+        readOnly={true}
+        minHeight={120}
+        title='SAMPLE'
+        gradientBorder={false}
+      />
     </div>
   )
 }

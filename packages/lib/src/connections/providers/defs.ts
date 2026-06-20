@@ -106,6 +106,7 @@ export const PLATFORM_PROVIDER_DEFS: PlatformProviderDef[] = [
       },
     ],
     authApply: BEARER,
+    baseUrlTemplate: 'https://{shop}.myshopify.com/admin/api/2024-10',
     uiMetadata: { icon: 'brand:shopify', category: 'ecommerce', brandColor: '#5d8a66' },
   },
   {
@@ -261,6 +262,7 @@ export const PLATFORM_PROVIDER_DEFS: PlatformProviderDef[] = [
     // Airtable is BYO-client (inherited clientId/clientSecret from the old oAuth2Api extends).
     connectionVariables: BYO_CLIENT_VARS,
     authApply: BEARER,
+    baseUrlTemplate: 'https://api.airtable.com/v0',
     uiMetadata: { icon: 'brand:airtable', category: 'data', brandColor: '#fcb401' },
   },
 
@@ -691,6 +693,7 @@ export const PLATFORM_PROVIDER_DEFS: PlatformProviderDef[] = [
       },
     ],
     authApply: BEARER,
+    baseUrlTemplate: 'https://api.airtable.com/v0',
     uiMetadata: { icon: 'brand:airtable', category: 'data', brandColor: '#fcb401' },
   },
 

@@ -4,18 +4,11 @@
 
 import type { ConnectionVariable } from '@auxx/database'
 import { toastError } from '@auxx/ui/components/toast'
-import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { type ReactNode, useCallback, useMemo, useState } from 'react'
 import { ConnectionDetailDialog } from '~/components/connections/ui/connection-detail-dialog'
 import type { DetailMethod } from '~/components/connections/ui/connection-detail-page'
-import { api } from '~/trpc/react'
-
-interface OAuthDonePayload {
-  type: 'oauth_done'
-  ok: boolean
-  credId?: string | null
-  appId?: string | null
-  error?: string | null
-}
+import { useOAuthPopup } from '~/hooks/use-oauth-popup'
+import { api, type RouterOutputs } from '~/trpc/react'
 
 type Scope = 'user' | 'organization'
 
@@ -97,6 +90,13 @@ export interface UseConnectFlow {
   /** Renders any dialog the hook owns (variable, secret). Mount once per caller. */
   Dialogs: ReactNode
   pending: boolean
+  /**
+   * Abort an in-flight attempt and clear `pending` — the guaranteed manual escape when a caller
+   * dismisses its surface mid-connect. Necessary because a popup on a `COOP: same-origin` provider
+   * (Microsoft, Google) can't be auto-detected as closed; without this the UI stays disabled until
+   * the hard timeout.
+   */
+  cancel: () => void
   lastConnectedCredId: string | null
   error: Error | null
 }
@@ -139,23 +139,19 @@ export function useConnectFlow(options: UseConnectFlowOptions = {}): UseConnectF
   const { onConnected, mode = 'popup' } = options
   const utils = api.useUtils()
 
+  // Shared OAuth-popup lifecycle: single-settle via message / server-side verify poll / hard
+  // timeout, so a lost message (COOP severing, NGROK origin split) or an undetectable cancel never
+  // leaves the caller's UI disabled. See `~/hooks/use-oauth-popup`.
+  const { open: openPopup, pending: popupPending, cancel: cancelPopup } = useOAuthPopup()
+
   const [args, setArgs] = useState<ConnectFlowArgs | null>(null)
   // One dialog for every field-entry case (bare secret, multi-field secret, OAuth-with-vars) —
   // `ConnectionDetailDialog` renders the token row or the variable rows from the resolved method.
   const [formOpen, setFormOpen] = useState(false)
-  const [oauthPending, setOauthPending] = useState(false)
+  // Pending for the silent refresh-token exchange that precedes the popup on reconnect.
+  const [refreshPending, setRefreshPending] = useState(false)
   const [lastConnectedCredId, setLastConnectedCredId] = useState<string | null>(null)
   const [error, setError] = useState<Error | null>(null)
-
-  // Tear-down for the active popup listener set (message handler,
-  // BroadcastChannel, popup-closed interval). Set when a popup flow starts;
-  // invoked when the flow completes, is cancelled, or the hook unmounts.
-  const teardownRef = useRef<(() => void) | null>(null)
-  const teardown = useCallback(() => {
-    teardownRef.current?.()
-    teardownRef.current = null
-  }, [])
-  useEffect(() => () => teardown(), [teardown])
 
   // Refresh whichever connection lists the owner feeds.
   const invalidateForOwner = useCallback(
@@ -223,81 +219,37 @@ export function useConnectFlow(options: UseConnectFlowOptions = {}): UseConnectF
         baseUrl = `/api/connections/${owner.connectionDefinitionId}/oauth2/authorize`
       }
 
+      const fallbackUrl = `${baseUrl}?${params}`
       if (mode === 'redirect') {
-        window.location.href = `${baseUrl}?${params}`
+        window.location.href = fallbackUrl
         return
       }
 
-      // Popup mode — open the authorize URL with mode=popup and listen for
-      // the termination message from the server-rendered callback page.
       const popupParams = new URLSearchParams(params)
       popupParams.set('mode', 'popup')
-      const popup = window.open(
-        `${baseUrl}?${popupParams}`,
-        'auxx-oauth',
-        'popup=yes,width=600,height=720'
-      )
-      if (!popup) {
-        // Popup blocker engaged — fall back to full-page redirect.
-        window.location.href = `${baseUrl}?${params}`
-        return
-      }
 
-      // Replace any prior listener set from an earlier attempt.
-      teardown()
-      setOauthPending(true)
-
-      const handleDone = (payload: OAuthDonePayload) => {
-        teardown()
-        invalidateForOwner(owner)
-        if (payload.ok && payload.credId) {
-          setLastConnectedCredId(payload.credId)
-          onConnected?.(payload.credId, a)
-        } else if (!payload.ok) {
-          const message = payload.error || 'Connection failed'
-          setError(new Error(message))
-          toastError({ title: 'Failed to connect', description: message })
-        }
-      }
-
-      const onMessage = (e: MessageEvent) => {
-        // The callback page may live on a different origin in dev (NGROK_URL tunnel), so also
-        // trust messages coming from the popup window we opened ourselves.
-        if (e.source !== popup && e.origin !== window.location.origin) return
-        if (!e.data || e.data.type !== 'oauth_done') return
-        handleDone(e.data as OAuthDonePayload)
-      }
-      window.addEventListener('message', onMessage)
-
-      let bc: BroadcastChannel | null = null
-      try {
-        bc = new BroadcastChannel('oauth-app-connect')
-        bc.onmessage = (e) => {
-          if (!e.data || e.data.type !== 'oauth_done') return
-          handleDone(e.data as OAuthDonePayload)
-        }
-      } catch {
-        // BroadcastChannel unavailable — postMessage path still works.
-      }
-
-      const closedInterval = setInterval(() => {
-        if (popup.closed) teardown()
-      }, 500)
-
-      teardownRef.current = () => {
-        window.removeEventListener('message', onMessage)
-        bc?.close()
-        clearInterval(closedInterval)
-        try {
-          if (!popup.closed) popup.close()
-        } catch {
-          // ignore
-        }
-        setOauthPending(false)
-        setArgs(null)
-      }
+      // The shared core settles via the callback page's message, an authoritative list-poll, or a
+      // hard timeout. The verify (built before the popup opens, so it baselines the current list)
+      // resolves to the new credId on a fresh connect / a changed snapshot on reconnect.
+      openPopup({
+        popupUrl: `${baseUrl}?${popupParams}`,
+        fallbackUrl,
+        channelName: 'oauth-app-connect',
+        verify: buildConnectionVerify(utils, a),
+        onDone: (ok, credId) => {
+          invalidateForOwner(owner)
+          setArgs(null)
+          const resolvedId = credId ?? (ok ? (a.connectionId ?? null) : null)
+          if (ok && resolvedId) {
+            setLastConnectedCredId(resolvedId)
+            onConnected?.(resolvedId, a)
+          }
+          // A failure toasts in the core; a cancel/timeout settles silently. Either way the popup's
+          // `pending` flips false, so the caller's disabled state recovers.
+        },
+      })
     },
-    [mode, onConnected, teardown, invalidateForOwner]
+    [mode, openPopup, utils, onConnected, invalidateForOwner]
   )
 
   // Reconnect path: try a silent refresh-token exchange before the full OAuth popup.
@@ -311,17 +263,17 @@ export function useConnectFlow(options: UseConnectFlowOptions = {}): UseConnectF
         kickOauth(a)
         return
       }
-      setOauthPending(true)
+      setRefreshPending(true)
       try {
         await refreshConnection.mutateAsync({ credentialId: a.connectionId })
         invalidateForOwner(a.target.owner)
-        setOauthPending(false)
+        setRefreshPending(false)
         setLastConnectedCredId(a.connectionId)
         onConnected?.(a.connectionId, a)
         setArgs(null)
       } catch {
         // Refresh unavailable — fall back to the full OAuth re-authorization.
-        setOauthPending(false)
+        setRefreshPending(false)
         kickOauth(a)
       }
     },
@@ -446,6 +398,15 @@ export function useConnectFlow(options: UseConnectFlowOptions = {}): UseConnectF
     }
   }, [args, activeDef])
 
+  // Manual abort — tears down the popup flow and resets all pending state. Wired to the caller's
+  // dialog-dismiss so the user can always escape a connect that can't be auto-detected as closed.
+  const cancel = useCallback(() => {
+    cancelPopup()
+    setRefreshPending(false)
+    setFormOpen(false)
+    setArgs(null)
+  }, [cancelPopup])
+
   const Dialogs =
     args && method ? (
       <ConnectionDetailDialog
@@ -456,6 +417,7 @@ export function useConnectFlow(options: UseConnectFlowOptions = {}): UseConnectF
         }}
         title={`${args.connectionId ? 'Reconnect' : 'Connect'} ${args.target.title}`}
         method={method}
+        connectionId={args.connectionId}
         prefill={args.prefillVariables}
         pending={savePending}
         submitLabel={args.connectionId ? 'Reconnect' : 'Connect'}
@@ -467,9 +429,112 @@ export function useConnectFlow(options: UseConnectFlowOptions = {}): UseConnectF
     start,
     connectWith,
     Dialogs,
-    // An open form is not "pending" — only an in-flight save or OAuth popup is.
-    pending: savePending || oauthPending,
+    // An open form is not "pending" — only an in-flight save, silent refresh, or OAuth popup is.
+    pending: savePending || refreshPending || popupPending,
+    cancel,
     lastConnectedCredId,
     error,
+  }
+}
+
+type AppConnectionRow = RouterOutputs['apps']['listConnections'][number]
+type PlatformConnectionRow = RouterOutputs['connections']['list'][number]
+
+/**
+ * Authoritative success backstop for {@link useOAuthPopup}, baselined against the current
+ * connection list before the popup opens. Resolves to the connected credId once observed
+ * server-side — a *new* matching credential on a fresh connect, or a *changed* snapshot
+ * (status/expiry/`updatedAt`) on reconnect — and `null` while still pending. This makes the flow
+ * resilient to a lost popup message (COOP severing the opener, or the dev NGROK origin split).
+ */
+function buildConnectionVerify(
+  utils: ReturnType<typeof api.useUtils>,
+  a: ConnectFlowArgs
+): () => Promise<string | null> {
+  const owner = a.target.owner
+  const reconnectId = a.connectionId ?? null
+
+  if (owner.kind === 'app') {
+    const matches = (r: AppConnectionRow) =>
+      r.appInstallationId === owner.installationId &&
+      (!a.definitionId || r.connectionDefinitionId === a.definitionId)
+    const snap = (r: AppConnectionRow) => `${r.connectionStatus}|${r.expiresAt ?? ''}`
+    return buildVerify(
+      reconnectId,
+      () => utils.apps.listConnections.fetch(undefined, { staleTime: 0 }),
+      utils.apps.listConnections.getData(),
+      (r) => r.id,
+      matches,
+      snap
+    )
+  }
+
+  const matches = (r: PlatformConnectionRow) =>
+    r.scope === a.scope &&
+    (r.connectionDefinitionId === owner.connectionDefinitionId || r.type === owner.providerKey)
+  const snap = (r: PlatformConnectionRow) => `${r.status}|${r.updatedAt ?? ''}`
+  return buildVerify(
+    reconnectId,
+    () => utils.connections.list.fetch(undefined, { staleTime: 0 }),
+    utils.connections.list.getData(),
+    (r) => r.id,
+    matches,
+    snap
+  )
+}
+
+/**
+ * Shared verify body for both owners. Fresh connect (`reconnectId == null`): baseline the set of
+ * matching ids, then report the first *new* matching id. Reconnect: baseline the target row's
+ * snapshot, then report `reconnectId` once that snapshot moves.
+ *
+ * The baseline MUST be captured before the connect can land — otherwise the freshly created row is
+ * folded into the baseline and never seen as new. So we take it from the cached list synchronously
+ * when warm, and otherwise kick a fetch immediately at construction (popup-open time), which
+ * resolves long before the user finishes the provider consent screen.
+ */
+function buildVerify<Row>(
+  reconnectId: string | null,
+  fetchList: () => Promise<Row[]>,
+  cached: Row[] | undefined,
+  idOf: (r: Row) => string,
+  matches: (r: Row) => boolean,
+  snap: (r: Row) => string
+): () => Promise<string | null> {
+  let baselineIds: Set<string> | null = null
+  let baselineSnap: string | null = null
+  let baselineKnown = false
+
+  const record = (list: Row[]) => {
+    if (reconnectId) {
+      const row = list.find((r) => idOf(r) === reconnectId)
+      baselineSnap = row ? snap(row) : null
+    } else {
+      baselineIds = new Set(list.filter(matches).map(idOf))
+    }
+    baselineKnown = true
+  }
+
+  if (cached) record(cached)
+  // No warm cache — prime the baseline now (before the connect can land), not on the first tick.
+  const priming = baselineKnown
+    ? null
+    : fetchList()
+        .then(record)
+        .catch(() => {})
+
+  return async () => {
+    if (!baselineKnown && priming) await priming
+    const list = await fetchList()
+    if (!baselineKnown) {
+      record(list)
+      return null
+    }
+    if (reconnectId) {
+      const row = list.find((r) => idOf(r) === reconnectId)
+      return row && snap(row) !== baselineSnap ? reconnectId : null
+    }
+    const fresh = list.find((r) => matches(r) && !baselineIds?.has(idOf(r)))
+    return fresh ? idOf(fresh) : null
   }
 }

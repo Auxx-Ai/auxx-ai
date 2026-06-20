@@ -32,6 +32,10 @@ interface ConnectionDetailPageProps {
   onTokenChange: (token: string) => void
   errors: Record<string, string>
   disabled?: boolean
+  /** Editing: secret keys with a stored value, so their fields offer a revert-to-keep button. */
+  savedSecrets?: Set<string>
+  /** Editing: the bare token has a stored value (enables its revert button). */
+  tokenSaved?: boolean
   /** Override the root padding/layout (e.g. the dialog drops the gallery's `px-4 py-5`). */
   className?: string
 }
@@ -69,6 +73,8 @@ export function ConnectionDetailPage({
   onTokenChange,
   errors,
   disabled,
+  savedSecrets,
+  tokenSaved,
   className,
 }: ConnectionDetailPageProps) {
   // The sole method auto-resolves; >1 requires an explicit pick.
@@ -116,6 +122,8 @@ export function ConnectionDetailPage({
               onTokenChange={onTokenChange}
               errors={errors}
               disabled={disabled}
+              savedSecrets={savedSecrets}
+              tokenSaved={tokenSaved}
             />
           </VarEditorField>
         </div>

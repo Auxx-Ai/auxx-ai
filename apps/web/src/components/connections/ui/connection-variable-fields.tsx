@@ -1,6 +1,7 @@
 // apps/web/src/components/connections/ui/connection-variable-fields.tsx
 'use client'
 
+import { HIDDEN_VALUE } from '@auxx/credentials/crypto/client'
 import type { ConnectionVariable } from '@auxx/database'
 import { FieldType } from '@auxx/database/enums'
 import type { FieldOptions } from '@auxx/lib/field-values/client'
@@ -20,6 +21,13 @@ interface ConnectionVariableFieldsProps {
   onTokenChange?: (token: string) => void
   errors: Record<string, string>
   disabled?: boolean
+  /**
+   * Editing: secret keys that already have a stored value (seeded as the masked sentinel). For
+   * these, the field shows a masked placeholder + Replace/Cancel instead of an editable box.
+   */
+  savedSecrets?: Set<string>
+  /** Editing: the bare token already has a stored value (shows its Replace/Cancel affordance). */
+  tokenSaved?: boolean
 }
 
 /** Assemble the field renderer's `fieldOptions` from a connection variable. */
@@ -75,6 +83,8 @@ export function ConnectionVariableFields({
   onTokenChange,
   errors,
   disabled = false,
+  savedSecrets,
+  tokenSaved = false,
 }: ConnectionVariableFieldsProps) {
   return (
     <>
@@ -97,6 +107,9 @@ export function ConnectionVariableFields({
               placeholder={variable.placeholder}
               triggerProps={triggerPropsFor(variable)}
               disabled={disabled}
+              revertValue={
+                variable.secret && savedSecrets?.has(variable.key) ? HIDDEN_VALUE : undefined
+              }
             />
           </VarEditorFieldRow>
         ))}
@@ -116,6 +129,7 @@ export function ConnectionVariableFields({
             placeholder='Bearer token'
             triggerProps={FIELD_TRIGGER_PROPS}
             disabled={disabled}
+            revertValue={tokenSaved ? HIDDEN_VALUE : undefined}
           />
         </VarEditorFieldRow>
       )}

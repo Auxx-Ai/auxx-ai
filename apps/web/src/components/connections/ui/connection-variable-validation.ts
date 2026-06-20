@@ -1,5 +1,6 @@
 // apps/web/src/components/connections/ui/connection-variable-validation.ts
 
+import { isMasked } from '@auxx/credentials/crypto/client'
 import type { ConnectionVariable } from '@auxx/database'
 import { FieldType } from '@auxx/database/enums'
 
@@ -25,6 +26,9 @@ export function validateValue(v: ConnectionVariable, value: string): string | nu
   // A boolean is always "set" — `false` is a valid value, never a missing one — so it
   // skips the required-empty check (and has no length/range rules to validate).
   if (v.type === FieldType.CHECKBOX) return null
+  // A masked echo (editing: the secret is stored, left untouched) counts as provided — don't force
+  // re-entry, and skip length/range rules against the sentinel rather than the real value.
+  if (isMasked(value)) return null
   if (v.required !== false && !value.trim()) {
     return `Please provide a value for "${v.label}".`
   }

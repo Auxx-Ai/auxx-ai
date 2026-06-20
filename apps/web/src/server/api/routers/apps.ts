@@ -1,5 +1,6 @@
 // apps/web/src/server/api/routers/apps.ts
 
+import { isMasked, type MaskField, resolveForWrite } from '@auxx/credentials/crypto'
 import { setDefaultCredential } from '@auxx/credentials/store'
 import {
   deleteAppConnection,
@@ -381,10 +382,14 @@ export const appsRouter = createTRPCRouter({
         metadata?: Record<string, any>
       }
       if (variableDefs.length === 0) {
-        if (!secret) {
+        // Bare API key. On edit, the form submits the `HIDDEN_VALUE` sentinel when the key is
+        // unchanged — drop it (the reconnect merge keeps the stored value); only a fresh connect
+        // must supply a real secret.
+        const resolvedSecret = secret !== undefined && !isMasked(secret) ? secret : undefined
+        if (!resolvedSecret && !connectionId) {
           throw new TRPCError({ code: 'BAD_REQUEST', message: 'Secret is required' })
         }
-        connectionData = { secret }
+        connectionData = resolvedSecret ? { secret: resolvedSecret } : {}
       } else {
         const provided = values ?? {}
         const knownKeys = new Set(variableDefs.map((v) => v.key))
@@ -393,22 +398,37 @@ export const appsRouter = createTRPCRouter({
             throw new TRPCError({ code: 'BAD_REQUEST', message: `Unknown field: ${key}` })
           }
         }
+        // Trim, then split by the def's secret flags, dropping any masked echo (an unchanged secret
+        // submitted as the sentinel) so editing one field never overwrites the others.
+        const trimmed: Record<string, string> = {}
+        for (const [key, value] of Object.entries(provided)) trimmed[key] = value?.trim() ?? ''
+        const fields: MaskField[] = variableDefs.map((v) => ({ key: v.key, secret: !!v.secret }))
+        const resolved = resolveForWrite(trimmed, fields)
+
         const secretFields: Record<string, string> = {}
-        const plainValues: Record<string, string> = {}
-        for (const varDef of variableDefs) {
-          const value = provided[varDef.key]?.trim()
-          if (!value) {
-            if (varDef.required !== false) {
-              throw new TRPCError({
-                code: 'BAD_REQUEST',
-                message: `Missing required field: ${varDef.label}`,
-              })
-            }
-            continue
-          }
-          if (varDef.secret) secretFields[varDef.key] = value
-          else plainValues[varDef.key] = value
+        for (const [key, value] of Object.entries(resolved.secrets)) {
+          if (value !== '') secretFields[key] = value
         }
+        const plainValues: Record<string, string> = {}
+        for (const [key, value] of Object.entries(resolved.plain)) {
+          if (value !== '') plainValues[key] = value
+        }
+
+        // Required validation, sentinel-aware: a kept (masked) secret satisfies required on edit.
+        for (const varDef of variableDefs) {
+          if (varDef.required === false) continue
+          const kept = isMasked(provided[varDef.key] ?? '')
+          const hasValue = varDef.secret
+            ? secretFields[varDef.key] !== undefined
+            : plainValues[varDef.key] !== undefined
+          if (!kept && !hasValue) {
+            throw new TRPCError({
+              code: 'BAD_REQUEST',
+              message: `Missing required field: ${varDef.label}`,
+            })
+          }
+        }
+
         connectionData = {
           secretFields,
           ...(Object.keys(plainValues).length > 0 && {
