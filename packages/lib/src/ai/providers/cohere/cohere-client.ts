@@ -18,7 +18,7 @@ const COHERE_CAPABILITIES = {
   supported_model_types: [ModelType.TEXT_EMBEDDING],
   configurable: true,
   credential_form_schema: {
-    api_key: {
+    apiKey: {
       type: 'secret-input',
       required: true,
       label: 'API Key',
@@ -136,7 +136,7 @@ export class CohereClient extends ProviderClient {
 
       // Create Cohere client and test with a simple embedding request
       const cohereClient = new CohereAPIClient({
-        token: credentials.api_key || credentials.cohere_api_key,
+        token: credentials.apiKey,
       })
 
       // Test with a simple text
@@ -177,19 +177,14 @@ export class CohereClient extends ProviderClient {
   }
 
   extractCredentials(rawCredentials: Record<string, any>): ProviderCredentials {
-    const apiKey =
-      this.extractCredentialField(rawCredentials, 'api_key') ||
-      this.extractCredentialField(rawCredentials, 'cohere_api_key') ||
-      rawCredentials.apiKey
-
     return {
-      cohere_api_key: apiKey,
+      apiKey: String(rawCredentials.apiKey || ''),
     }
   }
 
   getApiClient(credentials: ProviderCredentials): CohereAPIClient {
     return new CohereAPIClient({
-      token: credentials.cohere_api_key as string,
+      token: this.requireApiKey(credentials, 'apiKey'),
     })
   }
 

@@ -1,6 +1,7 @@
 // ~/app/(protected)/app/settings/aiModels/_components/credential-configuration-dialog.tsx
 'use client'
 
+import { isMasked } from '@auxx/credentials/crypto/client'
 import { ModelType } from '@auxx/lib/ai/providers/types'
 import { Button } from '@auxx/ui/components/button'
 import { Checkbox } from '@auxx/ui/components/checkbox'
@@ -158,7 +159,6 @@ export function CredentialConfigurationDialog({
   // Component state
   const [selectedProvider, setSelectedProvider] = useState<string | null>(provider || null)
   const [visibleSecrets, setVisibleSecrets] = useState<Record<string, boolean>>({})
-  const [originalValues, setOriginalValues] = useState<any>(null)
   const [confirmDelete, ConfirmDialog] = useConfirm()
 
   const utils = api.useUtils()
@@ -205,7 +205,7 @@ export function CredentialConfigurationDialog({
   }, [providerCapabilities])
 
   // Dynamic form schema
-  // biome-ignore lint/correctness/useExhaustiveDependencies: operation and originalValues are intentionally excluded - they are stable for the lifetime of the dialog
+  // biome-ignore lint/correctness/useExhaustiveDependencies: operation is intentionally excluded - it is stable for the lifetime of the dialog
   const formSchema = useMemo(() => {
     if (!providerCapabilities) return z.object({})
 
@@ -220,13 +220,8 @@ export function CredentialConfigurationDialog({
             (value) => {
               if (!value || value.length === 0) return true // Empty is OK
 
-              // In edit mode, if value is identical to original value, skip validation
-              if (operation === 'edit' && originalValues?.credentials?.[field.variable]) {
-                const originalValue = originalValues.credentials[field.variable]
-                if (value === originalValue) {
-                  return true // Skip validation for unchanged values
-                }
-              }
+              // Unchanged secret is prefilled as the mask sentinel — skip pattern validation.
+              if (isMasked(value)) return true
 
               // Apply pattern validation for new/changed values
               if (field.validation?.pattern) {
@@ -401,7 +396,6 @@ export function CredentialConfigurationDialog({
           }
 
     form.reset(formData)
-    setOriginalValues(formData) // Store original values for comparison
   }, [
     selectedProvider,
     providerCapabilities,
@@ -417,32 +411,18 @@ export function CredentialConfigurationDialog({
   const onSubmit = async (values: any) => {
     if (!selectedProvider || !providerCapabilities) return
 
-    // Process credentials with secret field handling
+    // Send each credential field as-is. An unchanged secret carries the mask sentinel, which
+    // the server drops (preserving the stored value); empty fields are omitted. No client-side
+    // comparison needed — the unified secret-mask lifecycle handles it server-side.
     const credentials = Object.fromEntries(
       Object.entries(values.credentials || values)
         .map(([key, value]) => {
           const field = getRelevantFields.find((f) => f.variable === key)
-
-          if (field?.type === 'secret-input') {
-            // For secret fields: compare with original value
-            const originalValue = originalValues?.credentials?.[key] ?? ''
-
-            if (value === originalValue) {
-              // If unchanged, send hidden marker
-              return [key, '[**HIDDEN**]']
-            } else if (value && typeof value === 'string' && value.trim().length > 0) {
-              // If changed and not empty, send new value
-              return [key, value]
-            } else {
-              // If empty, don't include in submission
-              return null
-            }
-          } else {
-            // Non-secret fields: always send current value
-            return [key, value]
-          }
+          if (!field) return null
+          if (typeof value === 'string' && value.trim().length === 0) return null
+          return [key, value]
         })
-        .filter(Boolean) // Remove null entries (empty secret fields)
+        .filter(Boolean) // Remove null entries (unknown or empty fields)
     )
 
     if (mode === 'provider') {

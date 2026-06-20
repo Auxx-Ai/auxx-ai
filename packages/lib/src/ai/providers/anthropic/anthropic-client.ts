@@ -119,19 +119,15 @@ export class AnthropicClient extends ProviderClient {
   }
 
   extractCredentials(rawCredentials: Record<string, any>): ProviderCredentials {
-    const apiKey =
-      String(this.extractCredentialField(rawCredentials, 'api_key') || '') ||
-      String(this.extractCredentialField(rawCredentials, 'anthropic_api_key') || '') ||
-      String(rawCredentials.apiKey || '')
-
     return {
-      anthropic_api_key: apiKey,
+      apiKey: String(rawCredentials.apiKey || ''),
+      voyageApiKey: rawCredentials.voyageApiKey as string | undefined,
     }
   }
 
   getApiClient(credentials: ProviderCredentials): Anthropic {
     return new Anthropic({
-      apiKey: this.requireApiKey(credentials, 'anthropic_api_key'),
+      apiKey: this.requireApiKey(credentials, 'apiKey'),
       // Tee every HTTP attempt (incl. the SDK's silent 4xx/5xx retries) with its
       // status, latency, and diagnostic headers (rate-limit, retry-after, auth)
       // into the agent-session trace, so a throttle-and-retry or auth failure is
@@ -158,8 +154,8 @@ export class AnthropicClient extends ProviderClient {
 
       case ModelType.TEXT_EMBEDDING:
         if (!this.embeddingClient) {
-          // Voyage AI requires separate API key - check for voyage_api_key in credentials
-          const voyageApiKey = credentials.voyage_api_key || credentials.anthropic_api_key
+          // Voyage AI requires separate API key — fall back to the Anthropic key.
+          const voyageApiKey = credentials.voyageApiKey || credentials.apiKey
           this.embeddingClient = new VoyageEmbeddingClient(
             { apiKey: voyageApiKey as string },
             DEFAULT_CLIENT_CONFIG,

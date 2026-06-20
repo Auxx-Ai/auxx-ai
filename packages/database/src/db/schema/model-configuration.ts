@@ -33,7 +33,6 @@ export const ModelConfiguration = pgTable(
     enabled: boolean().default(true).notNull(),
     config: jsonb().default({}).notNull(),
     provider: text().notNull(),
-    credentials: jsonb(),
   },
   (table) => [
     index('ModelConfiguration_organizationId_enabled_idx').using(

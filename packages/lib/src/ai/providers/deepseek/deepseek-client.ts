@@ -115,19 +115,14 @@ export class DeepSeekClient extends ProviderClient {
   }
 
   extractCredentials(rawCredentials: Record<string, any>): ProviderCredentials {
-    const apiKey =
-      this.extractCredentialField(rawCredentials, 'api_key') ||
-      this.extractCredentialField(rawCredentials, 'deepseek_api_key') ||
-      rawCredentials.apiKey
-
     return {
-      deepseek_api_key: apiKey,
+      apiKey: String(rawCredentials.apiKey || ''),
     }
   }
 
   getApiClient(credentials: ProviderCredentials): OpenAI {
     return new OpenAI({
-      apiKey: this.requireApiKey(credentials, 'deepseek_api_key'),
+      apiKey: this.requireApiKey(credentials, 'apiKey'),
       baseURL: DEEPSEEK_BASE_URL,
       // Retry policy lives in RetryManager — don't stack the SDK's 2 internal retries.
       maxRetries: 0,

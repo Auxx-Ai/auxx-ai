@@ -7,16 +7,20 @@ import {
   boolean,
   index,
   integer,
-  jsonb,
   pgTable,
   text,
   timestamp,
   uniqueIndex,
 } from './_shared'
 
+import { Credential } from './credential'
 import { Organization } from './organization'
 
-/** Drizzle table for loadBalancingConfig */
+/**
+ * AI provider key-binding / pool. One row = a pinned key for a (provider, model,
+ * modelType); many rows = a weighted pool. Provider-level pool members use the
+ * `model = '*'` sentinel. Each row points at a Credential row (the unified store).
+ */
 export const LoadBalancingConfig = pgTable(
   'LoadBalancingConfig',
   {
@@ -33,7 +37,9 @@ export const LoadBalancingConfig = pgTable(
     model: text().notNull(),
     modelType: text().notNull(),
     name: text().notNull(),
-    credentials: jsonb(),
+    // The unified-store credential this binding selects. Cascade-deletes the
+    // binding when the key is removed.
+    connectionId: text().references((): AnyPgColumn => Credential.id, { onDelete: 'cascade' }),
     enabled: boolean().default(true).notNull(),
     weight: integer().default(1).notNull(),
   },
@@ -43,6 +49,10 @@ export const LoadBalancingConfig = pgTable(
       table.organizationId.asc().nullsLast(),
       table.provider.asc().nullsLast(),
       table.model.asc().nullsLast()
+    ),
+    index('LoadBalancingConfig_connectionId_idx').using(
+      'btree',
+      table.connectionId.asc().nullsLast()
     ),
     uniqueIndex('LoadBalancingConfig_organizationId_provider_model_modelType_key').using(
       'btree',

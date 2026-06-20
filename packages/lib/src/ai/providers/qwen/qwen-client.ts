@@ -79,7 +79,7 @@ export class QwenClient extends ProviderClient {
     try {
       const extractedCreds = this.extractCredentials(credentials)
       const client = this.getApiClient(extractedCreds)
-      const baseUrl = (extractedCreds.qwen_api_base as string) || QWEN_DEFAULT_BASE_URL
+      const baseUrl = (extractedCreds.apiBase as string) || QWEN_DEFAULT_BASE_URL
       const isUsRegion = baseUrl.includes('dashscope-us')
       const testModel = model || (isUsRegion ? 'qwen-flash' : 'qwen-plus-latest')
 
@@ -120,26 +120,16 @@ export class QwenClient extends ProviderClient {
   }
 
   extractCredentials(rawCredentials: Record<string, any>): ProviderCredentials {
-    const apiKey =
-      this.extractCredentialField(rawCredentials, 'api_key') ||
-      this.extractCredentialField(rawCredentials, 'qwen_api_key') ||
-      rawCredentials.apiKey
-
-    const apiBase =
-      this.extractCredentialField(rawCredentials, 'api_base') ||
-      this.extractCredentialField(rawCredentials, 'qwen_api_base') ||
-      rawCredentials.apiBase
-
     return {
-      qwen_api_key: apiKey,
-      qwen_api_base: apiBase,
+      apiKey: String(rawCredentials.apiKey || ''),
+      apiBase: rawCredentials.apiBase as string | undefined,
     }
   }
 
   getApiClient(credentials: ProviderCredentials): OpenAI {
     return new OpenAI({
-      apiKey: this.requireApiKey(credentials, 'qwen_api_key'),
-      baseURL: (credentials.qwen_api_base as string) || QWEN_DEFAULT_BASE_URL,
+      apiKey: this.requireApiKey(credentials, 'apiKey'),
+      baseURL: (credentials.apiBase as string) || QWEN_DEFAULT_BASE_URL,
       // Retry policy lives in RetryManager — don't stack the SDK's 2 internal retries.
       maxRetries: 0,
       fetch: createObservingFetch('qwen'),

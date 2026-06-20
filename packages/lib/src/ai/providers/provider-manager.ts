@@ -1,5 +1,6 @@
 // packages/lib/src/ai/providers/provider-manager.ts
 
+import { maskForEdit } from '@auxx/credentials/crypto'
 import type { Database } from '@auxx/database'
 import { onCacheEvent } from '../../cache/invalidate'
 import { getOrgCache } from '../../cache/singletons'
@@ -13,7 +14,7 @@ import {
   ProviderConfigurationError,
   type ProviderConfigurations,
 } from './types'
-import { getSortedProviders, obfuscateCredentials } from './utils'
+import { getSortedProviders } from './utils'
 
 const logger = createScopedLogger('ProviderManager')
 
@@ -148,8 +149,9 @@ export class ProviderManager {
   }
 
   /**
-   * Apply credential obfuscation using provider's credential schema.
-   * Returns a new CredentialsResponse with sensitive values replaced by __HIDDEN__.
+   * Mask credentials for the edit dialog using the unified secret-mask lifecycle: a set
+   * secret field is emitted as HIDDEN_VALUE (never its value); plain fields pass through.
+   * The save path drops masked echoes (isMasked), so an unchanged secret survives a round-trip.
    */
   private async _obfuscateResult(
     provider: string,
@@ -157,16 +159,13 @@ export class ProviderManager {
   ): Promise<CredentialsResponse> {
     const providerCaps = await ProviderRegistry.getProviderCapabilities(provider)
     if (providerCaps?.credentialSchema) {
-      const schemas = providerCaps.credentialSchema.map((field) => ({
-        variable: field.variable,
-        type: field.type as any,
-        required: field.required,
-        default: field.default as string | number | boolean | undefined,
-        label: field.label ? { en_US: field.label } : undefined,
+      const fields = providerCaps.credentialSchema.map((field) => ({
+        key: field.variable,
+        secret: field.type === 'secret-input',
       }))
       return {
         ...result,
-        credentials: obfuscateCredentials(result.credentials, schemas),
+        credentials: maskForEdit(fields, result.credentials),
       }
     }
     return result

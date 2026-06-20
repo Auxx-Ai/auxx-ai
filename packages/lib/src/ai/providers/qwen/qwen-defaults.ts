@@ -15,7 +15,7 @@ export const QWEN_CAPABILITIES: ProviderCapabilities = {
 
   credentialSchema: [
     {
-      variable: 'qwen_api_key',
+      variable: 'apiKey',
       type: 'secret-input',
       label: 'API Key',
       placeholder: 'Enter your DashScope API Key',
@@ -29,7 +29,7 @@ export const QWEN_CAPABILITIES: ProviderCapabilities = {
       },
     },
     {
-      variable: 'qwen_api_base',
+      variable: 'apiBase',
       type: 'select',
       label: 'Region',
       required: false,

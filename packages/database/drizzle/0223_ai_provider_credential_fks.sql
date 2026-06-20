@@ -1,0 +1,5 @@
+ALTER TABLE "LoadBalancingConfig" ADD COLUMN "connectionId" text;--> statement-breakpoint
+ALTER TABLE "ProviderConfiguration" ADD COLUMN "connectionDefinitionId" text;--> statement-breakpoint
+ALTER TABLE "LoadBalancingConfig" ADD CONSTRAINT "LoadBalancingConfig_connectionId_Credential_id_fk" FOREIGN KEY ("connectionId") REFERENCES "public"."Credential"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "ProviderConfiguration" ADD CONSTRAINT "ProviderConfiguration_connectionDefinitionId_ConnectionDefinition_id_fk" FOREIGN KEY ("connectionDefinitionId") REFERENCES "public"."ConnectionDefinition"("id") ON DELETE set null ON UPDATE cascade;--> statement-breakpoint
+CREATE INDEX "LoadBalancingConfig_connectionId_idx" ON "LoadBalancingConfig" USING btree ("connectionId");

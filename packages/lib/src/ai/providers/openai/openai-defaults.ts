@@ -219,7 +219,7 @@ export const OPENAI_CAPABILITIES: ProviderCapabilities = {
   // NEW: Unified credential schema with scope-based filtering
   credentialSchema: [
     {
-      variable: 'openai_api_key',
+      variable: 'apiKey',
       type: 'secret-input',
       label: 'API Key',
       placeholder: 'Enter your OpenAI API Key',
@@ -233,7 +233,7 @@ export const OPENAI_CAPABILITIES: ProviderCapabilities = {
       },
     },
     {
-      variable: 'openai_organization',
+      variable: 'organization',
       type: 'text-input',
       label: 'Organization ID',
       placeholder: 'Enter your Organization ID (optional)',
@@ -242,7 +242,7 @@ export const OPENAI_CAPABILITIES: ProviderCapabilities = {
       helpText: 'Optional organization ID for enterprise accounts',
     },
     {
-      variable: 'openai_api_base',
+      variable: 'apiBase',
       type: 'text-input',
       label: 'API Base URL',
       placeholder: 'https://api.openai.com/v1',

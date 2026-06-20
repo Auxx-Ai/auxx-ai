@@ -7,7 +7,6 @@ import {
   boolean,
   index,
   integer,
-  jsonb,
   pgTable,
   sql,
   text,
@@ -15,6 +14,7 @@ import {
   uniqueIndex,
 } from './_shared'
 
+import { ConnectionDefinition } from './connection-definition'
 import { Organization } from './organization'
 
 /** Drizzle table for providerConfiguration */
@@ -32,7 +32,12 @@ export const ProviderConfiguration = pgTable(
       .references((): AnyPgColumn => Organization.id, { onUpdate: 'cascade', onDelete: 'cascade' }),
     provider: text().notNull(),
     providerType: text().notNull(),
-    credentials: jsonb(),
+    // Link to the seeded AI provider blueprint. The org's BYO keys live as
+    // Credential rows resolved by the definition's providerKey (unified store).
+    connectionDefinitionId: text().references((): AnyPgColumn => ConnectionDefinition.id, {
+      onUpdate: 'cascade',
+      onDelete: 'set null',
+    }),
     isEnabled: boolean().default(true).notNull(),
     quotaType: text(),
     quotaLimit: integer().default(sql`'-1'`).notNull(),

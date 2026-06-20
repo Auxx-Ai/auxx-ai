@@ -1,7 +1,13 @@
 // packages/lib/src/ai/providers/provider-configuration-service.ts
 
 import { configService } from '@auxx/credentials/config'
-import { decryptSecrets, encryptSecrets } from '@auxx/credentials/crypto'
+import { isMasked } from '@auxx/credentials/crypto'
+import {
+  deleteCredential,
+  findCredential,
+  listCredentials,
+  revealSecrets,
+} from '@auxx/credentials/store'
 import { type Database, schema } from '@auxx/database'
 import type {
   LoadBalancingConfigEntity as LoadBalancingConfigModel,
@@ -10,8 +16,12 @@ import type {
   ProviderPreferenceEntity as ProviderPreferenceModel,
 } from '@auxx/database/types'
 import { and, eq } from 'drizzle-orm'
+import { getProviderByKey } from '../../connections/providers/provider-registry'
+import { resolveConnectionForRuntime } from '../../connections/resolve-connection-for-runtime'
+import { saveConnection } from '../../connections/save-connection'
 import { createScopedLogger } from '../../logger'
 import { UsageTrackingService } from '../usage/usage-tracking-service'
+import { AI_PROVIDER_CONNECTION_KEY, AI_SYSTEM_ENV_MAP } from './connection-provider-map'
 import { ProviderRegistry } from './provider-registry'
 import {
   type CredentialsResponse,
@@ -38,7 +48,6 @@ import {
   type SystemConfiguration,
   type ValidationOptions,
 } from './types'
-import { mergeCredentialsWithHidden, obfuscateCredentials } from './utils'
 
 const logger = createScopedLogger('ProviderConfigurationService')
 
@@ -163,7 +172,7 @@ export class ProviderConfigurationService {
           organizationId: true,
           provider: true,
           providerType: true,
-          credentials: true,
+          connectionDefinitionId: true,
           isEnabled: true,
           quotaType: true,
           quotaLimit: true,
@@ -189,7 +198,6 @@ export class ProviderConfigurationService {
           modelType: true,
           enabled: true,
           config: true,
-          credentials: true,
         },
       })
 
@@ -208,7 +216,7 @@ export class ProviderConfigurationService {
           model: true,
           modelType: true,
           name: true,
-          credentials: true,
+          connectionId: true,
           enabled: true,
           weight: true,
         },
@@ -286,9 +294,13 @@ export class ProviderConfigurationService {
       const preferredProviderType =
         providerPreference?.preferredType === 'SYSTEM' ? ProviderType.SYSTEM : ProviderType.CUSTOM
 
-      // Check availability of each provider type
+      // Check availability of each provider type. BYO keys now live in the unified
+      // Credential store, so "custom available" = the CUSTOM record points at a blueprint
+      // (provider-default key) OR a pool binding references a credential.
       const systemViable = systemConfig.enabled
-      const customAvailable = this._hasCustomCredentials(customConfig)
+      const customRecord = providerRecords.find((r) => r.providerType === 'CUSTOM')
+      const customAvailable =
+        !!customRecord?.connectionDefinitionId || loadBalancingConfigs.some((c) => !!c.connectionId)
 
       // Determine actual provider type with fallback logic
       let usingProviderType: ProviderType
@@ -384,6 +396,209 @@ export class ProviderConfigurationService {
     }
   }
 
+  // ===== Unified Credential store integration (AI BYO keys → Credential) =====
+
+  /**
+   * Resolve the seeded platform ConnectionDefinition for an AI provider. Returns the
+   * blueprint providerKey (e.g. 'openaiApi') + row id, or null when the provider isn't
+   * mapped or its blueprint hasn't been seeded (ensurePlatformProviders).
+   */
+  private async _resolveConnectionDefinition(
+    provider: string
+  ): Promise<{ providerKey: string; connectionDefinitionId: string } | null> {
+    const providerKey = AI_PROVIDER_CONNECTION_KEY[provider]
+    if (!providerKey) return null
+    const row = await this.db.query.ConnectionDefinition.findFirst({
+      where: and(
+        eq(schema.ConnectionDefinition.providerKey, providerKey),
+        eq(schema.ConnectionDefinition.major, 1)
+      ),
+      columns: { id: true },
+    })
+    return row ? { providerKey, connectionDefinitionId: row.id } : null
+  }
+
+  /**
+   * Split canonical AI credentials into secret-flagged vs plain variables (per the
+   * blueprint's connectionVariables), dropping empty and masked echoes so an unchanged
+   * secret never overwrites the stored value.
+   */
+  private _splitAiCredentials(
+    providerKey: string,
+    credentials: Record<string, any>
+  ): { secretFields: Record<string, string>; plainVariables: Record<string, string> } {
+    const def = getProviderByKey(providerKey)
+    const secretKeys = new Set(
+      (def?.connectionVariables ?? []).filter((v) => v.secret).map((v) => v.key)
+    )
+    const secretFields: Record<string, string> = {}
+    const plainVariables: Record<string, string> = {}
+    for (const [key, value] of Object.entries(credentials)) {
+      if (value === undefined || value === null || value === '') continue
+      const str = String(value)
+      // Never persist a masked echo (HIDDEN_VALUE or the legacy '[**HIDDEN**]' sentinel).
+      if (isMasked(str) || str === '[**HIDDEN**]') continue
+      if (secretKeys.has(key)) secretFields[key] = str
+      else plainVariables[key] = str
+    }
+    return { secretFields, plainVariables }
+  }
+
+  /** Reveal a credential's canonical field bag (plain connectionVariables + secret fields). */
+  private async _revealCredentialFields(credentialId: string): Promise<Record<string, any>> {
+    const revealed = await revealSecrets<{ fields?: Record<string, any> }>(
+      credentialId,
+      this.organizationId
+    )
+    if (revealed.isErr()) return {}
+    const plain = (revealed.value.record.metadata?.connectionVariables ?? {}) as Record<string, any>
+    const secretFields = revealed.value.secrets.fields ?? {}
+    return { ...plain, ...secretFields }
+  }
+
+  /** The org's primary (isDefault/newest) BYO credential id for an AI provider, or null. */
+  private async _findOrgProviderCredentialId(providerKey: string): Promise<string | null> {
+    const found = await findCredential({
+      organizationId: this.organizationId,
+      kind: 'workflow',
+      type: providerKey,
+      userId: null,
+    })
+    return found.isOk() && found.value ? found.value.id : null
+  }
+
+  /**
+   * Delete every org-scoped BYO credential for an AI provider from the unified store. The
+   * LoadBalancingConfig.connectionId FK (onDelete: cascade) removes any pool bindings too.
+   */
+  private async _deleteOrgProviderCredentials(provider: string): Promise<void> {
+    const providerKey = AI_PROVIDER_CONNECTION_KEY[provider]
+    if (!providerKey) return
+    const existing = await listCredentials({
+      organizationId: this.organizationId,
+      kind: 'workflow',
+      type: providerKey,
+      userId: null,
+    })
+    if (existing.isErr()) return
+    for (const cred of existing.value) {
+      await deleteCredential(cred.id, this.organizationId)
+    }
+  }
+
+  /**
+   * Persist an org BYO provider key into the unified Credential store and upsert the CUSTOM
+   * ProviderConfiguration (blueprint FK, no inline secret). Merges over an existing key when
+   * one exists (edit) so an unchanged secret survives; otherwise inserts the first key.
+   */
+  private async _persistProviderCredential(
+    provider: string,
+    credentials: ProviderCredentials,
+    options: ValidationOptions
+  ): Promise<void> {
+    const resolved = await this._resolveConnectionDefinition(provider)
+    if (!resolved) {
+      throw new ProviderConfigurationError(
+        `No connection blueprint seeded for AI provider '${provider}'`,
+        provider,
+        'CONNECTION_DEFINITION_MISSING'
+      )
+    }
+    const { providerKey, connectionDefinitionId } = resolved
+    const connectionId = await this._findOrgProviderCredentialId(providerKey)
+
+    const { secretFields, plainVariables } = this._splitAiCredentials(providerKey, credentials)
+
+    // Validate the RESOLVED key (existing merged with the de-masked submission), so editing a
+    // plain field without re-entering the secret still validates against the real stored key.
+    if (!options.skipValidation) {
+      const existingFields = connectionId ? await this._revealCredentialFields(connectionId) : {}
+      await this.validateProviderCredentials(provider, {
+        ...existingFields,
+        ...secretFields,
+        ...plainVariables,
+      })
+    }
+
+    const saved = await saveConnection({
+      connectionDefinitionId,
+      providerKey,
+      name: getProviderByKey(providerKey)?.label ?? provider,
+      organizationId: this.organizationId,
+      createdById: this.userId,
+      userId: null,
+      connectionId: connectionId ?? undefined,
+      connectionData: { secretFields, metadata: { connectionVariables: plainVariables } },
+    })
+    if (saved.isErr()) throw saved.error
+
+    const now = new Date()
+    await this.db
+      .insert(schema.ProviderConfiguration)
+      .values({
+        organizationId: this.organizationId,
+        provider,
+        providerType: 'CUSTOM',
+        connectionDefinitionId,
+        isEnabled: true,
+        updatedAt: now,
+      })
+      .onConflictDoUpdate({
+        target: [
+          schema.ProviderConfiguration.organizationId,
+          schema.ProviderConfiguration.provider,
+          schema.ProviderConfiguration.providerType,
+        ],
+        set: { connectionDefinitionId, isEnabled: true, updatedAt: now },
+      })
+
+    await this.switchProviderType(provider, ProviderType.CUSTOM)
+  }
+
+  /**
+   * Resolve the org's provider-default key fields (the primary among its BYO keys) from the
+   * unified store, by blueprint providerKey. Returns the canonical field bag or null.
+   */
+  private async _resolveProviderDefaultFields(
+    providerKey: string
+  ): Promise<Record<string, any> | null> {
+    const resolved = await resolveConnectionForRuntime({
+      providerKey,
+      organizationId: this.organizationId,
+      userId: this.userId,
+      ensureFresh: false,
+    })
+    if (resolved.isErr()) return null
+    return resolved.value.organizationConnection?.fields ?? null
+  }
+
+  /**
+   * Gather the enabled pool members for a (provider, model, modelType), revealing each
+   * bound credential's canonical fields. A size-1 result is a pinned key.
+   */
+  private async _resolveModelPool(
+    provider: string,
+    model: string,
+    modelType: string
+  ): Promise<Array<{ id: string; name: string; fields: Record<string, any> }>> {
+    const rows = await this.db.query.LoadBalancingConfig.findMany({
+      where: and(
+        eq(schema.LoadBalancingConfig.organizationId, this.organizationId),
+        eq(schema.LoadBalancingConfig.provider, provider),
+        eq(schema.LoadBalancingConfig.model, model),
+        eq(schema.LoadBalancingConfig.modelType, modelType),
+        eq(schema.LoadBalancingConfig.enabled, true)
+      ),
+    })
+    const members: Array<{ id: string; name: string; fields: Record<string, any> }> = []
+    for (const row of rows) {
+      if (!row.connectionId) continue
+      const fields = await this._revealCredentialFields(row.connectionId)
+      if (Object.keys(fields).length > 0) members.push({ id: row.id, name: row.name, fields })
+    }
+    return members
+  }
+
   /**
    * Validate and add custom provider credentials
    * Validates provider credentials against the actual provider API and stores them securely
@@ -406,45 +621,9 @@ export class ProviderConfigurationService {
     })
 
     try {
-      // Validate credentials if not skipped
-      if (!options.skipValidation) {
-        await this.validateProviderCredentials(provider, credentials)
-        logger.info('✅ Credentials validated successfully for', provider)
-      }
-
-      // Encrypt credentials
-      const encryptedCredentials = await this._encryptCredentials(credentials)
-
-      // Upsert CUSTOM provider configuration (separate from SYSTEM record)
-      const now = new Date()
-      await this.db
-        .insert(schema.ProviderConfiguration)
-        .values({
-          organizationId: this.organizationId,
-          provider,
-          providerType: 'CUSTOM',
-          credentials: encryptedCredentials,
-          isEnabled: true,
-          updatedAt: now,
-        })
-        .onConflictDoUpdate({
-          target: [
-            schema.ProviderConfiguration.organizationId,
-            schema.ProviderConfiguration.provider,
-            schema.ProviderConfiguration.providerType,
-          ],
-          set: {
-            credentials: encryptedCredentials,
-            isEnabled: true,
-            updatedAt: now,
-          },
-        })
-
-      // Update provider preference to custom
-      await this.switchProviderType(provider, ProviderType.CUSTOM)
-
-      // Initialize all models for this provider as enabled by default
-      // await this.initializeProviderModels(provider);
+      // Mint/merge the BYO key into the unified Credential store and point the CUSTOM
+      // ProviderConfiguration at the blueprint (no inline secret column anymore).
+      await this._persistProviderCredential(provider, credentials, options)
 
       logger.info('Successfully added custom provider credentials', {
         organizationId: this.organizationId,
@@ -489,49 +668,9 @@ export class ProviderConfigurationService {
     })
 
     try {
-      // Validate only the provided credentials
-      await this.validateProviderCredentials(provider, credentialUpdates)
-
-      // Get existing credentials
-      const existingConfig = await this.getProviderConfiguration(provider)
-      const existingCredentials = existingConfig.customConfiguration.provider?.credentials || {}
-
-      // Merge existing with updates
-      const mergedCredentials = { ...existingCredentials, ...credentialUpdates }
-
-      // Encrypt the merged credentials
-      const encryptedCredentials = await this._encryptCredentials(mergedCredentials)
-
-      // Update the CUSTOM provider configuration (separate from SYSTEM record)
-      const now = new Date()
-      await this.db
-        .insert(schema.ProviderConfiguration)
-        .values({
-          organizationId: this.organizationId,
-          provider,
-          providerType: 'CUSTOM',
-          credentials: encryptedCredentials,
-          isEnabled: true,
-          updatedAt: now,
-        })
-        .onConflictDoUpdate({
-          target: [
-            schema.ProviderConfiguration.organizationId,
-            schema.ProviderConfiguration.provider,
-            schema.ProviderConfiguration.providerType,
-          ],
-          set: {
-            credentials: encryptedCredentials,
-            isEnabled: true,
-            updatedAt: now,
-          },
-        })
-
-      // Update provider preference to custom
-      await this.switchProviderType(provider, ProviderType.CUSTOM)
-
-      // Initialize all models for this provider as enabled by default (safe due to skipDuplicates)
-      // await this.initializeProviderModels(provider);
+      // The unified store merges submitted fields over the existing key (a masked/omitted
+      // secret keeps its stored value), so a partial update is just a persist with merge.
+      await this._persistProviderCredential(provider, credentialUpdates as ProviderCredentials, {})
 
       logger.info('Successfully updated provider credentials', {
         organizationId: this.organizationId,
@@ -586,43 +725,84 @@ export class ProviderConfigurationService {
     })
 
     try {
-      // Get existing credentials to handle hidden fields
-      let finalCredentials = credentials
+      const resolved = await this._resolveConnectionDefinition(provider)
+      if (!resolved) {
+        throw new ProviderConfigurationError(
+          `No connection blueprint seeded for AI provider '${provider}'`,
+          provider,
+          'CONNECTION_DEFINITION_MISSING'
+        )
+      }
+      const { providerKey, connectionDefinitionId } = resolved
+      // A model-pinned key is a size-1 LoadBalancingConfig pool (the 'default' member).
+      const POOL_NAME = 'default'
 
-      // Check if any credentials have '[**HIDDEN**]' values
-      const hasHiddenFields = Object.values(credentials).some((value) => value === '[**HIDDEN**]')
+      // Existing pool member for this model → its credential, so an edit merges (and an
+      // unchanged secret survives) rather than minting a duplicate key.
+      const existingBinding = await this.db.query.LoadBalancingConfig.findFirst({
+        where: and(
+          eq(schema.LoadBalancingConfig.organizationId, this.organizationId),
+          eq(schema.LoadBalancingConfig.provider, provider),
+          eq(schema.LoadBalancingConfig.model, model),
+          eq(schema.LoadBalancingConfig.modelType, modelType),
+          eq(schema.LoadBalancingConfig.name, POOL_NAME)
+        ),
+        columns: { connectionId: true },
+      })
+      const connectionId = existingBinding?.connectionId ?? null
 
-      if (hasHiddenFields) {
-        // Fetch existing model configuration to get current credentials
-        const existingModel = await this.db.query.ModelConfiguration.findFirst({
-          where: and(
-            eq(schema.ModelConfiguration.organizationId, this.organizationId),
-            eq(schema.ModelConfiguration.provider, provider),
-            eq(schema.ModelConfiguration.model, model),
-            eq(schema.ModelConfiguration.modelType, modelType)
-          ),
-          columns: {
-            credentials: true,
-          },
+      const { secretFields, plainVariables } = this._splitAiCredentials(providerKey, credentials)
+
+      // Validate the resolved key (existing merged with the de-masked submission).
+      if (!options.skipValidation) {
+        const existingFields = connectionId ? await this._revealCredentialFields(connectionId) : {}
+        await this.validateModelCredentials(provider, model, modelType, {
+          ...existingFields,
+          ...secretFields,
+          ...plainVariables,
+        })
+      }
+
+      const saved = await saveConnection({
+        connectionDefinitionId,
+        providerKey,
+        name: `${getProviderByKey(providerKey)?.label ?? provider} – ${model}`,
+        organizationId: this.organizationId,
+        createdById: this.userId,
+        userId: null,
+        connectionId: connectionId ?? undefined,
+        connectionData: { secretFields, metadata: { connectionVariables: plainVariables } },
+      })
+      if (saved.isErr()) throw saved.error
+      const credentialId = saved.value
+
+      const now = new Date()
+      // Upsert the size-1 pool binding pointing at the credential.
+      await this.db
+        .insert(schema.LoadBalancingConfig)
+        .values({
+          organizationId: this.organizationId,
+          provider,
+          model,
+          modelType,
+          name: POOL_NAME,
+          connectionId: credentialId,
+          enabled: true,
+          weight: 1,
+          updatedAt: now,
+        })
+        .onConflictDoUpdate({
+          target: [
+            schema.LoadBalancingConfig.organizationId,
+            schema.LoadBalancingConfig.provider,
+            schema.LoadBalancingConfig.model,
+            schema.LoadBalancingConfig.modelType,
+            schema.LoadBalancingConfig.name,
+          ],
+          set: { connectionId: credentialId, enabled: true, updatedAt: now },
         })
 
-        if (existingModel?.credentials) {
-          // Decrypt existing credentials and merge with new ones
-          const existingDecrypted = await this._decryptCredentials(existingModel.credentials as any)
-          finalCredentials = mergeCredentialsWithHidden(credentials, existingDecrypted)
-        }
-      }
-
-      // Validate final credentials if not skipped
-      if (!options.skipValidation) {
-        await this.validateModelCredentials(provider, model, modelType, finalCredentials)
-      }
-
-      // Encrypt final credentials
-      const encryptedCredentials = await this._encryptCredentials(finalCredentials)
-
-      // Upsert model configuration
-      const now = new Date()
+      // Keep the model row (params/enabled) without an inline secret; don't clobber config.
       await this.db
         .insert(schema.ModelConfiguration)
         .values({
@@ -630,9 +810,8 @@ export class ProviderConfigurationService {
           provider,
           model,
           modelType,
-          config: {}, // Initialize with empty config object
+          config: {},
           enabled: true,
-          credentials: encryptedCredentials,
           updatedAt: now,
         })
         .onConflictDoUpdate({
@@ -642,12 +821,7 @@ export class ProviderConfigurationService {
             schema.ModelConfiguration.model,
             schema.ModelConfiguration.modelType,
           ],
-          set: {
-            config: {},
-            enabled: true,
-            credentials: encryptedCredentials,
-            updatedAt: now,
-          },
+          set: { enabled: true, updatedAt: now },
         })
 
       logger.info('Successfully added custom model credentials', {
@@ -775,75 +949,55 @@ export class ProviderConfigurationService {
 
     try {
       const config = await this.getProviderConfiguration(provider)
-      let credentials: Record<string, any> | null = null
-      let credentialSource: 'SYSTEM' | 'CUSTOM' | 'MODEL_SPECIFIC' | 'LOAD_BALANCED' = 'CUSTOM'
 
+      // SYSTEM: platform key resolved from env (unchanged).
       if (config.usingProviderType === ProviderType.SYSTEM) {
-        // System provider: return system credentials
-        credentials = config.systemConfiguration.credentials || null
-        credentialSource = 'SYSTEM'
-      } else {
-        // Custom provider: handle provider vs model mode
-        if (!model || !modelType) {
-          // Provider mode: return provider-level credentials only
-          credentials = config.customConfiguration.provider?.credentials || null
-          credentialSource = 'CUSTOM'
-        } else {
-          // Model mode: try model-specific credentials first, then fall back to provider
-          const modelConfig = config.customConfiguration.models.find(
-            (m) => m.model === model && m.modelType === modelType
-          )
-
-          if (modelConfig?.credentials) {
-            credentials = modelConfig.credentials
-            credentialSource = 'MODEL_SPECIFIC'
-          } else {
-            // Check for load balancing
-            const modelSettings = config.modelSettings.find(
-              (ms) => ms.model === model && ms.modelType === modelType
-            )
-            if (modelSettings && modelSettings.loadBalancingConfigs.length > 1) {
-              credentialSource = 'LOAD_BALANCED'
-            } else {
-              credentialSource = 'CUSTOM'
-            }
-            // Fall back to provider-level credentials
-            credentials = config.customConfiguration.provider?.credentials || null
-          }
+        return {
+          credentials: config.systemConfiguration.credentials || {},
+          providerType: 'SYSTEM',
+          credentialSource: 'SYSTEM',
         }
       }
 
-      const response: CredentialsResponse = {
-        credentials: credentials || {},
-        // Include provider type for quota tracking
-        providerType: config.usingProviderType === ProviderType.SYSTEM ? 'SYSTEM' : 'CUSTOM',
-        credentialSource,
-      }
+      // CUSTOM: resolve BYO key(s) from the unified Credential store via the §2 hierarchy.
+      const resolvedDef = await this._resolveConnectionDefinition(provider)
+      const providerKey = resolvedDef?.providerKey
+      const providerDefault = providerKey
+        ? await this._resolveProviderDefaultFields(providerKey)
+        : null
 
-      // Add load balancing config for model mode (available in modelSettings)
+      const response: CredentialsResponse = { credentials: {}, providerType: 'CUSTOM' }
+
       if (model && modelType) {
-        const modelSettings = config.modelSettings.find(
-          (ms) => ms.model === model && ms.modelType === modelType
-        )
+        // Model pool: model-specific members first, then the provider-level '*' sentinel pool.
+        let pool = await this._resolveModelPool(provider, model, modelType)
+        if (pool.length === 0) pool = await this._resolveModelPool(provider, '*', modelType)
 
-        if (modelSettings && modelSettings.loadBalancingConfigs.length > 0) {
+        if (pool.length > 0) {
+          // A size-1 pool is a deterministic pin; the primary is the first member. The
+          // orchestrator does the weighted pick across `load_balancing.configs`.
+          response.credentials = pool[0]!.fields
+          response.credentialSource = 'LOAD_BALANCED'
           response.load_balancing = {
-            enabled: modelSettings.loadBalancingConfigs.length > 1,
-            configs: modelSettings.loadBalancingConfigs.map((lbConfig) => ({
-              id: lbConfig.id,
-              name: lbConfig.name,
-              credentials: lbConfig.credentials,
+            enabled: pool.length > 1,
+            configs: pool.map((member) => ({
+              id: member.id,
+              name: member.name,
+              credentials: member.fields,
               enabled: true,
               in_cooldown: false,
               ttl: 0,
             })),
           }
         } else {
-          response.load_balancing = {
-            enabled: false,
-            configs: [],
-          }
+          response.credentials = providerDefault ?? {}
+          response.credentialSource = 'CUSTOM'
+          response.load_balancing = { enabled: false, configs: [] }
         }
+      } else {
+        // Provider mode: the provider-default key.
+        response.credentials = providerDefault ?? {}
+        response.credentialSource = 'CUSTOM'
       }
 
       return response
@@ -857,129 +1011,6 @@ export class ProviderConfigurationService {
       })
 
       return { credentials: {} }
-    }
-  }
-
-  async getCustomProviderCredentials(
-    provider: string,
-    model: string | null,
-    modelType: ModelType | null,
-    obfuscate: boolean
-  ): Promise<CredentialsResponse> {
-    logger.info('Getting custom provider credentials', {
-      organizationId: this.organizationId,
-      provider,
-      model,
-      modelType,
-    })
-    try {
-      const config = await this.getProviderConfiguration(provider)
-
-      let credentials: Record<string, any> // | null = null
-
-      if (config.usingProviderType === ProviderType.SYSTEM) {
-        // System provider: return system credentials
-        credentials = {}
-      } else {
-        // Custom provider: handle provider vs model mode
-        if (!model || !modelType) {
-          // Provider mode: return provider-level credentials only
-          credentials = config.customConfiguration.provider?.credentials!
-        } else {
-          // Model mode: try model-specific credentials first, then fall back to provider
-          const modelConfig = config.customConfiguration.models.find(
-            (m) => m.model === model && m.modelType === modelType
-          )
-
-          if (modelConfig?.credentials) {
-            credentials = modelConfig.credentials
-          } else {
-            // Fall back to provider-level credentials
-            credentials = config.customConfiguration.provider?.credentials!
-          }
-        }
-      }
-      // Obfuscate credentials if requested
-      if (obfuscate) {
-        credentials = await this._obfuscateProviderCredentials(credentials || {}, provider)!
-      }
-
-      return { credentials }
-    } catch (error) {
-      logger.error('Failed to get custom provider credentials', {
-        organizationId: this.organizationId,
-        provider,
-        model,
-        modelType,
-        error: error instanceof Error ? error.message : String(error),
-      })
-
-      return { credentials: {} }
-    }
-  }
-
-  /**
-   * Get all provider configurations for the organization
-   * Retrieves configuration status for all available providers in the system
-   * Returns array of provider objects with status, credentials (masked), and metadata
-   * Used primarily for admin interfaces to show all provider statuses at once
-   * @returns Promise<any[]> - Array of provider configuration objects with status information
-   * @throws ProviderConfigurationError - When retrieval of provider configurations fails
-   */
-  async getAllProviders(): Promise<any[]> {
-    logger.info('Getting all provider configurations', {
-      organizationId: this.organizationId,
-    })
-
-    try {
-      // allProviders is a list of [openai, anthropic, etc]
-      const allProviders = Object.keys(ProviderRegistry.getAllProviders())
-
-      const providerConfigs = await Promise.all(
-        allProviders.map(async (provider) => {
-          const config = await this.getProviderConfiguration(provider)
-          const providerCaps = await ProviderRegistry.getProviderCapabilities(provider)
-
-          // Check if provider is configured
-          const isConfigured =
-            config.usingProviderType === ProviderType.SYSTEM
-              ? config.systemConfiguration.enabled
-              : !!config.customConfiguration.provider
-
-          // Get masked credentials if configured
-          const credentials = isConfigured
-            ? await this._obfuscateProviderCredentials(
-                config.customConfiguration.provider?.credentials || {},
-                provider
-              )
-            : {}
-
-          return {
-            id: `${provider}_${this.organizationId}`, // Generate consistent ID
-            provider,
-            model: providerCaps?.defaultModel || 'default',
-            credentials, // Return full credentials object as expected by frontend
-            status: isConfigured ? 'VALID' : 'NOT_CONFIGURED',
-            isDefault: false, // TODO: Implement default logic
-            organizationId: this.organizationId,
-            userId: this.userId,
-            createdAt: new Date(),
-            updatedAt: new Date(),
-          }
-        })
-      )
-
-      return providerConfigs
-    } catch (error) {
-      logger.error('Failed to get all provider configurations', {
-        organizationId: this.organizationId,
-        error: error instanceof Error ? error.message : String(error),
-      })
-      throw new ProviderConfigurationError(
-        'Failed to get provider configurations',
-        'all',
-        'GET_ALL_FAILED'
-      )
     }
   }
 
@@ -1001,6 +1032,9 @@ export class ProviderConfigurationService {
     })
 
     try {
+      // Delete the org's BYO keys from the unified store (cascades pool bindings).
+      await this._deleteOrgProviderCredentials(provider)
+
       // Delete provider configuration
       const deletedProviderConfig = await this.db
         .delete(schema.ProviderConfiguration)
@@ -1104,17 +1138,11 @@ export class ProviderConfigurationService {
       // Update preference to SYSTEM
       await this.switchProviderType(provider, ProviderType.SYSTEM)
 
-      // Delete load balancing configs (tied to custom credentials)
-      await this.db
-        .delete(schema.LoadBalancingConfig)
-        .where(
-          and(
-            eq(schema.LoadBalancingConfig.organizationId, this.organizationId),
-            eq(schema.LoadBalancingConfig.provider, provider)
-          )
-        )
+      // Delete the org's BYO keys from the unified store. The connectionId FK
+      // (onDelete: cascade) removes the provider's pool bindings along with them.
+      await this._deleteOrgProviderCredentials(provider)
 
-      // Note: Custom models (ModelConfiguration) are kept - they may have their own credentials
+      // Note: ModelConfiguration rows (params/enabled) are kept.
 
       logger.info('Successfully removed custom provider credentials', {
         organizationId: this.organizationId,
@@ -1157,6 +1185,39 @@ export class ProviderConfigurationService {
     })
 
     try {
+      // Collect the model's pool bindings, then delete them. Each binding's credential is
+      // removed too, unless another binding still references it (shared key).
+      const bindings = await this.db.query.LoadBalancingConfig.findMany({
+        where: and(
+          eq(schema.LoadBalancingConfig.organizationId, this.organizationId),
+          eq(schema.LoadBalancingConfig.provider, provider),
+          eq(schema.LoadBalancingConfig.model, model)
+        ),
+        columns: { connectionId: true },
+      })
+
+      await this.db
+        .delete(schema.LoadBalancingConfig)
+        .where(
+          and(
+            eq(schema.LoadBalancingConfig.organizationId, this.organizationId),
+            eq(schema.LoadBalancingConfig.provider, provider),
+            eq(schema.LoadBalancingConfig.model, model)
+          )
+        )
+
+      for (const binding of bindings) {
+        if (!binding.connectionId) continue
+        const stillReferenced = await this.db.query.LoadBalancingConfig.findFirst({
+          where: and(
+            eq(schema.LoadBalancingConfig.organizationId, this.organizationId),
+            eq(schema.LoadBalancingConfig.connectionId, binding.connectionId)
+          ),
+          columns: { id: true },
+        })
+        if (!stillReferenced) await deleteCredential(binding.connectionId, this.organizationId)
+      }
+
       const result = await this.db
         .delete(schema.ModelConfiguration)
         .where(
@@ -1175,7 +1236,7 @@ export class ProviderConfigurationService {
         deleted: result.length > 0,
       })
 
-      return { deleted: result.length > 0 }
+      return { deleted: result.length > 0 || bindings.length > 0 }
     } catch (error) {
       logger.error('Failed to delete custom model configuration', {
         organizationId: this.organizationId,
@@ -1208,10 +1269,11 @@ export class ProviderConfigurationService {
     })
 
     try {
-      // If no credentials provided (or empty object), get current ones from database
+      // If no credentials provided (or empty object), resolve the org's saved key from the
+      // unified Credential store (BYO keys no longer live inline on the config row).
       if (!credentials || Object.keys(credentials).length === 0) {
-        const config = await this.getProviderConfiguration(provider)
-        credentials = config.customConfiguration.provider?.credentials
+        const resolved = await this.getCurrentCredentials(provider, null, null)
+        credentials = resolved.credentials
 
         if (!credentials || Object.keys(credentials).length === 0) {
           throw new Error('No credentials available to test')
@@ -1563,32 +1625,6 @@ export class ProviderConfigurationService {
   // ===== PRIVATE HELPER METHODS =====
 
   /**
-   * Obfuscate provider credentials for safe display
-   * Uses provider-specific credential form schemas to identify secret fields and mask them appropriately
-   * Falls back to simple pattern matching if schemas are not available
-   * @param credentials - The credentials object to obfuscate
-   * @param providerName - The provider name to get credential form schemas
-   * @returns Record<string, any> - Credentials object with sensitive values obfuscated
-   */
-  private async _obfuscateProviderCredentials(
-    credentials: Record<string, any>,
-    providerName: string
-  ) {
-    try {
-      const providerCaps = await ProviderRegistry.getProviderCapabilities(providerName)
-
-      if (providerCaps?.credentialSchema) {
-        return obfuscateCredentials(credentials, providerCaps.credentialSchema)
-      }
-    } catch (error) {
-      logger.warn('Failed to get provider capabilities for credential obfuscation', {
-        provider: providerName,
-        error: error instanceof Error ? error.message : String(error),
-      })
-    }
-  }
-
-  /**
    * Build system configuration object for a provider
    * Constructs system-level configuration including quota types and system-managed credentials
    * System configurations represent centrally managed provider access with usage quotas
@@ -1625,11 +1661,10 @@ export class ProviderConfigurationService {
       })
     }
 
-    // Resolve credentials: encrypted DB column first, then env fallback for system-eligible providers
+    // SYSTEM credentials resolve from env (canonical vocabulary) for eligible providers —
+    // there is no inline secret column anymore.
     let credentials: Record<string, any> | undefined
-    if (systemRecord?.credentials) {
-      credentials = await this._decryptCredentials(systemRecord.credentials)
-    } else if (SYSTEM_ELIGIBLE_PROVIDERS.has(provider)) {
+    if (SYSTEM_ELIGIBLE_PROVIDERS.has(provider)) {
       credentials = await this._resolveSystemCredentialsFromEnv(provider)
     }
 
@@ -1645,26 +1680,26 @@ export class ProviderConfigurationService {
    * Resolve system credentials from environment via configService.
    * Only called for SYSTEM_ELIGIBLE_PROVIDERS (anthropic, openai).
    *
-   * Uses the provider's credentialSchema to map variable names (e.g. `anthropic_api_key`)
-   * to config keys (e.g. `ANTHROPIC_API_KEY`), which configService resolves from
-   * DB override → process.env → SST Resource → registry default.
+   * Maps each canonical credential field (`apiKey`, `organization`, …) to its
+   * config key (e.g. `OPENAI_API_KEY`) via AI_SYSTEM_ENV_MAP, which configService
+   * resolves from DB override → process.env → SST Resource → registry default.
+   * Returns the credentials in the canonical vocabulary the provider clients read.
    *
    * Returns undefined if no credentials are found.
    */
   private async _resolveSystemCredentialsFromEnv(
     provider: string
   ): Promise<Record<string, any> | undefined> {
-    const providerCaps = await ProviderRegistry.getProviderCapabilities(provider)
-    if (!providerCaps?.credentialSchema?.length) return undefined
+    const envMap = AI_SYSTEM_ENV_MAP[provider]
+    if (!envMap) return undefined
 
     const credentials: Record<string, any> = {}
     let hasAny = false
 
-    for (const field of providerCaps.credentialSchema) {
-      const configKey = field.variable.toUpperCase() // anthropic_api_key → ANTHROPIC_API_KEY
+    for (const [field, configKey] of Object.entries(envMap)) {
       const value = configService.get(configKey)
       if (value) {
-        credentials[field.variable] = value
+        credentials[field] = value
         hasAny = true
       }
     }
@@ -1686,33 +1721,20 @@ export class ProviderConfigurationService {
     providerRecords: ProviderConfigurationModel[],
     modelConfigurations: ModelConfigurationModel[]
   ): Promise<CustomConfiguration> {
-    // Look for CUSTOM record first, then fallback to any record with credentials
-    // This handles the case where providerType may have been switched but credentials still exist
-    const customProviderRecord =
-      providerRecords.find((r) => r.providerType === 'CUSTOM') ||
-      providerRecords.find((r) => r.credentials && Object.keys(r.credentials).length > 0)
+    // A BYO key exists when the CUSTOM record points at a blueprint (key in the unified store).
+    // Runtime keys resolve from the store in getCurrentCredentials; the masked display path
+    // reveals + masks from the store. No inline secret column anymore.
+    const customProviderRecord = providerRecords.find((r) => r.providerType === 'CUSTOM')
+    const customProvider: CustomProviderConfiguration | undefined =
+      customProviderRecord?.connectionDefinitionId ? { credentials: {} } : undefined
 
-    // Check if there is a custom provider configuration with actual credentials
-    let customProvider: CustomProviderConfiguration | undefined
-
-    if (
-      customProviderRecord?.credentials &&
-      Object.keys(customProviderRecord.credentials).length > 0
-    ) {
-      customProvider = {
-        credentials: await this._decryptCredentials(customProviderRecord.credentials),
-      }
-    }
-
-    // Model configurations now contain config, not parameters
-    const customModels: CustomModelConfiguration[] = await Promise.all(
-      modelConfigurations.map(async (mc) => ({
-        model: mc.model,
-        modelType: mc.modelType as ModelType,
-        credentials: mc.credentials ? await this._decryptCredentials(mc.credentials) : undefined,
-        parameters: mc.config ? [mc.config] : [], // Convert config to parameters array format
-      }))
-    )
+    // Model rows carry params/enabled only; pinned keys live in LoadBalancingConfig.
+    const customModels: CustomModelConfiguration[] = modelConfigurations.map((mc) => ({
+      model: mc.model,
+      modelType: mc.modelType as ModelType,
+      credentials: undefined,
+      parameters: mc.config ? [mc.config] : [], // Convert config to parameters array format
+    }))
 
     return {
       provider: customProvider,
@@ -1748,12 +1770,14 @@ export class ProviderConfigurationService {
     for (const [key, configs] of modelGroups) {
       const [model, modelType] = key.split(':')
 
-      const loadBalancingConfigurations: ModelLoadBalancingConfiguration[] = await Promise.all(
-        configs.map(async (config) => ({
+      // Credentials live in the unified store (resolved via connectionId in getCurrentCredentials);
+      // this display shape carries identity only.
+      const loadBalancingConfigurations: ModelLoadBalancingConfiguration[] = configs.map(
+        (config) => ({
           id: config.id,
           name: config.name,
-          credentials: await this._decryptCredentials(config.credentials),
-        }))
+          credentials: {},
+        })
       )
 
       modelSettings.push({
@@ -1765,50 +1789,6 @@ export class ProviderConfigurationService {
     }
 
     return modelSettings
-  }
-
-  /**
-   * Check if custom configuration has valid credentials
-   * Provider-level credentials or model-specific credentials count as "has credentials"
-   * @param customConfig - The custom configuration to check
-   * @returns boolean - true if any custom credentials exist
-   */
-  private _hasCustomCredentials(customConfig: CustomConfiguration): boolean {
-    // Check provider-level credentials
-    if (
-      customConfig.provider?.credentials &&
-      Object.keys(customConfig.provider.credentials).length > 0
-    ) {
-      return true
-    }
-    // Check model-specific credentials
-    return customConfig.models.some((m) => m.credentials && Object.keys(m.credentials).length > 0)
-  }
-
-  /**
-   * Encrypt credentials for secure storage using AES-256-GCM
-   * @param credentials - The credentials object to encrypt
-   * @returns Promise<Record<string, any>> - Wrapped encrypted credentials as `{ _encrypted: "<base64>" }`
-   */
-  private async _encryptCredentials(
-    credentials: Record<string, any>
-  ): Promise<Record<string, any>> {
-    return { _encrypted: encryptSecrets(credentials) }
-  }
-
-  /**
-   * Decrypt credentials for use
-   * Handles both encrypted (`{ _encrypted: "..." }`) and legacy plaintext formats
-   * @param encryptedCredentials - The encrypted or plaintext credentials object
-   * @returns Promise<Record<string, any>> - Decrypted credentials object
-   */
-  private async _decryptCredentials(encryptedCredentials: any): Promise<Record<string, any>> {
-    if (!encryptedCredentials) return {}
-    if (encryptedCredentials._encrypted) {
-      return decryptSecrets<Record<string, any>>(encryptedCredentials._encrypted)
-    }
-    // Legacy plaintext fallback
-    return encryptedCredentials
   }
 
   /**
@@ -1924,7 +1904,6 @@ export class ProviderConfigurationService {
         modelType: true,
         enabled: true,
         config: true,
-        credentials: true,
       },
     })
   }
@@ -1959,7 +1938,6 @@ export class ProviderConfigurationService {
         modelType: true,
         enabled: true,
         config: true,
-        credentials: true,
       },
     })
 
@@ -1979,7 +1957,6 @@ export class ProviderConfigurationService {
         modelType: true,
         enabled: true,
         config: true,
-        credentials: true,
       },
     })
   }
@@ -2031,7 +2008,7 @@ export class ProviderConfigurationService {
         organizationId: true,
         provider: true,
         providerType: true,
-        credentials: true,
+        connectionDefinitionId: true,
         isEnabled: true,
         quotaType: true,
         quotaLimit: true,
@@ -2070,7 +2047,7 @@ export class ProviderConfigurationService {
         model: true,
         modelType: true,
         name: true,
-        credentials: true,
+        connectionId: true,
         enabled: true,
         weight: true,
       },
@@ -2094,7 +2071,7 @@ export class ProviderConfigurationService {
         model: true,
         modelType: true,
         name: true,
-        credentials: true,
+        connectionId: true,
         enabled: true,
         weight: true,
       },
