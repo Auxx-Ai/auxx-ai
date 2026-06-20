@@ -11,6 +11,9 @@ const insertCredential = vi.fn()
 const rotateSecrets = vi.fn()
 const updateCredential = vi.fn()
 const recordRefreshSuccess = vi.fn()
+const mergeSecretFields = vi.fn()
+const mergeSecrets = vi.fn()
+const getCredential = vi.fn()
 const triggerAppEvent = vi.fn()
 
 vi.mock('@auxx/credentials/store', () => ({
@@ -18,6 +21,9 @@ vi.mock('@auxx/credentials/store', () => ({
   rotateSecrets: (...args: unknown[]) => rotateSecrets(...args),
   updateCredential: (...args: unknown[]) => updateCredential(...args),
   recordRefreshSuccess: (...args: unknown[]) => recordRefreshSuccess(...args),
+  mergeSecretFields: (...args: unknown[]) => mergeSecretFields(...args),
+  mergeSecrets: (...args: unknown[]) => mergeSecrets(...args),
+  getCredential: (...args: unknown[]) => getCredential(...args),
   listCredentials: async () => ok([]),
 }))
 
@@ -53,6 +59,11 @@ beforeEach(() => {
   rotateSecrets.mockReset().mockResolvedValue(ok(undefined))
   updateCredential.mockReset().mockResolvedValue(ok(undefined))
   recordRefreshSuccess.mockReset().mockResolvedValue(ok(undefined))
+  mergeSecretFields.mockReset().mockResolvedValue(ok(undefined))
+  mergeSecrets.mockReset().mockResolvedValue(ok(undefined))
+  getCredential
+    .mockReset()
+    .mockResolvedValue(ok({ metadata: { connectionVariables: { account_number: 'acc-1' } } }))
   triggerAppEvent.mockReset().mockResolvedValue(ok({ result: undefined }))
 })
 
@@ -85,7 +96,7 @@ describe('saveAppConnection — secret/plain split', () => {
     })
   })
 
-  it('reconnect rotation preserves the split (fields → rotateSecrets, plain → metadata)', async () => {
+  it('manual secret reconnect MERGES (no token → never full-replaces, keeps untouched fields)', async () => {
     await saveAppConnection(
       ...ARGS,
       {
@@ -96,17 +107,39 @@ describe('saveAppConnection — secret/plain split', () => {
     )
 
     expect(insertCredential).not.toHaveBeenCalled()
-    expect(rotateSecrets).toHaveBeenCalledWith(
-      'cred-1',
-      'org-1',
-      { fields: { client_secret: 'rotated' } },
-      { expiresAt: null }
-    )
+    // No accessToken/refreshToken → manual edit → merge, NOT rotateSecrets full-replace.
+    expect(rotateSecrets).not.toHaveBeenCalled()
+    expect(mergeSecretFields).toHaveBeenCalledWith('cred-1', 'org-1', { client_secret: 'rotated' })
+    // Plain vars merge into the existing metadata bag (acc-1 → acc-2), not a wholesale replace.
     expect(updateCredential).toHaveBeenCalledWith('cred-1', 'org-1', {
       metadata: { connectionVariables: { account_number: 'acc-2' } },
     })
     // A successful re-auth clears the refresh circuit breaker so the connection no
     // longer surfaces as "expired" (see recordRefreshSuccess: consecutiveRefreshFailures → 0).
+    expect(recordRefreshSuccess).toHaveBeenCalledWith('cred-1', 'org-1', { expiresAt: null })
+  })
+
+  it('OAuth mint reconnect (tokens present) full-replaces via rotateSecrets', async () => {
+    await saveAppConnection(
+      ...ARGS,
+      {
+        accessToken: 'fresh-access',
+        refreshToken: 'fresh-refresh',
+        metadata: { scope: 'read' },
+      },
+      { connectionId: 'cred-1' }
+    )
+
+    expect(rotateSecrets).toHaveBeenCalledWith(
+      'cred-1',
+      'org-1',
+      { accessToken: 'fresh-access', refreshToken: 'fresh-refresh' },
+      { expiresAt: null }
+    )
+    expect(updateCredential).toHaveBeenCalledWith('cred-1', 'org-1', {
+      metadata: { scope: 'read' },
+    })
+    expect(mergeSecretFields).not.toHaveBeenCalled()
     expect(recordRefreshSuccess).toHaveBeenCalledWith('cred-1', 'org-1', { expiresAt: null })
   })
 

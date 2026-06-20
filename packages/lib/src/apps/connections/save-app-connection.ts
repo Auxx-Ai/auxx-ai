@@ -15,6 +15,7 @@ import {
 } from '@auxx/services/app-connections'
 import { getInstallationCatalog, provisionAppFields } from '@auxx/services/custom-fields'
 import { err, ok } from 'neverthrow'
+import { mergeManualConnectionEdit } from '../../connections/merge-manual-edit'
 import { triggerAppEvent } from '../events'
 import { resolveActiveInstallationId } from '../installations/resolve-active-installation'
 
@@ -192,17 +193,34 @@ export async function saveAppConnection(
 
     const expiresAt = connectionData.expiresAt ? new Date(connectionData.expiresAt) : null
 
-    const rotated = await rotateSecrets(options.connectionId, organizationId, secrets, {
-      expiresAt,
-    })
-    if (rotated.isErr()) {
-      return err(rotated.error)
-    }
+    // OAuth mint (the callback route) carries fresh tokens and legitimately replaces everything;
+    // a manual secret edit carries only secretFields/secret + plain vars and must MERGE so editing
+    // one field never wipes the stored secret or drops a plain var the user didn't re-supply.
+    const isOAuthMint =
+      connectionData.accessToken !== undefined || connectionData.refreshToken !== undefined
 
-    // Refresh the plaintext companion metadata alongside the rotated secrets.
-    const metaUpdated = await updateCredential(options.connectionId, organizationId, { metadata })
-    if (metaUpdated.isErr()) {
-      return err(metaUpdated.error)
+    if (isOAuthMint) {
+      const rotated = await rotateSecrets(options.connectionId, organizationId, secrets, {
+        expiresAt,
+      })
+      if (rotated.isErr()) {
+        return err(rotated.error)
+      }
+
+      // Refresh the plaintext companion metadata alongside the rotated secrets.
+      const metaUpdated = await updateCredential(options.connectionId, organizationId, { metadata })
+      if (metaUpdated.isErr()) {
+        return err(metaUpdated.error)
+      }
+    } else {
+      const reconnected = await mergeManualConnectionEdit(options.connectionId, organizationId, {
+        secretFields: connectionData.secretFields,
+        secret: connectionData.secret,
+        plainVariables: (metadata.connectionVariables ?? {}) as Record<string, unknown>,
+      })
+      if (reconnected.isErr()) {
+        return err(reconnected.error)
+      }
     }
 
     // A successful re-auth clears any open refresh circuit breaker. Without this the

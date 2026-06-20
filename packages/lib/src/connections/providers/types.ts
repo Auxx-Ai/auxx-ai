@@ -59,6 +59,12 @@ export type PlatformProviderDef = {
   connectionVariables?: ConnectionVariable[]
   /** How a resolved credential becomes request auth. null for DB/email/none/SDK-consumed. */
   authApply?: AuthApply | null
+  /**
+   * Request origin the connection contributes, interpolated from `{value}` + connection
+   * variables at runtime (e.g. `https://{shop}.myshopify.com/admin/api/2024-10`). Omit for
+   * fixed-host APIs the consumer already targets, or driver/SDK-consumed providers.
+   */
+  baseUrlTemplate?: string
 
   uiMetadata?: ProviderUiMetadata
 }

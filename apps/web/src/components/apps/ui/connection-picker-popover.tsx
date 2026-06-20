@@ -214,6 +214,7 @@ export function ConnectionPickerPopover({
           }}
           title={`Edit ${editRow.label ?? editRow.name}`}
           method={editMethod}
+          connectionId={editRow.id}
           pending={updateCredential.isPending}
           submitLabel='Save'
           onSubmit={(payload) => handleEditSubmit(payload.secret ?? '')}

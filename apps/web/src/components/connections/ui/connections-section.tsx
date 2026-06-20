@@ -2,13 +2,13 @@
 'use client'
 
 import { Button } from '@auxx/ui/components/button'
-import { Input } from '@auxx/ui/components/input'
+import { InputSearch } from '@auxx/ui/components/input-search'
 import { toastError } from '@auxx/ui/components/toast'
-import { Plug, Plus } from 'lucide-react'
+import { ComponentIcon, Plus } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useConnectFlow } from '~/components/apps/hooks/use-connect-flow'
 import { useAppsContext } from '~/components/apps/providers/apps-context'
-import { SettingsSection } from '~/components/global/settings-page'
+import { EmptyState } from '~/components/global/empty-state'
 import { useConfirm } from '~/hooks/use-confirm'
 import { useUser } from '~/hooks/use-user'
 import { api } from '~/trpc/react'
@@ -28,9 +28,10 @@ export function ConnectionsSection() {
   const { appInstallations } = useAppsContext()
   const utils = api.useUtils()
 
-  const { data: connections = [] } = api.connections.list.useQuery(undefined, {
-    refetchOnWindowFocus: false,
-  })
+  const { data: connections = [], isLoading: connectionsLoading } = api.connections.list.useQuery(
+    undefined,
+    { refetchOnWindowFocus: false }
+  )
   const { data: providers = [], isLoading: providersLoading } =
     api.connections.listProviders.useQuery()
 
@@ -167,26 +168,35 @@ export function ConnectionsSection() {
   })
 
   return (
-    <SettingsSection
-      icon={Plug}
-      title='Connections'
-      description='OAuth accounts, API keys, and database connections used by apps, workflows, and data connectors.'
-      action={
-        <Button variant='outline' size='sm' onClick={() => setAddOpen(true)}>
-          <Plus />
-          New connection
-        </Button>
-      }>
+    <div className='flex flex-1 flex-col gap-4'>
       {connections.length > 0 && (
-        <Input
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder='Search connections…'
-          className='max-w-xs'
-        />
+        <div className='flex items-center gap-2'>
+          <InputSearch
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder='Search connections…'
+            className='max-w-xs'
+          />
+          <Button
+            variant='outline'
+            size='sm'
+            className='ml-auto shrink-0'
+            onClick={() => setAddOpen(true)}>
+            <Plus />
+            New connection
+          </Button>
+        </div>
       )}
 
-      {connections.length === 0 ? (
+      {connectionsLoading && connections.length === 0 ? (
+        <EmptyState
+          icon={ComponentIcon}
+          iconClassName='animate-spin'
+          title='Loading...'
+          description={<>Hang on tight while we load your connections...</>}
+          button={<div className='h-12'></div>}
+        />
+      ) : connections.length === 0 ? (
         <div className='rounded-2xl border border-dashed bg-primary-50 p-8 text-center'>
           <p className='text-sm text-muted-foreground'>
             No connections yet. Add one to authorize an app, workflow, or data connector.
@@ -219,14 +229,16 @@ export function ConnectionsSection() {
         </div>
       )}
 
-      <AddConnectionDialog
-        open={addOpen}
-        onOpenChange={setAddOpen}
-        providers={providers}
-        installedApps={isAdminOrOwner ? connectableApps : []}
-        isLoading={providersLoading}
-        onConnected={invalidate}
-      />
+      {addOpen && (
+        <AddConnectionDialog
+          open={addOpen}
+          onOpenChange={setAddOpen}
+          providers={providers}
+          installedApps={isAdminOrOwner ? connectableApps : []}
+          isLoading={providersLoading}
+          onConnected={invalidate}
+        />
+      )}
 
       {/* Plain-secret edit (single API key). Multi-field / OAuth rows reconnect via the flow. */}
       {editRow && editMethod && (
@@ -237,6 +249,7 @@ export function ConnectionsSection() {
           }}
           title={`Edit ${editRow.label ?? editRow.name}`}
           method={editMethod}
+          connectionId={editRow.id}
           pending={updateCredential.isPending}
           submitLabel='Save'
           onSubmit={(payload) => handleEditSubmit(payload.secret ?? '')}
@@ -246,6 +259,6 @@ export function ConnectionsSection() {
       {/* Connect/reconnect dialogs (variable, secret) owned by the flow. */}
       {flow.Dialogs}
       <ConfirmDialog />
-    </SettingsSection>
+    </div>
   )
 }

@@ -14,7 +14,10 @@ only the app-author slice.
 > `CREDENTIAL_REGISTRY`, app connections, MCP, integrations). They were unified
 > onto two tables — see `plans/connections/unify-connection-definition.md`
 > (Phases 1–8) and `plans/connections/multi-connection-per-app.md` (multi-method
-> + primary pointer). This guide describes the result.
+> + primary pointer). The connect/edit surfaces were then collapsed onto one
+> shared dialog + OAuth-popup transport (`plans/connections/unify-connect-dialogs.md`)
+> and made safe to edit without leaking or clobbering stored secrets
+> (`plans/connections/edit-connection-secret-safety.md`). This guide describes the result.
 
 ---
 
@@ -72,6 +75,7 @@ so a duplicate app method could slip in).
 | `oauth2*` | OAuth2 config: authorize/token/refresh URLs, scopes, encrypted client id/secret, token-request auth method, refresh interval, `oauth2Features` (PKCE, extra params, scope separator). |
 | `connectionVariables` | Dynamic fields the org supplies at connect time (§4). |
 | `authApply` | Declarative spec for turning the resolved credential into request auth (§6). Null for DB/email/none. |
+| `baseUrlTemplate` | Request origin the connection contributes, interpolated from `{value}` + connection variables at runtime (e.g. `https://{shop}.myshopify.com/admin/api/2024-10`). Null for fixed-host or driver/SDK-consumed providers (§6). |
 
 ---
 
@@ -90,6 +94,9 @@ routes are `apps/web/src/app/api/apps/[slug]/oauth2/{authorize,callback}/route.t
 No redirect — the user pastes value(s) that the platform encrypts.
 - **Single secret** (no `connectionVariables`): one input; the consumer reads `connection.value`.
 - **Multi-field secret** (`connectionVariables` defined): one input per variable; `secret: true` variables are encrypted, plain ones land in `metadata`. The consumer reads the merged map via `connection.fields`, and `connection.value` is `''`.
+
+On **edit/reconnect** a stored secret is never sent back to the client — the form
+seeds a masked sentinel and only changed fields are persisted (§9).
 
 ### `none`
 No credentials, no connect UI.
@@ -150,6 +157,12 @@ type AuthApply =
 DB/email/none connections — those are secret bags the consuming driver reads
 straight from `connection.fields`, not HTTP-request auth.
 
+Its sibling `baseUrlTemplate` (§2.2) supplies the request *origin* the same way
+(`{value}` + variable interpolation), so a per-tenant host like Shopify's
+`{shop}.myshopify.com` is resolved from the connection rather than hard-coded in
+the consumer. Together they let a declarative REST consumer build a fully
+authed request from the connection alone.
+
 ---
 
 ## 7. `Credential` — the encrypted store
@@ -176,7 +189,11 @@ Key columns:
 
 The store lives in `@auxx/credentials/store` (`find-credential`, `insert-credential`,
 `reveal-secrets`, `rotate-secrets`, `set-default-credential`, `split-sensitive-fields`,
-`merge-secrets`, …) — secrets and metadata are split on write and merged on reveal.
+`merge-secrets`, `merge-secret-fields`, …) — secrets and metadata are split on write
+and merged on reveal. The two `merge-*` helpers underpin partial secret edits (§9):
+`merge-secrets` patches the flat `secrets.secret` (a bare API key), `merge-secret-fields`
+patches the nested `secrets.fields[key]` bag (multi-field variables), and both keep
+the existing value for any key left blank.
 
 ---
 
@@ -200,7 +217,74 @@ never throws (`ensureFreshCredentialToken`); the hot path stays at one reveal.
 
 ---
 
-## 9. Platform built-in providers
+## 9. Connecting & editing — the write path
+
+§3–§8 cover the model and the read path. This is how a connection is created and
+re-edited from the UI, behind **one** dialog (`ConnectionDetailDialog` →
+`ConnectionDetailPage`) shared by apps, platform connections, and MCP.
+
+### 9.1 OAuth popup transport
+
+`apps/web/src/hooks/use-oauth-popup.ts` — `useOAuthPopup()` is the single
+popup lifecycle for every `oauth2-code` connect (apps, platform, MCP). It opens
+the authorize URL in a popup and **settles exactly once** via, in order of speed:
+
+1. the callback termination page's `postMessage` / `BroadcastChannel` (instant),
+2. an authoritative server-side `verify` poll (the backstop), then
+3. a hard timeout (so an undetectable cancel can't spin forever).
+
+It deliberately does **not** trust `popup.closed` — providers that send
+`Cross-Origin-Opener-Policy: same-origin` (Stripe, Google, …) sever the
+browsing-context group, after which `popup.closed` is unreliable and the
+`postMessage`/`BroadcastChannel` signal can be dropped entirely (also true across
+the dev NGROK origin split). The `verify` poll is what makes success/cancel
+detection reliable; fresh connects poll for a new credential id, reconnects watch
+the credential's `updatedAt` stamp move. Falls back to a full-page redirect when
+the popup is blocked.
+
+### 9.2 Editing a secret without leaking it — the mask lifecycle
+
+A stored secret must **never** travel back to the client to seed an edit form.
+The mask helpers in `@auxx/credentials/crypto/client` (pure, client-safe) enforce
+this end to end:
+
+| Helper | Where it runs | What it does |
+|---|---|---|
+| `maskForEdit(fields, stored)` | server (`connections.getForEdit`) | Projects stored values into form-seed shape: a set secret → the `HIDDEN_VALUE` sentinel (an "is set" marker, never the value), an unset secret → `''`, a plain var → its real value. **Only declared `fields` are emitted**, so tokens / `client_id` / `client_secret` are structurally excluded. |
+| `isMasked(value)` | both | True for the `HIDDEN_VALUE` sentinel or a `maskValue`-shaped echo — i.e. a value the client is echoing back unchanged. Never persist it. |
+| `resolveForWrite(submitted, fields)` | server (routers) | Splits a submitted bag into `{ secrets, plain }`, **dropping any masked echo** so the sentinel never reaches the store. |
+
+`connections.getForEdit` is the read side: it `revealSecrets`, resolves the
+definition (by FK first, then `providerKey`/`type`), and returns
+`maskForEdit`-projected values for multi-field connections or just `tokenSet`
+(a boolean) for a bare API key. A definition-less plain integration/workflow
+secret falls through to the bare-secret branch — it never runs an unfiltered
+`findFirst` that could match an arbitrary def. The form renders a masked
+placeholder + Replace/Cancel affordance for any already-set secret.
+
+### 9.3 Merge vs replace on save
+
+The save paths (`saveConnection`, `saveAppConnection`) branch on **why** the
+write is happening:
+
+- **OAuth mint** (the callback route carries `accessToken`/`refreshToken`) →
+  **replace**: `rotateSecrets` + `updateCredential` overwrite everything, because
+  a fresh token set legitimately supersedes the old one.
+- **Manual edit** (carries only `secretFields` / `secret` + plain vars) →
+  **merge**: `mergeManualConnectionEdit` (`packages/lib/src/connections/merge-manual-edit.ts`)
+  patches only the supplied keys — `mergeSecretFields` for multi-field secrets,
+  `mergeSecrets` for a bare key, read-modify-write `metadata.connectionVariables`
+  for plain vars. Editing one field never wipes the others, and a field left as
+  the sentinel keeps its stored value.
+
+The `isOAuthMint` discriminator lives in both save paths; the resulting log
+records `mode: 'replace' | 'merge'`. Required-field validation is sentinel-aware
+(both client `validateValue` and the routers): a kept (masked) secret satisfies
+`required` on edit, so the user isn't forced to re-enter an unchanged secret.
+
+---
+
+## 10. Platform built-in providers
 
 `packages/lib/src/connections/providers/` — `defs.ts` (the list), `types.ts`
 (`PlatformProviderDef`), `ensure-platform-providers.ts` (the seeder).
@@ -215,7 +299,7 @@ encrypts those into the row at seed/boot. Providers also carry `uiMetadata`
 
 ---
 
-## 10. The app SDK surface
+## 11. The app SDK surface
 
 `packages/sdk/src/server/connections.ts` — what an **app author** sees, and it's
 deliberately method-agnostic:
@@ -240,7 +324,7 @@ mechanism, branch on `connection.type` (oauth2 vs secret). See
 
 ---
 
-## 11. Key files
+## 12. Key files
 
 | What | Where |
 |---|---|
@@ -251,12 +335,18 @@ mechanism, branch on `connection.type` (oauth2 vs secret). See
 | `authApply` helper | `packages/lib/src/connections/auth-apply.ts` |
 | Save (platform/unified) | `packages/lib/src/connections/save-connection.ts` |
 | Save (app) | `packages/lib/src/apps/connections/save-app-connection.ts` |
-| Credential store | `packages/credentials/src/store/` |
+| Manual-edit merge | `packages/lib/src/connections/merge-manual-edit.ts` |
+| Credential store | `packages/credentials/src/store/` (incl. `merge-secret-fields.ts`) |
+| Secret-mask lifecycle | `packages/credentials/src/crypto/client.ts` (`maskForEdit`, `resolveForWrite`, `isMasked`) |
 | Crypto (AES-256-GCM v2) | `packages/credentials/src/crypto/` |
 | Platform providers | `packages/lib/src/connections/providers/` |
 | App SDK `Connection` | `packages/sdk/src/server/connections.ts` |
+| Shared connect dialog | `apps/web/src/components/connections/ui/connection-detail-{dialog,page}.tsx` |
+| OAuth popup hook | `apps/web/src/hooks/use-oauth-popup.ts` |
 | App connection config UI | `apps/build/src/app/(portal)/[slug]/apps/[app_slug]/connections/page.tsx` |
 | OAuth routes (apps) | `apps/web/src/app/api/apps/[slug]/oauth2/{authorize,callback}/route.ts` |
 | App-author guide (§3) | `docs/app-implementation-template-v3.md` |
 | Unify design | `plans/connections/unify-connection-definition.md` |
 | Multi-method design | `plans/connections/multi-connection-per-app.md` |
+| Unify connect dialogs | `plans/connections/unify-connect-dialogs.md` |
+| Edit-secret safety | `plans/connections/edit-connection-secret-safety.md` |

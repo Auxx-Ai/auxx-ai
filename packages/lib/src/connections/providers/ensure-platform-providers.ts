@@ -41,6 +41,7 @@ function toRowValues(def: PlatformProviderDef): Record<string, unknown> {
     oauth2Features: def.oauth2Features ?? {},
     connectionVariables: def.connectionVariables ?? [],
     authApply: def.authApply ?? null,
+    baseUrlTemplate: def.baseUrlTemplate ?? null,
     // Only write client creds when the env var is set (avoid clobbering on re-upsert).
     ...(clientId ? { oauth2ClientId: encryptValue(clientId) } : {}),
     ...(clientSecret ? { oauth2ClientSecret: encryptValue(clientSecret) } : {}),

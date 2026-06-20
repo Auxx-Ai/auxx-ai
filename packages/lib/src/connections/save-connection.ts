@@ -14,6 +14,7 @@ import {
 } from '@auxx/credentials/store'
 import { createScopedLogger } from '@auxx/logger'
 import { err, ok, type Result } from 'neverthrow'
+import { mergeManualConnectionEdit } from './merge-manual-edit'
 
 const logger = createScopedLogger('save-connection')
 
@@ -69,21 +70,41 @@ export async function saveConnection(input: SaveConnectionInput): Promise<Result
   const metadata = (input.connectionData.metadata ?? {}) as Record<string, unknown>
   const expiresAt = input.connectionData.expiresAt ? new Date(input.connectionData.expiresAt) : null
 
-  // Reconnect: rotate secrets + refresh metadata, then clear any open refresh breaker so the
-  // freshly re-authed connection stops surfacing as expired.
   if (input.connectionId) {
-    const rotated = await rotateSecrets(input.connectionId, organizationId, secrets, { expiresAt })
-    if (rotated.isErr()) return err(rotated.error)
+    // OAuth mint (the callback route) carries fresh tokens and legitimately replaces everything;
+    // a manual secret edit carries only secretFields/secret + plain vars and must MERGE so it never
+    // wipes the stored secret or drops a plain var the user didn't re-supply.
+    const isOAuthMint =
+      input.connectionData.accessToken !== undefined ||
+      input.connectionData.refreshToken !== undefined
 
-    const metaUpdated = await updateCredential(input.connectionId, organizationId, { metadata })
-    if (metaUpdated.isErr()) return err(metaUpdated.error)
+    if (isOAuthMint) {
+      const rotated = await rotateSecrets(input.connectionId, organizationId, secrets, {
+        expiresAt,
+      })
+      if (rotated.isErr()) return err(rotated.error)
 
+      const metaUpdated = await updateCredential(input.connectionId, organizationId, { metadata })
+      if (metaUpdated.isErr()) return err(metaUpdated.error)
+    } else {
+      const reconnected = await mergeManualConnectionEdit(input.connectionId, organizationId, {
+        secretFields: input.connectionData.secretFields,
+        secret: input.connectionData.secret,
+        plainVariables: (metadata.connectionVariables ?? {}) as Record<string, unknown>,
+      })
+      if (reconnected.isErr()) return err(reconnected.error)
+    }
+
+    // Clear any open refresh breaker so the freshly re-authed connection stops surfacing as expired.
     const breakerReset = await recordRefreshSuccess(input.connectionId, organizationId, {
       expiresAt,
     })
     if (breakerReset.isErr()) return err(breakerReset.error)
 
-    logger.info('Reconnected platform connection', { credentialId: input.connectionId })
+    logger.info('Reconnected platform connection', {
+      credentialId: input.connectionId,
+      mode: isOAuthMint ? 'replace' : 'merge',
+    })
     return ok(input.connectionId)
   }
 

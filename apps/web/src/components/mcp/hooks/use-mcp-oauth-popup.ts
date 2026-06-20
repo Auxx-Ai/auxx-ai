@@ -1,19 +1,12 @@
 // apps/web/src/components/mcp/hooks/use-mcp-oauth-popup.ts
 'use client'
 
-import { toastError } from '@auxx/ui/components/toast'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback } from 'react'
+import { useOAuthPopup } from '~/hooks/use-oauth-popup'
 import type { RouterOutputs } from '~/trpc/react'
 import { api } from '~/trpc/react'
 
 type McpListEntry = RouterOutputs['mcp']['list'][number]
-
-interface OAuthDonePayload {
-  type: 'oauth_done'
-  ok: boolean
-  credId?: string | null
-  error?: string | null
-}
 
 /** Identifies the server whose connection the hook polls for while the popup is open. */
 export interface VerifyServerMatch {
@@ -38,110 +31,33 @@ export interface OpenMcpOAuthOptions {
 }
 
 /**
- * Opens the MCP OAuth popup and resolves when the connect is confirmed — instantly via the
- * termination page's `postMessage`/`oauth-mcp-connect` BroadcastChannel (`/api/mcp/oauth-complete`
- * runs on this window's origin, so both channels reach it), with server-side polling as the
- * authoritative backstop. The popup lifecycle never settles the flow: providers that send
- * `Cross-Origin-Opener-Policy: same-origin` (e.g. Stripe) sever the browsing-context group,
- * after which `popup.closed` is wrong in both directions (reads `true` while the popup is still
- * on the consent screen, and can stay `false` after a real close). A genuine user-cancel
- * therefore spins until the hard timeout. Falls back to a full-page redirect if the popup is
- * blocked.
+ * MCP OAuth popup — a thin adapter over the shared {@link useOAuthPopup} lifecycle. It supplies
+ * the MCP `oauth-mcp-connect` channel and an `mcp.list`-snapshot verify (see
+ * {@link buildSnapshotVerify}); the shared core owns the popup, single-settle, message + poll +
+ * timeout backstops, and teardown. `/api/mcp/oauth-complete` runs on this window's origin, so the
+ * message fast-path reaches it; the poll covers providers (e.g. Stripe) whose
+ * `Cross-Origin-Opener-Policy: same-origin` severs the message channel.
  */
 export function useMcpOAuthPopup() {
-  const [pending, setPending] = useState(false)
   const utils = api.useUtils()
-
-  const teardownRef = useRef<(() => void) | null>(null)
-  const teardown = useCallback(() => {
-    teardownRef.current?.()
-    teardownRef.current = null
-  }, [])
-  useEffect(() => () => teardown(), [teardown])
+  const { open: openPopup, pending } = useOAuthPopup()
 
   const open = useCallback(
     ({ authorizeUrl, onDone, verifyServer, verify }: OpenMcpOAuthOptions) => {
-      const popupUrl = authorizeUrl.includes('?')
-        ? `${authorizeUrl}&mode=popup`
-        : `${authorizeUrl}?mode=popup`
-      const popup = window.open(popupUrl, 'auxx-mcp-oauth', 'popup=yes,width=600,height=720')
-      if (!popup) {
-        // Popup blocked — fall back to a full-page redirect.
-        window.location.href = authorizeUrl
-        return
-      }
-
-      teardown()
-      setPending(true)
-
-      let settled = false
-
-      /** Settle exactly once: a toast only on explicit failure (not on cancel/timeout). */
-      const finish = (ok: boolean, error?: string | null) => {
-        if (settled) return
-        settled = true
-        teardown()
-        if (!ok && error) {
-          toastError({ title: 'Failed to connect', description: error })
-        }
-        onDone(ok)
-      }
-
-      const handleDone = (payload: OAuthDonePayload) => {
-        finish(payload.ok, payload.ok ? undefined : payload.error || 'Connection failed')
-      }
-
-      const onMessage = (e: MessageEvent) => {
-        // The callback page may live on a different origin in dev (NGROK_URL tunnel), so also
-        // trust messages coming from the popup window we opened ourselves.
-        if (e.source !== popup && e.origin !== window.location.origin) return
-        if (!e.data || e.data.type !== 'oauth_done') return
-        handleDone(e.data as OAuthDonePayload)
-      }
-      window.addEventListener('message', onMessage)
-
-      let bc: BroadcastChannel | null = null
-      try {
-        bc = new BroadcastChannel('oauth-mcp-connect')
-        bc.onmessage = (e) => {
-          if (!e.data || e.data.type !== 'oauth_done') return
-          handleDone(e.data as OAuthDonePayload)
-        }
-      } catch {
-        // BroadcastChannel unavailable — postMessage path still works.
-      }
-
-      const verifyFn = verify ?? (verifyServer ? buildSnapshotVerify(utils, verifyServer) : null)
-      const verifyInterval = verifyFn
-        ? setInterval(() => {
-            void (async () => {
-              if (settled) return
-              try {
-                if (await verifyFn()) finish(true)
-              } catch {
-                // Transient fetch error — the next tick retries.
-              }
-            })()
-          }, 1500)
-        : null
-
-      // Hard ceiling so an undetectable user-cancel doesn't spin forever.
-      const giveUpTimer = setTimeout(() => finish(false), 180_000)
-
-      teardownRef.current = () => {
-        window.removeEventListener('message', onMessage)
-        bc?.close()
-        if (verifyInterval) clearInterval(verifyInterval)
-        clearTimeout(giveUpTimer)
-        try {
-          if (!popup.closed) popup.close()
-        } catch {
-          // ignore
-        }
-        setPending(false)
-      }
+      const verifyFn =
+        verify ?? (verifyServer ? buildSnapshotVerify(utils, verifyServer) : undefined)
+      openPopup({
+        popupUrl: authorizeUrl.includes('?')
+          ? `${authorizeUrl}&mode=popup`
+          : `${authorizeUrl}?mode=popup`,
+        fallbackUrl: authorizeUrl,
+        channelName: 'oauth-mcp-connect',
+        windowName: 'auxx-mcp-oauth',
+        onDone: (ok) => onDone(ok),
+        verify: verifyFn,
+      })
     },
-    [teardown, utils]
+    [openPopup, utils]
   )
 
   return { open, pending }

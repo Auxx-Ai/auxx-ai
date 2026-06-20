@@ -3,7 +3,7 @@
 import { createScopedLogger } from '@auxx/logger'
 import crypto from 'crypto'
 import { configService } from '../config/config-service'
-import { HIDDEN_VALUE } from './client'
+import { isMasked } from './client'
 
 const logger = createScopedLogger('credential-secret-box')
 
@@ -92,16 +92,13 @@ export function maskValue(value: string): string {
   return value.slice(0, revealPerSide) + stars + value.slice(-revealPerSide)
 }
 
-/** Mask-shaped values, as produced by `maskValue` (the full mask included). */
-const MASK_SHAPE = /^.{2,4}\*+.{2,4}$/
-
 /**
  * True when a submitted value is a client echoing a masked prefill back — the
  * `HIDDEN_VALUE` sentinel or a `maskValue`-shaped string. Never persist it.
+ *
+ * Alias of the client-safe `isMasked`; kept for existing server-side callers.
  */
-export function isMaskEcho(value: string): boolean {
-  return value === HIDDEN_VALUE || MASK_SHAPE.test(value)
-}
+export const isMaskEcho = isMasked
 
 /** Decrypt a payload produced by encryptSecrets. */
 export function decryptSecrets<T = Record<string, unknown>>(payload: string): T {
