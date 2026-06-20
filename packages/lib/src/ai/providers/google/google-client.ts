@@ -71,7 +71,7 @@ export class GoogleClient extends ProviderClient {
 
     try {
       const extractedCreds = this.extractCredentials(credentials)
-      const apiKey = extractedCreds.google_api_key
+      const apiKey = extractedCreds.apiKey
 
       if (!apiKey) {
         throw new Error('No API key found in credentials')
@@ -113,18 +113,13 @@ export class GoogleClient extends ProviderClient {
   }
 
   extractCredentials(rawCredentials: Record<string, any>): ProviderCredentials {
-    const apiKey =
-      this.extractCredentialField(rawCredentials, 'api_key') ||
-      this.extractCredentialField(rawCredentials, 'google_api_key') ||
-      rawCredentials.apiKey
-
     return {
-      google_api_key: apiKey,
+      apiKey: String(rawCredentials.apiKey || ''),
     }
   }
 
   getApiClient(credentials: ProviderCredentials): GoogleGenerativeAI {
-    return new GoogleGenerativeAI(credentials.google_api_key as string)
+    return new GoogleGenerativeAI(this.requireApiKey(credentials, 'apiKey'))
   }
 
   getModels(): Record<string, ModelCapabilities> {

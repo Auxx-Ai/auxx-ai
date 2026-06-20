@@ -16,7 +16,7 @@ import type {
 import { QuotaExceededError } from '../errors/quota-errors'
 import { ProviderManager } from '../providers/provider-manager'
 import { ProviderRegistry } from '../providers/provider-registry'
-import { ModelType } from '../providers/types'
+import { type CredentialsResponse, ModelType } from '../providers/types'
 import { QuotaService } from '../quota/quota-service'
 import type {
   AICallbacks,
@@ -385,15 +385,32 @@ export class LLMOrchestrator {
           false // Don't obfuscate - we need real credentials
         )
 
-    // Create specialized LLM client
+    // Create specialized LLM client. When the model resolves to a multi-key pool, spread
+    // calls across the enabled members; a size-1 pool (a pinned key) is deterministic and
+    // returns its single member.
     const providerClient = await ProviderRegistry.createClient(provider, organizationId, userId)
-    const llmClient = providerClient.getClient(ModelType.LLM, credentials.credentials) as LLMClient
+    const selectedCredentials = this.pickPoolCredentials(credentials)
+    const llmClient = providerClient.getClient(ModelType.LLM, selectedCredentials) as LLMClient
 
     return {
       client: llmClient,
       providerType: credentials.providerType || 'CUSTOM',
       credentialSource: credentials.credentialSource || 'CUSTOM',
     }
+  }
+
+  /**
+   * Pick the credentials for this call from a load-balancing pool. Filters to enabled,
+   * non-cooldown members and picks one uniformly; falls back to the primary
+   * `credentials` when there's no pool (or a single member).
+   */
+  private pickPoolCredentials(credentials: CredentialsResponse): Record<string, any> {
+    const members = (credentials.load_balancing?.configs ?? []).filter(
+      (c) => c.enabled && !c.in_cooldown
+    )
+    if (members.length <= 1) return credentials.credentials
+    const choice = members[Math.floor(Math.random() * members.length)]!
+    return choice.credentials
   }
 
   /**

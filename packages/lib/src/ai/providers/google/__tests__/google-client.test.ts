@@ -10,31 +10,16 @@ describe('GoogleClient', () => {
   }
 
   describe('extractCredentials', () => {
-    it('extracts from google_api_key field', () => {
-      const client = createClient()
-      const result = client.extractCredentials({ google_api_key: 'AIzaTest123' })
-      expect(result.google_api_key).toBe('AIzaTest123')
-    })
-
-    it('extracts from api_key field', () => {
-      const client = createClient()
-      const result = client.extractCredentials({ api_key: 'AIzaTest456' })
-      expect(result.google_api_key).toBe('AIzaTest456')
-    })
-
-    it('extracts from apiKey field', () => {
+    it('extracts from the canonical apiKey field', () => {
       const client = createClient()
       const result = client.extractCredentials({ apiKey: 'AIzaTest789' })
-      expect(result.google_api_key).toBe('AIzaTest789')
+      expect(result.apiKey).toBe('AIzaTest789')
     })
 
-    it('prefers api_key over apiKey', () => {
+    it('returns an empty apiKey when none is provided', () => {
       const client = createClient()
-      const result = client.extractCredentials({
-        api_key: 'AIzaFirst',
-        apiKey: 'AIzaSecond',
-      })
-      expect(result.google_api_key).toBe('AIzaFirst')
+      const result = client.extractCredentials({})
+      expect(result.apiKey).toBe('')
     })
   })
 
@@ -58,14 +43,14 @@ describe('GoogleClient', () => {
   describe('getClient', () => {
     it('returns embedding client for TEXT_EMBEDDING type', () => {
       const client = createClient()
-      const credentials = { google_api_key: 'AIzaTestKey12345678901234567890123' }
+      const credentials = { apiKey: 'AIzaTestKey12345678901234567890123' }
       const embeddingClient = client.getClient(ModelType.TEXT_EMBEDDING, credentials)
       expect(embeddingClient).toBeDefined()
     })
 
     it('throws for unsupported model types', () => {
       const client = createClient()
-      const credentials = { google_api_key: 'AIzaTestKey12345678901234567890123' }
+      const credentials = { apiKey: 'AIzaTestKey12345678901234567890123' }
       expect(() => client.getClient(ModelType.RERANK, credentials)).toThrow('not yet implemented')
     })
   })
@@ -74,7 +59,7 @@ describe('GoogleClient', () => {
     it('returns success for valid credentials', async () => {
       const client = createClient()
       const result = await client.testConnection({
-        google_api_key: 'AIzaValidTestKey1234567890123456789',
+        apiKey: 'AIzaValidTestKey1234567890123456789',
       })
       expect(result.success).toBe(true)
       expect(result.responseTime).toBeGreaterThanOrEqual(0)

@@ -115,19 +115,14 @@ export class KimiClient extends ProviderClient {
   }
 
   extractCredentials(rawCredentials: Record<string, any>): ProviderCredentials {
-    const apiKey =
-      this.extractCredentialField(rawCredentials, 'api_key') ||
-      this.extractCredentialField(rawCredentials, 'kimi_api_key') ||
-      rawCredentials.apiKey
-
     return {
-      kimi_api_key: apiKey,
+      apiKey: String(rawCredentials.apiKey || ''),
     }
   }
 
   getApiClient(credentials: ProviderCredentials): OpenAI {
     return new OpenAI({
-      apiKey: credentials.kimi_api_key as string,
+      apiKey: this.requireApiKey(credentials, 'apiKey'),
       baseURL: KIMI_BASE_URL,
       // Retry policy lives in RetryManager — don't stack the SDK's 2 internal retries.
       maxRetries: 0,

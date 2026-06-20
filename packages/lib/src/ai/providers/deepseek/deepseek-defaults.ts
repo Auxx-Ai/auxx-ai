@@ -15,7 +15,7 @@ export const DEEPSEEK_CAPABILITIES: ProviderCapabilities = {
 
   credentialSchema: [
     {
-      variable: 'deepseek_api_key',
+      variable: 'apiKey',
       type: 'secret-input',
       label: 'API Key',
       placeholder: 'Enter your DeepSeek API Key',

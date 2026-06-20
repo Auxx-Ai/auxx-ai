@@ -15,7 +15,7 @@ export const GOOGLE_CAPABILITIES: ProviderCapabilities = {
 
   credentialSchema: [
     {
-      variable: 'google_api_key',
+      variable: 'apiKey',
       type: 'secret-input',
       label: 'API Key',
       placeholder: 'Enter your Google AI API Key',

@@ -16,7 +16,7 @@ export const GROQ_CAPABILITIES: ProviderCapabilities = {
   // NEW: Unified credential schema with scope-based filtering
   credentialSchema: [
     {
-      variable: 'groq_api_key',
+      variable: 'apiKey',
       type: 'secret-input',
       label: 'API Key',
       placeholder: 'Enter your Groq API Key',

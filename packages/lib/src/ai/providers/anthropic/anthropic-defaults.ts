@@ -16,7 +16,7 @@ export const ANTHROPIC_CAPABILITIES: ProviderCapabilities = {
   // NEW: Unified credential schema with scope-based filtering
   credentialSchema: [
     {
-      variable: 'anthropic_api_key',
+      variable: 'apiKey',
       type: 'secret-input',
       label: 'API Key',
       placeholder: 'Enter your Anthropic API Key',
@@ -28,6 +28,15 @@ export const ANTHROPIC_CAPABILITIES: ProviderCapabilities = {
         pattern: '^sk-ant-[a-zA-Z0-9-_]{20,}$',
         message: 'Anthropic API key must start with sk-ant- and be at least 24 characters',
       },
+    },
+    {
+      variable: 'voyageApiKey',
+      type: 'secret-input',
+      label: 'Voyage API Key',
+      placeholder: 'Enter your Voyage AI API Key (optional)',
+      required: false,
+      scope: 'provider',
+      helpText: 'Optional Voyage AI key used for embeddings.',
     },
   ],
 

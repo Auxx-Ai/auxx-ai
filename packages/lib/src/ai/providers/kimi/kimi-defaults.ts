@@ -15,7 +15,7 @@ export const KIMI_CAPABILITIES: ProviderCapabilities = {
 
   credentialSchema: [
     {
-      variable: 'kimi_api_key',
+      variable: 'apiKey',
       type: 'secret-input',
       label: 'API Key',
       placeholder: 'Enter your Moonshot API Key',

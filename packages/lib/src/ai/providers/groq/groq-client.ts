@@ -69,7 +69,7 @@ export class GroqClient extends ProviderClient {
 
     try {
       const extractedCreds = this.extractCredentials(credentials)
-      const apiKey = extractedCreds.groq_api_key
+      const apiKey = extractedCreds.apiKey
 
       if (!apiKey) {
         throw new Error('No API key found in credentials')
@@ -111,13 +111,8 @@ export class GroqClient extends ProviderClient {
   }
 
   extractCredentials(rawCredentials: Record<string, any>): ProviderCredentials {
-    const apiKey =
-      this.extractCredentialField(rawCredentials, 'api_key') ||
-      this.extractCredentialField(rawCredentials, 'groq_api_key') ||
-      rawCredentials.apiKey
-
     return {
-      groq_api_key: apiKey,
+      apiKey: String(rawCredentials.apiKey || ''),
     }
   }
 
@@ -125,7 +120,7 @@ export class GroqClient extends ProviderClient {
     // In a real implementation, you would return the Groq SDK client
     // For now, return a mock client
     return {
-      apiKey: this.requireApiKey(credentials, 'groq_api_key'),
+      apiKey: this.requireApiKey(credentials, 'apiKey'),
     }
   }
 

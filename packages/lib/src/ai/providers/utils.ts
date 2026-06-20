@@ -162,25 +162,6 @@ export function extractSecretVariables(credentialFormSchemas: CredentialFormSche
 }
 
 /**
- * Obfuscate credentials for safe logging/display
- */
-export function obfuscateCredentials(
-  credentials: Record<string, any>,
-  credentialFormSchemas: CredentialFormSchema[]
-): Record<string, any> {
-  const secretVariables = extractSecretVariables(credentialFormSchemas)
-  const obfuscated = { ...credentials }
-
-  for (const [key, value] of Object.entries(obfuscated)) {
-    if (secretVariables.includes(key) && typeof value === 'string') {
-      obfuscated[key] = obfuscateToken(value)
-    }
-  }
-
-  return obfuscated
-}
-
-/**
  * Obfuscate a token/API key for display. Delegates to the shared `maskValue` rule
  * (at least 6 chars always hidden; short tokens get a fixed full mask).
  */
@@ -420,30 +401,4 @@ export function sortModels(
     }
     return a.model.localeCompare(b.model)
   })
-}
-
-// ===== CREDENTIAL UTILITIES =====
-
-/**
- * Merge new credentials with existing credentials, preserving existing values for hidden fields
- * If a field has the value '[**HIDDEN**]', it will be replaced with the existing value from existingCredentials
- *
- * @param newCredentials - The new credential values from the form
- * @param existingCredentials - The existing stored credential values
- * @returns Record<string, any> - Merged credentials with hidden fields preserved
- */
-export function mergeCredentialsWithHidden(
-  newCredentials: Record<string, any>,
-  existingCredentials: Record<string, any> = {}
-): Record<string, any> {
-  const mergedCredentials = { ...newCredentials }
-
-  // Replace any '[**HIDDEN**]' values with existing values
-  for (const [key, value] of Object.entries(newCredentials)) {
-    if (value === '[**HIDDEN**]' && existingCredentials[key] !== undefined) {
-      mergedCredentials[key] = existingCredentials[key]
-    }
-  }
-
-  return mergedCredentials
 }

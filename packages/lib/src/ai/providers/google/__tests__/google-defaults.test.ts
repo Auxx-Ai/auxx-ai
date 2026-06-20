@@ -30,7 +30,7 @@ describe('GOOGLE_CAPABILITIES', () => {
     expect(GOOGLE_CAPABILITIES.credentialSchema).toHaveLength(1)
 
     const apiKeyField = GOOGLE_CAPABILITIES.credentialSchema[0]
-    expect(apiKeyField.variable).toBe('google_api_key')
+    expect(apiKeyField.variable).toBe('apiKey')
     expect(apiKeyField.type).toBe('secret-input')
     expect(apiKeyField.required).toBe(true)
     expect(apiKeyField.validation?.pattern).toBe('^AIza[0-9A-Za-z-_]{35}$')

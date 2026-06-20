@@ -1562,6 +1562,20 @@
       "when": 1781905150934,
       "tag": "0222_data_connector_mapping_entry_array",
       "breakpoints": true
+    },
+    {
+      "idx": 223,
+      "version": "7",
+      "when": 1781922300823,
+      "tag": "0223_ai_provider_credential_fks",
+      "breakpoints": true
+    },
+    {
+      "idx": 224,
+      "version": "7",
+      "when": 1781924418328,
+      "tag": "0224_drop_ai_inline_credentials",
+      "breakpoints": true
     }
   ]
 }

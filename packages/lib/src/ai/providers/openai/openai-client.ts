@@ -138,32 +138,16 @@ export class OpenAIClient extends ProviderClient {
   }
 
   extractCredentials(rawCredentials: Record<string, any>): ProviderCredentials {
-    const apiKey =
-      this.extractCredentialField(rawCredentials, 'api_key') ||
-      this.extractCredentialField(rawCredentials, 'openai_api_key') ||
-      rawCredentials.apiKey
-
-    const organization =
-      this.extractCredentialField(rawCredentials, 'organization') ||
-      this.extractCredentialField(rawCredentials, 'openai_organization') ||
-      rawCredentials.organization
-
-    const apiBase =
-      this.extractCredentialField(rawCredentials, 'api_base') ||
-      this.extractCredentialField(rawCredentials, 'openai_api_base') ||
-      rawCredentials.baseURL ||
-      'https://api.openai.com/v1'
-
     return {
-      openai_api_key: apiKey,
-      openai_organization: organization,
-      openai_api_base: apiBase,
+      apiKey: String(rawCredentials.apiKey || ''),
+      organization: rawCredentials.organization as string | undefined,
+      apiBase: (rawCredentials.apiBase as string) || 'https://api.openai.com/v1',
     }
   }
 
   getApiClient(credentials: ProviderCredentials): OpenAI {
     const config: any = {
-      apiKey: this.requireApiKey(credentials, 'openai_api_key'),
+      apiKey: this.requireApiKey(credentials, 'apiKey'),
       // Retry policy lives in RetryManager (one place). The SDK defaults to 2
       // internal retries, which would stack multiplicatively on top — one
       // logical attempt became 3 HTTP calls.
@@ -173,15 +157,12 @@ export class OpenAIClient extends ProviderClient {
       fetch: createObservingFetch('openai'),
     }
 
-    if (credentials.openai_organization) {
-      config.organization = credentials.openai_organization
+    if (credentials.organization) {
+      config.organization = credentials.organization
     }
 
-    if (
-      credentials.openai_api_base &&
-      credentials.openai_api_base !== 'https://api.openai.com/v1'
-    ) {
-      config.baseURL = credentials.openai_api_base
+    if (credentials.apiBase && credentials.apiBase !== 'https://api.openai.com/v1') {
+      config.baseURL = credentials.apiBase
     }
 
     return new OpenAI(config)
@@ -252,9 +233,9 @@ export class OpenAIClient extends ProviderClient {
     // This is a placeholder - in practice, credentials would be retrieved from
     // the provider manager or stored securely
     return {
-      openai_api_key: configService.get<string>('OPENAI_API_KEY') || '',
-      openai_organization: configService.get<string>('OPENAI_ORGANIZATION'),
-      openai_api_base: 'https://api.openai.com/v1',
+      apiKey: configService.get<string>('OPENAI_API_KEY') || '',
+      organization: configService.get<string>('OPENAI_ORGANIZATION'),
+      apiBase: 'https://api.openai.com/v1',
     }
   }
 
