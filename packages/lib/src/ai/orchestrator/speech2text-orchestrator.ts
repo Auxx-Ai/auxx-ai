@@ -7,7 +7,7 @@ import { UsageLimitError } from '../../errors'
 import { createUsageGuard } from '../../usage/create-usage-guard'
 import type { Speech2TextClient } from '../clients/base/speech2text-client'
 import { QuotaExceededError } from '../errors/quota-errors'
-import { ProviderManager } from '../providers/provider-manager'
+import { getCredentials } from '../providers/config'
 import { ProviderRegistry } from '../providers/provider-registry'
 import { ModelType } from '../providers/types'
 import { QuotaService } from '../quota/quota-service'
@@ -189,12 +189,11 @@ export class Speech2TextOrchestrator {
     providerType: ProviderTypeValue
     credentialSource: CredentialSourceType
   }> {
-    const providerManager = new ProviderManager(this.db!, organizationId, userId)
-    const credentials = await providerManager.getCurrentCredentials(
+    const credentials = await getCredentials(
+      { db: this.db!, organizationId, userId },
       provider,
       model,
-      ModelType.SPEECH2TEXT,
-      false
+      ModelType.SPEECH2TEXT
     )
     const providerClient = await ProviderRegistry.createClient(provider, organizationId, userId)
     const client = providerClient.getClient(

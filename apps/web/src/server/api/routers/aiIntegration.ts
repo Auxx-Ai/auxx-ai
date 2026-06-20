@@ -2,12 +2,21 @@
 
 import { schema } from '@auxx/database'
 import {
-  ProviderConfigurationService,
-  ProviderManager,
+  deleteCustomModel as deleteCustomModelAction,
+  getCredentials,
+  getEffectiveConfig,
+  getUnifiedModelData,
   ProviderRegistry,
   QuotaService,
+  removeCustomCredentials,
   SystemModelService,
+  saveCustomModel as saveCustomModelAction,
+  saveProvider,
+  switchProviderType as switchProviderTypeAction,
+  testProvider,
+  toggleModel as toggleModelAction,
   UsageTrackingService,
+  updateModelConfig as updateModelConfigAction,
 } from '@auxx/lib/ai'
 import { ModelType, ProviderType } from '@auxx/lib/ai/providers/types'
 import { onCacheEvent } from '@auxx/lib/cache'
@@ -37,13 +46,15 @@ export const aiIntegrationRouter = createTRPCRouter({
         throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Organization ID is required.' })
       }
 
-      const providerManager = new ProviderManager(ctx.db, organizationId, userId)
-      return await providerManager.getUnifiedModelData({
-        includeDefaults: input.includeDefaults,
-        modelTypes: input.modelTypes,
-        includeUnconfigured: input.includeUnconfigured,
-        includeRetired: input.includeRetired,
-      })
+      return await getUnifiedModelData(
+        { db: ctx.db, organizationId, userId },
+        {
+          includeDefaults: input.includeDefaults,
+          modelTypes: input.modelTypes,
+          includeUnconfigured: input.includeUnconfigured,
+          includeRetired: input.includeRetired,
+        }
+      )
     }),
 
   /**
@@ -59,8 +70,12 @@ export const aiIntegrationRouter = createTRPCRouter({
         throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Organization ID is required.' })
       }
 
-      const providerManager = new ProviderManager(ctx.db, organizationId, userId)
-      await providerManager.toggleModel(input.provider, input.model, input.enabled)
+      await toggleModelAction(
+        { db: ctx.db, organizationId, userId },
+        input.provider,
+        input.model,
+        input.enabled
+      )
 
       await recordAuditFromCtx(ctx, {
         organizationId,
@@ -89,8 +104,12 @@ export const aiIntegrationRouter = createTRPCRouter({
         throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Organization ID is required.' })
       }
 
-      const providerManager = new ProviderManager(ctx.db, organizationId, userId)
-      await providerManager.updateModelConfig(input.provider, input.model, input.config)
+      await updateModelConfigAction(
+        { db: ctx.db, organizationId, userId },
+        input.provider,
+        input.model,
+        input.config
+      )
 
       return { success: true }
     }),
@@ -112,10 +131,11 @@ export const aiIntegrationRouter = createTRPCRouter({
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Model not found in registry' })
       }
 
-      // Use ProviderManager but still need ProviderConfigurationService for getEffectiveConfig
-      // TODO: Move getEffectiveConfig to ProviderManager in future refactor
-      const configService = new ProviderConfigurationService(ctx.db, organizationId, userId)
-      const effectiveConfig = await configService.getEffectiveConfig(input.provider, input.model)
+      const effectiveConfig = await getEffectiveConfig(
+        { db: ctx.db, organizationId, userId },
+        input.provider,
+        input.model
+      )
 
       return {
         provider: input.provider,
@@ -155,12 +175,9 @@ export const aiIntegrationRouter = createTRPCRouter({
         })
       }
 
-      // Use ProviderManager for all provider operations
-      const providerManager = new ProviderManager(ctx.db, organizationId, userId)
-
       try {
-        // Both create and edit modes can use the same saveProvider method
-        await providerManager.saveProvider(provider, credentials)
+        // Both create and edit modes can use the same saveProvider action
+        await saveProvider({ db: ctx.db, organizationId, userId }, provider, credentials)
 
         await recordAuditFromCtx(ctx, {
           organizationId,
@@ -181,7 +198,7 @@ export const aiIntegrationRouter = createTRPCRouter({
               : `Provider ${providerCaps.displayName} has been updated successfully`,
         }
       } catch (error) {
-        // Handle specific error types from ProviderConfigurationService
+        // Handle specific error types from the provider config layer
         if (error instanceof Error) {
           throw new TRPCError({ code: 'BAD_REQUEST', message: error.message })
         }
@@ -207,8 +224,10 @@ export const aiIntegrationRouter = createTRPCRouter({
         throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Organization ID is required.' })
       }
 
-      const providerManager = new ProviderManager(ctx.db, organizationId, userId)
-      const result = await providerManager.removeCustomCredentials(input.provider)
+      const result = await removeCustomCredentials(
+        { db: ctx.db, organizationId, userId },
+        input.provider
+      )
 
       await recordAuditFromCtx(ctx, {
         organizationId,
@@ -241,10 +260,12 @@ export const aiIntegrationRouter = createTRPCRouter({
         throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Organization ID is required.' })
       }
 
-      const providerManager = new ProviderManager(ctx.db, organizationId, userId)
-
       try {
-        const isValid = await providerManager.testProvider(input.provider, input.credentials || {})
+        const isValid = await testProvider(
+          { db: ctx.db, organizationId, userId },
+          input.provider,
+          input.credentials || {}
+        )
         return {
           success: isValid,
           provider: input.provider,
@@ -284,7 +305,7 @@ export const aiIntegrationRouter = createTRPCRouter({
 
   /**
    * Get credentials for provider or model configuration
-   * Uses existing getCurrentCredentials with mode-specific parameters
+   * Uses getCredentials with mode-specific parameters
    */
   getCredentials: protectedProcedure
     .input(
@@ -311,15 +332,14 @@ export const aiIntegrationRouter = createTRPCRouter({
         })
       }
 
-      const providerManager = new ProviderManager(ctx.db, organizationId, userId)
-
       try {
         // Obfuscate credentials for UI display — raw creds stay in the cache
-        const result = await providerManager.getCurrentCredentials(
+        const result = await getCredentials(
+          { db: ctx.db, organizationId, userId },
           provider,
           mode === 'provider' ? null : model!,
           mode === 'provider' ? null : ModelType.LLM,
-          true // obfuscate for client display
+          { obfuscate: true }
         )
 
         return result
@@ -360,7 +380,6 @@ export const aiIntegrationRouter = createTRPCRouter({
       const { provider, modelId, modelType, credentials, mode } = input
 
       // Validate provider exists in registry
-      const { ProviderRegistry } = await import('@auxx/lib/ai')
       const providerCaps = ProviderRegistry.getProviderCapabilities(provider)
       if (!providerCaps) {
         throw new TRPCError({
@@ -392,17 +411,17 @@ export const aiIntegrationRouter = createTRPCRouter({
         }
       }
 
-      const { ProviderManager } = await import('@auxx/lib/ai')
-      const providerManager = new ProviderManager(ctx.db, organizationId, userId)
-
       try {
-        await providerManager.saveCustomModel({
-          provider,
-          modelId,
-          modelType: modelType as any,
-          credentials,
-          mode,
-        })
+        await saveCustomModelAction(
+          { db: ctx.db, organizationId, userId },
+          {
+            provider,
+            modelId,
+            modelType: modelType as any,
+            credentials,
+            mode,
+          }
+        )
 
         return {
           success: true,
@@ -443,14 +462,14 @@ export const aiIntegrationRouter = createTRPCRouter({
         throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Organization ID is required.' })
       }
 
-      const { ProviderManager } = await import('@auxx/lib/ai')
-      const providerManager = new ProviderManager(ctx.db, organizationId, userId)
-
       try {
-        const result = await providerManager.deleteCustomModel({
-          provider: input.provider,
-          modelId: input.modelId,
-        })
+        const result = await deleteCustomModelAction(
+          { db: ctx.db, organizationId, userId },
+          {
+            provider: input.provider,
+            modelId: input.modelId,
+          }
+        )
 
         return {
           success: true,
@@ -587,12 +606,13 @@ export const aiIntegrationRouter = createTRPCRouter({
         throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Organization ID is required.' })
       }
 
-      const configService = new ProviderConfigurationService(ctx.db, organizationId, userId)
-      await configService.switchProviderType(
+      // The action fires `ai-provider.type-switched` after the write, so the cached
+      // configs/credentials recompute (the bare mutation only writes ProviderPreference).
+      await switchProviderTypeAction(
+        { db: ctx.db, organizationId, userId },
         input.provider,
         input.providerType === 'system' ? ProviderType.SYSTEM : ProviderType.CUSTOM
       )
-      await onCacheEvent('ai-provider.type-switched', { orgId: organizationId })
 
       return { success: true }
     }),

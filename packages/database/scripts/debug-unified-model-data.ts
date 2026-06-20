@@ -1,7 +1,7 @@
 // packages/database/scripts/debug-unified-model-data.ts
 /**
- * Debug helper: calls `ProviderManager.getUnifiedModelData()` directly against
- * the DB for a given organizationId and prints the shape that the tRPC
+ * Debug helper: calls `getUnifiedModelData()` directly against the DB for a given
+ * organizationId and prints the shape that the tRPC
  * `aiIntegration.getUnifiedModelData` would return.
  *
  * Bypasses OrgCache / Redis — computes from scratch — so this tells you what
@@ -11,7 +11,7 @@
  *   npx dotenv -- npx tsx packages/database/scripts/debug-unified-model-data.ts <organizationId>
  */
 
-import { ProviderManager } from '../../lib/src/ai'
+import { getUnifiedModelData } from '../../lib/src/ai'
 import { getOrgCache } from '../../lib/src/cache/singletons'
 import { database as db } from '../src'
 
@@ -25,11 +25,13 @@ async function main() {
   // Flush cached aiProviderConfigs/aiCredentials for this org so we compute from scratch.
   await getOrgCache().flush(orgId, ['aiProviderConfigs', 'aiCredentials'])
 
-  const manager = new ProviderManager(db, orgId, 'debug-script')
-  const data = await manager.getUnifiedModelData({
-    includeDefaults: true,
-    includeUnconfigured: true, // match the AI Settings page
-  })
+  const data = await getUnifiedModelData(
+    { db, organizationId: orgId, userId: 'debug-script' },
+    {
+      includeDefaults: true,
+      includeUnconfigured: true, // match the AI Settings page
+    }
+  )
 
   const summary = {
     providerCount: data.providers.length,
