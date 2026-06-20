@@ -31,6 +31,62 @@ export function pluralize(count: number, singular: string, plural = `${singular}
 }
 
 /**
+ * Friendly-ify a machine field key into a human label.
+ * `totalPrice` → `Total Price`, `total_price` → `Total Price`,
+ * `line-items` → `Line Items`, `customerID` → `Customer ID`, `tags[]` → `Tags`.
+ *
+ * Splits camelCase / PascalCase boundaries, treats `_ - . /` and whitespace as
+ * separators, collapses runs, and title-cases — preserving existing all-caps
+ * acronyms (`ID`, `URL`) rather than lower-casing them to `Id`/`Url`.
+ */
+export function humanizeFieldName(key: string | null | undefined): string {
+  if (!key) return ''
+  return key
+    .replace(/\[\]$/, '') // drop array marker
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2') // fooBar → foo Bar
+    .replace(/([A-Z]+)([A-Z][a-z])/g, '$1 $2') // URLField → URL Field, customerID → customer ID
+    .replace(/[_\-./]+/g, ' ') // separators → space
+    .replace(/\s+/g, ' ') // collapse
+    .trim()
+    .split(' ')
+    .map((w) =>
+      w.length > 1 && w === w.toUpperCase() ? w : w.charAt(0).toUpperCase() + w.slice(1)
+    )
+    .join(' ')
+}
+
+/**
+ * Friendly-ify a dotted machine field PATH into a human label, prepending each
+ * ancestor segment. `owner.url` → `Owner Url`, `a.b.c` → `A B C`,
+ * `line_items[].sku` → `Line Items Sku`, `url` → `Url`.
+ *
+ * Each segment runs through {@link humanizeFieldName}. A leading run of a
+ * segment that repeats the tail of the accumulated label is dropped, so a child
+ * key that re-states its parent doesn't double it: `owner.owner_id` →
+ * `Owner Id` (not `Owner Owner Id`), `order.order_line` → `Order Line`.
+ */
+export function humanizeFieldPath(path: string | null | undefined): string {
+  if (!path) return ''
+  const words: string[] = []
+  for (const seg of path.split('.')) {
+    const segWords = humanizeFieldName(seg).split(' ').filter(Boolean)
+    if (segWords.length === 0) continue
+    // Find the longest overlap where the tail of `words` equals the head of this
+    // segment's words (case-insensitive), and skip that repeated prefix.
+    let overlap = 0
+    for (let k = Math.min(words.length, segWords.length); k > 0; k--) {
+      const tail = words.slice(words.length - k)
+      if (tail.every((w, i) => w.toLowerCase() === segWords[i].toLowerCase())) {
+        overlap = k
+        break
+      }
+    }
+    words.push(...segWords.slice(overlap))
+  }
+  return words.join(' ')
+}
+
+/**
  * Interprets common escape sequences in a string.
  * Converts literal escape sequences (e.g., typed "\n") into actual characters.
  *

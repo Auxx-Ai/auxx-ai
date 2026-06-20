@@ -19,7 +19,16 @@ import {
 import { RadioTab, RadioTabItem } from '@auxx/ui/components/radio-tab'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { EmptySection, Section } from '@auxx/ui/components/section'
-import { ChevronDown, Database, FlaskConical, Pencil, RefreshCw, Waypoints } from 'lucide-react'
+import {
+  ChevronDown,
+  Database,
+  FlaskConical,
+  Minus,
+  Pencil,
+  Plus,
+  RefreshCw,
+  Waypoints,
+} from 'lucide-react'
 import { type ReactNode, useState } from 'react'
 import {
   SchemaEditorDialog,
@@ -30,6 +39,7 @@ import { useBufferedConfig } from '../hooks/use-buffered-config'
 import { useSourcePaths } from '../hooks/use-source-paths'
 import { useStreamMutations } from '../hooks/use-stream-mutations'
 import { MappingTree } from './mapping-tree'
+import { JsonBodyEditor, RecordKeyValueEditor } from './request-editors'
 import { StreamSample } from './stream-sample'
 
 type Connector = NonNullable<ReturnType<typeof api.dataConnector.getById.useQuery>['data']>
@@ -109,15 +119,33 @@ export function StreamConfigPanel({ connector, stream }: StreamConfigPanelProps)
   const requestConfig = (stream.requestConfig ?? {}) as {
     path?: string
     method?: 'GET' | 'POST'
+    headers?: Record<string, string>
+    params?: Record<string, unknown>
+    body?: Record<string, unknown>
   }
   const request = useBufferedConfig(
     {
       path: requestConfig.path ?? '',
       method: requestConfig.method ?? 'GET',
+      headers: requestConfig.headers ?? {},
+      params: requestConfig.params ?? {},
+      body: requestConfig.body ?? {},
     },
-    (draft) => saveRequestConfig(stream.id, { path: draft.path, method: draft.method }),
+    (draft) => saveRequestConfig(stream.id, draft),
     { mode: 'manual' }
   )
+
+  // Progressive disclosure — each sub-editor stays hidden until revealed, but
+  // starts open when its config already has content (a saved request is never
+  // hidden). `bodyValid` gates Save on a JSON parse error.
+  const [showHeaders, setShowHeaders] = useState(
+    () => Object.keys(requestConfig.headers ?? {}).length > 0
+  )
+  const [showParams, setShowParams] = useState(
+    () => Object.keys(requestConfig.params ?? {}).length > 0
+  )
+  const [showBody, setShowBody] = useState(() => Object.keys(requestConfig.body ?? {}).length > 0)
+  const [bodyValid, setBodyValid] = useState(true)
   const rawSyncMode = (stream.syncMode as 'snapshot' | 'incremental' | 'webhook') ?? 'snapshot'
   // The picker only exposes snapshot/incremental; treat webhook as snapshot here.
   const syncMode: 'snapshot' | 'incremental' =
@@ -127,9 +155,7 @@ export function StreamConfigPanel({ connector, stream }: StreamConfigPanelProps)
     const result = await sampleFetch({
       id: connector.id,
       streamKey: stream.streamKey,
-      requestConfig: isGenericRest
-        ? { path: request.value.path, method: request.value.method }
-        : undefined,
+      requestConfig: isGenericRest ? request.value : undefined,
     })
     setSample(result)
     // Auto-set the inferred schema (the raw response shape) when none exists yet.
@@ -175,7 +201,7 @@ export function StreamConfigPanel({ connector, stream }: StreamConfigPanelProps)
             initialOpen
             collapsible={false}
             description='What to fetch from the source.'>
-            <div className='px-1'>
+            <div className='flex flex-col gap-2 px-1'>
               <InputGroup>
                 <InputGroupAddon align='inline-start'>
                   <DropdownMenu>
@@ -213,13 +239,63 @@ export function StreamConfigPanel({ connector, stream }: StreamConfigPanelProps)
                     size='xs'
                     variant='outline'
                     className='me-0.5'
-                    disabled={!request.isDirty || isSavingRequest}
+                    disabled={!request.isDirty || isSavingRequest || !bodyValid}
                     loading={isSavingRequest}
                     onClick={() => void request.commit()}>
                     Save request
                   </Button>
                 </InputGroupAddon>
               </InputGroup>
+
+              {/* Reveal chips — headers / query params / body stay hidden until clicked. */}
+              <div className='flex flex-wrap items-center gap-1.5'>
+                <RevealChip
+                  label='Headers'
+                  count={Object.keys(request.value.headers).length}
+                  active={showHeaders}
+                  onClick={() => setShowHeaders((v) => !v)}
+                />
+                <RevealChip
+                  label='Query params'
+                  count={Object.keys(request.value.params).length}
+                  active={showParams}
+                  onClick={() => setShowParams((v) => !v)}
+                />
+                {request.value.method === 'POST' && (
+                  <RevealChip
+                    label='Body'
+                    count={Object.keys(request.value.body).length > 0 ? 'JSON' : 0}
+                    active={showBody}
+                    onClick={() => setShowBody((v) => !v)}
+                  />
+                )}
+              </div>
+
+              {showHeaders && (
+                <RequestEditorBlock title='Headers'>
+                  <RecordKeyValueEditor
+                    record={request.value.headers}
+                    onChange={(headers) => request.set({ ...request.value, headers })}
+                  />
+                </RequestEditorBlock>
+              )}
+              {showParams && (
+                <RequestEditorBlock title='Query params'>
+                  <RecordKeyValueEditor
+                    record={request.value.params}
+                    onChange={(params) => request.set({ ...request.value, params })}
+                  />
+                </RequestEditorBlock>
+              )}
+              {request.value.method === 'POST' && showBody && (
+                <RequestEditorBlock title='Body'>
+                  <JsonBodyEditor
+                    value={request.value.body}
+                    onChange={(body) => request.set({ ...request.value, body })}
+                    onValidChange={setBodyValid}
+                  />
+                </RequestEditorBlock>
+              )}
             </div>
           </Section>
         )}
@@ -270,10 +346,9 @@ export function StreamConfigPanel({ connector, stream }: StreamConfigPanelProps)
             <RadioTab
               value={syncMode}
               onValueChange={(v) =>
-                setSyncMode(stream.id, v as 'snapshot' | 'incremental', {
-                  path: request.value.path,
-                  method: request.value.method,
-                })
+                // Pass the whole buffered request so toggling mode never drops
+                // saved headers/params/body (setStreamRequestConfig writes it whole).
+                setSyncMode(stream.id, v as 'snapshot' | 'incremental', request.value)
               }
               size='sm'>
               <RadioTabItem value='snapshot' size='sm'>
@@ -319,5 +394,41 @@ export function StreamConfigPanel({ connector, stream }: StreamConfigPanelProps)
         onSave={handleSaveSchema}
       />
     </ScrollArea>
+  )
+}
+
+/** A reveal toggle for one request sub-editor, with an optional content badge. */
+function RevealChip({
+  label,
+  count,
+  active,
+  onClick,
+}: {
+  label: string
+  count: number | string
+  active: boolean
+  onClick: () => void
+}) {
+  const hasCount = typeof count === 'number' ? count > 0 : !!count
+  return (
+    <Button type='button' size='xs' variant={active ? 'secondary' : 'ghost'} onClick={onClick}>
+      {active ? <Minus /> : <Plus />}
+      {label}
+      {hasCount && (
+        <span className='ml-1 rounded-full bg-muted px-1.5 text-[10px] tabular-nums text-muted-foreground'>
+          {count}
+        </span>
+      )}
+    </Button>
+  )
+}
+
+/** A bordered, titled container for a revealed request sub-editor. */
+function RequestEditorBlock({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <div className='overflow-hidden rounded-lg border bg-card/40'>
+      <div className='border-b px-3 py-1.5 text-xs font-medium text-muted-foreground'>{title}</div>
+      {children}
+    </div>
   )
 }

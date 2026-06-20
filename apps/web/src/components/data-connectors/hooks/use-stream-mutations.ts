@@ -9,6 +9,19 @@ import { api, type RouterOutputs } from '~/trpc/react'
 type Stream = RouterOutputs['dataConnector']['listStreams'][number]
 type Mapping = Stream['mappings'][number]
 
+/**
+ * The request fields the stream config UI edits and persists — a subset of the
+ * engine's `StreamRequestConfig`. Threaded whole through `saveRequestConfig` and
+ * `setSyncMode` so headers/params/body are never dropped on a partial write.
+ */
+export type UiRequestConfig = {
+  path?: string
+  method?: 'GET' | 'POST'
+  headers?: Record<string, string>
+  params?: Record<string, unknown>
+  body?: Record<string, unknown>
+}
+
 /** Per-field merge strategy. Folded into each binding entry (absent ⇒ 'overwrite'). */
 export type FieldMergeStrategy =
   | 'overwrite'
@@ -313,11 +326,7 @@ export function useStreamMutations(connectorId: string) {
 
   // ── Stream sync-mode toggle (atomic) ──────────────────────────────────────
   const setSyncMode = useCallback(
-    (
-      streamId: string,
-      syncMode: 'snapshot' | 'incremental',
-      requestConfig: { path?: string; method?: 'GET' | 'POST' }
-    ) =>
+    (streamId: string, syncMode: 'snapshot' | 'incremental', requestConfig: UiRequestConfig) =>
       patchStream(
         streamId,
         { syncMode } as Partial<Stream>,
@@ -329,7 +338,7 @@ export function useStreamMutations(connectorId: string) {
 
   // ── Deliberate / imperative wrappers (invalidate-based) ───────────────────
   const saveRequestConfig = useCallback(
-    (streamId: string, requestConfig: { path?: string; method?: 'GET' | 'POST' }) =>
+    (streamId: string, requestConfig: UiRequestConfig) =>
       saveRequestConfigM.mutateAsync({ streamId, requestConfig }),
     [saveRequestConfigM]
   )

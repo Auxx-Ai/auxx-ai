@@ -36,10 +36,12 @@ export {
   keyValueToBodyPayload,
   keyValueToHeaders,
   keyValueToParams,
+  keyValueToRecord,
   keyValueToString,
   parseBodyDataToKeyValue,
   parseHeadersToKeyValue,
   parseParamsToKeyValue,
+  recordToKeyValue,
   setBodyContent,
   setBodyFileReference,
 } from './utils'

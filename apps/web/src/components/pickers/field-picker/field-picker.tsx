@@ -27,6 +27,7 @@ export function FieldPicker({
   mode = 'single',
   closeOnSelect = mode === 'single',
   onCreateField,
+  createLabel,
   onSkip,
   skipLabel,
   searchPlaceholder,
@@ -76,6 +77,7 @@ export function FieldPicker({
           closeOnSelect={closeOnSelect}
           onClose={handleClose}
           onCreateField={onCreateField}
+          createLabel={createLabel}
           onSkip={onSkip}
           skipLabel={skipLabel}
           searchPlaceholder={searchPlaceholder}

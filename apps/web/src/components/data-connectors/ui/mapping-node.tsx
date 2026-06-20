@@ -552,7 +552,12 @@ function SourceNode(props: SourceNodeProps) {
       assignedLabel={assignedLabel}
       assignedTargetKey={assignedTargetKey}
       excludeKeys={excludeKeys}
-      canCreate={targetMode === 'owned'}
+      // Quick-create is available whenever a target def is set — both owned
+      // (the connector provisions the def) and contributing (adding a field to
+      // an existing def). The `customField.create` mutation is the backstop for
+      // a def that rejects new fields.
+      canCreate={!!mapping.entityDefinitionId}
+      isOwned={targetMode === 'owned'}
       isMatch={assignedTargetKey ? matchKeys.has(assignedTargetKey) : false}
       mergeStrategy={entry?.mergeStrategy ?? 'overwrite'}
       onAssign={(targetKey) => onAssign(node.path, targetKey)}

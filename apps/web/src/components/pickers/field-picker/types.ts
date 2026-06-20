@@ -50,6 +50,9 @@ export interface FieldPickerContentProps {
   /** Optional: Show "Create field" button */
   onCreateField?: () => void
 
+  /** Label for the {@link onCreateField} row (default `Create field`). */
+  createLabel?: string
+
   /**
    * Optional: show a "skip / don't map" item at the top of the root list (e.g.
    * to clear a binding from within the picker). Selecting it runs this callback
