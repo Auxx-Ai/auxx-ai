@@ -9,9 +9,11 @@
 // importer, events are NOT skipped — workflows/agents react.
 
 import { createScopedLogger } from '@auxx/logger'
+import type { FieldId, ResourceFieldId } from '@auxx/types/field'
+import { getFieldId } from '@auxx/types/field'
 import type { TypedFieldValue } from '@auxx/types/field-value'
 import { stableHash } from '@auxx/utils/hash'
-import { getCachedCustomFields } from '../../cache'
+import { resolveConnectorFieldRef } from '../../agents/bindings/resolve'
 import { toRecordId } from '../../resources/resource-id'
 import {
   type DecodedMapping,
@@ -54,24 +56,67 @@ function isBlank(value: unknown): boolean {
 }
 
 /**
+ * Resolve every distinct `targetFieldRef` a record references (write fields +
+ * identity candidates) to a concrete `ResourceFieldId`. Concrete refs pass
+ * through; the late-bound `@app:` form resolves against the connector's bound
+ * connection (its `credentialId`). An unresolved ref (no bound connection / no
+ * provisioned field) is dropped from the map + recorded as a run error — the
+ * caller skips that field/candidate rather than writing a garbage field id.
+ */
+async function resolveFieldRefs(
+  ctx: SyncCtx,
+  record: ProjectedRecord
+): Promise<Map<string, ResourceFieldId>> {
+  const refs = new Set<string>()
+  for (const k of Object.keys(record.fields)) refs.add(k)
+  for (const c of record.identityCandidates) refs.add(c.targetFieldRef)
+
+  const connectionId = ctx.connector.credentialId ?? undefined
+  const out = new Map<string, ResourceFieldId>()
+  for (const ref of refs) {
+    const resolved = await resolveConnectorFieldRef(ref as ResourceFieldId, ctx.orgId, connectionId)
+    if (resolved) {
+      out.set(ref, resolved)
+      continue
+    }
+    logger.warn('targetFieldRef did not resolve — skipping field/candidate', {
+      connectorId: ctx.connector.id,
+      mappingExternalId: record.externalId,
+      ref,
+    })
+    if (ctx.counters.errorSample.length < 50) {
+      ctx.counters.errorSample.push({
+        externalId: record.externalId,
+        error: `unresolved targetFieldRef: ${ref}`,
+      })
+    }
+  }
+  return out
+}
+
+/**
  * Resolve the entity instance an upstream record binds to via its SECONDARY
  * match keys (the external-id binding is resolved first by the caller). Returns
  * `{ instanceId }`; null ⇒ no match → caller creates. Match candidates were
  * resolved from the source record by the mapping layer (flagged `match`
- * bindings → identityCandidates); the crud lookup keys candidates by
- * systemAttribute (= the target field), which lookupByField accepts directly.
+ * bindings → identityCandidates); each candidate's `targetFieldRef` is resolved
+ * to a concrete field id via `refToConcrete`, then keyed by `fieldId` so
+ * `lookupByField` matches connector-provisioned fields (systemAttribute null).
  */
 async function resolveIdentity(
   ctx: SyncCtx,
   mapping: DecodedMapping,
-  record: ProjectedRecord
+  record: ProjectedRecord,
+  refToConcrete: Map<string, ResourceFieldId>
 ): Promise<{ instanceId: string | null }> {
   const candidates = record.identityCandidates
     .map((c) => {
       if (isBlank(c.value)) return null
-      return { systemAttribute: c.targetFieldId, value: normalizeMatch(c.value, c.normalize) }
+      const concrete = refToConcrete.get(c.targetFieldRef)
+      if (!concrete) return null
+      return { fieldId: getFieldId(concrete), value: normalizeMatch(c.value, c.normalize) }
     })
-    .filter((c): c is { systemAttribute: string; value: string } => c !== null)
+    .filter((c): c is { fieldId: FieldId; value: string } => c !== null)
 
   if (candidates.length === 0) return { instanceId: null } // external-id only → create
 
@@ -104,17 +149,22 @@ async function buildWriteSet(
   mapping: DecodedMapping,
   record: ProjectedRecord,
   existingInstanceId: string | null,
-  fieldKeyToId: Map<string, string>
+  refToConcrete: Map<string, ResourceFieldId>
 ): Promise<{ writeSet: Record<string, unknown>; managedFields: string[] }> {
+  // managedFields stay keyed by the raw `targetFieldRef` — the same key space as
+  // `record.fields`, `mergeByKey`, and the prior runs' stored `managedFields`
+  // (used by the `connector_owned_only` ownership check below).
   const managedFields = Object.keys(record.fields)
+  // Write-set keys are concrete field ids (`getFieldId(resolvedRef)`) — what
+  // `setFieldValues`/`createEntity` expect (a bare uuid or systemAttribute).
   const writeSet: Record<string, unknown> = {}
 
   // Per-field merge strategy, derived from the binding entries (folded in from the
-  // old parallel column). Keyed by target field key; unassigned drafts are skipped.
+  // old parallel column). Keyed by raw `targetFieldRef`; unassigned drafts skipped.
   const mergeByKey = new Map<string, FieldMergeStrategy>()
   for (const fm of mapping.fieldMappings) {
-    if (fm.targetFieldKey != null && fm.mergeStrategy) {
-      mergeByKey.set(fm.targetFieldKey, fm.mergeStrategy)
+    if (fm.targetFieldRef != null && fm.mergeStrategy) {
+      mergeByKey.set(fm.targetFieldRef, fm.mergeStrategy)
     }
   }
   const strategyFor = (key: string): FieldMergeStrategy => mergeByKey.get(key) ?? 'overwrite'
@@ -130,25 +180,28 @@ async function buildWriteSet(
     current = await ctx.crud.getFieldValues(recordId)
   }
 
-  for (const [key, value] of Object.entries(record.fields)) {
-    const strategy = strategyFor(key)
+  for (const [rawRef, value] of Object.entries(record.fields)) {
+    const strategy = strategyFor(rawRef)
     if (strategy === 'ignore') continue
 
+    const concrete = refToConcrete.get(rawRef)
+    if (!concrete) continue // unresolved @app: ref — already recorded in resolveFieldRefs
+    const fieldId = getFieldId(concrete)
+
     if (strategy === 'overwrite') {
-      writeSet[key] = value
+      writeSet[fieldId] = value
       continue
     }
     if (strategy === 'connector_owned_only') {
       // Write only if this connector created/owns the field on this record.
       const item = await findItem(ctx.db, ctx.connector.id, mapping.row.id, record.externalId)
-      const owns = !item || (item.managedFields ?? []).includes(key)
-      if (owns) writeSet[key] = value
+      const owns = !item || (item.managedFields ?? []).includes(rawRef)
+      if (owns) writeSet[fieldId] = value
       continue
     }
     if (strategy === 'fill_blank') {
-      const fieldId = fieldKeyToId.get(key)
-      const cur = current && fieldId ? rawOf(current.get(fieldId)) : undefined
-      if (isBlank(cur)) writeSet[key] = value
+      const cur = current ? rawOf(current.get(fieldId)) : undefined
+      if (isBlank(cur)) writeSet[fieldId] = value
       continue
     }
     if (strategy === 'manual_review') {
@@ -156,7 +209,7 @@ async function buildWriteSet(
       logger.info('manual_review merge — conflict logged, not written', {
         mappingId: mapping.row.id,
         externalId: record.externalId,
-        field: key,
+        field: rawRef,
       })
     }
   }
@@ -169,20 +222,15 @@ export const entitySink: EntitySink = {
     ctx.counters.fetched += 1
     ctx.touchedDefs.add(mapping.entityDefinitionId)
 
-    // Field key → id map (for current-value reads under merge strategies).
-    const fields = await getCachedCustomFields(ctx.orgId, mapping.entityDefinitionId)
-    const fieldKeyToId = new Map<string, string>()
-    for (const f of fields) {
-      if (f.systemAttribute) fieldKeyToId.set(f.systemAttribute, f.id)
-      fieldKeyToId.set(f.name, f.id)
-      fieldKeyToId.set(f.id, f.id)
-    }
+    // Resolve every mapped `targetFieldRef` to a concrete field id once — both the
+    // identity lookup and the write set key off this table (§3.3).
+    const refToConcrete = await resolveFieldRefs(ctx, record)
 
     // 1. Resolve identity — exact bind, else strategy bootstrap.
     const bound = await findItem(ctx.db, ctx.connector.id, mapping.row.id, record.externalId)
     let instanceId: string | null = bound?.entityInstanceId ?? null
     if (!instanceId) {
-      const resolved = await resolveIdentity(ctx, mapping, record)
+      const resolved = await resolveIdentity(ctx, mapping, record, refToConcrete)
       instanceId = resolved.instanceId
     }
 
@@ -209,7 +257,7 @@ export const entitySink: EntitySink = {
       mapping,
       record,
       instanceId,
-      fieldKeyToId
+      refToConcrete
     )
 
     // 4. Write — owned uses the bypass handler + provenance; contributing uses

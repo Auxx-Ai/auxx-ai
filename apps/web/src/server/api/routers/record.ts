@@ -5,7 +5,11 @@ import { getCachedResource } from '@auxx/lib/cache'
 import { conditionGroupSchema } from '@auxx/lib/conditions'
 import { BadRequestError } from '@auxx/lib/errors'
 import { getDescendantIds } from '@auxx/lib/field-values'
-import { RESOURCE_TABLE_REGISTRY, UnifiedCrudHandler } from '@auxx/lib/resources'
+import {
+  type LookupCandidate,
+  RESOURCE_TABLE_REGISTRY,
+  UnifiedCrudHandler,
+} from '@auxx/lib/resources'
 import { type FieldId, parseResourceFieldId, resourceFieldIdSchema } from '@auxx/types/field'
 import {
   ENTITY_DEFINITION_TYPES,
@@ -87,28 +91,30 @@ const createInputSchema = z.object({
 /**
  * Input for `record.lookupByField`.
  *
- * Priority-ordered equality lookup by (systemAttribute, value). v1 only
- * accepts `systemAttribute` — no `fieldId` support yet; we'll add it when
- * a custom-field caller lands, to avoid dead API surface on the client.
+ * Priority-ordered equality lookup. A candidate references its field either by
+ * `systemAttribute` (system fields) or by `fieldId` (custom fields, whose
+ * `systemAttribute` is null — e.g. connector-provisioned fields). Data Connectors
+ * are the custom-field caller this `fieldId` variant was always meant for.
  *
  * `limit` caps distinct recordIds across ALL candidates combined (not
  * per-candidate). Default 1 ("exists or not" — the 90% case). Cap at 25
  * so callers can't turn this into a listing endpoint through the side
  * door — beyond 25 the UX should be "search in Auxx".
  */
+const lookupValueSchema = z.union([
+  z.string(),
+  z.number(),
+  z.boolean(),
+  z.array(z.union([z.string(), z.number(), z.boolean()])),
+])
 const lookupByFieldInputSchema = z.object({
   entityDefinitionId: entityDefinitionIdSchema,
   candidates: z
     .array(
-      z.object({
-        systemAttribute: z.string().min(1),
-        value: z.union([
-          z.string(),
-          z.number(),
-          z.boolean(),
-          z.array(z.union([z.string(), z.number(), z.boolean()])),
-        ]),
-      })
+      z.union([
+        z.object({ systemAttribute: z.string().min(1), value: lookupValueSchema }),
+        z.object({ fieldId: z.string().min(1), value: lookupValueSchema }),
+      ])
     )
     .min(1)
     .max(5),
@@ -256,7 +262,8 @@ export const recordRouter = createTRPCRouter({
         const handler = new UnifiedCrudHandler(organizationId, user.id, ctx.db, getSocketId(ctx))
         return await handler.lookupByField({
           entityDefinitionId: input.entityDefinitionId,
-          candidates: input.candidates,
+          // `fieldId` arrives as a plain string from zod; the handler brands it.
+          candidates: input.candidates as LookupCandidate[],
           limit: input.limit,
         })
       } catch (error: unknown) {

@@ -7,9 +7,10 @@
 
 import { type Database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
+import { getFieldDefinitionId, getFieldId, toResourceFieldId } from '@auxx/types/field'
 import { generateId } from '@auxx/utils'
 import { and, eq } from 'drizzle-orm'
-import { getCachedEntityDefId } from '../cache'
+import { getCachedCustomFields, getCachedEntityDefId } from '../cache'
 import { BadRequestError, NotFoundError } from '../errors'
 import { removeConnectorScheduler, syncConnectorScheduler } from './data-connector-scheduler'
 import type { DataConnectorMappingRow, DataConnectorRow, DataConnectorStreamRow } from './service'
@@ -136,6 +137,29 @@ export async function createConnectorFromTemplate(
 }
 
 /**
+ * Assert every concrete `targetFieldRef` belongs to the mapping's own entity def
+ * (a wrong-def ref is unrepresentable past this boundary). The late-bound `@app:`
+ * form carries the app slug in its first segment (resolved at sync time), so it
+ * skips the def-match check; `null` (draft / provisioned-awaiting-ref) is allowed.
+ */
+function assertFieldRefsMatchDef(
+  entityDefinitionId: string | null | undefined,
+  fieldMappings: FieldMapping[] | undefined
+): void {
+  if (!entityDefinitionId || !fieldMappings) return
+  for (const fm of fieldMappings) {
+    const ref = fm.targetFieldRef
+    if (ref == null) continue
+    if (getFieldId(ref).startsWith('@app:')) continue
+    if (getFieldDefinitionId(ref) !== entityDefinitionId) {
+      throw new BadRequestError(
+        `Field mapping targetFieldRef '${ref}' does not belong to entity definition '${entityDefinitionId}'`
+      )
+    }
+  }
+}
+
+/**
  * Materialize a stream's declared template mappings into rows. Streams are no
  * longer auto-seeded with a blank root, so every declared mapping is a fresh
  * insert. v1: contributing targets only — the `@system:*` ref resolves to a real
@@ -152,7 +176,11 @@ async function seedTemplateMappings(
       organizationId,
       mapping.target.entityRef
     )
-    const fieldMappings = buildTemplateFieldMappings(mapping.fields)
+    const fieldMappings = await buildTemplateFieldMappings(
+      organizationId,
+      entityDefinitionId,
+      mapping.fields
+    )
     await addMapping(db, organizationId, {
       dataConnectorStreamId: streamId,
       rootPath: mapping.rootPath,
@@ -188,20 +216,38 @@ async function resolveTemplateEntityRef(
  * as `{path}` (single-brace) — so `source: 'email'` becomes `{ expression: '{email}',
  * sourceFields: { email: 'email' } }`. Explicit `expression`/`sourceFields` pass
  * through verbatim for transforms (e.g. `{created} * 1000`).
+ *
+ * Target resolution: a **reused** field (no `provision` hint) resolves its
+ * template `key` (a systemAttribute or display name) to a concrete
+ * `ResourceFieldId` against the target def now. A **provisioned** field (`provision`
+ * hint) doesn't exist yet → `targetFieldRef: null`; the sync-time provisioning
+ * write-back fills the concrete ref once the field is created.
  */
-function buildTemplateFieldMappings(fields: ConnectorTemplateFieldMapping[]): FieldMapping[] {
+async function buildTemplateFieldMappings(
+  organizationId: string,
+  entityDefinitionId: string,
+  fields: ConnectorTemplateFieldMapping[]
+): Promise<FieldMapping[]> {
+  const defFields = await getCachedCustomFields(organizationId, entityDefinitionId)
+  const fieldIdByKey = new Map<string, string>()
+  for (const fld of defFields) {
+    if (fld.systemAttribute) fieldIdByKey.set(fld.systemAttribute, fld.id)
+    fieldIdByKey.set(fld.name, fld.id)
+  }
+
   return fields.map((f) => {
     const expression = f.expression ?? (f.source ? `{${f.source}}` : '')
     const sourceFields = f.sourceFields ?? (f.source ? { [f.source]: f.source } : {})
+    const reusedFieldId = f.provision ? undefined : fieldIdByKey.get(f.key)
     const mapping: FieldMapping = {
       id: generateId(),
-      targetFieldKey: f.key,
+      targetFieldRef: reusedFieldId ? toResourceFieldId(entityDefinitionId, reusedFieldId) : null,
       expression,
       sourceFields,
     }
     if (f.match) mapping.match = typeof f.match === 'object' ? f.match : {}
-    // Provisioned field's name = its key (provisioned fields carry no
-    // systemAttribute, so the crud layer resolves writes by name).
+    // Provisioned field's name = its key (the stable appFieldKey the sync-time
+    // provisioning + ref write-back match on).
     if (f.provision) mapping.provision = { name: f.key, ...f.provision }
     return mapping
   })
@@ -464,6 +510,7 @@ export async function addMapping(
   input: AddMappingInput
 ): Promise<DataConnectorMappingRow> {
   await loadStreamRow(db, organizationId, input.dataConnectorStreamId)
+  assertFieldRefsMatchDef(input.entityDefinitionId, input.fieldMappings)
   const [row] = await db
     .insert(schema.DataConnectorMapping)
     .values({
@@ -518,7 +565,11 @@ export async function updateMapping(
   mappingId: string,
   patch: UpdateMappingInput
 ): Promise<DataConnectorMappingRow> {
-  await loadMappingRow(db, organizationId, mappingId)
+  const existing = await loadMappingRow(db, organizationId, mappingId)
+  // Validate refs against the EFFECTIVE def (a same-call def change applies first).
+  const effectiveDefId =
+    patch.entityDefinitionId !== undefined ? patch.entityDefinitionId : existing.entityDefinitionId
+  assertFieldRefsMatchDef(effectiveDefId, patch.fieldMappings)
   const [row] = await db
     .update(schema.DataConnectorMapping)
     .set({

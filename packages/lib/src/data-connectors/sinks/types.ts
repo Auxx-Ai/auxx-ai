@@ -2,6 +2,7 @@
 // Shared sync context + sink contract. The sink is the ONLY entity writer.
 
 import type { Database } from '@auxx/database'
+import type { ResourceFieldId } from '@auxx/types/field'
 import type { UnifiedCrudHandler } from '../../resources/crud/unified-handler'
 import type { DataConnectorRow, DecodedMapping, PendingRelation, RunCounters } from '../service'
 
@@ -9,17 +10,22 @@ import type { DataConnectorRow, DecodedMapping, PendingRelation, RunCounters } f
 export interface ProjectedRecord {
   externalId: string
   displayName: string
-  /** Mapped to TARGET field keys (the mapping layer already evaluated CALC). */
+  /**
+   * Mapped values keyed by the binding's `targetFieldRef` (a `ResourceFieldId`,
+   * possibly the `@app:` form). The sink resolves each key to a concrete field id
+   * before writing — see entity-sink's ref pre-pass. The mapping layer already
+   * evaluated CALC.
+   */
   fields: Record<string, unknown>
   /**
    * Secondary identity match values resolved from the SOURCE record (each bound
-   * field flagged `match`), pairing a target field with the source value it must
-   * equal. Pre-resolved by the mapping layer because the sink has no access to the
-   * source subtree. Empty when no field is flagged → the record matches by its
-   * external id only.
+   * field flagged `match`), pairing a target field ref with the source value it
+   * must equal. Pre-resolved by the mapping layer because the sink has no access
+   * to the source subtree. Empty when no field is flagged → the record matches by
+   * its external id only.
    */
   identityCandidates: Array<{
-    targetFieldId: string
+    targetFieldRef: ResourceFieldId
     value: unknown
     normalize?: 'email' | 'phone' | 'domain' | 'none'
   }>

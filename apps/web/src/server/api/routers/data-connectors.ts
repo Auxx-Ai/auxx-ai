@@ -31,6 +31,7 @@ import {
   updateMapping,
   updateStream,
 } from '@auxx/lib/data-connectors'
+import { resourceFieldIdSchema } from '@auxx/types/field'
 import { TRPCError } from '@trpc/server'
 import { z } from 'zod'
 import { adminProcedure, createTRPCRouter, protectedProcedure } from '~/server/api/trpc'
@@ -109,12 +110,13 @@ const mergeStrategySchema = z.enum([
   'ignore',
 ])
 
-// One binding entry. Identity is the stable `id`; `targetFieldKey` is nullable
-// (a null entry is an unassigned draft the runtime skips). `mergeStrategy` is
-// folded in (no parallel map).
+// One binding entry. Identity is the stable `id`; `targetFieldRef` is a canonical
+// `ResourceFieldId` (concrete or the late-bound `@app:` form), nullable (a null
+// entry is an unassigned draft / provisioned field awaiting its ref — the runtime
+// skips it). `mergeStrategy` is folded in (no parallel map).
 const fieldMappingSchema = z.object({
   id: z.string(),
-  targetFieldKey: z.string().nullable(),
+  targetFieldRef: resourceFieldIdSchema.nullable(),
   expression: z.string(),
   sourceFields: z.record(z.string(), z.string()),
   // Present → this bound field is also a secondary identity-match key.

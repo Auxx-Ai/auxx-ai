@@ -96,8 +96,14 @@ export interface StreamRequestConfig {
 export interface FieldMapping {
   /** Stable entry id (generateId). React key + dialog/patch handle; never reused. */
   id: string
-  /** Target field key this binding writes into; `null` = unassigned draft → runtime skips it. */
-  targetFieldKey: string | null
+  /**
+   * Canonical `ResourceFieldId` reference to the target field — concrete
+   * (`${entityDefinitionId}:${fieldId}`) or the late-bound `@app:` form. `null` =
+   * unassigned draft / provisioned field awaiting its concrete ref. Branded
+   * `ResourceFieldId` in the engine `FieldMapping` (`@auxx/lib/data-connectors/types`);
+   * a plain string here (this package can't import tier-1 `@auxx/types`).
+   */
+  targetFieldRef: string | null
   expression: string
   sourceFields: Record<string, string>
   /**

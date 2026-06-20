@@ -11,7 +11,7 @@ import { UnifiedCrudHandler } from '../resources/crud/unified-handler'
 import { invalidateSnapshots } from '../snapshot'
 import { prepareConnectorFetch } from './connector-runtime'
 import { mapRecord } from './map-record'
-import { provisionConnectorMappings } from './provisioning'
+import { backfillProvisionedFieldRefs, provisionConnectorMappings } from './provisioning'
 import { reconcileOrphans } from './reconciliation'
 import { resolveRelationships } from './relationship-pass'
 import {
@@ -77,6 +77,11 @@ export async function runDataConnectorSync(
     const targetedMappings = streams.flatMap((s) => s.mappings)
     if (targetedMappings.length > 0) {
       await provisionConnectorMappings(db, organizationId, dataConnectorId, targetedMappings)
+      // Stamp the concrete `ResourceFieldId` onto each just-provisioned field
+      // mapping (mutates the decoded mappings in place so this run's sink resolves
+      // them; persists for subsequent runs). App connectors resolve `@app:` refs
+      // live in the sink, so they're excluded by the `!== 'app'` guard above.
+      await backfillProvisionedFieldRefs(db, organizationId, dataConnectorId, targetedMappings)
     }
   }
 

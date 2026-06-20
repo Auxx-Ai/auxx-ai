@@ -8,6 +8,7 @@
 // the service layer casts at the read/write boundary.
 
 import type { FieldType } from '@auxx/database/types'
+import type { ResourceFieldId } from '@auxx/types/field'
 import type { RuntimeConnectionData } from '../connections/resolve-connection-for-runtime'
 
 // ── Connector-level config (jsonb on DataConnector) ───────────────────────────
@@ -219,8 +220,15 @@ export type FieldMergeStrategy =
 export interface FieldMapping {
   /** Stable entry id (generateId). React key + dialog/patch handle; never reused. */
   id: string
-  /** Target field key this binding writes into; `null` = unassigned draft → runtime skips it. */
-  targetFieldKey: string | null
+  /**
+   * Canonical reference to the target field this binding writes into — a
+   * single-segment `VarRef`. Concrete (`${entityDefinitionId}:${fieldId}`) for a
+   * bind-to-existing field, or the connection-late-bound `${slug}:@app:${slug}:${key}`
+   * form for an app-declared field (resolved at sync time against the connector's
+   * connection). `null` = unassigned draft (runtime skips it) or a generic-rest
+   * provisioned field awaiting its concrete ref (see {@link FieldMapping.provision}).
+   */
+  targetFieldRef: ResourceFieldId | null
   expression: string
   sourceFields: Record<string, string>
   /**

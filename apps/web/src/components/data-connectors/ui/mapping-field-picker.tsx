@@ -3,6 +3,7 @@
 
 import { FieldType } from '@auxx/database/enums'
 import type { FieldType as FieldTypeType } from '@auxx/database/types'
+import { toResourceFieldId } from '@auxx/types/field'
 import { Button } from '@auxx/ui/components/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
 import {
@@ -57,16 +58,16 @@ interface MappingFieldPickerProps {
   /** The source node being bound — drives the type filter + quick-create seed. */
   sourceType: string
   sourcePath: string
-  /** The currently-bound target field key, if any. */
+  /** The currently-bound target field ref (`ResourceFieldId`), if any. */
   assignedKey: string | undefined
-  /** Resolved label for the bound key (for the chip), if known. */
+  /** Resolved label for the bound ref (for the chip), if known. */
   assignedLabel: string | undefined
-  /** Target keys already bound by other entries — hidden from the list (uniqueness). */
+  /** Target field refs already bound by other entries — hidden (uniqueness). */
   excludeKeys?: Set<string>
   /** Quick-create is wired only for owned defs (plan decision 3). */
   canCreate: boolean
-  /** Bind this source node to the chosen target field key. */
-  onAssign: (fieldKey: string) => void
+  /** Bind this source node to the chosen target field (canonical `ResourceFieldId`). */
+  onAssign: (fieldRef: string) => void
   /** Unbind this source node — surfaced as the in-picker "Don't map" option. */
   onClear: () => void
 }
@@ -118,13 +119,15 @@ export function MappingFieldPicker({
         // computed), whose type accepts this source value, and that no other entry
         // already binds (uniqueness — the array allows dupes, the UI forbids them).
         filterField={(f) =>
-          !excludeKeys?.has(f.key) &&
+          !excludeKeys?.has(f.resourceFieldId ?? toResourceFieldId(entityDefinitionId, f.id)) &&
           isWritableTarget(f) &&
           isSourceTargetCompatible(f.fieldType, sourceType)
         }
         mode='single'
         searchPlaceholder='Search fields…'
-        onSelect={(_ref, field) => onAssign(field.key)}
+        onSelect={(_ref, field) =>
+          onAssign(field.resourceFieldId ?? toResourceFieldId(entityDefinitionId, field.id))
+        }
         // Skip = unbind. Only offered once a field is bound (an unbound source
         // node is already "not mapped").
         onSkip={assignedKey ? onClear : undefined}
@@ -160,9 +163,9 @@ export function MappingFieldPicker({
             seedName={humanize(sourcePath)}
             seedType={inferFieldType(sourcePath, sourceType)}
             onCancel={() => setCreating(false)}
-            onCreated={(fieldKey) => {
+            onCreated={(fieldRef) => {
               setCreating(false)
-              onAssign(fieldKey)
+              onAssign(fieldRef)
             }}
           />
         </PopoverContent>
@@ -187,7 +190,7 @@ function QuickCreateFieldForm({
   seedName: string
   seedType: FieldTypeType
   onCancel: () => void
-  onCreated: (fieldKey: string) => void
+  onCreated: (fieldRef: string) => void
 }) {
   const [name, setName] = useState(seedName)
   const [type, setType] = useState<FieldTypeType>(seedType)
@@ -197,8 +200,8 @@ function QuickCreateFieldForm({
     const trimmed = name.trim()
     if (!trimmed) return
     const field = await create.mutateAsync({ entityDefinitionId, name: trimmed, type })
-    // Custom-field key === name (see useCustomFieldMutations serverField).
-    onCreated(field.name)
+    // Bind by the canonical ResourceFieldId of the just-created field.
+    onCreated(toResourceFieldId(entityDefinitionId, field.id))
   }
 
   return (

@@ -19,6 +19,9 @@ export type {
   CrudResultSuccess,
   FieldChange,
   FindByFieldOptions,
+  LookupByFieldResult,
+  LookupCandidate,
+  LookupMatch,
   TransformedData,
   UpdateRecordOptions,
 } from './crud'

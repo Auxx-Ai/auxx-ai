@@ -201,6 +201,24 @@ export async function resolveAppFieldValue(params: {
 }
 
 /**
+ * Resolve a Data Connector's stored `targetFieldRef` to a concrete
+ * `ResourceFieldId`. A plain `${defId}:${fieldId}` passes through unchanged; the
+ * late-bound `@app:<slug>:<key>` form is resolved against the connector's bound
+ * connection (its `credentialId`). Returns `null` when an `@app:` segment can't
+ * resolve (no bound connection / no provisioned field) — the caller skips that
+ * field/candidate and records a run error. The connection-explicit twin of
+ * {@link resolveAppFieldValue}, decoupled from `ToolContext`/`Subject`.
+ */
+export async function resolveConnectorFieldRef(
+  ref: ResourceFieldId,
+  orgId: string,
+  connectionId: string | undefined
+): Promise<ResourceFieldId | null> {
+  const resolved = await resolveAppSegmentsWith(ref as VarRef, orgId, () => connectionId)
+  return (resolved as ResourceFieldId | null) ?? null
+}
+
+/**
  * Resolve an app field (`@app:<slug>:<key>`) to the org's `CustomField` id.
  *
  * Among the entity's custom fields, pick the app-owned field whose `appFieldKey`

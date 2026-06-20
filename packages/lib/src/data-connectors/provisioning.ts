@@ -16,6 +16,7 @@ import type { FieldType } from '@auxx/database/types'
 import { createScopedLogger } from '@auxx/logger'
 import { createCustomField } from '@auxx/services/custom-fields'
 import { createEntityDefinition } from '@auxx/services/entity-definitions'
+import { getFieldId, toResourceFieldId } from '@auxx/types/field'
 import { and, eq } from 'drizzle-orm'
 import { onCacheEvent } from '../cache/invalidate'
 import { NotFoundError } from '../errors'
@@ -213,12 +214,11 @@ export async function provisionConnectorMappings(
 
     const fields: ProvisionFieldSpec[] = []
     for (const fm of mapping.fieldMappings) {
-      // Unassigned draft (no target yet) — nothing to provision, skip.
-      const key = fm.targetFieldKey
-      if (!key) continue
       if (fm.provision) {
+        // Provisioned field — `targetFieldRef` is null until the post-provision
+        // write-back; the stable `appFieldKey` is the provision name.
         fields.push({
-          appFieldKey: key,
+          appFieldKey: fm.provision.name,
           name: fm.provision.name,
           type: fm.provision.type,
           icon: fm.provision.icon,
@@ -226,11 +226,17 @@ export async function provisionConnectorMappings(
           isUpdatable: false,
           isCreatable: false,
         })
-      } else if (mapping.targetMode === 'owned') {
+        continue
+      }
+      // Unassigned draft (no target yet) — nothing to provision, skip.
+      const ref = fm.targetFieldRef
+      if (!ref) continue
+      if (mapping.targetMode === 'owned') {
+        const fieldId = getFieldId(ref)
         fields.push({
-          appFieldKey: key,
-          name: key,
-          type: fieldTypeFor(mapping.row.id, key),
+          appFieldKey: fieldId,
+          name: fieldId,
+          type: fieldTypeFor(mapping.row.id, fieldId),
           isUpdatable: false,
           isCreatable: false,
         })
@@ -248,4 +254,44 @@ export async function provisionConnectorMappings(
     results.push(result)
   }
   return results
+}
+
+/**
+ * Fill the concrete `ResourceFieldId` on each provisioned field mapping after its
+ * field has been created (the generic-rest provision case — app connectors resolve
+ * their `@app:` refs live in the sink, no write-back). Resolves the field by
+ * `(dataConnectorId, entityDefinitionId, appFieldKey = provision.name)`, stamps
+ * `fm.targetFieldRef`, and persists the mutated `fieldMappings`. Mutates the
+ * decoded mappings in place so the current run's sink sees the resolved refs.
+ */
+export async function backfillProvisionedFieldRefs(
+  db: Database,
+  organizationId: string,
+  dataConnectorId: string,
+  mappings: DecodedMapping[]
+): Promise<void> {
+  for (const mapping of mappings) {
+    let changed = false
+    for (const fm of mapping.fieldMappings) {
+      if (!fm.provision || fm.targetFieldRef != null) continue
+      const field = await db.query.CustomField.findFirst({
+        where: and(
+          eq(schema.CustomField.organizationId, organizationId),
+          eq(schema.CustomField.entityDefinitionId, mapping.entityDefinitionId),
+          eq(schema.CustomField.dataConnectorId, dataConnectorId),
+          eq(schema.CustomField.appFieldKey, fm.provision.name)
+        ),
+        columns: { id: true },
+      })
+      if (!field) continue
+      fm.targetFieldRef = toResourceFieldId(mapping.entityDefinitionId, field.id)
+      changed = true
+    }
+    if (changed) {
+      await db
+        .update(schema.DataConnectorMapping)
+        .set({ fieldMappings: mapping.fieldMappings, updatedAt: new Date() })
+        .where(eq(schema.DataConnectorMapping.id, mapping.row.id))
+    }
+  }
 }
