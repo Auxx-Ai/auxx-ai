@@ -14,6 +14,7 @@ import { useMemo } from 'react'
 import { useAppsContext } from '~/components/apps/providers/apps-context'
 import type { RouterOutputs } from '~/trpc/react'
 import { AppWithStatusIcon } from './app-with-status-icon'
+import { resolveConnectionDisplay } from './connection-display'
 
 /** A single bindable connection as projected by `connections.list`. */
 export type PickerConnection = RouterOutputs['connections']['list'][number]
@@ -23,10 +24,6 @@ export type PickerConnection = RouterOutputs['connections']['list'][number]
  * MCP creds are server-bound, not a fetch credential.
  */
 export type PickerKind = 'app' | 'integration' | 'workflow'
-
-/** Fallback icons when a connection carries no resolved icon. */
-const APP_FALLBACK_ICON = 'package'
-const KEY_FALLBACK_ICON = 'key-round'
 
 interface ConnectionPickerProps {
   /** Currently-bound credentialId. */
@@ -73,17 +70,7 @@ export function ConnectionPicker({
     [connections]
   )
 
-  // app row → app logo + title (hydrated client-side; `avatarUrl` isn't a
-  // credential column); non-app row → the provider brand mark `credentials.list`
-  // resolved on `icon`, else a neutral key fallback.
-  const resolve = (c: PickerConnection) => {
-    const inst = c.appId ? appInstallations.find((i) => i.app.id === c.appId) : undefined
-    const fallback = c.kind === 'app' ? APP_FALLBACK_ICON : (c.icon ?? KEY_FALLBACK_ICON)
-    return {
-      iconId: inst?.app.avatarUrl ?? fallback,
-      title: c.label ?? inst?.app.title ?? c.name,
-    }
-  }
+  const resolve = (c: PickerConnection) => resolveConnectionDisplay(c, appInstallations)
 
   const isEmpty = connections.length === 0
 

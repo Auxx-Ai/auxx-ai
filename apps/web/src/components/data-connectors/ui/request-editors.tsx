@@ -26,7 +26,12 @@ import CodeEditor, { CodeLanguage } from '~/components/workflow/ui/code-editor'
  * stored Record.
  */
 
-const PLAIN_FIELD = { FieldEditor: PlainFieldEditor }
+// No workflow variables here, so override the variable-insert hint placeholders.
+export const PLAIN_FIELD = {
+  FieldEditor: PlainFieldEditor,
+  keyPlaceholder: 'Enter key...',
+  valuePlaceholder: 'Enter value...',
+}
 
 /** Headers / query params — a Record-backed wrapper over the shared KeyValueList. */
 export function RecordKeyValueEditor({

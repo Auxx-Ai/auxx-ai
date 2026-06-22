@@ -50,6 +50,13 @@ export interface HttpRequestFieldContextValue {
   FieldEditor: HttpFieldEditor
   /** Optional; absent ⇒ file/binary body + file key-value branches are hidden. */
   FilePicker?: HttpFilePicker
+  /**
+   * Placeholder for the key/value inputs. Defaults to the workflow variable
+   * hint (`type '{' to insert variable...`); the plain connector surface
+   * overrides these since it has no workflow variables.
+   */
+  keyPlaceholder?: string
+  valuePlaceholder?: string
 }
 
 /**

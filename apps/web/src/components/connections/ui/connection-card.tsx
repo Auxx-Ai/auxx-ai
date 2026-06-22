@@ -1,7 +1,7 @@
 // apps/web/src/components/connections/ui/connection-card.tsx
 'use client'
 
-import { Pencil, RefreshCw, Trash, TriangleAlert } from 'lucide-react'
+import { Pencil, PencilLine, RefreshCw, Trash, TriangleAlert } from 'lucide-react'
 import { AppIcon } from '~/components/apps/ui/app-icon'
 import { AppListCard, type AppListCardMenuItem } from '~/components/apps/ui/app-list-card'
 import type { RouterOutputs } from '~/trpc/react'
@@ -19,6 +19,8 @@ interface ConnectionCardProps {
   onAction?: () => void
   /** Label for the primary action — "Reconnect" (oauth) or "Edit" (secret). */
   actionLabel?: string
+  /** Rename the connection (writes its display label). Hidden when absent. */
+  onRename?: () => void
   /** Remove the connection. */
   onDelete: () => void
 }
@@ -34,6 +36,7 @@ export function ConnectionCard({
   subtitle,
   onAction,
   actionLabel = 'Reconnect',
+  onRename,
   onDelete,
 }: ConnectionCardProps) {
   const title = connection.label ?? connection.name
@@ -50,6 +53,9 @@ export function ConnectionCard({
       icon: actionLabel === 'Edit' ? <Pencil /> : <RefreshCw />,
       onClick: onAction,
     })
+  }
+  if (onRename) {
+    menuItems.push({ label: 'Rename', icon: <PencilLine />, onClick: onRename })
   }
   menuItems.push({ label: 'Delete', icon: <Trash />, onClick: onDelete, destructive: true })
 

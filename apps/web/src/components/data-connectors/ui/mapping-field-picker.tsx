@@ -4,7 +4,7 @@
 import { FieldType } from '@auxx/database/enums'
 import type { FieldType as FieldTypeType } from '@auxx/database/types'
 import { FIELD_TYPE_GROUPS, fieldTypeOptions } from '@auxx/lib/custom-fields/types'
-import { toResourceFieldId } from '@auxx/types/field'
+import { type ResourceFieldId, toResourceFieldId } from '@auxx/types/field'
 import { Button } from '@auxx/ui/components/button'
 import { EntityIcon } from '@auxx/ui/components/icons'
 import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
@@ -129,6 +129,8 @@ export function MappingFieldPicker({
         {view === 'pick' ? (
           <FieldPickerContent
             entityDefinitionId={entityDefinitionId}
+            // Mark the currently-bound field with a check.
+            fieldReferences={assignedKey ? [assignedKey as ResourceFieldId] : []}
             excludeFields={[FieldType.RELATIONSHIP]}
             // Only fields the sync can actually write (creatable + updatable, not
             // computed), whose type accepts this source value, and that no other

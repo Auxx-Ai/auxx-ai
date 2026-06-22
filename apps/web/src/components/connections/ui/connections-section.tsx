@@ -16,6 +16,7 @@ import { AddConnectionDialog } from './add-connection-dialog'
 import { ConnectionCard, type ConnectionRow } from './connection-card'
 import { ConnectionDetailDialog } from './connection-detail-dialog'
 import type { DetailMethod } from './connection-detail-page'
+import { ConnectionRenameDialog } from './connection-rename-dialog'
 import { appTarget, platformTarget } from './connection-targets'
 
 /**
@@ -37,6 +38,7 @@ export function ConnectionsSection() {
 
   const [addOpen, setAddOpen] = useState(false)
   const [editRow, setEditRow] = useState<ConnectionRow | null>(null)
+  const [renameRow, setRenameRow] = useState<ConnectionRow | null>(null)
   const [search, setSearch] = useState('')
   const [confirm, ConfirmDialog] = useConfirm()
 
@@ -138,6 +140,21 @@ export function ConnectionsSection() {
     )
   }
 
+  const handleRenameSubmit = (name: string) => {
+    if (!renameRow) return
+    updateCredential.mutate(
+      { id: renameRow.id, label: name },
+      {
+        onSuccess: () => {
+          setRenameRow(null)
+          invalidate()
+        },
+        onError: (error) =>
+          toastError({ title: 'Error renaming connection', description: error.message }),
+      }
+    )
+  }
+
   const handleDelete = async (row: ConnectionRow) => {
     const ok = await confirm({
       title: 'Delete connection?',
@@ -222,6 +239,7 @@ export function ConnectionsSection() {
                     : 'Edit'
                 }
                 onAction={() => (isPlainSecret(row) ? setEditRow(row) : handleReconnect(row))}
+                onRename={() => setRenameRow(row)}
                 onDelete={() => void handleDelete(row)}
               />
             ))}
@@ -253,6 +271,19 @@ export function ConnectionsSection() {
           pending={updateCredential.isPending}
           submitLabel='Save'
           onSubmit={(payload) => handleEditSubmit(payload.secret ?? '')}
+        />
+      )}
+
+      {/* Rename — writes the connection's display label via connections.update. */}
+      {renameRow && (
+        <ConnectionRenameDialog
+          open={!!renameRow}
+          onOpenChange={(next) => {
+            if (!next) setRenameRow(null)
+          }}
+          currentName={renameRow.label ?? renameRow.name}
+          pending={updateCredential.isPending}
+          onSubmit={handleRenameSubmit}
         />
       )}
 

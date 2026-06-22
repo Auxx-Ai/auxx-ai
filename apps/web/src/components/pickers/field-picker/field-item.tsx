@@ -39,10 +39,6 @@ export const FieldItem = memo(function FieldItem({
 
   // Determine icon based on field type
   const getIcon = () => {
-    if (isSelected) {
-      return <Check className='size-4' />
-    }
-
     if (isRelationship && targetResourceProps) {
       return (
         <EntityIcon iconId={targetResourceProps.icon} color={targetResourceProps.color} size='xs' />
@@ -77,7 +73,16 @@ export const FieldItem = memo(function FieldItem({
         {getIcon()}
         <span>{field.label}</span>
       </div>
-      {canDrillDown && <ChevronRight className='size-4 opacity-50' />}
+      <div className='flex shrink-0 items-center gap-1.5'>
+        {/* Blue rounded check (right) — the selected-row convention shared with the
+            record/resource pickers. */}
+        {isSelected && (
+          <div className='flex size-4 items-center justify-center rounded-full border border-blue-800 bg-info'>
+            <Check className='size-2.5! text-white' strokeWidth={4} />
+          </div>
+        )}
+        {canDrillDown && <ChevronRight className='size-4 opacity-50' />}
+      </div>
     </CommandItem>
   )
 })

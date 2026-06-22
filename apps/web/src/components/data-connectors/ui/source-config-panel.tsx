@@ -8,10 +8,16 @@ import { Section } from '@auxx/ui/components/section'
 import { toastError } from '@auxx/ui/components/toast'
 import { Globe, Plus, Settings2 } from 'lucide-react'
 import { useMemo, useState } from 'react'
-import { generateId, type KeyValue, KeyValueList } from '~/components/global/http-request'
+import {
+  generateId,
+  HttpRequestFieldProvider,
+  type KeyValue,
+  KeyValueList,
+} from '~/components/global/http-request'
 import { readFieldNodes, SchemaField, seedDefaults } from '~/components/global/schema-form'
 import { api } from '~/trpc/react'
 import { useRegisterSaver } from '../hooks/use-connector-edits'
+import { PLAIN_FIELD } from './request-editors'
 
 /** Order-independent serialization for dirty comparison (header order is cosmetic). */
 function canonRecord(record: Record<string, string>): string {
@@ -141,7 +147,9 @@ function GenericRestSource({
           </Button>
         }>
         <div className='px-1'>
-          <KeyValueList readonly={false} list={headers} onChange={setHeaders} onAdd={addRow} />
+          <HttpRequestFieldProvider value={PLAIN_FIELD}>
+            <KeyValueList readonly={false} list={headers} onChange={setHeaders} onAdd={addRow} />
+          </HttpRequestFieldProvider>
         </div>
       </Section>
     </div>

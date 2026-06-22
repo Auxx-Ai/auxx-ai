@@ -6,13 +6,6 @@ import { toResourceFieldId } from '@auxx/types/field'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { EntityIcon } from '@auxx/ui/components/icons'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@auxx/ui/components/select'
 import { SimpleTooltip } from '@auxx/ui/components/tooltip'
 import { GridTreeRow, TreeRowButton } from '@auxx/ui/components/tree-row'
 import { generateId } from '@auxx/utils'
@@ -34,7 +27,8 @@ import { BranchRow } from './branch-row'
 import { FieldCalcDialog } from './field-calc-dialog'
 import { MAPPING_COLS } from './mapping-columns'
 import { MappingFieldPicker } from './mapping-field-picker'
-import { MERGE_OPTIONS, SourceLeafRow } from './source-leaf-row'
+import { MergeStrategySelect } from './merge-strategy-select'
+import { SourceLeafRow } from './source-leaf-row'
 
 type Mapping = RouterOutputs['dataConnector']['listStreams'][number]['mappings'][number]
 
@@ -647,23 +641,16 @@ function FormulaRow({
           onAssign={onRetarget}
           onClear={onClear}
         />,
-        <div key='actions' className='flex w-full items-center gap-2 px-2'>
-          {/* Spacer aligns the merge picker with the leaf rows' (which reserve an
-              Identifier slot here). */}
-          <div className='w-20 shrink-0' />
-          <Select value={mergeStrategy} onValueChange={onMergeChange}>
-            <SelectTrigger variant='transparent' size='sm' className='h-9 w-28 text-xs'>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {MERGE_OPTIONS.map((o) => (
-                <SelectItem key={o.value} value={o.value}>
-                  {o.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <TreeRowButton tooltipText='Remove formula' onClick={onClear}>
+        <div key='actions' className='flex w-full items-center gap-2 pl-2 pr-1'>
+          {/* Merge on the left; the trash floats right (ml-auto) so it lines up
+              with the leaf/header rows' clear. No Identifier — a formula has no
+              single source path to match identity on. */}
+          <MergeStrategySelect value={mergeStrategy} onValueChange={onMergeChange} />
+          <TreeRowButton
+            variant='destructive'
+            className='ml-auto'
+            tooltipText='Remove formula'
+            onClick={onClear}>
             <X />
           </TreeRowButton>
         </div>,
