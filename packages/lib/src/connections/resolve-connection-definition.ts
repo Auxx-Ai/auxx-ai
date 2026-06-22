@@ -99,10 +99,68 @@ export async function loadDefinitionForCredential(
 }
 
 /**
+ * Decide whether a connection MUST bring its own OAuth client, and why (§3.1).
+ * "Force BYO" fires for either reason, collapsed into one signal:
+ *  - `no-platform-client` — the def has no platform client (its env var was unset at
+ *    seed time, so the column is blank); a column null-check IS the env-presence check.
+ *  - `pending-approval`   — a platform client exists but its app is not yet verified
+ *    (`platformClientApproved=false`, e.g. Google restricted scopes).
+ *
+ * The gate decides *required vs optional*; `resolveOAuth2Client` decides *which client
+ * is used*. No per-provider code — works for any OAuth2 def.
+ */
+export function resolveOwnClientRequirement(def: {
+  oauth2ClientId: string | null
+  oauth2ClientSecret: string | null
+  platformClientApproved: boolean
+}): {
+  requiresOwnClient: boolean
+  reason: 'no-platform-client' | 'pending-approval' | null
+} {
+  const platformClientPresent = !!def.oauth2ClientId && !!def.oauth2ClientSecret
+  if (!platformClientPresent) return { requiresOwnClient: true, reason: 'no-platform-client' }
+  if (!def.platformClientApproved) return { requiresOwnClient: true, reason: 'pending-approval' }
+  return { requiresOwnClient: false, reason: null }
+}
+
+/**
+ * Resolve which OAuth client id/secret a connection uses (§3.2). Precedence:
+ * **per-credential `clientId`/`clientSecret` vars win when present, else the def's
+ * platform client** (decrypted + interpolated by `interpolateConnectionFields`). This is
+ * the single home of the BYO-client override — called from authorize, callback, and
+ * refresh so all three agree on the client.
+ */
+export function resolveOAuth2Client(
+  def: {
+    oauth2ClientId: string | null
+    oauth2ClientSecret: string | null
+    oauth2AuthorizeUrl?: string | null
+    oauth2AccessTokenUrl?: string | null
+    oauth2RefreshUrl?: string | null
+  },
+  variables: Record<string, string>
+): { clientId: string; clientSecret: string } {
+  const resolved = interpolateConnectionFields(
+    {
+      oauth2AuthorizeUrl: def.oauth2AuthorizeUrl ?? null,
+      oauth2AccessTokenUrl: def.oauth2AccessTokenUrl ?? null,
+      oauth2RefreshUrl: def.oauth2RefreshUrl ?? null,
+      oauth2ClientId: def.oauth2ClientId,
+      oauth2ClientSecret: def.oauth2ClientSecret,
+    },
+    variables
+  )
+  return {
+    clientId: variables.clientId || resolved.clientId || '',
+    clientSecret: variables.clientSecret || resolved.clientSecret || '',
+  }
+}
+
+/**
  * Resolve the concrete OAuth2 token-refresh config for a definition + a credential's
- * connection variables. Applies the §9.1 bring-your-own-OAuth2 fallback: when the
- * definition's URLs / client creds are blank (the generic `oAuth2Api` row), they are
- * taken from the credential-stored variables instead.
+ * connection variables. Client id/secret follow the §3.2 precedence (per-credential
+ * vars win), and the §9.1 bring-your-own-OAuth2 URL fallback fills blank URLs from the
+ * credential-stored variables (the generic `oAuth2Api` row).
  */
 export function resolveOAuth2RefreshConfig(
   def: ConnectionDefinitionForRefresh,
@@ -116,13 +174,12 @@ export function resolveOAuth2RefreshConfig(
   scopes: string[]
 } {
   const resolved = interpolateConnectionFields(def, variables)
+  const { clientId, clientSecret } = resolveOAuth2Client(def, variables)
 
-  // Bring-your-own-OAuth2 fallback (§9.1): the generic provider stores its URLs and
-  // client creds per-credential, so fill blanks from the connection variables.
+  // Bring-your-own-OAuth2 URL fallback (§9.1): the generic provider stores its URLs
+  // per-credential, so fill blanks from the connection variables.
   const accessTokenUrl = resolved.accessTokenUrl || variables.accessTokenUrl || ''
   const refreshUrl = resolved.refreshUrl || variables.refreshUrl || ''
-  const clientId = resolved.clientId || variables.clientId || ''
-  const clientSecret = resolved.clientSecret || variables.clientSecret || ''
 
   return {
     accessTokenUrl,

@@ -1576,6 +1576,20 @@
       "when": 1781924418328,
       "tag": "0224_drop_ai_inline_credentials",
       "breakpoints": true
+    },
+    {
+      "idx": 225,
+      "version": "7",
+      "when": 1782157570062,
+      "tag": "0225_channels_onto_connections_phase1",
+      "breakpoints": true
+    },
+    {
+      "idx": 226,
+      "version": "7",
+      "when": 1782167776455,
+      "tag": "0226_integration_unique_by_provider",
+      "breakpoints": true
     }
   ]
 }

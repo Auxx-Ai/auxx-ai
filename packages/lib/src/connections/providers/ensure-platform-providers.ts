@@ -25,6 +25,12 @@ function toRowValues(def: PlatformProviderDef): Record<string, unknown> {
   const clientSecret = def.systemClientSecretEnv
     ? process.env[def.systemClientSecretEnv]
     : undefined
+  // Approval gate (§3.1): the platform client is usable unless its env flag is an
+  // explicit 'false'. Unset → true (ops continuity), so providers without the flag
+  // keep working with their platform client.
+  const platformClientApproved = def.systemClientApprovedEnv
+    ? process.env[def.systemClientApprovedEnv] !== 'false'
+    : true
 
   return {
     providerKey: def.providerKey,
@@ -39,6 +45,7 @@ function toRowValues(def: PlatformProviderDef): Record<string, unknown> {
     oauth2Scopes: def.oauth2Scopes ?? [],
     oauth2TokenRequestAuthMethod: def.oauth2TokenRequestAuthMethod ?? 'request-body',
     oauth2Features: def.oauth2Features ?? {},
+    platformClientApproved,
     connectionVariables: def.connectionVariables ?? [],
     authApply: def.authApply ?? null,
     baseUrlTemplate: def.baseUrlTemplate ?? null,

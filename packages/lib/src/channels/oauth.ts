@@ -4,9 +4,7 @@ import crypto from 'node:crypto'
 import { BadRequestError } from '../errors'
 import { createScopedLogger } from '../logger'
 import { FacebookOAuthService } from '../providers/facebook/facebook-oauth'
-import { GoogleOAuthService } from '../providers/google/google-oauth'
 import { InstagramOAuthService } from '../providers/instagram/instagram-oauth'
-import { OutlookOAuthService } from '../providers/outlook/outlook-oauth'
 import type { ChannelProviderType } from '../providers/types'
 import { Result, type TypedResult } from '../result'
 import type { ChannelCtx } from './types'
@@ -15,6 +13,10 @@ const logger = createScopedLogger('channels.oauth')
 
 /**
  * Get OAuth URL for the given provider. `userId` is required.
+ *
+ * Gmail/Outlook connect through the unified connections OAuth flow (the generic
+ * `/api/connections/[id]/oauth2/authorize` route); this dispatcher now only serves the
+ * social channels (Facebook / Instagram) that still use the legacy per-provider flow.
  */
 export async function getAuthUrl(
   ctx: ChannelCtx & { userId: string },
@@ -32,20 +34,6 @@ export async function getAuthUrl(
 
   try {
     switch (provider) {
-      case 'google': {
-        authUrl = await GoogleOAuthService.getAuthUrl(ctx.organizationId, ctx.userId, {
-          redirectPath,
-          csrfToken,
-        })
-        break
-      }
-      case 'outlook': {
-        authUrl = await OutlookOAuthService.getAuthUrl(ctx.organizationId, ctx.userId, {
-          redirectPath,
-          csrfToken,
-        })
-        break
-      }
       case 'facebook': {
         const facebookOAuthService = FacebookOAuthService.getInstance()
         authUrl = await facebookOAuthService.getAuthUrl(ctx.organizationId, ctx.userId, {

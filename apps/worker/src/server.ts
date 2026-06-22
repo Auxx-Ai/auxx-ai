@@ -3,6 +3,7 @@
 import { getDevPort } from '@auxx/config/server'
 import { configService } from '@auxx/credentials'
 import { closePools } from '@auxx/database'
+import { registerChannelHooks } from '@auxx/lib/channels'
 import { closeAllQueues, closeFlowProducer } from '@auxx/lib/jobs/queues'
 import { shutdownPostHog } from '@auxx/lib/posthog/posthog-client'
 import { serve } from '@hono/node-server'
@@ -26,6 +27,7 @@ let inboundEmailPoller: InboundEmailPoller | null = null
 // --- Wrap async setup in an async function ---
 async function initializeApp() {
   await configService.init()
+  registerChannelHooks()
 
   console.log('Setting up schedules...')
   await setupSchedules()

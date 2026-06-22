@@ -4,7 +4,11 @@ import { database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { eq } from 'drizzle-orm'
 import { google } from 'googleapis'
-import { getChannelTokens } from '../../providers/channel-token-accessor'
+import {
+  forceRefreshChannelToken,
+  getChannelAccessToken,
+  getChannelTokens,
+} from '../../providers/channel-token-accessor'
 import { GoogleOAuthService } from '../../providers/google/google-oauth'
 import { ReauthenticationRequiredError } from '../errors-handlers'
 import type { LabelProvider, ProviderLabel } from './label-provider.interface'
@@ -35,13 +39,15 @@ export class GmailLabelProvider implements LabelProvider {
         throw new Error('Integration not found')
       }
 
-      // Get tokens from encrypted credentials
+      // Get tokens from encrypted credentials; overlay a resolver-served fresh access
+      // token (§4) while keeping the refresh token for the SDK fallback.
       const tokens = await getChannelTokens(this.integrationId)
+      const freshAccessToken = await getChannelAccessToken(this.integrationId)
 
       // Get authenticated client from the OAuth service
       const { client: authClient } = await GoogleOAuthService.getAuthenticatedClientForOrg(
         this.organizationId,
-        tokens
+        { ...tokens, accessToken: freshAccessToken ?? tokens.accessToken }
       )
       this.client = authClient
 
@@ -55,9 +61,8 @@ export class GmailLabelProvider implements LabelProvider {
 
   async refreshAccessToken(): Promise<void> {
     try {
-      await GoogleOAuthService.refreshTokens(this.integrationId)
-
-      // Re-initialize with refreshed token
+      // Force a refresh through the connection layer, then re-initialize with the fresh token.
+      await forceRefreshChannelToken(this.integrationId)
       await this.initialize()
     } catch (error) {
       logger.error('Error refreshing access token:', { error })

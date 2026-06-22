@@ -5,6 +5,7 @@ export {
 export type { ChannelTokens } from './channel-token-accessor'
 export {
   deleteChannelTokens,
+  getChannelAccessToken,
   getChannelTokens,
   setChannelTokens,
 } from './channel-token-accessor'

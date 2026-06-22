@@ -9,14 +9,16 @@ import {
   CardHeader,
   CardTitle,
 } from '@auxx/ui/components/card'
+import { Input } from '@auxx/ui/components/input'
+import { Label } from '@auxx/ui/components/label'
 import { toastError } from '@auxx/ui/components/toast'
 import { ArrowLeft } from 'lucide-react'
 import { useRouter } from 'next/navigation'
+import { useState } from 'react'
 import SettingsPage from '~/components/global/settings-page'
 import { api } from '~/trpc/react'
 import ImapConnectForm from './imap-connect-form'
 import { getIntegrationProviderIcon } from './integration-table'
-import ProviderCredentialsForm from './provider-credentials-form'
 
 interface IntegrationFormProps {
   type: string
@@ -28,35 +30,45 @@ interface IntegrationFormProps {
  */
 export default function IntegrationForm({ type }: IntegrationFormProps) {
   const router = useRouter()
+
+  // Gmail/Outlook connect via the unified connections OAuth flow.
+  const isOAuthChannel = type === 'google' || type === 'outlook'
+  const { data: prep, isLoading: isLoadingPrep } = api.channel.prepareConnect.useQuery(
+    { provider: type as 'google' | 'outlook' },
+    { enabled: isOAuthChannel }
+  )
+  const [clientId, setClientId] = useState('')
+  const [clientSecret, setClientSecret] = useState('')
+  const [redirecting, setRedirecting] = useState(false)
+
+  // Facebook/Instagram still use the legacy per-provider OAuth flow.
   const getAuthUrl = api.channel.getAuthUrl.useMutation({
     onError: (error) => {
       toastError({ title: 'Error generating authentication URL', description: error.message })
     },
   })
 
-  // For OAuth providers (google/outlook), check credential status
-  const isOAuthProvider = type === 'google' || type === 'outlook'
-  const { data: credentialStatus, isLoading: isLoadingStatus } =
-    api.channel.getProviderCredentialStatus.useQuery(
-      { provider: type as 'google' | 'outlook' },
-      { enabled: isOAuthProvider }
-    )
-
-  // Handle OAuth connection
-  const handleOAuthConnect = () => {
+  const handleLegacyOAuthConnect = () => {
     getAuthUrl.mutate(
-      {
-        provider: type as any,
-        redirectPath: '/app/settings/channels',
-      },
+      { provider: type as any, redirectPath: '/app/settings/channels' },
       {
         onSuccess: (data) => {
-          if (data.authUrl) {
-            window.location.href = data.authUrl
-          }
+          if (data.authUrl) window.location.href = data.authUrl
         },
       }
     )
+  }
+
+  const handleChannelConnect = () => {
+    if (!prep) return
+    const url = new URL(prep.authorizeUrl, window.location.origin)
+    url.searchParams.set('returnTo', '/app/settings/channels')
+    if (prep.requiresOwnClient) {
+      url.searchParams.set('var_clientId', clientId.trim())
+      url.searchParams.set('var_clientSecret', clientSecret.trim())
+    }
+    setRedirecting(true)
+    window.location.href = url.toString()
   }
 
   // Handle going back
@@ -67,10 +79,10 @@ export default function IntegrationForm({ type }: IntegrationFormProps) {
   // Render the form based on integration type
   const renderForm = () => {
     switch (type.toLowerCase()) {
-      // OAuth-based integrations that support BYOC
+      // OAuth email channels — routed through the unified connections flow.
       case 'google':
       case 'outlook': {
-        if (isLoadingStatus) {
+        if (isLoadingPrep || !prep) {
           return (
             <div className='flex items-center justify-center p-8'>
               <div className='text-sm text-muted-foreground'>Loading...</div>
@@ -78,23 +90,11 @@ export default function IntegrationForm({ type }: IntegrationFormProps) {
           )
         }
 
-        // Show credential form if platform credentials aren't available and org has no custom creds
-        const needsCustomCredentials =
-          !credentialStatus?.platformCredentialsAvailable && !credentialStatus?.hasCustomCredentials
+        const needsOwnClient = prep.requiresOwnClient
+        const ownClientReady = !needsOwnClient || (!!clientId.trim() && !!clientSecret.trim())
 
-        if (needsCustomCredentials) {
-          return (
-            <ProviderCredentialsForm
-              provider={type as 'google' | 'outlook'}
-              onCredentialsSaved={handleOAuthConnect}
-              onBack={handleBack}
-            />
-          )
-        }
-
-        // Platform credentials available or org already has custom creds — show normal connect
         return (
-          <div className='flex flex-col space-y-1.5 p-3'>
+          <div className='flex flex-col space-y-3 p-3'>
             <div className='flex flex-col space-y-1.5'>
               <div className='flex items-center space-x-2'>
                 {getIntegrationProviderIcon(type, 'size-6')}
@@ -104,22 +104,41 @@ export default function IntegrationForm({ type }: IntegrationFormProps) {
                 Connect your {type} account to start receiving and managing messages
               </div>
             </div>
-            {credentialStatus?.hasCustomCredentials && (
-              <div className='rounded-md border p-2 text-xs text-muted-foreground'>
-                Using your {credentialStatus.displayName} credentials
-                {credentialStatus.clientId && (
-                  <span className='ml-1 font-mono'>
-                    ({credentialStatus.clientId.slice(0, 12)}...)
-                  </span>
-                )}
+
+            {needsOwnClient ? (
+              <div className='space-y-2 rounded-md border p-3'>
+                <p className='text-xs text-muted-foreground'>
+                  {prep.ownClientReason === 'pending-approval'
+                    ? `Our platform ${type} app is pending verification — connect with your own OAuth client for now.`
+                    : `No platform ${type} app is configured — enter your own OAuth client credentials.`}
+                </p>
+                <div className='space-y-1.5'>
+                  <Label htmlFor='clientId'>Client ID</Label>
+                  <Input
+                    id='clientId'
+                    value={clientId}
+                    onChange={(e) => setClientId(e.target.value)}
+                    placeholder='Your OAuth client id'
+                  />
+                </div>
+                <div className='space-y-1.5'>
+                  <Label htmlFor='clientSecret'>Client Secret</Label>
+                  <Input
+                    id='clientSecret'
+                    type='password'
+                    value={clientSecret}
+                    onChange={(e) => setClientSecret(e.target.value)}
+                    placeholder='Your OAuth client secret'
+                  />
+                </div>
               </div>
-            )}
-            <div className='flex items-center '>
-              <p className='mb-4 text-sm text-muted-foreground'>
+            ) : (
+              <p className='text-sm text-muted-foreground'>
                 Click the button below to authorize access to your {type} account. You will be
                 redirected to {type} to complete the authorization process.
               </p>
-            </div>
+            )}
+
             <div className='flex justify-between'>
               <Button type='button' variant='outline' onClick={handleBack}>
                 <ArrowLeft />
@@ -127,9 +146,9 @@ export default function IntegrationForm({ type }: IntegrationFormProps) {
               </Button>
               <Button
                 variant='info'
-                onClick={handleOAuthConnect}
-                disabled={getAuthUrl.isPending}
-                loading={getAuthUrl.isPending}
+                onClick={handleChannelConnect}
+                disabled={!ownClientReady || redirecting}
+                loading={redirecting}
                 loadingText='Connecting...'>
                 {`Connect to ${type}`}
               </Button>
@@ -138,7 +157,7 @@ export default function IntegrationForm({ type }: IntegrationFormProps) {
         )
       }
 
-      // Other OAuth-based integrations (no BYOC support yet)
+      // Other OAuth-based integrations (legacy per-provider flow).
       case 'facebook':
       case 'instagram':
         return (
@@ -165,7 +184,7 @@ export default function IntegrationForm({ type }: IntegrationFormProps) {
               </Button>
               <Button
                 variant='info'
-                onClick={handleOAuthConnect}
+                onClick={handleLegacyOAuthConnect}
                 disabled={getAuthUrl.isPending}
                 loading={getAuthUrl.isPending}
                 loadingText='Connecting...'>

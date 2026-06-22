@@ -16,10 +16,18 @@ export {
   refreshCredentialTokens,
 } from './oauth2-token-grants'
 export {
+  type PostConnectHook,
+  type PostConnectHookContext,
+  registerPostConnectHook,
+  runPostConnectHook,
+} from './post-connect-hooks'
+export {
   type ConnectionDefinitionForRefresh,
   type CredentialOwner,
   loadDefinitionForCredential,
+  resolveOAuth2Client,
   resolveOAuth2RefreshConfig,
+  resolveOwnClientRequirement,
 } from './resolve-connection-definition'
 export {
   type ResolveConnectionError,

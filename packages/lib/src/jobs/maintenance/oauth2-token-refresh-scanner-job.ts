@@ -4,10 +4,18 @@ import { revealSecrets } from '@auxx/credentials/store'
 import { database as db, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import type { Job } from 'bullmq'
-import { and, eq, isNotNull } from 'drizzle-orm'
+import { and, eq, isNotNull, lte } from 'drizzle-orm'
 import { getQueue, Queues } from '../queues'
 
 const logger = createScopedLogger('oauth2-token-refresh-scanner-job')
+
+/**
+ * Proactive-refresh buffer for channel (kind:'integration') credentials. The mail defs
+ * (gmail/outlookMail) set no oauth2RefreshTokenIntervalSeconds — channels are scanned by
+ * expiry directly, mirroring the old channel-token-refresh-scanner's 30-min window so the
+ * Gmail watch / Graph subscription ingestion path always has a warm token (§8).
+ */
+const INTEGRATION_REFRESH_BUFFER_MS = 30 * 60 * 1000
 
 /** Scanner job payload schema */
 interface OAuth2TokenRefreshScannerJobData {
@@ -225,6 +233,82 @@ export const oauth2TokenRefreshScannerJob = async (job: Job<OAuth2TokenRefreshSc
           definitionId: definition.id,
           appId: definition.appId,
           mcpServerId: definition.mcpServerId,
+          error: error instanceof Error ? error.message : String(error),
+        })
+      }
+    }
+
+    // Channel (kind:'integration') credentials: scanned by expiry directly (no def interval).
+    // Only those linked to a ConnectionDefinition resolve a refresh; unlinked legacy rows are
+    // covered by the SDK-side path until they're reconnected (§9.1).
+    await job.updateProgress(80)
+    const integrationCutoff = new Date(now.getTime() + INTEGRATION_REFRESH_BUFFER_MS)
+    const integrationCredentials = await db.query.Credential.findMany({
+      columns: {
+        id: true,
+        organizationId: true,
+        expiresAt: true,
+        lastRefreshFailureAt: true,
+        consecutiveRefreshFailures: true,
+      },
+      where: and(
+        eq(schema.Credential.kind, 'integration'),
+        isNotNull(schema.Credential.connectionDefinitionId),
+        isNotNull(schema.Credential.expiresAt),
+        lte(schema.Credential.expiresAt, integrationCutoff)
+      ),
+      limit: batchSize,
+    })
+
+    for (const credential of integrationCredentials) {
+      try {
+        stats.connectionsScanned++
+
+        const isCircuitOpen =
+          credential.consecutiveRefreshFailures >= 5 &&
+          credential.lastRefreshFailureAt &&
+          now.getTime() - credential.lastRefreshFailureAt.getTime() < 24 * 60 * 60 * 1000
+        if (isCircuitOpen) {
+          stats.skippedCircuitBreaker++
+          continue
+        }
+
+        const revealed = await revealSecrets<{ refreshToken?: string }>(
+          credential.id,
+          credential.organizationId
+        )
+        if (revealed.isErr()) {
+          stats.errors++
+          continue
+        }
+        if (!revealed.value.secrets.refreshToken) {
+          stats.skippedNoRefreshToken++
+          continue
+        }
+
+        if (!dryRun) {
+          await oauth2RefreshQueue.add(
+            'oauth2TokenRefreshJob',
+            {
+              credentialId: credential.id,
+              organizationId: credential.organizationId,
+              previousFailureCount: credential.consecutiveRefreshFailures,
+              attemptNumber: 1,
+            },
+            {
+              jobId: `oauth2-refresh-${credential.id}-${now.getTime()}`,
+              attempts: 3,
+              backoff: { type: 'exponential', delay: 60000 },
+              removeOnComplete: { count: 100 },
+              removeOnFail: { count: 500 },
+            }
+          )
+        }
+        stats.refreshJobsEnqueued++
+      } catch (error) {
+        stats.errors++
+        logger.error('Error processing integration credential', {
+          credentialId: credential.id,
           error: error instanceof Error ? error.message : String(error),
         })
       }

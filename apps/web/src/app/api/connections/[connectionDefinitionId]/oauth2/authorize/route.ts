@@ -3,7 +3,11 @@
 import { WEBAPP_URL } from '@auxx/config/urls'
 import type { OAuth2Features } from '@auxx/database'
 import { database as db } from '@auxx/database'
-import { resolveConnectionForRuntime } from '@auxx/lib/connections'
+import {
+  resolveConnectionForRuntime,
+  resolveOAuth2Client,
+  resolveOwnClientRequirement,
+} from '@auxx/lib/connections'
 import { createScopedLogger } from '@auxx/logger'
 import { getRedisClient } from '@auxx/redis'
 import { interpolateConnectionFields } from '@auxx/services/app-connections'
@@ -57,6 +61,20 @@ export async function GET(
   const returnTo = searchParams.get('returnTo')
   const name = searchParams.get('name') // credential display name
   const mode = searchParams.get('mode') === 'popup' ? 'popup' : 'redirect'
+
+  // Additive scopes for incremental grants (e.g. the calendar-readonly grant layered onto an
+  // existing Gmail connection). Merged with the definition's scopes for this authorize only.
+  const scopeAdd = searchParams
+    .getAll('scope_add')
+    .flatMap((s) => s.split(','))
+    .map((s) => s.trim())
+    .filter(Boolean)
+
+  // Opaque post-connect context (`pc_*`) handed to the provider's post-connect hook via `extra`.
+  const postConnect: Record<string, string> = {}
+  for (const [key, value] of searchParams.entries()) {
+    if (key.startsWith('pc_') && value) postConnect[key.slice(3)] = value
+  }
 
   // Validate returnTo: must be a relative path, not protocol-relative
   const validReturnTo = returnTo?.startsWith('/') && !returnTo.startsWith('//') ? returnTo : null
@@ -131,8 +149,27 @@ export async function GET(
       if (value) connectionVariables[varDef.key] = value
     }
 
-    // Interpolate the definition's OAuth fields with the variables
+    // Approval gate (§3.1): when the platform client is unusable (absent or pending
+    // verification), the connection MUST bring its own client id/secret. Enforce
+    // server-side — the connect dialog already requires the fields, but never trust it.
+    const ownClient = resolveOwnClientRequirement(connDef)
+    if (
+      ownClient.requiresOwnClient &&
+      !(connectionVariables.clientId && connectionVariables.clientSecret)
+    ) {
+      return NextResponse.json(
+        {
+          error: 'This connection requires your own OAuth client id and secret',
+          reason: ownClient.reason,
+        },
+        { status: 400 }
+      )
+    }
+
+    // Interpolate the definition's OAuth fields with the variables. Client id/secret
+    // follow the §3.2 precedence (per-credential vars win over the platform client).
     const resolved = interpolateConnectionFields(connDef, connectionVariables)
+    const { clientId } = resolveOAuth2Client(connDef, connectionVariables)
 
     // Store state in Redis (10-minute TTL)
     const redis = await getRedisClient()
@@ -150,17 +187,18 @@ export async function GET(
         ...(codeVerifier && { codeVerifier }),
         ...(validReturnTo && { returnTo: validReturnTo }),
         ...(Object.keys(connectionVariables).length > 0 && { connectionVariables }),
+        ...(Object.keys(postConnect).length > 0 && { postConnect }),
         mode,
         originOfOpener,
       })
     )
 
     const callbackBase = features.callbackBaseUrl || OAUTH_REDIRECT_BASE
-    const scopes = connDef.oauth2Scopes || []
+    const scopes = [...new Set([...(connDef.oauth2Scopes || []), ...scopeAdd])]
     const googleParams = getGoogleOfflineParams(resolved.authorizeUrl)
 
     const authUrl = new URL(resolved.authorizeUrl)
-    authUrl.searchParams.set('client_id', resolved.clientId)
+    authUrl.searchParams.set('client_id', clientId)
     authUrl.searchParams.set(
       'redirect_uri',
       `${callbackBase}/api/connections/${defParam}/oauth2/callback`

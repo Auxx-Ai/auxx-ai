@@ -54,6 +54,13 @@ export type PlatformProviderDef = {
   systemClientIdEnv?: string
   /** Platform env var holding the OAuth client secret (encrypted into the row at seed time). */
   systemClientSecretEnv?: string
+  /**
+   * Platform env var ('true'/'false') gating whether the platform's own OAuth client
+   * is usable for this provider, or every connection must bring its own (e.g. Google
+   * restricted scopes pending app verification). Seeded into
+   * ConnectionDefinition.platformClientApproved; defaults true when the env is unset.
+   */
+  systemClientApprovedEnv?: string
 
   /** Connect-form fields + {key} interpolation variables. */
   connectionVariables?: ConnectionVariable[]

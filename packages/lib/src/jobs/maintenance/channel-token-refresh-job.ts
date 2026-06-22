@@ -6,8 +6,7 @@ import { createScopedLogger } from '@auxx/logger'
 import type { Job } from 'bullmq'
 import { and, eq, isNull } from 'drizzle-orm'
 import { AuthErrorHandler } from '../../providers/auth-error-handler'
-import { GoogleOAuthService } from '../../providers/google/google-oauth'
-import { OutlookOAuthService } from '../../providers/outlook/outlook-oauth'
+import { forceRefreshChannelToken } from '../../providers/channel-token-accessor'
 import { ProviderRegistryService } from '../../providers/provider-registry-service'
 
 const logger = createScopedLogger('channel-token-refresh-job')
@@ -72,18 +71,14 @@ export const channelTokenRefreshJob = async (
       return { ...result, errors: ['Channel disabled'] }
     }
 
-    // Refresh access token
+    // Refresh access token through the unified connection layer (single-flight; also covered
+    // proactively by the oauth2-token-refresh-scanner integration pass — this stays as a
+    // belt-and-braces refresh before webhook renewal).
     if (refreshToken) {
       try {
-        if (provider === 'google') {
-          await GoogleOAuthService.refreshTokens(integrationId)
-          result.tokenRefreshed = true
-          logger.info('Successfully refreshed Google token', { integrationId })
-        } else if (provider === 'outlook') {
-          await OutlookOAuthService.refreshTokens(integrationId)
-          result.tokenRefreshed = true
-          logger.info('Successfully refreshed Outlook token', { integrationId })
-        }
+        await forceRefreshChannelToken(integrationId)
+        result.tokenRefreshed = true
+        logger.info('Refreshed channel token via connection layer', { integrationId, provider })
 
         // Update auth status to healthy and clear any prior failure streak
         await db

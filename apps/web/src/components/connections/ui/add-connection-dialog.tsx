@@ -33,6 +33,9 @@ type Method = {
   connectionType: string
   global: boolean
   connectionVariables: AppInstallation['methods'][number]['connectionVariables']
+  /** OAuth approval gate (§3.1): this connection must bring its own client id/secret. */
+  requiresOwnClient?: boolean
+  ownClientReason?: 'no-platform-client' | 'pending-approval' | null
 }
 
 /** A gallery row — either an installed app or a platform provider — carrying its source. */
@@ -194,7 +197,11 @@ export function AddConnectionDialog({
         description: p.description ?? null,
         connectionType: p.connectionType,
         global: p.global ?? false,
+        // `connectionVariables` are already gated server-side (§3.1): BYO client fields
+        // dropped when the platform client is usable, forced required when it must BYO.
         connectionVariables: p.connectionVariables ?? [],
+        requiresOwnClient: p.requiresOwnClient,
+        ownClientReason: p.ownClientReason,
       },
     ]
   }

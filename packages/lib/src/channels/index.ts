@@ -11,6 +11,7 @@ export {
 } from './lifecycle'
 export { countBillableChannels, getProviderType, list } from './list'
 export { getAuthUrl } from './oauth'
+export { registerChannelHooks } from './register-hooks'
 export {
   addExcludedSender,
   getSettings,

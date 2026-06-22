@@ -1,10 +1,8 @@
 // apps/web/src/server/api/routers/calendar.ts
 
 import { schema } from '@auxx/database'
-import { storeOAuthCsrfToken } from '@auxx/lib/cache'
 import { requireAdminAccess } from '@auxx/lib/email'
 import { getQueue, Queues } from '@auxx/lib/jobs/queues'
-import { GoogleOAuthService } from '@auxx/lib/providers'
 import {
   getCalendarEventById,
   getUpcomingMeetings,
@@ -14,7 +12,6 @@ import {
 } from '@auxx/lib/recording/calendar'
 import { SettingsService } from '@auxx/lib/settings'
 import { TRPCError } from '@trpc/server'
-import crypto from 'crypto'
 import { and, count, eq } from 'drizzle-orm'
 import { z } from 'zod'
 import { type createTRPCContext, createTRPCRouter, notDemo, protectedProcedure } from '../trpc'
@@ -89,21 +86,24 @@ export const calendarRouter = createTRPCRouter({
         input.integrationId,
         ctx.session.organizationId
       )
-      const csrfToken = crypto.randomBytes(32).toString('hex')
-      const authUrl = await GoogleOAuthService.getAuthUrl(
-        ctx.session.organizationId,
-        ctx.session.user.id,
-        {
-          purpose: 'calendar',
-          integrationId: integration.id,
-          redirectPath: `/app/settings/channels/${integration.id}?tab=settings`,
-          csrfToken,
-        }
-      )
+      if (!integration.credentialId) {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: 'Channel has no linked credential to grant calendar access',
+        })
+      }
 
-      await storeOAuthCsrfToken(ctx.session.user.id, csrfToken)
+      // Incremental calendar-scope grant via the unified connections flow: reconnect the Gmail
+      // credential with the calendar scope added (include_granted_scopes keeps the mail scopes),
+      // and flag the post-connect hook to enable calendar sync + recording for this integration.
+      const params = new URLSearchParams({
+        connectionId: integration.credentialId,
+        returnTo: `/app/settings/channels/${integration.id}?tab=settings`,
+        scope_add: 'https://www.googleapis.com/auth/calendar',
+        pc_calendarGrant: '1',
+      })
 
-      return { authUrl }
+      return { authUrl: `/api/connections/gmail/oauth2/authorize?${params.toString()}` }
     }),
 
   /**

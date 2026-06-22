@@ -64,8 +64,13 @@ export const Integration = pgTable(
     deletedAt: timestamp({ precision: 3 }),
   },
   (table) => [
-    uniqueIndex('Integration_organizationId_email_key')
-      .using('btree', table.organizationId.asc().nullsLast(), table.email.asc().nullsLast())
+    uniqueIndex('Integration_organizationId_provider_email_key')
+      .using(
+        'btree',
+        table.organizationId.asc().nullsLast(),
+        table.provider.asc().nullsLast(),
+        table.email.asc().nullsLast()
+      )
       .where(sql`${table.deletedAt} IS NULL`),
     index('Integration_organizationId_idx').using('btree', table.organizationId.asc().nullsLast()),
     index('Integration_provider_organizationId_idx').using(

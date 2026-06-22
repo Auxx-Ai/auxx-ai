@@ -18,6 +18,17 @@ export interface DetailMethod {
   /** true = organization-wide, false = user-specific. Shown as a scope hint. */
   global: boolean
   connectionVariables?: ConnectionVariable[] | null
+  /** OAuth approval gate (§3.1): this connection must bring its own client id/secret. */
+  requiresOwnClient?: boolean
+  ownClientReason?: 'no-platform-client' | 'pending-approval' | null
+}
+
+/** Reason-specific copy for the BYO-client requirement banner (§3.1). */
+const OWN_CLIENT_COPY: Record<NonNullable<DetailMethod['ownClientReason']>, string> = {
+  'pending-approval':
+    'Our platform app for this provider is pending verification — connect with your own OAuth app for now.',
+  'no-platform-client':
+    'No platform OAuth app is configured for this provider — connect with your own OAuth app.',
 }
 
 interface ConnectionDetailPageProps {
@@ -106,6 +117,11 @@ export function ConnectionDetailPage({
               />
             ))}
           </RadioGroup>
+        </div>
+      )}
+      {chosen?.requiresOwnClient && chosen.ownClientReason && (
+        <div className='rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-400'>
+          {OWN_CLIENT_COPY[chosen.ownClientReason]}
         </div>
       )}
       {chosen && methodNeedsFields(chosen) && (

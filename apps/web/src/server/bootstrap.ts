@@ -3,6 +3,7 @@
 import 'server-only'
 
 import { configService } from '@auxx/credentials'
+import { registerChannelHooks } from '@auxx/lib/channels'
 import { createScopedLogger } from '@auxx/logger'
 
 const logger = createScopedLogger('web-bootstrap')
@@ -18,6 +19,7 @@ export async function ensureWebAppInitialized(): Promise<void> {
   initPromise = (async () => {
     logger.info('Starting web app initialization')
     await configService.init()
+    registerChannelHooks()
     logger.info('Web app initialization completed successfully')
   })()
 
