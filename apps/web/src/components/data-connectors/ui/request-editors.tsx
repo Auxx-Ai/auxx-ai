@@ -1,8 +1,10 @@
 // apps/web/src/components/data-connectors/ui/request-editors.tsx
 'use client'
 
+import { Button } from '@auxx/ui/components/button'
 import { generateId } from '@auxx/utils/generateId'
-import { useEffect, useRef, useState } from 'react'
+import { Minus, Plus } from 'lucide-react'
+import { type ReactNode, useEffect, useRef, useState } from 'react'
 import {
   HttpRequestFieldProvider,
   type KeyValue,
@@ -144,6 +146,50 @@ export function JsonBodyEditor({
         minHeight={120}
       />
       {error && <p className='px-1 text-xs text-destructive'>{error}</p>}
+    </div>
+  )
+}
+
+/**
+ * Toggle chip that reveals a request sub-editor (headers / query params / body),
+ * showing a count badge when the section has content. Shared by the stream config
+ * panel and the connector endpoint panel so both reveal editors identically.
+ */
+export function RevealChip({
+  label,
+  count,
+  active,
+  onClick,
+}: {
+  label: string
+  count: number | string
+  active: boolean
+  onClick: () => void
+}) {
+  const hasCount = typeof count === 'number' ? count > 0 : !!count
+  return (
+    <Button type='button' size='xs' variant={active ? 'secondary' : 'ghost'} onClick={onClick}>
+      {active ? <Minus /> : <Plus />}
+      {label}
+      {hasCount && (
+        <span className='ml-1 rounded-full bg-muted px-1.5 text-[10px] tabular-nums text-muted-foreground'>
+          {count}
+        </span>
+      )}
+    </Button>
+  )
+}
+
+/**
+ * A bordered, titled container for a revealed request sub-editor. The block owns
+ * the outer frame, so a nested `KeyValueList` drops its own border + rounding
+ * (targeted via its `data-slot`s) to sit flush under the title bar.
+ */
+export function RequestEditorBlock({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <div className='overflow-hidden rounded-lg border bg-card/40 **:data-[slot=key-value-list]:rounded-none **:data-[slot=key-value-list]:border-0'>
+      <div className='border-b px-3 py-1.5 text-xs font-medium text-muted-foreground'>{title}</div>
+      {children}
     </div>
   )
 }

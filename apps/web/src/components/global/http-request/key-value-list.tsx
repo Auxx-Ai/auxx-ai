@@ -69,8 +69,12 @@ const KeyValueList: FC<Props> = ({
   if (!Array.isArray(list)) return null
 
   return (
-    <div ref={containerRef} className='overflow-hidden rounded-lg border border-primary-200'>
+    <div
+      ref={containerRef}
+      data-slot='key-value-list'
+      className='overflow-hidden rounded-lg border border-primary-200'>
       <div
+        data-slot='key-value-header'
         className={cn(
           'text-xs font-medium uppercase flex h-7 items-center leading-7 text-muted-foreground'
         )}>

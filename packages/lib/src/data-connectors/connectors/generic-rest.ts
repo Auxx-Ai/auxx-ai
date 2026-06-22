@@ -131,8 +131,11 @@ async function* fetchRecords(args: ConnectorFetchArgs): AsyncIterable<ConnectorR
   const method = request.method ?? 'GET'
   const path = request.path ?? ''
 
+  // Precedence (low → high): Accept < connector-level shared headers < per-stream
+  // headers < credential auth (applied last by the HTTP transport).
   const baseHeaders: Record<string, string> = {
     Accept: 'application/json',
+    ...(endpoint?.headers ?? {}),
     ...(request.headers ?? {}),
   }
   const applyCredential = endpoint?.auth !== 'none' && args.credential ? args.credential : null

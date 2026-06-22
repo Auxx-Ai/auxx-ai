@@ -1,44 +1,20 @@
 // apps/web/src/components/data-connectors/ui/source-config-panel.tsx
 'use client'
 
-import { Button } from '@auxx/ui/components/button'
 import { Field, FieldLabel } from '@auxx/ui/components/field'
 import { Input } from '@auxx/ui/components/input'
 import { Section } from '@auxx/ui/components/section'
 import { toastError } from '@auxx/ui/components/toast'
-import { Globe, Plus, Settings2 } from 'lucide-react'
+import { Globe, Settings2 } from 'lucide-react'
 import { useMemo, useState } from 'react'
-import {
-  generateId,
-  HttpRequestFieldProvider,
-  type KeyValue,
-  KeyValueList,
-} from '~/components/global/http-request'
 import { readFieldNodes, SchemaField, seedDefaults } from '~/components/global/schema-form'
 import { api } from '~/trpc/react'
 import { useRegisterSaver } from '../hooks/use-connector-edits'
-import { PLAIN_FIELD } from './request-editors'
+import { RecordKeyValueEditor, RequestEditorBlock, RevealChip } from './request-editors'
 
 /** Order-independent serialization for dirty comparison (header order is cosmetic). */
 function canonRecord(record: Record<string, string>): string {
   return JSON.stringify(Object.entries(record).sort(([a], [b]) => a.localeCompare(b)))
-}
-
-/** Connector headers are stored as a plain `Record<string, string>` (the shape the
- * generic-rest fetch sends + the tRPC schema validates), not the workflow node's
- * serialized string — so convert directly here rather than via the http-request
- * string helpers (which expect/produce a string). */
-function recordToKeyValue(record: Record<string, string>): KeyValue[] {
-  return Object.entries(record).map(([key, value]) => ({ id: generateId(), key, value }))
-}
-
-function keyValueToRecord(list: KeyValue[]): Record<string, string> {
-  const record: Record<string, string> = {}
-  for (const { key, value } of list) {
-    const trimmed = key.trim()
-    if (trimmed) record[trimmed] = value
-  }
-  return record
 }
 
 type Connector = NonNullable<ReturnType<typeof api.dataConnector.getById.useQuery>['data']>
@@ -91,29 +67,20 @@ function GenericRestSource({
     endpoint?: { baseUrl?: string; headers?: Record<string, string> }
   }
   const [baseUrl, setBaseUrl] = useState(config.endpoint?.baseUrl ?? '')
-  // The list keeps a trailing blank row so the user can always add another.
-  const [headers, setHeaders] = useState<KeyValue[]>(() => {
-    const parsed = recordToKeyValue(config.endpoint?.headers ?? {})
-    // Keep a trailing blank row so the user can always add another.
-    return [...parsed, { id: generateId(), key: '', value: '' }]
-  })
-
-  const addRow = () => setHeaders((h) => [...h, { id: generateId(), key: '', value: '' }])
+  const [headers, setHeaders] = useState<Record<string, string>>(config.endpoint?.headers ?? {})
+  // Reveal the headers editor by default when the connector already has some.
+  const [showHeaders, setShowHeaders] = useState(
+    () => Object.keys(config.endpoint?.headers ?? {}).length > 0
+  )
 
   const handleSave = () => {
-    const endpoint = {
-      ...(config.endpoint ?? {}),
-      baseUrl,
-      headers: keyValueToRecord(headers),
-    }
+    const endpoint = { ...(config.endpoint ?? {}), baseUrl, headers }
     return onSave({ ...(connector.config ?? {}), endpoint })
   }
 
-  // Dirty vs the saved slice — the trailing blank header row is dropped by
-  // `keyValueToRecord`, so an untouched form reads clean.
   const isDirty =
     baseUrl !== (config.endpoint?.baseUrl ?? '') ||
-    canonRecord(keyValueToRecord(headers)) !== canonRecord(config.endpoint?.headers ?? {})
+    canonRecord(headers) !== canonRecord(config.endpoint?.headers ?? {})
   useRegisterSaver('source', isDirty, saving, handleSave)
 
   return (
@@ -123,33 +90,31 @@ function GenericRestSource({
         icon={<Globe className='size-4' />}
         initialOpen
         collapsible={false}
-        description='Base URL shared by every stream on this connector.'>
-        <Field className='px-1'>
-          <FieldLabel>Base URL</FieldLabel>
-          <Input
-            value={baseUrl}
-            onChange={(e) => setBaseUrl(e.target.value)}
-            placeholder='https://api.example.com/v1'
-          />
-        </Field>
-      </Section>
+        description='Base URL and shared headers sent on every request. Secrets live in the bound credential, never here.'>
+        <div className='flex flex-col gap-3 px-1'>
+          <Field>
+            <FieldLabel>Base URL</FieldLabel>
+            <Input
+              value={baseUrl}
+              onChange={(e) => setBaseUrl(e.target.value)}
+              placeholder='https://api.example.com/v1'
+            />
+          </Field>
 
-      <Section
-        title='Shared headers'
-        icon={<Globe className='size-4' />}
-        initialOpen
-        collapsible={false}
-        description='Non-secret headers sent on every request. Secrets live in the bound credential, never here.'
-        actions={
-          <Button variant='ghost' size='xs' onClick={addRow}>
-            <Plus />
-            Add header
-          </Button>
-        }>
-        <div className='px-1'>
-          <HttpRequestFieldProvider value={PLAIN_FIELD}>
-            <KeyValueList readonly={false} list={headers} onChange={setHeaders} onAdd={addRow} />
-          </HttpRequestFieldProvider>
+          <div className='flex flex-wrap items-center gap-1.5'>
+            <RevealChip
+              label='Headers'
+              count={Object.keys(headers).length}
+              active={showHeaders}
+              onClick={() => setShowHeaders((v) => !v)}
+            />
+          </div>
+
+          {showHeaders && (
+            <RequestEditorBlock title='Shared headers'>
+              <RecordKeyValueEditor record={headers} onChange={setHeaders} />
+            </RequestEditorBlock>
+          )}
         </div>
       </Section>
     </div>
