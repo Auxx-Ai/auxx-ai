@@ -34,6 +34,8 @@ export interface DataConnectorConfig {
     baseUrl: string
     auth?: 'credential' | 'none'
     pagination?: PaginationSpec
+    /** Non-secret headers sent on every request, under per-stream headers. */
+    headers?: Record<string, string>
   }
   filters?: Record<string, unknown>
 }

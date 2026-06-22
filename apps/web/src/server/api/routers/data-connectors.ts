@@ -62,6 +62,7 @@ const connectorConfigSchema = z
         baseUrl: z.string().url(),
         auth: z.enum(['credential', 'none']).optional(),
         pagination: paginationSchema.optional(),
+        headers: z.record(z.string(), z.string()).optional(),
       })
       .optional(),
     filters: z.record(z.string(), z.unknown()).optional(),

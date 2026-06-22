@@ -92,7 +92,10 @@ export const PlainFieldEditor: HttpFieldEditor = ({
     <input
       className={cn(
         'text-sm w-full px-3 py-1.5 appearance-none rounded-none border-none bg-transparent outline-none hover:bg-primary-50 focus:bg-primary-100 focus:ring-0',
-        className
+        className,
+        // Trailing so it wins over the row's `p-1` override — aligns the input
+        // text with the `pl-3` column headers in the plain (no-token) surface.
+        'pl-3'
       )}
       value={value}
       onChange={(e) => onChange(e.target.value)}

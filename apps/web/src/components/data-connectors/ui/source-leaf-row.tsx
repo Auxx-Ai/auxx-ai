@@ -8,7 +8,7 @@ import { ArrowRight, Brackets, Hash, Trash2 } from 'lucide-react'
 import { lastSegment, type SourcePath } from '../hooks/use-source-paths'
 import { MAPPING_COLS } from './mapping-columns'
 import { MappingFieldPicker } from './mapping-field-picker'
-import { MergeStrategySelect } from './merge-strategy-select'
+import { MergeStrategyToggle } from './merge-strategy-toggle'
 
 /**
  * Short type token for the leaf badge. Prefers a detected string `format`
@@ -121,18 +121,12 @@ export function SourceLeafRow({
           onAssign={onAssign}
           onClear={onClear}
         />,
-        // Actions — merge picker (left), then a right-aligned identifier badge +
-        // hover-reveal clear, mirroring the header row's badge → trash so they
-        // line up at one x. The clear reuses `onClear` (the "Don't map" path).
-        <div key='actions' className='flex w-full items-center gap-2 pl-2 pr-1'>
-          {/* Merge strategy only matters when the def is shared. An owned mapping
-              is the sole writer, so every field is an implicit overwrite — no
-              picker. */}
-          {isMapped && !isOwned && (
-            <MergeStrategySelect value={mergeStrategy} onValueChange={onMergeChange} />
-          )}
+        // Actions — a right-aligned badge cluster (identifier → merge → clear).
+        // Identifier sits leftmost (less frequently toggled); merge sits next to
+        // the clear. The clear reuses `onClear` (the "Don't map" path).
+        <div key='actions' className='flex w-full items-center justify-end gap-1 pr-1'>
           {isMapped && (
-            <div className='ml-auto flex items-center gap-1'>
+            <>
               {/* Secondary identifier toggle: subtle text → filled blue badge. */}
               <SimpleTooltip
                 side='left'
@@ -157,13 +151,19 @@ export function SourceLeafRow({
                   )}
                 </button>
               </SimpleTooltip>
+              {/* Merge strategy only matters when the def is shared. An owned
+                  mapping is the sole writer, so every field is an implicit
+                  overwrite — no toggle. */}
+              {!isOwned && (
+                <MergeStrategyToggle value={mergeStrategy} onValueChange={onMergeChange} />
+              )}
               <TreeRowButton
                 variant='destructive'
                 tooltipText="Don't map this field"
                 onClick={onClear}>
                 <Trash2 />
               </TreeRowButton>
-            </div>
+            </>
           )}
         </div>,
       ]}

@@ -162,8 +162,7 @@ const KeyValueItem: FC<Props> = ({
 
   return (
     // group class name is for hover row show remove button
-    <div
-      className={cn(className, 'key-value-item h-min-7 group flex border-t  border-primary-200')}>
+    <div className={cn(className, 'key-value-item min-h-8 group flex border-t border-primary-200')}>
       <div
         data-kv-row={itemIndex}
         data-kv-col={0}

@@ -27,7 +27,7 @@ import { BranchRow } from './branch-row'
 import { FieldCalcDialog } from './field-calc-dialog'
 import { MAPPING_COLS } from './mapping-columns'
 import { MappingFieldPicker } from './mapping-field-picker'
-import { MergeStrategySelect } from './merge-strategy-select'
+import { MergeStrategyToggle } from './merge-strategy-toggle'
 import { SourceLeafRow } from './source-leaf-row'
 
 type Mapping = RouterOutputs['dataConnector']['listStreams'][number]['mappings'][number]
@@ -641,16 +641,11 @@ function FormulaRow({
           onAssign={onRetarget}
           onClear={onClear}
         />,
-        <div key='actions' className='flex w-full items-center gap-2 pl-2 pr-1'>
-          {/* Merge on the left; the trash floats right (ml-auto) so it lines up
-              with the leaf/header rows' clear. No Identifier — a formula has no
-              single source path to match identity on. */}
-          <MergeStrategySelect value={mergeStrategy} onValueChange={onMergeChange} />
-          <TreeRowButton
-            variant='destructive'
-            className='ml-auto'
-            tooltipText='Remove formula'
-            onClick={onClear}>
+        <div key='actions' className='flex w-full items-center justify-end gap-1 pr-1'>
+          {/* Right-aligned merge badge → trash, matching the leaf/header rows. No
+              Identifier — a formula has no single source path to match identity on. */}
+          <MergeStrategyToggle value={mergeStrategy} onValueChange={onMergeChange} />
+          <TreeRowButton variant='destructive' tooltipText='Remove formula' onClick={onClear}>
             <X />
           </TreeRowButton>
         </div>,

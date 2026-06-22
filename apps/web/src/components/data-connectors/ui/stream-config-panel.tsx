@@ -19,31 +19,27 @@ import {
 import { RadioTab, RadioTabItem } from '@auxx/ui/components/radio-tab'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { EmptySection, Section } from '@auxx/ui/components/section'
-import {
-  ChevronDown,
-  Database,
-  FlaskConical,
-  Minus,
-  Pencil,
-  Plus,
-  RefreshCw,
-  Waypoints,
-} from 'lucide-react'
+import { ChevronDown, Database, FlaskConical, Pencil, RefreshCw, Waypoints } from 'lucide-react'
 import { type ReactNode, useState } from 'react'
 import {
   SchemaEditorDialog,
   type SeededFrom,
 } from '~/components/schema-editor/ui/schema-editor-dialog'
-import type { api } from '~/trpc/react'
+import type { RouterOutputs } from '~/trpc/react'
 import { useBufferedConfig } from '../hooks/use-buffered-config'
 import { useSourcePaths } from '../hooks/use-source-paths'
 import { useStreamMutations } from '../hooks/use-stream-mutations'
 import { MappingTree } from './mapping-tree'
-import { JsonBodyEditor, RecordKeyValueEditor } from './request-editors'
+import {
+  JsonBodyEditor,
+  RecordKeyValueEditor,
+  RequestEditorBlock,
+  RevealChip,
+} from './request-editors'
 import { StreamSample } from './stream-sample'
 
-type Connector = NonNullable<ReturnType<typeof api.dataConnector.getById.useQuery>['data']>
-type Stream = NonNullable<ReturnType<typeof api.dataConnector.listStreams.useQuery>['data']>[number]
+type Connector = NonNullable<RouterOutputs['dataConnector']['getById']>
+type Stream = RouterOutputs['dataConnector']['listStreams'][number]
 
 // Plain-language explainer of where the source schema came from — replaces the
 // old "Provenance" badge + Catalog/Inferred/Manual jargon.
@@ -206,7 +202,7 @@ export function StreamConfigPanel({ connector, stream }: StreamConfigPanelProps)
                 <InputGroupAddon align='inline-start'>
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                      <InputGroupButton variant='ghost' className='!pr-1.5 text-xs'>
+                      <InputGroupButton variant='ghost' className='pr-1.5! text-xs'>
                         {request.value.method}
                         <ChevronDown className='size-3' />
                       </InputGroupButton>
@@ -398,37 +394,3 @@ export function StreamConfigPanel({ connector, stream }: StreamConfigPanelProps)
 }
 
 /** A reveal toggle for one request sub-editor, with an optional content badge. */
-function RevealChip({
-  label,
-  count,
-  active,
-  onClick,
-}: {
-  label: string
-  count: number | string
-  active: boolean
-  onClick: () => void
-}) {
-  const hasCount = typeof count === 'number' ? count > 0 : !!count
-  return (
-    <Button type='button' size='xs' variant={active ? 'secondary' : 'ghost'} onClick={onClick}>
-      {active ? <Minus /> : <Plus />}
-      {label}
-      {hasCount && (
-        <span className='ml-1 rounded-full bg-muted px-1.5 text-[10px] tabular-nums text-muted-foreground'>
-          {count}
-        </span>
-      )}
-    </Button>
-  )
-}
-
-/** A bordered, titled container for a revealed request sub-editor. */
-function RequestEditorBlock({ title, children }: { title: string; children: ReactNode }) {
-  return (
-    <div className='overflow-hidden rounded-lg border bg-card/40'>
-      <div className='border-b px-3 py-1.5 text-xs font-medium text-muted-foreground'>{title}</div>
-      {children}
-    </div>
-  )
-}
