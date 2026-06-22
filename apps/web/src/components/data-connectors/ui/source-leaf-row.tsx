@@ -2,31 +2,13 @@
 'use client'
 
 import { Badge } from '@auxx/ui/components/badge'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@auxx/ui/components/select'
 import { SimpleTooltip } from '@auxx/ui/components/tooltip'
-import { GridTreeRow } from '@auxx/ui/components/tree-row'
-import { ArrowRight, Brackets, Hash } from 'lucide-react'
+import { GridTreeRow, TreeRowButton } from '@auxx/ui/components/tree-row'
+import { ArrowRight, Brackets, Hash, Trash2 } from 'lucide-react'
 import { lastSegment, type SourcePath } from '../hooks/use-source-paths'
 import { MAPPING_COLS } from './mapping-columns'
 import { MappingFieldPicker } from './mapping-field-picker'
-
-/**
- * Per-field merge strategies offered once a leaf is bound. `manual_review` and
- * `ignore` stay in the schema/runtime (`FieldMergeStrategy`) but are not yet
- * surfaced — `manual_review` has no conflict-review queue and `ignore` has no
- * use until then. Re-add here when those land.
- */
-export const MERGE_OPTIONS: Array<{ value: string; label: string }> = [
-  { value: 'overwrite', label: 'overwrite' },
-  { value: 'fill_blank', label: 'fill-blank' },
-  { value: 'connector_owned_only', label: 'owned-only' },
-]
+import { MergeStrategySelect } from './merge-strategy-select'
 
 /**
  * Short type token for the leaf badge. Prefers a detected string `format`
@@ -139,13 +121,19 @@ export function SourceLeafRow({
           onAssign={onAssign}
           onClear={onClear}
         />,
-        // Actions — match toggle + merge picker, available once the leaf is bound.
-        <div key='actions' className='flex w-full items-center gap-2 px-2'>
-          {/* Secondary identifier toggle: subtle text → filled blue badge.
-              Reserves its slot whether shown or not, so the merge picker stays at
-              a fixed location across rows. */}
-          <div className='flex w-20 shrink-0 items-center'>
-            {isMapped && (
+        // Actions — merge picker (left), then a right-aligned identifier badge +
+        // hover-reveal clear, mirroring the header row's badge → trash so they
+        // line up at one x. The clear reuses `onClear` (the "Don't map" path).
+        <div key='actions' className='flex w-full items-center gap-2 pl-2 pr-1'>
+          {/* Merge strategy only matters when the def is shared. An owned mapping
+              is the sole writer, so every field is an implicit overwrite — no
+              picker. */}
+          {isMapped && !isOwned && (
+            <MergeStrategySelect value={mergeStrategy} onValueChange={onMergeChange} />
+          )}
+          {isMapped && (
+            <div className='ml-auto flex items-center gap-1'>
+              {/* Secondary identifier toggle: subtle text → filled blue badge. */}
               <SimpleTooltip
                 side='left'
                 delayDuration={500}
@@ -169,24 +157,13 @@ export function SourceLeafRow({
                   )}
                 </button>
               </SimpleTooltip>
-            )}
-          </div>
-          {/* Merge strategy only matters when the def is shared. An owned mapping
-              is the sole writer, so every field is an implicit overwrite — no
-              picker. Fixed width so it sits at a consistent x. */}
-          {isMapped && !isOwned && (
-            <Select value={mergeStrategy} onValueChange={onMergeChange}>
-              <SelectTrigger variant='transparent' size='sm' className='h-9 w-28 text-xs'>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {MERGE_OPTIONS.map((o) => (
-                  <SelectItem key={o.value} value={o.value}>
-                    {o.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+              <TreeRowButton
+                variant='destructive'
+                tooltipText="Don't map this field"
+                onClick={onClear}>
+                <Trash2 />
+              </TreeRowButton>
+            </div>
           )}
         </div>,
       ]}

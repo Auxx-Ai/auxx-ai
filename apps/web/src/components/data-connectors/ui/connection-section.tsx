@@ -6,6 +6,8 @@ import { Section } from '@auxx/ui/components/section'
 import { Plug } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useAppsContext } from '~/components/apps/providers/apps-context'
+import { AppWithStatusIcon } from '~/components/apps/ui/app-with-status-icon'
+import { resolveConnectionDisplay } from '~/components/apps/ui/connection-display'
 import { ConnectionList } from '~/components/apps/ui/connection-list'
 import { ConnectionPickerPopover } from '~/components/apps/ui/connection-picker-popover'
 import { ConnectionRow, type ConnectionStatus } from '~/components/apps/ui/connection-row'
@@ -13,10 +15,10 @@ import {
   AddConnectionDialog,
   type ConnectionRestriction,
 } from '~/components/connections/ui/add-connection-dialog'
-import { api } from '~/trpc/react'
+import { api, type RouterOutputs } from '~/trpc/react'
 import { SourceConfigPanel } from './source-config-panel'
 
-type Connector = NonNullable<ReturnType<typeof api.dataConnector.getById.useQuery>['data']>
+type Connector = NonNullable<RouterOutputs['dataConnector']['getById']>
 
 interface ConnectionSectionProps {
   connector: Connector
@@ -84,6 +86,18 @@ export function ConnectionSection({ connector }: ConnectionSectionProps) {
     update.mutate({ id: connector.id, credentialId, appInstallationId })
 
   const connected = !!connector.credentialId
+
+  // Resolve the bound connection to surface its real icon + name (e.g. "Gmail")
+  // instead of a generic "bound credential" line. Shares the picker popover's
+  // query (same input) so this adds no extra fetch.
+  const { data: connections = [] } = api.connections.list.useQuery(
+    { kind: ['app', 'integration', 'workflow'], orgScopedOnly: true },
+    { refetchOnWindowFocus: false }
+  )
+  const bound = connector.credentialId
+    ? connections.find((c) => c.id === connector.credentialId)
+    : undefined
+  const boundDisplay = bound ? resolveConnectionDisplay(bound, appInstallations) : null
   const status: ConnectionStatus = connected ? 'connected' : 'disconnected'
 
   return (
@@ -98,7 +112,16 @@ export function ConnectionSection({ connector }: ConnectionSectionProps) {
           <ConnectionList>
             <ConnectionRow
               status={status}
-              title={connected ? 'Connected account' : 'Not connected'}
+              statusIcon={
+                boundDisplay ? (
+                  <AppWithStatusIcon
+                    iconId={boundDisplay.iconId}
+                    size='sm'
+                    status={bound?.status ?? 'connected'}
+                  />
+                ) : undefined
+              }
+              title={boundDisplay?.title ?? (connected ? 'Connected account' : 'Not connected')}
               subtitle={
                 connected
                   ? 'This connector is using a bound credential.'

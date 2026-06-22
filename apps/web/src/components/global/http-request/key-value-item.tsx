@@ -47,7 +47,13 @@ const KeyValueItem: FC<Props> = ({
   insertVarTipToLeft,
   itemIndex = 0,
 }) => {
-  const { FieldEditor, FilePicker } = useHttpRequestField()
+  const { FieldEditor, FilePicker, keyPlaceholder, valuePlaceholder } = useHttpRequestField()
+
+  // Falls back to the workflow variable hint; the plain connector surface
+  // overrides these via the field-editor context.
+  const VAR_HINT = "type '{' to insert variable..."
+  const resolvedKeyPlaceholder = keyPlaceholder ?? VAR_HINT
+  const resolvedValuePlaceholder = valuePlaceholder ?? VAR_HINT
 
   // File rows only make sense when a FilePicker is injected.
   const supportFile = isSupportFile && !!FilePicker
@@ -170,7 +176,7 @@ const KeyValueItem: FC<Props> = ({
             value={localKey}
             onChange={handleLocalChange('key')}
             onBlur={syncToParent}
-            placeholder="type '{' to insert variable..."
+            placeholder={resolvedKeyPlaceholder}
             className='p-1 h-full focus-within:bg-primary-150/60 focus-within:hover:bg-primary-150/60 hover:bg-primary-100'
             disabled={readonly}
           />
@@ -221,7 +227,7 @@ const KeyValueItem: FC<Props> = ({
             value={localValue}
             onChange={handleLocalChange('value')}
             onBlur={syncToParent}
-            placeholder="type '{' to insert variable..."
+            placeholder={resolvedValuePlaceholder}
             className={cn(
               'p-1 h-full',
               'focus-within:bg-primary-150/60',

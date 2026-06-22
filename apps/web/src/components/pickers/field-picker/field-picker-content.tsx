@@ -337,7 +337,7 @@ export function FieldPickerInnerContent({
               <FieldItem
                 key={field.id}
                 field={field}
-                isSelected={mode === 'multi' && isFieldSelected(field)}
+                isSelected={isFieldSelected(field)}
                 canDrillDown={!!field.relationship}
                 onSelect={() => handleSelectField(field)}
                 onDrillDown={field.relationship ? () => handleDrillInto(field) : undefined}

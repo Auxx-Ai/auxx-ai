@@ -14,7 +14,7 @@ import {
   refreshCredentialTokens,
   saveConnection,
 } from '@auxx/lib/connections'
-import { getAllProviders } from '@auxx/lib/connections/providers'
+import { getAllProviders, getProviderByKey } from '@auxx/lib/connections/providers'
 import { isAdminOrOwner } from '@auxx/lib/members'
 import { getChannelProviderIcon } from '@auxx/lib/providers'
 import { CredentialTestingService, isCredentialInUse } from '@auxx/lib/workflow-engine'
@@ -98,10 +98,16 @@ export const connectionsRouter = createTRPCRouter({
           type: record.type ?? '',
           kind: record.kind,
           label: record.label,
-          // Visual-ref for non-app rows: channel/integration creds store the provider
-          // as `type` ('google', 'outlook', …) → resolve its brand mark. App rows leave
-          // this null and hydrate the app's avatar client-side.
-          icon: record.type ? getChannelProviderIcon(record.type) : null,
+          // Visual-ref for non-app rows: resolve the provider brand mark from `type`.
+          // Channel creds use a ChannelProviderType ('google', 'outlook', …); platform
+          // integration creds (incl. AI keys like 'openaiApi') use a providerKey, whose
+          // icon lives on the platform provider catalog. App rows leave this null and
+          // hydrate the app's avatar client-side.
+          icon: record.type
+            ? (getChannelProviderIcon(record.type) ??
+              getProviderByKey(record.type)?.uiMetadata?.icon ??
+              null)
+            : null,
           appId: record.appId,
           appInstallationId: record.appInstallationId,
           connectionDefinitionId: record.connectionDefinitionId,
@@ -293,15 +299,16 @@ export const connectionsRouter = createTRPCRouter({
       z.object({
         id: z.string().min(1, 'Connection ID is required'),
         name: z.string().min(1).optional(),
+        label: z.string().min(1).optional(),
         data: z.record(z.string(), z.any()).optional(),
       })
     )
     .use(notDemo('update connection'))
     .mutation(async ({ ctx, input }) => {
-      if (!input.name && !input.data) {
+      if (!input.name && !input.label && !input.data) {
         throw new TRPCError({
           code: 'BAD_REQUEST',
-          message: 'At least one field (name or data) must be provided for update',
+          message: 'At least one field (name, label, or data) must be provided for update',
         })
       }
 
@@ -318,6 +325,7 @@ export const connectionsRouter = createTRPCRouter({
 
       const updateResult = await updateCredential(input.id, organizationId, {
         name: input.name,
+        label: input.label,
         metadata,
       })
       if (updateResult.isErr()) {
