@@ -190,6 +190,13 @@ export const ConnectionDefinition = pgTable(
     oauth2RefreshTokenIntervalSeconds: integer(),
     oauth2Features: jsonb().$type<OAuth2Features>().default({}),
 
+    // Is the platform's own OAuth client usable for this provider, or must each
+    // connection bring its own client id/secret? Default true; seeded false for
+    // providers whose platform app is pending verification (Google restricted
+    // scopes). Generalizes the old GOOGLE/OUTLOOK_PLATFORM_CREDENTIALS_APPROVED
+    // env flags into one per-def column (see resolveOwnClientRequirement).
+    platformClientApproved: boolean().notNull().default(true),
+
     // Dynamic variables the org provides at connect time. oauth2-code: interpolated
     // into {key} placeholders. secret: rendered as the multi-field connect form.
     connectionVariables: jsonb().$type<ConnectionVariable[]>().default([]),

@@ -2,7 +2,7 @@
 
 import { WEBAPP_URL } from '@auxx/config/urls'
 import { database as db } from '@auxx/database'
-import { saveConnection } from '@auxx/lib/connections'
+import { resolveOAuth2Client, runPostConnectHook, saveConnection } from '@auxx/lib/connections'
 import { createScopedLogger } from '@auxx/logger'
 import { getRedisClient } from '@auxx/redis'
 import { interpolateConnectionFields } from '@auxx/services/app-connections'
@@ -165,12 +165,15 @@ export async function GET(
     const callbackBase = features.callbackBaseUrl || OAUTH_REDIRECT_BASE
     const connectionVariables: Record<string, string> = metadata.connectionVariables ?? {}
     const resolved = interpolateConnectionFields(connDef, connectionVariables)
+    // Client id/secret follow the §3.2 precedence — must match the client that minted
+    // the auth code (BYO client when the connect launched with one).
+    const { clientId, clientSecret } = resolveOAuth2Client(connDef, connectionVariables)
 
     // Exchange the authorization code for an access token
     const tokenRequestBody: Record<string, string> = {
       code,
-      client_id: resolved.clientId,
-      client_secret: resolved.clientSecret,
+      client_id: clientId,
+      client_secret: clientSecret,
       redirect_uri: `${callbackBase}/api/connections/${defParam}/oauth2/callback`,
       grant_type: 'authorization_code',
     }
@@ -191,9 +194,7 @@ export async function GET(
     }
 
     if (connDef.oauth2TokenRequestAuthMethod === 'basic-auth') {
-      const basicAuth = Buffer.from(`${resolved.clientId}:${resolved.clientSecret}`).toString(
-        'base64'
-      )
+      const basicAuth = Buffer.from(`${clientId}:${clientSecret}`).toString('base64')
       tokenRequestHeaders['Authorization'] = `Basic ${basicAuth}`
       delete tokenRequestBody.client_id
       delete tokenRequestBody.client_secret
@@ -290,6 +291,21 @@ export async function GET(
       global: metadata.global,
       credentialId: result.value,
     })
+
+    // Run the provider's post-connect provisioning hook (channels create their Integration
+    // + inbox link + webhook arming here). The credential is already committed, so the hook
+    // can resolve a fresh token. A failure surfaces via the shared error redirect below so a
+    // half-provisioned channel never looks connected.
+    if (connDef.providerKey) {
+      await runPostConnectHook(connDef.providerKey, {
+        credentialId: result.value,
+        providerKey: connDef.providerKey,
+        organizationId: metadata.organizationId,
+        userId: metadata.userId,
+        ...(metadata.connectionId && { connectionId: metadata.connectionId }),
+        ...(metadata.postConnect && { extra: metadata.postConnect }),
+      })
+    }
 
     if (isPopup) {
       const popupResponse = renderPopupTerminationPage({

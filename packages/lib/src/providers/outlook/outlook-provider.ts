@@ -25,7 +25,7 @@ import {
   MessageStatus,
   type SendMessageOptions,
 } from '../channel-provider.interface' // Adjust path
-import { getChannelTokens } from '../channel-token-accessor'
+import { getChannelAccessToken, getChannelTokens } from '../channel-token-accessor'
 import {
   type AttachmentFile,
   BaseMessageProvider,
@@ -169,11 +169,15 @@ export class OutlookProvider
 
     const metadata = dbIntegration.metadata as unknown as Partial<OutlookIntegrationMetadata>
 
+    // Initial access token served fresh by the connection layer (§4); MSAL still owns
+    // the expiry-time refresh inside the Graph authProvider until §7 verification lands.
+    const freshAccessToken = await getChannelAccessToken(integrationId)
+
     const clientCtx: OutlookClientContext = {
       integrationId: dbIntegration.id,
       organizationId: this.organizationId,
       refreshToken: tokens.refreshToken,
-      accessToken: tokens.accessToken,
+      accessToken: freshAccessToken ?? tokens.accessToken,
       expiresAt: tokens.expiresAt,
       homeAccountId: metadata?.homeAccountId,
       email: metadata?.email || '',

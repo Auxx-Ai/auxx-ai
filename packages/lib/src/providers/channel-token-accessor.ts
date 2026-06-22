@@ -10,6 +10,8 @@ import {
 import { database as db, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { and, eq, isNull } from 'drizzle-orm'
+import { resolveConnectionForRuntime } from '../connections/resolve-connection-for-runtime'
+import { ensureFreshCredentialToken } from '../credentials/ensure-fresh-credential-token'
 
 const logger = createScopedLogger('channel-tokens')
 
@@ -62,6 +64,76 @@ export async function getChannelTokens(integrationId: string): Promise<ChannelTo
     refreshToken: secrets.refreshToken ?? null,
     expiresAt: row.expiresAt,
   }
+}
+
+/**
+ * Return a fresh bearer access token for a channel, refreshing lazily through the
+ * connection layer (single-flight via `ensureFreshCredentialToken`). This is the
+ * channel-side token-supplier seam (§4): the SDK providers (Gmail/Graph) keep owning
+ * message ops but get their access token from here instead of owning OAuth refresh.
+ *
+ * Resolution requires the channel credential to be linked to a ConnectionDefinition
+ * (the `gmail`/`outlookMail` def). Reads go ONLY through the resolver — there is no
+ * stored-token fallback: an unlinked credential or a resolver failure returns null so the
+ * caller fails loudly rather than silently serving a stale/unrefreshed token.
+ */
+export async function getChannelAccessToken(integrationId: string): Promise<string | null> {
+  const [integ] = await db
+    .select({
+      credentialId: schema.Integration.credentialId,
+      organizationId: schema.Integration.organizationId,
+    })
+    .from(schema.Integration)
+    .where(and(eq(schema.Integration.id, integrationId), isNull(schema.Integration.deletedAt)))
+    .limit(1)
+
+  if (!integ?.credentialId) {
+    logger.warn('Channel has no linked credential — cannot resolve access token', { integrationId })
+    return null
+  }
+
+  const resolved = await resolveConnectionForRuntime({
+    connectionId: integ.credentialId,
+    organizationId: integ.organizationId,
+    userId: 'system',
+    ensureFresh: true,
+  })
+  if (resolved.isErr()) {
+    logger.error('Failed to resolve channel access token', {
+      integrationId,
+      error: resolved.error.message,
+    })
+    return null
+  }
+
+  const conn = resolved.value.organizationConnection ?? resolved.value.userConnection
+  return conn?.value ?? null
+}
+
+/**
+ * Force a token refresh for a channel through the connection layer (the 401 / near-expiry retry
+ * path). Unlike `getChannelAccessToken` (which only refreshes when at/near expiry), this skips the
+ * expiry check — used when the live token just failed. Single-flight + persistence handled by
+ * `ensureFreshCredentialToken`; the caller re-reads the rotated token afterwards.
+ */
+export async function forceRefreshChannelToken(integrationId: string): Promise<void> {
+  const [integ] = await db
+    .select({
+      credentialId: schema.Integration.credentialId,
+      organizationId: schema.Integration.organizationId,
+    })
+    .from(schema.Integration)
+    .where(and(eq(schema.Integration.id, integrationId), isNull(schema.Integration.deletedAt)))
+    .limit(1)
+
+  if (!integ?.credentialId) return
+
+  await ensureFreshCredentialToken({
+    credentialId: integ.credentialId,
+    organizationId: integ.organizationId,
+    hasRefreshToken: true,
+    force: true,
+  })
 }
 
 /**

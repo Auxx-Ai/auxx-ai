@@ -1,0 +1,2 @@
+DROP INDEX "Integration_organizationId_email_key";--> statement-breakpoint
+CREATE UNIQUE INDEX "Integration_organizationId_provider_email_key" ON "Integration" USING btree ("organizationId","provider","email") WHERE "Integration"."deletedAt" IS NULL;

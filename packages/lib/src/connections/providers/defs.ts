@@ -75,6 +75,71 @@ export const PLATFORM_PROVIDER_DEFS: PlatformProviderDef[] = [
     authApply: BEARER,
     uiMetadata: { icon: 'brand:outlook', category: 'email', brandColor: '#0078d4' },
   },
+  // ────────────────────────────────────────────────────────────────────────
+  // Mail-centric channel providers (org-shared). Distinct from the kitchen-sink
+  // googleOAuth2Api/outlookOAuth2Api: scopes match exactly what the live
+  // GoogleOAuthService/OutlookOAuthService request (incl. Gmail pubsub `watch`)
+  // so existing grants keep working without re-consent. Channels fold onto these.
+  // ────────────────────────────────────────────────────────────────────────
+  {
+    providerKey: 'gmail',
+    connectionType: 'oauth2-code',
+    label: 'Gmail',
+    global: true,
+    oauth2AuthorizeUrl: 'https://accounts.google.com/o/oauth2/v2/auth',
+    oauth2AccessTokenUrl: 'https://oauth2.googleapis.com/token',
+    oauth2Scopes: [
+      'https://www.googleapis.com/auth/gmail.modify',
+      'https://www.googleapis.com/auth/gmail.send',
+      'https://www.googleapis.com/auth/gmail.labels',
+      'https://www.googleapis.com/auth/gmail.readonly',
+      'https://www.googleapis.com/auth/pubsub', // Gmail watch
+      'https://www.googleapis.com/auth/userinfo.email',
+      'https://www.googleapis.com/auth/userinfo.profile',
+    ],
+    systemClientIdEnv: 'GOOGLE_CLIENT_ID',
+    systemClientSecretEnv: 'GOOGLE_CLIENT_SECRET',
+    systemClientApprovedEnv: 'GOOGLE_PLATFORM_CREDENTIALS_APPROVED',
+    oauth2Features: {
+      additionalAuthorizeParams: {
+        access_type: 'offline',
+        prompt: 'consent',
+        include_granted_scopes: 'true',
+      },
+    },
+    // BYO client fields (optional) — required at connect time when the approval
+    // gate forces own-client (resolveOwnClientRequirement).
+    connectionVariables: BYO_CLIENT_VARS.map((v) => ({ ...v, required: false })),
+    authApply: BEARER,
+    uiMetadata: { icon: 'brand:gmail', category: 'email', brandColor: '#ea4335' },
+  },
+  {
+    providerKey: 'outlookMail',
+    connectionType: 'oauth2-code',
+    label: 'Outlook',
+    global: true,
+    oauth2AuthorizeUrl: 'https://login.microsoftonline.com/common/oauth2/v2.0/authorize',
+    oauth2AccessTokenUrl: 'https://login.microsoftonline.com/common/oauth2/v2.0/token',
+    oauth2Scopes: [
+      'https://graph.microsoft.com/Mail.ReadWrite',
+      'https://graph.microsoft.com/Mail.Send',
+      'https://graph.microsoft.com/User.Read',
+      'offline_access',
+    ],
+    systemClientIdEnv: 'OUTLOOK_CLIENT_ID',
+    systemClientSecretEnv: 'OUTLOOK_CLIENT_SECRET',
+    systemClientApprovedEnv: 'OUTLOOK_PLATFORM_CREDENTIALS_APPROVED',
+    oauth2Features: {
+      additionalAuthorizeParams: {
+        response_type: 'code',
+        response_mode: 'query',
+        prompt: 'consent',
+      },
+    },
+    connectionVariables: BYO_CLIENT_VARS.map((v) => ({ ...v, required: false })),
+    authApply: BEARER,
+    uiMetadata: { icon: 'brand:outlook', category: 'email', brandColor: '#0078d4' },
+  },
   {
     providerKey: 'shopifyOAuth2Api',
     connectionType: 'oauth2-code',
@@ -695,6 +760,32 @@ export const PLATFORM_PROVIDER_DEFS: PlatformProviderDef[] = [
     authApply: BEARER,
     baseUrlTemplate: 'https://api.airtable.com/v0',
     uiMetadata: { icon: 'brand:airtable', category: 'data', brandColor: '#fcb401' },
+  },
+
+  // ────────────────────────────────────────────────────────────────────────
+  // Channel API-key providers (secret). The SMS/phone channel's per-org API key.
+  // Full connect (phone-number selection + webhook signing secret) is provisioned
+  // channel-side; this def makes the credential connection-resolvable + gallery-visible.
+  // (Mailgun is intentionally absent — its key is a platform env, not a per-org
+  // connection, and it's not a user-connectable channel.)
+  // ────────────────────────────────────────────────────────────────────────
+  {
+    providerKey: 'openphone',
+    connectionType: 'secret',
+    label: 'OpenPhone',
+    global: true,
+    authApply: BEARER,
+    connectionVariables: [
+      {
+        key: 'apiKey',
+        label: 'API Key',
+        secret: true,
+        required: true,
+        placeholder: 'Your OpenPhone API key',
+        description: 'OpenPhone API key from your OpenPhone workspace settings.',
+      },
+    ],
+    uiMetadata: { icon: 'brand:openphone', category: 'other', brandColor: '#6366f1' },
   },
 
   // ────────────────────────────────────────────────────────────────────────

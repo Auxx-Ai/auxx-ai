@@ -17,7 +17,12 @@ import type {
   MessageStatus,
   SendMessageOptions,
 } from '../channel-provider.interface'
-import { getChannelTokens, setChannelTokens } from '../channel-token-accessor'
+import {
+  forceRefreshChannelToken,
+  getChannelAccessToken,
+  getChannelTokens,
+  setChannelTokens,
+} from '../channel-token-accessor'
 import {
   BaseMessageProvider,
   type MessageProvider,
@@ -144,10 +149,13 @@ export class GoogleProvider
         })
       }
     }
-    // Get authenticated client from OAuth service using decrypted tokens
+    // Get authenticated client from OAuth service. The access token is served fresh by
+    // the connection layer (§4, lazy refresh via resolveConnectionForRuntime); the
+    // refresh token is still passed so the SDK's own refresh remains a fallback.
+    const freshAccessToken = await getChannelAccessToken(integrationId)
     const { client: authClient } = await GoogleOAuthService.getAuthenticatedClientForOrg(
       this.organizationId,
-      tokens
+      { ...tokens, accessToken: freshAccessToken ?? tokens.accessToken }
     )
     this.client = authClient
     this.setupTokenListener() // Set up listener for token updates
@@ -355,19 +363,16 @@ export class GoogleProvider
       integrationId: this.integrationId,
     })
 
-    // Use GoogleOAuthService.refreshTokens — it awaits the encrypted-credential
-    // write before returning, unlike the OAuth client's `tokens` event listener
-    // which fires-and-forgets the persistence and risks the next API call
-    // hitting an `invalid_grant` against a stale in-memory token.
-    // Errors here are already routed through AuthErrorHandler inside refreshTokens.
-    await GoogleOAuthService.refreshTokens(this.integrationId)
+    // Refresh through the connection layer (§4): force a rotation, then re-read the fresh
+    // access token. The credential store owns persistence + single-flight, so the next Gmail
+    // API call uses the freshly-rotated token rather than a stale in-memory one.
+    await forceRefreshChannelToken(this.integrationId)
 
-    // Reload the persisted tokens into the in-memory OAuth2 client so the
-    // upcoming Gmail API call uses the freshly-rotated access token.
     const tokens = await getChannelTokens(this.integrationId)
+    const freshAccessToken = await getChannelAccessToken(this.integrationId)
     this.client.setCredentials({
       refresh_token: tokens.refreshToken || undefined,
-      access_token: tokens.accessToken || undefined,
+      access_token: freshAccessToken ?? tokens.accessToken ?? undefined,
       expiry_date: tokens.expiresAt ? tokens.expiresAt.getTime() : undefined,
     })
     if (this.integration) {

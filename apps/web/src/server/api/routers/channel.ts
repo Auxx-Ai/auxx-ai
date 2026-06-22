@@ -1,8 +1,7 @@
 // src/server/api/routers/channel.ts
 
-import { ConfigStorage, configService } from '@auxx/credentials'
 import { insertCredential, splitSensitiveFields } from '@auxx/credentials/store'
-import { type Database, database, schema } from '@auxx/database'
+import { type Database, schema } from '@auxx/database'
 import { getCachedAgentById, onCacheEvent, storeOAuthCsrfToken } from '@auxx/lib/cache'
 import {
   addExcludedSender as addExcludedSenderToChannel,
@@ -28,16 +27,12 @@ import {
   type UpdateChatWidgetInput,
   updateChatWidget,
 } from '@auxx/lib/chat-widget/config'
+import { resolveOwnClientRequirement } from '@auxx/lib/connections'
 import { getUserOrganizationId, requireAdminAccess } from '@auxx/lib/email'
 import { SyncMessages } from '@auxx/lib/messages'
 import { FeatureKey, FeaturePermissionService } from '@auxx/lib/permissions'
 import type { ImapCredentialData } from '@auxx/lib/providers'
-import {
-  ImapClientProvider,
-  ImapSmtpSendService,
-  LdapAuthService,
-  PROVIDER_CREDENTIAL_CONFIG,
-} from '@auxx/lib/providers'
+import { ImapClientProvider, ImapSmtpSendService, LdapAuthService } from '@auxx/lib/providers'
 import { fanOutAuxxChatAudienceToShopify } from '@auxx/lib/shopify'
 import { widgetSchema as chatWidgetInputSchema } from '@auxx/lib/widgets/types'
 import { createScopedLogger } from '@auxx/logger'
@@ -94,6 +89,41 @@ const SupportedProviderTypes = [
 const IntegrationProviderTypeEnum = z.enum(SupportedProviderTypes)
 
 export const channelRouter = createTRPCRouter({
+  /**
+   * Prepare a Gmail/Outlook connect via the unified connections OAuth flow. Enforces
+   * admin + channel-limit, then returns the generic authorize URL plus the platform-client
+   * approval gate (§3.1) so the UI knows whether to collect a bring-your-own OAuth client.
+   */
+  prepareConnect: protectedProcedure
+    .input(z.object({ provider: z.enum(['google', 'outlook']) }))
+    .query(async ({ ctx, input }) => {
+      const { userId } = ctx.session
+      const organizationId = getUserOrganizationId(ctx.session)
+
+      await requireAdminAccess(userId, organizationId)
+      await checkChannelLimit(ctx.db, organizationId)
+
+      const providerKey = input.provider === 'google' ? 'gmail' : 'outlookMail'
+      const def = await ctx.db.query.ConnectionDefinition.findFirst({
+        where: (cd, { eq }) => eq(cd.providerKey, providerKey),
+        columns: { oauth2ClientId: true, oauth2ClientSecret: true, platformClientApproved: true },
+      })
+      if (!def) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: `Connection definition ${providerKey} not found`,
+        })
+      }
+
+      const gate = resolveOwnClientRequirement(def)
+      return {
+        providerKey,
+        authorizeUrl: `/api/connections/${providerKey}/oauth2/authorize`,
+        requiresOwnClient: gate.requiresOwnClient,
+        ownClientReason: gate.reason,
+      }
+    }),
+
   /**
    * Get OAuth URL for Google or Outlook.
    */
@@ -930,99 +960,6 @@ export const channelRouter = createTRPCRouter({
       })
 
       return { success: true }
-    }),
-
-  /**
-   * Check if org has custom OAuth credentials for a provider.
-   */
-  getProviderCredentialStatus: protectedProcedure
-    .input(z.object({ provider: z.enum(['google', 'outlook']) }))
-    .query(async ({ ctx, input }) => {
-      const organizationId = getUserOrganizationId(ctx.session)
-      const config = PROVIDER_CREDENTIAL_CONFIG[input.provider]
-      const overrides = await new ConfigStorage().getAllForOrg(organizationId)
-      const hasClientId = overrides.some((o) => o.key === config.clientIdKey)
-      const hasClientSecret = overrides.some((o) => o.key === config.clientSecretKey)
-      const clientIdEntry = overrides.find((o) => o.key === config.clientIdKey)
-      const platformApproved = configService.get<boolean>(config.approvalFlagKey)
-
-      return {
-        hasCustomCredentials: hasClientId && hasClientSecret,
-        clientId: clientIdEntry?.value as string | undefined,
-        platformCredentialsAvailable: !!platformApproved,
-        callbackPath: config.callbackPath,
-        displayName: config.displayName,
-        helpDocsPath: config.helpDocsPath,
-      }
-    }),
-
-  /**
-   * Save org's OAuth credentials for a provider — atomic write of both values.
-   */
-  setProviderCredentials: adminProcedure
-    .input(
-      z.object({
-        provider: z.enum(['google', 'outlook']),
-        clientId: z.string().min(1),
-        clientSecret: z.string().min(1),
-      })
-    )
-    .use(notDemo('set provider credentials'))
-    .mutation(async ({ ctx, input }) => {
-      const { organizationId, userId } = ctx.session
-      const config = PROVIDER_CREDENTIAL_CONFIG[input.provider]
-      const storage = new ConfigStorage()
-
-      // Wrap both writes in a transaction so neither is persisted alone
-      await database.transaction(async (tx) => {
-        await storage.setForOrg(organizationId, config.clientIdKey, input.clientId, userId, tx)
-        await storage.setForOrg(
-          organizationId,
-          config.clientSecretKey,
-          input.clientSecret,
-          userId,
-          tx
-        )
-      })
-    }),
-
-  /**
-   * Delete org's custom OAuth credentials for a provider.
-   */
-  deleteProviderCredentials: adminProcedure
-    .input(z.object({ provider: z.enum(['google', 'outlook']) }))
-    .use(notDemo('delete provider credentials'))
-    .mutation(async ({ ctx, input }) => {
-      const { organizationId } = ctx.session
-      const config = PROVIDER_CREDENTIAL_CONFIG[input.provider]
-
-      // Check for active integrations using these credentials
-      const activeIntegrations = await ctx.db
-        .select({ id: schema.Integration.id })
-        .from(schema.Integration)
-        .where(
-          and(
-            eq(schema.Integration.organizationId, organizationId),
-            eq(schema.Integration.provider, input.provider),
-            eq(schema.Integration.enabled, true),
-            isNull(schema.Integration.deletedAt)
-          )
-        )
-        .limit(1)
-
-      if (activeIntegrations.length > 0) {
-        throw new TRPCError({
-          code: 'BAD_REQUEST',
-          message:
-            'Cannot delete credentials while active channels exist. Disconnect all channels for this provider first.',
-        })
-      }
-
-      const storage = new ConfigStorage()
-      await database.transaction(async (tx) => {
-        await storage.deleteForOrg(organizationId, config.clientIdKey, tx)
-        await storage.deleteForOrg(organizationId, config.clientSecretKey, tx)
-      })
     }),
 
   /**

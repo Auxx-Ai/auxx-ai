@@ -12,6 +12,7 @@ import {
 import {
   mintClientCredentialToken,
   refreshCredentialTokens,
+  resolveOwnClientRequirement,
   saveConnection,
 } from '@auxx/lib/connections'
 import { getAllProviders, getProviderByKey } from '@auxx/lib/connections/providers'
@@ -32,6 +33,27 @@ const credentialKindSchema = z.enum(['app', 'mcp', 'integration', 'workflow'])
  * `expired` so a uniform status applies across every kind.
  */
 const CONNECTION_CIRCUIT_OPEN_THRESHOLD = 5
+
+/** The BYO OAuth client variable keys (§3.2). */
+const BYO_CLIENT_KEYS = new Set(['clientId', 'clientSecret'])
+
+/**
+ * Project a provider's connect-form variables through the approval gate (§3.1). For
+ * OAuth providers: drop the BYO client fields when the platform client is usable (so the
+ * connect is one-click), keeping any other vars (e.g. Shopify's `shop`); force the client
+ * fields required when the connection must bring its own. Non-OAuth defs pass through.
+ */
+function gateConnectionVariables(
+  provider: { connectionType: string; connectionVariables?: unknown },
+  requiresOwnClient: boolean
+) {
+  const vars = (provider.connectionVariables ?? []) as Array<{ key: string; required?: boolean }>
+  if (provider.connectionType !== 'oauth2-code') return vars
+  if (requiresOwnClient) {
+    return vars.map((v) => (BYO_CLIENT_KEYS.has(v.key) ? { ...v, required: true } : v))
+  }
+  return vars.filter((v) => !BYO_CLIENT_KEYS.has(v.key))
+}
 
 /**
  * The single connection surface over the `Credential` table. Covers listing,
@@ -127,18 +149,53 @@ export const connectionsRouter = createTRPCRouter({
    * `platform` owner — its `connectionDefinitionId` is the `providerKey` (the
    * OAuth route + `save` resolve a providerKey as the id).
    */
-  listProviders: protectedProcedure.query(() =>
-    getAllProviders().map((p) => ({
-      providerKey: p.providerKey,
-      label: p.label,
-      description: p.description ?? null,
-      connectionType: p.connectionType,
-      global: p.global ?? false,
-      connectionVariables: p.connectionVariables ?? [],
-      icon: p.uiMetadata?.icon ?? null,
-      category: p.uiMetadata?.category ?? null,
-    }))
-  ),
+  listProviders: protectedProcedure.query(async ({ ctx }) => {
+    // The approval gate (§3.1) is DB-derived: a platform client is "present" only if its
+    // env was set at seed time (column non-blank), and `platformClientApproved` carries
+    // the verification flag. Join the catalog (icons/labels) with the platform
+    // ConnectionDefinition rows so the connect dialog can require BYO client up-front.
+    const defRows = await ctx.db.query.ConnectionDefinition.findMany({
+      where: (cd, { isNotNull }) => isNotNull(cd.providerKey),
+      columns: {
+        providerKey: true,
+        oauth2ClientId: true,
+        oauth2ClientSecret: true,
+        platformClientApproved: true,
+      },
+    })
+    const gateByKey = new Map(
+      defRows.map((d) => [
+        d.providerKey as string,
+        resolveOwnClientRequirement({
+          oauth2ClientId: d.oauth2ClientId,
+          oauth2ClientSecret: d.oauth2ClientSecret,
+          platformClientApproved: d.platformClientApproved,
+        }),
+      ])
+    )
+    return getAllProviders().map((p) => {
+      const gate = gateByKey.get(p.providerKey)
+      const requiresOwnClient = gate?.requiresOwnClient ?? false
+      return {
+        providerKey: p.providerKey,
+        label: p.label,
+        description: p.description ?? null,
+        connectionType: p.connectionType,
+        global: p.global ?? false,
+        // Gate the connect-form variables (§3.1): for OAuth providers, drop the optional
+        // BYO client fields when the platform client is usable (→ one-click connect), and
+        // force them required when the connection must bring its own. The server reads the
+        // ungated def for the authorize/callback exchange — this only shapes the UI form.
+        connectionVariables: gateConnectionVariables(p, requiresOwnClient),
+        icon: p.uiMetadata?.icon ?? null,
+        category: p.uiMetadata?.category ?? null,
+        // OAuth-only: whether this connection must bring its own client id/secret, and why.
+        // `false`/`null` for non-OAuth providers (no DB gate) and secret defs.
+        requiresOwnClient,
+        ownClientReason: gate?.reason ?? null,
+      }
+    })
+  }),
 
   /**
    * Load a connection's values for the edit/reconnect form, masked so no secret ever leaves the

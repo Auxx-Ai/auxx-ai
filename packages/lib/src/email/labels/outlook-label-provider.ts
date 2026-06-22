@@ -4,7 +4,7 @@ import { database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import type { Client } from '@microsoft/microsoft-graph-client'
 import { eq } from 'drizzle-orm'
-import { getChannelTokens } from '../../providers/channel-token-accessor'
+import { getChannelAccessToken, getChannelTokens } from '../../providers/channel-token-accessor'
 import {
   type OutlookIntegrationMetadata,
   OutlookOAuthService,
@@ -37,11 +37,13 @@ export class OutlookLabelProvider implements LabelProvider {
         throw new Error('Integration not found')
       }
 
-      // Get tokens from encrypted credentials
+      // Get tokens from encrypted credentials; overlay a resolver-served fresh access
+      // token (§4). MSAL still owns expiry-time refresh inside getAuthenticatedClient.
       const tokens = await getChannelTokens(this.integrationId)
       if (!tokens.refreshToken) {
         throw new Error('Missing refresh token for Outlook integration')
       }
+      const freshAccessToken = await getChannelAccessToken(this.integrationId)
 
       const metadata = integration.metadata as unknown as Partial<OutlookIntegrationMetadata>
       if (!metadata?.homeAccountId) {
@@ -52,7 +54,7 @@ export class OutlookLabelProvider implements LabelProvider {
         integrationId: integration.id,
         organizationId: this.organizationId,
         refreshToken: tokens.refreshToken,
-        accessToken: tokens.accessToken,
+        accessToken: freshAccessToken ?? tokens.accessToken,
         expiresAt: tokens.expiresAt,
         homeAccountId: metadata.homeAccountId,
         email: metadata.email || '',

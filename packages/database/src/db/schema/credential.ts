@@ -97,6 +97,14 @@ export const Credential = pgTable(
     lastRefreshAt: timestamp({ precision: 3 }), // Last successful token refresh
     lastRefreshFailureAt: timestamp({ precision: 3 }), // Last failed refresh attempt
     consecutiveRefreshFailures: integer().default(0).notNull(), // Circuit breaker counter
+
+    // Classified, user-facing auth-failure layer (the breaker above stays for retry
+    // mechanics). AuthErrorHandler classifies provider errors into AuthErrorType and
+    // writes them here, so any OAuth2 connection (app/MCP/integration) that hits
+    // invalid_grant/revoked surfaces the same reconnect signal.
+    lastAuthError: text(), // AuthErrorType string, e.g. 'invalid_grant'
+    lastAuthErrorAt: timestamp('lastAuthErrorAt', { precision: 3, mode: 'date' }),
+    requiresReauth: boolean('requiresReauth').notNull().default(false),
   },
   (table) => [
     index('Credential_createdById_idx').using('btree', table.createdById.asc().nullsLast()),

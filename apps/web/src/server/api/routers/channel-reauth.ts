@@ -2,12 +2,7 @@
 
 import { schema } from '@auxx/database'
 import { storeOAuthCsrfToken } from '@auxx/lib/cache'
-import {
-  FacebookOAuthService,
-  GoogleOAuthService,
-  InstagramOAuthService,
-  OutlookOAuthService,
-} from '@auxx/lib/providers'
+import { FacebookOAuthService, InstagramOAuthService } from '@auxx/lib/providers'
 import { TRPCError } from '@trpc/server'
 import crypto from 'crypto'
 import { and, eq, inArray, isNull } from 'drizzle-orm'
@@ -53,32 +48,34 @@ export const channelReauthRouter = createTRPCRouter({
         })
       }
 
+      // Gmail/Outlook reconnect through the unified connections flow: a reconnect rotates the
+      // existing credential (connectionId) and the channel provisioning hook relinks the row.
+      // Stored BYO-client variables are reused by the authorize route, so no re-entry needed.
+      if (integration.provider === 'google' || integration.provider === 'outlook') {
+        if (!integration.credentialId) {
+          throw new TRPCError({
+            code: 'BAD_REQUEST',
+            message: 'Channel has no linked credential to reconnect',
+          })
+        }
+        const providerKey = integration.provider === 'google' ? 'gmail' : 'outlookMail'
+        const params = new URLSearchParams({
+          connectionId: integration.credentialId,
+          returnTo: '/app/settings/channels',
+        })
+        return {
+          success: true,
+          authUrl: `/api/connections/${providerKey}/oauth2/authorize?${params.toString()}`,
+          message: 'Re-authentication initiated',
+        }
+      }
+
       // Generate OAuth URL using existing services with re-auth options
       let authUrl: string
       const csrfToken = crypto.randomBytes(32).toString('hex')
 
       try {
         switch (integration.provider) {
-          case 'google': {
-            authUrl = await GoogleOAuthService.getAuthUrl(organizationId, userId, {
-              integrationId: integration.id,
-              isReauth: true,
-              type: 'reauth',
-              csrfToken,
-            })
-            break
-          }
-
-          case 'outlook': {
-            authUrl = await OutlookOAuthService.getAuthUrl(organizationId, userId, {
-              integrationId: integration.id,
-              isReauth: true,
-              type: 'reauth',
-              csrfToken,
-            })
-            break
-          }
-
           case 'facebook': {
             const facebookOAuthService = FacebookOAuthService.getInstance()
             authUrl = await facebookOAuthService.getAuthUrl(organizationId, userId, {

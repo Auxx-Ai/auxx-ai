@@ -52,15 +52,6 @@ export default function ConnectionsOnboardingPage() {
   })
   const channels = channelsData?.channels ?? []
 
-  const getAuthUrl = api.channel.getAuthUrl.useMutation({
-    onError: (error) => {
-      toastError({
-        title: 'Connection failed',
-        description: error.message,
-      })
-    },
-  })
-
   // Check if already connected - only trust database, not local state
   const isGoogleConnected = channels.some((i) => i.provider === 'google' && i.enabled)
   const isOutlookConnected = channels.some((i) => i.provider === 'outlook' && i.enabled)
@@ -84,31 +75,13 @@ export default function ConnectionsOnboardingPage() {
     }
   }, [channels])
 
-  const handleOAuthConnect = async (provider: 'google' | 'outlook') => {
+  const handleOAuthConnect = (provider: 'google' | 'outlook') => {
     setIsConnecting(provider)
-
-    try {
-      await getAuthUrl.mutateAsync(
-        {
-          provider: provider as any,
-          redirectPath: '/onboarding/connections',
-        },
-        {
-          onSuccess: (data) => {
-            if (data.authUrl) {
-              window.location.href = data.authUrl
-            }
-          },
-        }
-      )
-    } catch (error) {
-      console.error('Failed to connect:', error)
-      toastError({
-        title: 'Connection failed',
-        description: `Failed to connect to ${provider}. Please try again.`,
-      })
-      setIsConnecting(null)
-    }
+    // Route through the unified connections OAuth flow.
+    const providerKey = provider === 'google' ? 'gmail' : 'outlookMail'
+    const url = new URL(`/api/connections/${providerKey}/oauth2/authorize`, window.location.origin)
+    url.searchParams.set('returnTo', '/onboarding/connections')
+    window.location.href = url.toString()
   }
 
   const handleSkip = () => {
