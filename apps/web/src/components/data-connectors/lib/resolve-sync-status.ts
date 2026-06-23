@@ -12,7 +12,7 @@
 // payload's lastSyncedAt/nextSyncAt. Keep this dependency-light so it can't pull a
 // server-only module into a client bundle (CLAUDE.md client rule).
 
-import type { ConnectorStatus } from '../ui/connector-status'
+import type { ConnectorStatus, RunStatus } from '../ui/connector-status'
 
 /**
  * The resolved status vocabulary. The first six are the plan's live states; `idle`
@@ -37,8 +37,7 @@ export type SyncPrimaryAction = 'sync' | 'pause' | 'resume' | 'reconnect' | 'ret
 
 /** The slice of the latest `DataConnectorRun` the resolver reads (from `getStatus`). */
 export interface SyncStatusRunInfo {
-  /** 'running' | 'completed' | 'partial' | 'failed'. */
-  status: string
+  status: RunStatus
   /** Engine lifecycle phase; absent/null on legacy single-shot runs. */
   phase?: 'backfill' | 'steady' | null
   /** Live aggregate records-seen across the connector's streams (backfill counts). */

@@ -27,7 +27,7 @@ import { useConnectorMutations } from '../hooks/use-connector-mutations'
 import { resolveSyncStatus } from '../lib/resolve-sync-status'
 import { ConnectorDetailTabs } from './connector-detail-tabs'
 import { ConnectorRunsPanel } from './connector-runs-panel'
-import { asConnectorStatus } from './connector-status'
+import { asConnectorStatus, asRunStatus } from './connector-status'
 import { ConnectorStatusLine } from './connector-status-line'
 
 type Connector = NonNullable<ReturnType<typeof api.dataConnector.getById.useQuery>['data']>
@@ -78,10 +78,14 @@ export function ConnectorDetailView({ connector }: ConnectorDetailViewProps) {
   )
   const live = statusQuery.data
   const liveStatus = asConnectorStatus(live?.status ?? connector.status)
+  // The run status is a free-text DB column; normalize it once for the resolver + status line.
+  const latestRun = live?.latestRun
+    ? { ...live.latestRun, status: asRunStatus(live.latestRun.status) }
+    : null
   const resolved = resolveSyncStatus({
     status: liveStatus,
     error: live?.error ?? connector.error,
-    latestRun: live?.latestRun ?? null,
+    latestRun,
   })
 
   const {
@@ -195,7 +199,7 @@ export function ConnectorDetailView({ connector }: ConnectorDetailViewProps) {
             status={liveStatus}
             error={live?.error ?? connector.error}
             lastSyncedAt={live?.lastSyncedAt ?? connector.lastSyncedAt}
-            latestRun={live?.latestRun ?? null}
+            latestRun={latestRun}
             className='ml-2'
           />
         </MainPageBreadcrumb>

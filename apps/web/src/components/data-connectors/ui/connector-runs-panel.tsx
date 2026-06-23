@@ -2,27 +2,27 @@
 'use client'
 
 import { Badge } from '@auxx/ui/components/badge'
+import { Button } from '@auxx/ui/components/button'
+import { ButtonGroup, ButtonGroupSeparator } from '@auxx/ui/components/button-group'
 import { DrawerHeader } from '@auxx/ui/components/drawer'
 import { EntityIcon } from '@auxx/ui/components/icons'
 import { LastUpdated } from '@auxx/ui/components/last-updated'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
+import { EmptySection, Section } from '@auxx/ui/components/section'
+import { TreeRow } from '@auxx/ui/components/tree-row'
 import { cn } from '@auxx/ui/lib/utils'
-import {
-  AlertTriangle,
-  ArchiveX,
-  CheckCircle2,
-  Loader2,
-  Plus,
-  RefreshCw,
-  SkipForward,
-  Trash2,
-  XCircle,
-} from 'lucide-react'
-import { api } from '~/trpc/react'
+import { pluralize } from '@auxx/utils/strings'
+import { ArchiveX, History, Plus, RefreshCw, SkipForward, Trash2, XCircle } from 'lucide-react'
+import { Fragment, useState } from 'react'
+import { VisualIcon } from '~/components/icons/ui/visual-icon'
+import { api, type RouterOutputs } from '~/trpc/react'
 import { ConnectorBackfillProgress } from './connector-backfill-progress'
 import { ConnectorFreshnessPanel } from './connector-freshness-panel'
 import { ConnectorRunErrors } from './connector-run-errors'
-import type { ConnectorStatus } from './connector-status'
+import { asRunStatus, type ConnectorStatus, RUN_STATUS_META } from './connector-status'
+
+/** A single row in the `listRuns` history. */
+type ConnectorRun = RouterOutputs['dataConnector']['listRuns'][number]
 
 interface ConnectorRunsPanelProps {
   connectorId: string
@@ -31,36 +31,95 @@ interface ConnectorRunsPanelProps {
   sourceLabel: string
 }
 
-const RUN_STATUS_META: Record<
-  string,
-  { label: string; icon: React.ComponentType<{ className?: string }>; className: string }
-> = {
-  running: { label: 'Running', icon: Loader2, className: 'text-amber-600' },
-  completed: { label: 'Completed', icon: CheckCircle2, className: 'text-green-600' },
-  partial: { label: 'Partial', icon: AlertTriangle, className: 'text-amber-600' },
-  failed: { label: 'Failed', icon: XCircle, className: 'text-red-600' },
+/** The per-run delta counts, in render order. Each maps to a numeric field on the run. */
+const COUNT_FIELDS = [
+  { key: 'created', icon: Plus, label: 'Created', className: 'text-green-600' },
+  { key: 'updated', icon: RefreshCw, label: 'Updated', className: 'text-blue-600' },
+  { key: 'skipped', icon: SkipForward, label: 'Skipped', className: 'text-muted-foreground' },
+  { key: 'archived', icon: ArchiveX, label: 'Archived', className: 'text-amber-600' },
+  { key: 'deleted', icon: Trash2, label: 'Deleted', className: 'text-red-600' },
+  { key: 'failed', icon: XCircle, label: 'Failed', className: 'text-red-600' },
+] as const
+
+/**
+ * The run's nonzero deltas as a border-collapsed button group of `xs` segments
+ * (icon + count). The text label ("Created", "Updated", …) is hidden by default
+ * and only shows once the row's `@container/runs` is wide enough — so the cluster
+ * stays compact in a narrow panel and spells itself out when there's room.
+ */
+function RunCounts({ run, className }: { run: ConnectorRun; className?: string }) {
+  const segments = COUNT_FIELDS.filter((f) => run[f.key] > 0)
+  if (segments.length === 0) return null
+  return (
+    <ButtonGroup className={className}>
+      {segments.map((f, i) => {
+        const Icon = f.icon
+        return (
+          <Fragment key={f.key}>
+            {i > 0 && <ButtonGroupSeparator />}
+            <Button
+              size='xs'
+              variant='outline'
+              tabIndex={-1}
+              title={f.label}
+              className={cn('text-[11px] font-normal', f.className)}>
+              <Icon />
+              <span className='hidden @md/runs:inline'>{f.label}</span>
+              {run[f.key]}
+            </Button>
+          </Fragment>
+        )
+      })}
+    </ButtonGroup>
+  )
 }
 
-/** A single count chip (icon + n) shown on a run row. */
-function CountChip({
-  icon: Icon,
-  value,
-  label,
-  className,
-}: {
-  icon: React.ComponentType<{ className?: string }>
-  value: number
-  label: string
-  className?: string
-}) {
-  if (!value) return null
+/**
+ * A single run in the history list, as an expandable tree row: a colored status
+ * icon + label, the per-run count chips inline, the trigger/mode/duration in the
+ * help-icon tooltip, the relative start time on the right, and an expandable
+ * error-sample block — the chevron only appears when the run carries errors.
+ */
+function RunRow({ run, sourceLabel }: { run: ConnectorRun; sourceLabel: string }) {
+  const [open, setOpen] = useState(false)
+  const meta = RUN_STATUS_META[asRunStatus(run.status)]
+  const errors = run.errorSample ?? []
+  const hasErrors = errors.length > 0
+
+  const metaParts = [run.trigger, run.mode]
+  if (run.durationMs != null) metaParts.push(formatDuration(run.durationMs))
+
   return (
-    <span
-      className={cn('inline-flex items-center gap-1 text-xs text-muted-foreground', className)}
-      title={label}>
-      <Icon className='size-3' />
-      {value}
-    </span>
+    <TreeRow
+      icon={<VisualIcon value={`icon:${meta.iconId}:${meta.color}`} size='sm' />}
+      title={meta.label}
+      description={metaParts.join(' · ')}
+      rowClassName='hover:bg-primary-100'
+      secondary={<RunCounts run={run} className='ms-2' />}
+      actions={
+        <div className='flex items-center gap-2 whitespace-nowrap text-xs text-muted-foreground'>
+          {run.relationshipWarnings > 0 && (
+            <span className='text-amber-600'>
+              {run.relationshipWarnings} {pluralize(run.relationshipWarnings, 'warning')}
+            </span>
+          )}
+          <LastUpdated timestamp={new Date(run.startedAt)} />
+        </div>
+      }
+      expandable={hasErrors}
+      isOpen={hasErrors ? open : undefined}
+      onToggleOpen={hasErrors ? () => setOpen((v) => !v) : undefined}>
+      {hasErrors && (
+        <div className='mt-1 me-2 ms-8 flex flex-col gap-1 rounded-md border border-red-200 bg-red-50 p-2 text-xs text-red-700'>
+          {errors.slice(0, 3).map((e, i) => (
+            <div key={i} className='truncate'>
+              <span className='font-mono'>{e.externalId}</span>: {e.error}
+            </div>
+          ))}
+          <ConnectorRunErrors errors={errors} connectorLabel={sourceLabel} runId={run.id} />
+        </div>
+      )}
+    </TreeRow>
   )
 }
 
@@ -144,94 +203,28 @@ export function ConnectorRunsPanel({
       )}
 
       <ScrollArea className='flex-1' scrollbarClassName='w-1.5'>
-        <div className='flex flex-col divide-y'>
+        <Section
+          title='History'
+          icon={<History className='size-4' />}
+          className='[&>[data-slot=section]>[data-slot=section-content]]:-mx-3'
+          initialOpen
+          collapsible={false}>
           {rows.length === 0 ? (
-            <div className='px-4 py-8 text-center text-xs text-muted-foreground'>
-              No runs yet. Use “Sync now” to run this connector.
+            <div className='px-3 py-2'>
+              <EmptySection
+                icon={<History className='size-5' />}
+                title='No runs yet'
+                description='Use “Sync now” to run this connector.'
+              />
             </div>
           ) : (
-            rows.map((run) => {
-              const meta = RUN_STATUS_META[run.status] ?? RUN_STATUS_META.completed
-              const Icon = meta!.icon
-              return (
-                <div key={run.id} className='flex flex-col gap-1.5 px-4 py-3'>
-                  <div className='flex items-center justify-between'>
-                    <span
-                      className={cn('inline-flex items-center gap-1.5 text-sm', meta!.className)}>
-                      <Icon className={cn('size-4', run.status === 'running' && 'animate-spin')} />
-                      {meta!.label}
-                    </span>
-                    <span className='text-xs text-muted-foreground'>
-                      <LastUpdated timestamp={new Date(run.startedAt)} />
-                    </span>
-                  </div>
-
-                  <div className='flex flex-wrap items-center gap-x-3 gap-y-1'>
-                    <CountChip
-                      icon={Plus}
-                      value={run.created}
-                      label='Created'
-                      className='text-green-600'
-                    />
-                    <CountChip
-                      icon={RefreshCw}
-                      value={run.updated}
-                      label='Updated'
-                      className='text-blue-600'
-                    />
-                    <CountChip icon={SkipForward} value={run.skipped} label='Skipped' />
-                    <CountChip
-                      icon={ArchiveX}
-                      value={run.archived}
-                      label='Archived'
-                      className='text-amber-600'
-                    />
-                    <CountChip
-                      icon={Trash2}
-                      value={run.deleted}
-                      label='Deleted'
-                      className='text-red-600'
-                    />
-                    <CountChip
-                      icon={XCircle}
-                      value={run.failed}
-                      label='Failed'
-                      className='text-red-600'
-                    />
-                  </div>
-
-                  <div className='flex flex-wrap items-center gap-x-3 text-xs text-muted-foreground'>
-                    <span>
-                      {run.trigger} · {run.mode}
-                    </span>
-                    {run.durationMs != null && <span>{formatDuration(run.durationMs)}</span>}
-                    {run.relationshipWarnings > 0 && (
-                      <span className='text-amber-600'>
-                        {run.relationshipWarnings} relationship warning
-                        {run.relationshipWarnings === 1 ? '' : 's'}
-                      </span>
-                    )}
-                  </div>
-
-                  {run.errorSample && run.errorSample.length > 0 && (
-                    <div className='mt-1 flex flex-col gap-1 rounded-md border border-red-200 bg-red-50 p-2 text-xs text-red-700'>
-                      {run.errorSample.slice(0, 3).map((e, i) => (
-                        <div key={i} className='truncate'>
-                          <span className='font-mono'>{e.externalId}</span>: {e.error}
-                        </div>
-                      ))}
-                      <ConnectorRunErrors
-                        errors={run.errorSample}
-                        connectorLabel={sourceLabel}
-                        runId={run.id}
-                      />
-                    </div>
-                  )}
-                </div>
-              )
-            })
+            <div className='@container/runs flex flex-col ps-2 pe-4'>
+              {rows.map((run) => (
+                <RunRow key={run.id} run={run} sourceLabel={sourceLabel} />
+              ))}
+            </div>
           )}
-        </div>
+        </Section>
       </ScrollArea>
     </div>
   )
