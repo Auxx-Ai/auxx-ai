@@ -30,6 +30,8 @@ export {
 } from './contact'
 // Counter utilities
 export { createCounter, createIdAllocator } from './counter'
+// CSV serialization (framework-agnostic; browser download lives in apps/web)
+export { csvCell, toCsv } from './csv'
 // Currency utilities
 export {
   type CurrencyDisplayOptions,

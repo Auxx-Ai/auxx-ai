@@ -229,42 +229,54 @@ export function ConnectionsSection() {
                 return <ConnectionStackCard key={group.key} group={group} onToggle={toggle} />
               }
               // Expanded: a self-contained block (header + nested cards) so it reads as the stack,
-              // not loose top-level cards detached from a narrow tile.
+              // not loose top-level cards detached from a narrow tile. It claims its own row
+              // (`col-span-full`) so its height never stretches the sibling cards, but a nested grid
+              // mirroring the column template caps the block to a single tile's width.
               return (
-                <div
-                  key={group.key}
-                  className='col-span-full flex flex-col gap-2 rounded-2xl border bg-muted/40 p-2'>
-                  <button
-                    type='button'
-                    onClick={toggle}
-                    className='flex w-full items-center gap-2 rounded-xl px-1 py-1 text-left hover:bg-muted/60'>
-                    <div className='flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-xl border bg-background'>
-                      <AppIcon iconId={group.iconId} size='sm' />
+                <div key={group.key} className='col-span-full'>
+                  <div className='grid w-full gap-2 @sm:grid-cols-1 @md:grid-cols-2 @2xl:grid-cols-3'>
+                    <div className='flex flex-col gap-2 rounded-2xl border bg-muted/40 p-2'>
+                      {/* Header mirrors the collapsed face: icon, then title + "N connections" on a
+                          second row, so toggling open/closed reads as the same card. */}
+                      <button
+                        type='button'
+                        onClick={toggle}
+                        className='flex w-full items-start gap-2 rounded-xl px-1 py-1 text-left hover:bg-muted/60'>
+                        <div className='flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-xl border bg-background'>
+                          <AppIcon iconId={group.iconId} size='sm' />
+                        </div>
+                        <div className='flex flex-1 flex-col'>
+                          <div className='flex items-center justify-between gap-1'>
+                            <span className='text-sm font-semibold'>{group.label}</span>
+                            <div className='flex items-center gap-1'>
+                              {group.expiredCount > 0 && (
+                                <span className='flex items-center gap-1 rounded-lg border bg-primary-100 px-1.5 py-0.5 text-xs text-amber-700'>
+                                  <TriangleAlert className='size-3 text-amber-600' />
+                                  Needs attention
+                                </span>
+                              )}
+                              <ChevronUp className='size-4 shrink-0 text-muted-foreground' />
+                            </div>
+                          </div>
+                          <span className='text-xs text-muted-foreground'>
+                            {group.rows.length} connections
+                          </span>
+                        </div>
+                      </button>
+                      <div className='flex flex-col gap-2'>
+                        {group.rows.map(renderCard)}
+                        {canAdd && (
+                          <Button
+                            variant='outline'
+                            size='sm'
+                            className='w-full border-dashed'
+                            onClick={() => handleAddToGroup(group)}>
+                            <Plus />
+                            Add {group.label}
+                          </Button>
+                        )}
+                      </div>
                     </div>
-                    <span className='text-sm font-semibold'>{group.label}</span>
-                    {group.expiredCount > 0 && (
-                      <span className='flex items-center gap-1 rounded-lg border bg-primary-100 px-1.5 py-0.5 text-xs text-amber-700'>
-                        <TriangleAlert className='size-3 text-amber-600' />
-                        Needs attention
-                      </span>
-                    )}
-                    <span className='ml-auto text-xs text-muted-foreground'>
-                      {group.rows.length} connections
-                    </span>
-                    <ChevronUp className='size-4 shrink-0 text-muted-foreground' />
-                  </button>
-                  <div className='flex flex-col gap-2'>
-                    {group.rows.map(renderCard)}
-                    {canAdd && (
-                      <Button
-                        variant='outline'
-                        size='sm'
-                        className='w-full border-dashed'
-                        onClick={() => handleAddToGroup(group)}>
-                        <Plus />
-                        Add {group.label}
-                      </Button>
-                    )}
                   </div>
                 </div>
               )

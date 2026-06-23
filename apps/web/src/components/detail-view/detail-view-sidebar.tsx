@@ -4,6 +4,7 @@
 import { parseRecordId } from '@auxx/lib/field-values/client'
 import type { DrawerTabCardDefinition } from '@auxx/lib/resources/client'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@auxx/ui/components/tabs'
+import { cn } from '@auxx/ui/lib/utils'
 import React from 'react'
 import type { DrawerTabProps } from '~/components/drawers/drawer-tab-registry'
 import { getTabCardComponent } from '~/components/drawers/drawer-tab-registry'
@@ -104,8 +105,8 @@ function SidebarCards({
   return (
     <>
       {cards.map((card) => (
-        <div key={card.value} className='space-y-1 p-4'>
-          <h4 className='text-sm'>{card.label}</h4>
+        <div key={card.value} className={cn('space-y-1', card.fullBleed ? 'pt-4' : 'p-4')}>
+          <h4 className={cn('text-sm', card.fullBleed && 'px-4')}>{card.label}</h4>
           <LazySidebarCard
             entityType={entityType}
             cardValue={card.value}

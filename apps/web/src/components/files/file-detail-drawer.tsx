@@ -16,6 +16,7 @@ import {
 } from '@auxx/ui/components/dropdown-menu'
 import { EntityIcon } from '@auxx/ui/components/icons'
 import { Input } from '@auxx/ui/components/input'
+import { MetricCell, MetricGrid } from '@auxx/ui/components/metric-grid'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@auxx/ui/components/tabs'
 import { toastError } from '@auxx/ui/components/toast'
 import { cn } from '@auxx/ui/lib/utils'
@@ -331,88 +332,31 @@ export function FileDetailDrawer({ file, onOpenChange, setSelectedFile }: FileDe
           />
 
           {/* Metrics */}
-          <div className='grid grid-cols-2 border-b bg-background'>
-            {/* File Size */}
-            <div className='border-r border-b'>
-              <CardHeader className='pb-2 pt-3'>
-                <CardTitle className='text-sm font-medium text-muted-foreground'>
-                  File Size
-                </CardTitle>
-              </CardHeader>
-              <CardContent className='pb-3'>
-                <div className='flex items-center gap-2'>
-                  <Database className='h-4 w-4 text-muted-foreground' />
-                  <span className='text-lg font-semibold'>{formatBytes(file.displaySize)}</span>
-                </div>
-              </CardContent>
-            </div>
-
-            {/* File Type */}
-            <div className='border-b'>
-              <CardHeader className='pb-2 pt-3'>
-                <CardTitle className='text-sm font-medium text-muted-foreground'>
-                  File Type
-                </CardTitle>
-              </CardHeader>
-              <CardContent className='pb-3'>
-                <div className='flex items-center gap-2'>
-                  <FileText className='h-4 w-4 text-muted-foreground' />
-                  <span className='text-lg font-semibold'>
-                    {getStandardFileType(file.mimeType || undefined, file.ext || undefined)}
-                  </span>
-                </div>
-                {file.mimeType && (
-                  <p className='text-xs text-muted-foreground mt-1'>{file.mimeType}</p>
-                )}
-              </CardContent>
-            </div>
-
-            {/* Created Date */}
-            <div className='border-r'>
-              <CardHeader className='pb-2 pt-3'>
-                <CardTitle className='text-sm font-medium text-muted-foreground'>Created</CardTitle>
-              </CardHeader>
-              <CardContent className='pb-3'>
-                <div className='flex items-center gap-2'>
-                  <Calendar className='h-4 w-4 text-muted-foreground' />
-                  <div>
-                    <div className='text-sm font-medium'>
-                      {formatDistanceToNow(new Date(file.createdAt), {
-                        addSuffix: true,
-                      })}
-                    </div>
-                    <div className='text-xs text-muted-foreground'>
-                      {format(new Date(file.createdAt), 'MMM d, yyyy HH:mm')}
-                    </div>
-                  </div>
-                </div>
-              </CardContent>
-            </div>
-
-            {/* Modified Date */}
-            <div>
-              <CardHeader className='pb-2 pt-3'>
-                <CardTitle className='text-sm font-medium text-muted-foreground'>
-                  Modified
-                </CardTitle>
-              </CardHeader>
-              <CardContent className='pb-3'>
-                <div className='flex items-center gap-2'>
-                  <Calendar className='h-4 w-4 text-muted-foreground' />
-                  <div>
-                    <div className='text-sm font-medium'>
-                      {formatDistanceToNow(new Date(file.updatedAt), {
-                        addSuffix: true,
-                      })}
-                    </div>
-                    <div className='text-xs text-muted-foreground'>
-                      {format(new Date(file.updatedAt), 'MMM d, yyyy HH:mm')}
-                    </div>
-                  </div>
-                </div>
-              </CardContent>
-            </div>
-          </div>
+          <MetricGrid columns={2}>
+            <MetricCell
+              label='File Size'
+              icon={<Database className='size-4 text-muted-foreground' />}
+              value={formatBytes(file.displaySize)}
+            />
+            <MetricCell
+              label='File Type'
+              icon={<FileText className='size-4 text-muted-foreground' />}
+              value={getStandardFileType(file.mimeType || undefined, file.ext || undefined)}
+              description={file.mimeType || undefined}
+            />
+            <MetricCell
+              label='Created'
+              icon={<Calendar className='size-4 text-muted-foreground' />}
+              value={formatDistanceToNow(new Date(file.createdAt), { addSuffix: true })}
+              description={format(new Date(file.createdAt), 'MMM d, yyyy HH:mm')}
+            />
+            <MetricCell
+              label='Modified'
+              icon={<Calendar className='size-4 text-muted-foreground' />}
+              value={formatDistanceToNow(new Date(file.updatedAt), { addSuffix: true })}
+              description={format(new Date(file.updatedAt), 'MMM d, yyyy HH:mm')}
+            />
+          </MetricGrid>
 
           {/* Tabs */}
           <Tabs

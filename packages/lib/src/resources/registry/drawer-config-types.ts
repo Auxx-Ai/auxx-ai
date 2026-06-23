@@ -39,6 +39,11 @@ export interface DrawerTabCardDefinition {
   label: string
   /** Position relative to default tab content */
   position?: 'before' | 'after'
+  /**
+   * Render the card edge-to-edge by cancelling the wrapping Section's horizontal
+   * padding (and bottom gap). Use for full-bleed strips like the metrics grid.
+   */
+  fullBleed?: boolean
 }
 
 /**

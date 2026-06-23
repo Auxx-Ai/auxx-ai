@@ -57,7 +57,7 @@ export const DETAIL_VIEW_CONFIG_REGISTRY: DetailViewConfigRegistry = {
     defaultTab: 'conversation',
     defaultSidebarTab: 'overview',
     sidebarCards: [
-      { value: 'metrics', label: 'Metrics', position: 'before' },
+      { value: 'metrics', label: 'Metrics', position: 'before', fullBleed: true },
       { value: 'customer', label: 'Customer' },
       { value: 'relationships', label: 'Related Tickets' },
     ],
