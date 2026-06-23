@@ -59,6 +59,19 @@ function countRecords(body: unknown, depth = 0): number {
 }
 
 /**
+ * The page's record array per the pagination spec: `recordsPath` when declared
+ * (Stripe `data`, HubSpot `results`), else best-effort auto-find. Used to read the
+ * last record (`lastRecord` cursor) and detect an empty page.
+ */
+function selectRecords(body: unknown, recordsPath?: string): unknown[] {
+  if (recordsPath) {
+    const at = getByPath(body, recordsPath)
+    return Array.isArray(at) ? at : []
+  }
+  return findRecords(body)
+}
+
+/**
  * Best-effort records array in a payload — the first array found (depth-first),
  * mirroring `countRecords`. Used only to extract the steady-mode watermark; the
  * mapping's `rootPath` remains the authoritative records selector for the sink.
@@ -174,6 +187,8 @@ function toSyncCursor(
     case 'link-header':
       return { kind: 'headerLocator', value: nextToken }
     default:
+      // cursor / next-url both resume from the token (body cursor, last-record id,
+      // or a verbatim next URL) on the next slice.
       return { kind: 'token', value: nextToken }
   }
 }
@@ -187,8 +202,21 @@ function nextPageToken(
 ): string | undefined {
   if (!pagination || pagination.kind === 'none') return undefined
   switch (pagination.kind) {
-    case 'cursor':
+    case 'cursor': {
+      // Stripe-style: the next cursor is a field of the LAST record on the page,
+      // not a fixed body path. Empty page ⇒ no last record ⇒ stop.
+      if (pagination.cursorFrom === 'lastRecord') {
+        const records = selectRecords(body, pagination.recordsPath)
+        const last = records[records.length - 1]
+        const value = getByPath(last, pagination.cursorRecordField)
+        return value === undefined || value === null ? undefined : String(value)
+      }
       return getByPath(body, pagination.cursorPath) as string | undefined
+    }
+    case 'next-url':
+      // Server hands back a full next-page URL in the body (Salesforce
+      // `nextRecordsUrl`); absent ⇒ exhausted.
+      return getByPath(body, pagination.nextUrlPath) as string | undefined
     case 'link-header': {
       const link = headers.link ?? ''
       const match = link.match(/<([^>]+)>;\s*rel="next"/)
@@ -265,7 +293,9 @@ async function* fetchRecords(args: ConnectorFetchArgs): AsyncIterable<ConnectorY
       params[pagination.pageParam] = pageIndex + 1
     }
     if (pagination?.kind === 'offset' && pagination.pageParam) {
-      params[pagination.pageParam] = pageIndex * (pagination.pageSize ?? 0)
+      // offsetBase shifts the first page's offset (QuickBooks STARTPOSITION is 1-based).
+      params[pagination.pageParam] =
+        (pagination.offsetBase ?? 0) + pageIndex * (pagination.pageSize ?? 0)
     }
     if (pagination?.limitParam && pagination.pageSize) {
       params[pagination.limitParam] = pagination.pageSize
@@ -276,8 +306,17 @@ async function* fetchRecords(args: ConnectorFetchArgs): AsyncIterable<ConnectorY
       params[incremental.sinceParam] = args.state.watermark
     }
 
-    const url =
-      pagination?.kind === 'link-header' && cursor ? cursor : buildUrl(baseUrl, path, params)
+    // link-header hands back an absolute next URL (GET as-is); next-url hands back
+    // a body URL that is often relative (Salesforce `nextRecordsUrl`) — join it onto
+    // the base origin and GET it verbatim, without re-appending our paging params.
+    let url: string
+    if (pagination?.kind === 'link-header' && cursor) {
+      url = cursor
+    } else if (pagination?.kind === 'next-url' && cursor) {
+      url = buildUrl(baseUrl, cursor)
+    } else {
+      url = buildUrl(baseUrl, path, params)
+    }
 
     // The HTTP transport applies the resolved connection's declarative auth
     // (header/basic/query), sends the request, handles rate limits (429 +
@@ -313,8 +352,15 @@ async function* fetchRecords(args: ConnectorFetchArgs): AsyncIterable<ConnectorY
     yield { streamKey: args.streamKey, fields: body }
 
     const next = nextPageToken(pagination, body, response.headers, pageIndex)
-    // Stop when there's no next token, or a page/offset run returned an empty page.
+    // An explicit `has_more: false` terminates regardless of token presence
+    // (Stripe/Notion); when absent we fall back to token/empty-page detection.
+    const hasMore = pagination?.hasMorePath
+      ? Boolean(getByPath(body, pagination.hasMorePath))
+      : undefined
+    // Stop when has_more says so, there's no next token, or a page/offset run
+    // returned an empty page.
     if (
+      hasMore === false ||
       !next ||
       (countRecords(body) === 0 && (pagination?.kind === 'page' || pagination?.kind === 'offset'))
     ) {

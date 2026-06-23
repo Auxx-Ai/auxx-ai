@@ -18,12 +18,38 @@ import type { SyncCursor } from '../sync-core/contracts'
 
 /** Pagination contract for a generic-REST endpoint. */
 export interface PaginationSpec {
-  kind: 'cursor' | 'page' | 'offset' | 'link-header' | 'none'
-  /** Where the next cursor/page token lives in the response. */
-  cursorPath?: string
+  kind: 'cursor' | 'page' | 'offset' | 'link-header' | 'next-url' | 'none'
   /** Query/body param name carrying the cursor/page token. */
   cursorParam?: string
+  /** Where the next cursor/page token lives in the response (cursor-in-body). */
+  cursorPath?: string
+  /**
+   * Where the next cursor comes from. `'response'` (default) reads {@link cursorPath};
+   * `'lastRecord'` derives it from the last record on the page (Stripe `starting_after`).
+   */
+  cursorFrom?: 'response' | 'lastRecord'
+  /** With `cursorFrom: 'lastRecord'`: which field of the last record is the cursor (Stripe: `id`). */
+  cursorRecordField?: string
+  /**
+   * Dotted path to the page's record array (HubSpot `results`, Stripe `data`).
+   * Used to read the last record (`lastRecord` cursor) and detect an empty page;
+   * omit to auto-find the first array in the body.
+   */
+  recordsPath?: string
+  /**
+   * Boolean body field that says "more pages exist" (Stripe/Notion `has_more`).
+   * When set, a falsy value terminates the loop regardless of token presence.
+   */
+  hasMorePath?: string
+  /**
+   * Dotted body path to a full next-page URL the server hands back (Salesforce
+   * `nextRecordsUrl`); the URL is GET verbatim. Only read for `kind: 'next-url'`.
+   * (`link-header` covers the same idea when the URL is in a response header.)
+   */
+  nextUrlPath?: string
   pageParam?: string
+  /** Offset base for `kind: 'offset'` — `0` (default) or `1` (QuickBooks `STARTPOSITION`). */
+  offsetBase?: 0 | 1
   limitParam?: string
   pageSize?: number
 }

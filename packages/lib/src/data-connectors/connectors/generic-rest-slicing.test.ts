@@ -10,6 +10,7 @@ import {
   ConnectorRateLimitError,
   type ConnectorYield,
   isConnectorCheckpoint,
+  type PaginationSpec,
 } from './types'
 
 const fetchMock = vi.fn()
@@ -160,5 +161,90 @@ describe('generic-rest steady mode (G2)', () => {
     )
     // Single page (no pagination) → terminal checkpoint carries the max updated_at.
     expect(yields.at(-1)).toEqual({ __checkpoint: true, watermark: '2026-06-15' })
+  })
+})
+
+describe('generic-rest enriched pagination (Step 6)', () => {
+  function paged(pagination: PaginationSpec, over: Partial<ConnectorFetchArgs> = {}) {
+    return args({
+      config: { endpoint: { baseUrl: 'https://api.example.com', auth: 'none', pagination } },
+      requestConfig: { path: 'query' },
+      ...over,
+    })
+  }
+
+  it('next-url: GETs the body next URL verbatim, terminates when absent', async () => {
+    fetchMock
+      .mockResolvedValueOnce(
+        json({ done: false, nextRecordsUrl: '/query/01g-2000', records: [{ id: 1 }] })
+      )
+      .mockResolvedValueOnce(json({ done: true, records: [{ id: 2 }] })) // no nextRecordsUrl → done
+
+    const yields = await collect(
+      paged({ kind: 'next-url', nextUrlPath: 'nextRecordsUrl', recordsPath: 'records' })
+    )
+
+    // Page 2 is the server-handed URL, joined onto the base origin and GET as-is.
+    const [secondUrl] = fetchMock.mock.calls[1]!
+    expect(String(secondUrl)).toBe('https://api.example.com/query/01g-2000')
+    expect(yields[1]).toEqual({
+      __checkpoint: true,
+      cursor: { kind: 'token', value: '/query/01g-2000' },
+    })
+    expect(yields.at(-1)).toEqual({ __checkpoint: true }) // exhausted, no cursor
+  })
+
+  it('cursor lastRecord + has_more: cursor = last record id, has_more:false stops', async () => {
+    fetchMock
+      .mockResolvedValueOnce(json({ has_more: true, data: [{ id: 'a' }, { id: 'b' }] }))
+      .mockResolvedValueOnce(json({ has_more: false, data: [{ id: 'c' }] }))
+
+    const yields = await collect(
+      paged({
+        kind: 'cursor',
+        cursorFrom: 'lastRecord',
+        cursorRecordField: 'id',
+        cursorParam: 'starting_after',
+        recordsPath: 'data',
+        hasMorePath: 'has_more',
+      })
+    )
+
+    // Page 2 carries the LAST record id of page 1 as the cursor.
+    const [secondUrl] = fetchMock.mock.calls[1]!
+    expect(String(secondUrl)).toContain('starting_after=b')
+    expect(yields[1]).toEqual({ __checkpoint: true, cursor: { kind: 'token', value: 'b' } })
+    // has_more:false on page 2 terminates the loop (only two fetches).
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(yields.at(-1)).toEqual({ __checkpoint: true })
+  })
+
+  it('has_more:false terminates even when a next token is present', async () => {
+    fetchMock.mockResolvedValueOnce(json({ next_cursor: 'c1', has_more: false, data: [{}] }))
+
+    const yields = await collect(
+      paged({
+        kind: 'cursor',
+        cursorPath: 'next_cursor',
+        cursorParam: 'cursor',
+        hasMorePath: 'has_more',
+      })
+    )
+
+    expect(fetchMock).toHaveBeenCalledTimes(1) // stopped despite next_cursor present
+    expect(yields.at(-1)).toEqual({ __checkpoint: true })
+  })
+
+  it('offsetBase:1 starts the offset at 1 (QuickBooks STARTPOSITION)', async () => {
+    fetchMock
+      .mockResolvedValueOnce(json({ items: [{}] })) // non-empty → keep going
+      .mockResolvedValueOnce(json({ items: [] })) // empty → exhausted
+
+    await collect(
+      paged({ kind: 'offset', pageParam: 'STARTPOSITION', pageSize: 1000, offsetBase: 1 })
+    )
+
+    expect(String(fetchMock.mock.calls[0]![0])).toContain('STARTPOSITION=1')
+    expect(String(fetchMock.mock.calls[1]![0])).toContain('STARTPOSITION=1001')
   })
 })
