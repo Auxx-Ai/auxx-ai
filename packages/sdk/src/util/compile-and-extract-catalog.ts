@@ -209,6 +209,8 @@ export interface CatalogConnectorDefaultMapping {
 export interface CatalogConnectorStream {
   key: string
   displayFieldKey: string
+  /** Stream scheduling — `incremental` backfills once then runs deltas. */
+  syncMode?: 'snapshot' | 'incremental'
   fields: CatalogConnectorField[]
   defaultMappings?: CatalogConnectorDefaultMapping[]
   exampleRecord?: Record<string, unknown>
@@ -647,6 +649,7 @@ export async function compileAndExtractCatalog(): Promise<
     const streams: CatalogConnectorStream[] = (connector.streams ?? []).map((stream) => ({
       key: stream.key,
       displayFieldKey: stream.displayFieldKey,
+      syncMode: stream.syncMode,
       // Flatten the `fieldKey → decl` map into an array, carrying the key.
       fields: Object.entries(stream.fields ?? {}).map(([fieldKey, decl]) => ({
         fieldKey,
@@ -796,6 +799,7 @@ interface RawConnectorFieldDecl {
 interface RawConnectorStream {
   key: string
   displayFieldKey: string
+  syncMode?: 'snapshot' | 'incremental'
   fields: Record<string, RawConnectorFieldDecl>
   defaultMappings?: CatalogConnectorDefaultMapping[]
   exampleRecord?: Record<string, unknown>
