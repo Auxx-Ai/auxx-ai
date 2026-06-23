@@ -9,6 +9,7 @@ import {
   resolveWebhookCapability,
 } from '@auxx/lib/data-connectors'
 import { getQueue, Queues } from '@auxx/lib/jobs/queues'
+import { dedupeWebhookEvent, normalizeHeaders } from '@auxx/lib/webhooks'
 import { createScopedLogger } from '@auxx/logger'
 import { getRedisClient } from '@auxx/redis'
 import { getConnectorWebhookHandler, getWebhookHandler } from '@auxx/services/app-webhook-handlers'
@@ -33,10 +34,7 @@ async function handleConnectorWebhook(c: any) {
 
   // Read the raw body ONCE, before any parse — HMAC is computed over raw bytes (W1).
   const rawBody = await c.req.text()
-  const headers: Record<string, string> = {}
-  c.req.raw.headers.forEach((value: string, key: string) => {
-    headers[key.toLowerCase()] = value
-  })
+  const headers = normalizeHeaders(c.req.raw.headers)
 
   try {
     const connector = await database.query.DataConnector.findFirst({
@@ -78,7 +76,10 @@ async function handleConnectorWebhook(c: any) {
     // 2. Dedupe by the provider event id (fallback: a hash of the body).
     const eventId =
       capability.eventId({ rawBody, headers }) ?? createHash('sha256').update(rawBody).digest('hex')
-    const deduped = await dedupeWebhook(connectorId, eventId)
+    const deduped = await dedupeWebhookEvent(
+      'data-connector-webhook-dedup',
+      `${connectorId}:${eventId}`
+    )
     if (deduped) {
       log.info('Connector webhook: duplicate delivery, dropping', { connectorId, eventId })
       return c.json({ ok: true, duplicate: true }, 200)
@@ -117,19 +118,6 @@ function parseConnectorSecret(metadata: string | null): string | null {
     return (JSON.parse(metadata) as { secret?: string }).secret ?? null
   } catch {
     return null
-  }
-}
-
-/** Receiver-level idempotency: SET NX with a TTL. Returns true when already seen. */
-async function dedupeWebhook(connectorId: string, eventId: string): Promise<boolean> {
-  try {
-    const redis = await getRedisClient(false)
-    if (!redis) return false // Redis down → process (better a dup than a miss; sink dedupes too)
-    const key = `data-connector-webhook-dedup:${connectorId}:${eventId}`
-    const set = await redis.set(key, '1', 'EX', 600, 'NX')
-    return !set
-  } catch {
-    return false
   }
 }
 

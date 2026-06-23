@@ -8,8 +8,8 @@ import {
   type ShopifyWebhookEventKey,
   WEBHOOK_TOPIC,
 } from '@auxx/lib/shopify'
+import { shopifyPreset, verifyWebhook } from '@auxx/lib/webhooks'
 import { createScopedLogger } from '@auxx/logger'
-import { createHmac, timingSafeEqual } from 'crypto'
 import { and, eq } from 'drizzle-orm'
 import type { NextRequest } from 'next/server'
 
@@ -61,10 +61,11 @@ export const POST = async (req: NextRequest) => {
   const body = await req.text()
 
   // Validate HMAC before any database writes
-  const calculatedHmac = createHmac('sha256', shopifySecret).update(body).digest('base64')
-  const hmacValid =
-    calculatedHmac.length === hmacHeader?.length &&
-    timingSafeEqual(Buffer.from(calculatedHmac), Buffer.from(hmacHeader ?? ''))
+  const hmacValid = verifyWebhook(shopifyPreset, {
+    rawBody: body,
+    headers: { 'x-shopify-hmac-sha256': hmacHeader ?? '' },
+    secret: shopifySecret,
+  })
 
   if (!hmacValid) {
     logger.error('Shopify webhook HMAC validation failed')

@@ -19,7 +19,6 @@ export {
   type SeatDayEventStatus,
   type SeatDayReport,
   ShopifyBillingProvider,
-  verifyShopifyHmac,
 } from './providers/shopify'
 export { StripeBillingProvider } from './providers/stripe'
 export type {

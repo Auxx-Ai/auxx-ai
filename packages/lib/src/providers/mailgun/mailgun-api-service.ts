@@ -5,6 +5,7 @@ import { createScopedLogger } from '@auxx/logger'
 import formData from 'form-data'
 import Mailgun from 'mailgun.js'
 import type { DkimRecord, EmailOptions, EmailProvider, EmailResult } from '../../email/types'
+import { verifyHmacSignature } from '../../webhooks/inbound'
 
 const logger = createScopedLogger('mailgun-api')
 
@@ -303,14 +304,16 @@ export class MailgunApiService implements EmailProvider {
     timestamp: string,
     webhookKey?: string
   ): Promise<boolean> {
-    try {
-      // Use the official Mailgun verification
-      const key = webhookKey || this.apiKey
-      return this.client.webhooks.verify(timestamp, token, signature, key)
-    } catch (error) {
-      logger.error('Error verifying Mailgun webhook signature:', { error })
-      return false
-    }
+    // Mailgun signs `${timestamp}${token}` with HMAC-SHA256 (hex) using the webhook
+    // signing key — the shared verifier reproduces the SDK's `webhooks.verify`.
+    const key = webhookKey || this.apiKey
+    return verifyHmacSignature({
+      rawBody: '',
+      signature,
+      secret: key,
+      encoding: 'hex',
+      signedPayload: () => `${timestamp}${token}`,
+    })
   }
 
   /**

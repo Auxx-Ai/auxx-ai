@@ -1,6 +1,5 @@
 // apps/web/src/app/api/openphone/webhook/route.ts
 
-import { revealSecrets } from '@auxx/credentials/store'
 import { database as db, schema } from '@auxx/database'
 import type { MessageData } from '@auxx/lib/email'
 import { MessageStorageService } from '@auxx/lib/email'
@@ -9,8 +8,8 @@ import type {
   OpenPhoneMessageReceivedData,
   OpenPhoneWebhookEvent,
 } from '@auxx/lib/providers/openphone/types' // Adjust path
+import { openphonePreset, resolveWebhookSecret, verifyWebhook } from '@auxx/lib/webhooks'
 import { createScopedLogger } from '@auxx/logger'
-import crypto from 'crypto'
 import { and, eq, sql } from 'drizzle-orm'
 import { type NextRequest, NextResponse } from 'next/server'
 
@@ -96,13 +95,12 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         { status: 500 }
       )
     }
-    const revealed = await revealSecrets<{ fields?: Record<string, string> }>(
-      integration.credentialId,
-      integration.organizationId
-    )
-    const signingSecret = revealed.isOk()
-      ? revealed.value.secrets.fields?.webhookSigningSecret
-      : undefined
+    const signingSecret = await resolveWebhookSecret({
+      kind: 'credentialField',
+      credentialId: integration.credentialId,
+      organizationId: integration.organizationId,
+      field: 'webhookSigningSecret',
+    })
 
     // 4. Verify Request Signature
     const signature = req.headers.get('x-openphone-signature')
@@ -120,12 +118,12 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       )
     }
 
-    const expectedSignature = crypto
-      .createHmac('sha256', signingSecret)
-      .update(bodyText) // Use the raw body text read earlier
-      .digest('hex')
-
-    if (!crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expectedSignature))) {
+    const verified = verifyWebhook(openphonePreset, {
+      rawBody: bodyText, // the raw body text read earlier
+      headers: { 'x-openphone-signature': signature },
+      secret: signingSecret,
+    })
+    if (!verified) {
       logger.error('Invalid X-Openphone-Signature. Request rejected.', {
         integrationId: integration.id,
       })

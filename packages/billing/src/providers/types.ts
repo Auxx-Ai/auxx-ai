@@ -1,6 +1,7 @@
 // packages/billing/src/providers/types.ts
 
 import type { Database } from '@auxx/database'
+import type Stripe from 'stripe'
 import type { PlanChangeHandler, WebhookHandlers } from '../types'
 
 export type BillingProviderId = 'stripe' | 'shopify'
@@ -118,13 +119,11 @@ export interface PaymentMethod {
 
 export interface ProcessWebhookInput {
   db: Database
-  // Stripe path
-  body?: string
-  signature?: string
-  webhookSecret?: string
+  // Stripe path — signature verified at the edge (route), dispatched by event type.
+  event?: Stripe.Event
   handlers?: WebhookHandlers
   onPlanChange?: PlanChangeHandler
-  // Shopify path — HMAC pre-verified by the route, dispatched by topic
+  // Shopify path — HMAC pre-verified by the route, dispatched by topic.
   rawBody?: string
   topic?: string
   shopDomain?: string

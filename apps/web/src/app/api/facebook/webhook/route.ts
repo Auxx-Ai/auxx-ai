@@ -4,8 +4,8 @@ import { configService } from '@auxx/credentials'
 import { database as db, schema } from '@auxx/database'
 import type { MessageData } from '@auxx/lib/email'
 import { MessageStorageService } from '@auxx/lib/email'
+import { metaPreset, verifyWebhook } from '@auxx/lib/webhooks'
 import { createScopedLogger } from '@auxx/logger'
-import crypto from 'crypto'
 import { and, eq, sql } from 'drizzle-orm'
 import { type NextRequest, NextResponse } from 'next/server'
 
@@ -51,11 +51,12 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: 'Forbidden: Missing signature' }, { status: 403 })
   }
   const bodyText = await req.text() // Read body as text for signature verification
-  const expectedHash = crypto
-    .createHmac('sha256', configService.get<string>('FACEBOOK_APP_SECRET')!) // Ensure App Secret is set
-    .update(bodyText)
-    .digest('hex')
-  if (signature !== `sha256=${expectedHash}`) {
+  const verified = verifyWebhook(metaPreset, {
+    rawBody: bodyText,
+    headers: { 'x-hub-signature-256': signature },
+    secret: configService.get<string>('FACEBOOK_APP_SECRET') ?? null,
+  })
+  if (!verified) {
     logger.error('Invalid X-Hub-Signature-256. Request rejected.')
     return NextResponse.json({ error: 'Forbidden: Invalid signature' }, { status: 403 })
   }

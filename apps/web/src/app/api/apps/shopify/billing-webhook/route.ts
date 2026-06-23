@@ -1,9 +1,10 @@
 // apps/web/src/app/api/apps/shopify/billing-webhook/route.ts
 
-import { getProvider, verifyShopifyHmac } from '@auxx/billing'
+import { getProvider } from '@auxx/billing'
 import { database } from '@auxx/database'
 import { recordAudit } from '@auxx/lib/audit-log'
 import { onCacheEvent } from '@auxx/lib/cache'
+import { resolveWebhookSecret, shopifyPreset, verifyWebhook } from '@auxx/lib/webhooks'
 import { createScopedLogger } from '@auxx/logger'
 import { type NextRequest, NextResponse } from 'next/server'
 
@@ -22,8 +23,9 @@ function shopifyBillingAction(topic: string): string | null {
 
 export async function POST(req: NextRequest) {
   const rawBody = await req.text()
-  const hmac = req.headers.get('x-shopify-hmac-sha256')
-  if (!verifyShopifyHmac(rawBody, hmac)) {
+  const headers = { 'x-shopify-hmac-sha256': req.headers.get('x-shopify-hmac-sha256') ?? '' }
+  const secret = await resolveWebhookSecret({ kind: 'env', key: 'SHOPIFY_API_SECRET' })
+  if (!verifyWebhook(shopifyPreset, { rawBody, headers, secret })) {
     logger.error('Shopify billing webhook HMAC validation failed')
     return new NextResponse('invalid signature', { status: 401 })
   }

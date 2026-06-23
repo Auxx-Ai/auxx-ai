@@ -1,8 +1,8 @@
 // apps/web/src/app/api/shopify/compliance/route.ts
 
 import { configService } from '@auxx/credentials'
+import { shopifyPreset, verifyWebhook } from '@auxx/lib/webhooks'
 import { createScopedLogger } from '@auxx/logger'
-import { createHmac, timingSafeEqual } from 'crypto'
 import type { NextRequest } from 'next/server'
 
 const logger = createScopedLogger('shopify/compliance')
@@ -35,12 +35,6 @@ interface ShopRedactPayload {
   shop_domain: string
 }
 
-function verifyHmac(body: string, hmacHeader: string, secret: string): boolean {
-  const calculatedHmac = createHmac('sha256', secret).update(body).digest('base64')
-  if (calculatedHmac.length !== hmacHeader.length) return false
-  return timingSafeEqual(Buffer.from(calculatedHmac), Buffer.from(hmacHeader))
-}
-
 export const POST = async (req: NextRequest) => {
   try {
     const topic = req.headers.get('x-shopify-topic') as ComplianceTopic | null
@@ -65,7 +59,12 @@ export const POST = async (req: NextRequest) => {
       return new Response(null, { status: 401 })
     }
 
-    if (!verifyHmac(body, hmacHeader, shopifySecret)) {
+    const verified = verifyWebhook(shopifyPreset, {
+      rawBody: body,
+      headers: { 'x-shopify-hmac-sha256': hmacHeader },
+      secret: shopifySecret,
+    })
+    if (!verified) {
       logger.error('HMAC verification failed', { topic, shopDomain })
       return new Response(null, { status: 401 })
     }
