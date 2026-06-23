@@ -137,6 +137,12 @@ export interface ConnectorStreamDecl {
   key: string
   /** Field-key that holds the record's display name. */
   displayFieldKey: string
+  /**
+   * How the platform schedules this stream. `incremental` runs the backfill once
+   * then steady `updatedSince`-floored delta runs; `snapshot` (default) re-crawls
+   * in full every run. Drives the `mode` handed to `execute`.
+   */
+  syncMode?: 'snapshot' | 'incremental'
   /** Source field declarations (Layer A) keyed by stable `fieldKey`. */
   fields: Record<string, ConnectorFieldDecl>
   /** Recommended fan-out — root + embedded branches + id-only refs. */

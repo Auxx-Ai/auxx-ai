@@ -6,6 +6,7 @@
 // through update) so a cadence or lifecycle change is reflected in BullMQ immediately.
 
 import { type CatalogDataConnector, type Database, schema } from '@auxx/database'
+import type { FieldType } from '@auxx/database/types'
 import { createScopedLogger } from '@auxx/logger'
 import { getFieldDefinitionId, getFieldId, toResourceFieldId } from '@auxx/types/field'
 import { generateId } from '@auxx/utils'
@@ -18,6 +19,7 @@ import {
   unregisterConnectorWebhooks,
 } from './connector-webhook-registration'
 import { removeConnectorScheduler, syncConnectorScheduler } from './data-connector-scheduler'
+import { type ProvisionFieldSpec, provisionTarget } from './provisioning'
 import type { DataConnectorMappingRow, DataConnectorRow, DataConnectorStreamRow } from './service'
 import type {
   ConnectorTemplate,
@@ -266,11 +268,13 @@ async function buildTemplateFieldMappings(
  * stamped `catalog`. The request is baked into the app (`fixed` model), so streams
  * carry no `requestConfig`.
  *
- * Default *mappings* are intentionally NOT materialized here: the first-party app
- * declarations are owned-mode + relationship fan-outs, and owned-mode provisioning
- * at setup is deferred (plan §6 / target-provisioning v1 is contributing-only). The
- * user maps in the stepper against the now-populated schema — assisted by the Tier 2
- * `suggestMappings` suggester, which works because the schema is present.
+ * Each stream's `owned` default-mappings ARE materialized here (step-11 gap 2): the
+ * owned `EntityDefinition` + its fields are provisioned up front from the declared
+ * stream schema, and a `DataConnectorMapping` carrying concrete field refs is created
+ * — the connector fully owns the def, so no `@app:` late-binding / stepper authoring
+ * is needed for the happy path. `contributing` default-mappings are still left to the
+ * stepper (they carry no field bindings — the Tier 2 `suggestMappings` suggester fills
+ * them against the now-populated schema).
  */
 export async function createConnectorFromAppCatalog(
   db: Database,
@@ -283,13 +287,101 @@ export async function createConnectorFromAppCatalog(
     definitionKind: 'app',
   })
   for (const stream of catalog.streams) {
-    await addStream(db, organizationId, connector.id, {
+    const streamRow = await addStream(db, organizationId, connector.id, {
       streamKey: stream.key,
       ...appCatalogStreamSchema(stream),
-      syncMode: 'snapshot',
+      syncMode: stream.syncMode ?? 'snapshot',
     })
+    await materializeAppOwnedMappings(db, organizationId, connector.id, streamRow.id, stream)
   }
   return connector
+}
+
+/**
+ * Materialize a catalog stream's `owned` default-mappings into provisioned defs +
+ * `DataConnectorMapping` rows. The declared stream fields ARE the owned def's schema,
+ * so we provision the def + a field per declaration, then bind concrete
+ * `${defId}:${fieldId}` refs (no `@app:` late-binding — the connector owns the def).
+ * `contributing` targets are skipped (left to the stepper).
+ */
+async function materializeAppOwnedMappings(
+  db: Database,
+  organizationId: string,
+  dataConnectorId: string,
+  streamId: string,
+  stream: CatalogDataConnector['streams'][number]
+): Promise<void> {
+  for (const mapping of stream.defaultMappings ?? []) {
+    if (mapping.target.mode !== 'owned') continue
+    const { entity } = mapping.target
+
+    // The declared stream fields become the owned def's schema.
+    const { entityDefinitionId, fieldIdByKey } = await provisionTarget(
+      db,
+      organizationId,
+      dataConnectorId,
+      {
+        targetMode: 'owned',
+        entityDefinitionId: null,
+        ownedDef: { apiSlug: entity.apiSlug, singular: entity.singular, plural: entity.plural },
+        fields: ownedProvisionSpecs(stream.fields),
+      }
+    )
+
+    await addMapping(db, organizationId, {
+      dataConnectorStreamId: streamId,
+      rootPath: mapping.rootPath,
+      linkMode: mapping.linkMode ?? ('upsert' as LinkMode),
+      targetMode: 'owned' as TargetMode,
+      entityDefinitionId,
+      relationshipFieldKey: mapping.relationshipFieldKey ?? null,
+      fieldMappings: buildOwnedFieldMappings(entityDefinitionId, fieldIdByKey, stream.fields),
+      // Incremental connectors only see the delta each run, so unseen ≠ deleted —
+      // never archive owned orphans automatically. Full-snapshot sweeps can still
+      // reconcile; v1 keeps it safe.
+      orphanBehavior: 'ignore' as OrphanBehavior,
+    })
+  }
+}
+
+/** Owned-def schema = the declared stream fields, provisioned connector-read-only. */
+export function ownedProvisionSpecs(
+  fields: CatalogDataConnector['streams'][number]['fields']
+): ProvisionFieldSpec[] {
+  return fields.map((f) => ({
+    appFieldKey: f.fieldKey,
+    name: f.name,
+    type: f.type as FieldType,
+    isHidden: f.capabilities?.hidden ?? false,
+    isUpdatable: false,
+    isCreatable: false,
+  }))
+}
+
+/**
+ * Bind each declared field to its provisioned column with a concrete
+ * `${defId}:${fieldId}` ref. The expression mirrors the manual editor —
+ * `{<sourcePath>}` over an identity `sourceFields` map (the connector's
+ * `ConnectorRecord.fields` is keyed by `sourcePath`). A field that collided with a
+ * pre-existing user field (no id in `fieldIdByKey`) is skipped.
+ */
+export function buildOwnedFieldMappings(
+  entityDefinitionId: string,
+  fieldIdByKey: Record<string, string>,
+  fields: CatalogDataConnector['streams'][number]['fields']
+): FieldMapping[] {
+  return fields.flatMap((f) => {
+    const fieldId = fieldIdByKey[f.fieldKey]
+    if (!fieldId) return []
+    return [
+      {
+        id: generateId(),
+        targetFieldRef: toResourceFieldId(entityDefinitionId, fieldId),
+        expression: `{${f.sourcePath}}`,
+        sourceFields: { [f.sourcePath]: f.sourcePath },
+      },
+    ]
+  })
 }
 
 export interface UpdateConnectorInput {

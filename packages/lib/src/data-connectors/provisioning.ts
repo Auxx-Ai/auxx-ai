@@ -53,6 +53,12 @@ export interface ProvisionTarget {
 export interface ProvisionResult {
   entityDefinitionId: string
   provisionedFieldKeys: string[]
+  /**
+   * `appFieldKey` → concrete `CustomField` id for every resolved field (created
+   * OR pre-existing). Lets the caller build concrete `targetFieldRef`s without a
+   * follow-up query — used by the app-catalog owned materializer (step-11 gap 2).
+   */
+  fieldIdByKey: Record<string, string>
 }
 
 /**
@@ -115,9 +121,12 @@ export async function provisionTarget(
 
   // ── 2. Provision each mapped field idempotently ──────────────────────────────
   const provisionedFieldKeys: string[] = []
+  const fieldIdByKey: Record<string, string> = {}
   for (const field of target.fields) {
-    const created = await provisionField(db, organizationId, dataConnectorId, defId, field)
-    if (created) provisionedFieldKeys.push(field.appFieldKey)
+    const result = await provisionField(db, organizationId, dataConnectorId, defId, field)
+    if (!result) continue
+    fieldIdByKey[field.appFieldKey] = result.id
+    if (result.created) provisionedFieldKeys.push(field.appFieldKey)
   }
 
   if (provisionedFieldKeys.length > 0) {
@@ -131,13 +140,15 @@ export async function provisionTarget(
     provisioned: provisionedFieldKeys.length,
   })
 
-  return { entityDefinitionId: defId, provisionedFieldKeys }
+  return { entityDefinitionId: defId, provisionedFieldKeys, fieldIdByKey }
 }
 
 /**
  * Provision one field if absent. Idempotent per `(dataConnectorId, appFieldKey,
  * entityDefinitionId)` and additionally guarded against an existing display-name
- * collision (a field the user already owns). Returns true if it created the field.
+ * collision (a field the user already owns). Returns the field's concrete id +
+ * whether it was created this call, or `null` when a name collision left it
+ * unresolvable (contributing mode never touches an existing user field).
  */
 async function provisionField(
   db: Database,
@@ -145,7 +156,7 @@ async function provisionField(
   dataConnectorId: string,
   entityDefinitionId: string,
   field: ProvisionFieldSpec
-): Promise<boolean> {
+): Promise<{ id: string; created: boolean } | null> {
   // Already provisioned by this connector?
   const existing = await db.query.CustomField.findFirst({
     where: and(
@@ -156,7 +167,7 @@ async function provisionField(
     ),
     columns: { id: true },
   })
-  if (existing) return false
+  if (existing) return { id: existing.id, created: false }
 
   // Create via the app-field path. DUPLICATE_FIELD_NAME (a user/system field of the
   // same name already exists) is a benign no-op — contributing mode never touches
@@ -173,7 +184,7 @@ async function provisionField(
     isHidden: field.isHidden ?? false,
   })
   if (result.isErr()) {
-    if (result.error.code === 'DUPLICATE_FIELD_NAME') return false
+    if (result.error.code === 'DUPLICATE_FIELD_NAME') return null
     throw new Error(result.error.message)
   }
 
@@ -183,7 +194,7 @@ async function provisionField(
     .set({ dataConnectorId, updatedAt: new Date() })
     .where(eq(schema.CustomField.id, result.value.id))
 
-  return true
+  return { id: result.value.id, created: true }
 }
 
 /**

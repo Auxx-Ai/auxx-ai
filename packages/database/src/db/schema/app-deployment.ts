@@ -218,6 +218,8 @@ export interface CatalogConnectorDefaultMapping {
 export interface CatalogConnectorStream {
   key: string
   displayFieldKey: string
+  /** Stream scheduling — `incremental` backfills once then runs deltas. */
+  syncMode?: 'snapshot' | 'incremental'
   fields: CatalogConnectorField[]
   defaultMappings?: CatalogConnectorDefaultMapping[]
   exampleRecord?: Record<string, unknown>
