@@ -1,6 +1,7 @@
 // packages/lib/src/sync-core/contracts.ts
-// Shared sync core — the channel-agnostic, sink-agnostic contracts both
-// `runDataConnectorSync` and the channel `MessageSyncService` orchestrate through.
+// Shared sync core — the channel-agnostic, sink-agnostic contracts both the
+// data-connector sliced `SyncSource` and the channel `MessageSyncService`
+// orchestrate through.
 // Pure types only: no runtime imports, no provider specifics. The core persists
 // cursor/watermark/phase and never interprets them — pagination and the sink live
 // inside each `SyncSource.fetchSlice`. See plans/data-connectors/v3/shared-sync-core-plan.md.

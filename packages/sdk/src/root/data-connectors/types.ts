@@ -43,19 +43,35 @@ export interface ConnectorRecord {
   contentHash?: string
 }
 
-/** Per-stream incremental cursor, persisted across runs by the platform. */
+/**
+ * Per-stream cursor an app returns from one page and reads back on the next. The
+ * platform persists + restores it verbatim across runs and slices — the app never
+ * sees the engine's internal cursor encoding.
+ */
 export interface ConnectorStreamState {
-  cursor?: string
+  /**
+   * Opaque resume token. Any JSON-serializable value — a string token, or a
+   * structured cursor like `{ after: 'x', page: 3 }`. Return it from one page to
+   * fetch the next; the platform hands it straight back on `state.cursor`.
+   */
+  cursor?: unknown
+  /** Steady-phase delta floor (watermark); return the max seen so the next steady run resumes from it. */
   updatedSince?: string
+  /** Set `true` on the last page — the platform flips the stream to steady (incremental) or finishes the snapshot. */
   backfillComplete?: boolean
   [key: string]: unknown
 }
 
-/** A connector fetch result — a batch (or stream) of records plus the next cursor. */
+/**
+ * A connector fetch result — ONE page of records plus the cursor for the next
+ * page. The platform re-invokes `execute` with `state.cursor = nextState.cursor`
+ * until `nextState.backfillComplete` (or no cursor), so each `execute` call is a
+ * single page; pagination is the loop the platform drives, not one the app does.
+ */
 export interface ConnectorFetchResult {
-  /** Source-shaped records for this batch. May be an array or an async iterable. */
+  /** Source-shaped records for this page. May be an array or an async iterable. */
   records: ConnectorRecord[] | AsyncIterable<ConnectorRecord>
-  /** Cursor to persist; the next incremental run resumes from here. */
+  /** Cursor + watermark to persist; the next page / incremental run resumes from here. */
   nextState: ConnectorStreamState
 }
 
@@ -139,9 +155,13 @@ export interface ConnectorExecuteArgs<TConfig = Record<string, unknown>> {
   streamKey: string
   /** `snapshot` (full) or `incremental` (delta from the cursor). */
   mode: 'snapshot' | 'incremental'
-  /** The persisted cursor for this stream. */
+  /** The persisted cursor for this stream (the platform's last `nextState`). */
   state: ConnectorStreamState
-  /** The borrowed connection (decrypted), or null when none is bound. */
+  /**
+   * The borrowed connection (decrypted), or null when none is bound. This is the
+   * connector's ONLY connection handle — resolve auth from here, not from a
+   * tool/agent ambient `getConnection()` helper.
+   */
   connection: ConnectorConnection | null
   /** The connector's validated config (from the `config` zod schema). */
   config: TConfig

@@ -18,6 +18,19 @@ const CONNECTOR_ID_RE = /^[a-z][a-z0-9]*(\.[a-z][a-z0-9]*)*$/
  *
  * `execute` infers its config argument type from `z.output<config>`.
  *
+ * **Pagination — one page per `execute`.** The platform loops `execute`, not the
+ * app: return ONE page of records plus `nextState.cursor`, and the platform
+ * re-invokes with `state.cursor` set to it until you return
+ * `nextState.backfillComplete: true` (or omit the cursor). The cursor is any
+ * JSON-serializable value the platform persists + restores verbatim.
+ *
+ * **Connection — use `args.connection`, never ambient helpers.** A connector
+ * receives its bound connection explicitly on `args.connection` (`{ value, fields,
+ * metadata }`). Do NOT reuse a tool/agent ambient `getConnection()` helper — that
+ * resolves from a different (tool) context and is not the connector contract.
+ * Pure helpers over `args.connection` (e.g. reading a shop domain off `metadata`)
+ * are fine.
+ *
  * See plans/data-connectors/claude/03-connectors-and-sources.md §4.
  *
  * @example
@@ -34,6 +47,14 @@ const CONNECTOR_ID_RE = /^[a-z][a-z0-9]*(\.[a-z][a-z0-9]*)*$/
  *   streams: [{ key: 'order', displayFieldKey: 'name', fields: { ... } }],
  *   execute: shopifyCoreSync,
  * })
+ *
+ * // execute pages by returning a cursor until the last page:
+ * async function shopifyCoreSync({ state, connection }) {
+ *   const page = await fetchPage(connection.value, state.cursor)
+ *   return page.hasNext
+ *     ? { records: page.records, nextState: { cursor: page.nextCursor } }
+ *     : { records: page.records, nextState: { backfillComplete: true, updatedSince: page.maxUpdatedAt } }
+ * }
  * ```
  */
 export function defineDataConnector<TConfigSchema extends z.ZodTypeAny>(
