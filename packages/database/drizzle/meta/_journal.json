@@ -1604,6 +1604,13 @@
       "when": 1782179517485,
       "tag": "0228_data_connector_run_sync_core_columns",
       "breakpoints": true
+    },
+    {
+      "idx": 229,
+      "version": "7",
+      "when": 1782183921699,
+      "tag": "0229_data_connector_run_chain_snapshot",
+      "breakpoints": true
     }
   ]
 }

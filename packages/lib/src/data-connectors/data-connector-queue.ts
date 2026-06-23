@@ -16,6 +16,39 @@ export interface DataConnectorSyncJobData {
   trigger?: 'manual' | 'scheduled' | 'webhook' | 'backfill'
 }
 
+/** BullMQ job name for one backfill slice (the continuation-chain unit). */
+export const BACKFILL_SLICE_JOB = 'data-connector-backfill-slice'
+
+/** Job payload for one backfill slice — one stream's continuation chain (Step 4). */
+export interface BackfillSliceJobData {
+  type: typeof BACKFILL_SLICE_JOB
+  connectorId: string
+  organizationId: string
+  /** The stream this slice advances (its own chain under the connector backfill). */
+  streamId: string
+  /** The connector-level run all this connector's slices fold into. */
+  runId: string
+}
+
+/**
+ * Enqueue the next backfill slice for a stream's continuation chain. No fixed
+ * `jobId` — slices within a chain run sequentially (each enqueues the next after it
+ * completes) and the per-connector claim blocks a second chain, so dedup isn't
+ * needed. `delayMs` paces a throttled re-enqueue (H1) so it doesn't immediately
+ * re-hit the rate limit.
+ */
+export async function enqueueBackfillSlice(
+  data: Omit<BackfillSliceJobData, 'type'>,
+  opts: { delayMs?: number } = {}
+): Promise<void> {
+  const queue = getQueue(Queues.dataConnectorQueue)
+  await queue.add(
+    BACKFILL_SLICE_JOB,
+    { type: BACKFILL_SLICE_JOB, ...data } satisfies BackfillSliceJobData,
+    { delay: opts.delayMs && opts.delayMs > 0 ? opts.delayMs : undefined }
+  )
+}
+
 /**
  * Enqueue a connector sync. `jobId` coalesces duplicate manual "Sync now" clicks
  * for the same connector (BullMQ rejects ':' in custom ids — keep it hyphenated).

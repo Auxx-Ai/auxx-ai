@@ -1,0 +1,339 @@
+// packages/lib/src/data-connectors/slice-orchestrator.ts
+// Step 4 — the worker-facing continuation engine for sliced backfills. Turns a
+// connector backfill into a CHAIN of short, crash-safe slices (large-dataset §4.1):
+//   startConnectorSync → claim, provision, pin the mapping snapshot, open one run,
+//   seed the completion latch, enqueue the first slice per stream.
+//   runBackfillSlice  → load the pinned chain, build the SyncSource, run ONE slice
+//   via runSyncSlice, and act on its directive (re-enqueue with a throttle-paced
+//   delay / stop / release on failure). The chain is the worker re-invoking this.
+//   sweepStaleConnectorRuns → H5: fail runs whose checkpoint heartbeat went cold and
+//   release the connector claim, so a crashed chain can never strand a connector.
+// The orchestration lives here (lib) so the worker handler stays a thin shim.
+
+import type { Database } from '@auxx/database'
+import { schema } from '@auxx/database'
+import { createScopedLogger } from '@auxx/logger'
+import { and, eq, lt } from 'drizzle-orm'
+import type { ThrottleHandle } from '../sync-core/contracts'
+import { runSyncSlice } from '../sync-core/slice-runner'
+import { prepareConnectorFetch } from './connector-runtime'
+import { createConnectorStreamSyncSource, type SyncSourceStream } from './connector-sync-source'
+import { type BackfillSliceJobData, enqueueBackfillSlice } from './data-connector-queue'
+import { backfillProvisionedFieldRefs, provisionConnectorMappings } from './provisioning'
+import {
+  claimForSync,
+  finalizeConnector,
+  initConnectorBackfillLatch,
+  loadConnector,
+  openRun,
+  persistStreamState,
+} from './service'
+import { createConnectorRunLedger, createStreamSyncStateStore } from './sync-core-adapters'
+import type { ConnectorStreamState } from './types'
+
+const logger = createScopedLogger('data-connector-slice-orchestrator')
+
+// ── Tunables ────────────────────────────────────────────────────────────────────
+
+/**
+ * Per-slice work budget (§4.1). A slice stops at whichever limit it hits first, at a
+ * PAGE boundary — never mid-page, never sleeping on a throttle. `maxMs` is well under
+ * the worker `lockDuration` (2–3×) so a slice never outlives its lock.
+ */
+export const SLICE_BUDGET = { maxPages: 20, maxRecords: 5_000, maxMs: 25_000 } as const
+
+/** BullMQ `lockDuration` for the slice job — 2–3× the realistic slice wall-clock. */
+export const SLICE_LOCK_DURATION_MS = 90_000
+
+/**
+ * A run is presumed dead once its checkpoint heartbeat (`heartbeatAt`, bumped every
+ * slice) is older than this. Generous vs. `maxMs` + queue latency so an alive-but-slow
+ * chain is never swept. The sweep keys off the heartbeat, NOT `startedAt` (a chain
+ * spans many short jobs — shared-sync-core-plan §3.4).
+ */
+export const STALE_RUN_MS = 5 * 60 * 1_000
+
+/** A no-op throttle handle. The DC source does per-request 429 handling in the
+ *  transport; the cross-request `connection:operation` throttle threads in later. */
+const NO_THROTTLE: ThrottleHandle = { run: (fn) => fn() }
+
+// ── The pinned chain snapshot stored on the run (B2) ────────────────────────────
+
+interface ChainSnapshot {
+  streams: SyncSourceStream[]
+}
+
+/** Reset a stream's durable state to a fresh backfill (re-backfill / first run). */
+function freshBackfillState(
+  prev: ConnectorStreamState,
+  startedAtIso: string
+): ConnectorStreamState {
+  return {
+    ...prev,
+    phase: 'backfill',
+    backfillCursor: undefined,
+    backfillStartedAt: startedAtIso,
+    recordsSeen: 0,
+    watermark: undefined,
+    backfillComplete: false,
+  }
+}
+
+// ── Start a connector sync (backfill or steady) ──────────────────────────────────
+
+/**
+ * Begin a connector backfill as a continuation chain. Sweeps a stale prior run,
+ * claims the connector, provisions the target schema, decides the phase (backfill vs
+ * steady — see below), opens ONE run pinned to the decoded mapping snapshot (B2),
+ * seeds the completion latch (B1), and enqueues the first slice per stream. Returns
+ * false when the connector is missing/unmapped or already syncing.
+ */
+export async function startConnectorSync(
+  db: Database,
+  organizationId: string,
+  dataConnectorId: string,
+  options: { trigger?: 'manual' | 'scheduled' | 'webhook' | 'backfill' } = {}
+): Promise<boolean> {
+  // Clear a crashed prior chain first so its stuck claim can't block us (H5).
+  await sweepStaleConnectorRuns(db, { dataConnectorId })
+
+  const loaded = await loadConnector(db, organizationId, dataConnectorId)
+  if (!loaded) {
+    logger.warn('startConnectorSync: connector not found or has no mappings', { dataConnectorId })
+    return false
+  }
+  const { connector, streams } = loaded
+
+  const claimed = await claimForSync(db, dataConnectorId)
+  if (!claimed) {
+    logger.info('startConnectorSync: already syncing, skipping', { dataConnectorId })
+    return false
+  }
+
+  // Provision target schema before pinning so the snapshot carries the stamped field
+  // refs (mirrors the single-shot path). App connectors resolve `@app:` refs live.
+  if (connector.definitionKind !== 'app') {
+    const targeted = streams.flatMap((s) => s.mappings)
+    if (targeted.length > 0) {
+      await provisionConnectorMappings(db, organizationId, dataConnectorId, targeted)
+      await backfillProvisionedFieldRefs(db, organizationId, dataConnectorId, targeted)
+    }
+  }
+
+  // Phase decision (homogeneous per connector, G2):
+  //  - Incremental connector (every stream `syncMode='incremental'`): backfill ONCE
+  //    (resume mid-chain if a prior run crashed), then run STEADY watermark deltas
+  //    forever. Steady runs do NOT reset state.
+  //  - Snapshot connector (any non-incremental stream): re-crawl in FULL every run
+  //    so orphan reconciliation stays correct — always (re)backfill, reset cursors.
+  const incrementalConnector = streams.every((s) => s.syncMode === 'incremental')
+  const streamStates = streams.map((s) => (s.stream.state as ConnectorStreamState) ?? {})
+  const phase: 'backfill' | 'steady' =
+    incrementalConnector && streamStates.every((st) => st.phase === 'steady')
+      ? 'steady'
+      : 'backfill'
+
+  // Reset to a fresh backfill unless we're resuming a crashed incremental backfill
+  // (keep its cursor) or running steady (keep its watermark).
+  const startedAtIso = new Date().toISOString()
+  if (phase === 'backfill') {
+    for (const [i, s] of streams.entries()) {
+      const st = streamStates[i] ?? {}
+      const resumable = incrementalConnector && st.phase === 'backfill' && !!st.backfillCursor
+      if (!resumable)
+        await persistStreamState(db, s.stream.id, freshBackfillState(st, startedAtIso))
+    }
+  }
+
+  // The pinned snapshot — decoded streams + (now-stamped) mappings. The mutable
+  // stream `state`/cursor is deliberately NOT captured; it stays live.
+  const snapshot: ChainSnapshot = {
+    streams: streams.map((s) => ({
+      streamId: s.stream.id,
+      streamKey: s.stream.streamKey ?? '',
+      syncMode: s.syncMode,
+      requestConfig: s.stream.requestConfig ?? undefined,
+      mappings: s.mappings,
+    })),
+  }
+
+  const run = await openRun(db, {
+    dataConnectorId,
+    organizationId,
+    trigger: options.trigger ?? (phase === 'steady' ? 'scheduled' : 'backfill'),
+    mode: phase === 'steady' ? 'incremental' : 'snapshot',
+    phase,
+    chainSnapshot: snapshot as unknown as Record<string, unknown>,
+    cursorBefore: connector.state,
+  })
+
+  // Seed the completion latch to the stream count (B1) BEFORE enqueuing slices, so the
+  // first stream to finish can't fire the connector finalize prematurely. Covers both
+  // phases — the last stream (backfill OR steady) releases the connector.
+  await initConnectorBackfillLatch(db, dataConnectorId, streams.length)
+
+  for (const s of streams) {
+    await enqueueBackfillSlice({
+      connectorId: dataConnectorId,
+      organizationId,
+      streamId: s.stream.id,
+      runId: run.id,
+    })
+  }
+
+  logger.info('startConnectorSync: chain enqueued', {
+    dataConnectorId,
+    runId: run.id,
+    phase,
+    streams: streams.length,
+  })
+  return true
+}
+
+// ── Run one slice (continuation unit) ────────────────────────────────────────────
+
+/**
+ * Run ONE backfill slice and continue the chain. Loads the run + pinned snapshot,
+ * builds the stream's `SyncSource`, runs a single slice through the core runner, and
+ * acts on the directive: re-enqueue the next slice (throttle-paced), stop on
+ * completion (the source finalized the run/connector on its last stream), or release
+ * the connector on a hard failure. A no-op when the run is gone or no longer running
+ * (cancelled / failed by a sibling / already finished).
+ */
+export async function runBackfillSlice(
+  db: Database,
+  data: Omit<BackfillSliceJobData, 'type'>,
+  signal?: AbortSignal
+): Promise<void> {
+  const { connectorId, organizationId, streamId, runId } = data
+
+  const run = await db.query.DataConnectorRun.findFirst({
+    where: eq(schema.DataConnectorRun.id, runId),
+  })
+  if (!run || run.status !== 'running') {
+    logger.info('runBackfillSlice: run not active, stopping chain', {
+      runId,
+      streamId,
+      status: run?.status,
+    })
+    return
+  }
+
+  const snapshot = run.chainSnapshot as ChainSnapshot | null
+  const streamSnap = snapshot?.streams.find((s) => s.streamId === streamId)
+  if (!streamSnap) {
+    logger.warn('runBackfillSlice: stream not in pinned snapshot, stopping', { runId, streamId })
+    return
+  }
+
+  const connector = await db.query.DataConnector.findFirst({
+    where: and(
+      eq(schema.DataConnector.id, connectorId),
+      eq(schema.DataConnector.organizationId, organizationId)
+    ),
+  })
+  if (!connector) {
+    logger.warn('runBackfillSlice: connector gone, stopping', { connectorId })
+    return
+  }
+
+  const { definition, credential } = await prepareConnectorFetch(
+    db,
+    organizationId,
+    connector,
+    connector.createdById ?? 'system'
+  )
+
+  const source = createConnectorStreamSyncSource({
+    db,
+    organizationId,
+    connector,
+    definition,
+    credential,
+    config: connector.config,
+    run: { id: runId, startedAt: run.startedAt },
+    stream: streamSnap,
+    allStreams: snapshot?.streams ?? [streamSnap],
+  })
+
+  const outcome = await runSyncSlice({
+    source,
+    stateStore: createStreamSyncStateStore(db, streamId),
+    ledger: createConnectorRunLedger(db, { id: runId, startedAt: run.startedAt }, streamId),
+    throttle: NO_THROTTLE,
+    budget: SLICE_BUDGET,
+    signal: signal ?? new AbortController().signal,
+  })
+
+  if (outcome.action === 'reenqueue') {
+    // A cancelled chain (worker shutdown / connector delete) — leave the cursor
+    // checkpointed and stop; a later trigger or the sweep resumes it.
+    if (signal?.aborted) {
+      logger.info('runBackfillSlice: cancelled, not re-enqueuing', { runId, streamId })
+      return
+    }
+    await enqueueBackfillSlice(
+      { connectorId, organizationId, streamId, runId },
+      { delayMs: outcome.retryAfterMs }
+    )
+    return
+  }
+
+  if (outcome.action === 'failed') {
+    // The runner already failed the run; release the connector so it isn't stuck
+    // 'syncing'. Sibling streams will see the run no longer 'running' and stop.
+    await finalizeConnector(db, connectorId, { ok: false, error: outcome.error.message })
+    return
+  }
+
+  // 'complete'. For BACKFILL the source already finalized the run + released the
+  // connector on its last stream (via the runner's `finalizeBackfill`). For STEADY
+  // the runner closed the run, but connector release is handler-owned — fire the
+  // last-stream finalize here (no-op for non-last streams via the B1 latch).
+  if (outcome.completedPhase === 'steady') {
+    await source.finalizeSteady()
+  }
+}
+
+// ── Stale-run sweep (H5) ──────────────────────────────────────────────────────────
+
+/**
+ * Fail any `running` run whose checkpoint heartbeat has gone cold, and release its
+ * connector claim. Without this a crashed continuation chain strands the connector
+ * `syncing` forever (no slice ever re-enqueues to release it). Scoped to one
+ * connector when `dataConnectorId` is given (run at chain start), else global (cron).
+ */
+export async function sweepStaleConnectorRuns(
+  db: Database,
+  opts: { dataConnectorId?: string; staleMs?: number } = {}
+): Promise<number> {
+  const threshold = new Date(Date.now() - (opts.staleMs ?? STALE_RUN_MS))
+  const T = schema.DataConnectorRun
+
+  const stale = await db
+    .update(T)
+    .set({
+      status: 'failed',
+      errorSample: [{ externalId: '', error: 'sync stalled — checkpoint heartbeat went cold' }],
+      finishedAt: new Date(),
+    })
+    .where(
+      and(
+        eq(T.status, 'running'),
+        lt(T.heartbeatAt, threshold),
+        ...(opts.dataConnectorId ? [eq(T.dataConnectorId, opts.dataConnectorId)] : [])
+      )
+    )
+    .returning({ id: T.id, dataConnectorId: T.dataConnectorId })
+
+  for (const run of stale) {
+    await finalizeConnector(db, run.dataConnectorId, { ok: false, error: 'sync stalled' })
+  }
+  if (stale.length > 0) {
+    logger.warn('sweepStaleConnectorRuns: failed stale runs + released connectors', {
+      count: stale.length,
+      runIds: stale.map((r) => r.id),
+    })
+  }
+  return stale.length
+}

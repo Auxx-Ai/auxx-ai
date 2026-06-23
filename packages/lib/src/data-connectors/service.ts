@@ -6,7 +6,7 @@
 
 import { type Database, database as defaultDb, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import { and, asc, desc, eq, inArray, ne } from 'drizzle-orm'
+import { and, asc, count, desc, eq, inArray, ne, sql } from 'drizzle-orm'
 import { err, ok, type Result } from 'neverthrow'
 import type { FieldMapping, LinkMode, OrphanBehavior, SyncMode, TargetMode } from './types'
 
@@ -149,6 +149,58 @@ export async function claimForSync(db: Database, dataConnectorId: string): Promi
   return !!claimed
 }
 
+// ── Backfill completion latch (B1 — multi-stream coordination) ────────────────
+
+/**
+ * Initialize the connector-level backfill completion latch to the number of
+ * stream chains that will run. The relationship two-pass + orphan reconciliation
+ * are connector-level but each stream backfills as its own continuation chain, so
+ * the connector finalize must fire only after the LAST stream completes — never a
+ * read-then-act count of sibling streams (which races). The latch is an atomic
+ * counter on `DataConnector.state`; the worker calls this once when it enqueues a
+ * connector's backfill (Step 4). Stored in the `state` jsonb (no migration).
+ */
+export async function initConnectorBackfillLatch(
+  db: Database,
+  dataConnectorId: string,
+  streamCount: number
+): Promise<void> {
+  const T = schema.DataConnector
+  await db
+    .update(T)
+    .set({
+      state: sql`jsonb_set(coalesce(${T.state}, '{}'::jsonb), '{backfillStreamsRemaining}', to_jsonb(${streamCount}::int))`,
+      updatedAt: new Date(),
+    })
+    .where(eq(T.id, dataConnectorId))
+}
+
+/**
+ * Atomically decrement the backfill latch and return the REMAINING count (H3-safe:
+ * a single `UPDATE … RETURNING` is row-atomic, so two concurrent final slices can
+ * never both read the same pre-decrement value). The stream whose decrement returns
+ * `0` is the last to finish and owns the connector-level finalize. Returns `null`
+ * when the latch was never initialized — the caller treats that as "finalize now"
+ * (a single-stream connector or a legacy run with no latch should still reconcile).
+ */
+export async function decrementConnectorBackfillLatch(
+  db: Database,
+  dataConnectorId: string
+): Promise<number | null> {
+  const T = schema.DataConnector
+  const [row] = await db
+    .update(T)
+    .set({
+      state: sql`jsonb_set(${T.state}, '{backfillStreamsRemaining}', to_jsonb(GREATEST((${T.state}->>'backfillStreamsRemaining')::int - 1, 0)))`,
+      updatedAt: new Date(),
+    })
+    .where(
+      and(eq(T.id, dataConnectorId), sql`jsonb_exists(${T.state}, 'backfillStreamsRemaining')`)
+    )
+    .returning({ remaining: sql<number>`(${T.state}->>'backfillStreamsRemaining')::int` })
+  return row?.remaining ?? null
+}
+
 // ── Runs ────────────────────────────────────────────────────────────────────
 
 /** Mutable counters accumulated across a run, flushed in `finalizeRun`. */
@@ -187,6 +239,10 @@ export async function openRun(
     trigger: 'manual' | 'scheduled' | 'webhook' | 'backfill'
     mode: 'snapshot' | 'incremental'
     cursorBefore?: unknown
+    /** Engine lifecycle phase (sliced runs); omitted for legacy single-shot runs. */
+    phase?: 'backfill' | 'steady'
+    /** Pinned decoded stream+mapping snapshot the continuation chain runs against (B2). */
+    chainSnapshot?: Record<string, unknown>
   }
 ): Promise<DataConnectorRunRow> {
   const [run] = await db
@@ -197,6 +253,8 @@ export async function openRun(
       trigger: input.trigger,
       mode: input.mode,
       status: 'running',
+      phase: input.phase ?? null,
+      chainSnapshot: input.chainSnapshot ?? null,
       cursorBefore: input.cursorBefore ?? null,
     })
     .returning()
@@ -274,6 +332,15 @@ export async function persistStreamState(
 }
 
 // ── DataConnectorItem (the durable binding) ───────────────────────────────────
+
+/** Count bound items for a connector via SQL `count()` (G7 — O(1), not select-all). */
+export async function countConnectorItems(db: Database, dataConnectorId: string): Promise<number> {
+  const [row] = await db
+    .select({ n: count() })
+    .from(schema.DataConnectorItem)
+    .where(eq(schema.DataConnectorItem.dataConnectorId, dataConnectorId))
+  return row?.n ?? 0
+}
 
 /** Exact-bind lookup: (dataConnectorId, mappingId, externalId) → item row. */
 export async function findItem(

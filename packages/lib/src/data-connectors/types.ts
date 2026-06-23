@@ -11,6 +11,7 @@ import type { FieldType } from '@auxx/database/types'
 import type { ResourceFieldId } from '@auxx/types/field'
 import type { RuntimeConnectionData } from '../connections/resolve-connection-for-runtime'
 import type { RateLimitPolicy } from '../connections/transports/types'
+import { RateLimitError } from '../errors'
 import type { SyncCursor } from '../sync-core/contracts'
 
 // ── Connector-level config (jsonb on DataConnector) ───────────────────────────
@@ -44,6 +45,22 @@ export interface DataConnectorConfig {
   filters?: Record<string, unknown>
 }
 
+/**
+ * Steady-mode (incremental) delta config for a generic-REST stream (G2). Declares
+ * the timestamp-filter param to inject and the response field to track the max of.
+ * Covers `updated_at`-style providers (Shopify/Salesforce/HubSpot/QBO). NOT Stripe —
+ * its list endpoints filter on `created` (never changes); Stripe's real incremental
+ * path is `/v1/events`, handled separately (Step 8).
+ */
+export interface StreamIncrementalConfig {
+  /** Query param carrying the delta floor, e.g. `updated_at_min` / `since`. */
+  sinceParam: string
+  /** Record field whose running max becomes the next watermark, e.g. `updated_at`. */
+  watermarkField: string
+  /** Comparison/format hint. Advisory — `maxWatermark` auto-detects numeric vs ISO. */
+  watermarkFormat?: 'iso' | 'unix'
+}
+
 /** Per-stream request config for generic-REST streams (jsonb on DataConnectorStream). */
 export interface StreamRequestConfig {
   path?: string
@@ -52,6 +69,8 @@ export interface StreamRequestConfig {
   body?: Record<string, unknown>
   headers?: Record<string, string>
   pagination?: PaginationSpec
+  /** Steady-phase delta config (absent ⇒ every steady run re-crawls in full). */
+  incremental?: StreamIncrementalConfig
 }
 
 // ── Stream state / connector output (03 §1) ───────────────────────────────────
@@ -115,9 +134,54 @@ export interface ConnectorRecord {
   contentHash?: string
 }
 
-/** A connector fetch result — a stream of records plus the next cursor. */
+/**
+ * A resume-point sentinel a connector MAY yield between pages (§4.3 Option A). It
+ * carries the cursor a sliced backfill resumes the NEXT page from, so the engine
+ * checkpoints at safe boundaries without ever interpreting the connector's
+ * pagination. A connector emits one after each page it finishes yielding records
+ * for; the absence of `cursor` means "that was the last page" (the source is
+ * exhausted). Single-shot consumers (`runDataConnectorSync`, the test-fetch) skip
+ * these; the sliced `SyncSource` adapter uses them to bound + checkpoint a slice.
+ */
+export interface ConnectorCheckpoint {
+  /** Discriminant — distinguishes a checkpoint from a {@link ConnectorRecord}. */
+  __checkpoint: true
+  /** Cursor to resume the NEXT page from; absent ⇒ this was the last page. */
+  cursor?: SyncCursor
+  /** Max watermark observed through this page (steady/incremental delta floor). */
+  watermark?: string
+}
+
+/** What a connector `fetch` iterable yields — a record to sink or a resume point. */
+export type ConnectorYield = ConnectorRecord | ConnectorCheckpoint
+
+/** Type guard separating a resume-point sentinel from a record to sink. */
+export function isConnectorCheckpoint(y: ConnectorYield): y is ConnectorCheckpoint {
+  return (y as ConnectorCheckpoint).__checkpoint === true
+}
+
+/**
+ * Thrown by a connector fetch when the upstream signals a throttle (429/503, or a
+ * provider-specific cost throttle) and the transport is configured NOT to sleep on
+ * it (`rateLimitOverride.maxRetries = 0`, set by the sliced `SyncSource` — H1). The
+ * source maps it to a `partial-retriable` / held-cursor slice outcome and folds
+ * `retryAfterMs` into the re-enqueue delay, so a worker NEVER sleeps on a throttle
+ * while holding the BullMQ lock. Extends the shared {@link RateLimitError} so any
+ * generic `instanceof RateLimitError` handler still recognizes it.
+ */
+export class ConnectorRateLimitError extends RateLimitError {
+  constructor(
+    message: string,
+    /** Server-hinted wait before retrying, in milliseconds (Retry-After / backoff). */
+    public readonly retryAfterMs?: number
+  ) {
+    super(message, retryAfterMs !== undefined ? Math.ceil(retryAfterMs / 1_000) : undefined)
+  }
+}
+
+/** A connector fetch result — a stream of records (+ resume checkpoints) plus the next cursor. */
 export interface FetchResult {
-  records: AsyncIterable<ConnectorRecord>
+  records: AsyncIterable<ConnectorYield>
   nextState: ConnectorStreamState
 }
 
@@ -197,6 +261,14 @@ export interface ConnectorFetchArgs {
   config: DataConnectorConfig
   /** Per-stream request config (generic-rest). */
   requestConfig?: StreamRequestConfig
+  /**
+   * Per-call override merged onto the endpoint's `rateLimit` policy. The sliced
+   * `SyncSource` sets `{ maxRetries: 0 }` so a throttle returns immediately (the
+   * connector throws {@link ConnectorRateLimitError}) instead of the transport
+   * sleeping under the slice's `maxMs` budget while holding the worker lock (H1).
+   * Absent for the single-shot path, which keeps the default retry-and-sleep.
+   */
+  rateLimitOverride?: Partial<RateLimitPolicy>
 }
 
 /**

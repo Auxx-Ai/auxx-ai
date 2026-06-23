@@ -15,6 +15,7 @@ import {
 } from '../connections/resolve-connection-for-runtime'
 import { connectorFor } from './connectors'
 import type { DataConnectorDefinition, StreamRequestConfig } from './connectors/types'
+import { isConnectorCheckpoint } from './connectors/types'
 import type { DataConnectorRow } from './service'
 
 const logger = createScopedLogger('data-connector-runtime')
@@ -132,6 +133,7 @@ export async function sampleConnectorFetch(
   // mapping's rootPath — not here.
   let response: unknown = null
   for await (const record of records) {
+    if (isConnectorCheckpoint(record)) continue
     response = record.fields
     break
   }

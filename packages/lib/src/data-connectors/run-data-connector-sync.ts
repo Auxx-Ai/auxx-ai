@@ -4,19 +4,18 @@
 // records (never buffers), persists each stream's cursor after it completes,
 // runs the relationship two-pass + orphan reconciliation, then finalizes.
 
-import { type Database, schema } from '@auxx/database'
+import type { Database } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import { eq } from 'drizzle-orm'
 import { UnifiedCrudHandler } from '../resources/crud/unified-handler'
 import { invalidateSnapshots } from '../snapshot'
 import { prepareConnectorFetch } from './connector-runtime'
-import { mapRecord } from './map-record'
+import { isConnectorCheckpoint } from './connectors/types'
 import { backfillProvisionedFieldRefs, provisionConnectorMappings } from './provisioning'
 import { reconcileOrphans } from './reconciliation'
 import { resolveRelationships } from './relationship-pass'
 import {
   claimForSync,
-  type DecodedMapping,
+  countConnectorItems,
   finalizeConnector,
   finalizeRun,
   loadConnector,
@@ -24,8 +23,8 @@ import {
   openRun,
   persistStreamState,
 } from './service'
-import { entitySink } from './sinks/entity-sink'
-import type { ProjectedRecord, SyncCtx } from './sinks/types'
+import { sinkSourceRecord } from './sink-source-record'
+import type { SyncCtx } from './sinks/types'
 import type { ConnectorStreamState } from './types'
 
 const logger = createScopedLogger('run-data-connector-sync')
@@ -156,6 +155,9 @@ export async function runDataConnectorSync(
       })
 
       for await (const source of records) {
+        // Resume-point checkpoints are for the sliced path; the single-shot run
+        // drains to exhaustion and persists `nextState` once below.
+        if (isConnectorCheckpoint(source)) continue
         await sinkSourceRecord(ctx, mappings, source)
       }
 
@@ -175,7 +177,7 @@ export async function runDataConnectorSync(
     }
 
     // Item count = bound items for this connector.
-    const itemCount = await countItems(db, dataConnectorId)
+    const itemCount = await countConnectorItems(db, dataConnectorId)
     const status = counters.failed > 0 ? 'partial' : 'completed'
     await finalizeRun(db, run.id, { status, counters, cursorAfter: connector.state, startedAt })
     await finalizeConnector(db, dataConnectorId, { ok: true, itemCount })
@@ -189,60 +191,4 @@ export async function runDataConnectorSync(
     await finalizeRun(db, run.id, { status: 'failed', counters, startedAt })
     await finalizeConnector(db, dataConnectorId, { ok: false, error: message })
   }
-}
-
-/** Key a projected write by its mapping + instance external id (fan-out safe). */
-function instanceKey(mappingId: string, externalId: string): string {
-  return `${mappingId}::${externalId}`
-}
-
-/**
- * Map one connector payload across the mapping tree and sink each projected
- * write. Stamps child→parent relations onto the parent INSTANCE's projected
- * record so the binding carries them into the two-pass. Parents are written
- * before their children (walk order) so the edge target exists.
- */
-async function sinkSourceRecord(
-  ctx: SyncCtx,
-  mappings: DecodedMapping[],
-  source: Parameters<typeof mapRecord>[1]
-): Promise<void> {
-  const writes = mapRecord(mappings, source)
-
-  // Index projected writes by (mapping, instance) so a child attaches its edge to
-  // the exact parent instance's pendingRelations before that parent is sunk.
-  const projectedByInstance = new Map<string, ProjectedRecord>()
-  for (const w of writes) {
-    if (w.projected) {
-      projectedByInstance.set(instanceKey(w.mapping.row.id, w.projected.externalId), w.projected)
-    }
-  }
-  for (const w of writes) {
-    if (!w.parentRelation) continue
-    const parent = projectedByInstance.get(
-      instanceKey(w.parentRelation.parentMappingId, w.parentRelation.parentExternalId)
-    )
-    if (parent) {
-      parent.pendingRelations.push({
-        fieldKey: w.parentRelation.fieldKey,
-        targetMappingId: w.parentRelation.targetMappingId,
-        targetExternalId: w.parentRelation.targetExternalId,
-      })
-    }
-  }
-
-  // Write in order (parents before children) so the parent exists for the edge.
-  for (const w of writes) {
-    if (!w.projected) continue
-    await entitySink.upsertRecord(ctx, w.mapping, w.projected)
-  }
-}
-
-/** Count bound items for the connector (powers DataConnector.itemCount). */
-async function countItems(db: Database, dataConnectorId: string): Promise<number> {
-  const rows = await db
-    .select({ id: schema.DataConnectorItem.id })
-    .from(schema.DataConnectorItem)
-    .where(eq(schema.DataConnectorItem.dataConnectorId, dataConnectorId))
-  return rows.length
 }

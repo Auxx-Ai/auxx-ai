@@ -4,6 +4,7 @@
 // normalizes to the source schema — it never writes entities (that is the sink).
 
 export type {
+  ConnectorCheckpoint,
   ConnectorDefaultMapping,
   ConnectorEntityDecl,
   ConnectorFetchArgs,
@@ -12,10 +13,13 @@ export type {
   ConnectorRecord,
   ConnectorStreamDecl,
   ConnectorStreamState,
+  ConnectorYield,
   DataConnectorConfig,
   DataConnectorDefinition,
   DecryptedCredential,
   FetchResult,
   PaginationSpec,
+  StreamIncrementalConfig,
   StreamRequestConfig,
 } from '../types'
+export { ConnectorRateLimitError, isConnectorCheckpoint } from '../types'

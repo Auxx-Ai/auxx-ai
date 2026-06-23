@@ -1,10 +1,17 @@
 // apps/worker/src/workers/worker-definitions/data-connector-worker.ts
-// BullMQ worker binding Queues.dataConnectorQueue → runDataConnectorSync. Mirrors
-// the knowledge-source sync worker (concurrency 2, cancellable). Manual "Sync now"
-// and scheduled fires both land here; the orchestrator's concurrency guard dedups.
+// BullMQ worker for Queues.dataConnectorQueue. A "Sync now" / scheduled fire starts
+// a CHAIN of short backfill slices (startConnectorSync); each slice job advances one
+// stream and re-enqueues the next (runBackfillSlice). Chained slices keep every job
+// well under the lock, survive crashes (cursor checkpointed per slice), and never hog
+// the worker. The orchestration lives in @auxx/lib; these handlers are thin shims.
 
 import { database as db } from '@auxx/database'
-import { runDataConnectorSync } from '@auxx/lib/data-connectors'
+import {
+  type BackfillSliceJobData,
+  runBackfillSlice,
+  SLICE_LOCK_DURATION_MS,
+  startConnectorSync,
+} from '@auxx/lib/data-connectors'
 import type { JobContext } from '@auxx/lib/jobs'
 import { Queues } from '@auxx/lib/jobs/queues'
 import { createScopedLogger } from '@auxx/logger'
@@ -19,19 +26,30 @@ interface DataConnectorSyncJobData {
   trigger?: 'manual' | 'scheduled' | 'webhook' | 'backfill'
 }
 
+/** "Sync now" / scheduled fire → start the resumable backfill chain. */
 async function handleDataConnectorSync(ctx: JobContext<DataConnectorSyncJobData>) {
   const { connectorId, organizationId, trigger } = ctx.data
-  logger.info('Processing data connector sync job', { connectorId, organizationId, trigger })
-  await runDataConnectorSync(db, organizationId, connectorId, { trigger })
+  logger.info('Starting data connector backfill chain', { connectorId, organizationId, trigger })
+  await startConnectorSync(db, organizationId, connectorId, { trigger })
+}
+
+/** One slice of a backfill chain → advance a stream + re-enqueue the next slice. */
+async function handleBackfillSlice(ctx: JobContext<BackfillSliceJobData>) {
+  const { connectorId, organizationId, streamId, runId } = ctx.data
+  await runBackfillSlice(db, { connectorId, organizationId, streamId, runId }, ctx.signal)
 }
 
 const jobMappings = {
   'data-connector-sync': handleDataConnectorSync,
+  'data-connector-backfill-slice': handleBackfillSlice,
 }
 
 export function startDataConnectorWorker() {
   return createWorker(Queues.dataConnectorQueue, jobMappings, {
     concurrency: 2,
     enableCancellation: true,
+    // Lock must outlast a slice's active-work budget (SLICE_BUDGET.maxMs) with margin
+    // — slices never sleep on a throttle, so 2–3× the budget is safe.
+    lockDuration: SLICE_LOCK_DURATION_MS,
   })
 }

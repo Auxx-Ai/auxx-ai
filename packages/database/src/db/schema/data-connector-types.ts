@@ -110,6 +110,12 @@ export interface StreamRequestConfig {
   body?: Record<string, unknown>
   headers?: Record<string, string>
   pagination?: PaginationSpec
+  /** Steady-phase delta config (G2). Mirror of lib `StreamIncrementalConfig`. */
+  incremental?: {
+    sinceParam: string
+    watermarkField: string
+    watermarkFormat?: 'iso' | 'unix'
+  }
 }
 
 /**
