@@ -46,6 +46,11 @@ export const DataConnectorRun = pgTable(
     errorSample: jsonb().$type<Array<{ externalId: string; error: string }>>(),
     // Optional progress snapshot for the live status line (counts + per-stream phase).
     progress: jsonb().$type<Record<string, unknown>>(),
+    // B2 — the decoded stream+mapping snapshot the continuation chain is PINNED to.
+    // Captured once when the backfill is enqueued so a mid-chain config/mapping edit
+    // can't skew slices already in flight; every slice job decodes against this, not
+    // live config. Null for legacy single-shot runs. See plans/data-connectors/v3.
+    chainSnapshot: jsonb().$type<Record<string, unknown>>(),
     cursorBefore: jsonb(),
     cursorAfter: jsonb(),
     startedAt: timestamp({ precision: 3 }).defaultNow().notNull(),

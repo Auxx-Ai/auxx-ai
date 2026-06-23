@@ -14,17 +14,22 @@ import { connectorFor } from './connectors'
 import { findItem, type StreamWithMappings } from './service'
 import { entitySink } from './sinks/entity-sink'
 import type { SyncCtx } from './sinks/types'
+import type { DecodedMapping, SyncMode } from './types'
 
 const logger = createScopedLogger('data-connector-reconciliation')
+
+/** The slice of a stream reconciliation needs: its sync mode + decoded mappings. */
+type ReconcilableStream = { syncMode: SyncMode; mappings: DecodedMapping[] }
 
 /**
  * Archive orphans for eligible mappings. `streams` carries each stream's syncMode
  * so we can gate snapshot-only. Only owned + snapshot + upsert mappings reconcile.
+ * Accepts both the full `StreamWithMappings` (single-shot) and the pinned snapshot
+ * shape (sliced chain) — it reads only `syncMode` + `mappings`.
  */
-export async function reconcileOrphans(ctx: SyncCtx, streams: StreamWithMappings[]): Promise<void> {
-  for (const { stream, syncMode, mappings } of streams) {
+export async function reconcileOrphans(ctx: SyncCtx, streams: ReconcilableStream[]): Promise<void> {
+  for (const { syncMode, mappings } of streams) {
     if (syncMode !== 'snapshot') continue // incremental: absence ≠ deletion
-    void stream
     for (const mapping of mappings) {
       if (mapping.targetMode !== 'owned') continue // never archive co-owned records
       if (mapping.linkMode !== 'upsert') continue // reference mappings write nothing

@@ -14,8 +14,22 @@ export {
   resolveConnectorCredential,
   sampleConnectorFetch,
 } from './connector-runtime'
+// Sliced SyncSource (Step 3b) — DC implementation of the shared-core fetch slice
+export type {
+  RunConnectorSliceArgs,
+  SliceFetch,
+  SliceSink,
+} from './connector-slice-loop'
+export { runConnectorSlice } from './connector-slice-loop'
+export type {
+  ConnectorSyncSource,
+  ConnectorSyncSourceDeps,
+  SyncSourceStream,
+} from './connector-sync-source'
+export { createConnectorStreamSyncSource } from './connector-sync-source'
 export type {
   AppConnectorContext,
+  ConnectorCheckpoint,
   ConnectorDefaultMapping,
   ConnectorEntityDecl,
   ConnectorFetchArgs,
@@ -24,23 +38,31 @@ export type {
   ConnectorRecord,
   ConnectorStreamDecl,
   ConnectorStreamState,
+  ConnectorYield,
   DataConnectorConfig,
   DataConnectorDefinition,
   DecryptedCredential,
   FetchResult,
   PaginationSpec,
+  StreamIncrementalConfig,
   StreamRequestConfig,
 } from './connectors'
 // Connectors + contract
 export {
   appConnectorAdapter,
+  ConnectorRateLimitError,
   connectorFor,
   fixtureConnector,
   genericRestConnector,
+  isConnectorCheckpoint,
 } from './connectors'
-export type { DataConnectorSyncJobData } from './data-connector-queue'
+export type { BackfillSliceJobData, DataConnectorSyncJobData } from './data-connector-queue'
 // Queue + scheduler
-export { enqueueConnectorSync } from './data-connector-queue'
+export {
+  BACKFILL_SLICE_JOB,
+  enqueueBackfillSlice,
+  enqueueConnectorSync,
+} from './data-connector-queue'
 export {
   reconcileConnectorSchedulers,
   removeConnectorScheduler,
@@ -104,11 +126,14 @@ export type {
 // Service layer
 export {
   claimForSync,
+  countConnectorItems,
   decodeMapping,
+  decrementConnectorBackfillLatch,
   finalizeConnector,
   finalizeRun,
   findItem,
   getConnector,
+  initConnectorBackfillLatch,
   listConnectors,
   listItemsForMapping,
   listItemsWithPendingRelations,
@@ -126,6 +151,15 @@ export {
 // Sink
 export { entitySink } from './sinks/entity-sink'
 export type { EntitySink, ProjectedRecord, SyncCtx } from './sinks/types'
+// Sliced backfill orchestration (Step 4) — worker-facing continuation engine
+export {
+  runBackfillSlice,
+  SLICE_BUDGET,
+  SLICE_LOCK_DURATION_MS,
+  STALE_RUN_MS,
+  startConnectorSync,
+  sweepStaleConnectorRuns,
+} from './slice-orchestrator'
 // Sync-core adapters (Step 3) — DC implementations of the shared seams
 export {
   applySyncStateToStream,
@@ -153,3 +187,5 @@ export type {
   SyncMode,
   TargetMode,
 } from './types'
+// Watermark comparison (steady mode, G2)
+export { isNumericWatermark, maxWatermark } from './watermark'

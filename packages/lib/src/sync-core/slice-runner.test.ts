@@ -149,6 +149,32 @@ describe('runSyncSlice', () => {
     expect(ledger.slices[0]?.checkpointKey).toBe('token:pg_5')
   })
 
+  it('folds the EXHAUSTING slice under a terminal key (not the prior page cursor)', async () => {
+    // Regression: on a clean advance-to-exhaustion the source returns no next cursor.
+    // The runner must NOT reuse the prior page cursor for the H4 key — that collides
+    // with the penultimate slice and drops the terminal slice's counter fold.
+    const state = fakeStateStore({ phase: 'backfill', cursor: { kind: 'token', value: 'pg_9' } })
+    const ledger = fakeLedger()
+    const out = await runSyncSlice({
+      source: source({
+        slice: { recordsProcessed: 12, hasMore: false, commit: 'all', counters: { created: 12 } },
+        finalizeBackfill: vi.fn(async () => {}),
+      }),
+      stateStore: state.store,
+      ledger: ledger.ledger,
+      throttle: THROTTLE,
+      budget: BUDGET,
+      signal: new AbortController().signal,
+    })
+
+    expect(out).toEqual({ action: 'complete', completedPhase: 'backfill' })
+    // Cursor cleared on exhaustion; the fold uses a stable terminal sentinel, NOT
+    // 'token:pg_9' (which the penultimate slice already recorded).
+    expect(state.current.cursor).toBeUndefined()
+    expect(ledger.slices[0]?.checkpointKey).toBe('done:backfill')
+    expect(ledger.slices[0]?.counters).toEqual({ created: 12 })
+  })
+
   it('runs finalizeBackfill BEFORE flipping to steady on an exhausted backfill (H2)', async () => {
     const state = fakeStateStore({ phase: 'backfill' })
     const ledger = fakeLedger()
@@ -174,6 +200,31 @@ describe('runSyncSlice', () => {
     expect(finalizeBackfill).toHaveBeenCalledOnce()
     expect(order).toEqual(['finalize:backfill']) // reconciled while still backfill
     expect(state.current.phase).toBe('steady') // …then flipped
+    // Backfill run finalization is DELEGATED to finalizeBackfill (multi-stream
+    // coordination), so the runner itself does NOT call ledger.finalize here.
+    expect(ledger.calls).not.toContain('finalize')
+  })
+
+  it('finalizes the run directly on a steady-phase completion (single pass)', async () => {
+    const state = fakeStateStore({ phase: 'steady' })
+    const ledger = fakeLedger()
+    const finalizeBackfill = vi.fn(async () => {})
+    const out = await runSyncSlice({
+      source: source({
+        slice: { recordsProcessed: 3, hasMore: false, commit: 'all' },
+        finalizeBackfill,
+      }),
+      stateStore: state.store,
+      ledger: ledger.ledger,
+      throttle: THROTTLE,
+      budget: BUDGET,
+      signal: new AbortController().signal,
+    })
+
+    expect(out).toEqual({ action: 'complete', completedPhase: 'steady' })
+    // Steady is a self-contained pass — the runner finalizes, and the backfill-only
+    // reconciliation hook never fires.
+    expect(finalizeBackfill).not.toHaveBeenCalled()
     expect(ledger.calls).toContain('finalize')
   })
 

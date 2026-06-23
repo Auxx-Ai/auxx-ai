@@ -90,7 +90,15 @@ class ConnectorRunLedger implements RunLedger {
   constructor(
     private readonly db: Database,
     private readonly runId: string,
-    private readonly startedAt: Date
+    private readonly startedAt: Date,
+    /**
+     * Per-stream idempotency scope. A run is shared by ALL the connector's stream
+     * chains, so the H4 dedup key must be namespaced per stream — otherwise two
+     * concurrent streams (or two streams that happen to page-number identically)
+     * overwrite each other's `lastCheckpointKey` and drop folds. Defaults to a
+     * single shared slot for the finalize ledger (which folds with no key anyway).
+     */
+    private readonly scopeId: string = 'default'
   ) {}
 
   /**
@@ -122,18 +130,19 @@ class ConnectorRunLedger implements RunLedger {
       return
     }
 
-    // Fold only if this checkpoint hasn't already been recorded; stamp it so a
-    // replay of the same slice is skipped.
+    // Fold only if this checkpoint hasn't already been recorded for THIS stream; stamp
+    // it so a replay of the same slice is skipped. Keyed under `progress.checkpoints.
+    // <streamId>` so sibling stream chains sharing this run never clobber each other.
     const folded = await this.db
       .update(T)
       .set({
         ...increments,
-        progress: sql`jsonb_set(coalesce(${T.progress}, '{}'::jsonb), '{lastCheckpointKey}', to_jsonb(${entry.checkpointKey}::text))`,
+        progress: sql`jsonb_set(coalesce(${T.progress}, '{}'::jsonb), array['checkpoints', ${this.scopeId}], to_jsonb(${entry.checkpointKey}::text), true)`,
       })
       .where(
         and(
           eq(T.id, this.runId),
-          sql`coalesce(${T.progress}->>'lastCheckpointKey', '') <> ${entry.checkpointKey}`
+          sql`coalesce(${T.progress} #>> array['checkpoints', ${this.scopeId}], '') <> ${entry.checkpointKey}`
         )
       )
       .returning({ id: T.id })
@@ -173,10 +182,15 @@ class ConnectorRunLedger implements RunLedger {
   }
 }
 
-/** Build a `RunLedger` bound to one `DataConnectorRun`. */
+/**
+ * Build a `RunLedger` bound to one `DataConnectorRun`. Pass `scopeId` (the stream
+ * id) to namespace the H4 idempotency key per stream chain — required whenever the
+ * ledger records slice checkpoints (the finalize-only ledger can omit it).
+ */
 export function createConnectorRunLedger(
   db: Database,
-  run: { id: string; startedAt: Date }
+  run: { id: string; startedAt: Date },
+  scopeId?: string
 ): RunLedger {
-  return new ConnectorRunLedger(db, run.id, run.startedAt)
+  return new ConnectorRunLedger(db, run.id, run.startedAt, scopeId)
 }

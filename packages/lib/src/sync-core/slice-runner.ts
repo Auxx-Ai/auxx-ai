@@ -23,7 +23,13 @@ const logger = createScopedLogger('sync-core-slice-runner')
 
 /** Directive returned to the worker after one slice. */
 export type SliceOutcome =
-  | { action: 'reenqueue'; reason: 'more-pages' | 'retry-held-cursor' }
+  | {
+      action: 'reenqueue'
+      reason: 'more-pages' | 'retry-held-cursor'
+      /** Suggested delay before the next slice — the slice's rate-limit wait, so a
+       *  throttled re-enqueue paces (H1) instead of immediately re-hitting the limit. */
+      retryAfterMs?: number
+    }
   | { action: 'complete'; completedPhase: SyncPhase }
   | { action: 'failed'; error: Error }
 
@@ -77,10 +83,21 @@ export async function runSyncSlice(args: RunSliceArgs): Promise<SliceOutcome> {
   // next slice re-fetches the same ground. This is the three-state SliceCommit invariant.
   const advance = result.commit !== 'partial-retriable'
 
+  // A clean advance with no more pages is the EXHAUSTING slice. Clear the cursor —
+  // don't fall back to the prior page cursor: that would make the terminal slice's
+  // H4 key identical to the penultimate slice's, so its fold would be mistaken for a
+  // replay and its counters silently dropped.
+  const exhausted = advance && !result.hasMore
+  const nextCursor = exhausted
+    ? undefined
+    : advance
+      ? (result.nextCursor ?? state.cursor)
+      : state.cursor
+
   const next: SyncState = {
     ...state,
     phase,
-    cursor: advance ? (result.nextCursor ?? state.cursor) : state.cursor,
+    cursor: nextCursor,
     // The source returns a monotonic max watermark; the core just stores it on advance.
     watermark: advance ? (result.watermark ?? state.watermark) : state.watermark,
     recordsSeen: (state.recordsSeen ?? 0) + result.recordsProcessed,
@@ -90,23 +107,30 @@ export async function runSyncSlice(args: RunSliceArgs): Promise<SliceOutcome> {
   await stateStore.save(next)
   // Fold counters + metrics into the run and bump the heartbeat (the stale-sweep
   // keys off this, not start time). Idempotent on the post-slice cursor so a BullMQ
-  // job replay that already committed its fold can't double-count (H4). A held
-  // cursor (no advance) passes no key — its partial counts always fold.
+  // job replay that already committed its fold can't double-count (H4). The exhausting
+  // slice has no cursor, so it folds under a stable terminal sentinel (per phase). A
+  // held cursor (no advance) passes no key — its partial counts always fold.
+  const checkpointKey = advance ? (exhausted ? `done:${phase}` : cursorKey(nextCursor)) : undefined
   await ledger.recordSlice({
     counters: result.counters,
     pagesProcessed: result.pagesProcessed,
     rateLimitWaitMs: result.rateLimitWaitMs,
-    checkpointKey: advance ? cursorKey(next.cursor) : undefined,
+    checkpointKey,
   })
 
   // Transient failure: re-enqueue to retry the held cursor (no ground lost).
   if (result.commit === 'partial-retriable') {
-    return { action: 'reenqueue', reason: 'retry-held-cursor' }
+    return {
+      action: 'reenqueue',
+      reason: 'retry-held-cursor',
+      retryAfterMs: result.rateLimitWaitMs,
+    }
   }
 
-  // More pages in this phase: re-enqueue the next slice.
+  // More pages in this phase: re-enqueue the next slice. A made-progress throttle
+  // surfaces here as `hasMore` + `rateLimitWaitMs`, so the next slice still paces.
   if (result.hasMore) {
-    return { action: 'reenqueue', reason: 'more-pages' }
+    return { action: 'reenqueue', reason: 'more-pages', retryAfterMs: result.rateLimitWaitMs }
   }
 
   // Exhausted for this phase. On a finished backfill, run the reconciliation gate
@@ -124,8 +148,14 @@ export async function runSyncSlice(args: RunSliceArgs): Promise<SliceOutcome> {
       return { action: 'failed', error: err }
     }
     await stateStore.save({ ...next, phase: 'steady' })
+    // NOTE: the runner does NOT finalize the run on backfill completion. A backfill
+    // may span MANY stream chains sharing one run, and only the consumer knows when
+    // the LAST one is done — so `finalizeBackfill` owns run finalization for backfill
+    // (the DC source finalizes the run + releases the connector on its last stream,
+    // gated by the B1 latch). Steady completion below is a single self-contained pass.
+  } else {
+    await ledger.finalize()
   }
-  await ledger.finalize()
   return { action: 'complete', completedPhase: phase }
 }
 

@@ -161,9 +161,16 @@ export interface SyncSource {
   /** Process one bounded slice: fetch pages up to budget, sink them, report progress. */
   fetchSlice(ctx: SyncSliceCtx): Promise<SliceResult>
   /**
-   * Fired ONCE when backfill completes (phase flips to steady). Where the sink runs
-   * its reconciliation/orphan-archive — gated here so a partial backfill never archives
-   * what it hasn't reached. No-op for sources without reconciliation.
+   * Fired ONCE when backfill completes (phase flips to steady), BEFORE the flip.
+   * Where the sink runs its reconciliation/orphan-archive — gated here so a partial
+   * backfill never archives what it hasn't reached.
+   *
+   * It ALSO owns RUN finalization for the backfill phase: the runner does NOT call
+   * `ledger.finalize()` on backfill completion, because a backfill can span many
+   * stream chains sharing one run and only the consumer knows when the LAST one is
+   * done. A multi-stream source therefore gates here (e.g. an atomic latch) and calls
+   * `ledger.finalize()` itself on the final stream. No-op for sources with neither
+   * reconciliation nor multi-chain coordination (steady runs finalize in the runner).
    */
   finalizeBackfill?(): Promise<void>
 }
