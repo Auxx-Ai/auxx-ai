@@ -248,3 +248,60 @@ describe('generic-rest enriched pagination (Step 6)', () => {
     expect(String(fetchMock.mock.calls[1]![0])).toContain('STARTPOSITION=1001')
   })
 })
+
+describe('generic-rest backfill window (Step 9 §1.2)', () => {
+  const backfillWindow = { sinceParam: 'created[gte]', format: 'unix' as const }
+
+  it('injects the pinned floor on EVERY page of a snapshot run (page pagination)', async () => {
+    fetchMock
+      .mockResolvedValueOnce(json({ items: [{}] })) // page 1 → keep going
+      .mockResolvedValueOnce(json({ items: [] })) // page 2 → exhausted
+
+    await collect(
+      args({
+        mode: 'snapshot',
+        state: { backfillFloor: '1700000000' },
+        config: {
+          endpoint: {
+            baseUrl: 'https://api.example.com',
+            auth: 'none',
+            pagination: { kind: 'page', pageParam: 'page' },
+          },
+        },
+        requestConfig: { path: 'charges', backfillWindow },
+      })
+    )
+
+    // Pinned floor is re-sent on both pages — not first-page-only.
+    expect(decodeURIComponent(String(fetchMock.mock.calls[0]![0]))).toContain(
+      'created[gte]=1700000000'
+    )
+    expect(decodeURIComponent(String(fetchMock.mock.calls[1]![0]))).toContain(
+      'created[gte]=1700000000'
+    )
+  })
+
+  it('does NOT inject the floor on an incremental (steady) run', async () => {
+    fetchMock.mockResolvedValueOnce(json([{}]))
+    await collect(
+      args({
+        mode: 'incremental',
+        state: { backfillFloor: '1700000000' },
+        requestConfig: { path: 'charges', pagination: { kind: 'none' }, backfillWindow },
+      })
+    )
+    expect(decodeURIComponent(String(fetchMock.mock.calls[0]![0]))).not.toContain('created[gte]')
+  })
+
+  it('does NOT inject when no floor is pinned (span all)', async () => {
+    fetchMock.mockResolvedValueOnce(json([{}]))
+    await collect(
+      args({
+        mode: 'snapshot',
+        state: {}, // no backfillFloor
+        requestConfig: { path: 'charges', pagination: { kind: 'none' }, backfillWindow },
+      })
+    )
+    expect(decodeURIComponent(String(fetchMock.mock.calls[0]![0]))).not.toContain('created[gte]')
+  })
+})

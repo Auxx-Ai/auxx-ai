@@ -76,6 +76,14 @@ const SYNC_MODE_COPY: Record<
 interface StreamConfigPanelProps {
   connector: Connector
   stream: Stream
+  /**
+   * Which sections to render. `all` (default, the flat-editor drill) shows the
+   * whole panel; the setup stepper splits it into `configure` (request → sample →
+   * schema → sync mode) and `map` (mappings only) so each becomes its own step.
+   */
+  view?: 'all' | 'configure' | 'map'
+  /** Wrap in a full-height `ScrollArea` (default). The stepper supplies its own scroll. */
+  scroll?: boolean
 }
 
 const EMPTY_SCHEMA = { type: 'object', properties: {} }
@@ -86,7 +94,14 @@ const EMPTY_SCHEMA = { type: 'object', properties: {} }
  * The schema is derived from the sample ("Use this shape as the schema") or
  * hand-edited; the mapping fan-out tree projects subtrees onto target defs.
  */
-export function StreamConfigPanel({ connector, stream }: StreamConfigPanelProps) {
+export function StreamConfigPanel({
+  connector,
+  stream,
+  view = 'all',
+  scroll = true,
+}: StreamConfigPanelProps) {
+  const showConfigure = view !== 'map'
+  const showMappings = view !== 'configure'
   // Branch on the persisted definitionKind (05c §7), not a `type` prefix sniff.
   const isGenericRest = connector.definitionKind !== 'app'
 
@@ -186,11 +201,11 @@ export function StreamConfigPanel({ connector, stream }: StreamConfigPanelProps)
     ? (SCHEMA_SOURCE_SENTENCE[stream.schemaSource] ?? SCHEMA_SOURCE_SENTENCE.manual)
     : SCHEMA_SOURCE_NONE
 
-  return (
-    <ScrollArea className='h-full' scrollbarClassName='w-1.5'>
+  const body = (
+    <>
       <div className='flex flex-col'>
         {/* 1. Request — what to fetch (generic-rest only) */}
-        {isGenericRest && (
+        {isGenericRest && showConfigure && (
           <Section
             title='Request'
             icon={<Database className='size-4' />}
@@ -297,88 +312,95 @@ export function StreamConfigPanel({ connector, stream }: StreamConfigPanelProps)
         )}
 
         {/* 2. Sample — the single live test-fetch; feeds the schema below */}
-        <Section
-          title='Sample'
-          icon={<FlaskConical className='size-4' />}
-          initialOpen
-          collapsible={false}
-          description='Pull a few real records to see what the source returns.'
-          actions={
-            <Button
-              variant='outline'
-              size='xs'
-              loading={isSampling}
-              loadingText='Fetching...'
-              onClick={() => void handleTestFetch()}>
-              <FlaskConical />
-              Test fetch
-            </Button>
-          }>
-          <StreamSample sample={sample} onUseShape={handleUseShape} />
-        </Section>
+        {showConfigure && (
+          <>
+            <Section
+              title='Sample'
+              icon={<FlaskConical className='size-4' />}
+              initialOpen
+              collapsible={false}
+              description='Pull a few real records to see what the source returns.'
+              actions={
+                <Button
+                  variant='outline'
+                  size='xs'
+                  loading={isSampling}
+                  loadingText='Fetching...'
+                  onClick={() => void handleTestFetch()}>
+                  <FlaskConical />
+                  Test fetch
+                </Button>
+              }>
+              <StreamSample sample={sample} onUseShape={handleUseShape} />
+            </Section>
 
-        {/* 3. Schema — derived from the sample or hand-edited */}
-        <Section
-          title='Source schema'
-          icon={<Database className='size-4' />}
-          initialOpen
-          collapsible={false}
-          actions={
-            <Button variant='ghost' size='xs' onClick={openEdit}>
-              <Pencil />
-              Edit
-            </Button>
-          }>
-          <p className='px-1 pb-2 text-xs text-muted-foreground'>{schemaSentence}</p>
-        </Section>
+            {/* 3. Schema — derived from the sample or hand-edited */}
+            <Section
+              title='Source schema'
+              icon={<Database className='size-4' />}
+              initialOpen
+              collapsible={false}
+              actions={
+                <Button variant='ghost' size='xs' onClick={openEdit}>
+                  <Pencil />
+                  Edit
+                </Button>
+              }>
+              <p className='px-1 pb-2 text-xs text-muted-foreground'>{schemaSentence}</p>
+            </Section>
 
-        {/* 4. Sync mode */}
-        <Section
-          title='Sync mode'
-          icon={<Database className='size-4' />}
-          initialOpen
-          collapsible={false}
-          actions={
-            <RadioTab
-              value={syncMode}
-              onValueChange={(v) =>
-                // Pass the whole buffered request so toggling mode never drops
-                // saved headers/params/body (setStreamRequestConfig writes it whole).
-                setSyncMode(stream.id, v as 'snapshot' | 'incremental', request.value)
-              }
-              size='sm'>
-              <RadioTabItem value='snapshot' size='sm'>
-                Snapshot
-              </RadioTabItem>
-              <RadioTabItem value='incremental' size='sm'>
-                Incremental
-              </RadioTabItem>
-            </RadioTab>
-          }>
-          <div className='px-1'>
-            <EmptySection
-              icon={SYNC_MODE_COPY[syncMode].icon}
-              title={SYNC_MODE_COPY[syncMode].title}
-              description={SYNC_MODE_COPY[syncMode].description}
-            />
-          </div>
-        </Section>
+            {/* 4. Sync mode */}
+            <Section
+              title='Sync mode'
+              icon={<Database className='size-4' />}
+              initialOpen
+              collapsible={false}
+              actions={
+                <RadioTab
+                  value={syncMode}
+                  onValueChange={(v) =>
+                    // Pass the whole buffered request so toggling mode never drops
+                    // saved headers/params/body (setStreamRequestConfig writes it whole).
+                    setSyncMode(stream.id, v as 'snapshot' | 'incremental', request.value)
+                  }
+                  size='sm'>
+                  <RadioTabItem value='snapshot' size='sm'>
+                    Snapshot
+                  </RadioTabItem>
+                  <RadioTabItem value='incremental' size='sm'>
+                    Incremental
+                  </RadioTabItem>
+                </RadioTab>
+              }>
+              <div className='px-1'>
+                <EmptySection
+                  icon={SYNC_MODE_COPY[syncMode].icon}
+                  title={SYNC_MODE_COPY[syncMode].title}
+                  description={SYNC_MODE_COPY[syncMode].description}
+                />
+              </div>
+            </Section>
+          </>
+        )}
 
         {/* 5. Mappings */}
-        <Section
-          title='Mappings'
-          icon={<Database className='size-4' />}
-          initialOpen
-          collapsible={false}
-          description='Project subtrees of the source onto target definitions.'>
-          <MappingTree
-            connectorId={connector.id}
-            streamId={stream.id}
-            streamKey={stream.streamKey ?? ''}
-            mappings={stream.mappings}
-            sourcePaths={sourcePaths}
-          />
-        </Section>
+        {showMappings && (
+          <Section
+            title='Mappings'
+            icon={<Database className='size-4' />}
+            initialOpen
+            collapsible={false}
+            description='Project subtrees of the source onto target definitions.'>
+            <MappingTree
+              connectorId={connector.id}
+              streamId={stream.id}
+              streamKey={stream.streamKey ?? ''}
+              mappings={stream.mappings}
+              sourcePaths={sourcePaths}
+              sourceSchema={stream.sourceSchema as Record<string, unknown> | null}
+            />
+          </Section>
+        )}
       </div>
 
       <SchemaEditorDialog
@@ -389,7 +411,15 @@ export function StreamConfigPanel({ connector, stream }: StreamConfigPanelProps)
         policy={{ emitRequired: false, root: 'any', rootLabel: 'record', freeformNames: true }}
         onSave={handleSaveSchema}
       />
+    </>
+  )
+
+  return scroll ? (
+    <ScrollArea className='h-full' scrollbarClassName='w-1.5'>
+      {body}
     </ScrollArea>
+  ) : (
+    body
   )
 }
 

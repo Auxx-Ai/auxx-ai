@@ -342,6 +342,15 @@ async function* fetchRecords(args: ConnectorFetchArgs): AsyncIterable<ConnectorY
     if (incremental && args.mode === 'incremental' && args.state.watermark) {
       params[incremental.sinceParam] = args.state.watermark
     }
+    // Backfill-window floor (Step 9 §1.2) — inject the pinned floor on EVERY page of a
+    // snapshot run. `params` is rebuilt per page, and page/offset/cursor pagination
+    // re-sends filters every request, so this must not be first-page-only. For
+    // next-url/link-header the url-selection below GETs the server URL verbatim and
+    // ignores `params`, so the floor (baked into that URL) is applied page 1 only —
+    // exactly right. The pinned floor is stable across the whole chain (no drift).
+    if (request.backfillWindow && args.mode === 'snapshot' && args.state.backfillFloor) {
+      params[request.backfillWindow.sinceParam] = args.state.backfillFloor
+    }
 
     // link-header hands back an absolute next URL (GET as-is); next-url hands back
     // a body URL that is often relative (Salesforce `nextRecordsUrl`) — join it onto

@@ -177,6 +177,9 @@ export {
   startConnectorSync,
   sweepStaleConnectorRuns,
 } from './slice-orchestrator'
+// Tier 2 mapping suggester (create-sync-flow §3.2) — heuristic source→field proposals
+export type { SourceLeaf } from './suggest-mappings'
+export { collectSchemaLeaves, suggestFieldMappings } from './suggest-mappings'
 // Sync-core adapters (Step 3) — DC implementations of the shared seams
 export {
   applySyncStateToStream,

@@ -74,7 +74,8 @@ interface ChainSnapshot {
 /** Reset a stream's durable state to a fresh backfill (re-backfill / first run). */
 function freshBackfillState(
   prev: ConnectorStreamState,
-  startedAtIso: string
+  startedAtIso: string,
+  backfillFloor?: string
 ): ConnectorStreamState {
   return {
     ...prev,
@@ -84,7 +85,29 @@ function freshBackfillState(
     recordsSeen: 0,
     watermark: undefined,
     backfillComplete: false,
+    // Step 9 §1.2 — pin the window floor ONCE so every slice injects the same value
+    // (no per-slice `now` drift). Undefined ⇒ span 'all' / no window ⇒ full history.
+    backfillFloor,
   }
+}
+
+type BackfillWindowSpan = 'all' | 'last_90_days' | 'last_12_months'
+
+/**
+ * Compute the pinned backfill-window floor (Step 9 §1.2). `span` is the connector's
+ * plain-language choice; `format` comes from the stream's `backfillWindow`. Computed
+ * ONCE per fresh backfill so the whole chain shares one floor. `'all'`/absent ⇒ no
+ * floor (crawl full history — current behavior).
+ */
+function computeBackfillFloor(
+  span: BackfillWindowSpan | undefined,
+  format: 'iso' | 'unix' = 'iso'
+): string | undefined {
+  if (!span || span === 'all') return undefined
+  const floor = new Date()
+  if (span === 'last_90_days') floor.setDate(floor.getDate() - 90)
+  else floor.setMonth(floor.getMonth() - 12) // last_12_months
+  return format === 'unix' ? String(Math.floor(floor.getTime() / 1000)) : floor.toISOString()
 }
 
 // ── Start a connector sync (backfill or steady) ──────────────────────────────────
@@ -149,11 +172,16 @@ export async function startConnectorSync(
   // (keep its cursor) or running steady (keep its watermark).
   const startedAtIso = new Date().toISOString()
   if (phase === 'backfill') {
+    const span = connector.config?.backfillWindowSpan
     for (const [i, s] of streams.entries()) {
       const st = streamStates[i] ?? {}
       const resumable = incrementalConnector && st.phase === 'backfill' && !!st.backfillCursor
-      if (!resumable)
-        await persistStreamState(db, s.stream.id, freshBackfillState(st, startedAtIso))
+      if (resumable) continue
+      // Pin the floor per stream — the param is connector-level but the format is
+      // declared per stream; streams without a `backfillWindow` get no floor.
+      const window = s.stream.requestConfig?.backfillWindow
+      const floor = window ? computeBackfillFloor(span, window.format) : undefined
+      await persistStreamState(db, s.stream.id, freshBackfillState(st, startedAtIso, floor))
     }
   }
 

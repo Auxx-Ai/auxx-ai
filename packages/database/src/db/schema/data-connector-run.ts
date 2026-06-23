@@ -43,7 +43,11 @@ export const DataConnectorRun = pgTable(
     pagesProcessed: integer().default(0).notNull(),
     // Cumulative wall-clock spent waiting on rate limits (honest "Rate-limited" UX).
     rateLimitWaitMs: integer().default(0).notNull(),
-    errorSample: jsonb().$type<Array<{ externalId: string; error: string }>>(),
+    // `tier` (Step 9 §1.1): 'invalid' (bad shape, pre-write drop) | 'rejected'
+    // (the entity write threw). Omitted ⇒ engine-level error → neutral "Error".
+    // Mirror of `RunCounters.errorSample` in lib service.ts (hand-synced).
+    errorSample:
+      jsonb().$type<Array<{ externalId: string; error: string; tier?: 'invalid' | 'rejected' }>>(),
     // Optional progress snapshot for the live status line (counts + per-stream phase).
     progress: jsonb().$type<Record<string, unknown>>(),
     // B2 — the decoded stream+mapping snapshot the continuation chain is PINNED to.

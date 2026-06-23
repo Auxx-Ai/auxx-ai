@@ -6,14 +6,15 @@ import { toResourceFieldId } from '@auxx/types/field'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { EntityIcon } from '@auxx/ui/components/icons'
+import { toastError } from '@auxx/ui/components/toast'
 import { SimpleTooltip } from '@auxx/ui/components/tooltip'
 import { GridTreeRow, TreeRowButton } from '@auxx/ui/components/tree-row'
 import { generateId } from '@auxx/utils'
-import { ArrowRight, FunctionSquare, Plus, Trash2, X } from 'lucide-react'
+import { ArrowRight, FunctionSquare, Loader2, Plus, Sparkles, Trash2, X } from 'lucide-react'
 import { useState } from 'react'
 import { ResourcePicker } from '~/components/pickers/resource-picker'
 import { useResourceFields, useResourceProperty } from '~/components/resources'
-import type { RouterOutputs } from '~/trpc/react'
+import { api, type RouterOutputs } from '~/trpc/react'
 import {
   absolutePrefix,
   buildSourceTree,
@@ -71,9 +72,13 @@ function branchRootPath(node: SourceTreeNode): string {
 export interface MappingNodeProps {
   mapping: Mapping
   depth: number
+  /** The connector id — for the Tier 2 `suggestMappings` call. */
+  connectorId: string
   streamId: string
   /** The stream key — the record noun for the unnamed array root (`[]`). */
   streamKey: string
+  /** The stream's raw source schema (Layer A) — fed to the suggester so it needn't re-fetch. */
+  sourceSchema?: Record<string, unknown> | null
   /** Payload-absolute source paths (Layer A schema), shared by the whole tree. */
   sourcePaths: SourcePath[]
   /** All mappings indexed by id — for `absolutePrefix` + child lookup. */
@@ -94,8 +99,10 @@ export interface MappingNodeProps {
 export function MappingNode({
   mapping,
   depth,
+  connectorId,
   streamId,
   streamKey,
+  sourceSchema,
   sourcePaths,
   byMappingId,
   childrenOf,
@@ -125,6 +132,33 @@ export function MappingNode({
 
   // Persist a new entry array (the single mapping field-write surface).
   const writeEntries = (next: FieldMapping[]) => setFieldMappings(streamId, mapping.id, next)
+
+  // Tier 2 suggester (create-sync-flow §3.2) — only offered on a root-record
+  // mapping (whole payload / each item), where the suggester's record-relative
+  // leaves match this mapping's subtree. Merges proposals in as editable rows,
+  // skipping any source path or target field that's already bound.
+  const canSuggest =
+    mapping.parentMappingId == null &&
+    (mapping.rootPath === '' || mapping.rootPath === '[]') &&
+    mapping.entityDefinitionId != null
+  const suggestMappings = api.dataConnector.suggestMappings.useMutation({
+    onSuccess: (data) => {
+      const boundSources = new Set(
+        fieldMappings
+          .filter((e) => isBareToken(e.expression))
+          .map((e) => e.expression.replace(/^\{|\}$/g, ''))
+      )
+      const boundTargets = new Set(
+        fieldMappings.map((e) => e.targetFieldRef).filter((r): r is string => r != null)
+      )
+      const fresh = (data.proposals as FieldMapping[]).filter((p) => {
+        const src = Object.values(p.sourceFields)[0]
+        return !!src && !boundSources.has(src) && !boundTargets.has(p.targetFieldRef ?? '')
+      })
+      if (fresh.length > 0) writeEntries([...fieldMappings, ...fresh])
+    },
+    onError: (e) => toastError({ title: 'Could not suggest mappings', description: e.message }),
+  })
   // Patch one entry in place by its stable id (used by every per-entry mutation).
   const patchEntry = (id: string, patch: Partial<FieldMapping>) =>
     writeEntries(fieldMappings.map((e) => (e.id === id ? { ...e, ...patch } : e)))
@@ -300,6 +334,22 @@ export function MappingNode({
                 </Badge>
               </button>
             </SimpleTooltip>
+            {canSuggest && (
+              <TreeRowButton
+                persistent
+                tooltipText='Suggest field mappings from the source'
+                disabled={suggestMappings.isPending}
+                onClick={() =>
+                  suggestMappings.mutate({
+                    id: connectorId,
+                    streamKey: streamKey || undefined,
+                    entityDefinitionId: mapping.entityDefinitionId!,
+                    sourceSchema: sourceSchema ?? undefined,
+                  })
+                }>
+                {suggestMappings.isPending ? <Loader2 className='animate-spin' /> : <Sparkles />}
+              </TreeRowButton>
+            )}
             {/* Every mapping is removable now — no auto-seeded spine. Deleting a
               mapping drops back to the passive source row it was created from. */}
             <TreeRowButton
@@ -337,8 +387,10 @@ export function MappingNode({
               onToggleMatch={toggleMatch}
               onFanOut={materializeChild}
               // Child-mapping recursion context.
+              connectorId={connectorId}
               streamId={streamId}
               streamKey={streamKey}
+              sourceSchema={sourceSchema}
               sourcePaths={sourcePaths}
               byMappingId={byMappingId}
               childrenOf={childrenOf}
@@ -405,7 +457,9 @@ export function MappingNode({
             key={child.id}
             mapping={child}
             depth={depth + 1}
+            connectorId={connectorId}
             streamId={streamId}
+            sourceSchema={sourceSchema}
             sourcePaths={sourcePaths}
             byMappingId={byMappingId}
             childrenOf={childrenOf}
@@ -460,8 +514,10 @@ interface SourceNodeProps {
   onToggleMatch: (entryId: string) => void
   onFanOut: (node: SourceTreeNode, entityDefinitionId: string) => void
   // Child-mapping recursion context (forwarded to a nested MappingNode).
+  connectorId: string
   streamId: string
   streamKey: string
+  sourceSchema?: Record<string, unknown> | null
   sourcePaths: SourcePath[]
   byMappingId: Map<string, Mapping>
   childrenOf: Map<string | null, Mapping[]>
@@ -500,8 +556,10 @@ function SourceNode(props: SourceNodeProps) {
       <MappingNode
         mapping={childMapping}
         depth={depth}
+        connectorId={props.connectorId}
         streamId={props.streamId}
         streamKey={props.streamKey}
+        sourceSchema={props.sourceSchema}
         sourcePaths={props.sourcePaths}
         byMappingId={props.byMappingId}
         childrenOf={props.childrenOf}

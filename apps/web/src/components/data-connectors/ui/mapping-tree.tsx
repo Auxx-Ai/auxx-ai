@@ -29,6 +29,8 @@ interface MappingTreeProps {
   /** The stream's mappings (loaded with the stream — plan 08 §3). */
   mappings: Mapping[]
   sourcePaths: SourcePath[]
+  /** The stream's raw source schema (Layer A) — fed to the Tier 2 suggester. */
+  sourceSchema?: Record<string, unknown> | null
 }
 
 /** The fan-out rootPath for a branch node — arrays keep their `[]` suffix. */
@@ -52,6 +54,7 @@ export function MappingTree({
   streamKey,
   mappings: rows,
   sourcePaths,
+  sourceSchema,
 }: MappingTreeProps) {
   const mutations = useStreamMutations(connectorId)
   const { fanOut } = mutations
@@ -107,8 +110,10 @@ export function MappingTree({
     })
 
   const recursionCtx = {
+    connectorId,
     streamId,
     streamKey,
+    sourceSchema,
     sourcePaths,
     byMappingId,
     childrenOf,
@@ -187,8 +192,10 @@ interface TopSourceNodeProps {
   /** Create a top-level mapping at the given rootPath against the picked def. */
   onCreate: (rootPath: string, entityDefinitionId: string) => void
   // Recursion context forwarded to a promoted MappingNode.
+  connectorId: string
   streamId: string
   streamKey: string
+  sourceSchema?: Record<string, unknown> | null
   sourcePaths: SourcePath[]
   byMappingId: Map<string, Mapping>
   childrenOf: Map<string | null, Mapping[]>
@@ -212,8 +219,10 @@ function TopSourceNode(props: TopSourceNodeProps) {
         <MappingNode
           mapping={mapping}
           depth={depth}
+          connectorId={props.connectorId}
           streamId={props.streamId}
           streamKey={props.streamKey}
+          sourceSchema={props.sourceSchema}
           sourcePaths={props.sourcePaths}
           byMappingId={props.byMappingId}
           childrenOf={props.childrenOf}

@@ -88,6 +88,7 @@ async function resolveFieldRefs(
       ctx.counters.errorSample.push({
         externalId: record.externalId,
         error: `unresolved targetFieldRef: ${ref}`,
+        tier: 'invalid', // caught before the write — bad shape / missing identity
       })
     }
   }
@@ -283,7 +284,11 @@ export const entitySink: EntitySink = {
       const message = error instanceof Error ? error.message : String(error)
       ctx.counters.failed += 1
       if (ctx.counters.errorSample.length < 50) {
-        ctx.counters.errorSample.push({ externalId: record.externalId, error: message })
+        ctx.counters.errorSample.push({
+          externalId: record.externalId,
+          error: message,
+          tier: 'rejected', // the entity write itself failed
+        })
       }
       logger.warn('upsertRecord failed', {
         mappingId: mapping.row.id,

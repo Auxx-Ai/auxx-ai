@@ -24,7 +24,8 @@
         "path": "/customers",
         "method": "GET",
         "params": { "limit": 100 },
-        "pagination": { "kind": "none" }
+        "pagination": { "kind": "none" },
+        "backfillWindow": { "sinceParam": "created[gte]", "format": "unix" }
       },
       "mappings": [
         {
@@ -80,7 +81,8 @@
         "path": "/charges",
         "method": "GET",
         "params": { "limit": 100 },
-        "pagination": { "kind": "none" }
+        "pagination": { "kind": "none" },
+        "backfillWindow": { "sinceParam": "created[gte]", "format": "unix" }
       },
       "sourceSchema": {
         "type": "object",
