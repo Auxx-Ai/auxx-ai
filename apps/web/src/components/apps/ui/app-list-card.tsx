@@ -59,8 +59,10 @@ export function AppListCard({
   const router = useRouter()
   const hasMenu = !!menuItems?.length
 
+  // `w-full` so the card fills its parent even when it isn't a direct grid item (a bare <button>
+  // otherwise shrinks to fit-content — e.g. nested inside the connections stack card).
   const cardClass =
-    'rounded-2xl bg-primary-50 hover:bg-primary-50/50 hover:outline-5 hover:outline-primary-50 flex flex-col p-3 gap-2 border text-left disabled:opacity-60 disabled:cursor-not-allowed'
+    'w-full rounded-2xl bg-primary-50 hover:bg-primary-50/50 hover:outline-5 hover:outline-primary-50 flex flex-col p-3 gap-2 border text-left disabled:opacity-60 disabled:cursor-not-allowed'
 
   const body = (
     <>

@@ -140,6 +140,50 @@ export const PLATFORM_PROVIDER_DEFS: PlatformProviderDef[] = [
     authApply: BEARER,
     uiMetadata: { icon: 'brand:outlook', category: 'email', brandColor: '#0078d4' },
   },
+  // ── Social messaging channel defs (Facebook + Instagram) ────────────────────
+  // These are the CHANNEL defs (providerKey == Integration.provider class), distinct
+  // from the workflow `facebookOAuth2Api`/`instagramOAuth2Api` connectors below. Both
+  // use the platform Facebook app (IG Messaging is a Facebook-Graph child — no separate
+  // Instagram app) and authorize through the Facebook login dialog. The OAuth code
+  // exchange yields a USER token; the social post-connect hook derives the long-lived
+  // PAGE token + (IG) the linked Instagram Business Account and swaps it onto the
+  // credential. Long-lived page tokens have no refresh grant → dead token surfaces as
+  // requiresReauth (no scanner refresh).
+  {
+    providerKey: 'facebook',
+    connectionType: 'oauth2-code',
+    label: 'Facebook',
+    global: false,
+    oauth2AuthorizeUrl: 'https://www.facebook.com/v19.0/dialog/oauth',
+    oauth2AccessTokenUrl: 'https://graph.facebook.com/v19.0/oauth/access_token',
+    oauth2Scopes: ['pages_messaging', 'pages_manage_metadata', 'pages_read_engagement'],
+    systemClientIdEnv: 'FACEBOOK_APP_ID',
+    systemClientSecretEnv: 'FACEBOOK_APP_SECRET',
+    oauth2Features: { additionalAuthorizeParams: { response_type: 'code' } },
+    authApply: BEARER,
+    uiMetadata: { icon: 'brand:facebook', category: 'social', brandColor: '#1877f2' },
+  },
+  {
+    providerKey: 'instagram',
+    connectionType: 'oauth2-code',
+    label: 'Instagram',
+    global: false,
+    // Instagram Messaging authorizes through the Facebook login dialog + Facebook app.
+    oauth2AuthorizeUrl: 'https://www.facebook.com/v19.0/dialog/oauth',
+    oauth2AccessTokenUrl: 'https://graph.facebook.com/v19.0/oauth/access_token',
+    oauth2Scopes: [
+      'instagram_basic',
+      'instagram_manage_messages',
+      'pages_messaging',
+      'pages_manage_metadata',
+      'pages_read_engagement',
+    ],
+    systemClientIdEnv: 'FACEBOOK_APP_ID',
+    systemClientSecretEnv: 'FACEBOOK_APP_SECRET',
+    oauth2Features: { additionalAuthorizeParams: { response_type: 'code' } },
+    authApply: BEARER,
+    uiMetadata: { icon: 'brand:instagram', category: 'social', brandColor: '#e4405f' },
+  },
   {
     providerKey: 'shopifyOAuth2Api',
     connectionType: 'oauth2-code',

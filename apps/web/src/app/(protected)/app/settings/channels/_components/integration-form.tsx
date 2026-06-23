@@ -11,7 +11,6 @@ import {
 } from '@auxx/ui/components/card'
 import { Input } from '@auxx/ui/components/input'
 import { Label } from '@auxx/ui/components/label'
-import { toastError } from '@auxx/ui/components/toast'
 import { ArrowLeft } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useState } from 'react'
@@ -31,33 +30,16 @@ interface IntegrationFormProps {
 export default function IntegrationForm({ type }: IntegrationFormProps) {
   const router = useRouter()
 
-  // Gmail/Outlook connect via the unified connections OAuth flow.
-  const isOAuthChannel = type === 'google' || type === 'outlook'
+  // Gmail/Outlook/Facebook/Instagram all connect via the unified connections OAuth flow.
+  const isOAuthChannel =
+    type === 'google' || type === 'outlook' || type === 'facebook' || type === 'instagram'
   const { data: prep, isLoading: isLoadingPrep } = api.channel.prepareConnect.useQuery(
-    { provider: type as 'google' | 'outlook' },
+    { provider: type as 'google' | 'outlook' | 'facebook' | 'instagram' },
     { enabled: isOAuthChannel }
   )
   const [clientId, setClientId] = useState('')
   const [clientSecret, setClientSecret] = useState('')
   const [redirecting, setRedirecting] = useState(false)
-
-  // Facebook/Instagram still use the legacy per-provider OAuth flow.
-  const getAuthUrl = api.channel.getAuthUrl.useMutation({
-    onError: (error) => {
-      toastError({ title: 'Error generating authentication URL', description: error.message })
-    },
-  })
-
-  const handleLegacyOAuthConnect = () => {
-    getAuthUrl.mutate(
-      { provider: type as any, redirectPath: '/app/settings/channels' },
-      {
-        onSuccess: (data) => {
-          if (data.authUrl) window.location.href = data.authUrl
-        },
-      }
-    )
-  }
 
   const handleChannelConnect = () => {
     if (!prep) return
@@ -79,9 +61,11 @@ export default function IntegrationForm({ type }: IntegrationFormProps) {
   // Render the form based on integration type
   const renderForm = () => {
     switch (type.toLowerCase()) {
-      // OAuth email channels — routed through the unified connections flow.
+      // OAuth channels (email + social) — routed through the unified connections flow.
       case 'google':
-      case 'outlook': {
+      case 'outlook':
+      case 'facebook':
+      case 'instagram': {
         if (isLoadingPrep || !prep) {
           return (
             <div className='flex items-center justify-center p-8'>
@@ -156,43 +140,6 @@ export default function IntegrationForm({ type }: IntegrationFormProps) {
           </div>
         )
       }
-
-      // Other OAuth-based integrations (legacy per-provider flow).
-      case 'facebook':
-      case 'instagram':
-        return (
-          <div className='flex flex-col space-y-1.5 p-3'>
-            <div className='flex flex-col space-y-1.5'>
-              <div className='flex items-center space-x-2'>
-                {getIntegrationProviderIcon(type, 'size-6')}
-                <div className='font-semibold leading-none tracking-tight'>Connect {type}</div>
-              </div>
-              <div className='text-sm text-muted-foreground'>
-                Connect your {type} account to start receiving and managing messages
-              </div>
-            </div>
-            <div className='flex items-center '>
-              <p className='mb-4 text-sm text-muted-foreground'>
-                Click the button below to authorize access to your {type} account. You will be
-                redirected to {type} to complete the authorization process.
-              </p>
-            </div>
-            <div className='flex justify-between'>
-              <Button type='button' variant='outline' onClick={handleBack}>
-                <ArrowLeft />
-                Back
-              </Button>
-              <Button
-                variant='info'
-                onClick={handleLegacyOAuthConnect}
-                disabled={getAuthUrl.isPending}
-                loading={getAuthUrl.isPending}
-                loadingText='Connecting...'>
-                {`Connect to ${type}`}
-              </Button>
-            </div>
-          </div>
-        )
 
       case 'imap':
         return <ImapConnectForm onBack={handleBack} />

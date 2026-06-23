@@ -1,14 +1,17 @@
 // apps/web/src/components/connections/ui/connections-section.tsx
 'use client'
 
+import { HIDDEN_VALUE } from '@auxx/credentials/crypto/client'
 import { Button } from '@auxx/ui/components/button'
 import { InputSearch } from '@auxx/ui/components/input-search'
 import { toastError } from '@auxx/ui/components/toast'
-import { ComponentIcon, Plus } from 'lucide-react'
+import { Building2, ChevronUp, ComponentIcon, Plus, TriangleAlert, User } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useConnectFlow } from '~/components/apps/hooks/use-connect-flow'
 import { useAppsContext } from '~/components/apps/providers/apps-context'
+import { AppIcon } from '~/components/apps/ui/app-icon'
 import { EmptyState } from '~/components/global/empty-state'
+import { SettingsSection } from '~/components/global/settings-page'
 import { useConfirm } from '~/hooks/use-confirm'
 import { useUser } from '~/hooks/use-user'
 import { api } from '~/trpc/react'
@@ -16,8 +19,9 @@ import { AddConnectionDialog } from './add-connection-dialog'
 import { ConnectionCard, type ConnectionRow } from './connection-card'
 import { ConnectionDetailDialog } from './connection-detail-dialog'
 import type { DetailMethod } from './connection-detail-page'
-import { ConnectionRenameDialog } from './connection-rename-dialog'
+import { ConnectionStackCard } from './connection-stack-card'
 import { appTarget, platformTarget } from './connection-targets'
+import { type ConnectionGroup, groupConnections } from './group-connections'
 
 /**
  * Settings → Channels → Connections. A unified card grid of every connection the
@@ -38,7 +42,8 @@ export function ConnectionsSection() {
 
   const [addOpen, setAddOpen] = useState(false)
   const [editRow, setEditRow] = useState<ConnectionRow | null>(null)
-  const [renameRow, setRenameRow] = useState<ConnectionRow | null>(null)
+  // One open stack per page (master-detail); cleared in search mode.
+  const [expandedKey, setExpandedKey] = useState<string | null>(null)
   const [search, setSearch] = useState('')
   const [confirm, ConfirmDialog] = useConfirm()
 
@@ -105,30 +110,42 @@ export function ConnectionsSection() {
   }
 
   // Plain integration/workflow secrets with no platform definition edit a single API
-  // key in-place; everything else (apps, platform providers) routes through the flow.
+  // key inline in the edit dialog; apps/platform providers rename inline and re-auth /
+  // rotate their key through the flow's Reconnect button.
   const isPlainSecret = (row: ConnectionRow) => row.kind !== 'app' && !providerByKey.get(row.type)
 
-  // Synthetic bare-secret method backing the in-place edit dialog (stable so the dialog
-  // seeds once per open). The token row is the single API key; no structured variables.
-  const editMethod = useMemo<DetailMethod | null>(
-    () =>
-      editRow
-        ? {
-            id: editRow.id,
-            label: editRow.label ?? editRow.name,
-            description: null,
-            connectionType: 'secret',
-            global: editRow.scope !== 'user',
-            connectionVariables: [],
-          }
-        : null,
-    [editRow]
-  )
+  // Synthetic method backing the unified edit dialog. Plain secrets expose their single API-key
+  // row; every other row is name-only here (re-auth / key rotation routes through Reconnect), so
+  // they carry a fieldless oauth-shaped method. Cheap to recompute, so no memo.
+  const editMethod: DetailMethod | null = editRow
+    ? {
+        id: editRow.connectionDefinitionId ?? editRow.id,
+        label: editRow.label ?? editRow.name,
+        description: null,
+        connectionType: isPlainSecret(editRow) ? 'secret' : 'oauth2-code',
+        global: editRow.scope !== 'user',
+        connectionVariables: [],
+      }
+    : null
 
-  const handleEditSubmit = (secret: string) => {
+  // One Save persists a rename (label) and, for a plain secret, a rotated API key — both via
+  // `connections.update`. A no-op (nothing changed) just closes.
+  const handleEditSubmit = (payload: { name?: string; secret?: string }) => {
     if (!editRow) return
+    const currentName = editRow.label ?? editRow.name
+    const newLabel = payload.name?.trim()
+    const labelChanged = !!newLabel && newLabel !== currentName
+    const newSecret = payload.secret && payload.secret !== HIDDEN_VALUE ? payload.secret : undefined
+    if (!labelChanged && !newSecret) {
+      setEditRow(null)
+      return
+    }
     updateCredential.mutate(
-      { id: editRow.id, data: { apiKey: secret } },
+      {
+        id: editRow.id,
+        ...(labelChanged && { label: newLabel }),
+        ...(newSecret && { data: { apiKey: newSecret } }),
+      },
       {
         onSuccess: () => {
           setEditRow(null)
@@ -136,21 +153,6 @@ export function ConnectionsSection() {
         },
         onError: (error) =>
           toastError({ title: 'Error updating connection', description: error.message }),
-      }
-    )
-  }
-
-  const handleRenameSubmit = (name: string) => {
-    if (!renameRow) return
-    updateCredential.mutate(
-      { id: renameRow.id, label: name },
-      {
-        onSuccess: () => {
-          setRenameRow(null)
-          invalidate()
-        },
-        onError: (error) =>
-          toastError({ title: 'Error renaming connection', description: error.message }),
       }
     )
   }
@@ -174,26 +176,126 @@ export function ConnectionsSection() {
     )
   }
 
-  const q = search.trim().toLowerCase()
-  const visible = connections.filter((c) => {
-    if (!q) return true
+  // Start a fresh connect for a group's owner (the expanded "+ Add" affordance), scoped to the
+  // section the group sits in. App groups target the installation; provider groups the provider.
+  const handleAddToGroup = (group: ConnectionGroup) => {
+    const first = group.rows[0]
+    if (first.kind === 'app') {
+      const inst = appInstallations.find((i) => i.app.id === first.appId)
+      if (inst) flow.start({ target: appTarget(inst), scope: group.scope })
+      return
+    }
+    const provider = providerByKey.get(first.type)
+    if (provider) flow.start({ target: platformTarget(provider), scope: group.scope })
+  }
+
+  const renderCard = (row: ConnectionRow) => (
+    <ConnectionCard
+      key={row.id}
+      connection={row}
+      iconId={resolveIcon(row)}
+      subtitle={resolveSubtitle(row)}
+      actionLabel='Edit'
+      onAction={() => setEditRow(row)}
+      onDelete={() => void handleDelete(row)}
+    />
+  )
+
+  // One scope's section: group rows by owner, draw singles as plain cards and multi-row groups as
+  // expandable stacks. Renders nothing when the scope has no connections.
+  const renderScopeSection = (
+    title: string,
+    icon: typeof User,
+    scopeRows: ConnectionRow[],
+    scope: 'user' | 'organization'
+  ) => {
+    const groups = groupConnections(scopeRows, { iconId: resolveIcon, label: resolveSubtitle })
+    if (groups.length === 0) return null
+    // Workspace adds are admin-gated (mirrors the catalog); personal adds are always allowed.
+    const canAdd = scope === 'user' || isAdminOrOwner
     return (
+      <SettingsSection key={scope} icon={icon} title={title}>
+        <div className='w-full @container'>
+          <div className='grid w-full gap-2 @sm:grid-cols-1 @md:grid-cols-2 @2xl:grid-cols-3'>
+            {groups.map((group) => {
+              if (group.rows.length === 1) return renderCard(group.rows[0])
+              const isOpen = expandedKey === group.key
+              const toggle = () => setExpandedKey((k) => (k === group.key ? null : group.key))
+              if (!isOpen) {
+                return <ConnectionStackCard key={group.key} group={group} onToggle={toggle} />
+              }
+              // Expanded: a self-contained block (header + nested cards) so it reads as the stack,
+              // not loose top-level cards detached from a narrow tile.
+              return (
+                <div
+                  key={group.key}
+                  className='col-span-full flex flex-col gap-2 rounded-2xl border bg-muted/40 p-2'>
+                  <button
+                    type='button'
+                    onClick={toggle}
+                    className='flex w-full items-center gap-2 rounded-xl px-1 py-1 text-left hover:bg-muted/60'>
+                    <div className='flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-xl border bg-background'>
+                      <AppIcon iconId={group.iconId} size='sm' />
+                    </div>
+                    <span className='text-sm font-semibold'>{group.label}</span>
+                    {group.expiredCount > 0 && (
+                      <span className='flex items-center gap-1 rounded-lg border bg-primary-100 px-1.5 py-0.5 text-xs text-amber-700'>
+                        <TriangleAlert className='size-3 text-amber-600' />
+                        Needs attention
+                      </span>
+                    )}
+                    <span className='ml-auto text-xs text-muted-foreground'>
+                      {group.rows.length} connections
+                    </span>
+                    <ChevronUp className='size-4 shrink-0 text-muted-foreground' />
+                  </button>
+                  <div className='flex flex-col gap-2'>
+                    {group.rows.map(renderCard)}
+                    {canAdd && (
+                      <Button
+                        variant='outline'
+                        size='sm'
+                        className='w-full border-dashed'
+                        onClick={() => handleAddToGroup(group)}>
+                        <Plus />
+                        Add {group.label}
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      </SettingsSection>
+    )
+  }
+
+  const q = search.trim().toLowerCase()
+  // Search hunts a single account — flatten across scopes/stacks so a match is never hidden
+  // behind a count tile.
+  const searchMatches = connections.filter(
+    (c) =>
       (c.label ?? c.name).toLowerCase().includes(q) ||
       c.type.toLowerCase().includes(q) ||
       resolveSubtitle(c).toLowerCase().includes(q)
-    )
-  })
+  )
+  const personal = connections.filter((c) => c.scope === 'user')
+  const workspace = connections.filter((c) => c.scope === 'organization')
 
   return (
     <div className='flex flex-1 flex-col gap-4'>
       {connections.length > 0 && (
         <div className='flex items-center gap-2'>
-          <InputSearch
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder='Search connections…'
-            className='max-w-xs'
-          />
+          {/* Bound the InputSearch wrapper (it's `relative flex-1`), not just its inner input —
+              otherwise the absolutely-positioned clear button pins to the full-width row's edge. */}
+          <div className='w-full max-w-xs'>
+            <InputSearch
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder='Search connections…'
+            />
+          </div>
           <Button
             variant='outline'
             size='sm'
@@ -223,27 +325,17 @@ export function ConnectionsSection() {
             New connection
           </Button>
         </div>
-      ) : (
+      ) : q ? (
+        // Search mode: flat grid, no scope sections, no stacks.
         <div className='w-full @container'>
           <div className='grid w-full gap-2 @sm:grid-cols-1 @md:grid-cols-2 @2xl:grid-cols-3'>
-            {visible.map((row) => (
-              <ConnectionCard
-                key={row.id}
-                connection={row}
-                iconId={resolveIcon(row)}
-                subtitle={resolveSubtitle(row)}
-                actionLabel={
-                  row.kind === 'app' ||
-                  providerByKey.get(row.type)?.connectionType === 'oauth2-code'
-                    ? 'Reconnect'
-                    : 'Edit'
-                }
-                onAction={() => (isPlainSecret(row) ? setEditRow(row) : handleReconnect(row))}
-                onRename={() => setRenameRow(row)}
-                onDelete={() => void handleDelete(row)}
-              />
-            ))}
+            {searchMatches.map(renderCard)}
           </div>
+        </div>
+      ) : (
+        <div className='flex flex-col gap-6'>
+          {renderScopeSection('Personal', User, personal, 'user')}
+          {renderScopeSection('Workspace', Building2, workspace, 'organization')}
         </div>
       )}
 
@@ -258,7 +350,8 @@ export function ConnectionsSection() {
         />
       )}
 
-      {/* Plain-secret edit (single API key). Multi-field / OAuth rows reconnect via the flow. */}
+      {/* Unified edit dialog: rename every row; plain secrets also re-enter their API key here,
+          apps/platform rows re-auth or rotate via the Reconnect button (the flow). */}
       {editRow && editMethod && (
         <ConnectionDetailDialog
           open={!!editRow}
@@ -267,23 +360,28 @@ export function ConnectionsSection() {
           }}
           title={`Edit ${editRow.label ?? editRow.name}`}
           method={editMethod}
-          connectionId={editRow.id}
+          // Plain secrets seed their masked key; name-only rows skip the load.
+          connectionId={isPlainSecret(editRow) ? editRow.id : undefined}
           pending={updateCredential.isPending}
           submitLabel='Save'
-          onSubmit={(payload) => handleEditSubmit(payload.secret ?? '')}
-        />
-      )}
-
-      {/* Rename — writes the connection's display label via connections.update. */}
-      {renameRow && (
-        <ConnectionRenameDialog
-          open={!!renameRow}
-          onOpenChange={(next) => {
-            if (!next) setRenameRow(null)
-          }}
-          currentName={renameRow.label ?? renameRow.name}
-          pending={updateCredential.isPending}
-          onSubmit={handleRenameSubmit}
+          loadingText='Saving...'
+          showName
+          initialName={editRow.label ?? editRow.name}
+          description={
+            isPlainSecret(editRow)
+              ? 'Rename this connection or update its API key.'
+              : 'Rename this connection, or use Reconnect to re-authorize or update its credentials.'
+          }
+          onReconnect={
+            isPlainSecret(editRow)
+              ? undefined
+              : () => {
+                  const row = editRow
+                  setEditRow(null)
+                  handleReconnect(row)
+                }
+          }
+          onSubmit={handleEditSubmit}
         />
       )}
 

@@ -1,10 +1,7 @@
 // ~/server/api/routers/channel-reauth.ts
 
 import { schema } from '@auxx/database'
-import { storeOAuthCsrfToken } from '@auxx/lib/cache'
-import { FacebookOAuthService, InstagramOAuthService } from '@auxx/lib/providers'
 import { TRPCError } from '@trpc/server'
-import crypto from 'crypto'
 import { and, eq, inArray, isNull } from 'drizzle-orm'
 import { z } from 'zod'
 import { createTRPCRouter, notDemo, protectedProcedure } from '~/server/api/trpc'
@@ -26,7 +23,7 @@ export const channelReauthRouter = createTRPCRouter({
     )
     .use(notDemo('re-authenticate email'))
     .mutation(async ({ ctx, input }) => {
-      const { organizationId, userId } = ctx.session
+      const { organizationId } = ctx.session
 
       // Verify integration exists and user has access
       const [integration] = await ctx.db
@@ -48,75 +45,36 @@ export const channelReauthRouter = createTRPCRouter({
         })
       }
 
-      // Gmail/Outlook reconnect through the unified connections flow: a reconnect rotates the
-      // existing credential (connectionId) and the channel provisioning hook relinks the row.
-      // Stored BYO-client variables are reused by the authorize route, so no re-entry needed.
-      if (integration.provider === 'google' || integration.provider === 'outlook') {
-        if (!integration.credentialId) {
-          throw new TRPCError({
-            code: 'BAD_REQUEST',
-            message: 'Channel has no linked credential to reconnect',
-          })
-        }
-        const providerKey = integration.provider === 'google' ? 'gmail' : 'outlookMail'
-        const params = new URLSearchParams({
-          connectionId: integration.credentialId,
-          returnTo: '/app/settings/channels',
-        })
-        return {
-          success: true,
-          authUrl: `/api/connections/${providerKey}/oauth2/authorize?${params.toString()}`,
-          message: 'Re-authentication initiated',
-        }
+      // All OAuth channels reconnect through the unified connections flow: a reconnect rotates the
+      // existing credential (connectionId) and the channel/social provisioning hook relinks the row
+      // (Gmail/Outlook by email; Facebook/Instagram by page/IG-account id). Stored BYO-client
+      // variables are reused by the authorize route, so no re-entry needed.
+      const PROVIDER_KEY_BY_CHANNEL: Record<string, string> = {
+        google: 'gmail',
+        outlook: 'outlookMail',
+        facebook: 'facebook',
+        instagram: 'instagram',
       }
-
-      // Generate OAuth URL using existing services with re-auth options
-      let authUrl: string
-      const csrfToken = crypto.randomBytes(32).toString('hex')
-
-      try {
-        switch (integration.provider) {
-          case 'facebook': {
-            const facebookOAuthService = FacebookOAuthService.getInstance()
-            authUrl = await facebookOAuthService.getAuthUrl(organizationId, userId, {
-              integrationId: integration.id,
-              isReauth: true,
-              type: 'reauth',
-              csrfToken,
-            })
-            break
-          }
-
-          case 'instagram': {
-            const instagramOAuthService = InstagramOAuthService.getInstance()
-            authUrl = instagramOAuthService.getAuthUrl(organizationId, userId, {
-              integrationId: integration.id,
-              isReauth: true,
-              type: 'reauth',
-              csrfToken,
-            })
-            break
-          }
-
-          default:
-            throw new TRPCError({
-              code: 'BAD_REQUEST',
-              message: `Re-authentication not supported for provider: ${integration.provider}`,
-            })
-        }
-      } catch (error: any) {
+      const providerKey = PROVIDER_KEY_BY_CHANNEL[integration.provider]
+      if (!providerKey) {
         throw new TRPCError({
-          code: 'INTERNAL_SERVER_ERROR',
-          message: `Failed to generate re-authentication URL: ${error.message}`,
+          code: 'BAD_REQUEST',
+          message: `Re-authentication not supported for provider: ${integration.provider}`,
         })
       }
-
-      // Store CSRF token in Redis for callback verification
-      await storeOAuthCsrfToken(userId, csrfToken)
-
+      if (!integration.credentialId) {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: 'Channel has no linked credential to reconnect',
+        })
+      }
+      const params = new URLSearchParams({
+        connectionId: integration.credentialId,
+        returnTo: '/app/settings/channels',
+      })
       return {
         success: true,
-        authUrl,
+        authUrl: `/api/connections/${providerKey}/oauth2/authorize?${params.toString()}`,
         message: 'Re-authentication initiated',
       }
     }),

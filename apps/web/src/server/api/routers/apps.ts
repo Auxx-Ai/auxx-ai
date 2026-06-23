@@ -343,6 +343,8 @@ export const appsRouter = createTRPCRouter({
         installationId: z.string(),
         appName: z.string(),
         connectionType: z.enum(['user', 'organization']),
+        /** User-chosen display name. Falls back to the deduped app name when omitted. */
+        label: z.string().min(1).optional(),
         secret: z.string().min(1).optional(),
         values: z.record(z.string(), z.string()).optional(),
         connectionId: z.string().optional(),
@@ -446,7 +448,7 @@ export const appsRouter = createTRPCRouter({
         userId, // createdById
         userIdField, // userId field for scoping
         connectionData,
-        { connectionId, connectionDefinitionId }
+        { connectionId, connectionDefinitionId, label: input.label }
       )
 
       if (result.isErr()) {

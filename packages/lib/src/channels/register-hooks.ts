@@ -5,6 +5,7 @@
 
 import { registerPostConnectHook } from '../connections/post-connect-hooks'
 import { channelProvisioningHook } from './provisioning-hook'
+import { socialProvisioningHook } from './social-provisioning-hook'
 
 let registered = false
 
@@ -13,4 +14,5 @@ export function registerChannelHooks(): void {
   if (registered) return
   registered = true
   registerPostConnectHook(channelProvisioningHook)
+  registerPostConnectHook(socialProvisioningHook)
 }

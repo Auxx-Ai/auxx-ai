@@ -2,6 +2,8 @@
 'use client'
 
 import type { ConnectionVariable } from '@auxx/database'
+import { Field, FieldError, FieldLabel } from '@auxx/ui/components/field'
+import { Input } from '@auxx/ui/components/input'
 import { RadioGroup } from '@auxx/ui/components/radio-group'
 import { RadioGroupItemCard } from '@auxx/ui/components/radio-group-item'
 import { cn } from '@auxx/ui/lib/utils'
@@ -43,6 +45,13 @@ interface ConnectionDetailPageProps {
   onTokenChange: (token: string) => void
   errors: Record<string, string>
   disabled?: boolean
+  /** Render the editable connection-name row (top of the form). */
+  showName?: boolean
+  /** Current name value (controlled). Only read when `showName`. */
+  name?: string
+  onNameChange?: (value: string) => void
+  /** Validation message for the name field. */
+  nameError?: string
   /** Editing: secret keys with a stored value, so their fields offer a revert-to-keep button. */
   savedSecrets?: Set<string>
   /** Editing: the bare token has a stored value (enables its revert button). */
@@ -88,6 +97,10 @@ export function ConnectionDetailPage({
   savedSecrets,
   tokenSaved,
   className,
+  showName,
+  name = '',
+  onNameChange,
+  nameError,
 }: ConnectionDetailPageProps) {
   // The sole method auto-resolves; >1 requires an explicit pick.
   const chosen =
@@ -95,6 +108,19 @@ export function ConnectionDetailPage({
 
   return (
     <div className={cn('flex flex-col gap-4 px-4 py-5', className)}>
+      {showName && (
+        <Field>
+          <FieldLabel>Name</FieldLabel>
+          <Input
+            placeholder='Connection name'
+            value={name}
+            onChange={(e) => onNameChange?.(e.target.value)}
+            disabled={disabled}
+            autoComplete='off'
+          />
+          {nameError && <FieldError>{nameError}</FieldError>}
+        </Field>
+      )}
       {methods.length > 1 && (
         <div className='flex flex-col gap-2'>
           <div className='text-xs font-medium text-muted-foreground'>Connection method</div>

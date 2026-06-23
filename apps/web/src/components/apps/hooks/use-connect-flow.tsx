@@ -65,6 +65,8 @@ export interface ConnectFlowArgs {
   definitionId?: string
   /** Existing credId when reconnecting; absent for fresh connects. */
   connectionId?: string
+  /** User-chosen display name for a fresh connect. Falls back to the provider/app title. */
+  name?: string
   /**
    * Plain connection-variable values to prefill the variable form on reconnect.
    * Secret-flagged values are never prefilled — the admin re-enters them.
@@ -325,12 +327,15 @@ export function useConnectFlow(options: UseConnectFlowOptions = {}): UseConnectF
   const saveSecretForOwner = useCallback(
     (a: ConnectFlowArgs, payload: { values?: Record<string, string>; secret?: string }) => {
       const owner = a.target.owner
+      // A fresh connect carries the user's chosen name; reconnect leaves it untouched.
+      const chosenName = a.name?.trim() || undefined
       if (owner.kind === 'app') {
         saveAppSecret.mutate({
           appId: owner.appId,
           installationId: owner.installationId,
           appName: a.target.title,
           connectionType: a.scope,
+          ...(chosenName && { label: chosenName }),
           ...payload,
           connectionId: a.connectionId,
           connectionDefinitionId: a.definitionId,
@@ -338,7 +343,7 @@ export function useConnectFlow(options: UseConnectFlowOptions = {}): UseConnectF
       } else {
         savePlatformSecret.mutate({
           connectionDefinitionId: owner.connectionDefinitionId,
-          name: a.target.title,
+          name: chosenName ?? a.target.title,
           ...payload,
           connectionId: a.connectionId,
         })
