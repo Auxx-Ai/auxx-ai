@@ -37,6 +37,18 @@ export interface DataConnectorConfig {
     baseUrl: string
     auth?: 'credential' | 'none'
     pagination?: PaginationSpec
+    /** Non-secret headers sent on every request, under per-stream headers. */
+    headers?: Record<string, string>
+    /**
+     * Rate-limit handling for every request to this endpoint (G3). Structural
+     * mirror of `RateLimitPolicy` in `@auxx/lib/connections/transports/types`
+     * (this package can't import tier-3 lib).
+     */
+    rateLimit?: {
+      strategy?: 'retry-after' | 'graphql-cost' | 'backoff-jitter'
+      maxRetries?: number
+      minDelayMs?: number
+    }
   }
   filters?: Record<string, unknown>
 }
@@ -60,14 +72,29 @@ export interface ScheduledTriggerConfig {
 }
 
 /**
- * Per-stream incremental cursor + sync bookkeeping (jsonb on
- * {@link DataConnectorStream}). Persisted across runs. Refined in sub-plan 03.
+ * Durable per-stream sync state + bookkeeping (jsonb on
+ * {@link DataConnectorStream}). Persisted across runs and checkpointed AFTER
+ * every committed slice. MUST stay byte-compatible with the engine
+ * `ConnectorStreamState` in `@auxx/lib/data-connectors/types` (this package can't
+ * import tier-3 lib). See plans/data-connectors/v3/large-dataset-sync-plan.md §8.
  */
 export interface ConnectorStreamState {
-  /** Incremental cursor (timestamp, opaque token, or page marker). */
-  cursor?: string | number
-  /** Last successful run id for this stream. */
-  lastRunId?: string
+  /** Engine-managed lifecycle phase (orthogonal to the user's `syncMode`). */
+  phase?: 'backfill' | 'steady'
+  /** Durable backfill page cursor — structured `{kind,value}`, never lossy (H6);
+   *  checkpointed AFTER every committed slice. Mirrors `SyncCursor` in
+   *  `@auxx/lib/sync-core/contracts` (this package can't import tier-3 lib). */
+  backfillCursor?: { kind: string; value: string }
+  /** When the current backfill chain began (ISO 8601). */
+  backfillStartedAt?: string
+  /** Running total for the progress UI (counts, never a percent). */
+  recordsSeen?: number
+  /** Steady-phase delta floor; the source returns a monotonic max each slice. */
+  watermark?: string
+  /** Legacy single-shot incremental cursor (snapshot-first generic-rest path). */
+  cursor?: string
+  /** Set by a connector's terminal `nextState` when its backfill is exhausted. */
+  backfillComplete?: boolean
   [key: string]: unknown
 }
 

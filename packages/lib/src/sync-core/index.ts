@@ -8,6 +8,7 @@ export type {
   RunLedger,
   SliceBudget,
   SliceCommit,
+  SliceLedgerEntry,
   SliceResult,
   SyncCursor,
   SyncPhase,

@@ -19,6 +19,34 @@ export interface Transport<Kind extends TransportKind = TransportKind> {
 
 export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'HEAD'
 
+/**
+ * Rate-limit handling for a request (G3). The transport ALWAYS honors a `429` +
+ * `Retry-After` (the universal case); this policy adds the provider-specific
+ * shapes a stateless transport can't infer from the status alone:
+ *
+ *  - `retry-after`   — `429`/`503` + `Retry-After: <secs|date>`. Sleep it, retry
+ *                      (Shopify REST, GitHub). This is also the default.
+ *  - `graphql-cost`  — throttling arrives as an **HTTP 200** whose body carries a
+ *                      `Throttled` error + `extensions.cost.throttleStatus`. The
+ *                      transport must inspect the body, compute the cost-restore
+ *                      wait, and retry (Shopify GraphQL).
+ *  - `backoff-jitter`— `429` with **no** `Retry-After`; exponential backoff with
+ *                      jitter (Stripe's explicit recommendation).
+ *
+ * Scope: this handles a throttle the SERVER signals on a given request (retry THIS
+ * request after N). Speculative pacing off a usage gauge (e.g. Shopify's
+ * shop-global `X-Shopify-Shop-Api-Call-Limit`) is cross-request coordination that
+ * needs shared per-connection state, so it lives in the throttle layer
+ * (`UniversalThrottler` keyed by connection), not in this stateless transport.
+ */
+export interface RateLimitPolicy {
+  strategy?: 'retry-after' | 'graphql-cost' | 'backoff-jitter'
+  /** Max retry attempts on a throttle signal. Default 5. */
+  maxRetries?: number
+  /** Floor delay applied AFTER each request (inter-page pacing, token-bucket-lite). */
+  minDelayMs?: number
+}
+
 /** A transport-level HTTP request. The transport applies the connection's auth,
  *  assembles the URL + query, encodes the body, and sends it. */
 export interface HttpRequest {
@@ -33,6 +61,10 @@ export interface HttpRequest {
   body?: unknown
   /** Per-request timeout. Defaults to 30s. */
   timeoutMs?: number
+  /** Rate-limit handling. Absent ⇒ the default `429`+`Retry-After` behavior. */
+  rateLimit?: RateLimitPolicy
+  /** Cancels in-flight waits (Retry-After/backoff sleeps) and the fetch. */
+  signal?: AbortSignal
 }
 
 /** A normalized HTTP response. Returned for ANY completed exchange — a 4xx/5xx is
@@ -46,6 +78,10 @@ export interface HttpResponse {
   body: string
   /** Parse `body` as JSON (cached). Throws only on invalid JSON, only when called. */
   json<T = unknown>(): T
+  /** Wall-clock spent waiting on rate limits across all retries of this request
+   *  (Retry-After/backoff sleeps + reactive pacing). 0 when never throttled. The
+   *  source folds this into the run ledger's `rateLimitWaitMs`. */
+  rateLimitWaitMs: number
 }
 
 export interface HttpTransport extends Transport<'http'> {

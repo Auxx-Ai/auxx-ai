@@ -111,6 +111,10 @@ export interface SyncSliceCtx {
 export interface SliceResult {
   /** Records processed this slice (advances `recordsSeen`). */
   recordsProcessed: number
+  /** Pages fetched this slice (folded into the ledger's `pagesProcessed`). */
+  pagesProcessed?: number
+  /** Wall-clock the source spent waiting on rate limits this slice (ledger metric). */
+  rateLimitWaitMs?: number
   /** Cursor to resume from; ignored when `commit === 'partial-retriable'`. */
   nextCursor?: SyncCursor
   /** False ⇒ the source is exhausted for this phase (backfill done / no new deltas). */
@@ -120,6 +124,27 @@ export interface SliceResult {
   commit: SliceCommit
   /** Counter deltas for this slice, folded into the run ledger. */
   counters?: Partial<SyncRunCounters>
+}
+
+/**
+ * One slice's contribution to the run ledger. The runner builds this; the
+ * `RunLedger` implementation folds it in idempotently (H4).
+ */
+export interface SliceLedgerEntry {
+  /** Entity counter deltas (created/updated/skipped/…). */
+  counters?: Partial<SyncRunCounters>
+  /** Pages fetched this slice. */
+  pagesProcessed?: number
+  /** Rate-limit wait this slice. */
+  rateLimitWaitMs?: number
+  /**
+   * Idempotency key — the serialized POST-slice cursor. A continuation chain is
+   * sequential (the per-connector claim serializes it), so a BullMQ job replay that
+   * already committed its fold presents the SAME key; the ledger MUST skip the
+   * re-fold (else `created`/`updated` double-count — H4). Absent ⇒ always fold
+   * (e.g. a held-cursor retry or a single-shot steady pass).
+   */
+  checkpointKey?: string
 }
 
 /**
@@ -155,8 +180,9 @@ export interface SyncStateStore {
  * the stale-sweep distinguishes "alive but slow" from "dead" across a continuation chain.
  */
 export interface RunLedger {
-  /** Fold a slice's counters in and bump the checkpoint heartbeat. */
-  recordSlice(counters: Partial<SyncRunCounters>): Promise<void>
+  /** Fold a slice's counters in (idempotently, by `checkpointKey`) and bump the
+   *  checkpoint heartbeat + page/wait metrics. */
+  recordSlice(entry: SliceLedgerEntry): Promise<void>
   /** Close the run; the implementation derives completed/partial from accumulated `failed`. */
   finalize(): Promise<void>
   /** Close the run as failed with the terminal error. */

@@ -9,6 +9,7 @@ export type {
   HttpRequest,
   HttpResponse,
   HttpTransport,
+  RateLimitPolicy,
   SqlRow,
   SqlTransport,
   Transport,
