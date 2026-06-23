@@ -147,15 +147,10 @@ export class StripeBillingProvider implements BillingProvider {
   }
 
   async processWebhook(input: ProcessWebhookInput): Promise<{ success: boolean }> {
-    if (!input.webhookSecret || input.body == null || input.signature == null) {
-      throw new Error('Stripe webhook requires body, signature, and webhookSecret')
+    if (!input.event) {
+      throw new Error('Stripe webhook requires a pre-verified event')
     }
-    const svc = new WebhookService(
-      input.db,
-      input.webhookSecret,
-      input.handlers,
-      input.onPlanChange
-    )
-    return svc.processWebhook(input.body, input.signature)
+    const svc = new WebhookService(input.db, input.handlers, input.onPlanChange)
+    return svc.processVerifiedEvent(input.event)
   }
 }

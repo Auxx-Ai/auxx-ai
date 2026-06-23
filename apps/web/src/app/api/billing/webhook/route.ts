@@ -3,6 +3,7 @@
  * Stripe webhook handler for billing events.
  */
 
+import type { ProcessWebhookInput } from '@auxx/billing'
 import { getProvider } from '@auxx/billing'
 import { configService } from '@auxx/credentials'
 import { database } from '@auxx/database'
@@ -11,6 +12,7 @@ import { onInvoicePaidRefreshQuota, onSubscriptionUpdatedSyncQuota } from '@auxx
 import { recordAudit } from '@auxx/lib/audit-log'
 import { onCacheEvent } from '@auxx/lib/cache'
 import { handlePlanDowngrade } from '@auxx/lib/permissions'
+import { verifyStripeSignature } from '@auxx/lib/webhooks'
 import { createScopedLogger } from '@auxx/logger'
 import { type NextRequest, NextResponse } from 'next/server'
 
@@ -69,11 +71,22 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'No signature' }, { status: 400 })
     }
 
+    // Verify at the edge (tier-5 can import @auxx/lib; billing tier-2 cannot). The
+    // shared verifier is SDK-faithful — it enforces the timestamp tolerance window.
+    const webhookSecret = configService.get<string>('STRIPE_WEBHOOK_SECRET')
+    if (
+      !webhookSecret ||
+      !verifyStripeSignature({ rawBody: body, header: signature, secret: webhookSecret })
+    ) {
+      logger.error('Stripe webhook signature verification failed')
+      return NextResponse.json({ error: 'Invalid signature' }, { status: 401 })
+    }
+
+    const verifiedEvent = JSON.parse(body) as StripeWebhookEvent
+
     await getProvider('stripe').processWebhook({
       db: database,
-      body,
-      signature,
-      webhookSecret: configService.get<string>('STRIPE_WEBHOOK_SECRET')!,
+      event: verifiedEvent as unknown as NonNullable<ProcessWebhookInput['event']>,
       handlers: {
         onCheckoutSessionCompleted: async (event, ctx) => {
           if (ctx.organizationId) {

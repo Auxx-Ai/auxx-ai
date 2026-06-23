@@ -62,7 +62,9 @@ describe('shopify webhook capability', () => {
 describe('stripe webhook capability', () => {
   const secret = 'whsec_test_secret'
 
-  function sign(rawBody: string, t = '1700000000'): string {
+  // Use a current timestamp — the shared verifier now enforces Stripe's replay
+  // tolerance window (default 300s), so a hardcoded past `t` would be rejected.
+  function sign(rawBody: string, t = String(Math.floor(Date.now() / 1000))): string {
     const v1 = createHmac('sha256', secret).update(`${t}.${rawBody}`, 'utf8').digest('hex')
     return `t=${t},v1=${v1}`
   }

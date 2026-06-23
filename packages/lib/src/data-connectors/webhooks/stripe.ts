@@ -8,9 +8,9 @@
 // stream key is that object name pluralized-by-convention is avoided — we use the
 // raw object name as the stream key, and `*.deleted` event types archive.
 
-import { createHmac, timingSafeEqual } from 'node:crypto'
 import { createScopedLogger } from '@auxx/logger'
 import type { RuntimeConnectionData } from '../../connections/resolve-connection-for-runtime'
+import { stripePreset, verifyWebhook } from '../../webhooks/inbound'
 import type { WebhookAction, WebhookCapability, WebhookSubscription } from '../types'
 
 const logger = createScopedLogger('data-connector-webhook-stripe')
@@ -24,34 +24,11 @@ interface StripeEvent {
   data?: { object?: { id?: string; object?: string } }
 }
 
-/** Parse the `Stripe-Signature` header into its timestamp + v1 signatures. */
-function parseSignature(header: string): { t: string; v1: string[] } {
-  const parts = header.split(',').map((p) => p.trim())
-  let t = ''
-  const v1: string[] = []
-  for (const part of parts) {
-    const [k, v] = part.split('=')
-    if (k === 't' && v) t = v
-    if (k === 'v1' && v) v1.push(v)
-  }
-  return { t, v1 }
-}
-
 export const stripeWebhookCapability: WebhookCapability = {
   topics: DEFAULT_EVENTS,
 
   verify({ rawBody, headers, secret }) {
-    if (!secret) return false
-    const header = headers['stripe-signature'] ?? ''
-    const { t, v1 } = parseSignature(header)
-    if (!t || v1.length === 0) return false
-    const expected = createHmac('sha256', secret).update(`${t}.${rawBody}`, 'utf8').digest('hex')
-    const eb = Buffer.from(expected)
-    // Any v1 signature matching the expected digest passes (Stripe may send several).
-    return v1.some((sig) => {
-      const sb = Buffer.from(sig)
-      return sb.length === eb.length && timingSafeEqual(sb, eb)
-    })
+    return verifyWebhook(stripePreset, { rawBody, headers, secret })
   },
 
   eventId({ rawBody }) {

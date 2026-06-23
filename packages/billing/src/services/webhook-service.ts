@@ -15,53 +15,39 @@ import {
   handleSubscriptionUpdated,
 } from '../hooks'
 import type { PlanChangeHandler, WebhookHandlers } from '../types'
-import { stripeClient } from './stripe-client'
 
 /** Scoped logger for Stripe webhook service operations. */
 const logger = createScopedLogger('webhook-service')
 
 /**
- * Orchestrates verification and dispatch of Stripe webhook events to internal handlers.
+ * Dispatches a PRE-VERIFIED Stripe webhook event to first-party and custom handlers.
  *
- * Ensures payload authenticity by validating the Stripe signature, then routes supported event types to
- * first-party hooks and optional consumer-provided handlers. Errors are logged with context before being surfaced
- * to upstream middleware so retry logic can take effect.
+ * Signature verification happens at the edge (the tier-5 route, via
+ * `@auxx/lib/webhooks` `verifyStripeSignature`) — billing is tier-2 and cannot import
+ * lib, so it no longer owns the Stripe SDK verify. This service only routes the
+ * already-authenticated event.
  */
 export class WebhookService {
   /**
-   * Creates a webhook service bound to a specific database connection and Stripe signing secret.
+   * Creates a webhook service bound to a specific database connection.
    *
    * @param db Database client used to persist or query subscription, invoice, and customer records.
-   * @param webhookSecret Stripe webhook signing secret for validating incoming payloads.
    * @param customHandlers Optional consumer-provided callbacks that run alongside the built-in handlers.
    */
   constructor(
     private db: Database,
-    private webhookSecret: string,
     private customHandlers?: WebhookHandlers,
     private onPlanChange?: PlanChangeHandler
   ) {}
 
   /**
-   * Validates the Stripe webhook signature and dispatches the event to first-party and custom handlers.
+   * Dispatches a pre-verified Stripe event to first-party and custom handlers.
    *
-   * @param body Raw request body as received from Stripe.
-   * @param signature `Stripe-Signature` header string used for signature verification.
+   * @param event The Stripe event, already verified by the caller.
    * @returns Object indicating the webhook event was processed successfully.
-   * @throws Error When signature verification fails or downstream handlers report an error during processing.
+   * @throws Error When downstream handlers report an error during processing.
    */
-  async processWebhook(body: string, signature: string): Promise<{ success: boolean }> {
-    // Verify webhook signature
-    let event: Stripe.Event
-    try {
-      event = await stripeClient
-        .getClient()
-        .webhooks.constructEventAsync(body, signature, this.webhookSecret)
-    } catch (err: any) {
-      logger.error('Webhook signature verification failed', { error: err.message })
-      throw new Error(`Webhook Error: ${err.message}`)
-    }
-
+  async processVerifiedEvent(event: Stripe.Event): Promise<{ success: boolean }> {
     // Process event
     try {
       switch (event.type) {

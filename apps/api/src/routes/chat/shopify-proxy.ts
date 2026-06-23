@@ -1,11 +1,11 @@
 // apps/api/src/routes/chat/shopify-proxy.ts
 
-import { createHmac, timingSafeEqual } from 'node:crypto'
 import { decryptSecrets } from '@auxx/credentials/crypto'
 import { listCredentials } from '@auxx/credentials/store'
 import { database, schema } from '@auxx/database'
 import { signChannelUserJwt } from '@auxx/lib/chat'
 import { shopifyExternalId } from '@auxx/lib/ingest'
+import { verifyShopifyAppProxy } from '@auxx/lib/webhooks'
 import { createScopedLogger } from '@auxx/logger'
 import { and, eq } from 'drizzle-orm'
 import { Hono } from 'hono'
@@ -13,31 +13,6 @@ import { Hono } from 'hono'
 const log = createScopedLogger('chat-shopify-proxy-route')
 
 const shopifyProxyRoute = new Hono()
-
-/**
- * Verify a Shopify App Proxy HMAC signature. Shopify appends a `signature`
- * query param to every proxied request; the message is the remaining query
- * params, alphabetically sorted as `key=value` pairs and concatenated without
- * separators, then HMAC-SHA256'd with the Partner App's API secret. Hex
- * compare in constant time.
- *
- * Docs: https://shopify.dev/docs/apps/build/online-store/display-dynamic-data
- */
-function verifyAppProxyHmac(searchParams: URLSearchParams, secret: string): boolean {
-  const signature = searchParams.get('signature')
-  if (!signature) return false
-
-  const pairs: string[] = []
-  searchParams.forEach((value, key) => {
-    if (key !== 'signature') pairs.push(`${key}=${value}`)
-  })
-  pairs.sort()
-  const message = pairs.join('')
-  const calculated = createHmac('sha256', secret).update(message).digest('hex')
-
-  if (calculated.length !== signature.length) return false
-  return timingSafeEqual(Buffer.from(calculated), Buffer.from(signature))
-}
 
 /**
  * GET /api/chat/shopify-proxy/jwt
@@ -66,7 +41,7 @@ shopifyProxyRoute.get('/jwt', async (c) => {
   const url = new URL(c.req.url)
   const params = url.searchParams
 
-  if (!verifyAppProxyHmac(params, shopifyApiSecret)) {
+  if (!verifyShopifyAppProxy(params, shopifyApiSecret)) {
     log.warn('App Proxy HMAC verification failed', { shop: params.get('shop') })
     return c.json({ error: 'forbidden' }, 403)
   }

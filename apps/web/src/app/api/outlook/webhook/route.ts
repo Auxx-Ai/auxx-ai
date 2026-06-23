@@ -2,6 +2,7 @@
 
 import { database as db, schema } from '@auxx/database'
 import { type ChannelProviderType, MessageService } from '@auxx/lib/email'
+import { timingSafeStringEqual } from '@auxx/lib/webhooks'
 import { createScopedLogger } from '@auxx/logger'
 import { and, eq, sql } from 'drizzle-orm'
 import { type NextRequest, NextResponse } from 'next/server'
@@ -44,7 +45,7 @@ function verifyClientState(
     return false
   }
 
-  return notification.clientState === expectedClientState
+  return timingSafeStringEqual(notification.clientState, expectedClientState)
 }
 
 /**

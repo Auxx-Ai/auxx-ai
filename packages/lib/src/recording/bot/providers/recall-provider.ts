@@ -1,9 +1,9 @@
 // packages/lib/src/recording/bot/providers/recall-provider.ts
 
-import { createHmac, timingSafeEqual } from 'node:crypto'
 import { createScopedLogger } from '@auxx/logger'
 import { err, ok, type Result } from 'neverthrow'
 import { BadRequestError, NotFoundError, UnauthorizedError } from '../../../errors'
+import { verifyHmacSignature } from '../../../webhooks/inbound'
 import type {
   BotMediaUrls,
   BotProvider,
@@ -442,19 +442,22 @@ export function createRecallProvider(config: RecallApiClientConfig): BotProvider
         return false
       }
 
-      const toSign = `${msgId}.${timestamp}.${rawBody}`
-      const secretBytes = Buffer.from(config.webhookSecret.replace('whsec_', ''), 'base64')
-      const expected = createHmac('sha256', secretBytes).update(toSign).digest('base64')
-
-      // svix-signature can contain multiple signatures (key rotation), space-separated
-      return signatures.split(' ').some((sig) => {
-        const value = sig.replace('v1,', '')
-        try {
-          return timingSafeEqual(Buffer.from(expected), Buffer.from(value))
-        } catch {
-          return false
-        }
-      })
+      // Svix scheme: base64-decoded `whsec_`-stripped key, base64 HMAC over
+      // `${id}.${timestamp}.${rawBody}`, with `v1,`-prefixed space-separated signatures
+      // (key rotation) — any match passes.
+      const secret = config.webhookSecret.replace('whsec_', '')
+      const signedPayload = () => `${msgId}.${timestamp}.${rawBody}`
+      return signatures.split(' ').some((signature) =>
+        verifyHmacSignature({
+          rawBody,
+          signature,
+          secret,
+          secretEncoding: 'base64',
+          encoding: 'base64',
+          prefix: 'v1,',
+          signedPayload,
+        })
+      )
     },
   }
 }

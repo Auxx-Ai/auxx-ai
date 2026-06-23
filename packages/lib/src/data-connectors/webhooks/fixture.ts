@@ -4,7 +4,7 @@
 // `verify` is a plain timing-safe secret-header compare; `resolveWebhook` maps a
 // self-describing payload straight onto sink actions.
 
-import { timingSafeEqual } from 'node:crypto'
+import { fixturePreset, verifyWebhook } from '../../webhooks/inbound'
 import type { WebhookAction, WebhookCapability } from '../types'
 
 /** A fixture webhook payload — already shaped as one action's worth of data. */
@@ -17,19 +17,12 @@ interface FixturePayload {
   deleted?: boolean
 }
 
-/** Constant-time string compare that tolerates length mismatch. */
-function safeEqual(a: string, b: string): boolean {
-  const ab = Buffer.from(a)
-  const bb = Buffer.from(b)
-  return ab.length === bb.length && timingSafeEqual(ab, bb)
-}
-
 export const fixtureWebhookCapability: WebhookCapability = {
   topics: ['fixture/upsert', 'fixture/delete'],
 
-  verify({ headers, secret }) {
+  verify({ rawBody, headers, secret }) {
     if (!secret) return true // an unsecured fixture endpoint (tests)
-    return safeEqual(headers['x-fixture-signature'] ?? '', secret)
+    return verifyWebhook(fixturePreset, { rawBody, headers, secret })
   },
 
   eventId({ headers }) {

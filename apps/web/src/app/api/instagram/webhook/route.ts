@@ -5,8 +5,8 @@ import { database as db, schema } from '@auxx/database'
 import type { MessageData } from '@auxx/lib/email'
 import { MessageStorageService } from '@auxx/lib/email'
 import type { InstagramIntegrationMetadata } from '@auxx/lib/providers'
+import { metaPreset, verifyWebhook } from '@auxx/lib/webhooks'
 import { createScopedLogger } from '@auxx/logger'
-import crypto from 'crypto'
 import { and, eq, sql } from 'drizzle-orm'
 import { type NextRequest, NextResponse } from 'next/server'
 
@@ -49,12 +49,13 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: 'Forbidden: Missing signature' }, { status: 403 })
   }
   const bodyText = await req.text()
-  const expectedHash = crypto
-    .createHmac('sha256', configService.get<string>('FACEBOOK_APP_SECRET')!)
-    .update(bodyText)
-    .digest('hex')
+  const verified = verifyWebhook(metaPreset, {
+    rawBody: bodyText,
+    headers: { 'x-hub-signature-256': signature },
+    secret: configService.get<string>('FACEBOOK_APP_SECRET') ?? null,
+  })
 
-  if (signature !== `sha256=${expectedHash}`) {
+  if (!verified) {
     logger.error('Invalid X-Hub-Signature-256 for Instagram webhook. Rejecting.')
     return NextResponse.json({ error: 'Forbidden: Invalid signature' }, { status: 403 })
   }

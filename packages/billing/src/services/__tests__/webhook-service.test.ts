@@ -1,10 +1,9 @@
 // packages/billing/src/services/__tests__/webhook-service.test.ts
 
-import { stripeClient } from '@auxx/billing/services/stripe-client'
 import type { Database } from '@auxx/database'
 import type Stripe from 'stripe'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { WebhookEventContext, WebhookHandlers } from '../../types/webhook'
+import type { WebhookHandlers } from '../../types/webhook'
 import { WebhookService } from '../webhook-service'
 
 // Mock all hook handlers — each returns { organizationId } to match real signatures
@@ -17,43 +16,26 @@ vi.mock('../../hooks', () => ({
   handleInvoicePaymentFailed: vi.fn().mockResolvedValue({ organizationId: 'org_123' }),
 }))
 
-const constructEventAsyncMock = vi.fn()
-
-const mockStripeApi = {
-  webhooks: {
-    constructEventAsync: constructEventAsyncMock,
-  },
-}
-
 const db = {} as unknown as Database
 
 function makeEvent(type: string): Stripe.Event {
   return { type, data: { object: {} } } as unknown as Stripe.Event
 }
 
-describe('WebhookService', () => {
+// Signature verification now lives at the route edge (verifyStripeSignature); this
+// service only dispatches PRE-VERIFIED events.
+describe('WebhookService.processVerifiedEvent', () => {
   beforeEach(() => {
-    vi.mocked(stripeClient.getClient).mockReturnValue(mockStripeApi as unknown as Stripe)
-    constructEventAsyncMock.mockReset()
-  })
-
-  it('throws on invalid signature', async () => {
-    constructEventAsyncMock.mockRejectedValueOnce(new Error('Invalid signature'))
-    const service = new WebhookService(db, 'whsec_test')
-
-    await expect(service.processWebhook('body', 'bad_sig')).rejects.toThrow(
-      'Webhook Error: Invalid signature'
-    )
+    vi.clearAllMocks()
   })
 
   it('routes checkout.session.completed to handler + custom handler', async () => {
     const event = makeEvent('checkout.session.completed')
-    constructEventAsyncMock.mockResolvedValueOnce(event)
     const customHandler = vi.fn().mockResolvedValue(undefined)
     const handlers: WebhookHandlers = { onCheckoutSessionCompleted: customHandler }
-    const service = new WebhookService(db, 'whsec_test', handlers)
+    const service = new WebhookService(db, handlers)
 
-    const result = await service.processWebhook('body', 'sig')
+    const result = await service.processVerifiedEvent(event)
 
     expect(result).toEqual({ success: true })
     const { handleCheckoutSessionCompleted } = await import('../../hooks')
@@ -63,11 +45,10 @@ describe('WebhookService', () => {
 
   it('routes customer.subscription.updated to handler + custom handler', async () => {
     const event = makeEvent('customer.subscription.updated')
-    constructEventAsyncMock.mockResolvedValueOnce(event)
     const customHandler = vi.fn().mockResolvedValue(undefined)
-    const service = new WebhookService(db, 'whsec_test', { onSubscriptionUpdated: customHandler })
+    const service = new WebhookService(db, { onSubscriptionUpdated: customHandler })
 
-    await service.processWebhook('body', 'sig')
+    await service.processVerifiedEvent(event)
 
     const { handleSubscriptionUpdated } = await import('../../hooks')
     expect(handleSubscriptionUpdated).toHaveBeenCalledWith(db, event, undefined)
@@ -76,11 +57,10 @@ describe('WebhookService', () => {
 
   it('routes customer.subscription.created to handler + custom handler', async () => {
     const event = makeEvent('customer.subscription.created')
-    constructEventAsyncMock.mockResolvedValueOnce(event)
     const customHandler = vi.fn().mockResolvedValue(undefined)
-    const service = new WebhookService(db, 'whsec_test', { onSubscriptionCreated: customHandler })
+    const service = new WebhookService(db, { onSubscriptionCreated: customHandler })
 
-    await service.processWebhook('body', 'sig')
+    await service.processVerifiedEvent(event)
 
     const { handleSubscriptionCreated } = await import('../../hooks')
     expect(handleSubscriptionCreated).toHaveBeenCalledWith(db, event, undefined)
@@ -89,11 +69,10 @@ describe('WebhookService', () => {
 
   it('routes customer.subscription.deleted to handler + custom handler', async () => {
     const event = makeEvent('customer.subscription.deleted')
-    constructEventAsyncMock.mockResolvedValueOnce(event)
     const customHandler = vi.fn().mockResolvedValue(undefined)
-    const service = new WebhookService(db, 'whsec_test', { onSubscriptionDeleted: customHandler })
+    const service = new WebhookService(db, { onSubscriptionDeleted: customHandler })
 
-    await service.processWebhook('body', 'sig')
+    await service.processVerifiedEvent(event)
 
     const { handleSubscriptionDeleted } = await import('../../hooks')
     expect(handleSubscriptionDeleted).toHaveBeenCalledWith(db, event)
@@ -102,11 +81,10 @@ describe('WebhookService', () => {
 
   it('routes invoice.paid to handler + custom handler', async () => {
     const event = makeEvent('invoice.paid')
-    constructEventAsyncMock.mockResolvedValueOnce(event)
     const customHandler = vi.fn().mockResolvedValue(undefined)
-    const service = new WebhookService(db, 'whsec_test', { onInvoicePaid: customHandler })
+    const service = new WebhookService(db, { onInvoicePaid: customHandler })
 
-    await service.processWebhook('body', 'sig')
+    await service.processVerifiedEvent(event)
 
     const { handleInvoicePaid } = await import('../../hooks')
     expect(handleInvoicePaid).toHaveBeenCalledWith(db, event)
@@ -115,13 +93,10 @@ describe('WebhookService', () => {
 
   it('routes invoice.payment_failed to handler + custom handler', async () => {
     const event = makeEvent('invoice.payment_failed')
-    constructEventAsyncMock.mockResolvedValueOnce(event)
     const customHandler = vi.fn().mockResolvedValue(undefined)
-    const service = new WebhookService(db, 'whsec_test', {
-      onInvoicePaymentFailed: customHandler,
-    })
+    const service = new WebhookService(db, { onInvoicePaymentFailed: customHandler })
 
-    await service.processWebhook('body', 'sig')
+    await service.processVerifiedEvent(event)
 
     const { handleInvoicePaymentFailed } = await import('../../hooks')
     expect(handleInvoicePaymentFailed).toHaveBeenCalledWith(db, event)
@@ -130,19 +105,17 @@ describe('WebhookService', () => {
 
   it('logs unhandled event types without throwing', async () => {
     const event = makeEvent('payment_intent.succeeded')
-    constructEventAsyncMock.mockResolvedValueOnce(event)
-    const service = new WebhookService(db, 'whsec_test')
+    const service = new WebhookService(db)
 
-    const result = await service.processWebhook('body', 'sig')
+    const result = await service.processVerifiedEvent(event)
     expect(result).toEqual({ success: true })
   })
 
   it('returns { success: true } on successful processing', async () => {
     const event = makeEvent('customer.subscription.updated')
-    constructEventAsyncMock.mockResolvedValueOnce(event)
-    const service = new WebhookService(db, 'whsec_test')
+    const service = new WebhookService(db)
 
-    const result = await service.processWebhook('body', 'sig')
+    const result = await service.processVerifiedEvent(event)
     expect(result).toEqual({ success: true })
   })
 })

@@ -7,9 +7,9 @@
 // stream key is the resource (`orders`); a `*/delete` verb archives by the payload
 // `id`, every other verb upserts the payload.
 
-import { createHmac, timingSafeEqual } from 'node:crypto'
 import { createScopedLogger } from '@auxx/logger'
 import type { RuntimeConnectionData } from '../../connections/resolve-connection-for-runtime'
+import { shopifyPreset, verifyWebhook } from '../../webhooks/inbound'
 import type {
   WebhookAction,
   WebhookCapability,
@@ -73,12 +73,7 @@ export const shopifyWebhookCapability: WebhookCapability = {
   topics: DEFAULT_TOPICS,
 
   verify({ rawBody, headers, secret }) {
-    if (!secret) return false
-    const provided = headers['x-shopify-hmac-sha256'] ?? ''
-    const digest = createHmac('sha256', secret).update(rawBody, 'utf8').digest('base64')
-    const a = Buffer.from(provided)
-    const b = Buffer.from(digest)
-    return a.length === b.length && timingSafeEqual(a, b)
+    return verifyWebhook(shopifyPreset, { rawBody, headers, secret })
   },
 
   eventId({ headers }) {

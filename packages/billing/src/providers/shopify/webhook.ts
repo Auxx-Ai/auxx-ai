@@ -1,7 +1,5 @@
 // packages/billing/src/providers/shopify/webhook.ts
 
-import { createHmac, timingSafeEqual } from 'node:crypto'
-import { configService } from '@auxx/credentials'
 import type { Database } from '@auxx/database'
 import { schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
@@ -9,22 +7,9 @@ import { eq } from 'drizzle-orm'
 
 const logger = createScopedLogger('billing/shopify/webhook')
 
-/** Verifies a Shopify webhook payload against the X-Shopify-Hmac-Sha256 header. */
-export function verifyShopifyHmac(rawBody: string, hmacHeader: string | null | undefined): boolean {
-  const secret = configService.get<string>('SHOPIFY_API_SECRET')
-  if (!secret) {
-    logger.error('SHOPIFY_API_SECRET not configured')
-    return false
-  }
-  if (!hmacHeader) return false
-  const computed = createHmac('sha256', secret).update(rawBody).digest('base64')
-  if (computed.length !== hmacHeader.length) return false
-  try {
-    return timingSafeEqual(Buffer.from(computed), Buffer.from(hmacHeader))
-  } catch {
-    return false
-  }
-}
+// Shopify HMAC verification moved to `@auxx/lib/webhooks` (`verifyWebhook(shopifyPreset, …)`).
+// Billing is tier-2 and cannot import lib; the only caller was the tier-5 billing-webhook
+// route, which now verifies at the edge before delegating here.
 
 /** Resolves the org that owns a shop from the denormalized PlanSubscription row. */
 export async function resolveOrgIdByShopDomain(
