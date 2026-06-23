@@ -15,14 +15,30 @@ import type { FieldType } from '../../types'
  */
 export type DataConnectorType = 'generic-rest' | `app:${string}`
 
-/** Pagination contract for a generic-REST endpoint. Refined in sub-plan 05a. */
+/**
+ * Pagination contract for a generic-REST endpoint. Refined in sub-plan 05a.
+ * Structural mirror of `PaginationSpec` in `@auxx/lib/data-connectors/types`
+ * (this package can't import tier-3 lib) — keep the two byte-compatible.
+ */
 export interface PaginationSpec {
-  kind: 'cursor' | 'page' | 'offset' | 'link-header' | 'none'
-  /** Where the next cursor/page token lives in the response. */
-  cursorPath?: string
+  kind: 'cursor' | 'page' | 'offset' | 'link-header' | 'next-url' | 'none'
   /** Query/body param name carrying the cursor/page token. */
   cursorParam?: string
+  /** Where the next cursor/page token lives in the response (cursor-in-body). */
+  cursorPath?: string
+  /** `'response'` (default) reads cursorPath; `'lastRecord'` derives it from the last record (Stripe). */
+  cursorFrom?: 'response' | 'lastRecord'
+  /** With `lastRecord`: which field of the last record is the cursor (Stripe: `id`). */
+  cursorRecordField?: string
+  /** Dotted path to the page's record array (read last record + detect empty); auto-found if omitted. */
+  recordsPath?: string
+  /** Boolean body field that says "more pages exist" (Stripe/Notion `has_more`); falsy terminates. */
+  hasMorePath?: string
+  /** Dotted body path to a full next-page URL the server hands back (Salesforce `nextRecordsUrl`). */
+  nextUrlPath?: string
   pageParam?: string
+  /** Offset base for `kind: 'offset'` — `0` (default) or `1` (QuickBooks `STARTPOSITION`). */
+  offsetBase?: 0 | 1
   limitParam?: string
   pageSize?: number
 }
