@@ -13,11 +13,6 @@ import { Queues } from '../queues/types'
 const logger = createScopedLogger('job:calendar-sync-scanner')
 
 /**
- * Auth statuses that require user intervention instead of more background sync attempts.
- */
-const UNRECOVERABLE_AUTH_STATUSES = ['INVALID_GRANT', 'REVOKED_ACCESS', 'INSUFFICIENT_SCOPE']
-
-/**
  * Minimum gap between calendar sync attempts for the same integration.
  */
 const CALENDAR_SYNC_COOLDOWN_MS = 4 * 60 * 1000
@@ -47,13 +42,14 @@ export const calendarSyncScannerJob = async (job: Job<CalendarSyncScannerJobData
       id: schema.Integration.id,
       organizationId: schema.Integration.organizationId,
       metadata: schema.Integration.metadata,
-      authStatus: schema.Integration.authStatus,
+      requiresReauth: schema.Credential.requiresReauth,
       enabled: schema.Integration.enabled,
       systemUserId: schema.Organization.systemUserId,
       createdById: schema.Organization.createdById,
     })
     .from(schema.Integration)
     .innerJoin(schema.Organization, eq(schema.Organization.id, schema.Integration.organizationId))
+    .leftJoin(schema.Credential, eq(schema.Credential.id, schema.Integration.credentialId))
     .where(
       and(
         eq(schema.Integration.enabled, true),
@@ -65,7 +61,7 @@ export const calendarSyncScannerJob = async (job: Job<CalendarSyncScannerJobData
   let enqueued = 0
 
   for (const integration of integrations) {
-    if (UNRECOVERABLE_AUTH_STATUSES.includes(integration.authStatus ?? '')) {
+    if (integration.requiresReauth) {
       continue
     }
 

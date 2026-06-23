@@ -219,19 +219,6 @@ export const identityVerification = pgEnum('IdentityVerification', [
 export const chatAudience = pgEnum('ChatAudience', ['visitors', 'both', 'users'])
 export const inboxStatus = pgEnum('InboxStatus', ['ACTIVE', 'ARCHIVED', 'PAUSED'])
 export const indexStatus = pgEnum('IndexStatus', ['PENDING', 'INDEXED', 'ERROR'])
-export const integrationAuthStatus = pgEnum('IntegrationAuthStatus', [
-  'AUTHENTICATED',
-  'UNAUTHENTICATED',
-  'ERROR',
-  'INVALID_GRANT',
-  'EXPIRED_TOKEN',
-  'REVOKED_ACCESS',
-  'INSUFFICIENT_SCOPE',
-  'RATE_LIMITED',
-  'PROVIDER_ERROR',
-  'NETWORK_ERROR',
-  'UNKNOWN_ERROR',
-])
 export const integrationSyncStage = pgEnum('IntegrationSyncStage', [
   'IDLE', // Not currently syncing
   'MESSAGE_LIST_FETCH_PENDING', // Waiting for scanner to enqueue list-fetch job

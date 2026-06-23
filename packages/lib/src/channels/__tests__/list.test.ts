@@ -67,7 +67,6 @@ const cachedChannel = {
   updatedAt: new Date('2025-01-01'),
   lastSyncedAt: new Date('2025-01-01'),
   lastSuccessfulSync: new Date('2025-01-01'),
-  authStatus: 'AUTHENTICATED',
   requiresReauth: true,
   lastAuthError: 'invalid_grant',
   lastAuthErrorAt: new Date('2025-01-02'),

@@ -374,20 +374,6 @@ export const InboxStatusValues = ['ACTIVE', 'ARCHIVED', 'PAUSED'] as const
 
 export const IndexStatusValues = ['PENDING', 'INDEXED', 'ERROR'] as const
 
-export const IntegrationAuthStatusValues = [
-  'AUTHENTICATED',
-  'UNAUTHENTICATED',
-  'ERROR',
-  'INVALID_GRANT',
-  'EXPIRED_TOKEN',
-  'REVOKED_ACCESS',
-  'INSUFFICIENT_SCOPE',
-  'RATE_LIMITED',
-  'PROVIDER_ERROR',
-  'NETWORK_ERROR',
-  'UNKNOWN_ERROR',
-] as const
-
 export const IntegrationSyncStageValues = [
   'IDLE',
   'MESSAGE_LIST_FETCH',
@@ -1000,20 +986,6 @@ export const IndexStatus = {
   PENDING: 'PENDING',
   INDEXED: 'INDEXED',
   ERROR: 'ERROR',
-} as const
-
-export const IntegrationAuthStatus = {
-  AUTHENTICATED: 'AUTHENTICATED',
-  UNAUTHENTICATED: 'UNAUTHENTICATED',
-  ERROR: 'ERROR',
-  INVALID_GRANT: 'INVALID_GRANT',
-  EXPIRED_TOKEN: 'EXPIRED_TOKEN',
-  REVOKED_ACCESS: 'REVOKED_ACCESS',
-  INSUFFICIENT_SCOPE: 'INSUFFICIENT_SCOPE',
-  RATE_LIMITED: 'RATE_LIMITED',
-  PROVIDER_ERROR: 'PROVIDER_ERROR',
-  NETWORK_ERROR: 'NETWORK_ERROR',
-  UNKNOWN_ERROR: 'UNKNOWN_ERROR',
 } as const
 
 export const IntegrationSyncStage = {

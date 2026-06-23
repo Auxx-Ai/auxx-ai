@@ -1,13 +1,7 @@
 // packages/lib/src/providers/provider-registry-service.ts
 import { database as db, schema } from '@auxx/database'
-import {
-  IntegrationAuthStatus,
-  IntegrationProviderType as IntegrationProviderEnum,
-} from '@auxx/database/enums'
-import type {
-  IntegrationAuthStatus as IntegrationAuthStatusType,
-  IntegrationProviderType,
-} from '@auxx/database/types'
+import { IntegrationProviderType as IntegrationProviderEnum } from '@auxx/database/enums'
+import type { IntegrationProviderType } from '@auxx/database/types'
 import { createScopedLogger } from '@auxx/logger'
 import { and, desc, eq, isNull } from 'drizzle-orm'
 import type { ActiveIntegration, ProviderInstance } from '../email/message-service'
@@ -23,13 +17,6 @@ import { OutlookProvider } from './outlook/outlook-provider'
 import { getProviderCapabilities, type ProviderCapabilities } from './provider-capabilities'
 
 const logger = createScopedLogger('provider-registry-service')
-
-/** Auth statuses that indicate re-authentication is required */
-const REQUIRES_REAUTH_STATUSES: IntegrationAuthStatusType[] = [
-  IntegrationAuthStatus.INVALID_GRANT,
-  IntegrationAuthStatus.REVOKED_ACCESS,
-  IntegrationAuthStatus.INSUFFICIENT_SCOPE,
-]
 
 /**
  * ProviderRegistryService - Provider management and discovery extracted from MessageService
@@ -248,10 +235,15 @@ export class ProviderRegistryService {
       logger.info(`Provider not found in cache, initializing: ${key}`, {
         organizationId: this.organizationId,
       })
-      // Fetch integration details if not already initialized
-      const [integration] = await db
-        .select()
+      // Fetch integration details if not already initialized. The reauth signal lives on the
+      // linked credential now (Phase 6), so join it.
+      const [row] = await db
+        .select({
+          integration: schema.Integration,
+          requiresReauth: schema.Credential.requiresReauth,
+        })
         .from(schema.Integration)
+        .leftJoin(schema.Credential, eq(schema.Credential.id, schema.Integration.credentialId))
         .where(
           and(
             eq(schema.Integration.id, integrationId),
@@ -260,12 +252,13 @@ export class ProviderRegistryService {
           )
         )
         .limit(1)
-      if (!integration) {
+      if (!row?.integration) {
         throw new Error(`Integration ${integrationId} not found`)
       }
+      const integration = row.integration
 
       // Check if integration requires re-authentication
-      if (integration.authStatus && REQUIRES_REAUTH_STATUSES.includes(integration.authStatus)) {
+      if (row.requiresReauth) {
         const metadata = integration.metadata as {
           auth?: {
             consecutiveFailures?: number
@@ -275,27 +268,21 @@ export class ProviderRegistryService {
         } | null
         const authDetails = metadata?.auth || {}
 
-        logger.warn(
-          `Integration ${integrationId} requires re-authentication (status: ${integration.authStatus})`,
-          {
-            organizationId: this.organizationId,
-            authStatus: integration.authStatus,
-            consecutiveFailures: authDetails.consecutiveFailures,
-            googleError: authDetails.googleError,
-            googleErrorDescription: authDetails.googleErrorDescription,
-          }
-        )
+        logger.warn(`Integration ${integrationId} requires re-authentication`, {
+          organizationId: this.organizationId,
+          consecutiveFailures: authDetails.consecutiveFailures,
+          googleError: authDetails.googleError,
+          googleErrorDescription: authDetails.googleErrorDescription,
+        })
 
         throw new Error(
-          `Integration ${integrationId} requires re-authentication (status: ${integration.authStatus}). ` +
-            `User must re-connect the integration.`
+          `Integration ${integrationId} requires re-authentication. User must re-connect the integration.`
         )
       }
 
       if (!integration.enabled) {
         logger.warn(`Attempting to get provider for disabled integration: ${integrationId}`, {
           organizationId: this.organizationId,
-          authStatus: integration.authStatus,
         })
         // Allow getting provider for disabled integrations (e.g., for webhook cleanup)
       }

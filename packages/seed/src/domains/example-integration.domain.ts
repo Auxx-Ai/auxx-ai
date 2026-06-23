@@ -46,7 +46,6 @@ export class ExampleIntegrationDomain {
         provider: 'google',
         email: exampleEmail,
         enabled: false,
-        authStatus: 'AUTHENTICATED',
         syncStatus: 'NOT_SYNCED',
         syncStage: 'IDLE',
         syncMode: 'auto',

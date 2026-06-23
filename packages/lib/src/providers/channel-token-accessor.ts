@@ -37,9 +37,10 @@ export async function getChannelTokens(integrationId: string): Promise<ChannelTo
     .select({
       credentialId: schema.Integration.credentialId,
       organizationId: schema.Integration.organizationId,
-      expiresAt: schema.Integration.expiresAt,
+      expiresAt: schema.Credential.expiresAt,
     })
     .from(schema.Integration)
+    .leftJoin(schema.Credential, eq(schema.Credential.id, schema.Integration.credentialId))
     .where(and(eq(schema.Integration.id, integrationId), isNull(schema.Integration.deletedAt)))
     .limit(1)
 
@@ -138,9 +139,9 @@ export async function forceRefreshChannelToken(integrationId: string): Promise<v
 
 /**
  * Write the OAuth tokens for an Integration: merge into the linked credential, or create + link
- * a new `integration` credential if none exists yet. `expiresAt` is mirrored onto the Integration
- * for queryability. The store calls run outside the Integration-side update (same consistency as
- * the previous encrypt-then-update — fine pre-launch).
+ * a new `integration` credential if none exists yet. `expiresAt` is stored on the Credential
+ * (the unified token-expiry source). The store calls run outside the Integration-side update
+ * (same consistency as the previous encrypt-then-update — fine pre-launch).
  */
 export async function setChannelTokens(
   integrationId: string,
@@ -204,14 +205,6 @@ export async function setChannelTokens(
         )
       )
   }
-
-  // Keep expiresAt on Integration for queryability.
-  if (tokens.expiresAt !== undefined) {
-    await db
-      .update(schema.Integration)
-      .set({ expiresAt: tokens.expiresAt ?? null, updatedAt: new Date() })
-      .where(eq(schema.Integration.id, integrationId))
-  }
 }
 
 /** Unlink and delete the credential for an Integration (revoke/disconnect flows). */
@@ -229,7 +222,7 @@ export async function deleteChannelTokens(integrationId: string): Promise<void> 
 
   await db
     .update(schema.Integration)
-    .set({ credentialId: null, expiresAt: null, updatedAt: new Date() })
+    .set({ credentialId: null, updatedAt: new Date() })
     .where(eq(schema.Integration.id, integrationId))
 
   await deleteCredential(channel.credentialId, channel.organizationId)

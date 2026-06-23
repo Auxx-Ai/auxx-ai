@@ -46,7 +46,6 @@ export class DemoIntegrationDomain {
         provider: 'google',
         email: `support@${getDemoEmailDomain()}`,
         enabled: false,
-        authStatus: 'AUTHENTICATED',
         syncStatus: 'NOT_SYNCED',
         syncStage: 'IDLE',
         syncMode: 'auto',

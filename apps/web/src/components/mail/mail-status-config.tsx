@@ -1,6 +1,6 @@
 // apps/web/src/components/mail/mail-status-config.ts
 
-import { IntegrationAuthStatus, JobStatus, SendStatus, SYNC_STATUS } from '@auxx/database/enums'
+import { JobStatus, SendStatus, SYNC_STATUS } from '@auxx/database/enums'
 import {
   AlertCircle,
   AlertTriangle,
@@ -147,110 +147,6 @@ export const syncStatusConfig = {
     label: 'Sync Failed',
     description: 'Sync failed',
     animate: false,
-  },
-}
-// ============================================================================
-// Integration Auth Status Configuration
-// ============================================================================
-export const integrationAuthStatusConfig = {
-  [IntegrationAuthStatus.AUTHENTICATED]: {
-    color: 'text-green-600 dark:text-green-400',
-    bgColor: 'bg-green-100 dark:bg-green-900/30',
-    borderColor: 'border-green-200',
-    icon: CheckCircle,
-    label: 'Connected',
-    variant: 'success' as const,
-    description: 'Authentication successful',
-  },
-  [IntegrationAuthStatus.UNAUTHENTICATED]: {
-    color: 'text-yellow-600 dark:text-yellow-400',
-    bgColor: 'bg-yellow-100 dark:bg-yellow-900/30',
-    borderColor: 'border-yellow-200',
-    icon: AlertCircle,
-    label: 'Not Authenticated',
-    variant: 'secondary' as const,
-    description: 'Authentication required',
-  },
-  [IntegrationAuthStatus.ERROR]: {
-    color: 'text-red-600 dark:text-red-400',
-    bgColor: 'bg-red-100 dark:bg-red-900/30',
-    borderColor: 'border-red-200',
-    icon: XCircle,
-    label: 'Auth Error',
-    variant: 'destructive' as const,
-    description: 'Authentication error',
-  },
-  [IntegrationAuthStatus.INVALID_GRANT]: {
-    color: 'text-red-600 dark:text-red-400',
-    bgColor: 'bg-red-100 dark:bg-red-900/30',
-    borderColor: 'border-red-200',
-    icon: AlertTriangle,
-    label: 'Invalid Grant',
-    variant: 'destructive' as const,
-    description: 'Re-authentication required',
-  },
-  [IntegrationAuthStatus.EXPIRED_TOKEN]: {
-    color: 'text-orange-600 dark:text-orange-400',
-    bgColor: 'bg-orange-100 dark:bg-orange-900/30',
-    borderColor: 'border-orange-200',
-    icon: AlertTriangle,
-    label: 'Token Expired',
-    variant: 'destructive' as const,
-    description: 'Token expired - re-authentication required',
-  },
-  [IntegrationAuthStatus.REVOKED_ACCESS]: {
-    color: 'text-red-600 dark:text-red-400',
-    bgColor: 'bg-red-100 dark:bg-red-900/30',
-    borderColor: 'border-red-200',
-    icon: XCircle,
-    label: 'Access Revoked',
-    variant: 'destructive' as const,
-    description: 'Access has been revoked',
-  },
-  [IntegrationAuthStatus.INSUFFICIENT_SCOPE]: {
-    color: 'text-yellow-600 dark:text-yellow-400',
-    bgColor: 'bg-yellow-100 dark:bg-yellow-900/30',
-    borderColor: 'border-yellow-200',
-    icon: AlertCircle,
-    label: 'Insufficient Permissions',
-    variant: 'secondary' as const,
-    description: 'Additional permissions required',
-  },
-  [IntegrationAuthStatus.RATE_LIMITED]: {
-    color: 'text-orange-600 dark:text-orange-400',
-    bgColor: 'bg-orange-100 dark:bg-orange-900/30',
-    borderColor: 'border-orange-200',
-    icon: Clock,
-    label: 'Rate Limited',
-    variant: 'secondary' as const,
-    description: 'Rate limit exceeded - try again later',
-  },
-  [IntegrationAuthStatus.PROVIDER_ERROR]: {
-    color: 'text-red-600 dark:text-red-400',
-    bgColor: 'bg-red-100 dark:bg-red-900/30',
-    borderColor: 'border-red-200',
-    icon: XCircle,
-    label: 'Provider Error',
-    variant: 'destructive' as const,
-    description: 'Provider service error',
-  },
-  [IntegrationAuthStatus.NETWORK_ERROR]: {
-    color: 'text-gray-600 dark:text-gray-400',
-    bgColor: 'bg-gray-100 dark:bg-gray-900/30',
-    borderColor: 'border-gray-200',
-    icon: AlertCircle,
-    label: 'Network Error',
-    variant: 'secondary' as const,
-    description: 'Network connection error',
-  },
-  [IntegrationAuthStatus.UNKNOWN_ERROR]: {
-    color: 'text-gray-600 dark:text-gray-400',
-    bgColor: 'bg-gray-100 dark:bg-gray-900/30',
-    borderColor: 'border-gray-200',
-    icon: AlertCircle,
-    label: 'Unknown Error',
-    variant: 'secondary' as const,
-    description: 'An unknown error occurred',
   },
 }
 // ============================================================================
@@ -470,6 +366,5 @@ export function getIntegrationBorderColor(integration?: string | null): string {
 export type ProcessingStatusConfigType = typeof processingStatusConfig
 export type SendStatusConfigType = typeof sendStatusConfig
 export type SyncStatusConfigType = typeof syncStatusConfig
-export type IntegrationAuthStatusConfigType = typeof integrationAuthStatusConfig
 export type IntegrationStatusConfigType = typeof integrationStatusConfig
 export type IntegrationConfigType = typeof integrationConfig

@@ -21,7 +21,7 @@ export { ImapClientProvider, ImapProvider, ImapSmtpSendService, LdapAuthService 
 export type { InstagramIntegrationMetadata } from './instagram/instagram-oauth'
 export { InstagramOAuthService } from './instagram/instagram-oauth'
 export type { OutlookErrorCode } from './outlook/outlook-errors'
-export { OutlookProviderError, parseGraphApiError, parseMsalError } from './outlook/outlook-errors'
+export { OutlookProviderError, parseGraphApiError } from './outlook/outlook-errors'
 export { OutlookOAuthService } from './outlook/outlook-oauth'
 export type { BYOCProvider } from './provider-credentials-config'
 export { PROVIDER_CREDENTIAL_CONFIG } from './provider-credentials-config'

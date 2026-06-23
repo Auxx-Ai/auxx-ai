@@ -10,8 +10,6 @@ import { Queues } from '../queues/types'
 
 const logger = createScopedLogger('job:polling-sync-scanner')
 
-const UNRECOVERABLE_AUTH_STATUSES = ['INVALID_GRANT', 'REVOKED_ACCESS', 'INSUFFICIENT_SCOPE']
-
 /** Minimum interval between enqueue claims to prevent double-enqueue from overlapping scanners */
 const CLAIM_COOLDOWN_MS = 30_000
 
@@ -55,9 +53,10 @@ export const pollingSyncScannerJob = async (job: Job<PollingSyncScannerJobData>)
         lastSyncedAt: schema.Integration.lastSyncedAt,
         pollingIntervalMs: schema.Integration.pollingIntervalMs,
         throttleRetryAfter: schema.Integration.throttleRetryAfter,
-        authStatus: schema.Integration.authStatus,
+        requiresReauth: schema.Credential.requiresReauth,
       })
       .from(schema.Integration)
+      .leftJoin(schema.Credential, eq(schema.Credential.id, schema.Integration.credentialId))
       .where(
         and(
           eq(schema.Integration.enabled, true),
@@ -81,8 +80,8 @@ export const pollingSyncScannerJob = async (job: Job<PollingSyncScannerJobData>)
           continue
         }
 
-        // Skip unrecoverable auth errors
-        if (UNRECOVERABLE_AUTH_STATUSES.includes(integration.authStatus ?? '')) {
+        // Skip channels needing re-authentication
+        if (integration.requiresReauth) {
           stats.skippedAuthError++
           continue
         }

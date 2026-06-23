@@ -2,14 +2,6 @@
 
 export { type AgentDraftCleanupStats, agentDraftCleanupJob } from './agent-draft-cleanup-job'
 export { type AppStorageSweepStats, appStorageSweepJob } from './app-storage-sweep-job'
-export {
-  type ChannelTokenRefreshJobData,
-  channelTokenRefreshJob,
-} from './channel-token-refresh-job'
-export {
-  type ChannelTokenRefreshScannerJobData,
-  channelTokenRefreshScannerJob,
-} from './channel-token-refresh-scanner-job'
 export { dataMigrationsJob, enqueueDataMigrationsRun } from './data-migrations-job'
 export {
   type CleanupStats,
@@ -33,3 +25,8 @@ export {
 } from './storage-cleanup-job'
 export { getThumbnailCleanupStats, thumbnailCleanupJob } from './thumbnail-cleanup-job'
 export { sendTrialConversionEmailsJob, type TrialConversionStats } from './trial-conversion-job'
+export { type WebhookRenewalJobData, webhookRenewalJob } from './webhook-renewal-job'
+export {
+  type WebhookRenewalScannerJobData,
+  webhookRenewalScannerJob,
+} from './webhook-renewal-scanner-job'

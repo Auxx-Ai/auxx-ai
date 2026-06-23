@@ -9,8 +9,6 @@ import { resolveEffectiveSyncMode } from '../../providers/sync-mode-resolver'
 
 const logger = createScopedLogger('job:polling-relaunch-failed')
 
-const UNRECOVERABLE_AUTH_STATUSES = ['INVALID_GRANT', 'REVOKED_ACCESS', 'INSUFFICIENT_SCOPE']
-
 export interface PollingRelaunchFailedJobData {
   maxRelaunches?: number
 }
@@ -30,10 +28,11 @@ export const pollingRelaunchFailedJob = async (job: Job<PollingRelaunchFailedJob
       id: schema.Integration.id,
       provider: schema.Integration.provider,
       syncMode: schema.Integration.syncMode,
-      authStatus: schema.Integration.authStatus,
+      requiresReauth: schema.Credential.requiresReauth,
       throttleRetryAfter: schema.Integration.throttleRetryAfter,
     })
     .from(schema.Integration)
+    .leftJoin(schema.Credential, eq(schema.Credential.id, schema.Integration.credentialId))
     .where(
       and(
         eq(schema.Integration.enabled, true),
@@ -54,8 +53,8 @@ export const pollingRelaunchFailedJob = async (job: Job<PollingRelaunchFailedJob
 
     if (effectiveMode !== 'polling') continue
 
-    // Skip unrecoverable auth errors
-    if (UNRECOVERABLE_AUTH_STATUSES.includes(integration.authStatus ?? '')) continue
+    // Skip channels needing re-authentication
+    if (integration.requiresReauth) continue
 
     // Skip integrations still in backoff
     if (integration.throttleRetryAfter && integration.throttleRetryAfter > now) continue

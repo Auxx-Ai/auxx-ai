@@ -10,8 +10,6 @@ import {
   agentDraftCleanupJob,
   applyScheduledSubscriptionChangesJob,
   appStorageSweepJob,
-  channelTokenRefreshJob,
-  channelTokenRefreshScannerJob,
   cleanupExpiredMediaAssetsJob,
   type DemoSeedJobData,
   dataMigrationsJob,
@@ -35,6 +33,8 @@ import {
   stripeSubscriptionSyncJob,
   taskDeadlineScannerJob,
   thumbnailCleanupJob,
+  webhookRenewalJob,
+  webhookRenewalScannerJob,
 } from '@auxx/lib/jobs'
 import { Queues } from '@auxx/lib/jobs/queues'
 import { createScopedLogger } from '@auxx/logger'
@@ -134,9 +134,10 @@ const jobMappings = {
   // Nightly MCP tool snapshot re-sync
   mcpToolsResyncJob,
 
-  // Integration OAuth2 token refresh (for Integration table)
-  integrationTokenRefreshScannerJob: channelTokenRefreshScannerJob,
-  integrationTokenRefreshJob: channelTokenRefreshJob,
+  // Channel webhook renewal (Gmail watch / Outlook Graph subscription). Token refresh for
+  // these channels now rides the unified oauth2TokenRefreshScannerJob integration pass.
+  webhookRenewalScannerJob,
+  webhookRenewalJob,
 
   // App bundle cleanup
   orphanedAppBundleCleanupJob,

@@ -105,14 +105,6 @@ export {
   appStorageSweepJob,
 } from './maintenance/app-storage-sweep-job'
 export {
-  type ChannelTokenRefreshJobData,
-  channelTokenRefreshJob,
-} from './maintenance/channel-token-refresh-job'
-export {
-  type ChannelTokenRefreshScannerJobData,
-  channelTokenRefreshScannerJob,
-} from './maintenance/channel-token-refresh-scanner-job'
-export {
   dataMigrationsJob,
   enqueueDataMigrationsRun,
 } from './maintenance/data-migrations-job'
@@ -154,6 +146,14 @@ export {
   sendTrialConversionEmailsJob,
   type TrialConversionStats,
 } from './maintenance/trial-conversion-job'
+export {
+  type WebhookRenewalJobData,
+  webhookRenewalJob,
+} from './maintenance/webhook-renewal-job'
+export {
+  type WebhookRenewalScannerJobData,
+  webhookRenewalScannerJob,
+} from './maintenance/webhook-renewal-scanner-job'
 // MCP
 export {
   type McpToolsResyncJobData,

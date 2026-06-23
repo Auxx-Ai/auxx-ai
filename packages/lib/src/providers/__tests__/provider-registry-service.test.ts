@@ -5,12 +5,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 // vi.hoisted ensures these values are available when vi.mock factories run (hoisted above imports).
 // ALL variables referenced inside vi.mock factories MUST be declared here.
 const {
-  IntegrationAuthStatus,
   IntegrationProviderType,
   mockIntegrationSchema,
   mockOrderBy,
   mockLimit,
   mockWhere,
+  mockLeftJoin,
   mockFrom,
   mockSelect,
   createChain,
@@ -25,20 +25,6 @@ const {
       },
     })
   }
-
-  const IntegrationAuthStatus = {
-    AUTHENTICATED: 'AUTHENTICATED',
-    UNAUTHENTICATED: 'UNAUTHENTICATED',
-    ERROR: 'ERROR',
-    INVALID_GRANT: 'INVALID_GRANT',
-    EXPIRED_TOKEN: 'EXPIRED_TOKEN',
-    REVOKED_ACCESS: 'REVOKED_ACCESS',
-    INSUFFICIENT_SCOPE: 'INSUFFICIENT_SCOPE',
-    RATE_LIMITED: 'RATE_LIMITED',
-    PROVIDER_ERROR: 'PROVIDER_ERROR',
-    NETWORK_ERROR: 'NETWORK_ERROR',
-    UNKNOWN_ERROR: 'UNKNOWN_ERROR',
-  } as const
 
   const IntegrationProviderType = {
     google: 'google',
@@ -62,24 +48,25 @@ const {
     provider: 'Integration.provider',
     updatedAt: 'Integration.updatedAt',
     metadata: 'Integration.metadata',
-    authStatus: 'Integration.authStatus',
+    credentialId: 'Integration.credentialId',
   }
 
   // Build a Drizzle select-builder mock chain.
   const mockOrderBy = vi.fn()
   const mockLimit = vi.fn()
   const mockWhere = vi.fn()
+  const mockLeftJoin = vi.fn()
   const mockFrom = vi.fn()
   // Default to chainable proxy so module-level prepared statements don't crash
   const mockSelect = vi.fn().mockReturnValue(createChain())
 
   return {
-    IntegrationAuthStatus,
     IntegrationProviderType,
     mockIntegrationSchema,
     mockOrderBy,
     mockLimit,
     mockWhere,
+    mockLeftJoin,
     mockFrom,
     mockSelect,
     createChain,
@@ -91,10 +78,8 @@ vi.mock('@auxx/database/enums', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@auxx/database/enums')>()
   return {
     ...actual,
-    IntegrationAuthStatus,
     IntegrationProviderType,
     IntegrationProviderTypeValues: Object.values(IntegrationProviderType),
-    IntegrationAuthStatusValues: Object.values(IntegrationAuthStatus),
   }
 })
 
@@ -122,7 +107,8 @@ function setupSelectChain(terminalValue: unknown[]) {
   mockOrderBy.mockResolvedValue(terminalValue)
   mockLimit.mockResolvedValue(terminalValue)
   mockWhere.mockReturnValue({ orderBy: mockOrderBy, limit: mockLimit })
-  mockFrom.mockReturnValue({ where: mockWhere })
+  mockLeftJoin.mockReturnValue({ where: mockWhere })
+  mockFrom.mockReturnValue({ where: mockWhere, leftJoin: mockLeftJoin })
   mockSelect.mockReturnValue({ from: mockFrom })
 }
 
@@ -132,6 +118,7 @@ vi.mock('@auxx/database', () => ({
   },
   schema: {
     Integration: mockIntegrationSchema,
+    Credential: { id: 'Credential.id', requiresReauth: 'Credential.requiresReauth' },
     User: { id: 'User.id' },
     Organization: { id: 'Organization.id' },
   },
@@ -213,11 +200,16 @@ function makeIntegrationRow(overrides: Record<string, unknown> = {}) {
     provider: 'google',
     enabled: true,
     metadata: { email: 'test@example.com' },
-    authStatus: IntegrationAuthStatus.AUTHENTICATED,
+    credentialId: 'credential-1',
     updatedAt: new Date(),
     createdAt: new Date(),
     ...overrides,
   }
+}
+
+/** Wraps an integration row in the {integration, requiresReauth} shape getProvider's join returns. */
+function makeGetProviderRow(overrides: Record<string, unknown> = {}, requiresReauth = false) {
+  return { integration: makeIntegrationRow(overrides), requiresReauth }
 }
 
 // ---------------------------------------------------------------------------
@@ -402,7 +394,7 @@ describe('ProviderRegistryService', () => {
   // -------------------------------------------------------------------------
   describe('getProvider', () => {
     it('should fetch, initialize and cache a provider by integrationId', async () => {
-      const row = makeIntegrationRow({
+      const row = makeGetProviderRow({
         id: 'int-gp',
         provider: 'google',
         metadata: { email: 'g@example.com' },
@@ -430,7 +422,7 @@ describe('ProviderRegistryService', () => {
     })
 
     it('should throw when the integration has an unknown provider type', async () => {
-      const row = makeIntegrationRow({ id: 'int-unk', provider: 'carrier-pigeon' })
+      const row = makeGetProviderRow({ id: 'int-unk', provider: 'carrier-pigeon' })
       setupSelectChain([row])
 
       await expect(service.getProvider('int-unk')).rejects.toThrow(
@@ -438,41 +430,15 @@ describe('ProviderRegistryService', () => {
       )
     })
 
-    it('should throw when integration requires re-authentication (INVALID_GRANT)', async () => {
-      const row = makeIntegrationRow({
-        id: 'int-reauth',
-        provider: 'google',
-        authStatus: IntegrationAuthStatus.INVALID_GRANT,
-      })
+    it('should throw when the linked credential requires re-authentication', async () => {
+      const row = makeGetProviderRow({ id: 'int-reauth', provider: 'google' }, true)
       setupSelectChain([row])
 
       await expect(service.getProvider('int-reauth')).rejects.toThrow('requires re-authentication')
     })
 
-    it('should throw when integration requires re-authentication (REVOKED_ACCESS)', async () => {
-      const row = makeIntegrationRow({
-        id: 'int-revoked',
-        provider: 'google',
-        authStatus: IntegrationAuthStatus.REVOKED_ACCESS,
-      })
-      setupSelectChain([row])
-
-      await expect(service.getProvider('int-revoked')).rejects.toThrow('requires re-authentication')
-    })
-
-    it('should throw when integration requires re-authentication (INSUFFICIENT_SCOPE)', async () => {
-      const row = makeIntegrationRow({
-        id: 'int-scope',
-        provider: 'outlook',
-        authStatus: IntegrationAuthStatus.INSUFFICIENT_SCOPE,
-      })
-      setupSelectChain([row])
-
-      await expect(service.getProvider('int-scope')).rejects.toThrow('requires re-authentication')
-    })
-
     it('should allow getting provider for disabled integrations', async () => {
-      const row = makeIntegrationRow({
+      const row = makeGetProviderRow({
         id: 'int-disabled',
         provider: 'google',
         enabled: false,

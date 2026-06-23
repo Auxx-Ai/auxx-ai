@@ -646,6 +646,81 @@ export class ThreadMutationService {
     return this.updateBulk(recordIds, { status: 'IGNORED' })
   }
 
+  /**
+   * Count an integration's threads that currently sit in `fromInboxRecordId`.
+   * Used to size the "move existing conversations?" prompt when a channel is
+   * re-routed to a different inbox.
+   */
+  async countIntegrationThreadsInInbox(
+    integrationId: string,
+    fromInboxRecordId: RecordId
+  ): Promise<{ count: number }> {
+    const fromInstanceId = getInstanceId(fromInboxRecordId)
+
+    const [row] = await this.db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(schema.Thread)
+      .where(
+        and(
+          eq(schema.Thread.organizationId, this.organizationId),
+          eq(schema.Thread.integrationId, integrationId),
+          eq(schema.Thread.inboxId, fromInstanceId)
+        )
+      )
+
+    return { count: row?.count ?? 0 }
+  }
+
+  /**
+   * Move all of an integration's threads that currently sit in `fromInboxRecordId`
+   * into `toInboxRecordId`. Used when a channel is re-routed to a different inbox
+   * and the user opts to relocate existing conversations. Threads that were
+   * manually moved to other inboxes are left untouched (they no longer match
+   * `fromInboxRecordId`). Delegates to {@link updateBulk} so the move shares the
+   * same realtime fan-out (onto both the old and new inbox channels) and count
+   * invalidation as every other inbox change.
+   */
+  async moveIntegrationThreadsToInbox(
+    integrationId: string,
+    fromInboxRecordId: RecordId,
+    toInboxRecordId: RecordId
+  ): Promise<{ count: number }> {
+    const fromInstanceId = getInstanceId(fromInboxRecordId)
+
+    const rows = await this.db
+      .select({ id: schema.Thread.id })
+      .from(schema.Thread)
+      .where(
+        and(
+          eq(schema.Thread.organizationId, this.organizationId),
+          eq(schema.Thread.integrationId, integrationId),
+          eq(schema.Thread.inboxId, fromInstanceId)
+        )
+      )
+
+    if (rows.length === 0) return { count: 0 }
+
+    const recordIds = rows.map((r) => toRecordId('thread', r.id))
+
+    logger.info('Moving integration threads to new inbox', {
+      integrationId,
+      fromInboxRecordId,
+      toInboxRecordId,
+      matchCount: recordIds.length,
+      organizationId: this.organizationId,
+    })
+
+    // Chunk so the per-thread realtime fan-out in updateBulk stays bounded on
+    // channels with a large backlog.
+    let count = 0
+    for (let i = 0; i < recordIds.length; i += 200) {
+      const chunk = recordIds.slice(i, i + 200)
+      const result = await this.updateBulk(chunk, { inboxId: toInboxRecordId })
+      count += result.count
+    }
+    return { count }
+  }
+
   // ═══════════════════════════════════════════════════════════════
   // TAG OPERATIONS
   // ═══════════════════════════════════════════════════════════════
