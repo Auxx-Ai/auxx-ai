@@ -7,6 +7,9 @@ import { AlertTriangle, CheckCircle2, Loader2, PauseCircle, RefreshCw, Wrench } 
 /** The DataConnector lifecycle status (mirrors `DataConnector.status`). */
 export type ConnectorStatus = 'pending' | 'provisioning' | 'syncing' | 'live' | 'error' | 'paused'
 
+/** The DataConnectorRun status (mirrors `DataConnectorRun.status`). */
+export type RunStatus = 'running' | 'completed' | 'partial' | 'failed'
+
 interface StatusMeta {
   label: string
   /** Tailwind bg class for the small list-card status dot. */
@@ -66,6 +69,24 @@ export const CONNECTOR_STATUS_META: Record<ConnectorStatus, StatusMeta> = {
 /** A normalized status value (falls back to `pending` for unknown strings). */
 export function asConnectorStatus(value: string | null | undefined): ConnectorStatus {
   return value && value in CONNECTOR_STATUS_META ? (value as ConnectorStatus) : 'pending'
+}
+
+/**
+ * Run-status display meta for the Runs panel. Carries an `EntityIcon` registry
+ * `iconId` + color token (consumed via `VisualIcon`) so run rows render the same
+ * framed, colored icon as the rest of the connector trees.
+ */
+export const RUN_STATUS_META: Record<RunStatus, { label: string; iconId: string; color: string }> =
+  {
+    running: { label: 'Running', iconId: 'refresh', color: 'amber' },
+    completed: { label: 'Completed', iconId: 'check-circle', color: 'green' },
+    partial: { label: 'Partial', iconId: 'alert-triangle', color: 'amber' },
+    failed: { label: 'Failed', iconId: 'x-circle', color: 'red' },
+  }
+
+/** A normalized run status (falls back to `completed` for unknown strings). */
+export function asRunStatus(value: string | null | undefined): RunStatus {
+  return value && value in RUN_STATUS_META ? (value as RunStatus) : 'completed'
 }
 
 /** Small colored status dot used on the list cards. */
