@@ -56,6 +56,15 @@ export interface SyncCtx {
    * because the crawl is complete-by-construction) — still gated on the FINAL slice.
    */
   sweep?: boolean
+  /**
+   * Per-mapping drift cache (entity-sink). Maps a mapping id → the set of bound
+   * instance ids whose `overwrite` cells were edited by someone other than this
+   * connector (detected via a cleared/foreign `FieldValue.managedByConnectorId`).
+   * The content-hash skip must NOT skip these — `overwrite` has to re-assert the
+   * source value. Computed once per mapping per slice (one query, memoized as a
+   * Promise so concurrent records share it), never per record.
+   */
+  driftByMapping?: Map<string, Promise<Set<string>>>
 }
 
 /** The entity sink contract (04 §1b). */
