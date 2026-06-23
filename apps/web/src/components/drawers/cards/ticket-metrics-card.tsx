@@ -2,7 +2,7 @@
 'use client'
 
 import type { ActorId } from '@auxx/types/actor'
-import { CardContent, CardHeader, CardTitle } from '@auxx/ui/components/card'
+import { MetricCell, MetricGrid } from '@auxx/ui/components/metric-grid'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { format, formatDistanceToNow } from 'date-fns'
 import { Calendar, CircleDot, Clock, Flag, Tags, Users } from 'lucide-react'
@@ -41,94 +41,77 @@ export function TicketMetricsCard({ recordId }: DrawerTabProps) {
   const isClosed = statusStr === 'CLOSED'
 
   return (
-    <div className='grid grid-cols-2'>
+    <MetricGrid columns={2}>
       {/* Status, Type & Priority */}
-      <div className='border-r border-b'>
-        <CardContent className='py-2'>
-          <div className='flex flex-col gap-2'>
-            <div className='flex items-center gap-2'>
-              <Tags className='size-4 text-muted-foreground' />
-              {isLoading ? (
-                <Skeleton className='h-5 w-16' />
-              ) : (
-                <TicketStatusBadge status={statusStr ?? ''} />
-              )}
-            </div>
-            <div className='flex items-center gap-2'>
-              <CircleDot className='size-4 text-muted-foreground' />
-              {isLoading ? (
-                <Skeleton className='h-5 w-16' />
-              ) : (
-                <TicketTypeBadge type={typeStr ?? ''} closed={isClosed} />
-              )}
-            </div>
-            <div className='flex items-center gap-2'>
-              <Flag className='size-4 text-muted-foreground' />
-              {isLoading ? (
-                <Skeleton className='h-5 w-16' />
-              ) : (
-                <TicketPriorityBadge priority={priorityStr ?? ''} closed={isClosed} />
-              )}
-            </div>
+      <MetricCell>
+        <div className='flex flex-col gap-2'>
+          <div className='flex items-center gap-2'>
+            <Tags className='size-4 text-muted-foreground' />
+            {isLoading ? (
+              <Skeleton className='h-5 w-16' />
+            ) : (
+              <TicketStatusBadge status={statusStr ?? ''} />
+            )}
           </div>
-        </CardContent>
-      </div>
+          <div className='flex items-center gap-2'>
+            <CircleDot className='size-4 text-muted-foreground' />
+            {isLoading ? (
+              <Skeleton className='h-5 w-16' />
+            ) : (
+              <TicketTypeBadge type={typeStr ?? ''} closed={isClosed} />
+            )}
+          </div>
+          <div className='flex items-center gap-2'>
+            <Flag className='size-4 text-muted-foreground' />
+            {isLoading ? (
+              <Skeleton className='h-5 w-16' />
+            ) : (
+              <TicketPriorityBadge priority={priorityStr ?? ''} closed={isClosed} />
+            )}
+          </div>
+        </div>
+      </MetricCell>
 
       {/* Assignee */}
-      <div className='border-b'>
-        <CardHeader className='pb-2 pt-3'>
-          <CardTitle className='text-sm font-medium text-muted-foreground'>Assigned To</CardTitle>
-        </CardHeader>
-        <CardContent className='pb-3'>
-          <div className='flex items-start gap-2'>
-            <Users className='h-4 w-4 text-muted-foreground mt-0.5' />
-            <div className='flex-1'>
-              {isLoading ? (
-                <Skeleton className='h-5 w-24' />
-              ) : assigneeId ? (
-                <ActorBadge actorId={assigneeId} />
-              ) : (
-                <span className='text-sm text-muted-foreground'>Unassigned</span>
-              )}
-            </div>
+      <MetricCell label='Assigned To'>
+        <div className='flex items-start gap-2'>
+          <Users className='size-4 text-muted-foreground mt-0.5' />
+          <div className='flex-1'>
+            {isLoading ? (
+              <Skeleton className='h-5 w-24' />
+            ) : assigneeId ? (
+              <ActorBadge actorId={assigneeId} />
+            ) : (
+              <span className='text-sm text-muted-foreground'>Unassigned</span>
+            )}
           </div>
-        </CardContent>
-      </div>
+        </div>
+      </MetricCell>
 
       {/* Created Date */}
-      <div className='border-r'>
-        <CardHeader className='pb-2 pt-3'>
-          <CardTitle className='text-sm font-medium text-muted-foreground'>Created</CardTitle>
-        </CardHeader>
-        <CardContent className='pb-3'>
-          <div className='flex items-center gap-2'>
-            <Calendar className='h-4 w-4 text-muted-foreground' />
-            {isLoading ? (
-              <Skeleton className='h-8 w-24' />
-            ) : (
-              <DateDisplay value={values.ticket_created_at} />
-            )}
-          </div>
-        </CardContent>
-      </div>
+      <MetricCell label='Created'>
+        <div className='flex items-center gap-2'>
+          <Calendar className='size-4 text-muted-foreground' />
+          {isLoading ? (
+            <Skeleton className='h-8 w-24' />
+          ) : (
+            <DateDisplay value={values.ticket_created_at} />
+          )}
+        </div>
+      </MetricCell>
 
       {/* Updated Date */}
-      <div>
-        <CardHeader className='pb-2 pt-3'>
-          <CardTitle className='text-sm font-medium text-muted-foreground'>Last Updated</CardTitle>
-        </CardHeader>
-        <CardContent className='pb-3'>
-          <div className='flex items-center gap-2'>
-            <Clock className='h-4 w-4 text-muted-foreground' />
-            {isLoading ? (
-              <Skeleton className='h-8 w-24' />
-            ) : (
-              <DateDisplay value={values.ticket_updated_at} />
-            )}
-          </div>
-        </CardContent>
-      </div>
-    </div>
+      <MetricCell label='Last Updated'>
+        <div className='flex items-center gap-2'>
+          <Clock className='size-4 text-muted-foreground' />
+          {isLoading ? (
+            <Skeleton className='h-8 w-24' />
+          ) : (
+            <DateDisplay value={values.ticket_updated_at} />
+          )}
+        </div>
+      </MetricCell>
+    </MetricGrid>
   )
 }
 

@@ -34,6 +34,12 @@
       "import": "./dist/counter.js",
       "default": "./src/counter.ts"
     },
+    "./csv": {
+      "types": "./src/csv.ts",
+      "source": "./src/csv.ts",
+      "import": "./dist/csv.js",
+      "default": "./src/csv.ts"
+    },
     "./currency": {
       "types": "./src/currency.ts",
       "source": "./src/currency.ts",

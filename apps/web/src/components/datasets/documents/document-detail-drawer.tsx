@@ -3,7 +3,6 @@
 import type { DocumentEntity as Document } from '@auxx/database/types'
 import { Alert, AlertDescription } from '@auxx/ui/components/alert'
 import { Button } from '@auxx/ui/components/button'
-import { CardContent, CardHeader, CardTitle } from '@auxx/ui/components/card'
 import { DockableDrawer } from '@auxx/ui/components/dockable-drawer'
 import { DrawerHeader } from '@auxx/ui/components/drawer'
 import {
@@ -14,6 +13,7 @@ import {
 } from '@auxx/ui/components/dropdown-menu'
 import { EntityIcon } from '@auxx/ui/components/icons'
 import { Input } from '@auxx/ui/components/input'
+import { MetricCell, MetricGrid } from '@auxx/ui/components/metric-grid'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@auxx/ui/components/tabs'
 import { toastError, toastInfo } from '@auxx/ui/components/toast'
 import { cn } from '@auxx/ui/lib/utils'
@@ -309,91 +309,38 @@ export function DocumentDetailDrawer({
           />
 
           {/* Metrics */}
-          <div className='grid grid-cols-2 border-b'>
-            {/* File Size */}
-            <div className='border-r border-b'>
-              <CardHeader className='pb-2 pt-3'>
-                <CardTitle className='text-sm font-medium text-muted-foreground'>
-                  File Size
-                </CardTitle>
-              </CardHeader>
-              <CardContent className='pb-3'>
-                <div className='flex items-center gap-2'>
-                  <Database className='size-4 text-muted-foreground' />
-                  <span className='text-lg font-semibold'>
-                    {formatBytes(Number(displayDocument.size))}
-                  </span>
-                </div>
-              </CardContent>
-            </div>
-
-            {/* Segments */}
-            <div className='border-b'>
-              <CardHeader className='pb-2 pt-3'>
-                <CardTitle className='text-sm font-medium text-muted-foreground'>
-                  Segments
-                </CardTitle>
-              </CardHeader>
-              <CardContent className='pb-3'>
-                <div className='flex items-center gap-2'>
-                  <Hash className='size-4 text-muted-foreground' />
-                  <span className='text-lg font-semibold'>{segmentCount}</span>
-                </div>
-                {displayDocument.status === 'PROCESSING' && segmentCount > 0 && (
-                  <p className='text-xs text-muted-foreground mt-1'>Processing</p>
-                )}
-              </CardContent>
-            </div>
-
-            {/* Upload Date */}
-            <div className='border-r'>
-              <CardHeader className='pb-2 pt-3'>
-                <CardTitle className='text-sm font-medium text-muted-foreground'>
-                  Uploaded
-                </CardTitle>
-              </CardHeader>
-              <CardContent className='pb-3'>
-                <div className='flex items-center gap-2'>
-                  <Calendar className='size-4 text-muted-foreground' />
-                  <div>
-                    <div className='text-sm font-medium'>
-                      {formatDistanceToNow(new Date(displayDocument.createdAt), {
-                        addSuffix: true,
-                      })}
-                    </div>
-                    <div className='text-xs text-muted-foreground'>
-                      {format(new Date(displayDocument.createdAt), 'MMM d, yyyy HH:mm')}
-                    </div>
-                  </div>
-                </div>
-              </CardContent>
-            </div>
-
-            {/* File Type */}
-            <div>
-              <CardHeader className='pb-2 pt-3'>
-                <CardTitle className='text-sm font-medium text-muted-foreground'>
-                  File Type
-                </CardTitle>
-              </CardHeader>
-              <CardContent className='pb-3'>
-                <div className='flex items-center gap-2'>
-                  <FileText className='size-4 text-muted-foreground' />
-                  <span className='text-sm font-medium'>
-                    {getStandardFileType(
-                      displayDocument.mimeType ?? undefined,
-                      displayDocument.filename
-                        ? getFileExtension(displayDocument.filename)
-                        : undefined
-                    )}
-                  </span>
-                </div>
-                <p className='text-xs text-muted-foreground mt-1'>
-                  {displayDocument.mimeType || 'Unknown MIME type'}
-                </p>
-              </CardContent>
-            </div>
-          </div>
+          <MetricGrid columns={2}>
+            <MetricCell
+              label='File Size'
+              icon={<Database className='size-4 text-muted-foreground' />}
+              value={formatBytes(Number(displayDocument.size))}
+            />
+            <MetricCell
+              label='Segments'
+              icon={<Hash className='size-4 text-muted-foreground' />}
+              value={segmentCount}
+              description={
+                displayDocument.status === 'PROCESSING' && segmentCount > 0
+                  ? 'Processing'
+                  : undefined
+              }
+            />
+            <MetricCell
+              label='Uploaded'
+              icon={<Calendar className='size-4 text-muted-foreground' />}
+              value={formatDistanceToNow(new Date(displayDocument.createdAt), { addSuffix: true })}
+              description={format(new Date(displayDocument.createdAt), 'MMM d, yyyy HH:mm')}
+            />
+            <MetricCell
+              label='File Type'
+              icon={<FileText className='size-4 text-muted-foreground' />}
+              value={getStandardFileType(
+                displayDocument.mimeType ?? undefined,
+                displayDocument.filename ? getFileExtension(displayDocument.filename) : undefined
+              )}
+              description={displayDocument.mimeType || 'Unknown MIME type'}
+            />
+          </MetricGrid>
 
           {/* Tabs */}
           <Tabs defaultValue='preview' className='flex-1 flex flex-col min-h-0'>

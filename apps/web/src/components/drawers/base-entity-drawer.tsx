@@ -421,7 +421,16 @@ function TabCards({
   return (
     <>
       {cards.map((card) => (
-        <Section key={card.value} title={card.label} initialOpen collapsible={false}>
+        <Section
+          key={card.value}
+          title={card.label}
+          initialOpen
+          collapsible={false}
+          className={
+            card.fullBleed
+              ? '[&>[data-slot=section]>[data-slot=section-content]]:-mx-3 [&>[data-slot=section]>[data-slot=section-content]]:-mb-4'
+              : undefined
+          }>
           <LazyTabCard
             entityType={entityType}
             cardValue={card.value}

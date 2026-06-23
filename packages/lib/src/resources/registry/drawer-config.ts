@@ -41,7 +41,7 @@ export const DRAWER_CONFIG_REGISTRY: DrawerConfigRegistry = {
     },
     tabCards: {
       overview: [
-        { value: 'metrics', label: 'Metrics', position: 'before' },
+        { value: 'metrics', label: 'Metrics', position: 'before', fullBleed: true },
         { value: 'customer', label: 'Customer' },
         { value: 'relationships', label: 'Related Tickets' },
       ],

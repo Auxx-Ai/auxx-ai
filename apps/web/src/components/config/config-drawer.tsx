@@ -2,7 +2,6 @@
 'use client'
 
 import { Alert, AlertDescription } from '@auxx/ui/components/alert'
-import { CardContent, CardHeader, CardTitle } from '@auxx/ui/components/card'
 import { DockableDrawer } from '@auxx/ui/components/dockable-drawer'
 import { DrawerHeader } from '@auxx/ui/components/drawer'
 import { EntityIcon } from '@auxx/ui/components/icons'
@@ -12,6 +11,7 @@ import {
   InputGroupButton,
   InputGroupInput,
 } from '@auxx/ui/components/input-group'
+import { MetricCell, MetricGrid } from '@auxx/ui/components/metric-grid'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { Field } from '@auxx/ui/components/section'
 import { Skeleton } from '@auxx/ui/components/skeleton'
@@ -181,57 +181,24 @@ export function ConfigDrawer({ variableKey, open, onOpenChange, isDbEnabled }: C
 
         {/* Metrics grid */}
         {variable && definition && (
-          <div className='grid grid-cols-2 border-b'>
-            {/* Source */}
-            <div className='border-r border-b'>
-              <CardHeader className='pb-2 pt-3'>
-                <CardTitle className='text-sm font-medium text-muted-foreground'>Source</CardTitle>
-              </CardHeader>
-              <CardContent className='pb-3'>
-                <SourceBadge source={variable.source} />
-              </CardContent>
-            </div>
-
-            {/* Type */}
-            <div className='border-b'>
-              <CardHeader className='pb-2 pt-3'>
-                <CardTitle className='text-sm font-medium text-muted-foreground'>Type</CardTitle>
-              </CardHeader>
-              <CardContent className='pb-3'>
-                <TypeBadge type={definition.type} />
-              </CardContent>
-            </div>
-
-            {/* Group */}
-            <div className='border-r'>
-              <CardHeader className='pb-2 pt-3'>
-                <CardTitle className='text-sm font-medium text-muted-foreground'>Group</CardTitle>
-              </CardHeader>
-              <CardContent className='pb-3'>
-                <div className='flex items-center gap-2'>
-                  <Folder className='h-4 w-4 text-muted-foreground' />
-                  <span className='text-sm font-semibold'>{definition.group}</span>
-                </div>
-              </CardContent>
-            </div>
-
-            {/* Sensitive */}
-            <div>
-              <CardHeader className='pb-2 pt-3'>
-                <CardTitle className='text-sm font-medium text-muted-foreground'>
-                  Sensitive
-                </CardTitle>
-              </CardHeader>
-              <CardContent className='pb-3'>
-                <div className='flex items-center gap-2'>
-                  <Lock className='h-4 w-4 text-muted-foreground' />
-                  <span className='text-sm font-semibold'>
-                    {definition.isSensitive ? 'Yes' : 'No'}
-                  </span>
-                </div>
-              </CardContent>
-            </div>
-          </div>
+          <MetricGrid columns={2}>
+            <MetricCell label='Source'>
+              <SourceBadge source={variable.source} />
+            </MetricCell>
+            <MetricCell label='Type'>
+              <TypeBadge type={definition.type} />
+            </MetricCell>
+            <MetricCell
+              label='Group'
+              icon={<Folder className='size-4 text-muted-foreground' />}
+              value={definition.group}
+            />
+            <MetricCell
+              label='Sensitive'
+              icon={<Lock className='size-4 text-muted-foreground' />}
+              value={definition.isSensitive ? 'Yes' : 'No'}
+            />
+          </MetricGrid>
         )}
 
         <ScrollArea className='flex-1'>
