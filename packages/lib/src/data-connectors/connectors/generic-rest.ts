@@ -109,6 +109,39 @@ function pageWatermark(
   return max
 }
 
+/** Normalize a stream/object key for loose match (lowercase, drop a trailing plural `s`). */
+function normalizeKey(value: string): string {
+  return value.toLowerCase().replace(/s$/, '')
+}
+
+/**
+ * Expand one event-feed page (Step 8D) into per-event records. Each event is mapped
+ * to its embedded object (`objectPath`, default `data.object`); an event whose type is
+ * in `deleteEventTypes` becomes a tombstone (`deleted: true`) the sink archives. Events
+ * are filtered to this stream — Stripe's `/v1/events` is a single firehose carrying
+ * every object type, so we keep only objects whose `object` matches the stream key.
+ */
+function expandEventFeed(
+  body: unknown,
+  streamKey: string,
+  incremental: StreamIncrementalConfig
+): ConnectorYield[] {
+  const out: ConnectorYield[] = []
+  const wantKey = normalizeKey(streamKey)
+  for (const event of findRecords(body)) {
+    const type = String(getByPath(event, incremental.eventTypePath ?? 'type') ?? '')
+    if (!type) continue
+    const object = getByPath(event, incremental.objectPath ?? 'data.object')
+    if (!object || typeof object !== 'object') continue
+    // Keep only this stream's object type when the object self-identifies (Stripe).
+    const objectKind = getByPath(object, 'object')
+    if (typeof objectKind === 'string' && normalizeKey(objectKind) !== wantKey) continue
+    const deleted = incremental.deleteEventTypes?.includes(type) ?? false
+    out.push({ streamKey, fields: object, deleted })
+  }
+  return out
+}
+
 /** True when `value` is a full URL (carries its own scheme), not a relative path. */
 function isAbsoluteUrl(value: string): boolean {
   return /^[a-z][a-z0-9+.-]*:\/\//i.test(value)
@@ -255,9 +288,13 @@ async function* fetchRecords(args: ConnectorFetchArgs): AsyncIterable<ConnectorY
   const request: StreamRequestConfig = args.requestConfig ?? {}
   const pagination = request.pagination ?? endpoint?.pagination
   const method = request.method ?? 'GET'
-  const path = request.path ?? ''
-  const rateLimit = mergeRateLimit(endpoint?.rateLimit, args.rateLimitOverride)
   const incremental = request.incremental
+  // Event-feed steady mode (Step 8D): a steady run polls the provider's event log
+  // (Stripe `/v1/events`) instead of the list endpoint, so it sees updates AND
+  // deletes. Backfill still crawls the normal list endpoint (full snapshot).
+  const eventFeed = incremental?.kind === 'event-feed' && args.mode === 'incremental'
+  const path = eventFeed ? (incremental?.eventsPath ?? request.path ?? '') : (request.path ?? '')
+  const rateLimit = mergeRateLimit(endpoint?.rateLimit, args.rateLimitOverride)
 
   // Running max watermark, seeded from the persisted floor so it stays monotonic
   // across slices. Always tracked when an `incremental` config is present — even
@@ -345,11 +382,17 @@ async function* fetchRecords(args: ConnectorFetchArgs): AsyncIterable<ConnectorY
     const body = response.json()
 
     // Advance the watermark over this page's records (before any content-hash skip).
+    // For event-feed the watermark field is the EVENT's `created`, found the same way.
     watermark = maxWatermark(watermark, pageWatermark(body, incremental))
 
-    // Yield the raw response body as the payload — the mapping layer selects
-    // records via the root mapping's rootPath and fans out. No envelope stripping.
-    yield { streamKey: args.streamKey, fields: body }
+    if (eventFeed && incremental) {
+      // Expand the event page into per-object records (upserts + delete tombstones).
+      for (const record of expandEventFeed(body, args.streamKey, incremental)) yield record
+    } else {
+      // Yield the raw response body as the payload — the mapping layer selects
+      // records via the root mapping's rootPath and fans out. No envelope stripping.
+      yield { streamKey: args.streamKey, fields: body }
+    }
 
     const next = nextPageToken(pagination, body, response.headers, pageIndex)
     // An explicit `has_more: false` terminates regardless of token presence

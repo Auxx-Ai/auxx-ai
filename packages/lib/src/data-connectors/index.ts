@@ -27,6 +27,12 @@ export type {
   SyncSourceStream,
 } from './connector-sync-source'
 export { createConnectorStreamSyncSource } from './connector-sync-source'
+// Webhook ingress + registration (Step 8)
+export { applyWebhookActions, runConnectorWebhook } from './connector-webhook'
+export {
+  registerConnectorWebhooks,
+  unregisterConnectorWebhooks,
+} from './connector-webhook-registration'
 export type {
   AppConnectorContext,
   ConnectorCheckpoint,
@@ -56,17 +62,24 @@ export {
   genericRestConnector,
   isConnectorCheckpoint,
 } from './connectors'
-export type { BackfillSliceJobData, DataConnectorSyncJobData } from './data-connector-queue'
+export type {
+  BackfillSliceJobData,
+  ConnectorWebhookJobData,
+  DataConnectorSyncJobData,
+} from './data-connector-queue'
 // Queue + scheduler
 export {
   BACKFILL_SLICE_JOB,
+  CONNECTOR_WEBHOOK_JOB,
   enqueueBackfillSlice,
   enqueueConnectorSync,
+  enqueueConnectorWebhook,
 } from './data-connector-queue'
 export {
   reconcileConnectorSchedulers,
   removeConnectorScheduler,
   syncConnectorScheduler,
+  syncConnectorSweepScheduler,
 } from './data-connector-scheduler'
 export type { MappedWrite } from './map-record'
 // Mapping layer
@@ -106,9 +119,12 @@ export {
   provisionTarget,
 } from './provisioning'
 // Orchestrator + passes
-export { handleConnectorDelete, reconcileOrphans } from './reconciliation'
+export { archiveExternalId, handleConnectorDelete, reconcileOrphans } from './reconciliation'
 export { resolveRelationships } from './relationship-pass'
 export { runDataConnectorSync } from './run-data-connector-sync'
+// Status-line schedule derivation (Step 9 §3.3)
+export type { ConnectorScheduleInfo, DeriveScheduleInput } from './schedule-info'
+export { deriveConnectorScheduleInfo } from './schedule-info'
 export type {
   DataConnectorItemRow,
   DataConnectorMappingRow,
@@ -145,6 +161,7 @@ export {
   openRun,
   persistStreamState,
   setItemPendingRelations,
+  setRunRateLimited,
   touchItem,
   upsertItem,
 } from './service'
@@ -177,6 +194,7 @@ export { getAllConnectorTemplates, getConnectorTemplateById } from './templates'
 // Canonical engine types
 export type {
   ConnectorRequestModel,
+  ConnectorWebhookState,
   DataConnectorType,
   FieldMapping,
   FieldMergeStrategy,
@@ -186,6 +204,16 @@ export type {
   ScheduledTriggerConfig,
   SyncMode,
   TargetMode,
+  WebhookAction,
+  WebhookCapability,
+  WebhookSubscription,
 } from './types'
 // Watermark comparison (steady mode, G2)
 export { isNumericWatermark, maxWatermark } from './watermark'
+// Webhook capability drivers + resolver (Step 8)
+export {
+  fixtureWebhookCapability,
+  resolveWebhookCapability,
+  shopifyWebhookCapability,
+  stripeWebhookCapability,
+} from './webhooks'

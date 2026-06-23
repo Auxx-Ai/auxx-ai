@@ -99,6 +99,11 @@ export interface ConnectorSyncSourceDeps {
    * them. Decoded once at chain start so a mid-backfill config edit can't skew it.
    */
   allStreams: SyncSourceStream[]
+  /**
+   * Reconciliation sweep (Step 8C) — sets `ctx.sweep` so `reconcileOrphans` archives
+   * orphans even for incremental streams (a full id-crawl: absence IS deletion).
+   */
+  sweep?: boolean
   /** Injectable clock for the slice budget (tests). Defaults to `Date.now`. */
   now?: () => number
 }
@@ -283,6 +288,7 @@ class ConnectorStreamSyncSource implements ConnectorSyncSource {
       ownedCrud: this.ownedCrud,
       counters,
       touchedDefs: new Set<string>(),
+      sweep: this.deps.sweep ?? false,
     }
   }
 }

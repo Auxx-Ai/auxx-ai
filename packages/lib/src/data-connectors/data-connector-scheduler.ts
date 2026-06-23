@@ -15,6 +15,16 @@ import type { DataConnectorRow } from './service'
 const logger = createScopedLogger('data-connector-scheduler')
 
 const schedulerId = (connectorId: string) => `data-connector-sync-${connectorId}`
+const sweepSchedulerId = (connectorId: string) => `data-connector-sweep-${connectorId}`
+
+/**
+ * Nightly cron for the delete-reconciliation sweep (Step 8C). Fixed 03:00 — a sweep
+ * is a full id-crawl, so we run it off-peak. Webhook connectors are the ones that
+ * need it: they rely on push (at-least-once, can be late) and otherwise never do a
+ * full reconciling crawl, so a missed delete event would linger. Snapshot connectors
+ * already reconcile on every run; this is the safety net for the rest.
+ */
+const SWEEP_CRON = '0 3 * * *'
 
 function scheduleConfigOf(connector: DataConnectorRow): ScheduledTriggerConfig | null {
   return (connector.scheduleConfig as ScheduledTriggerConfig | null) ?? null
@@ -58,6 +68,51 @@ export async function syncConnectorScheduler(connector: DataConnectorRow): Promi
     })
     throw error
   }
+
+  await syncConnectorSweepScheduler(connector)
+}
+
+/**
+ * Register or remove this connector's nightly delete-reconciliation sweep (Step 8C).
+ * Active iff the connector pushes via webhooks (`
+syncBehavior = 'webhook'`) and isn't
+ * paused — those are the connectors that don't otherwise do a full reconciling crawl.
+ * Idempotent upsert; a fixed off-peak cadence (`
+SWEEP_CRON`).
+ */
+export async function syncConnectorSweepScheduler(connector: DataConnectorRow): Promise<void> {
+  const queue = getQueue(Queues.dataConnectorQueue)
+  const active = connector.syncBehavior === 'webhook' && connector.status !== 'paused'
+  if (!active) {
+    try {
+      await queue.removeJobScheduler(sweepSchedulerId(connector.id))
+    } catch {
+      /* none registered */
+    }
+    return
+  }
+  try {
+    await queue.upsertJobScheduler(
+      sweepSchedulerId(connector.id),
+      { pattern: SWEEP_CRON },
+      {
+        name: 'data-connector-sweep',
+        data: {
+          type: 'data-connector-sweep',
+          connectorId: connector.id,
+          organizationId: connector.organizationId,
+          trigger: 'sweep',
+        },
+        opts: { attempts: 3, backoff: { type: 'exponential', delay: 5000 } },
+      }
+    )
+    logger.info('Upserted data-connector-sweep scheduler', { connectorId: connector.id })
+  } catch (error) {
+    logger.warn('Failed to upsert data-connector-sweep scheduler', {
+      connectorId: connector.id,
+      error: error instanceof Error ? error.message : String(error),
+    })
+  }
 }
 
 /**
@@ -90,15 +145,17 @@ export async function reconcileConnectorSchedulers(db: Database): Promise<void> 
   })
 }
 
-/** Remove this connector's scheduler if present (safe when none exists). */
+/** Remove this connector's schedulers (sync + sweep) if present (safe when none exists). */
 export async function removeConnectorScheduler(connectorId: string): Promise<void> {
   const queue = getQueue(Queues.dataConnectorQueue)
-  try {
-    await queue.removeJobScheduler(schedulerId(connectorId))
-  } catch (error) {
-    logger.warn('Failed to remove data-connector-sync scheduler', {
-      connectorId,
-      error: error instanceof Error ? error.message : String(error),
-    })
+  for (const id of [schedulerId(connectorId), sweepSchedulerId(connectorId)]) {
+    try {
+      await queue.removeJobScheduler(id)
+    } catch (error) {
+      logger.warn('Failed to remove data-connector scheduler', {
+        schedulerId: id,
+        error: error instanceof Error ? error.message : String(error),
+      })
+    }
   }
 }

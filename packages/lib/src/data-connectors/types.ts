@@ -71,6 +71,13 @@ export interface DataConnectorConfig {
     rateLimit?: RateLimitPolicy
   }
   filters?: Record<string, unknown>
+  /**
+   * Selects a provider webhook capability for a generic-REST connector (Step 8). The
+   * static `genericRestConnector` definition has no `webhook`, so a Shopify/Stripe
+   * generic-rest connector names its provider here and `resolveWebhookCapability`
+   * binds the matching verify/resolve/register driver.
+   */
+  webhook?: { provider: 'shopify' | 'stripe' }
 }
 
 /**
@@ -81,12 +88,31 @@ export interface DataConnectorConfig {
  * path is `/v1/events`, handled separately (Step 8).
  */
 export interface StreamIncrementalConfig {
-  /** Query param carrying the delta floor, e.g. `updated_at_min` / `since`. */
+  /**
+   * Incremental mechanism (Step 8D). `'timestamp'` (default) filters a list endpoint
+   * on `updated_at >= watermark` — covers updates but NEVER deletes or `created`-only
+   * providers. `'event-feed'` polls a provider event log (Stripe `/v1/events`): each
+   * event is an upsert or a delete, so it covers updates AND deletes in one pass.
+   */
+  kind?: 'timestamp' | 'event-feed'
+  /** Query param carrying the delta floor, e.g. `updated_at_min` / `since` / `created[gte]`. */
   sinceParam: string
-  /** Record field whose running max becomes the next watermark, e.g. `updated_at`. */
+  /**
+   * Record field whose running max becomes the next watermark, e.g. `updated_at`.
+   * For `event-feed` this is the EVENT field (Stripe event `created`), not the object's.
+   */
   watermarkField: string
   /** Comparison/format hint. Advisory — `maxWatermark` auto-detects numeric vs ISO. */
   watermarkFormat?: 'iso' | 'unix'
+  // ── event-feed only (kind: 'event-feed') ──
+  /** Endpoint to poll for events on a steady run, e.g. `/v1/events` (overrides the stream path). */
+  eventsPath?: string
+  /** Dotted path on each event to its `type`/topic (Stripe `type`). Default `type`. */
+  eventTypePath?: string
+  /** Event types treated as deletes (Stripe `customer.deleted`); the rest are upserts. */
+  deleteEventTypes?: string[]
+  /** Dotted path on each event to the embedded object to sink (Stripe `data.object`). */
+  objectPath?: string
 }
 
 /** Per-stream request config for generic-REST streams (jsonb on DataConnectorStream). */
@@ -330,6 +356,96 @@ export interface DataConnectorDefinition {
   asyncExport?: AsyncExportCapability
   /** Map a provider delete event onto a (streamKey, externalId). */
   resolveDelete?(event: unknown): { streamKey: string; externalId: string } | null
+  /**
+   * Optional webhook capability (Step 8). Present ⇒ the connector can receive
+   * real-time push (verify + resolve an inbound delivery into sink actions) and
+   * register/unregister its provider subscriptions. Static connectors (fixture) set
+   * it directly; provider webhooks for generic-rest connectors are resolved by
+   * config via {@link resolveWebhookCapability}, not pinned on the static definition.
+   */
+  webhook?: WebhookCapability
+}
+
+// ── Webhook capability (Step 8 — webhook ingress + registration) ──────────────
+
+/**
+ * One sink action a verified webhook delivery maps to. A single delivery can yield
+ * many (Stripe batches; a bulk topic carries many records). `upsert` sinks a full
+ * record; `delete` archives every item bound to that external id. The sink layer is
+ * the only entity writer — these actions describe WHAT to write, never how.
+ */
+export type WebhookAction =
+  | { kind: 'upsert'; streamKey: string; record: ConnectorRecord }
+  | { kind: 'delete'; streamKey: string; externalId: string }
+
+/** A provider webhook subscription we created (stored to revoke later). */
+export interface WebhookSubscription {
+  topic: string
+  /** The provider's subscription id (Shopify webhook id, Stripe endpoint id). */
+  externalId: string
+}
+
+/** What {@link WebhookCapability.register} needs to subscribe with the provider. */
+export interface WebhookRegisterInput {
+  /** The public callback URL the platform minted for this connector. */
+  callbackUrl: string
+  /** The per-connector signing secret the provider should sign deliveries with. */
+  secret: string
+  /** Topics to subscribe (defaults to the capability's `topics`). */
+  topics: string[]
+  credential: RuntimeConnectionData | null
+  config: DataConnectorConfig
+}
+
+/** What {@link WebhookCapability.unregister} needs to revoke subscriptions. */
+export interface WebhookUnregisterInput {
+  /** Provider subscription ids previously returned by `register`. */
+  externalIds: string[]
+  credential: RuntimeConnectionData | null
+  config: DataConnectorConfig
+}
+
+/**
+ * A connector's webhook surface. The ONLY provider-specific webhook code: verify a
+ * delivery is authentic, derive its idempotency key, resolve it into sink actions,
+ * and manage the provider subscription. Everything downstream (dedupe, sink, archive)
+ * is generic.
+ */
+export interface WebhookCapability {
+  /** Provider topics this connector subscribes to (e.g. 'orders/delete'). */
+  topics: string[]
+  /**
+   * Verify a delivery is authentic, over the RAW request bytes (HMAC is never
+   * computed over re-serialized JSON — W1). `secret` is the per-connector signing
+   * secret stored at registration. Return false ⇒ 401, never reaches the sink.
+   */
+  verify(input: {
+    rawBody: string
+    headers: Record<string, string>
+    secret: string | null
+  }): boolean
+  /**
+   * The provider's idempotency key for this delivery (Shopify `x-shopify-event-id`,
+   * Stripe event `id`) for receiver-level dedupe. Null ⇒ caller hashes the raw body.
+   */
+  eventId(input: { rawBody: string; headers: Record<string, string> }): string | null
+  /** Map one verified delivery onto sink actions. Pure — no IO. */
+  resolveWebhook(input: { headers: Record<string, string>; payload: unknown }): WebhookAction[]
+  /** Subscribe the provider to push to `callbackUrl`; return the subscription ids. */
+  register(input: WebhookRegisterInput): Promise<WebhookSubscription[]>
+  /** Revoke the given provider subscriptions (best-effort on teardown). */
+  unregister(input: WebhookUnregisterInput): Promise<void>
+}
+
+/**
+ * Connector-level webhook registration state, stored as JSON in the connector's
+ * `AppWebhookHandler.metadata` (Step 8B). The signing secret + minted callback URL +
+ * the provider subscriptions we created (kept to revoke them on teardown).
+ */
+export interface ConnectorWebhookState {
+  secret: string
+  callbackUrl: string
+  subscriptions: WebhookSubscription[]
 }
 
 // ── Policy types — identity / merge / link (02) ───────────────────────────────

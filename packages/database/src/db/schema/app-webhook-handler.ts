@@ -2,9 +2,19 @@
 // Drizzle table for app webhook handlers
 
 import { createId } from '@paralleldrive/cuid2'
-import { type AnyPgColumn, boolean, index, pgTable, text, timestamp, uniqueIndex } from './_shared'
+import {
+  type AnyPgColumn,
+  boolean,
+  index,
+  pgTable,
+  sql,
+  text,
+  timestamp,
+  uniqueIndex,
+} from './_shared'
 import { AppInstallation } from './app-installation'
 import { Credential } from './credential'
+import { DataConnector } from './data-connector'
 
 /** Drizzle table for AppWebhookHandler */
 export const AppWebhookHandler = pgTable(
@@ -15,10 +25,18 @@ export const AppWebhookHandler = pgTable(
       .primaryKey()
       .notNull(),
 
-    // Which app installation owns this webhook
-    appInstallationId: text()
-      .notNull()
-      .references((): AnyPgColumn => AppInstallation.id, { onDelete: 'cascade' }),
+    // Which app installation owns this webhook. NULL for a built-in data-connector
+    // webhook (generic-rest / Shopify / Stripe) — those have no installation and are
+    // bound via `dataConnectorId` instead (Step 8 — webhook ingress).
+    appInstallationId: text().references((): AnyPgColumn => AppInstallation.id, {
+      onDelete: 'cascade',
+    }),
+
+    // Which data connector owns this webhook (Step 8). Set for built-in connector
+    // webhooks (NULL `appInstallationId`); app-connector webhooks carry both.
+    dataConnectorId: text().references((): AnyPgColumn => DataConnector.id, {
+      onDelete: 'cascade',
+    }),
 
     // Connection (Credential) this webhook is scoped to
     connectionId: text().references((): AnyPgColumn => Credential.id, {
@@ -57,9 +75,19 @@ export const AppWebhookHandler = pgTable(
       table.handlerId.asc().nullsLast(),
       table.connectionId.asc().nullsLast()
     ),
+    // One handler per (connector, handlerId/topic) for built-in connector webhooks.
+    // Partial — NULLs are distinct in a plain unique index, so the index above can't
+    // enforce this for the connector rows (Step 8).
+    uniqueIndex('AppWebhookHandler_connector_unique_idx')
+      .using('btree', table.dataConnectorId.asc().nullsLast(), table.handlerId.asc().nullsLast())
+      .where(sql`${table.dataConnectorId} IS NOT NULL`),
     index('AppWebhookHandler_appInstallationId_idx').using(
       'btree',
       table.appInstallationId.asc().nullsLast()
+    ),
+    index('AppWebhookHandler_dataConnectorId_idx').using(
+      'btree',
+      table.dataConnectorId.asc().nullsLast()
     ),
   ]
 )

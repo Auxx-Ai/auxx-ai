@@ -49,6 +49,13 @@ export interface SyncCtx {
   counters: RunCounters
   /** Entity definition ids touched this run — invalidated once at the end. */
   touchedDefs: Set<string>
+  /**
+   * Reconciliation sweep run (Step 8C). A sweep is a full id-crawl whose purpose is
+   * to catch deletes the watermark poll/webhooks missed. When set, `reconcileOrphans`
+   * archives unseen orphans even for `incremental` streams (absence IS deletion,
+   * because the crawl is complete-by-construction) — still gated on the FINAL slice.
+   */
+  sweep?: boolean
 }
 
 /** The entity sink contract (04 §1b). */

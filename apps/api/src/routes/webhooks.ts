@@ -2,11 +2,17 @@
 
 import { database } from '@auxx/database'
 import { invokeLambdaExecutor, prepareLambdaContext } from '@auxx/lib/apps'
+import {
+  connectorFor,
+  type DataConnectorConfig,
+  enqueueConnectorWebhook,
+  resolveWebhookCapability,
+} from '@auxx/lib/data-connectors'
 import { getQueue, Queues } from '@auxx/lib/jobs/queues'
 import { createScopedLogger } from '@auxx/logger'
 import { getRedisClient } from '@auxx/redis'
-import { getWebhookHandler } from '@auxx/services/app-webhook-handlers'
-import { randomUUID, timingSafeEqual } from 'crypto'
+import { getConnectorWebhookHandler, getWebhookHandler } from '@auxx/services/app-webhook-handlers'
+import { createHash, randomUUID, timingSafeEqual } from 'crypto'
 import { Hono } from 'hono'
 import { errorResponse } from '../lib/response'
 import type { AppContext } from '../types/context'
@@ -14,6 +20,118 @@ import type { AppContext } from '../types/context'
 const log = createScopedLogger('webhooks-receiver')
 
 const webhooks = new Hono<AppContext>()
+
+/**
+ * Data-connector webhook ingress (Step 8A). Built-in connectors (generic-rest /
+ * Shopify / Stripe) push here. Verify (connector-driven HMAC over the RAW body),
+ * dedupe by the provider event id, resolve the delivery into sink actions, enqueue,
+ * and return 200 fast — the entity writes happen in the worker (W2), so a slow sink
+ * never makes the provider retry.
+ */
+async function handleConnectorWebhook(c: any) {
+  const connectorId = c.req.param('connectorId')
+
+  // Read the raw body ONCE, before any parse — HMAC is computed over raw bytes (W1).
+  const rawBody = await c.req.text()
+  const headers: Record<string, string> = {}
+  c.req.raw.headers.forEach((value: string, key: string) => {
+    headers[key.toLowerCase()] = value
+  })
+
+  try {
+    const connector = await database.query.DataConnector.findFirst({
+      where: (dc, { eq }) => eq(dc.id, connectorId),
+    })
+    if (!connector) {
+      log.warn('Connector webhook: connector not found', { connectorId })
+      return c.json(errorResponse('NOT_FOUND', 'Connector not found'), 404)
+    }
+
+    // App-connector webhooks (verify/resolve in the app lambda) aren't handled here.
+    if (connector.type.startsWith('app:')) {
+      log.warn('Connector webhook: app-connector ingress not supported on this route', {
+        connectorId,
+      })
+      return c.json(errorResponse('NOT_FOUND', 'Unsupported connector webhook'), 404)
+    }
+
+    const handlerResult = await getConnectorWebhookHandler({ dataConnectorId: connectorId })
+    if (handlerResult.isErr()) {
+      log.warn('Connector webhook: no handler registered', { connectorId })
+      return c.json(errorResponse('NOT_FOUND', 'Webhook not registered'), 404)
+    }
+    const secret = parseConnectorSecret(handlerResult.value.metadata)
+
+    const definition = connectorFor(connector.type)
+    const capability = resolveWebhookCapability(connector.config as DataConnectorConfig, definition)
+    if (!capability) {
+      log.warn('Connector webhook: connector has no webhook capability', { connectorId })
+      return c.json(errorResponse('NOT_FOUND', 'No webhook capability'), 404)
+    }
+
+    // 1. Verify authenticity over the raw bytes.
+    if (!capability.verify({ rawBody, headers, secret })) {
+      log.warn('Connector webhook: signature verification failed', { connectorId })
+      return c.json(errorResponse('UNAUTHORIZED', 'Invalid signature'), 401)
+    }
+
+    // 2. Dedupe by the provider event id (fallback: a hash of the body).
+    const eventId =
+      capability.eventId({ rawBody, headers }) ?? createHash('sha256').update(rawBody).digest('hex')
+    const deduped = await dedupeWebhook(connectorId, eventId)
+    if (deduped) {
+      log.info('Connector webhook: duplicate delivery, dropping', { connectorId, eventId })
+      return c.json({ ok: true, duplicate: true }, 200)
+    }
+
+    // 3. Resolve into sink actions (pure). Parse the body now that it's verified.
+    let payload: unknown = null
+    try {
+      payload = rawBody ? JSON.parse(rawBody) : null
+    } catch {
+      payload = null
+    }
+    const actions = capability.resolveWebhook({ headers, payload })
+
+    // 4. Enqueue the sink work; return 200 immediately (W2).
+    if (actions.length > 0) {
+      await enqueueConnectorWebhook({
+        connectorId,
+        organizationId: connector.organizationId,
+        actions,
+        eventId,
+      })
+    }
+    log.info('Connector webhook accepted', { connectorId, eventId, actions: actions.length })
+    return c.json({ ok: true, actions: actions.length }, 200)
+  } catch (error: any) {
+    log.error('Connector webhook receiver error', { error: error.message, connectorId })
+    return c.json(errorResponse('INTERNAL_ERROR', 'Internal server error'), 500)
+  }
+}
+
+/** Read the signing secret out of the connector handler row's `{ secret }` metadata. */
+function parseConnectorSecret(metadata: string | null): string | null {
+  if (!metadata) return null
+  try {
+    return (JSON.parse(metadata) as { secret?: string }).secret ?? null
+  } catch {
+    return null
+  }
+}
+
+/** Receiver-level idempotency: SET NX with a TTL. Returns true when already seen. */
+async function dedupeWebhook(connectorId: string, eventId: string): Promise<boolean> {
+  try {
+    const redis = await getRedisClient(false)
+    if (!redis) return false // Redis down → process (better a dup than a miss; sink dedupes too)
+    const key = `data-connector-webhook-dedup:${connectorId}:${eventId}`
+    const set = await redis.set(key, '1', 'EX', 600, 'NX')
+    return !set
+  } catch {
+    return false
+  }
+}
 
 /**
  * Handle webhook request (both POST and GET for verification)
@@ -213,6 +331,10 @@ async function handleWebhookRequest(c: any) {
     return c.json(errorResponse('INTERNAL_ERROR', 'Internal server error'), 500)
   }
 }
+
+// Data-connector webhook ingress (Step 8A) — registered first so `data-connector`
+// is never captured as an `:installationId`.
+webhooks.post('/data-connector/:connectorId', handleConnectorWebhook)
 
 // Support both POST and GET (for webhook verification)
 // Connection-scoped routes (must be registered first to avoid ambiguity)

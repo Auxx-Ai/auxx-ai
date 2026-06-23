@@ -9,6 +9,7 @@
 
 import type { ConnectorRecord } from './connectors/types'
 import { mapRecord } from './map-record'
+import { archiveExternalId } from './reconciliation'
 import type { DecodedMapping } from './service'
 import { entitySink } from './sinks/entity-sink'
 import type { ProjectedRecord, SyncCtx } from './sinks/types'
@@ -27,6 +28,17 @@ export async function sinkSourceRecord(
   source: ConnectorRecord
 ): Promise<void> {
   const writes = mapRecord(mappings, source)
+
+  // Tombstone — an explicit upstream delete (event-feed `*.deleted`, a fixture
+  // `deleted` flag). Archive every projected binding instead of upserting. We use the
+  // per-mapping projected external id so a fan-out (parent + children) all archive.
+  if (source.deleted) {
+    for (const w of writes) {
+      if (!w.projected) continue
+      await archiveExternalId(ctx, [w.mapping], w.projected.externalId)
+    }
+    return
+  }
 
   // Index projected writes by (mapping, instance) so a child attaches its edge to
   // the exact parent instance's pendingRelations before that parent is sunk.
