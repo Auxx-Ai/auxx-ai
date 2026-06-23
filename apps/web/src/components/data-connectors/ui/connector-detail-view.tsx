@@ -15,17 +15,20 @@ import {
   MainPageContent,
   MainPageHeader,
 } from '@auxx/ui/components/main-page'
-import { ChevronDown, Pause, Play, RefreshCw, Trash } from 'lucide-react'
+import { ChevronDown, Pause, Play, Plug, RefreshCw, Trash } from 'lucide-react'
 import { useRouter } from 'next/navigation'
+import { useQueryState } from 'nuqs'
 import { AppIcon } from '~/components/apps/ui/app-icon'
 import { useConfirm } from '~/hooks/use-confirm'
 import { useMedia } from '~/hooks/use-media'
 import { useDockStore } from '~/stores/dock-store'
-import type { api } from '~/trpc/react'
+import { api } from '~/trpc/react'
 import { useConnectorMutations } from '../hooks/use-connector-mutations'
+import { resolveSyncStatus } from '../lib/resolve-sync-status'
 import { ConnectorDetailTabs } from './connector-detail-tabs'
 import { ConnectorRunsPanel } from './connector-runs-panel'
-import { asConnectorStatus, ConnectorStatusPill } from './connector-status'
+import { asConnectorStatus } from './connector-status'
+import { ConnectorStatusLine } from './connector-status-line'
 
 type Connector = NonNullable<ReturnType<typeof api.dataConnector.getById.useQuery>['data']>
 
@@ -54,10 +57,32 @@ export function ConnectorDetailView({ connector }: ConnectorDetailViewProps) {
   const maxWidth = useDockStore((state) => state.maxWidth)
 
   const [confirm, ConfirmDialog] = useConfirm()
+  const [, setTab] = useQueryState('tab')
 
   const status = asConnectorStatus(connector.status)
   const isSyncing = status === 'syncing' || status === 'provisioning'
   const isPaused = status === 'paused'
+
+  // Live status for the freshness line + the derived "Action needed" reconnect CTA.
+  // Polls only while a sync is in flight (4s, matching the Runs panel — same query
+  // key, so the two share one request). The header Sync/Pause/Resume buttons stay on
+  // the optimistic getById `status` so their instant feedback is preserved.
+  const statusQuery = api.dataConnector.getStatus.useQuery(
+    { id: connector.id },
+    {
+      refetchInterval: (query) => {
+        const s = query.state.data?.status ?? connector.status
+        return s === 'syncing' || s === 'provisioning' ? 4000 : false
+      },
+    }
+  )
+  const live = statusQuery.data
+  const liveStatus = asConnectorStatus(live?.status ?? connector.status)
+  const resolved = resolveSyncStatus({
+    status: liveStatus,
+    error: live?.error ?? connector.error,
+    latestRun: live?.latestRun ?? null,
+  })
 
   const {
     syncNow,
@@ -86,7 +111,13 @@ export function ConnectorDetailView({ connector }: ConnectorDetailViewProps) {
     if (ok && (await remove(connector.id, syncedData))) router.push('/app/connectors')
   }
 
-  const runsPanel = <ConnectorRunsPanel connectorId={connector.id} initialStatus={status} />
+  const runsPanel = (
+    <ConnectorRunsPanel
+      connectorId={connector.id}
+      initialStatus={status}
+      sourceLabel={connector.name}
+    />
+  )
 
   return (
     <MainPage>
@@ -104,6 +135,12 @@ export function ConnectorDetailView({ connector }: ConnectorDetailViewProps) {
               <RefreshCw />
               Sync now
             </Button>
+            {resolved.state === 'action-needed' && (
+              <Button variant='outline' size='sm' onClick={() => void setTab('connection')}>
+                <Plug />
+                Reconnect
+              </Button>
+            )}
             {isPaused ? (
               <Button
                 variant='outline'
@@ -154,7 +191,13 @@ export function ConnectorDetailView({ connector }: ConnectorDetailViewProps) {
             }
             last
           />
-          <ConnectorStatusPill status={status} className='ml-2' />
+          <ConnectorStatusLine
+            status={liveStatus}
+            error={live?.error ?? connector.error}
+            lastSyncedAt={live?.lastSyncedAt ?? connector.lastSyncedAt}
+            latestRun={live?.latestRun ?? null}
+            className='ml-2'
+          />
         </MainPageBreadcrumb>
       </MainPageHeader>
 

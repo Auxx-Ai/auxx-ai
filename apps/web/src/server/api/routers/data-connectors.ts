@@ -14,6 +14,7 @@ import {
   type DataConnectorType,
   decodeMapping,
   deleteConnector,
+  deriveConnectorScheduleInfo,
   enqueueConnectorSync,
   getAllConnectorTemplates,
   getConnector,
@@ -211,7 +212,15 @@ export const dataConnectorRouter = createTRPCRouter({
     return { ...connector, connectionHint }
   }),
 
-  /** Lightweight status poll (in-flight sync UI). */
+  /**
+   * Status poll for the in-flight sync UI (4s while syncing). Beyond the raw
+   * lifecycle fields it carries everything the client `resolveSyncStatus` resolver +
+   * status line need in one round-trip (Step 9 §3.3): the derived next-sync time +
+   * human cadence, a projection of the latest run (incl. the transient
+   * `rateLimitedUntil` for the live countdown), and per-stream live counts for the
+   * backfill view. Per-stream `recordsSeen`/`phase` come straight off the stream
+   * states (the source of truth) rather than denormalized onto the run.
+   */
   getStatus: protectedProcedure
     .input(z.object({ id: z.string() }))
     .query(async ({ ctx, input }) => {
@@ -220,11 +229,67 @@ export const dataConnectorRouter = createTRPCRouter({
         throw new TRPCError({ code: 'NOT_FOUND', message: result.error.message })
       }
       const c = result.value
+
+      const [runs, streams] = await Promise.all([
+        listRuns(ctx.db, ctx.session.organizationId, input.id, 1),
+        listStreams(ctx.db, ctx.session.organizationId, input.id),
+      ])
+      const latest = runs[0] ?? null
+
+      // Per-stream live progress, read off each stream's durable state jsonb. `done`
+      // = the stream has flipped to steady (its backfill exhausted).
+      const perStream = streams.map((s) => {
+        const st = (s.state ?? {}) as { recordsSeen?: number; phase?: 'backfill' | 'steady' }
+        return {
+          streamKey: s.streamKey ?? '',
+          recordsSeen: st.recordsSeen ?? 0,
+          phase: st.phase ?? ('backfill' as const),
+          done: st.phase === 'steady',
+        }
+      })
+      const recordsSeen = perStream.reduce((n, s) => n + s.recordsSeen, 0)
+      // The actively-importing stream (most records this run) names the backfill detail.
+      const top = perStream.reduce<(typeof perStream)[number] | null>(
+        (a, b) => (a && a.recordsSeen >= b.recordsSeen ? a : b),
+        null
+      )
+
+      const { nextSyncAt, cadenceLabel } = deriveConnectorScheduleInfo({
+        syncBehavior: c.syncBehavior,
+        status: c.status,
+        scheduleConfig: c.scheduleConfig,
+        lastSyncedAt: c.lastSyncedAt,
+      })
+
+      const latestRun = latest
+        ? {
+            id: latest.id,
+            status: latest.status,
+            phase: latest.phase as 'backfill' | 'steady' | null,
+            trigger: latest.trigger,
+            mode: latest.mode,
+            recordsSeen,
+            created: latest.created,
+            updated: latest.updated,
+            startedAt: latest.startedAt,
+            finishedAt: latest.finishedAt,
+            rateLimitedUntil:
+              (latest.progress as { rateLimited?: { until?: string } } | null)?.rateLimited
+                ?.until ?? null,
+            primaryStreamLabel: top?.streamKey || null,
+          }
+        : null
+
       return {
         status: c.status,
+        syncBehavior: c.syncBehavior,
         lastSyncedAt: c.lastSyncedAt,
         itemCount: c.itemCount,
         error: c.error,
+        nextSyncAt,
+        cadenceLabel,
+        latestRun,
+        perStream,
       }
     }),
 

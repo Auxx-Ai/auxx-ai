@@ -17,11 +17,15 @@ import {
   XCircle,
 } from 'lucide-react'
 import { api } from '~/trpc/react'
+import { ConnectorBackfillProgress } from './connector-backfill-progress'
+import { ConnectorFreshnessPanel } from './connector-freshness-panel'
 import type { ConnectorStatus } from './connector-status'
 
 interface ConnectorRunsPanelProps {
   connectorId: string
   initialStatus: ConnectorStatus
+  /** The source name, shown on the live "Importing from …" backfill card. */
+  sourceLabel: string
 }
 
 const RUN_STATUS_META: Record<
@@ -64,7 +68,11 @@ function CountChip({
  * warnings, durations, cursor + error samples. Reuses execution-progress styling.
  * See plans/data-connectors/claude/05-frontend.md §6.
  */
-export function ConnectorRunsPanel({ connectorId, initialStatus }: ConnectorRunsPanelProps) {
+export function ConnectorRunsPanel({
+  connectorId,
+  initialStatus,
+  sourceLabel,
+}: ConnectorRunsPanelProps) {
   const statusQuery = api.dataConnector.getStatus.useQuery(
     { id: connectorId },
     {
@@ -84,6 +92,17 @@ export function ConnectorRunsPanel({ connectorId, initialStatus }: ConnectorRuns
 
   const rows = runs.data ?? []
 
+  // Live initial-backfill card (Step 9 §10.2): only while a backfill chain is in
+  // flight. Steady runs use the per-run counts below; this is the "first import" view.
+  const latestRun = statusQuery.data?.latestRun
+  const perStream = statusQuery.data?.perStream ?? []
+  const showBackfill = isSyncing && latestRun?.phase === 'backfill' && perStream.length > 0
+
+  // Steady freshness summary (Step 9 §10.3): once the source has synced and isn't
+  // mid-backfill, show last/next synced + the latest run's delta instead of the card.
+  const lastSyncedAt = statusQuery.data?.lastSyncedAt ?? null
+  const showFreshness = !showBackfill && !!lastSyncedAt
+
   return (
     <div className='flex h-full flex-col bg-background'>
       <div className='flex shrink-0 items-center justify-between border-b px-4 py-3'>
@@ -99,6 +118,24 @@ export function ConnectorRunsPanel({ connectorId, initialStatus }: ConnectorRuns
           </Badge>
         )}
       </div>
+
+      {showBackfill && (
+        <ConnectorBackfillProgress
+          sourceLabel={sourceLabel}
+          startedAt={latestRun?.startedAt}
+          perStream={perStream}
+        />
+      )}
+
+      {showFreshness && (
+        <ConnectorFreshnessPanel
+          lastSyncedAt={lastSyncedAt}
+          nextSyncAt={statusQuery.data?.nextSyncAt ?? null}
+          cadenceLabel={statusQuery.data?.cadenceLabel ?? null}
+          syncBehavior={statusQuery.data?.syncBehavior ?? 'manual'}
+          latestRun={latestRun}
+        />
+      )}
 
       <ScrollArea className='flex-1' scrollbarClassName='w-1.5'>
         <div className='flex flex-col divide-y'>
