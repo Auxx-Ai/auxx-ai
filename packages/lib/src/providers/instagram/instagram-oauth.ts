@@ -7,6 +7,7 @@ import crypto from 'crypto'
 import { and, eq } from 'drizzle-orm'
 import { InboxService } from '../../inboxes/inbox-service'
 import { deleteChannelTokens, getChannelTokens, setChannelTokens } from '../channel-token-accessor'
+import { markCredentialReauth } from '../credential-auth-state'
 
 const logger = createScopedLogger('instagram-oauth')
 const DEFAULT_API_VERSION = 'v19.0'
@@ -540,15 +541,9 @@ export class InstagramOAuthService {
         )
         await db
           .update(schema.Integration)
-          .set({
-            enabled: false,
-            requiresReauth: true,
-            lastAuthError: 'Page access token is invalid or expired',
-            lastAuthErrorAt: new Date(),
-            authStatus: 'AUTH_ERROR',
-            updatedAt: new Date(),
-          })
+          .set({ enabled: false, updatedAt: new Date() })
           .where(eq(schema.Integration.id, integrationId))
+        await markCredentialReauth(integrationId, 'Page access token is invalid or expired', true)
         throw new Error('Instagram token is invalid. Re-authentication required.')
       }
 

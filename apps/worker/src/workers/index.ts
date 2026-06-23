@@ -591,12 +591,12 @@ export async function setupSchedules() {
     { opts: { attempts: 1, removeOnComplete: { count: 7 }, removeOnFail: { count: 30 } } }
   )
 
-  // Integration token refresh scanner (for Integration table - Gmail/Outlook)
+  // Channel webhook renewal scanner (Gmail watch / Outlook Graph subscription).
+  // Token refresh rides the unified oauth2TokenRefreshScannerJob — this only re-arms webhooks.
 
-  // Every 15 minutes - Scan for integration tokens that need refreshing
-  // Also handles Gmail watch and Outlook subscription renewal
+  // Every 15 minutes - Scan for watches/subscriptions nearing expiration
   await maintenanceQueue.upsertJobScheduler(
-    'integrationTokenRefreshScannerJob',
+    'webhookRenewalScannerJob',
     { pattern: '*/15 * * * *' }, // Every 15 minutes
     {
       data: {

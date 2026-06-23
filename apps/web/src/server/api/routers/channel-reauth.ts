@@ -154,14 +154,14 @@ export const channelReauthRouter = createTRPCRouter({
         })
       }
 
-      // Clear the requiresReauth flag to dismiss the banner
-      // Keep the auth error details for debugging but hide the banner
-      await ctx.db
-        .update(schema.Integration)
-        .set({
-          requiresReauth: false,
-        })
-        .where(eq(schema.Integration.id, input.integrationId))
+      // Clear the requiresReauth flag on the linked credential to dismiss the banner.
+      // Keep the auth error details for debugging but hide the banner.
+      if (integration.credentialId) {
+        await ctx.db
+          .update(schema.Credential)
+          .set({ requiresReauth: false })
+          .where(eq(schema.Credential.id, integration.credentialId))
+      }
 
       return {
         success: true,
@@ -191,12 +191,12 @@ export const channelReauthRouter = createTRPCRouter({
           name: schema.Integration.name,
           lastSyncedAt: schema.Integration.lastSyncedAt,
           lastSuccessfulSync: schema.Integration.lastSuccessfulSync,
-          authStatus: schema.Integration.authStatus,
-          lastAuthError: schema.Integration.lastAuthError,
-          lastAuthErrorAt: schema.Integration.lastAuthErrorAt,
-          requiresReauth: schema.Integration.requiresReauth,
+          lastAuthError: schema.Credential.lastAuthError,
+          lastAuthErrorAt: schema.Credential.lastAuthErrorAt,
+          requiresReauth: schema.Credential.requiresReauth,
         })
         .from(schema.Integration)
+        .leftJoin(schema.Credential, eq(schema.Credential.id, schema.Integration.credentialId))
         .where(
           and(
             eq(schema.Integration.id, input.integrationId),
@@ -221,10 +221,9 @@ export const channelReauthRouter = createTRPCRouter({
         name: integration.name,
         lastSyncedAt: integration.lastSyncedAt,
         lastSuccessfulSync: integration.lastSuccessfulSync,
-        authStatus: integration.authStatus,
         lastAuthError: integration.lastAuthError,
         lastAuthErrorAt: integration.lastAuthErrorAt,
-        requiresReauth: integration.requiresReauth,
+        requiresReauth: integration.requiresReauth ?? false,
       }
     }),
 
@@ -255,12 +254,12 @@ export const channelReauthRouter = createTRPCRouter({
           name: schema.Integration.name,
           lastSyncedAt: schema.Integration.lastSyncedAt,
           lastSuccessfulSync: schema.Integration.lastSuccessfulSync,
-          authStatus: schema.Integration.authStatus,
-          lastAuthError: schema.Integration.lastAuthError,
-          lastAuthErrorAt: schema.Integration.lastAuthErrorAt,
-          requiresReauth: schema.Integration.requiresReauth,
+          lastAuthError: schema.Credential.lastAuthError,
+          lastAuthErrorAt: schema.Credential.lastAuthErrorAt,
+          requiresReauth: schema.Credential.requiresReauth,
         })
         .from(schema.Integration)
+        .leftJoin(schema.Credential, eq(schema.Credential.id, schema.Integration.credentialId))
         .where(
           and(
             eq(schema.Integration.organizationId, organizationId),
@@ -277,10 +276,9 @@ export const channelReauthRouter = createTRPCRouter({
         name: integration.name,
         lastSyncedAt: integration.lastSyncedAt,
         lastSuccessfulSync: integration.lastSuccessfulSync,
-        authStatus: integration.authStatus,
         lastAuthError: integration.lastAuthError,
         lastAuthErrorAt: integration.lastAuthErrorAt,
-        requiresReauth: integration.requiresReauth,
+        requiresReauth: integration.requiresReauth ?? false,
       }))
     }),
 })

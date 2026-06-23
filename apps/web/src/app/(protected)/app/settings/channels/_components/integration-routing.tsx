@@ -5,22 +5,6 @@ import { FeatureKey } from '@auxx/lib/permissions/client'
 import { Alert, AlertDescription, AlertTitle } from '@auxx/ui/components/alert'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@auxx/ui/components/dialog'
-import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@auxx/ui/components/select'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 import { useCopy } from '@auxx/ui/hooks/use-copy'
@@ -42,7 +26,8 @@ import {
 import { useRouter } from 'next/navigation'
 import { useMemo, useState } from 'react'
 import { SettingsSection } from '~/components/global/settings-page'
-import { toRecordId, useRecord, useRecordList, useResource } from '~/components/resources'
+import { InboxPicker } from '~/components/pickers/inbox-picker'
+import { toRecordId, useRecord, useResource } from '~/components/resources'
 import { useConfirm } from '~/hooks/use-confirm'
 import { useFeatureFlags } from '~/providers/feature-flag-provider'
 import { api } from '~/trpc/react'
@@ -62,14 +47,11 @@ interface IntegrationRoutingProps {
 export default function IntegrationRouting({ integration }: IntegrationRoutingProps) {
   const router = useRouter()
   const { hasAccess } = useFeatureFlags()
-  const [dialogOpen, setDialogOpen] = useState(false)
   const [isRemoving, setIsRemoving] = useState(false)
-  const [selectedRecordId, setSelectedRecordId] = useState<string>('')
   const [confirm, ConfirmDialog] = useConfirm()
   const utils = api.useUtils()
   const addIntegration = api.inbox.addIntegration.useMutation({
     onSuccess: () => {
-      setDialogOpen(false)
       utils.channel.list.invalidate()
     },
     onError: (error) => {
@@ -88,12 +70,6 @@ export default function IntegrationRouting({ integration }: IntegrationRoutingPr
   // Get inbox resource definition
   const { resource: inboxResource } = useResource('inboxes')
 
-  // Load all available inboxes via useRecordList
-  const { records: inboxes } = useRecordList({
-    entityDefinitionId: inboxResource?.id ?? '',
-    enabled: !!inboxResource?.id,
-  })
-
   // Build recordId for the connected inbox
   const connectedInboxRecordId = useMemo(() => {
     if (!inboxResource?.id || !integration.inboxId) return undefined
@@ -108,22 +84,58 @@ export default function IntegrationRouting({ integration }: IntegrationRoutingPr
 
   // Determine if we're loading the connected inbox
   const isLoadingConnectedInbox = !!connectedInboxRecordId && isConnectedInboxLoading
-  // Handle opening the dialog - pre-select the connected inbox if exists
-  const handleOpenDialog = () => {
-    if (connectedInboxRecordId) {
-      setSelectedRecordId(connectedInboxRecordId)
-    }
-    setDialogOpen(true)
-  }
 
-  // Handle connect to inbox
-  const handleConnectInbox = () => {
-    if (!selectedRecordId) return
-    addIntegration.mutate({
-      recordId: selectedRecordId,
+  const moveThreads = api.inbox.moveIntegrationThreads.useMutation({
+    onSuccess: () => {
+      utils.channel.list.invalidate()
+      utils.thread.getCounts.invalidate()
+    },
+    onError: (error) => {
+      toastError({ title: 'Error moving conversations', description: error.message })
+    },
+  })
+
+  // Route the integration to the inbox selected in the picker. New mail routes to
+  // the chosen inbox immediately; existing conversations only move if the user
+  // opts in via the follow-up prompt.
+  const handleSelectInbox = async (recordIds: string[]) => {
+    const toInboxRecordId = recordIds[0]
+    if (!toInboxRecordId || toInboxRecordId === connectedInboxRecordId) return
+
+    const fromInboxRecordId = connectedInboxRecordId
+    try {
+      await addIntegration.mutateAsync({
+        recordId: toInboxRecordId,
+        integrationId: integration.id,
+        isDefault: true,
+      })
+    } catch {
+      // onError already surfaced a toast; don't proceed to the move prompt.
+      return
+    }
+
+    // First-time connect: no previous inbox, so nothing to move.
+    if (!fromInboxRecordId) return
+
+    const { count } = await utils.inbox.countMovableThreads.fetch({
       integrationId: integration.id,
-      isDefault: true,
+      fromInboxRecordId,
     })
+    if (count === 0) return
+
+    const confirmed = await confirm({
+      title: 'Move existing conversations?',
+      description: `Move ${count} existing conversation${count === 1 ? '' : 's'} from the previous inbox into this one? New messages already route here.`,
+      confirmText: 'Move conversations',
+      cancelText: 'Keep where they are',
+    })
+    if (confirmed) {
+      moveThreads.mutate({
+        integrationId: integration.id,
+        fromInboxRecordId,
+        toInboxRecordId,
+      })
+    }
   }
   // Prefer lastSuccessfulSync over lastSyncedAt for display
   const lastSyncDate = integration.lastSuccessfulSync || integration.lastSyncedAt
@@ -269,10 +281,18 @@ export default function IntegrationRouting({ integration }: IntegrationRoutingPr
                 {isLoadingConnectedInbox ? (
                   <Skeleton className='h-7 w-32' />
                 ) : (
-                  <Button variant='outline' onClick={handleOpenDialog} size='sm'>
-                    <Edit />
-                    Edit default inbox
-                  </Button>
+                  <InboxPicker
+                    selected={connectedInboxRecordId ? [connectedInboxRecordId] : []}
+                    onChange={handleSelectInbox}
+                    align='end'>
+                    <Button
+                      variant='outline'
+                      size='sm'
+                      loading={addIntegration.isPending || moveThreads.isPending}>
+                      <Edit />
+                      Edit default inbox
+                    </Button>
+                  </InboxPicker>
                 )}
               </div>
             </div>
@@ -287,67 +307,14 @@ export default function IntegrationRouting({ integration }: IntegrationRoutingPr
                 </AlertDescription>
               </Alert>
 
-              <Button variant='default' onClick={handleOpenDialog}>
-                Connect to inbox
-              </Button>
+              <InboxPicker selected={[]} onChange={handleSelectInbox}>
+                <Button variant='default' loading={addIntegration.isPending}>
+                  Connect to inbox
+                </Button>
+              </InboxPicker>
             </div>
           )}
         </div>
-
-        {/* Dialog for selecting inbox */}
-        {dialogOpen ? (
-          <Dialog open onOpenChange={setDialogOpen}>
-            <DialogContent size='sm'>
-              <DialogHeader className='mb-4'>
-                <DialogTitle>{connectedInbox ? 'Change inbox' : 'Connect to inbox'}</DialogTitle>
-                <DialogDescription>
-                  {connectedInbox
-                    ? 'Select a different inbox to route messages to'
-                    : 'Select an inbox to route messages from this integration'}
-                </DialogDescription>
-              </DialogHeader>
-
-              <div className=''>
-                <Select value={selectedRecordId} onValueChange={setSelectedRecordId}>
-                  <SelectTrigger>
-                    <SelectValue placeholder='Select an inbox' />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {inboxes?.map((inbox) => (
-                      <SelectItem
-                        key={inbox.id}
-                        value={inbox.recordId ?? toRecordId(inboxResource!.id, inbox.id)}>
-                        {inbox.displayName}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-
-                {(!inboxes || inboxes.length === 0) && (
-                  <p className='mt-2 text-sm text-muted-foreground'>
-                    No inboxes available. Please create an inbox first.
-                  </p>
-                )}
-              </div>
-
-              <DialogFooter>
-                <Button variant='ghost' size='sm' onClick={() => setDialogOpen(false)}>
-                  Cancel <Kbd shortcut='esc' variant='ghost' size='sm' />
-                </Button>
-                <Button
-                  data-dialog-submit
-                  onClick={handleConnectInbox}
-                  disabled={!selectedRecordId || addIntegration.isPending}
-                  variant='outline'
-                  size='sm'
-                  loading={addIntegration.isPending}
-                  loadingText='Connecting...'>
-                  Connect <KbdSubmit variant='outline' size='sm' />
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
-        ) : null}
       </SettingsSection>
 
       {!isForwarding && (

@@ -62,7 +62,6 @@ export async function list(ctx: ChannelCtx) {
       identifier: getIdentifier({ ...c, chatWidget: c.chatWidget }),
       inboxId: c.inboxId,
       widgetSettings: c.provider === 'chat' ? c.chatWidget : undefined,
-      authStatus: c.authStatus,
       lastSuccessfulSync: toDate(c.lastSuccessfulSync),
       metadata: c.metadata,
       requiresReauth: c.requiresReauth,

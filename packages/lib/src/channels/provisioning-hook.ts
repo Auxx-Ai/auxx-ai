@@ -107,11 +107,10 @@ async function upsertIntegration(args: {
   organizationId: string
   provider: 'google' | 'outlook'
   credentialId: string
-  expiresAt: Date | null
   email: string
   metadataPatch: Record<string, unknown>
 }): Promise<{ id: string; isNew: boolean }> {
-  const { organizationId, provider, credentialId, expiresAt, email, metadataPatch } = args
+  const { organizationId, provider, credentialId, email, metadataPatch } = args
 
   const [existing] = await db
     .select({ id: schema.Integration.id, metadata: schema.Integration.metadata })
@@ -131,12 +130,7 @@ async function upsertIntegration(args: {
       .set({
         credentialId,
         email,
-        expiresAt,
         enabled: true,
-        authStatus: 'AUTHENTICATED',
-        requiresReauth: false,
-        lastAuthError: null,
-        lastAuthErrorAt: null,
         metadata: mergeMetadata(existing.metadata, metadataPatch) as any,
         updatedAt: new Date(),
       })
@@ -151,7 +145,6 @@ async function upsertIntegration(args: {
       provider,
       credentialId,
       email,
-      expiresAt,
       enabled: true,
       metadata: metadataPatch as any,
       updatedAt: new Date(),
@@ -261,7 +254,7 @@ export const channelProvisioningHook: PostConnectHook = {
       return
     }
 
-    const { token, expiresAt, isCustomClient } = await resolveAccessToken(ctx)
+    const { token, isCustomClient } = await resolveAccessToken(ctx)
     const identity =
       provider === 'google' ? await fetchGoogleIdentity(token) : await fetchOutlookIdentity(token)
 
@@ -272,7 +265,6 @@ export const channelProvisioningHook: PostConnectHook = {
       organizationId: ctx.organizationId,
       provider,
       credentialId: ctx.credentialId,
-      expiresAt,
       email: identity.email,
       metadataPatch,
     })

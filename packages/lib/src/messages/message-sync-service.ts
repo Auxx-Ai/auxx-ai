@@ -1,8 +1,8 @@
 // packages/lib/src/messages/message-sync-service.ts
 import { database as db, schema } from '@auxx/database'
-import { IntegrationAuthStatus } from '@auxx/database/enums'
 import { createScopedLogger } from '@auxx/logger'
 import { and, eq, isNull, lt, or, sql } from 'drizzle-orm'
+import { clearCredentialReauth } from '../providers/credential-auth-state'
 import type { ProviderRegistryService } from '../providers/provider-registry-service'
 import type { ChannelProviderType } from '../providers/types'
 
@@ -51,14 +51,13 @@ export class MessageSyncService {
       // Call provider's sync method
       await provider.syncMessages(since)
 
-      // Single write: stamp lastSyncedAt, mark authenticated, clear failure counter in metadata.
-      // Replaces the previous two-step update (lastSyncedAt UPDATE + resetFailureCounter SELECT+UPDATE).
+      // Stamp lastSyncedAt + clear the failure counter in metadata. The classified reauth
+      // signal lives on the linked credential now (Phase 6), cleared right after.
       const now = new Date()
       await db
         .update(schema.Integration)
         .set({
           lastSyncedAt: now,
-          authStatus: IntegrationAuthStatus.AUTHENTICATED,
           metadata: sql`COALESCE(${schema.Integration.metadata}, '{}'::jsonb) || jsonb_build_object(
             'auth',
             COALESCE(${schema.Integration.metadata}->'auth', '{}'::jsonb) || jsonb_build_object(
@@ -68,6 +67,9 @@ export class MessageSyncService {
           )`,
         })
         .where(eq(schema.Integration.id, integrationId))
+
+      // A successful sync proves the credential works — clear any prior reauth flag.
+      await clearCredentialReauth(integrationId)
 
       logger.info(`Sync completed and lastSyncedAt updated for ${type} - ${integrationId}`)
     } catch (error) {

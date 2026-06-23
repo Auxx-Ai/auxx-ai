@@ -1,9 +1,9 @@
 // ~/lib/src/providers/auth-error-handler.ts
 
 import { database as db, schema } from '@auxx/database'
-import { IntegrationAuthStatus } from '@auxx/database/enums'
 import { createScopedLogger } from '@auxx/logger'
 import { eq } from 'drizzle-orm'
+import { clearCredentialReauth, markCredentialReauth } from './credential-auth-state'
 
 const logger = createScopedLogger('auth-error-handler')
 /**
@@ -213,12 +213,10 @@ export class AuthErrorHandler {
       }
 
       // Auth-only updates — sync state (syncStatus, syncStage, throttleFailureCount,
-      // throttleRetryAfter) is managed by the sync job lifecycle, not here.
+      // throttleRetryAfter) is managed by the sync job lifecycle, not here. The classified
+      // reauth state (requiresReauth/lastAuthError/lastAuthErrorAt) now lives on the linked
+      // Credential (Phase 6); the Integration keeps only the debug metadata + enabled flag.
       const updates: any = {
-        authStatus: this.mapErrorTypeToStatus(errorDetails.type),
-        requiresReauth: errorDetails.requiresReauth,
-        lastAuthError: errorDetails.message,
-        lastAuthErrorAt: new Date(),
         updatedAt: new Date(),
         // Also store detailed auth data in metadata for debugging
         metadata: {
@@ -261,6 +259,13 @@ export class AuthErrorHandler {
         .update(schema.Integration)
         .set(updates)
         .where(eq(schema.Integration.id, this.integrationId))
+
+      // Classified reauth signal goes on the linked credential.
+      await markCredentialReauth(
+        this.integrationId,
+        errorDetails.message,
+        errorDetails.requiresReauth
+      )
 
       logger.info(`[${this.providerId}] Updated integration status in database`, {
         integrationId: this.integrationId,
@@ -319,31 +324,6 @@ export class AuthErrorHandler {
     }
   }
   /**
-   * Map internal error types to database enum values
-   */
-  private mapErrorTypeToStatus(errorType: AuthErrorType): IntegrationAuthStatus {
-    switch (errorType) {
-      case AuthErrorType.INVALID_GRANT:
-        return IntegrationAuthStatus.INVALID_GRANT
-      case AuthErrorType.EXPIRED_TOKEN:
-        return IntegrationAuthStatus.EXPIRED_TOKEN
-      case AuthErrorType.REVOKED_ACCESS:
-        return IntegrationAuthStatus.REVOKED_ACCESS
-      case AuthErrorType.INSUFFICIENT_SCOPE:
-        return IntegrationAuthStatus.INSUFFICIENT_SCOPE
-      case AuthErrorType.RATE_LIMITED:
-        return IntegrationAuthStatus.RATE_LIMITED
-      case AuthErrorType.PROVIDER_ERROR:
-        return IntegrationAuthStatus.PROVIDER_ERROR
-      case AuthErrorType.NETWORK_ERROR:
-        return IntegrationAuthStatus.NETWORK_ERROR
-      case AuthErrorType.UNKNOWN_ERROR:
-        return IntegrationAuthStatus.UNKNOWN_ERROR
-      default:
-        return IntegrationAuthStatus.ERROR
-    }
-  }
-  /**
    * Check if error should trigger re-authentication
    */
   static requiresReauth(errorType: AuthErrorType): boolean {
@@ -393,17 +373,12 @@ export class AuthErrorHandler {
 
         await db
           .update(schema.Integration)
-          .set({
-            metadata: updatedMetadata,
-            authStatus: IntegrationAuthStatus.AUTHENTICATED,
-            // A successful refresh proves the credential works — clear the
-            // banner so the user isn't asked to reauth for a transient blip
-            // that has already self-recovered.
-            requiresReauth: false,
-            lastAuthError: null,
-            lastAuthErrorAt: null,
-          })
+          .set({ metadata: updatedMetadata })
           .where(eq(schema.Integration.id, integrationId))
+
+        // A successful refresh proves the credential works — clear the banner so the user
+        // isn't asked to reauth for a transient blip that has already self-recovered.
+        await clearCredentialReauth(integrationId)
 
         logger.info('Reset consecutive failure counter after successful sync', {
           integrationId,

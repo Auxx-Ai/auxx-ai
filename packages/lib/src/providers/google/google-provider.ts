@@ -21,7 +21,6 @@ import {
   forceRefreshChannelToken,
   getChannelAccessToken,
   getChannelTokens,
-  setChannelTokens,
 } from '../channel-token-accessor'
 import {
   BaseMessageProvider,
@@ -158,7 +157,6 @@ export class GoogleProvider
       { ...tokens, accessToken: freshAccessToken ?? tokens.accessToken }
     )
     this.client = authClient
-    this.setupTokenListener() // Set up listener for token updates
     // Initialize Gmail API client
     this.gmail = google.gmail({ version: 'v1', auth: this.client })
     // Initialize rate limiter
@@ -306,39 +304,6 @@ export class GoogleProvider
     }
     return undefined
   }
-  /** Sets up the listener for token refresh events from the OAuth client */
-  private setupTokenListener(): void {
-    if (!this.client) return
-    this.client.on('tokens', (tokens: any) => {
-      if (!this.integrationId || !this.integration) {
-        logger.warn('Token update received but provider state is invalid.')
-        return
-      }
-      const integrationId = this.integrationId
-      logger.info('Google OAuth tokens refreshed.', { integrationId })
-
-      const tokenUpdate: Parameters<typeof setChannelTokens>[1] = {
-        accessToken: tokens.access_token ?? null,
-        expiresAt: tokens.expiry_date ? new Date(tokens.expiry_date) : null,
-      }
-      if (tokens.refresh_token) {
-        logger.info('Received new Google refresh token.', { integrationId })
-        tokenUpdate.refreshToken = tokens.refresh_token
-      }
-
-      // Update local cache
-      if (this.integration) {
-        this.integration.expiresAt = tokenUpdate.expiresAt ?? null
-      }
-
-      // Persist encrypted tokens asynchronously
-      setChannelTokens(integrationId, tokenUpdate)
-        .then(() => logger.debug('Successfully updated Google tokens.', { integrationId }))
-        .catch((err) =>
-          logger.error('Failed to update Google tokens', { integrationId, error: err })
-        )
-    })
-  }
   /** Ensures the provider is initialized */
   private async ensureInitialized(): Promise<void> {
     if (!this.gmail || !this.client || !this.integrationId || !this.integration) {
@@ -354,10 +319,13 @@ export class GoogleProvider
   }
   /** Checks token validity and attempts refresh if nearing expiry */
   private async checkTokenValidity(): Promise<void> {
-    if (!this.client || !this.integration?.expiresAt || !this.integrationId) return
+    if (!this.client || !this.integrationId) return
+    // Token expiry lives on the linked credential now (Phase 6) — read it via getChannelTokens.
+    const current = await getChannelTokens(this.integrationId)
+    if (!current.expiresAt) return
     // Check if token is expired or nearing expiry (e.g., within 5 minutes)
     const buffer = 5 * 60 * 1000
-    if (this.integration.expiresAt.getTime() - buffer >= Date.now()) return
+    if (current.expiresAt.getTime() - buffer >= Date.now()) return
 
     logger.info('Google access token nearing expiry or expired, attempting refresh...', {
       integrationId: this.integrationId,
@@ -375,9 +343,6 @@ export class GoogleProvider
       access_token: freshAccessToken ?? tokens.accessToken ?? undefined,
       expiry_date: tokens.expiresAt ? tokens.expiresAt.getTime() : undefined,
     })
-    if (this.integration) {
-      this.integration.expiresAt = tokens.expiresAt
-    }
 
     logger.info('Google access token refreshed successfully during validity check.', {
       integrationId: this.integrationId,

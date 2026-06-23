@@ -207,11 +207,11 @@ export const calendarRouter = createTRPCRouter({
         id: schema.Integration.id,
         email: schema.Integration.email,
         metadata: schema.Integration.metadata,
-        requiresReauth: schema.Integration.requiresReauth,
-        authStatus: schema.Integration.authStatus,
-        lastAuthError: schema.Integration.lastAuthError,
+        requiresReauth: schema.Credential.requiresReauth,
+        lastAuthError: schema.Credential.lastAuthError,
       })
       .from(schema.Integration)
+      .leftJoin(schema.Credential, eq(schema.Credential.id, schema.Integration.credentialId))
       .where(
         and(
           eq(schema.Integration.organizationId, ctx.session.organizationId),
@@ -229,8 +229,7 @@ export const calendarRouter = createTRPCRouter({
         id: integration.id,
         email: integration.email,
         ...readCalendarMetadata(integration.metadata),
-        requiresReauth: integration.requiresReauth,
-        authStatus: integration.authStatus,
+        requiresReauth: integration.requiresReauth ?? false,
         lastAuthError: integration.lastAuthError,
       })),
       eventCount: eventCountRow?.value ?? 0,

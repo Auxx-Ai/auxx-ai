@@ -884,7 +884,6 @@ export const channelRouter = createTRPCRouter({
           email: input.email,
           name: input.email,
           credentialId,
-          authStatus: 'AUTHENTICATED',
           syncMode: 'auto',
           syncStage: 'IDLE',
           syncStatus: 'NOT_SYNCED',

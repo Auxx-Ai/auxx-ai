@@ -1,7 +1,5 @@
 // packages/lib/src/providers/outlook/outlook-errors.ts
 
-import { AuthError, InteractionRequiredAuthError, ServerError } from '@azure/msal-node'
-
 /**
  * Classified error codes for Outlook/Graph API operations.
  */
@@ -24,88 +22,6 @@ export class OutlookProviderError extends Error {
     super(message, options)
     this.name = 'OutlookProviderError'
   }
-}
-
-// --- MSAL Error Classification ---
-
-/** @see https://learn.microsoft.com/en-us/entra/identity-platform/reference-error-codes */
-const PERMANENT_AUTH_ERROR_CODES = new Set([
-  'invalid_grant',
-  'invalid_client',
-  'unauthorized_client',
-  'invalid_request',
-])
-
-/** @see https://github.com/AzureAD/microsoft-authentication-library-for-js/blob/dev/lib/msal-common/src/error/ClientAuthErrorCodes.ts */
-const TRANSIENT_AUTH_ERROR_CODES = new Set([
-  'network_error',
-  'no_network_connectivity',
-  'endpoints_resolution_error',
-  'openid_config_error',
-  'request_cannot_be_made',
-])
-
-export function parseMsalError(error: unknown): OutlookProviderError {
-  if (error instanceof InteractionRequiredAuthError) {
-    return new OutlookProviderError(
-      `Microsoft token refresh requires re-authentication: ${error.errorCode}`,
-      'INVALID_REFRESH_TOKEN',
-      undefined,
-      false,
-      { cause: error }
-    )
-  }
-
-  if (error instanceof ServerError) {
-    if (error.status === 429) {
-      return new OutlookProviderError(
-        'Microsoft rate limit exceeded',
-        'TEMPORARY_ERROR',
-        429,
-        true,
-        { cause: error }
-      )
-    }
-    if (error.status && error.status >= 500) {
-      return new OutlookProviderError(
-        `Microsoft server error (${error.status}): ${error.errorMessage}`,
-        'TEMPORARY_ERROR',
-        error.status,
-        true,
-        { cause: error }
-      )
-    }
-  }
-
-  if (error instanceof AuthError) {
-    if (TRANSIENT_AUTH_ERROR_CODES.has(error.errorCode)) {
-      return new OutlookProviderError(
-        `Microsoft network error: ${error.errorCode} - ${error.errorMessage}`,
-        'TEMPORARY_ERROR',
-        undefined,
-        true,
-        { cause: error }
-      )
-    }
-    if (PERMANENT_AUTH_ERROR_CODES.has(error.errorCode)) {
-      return new OutlookProviderError(
-        `Microsoft auth error: ${error.errorCode} - ${error.errorMessage}`,
-        'INVALID_REFRESH_TOKEN',
-        undefined,
-        false,
-        { cause: error }
-      )
-    }
-  }
-
-  const message = error instanceof Error ? error.message : String(error)
-  return new OutlookProviderError(
-    `Microsoft token refresh failed: ${message}`,
-    'UNKNOWN',
-    undefined,
-    false,
-    { cause: error instanceof Error ? error : undefined }
-  )
 }
 
 // --- Graph API Error Classification ---

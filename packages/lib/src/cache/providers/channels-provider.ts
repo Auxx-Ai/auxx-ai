@@ -29,7 +29,6 @@ export interface CachedChannel {
   updatedAt: Date
   lastSyncedAt: Date | null
   lastSuccessfulSync: Date | null
-  authStatus: string | null
   requiresReauth: boolean
   lastAuthError: string | null
   lastAuthErrorAt: Date | null
@@ -46,6 +45,10 @@ export const channelsProvider: CacheProvider<CachedChannel[]> = {
         integration: schema.Integration,
         chatWidget: schema.ChatWidget,
         inboxId: schema.InboxIntegration.inboxId,
+        // Classified reauth state lives on the linked credential (Phase 6).
+        requiresReauth: schema.Credential.requiresReauth,
+        lastAuthError: schema.Credential.lastAuthError,
+        lastAuthErrorAt: schema.Credential.lastAuthErrorAt,
       })
       .from(schema.Integration)
       .leftJoin(schema.ChatWidget, eq(schema.ChatWidget.integrationId, schema.Integration.id))
@@ -53,6 +56,7 @@ export const channelsProvider: CacheProvider<CachedChannel[]> = {
         schema.InboxIntegration,
         eq(schema.InboxIntegration.integrationId, schema.Integration.id)
       )
+      .leftJoin(schema.Credential, eq(schema.Credential.id, schema.Integration.credentialId))
       .where(
         and(eq(schema.Integration.organizationId, orgId), isNull(schema.Integration.deletedAt))
       )
@@ -73,10 +77,9 @@ export const channelsProvider: CacheProvider<CachedChannel[]> = {
         updatedAt: i.updatedAt,
         lastSyncedAt: i.lastSyncedAt,
         lastSuccessfulSync: i.lastSuccessfulSync,
-        authStatus: i.authStatus,
-        requiresReauth: i.requiresReauth,
-        lastAuthError: i.lastAuthError,
-        lastAuthErrorAt: i.lastAuthErrorAt,
+        requiresReauth: r.requiresReauth ?? false,
+        lastAuthError: r.lastAuthError,
+        lastAuthErrorAt: r.lastAuthErrorAt,
         inboxId: r.inboxId,
         chatWidget: r.chatWidget,
         isExample: i.isExample,

@@ -1,6 +1,7 @@
 // apps/web/src/server/api/routers/inbox.ts
 
 import { InboxService } from '@auxx/lib/inboxes'
+import { ThreadMutationService } from '@auxx/lib/threads'
 import { recordIdSchema, toRecordId } from '@auxx/types/resource'
 import { TRPCError } from '@trpc/server'
 import { z } from 'zod'
@@ -107,6 +108,61 @@ export const inboxRouter = createTRPCRouter({
     })
     return result
   }),
+
+  /**
+   * Count an integration's threads currently sitting in a given inbox.
+   * Used to size the "move existing conversations?" prompt when re-routing a
+   * channel to a different inbox.
+   */
+  countMovableThreads: protectedProcedure
+    .input(z.object({ integrationId: z.string(), fromInboxRecordId: recordIdSchema }))
+    .query(async ({ ctx, input }) => {
+      const { organizationId } = ctx.session
+      const userId = ctx.session.user.id
+      const threadMutation = new ThreadMutationService(organizationId, ctx.db, undefined, userId)
+      return threadMutation.countIntegrationThreadsInInbox(
+        input.integrationId,
+        input.fromInboxRecordId
+      )
+    }),
+
+  /**
+   * Move an integration's existing conversations from one inbox to another.
+   * Re-routing the channel ({@link addIntegration}) only affects future mail;
+   * this relocates the threads that are already in `fromInboxRecordId`.
+   */
+  moveIntegrationThreads: protectedProcedure
+    .input(
+      z.object({
+        integrationId: z.string(),
+        fromInboxRecordId: recordIdSchema,
+        toInboxRecordId: recordIdSchema,
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const { organizationId } = ctx.session
+      const userId = ctx.session.user.id
+      const socketId = ctx.headers?.get?.('x-realtime-socket-id') ?? undefined
+      const threadMutation = new ThreadMutationService(organizationId, ctx.db, socketId, userId)
+
+      const result = await threadMutation.moveIntegrationThreadsToInbox(
+        input.integrationId,
+        input.fromInboxRecordId,
+        input.toInboxRecordId
+      )
+      await recordAuditFromCtx(ctx, {
+        category: 'integrations',
+        action: 'inbox.threads_moved',
+        targetType: 'Inbox',
+        targetId: String(input.toInboxRecordId),
+        metadata: {
+          integrationId: input.integrationId,
+          fromInboxRecordId: String(input.fromInboxRecordId),
+          count: result.count,
+        },
+      })
+      return result
+    }),
 
   /**
    * Remove an integration from an inbox
