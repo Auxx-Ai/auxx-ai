@@ -5,13 +5,14 @@
 // re-registration is driven from create/update (pause/resume is a `status` patch
 // through update) so a cadence or lifecycle change is reflected in BullMQ immediately.
 
-import { type Database, schema } from '@auxx/database'
+import { type CatalogDataConnector, type Database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { getFieldDefinitionId, getFieldId, toResourceFieldId } from '@auxx/types/field'
 import { generateId } from '@auxx/utils'
 import { and, eq } from 'drizzle-orm'
 import { getCachedCustomFields, getCachedEntityDefId } from '../cache'
 import { BadRequestError, NotFoundError } from '../errors'
+import { appCatalogStreamSchema } from './app-catalog'
 import {
   registerConnectorWebhooks,
   unregisterConnectorWebhooks,
@@ -255,6 +256,40 @@ async function buildTemplateFieldMappings(
     if (f.provision) mapping.provision = { name: f.key, ...f.provision }
     return mapping
   })
+}
+
+/**
+ * Create a connector from an installed app's catalog declaration (create-sync-flow
+ * §3.1, Tier 1). Mirrors {@link createConnectorFromTemplate}: an `app:<slug>`
+ * connector + one pre-filled stream per declared catalog stream, each with the
+ * declared source schema (from `exampleRecord`, else built from the field paths)
+ * stamped `catalog`. The request is baked into the app (`fixed` model), so streams
+ * carry no `requestConfig`.
+ *
+ * Default *mappings* are intentionally NOT materialized here: the first-party app
+ * declarations are owned-mode + relationship fan-outs, and owned-mode provisioning
+ * at setup is deferred (plan §6 / target-provisioning v1 is contributing-only). The
+ * user maps in the stepper against the now-populated schema — assisted by the Tier 2
+ * `suggestMappings` suggester, which works because the schema is present.
+ */
+export async function createConnectorFromAppCatalog(
+  db: Database,
+  organizationId: string,
+  input: Omit<CreateConnectorInput, 'definitionKind' | 'templateId' | 'config'>,
+  catalog: CatalogDataConnector
+): Promise<DataConnectorRow> {
+  const connector = await createConnector(db, organizationId, {
+    ...input,
+    definitionKind: 'app',
+  })
+  for (const stream of catalog.streams) {
+    await addStream(db, organizationId, connector.id, {
+      streamKey: stream.key,
+      ...appCatalogStreamSchema(stream),
+      syncMode: 'snapshot',
+    })
+  }
+  return connector
 }
 
 export interface UpdateConnectorInput {

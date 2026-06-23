@@ -347,6 +347,15 @@ export interface ConnectorFetchArgs {
    * Absent for the single-shot path, which keeps the default retry-and-sleep.
    */
   rateLimitOverride?: Partial<RateLimitPolicy>
+  /**
+   * Sample/test-fetch only: invoked once per fetched page with the transport's
+   * normalized response headers (lowercased keys). Lets the builder's test-fetch
+   * surface `link-header` pagination without putting transport metadata on
+   * {@link ConnectorRecord} (which flows through the whole sink/mapping spine on
+   * every real sync). The scheduled sync never passes this; connectors that have
+   * no HTTP headers simply never call it.
+   */
+  onPageMeta?: (meta: { pageIndex: number; headers: Record<string, string> }) => void
 }
 
 /**

@@ -3,6 +3,8 @@
 // See plans/data-connectors/. Server-only (BullMQ, crypto): never import this
 // barrel from client code.
 
+// App-catalog → setup materialization (create-sync-flow §3.1, Tier 1)
+export { appCatalogStreamSchema, buildSchemaFromFieldPaths } from './app-catalog'
 // Connector runtime — the shared definition+credential seam + test-fetch
 export type {
   PreparedConnectorFetch,
@@ -97,6 +99,7 @@ export {
   addMapping,
   addStream,
   createConnector,
+  createConnectorFromAppCatalog,
   createConnectorFromTemplate,
   deleteConnector,
   removeMapping,

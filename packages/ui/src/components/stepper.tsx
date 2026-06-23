@@ -116,7 +116,7 @@ function StepperItem({
       <div
         data-slot='stepper-item'
         className={cn(
-          'group/step flex items-center group-data-[orientation=horizontal]/stepper:flex-row group-data-[orientation=vertical]/stepper:flex-col group-data-[orientation=vertical]/stepper:items-start',
+          'group/step relative flex items-center group-data-[orientation=horizontal]/stepper:flex-row group-data-[orientation=vertical]/stepper:flex-col group-data-[orientation=vertical]/stepper:items-start',
           className
         )}
         data-state={state}
@@ -230,7 +230,14 @@ function StepperSeparator({ className, ...props }: React.HTMLAttributes<HTMLDivE
     <div
       data-slot='stepper-separator'
       className={cn(
-        'bg-muted group-data-[state=completed]/step:bg-info m-0.5 group-data-[orientation=horizontal]/stepper:h-0.5 group-data-[orientation=horizontal]/stepper:w-full group-data-[orientation=horizontal]/stepper:flex-1 group-data-[orientation=vertical]/stepper:h-4 group-data-[orientation=vertical]/stepper:w-0.5 group-data-[orientation=vertical]/stepper:ml-[11px]',
+        'bg-muted group-data-[state=completed]/step:bg-info',
+        // Horizontal: a thin bar that flexes to fill the gap between indicators.
+        'group-data-[orientation=horizontal]/stepper:m-0.5 group-data-[orientation=horizontal]/stepper:h-0.5 group-data-[orientation=horizontal]/stepper:w-full group-data-[orientation=horizontal]/stepper:flex-1',
+        // Vertical: an absolutely-positioned rail spanning from below this step's
+        // indicator down to the next step, so it stretches across tall/inline step
+        // bodies instead of a fixed-height stub. Centered on the default size-6
+        // indicator (left-3); resize the indicator → override `left` to match.
+        'group-data-[orientation=vertical]/stepper:absolute group-data-[orientation=vertical]/stepper:top-7 group-data-[orientation=vertical]/stepper:bottom-0 group-data-[orientation=vertical]/stepper:left-3 group-data-[orientation=vertical]/stepper:w-0.5 group-data-[orientation=vertical]/stepper:-translate-x-1/2 group-data-[orientation=vertical]/stepper:rounded-full',
         className
       )}
       {...props}

@@ -390,6 +390,10 @@ async function* fetchRecords(args: ConnectorFetchArgs): AsyncIterable<ConnectorY
     }
     const body = response.json()
 
+    // Sample/test-fetch only — surface this page's transport headers so the
+    // builder can detect `link-header` pagination. No-op for the scheduled sync.
+    args.onPageMeta?.({ pageIndex, headers: response.headers })
+
     // Advance the watermark over this page's records (before any content-hash skip).
     // For event-feed the watermark field is the EVENT's `created`, found the same way.
     watermark = maxWatermark(watermark, pageWatermark(body, incremental))

@@ -94,10 +94,19 @@ export interface SampleConnectorFetchInput {
   requestConfig?: StreamRequestConfig
 }
 
+/**
+ * Response headers (lowercased keys) the test-fetch forwards to the client for
+ * pagination detection. Allowlisted — we never dump the whole header bag to the
+ * browser (avoids leaking rate-limit/infra headers). Extend as detection grows.
+ */
+const SAMPLE_HEADER_ALLOWLIST = ['link'] as const
+
 /** The first raw page of a connector fetch, for schema inference + preview. */
 export interface SampleConnectorFetchResult {
   response: unknown
   recordCount: number
+  /** Allowlisted first-page response headers (lowercased keys); `link` for now. */
+  responseHeaders?: Record<string, string>
 }
 
 /**
@@ -119,6 +128,11 @@ export async function sampleConnectorFetch(
     connector,
     userId
   )
+  // Capture the first page's headers via the opt-in callback (closure). `fetch` is
+  // a lazy generator, so the loop runs past the transport call + `onPageMeta`
+  // before the first record reaches the `for await` below — `firstHeaders` is set
+  // by the time we read it.
+  let firstHeaders: Record<string, string> | undefined
   const { records } = await definition.fetch({
     streamKey: input.streamKey ?? '',
     mode: 'snapshot',
@@ -126,6 +140,9 @@ export async function sampleConnectorFetch(
     credential,
     config: connector.config,
     requestConfig: input.requestConfig,
+    onPageMeta: (meta) => {
+      if (meta.pageIndex === 0) firstHeaders = meta.headers
+    },
   })
   // The connector yields the RAW response body per page; sample the first one so
   // schema inference + the field pickers see exactly what the source returns (an
@@ -138,5 +155,17 @@ export async function sampleConnectorFetch(
     break
   }
   const recordCount = Array.isArray(response) ? response.length : response ? 1 : 0
-  return { response, recordCount }
+  return { response, recordCount, responseHeaders: pickAllowlisted(firstHeaders) }
+}
+
+/** Keep only the allowlisted headers (lowercased keys) before crossing to the client. */
+function pickAllowlisted(
+  headers: Record<string, string> | undefined
+): Record<string, string> | undefined {
+  if (!headers) return undefined
+  const picked: Record<string, string> = {}
+  for (const key of SAMPLE_HEADER_ALLOWLIST) {
+    if (headers[key] !== undefined) picked[key] = headers[key]
+  }
+  return Object.keys(picked).length > 0 ? picked : undefined
 }
