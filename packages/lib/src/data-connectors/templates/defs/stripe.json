@@ -24,7 +24,14 @@
         "path": "/customers",
         "method": "GET",
         "params": { "limit": 100 },
-        "pagination": { "kind": "none" },
+        "pagination": {
+          "kind": "cursor",
+          "cursorParam": "starting_after",
+          "cursorFrom": "lastRecord",
+          "cursorRecordField": "id",
+          "hasMorePath": "has_more",
+          "recordsPath": "data"
+        },
         "backfillWindow": { "sinceParam": "created[gte]", "format": "unix" }
       },
       "mappings": [
@@ -81,7 +88,14 @@
         "path": "/charges",
         "method": "GET",
         "params": { "limit": 100 },
-        "pagination": { "kind": "none" },
+        "pagination": {
+          "kind": "cursor",
+          "cursorParam": "starting_after",
+          "cursorFrom": "lastRecord",
+          "cursorRecordField": "id",
+          "hasMorePath": "has_more",
+          "recordsPath": "data"
+        },
         "backfillWindow": { "sinceParam": "created[gte]", "format": "unix" }
       },
       "sourceSchema": {

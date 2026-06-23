@@ -10,7 +10,7 @@ import { toastError } from '@auxx/ui/components/toast'
 import { SimpleTooltip } from '@auxx/ui/components/tooltip'
 import { GridTreeRow, TreeRowButton } from '@auxx/ui/components/tree-row'
 import { generateId } from '@auxx/utils'
-import { ArrowRight, FunctionSquare, Loader2, Plus, Sparkles, Trash2, X } from 'lucide-react'
+import { ArrowRight, FunctionSquare, Loader2, Plus, Sparkles, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 import { ResourcePicker } from '~/components/pickers/resource-picker'
 import { useResourceFields, useResourceProperty } from '~/components/resources'
@@ -25,6 +25,7 @@ import {
 } from '../hooks/use-source-paths'
 import type { FieldMapping, useStreamMutations } from '../hooks/use-stream-mutations'
 import { BranchRow } from './branch-row'
+import { CappedNodeList } from './capped-node-list'
 import { FieldCalcDialog } from './field-calc-dialog'
 import { MAPPING_COLS } from './mapping-columns'
 import { MappingFieldPicker } from './mapping-field-picker'
@@ -367,36 +368,41 @@ export function MappingNode({
             No source schema yet — generate or edit the schema above to map fields.
           </div>
         ) : (
-          sourceTree.map((node) => (
-            <SourceNode
-              key={node.path}
-              node={node}
-              depth={depth + 1}
-              mapping={mapping}
-              targetMode={targetMode}
-              targetFields={targetFields}
-              sourceToEntry={sourceToEntry}
-              usedTargetKeys={usedTargetKeys}
-              matchKeys={matchKeys}
-              childByNodePath={childByNodePath}
-              onAssign={assignTarget}
-              onClear={clearEntry}
-              onMergeChange={(id, value) =>
-                patchEntry(id, { mergeStrategy: value as FieldMapping['mergeStrategy'] })
-              }
-              onToggleMatch={toggleMatch}
-              onFanOut={materializeChild}
-              // Child-mapping recursion context.
-              connectorId={connectorId}
-              streamId={streamId}
-              streamKey={streamKey}
-              sourceSchema={sourceSchema}
-              sourcePaths={sourcePaths}
-              byMappingId={byMappingId}
-              childrenOf={childrenOf}
-              mutations={mutations}
-            />
-          ))
+          <CappedNodeList
+            nodes={sourceTree}
+            childDepth={depth + 1}
+            isCappable={(n) => !n.isBranch && !sourceToEntry.has(n.path)}
+            renderNode={(node) => (
+              <SourceNode
+                key={node.path}
+                node={node}
+                depth={depth + 1}
+                mapping={mapping}
+                targetMode={targetMode}
+                targetFields={targetFields}
+                sourceToEntry={sourceToEntry}
+                usedTargetKeys={usedTargetKeys}
+                matchKeys={matchKeys}
+                childByNodePath={childByNodePath}
+                onAssign={assignTarget}
+                onClear={clearEntry}
+                onMergeChange={(id, value) =>
+                  patchEntry(id, { mergeStrategy: value as FieldMapping['mergeStrategy'] })
+                }
+                onToggleMatch={toggleMatch}
+                onFanOut={materializeChild}
+                // Child-mapping recursion context.
+                connectorId={connectorId}
+                streamId={streamId}
+                streamKey={streamKey}
+                sourceSchema={sourceSchema}
+                sourcePaths={sourcePaths}
+                byMappingId={byMappingId}
+                childrenOf={childrenOf}
+                mutations={mutations}
+              />
+            )}
+          />
         )}
 
         {/* Formula rows — one per non-bare field mapping (a computed target field),
@@ -576,9 +582,14 @@ function SourceNode(props: SourceNodeProps) {
         isOpen={open}
         onToggleOpen={() => setOpen((o) => !o)}
         onFanOut={(entityDefinitionId) => onFanOut(node, entityDefinitionId)}>
-        {node.children.map((child) => (
-          <SourceNode key={child.path} {...props} node={child} depth={depth + 1} />
-        ))}
+        <CappedNodeList
+          nodes={node.children}
+          childDepth={depth + 1}
+          isCappable={(n) => !n.isBranch && !props.sourceToEntry.has(n.path)}
+          renderNode={(child) => (
+            <SourceNode key={child.path} {...props} node={child} depth={depth + 1} />
+          )}
+        />
       </BranchRow>
     )
   }
@@ -704,7 +715,7 @@ function FormulaRow({
               Identifier — a formula has no single source path to match identity on. */}
           <MergeStrategyToggle value={mergeStrategy} onValueChange={onMergeChange} />
           <TreeRowButton variant='destructive' tooltipText='Remove formula' onClick={onClear}>
-            <X />
+            <Trash2 />
           </TreeRowButton>
         </div>,
       ]}
