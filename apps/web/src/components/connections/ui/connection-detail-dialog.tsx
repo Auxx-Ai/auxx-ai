@@ -41,7 +41,22 @@ interface ConnectionDetailDialogProps {
   pending?: boolean
   /** Footer button label. Defaults to "Connect". */
   submitLabel?: string
-  onSubmit: (payload: { values?: Record<string, string>; secret?: string }) => void
+  /** Footer button busy text. Defaults to "Connecting...". */
+  loadingText?: string
+  /** Override the description copy (e.g. the edit dialog isn't "connecting"). */
+  description?: string
+  /** Render the editable connection-name row at the top of the form (edit/rename). */
+  showName?: boolean
+  /** Seeds the name input when `showName`. Defaults to `method.label`. */
+  initialName?: string
+  /**
+   * Secondary footer action — when set, a button (default "Reconnect") sits left of the primary.
+   * Used by the edit dialog for one-click OAuth connections, which rename via Save and re-authorize
+   * via this button. Omitted for the connect/secret flows.
+   */
+  onReconnect?: () => void
+  reconnectLabel?: string
+  onSubmit: (payload: { values?: Record<string, string>; secret?: string; name?: string }) => void
 }
 
 /**
@@ -60,10 +75,17 @@ export function ConnectionDetailDialog({
   prefill,
   pending,
   submitLabel = 'Connect',
+  loadingText = 'Connecting...',
+  description,
+  showName,
+  initialName,
+  onReconnect,
+  reconnectLabel = 'Reconnect',
   onSubmit,
 }: ConnectionDetailDialogProps) {
   const [values, setValues] = useState<Record<string, string>>({})
   const [token, setToken] = useState('')
+  const [name, setName] = useState('')
   const [errors, setErrors] = useState<Record<string, string>>({})
 
   // Stable across renders so the seed effect only fires on open / method change, not every render
@@ -82,7 +104,6 @@ export function ConnectionDetailDialog({
   // don't first flash blank then clobber the user's keystrokes). `getForEdit` values win over the
   // caller's `prefill`; declared defaults fill anything neither supplies.
   const loaded = editLoad.data
-  // biome-ignore lint/correctness/useExhaustiveDependencies: `loaded` captures the resolved query data.
   useEffect(() => {
     if (!open) return
     if (needsLoad && !loaded) return
@@ -91,8 +112,9 @@ export function ConnectionDetailDialog({
     for (const v of variables) seeded[v.key] = seedValue(v, merged)
     setValues(seeded)
     setToken(loaded?.tokenSet ? HIDDEN_VALUE : '')
+    setName(initialName ?? method.label)
     setErrors({})
-  }, [open, prefill, variables, needsLoad, loaded])
+  }, [open, prefill, variables, needsLoad, loaded, initialName, method.label])
 
   const bareSecret = methodIsBareSecret(method)
   const formPending = pending || (needsLoad && !loaded)
@@ -106,6 +128,9 @@ export function ConnectionDetailDialog({
     return new Set(keys)
   }, [loaded])
 
+  // A bare-OAuth method has neither a token row nor variables — its edit dialog is name-only.
+  const hasFields = bareSecret || variables.length > 0
+
   function handleSubmit(e: FormEvent) {
     e.preventDefault()
     const next = validateConnectionVariables({
@@ -116,8 +141,14 @@ export function ConnectionDetailDialog({
     })
     setErrors(next)
     if (Object.keys(next).length > 0) return
+    const payload: { values?: Record<string, string>; secret?: string; name?: string } = {}
+    if (showName) payload.name = name.trim()
     // Only the currently-visible fields ride along; a bare API-key method submits the token.
-    onSubmit(bareSecret ? { secret: token } : { values })
+    if (hasFields) {
+      if (bareSecret) payload.secret = token
+      else payload.values = values
+    }
+    onSubmit(payload)
   }
 
   return (
@@ -133,7 +164,9 @@ export function ConnectionDetailDialog({
             <DialogTitle>{title}</DialogTitle>
             {/* `method.label` is the plain connection name; `title` carries the verb (Connect/Reconnect). */}
             <DialogDescription>
-              {method.description ?? `Provide the following details to connect ${method.label}.`}
+              {description ??
+                method.description ??
+                `Provide the following details to connect ${method.label}.`}
             </DialogDescription>
           </DialogHeader>
 
@@ -149,10 +182,26 @@ export function ConnectionDetailDialog({
             disabled={formPending}
             savedSecrets={savedSecrets}
             tokenSaved={!!loaded?.tokenSet}
+            showName={showName}
+            name={name}
+            onNameChange={setName}
             className='px-0 py-0'
           />
 
           <DialogFooter>
+            {/* One-click OAuth edit: re-authorize without leaving the rename dialog. Pinned left
+                (`sm:mr-auto`) so it's separated from the Cancel/Save group on the right. */}
+            {onReconnect && (
+              <Button
+                type='button'
+                variant='ghost'
+                size='sm'
+                className='sm:mr-auto'
+                onClick={onReconnect}
+                disabled={formPending}>
+                {reconnectLabel}
+              </Button>
+            )}
             <Button
               type='button'
               variant='ghost'
@@ -161,13 +210,13 @@ export function ConnectionDetailDialog({
               disabled={pending}>
               Cancel <Kbd shortcut='esc' variant='ghost' size='sm' />
             </Button>
-            {/* A bare OAuth method renders no fields — this button is the one-click connect. */}
+            {/* A bare OAuth method renders no fields — this button is the one-click connect/save. */}
             <Button
               type='submit'
               variant='outline'
               size='sm'
               loading={pending}
-              loadingText='Connecting...'
+              loadingText={loadingText}
               disabled={formPending}
               data-dialog-submit>
               {submitLabel} <KbdSubmit variant='outline' size='sm' />

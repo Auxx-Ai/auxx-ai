@@ -1,7 +1,7 @@
 // apps/web/src/components/connections/ui/connection-card.tsx
 'use client'
 
-import { Pencil, PencilLine, RefreshCw, Trash, TriangleAlert } from 'lucide-react'
+import { Pencil, RefreshCw, Trash, TriangleAlert } from 'lucide-react'
 import { AppIcon } from '~/components/apps/ui/app-icon'
 import { AppListCard, type AppListCardMenuItem } from '~/components/apps/ui/app-list-card'
 import type { RouterOutputs } from '~/trpc/react'
@@ -15,28 +15,25 @@ interface ConnectionCardProps {
   iconId: string
   /** Human provider/app label shown under the title. */
   subtitle: string
-  /** Re-authorize (oauth) or re-enter (secret) the connection. Hidden when absent. */
+  /** Open the connection's edit dialog (rename + reconnect/key). Hidden when absent. */
   onAction?: () => void
-  /** Label for the primary action — "Reconnect" (oauth) or "Edit" (secret). */
+  /** Label for the primary action — defaults to "Edit". */
   actionLabel?: string
-  /** Rename the connection (writes its display label). Hidden when absent. */
-  onRename?: () => void
   /** Remove the connection. */
   onDelete: () => void
 }
 
 /**
  * One connection rendered with the shared {@link AppListCard} — the same card the
- * apps/MCP grid uses. The three-dot menu carries Reconnect/Edit + Delete; clicking
- * the card body runs the primary action. See plans/connections/unify-connection-definition.md §15.
+ * apps/MCP grid uses. The three-dot menu carries Edit + Delete; clicking the card body
+ * opens the edit dialog. See plans/connections/unify-connection-definition.md §15.
  */
 export function ConnectionCard({
   connection,
   iconId,
   subtitle,
   onAction,
-  actionLabel = 'Reconnect',
-  onRename,
+  actionLabel = 'Edit',
   onDelete,
 }: ConnectionCardProps) {
   const title = connection.label ?? connection.name
@@ -53,9 +50,6 @@ export function ConnectionCard({
       icon: actionLabel === 'Edit' ? <Pencil /> : <RefreshCw />,
       onClick: onAction,
     })
-  }
-  if (onRename) {
-    menuItems.push({ label: 'Rename', icon: <PencilLine />, onClick: onRename })
   }
   menuItems.push({ label: 'Delete', icon: <Trash />, onClick: onDelete, destructive: true })
 

@@ -2,7 +2,7 @@
 
 import { insertCredential, splitSensitiveFields } from '@auxx/credentials/store'
 import { type Database, schema } from '@auxx/database'
-import { getCachedAgentById, onCacheEvent, storeOAuthCsrfToken } from '@auxx/lib/cache'
+import { getCachedAgentById, onCacheEvent } from '@auxx/lib/cache'
 import {
   addExcludedSender as addExcludedSenderToChannel,
   addOpenPhoneChannel,
@@ -10,7 +10,6 @@ import {
   createChannel,
   disconnect as disconnectChannel,
   getAllStats,
-  getAuthUrl,
   getSettings as getChannelSettings,
   getProviderType,
   linkChannelToInbox,
@@ -77,17 +76,6 @@ function defaultWelcomeMessageTemplate() {
   }
 }
 
-// Define supported provider types, removed 'mailgun'
-const SupportedProviderTypes = [
-  'google',
-  'outlook',
-  'facebook',
-  'instagram',
-  'openphone',
-  'chat',
-] as const // Add future types here
-const IntegrationProviderTypeEnum = z.enum(SupportedProviderTypes)
-
 export const channelRouter = createTRPCRouter({
   /**
    * Prepare a Gmail/Outlook connect via the unified connections OAuth flow. Enforces
@@ -95,7 +83,7 @@ export const channelRouter = createTRPCRouter({
    * approval gate (§3.1) so the UI knows whether to collect a bring-your-own OAuth client.
    */
   prepareConnect: protectedProcedure
-    .input(z.object({ provider: z.enum(['google', 'outlook']) }))
+    .input(z.object({ provider: z.enum(['google', 'outlook', 'facebook', 'instagram']) }))
     .query(async ({ ctx, input }) => {
       const { userId } = ctx.session
       const organizationId = getUserOrganizationId(ctx.session)
@@ -103,7 +91,13 @@ export const channelRouter = createTRPCRouter({
       await requireAdminAccess(userId, organizationId)
       await checkChannelLimit(ctx.db, organizationId)
 
-      const providerKey = input.provider === 'google' ? 'gmail' : 'outlookMail'
+      const PROVIDER_KEY_BY_CHANNEL = {
+        google: 'gmail',
+        outlook: 'outlookMail',
+        facebook: 'facebook',
+        instagram: 'instagram',
+      } as const
+      const providerKey = PROVIDER_KEY_BY_CHANNEL[input.provider]
       const def = await ctx.db.query.ConnectionDefinition.findFirst({
         where: (cd, { eq }) => eq(cd.providerKey, providerKey),
         columns: { oauth2ClientId: true, oauth2ClientSecret: true, platformClientApproved: true },
@@ -122,38 +116,6 @@ export const channelRouter = createTRPCRouter({
         requiresOwnClient: gate.requiresOwnClient,
         ownClientReason: gate.reason,
       }
-    }),
-
-  /**
-   * Get OAuth URL for Google or Outlook.
-   */
-  getAuthUrl: protectedProcedure
-    .input(
-      z.object({
-        redirectPath: z.string().optional(),
-        provider: IntegrationProviderTypeEnum,
-      })
-    )
-    .use(notDemo('connect email integrations'))
-    .mutation(async ({ ctx, input }) => {
-      const { userId } = ctx.session
-      const organizationId = getUserOrganizationId(ctx.session)
-
-      await requireAdminAccess(userId, organizationId)
-
-      await checkChannelLimit(ctx.db, organizationId)
-
-      const authUrlResult = await getAuthUrl(
-        { db: ctx.db, organizationId, userId },
-        input.provider as any,
-        input.redirectPath
-      )
-      if (!authUrlResult.ok) throw authUrlResult.error
-
-      // Store CSRF token in Redis for callback verification
-      await storeOAuthCsrfToken(userId, authUrlResult.value.csrfToken)
-
-      return { authUrl: authUrlResult.value.authUrl }
     }),
 
   /**

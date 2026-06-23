@@ -134,6 +134,7 @@ export function AddConnectionDialog({
 }: AddConnectionDialogProps) {
   const [values, setValues] = useState<Record<string, string>>({})
   const [token, setToken] = useState('')
+  const [name, setName] = useState('')
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [connectingId, setConnectingId] = useState<string | null>(null)
   // The method chosen on the detail page when an item exposes >1 (null until picked).
@@ -235,6 +236,7 @@ export function AddConnectionDialog({
     setSelectedMethodId(methodIds.length === 1 ? methodIds[0] : null)
     setValues({})
     setToken('')
+    setName(restrictedItem.name)
     setErrors({})
   }, [open, restrictedItem])
 
@@ -252,6 +254,7 @@ export function AddConnectionDialog({
   function resetFields() {
     setValues({})
     setToken('')
+    setName('')
     setErrors({})
     setConnectingId(null)
     setSelectedMethodId(null)
@@ -270,6 +273,8 @@ export function AddConnectionDialog({
       resetFields()
       // Preselect the sole method so its fields render immediately; force a pick when there are many.
       setSelectedMethodId(only?.id ?? null)
+      // Prefill the editable name with the item title (field-form connections only).
+      setName(item.name)
       return undefined
     }
     setConnectingId(item.id)
@@ -294,7 +299,7 @@ export function AddConnectionDialog({
     if (methodNeedsFields(chosen) && !validate(chosen)) return
     setConnectingId(item.id)
     flow.connectWith(
-      { target, scope, definitionId: chosen.id },
+      { target, scope, definitionId: chosen.id, name },
       (chosen.connectionVariables?.length ?? 0) > 0 ? { values } : { secret: token }
     )
   }
@@ -348,24 +353,31 @@ export function AddConnectionDialog({
       detailCrumb={(item) => `Connect ${item.name}`}
       detailBusy={flow.pending}
       onDetailExit={resetFields}
-      renderDetail={(item) => (
-        <ConnectionDetailPage
-          methods={resolve(item, selectedMethodId).methods}
-          selectedMethodId={selectedMethodId}
-          onMethodChange={(id) => {
-            setSelectedMethodId(id)
-            setValues({})
-            setToken('')
-            setErrors({})
-          }}
-          values={values}
-          onValueChange={(key, value) => setValues((prev) => ({ ...prev, [key]: value }))}
-          token={token}
-          onTokenChange={setToken}
-          errors={errors}
-          disabled={flow.pending}
-        />
-      )}
+      renderDetail={(item) => {
+        const { chosen } = resolve(item, selectedMethodId)
+        return (
+          <ConnectionDetailPage
+            methods={resolve(item, selectedMethodId).methods}
+            selectedMethodId={selectedMethodId}
+            onMethodChange={(id) => {
+              setSelectedMethodId(id)
+              setValues({})
+              setToken('')
+              setErrors({})
+            }}
+            values={values}
+            onValueChange={(key, value) => setValues((prev) => ({ ...prev, [key]: value }))}
+            token={token}
+            onTokenChange={setToken}
+            errors={errors}
+            disabled={flow.pending}
+            // Name row only when the chosen method renders a form (non-immediate-OAuth).
+            showName={!!chosen && methodNeedsFields(chosen)}
+            name={name}
+            onNameChange={setName}
+          />
+        )
+      }}
       renderDetailFooter={(item) => {
         const { chosen } = resolve(item, selectedMethodId)
         return (
