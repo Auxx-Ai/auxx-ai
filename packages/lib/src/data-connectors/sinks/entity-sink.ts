@@ -14,7 +14,7 @@ import type { FieldId, ResourceFieldId } from '@auxx/types/field'
 import { getFieldId } from '@auxx/types/field'
 import type { TypedFieldValue } from '@auxx/types/field-value'
 import { stableHash } from '@auxx/utils/hash'
-import { and, eq, inArray } from 'drizzle-orm'
+import { and, eq, inArray, isNull, ne, or } from 'drizzle-orm'
 import { resolveConnectorFieldRef } from '../../agents/bindings/resolve'
 import { toRecordId } from '../../resources/resource-id'
 import { buildWriteKeyToFieldId } from '../field-id-resolver'
@@ -259,6 +259,83 @@ async function stampContributingProvenance(
     )
 }
 
+/**
+ * The set of bound instance ids for `mapping` whose `overwrite` cells have
+ * DRIFTED — i.e. a `FieldValue.managedByConnectorId` that this connector stamped
+ * on write is now cleared (someone hand-edited the cell in the grid) or owned by
+ * a different connector. The content-hash skip must NOT skip these, because an
+ * `overwrite` field is connector-owned and has to re-assert the source value (the
+ * write re-stamps the marker, so a healed record drops out of this set next run).
+ *
+ * Computed ONCE per mapping per slice (one bulk query), memoized on `ctx` as a
+ * Promise so records processed concurrently share it — never a per-record read.
+ * Contributing-mode only: owned fields are `isUpdatable:false` (the grid can't
+ * edit them) and owned writes don't stamp the marker, so there's nothing to
+ * detect. A mapping with no `overwrite` field (all conservative strategies) pays
+ * nothing — it short-circuits to an empty set before querying.
+ */
+function driftedInstances(ctx: SyncCtx, mapping: DecodedMapping): Promise<Set<string>> {
+  const memo = (ctx.driftByMapping ??= new Map())
+  let pending = memo.get(mapping.row.id)
+  if (!pending) {
+    pending = computeDriftedInstances(ctx, mapping)
+    memo.set(mapping.row.id, pending)
+  }
+  return pending
+}
+
+async function computeDriftedInstances(
+  ctx: SyncCtx,
+  mapping: DecodedMapping
+): Promise<Set<string>> {
+  if (mapping.targetMode !== 'contributing') return new Set()
+
+  // `overwrite` is the default when a binding carries no explicit mergeStrategy
+  // (mirrors `strategyFor` in buildWriteSet), so an unset strategy counts here.
+  const overwriteRefs = mapping.fieldMappings
+    .filter(
+      (fm) =>
+        fm.targetFieldRef != null && (fm.mergeStrategy == null || fm.mergeStrategy === 'overwrite')
+    )
+    .map((fm) => fm.targetFieldRef as ResourceFieldId)
+  if (overwriteRefs.length === 0) return new Set()
+
+  // Resolve each ref to the concrete CustomField uuid `FieldValue.fieldId` carries
+  // (refs may be the late-bound `@app:` form; system fields key by systemAttribute).
+  const connectionId = ctx.connector.credentialId ?? undefined
+  const keyToId = await buildWriteKeyToFieldId(ctx.orgId, mapping.entityDefinitionId)
+  const fieldIds = new Set<string>()
+  for (const ref of overwriteRefs) {
+    const concrete = await resolveConnectorFieldRef(ref, ctx.orgId, connectionId)
+    if (!concrete) continue
+    const uuid = keyToId.get(getFieldId(concrete))
+    if (uuid) fieldIds.add(uuid)
+  }
+  if (fieldIds.size === 0) return new Set()
+
+  // One query: bound instances of this mapping holding an overwrite cell no longer
+  // stamped by this connector (NULL = hand-edited, or a different connector took over).
+  const rows = await ctx.db
+    .selectDistinct({ entityId: schema.FieldValue.entityId })
+    .from(schema.FieldValue)
+    .innerJoin(
+      schema.DataConnectorItem,
+      eq(schema.DataConnectorItem.entityInstanceId, schema.FieldValue.entityId)
+    )
+    .where(
+      and(
+        eq(schema.DataConnectorItem.dataConnectorId, ctx.connector.id),
+        eq(schema.DataConnectorItem.mappingId, mapping.row.id),
+        inArray(schema.FieldValue.fieldId, Array.from(fieldIds)),
+        or(
+          isNull(schema.FieldValue.managedByConnectorId),
+          ne(schema.FieldValue.managedByConnectorId, ctx.connector.id)
+        )
+      )
+    )
+  return new Set(rows.map((r) => r.entityId))
+}
+
 export const entitySink: EntitySink = {
   async upsertRecord(ctx, mapping, record) {
     ctx.counters.fetched += 1
@@ -276,21 +353,31 @@ export const entitySink: EntitySink = {
       instanceId = resolved.instanceId
     }
 
-    // 2. Content hash — skip unchanged + already bound.
+    // 2. Content hash — skip unchanged + already bound, UNLESS an overwrite cell
+    //    has drifted (hand-edited in the grid). The hash is computed over the
+    //    SOURCE only, so a destination edit is invisible to it; without the drift
+    //    guard an `overwrite` field silently never re-asserts the source value
+    //    while the source is stable. Drift is detected in bulk, once per mapping.
     const contentHash = stableHash({ fields: record.fields, displayName: record.displayName })
     if (bound?.entityInstanceId && bound.contentHash === contentHash) {
-      await touchItem(ctx.db, bound.id, ctx.runId)
-      ctx.counters.skipped += 1
-      // Still re-register pending relations so a later-arriving target resolves.
-      if (record.pendingRelations.length > 0) {
-        await mergePendingRelations(
-          ctx,
-          bound.id,
-          bound.pendingRelations ?? [],
-          record.pendingRelations
-        )
+      // Source is unchanged — skip, unless an overwrite cell drifted (hand-edited),
+      // in which case fall through to re-assert the source value. Drift is only
+      // queried here, when we'd otherwise skip, so a create-only backfill pays nothing.
+      const drifted = await driftedInstances(ctx, mapping)
+      if (!drifted.has(bound.entityInstanceId)) {
+        await touchItem(ctx.db, bound.id, ctx.runId)
+        ctx.counters.skipped += 1
+        // Still re-register pending relations so a later-arriving target resolves.
+        if (record.pendingRelations.length > 0) {
+          await mergePendingRelations(
+            ctx,
+            bound.id,
+            bound.pendingRelations ?? [],
+            record.pendingRelations
+          )
+        }
+        return
       }
-      return
     }
 
     // 3. Build the write set with per-field merge strategy.
