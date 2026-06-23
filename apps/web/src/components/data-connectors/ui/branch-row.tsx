@@ -16,6 +16,12 @@ interface BranchRowProps {
   onToggleOpen: () => void
   /** Materialize a child mapping that upserts records under this branch. */
   onFanOut: (entityDefinitionId: string) => void
+  /**
+   * No mapping exists anywhere in the tree yet (the wizard's first state). Surfaces
+   * a faint "or map separately" hint and forces the fan-out button visible (no
+   * hover needed), so a nested object/array reads as a secondary starting point.
+   */
+  isEmpty?: boolean
   children: React.ReactNode
 }
 
@@ -35,6 +41,7 @@ export function BranchRow({
   isOpen,
   onToggleOpen,
   onFanOut,
+  isEmpty = false,
   children,
 }: BranchRowProps) {
   const [menuOpen, setMenuOpen] = useState(false)
@@ -59,6 +66,9 @@ export function BranchRow({
         <span className='flex items-center gap-1.5 text-sm text-muted-foreground'>
           <span className='font-mono'>{lastSegment(node.path)}</span>
           <span className='text-[10px] uppercase opacity-60'>{node.type}</span>
+          {isEmpty && (
+            <span className='text-[11px] text-muted-foreground/40'>· or map separately</span>
+          )}
         </span>
       }
       // A passive container — no arrow/target. The fan-out action sits in the
@@ -69,7 +79,7 @@ export function BranchRow({
         <div key='actions' className='flex w-full items-center justify-end pr-1'>
           <Popover open={menuOpen} onOpenChange={setMenuOpen}>
             <PopoverTrigger asChild>
-              <TreeRowButton tooltipText='Fan out → own def'>
+              <TreeRowButton tooltipText='Fan out → own def' persistent={isEmpty}>
                 <Plus />
               </TreeRowButton>
             </PopoverTrigger>

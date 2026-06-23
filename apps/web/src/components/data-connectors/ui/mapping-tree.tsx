@@ -1,6 +1,7 @@
 // apps/web/src/components/data-connectors/ui/mapping-tree.tsx
 'use client'
 
+import { Button } from '@auxx/ui/components/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
 import { GridTreeRow, TreeRowButton } from '@auxx/ui/components/tree-row'
 import { Braces, Brackets, Hash, Plus } from 'lucide-react'
@@ -16,6 +17,7 @@ import {
 } from '../hooks/use-source-paths'
 import { useStreamMutations } from '../hooks/use-stream-mutations'
 import { BranchRow } from './branch-row'
+import { CappedNodeList } from './capped-node-list'
 import { MAPPING_COLS } from './mapping-columns'
 import { MappingNode } from './mapping-node'
 
@@ -64,6 +66,11 @@ export function MappingTree({
   // out per element (`[]`); an object root is a single record (`''`).
   const rootIsArray = useMemo(() => sourcePaths.some((p) => p.path.startsWith('[]')), [sourcePaths])
   const rootBase = rootIsArray ? '[]' : ''
+
+  // Wizard's first state: not a single mapping exists anywhere in the tree. Drives
+  // the empty-state affordances (root CTA + branch hints) that vanish the moment
+  // the user creates any mapping.
+  const isEmpty = rows.length === 0
 
   // Index mappings by id (for `absolutePrefix`) and by parent (the tree).
   const { byMappingId, childrenOf } = useMemo(() => {
@@ -149,6 +156,9 @@ export function MappingTree({
         title={
           <span className='text-xs text-muted-foreground'>
             {rootIsArray ? `each ${streamKey || 'item'}` : 'whole payload'}
+            {isEmpty && (
+              <span className='ml-2 text-muted-foreground/50'>· map to a record to begin</span>
+            )}
           </span>
         }
         cells={[
@@ -157,6 +167,7 @@ export function MappingTree({
           <div key='actions' className='flex w-full items-center justify-end pr-1'>
             <CreateMappingAction
               tooltip='Map whole payload → own record'
+              label={isEmpty ? 'Map record' : undefined}
               onPick={(defId) => createMapping(rootBase, defId)}
             />
           </div>,
@@ -166,16 +177,22 @@ export function MappingTree({
             No source schema yet — generate or edit the schema above to map fields.
           </div>
         ) : (
-          topTree.map((node) => (
-            <TopSourceNode
-              key={node.path}
-              node={node}
-              depth={1}
-              branchMappingByPath={branchMappingByPath}
-              onCreate={createMapping}
-              {...recursionCtx}
-            />
-          ))
+          <CappedNodeList
+            nodes={topTree}
+            childDepth={1}
+            isCappable={(n) => !n.isBranch}
+            renderNode={(node) => (
+              <TopSourceNode
+                key={node.path}
+                node={node}
+                depth={1}
+                isEmpty={isEmpty}
+                branchMappingByPath={branchMappingByPath}
+                onCreate={createMapping}
+                {...recursionCtx}
+              />
+            )}
+          />
         )}
       </GridTreeRow>
     </div>
@@ -187,6 +204,8 @@ export function MappingTree({
 interface TopSourceNodeProps {
   node: SourceTreeNode
   depth: number
+  /** No mapping exists anywhere yet — forwarded to branch rows for their hint/CTA. */
+  isEmpty: boolean
   /** Top-level branch mappings keyed by array-normalized path (`data` → `data[]`). */
   branchMappingByPath: Map<string, Mapping>
   /** Create a top-level mapping at the given rootPath against the picked def. */
@@ -234,12 +253,18 @@ function TopSourceNode(props: TopSourceNodeProps) {
       <BranchRow
         depth={depth}
         node={node}
+        isEmpty={props.isEmpty}
         isOpen={open}
         onToggleOpen={() => setOpen((o) => !o)}
         onFanOut={(defId) => onCreate(branchRootPath(node), defId)}>
-        {node.children.map((child) => (
-          <TopSourceNode key={child.path} {...props} node={child} depth={depth + 1} />
-        ))}
+        <CappedNodeList
+          nodes={node.children}
+          childDepth={depth + 1}
+          isCappable={(n) => !n.isBranch}
+          renderNode={(child) => (
+            <TopSourceNode key={child.path} {...props} node={child} depth={depth + 1} />
+          )}
+        />
       </BranchRow>
     )
   }
@@ -267,21 +292,32 @@ function InertLeafRow({ depth, node }: { depth: number; node: SourcePath }) {
   )
 }
 
-/** The "pick a def → create a mapping here" popover action (shared by root + branch). */
+/** The "pick a def → create a mapping here" popover action (shared by root + branch).
+ *  Pass `label` to render the prominent, always-visible CTA (empty state); omit it
+ *  for the default hover-revealed icon button. */
 function CreateMappingAction({
   tooltip,
   onPick,
+  label,
 }: {
   tooltip: string
   onPick: (entityDefinitionId: string) => void
+  label?: string
 }) {
   const [open, setOpen] = useState(false)
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <TreeRowButton tooltipText={tooltip}>
-          <Plus />
-        </TreeRowButton>
+        {label ? (
+          <Button variant='outline' size='xs'>
+            <Plus />
+            {label}
+          </Button>
+        ) : (
+          <TreeRowButton tooltipText={tooltip}>
+            <Plus />
+          </TreeRowButton>
+        )}
       </PopoverTrigger>
       <PopoverContent align='end' className='w-64 p-0'>
         <div className='border-b px-2 py-1.5 text-[10px] font-medium uppercase text-muted-foreground'>
