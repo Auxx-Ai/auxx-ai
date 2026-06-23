@@ -27,6 +27,7 @@ import {
   loadConnector,
   openRun,
   persistStreamState,
+  setRunRateLimited,
 } from './service'
 import { createConnectorRunLedger, createStreamSyncStateStore } from './sync-core-adapters'
 import type { ConnectorStreamState } from './types'
@@ -61,6 +62,13 @@ const NO_THROTTLE: ThrottleHandle = { run: (fn) => fn() }
 
 interface ChainSnapshot {
   streams: SyncSourceStream[]
+  /**
+   * Reconciliation sweep (Step 8C). A full id-crawl whose purpose is catching deletes
+   * that webhooks/the watermark poll missed. Runs as a backfill chain (resumable,
+   * archive-after-final-slice) but with `ctx.sweep` set so `reconcileOrphans` archives
+   * orphans even for incremental streams. Threaded onto every slice's `SyncCtx`.
+   */
+  sweep?: boolean
 }
 
 /** Reset a stream's durable state to a fresh backfill (re-backfill / first run). */
@@ -92,8 +100,12 @@ export async function startConnectorSync(
   db: Database,
   organizationId: string,
   dataConnectorId: string,
-  options: { trigger?: 'manual' | 'scheduled' | 'webhook' | 'backfill' } = {}
+  options: { trigger?: 'manual' | 'scheduled' | 'webhook' | 'backfill' | 'sweep' } = {}
 ): Promise<boolean> {
+  // A sweep is a full reconciling re-crawl (Step 8C): force the backfill phase even
+  // for an incremental connector that's been running steady deltas, so it lists every
+  // id and archives the ones that vanished. `ctx.sweep` flows from the run snapshot.
+  const isSweep = options.trigger === 'sweep'
   // Clear a crashed prior chain first so its stuck claim can't block us (H5).
   await sweepStaleConnectorRuns(db, { dataConnectorId })
 
@@ -129,7 +141,7 @@ export async function startConnectorSync(
   const incrementalConnector = streams.every((s) => s.syncMode === 'incremental')
   const streamStates = streams.map((s) => (s.stream.state as ConnectorStreamState) ?? {})
   const phase: 'backfill' | 'steady' =
-    incrementalConnector && streamStates.every((st) => st.phase === 'steady')
+    !isSweep && incrementalConnector && streamStates.every((st) => st.phase === 'steady')
       ? 'steady'
       : 'backfill'
 
@@ -155,6 +167,7 @@ export async function startConnectorSync(
       requestConfig: s.stream.requestConfig ?? undefined,
       mappings: s.mappings,
     })),
+    sweep: isSweep,
   }
 
   const run = await openRun(db, {
@@ -254,6 +267,7 @@ export async function runBackfillSlice(
     run: { id: runId, startedAt: run.startedAt },
     stream: streamSnap,
     allStreams: snapshot?.streams ?? [streamSnap],
+    sweep: snapshot?.sweep ?? false,
   })
 
   const outcome = await runSyncSlice({
@@ -272,6 +286,14 @@ export async function runBackfillSlice(
       logger.info('runBackfillSlice: cancelled, not re-enqueuing', { runId, streamId })
       return
     }
+    // Surface the throttle to the status line: set `rateLimited.until` when the next
+    // slice is delayed on a 429, clear it on a clean re-enqueue (Step 9 §3.1).
+    const throttledMs = outcome.retryAfterMs && outcome.retryAfterMs > 0 ? outcome.retryAfterMs : 0
+    await setRunRateLimited(
+      db,
+      runId,
+      throttledMs > 0 ? new Date(Date.now() + throttledMs).toISOString() : null
+    )
     await enqueueBackfillSlice(
       { connectorId, organizationId, streamId, runId },
       { delayMs: outcome.retryAfterMs }

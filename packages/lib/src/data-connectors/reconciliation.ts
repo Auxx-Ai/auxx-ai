@@ -29,7 +29,9 @@ type ReconcilableStream = { syncMode: SyncMode; mappings: DecodedMapping[] }
  */
 export async function reconcileOrphans(ctx: SyncCtx, streams: ReconcilableStream[]): Promise<void> {
   for (const { syncMode, mappings } of streams) {
-    if (syncMode !== 'snapshot') continue // incremental: absence ≠ deletion
+    // Incremental: absence ≠ deletion — UNLESS this is a sweep (a full id-crawl, so
+    // absence IS deletion; Step 8C). The final-slice gate is enforced by the caller.
+    if (syncMode !== 'snapshot' && !ctx.sweep) continue
     for (const mapping of mappings) {
       if (mapping.targetMode !== 'owned') continue // never archive co-owned records
       if (mapping.linkMode !== 'upsert') continue // reference mappings write nothing
@@ -74,11 +76,24 @@ export async function handleConnectorDelete(
 
   const stream = streams.find((s) => s.stream.streamKey === resolved.streamKey)
   if (!stream) return
+  await archiveExternalId(ctx, stream.mappings, resolved.externalId)
+}
 
-  for (const mapping of stream.mappings) {
-    const item = await findItem(ctx.db, ctx.connector.id, mapping.row.id, resolved.externalId)
+/**
+ * Archive every item bound to one external id across a stream's mappings — the
+ * shared core of an explicit upstream delete (webhook resolveDelete, Step 8A, or a
+ * provider delete event). Archives regardless of target mode (the upstream said so);
+ * `ignore` orphan behavior is upgraded to `archive`. Increments `counters.deleted`
+ * per archived binding.
+ */
+export async function archiveExternalId(
+  ctx: SyncCtx,
+  mappings: DecodedMapping[],
+  externalId: string
+): Promise<void> {
+  for (const mapping of mappings) {
+    const item = await findItem(ctx.db, ctx.connector.id, mapping.row.id, externalId)
     if (!item) continue
-    // Explicit delete archives regardless of mode (the upstream said so).
     await entitySink.archiveRecord(
       ctx,
       {

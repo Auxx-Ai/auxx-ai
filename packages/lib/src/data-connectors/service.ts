@@ -236,7 +236,7 @@ export async function openRun(
   input: {
     dataConnectorId: string
     organizationId: string
-    trigger: 'manual' | 'scheduled' | 'webhook' | 'backfill'
+    trigger: 'manual' | 'scheduled' | 'webhook' | 'backfill' | 'sweep'
     mode: 'snapshot' | 'incremental'
     cursorBefore?: unknown
     /** Engine lifecycle phase (sliced runs); omitted for legacy single-shot runs. */
@@ -292,6 +292,26 @@ export async function finalizeRun(
       durationMs: Date.now() - input.startedAt.getTime(),
     })
     .where(eq(schema.DataConnectorRun.id, runId))
+}
+
+/**
+ * Set or clear the run's transient "rate-limited" progress signal (Step 9 §3.1).
+ * Written at the slice re-enqueue site: set to `{ until }` when the next slice is
+ * delayed on a 429 (so the status line can show a live "retrying in 0:28"
+ * countdown), cleared on the next clean slice. Uses `jsonb_set` / key-removal on the
+ * `{rateLimited}` path so it never clobbers the sibling `{checkpoints}` the ledger
+ * writes into the same `progress` jsonb.
+ */
+export async function setRunRateLimited(
+  db: Database,
+  runId: string,
+  untilIso: string | null
+): Promise<void> {
+  const T = schema.DataConnectorRun
+  const progress = untilIso
+    ? sql`jsonb_set(coalesce(${T.progress}, '{}'::jsonb), '{rateLimited}', jsonb_build_object('until', ${untilIso}::text), true)`
+    : sql`coalesce(${T.progress}, '{}'::jsonb) - 'rateLimited'`
+  await db.update(T).set({ progress }).where(eq(T.id, runId))
 }
 
 /** Finalize the connector lifecycle after a run (success → live, else error). */

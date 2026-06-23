@@ -5,6 +5,7 @@
 
 import { createScopedLogger } from '@auxx/logger'
 import { getQueue, Queues } from '../jobs/queues'
+import type { WebhookAction } from './types'
 
 const logger = createScopedLogger('data-connector-queue')
 
@@ -47,6 +48,36 @@ export async function enqueueBackfillSlice(
     { type: BACKFILL_SLICE_JOB, ...data } satisfies BackfillSliceJobData,
     { delay: opts.delayMs && opts.delayMs > 0 ? opts.delayMs : undefined }
   )
+}
+
+/** BullMQ job name for one verified webhook delivery's sink work (Step 8A). */
+export const CONNECTOR_WEBHOOK_JOB = 'data-connector-webhook'
+
+/** Job payload for one verified webhook delivery — actions resolved in the receiver. */
+export interface ConnectorWebhookJobData {
+  type: typeof CONNECTOR_WEBHOOK_JOB
+  connectorId: string
+  organizationId: string
+  /** Sink actions the connector's `resolveWebhook` produced from the delivery. */
+  actions: WebhookAction[]
+  /** Provider idempotency key (carried for tracing; receiver already deduped). */
+  eventId: string
+}
+
+/**
+ * Enqueue a webhook delivery's sink work. The receiver verifies + dedupes + resolves
+ * the delivery synchronously and returns 200 fast (W2); the actual entity writes
+ * happen here so a slow sink never makes the provider retry. No `jobId` — each
+ * delivery is distinct and already deduped at the receiver.
+ */
+export async function enqueueConnectorWebhook(
+  data: Omit<ConnectorWebhookJobData, 'type'>
+): Promise<void> {
+  const queue = getQueue(Queues.dataConnectorQueue)
+  await queue.add(CONNECTOR_WEBHOOK_JOB, {
+    type: CONNECTOR_WEBHOOK_JOB,
+    ...data,
+  } satisfies ConnectorWebhookJobData)
 }
 
 /**

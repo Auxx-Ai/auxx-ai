@@ -8,7 +8,9 @@
 import { database as db } from '@auxx/database'
 import {
   type BackfillSliceJobData,
+  type ConnectorWebhookJobData,
   runBackfillSlice,
+  runConnectorWebhook,
   SLICE_LOCK_DURATION_MS,
   startConnectorSync,
 } from '@auxx/lib/data-connectors'
@@ -33,15 +35,37 @@ async function handleDataConnectorSync(ctx: JobContext<DataConnectorSyncJobData>
   await startConnectorSync(db, organizationId, connectorId, { trigger })
 }
 
+interface DataConnectorSweepJobData {
+  type: 'data-connector-sweep'
+  connectorId: string
+  organizationId: string
+  trigger?: 'sweep'
+}
+
+/** Nightly delete-reconciliation sweep (Step 8C) → a full reconciling re-crawl. */
+async function handleDataConnectorSweep(ctx: JobContext<DataConnectorSweepJobData>) {
+  const { connectorId, organizationId } = ctx.data
+  logger.info('Starting data connector delete sweep', { connectorId, organizationId })
+  await startConnectorSync(db, organizationId, connectorId, { trigger: 'sweep' })
+}
+
 /** One slice of a backfill chain → advance a stream + re-enqueue the next slice. */
 async function handleBackfillSlice(ctx: JobContext<BackfillSliceJobData>) {
   const { connectorId, organizationId, streamId, runId } = ctx.data
   await runBackfillSlice(db, { connectorId, organizationId, streamId, runId }, ctx.signal)
 }
 
+/** One verified webhook delivery → apply its sink actions (Step 8A). */
+async function handleConnectorWebhook(ctx: JobContext<ConnectorWebhookJobData>) {
+  const { connectorId, organizationId, actions, eventId } = ctx.data
+  await runConnectorWebhook(db, { connectorId, organizationId, actions, eventId })
+}
+
 const jobMappings = {
   'data-connector-sync': handleDataConnectorSync,
+  'data-connector-sweep': handleDataConnectorSweep,
   'data-connector-backfill-slice': handleBackfillSlice,
+  'data-connector-webhook': handleConnectorWebhook,
 }
 
 export function startDataConnectorWorker() {

@@ -67,6 +67,8 @@ export interface DataConnectorConfig {
     }
   }
   filters?: Record<string, unknown>
+  /** Provider webhook capability selector (Step 8). Mirror of lib `DataConnectorConfig.webhook`. */
+  webhook?: { provider: 'shopify' | 'stripe' }
 }
 
 /**
@@ -126,11 +128,22 @@ export interface StreamRequestConfig {
   body?: Record<string, unknown>
   headers?: Record<string, string>
   pagination?: PaginationSpec
-  /** Steady-phase delta config (G2). Mirror of lib `StreamIncrementalConfig`. */
+  /** Steady-phase delta config (G2 / Step 8D). Mirror of lib `StreamIncrementalConfig`. */
   incremental?: {
+    /** `'timestamp'` (default, updated_at filter) | `'event-feed'` (Stripe /v1/events). */
+    kind?: 'timestamp' | 'event-feed'
     sinceParam: string
     watermarkField: string
     watermarkFormat?: 'iso' | 'unix'
+    // event-feed only:
+    /** Endpoint polled for events on a steady run, e.g. `/v1/events` (overrides path). */
+    eventsPath?: string
+    /** Dotted path on each event to its type/topic (Stripe `type`). */
+    eventTypePath?: string
+    /** Event types treated as deletes (Stripe `customer.deleted`); rest are upserts. */
+    deleteEventTypes?: string[]
+    /** Dotted path on each event to the embedded object to sink (Stripe `data.object`). */
+    objectPath?: string
   }
 }
 

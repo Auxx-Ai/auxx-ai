@@ -12,6 +12,10 @@ import { generateId } from '@auxx/utils'
 import { and, eq } from 'drizzle-orm'
 import { getCachedCustomFields, getCachedEntityDefId } from '../cache'
 import { BadRequestError, NotFoundError } from '../errors'
+import {
+  registerConnectorWebhooks,
+  unregisterConnectorWebhooks,
+} from './connector-webhook-registration'
 import { removeConnectorScheduler, syncConnectorScheduler } from './data-connector-scheduler'
 import type { DataConnectorMappingRow, DataConnectorRow, DataConnectorStreamRow } from './service'
 import type {
@@ -277,7 +281,7 @@ export async function updateConnector(
   id: string,
   patch: UpdateConnectorInput
 ): Promise<DataConnectorRow> {
-  await loadConnectorRow(db, organizationId, id)
+  const prior = await loadConnectorRow(db, organizationId, id)
   // Selecting manual/webhook clears the cadence so the scheduler is removed.
   const scheduleConfig =
     patch.syncBehavior && patch.syncBehavior !== 'scheduled'
@@ -301,6 +305,23 @@ export async function updateConnector(
     .returning()
   if (!row) throw new Error('Failed to update data connector')
   await syncConnectorScheduler(row)
+
+  // Webhook registration follows the sync-behavior toggle (Step 8B). Enabling webhook
+  // sync subscribes the provider (idempotent — also re-runs on a config change while
+  // staying webhook); leaving it revokes. Best-effort: a provider error never fails
+  // the mutation (the row + cadence already persisted).
+  try {
+    if (row.syncBehavior === 'webhook') {
+      await registerConnectorWebhooks(db, organizationId, id)
+    } else if (prior.syncBehavior === 'webhook') {
+      await unregisterConnectorWebhooks(db, organizationId, id)
+    }
+  } catch (error) {
+    logger.warn('connector webhook (un)registration failed', {
+      connectorId: id,
+      error: error instanceof Error ? error.message : String(error),
+    })
+  }
   return row
 }
 
@@ -325,6 +346,16 @@ export async function deleteConnector(
 ): Promise<{ success: boolean }> {
   await loadConnectorRow(db, organizationId, id)
   await removeConnectorScheduler(id)
+  // Revoke provider webhooks before the row cascades away (Step 8B). Best-effort —
+  // a dangling provider subscription is harmless once the handler row is gone.
+  try {
+    await unregisterConnectorWebhooks(db, organizationId, id)
+  } catch (error) {
+    logger.warn('connector webhook teardown failed', {
+      connectorId: id,
+      error: error instanceof Error ? error.message : String(error),
+    })
+  }
 
   if (behavior !== 'keep') {
     const items = await db.query.DataConnectorItem.findMany({
