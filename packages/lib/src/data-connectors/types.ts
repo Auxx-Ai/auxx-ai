@@ -13,6 +13,8 @@ import type { RuntimeConnectionData } from '../connections/resolve-connection-fo
 import type { RateLimitPolicy } from '../connections/transports/types'
 import { RateLimitError } from '../errors'
 import type { SyncCursor } from '../sync-core/contracts'
+// Type-only (erased at runtime) — no import cycle despite async-export importing back.
+import type { AsyncExportCapability } from './async-export/types'
 
 // ── Connector-level config (jsonb on DataConnector) ───────────────────────────
 
@@ -319,6 +321,13 @@ export interface DataConnectorDefinition {
   requestModel?: ConnectorRequestModel
   streams: ConnectorStreamDecl[]
   fetch(args: ConnectorFetchArgs): Promise<FetchResult>
+  /**
+   * Optional async bulk-export capability (Step 7). When present, a BACKFILL runs the
+   * initiate → poll → download lifecycle (rate-limit-exempt, the right tool for
+   * 100k+ reads) instead of synchronous paging; steady deltas still page/webhook.
+   * The capability builds a provider {@link AsyncExportDriver} per stream.
+   */
+  asyncExport?: AsyncExportCapability
   /** Map a provider delete event onto a (streamKey, externalId). */
   resolveDelete?(event: unknown): { streamKey: string; externalId: string } | null
 }
