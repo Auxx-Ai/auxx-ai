@@ -238,7 +238,7 @@ function getProviderName(provider: string): string {
     case 'instagram':
       return 'Instagram'
     case 'openphone':
-      return 'OpenPhone'
+      return 'Quo'
     default:
       return provider.charAt(0).toUpperCase() + provider.slice(1)
   }

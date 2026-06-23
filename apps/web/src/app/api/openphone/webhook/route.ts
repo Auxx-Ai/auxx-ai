@@ -1,5 +1,6 @@
 // apps/web/src/app/api/openphone/webhook/route.ts
 
+import { revealSecrets } from '@auxx/credentials/store'
 import { database as db, schema } from '@auxx/database'
 import type { MessageData } from '@auxx/lib/email'
 import { MessageStorageService } from '@auxx/lib/email'
@@ -61,6 +62,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       .select({
         id: schema.Integration.id,
         organizationId: schema.Integration.organizationId,
+        credentialId: schema.Integration.credentialId,
         metadata: schema.Integration.metadata,
       })
       .from(schema.Integration)
@@ -82,7 +84,25 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ status: 'success - no integration found' }, { status: 200 })
     }
     const metadata = integration.metadata as unknown as OpenPhoneIntegrationMetadata
-    const signingSecret = metadata.webhookSigningSecret
+
+    // The signing secret lives encrypted on the linked Credential (not in metadata). Reveal it via
+    // the Integration's credentialId — the route is unauthenticated but has the org id in scope.
+    if (!integration.credentialId) {
+      logger.error(
+        `OpenPhone integration ${integration.id} has no linked credential; cannot verify webhook.`
+      )
+      return NextResponse.json(
+        { error: 'Configuration Error: Missing credential' },
+        { status: 500 }
+      )
+    }
+    const revealed = await revealSecrets<{ fields?: Record<string, string> }>(
+      integration.credentialId,
+      integration.organizationId
+    )
+    const signingSecret = revealed.isOk()
+      ? revealed.value.secrets.fields?.webhookSigningSecret
+      : undefined
 
     // 4. Verify Request Signature
     const signature = req.headers.get('x-openphone-signature')

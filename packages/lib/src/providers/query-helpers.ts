@@ -6,8 +6,28 @@
  */
 
 import { schema } from '@auxx/database'
-import { and, eq, exists, inArray, isNull, type SQL } from 'drizzle-orm'
+import type { AnyColumn } from 'drizzle-orm'
+import { and, eq, inArray, isNull, type SQL, sql } from 'drizzle-orm'
 import type { ChannelProviderType, MessageType } from './types'
+
+/**
+ * Build an `EXISTS (select 1 from "Integration" where ...)` condition that
+ * matches the given FK column against a non-deleted Integration of one of the
+ * provided providers.
+ *
+ * Drizzle's `exists()` operator requires a fully-built subquery (`db.select()`),
+ * which these stateless helpers don't have access to — so we emit the subquery
+ * with a raw `sql` template instead.
+ */
+function existsIntegration(fkColumn: AnyColumn, providers: ChannelProviderType[]): SQL {
+  const uniqueProviders = [...new Set(providers)]
+  const condition = and(
+    eq(schema.Integration.id, fkColumn),
+    inArray(schema.Integration.provider, uniqueProviders),
+    isNull(schema.Integration.deletedAt)
+  ) as SQL
+  return sql`exists (select 1 from ${schema.Integration} where ${condition})`
+}
 
 /**
  * Filter threads by provider type.
@@ -34,14 +54,7 @@ import type { ChannelProviderType, MessageType } from './types'
 export function whereThreadProvider(provider: ChannelProviderType | ChannelProviderType[]): SQL {
   const providers = Array.isArray(provider) ? provider : [provider]
 
-  return exists(
-    schema.Integration,
-    and(
-      eq(schema.Integration.id, schema.Thread.integrationId),
-      inArray(schema.Integration.provider, providers),
-      isNull(schema.Integration.deletedAt)
-    )
-  )
+  return existsIntegration(schema.Thread.integrationId, providers)
 }
 
 /**
@@ -63,14 +76,7 @@ export function whereThreadProvider(provider: ChannelProviderType | ChannelProvi
 export function whereMessageProvider(provider: ChannelProviderType | ChannelProviderType[]): SQL {
   const providers = Array.isArray(provider) ? provider : [provider]
 
-  return exists(
-    schema.Integration,
-    and(
-      eq(schema.Integration.id, schema.Message.integrationId),
-      inArray(schema.Integration.provider, providers),
-      isNull(schema.Integration.deletedAt)
-    )
-  )
+  return existsIntegration(schema.Message.integrationId, providers)
 }
 
 /**
@@ -128,17 +134,7 @@ export function whereThreadMessageType(messageType: MessageType | MessageType[])
     }
   }
 
-  // Remove duplicates
-  const uniqueProviders = [...new Set(providers)]
-
-  return exists(
-    schema.Integration,
-    and(
-      eq(schema.Integration.id, schema.Thread.integrationId),
-      inArray(schema.Integration.provider, uniqueProviders),
-      isNull(schema.Integration.deletedAt)
-    )
-  )
+  return existsIntegration(schema.Thread.integrationId, providers)
 }
 
 /**
@@ -189,17 +185,7 @@ export function whereMessageMessageType(messageType: MessageType | MessageType[]
     }
   }
 
-  // Remove duplicates
-  const uniqueProviders = [...new Set(providers)]
-
-  return exists(
-    schema.Integration,
-    and(
-      eq(schema.Integration.id, schema.Message.integrationId),
-      inArray(schema.Integration.provider, uniqueProviders),
-      isNull(schema.Integration.deletedAt)
-    )
-  )
+  return existsIntegration(schema.Message.integrationId, providers)
 }
 
 /**

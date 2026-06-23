@@ -5,12 +5,8 @@ import type { IntegrationProviderType } from '@auxx/database/types'
 import { and, eq } from 'drizzle-orm'
 import { BadRequestError, ConflictError, databaseErrorCodes, NotFoundError } from '../errors'
 import { InboxService } from '../inboxes/inbox-service'
-import { createScopedLogger } from '../logger'
-import { OpenPhoneService } from '../providers/openphone/openphone-service'
 import { Result, type TypedResult } from '../result'
-import type { ChannelCtx, OpenPhoneInput } from './types'
-
-const logger = createScopedLogger('channels.lifecycle')
+import type { ChannelCtx } from './types'
 
 type DbHandle = Database | Transaction
 
@@ -101,22 +97,4 @@ export async function linkChannelToInbox(
   }
 
   return Result.nil()
-}
-
-/**
- * Add an OpenPhone channel for the org. Wraps the provider-specific
- * `OpenPhoneService.addIntegration` so the router doesn't need to
- * instantiate it.
- */
-export async function addOpenPhoneChannel(
-  ctx: ChannelCtx & { userId: string },
-  input: OpenPhoneInput
-) {
-  logger.info('Attempting to add OpenPhone channel', {
-    organizationId: ctx.organizationId,
-    phoneNumber: input.phoneNumber,
-  })
-
-  const service = new OpenPhoneService(ctx.db, ctx.organizationId, ctx.userId)
-  return await service.addIntegration(input)
 }
