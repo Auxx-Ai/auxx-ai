@@ -107,7 +107,7 @@ export function ImportStepCards({
               </div>
             </StepperTrigger>
             {index < stepsToRender.length - 1 && (
-              <StepperSeparator className='mx-4 bg-primary-200' />
+              <StepperSeparator className='sm:mx-4 bg-primary-200' />
             )}
           </StepperItem>
         )

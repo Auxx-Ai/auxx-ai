@@ -29,7 +29,14 @@ import type { RouterOutputs } from '~/trpc/react'
 import { useBufferedConfig } from '../hooks/use-buffered-config'
 import { useSourcePaths } from '../hooks/use-source-paths'
 import { useStreamMutations } from '../hooks/use-stream-mutations'
+import {
+  type BackfillWindowSpan,
+  describePagination,
+  type PaginationSpec,
+} from '../lib/describe-pagination'
+import { detectPagination } from '../lib/detect-pagination'
 import { MappingTree } from './mapping-tree'
+import { PaginationSummary } from './pagination-summary'
 import {
   JsonBodyEditor,
   RecordKeyValueEditor,
@@ -109,7 +116,11 @@ export function StreamConfigPanel({
     schema: Record<string, unknown>
     seededFrom: SeededFrom
   } | null>(null)
-  const [sample, setSample] = useState<{ response: unknown; recordCount: number } | null>(null)
+  const [sample, setSample] = useState<{
+    response: unknown
+    recordCount: number
+    responseHeaders?: Record<string, string>
+  } | null>(null)
 
   const sourcePaths = useSourcePaths(stream.sourceSchema as Record<string, unknown> | null)
   const hasSchema = !!stream.sourceSchema
@@ -123,6 +134,7 @@ export function StreamConfigPanel({
     saveRequestConfig,
     setStreamSchema,
     sampleFetch,
+    applyPagination,
     isSavingRequest,
     isSampling,
   } = useStreamMutations(connector.id)
@@ -200,6 +212,39 @@ export function StreamConfigPanel({
   const schemaSentence = hasSchema
     ? (SCHEMA_SOURCE_SENTENCE[stream.schemaSource] ?? SCHEMA_SOURCE_SENTENCE.manual)
     : SCHEMA_SOURCE_NONE
+
+  // Pagination transparency (Step 10): describe the stream's configured spec and,
+  // after a test fetch, an inform-only detected proposal. Read-only — both render
+  // through PaginationSummary. The "Use this" apply is wired but hidden (§3.4).
+  const pagination = (stream.requestConfig as { pagination?: PaginationSpec } | null)?.pagination
+  const backfillWindowSpan = (
+    connector.config as { backfillWindowSpan?: BackfillWindowSpan } | null
+  )?.backfillWindowSpan
+  const pageSizeFallback = numericParam(requestConfig.params)
+  const configuredPagination = describePagination(pagination, {
+    backfillWindowSpan,
+    pageSizeFallback,
+  })
+  const detected = sample
+    ? detectPagination({
+        body: sample.response,
+        headers: sample.responseHeaders,
+        pageRecordCount: sample.recordCount,
+        pageLimit: pagination?.pageSize ?? pageSizeFallback,
+      })
+    : null
+  const detectedPagination = detected
+    ? describePagination(detected.spec, { pageSizeFallback })
+    : null
+
+  const handleUsePagination = () => {
+    if (!detected) return
+    const merged = {
+      ...((stream.requestConfig as Record<string, unknown>) ?? {}),
+      pagination: detected.spec,
+    }
+    void applyPagination(stream.id, merged as Parameters<typeof applyPagination>[1])
+  }
 
   const body = (
     <>
@@ -334,6 +379,29 @@ export function StreamConfigPanel({
               <StreamSample sample={sample} onUseShape={handleUseShape} />
             </Section>
 
+            {/* 2b. Pagination — read-only "how this fetch paginates" (generic-rest) */}
+            {isGenericRest && (
+              <Section
+                title='Pagination'
+                icon={<Waypoints className='size-4' />}
+                initialOpen
+                collapsible={false}
+                description='How this fetch reads through multiple pages.'>
+                <div className='flex flex-col gap-3'>
+                  <PaginationSummary description={configuredPagination} variant='configured' />
+                  {detectedPagination && detected && (
+                    <PaginationSummary
+                      description={detectedPagination}
+                      variant='detected'
+                      note={detected.note}
+                      onUse={handleUsePagination}
+                      useLoading={isSavingRequest}
+                    />
+                  )}
+                </div>
+              </Section>
+            )}
+
             {/* 3. Schema — derived from the sample or hand-edited */}
             <Section
               title='Source schema'
@@ -423,4 +491,12 @@ export function StreamConfigPanel({
   )
 }
 
-/** A reveal toggle for one request sub-editor, with an optional content badge. */
+/** Pull a numeric page-size from common limit-style query params, for the size row. */
+function numericParam(params?: Record<string, unknown>): number | undefined {
+  for (const key of ['limit', 'per_page', 'page_size', 'maxResults', 'pageSize']) {
+    const value = params?.[key]
+    if (typeof value === 'number') return value
+    if (typeof value === 'string' && /^\d+$/.test(value)) return Number(value)
+  }
+  return undefined
+}

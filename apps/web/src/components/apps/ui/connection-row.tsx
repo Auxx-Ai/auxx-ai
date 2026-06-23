@@ -128,9 +128,9 @@ export function ConnectionRow({
 }
 
 function StatusIcon({ status }: { status: ConnectionStatus }) {
-  if (status === 'connected') return <CheckCircle className='h-4 w-4 text-green-500' />
-  if (status === 'expired') return <Clock className='h-4 w-4 text-yellow-500' />
-  return <XCircle className='h-4 w-4 text-gray-400' />
+  if (status === 'connected') return <CheckCircle className='h-4 w-4 text-green-500 shrink-0' />
+  if (status === 'expired') return <Clock className='h-4 w-4 text-yellow-500 shrink-0' />
+  return <XCircle className='h-4 w-4 text-gray-400 shrink-0' />
 }
 
 function InlineRenameForm({

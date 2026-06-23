@@ -10,6 +10,7 @@ import {
   addMapping,
   addStream,
   createConnector,
+  createConnectorFromAppCatalog,
   createConnectorFromTemplate,
   type DataConnectorType,
   decodeMapping,
@@ -49,11 +50,20 @@ const connectorTypeSchema = z
     message: 'Unknown connector type',
   })
 
+// Faithful mirror of the engine `PaginationSpec` (@auxx/lib/data-connectors/types).
+// Keep the field set in sync — a narrower schema silently strips the enriched
+// cursor/next-url fields a detected (Stripe/Salesforce-shaped) spec carries.
 const paginationSchema = z.object({
-  kind: z.enum(['cursor', 'page', 'offset', 'link-header', 'none']),
-  cursorPath: z.string().optional(),
+  kind: z.enum(['cursor', 'page', 'offset', 'link-header', 'next-url', 'none']),
   cursorParam: z.string().optional(),
+  cursorPath: z.string().optional(),
+  cursorFrom: z.enum(['response', 'lastRecord']).optional(),
+  cursorRecordField: z.string().optional(),
+  recordsPath: z.string().optional(),
+  hasMorePath: z.string().optional(),
+  nextUrlPath: z.string().optional(),
   pageParam: z.string().optional(),
+  offsetBase: z.union([z.literal(0), z.literal(1)]).optional(),
   limitParam: z.string().optional(),
   pageSize: z.number().int().positive().optional(),
 })
@@ -359,6 +369,36 @@ export const dataConnectorRouter = createTRPCRouter({
           template
         )
       }
+
+      // App connector (`app:<slug>`) — seed its streams from the installed app's
+      // catalog declaration (create-sync-flow §3.1, Tier 1) so setup arrives with
+      // the source schema pre-filled, like a template. Falls through to a bare
+      // connector if the app declares no data connector.
+      if (input.type.startsWith('app:')) {
+        const slug = input.type.slice('app:'.length)
+        const installedApps = await getCachedInstalledApps(ctx.session.organizationId)
+        const app =
+          installedApps.find((a) => a.installationId === input.appInstallationId) ??
+          installedApps.find((a) => a.app.slug === slug)
+        const catalog = app?.dataConnectors?.[0] ?? null
+        if (catalog) {
+          return createConnectorFromAppCatalog(
+            ctx.db,
+            ctx.session.organizationId,
+            {
+              name: input.name,
+              type: input.type as DataConnectorType,
+              credentialId: input.credentialId,
+              appInstallationId: input.appInstallationId,
+              syncBehavior: input.syncBehavior,
+              scheduleConfig: input.scheduleConfig,
+              createdById: ctx.session.userId,
+            },
+            catalog
+          )
+        }
+      }
+
       return createConnector(ctx.db, ctx.session.organizationId, {
         name: input.name,
         type: input.type as DataConnectorType,

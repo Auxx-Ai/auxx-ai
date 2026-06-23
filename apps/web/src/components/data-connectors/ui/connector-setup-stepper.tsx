@@ -4,8 +4,16 @@
 import { Button } from '@auxx/ui/components/button'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { EmptySection } from '@auxx/ui/components/section'
+import {
+  Stepper,
+  StepperDescription,
+  StepperIndicator,
+  StepperItem,
+  StepperSeparator,
+  StepperTitle,
+  StepperTrigger,
+} from '@auxx/ui/components/stepper'
 import { toastError } from '@auxx/ui/components/toast'
-import { cn } from '@auxx/ui/lib/utils'
 import { Check, Clock, FlaskConical, Layers, Play, Plug, Waypoints } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { api, type RouterOutputs } from '~/trpc/react'
@@ -80,12 +88,27 @@ export function ConnectorSetupStepper({ connector }: ConnectorSetupStepperProps)
   const primaryStream = streams[0] ?? null
 
   const progress = deriveSetupProgress(connector, streams)
+
+  // Gating: can the user advance past this step? Schedule is always satisfiable
+  // (Manual is a valid terminal state), so it never blocks the flow.
   const doneById: Record<SetupStepId, boolean> = {
     connect: progress.connect,
     sample: progress.sample,
     map: progress.map,
-    schedule: true, // Manual is a valid terminal state — always satisfiable.
+    schedule: true,
     run: false, // Terminal action, never "done" while still pending.
+  }
+
+  // Visual completion (filled indicator + check + filled rail). Distinct from
+  // gating: Schedule isn't shown completed until the user actually reaches it —
+  // otherwise it renders as a dark, done-looking step while still on step 1.
+  // Passing-completed (`idx < activeIdx`) is added per-step in the render.
+  const completedById: Record<SetupStepId, boolean> = {
+    connect: progress.connect,
+    sample: progress.sample,
+    map: progress.map,
+    schedule: false,
+    run: false,
   }
 
   const { syncNow, isSyncing } = useConnectorMutations()
@@ -190,71 +213,58 @@ export function ConnectorSetupStepper({ connector }: ConnectorSetupStepperProps)
     )
   }
 
+  const activeNumber = STEP_ORDER.indexOf(active) + 1
+
   return (
     <div className='relative flex min-h-0 flex-1 flex-col'>
       <ScrollArea className='h-full' scrollbarClassName='w-1.5' noFade>
-        <div className='mx-auto flex max-w-2xl flex-col gap-1 px-4 py-6'>
+        <Stepper
+          value={activeNumber}
+          orientation='vertical'
+          onValueChange={(n) => {
+            const id = STEP_ORDER[n - 1]
+            if (id && isUnlocked(id)) setActive(id)
+          }}
+          className='mx-auto flex w-full max-w-3xl flex-col px-4 py-6'>
           {STEPS.map((step, idx) => {
-            const done = doneById[step.id]
-            const unlocked = isUnlocked(step.id)
+            // Visually completed = genuinely done, or already passed (an earlier step).
+            const completed = completedById[step.id] || idx < STEP_ORDER.indexOf(active)
             const isActive = active === step.id
             const Icon = step.icon
             const isLast = idx === STEPS.length - 1
             return (
-              <div key={step.id} className='flex gap-3'>
-                {/* Rail — number/check badge + connecting line. */}
-                <div className='flex flex-col items-center'>
-                  <button
-                    type='button'
-                    disabled={!unlocked}
-                    onClick={() => unlocked && setActive(step.id)}
-                    className={cn(
-                      'flex size-8 shrink-0 items-center justify-center rounded-full border text-sm font-medium transition-colors',
-                      done
-                        ? 'border-good-500 bg-good-500 text-white'
-                        : isActive
-                          ? 'border-primary bg-primary text-primary-foreground'
-                          : unlocked
-                            ? 'border-border bg-background text-muted-foreground hover:border-primary'
-                            : 'border-border bg-muted text-muted-foreground/50',
-                      unlocked ? 'cursor-pointer' : 'cursor-not-allowed'
-                    )}>
-                    {done ? <Check className='size-4' /> : <Icon className='size-4' />}
-                  </button>
-                  {!isLast && <div className='my-1 w-px flex-1 bg-border' />}
-                </div>
+              <StepperItem
+                key={step.id}
+                step={idx + 1}
+                completed={completed}
+                disabled={!isUnlocked(step.id)}
+                className='w-full not-last:pb-6'>
+                <StepperTrigger className='items-start gap-3 text-left'>
+                  <StepperIndicator
+                    asChild
+                    className='bg-primary-100 text-primary-500 data-[state=active]:bg-primary-700 data-[state=active]:text-primary-50 data-[state=completed]:bg-primary-700 data-[state=completed]:text-primary-50'>
+                    {completed ? <Check className='size-4' /> : <Icon className='size-4' />}
+                  </StepperIndicator>
+                  <div className='mt-0.5 flex flex-col items-start'>
+                    <StepperTitle className='font-semibold'>{step.title}</StepperTitle>
+                    <StepperDescription className='text-xs'>{step.description}</StepperDescription>
+                  </div>
+                </StepperTrigger>
 
-                {/* Step content. */}
-                <div className={cn('flex-1 pb-6', !isActive && 'pt-1')}>
-                  <button
-                    type='button'
-                    disabled={!unlocked}
-                    onClick={() => unlocked && setActive(step.id)}
-                    className={cn(
-                      'flex flex-col items-start text-left',
-                      unlocked ? 'cursor-pointer' : 'cursor-not-allowed'
-                    )}>
-                    <span
-                      className={cn(
-                        'text-sm font-semibold',
-                        !unlocked && 'text-muted-foreground/60'
-                      )}>
-                      {step.title}
-                    </span>
-                    <span className='text-xs text-muted-foreground'>{step.description}</span>
-                  </button>
+                {!isLast && (
+                  <StepperSeparator className='bg-primary-200 group-data-[state=completed]/step:bg-primary-700' />
+                )}
 
-                  {isActive && (
-                    <div className='mt-3 rounded-lg border bg-background p-1'>
-                      {renderBody(step.id)}
-                      <div className='px-1 pb-1'>{renderFooter(step.id)}</div>
-                    </div>
-                  )}
-                </div>
-              </div>
+                {isActive && (
+                  <div className='mt-3 ml-9 w-[calc(100%-2.25rem)] rounded-lg border bg-background p-1'>
+                    {renderBody(step.id)}
+                    <div className='px-1 pb-1'>{renderFooter(step.id)}</div>
+                  </div>
+                )}
+              </StepperItem>
             )
           })}
-        </div>
+        </Stepper>
       </ScrollArea>
       <ConnectorSaveBar />
     </div>

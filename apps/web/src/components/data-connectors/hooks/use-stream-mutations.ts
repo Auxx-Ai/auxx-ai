@@ -357,6 +357,17 @@ export function useStreamMutations(connectorId: string) {
     [sampleFetchM]
   )
 
+  // Persist a detected pagination spec by merging it onto the stream's whole
+  // request config (path/method/headers/params/body preserved). Powers the hidden
+  // "Use this" action (Step 10 §3.4); reuses the normal setStreamRequestConfig.
+  const applyPagination = useCallback(
+    (
+      streamId: string,
+      requestConfig: Parameters<typeof saveRequestConfigM.mutateAsync>[0]['requestConfig']
+    ) => saveRequestConfigM.mutateAsync({ streamId, requestConfig }),
+    [saveRequestConfigM]
+  )
+
   return {
     // Optimistic instant toggles
     setMappingTarget,
@@ -370,6 +381,7 @@ export function useStreamMutations(connectorId: string) {
     saveRequestConfig,
     setStreamSchema,
     sampleFetch,
+    applyPagination,
     // Pending flags
     isSavingRequest: saveRequestConfigM.isPending,
     isSampling: sampleFetchM.isPending,
