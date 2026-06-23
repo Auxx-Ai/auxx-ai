@@ -9,7 +9,7 @@ import { type CatalogDataConnector, type Database, schema } from '@auxx/database
 import { createScopedLogger } from '@auxx/logger'
 import { getFieldDefinitionId, getFieldId, toResourceFieldId } from '@auxx/types/field'
 import { generateId } from '@auxx/utils'
-import { and, eq } from 'drizzle-orm'
+import { and, eq, inArray } from 'drizzle-orm'
 import { getCachedCustomFields, getCachedEntityDefId } from '../cache'
 import { BadRequestError, NotFoundError } from '../errors'
 import { appCatalogStreamSchema } from './app-catalog'
@@ -365,10 +365,17 @@ export type DeleteSyncedDataBehavior = 'keep' | 'archive' | 'delete'
 /**
  * Delete a connector. The provisioned def/fields and synced entity records are the
  * user's CRM data — we never auto-delete them. `behavior` governs the bound
- * EntityInstances (via DataConnectorItem):
+ * **owned** EntityInstances (via DataConnectorItem):
  *   - 'keep'    → leave records untouched (default).
- *   - 'archive' → soft-delete the bound instances (set archivedAt).
- *   - 'delete'  → hard-delete the bound instances.
+ *   - 'archive' → soft-delete the owned instances (set archivedAt).
+ *   - 'delete'  → hard-delete the owned instances.
+ *
+ * `behavior` applies to OWNED records only. Contributing records belong to the
+ * user (the connector only enriched pre-existing Contacts/Tickets), so they are
+ * ALWAYS kept regardless of `behavior`; their per-cell
+ * `FieldValue.managedByConnectorId` markers are nulled automatically by the FK
+ * `set null` when the connector row cascades away.
+ *
  * The DataConnector row + its streams/mappings/items/runs cascade on delete; the
  * `dataConnectorId` FK on EntityDefinition/CustomField is `set null`, so provisioned
  * schema survives (now an ordinary user-owned def/field).
@@ -393,22 +400,48 @@ export async function deleteConnector(
   }
 
   if (behavior !== 'keep') {
-    const items = await db.query.DataConnectorItem.findMany({
-      where: eq(schema.DataConnectorItem.dataConnectorId, id),
-      columns: { entityInstanceId: true },
-    })
-    const instanceIds = items.map((i) => i.entityInstanceId).filter((v): v is string => v !== null)
-    if (instanceIds.length > 0) {
-      if (behavior === 'archive') {
-        for (const instanceId of instanceIds) {
-          await db
-            .update(schema.EntityInstance)
-            .set({ archivedAt: new Date() })
-            .where(eq(schema.EntityInstance.id, instanceId))
-        }
-      } else {
-        for (const instanceId of instanceIds) {
-          await db.delete(schema.EntityInstance).where(eq(schema.EntityInstance.id, instanceId))
+    // archive/delete applies ONLY to OWNED records — the connector created those
+    // (mirror rows). Contributing records belong to the user (the connector merely
+    // enriched existing Contacts/Tickets), so they are ALWAYS kept; their per-cell
+    // `FieldValue.managedByConnectorId` markers null automatically via the FK.
+    const ownedMappings = await db
+      .select({ id: schema.DataConnectorMapping.id })
+      .from(schema.DataConnectorMapping)
+      .innerJoin(
+        schema.DataConnectorStream,
+        eq(schema.DataConnectorMapping.dataConnectorStreamId, schema.DataConnectorStream.id)
+      )
+      .where(
+        and(
+          eq(schema.DataConnectorStream.dataConnectorId, id),
+          eq(schema.DataConnectorMapping.targetMode, 'owned')
+        )
+      )
+    const ownedMappingIds = ownedMappings.map((m) => m.id)
+
+    if (ownedMappingIds.length > 0) {
+      const items = await db.query.DataConnectorItem.findMany({
+        where: and(
+          eq(schema.DataConnectorItem.dataConnectorId, id),
+          inArray(schema.DataConnectorItem.mappingId, ownedMappingIds)
+        ),
+        columns: { entityInstanceId: true },
+      })
+      const instanceIds = items
+        .map((i) => i.entityInstanceId)
+        .filter((v): v is string => v !== null)
+      if (instanceIds.length > 0) {
+        if (behavior === 'archive') {
+          for (const instanceId of instanceIds) {
+            await db
+              .update(schema.EntityInstance)
+              .set({ archivedAt: new Date() })
+              .where(eq(schema.EntityInstance.id, instanceId))
+          }
+        } else {
+          for (const instanceId of instanceIds) {
+            await db.delete(schema.EntityInstance).where(eq(schema.EntityInstance.id, instanceId))
+          }
         }
       }
     }

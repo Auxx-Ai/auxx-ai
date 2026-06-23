@@ -1,0 +1,2 @@
+ALTER TABLE "FieldValue" ADD COLUMN "managedByConnectorId" text;--> statement-breakpoint
+ALTER TABLE "FieldValue" ADD CONSTRAINT "FieldValue_managedByConnectorId_DataConnector_id_fk" FOREIGN KEY ("managedByConnectorId") REFERENCES "public"."DataConnector"("id") ON DELETE set null ON UPDATE cascade;

@@ -84,6 +84,14 @@ interface CustomFieldValueState {
    */
   aiStates: Record<FieldValueKey, AiCellState>
 
+  /**
+   * Contributing data-connector marker per key (the owning connector id).
+   * Parallel slice to `values`, mirroring `aiStates`. A key with an entry has a
+   * "Synced by <connector>" badge; the cell stays editable. Hydrated from the
+   * `managedByConnectorId` field on fetched values.
+   */
+  managedStates: Record<FieldValueKey, string>
+
   /** Pending optimistic AI markers (for rollback on mutation error). */
   pendingAiStates: Record<FieldValueKey, PendingAiState>
 
@@ -141,6 +149,12 @@ interface CustomFieldValueState {
 
   /** Remove any AI marker (same as `setAiState(key, null)`). */
   clearAiState: (key: FieldValueKey) => void
+
+  /**
+   * Apply the contributing data-connector marker to a cell. `connectorId=null`
+   * clears the marker; otherwise records the owning connector id.
+   */
+  setManagedState: (key: FieldValueKey, connectorId: string | null) => void
 
   /** Mark a batch of keys as loading */
   startLoading: (batchId: string, keys: FieldValueKey[]) => void
@@ -265,6 +279,7 @@ export const useFieldValueStore = create<CustomFieldValueState>()(
     pendingUpdates: {},
     aiStates: {},
     pendingAiStates: {},
+    managedStates: {},
     mutationVersions: {},
     fetchingKeys: {},
 
@@ -432,6 +447,18 @@ export const useFieldValueStore = create<CustomFieldValueState>()(
       })
     },
 
+    setManagedState: (key, connectorId) => {
+      set((state) => {
+        if (connectorId === null) {
+          if (!(key in state.managedStates)) return state
+          const { [key]: _, ...rest } = state.managedStates
+          return { managedStates: rest }
+        }
+        if (state.managedStates[key] === connectorId) return state
+        return { managedStates: { ...state.managedStates, [key]: connectorId } }
+      })
+    },
+
     startLoading: (batchId, keys) => {
       set((state) => ({
         loadingBatches: {
@@ -465,16 +492,23 @@ export const useFieldValueStore = create<CustomFieldValueState>()(
         const newValues = { ...state.values }
         const newUpdatedAt = { ...state.updatedAt }
         const newAiStates = { ...state.aiStates }
+        const newManagedStates = { ...state.managedStates }
 
         for (const key of Object.keys(newValues)) {
           if (fieldValueKeyMatchesResource(key as FieldValueKey, recordId)) {
             delete newValues[key as FieldValueKey]
             delete newUpdatedAt[key as FieldValueKey]
             delete newAiStates[key as FieldValueKey]
+            delete newManagedStates[key as FieldValueKey]
           }
         }
 
-        return { values: newValues, updatedAt: newUpdatedAt, aiStates: newAiStates }
+        return {
+          values: newValues,
+          updatedAt: newUpdatedAt,
+          aiStates: newAiStates,
+          managedStates: newManagedStates,
+        }
       })
     },
 
@@ -483,16 +517,23 @@ export const useFieldValueStore = create<CustomFieldValueState>()(
         const newValues = { ...state.values }
         const newUpdatedAt = { ...state.updatedAt }
         const newAiStates = { ...state.aiStates }
+        const newManagedStates = { ...state.managedStates }
 
         for (const key of Object.keys(newValues)) {
           if (fieldValueKeyMatchesField(key as FieldValueKey, fieldRef)) {
             delete newValues[key as FieldValueKey]
             delete newUpdatedAt[key as FieldValueKey]
             delete newAiStates[key as FieldValueKey]
+            delete newManagedStates[key as FieldValueKey]
           }
         }
 
-        return { values: newValues, updatedAt: newUpdatedAt, aiStates: newAiStates }
+        return {
+          values: newValues,
+          updatedAt: newUpdatedAt,
+          aiStates: newAiStates,
+          managedStates: newManagedStates,
+        }
       })
     },
 
@@ -500,6 +541,8 @@ export const useFieldValueStore = create<CustomFieldValueState>()(
       set((state) => {
         const newValues = { ...state.values }
         const newUpdatedAt = { ...state.updatedAt }
+        const newAiStates = { ...state.aiStates }
+        const newManagedStates = { ...state.managedStates }
         const recordIdSet = new Set(recordIds)
 
         for (const key of Object.keys(newValues)) {
@@ -507,10 +550,19 @@ export const useFieldValueStore = create<CustomFieldValueState>()(
           if (recordIdSet.has(recordId)) {
             delete newValues[key as FieldValueKey]
             delete newUpdatedAt[key as FieldValueKey]
+            // Drop provenance markers too, else a marker the server has since
+            // removed lingers (rehydration only re-applies non-null markers).
+            delete newAiStates[key as FieldValueKey]
+            delete newManagedStates[key as FieldValueKey]
           }
         }
 
-        return { values: newValues, updatedAt: newUpdatedAt }
+        return {
+          values: newValues,
+          updatedAt: newUpdatedAt,
+          aiStates: newAiStates,
+          managedStates: newManagedStates,
+        }
       })
     },
 
@@ -519,15 +571,24 @@ export const useFieldValueStore = create<CustomFieldValueState>()(
         const prefix = `${entityDefinitionId}:`
         const newValues = { ...state.values }
         const newUpdatedAt = { ...state.updatedAt }
+        const newAiStates = { ...state.aiStates }
+        const newManagedStates = { ...state.managedStates }
 
         for (const key of Object.keys(newValues)) {
           if (key.startsWith(prefix)) {
             delete newValues[key as FieldValueKey]
             delete newUpdatedAt[key as FieldValueKey]
+            delete newAiStates[key as FieldValueKey]
+            delete newManagedStates[key as FieldValueKey]
           }
         }
 
-        return { values: newValues, updatedAt: newUpdatedAt }
+        return {
+          values: newValues,
+          updatedAt: newUpdatedAt,
+          aiStates: newAiStates,
+          managedStates: newManagedStates,
+        }
       })
     },
 
@@ -539,6 +600,7 @@ export const useFieldValueStore = create<CustomFieldValueState>()(
         pendingUpdates: {},
         aiStates: {},
         pendingAiStates: {},
+        managedStates: {},
         mutationVersions: {},
         fetchingKeys: {},
       })

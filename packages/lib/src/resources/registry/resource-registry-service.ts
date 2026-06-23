@@ -95,6 +95,8 @@ type CustomFieldRecord = {
   // App ownership (app-registered custom fields)
   appInstallationId: string | null
   appFieldKey: string | null
+  // Data-connector ownership (owned-mode provisioned field)
+  dataConnectorId: string | null
 }
 
 /** EntityDefinition with display field relations and customFields loaded */
@@ -1060,6 +1062,10 @@ export class ResourceRegistryService {
         isAppOwned,
         appInstallationId: field.appInstallationId ?? undefined,
         appFieldKey: field.appFieldKey ?? undefined,
+
+        // Data-connector ownership (owned-mode provisioned field) — drives the
+        // "Managed by <connector>" lock badge. Distinct from app/system ownership.
+        dataConnectorId: field.dataConnectorId ?? undefined,
 
         // Convenience properties (avoid needing transforms)
         name: field.name,

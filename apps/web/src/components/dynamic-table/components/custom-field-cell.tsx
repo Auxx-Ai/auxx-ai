@@ -9,8 +9,9 @@ import type { FieldId, FieldPath, FieldReference, ResourceFieldId } from '@auxx/
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { memo, useMemo } from 'react'
 import { AiCellOverlay } from '~/components/fields/ai-overlay/ai-cell-overlay'
+import { ConnectorLockBadge } from '~/components/fields/connector-lock-badge'
 import { useField } from '~/components/resources/hooks/use-field'
-import { useFieldValue } from '~/components/resources/hooks/use-field-values'
+import { useFieldManagedState, useFieldValue } from '~/components/resources/hooks/use-field-values'
 import { decodeColumnId } from '../utils/column-id'
 import { ExpandableCell } from './expandable-cell'
 import { FormattedCell } from './formatted-cell'
@@ -64,6 +65,10 @@ export const CustomFieldCell = memo(function CustomFieldCell({
   // Use effectiveFieldType for rendering (handles CALC fields automatically)
   const fieldType = field?.effectiveFieldType
 
+  // Contributing data-connector marker (per-cell, still editable). Called
+  // unconditionally to satisfy hook rules; resolves nothing for path columns.
+  const managedConnectorId = useFieldManagedState(recordId, (field?.id ?? '') as FieldId)
+
   if (isLoading && value === undefined) {
     return (
       <ExpandableCell>
@@ -91,11 +96,26 @@ export const CustomFieldCell = memo(function CustomFieldCell({
     isAiEligible(field.fieldType) &&
     (field.options as { ai?: AiOptions } | null | undefined)?.ai?.enabled === true
 
-  if (!aiEnabled) return cell
+  const content =
+    aiEnabled && field?.id != null && field.fieldType != null ? (
+      <AiCellOverlay recordId={recordId} fieldId={field.id as FieldId} fieldType={field.fieldType}>
+        {cell}
+      </AiCellOverlay>
+    ) : (
+      cell
+    )
+
+  // Contributing connector marker — a small badge in the cell's top-right.
+  // Editable cell: badge only, no read-only chrome (that's owned-mode, gated at
+  // the column header / `updatable=false`).
+  if (!managedConnectorId) return content
 
   return (
-    <AiCellOverlay recordId={recordId} fieldId={field.id as FieldId} fieldType={field.fieldType!}>
-      {cell}
-    </AiCellOverlay>
+    <div className='relative h-full w-full'>
+      {content}
+      <div className='absolute top-0.5 right-0.5 z-10 opacity-60'>
+        <ConnectorLockBadge connectorId={managedConnectorId} mode='contributing' />
+      </div>
+    </div>
   )
 })

@@ -324,6 +324,13 @@ export interface TypedFieldValueResult {
   /** AI metadata from the row (model, generatedAt, errorMessage, etc.). */
   aiMetadata?: AiValueMetadata | null
 
+  /**
+   * Contributing data-connector that wrote/manages this value (per-cell marker
+   * from `FieldValue.managedByConnectorId`), `null` when user/AI/owned. Lets the
+   * client render a "Synced by <connector>" badge on an otherwise-editable cell.
+   */
+  managedByConnectorId?: string | null
+
   /** Issues found during fetch (optional) */
   issues?: string[]
 }

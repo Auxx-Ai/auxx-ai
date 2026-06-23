@@ -9,8 +9,13 @@
 //
 // Explicit deletes flow through the connector's resolveDelete → archiveRecord.
 
+import { schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
+import { getFieldId, type ResourceFieldId } from '@auxx/types/field'
+import { and, eq, notInArray } from 'drizzle-orm'
+import { resolveConnectorFieldRef } from '../agents/bindings/resolve'
 import { connectorFor } from './connectors'
+import { buildWriteKeyToFieldId } from './field-id-resolver'
 import { findItem, type StreamWithMappings } from './service'
 import { entitySink } from './sinks/entity-sink'
 import type { SyncCtx } from './sinks/types'
@@ -43,6 +48,90 @@ export async function reconcileOrphans(ctx: SyncCtx, streams: ReconcilableStream
         await entitySink.archiveRecord(ctx, item, mapping.orphanBehavior)
       }
     }
+  }
+}
+
+/**
+ * Un-manage stale contributing markers (Field Lock & Provenance, Phase 2.6).
+ *
+ * The FK `set null` on `FieldValue.managedByConnectorId` covers connector
+ * *deletion*. This pass covers the case the FK can't: a connector that still
+ * exists but whose mapping no longer writes a field — its old `managedBy` marker
+ * should be cleared so the cell stops showing "Synced by <connector>".
+ *
+ * For each target def this connector contributes to, we union the concrete
+ * `CustomField.id`s it currently writes (across all its contributing mappings on
+ * that def) and clear any marker the connector still holds on a field outside
+ * that set. One bounded UPDATE per def — scoped by the connector marker itself,
+ * so it doesn't enumerate instances. Owned mappings are skipped (their
+ * provenance is the column-grain `CustomField.dataConnectorId`).
+ *
+ * Safety: a currently-mapped ref that fails to resolve (e.g. an unbound/expired
+ * `@app:` connection at finalize time) marks the def's keep-set INCOMPLETE, and
+ * we skip the clearing UPDATE for that def entirely. Otherwise a transient
+ * resolution blip would drop the unresolved field from the keep-set and wipe its
+ * valid marker — and, if every ref failed, clear EVERY marker for the connector
+ * on that def. Un-managing a genuinely-dropped field still works: it's simply
+ * absent from `fieldMappings`, so the remaining (resolvable) refs form the
+ * keep-set and the dropped field's marker clears.
+ */
+export async function reconcileManagedMarkers(
+  ctx: SyncCtx,
+  streams: ReconcilableStream[]
+): Promise<void> {
+  const connectionId = ctx.connector.credentialId ?? undefined
+  // Per target def: the concrete CustomField.id set this connector currently
+  // writes, plus whether every currently-mapped ref resolved this run.
+  const byDef = new Map<string, { keep: Set<string>; complete: boolean }>()
+
+  for (const { mappings } of streams) {
+    for (const mapping of mappings) {
+      if (mapping.targetMode !== 'contributing') continue
+
+      const keyToId = await buildWriteKeyToFieldId(ctx.orgId, mapping.entityDefinitionId)
+      const entry = byDef.get(mapping.entityDefinitionId) ?? {
+        keep: new Set<string>(),
+        complete: true,
+      }
+
+      for (const fm of mapping.fieldMappings) {
+        if (fm.targetFieldRef == null) continue // unassigned draft — not a managed field
+        const resolved = await resolveConnectorFieldRef(
+          fm.targetFieldRef as ResourceFieldId,
+          ctx.orgId,
+          connectionId
+        )
+        const id = resolved ? keyToId.get(getFieldId(resolved)) : undefined
+        if (id) entry.keep.add(id)
+        // A mapped ref we couldn't resolve to a concrete field — don't risk
+        // clearing this def's markers on an incomplete view.
+        else entry.complete = false
+      }
+      byDef.set(mapping.entityDefinitionId, entry)
+    }
+  }
+
+  for (const [defId, { keep, complete }] of byDef) {
+    if (!complete) {
+      logger.info('skipping managed-marker un-manage — incomplete field resolution', {
+        connectorId: ctx.connector.id,
+        entityDefinitionId: defId,
+      })
+      continue
+    }
+    const keepIds = Array.from(keep)
+    await ctx.db
+      .update(schema.FieldValue)
+      .set({ managedByConnectorId: null })
+      .where(
+        and(
+          eq(schema.FieldValue.organizationId, ctx.orgId),
+          eq(schema.FieldValue.managedByConnectorId, ctx.connector.id),
+          eq(schema.FieldValue.entityDefinitionId, defId),
+          // Empty set (all refs resolved, none mapped) ⇒ clear every marker.
+          keepIds.length > 0 ? notInArray(schema.FieldValue.fieldId, keepIds) : undefined
+        )
+      )
   }
 }
 
