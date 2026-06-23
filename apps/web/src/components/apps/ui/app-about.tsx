@@ -4,8 +4,46 @@ import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { Item, ItemContent, ItemGroup, ItemHeader } from '@auxx/ui/components/item'
 import { format } from 'date-fns'
-import { Code, Globe, LucideGitGraph, Mail } from 'lucide-react'
+import type { LucideIcon } from 'lucide-react'
+import { Blocks, Code, Globe, Link2, LucideGitGraph, Mail, Plug, Wrench, Zap } from 'lucide-react'
+import { Tooltip } from '~/components/global/tooltip'
 import type { RouterOutputs } from '~/trpc/react'
+
+type CapabilityGroup = RouterOutputs['apps']['getBySlug']['capabilities']['tools']
+
+/**
+ * A capability count badge ("8 Tools") with a hover tooltip listing the item
+ * names and a "+N more" line when the list is capped.
+ */
+function CapabilityBadge({
+  group,
+  icon: Icon,
+  singular,
+  plural,
+}: {
+  group: CapabilityGroup
+  icon: LucideIcon
+  singular: string
+  plural: string
+}) {
+  const hidden = group.count - group.names.length
+  return (
+    <Tooltip
+      contentComponent={
+        <ul className='space-y-0.5 text-xs'>
+          {group.names.map((name) => (
+            <li key={name}>{name}</li>
+          ))}
+          {hidden > 0 && <li className='text-muted-foreground'>+{hidden} more</li>}
+        </ul>
+      }>
+      <Badge variant='secondary' className='gap-1'>
+        <Icon className='size-3' />
+        {group.count} {group.count === 1 ? singular : plural}
+      </Badge>
+    </Tooltip>
+  )
+}
 
 /**
  * Props for AppAbout component
@@ -93,6 +131,53 @@ function AppAbout({ app }: Props) {
               </ItemContent>
             </Item>
           )}
+          {(() => {
+            const caps = app.capabilities
+            const groups = [
+              { group: caps.tools, icon: Wrench, singular: 'Tool', plural: 'Tools' },
+              {
+                group: caps.quickActions,
+                icon: Zap,
+                singular: 'Quick action',
+                plural: 'Quick actions',
+              },
+              {
+                group: caps.workflowBlocks,
+                icon: Blocks,
+                singular: 'Workflow block',
+                plural: 'Workflow blocks',
+              },
+              {
+                group: caps.dataConnectors,
+                icon: Plug,
+                singular: 'Data connector',
+                plural: 'Data connectors',
+              },
+            ].filter((g) => g.group.count > 0)
+            if (groups.length === 0 && !caps.connection) return null
+            return (
+              <Item className='p-0 gap-1'>
+                <ItemHeader className='text-xs text-primary-400'>Includes</ItemHeader>
+                <ItemContent className='flex flex-row flex-wrap gap-1 items-start'>
+                  {groups.map((g) => (
+                    <CapabilityBadge
+                      key={g.plural}
+                      group={g.group}
+                      icon={g.icon}
+                      singular={g.singular}
+                      plural={g.plural}
+                    />
+                  ))}
+                  {caps.connection && (
+                    <Badge variant='secondary' className='gap-1'>
+                      <Link2 className='size-3' />
+                      {caps.connection.label}
+                    </Badge>
+                  )}
+                </ItemContent>
+              </Item>
+            )
+          })()}
           {/* {latestVersion && (
             <Item className="p-0 gap-1">
               <ItemHeader className="text-xs text-primary-400">Current version</ItemHeader>

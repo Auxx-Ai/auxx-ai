@@ -1,6 +1,6 @@
 // packages/lib/src/apps/get-app-details.ts
 
-import type { Database } from '@auxx/database'
+import type { CatalogPayload, Database } from '@auxx/database'
 import {
   type ConnectionDefinitionSummary,
   type ConnectionMethod,
@@ -16,6 +16,30 @@ export interface GetAppWithStatusInput {
   appSlug: string
   organizationId: string
   db: Database
+}
+
+/**
+ * One capability category for the About-page "Includes" badges. `names` is capped
+ * (see NAME_CAP) for payload size; `count` is the true total so the badge can show
+ * "+N more" beyond the listed names.
+ */
+export interface CapabilityGroup {
+  count: number
+  names: string[]
+}
+
+/**
+ * Compact, client-safe summary of what an app's latest deployment defines.
+ * Computed from `AppDeployment.catalog` — no server-only catalog types cross the wire.
+ */
+export interface AppCapabilitySummary {
+  tools: CapabilityGroup
+  quickActions: CapabilityGroup
+  /** Workflow blocks + workflow triggers, combined. */
+  workflowBlocks: CapabilityGroup
+  dataConnectors: CapabilityGroup
+  /** Derived connection descriptor, or null when the app needs no connection. */
+  connection: { label: string } | null
 }
 
 /**
@@ -68,6 +92,8 @@ export interface AppWithStatusOutput {
     status: string
     createdAt: Date
   }>
+  /** What the latest deployment defines — surfaced as "Includes" badges on the About page. */
+  capabilities: AppCapabilitySummary
 }
 
 /**
@@ -140,21 +166,29 @@ export async function getAppWithInstallationStatus(
     columns: { title: true, logoUrl: true },
   })
 
-  // Fetch connection methods (+ derived two-slot view) if app is installed
+  // Connection methods are app-keyed (not installation-scoped), so fetch them regardless of
+  // installation — the About page needs them to derive the connection badge for not-yet-installed
+  // apps. The per-scope two-slot view stays installed-only (only meaningful once connected).
   const connectionDefinitions: AppWithStatusOutput['installation']['connectionDefinitions'] = {}
-  let methods: ConnectionMethod[] = []
+  const methodsResult = await listAppConnectionDefinitions(cachedApp.id)
+  const methods: ConnectionMethod[] = methodsResult.isOk() ? methodsResult.value : []
   if (installation) {
-    const [userConnDef, orgConnDef, methodsResult] = await Promise.all([
+    const [userConnDef, orgConnDef] = await Promise.all([
       getAppConnectionDefinition(cachedApp.id, false),
       getAppConnectionDefinition(cachedApp.id, true),
-      listAppConnectionDefinitions(cachedApp.id),
     ])
     if (userConnDef.isOk() && userConnDef.value) connectionDefinitions.user = userConnDef.value
     if (orgConnDef.isOk() && orgConnDef.value) {
       connectionDefinitions.organization = orgConnDef.value
     }
-    if (methodsResult.isOk()) methods = methodsResult.value
   }
+
+  // Summarize the latest accessible deployment's catalog into client-safe count + name groups.
+  const capabilities = summarizeCapabilities(
+    deployments[0]?.catalog ?? null,
+    methods,
+    cachedApp.hasOauth
+  )
 
   return {
     ok: true,
@@ -202,6 +236,48 @@ export async function getAppWithInstallationStatus(
         status: d.status,
         createdAt: d.createdAt,
       })),
+      capabilities,
     },
   }
+}
+
+/** Max item names projected per category — the tooltip shows "+N more" beyond this. */
+const CAPABILITY_NAME_CAP = 20
+
+/** Build a {count, names} group, capping the names list while keeping the true total. */
+function toCapabilityGroup(names: string[]): CapabilityGroup {
+  return { count: names.length, names: names.slice(0, CAPABILITY_NAME_CAP) }
+}
+
+/**
+ * Project the latest deployment's catalog into a compact, client-safe summary.
+ * Defensive against null catalogs (bundle-less apps) and optional catalog keys
+ * (`workflow`, `dataConnectors`) that older catalogs omit.
+ */
+function summarizeCapabilities(
+  catalog: CatalogPayload | null,
+  methods: ConnectionMethod[],
+  hasOauth: boolean
+): AppCapabilitySummary {
+  return {
+    tools: toCapabilityGroup((catalog?.tools ?? []).map((t) => t.name)),
+    quickActions: toCapabilityGroup((catalog?.actions ?? []).map((a) => a.label)),
+    workflowBlocks: toCapabilityGroup([
+      ...(catalog?.workflow?.blocks ?? []).map((b) => b.label),
+      ...(catalog?.workflow?.triggers ?? []).map((t) => t.label),
+    ]),
+    dataConnectors: toCapabilityGroup((catalog?.dataConnectors ?? []).map((c) => c.label)),
+    connection: deriveConnectionDescriptor(methods, hasOauth),
+  }
+}
+
+/** Pick a short label for the connection badge, or null when the app needs no connection. */
+function deriveConnectionDescriptor(
+  methods: ConnectionMethod[],
+  hasOauth: boolean
+): { label: string } | null {
+  if (methods.length === 1) return { label: methods[0].label }
+  if (methods.length > 1) return { label: 'Connection' }
+  if (hasOauth) return { label: 'OAuth connection' }
+  return null
 }
