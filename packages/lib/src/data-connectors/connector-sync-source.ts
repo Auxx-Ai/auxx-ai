@@ -24,6 +24,7 @@ import type { RuntimeConnectionData } from '../connections/resolve-connection-fo
 import { UnifiedCrudHandler } from '../resources/crud/unified-handler'
 import { invalidateSnapshots } from '../snapshot'
 import type { SliceResult, SyncRunCounters, SyncSliceCtx, SyncSource } from '../sync-core/contracts'
+import { runAsyncExportSlice } from './async-export'
 import { runConnectorSlice } from './connector-slice-loop'
 import { reconcileOrphans } from './reconciliation'
 import { resolveRelationships } from './relationship-pass'
@@ -135,6 +136,24 @@ class ConnectorStreamSyncSource implements ConnectorSyncSource {
     const syncCtx = await this.buildCtx(counters, this.deps.stream.mappings)
     const streamKey = this.deps.stream.streamKey
     if (!streamKey) throw new Error(`SyncSource ${this.id}: stream has no streamKey`)
+
+    // Async bulk export (Step 7): a large BACKFILL runs the initiate→poll→download
+    // lifecycle instead of synchronous paging. Steady deltas still page/webhook, so
+    // only the backfill phase branches here.
+    if (this.deps.definition.asyncExport && ctx.phase === 'backfill') {
+      const driver = this.deps.definition.asyncExport.createDriver({
+        streamKey,
+        credential: this.deps.credential,
+        config: this.deps.config,
+        requestConfig: this.deps.stream.requestConfig ?? undefined,
+      })
+      const result = await runAsyncExportSlice({
+        ctx,
+        driver,
+        sink: (record) => sinkSourceRecord(syncCtx, this.deps.stream.mappings, record),
+      })
+      return { ...result, counters: toSyncCounters(counters) }
+    }
 
     // Backfill paginates from the top/cursor (snapshot); steady incremental injects
     // the watermark delta floor (Step 5). The connector reads `state.backfillCursor`
