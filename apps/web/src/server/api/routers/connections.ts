@@ -13,6 +13,7 @@ import {
   mintClientCredentialToken,
   refreshCredentialTokens,
   resolveOwnClientRequirement,
+  runPostConnectHook,
   saveConnection,
 } from '@auxx/lib/connections'
 import { getAllProviders, getProviderByKey } from '@auxx/lib/connections/providers'
@@ -344,6 +345,18 @@ export const connectionsRouter = createTRPCRouter({
           })
         }
       }
+
+      // Domain provisioning after the credential commits — mirrors the oauth2 callback's
+      // post-connect hook for secret connections. No-op unless a hook is registered for the
+      // providerKey (only channel secret providers like `openphone` register one); a hook
+      // throwing surfaces as the save error (the credential is already committed).
+      await runPostConnectHook(def.providerKey, {
+        credentialId: result.value,
+        providerKey: def.providerKey,
+        organizationId,
+        userId: ctx.session.user.id,
+        ...(input.connectionId && { connectionId: input.connectionId }),
+      })
 
       return { credentialId: result.value }
     }),

@@ -1,5 +1,6 @@
 // packages/lib/src/providers/openphone/openphone-provider.ts
 
+import { revealSecrets } from '@auxx/credentials/store'
 import { database as db, schema } from '@auxx/database'
 import { IntegrationProviderType } from '@auxx/database/enums'
 import { createScopedLogger } from '@auxx/logger'
@@ -14,7 +15,6 @@ import type {
   MessageStatus, // Note: Most statuses don't map directly to OpenPhone
   SendMessageOptions,
 } from '../channel-provider.interface' // Adjust path
-import { getChannelTokens } from '../channel-token-accessor'
 import { BaseMessageProvider, type MessageProvider } from '../message-provider-interface'
 import { getProviderCapabilities, type ProviderCapabilities } from '../provider-capabilities'
 import type {
@@ -23,8 +23,6 @@ import type {
   OpenPhoneIntegrationMetadata,
   OpenPhoneMessage,
   OpenPhoneSendMessagePayload,
-  OpenPhoneWebhookPayload,
-  OpenPhoneWebhookResponse,
 } from './types' // Import types
 
 const logger = createScopedLogger('openphone-provider')
@@ -75,21 +73,29 @@ export class OpenPhoneProvider
         `Active OpenPhone integration not found, not enabled, or missing metadata for ID: ${integrationId}`
       )
     }
-    // Get API key from encrypted credentials
-    const tokens = await getChannelTokens(integrationId)
-    if (!tokens.accessToken) {
+    // Get the API key from the linked Credential. As a multi-field secret connection, the apiKey is
+    // stored under the credential's `secrets.fields` bag (not `accessToken`), so read it directly via
+    // the store rather than getChannelTokens (which serves the oauth `accessToken` shape).
+    if (!integration.credentialId) {
+      this.resetState()
+      throw new Error(`Missing credential for OpenPhone integration ID: ${integrationId}`)
+    }
+    const revealed = await revealSecrets<{ fields?: Record<string, string> }>(
+      integration.credentialId,
+      this.organizationId
+    )
+    const apiKey = revealed.isOk() ? revealed.value.secrets.fields?.apiKey : undefined
+    if (!apiKey) {
       this.resetState()
       throw new Error(`Missing API key for OpenPhone integration ID: ${integrationId}`)
     }
-    this.apiKey = tokens.accessToken
+    this.apiKey = apiKey
     try {
       this.metadata = integration.metadata as unknown as OpenPhoneIntegrationMetadata
       this.phoneNumberId = this.metadata.phoneNumberId
       this.phoneNumber = this.metadata.phoneNumber
-      if (!this.phoneNumberId || !this.phoneNumber || !this.metadata.webhookSigningSecret) {
-        throw new Error(
-          'Essential metadata (phoneNumberId, phoneNumber, webhookSigningSecret) missing.'
-        )
+      if (!this.phoneNumberId || !this.phoneNumber) {
+        throw new Error('Essential metadata (phoneNumberId, phoneNumber) missing.')
       }
     } catch (e) {
       this.resetState()
@@ -221,52 +227,12 @@ export class OpenPhoneProvider
     }
   }
   /**
-   * Configures webhooks via API. Requires webhookSigningSecret in metadata.
+   * No-op. Quo (OpenPhone) webhooks are configured manually in the Quo dashboard (the user pastes
+   * the signing secret at connect time); we do not API-create them. Kept to satisfy the
+   * `ChannelProvider` interface.
    */
-  async setupWebhook(callbackUrl: string): Promise<void> {
-    await this.ensureInitialized()
-    if (!this.metadata?.webhookSigningSecret) {
-      throw new Error('Cannot setup webhook: Missing webhookSigningSecret in integration metadata.')
-    }
-    const payload: OpenPhoneWebhookPayload = {
-      url: callbackUrl,
-      secret: this.metadata.webhookSigningSecret,
-      triggers: [
-        'message.received',
-        // Add other triggers as needed: 'call.ringing', 'call.finished', 'message.sent' etc.
-      ],
-    }
-    try {
-      // Check if a webhook already exists (optional, to avoid duplicates)
-      // If webhookId is stored in metadata, maybe update instead of create?
-      // For simplicity, let's assume we create or it errors if one exists with same URL.
-      logger.info('Attempting to create/update OpenPhone webhook', {
-        url: callbackUrl,
-        triggers: payload.triggers,
-      })
-      const response = await this.apiCall<OpenPhoneWebhookResponse>('POST', '/webhooks', payload)
-      logger.info('OpenPhone webhook created/updated successfully', {
-        webhookId: response.id,
-        status: response.status,
-      })
-      // Store the webhook ID in metadata if not already there or different
-      if (this.metadata?.webhookId !== response.id) {
-        const updatedMetadata = { ...this.metadata, webhookId: response.id }
-        await db
-          .update(schema.Integration)
-          .set({ metadata: updatedMetadata as any })
-          .where(eq(schema.Integration.id, this.integrationId!))
-        this.metadata.webhookId = response.id // Update local cache
-      }
-    } catch (error: any) {
-      // Handle potential error if webhook with same URL already exists? OpenPhone might just update it.
-      logger.error('Error setting up OpenPhone webhook:', {
-        error: error.message,
-        url: callbackUrl,
-        integrationId: this.integrationId,
-      })
-      throw error
-    }
+  async setupWebhook(_callbackUrl: string): Promise<void> {
+    logger.debug('setupWebhook is a no-op for OpenPhone (webhook configured manually in Quo).')
   }
   /**
    * Removes the configured webhook via API.

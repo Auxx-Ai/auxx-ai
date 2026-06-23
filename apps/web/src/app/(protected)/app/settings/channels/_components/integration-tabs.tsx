@@ -164,7 +164,7 @@ function getProviderName(provider: string, metadata?: any) {
     case 'instagram':
       return 'Instagram'
     case 'openphone':
-      return 'OpenPhone'
+      return 'Quo'
     default:
       return provider
   }

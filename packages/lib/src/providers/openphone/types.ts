@@ -1,11 +1,12 @@
 // src/lib/providers/openphone/types.ts
 
-// Describes the expected structure in the Integration.metadata field
+// Describes the expected structure in the Integration.metadata field. The apiKey +
+// webhookSigningSecret are NOT here — they live encrypted on the Credential (resolved via
+// Integration.credentialId by getChannelTokens / the webhook route). Only non-secret routing
+// identity sits in metadata.
 export interface OpenPhoneIntegrationMetadata {
-  apiKeyHashed?: boolean // Flag indicating if the stored key is hashed (recommended)
   phoneNumberId: string
   phoneNumber: string // E.164 format
-  webhookSigningSecret: string
   webhookId?: string // ID of the webhook created via API (if applicable)
 }
 

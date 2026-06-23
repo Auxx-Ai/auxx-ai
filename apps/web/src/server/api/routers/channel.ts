@@ -5,7 +5,6 @@ import { type Database, schema } from '@auxx/database'
 import { getCachedAgentById, onCacheEvent } from '@auxx/lib/cache'
 import {
   addExcludedSender as addExcludedSenderToChannel,
-  addOpenPhoneChannel,
   countBillableChannels,
   createChannel,
   disconnect as disconnectChannel,
@@ -217,38 +216,6 @@ export const channelRouter = createTRPCRouter({
       await requireAdminAccess(userId, organizationId)
 
       return syncAllMessages({ db: ctx.db, organizationId, userId }, input.days)
-    }),
-
-  addOpenPhoneIntegration: protectedProcedure
-    .input(
-      z.object({
-        apiKey: z.string().min(10),
-        phoneNumberId: z.string().min(5),
-        phoneNumber: z.string().min(10),
-        webhookSigningSecret: z.string().min(16),
-      })
-    )
-    .use(notDemo('connect OpenPhone'))
-    .mutation(async ({ ctx, input }) => {
-      const { userId } = ctx.session
-      const organizationId = getUserOrganizationId(ctx.session)
-      await requireAdminAccess(userId, organizationId)
-
-      await checkChannelLimit(ctx.db, organizationId)
-
-      const result = await addOpenPhoneChannel({ db: ctx.db, organizationId, userId }, input)
-
-      await onCacheEvent('channel.connected', { orgId: organizationId })
-
-      await recordAuditFromCtx(ctx, {
-        category: 'integrations',
-        action: 'integration.connected',
-        targetType: 'Channel',
-        targetId: (result as { id?: string } | null)?.id ?? null,
-        metadata: { provider: 'openphone', phoneNumber: input.phoneNumber },
-      })
-
-      return result
     }),
 
   /**

@@ -4,6 +4,7 @@
 // callback / run channel sync, so both need the hook registered.
 
 import { registerPostConnectHook } from '../connections/post-connect-hooks'
+import { openphoneProvisioningHook } from './openphone-provisioning-hook'
 import { channelProvisioningHook } from './provisioning-hook'
 import { socialProvisioningHook } from './social-provisioning-hook'
 
@@ -15,4 +16,5 @@ export function registerChannelHooks(): void {
   registered = true
   registerPostConnectHook(channelProvisioningHook)
   registerPostConnectHook(socialProvisioningHook)
+  registerPostConnectHook(openphoneProvisioningHook)
 }

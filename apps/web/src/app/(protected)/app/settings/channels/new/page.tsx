@@ -6,7 +6,9 @@ import { Button } from '@auxx/ui/components/button'
 import { toastError } from '@auxx/ui/components/toast'
 import { ArrowLeft, Mail, MessageSquare } from 'lucide-react'
 import { useRouter } from 'next/navigation'
+import { useConnectFlow } from '~/components/apps/hooks/use-connect-flow'
 import { AppListCard } from '~/components/apps/ui/app-list-card'
+import { platformScope, platformTarget } from '~/components/connections/ui/connection-targets'
 import SettingsPage from '~/components/global/settings-page'
 import { api } from '~/trpc/react'
 import { getIntegrationProviderIcon } from '../_components/integration-table'
@@ -19,6 +21,12 @@ interface ChannelOption {
   icon?: React.ReactNode
   /** If set, clicking the card runs this instead of navigating to /new/{type}. */
   createInline?: boolean
+  /**
+   * If set, clicking the card opens the shared connect dialog for this platform provider
+   * (via `useConnectFlow`) instead of navigating to /new/{type}. Used for secret channels
+   * that connect through the generic connections surface.
+   */
+  connectProviderKey?: string
 }
 
 /**
@@ -35,6 +43,24 @@ export default function IntegrationChooserPage() {
     },
     onError: (e) => toastError({ title: 'Failed to create chat widget', description: e.message }),
   })
+
+  // Secret channels (e.g. Quo/OpenPhone) connect through the generic connections surface: the
+  // shared field dialog persists via `connections.save`, whose provisioning hook creates the
+  // channel. The provider's `connectionVariables` drive the form — no bespoke per-channel route.
+  const { data: providers = [] } = api.connections.listProviders.useQuery()
+  const flow = useConnectFlow({
+    showName: true,
+    onConnected: () => {
+      utils.channel.list.invalidate()
+      router.push('/app/settings/channels')
+    },
+  })
+
+  const connectProvider = (providerKey: string) => {
+    const provider = providers.find((p) => p.providerKey === providerKey)
+    if (!provider) return
+    flow.start({ target: platformTarget(provider), scope: platformScope(provider) })
+  }
 
   const handleBack = () => {
     router.push('/app/settings/channels')
@@ -74,9 +100,10 @@ export default function IntegrationChooserPage() {
     },
     {
       type: 'openphone',
-      title: 'OpenPhone',
+      title: 'Quo',
       subtitle: 'Phone',
-      description: 'Connect your OpenPhone account to send and receive SMS messages',
+      description: 'Connect your Quo (OpenPhone) account to send and receive SMS messages',
+      connectProviderKey: 'openphone',
     },
     {
       type: 'chat',
@@ -111,30 +138,49 @@ export default function IntegrationChooserPage() {
       }>
       <div className='space-y-4 sm:space-y-6 p-3 sm:p-6'>
         <div className='grid gap-4 sm:grid-cols-2 lg:grid-cols-3'>
-          {integrations.map((integration) =>
-            integration.createInline ? (
-              <AppListCard
-                key={integration.type}
-                title={integration.title}
-                description={integration.description}
-                onClick={() => createChatChannel.mutate()}
-                disabled={createChatChannel.isPending}
-                icon={integration.icon ?? getIntegrationProviderIcon(integration.type, 'size-4')}
-                subtitle={integration.subtitle}
-              />
-            ) : (
+          {integrations.map((integration) => {
+            const icon = integration.icon ?? getIntegrationProviderIcon(integration.type, 'size-4')
+            if (integration.createInline) {
+              return (
+                <AppListCard
+                  key={integration.type}
+                  title={integration.title}
+                  description={integration.description}
+                  onClick={() => createChatChannel.mutate()}
+                  disabled={createChatChannel.isPending}
+                  icon={icon}
+                  subtitle={integration.subtitle}
+                />
+              )
+            }
+            if (integration.connectProviderKey) {
+              const providerKey = integration.connectProviderKey
+              return (
+                <AppListCard
+                  key={integration.type}
+                  title={integration.title}
+                  description={integration.description}
+                  onClick={() => connectProvider(providerKey)}
+                  disabled={flow.pending}
+                  icon={icon}
+                  subtitle={integration.subtitle}
+                />
+              )
+            }
+            return (
               <AppListCard
                 key={integration.type}
                 title={integration.title}
                 description={integration.description}
                 href={`/app/settings/channels/new/${integration.type}`}
-                icon={integration.icon ?? getIntegrationProviderIcon(integration.type, 'size-4')}
+                icon={icon}
                 subtitle={integration.subtitle}
               />
             )
-          )}
+          })}
         </div>
       </div>
+      {flow.Dialogs}
     </SettingsPage>
   )
 }

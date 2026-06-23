@@ -24,13 +24,3 @@ export interface ChannelSettings {
   excludeRecipients?: string[]
   onlyProcessRecipients?: string[]
 }
-
-/**
- * Input for `addOpenPhoneChannel`.
- */
-export interface OpenPhoneInput {
-  apiKey: string
-  phoneNumberId: string
-  phoneNumber: string
-  webhookSigningSecret: string
-}

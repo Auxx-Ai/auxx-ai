@@ -258,7 +258,7 @@ const baseIntegrationConfig = {
   },
   openphone: {
     icon: Phone,
-    label: 'OpenPhone',
+    label: 'Quo',
     color: '#00C896',
     bgColor: 'bg-green-100',
     borderColor: 'border-green-200',

@@ -114,6 +114,12 @@ export interface UseConnectFlowOptions {
   mode?: 'redirect' | 'popup'
   /** Fired when a connect attempt produces a new credId. */
   onConnected?: (credId: string, args: ConnectFlowArgs) => void
+  /**
+   * Render the editable connection-name row in the field dialog (fresh connects only). The typed
+   * name rides through to the save as `payload.name`; reconnect never shows it. Defaults off — the
+   * name falls back to `ConnectFlowArgs.name` (seeded via `start`) or the target title.
+   */
+  showName?: boolean
 }
 
 /**
@@ -138,7 +144,7 @@ function pickDef(args: ConnectFlowArgs): ConnectFlowDefinition | null | undefine
 }
 
 export function useConnectFlow(options: UseConnectFlowOptions = {}): UseConnectFlow {
-  const { onConnected, mode = 'popup' } = options
+  const { onConnected, mode = 'popup', showName } = options
   const utils = api.useUtils()
 
   // Shared OAuth-popup lifecycle: single-settle via message / server-side verify poll / hard
@@ -428,6 +434,10 @@ export function useConnectFlow(options: UseConnectFlowOptions = {}): UseConnectF
         prefill={args.prefillVariables}
         pending={savePending}
         submitLabel={args.connectionId ? 'Reconnect' : 'Connect'}
+        // Name row only on a fresh connect (reconnect keeps the stored name). The edited value
+        // overrides `args.name`/title in `saveSecretForOwner` via the spread `payload.name`.
+        showName={showName && !args.connectionId}
+        initialName={args.name}
         onSubmit={(payload) => saveOrOauth(args, payload)}
       />
     ) : null

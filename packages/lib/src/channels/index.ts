@@ -3,12 +3,7 @@
 export { getOrgChannelProviderMap, invalidateOrgChannelProviderMap } from './cache'
 export { PLATFORM_CAPABILITIES, type PlatformCapabilities } from './capabilities'
 export { disconnect } from './disconnect'
-export {
-  addOpenPhoneChannel,
-  type CreateChannelInput,
-  createChannel,
-  linkChannelToInbox,
-} from './lifecycle'
+export { type CreateChannelInput, createChannel, linkChannelToInbox } from './lifecycle'
 export { countBillableChannels, getProviderType, list } from './list'
 export { registerChannelHooks } from './register-hooks'
 export {
@@ -20,4 +15,4 @@ export {
 export { getAllStats } from './stats'
 export { syncAllMessages, syncMessages } from './sync'
 export { toggle } from './toggle'
-export type { ChannelCtx, ChannelSettings, OpenPhoneInput } from './types'
+export type { ChannelCtx, ChannelSettings } from './types'

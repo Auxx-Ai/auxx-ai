@@ -67,12 +67,14 @@ export function ConnectionsSection() {
     [appInstallations]
   )
 
-  // app row → app logo; platform row → provider lucide icon; else a neutral fallback.
+  // app row → app logo; channel/platform row → server-resolved brand mark (row.icon, which
+  // covers both the channel-provider map and the platform catalog); else a neutral fallback.
+  // Channel creds carry a ChannelProviderType ('google'/'outlook') in `type`, which isn't a
+  // providerKey — so `providerByKey.get(row.type)` misses them; `row.icon` is the source of truth.
   const resolveIcon = (row: ConnectionRow): string => {
     const inst = row.appId ? appInstallations.find((i) => i.app.id === row.appId) : undefined
     if (inst?.app.avatarUrl) return inst.app.avatarUrl
-    const provider = providerByKey.get(row.type)
-    if (provider?.icon) return provider.icon
+    if (row.icon) return row.icon
     return row.kind === 'app' ? 'package' : 'key-round'
   }
 

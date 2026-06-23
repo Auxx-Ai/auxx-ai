@@ -35,6 +35,7 @@ import { Tooltip } from '~/components/global/tooltip'
 import type { InboxItem } from '~/components/threads/hooks'
 import { FacebookIcon, GoogleIcon, InstagramIcon, OutlookIcon } from '~/constants/icons'
 import { useAnalytics } from '~/hooks/use-analytics'
+import { useConfirm } from '~/hooks/use-confirm'
 import { api } from '~/trpc/react'
 
 // Define type for integration (simplified, adjust based on actual API response)
@@ -100,7 +101,7 @@ const getProviderName = (provider: string) => {
     case 'instagram':
       return 'Instagram'
     case 'openphone':
-      return 'OpenPhone'
+      return 'Quo'
     case 'chat':
       return 'Chat Widget'
     default:
@@ -133,6 +134,7 @@ export default function IntegrationTable({ integrations, inboxes }: IntegrationT
   const router = useRouter()
   const posthog = useAnalytics()
   const utils = api.useUtils()
+  const [confirm, ConfirmDialog] = useConfirm()
   const toggleIntegration = api.channel.toggle.useMutation({
     onSuccess: () => {
       utils.channel.list.invalidate()
@@ -178,16 +180,18 @@ export default function IntegrationTable({ integrations, inboxes }: IntegrationT
     }
   }
   // Handle disconnect integration
-  const handleDisconnect = (id: string) => {
-    if (
-      window.confirm(
-        'Are you sure you want to disconnect this integration? This action cannot be undone.'
-      )
-    ) {
-      const provider = integrations.find((i) => i.id === id)?.provider ?? 'unknown'
-      posthog?.capture('integration_disconnected', { provider, integration_id: id })
-      disconnectIntegration.mutate({ integrationId: id })
-    }
+  const handleDisconnect = async (id: string) => {
+    const confirmed = await confirm({
+      title: 'Disconnect channel?',
+      description: 'This will remove the channel and its data. This action cannot be undone.',
+      confirmText: 'Disconnect',
+      cancelText: 'Cancel',
+      destructive: true,
+    })
+    if (!confirmed) return
+    const provider = integrations.find((i) => i.id === id)?.provider ?? 'unknown'
+    posthog?.capture('integration_disconnected', { provider, integration_id: id })
+    disconnectIntegration.mutate({ integrationId: id })
   }
   // Handle sync messages
   const handleSync = (id: string) => {
@@ -197,149 +201,152 @@ export default function IntegrationTable({ integrations, inboxes }: IntegrationT
     })
   }
   return (
-    <div className='overflow-auto flex-1 h-full'>
-      <table className='w-full caption-bottom text-sm'>
-        <TableHeader>
-          <TableRow>
-            <TableHead className='w-[50px]'>Type</TableHead>
-            <TableHead>Name / ID</TableHead>
-            <TableHead>Routing To</TableHead>
-            <TableHead>Connected</TableHead>
-            <TableHead className='w-[120px]'>Status</TableHead>
-            <TableHead className='w-[80px]'>Enabled</TableHead>
-            <TableHead className='text-right'>Actions</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {integrations.length === 0 ? (
+    <>
+      <ConfirmDialog />
+      <div className='overflow-auto flex-1 h-full'>
+        <table className='w-full caption-bottom text-sm'>
+          <TableHeader>
             <TableRow>
-              <TableCell colSpan={8} className='h-24 text-center'>
-                No integrations found.
-              </TableCell>
+              <TableHead className='w-[50px]'>Type</TableHead>
+              <TableHead>Name / ID</TableHead>
+              <TableHead>Routing To</TableHead>
+              <TableHead>Connected</TableHead>
+              <TableHead className='w-[120px]'>Status</TableHead>
+              <TableHead className='w-[80px]'>Enabled</TableHead>
+              <TableHead className='text-right'>Actions</TableHead>
             </TableRow>
-          ) : (
-            integrations.map((integration) => {
-              const connectedInbox = getConnectedInbox(integration)
-              const providerDisplayName = getProviderName(integration.provider)
-              const displayName =
-                integration.name ||
-                (integration.provider === 'chat'
-                  ? integration.widgetSettings?.title
-                  : providerDisplayName) ||
-                'Unnamed Integration'
-              // Determine identifier: Use derived identifier, fallback to widget name/title or 'Unknown'
-              const displayIdentifier =
-                integration.identifier ||
-                (integration.provider === 'chat' ? integration.widgetSettings?.name : '') ||
-                'Unknown'
-              const isForwarding =
-                integration.provider === 'email' &&
-                (integration.metadata as any)?.channelType === 'forwarding-address'
+          </TableHeader>
+          <TableBody>
+            {integrations.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={8} className='h-24 text-center'>
+                  No integrations found.
+                </TableCell>
+              </TableRow>
+            ) : (
+              integrations.map((integration) => {
+                const connectedInbox = getConnectedInbox(integration)
+                const providerDisplayName = getProviderName(integration.provider)
+                const displayName =
+                  integration.name ||
+                  (integration.provider === 'chat'
+                    ? integration.widgetSettings?.title
+                    : providerDisplayName) ||
+                  'Unnamed Integration'
+                // Determine identifier: Use derived identifier, fallback to widget name/title or 'Unknown'
+                const displayIdentifier =
+                  integration.identifier ||
+                  (integration.provider === 'chat' ? integration.widgetSettings?.name : '') ||
+                  'Unknown'
+                const isForwarding =
+                  integration.provider === 'email' &&
+                  (integration.metadata as any)?.channelType === 'forwarding-address'
 
-              return (
-                <TableRow
-                  key={integration.id}
-                  className='cursor-pointer hover:bg-muted/50'
-                  onClick={(e: React.MouseEvent) => handleEdit(e, integration.id)}>
-                  <TableCell>
-                    <Tooltip content={providerDisplayName}>
-                      {getIntegrationProviderIcon(integration.provider)}
-                    </Tooltip>
-                  </TableCell>
-                  <TableCell>
-                    <div className='font-medium'>{displayName}</div>
-                    <div
-                      className='text-sm text-muted-foreground truncate line-clamp-1'
-                      title={integration.identifier || 'Unknown'}>
-                      {integration.identifier || 'Unknown'}
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    {connectedInbox ? (
-                      <Badge variant='pill' size='sm' className='truncate'>
-                        {connectedInbox.name}
-                      </Badge>
-                    ) : (
-                      <Badge
-                        variant='pill'
+                return (
+                  <TableRow
+                    key={integration.id}
+                    className='cursor-pointer hover:bg-muted/50'
+                    onClick={(e: React.MouseEvent) => handleEdit(e, integration.id)}>
+                    <TableCell>
+                      <Tooltip content={providerDisplayName}>
+                        {getIntegrationProviderIcon(integration.provider)}
+                      </Tooltip>
+                    </TableCell>
+                    <TableCell>
+                      <div className='font-medium'>{displayName}</div>
+                      <div
+                        className='text-sm text-muted-foreground truncate line-clamp-1'
+                        title={integration.identifier || 'Unknown'}>
+                        {integration.identifier || 'Unknown'}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      {connectedInbox ? (
+                        <Badge variant='pill' size='sm' className='truncate'>
+                          {connectedInbox.name}
+                        </Badge>
+                      ) : (
+                        <Badge
+                          variant='pill'
+                          size='sm'
+                          className='bg-yellow-50 text-yellow-800 inline-flex truncate'>
+                          Not connected
+                        </Badge>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      {integration.updatedAt && (
+                        <span className='text-sm text-muted-foreground'>
+                          {format(new Date(integration.updatedAt), 'MMM d, yyyy')}
+                        </span>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      <IntegrationStatusIndicator
+                        status={getIntegrationStatus({
+                          enabled: integration.enabled,
+                          requiresReauth: integration.requiresReauth || false,
+                          lastAuthError: integration.lastAuthError,
+                          lastSyncedAt: integration.lastSyncedAt
+                            ? new Date(integration.lastSyncedAt)
+                            : undefined,
+                          syncStatus: integration.syncStatus,
+                        })}
+                        syncStage={integration.syncStage}
+                        pendingImportCount={integration.pendingImportCount}
+                        lastSyncAt={
+                          integration.lastSyncedAt ? new Date(integration.lastSyncedAt) : undefined
+                        }
+                        lastError={integration.lastAuthError}
                         size='sm'
-                        className='bg-yellow-50 text-yellow-800 inline-flex truncate'>
-                        Not connected
-                      </Badge>
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    {integration.updatedAt && (
-                      <span className='text-sm text-muted-foreground'>
-                        {format(new Date(integration.updatedAt), 'MMM d, yyyy')}
-                      </span>
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    <IntegrationStatusIndicator
-                      status={getIntegrationStatus({
-                        enabled: integration.enabled,
-                        requiresReauth: integration.requiresReauth || false,
-                        lastAuthError: integration.lastAuthError,
-                        lastSyncedAt: integration.lastSyncedAt
-                          ? new Date(integration.lastSyncedAt)
-                          : undefined,
-                        syncStatus: integration.syncStatus,
-                      })}
-                      syncStage={integration.syncStage}
-                      pendingImportCount={integration.pendingImportCount}
-                      lastSyncAt={
-                        integration.lastSyncedAt ? new Date(integration.lastSyncedAt) : undefined
-                      }
-                      lastError={integration.lastAuthError}
-                      size='sm'
-                    />
-                  </TableCell>
-                  <TableCell>
-                    <Switch
-                      data-clickable='true'
-                      size='sm'
-                      checked={integration.enabled}
-                      onCheckedChange={() => handleToggle(integration.id, integration.enabled)}
-                    />
-                  </TableCell>
-                  <TableCell className='text-right' data-clickable='true'>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant='ghost' size='icon'>
-                          <MoreHorizontal />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align='end'>
-                        <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem onClick={() => handleEdit(integration.id)}>
-                          <Pencil />
-                          Edit Settings
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          onClick={() => handleSync(integration.id)}
-                          disabled={integration.provider === 'chat' || isForwarding}>
-                          <RefreshCw />
-                          Sync Messages
-                        </DropdownMenuItem>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem
-                          variant='destructive'
-                          onClick={() => handleDisconnect(integration.id)}
-                          disabled={isForwarding}>
-                          <Trash2 />
-                          Disconnect
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </TableCell>
-                </TableRow>
-              )
-            })
-          )}
-        </TableBody>
-      </table>
-    </div>
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <Switch
+                        data-clickable='true'
+                        size='sm'
+                        checked={integration.enabled}
+                        onCheckedChange={() => handleToggle(integration.id, integration.enabled)}
+                      />
+                    </TableCell>
+                    <TableCell className='text-right' data-clickable='true'>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant='ghost' size='icon'>
+                            <MoreHorizontal />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align='end'>
+                          <DropdownMenuLabel>Actions</DropdownMenuLabel>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem onClick={() => handleEdit(integration.id)}>
+                            <Pencil />
+                            Edit Settings
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={() => handleSync(integration.id)}
+                            disabled={integration.provider === 'chat' || isForwarding}>
+                            <RefreshCw />
+                            Sync Messages
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem
+                            variant='destructive'
+                            onClick={() => handleDisconnect(integration.id)}
+                            disabled={isForwarding}>
+                            <Trash2 />
+                            Disconnect
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </TableCell>
+                  </TableRow>
+                )
+              })
+            )}
+          </TableBody>
+        </table>
+      </div>
+    </>
   )
 }
