@@ -534,6 +534,9 @@ async function fetchFieldValueResults(
     const firstRow = fieldRows[0]!
     const aiStatus = (firstRow.aiStatus ?? null) as AiStatus | null
     const aiMetadata = readAiMetadata(firstRow)
+    // Contributing data-connector provenance marker (per-cell). Single marker
+    // per (entity, field), so — like aiStatus — take the first row's value.
+    const managedByConnectorId = firstRow.managedByConnectorId ?? null
 
     results.push({
       recordId,
@@ -543,6 +546,7 @@ async function fetchFieldValueResults(
       fieldOptions,
       aiStatus,
       aiMetadata,
+      managedByConnectorId,
     })
   }
 

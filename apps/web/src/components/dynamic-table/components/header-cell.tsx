@@ -49,6 +49,7 @@ import {
 import { useCallback, useMemo, useState } from 'react'
 import { useCustomFieldMutations } from '~/components/custom-fields/hooks/use-custom-field-mutations'
 import { CustomFieldDialog } from '~/components/custom-fields/ui/custom-field-dialog'
+import { ConnectorLockBadge } from '~/components/fields/connector-lock-badge'
 import { Tooltip } from '~/components/global/tooltip'
 import { SparkleIcon } from '~/components/kopilot/ui/sparkle-icon'
 import { useRunAiBulkGenerate } from '~/components/resources/hooks/run-ai-bulk-generate'
@@ -552,6 +553,15 @@ export function HeaderCell<TData>({ header, isDragging = false }: HeaderCellProp
     return directField.resourceFieldId
   }, [isPathColumn, pathFields, directField])
 
+  // ─── DATA-CONNECTOR OWNED LOCK ─────────────────────────────────────────────
+  // Owned-mode connector fields are read-only at the column grain. Surface the
+  // owning connector so the header can render a "Managed by <connector>" lock.
+  // For path columns, the terminal field carries the ownership.
+  const lockConnectorId = useMemo<string | null>(() => {
+    if (isPathColumn) return pathFields[pathFields.length - 1]?.dataConnectorId ?? null
+    return directField?.dataConnectorId ?? null
+  }, [isPathColumn, pathFields, directField])
+
   // ─── ACTIONS (use centralized action hooks) ────────────────────────────────
   const setFilters = useSetFilters(tableId)
   const setColumnLabel = useSetColumnLabel(tableId)
@@ -655,6 +665,9 @@ export function HeaderCell<TData>({ header, isDragging = false }: HeaderCellProp
               <Sparkles className='size-3.5 text-quartz fill-quartz *:nth-2:text-purple-400 *:nth-3:text-purple-400' />
             </Tooltip>
           )}
+
+          {/* Owned-mode data-connector lock */}
+          {lockConnectorId && <ConnectorLockBadge connectorId={lockConnectorId} mode='owned' />}
 
           {/* New button (only for primary column with onAddNew) */}
           {showNewButton && (

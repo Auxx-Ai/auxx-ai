@@ -107,7 +107,7 @@ export function ConnectorRunsPanel({
   const showFreshness = !showBackfill && !!lastSyncedAt
 
   return (
-    <div className='flex h-full flex-col bg-background'>
+    <div className='flex flex-1 min-h-0 flex-col bg-background'>
       <DrawerHeader
         icon={<EntityIcon iconId='history' color='gray' className='size-6' />}
         title='Runs'

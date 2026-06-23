@@ -16,6 +16,7 @@ import {
   uniqueIndex,
 } from './_shared'
 import { CustomField } from './custom-field'
+import { DataConnector } from './data-connector'
 import { Organization } from './organization'
 import { User } from './user'
 
@@ -124,6 +125,27 @@ export const FieldValue = pgTable(
      * AI-eligible field type in v1 writes its own value to valueJson.
      */
     aiStatus: text(),
+
+    // ========================================
+    // Data-connector provenance (contributing mode only)
+    // ========================================
+
+    /**
+     * Contributing data connector that wrote/manages this value (per-cell
+     * marker; NULL for user/AI/owned values). Drives the "Synced by <connector>
+     * — may be overwritten on next sync" badge on an otherwise-editable cell.
+     *
+     * Contributing values always belong to the user's own record, so `set null`
+     * is the only correct connector-delete behavior — the FK nulls the marker
+     * automatically with no teardown sweep, and the user's record is never
+     * touched. Mirrors the sibling provenance column `CustomField.dataConnectorId`
+     * (owned mode). The render-time merge-strategy copy is resolved from the
+     * connector's cached mapping, so there is no `mergeStrategy` column here.
+     */
+    managedByConnectorId: text().references((): AnyPgColumn => DataConnector.id, {
+      onUpdate: 'cascade',
+      onDelete: 'set null',
+    }),
   },
   (table) => [
     // Primary lookups

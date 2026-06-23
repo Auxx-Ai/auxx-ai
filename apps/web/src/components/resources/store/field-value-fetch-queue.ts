@@ -21,7 +21,15 @@ const DEFAULT_DEBOUNCE_MS = 50
  * Function signature for the batch fetch API call.
  */
 type FetchFn = (params: { recordIds: RecordId[]; fieldReferences: FieldReference[] }) => Promise<{
-  values: Array<{ recordId: string; fieldRef: FieldReference; value: StoredFieldValue }>
+  values: Array<{
+    recordId: string
+    fieldRef: FieldReference
+    value: StoredFieldValue
+    aiStatus?: AiStatus | null
+    aiMetadata?: AiValueMetadata | null
+    /** Contributing data-connector marker (per-cell), null when unmanaged. */
+    managedByConnectorId?: string | null
+  }>
 }>
 
 /**
@@ -221,6 +229,8 @@ class FieldValueFetchQueue {
         aiStatus: AiStatus
         aiMetadata: AiValueMetadata | null
       }> = []
+      // Contributing data-connector markers to rehydrate (mirrors aiEntries).
+      const managedEntries: Array<{ key: FieldValueKey; connectorId: string }> = []
       for (const result of results) {
         if (result.status === 'fulfilled') {
           for (const v of result.value.values) {
@@ -228,6 +238,9 @@ class FieldValueFetchQueue {
             entriesMap.set(key, v.value)
             if (v.aiStatus != null) {
               aiEntries.push({ key, aiStatus: v.aiStatus, aiMetadata: v.aiMetadata ?? null })
+            }
+            if (v.managedByConnectorId != null) {
+              managedEntries.push({ key, connectorId: v.managedByConnectorId })
             }
           }
         } else {
@@ -262,6 +275,13 @@ class FieldValueFetchQueue {
       const setAiState = useFieldValueStore.getState().setAiState
       for (const entry of aiEntries) {
         setAiState(entry.key, entry.aiStatus, entry.aiMetadata)
+      }
+
+      // Rehydrate contributing data-connector markers so the "Synced by
+      // <connector>" cell badge survives refresh.
+      const setManagedState = useFieldValueStore.getState().setManagedState
+      for (const entry of managedEntries) {
+        setManagedState(entry.key, entry.connectorId)
       }
     } catch (error) {
       console.error('[FieldValueFetchQueue] Fetch failed:', error)

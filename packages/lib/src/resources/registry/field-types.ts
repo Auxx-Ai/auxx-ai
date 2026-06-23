@@ -294,6 +294,40 @@ export interface ResourceField {
    * connection-late-bound `@app:<slug>:<key>` var ref.
    */
   appFieldKey?: string
+
+  /**
+   * Owning DataConnector that provisioned this field (owned-mode only). When
+   * set, the field's values are managed by a data connector and the column is
+   * read-only (provisioning already sets `isUpdatable=false`). Surfaced so the
+   * UI can render a "Managed by <connector>" lock badge — distinct from
+   * system/app/computed ownership. Undefined for user/system/app fields.
+   */
+  dataConnectorId?: string
+}
+
+/**
+ * Why a field is locked / who owns it. Read from the ownership signals rather
+ * than inferred from `isUpdatable` (which is overloaded across system/computed/
+ * app/connector fields). Connector is checked first so a connector-provisioned
+ * field never mis-labels as "system".
+ */
+export type FieldLockReason = 'computed' | 'connector' | 'system' | 'app' | 'none'
+
+/**
+ * Resolve a field's lock reason from its ownership signals. Pure + client-safe
+ * — used by the UI lock badge and any edit-gate messaging. Takes the ownership
+ * subset of a `ResourceField`.
+ */
+export function fieldLockReason(
+  field: Pick<ResourceField, 'dataConnectorId' | 'systemAttribute' | 'appInstallationId'> & {
+    isComputed?: boolean
+  }
+): FieldLockReason {
+  if (field.dataConnectorId) return 'connector'
+  if (field.isComputed) return 'computed'
+  if (field.systemAttribute) return 'system'
+  if (field.appInstallationId) return 'app'
+  return 'none'
 }
 
 /**

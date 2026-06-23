@@ -8,13 +8,16 @@
 // contributing mode narrows to managedFields and never archives. Unlike the
 // importer, events are NOT skipped — workflows/agents react.
 
+import { schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import type { FieldId, ResourceFieldId } from '@auxx/types/field'
 import { getFieldId } from '@auxx/types/field'
 import type { TypedFieldValue } from '@auxx/types/field-value'
 import { stableHash } from '@auxx/utils/hash'
+import { and, eq, inArray } from 'drizzle-orm'
 import { resolveConnectorFieldRef } from '../../agents/bindings/resolve'
 import { toRecordId } from '../../resources/resource-id'
+import { buildWriteKeyToFieldId } from '../field-id-resolver'
 import {
   type DecodedMapping,
   findItem,
@@ -218,6 +221,44 @@ async function buildWriteSet(
   return { writeSet, managedFields }
 }
 
+/**
+ * Stamp the per-cell contributing provenance marker (`FieldValue.managedByConnectorId`)
+ * on the values this connector just wrote. Contributing-mode only — owned writes
+ * never call this (the column-grain `CustomField.dataConnectorId` carries owned
+ * provenance instead). The marker drives the soft "Synced by <connector>" cell
+ * badge; the cell stays editable.
+ *
+ * `writeFieldKeys` are the concrete write-set keys (a bare CustomField uuid OR a
+ * systemAttribute). `FieldValue.fieldId` is always the CustomField uuid, so we
+ * resolve systemAttribute keys back to their uuid via the cached field map before
+ * the batched UPDATE. One UPDATE per upserted contributing record (cold path).
+ */
+async function stampContributingProvenance(
+  ctx: SyncCtx,
+  entityDefinitionId: string,
+  instanceId: string,
+  writeFieldKeys: string[]
+): Promise<void> {
+  if (writeFieldKeys.length === 0) return
+
+  const keyToId = await buildWriteKeyToFieldId(ctx.orgId, entityDefinitionId)
+  const concreteIds = Array.from(
+    new Set(writeFieldKeys.map((k) => keyToId.get(k)).filter((v): v is string => !!v))
+  )
+  if (concreteIds.length === 0) return
+
+  await ctx.db
+    .update(schema.FieldValue)
+    .set({ managedByConnectorId: ctx.connector.id })
+    .where(
+      and(
+        eq(schema.FieldValue.organizationId, ctx.orgId),
+        eq(schema.FieldValue.entityId, instanceId),
+        inArray(schema.FieldValue.fieldId, concreteIds)
+      )
+    )
+}
+
 export const entitySink: EntitySink = {
   async upsertRecord(ctx, mapping, record) {
     ctx.counters.fetched += 1
@@ -296,6 +337,18 @@ export const entitySink: EntitySink = {
         error: message,
       })
       return
+    }
+
+    // 4b. Contributing mode — stamp per-cell provenance on the written values so
+    //     the grid/drawer can show a "Synced by <connector>" marker. Owned mode
+    //     skips this (column-grain provenance lives on CustomField.dataConnectorId).
+    if (mapping.targetMode === 'contributing' && instanceId) {
+      await stampContributingProvenance(
+        ctx,
+        mapping.entityDefinitionId,
+        instanceId,
+        Object.keys(writeSet)
+      )
     }
 
     // 5. Upsert the binding — merge any new managed fields with prior ones

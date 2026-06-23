@@ -184,3 +184,16 @@ export function useFieldAiState(recordId: RecordId, fieldId: FieldId): AiCellSta
   const key = buildFieldValueKey(recordId, resourceFieldId)
   return useFieldValueStore((s) => s.aiStates[key])
 }
+
+/**
+ * Subscribe to the contributing data-connector marker for a (record, field)
+ * pair. Returns the owning connector id when the cell is synced by a
+ * contributing connector, else `undefined`. Mirrors `useFieldAiState` — the cell
+ * stays editable; this only drives the "Synced by <connector>" badge.
+ */
+export function useFieldManagedState(recordId: RecordId, fieldId: FieldId): string | undefined {
+  const { entityDefinitionId } = parseRecordId(recordId)
+  const resourceFieldId = toResourceFieldId(entityDefinitionId, fieldId)
+  const key = buildFieldValueKey(recordId, resourceFieldId)
+  return useFieldValueStore((s) => s.managedStates[key])
+}

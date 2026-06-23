@@ -10,10 +10,14 @@ import { EntityIcon } from '@auxx/ui/components/icons'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { useCallback, useMemo } from 'react'
 import { Tooltip } from '~/components/global/tooltip'
-import { useFieldAiState } from '~/components/resources/hooks/use-field-values'
+import {
+  useFieldAiState,
+  useFieldManagedState,
+} from '~/components/resources/hooks/use-field-values'
 import { useSaveFieldValue } from '~/components/resources/hooks/use-save-field-value'
 import { AiGeneratingIndicator } from './ai-overlay/ai-generating-indicator'
 import { SparkleBadge } from './ai-overlay/sparkle-badge'
+import { ConnectorLockBadge } from './connector-lock-badge'
 import { DisplayField } from './displays/display-field'
 import { FieldInput } from './field-input'
 import { usePropertyContext } from './property-provider'
@@ -42,6 +46,12 @@ function PropertyRow({
   // whether we render the badge/shimmer. The store lookup is cheap and keyed.
   const aiState = useFieldAiState(recordId, field.id)
   const isGenerating = aiState?.status === 'generating'
+
+  // Data-connector provenance. `dataConnectorId` is owned-mode (column-grain,
+  // read-only); the per-cell managed marker is contributing-mode (still editable).
+  // Owned wins — never show both.
+  const ownedConnectorId = field.dataConnectorId
+  const managedConnectorId = useFieldManagedState(recordId, field.id)
 
   // `isAiField` reads `field.type` + `options.ai.enabled`; property-row uses
   // `field.fieldType` on the registry projection, so we adapt the shape here.
@@ -118,6 +128,17 @@ function PropertyRow({
               <Badge size='xs' variant='purple'>
                 U
               </Badge>
+            )}
+            {ownedConnectorId ? (
+              <ConnectorLockBadge connectorId={ownedConnectorId} mode='owned' className='ms-1' />
+            ) : (
+              managedConnectorId && (
+                <ConnectorLockBadge
+                  connectorId={managedConnectorId}
+                  mode='contributing'
+                  className='ms-1'
+                />
+              )
             )}
             {aiEnabled && (
               <SparkleBadge

@@ -44,7 +44,7 @@ const here = path.dirname(fileURLToPath(import.meta.url))
 loadEnv({ path: path.resolve(here, '../../../.env') })
 
 const { database: db, schema } = await import('@auxx/database')
-const { and, count, eq } = await import('drizzle-orm')
+const { and, count, eq, isNotNull } = await import('drizzle-orm')
 const { generateId } = await import('@auxx/utils')
 const { createEntityDefinition } = await import('@auxx/services/entity-definitions')
 
@@ -435,6 +435,36 @@ try {
   check('run.fetched == total records', run1?.fetched === total1, run1?.fetched)
   check('entity instances == total records', (await instanceCount()) === total1)
   check('DataConnectorItem bindings == total records', (await itemCount()) === total1)
+
+  // ── Field Lock & Provenance (owned mode) ──────────────────────────────────────
+  // Owned provisioning stamps CustomField.dataConnectorId on every provisioned
+  // field (drives the "Managed by <connector>" column lock) and writes via the
+  // owned path — which must NOT set the per-cell contributing marker.
+  const provisionedFieldCount = (
+    await db
+      .select({ n: count() })
+      .from(schema.CustomField)
+      .where(eq(schema.CustomField.dataConnectorId, dataConnectorId))
+  )[0]!.n
+  check(
+    'owned: provisioned CustomFields carry dataConnectorId (4 fields)',
+    provisionedFieldCount === 4,
+    provisionedFieldCount
+  )
+  const ownedManagedMarkers = (
+    await db
+      .select({ n: count() })
+      .from(schema.FieldValue)
+      .where(
+        and(
+          eq(schema.FieldValue.entityDefinitionId, entityDefinitionId),
+          isNotNull(schema.FieldValue.managedByConnectorId)
+        )
+      )
+  )[0]!.n
+  check('owned: no FieldValue.managedByConnectorId markers set', ownedManagedMarkers === 0, {
+    markers: ownedManagedMarkers,
+  })
   // Chunking: the big widgets stream must have spanned MORE THAN ONE slice.
   const widgetsSliceCount = slices1[chain1.streamIds[0]!]!
   const expectMultiSlice = Math.ceil(WIDGETS / PAGE_SIZE) > SLICE_BUDGET.maxPages

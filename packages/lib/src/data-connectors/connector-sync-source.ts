@@ -26,7 +26,7 @@ import { invalidateSnapshots } from '../snapshot'
 import type { SliceResult, SyncRunCounters, SyncSliceCtx, SyncSource } from '../sync-core/contracts'
 import { runAsyncExportSlice } from './async-export'
 import { runConnectorSlice } from './connector-slice-loop'
-import { reconcileOrphans } from './reconciliation'
+import { reconcileManagedMarkers, reconcileOrphans } from './reconciliation'
 import { resolveRelationships } from './relationship-pass'
 import {
   countConnectorItems,
@@ -239,6 +239,9 @@ class ConnectorStreamSyncSource implements ConnectorSyncSource {
     await resolveRelationships(syncCtx)
     // reconcileOrphans self-skips non-snapshot streams, so it's a no-op for steady.
     await reconcileOrphans(syncCtx, this.deps.allStreams)
+    // Clear contributing markers for fields the connector no longer maps (the FK
+    // set-null only covers connector deletion, not a reconfigured mapping).
+    await reconcileManagedMarkers(syncCtx, this.deps.allStreams)
     for (const defId of syncCtx.touchedDefs) {
       await invalidateSnapshots({ organizationId: this.deps.organizationId, resourceType: defId })
     }
