@@ -1597,6 +1597,13 @@
       "when": 1782172199120,
       "tag": "0227_phase6_drop_integration_auth_state",
       "breakpoints": true
+    },
+    {
+      "idx": 228,
+      "version": "7",
+      "when": 1782179517485,
+      "tag": "0228_data_connector_run_sync_core_columns",
+      "breakpoints": true
     }
   ]
 }

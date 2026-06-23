@@ -163,12 +163,14 @@ async function* fetchRecords(args: ConnectorFetchArgs): AsyncIterable<ConnectorR
       pagination?.kind === 'link-header' && cursor ? cursor : buildUrl(baseUrl, path, params)
 
     // The HTTP transport applies the resolved connection's declarative auth
-    // (header/basic/query), sends the request, and normalizes the response.
+    // (header/basic/query), sends the request, handles rate limits (429 +
+    // Retry-After / Shopify-GraphQL throttle / backoff), and normalizes the response.
     const response = await httpTransport.request(applyCredential, {
       method,
       url,
       headers: baseHeaders,
       body: method === 'POST' ? request.body : undefined,
+      rateLimit: endpoint?.rateLimit,
     })
     if (!response.ok) {
       throw new Error(`generic-rest: ${method} ${url} → ${response.status}`)

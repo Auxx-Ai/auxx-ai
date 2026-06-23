@@ -88,8 +88,16 @@ export async function runSyncSlice(args: RunSliceArgs): Promise<SliceOutcome> {
 
   // Checkpoint AFTER the slice — a crash/restart resumes here, never from page 1.
   await stateStore.save(next)
-  // Fold counters in and bump the run heartbeat (the stale-sweep keys off this, not start time).
-  await ledger.recordSlice(result.counters ?? {})
+  // Fold counters + metrics into the run and bump the heartbeat (the stale-sweep
+  // keys off this, not start time). Idempotent on the post-slice cursor so a BullMQ
+  // job replay that already committed its fold can't double-count (H4). A held
+  // cursor (no advance) passes no key — its partial counts always fold.
+  await ledger.recordSlice({
+    counters: result.counters,
+    pagesProcessed: result.pagesProcessed,
+    rateLimitWaitMs: result.rateLimitWaitMs,
+    checkpointKey: advance ? cursorKey(next.cursor) : undefined,
+  })
 
   // Transient failure: re-enqueue to retry the held cursor (no ground lost).
   if (result.commit === 'partial-retriable') {
@@ -101,12 +109,27 @@ export async function runSyncSlice(args: RunSliceArgs): Promise<SliceOutcome> {
     return { action: 'reenqueue', reason: 'more-pages' }
   }
 
-  // Exhausted for this phase. A finished backfill flips to steady and fires the
-  // reconciliation gate ONCE — so a partial backfill never archives unreached records.
+  // Exhausted for this phase. On a finished backfill, run the reconciliation gate
+  // ONCE — so a partial backfill never archives unreached records — and only THEN
+  // flip to steady. H2: if finalizeBackfill throws, the run fails with phase still
+  // 'backfill', so the retry re-runs reconciliation instead of silently skipping it.
+  // finalizeBackfill MUST be idempotent.
   if (phase === 'backfill') {
+    try {
+      await source.finalizeBackfill?.()
+    } catch (error) {
+      const err = error instanceof Error ? error : new Error(String(error))
+      logger.error('finalizeBackfill failed', { sourceId: source.id, error: err.message })
+      await ledger.fail(err)
+      return { action: 'failed', error: err }
+    }
     await stateStore.save({ ...next, phase: 'steady' })
-    await source.finalizeBackfill?.()
   }
   await ledger.finalize()
   return { action: 'complete', completedPhase: phase }
+}
+
+/** Stable idempotency key for a cursor (H4) — `${kind}:${value}`, or undefined. */
+function cursorKey(cursor?: SyncState['cursor']): string | undefined {
+  return cursor ? `${cursor.kind}:${cursor.value}` : undefined
 }

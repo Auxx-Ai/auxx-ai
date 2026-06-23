@@ -126,6 +126,13 @@ export {
 // Sink
 export { entitySink } from './sinks/entity-sink'
 export type { EntitySink, ProjectedRecord, SyncCtx } from './sinks/types'
+// Sync-core adapters (Step 3) — DC implementations of the shared seams
+export {
+  applySyncStateToStream,
+  createConnectorRunLedger,
+  createStreamSyncStateStore,
+  syncStateFromStream,
+} from './sync-core-adapters'
 // Connector templates (05c) — first-party generic-rest presets
 export type {
   ConnectorTemplate,

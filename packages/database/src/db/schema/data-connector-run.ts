@@ -27,6 +27,9 @@ export const DataConnectorRun = pgTable(
     trigger: text().notNull(), // 'manual' | 'scheduled' | 'webhook' | 'backfill'
     mode: text().notNull(), // 'snapshot' | 'incremental'
     status: text().notNull(), // 'running' | 'completed' | 'failed' | 'partial'
+    // Engine-managed lifecycle phase of the run (sync-core). Null for legacy
+    // single-shot full-sync runs that predate the backfill/steady split.
+    phase: text(), // 'backfill' | 'steady'
     // counts (mirror the importer's execution statistics shape)
     fetched: integer().default(0).notNull(),
     created: integer().default(0).notNull(),
@@ -36,10 +39,23 @@ export const DataConnectorRun = pgTable(
     deleted: integer().default(0).notNull(),
     failed: integer().default(0).notNull(),
     relationshipWarnings: integer().default(0).notNull(),
+    // Pages fetched across the whole continuation chain (progress UI + slice budget).
+    pagesProcessed: integer().default(0).notNull(),
+    // Cumulative wall-clock spent waiting on rate limits (honest "Rate-limited" UX).
+    rateLimitWaitMs: integer().default(0).notNull(),
     errorSample: jsonb().$type<Array<{ externalId: string; error: string }>>(),
+    // Optional progress snapshot for the live status line (counts + per-stream phase).
+    progress: jsonb().$type<Record<string, unknown>>(),
     cursorBefore: jsonb(),
     cursorAfter: jsonb(),
     startedAt: timestamp({ precision: 3 }).defaultNow().notNull(),
+    // Checkpoint heartbeat — bumped on every slice/update so the stale-run sweep
+    // distinguishes "alive but slow" from "dead" across a continuation chain.
+    // Keys the sweep off THIS, not startedAt (RunLedger.recordSlice contract).
+    heartbeatAt: timestamp({ precision: 3 })
+      .defaultNow()
+      .notNull()
+      .$onUpdate(() => new Date()),
     finishedAt: timestamp({ precision: 3 }),
     durationMs: integer(),
   },
@@ -48,6 +64,12 @@ export const DataConnectorRun = pgTable(
       'btree',
       table.dataConnectorId.asc().nullsLast(),
       table.startedAt.asc().nullsLast()
+    ),
+    // Stale-run sweep: find 'running' runs whose heartbeat has gone cold.
+    index('DataConnectorRun_status_heartbeatAt_idx').using(
+      'btree',
+      table.status.asc().nullsLast(),
+      table.heartbeatAt.asc().nullsLast()
     ),
   ]
 )

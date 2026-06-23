@@ -1,15 +1,20 @@
 // packages/lib/src/connections/transports/http.ts
 // The HTTP transport — the one place a resolved connection becomes an outgoing HTTP
 // call. Composes the shared `applyAuth` (auth insertion) with URL/query assembly,
-// body encoding, timeout, and response normalization that consumers previously
-// hand-rolled. Consumers: generic-rest data connectors today; the workflow HTTP node
-// and connection-backed agent tools next.
+// body encoding, timeout, rate-limit handling (G3), and response normalization that
+// consumers previously hand-rolled. Consumers: generic-rest data connectors today;
+// the workflow HTTP node and connection-backed agent tools next.
 
 import { applyAuth, type RequestParts } from '../auth-apply'
 import type { RuntimeConnectionData } from '../resolve-connection-for-runtime'
-import type { HttpResponse, HttpTransport } from './types'
+import type { HttpResponse, HttpTransport, RateLimitPolicy } from './types'
 
 const DEFAULT_TIMEOUT_MS = 30_000
+const DEFAULT_MAX_RETRIES = 5
+/** Ceiling for any single throttle wait — a hostile `Retry-After` can't park a worker forever. */
+const MAX_WAIT_MS = 60_000
+/** Backoff base for the no-`Retry-After` (Stripe) path. */
+const BACKOFF_BASE_MS = 1_000
 
 /** True when `headers` already carries `name` (case-insensitive). */
 function hasHeader(headers: Record<string, string>, name: string): boolean {
@@ -79,6 +84,103 @@ function normalizeHeaders(h: Headers): Record<string, string> {
   return out
 }
 
+/** Sleep `ms`, rejecting early if `signal` aborts (so a cancelled slice never parks). */
+function sleep(ms: number, signal?: AbortSignal): Promise<void> {
+  if (ms <= 0) return Promise.resolve()
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) return reject(signal.reason ?? new Error('aborted'))
+    const timer = setTimeout(() => {
+      signal?.removeEventListener('abort', onAbort)
+      resolve()
+    }, ms)
+    const onAbort = () => {
+      clearTimeout(timer)
+      reject(signal?.reason ?? new Error('aborted'))
+    }
+    signal?.addEventListener('abort', onAbort, { once: true })
+  })
+}
+
+/**
+ * Parse a `Retry-After` header (delta-seconds or HTTP-date) to milliseconds.
+ * Returns `undefined` when absent/unparseable so the caller can fall back to backoff.
+ */
+function parseRetryAfterMs(value: string | undefined): number | undefined {
+  if (!value) return undefined
+  const seconds = Number(value)
+  if (Number.isFinite(seconds)) return Math.max(0, seconds * 1_000)
+  const when = Date.parse(value)
+  if (!Number.isNaN(when)) return Math.max(0, when - Date.now())
+  return undefined
+}
+
+/** Full-jitter exponential backoff for the no-header path: `random(0, base·2^n)`. */
+function backoffMs(attempt: number): number {
+  const ceil = Math.min(MAX_WAIT_MS, BACKOFF_BASE_MS * 2 ** attempt)
+  return Math.round(Math.random() * ceil)
+}
+
+/**
+ * Shopify GraphQL throttling is an **HTTP 200** — detect the `Throttled` error in
+ * the body and compute the cost-restore wait `(requested − available) / restoreRate`.
+ * Returns the wait in ms, or `undefined` when the body isn't a throttle signal.
+ */
+function graphqlThrottleWaitMs(body: string): number | undefined {
+  let parsed: unknown
+  try {
+    parsed = body.length ? JSON.parse(body) : undefined
+  } catch {
+    return undefined
+  }
+  const root = parsed as
+    | {
+        errors?: Array<{ message?: string; extensions?: { code?: string } }>
+        extensions?: {
+          cost?: {
+            requestedQueryCost?: number
+            throttleStatus?: { currentlyAvailable?: number; restoreRate?: number }
+          }
+        }
+      }
+    | undefined
+  const throttled = root?.errors?.some(
+    (e) => e.message === 'Throttled' || e.extensions?.code === 'THROTTLED'
+  )
+  if (!throttled) return undefined
+  const cost = root?.extensions?.cost
+  const requested = cost?.requestedQueryCost ?? 0
+  const available = cost?.throttleStatus?.currentlyAvailable ?? 0
+  const restoreRate = cost?.throttleStatus?.restoreRate ?? 0
+  if (restoreRate > 0 && requested > available) {
+    return Math.min(MAX_WAIT_MS, Math.ceil(((requested - available) / restoreRate) * 1_000))
+  }
+  // Throttled but no usable cost data — let the caller backoff.
+  return 0
+}
+
+/**
+ * Decide whether a completed response is a throttle signal and how long to wait.
+ * Honors `Retry-After` universally; adds Shopify-GraphQL 200-body detection under
+ * the `graphql-cost` strategy. `waitMs: undefined` ⇒ throttle but no server hint,
+ * so the caller applies jittered backoff.
+ */
+function detectThrottle(
+  status: number,
+  headers: Record<string, string>,
+  body: string,
+  policy: RateLimitPolicy | undefined
+): { throttled: boolean; waitMs?: number } {
+  if (policy?.strategy === 'graphql-cost' && status === 200) {
+    const waitMs = graphqlThrottleWaitMs(body)
+    if (waitMs !== undefined) return { throttled: true, waitMs: waitMs || undefined }
+  }
+  // The universal case: 429 (rate limited) or 503 (service asking to back off).
+  if (status === 429 || status === 503) {
+    return { throttled: true, waitMs: parseRetryAfterMs(headers['retry-after']) }
+  }
+  return { throttled: false }
+}
+
 export const httpTransport: HttpTransport = {
   kind: 'http',
 
@@ -90,30 +192,62 @@ export const httpTransport: HttpTransport = {
     let parts: RequestParts = { headers, url: buildUrl(resolveUrl(req.url, conn), req.query) }
     if (conn) parts = applyAuth(parts, conn, conn.authApply)
 
-    const res = await fetch(parts.url, {
-      method: req.method,
-      headers: parts.headers,
-      body,
-      signal: AbortSignal.timeout(req.timeoutMs ?? DEFAULT_TIMEOUT_MS),
-      redirect: 'follow',
-    })
+    const policy = req.rateLimit
+    const maxRetries = policy?.maxRetries ?? DEFAULT_MAX_RETRIES
+    let rateLimitWaitMs = 0
 
-    const text = await res.text()
-    let parsed: unknown
-    let parsedDone = false
+    for (let attempt = 0; ; attempt++) {
+      // Combine the caller's cancellation with the per-attempt timeout.
+      const timeout = AbortSignal.timeout(req.timeoutMs ?? DEFAULT_TIMEOUT_MS)
+      const signal = req.signal ? AbortSignal.any([req.signal, timeout]) : timeout
 
-    return {
-      status: res.status,
-      ok: res.ok,
-      headers: normalizeHeaders(res.headers),
-      body: text,
-      json<T = unknown>(): T {
-        if (!parsedDone) {
-          parsed = text.length ? JSON.parse(text) : undefined
-          parsedDone = true
-        }
-        return parsed as T
-      },
-    } satisfies HttpResponse
+      const res = await fetch(parts.url, {
+        method: req.method,
+        headers: parts.headers,
+        body,
+        signal,
+        redirect: 'follow',
+      })
+      const text = await res.text()
+      const respHeaders = normalizeHeaders(res.headers)
+
+      const throttle = detectThrottle(res.status, respHeaders, text, policy)
+      if (throttle.throttled && attempt < maxRetries) {
+        const waitMs = Math.min(MAX_WAIT_MS, throttle.waitMs ?? backoffMs(attempt))
+        rateLimitWaitMs += waitMs
+        await sleep(waitMs, req.signal)
+        continue
+      }
+
+      // Inter-page pacing: a configured floor between pages (token-bucket-lite),
+      // applied after the response so a pagination loop paces before the next page.
+      // NOTE: speculative pre-throttling off a usage gauge (e.g. Shopify's
+      // shop-global `X-Shopify-Shop-Api-Call-Limit`) is cross-request coordination
+      // and deliberately does NOT live in this stateless per-request transport — it
+      // belongs in the per-connection throttle layer (sync-core `ThrottleHandle`
+      // over `UniversalThrottler`, keyed by connection), wired in Steps 3/4.
+      const paceMs = policy?.minDelayMs ?? 0
+      if (paceMs > 0) {
+        rateLimitWaitMs += paceMs
+        await sleep(paceMs, req.signal)
+      }
+
+      let parsed: unknown
+      let parsedDone = false
+      return {
+        status: res.status,
+        ok: res.ok,
+        headers: respHeaders,
+        body: text,
+        rateLimitWaitMs,
+        json<T = unknown>(): T {
+          if (!parsedDone) {
+            parsed = text.length ? JSON.parse(text) : undefined
+            parsedDone = true
+          }
+          return parsed as T
+        },
+      } satisfies HttpResponse
+    }
   },
 }
