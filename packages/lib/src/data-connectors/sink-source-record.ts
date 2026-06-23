@@ -1,8 +1,7 @@
 // packages/lib/src/data-connectors/sink-source-record.ts
 // Map one raw connector payload across the mapping tree and sink each projected
-// write. Shared by the single-shot orchestrator (`run-data-connector-sync`) and the
-// sliced `SyncSource` (`connector-sync-source`) so the fan-out + relationship-edge
-// stamping can never diverge between the two paths. Stamps child→parent relations
+// write. Used by the sliced `SyncSource` (`connector-sync-source`) so the fan-out +
+// relationship-edge stamping is centralized. Stamps child→parent relations
 // onto the parent INSTANCE's projected record so the binding carries them into the
 // two-pass; parents are written before their children (walk order) so the edge
 // target exists.

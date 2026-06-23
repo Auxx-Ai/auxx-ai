@@ -11,12 +11,28 @@
 
 import type { CatalogDataConnector, Database } from '@auxx/database'
 import { createScopedLogger } from '../../logger'
+import type { SyncCursor } from '../../sync-core/contracts'
+import { decodeCursor, encodeCursor } from './app-connector-state'
 import type {
   ConnectorRecord,
   ConnectorStreamDecl,
+  ConnectorYield,
   DataConnectorDefinition,
   FetchResult,
 } from './types'
+
+/** What an app's `execute` returns per page (the SDK's flat `ConnectorFetchResult`). */
+interface AppExecuteResult {
+  records?: ConnectorRecord[]
+  nextState?: {
+    /** Flat resume cursor — any JSON-serializable value (string or structured). */
+    cursor?: unknown
+    /** Steady-phase delta floor the app advances. */
+    updatedSince?: string
+    /** Set on the last page — flips the stream to steady / finishes the snapshot. */
+    backfillComplete?: boolean
+  }
+}
 
 const logger = createScopedLogger('app-connector-adapter')
 
@@ -210,52 +226,87 @@ export function appConnectorAdapter(
         organizationConnection,
       })
 
-      const result = await invokeLambdaExecutor({
-        caller: 'data-connector',
-        payload: {
-          type: 'data-connector',
-          serverBundleSha: installedApp.currentDeployment.serverBundleSha,
-          connectorId: catalog.id,
-          streamKey: args.streamKey,
-          mode: args.mode,
-          state: args.state ?? {},
-          // The app's connector-level config (validated against its `config` zod
-          // schema inside the sandbox). The engine `DataConnectorConfig.filters`
-          // carries it; an app that declares top-level config keys reads them
-          // from `filters`. Generic-rest `endpoint` is never sent to an app.
-          config: (args.config?.filters as Record<string, unknown>) ?? {},
-          context: lambdaContext,
-          timeout: 30000,
-        },
-      })
+      // The app's connector-level config (validated against its `config` zod schema
+      // inside the sandbox). The engine `DataConnectorConfig.filters` carries it; an
+      // app that declares top-level config keys reads them from `filters`.
+      const config = (args.config?.filters as Record<string, unknown>) ?? {}
+      const serverBundleSha = installedApp.currentDeployment.serverBundleSha
 
-      if (result.isErr()) {
-        throw new Error(
-          `App connector '${slug}' fetch failed (${result.error.code}): ${result.error.message}`
-        )
+      // Invoke the app's `execute` for ONE page. Each sandbox round-trip is request/
+      // response — a finite batch + flat cursor. The adapter sends the FLAT app state
+      // (`{ cursor, updatedSince }`), NOT the engine-shaped `{ backfillCursor, watermark }`,
+      // so the app reads `state.cursor`/`state.updatedSince` per the SDK contract.
+      async function invokePage(flat: {
+        cursor: unknown
+        updatedSince?: string
+      }): Promise<AppExecuteResult> {
+        const result = await invokeLambdaExecutor({
+          caller: 'data-connector',
+          payload: {
+            type: 'data-connector',
+            serverBundleSha,
+            connectorId: catalog.id,
+            streamKey: args.streamKey,
+            mode: args.mode,
+            state: { cursor: flat.cursor, updatedSince: flat.updatedSince },
+            config,
+            context: lambdaContext,
+            timeout: 30000,
+          },
+        })
+        if (result.isErr()) {
+          throw new Error(
+            `App connector '${slug}' fetch failed (${result.error.code}): ${result.error.message}`
+          )
+        }
+        return (result.value.execution_result as AppExecuteResult | undefined) ?? {}
       }
 
-      const execResult = result.value.execution_result as
-        | { records?: ConnectorRecord[]; nextState?: Record<string, unknown> }
-        | undefined
-      const records = execResult?.records ?? []
-      const nextState = execResult?.nextState ?? {}
+      // Inbound translation (Gap 1): engine `SyncCursor` → flat app cursor. The
+      // engine hands resume state in as `state.backfillCursor` (structured) +
+      // `state.watermark`; the app never sees either.
+      const engineState = (args.state ?? {}) as {
+        backfillCursor?: SyncCursor
+        watermark?: string
+      }
+      let flat: { cursor: unknown; updatedSince?: string } = {
+        cursor: decodeCursor(engineState.backfillCursor),
+        updatedSince: engineState.watermark,
+      }
 
-      logger.info('app connector fetch complete', {
-        slug,
-        connectorId: catalog.id,
-        streamKey: args.streamKey,
-        recordCount: records.length,
-      })
-
-      // The platform validates each record against the stream source schema, then
-      // maps + sinks (untouched). We hand back an async iterable so the
-      // orchestrator streams without buffering downstream.
+      // Loop `execute` (one page each), threading the flat cursor between our own
+      // calls (NOT re-reading engine state mid-slice), and emit a checkpoint after
+      // each page so the sliced `SyncSource` can bound + resume — exactly like
+      // generic-rest. The generator only `return`s on the terminal checkpoint.
       return {
-        records: (async function* () {
-          for (const record of records) yield record
+        records: (async function* (): AsyncGenerator<ConnectorYield> {
+          while (true) {
+            const { records = [], nextState = {} } = await invokePage(flat)
+            for (const record of records) yield record
+
+            const watermark = nextState.updatedSince
+            logger.info('app connector page complete', {
+              slug,
+              connectorId: catalog.id,
+              streamKey: args.streamKey,
+              recordCount: records.length,
+            })
+
+            // Terminal: the app signals done (or hands back no cursor) ⇒ a
+            // checkpoint with no cursor tells the slice loop this phase is exhausted.
+            if (nextState.backfillComplete || nextState.cursor == null) {
+              yield { __checkpoint: true, watermark }
+              return
+            }
+
+            // Resume point: JSON-encode the (possibly structured) flat cursor into the
+            // opaque token `SyncCursor` the engine persists, and continue paging.
+            flat = { cursor: nextState.cursor, updatedSince: nextState.updatedSince }
+            yield { __checkpoint: true, cursor: encodeCursor(nextState.cursor), watermark }
+          }
         })(),
-        nextState,
+        // The engine ignores `nextState` on the sliced path; checkpoints carry the cursor.
+        nextState: {},
       }
     },
   }

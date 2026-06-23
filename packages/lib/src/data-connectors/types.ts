@@ -218,8 +218,8 @@ export interface ConnectorRecord {
  * checkpoints at safe boundaries without ever interpreting the connector's
  * pagination. A connector emits one after each page it finishes yielding records
  * for; the absence of `cursor` means "that was the last page" (the source is
- * exhausted). Single-shot consumers (`runDataConnectorSync`, the test-fetch) skip
- * these; the sliced `SyncSource` adapter uses them to bound + checkpoint a slice.
+ * exhausted). The test-fetch (sample) path skips these; the sliced `SyncSource`
+ * adapter uses them to bound + checkpoint a slice.
  */
 export interface ConnectorCheckpoint {
   /** Discriminant — distinguishes a checkpoint from a {@link ConnectorRecord}. */
