@@ -9,6 +9,7 @@ import {
   splitSensitiveFields,
   updateCredential,
 } from '@auxx/credentials/store'
+import { getOrgCache } from '@auxx/lib/cache'
 import {
   mintClientCredentialToken,
   refreshCredentialTokens,
@@ -110,8 +111,16 @@ export const connectionsRouter = createTRPCRouter({
         throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: result.error.message })
       }
 
+      // Channels bind a connection credential — flag those rows so the UI can disable delete.
+      // Sourced from the `channels` org cache (no extra query); keyed by the credential FK.
+      const channels = await getOrgCache().get(organizationId, 'channels')
+      const channelByCred = new Map(
+        channels.flatMap((c) => (c.credentialId ? [[c.credentialId, c] as const] : []))
+      )
+
       const now = new Date()
       return result.value.map((record) => {
+        const channel = channelByCred.get(record.id)
         const expired =
           record.consecutiveRefreshFailures >= CONNECTION_CIRCUIT_OPEN_THRESHOLD ||
           (record.expiresAt !== null && record.expiresAt < now)
@@ -140,6 +149,9 @@ export const connectionsRouter = createTRPCRouter({
           // Fresh-connect verify polls for a new id; reconnect verify watches this stamp move.
           updatedAt: record.updatedAt,
           createdBy: { name: record.createdByName },
+          // Set when a channel binds this credential — the UI disables delete and shows an "In use"
+          // badge. Deleting would orphan the channel (FK is set-null), so block it here too.
+          usedByChannel: channel ? { provider: channel.provider, email: channel.email } : null,
         }
       })
     }),
@@ -427,6 +439,17 @@ export const connectionsRouter = createTRPCRouter({
         throw new TRPCError({
           code: 'CONFLICT',
           message: 'Cannot delete connection: it is currently being used in workflows',
+        })
+      }
+
+      // A channel binding this credential would be orphaned by the delete (FK is set-null), losing
+      // its only token source. Block it — disconnect the channel first. Sourced from the cache.
+      const channels = await getOrgCache().get(organizationId, 'channels')
+      if (channels.some((c) => c.credentialId === input.id)) {
+        throw new TRPCError({
+          code: 'CONFLICT',
+          message:
+            'Cannot delete connection: it is in use by a channel. Disconnect the channel first.',
         })
       }
 

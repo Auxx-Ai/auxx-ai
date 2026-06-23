@@ -19,6 +19,8 @@ type ChatWidgetRow = typeof schema.ChatWidget.$inferSelect
  */
 export interface CachedChannel {
   id: string
+  /** Linked connection credential (FK). Null once the credential is unlinked/deleted. */
+  credentialId: string | null
   provider: IntegrationProviderType
   displayName: string
   name: string | null
@@ -67,6 +69,7 @@ export const channelsProvider: CacheProvider<CachedChannel[]> = {
       const settings = (metadata?.settings as ChannelSettings | undefined) ?? {}
       return {
         id: i.id,
+        credentialId: i.credentialId,
         provider: i.provider,
         displayName: i.name ?? i.email ?? i.provider,
         name: i.name,

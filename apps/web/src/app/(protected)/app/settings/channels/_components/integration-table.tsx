@@ -116,7 +116,6 @@ const getProviderName = (provider: string) => {
 const isClickOnInteractiveElement = (event: React.MouseEvent): boolean => {
   // Get the clicked element
   const target = event.target as HTMLElement
-  console.log(target)
   // Check if the element or any of its parents have the data-clickable attribute
   const isClickable = (element: HTMLElement | null): boolean => {
     if (!element) return false
@@ -309,7 +308,12 @@ export default function IntegrationTable({ integrations, inboxes }: IntegrationT
                         onCheckedChange={() => handleToggle(integration.id, integration.enabled)}
                       />
                     </TableCell>
-                    <TableCell className='text-right' data-clickable='true'>
+                    {/* Menu content is portaled, but React events bubble through the React tree —
+                        stop here so selecting an item never triggers the row's navigate. */}
+                    <TableCell
+                      className='text-right'
+                      data-clickable='true'
+                      onClick={(e) => e.stopPropagation()}>
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                           <Button variant='ghost' size='icon'>
@@ -319,7 +323,8 @@ export default function IntegrationTable({ integrations, inboxes }: IntegrationT
                         <DropdownMenuContent align='end'>
                           <DropdownMenuLabel>Actions</DropdownMenuLabel>
                           <DropdownMenuSeparator />
-                          <DropdownMenuItem onClick={() => handleEdit(integration.id)}>
+                          <DropdownMenuItem
+                            onClick={() => router.push(`/app/settings/channels/${integration.id}`)}>
                             <Pencil />
                             Edit Settings
                           </DropdownMenuItem>

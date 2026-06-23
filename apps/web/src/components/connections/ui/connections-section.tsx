@@ -160,6 +160,8 @@ export function ConnectionsSection() {
   }
 
   const handleDelete = async (row: ConnectionRow) => {
+    // Guarded server-side too, but the menu item is disabled — bail before the confirm/mutation.
+    if (row.usedByChannel) return
     const ok = await confirm({
       title: 'Delete connection?',
       description: `Remove "${row.label ?? row.name}"? This cannot be undone.`,
