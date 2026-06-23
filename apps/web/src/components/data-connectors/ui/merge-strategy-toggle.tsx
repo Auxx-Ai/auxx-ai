@@ -20,21 +20,21 @@ const MERGE_STRATEGIES: Array<{
 }> = [
   {
     value: 'overwrite',
-    label: 'overwrite',
+    label: 'Always update',
     variant: 'default',
-    description: 'Always replace the target value with the synced value.',
+    description: 'Always replace the current value with the latest synced value.',
   },
   {
     value: 'fill_blank',
-    label: 'fill-blank',
+    label: 'Only if empty',
     variant: 'sky',
-    description: 'Only write when the target is empty; never replace an existing value.',
+    description: 'Only fill this in when the field is empty; never replace an existing value.',
   },
   {
     value: 'connector_owned_only',
-    label: 'owned-only',
+    label: 'Keep manual edits',
     variant: 'emerald',
-    description: 'Only update values this connector wrote; leave manually-edited values untouched.',
+    description: 'Only update values this sync created; leave manually-edited values untouched.',
   },
 ]
 
@@ -63,7 +63,7 @@ export function MergeStrategyToggle({
       delayDuration={500}
       contentComponent={
         <div className='max-w-xs'>
-          <div className='font-semibold capitalize'>{current.label}</div>
+          <div className='font-semibold'>{current.label}</div>
           <div className='text-muted-foreground'>{current.description}</div>
         </div>
       }>

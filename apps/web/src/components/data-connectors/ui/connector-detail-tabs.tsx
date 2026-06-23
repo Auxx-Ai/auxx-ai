@@ -12,6 +12,8 @@ import { api } from '~/trpc/react'
 import { ConnectorEditsProvider } from '../hooks/use-connector-edits'
 import { ConnectionSection } from './connection-section'
 import { ConnectorSaveBar } from './connector-save-bar'
+import { ConnectorSetupStepper } from './connector-setup-stepper'
+import { asConnectorStatus } from './connector-status'
 import { ScheduleSection } from './schedule-section'
 import { StreamConfigPanel } from './stream-config-panel'
 import { StreamDetailBar } from './stream-detail-bar'
@@ -98,6 +100,17 @@ export function ConnectorDetailTabs({ connector, mobileRunsPanel }: ConnectorDet
       streamKey={selectedStream.streamKey}
     />
   ) : null
+
+  // A `pending` connector is in first-run setup → render the guided stepper. Any
+  // other status renders today's flat tabbed editor. Both mount the identical
+  // section components against the identical mutations (create-sync-flow-plan §2).
+  if (asConnectorStatus(connector.status) === 'pending') {
+    return (
+      <ConnectorEditsProvider>
+        <ConnectorSetupStepper connector={connector} />
+      </ConnectorEditsProvider>
+    )
+  }
 
   return (
     <ConnectorEditsProvider>

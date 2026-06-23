@@ -2,6 +2,8 @@
 'use client'
 
 import { LastUpdated } from '@auxx/ui/components/last-updated'
+import { MetricCell, MetricGrid } from '@auxx/ui/components/metric-grid'
+import { ArrowDownUp, CalendarClock, History, RefreshCw } from 'lucide-react'
 
 interface ConnectorFreshnessPanelProps {
   lastSyncedAt: Date | string | null
@@ -17,8 +19,10 @@ interface ConnectorFreshnessPanelProps {
 /**
  * The steady-phase freshness panel (Step 9 §10.3) — a non-programmer's "is this up to
  * date?" at a glance: last/next synced, the latest run's delta, and how it keeps fresh.
- * Shown between runs (not during a backfill — that's the import card). All relative
- * times self-update via `LastUpdated`; nothing here is a cursor or a percent.
+ * Rendered with the shared `MetricGrid` widget (matching the document/file/ticket detail
+ * drawers) as a 2×2 grid. Shown between runs (not during a backfill — that's the import
+ * card). All relative times self-update via `LastUpdated`; nothing here is a cursor or a
+ * percent.
  */
 export function ConnectorFreshnessPanel({
   lastSyncedAt,
@@ -32,21 +36,34 @@ export function ConnectorFreshnessPanel({
   const delta = created > 0 || updated > 0 ? `+${updated} updated, +${created} new` : 'No changes'
 
   return (
-    <div className='grid grid-cols-2 gap-x-4 gap-y-2 border-b bg-muted/30 px-4 py-3 text-xs'>
-      <Cell label='Last synced'>
-        {lastSyncedAt ? <LastUpdated timestamp={lastSyncedAt} className='text-xs' /> : '—'}
-      </Cell>
-      <Cell label='Synced this run'>{delta}</Cell>
-
-      <Cell label='Next sync'>{nextSync(nextSyncAt, syncBehavior, cadenceLabel)}</Cell>
-      <Cell label='Keeping up to date'>{cadence(syncBehavior, cadenceLabel)}</Cell>
-    </div>
+    <MetricGrid columns={2}>
+      <MetricCell
+        label='Last synced'
+        icon={<History className='size-4 text-muted-foreground' />}
+        value={lastSyncedAt ? <LastUpdated timestamp={lastSyncedAt} className='text-sm' /> : '—'}
+      />
+      <MetricCell
+        label='Synced this run'
+        icon={<ArrowDownUp className='size-4 text-muted-foreground' />}
+        value={delta}
+      />
+      <MetricCell
+        label='Next sync'
+        icon={<CalendarClock className='size-4 text-muted-foreground' />}
+        value={nextSync(nextSyncAt, syncBehavior, cadenceLabel)}
+      />
+      <MetricCell
+        label='Keeping up to date'
+        icon={<RefreshCw className='size-4 text-muted-foreground' />}
+        value={cadence(syncBehavior, cadenceLabel)}
+      />
+    </MetricGrid>
   )
 }
 
 /** The "Next sync" value — a relative time when scheduled, else the trigger model. */
 function nextSync(nextSyncAt: string | null, syncBehavior: string, cadenceLabel: string | null) {
-  if (nextSyncAt) return <LastUpdated timestamp={nextSyncAt} className='text-xs' />
+  if (nextSyncAt) return <LastUpdated timestamp={nextSyncAt} className='text-sm' />
   if (syncBehavior === 'webhook') return 'On changes'
   if (syncBehavior === 'manual') return 'On demand'
   // Scheduled but no derivable next-time (custom cron).
@@ -58,14 +75,4 @@ function cadence(syncBehavior: string, cadenceLabel: string | null): string {
   if (syncBehavior === 'webhook') return 'Live via webhooks'
   if (syncBehavior === 'manual') return 'Syncs when you run it'
   return cadenceLabel ?? 'Not scheduled'
-}
-
-/** A labeled value cell (muted label over the value). */
-function Cell({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className='flex flex-col gap-0.5'>
-      <span className='text-[11px] text-muted-foreground'>{label}</span>
-      <span className='text-foreground'>{children}</span>
-    </div>
-  )
 }

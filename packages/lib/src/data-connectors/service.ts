@@ -213,7 +213,11 @@ export interface RunCounters {
   deleted: number
   failed: number
   relationshipWarnings: number
-  errorSample: Array<{ externalId: string; error: string }>
+  // `tier` classifies the failure for the two-tier error UI (Step 9 §1.1):
+  // 'invalid' = bad shape / missing identity, dropped before the write;
+  // 'rejected' = the entity write itself threw. Omitted ⇒ engine-level error
+  // (stale sweep / ledger fail), rendered under a neutral "Error" bucket.
+  errorSample: Array<{ externalId: string; error: string; tier?: 'invalid' | 'rejected' }>
 }
 
 export function newRunCounters(): RunCounters {

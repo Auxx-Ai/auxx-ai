@@ -78,6 +78,14 @@ export interface DataConnectorConfig {
    * binds the matching verify/resolve/register driver.
    */
   webhook?: { provider: 'shopify' | 'stripe' }
+  /**
+   * How far back a BACKFILL crawls (Step 9 §1.2, plain-language UX). Connector-level
+   * (applies to every stream). `'all'` (default) crawls full history. A bounded span
+   * injects a `created`-style floor on the first backfill request — but only on streams
+   * whose {@link StreamRequestConfig.backfillWindow} declares WHICH param carries it
+   * (templates do; bare generic-rest doesn't, so the UI hides the choice).
+   */
+  backfillWindowSpan?: 'all' | 'last_90_days' | 'last_12_months'
 }
 
 /**
@@ -125,6 +133,14 @@ export interface StreamRequestConfig {
   pagination?: PaginationSpec
   /** Steady-phase delta config (absent ⇒ every steady run re-crawls in full). */
   incremental?: StreamIncrementalConfig
+  /**
+   * Declares WHICH request param carries the backfill-window floor (Step 9 §1.2),
+   * e.g. Shopify `created_at_min` / Stripe `created[gte]`. Present ⇒ the connector
+   * can honor {@link DataConnectorConfig.backfillWindowSpan} on this stream (and the
+   * UI offers the window radio). Distinct from `incremental.sinceParam`, which is the
+   * STEADY delta floor (`updated_at`); this one bounds the initial BACKFILL crawl.
+   */
+  backfillWindow?: { sinceParam: string; format?: 'iso' | 'unix' }
 }
 
 // ── Stream state / connector output (03 §1) ───────────────────────────────────
@@ -152,6 +168,14 @@ export interface ConnectorStreamState {
   recordsSeen?: number
   /** Steady-phase delta floor; the source returns a monotonic max each slice. */
   watermark?: string
+  /**
+   * Backfill-window floor (Step 9 §1.2) — the already-formatted value injected on
+   * every page of a snapshot run (Shopify `created_at_min` / Stripe `created[gte]`).
+   * PINNED ONCE when the backfill resets to fresh (`freshBackfillState`), so it stays
+   * stable across every slice of the chain (no per-slice `now` drift). Absent ⇒ span
+   * `'all'` or no `backfillWindow` declared ⇒ crawl full history.
+   */
+  backfillFloor?: string
   /** Legacy single-shot incremental cursor (snapshot-first generic-rest path). */
   cursor?: string
   /** Set by a connector's terminal `nextState` when its backfill is exhausted. */

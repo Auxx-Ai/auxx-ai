@@ -69,6 +69,8 @@ export interface DataConnectorConfig {
   filters?: Record<string, unknown>
   /** Provider webhook capability selector (Step 8). Mirror of lib `DataConnectorConfig.webhook`. */
   webhook?: { provider: 'shopify' | 'stripe' }
+  /** Backfill crawl span (Step 9 §1.2). Mirror of lib `DataConnectorConfig.backfillWindowSpan`. */
+  backfillWindowSpan?: 'all' | 'last_90_days' | 'last_12_months'
 }
 
 /**
@@ -109,6 +111,9 @@ export interface ConnectorStreamState {
   recordsSeen?: number
   /** Steady-phase delta floor; the source returns a monotonic max each slice. */
   watermark?: string
+  /** Backfill-window floor (Step 9 §1.2), pinned once at fresh-backfill reset.
+   *  Mirror of lib `ConnectorStreamState.backfillFloor`. */
+  backfillFloor?: string
   /** Legacy single-shot incremental cursor (snapshot-first generic-rest path). */
   cursor?: string
   /** Set by a connector's terminal `nextState` when its backfill is exhausted. */
@@ -145,6 +150,9 @@ export interface StreamRequestConfig {
     /** Dotted path on each event to the embedded object to sink (Stripe `data.object`). */
     objectPath?: string
   }
+  /** Backfill-window floor param declaration (Step 9 §1.2). Mirror of lib
+   *  `StreamRequestConfig.backfillWindow`. */
+  backfillWindow?: { sinceParam: string; format?: 'iso' | 'unix' }
 }
 
 /**

@@ -2,6 +2,8 @@
 'use client'
 
 import { Badge } from '@auxx/ui/components/badge'
+import { DrawerHeader } from '@auxx/ui/components/drawer'
+import { EntityIcon } from '@auxx/ui/components/icons'
 import { LastUpdated } from '@auxx/ui/components/last-updated'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { cn } from '@auxx/ui/lib/utils'
@@ -19,6 +21,7 @@ import {
 import { api } from '~/trpc/react'
 import { ConnectorBackfillProgress } from './connector-backfill-progress'
 import { ConnectorFreshnessPanel } from './connector-freshness-panel'
+import { ConnectorRunErrors } from './connector-run-errors'
 import type { ConnectorStatus } from './connector-status'
 
 interface ConnectorRunsPanelProps {
@@ -105,19 +108,22 @@ export function ConnectorRunsPanel({
 
   return (
     <div className='flex h-full flex-col bg-background'>
-      <div className='flex shrink-0 items-center justify-between border-b px-4 py-3'>
-        <span className='text-sm font-semibold'>Runs</span>
-        {isSyncing ? (
-          <Badge variant='outline' size='sm' className='text-amber-600'>
-            <RefreshCw className='size-3 animate-spin' />
-            Syncing
-          </Badge>
-        ) : (
-          <Badge variant='outline' size='sm'>
-            {statusQuery.data?.itemCount ?? 0} records
-          </Badge>
-        )}
-      </div>
+      <DrawerHeader
+        icon={<EntityIcon iconId='history' color='gray' className='size-6' />}
+        title='Runs'
+        actions={
+          isSyncing ? (
+            <Badge variant='outline' size='sm' className='text-amber-600'>
+              <RefreshCw className='size-3 animate-spin' />
+              Syncing
+            </Badge>
+          ) : (
+            <Badge variant='outline' size='sm'>
+              {statusQuery.data?.itemCount ?? 0} records
+            </Badge>
+          )
+        }
+      />
 
       {showBackfill && (
         <ConnectorBackfillProgress
@@ -208,15 +214,17 @@ export function ConnectorRunsPanel({
                   </div>
 
                   {run.errorSample && run.errorSample.length > 0 && (
-                    <div className='mt-1 rounded-md border border-red-200 bg-red-50 p-2 text-xs text-red-700'>
+                    <div className='mt-1 flex flex-col gap-1 rounded-md border border-red-200 bg-red-50 p-2 text-xs text-red-700'>
                       {run.errorSample.slice(0, 3).map((e, i) => (
                         <div key={i} className='truncate'>
                           <span className='font-mono'>{e.externalId}</span>: {e.error}
                         </div>
                       ))}
-                      {run.errorSample.length > 3 && (
-                        <div className='text-red-500'>+{run.errorSample.length - 3} more</div>
-                      )}
+                      <ConnectorRunErrors
+                        errors={run.errorSample}
+                        connectorLabel={sourceLabel}
+                        runId={run.id}
+                      />
                     </div>
                   )}
                 </div>

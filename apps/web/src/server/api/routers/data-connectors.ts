@@ -5,7 +5,7 @@
 // The backend engine (queue/scheduler/orchestrator/provisioning) lives in
 // @auxx/lib/data-connectors — this router is a thin, validated edge over it.
 
-import { getCachedInstalledApps } from '@auxx/lib/cache'
+import { getCachedInstalledApps, getCachedResourceFields } from '@auxx/lib/cache'
 import {
   addMapping,
   addStream,
@@ -28,10 +28,12 @@ import {
   sampleConnectorFetch,
   setStreamRequestConfig,
   setStreamSchema,
+  suggestFieldMappings,
   updateConnector,
   updateMapping,
   updateStream,
 } from '@auxx/lib/data-connectors'
+import { inferJsonSchema } from '@auxx/lib/json-schema/client'
 import { resourceFieldIdSchema } from '@auxx/types/field'
 import { TRPCError } from '@trpc/server'
 import { z } from 'zod'
@@ -67,6 +69,8 @@ const connectorConfigSchema = z
       })
       .optional(),
     filters: z.record(z.string(), z.unknown()).optional(),
+    // How far back a backfill crawls (Step 9 §1.2) — plain-language window radio.
+    backfillWindowSpan: z.enum(['all', 'last_90_days', 'last_12_months']).optional(),
   })
   .passthrough()
 
@@ -102,6 +106,11 @@ const requestConfigSchema = z.object({
   body: z.record(z.string(), z.unknown()).optional(),
   headers: z.record(z.string(), z.string()).optional(),
   pagination: paginationSchema.optional(),
+  // Declares which param carries the backfill-window floor (Step 9 §1.2); set by
+  // templates, preserved across stream edits. Distinct from `incremental.sinceParam`.
+  backfillWindow: z
+    .object({ sinceParam: z.string(), format: z.enum(['iso', 'unix']).optional() })
+    .optional(),
 })
 
 const mergeStrategySchema = z.enum([
@@ -471,6 +480,61 @@ export const dataConnectorRouter = createTRPCRouter({
           message: error instanceof Error ? error.message : 'Test-fetch failed',
         })
       }
+    }),
+
+  /**
+   * Tier 2 mapping suggestions for a bare custom-REST stream (create-sync-flow §3.2).
+   * Reuses the stream's already-detected `sourceSchema` (the setup stepper's Map step
+   * runs after Sample, so a schema exists) — else falls back to a live `sampleFetch`
+   * + inference — then heuristically proposes source→field bindings against the target
+   * entity def's fields (read from the org cache). Returns the editable `FieldMapping`
+   * entry shape; the UI drops them in as pre-checked rows the user confirms/edits.
+   */
+  suggestMappings: adminProcedure
+    .input(
+      z.object({
+        id: z.string(),
+        streamKey: z.string().min(1).nullish(),
+        entityDefinitionId: z.string(),
+        // The stream's detected source schema (Layer A). Passed by the UI to avoid a
+        // redundant live fetch; when omitted, a sample fetch infers it.
+        sourceSchema: z.record(z.string(), z.unknown()).nullish(),
+        requestConfig: requestConfigSchema.optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const result = await getConnector(ctx.db, ctx.session.organizationId, input.id)
+      if (result.isErr()) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: result.error.message })
+      }
+
+      let schema = input.sourceSchema ?? null
+      if (!schema) {
+        try {
+          const sample = await sampleConnectorFetch(
+            ctx.db,
+            ctx.session.organizationId,
+            ctx.session.userId,
+            result.value,
+            { streamKey: input.streamKey, requestConfig: input.requestConfig }
+          )
+          const record = Array.isArray(sample.response) ? sample.response[0] : sample.response
+          schema = record != null ? (inferJsonSchema(record) as Record<string, unknown>) : null
+        } catch (error) {
+          throw new TRPCError({
+            code: 'BAD_REQUEST',
+            message: error instanceof Error ? error.message : 'Could not sample the source',
+          })
+        }
+      }
+      if (!schema) return { proposals: [] }
+
+      const targetFields = await getCachedResourceFields(
+        ctx.session.organizationId,
+        input.entityDefinitionId
+      )
+      const proposals = suggestFieldMappings(input.entityDefinitionId, schema, targetFields)
+      return { proposals }
     }),
 
   addStream: adminProcedure
