@@ -7,6 +7,7 @@ import type {
   RecordArchivedEvent,
   RecordCreatedEvent,
   RecordDeletedEvent,
+  RecordsInvalidatedEvent,
   RecordUpdatedEvent,
 } from '@auxx/lib/realtime'
 import { useCallback } from 'react'
@@ -106,6 +107,19 @@ export function useResourceSync() {
     [invalidateLists, utils]
   )
 
+  // Coarse refresh from a bulk write (data-connector slice). Per-record realtime
+  // is suppressed for those writes, so a single invalidate per def per slice
+  // re-pulls the visible list (records + field values) without the firehose.
+  // Same body as handleRecordArchived — invalidate lists + listFiltered.
+  const handleRecordsInvalidated = useCallback(
+    (raw: unknown) => {
+      const data = raw as RecordsInvalidatedEvent['data']
+      invalidateLists(data.entityDefinitionId)
+      utils.record.listFiltered.invalidate({ entityDefinitionId: data.entityDefinitionId })
+    },
+    [invalidateLists, utils]
+  )
+
   const onEvent = useCallback(
     (event: string, payload: unknown) => {
       if (!realtimeSyncEnabled) return
@@ -120,6 +134,8 @@ export function useResourceSync() {
           return handleRecordDeleted(payload)
         case 'record:archived':
           return handleRecordArchived(payload)
+        case 'records:invalidated':
+          return handleRecordsInvalidated(payload)
       }
     },
     [
@@ -129,6 +145,7 @@ export function useResourceSync() {
       handleRecordUpdated,
       handleRecordDeleted,
       handleRecordArchived,
+      handleRecordsInvalidated,
     ]
   )
 

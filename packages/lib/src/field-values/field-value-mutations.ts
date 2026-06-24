@@ -1181,6 +1181,8 @@ export async function addValues(
     recordId: RecordId
     fieldId: string
     values: unknown[]
+    /** If true, skip the realtime publish. Default false. Set by bulk writes. */
+    skipPublishEvents?: boolean
   }
 ): Promise<TypedFieldValue[]> {
   const { recordId, fieldId, values } = params
@@ -1311,10 +1313,16 @@ export async function addValues(
 
     // Publish the full post-state. Array-return fields publish arrays;
     // scalar-multi (TEXT/etc. with options.multi) are array-return too.
-    const key = buildFieldValueKey(recordId, fieldId as FieldId)
-    publishFieldValueUpdates(getRealtimeService(), ctx.organizationId, [{ key, value: allTyped }], {
-      excludeSocketId: ctx.socketId,
-    }).catch(() => {})
+    // Bulk writes pass skipPublishEvents to stay silent (see unified-handler).
+    if (params.skipPublishEvents !== true) {
+      const key = buildFieldValueKey(recordId, fieldId as FieldId)
+      publishFieldValueUpdates(
+        getRealtimeService(),
+        ctx.organizationId,
+        [{ key, value: allTyped }],
+        { excludeSocketId: ctx.socketId }
+      ).catch(() => {})
+    }
 
     return allTyped
   })
@@ -1332,6 +1340,8 @@ export async function removeValues(
     recordId: RecordId
     fieldId: string
     values: unknown[]
+    /** If true, skip the realtime publish. Default false. Set by bulk writes. */
+    skipPublishEvents?: boolean
   }
 ): Promise<void> {
   const { recordId, fieldId, values } = params
@@ -1394,13 +1404,16 @@ export async function removeValues(
   // Update display (e.g. clear avatar when last file row removed).
   await maybeUpdateDisplayValue(ctx, recordId, field, remaining ?? null)
 
-  const key = buildFieldValueKey(recordId, fieldId as FieldId)
-  publishFieldValueUpdates(
-    getRealtimeService(),
-    ctx.organizationId,
-    [{ key, value: publishValue }],
-    { excludeSocketId: ctx.socketId }
-  ).catch(() => {})
+  // Bulk writes pass skipPublishEvents to stay silent (see unified-handler).
+  if (params.skipPublishEvents !== true) {
+    const key = buildFieldValueKey(recordId, fieldId as FieldId)
+    publishFieldValueUpdates(
+      getRealtimeService(),
+      ctx.organizationId,
+      [{ key, value: publishValue }],
+      { excludeSocketId: ctx.socketId }
+    ).catch(() => {})
+  }
 }
 
 /**
