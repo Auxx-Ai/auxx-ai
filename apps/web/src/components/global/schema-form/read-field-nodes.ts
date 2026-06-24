@@ -3,14 +3,25 @@
 import type { FieldEntry, FieldNode } from './types'
 
 /**
- * Read a declared field schema (the `_metadata`-annotated node shape the app
- * catalog emits) into a flat list of renderable field entries. Non-object /
- * untyped nodes are skipped. A field is required unless `isOptional === true`.
+ * Read a declared field schema into a flat list of renderable field entries.
+ * Accepts two shapes:
+ *  - the `_metadata`-annotated flat node map the app input catalog emits
+ *    (`{ fieldKey: { type, _metadata } }`), and
+ *  - a JSON-Schema object envelope (`{ type: 'object', properties: {…} }`) as
+ *    produced by zod→json-schema for a connector's declared `config` — here the
+ *    field nodes live under `properties`, so we unwrap it first.
+ * The envelope is unambiguous: in the flat shape a top-level `type` is an object
+ * node, never the string `'object'`. Non-object / untyped nodes are skipped. A
+ * field is required unless `isOptional === true`.
  */
 export function readFieldNodes(schema: Record<string, unknown> | null | undefined): FieldEntry[] {
   if (!schema) return []
+  const nodes =
+    schema.type === 'object' && schema.properties && typeof schema.properties === 'object'
+      ? (schema.properties as Record<string, unknown>)
+      : schema
   const entries: FieldEntry[] = []
-  for (const [key, raw] of Object.entries(schema)) {
+  for (const [key, raw] of Object.entries(nodes)) {
     if (!raw || typeof raw !== 'object') continue
     const node = raw as FieldNode
     if (typeof node.type !== 'string') continue

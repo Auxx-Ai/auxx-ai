@@ -13,12 +13,16 @@
 import type { Database } from '@auxx/database'
 import { schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import { and, eq, lt } from 'drizzle-orm'
+import { and, eq, inArray, lt } from 'drizzle-orm'
 import type { ThrottleHandle } from '../sync-core/contracts'
 import { runSyncSlice } from '../sync-core/slice-runner'
 import { prepareConnectorFetch } from './connector-runtime'
 import { createConnectorStreamSyncSource, type SyncSourceStream } from './connector-sync-source'
-import { type BackfillSliceJobData, enqueueBackfillSlice } from './data-connector-queue'
+import {
+  type BackfillSliceJobData,
+  enqueueBackfillSlice,
+  enqueueConnectorSync,
+} from './data-connector-queue'
 import { backfillProvisionedFieldRefs, provisionConnectorMappings } from './provisioning'
 import {
   claimForSync,
@@ -72,7 +76,7 @@ interface ChainSnapshot {
 }
 
 /** Reset a stream's durable state to a fresh backfill (re-backfill / first run). */
-function freshBackfillState(
+export function freshBackfillState(
   prev: ConnectorStreamState,
   startedAtIso: string,
   backfillFloor?: string
@@ -228,6 +232,51 @@ export async function startConnectorSync(
     phase,
     streams: streams.length,
   })
+  return true
+}
+
+// ── Backfill a pending mapping-edit change (Layer 2 — "Backfill now") ─────────────
+
+/**
+ * Trigger the deferred full re-crawl for a pending structural edit (the banner's
+ * "Backfill now", or the only place a `rebackfill`/`rebind` edit's expensive
+ * re-projection is requested). Resets the `resyncPending.streamIds` streams to a
+ * fresh backfill so the re-crawl re-projects + re-binds history, then enqueues a
+ * sync. `startConnectorSync` re-derives the phase from the reset states (any reset
+ * stream forces the backfill phase), and the backfill finalize clears
+ * `resyncPending` — so we deliberately do NOT clear it here (a failed sync must keep
+ * the banner). Returns false when the connector is gone.
+ */
+export async function backfillPendingChange(
+  db: Database,
+  organizationId: string,
+  dataConnectorId: string
+): Promise<boolean> {
+  const connector = await db.query.DataConnector.findFirst({
+    where: and(
+      eq(schema.DataConnector.id, dataConnectorId),
+      eq(schema.DataConnector.organizationId, organizationId)
+    ),
+    columns: { id: true, resyncPending: true },
+  })
+  if (!connector) return false
+
+  const streamIds = connector.resyncPending?.streamIds ?? []
+  if (streamIds.length > 0) {
+    const startedAtIso = new Date().toISOString()
+    const streamRows = await db.query.DataConnectorStream.findMany({
+      where: and(
+        eq(schema.DataConnectorStream.dataConnectorId, dataConnectorId),
+        inArray(schema.DataConnectorStream.id, streamIds)
+      ),
+    })
+    for (const s of streamRows) {
+      const st = (s.state as ConnectorStreamState) ?? {}
+      await persistStreamState(db, s.id, freshBackfillState(st, startedAtIso))
+    }
+  }
+
+  await enqueueConnectorSync({ connectorId: dataConnectorId, organizationId, trigger: 'backfill' })
   return true
 }
 

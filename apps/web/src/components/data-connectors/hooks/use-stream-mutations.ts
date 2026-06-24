@@ -69,6 +69,10 @@ export function useStreamMutations(connectorId: string) {
   const utils = api.useUtils()
   const invalidateStreams = () =>
     void utils.dataConnector.listStreams.invalidate({ id: connectorId })
+  // getStatus carries `resyncPending` but only polls while syncing — an idle connector
+  // won't refetch on its own, so a structural edit must nudge it or the re-sync banner
+  // stays hidden until reload. Cheap, and harmless on cosmetic edits.
+  const invalidateStatus = () => void utils.dataConnector.getStatus.invalidate({ id: connectorId })
 
   // Optimistic (instant-toggle) mutations — no invalidate, rollback on error.
   const updateStreamM = api.dataConnector.updateStream.useMutation()
@@ -81,7 +85,10 @@ export function useStreamMutations(connectorId: string) {
   // though they aren't optimistic. A second `setStreamRequestConfig` instance
   // backs the explicit Save (the bare one above stays optimistic for setSyncMode).
   const saveRequestConfigM = api.dataConnector.setStreamRequestConfig.useMutation({
-    onSuccess: invalidateStreams,
+    onSuccess: () => {
+      invalidateStreams()
+      invalidateStatus()
+    },
     onError: (e) => toastError({ title: 'Could not save request', description: e.message }),
   })
   const setStreamSchemaM = api.dataConnector.setStreamSchema.useMutation({
@@ -110,6 +117,7 @@ export function useStreamMutations(connectorId: string) {
       )
       try {
         await run()
+        void utils.dataConnector.getStatus.invalidate({ id: connectorId })
       } catch (err) {
         utils.dataConnector.listStreams.setData(key, previous)
         toastError({
@@ -118,7 +126,7 @@ export function useStreamMutations(connectorId: string) {
         })
       }
     },
-    [connectorId, utils.dataConnector.listStreams]
+    [connectorId, utils.dataConnector.listStreams, utils.dataConnector.getStatus]
   )
 
   // ── Mapping-cache optimistic runner ───────────────────────────────────────
@@ -138,6 +146,7 @@ export function useStreamMutations(connectorId: string) {
       )
       try {
         await run()
+        void utils.dataConnector.getStatus.invalidate({ id: connectorId })
       } catch (err) {
         utils.dataConnector.listStreams.setData(key, previous)
         toastError({
@@ -146,7 +155,7 @@ export function useStreamMutations(connectorId: string) {
         })
       }
     },
-    [connectorId, utils.dataConnector.listStreams]
+    [connectorId, utils.dataConnector.listStreams, utils.dataConnector.getStatus]
   )
 
   // ── Mapping toggles ───────────────────────────────────────────────────────

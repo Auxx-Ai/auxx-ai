@@ -74,6 +74,27 @@ export interface DataConnectorConfig {
 }
 
 /**
+ * Pending re-sync marker (jsonb on {@link DataConnector}, nullable). Stamped by the
+ * mapping-edit-safety mutations when a structural edit (mapping/connector/stream
+ * change) means existing synced records no longer reflect the config; cleared when a
+ * full backfill of the affected streams completes. Drives the connector-page banner.
+ * Structural mirror of `ResyncPending` in `@auxx/lib/data-connectors/types` (this
+ * package can't import tier-3 lib) — keep the two byte-compatible (Invariants §18).
+ */
+export interface ResyncPending {
+  /** `'rebackfill'` (re-projection needed) vs `'rebind'` (identity/match key changed). */
+  level: 'rebackfill' | 'rebind'
+  /** Short reason codes for the banner detail (e.g. `'rootPath'`, `'field-added'`). */
+  reasons: string[]
+  /** Streams whose backfill must re-run to clear the pending state. */
+  streamIds: string[]
+  /** Bound record count at stamp time (for the banner message; cheap `count(*)`). */
+  itemCount: number
+  /** ISO 8601 timestamp the marker was stamped. */
+  at: string
+}
+
+/**
  * Scheduled-trigger config (jsonb on {@link DataConnector}). Structural mirror of
  * `ScheduledTriggerConfig` from `@auxx/lib/workflows/cron-pattern` — re-declared
  * here because the database package cannot import lib (tier ordering).

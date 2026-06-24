@@ -9,6 +9,7 @@ import { getCachedInstalledApps, getCachedResourceFields } from '@auxx/lib/cache
 import {
   addMapping,
   addStream,
+  backfillPendingChange,
   createConnector,
   createConnectorFromAppCatalog,
   createConnectorFromTemplate,
@@ -305,6 +306,9 @@ export const dataConnectorRouter = createTRPCRouter({
         lastSyncedAt: c.lastSyncedAt,
         itemCount: c.itemCount,
         error: c.error,
+        // Pending mapping-edit re-sync marker (Layer 2) — drives the page banner.
+        // Null once a full backfill of the affected streams clears it.
+        resyncPending: c.resyncPending,
         nextSyncAt,
         cadenceLabel,
         latestRun,
@@ -454,6 +458,24 @@ export const dataConnectorRouter = createTRPCRouter({
     })
     return { success: true }
   }),
+
+  /**
+   * "Backfill now" — trigger the deferred full re-crawl for a pending mapping-edit
+   * change (the banner action). Resets the affected streams to a fresh backfill so
+   * history is re-projected + re-bound, then enqueues a sync; `resyncPending` clears
+   * when that backfill finalizes. The only place a `rebackfill`/`rebind` edit's
+   * expensive re-crawl is requested.
+   */
+  backfillPendingChange: adminProcedure
+    .input(z.object({ id: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const result = await getConnector(ctx.db, ctx.session.organizationId, input.id)
+      if (result.isErr()) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: result.error.message })
+      }
+      await backfillPendingChange(ctx.db, ctx.session.organizationId, input.id)
+      return { success: true }
+    }),
 
   /**
    * Provision schema for every owned/contributing mapping of a connector

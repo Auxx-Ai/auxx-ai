@@ -29,6 +29,7 @@ import { runConnectorSlice } from './connector-slice-loop'
 import { reconcileManagedMarkers, reconcileOrphans } from './reconciliation'
 import { resolveRelationships } from './relationship-pass'
 import {
+  clearResyncPending,
   countConnectorItems,
   type DataConnectorRow,
   type DecodedMapping,
@@ -258,6 +259,12 @@ class ConnectorStreamSyncSource implements ConnectorSyncSource {
       ok: true,
       itemCount: await countConnectorItems(this.deps.db, this.deps.connector.id),
     })
+    // A completed BACKFILL re-projected + re-bound all history, so any pending
+    // mapping-edit re-sync is satisfied — clear the banner marker. A steady run
+    // touches only deltas, so it must NOT clear a pending rebackfill/rebind.
+    if (opts.phase === 'backfill') {
+      await clearResyncPending(this.deps.db, this.deps.connector.id)
+    }
   }
 
   /** Build a sink context with the given counters; reuses cache-warmed crud handlers. */

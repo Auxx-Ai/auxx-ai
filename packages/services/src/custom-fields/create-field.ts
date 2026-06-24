@@ -104,6 +104,8 @@ export interface CreateCustomFieldInput {
   connectionId?: string
   /** App-stable field key for idempotent provisioning + reverse lookup (e.g. 'customerId'). */
   appFieldKey?: string
+  /** Owning data connector. Set => connector-provisioned (owned-mode schema). */
+  dataConnectorId?: string
 }
 
 /**
@@ -188,6 +190,7 @@ export async function createCustomField(input: CreateCustomFieldInput, tx?: Tran
     appInstallationId,
     connectionId,
     appFieldKey,
+    dataConnectorId,
   } = input
 
   // Use provided transaction or default to global database
@@ -449,6 +452,7 @@ export async function createCustomField(input: CreateCustomFieldInput, tx?: Tran
         appInstallationId: appInstallationId ?? null,
         connectionId: connectionId ?? null,
         appFieldKey: appFieldKey ?? null,
+        dataConnectorId: dataConnectorId ?? null,
         updatedAt: new Date(),
         ...capabilityFlags,
       })

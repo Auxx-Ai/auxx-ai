@@ -172,6 +172,8 @@ export { entitySink } from './sinks/entity-sink'
 export type { EntitySink, ProjectedRecord, SyncCtx } from './sinks/types'
 // Sliced backfill orchestration (Step 4) — worker-facing continuation engine
 export {
+  backfillPendingChange,
+  freshBackfillState,
   runBackfillSlice,
   SLICE_BUDGET,
   SLICE_LOCK_DURATION_MS,

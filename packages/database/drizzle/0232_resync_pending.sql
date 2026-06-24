@@ -1,0 +1,1 @@
+ALTER TABLE "DataConnector" ADD COLUMN "resyncPending" jsonb;
