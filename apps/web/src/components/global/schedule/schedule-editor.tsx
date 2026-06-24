@@ -11,6 +11,8 @@ import type { ScheduledMode, ScheduledState } from './scheduled-config'
 interface ScheduleEditorProps {
   value: ScheduledState
   onChange: (next: ScheduledState) => void
+  /** Minute-cadence floor passed to the simple {@link IntervalSelector}. */
+  minMinutes?: number
 }
 
 /**
@@ -20,7 +22,7 @@ interface ScheduleEditorProps {
  * `scheduledConfigFromState`. Shared by the agent trigger dialog and the
  * connector Schedule section.
  */
-export function ScheduleEditor({ value, onChange }: ScheduleEditorProps) {
+export function ScheduleEditor({ value, onChange, minMinutes }: ScheduleEditorProps) {
   const setMode = (mode: ScheduledMode) =>
     onChange({
       ...value,
@@ -51,11 +53,12 @@ export function ScheduleEditor({ value, onChange }: ScheduleEditorProps) {
         <IntervalSelector
           interval={value.interval}
           value={value.value}
+          minMinutes={minMinutes}
           onIntervalChange={(interval) =>
             onChange({
               ...value,
               interval,
-              value: Math.max(minIntervalValue(interval), value.value),
+              value: Math.max(minIntervalValue(interval, minMinutes), value.value),
             })
           }
           onValueChange={(v) => onChange({ ...value, value: v })}

@@ -21,6 +21,7 @@ import {
   Plug,
   Plus,
   ShieldCheck,
+  Webhook,
   Wrench,
   Zap,
 } from 'lucide-react'
@@ -88,7 +89,9 @@ export function AgentDetailTabs({ agent, onAutosaveChange }: AgentDetailTabsProp
   //   drill set (sub:/code:)   ⇒ push 'drill' (a sub-procedure or code body)
   const [selectedProcedureId, setSelectedProcedureId] = useQueryState('procedure')
   const [drill, setDrill] = useQueryState('drill')
-  const [addingKind, setAddingKind] = useState<'scheduled' | 'event' | 'app' | null>(null)
+  const [addingKind, setAddingKind] = useState<'scheduled' | 'event' | 'app' | 'webhook' | null>(
+    null
+  )
   // Lifted from the pushed ProcedureEditor so the detail bar (rendered by
   // <NavStackBar>, a separate subtree) can show live Saving…/Saved next to Publish.
   const [procedureAutosave, setProcedureAutosave] = useState<AutosaveState>({ kind: 'idle' })
@@ -284,6 +287,10 @@ export function AgentDetailTabs({ agent, onAutosaveChange }: AgentDetailTabsProp
                             <DropdownMenuItem onClick={() => setAddingKind('app')}>
                               <Plug />
                               App
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => setAddingKind('webhook')}>
+                              <Webhook />
+                              Webhook
                             </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>

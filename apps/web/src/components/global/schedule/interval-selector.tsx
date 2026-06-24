@@ -20,16 +20,22 @@ export type Interval = 'minutes' | 'hours' | 'days' | 'weeks'
 
 // Mirrors MIN_SCHEDULE_INTERVAL_MINUTES (packages/lib cron-pattern). Hardcoded
 // here to keep this client component free of the server-only lib barrel.
-const MIN_MINUTES = 5
+export const MIN_MINUTES = 5
 
-/** Lowest allowed value for a given unit — minutes are floored at MIN_MINUTES. */
-export const minIntervalValue = (interval: Interval) => (interval === 'minutes' ? MIN_MINUTES : 1)
+/**
+ * Lowest allowed value for a given unit — minutes are floored at `minMinutes`
+ * (defaults to the generic {@link MIN_MINUTES}; connectors pass a coarser floor).
+ */
+export const minIntervalValue = (interval: Interval, minMinutes = MIN_MINUTES) =>
+  interval === 'minutes' ? minMinutes : 1
 
 interface IntervalSelectorProps {
   interval: Interval
   value: number
   onIntervalChange: (interval: Interval) => void
   onValueChange: (value: number) => void
+  /** Minute-cadence floor; defaults to {@link MIN_MINUTES}. */
+  minMinutes?: number
 }
 
 /**
@@ -42,7 +48,9 @@ export function IntervalSelector({
   value,
   onIntervalChange,
   onValueChange,
+  minMinutes,
 }: IntervalSelectorProps) {
+  const minValue = minIntervalValue(interval, minMinutes)
   return (
     <VarEditorField className='py-0 pe-0 ps-0.5'>
       <div className='flex flex-row items-center gap-2'>
@@ -60,10 +68,8 @@ export function IntervalSelector({
         <div className='flex-1'>
           <NumberInput
             value={value}
-            onValueChange={(v) =>
-              onValueChange(Math.max(minIntervalValue(interval), v ?? minIntervalValue(interval)))
-            }
-            min={minIntervalValue(interval)}>
+            onValueChange={(v) => onValueChange(Math.max(minValue, v ?? minValue))}
+            min={minValue}>
             <InputGroup className='bg-transparent! min-h-8 shadow-none ring-0 border-0 has-[[data-slot=input-group-control]:focus-visible]:ring-[0px]'>
               <NumberInputFieldBase className='text-start ps-0 placeholder:text-primary-400' />
               <NumberInputArrows />

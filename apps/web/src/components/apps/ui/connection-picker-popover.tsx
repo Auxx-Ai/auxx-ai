@@ -50,6 +50,12 @@ interface ConnectionPickerPopoverProps {
   preferredCredentialIds?: string[]
   /** Display name of the preferred provider/app (e.g. "Gmail") for the picker's nudge/empty state. */
   preferredLabel?: string
+  /**
+   * Hard allow-list: when set, only connections whose id is in this set are
+   * listed (e.g. webhook triggers restrict to spec-bearing connections). Unlike
+   * {@link preferredCredentialIds} (which only re-orders), this filters the list.
+   */
+  filterCredentialIds?: string[]
 }
 
 const DEFAULT_KINDS: PickerKind[] = ['app', 'integration', 'workflow']
@@ -72,6 +78,7 @@ export function ConnectionPickerPopover({
   matchTriggerWidth = false,
   preferredCredentialIds,
   preferredLabel,
+  filterCredentialIds,
 }: ConnectionPickerPopoverProps) {
   const [open, setOpen] = useState(false)
   const [editRow, setEditRow] = useState<PickerConnection | null>(null)
@@ -79,9 +86,18 @@ export function ConnectionPickerPopover({
   const { appInstallations } = useAppsContext()
 
   const listInput = { kind: kinds, orgScopedOnly }
-  const { data: connections = [] } = api.connections.list.useQuery(listInput, {
+  const { data: allConnections = [] } = api.connections.list.useQuery(listInput, {
     refetchOnWindowFocus: false,
   })
+
+  // Hard allow-list (e.g. webhook triggers restrict to spec-bearing connections).
+  const connections = useMemo(
+    () =>
+      filterCredentialIds
+        ? allConnections.filter((c) => filterCredentialIds.includes(c.id))
+        : allConnections,
+    [allConnections, filterCredentialIds]
+  )
 
   // Platform provider catalog, keyed by providerKey (= Credential.type) — drives the
   // OAuth-vs-secret routing so a platform OAuth row reconnects instead of showing the API form.

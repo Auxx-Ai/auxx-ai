@@ -88,7 +88,15 @@ const connectorConfigSchema = z
 
 const intervalCount = z.union([z.number(), z.string()]).optional()
 
-/** ScheduledTriggerConfig (shared agent/workflow frequency model). Minutes is rejected — the floor is coarse (04). */
+/**
+ * Connector sync floor — connectors poll third-party APIs, so sub-15-minute
+ * cadences burn rate limits for data that rarely changes that fast. Coarser
+ * than the generic 5-minute workflow/agent floor (MIN_SCHEDULE_INTERVAL_MINUTES).
+ * Raw cron (`triggerInterval: 'custom'`) bypasses this as a power-user escape hatch.
+ */
+const MIN_CONNECTOR_INTERVAL_MINUTES = 15
+
+/** ScheduledTriggerConfig (shared agent/workflow frequency model). Minutes is floored at 15 (04). */
 const scheduleConfigSchema = z
   .object({
     triggerInterval: z.enum(['minutes', 'hours', 'days', 'weeks', 'custom']),
@@ -102,9 +110,14 @@ const scheduleConfigSchema = z
     customCron: z.string().optional(),
     timezone: z.string().optional(),
   })
-  .refine((c) => c.triggerInterval !== 'minutes', {
-    message: 'Minimum sync cadence is hourly.',
-  })
+  .refine(
+    (c) => {
+      if (c.triggerInterval !== 'minutes') return true
+      const minutes = Number(c.timeBetweenTriggers.minutes)
+      return Number.isFinite(minutes) && minutes >= MIN_CONNECTOR_INTERVAL_MINUTES
+    },
+    { message: `Minimum sync cadence is ${MIN_CONNECTOR_INTERVAL_MINUTES} minutes.` }
+  )
 
 const scheduleFields = {
   syncBehavior: z.enum(['manual', 'scheduled', 'webhook']).optional(),
