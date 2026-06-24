@@ -102,6 +102,11 @@ function mergeMetadata(existing: unknown, patch: Record<string, unknown>): Recor
  * Create the Integration row, or relink the credential onto the existing one (reauth / reconnect /
  * calendar grant). On relink the metadata patch is MERGED so domain blobs (watch expiration, cached
  * user emails, calendar sync flags) survive.
+ *
+ * A relink also clears the sync breaker (`syncStatus` / `syncStage` / `throttle*`). The credential
+ * is healthy again, so a prior `FAILED` must not stick: it both shows a stale "Sync Error" badge
+ * and — for webhook-mode channels, which the polling relaunch job skips — would never recover on
+ * its own. Reset to the clean `NOT_SYNCED` / `IDLE` baseline so the next push or poll resumes.
  */
 async function upsertIntegration(args: {
   organizationId: string
@@ -132,6 +137,11 @@ async function upsertIntegration(args: {
         email,
         enabled: true,
         metadata: mergeMetadata(existing.metadata, metadataPatch) as any,
+        syncStatus: 'NOT_SYNCED',
+        syncStage: 'IDLE',
+        syncStageStartedAt: null,
+        throttleFailureCount: 0,
+        throttleRetryAfter: null,
         updatedAt: new Date(),
       })
       .where(eq(schema.Integration.id, existing.id))

@@ -56,6 +56,7 @@ export function ConnectionsSection() {
   const flow = useConnectFlow({ onConnected: invalidate })
 
   const updateCredential = api.connections.update.useMutation()
+  const saveConnection = api.connections.save.useMutation()
   const deleteCredential = api.connections.delete.useMutation()
 
   // Installed apps that actually expose a connection (have a scoped definition).
@@ -116,24 +117,62 @@ export function ConnectionsSection() {
   // rotate their key through the flow's Reconnect button.
   const isPlainSecret = (row: ConnectionRow) => row.kind !== 'app' && !providerByKey.get(row.type)
 
-  // Synthetic method backing the unified edit dialog. Plain secrets expose their single API-key
-  // row; every other row is name-only here (re-auth / key rotation routes through Reconnect), so
-  // they carry a fieldless oauth-shaped method. Cheap to recompute, so no memo.
+  // The platform provider backing this row (if any). Secret providers (e.g. AI API keys) edit
+  // their credential fields inline; OAuth providers re-authorize through Reconnect.
+  const editProvider = editRow ? providerByKey.get(editRow.type) : undefined
+  // A row whose credentials are edited inline: a plain secret (bare API-key) or a provider-backed
+  // secret (the provider's connection-variable form). OAuth/app rows stay name-only + Reconnect.
+  const editInlineSecret = editRow
+    ? isPlainSecret(editRow) || editProvider?.connectionType === 'secret'
+    : false
+
+  // Synthetic method backing the unified edit dialog. Plain secrets expose a bare API-key row;
+  // provider secrets expose the provider's fields (apiKey, base URL, …), seeded masked from
+  // `getForEdit`; OAuth/app rows are fieldless (name-only). Cheap to recompute, so no memo.
   const editMethod: DetailMethod | null = editRow
     ? {
         id: editRow.connectionDefinitionId ?? editRow.id,
         label: editRow.label ?? editRow.name,
         description: null,
-        connectionType: isPlainSecret(editRow) ? 'secret' : 'oauth2-code',
+        connectionType: editInlineSecret ? 'secret' : 'oauth2-code',
         global: editRow.scope !== 'user',
-        connectionVariables: [],
+        connectionVariables:
+          editProvider?.connectionType === 'secret' ? (editProvider.connectionVariables ?? []) : [],
       }
     : null
 
-  // One Save persists a rename (label) and, for a plain secret, a rotated API key — both via
-  // `connections.update`. A no-op (nothing changed) just closes.
-  const handleEditSubmit = (payload: { name?: string; secret?: string }) => {
+  const onEditSaved = () => {
+    setEditRow(null)
+    invalidate()
+  }
+  const onEditError = (error: { message: string }) =>
+    toastError({ title: 'Error updating connection', description: error.message })
+
+  // One Save persists a rename and the connection's credentials. Provider-backed secrets (e.g. AI
+  // API keys, multi-field forms) route through `connections.save`, which splits values by the
+  // def's secret flags and merges unchanged secrets on reconnect (no metadata wipe). Plain secrets
+  // and name-only rows use `connections.update`. A no-op just closes.
+  const handleEditSubmit = (payload: {
+    name?: string
+    secret?: string
+    values?: Record<string, string>
+  }) => {
     if (!editRow) return
+
+    if (editProvider?.connectionType === 'secret') {
+      saveConnection.mutate(
+        {
+          connectionDefinitionId: editRow.connectionDefinitionId ?? editRow.type,
+          name: payload.name?.trim() || editRow.label || editRow.name,
+          ...(payload.values && { values: payload.values }),
+          ...(payload.secret && { secret: payload.secret }),
+          connectionId: editRow.id,
+        },
+        { onSuccess: onEditSaved, onError: onEditError }
+      )
+      return
+    }
+
     const currentName = editRow.label ?? editRow.name
     const newLabel = payload.name?.trim()
     const labelChanged = !!newLabel && newLabel !== currentName
@@ -148,14 +187,7 @@ export function ConnectionsSection() {
         ...(labelChanged && { label: newLabel }),
         ...(newSecret && { data: { apiKey: newSecret } }),
       },
-      {
-        onSuccess: () => {
-          setEditRow(null)
-          invalidate()
-        },
-        onError: (error) =>
-          toastError({ title: 'Error updating connection', description: error.message }),
-      }
+      { onSuccess: onEditSaved, onError: onEditError }
     )
   }
 
@@ -376,20 +408,20 @@ export function ConnectionsSection() {
           }}
           title={`Edit ${editRow.label ?? editRow.name}`}
           method={editMethod}
-          // Plain secrets seed their masked key; name-only rows skip the load.
-          connectionId={isPlainSecret(editRow) ? editRow.id : undefined}
-          pending={updateCredential.isPending}
+          // Inline-secret rows seed their masked credentials; name-only rows skip the load.
+          connectionId={editInlineSecret ? editRow.id : undefined}
+          pending={updateCredential.isPending || saveConnection.isPending}
           submitLabel='Save'
           loadingText='Saving...'
           showName
           initialName={editRow.label ?? editRow.name}
           description={
-            isPlainSecret(editRow)
-              ? 'Rename this connection or update its API key.'
+            editInlineSecret
+              ? 'Rename this connection or update its credentials.'
               : 'Rename this connection, or use Reconnect to re-authorize or update its credentials.'
           }
           onReconnect={
-            isPlainSecret(editRow)
+            editInlineSecret
               ? undefined
               : () => {
                   const row = editRow
