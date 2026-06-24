@@ -10,8 +10,11 @@ import type { CredentialStoreError } from './types'
 const PERMANENT_FAILURE_THRESHOLD = 5
 
 /**
- * Record a successful token refresh: reset the failure breaker and stamp `lastRefreshAt`.
- * The only writer (with {@link recordRefreshFailure}) of the breaker fields. Org-scoped.
+ * Record a successful token refresh: reset the failure breaker, clear any classified auth-error
+ * state (`requiresReauth` / `lastAuthError` / `lastAuthErrorAt`), and stamp `lastRefreshAt`. A
+ * fresh token means the credential is healthy again, so this is also the reconnect recovery path —
+ * without clearing the reauth flags the UI keeps surfacing "Auth required". The only writer (with
+ * {@link recordRefreshFailure}) of the breaker fields. Org-scoped.
  */
 export async function recordRefreshSuccess(
   id: string,
@@ -24,6 +27,9 @@ export async function recordRefreshSuccess(
       .update(schema.Credential)
       .set({
         consecutiveRefreshFailures: 0,
+        requiresReauth: false,
+        lastAuthError: null,
+        lastAuthErrorAt: null,
         lastRefreshAt: now,
         expiresAt: options.expiresAt,
         updatedAt: now,

@@ -12,6 +12,15 @@ import { FEATURE_REGISTRY_MAP, FeatureKey, parseFeatureLimits } from './types'
 
 const logger = createScopedLogger('overage-detection-service')
 
+/**
+ * Static-typed features that are NOT standing, countable resources.
+ * These are metered monthly pools (tracked via OrganizationAiQuota and the
+ * quota webhook handlers), so they must be excluded from resource-count
+ * overage detection — there is nothing to count, and treating them here would
+ * report a count of 0 and mask real usage.
+ */
+const NON_COUNTABLE_STATIC_KEYS = new Set<string>([FeatureKey.monthlyAiCredits])
+
 /** Overage detected for a single feature */
 export interface Overage {
   key: string
@@ -178,6 +187,7 @@ export class OverageDetectionService {
     for (const def of featureDefs) {
       const meta = FEATURE_REGISTRY_MAP.get(def.key as FeatureKey)
       if (meta?.type !== 'static') continue
+      if (NON_COUNTABLE_STATIC_KEYS.has(def.key)) continue // metered pools, not standing resources
       if (meta.perOperation) continue // per-operation caps aren't standing resources
       if (typeof def.limit !== 'number' || def.limit === -1) continue // skip '+', boolean, and -1 (unlimited)
       limits.set(def.key, def.limit)
@@ -193,6 +203,7 @@ export class OverageDetectionService {
       for (const [key, value] of Object.entries(parsed as Record<string, unknown>)) {
         const meta = FEATURE_REGISTRY_MAP.get(key as FeatureKey)
         if (meta?.type !== 'static') continue
+        if (NON_COUNTABLE_STATIC_KEYS.has(key)) continue
         if (meta.perOperation) continue
         if (typeof value === 'number') {
           if (value === -1) {
@@ -310,6 +321,17 @@ export class OverageDetectionService {
               isNull(schema.EntityDefinition.entityType),
               isNull(schema.EntityDefinition.archivedAt)
             )
+          )
+        return result?.value ?? 0
+      }
+
+      case FeatureKey.agentsLimit: {
+        // Count non-archived agents (drafts included), matching listAgents() enforcement.
+        const [result] = await this.db
+          .select({ value: count() })
+          .from(schema.Agent)
+          .where(
+            and(eq(schema.Agent.organizationId, organizationId), isNull(schema.Agent.archivedAt))
           )
         return result?.value ?? 0
       }

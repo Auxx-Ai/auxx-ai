@@ -9,6 +9,7 @@ import {
   splitSensitiveFields,
   updateCredential,
 } from '@auxx/credentials/store'
+import type { ConnectionVariable } from '@auxx/database'
 import { getOrgCache } from '@auxx/lib/cache'
 import {
   mintClientCredentialToken,
@@ -47,10 +48,10 @@ const BYO_CLIENT_KEYS = new Set(['clientId', 'clientSecret'])
  * fields required when the connection must bring its own. Non-OAuth defs pass through.
  */
 function gateConnectionVariables(
-  provider: { connectionType: string; connectionVariables?: unknown },
+  provider: { connectionType: string; connectionVariables?: ConnectionVariable[] },
   requiresOwnClient: boolean
-) {
-  const vars = (provider.connectionVariables ?? []) as Array<{ key: string; required?: boolean }>
+): ConnectionVariable[] {
+  const vars = provider.connectionVariables ?? []
   if (provider.connectionType !== 'oauth2-code') return vars
   if (requiresOwnClient) {
     return vars.map((v) => (BYO_CLIENT_KEYS.has(v.key) ? { ...v, required: true } : v))

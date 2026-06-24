@@ -34,6 +34,9 @@ export function useOAuthReturn() {
       })
       void utils.apps.listConnections.invalidate()
       void utils.apps.listInstalled.invalidate()
+      // Channel reconnects (Gmail/Outlook) ride the same return path — refresh their list so a
+      // cleared `requiresReauth` drops the "Auth required" badge without waiting out the staleTime.
+      void utils.channel.list.invalidate()
     }
 
     if (oauthError === 'true') {
