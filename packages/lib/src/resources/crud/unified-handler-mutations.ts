@@ -80,7 +80,8 @@ export interface MutationContext {
   setFieldValues: (
     recordId: RecordId,
     values: Record<string, unknown>,
-    modes?: Record<string, 'set' | 'add' | 'remove'>
+    modes?: Record<string, 'set' | 'add' | 'remove'>,
+    opts?: { publishEvents?: boolean }
   ) => Promise<void>
 }
 
@@ -346,8 +347,11 @@ export async function createEntity(
   // Build RecordId for field value operations
   const recordId = toRecordId(entityDef.id, instance.id)
 
-  // Set field values using RecordId
-  await ctx.setFieldValues(recordId, processedValues)
+  // Set field values using RecordId. Bulk writes (skipEvents) also suppress the
+  // field-value realtime + triggers end-to-end via publishEvents:false.
+  await ctx.setFieldValues(recordId, processedValues, undefined, {
+    publishEvents: !options.skipEvents,
+  })
 
   // Re-read the instance so displayName / secondaryDisplayValue / avatarUrl
   // reflect what setFieldValues' maybeUpdateDisplayValue just wrote. The
@@ -458,7 +462,10 @@ export async function updateEntity(
 
   // Set field values using resolved RecordId. Per-field modes default to
   // 'set' when missing — today's behavior for every caller that omits modes.
-  await ctx.setFieldValues(resolvedRecordId, processedValues, modes)
+  // Bulk writes (skipEvents) suppress the field-value realtime + triggers too.
+  await ctx.setFieldValues(resolvedRecordId, processedValues, modes, {
+    publishEvents: !options.skipEvents,
+  })
 
   // Re-read so displayName / secondaryDisplayValue / avatarUrl / updatedAt
   // reflect what setFieldValues just wrote. The `instance` captured at the

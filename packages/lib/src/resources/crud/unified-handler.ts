@@ -991,7 +991,8 @@ export class UnifiedCrudHandler {
   private async setFieldValues(
     recordId: RecordId,
     values: Record<string, unknown>,
-    modes?: Record<string, 'set' | 'add' | 'remove'>
+    modes?: Record<string, 'set' | 'add' | 'remove'>,
+    opts?: { publishEvents?: boolean }
   ): Promise<void> {
     const { entityDefinitionId } = parseRecordId(recordId)
 
@@ -1019,10 +1020,16 @@ export class UnifiedCrudHandler {
     const addEntries = entries.filter((e) => e.mode === 'add')
     const removeEntries = entries.filter((e) => e.mode === 'remove')
 
+    // Bulk writes (connector sync, importer, seeder) pass publishEvents:false
+    // so this whole path stays silent — no fieldValues:updated realtime and no
+    // per-record field triggers. Default true preserves interactive-edit behavior.
+    const publishEvents = opts?.publishEvents ?? true
+
     if (setEntries.length > 0) {
       await this.fieldValueService.setValuesForEntity({
         recordId,
         values: setEntries.map((e) => ({ fieldId: e.fieldId, value: e.value })),
+        publishEvents,
       })
     }
 
@@ -1031,6 +1038,7 @@ export class UnifiedCrudHandler {
         recordId,
         fieldId: e.fieldId,
         values: Array.isArray(e.value) ? e.value : [e.value],
+        skipPublishEvents: !publishEvents,
       })
     }
 
@@ -1039,6 +1047,7 @@ export class UnifiedCrudHandler {
         recordId,
         fieldId: e.fieldId,
         values: Array.isArray(e.value) ? e.value : [e.value],
+        skipPublishEvents: !publishEvents,
       })
     }
   }

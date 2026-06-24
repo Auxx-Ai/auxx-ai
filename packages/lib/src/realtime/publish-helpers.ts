@@ -60,6 +60,33 @@ export async function publishFieldValueUpdates(
   await Promise.allSettled(promises)
 }
 
+/**
+ * Publish `records:invalidated` on the org channel — one frame per touched
+ * entity def. Used by bulk-write paths (data-connector slice sync) that suppress
+ * per-record realtime to keep an open grid live with a single coarse refetch per
+ * def per slice instead of thousands of per-record events.
+ *
+ * Gated on `realtimeSync`. Fire-and-forget: errors are swallowed so a Pusher
+ * hiccup never blocks the sync.
+ */
+export async function publishRecordsInvalidated(
+  realtimeService: RealtimeService,
+  organizationId: string,
+  args: { entityDefinitionIds: string[] },
+  options?: { excludeSocketId?: string }
+) {
+  if (args.entityDefinitionIds.length === 0) return
+  const { features } = await getOrgCache().getOrRecompute(organizationId, ['features'])
+  if (!features?.realtimeSync) return
+
+  const roomKey = rooms.orgPresence(organizationId)
+  await Promise.allSettled(
+    args.entityDefinitionIds.map((entityDefinitionId) =>
+      realtimeService.publish(roomKey, 'records:invalidated', { entityDefinitionId }, options)
+    )
+  )
+}
+
 // ════════════════════════════════════════════════════════════════════════════
 // Mail publish helpers — gated on `realtimeMail` feature flag
 // ════════════════════════════════════════════════════════════════════════════

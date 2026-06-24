@@ -395,11 +395,15 @@ export const entitySink: EntitySink = {
     try {
       if (instanceId) {
         const recordId = toRecordId(mapping.entityDefinitionId, instanceId)
-        await handler.update(recordId, writeSet, undefined, { skipSnapshotInvalidation: true })
+        await handler.update(recordId, writeSet, undefined, {
+          skipSnapshotInvalidation: true,
+          skipEvents: true,
+        })
         ctx.counters.updated += 1
       } else {
         const created = await handler.create(mapping.entityDefinitionId, writeSet, {
           skipSnapshotInvalidation: true,
+          skipEvents: true,
           provenance:
             mapping.targetMode === 'owned'
               ? { integrationSource: ctx.connector.id, externalId: record.externalId }
@@ -461,7 +465,10 @@ export const entitySink: EntitySink = {
     if (behavior === 'archive') {
       const recordId = toRecordId(item.entityDefinitionId, item.entityInstanceId)
       try {
-        await ctx.ownedCrud.archive(recordId, { skipSnapshotInvalidation: true })
+        await ctx.ownedCrud.archive(recordId, {
+          skipSnapshotInvalidation: true,
+          skipEvents: true,
+        })
         ctx.touchedDefs.add(item.entityDefinitionId)
         ctx.counters.archived += 1
       } catch (error) {

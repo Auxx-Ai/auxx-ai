@@ -47,6 +47,7 @@ export type ResourceSyncEvent =
   | RecordUpdatedEvent
   | RecordDeletedEvent
   | RecordArchivedEvent
+  | RecordsInvalidatedEvent
 
 /** Field values changed (from mutations, triggers, cost recalc, etc.) */
 export interface FieldValuesUpdatedEvent {
@@ -118,6 +119,21 @@ export interface RecordArchivedEvent {
   event: 'record:archived'
   data: {
     recordId: RecordId
+    entityDefinitionId: string
+  }
+}
+
+/**
+ * Coarse "refresh this entity def" signal. Emitted ONCE per touched def per
+ * bulk-write slice (data-connector sync) in place of the thousands of per-record
+ * `record:created` / `fieldValues:updated` events those writes suppress. The
+ * client invalidates the def's visible list + `listFiltered` query — a single
+ * refetch that re-pulls records + field values — instead of the per-record
+ * firehose that 403s Pusher at backfill scale.
+ */
+export interface RecordsInvalidatedEvent {
+  event: 'records:invalidated'
+  data: {
     entityDefinitionId: string
   }
 }
