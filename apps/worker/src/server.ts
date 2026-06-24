@@ -1,5 +1,7 @@
 // apps/worker/src/server.ts
 
+// Side-effect import: registers the OpenObserve log sink when OPENOBSERVE_URL is set.
+import '@auxx/logger/openobserve'
 import { getDevPort } from '@auxx/config/server'
 import { configService } from '@auxx/credentials'
 import { closePools } from '@auxx/database'

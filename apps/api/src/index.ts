@@ -1,5 +1,7 @@
 // apps/api/src/index.ts
 
+// Side-effect import: registers the OpenObserve log sink when OPENOBSERVE_URL is set.
+import '@auxx/logger/openobserve'
 import { configService } from '@auxx/credentials'
 import { initGeo } from '@auxx/lib/geo'
 import { createScopedLogger } from '@auxx/logger'

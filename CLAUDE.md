@@ -355,6 +355,19 @@ npx dotenv -- npx tsx path/to/script.ts
 
 ---
 
+# Viewing Logs (dev)
+
+`@auxx/logger` prints to the console AND ships structured logs to a local **OpenObserve** instance that `pnpm dev` starts automatically (dev-only). Use it to search/review log history instead of scrolling the terminal.
+
+- **UI**: http://localhost:5080 → _Logs_ → stream `auxx`
+- **Login**: `root@auxx.dev` / `Complexpass#123` (local dev only — not a secret)
+- Every entry has `level`, `scope`, `app` (`@auxx/web` / `@auxx/worker` / …), `message`, plus any `.with({...})` fields. Filter with SQL, e.g. `level='error'`, `scope='billing'`, `app='@auxx/worker'`, or full-text `match_all('stripe')`.
+- Querying the API directly (Basic auth): `POST http://localhost:5080/api/default/_search?type=logs` with a SQL body.
+
+Full details (how it works, turning it off): `docs/log-history.md`.
+
+---
+
 # Ops Reference (Railway, AWS)
 
 For Railway (production) and AWS (dev) commands — log tailing, service status, RDS, ECS — read `docs/ops-reference.md`. Pull it in when the user asks about deploys, prod logs, or infrastructure debugging.

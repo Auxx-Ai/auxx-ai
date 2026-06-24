@@ -1,7 +1,8 @@
 // packages/logger/src/index.ts
 
 // ---------------------------------------------------------------------------
-// Run-scoped file sink hook (set by @auxx/logger/run-log on import)
+// Log sinks (registered by side-effect modules like `@auxx/logger/run-log`
+// and `@auxx/logger/openobserve` on import)
 // ---------------------------------------------------------------------------
 
 export interface RunLogEntryMeta {
@@ -9,20 +10,48 @@ export interface RunLogEntryMeta {
   level: LogLevel
 }
 
-type WriteToRunLogFn = (message: string, meta: RunLogEntryMeta) => void
-
-let _writeToRunLog: WriteToRunLogFn | undefined
-
-/**
- * Register the run-log writer. Called by `@auxx/logger/run-log` on import.
- * Keeps the main entry point free of Node.js imports (browser-safe).
- */
-export function _registerRunLogWriter(fn: WriteToRunLogFn): void {
-  _writeToRunLog = fn
+/** Structured record handed to every registered sink alongside the formatted line. */
+export interface LogRecord extends RunLogEntryMeta {
+  /** ISO-8601 timestamp for when the entry was emitted. */
+  time: string
+  /** Raw (unformatted) log message. */
+  message: string
+  /** Sanitized positional args passed after the message. */
+  args: unknown[]
+  /** Sanitized contextual fields accumulated via `.with()`. */
+  fields: Record<string, unknown>
 }
 
-function writeToRunLog(message: string, meta: RunLogEntryMeta): void {
-  _writeToRunLog?.(message, meta)
+/** A sink receives both the human-formatted line and the structured record. */
+export type LogSink = (formatted: string, record: LogRecord) => void
+
+const sinks: LogSink[] = []
+
+/**
+ * Register a log sink. Called by side-effect modules (`@auxx/logger/run-log`,
+ * `@auxx/logger/openobserve`) on import. Lives in the main entry point, which
+ * stays free of Node.js imports so it remains browser-safe.
+ */
+export function registerLogSink(sink: LogSink): void {
+  sinks.push(sink)
+}
+
+/**
+ * Back-compat shim for the run-log file sink, which only needs the formatted
+ * line + scope/level. Prefer `registerLogSink` for new sinks.
+ */
+export function _registerRunLogWriter(fn: (message: string, meta: RunLogEntryMeta) => void): void {
+  sinks.push((formatted, record) => fn(formatted, record))
+}
+
+function emitToSinks(formatted: string, record: LogRecord): void {
+  for (const sink of sinks) {
+    try {
+      sink(formatted, record)
+    } catch {
+      // A misbehaving sink must never break logging.
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -183,15 +212,11 @@ export function createScopedLogger(scope: string, options?: { color?: ColorName 
    * Builds a logger with contextual fields that are appended to each message.
    */
   const createLogger = (fields: Record<string, unknown> = {}): Logger => {
-    const formatMessage = (level: LogLevel, message: string, args: unknown[]) => {
-      const allArgs = [...args]
-      if (Object.keys(fields).length > 0) {
-        allArgs.push(fields)
-      }
-
-      const formattedArgs = allArgs
-        .map((arg) => sanitizeLogValue(arg))
-        .map((arg) => (typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)))
+    const formatMessage = (level: LogLevel, message: string, sanitizedArgs: unknown[]) => {
+      const formattedArgs = sanitizedArgs
+        .map((arg) =>
+          typeof arg === 'object' && arg !== null ? JSON.stringify(arg, null, 2) : String(arg)
+        )
         .join(' ')
 
       const nowDate = new Date()
@@ -213,9 +238,27 @@ export function createScopedLogger(scope: string, options?: { color?: ColorName 
       message: string,
       args: unknown[]
     ) => {
-      const formatted = formatMessage(level, message, args)
+      const sanitizedArgs = args.map((arg) => sanitizeLogValue(arg))
+      const sanitizedFields = sanitizeLogValue(fields) as Record<string, unknown>
+      const hasFields = Object.keys(fields).length > 0
+
+      const formatted = formatMessage(
+        level,
+        message,
+        hasFields ? [...sanitizedArgs, sanitizedFields] : sanitizedArgs
+      )
       consoleFn(formatted)
-      writeToRunLog(formatted, { scope, level })
+
+      if (sinks.length > 0) {
+        emitToSinks(formatted, {
+          time: new Date().toISOString(),
+          scope,
+          level,
+          message,
+          args: sanitizedArgs,
+          fields: sanitizedFields,
+        })
+      }
     }
 
     return {

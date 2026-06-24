@@ -116,6 +116,10 @@ if [ "$FILL_MODE" = true ]; then
   fill_if_empty "LOGIN_TOKEN_PRIVATE_KEY" "$LOGIN_TOKEN_PRIVATE_KEY"
   fill_if_empty "LOGIN_TOKEN_PUBLIC_KEY" "$LOGIN_TOKEN_PUBLIC_KEY"
   fill_if_empty "BUILD_SESSION_SECRET" "$BUILD_SESSION_SECRET"
+  # Log history (OpenObserve) — must match the docker-compose `openobserve` service
+  fill_if_empty "OPENOBSERVE_EMAIL" "root@auxx.dev"
+  # Quoted: Node's --env-file (worker) treats an unquoted # as a comment.
+  fill_if_empty "OPENOBSERVE_PASSWORD" '"Complexpass#123"'
 
   # Rebuild DATABASE_URL if it contains a stale password
   DB_PASS=$(grep "^DATABASE_PASSWORD=" .env | cut -d'=' -f2- | tr -d '"')

@@ -2,6 +2,8 @@
 
 import 'server-only'
 
+// Side-effect import: registers the OpenObserve log sink when OPENOBSERVE_URL is set.
+import '@auxx/logger/openobserve'
 import { configService } from '@auxx/credentials'
 import { registerChannelHooks } from '@auxx/lib/channels'
 import { createScopedLogger } from '@auxx/logger'

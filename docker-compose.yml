@@ -35,6 +35,21 @@ services:
       timeout: 5s
       retries: 5
 
+  # Searchable log history UI. Apps ship structured logs here via
+  # @auxx/logger/openobserve when OPENOBSERVE_URL is set. UI at http://localhost:5080
+  openobserve:
+    image: public.ecr.aws/zinclabs/openobserve:latest
+    restart: unless-stopped
+    environment:
+      ZO_ROOT_USER_EMAIL: ${OPENOBSERVE_EMAIL:-root@auxx.dev}
+      ZO_ROOT_USER_PASSWORD: ${OPENOBSERVE_PASSWORD:-Complexpass#123}
+      ZO_DATA_DIR: /data
+    ports:
+      - "${OPENOBSERVE_PORT:-5080}:5080"
+    volumes:
+      - openobserve_data:/data
+
 volumes:
   postgres_data:
   redis_data:
+  openobserve_data:

@@ -2,7 +2,7 @@
 import { defineConfig } from 'tsdown'
 
 export default defineConfig({
-  entry: ['src/index.ts', 'src/run-log.ts'],
+  entry: ['src/index.ts', 'src/run-log.ts', 'src/openobserve.ts'],
   format: 'esm',
   target: 'es2022',
   platform: 'node',
