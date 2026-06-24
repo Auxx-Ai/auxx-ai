@@ -80,7 +80,15 @@ export interface ChatConfig {
    * agent bound. Snapshot taken at config-fetch time. When true, the
    * conversation view replaces the composer with `appearance.offlineMessage`. */
   isOffline: boolean
-  realtime: { provider: 'pusher'; key: string; cluster: string }
+  realtime: {
+    provider: 'pusher'
+    key: string
+    cluster: string
+    /** Self-hosted Sockudo host. Absent → hosted Pusher cloud (cluster). */
+    wsHost?: string
+    wsPort?: number
+    forceTLS?: boolean
+  }
 }
 
 export async function fetchChatConfig(

@@ -58,6 +58,9 @@ export function buildEnvironment(): DehydratedEnvironment {
     pusher: {
       key: configService.get<string>('PUSHER_KEY') || '',
       cluster: configService.get<string>('PUSHER_CLUSTER') || '',
+      wsHost: configService.get<string>('PUSHER_HOST') || undefined,
+      wsPort: Number(configService.get<number>('PUSHER_PORT')) || 443,
+      forceTLS: configService.get<boolean>('PUSHER_USE_TLS') !== false,
     },
     posthog: {
       key: configService.get<string>('POSTHOG_KEY') || '',

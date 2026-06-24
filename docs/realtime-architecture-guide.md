@@ -2,9 +2,21 @@
 
 How Auxx pushes live updates to the browser: field values, records, mail
 threads/messages, agent/procedure/eval admin state, presence, and the customer
-chat widget. There is exactly **one transport today — [Pusher](https://pusher.com)
-Channels** — but the code is wrapped behind provider-agnostic seams so a second
+chat widget. Everything speaks the **Pusher protocol**, but the live transport is
+**self-hosted [Sockudo](https://sockudo.io)** (a Rust, Pusher-protocol-compatible
+WebSocket server in `apps/echtzeit`), not Pusher cloud. Because Sockudo is
+wire-compatible, the same `pusher`/`pusher-js` libraries connect to it unchanged —
+we only repoint host/port. The hosted Pusher cloud remains a **config-toggled
+fallback**: leave `PUSHER_HOST` empty and the SDKs reconnect to the cluster. The
+code is also wrapped behind provider-agnostic seams so a non-Pusher-protocol
 backend (Ably, raw WebSocket, etc.) could drop in without touching consumers.
+
+> **Transport selection.** `PUSHER_HOST` set → self-hosted Sockudo over
+> `wss://echtzeit.<env>.auxx.ai` (`PUSHER_PORT`/`PUSHER_USE_TLS` tune the edge;
+> locally `127.0.0.1:6001` over plain ws). `PUSHER_HOST` empty → hosted Pusher
+> cloud via `PUSHER_CLUSTER`. The 10KB payload ceiling is now ours to raise — both
+> caps are bumped to 100KB on the Sockudo side — but the §5 chunking/batch code is
+> kept as headroom (simplifying it is a later follow-up). See `apps/echtzeit/README.md`.
 
 > TL;DR — Servers publish domain events to opaque **room keys** through a
 > `RealtimeService`. Room keys map to Pusher channels (`private-` / `presence-` /
@@ -247,10 +259,12 @@ rate limits. Three patterns guard against it:
 `PusherRealtimeAdapter`. Its lifecycle is driven by `useRealtimeLifecycle()`
 (mounted once in the app layout):
 
-- On auth ready → `connect({ key, cluster, authEndpoint: '/api/pusher/auth' })`.
-  The `key`/`cluster` reach the browser via the dehydrated env payload
-  (`dehydration/service.ts` exposes `pusher: { key, cluster }`; consumed through
-  `useEnv()`).
+- On auth ready → `connect({ key, cluster, authEndpoint: '/api/pusher/auth',
+  wsHost, wsPort, forceTLS })`. These reach the browser via the dehydrated env
+  payload (`dehydration/service.ts` exposes `pusher: { key, cluster, wsHost,
+  wsPort, forceTLS }`; consumed through `useEnv()`). When `wsHost` is set the
+  adapter points `pusher-js` at Sockudo (`wsHost`/`wsPort`/`wssPort` +
+  TLS-gated `enabledTransports`); when absent it uses the hosted-cloud `cluster`.
 - On **org switch** → `unsubscribeMatching` tears down every room scoped to the old
   org (`org-{old}`, `org-{old}-*`, and `thread-*`). The `user-{userId}` channel is
   intentionally **kept** across org switches since the same user spans orgs.
@@ -425,14 +439,19 @@ client-side).
 
 - **Realtime is best-effort, never authoritative.** Every publish is fire-and-forget
   with swallowed errors; React Query stale-time / focus-refetch is the fallback for
-  orgs with the flag off or during a Pusher outage.
-- **No missed-event replay from Pusher.** Events sent during a subscribe/reconnect
-  gap are lost by the transport — the `onSubscribed` catch-up refetch closes that
-  gap on the consumer side.
+  orgs with the flag off or during a transport outage.
+- **No missed-event replay.** Events sent during a subscribe/reconnect gap are lost
+  by the transport — the `onSubscribed` catch-up refetch closes that gap on the
+  consumer side. (Sockudo can retain Protocol-V2 history/recovery, but our V1
+  clients don't use it; the refetch stays the recovery mechanism.)
 - **Feature-flag gated.** `realtimeSync` (records/fields/agents) and `realtimeMail`
   (threads/messages) gate publishing per org.
-- **Misconfiguration degrades silently.** Missing Pusher creds → provider logs a
-  warning and every publish no-ops; the app stays functional, just not live.
+- **Misconfiguration degrades silently.** Missing creds (or `SOCKUDO_DEFAULT_APP_*`
+  not matching `PUSHER_APP_ID/KEY/SECRET`, which breaks HMAC channel-auth) → provider
+  logs a warning and every publish no-ops; the app stays functional, just not live.
+- **Single Sockudo instance is a SPOF** (acceptable pre-launch). HA path —
+  `ADAPTER_DRIVER=redis` + `REDIS_URL` + replicas — is documented in
+  `apps/echtzeit/README.md`, not wired yet.
 
 ---
 
@@ -446,8 +465,13 @@ the relevant consumer hook's `onEvent` switch.
 `roomKindFor` branch (same file), and one `RoomDef` with its `authorize` ACL in the
 `rooms.ts` registry — minding the greedy match ordering.
 
-**Add a second transport (e.g. Ably):** implement `RealtimeProvider` (server) and
-`RealtimeAdapter` (client). Swap the singleton construction in
+**Switch Pusher-protocol backends (Sockudo ↔ Pusher cloud):** no code change —
+set or unset `PUSHER_HOST` (+ `PUSHER_PORT`/`PUSHER_USE_TLS`). Both run through the
+existing `PusherRealtimeProvider`/`PusherRealtimeAdapter` and the bespoke widget
+client; the seam classes already branch on host.
+
+**Add a non-Pusher-protocol transport (e.g. Ably):** implement `RealtimeProvider`
+(server) and `RealtimeAdapter` (client). Swap the singleton construction in
 `realtime/index.ts` and the adapter instance in `apps/web/src/realtime/adapter.ts`.
 Consumers, helpers, room registry, and event types are all transport-agnostic and
 stay untouched.
@@ -485,6 +509,12 @@ stay untouched.
 - `transport/realtime-client.ts` — bespoke shared Pusher socket
 - `transport/visitor-channel.ts`, `transport/thread-events.ts`, `transport/config.ts`, `transport/chat-api.ts`
 - `views/conversation/**`, `widget.tsx`
+
+**Transport (self-hosted)**
+- `apps/echtzeit/` — Sockudo service (Dockerfile, railway.json, README); the
+  pinned `ghcr.io/sockudo/sockudo` image + env config. Local: the `echtzeit`
+  docker-compose service. Config/cutover env: `PUSHER_HOST/PORT/USE_TLS` +
+  `SOCKUDO_DEFAULT_APP_*` (must mirror `PUSHER_APP_ID/KEY/SECRET`).
 
 **Server chat publishing**
 - `packages/lib/src/chat/realtime.ts` — `publishChatMessageCreated`, `publishVisitorThreadCreated`

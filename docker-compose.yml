@@ -35,6 +35,38 @@ services:
       timeout: 5s
       retries: 5
 
+  # Realtime (Pusher-protocol) server — Sockudo. Apps connect over plain ws at
+  # PUSHER_HOST=127.0.0.1:6001 (Railway terminates TLS in prod; localhost does
+  # not). Same pinned image tag as apps/echtzeit/Dockerfile, so dev == prod.
+  echtzeit:
+    image: ghcr.io/sockudo/sockudo:4.6.0
+    restart: unless-stopped
+    environment:
+      HOST: "0.0.0.0"
+      PORT: "6001"
+      APP_MANAGER_DRIVER: memory
+      SSL_ENABLED: "false"
+      # Disable unauthenticated /usage + /stats ops endpoints (on by default).
+      HTTP_API_USAGE_ENABLED: "false"
+      # App creds mirror the host apps' PUSHER_* (see .env). Defaults keep the
+      # container healthy even before setup.sh fills .env.
+      SOCKUDO_DEFAULT_APP_ID: ${PUSHER_APP_ID:-auxx}
+      SOCKUDO_DEFAULT_APP_KEY: ${PUSHER_KEY:-auxx-key}
+      SOCKUDO_DEFAULT_APP_SECRET: ${PUSHER_SECRET:-auxx-secret}
+      SOCKUDO_DEFAULT_APP_ENABLED: "true"
+      SOCKUDO_DEFAULT_APP_ENABLE_CLIENT_MESSAGES: "false"
+      # allowed_origins left empty (= all origins allowed) — see apps/echtzeit/README.md
+      SOCKUDO_DEFAULT_APP_ALLOWED_ORIGINS: ""
+      WEBSOCKET_MAX_PAYLOAD_KB: "100"
+      SOCKUDO_DEFAULT_APP_MAX_EVENT_PAYLOAD_IN_KB: "100"
+    ports:
+      - "${PUSHER_PORT:-6001}:6001"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:6001/up >/dev/null 2>&1 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   # Searchable log history UI. Apps ship structured logs here via
   # @auxx/logger/openobserve when OPENOBSERVE_URL is set. UI at http://localhost:5080
   openobserve:

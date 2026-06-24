@@ -24,16 +24,28 @@ export class PusherRealtimeProvider implements RealtimeProvider {
       const key = configService.get<string>('PUSHER_KEY')
       const secret = configService.get<string>('PUSHER_SECRET')
       const cluster = configService.get<string>('PUSHER_CLUSTER')
+      // Self-hosted Sockudo (Pusher-protocol). Empty host → hosted Pusher cloud.
+      const host = configService.get<string>('PUSHER_HOST')
 
-      if (appId && key && secret && cluster) {
-        this.pusher = new Pusher({ appId, key, secret, cluster, useTLS: true })
-        logger.info('Pusher initialized successfully')
+      if (appId && key && secret) {
+        if (host) {
+          const port = String(configService.get<number>('PUSHER_PORT') ?? 443)
+          const useTLS = configService.get<boolean>('PUSHER_USE_TLS') !== false
+          this.pusher = new Pusher({ appId, key, secret, host, port, useTLS })
+          logger.info('Pusher initialized (self-hosted Sockudo)', { host, port, useTLS })
+        } else if (cluster) {
+          this.pusher = new Pusher({ appId, key, secret, cluster, useTLS: true })
+          logger.info('Pusher initialized (hosted cloud)')
+        } else {
+          logger.warn('Pusher cluster/host not set, realtime disabled')
+        }
       } else {
         logger.warn('Pusher credentials not found, realtime disabled', {
           appId: !!appId,
           key: !!key,
           secret: !!secret,
           cluster: !!cluster,
+          host: !!host,
         })
       }
     } catch (error) {

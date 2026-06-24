@@ -58,14 +58,39 @@ export class PusherRealtimeAdapter implements RealtimeAdapter {
   // useEffects before parent's). Replayed on `connect()`.
   private pendingSubs: PendingSubscription[] = []
 
-  connect(config: { key: string; cluster: string; authEndpoint: string }) {
+  connect(config: {
+    key: string
+    cluster: string
+    authEndpoint: string
+    wsHost?: string
+    wsPort?: number
+    forceTLS?: boolean
+  }) {
     if (this.pusher) return
     this.authEndpoint = config.authEndpoint
-    this.pusher = new Pusher(config.key, {
-      cluster: config.cluster,
-      authEndpoint: config.authEndpoint,
-      forceTLS: true,
-    })
+    this.pusher = new Pusher(
+      config.key,
+      config.wsHost
+        ? {
+            // Self-hosted Sockudo (Pusher-protocol).
+            wsHost: config.wsHost,
+            wsPort: config.wsPort,
+            wssPort: config.wsPort,
+            forceTLS: config.forceTLS ?? true,
+            // Gate transports on TLS so a plain-ws localhost container doesn't
+            // trigger a wss upgrade retry in dev.
+            enabledTransports: config.forceTLS === false ? ['ws'] : ['ws', 'wss'],
+            disableStats: true,
+            cluster: '',
+            authEndpoint: config.authEndpoint,
+          }
+        : {
+            // Hosted Pusher cloud (kept fallback seam).
+            cluster: config.cluster,
+            forceTLS: true,
+            authEndpoint: config.authEndpoint,
+          }
+    )
     this.pusher.connection.bind('connected', () => {
       this.connected = true
       this.notifyConnection()
