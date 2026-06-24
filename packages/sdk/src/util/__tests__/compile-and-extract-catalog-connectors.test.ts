@@ -48,6 +48,19 @@ describe('compileAndExtractCatalog — data connectors', () => {
       properties: { includeDraftProducts: { type: 'boolean' } },
     })
 
+    // Tool-backed config-field hints projected beside the bare JSON Schema.
+    expect(connector?.configOptionHints).toEqual({
+      collection: {
+        kind: 'dynamic-select',
+        dynamicSelect: {
+          optionsFrom: 'list_shopify_collections',
+          itemsPath: 'collections',
+          valuePath: 'handle',
+          labelTemplate: '{handle}',
+        },
+      },
+    })
+
     // One stream, with the source fields flattened (fieldKey carried).
     expect(connector?.streams).toHaveLength(1)
     const stream = connector?.streams[0]

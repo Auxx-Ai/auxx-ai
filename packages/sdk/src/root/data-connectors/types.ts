@@ -21,6 +21,7 @@
 
 import type { z } from 'zod/v4'
 import type { FieldType } from '../fields/field-types.js'
+import type { ActionInputHint } from '../tools/types.js'
 
 /**
  * One normalized, SOURCE-shaped record produced by a connector's `execute`. Not
@@ -204,6 +205,15 @@ export interface DataConnectorDefinition<TConfigSchema extends z.ZodTypeAny = z.
   requiresConnection: boolean
   /** Connector-level config schema (filters, toggles). */
   config: TConfigSchema
+  /**
+   * Per-config-field presentation overrides keyed by config field, reusing the
+   * quick-action `ActionInputHint` shape. A `dynamic-select` hint renders the
+   * field as a live dropdown whose options come from an app tool
+   * (`optionsFrom`) invoked through the connector's own connection — e.g. a
+   * repo picker backed by a `list_repos` tool. `optionsFrom` must name a tool in
+   * the same app. Absent fields render from the JSON Schema as usual.
+   */
+  configOptions?: Record<string, ActionInputHint>
   /** Stream (fetch) declarations. */
   streams: ConnectorStreamDecl[]
   /** Optional icon key for the connector card. */

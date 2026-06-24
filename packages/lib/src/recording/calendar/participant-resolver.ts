@@ -87,10 +87,7 @@ export async function findCompanyByDomain(
       .where(
         and(
           eq(schema.EntityDefinition.organizationId, organizationId),
-          or(
-            eq(schema.EntityDefinition.standardType, 'company'),
-            eq(schema.EntityDefinition.entityType, 'company')
-          )!
+          eq(schema.EntityDefinition.entityType, 'company')
         )
       )
       .limit(1)

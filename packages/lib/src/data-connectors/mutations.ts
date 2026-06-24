@@ -446,7 +446,12 @@ async function materializeAppOwnedMappings(
       {
         targetMode: 'owned',
         entityDefinitionId: null,
-        ownedDef: { apiSlug: entity.apiSlug, singular: entity.singular, plural: entity.plural },
+        ownedDef: {
+          apiSlug: entity.apiSlug,
+          singular: entity.singular,
+          plural: entity.plural,
+          primaryDisplayFieldKey: entity.primaryDisplayField,
+        },
         fields: ownedProvisionSpecs(stream.fields),
       }
     )

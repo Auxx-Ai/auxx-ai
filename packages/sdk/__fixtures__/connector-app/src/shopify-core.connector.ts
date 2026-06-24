@@ -21,7 +21,21 @@ export const shopifyCoreDataConnector = defineDataConnector({
   iconKey: 'shopping-bag',
   config: z.object({
     includeDraftProducts: z.boolean().default(false),
+    collection: z.string().optional(),
   }),
+  // `collection` renders as a dropdown backed by the `list_shopify_collections`
+  // tool (must be a tool in this app — validated at extraction).
+  configOptions: {
+    collection: {
+      kind: 'dynamic-select',
+      dynamicSelect: {
+        optionsFrom: 'list_shopify_collections',
+        itemsPath: 'collections',
+        valuePath: 'handle',
+        labelTemplate: '{handle}',
+      },
+    },
+  },
   streams: [
     {
       key: 'order',
