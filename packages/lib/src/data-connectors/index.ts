@@ -121,9 +121,11 @@ export {
   provisionConnectorMappings,
   provisionTarget,
 } from './provisioning'
-// Orchestrator + passes
 export { archiveExternalId, handleConnectorDelete, reconcileOrphans } from './reconciliation'
 export { resolveRelationships } from './relationship-pass'
+// Orchestrator + passes
+export type { ResolveConnectorConfigOptionsInput } from './resolve-config-options'
+export { resolveConnectorConfigOptions } from './resolve-config-options'
 // Status-line schedule derivation (Step 9 §3.3)
 export type { ConnectorScheduleInfo, DeriveScheduleInput } from './schedule-info'
 export { deriveConnectorScheduleInfo } from './schedule-info'

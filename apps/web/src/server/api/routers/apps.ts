@@ -11,7 +11,9 @@ import {
 } from '@auxx/lib/apps'
 import { getCachedAppBySlug, getOrgCache, onCacheEvent } from '@auxx/lib/cache'
 import { mintClientCredentialToken } from '@auxx/lib/connections'
+import { resolveConnectorConfigOptions } from '@auxx/lib/data-connectors'
 import { FeatureKey, FeaturePermissionService } from '@auxx/lib/permissions'
+import { resolveQuickActionOptions } from '@auxx/lib/quick-actions'
 import { createScopedLogger } from '@auxx/logger'
 import {
   getAppConnectionDefinition,
@@ -88,6 +90,86 @@ export const appsRouter = createTRPCRouter({
       }))
 
       return { installations }
+    }),
+
+  /**
+   * Resolve the live options for a tool-backed `dynamic-select` field by running
+   * an app tool in the sandbox and mapping its output. One generic procedure for
+   * every option-picker surface — discriminated by `source`:
+   *  - `entity`    → a quick-action input, scoped to a subject record (binds args
+   *                  off the record's fields).
+   *  - `connector` → a data-connector config field, scoped to the connector's own
+   *                  bound connection (e.g. a repo picker).
+   * Both share the generic app-tool resolver core in `@auxx/lib`.
+   */
+  resolveToolOptions: protectedProcedure
+    .input(
+      z.object({
+        source: z.discriminatedUnion('kind', [
+          z.object({
+            kind: z.literal('entity'),
+            appId: z.string(),
+            installationId: z.string(),
+            actionId: z.string(),
+            recordId: z.string(),
+          }),
+          z.object({ kind: z.literal('connector'), connectorId: z.string() }),
+        ]),
+        fieldKey: z.string(),
+        query: z.string().optional(),
+      })
+    )
+    .query(async ({ ctx, input }) => {
+      const { organizationId, userId } = ctx.session
+      const organization = await ctx.db.query.Organization.findFirst({
+        where: (orgs, { eq }) => eq(orgs.id, organizationId),
+      })
+      if (!organization?.handle) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Organization not found' })
+      }
+
+      if (input.source.kind === 'connector') {
+        return resolveConnectorConfigOptions({
+          db: ctx.db,
+          organizationId,
+          organizationHandle: organization.handle,
+          connectorId: input.source.connectorId,
+          fieldKey: input.fieldKey,
+          query: input.query,
+        })
+      }
+
+      // entity (quick-action): validate the subject record belongs to the org
+      // before binding args against it.
+      const { recordId } = input.source
+      const [, entityInstanceId] = recordId.split(':')
+      if (!entityInstanceId) {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: 'Invalid recordId' })
+      }
+      const instance = await ctx.db.query.EntityInstance.findFirst({
+        where: (rows, { eq, and }) =>
+          and(eq(rows.id, entityInstanceId), eq(rows.organizationId, organizationId)),
+        columns: { id: true },
+      })
+      if (!instance) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Record not found' })
+      }
+      const user = await ctx.db.query.User.findFirst({
+        where: (users, { eq }) => eq(users.id, userId),
+      })
+      return resolveQuickActionOptions({
+        appId: input.source.appId,
+        installationId: input.source.installationId,
+        actionId: input.source.actionId,
+        fieldKey: input.fieldKey,
+        recordId,
+        query: input.query,
+        organizationId,
+        organizationHandle: organization.handle,
+        userId,
+        userEmail: user?.email ?? '',
+        userName: user?.name ?? '',
+      })
     }),
 
   /**

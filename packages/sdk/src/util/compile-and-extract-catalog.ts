@@ -229,6 +229,12 @@ export interface CatalogDataConnector {
   iconKey: string | null
   /** Connector-level config schema (JSON Schema, from the `config` zod schema). */
   configJsonSchema: Record<string, unknown>
+  /**
+   * Per-config-field presentation overrides (same `dynamic-select` shape as a
+   * quick-action's `inputHints`), carried beside the bare JSON Schema so a config
+   * field can render as a tool-backed dropdown. Keyed by config field.
+   */
+  configOptionHints?: Record<string, ActionInputHint>
   streams: CatalogConnectorStream[]
 }
 
@@ -646,6 +652,26 @@ export async function compileAndExtractCatalog(): Promise<
       ? zodToProviderToolSchema(connector.config as never).jsonSchema
       : {}
 
+    // Validate each config-field dynamic-select hint against this app's tools —
+    // same rules as action `inputHints` (optionsFrom must be a local tool;
+    // valuePath + labelTemplate are required to render an option).
+    for (const [fieldKey, hint] of Object.entries(connector.configOptions ?? {})) {
+      if (hint.kind !== 'dynamic-select') continue
+      const ds = hint.dynamicSelect
+      if (!toolIds.has(ds.optionsFrom)) {
+        return errored({
+          code: 'CATALOG_VALIDATION_FAILED',
+          message: `Connector "${connector.id}" config "${fieldKey}": optionsFrom "${ds.optionsFrom}" is not a tool in this app`,
+        })
+      }
+      if (!ds.valuePath || !ds.labelTemplate) {
+        return errored({
+          code: 'CATALOG_VALIDATION_FAILED',
+          message: `Connector "${connector.id}" config "${fieldKey}": dynamic-select requires valuePath and labelTemplate`,
+        })
+      }
+    }
+
     const streams: CatalogConnectorStream[] = (connector.streams ?? []).map((stream) => ({
       key: stream.key,
       displayFieldKey: stream.displayFieldKey,
@@ -669,6 +695,7 @@ export async function compileAndExtractCatalog(): Promise<
       requiresConnection: Boolean(connector.requiresConnection),
       iconKey: connector.iconKey ?? null,
       configJsonSchema,
+      ...(connector.configOptions ? { configOptionHints: connector.configOptions } : {}),
       streams,
     })
   }
@@ -812,6 +839,8 @@ interface RawDataConnector {
   iconKey?: string
   /** zod schema — projected to JSON Schema via zodToProviderToolSchema. */
   config?: unknown
+  /** Per-config-field presentation overrides (tool-backed dynamic selects). */
+  configOptions?: Record<string, ActionInputHint>
   streams: RawConnectorStream[]
 }
 

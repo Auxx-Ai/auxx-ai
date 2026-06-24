@@ -245,6 +245,13 @@ export interface CatalogDataConnector {
   requestModel?: 'builder' | 'fixed'
   /** Connector-level config schema (JSON Schema, from the `config` zod schema). */
   configJsonSchema: Record<string, unknown>
+  /**
+   * Per-config-field presentation overrides — same `dynamic-select` shape as a
+   * quick-action's `inputHints`, carried separately because `configJsonSchema`
+   * is bare JSON Schema (metadata is stripped). Lets a config field render as a
+   * live dropdown backed by an app tool (`optionsFrom`). Keyed by config field.
+   */
+  configOptionHints?: Record<string, ActionInputHint>
   streams: CatalogConnectorStream[]
 }
 

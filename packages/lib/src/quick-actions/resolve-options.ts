@@ -1,12 +1,21 @@
 // packages/lib/src/quick-actions/resolve-options.ts
 
 import type { DynamicSelectHint } from '@auxx/database'
-import { createScopedLogger } from '@auxx/logger'
 import type { RecordId } from '@auxx/types/resource'
 import { resolveAppFieldValue } from '../agents/bindings'
+import {
+  invokeAppToolForOptions,
+  mapToolOutputToOptions,
+  type ResolveToolOptionsResult,
+  type ToolOption,
+} from '../apps/tool-options'
 import { getCachedInstalledApps } from '../cache/org-cache-helpers'
 
-const logger = createScopedLogger('quick-action-resolve-options')
+/**
+ * Back-compat re-export — the pure output→options mapper now lives in the
+ * generic app-tool-options core (shared with the data-connector config picker).
+ */
+export const mapResolverOutputToOptions = mapToolOutputToOptions
 
 /** Input for {@link resolveQuickActionOptions}. */
 export interface ResolveQuickActionOptionsInput {
@@ -27,17 +36,8 @@ export interface ResolveQuickActionOptionsInput {
   userName: string
 }
 
-export interface QuickActionOption {
-  value: string
-  label: string
-  sublabel?: string
-}
-
-export interface ResolveQuickActionOptionsResult {
-  options: QuickActionOption[]
-  /** Hint shown disabled when no options resolve; null when there are options. */
-  disabledHint: string | null
-}
+export type QuickActionOption = ToolOption
+export type ResolveQuickActionOptionsResult = ResolveToolOptionsResult
 
 /**
  * Resolve the live options for a quick-action `dynamic-select` input. Runs the
@@ -97,30 +97,10 @@ export async function resolveQuickActionOptions(
     boundArgs[argName] = value
   }
 
-  // 4. Invoke the resolver tool in the lambda — mirror QuickActionExecutor.
-  const { getInstallationDeployment } = await import(
-    '../apps/installations/get-installation-deployment'
-  )
-  const { prepareLambdaContext, invokeLambdaExecutor } = await import('../apps/lambda')
-
-  const installationResult = await getInstallationDeployment({
+  // 4-5. Invoke the resolver tool + map its output via the shared core.
+  return invokeAppToolForOptions({
+    appId: input.appId,
     installationId: input.installationId,
-    organizationHandle: input.organizationHandle,
-    appId: input.appId,
-  })
-  if (installationResult.isErr()) {
-    logger.warn('Failed to get installation deployment', {
-      installationId: input.installationId,
-      error: installationResult.error.message,
-    })
-    return disabled()
-  }
-  const { serverBundleSha, installation: inst } = installationResult.value
-  if (!serverBundleSha) return disabled()
-
-  const baseContext = prepareLambdaContext({
-    appId: input.appId,
-    installationId: inst.id,
     organizationId: input.organizationId,
     organizationHandle: input.organizationHandle,
     userId: input.userId,
@@ -128,103 +108,9 @@ export async function resolveQuickActionOptions(
     userName: input.userName,
     userConnection,
     organizationConnection,
+    hint: ds,
+    boundArgs,
+    invocationContext: { kind: 'action', recordId: input.recordId },
+    query: input.query,
   })
-
-  const lambdaResult = await invokeLambdaExecutor({
-    caller: 'quick-action',
-    payload: {
-      type: 'tool',
-      serverBundleSha,
-      toolId: ds.optionsFrom,
-      inputs: { ...ds.args, ...boundArgs },
-      context: baseContext,
-      invocationContext: { kind: 'action', recordId: input.recordId },
-      timeout: 30000,
-    },
-  })
-  if (lambdaResult.isErr()) {
-    logger.warn('Resolver lambda invocation failed', {
-      optionsFrom: ds.optionsFrom,
-      error: lambdaResult.error.message,
-    })
-    return disabled()
-  }
-  const result = lambdaResult.value
-  if (result.metadata?.runtime_error || result.metadata?.validation_error) {
-    return disabled()
-  }
-  const data = result.execution_result?.data ?? result.execution_result ?? {}
-
-  // 5. Map output → options, then local-filter by query.
-  return mapResolverOutputToOptions(data, ds, input.query)
-}
-
-/**
- * Pure mapping from a resolver tool's raw output to the option list — the
- * testable core of step 5. Selects items at `itemsPath`, projects each via
- * `valuePath`/`labelTemplate`/`sublabelTemplate`, drops valueless rows, and
- * locally filters by `query`.
- */
-export function mapResolverOutputToOptions(
-  data: unknown,
-  ds: DynamicSelectHint,
-  query?: string
-): ResolveQuickActionOptionsResult {
-  const items = selectItems(data, ds.itemsPath)
-  const options: QuickActionOption[] = []
-  for (const item of items) {
-    const value = getPath(item, ds.valuePath)
-    if (value === undefined || value === null || value === '') continue
-    options.push({
-      value: String(value),
-      label: renderTemplate(ds.labelTemplate, item) || String(value),
-      sublabel: ds.sublabelTemplate ? renderTemplate(ds.sublabelTemplate, item) : undefined,
-    })
-  }
-
-  const filtered = filterOptions(options, query)
-  return { options: filtered, disabledHint: filtered.length ? null : (ds.emptyHint ?? null) }
-}
-
-/** Pull the option array out of the resolver output via `itemsPath`, else the first array found. */
-function selectItems(data: unknown, itemsPath?: string): Array<Record<string, unknown>> {
-  if (Array.isArray(data)) return data as Array<Record<string, unknown>>
-  if (itemsPath) {
-    const at = getPath(data, itemsPath)
-    return Array.isArray(at) ? (at as Array<Record<string, unknown>>) : []
-  }
-  // No itemsPath and not an array — take the first array-valued top-level field.
-  if (data && typeof data === 'object') {
-    for (const value of Object.values(data as Record<string, unknown>)) {
-      if (Array.isArray(value)) return value as Array<Record<string, unknown>>
-    }
-  }
-  return []
-}
-
-/** Read a dotted path (`a.b.c`) off an object. */
-function getPath(obj: unknown, path: string): unknown {
-  return path.split('.').reduce<unknown>((acc, key) => {
-    if (acc && typeof acc === 'object') return (acc as Record<string, unknown>)[key]
-    return undefined
-  }, obj)
-}
-
-/** Substitute `{field}` / `{a.b}` placeholders in a template from an item. */
-function renderTemplate(template: string, item: Record<string, unknown>): string {
-  return template
-    .replace(/\{([^}]+)\}/g, (_, key: string) => {
-      const value = getPath(item, key.trim())
-      return value === undefined || value === null ? '' : String(value)
-    })
-    .trim()
-}
-
-/** Case-insensitive substring filter over value + label + sublabel. */
-function filterOptions(options: QuickActionOption[], query?: string): QuickActionOption[] {
-  const q = query?.trim().toLowerCase()
-  if (!q) return options
-  return options.filter((o) =>
-    `${o.value} ${o.label} ${o.sublabel ?? ''}`.toLowerCase().includes(q)
-  )
 }

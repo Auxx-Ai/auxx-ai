@@ -728,14 +728,24 @@ export const WorkflowShareAccessModeValues = ['public', 'organization'] as const
 // EntityDefinition string constants (not database enums - stored as text)
 export const EntityTypeValues = [
   'standard',
+  'article',
+  'company',
   'contact',
-  'user',
+  'entity_group',
+  'inbox',
+  'meeting',
+  'part',
+  'signature',
+  'stock_movement',
+  'subpart',
+  'tag',
   'thread',
   'ticket',
-  'entity_group',
+  'user',
+  'vendor_part',
 ] as const
 
-export const StandardTypeValues = ['company', 'task', 'deal', 'custom'] as const
+export const StandardTypeValues = ['task', 'deal', 'custom'] as const
 
 // ============================================================================
 // ENUM OBJECTS - Can be used both as types and values on client-side
@@ -1449,15 +1459,24 @@ export const WorkflowShareAccessMode = {
 // EntityDefinition type objects (not database enums - stored as text fields)
 export const EntityType = {
   STANDARD: 'standard',
+  ARTICLE: 'article',
+  COMPANY: 'company',
   CONTACT: 'contact',
-  USER: 'user',
+  ENTITY_GROUP: 'entity_group',
+  INBOX: 'inbox',
+  MEETING: 'meeting',
+  PART: 'part',
+  SIGNATURE: 'signature',
+  STOCK_MOVEMENT: 'stock_movement',
+  SUBPART: 'subpart',
+  TAG: 'tag',
   THREAD: 'thread',
   TICKET: 'ticket',
-  ENTITY_GROUP: 'entity_group',
+  USER: 'user',
+  VENDOR_PART: 'vendor_part',
 } as const
 
 export const StandardType = {
-  COMPANY: 'company',
   TASK: 'task',
   DEAL: 'deal',
   CUSTOM: 'custom',

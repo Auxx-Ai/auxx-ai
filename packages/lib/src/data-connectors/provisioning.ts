@@ -47,7 +47,15 @@ export interface ProvisionTarget {
   /** Existing def id, or the owned-def declaration to create if absent. */
   entityDefinitionId?: string | null
   /** Owned-def declaration (used only when entityDefinitionId is absent + owned). */
-  ownedDef?: { apiSlug: string; singular: string; plural: string; icon?: string; color?: string }
+  ownedDef?: {
+    apiSlug: string
+    singular: string
+    plural: string
+    icon?: string
+    color?: string
+    /** `appFieldKey` of the field to wire as the def's primary display field. */
+    primaryDisplayFieldKey?: string
+  }
   fields: ProvisionFieldSpec[]
 }
 
@@ -87,10 +95,14 @@ export async function provisionTarget(
       apiSlug: target.ownedDef.apiSlug,
       singular: target.ownedDef.singular,
       plural: target.ownedDef.plural,
-      icon: target.ownedDef.icon ?? 'Box',
+      // Icon is a lowercase lucide iconId (e.g. 'box'), never the PascalCase
+      // component name — match what the UI's create path stores.
+      icon: target.ownedDef.icon ?? 'box',
       color: target.ownedDef.color ?? 'blue',
-      entityType: 'standard',
-      standardType: 'custom',
+      // A connector-owned def is a CUSTOM entity, exactly like one a user creates
+      // in the UI: entityType/standardType stay null. Setting 'standard'/'custom'
+      // here misclassifies it (e.g. escapes the custom-entity quota, which counts
+      // `isNull(entityType)`) and diverges from every user-created entity.
     })
     if (created.isErr()) {
       // SLUG_ALREADY_EXISTS → the user (or a prior run) already owns this slug; adopt it.
@@ -132,6 +144,22 @@ export async function provisionTarget(
 
   if (provisionedFieldKeys.length > 0) {
     await onCacheEvent('custom-field.created', { orgId: organizationId })
+  }
+
+  // Wire the declared primary display field once its column exists (the UI sets this
+  // for user-created entities; owned defs were landing with null display pointers).
+  // The def is fresh with no records, so a direct pointer write is enough — no
+  // display-value recalculation needed.
+  const primaryDisplayFieldId =
+    target.targetMode === 'owned' && target.ownedDef?.primaryDisplayFieldKey
+      ? fieldIdByKey[target.ownedDef.primaryDisplayFieldKey]
+      : undefined
+  if (primaryDisplayFieldId) {
+    await db
+      .update(schema.EntityDefinition)
+      .set({ primaryDisplayFieldId, updatedAt: new Date() })
+      .where(eq(schema.EntityDefinition.id, defId))
+    await onCacheEvent('entity-def.updated', { orgId: organizationId })
   }
 
   logger.info('Provisioned connector target', {

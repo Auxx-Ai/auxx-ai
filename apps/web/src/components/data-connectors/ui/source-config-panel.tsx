@@ -1,13 +1,19 @@
 // apps/web/src/components/data-connectors/ui/source-config-panel.tsx
 'use client'
 
+import type { ActionInputHint } from '@auxx/database'
+import { FieldType } from '@auxx/database/enums'
+import type { FieldOptions } from '@auxx/lib/field-values/client'
 import { Field, FieldLabel } from '@auxx/ui/components/field'
 import { Input } from '@auxx/ui/components/input'
 import { Section } from '@auxx/ui/components/section'
 import { toastError } from '@auxx/ui/components/toast'
 import { Globe, Settings2 } from 'lucide-react'
 import { useMemo, useState } from 'react'
-import { readFieldNodes, SchemaField, seedDefaults } from '~/components/global/schema-form'
+import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
+import { type FieldEntry, readFieldNodes, seedDefaults } from '~/components/global/schema-form'
+import { BaseType } from '~/components/workflow/types'
+import { VarEditorField, VarEditorFieldRow } from '~/components/workflow/ui/input-editor/var-editor'
 import { api } from '~/trpc/react'
 import { useRegisterSaver } from '../hooks/use-connector-edits'
 import { RecordKeyValueEditor, RequestEditorBlock, RevealChip } from './request-editors'
@@ -139,6 +145,8 @@ function AppConfigSource({
     (data?.configJsonSchema as Record<string, unknown> | null) ??
     (connector.config as { _schema?: Record<string, unknown> })?._schema ??
     null
+  // Per-field dynamic-select hints (tool-backed dropdowns). Keyed by config field.
+  const optionHints = (data?.configOptionHints ?? null) as Record<string, ActionInputHint> | null
   const fields = useMemo(() => readFieldNodes(schema), [schema])
   const baseline = useMemo(
     () => ({ ...seedDefaults(fields), ...(connector.config ?? {}) }) as Record<string, unknown>,
@@ -170,17 +178,141 @@ function AppConfigSource({
         initialOpen
         collapsible={false}
         description='Options declared by this connector.'>
-        <div className='flex flex-col gap-4 px-1'>
-          {fields.map((entry) => (
-            <SchemaField
-              key={entry.key}
-              entry={entry}
-              value={values[entry.key]}
-              onChange={(next) => setValues((v) => ({ ...v, [entry.key]: next }))}
-            />
-          ))}
-        </div>
+        <VarEditorField
+          orientation='responsive'
+          className='p-0 sm:[&_[data-slot=field-row-label]]:w-70!'>
+          {fields.map((entry) => {
+            const hint = optionHints?.[entry.key]
+            const onChange = (next: unknown) => setValues((v) => ({ ...v, [entry.key]: next }))
+            return hint?.kind === 'dynamic-select' ? (
+              <ToolBackedSelectRow
+                key={entry.key}
+                connectorId={connector.id}
+                entry={entry}
+                value={values[entry.key]}
+                onChange={onChange}
+              />
+            ) : (
+              <ConfigFieldRow
+                key={entry.key}
+                entry={entry}
+                value={values[entry.key]}
+                onChange={onChange}
+              />
+            )
+          })}
+        </VarEditorField>
       </Section>
     </div>
+  )
+}
+
+/** Map a JSON-Schema config node to the platform `FieldType` that renders it. */
+function fieldTypeFor(entry: FieldEntry): FieldType {
+  switch (entry.node.type) {
+    case 'boolean':
+      return FieldType.CHECKBOX
+    case 'number':
+    case 'integer':
+      return FieldType.NUMBER
+    default:
+      return FieldType.TEXT
+  }
+}
+
+/** The row-label icon's base type for a given field type. */
+function baseTypeFor(fieldType: FieldType): BaseType {
+  if (fieldType === FieldType.CHECKBOX) return BaseType.BOOLEAN
+  if (fieldType === FieldType.NUMBER) return BaseType.NUMBER
+  return BaseType.STRING
+}
+
+const ROW_TRIGGER_PROPS = { className: 'w-full ps-0 pe-1' }
+
+/**
+ * A plain connector-config field rendered as a `VarEditorFieldRow` + matching
+ * `FieldInputAdapter` control (mirrors `ConnectionVariableFields`). Text / number /
+ * checkbox by the field's JSON-Schema type.
+ */
+function ConfigFieldRow({
+  entry,
+  value,
+  onChange,
+}: {
+  entry: FieldEntry
+  value: unknown
+  onChange: (next: unknown) => void
+}) {
+  const fieldType = fieldTypeFor(entry)
+  return (
+    <VarEditorFieldRow
+      title={entry.meta.label ?? entry.key}
+      description={entry.meta.description}
+      type={baseTypeFor(fieldType)}
+      showIcon
+      isRequired={entry.required}>
+      <FieldInputAdapter
+        fieldType={fieldType}
+        value={value ?? (fieldType === FieldType.CHECKBOX ? false : '')}
+        onChange={onChange}
+        placeholder={entry.meta.placeholder}
+        triggerProps={ROW_TRIGGER_PROPS}
+      />
+    </VarEditorFieldRow>
+  )
+}
+
+/**
+ * A config field whose options are fetched live by running an app tool through
+ * the connector's own connection (e.g. a repo picker backed by `list_repos`).
+ * Renders a `SINGLE_SELECT` via `FieldInputAdapter`, fed by the generic
+ * `apps.resolveToolOptions` resolver (connector source).
+ */
+function ToolBackedSelectRow({
+  connectorId,
+  entry,
+  value,
+  onChange,
+}: {
+  connectorId: string
+  entry: FieldEntry
+  value: unknown
+  onChange: (next: unknown) => void
+}) {
+  const optionsQuery = api.apps.resolveToolOptions.useQuery(
+    { source: { kind: 'connector', connectorId }, fieldKey: entry.key },
+    { staleTime: 60_000, refetchOnWindowFocus: false }
+  )
+  const fieldOptions: FieldOptions = {
+    options: (optionsQuery.data?.options ?? []).map((o) => ({
+      value: o.value,
+      label: o.sublabel ? `${o.label} — ${o.sublabel}` : o.label,
+    })),
+  }
+  const selected = typeof value === 'string' && value ? [value] : []
+
+  return (
+    <VarEditorFieldRow
+      title={entry.meta.label ?? entry.key}
+      description={entry.meta.description}
+      type={BaseType.STRING}
+      showIcon
+      isRequired={entry.required}>
+      <FieldInputAdapter
+        fieldType={FieldType.SINGLE_SELECT}
+        fieldOptions={fieldOptions}
+        value={selected}
+        onChange={(next) => onChange(Array.isArray(next) ? (next[0] ?? '') : (next ?? ''))}
+        placeholder={
+          optionsQuery.isLoading
+            ? 'Loading…'
+            : (optionsQuery.data?.disabledHint ??
+              entry.meta.placeholder ??
+              `Select ${entry.meta.label ?? entry.key}…`)
+        }
+        disabled={optionsQuery.isLoading}
+        triggerProps={ROW_TRIGGER_PROPS}
+      />
+    </VarEditorFieldRow>
   )
 }

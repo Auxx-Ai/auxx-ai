@@ -558,7 +558,7 @@ function QuickActionField({
 }
 
 /**
- * A select whose options are loaded at open time from `quickAction.resolveOptions`
+ * A select whose options are loaded at open time from `apps.resolveToolOptions`
  * — the app's resolver tool run against the thread's contact. When no contact is
  * linked or zero options resolve, the control renders disabled with the hint
  * (decision 6 — show, don't hide). See plans/actions/09-dynamic-action-inputs.md.
@@ -597,13 +597,16 @@ function QuickActionDynamicSelectField({
   // (so we can render its label). Cached for the compose session — charges don't
   // change mid-compose, so re-opening doesn't re-invoke the lambda.
   const enabled = !!contactRecordId && (opened || !!value)
-  const optionsQuery = api.quickAction.resolveOptions.useQuery(
+  const optionsQuery = api.apps.resolveToolOptions.useQuery(
     {
-      appId,
-      installationId,
-      actionId,
+      source: {
+        kind: 'entity',
+        appId,
+        installationId,
+        actionId,
+        recordId: contactRecordId ?? '',
+      },
       fieldKey,
-      recordId: contactRecordId ?? '',
     },
     { enabled, staleTime: 60_000, refetchOnWindowFocus: false }
   )

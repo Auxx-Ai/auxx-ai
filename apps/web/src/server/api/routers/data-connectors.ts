@@ -203,7 +203,7 @@ export const dataConnectorRouter = createTRPCRouter({
       }
       const connector = result.value
       if (!connector.type.startsWith('app:')) {
-        return { requestModel: 'builder' as const, configJsonSchema: null }
+        return { requestModel: 'builder' as const, configJsonSchema: null, configOptionHints: null }
       }
       const slug = connector.type.replace(/^app:/, '')
       const installedApps = await getCachedInstalledApps(ctx.session.organizationId)
@@ -214,6 +214,7 @@ export const dataConnectorRouter = createTRPCRouter({
       return {
         requestModel: dc?.requestModel ?? ('fixed' as const),
         configJsonSchema: dc?.configJsonSchema ?? null,
+        configOptionHints: dc?.configOptionHints ?? null,
       }
     }),
 
