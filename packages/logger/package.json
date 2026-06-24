@@ -15,6 +15,12 @@
       "source": "./src/run-log.ts",
       "import": "./dist/run-log.mjs",
       "default": "./src/run-log.ts"
+    },
+    "./openobserve": {
+      "types": "./src/openobserve.ts",
+      "source": "./src/openobserve.ts",
+      "import": "./dist/openobserve.mjs",
+      "default": "./src/openobserve.ts"
     }
   },
   "scripts": {
