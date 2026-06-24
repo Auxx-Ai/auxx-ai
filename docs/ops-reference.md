@@ -2,6 +2,8 @@
 
 Reference commands for production and dev infrastructure debugging. Read this file when working with Railway, AWS logs, ECS, RDS, or production deploys.
 
+> For incident recovery (DB corruption, restore-from-snapshot, credential rotation, outages), see **[disaster-recovery.md](./disaster-recovery.md)**.
+
 ---
 
 ## Railway CLI (production)

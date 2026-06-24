@@ -10,6 +10,7 @@
 // the auth, sends the request, and normalizes the response.
 
 import { createScopedLogger } from '@auxx/logger'
+import { interpolateTemplate, unresolvedPlaceholders } from '@auxx/utils'
 import { httpTransport } from '../../connections/transports'
 import type { RateLimitPolicy } from '../../connections/transports/types'
 import type { SyncCursor } from '../../sync-core/contracts'
@@ -26,6 +27,80 @@ import {
 } from './types'
 
 const logger = createScopedLogger('data-connector-generic-rest')
+
+// ── Webhook fetch steering (sync bridge §4) ──────────────────────────────────
+// A webhook-steered fetch interpolates `{token}` placeholders (resolved from the
+// delivery payload) into the request's path/params/headers/body using the SAME
+// canonical `{key}` helper the connection runtime uses for `baseUrlTemplate` and
+// `authApply` — no bespoke templating. `encode` escapes reserved chars for the
+// path + query (a value lands in a URL segment); headers/body are inserted raw.
+
+/** Interpolate a single string value's `{token}` placeholders. */
+function steerString(value: string, ctx: Record<string, string>, encode: boolean): string {
+  return interpolateTemplate(value, ctx, { encode })
+}
+
+/** Interpolate `{token}`s in each STRING param value (encode: query reserved chars). */
+function steerParams(
+  params: Record<string, unknown>,
+  ctx: Record<string, string>
+): Record<string, unknown> {
+  const out: Record<string, unknown> = {}
+  for (const [key, value] of Object.entries(params)) {
+    out[key] = typeof value === 'string' ? steerString(value, ctx, true) : value
+  }
+  return out
+}
+
+/** Interpolate `{token}`s in header values (no encode — identical to auth-apply). */
+function steerHeaders(
+  headers: Record<string, string>,
+  ctx: Record<string, string>
+): Record<string, string> {
+  const out: Record<string, string> = {}
+  for (const [key, value] of Object.entries(headers)) out[key] = steerString(value, ctx, false)
+  return out
+}
+
+/** Deep-walk a POST/GraphQL body, interpolating `{token}`s in every string leaf. */
+function steerBody(body: unknown, ctx: Record<string, string>): unknown {
+  if (typeof body === 'string') return steerString(body, ctx, false)
+  if (Array.isArray(body)) return body.map((item) => steerBody(item, ctx))
+  if (body && typeof body === 'object') {
+    const out: Record<string, unknown> = {}
+    for (const [key, value] of Object.entries(body as Record<string, unknown>)) {
+      out[key] = steerBody(value, ctx)
+    }
+    return out
+  }
+  return body
+}
+
+/** Collect every string leaf of a value (for unresolved-placeholder validation). */
+function collectStringLeaves(value: unknown, acc: string[]): void {
+  if (typeof value === 'string') acc.push(value)
+  else if (Array.isArray(value)) for (const item of value) collectStringLeaves(item, acc)
+  else if (value && typeof value === 'object') {
+    for (const v of Object.values(value)) collectStringLeaves(v, acc)
+  }
+}
+
+/**
+ * Fail a webhook-steered request that still carries `{token}` placeholders after
+ * interpolation — a payload path that returned `undefined`. The child sync job
+ * dead-letters the event rather than firing a malformed request (sync bridge §4.2).
+ */
+function assertResolved(parts: unknown[]): void {
+  const leaves: string[] = []
+  for (const part of parts) collectStringLeaves(part, leaves)
+  const unresolved = leaves.flatMap(unresolvedPlaceholders)
+  if (unresolved.length > 0) {
+    throw new Error(
+      `generic-rest: unresolved webhook token(s) {${[...new Set(unresolved)].join('}, {')}} — ` +
+        'the steering payload path returned no value'
+    )
+  }
+}
 
 /** Walk a dotted JSON path (`a.b.c`) into a value; '' / undefined → the root. */
 function getByPath(obj: unknown, path?: string): unknown {
@@ -293,8 +368,17 @@ async function* fetchRecords(args: ConnectorFetchArgs): AsyncIterable<ConnectorY
   // (Stripe `/v1/events`) instead of the list endpoint, so it sees updates AND
   // deletes. Backfill still crawls the normal list endpoint (full snapshot).
   const eventFeed = incremental?.kind === 'event-feed' && args.mode === 'incremental'
-  const path = eventFeed ? (incremental?.eventsPath ?? request.path ?? '') : (request.path ?? '')
+  const rawPath = eventFeed ? (incremental?.eventsPath ?? request.path ?? '') : (request.path ?? '')
   const rateLimit = mergeRateLimit(endpoint?.rateLimit, args.rateLimitOverride)
+
+  // Webhook steering (sync bridge §4): a delivery resolved `{token}` values into
+  // `args.triggerContext`. Interpolate them into the path/params/headers/body up
+  // front (pagination params, added per page below, never carry tokens), then fail
+  // fast if any placeholder is still unresolved.
+  const tctx = args.triggerContext
+  const path = tctx ? steerString(rawPath, tctx, true) : rawPath
+  const steeredParams = tctx ? steerParams(request.params ?? {}, tctx) : (request.params ?? {})
+  const steeredBody = tctx ? steerBody(request.body, tctx) : request.body
 
   // Running max watermark, seeded from the persisted floor so it stays monotonic
   // across slices. Always tracked when an `incremental` config is present — even
@@ -306,8 +390,10 @@ async function* fetchRecords(args: ConnectorFetchArgs): AsyncIterable<ConnectorY
   const baseHeaders: Record<string, string> = {
     Accept: 'application/json',
     ...(endpoint?.headers ?? {}),
-    ...(request.headers ?? {}),
+    ...(tctx ? steerHeaders(request.headers ?? {}, tctx) : (request.headers ?? {})),
   }
+  // Validate the fully-steered request before any HTTP call (sync bridge §4.2).
+  if (tctx) assertResolved([path, steeredParams, baseHeaders, steeredBody])
   const applyCredential = endpoint?.auth !== 'none' && args.credential ? args.credential : null
 
   // Resume mid-pagination from the durable backfill cursor during a BACKFILL
@@ -322,7 +408,7 @@ async function* fetchRecords(args: ConnectorFetchArgs): AsyncIterable<ConnectorY
   const maxPages = 10_000 // hard ceiling — bounds a runaway pagination loop within one fetch()
 
   for (let fetched = 0; fetched < maxPages; fetched++) {
-    const params: Record<string, unknown> = { ...(request.params ?? {}) }
+    const params: Record<string, unknown> = { ...steeredParams }
     if (cursor !== undefined && pagination?.cursorParam) {
       params[pagination.cursorParam] = cursor
     }
@@ -371,7 +457,7 @@ async function* fetchRecords(args: ConnectorFetchArgs): AsyncIterable<ConnectorY
       method,
       url,
       headers: baseHeaders,
-      body: method === 'POST' ? request.body : undefined,
+      body: method === 'POST' ? steeredBody : undefined,
       rateLimit,
     })
 

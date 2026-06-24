@@ -572,6 +572,20 @@ export async function clearResyncPending(db: DbOrTx, dataConnectorId: string): P
     .where(eq(schema.DataConnector.id, dataConnectorId))
 }
 
+/**
+ * Stamp `lastWebhookEventAt` to NOW — the connector just processed an app-trigger
+ * webhook delivery (sync-bridge §9 observability). Webhook syncs are point writes
+ * that open no run + never touch `lastSyncedAt`, so this is the only liveness signal
+ * a webhook-sync connector has. Stamped per received event (incl. filtered/delete/
+ * no-op) so the connector never reads as inactive while deliveries are flowing.
+ */
+export async function stampWebhookEvent(db: Database, dataConnectorId: string): Promise<void> {
+  await db
+    .update(schema.DataConnector)
+    .set({ lastWebhookEventAt: new Date() })
+    .where(eq(schema.DataConnector.id, dataConnectorId))
+}
+
 /** Exact-bind lookup: (dataConnectorId, mappingId, externalId) → item row. */
 export async function findItem(
   db: Database,
@@ -686,15 +700,25 @@ export async function upsertItem(
   return row!
 }
 
-/** Stamp `lastSeenRunId` on an unchanged item (skip-unchanged path). */
+/**
+ * Stamp `lastSeenRunId` on an unchanged item (skip-unchanged path). When a newer
+ * `upstreamUpdatedAt` is supplied it is advanced too, so the stored value stays a
+ * true high-watermark even on a no-op content update — the out-of-order guard
+ * (sync-bridge §9 Q7) needs the freshest version it has seen, not the last it wrote.
+ */
 export async function touchItem(
   db: Database,
   itemId: string,
-  lastSeenRunId: string
+  lastSeenRunId: string,
+  upstreamUpdatedAt?: Date | null
 ): Promise<void> {
   await db
     .update(schema.DataConnectorItem)
-    .set({ lastSeenRunId, lastSyncedAt: new Date() })
+    .set({
+      lastSeenRunId,
+      lastSyncedAt: new Date(),
+      ...(upstreamUpdatedAt ? { upstreamUpdatedAt } : {}),
+    })
     .where(eq(schema.DataConnectorItem.id, itemId))
 }
 

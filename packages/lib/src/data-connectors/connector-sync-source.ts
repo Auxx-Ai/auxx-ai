@@ -134,6 +134,9 @@ class ConnectorStreamSyncSource implements ConnectorSyncSource {
   readonly throttleKey: string
 
   private readonly now: () => number
+  /** Per-record upstream last-modified path (`incremental.watermarkField`) → the
+   *  `upstreamUpdatedAt` version stamp the sink's out-of-order guard reads (§9 Q7). */
+  private readonly updatedAtPath?: string
   /** Cache the cache-warmed crud handlers across this instance's calls. */
   private crud?: UnifiedCrudHandler
   private ownedCrud?: UnifiedCrudHandler
@@ -145,6 +148,7 @@ class ConnectorStreamSyncSource implements ConnectorSyncSource {
     // upstream account share a budget; distinct operations stay separated.
     this.throttleKey = `${deps.connector.credentialId ?? deps.connector.id}:data-connector-sync`
     this.now = deps.now ?? (() => Date.now())
+    this.updatedAtPath = deps.stream.requestConfig?.incremental?.watermarkField
   }
 
   async fetchSlice(ctx: SyncSliceCtx): Promise<SliceResult> {
@@ -166,7 +170,8 @@ class ConnectorStreamSyncSource implements ConnectorSyncSource {
       const result = await runAsyncExportSlice({
         ctx,
         driver,
-        sink: (record) => sinkSourceRecord(syncCtx, this.deps.stream.mappings, record),
+        sink: (record) =>
+          sinkSourceRecord(syncCtx, this.deps.stream.mappings, record, this.updatedAtPath),
       })
       await this.emitRecordsInvalidated(syncCtx.touchedDefs)
       return { ...result, counters: toSyncCounters(counters) }
@@ -194,7 +199,8 @@ class ConnectorStreamSyncSource implements ConnectorSyncSource {
           // H1 — never sleep on a throttle inside a slice.
           rateLimitOverride: { maxRetries: 0 },
         }),
-      sink: (record) => sinkSourceRecord(syncCtx, this.deps.stream.mappings, record),
+      sink: (record) =>
+        sinkSourceRecord(syncCtx, this.deps.stream.mappings, record, this.updatedAtPath),
     })
 
     await this.emitRecordsInvalidated(syncCtx.touchedDefs)

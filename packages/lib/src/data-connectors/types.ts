@@ -141,6 +141,51 @@ export interface StreamRequestConfig {
    * STEADY delta floor (`updated_at`); this one bounds the initial BACKFILL crawl.
    */
   backfillWindow?: { sinceParam: string; format?: 'iso' | 'unix' }
+  /**
+   * Present only on `syncBehavior='webhook'` streams (app-trigger sync bridge,
+   * plans/data-connectors/v4/app-trigger-sync-bridge-plan.md). Binds this stream to
+   * an app webhook trigger and declares how a delivery STEERS the regular fetch: map
+   * `{token}` values out of `triggerData`, interpolate them into `path`/`params`/
+   * `headers`/`body` (which become `{token}`-templatable), run the normal fetch, and
+   * sink the FETCH result as the canonical record. The webhook is the signal; the
+   * fetch is the truth.
+   */
+  webhookTrigger?: StreamWebhookTrigger
+}
+
+/**
+ * How a webhook-sync stream is driven by an app trigger (sync bridge §3.1). Lives
+ * inside {@link StreamRequestConfig} (jsonb on the stream — no schema column).
+ */
+export interface StreamWebhookTrigger {
+  /** App trigger id whose delivery drives this stream (matches `AppWebhookHandler.triggerId`). */
+  triggerId: string
+  /**
+   * Discriminate multiplexed deliveries with the SAME `matchesFilter()` helper the
+   * agent app-trigger path uses. Flagship apps fan MANY topics through ONE triggerId
+   * (Shopify sends all 22 topics on `shopify.shopify-trigger`; the topic lives in
+   * `triggerData.topic`), so an exact value or a `{ in: [...] }` membership set picks
+   * the subset this stream cares about. Omit for one-trigger-per-event apps.
+   * e.g. `{ topic: 'orders/create' }` or `{ topic: { in: ['orders/create', 'orders/paid'] } }`.
+   */
+  filter?: Record<string, unknown>
+  /**
+   * token name → dotted path into `triggerData` (read with the connector's `getByPath`).
+   * Paths are ENVELOPE-relative: prefer the trigger's normalized outputs (`resourceId`,
+   * `updatedAt`) over digging into the raw body. e.g. `{ orderId: 'resourceId' }`.
+   */
+  tokens: Record<string, string>
+  /** When the event is a delete, skip the fetch and archive by externalId. */
+  deleteWhen?: { tokenTruthy?: string } | { topicEquals?: string }
+  /** Dotted path into `triggerData` for the externalId to archive on delete. e.g. `'resourceId'`. */
+  deleteExternalIdPath?: string
+  /**
+   * Treat the fetch as a single record (skip pagination) vs a paginated collection.
+   * Advisory — the fetch already stops after one page when no `pagination` is set;
+   * defaults to `'single'` in that case. `'collection'` documents an intentional
+   * filtered paginated fan-in (e.g. "all line items for order {orderId}").
+   */
+  resultShape?: 'single' | 'collection'
 }
 
 // ── Stream state / connector output (03 §1) ───────────────────────────────────
@@ -339,6 +384,14 @@ export interface ConnectorFetchArgs {
   config: DataConnectorConfig
   /** Per-stream request config (generic-rest). */
   requestConfig?: StreamRequestConfig
+  /**
+   * Resolved `{token}` → value map for a webhook-STEERED fetch (sync bridge §4.1).
+   * Undefined for normal scheduled/backfill syncs. The generic-rest connector
+   * interpolates these into the request's path/params/headers/body (the same
+   * `{key}` mechanism `baseUrlTemplate`/`authApply` use) so a webhook delivery
+   * points the fetch at exactly the changed resource.
+   */
+  triggerContext?: Record<string, string>
   /**
    * Per-call override merged onto the endpoint's `rateLimit` policy. The sliced
    * `SyncSource` sets `{ maxRetries: 0 }` so a throttle returns immediately (the

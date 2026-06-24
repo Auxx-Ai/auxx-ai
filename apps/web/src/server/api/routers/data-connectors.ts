@@ -136,6 +136,20 @@ const requestConfigSchema = z.object({
   backfillWindow: z
     .object({ sinceParam: z.string(), format: z.enum(['iso', 'unix']).optional() })
     .optional(),
+  // App-trigger sync bridge (plans/data-connectors/v4): binds a webhook-sync stream
+  // to an app trigger + declares how a delivery steers the fetch. Lives in requestConfig.
+  webhookTrigger: z
+    .object({
+      triggerId: z.string(),
+      filter: z.record(z.string(), z.unknown()).optional(),
+      tokens: z.record(z.string(), z.string()),
+      deleteWhen: z
+        .union([z.object({ tokenTruthy: z.string() }), z.object({ topicEquals: z.string() })])
+        .optional(),
+      deleteExternalIdPath: z.string().optional(),
+      resultShape: z.enum(['single', 'collection']).optional(),
+    })
+    .optional(),
 })
 
 const mergeStrategySchema = z.enum([
@@ -326,6 +340,9 @@ export const dataConnectorRouter = createTRPCRouter({
         status: c.status,
         syncBehavior: c.syncBehavior,
         lastSyncedAt: c.lastSyncedAt,
+        // Webhook-sync liveness — point writes open no run, so this stamps activity
+        // even when `lastSyncedAt`/`latestRun` stay null (sync-bridge §9).
+        lastWebhookEventAt: c.lastWebhookEventAt,
         itemCount: c.itemCount,
         error: c.error,
         // Pending mapping-edit re-sync marker (Layer 2) — drives the page banner.

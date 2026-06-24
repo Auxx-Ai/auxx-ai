@@ -116,6 +116,11 @@ export interface CatalogTrigger {
   iconKey: string | null
   color?: string
   inputsJsonSchema: Record<string, unknown>
+  /** The trigger's declared `schema.outputs` — the shape of the `triggerData`
+   *  envelope it emits (e.g. `resourceId`, `updatedAt`, `topic`, `payload`). Lets a
+   *  consumer offer real, labeled, envelope-relative paths (data-connector webhook
+   *  binding, agent/workflow var-pickers). Optional — absent on pre-outputs catalogs. */
+  outputsJsonSchema?: Record<string, unknown>
   refs: Array<{ path: string[]; kind: string }>
 }
 
@@ -126,6 +131,8 @@ export interface CatalogTriggerProjection {
   iconKey: string | null
   color?: string
   inputsJsonSchema: Record<string, unknown>
+  /** See {@link CatalogTrigger.outputsJsonSchema}. */
+  outputsJsonSchema?: Record<string, unknown>
   refs: Array<{ path: string[]; kind: string }>
 }
 
@@ -544,6 +551,7 @@ export async function compileAndExtractCatalog(): Promise<
       return errored({ code: 'CATALOG_VALIDATION_FAILED', message: 'Trigger is missing an id' })
     }
     const triggerInputs = serializeWorkflowSchemaInputs(trigger.schema)
+    const triggerOutputs = serializeWorkflowSchemaOutputs(trigger.schema)
     cataloguedTriggers.push({
       id: trigger.id,
       label: trigger.label,
@@ -551,6 +559,7 @@ export async function compileAndExtractCatalog(): Promise<
       iconKey: null,
       color: trigger.color,
       inputsJsonSchema: triggerInputs,
+      outputsJsonSchema: triggerOutputs,
       refs: [],
     })
     if (trigger.workflow) {
@@ -561,6 +570,7 @@ export async function compileAndExtractCatalog(): Promise<
         iconKey: null,
         color: trigger.color,
         inputsJsonSchema: triggerInputs,
+        outputsJsonSchema: triggerOutputs,
         refs: [],
       })
     }
@@ -572,6 +582,7 @@ export async function compileAndExtractCatalog(): Promise<
         iconKey: null,
         color: trigger.color,
         inputsJsonSchema: triggerInputs,
+        outputsJsonSchema: triggerOutputs,
         refs: [],
       })
     }
@@ -740,9 +751,29 @@ export async function compileAndExtractCatalog(): Promise<
 function serializeWorkflowSchemaInputs(
   schema: RawWorkflowSchema | undefined
 ): Record<string, unknown> {
-  if (!schema || typeof schema !== 'object' || !schema.inputs) return {}
+  return serializeWorkflowSchemaFields(schema?.inputs)
+}
+
+/**
+ * Serialize a trigger/block's declared `schema.outputs` (the shape of the data it
+ * emits — for an app trigger, the `triggerData` envelope) the same way inputs are
+ * serialized. `{}` when no outputs are declared. Drives the labeled output-path
+ * pickers (data-connector webhook token binding, agent/workflow var refs).
+ */
+function serializeWorkflowSchemaOutputs(
+  schema: RawWorkflowSchema | undefined
+): Record<string, unknown> {
+  return serializeWorkflowSchemaFields(schema?.outputs)
+}
+
+/** Serialize a workflow-schema field map (`{ key: FieldNode }`) to plain JSON,
+ *  preferring each node's `toJSON()` when present. */
+function serializeWorkflowSchemaFields(
+  fields: Record<string, unknown> | undefined
+): Record<string, unknown> {
+  if (!fields || typeof fields !== 'object') return {}
   const out: Record<string, unknown> = {}
-  for (const [key, field] of Object.entries(schema.inputs)) {
+  for (const [key, field] of Object.entries(fields)) {
     const fieldNode = field as { toJSON?: () => unknown } | undefined
     out[key] = typeof fieldNode?.toJSON === 'function' ? fieldNode.toJSON() : field
   }
@@ -800,6 +831,7 @@ interface RawBlock {
 
 interface RawWorkflowSchema {
   inputs?: Record<string, unknown>
+  outputs?: Record<string, unknown>
 }
 
 interface RawAppField {

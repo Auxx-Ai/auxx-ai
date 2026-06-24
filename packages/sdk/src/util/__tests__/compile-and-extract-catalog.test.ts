@@ -109,6 +109,13 @@ describe('compileAndExtractCatalog', () => {
       iconKey: null,
     })
     expect(catalog.workflow.triggers[0]?.inputsJsonSchema).toBeDefined()
+    // Declared `schema.outputs` is projected too — the `triggerData` envelope the
+    // trigger emits, so a consumer can offer real, labeled output paths.
+    expect(Object.keys(catalog.workflow.triggers[0]?.outputsJsonSchema ?? {})).toEqual([
+      'resourceId',
+      'topic',
+    ])
+    expect(catalog.triggers[0]?.outputsJsonSchema?.resourceId).toMatchObject({ type: 'string' })
     expect(catalog.agent.triggers).toHaveLength(1)
     expect(catalog.agent.triggers[0]).toMatchObject({
       triggerId: 'on_message_received',

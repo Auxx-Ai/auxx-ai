@@ -3,7 +3,7 @@
 // and everything else lexically (ISO-8601 — Shopify/Salesforce/QBO).
 
 import { describe, expect, it } from 'vitest'
-import { isNumericWatermark, maxWatermark } from './watermark'
+import { isNumericWatermark, maxWatermark, parseUpstreamUpdatedAt } from './watermark'
 
 describe('isNumericWatermark', () => {
   it('detects epoch numbers but not ISO timestamps', () => {
@@ -31,5 +31,34 @@ describe('maxWatermark', () => {
     expect(maxWatermark('2026-01-01T00:00:00Z', '2026-03-01T00:00:00Z')).toBe(
       '2026-03-01T00:00:00Z'
     )
+  })
+})
+
+describe('parseUpstreamUpdatedAt', () => {
+  it('parses ISO-8601 strings', () => {
+    expect(parseUpstreamUpdatedAt('2026-06-22T00:00:00Z')?.toISOString()).toBe(
+      '2026-06-22T00:00:00.000Z'
+    )
+  })
+
+  it('treats numeric values < 1e12 as unix SECONDS, else millis', () => {
+    expect(parseUpstreamUpdatedAt(1_700_000_000)?.getTime()).toBe(1_700_000_000_000)
+    expect(parseUpstreamUpdatedAt('1700000000')?.getTime()).toBe(1_700_000_000_000)
+    expect(parseUpstreamUpdatedAt(1_700_000_000_000)?.getTime()).toBe(1_700_000_000_000)
+  })
+
+  it('passes a Date through and rejects an invalid one', () => {
+    const d = new Date('2026-06-22T00:00:00Z')
+    expect(parseUpstreamUpdatedAt(d)).toBe(d)
+    expect(parseUpstreamUpdatedAt(new Date('nope'))).toBeNull()
+  })
+
+  it('returns null for absent / blank / unparseable values', () => {
+    expect(parseUpstreamUpdatedAt(null)).toBeNull()
+    expect(parseUpstreamUpdatedAt(undefined)).toBeNull()
+    expect(parseUpstreamUpdatedAt('')).toBeNull()
+    expect(parseUpstreamUpdatedAt('   ')).toBeNull()
+    expect(parseUpstreamUpdatedAt('not-a-date')).toBeNull()
+    expect(parseUpstreamUpdatedAt({})).toBeNull()
   })
 })

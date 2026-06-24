@@ -24,3 +24,32 @@ export function maxWatermark(a: string | undefined, b: string | undefined): stri
   }
   return a >= b ? a : b
 }
+
+/**
+ * Parse a source record's `watermarkField` value (the upstream last-modified) into a
+ * `Date` for the durable `DataConnectorItem.upstreamUpdatedAt` stamp + the out-of-order
+ * write guard (sync-bridge §9 Q7). Auto-detects the same two families `maxWatermark`
+ * handles — ISO-8601 strings and epoch numbers — so no format flag is threaded:
+ * numeric values < `1e12` are unix SECONDS (Stripe), else millis (HubSpot). Returns
+ * `null` for absent/blank/unparseable values (⇒ no stamp, no guard for that record).
+ */
+export function parseUpstreamUpdatedAt(value: unknown): Date | null {
+  if (value === null || value === undefined) return null
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value
+  if (typeof value === 'number') return fromEpoch(value)
+  if (typeof value === 'string') {
+    const s = value.trim()
+    if (s === '') return null
+    if (isNumericWatermark(s)) return fromEpoch(Number(s))
+    const d = new Date(s)
+    return Number.isNaN(d.getTime()) ? null : d
+  }
+  return null
+}
+
+/** Coerce an epoch number to a `Date`, treating values below `1e12` as seconds. */
+function fromEpoch(n: number): Date | null {
+  if (!Number.isFinite(n)) return null
+  const d = new Date(n < 1e12 ? n * 1000 : n)
+  return Number.isNaN(d.getTime()) ? null : d
+}

@@ -1,0 +1,1 @@
+ALTER TABLE "DataConnector" ADD COLUMN "lastWebhookEventAt" timestamp (3);

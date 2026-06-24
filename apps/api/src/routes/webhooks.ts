@@ -349,6 +349,9 @@ async function handleWebhookRequest(c: any) {
         const appTriggerQueue = getQueue(Queues.appTriggerQueue)
         await appTriggerQueue.add('dispatchAppTrigger', dispatchPayload)
         await appTriggerQueue.add('dispatchAppTriggerToAgents', dispatchPayload)
+        // Third consumer (sync bridge): fan to webhook-sync data connectors bound
+        // to this (connection, trigger). plans/data-connectors/v4.
+        await appTriggerQueue.add('dispatchAppTriggerToConnectors', dispatchPayload)
 
         log.info('Enqueued app trigger dispatch', {
           installationId,

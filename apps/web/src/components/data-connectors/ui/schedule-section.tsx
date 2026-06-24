@@ -22,6 +22,7 @@ import {
 import { toastError } from '@auxx/ui/components/toast'
 import { ChevronDown, Clock, Webhook } from 'lucide-react'
 import { useEffect, useState } from 'react'
+import { useAppsContext } from '~/components/apps/providers/apps-context'
 import { ConnectionWebhookTestSection } from '~/components/connections/triggers/connection-webhook-test-section'
 import {
   type ScheduledState,
@@ -79,7 +80,24 @@ export function ScheduleSection({ connector }: ScheduleSectionProps) {
     { enabled: !!connectionId }
   )
   const topics = webhookTopics.data?.topics ?? null
-  const webhookSupported = !!connectionId && Array.isArray(topics) && topics.length > 0
+
+  // App-trigger sync bridge (plans/data-connectors/v4): webhook mode is ALSO offered
+  // when the connection's app declares webhook triggers — that's the path real app
+  // connections take (the legacy provider-spec gate above matches none of them). The
+  // per-stream trigger binding lives in the stream config, not here.
+  const { appInstallations, appConnections } = useAppsContext()
+  const appTriggerCapable = (() => {
+    const installationId =
+      connector.appInstallationId ??
+      appConnections.find((c) => c.id === connectionId)?.appInstallationId ??
+      null
+    if (!installationId) return false
+    const inst = appInstallations.find((i) => i.installationId === installationId)
+    return (inst?.workflowTriggers?.length ?? inst?.agentTriggers?.length ?? 0) > 0
+  })()
+
+  const webhookSupported =
+    (!!connectionId && Array.isArray(topics) && topics.length > 0) || appTriggerCapable
 
   const [inspectorTopic, setInspectorTopic] = useState<string>()
   useEffect(() => {

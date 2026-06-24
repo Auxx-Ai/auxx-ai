@@ -156,6 +156,37 @@ describe('mapRecord', () => {
     expect(lineItems.every((w) => w.parentRelation?.parentExternalId === 'o1')).toBe(true)
   })
 
+  it('stamps upstreamUpdatedAt on the ROOT record from updatedAtPath (parsed)', () => {
+    const root = mapping({ id: 'order', rootPath: '[]' })
+    const child = mapping({
+      id: 'li',
+      rootPath: 'line_items[]',
+      parentMappingId: 'order',
+      relationshipFieldKey: 'line_items',
+    })
+
+    const writes = mapRecord(
+      [root, child],
+      rawPayload([{ id: 'o1', updated_at: '2026-06-22T00:00:00Z', line_items: [{ id: 'l1' }] }]),
+      'updated_at'
+    )
+
+    const rootWrite = writes.find((w) => w.mapping.row.id === 'order')
+    const childWrite = writes.find((w) => w.mapping.row.id === 'li')
+    expect(rootWrite?.projected?.upstreamUpdatedAt?.toISOString()).toBe('2026-06-22T00:00:00.000Z')
+    // Children version with the parent event — no independent stamp.
+    expect(childWrite?.projected?.upstreamUpdatedAt).toBeUndefined()
+  })
+
+  it('leaves upstreamUpdatedAt undefined without an updatedAtPath or when the field is absent', () => {
+    const m = mapping({ rootPath: '[]' })
+    const noPath = mapRecord([m], rawPayload([{ id: '1', updated_at: '2026-01-01T00:00:00Z' }]))
+    expect(noPath[0]?.projected?.upstreamUpdatedAt).toBeUndefined()
+
+    const missingField = mapRecord([m], rawPayload([{ id: '1' }]), 'updated_at')
+    expect(missingField[0]?.projected?.upstreamUpdatedAt).toBeNull()
+  })
+
   it('orders the root mapping first and wires child parentRelations', () => {
     const root = mapping({ id: 'root', rootPath: '' })
     const child = mapping({
