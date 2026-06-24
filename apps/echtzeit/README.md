@@ -69,15 +69,53 @@ the local `PUSHER_KEY`. Two Sockudo-specific checks worth running once:
 
 ## Railway (production)
 
-- Deploy as a new service from this `Dockerfile` (same pattern as `apps/lambda`
-  on Railway). Railway terminates TLS at its edge → container `:6001`.
-- Public domain: `echtzeit.<env>.auxx.ai`, WebSockets enabled. Health check path
-  `/up`.
-- Set `PUSHER_APP_ID/KEY/SECRET` on the service (same values as the app services).
-  The Dockerfile maps app behavior via `SOCKUDO_DEFAULT_APP_*`; supply those by
-  setting them to the `PUSHER_*` values, or set `PUSHER_*` and reference them.
-- On the app services (web/api/worker) set `PUSHER_HOST=echtzeit.<env>.auxx.ai`,
-  `PUSHER_PORT=443`, `PUSHER_USE_TLS=true`.
+Deploy the echtzeit service from the public image (`ghcr.io/sockudo/sockudo:4.6.0`)
+or this `Dockerfile`. Railway terminates TLS at its edge → container port. Set a
+public domain `echtzeit.<env>.auxx.ai`, enable WebSockets, health-check path `/up`.
+
+### Env vars on the **echtzeit** service
+
+```
+SOCKUDO_DEFAULT_APP_ID=${{shared.PUSHER_APP_ID}}      # must equal the apps' PUSHER_APP_ID
+SOCKUDO_DEFAULT_APP_KEY=${{shared.PUSHER_KEY}}        # must equal the apps' PUSHER_KEY
+SOCKUDO_DEFAULT_APP_SECRET=${{shared.PUSHER_SECRET}}  # must equal the apps' PUSHER_SECRET
+SOCKUDO_DEFAULT_APP_ENABLED=true
+SOCKUDO_DEFAULT_APP_ENABLE_CLIENT_MESSAGES=false
+SOCKUDO_DEFAULT_APP_ALLOWED_ORIGINS=
+WEBSOCKET_MAX_PAYLOAD_KB=100
+SOCKUDO_DEFAULT_APP_MAX_EVENT_PAYLOAD_IN_KB=100
+APP_MANAGER_DRIVER=memory
+SSL_ENABLED=false
+HTTP_API_USAGE_ENABLED=false
+PORT=6001        # pin it; Railway otherwise injects its own PORT and the domain target won't match
+```
+
+### Env vars on the **app services (web, api, worker)**
+
+These are what point the `pusher`/`pusher-js` clients (and the widget) at Sockudo
+instead of Pusher cloud. Set them on every app that publishes or subscribes —
+**web, api, worker** (the satellite apps load root env, but set them explicitly /
+as shared vars to be safe):
+
+```
+PUSHER_HOST=echtzeit.<env>.auxx.ai   # e.g. echtzeit.auxx.ai (prod). Empty → hosted Pusher cloud fallback.
+PUSHER_PORT=443                      # Railway wss edge
+PUSHER_USE_TLS=true                  # connect over wss
+PUSHER_APP_ID=${{shared.PUSHER_APP_ID}}
+PUSHER_KEY=${{shared.PUSHER_KEY}}
+PUSHER_SECRET=${{shared.PUSHER_SECRET}}
+# PUSHER_CLUSTER is only read when PUSHER_HOST is empty (cloud fallback).
+```
+
+> **Parity is the #1 footgun.** `SOCKUDO_DEFAULT_APP_ID/KEY/SECRET` on echtzeit
+> MUST equal `PUSHER_APP_ID/KEY/SECRET` on web/api/worker, or every private/presence
+> channel-auth HMAC signature fails (the transport stays healthy but no private
+> subscription succeeds). Using Railway `${{shared.PUSHER_*}}` everywhere makes this
+> automatic. `PUSHER_SECRET` stays secret — it's the HMAC key; `PUSHER_KEY`/`_APP_ID`
+> are semi-public (the key ships to the browser).
+
+Local dev uses the same names with `PUSHER_HOST=127.0.0.1`, `PUSHER_PORT=6001`,
+`PUSHER_USE_TLS=false` (see the root `.env` / `.env.example`).
 
 ## Allowed origins
 
