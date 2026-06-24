@@ -99,8 +99,6 @@ export interface FieldInputAdapterProps {
    * (free-text identifier fields). Forwarded to `SelectFieldInput`.
    */
   useValueAsLabel?: boolean
-  /** Called when the select picker's search text changes (for live typeahead). */
-  onSearchChange?: (value: string) => void
   /** Trigger customization options for picker-based inputs */
   triggerProps?: PickerTriggerOptions
   /** Controlled open state for picker-based inputs */
@@ -144,7 +142,6 @@ export function FieldInputAdapter({
   allowMultiple,
   canAdd,
   useValueAsLabel,
-  onSearchChange,
   triggerProps,
   open,
   onOpenChange,
@@ -332,7 +329,6 @@ export function FieldInputAdapter({
           onOpenChange={onOpenChange}
           shouldPreventDismiss={shouldPreventDismiss}
           useValueAsLabel={useValueAsLabel}
-          onSearchChange={onSearchChange}
         />
       )
     }

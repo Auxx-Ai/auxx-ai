@@ -263,8 +263,6 @@ export interface SelectFieldInputProps {
    * fields like a `<owner>/<repo>` full-name. Forwarded to the picker.
    */
   useValueAsLabel?: boolean
-  /** Called when the picker's search text changes (for live typeahead). */
-  onSearchChange?: (value: string) => void
 }
 
 /**
@@ -286,7 +284,6 @@ export function SelectFieldInput({
   onOpenChange,
   shouldPreventDismiss,
   useValueAsLabel = false,
-  onSearchChange,
 }: SelectFieldInputProps) {
   // Normalize value — callers may pass a single string when switching operators
   const normalizedValue = Array.isArray(value) ? value : value ? [value] : []
@@ -373,7 +370,6 @@ export function SelectFieldInput({
           canAdd={config.canAdd}
           canManage={config.canManage}
           useValueAsLabel={useValueAsLabel}
-          onSearchChange={onSearchChange}
           placeholder={config.placeholder}
           manageLabel={config.manageLabel}
           disabled={disabled}

@@ -1,6 +1,6 @@
 // apps/web/src/components/global/schema-form/read-field-nodes.ts
 
-import type { FieldEntry, FieldNode } from './types'
+import type { FieldEntry, FieldNode, FieldNodeMetadata } from './types'
 
 /**
  * Read a declared field schema into a flat list of renderable field entries.
@@ -16,17 +16,29 @@ import type { FieldEntry, FieldNode } from './types'
  */
 export function readFieldNodes(schema: Record<string, unknown> | null | undefined): FieldEntry[] {
   if (!schema) return []
-  const nodes =
-    schema.type === 'object' && schema.properties && typeof schema.properties === 'object'
-      ? (schema.properties as Record<string, unknown>)
-      : schema
+  const isEnvelope =
+    schema.type === 'object' && !!schema.properties && typeof schema.properties === 'object'
+  const nodes = isEnvelope ? (schema.properties as Record<string, unknown>) : schema
+  // In a JSON-Schema envelope, optionality is authoritative in the parent
+  // `required` array (absent ⇒ nothing required), not an `isOptional` node flag.
+  const requiredKeys = isEnvelope
+    ? new Set(Array.isArray(schema.required) ? (schema.required as string[]) : [])
+    : null
   const entries: FieldEntry[] = []
   for (const [key, raw] of Object.entries(nodes)) {
     if (!raw || typeof raw !== 'object') continue
     const node = raw as FieldNode
     if (typeof node.type !== 'string') continue
-    const meta = node._metadata ?? {}
-    entries.push({ key, node, meta, required: node.isOptional !== true })
+    // `_metadata` is the app input-catalog annotation; a plain zod→JSON-Schema
+    // node (connector config) carries `title`/`description` at the node level —
+    // fall back to those so authored `.describe()` text actually renders.
+    const meta: FieldNodeMetadata = { ...(node._metadata ?? {}) }
+    if (meta.label === undefined && typeof node.title === 'string') meta.label = node.title
+    if (meta.description === undefined && typeof node.description === 'string') {
+      meta.description = node.description
+    }
+    const required = requiredKeys ? requiredKeys.has(key) : node.isOptional !== true
+    entries.push({ key, node, meta, required })
   }
   return entries
 }

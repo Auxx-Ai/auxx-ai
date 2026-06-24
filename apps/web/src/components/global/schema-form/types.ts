@@ -18,6 +18,9 @@ export interface FieldNode {
   type: string
   isOptional?: boolean
   _metadata?: FieldNodeMetadata
+  /** JSON-Schema node-level label/description (zod→JSON-Schema config nodes). */
+  title?: string
+  description?: string
 }
 
 export interface FieldEntry {

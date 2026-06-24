@@ -14,7 +14,6 @@ import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapte
 import { type FieldEntry, readFieldNodes, seedDefaults } from '~/components/global/schema-form'
 import { BaseType } from '~/components/workflow/types'
 import { VarEditorField, VarEditorFieldRow } from '~/components/workflow/ui/input-editor/var-editor'
-import { useDebounce } from '~/hooks/use-debounced-value'
 import { api } from '~/trpc/react'
 import { useRegisterSaver } from '../hooks/use-connector-edits'
 import { RecordKeyValueEditor, RequestEditorBlock, RevealChip } from './request-editors'
@@ -287,15 +286,12 @@ function ToolBackedSelectRow({
   // tool options become suggestions, and a typed value commits as the raw string.
   const allowCustom = hint.kind === 'dynamic-select' && hint.dynamicSelect.allowCustom === true
 
-  // Typeahead — feed the picker's debounced search text to the resolver as
-  // `query` so suggestions narrow as you type. Gated on `allowCustom` so closed
-  // selects keep their byte-for-byte (query-less) behavior.
-  const [search, setSearch] = useState('')
-  const debouncedSearch = useDebounce(search, 250)
-  const query = allowCustom && debouncedSearch.trim() ? debouncedSearch.trim() : undefined
-
+  // Suggestions are fetched ONCE (no per-keystroke `query`). Running the app tool
+  // live on every keystroke would hammer the connection's API and flip the field
+  // back into a loading/disabled state mid-type. The picker filters this list
+  // client-side and, when `allowCustom`, offers to create whatever you type.
   const optionsQuery = api.apps.resolveToolOptions.useQuery(
-    { source: { kind: 'connector', connectorId }, fieldKey: entry.key, query },
+    { source: { kind: 'connector', connectorId }, fieldKey: entry.key },
     { staleTime: 60_000, refetchOnWindowFocus: false }
   )
   const options = (optionsQuery.data?.options ?? []).map((o) => ({
@@ -330,12 +326,11 @@ function ToolBackedSelectRow({
               entry.meta.placeholder ??
               `Select ${entry.meta.label ?? entry.key}…`)
         }
-        // Only block while loading — a `disabledHint` (e.g. no connection) still
-        // leaves the field typeable when `allowCustom`, so a known value works.
+        // Only block during the one-time initial load — once suggestions resolve
+        // (or fail to), the field stays typeable so a custom value still works.
         disabled={optionsQuery.isLoading}
         canAdd={allowCustom}
         useValueAsLabel={allowCustom}
-        onSearchChange={allowCustom ? setSearch : undefined}
         triggerProps={ROW_TRIGGER_PROPS}
       />
     </VarEditorFieldRow>
