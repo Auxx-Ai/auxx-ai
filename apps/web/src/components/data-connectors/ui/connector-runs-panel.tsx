@@ -87,6 +87,9 @@ function RunRow({ run, sourceLabel }: { run: ConnectorRun; sourceLabel: string }
   const hasErrors = errors.length > 0
 
   const metaParts = [run.trigger, run.mode]
+  // A sample run self-documents via its `sampleLimit` (trial-sync §4.1) — surface it so
+  // a parked `partial` row reads as a deliberate sample, not a failure.
+  if (run.sampleLimit != null) metaParts.push(`sample ${run.sampleLimit}`)
   if (run.durationMs != null) metaParts.push(formatDuration(run.durationMs))
 
   return (
@@ -189,6 +192,7 @@ export function ConnectorRunsPanel({
           sourceLabel={sourceLabel}
           startedAt={latestRun?.startedAt}
           perStream={perStream}
+          sampleLimit={latestRun?.sampleLimit}
         />
       )}
 

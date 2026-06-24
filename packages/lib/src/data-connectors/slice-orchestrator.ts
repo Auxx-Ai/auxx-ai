@@ -32,6 +32,7 @@ import {
   loadConnector,
   openRun,
   parkBackfillAtCeiling,
+  parkConnectorSampleIfLastStream,
   persistStreamState,
   setRunRateLimited,
 } from './service'
@@ -140,7 +141,16 @@ export async function startConnectorSync(
   db: Database,
   organizationId: string,
   dataConnectorId: string,
-  options: { trigger?: 'manual' | 'scheduled' | 'webhook' | 'backfill' | 'sweep' } = {}
+  options: {
+    trigger?: 'manual' | 'scheduled' | 'webhook' | 'backfill' | 'sweep'
+    /**
+     * Per-stream sample cap (trial-sync §4). Set ⇒ a SAMPLE run: each stream backfills
+     * only this many records, then the run parks for review. Always forces the backfill
+     * phase (you can't "sample" a steady delta) and is persisted per-run, never on the
+     * connector — the "Sync everything" resume passes no cap and runs to completion.
+     */
+    sampleLimit?: number | null
+  } = {}
 ): Promise<boolean> {
   // A sweep is a full reconciling re-crawl (Step 8C): force the backfill phase even
   // for an incremental connector that's been running steady deltas, so it lists every
@@ -178,10 +188,16 @@ export async function startConnectorSync(
   //    forever. Steady runs do NOT reset state.
   //  - Snapshot connector (any non-incremental stream): re-crawl in FULL every run
   //    so orphan reconciliation stays correct — always (re)backfill, reset cursors.
+  // A sample run is always a bounded BACKFILL — there's no "sampling" a steady delta,
+  // and a sample must never commit a watermark floor (trial-sync §2.1).
+  const isSample = options.sampleLimit != null
   const incrementalConnector = streams.every((s) => s.syncMode === 'incremental')
   const streamStates = streams.map((s) => (s.stream.state as ConnectorStreamState) ?? {})
   const phase: 'backfill' | 'steady' =
-    !isSweep && incrementalConnector && streamStates.every((st) => st.phase === 'steady')
+    !isSweep &&
+    !isSample &&
+    incrementalConnector &&
+    streamStates.every((st) => st.phase === 'steady')
       ? 'steady'
       : 'backfill'
 
@@ -223,6 +239,7 @@ export async function startConnectorSync(
     phase,
     chainSnapshot: snapshot as unknown as Record<string, unknown>,
     cursorBefore: connector.state,
+    sampleLimit: options.sampleLimit ?? null,
   })
 
   // Seed the completion latch to the stream count (B1) BEFORE enqueuing slices, so the
@@ -358,14 +375,26 @@ export async function runBackfillSlice(
     stream: streamSnap,
     allStreams: snapshot?.streams ?? [streamSnap],
     sweep: snapshot?.sweep ?? false,
+    // A sample run that exhausts a stream before the cap parks via the source's
+    // natural-completion path; thread the cap so it parks instead of going live.
+    sampleLimit: run.sampleLimit,
   })
+
+  // Trial-sync §4.2: bound a sample slice's per-slice record budget to the cap, so the
+  // FIRST slice stops near `sampleLimit` (a page boundary's overshoot) instead of
+  // running the full per-slice budget and importing thousands before the chain-level
+  // cap check below ever sees them. Backfill phase only — steady runs sample nothing.
+  const budget =
+    run.sampleLimit != null && run.phase === 'backfill'
+      ? { ...SLICE_BUDGET, maxRecords: Math.min(SLICE_BUDGET.maxRecords, run.sampleLimit) }
+      : SLICE_BUDGET
 
   const outcome = await runSyncSlice({
     source,
     stateStore: createStreamSyncStateStore(db, streamId),
     ledger: createConnectorRunLedger(db, { id: runId, startedAt: run.startedAt }, streamId),
     throttle: NO_THROTTLE,
-    budget: SLICE_BUDGET,
+    budget,
     signal: signal ?? new AbortController().signal,
   })
 
@@ -375,6 +404,34 @@ export async function runBackfillSlice(
     if (signal?.aborted) {
       logger.info('runBackfillSlice: cancelled, not re-enqueuing', { runId, streamId })
       return
+    }
+
+    // Trial-sync §4.2 per-stream sample cap: stop THIS stream's chain once it has seen
+    // enough, BEFORE re-enqueuing. The slice already checkpointed the cursor, so the
+    // chain is resumable — "Sync everything" continues mid-chain past the sample. The
+    // B1 latch coordinates: only the last stream to stop parks the run + connector.
+    if (run.phase === 'backfill' && run.sampleLimit != null) {
+      const streamRow = await db.query.DataConnectorStream.findFirst({
+        where: eq(schema.DataConnectorStream.id, streamId),
+        columns: { state: true },
+      })
+      const seen = (streamRow?.state as ConnectorStreamState | null)?.recordsSeen ?? 0
+      if (seen >= run.sampleLimit) {
+        logger.info('runBackfillSlice: sample cap reached for stream, stopping chain', {
+          runId,
+          connectorId,
+          streamId,
+          seen,
+          sampleLimit: run.sampleLimit,
+        })
+        await parkConnectorSampleIfLastStream(db, {
+          runId,
+          dataConnectorId: connectorId,
+          sampleLimit: run.sampleLimit,
+          startedAt: run.startedAt,
+        })
+        return
+      }
     }
 
     // §3 ingest ceiling: park the backfill before re-enqueuing once the run crosses

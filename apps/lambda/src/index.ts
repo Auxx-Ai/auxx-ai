@@ -114,6 +114,10 @@ const CALLER_TYPE_ALLOWLIST: Record<string, string[]> = {
   // `invocationContext.kind = 'agent'`. See
   // plans/kopilot/agents/tool-loading-and-execution.md §6 (decision E1).
   kopilot: ['tool'],
+  // Tool-backed option resolvers (quick-action dynamic-selects + data-connector
+  // config pickers) invoke a tool through the shared `invokeAppToolForOptions`
+  // core, which signs as `app-tool-options`. See packages/lib/src/apps/tool-options.ts.
+  'app-tool-options': ['tool'],
 }
 
 /** Maximum payload size (5 MB) */

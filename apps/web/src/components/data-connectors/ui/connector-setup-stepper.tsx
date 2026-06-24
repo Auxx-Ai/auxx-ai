@@ -2,8 +2,17 @@
 'use client'
 
 import { Button } from '@auxx/ui/components/button'
+import { RadioGroup } from '@auxx/ui/components/radio-group'
+import { RadioGroupItemCard } from '@auxx/ui/components/radio-group-item'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { EmptySection } from '@auxx/ui/components/section'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@auxx/ui/components/select'
 import {
   Stepper,
   StepperDescription,
@@ -139,7 +148,13 @@ export function ConnectorSetupStepper({ connector }: ConnectorSetupStepperProps)
     run: false,
   }
 
-  const { syncNow, isSyncing, finishSetup, isFinishing } = useConnectorMutations()
+  const { syncNow, sampleSync, isSyncing, finishSetup, isFinishing } = useConnectorMutations()
+
+  // Terminal-step scope choice (trial-sync §5.1): sample a few of each stream first
+  // (recommended for large sources — imports then pauses for review), or sync
+  // everything now. Sample size is per-stream; 100 is a sensible default first look.
+  const [runScope, setRunScope] = useState<'sample' | 'everything'>('sample')
+  const [sampleSize, setSampleSize] = useState('100')
 
   const addStream = api.dataConnector.addStream.useMutation({
     onSuccess: () => void utils.dataConnector.listStreams.invalidate({ id: connector.id }),
@@ -215,18 +230,52 @@ export function ConnectorSetupStepper({ connector }: ConnectorSetupStepperProps)
               title='Ready to sync'
               description={
                 progress.canRun
-                  ? 'Run the first import now, or finish setup and sync later.'
+                  ? 'Sample a few records first, or sync everything now. You can also finish and sync later.'
                   : 'Finish Connect and Map fields above to enable syncing.'
               }
             />
+            <RadioGroup
+              value={runScope}
+              onValueChange={(v) => setRunScope(v as 'sample' | 'everything')}
+              className='gap-2'>
+              <div className='flex items-start gap-2'>
+                <RadioGroupItemCard
+                  value='sample'
+                  label='Sample first'
+                  description='Import a few records of each stream, then pause so you can review them before importing the rest. Recommended for large sources.'
+                  className='flex-1'
+                  disabled={!progress.canRun}
+                />
+                <Select value={sampleSize} onValueChange={setSampleSize}>
+                  <SelectTrigger size='sm' className='mt-1 w-20' disabled={runScope !== 'sample'}>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value='50'>50</SelectItem>
+                    <SelectItem value='100'>100</SelectItem>
+                    <SelectItem value='500'>500</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <RadioGroupItemCard
+                value='everything'
+                label='Sync everything'
+                description='Import all records now. The first run can take a while for large sources.'
+                disabled={!progress.canRun}
+              />
+            </RadioGroup>
             <div className='flex items-center gap-2'>
               <Button
                 loading={isSyncing}
                 loadingText='Starting…'
                 disabled={!progress.canRun}
-                onClick={() => void syncNow(connector.id)}>
+                onClick={() =>
+                  void (runScope === 'sample'
+                    ? sampleSync(connector.id, Number(sampleSize))
+                    : syncNow(connector.id))
+                }>
                 <Play />
-                Run first sync
+                Run sync
               </Button>
               <Button
                 variant='outline'

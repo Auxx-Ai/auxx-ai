@@ -44,6 +44,23 @@ describe('resolveSyncStatus', () => {
     expect(r).toMatchObject({ state: 'paused', primaryAction: 'resume' })
   })
 
+  it('maps a sample-parked connector → positive "Sample ready" with a sync (not resume) action', () => {
+    const r = resolveSyncStatus(
+      { status: 'paused', latestRun: { status: 'partial', pausedReason: 'sample' } },
+      NOW
+    )
+    expect(r).toMatchObject({ state: 'paused', label: 'Sample ready', primaryAction: 'sync' })
+    expect(r.detail).toContain('sync everything')
+  })
+
+  it('keeps a plain (non-sample) park reading as Paused/resume', () => {
+    const r = resolveSyncStatus(
+      { status: 'paused', latestRun: { status: 'partial', pausedReason: 'ingest-ceiling' } },
+      NOW
+    )
+    expect(r).toMatchObject({ state: 'paused', label: 'Paused', primaryAction: 'resume' })
+  })
+
   it('maps an auth error → action-needed/reconnect', () => {
     const r = resolveSyncStatus({ status: 'error', error: '401 Unauthorized' }, NOW)
     expect(r).toMatchObject({ state: 'action-needed', primaryAction: 'reconnect' })

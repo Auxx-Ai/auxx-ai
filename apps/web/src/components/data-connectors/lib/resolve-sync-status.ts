@@ -44,6 +44,11 @@ export interface SyncStatusRunInfo {
   recordsSeen?: number
   /** ISO time the next slice is throttled until, or null/absent when not rate-limited. */
   rateLimitedUntil?: string | null
+  /**
+   * Why the latest run parked (trial-sync / ingest-ceiling). `'sample'` flips the
+   * paused state to the positive "Sample ready" reading; absent ⇒ a plain pause.
+   */
+  pausedReason?: string | null
   /** Per-run delta for the steady freshness line. */
   created?: number
   updated?: number
@@ -111,6 +116,16 @@ export function resolveSyncStatus(
   }
 
   if (status === 'paused') {
+    // A sample park is a positive, voluntary stop (trial-sync §6) — read it as "ready
+    // for review", offering "Sync everything" (a full sync), not a plain Resume.
+    if (latestRun?.pausedReason === 'sample') {
+      return {
+        state: 'paused',
+        label: 'Sample ready',
+        detail: 'Sample imported — review it, then sync everything.',
+        primaryAction: 'sync',
+      }
+    }
     return {
       state: 'paused',
       label: 'Paused',

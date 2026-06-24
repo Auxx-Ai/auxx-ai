@@ -258,6 +258,8 @@ export async function openRun(
     phase?: 'backfill' | 'steady'
     /** Pinned decoded stream+mapping snapshot the continuation chain runs against (B2). */
     chainSnapshot?: Record<string, unknown>
+    /** Per-stream sample cap (trial-sync §4.1) — set ⇒ a SAMPLE run that parks for review. */
+    sampleLimit?: number | null
   }
 ): Promise<DataConnectorRunRow> {
   const [run] = await db
@@ -271,6 +273,7 @@ export async function openRun(
       phase: input.phase ?? null,
       chainSnapshot: input.chainSnapshot ?? null,
       cursorBefore: input.cursorBefore ?? null,
+      sampleLimit: input.sampleLimit ?? null,
     })
     .returning()
   if (!run) throw new Error('Failed to open DataConnectorRun')
@@ -416,6 +419,76 @@ export async function parkBackfillAtCeiling(
       updatedAt: new Date(),
     })
     .where(eq(schema.DataConnector.id, input.dataConnectorId))
+}
+
+/**
+ * Park a backfill that hit its per-stream SAMPLE cap (trial-sync §4.2). The same
+ * mechanism as `parkBackfillAtCeiling` — `partial` run, `paused` connector, cursors
+ * left checkpointed so "Sync everything" resumes mid-chain — but stamped
+ * `paused.reason = 'sample'` with friendlier copy, since a sample park is a positive,
+ * voluntary stop ("here are a few, review them"), not a guardrail trip. Called by the
+ * LAST stream to stop (gated through `parkConnectorSampleIfLastStream`).
+ */
+export async function parkBackfillAtSample(
+  db: Database,
+  input: {
+    runId: string
+    dataConnectorId: string
+    fetched: number
+    sampleLimit: number
+    startedAt: Date
+  }
+): Promise<void> {
+  const message = `Sample of ${input.fetched} records imported. Review them, then sync everything.`
+  const T = schema.DataConnectorRun
+  await db
+    .update(T)
+    .set({
+      status: 'partial',
+      finishedAt: new Date(),
+      durationMs: Date.now() - input.startedAt.getTime(),
+      progress: sql`jsonb_set(coalesce(${T.progress}, '{}'::jsonb), '{paused}', jsonb_build_object('reason', 'sample', 'atRecords', ${input.fetched}::int, 'sampleLimit', ${input.sampleLimit}::int), true)`,
+    })
+    .where(eq(T.id, input.runId))
+  // A sample park has ingested real records, so reflect the count + stamp `lastSyncedAt`
+  // — the sample is kept, not throwaway. The connector reads `paused`; the positive copy
+  // is surfaced by the review banner (which discriminates on `paused.reason`).
+  const itemCount = await countConnectorItems(db, input.dataConnectorId)
+  await db
+    .update(schema.DataConnector)
+    .set({
+      status: 'paused',
+      error: message,
+      itemCount,
+      ...(itemCount > 0 ? { lastSyncedAt: new Date() } : {}),
+      updatedAt: new Date(),
+    })
+    .where(eq(schema.DataConnector.id, input.dataConnectorId))
+}
+
+/**
+ * Coordinate a sample park across a connector's stream chains (trial-sync §4.2). Each
+ * stream that stops sampling — whether it hit the cap (orchestrator) or naturally
+ * exhausted first (sync-source `finalizeBackfill`) — calls this. It decrements the
+ * shared B1 completion latch; only the LAST stream to stop (`remaining === 0`, or a
+ * single-stream connector with no latch) actually parks the run + connector. A
+ * non-last stream just leaves its cursor checkpointed and returns. No reconciliation
+ * runs (a sample is partial by construction — archiving unreached records would be
+ * the §3 ceiling-park danger); resolution happens on the full-sync resume's finalize.
+ */
+export async function parkConnectorSampleIfLastStream(
+  db: Database,
+  input: {
+    runId: string
+    dataConnectorId: string
+    sampleLimit: number
+    startedAt: Date
+  }
+): Promise<void> {
+  const remaining = await decrementConnectorBackfillLatch(db, input.dataConnectorId)
+  if (remaining !== null && remaining > 0) return
+  const fetched = await getRunFetched(db, input.runId)
+  await parkBackfillAtSample(db, { ...input, fetched })
 }
 
 /** Persist a stream's incremental cursor after the stream completes. */

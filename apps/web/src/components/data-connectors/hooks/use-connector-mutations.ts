@@ -82,18 +82,26 @@ export function useConnectorMutations() {
 
   // Cosmetic bridge: stamp 'syncing' so the button disables + pill flips now.
   // Truth comes from the worker via polling; on settle, nudge the getStatus poll
-  // so it picks up immediately rather than waiting a full interval.
+  // so it picks up immediately rather than waiting a full interval. `sampleLimit`
+  // (trial-sync §4.1) makes it a sample run — a few of each stream, then parks for review.
   const syncNow = useCallback(
-    async (id: string) => {
+    async (id: string, opts?: { sampleLimit?: number }) => {
       await patchStatus(
         id,
         'syncing',
-        () => syncNowM.mutateAsync({ id }),
+        () => syncNowM.mutateAsync({ id, sampleLimit: opts?.sampleLimit }),
         'Could not sync connector'
       )
       void utils.dataConnector.getStatus.invalidate({ id })
     },
     [patchStatus, syncNowM, utils.dataConnector.getStatus]
+  )
+
+  // "Sample sync" — a bounded first look (trial-sync §5.3). Same cosmetic bridge as
+  // syncNow; the run parks `paused` once each stream has sampled `sampleLimit` records.
+  const sampleSync = useCallback(
+    (id: string, sampleLimit: number) => syncNow(id, { sampleLimit }),
+    [syncNow]
   )
 
   // "Finish without syncing" — leave first-run setup configured-but-idle (optional-
@@ -154,6 +162,7 @@ export function useConnectorMutations() {
     pause,
     resume,
     syncNow,
+    sampleSync,
     finishSetup,
     backfillPending,
     remove,

@@ -26,13 +26,20 @@ interface DataConnectorSyncJobData {
   connectorId: string
   organizationId: string
   trigger?: 'manual' | 'scheduled' | 'webhook' | 'backfill'
+  /** Trial-sync §4.1 per-stream sample cap — set ⇒ a SAMPLE run that parks for review. */
+  sampleLimit?: number
 }
 
 /** "Sync now" / scheduled fire → start the resumable backfill chain. */
 async function handleDataConnectorSync(ctx: JobContext<DataConnectorSyncJobData>) {
-  const { connectorId, organizationId, trigger } = ctx.data
-  logger.info('Starting data connector backfill chain', { connectorId, organizationId, trigger })
-  await startConnectorSync(db, organizationId, connectorId, { trigger })
+  const { connectorId, organizationId, trigger, sampleLimit } = ctx.data
+  logger.info('Starting data connector backfill chain', {
+    connectorId,
+    organizationId,
+    trigger,
+    sampleLimit,
+  })
+  await startConnectorSync(db, organizationId, connectorId, { trigger, sampleLimit })
 }
 
 interface DataConnectorSweepJobData {

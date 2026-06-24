@@ -15,6 +15,8 @@ export interface DataConnectorSyncJobData {
   connectorId: string
   organizationId: string
   trigger?: 'manual' | 'scheduled' | 'webhook' | 'backfill'
+  /** Trial-sync §4.1 per-stream sample cap — set ⇒ a SAMPLE run that parks for review. */
+  sampleLimit?: number
 }
 
 /** BullMQ job name for one backfill slice (the continuation-chain unit). */
@@ -88,6 +90,8 @@ export async function enqueueConnectorSync(data: {
   connectorId: string
   organizationId: string
   trigger?: 'manual' | 'scheduled' | 'webhook' | 'backfill'
+  /** Trial-sync §4.1 — a SAMPLE run caps each stream's backfill, then parks for review. */
+  sampleLimit?: number
 }): Promise<void> {
   try {
     const queue = getQueue(Queues.dataConnectorQueue)
@@ -98,6 +102,7 @@ export async function enqueueConnectorSync(data: {
         connectorId: data.connectorId,
         organizationId: data.organizationId,
         trigger: data.trigger ?? 'manual',
+        sampleLimit: data.sampleLimit,
       },
       { jobId: `data-connector-sync-manual-${data.connectorId}` }
     )
