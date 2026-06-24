@@ -95,6 +95,7 @@ export interface DynamicSelectHint {
   labelTemplate: string
   sublabelTemplate?: string
   emptyHint?: string
+  allowCustom?: boolean
 }
 
 export interface CatalogAction {

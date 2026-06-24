@@ -88,6 +88,19 @@ export interface FieldInputAdapterProps {
   onOptionsChange?: (options: SelectOption[]) => void
   /** Override multi-select behavior (for operators like "in"/"not in") */
   allowMultiple?: boolean
+  /**
+   * Override `canAdd` on select fields — lets a SINGLE_SELECT become a creatable
+   * combobox (e.g. a tool-backed `dynamic-select` with `allowCustom`). Defaults
+   * to the field type's `getSelectConfig`.
+   */
+  canAdd?: boolean
+  /**
+   * When a created select value should be the typed text rather than a UUID
+   * (free-text identifier fields). Forwarded to `SelectFieldInput`.
+   */
+  useValueAsLabel?: boolean
+  /** Called when the select picker's search text changes (for live typeahead). */
+  onSearchChange?: (value: string) => void
   /** Trigger customization options for picker-based inputs */
   triggerProps?: PickerTriggerOptions
   /** Controlled open state for picker-based inputs */
@@ -129,6 +142,9 @@ export function FieldInputAdapter({
   disabled = false,
   onOptionsChange,
   allowMultiple,
+  canAdd,
+  useValueAsLabel,
+  onSearchChange,
   triggerProps,
   open,
   onOpenChange,
@@ -293,9 +309,12 @@ export function FieldInputAdapter({
     case FieldType.TAGS: {
       const options = fieldOptions?.options ?? []
       const baseConfig = getSelectConfig(fieldType)
-      // Override multi if allowMultiple is explicitly set
-      const config =
-        allowMultiple !== undefined ? { ...baseConfig, multi: allowMultiple } : baseConfig
+      // Override multi/canAdd when explicitly set (operators, creatable selects)
+      const config = {
+        ...baseConfig,
+        ...(allowMultiple !== undefined ? { multi: allowMultiple } : {}),
+        ...(canAdd !== undefined ? { canAdd } : {}),
+      }
 
       const selectedValues = Array.isArray(value) ? value : value ? [value] : []
 
@@ -312,6 +331,8 @@ export function FieldInputAdapter({
           open={open}
           onOpenChange={onOpenChange}
           shouldPreventDismiss={shouldPreventDismiss}
+          useValueAsLabel={useValueAsLabel}
+          onSearchChange={onSearchChange}
         />
       )
     }
