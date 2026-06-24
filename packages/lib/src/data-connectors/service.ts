@@ -354,6 +354,49 @@ export async function finalizeConnector(
   }
 }
 
+/** Current run-level fetched count (the per-run ingest total folded by the ledger). */
+export async function getRunFetched(db: Database, runId: string): Promise<number> {
+  const row = await db.query.DataConnectorRun.findFirst({
+    where: eq(schema.DataConnectorRun.id, runId),
+    columns: { fetched: true },
+  })
+  return row?.fetched ?? 0
+}
+
+/**
+ * Park a backfill that crossed the per-run ingest ceiling (§3). Marks the run
+ * `partial` (NOT `failed` — it's a clean stop, not an error) with a `paused` note for
+ * the status line, and releases the connector to `paused` (NOT left `syncing` — that's
+ * the §1 strand trap). The stream cursor is left checkpointed, so a later "resume"
+ * (re-trigger after bumping the ceiling) continues mid-chain instead of from page 1.
+ */
+export async function parkBackfillAtCeiling(
+  db: Database,
+  input: {
+    runId: string
+    dataConnectorId: string
+    fetched: number
+    ceiling: number
+    startedAt: Date
+  }
+): Promise<void> {
+  const message = `Backfill paused at ${input.fetched} records (limit ${input.ceiling}). Raise the limit or narrow the source, then resume.`
+  const T = schema.DataConnectorRun
+  await db
+    .update(T)
+    .set({
+      status: 'partial',
+      finishedAt: new Date(),
+      durationMs: Date.now() - input.startedAt.getTime(),
+      progress: sql`jsonb_set(coalesce(${T.progress}, '{}'::jsonb), '{paused}', jsonb_build_object('reason', 'ingest-ceiling', 'atRecords', ${input.fetched}::int, 'ceiling', ${input.ceiling}::int), true)`,
+    })
+    .where(eq(T.id, input.runId))
+  await db
+    .update(schema.DataConnector)
+    .set({ status: 'paused', error: message, updatedAt: new Date() })
+    .where(eq(schema.DataConnector.id, input.dataConnectorId))
+}
+
 /** Persist a stream's incremental cursor after the stream completes. */
 export async function persistStreamState(
   db: Database,

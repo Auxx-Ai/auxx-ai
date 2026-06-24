@@ -238,6 +238,24 @@ export async function setupSchedules() {
     }
   )
 
+  // Data-connector stale-run sweep — every 5 minutes. Fails connector runs whose
+  // checkpoint heartbeat went cold (STALE_RUN_MS) and releases the connector claim,
+  // so a crashed/restarted continuation chain can't strand a connector 'syncing'
+  // forever. Global (no connectorId) — the scoped sweep at startConnectorSync only
+  // heals the one connector being re-synced.
+  await maintenanceQueue.upsertJobScheduler(
+    'dataConnectorStaleSweepJob',
+    { pattern: '*/5 * * * *' },
+    {
+      opts: {
+        attempts: 1,
+        priority: 8,
+        removeOnComplete: { count: 30 },
+        removeOnFail: { count: 50 },
+      },
+    }
+  )
+
   // Every day at 8 AM
   await maintenanceQueue.upsertJobScheduler(
     'requestDocumentSuggestionsJob',

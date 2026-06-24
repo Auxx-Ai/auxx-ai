@@ -1,4 +1,5 @@
 import { isSelfHosted } from '@auxx/deployment'
+import { dataConnectorStaleSweepJob } from '@auxx/lib/data-connectors'
 import { isDemoEnabled } from '@auxx/lib/demo'
 import { evalRunWatchdog } from '@auxx/lib/evals/worker'
 import {
@@ -170,6 +171,10 @@ const jobMappings = {
 
   // Data migrations runner (enqueued at boot + from the superadmin panel)
   dataMigrationsJob,
+
+  // Global data-connector stale-run sweep (every 5 min; fails cold runs + releases
+  // their connector claim so a crashed continuation chain can't strand a connector)
+  dataConnectorStaleSweepJob,
 }
 
 export function startMaintenanceWorker() {

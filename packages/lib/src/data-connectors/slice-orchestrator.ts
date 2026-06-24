@@ -27,9 +27,11 @@ import { backfillProvisionedFieldRefs, provisionConnectorMappings } from './prov
 import {
   claimForSync,
   finalizeConnector,
+  getRunFetched,
   initConnectorBackfillLatch,
   loadConnector,
   openRun,
+  parkBackfillAtCeiling,
   persistStreamState,
   setRunRateLimited,
 } from './service'
@@ -49,6 +51,17 @@ export const SLICE_BUDGET = { maxPages: 20, maxRecords: 5_000, maxMs: 25_000 } a
 
 /** BullMQ `lockDuration` for the slice job — 2–3× the realistic slice wall-clock. */
 export const SLICE_LOCK_DURATION_MS = 90_000
+
+/**
+ * Per-run ingest ceiling (§3). A backfill stops re-enqueuing once its run-level
+ * `fetched` count crosses this, so a mis-targeted or unexpectedly huge source can't
+ * ingest unbounded volume + flood downstream jobs on shared infra. SOFT bound: the
+ * check runs at slice (page) boundaries, so the actual stop overshoots by up to one
+ * slice's worth of records — it's a guardrail, not an exact cap. The run parks
+ * `partial` and the connector goes `paused`; "resume" (re-trigger) continues from the
+ * checkpoint. NOT to be confused with `SLICE_BUDGET.maxRecords` (per-slice, not per-run).
+ */
+export const MAX_BACKFILL_RECORDS = 9_000
 
 /**
  * A run is presumed dead once its checkpoint heartbeat (`heartbeatAt`, bumped every
@@ -362,6 +375,30 @@ export async function runBackfillSlice(
     if (signal?.aborted) {
       logger.info('runBackfillSlice: cancelled, not re-enqueuing', { runId, streamId })
       return
+    }
+
+    // §3 ingest ceiling: park the backfill before re-enqueuing once the run crosses
+    // the per-run record cap. Backfill phase only — steady deltas are naturally
+    // bounded by the watermark. Parking releases the connector to `paused` and keeps
+    // the cursor, so a later resume continues mid-chain (NOT page 1).
+    if (run.phase === 'backfill') {
+      const fetched = await getRunFetched(db, runId)
+      if (fetched >= MAX_BACKFILL_RECORDS) {
+        logger.warn('runBackfillSlice: ingest ceiling reached, parking run', {
+          runId,
+          connectorId,
+          fetched,
+          ceiling: MAX_BACKFILL_RECORDS,
+        })
+        await parkBackfillAtCeiling(db, {
+          runId,
+          dataConnectorId: connectorId,
+          fetched,
+          ceiling: MAX_BACKFILL_RECORDS,
+          startedAt: run.startedAt,
+        })
+        return
+      }
     }
     // Surface the throttle to the status line: set `rateLimited.until` when the next
     // slice is delayed on a 429, clear it on a clean re-enqueue (Step 9 §3.1).
