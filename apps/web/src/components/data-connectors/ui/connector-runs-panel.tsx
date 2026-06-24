@@ -166,7 +166,10 @@ export function ConnectorRunsPanel({
   // Steady freshness summary (Step 9 §10.3): once the source has synced and isn't
   // mid-backfill, show last/next synced + the latest run's delta instead of the card.
   const lastSyncedAt = statusQuery.data?.lastSyncedAt ?? null
-  const showFreshness = !showBackfill && !!lastSyncedAt
+  // Webhook syncs never stamp `lastSyncedAt`, so a webhook delivery counts as freshness
+  // too — else a live webhook-sync connector would show no freshness panel at all (§9).
+  const lastWebhookEventAt = statusQuery.data?.lastWebhookEventAt ?? null
+  const showFreshness = !showBackfill && (!!lastSyncedAt || !!lastWebhookEventAt)
 
   return (
     <div className='flex flex-1 min-h-0 flex-col bg-background'>
@@ -199,6 +202,7 @@ export function ConnectorRunsPanel({
       {showFreshness && (
         <ConnectorFreshnessPanel
           lastSyncedAt={lastSyncedAt}
+          lastWebhookEventAt={lastWebhookEventAt}
           nextSyncAt={statusQuery.data?.nextSyncAt ?? null}
           cadenceLabel={statusQuery.data?.cadenceLabel ?? null}
           syncBehavior={statusQuery.data?.syncBehavior ?? 'manual'}

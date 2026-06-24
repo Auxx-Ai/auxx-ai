@@ -347,6 +347,33 @@ export const entitySink: EntitySink = {
 
     // 1. Resolve identity — exact bind, else strategy bootstrap.
     const bound = await findItem(ctx.db, ctx.connector.id, mapping.row.id, record.externalId)
+
+    // 1a. Out-of-order guard (§9 Q7). The high-concurrency webhook lane lets two
+    //     events for one externalId race (A fetches v1, B fetches v2, A lands last);
+    //     the sink is last-write-wins, so the stale write would clobber newer upstream
+    //     data. When BOTH the incoming record and the bound item carry an upstream
+    //     `updatedAt`, drop a STRICTLY-older write — only advancing the version stamp +
+    //     lastSeenRunId, exactly like the content-hash skip. Equal/missing passes through
+    //     (content-hash handles the unchanged case; missing ⇒ today's last-write-wins).
+    if (
+      bound?.entityInstanceId &&
+      bound.upstreamUpdatedAt &&
+      record.upstreamUpdatedAt &&
+      record.upstreamUpdatedAt.getTime() < bound.upstreamUpdatedAt.getTime()
+    ) {
+      await touchItem(ctx.db, bound.id, ctx.runId)
+      ctx.counters.skipped += 1
+      if (record.pendingRelations.length > 0) {
+        await mergePendingRelations(
+          ctx,
+          bound.id,
+          bound.pendingRelations ?? [],
+          record.pendingRelations
+        )
+      }
+      return
+    }
+
     let instanceId: string | null = bound?.entityInstanceId ?? null
     if (!instanceId) {
       const resolved = await resolveIdentity(ctx, mapping, record, refToConcrete)
@@ -365,7 +392,15 @@ export const entitySink: EntitySink = {
       // queried here, when we'd otherwise skip, so a create-only backfill pays nothing.
       const drifted = await driftedInstances(ctx, mapping)
       if (!drifted.has(bound.entityInstanceId)) {
-        await touchItem(ctx.db, bound.id, ctx.runId)
+        // Advance the version high-watermark even on a no-op content update so a
+        // later genuinely-older event is still caught by the §9 Q7 guard above.
+        const newerStamp =
+          record.upstreamUpdatedAt &&
+          (!bound.upstreamUpdatedAt ||
+            record.upstreamUpdatedAt.getTime() > bound.upstreamUpdatedAt.getTime())
+            ? record.upstreamUpdatedAt
+            : undefined
+        await touchItem(ctx.db, bound.id, ctx.runId, newerStamp)
         ctx.counters.skipped += 1
         // Still re-register pending relations so a later-arriving target resolves.
         if (record.pendingRelations.length > 0) {

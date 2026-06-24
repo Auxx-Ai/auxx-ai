@@ -31,7 +31,7 @@ export type {
 } from './connector-sync-source'
 export { createConnectorStreamSyncSource } from './connector-sync-source'
 // Webhook ingress + registration (Step 8 + Direction 2 — unified connection ingress)
-export { applyWebhookActions, runConnectorWebhook } from './connector-webhook'
+export { applyWebhookActions, runConnectorWebhook, runWebhookEventSlice } from './connector-webhook'
 export type {
   AppConnectorContext,
   ConnectorCheckpoint,
@@ -223,6 +223,7 @@ export type {
 } from './types'
 // Watermark comparison (steady mode, G2)
 export { isNumericWatermark, maxWatermark } from './watermark'
+export { resolveWebhookSteer, type WebhookSteer } from './webhook-steer'
 // Webhook capability drivers + resolver (Step 8)
 export {
   fixtureWebhookCapability,

@@ -88,6 +88,12 @@ export const DataConnector = pgTable(
     schemaHash: text(),
 
     lastSyncedAt: timestamp({ precision: 3 }),
+    // Last app-trigger webhook delivery this connector PROCESSED (sync-bridge §9
+    // observability note). Webhook syncs are point writes — they open no
+    // DataConnectorRun and never stamp `lastSyncedAt` — so a healthy webhook-sync
+    // connector would otherwise read as "never synced". Stamped on every received
+    // event (incl. filtered/delete/no-op) so liveness shows even when nothing changed.
+    lastWebhookEventAt: timestamp({ precision: 3 }),
     lastJobId: text(),
     itemCount: integer().default(0).notNull(),
     error: text(),

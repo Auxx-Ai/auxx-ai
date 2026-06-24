@@ -11,6 +11,7 @@ import { evaluateCalcExpression } from '@auxx/utils/calc-expression'
 import type { ConnectorRecord } from './connectors/types'
 import type { DecodedMapping } from './service'
 import type { ProjectedRecord } from './sinks/types'
+import { parseUpstreamUpdatedAt } from './watermark'
 
 /** One mapping's projection result for a single source record. */
 export interface MappedWrite {
@@ -195,7 +196,18 @@ function resolveDisplayName(
  * learns its externalId before stamping child relations. Child mappings carry a
  * `parentRelation` (with the parent INSTANCE's externalId) describing the edge.
  */
-export function mapRecord(mappings: DecodedMapping[], source: ConnectorRecord): MappedWrite[] {
+export function mapRecord(
+  mappings: DecodedMapping[],
+  source: ConnectorRecord,
+  /**
+   * Subtree-relative dotted path to each ROOT record's upstream last-modified
+   * (the stream's `incremental.watermarkField`, e.g. `updated_at`). When given, the
+   * parsed value is stamped onto each root projected record's `upstreamUpdatedAt` —
+   * the durable version stamp the sink's out-of-order guard compares (sync-bridge
+   * §9 Q7). Children inherit no stamp (they version with their parent event).
+   */
+  updatedAtPath?: string
+): MappedWrite[] {
   const writes: MappedWrite[] = []
 
   // Connector-provided hints — used only for a whole-record (`rootPath ''`) root.
@@ -240,6 +252,11 @@ export function mapRecord(mappings: DecodedMapping[], source: ConnectorRecord): 
             fields: evaluateFields(mapping, subtree),
             identityCandidates: identityCandidates(mapping, subtree),
             pendingRelations: [],
+            // Root records carry the version stamp; children version with the event.
+            upstreamUpdatedAt:
+              updatedAtPath && mapping.parentMappingId == null
+                ? parseUpstreamUpdatedAt(getByPath(subtree, updatedAtPath))
+                : undefined,
           },
           parentRelation,
         })

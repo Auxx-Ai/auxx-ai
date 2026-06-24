@@ -86,7 +86,14 @@ export const app = {
               toJSON: () => ({ type: 'string', _metadata: { label: 'Channel' } }),
             },
           },
-          outputs: {},
+          outputs: {
+            resourceId: {
+              toJSON: () => ({ type: 'string', _metadata: { label: 'Resource id' } }),
+            },
+            topic: {
+              toJSON: () => ({ type: 'string', _metadata: { label: 'Topic' } }),
+            },
+          },
         },
         execute: async () => ({}),
         workflow: {},

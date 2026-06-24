@@ -44,6 +44,7 @@ import {
   RevealChip,
 } from './request-editors'
 import { StreamSample } from './stream-sample'
+import { WebhookTriggerBindingSection } from './webhook-trigger-binding-section'
 
 type Connector = NonNullable<RouterOutputs['dataConnector']['getById']>
 type Stream = RouterOutputs['dataConnector']['listStreams'][number]
@@ -354,6 +355,13 @@ export function StreamConfigPanel({
               )}
             </div>
           </Section>
+        )}
+
+        {/* 1b. Webhook trigger binding — only when the connector syncs on webhooks
+            (app-trigger sync bridge §7). Binds this stream to an app trigger + maps
+            the payload tokens that steer the request above. */}
+        {isGenericRest && showConfigure && connector.syncBehavior === 'webhook' && (
+          <WebhookTriggerBindingSection connector={connector} stream={stream} />
         )}
 
         {/* 2. Sample — the single live test-fetch; feeds the schema below */}

@@ -7,6 +7,9 @@ import { ArrowDownUp, CalendarClock, History, RefreshCw } from 'lucide-react'
 
 interface ConnectorFreshnessPanelProps {
   lastSyncedAt: Date | string | null
+  /** Last processed webhook delivery — the liveness signal for webhook-sync connectors,
+   *  which open no run and never stamp `lastSyncedAt` (sync-bridge §9). */
+  lastWebhookEventAt?: Date | string | null
   /** Derived next-sync ISO (scheduled only); null for manual/webhook/custom-cron. */
   nextSyncAt: string | null
   /** Human cadence, e.g. "every 15 minutes". */
@@ -26,6 +29,7 @@ interface ConnectorFreshnessPanelProps {
  */
 export function ConnectorFreshnessPanel({
   lastSyncedAt,
+  lastWebhookEventAt,
   nextSyncAt,
   cadenceLabel,
   syncBehavior,
@@ -35,12 +39,18 @@ export function ConnectorFreshnessPanel({
   const updated = latestRun?.updated ?? 0
   const delta = created > 0 || updated > 0 ? `+${updated} updated, +${created} new` : 'No changes'
 
+  // Webhook syncs open no run, so "Last synced" lives in `lastWebhookEventAt`; relabel
+  // the cell "Last event" for them and fall back to a bulk sync only if older/absent.
+  const isWebhook = syncBehavior === 'webhook'
+  const freshnessLabel = isWebhook ? 'Last event' : 'Last synced'
+  const freshnessAt = isWebhook ? (lastWebhookEventAt ?? lastSyncedAt) : lastSyncedAt
+
   return (
     <MetricGrid columns={2}>
       <MetricCell
-        label='Last synced'
+        label={freshnessLabel}
         icon={<History className='size-4 text-muted-foreground' />}
-        value={lastSyncedAt ? <LastUpdated timestamp={lastSyncedAt} className='text-sm' /> : '—'}
+        value={freshnessAt ? <LastUpdated timestamp={freshnessAt} className='text-sm' /> : '—'}
       />
       <MetricCell
         label='Synced this run'

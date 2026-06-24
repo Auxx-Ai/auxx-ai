@@ -20,13 +20,17 @@ function instanceKey(mappingId: string, externalId: string): string {
 
 /**
  * Map one connector payload across the mapping tree and sink each projected write.
+ * `updatedAtPath` (the stream's `incremental.watermarkField`) seeds each root
+ * record's `upstreamUpdatedAt` version stamp — the durable value the sink's
+ * out-of-order write guard compares (sync-bridge §9 Q7).
  */
 export async function sinkSourceRecord(
   ctx: SyncCtx,
   mappings: DecodedMapping[],
-  source: ConnectorRecord
+  source: ConnectorRecord,
+  updatedAtPath?: string
 ): Promise<void> {
-  const writes = mapRecord(mappings, source)
+  const writes = mapRecord(mappings, source, updatedAtPath)
 
   // Tombstone — an explicit upstream delete (event-feed `*.deleted`, a fixture
   // `deleted` flag). Archive every projected binding instead of upserting. We use the

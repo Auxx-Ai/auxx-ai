@@ -70,6 +70,16 @@ export {
   calendarSyncJob,
   calendarSyncScannerJob,
 } from './calendar'
+// Data-connector app-trigger sync bridge (plans/data-connectors/v4)
+export {
+  APP_TRIGGER_SYNC_STREAM_JOB,
+  type ConnectorAppTriggerDispatchJobData,
+  dispatchAppTriggerToConnectors,
+} from './data-connector/app-trigger-sync-dispatch-job'
+export {
+  type ConnectorAppTriggerStreamJobData,
+  runConnectorAppTriggerStream,
+} from './data-connector/app-trigger-sync-stream-job'
 // Datasets
 export {
   batchOperationJob,

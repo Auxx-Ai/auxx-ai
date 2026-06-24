@@ -126,6 +126,11 @@ export interface CatalogTrigger {
   iconKey: string | null
   color?: string
   inputsJsonSchema: Record<string, unknown>
+  /** The trigger's declared `schema.outputs` — the shape of the `triggerData`
+   *  envelope it emits (e.g. `resourceId`, `updatedAt`, `topic`, `payload`). Drives
+   *  labeled, envelope-relative path pickers (data-connector webhook token binding).
+   *  Optional — absent on catalogs published before trigger outputs were projected. */
+  outputsJsonSchema?: Record<string, unknown>
   refs: Array<{ path: string[]; kind: string }>
 }
 
@@ -136,6 +141,8 @@ export interface CatalogTriggerProjection {
   iconKey: string | null
   color?: string
   inputsJsonSchema: Record<string, unknown>
+  /** See {@link CatalogTrigger.outputsJsonSchema}. */
+  outputsJsonSchema?: Record<string, unknown>
   refs: Array<{ path: string[]; kind: string }>
 }
 
