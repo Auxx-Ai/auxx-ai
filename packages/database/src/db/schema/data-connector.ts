@@ -19,6 +19,7 @@ import { Credential } from './credential'
 import type {
   DataConnectorConfig,
   DataConnectorType,
+  ResyncPending,
   ScheduledTriggerConfig,
 } from './data-connector-types'
 import { Organization } from './organization'
@@ -77,6 +78,11 @@ export const DataConnector = pgTable(
 
     // Connector-level cursor/state (per-stream cursors live on DataConnectorStream).
     state: jsonb().$type<Record<string, unknown>>().default({}).notNull(),
+
+    // Pending re-sync marker (mapping-edit safety). Set when a structural edit means
+    // synced records no longer reflect the config; cleared on the next full backfill.
+    // Nullable — null ⇒ nothing pending (the steady state). Drives the page banner.
+    resyncPending: jsonb().$type<ResyncPending>(),
 
     // Hash of the provisioned schema — detect drift, re-provision only the delta.
     schemaHash: text(),

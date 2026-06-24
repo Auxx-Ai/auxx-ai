@@ -536,6 +536,28 @@ export interface FieldMapping {
   provision?: { name: string; type: FieldType; icon?: string; isHidden?: boolean }
 }
 
+/**
+ * Pending re-sync marker (jsonb on `DataConnector.resyncPending`, nullable).
+ * Stamped by the mapping-edit-safety mutations when a structural edit means existing
+ * synced records no longer reflect the current config; cleared on the next full
+ * backfill of the affected streams. Drives the connector-page banner.
+ *
+ * MUST stay byte-compatible with the DB mirror `ResyncPending` in `@auxx/database`
+ * schema/`data-connector-types.ts` (the DB package can't import this tier-3 type).
+ */
+export interface ResyncPending {
+  /** `'rebackfill'` = re-projection needed; `'rebind'` = identity/match key changed. */
+  level: 'rebackfill' | 'rebind'
+  /** Short reason codes for the banner detail (e.g. `'rootPath'`, `'field-added'`). */
+  reasons: string[]
+  /** Streams whose backfill must re-run to clear the pending state. */
+  streamIds: string[]
+  /** Bound record count at stamp time (banner message; cheap `count(*)`). */
+  itemCount: number
+  /** ISO 8601 timestamp the marker was stamped. */
+  at: string
+}
+
 export type LinkMode = 'upsert' | 'reference'
 export type TargetMode = 'owned' | 'contributing'
 export type SyncMode = 'snapshot' | 'incremental' | 'webhook'

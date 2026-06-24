@@ -26,6 +26,7 @@ import { api } from '~/trpc/react'
 import { useConnectorMutations } from '../hooks/use-connector-mutations'
 import { resolveSyncStatus } from '../lib/resolve-sync-status'
 import { ConnectorDetailTabs } from './connector-detail-tabs'
+import { ConnectorResyncBanner } from './connector-resync-banner'
 import { ConnectorRunsPanel } from './connector-runs-panel'
 import { asConnectorStatus, asRunStatus } from './connector-status'
 import { ConnectorStatusLine } from './connector-status-line'
@@ -93,6 +94,8 @@ export function ConnectorDetailView({ connector }: ConnectorDetailViewProps) {
     pause,
     resume,
     remove,
+    backfillPending,
+    isBackfilling,
     isSyncing: isSyncPending,
     isPausing,
     isResuming,
@@ -204,6 +207,14 @@ export function ConnectorDetailView({ connector }: ConnectorDetailViewProps) {
           />
         </MainPageBreadcrumb>
       </MainPageHeader>
+
+      {/* Pinned between header and content by the flex layout — surfaces a pending
+          mapping-edit re-sync; the actual safety already ran at save time. */}
+      <ConnectorResyncBanner
+        pending={live?.resyncPending}
+        onBackfill={() => backfillPending(connector.id)}
+        isBackfilling={isBackfilling}
+      />
 
       <MainPageContent
         dockedPanels={

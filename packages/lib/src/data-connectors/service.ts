@@ -4,13 +4,24 @@
 // (later) tRPC router consume these helpers. Policy unions (identity/merge/link)
 // are stored as jsonb/text and cast to the canonical lib types at this boundary.
 
-import { type Database, database as defaultDb, schema } from '@auxx/database'
+import { type Database, database as defaultDb, schema, type Transaction } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { and, asc, count, desc, eq, inArray, ne, sql } from 'drizzle-orm'
 import { err, ok, type Result } from 'neverthrow'
-import type { FieldMapping, LinkMode, OrphanBehavior, SyncMode, TargetMode } from './types'
+import { maxLevel } from './edit-impact'
+import type {
+  FieldMapping,
+  LinkMode,
+  OrphanBehavior,
+  ResyncPending,
+  SyncMode,
+  TargetMode,
+} from './types'
 
 const logger = createScopedLogger('data-connector-service')
+
+/** Either the pooled connection or an open transaction — for helpers that run both. */
+export type DbOrTx = Database | Transaction
 
 // ── Row types (DB select) + decoded policy shapes ─────────────────────────────
 
@@ -77,7 +88,7 @@ export function decodeMapping(row: DataConnectorMappingRow): DecodedMapping {
  * mappings are dropped — a fetch with nowhere to land is a no-op.
  */
 export async function loadConnector(
-  db: Database,
+  db: DbOrTx,
   organizationId: string,
   dataConnectorId: string
 ): Promise<LoadedConnector | null> {
@@ -364,6 +375,64 @@ export async function countConnectorItems(db: Database, dataConnectorId: string)
     .from(schema.DataConnectorItem)
     .where(eq(schema.DataConnectorItem.dataConnectorId, dataConnectorId))
   return row?.n ?? 0
+}
+
+/** Count bound items for a single mapping (mapping-edit banner message). */
+export async function countMappingItems(
+  db: DbOrTx,
+  dataConnectorId: string,
+  mappingId: string
+): Promise<number> {
+  const [row] = await db
+    .select({ n: count() })
+    .from(schema.DataConnectorItem)
+    .where(
+      and(
+        eq(schema.DataConnectorItem.dataConnectorId, dataConnectorId),
+        eq(schema.DataConnectorItem.mappingId, mappingId)
+      )
+    )
+  return row?.n ?? 0
+}
+
+// ── Pending re-sync marker (mapping-edit safety, Layer 2) ─────────────────────
+
+/**
+ * Stamp the pending re-sync marker, MERGING with any existing one so an escalating
+ * sequence of edits (e.g. a `rebackfill` then a `rebind`) keeps the highest level
+ * and the union of affected streams/reasons. Idempotent within a transaction.
+ */
+export async function stampResyncPending(
+  db: DbOrTx,
+  dataConnectorId: string,
+  next: ResyncPending
+): Promise<void> {
+  const row = await db.query.DataConnector.findFirst({
+    where: eq(schema.DataConnector.id, dataConnectorId),
+    columns: { resyncPending: true },
+  })
+  const prev = row?.resyncPending ?? null
+  const merged: ResyncPending = prev
+    ? {
+        level: maxLevel(prev.level, next.level),
+        reasons: Array.from(new Set([...prev.reasons, ...next.reasons])),
+        streamIds: Array.from(new Set([...prev.streamIds, ...next.streamIds])),
+        itemCount: Math.max(prev.itemCount, next.itemCount),
+        at: next.at,
+      }
+    : next
+  await db
+    .update(schema.DataConnector)
+    .set({ resyncPending: merged, updatedAt: new Date() })
+    .where(eq(schema.DataConnector.id, dataConnectorId))
+}
+
+/** Clear the pending re-sync marker (after a full backfill, or on Backfill now). */
+export async function clearResyncPending(db: DbOrTx, dataConnectorId: string): Promise<void> {
+  await db
+    .update(schema.DataConnector)
+    .set({ resyncPending: null, updatedAt: new Date() })
+    .where(eq(schema.DataConnector.id, dataConnectorId))
 }
 
 /** Exact-bind lookup: (dataConnectorId, mappingId, externalId) → item row. */

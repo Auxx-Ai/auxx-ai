@@ -22,6 +22,7 @@ export function useConnectorMutations() {
   const utils = api.useUtils()
 
   const syncNowM = api.dataConnector.syncNow.useMutation()
+  const backfillM = api.dataConnector.backfillPendingChange.useMutation()
   // Pause/resume are a `status` patch through the shared `update` route.
   const updateM = api.dataConnector.update.useMutation()
   const deleteM = api.dataConnector.delete.useMutation()
@@ -94,6 +95,22 @@ export function useConnectorMutations() {
     [patchStatus, syncNowM, utils.dataConnector.getStatus]
   )
 
+  // "Backfill now" — same cosmetic bridge as syncNow (stamp 'syncing' so the banner's
+  // button + pill react instantly), then nudge the getStatus poll. The backfill
+  // finalize clears `resyncPending`, which removes the banner.
+  const backfillPending = useCallback(
+    async (id: string) => {
+      await patchStatus(
+        id,
+        'syncing',
+        () => backfillM.mutateAsync({ id }),
+        'Could not start backfill'
+      )
+      void utils.dataConnector.getStatus.invalidate({ id })
+    },
+    [patchStatus, backfillM, utils.dataConnector.getStatus]
+  )
+
   // Optimistically drop from the list; returns true on success so the detail
   // view only navigates away on a confirmed delete (and restores on failure).
   const remove = useCallback(
@@ -119,8 +136,10 @@ export function useConnectorMutations() {
     pause,
     resume,
     syncNow,
+    backfillPending,
     remove,
     isSyncing: syncNowM.isPending,
+    isBackfilling: backfillM.isPending,
     isPausing: updateM.isPending,
     isResuming: updateM.isPending,
     isDeleting: deleteM.isPending,

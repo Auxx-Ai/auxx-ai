@@ -18,6 +18,7 @@ import { createCustomField } from '@auxx/services/custom-fields'
 import { createEntityDefinition } from '@auxx/services/entity-definitions'
 import { getFieldId, toResourceFieldId } from '@auxx/types/field'
 import { and, eq } from 'drizzle-orm'
+import { getCachedCustomFields } from '../cache'
 import { onCacheEvent } from '../cache/invalidate'
 import { NotFoundError } from '../errors'
 import type { DecodedMapping } from './service'
@@ -144,11 +145,11 @@ export async function provisionTarget(
 }
 
 /**
- * Provision one field if absent. Idempotent per `(dataConnectorId, appFieldKey,
- * entityDefinitionId)` and additionally guarded against an existing display-name
- * collision (a field the user already owns). Returns the field's concrete id +
- * whether it was created this call, or `null` when a name collision left it
- * unresolvable (contributing mode never touches an existing user field).
+ * Provision one field if absent. Idempotent per `(appFieldKey, entityDefinitionId)`
+ * and additionally guarded against an existing display-name collision (a field the
+ * user already owns). Returns the field's concrete id + whether it was created this
+ * call, or `null` when a name collision left it unresolvable (contributing mode
+ * never touches an existing user field).
  */
 async function provisionField(
   db: Database,
@@ -157,21 +158,30 @@ async function provisionField(
   entityDefinitionId: string,
   field: ProvisionFieldSpec
 ): Promise<{ id: string; created: boolean } | null> {
-  // Already provisioned by this connector?
-  const existing = await db.query.CustomField.findFirst({
-    where: and(
-      eq(schema.CustomField.organizationId, organizationId),
-      eq(schema.CustomField.entityDefinitionId, entityDefinitionId),
-      eq(schema.CustomField.dataConnectorId, dataConnectorId),
-      eq(schema.CustomField.appFieldKey, field.appFieldKey)
-    ),
-    columns: { id: true },
-  })
-  if (existing) return { id: existing.id, created: false }
+  // Already provisioned on this def? Look up by `appFieldKey` in the org cache —
+  // matched WITHOUT a dataConnectorId filter so a delete+reconnect ADOPTS the
+  // orphaned field (the FK is `set null` on connector delete) instead of colliding
+  // on its name and dropping it from the mapping. `appFieldKey` is set only by
+  // app/connector provisioning — never on a user-authored column — so adoption is
+  // safe. (The cache can't under-report: createCustomField invalidates on create.)
+  const existingFields = await getCachedCustomFields(organizationId, entityDefinitionId)
+  const existing = existingFields.find((f) => f.appFieldKey === field.appFieldKey)
+  if (existing) {
+    // Re-stamp ownership if a prior connector's delete nulled (or never set) the FK.
+    // The cached value may be stale here (the FK-null cascade doesn't invalidate),
+    // so the write is idempotent and harmless when already ours.
+    if (existing.dataConnectorId !== dataConnectorId) {
+      await db
+        .update(schema.CustomField)
+        .set({ dataConnectorId, updatedAt: new Date() })
+        .where(eq(schema.CustomField.id, existing.id))
+    }
+    return { id: existing.id, created: false }
+  }
 
-  // Create via the app-field path. DUPLICATE_FIELD_NAME (a user/system field of the
-  // same name already exists) is a benign no-op — contributing mode never touches
-  // an existing field.
+  // Create via the app-field path, stamping `dataConnectorId` on the insert.
+  // DUPLICATE_FIELD_NAME (a user/system field of the same name already exists) is a
+  // benign no-op — contributing mode never touches an existing field.
   const result = await createCustomField({
     organizationId,
     entityDefinitionId,
@@ -179,6 +189,7 @@ async function provisionField(
     type: field.type,
     icon: field.icon,
     appFieldKey: field.appFieldKey,
+    dataConnectorId,
     isUpdatable: field.isUpdatable ?? false,
     isCreatable: field.isCreatable ?? false,
     isHidden: field.isHidden ?? false,
@@ -187,12 +198,6 @@ async function provisionField(
     if (result.error.code === 'DUPLICATE_FIELD_NAME') return null
     throw new Error(result.error.message)
   }
-
-  // Stamp the dataConnectorId FK (the service insert doesn't set it).
-  await db
-    .update(schema.CustomField)
-    .set({ dataConnectorId, updatedAt: new Date() })
-    .where(eq(schema.CustomField.id, result.value.id))
 
   return { id: result.value.id, created: true }
 }

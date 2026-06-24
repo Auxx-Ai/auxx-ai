@@ -5,7 +5,7 @@
 // re-registration is driven from create/update (pause/resume is a `status` patch
 // through update) so a cadence or lifecycle change is reflected in BullMQ immediately.
 
-import { type CatalogDataConnector, type Database, schema } from '@auxx/database'
+import { type CatalogDataConnector, type Database, schema, type Transaction } from '@auxx/database'
 import type { FieldType } from '@auxx/database/types'
 import { createScopedLogger } from '@auxx/logger'
 import { getFieldDefinitionId, getFieldId, toResourceFieldId } from '@auxx/types/field'
@@ -19,8 +19,23 @@ import {
   unregisterConnectorWebhooks,
 } from './connector-webhook-registration'
 import { removeConnectorScheduler, syncConnectorScheduler } from './data-connector-scheduler'
+import {
+  classifyConnectorChange,
+  classifyMappingChange,
+  classifyStreamRequestChange,
+  type StructuralImpact,
+} from './edit-impact'
 import { type ProvisionFieldSpec, provisionTarget } from './provisioning'
-import type { DataConnectorMappingRow, DataConnectorRow, DataConnectorStreamRow } from './service'
+import {
+  countConnectorItems,
+  countMappingItems,
+  type DataConnectorMappingRow,
+  type DataConnectorRow,
+  type DataConnectorStreamRow,
+  type DbOrTx,
+  loadConnector,
+  stampResyncPending,
+} from './service'
 import type {
   ConnectorTemplate,
   ConnectorTemplateFieldMapping,
@@ -40,6 +55,114 @@ import type {
 
 const logger = createScopedLogger('data-connector-mutations')
 
+// ── Mapping-edit safety (Layer 1) ─────────────────────────────────────────────
+// Auto-save edits stay instant, but a structural edit that invalidates already-synced
+// data must apply its safety BEFORE any later (possibly scheduled) sync runs — so the
+// classify + safety run INSIDE the same transaction as the write. The banner (Layer 3)
+// only defers the expensive re-crawl; it never gates the safety. See
+// plans/data-connectors/v4/mapping-edit-safety-plan.md.
+
+/** Whether a loaded connector runs as an incremental connector (every stream incremental). */
+function isIncrementalConnector(streams: { syncMode: string }[]): boolean {
+  return streams.length > 0 && streams.every((s) => s.syncMode === 'incremental')
+}
+
+/**
+ * Apply the safety action for a structural MAPPING edit. The only edit that can be
+ * `rebind` (the identity key / target def changed): on an INCREMENTAL connector the
+ * stale `DataConnectorItem` binds are deleted so the next sync can't duplicate +
+ * mass-archive, and OWNED instances are archived for a clean replace (contributing
+ * instances are user-owned — never archived). On a SNAPSHOT connector the existing
+ * full re-crawl self-heals, so binds are left alone. Either way `resyncPending` is
+ * stamped so the banner surfaces the pending re-crawl. Skipped entirely for a
+ * never-synced connector (nothing to protect).
+ */
+async function applyMappingEditSafety(
+  tx: Transaction,
+  organizationId: string,
+  mapping: DataConnectorMappingRow,
+  impact: StructuralImpact
+): Promise<void> {
+  if (impact.level === 'cosmetic') return
+
+  const stream = await tx.query.DataConnectorStream.findFirst({
+    where: eq(schema.DataConnectorStream.id, mapping.dataConnectorStreamId),
+    columns: { id: true, dataConnectorId: true },
+  })
+  if (!stream) return
+  const loaded = await loadConnector(tx, organizationId, stream.dataConnectorId)
+  if (!loaded || !loaded.connector.lastSyncedAt) return // Q2 — never-synced ⇒ skip
+
+  const incremental = isIncrementalConnector(loaded.streams.map((s) => ({ syncMode: s.syncMode })))
+  const dataConnectorId = stream.dataConnectorId
+
+  let itemCount: number
+  if (impact.level === 'rebind' && incremental) {
+    // The old (mappingId, externalId) binds are provably wrong now. Archive OWNED
+    // instances (clean replace), then delete the binds so reconcile can't archive
+    // what it can't list and the next backfill re-creates + re-binds.
+    const items = await tx.query.DataConnectorItem.findMany({
+      where: and(
+        eq(schema.DataConnectorItem.dataConnectorId, dataConnectorId),
+        eq(schema.DataConnectorItem.mappingId, mapping.id)
+      ),
+      columns: { entityInstanceId: true },
+    })
+    itemCount = items.length
+    if (mapping.targetMode === 'owned') {
+      const now = new Date()
+      for (const it of items) {
+        if (it.entityInstanceId) {
+          await tx
+            .update(schema.EntityInstance)
+            .set({ archivedAt: now })
+            .where(eq(schema.EntityInstance.id, it.entityInstanceId))
+        }
+      }
+    }
+    await tx
+      .delete(schema.DataConnectorItem)
+      .where(
+        and(
+          eq(schema.DataConnectorItem.dataConnectorId, dataConnectorId),
+          eq(schema.DataConnectorItem.mappingId, mapping.id)
+        )
+      )
+  } else {
+    itemCount = await countMappingItems(tx, dataConnectorId, mapping.id)
+  }
+
+  await stampResyncPending(tx, dataConnectorId, {
+    level: impact.level === 'rebind' ? 'rebind' : 'rebackfill',
+    reasons: impact.reasons,
+    streamIds: [mapping.dataConnectorStreamId],
+    itemCount,
+    at: new Date().toISOString(),
+  })
+}
+
+/**
+ * Stamp `resyncPending` for a CONNECTOR or STREAM edit. Neither can be `rebind`
+ * (identity lives on the mapping), so the action is always: stamp `rebackfill` across
+ * the affected streams. Skipped for a never-synced connector.
+ */
+async function stampConnectorResync(
+  tx: Transaction,
+  dataConnectorId: string,
+  impact: StructuralImpact,
+  streamIds: string[],
+  itemCount: number
+): Promise<void> {
+  if (impact.level === 'cosmetic' || streamIds.length === 0) return
+  await stampResyncPending(tx, dataConnectorId, {
+    level: 'rebackfill',
+    reasons: impact.reasons,
+    streamIds,
+    itemCount,
+    at: new Date().toISOString(),
+  })
+}
+
 // ── Connector lifecycle ───────────────────────────────────────────────────────
 
 export interface CreateConnectorInput {
@@ -58,7 +181,7 @@ export interface CreateConnectorInput {
 
 /** Load a connector or throw NotFoundError (org-scoped). */
 async function loadConnectorRow(
-  db: Database,
+  db: DbOrTx,
   organizationId: string,
   id: string
 ): Promise<DataConnectorRow> {
@@ -408,29 +531,46 @@ export async function updateConnector(
   id: string,
   patch: UpdateConnectorInput
 ): Promise<DataConnectorRow> {
-  const prior = await loadConnectorRow(db, organizationId, id)
   // Selecting manual/webhook clears the cadence so the scheduler is removed.
   const scheduleConfig =
     patch.syncBehavior && patch.syncBehavior !== 'scheduled'
       ? null
       : (patch.scheduleConfig ?? undefined)
-  const [row] = await db
-    .update(schema.DataConnector)
-    .set({
-      ...(patch.name !== undefined ? { name: patch.name } : {}),
-      ...(patch.config !== undefined ? { config: patch.config } : {}),
-      ...(patch.credentialId !== undefined ? { credentialId: patch.credentialId } : {}),
-      ...(patch.appInstallationId !== undefined
-        ? { appInstallationId: patch.appInstallationId }
-        : {}),
-      ...(patch.syncBehavior !== undefined ? { syncBehavior: patch.syncBehavior } : {}),
-      ...(scheduleConfig !== undefined ? { scheduleConfig } : {}),
-      ...(patch.status !== undefined ? { status: patch.status } : {}),
-      updatedAt: new Date(),
-    })
-    .where(eq(schema.DataConnector.id, id))
-    .returning()
-  if (!row) throw new Error('Failed to update data connector')
+
+  // The write + edit-safety stamp run in one transaction so a structural edit can't
+  // half-apply (BullMQ scheduler + webhook are external — they run after commit).
+  const { row, prior } = await db.transaction(async (tx) => {
+    const prior = await loadConnectorRow(tx, organizationId, id)
+    const impact = classifyConnectorChange(prior, patch)
+    const [row] = await tx
+      .update(schema.DataConnector)
+      .set({
+        ...(patch.name !== undefined ? { name: patch.name } : {}),
+        ...(patch.config !== undefined ? { config: patch.config } : {}),
+        ...(patch.credentialId !== undefined ? { credentialId: patch.credentialId } : {}),
+        ...(patch.appInstallationId !== undefined
+          ? { appInstallationId: patch.appInstallationId }
+          : {}),
+        ...(patch.syncBehavior !== undefined ? { syncBehavior: patch.syncBehavior } : {}),
+        ...(scheduleConfig !== undefined ? { scheduleConfig } : {}),
+        ...(patch.status !== undefined ? { status: patch.status } : {}),
+        updatedAt: new Date(),
+      })
+      .where(eq(schema.DataConnector.id, id))
+      .returning()
+    if (!row) throw new Error('Failed to update data connector')
+
+    // A credential/config change invalidates the cursor against the source → stamp
+    // rebackfill across the connector's streams (never-synced ⇒ skipped). The
+    // pause/resume/name/schedule patches are cosmetic and stamp nothing.
+    if (impact.level !== 'cosmetic' && prior.lastSyncedAt) {
+      const loaded = await loadConnector(tx, organizationId, id)
+      const streamIds = loaded?.streams.map((s) => s.stream.id) ?? []
+      await stampConnectorResync(tx, id, impact, streamIds, await countConnectorItems(tx, id))
+    }
+    return { row, prior }
+  })
+
   await syncConnectorScheduler(row)
 
   // Webhook registration follows the sync-behavior toggle (Step 8B). Enabling webhook
@@ -607,7 +747,7 @@ export async function updateStream(
 
 /** Load a stream org-scoped or throw. */
 async function loadStreamRow(
-  db: Database,
+  db: DbOrTx,
   organizationId: string,
   streamId: string
 ): Promise<DataConnectorStreamRow> {
@@ -654,19 +794,39 @@ export async function setStreamRequestConfig(
   streamId: string,
   input: { requestConfig: StreamRequestConfig; syncMode?: SyncMode; enabled?: boolean }
 ): Promise<DataConnectorStreamRow> {
-  await loadStreamRow(db, organizationId, streamId)
-  const [row] = await db
-    .update(schema.DataConnectorStream)
-    .set({
-      requestConfig: input.requestConfig,
-      ...(input.syncMode !== undefined ? { syncMode: input.syncMode } : {}),
-      ...(input.enabled !== undefined ? { enabled: input.enabled } : {}),
-      updatedAt: new Date(),
-    })
-    .where(eq(schema.DataConnectorStream.id, streamId))
-    .returning()
-  if (!row) throw new Error('Failed to set stream request config')
-  return row
+  return db.transaction(async (tx) => {
+    const existing = await loadStreamRow(tx, organizationId, streamId)
+    const impact = classifyStreamRequestChange(existing, input)
+    const [row] = await tx
+      .update(schema.DataConnectorStream)
+      .set({
+        requestConfig: input.requestConfig,
+        ...(input.syncMode !== undefined ? { syncMode: input.syncMode } : {}),
+        ...(input.enabled !== undefined ? { enabled: input.enabled } : {}),
+        updatedAt: new Date(),
+      })
+      .where(eq(schema.DataConnectorStream.id, streamId))
+      .returning()
+    if (!row) throw new Error('Failed to set stream request config')
+
+    // A request-config / sync-mode change invalidates the cursor against the source.
+    if (impact.level !== 'cosmetic') {
+      const connector = await tx.query.DataConnector.findFirst({
+        where: eq(schema.DataConnector.id, existing.dataConnectorId),
+        columns: { id: true, lastSyncedAt: true },
+      })
+      if (connector?.lastSyncedAt) {
+        await stampConnectorResync(
+          tx,
+          existing.dataConnectorId,
+          impact,
+          [streamId],
+          await countConnectorItems(tx, existing.dataConnectorId)
+        )
+      }
+    }
+    return row
+  })
 }
 
 /** Remove a stream (its mappings + items cascade on delete). */
@@ -723,7 +883,7 @@ export async function addMapping(
 
 /** Load a mapping org-scoped or throw. */
 async function loadMappingRow(
-  db: Database,
+  db: DbOrTx,
   organizationId: string,
   mappingId: string
 ): Promise<DataConnectorMappingRow> {
@@ -756,32 +916,44 @@ export async function updateMapping(
   mappingId: string,
   patch: UpdateMappingInput
 ): Promise<DataConnectorMappingRow> {
-  const existing = await loadMappingRow(db, organizationId, mappingId)
-  // Validate refs against the EFFECTIVE def (a same-call def change applies first).
-  const effectiveDefId =
-    patch.entityDefinitionId !== undefined ? patch.entityDefinitionId : existing.entityDefinitionId
-  assertFieldRefsMatchDef(effectiveDefId, patch.fieldMappings)
-  const [row] = await db
-    .update(schema.DataConnectorMapping)
-    .set({
-      ...(patch.rootPath !== undefined ? { rootPath: patch.rootPath } : {}),
-      ...(patch.linkMode !== undefined ? { linkMode: patch.linkMode } : {}),
-      ...(patch.parentMappingId !== undefined ? { parentMappingId: patch.parentMappingId } : {}),
-      ...(patch.relationshipFieldKey !== undefined
-        ? { relationshipFieldKey: patch.relationshipFieldKey }
-        : {}),
-      ...(patch.orphanBehavior !== undefined ? { orphanBehavior: patch.orphanBehavior } : {}),
-      ...(patch.entityDefinitionId !== undefined
-        ? { entityDefinitionId: patch.entityDefinitionId }
-        : {}),
-      ...(patch.targetMode !== undefined ? { targetMode: patch.targetMode } : {}),
-      ...(patch.fieldMappings !== undefined ? { fieldMappings: patch.fieldMappings } : {}),
-      updatedAt: new Date(),
-    })
-    .where(eq(schema.DataConnectorMapping.id, mappingId))
-    .returning()
-  if (!row) throw new Error('Failed to update mapping')
-  return row
+  return db.transaction(async (tx) => {
+    // Load `prev` INSIDE the transaction so a concurrent edit can't slip a stale
+    // classification through (the safety must reflect the row we actually write over).
+    const existing = await loadMappingRow(tx, organizationId, mappingId)
+    // Validate refs against the EFFECTIVE def (a same-call def change applies first).
+    const effectiveDefId =
+      patch.entityDefinitionId !== undefined
+        ? patch.entityDefinitionId
+        : existing.entityDefinitionId
+    assertFieldRefsMatchDef(effectiveDefId, patch.fieldMappings)
+    const impact = classifyMappingChange(existing, patch)
+    const [row] = await tx
+      .update(schema.DataConnectorMapping)
+      .set({
+        ...(patch.rootPath !== undefined ? { rootPath: patch.rootPath } : {}),
+        ...(patch.linkMode !== undefined ? { linkMode: patch.linkMode } : {}),
+        ...(patch.parentMappingId !== undefined ? { parentMappingId: patch.parentMappingId } : {}),
+        ...(patch.relationshipFieldKey !== undefined
+          ? { relationshipFieldKey: patch.relationshipFieldKey }
+          : {}),
+        ...(patch.orphanBehavior !== undefined ? { orphanBehavior: patch.orphanBehavior } : {}),
+        ...(patch.entityDefinitionId !== undefined
+          ? { entityDefinitionId: patch.entityDefinitionId }
+          : {}),
+        ...(patch.targetMode !== undefined ? { targetMode: patch.targetMode } : {}),
+        ...(patch.fieldMappings !== undefined ? { fieldMappings: patch.fieldMappings } : {}),
+        updatedAt: new Date(),
+      })
+      .where(eq(schema.DataConnectorMapping.id, mappingId))
+      .returning()
+    if (!row) throw new Error('Failed to update mapping')
+
+    // Classify against the PRE-edit row, then apply the safety (stamp resyncPending;
+    // for a rebind on an incremental connector, neutralize the stale binds). The
+    // banner only defers the re-crawl — this safety always runs.
+    await applyMappingEditSafety(tx, organizationId, existing, impact)
+    return row
+  })
 }
 
 /** Remove a mapping (its items cascade on delete). */
