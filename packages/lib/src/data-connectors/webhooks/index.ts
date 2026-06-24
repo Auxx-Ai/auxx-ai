@@ -2,6 +2,6 @@
 // Webhook capability drivers + resolver (Step 8).
 
 export { fixtureWebhookCapability } from './fixture'
-export { resolveWebhookCapability } from './registry'
+export { resolveConnectionWebhookCapability, resolveWebhookCapability } from './registry'
 export { shopifyWebhookCapability } from './shopify'
 export { stripeWebhookCapability } from './stripe'

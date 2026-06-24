@@ -6,6 +6,7 @@
 import { createHmac } from 'node:crypto'
 import { describe, expect, it } from 'vitest'
 import { fixtureWebhookCapability } from './fixture'
+import { resolveConnectionWebhookCapability } from './registry'
 import { shopifyWebhookCapability } from './shopify'
 import { stripeWebhookCapability } from './stripe'
 
@@ -155,5 +156,48 @@ describe('fixture webhook capability', () => {
       config: {},
     })
     expect(subs).toEqual([{ topic: 'fixture/upsert', externalId: 'fixture-sub:fixture/upsert' }])
+  })
+})
+
+describe('resolveTopic — the same source sink resolution reads', () => {
+  it('reads the Shopify topic from the x-shopify-topic header', () => {
+    expect(
+      shopifyWebhookCapability.resolveTopic({
+        headers: { 'x-shopify-topic': 'orders/create' },
+        payload: { id: 1 },
+      })
+    ).toBe('orders/create')
+  })
+
+  it('reads the Stripe topic from the body type', () => {
+    expect(
+      stripeWebhookCapability.resolveTopic({
+        headers: {},
+        payload: { type: 'customer.updated', data: { object: { id: 'cus_1' } } },
+      })
+    ).toBe('customer.updated')
+  })
+
+  it('reads the fixture topic from the self-describing body', () => {
+    expect(
+      fixtureWebhookCapability.resolveTopic({
+        headers: {},
+        payload: { topic: 'fixture/upsert', streamKey: 's1', externalId: 'e1' },
+      })
+    ).toBe('fixture/upsert')
+  })
+})
+
+describe('resolveConnectionWebhookCapability — keyed off the connection provider', () => {
+  it('maps a connection provider (Credential.type) to its driver', () => {
+    expect(resolveConnectionWebhookCapability({ type: 'shopify' })).toBe(shopifyWebhookCapability)
+    expect(resolveConnectionWebhookCapability({ type: 'stripe' })).toBe(stripeWebhookCapability)
+    expect(resolveConnectionWebhookCapability({ type: 'fixture' })).toBe(fixtureWebhookCapability)
+  })
+
+  it('returns null for a provider with no WebhookSpec (the v1 boundary)', () => {
+    expect(resolveConnectionWebhookCapability({ type: 'gmail' })).toBeNull()
+    expect(resolveConnectionWebhookCapability({ type: null })).toBeNull()
+    expect(resolveConnectionWebhookCapability({})).toBeNull()
   })
 })

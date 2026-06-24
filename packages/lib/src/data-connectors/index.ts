@@ -5,6 +5,7 @@
 
 // App-catalog → setup materialization (create-sync-flow §3.1, Tier 1)
 export { appCatalogStreamSchema, buildSchemaFromFieldPaths } from './app-catalog'
+export { reconcileConnectionWebhooks } from './connection-webhook-registration'
 // Connector runtime — the shared definition+credential seam + test-fetch
 export type {
   PreparedConnectorFetch,
@@ -29,12 +30,8 @@ export type {
   SyncSourceStream,
 } from './connector-sync-source'
 export { createConnectorStreamSyncSource } from './connector-sync-source'
-// Webhook ingress + registration (Step 8)
+// Webhook ingress + registration (Step 8 + Direction 2 — unified connection ingress)
 export { applyWebhookActions, runConnectorWebhook } from './connector-webhook'
-export {
-  registerConnectorWebhooks,
-  unregisterConnectorWebhooks,
-} from './connector-webhook-registration'
 export type {
   AppConnectorContext,
   ConnectorCheckpoint,
@@ -229,6 +226,7 @@ export { isNumericWatermark, maxWatermark } from './watermark'
 // Webhook capability drivers + resolver (Step 8)
 export {
   fixtureWebhookCapability,
+  resolveConnectionWebhookCapability,
   resolveWebhookCapability,
   shopifyWebhookCapability,
   stripeWebhookCapability,

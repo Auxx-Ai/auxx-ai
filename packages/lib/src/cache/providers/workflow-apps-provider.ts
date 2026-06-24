@@ -37,6 +37,8 @@ export interface CachedPublishedWorkflow {
   triggerTriggerId: string | null
   triggerInstallationId: string | null
   triggerConnectionId: string | null
+  // Connection webhook-trigger topic (for byConnectionWebhook matching)
+  triggerTopic: string | null
 
   // Execution data
   graph: any
@@ -67,6 +69,7 @@ function dehydrateWorkflowApp(app: {
     triggerTriggerId: string | null
     triggerInstallationId: string | null
     triggerConnectionId: string | null
+    triggerTopic: string | null
     graph: unknown
     envVars: unknown
     variables: unknown
@@ -99,6 +102,7 @@ function dehydrateWorkflowApp(app: {
           triggerTriggerId: app.publishedWorkflow.triggerTriggerId,
           triggerInstallationId: app.publishedWorkflow.triggerInstallationId,
           triggerConnectionId: app.publishedWorkflow.triggerConnectionId,
+          triggerTopic: app.publishedWorkflow.triggerTopic,
           graph: app.publishedWorkflow.graph,
           envVars: app.publishedWorkflow.envVars,
           variables: app.publishedWorkflow.variables,
@@ -163,6 +167,21 @@ export const workflowAppsProvider: CacheProvider<CachedWorkflowApp[]> = {
             app.publishedWorkflow?.triggerInstallationId === params.installationId &&
             (!params.connectionId ||
               app.publishedWorkflow?.triggerConnectionId === params.connectionId)
+        )
+      },
+
+      /** Find enabled apps matching a connection webhook trigger `(connectionId, topic)` */
+      async byConnectionWebhook(params: {
+        connectionId: string
+        topic: string
+      }): Promise<CachedWorkflowApp[]> {
+        const data = await dataFn()
+        return data.filter(
+          (app) =>
+            app.enabled &&
+            app.publishedWorkflow?.triggerType === 'webhook-trigger' &&
+            app.publishedWorkflow?.triggerConnectionId === params.connectionId &&
+            app.publishedWorkflow?.triggerTopic === params.topic
         )
       },
 

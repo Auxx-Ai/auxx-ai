@@ -104,6 +104,21 @@ function toExternalId(raw: unknown): string {
 }
 
 /**
+ * Resolve the provider topic for a delivery from a spec's `resolve.topic` source.
+ * The ONE source of truth for the topic — both {@link resolveWebhookActions} (sink)
+ * and `compileWebhookSpec().resolveTopic` (trigger routing) read through this so the
+ * two can never desync. Exported for direct unit testing.
+ */
+export function resolveWebhookTopic(
+  resolve: WebhookSpec['resolve'],
+  headers: Record<string, string>,
+  payload: unknown
+): string {
+  const topicRaw = readField(resolve.topic, headers, payload)
+  return topicRaw == null ? '' : String(topicRaw)
+}
+
+/**
  * Map one verified delivery onto sink actions from a spec's `resolve` block. Pure.
  * Bails (`[]`) when the stream key or external id is missing — the union of every
  * driver's guard. Exported for direct unit testing.
@@ -113,8 +128,7 @@ export function resolveWebhookActions(
   headers: Record<string, string>,
   payload: unknown
 ): WebhookAction[] {
-  const topicRaw = readField(resolve.topic, headers, payload)
-  const topic = topicRaw == null ? '' : String(topicRaw)
+  const topic = resolveWebhookTopic(resolve, headers, payload)
 
   // Stream key: primary source, then optional fallback, then optional literal default.
   let streamKeyRaw = readSource(resolve.streamKey, headers, payload, topic)
@@ -178,6 +192,10 @@ export function compileWebhookSpec(spec: WebhookSpec, hooks: WebhookSpecHooks): 
 
     resolveWebhook({ headers, payload }) {
       return resolveWebhookActions(spec.resolve, headers, payload)
+    },
+
+    resolveTopic({ headers, payload }) {
+      return resolveWebhookTopic(spec.resolve, headers, payload)
     },
 
     register: hooks.register,

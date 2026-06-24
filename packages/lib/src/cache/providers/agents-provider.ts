@@ -84,6 +84,7 @@ export const agentsProvider: CacheProvider<CachedAgent[]> = {
           triggerAppTriggerId: schema.AgentTrigger.triggerAppTriggerId,
           triggerInstallationId: schema.AgentTrigger.triggerInstallationId,
           triggerConnectionId: schema.AgentTrigger.triggerConnectionId,
+          triggerTopic: schema.AgentTrigger.triggerTopic,
           config: schema.AgentTrigger.config,
           instructions: schema.AgentTrigger.instructions,
         })
@@ -141,6 +142,7 @@ export const agentsProvider: CacheProvider<CachedAgent[]> = {
         triggerAppTriggerId: t.triggerAppTriggerId,
         triggerInstallationId: t.triggerInstallationId,
         triggerConnectionId: t.triggerConnectionId,
+        triggerTopic: t.triggerTopic,
         config: (t.config ?? null) as Record<string, unknown> | null,
         instructions: (t.instructions ?? null) as Record<string, unknown> | null,
       })

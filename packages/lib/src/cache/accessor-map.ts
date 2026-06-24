@@ -83,6 +83,8 @@ export interface WorkflowAppsAccessor extends ArrayAccessor<CachedWorkflowApp> {
     installationId: string
     connectionId?: string
   }): Promise<CachedWorkflowApp[]>
+  /** Find enabled apps matching a connection webhook trigger `(connectionId, topic)` */
+  byConnectionWebhook(params: { connectionId: string; topic: string }): Promise<CachedWorkflowApp[]>
   /** List workflow apps with filtering, sorting, and pagination for the list view */
   list(filters?: {
     search?: string

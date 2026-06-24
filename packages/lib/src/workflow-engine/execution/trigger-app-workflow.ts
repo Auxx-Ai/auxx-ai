@@ -19,13 +19,26 @@ export async function executeAppTriggeredWorkflow(params: {
   workflowAppId: string
   organizationId: string
   triggerData: Record<string, unknown>
-  appId: string
-  triggerId: string
-  installationId: string
+  /** App-trigger provenance (omitted for a connection webhook-trigger). */
+  appId?: string
+  triggerId?: string
+  installationId?: string
+  /** Connection webhook-trigger provenance (omitted for an app-trigger). */
+  connectionId?: string
+  topic?: string
   eventId: string
 }) {
-  const { workflowAppId, organizationId, triggerData, appId, triggerId, installationId, eventId } =
-    params
+  const {
+    workflowAppId,
+    organizationId,
+    triggerData,
+    appId,
+    triggerId,
+    installationId,
+    connectionId,
+    topic,
+    eventId,
+  } = params
 
   logger.info('Executing app-triggered workflow', {
     workflowAppId,
@@ -33,6 +46,8 @@ export async function executeAppTriggeredWorkflow(params: {
     appId,
     triggerId,
     installationId,
+    connectionId,
+    topic,
     eventId,
   })
 
@@ -60,11 +75,12 @@ export async function executeAppTriggeredWorkflow(params: {
 
   if (
     publishedWorkflow.triggerType !== 'app-trigger' &&
-    publishedWorkflow.triggerType !== 'app-polling-trigger'
+    publishedWorkflow.triggerType !== 'app-polling-trigger' &&
+    publishedWorkflow.triggerType !== 'webhook-trigger'
   ) {
     return err({
       code: 'WORKFLOW_TYPE_MISMATCH' as const,
-      message: `Workflow type mismatch. Expected 'app-trigger' or 'app-polling-trigger', got '${publishedWorkflow.triggerType}'`,
+      message: `Workflow type mismatch. Expected 'app-trigger', 'app-polling-trigger', or 'webhook-trigger', got '${publishedWorkflow.triggerType}'`,
       expected: 'app-trigger',
       actual: publishedWorkflow.triggerType,
     })
@@ -81,10 +97,12 @@ export async function executeAppTriggeredWorkflow(params: {
         ...triggerData,
         // Platform metadata nested under _meta to avoid polluting node outputs
         _meta: {
-          trigger_type: 'app-trigger',
+          trigger_type: publishedWorkflow.triggerType,
           app_id: appId,
           trigger_id: triggerId,
           installation_id: installationId,
+          connection_id: connectionId,
+          topic,
           event_id: eventId,
           triggered_at: new Date().toISOString(),
         },

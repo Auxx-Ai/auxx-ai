@@ -81,6 +81,15 @@ export const AppWebhookHandler = pgTable(
     uniqueIndex('AppWebhookHandler_connector_unique_idx')
       .using('btree', table.dataConnectorId.asc().nullsLast(), table.handlerId.asc().nullsLast())
       .where(sql`${table.dataConnectorId} IS NOT NULL`),
+    // One handler per (connection, handlerId) for the unified connection-scoped
+    // webhook ingress — the rows that have neither an installation nor a connector
+    // (webhook-triggers landing on a connection). Partial so it doesn't collide
+    // with the app/connector rows above (NULLs are distinct in a plain unique idx).
+    uniqueIndex('AppWebhookHandler_connection_unique_idx')
+      .using('btree', table.connectionId.asc().nullsLast(), table.handlerId.asc().nullsLast())
+      .where(
+        sql`${table.appInstallationId} IS NULL AND ${table.dataConnectorId} IS NULL AND ${table.connectionId} IS NOT NULL`
+      ),
     index('AppWebhookHandler_appInstallationId_idx').using(
       'btree',
       table.appInstallationId.asc().nullsLast()
