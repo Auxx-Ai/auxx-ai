@@ -347,9 +347,21 @@ export async function finalizeConnector(
       })
       .where(eq(schema.DataConnector.id, dataConnectorId))
   } else {
+    // A crashed/swept/failed run never ran the success bookkeeping, so the connector
+    // would report `itemCount: 0` / "never synced" even when records DID land (a stale
+    // sweep after a partial backfill). Refresh the count from the bound items so the
+    // connector tells the truth, and stamp `lastSyncedAt` when anything was ingested
+    // (kept null on a zero-ingest failure → still shows "never synced").
+    const itemCount = await countConnectorItems(db, dataConnectorId)
     await db
       .update(schema.DataConnector)
-      .set({ status: 'error', error: input.error ?? 'Unknown error', updatedAt: new Date() })
+      .set({
+        status: 'error',
+        error: input.error ?? 'Unknown error',
+        itemCount,
+        ...(itemCount > 0 ? { lastSyncedAt: new Date() } : {}),
+        updatedAt: new Date(),
+      })
       .where(eq(schema.DataConnector.id, dataConnectorId))
   }
 }
@@ -391,9 +403,18 @@ export async function parkBackfillAtCeiling(
       progress: sql`jsonb_set(coalesce(${T.progress}, '{}'::jsonb), '{paused}', jsonb_build_object('reason', 'ingest-ceiling', 'atRecords', ${input.fetched}::int, 'ceiling', ${input.ceiling}::int), true)`,
     })
     .where(eq(T.id, input.runId))
+  // A parked backfill has ingested records (it hit the ceiling), so reflect the real
+  // count + stamp `lastSyncedAt` — don't leave the connector showing "0 / never synced".
+  const itemCount = await countConnectorItems(db, input.dataConnectorId)
   await db
     .update(schema.DataConnector)
-    .set({ status: 'paused', error: message, updatedAt: new Date() })
+    .set({
+      status: 'paused',
+      error: message,
+      itemCount,
+      ...(itemCount > 0 ? { lastSyncedAt: new Date() } : {}),
+      updatedAt: new Date(),
+    })
     .where(eq(schema.DataConnector.id, input.dataConnectorId))
 }
 
