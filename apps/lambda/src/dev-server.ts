@@ -147,9 +147,11 @@ async function handleToolStreamingRequest(req: Request): Promise<Response> {
     return jsonError(400, 'WRONG_EVENT_TYPE', `/tool/stream only accepts 'tool' events`)
   }
 
-  // Mirror the caller allowlist in index.ts — both Kopilot (agent) and the
-  // quick-action service (action) may invoke 'tool' events.
-  if (authCaller && authCaller !== 'kopilot' && authCaller !== 'quick-action') {
+  // Mirror the caller allowlist in index.ts — Kopilot (agent), the quick-action
+  // service (action), and the shared tool-backed option resolver may invoke
+  // 'tool' events.
+  const TOOL_CALLERS = new Set(['kopilot', 'quick-action', 'app-tool-options'])
+  if (authCaller && !TOOL_CALLERS.has(authCaller)) {
     return jsonError(403, 'CALLER_TYPE_DENIED', `Caller "${authCaller}" cannot invoke 'tool'`)
   }
 

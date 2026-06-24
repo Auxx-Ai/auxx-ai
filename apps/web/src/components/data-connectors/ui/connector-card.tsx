@@ -14,7 +14,16 @@ import {
   DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
 import { LastUpdated } from '@auxx/ui/components/last-updated'
-import { Cable, FileText, MoreVertical, Pause, Play, RefreshCw, Trash } from 'lucide-react'
+import {
+  Cable,
+  FileText,
+  FlaskConical,
+  MoreVertical,
+  Pause,
+  Play,
+  RefreshCw,
+  Trash,
+} from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { AppIcon } from '~/components/apps/ui/app-icon'
 import { Tooltip } from '~/components/global/tooltip'
@@ -81,7 +90,10 @@ export function ConnectorCard({ connector, streamCount }: ConnectorCardProps) {
   const isSyncing = status === 'syncing' || status === 'provisioning'
   const isPaused = status === 'paused'
 
-  const { syncNow, pause, resume, remove } = useConnectorMutations()
+  const { syncNow, sampleSync, pause, resume, remove } = useConnectorMutations()
+
+  /** Default per-stream sample size for the menu "Sample sync" shortcut (trial-sync §5.3). */
+  const DEFAULT_SAMPLE_SIZE = 100
 
   const href = `/app/connectors/${connector.id}`
   const open = () => router.push(href)
@@ -178,6 +190,12 @@ export function ConnectorCard({ connector, streamCount }: ConnectorCardProps) {
               <DropdownMenuItem onClick={wrap(() => syncNow(connector.id))} disabled={isSyncing}>
                 <RefreshCw />
                 Sync now
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={wrap(() => sampleSync(connector.id, DEFAULT_SAMPLE_SIZE))}
+                disabled={isSyncing}>
+                <FlaskConical />
+                Sample sync
               </DropdownMenuItem>
               {isPaused ? (
                 <DropdownMenuItem onClick={wrap(() => resume(connector.id))}>

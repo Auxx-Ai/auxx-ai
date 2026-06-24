@@ -11,6 +11,7 @@ import {
   CommandList,
   CommandSeparator,
 } from '@auxx/ui/components/command'
+import { cn } from '@auxx/ui/lib/utils'
 import { Check, Plus, TriangleAlert } from 'lucide-react'
 import { useMemo } from 'react'
 import { useAppsContext } from '~/components/apps/providers/apps-context'
@@ -210,7 +211,7 @@ function ConnectionItem({
       value={title}
       keywords={connection.type ? [connection.type] : undefined}
       onSelect={onSelect}
-      className='cursor-pointer h-7.5'>
+      className='group cursor-pointer h-7.5'>
       {/* `status` ('connected' | 'expired') is a subset of AppConnectionStatus. */}
       <AppWithStatusIcon iconId={iconId} size='sm' status={connection.status} />
       <span className='truncate'>{title}</span>
@@ -229,11 +230,15 @@ function ConnectionItem({
             type='button'
             variant='ghost'
             size='sm'
-            className={
-              isReconnect && expired
-                ? 'h-6 px-2 text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-400/10 hover:text-amber-700'
-                : 'h-6 px-2'
-            }
+            className={cn(
+              // Reveal on hover or keyboard-highlight; expired rows stay visible so the
+              // Reconnect action is always reachable next to its amber warning.
+              'h-6 px-2 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 group-data-[selected=true]:opacity-100',
+              expired && 'opacity-100',
+              isReconnect &&
+                expired &&
+                'text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-400/10 hover:text-amber-700'
+            )}
             onClick={(e) => {
               e.stopPropagation()
               onAction?.(connection)

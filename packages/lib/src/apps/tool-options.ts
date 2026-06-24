@@ -61,9 +61,13 @@ export async function invokeAppToolForOptions(
   input: InvokeToolForOptionsInput
 ): Promise<ResolveToolOptionsResult> {
   const { hint } = input
-  const disabled = (): ResolveToolOptionsResult => ({
+  // No options resolved. The success-but-empty case shows the author's
+  // `emptyHint`; a failure passes its own message so the field surfaces *why* it
+  // couldn't load (a denied/erroring resolver) instead of looking like "no
+  // results". The reason is shown verbatim in the picker placeholder.
+  const disabled = (reason?: string): ResolveToolOptionsResult => ({
     options: [],
-    disabledHint: hint.emptyHint ?? null,
+    disabledHint: reason ?? hint.emptyHint ?? null,
   })
 
   const { getInstallationDeployment } = await import('./installations/get-installation-deployment')
@@ -79,10 +83,10 @@ export async function invokeAppToolForOptions(
       installationId: input.installationId,
       error: installationResult.error.message,
     })
-    return disabled()
+    return disabled("Couldn't load options — the app isn't deployed")
   }
   const { serverBundleSha, installation: inst } = installationResult.value
-  if (!serverBundleSha) return disabled()
+  if (!serverBundleSha) return disabled("Couldn't load options — the app isn't deployed")
 
   const baseContext = prepareLambdaContext({
     appId: input.appId,
@@ -111,13 +115,24 @@ export async function invokeAppToolForOptions(
   if (lambdaResult.isErr()) {
     logger.warn('Options resolver lambda invocation failed', {
       optionsFrom: hint.optionsFrom,
+      code: lambdaResult.error.code,
       error: lambdaResult.error.message,
     })
-    return disabled()
+    // A missing/expired connection is the one actionable case for the user.
+    return disabled(
+      lambdaResult.error.code === 'CONNECTION_REQUIRED'
+        ? 'Reconnect the connection to load options'
+        : "Couldn't load options — the resolver failed"
+    )
   }
   const result = lambdaResult.value
   if (result.metadata?.runtime_error || result.metadata?.validation_error) {
-    return disabled()
+    logger.warn('Options resolver tool errored', {
+      optionsFrom: hint.optionsFrom,
+      runtimeError: result.metadata?.runtime_error?.message,
+      validationError: result.metadata?.validation_error?.message,
+    })
+    return disabled("Couldn't load options — the resolver errored")
   }
   const data = result.execution_result?.data ?? result.execution_result ?? {}
   return mapToolOutputToOptions(data, hint, input.query)

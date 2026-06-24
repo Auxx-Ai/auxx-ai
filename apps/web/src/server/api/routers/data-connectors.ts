@@ -298,6 +298,13 @@ export const dataConnectorRouter = createTRPCRouter({
             rateLimitedUntil:
               (latest.progress as { rateLimited?: { until?: string } } | null)?.rateLimited
                 ?.until ?? null,
+            // Why the run parked, when it parked (trial-sync / ingest-ceiling). Drives the
+            // sample-review banner + the "Sample ready" status; null for a normal run.
+            pausedReason:
+              (latest.progress as { paused?: { reason?: string } } | null)?.paused?.reason ?? null,
+            // Trial-sync §5.2 — set ⇒ a sample run, so the live card reads
+            // "Sampling — N of {limit}" instead of "Importing".
+            sampleLimit: latest.sampleLimit,
             primaryStreamLabel: top?.streamKey || null,
           }
         : null
@@ -447,19 +454,30 @@ export const dataConnectorRouter = createTRPCRouter({
       return deleteConnector(ctx.db, ctx.session.organizationId, input.id, input.syncedData)
     }),
 
-  syncNow: adminProcedure.input(z.object({ id: z.string() })).mutation(async ({ ctx, input }) => {
-    // Authz: ensures the connector belongs to this org before enqueuing.
-    const result = await getConnector(ctx.db, ctx.session.organizationId, input.id)
-    if (result.isErr()) {
-      throw new TRPCError({ code: 'NOT_FOUND', message: result.error.message })
-    }
-    await enqueueConnectorSync({
-      connectorId: input.id,
-      organizationId: ctx.session.organizationId,
-      trigger: 'manual',
-    })
-    return { success: true }
-  }),
+  syncNow: adminProcedure
+    .input(
+      z.object({
+        id: z.string(),
+        // Trial-sync §4.1 — a SAMPLE run caps each stream's backfill at `sampleLimit`
+        // records, then parks `partial`/`paused` for review. Omitted ⇒ a full sync
+        // (and the "Sync everything" resume of a parked sample passes nothing here).
+        sampleLimit: z.number().int().positive().max(5000).optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      // Authz: ensures the connector belongs to this org before enqueuing.
+      const result = await getConnector(ctx.db, ctx.session.organizationId, input.id)
+      if (result.isErr()) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: result.error.message })
+      }
+      await enqueueConnectorSync({
+        connectorId: input.id,
+        organizationId: ctx.session.organizationId,
+        trigger: 'manual',
+        sampleLimit: input.sampleLimit,
+      })
+      return { success: true }
+    }),
 
   /**
    * Finish first-run setup WITHOUT syncing — flip `pending → ready` (optional-first-sync

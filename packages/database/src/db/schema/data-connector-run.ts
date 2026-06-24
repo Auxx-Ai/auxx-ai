@@ -30,6 +30,12 @@ export const DataConnectorRun = pgTable(
     // Engine-managed lifecycle phase of the run (sync-core). Null for legacy
     // single-shot full-sync runs that predate the backfill/steady split.
     phase: text(), // 'backfill' | 'steady'
+    // Trial-sync per-stream record cap (trial-sync-plan §4.1). Set ⇒ this is a SAMPLE
+    // run: each stream's backfill stops once it has seen this many records, then the
+    // run parks `partial` (`progress.paused.reason = 'sample'`) for review. Null ⇒ a
+    // normal run (runs to the real ingest ceiling). Per-run only — never persisted on
+    // the connector, so the "Sync everything" resume carries no cap and runs to completion.
+    sampleLimit: integer(),
     // counts (mirror the importer's execution statistics shape)
     fetched: integer().default(0).notNull(),
     created: integer().default(0).notNull(),

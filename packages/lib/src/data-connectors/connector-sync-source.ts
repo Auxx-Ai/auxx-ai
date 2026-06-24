@@ -36,6 +36,7 @@ import {
   decrementConnectorBackfillLatch,
   finalizeConnector,
   newRunCounters,
+  parkConnectorSampleIfLastStream,
   type RunCounters,
 } from './service'
 import { sinkSourceRecord } from './sink-source-record'
@@ -105,6 +106,15 @@ export interface ConnectorSyncSourceDeps {
    * orphans even for incremental streams (a full id-crawl: absence IS deletion).
    */
   sweep?: boolean
+  /**
+   * Per-stream sample cap (trial-sync §4.2). Set ⇒ this is a SAMPLE run: when a stream
+   * exhausts its backfill BEFORE hitting the cap (source smaller than the sample), the
+   * runner's natural-completion path fires `finalizeBackfill` here — which must park the
+   * run for review (gated on the last stream) rather than finalize the connector live.
+   * Streams that hit the cap park via the orchestrator instead; both funnel through
+   * `parkConnectorSampleIfLastStream`.
+   */
+  sampleLimit?: number | null
   /** Injectable clock for the slice budget (tests). Defaults to `Date.now`. */
   now?: () => number
 }
@@ -231,6 +241,19 @@ class ConnectorStreamSyncSource implements ConnectorSyncSource {
    * last stream knows the whole multi-stream chain is done.
    */
   async finalizeBackfill(): Promise<void> {
+    // Sample run: a stream that exhausted before its cap still parks for review (the
+    // sample IS everything for this stream, but the run stays paused so the user
+    // confirms before any capped sibling's remainder is pulled). No reconcile — a
+    // sample is partial by construction; resolution runs on the full-sync resume.
+    if (this.deps.sampleLimit != null) {
+      await parkConnectorSampleIfLastStream(this.deps.db, {
+        runId: this.deps.run.id,
+        dataConnectorId: this.deps.connector.id,
+        sampleLimit: this.deps.sampleLimit,
+        startedAt: this.deps.run.startedAt,
+      })
+      return
+    }
     await this.finalizeConnectorLevel({ finalizeRun: true, phase: 'backfill' })
   }
 

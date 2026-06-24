@@ -15,7 +15,7 @@ import {
   MainPageContent,
   MainPageHeader,
 } from '@auxx/ui/components/main-page'
-import { ChevronDown, Pause, Play, Plug, RefreshCw, Trash } from 'lucide-react'
+import { ChevronDown, FlaskConical, Pause, Play, Plug, RefreshCw, Trash } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useQueryState } from 'nuqs'
 import { AppIcon } from '~/components/apps/ui/app-icon'
@@ -30,6 +30,7 @@ import { ConnectorResyncBanner } from './connector-resync-banner'
 import { ConnectorRunsPanel } from './connector-runs-panel'
 import { asConnectorStatus, asRunStatus } from './connector-status'
 import { ConnectorStatusLine } from './connector-status-line'
+import { SampleReviewBanner } from './sample-review-banner'
 
 type Connector = NonNullable<ReturnType<typeof api.dataConnector.getById.useQuery>['data']>
 
@@ -91,6 +92,7 @@ export function ConnectorDetailView({ connector }: ConnectorDetailViewProps) {
 
   const {
     syncNow,
+    sampleSync,
     pause,
     resume,
     remove,
@@ -142,6 +144,24 @@ export function ConnectorDetailView({ connector }: ConnectorDetailViewProps) {
               <RefreshCw />
               Sync now
             </Button>
+            {/* Sample sync (trial-sync §5.3): a bounded first look, available after setup
+                too — pick a per-stream size; the run parks for review when it's done. */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant='outline' size='sm' disabled={isSyncing}>
+                  <FlaskConical />
+                  Sample
+                  <ChevronDown />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align='end'>
+                {[50, 100, 500].map((n) => (
+                  <DropdownMenuItem key={n} onClick={() => sampleSync(connector.id, n)}>
+                    Sample {n} per stream
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
             {resolved.state === 'action-needed' && (
               <Button variant='outline' size='sm' onClick={() => void setTab('connection')}>
                 <Plug />
@@ -207,6 +227,16 @@ export function ConnectorDetailView({ connector }: ConnectorDetailViewProps) {
           />
         </MainPageBreadcrumb>
       </MainPageHeader>
+
+      {/* Parked-sample review (trial-sync §5.2): after a sample run pauses the
+          connector, offer to look at the records, then sync everything (resume). */}
+      <SampleReviewBanner
+        show={liveStatus === 'paused' && latestRun?.pausedReason === 'sample'}
+        recordCount={live?.itemCount ?? connector.itemCount}
+        onSyncEverything={() => syncNow(connector.id)}
+        onEditMappings={() => void setTab('streams')}
+        isSyncing={isSyncPending}
+      />
 
       {/* Pinned between header and content by the flex layout — surfaces a pending
           mapping-edit re-sync; the actual safety already ran at save time. */}
