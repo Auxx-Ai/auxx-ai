@@ -77,3 +77,44 @@ export function resolveForWrite(
   }
   return { secrets, plain }
 }
+
+/** A connection definition's variable, reduced to what the split/projection core needs. */
+export type ConnectionVariableFlag = { key: string; secret?: boolean }
+
+/**
+ * The single secret-split primitive for every credential-saving surface (connections, AI,
+ * apps, MCP): split a submitted form bag into the secret-flagged and plain values to persist,
+ * keyed by a connection definition's variable flags. A thin convenience over `resolveForWrite`
+ * that takes `ConnectionVariable[]` directly so callers don't hand-build `MaskField[]`.
+ *
+ * Masked echoes are dropped (the store merge keeps the existing secret) and only declared
+ * variables are emitted, so undeclared/system keys are structurally excluded.
+ */
+export function splitConnectionValues(
+  variables: ConnectionVariableFlag[],
+  values: Record<string, string>
+): { secretFields: Record<string, string>; plainVariables: Record<string, string> } {
+  const fields: MaskField[] = variables.map((v) => ({ key: v.key, secret: !!v.secret }))
+  const { secrets, plain } = resolveForWrite(values, fields)
+  return { secretFields: secrets, plainVariables: plain }
+}
+
+/**
+ * The single masked read-projection for every credential edit form (connections, AI): project a
+ * credential's stored bag into the shape the edit form seeds with — secret fields become the
+ * `HIDDEN_VALUE` "is set" sentinel (the real secret never leaves the server), plain fields come
+ * back real. `stored` carries the plain and secret sources separately (e.g. plain vars from
+ * `metadata.connectionVariables`, secrets from the revealed `secrets.fields` bag); pass the same
+ * flat bag for both when callers already hold a merged record. Only declared variables are emitted.
+ */
+export function projectCredentialForEdit(
+  variables: ConnectionVariableFlag[],
+  stored: { plain: Record<string, unknown>; secrets: Record<string, unknown> }
+): Record<string, string> {
+  const fields: MaskField[] = variables.map((v) => ({ key: v.key, secret: !!v.secret }))
+  const merged: Record<string, unknown> = {}
+  for (const field of fields) {
+    merged[field.key] = field.secret ? stored.secrets[field.key] : stored.plain[field.key]
+  }
+  return maskForEdit(fields, merged)
+}

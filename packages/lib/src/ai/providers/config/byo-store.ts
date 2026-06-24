@@ -1,6 +1,6 @@
 // packages/lib/src/ai/providers/config/byo-store.ts
 
-import { isMasked } from '@auxx/credentials/crypto'
+import { splitConnectionValues } from '@auxx/credentials/crypto'
 import {
   deleteCredential,
   findCredential,
@@ -42,29 +42,24 @@ export async function resolveConnectionDefinition(
 }
 
 /**
- * Split canonical AI credentials into secret-flagged vs plain variables (per the
- * blueprint's connectionVariables), dropping empty and masked echoes so an unchanged
- * secret never overwrites the stored value.
+ * Split canonical AI credentials into secret-flagged vs plain variables. A thin adapter over the
+ * shared `splitConnectionValues` primitive that resolves the provider's blueprint
+ * connectionVariables first (the AI-specific part) and normalizes/drops empty values before the
+ * shared def-flag split — the secret/plain decision and masked-echo dropping are single-sourced.
  */
 export function splitAiCredentials(
   providerKey: string,
   credentials: Record<string, any>
 ): { secretFields: Record<string, string>; plainVariables: Record<string, string> } {
   const def = getProviderByKey(providerKey)
-  const secretKeys = new Set(
-    (def?.connectionVariables ?? []).filter((v) => v.secret).map((v) => v.key)
-  )
-  const secretFields: Record<string, string> = {}
-  const plainVariables: Record<string, string> = {}
+  // Normalize to strings and drop empties so a blank field never overwrites a stored value with
+  // '' (AI-specific; the connections/apps surfaces drop empties at their own call sites).
+  const values: Record<string, string> = {}
   for (const [key, value] of Object.entries(credentials)) {
     if (value === undefined || value === null || value === '') continue
-    const str = String(value)
-    // Never persist a masked echo (HIDDEN_VALUE or the legacy '[**HIDDEN**]' sentinel).
-    if (isMasked(str) || str === '[**HIDDEN**]') continue
-    if (secretKeys.has(key)) secretFields[key] = str
-    else plainVariables[key] = str
+    values[key] = String(value)
   }
-  return { secretFields, plainVariables }
+  return splitConnectionValues(def?.connectionVariables ?? [], values)
 }
 
 /** Reveal a credential's canonical field bag (plain connectionVariables + secret fields). */

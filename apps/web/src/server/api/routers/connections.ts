@@ -1,6 +1,6 @@
 // apps/web/src/server/api/routers/connections.ts
 
-import { isMasked, type MaskField, maskForEdit, resolveForWrite } from '@auxx/credentials/crypto'
+import { isMasked, projectCredentialForEdit, splitConnectionValues } from '@auxx/credentials/crypto'
 import {
   deleteCredential,
   listCredentials,
@@ -317,12 +317,8 @@ export const connectionsRouter = createTRPCRouter({
         const metadata = (record.metadata ?? {}) as Record<string, unknown>
         const plainVars = (metadata.connectionVariables ?? {}) as Record<string, unknown>
         const secretFields = (secrets.fields ?? {}) as Record<string, unknown>
-        const fields: MaskField[] = vars.map((v) => ({ key: v.key, secret: !!v.secret }))
-        const stored: Record<string, unknown> = {}
-        for (const field of fields) {
-          stored[field.key] = field.secret ? secretFields[field.key] : plainVars[field.key]
-        }
-        return { values: maskForEdit(fields, stored), tokenSet: false }
+        const values = projectCredentialForEdit(vars, { plain: plainVars, secrets: secretFields })
+        return { values, tokenSet: false }
       }
 
       // Bare API-key (or definition-less): report only whether some secret is stored — a boolean,
@@ -374,13 +370,9 @@ export const connectionsRouter = createTRPCRouter({
       // encrypt under `secrets.fields`, plain ones ride in plaintext metadata. `resolveForWrite`
       // drops any masked echo (an unchanged secret submitted as the `HIDDEN_VALUE` sentinel) so the
       // edit/reconnect merge keeps the stored value instead of overwriting it.
-      const fields: MaskField[] = (def.connectionVariables ?? []).map((v) => ({
-        key: v.key,
-        secret: !!v.secret,
-      }))
-      const { secrets: secretFields, plain: plainVariables } = resolveForWrite(
-        input.values ?? {},
-        fields
+      const { secretFields, plainVariables } = splitConnectionValues(
+        def.connectionVariables ?? [],
+        input.values ?? {}
       )
       // Bare API-key definitions (no connection variables): drop an unchanged sentinel the same way.
       const secret =

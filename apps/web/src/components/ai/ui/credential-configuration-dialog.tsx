@@ -1,7 +1,6 @@
 // apps/web/src/components/ai/ui/credential-configuration-dialog.tsx
 'use client'
 
-import { HIDDEN_VALUE } from '@auxx/credentials/crypto/client'
 import { ModelType } from '@auxx/lib/ai/providers/types'
 import { Button } from '@auxx/ui/components/button'
 import {
@@ -22,11 +21,8 @@ import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 import { PlusIcon, Trash2 } from 'lucide-react'
 import type React from 'react'
 import { type FormEvent, useEffect, useMemo, useState } from 'react'
+import { useCredentialForm } from '~/components/connections/hooks/use-credential-form'
 import { ConnectionVariableFields } from '~/components/connections/ui/connection-variable-fields'
-import {
-  seedValue,
-  validateConnectionVariables,
-} from '~/components/connections/ui/connection-variable-validation'
 import { AiProviderPicker } from '~/components/pickers/ai-provider-picker'
 import { VarEditorField } from '~/components/workflow/ui/input-editor/var-editor'
 import { useConfirm } from '~/hooks/use-confirm'
@@ -91,8 +87,6 @@ export function CredentialConfigurationDialog({
   providers,
 }: CredentialConfigurationDialogProps) {
   const [selectedProvider, setSelectedProvider] = useState<string | null>(provider ?? null)
-  const [values, setValues] = useState<Record<string, string>>({})
-  const [errors, setErrors] = useState<Record<string, string>>({})
   const [modelIdValue, setModelIdValue] = useState(modelId ?? '')
   const [modelTypeValue, setModelTypeValue] = useState<ModelType>(ModelType.LLM)
   const [confirmDelete, ConfirmDialog] = useConfirm()
@@ -137,14 +131,15 @@ export function CredentialConfigurationDialog({
     )
   }, [providerCapabilities])
 
-  // Secret keys that arrived already set (seeded as the sentinel) get a masked Replace/Cancel
-  // affordance instead of an editable box.
-  const savedSecrets = useMemo(() => {
-    const keys = Object.entries(existingCredentials ?? {})
-      .filter(([, v]) => v === HIDDEN_VALUE)
-      .map(([k]) => k)
-    return new Set(keys)
-  }, [existingCredentials])
+  // Shared form lifecycle — field values/errors, seed-on-open, set-secret derivation, validation.
+  // `visibleFields` is already scope-filtered (provider vs model), so the hook stays AI-agnostic.
+  const needsLoad = operation === 'edit' && !!selectedProvider
+  const { values, setValue, errors, setErrors, savedSecrets, validate } = useCredentialForm({
+    open,
+    variables: visibleFields,
+    existingValues: existingCredentials,
+    loading: needsLoad && !existingCredentials,
+  })
 
   // Keep selectedProvider in sync with the prop when it changes.
   // biome-ignore lint/correctness/useExhaustiveDependencies: selectedProvider excluded to avoid a loop.
@@ -152,20 +147,14 @@ export function CredentialConfigurationDialog({
     if (provider && provider !== selectedProvider) setSelectedProvider(provider)
   }, [provider])
 
-  // Seed the form on open (and, for an edit, once the masked credentials load). Stored values win
-  // over declared defaults; secrets seed as the sentinel so an untouched key round-trips intact.
-  const needsLoad = operation === 'edit' && !!selectedProvider
-  // biome-ignore lint/correctness/useExhaustiveDependencies: seeds on open / provider / load.
+  // The custom-model id/type chrome is AI-only, so it seeds alongside the shared values effect on
+  // open / load.
   useEffect(() => {
-    if (!open || !providerCapabilities) return
+    if (!open) return
     if (needsLoad && !existingCredentials) return
-    const seeded: Record<string, string> = {}
-    for (const v of visibleFields) seeded[v.key] = seedValue(v, existingCredentials)
-    setValues(seeded)
     setModelIdValue(modelId ?? '')
     setModelTypeValue(availableModelTypes[0]?.value ?? ModelType.LLM)
-    setErrors({})
-  }, [open, providerCapabilities, visibleFields, needsLoad, existingCredentials, modelId])
+  }, [open, needsLoad, existingCredentials, modelId, availableModelTypes])
 
   const saveProviderConfiguration = api.aiIntegration.saveProviderConfiguration.useMutation({
     onSuccess: async (result) => {
@@ -241,13 +230,13 @@ export function CredentialConfigurationDialog({
     e.preventDefault()
     if (!selectedProvider || !providerCapabilities) return
 
-    const next = validateConnectionVariables({ variables: visibleFields, values })
+    const next = validate()
     if (mode === 'custom-model') {
       if (!modelIdValue.trim()) next.__modelId = 'Model ID is required'
       else if (!MODEL_ID_PATTERN.test(modelIdValue))
         next.__modelId = 'Only letters, numbers, hyphens, and underscores allowed'
+      setErrors(next)
     }
-    setErrors(next)
     if (Object.keys(next).length > 0) return
 
     const credentials = collectCredentials()
@@ -391,9 +380,7 @@ export function CredentialConfigurationDialog({
                       <ConnectionVariableFields
                         variables={visibleFields}
                         values={values}
-                        onValueChange={(key, value) =>
-                          setValues((prev) => ({ ...prev, [key]: value }))
-                        }
+                        onValueChange={setValue}
                         errors={errors}
                         savedSecrets={savedSecrets}
                       />
