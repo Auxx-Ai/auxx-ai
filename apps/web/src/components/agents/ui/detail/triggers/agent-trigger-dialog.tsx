@@ -66,6 +66,10 @@ const KIND_COPY: Record<Kind, { label: string; description: string }> = {
     label: 'app',
     description: 'Fire this agent when an installed app emits a trigger event.',
   },
+  webhook: {
+    label: 'webhook',
+    description: 'Fire this agent when a connection receives a webhook on a topic.',
+  },
   mention: {
     label: 'mention',
     description: 'Fire this agent when it is mentioned in a comment.',
@@ -90,7 +94,7 @@ function readPromptContent(doc: TiptapDoc | null | undefined): JSONContent[] | n
 
 type Trigger = RouterOutputs['agentTrigger']['list'][number]
 
-type Kind = 'scheduled' | 'event' | 'app' | 'mention' | 'assignment' | 'dm'
+type Kind = 'scheduled' | 'event' | 'app' | 'webhook' | 'mention' | 'assignment' | 'dm'
 type CrudTriggerType = 'created' | 'updated' | 'deleted'
 
 const RESOURCE_OPERATIONS: Record<CrudTriggerType, { operation: CrudTriggerType; label: string }> =
@@ -121,6 +125,17 @@ interface AgentTriggerDialogProps {
     triggerLabel: string
     triggerDescription?: string
     inputsJsonSchema: Record<string, unknown>
+  }
+  /**
+   * Pre-selected connection + topic when opening for a new `webhook` kind.
+   * Required to render the header chip before the row exists.
+   */
+  webhookSelection?: {
+    connectionId: string
+    connectionName: string
+    connectionType: string
+    icon: string | null
+    topic: string
   }
   onSuccess?: () => void
 }
@@ -174,6 +189,7 @@ export function AgentTriggerDialog({
   kind,
   trigger,
   appSelection,
+  webhookSelection,
   onSuccess,
 }: AgentTriggerDialogProps) {
   const isEditMode = !!trigger
@@ -182,6 +198,7 @@ export function AgentTriggerDialog({
   const isBuiltinKind =
     effectiveKind === 'mention' || effectiveKind === 'assignment' || effectiveKind === 'dm'
   const isAppKind = effectiveKind === 'app'
+  const isWebhookKind = effectiveKind === 'webhook'
 
   const { appInstallations, appConnections } = useAppsContext()
 
@@ -210,6 +227,26 @@ export function AgentTriggerDialog({
       inputsJsonSchema: (triggerProj?.inputsJsonSchema as Record<string, unknown>) ?? {},
     }
   }, [isAppKind, appSelection, trigger, appInstallations])
+
+  // For webhook-kind: resolve the connection name + icon. New rows carry it on
+  // `webhookSelection`; edit rows resolve `triggerConnectionId` against the
+  // spec-bearing connection list so we render the name rather than the raw id.
+  const webhookConnectionsQuery = api.connections.webhookConnections.useQuery(undefined, {
+    enabled: open && isWebhookKind,
+  })
+  const webhookContext = useMemo(() => {
+    if (!isWebhookKind) return null
+    if (webhookSelection) return webhookSelection
+    if (!trigger?.triggerConnectionId) return null
+    const match = webhookConnectionsQuery.data?.find((c) => c.id === trigger.triggerConnectionId)
+    return {
+      connectionId: trigger.triggerConnectionId,
+      connectionName: match?.name ?? trigger.triggerConnectionId,
+      connectionType: match?.type ?? '',
+      icon: match?.icon ?? null,
+      topic: trigger.triggerTopic ?? '',
+    }
+  }, [isWebhookKind, webhookSelection, trigger, webhookConnectionsQuery.data])
 
   const { resources } = useResources()
   const fallbackEntityId = resources[0]?.id ?? 'ticket'
@@ -331,6 +368,18 @@ export function AgentTriggerDialog({
         triggerInstallationId: appContext.installationId,
         triggerConnectionId: appState.connectionId ?? undefined,
         userInputs: appState.userInputs,
+      }
+    }
+
+    if (effectiveKind === 'webhook') {
+      if (!webhookContext || !webhookContext.connectionId || !webhookContext.topic) {
+        toastError({ title: 'Pick a connection and topic' })
+        return null
+      }
+      return {
+        kind: 'webhook' as const,
+        triggerConnectionId: webhookContext.connectionId,
+        triggerTopic: webhookContext.topic,
       }
     }
 
@@ -516,6 +565,25 @@ export function AgentTriggerDialog({
                   </Field>
                 )}
               </>
+            ) : effectiveKind === 'webhook' && webhookContext ? (
+              <Field orientation='vertical'>
+                <FieldLabel>Trigger</FieldLabel>
+                <div className='flex items-center gap-3 rounded-md border bg-muted/30 px-3 py-2'>
+                  <AppIcon
+                    iconId={webhookContext.icon ?? 'plug'}
+                    size='lg'
+                    className='border border-foreground/5'
+                  />
+                  <div className='flex min-w-0 flex-col'>
+                    <span className='truncate text-sm font-medium'>
+                      {webhookContext.connectionName} · {webhookContext.topic}
+                    </span>
+                    <span className='truncate text-xs text-muted-foreground'>
+                      Fires when this connection receives a {webhookContext.topic} webhook.
+                    </span>
+                  </div>
+                </div>
+              </Field>
             ) : null}
 
             <Field orientation='vertical'>

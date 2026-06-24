@@ -12,8 +12,17 @@ import {
 import { Label } from '@auxx/ui/components/label'
 import { RadioGroup, RadioGroupItem } from '@auxx/ui/components/radio-group'
 import { EmptySection, Section } from '@auxx/ui/components/section'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@auxx/ui/components/select'
 import { toastError } from '@auxx/ui/components/toast'
-import { ChevronDown, Clock } from 'lucide-react'
+import { ChevronDown, Clock, Webhook } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { ConnectionWebhookTestSection } from '~/components/connections/triggers/connection-webhook-test-section'
 import {
   type ScheduledState,
   ScheduleEditor,
@@ -29,6 +38,10 @@ type Connector = NonNullable<ReturnType<typeof api.dataConnector.getById.useQuer
 type SyncBehavior = 'manual' | 'scheduled' | 'webhook'
 type BackfillWindowSpan = 'all' | 'last_90_days' | 'last_12_months'
 
+// Mirrors MIN_CONNECTOR_INTERVAL_MINUTES in the data-connectors tRPC router.
+// Hardcoded here to keep this client component free of the server-only barrel.
+const MIN_CONNECTOR_INTERVAL_MINUTES = 15
+
 const WINDOW_OPTIONS: Array<{ value: BackfillWindowSpan; label: string }> = [
   { value: 'all', label: 'Import all history' },
   { value: 'last_12_months', label: 'Last 12 months' },
@@ -41,10 +54,12 @@ interface ScheduleSectionProps {
 
 /**
  * Schedule section — a header dropdown over the connector's single
- * `syncBehavior` (Manual · Scheduled), NOT a list of triggers (05 §5).
+ * `syncBehavior` (Manual · Scheduled · Webhook), NOT a list of triggers (05 §5).
  * Scheduled reveals the shared `ScheduleEditor` round-tripping `scheduleConfig`;
- * the floor is coarse (hours/days). Webhook is a later placeholder (omitted from
- * the picker until delivery is implemented).
+ * the minute floor is coarser than workflows ({@link MIN_CONNECTOR_INTERVAL_MINUTES}).
+ * Webhook is offered only when the connection's provider has a webhook spec; selecting
+ * it subscribes the connection to the provider's full topic set (the save path sends
+ * `syncBehavior: 'webhook'` + `scheduleConfig: null`, and `updateConnector` reconciles).
  */
 export function ScheduleSection({ connector }: ScheduleSectionProps) {
   const utils = api.useUtils()
@@ -53,6 +68,25 @@ export function ScheduleSection({ connector }: ScheduleSectionProps) {
     onSuccess: () => void utils.dataConnector.getById.invalidate({ id: connector.id }),
     onError: (e) => toastError({ title: 'Could not save schedule', description: e.message }),
   })
+
+  // Webhook mode is gated on the connection's provider having a webhook spec. `topics === null`
+  // ⇒ no spec ⇒ don't offer the option. A connector subscribes to the provider's FULL topic set
+  // (the sink drops actions for unmapped streams), so there's no per-topic config — the topic
+  // picker below only scopes the live delivery inspector.
+  const connectionId = connector.credentialId ?? null
+  const webhookTopics = api.connections.webhookTopics.useQuery(
+    { connectionId: connectionId ?? '' },
+    { enabled: !!connectionId }
+  )
+  const topics = webhookTopics.data?.topics ?? null
+  const webhookSupported = !!connectionId && Array.isArray(topics) && topics.length > 0
+
+  const [inspectorTopic, setInspectorTopic] = useState<string>()
+  useEffect(() => {
+    if (topics && topics.length > 0 && (!inspectorTopic || !topics.includes(inspectorTopic))) {
+      setInspectorTopic(topics[0])
+    }
+  }, [topics, inspectorTopic])
 
   // The window radio only makes sense when a stream declares which param carries the
   // backfill floor (templates do; bare generic-rest doesn't — Step 9 §1.2/§3.2). We
@@ -128,7 +162,11 @@ export function ScheduleSection({ connector }: ScheduleSectionProps) {
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant='ghost' size='xs'>
-              {behavior === 'scheduled' ? 'Scheduled' : 'Manual'}
+              {behavior === 'webhook'
+                ? 'Webhook'
+                : behavior === 'scheduled'
+                  ? 'Scheduled'
+                  : 'Manual'}
               <ChevronDown className='size-3' />
             </Button>
           </DropdownMenuTrigger>
@@ -142,6 +180,11 @@ export function ScheduleSection({ connector }: ScheduleSectionProps) {
               <DropdownMenuRadioItem value='scheduled' indicator='check'>
                 Scheduled
               </DropdownMenuRadioItem>
+              {webhookSupported && (
+                <DropdownMenuRadioItem value='webhook' indicator='check'>
+                  Webhook
+                </DropdownMenuRadioItem>
+              )}
             </DropdownMenuRadioGroup>
           </DropdownMenuContent>
         </DropdownMenu>
@@ -159,11 +202,50 @@ export function ScheduleSection({ connector }: ScheduleSectionProps) {
           <div className='flex flex-col gap-3'>
             <ScheduleEditor
               value={schedule}
+              minMinutes={MIN_CONNECTOR_INTERVAL_MINUTES}
               onChange={(next: ScheduledState) => draft.set({ ...draft.value, schedule: next })}
             />
             <p className='text-xs text-muted-foreground'>
-              Minimum cadence is 5 minutes — connectors don’t sync more often than that.
+              Minimum cadence is {MIN_CONNECTOR_INTERVAL_MINUTES} minutes — connectors don’t sync
+              more often than that.
             </p>
+          </div>
+        )}
+
+        {behavior === 'webhook' && (
+          <div className='flex flex-col gap-3'>
+            <EmptySection
+              icon={<Webhook />}
+              title='Webhook sync'
+              description='Records update automatically as the provider sends webhook deliveries. Run the first full import with “Sync now”.'
+            />
+
+            {topics && topics.length > 0 && (
+              <div className='flex flex-col gap-1 text-xs text-muted-foreground'>
+                <span className='font-medium text-foreground'>Subscribed events</span>
+                {topics.map((t) => (
+                  <span key={t}>{t}</span>
+                ))}
+              </div>
+            )}
+
+            {connectionId && topics && topics.length > 0 && inspectorTopic && (
+              <div className='flex flex-col gap-2 border-t pt-4'>
+                <Select value={inspectorTopic} onValueChange={setInspectorTopic}>
+                  <SelectTrigger size='sm' className='w-full'>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {topics.map((t) => (
+                      <SelectItem key={t} value={t}>
+                        {t}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <ConnectionWebhookTestSection connectionId={connectionId} topic={inspectorTopic} />
+              </div>
+            )}
           </div>
         )}
 

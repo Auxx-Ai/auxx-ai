@@ -77,6 +77,11 @@ import { textClassifierDefinition } from './text-classifier'
 import { varAssignDefinition } from './var-assign'
 import { waitDefinition } from './wait'
 import { webhookDefinition } from './webhook'
+import {
+  WebhookTriggerNode,
+  WebhookTriggerPanel,
+  webhookTriggerDefinition,
+} from './webhook-trigger'
 
 // import { variableDefinition } from './variable/schema'
 
@@ -94,6 +99,11 @@ export const NODE_DEFINITIONS: NodeDefinition[] = [
   { ...ifElseDefinition, component: IfElseNode, panel: IfElsePanel },
   { ...messageReceivedDefinition, component: MessageReceivedNode, panel: MessageReceivedPanel },
   { ...webhookDefinition, component: WebhookNode, panel: WebhookPanel },
+  {
+    ...webhookTriggerDefinition,
+    component: WebhookTriggerNode,
+    panel: WebhookTriggerPanel,
+  },
   { ...scheduledTriggerDefinition, component: ScheduledTriggerNode, panel: ScheduledTriggerPanel },
   { ...manualDefinition, component: ManualNode, panel: ManualPanel },
   { ...resourceTriggerDefinition, component: ResourceTriggerNode, panel: ResourceTriggerPanel },
@@ -148,6 +158,7 @@ export const NODE_TYPES: Record<string, ComponentType<NodeProps>> = {
   [NodeType.ANSWER]: AnswerNode as ComponentType<NodeProps>,
   [NodeType.MESSAGE_RECEIVED]: MessageReceivedNode as ComponentType<NodeProps>,
   [NodeType.WEBHOOK]: WebhookNode as ComponentType<NodeProps>,
+  [NodeType.WEBHOOK_TRIGGER]: WebhookTriggerNode as ComponentType<NodeProps>,
   [NodeType.SCHEDULED]: ScheduledTriggerNode as ComponentType<NodeProps>,
   [NodeType.MANUAL]: ManualNode as ComponentType<NodeProps>,
   [NodeType.END]: EndNode as ComponentType<NodeProps>,

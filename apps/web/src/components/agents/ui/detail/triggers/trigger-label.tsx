@@ -4,7 +4,7 @@
 import { getTriggerLabel } from '@auxx/lib/agents/client'
 import { useAppsContext } from '~/components/apps/providers/apps-context'
 import { useResource } from '~/components/resources/hooks/use-resource'
-import type { RouterOutputs } from '~/trpc/react'
+import { api, type RouterOutputs } from '~/trpc/react'
 
 type Trigger = RouterOutputs['agentTrigger']['list'][number]
 
@@ -20,6 +20,15 @@ export function TriggerLabel({ row }: { row: Trigger }) {
   const isCrudEvent = row.kind === 'event' && !!row.entityDefinitionId && !!row.triggerType
   const { resource } = useResource(isCrudEvent ? row.entityDefinitionId : undefined)
   const { appInstallations } = useAppsContext()
+  const webhookConnections = api.connections.webhookConnections.useQuery(undefined, {
+    enabled: row.kind === 'webhook',
+  })
+
+  if (row.kind === 'webhook' && row.triggerConnectionId) {
+    const connection = webhookConnections.data?.find((c) => c.id === row.triggerConnectionId)
+    const name = connection?.name ?? row.triggerConnectionId
+    return <span>{row.triggerTopic ? `${name} · ${row.triggerTopic}` : name}</span>
+  }
 
   if (isCrudEvent) {
     const base = resource?.label

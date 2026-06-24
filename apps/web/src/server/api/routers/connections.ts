@@ -188,7 +188,10 @@ export const connectionsRouter = createTRPCRouter({
       ])
     )
     return getAllProviders().map((p) => {
-      const gate = gateByKey.get(p.providerKey)
+      // The BYO-client gate is an authorization-code concept (platform redirect app +
+      // approval). Secret/client-credentials defs have no platform OAuth client, so the
+      // gate would wrongly read as `no-platform-client` — only consult it for oauth2-code.
+      const gate = p.connectionType === 'oauth2-code' ? gateByKey.get(p.providerKey) : undefined
       const requiresOwnClient = gate?.requiresOwnClient ?? false
       return {
         providerKey: p.providerKey,
