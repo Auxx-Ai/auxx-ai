@@ -961,13 +961,56 @@ export async function updateMapping(
   })
 }
 
-/** Remove a mapping (its items cascade on delete). */
+/**
+ * Remove a mapping. The `mappingId` FK cascades its `DataConnectorItem` binds, but
+ * `entityInstanceId` is `set null` — so an OWNED mapping's `EntityInstance` rows would
+ * dangle (no connector context, re-created as duplicates on a later re-add). Mirror the
+ * rebind safety: for an owned mapping on a synced connector, archive (soft-delete) the
+ * bound instances BEFORE the delete cascades the items away. Contributing instances are
+ * user-owned — never touched. Never-synced connectors have nothing to clean up.
+ */
 export async function removeMapping(
   db: Database,
   organizationId: string,
   mappingId: string
 ): Promise<{ success: boolean }> {
-  await loadMappingRow(db, organizationId, mappingId)
-  await db.delete(schema.DataConnectorMapping).where(eq(schema.DataConnectorMapping.id, mappingId))
-  return { success: true }
+  return db.transaction(async (tx) => {
+    const mapping = await loadMappingRow(tx, organizationId, mappingId)
+
+    if (mapping.targetMode === 'owned') {
+      const stream = await tx.query.DataConnectorStream.findFirst({
+        where: eq(schema.DataConnectorStream.id, mapping.dataConnectorStreamId),
+        columns: { dataConnectorId: true },
+      })
+      const loaded = stream && (await loadConnector(tx, organizationId, stream.dataConnectorId))
+      // Only a synced connector has bound instances worth archiving (Q2 — never-synced ⇒ skip).
+      if (stream && loaded && loaded.connector.lastSyncedAt) {
+        // Archive the owned instances bound through this mapping before the cascade
+        // strips their `DataConnectorItem` rows (which would set-null the back-link).
+        // Single bulk update over a subselect of the bound instance ids.
+        await tx
+          .update(schema.EntityInstance)
+          .set({ archivedAt: new Date() })
+          .where(
+            inArray(
+              schema.EntityInstance.id,
+              tx
+                .select({ id: schema.DataConnectorItem.entityInstanceId })
+                .from(schema.DataConnectorItem)
+                .where(
+                  and(
+                    eq(schema.DataConnectorItem.dataConnectorId, stream.dataConnectorId),
+                    eq(schema.DataConnectorItem.mappingId, mappingId)
+                  )
+                )
+            )
+          )
+      }
+    }
+
+    await tx
+      .delete(schema.DataConnectorMapping)
+      .where(eq(schema.DataConnectorMapping.id, mappingId))
+    return { success: true }
+  })
 }
