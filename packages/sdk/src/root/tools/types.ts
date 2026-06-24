@@ -219,6 +219,14 @@ export interface DynamicSelectHint {
   readonly sublabelTemplate?: string
   /** Text shown disabled when no options resolve. */
   readonly emptyHint?: string
+  /**
+   * When true, the resolved tool options are treated as **suggestions** rather
+   * than a whitelist: the field also commits a free-text value the resolver
+   * never returned (a *creatable* select). Use for open identifiers like an
+   * `owner/repo` full-name; leave off for closed pickers that must match a real
+   * remote record (e.g. a Shopify collection).
+   */
+  readonly allowCustom?: boolean
 }
 
 /**

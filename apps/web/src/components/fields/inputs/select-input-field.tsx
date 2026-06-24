@@ -257,6 +257,14 @@ export interface SelectFieldInputProps {
   onOpenChange?: (open: boolean) => void
   /** Callback to check if a dismiss event should be prevented. Return true to prevent closing. */
   shouldPreventDismiss?: (target: HTMLElement) => boolean
+  /**
+   * When a value is created (only with `config.canAdd`), use the typed text as
+   * the stored value instead of a generated UUID. Needed for free-text identifier
+   * fields like a `<owner>/<repo>` full-name. Forwarded to the picker.
+   */
+  useValueAsLabel?: boolean
+  /** Called when the picker's search text changes (for live typeahead). */
+  onSearchChange?: (value: string) => void
 }
 
 /**
@@ -277,6 +285,8 @@ export function SelectFieldInput({
   open: controlledOpen,
   onOpenChange,
   shouldPreventDismiss,
+  useValueAsLabel = false,
+  onSearchChange,
 }: SelectFieldInputProps) {
   // Normalize value — callers may pass a single string when switching operators
   const normalizedValue = Array.isArray(value) ? value : value ? [value] : []
@@ -362,6 +372,8 @@ export function SelectFieldInput({
           multi={config.multi}
           canAdd={config.canAdd}
           canManage={config.canManage}
+          useValueAsLabel={useValueAsLabel}
+          onSearchChange={onSearchChange}
           placeholder={config.placeholder}
           manageLabel={config.manageLabel}
           disabled={disabled}

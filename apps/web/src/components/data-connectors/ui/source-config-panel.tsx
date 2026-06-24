@@ -14,6 +14,7 @@ import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapte
 import { type FieldEntry, readFieldNodes, seedDefaults } from '~/components/global/schema-form'
 import { BaseType } from '~/components/workflow/types'
 import { VarEditorField, VarEditorFieldRow } from '~/components/workflow/ui/input-editor/var-editor'
+import { useDebounce } from '~/hooks/use-debounced-value'
 import { api } from '~/trpc/react'
 import { useRegisterSaver } from '../hooks/use-connector-edits'
 import { RecordKeyValueEditor, RequestEditorBlock, RevealChip } from './request-editors'
@@ -189,6 +190,7 @@ function AppConfigSource({
                 key={entry.key}
                 connectorId={connector.id}
                 entry={entry}
+                hint={hint}
                 value={values[entry.key]}
                 onChange={onChange}
               />
@@ -271,25 +273,43 @@ function ConfigFieldRow({
 function ToolBackedSelectRow({
   connectorId,
   entry,
+  hint,
   value,
   onChange,
 }: {
   connectorId: string
   entry: FieldEntry
+  hint: ActionInputHint
   value: unknown
   onChange: (next: unknown) => void
 }) {
+  // `allowCustom` turns the closed single-select into a creatable combobox: the
+  // tool options become suggestions, and a typed value commits as the raw string.
+  const allowCustom = hint.kind === 'dynamic-select' && hint.dynamicSelect.allowCustom === true
+
+  // Typeahead — feed the picker's debounced search text to the resolver as
+  // `query` so suggestions narrow as you type. Gated on `allowCustom` so closed
+  // selects keep their byte-for-byte (query-less) behavior.
+  const [search, setSearch] = useState('')
+  const debouncedSearch = useDebounce(search, 250)
+  const query = allowCustom && debouncedSearch.trim() ? debouncedSearch.trim() : undefined
+
   const optionsQuery = api.apps.resolveToolOptions.useQuery(
-    { source: { kind: 'connector', connectorId }, fieldKey: entry.key },
+    { source: { kind: 'connector', connectorId }, fieldKey: entry.key, query },
     { staleTime: 60_000, refetchOnWindowFocus: false }
   )
-  const fieldOptions: FieldOptions = {
-    options: (optionsQuery.data?.options ?? []).map((o) => ({
-      value: o.value,
-      label: o.sublabel ? `${o.label} — ${o.sublabel}` : o.label,
-    })),
-  }
+  const options = (optionsQuery.data?.options ?? []).map((o) => ({
+    value: o.value,
+    label: o.sublabel ? `${o.label} — ${o.sublabel}` : o.label,
+  }))
   const selected = typeof value === 'string' && value ? [value] : []
+  // A persisted custom value won't appear in the resolved suggestions (it's a
+  // repo the token can't list); surface it as its own option so the trigger
+  // renders the label rather than a blank.
+  if (allowCustom && selected[0] && !options.some((o) => o.value === selected[0])) {
+    options.unshift({ value: selected[0], label: selected[0] })
+  }
+  const fieldOptions: FieldOptions = { options }
 
   return (
     <VarEditorFieldRow
@@ -310,7 +330,12 @@ function ToolBackedSelectRow({
               entry.meta.placeholder ??
               `Select ${entry.meta.label ?? entry.key}…`)
         }
+        // Only block while loading — a `disabledHint` (e.g. no connection) still
+        // leaves the field typeable when `allowCustom`, so a known value works.
         disabled={optionsQuery.isLoading}
+        canAdd={allowCustom}
+        useValueAsLabel={allowCustom}
+        onSearchChange={allowCustom ? setSearch : undefined}
         triggerProps={ROW_TRIGGER_PROPS}
       />
     </VarEditorFieldRow>

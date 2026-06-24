@@ -285,9 +285,12 @@ export function MultiSelectPicker({
     const newValue = useValueAsLabel ? newLabel : generateId()
     const newOption: SelectOption = { label: newLabel, value: newValue }
 
-    // Update options and auto-select the new option
+    // Update options and auto-select the new option. In single-select mode,
+    // replace the selection (mirror `handleSelect`) so a pre-existing value
+    // isn't left behind as `[old, new][0]`; in multi mode, append.
     updateOptions([...localOptions, newOption])
-    updateSelected([...localSelected, newValue])
+    updateSelected(multi ? [...localSelected, newValue] : [newValue])
+    if (!multi) onSelectSingle?.(newValue)
 
     setSearchValue('')
   }, [
@@ -295,6 +298,8 @@ export function MultiSelectPicker({
     searchValue,
     localOptions,
     localSelected,
+    multi,
+    onSelectSingle,
     updateOptions,
     updateSelected,
     useValueAsLabel,
