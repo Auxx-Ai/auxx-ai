@@ -113,11 +113,6 @@ export async function invokeAppToolForOptions(
     },
   })
   if (lambdaResult.isErr()) {
-    logger.warn('Options resolver lambda invocation failed', {
-      optionsFrom: hint.optionsFrom,
-      code: lambdaResult.error.code,
-      error: lambdaResult.error.message,
-    })
     // A missing/expired connection is the one actionable case for the user.
     return disabled(
       lambdaResult.error.code === 'CONNECTION_REQUIRED'
@@ -127,11 +122,6 @@ export async function invokeAppToolForOptions(
   }
   const result = lambdaResult.value
   if (result.metadata?.runtime_error || result.metadata?.validation_error) {
-    logger.warn('Options resolver tool errored', {
-      optionsFrom: hint.optionsFrom,
-      runtimeError: result.metadata?.runtime_error?.message,
-      validationError: result.metadata?.validation_error?.message,
-    })
     return disabled("Couldn't load options — the resolver errored")
   }
   const data = result.execution_result?.data ?? result.execution_result ?? {}

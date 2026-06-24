@@ -170,6 +170,8 @@ const PollingTriggerExecutionSchema = AppEventSchema.extend({
  * `invocationContext.kind` discriminates the surface the call came from:
  *   - 'agent'  — Kopilot bridge invocation (LLM tool call).
  *   - 'action' — action button invocation (ticket / email editor).
+ *   - 'data-connector-config' — a tool-backed connector config option resolver
+ *     (e.g. the GitHub repo picker), via the shared `invokeAppToolForOptions` core.
  *
  * See plans/kopilot/agents/triggers/app-surface-implementation-plan.md §7.
  */
@@ -187,9 +189,15 @@ const ActionInvocationContextSchema = z.object({
   ticketId: z.string().optional(),
 })
 
+const ConnectorConfigInvocationContextSchema = z.object({
+  kind: z.literal('data-connector-config'),
+  connectorId: z.string().optional(),
+})
+
 const InvocationContextSchema = z.discriminatedUnion('kind', [
   AgentInvocationContextSchema,
   ActionInvocationContextSchema,
+  ConnectorConfigInvocationContextSchema,
 ])
 
 const ToolExecutionSchema = AppEventSchema.extend({
