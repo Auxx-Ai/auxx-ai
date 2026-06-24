@@ -464,6 +464,12 @@ export interface WebhookCapability {
   eventId(input: { rawBody: string; headers: Record<string, string> }): string | null
   /** Map one verified delivery onto sink actions. Pure — no IO. */
   resolveWebhook(input: { headers: Record<string, string>; payload: unknown }): WebhookAction[]
+  /**
+   * The provider topic for this delivery (`orders/create`, `customer.updated`),
+   * read from the SAME source `resolveWebhook` uses internally. Drives connection
+   * webhook-trigger routing — keep it in lockstep with sink resolution. Pure.
+   */
+  resolveTopic(input: { headers: Record<string, string>; payload: unknown }): string
   /** Subscribe the provider to push to `callbackUrl`; return the subscription ids. */
   register(input: WebhookRegisterInput): Promise<WebhookSubscription[]>
   /** Revoke the given provider subscriptions (best-effort on teardown). */

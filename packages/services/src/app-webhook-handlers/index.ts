@@ -3,7 +3,7 @@
 import { API_URL } from '@auxx/config/urls'
 import { database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import { and, eq } from 'drizzle-orm'
+import { and, eq, isNull } from 'drizzle-orm'
 import { err, ok } from 'neverthrow'
 import type { DatabaseError } from '../shared/errors'
 import { fromDatabase } from '../shared/utils'
@@ -557,35 +557,37 @@ export async function getWebhookHandler(params: {
  * }
  * ```
  */
-// ── Data-connector webhook handlers (Step 8) ──────────────────────────────────
-// Built-in connectors (generic-rest / Shopify / Stripe) have no app installation, so
-// their webhook registration lives on the SAME table keyed by `dataConnectorId`
-// (NULL `appInstallationId`). One row per connector (`handlerId = CONNECTOR_HANDLER_ID`):
-// `url` is the connector-scoped callback, `metadata` carries `{ secret, subscriptions }`.
+// ── Connection-scoped webhook handler (unified ingress, Direction 2) ──────────
+// The unified connection-keyed ingress: ONE handler row per CONNECTION (NULL
+// `appInstallationId` AND `dataConnectorId`), `handlerId = CONNECTOR_HANDLER_ID`.
+// `url` is the `/webhooks/connection/:connectionId` callback, `metadata` carries
+// `{ secret, callbackUrl, subscriptions }`. The provider signs every topic's
+// delivery with the same secret; the per-topic provider subs live in `subscriptions`.
+// The subscribed topic set is the UNION of every consumer (sink connectors +
+// workflow/agent triggers) on the connection — see `reconcileConnectionWebhooks`.
 
-/** Sentinel handlerId for the single per-connector webhook row. */
+/** Sentinel handlerId for the single per-connection webhook row. */
 export const CONNECTOR_HANDLER_ID = '__webhook__'
 
-/** Build the connector-scoped callback URL (dev routes through the web-app proxy). */
-function connectorWebhookUrl(dataConnectorId: string): string {
+/** Build the connection-scoped callback URL (dev routes through the web-app proxy). */
+function connectionWebhookUrl(connectionId: string): string {
   const isDevTunnel = !!process.env.NGROK_URL
   const webhookBase = isDevTunnel ? process.env.NGROK_URL : API_URL
   const pathPrefix = isDevTunnel ? '/api/webhooks' : '/webhooks'
-  return `${webhookBase}${pathPrefix}/data-connector/${dataConnectorId}`
+  return `${webhookBase}${pathPrefix}/connection/${connectionId}`
 }
 
 /**
- * Create or update the single webhook handler row for a data connector. Returns the
- * row id + the minted callback URL. Non-atomic upsert (registration is connect-time,
- * not hot) so we don't need partial-index conflict inference.
+ * Create or update the single webhook handler row for a connection. Returns the row
+ * id + the minted callback URL. Non-atomic upsert (registration is connect-time, not
+ * hot) so we don't need partial-index conflict inference.
  */
-export async function upsertConnectorWebhookHandler(params: {
-  dataConnectorId: string
-  connectionId?: string | null
+export async function upsertConnectionWebhookHandler(params: {
+  connectionId: string
   metadata: Record<string, unknown>
 }) {
-  const { dataConnectorId, connectionId, metadata } = params
-  const url = connectorWebhookUrl(dataConnectorId)
+  const { connectionId, metadata } = params
+  const url = connectionWebhookUrl(connectionId)
 
   const existing = await fromDatabase(
     database
@@ -593,12 +595,14 @@ export async function upsertConnectorWebhookHandler(params: {
       .from(schema.AppWebhookHandler)
       .where(
         and(
-          eq(schema.AppWebhookHandler.dataConnectorId, dataConnectorId),
-          eq(schema.AppWebhookHandler.handlerId, CONNECTOR_HANDLER_ID)
+          eq(schema.AppWebhookHandler.connectionId, connectionId),
+          eq(schema.AppWebhookHandler.handlerId, CONNECTOR_HANDLER_ID),
+          isNull(schema.AppWebhookHandler.appInstallationId),
+          isNull(schema.AppWebhookHandler.dataConnectorId)
         )
       )
       .limit(1),
-    'get-connector-webhook-handler'
+    'get-connection-webhook-handler'
   )
   if (existing.isErr()) return err(existing.error)
 
@@ -609,7 +613,7 @@ export async function upsertConnectorWebhookHandler(params: {
         .update(schema.AppWebhookHandler)
         .set({ url, metadata: JSON.stringify(metadata), isActive: true, updatedAt: new Date() })
         .where(eq(schema.AppWebhookHandler.id, row.id)),
-      'update-connector-webhook-handler'
+      'update-connection-webhook-handler'
     )
     if (upd.isErr()) return err(upd.error)
     return ok({ id: row.id, url })
@@ -620,56 +624,65 @@ export async function upsertConnectorWebhookHandler(params: {
       .insert(schema.AppWebhookHandler)
       .values({
         appInstallationId: null,
-        dataConnectorId,
-        connectionId: connectionId ?? null,
+        dataConnectorId: null,
+        connectionId,
         handlerId: CONNECTOR_HANDLER_ID,
         url,
         metadata: JSON.stringify(metadata),
         updatedAt: new Date(),
       })
       .returning({ id: schema.AppWebhookHandler.id }),
-    'insert-connector-webhook-handler'
+    'insert-connection-webhook-handler'
   )
   if (inserted.isErr()) return err(inserted.error)
   return ok({ id: inserted.value[0]?.id ?? '', url })
 }
 
-/** Fetch the active webhook handler row for a connector, or HANDLER_NOT_FOUND. */
-export async function getConnectorWebhookHandler(params: { dataConnectorId: string }) {
-  const { dataConnectorId } = params
+/** Fetch the active connection-scoped webhook handler row, or HANDLER_NOT_FOUND. */
+export async function getConnectionWebhookHandler(params: { connectionId: string }) {
+  const { connectionId } = params
   const dbResult = await fromDatabase(
     database
       .select()
       .from(schema.AppWebhookHandler)
       .where(
         and(
-          eq(schema.AppWebhookHandler.dataConnectorId, dataConnectorId),
+          eq(schema.AppWebhookHandler.connectionId, connectionId),
           eq(schema.AppWebhookHandler.handlerId, CONNECTOR_HANDLER_ID),
-          eq(schema.AppWebhookHandler.isActive, true)
+          eq(schema.AppWebhookHandler.isActive, true),
+          isNull(schema.AppWebhookHandler.appInstallationId),
+          isNull(schema.AppWebhookHandler.dataConnectorId)
         )
       )
       .limit(1),
-    'get-connector-webhook-handler'
+    'get-connection-webhook-handler'
   )
   if (dbResult.isErr()) return err(dbResult.error)
   const [handler] = dbResult.value
   if (!handler) {
     return err({
       code: 'HANDLER_NOT_FOUND' as const,
-      message: `Connector webhook handler not found: ${dataConnectorId}`,
+      message: `Connection webhook handler not found: ${connectionId}`,
     })
   }
   return ok(handler)
 }
 
-/** Delete the webhook handler row(s) for a connector. */
-export async function deleteConnectorWebhookHandler(params: { dataConnectorId: string }) {
-  const { dataConnectorId } = params
+/** Delete the connection-scoped webhook handler row. */
+export async function deleteConnectionWebhookHandler(params: { connectionId: string }) {
+  const { connectionId } = params
   const dbResult = await fromDatabase(
     database
       .delete(schema.AppWebhookHandler)
-      .where(eq(schema.AppWebhookHandler.dataConnectorId, dataConnectorId)),
-    'delete-connector-webhook-handler'
+      .where(
+        and(
+          eq(schema.AppWebhookHandler.connectionId, connectionId),
+          eq(schema.AppWebhookHandler.handlerId, CONNECTOR_HANDLER_ID),
+          isNull(schema.AppWebhookHandler.appInstallationId),
+          isNull(schema.AppWebhookHandler.dataConnectorId)
+        )
+      ),
+    'delete-connection-webhook-handler'
   )
   if (dbResult.isErr()) return err(dbResult.error)
   return ok(undefined)

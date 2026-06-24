@@ -122,7 +122,7 @@ export interface DehydratedOrgProfile {
  * When adding new dispatch-relevant columns to the schema, mirror them here. */
 export interface CachedAgentTrigger {
   id: string
-  kind: 'scheduled' | 'event' | 'app' | 'mention' | 'assignment' | 'dm'
+  kind: 'scheduled' | 'event' | 'app' | 'mention' | 'assignment' | 'dm' | 'webhook'
   enabled: boolean
   triggerType: 'created' | 'updated' | 'deleted' | null
   entityDefinitionId: string | null
@@ -131,6 +131,8 @@ export interface CachedAgentTrigger {
   triggerAppTriggerId: string | null
   triggerInstallationId: string | null
   triggerConnectionId: string | null
+  /** For `kind: 'webhook'`: the provider topic (`orders/create`). NULL otherwise. */
+  triggerTopic: string | null
   config: Record<string, unknown> | null
   instructions: Record<string, unknown> | null
 }

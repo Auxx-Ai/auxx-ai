@@ -31,12 +31,13 @@ export const Workflow = pgTable(
     description: text(),
     enabled: boolean().default(true).notNull(),
     version: integer().default(1).notNull(),
-    triggerType: text(), // 'form', 'manual', 'created', 'updated', 'deleted', 'scheduled', 'message-received', 'app-trigger'
+    triggerType: text(), // 'form', 'manual', 'created', 'updated', 'deleted', 'scheduled', 'message-received', 'app-trigger', 'webhook-trigger'
     entityDefinitionId: text(), // Entity identifier (system or custom) - nullable for form/scheduled/message-received triggers
     triggerAppId: text(), // Extension app ID for app-trigger type (e.g., 'y5yf1eh8lr1')
     triggerTriggerId: text(), // Trigger ID within the app for app-trigger type (e.g., 'order-created')
     triggerInstallationId: text(), // Specific app installation ID for app-trigger type
-    triggerConnectionId: text(), // Credential ID for app-trigger connection
+    triggerConnectionId: text(), // Credential ID for app-trigger / webhook-trigger connection
+    triggerTopic: text(), // Provider topic for webhook-trigger type (e.g., 'orders/create')
     createdAt: timestamp({ precision: 3 }).defaultNow().notNull(),
     updatedAt: timestamp({ precision: 3 }).notNull(),
     createdById: text().references((): AnyPgColumn => User.id, {
@@ -68,6 +69,12 @@ export const Workflow = pgTable(
       table.triggerAppId.asc().nullsLast(),
       table.triggerTriggerId.asc().nullsLast(),
       table.triggerInstallationId.asc().nullsLast()
+    ),
+    index('Workflow_orgId_webhookTrigger_idx').using(
+      'btree',
+      table.organizationId.asc().nullsLast(),
+      table.triggerConnectionId.asc().nullsLast(),
+      table.triggerTopic.asc().nullsLast()
     ),
   ]
 )

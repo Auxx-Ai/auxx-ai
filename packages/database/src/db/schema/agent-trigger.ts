@@ -39,7 +39,12 @@ export const AgentTrigger = pgTable(
         onDelete: 'cascade',
       }),
 
-    /** 'scheduled' | 'event' | 'app'. Phase 1.5 adds 'mention' | 'assignment'. */
+    /**
+     * 'scheduled' | 'event' | 'app' | 'webhook'. Phase 1.5 adds 'mention' |
+     * 'assignment'. For 'webhook', the trigger is keyed on
+     * `(triggerConnectionId, triggerTopic)` — a provider webhook delivery on
+     * that connection + topic fires the agent (installation-free, like 'event').
+     */
     kind: text().notNull(),
 
     /** On/off switch. Disabled triggers don't fire; scheduler is removed. */
@@ -89,8 +94,16 @@ export const AgentTrigger = pgTable(
     /**
      * For `kind: 'app'`: optional connection scope. Loose match — a row
      * with NULL matches any connection; with a value, must equal.
+     * For `kind: 'webhook'`: the connection the provider webhook arrives on
+     * (required — paired with `triggerTopic`).
      */
     triggerConnectionId: text(),
+
+    /**
+     * For `kind: 'webhook'`: the provider topic (`orders/create`) this trigger
+     * fires on. NULL for all other kinds.
+     */
+    triggerTopic: text(),
 
     /* ---------- Kind-specific tail ---------- */
 
@@ -153,6 +166,13 @@ export const AgentTrigger = pgTable(
       table.organizationId.asc().nullsLast(),
       table.kind.asc().nullsLast(),
       table.enabled.asc().nullsLast()
+    ),
+    index('AgentTrigger_orgId_webhook_idx').using(
+      'btree',
+      table.organizationId.asc().nullsLast(),
+      table.enabled.asc().nullsLast(),
+      table.triggerConnectionId.asc().nullsLast(),
+      table.triggerTopic.asc().nullsLast()
     ),
   ]
 )

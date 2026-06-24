@@ -21,6 +21,10 @@ export {
   executeAgentAssignmentTrigger,
 } from './agent/assignment-trigger-job'
 export {
+  type AgentConnectionWebhookDispatchJobData,
+  dispatchConnectionWebhookToAgents,
+} from './agent/connection-webhook-dispatch-job'
+export {
   type AgentEventTriggerJobData,
   executeAgentEventTrigger,
 } from './agent/event-trigger-job'
@@ -232,6 +236,10 @@ export {
 } from './workflow/app-trigger-dispatch-job'
 export { approvalReminderJob } from './workflow/approval-reminder-job'
 export { approvalTimeoutJob } from './workflow/approval-timeout-job'
+export {
+  type ConnectionWebhookDispatchJobData,
+  dispatchConnectionWebhook,
+} from './workflow/connection-webhook-dispatch-job'
 export {
   executePollingTrigger,
   type PollingTriggerJobData,

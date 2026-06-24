@@ -13,19 +13,24 @@ export interface AgentAppTriggerJobData {
   agentTriggerId: string
   agentId: string
   organizationId: string
-  appId: string
-  triggerId: string
-  installationId: string
+  /** App-trigger provenance (omitted for a connection webhook-trigger). */
+  appId?: string
+  triggerId?: string
+  installationId?: string
   connectionId: string | null
+  /** Connection webhook-trigger provenance (omitted for an app-trigger). */
+  topic?: string
   triggerData: Record<string, unknown>
   eventId: string
   firedAt: string
 }
 
 /**
- * Worker handler for autonomous app-driven triggers on `AgentTrigger`.
- * Sibling to the workflow `executeAppTriggeredWorkflow` path — but runs on
- * the same scheduled-trigger queue as the other agent workers.
+ * Worker handler for autonomous app- and connection-webhook-driven triggers on
+ * `AgentTrigger`. Sibling to the workflow `executeAppTriggeredWorkflow` path — runs
+ * on the same scheduled-trigger queue as the other agent workers. Handles both
+ * `kind: 'app'` (appId/triggerId/installationId) and `kind: 'webhook'`
+ * (connectionId/topic); the session triggerContext carries whichever is present.
  */
 export async function executeAgentAppTrigger(job: Job<AgentAppTriggerJobData>) {
   const {
@@ -36,6 +41,7 @@ export async function executeAgentAppTrigger(job: Job<AgentAppTriggerJobData>) {
     triggerId,
     installationId,
     connectionId,
+    topic,
     triggerData,
     eventId,
     firedAt,
@@ -52,7 +58,7 @@ export async function executeAgentAppTrigger(job: Job<AgentAppTriggerJobData>) {
   }
 
   const trigger = agent.triggers.find((t) => t.id === agentTriggerId)
-  if (!trigger || !trigger.enabled || trigger.kind !== 'app') {
+  if (!trigger || !trigger.enabled || (trigger.kind !== 'app' && trigger.kind !== 'webhook')) {
     logger.warn('Stale agent app trigger — skipping', {
       agentTriggerId,
       reason: !trigger ? 'missing' : !trigger.enabled ? 'disabled' : 'wrong-kind',
@@ -67,10 +73,12 @@ export async function executeAgentAppTrigger(job: Job<AgentAppTriggerJobData>) {
     agentId,
     agentTriggerId,
     triggerContext: {
-      kind: 'app',
+      kind: trigger.kind,
       appId,
       triggerId,
       installationId,
+      connectionId,
+      topic,
       eventId,
       firedAt,
     },

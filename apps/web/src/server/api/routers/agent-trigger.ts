@@ -55,6 +55,13 @@ const appInputSchema = z.object({
     .optional(),
 })
 
+const webhookInputSchema = z.object({
+  kind: z.literal('webhook'),
+  triggerConnectionId: z.string().min(1),
+  triggerTopic: z.string().min(1),
+  filter: z.record(z.string(), z.unknown()).optional(),
+})
+
 const mentionInputSchema = z.object({ kind: z.literal('mention') })
 const assignmentInputSchema = z.object({ kind: z.literal('assignment') })
 const dmInputSchema = z.object({ kind: z.literal('dm') })
@@ -63,6 +70,7 @@ const triggerInputSchema = z.union([
   scheduledInputSchema,
   crudEventInputSchema,
   appInputSchema,
+  webhookInputSchema,
   mentionInputSchema,
   assignmentInputSchema,
   dmInputSchema,
@@ -88,6 +96,7 @@ function rowToDto(row: typeof schema.AgentTrigger.$inferSelect) {
     triggerAppTriggerId: row.triggerAppTriggerId,
     triggerInstallationId: row.triggerInstallationId,
     triggerConnectionId: row.triggerConnectionId,
+    triggerTopic: row.triggerTopic,
     config: row.config,
     instructions: row.instructions,
     lastFiredAt: row.lastFiredAt ? row.lastFiredAt.toISOString() : null,

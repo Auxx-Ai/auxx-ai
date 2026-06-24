@@ -17,6 +17,7 @@ export { resolveWebhookSecret } from './secret/resolve'
 export {
   compileWebhookSpec,
   resolveWebhookActions,
+  resolveWebhookTopic,
   topicGlob,
   type WebhookSource,
   type WebhookSpec,

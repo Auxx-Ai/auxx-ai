@@ -4,6 +4,7 @@ import { type Database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { and, eq } from 'drizzle-orm'
 import { onCacheEvent } from '../cache/invalidate'
+import { reconcileConnectionWebhooks } from '../data-connectors/connection-webhook-registration'
 import { PollingTriggerService } from './polling-trigger-service'
 import { ScheduledTriggerService } from './scheduled-trigger-service'
 import { WorkflowTriggerType, type WorkflowVersion } from './types'
@@ -79,6 +80,7 @@ export class WorkflowVersionService {
             triggerTriggerId: workflowApp.draftWorkflow?.triggerTriggerId || undefined,
             triggerInstallationId: workflowApp.draftWorkflow?.triggerInstallationId || undefined,
             triggerConnectionId: workflowApp.draftWorkflow?.triggerConnectionId || undefined,
+            triggerTopic: workflowApp.draftWorkflow?.triggerTopic || undefined,
             entityDefinitionId: workflowApp.draftWorkflow?.entityDefinitionId || undefined,
             graph: workflowApp.draftWorkflow?.graph || undefined,
             envVars: workflowApp.draftWorkflow?.envVars || undefined,
@@ -137,6 +139,19 @@ export class WorkflowVersionService {
               versionId: newVersion.id,
               enabled: workflowAppWithPublished.enabled,
             })
+          }
+
+          // Connection webhook-trigger (Direction 2): reconcile the connection's
+          // provider subscriptions so a published webhook-trigger workflow actually
+          // subscribes its topic (the matcher reads the PUBLISHED workflow). Reconcile
+          // recomputes the full desired set, so it self-corrects on enable/disable too.
+          const published = workflowAppWithPublished.publishedWorkflow
+          if (published?.triggerType === 'webhook-trigger' && published.triggerConnectionId) {
+            await reconcileConnectionWebhooks(
+              this.db,
+              organizationId,
+              published.triggerConnectionId
+            )
           }
         }
       } catch (schedulingError) {
