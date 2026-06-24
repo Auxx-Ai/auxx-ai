@@ -1,6 +1,6 @@
 // apps/web/src/server/api/routers/apps.ts
 
-import { isMasked, type MaskField, resolveForWrite } from '@auxx/credentials/crypto'
+import { isMasked, splitConnectionValues } from '@auxx/credentials/crypto'
 import { setDefaultCredential } from '@auxx/credentials/store'
 import {
   deleteAppConnection,
@@ -487,15 +487,14 @@ export const appsRouter = createTRPCRouter({
         // submitted as the sentinel) so editing one field never overwrites the others.
         const trimmed: Record<string, string> = {}
         for (const [key, value] of Object.entries(provided)) trimmed[key] = value?.trim() ?? ''
-        const fields: MaskField[] = variableDefs.map((v) => ({ key: v.key, secret: !!v.secret }))
-        const resolved = resolveForWrite(trimmed, fields)
+        const resolved = splitConnectionValues(variableDefs, trimmed)
 
         const secretFields: Record<string, string> = {}
-        for (const [key, value] of Object.entries(resolved.secrets)) {
+        for (const [key, value] of Object.entries(resolved.secretFields)) {
           if (value !== '') secretFields[key] = value
         }
         const plainValues: Record<string, string> = {}
-        for (const [key, value] of Object.entries(resolved.plain)) {
+        for (const [key, value] of Object.entries(resolved.plainVariables)) {
           if (value !== '') plainValues[key] = value
         }
 

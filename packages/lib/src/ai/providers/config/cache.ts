@@ -1,6 +1,6 @@
 // packages/lib/src/ai/providers/config/cache.ts
 
-import { maskForEdit } from '@auxx/credentials/crypto'
+import { projectCredentialForEdit } from '@auxx/credentials/crypto'
 import { getOrgCache } from '../../../cache/singletons'
 import { createScopedLogger } from '../../../logger'
 import { ProviderRegistry } from '../provider-registry'
@@ -130,11 +130,15 @@ async function obfuscateResult(
 ): Promise<CredentialsResponse> {
   const providerCaps = await ProviderRegistry.getProviderCapabilities(provider)
   if (providerCaps?.connectionVariables) {
-    const fields = providerCaps.connectionVariables.map((field) => ({
-      key: field.key,
-      secret: !!field.secret,
-    }))
-    return { ...result, credentials: maskForEdit(fields, result.credentials) }
+    // The cached result is an already-merged flat bag (plain + secret), so it serves as both the
+    // plain and secret source for the shared edit projection.
+    return {
+      ...result,
+      credentials: projectCredentialForEdit(providerCaps.connectionVariables, {
+        plain: result.credentials,
+        secrets: result.credentials,
+      }),
+    }
   }
   return result
 }

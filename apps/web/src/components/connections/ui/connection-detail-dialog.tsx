@@ -14,13 +14,13 @@ import {
 import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import type { FormEvent } from 'react'
 import { useEffect, useMemo, useState } from 'react'
+import { useCredentialForm } from '~/components/connections/hooks/use-credential-form'
 import { api } from '~/trpc/react'
 import {
   ConnectionDetailPage,
   type DetailMethod,
   methodIsBareSecret,
 } from './connection-detail-page'
-import { seedValue, validateConnectionVariables } from './connection-variable-validation'
 
 interface ConnectionDetailDialogProps {
   open: boolean
@@ -83,10 +83,8 @@ export function ConnectionDetailDialog({
   reconnectLabel = 'Reconnect',
   onSubmit,
 }: ConnectionDetailDialogProps) {
-  const [values, setValues] = useState<Record<string, string>>({})
   const [token, setToken] = useState('')
   const [name, setName] = useState('')
-  const [errors, setErrors] = useState<Record<string, string>>({})
 
   // Stable across renders so the seed effect only fires on open / method change, not every render
   // (a bare method's `?? []` would otherwise re-seed and wipe input on each render).
@@ -99,47 +97,35 @@ export function ConnectionDetailDialog({
     { connectionId: connectionId ?? '' },
     { enabled: open && needsLoad }
   )
-
-  // Seed the form when the dialog opens (and, for an edit, once the masked values have loaded so we
-  // don't first flash blank then clobber the user's keystrokes). `getForEdit` values win over the
-  // caller's `prefill`; declared defaults fill anything neither supplies.
   const loaded = editLoad.data
+
+  // Shared form lifecycle — field values/errors, seed-on-open, set-secret derivation, validation.
+  const { values, setValue, errors, savedSecrets, validate } = useCredentialForm({
+    open,
+    variables,
+    existingValues: loaded?.values,
+    loading: needsLoad && !loaded,
+    prefill,
+  })
+
+  // Token + name are connection-specific (a bare API-key row, the editable connection name), so
+  // they seed alongside the shared values effect on open / load.
   useEffect(() => {
     if (!open) return
     if (needsLoad && !loaded) return
-    const merged = { ...prefill, ...(loaded?.values ?? {}) }
-    const seeded: Record<string, string> = {}
-    for (const v of variables) seeded[v.key] = seedValue(v, merged)
-    setValues(seeded)
     setToken(loaded?.tokenSet ? HIDDEN_VALUE : '')
     setName(initialName ?? method.label)
-    setErrors({})
-  }, [open, prefill, variables, needsLoad, loaded, initialName, method.label])
+  }, [open, needsLoad, loaded, initialName, method.label])
 
   const bareSecret = methodIsBareSecret(method)
   const formPending = pending || (needsLoad && !loaded)
-
-  // Secret fields that arrived already set (seeded as the sentinel) can be reverted to "keep
-  // existing" after the user starts editing them.
-  const savedSecrets = useMemo(() => {
-    const keys = Object.entries(loaded?.values ?? {})
-      .filter(([, v]) => v === HIDDEN_VALUE)
-      .map(([k]) => k)
-    return new Set(keys)
-  }, [loaded])
 
   // A bare-OAuth method has neither a token row nor variables — its edit dialog is name-only.
   const hasFields = bareSecret || variables.length > 0
 
   function handleSubmit(e: FormEvent) {
     e.preventDefault()
-    const next = validateConnectionVariables({
-      variables,
-      values,
-      requireToken: bareSecret,
-      token,
-    })
-    setErrors(next)
+    const next = validate({ requireToken: bareSecret, token })
     if (Object.keys(next).length > 0) return
     const payload: { values?: Record<string, string>; secret?: string; name?: string } = {}
     if (showName) payload.name = name.trim()
@@ -175,7 +161,7 @@ export function ConnectionDetailDialog({
             selectedMethodId={method.id}
             onMethodChange={() => {}}
             values={values}
-            onValueChange={(key, value) => setValues((prev) => ({ ...prev, [key]: value }))}
+            onValueChange={setValue}
             token={token}
             onTokenChange={setToken}
             errors={errors}
