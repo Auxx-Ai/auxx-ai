@@ -18,6 +18,7 @@ import {
   deleteConnector,
   deriveConnectorScheduleInfo,
   enqueueConnectorSync,
+  finishConnectorSetup,
   getAllConnectorTemplates,
   getConnector,
   getConnectorTemplateById,
@@ -459,6 +460,17 @@ export const dataConnectorRouter = createTRPCRouter({
     })
     return { success: true }
   }),
+
+  /**
+   * Finish first-run setup WITHOUT syncing — flip `pending → ready` (optional-first-sync
+   * §3.4). The connector leaves setup configured-but-idle; a later manual Sync now or a
+   * scheduled fire advances it `ready → syncing → live`. Idempotent (no-op past pending).
+   */
+  finishSetup: adminProcedure
+    .input(z.object({ id: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      return finishConnectorSetup(ctx.db, ctx.session.organizationId, input.id)
+    }),
 
   /**
    * "Backfill now" — trigger the deferred full re-crawl for a pending mapping-edit

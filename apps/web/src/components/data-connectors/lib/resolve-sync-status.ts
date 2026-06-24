@@ -99,6 +99,17 @@ export function resolveSyncStatus(
     }
   }
 
+  if (status === 'ready') {
+    // Configured via "Finish without syncing" — idle, never synced, scheduler-eligible.
+    // Reuses the `idle` coloring path; only the label/detail differ from `pending`.
+    return {
+      state: 'idle',
+      label: 'Ready',
+      detail: 'Set up — not synced yet. Sync now, or wait for the schedule.',
+      primaryAction: 'sync',
+    }
+  }
+
   if (status === 'paused') {
     return {
       state: 'paused',

@@ -369,7 +369,7 @@ Write helpers live in `packages/lib/src/data-connectors/mutations.ts`; reads/CRU
 - `ui/connector-detail-view.tsx` — the detail shell. Renders the `ConnectorStatusPill` (calls `resolveSyncStatus` with the live run), header actions (Sync now, Reconnect when `action-needed`, Pause/Resume, Delete-with-options), polls `getStatus` every 4s while syncing (shared query key with the Runs panel), and normalizes `latestRun.status` via `asRunStatus()` once for both the resolver and the status line.
 
 **Other key UI files (`ui/`):**
-- `connector-list.tsx`, `connector-card.tsx`, `connector-detail-tabs.tsx` (NavStack + `useScrollSpy`).
+- `connector-list.tsx`, `connector-card.tsx` (the grid row: status dot, last-synced, record/stream counts, and an Open / Sync now / Pause·Resume / Delete-with-options menu — the same keep·archive·delete submenu as the detail view), `connector-detail-tabs.tsx` (NavStack + `useScrollSpy`).
 - `connection-section.tsx` — the bound `Credential` (a `ConnectionRow` + connection picker); resolves the connection's brand icon + name.
 - `source-config-panel.tsx` — connector-level config: generic-rest endpoint (base URL + shared headers, via the reveal-chip pattern) or an app/template schema-driven form.
 - `streams-section.tsx`, `stream-detail-bar.tsx`, `stream-config-panel.tsx` — the per-stream drill: Layer A (source schema) + Layer B (fan-out mappings). Request sub-editors (headers/query params/JSON body) are in `request-editors.tsx`; pagination + incremental config surface here too.

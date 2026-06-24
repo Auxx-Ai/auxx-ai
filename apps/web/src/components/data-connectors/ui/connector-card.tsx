@@ -8,6 +8,9 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
 import { LastUpdated } from '@auxx/ui/components/last-updated'
@@ -24,10 +27,28 @@ export interface ConnectorCardData {
   id: string
   name: string
   type: string
+  /** Set when seeded from a first-party connector template (origin = template). */
+  templateId: string | null
   status: string
   itemCount: number
   lastSyncedAt: Date | string | null
   error: string | null
+}
+
+/** Where the connector came from — drives the origin badge. */
+type ConnectorOrigin = 'app' | 'template' | 'manual'
+
+/** App connectors carry `app:<slug>`; template instances stamp `templateId`; else hand-built. */
+function connectorOrigin(connector: ConnectorCardData): ConnectorOrigin {
+  if (connector.type.startsWith('app:')) return 'app'
+  if (connector.templateId) return 'template'
+  return 'manual'
+}
+
+const ORIGIN_LABEL: Record<ConnectorOrigin, string> = {
+  app: 'App',
+  template: 'Template',
+  manual: 'Manual',
 }
 
 interface ConnectorCardProps {
@@ -56,6 +77,7 @@ export function ConnectorCard({ connector, streamCount }: ConnectorCardProps) {
 
   const status = asConnectorStatus(connector.status)
   const meta = CONNECTOR_STATUS_META[status]
+  const origin = connectorOrigin(connector)
   const isSyncing = status === 'syncing' || status === 'provisioning'
   const isPaused = status === 'paused'
 
@@ -70,16 +92,20 @@ export function ConnectorCard({ connector, streamCount }: ConnectorCardProps) {
     void fn()
   }
 
-  const handleDelete = async () => {
+  const handleDelete = async (syncedData: 'keep' | 'archive' | 'delete') => {
+    const copy = {
+      keep: 'Synced records are kept; only the connector is removed.',
+      archive: 'Synced records are archived and the connector is removed.',
+      delete: 'Synced records and the connector are permanently deleted.',
+    }[syncedData]
     const ok = await confirm({
       title: 'Delete connector?',
-      description:
-        'This removes the connector and stops syncing. Synced records are kept by default. This cannot be undone.',
+      description: `${copy} This cannot be undone.`,
       confirmText: 'Delete',
       cancelText: 'Cancel',
       destructive: true,
     })
-    if (ok) void remove(connector.id, 'keep')
+    if (ok) void remove(connector.id, syncedData)
   }
 
   return (
@@ -122,6 +148,9 @@ export function ConnectorCard({ connector, streamCount }: ConnectorCardProps) {
 
         <div className='mt-auto flex items-center justify-between gap-2'>
           <div className='flex min-w-0 items-center gap-1'>
+            <Badge variant='outline' size='sm' className='shrink-0'>
+              {ORIGIN_LABEL[origin]}
+            </Badge>
             <Badge variant='pill' size='sm' className='shrink-0'>
               {connector.itemCount} record{connector.itemCount === 1 ? '' : 's'}
             </Badge>
@@ -162,10 +191,25 @@ export function ConnectorCard({ connector, streamCount }: ConnectorCardProps) {
                 </DropdownMenuItem>
               )}
               <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={wrap(handleDelete)} variant='destructive'>
-                <Trash />
-                Delete
-              </DropdownMenuItem>
+              <DropdownMenuSub>
+                <DropdownMenuSubTrigger variant='destructive'>
+                  <Trash />
+                  Delete
+                </DropdownMenuSubTrigger>
+                <DropdownMenuSubContent>
+                  <DropdownMenuItem onClick={wrap(() => handleDelete('keep'))}>
+                    Delete, keep synced records
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={wrap(() => handleDelete('archive'))}>
+                    Delete, archive synced records
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    variant='destructive'
+                    onClick={wrap(() => handleDelete('delete'))}>
+                    Delete connector and synced records
+                  </DropdownMenuItem>
+                </DropdownMenuSubContent>
+              </DropdownMenuSub>
             </DropdownMenuContent>
           </DropdownMenu>
         </div>

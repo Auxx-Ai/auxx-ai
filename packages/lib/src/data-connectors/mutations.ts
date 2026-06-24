@@ -13,7 +13,7 @@ import { generateId } from '@auxx/utils'
 import { and, eq, inArray } from 'drizzle-orm'
 import { getCachedCustomFields, getCachedEntityDefId } from '../cache'
 import { BadRequestError, NotFoundError } from '../errors'
-import { appCatalogStreamSchema } from './app-catalog'
+import { appCatalogStreamSchema, buildContributingMatchBindings } from './app-catalog'
 import {
   registerConnectorWebhooks,
   unregisterConnectorWebhooks,
@@ -395,9 +395,10 @@ async function buildTemplateFieldMappings(
  * owned `EntityDefinition` + its fields are provisioned up front from the declared
  * stream schema, and a `DataConnectorMapping` carrying concrete field refs is created
  * — the connector fully owns the def, so no `@app:` late-binding / stepper authoring
- * is needed for the happy path. `contributing` default-mappings are still left to the
- * stepper (they carry no field bindings — the Tier 2 `suggestMappings` suggester fills
- * them against the now-populated schema).
+ * is needed for the happy path. `contributing` default-mappings are ALSO materialized
+ * (as draft rows — multi-stream-setup-plan §5): they merge into an existing system def,
+ * so only the def + declared identity-match keys are wired up front; any unresolved
+ * field is left for the setup overview to surface as `needs-mapping`.
  */
 export async function createConnectorFromAppCatalog(
   db: Database,
@@ -416,6 +417,7 @@ export async function createConnectorFromAppCatalog(
       syncMode: stream.syncMode ?? 'snapshot',
     })
     await materializeAppOwnedMappings(db, organizationId, connector.id, streamRow.id, stream)
+    await materializeAppContributingMappings(db, organizationId, streamRow.id, stream)
   }
   return connector
 }
@@ -512,6 +514,60 @@ export function buildOwnedFieldMappings(
   })
 }
 
+/**
+ * Materialize a catalog stream's `contributing` default-mappings into draft
+ * `DataConnectorMapping` rows — the symmetric counterpart to
+ * {@link materializeAppOwnedMappings}. Unlike an owned target (the connector
+ * provisions the def + binds every field), a contributing target merges INTO an
+ * existing system def (e.g. `contact`), so we only resolve the def and best-effort
+ * pre-bind the declared identity-match keys (`matchFieldKeys`, e.g. `['email']`). Any
+ * key that doesn't resolve cleanly leaves the row a draft (`fieldMappings: []`) — the
+ * setup overview flags it `needs-mapping` and the user authors it against the source
+ * tree. A target def the org lacks (no system `contact`) is skipped, never failing
+ * creation. See multi-stream-setup-plan §5.
+ */
+async function materializeAppContributingMappings(
+  db: Database,
+  organizationId: string,
+  streamId: string,
+  stream: CatalogDataConnector['streams'][number]
+): Promise<void> {
+  for (const mapping of stream.defaultMappings ?? []) {
+    if (mapping.target.mode !== 'contributing') continue
+    const { entityKind, matchFieldKeys } = mapping.target
+
+    const entityDefinitionId = await getCachedEntityDefId(organizationId, entityKind)
+    if (!entityDefinitionId) {
+      logger.warn('Skipping contributing default-mapping — system entity not found', {
+        organizationId,
+        entityKind,
+        streamId,
+      })
+      continue
+    }
+
+    const defFields = await getCachedCustomFields(organizationId, entityDefinitionId)
+    const fieldMappings = buildContributingMatchBindings(
+      entityDefinitionId,
+      mapping.rootPath,
+      matchFieldKeys ?? [],
+      stream.fields,
+      defFields
+    )
+
+    await addMapping(db, organizationId, {
+      dataConnectorStreamId: streamId,
+      rootPath: mapping.rootPath,
+      linkMode: mapping.linkMode ?? ('upsert' as LinkMode),
+      targetMode: 'contributing' as TargetMode,
+      entityDefinitionId,
+      relationshipFieldKey: mapping.relationshipFieldKey ?? null,
+      fieldMappings,
+      orphanBehavior: 'ignore' as OrphanBehavior,
+    })
+  }
+}
+
 export interface UpdateConnectorInput {
   name?: string
   config?: DataConnectorConfig
@@ -595,6 +651,31 @@ export async function updateConnector(
     })
   }
   return row
+}
+
+/**
+ * Finish first-run setup WITHOUT triggering a sync — flip a `pending` connector to
+ * `ready` (configured, idle, never synced, scheduler-eligible). Idempotent and
+ * one-directional: only `pending → ready` is applied, so a connector a scheduled fire
+ * already advanced (`pending → syncing`) — or one already past setup — is returned
+ * untouched; Finish can never regress a live/syncing connector. The scheduler was
+ * registered at create time and `ready ≠ paused`, so a scheduled connector stays
+ * eligible with no re-registration. See optional-first-sync-plan §3.4.
+ */
+export async function finishConnectorSetup(
+  db: Database,
+  organizationId: string,
+  id: string
+): Promise<DataConnectorRow> {
+  const row = await loadConnectorRow(db, organizationId, id)
+  if (row.status !== 'pending') return row
+  const [updated] = await db
+    .update(schema.DataConnector)
+    .set({ status: 'ready', updatedAt: new Date() })
+    .where(eq(schema.DataConnector.id, id))
+    .returning()
+  if (!updated) throw new Error('Failed to finish connector setup')
+  return updated
 }
 
 export type DeleteSyncedDataBehavior = 'keep' | 'archive' | 'delete'

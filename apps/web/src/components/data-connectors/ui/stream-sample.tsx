@@ -7,7 +7,8 @@ import CodeEditor, { CodeLanguage } from '~/components/workflow/ui/code-editor'
 
 interface StreamSampleProps {
   sample: { response: unknown; recordCount: number } | null
-  onUseShape: () => void
+  /** Offer "Use this shape as the schema". Omit for a read-only preview (catalog connectors). */
+  onUseShape?: () => void
 }
 
 /**
@@ -37,10 +38,12 @@ export function StreamSample({ sample, onUseShape }: StreamSampleProps) {
         <span className='text-xs text-muted-foreground'>
           Returned {sample.recordCount} record{sample.recordCount === 1 ? '' : 's'}. Raw response:
         </span>
-        <Button variant='ghost' size='xs' onClick={onUseShape}>
-          <Sparkles />
-          Use this shape as the schema
-        </Button>
+        {onUseShape && (
+          <Button variant='ghost' size='xs' onClick={onUseShape}>
+            <Sparkles />
+            Use this shape as the schema
+          </Button>
+        )}
       </div>
       <CodeEditor
         value={JSON.stringify(previewResponse(sample.response), null, 2)}

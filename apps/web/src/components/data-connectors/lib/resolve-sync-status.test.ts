@@ -33,6 +33,12 @@ describe('resolveSyncStatus', () => {
     expect(r.primaryAction).toBe('sync')
   })
 
+  it('maps ready → idle with a distinct label/detail from pending', () => {
+    const r = resolveSyncStatus({ status: 'ready' }, NOW)
+    expect(r).toMatchObject({ state: 'idle', label: 'Ready', primaryAction: 'sync' })
+    expect(r.detail).not.toBe('Add a source and field mappings to start syncing.')
+  })
+
   it('maps paused → paused with resume', () => {
     const r = resolveSyncStatus({ status: 'paused' }, NOW)
     expect(r).toMatchObject({ state: 'paused', primaryAction: 'resume' })
