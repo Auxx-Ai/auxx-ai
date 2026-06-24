@@ -56,46 +56,62 @@ const clients = new Map<string, SharedClient>()
  */
 export function getRealtimeClient(
   channelId: string,
-  config: { key: string; cluster: string }
+  config: { key: string; cluster: string; wsHost?: string; wsPort?: number; forceTLS?: boolean }
 ): SharedClient {
   const existing = clients.get(channelId)
   if (existing) return existing
 
-  const pusher = new Pusher(config.key, {
-    cluster: config.cluster,
-    forceTLS: true,
-    // Installed once for the whole connection. Pusher only invokes it for
-    // `private-`/`presence-` channels, so the public `chat-{session}` channel
-    // rides the same socket without auth. Reads the live passport per call so
-    // refresh / 401-retry keep working.
-    channelAuthorization: {
-      transport: 'ajax',
-      endpoint: `${getApiBase()}/api/chat/pusher/auth`,
-      customHandler: async ({ socketId, channelName }, callback) => {
-        try {
-          const { passport } = await getChatPassport(channelId)
-          const body = new URLSearchParams({ socket_id: socketId, channel_name: channelName })
-          const res = await fetch(`${getApiBase()}/api/chat/pusher/auth`, {
-            method: 'POST',
-            headers: {
-              Authorization: `Bearer ${passport}`,
-              'Content-Type': 'application/x-www-form-urlencoded',
-            },
-            credentials: 'include',
-            body: body.toString(),
-          })
-          if (!res.ok) {
-            callback(new Error(`Pusher auth failed (${res.status})`), null)
-            return
-          }
-          const json = (await res.json()) as { auth: string }
-          callback(null, json as any)
-        } catch (e) {
-          callback(e instanceof Error ? e : new Error(String(e)), null)
+  // Installed once for the whole connection. Pusher only invokes it for
+  // `private-`/`presence-` channels, so the public `chat-{session}` channel
+  // rides the same socket without auth. Reads the live passport per call so
+  // refresh / 401-retry keep working.
+  const channelAuthorization = {
+    transport: 'ajax' as const,
+    endpoint: `${getApiBase()}/api/chat/pusher/auth`,
+    customHandler: async (
+      { socketId, channelName }: { socketId: string; channelName: string },
+      callback: (error: Error | null, auth: unknown) => void
+    ) => {
+      try {
+        const { passport } = await getChatPassport(channelId)
+        const body = new URLSearchParams({ socket_id: socketId, channel_name: channelName })
+        const res = await fetch(`${getApiBase()}/api/chat/pusher/auth`, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${passport}`,
+            'Content-Type': 'application/x-www-form-urlencoded',
+          },
+          credentials: 'include',
+          body: body.toString(),
+        })
+        if (!res.ok) {
+          callback(new Error(`Pusher auth failed (${res.status})`), null)
+          return
         }
-      },
+        const json = (await res.json()) as { auth: string }
+        callback(null, json)
+      } catch (e) {
+        callback(e instanceof Error ? e : new Error(String(e)), null)
+      }
     },
-  })
+  }
+
+  // Self-hosted Sockudo (Pusher-protocol) vs hosted Pusher cloud. The branch is
+  // the direct constructor argument so pusher-js contextually types
+  // `enabledTransports`. Mirrors the admin adapter's connect branch — kept
+  // separate by design (see project notes), not DRYed together.
+  const pusher = config.wsHost
+    ? new Pusher(config.key, {
+        wsHost: config.wsHost,
+        wsPort: config.wsPort,
+        wssPort: config.wsPort,
+        forceTLS: config.forceTLS ?? true,
+        enabledTransports: config.forceTLS === false ? ['ws'] : ['ws', 'wss'],
+        disableStats: true,
+        cluster: '',
+        channelAuthorization,
+      })
+    : new Pusher(config.key, { cluster: config.cluster, forceTLS: true, channelAuthorization })
 
   const entries = new Map<string, ChannelEntry>()
 

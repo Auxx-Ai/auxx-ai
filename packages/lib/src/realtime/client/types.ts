@@ -45,7 +45,15 @@ export interface PresenceHandlers extends SubscribeHandlers {
  */
 export interface RealtimeAdapter {
   // Lifecycle
-  connect(config: { key: string; cluster: string; authEndpoint: string }): void
+  connect(config: {
+    key: string
+    cluster: string
+    authEndpoint: string
+    /** Self-hosted Sockudo host. Absent → hosted Pusher cloud (cluster). */
+    wsHost?: string
+    wsPort?: number
+    forceTLS?: boolean
+  }): void
   disconnect(): void
   getSocketId(): string | undefined
   isConnected(): boolean

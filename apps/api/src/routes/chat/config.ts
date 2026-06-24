@@ -67,6 +67,10 @@ configRoute.get('/:channelId', async (c) => {
       provider: 'pusher' as const,
       key: configService.get<string>('PUSHER_KEY') ?? '',
       cluster: configService.get<string>('PUSHER_CLUSTER') ?? 'us3',
+      // Self-hosted Sockudo (Pusher-protocol). Absent host → hosted Pusher cloud.
+      wsHost: configService.get<string>('PUSHER_HOST') || undefined,
+      wsPort: Number(configService.get<number>('PUSHER_PORT')) || 443,
+      forceTLS: configService.get<boolean>('PUSHER_USE_TLS') !== false,
     },
   })
 })

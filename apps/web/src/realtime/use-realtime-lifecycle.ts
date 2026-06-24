@@ -31,6 +31,9 @@ export function useRealtimeLifecycle() {
       key: config.key,
       cluster: config.cluster,
       authEndpoint: '/api/pusher/auth',
+      wsHost: config.wsHost,
+      wsPort: config.wsPort,
+      forceTLS: config.forceTLS,
     })
 
     // Org switch: tear down every room scoped to the previous org.

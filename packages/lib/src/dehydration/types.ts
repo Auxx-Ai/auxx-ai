@@ -49,6 +49,10 @@ export interface DehydratedEnvironment {
   pusher: {
     key: string
     cluster: string
+    /** Self-hosted Sockudo host. Absent → hosted Pusher cloud (cluster). */
+    wsHost?: string
+    wsPort?: number
+    forceTLS?: boolean
   }
   posthog: {
     key: string
