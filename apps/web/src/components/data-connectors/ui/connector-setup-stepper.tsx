@@ -18,13 +18,22 @@ import { Check, Clock, FlaskConical, Layers, Play, Plug, Waypoints } from 'lucid
 import { useMemo, useState } from 'react'
 import { api, type RouterOutputs } from '~/trpc/react'
 import { useConnectorMutations } from '../hooks/use-connector-mutations'
-import { deriveSetupProgress, type SetupStepId } from '../hooks/use-setup-progress'
+import {
+  deriveSetupProgress,
+  deriveStreamReadiness,
+  type SetupStepId,
+  type StreamReadiness,
+} from '../hooks/use-setup-progress'
+import { useStreamMutations } from '../hooks/use-stream-mutations'
 import { ConnectionSection } from './connection-section'
 import { ConnectorSaveBar } from './connector-save-bar'
 import { ScheduleSection } from './schedule-section'
+import { SetupStreamsOverview } from './setup-streams-overview'
 import { StreamConfigPanel } from './stream-config-panel'
+import { StreamSample } from './stream-sample'
 
 type Connector = NonNullable<RouterOutputs['dataConnector']['getById']>
+type Stream = RouterOutputs['dataConnector']['listStreams'][number]
 
 interface StepDef {
   id: SetupStepId
@@ -66,8 +75,6 @@ const STEPS: StepDef[] = [
   },
 ]
 
-const STEP_ORDER = STEPS.map((s) => s.id)
-
 interface ConnectorSetupStepperProps {
   connector: Connector
 }
@@ -87,7 +94,28 @@ export function ConnectorSetupStepper({ connector }: ConnectorSetupStepperProps)
   const streams = useMemo(() => streamsQuery.data ?? [], [streamsQuery.data])
   const primaryStream = streams[0] ?? null
 
+  // A catalog-supplied schema (app connectors always; templates that ship one)
+  // means there's nothing to "pull a sample" for — the source shape arrived at
+  // create time. Drop that step; instead offer an optional live preview inside
+  // Connect so the user can still confirm the connection returns real data.
+  // `schemaSource === 'catalog'` is the stable signal — a user-pulled sample
+  // stamps 'inferred', so this never flips mid-setup.
+  const catalogSchema =
+    primaryStream?.schemaSource === 'catalog' && primaryStream.sourceSchema != null
+
+  const steps = useMemo(
+    () => (catalogSchema ? STEPS.filter((s) => s.id !== 'sample') : STEPS),
+    [catalogSchema]
+  )
+  const stepOrder = useMemo(() => steps.map((s) => s.id), [steps])
+
   const progress = deriveSetupProgress(connector, streams)
+
+  // Per-stream readiness drives the Map step's overview badges + its `every`-stream gate.
+  const readinessById = useMemo<Record<string, StreamReadiness>>(
+    () => Object.fromEntries(streams.map((s) => [s.id, deriveStreamReadiness(s)])),
+    [streams]
+  )
 
   // Gating: can the user advance past this step? Schedule is always satisfiable
   // (Manual is a valid terminal state), so it never blocks the flow.
@@ -111,7 +139,7 @@ export function ConnectorSetupStepper({ connector }: ConnectorSetupStepperProps)
     run: false,
   }
 
-  const { syncNow, isSyncing } = useConnectorMutations()
+  const { syncNow, isSyncing, finishSetup, isFinishing } = useConnectorMutations()
 
   const addStream = api.dataConnector.addStream.useMutation({
     onSuccess: () => void utils.dataConnector.listStreams.invalidate({ id: connector.id }),
@@ -121,24 +149,37 @@ export function ConnectorSetupStepper({ connector }: ConnectorSetupStepperProps)
   // Active (expanded) step. Defaults to the first incomplete step; the user can
   // click any unlocked step header to jump back to it.
   const [active, setActive] = useState<SetupStepId>(
-    () => STEP_ORDER.find((id) => !doneById[id]) ?? 'run'
+    () => stepOrder.find((id) => !doneById[id]) ?? 'run'
   )
+
+  // Guard: if the active step was filtered out (sample drops once streams load),
+  // fall back to the first incomplete step in the current order.
+  const current = stepOrder.includes(active)
+    ? active
+    : (stepOrder.find((id) => !doneById[id]) ?? stepOrder[stepOrder.length - 1])
 
   // A step is unlocked once every step before it is done.
   const isUnlocked = (id: SetupStepId) => {
-    const idx = STEP_ORDER.indexOf(id)
-    return STEP_ORDER.slice(0, idx).every((prior) => doneById[prior])
+    const idx = stepOrder.indexOf(id)
+    return stepOrder.slice(0, idx).every((prior) => doneById[prior])
   }
 
   const goNext = (id: SetupStepId) => {
-    const next = STEP_ORDER[STEP_ORDER.indexOf(id) + 1]
+    const next = stepOrder[stepOrder.indexOf(id) + 1]
     if (next) setActive(next)
   }
 
   const renderBody = (id: SetupStepId) => {
     switch (id) {
       case 'connect':
-        return <ConnectionSection connector={connector} />
+        return (
+          <>
+            <ConnectionSection connector={connector} />
+            {catalogSchema && progress.connect && primaryStream && (
+              <ConnectPreview connector={connector} stream={primaryStream} />
+            )}
+          </>
+        )
       case 'sample':
         if (!primaryStream)
           return <NoStreamPrompt addStream={addStream} connectorId={connector.id} />
@@ -151,18 +192,17 @@ export function ConnectorSetupStepper({ connector }: ConnectorSetupStepperProps)
           />
         )
       case 'map':
-        if (!primaryStream)
+        if (streams.length === 0)
           return (
             <p className='px-1 py-3 text-sm text-muted-foreground'>
-              Pull a sample first — the source schema is what you map against.
+              Add a stream first — the source schema is what you map against.
             </p>
           )
         return (
-          <StreamConfigPanel
+          <SetupStreamsOverview
             connector={connector}
-            stream={primaryStream}
-            view='map'
-            scroll={false}
+            streams={streams}
+            readinessById={readinessById}
           />
         )
       case 'schedule':
@@ -175,11 +215,11 @@ export function ConnectorSetupStepper({ connector }: ConnectorSetupStepperProps)
               title='Ready to sync'
               description={
                 progress.canRun
-                  ? 'Run the first import now. You can keep editing while it runs.'
-                  : 'Finish Connect and Map fields above to enable the first sync.'
+                  ? 'Run the first import now, or finish setup and sync later.'
+                  : 'Finish Connect and Map fields above to enable syncing.'
               }
             />
-            <div>
+            <div className='flex items-center gap-2'>
               <Button
                 loading={isSyncing}
                 loadingText='Starting…'
@@ -187,6 +227,13 @@ export function ConnectorSetupStepper({ connector }: ConnectorSetupStepperProps)
                 onClick={() => void syncNow(connector.id)}>
                 <Play />
                 Run first sync
+              </Button>
+              <Button
+                variant='outline'
+                loading={isFinishing}
+                disabled={!progress.canRun}
+                onClick={() => void finishSetup(connector.id)}>
+                Finish without syncing
               </Button>
             </div>
           </div>
@@ -213,7 +260,7 @@ export function ConnectorSetupStepper({ connector }: ConnectorSetupStepperProps)
     )
   }
 
-  const activeNumber = STEP_ORDER.indexOf(active) + 1
+  const activeNumber = stepOrder.indexOf(current) + 1
 
   return (
     <div className='relative flex min-h-0 flex-1 flex-col'>
@@ -222,16 +269,16 @@ export function ConnectorSetupStepper({ connector }: ConnectorSetupStepperProps)
           value={activeNumber}
           orientation='vertical'
           onValueChange={(n) => {
-            const id = STEP_ORDER[n - 1]
+            const id = stepOrder[n - 1]
             if (id && isUnlocked(id)) setActive(id)
           }}
           className='mx-auto flex w-full max-w-3xl flex-col px-4 py-6'>
-          {STEPS.map((step, idx) => {
+          {steps.map((step, idx) => {
             // Visually completed = genuinely done, or already passed (an earlier step).
-            const completed = completedById[step.id] || idx < STEP_ORDER.indexOf(active)
-            const isActive = active === step.id
+            const completed = completedById[step.id] || idx < stepOrder.indexOf(current)
+            const isActive = current === step.id
             const Icon = step.icon
-            const isLast = idx === STEPS.length - 1
+            const isLast = idx === steps.length - 1
             return (
               <StepperItem
                 key={step.id}
@@ -267,6 +314,48 @@ export function ConnectorSetupStepper({ connector }: ConnectorSetupStepperProps)
         </Stepper>
       </ScrollArea>
       <ConnectorSaveBar />
+    </div>
+  )
+}
+
+/**
+ * Optional live preview for catalog connectors (app/template) — the schema already
+ * arrived from the catalog, so this only confirms the connection returns real
+ * records before the first sync (the value the dropped "Pull a sample" step gave).
+ * Failures surface via the shared `sampleFetch` error toast.
+ */
+function ConnectPreview({ connector, stream }: { connector: Connector; stream: Stream }) {
+  const { sampleFetch, isSampling } = useStreamMutations(connector.id)
+  const [sample, setSample] = useState<{ response: unknown; recordCount: number } | null>(null)
+
+  const run = async () => {
+    try {
+      setSample(await sampleFetch({ id: connector.id, streamKey: stream.streamKey }))
+    } catch {
+      // sampleFetch already surfaces the failure via toast.
+    }
+  }
+
+  return (
+    <div className='mt-2 flex flex-col gap-2 border-t px-1 pt-3'>
+      <div className='flex items-center justify-between gap-3'>
+        <div className='flex flex-col'>
+          <span className='text-sm font-medium'>Preview records</span>
+          <span className='text-xs text-muted-foreground'>
+            Optional — confirm the connection returns real data before the first sync.
+          </span>
+        </div>
+        <Button
+          size='sm'
+          variant='outline'
+          loading={isSampling}
+          loadingText='Fetching…'
+          onClick={() => void run()}>
+          <FlaskConical />
+          {sample ? 'Refresh' : 'Preview'}
+        </Button>
+      </div>
+      {sample && <StreamSample sample={sample} />}
     </div>
   )
 }

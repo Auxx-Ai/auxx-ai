@@ -2,10 +2,25 @@
 'use client'
 
 import { cn } from '@auxx/ui/lib/utils'
-import { AlertTriangle, CheckCircle2, Loader2, PauseCircle, RefreshCw, Wrench } from 'lucide-react'
+import {
+  AlertTriangle,
+  CheckCircle2,
+  CircleDashed,
+  Loader2,
+  PauseCircle,
+  RefreshCw,
+  Wrench,
+} from 'lucide-react'
 
 /** The DataConnector lifecycle status (mirrors `DataConnector.status`). */
-export type ConnectorStatus = 'pending' | 'provisioning' | 'syncing' | 'live' | 'error' | 'paused'
+export type ConnectorStatus =
+  | 'pending'
+  | 'ready'
+  | 'provisioning'
+  | 'syncing'
+  | 'live'
+  | 'error'
+  | 'paused'
 
 /** The DataConnectorRun status (mirrors `DataConnectorRun.status`). */
 export type RunStatus = 'running' | 'completed' | 'partial' | 'failed'
@@ -27,6 +42,15 @@ export const CONNECTOR_STATUS_META: Record<ConnectorStatus, StatusMeta> = {
     dot: 'bg-muted-foreground/40',
     icon: Wrench,
     pill: 'text-muted-foreground border-border bg-primary-50',
+    active: false,
+  },
+  ready: {
+    // Configured, never synced, scheduler-eligible — a positive, settled idle state,
+    // visibly distinct from `live`'s solid green and `pending`'s grey.
+    label: 'Ready',
+    dot: 'bg-info',
+    icon: CircleDashed,
+    pill: 'text-info border-info/30 bg-info/10',
     active: false,
   },
   provisioning: {

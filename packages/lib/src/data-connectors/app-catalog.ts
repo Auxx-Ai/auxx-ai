@@ -5,7 +5,10 @@
 // with the DB write helpers in `createConnectorFromAppCatalog`.
 
 import type { CatalogDataConnector } from '@auxx/database'
+import { toResourceFieldId } from '@auxx/types/field'
+import { generateId } from '@auxx/utils'
 import { inferJsonSchema } from '../json-schema'
+import type { FieldMapping, IdentityNormalize } from './types'
 
 /** A catalog source field's declared type → the JSON-schema scalar type it carries. */
 function jsonTypeForCatalogField(type: string | undefined): string {
@@ -65,6 +68,85 @@ export function buildSchemaFromFieldPaths(
     })
   }
   return root
+}
+
+/** Lowercase, strip non-alphanumerics so `first_name` ↔ `firstName` ↔ `First Name` collide. */
+function normalizeFieldKey(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]/g, '')
+}
+
+/** The match `normalize` strategy a target field's storage type implies (mirrors the editor). */
+function deriveNormalizeFromType(type: string): IdentityNormalize {
+  if (type === 'EMAIL') return 'email'
+  if (type === 'PHONE_INTL') return 'phone'
+  if (type === 'URL') return 'domain'
+  return 'none'
+}
+
+/** The subset of a target field the contributing-match binder needs (cache-shaped). */
+export interface ContributingTargetField {
+  id: string
+  name: string
+  systemAttribute: string | null
+  /** Storage field type (EMAIL / PHONE_INTL / URL / …) → the match `normalize` strategy. */
+  type: string
+}
+
+/**
+ * Pre-bind a contributing mapping's declared identity-match keys into `FieldMapping`
+ * entries flagged `match` (the secondary-identity link the sink merges on, e.g. an
+ * existing contact by `email`). Pure (caller supplies `defFields`) so it's unit-testable
+ * without the org cache. A key binds only when it resolves UNAMBIGUOUSLY on both sides:
+ *   - source — a declared stream field whose absolute `sourcePath` is the key under
+ *     the mapping's `rootPath` (`customer` + `email` → `customer.email`); the stored
+ *     `sourceFields` path is subtree-relative (`email`), matching how `mapRecord`
+ *     evaluates a rooted mapping;
+ *   - target — a field on the contributing def keyed by that match key (its
+ *     `systemAttribute`, name, or normalized name).
+ * Unresolved or array-rooted keys are dropped (the row stays a `needs-mapping` draft).
+ * See multi-stream-setup-plan §5.2.
+ */
+export function buildContributingMatchBindings(
+  entityDefinitionId: string,
+  rootPath: string,
+  matchFieldKeys: string[],
+  sourceFields: CatalogDataConnector['streams'][number]['fields'],
+  defFields: ContributingTargetField[]
+): FieldMapping[] {
+  if (matchFieldKeys.length === 0) return []
+  // Identity match lives on a nested object (e.g. `customer`); array roots have no
+  // single deterministic source path for a key, so skip auto-binding them.
+  if (rootPath.includes('[]')) return []
+
+  const fieldByKey = new Map<string, ContributingTargetField>()
+  for (const fld of defFields) {
+    if (fld.systemAttribute) {
+      fieldByKey.set(fld.systemAttribute, fld)
+      fieldByKey.set(normalizeFieldKey(fld.systemAttribute), fld)
+    }
+    fieldByKey.set(fld.name, fld)
+    fieldByKey.set(normalizeFieldKey(fld.name), fld)
+  }
+
+  const prefix = rootPath ? `${rootPath}.` : ''
+  const bindings: FieldMapping[] = []
+  for (const key of matchFieldKeys) {
+    const target = fieldByKey.get(key) ?? fieldByKey.get(normalizeFieldKey(key))
+    if (!target) continue
+    const absolutePath = `${prefix}${key}`
+    const sourceField = sourceFields.find((f) => f.sourcePath === absolutePath)
+    if (!sourceField) continue
+    // Subtree-relative path (strip the rootPath prefix the source field declares).
+    const relativePath = sourceField.sourcePath.slice(prefix.length)
+    bindings.push({
+      id: generateId(),
+      targetFieldRef: toResourceFieldId(entityDefinitionId, target.id),
+      expression: `{${relativePath}}`,
+      sourceFields: { [relativePath]: relativePath },
+      match: { normalize: deriveNormalizeFromType(target.type) },
+    })
+  }
+  return bindings
 }
 
 /** The source schema for an app catalog stream — prefer its canonical sample. */

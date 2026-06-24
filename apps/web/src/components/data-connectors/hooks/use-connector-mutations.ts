@@ -6,7 +6,7 @@ import { useCallback } from 'react'
 import { api } from '~/trpc/react'
 
 /** Statuses the entity mutations stamp optimistically (subset of `DataConnectorStatus`). */
-type OptimisticStatus = 'paused' | 'live' | 'syncing'
+type OptimisticStatus = 'paused' | 'live' | 'syncing' | 'ready'
 
 /**
  * Optimistic connector-entity mutations against the `list` + `getById` caches,
@@ -22,6 +22,7 @@ export function useConnectorMutations() {
   const utils = api.useUtils()
 
   const syncNowM = api.dataConnector.syncNow.useMutation()
+  const finishSetupM = api.dataConnector.finishSetup.useMutation()
   const backfillM = api.dataConnector.backfillPendingChange.useMutation()
   // Pause/resume are a `status` patch through the shared `update` route.
   const updateM = api.dataConnector.update.useMutation()
@@ -95,6 +96,23 @@ export function useConnectorMutations() {
     [patchStatus, syncNowM, utils.dataConnector.getStatus]
   )
 
+  // "Finish without syncing" — leave first-run setup configured-but-idle (optional-
+  // first-sync §3.4). Stamp 'ready' optimistically so the stepper collapses to the flat
+  // editor at once, then invalidate getById + list so the parent re-queries the truth.
+  const finishSetup = useCallback(
+    async (id: string) => {
+      await patchStatus(
+        id,
+        'ready',
+        () => finishSetupM.mutateAsync({ id }),
+        'Could not finish setup'
+      )
+      void utils.dataConnector.getById.invalidate({ id })
+      void utils.dataConnector.list.invalidate()
+    },
+    [patchStatus, finishSetupM, utils.dataConnector.getById, utils.dataConnector.list]
+  )
+
   // "Backfill now" — same cosmetic bridge as syncNow (stamp 'syncing' so the banner's
   // button + pill react instantly), then nudge the getStatus poll. The backfill
   // finalize clears `resyncPending`, which removes the banner.
@@ -136,9 +154,11 @@ export function useConnectorMutations() {
     pause,
     resume,
     syncNow,
+    finishSetup,
     backfillPending,
     remove,
     isSyncing: syncNowM.isPending,
+    isFinishing: finishSetupM.isPending,
     isBackfilling: backfillM.isPending,
     isPausing: updateM.isPending,
     isResuming: updateM.isPending,

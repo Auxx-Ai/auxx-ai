@@ -74,7 +74,7 @@ export const DataConnector = pgTable(
     syncBehavior: dataConnectorSyncBehavior().default('manual').notNull(),
     scheduleConfig: jsonb().$type<ScheduledTriggerConfig>(),
     status: dataConnectorStatus().default('pending').notNull(),
-    //      'pending' | 'provisioning' | 'syncing' | 'live' | 'error' | 'paused'
+    //      'pending' | 'ready' | 'provisioning' | 'syncing' | 'live' | 'error' | 'paused'
 
     // Connector-level cursor/state (per-stream cursors live on DataConnectorStream).
     state: jsonb().$type<Record<string, unknown>>().default({}).notNull(),

@@ -102,6 +102,7 @@ export {
   createConnectorFromAppCatalog,
   createConnectorFromTemplate,
   deleteConnector,
+  finishConnectorSetup,
   removeMapping,
   removeStream,
   setStreamRequestConfig,

@@ -43,6 +43,13 @@ interface ConnectionPickerPopoverProps {
   trigger?: ReactNode
   /** Match the popover width to the trigger (for full-width form fields). */
   matchTriggerWidth?: boolean
+  /**
+   * Connection ids the host considers a match for this context — surfaced as a
+   * "Recommended" group at the top of the picker. See {@link ConnectionPicker}.
+   */
+  preferredCredentialIds?: string[]
+  /** Display name of the preferred provider/app (e.g. "Gmail") for the picker's nudge/empty state. */
+  preferredLabel?: string
 }
 
 const DEFAULT_KINDS: PickerKind[] = ['app', 'integration', 'workflow']
@@ -63,6 +70,8 @@ export function ConnectionPickerPopover({
   placeholder = 'Choose connection',
   trigger,
   matchTriggerWidth = false,
+  preferredCredentialIds,
+  preferredLabel,
 }: ConnectionPickerPopoverProps) {
   const [open, setOpen] = useState(false)
   const [editRow, setEditRow] = useState<PickerConnection | null>(null)
@@ -202,6 +211,8 @@ export function ConnectionPickerPopover({
             }
             onAction={enableActions ? handleAction : undefined}
             providerByKey={providerByKey}
+            preferredCredentialIds={preferredCredentialIds}
+            preferredLabel={preferredLabel}
           />
         </PopoverContentDialogAware>
       </Popover>

@@ -68,6 +68,7 @@ export const knowledgeSourceStatus = pgEnum('KnowledgeSourceStatus', [
 // values, no cross-domain pgEnum coupling).
 export const dataConnectorStatus = pgEnum('DataConnectorStatus', [
   'pending',
+  'ready', // configured, never synced, scheduler-eligible (optional-first-sync-plan)
   'provisioning',
   'syncing',
   'live',

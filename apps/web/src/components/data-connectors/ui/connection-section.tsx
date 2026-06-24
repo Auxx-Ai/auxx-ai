@@ -75,6 +75,18 @@ export function ConnectionSection({ connector }: ConnectionSectionProps) {
     return appInstallations.find((i) => i.app.slug === restrictTo.appSlug)?.installationId ?? null
   }, [restrictTo, appInstallations])
 
+  // Human label for the connection this connector expects (app title / provider label),
+  // used for the "Connect Gmail" trigger + "Recommended: Gmail" subtitle + picker nudge.
+  const preferredLabel = useMemo(() => {
+    if (restrictTo?.kind === 'app') {
+      return appInstallations.find((i) => i.app.slug === restrictTo.appSlug)?.app.title ?? null
+    }
+    if (restrictTo?.kind === 'provider') {
+      return providers.find((p) => p.providerKey === restrictTo.providerKey)?.label ?? null
+    }
+    return null
+  }, [restrictTo, appInstallations, providers])
+
   const update = api.dataConnector.update.useMutation({
     onSuccess: () => void utils.dataConnector.getById.invalidate({ id: connector.id }),
   })
@@ -99,6 +111,20 @@ export function ConnectionSection({ connector }: ConnectionSectionProps) {
     : undefined
   const boundDisplay = bound ? resolveConnectionDisplay(bound, appInstallations) : null
   const status: ConnectionStatus = connected ? 'connected' : 'disconnected'
+
+  // Existing connections that match what this connector expects (its app/provider hint).
+  // Surfaced as "Recommended" in the picker — biases, never auto-binds (05c §8).
+  const preferredCredentialIds = useMemo(() => {
+    if (restrictedInstallationId) {
+      return connections
+        .filter((c) => c.appInstallationId === restrictedInstallationId)
+        .map((c) => c.id)
+    }
+    if (restrictTo?.kind === 'provider') {
+      return connections.filter((c) => c.type === restrictTo.providerKey).map((c) => c.id)
+    }
+    return []
+  }, [connections, restrictedInstallationId, restrictTo])
 
   return (
     <>
@@ -125,9 +151,11 @@ export function ConnectionSection({ connector }: ConnectionSectionProps) {
               subtitle={
                 connected
                   ? 'This connector is using a bound credential.'
-                  : isGenericRest
-                    ? 'Add an API key / secret to authorize requests.'
-                    : 'Connect an account to authorize this connector.'
+                  : preferredLabel
+                    ? `Recommended: ${preferredLabel}.`
+                    : isGenericRest
+                      ? 'Add an API key / secret to authorize requests.'
+                      : 'Connect an account to authorize this connector.'
               }
               actions={() => (
                 <ConnectionPickerPopover
@@ -136,10 +164,16 @@ export function ConnectionSection({ connector }: ConnectionSectionProps) {
                     bindCredential(credentialId, row.appInstallationId)
                   }
                   onCreateNew={() => setAddOpen(true)}
+                  preferredCredentialIds={preferredCredentialIds}
+                  preferredLabel={preferredLabel ?? undefined}
                   trigger={
                     <Button variant='outline' size='sm'>
                       <Plug />
-                      {connected ? 'Switch connection' : 'Connect'}
+                      {connected
+                        ? 'Switch connection'
+                        : preferredLabel
+                          ? `Connect ${preferredLabel}`
+                          : 'Connect'}
                     </Button>
                   }
                 />

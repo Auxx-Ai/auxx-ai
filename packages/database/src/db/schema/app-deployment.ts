@@ -211,7 +211,8 @@ export interface CatalogConnectorDefaultMapping {
     | {
         mode: 'contributing'
         entityKind: string
-        identity: Record<string, unknown>
+        /** Target field keys to flag as secondary identity-match keys (e.g. `['email']`). */
+        matchFieldKeys?: string[]
       }
 }
 

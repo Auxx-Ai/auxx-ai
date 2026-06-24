@@ -4,7 +4,9 @@
 import { Button } from '@auxx/ui/components/button'
 import {
   Command,
+  CommandEmpty,
   CommandGroup,
+  CommandInput,
   CommandItem,
   CommandList,
   CommandSeparator,
@@ -43,6 +45,18 @@ interface ConnectionPickerProps {
   providerByKey?: Map<string, { connectionType: string }>
   /** Empty-state hint shown when there are no connections to list. */
   emptyHint?: string
+  /**
+   * Connection ids the host considers a match for this context (e.g. a data
+   * connector's expected app/provider). Matching rows lift into a "Recommended"
+   * group at the top. The host derives these from its own domain hint — the
+   * picker stays credential-agnostic.
+   */
+  preferredCredentialIds?: string[]
+  /**
+   * Display name of the preferred provider/app (e.g. "Gmail"). Drives the
+   * recommend-but-none-exists nudge and a tailored empty state.
+   */
+  preferredLabel?: string
 }
 
 /**
@@ -59,28 +73,64 @@ export function ConnectionPicker({
   onAction,
   providerByKey,
   emptyHint,
+  preferredCredentialIds,
+  preferredLabel,
 }: ConnectionPickerProps) {
   const { appInstallations } = useAppsContext()
 
-  const { apps, keys } = useMemo(
-    () => ({
-      apps: connections.filter((c) => c.kind === 'app'),
-      keys: connections.filter((c) => c.kind === 'integration' || c.kind === 'workflow'),
-    }),
-    [connections]
-  )
+  // Recommended rows lift to the top; the rest keep their family grouping. A
+  // preferred row is excluded from Apps/keys so it never renders twice.
+  const { preferred, apps, keys } = useMemo(() => {
+    const preferredSet = new Set(preferredCredentialIds)
+    const preferred = connections.filter((c) => preferredSet.has(c.id))
+    const rest = connections.filter((c) => !preferredSet.has(c.id))
+    return {
+      preferred,
+      apps: rest.filter((c) => c.kind === 'app'),
+      keys: rest.filter((c) => c.kind === 'integration' || c.kind === 'workflow'),
+    }
+  }, [connections, preferredCredentialIds])
 
   const resolve = (c: PickerConnection) => resolveConnectionDisplay(c, appInstallations)
 
   const isEmpty = connections.length === 0
+  // Hint exists but nothing matches it yet → point the user at "+ New connection".
+  const showNoPreferredNudge = !isEmpty && !!preferredLabel && preferred.length === 0
 
   return (
     <Command className='w-full'>
+      {!isEmpty && <CommandInput placeholder='Search connections...' />}
       <CommandList scrollAreaClassName='max-h-none'>
         {isEmpty && (
           <div className='px-3 py-6 text-center text-sm text-muted-foreground'>
-            {emptyHint ?? 'No connections yet — add one to authorize this connector.'}
+            {preferredLabel
+              ? `No ${preferredLabel} connection yet — add one to authorize this connector.`
+              : (emptyHint ?? 'No connections yet — add one to authorize this connector.')}
           </div>
+        )}
+
+        {showNoPreferredNudge && (
+          <div className='px-3 py-2 text-xs text-muted-foreground'>
+            No {preferredLabel} connection yet — add one below, or pick another.
+          </div>
+        )}
+
+        {!isEmpty && <CommandEmpty>No connections found.</CommandEmpty>}
+
+        {preferred.length > 0 && (
+          <CommandGroup heading='Recommended'>
+            {preferred.map((c) => (
+              <ConnectionItem
+                key={c.id}
+                connection={c}
+                selected={value === c.id}
+                onSelect={() => onPick(c.id, c)}
+                onAction={onAction}
+                providerByKey={providerByKey}
+                {...resolve(c)}
+              />
+            ))}
+          </CommandGroup>
         )}
 
         {apps.length > 0 && (
@@ -117,9 +167,9 @@ export function ConnectionPicker({
 
         {onCreateNew && (
           <>
-            {!isEmpty && <CommandSeparator />}
-            <CommandGroup>
-              <CommandItem onSelect={onCreateNew} className='cursor-pointer h-7.5'>
+            {!isEmpty && <CommandSeparator alwaysRender />}
+            <CommandGroup forceMount>
+              <CommandItem forceMount onSelect={onCreateNew} className='cursor-pointer h-7.5'>
                 <Plus className='text-muted-foreground' />
                 <span>New connection</span>
               </CommandItem>
@@ -156,7 +206,11 @@ function ConnectionItem({
   const isReconnect = isApp || providerByKey?.get(connection.type)?.connectionType === 'oauth2-code'
   const actionLabel = isReconnect ? 'Reconnect' : 'Edit'
   return (
-    <CommandItem value={title} onSelect={onSelect} className='cursor-pointer h-7.5'>
+    <CommandItem
+      value={title}
+      keywords={connection.type ? [connection.type] : undefined}
+      onSelect={onSelect}
+      className='cursor-pointer h-7.5'>
       {/* `status` ('connected' | 'expired') is a subset of AppConnectionStatus. */}
       <AppWithStatusIcon iconId={iconId} size='sm' status={connection.status} />
       <span className='truncate'>{title}</span>

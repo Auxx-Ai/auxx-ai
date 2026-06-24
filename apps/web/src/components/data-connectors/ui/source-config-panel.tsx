@@ -163,11 +163,7 @@ function AppConfigSource({
   )
 
   if (fields.length === 0) {
-    return (
-      <div className='p-6 text-sm text-muted-foreground'>
-        This connector has no user-configurable options. Its request is defined in code.
-      </div>
-    )
+    return null
   }
 
   return (
