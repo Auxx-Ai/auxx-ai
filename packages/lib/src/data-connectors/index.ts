@@ -176,6 +176,7 @@ export type { EntitySink, ProjectedRecord, SyncCtx } from './sinks/types'
 export {
   backfillPendingChange,
   freshBackfillState,
+  MAX_BACKFILL_RECORDS,
   runBackfillSlice,
   SLICE_BUDGET,
   SLICE_LOCK_DURATION_MS,
@@ -183,6 +184,11 @@ export {
   startConnectorSync,
   sweepStaleConnectorRuns,
 } from './slice-orchestrator'
+// §1 global stale-run sweep — maintenance-schedule handler
+export {
+  DATA_CONNECTOR_STALE_SWEEP_JOB_NAME,
+  dataConnectorStaleSweepJob,
+} from './stale-sweep-job'
 // Tier 2 mapping suggester (create-sync-flow §3.2) — heuristic source→field proposals
 export type { SourceLeaf } from './suggest-mappings'
 export { collectSchemaLeaves, suggestFieldMappings } from './suggest-mappings'

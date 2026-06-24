@@ -13,12 +13,13 @@ import type { CatalogDataConnector, Database } from '@auxx/database'
 import { createScopedLogger } from '../../logger'
 import type { SyncCursor } from '../../sync-core/contracts'
 import { decodeCursor, encodeCursor } from './app-connector-state'
-import type {
-  ConnectorRecord,
-  ConnectorStreamDecl,
-  ConnectorYield,
-  DataConnectorDefinition,
-  FetchResult,
+import {
+  ConnectorRateLimitError,
+  type ConnectorRecord,
+  type ConnectorStreamDecl,
+  type ConnectorYield,
+  type DataConnectorDefinition,
+  type FetchResult,
 } from './types'
 
 /** What an app's `execute` returns per page (the SDK's flat `ConnectorFetchResult`). */
@@ -31,6 +32,16 @@ interface AppExecuteResult {
     updatedSince?: string
     /** Set on the last page — flips the stream to steady / finishes the snapshot. */
     backfillComplete?: boolean
+  }
+  /**
+   * Upstream throttle signal (mirrors the SDK `ConnectorFetchResult.rateLimited`).
+   * The signal crosses the sandbox boundary as plain DATA; the adapter re-throws it
+   * as a real `ConnectorRateLimitError` (in-realm) so the slice loop's existing
+   * back-off handling can pace the re-enqueue. Cross-realm `instanceof` from inside
+   * the sandbox would never match — this is why the app returns data, not an error.
+   */
+  rateLimited?: {
+    retryAfterMs?: number
   }
 }
 
@@ -281,8 +292,19 @@ export function appConnectorAdapter(
       return {
         records: (async function* (): AsyncGenerator<ConnectorYield> {
           while (true) {
-            const { records = [], nextState = {} } = await invokePage(flat)
+            const { records = [], nextState = {}, rateLimited } = await invokePage(flat)
             for (const record of records) yield record
+
+            // Upstream throttle (§2): the app couldn't fetch this page and asked us to
+            // back off. Re-throw as the in-realm lib error so the slice loop folds
+            // `retryAfterMs` into the re-enqueue delay. Records yielded above (earlier
+            // pages this slice) are kept; the throttled page is retried after the wait.
+            if (rateLimited) {
+              throw new ConnectorRateLimitError(
+                `App connector '${slug}' rate-limited by upstream`,
+                rateLimited.retryAfterMs
+              )
+            }
 
             const watermark = nextState.updatedSince
             logger.info('app connector page complete', {

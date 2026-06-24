@@ -74,6 +74,20 @@ export interface ConnectorFetchResult {
   records: ConnectorRecord[] | AsyncIterable<ConnectorRecord>
   /** Cursor + watermark to persist; the next page / incremental run resumes from here. */
   nextState: ConnectorStreamState
+  /**
+   * Upstream throttle signal. When the source rate-limits a page (HTTP 429, or a
+   * provider-specific 403/cost throttle), **return** this instead of throwing or
+   * sleeping — the platform pauses the chain and re-enqueues the next slice after
+   * `retryAfterMs`, so the connector never burns its sandbox budget waiting.
+   *
+   * Return the cursor you want to resume from in `nextState.cursor` alongside this
+   * (typically the SAME page that was throttled). Records already collected this page
+   * are still sinked; the throttled page is retried after the wait.
+   */
+  rateLimited?: {
+    /** Server-hinted wait before the next attempt, in ms (`Retry-After` / reset header). */
+    retryAfterMs?: number
+  }
 }
 
 /** Field capabilities surfaced on a declared source field. */
