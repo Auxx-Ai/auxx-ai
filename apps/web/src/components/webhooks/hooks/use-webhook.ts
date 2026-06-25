@@ -1,4 +1,4 @@
-// apps/web/src/app/(protected)/app/settings/webhooks/_components/use-webhook.ts
+// apps/web/src/components/webhooks/hooks/use-webhook.ts
 'use client'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 import { useState } from 'react'

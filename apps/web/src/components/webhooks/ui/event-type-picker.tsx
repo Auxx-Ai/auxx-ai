@@ -1,4 +1,4 @@
-// apps/web/src/app/(protected)/app/settings/webhooks/_components/event-type-picker.tsx
+// apps/web/src/components/webhooks/ui/event-type-picker.tsx
 'use client'
 
 import { eventTypesList } from '@auxx/lib/webhooks/types'
