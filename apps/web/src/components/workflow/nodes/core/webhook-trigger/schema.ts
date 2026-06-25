@@ -14,20 +14,19 @@ import { createUnifiedOutputVariable } from '~/components/workflow/utils/variabl
 import type { WebhookTriggerNodeData } from './types'
 
 /**
- * Zod schema for the connection webhook trigger node (flattened structure).
+ * Zod schema for the webhook endpoint trigger node (flattened structure).
  */
 export const webhookTriggerNodeDataSchema = baseNodeDataSchema.extend({
-  connectionId: z.string().min(1, 'Connection is required'),
-  topic: z.string().min(1, 'Topic is required'),
-  connectionName: z.string().optional(),
-  connectionType: z.string().optional(),
-  connectionIcon: z.string().optional(),
+  webhookEndpointId: z.string().min(1, 'Webhook endpoint is required'),
+  // Optional — blank matches every delivery (endpoints with no topicSource extract topic '').
+  topic: z.string().default(''),
+  webhookEndpointName: z.string().optional(),
 })
 
 export const createWebhookTriggerDefaultData = (): Partial<WebhookTriggerNodeData> => ({
-  title: 'Connection Webhook',
-  desc: 'Select a connection and topic',
-  connectionId: '',
+  title: 'Webhook Endpoint',
+  desc: 'Select a webhook endpoint',
+  webhookEndpointId: '',
   topic: '',
 })
 
@@ -59,8 +58,8 @@ export function validateWebhookTriggerData(data: WebhookTriggerNodeData): Valida
 }
 
 /**
- * Output variables exposed by the connection webhook trigger: the topic, the
- * connection id, and the raw verified payload (`body`).
+ * Output variables exposed by the webhook endpoint trigger: the topic, the
+ * endpoint id, and the raw verified payload (`body`).
  */
 function getWebhookTriggerOutputVariables(
   _data: WebhookTriggerNodeData,
@@ -71,13 +70,13 @@ function getWebhookTriggerOutputVariables(
       nodeId,
       path: 'topic',
       type: BaseType.STRING,
-      description: 'The provider topic that fired this workflow',
+      description: 'The topic that fired this workflow',
     }),
     createUnifiedOutputVariable({
       nodeId,
-      path: 'connectionId',
+      path: 'webhookEndpointId',
       type: BaseType.STRING,
-      description: 'The connection id that received the webhook',
+      description: 'The webhook endpoint id that received the delivery',
     }),
     createUnifiedOutputVariable({
       nodeId,
@@ -89,13 +88,13 @@ function getWebhookTriggerOutputVariables(
 }
 
 /**
- * Connection webhook trigger node definition.
+ * Webhook endpoint trigger node definition.
  */
 export const webhookTriggerDefinition: NodeDefinition<WebhookTriggerNodeData> = {
   id: NodeType.WEBHOOK_ENDPOINT,
   category: NodeCategory.TRIGGER,
-  displayName: 'Connection Webhook',
-  description: 'Trigger when a connection receives a webhook on a topic',
+  displayName: 'Webhook Endpoint',
+  description: 'Trigger when a webhook endpoint receives a delivery',
   icon: 'webhook',
   color: '#10b981', // TRIGGER category color
   schema: webhookTriggerNodeDataSchema,

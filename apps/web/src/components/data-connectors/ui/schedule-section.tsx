@@ -96,8 +96,15 @@ export function ScheduleSection({ connector }: ScheduleSectionProps) {
     return (inst?.workflowTriggers?.length ?? inst?.agentTriggers?.length ?? 0) > 0
   })()
 
+  // Generic WebhookEndpoints can drive a webhook-sync stream too (app-less). If the org
+  // has any, webhook mode is offered regardless of the connection's app/provider.
+  const webhookEndpoints = api.webhookEndpoint.list.useQuery()
+  const hasWebhookEndpoints = (webhookEndpoints.data?.length ?? 0) > 0
+
   const webhookSupported =
-    (!!connectionId && Array.isArray(topics) && topics.length > 0) || appTriggerCapable
+    (!!connectionId && Array.isArray(topics) && topics.length > 0) ||
+    appTriggerCapable ||
+    hasWebhookEndpoints
 
   const [inspectorTopic, setInspectorTopic] = useState<string>()
   useEffect(() => {

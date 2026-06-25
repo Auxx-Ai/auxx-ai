@@ -14,7 +14,6 @@ import { and, eq, inArray } from 'drizzle-orm'
 import { getCachedCustomFields, getCachedEntityDefId } from '../cache'
 import { BadRequestError, NotFoundError } from '../errors'
 import { appCatalogStreamSchema, buildContributingMatchBindings } from './app-catalog'
-import { reconcileConnectionWebhooks } from './connection-webhook-registration'
 import { removeConnectorScheduler, syncConnectorScheduler } from './data-connector-scheduler'
 import {
   classifyConnectorChange,
@@ -597,7 +596,7 @@ export async function updateConnector(
 
   // The write + edit-safety stamp run in one transaction so a structural edit can't
   // half-apply (BullMQ scheduler + webhook are external — they run after commit).
-  const { row, prior } = await db.transaction(async (tx) => {
+  const { row } = await db.transaction(async (tx) => {
     const prior = await loadConnectorRow(tx, organizationId, id)
     const impact = classifyConnectorChange(prior, patch)
     const [row] = await tx
@@ -631,27 +630,9 @@ export async function updateConnector(
 
   await syncConnectorScheduler(row)
 
-  // Webhook registration is connection-scoped (Direction 2): reconcile the affected
-  // connection(s) to the UNION of their consumers' topics. A webhook toggle, a config
-  // change while staying webhook, or a connection switch all re-derive the desired set.
-  // Reconcile both the new and (if it changed) the prior connection so a switch frees
-  // the old one. Best-effort: a provider error never fails the mutation.
-  if (row.syncBehavior === 'webhook' || prior.syncBehavior === 'webhook') {
-    const connectionIds = new Set(
-      [row.credentialId, prior.credentialId].filter((v): v is string => !!v)
-    )
-    for (const connectionId of connectionIds) {
-      try {
-        await reconcileConnectionWebhooks(db, organizationId, connectionId)
-      } catch (error) {
-        logger.warn('connection webhook reconcile failed', {
-          connectorId: id,
-          connectionId,
-          error: error instanceof Error ? error.message : String(error),
-        })
-      }
-    }
-  }
+  // Webhook-sync connectors need no platform-side provider registration: app triggers are
+  // registered by the app, and generic WebhookEndpoints are user-pasted URLs. The binding
+  // lives in the stream's `requestConfig.webhookTrigger` and drives the dispatch matcher.
   return row
 }
 
@@ -706,7 +687,8 @@ export async function deleteConnector(
   id: string,
   behavior: DeleteSyncedDataBehavior = 'keep'
 ): Promise<{ success: boolean }> {
-  const deleted = await loadConnectorRow(db, organizationId, id)
+  // Existence guard (throws NotFound if missing) — no longer need the row itself.
+  await loadConnectorRow(db, organizationId, id)
   await removeConnectorScheduler(id)
 
   if (behavior !== 'keep') {
@@ -758,22 +740,6 @@ export async function deleteConnector(
   }
 
   await db.delete(schema.DataConnector).where(eq(schema.DataConnector.id, id))
-
-  // Reconcile the connection AFTER the row is gone (Direction 2): if this was the last
-  // webhook consumer on the connection its provider subs drop; otherwise the remaining
-  // connectors/triggers keep theirs. Best-effort — a dangling sub is harmless. Only the
-  // webhook connectors matter; skip the reconcile for non-webhook deletions.
-  if (deleted.syncBehavior === 'webhook' && deleted.credentialId) {
-    try {
-      await reconcileConnectionWebhooks(db, organizationId, deleted.credentialId)
-    } catch (error) {
-      logger.warn('connection webhook reconcile after delete failed', {
-        connectorId: id,
-        connectionId: deleted.credentialId,
-        error: error instanceof Error ? error.message : String(error),
-      })
-    }
-  }
 
   logger.info('Deleted data connector', { id, behavior })
   return { success: true }

@@ -7,6 +7,7 @@ import {
   dispatchAppTriggerToConnectors,
   dispatchWebhookEndpoint,
   dispatchWebhookEndpointToAgents,
+  dispatchWebhookEndpointToConnectors,
   runConnectorAppTriggerStream,
 } from '@auxx/lib/jobs'
 import { Queues } from '@auxx/lib/jobs/queues'
@@ -20,6 +21,8 @@ const jobMappings = {
   [APP_TRIGGER_SYNC_STREAM_JOB]: runConnectorAppTriggerStream,
   dispatchWebhookEndpoint,
   dispatchWebhookEndpointToAgents,
+  // Connector-sink leg of the generic WebhookEndpoint fan-out (reuses the same child).
+  dispatchWebhookEndpointToConnectors,
 }
 
 export function startAppTriggerWorker() {

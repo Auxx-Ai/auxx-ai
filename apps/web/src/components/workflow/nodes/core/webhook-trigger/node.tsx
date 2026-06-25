@@ -6,16 +6,17 @@ import { BaseNode } from '../../shared/base/base-node'
 import type { WebhookTriggerNode as WebhookTriggerNodeType } from './types'
 
 /**
- * Connection Webhook trigger node. Shows the bound connection + topic in its
+ * Webhook Endpoint trigger node. Shows the bound endpoint + topic in its
  * description once configured.
  */
 export const WebhookTriggerNode: FC<WebhookTriggerNodeType> = memo((props) => {
   const { id, data, selected } = props
 
-  const desc =
-    data.connectionName && data.topic
-      ? `${data.connectionName} · ${data.topic}`
-      : 'Select a connection and topic'
+  const desc = data.webhookEndpointName
+    ? data.topic
+      ? `${data.webhookEndpointName} · ${data.topic}`
+      : data.webhookEndpointName
+    : 'Select a webhook endpoint'
 
   const displayData = { ...data, desc }
 

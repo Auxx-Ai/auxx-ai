@@ -1,5 +1,5 @@
 // packages/lib/src/jobs/agent/webhook-endpoint-dispatch-job.test.ts
-// The agent webhook matcher: a delivery fans only to `kind: 'webhook'` agent triggers
+// The agent webhook matcher: a delivery fans only to `kind: 'webhook-endpoint'` agent triggers
 // matching `(endpointId, topic)` that pass their filter. Cache + queue + redis are faked
 // so the test is pure.
 
@@ -22,7 +22,7 @@ import { dispatchWebhookEndpointToAgents } from './webhook-endpoint-dispatch-job
 function trigger(overrides: Record<string, unknown>) {
   return {
     id: 't1',
-    kind: 'webhook',
+    kind: 'webhook-endpoint',
     enabled: true,
     triggerWebhookEndpointId: 'ep1',
     triggerTopic: 'orders/create',

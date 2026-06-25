@@ -5,7 +5,6 @@ import { createScopedLogger } from '@auxx/logger'
 import { and, desc, eq, inArray } from 'drizzle-orm'
 import { onCacheEvent } from '../cache/invalidate'
 import { getCachedWorkflowAppsList } from '../cache/workflow-app-queries'
-import { reconcileConnectionWebhooks } from '../data-connectors/connection-webhook-registration'
 import { getQueue, Queues } from '../jobs/queues'
 import { WorkflowEngine } from '../workflow-engine/core/workflow-engine'
 import { PollingTriggerService } from './polling-trigger-service'
@@ -380,16 +379,15 @@ export class WorkflowService {
                 workflowUpdates.triggerInstallationId = triggerNode.data.installationId || null
               }
             }
-          } else if (basicUpdateData.triggerType === 'webhook-trigger' && graph?.nodes) {
-            // Connection webhook-trigger (Direction 2): persist (connectionId, topic)
-            // from the trigger node; no installation to resolve (unlike app-trigger).
-            const triggerNode = (graph.nodes as any[]).find(
-              (n: any) => n.data?.connectionId && n.data?.topic
-            )
+          } else if (basicUpdateData.triggerType === 'webhook-endpoint' && graph?.nodes) {
+            // Webhook-endpoint trigger: persist (webhookEndpointId, topic) from the trigger
+            // node into the dedicated column; no installation/connection to resolve.
+            const triggerNode = (graph.nodes as any[]).find((n: any) => n.data?.webhookEndpointId)
             workflowUpdates.triggerAppId = null
             workflowUpdates.triggerTriggerId = null
             workflowUpdates.triggerInstallationId = null
-            workflowUpdates.triggerConnectionId = triggerNode?.data?.connectionId || null
+            workflowUpdates.triggerConnectionId = null
+            workflowUpdates.triggerWebhookEndpointId = triggerNode?.data?.webhookEndpointId || null
             workflowUpdates.triggerTopic = triggerNode?.data?.topic || null
           } else if (basicUpdateData.triggerType && !isAppTrigger) {
             // Clear app + webhook trigger fields when switching to another trigger
@@ -397,6 +395,7 @@ export class WorkflowService {
             workflowUpdates.triggerTriggerId = null
             workflowUpdates.triggerInstallationId = null
             workflowUpdates.triggerConnectionId = null
+            workflowUpdates.triggerWebhookEndpointId = null
             workflowUpdates.triggerTopic = null
           }
 
@@ -482,26 +481,8 @@ export class WorkflowService {
           // Don't fail the update operation if scheduling fails
         }
 
-        // Connection webhook-trigger (Direction 2): reconcile provider subscriptions
-        // on enable/disable so toggling a published webhook-trigger workflow adds or
-        // drops its topic. Best-effort — a provider error never fails the update.
-        const published = result.publishedWorkflow
-        if (published?.triggerType === 'webhook-trigger' && published.triggerConnectionId) {
-          try {
-            await reconcileConnectionWebhooks(
-              this.db,
-              organizationId,
-              published.triggerConnectionId
-            )
-          } catch (reconcileError) {
-            logger.error('Failed to reconcile connection webhooks on enable/disable', {
-              workflowAppId: id,
-              connectionId: published.triggerConnectionId,
-              error:
-                reconcileError instanceof Error ? reconcileError.message : String(reconcileError),
-            })
-          }
-        }
+        // Webhook-endpoint triggers need no provider-side reconciliation — the user owns
+        // the endpoint URL (no registration). Enable/disable just flips the cache.
 
         await onCacheEvent('workflow.enabled', { orgId: organizationId })
       }
@@ -660,21 +641,6 @@ export class WorkflowService {
         throw new Error('Workflow not found')
       }
 
-      // Capture any webhook-trigger connections before deletion so they can reconcile
-      // afterwards (a topic drops when this app was its last consumer).
-      const webhookConnectionRows = await this.db
-        .selectDistinct({ connectionId: schema.Workflow.triggerConnectionId })
-        .from(schema.Workflow)
-        .where(
-          and(
-            eq(schema.Workflow.workflowAppId, id),
-            eq(schema.Workflow.triggerType, 'webhook-trigger')
-          )
-        )
-      const webhookConnectionIds = webhookConnectionRows
-        .map((r) => r.connectionId)
-        .filter((c): c is string => !!c)
-
       // 2. Remove scheduled triggers and polling triggers (cron jobs)
       try {
         await this.scheduledTriggerService.unscheduleWorkflowTriggers(id)
@@ -758,21 +724,6 @@ export class WorkflowService {
       logger.info('Workflow app deleted successfully', { workflowAppId: id, organizationId })
 
       await onCacheEvent('workflow.deleted', { orgId: organizationId })
-
-      // Reconcile webhook connections whose last consumer this app may have been.
-      // Best-effort — a provider error never fails the delete.
-      for (const connectionId of webhookConnectionIds) {
-        try {
-          await reconcileConnectionWebhooks(this.db, organizationId, connectionId)
-        } catch (reconcileError) {
-          logger.error('Failed to reconcile connection webhooks on workflow delete', {
-            workflowAppId: id,
-            connectionId,
-            error:
-              reconcileError instanceof Error ? reconcileError.message : String(reconcileError),
-          })
-        }
-      }
 
       // 6. Cancel BullMQ jobs (fire-and-forget, non-blocking)
       // Jobs are idempotent - they check DB first and no-op if records don't exist

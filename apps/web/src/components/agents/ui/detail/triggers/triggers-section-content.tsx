@@ -12,23 +12,30 @@ import { useState } from 'react'
 import { useAppsContext } from '~/components/apps/providers/apps-context'
 import { AppIcon } from '~/components/apps/ui/app-icon'
 import { Tooltip } from '~/components/global/tooltip'
+import {
+  type AppTriggerSource,
+  TriggerSourcePicker,
+  type WebhookEndpointSource,
+} from '~/components/pickers/trigger-source'
 import { useConfirm } from '~/hooks/use-confirm'
 import { api, type RouterOutputs } from '~/trpc/react'
 import type { AgentDetail } from '../../../store/agent-store'
-import {
-  AgentAppTriggerPickerDialog,
-  type AppTriggerSelection,
-} from './agent-app-trigger-picker-dialog'
 import { AgentTriggerDialog } from './agent-trigger-dialog'
-import {
-  AgentWebhookTriggerPickerDialog,
-  type WebhookTriggerSelection,
-} from './agent-webhook-trigger-picker-dialog'
 import { TriggerLabel } from './trigger-label'
 
 type Trigger = RouterOutputs['agentTrigger']['list'][number]
 
-type TriggerKind = 'scheduled' | 'event' | 'app' | 'webhook' | 'mention' | 'assignment' | 'dm'
+type TriggerKind =
+  | 'scheduled'
+  | 'event'
+  | 'app'
+  | 'webhook-endpoint'
+  | 'mention'
+  | 'assignment'
+  | 'dm'
+
+/** What the kind dropdown can request: scheduled/event open directly, `source` opens the picker. */
+type AddingKind = 'scheduled' | 'event' | 'source' | null
 type BuiltinKind = 'mention' | 'assignment' | 'dm'
 
 const BUILTIN_KINDS: BuiltinKind[] = ['mention', 'assignment', 'dm']
@@ -40,7 +47,7 @@ const KIND_META: Record<
   scheduled: { label: 'Scheduled', iconId: 'clock', color: 'blue' },
   event: { label: 'Event', iconId: 'zap', color: 'amber' },
   app: { label: 'App', iconId: 'plug', color: 'violet' },
-  webhook: { label: 'Webhook', iconId: 'webhook', color: 'teal' },
+  'webhook-endpoint': { label: 'Webhook', iconId: 'webhook', color: 'teal' },
   mention: {
     label: 'Mention',
     iconId: 'at-sign',
@@ -63,8 +70,8 @@ const KIND_META: Record<
 
 interface TriggersSectionContentProps {
   agent: AgentDetail
-  addingKind: 'scheduled' | 'event' | 'app' | 'webhook' | null
-  onAddingKindChange: (kind: 'scheduled' | 'event' | 'app' | 'webhook' | null) => void
+  addingKind: AddingKind
+  onAddingKindChange: (kind: AddingKind) => void
 }
 
 /**
@@ -84,9 +91,9 @@ export function TriggersSectionContent({
   const [confirm, ConfirmDialog] = useConfirm()
   const [editingTrigger, setEditingTrigger] = useState<Trigger | null>(null)
   const [creatingBuiltinKind, setCreatingBuiltinKind] = useState<BuiltinKind | null>(null)
-  const [pendingAppSelection, setPendingAppSelection] = useState<AppTriggerSelection | null>(null)
+  const [pendingAppSelection, setPendingAppSelection] = useState<AppTriggerSource | null>(null)
   const [pendingWebhookSelection, setPendingWebhookSelection] =
-    useState<WebhookTriggerSelection | null>(null)
+    useState<WebhookEndpointSource | null>(null)
   const { appInstallations } = useAppsContext()
   const utils = api.useUtils()
 
@@ -120,44 +127,53 @@ export function TriggersSectionContent({
     (r) => r.kind !== 'mention' && r.kind !== 'assignment' && r.kind !== 'dm'
   )
 
-  // App/webhook picker dialogs are open whenever the user picked that kind from
-  // the dropdown but hasn't selected the (app, trigger) / (connection, topic) pair yet.
-  const isAppPickerOpen = addingKind === 'app' && !pendingAppSelection
-  const isWebhookPickerOpen = addingKind === 'webhook' && !pendingWebhookSelection
+  // The unified picker is open whenever the user picked "Trigger" from the dropdown
+  // but hasn't chosen an app trigger / webhook endpoint yet.
+  const isPickerOpen = addingKind === 'source' && !pendingAppSelection && !pendingWebhookSelection
 
   // The config dialog opens for: editing a row, creating a built-in row,
-  // creating a scheduled/event row, OR after the user picked an app/webhook trigger.
+  // creating a scheduled/event row, OR after the user picked a source.
   const isDialogOpen =
     !!editingTrigger ||
     !!creatingBuiltinKind ||
     addingKind === 'scheduled' ||
     addingKind === 'event' ||
-    (addingKind === 'app' && !!pendingAppSelection) ||
-    (addingKind === 'webhook' && !!pendingWebhookSelection)
+    !!pendingAppSelection ||
+    !!pendingWebhookSelection
 
   const dialogKind: TriggerKind = editingTrigger?.kind
     ? (editingTrigger.kind as TriggerKind)
     : creatingBuiltinKind
       ? creatingBuiltinKind
-      : addingKind === 'app'
+      : pendingAppSelection
         ? 'app'
-        : addingKind === 'webhook'
-          ? 'webhook'
-          : (addingKind ?? 'scheduled')
+        : pendingWebhookSelection
+          ? 'webhook-endpoint'
+          : addingKind === 'event'
+            ? 'event'
+            : 'scheduled'
 
-  const appSelectionForDialog =
-    addingKind === 'app' && pendingAppSelection
-      ? {
-          installationId: pendingAppSelection.installation.installationId,
-          appId: pendingAppSelection.installation.app.id,
-          appTitle: pendingAppSelection.installation.app.title,
-          appAvatarUrl: pendingAppSelection.installation.app.avatarUrl,
-          triggerId: pendingAppSelection.trigger.triggerId,
-          triggerLabel: pendingAppSelection.trigger.label,
-          triggerDescription: pendingAppSelection.trigger.description,
-          inputsJsonSchema: pendingAppSelection.trigger.inputsJsonSchema,
-        }
-      : undefined
+  const appSelectionForDialog = pendingAppSelection
+    ? {
+        installationId: pendingAppSelection.installation.installationId,
+        appId: pendingAppSelection.installation.app.id,
+        appTitle: pendingAppSelection.installation.app.title,
+        appAvatarUrl: pendingAppSelection.installation.app.avatarUrl,
+        triggerId: pendingAppSelection.trigger.triggerId,
+        triggerLabel: pendingAppSelection.trigger.label,
+        triggerDescription: pendingAppSelection.trigger.description,
+        inputsJsonSchema: pendingAppSelection.trigger.inputsJsonSchema,
+      }
+    : undefined
+
+  const webhookSelectionForDialog = pendingWebhookSelection
+    ? {
+        webhookEndpointId: pendingWebhookSelection.endpoint.id,
+        endpointName: pendingWebhookSelection.endpoint.name,
+        endpointUrl: pendingWebhookSelection.endpoint.url,
+        hasTopicSource: !!pendingWebhookSelection.endpoint.topicSource,
+      }
+    : undefined
 
   const handleDialogOpenChange = (open: boolean) => {
     if (open) return
@@ -168,24 +184,15 @@ export function TriggersSectionContent({
     setPendingWebhookSelection(null)
   }
 
-  const handleAppPickerOpenChange = (open: boolean) => {
-    if (!open && addingKind === 'app') {
+  const handlePickerOpenChange = (open: boolean) => {
+    if (!open && addingKind === 'source') {
       onAddingKindChange(null)
     }
   }
 
-  const handleAppSelected = (selection: AppTriggerSelection) => {
-    setPendingAppSelection(selection)
-  }
-
-  const handleWebhookPickerOpenChange = (open: boolean) => {
-    if (!open && addingKind === 'webhook') {
-      onAddingKindChange(null)
-    }
-  }
-
-  const handleWebhookSelected = (selection: WebhookTriggerSelection) => {
-    setPendingWebhookSelection(selection)
+  const handleSourceSelected = (source: AppTriggerSource | WebhookEndpointSource) => {
+    if (source.kind === 'app') setPendingAppSelection(source)
+    else setPendingWebhookSelection(source)
   }
 
   const handleDelete = async (row: Trigger) => {
@@ -201,16 +208,11 @@ export function TriggersSectionContent({
 
   return (
     <div className='space-y-4'>
-      <AgentAppTriggerPickerDialog
-        open={isAppPickerOpen}
-        onOpenChange={handleAppPickerOpenChange}
-        onSelect={handleAppSelected}
-      />
-
-      <AgentWebhookTriggerPickerDialog
-        open={isWebhookPickerOpen}
-        onOpenChange={handleWebhookPickerOpenChange}
-        onSelect={handleWebhookSelected}
+      <TriggerSourcePicker
+        open={isPickerOpen}
+        onOpenChange={handlePickerOpenChange}
+        onSelect={handleSourceSelected}
+        surface='agent'
       />
 
       <AgentTriggerDialog
@@ -220,7 +222,7 @@ export function TriggersSectionContent({
         kind={dialogKind}
         trigger={editingTrigger ?? undefined}
         appSelection={appSelectionForDialog}
-        webhookSelection={pendingWebhookSelection ?? undefined}
+        webhookSelection={webhookSelectionForDialog}
         onSuccess={invalidateList}
       />
 

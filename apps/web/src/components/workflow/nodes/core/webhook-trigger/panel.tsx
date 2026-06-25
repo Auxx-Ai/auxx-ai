@@ -2,6 +2,7 @@
 
 'use client'
 
+import { Input } from '@auxx/ui/components/input'
 import {
   Select,
   SelectContent,
@@ -10,8 +11,6 @@ import {
   SelectValue,
 } from '@auxx/ui/components/select'
 import React, { useMemo } from 'react'
-import { ConnectionPickerPopover } from '~/components/apps/ui/connection-picker-popover'
-import { ConnectionWebhookTestSection } from '~/components/connections/triggers/connection-webhook-test-section'
 import { useNodeCrud, useReadOnly } from '~/components/workflow/hooks'
 import { BasePanel } from '~/components/workflow/nodes/shared/base/base-panel'
 import Field from '~/components/workflow/ui/field'
@@ -27,11 +26,10 @@ interface WebhookTriggerPanelProps {
 }
 
 /**
- * Configuration panel for the connection webhook trigger node — pick a connection
- * (spec-bearing providers only, via `connections.webhookConnections`) and one of its
- * topics. Caches the connection's display fields onto the node so the node label +
- * save path don't re-query. When configured, embeds the §7.2 delivery inspector so the
- * author can watch live/test deliveries on the selected topic.
+ * Configuration panel for the webhook endpoint trigger node — pick a generic inbound
+ * `WebhookEndpoint` (via `webhookEndpoint.list`) and optionally a topic to scope
+ * deliveries. Caches the endpoint's display name onto the node so the node label + save
+ * path don't re-query.
  */
 const WebhookTriggerPanelComponent: React.FC<WebhookTriggerPanelProps> = ({ nodeId, data }) => {
   const { isReadOnly } = useReadOnly()
@@ -40,27 +38,20 @@ const WebhookTriggerPanelComponent: React.FC<WebhookTriggerPanelProps> = ({ node
     data
   )
 
-  // Spec-bearing connections only — the allow-list for the picker + the topic source.
-  const { data: connections = [] } = api.connections.webhookConnections.useQuery()
-  const webhookCapableIds = useMemo(() => connections.map((c) => c.id), [connections])
+  const { data: endpoints = [] } = api.webhookEndpoint.list.useQuery()
 
-  const selectedConnection = useMemo(
-    () => connections.find((c) => c.id === nodeData.connectionId) ?? null,
-    [connections, nodeData.connectionId]
+  const selectedEndpoint = useMemo(
+    () => endpoints.find((e) => e.id === nodeData.webhookEndpointId) ?? null,
+    [endpoints, nodeData.webhookEndpointId]
   )
-  const availableTopics = selectedConnection?.topics ?? []
 
-  const handleConnectionChange = (connectionId: string) => {
-    const conn = connections.find((c) => c.id === connectionId)
+  const handleEndpointChange = (webhookEndpointId: string) => {
+    const endpoint = endpoints.find((e) => e.id === webhookEndpointId)
     setNodeData({
       ...nodeData,
-      connectionId,
-      connectionName: conn?.name,
-      connectionType: conn?.type,
-      connectionIcon: conn?.icon ?? undefined,
-      // Reset the topic — it belongs to the previous connection.
-      topic: '',
-      title: conn ? `Connection Webhook · ${conn.name}` : 'Connection Webhook',
+      webhookEndpointId,
+      webhookEndpointName: endpoint?.name,
+      title: endpoint ? `Webhook · ${endpoint.name}` : 'Webhook Endpoint',
     })
   }
 
@@ -71,47 +62,50 @@ const WebhookTriggerPanelComponent: React.FC<WebhookTriggerPanelProps> = ({ node
   return (
     <BasePanel nodeId={nodeId} data={data}>
       <Section
-        title='Connection'
-        description='Fire this workflow on a connection webhook.'
+        title='Webhook endpoint'
+        description='Fire this workflow on a webhook endpoint delivery.'
         isRequired>
         <div className='space-y-4'>
-          <Field title='Connection' description='Only connections with webhook support are listed.'>
-            <ConnectionPickerPopover
-              value={nodeData.connectionId || undefined}
-              onPick={(credentialId) => handleConnectionChange(credentialId)}
-              filterCredentialIds={webhookCapableIds}
-              orgScopedOnly={false}
-              matchTriggerWidth
-              enableActions={false}
-              placeholder='Select a connection...'
-            />
+          <Field title='Endpoint' description='Inbound webhook endpoints in this workspace.'>
+            <Select
+              value={nodeData.webhookEndpointId || undefined}
+              onValueChange={handleEndpointChange}
+              disabled={isReadOnly}>
+              <SelectTrigger className='w-full' size='sm'>
+                <SelectValue placeholder='Select an endpoint...' />
+              </SelectTrigger>
+              <SelectContent>
+                {endpoints.map((endpoint) => (
+                  <SelectItem key={endpoint.id} value={endpoint.id}>
+                    {endpoint.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </Field>
 
-          {nodeData.connectionId && (
-            <Field title='Topic' description='The provider event that fires this workflow.'>
-              <Select
-                value={nodeData.topic || undefined}
-                onValueChange={handleTopicChange}
-                disabled={isReadOnly}>
-                <SelectTrigger className='w-full' size='sm'>
-                  <SelectValue placeholder='Select a topic...' />
-                </SelectTrigger>
-                <SelectContent>
-                  {availableTopics.map((topic) => (
-                    <SelectItem key={topic} value={topic}>
-                      {topic}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+          {nodeData.webhookEndpointId && (
+            <Field
+              title='Topic'
+              description={
+                selectedEndpoint?.topicSource
+                  ? 'Only fire on deliveries whose extracted topic matches.'
+                  : 'Optional — leave blank to fire on every delivery.'
+              }>
+              <Input
+                value={nodeData.topic}
+                onChange={(e) => handleTopicChange(e.target.value)}
+                placeholder={
+                  selectedEndpoint?.topicSource
+                    ? 'e.g. payment_intent.succeeded'
+                    : 'Leave blank for all'
+                }
+                disabled={isReadOnly}
+              />
             </Field>
           )}
         </div>
       </Section>
-
-      {nodeData.connectionId && nodeData.topic && (
-        <ConnectionWebhookTestSection connectionId={nodeData.connectionId} topic={nodeData.topic} />
-      )}
 
       <OutputVariablesDisplay
         outputVariables={webhookTriggerDefinition.outputVariables?.(nodeData, nodeId) || []}

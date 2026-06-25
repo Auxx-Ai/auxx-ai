@@ -12,6 +12,7 @@ import {
   DialogTitle,
 } from '@auxx/ui/components/dialog'
 import { Field, FieldLabel } from '@auxx/ui/components/field'
+import { Input } from '@auxx/ui/components/input'
 import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
 import { Field as ResourceField } from '@auxx/ui/components/section'
@@ -66,9 +67,9 @@ const KIND_COPY: Record<Kind, { label: string; description: string }> = {
     label: 'app',
     description: 'Fire this agent when an installed app emits a trigger event.',
   },
-  webhook: {
+  'webhook-endpoint': {
     label: 'webhook',
-    description: 'Fire this agent when a connection receives a webhook on a topic.',
+    description: 'Fire this agent when a webhook endpoint receives a delivery.',
   },
   mention: {
     label: 'mention',
@@ -94,7 +95,7 @@ function readPromptContent(doc: TiptapDoc | null | undefined): JSONContent[] | n
 
 type Trigger = RouterOutputs['agentTrigger']['list'][number]
 
-type Kind = 'scheduled' | 'event' | 'app' | 'webhook' | 'mention' | 'assignment' | 'dm'
+type Kind = 'scheduled' | 'event' | 'app' | 'webhook-endpoint' | 'mention' | 'assignment' | 'dm'
 type CrudTriggerType = 'created' | 'updated' | 'deleted'
 
 const RESOURCE_OPERATIONS: Record<CrudTriggerType, { operation: CrudTriggerType; label: string }> =
@@ -127,15 +128,15 @@ interface AgentTriggerDialogProps {
     inputsJsonSchema: Record<string, unknown>
   }
   /**
-   * Pre-selected connection + topic when opening for a new `webhook` kind.
+   * Pre-selected webhook endpoint when opening for a new `webhook-endpoint` kind.
    * Required to render the header chip before the row exists.
    */
   webhookSelection?: {
-    connectionId: string
-    connectionName: string
-    connectionType: string
-    icon: string | null
-    topic: string
+    webhookEndpointId: string
+    endpointName: string
+    endpointUrl: string
+    /** Whether the endpoint extracts a topic — drives whether the topic input is meaningful. */
+    hasTopicSource: boolean
   }
   onSuccess?: () => void
 }
@@ -198,7 +199,7 @@ export function AgentTriggerDialog({
   const isBuiltinKind =
     effectiveKind === 'mention' || effectiveKind === 'assignment' || effectiveKind === 'dm'
   const isAppKind = effectiveKind === 'app'
-  const isWebhookKind = effectiveKind === 'webhook'
+  const isWebhookKind = effectiveKind === 'webhook-endpoint'
 
   const { appInstallations, appConnections } = useAppsContext()
 
@@ -228,25 +229,24 @@ export function AgentTriggerDialog({
     }
   }, [isAppKind, appSelection, trigger, appInstallations])
 
-  // For webhook-kind: resolve the connection name + icon. New rows carry it on
-  // `webhookSelection`; edit rows resolve `triggerConnectionId` against the
-  // spec-bearing connection list so we render the name rather than the raw id.
-  const webhookConnectionsQuery = api.connections.webhookConnections.useQuery(undefined, {
+  // For webhook-endpoint kind: resolve the endpoint name + URL. New rows carry it on
+  // `webhookSelection`; edit rows resolve `triggerWebhookEndpointId` against the org
+  // endpoint list so we render the name rather than the raw id.
+  const webhookEndpointsQuery = api.webhookEndpoint.list.useQuery(undefined, {
     enabled: open && isWebhookKind,
   })
   const webhookContext = useMemo(() => {
     if (!isWebhookKind) return null
     if (webhookSelection) return webhookSelection
-    if (!trigger?.triggerConnectionId) return null
-    const match = webhookConnectionsQuery.data?.find((c) => c.id === trigger.triggerConnectionId)
+    if (!trigger?.triggerWebhookEndpointId) return null
+    const match = webhookEndpointsQuery.data?.find((e) => e.id === trigger.triggerWebhookEndpointId)
     return {
-      connectionId: trigger.triggerConnectionId,
-      connectionName: match?.name ?? trigger.triggerConnectionId,
-      connectionType: match?.type ?? '',
-      icon: match?.icon ?? null,
-      topic: trigger.triggerTopic ?? '',
+      webhookEndpointId: trigger.triggerWebhookEndpointId,
+      endpointName: match?.name ?? trigger.triggerWebhookEndpointId,
+      endpointUrl: match?.url ?? '',
+      hasTopicSource: !!match?.topicSource,
     }
-  }, [isWebhookKind, webhookSelection, trigger, webhookConnectionsQuery.data])
+  }, [isWebhookKind, webhookSelection, trigger, webhookEndpointsQuery.data])
 
   const { resources } = useResources()
   const fallbackEntityId = resources[0]?.id ?? 'ticket'
@@ -255,6 +255,8 @@ export function AgentTriggerDialog({
   const [scheduledState, setScheduledState] = useState<ScheduledState>(DEFAULT_SCHEDULED_STATE)
   const [eventState, setEventState] = useState<EventState>(DEFAULT_EVENT_STATE)
   const [appState, setAppState] = useState<AppState>(DEFAULT_APP_STATE)
+  /** Free-text topic for the webhook-endpoint kind (matched against the delivery's extracted topic). */
+  const [webhookTopic, setWebhookTopic] = useState('')
   const [instructions, setInstructions] = useState<TiptapDoc>(emptyPromptDoc)
   const [editorKey, setEditorKey] = useState(0)
   const [accountPopoverOpen, setAccountPopoverOpen] = useState(false)
@@ -267,7 +269,10 @@ export function AgentTriggerDialog({
       setEventState(eventStateFromTrigger(trigger, fallbackEntityId))
     } else if (trigger?.kind === 'app') {
       setAppState(appStateFromTrigger(trigger))
+    } else if (trigger?.kind === 'webhook-endpoint') {
+      setWebhookTopic(trigger.triggerTopic ?? '')
     } else {
+      setWebhookTopic('')
       setScheduledState(DEFAULT_SCHEDULED_STATE)
       setEventState({ ...DEFAULT_EVENT_STATE, entityDefinitionId: fallbackEntityId })
       setAppState({
@@ -371,15 +376,15 @@ export function AgentTriggerDialog({
       }
     }
 
-    if (effectiveKind === 'webhook') {
-      if (!webhookContext || !webhookContext.connectionId || !webhookContext.topic) {
-        toastError({ title: 'Pick a connection and topic' })
+    if (effectiveKind === 'webhook-endpoint') {
+      if (!webhookContext || !webhookContext.webhookEndpointId) {
+        toastError({ title: 'Pick a webhook endpoint' })
         return null
       }
       return {
-        kind: 'webhook' as const,
-        triggerConnectionId: webhookContext.connectionId,
-        triggerTopic: webhookContext.topic,
+        kind: 'webhook-endpoint' as const,
+        triggerWebhookEndpointId: webhookContext.webhookEndpointId,
+        triggerTopic: webhookTopic.trim(),
       }
     }
 
@@ -565,25 +570,35 @@ export function AgentTriggerDialog({
                   </Field>
                 )}
               </>
-            ) : effectiveKind === 'webhook' && webhookContext ? (
-              <Field orientation='vertical'>
-                <FieldLabel>Trigger</FieldLabel>
-                <div className='flex items-center gap-3 rounded-md border bg-muted/30 px-3 py-2'>
-                  <AppIcon
-                    iconId={webhookContext.icon ?? 'plug'}
-                    size='lg'
-                    className='border border-foreground/5'
-                  />
-                  <div className='flex min-w-0 flex-col'>
-                    <span className='truncate text-sm font-medium'>
-                      {webhookContext.connectionName} · {webhookContext.topic}
-                    </span>
-                    <span className='truncate text-xs text-muted-foreground'>
-                      Fires when this connection receives a {webhookContext.topic} webhook.
-                    </span>
+            ) : effectiveKind === 'webhook-endpoint' && webhookContext ? (
+              <>
+                <Field orientation='vertical'>
+                  <FieldLabel>Trigger</FieldLabel>
+                  <div className='flex items-center gap-3 rounded-md border bg-muted/30 px-3 py-2'>
+                    <AppIcon iconId='webhook' size='lg' className='border border-foreground/5' />
+                    <div className='flex min-w-0 flex-col'>
+                      <span className='truncate text-sm font-medium'>
+                        {webhookContext.endpointName}
+                      </span>
+                      <span className='truncate text-xs text-muted-foreground'>
+                        {webhookContext.endpointUrl}
+                      </span>
+                    </div>
                   </div>
-                </div>
-              </Field>
+                </Field>
+                <Field orientation='vertical'>
+                  <FieldLabel>Topic {webhookContext.hasTopicSource ? '' : '(optional)'}</FieldLabel>
+                  <Input
+                    placeholder={
+                      webhookContext.hasTopicSource
+                        ? 'e.g. payment_intent.succeeded'
+                        : 'Leave blank to match every delivery'
+                    }
+                    value={webhookTopic}
+                    onChange={(e) => setWebhookTopic(e.target.value)}
+                  />
+                </Field>
+              </>
             ) : null}
 
             <Field orientation='vertical'>

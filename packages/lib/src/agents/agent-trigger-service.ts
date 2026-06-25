@@ -8,7 +8,6 @@ import {
 } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { and, desc, eq } from 'drizzle-orm'
-import { reconcileConnectionWebhooks } from '../data-connectors/connection-webhook-registration'
 import { getQueue, Queues } from '../jobs/queues'
 import { convertToCronPattern, type ScheduledTriggerConfig } from '../workflows/cron-pattern'
 
@@ -22,7 +21,7 @@ export type AgentTriggerKind =
   | 'mention'
   | 'assignment'
   | 'dm'
-  | 'webhook'
+  | 'webhook-endpoint'
 
 /** CRUD-mode event triggerType. */
 export type AgentEventTriggerType = 'created' | 'updated' | 'deleted'
@@ -78,10 +77,10 @@ export interface DmTriggerInput {
   kind: 'dm'
 }
 
-/** Direction 2: fires on a provider webhook delivery to `(connectionId, topic)`. */
+/** Fires on a generic inbound `WebhookEndpoint` delivery, optionally scoped to a topic. */
 export interface WebhookTriggerInput {
-  kind: 'webhook'
-  triggerConnectionId: string
+  kind: 'webhook-endpoint'
+  triggerWebhookEndpointId: string
   triggerTopic: string
   filter?: Record<string, unknown>
 }
@@ -137,6 +136,7 @@ function partitionTriggerInput(trigger: AgentTriggerInput): {
     triggerAppTriggerId: string | null
     triggerInstallationId: string | null
     triggerConnectionId: string | null
+    triggerWebhookEndpointId: string | null
     triggerTopic: string | null
   }
   config: Record<string, unknown>
@@ -149,6 +149,7 @@ function partitionTriggerInput(trigger: AgentTriggerInput): {
     triggerAppTriggerId: null,
     triggerInstallationId: null,
     triggerConnectionId: null,
+    triggerWebhookEndpointId: null,
     triggerTopic: null,
   }
 
@@ -180,12 +181,12 @@ function partitionTriggerInput(trigger: AgentTriggerInput): {
     }
   }
 
-  if (trigger.kind === 'webhook') {
+  if (trigger.kind === 'webhook-endpoint') {
     return {
-      kind: 'webhook',
+      kind: 'webhook-endpoint',
       columns: {
         ...empty,
-        triggerConnectionId: trigger.triggerConnectionId,
+        triggerWebhookEndpointId: trigger.triggerWebhookEndpointId,
         triggerTopic: trigger.triggerTopic,
       },
       config: trigger.filter ? { filter: trigger.filter } : {},
@@ -247,7 +248,6 @@ export class AgentTriggerService {
     if (!row) throw new Error('Failed to insert AgentTrigger row')
 
     await this.syncSchedulers(row)
-    await this.reconcileWebhook(row)
     return row
   }
 
@@ -281,7 +281,6 @@ export class AgentTriggerService {
     if (!row) throw new Error(`AgentTrigger not found: ${triggerId}`)
 
     await this.syncSchedulers(row)
-    await this.reconcileWebhook(row)
     return row
   }
 
@@ -289,10 +288,6 @@ export class AgentTriggerService {
   async deleteTrigger(triggerId: string, organizationId: string): Promise<void> {
     await this.removeScheduledScheduler(triggerId)
     await this.removePollingScheduler(triggerId)
-
-    // Capture the row before deletion so a webhook trigger can reconcile its
-    // connection afterwards (its topic drops if it was the last consumer).
-    const prior = await this.getTrigger(triggerId, organizationId)
 
     await this.db
       .delete(schema.AgentTrigger)
@@ -302,27 +297,6 @@ export class AgentTriggerService {
           eq(schema.AgentTrigger.organizationId, organizationId)
         )
       )
-
-    if (prior?.kind === 'webhook' && prior.triggerConnectionId) {
-      await this.reconcileWebhook(prior)
-    }
-  }
-
-  /**
-   * Reconcile the connection's provider webhook subscriptions after a webhook
-   * trigger write. Best-effort — a provider error never fails the trigger write.
-   */
-  private async reconcileWebhook(row: AgentTriggerEntity): Promise<void> {
-    if (row.kind !== 'webhook' || !row.triggerConnectionId) return
-    try {
-      await reconcileConnectionWebhooks(this.db, row.organizationId, row.triggerConnectionId)
-    } catch (error) {
-      logger.warn('agent webhook trigger reconcile failed', {
-        triggerId: row.id,
-        connectionId: row.triggerConnectionId,
-        error: error instanceof Error ? error.message : String(error),
-      })
-    }
   }
 
   /** Load one row (org-scoped). */

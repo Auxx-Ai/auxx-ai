@@ -197,8 +197,8 @@ function resolveEndpointTopic(
 }
 
 /**
- * Fan one verified delivery to the workflow + agent dispatch jobs on the app-trigger
- * queue. (The connector-sink leg is phase 4.) Keyed on `(endpointId, topic)`.
+ * Fan one verified delivery to the workflow + agent + connector-sink dispatch jobs on
+ * the app-trigger queue. Keyed on `(endpointId, topic)`.
  */
 async function fanOutWebhookEndpoint(input: {
   endpointId: string
@@ -213,6 +213,7 @@ async function fanOutWebhookEndpoint(input: {
     const appTriggerQueue = getQueue(Queues.appTriggerQueue)
     await appTriggerQueue.add('dispatchWebhookEndpoint', dispatchPayload)
     await appTriggerQueue.add('dispatchWebhookEndpointToAgents', dispatchPayload)
+    await appTriggerQueue.add('dispatchWebhookEndpointToConnectors', dispatchPayload)
   } catch (dispatchError: any) {
     log.error('Failed to enqueue webhook endpoint dispatch', {
       error: dispatchError.message,

@@ -158,8 +158,16 @@ export interface StreamRequestConfig {
  * inside {@link StreamRequestConfig} (jsonb on the stream — no schema column).
  */
 export interface StreamWebhookTrigger {
-  /** App trigger id whose delivery drives this stream (matches `AppWebhookHandler.triggerId`). */
-  triggerId: string
+  /**
+   * The steering signal source — exactly ONE of these is set:
+   *   • `triggerId` — an APP webhook trigger (matches `AppWebhookHandler.triggerId`),
+   *     dispatched by `dispatchAppTriggerToConnectors` off the connector's app connection.
+   *   • `webhookEndpointId` — a generic `WebhookEndpoint`, dispatched by
+   *     `dispatchWebhookEndpointToConnectors`. The connector still uses its own
+   *     `credentialId` for fetch auth; the endpoint only provides the signal.
+   */
+  triggerId?: string
+  webhookEndpointId?: string
   /**
    * Discriminate multiplexed deliveries with the SAME `matchesFilter()` helper the
    * agent app-trigger path uses. Flagship apps fan MANY topics through ONE triggerId
