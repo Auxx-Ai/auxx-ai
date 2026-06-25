@@ -2,7 +2,7 @@
 // One read interface over the stores webhook signing secrets live in today: process
 // env (configService), the connector handler's `{ secret }` metadata, and an encrypted
 // Credential field. Standardizes the READ, not the location — storage migration is
-// out of scope (a WebhookSpec-era recommendation, not done here).
+// out of scope here.
 
 import { configService } from '@auxx/credentials'
 import { revealSecrets } from '@auxx/credentials/store'

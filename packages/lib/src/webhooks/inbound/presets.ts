@@ -1,6 +1,6 @@
 // packages/lib/src/webhooks/inbound/presets.ts
-// Provider verification knowledge as data — the seed of the future WebhookSpec.
-// One preset per provider; verify logic lives in the shared primitives, never here.
+// Provider verification knowledge as data. One preset per provider; verify logic lives
+// in the shared primitives (`verify/`), never here.
 
 import type { WebhookVerifyPreset } from './types'
 
