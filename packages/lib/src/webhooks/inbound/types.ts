@@ -1,7 +1,6 @@
 // packages/lib/src/webhooks/inbound/types.ts
 // Shared types for the inbound webhook primitives (verify / secret / parse / dedupe).
-// These are the seed of the future declarative WebhookSpec — providers are described
-// as DATA (scheme + header + encoding), never as bespoke verify logic.
+// Providers are described as DATA (scheme + header + encoding), never as bespoke verify logic.
 
 /** HMAC digest algorithm a provider signs with. */
 export type HmacAlgo = 'sha256' | 'sha1'

@@ -14,16 +14,6 @@ export {
   stripePreset,
 } from './presets'
 export { resolveWebhookSecret } from './secret/resolve'
-export {
-  compileWebhookSpec,
-  resolveWebhookActions,
-  resolveWebhookTopic,
-  topicGlob,
-  type WebhookSource,
-  type WebhookSpec,
-  type WebhookSpecHooks,
-} from './spec'
-export { fixtureSpec, shopifySpec, stripeSpec } from './specs'
 export type {
   HmacAlgo,
   HmacEncoding,
