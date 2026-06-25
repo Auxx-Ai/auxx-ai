@@ -572,33 +572,6 @@ export async function clearResyncPending(db: DbOrTx, dataConnectorId: string): P
     .where(eq(schema.DataConnector.id, dataConnectorId))
 }
 
-/**
- * Stamp `lastWebhookEventAt` to NOW — the connector just processed an app-trigger
- * webhook delivery (sync-bridge §9 observability). Webhook syncs are point writes
- * that open no run + never touch `lastSyncedAt`, so this is the only liveness signal
- * a webhook-sync connector has. Stamped per received event (incl. filtered/delete/
- * no-op) so the connector never reads as inactive while deliveries are flowing.
- *
- * Self-heal: this is called only after a slice succeeds, so a healthy delivery also
- * clears a stale `error` left by a failed backfill/manual run — webhook syncs open no
- * run, so `finalizeConnector` never runs to reset status, and the connector would
- * otherwise show `error` forever while deliveries flow fine. The CASE reads the
- * pre-update row, so it touches ONLY an `error` status — never overriding a concurrent
- * `syncing`/`paused`/`live` (those self-resolve via their own paths).
- */
-export async function stampWebhookEvent(db: Database, dataConnectorId: string): Promise<void> {
-  const T = schema.DataConnector
-  await db
-    .update(T)
-    .set({
-      lastWebhookEventAt: new Date(),
-      status: sql`CASE WHEN ${T.status} = 'error' THEN 'live' ELSE ${T.status} END`,
-      error: sql`CASE WHEN ${T.status} = 'error' THEN NULL ELSE ${T.error} END`,
-      updatedAt: new Date(),
-    })
-    .where(eq(T.id, dataConnectorId))
-}
-
 /** Exact-bind lookup: (dataConnectorId, mappingId, externalId) → item row. */
 export async function findItem(
   db: Database,

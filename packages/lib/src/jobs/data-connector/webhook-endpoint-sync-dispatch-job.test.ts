@@ -1,7 +1,8 @@
 // packages/lib/src/jobs/data-connector/webhook-endpoint-sync-dispatch-job.test.ts
-// The connector webhook-endpoint matcher (v7): a delivery fans to webhook-sync connectors
-// whose CONNECTOR-level `config.webhookTrigger.webhookEndpointId` matches, then to each of
-// their streams whose per-stream `webhookTrigger.filter` passes. DB + queue + redis faked.
+// The connector webhook-endpoint matcher (v7): a delivery matches webhook-sync connectors
+// whose CONNECTOR-level `config.webhookTrigger.webhookEndpointId` matches, then steers a full
+// run-based sync for each connector with ≥1 stream whose `webhookTrigger.filter` passes.
+// DB + redis + enqueue faked.
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -18,10 +19,9 @@ vi.mock('@auxx/database', () => ({
   schema: new Proxy({}, { get: () => new Proxy({}, { get: () => ({}) }) }),
 }))
 
-const queueAdd = vi.fn()
-vi.mock('../queues', () => ({
-  getQueue: () => ({ add: (...a: unknown[]) => queueAdd(...a) }),
-  Queues: { appTriggerQueue: 'appTriggerQueue' },
+const enqueueConnectorSync = vi.fn()
+vi.mock('../../data-connectors/data-connector-queue', () => ({
+  enqueueConnectorSync: (...a: unknown[]) => enqueueConnectorSync(...a),
 }))
 
 vi.mock('@auxx/redis', () => ({ getRedisClient: async () => null }))
@@ -46,7 +46,7 @@ beforeEach(() => {
 })
 
 describe('dispatchWebhookEndpointToConnectors', () => {
-  it('fans to a connector whose connector-level signal matches the endpoint', async () => {
+  it('steers a webhook sync for a connector whose signal matches the endpoint', async () => {
     findManyConnectors.mockResolvedValue([
       { id: 'dc1', config: { webhookTrigger: { webhookEndpointId: 'ep1' } } },
     ])
@@ -58,12 +58,12 @@ describe('dispatchWebhookEndpointToConnectors', () => {
       },
     ])
     const result = await dispatchWebhookEndpointToConnectors(job(base))
-    expect(result).toEqual({ childJobsEnqueued: 1 })
-    expect(queueAdd).toHaveBeenCalledTimes(1)
-    expect(queueAdd.mock.calls[0]?.[1]).toMatchObject({
+    expect(result).toEqual({ connectorsSynced: 1 })
+    expect(enqueueConnectorSync).toHaveBeenCalledTimes(1)
+    expect(enqueueConnectorSync.mock.calls[0]?.[0]).toMatchObject({
       connectorId: 'dc1',
-      streamKey: 'orders',
-      webhookEndpointId: 'ep1',
+      organizationId: 'org1',
+      trigger: 'webhook',
     })
   })
 
@@ -73,14 +73,15 @@ describe('dispatchWebhookEndpointToConnectors', () => {
       { id: 'dc2', config: { webhookTrigger: undefined } },
     ])
     const result = await dispatchWebhookEndpointToConnectors(job(base))
-    expect(result).toEqual({ childJobsEnqueued: 0 })
+    expect(result).toEqual({ connectorsSynced: 0 })
     expect(findManyStreams).not.toHaveBeenCalled()
+    expect(enqueueConnectorSync).not.toHaveBeenCalled()
   })
 
   it('matches a topic-scoped stream when the topic is only in the separate field (header/path source)', async () => {
     // Realistic generic-endpoint shape: the body carries NO `topic` key — the extracted
-    // topic travels in the sibling `topic` field. The dispatch must fold it into the
-    // payload so the per-stream `filter: { topic: { in: [...] } }` can match.
+    // topic travels in the sibling `topic` field. The dispatch folds it into the payload
+    // so the per-stream `filter: { topic: { in: [...] } }` can match.
     findManyConnectors.mockResolvedValue([
       { id: 'dc1', config: { webhookTrigger: { webhookEndpointId: 'ep1' } } },
     ])
@@ -96,11 +97,8 @@ describe('dispatchWebhookEndpointToConnectors', () => {
     const result = await dispatchWebhookEndpointToConnectors(
       job({ ...base, triggerData: { id: 1 } }) // no `topic` in the body
     )
-    expect(result).toEqual({ childJobsEnqueued: 1 })
-    // The enriched payload (topic folded in) is what the child slice receives.
-    expect(queueAdd.mock.calls[0]?.[1]).toMatchObject({
-      triggerData: { id: 1, topic: 'orders/create' },
-    })
+    expect(result).toEqual({ connectorsSynced: 1 })
+    expect(enqueueConnectorSync).toHaveBeenCalledTimes(1)
   })
 
   it('does not match a stream scoped to a different topic than the delivery', async () => {
@@ -119,7 +117,8 @@ describe('dispatchWebhookEndpointToConnectors', () => {
     const result = await dispatchWebhookEndpointToConnectors(
       job({ ...base, triggerData: { id: 1 } })
     )
-    expect(result).toEqual({ childJobsEnqueued: 0 })
+    expect(result).toEqual({ connectorsSynced: 0 })
+    expect(enqueueConnectorSync).not.toHaveBeenCalled()
   })
 
   it('skips streams with no steering block and streams whose filter rejects the payload', async () => {
@@ -135,6 +134,7 @@ describe('dispatchWebhookEndpointToConnectors', () => {
       },
     ])
     const result = await dispatchWebhookEndpointToConnectors(job(base))
-    expect(result).toEqual({ childJobsEnqueued: 0 })
+    expect(result).toEqual({ connectorsSynced: 0 })
+    expect(enqueueConnectorSync).not.toHaveBeenCalled()
   })
 })

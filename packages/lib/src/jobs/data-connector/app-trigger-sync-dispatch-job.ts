@@ -1,21 +1,20 @@
 // packages/lib/src/jobs/data-connector/app-trigger-sync-dispatch-job.ts
 // The THIRD consumer of the app-trigger fan-out (sync bridge §5.2). Sibling to
 // `dispatchAppTrigger` (workflows) and `dispatchAppTriggerToAgents` (agents): one
-// verified app-webhook delivery → every webhook-sync DataConnector stream bound to
-// this `(connection, triggerId)` whose `filter` matches the payload. THIN by design
-// — it only dedups + matches + fans out; each matched (connector, stream) gets its
-// OWN child job (`app-trigger-sync-stream`) that does the steer-fetch-sink and owns
-// the failure policy. Fetching inline would deadlock dedup-under-retry: the dedup
-// key is already claimed when BullMQ retries, so the retry self-suppresses and the
-// fetch never re-runs. Splitting keeps dedup on the cheap match and gives each child
-// clean, isolated retries.
+// verified app-webhook delivery → a full run-based sync of every webhook-sync
+// DataConnector bound to this `(connection, triggerId)` with ≥1 stream whose `filter`
+// matches the payload. THIN by design — it only dedups + matches + steers a sync via
+// `enqueueConnectorSync({ trigger: 'webhook' })` (same path as "Sync now"), so the
+// delivery produces a `DataConnectorRun` history row, refreshes `lastSyncedAt`, and
+// runs orphan reconciliation. `enqueueConnectorSync`'s per-connector `jobId` coalesces
+// a burst of deliveries into one run.
 
 import { database as db, schema } from '@auxx/database'
 import { getRedisClient } from '@auxx/redis'
 import { and, eq, inArray, ne } from 'drizzle-orm'
 import { matchesFilter } from '../../agents/agent-trigger-queries'
+import { enqueueConnectorSync } from '../../data-connectors/data-connector-queue'
 import { createScopedLogger } from '../../logger'
-import { getQueue, Queues } from '../queues'
 import type { JobContext } from '../types'
 
 const logger = createScopedLogger('data-connector-app-trigger-dispatch-job')
@@ -31,16 +30,18 @@ export type ConnectorAppTriggerDispatchJobData = {
   organizationId: string
 }
 
-/** Child job name on `appTriggerQueue` (registered alongside this dispatch job). */
-export const APP_TRIGGER_SYNC_STREAM_JOB = 'app-trigger-sync-stream'
-
 /**
  * BullMQ job handler: fan one app-webhook delivery out to webhook-sync data
  * connectors. Matches by `credentialId` (the connection) + the connector-level
  * `config.webhookTrigger.triggerId` (v7 — one signal per connector); the per-stream
  * `webhookTrigger.filter` + `matchesFilter` discriminates topics (Shopify multiplexes
- * 22 topics through one triggerId, on `triggerData.topic`). Fan-to-all — two
- * connectors/streams binding the same trigger is legitimate fan-out, not a conflict.
+ * 22 topics through one triggerId, on `triggerData.topic`).
+ *
+ * A relevant delivery (≥1 of a connector's streams matches the payload) STEERS a full
+ * run-based sync via `enqueueConnectorSync({ trigger: 'webhook' })` — same path as
+ * "Sync now", so the delivery yields a `DataConnectorRun` history row, refreshes
+ * `lastSyncedAt`, and runs orphan reconciliation. `enqueueConnectorSync`'s per-connector
+ * `jobId` coalesces a burst of deliveries into one run. Fan-to-all across connectors.
  */
 export async function dispatchAppTriggerToConnectors(
   ctx: JobContext<ConnectorAppTriggerDispatchJobData>
@@ -57,7 +58,7 @@ export async function dispatchAppTriggerToConnectors(
       const setResult = await redis.set(dedupKey, '1', 'EX', 300, 'NX')
       if (!setResult) {
         logger.warn('Duplicate connector app-trigger event, skipping', { dedupKey, eventId })
-        return { childJobsEnqueued: 0 }
+        return { connectorsSynced: 0 }
       }
     }
   } catch (err) {
@@ -70,7 +71,7 @@ export async function dispatchAppTriggerToConnectors(
   // Webhook-sync connectors are keyed by the connection. No connection ⇒ nothing binds.
   if (!connectionId) {
     logger.debug('App trigger carried no connectionId — no connector match', { triggerId, eventId })
-    return { childJobsEnqueued: 0 }
+    return { connectorsSynced: 0 }
   }
 
   // Signal is connector-level since v7 (`config.webhookTrigger.triggerId`) — match the
@@ -88,7 +89,7 @@ export async function dispatchAppTriggerToConnectors(
     columns: { id: true, config: true },
   })
   const connectors = candidates.filter((c) => c.config?.webhookTrigger?.triggerId === triggerId)
-  if (connectors.length === 0) return { childJobsEnqueued: 0 }
+  if (connectors.length === 0) return { connectorsSynced: 0 }
 
   const streams = await db.query.DataConnectorStream.findMany({
     where: and(
@@ -101,31 +102,25 @@ export async function dispatchAppTriggerToConnectors(
     columns: { dataConnectorId: true, streamKey: true, requestConfig: true },
   })
 
-  const queue = getQueue(Queues.appTriggerQueue)
-  let enqueued = 0
+  // A connector is relevant when ≥1 of its enabled streams' `webhookTrigger.filter`
+  // matches this payload (topic discrimination). One full sync per relevant connector —
+  // the run covers all its streams, so we don't fan per-stream.
+  const relevant = new Set<string>()
   for (const stream of streams) {
     const wt = stream.requestConfig?.webhookTrigger
     if (!stream.streamKey || !wt) continue
     if (!matchesFilter(wt.filter, triggerData)) continue
-
-    await queue.add(APP_TRIGGER_SYNC_STREAM_JOB, {
-      connectorId: stream.dataConnectorId,
-      streamKey: stream.streamKey,
-      organizationId,
-      appInstallationId,
-      triggerId,
-      triggerData,
-      eventId,
-    })
-    enqueued++
+    relevant.add(stream.dataConnectorId)
   }
 
-  // Fan-out degree > 1 means duplicate upstream fetches of the same resource — correct
-  // but wasteful (sync bridge §9 Q1). Surface it so the pressure is visible.
-  if (enqueued > 1) {
-    logger.info('Connector app-trigger fan-out degree > 1', { triggerId, eventId, enqueued })
-  } else {
-    logger.debug('Dispatched connector app trigger', { triggerId, eventId, enqueued })
+  for (const connectorId of relevant) {
+    await enqueueConnectorSync({ connectorId, organizationId, trigger: 'webhook' })
   }
-  return { childJobsEnqueued: enqueued }
+
+  logger.debug('Dispatched connector app trigger', {
+    triggerId,
+    eventId,
+    connectorsSynced: relevant.size,
+  })
+  return { connectorsSynced: relevant.size }
 }
