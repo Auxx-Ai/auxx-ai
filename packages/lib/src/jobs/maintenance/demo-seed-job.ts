@@ -1,7 +1,7 @@
 // packages/lib/src/jobs/maintenance/demo-seed-job.ts
 
 import { createScopedLogger } from '@auxx/logger'
-import type { Job } from 'bullmq'
+import type { JobContext } from '../types'
 
 const logger = createScopedLogger('demo-seed')
 
@@ -15,7 +15,8 @@ export interface DemoSeedJobData {
  * Stub handler — the real implementation lives in the worker where @auxx/seed is available.
  * See: apps/worker/src/workers/worker-definitions/maintenance-worker.ts
  */
-export const demoSeedJob = async (job: Job<DemoSeedJobData>) => {
+export const demoSeedJob = async (ctx: JobContext<DemoSeedJobData>) => {
+  const job = ctx.job
   logger.warn('demoSeedJob stub called — must be overridden by the worker', {
     organizationId: job.data.organizationId,
   })

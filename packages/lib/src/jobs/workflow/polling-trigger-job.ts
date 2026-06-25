@@ -1,7 +1,6 @@
 // packages/lib/src/jobs/workflow/polling-trigger-job.ts
 
 import { database as db, schema } from '@auxx/database'
-import type { Job } from 'bullmq'
 import { and, eq } from 'drizzle-orm'
 import { onCacheEvent } from '../../cache/invalidate'
 import { createScopedLogger } from '../../logger'
@@ -9,6 +8,7 @@ import { PollingTriggerService } from '../../workflows/polling-trigger-service'
 import { WorkflowRunStatus } from '../../workflows/types'
 import { createWorkflowRun } from '../../workflows/workflow-execution-service'
 import { getQueue, Queues } from '../queues'
+import type { JobContext } from '../types'
 
 const logger = createScopedLogger('polling-trigger-job')
 
@@ -107,7 +107,8 @@ async function updatePollingState(
  * BullMQ job handler: execute a polling trigger's execute function,
  * then dispatch any returned events through the existing app trigger pipeline.
  */
-export async function executePollingTrigger(job: Job<PollingTriggerJobData>) {
+export async function executePollingTrigger(ctx: JobContext<PollingTriggerJobData>) {
+  const job = ctx.job
   const {
     workflowAppId,
     organizationId,

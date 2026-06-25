@@ -2,10 +2,10 @@
 
 import { stripeClient } from '@auxx/billing'
 import { database as db, schema } from '@auxx/database'
-import type { Job } from 'bullmq'
 import { and, eq, inArray, isNotNull } from 'drizzle-orm'
 import { z } from 'zod'
 import { createScopedLogger } from '../../logger'
+import type { JobContext } from '../types'
 
 const logger = createScopedLogger('stripe-subscription-sync-job')
 
@@ -43,8 +43,9 @@ export interface StripeSubscriptionSyncResult {
  * Detects and fixes trial state transitions that may have been missed.
  */
 export async function stripeSubscriptionSyncJob(
-  job: Job<StripeSubscriptionSyncJobData>
+  ctx: JobContext<StripeSubscriptionSyncJobData>
 ): Promise<StripeSubscriptionSyncResult> {
+  const job = ctx.job
   const input = payloadSchema.parse(job.data)
 
   logger.info('Starting Stripe subscription sync job', {

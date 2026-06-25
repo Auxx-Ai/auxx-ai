@@ -2,9 +2,9 @@
 
 import { database as db, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import type { Job } from 'bullmq'
 import { eq, lte } from 'drizzle-orm'
 import { z } from 'zod'
+import type { JobContext } from '../types'
 
 const logger = createScopedLogger('quota-reset-job')
 
@@ -30,7 +30,8 @@ export interface QuotaResetStats {
  * primary refresh path; this is the backstop for orgs without a recent
  * paid invoice (free tier, lapsed trials, missed webhooks).
  */
-export const quotaResetJob = async (job: Job): Promise<QuotaResetStats> => {
+export const quotaResetJob = async (ctx: JobContext): Promise<QuotaResetStats> => {
+  const job = ctx.job
   const input = payloadSchema.parse(job.data)
   const now = new Date()
 

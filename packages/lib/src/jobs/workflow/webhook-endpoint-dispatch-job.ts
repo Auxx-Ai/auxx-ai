@@ -5,10 +5,10 @@
 // only the cache matcher (`byWebhookEndpoint`) differs.
 
 import { getRedisClient } from '@auxx/redis'
-import type { Job } from 'bullmq'
 import { getOrgCache } from '../../cache'
 import { createScopedLogger } from '../../logger'
 import { executeAppTriggeredWorkflow } from '../../workflow-engine/execution/trigger-app-workflow'
+import type { JobContext } from '../types'
 
 const logger = createScopedLogger('webhook-endpoint-dispatch-job')
 
@@ -27,7 +27,8 @@ export type WebhookEndpointDispatchJobData = {
  * 2. Query published + enabled `webhook-endpoint` workflows matching `(endpointId, topic)`.
  * 3. Execute each with the delivery payload as trigger data.
  */
-export async function dispatchWebhookEndpoint(job: Job<WebhookEndpointDispatchJobData>) {
+export async function dispatchWebhookEndpoint(ctx: JobContext<WebhookEndpointDispatchJobData>) {
+  const job = ctx.job
   const { endpointId, topic, triggerData, eventId, organizationId } = job.data
 
   logger.info('Dispatching webhook endpoint', {

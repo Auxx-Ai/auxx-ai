@@ -1,9 +1,9 @@
 // packages/lib/src/jobs/calendar/calendar-sync-job.ts
 
 import { createScopedLogger } from '@auxx/logger'
-import type { Job } from 'bullmq'
 import { AuthErrorHandler } from '../../providers/auth-error-handler'
 import { syncCalendarForIntegration } from '../../recording/calendar'
+import type { JobContext } from '../types'
 
 /**
  * Logger for per-integration calendar sync jobs.
@@ -22,8 +22,8 @@ export interface CalendarSyncJobData {
 /**
  * Sync a single Google calendar integration.
  */
-export const calendarSyncJob = async (jobOrCtx: Job<CalendarSyncJobData>) => {
-  const job: Job<CalendarSyncJobData> = (jobOrCtx as any).job ?? jobOrCtx
+export const calendarSyncJob = async (ctx: JobContext<CalendarSyncJobData>) => {
+  const job = ctx.job
   const { integrationId, organizationId, userId } = job.data
 
   logger.info('Starting calendar sync job', {

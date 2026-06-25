@@ -2,10 +2,10 @@
 
 import { database as db, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import type { Job } from 'bullmq'
 import { and, isNotNull, lt } from 'drizzle-orm'
 import { isDemoEnabled } from '../../demo'
 import { OrganizationService } from '../../organizations'
+import type { JobContext } from '../types'
 
 const logger = createScopedLogger('demo-cleanup')
 
@@ -20,7 +20,8 @@ export interface DemoCleanupStats {
  * Runs on a repeatable schedule (every 15 minutes) in the maintenance queue.
  * Deletes demo orgs whose demoExpiresAt has passed using OrganizationService.deleteOrganization.
  */
-export const demoCleanupJob = async (job: Job) => {
+export const demoCleanupJob = async (ctx: JobContext) => {
+  const job = ctx.job
   if (!isDemoEnabled()) {
     logger.info('Demo disabled, skipping cleanup')
     return { scanned: 0, deleted: 0, failed: 0 }

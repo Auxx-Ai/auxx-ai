@@ -236,7 +236,7 @@ export {
   taskDeadlineScannerJob,
 } from './tasks/task-deadline-scanner-job'
 // Job context types
-export type { JobContext, JobHandler, LegacyJobHandler } from './types'
+export type { JobContext, JobHandler } from './types'
 // Webhooks
 export {
   type ProcessSingleWebhookJobData,

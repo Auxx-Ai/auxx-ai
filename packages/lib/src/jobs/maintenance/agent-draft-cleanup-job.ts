@@ -2,9 +2,9 @@
 
 import { database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import type { Job } from 'bullmq'
 import { and, count, eq, isNull, lt, sql } from 'drizzle-orm'
 import { archiveAgent } from '../../agents/agent-service'
+import type { JobContext } from '../types'
 
 const logger = createScopedLogger('agent-draft-cleanup')
 
@@ -30,8 +30,9 @@ export interface AgentDraftCleanupStats {
  * path on the agents list.
  */
 export async function agentDraftCleanupJob(
-  job: Job<AgentDraftCleanupJobData>
+  ctx: JobContext<AgentDraftCleanupJobData>
 ): Promise<AgentDraftCleanupStats> {
+  const job = ctx.job
   const { staleDays = 7, batchSize = 100, dryRun = false } = job.data
   const cutoff = new Date(Date.now() - staleDays * 24 * 60 * 60 * 1000)
 

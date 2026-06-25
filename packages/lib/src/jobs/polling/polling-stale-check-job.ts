@@ -2,12 +2,12 @@
 
 import { database as db, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import type { Job } from 'bullmq'
 import { and, eq, inArray, isNotNull, isNull, lt } from 'drizzle-orm'
 import { getImportCacheSize, recoverProcessingBatch } from '../../email/polling-import-cache'
 import type { ImapFolderCheckpoint } from '../../providers/imap/types'
 import { getQueue } from '../queues'
 import { Queues } from '../queues/types'
+import type { JobContext } from '../types'
 
 const logger = createScopedLogger('job:polling-stale-check')
 
@@ -27,7 +27,8 @@ export interface PollingStaleCheckJobData {
  * For Gmail/Outlook: preserves the Redis import cache so recovered jobs
  * can resume importing rather than re-listing with an already-advanced cursor.
  */
-export const pollingStaleCheckJob = async (job: Job<PollingStaleCheckJobData>) => {
+export const pollingStaleCheckJob = async (ctx: JobContext<PollingStaleCheckJobData>) => {
+  const job = ctx.job
   const { staleThresholdMs = DEFAULT_STALE_THRESHOLD_MS } = job.data
   const now = new Date()
   const staleThreshold = new Date(now.getTime() - staleThresholdMs)

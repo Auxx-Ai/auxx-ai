@@ -2,11 +2,11 @@
 
 import { database as db } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import type { Job } from 'bullmq'
 import { getCachedWorkflowApp } from '../../cache'
 import { SystemUserService } from '../../users/system-user-service'
 import { RedisWorkflowExecutionReporter } from '../../workflow-engine'
 import { WorkflowExecutionService } from '../../workflows/workflow-execution-service'
+import type { JobContext } from '../types'
 
 const logger = createScopedLogger('resource-trigger-job')
 
@@ -27,7 +27,8 @@ export type ResourceTriggerJobData = {
  * Execute a workflow triggered by a resource event
  * Fetches workflow app and executes the workflow with resource data
  */
-export async function executeResourceTrigger(job: Job<ResourceTriggerJobData>) {
+export async function executeResourceTrigger(ctx: JobContext<ResourceTriggerJobData>) {
+  const job = ctx.job
   const { workflowAppId, organizationId, entityDefinitionId, resourceData, triggerType } = job.data
 
   logger.info('Executing resource trigger', {

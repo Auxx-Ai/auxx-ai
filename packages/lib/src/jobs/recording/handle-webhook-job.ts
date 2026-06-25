@@ -6,6 +6,7 @@ import { handleBotStatusChange } from '../../recording/bot'
 import type { BotStatus, BotWebhookEventType } from '../../recording/bot/types'
 import { findRecording } from '../../recording/recording-queries'
 import { getQueue, Queues } from '../queues'
+import type { JobContext } from '../types'
 
 const logger = createScopedLogger('job:recording-webhook')
 
@@ -22,8 +23,8 @@ export interface HandleRecordingWebhookJobData {
  * Process an inbound recording webhook event.
  * Idempotent — safe to retry.
  */
-export const handleRecordingWebhookJob = async (jobOrCtx: Job<HandleRecordingWebhookJobData>) => {
-  const job: Job<HandleRecordingWebhookJobData> = (jobOrCtx as any).job ?? jobOrCtx
+export const handleRecordingWebhookJob = async (ctx: JobContext<HandleRecordingWebhookJobData>) => {
+  const job = ctx.job
   const { externalBotId, type, status, subCode, metadata } = job.data
 
   logger.info('Processing recording webhook', {

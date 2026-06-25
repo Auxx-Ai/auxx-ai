@@ -1,7 +1,6 @@
 // packages/lib/src/jobs/workflow/scheduled-trigger-job.ts
 
 import { database as db, schema } from '@auxx/database'
-import type { Job } from 'bullmq'
 import { and, eq } from 'drizzle-orm'
 import { createScopedLogger } from '../../logger'
 import { RedisWorkflowExecutionReporter } from '../../workflow-engine'
@@ -9,6 +8,7 @@ import { WorkflowNodeType } from '../../workflow-engine/core/types'
 import type { ScheduledTriggerConfig } from '../../workflows/scheduled-trigger-service'
 import { ScheduledTriggerService } from '../../workflows/scheduled-trigger-service'
 import { WorkflowExecutionService } from '../../workflows/workflow-execution-service'
+import type { JobContext } from '../types'
 
 const logger = createScopedLogger('scheduled-trigger-job')
 
@@ -47,7 +47,8 @@ async function cancelInvalidWorkflowScheduler(
 /**
  * Execute a scheduled trigger for a workflow
  */
-export async function executeScheduledTrigger(job: Job<ScheduledTriggerJobData>) {
+export async function executeScheduledTrigger(ctx: JobContext<ScheduledTriggerJobData>) {
+  const job = ctx.job
   const { workflowAppId, organizationId, nodeId, triggerConfig } = job.data
 
   logger.info('Executing scheduled trigger', {

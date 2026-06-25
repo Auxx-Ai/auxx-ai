@@ -1,14 +1,15 @@
 // packages/lib/src/jobs/shopify/sync-products-job.ts
 import { database as db, schema } from '@auxx/database'
-import type { Job } from 'bullmq'
 import { eq } from 'drizzle-orm'
 import { createShopifyAdminClient } from '../../shopify/shopify-webhooks'
 import { ProductSync } from '../../shopify/sync-products'
 import { SyncManager } from '../../sync-manager'
+import type { JobContext } from '../types'
 
 export type SyncProductsJobProps = { syncId: string; organizationId: string; integrationId: string }
 
-export const syncProductsJob = async (job: Job<SyncProductsJobProps>) => {
+export const syncProductsJob = async (ctx: JobContext<SyncProductsJobProps>) => {
+  const job = ctx.job
   const { syncId, organizationId, integrationId } = job.data
   const syncJob = await SyncManager.start(syncId)
 

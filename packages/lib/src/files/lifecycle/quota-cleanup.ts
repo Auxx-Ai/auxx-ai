@@ -4,6 +4,7 @@ import { database as db, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import type { Job } from 'bullmq'
 import { and, asc, eq, isNull, lt, sql } from 'drizzle-orm'
+import type { JobContext } from '../../jobs/types'
 import type { StorageQuota } from './types'
 
 const logger = createScopedLogger('quota-cleanup')
@@ -51,8 +52,9 @@ export async function calculateStorageUsage(organizationId: string): Promise<Sto
  * Runs daily to notify organizations approaching their limits
  */
 export async function storageQuotaCheckJob(
-  job: Job<{ dryRun?: boolean }>
+  ctx: JobContext<{ dryRun?: boolean }>
 ): Promise<{ checked: number; warnings: number; enforced: number }> {
+  const job = ctx.job
   const { dryRun = false } = job.data
   const result = {
     checked: 0,

@@ -2,8 +2,8 @@
 
 import { database as db, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import type { Job } from 'bullmq'
 import { and, eq, isNotNull, lt } from 'drizzle-orm'
+import type { JobContext } from '../../jobs/types'
 import { StorageManager } from '../storage/storage-manager'
 import { deleteExpiredFiles, deleteFilesByIds } from './cleanup-service'
 import type { OrphanedFileCleanupJobData, OrphanedFileCleanupResult } from './types'
@@ -16,8 +16,9 @@ const logger = createScopedLogger('orphaned-file-cleanup')
  * Runs hourly to delete files where status = 'PENDING' and expiresAt < now
  */
 export async function orphanedFileCleanupJob(
-  job: Job<OrphanedFileCleanupJobData>
+  ctx: JobContext<OrphanedFileCleanupJobData>
 ): Promise<OrphanedFileCleanupResult> {
+  const job = ctx.job
   const { batchSize = 100, dryRun = false } = job.data
   const result: OrphanedFileCleanupResult = {
     processed: 0,
@@ -77,8 +78,9 @@ export async function orphanedFileCleanupJob(
  * Runs daily to permanently delete files where deletedAt < 30 days ago
  */
 export async function deletedFileCleanupJob(
-  job: Job<OrphanedFileCleanupJobData>
+  ctx: JobContext<OrphanedFileCleanupJobData>
 ): Promise<OrphanedFileCleanupResult> {
+  const job = ctx.job
   const { batchSize = 100, dryRun = false } = job.data
   const result: OrphanedFileCleanupResult = {
     processed: 0,

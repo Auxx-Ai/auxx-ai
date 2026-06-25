@@ -3,8 +3,8 @@
 import { database, schema } from '@auxx/database'
 import { SendStatus } from '@auxx/database/enums'
 import { createScopedLogger } from '@auxx/logger'
-import type { Job } from 'bullmq'
 import { and, eq, lt, sql } from 'drizzle-orm'
+import type { JobContext } from '../types'
 
 const logger = createScopedLogger('stale-pending-message-sweeper')
 
@@ -39,8 +39,9 @@ export interface StalePendingMessageSweeperStats {
  * the hard process-death case where no catch can run.
  */
 export async function stalePendingMessageSweeperJob(
-  job: Job<StalePendingMessageSweeperJobData>
+  ctx: JobContext<StalePendingMessageSweeperJobData>
 ): Promise<StalePendingMessageSweeperStats> {
+  const job = ctx.job
   const { staleMinutes = 5, batchSize = 500, dryRun = false } = job.data
   const cutoff = new Date(Date.now() - staleMinutes * 60 * 1000)
 

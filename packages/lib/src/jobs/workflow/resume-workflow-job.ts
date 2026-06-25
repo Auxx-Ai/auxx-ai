@@ -2,10 +2,10 @@
 
 import { database as db, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import type { Job } from 'bullmq'
 import { eq } from 'drizzle-orm'
 import { publisher } from '../../events/publisher'
 import { WorkflowExecutionService } from '../../workflows/workflow-execution-service'
+import type { JobContext } from '../types'
 
 const logger = createScopedLogger('ResumeWorkflowJob')
 
@@ -19,7 +19,8 @@ export type ResumeWorkflowJobData = {
 /**
  * Job handler for resuming paused workflows
  */
-export async function resumeWorkflowJob(job: Job<ResumeWorkflowJobData>) {
+export async function resumeWorkflowJob(ctx: JobContext<ResumeWorkflowJobData>) {
+  const job = ctx.job
   const { workflowRunId, resumeFromNodeId, nodeOutput: providedOutput } = job.data
 
   logger.info('Resuming workflow', { workflowRunId, resumeFromNodeId })

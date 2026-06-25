@@ -1,10 +1,10 @@
 // packages/lib/src/jobs/maintenance/thumbnail-cleanup-job.ts
 
 import { database as db, schema } from '@auxx/database'
-import type { Job } from 'bullmq'
 import { and, eq, isNotNull, isNull, lt, or, sql } from 'drizzle-orm'
 import { type CleanupResult, ThumbnailService } from '../../files/core/thumbnail-service'
 import { createScopedLogger } from '../../logger'
+import type { JobContext } from '../types'
 
 const logger = createScopedLogger('thumbnail-cleanup-job')
 
@@ -52,8 +52,9 @@ interface ThumbnailCleanupResult {
  * Handles orphaned, outdated, failed, and expired thumbnails
  */
 export async function thumbnailCleanupJob(
-  job: Job<ThumbnailCleanupJobData>
+  ctx: JobContext<ThumbnailCleanupJobData>
 ): Promise<ThumbnailCleanupResult> {
+  const job = ctx.job
   const {
     organizationId,
     cleanupTypes = ['orphaned', 'failed', 'expired'],

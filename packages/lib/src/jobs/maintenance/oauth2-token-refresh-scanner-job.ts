@@ -3,9 +3,9 @@
 import { revealSecrets } from '@auxx/credentials/store'
 import { database as db, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import type { Job } from 'bullmq'
 import { and, eq, isNotNull, lte } from 'drizzle-orm'
 import { getQueue, Queues } from '../queues'
+import type { JobContext } from '../types'
 
 const logger = createScopedLogger('oauth2-token-refresh-scanner-job')
 
@@ -52,7 +52,10 @@ interface ScannerStats {
  * - Calculate if refresh is due based on schedule or expiration
  * - Enqueue individual refresh jobs to oauth2RefreshQueue
  */
-export const oauth2TokenRefreshScannerJob = async (job: Job<OAuth2TokenRefreshScannerJobData>) => {
+export const oauth2TokenRefreshScannerJob = async (
+  ctx: JobContext<OAuth2TokenRefreshScannerJobData>
+) => {
+  const job = ctx.job
   const { dryRun = false, batchSize = 50 } = job.data
 
   logger.info('Starting OAuth2 token refresh scanner', {

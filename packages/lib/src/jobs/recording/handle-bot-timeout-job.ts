@@ -1,11 +1,11 @@
 // packages/lib/src/jobs/recording/handle-bot-timeout-job.ts
 
 import { createScopedLogger } from '@auxx/logger'
-import type { Job } from 'bullmq'
 import { cancelBot, pollBotStatus } from '../../recording/bot'
 import type { BotStatus } from '../../recording/bot/types'
 import { TERMINAL_STATUSES } from '../../recording/bot/types'
 import { findRecording, updateRecording } from '../../recording/recording-queries'
+import type { JobContext } from '../types'
 
 const logger = createScopedLogger('job:bot-timeout')
 
@@ -19,8 +19,8 @@ const TIMEOUT_ELIGIBLE_STATUSES: BotStatus[] = ['joining', 'waiting']
 /**
  * Delayed job: fire 10 min after bot creation to cancel stuck bots.
  */
-export const handleBotTimeoutJob = async (jobOrCtx: Job<HandleBotTimeoutJobData>) => {
-  const job: Job<HandleBotTimeoutJobData> = (jobOrCtx as any).job ?? jobOrCtx
+export const handleBotTimeoutJob = async (ctx: JobContext<HandleBotTimeoutJobData>) => {
+  const job = ctx.job
   const { recordingId } = job.data
 
   // First poll to get the latest status from the provider

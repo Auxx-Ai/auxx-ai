@@ -3,12 +3,12 @@
 import { WEBAPP_URL } from '@auxx/config/server'
 import { database as db, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import type { Job } from 'bullmq'
 import { differenceInCalendarDays, subDays } from 'date-fns'
 import { and, eq, inArray, isNull } from 'drizzle-orm'
 import { z } from 'zod'
 import { OrganizationService } from '../../organizations'
 import { enqueueEmailJob } from '../email'
+import type { JobContext } from '../types'
 
 const payloadSchema = z.object({
   dryRun: z.boolean().default(false),
@@ -48,7 +48,8 @@ export interface OrganizationToDelete {
  * Runs daily to identify and delete trial accounts that have been expired for the grace period.
  * Includes notification system to warn users before deletion.
  */
-export const expiredTrialAccountCleanupJob = async (job: Job) => {
+export const expiredTrialAccountCleanupJob = async (ctx: JobContext) => {
+  const job = ctx.job
   const input = payloadSchema.parse(job.data)
   const stats: CleanupStats = {
     scanned: 0,
@@ -131,9 +132,6 @@ async function findEligibleOrganizations(
   warningCutoff: Date,
   finalNoticeCutoff: Date
 ) {
-  const { PlanSubscription } = await import('@auxx/database')
-  const { Organization } = await import('@auxx/database')
-
   // Query for organizations with expired trials
   const expiredTrials = await db
     .select({

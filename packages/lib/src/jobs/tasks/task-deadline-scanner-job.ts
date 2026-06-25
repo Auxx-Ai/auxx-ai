@@ -1,8 +1,8 @@
 // packages/lib/src/jobs/tasks/task-deadline-scanner-job.ts
 
 import { createScopedLogger } from '@auxx/logger'
-import type { Job } from 'bullmq'
 import { scanAndFireTaskDeadlines } from '../../tasks/scan-and-fire.service'
+import type { JobContext } from '../types'
 
 const logger = createScopedLogger('job:task-deadline-scanner')
 
@@ -19,7 +19,8 @@ export interface TaskDeadlineScannerJobData {
  * Scheduled every minute via BullMQ `upsertJobScheduler`. Idempotent — a task
  * with `firedAt` set is skipped, so a missed tick or duplicate run is safe.
  */
-export const taskDeadlineScannerJob = async (job: Job<TaskDeadlineScannerJobData>) => {
+export const taskDeadlineScannerJob = async (ctx: JobContext<TaskDeadlineScannerJobData>) => {
+  const job = ctx.job
   const asOf = job.data?.asOf ? new Date(job.data.asOf) : new Date()
 
   logger.debug('Task deadline scan starting', { jobId: job.id, asOf: asOf.toISOString() })

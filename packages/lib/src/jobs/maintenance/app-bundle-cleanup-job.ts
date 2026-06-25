@@ -3,9 +3,9 @@
 import { database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { getBundleS3Key } from '@auxx/services/app-bundles'
-import type { Job } from 'bullmq'
 import { and, eq, isNull, lt, or } from 'drizzle-orm'
 import { S3Adapter } from '../../files/adapters/s3-adapter'
+import type { JobContext } from '../types'
 
 const logger = createScopedLogger('app-bundle-cleanup')
 
@@ -14,7 +14,8 @@ interface AppBundleCleanupJobData {
   dryRun?: boolean
 }
 
-export async function orphanedAppBundleCleanupJob(job: Job<AppBundleCleanupJobData>) {
+export async function orphanedAppBundleCleanupJob(ctx: JobContext<AppBundleCleanupJobData>) {
+  const job = ctx.job
   const { batchSize = 100, dryRun = false } = job.data
 
   const s3Adapter = new S3Adapter()

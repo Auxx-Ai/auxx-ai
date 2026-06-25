@@ -2,10 +2,10 @@
 
 import { database as db, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import type { Job } from 'bullmq'
 import { and, eq, inArray, isNull } from 'drizzle-orm'
 import { getImportCacheSize, recoverProcessingBatch } from '../../email/polling-import-cache'
 import { resolveEffectiveSyncMode } from '../../providers/sync-mode-resolver'
+import type { JobContext } from '../types'
 
 const logger = createScopedLogger('job:polling-relaunch-failed')
 
@@ -17,7 +17,7 @@ export interface PollingRelaunchFailedJobData {
  * Auto-recovery job that resets FAILED polling integrations.
  * Runs on schedule (default: every 30 min).
  */
-export const pollingRelaunchFailedJob = async (job: Job<PollingRelaunchFailedJobData>) => {
+export const pollingRelaunchFailedJob = async (_ctx: JobContext<PollingRelaunchFailedJobData>) => {
   const now = new Date()
 
   logger.info('Starting polling relaunch failed job')

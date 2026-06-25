@@ -3,11 +3,11 @@
 import { WEBAPP_URL } from '@auxx/config/server'
 import { database as db, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import type { Job } from 'bullmq'
 import { addDays, format } from 'date-fns'
 import { and, eq, gte, isNull, lte } from 'drizzle-orm'
 import { z } from 'zod'
 import { enqueueEmailJob } from '../email'
+import type { JobContext } from '../types'
 
 const payloadSchema = z.object({
   dryRun: z.boolean().default(false),
@@ -32,7 +32,8 @@ export interface TrialConversionStats {
  * Sends email 3 days before trial expires to encourage conversion.
  * Runs daily at 10 AM.
  */
-export const sendTrialConversionEmailsJob = async (job: Job) => {
+export const sendTrialConversionEmailsJob = async (ctx: JobContext) => {
+  const job = ctx.job
   const input = payloadSchema.parse(job.data)
   const stats: TrialConversionStats = {
     scanned: 0,

@@ -2,7 +2,6 @@
 
 import { database as db, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import type { Job } from 'bullmq'
 import { and, eq, inArray, isNull } from 'drizzle-orm'
 import {
   acknowledgeImportBatch,
@@ -18,6 +17,7 @@ import type { ImapFolderCheckpoint, ImapImportBatchJobData } from '../../provide
 import { ProviderRegistryService } from '../../providers/provider-registry-service'
 import { getQueue } from '../queues'
 import { Queues } from '../queues/types'
+import type { JobContext } from '../types'
 
 const logger = createScopedLogger('job:messages-import')
 
@@ -37,10 +37,9 @@ export interface MessagesImportJobData {
  * Phase 2: Fetch message content by external IDs from Redis cache.
  * Claims a batch (two-phase), imports via provider, then acknowledges.
  */
-export const messagesImportJob = async (jobOrCtx: Job<MessagesImportJobData>) => {
-  // createJobHandler passes a JobContext; extract the real BullMQ Job
-  const job: Job<MessagesImportJobData> = (jobOrCtx as any).job ?? jobOrCtx
-  const signal = (jobOrCtx as any).signal as AbortSignal | undefined
+export const messagesImportJob = async (ctx: JobContext<MessagesImportJobData>) => {
+  const job = ctx.job
+  const signal = ctx.signal
 
   const { integrationId, organizationId, provider } = job.data
   const batchSize =
@@ -223,9 +222,8 @@ export const messagesImportJob = async (jobOrCtx: Job<MessagesImportJobData>) =>
  * (not from Redis cache). Updates the folder checkpoint on completion.
  * When all batches for the active window complete, triggers the next list fetch.
  */
-export const imapImportBatchJob = async (jobOrCtx: Job<ImapImportBatchJobData>) => {
-  // createJobHandler passes a JobContext; extract the real BullMQ Job
-  const job: Job<ImapImportBatchJobData> = (jobOrCtx as any).job ?? jobOrCtx
+export const imapImportBatchJob = async (ctx: JobContext<ImapImportBatchJobData>) => {
+  const job = ctx.job
   const { runId, integrationId, organizationId, labelId, folderPath, externalIds } = job.data
   const now = new Date()
 

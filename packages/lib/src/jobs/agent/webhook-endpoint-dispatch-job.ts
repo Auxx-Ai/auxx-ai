@@ -5,11 +5,11 @@
 // same `matchesFilter`, same `executeAgentAppTrigger` executor — only the matcher differs.
 
 import { getRedisClient } from '@auxx/redis'
-import type { Job } from 'bullmq'
 import { matchesFilter } from '../../agents/agent-trigger-queries'
 import { getCachedAgents } from '../../cache'
 import { createScopedLogger } from '../../logger'
 import { getQueue, Queues } from '../queues'
+import type { JobContext } from '../types'
 
 const logger = createScopedLogger('agent-webhook-endpoint-dispatch-job')
 
@@ -27,8 +27,9 @@ export type AgentWebhookEndpointDispatchJobData = {
  * suffix keeps the agent fire independent of the workflow fire.
  */
 export async function dispatchWebhookEndpointToAgents(
-  job: Job<AgentWebhookEndpointDispatchJobData>
+  ctx: JobContext<AgentWebhookEndpointDispatchJobData>
 ) {
+  const job = ctx.job
   const { endpointId, topic, triggerData, eventId, organizationId } = job.data
 
   const dedupKey = `webhook-endpoint-dispatch-dedup:${endpointId}:${topic}:${eventId}:agents`

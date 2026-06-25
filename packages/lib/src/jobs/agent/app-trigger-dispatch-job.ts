@@ -1,11 +1,11 @@
 // packages/lib/src/jobs/agent/app-trigger-dispatch-job.ts
 
 import { getRedisClient } from '@auxx/redis'
-import type { Job } from 'bullmq'
 import { matchesFilter } from '../../agents/agent-trigger-queries'
 import { getCachedAgents } from '../../cache'
 import { createScopedLogger } from '../../logger'
 import { getQueue, Queues } from '../queues'
+import type { JobContext } from '../types'
 
 const logger = createScopedLogger('agent-app-trigger-dispatch-job')
 
@@ -25,7 +25,8 @@ export type AgentAppTriggerDispatchJobData = {
  * dedup key (`:agents` suffix) so a duplicate event doesn't double-fire
  * agents — but workflow + agent fires on the same event are independent.
  */
-export async function dispatchAppTriggerToAgents(job: Job<AgentAppTriggerDispatchJobData>) {
+export async function dispatchAppTriggerToAgents(ctx: JobContext<AgentAppTriggerDispatchJobData>) {
+  const job = ctx.job
   const {
     appInstallationId,
     appId,

@@ -1,8 +1,8 @@
 // packages/lib/src/jobs/oauth2-refresh/oauth2-token-refresh-job.ts
 
 import { createScopedLogger } from '@auxx/logger'
-import type { Job } from 'bullmq'
 import { refreshCredentialTokens } from '../../connections/oauth2-token-grants'
+import type { JobContext } from '../types'
 
 const logger = createScopedLogger('oauth2-token-refresh-job')
 
@@ -24,7 +24,8 @@ interface OAuth2TokenRefreshJobData {
  * On failure: increments the breaker (a permanent failure opens it immediately) and throws so
  * BullMQ retries with backoff.
  */
-export const oauth2TokenRefreshJob = async (job: Job<OAuth2TokenRefreshJobData>) => {
+export const oauth2TokenRefreshJob = async (ctx: JobContext<OAuth2TokenRefreshJobData>) => {
+  const job = ctx.job
   const { credentialId, organizationId, previousFailureCount = 0, attemptNumber = 1 } = job.data
 
   logger.info('Starting OAuth2 token refresh', {

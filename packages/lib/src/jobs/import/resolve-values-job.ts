@@ -3,7 +3,6 @@
 import { database as db, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { getPublishingClient } from '@auxx/redis'
-import type { Job } from 'bullmq'
 import { and, eq } from 'drizzle-orm'
 import {
   createEventPublisher,
@@ -12,6 +11,7 @@ import {
   processColumnValues,
 } from '../../import'
 import type { ResolutionConfig, ResolutionType } from '../../import/types'
+import type { JobContext } from '../types'
 
 const logger = createScopedLogger('resolve-values-job')
 
@@ -25,7 +25,8 @@ export interface ResolveValuesJobProps {
  * Job handler for resolving import values.
  * Processes each mapped column and runs type-specific resolvers.
  */
-export async function resolveValuesJob(job: Job<ResolveValuesJobProps>): Promise<void> {
+export async function resolveValuesJob(ctx: JobContext<ResolveValuesJobProps>): Promise<void> {
+  const job = ctx.job
   const { jobId, organizationId } = job.data
 
   logger.info('Starting value resolution', { jobId })

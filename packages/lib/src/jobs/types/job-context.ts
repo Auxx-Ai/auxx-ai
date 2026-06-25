@@ -42,11 +42,8 @@ export interface JobContext<T = any> {
 }
 
 /**
- * Type for job handler functions using the new context pattern
+ * Type for job handler functions. Every handler receives a {@link JobContext};
+ * `createJobHandler` always wraps the raw BullMQ `Job` before calling the handler.
+ * Read native job fields (`opts`, `attemptsMade`, `id`, …) via `ctx.job`.
  */
 export type JobHandler<T = any, R = any> = (ctx: JobContext<T>) => Promise<R>
-
-/**
- * Type for legacy job handlers (just receive Job)
- */
-export type LegacyJobHandler<T = any, R = any> = (job: Job<T>) => Promise<R>
