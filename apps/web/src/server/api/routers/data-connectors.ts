@@ -83,6 +83,17 @@ const connectorConfigSchema = z
     filters: z.record(z.string(), z.unknown()).optional(),
     // How far back a backfill crawls (Step 9 §1.2) — plain-language window radio.
     backfillWindowSpan: z.enum(['all', 'last_90_days', 'last_12_months']).optional(),
+    // Webhook-sync SIGNAL — which trigger/endpoint drives this connector (v7). One per
+    // connector; per-stream topic/token steering lives on the stream's webhookTrigger.
+    webhookTrigger: z
+      .object({
+        triggerId: z.string().optional(),
+        webhookEndpointId: z.string().optional(),
+      })
+      .refine((v) => !!v.triggerId !== !!v.webhookEndpointId, {
+        message: 'webhookTrigger requires exactly one of triggerId or webhookEndpointId',
+      })
+      .optional(),
   })
   .passthrough()
 
@@ -136,23 +147,18 @@ const requestConfigSchema = z.object({
   backfillWindow: z
     .object({ sinceParam: z.string(), format: z.enum(['iso', 'unix']).optional() })
     .optional(),
-  // Webhook-sync binding: which signal steers the fetch (an app trigger OR a generic
-  // WebhookEndpoint — exactly one) + how a delivery maps into the request. Lives in
-  // requestConfig (plans/data-connectors/v4 + v6 unified-trigger-picker §4.1).
+  // Per-stream webhook STEERING (generic-REST only): how a matched delivery maps into
+  // the request (the SIGNAL — which trigger/endpoint — is connector-level since v7,
+  // on config.webhookTrigger). plans/data-connectors/v7.
   webhookTrigger: z
     .object({
-      triggerId: z.string().optional(),
-      webhookEndpointId: z.string().optional(),
       filter: z.record(z.string(), z.unknown()).optional(),
-      tokens: z.record(z.string(), z.string()),
+      paths: z.array(z.string()),
       deleteWhen: z
         .union([z.object({ tokenTruthy: z.string() }), z.object({ topicEquals: z.string() })])
         .optional(),
       deleteExternalIdPath: z.string().optional(),
       resultShape: z.enum(['single', 'collection']).optional(),
-    })
-    .refine((v) => !!v.triggerId !== !!v.webhookEndpointId, {
-      message: 'webhookTrigger requires exactly one of triggerId or webhookEndpointId',
     })
     .optional(),
 })

@@ -67,8 +67,13 @@ export interface DataConnectorConfig {
     }
   }
   filters?: Record<string, unknown>
-  /** Provider webhook capability selector (Step 8). Mirror of lib `DataConnectorConfig.webhook`. */
-  webhook?: { provider: 'shopify' | 'stripe' }
+  /**
+   * Webhook-sync SIGNAL — which inbound event drives this connector (v7, one per
+   * connector). Mirror of lib `DataConnectorConfig.webhookTrigger`. Exactly one of:
+   * `triggerId` (an app webhook trigger) or `webhookEndpointId` (a generic
+   * `WebhookEndpoint`). Set when `syncBehavior === 'webhook'`.
+   */
+  webhookTrigger?: { triggerId?: string; webhookEndpointId?: string }
   /** Backfill crawl span (Step 9 §1.2). Mirror of lib `DataConnectorConfig.backfillWindowSpan`. */
   backfillWindowSpan?: 'all' | 'last_90_days' | 'last_12_months'
 }
@@ -174,6 +179,19 @@ export interface StreamRequestConfig {
   /** Backfill-window floor param declaration (Step 9 §1.2). Mirror of lib
    *  `StreamRequestConfig.backfillWindow`. */
   backfillWindow?: { sinceParam: string; format?: 'iso' | 'unix' }
+  /**
+   * Per-stream webhook STEERING (v7). Mirror of lib `StreamWebhookTrigger`. Present
+   * only on `syncBehavior='webhook'` generic-REST streams: a matched delivery exposes
+   * payload `{path}` values out of `triggerData` to steer the regular fetch (the
+   * connector-level SIGNAL is `DataConnectorConfig.webhookTrigger`).
+   */
+  webhookTrigger?: {
+    filter?: Record<string, unknown>
+    paths: string[]
+    deleteWhen?: { tokenTruthy?: string } | { topicEquals?: string }
+    deleteExternalIdPath?: string
+    resultShape?: 'single' | 'collection'
+  }
 }
 
 /**

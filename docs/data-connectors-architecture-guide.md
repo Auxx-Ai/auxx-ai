@@ -1,6 +1,6 @@
 # Data Connectors Architecture Guide
 
-**Last Updated:** 2026-06-23
+**Last Updated:** 2026-06-25
 **Scope:** The `DataConnector` system — how external structured records (Shopify, generic REST/JSON endpoints, apps) are pulled on a schedule and materialized as **EntityInstances + FieldValues**, idempotently and reconcilably, into either a connector-owned definition or an existing one (including system `contact`/`ticket`). Covers the **sliced, resumable sync engine** (paginated backfill → steady incremental, cursor-safe checkpoints), the shared **sync-core** orchestration shell, connectors, the mapping layer, the entity sink, webhooks, queues, the tRPC surface, and the frontend (detail view + live status).
 
 > The engine lives in `packages/lib/src/data-connectors` (server-only barrel `@auxx/lib/data-connectors`). The provider-agnostic orchestration shell it runs on lives in `packages/lib/src/sync-core` (`@auxx/lib/sync-core`) — a shared spine intended for both data-connectors and channel (Gmail/Outlook) sync. Entity definitions, instances, and field values are downstream and documented here only where connectors touch them.
@@ -97,7 +97,7 @@ Five control tables:
 
 | Table | File | Role |
 |-------|------|------|
-| `DataConnector` | `data-connector.ts` | The connector definition: `type`, `config` (jsonb — generic-rest `endpoint` + filters + `backfillWindowSpan` + webhook capability), bound `credentialId`, `syncBehavior` + `scheduleConfig`, `status`, `itemCount`, `lastSyncedAt`, `error`. One per type per org (v1). |
+| `DataConnector` | `data-connector.ts` | The connector definition: `type`, `config` (jsonb — generic-rest `endpoint` + filters + `backfillWindowSpan` + `webhookTrigger` SIGNAL), bound `credentialId`, `syncBehavior` + `scheduleConfig`, `status`, `itemCount`, `lastSyncedAt`, `error`. One per type per org (v1). |
 | `DataConnectorStream` | `data-connector-stream.ts` | One fetch = one source schema. Holds `streamKey` (nullable — a draft is created blank and named inline), `requestConfig` (jsonb), `sourceSchema` + `schemaSource` (`catalog`/`inferred`/`manual`), `syncMode` (`snapshot`/`incremental`/`webhook`), and **`state`** (jsonb `ConnectorStreamState` — the durable per-stream sync state: phase, backfill cursor, watermark, recordsSeen). |
 | `DataConnectorMapping` | `data-connector-mapping.ts` | The fan-out. Self-FK `parentMappingId` for nested subtrees; `rootPath`, `targetMode` (owned/contributing), `linkMode` (upsert/reference), `entityDefinitionId`, `fieldMappings` (jsonb array of entries), identity config. |
 | `DataConnectorItem` | `data-connector-item.ts` | Durable upstream↔instance binding, **per mapping**. Unique `(dataConnectorId, mappingId, externalId)`. Carries content hash + cursor state + `lastSeenRunId` (drives orphan reconciliation) off the entity row. |
@@ -117,7 +117,7 @@ Plus: `dataConnectorStatus` + `dataConnectorSyncBehavior` pgEnums in `_shared.ts
 
 **Provenance.** Owned mode sets `integrationSource = connectorId` on created instances; contributing mode leaves `integrationSource` untouched (so it never collides with another integration or breaks `findByIntegrationId`). The authoritative match key is always the `DataConnectorItem` row, not `integrationSource`.
 
-**`requestConfig` (per stream, generic-rest):** `{ path?, method?, params?, body?, headers?, pagination?, incremental?, backfillWindow? }`. **`config.endpoint` (per connector, generic-rest):** `{ baseUrl, auth?, pagination?, headers?, rateLimit? }`. At fetch time headers merge low→high: `Accept` < `endpoint.headers` (shared) < `requestConfig.headers` (per-stream) < credential auth (applied by the HTTP transport).
+**`requestConfig` (per stream, generic-rest):** `{ path?, method?, params?, body?, headers?, pagination?, incremental?, backfillWindow?, webhookTrigger? }` (the last is the per-stream webhook STEERING — §10). **`config.endpoint` (per connector, generic-rest):** `{ baseUrl, auth?, pagination?, headers?, rateLimit? }`. At fetch time headers merge low→high: `Accept` < `endpoint.headers` (shared) < `requestConfig.headers` (per-stream) < credential auth (applied by the HTTP transport).
 
 ---
 
@@ -157,12 +157,11 @@ interface DataConnectorDefinition {
   streams: ConnectorStreamDecl[]
   fetch(args: ConnectorFetchArgs): Promise<FetchResult>
   asyncExport?: AsyncExportCapability       // optional bulk-export (rate-limit-exempt big reads)
-  webhook?: WebhookCapability               // optional inbound webhook ingress + registration
   resolveDelete?(event): ...                // map a delete signal to externalIds to archive
 }
 ```
 
-`fetch` receives `ConnectorFetchArgs`: `{ streamKey, mode: 'snapshot' | 'incremental', state: ConnectorStreamState, credential, config, requestConfig?, rateLimitOverride?, onPageMeta? }`. The sliced `SyncSource` sets `rateLimitOverride: { maxRetries: 0 }` so the throttle returns immediately (slicing owns the backoff, not the transport). `onPageMeta` lets the UI test-fetch surface `link-header` pagination from response headers.
+`fetch` receives `ConnectorFetchArgs`: `{ streamKey, mode: 'snapshot' | 'incremental', state: ConnectorStreamState, credential, config, requestConfig?, triggerContext?, rateLimitOverride?, onPageMeta? }`. The sliced `SyncSource` sets `rateLimitOverride: { maxRetries: 0 }` so the throttle returns immediately (slicing owns the backoff, not the transport). `onPageMeta` lets the UI test-fetch surface `link-header` pagination from response headers. `triggerContext` is the resolved `{path}` → value map a **webhook-steered** fetch injects into path/params/headers/body (§10).
 
 `connectorFor(type, context?)` (`connectors/registry.ts`) is the single resolution point. Connector flavors:
 
@@ -292,16 +291,28 @@ The `sampleConnectorFetch` helper (`connector-runtime.ts`, with `prepareConnecto
 
 ---
 
-## 10. Backend: Webhooks
+## 10. Backend: Webhooks (v7 — signal + steering)
 
-**Location:** `packages/lib/src/data-connectors/webhooks/` (`shopify.ts`, `stripe.ts`, `fixture.ts`, `registry.ts`) + `connector-webhook.ts` + `connector-webhook-registration.ts`. Webhooks are **live**, not a placeholder.
+**Location:** `packages/lib/src/data-connectors/connector-webhook.ts` (`runWebhookEventSlice`) + `webhook-steer.ts` (pure steer resolution) + the dispatch jobs in `packages/lib/src/jobs/data-connector/` (`app-trigger-sync-dispatch-job.ts`, `webhook-endpoint-sync-dispatch-job.ts`, `app-trigger-sync-stream-job.ts`). The generic inbound endpoint table is `packages/database/src/db/schema/webhook-endpoint.ts`. Webhooks are **live**.
 
-A connector with a `WebhookCapability` (declared on its `DataConnectorDefinition`) can ingest provider webhooks for near-real-time updates instead of (or alongside) polling:
-- **Registration** — `registerConnectorWebhooks` / `unregisterConnectorWebhooks` (`connector-webhook-registration.ts`) subscribe/unsubscribe the connector's webhook topics with the provider; subscription state rides `ConnectorWebhookState`.
-- **Ingress** — an inbound webhook is verified and turned into `WebhookAction`s (upsert / delete by externalId), enqueued as a `CONNECTOR_WEBHOOK_JOB`, and applied via `runConnectorWebhook` → `applyWebhookActions` (`connector-webhook.ts`), which rides the same mapping → sink path as a sync slice.
-- **Capabilities** — `resolveWebhookCapability(type)` (`webhooks/registry.ts`) resolves `shopifyWebhookCapability`, `stripeWebhookCapability`, or `fixtureWebhookCapability`. Coverage is tested in `webhook-capability.test.ts` / `connector-webhook.test.ts`.
+> **This whole subsystem was rebuilt.** The old per-provider `WebhookCapability` model — `webhooks/{shopify,stripe,fixture,registry}.ts`, `resolveWebhookCapability`, `DataConnectorDefinition.webhook`, `registerConnectorWebhooks`/`unregisterConnectorWebhooks`, `ConnectorWebhookState`, `WebhookAction`s, the `CONNECTOR_WEBHOOK_JOB` + `runConnectorWebhook`/`applyWebhookActions` action-sink — **is all gone** (retired in #962, redesigned in v6/v7). Connectors no longer register topics with a provider or carry a capability driver; they **bind a pre-existing webhook signal** and **steer the regular fetch** off the delivery. Plans: `plans/data-connectors/v6/` (generic webhooks + unified trigger picker) and `plans/data-connectors/v7/webhook-connections-redesign.md`.
 
-`dataConnectorSyncBehavior = 'webhook'` selects webhook-driven sync; the schedule segment's signing-secret/URL panel surfacing is the remaining UI gap (§19).
+The v7 model splits webhook mechanics into two layers:
+
+**1. Signal (connector-level, one per connector) — which inbound event drives this connector.** Stored on `DataConnector.config.webhookTrigger` (`{ triggerId?, webhookEndpointId? }`, exactly one set). A connector binds a single credential/baseUrl = one provider, so every stream shares the same signal; only the steering differs per stream. Two sources:
+- `triggerId` — an **installed-app** webhook trigger (Shopify, Stripe, …), matched off the connector's app connection (`credentialId`).
+- `webhookEndpointId` — a generic, app-less **`WebhookEndpoint`** (the platform's provider-agnostic inbound URL — `POST /webhooks/endpoint/{id}`, built-in `none`/`token`/`hmac` verification, optional topic extraction). Matched by endpoint id alone — generic endpoints aren't connection-bound. Fetch auth still comes from the connector's own `credentialId`; the endpoint only carries the signal.
+
+**2. Steering (per-stream) — how a matched delivery guides this stream's fetch.** Stored on `DataConnectorStream.requestConfig.webhookTrigger` (`StreamWebhookTrigger`, generic-REST only): `filter` (topic discrimination via the same `matchesFilter` the agent/workflow app-trigger path uses — flagship apps multiplex many topics through one `triggerId`, e.g. Shopify's 22 topics on `triggerData.topic`), `paths` (payload paths exposed as `{path}` placeholders), `deleteWhen` + `deleteExternalIdPath` (delete predicate + id to archive), `resultShape` (`single`/`collection`). The principle: **the webhook is the signal; the fetch is the truth** — a delivery never gets sunk raw; it steers the canonical fetch.
+
+**Ingress → dispatch → stream (three thin layers):**
+1. A verified delivery (`apps/api` webhook route) fans out on `appTriggerQueue` to three sibling consumers — workflows, agents, and **connectors**. The connector leg is `dispatchAppTriggerToConnectors` (app triggers, matched by `credentialId` + `config.webhookTrigger.triggerId`) or `dispatchWebhookEndpointToConnectors` (generic endpoints, matched by `config.webhookTrigger.webhookEndpointId`).
+2. The dispatch job is **thin**: dedup (event-id), find matching connectors, filter each connector's webhook-bound streams by `matchesFilter(webhookTrigger.filter, triggerData)`, and enqueue **one `app-trigger-sync-stream` child job per matched (connector, stream)** — the shared child for both signal sources. (Splitting dispatch from execution keeps dedup-under-retry from self-suppressing the fetch.)
+3. The child runs **`runWebhookEventSlice`** (`connector-webhook.ts`): `resolveWebhookSteer(webhookTrigger, triggerData)` decides delete-vs-fetch. A **delete** archives by `deleteExternalIdPath` (`archiveExternalId`). Otherwise it runs the **normal `definition.fetch`** seeded with `triggerContext` (the resolved `{path}` values) — identical auth/baseUrl/pagination/mappings to a bulk sync — and sinks the fetch result through the **same `sinkSourceRecord` → entity-sink path**.
+
+**A webhook is a POINT WRITE, not a run.** `runWebhookEventSlice` opens **no `DataConnectorRun`** (synthetic `runId = app-webhook:<eventId>`), never stamps `lastSeenRunId` or advances the watermark/cursor (that would skew orphan reconciliation and the steady delta floor), and stamps `lastWebhookEventAt` (`stampWebhookEvent`) for liveness — the only "synced" signal a pure-webhook connector has. Idempotent via the receiver's event-id dedup + the sink's content-hash skip. A throttle surfaces as `ConnectorRateLimitError` (fetch sets `maxRetries: 0`); the child job re-enqueues with the provider `Retry-After` and dead-letters after exhausting retries. Steer resolution is unit-tested in `webhook-steer.test.ts`; dispatch in `{app-trigger,webhook-endpoint}-sync-dispatch-job.test.ts`.
+
+`dataConnectorSyncBehavior = 'webhook'` still selects webhook-driven sync (it gates which connectors a dispatch even considers). UI: `webhook-signal-section.tsx` (connector-level signal picker — app trigger vs endpoint) + `webhook-steering-section.tsx` (per-stream topic/path/delete steering) — the old signing-secret/URL gap is closed.
 
 ---
 
@@ -319,9 +330,10 @@ Some providers (Shopify Bulk Operations, Salesforce Bulk API 2.0) don't paginate
 
 ## 12. Backend: Queues, Scheduling & Workers
 
-- **Queue:** `data-connector-queue.ts` — `dataConnectorQueue` with three job types: `DATA_CONNECTOR_SYNC` (`enqueueConnectorSync` — kicks off `startConnectorSync`), `BACKFILL_SLICE_JOB` (`enqueueBackfillSlice` — one continuation slice → `runBackfillSlice`), `CONNECTOR_WEBHOOK_JOB` (`enqueueConnectorWebhook` → `runConnectorWebhook`).
+- **Queue (sync):** `data-connector-queue.ts` — `dataConnectorQueue` carries the **sync** jobs: `data-connector-sync` (`enqueueConnectorSync` — kicks off `startConnectorSync`), `data-connector-sweep` (the nightly reconciling re-crawl), and `data-connector-backfill-slice` (`enqueueBackfillSlice` — one continuation slice → `runBackfillSlice`). **Webhook ingestion does NOT run here** — it rides `appTriggerQueue` (below), since v7 made it a leg of the unified app-trigger / WebhookEndpoint fan-out (§10).
+- **Queue (webhook):** `appTriggerQueue` carries the connector webhook jobs alongside the workflow/agent legs: the dispatch jobs `dispatchAppTriggerToConnectors` / `dispatchWebhookEndpointToConnectors` (thin match + fan-out) and the shared child `app-trigger-sync-stream` (`runConnectorAppTriggerStream` → `runWebhookEventSlice`). Registered in `apps/worker/src/workers/worker-definitions/app-trigger-worker.ts`; ingress fans out from `apps/api/src/routes/webhooks.ts`.
 - **Scheduler:** `data-connector-scheduler.ts` — `reconcileConnectorSchedulers` / `syncConnectorScheduler` / `removeConnectorScheduler`, driven by the connector's `ScheduledTriggerConfig` (shared agent/workflow frequency model). Plus `syncConnectorSweepScheduler` — a periodic full reconciliation re-crawl (`trigger: 'sweep'`) that *does* archive incremental orphans (the only time incremental reconciles on absence).
-- **Worker:** `apps/worker/src/workers/worker-definitions/data-connector-worker.ts`, bound to the queue (cancellable). It dispatches the three job types to `startConnectorSync` / `runBackfillSlice` / `runConnectorWebhook`. `reconcileConnectorSchedulers` runs on worker boot.
+- **Worker:** `apps/worker/src/workers/worker-definitions/data-connector-worker.ts`, bound to the sync queue (cancellable). It dispatches `data-connector-sync` / `data-connector-sweep` / `data-connector-backfill-slice` to `startConnectorSync` / `runBackfillSlice`. `reconcileConnectorSchedulers` runs on worker boot. (Webhook child jobs are handled by the app-trigger worker above.)
 - **Stale-run sweep:** `sweepStaleConnectorRuns` (gated by `STALE_RUN_MS`) fails runs whose `heartbeatAt` has gone cold (a slice chain that died without re-enqueuing), releasing the connector claim. `SLICE_BUDGET` + `SLICE_LOCK_DURATION_MS` bound one slice's work vs the BullMQ lock.
 
 ---
@@ -405,7 +417,7 @@ Write helpers live in `packages/lib/src/data-connectors/mutations.ts`; reads/CRU
 
 **App connector (Shopify):** the Shopify app (in the separate `auxxai-apps` repo) declares streams/targets via `defineDataConnector` and returns **one page per `execute`**; the adapter drives the page loop in the sandbox and emits checkpoints, riding the exact same slice → mapping → sink path. Orders/line-items as owned defs, customers contributing into `contact`. Large catalogs can use the async bulk-export capability (Shopify Bulk Ops) instead of pagination.
 
-**Webhook-driven:** with `syncBehavior: 'webhook'`, the connector registers provider topics (`registerConnectorWebhooks`); an inbound webhook → verified → `WebhookAction`s → `CONNECTOR_WEBHOOK_JOB` → `applyWebhookActions` → mapping → sink (near-real-time, no poll).
+**Webhook-driven:** with `syncBehavior: 'webhook'`, the connector binds a **signal** (`config.webhookTrigger` — an app trigger or a generic `WebhookEndpoint`) and each stream declares **steering** (`requestConfig.webhookTrigger` — topic filter + `{path}` tokens + delete rule). A verified delivery → `dispatch*ToConnectors` (match by signal + per-stream `filter`) → `app-trigger-sync-stream` child → `runWebhookEventSlice`: the delivery steers the **normal fetch** (`triggerContext` tokens), and the fetch result rides the same mapping → sink path (near-real-time, no poll, no run — a point write). A delete event archives by externalId instead of fetching.
 
 ---
 
@@ -436,6 +448,5 @@ Write helpers live in `packages/lib/src/data-connectors/mutations.ts`; reads/CRU
 Tracked in `plans/data-connectors/claude/HANDOFF.md` §3 and `plans/data-connectors/v3/` (none block the spine):
 - **Channel sync hasn't migrated to sync-core yet.** Data-connectors is the first and only consumer; Gmail/Outlook still run their own sync stack. The shared shell exists for them to adopt (`shared-sync-core-plan.md`).
 - **App `sampleFetch`** remains gated — app connectors declare schema in the catalog and yield per-record, so the model handles them, but they don't exercise the test-fetch/inference path. Generic-rest is fully live.
-- **Webhook UI** — ingress/registration/apply are wired backend-side (Shopify/Stripe capabilities), but the schedule segment's signing-secret/URL panel surfacing isn't finished.
 - **Per-mapping dry-run** (create/update/skip/archive + identity/relationship preview) isn't a procedure yet — the UI shows the raw test-fetch sample only.
 - **Multi-connector-per-type / multi-connection** is v1-deferred (one connector per type per org; unique index on the connector, not the target def).

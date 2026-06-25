@@ -14,7 +14,7 @@ import { AppIcon } from '~/components/apps/ui/app-icon'
 import { Tooltip } from '~/components/global/tooltip'
 import {
   type AppTriggerSource,
-  TriggerSourcePicker,
+  TriggerSourcePickerPopover,
   type WebhookEndpointSource,
 } from '~/components/pickers/trigger-source'
 import { useConfirm } from '~/hooks/use-confirm'
@@ -208,11 +208,16 @@ export function TriggersSectionContent({
 
   return (
     <div className='space-y-4'>
-      <TriggerSourcePicker
+      {/* The picker has no inline trigger (it's opened from the section-header "Add trigger"
+          dropdown), so it anchors to a zero-height element at the top of the list and aligns
+          to the end — i.e. it floats just under the "Add trigger" button. */}
+      <TriggerSourcePickerPopover
         open={isPickerOpen}
         onOpenChange={handlePickerOpenChange}
         onSelect={handleSourceSelected}
         surface='agent'
+        align='end'
+        anchor={<div className='h-0 w-full' aria-hidden />}
       />
 
       <AgentTriggerDialog

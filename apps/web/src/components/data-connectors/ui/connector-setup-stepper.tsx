@@ -51,12 +51,22 @@ interface StepDef {
   icon: React.ComponentType<{ className?: string }>
 }
 
+// Order matters: Schedule comes before "Pull a sample" because the sync behavior
+// (manual / scheduled / webhook) shapes the stream's request — a webhook-steered
+// stream's URL/params carry `{path}` placeholders resolved from the delivery, so the
+// behavior must be picked before the request is configured/sampled.
 const STEPS: StepDef[] = [
   {
     id: 'connect',
     title: 'Connect',
     description: 'Authorize the connection this connector uses to make requests.',
     icon: Plug,
+  },
+  {
+    id: 'schedule',
+    title: 'Schedule',
+    description: 'Sync manually, on a schedule, or from a webhook — you can change this anytime.',
+    icon: Clock,
   },
   {
     id: 'sample',
@@ -69,12 +79,6 @@ const STEPS: StepDef[] = [
     title: 'Map fields',
     description: 'Choose where each source field lands in your entities.',
     icon: Waypoints,
-  },
-  {
-    id: 'schedule',
-    title: 'Schedule',
-    description: 'Sync manually or on a schedule — you can change this anytime.',
-    icon: Clock,
   },
   {
     id: 'run',

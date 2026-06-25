@@ -159,6 +159,13 @@ export function CodeEditor({
           onMount={handleEditorDidMount}
           options={{
             readOnly,
+            // Force Monaco's legacy hidden <textarea> input path instead of the
+            // EditContext API (its default since 0.52). With EditContext on, the
+            // focused editable element is a <div class="native-edit-context"> — not
+            // a textarea/contentEditable — so @tanstack/hotkeys' isInputElement
+            // misses it and global single-key chords (g,i / s,c …) fire while
+            // typing here. The textarea path is detected and suppresses them.
+            editContext: false,
             stickyScroll: { enabled: false },
             domReadOnly: readOnly,
             minimap: { enabled: false },

@@ -39,6 +39,8 @@ interface AppTriggerTestSectionProps {
   installationId: string
   triggerId: string
   schema?: { outputs?: Record<string, WorkflowBlockOutput> }
+  /** Forwarded to the underlying `Section` (e.g. to override padding in a scroll column). */
+  className?: string
 }
 
 /**
@@ -49,6 +51,7 @@ export function AppTriggerTestSection({
   installationId,
   triggerId,
   schema,
+  className,
 }: AppTriggerTestSectionProps) {
   const listener = useAppTriggerTestListener(installationId, triggerId)
   const sampleData = useMemo(
@@ -61,6 +64,7 @@ export function AppTriggerTestSection({
       listener={listener}
       title='Test Trigger'
       description='Listen for incoming trigger events or send a manual test.'
+      className={className}
       renderEvents={(events, onClear) => <AppTriggerTestEvents events={events} onClear={onClear} />}
       send={{
         sampleData,

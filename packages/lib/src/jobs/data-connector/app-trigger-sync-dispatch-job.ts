@@ -13,7 +13,7 @@
 import { database as db, schema } from '@auxx/database'
 import { getRedisClient } from '@auxx/redis'
 import type { Job } from 'bullmq'
-import { and, eq, inArray } from 'drizzle-orm'
+import { and, eq, inArray, ne } from 'drizzle-orm'
 import { matchesFilter } from '../../agents/agent-trigger-queries'
 import { createScopedLogger } from '../../logger'
 import { getQueue, Queues } from '../queues'
@@ -36,11 +36,11 @@ export const APP_TRIGGER_SYNC_STREAM_JOB = 'app-trigger-sync-stream'
 
 /**
  * BullMQ job handler: fan one app-webhook delivery out to webhook-sync data
- * connectors. Matches by `credentialId` (the connection) so no `appId` denorm is
- * needed; the per-stream `webhookTrigger.triggerId` + `matchesFilter` does the rest
- * (Shopify multiplexes 22 topics through one triggerId, discriminated on
- * `triggerData.topic`). Fan-to-all — two connectors/streams binding the same trigger
- * is legitimate fan-out, not a conflict.
+ * connectors. Matches by `credentialId` (the connection) + the connector-level
+ * `config.webhookTrigger.triggerId` (v7 — one signal per connector); the per-stream
+ * `webhookTrigger.filter` + `matchesFilter` discriminates topics (Shopify multiplexes
+ * 22 topics through one triggerId, on `triggerData.topic`). Fan-to-all — two
+ * connectors/streams binding the same trigger is legitimate fan-out, not a conflict.
  */
 export async function dispatchAppTriggerToConnectors(job: Job<ConnectorAppTriggerDispatchJobData>) {
   const { appInstallationId, triggerId, connectionId, triggerData, eventId, organizationId } =
@@ -70,14 +70,21 @@ export async function dispatchAppTriggerToConnectors(job: Job<ConnectorAppTrigge
     return { childJobsEnqueued: 0 }
   }
 
-  const connectors = await db.query.DataConnector.findMany({
+  // Signal is connector-level since v7 (`config.webhookTrigger.triggerId`) — match the
+  // connection AND the bound trigger on the connector, then steer each of its streams
+  // (the per-stream `webhookTrigger` carries only topic/token steering now).
+  const candidates = await db.query.DataConnector.findMany({
     where: and(
       eq(schema.DataConnector.organizationId, organizationId),
       eq(schema.DataConnector.credentialId, connectionId),
-      eq(schema.DataConnector.syncBehavior, 'webhook')
+      eq(schema.DataConnector.syncBehavior, 'webhook'),
+      // A paused connector keeps its binding but stops ingesting — an active webhook
+      // connector is `syncBehavior='webhook' ∧ status≠'paused'` (data-connector-scheduler).
+      ne(schema.DataConnector.status, 'paused')
     ),
-    columns: { id: true },
+    columns: { id: true, config: true },
   })
+  const connectors = candidates.filter((c) => c.config?.webhookTrigger?.triggerId === triggerId)
   if (connectors.length === 0) return { childJobsEnqueued: 0 }
 
   const streams = await db.query.DataConnectorStream.findMany({
@@ -95,7 +102,7 @@ export async function dispatchAppTriggerToConnectors(job: Job<ConnectorAppTrigge
   let enqueued = 0
   for (const stream of streams) {
     const wt = stream.requestConfig?.webhookTrigger
-    if (!stream.streamKey || !wt || wt.triggerId !== triggerId) continue
+    if (!stream.streamKey || !wt) continue
     if (!matchesFilter(wt.filter, triggerData)) continue
 
     await queue.add(APP_TRIGGER_SYNC_STREAM_JOB, {

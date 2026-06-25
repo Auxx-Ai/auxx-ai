@@ -3,125 +3,109 @@
 'use client'
 
 import { Button } from '@auxx/ui/components/button'
-import { toastSuccess } from '@auxx/ui/components/toast'
+import { EmptySection } from '@auxx/ui/components/section'
+import { TreeRow } from '@auxx/ui/components/tree-row'
 import { formatDistanceToNow } from 'date-fns'
-import { ChevronDown, ChevronRight, Clock, Copy } from 'lucide-react'
+import { Clock } from 'lucide-react'
 import { type ReactNode, useState } from 'react'
 import type { BaseTestEvent } from './types'
 
 interface TestEventListProps<T extends BaseTestEvent> {
   events: T[]
   onClear: () => void
-  /** Renders badges/icons in the collapsed event header row */
-  renderEventBadges: (event: T) => ReactNode
-  /** Renders the expanded detail section for an event */
-  renderEventDetail: (event: T) => ReactNode
-  /** Optional extra actions in the expanded section */
-  renderEventActions?: (event: T) => ReactNode
+  /** Leading icon shared by every row (all events in a list share a source). Omit for none. */
+  icon?: ReactNode
+  /** The collapsed row title — a source/method/topic badge. */
+  renderTitle: (event: T) => ReactNode
+  /** Extra inline meta after the timestamp on the secondary line (eventId, status…). */
+  renderMeta?: (event: T) => ReactNode
+  /** The expanded body — typically one or more read-only `CodeEditor`s. */
+  renderDetail: (event: T) => ReactNode
+  /** Optional actions appended inside the expanded body (e.g. "Use shape as schema"). */
+  renderActions?: (event: T) => ReactNode
+  /** Optional footer below the list (e.g. an "other topics" hint). Shown in the empty state too. */
+  footer?: ReactNode
+  /** Singular/plural noun for the count label (default event/events). */
+  countNoun?: { one: string; many: string }
   emptyTitle?: string
   emptyDescription?: string
 }
 
+/**
+ * Shared live test-event list — an expandable {@link TreeRow} per captured event with the
+ * payload rendered inside via the caller's `renderDetail` (a read-only `CodeEditor`). The
+ * source-specific bits (icon, title badge, payload blocks, expanded actions, footer hint) are
+ * render-prop seams, so the app-trigger inspector, the generic WebhookEndpoint inspector, and
+ * the workflow webhook node all render identically through this one component.
+ */
 export function TestEventList<T extends BaseTestEvent>({
   events,
   onClear,
-  renderEventBadges,
-  renderEventDetail,
-  renderEventActions,
+  icon,
+  renderTitle,
+  renderMeta,
+  renderDetail,
+  renderActions,
+  footer,
+  countNoun = { one: 'event', many: 'events' },
   emptyTitle = 'No events captured yet',
-  emptyDescription = 'Events will appear here in real-time',
+  emptyDescription = 'Events will appear here in real time',
 }: TestEventListProps<T>) {
-  const [expandedEvents, setExpandedEvents] = useState<Set<string>>(new Set())
-
-  const toggleExpanded = (eventId: string) => {
-    setExpandedEvents((prev) => {
+  const [expanded, setExpanded] = useState<Set<string>>(new Set())
+  const toggle = (id: string) =>
+    setExpanded((prev) => {
       const next = new Set(prev)
-      if (next.has(eventId)) {
-        next.delete(eventId)
-      } else {
-        next.add(eventId)
-      }
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
       return next
     })
-  }
-
-  const copyEventData = (event: T) => {
-    navigator.clipboard.writeText(JSON.stringify(event, null, 2))
-    toastSuccess({ title: 'Event data copied' })
-  }
 
   if (events.length === 0) {
     return (
-      <div className='text-center py-8 text-muted-foreground'>
-        <p className='text-sm'>{emptyTitle}</p>
-        <p className='text-xs mt-1'>{emptyDescription}</p>
+      <div className='space-y-2'>
+        <EmptySection icon={icon} title={emptyTitle} description={emptyDescription} />
+        {footer}
       </div>
     )
   }
 
   return (
     <div className='space-y-2'>
-      <div className='flex items-center justify-between mb-2'>
+      <div className='flex items-center justify-between'>
         <span className='text-xs text-muted-foreground'>
-          {events.length} event{events.length !== 1 ? 's' : ''} captured
+          {events.length} {events.length === 1 ? countNoun.one : countNoun.many} captured
         </span>
-        <Button variant='ghost' size='xs' onClick={onClear} className='h-6'>
+        <Button variant='ghost' size='xs' className='h-6' onClick={onClear}>
           Clear all
         </Button>
       </div>
 
-      <div className='space-y-2 max-h-96 overflow-y-auto'>
-        {events.map((event) => {
-          const isExpanded = expandedEvents.has(event.id)
-
-          return (
-            <div key={event.id} className='border rounded-lg bg-background'>
-              <div
-                className='flex items-center justify-between p-3 cursor-pointer hover:bg-muted/50'
-                onClick={() => toggleExpanded(event.id)}>
-                <div className='flex items-center gap-2 flex-1'>
-                  <button className='p-0.5' type='button'>
-                    {isExpanded ? (
-                      <ChevronDown className='h-4 w-4' />
-                    ) : (
-                      <ChevronRight className='h-4 w-4' />
-                    )}
-                  </button>
-
-                  {renderEventBadges(event)}
-
-                  <span className='text-xs text-muted-foreground flex items-center gap-1'>
-                    <Clock className='h-3 w-3' />
-                    {formatDistanceToNow(new Date(event.timestamp), { addSuffix: true })}
-                  </span>
-
-                  {event.responseTime && (
-                    <span className='text-xs text-muted-foreground'>{event.responseTime}ms</span>
-                  )}
-                </div>
-
-                <Button
-                  variant='ghost'
-                  size='xs'
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    copyEventData(event)
-                  }}
-                  className='h-6'>
-                  <Copy className='h-3 w-3' />
-                </Button>
-              </div>
-
-              {isExpanded && (
-                <div className='border-t px-3 py-2 space-y-2'>
-                  {renderEventDetail(event)}
-                  {renderEventActions?.(event)}
-                </div>
-              )}
+      <div className='max-h-96 space-y-0.5 overflow-y-auto'>
+        {events.map((event) => (
+          <TreeRow
+            key={event.id}
+            icon={icon}
+            title={renderTitle(event)}
+            secondary={
+              <span className='flex items-center gap-1.5 text-xs text-muted-foreground'>
+                <Clock className='size-3' />
+                {formatDistanceToNow(new Date(event.timestamp), { addSuffix: true })}
+                {event.responseTime != null && <span>{event.responseTime}ms</span>}
+                {renderMeta?.(event)}
+              </span>
+            }
+            expandable
+            isOpen={expanded.has(event.id)}
+            onToggleOpen={() => toggle(event.id)}>
+            <div className='space-y-2 py-1.5 pe-2 ps-12'>
+              {renderDetail(event)}
+              {renderActions?.(event)}
             </div>
-          )
-        })}
+          </TreeRow>
+        ))}
       </div>
+
+      {footer}
     </div>
   )
 }

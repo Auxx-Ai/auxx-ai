@@ -4,6 +4,7 @@
 
 import { Badge } from '@auxx/ui/components/badge'
 import { TestEventList } from '~/components/workflow/shared/test-events'
+import { CodeEditor, CodeLanguage } from '~/components/workflow/ui/code-editor'
 import type { AppTriggerTestEvent } from './types'
 
 interface AppTriggerTestEventsProps {
@@ -18,25 +19,23 @@ export function AppTriggerTestEvents({ events, onClear }: AppTriggerTestEventsPr
       onClear={onClear}
       emptyTitle='No trigger events captured yet'
       emptyDescription='Trigger events from webhooks or manual tests will appear here'
-      renderEventBadges={(event) => (
-        <>
-          <Badge variant={event.source === 'webhook' ? 'default' : 'secondary'} className='text-xs'>
-            {event.source}
-          </Badge>
-          {event.eventId && (
-            <span className='text-xs text-muted-foreground font-mono truncate max-w-32'>
-              {event.eventId}
-            </span>
-          )}
-        </>
+      renderTitle={(event) => (
+        <Badge variant={event.source === 'webhook' ? 'default' : 'secondary'} className='text-xs'>
+          {event.source}
+        </Badge>
       )}
-      renderEventDetail={(event) => (
-        <div>
-          <h5 className='text-xs font-medium mb-1'>Trigger Data</h5>
-          <pre className='text-xs bg-muted p-2 rounded overflow-x-auto max-h-48 overflow-y-auto'>
-            {JSON.stringify(event.triggerData, null, 2)}
-          </pre>
-        </div>
+      renderMeta={(event) =>
+        event.eventId ? <span className='max-w-32 truncate font-mono'>{event.eventId}</span> : null
+      }
+      renderDetail={(event) => (
+        <CodeEditor
+          language={CodeLanguage.json}
+          value={JSON.stringify(event.triggerData, null, 2)}
+          readOnly
+          minHeight={120}
+          title='TRIGGER DATA'
+          gradientBorder={false}
+        />
       )}
     />
   )

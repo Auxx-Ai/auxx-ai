@@ -432,8 +432,35 @@ export async function setValueWithType(
     return params.aiGeneration ? applyAiMarker(baseRow, params.aiGeneration) : baseRow
   })
 
-  // Insert all values
-  const inserted = await ctx.db.insert(schema.FieldValue).values(insertRows).returning()
+  // Insert all values. The DELETE+INSERT above is NOT transactional, so two
+  // concurrent writers for the same (entity, field) — e.g. duplicate webhook
+  // events syncing one record through the data-connector sink — can interleave:
+  // both DELETE, then both INSERT the same sortKey, and the second trips the
+  // (entityId, fieldId, sortKey) unique index. onConflictDoUpdate makes the
+  // losing writer merge (last-write-wins) instead of throwing, which matches the
+  // replace semantics the DELETE+INSERT already intends. `excluded.aiStatus` is
+  // null for a manual write (the row omits it), so a conflicting manual write
+  // still clears a prior AI marker — same as the DELETE+INSERT cycle would.
+  const inserted = await ctx.db
+    .insert(schema.FieldValue)
+    .values(insertRows)
+    .onConflictDoUpdate({
+      target: [schema.FieldValue.entityId, schema.FieldValue.fieldId, schema.FieldValue.sortKey],
+      set: {
+        valueText: sql`excluded."valueText"`,
+        valueNumber: sql`excluded."valueNumber"`,
+        valueBoolean: sql`excluded."valueBoolean"`,
+        valueDate: sql`excluded."valueDate"`,
+        valueJson: sql`excluded."valueJson"`,
+        optionId: sql`excluded."optionId"`,
+        relatedEntityId: sql`excluded."relatedEntityId"`,
+        relatedEntityDefinitionId: sql`excluded."relatedEntityDefinitionId"`,
+        actorId: sql`excluded."actorId"`,
+        aiStatus: sql`excluded."aiStatus"`,
+        updatedAt: new Date(),
+      },
+    })
+    .returning()
 
   const result = inserted.map((row) => rowToTypedValue(row as unknown as FieldValueRow, fieldType))
 

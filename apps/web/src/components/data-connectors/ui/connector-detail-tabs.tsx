@@ -179,9 +179,14 @@ export function ConnectorDetailTabs({
               value='stream'
               className='h-full bg-neutral-100 dark:bg-background'
               bar={streamBar}>
-              {selectedStream ? (
-                <StreamConfigPanel connector={connector} stream={selectedStream} />
-              ) : null}
+              {/* `relative` so the floating save bar anchors to this panel — the
+                  root panel's bar is offscreen while drilled into a stream. */}
+              <div className='relative h-full'>
+                {selectedStream ? (
+                  <StreamConfigPanel connector={connector} stream={selectedStream} />
+                ) : null}
+                <ConnectorSaveBar />
+              </div>
             </NavStackPanel>
           </NavStackPanels>
         </NavStack>

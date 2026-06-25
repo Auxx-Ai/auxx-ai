@@ -15,7 +15,7 @@ import {
 import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import { Label } from '@auxx/ui/components/label'
 import { useCopy } from '@auxx/ui/hooks/use-copy'
-import { Check, Copy, KeyRound, Link, Tags, TriangleAlert } from 'lucide-react'
+import { Check, ChevronRight, Copy, KeyRound, Link, Tags, TriangleAlert } from 'lucide-react'
 import { type ReactNode, useEffect, useState } from 'react'
 import { ConnectionVariableFields } from '~/components/connections/ui/connection-variable-fields'
 import {
@@ -23,7 +23,7 @@ import {
   validateConnectionVariables,
 } from '~/components/connections/ui/connection-variable-validation'
 import { Tooltip } from '~/components/global/tooltip'
-import { VarEditorField } from '~/components/workflow/ui/input-editor/var-editor'
+import { VarEditorField, VarEditorFieldRow } from '~/components/workflow/ui/input-editor/var-editor'
 import { useWebhookEndpoint, type WebhookEndpointRow } from '../hooks/use-webhook-endpoint'
 import { WebhookEndpointTopicsPage } from './webhook-endpoint-topics-page'
 
@@ -35,83 +35,99 @@ interface WebhookEndpointDialogProps {
 }
 
 /**
+ * The topic-value row, worded for the chosen source: a request header name vs a dot-path into
+ * the JSON body (resolved with `getByPath` server-side). The `description` surfaces as a tooltip
+ * with a concrete example.
+ */
+function topicValueVar(topicSourceKind?: string): ConnectionVariable {
+  const isPath = topicSourceKind === 'path'
+  return {
+    key: 'topicSourceValue',
+    label: isPath ? 'JSON path' : 'Header name',
+    type: FieldType.TEXT,
+    required: true,
+    description: isPath
+      ? 'Dot-path into the request body whose value is the topic. Example: type (Stripe) or event.type'
+      : 'Name of the request header whose value is the topic. Example: x-github-event',
+    placeholder: isPath ? 'type' : 'x-github-event',
+    displayOptions: { show: { topicSourceKind: ['header', 'path'] } },
+  }
+}
+
+/**
  * The endpoint config modeled as synthetic connection variables, rendered through the same
  * `ConnectionVariableFields` stack the connect dialogs use. `displayOptions.show` drives the
- * conditional rows for free (signature fields ⇐ hmac, topic value ⇐ topic source picked).
+ * conditional rows for free (signature fields ⇐ hmac, topic value ⇐ topic source picked). The
+ * topic-value row is worded for the current `topicSourceKind`.
  */
-const ENDPOINT_VARS: ConnectionVariable[] = [
-  {
-    key: 'name',
-    label: 'Name',
-    type: FieldType.TEXT,
-    required: true,
-    placeholder: 'Typeform leads',
-  },
-  {
-    key: 'verification',
-    label: 'Verification',
-    type: FieldType.SINGLE_SELECT,
-    required: true,
-    default: 'hmac',
-    description: 'How inbound deliveries are checked.',
-    options: [
-      { label: 'HMAC signature', value: 'hmac' },
-      { label: 'Bearer token', value: 'token' },
-      { label: 'None (open)', value: 'none' },
-    ],
-  },
-  {
-    key: 'signatureHeader',
-    label: 'Signature header',
-    type: FieldType.TEXT,
-    required: true,
-    default: 'x-hub-signature-256',
-    placeholder: 'x-hub-signature-256',
-    displayOptions: { show: { verification: ['hmac'] } },
-  },
-  {
-    key: 'signaturePrefix',
-    label: 'Signature prefix',
-    type: FieldType.TEXT,
-    required: false,
-    placeholder: 'sha256=',
-    description: 'Stripped before comparison (optional).',
-    displayOptions: { show: { verification: ['hmac'] } },
-  },
-  {
-    key: 'signatureEncoding',
-    label: 'Signature encoding',
-    type: FieldType.SINGLE_SELECT,
-    required: true,
-    default: 'hex',
-    options: [
-      { label: 'Hex (GitHub, Stripe)', value: 'hex' },
-      { label: 'Base64 (Shopify-style)', value: 'base64' },
-    ],
-    displayOptions: { show: { verification: ['hmac'] } },
-  },
-  {
-    key: 'topicSourceKind',
-    label: 'Topic source',
-    type: FieldType.SINGLE_SELECT,
-    required: true,
-    default: 'none',
-    description: 'Optionally route deliveries on a topic pulled from each request.',
-    options: [
-      { label: 'No topic (every delivery matches)', value: 'none' },
-      { label: 'From a header', value: 'header' },
-      { label: 'From a JSON path', value: 'path' },
-    ],
-  },
-  {
-    key: 'topicSourceValue',
-    label: 'Topic key',
-    type: FieldType.TEXT,
-    required: true,
-    placeholder: 'x-github-event / type',
-    displayOptions: { show: { topicSourceKind: ['header', 'path'] } },
-  },
-]
+function endpointVars(topicSourceKind?: string): ConnectionVariable[] {
+  return [
+    {
+      key: 'name',
+      label: 'Name',
+      type: FieldType.TEXT,
+      required: true,
+      placeholder: 'Typeform leads',
+    },
+    {
+      key: 'verification',
+      label: 'Verification',
+      type: FieldType.SINGLE_SELECT,
+      required: true,
+      default: 'hmac',
+      description: 'How inbound deliveries are checked.',
+      options: [
+        { label: 'HMAC signature', value: 'hmac' },
+        { label: 'Bearer token', value: 'token' },
+        { label: 'None (open)', value: 'none' },
+      ],
+    },
+    {
+      key: 'signatureHeader',
+      label: 'Signature header',
+      type: FieldType.TEXT,
+      required: true,
+      default: 'x-hub-signature-256',
+      placeholder: 'x-hub-signature-256',
+      displayOptions: { show: { verification: ['hmac'] } },
+    },
+    {
+      key: 'signaturePrefix',
+      label: 'Signature prefix',
+      type: FieldType.TEXT,
+      required: false,
+      placeholder: 'sha256=',
+      description: 'Stripped before comparison (optional).',
+      displayOptions: { show: { verification: ['hmac'] } },
+    },
+    {
+      key: 'signatureEncoding',
+      label: 'Signature encoding',
+      type: FieldType.SINGLE_SELECT,
+      required: true,
+      default: 'hex',
+      options: [
+        { label: 'Hex (GitHub, Stripe)', value: 'hex' },
+        { label: 'Base64 (Shopify-style)', value: 'base64' },
+      ],
+      displayOptions: { show: { verification: ['hmac'] } },
+    },
+    {
+      key: 'topicSourceKind',
+      label: 'Topic source',
+      type: FieldType.SINGLE_SELECT,
+      required: true,
+      default: 'none',
+      description: 'Optionally route deliveries on a topic pulled from each request.',
+      options: [
+        { label: 'No topic (every delivery matches)', value: 'none' },
+        { label: 'From a header', value: 'header' },
+        { label: 'From a JSON path', value: 'path' },
+      ],
+    },
+    topicValueVar(topicSourceKind),
+  ]
+}
 
 /** Seed the form: from the endpoint (edit) or each var's declared default (create). */
 function seedValues(endpoint?: WebhookEndpointRow): Record<string, string> {
@@ -126,7 +142,7 @@ function seedValues(endpoint?: WebhookEndpointRow): Record<string, string> {
       topicSourceValue: endpoint.topicSource?.value ?? '',
     }
   }
-  return Object.fromEntries(ENDPOINT_VARS.map((v) => [v.key, seedValue(v)]))
+  return Object.fromEntries(endpointVars().map((v) => [v.key, seedValue(v)]))
 }
 
 /** A read-only value in an `InputGroup` with a leading icon + copy button — URL / one-time secret. */
@@ -194,7 +210,10 @@ export function WebhookEndpointDialog({ open, onClose, endpoint }: WebhookEndpoi
   const pending = create.isPending || update.isPending
 
   const handleSubmit = () => {
-    const errs = validateConnectionVariables({ variables: ENDPOINT_VARS, values })
+    const errs = validateConnectionVariables({
+      variables: endpointVars(values.topicSourceKind),
+      values,
+    })
     setErrors(errs)
     if (Object.keys(errs).length > 0) return
 
@@ -268,26 +287,7 @@ export function WebhookEndpointDialog({ open, onClose, endpoint }: WebhookEndpoi
                 handleSubmit()
               }}
               className='flex flex-col gap-4 p-4'>
-              {isEdit && (
-                <div className='space-y-2'>
-                  <CopyRow label='Webhook URL' value={endpoint.url} icon={<Link />} />
-                  {endpoint.topicSource ? (
-                    <Button
-                      variant='outline'
-                      size='sm'
-                      type='button'
-                      className='self-start'
-                      onClick={() => setPage('topics')}>
-                      <Tags />
-                      Setup topics
-                    </Button>
-                  ) : (
-                    <p className='text-xs text-muted-foreground'>
-                      Set a topic source below to define topics and capture their schemas.
-                    </p>
-                  )}
-                </div>
-              )}
+              {isEdit && <CopyRow label='Webhook URL' value={endpoint.url} icon={<Link />} />}
 
               <div className='flex flex-col gap-2'>
                 <div className='text-xs font-medium text-muted-foreground'>Configuration</div>
@@ -295,7 +295,7 @@ export function WebhookEndpointDialog({ open, onClose, endpoint }: WebhookEndpoi
                   orientation='responsive'
                   className='p-0 sm:[&_[data-slot=field-row-label]]:w-50!'>
                   <ConnectionVariableFields
-                    variables={ENDPOINT_VARS}
+                    variables={endpointVars(values.topicSourceKind)}
                     values={values}
                     onValueChange={setValue}
                     errors={errors}
@@ -315,22 +315,45 @@ export function WebhookEndpointDialog({ open, onClose, endpoint }: WebhookEndpoi
               )}
 
               {isEdit && endpoint.hasSecret && (
-                <div className='flex items-center justify-between gap-2 rounded-lg border p-2.5'>
-                  <div className='min-w-0'>
-                    <div className='text-sm font-medium'>Signing secret</div>
-                    <div className='font-mono text-xs text-muted-foreground'>••••••••••••</div>
-                  </div>
+                <VarEditorField
+                  orientation='responsive'
+                  className='p-0 sm:[&_[data-slot=field-row-label]]:w-50!'>
+                  <VarEditorFieldRow title='Signing secret' icon={<KeyRound />} showIcon>
+                    <div className='flex min-h-8 items-center justify-between gap-2 pe-1'>
+                      <span className='font-mono text-xs text-muted-foreground'>••••••••••••</span>
+                      <Button
+                        variant='ghost'
+                        size='xs'
+                        type='button'
+                        onClick={handleRotate}
+                        loading={rotateSecret.isPending}
+                        loadingText='Rotating...'>
+                        Rotate
+                      </Button>
+                    </div>
+                  </VarEditorFieldRow>
+                </VarEditorField>
+              )}
+
+              {isEdit &&
+                (endpoint.topicSource ? (
                   <Button
                     variant='outline'
                     size='sm'
                     type='button'
-                    onClick={handleRotate}
-                    loading={rotateSecret.isPending}
-                    loadingText='Rotating...'>
-                    Rotate
+                    className='w-full justify-between'
+                    onClick={() => setPage('topics')}>
+                    <span className='flex items-center gap-2'>
+                      <Tags />
+                      Setup topics
+                    </span>
+                    <ChevronRight />
                   </Button>
-                </div>
-              )}
+                ) : (
+                  <p className='text-xs text-muted-foreground'>
+                    Set a topic source above to define topics and capture their schemas.
+                  </p>
+                ))}
 
               <DialogFooter>
                 <Button

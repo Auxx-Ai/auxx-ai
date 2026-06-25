@@ -24,6 +24,8 @@ import {
 import { api } from '~/trpc/react'
 import { useBufferedConfig } from '../hooks/use-buffered-config'
 import { useRegisterSaver } from '../hooks/use-connector-edits'
+import { WebhookSignalInspector, WebhookSignalSection } from './webhook-signal-section'
+import { WebhookSteeringSection } from './webhook-steering-section'
 
 type Connector = NonNullable<ReturnType<typeof api.dataConnector.getById.useQuery>['data']>
 
@@ -84,6 +86,10 @@ export function ScheduleSection({ connector }: ScheduleSectionProps) {
   const hasWebhookEndpoints = (webhookEndpoints.data?.length ?? 0) > 0
 
   const webhookSupported = appTriggerCapable || hasWebhookEndpoints
+
+  // Webhook steering (signal picker + token mapping) only applies to generic-REST
+  // connectors — app connectors have a fixed fetch that ignores webhook tokens (v7).
+  const isGenericRest = connector.definitionKind !== 'app'
 
   // The window radio only makes sense when a stream declares which param carries the
   // backfill floor (templates do; bare generic-rest doesn't — Step 9 §1.2/§3.2). We
@@ -148,101 +154,125 @@ export function ScheduleSection({ connector }: ScheduleSectionProps) {
   // Feeds the connector-wide save bar; no per-section Save button.
   useRegisterSaver('schedule', draft.isDirty, update.isPending, draft.commit)
 
+  // Webhook mode on a generic-REST connector. The connector-level SIGNAL picker is
+  // inlined directly in the Schedule body (no longer its own "Webhook trigger" section);
+  // the per-stream STEERING stays a real section BELOW Schedule so its padding/borders
+  // match the other top-level sections (v7).
+  const showWebhookSignal = behavior === 'webhook' && isGenericRest
+  // Steering lives on the connector page (never the stream window): WebhookSteeringSection
+  // inlines a single stream's editor, or lists an expandable row per stream when there are many.
+  const streamList = streams.data ?? []
+  const showSteering = showWebhookSignal && streamList.length >= 1
+
   return (
-    <Section
-      title='Schedule'
-      icon={<Clock className='size-4' />}
-      initialOpen
-      collapsible={false}
-      description='How often this connector syncs.'
-      actions={
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant='ghost' size='xs'>
-              {behavior === 'webhook'
-                ? 'Webhook'
-                : behavior === 'scheduled'
-                  ? 'Scheduled'
-                  : 'Manual'}
-              <ChevronDown className='size-3' />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align='end'>
-            <DropdownMenuRadioGroup
-              value={behavior}
-              onValueChange={(v) => draft.set({ ...draft.value, behavior: v as SyncBehavior })}>
-              <DropdownMenuRadioItem value='manual' indicator='check'>
-                Manual
-              </DropdownMenuRadioItem>
-              <DropdownMenuRadioItem value='scheduled' indicator='check'>
-                Scheduled
-              </DropdownMenuRadioItem>
-              {webhookSupported && (
-                <DropdownMenuRadioItem value='webhook' indicator='check'>
-                  Webhook
+    <>
+      <Section
+        title='Schedule'
+        icon={<Clock className='size-4' />}
+        initialOpen
+        collapsible={false}
+        description='How often this connector syncs.'
+        actions={
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant='ghost' size='xs'>
+                {behavior === 'webhook'
+                  ? 'Webhook'
+                  : behavior === 'scheduled'
+                    ? 'Scheduled'
+                    : 'Manual'}
+                <ChevronDown className='size-3' />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align='end'>
+              <DropdownMenuRadioGroup
+                value={behavior}
+                onValueChange={(v) => draft.set({ ...draft.value, behavior: v as SyncBehavior })}>
+                <DropdownMenuRadioItem value='manual' indicator='check'>
+                  Manual
                 </DropdownMenuRadioItem>
-              )}
-            </DropdownMenuRadioGroup>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      }>
-      <div className='flex flex-col gap-4 px-1'>
-        {behavior === 'manual' && (
-          <EmptySection
-            icon={<Clock />}
-            title='Manual sync'
-            description='Sync runs from the “Sync now” action in the header.'
-          />
-        )}
-
-        {behavior === 'scheduled' && (
-          <div className='flex flex-col gap-3'>
-            <ScheduleEditor
-              value={schedule}
-              minMinutes={MIN_CONNECTOR_INTERVAL_MINUTES}
-              onChange={(next: ScheduledState) => draft.set({ ...draft.value, schedule: next })}
-            />
-            <p className='text-xs text-muted-foreground'>
-              Minimum cadence is {MIN_CONNECTOR_INTERVAL_MINUTES} minutes — connectors don’t sync
-              more often than that.
-            </p>
-          </div>
-        )}
-
-        {behavior === 'webhook' && (
-          <div className='flex flex-col gap-3'>
+                <DropdownMenuRadioItem value='scheduled' indicator='check'>
+                  Scheduled
+                </DropdownMenuRadioItem>
+                {webhookSupported && (
+                  <DropdownMenuRadioItem value='webhook' indicator='check'>
+                    Webhook
+                  </DropdownMenuRadioItem>
+                )}
+              </DropdownMenuRadioGroup>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        }>
+        <div className='flex flex-col gap-4 px-1'>
+          {behavior === 'manual' && (
             <EmptySection
-              icon={<Webhook />}
-              title='Webhook sync'
-              description='Records update automatically as the provider sends webhook deliveries. Run the first full import with “Sync now”.'
+              icon={<Clock />}
+              title='Manual sync'
+              description='Sync runs from the “Sync now” action in the header.'
             />
-          </div>
-        )}
+          )}
 
-        {supportsWindow && (
-          <div className='flex flex-col gap-2 border-t pt-4'>
-            <div className='text-sm font-medium'>How much history to import</div>
-            <p className='text-xs text-muted-foreground'>
-              Applies to the first full import. Changing this takes effect on the next import.
-            </p>
-            <RadioGroup
-              value={windowSpan}
-              onValueChange={(v) =>
-                draft.set({ ...draft.value, windowSpan: v as BackfillWindowSpan })
-              }
-              className='gap-2 pt-1'>
-              {WINDOW_OPTIONS.map((opt) => (
-                <div key={opt.value} className='flex items-center gap-2'>
-                  <RadioGroupItem value={opt.value} id={`window-${opt.value}`} />
-                  <Label htmlFor={`window-${opt.value}`} className='cursor-pointer font-normal'>
-                    {opt.label}
-                  </Label>
-                </div>
-              ))}
-            </RadioGroup>
-          </div>
-        )}
-      </div>
-    </Section>
+          {behavior === 'scheduled' && (
+            <div className='flex flex-col gap-3'>
+              <ScheduleEditor
+                value={schedule}
+                minMinutes={MIN_CONNECTOR_INTERVAL_MINUTES}
+                onChange={(next: ScheduledState) => draft.set({ ...draft.value, schedule: next })}
+              />
+              <p className='text-xs text-muted-foreground'>
+                Minimum cadence is {MIN_CONNECTOR_INTERVAL_MINUTES} minutes — connectors don’t sync
+                more often than that.
+              </p>
+            </div>
+          )}
+
+          {/* Generic-REST webhook: the SIGNAL picker is inlined here, not its own section. */}
+          {showWebhookSignal && <WebhookSignalSection connector={connector} />}
+
+          {behavior === 'webhook' && !isGenericRest && (
+            <div className='flex flex-col gap-3'>
+              <EmptySection
+                icon={<Webhook />}
+                title='Webhook sync'
+                description='Records update automatically as the provider sends webhook deliveries. Run the first full import with “Sync now”.'
+              />
+            </div>
+          )}
+
+          {supportsWindow && (
+            <div className='flex flex-col gap-2 border-t pt-4'>
+              <div className='text-sm font-medium'>How much history to import</div>
+              <p className='text-xs text-muted-foreground'>
+                Applies to the first full import. Changing this takes effect on the next import.
+              </p>
+              <RadioGroup
+                value={windowSpan}
+                onValueChange={(v) =>
+                  draft.set({ ...draft.value, windowSpan: v as BackfillWindowSpan })
+                }
+                className='gap-2 pt-1'>
+                {WINDOW_OPTIONS.map((opt) => (
+                  <div key={opt.value} className='flex items-center gap-2'>
+                    <RadioGroupItem value={opt.value} id={`window-${opt.value}`} />
+                    <Label htmlFor={`window-${opt.value}`} className='cursor-pointer font-normal'>
+                      {opt.label}
+                    </Label>
+                  </div>
+                ))}
+              </RadioGroup>
+            </div>
+          )}
+        </div>
+      </Section>
+
+      {/* The bound signal's live inspector renders its own Section, so it sits here as a
+          sibling below Schedule rather than nested in the inline signal picker. */}
+      {showWebhookSignal && <WebhookSignalInspector connector={connector} />}
+
+      {/* Steering on the connector page (inline for one stream, expandable rows for many).
+          The connector-level WebhookSignalInspector above already shows the endpoint's
+          deliveries, so the editors carry no inspector of their own. */}
+      {showSteering && <WebhookSteeringSection connector={connector} streams={streamList} />}
+    </>
   )
 }
