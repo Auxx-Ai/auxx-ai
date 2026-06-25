@@ -5,7 +5,6 @@
 // deterministically.
 
 import { createScopedLogger } from '@auxx/logger'
-import { fixtureWebhookCapability } from '../webhooks/fixture'
 import type {
   ConnectorFetchArgs,
   ConnectorRecord,
@@ -71,6 +70,4 @@ export const fixtureConnector: DataConnectorDefinition = {
     }
     return null
   },
-
-  webhook: fixtureWebhookCapability,
 }

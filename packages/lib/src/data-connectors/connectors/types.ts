@@ -13,7 +13,6 @@ export type {
   ConnectorRecord,
   ConnectorStreamDecl,
   ConnectorStreamState,
-  ConnectorWebhookState,
   ConnectorYield,
   DataConnectorConfig,
   DataConnectorDefinition,
@@ -22,10 +21,5 @@ export type {
   PaginationSpec,
   StreamIncrementalConfig,
   StreamRequestConfig,
-  WebhookAction,
-  WebhookCapability,
-  WebhookRegisterInput,
-  WebhookSubscription,
-  WebhookUnregisterInput,
 } from '../types'
 export { ConnectorRateLimitError, isConnectorCheckpoint } from '../types'

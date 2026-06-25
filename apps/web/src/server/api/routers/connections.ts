@@ -19,7 +19,6 @@ import {
   saveConnection,
 } from '@auxx/lib/connections'
 import { getAllProviders, getProviderByKey } from '@auxx/lib/connections/providers'
-import { resolveConnectionWebhookCapability } from '@auxx/lib/data-connectors'
 import { isAdminOrOwner } from '@auxx/lib/members'
 import { getChannelProviderIcon } from '@auxx/lib/providers'
 import { CredentialTestingService, isCredentialInUse } from '@auxx/lib/workflow-engine'
@@ -223,65 +222,6 @@ export const connectionsRouter = createTRPCRouter({
         requiresOwnClient,
         ownClientReason: gate?.reason ?? null,
       }
-    })
-  }),
-
-  /**
-   * The provider webhook topics a single connection can subscribe triggers to, or
-   * `null` when its provider has no `WebhookSpec` (⇒ the UI must not offer webhook
-   * triggers for it). Powers the Subscriptions tab and a preselected-connection picker.
-   */
-  webhookTopics: protectedProcedure
-    .input(z.object({ connectionId: z.string().min(1) }))
-    .query(async ({ ctx, input }) => {
-      const { organizationId } = ctx.session
-      const record = await ctx.db.query.Credential.findFirst({
-        where: (c, { and, eq }) =>
-          and(eq(c.id, input.connectionId), eq(c.organizationId, organizationId)),
-        columns: { type: true },
-      })
-      if (!record) {
-        throw new TRPCError({ code: 'NOT_FOUND', message: 'Connection not found' })
-      }
-      const capability = resolveConnectionWebhookCapability({ type: record.type })
-      return { topics: capability?.topics ?? null }
-    }),
-
-  /**
-   * Org connections whose provider has a `WebhookSpec`, each with its subscribable
-   * topics — the connection→topic source list for the webhook-trigger picker. Filters
-   * the full connection list down to spec-bearing providers so the picker never offers
-   * a connection that can't carry a webhook trigger.
-   */
-  webhookConnections: protectedProcedure.query(async ({ ctx }) => {
-    const { organizationId } = ctx.session
-
-    const isAdmin = await isAdminOrOwner(organizationId, ctx.session.user.id)
-    const result = await listCredentials({
-      organizationId,
-      kind: ['app', 'mcp', 'connection'],
-      ...(isAdmin ? {} : { ownedByOrOrgScoped: ctx.session.user.id }),
-    })
-    if (result.isErr()) {
-      throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: result.error.message })
-    }
-
-    return result.value.flatMap((record) => {
-      const capability = resolveConnectionWebhookCapability({ type: record.type })
-      if (!capability) return []
-      return [
-        {
-          id: record.id,
-          name: record.name,
-          type: record.type ?? '',
-          icon: record.type
-            ? (getChannelProviderIcon(record.type) ??
-              getProviderByKey(record.type)?.uiMetadata?.icon ??
-              null)
-            : null,
-          topics: capability.topics,
-        },
-      ]
     })
   }),
 

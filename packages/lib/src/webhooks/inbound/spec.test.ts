@@ -1,7 +1,6 @@
 // packages/lib/src/webhooks/inbound/spec.test.ts
 // Unit tests for the WebhookSpec compiler + helpers: topic glob, stream-key fallback,
-// missing-id drops, topic-segment derivation, and body-flag deletes. The per-provider
-// parity vectors live in data-connectors/webhooks/webhook-capability.test.ts.
+// missing-id drops, topic-segment derivation, and body-flag deletes.
 
 import { describe, expect, it } from 'vitest'
 import type { WebhookSpec } from './spec'

@@ -72,13 +72,6 @@ export interface DataConnectorConfig {
   }
   filters?: Record<string, unknown>
   /**
-   * Selects a provider webhook capability for a generic-REST connector (Step 8). The
-   * static `genericRestConnector` definition has no `webhook`, so a Shopify/Stripe
-   * generic-rest connector names its provider here and `resolveWebhookCapability`
-   * binds the matching verify/resolve/register driver.
-   */
-  webhook?: { provider: 'shopify' | 'stripe' }
-  /**
    * How far back a BACKFILL crawls (Step 9 §1.2, plain-language UX). Connector-level
    * (applies to every stream). `'all'` (default) crawls full history. A bounded span
    * injects a `created`-style floor on the first backfill request — but only on streams
@@ -450,17 +443,14 @@ export interface DataConnectorDefinition {
   asyncExport?: AsyncExportCapability
   /** Map a provider delete event onto a (streamKey, externalId). */
   resolveDelete?(event: unknown): { streamKey: string; externalId: string } | null
-  /**
-   * Optional webhook capability (Step 8). Present ⇒ the connector can receive
-   * real-time push (verify + resolve an inbound delivery into sink actions) and
-   * register/unregister its provider subscriptions. Static connectors (fixture) set
-   * it directly; provider webhooks for generic-rest connectors are resolved by
-   * config via {@link resolveWebhookCapability}, not pinned on the static definition.
-   */
-  webhook?: WebhookCapability
 }
 
-// ── Webhook capability (Step 8 — webhook ingress + registration) ──────────────
+// ── Webhook capability contract ───────────────────────────────────────────────
+// The provider-agnostic webhook-delivery contract. The data-connector provider
+// drivers + connection-scoped registration that used to implement it were retired
+// with the generic `WebhookEndpoint` source (plans/data-connectors/v6). These types
+// remain as the contract the declarative `webhooks/inbound` WebhookSpec compiler
+// (`compileWebhookSpec`) targets — kept as authoring reference for app webhook handlers.
 
 /**
  * One sink action a verified webhook delivery maps to. A single delivery can yield
@@ -535,17 +525,6 @@ export interface WebhookCapability {
   register(input: WebhookRegisterInput): Promise<WebhookSubscription[]>
   /** Revoke the given provider subscriptions (best-effort on teardown). */
   unregister(input: WebhookUnregisterInput): Promise<void>
-}
-
-/**
- * Connector-level webhook registration state, stored as JSON in the connector's
- * `AppWebhookHandler.metadata` (Step 8B). The signing secret + minted callback URL +
- * the provider subscriptions we created (kept to revoke them on teardown).
- */
-export interface ConnectorWebhookState {
-  secret: string
-  callbackUrl: string
-  subscriptions: WebhookSubscription[]
 }
 
 // ── Policy types — identity / merge / link (02) ───────────────────────────────
