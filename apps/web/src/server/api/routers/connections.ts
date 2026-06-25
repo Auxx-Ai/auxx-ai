@@ -120,9 +120,16 @@ export const connectionsRouter = createTRPCRouter({
         channels.flatMap((c) => (c.credentialId ? [[c.credentialId, c] as const] : []))
       )
 
+      // MCP rows are owned by `mcpServerId` (no provider `type`/`providerKey`), so their brand
+      // mark lives on the `McpServer` row, not the platform catalog. Source it from the
+      // `mcpServers` org cache and key by server id.
+      const mcpServers = await getOrgCache().get(organizationId, 'mcpServers')
+      const mcpByServer = new Map(mcpServers.map((s) => [s.serverId, s]))
+
       const now = new Date()
       return result.value.map((record) => {
         const channel = channelByCred.get(record.id)
+        const mcpServer = record.mcpServerId ? mcpByServer.get(record.mcpServerId) : undefined
         const expired =
           record.consecutiveRefreshFailures >= CONNECTION_CIRCUIT_OPEN_THRESHOLD ||
           (record.expiresAt !== null && record.expiresAt < now)
@@ -132,18 +139,22 @@ export const connectionsRouter = createTRPCRouter({
           type: record.type ?? '',
           kind: record.kind,
           label: record.label,
-          // Visual-ref for non-app rows: resolve the provider brand mark from `type`.
-          // Channel creds use a ChannelProviderType ('google', 'outlook', …); platform
-          // integration creds (incl. AI keys like 'openaiApi') use a providerKey, whose
-          // icon lives on the platform provider catalog. App rows leave this null and
-          // hydrate the app's avatar client-side.
-          icon: record.type
-            ? (getChannelProviderIcon(record.type) ??
-              getProviderByKey(record.type)?.uiMetadata?.icon ??
-              null)
-            : null,
+          // Visual-ref for non-app rows. MCP rows resolve their brand mark from the owning
+          // server's icon (they carry no provider `type`). Channel creds use a
+          // ChannelProviderType ('google', 'outlook', …); platform integration creds (incl. AI
+          // keys like 'openaiApi') use a providerKey, whose icon lives on the platform provider
+          // catalog. App rows leave this null and hydrate the app's avatar client-side.
+          icon: mcpServer
+            ? (mcpServer.icon?.iconId ?? null)
+            : record.type
+              ? (getChannelProviderIcon(record.type) ??
+                getProviderByKey(record.type)?.uiMetadata?.icon ??
+                null)
+              : null,
           appId: record.appId,
           appInstallationId: record.appInstallationId,
+          // MCP rows surface their server id so the grid can drive the MCP connect/reconnect flow.
+          mcpServerId: record.mcpServerId,
           connectionDefinitionId: record.connectionDefinitionId,
           scope: record.userId ? ('user' as const) : ('organization' as const),
           status: expired ? ('expired' as const) : ('connected' as const),

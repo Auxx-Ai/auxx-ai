@@ -3,15 +3,11 @@
 
 import { Button } from '@auxx/ui/components/button'
 import { CopyButton } from '@auxx/ui/components/button-copy'
-import { toastError } from '@auxx/ui/components/toast'
 import { KeyRound, Plug } from 'lucide-react'
-import { useState } from 'react'
 import { ConnectionList } from '~/components/apps/ui/connection-list'
 import { ConnectionRow, type ConnectionStatus } from '~/components/apps/ui/connection-row'
 import { SettingsSection } from '~/components/global/settings-page'
-import { api } from '~/trpc/react'
-import { useMcpOAuthPopup } from '../hooks/use-mcp-oauth-popup'
-import { ConnectCuratedDialog } from './connect-curated-dialog'
+import { useMcpConnect } from '../hooks/use-mcp-connect'
 import type { McpDetailServer } from './mcp-server-detail'
 import { mcpStatus } from './mcp-status-pill'
 
@@ -48,66 +44,8 @@ export function McpServerConnectionTab({
   onChanged,
   onRequestEdit,
 }: McpServerConnectionTabProps) {
-  const [dialogOpen, setDialogOpen] = useState(false)
-  const oauth = useMcpOAuthPopup()
-
-  const connect = api.mcp.connect.useMutation()
-
-  const isOAuth = server.connectionType === 'oauth2-code'
-  const hasVariables = server.connectionVariables.length > 0
-  const isSecret = server.connectionType === 'secret'
-
-  // Custom OAuth server with no client creds (the provider has no DCR, e.g. GitHub) — the
-  // authorize popup can only fail, so a setup walkthrough replaces the Connect row.
-  const needsManualSetup =
-    server.isCustom && isOAuth && !server.oauth?.clientId && !server.connectionPresent
-
-  async function handleConnect() {
-    // Curated OAuth with no variables, or any reconnect of an OAuth server → straight to the popup.
-    const zeroVarOAuth = isOAuth && !hasVariables
-    if (!server.isCustom && (zeroVarOAuth || (!isSecret && !hasVariables))) {
-      try {
-        const result = await connect.mutateAsync({ serverId: server.serverId })
-        if ('connected' in result && result.connected) {
-          onChanged()
-          return
-        }
-        if ('needsOAuth' in result && result.needsOAuth) {
-          oauth.open({
-            authorizeUrl: result.authorizeUrl,
-            verifyServer: { serverId: server.serverId },
-            onDone: (ok) => ok && onChanged(),
-          })
-          return
-        }
-        toastError({
-          title: 'Connection not available',
-          description: 'This server could not be connected automatically.',
-        })
-      } catch (err) {
-        toastError({
-          title: 'Failed to connect',
-          description: err instanceof Error ? err.message : 'Unknown error',
-        })
-      }
-      return
-    }
-    // Custom OAuth reconnect → authorize popup directly (no curated connect endpoint for custom).
-    if (server.isCustom && isOAuth) {
-      // No stored client creds — the authorize route can only fail; the setup block handles this.
-      if (needsManualSetup) return
-      oauth.open({
-        authorizeUrl: `/api/mcp/${server.serverId}/oauth2/authorize?returnTo=${encodeURIComponent(
-          `/app/settings/apps/mcp/${server.slug}`
-        )}`,
-        verifyServer: { serverId: server.serverId },
-        onDone: (ok) => ok && onChanged(),
-      })
-      return
-    }
-    // Everything else (curated with variables / secret) → the dialog.
-    setDialogOpen(true)
-  }
+  const mcp = useMcpConnect(server, onChanged)
+  const { needsManualSetup } = mcp
 
   const connectLabel = server.connectionPresent ? 'Reconnect' : 'Connect'
   const status = mcpStatus({
@@ -194,8 +132,8 @@ export function McpServerConnectionTab({
                 <Button
                   variant='outline'
                   size='sm'
-                  onClick={handleConnect}
-                  loading={connect.isPending || oauth.pending}
+                  onClick={mcp.start}
+                  loading={mcp.pending}
                   loadingText='Connecting...'>
                   <Plug />
                   {connectLabel}
@@ -206,16 +144,7 @@ export function McpServerConnectionTab({
         )}
       </SettingsSection>
 
-      <ConnectCuratedDialog
-        open={dialogOpen}
-        onOpenChange={setDialogOpen}
-        serverId={server.serverId}
-        serverName={server.name}
-        serverSlug={server.slug}
-        connectionType={server.connectionType}
-        connectionVariables={server.connectionVariables}
-        onConnected={onChanged}
-      />
+      {mcp.Dialogs}
     </div>
   )
 }
