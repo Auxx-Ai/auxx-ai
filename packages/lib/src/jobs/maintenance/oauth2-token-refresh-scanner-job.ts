@@ -10,12 +10,13 @@ import { getQueue, Queues } from '../queues'
 const logger = createScopedLogger('oauth2-token-refresh-scanner-job')
 
 /**
- * Proactive-refresh buffer for channel (kind:'integration') credentials. The mail defs
- * (gmail/outlookMail) set no oauth2RefreshTokenIntervalSeconds — channels are scanned by
- * expiry directly, mirroring the old channel-token-refresh-scanner's 30-min window so the
- * Gmail watch / Graph subscription ingestion path always has a warm token (§8).
+ * Proactive-refresh buffer for `kind:'connection'` credentials scanned by expiry (channels +
+ * any platform provider whose def sets no oauth2RefreshTokenIntervalSeconds — e.g. the mail defs
+ * gmail/outlookMail). Mirrors the old channel-token-refresh-scanner's 30-min window so the
+ * Gmail watch / Graph subscription ingestion path always has a warm token (§8). Rows with no
+ * `expiresAt` (e.g. AI API keys) never match.
  */
-const INTEGRATION_REFRESH_BUFFER_MS = 30 * 60 * 1000
+const CONNECTION_REFRESH_BUFFER_MS = 30 * 60 * 1000
 
 /** Scanner job payload schema */
 interface OAuth2TokenRefreshScannerJobData {
@@ -238,12 +239,13 @@ export const oauth2TokenRefreshScannerJob = async (job: Job<OAuth2TokenRefreshSc
       }
     }
 
-    // Channel (kind:'integration') credentials: scanned by expiry directly (no def interval).
-    // Only those linked to a ConnectionDefinition resolve a refresh; unlinked legacy rows are
-    // covered by the SDK-side path until they're reconnected (§9.1).
+    // Connection credentials scanned by expiry directly (no def interval): channels + any
+    // platform provider whose def sets no refresh interval. Only those linked to a
+    // ConnectionDefinition resolve a refresh; unlinked legacy rows are covered by the SDK-side
+    // path until they're reconnected (§9.1).
     await job.updateProgress(80)
-    const integrationCutoff = new Date(now.getTime() + INTEGRATION_REFRESH_BUFFER_MS)
-    const integrationCredentials = await db.query.Credential.findMany({
+    const connectionCutoff = new Date(now.getTime() + CONNECTION_REFRESH_BUFFER_MS)
+    const connectionCredentials = await db.query.Credential.findMany({
       columns: {
         id: true,
         organizationId: true,
@@ -252,15 +254,15 @@ export const oauth2TokenRefreshScannerJob = async (job: Job<OAuth2TokenRefreshSc
         consecutiveRefreshFailures: true,
       },
       where: and(
-        eq(schema.Credential.kind, 'integration'),
+        eq(schema.Credential.kind, 'connection'),
         isNotNull(schema.Credential.connectionDefinitionId),
         isNotNull(schema.Credential.expiresAt),
-        lte(schema.Credential.expiresAt, integrationCutoff)
+        lte(schema.Credential.expiresAt, connectionCutoff)
       ),
       limit: batchSize,
     })
 
-    for (const credential of integrationCredentials) {
+    for (const credential of connectionCredentials) {
       try {
         stats.connectionsScanned++
 

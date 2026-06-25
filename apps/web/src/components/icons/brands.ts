@@ -21,6 +21,7 @@ export const BRAND_ICONS = {
   facebook: { hasDark: false },
   gemini: { hasDark: false },
   github: { hasDark: true },
+  gmail: { hasDark: false },
   google: { hasDark: false },
   'google-drive': { hasDark: false },
   groq: { hasDark: false },

@@ -349,7 +349,7 @@ export async function resolveConnectionForRuntime(
     const scopedUserId = def.global ? null : userId
     const found = await findCredential({
       organizationId,
-      kind: 'workflow',
+      kind: 'connection',
       type: providerKey,
       userId: scopedUserId,
     })

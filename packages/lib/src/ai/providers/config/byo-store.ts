@@ -84,7 +84,7 @@ export async function findOrgProviderCredentialId(
 ): Promise<string | null> {
   const found = await findCredential({
     organizationId: ctx.organizationId,
-    kind: 'workflow',
+    kind: 'connection',
     type: providerKey,
     userId: null,
   })
@@ -119,7 +119,7 @@ export async function listOrgProviderCredentials(
   const [existing, poolBindings] = await Promise.all([
     listCredentials({
       organizationId: ctx.organizationId,
-      kind: 'workflow',
+      kind: 'connection',
       type: providerKey,
       userId: null,
     }),
@@ -159,7 +159,7 @@ export async function deleteOrgProviderCredentials(
   if (!providerKey) return
   const existing = await listCredentials({
     organizationId: ctx.organizationId,
-    kind: 'workflow',
+    kind: 'connection',
     type: providerKey,
     userId: null,
   })

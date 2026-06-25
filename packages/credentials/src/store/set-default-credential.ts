@@ -7,10 +7,10 @@ import { fromDb, notFound } from './internal'
 import type { CredentialStoreError } from './types'
 
 /**
- * Make `credentialId` the primary among an org's `kind:'workflow'` keys of the same `type`
+ * Make `credentialId` the primary among an org's `kind:'connection'` keys of the same `type`
  * (e.g. one of several `openaiApi` BYO keys). Mirrors {@link setDefaultCredential} but scopes
- * siblings by (org, type) instead of (org, app), since workflow credentials have no `appId`.
- * Only org-scoped (`userId IS NULL`) workflow rows are eligible. The runtime resolver orders by
+ * siblings by (org, type) instead of (org, app), since connection credentials have no `appId`.
+ * Only org-scoped (`userId IS NULL`) connection rows are eligible. The runtime resolver orders by
  * `isDefault` first, so this picks the key a provider falls back to when a model has no pool.
  */
 export async function setDefaultWorkflowCredential(
@@ -30,10 +30,10 @@ export async function setDefaultWorkflowCredential(
   if (target.isErr()) return err(target.error)
   const cred = target.value
   if (!cred) return err(notFound(credentialId))
-  if (cred.kind !== 'workflow' || !cred.type || cred.userId !== null) {
+  if (cred.kind !== 'connection' || !cred.type || cred.userId !== null) {
     return err({
       code: 'DATABASE_ERROR',
-      message: 'Only org-scoped workflow connections can be made default',
+      message: 'Only org-scoped connection credentials can be made default',
     })
   }
   const type = cred.type
@@ -47,7 +47,7 @@ export async function setDefaultWorkflowCredential(
           and(
             eq(schema.Credential.organizationId, organizationId),
             eq(schema.Credential.type, type),
-            eq(schema.Credential.kind, 'workflow'),
+            eq(schema.Credential.kind, 'connection'),
             isNull(schema.Credential.userId),
             ne(schema.Credential.id, credentialId)
           )

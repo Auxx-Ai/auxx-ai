@@ -22,8 +22,8 @@ import { Organization } from './organization'
 import { User } from './user'
 
 /**
- * Unified credential store. One table behind four credential families,
- * discriminated by `kind` ('app' | 'mcp' | 'integration' | 'workflow').
+ * Unified credential store. One table behind the credential families,
+ * discriminated by `kind` ('app' | 'mcp' | 'connection').
  */
 export const Credential = pgTable(
   'Credential',
@@ -41,10 +41,11 @@ export const Credential = pgTable(
     }),
 
     /** Discriminator: which credential family owns this row. */
-    kind: text().notNull().default('workflow'), // 'app' | 'mcp' | 'integration' | 'workflow'
+    kind: text().notNull().default('connection'), // 'app' | 'mcp' | 'connection'
     /**
-     * Kind-specific subtype: workflow credential type ('telegram-bot'), integration provider
-     * ('gmail'). NULL for app/mcp kinds — the owner FK (appId/mcpServerId) identifies the target.
+     * Denormalized providerKey for `connection` rows ('gmail', 'telegram-bot', 'openaiApi').
+     * NULL for app/mcp kinds — the owner FK (appId/mcpServerId) identifies the target.
+     * Transitional: superseded by the resolved `ConnectionDefinition.providerKey` (Phase 2).
      */
     type: text(),
 

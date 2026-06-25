@@ -1,7 +1,12 @@
 // packages/credentials/src/store/types.ts
 
-/** Which credential family owns a row. */
-export type CredentialKind = 'app' | 'mcp' | 'integration' | 'workflow'
+/**
+ * Which credential family owns a row. The owner is decided by which FK is set
+ * (`app ⟺ appId`, `mcp ⟺ mcpServerId`); `connection` covers everything else
+ * (channels, AI keys, platform providers) — a ConnectionDefinition-backed credential
+ * with no owner FK. Replaces the legacy `integration`/`workflow` split.
+ */
+export type CredentialKind = 'app' | 'mcp' | 'connection'
 
 /**
  * Row shape minus `encryptedSecrets` — safe to return anywhere.

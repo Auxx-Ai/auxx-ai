@@ -58,7 +58,7 @@ interface ConnectionPickerPopoverProps {
   filterCredentialIds?: string[]
 }
 
-const DEFAULT_KINDS: PickerKind[] = ['app', 'integration', 'workflow']
+const DEFAULT_KINDS: PickerKind[] = ['app', 'connection']
 
 /**
  * Popover-wrapped {@link ConnectionPicker}. Owns the `connections.list` query,
@@ -139,7 +139,7 @@ export function ConnectionPickerPopover({
     flow.start({ target: platformTarget(provider), scope: row.scope, connectionId: row.id })
   }
 
-  // Plain integration/workflow secrets with no platform definition edit a single API key in
+  // Plain connection secrets with no platform definition edit a single API key in
   // place; everything else (apps, platform providers) routes through the flow.
   const isPlainSecret = (row: PickerConnection) =>
     row.kind !== 'app' && !providerByKey.get(row.type)

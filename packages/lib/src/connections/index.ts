@@ -34,6 +34,7 @@ export {
   type RuntimeConnectionData,
   resolveConnectionForRuntime,
 } from './resolve-connection-for-runtime'
+export { resolveProviderKey, resolveProviderKeys } from './resolve-provider-key'
 export { type SaveConnectionInput, saveConnection } from './save-connection'
 export {
   type HttpMethod,

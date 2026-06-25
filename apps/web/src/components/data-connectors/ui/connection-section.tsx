@@ -103,7 +103,7 @@ export function ConnectionSection({ connector }: ConnectionSectionProps) {
   // instead of a generic "bound credential" line. Shares the picker popover's
   // query (same input) so this adds no extra fetch.
   const { data: connections = [] } = api.connections.list.useQuery(
-    { kind: ['app', 'integration', 'workflow'], orgScopedOnly: true },
+    { kind: ['app', 'connection'], orgScopedOnly: true },
     { refetchOnWindowFocus: false }
   )
   const bound = connector.credentialId

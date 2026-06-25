@@ -93,7 +93,7 @@ describe('revealSecrets', () => {
       {
         id: 'cred-1',
         organizationId: 'org-1',
-        kind: 'workflow',
+        kind: 'connection',
         metadata: { foo: 'bar' },
         encryptedSecrets: encryptSecrets({ token: 'xyz' }),
       },

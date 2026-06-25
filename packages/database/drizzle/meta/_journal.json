@@ -1660,6 +1660,13 @@
       "when": 1782340290965,
       "tag": "0236_data_connector_last_webhook_event_at",
       "breakpoints": true
+    },
+    {
+      "idx": 237,
+      "version": "7",
+      "when": 1782344263087,
+      "tag": "0237_credential_kind_default_connection",
+      "breakpoints": true
     }
   ]
 }

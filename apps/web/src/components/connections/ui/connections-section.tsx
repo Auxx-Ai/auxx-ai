@@ -112,7 +112,7 @@ export function ConnectionsSection() {
     flow.start({ target: platformTarget(provider), scope: row.scope, connectionId: row.id })
   }
 
-  // Plain integration/workflow secrets with no platform definition edit a single API
+  // Plain connection secrets with no platform definition edit a single API
   // key inline in the edit dialog; apps/platform providers rename inline and re-auth /
   // rotate their key through the flow's Reconnect button.
   const isPlainSecret = (row: ConnectionRow) => row.kind !== 'app' && !providerByKey.get(row.type)
