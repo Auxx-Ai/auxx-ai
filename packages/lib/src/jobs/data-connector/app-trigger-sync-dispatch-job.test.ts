@@ -1,7 +1,8 @@
 // packages/lib/src/jobs/data-connector/app-trigger-sync-dispatch-job.test.ts
-// The connector app-trigger matcher (v7): a delivery fans to webhook-sync connectors on the
+// The connector app-trigger matcher (v7): a delivery matches webhook-sync connectors on the
 // delivering connection whose CONNECTOR-level `config.webhookTrigger.triggerId` matches, then
-// to each of their streams whose per-stream `webhookTrigger.filter` passes. DB/queue/redis faked.
+// steers a full run-based sync for each connector with ≥1 stream whose `filter` passes.
+// DB/redis/enqueue faked.
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -17,10 +18,9 @@ vi.mock('@auxx/database', () => ({
   schema: new Proxy({}, { get: () => new Proxy({}, { get: () => ({}) }) }),
 }))
 
-const queueAdd = vi.fn()
-vi.mock('../queues', () => ({
-  getQueue: () => ({ add: (...a: unknown[]) => queueAdd(...a) }),
-  Queues: { appTriggerQueue: 'appTriggerQueue' },
+const enqueueConnectorSync = vi.fn()
+vi.mock('../../data-connectors/data-connector-queue', () => ({
+  enqueueConnectorSync: (...a: unknown[]) => enqueueConnectorSync(...a),
 }))
 
 vi.mock('@auxx/redis', () => ({ getRedisClient: async () => null }))
@@ -47,7 +47,7 @@ beforeEach(() => {
 })
 
 describe('dispatchAppTriggerToConnectors', () => {
-  it('fans to a connector whose connector-level signal matches the trigger', async () => {
+  it('steers a webhook sync for a connector whose signal + a stream filter match', async () => {
     findManyConnectors.mockResolvedValue([
       { id: 'dc1', config: { webhookTrigger: { triggerId: 'shopify.shopify-trigger' } } },
     ])
@@ -59,18 +59,33 @@ describe('dispatchAppTriggerToConnectors', () => {
       },
     ])
     const result = await dispatchAppTriggerToConnectors(job(base))
-    expect(result).toEqual({ childJobsEnqueued: 1 })
-    expect(queueAdd.mock.calls[0]?.[1]).toMatchObject({
+    expect(result).toEqual({ connectorsSynced: 1 })
+    expect(enqueueConnectorSync).toHaveBeenCalledTimes(1)
+    expect(enqueueConnectorSync.mock.calls[0]?.[0]).toMatchObject({
       connectorId: 'dc1',
-      streamKey: 'orders',
-      triggerId: 'shopify.shopify-trigger',
+      organizationId: 'org1',
+      trigger: 'webhook',
     })
+  })
+
+  it('syncs a connector once even when several of its streams match', async () => {
+    findManyConnectors.mockResolvedValue([
+      { id: 'dc1', config: { webhookTrigger: { triggerId: 'shopify.shopify-trigger' } } },
+    ])
+    findManyStreams.mockResolvedValue([
+      { dataConnectorId: 'dc1', streamKey: 'orders', requestConfig: { webhookTrigger: {} } },
+      { dataConnectorId: 'dc1', streamKey: 'customers', requestConfig: { webhookTrigger: {} } },
+    ])
+    const result = await dispatchAppTriggerToConnectors(job(base))
+    expect(result).toEqual({ connectorsSynced: 1 })
+    expect(enqueueConnectorSync).toHaveBeenCalledTimes(1)
   })
 
   it('returns early when the delivery carries no connection', async () => {
     const result = await dispatchAppTriggerToConnectors(job({ ...base, connectionId: undefined }))
-    expect(result).toEqual({ childJobsEnqueued: 0 })
+    expect(result).toEqual({ connectorsSynced: 0 })
     expect(findManyConnectors).not.toHaveBeenCalled()
+    expect(enqueueConnectorSync).not.toHaveBeenCalled()
   })
 
   it('skips connectors bound to a different trigger on the same connection', async () => {
@@ -78,7 +93,8 @@ describe('dispatchAppTriggerToConnectors', () => {
       { id: 'dc1', config: { webhookTrigger: { triggerId: 'other.trigger' } } },
     ])
     const result = await dispatchAppTriggerToConnectors(job(base))
-    expect(result).toEqual({ childJobsEnqueued: 0 })
+    expect(result).toEqual({ connectorsSynced: 0 })
     expect(findManyStreams).not.toHaveBeenCalled()
+    expect(enqueueConnectorSync).not.toHaveBeenCalled()
   })
 })

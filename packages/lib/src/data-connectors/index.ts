@@ -33,8 +33,6 @@ export type {
   SyncSourceStream,
 } from './connector-sync-source'
 export { createConnectorStreamSyncSource } from './connector-sync-source'
-// Webhook-steered fetch slice (app-trigger / WebhookEndpoint sync bridge)
-export { runWebhookEventSlice } from './connector-webhook'
 export type {
   AppConnectorContext,
   ConnectorCheckpoint,

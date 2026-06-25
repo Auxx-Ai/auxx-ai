@@ -4,7 +4,9 @@
 // whether this event is a DELETE (skip the fetch, archive by externalId) or a
 // FETCH (extract `{path}` values to steer the regular connector fetch at, then
 // sink the FETCH result). Kept free of DB/connector deps so it unit-tests on plain
-// payload fixtures — the side-effecting slice (`runWebhookEventSlice`) consumes it.
+// payload fixtures. NOTE: not currently wired into the sync path — webhook deliveries now
+// steer a full run-based sync (see dispatchAppTriggerToConnectors); retained for a future
+// targeted point-write mode that fetches only the changed record via `{path}` steering.
 
 import type { StreamWebhookTrigger } from './connectors/types'
 

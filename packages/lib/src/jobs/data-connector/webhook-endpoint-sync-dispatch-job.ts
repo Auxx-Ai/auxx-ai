@@ -1,25 +1,23 @@
 // packages/lib/src/jobs/data-connector/webhook-endpoint-sync-dispatch-job.ts
 // The connector-sink leg of the generic WebhookEndpoint fan-out (unified-trigger-picker
 // §4.4). Sibling to `dispatchAppTriggerToConnectors` (the APP-trigger leg) and to the
-// workflow/agent `dispatchWebhookEndpoint*` jobs: one verified endpoint delivery → every
-// webhook-sync DataConnector stream bound to this `webhookEndpointId` whose `filter`
-// matches the payload. THIN — dedup + match + fan out; each matched (connector, stream)
-// gets the SAME child job (`app-trigger-sync-stream`) that owns the steer-fetch-sink and
-// failure policy (the slice is source-agnostic — it only needs the connector, stream,
-// triggerData + eventId). Match key is `webhookEndpointId`, NOT `credentialId`: generic
-// endpoints aren't connection-bound, so a connector opts in via its connector-level
+// workflow/agent `dispatchWebhookEndpoint*` jobs: one verified endpoint delivery → a full
+// run-based sync of every webhook-sync DataConnector bound to this `webhookEndpointId`
+// with ≥1 stream whose `filter` matches the payload. THIN — dedup + match + steer a sync
+// via `enqueueConnectorSync({ trigger: 'webhook' })` (same path as "Sync now"), so the
+// delivery gets a `DataConnectorRun` history row + refreshed `lastSyncedAt` + reconciliation.
+// Match key is `webhookEndpointId`, NOT `credentialId`: generic endpoints aren't
+// connection-bound, so a connector opts in via its connector-level
 // `config.webhookTrigger.webhookEndpointId` (v7 — one signal per connector); each of its
-// streams' `requestConfig.webhookTrigger` then carries only per-stream topic/token steering.
-// The connector still resolves its own `credentialId` for fetch auth inside `runWebhookEventSlice`.
+// streams' `requestConfig.webhookTrigger.filter` discriminates which topics are relevant.
 
 import { database as db, schema } from '@auxx/database'
 import { getRedisClient } from '@auxx/redis'
 import { and, eq, inArray, ne } from 'drizzle-orm'
 import { matchesFilter } from '../../agents/agent-trigger-queries'
+import { enqueueConnectorSync } from '../../data-connectors/data-connector-queue'
 import { createScopedLogger } from '../../logger'
-import { getQueue, Queues } from '../queues'
 import type { JobContext } from '../types'
-import { APP_TRIGGER_SYNC_STREAM_JOB } from './app-trigger-sync-dispatch-job'
 
 const logger = createScopedLogger('data-connector-webhook-endpoint-dispatch-job')
 
@@ -64,7 +62,7 @@ export async function dispatchWebhookEndpointToConnectors(
       const setResult = await redis.set(dedupKey, '1', 'EX', 300, 'NX')
       if (!setResult) {
         logger.warn('Duplicate connector webhook-endpoint event, skipping', { dedupKey, eventId })
-        return { childJobsEnqueued: 0 }
+        return { connectorsSynced: 0 }
       }
     }
   } catch (err) {
@@ -89,7 +87,7 @@ export async function dispatchWebhookEndpointToConnectors(
   const connectors = candidates.filter(
     (c) => c.config?.webhookTrigger?.webhookEndpointId === endpointId
   )
-  if (connectors.length === 0) return { childJobsEnqueued: 0 }
+  if (connectors.length === 0) return { connectorsSynced: 0 }
 
   const streams = await db.query.DataConnectorStream.findMany({
     where: and(
@@ -102,31 +100,25 @@ export async function dispatchWebhookEndpointToConnectors(
     columns: { dataConnectorId: true, streamKey: true, requestConfig: true },
   })
 
-  const queue = getQueue(Queues.appTriggerQueue)
-  let enqueued = 0
+  // A connector is relevant when ≥1 of its enabled streams' `webhookTrigger.filter`
+  // matches this payload (topic discrimination). One full sync per relevant connector —
+  // the run covers all its streams, so we don't fan per-stream.
+  const relevant = new Set<string>()
   for (const stream of streams) {
     const wt = stream.requestConfig?.webhookTrigger
     if (!stream.streamKey || !wt) continue
     if (!matchesFilter(wt.filter, matchData)) continue
-
-    await queue.add(APP_TRIGGER_SYNC_STREAM_JOB, {
-      connectorId: stream.dataConnectorId,
-      streamKey: stream.streamKey,
-      organizationId,
-      webhookEndpointId: endpointId,
-      topic,
-      // Carry the topic-enriched payload so the slice's `resolveWebhookSteer` sees
-      // `triggerData.topic` for `deleteWhen.topicEquals` (steer reads the same field).
-      triggerData: matchData,
-      eventId,
-    })
-    enqueued++
+    relevant.add(stream.dataConnectorId)
   }
 
-  if (enqueued > 1) {
-    logger.info('Connector webhook-endpoint fan-out degree > 1', { endpointId, eventId, enqueued })
-  } else {
-    logger.debug('Dispatched connector webhook endpoint', { endpointId, eventId, enqueued })
+  for (const connectorId of relevant) {
+    await enqueueConnectorSync({ connectorId, organizationId, trigger: 'webhook' })
   }
-  return { childJobsEnqueued: enqueued }
+
+  logger.debug('Dispatched connector webhook endpoint', {
+    endpointId,
+    eventId,
+    connectorsSynced: relevant.size,
+  })
+  return { connectorsSynced: relevant.size }
 }
