@@ -16,6 +16,7 @@ import { getRedisClient } from '@auxx/redis'
 import type { Job } from 'bullmq'
 import { createScopedLogger } from '../../logger'
 import { getQueue, Queues } from '../queues'
+import type { JobContext } from '../types'
 import { APP_TRIGGER_SYNC_STREAM_JOB } from './app-trigger-sync-dispatch-job'
 
 const logger = createScopedLogger('data-connector-app-trigger-sync-stream-job')
@@ -39,7 +40,15 @@ export type ConnectorAppTriggerStreamJobData = {
   rateLimitRetries?: number
 }
 
-export async function runConnectorAppTriggerStream(job: Job<ConnectorAppTriggerStreamJobData>) {
+export async function runConnectorAppTriggerStream(
+  ctx: JobContext<ConnectorAppTriggerStreamJobData> | Job<ConnectorAppTriggerStreamJobData>
+) {
+  // The worker passes a JobContext whose `.job` is the real BullMQ Job; tolerate a raw
+  // Job too. Unwrap so the native fields this handler needs (`opts.attempts`,
+  // `attemptsMade`) read off the real job — reading them off the context yields undefined
+  // (the "Cannot read properties of undefined (reading 'attempts')" crash that masked the
+  // real fetch error).
+  const job = 'throwIfCancelled' in ctx ? ctx.job : ctx
   const { connectorId, streamKey, organizationId, triggerData, eventId } = job.data
 
   // Lazy-import the heavy data-connectors barrel at call time (it pulls the sink /

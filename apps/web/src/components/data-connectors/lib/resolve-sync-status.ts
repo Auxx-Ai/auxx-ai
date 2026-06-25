@@ -146,7 +146,9 @@ export function resolveSyncStatus(
     return {
       state: 'error',
       label: 'Error',
-      detail: error?.trim() || 'Last sync failed.',
+      // Static copy only — the raw (often long, technical) error message is surfaced
+      // separately behind a tooltip in the status line, not dumped into the header.
+      detail: 'Last sync failed.',
       primaryAction: 'retry',
     }
   }

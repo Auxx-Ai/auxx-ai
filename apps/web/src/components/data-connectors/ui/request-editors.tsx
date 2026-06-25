@@ -6,6 +6,7 @@ import { generateId } from '@auxx/utils/generateId'
 import { Minus, Plus } from 'lucide-react'
 import { type ReactNode, useEffect, useRef, useState } from 'react'
 import {
+  type HttpRequestFieldContextValue,
   HttpRequestFieldProvider,
   type KeyValue,
   KeyValueList,
@@ -35,15 +36,24 @@ export const PLAIN_FIELD = {
   valuePlaceholder: 'Enter value...',
 }
 
-/** Headers / query params — a Record-backed wrapper over the shared KeyValueList. */
+/**
+ * Headers / query params — a Record-backed wrapper over the shared KeyValueList.
+ *
+ * `fieldContext` overrides the value editor (default: plain inputs). Webhook-sync
+ * streams pass a token-aware context so values gain `{path}` steering inserts; the
+ * key column stays a plain input (`keyNotSupportVar`) since header/param names are
+ * static.
+ */
 export function RecordKeyValueEditor({
   record,
   onChange,
   readonly = false,
+  fieldContext = PLAIN_FIELD,
 }: {
   record: Record<string, unknown> | undefined
   onChange: (record: Record<string, string>) => void
   readonly?: boolean
+  fieldContext?: HttpRequestFieldContextValue
 }) {
   const [list, setList] = useState<KeyValue[]>(() => recordToKeyValue(record))
   // The serialized record we last emitted/seeded from — detects truly external
@@ -66,12 +76,13 @@ export function RecordKeyValueEditor({
   }
 
   return (
-    <HttpRequestFieldProvider value={PLAIN_FIELD}>
+    <HttpRequestFieldProvider value={fieldContext}>
       <KeyValueList
         readonly={readonly}
         list={list}
         onChange={emit}
         onAdd={() => emit([...list, { id: generateId(), key: '', value: '' }])}
+        keyNotSupportVar
       />
     </HttpRequestFieldProvider>
   )

@@ -2,6 +2,7 @@
 'use client'
 
 import { LastUpdated } from '@auxx/ui/components/last-updated'
+import { SimpleTooltip } from '@auxx/ui/components/tooltip'
 import { cn } from '@auxx/ui/lib/utils'
 import {
   AlertTriangle,
@@ -70,6 +71,7 @@ export function ConnectorStatusLine({
       <SecondaryLine
         state={resolved.state}
         detail={resolved.detail}
+        error={error}
         countdownUntil={resolved.countdownUntil}
         lastSyncedAt={lastSyncedAt}
       />
@@ -81,11 +83,13 @@ export function ConnectorStatusLine({
 function SecondaryLine({
   state,
   detail,
+  error,
   countdownUntil,
   lastSyncedAt,
 }: {
   state: SyncStatusState
   detail: string
+  error?: string | null
   countdownUntil?: string
   lastSyncedAt?: Date | string | null
 }) {
@@ -102,6 +106,19 @@ function SecondaryLine({
   if (state === 'synced' && lastSyncedAt) {
     return (
       <LastUpdated className='truncate text-xs' timestamp={lastSyncedAt} prefix='Last synced' />
+    )
+  }
+
+  // Error / action-needed → keep the inline copy short and static; the raw error
+  // message (often a long, technical sync failure) lives behind a hover tooltip
+  // instead of stretching the header.
+  if ((state === 'error' || state === 'action-needed') && error?.trim()) {
+    return (
+      <SimpleTooltip content={error.trim()}>
+        <span className='cursor-help truncate text-muted-foreground underline decoration-dotted underline-offset-2'>
+          {detail}
+        </span>
+      </SimpleTooltip>
     )
   }
 

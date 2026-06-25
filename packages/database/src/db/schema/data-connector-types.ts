@@ -144,6 +144,9 @@ export interface ConnectorStreamState {
   cursor?: string
   /** Set by a connector's terminal `nextState` when its backfill is exhausted. */
   backfillComplete?: boolean
+  /** Consecutive no-progress slices (pagination stall guard). Mirror of lib
+   *  `ConnectorStreamState.noProgressStrikes`. */
+  noProgressStrikes?: number
   [key: string]: unknown
 }
 

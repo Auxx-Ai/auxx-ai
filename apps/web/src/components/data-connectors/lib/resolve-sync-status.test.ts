@@ -66,9 +66,11 @@ describe('resolveSyncStatus', () => {
     expect(r).toMatchObject({ state: 'action-needed', primaryAction: 'reconnect' })
   })
 
-  it('maps a generic error → error/retry and surfaces the message', () => {
+  it('maps a generic error → error/retry with static detail (raw message goes to a tooltip)', () => {
     const r = resolveSyncStatus({ status: 'error', error: 'upstream 500' }, NOW)
-    expect(r).toMatchObject({ state: 'error', primaryAction: 'retry', detail: 'upstream 500' })
+    // The header detail stays short/static; the raw error is surfaced separately by the
+    // status-line tooltip, not dumped into `detail`.
+    expect(r).toMatchObject({ state: 'error', primaryAction: 'retry', detail: 'Last sync failed.' })
   })
 
   it('derives rate-limited from a future rateLimitedUntil while syncing', () => {

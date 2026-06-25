@@ -252,6 +252,74 @@ describe('runSyncSlice', () => {
     expect(ledger.calls).not.toContain('finalize')
   })
 
+  it('fails a stalled chain after consecutive no-progress slices (stall guard)', async () => {
+    // The source advances + claims more every slice but moves NOTHING — no records, the
+    // cursor never changes (a frozen pagination token). The runner tolerates a couple of
+    // strikes, then fails rather than spinning the continuation chain forever.
+    const stuck = { kind: 'token', value: 'frozen' } as const
+    const state = fakeStateStore({ phase: 'backfill', cursor: stuck })
+    const ledger = fakeLedger()
+    const stalledSource = source({
+      slice: { recordsProcessed: 0, nextCursor: stuck, hasMore: true, commit: 'all' },
+    })
+    const run = () =>
+      runSyncSlice({
+        source: stalledSource,
+        stateStore: state.store,
+        ledger: ledger.ledger,
+        throttle: THROTTLE,
+        budget: BUDGET,
+        signal: new AbortController().signal,
+      })
+
+    // Strikes climb 1 → 2 (re-enqueued), then the 3rd consecutive stall fails the run.
+    expect((await run()).action).toBe('reenqueue')
+    expect(state.current.noProgressStrikes).toBe(1)
+    expect((await run()).action).toBe('reenqueue')
+    expect(state.current.noProgressStrikes).toBe(2)
+    expect((await run()).action).toBe('failed')
+    expect(state.current.noProgressStrikes).toBe(3)
+    expect(ledger.calls).toContain('fail')
+  })
+
+  it('resets the stall strike count when a slice makes real progress', async () => {
+    const stuck = { kind: 'token', value: 'frozen' } as const
+    const state = fakeStateStore({ phase: 'backfill', cursor: stuck })
+    const ledger = fakeLedger()
+    // First slice stalls (strike 1)…
+    await runSyncSlice({
+      source: source({
+        slice: { recordsProcessed: 0, nextCursor: stuck, hasMore: true, commit: 'all' },
+      }),
+      stateStore: state.store,
+      ledger: ledger.ledger,
+      throttle: THROTTLE,
+      budget: BUDGET,
+      signal: new AbortController().signal,
+    })
+    expect(state.current.noProgressStrikes).toBe(1)
+
+    // …then one that processes records + advances the cursor resets the count to 0.
+    const out = await runSyncSlice({
+      source: source({
+        slice: {
+          recordsProcessed: 7,
+          nextCursor: { kind: 'token', value: 'moved' },
+          hasMore: true,
+          commit: 'all',
+        },
+      }),
+      stateStore: state.store,
+      ledger: ledger.ledger,
+      throttle: THROTTLE,
+      budget: BUDGET,
+      signal: new AbortController().signal,
+    })
+    expect(out.action).toBe('reenqueue')
+    expect(state.current.noProgressStrikes).toBe(0)
+    expect(ledger.calls).not.toContain('fail')
+  })
+
   it('fails the run when fetchSlice throws', async () => {
     const state = fakeStateStore({ phase: 'backfill' })
     const ledger = fakeLedger()

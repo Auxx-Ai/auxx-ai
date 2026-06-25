@@ -27,6 +27,7 @@ export function syncStateFromStream(state: ConnectorStreamState): SyncState {
     watermark: state.watermark,
     recordsSeen: state.recordsSeen,
     backfillStartedAt: state.backfillStartedAt,
+    noProgressStrikes: state.noProgressStrikes,
   }
 }
 
@@ -47,6 +48,7 @@ export function applySyncStateToStream(
     watermark: sync.watermark,
     recordsSeen: sync.recordsSeen,
     backfillStartedAt: sync.backfillStartedAt,
+    noProgressStrikes: sync.noProgressStrikes,
   }
 }
 
