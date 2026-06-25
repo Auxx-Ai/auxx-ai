@@ -6,7 +6,9 @@ import {
   rotateSecrets,
   updateCredential,
 } from '@auxx/credentials/store'
+import { database as db, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
+import { eq } from 'drizzle-orm'
 import { err, ok, type Result } from 'neverthrow'
 import type { McpConnectionError } from './types'
 
@@ -87,12 +89,21 @@ export async function saveMcpConnection(input: {
     return ok(connectionId)
   }
 
+  // Bind the owning server's ConnectionDefinition so provider identity resolves by FK (the unified
+  // model's source of truth — icons, runtime resolution, the kind/type collapse). The one-time
+  // backfill (`027`) only touched pre-existing rows, so new MCP credentials must set it here.
+  const def = await db.query.ConnectionDefinition.findFirst({
+    where: eq(schema.ConnectionDefinition.mcpServerId, mcpServerId),
+    columns: { id: true },
+  })
+
   const created = await insertCredential({
     organizationId,
     createdById,
     kind: 'mcp',
     userId: null,
     mcpServerId,
+    connectionDefinitionId: def?.id ?? null,
     name: `${serverName} Connection`,
     secrets,
     metadata,
