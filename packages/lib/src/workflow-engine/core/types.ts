@@ -66,10 +66,10 @@ export enum WorkflowTriggerType {
   // Generic HTTP webhook trigger (raw inbound URL, no connection)
   WEBHOOK = 'webhook',
 
-  // Connection-keyed webhook trigger — fires on a connection's provider webhook
-  // for a specific topic (e.g. a Shopify connection's `orders/create`). Routed via
-  // POST /webhooks/connection/:id and dispatched off (triggerConnectionId, triggerTopic).
-  WEBHOOK_TRIGGER = 'webhook-trigger',
+  // WebhookEndpoint trigger — fires on an inbound delivery to a user-created
+  // WebhookEndpoint for a specific topic. Routed via POST /webhooks/endpoint/:id
+  // and dispatched off (triggerWebhookEndpointId, triggerTopic).
+  WEBHOOK_ENDPOINT = 'webhook-endpoint',
 
   // Resource-based triggers
   MANUAL = 'manual', // Triggered manually from UI on a specific record
@@ -100,7 +100,7 @@ export enum WorkflowTriggerType {
 export const WORKFLOW_TRIGGER_TYPE_VALUES = [
   WorkflowTriggerType.FORM,
   WorkflowTriggerType.WEBHOOK,
-  WorkflowTriggerType.WEBHOOK_TRIGGER,
+  WorkflowTriggerType.WEBHOOK_ENDPOINT,
   WorkflowTriggerType.MANUAL,
   WorkflowTriggerType.CREATED,
   WorkflowTriggerType.UPDATED,
@@ -119,7 +119,7 @@ export const WORKFLOW_TRIGGER_TYPE_VALUES = [
 export const TRIGGER_NAME_MAP: Record<WorkflowTriggerType, string> = {
   [WorkflowTriggerType.FORM]: 'Form',
   [WorkflowTriggerType.WEBHOOK]: 'Webhook',
-  [WorkflowTriggerType.WEBHOOK_TRIGGER]: 'Connection Webhook',
+  [WorkflowTriggerType.WEBHOOK_ENDPOINT]: 'Webhook Endpoint',
   [WorkflowTriggerType.MANUAL]: 'Manual',
   [WorkflowTriggerType.CREATED]: 'Created',
   [WorkflowTriggerType.UPDATED]: 'Updated',

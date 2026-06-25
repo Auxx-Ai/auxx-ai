@@ -1,18 +1,21 @@
 // apps/api/src/routes/webhooks.ts
 
-import { database } from '@auxx/database'
+import { decryptValue } from '@auxx/credentials'
+import { database, schema } from '@auxx/database'
 import { invokeLambdaExecutor, prepareLambdaContext } from '@auxx/lib/apps'
-import {
-  enqueueConnectorWebhook,
-  resolveConnectionWebhookCapability,
-  type WebhookAction,
-} from '@auxx/lib/data-connectors'
 import { getQueue, Queues } from '@auxx/lib/jobs/queues'
-import { dedupeWebhookEvent, normalizeHeaders } from '@auxx/lib/webhooks'
+import {
+  dedupeWebhookEvent,
+  normalizeHeaders,
+  timingSafeStringEqual,
+  verifyHmacSignature,
+} from '@auxx/lib/webhooks'
 import { createScopedLogger } from '@auxx/logger'
 import { getRedisClient } from '@auxx/redis'
-import { getConnectionWebhookHandler, getWebhookHandler } from '@auxx/services/app-webhook-handlers'
-import { createHash, randomUUID, timingSafeEqual } from 'crypto'
+import { getWebhookHandler } from '@auxx/services/app-webhook-handlers'
+import { getByPath } from '@auxx/utils'
+import { createHash, randomUUID } from 'crypto'
+import { eq } from 'drizzle-orm'
 import { Hono } from 'hono'
 import { errorResponse } from '../lib/response'
 import type { AppContext } from '../types/context'
@@ -21,160 +24,209 @@ const log = createScopedLogger('webhooks-receiver')
 
 const webhooks = new Hono<AppContext>()
 
-/**
- * Unified connection webhook ingress (Direction 2). ONE endpoint per connection;
- * every provider delivery (Shopify `orders/create`, Stripe `customer.updated`) lands
- * here. Verify (HMAC over the RAW body) + dedupe ONCE, then fan the single delivery
- * to every bound consumer — the data-connector sink, workflows, and agents — and
- * return 200 fast (W2). The capability resolves from the CONNECTION's provider, so a
- * connection can carry triggers with no data connector.
- */
-async function handleConnectionWebhook(c: any) {
-  const connectionId = c.req.param('connectionId')
+/** Reject deliveries larger than this — public, unauthenticated endpoint. */
+const MAX_BODY_BYTES = 1_000_000 // 1 MB
+/** Fixed-window rate limit per endpoint. */
+const RATE_LIMIT_PER_MIN = 60
 
-  // Read the raw body ONCE, before any parse — HMAC is computed over raw bytes (W1).
+/**
+ * Provider-agnostic inbound webhook ingress. ONE public URL per `WebhookEndpoint`
+ * (bound to no app/connection — the id IS the capability). Verify over the RAW body
+ * with the endpoint's own secret (none | token | hmac), dedupe ONCE, then fan the
+ * single delivery to workflows + agents and return 200 fast. (Connector sink = phase 4.)
+ */
+async function handleWebhookEndpoint(c: any) {
+  const endpointId = c.req.param('endpointId')
+
+  // 0. Body cap on the declared length before reading (arbitrary public POST).
+  const declaredLength = Number(c.req.header('content-length') ?? '0')
+  if (declaredLength > MAX_BODY_BYTES) {
+    return c.json(errorResponse('PAYLOAD_TOO_LARGE', 'Body exceeds 1 MB'), 413)
+  }
+
+  // 1. Read the raw body ONCE, before any parse — HMAC is over the raw bytes.
   const rawBody = await c.req.text()
+  if (Buffer.byteLength(rawBody) > MAX_BODY_BYTES) {
+    return c.json(errorResponse('PAYLOAD_TOO_LARGE', 'Body exceeds 1 MB'), 413)
+  }
   const headers = normalizeHeaders(c.req.raw.headers)
 
   try {
-    const connection = await database.query.Credential.findFirst({
-      where: (cred, { eq }) => eq(cred.id, connectionId),
-      columns: { id: true, type: true, organizationId: true },
+    // 2. Load the endpoint — the id resolves to exactly one org (no wrong-org check needed).
+    const endpoint = await database.query.WebhookEndpoint.findFirst({
+      where: (we, { eq }) => eq(we.id, endpointId),
+      columns: {
+        id: true,
+        organizationId: true,
+        verification: true,
+        secret: true,
+        signatureHeader: true,
+        signaturePrefix: true,
+        signatureEncoding: true,
+        topicSource: true,
+      },
     })
-    if (!connection) {
-      log.warn('Connection webhook: connection not found', { connectionId })
-      return c.json(errorResponse('NOT_FOUND', 'Connection not found'), 404)
+    if (!endpoint) {
+      log.warn('Webhook endpoint: not found', { endpointId })
+      return c.json(errorResponse('NOT_FOUND', 'Webhook endpoint not found'), 404)
     }
 
-    const handlerResult = await getConnectionWebhookHandler({ connectionId })
-    if (handlerResult.isErr()) {
-      log.warn('Connection webhook: no handler registered', { connectionId })
-      return c.json(errorResponse('NOT_FOUND', 'Webhook not registered'), 404)
-    }
-    const secret = parseWebhookSecret(handlerResult.value.metadata)
-
-    const capability = resolveConnectionWebhookCapability({ type: connection.type })
-    if (!capability) {
-      log.warn('Connection webhook: connection provider has no webhook capability', {
-        connectionId,
-        provider: connection.type,
-      })
-      return c.json(errorResponse('NOT_FOUND', 'No webhook capability'), 404)
+    // 3. Rate-limit per endpoint.
+    if (await isEndpointRateLimited(endpointId)) {
+      log.warn('Webhook endpoint: rate limited', { endpointId })
+      return c.json(errorResponse('RATE_LIMITED', 'Too many requests'), 429)
     }
 
-    // 1. Verify authenticity over the raw bytes.
-    if (!capability.verify({ rawBody, headers, secret })) {
-      log.warn('Connection webhook: signature verification failed', { connectionId })
+    // 4-5. Verify authenticity over the raw bytes (none | token | hmac).
+    const queryToken = c.req.query('token')
+    if (!verifyEndpointDelivery(endpoint, rawBody, headers, queryToken)) {
+      log.warn('Webhook endpoint: verification failed', { endpointId })
       return c.json(errorResponse('UNAUTHORIZED', 'Invalid signature'), 401)
     }
 
-    // 2. Dedupe ONCE at the connection level (fallback: a hash of the body). The sink
-    //    job + trigger dispatch jobs keep their own dedupe (defense in depth).
-    const eventId =
-      capability.eventId({ rawBody, headers }) ?? createHash('sha256').update(rawBody).digest('hex')
+    // 6. Idempotency — hash the raw body (no configured id header). Dedupe 5-min.
+    const eventId = createHash('sha256').update(rawBody).digest('hex')
     const deduped = await dedupeWebhookEvent(
-      'connection-webhook-dedup',
-      `${connectionId}:${eventId}`
+      'webhook-endpoint-dedup',
+      `${endpointId}:${eventId}`,
+      300
     )
     if (deduped) {
-      log.info('Connection webhook: duplicate delivery, dropping', { connectionId, eventId })
+      log.info('Webhook endpoint: duplicate delivery, dropping', { endpointId, eventId })
       return c.json({ ok: true, duplicate: true }, 200)
     }
 
-    // 3. Parse the verified body; resolve the topic + sink actions (pure, one source).
-    let payload: unknown = null
+    // 7. Parse the verified body (non-JSON → keep the raw string).
+    let payload: unknown
     try {
       payload = rawBody ? JSON.parse(rawBody) : null
     } catch {
-      payload = null
+      payload = rawBody
     }
-    const topic = capability.resolveTopic({ headers, payload })
-    const actions = capability.resolveWebhook({ headers, payload })
 
-    // 4. Push the delivery to the inspector stream (per connection+topic), then fan out.
-    await pushConnectionWebhookEvent(connectionId, topic, payload, eventId)
-    const counts = await fanOutConnectionWebhook({
-      connectionId,
-      organizationId: connection.organizationId,
+    // 8. Optional topic extraction (header or JSON path) so one endpoint can multiplex.
+    const topic = resolveEndpointTopic(endpoint.topicSource, headers, payload)
+
+    // 9. Push to the inspector stream (per endpoint+topic), then fan out.
+    await pushWebhookEndpointEvent(endpointId, topic, payload, eventId)
+    const dispatched = await fanOutWebhookEndpoint({
+      endpointId,
+      organizationId: endpoint.organizationId,
       topic,
-      payload,
-      actions,
+      triggerData: payload,
       eventId,
     })
 
-    log.info('Connection webhook accepted', { connectionId, eventId, topic, ...counts })
-    return c.json({ ok: true, topic, ...counts }, 200)
+    // 10/11. Stamp liveness (throttled to ≤1/min).
+    await stampWebhookEndpointEvent(endpointId)
+
+    log.info('Webhook endpoint accepted', { endpointId, eventId, topic, dispatched })
+    return c.json({ ok: true, topic, dispatched }, 200)
   } catch (error: any) {
-    log.error('Connection webhook receiver error', { error: error.message, connectionId })
+    log.error('Webhook endpoint receiver error', { error: error.message, endpointId })
     return c.json(errorResponse('INTERNAL_ERROR', 'Internal server error'), 500)
   }
 }
 
-/** Read the signing secret out of a webhook handler row's `{ secret }` metadata. */
-function parseWebhookSecret(metadata: string | null): string | null {
-  if (!metadata) return null
+/** Fixed-window per-endpoint rate limit. Redis down → allow (fail-open). */
+async function isEndpointRateLimited(endpointId: string): Promise<boolean> {
   try {
-    return (JSON.parse(metadata) as { secret?: string }).secret ?? null
+    const redis = await getRedisClient(false)
+    if (!redis) return false
+    const key = `webhook-endpoint-rate:${endpointId}`
+    const count = await redis.incr(key)
+    if (count === 1) await redis.expire(key, 60)
+    return count > RATE_LIMIT_PER_MIN
   } catch {
-    return null
+    return false
   }
 }
 
 /**
- * Fan one verified delivery to every bound consumer on the connection:
- *   • SINK     — each webhook DataConnector on the connection (the sink job drops
- *                actions for streams it doesn't map, so fanning to N is safe).
- *   • WORKFLOW — the `(connectionId, topic)` webhook-trigger dispatch job.
- *   • AGENT    — the `(connectionId, topic)` agent webhook-trigger dispatch job.
+ * Verify an inbound delivery against the endpoint's own secret. Reuses the canonical
+ * timing-safe helpers (`verifyHmacSignature`, `timingSafeStringEqual`).
+ *   none  → accept (open endpoint — the UI flags it)
+ *   token → constant-time compare of a Bearer header / `?token=` against the secret
+ *   hmac  → HMAC over the raw body, compared to the configured signature header
  */
-async function fanOutConnectionWebhook(input: {
-  connectionId: string
-  organizationId: string
-  topic: string
-  payload: unknown
-  actions: WebhookAction[]
-  eventId: string
-}): Promise<{ sinkJobs: number; dispatched: boolean }> {
-  const { connectionId, organizationId, topic, payload, actions, eventId } = input
+function verifyEndpointDelivery(
+  endpoint: {
+    verification: 'none' | 'token' | 'hmac'
+    secret: string | null
+    signatureHeader: string | null
+    signaturePrefix: string | null
+    signatureEncoding: 'hex' | 'base64'
+  },
+  rawBody: string,
+  headers: Record<string, string>,
+  queryToken?: string
+): boolean {
+  if (endpoint.verification === 'none') return true
 
-  // SINK — bound webhook connectors on this connection.
-  let sinkJobs = 0
-  if (actions.length > 0) {
-    const connectors = await database.query.DataConnector.findMany({
-      where: (dc, { and, eq }) =>
-        and(
-          eq(dc.organizationId, organizationId),
-          eq(dc.credentialId, connectionId),
-          eq(dc.syncBehavior, 'webhook')
-        ),
-      columns: { id: true },
-    })
-    for (const connector of connectors) {
-      await enqueueConnectorWebhook({ connectorId: connector.id, organizationId, actions, eventId })
-      sinkJobs++
-    }
+  const secret = decryptValue(endpoint.secret)
+  if (!secret) return false
+
+  if (endpoint.verification === 'token') {
+    const auth = headers.authorization ?? ''
+    const provided = auth.toLowerCase().startsWith('bearer ') ? auth.slice(7) : (queryToken ?? '')
+    return timingSafeStringEqual(provided, secret)
   }
 
-  // WORKFLOW + AGENT — reuse the app-trigger fan-out queue with sibling job names.
-  const dispatchPayload = { connectionId, topic, triggerData: payload, eventId, organizationId }
-  try {
-    const appTriggerQueue = getQueue(Queues.appTriggerQueue)
-    await appTriggerQueue.add('dispatchConnectionWebhook', dispatchPayload)
-    await appTriggerQueue.add('dispatchConnectionWebhookToAgents', dispatchPayload)
-  } catch (dispatchError: any) {
-    log.error('Failed to enqueue connection webhook dispatch', {
-      error: dispatchError.message,
-      connectionId,
-      topic,
-    })
-    return { sinkJobs, dispatched: false }
-  }
-  return { sinkJobs, dispatched: true }
+  // hmac
+  const header = (endpoint.signatureHeader ?? 'x-signature').toLowerCase()
+  return verifyHmacSignature({
+    rawBody,
+    secret,
+    signature: headers[header],
+    prefix: endpoint.signaturePrefix ?? undefined,
+    encoding: endpoint.signatureEncoding,
+  })
 }
 
-/** Store a delivery in Redis for the connection-webhook delivery inspector (SSE). */
-async function pushConnectionWebhookEvent(
-  connectionId: string,
+/** Extract the topic from a header or a JSON path (absent ⇒ '' ⇒ matches every filter). */
+function resolveEndpointTopic(
+  topicSource: { kind: 'header' | 'path'; value: string } | null,
+  headers: Record<string, string>,
+  payload: unknown
+): string {
+  if (!topicSource) return ''
+  if (topicSource.kind === 'header') return headers[topicSource.value.toLowerCase()] ?? ''
+  const value = getByPath(payload, topicSource.value)
+  if (value == null) return ''
+  return typeof value === 'string' ? value : String(value)
+}
+
+/**
+ * Fan one verified delivery to the workflow + agent dispatch jobs on the app-trigger
+ * queue. (The connector-sink leg is phase 4.) Keyed on `(endpointId, topic)`.
+ */
+async function fanOutWebhookEndpoint(input: {
+  endpointId: string
+  organizationId: string
+  topic: string
+  triggerData: unknown
+  eventId: string
+}): Promise<boolean> {
+  const { endpointId, organizationId, topic, triggerData, eventId } = input
+  const dispatchPayload = { endpointId, topic, triggerData, eventId, organizationId }
+  try {
+    const appTriggerQueue = getQueue(Queues.appTriggerQueue)
+    await appTriggerQueue.add('dispatchWebhookEndpoint', dispatchPayload)
+    await appTriggerQueue.add('dispatchWebhookEndpointToAgents', dispatchPayload)
+  } catch (dispatchError: any) {
+    log.error('Failed to enqueue webhook endpoint dispatch', {
+      error: dispatchError.message,
+      endpointId,
+      topic,
+    })
+    return false
+  }
+  return true
+}
+
+/** Store a delivery in Redis for the webhook-endpoint delivery inspector (SSE). */
+async function pushWebhookEndpointEvent(
+  endpointId: string,
   topic: string,
   payload: unknown,
   eventId: string
@@ -182,8 +234,8 @@ async function pushConnectionWebhookEvent(
   try {
     const redis = await getRedisClient(false)
     if (!redis) return
-    const redisKey = `connection-webhook:${connectionId}:${topic}:events`
-    const testEvent = {
+    const redisKey = `webhook-endpoint:${endpointId}:${topic}:events`
+    const event = {
       id: randomUUID(),
       timestamp: new Date().toISOString(),
       source: 'webhook',
@@ -191,15 +243,32 @@ async function pushConnectionWebhookEvent(
       triggerData: payload,
       eventId,
     }
-    await redis.lpush(redisKey, JSON.stringify(testEvent))
+    await redis.lpush(redisKey, JSON.stringify(event))
     await redis.ltrim(redisKey, 0, 49)
     await redis.expire(redisKey, 300)
   } catch (redisError: any) {
-    log.warn('Failed to store connection webhook event in Redis', {
+    log.warn('Failed to store webhook endpoint event in Redis', {
       error: redisError.message,
-      connectionId,
+      endpointId,
       topic,
     })
+  }
+}
+
+/** Stamp `lastEventAt` on the endpoint, throttled to ≤1/min per endpoint via Redis NX. */
+async function stampWebhookEndpointEvent(endpointId: string): Promise<void> {
+  try {
+    const redis = await getRedisClient(false)
+    if (redis) {
+      const fresh = await redis.set(`webhook-endpoint-stamp:${endpointId}`, '1', 'EX', 60, 'NX')
+      if (!fresh) return
+    }
+    await database
+      .update(schema.WebhookEndpoint)
+      .set({ lastEventAt: new Date() })
+      .where(eq(schema.WebhookEndpoint.id, endpointId))
+  } catch (error: any) {
+    log.warn('Failed to stamp webhook endpoint lastEventAt', { error: error.message, endpointId })
   }
 }
 
@@ -405,9 +474,9 @@ async function handleWebhookRequest(c: any) {
   }
 }
 
-// Unified connection webhook ingress (Direction 2) — registered first so `connection`
+// Provider-agnostic inbound webhook endpoint — registered first so `endpoint`
 // is never captured as an `:installationId`.
-webhooks.post('/connection/:connectionId', handleConnectionWebhook)
+webhooks.post('/endpoint/:endpointId', handleWebhookEndpoint)
 
 // Support both POST and GET (for webhook verification)
 // Connection-scoped routes (must be registered first to avoid ambiguity)

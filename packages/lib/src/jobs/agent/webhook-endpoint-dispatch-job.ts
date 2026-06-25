@@ -1,7 +1,7 @@
-// packages/lib/src/jobs/agent/connection-webhook-dispatch-job.ts
-// Sibling to `dispatchAppTriggerToAgents` (app-trigger-dispatch-job.ts), for the unified
-// connection webhook ingress (Direction 2). One verified delivery → all agent triggers
-// whose `kind: 'webhook'` matches `(connectionId, topic)`. Same `:agents` dedup suffix,
+// packages/lib/src/jobs/agent/webhook-endpoint-dispatch-job.ts
+// Sibling to `dispatchAppTriggerToAgents` (app-trigger-dispatch-job.ts), for the
+// provider-agnostic inbound webhook ingress. One verified delivery → all agent triggers
+// whose `kind: 'webhook'` matches `(endpointId, topic)`. Same `:agents` dedup suffix,
 // same `matchesFilter`, same `executeAgentAppTrigger` executor — only the matcher differs.
 
 import { getRedisClient } from '@auxx/redis'
@@ -11,10 +11,10 @@ import { getCachedAgents } from '../../cache'
 import { createScopedLogger } from '../../logger'
 import { getQueue, Queues } from '../queues'
 
-const logger = createScopedLogger('agent-connection-webhook-dispatch-job')
+const logger = createScopedLogger('agent-webhook-endpoint-dispatch-job')
 
-export type AgentConnectionWebhookDispatchJobData = {
-  connectionId: string
+export type AgentWebhookEndpointDispatchJobData = {
+  endpointId: string
   topic: string
   triggerData: Record<string, unknown>
   eventId: string
@@ -22,27 +22,27 @@ export type AgentConnectionWebhookDispatchJobData = {
 }
 
 /**
- * BullMQ job handler: dispatch a connection webhook delivery to all matching agent
- * triggers. Sibling to `dispatchConnectionWebhook` (workflows); the `:agents` dedup
- * suffix keeps the agent fire independent of the workflow + sink fires.
+ * BullMQ job handler: dispatch a webhook-endpoint delivery to all matching agent
+ * triggers. Sibling to `dispatchWebhookEndpoint` (workflows); the `:agents` dedup
+ * suffix keeps the agent fire independent of the workflow fire.
  */
-export async function dispatchConnectionWebhookToAgents(
-  job: Job<AgentConnectionWebhookDispatchJobData>
+export async function dispatchWebhookEndpointToAgents(
+  job: Job<AgentWebhookEndpointDispatchJobData>
 ) {
-  const { connectionId, topic, triggerData, eventId, organizationId } = job.data
+  const { endpointId, topic, triggerData, eventId, organizationId } = job.data
 
-  const dedupKey = `connection-webhook-dedup:${connectionId}:${topic}:${eventId}:agents`
+  const dedupKey = `webhook-endpoint-dispatch-dedup:${endpointId}:${topic}:${eventId}:agents`
   try {
     const redis = await getRedisClient(false)
     if (redis) {
       const setResult = await redis.set(dedupKey, '1', 'EX', 300, 'NX')
       if (!setResult) {
-        logger.warn('Duplicate agent connection-webhook event, skipping', { dedupKey, eventId })
+        logger.warn('Duplicate agent webhook-endpoint event, skipping', { dedupKey, eventId })
         return { agentSessionsEnqueued: 0 }
       }
     }
   } catch (err) {
-    logger.error('Redis dedup check failed for agent connection webhook', {
+    logger.error('Redis dedup check failed for agent webhook endpoint', {
       dedupKey,
       error: err instanceof Error ? err.message : String(err),
     })
@@ -57,14 +57,14 @@ export async function dispatchConnectionWebhookToAgents(
   for (const agent of agents) {
     for (const trigger of agent.triggers) {
       if (trigger.kind !== 'webhook' || !trigger.enabled) continue
-      if (trigger.triggerConnectionId !== connectionId) continue
+      if (trigger.triggerWebhookEndpointId !== endpointId) continue
       if (trigger.triggerTopic !== topic) continue
       matches.push({ agentId: agent.id, triggerId: trigger.id, config: trigger.config })
     }
   }
 
   if (matches.length === 0) {
-    logger.debug('No matching agent triggers for connection webhook', { connectionId, topic })
+    logger.debug('No matching agent triggers for webhook endpoint', { endpointId, topic })
     return { agentSessionsEnqueued: 0 }
   }
 
@@ -78,7 +78,7 @@ export async function dispatchConnectionWebhookToAgents(
       agentTriggerId: match.triggerId,
       agentId: match.agentId,
       organizationId,
-      connectionId,
+      webhookEndpointId: endpointId,
       topic,
       triggerData,
       eventId,
@@ -87,8 +87,8 @@ export async function dispatchConnectionWebhookToAgents(
     enqueued++
   }
 
-  logger.info('Dispatched agent connection webhook', {
-    connectionId,
+  logger.info('Dispatched agent webhook endpoint', {
+    endpointId,
     topic,
     matched: matches.length,
     enqueued,

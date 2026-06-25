@@ -1,7 +1,7 @@
 // packages/lib/src/cache/providers/workflow-apps-provider.test.ts
-// Pure matcher test for `byConnectionWebhook` (Direction 2): enabled `webhook-trigger`
-// workflows match on `(connectionId, topic)` and respect `enabled`. Built over a fake
-// dataFn (the accessor reads through it) so no DB/cache is involved.
+// Pure matcher test for `byWebhookEndpoint`: enabled `webhook-endpoint` workflows match
+// on `(endpointId, topic)` and respect `enabled`. Built over a fake dataFn (the accessor
+// reads through it) so no DB/cache is involved.
 
 import { describe, expect, it } from 'vitest'
 import type { CachedPublishedWorkflow, CachedWorkflowApp } from './workflow-apps-provider'
@@ -35,6 +35,7 @@ function app(
           triggerTriggerId: null,
           triggerInstallationId: null,
           triggerConnectionId: null,
+          triggerWebhookEndpointId: null,
           triggerTopic: null,
           graph: null,
           envVars: null,
@@ -50,23 +51,23 @@ function accessorOver(apps: CachedWorkflowApp[]) {
   return workflowAppsProvider.createAccessor(async () => apps)
 }
 
-describe('byConnectionWebhook', () => {
+describe('byWebhookEndpoint', () => {
   const webhook = (overrides: Partial<CachedPublishedWorkflow>) => ({
-    triggerType: 'webhook-trigger',
-    triggerConnectionId: 'conn1',
+    triggerType: 'webhook-endpoint',
+    triggerWebhookEndpointId: 'ep1',
     triggerTopic: 'orders/create',
     ...overrides,
   })
 
-  it('matches enabled webhook-trigger workflows on (connectionId, topic)', async () => {
+  it('matches enabled webhook-endpoint workflows on (endpointId, topic)', async () => {
     const accessor = accessorOver([
       app('match', true, webhook({})),
       app('other-topic', true, webhook({ triggerTopic: 'orders/delete' })),
-      app('other-conn', true, webhook({ triggerConnectionId: 'conn2' })),
-      app('wrong-type', true, { triggerType: 'app-trigger', triggerConnectionId: 'conn1' }),
+      app('other-endpoint', true, webhook({ triggerWebhookEndpointId: 'ep2' })),
+      app('wrong-type', true, { triggerType: 'app-trigger', triggerWebhookEndpointId: 'ep1' }),
     ])
-    const matched = await accessor.byConnectionWebhook({
-      connectionId: 'conn1',
+    const matched = await accessor.byWebhookEndpoint({
+      endpointId: 'ep1',
       topic: 'orders/create',
     })
     expect(matched.map((a) => a.id)).toEqual(['match'])
@@ -74,8 +75,8 @@ describe('byConnectionWebhook', () => {
 
   it('excludes disabled apps', async () => {
     const accessor = accessorOver([app('disabled', false, webhook({}))])
-    const matched = await accessor.byConnectionWebhook({
-      connectionId: 'conn1',
+    const matched = await accessor.byWebhookEndpoint({
+      endpointId: 'ep1',
       topic: 'orders/create',
     })
     expect(matched).toEqual([])

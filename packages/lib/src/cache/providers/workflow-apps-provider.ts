@@ -37,7 +37,8 @@ export interface CachedPublishedWorkflow {
   triggerTriggerId: string | null
   triggerInstallationId: string | null
   triggerConnectionId: string | null
-  // Connection webhook-trigger topic (for byConnectionWebhook matching)
+  // Webhook-endpoint trigger fields (for byWebhookEndpoint matching)
+  triggerWebhookEndpointId: string | null
   triggerTopic: string | null
 
   // Execution data
@@ -69,6 +70,7 @@ function dehydrateWorkflowApp(app: {
     triggerTriggerId: string | null
     triggerInstallationId: string | null
     triggerConnectionId: string | null
+    triggerWebhookEndpointId: string | null
     triggerTopic: string | null
     graph: unknown
     envVars: unknown
@@ -102,6 +104,7 @@ function dehydrateWorkflowApp(app: {
           triggerTriggerId: app.publishedWorkflow.triggerTriggerId,
           triggerInstallationId: app.publishedWorkflow.triggerInstallationId,
           triggerConnectionId: app.publishedWorkflow.triggerConnectionId,
+          triggerWebhookEndpointId: app.publishedWorkflow.triggerWebhookEndpointId,
           triggerTopic: app.publishedWorkflow.triggerTopic,
           graph: app.publishedWorkflow.graph,
           envVars: app.publishedWorkflow.envVars,
@@ -170,17 +173,17 @@ export const workflowAppsProvider: CacheProvider<CachedWorkflowApp[]> = {
         )
       },
 
-      /** Find enabled apps matching a connection webhook trigger `(connectionId, topic)` */
-      async byConnectionWebhook(params: {
-        connectionId: string
+      /** Find enabled apps matching a webhook-endpoint trigger `(endpointId, topic)` */
+      async byWebhookEndpoint(params: {
+        endpointId: string
         topic: string
       }): Promise<CachedWorkflowApp[]> {
         const data = await dataFn()
         return data.filter(
           (app) =>
             app.enabled &&
-            app.publishedWorkflow?.triggerType === 'webhook-trigger' &&
-            app.publishedWorkflow?.triggerConnectionId === params.connectionId &&
+            app.publishedWorkflow?.triggerType === 'webhook-endpoint' &&
+            app.publishedWorkflow?.triggerWebhookEndpointId === params.endpointId &&
             app.publishedWorkflow?.triggerTopic === params.topic
         )
       },

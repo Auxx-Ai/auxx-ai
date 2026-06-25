@@ -22,6 +22,7 @@ import type { DetailMethod } from './connection-detail-page'
 import { ConnectionStackCard } from './connection-stack-card'
 import { appTarget, platformTarget } from './connection-targets'
 import { type ConnectionGroup, groupConnections } from './group-connections'
+import { McpReconnectController } from './mcp-reconnect-controller'
 
 /**
  * Settings → Channels → Connections. A unified card grid of every connection the
@@ -39,9 +40,19 @@ export function ConnectionsSection() {
   )
   const { data: providers = [], isLoading: providersLoading } =
     api.connections.listProviders.useQuery()
+  // MCP rows are owned by `mcpServerId` — look up their slug here to drive the MCP connect flow.
+  const { data: mcpServers = [] } = api.mcp.list.useQuery()
+  const mcpSlugByServer = useMemo(
+    () => new Map(mcpServers.map((s) => [s.serverId, s.slug])),
+    [mcpServers]
+  )
 
   const [addOpen, setAddOpen] = useState(false)
   const [editRow, setEditRow] = useState<ConnectionRow | null>(null)
+  // The MCP server being (re)connected from a row's Reconnect — drives the connect controller. The
+  // `attempt` nonce keys the controller so re-clicking Reconnect (even on the same server after a
+  // cancel) always remounts it and re-fires the connect.
+  const [reconnectMcp, setReconnectMcp] = useState<{ slug: string; attempt: number } | null>(null)
   // One open stack per page (master-detail); cleared in search mode.
   const [expandedKey, setExpandedKey] = useState<string | null>(null)
   const [search, setSearch] = useState('')
@@ -76,12 +87,14 @@ export function ConnectionsSection() {
     const inst = row.appId ? appInstallations.find((i) => i.app.id === row.appId) : undefined
     if (inst?.app.avatarUrl) return inst.app.avatarUrl
     if (row.icon) return row.icon
-    return row.kind === 'app' ? 'package' : 'key-round'
+    if (row.kind === 'app') return 'package'
+    return row.kind === 'mcp' ? 'server' : 'key-round'
   }
 
   const resolveSubtitle = (row: ConnectionRow): string => {
     const provider = providerByKey.get(row.type)
     if (provider) return provider.label
+    if (row.kind === 'mcp') return 'MCP server'
     const inst = row.appId ? appInstallations.find((i) => i.app.id === row.appId) : undefined
     return inst?.app.title ?? row.type
   }
@@ -101,6 +114,20 @@ export function ConnectionsSection() {
       flow.start({ target: appTarget(inst), scope: row.scope, connectionId: row.id })
       return
     }
+    // MCP rows reconnect through the MCP-native flow (its own OAuth route + connect mutation),
+    // keyed by the owning server's slug — never the platform provider path.
+    if (row.kind === 'mcp') {
+      const slug = row.mcpServerId ? mcpSlugByServer.get(row.mcpServerId) : undefined
+      if (!slug) {
+        toastError({
+          title: 'MCP server unavailable',
+          description: 'Reconnect this server from the MCP settings page instead.',
+        })
+        return
+      }
+      setReconnectMcp((prev) => ({ slug, attempt: (prev?.attempt ?? 0) + 1 }))
+      return
+    }
     const provider = providerByKey.get(row.type)
     if (!provider) {
       toastError({
@@ -112,10 +139,11 @@ export function ConnectionsSection() {
     flow.start({ target: platformTarget(provider), scope: row.scope, connectionId: row.id })
   }
 
-  // Plain connection secrets with no platform definition edit a single API
-  // key inline in the edit dialog; apps/platform providers rename inline and re-auth /
-  // rotate their key through the flow's Reconnect button.
-  const isPlainSecret = (row: ConnectionRow) => row.kind !== 'app' && !providerByKey.get(row.type)
+  // Plain connection secrets with no platform definition edit a single API key inline in the edit
+  // dialog; apps/platform providers rename inline and re-auth / rotate their key through the flow's
+  // Reconnect button. MCP rows are never plain secrets — they reconnect through the MCP flow.
+  const isPlainSecret = (row: ConnectionRow) =>
+    row.kind !== 'app' && row.kind !== 'mcp' && !providerByKey.get(row.type)
 
   // The platform provider backing this row (if any). Secret providers (e.g. AI API keys) edit
   // their credential fields inline; OAuth providers re-authorize through Reconnect.
@@ -435,6 +463,16 @@ export function ConnectionsSection() {
 
       {/* Connect/reconnect dialogs (variable, secret) owned by the flow. */}
       {flow.Dialogs}
+      {/* MCP reconnect: loads the server by slug, then runs the MCP-native connect flow. The
+          `attempt` nonce as key forces a fresh mount per Reconnect click. */}
+      {reconnectMcp && (
+        <McpReconnectController
+          key={reconnectMcp.attempt}
+          slug={reconnectMcp.slug}
+          onConnected={invalidate}
+          onClose={() => setReconnectMcp(null)}
+        />
+      )}
       <ConfirmDialog />
     </div>
   )

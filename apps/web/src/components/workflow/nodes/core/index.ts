@@ -158,7 +158,7 @@ export const NODE_TYPES: Record<string, ComponentType<NodeProps>> = {
   [NodeType.ANSWER]: AnswerNode as ComponentType<NodeProps>,
   [NodeType.MESSAGE_RECEIVED]: MessageReceivedNode as ComponentType<NodeProps>,
   [NodeType.WEBHOOK]: WebhookNode as ComponentType<NodeProps>,
-  [NodeType.WEBHOOK_TRIGGER]: WebhookTriggerNode as ComponentType<NodeProps>,
+  [NodeType.WEBHOOK_ENDPOINT]: WebhookTriggerNode as ComponentType<NodeProps>,
   [NodeType.SCHEDULED]: ScheduledTriggerNode as ComponentType<NodeProps>,
   [NodeType.MANUAL]: ManualNode as ComponentType<NodeProps>,
   [NodeType.END]: EndNode as ComponentType<NodeProps>,

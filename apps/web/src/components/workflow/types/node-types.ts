@@ -8,7 +8,7 @@ export enum NodeType {
   // Trigger nodes - aligned with backend WorkflowTriggerType
   MESSAGE_RECEIVED = 'message-received',
   WEBHOOK = 'webhook',
-  WEBHOOK_TRIGGER = 'webhook-trigger', // Connection-keyed webhook trigger
+  WEBHOOK_ENDPOINT = 'webhook-endpoint', // Inbound WebhookEndpoint trigger
   SCHEDULED = 'scheduled',
   MANUAL = 'manual',
   RESOURCE_TRIGGER = 'resource-trigger', // Unified resource trigger
@@ -74,7 +74,7 @@ export function getNodeTypeDisplayName(type: NodeType): string {
   const displayNames: Record<NodeType, string> = {
     [NodeType.MESSAGE_RECEIVED]: 'Message Received',
     [NodeType.WEBHOOK]: 'Webhook',
-    [NodeType.WEBHOOK_TRIGGER]: 'Connection Webhook',
+    [NodeType.WEBHOOK_ENDPOINT]: 'Webhook Endpoint',
     [NodeType.SCHEDULED]: 'Scheduled Trigger',
     [NodeType.MANUAL]: 'Manual Trigger',
     [NodeType.RESOURCE_TRIGGER]: 'Resource',
