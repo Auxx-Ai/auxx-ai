@@ -11,6 +11,7 @@ import {
   SelectValue,
 } from '@auxx/ui/components/select'
 import React, { useMemo } from 'react'
+import { WebhookEndpointInspector } from '~/components/webhooks/ui/webhook-endpoint-inspector'
 import { useNodeCrud, useReadOnly } from '~/components/workflow/hooks'
 import { BasePanel } from '~/components/workflow/nodes/shared/base/base-panel'
 import Field from '~/components/workflow/ui/field'
@@ -106,6 +107,14 @@ const WebhookTriggerPanelComponent: React.FC<WebhookTriggerPanelProps> = ({ node
           )}
         </div>
       </Section>
+
+      {nodeData.webhookEndpointId && (
+        <WebhookEndpointInspector
+          endpointId={nodeData.webhookEndpointId}
+          topic={nodeData.topic}
+          description='Live deliveries to this endpoint matching this trigger.'
+        />
+      )}
 
       <OutputVariablesDisplay
         outputVariables={webhookTriggerDefinition.outputVariables?.(nodeData, nodeId) || []}

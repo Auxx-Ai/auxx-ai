@@ -17,6 +17,11 @@ export interface TreeRowProps {
   description?: string
   /** Secondary text rendered to the right of the description. */
   secondary?: React.ReactNode
+  /**
+   * Let the `title` keep its natural width and have `secondary` fill the remaining space
+   * (truncating). Default: both size to content, so a long `secondary` can crowd the title.
+   */
+  secondaryFill?: boolean
   /** Right-side slot — switch, badge cluster, count text, etc. */
   actions?: React.ReactNode
   /** Escape hatch — full custom trailing content; if set, replaces `actions` + chevron. */
@@ -188,6 +193,7 @@ export function TreeRow({
   title,
   description,
   secondary,
+  secondaryFill = false,
   actions,
   trailing,
   depth = 0,
@@ -209,6 +215,7 @@ export function TreeRow({
     <span
       className={cn(
         'truncate px-1 py-1.5 text-foreground text-sm',
+        secondaryFill && 'shrink-0',
         onTitleClick && 'cursor-pointer'
       )}
       onClick={
@@ -246,7 +253,15 @@ export function TreeRow({
           {description && (
             <TooltipExplanation text={description} className='text-primary-400 shrink-0' />
           )}
-          {secondary && <span className='ml-1 truncate text-primary-400 text-sm'>{secondary}</span>}
+          {secondary && (
+            <span
+              className={cn(
+                'ml-1 truncate text-primary-400 text-sm',
+                secondaryFill && 'min-w-0 flex-1'
+              )}>
+              {secondary}
+            </span>
+          )}
 
           {/* Trailing chevron — omitted when the icon doubles as the hover chevron. */}
           {expandable && !chevronOnHover && (

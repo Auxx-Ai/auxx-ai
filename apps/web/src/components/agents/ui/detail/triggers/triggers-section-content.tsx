@@ -224,6 +224,13 @@ export function TriggersSectionContent({
         appSelection={appSelectionForDialog}
         webhookSelection={webhookSelectionForDialog}
         onSuccess={invalidateList}
+        onRepick={() => {
+          setEditingTrigger(null)
+          setCreatingBuiltinKind(null)
+          setPendingAppSelection(null)
+          setPendingWebhookSelection(null)
+          onAddingKindChange('source')
+        }}
       />
 
       {triggers.isLoading ? (

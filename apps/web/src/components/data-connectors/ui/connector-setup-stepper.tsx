@@ -295,7 +295,7 @@ export function ConnectorSetupStepper({ connector }: ConnectorSetupStepperProps)
     if (id === 'run') return null
     const blocked = !doneById[id]
     const hint: Partial<Record<SetupStepId, string>> = {
-      connect: 'Connect an account to continue.',
+      connect: 'Add the endpoint base URL to continue (a connection is optional).',
       sample: 'Run a test fetch and use its shape as the schema to continue.',
       map: 'Map at least one field to continue.',
     }

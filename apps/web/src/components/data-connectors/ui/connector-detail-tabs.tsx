@@ -42,6 +42,8 @@ interface ConnectorDetailTabsProps {
   connector: Connector
   /** On mobile (no dock) the Runs panel is appended as a tab/section. */
   mobileRunsPanel?: React.ReactNode
+  /** Pending mapping-edit re-sync banner — pinned directly under the tabs strip. */
+  resyncBanner?: React.ReactNode
 }
 
 /**
@@ -53,7 +55,11 @@ interface ConnectorDetailTabsProps {
  * and shares the `useScrollSpy` hook.
  * See plans/data-connectors/claude/05-frontend.md §2.
  */
-export function ConnectorDetailTabs({ connector, mobileRunsPanel }: ConnectorDetailTabsProps) {
+export function ConnectorDetailTabs({
+  connector,
+  mobileRunsPanel,
+  resyncBanner,
+}: ConnectorDetailTabsProps) {
   const [tab, setTab] = useQueryState('tab', { defaultValue: 'connection' })
   const [selectedStreamId, setSelectedStreamId] = useQueryState('stream')
 
@@ -106,7 +112,7 @@ export function ConnectorDetailTabs({ connector, mobileRunsPanel }: ConnectorDet
   // section components against the identical mutations (create-sync-flow-plan §2).
   if (asConnectorStatus(connector.status) === 'pending') {
     return (
-      <ConnectorEditsProvider>
+      <ConnectorEditsProvider autoSave>
         <ConnectorSetupStepper connector={connector} />
       </ConnectorEditsProvider>
     )
@@ -139,30 +145,33 @@ export function ConnectorDetailTabs({ connector, mobileRunsPanel }: ConnectorDet
                   </TabsList>
                 </Tabs>
               }>
-              <div className='relative h-full'>
-                <ScrollArea
-                  viewportRef={scrollContainerRef}
-                  className='h-full'
-                  scrollbarClassName='w-1.5 z-20'
-                  noFade>
-                  <div ref={assignRef('connection')}>
-                    <ConnectionSection connector={connector} />
-                  </div>
-                  <div ref={assignRef('streams')}>
-                    <StreamsSection
-                      connector={connector}
-                      onSelect={(id) => setSelectedStreamId(id)}
-                    />
-                  </div>
-                  <div ref={assignRef('schedule')}>
-                    <ScheduleSection connector={connector} />
-                  </div>
+              <div className='flex h-full flex-col'>
+                {resyncBanner}
+                <div className='relative min-h-0 flex-1'>
+                  <ScrollArea
+                    viewportRef={scrollContainerRef}
+                    className='h-full'
+                    scrollbarClassName='w-1.5 z-20'
+                    noFade>
+                    <div ref={assignRef('connection')}>
+                      <ConnectionSection connector={connector} />
+                    </div>
+                    <div ref={assignRef('streams')}>
+                      <StreamsSection
+                        connector={connector}
+                        onSelect={(id) => setSelectedStreamId(id)}
+                      />
+                    </div>
+                    <div ref={assignRef('schedule')}>
+                      <ScheduleSection connector={connector} />
+                    </div>
 
-                  {mobileRunsPanel && <div className='h-[60vh]'>{mobileRunsPanel}</div>}
+                    {mobileRunsPanel && <div className='h-[60vh]'>{mobileRunsPanel}</div>}
 
-                  <div className='h-[40vh]' />
-                </ScrollArea>
-                <ConnectorSaveBar />
+                    <div className='h-[40vh]' />
+                  </ScrollArea>
+                  <ConnectorSaveBar />
+                </div>
               </div>
             </NavStackPanel>
 

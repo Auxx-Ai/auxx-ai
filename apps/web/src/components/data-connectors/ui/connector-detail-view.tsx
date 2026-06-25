@@ -238,14 +238,6 @@ export function ConnectorDetailView({ connector }: ConnectorDetailViewProps) {
         isSyncing={isSyncPending}
       />
 
-      {/* Pinned between header and content by the flex layout — surfaces a pending
-          mapping-edit re-sync; the actual safety already ran at save time. */}
-      <ConnectorResyncBanner
-        pending={live?.resyncPending}
-        onBackfill={() => backfillPending(connector.id)}
-        isBackfilling={isBackfilling}
-      />
-
       <MainPageContent
         dockedPanels={
           isDesktop
@@ -264,6 +256,13 @@ export function ConnectorDetailView({ connector }: ConnectorDetailViewProps) {
         <ConnectorDetailTabs
           connector={connector}
           mobileRunsPanel={!isDesktop ? runsPanel : null}
+          resyncBanner={
+            <ConnectorResyncBanner
+              pending={live?.resyncPending}
+              onBackfill={() => backfillPending(connector.id)}
+              isBackfilling={isBackfilling}
+            />
+          }
         />
       </MainPageContent>
     </MainPage>

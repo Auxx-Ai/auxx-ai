@@ -21,8 +21,8 @@ interface ConnectorResyncBannerProps {
  * Advisory banner surfacing a pending mapping-edit re-sync (Layer 3). The actual
  * safety already ran at save time; this only offers to run the deferred re-crawl that
  * repopulates history. `rebackfill` reads as info ("records don't reflect the change
- * yet"); `rebind` reads as a warning ("records will be re-linked"). Pinned between the
- * page header and content by the flex layout — never scrolls away. Dismiss hides it
+ * yet"); `rebind` reads as a warning ("records will be re-linked"). Pinned directly
+ * under the Connection/Streams/Schedule tabs strip — never scrolls away. Dismiss hides it
  * for the session; it reappears on reload until the backfill clears `resyncPending`.
  */
 export function ConnectorResyncBanner({

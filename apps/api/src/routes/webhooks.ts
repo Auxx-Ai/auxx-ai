@@ -235,7 +235,9 @@ async function pushWebhookEndpointEvent(
   try {
     const redis = await getRedisClient(false)
     if (!redis) return
-    const redisKey = `webhook-endpoint:${endpointId}:${topic}:events`
+    // Topic-agnostic key so the delivery inspector sees EVERY delivery to this endpoint
+    // (the per-delivery topic stays in the event payload for client-side filtering).
+    const redisKey = `webhook-endpoint:${endpointId}:events`
     const event = {
       id: randomUUID(),
       timestamp: new Date().toISOString(),

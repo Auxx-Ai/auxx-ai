@@ -117,9 +117,10 @@ async function deadLetter(job: Job<ConnectorAppTriggerStreamJobData>, err: unkno
     const redis = await getRedisClient(false)
     if (!redis) return
     // Sit the DLQ beside whichever inspector list fed the event: app triggers use
-    // `app-trigger-test:<inst>:<triggerId>:*`, generic endpoints `webhook-endpoint:<id>:<topic>:*`.
+    // `app-trigger-test:<inst>:<triggerId>:dlq`, generic endpoints `webhook-endpoint:<id>:dlq`
+    // (topic-agnostic, mirroring the events key — the topic is kept on the entry).
     const key = webhookEndpointId
-      ? `webhook-endpoint:${webhookEndpointId}:${topic ?? ''}:dlq`
+      ? `webhook-endpoint:${webhookEndpointId}:dlq`
       : `app-trigger-test:${appInstallationId}:${triggerId}:dlq`
     const entry = {
       id: eventId,
@@ -128,6 +129,7 @@ async function deadLetter(job: Job<ConnectorAppTriggerStreamJobData>, err: unkno
       connectorId,
       streamKey,
       eventId,
+      topic,
       error: err instanceof Error ? err.message : String(err),
       triggerData,
     }
