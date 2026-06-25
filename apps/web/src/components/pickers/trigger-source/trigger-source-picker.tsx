@@ -1,182 +1,169 @@
 // apps/web/src/components/pickers/trigger-source/trigger-source-picker.tsx
-// Shared, grouped trigger picker (unified-trigger-picker §2.2). Lists BOTH installed-app
-// webhook triggers (APPS) and generic inbound WebhookEndpoints (WEBHOOK ENDPOINTS) in one
-// dialog and returns the discriminated `TriggerSource` the caller chose. Used by the agent
-// trigger flow and the data-connector webhook-binding section so both stay on one mechanism.
+// Presentational, popover-friendly trigger list (unified-trigger-picker §2.2, popover variant).
+// A `cmdk` Command list with two grouped sections — installed-app webhook triggers (APPS) and
+// generic inbound WebhookEndpoints (WEBHOOK ENDPOINTS) — that returns the discriminated
+// `TriggerSource` the caller chose. Knows nothing about its host chrome; the popover wrapper
+// (`trigger-source-picker-popover.tsx`) owns the data query + Popover, mirroring ConnectionPicker.
 
 'use client'
 
 import { Button } from '@auxx/ui/components/button'
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from '@auxx/ui/components/dialog'
-import { InputSearch } from '@auxx/ui/components/input-search'
-import { ScrollArea } from '@auxx/ui/components/scroll-area'
-import { Webhook } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState } from 'react'
-import { ToolSelectRow } from '~/components/agents/ui/detail/tools/tool-select-row'
-import { type TriggerSource, type TriggerSurface, useTriggerSources } from './use-trigger-sources'
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from '@auxx/ui/components/command'
+import { Check, Webhook } from 'lucide-react'
+import type { ReactNode } from 'react'
+import { AppIcon } from '~/components/apps/ui/app-icon'
+import type {
+  AppTriggerSource,
+  TriggerSource,
+  WebhookEndpointSource,
+  WebhookEndpointSummary,
+} from './use-trigger-sources'
 
-interface TriggerSourcePickerProps {
-  open: boolean
-  onOpenChange: (open: boolean) => void
+interface TriggerSourceListProps {
+  appSources: AppTriggerSource[]
+  endpointSources: WebhookEndpointSource[]
+  isLoading: boolean
   onSelect: (source: TriggerSource) => void
-  surface?: TriggerSurface
-  /** Restrict the APP group to one app (data-connector binds its connection's app). */
-  appIdFilter?: string
+  /** Marks the currently-bound row with a check. The caller owns the selection. */
+  isSelected?: (source: TriggerSource) => boolean
+  /** Hover-revealed Edit on endpoint rows → opens the endpoint config dialog. */
+  onEditEndpoint?: (endpoint: WebhookEndpointSummary) => void
   /** Where to link when the org has no endpoints yet (the "create" affordance). */
   manageEndpointsHref?: string
 }
 
 /**
- * One dialog, two grouped sections. Search filters both groups by label / app title /
- * endpoint name. Picking a row fires `onSelect` with the discriminated source; the caller
- * owns the follow-up (topic sub-pick, token editor, persist).
+ * Two grouped, searchable sections. `cmdk` owns the fuzzy filtering (via each item's
+ * `value`/`keywords`); picking a row fires `onSelect` with the discriminated source and the
+ * caller owns the follow-up (topic sub-pick, token editor, persist).
  */
-export function TriggerSourcePicker({
-  open,
-  onOpenChange,
+export function TriggerSourceList({
+  appSources,
+  endpointSources,
+  isLoading,
   onSelect,
-  surface = 'agent',
-  appIdFilter,
+  isSelected,
+  onEditEndpoint,
   manageEndpointsHref,
-}: TriggerSourcePickerProps) {
-  const { appSources, endpointSources, isLoading } = useTriggerSources({ surface, appIdFilter })
-  const [search, setSearch] = useState('')
-  const searchInputRef = useRef<HTMLInputElement>(null)
-
-  useEffect(() => {
-    if (open) setSearch('')
-  }, [open])
-
-  const q = search.trim().toLowerCase()
-
-  const filteredApps = useMemo(() => {
-    if (!q) return appSources
-    return appSources.filter(
-      (s) =>
-        s.trigger.label.toLowerCase().includes(q) ||
-        (s.trigger.description ?? '').toLowerCase().includes(q) ||
-        s.installation.app.title.toLowerCase().includes(q)
-    )
-  }, [appSources, q])
-
-  const filteredEndpoints = useMemo(() => {
-    if (!q) return endpointSources
-    return endpointSources.filter((s) => s.endpoint.name.toLowerCase().includes(q))
-  }, [endpointSources, q])
-
-  const nothing = !isLoading && filteredApps.length === 0 && filteredEndpoints.length === 0
+}: TriggerSourceListProps) {
+  const isEmpty = !isLoading && appSources.length === 0 && endpointSources.length === 0
+  const isLoadingCold = isLoading && appSources.length === 0 && endpointSources.length === 0
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent
-        className='h-dvh sm:h-[600px]'
-        innerClassName='p-0'
-        position='tc'
-        size='lg'
-        onOpenAutoFocus={(e) => {
-          e.preventDefault()
-          searchInputRef.current?.focus()
-        }}>
-        <div className='flex flex-1 flex-col min-h-0'>
-          <DialogHeader className='mb-0 flex h-10 flex-row items-center justify-between border-b px-3'>
-            <Button variant='ghost' size='sm'>
-              Choose a trigger
-            </Button>
-            <DialogTitle className='sr-only'>Choose a trigger</DialogTitle>
-            <DialogDescription className='sr-only'>
-              Pick an app webhook trigger or a webhook endpoint to drive this.
-            </DialogDescription>
-          </DialogHeader>
+    <Command className='w-full'>
+      {!isEmpty && !isLoadingCold && <CommandInput placeholder='Search triggers...' />}
+      <CommandList scrollAreaClassName='max-h-80'>
+        {isLoadingCold && (
+          <div className='px-3 py-6 text-center text-sm text-muted-foreground'>Loading…</div>
+        )}
 
-          <div className='border-b px-3 py-2'>
-            <InputSearch
-              ref={searchInputRef}
-              placeholder='Search triggers...'
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              onClear={() => setSearch('')}
-            />
+        {isEmpty && (
+          <div className='px-3 py-6 text-center text-sm text-muted-foreground'>
+            No app triggers or webhook endpoints yet.
           </div>
+        )}
 
-          <ScrollArea className='flex-1' scrollbarClassName='w-1!'>
-            <div className='px-3 py-3'>
-              {isLoading ? (
-                <div className='py-12 text-center text-sm text-muted-foreground'>Loading…</div>
-              ) : nothing ? (
-                <div className='py-12 text-center text-sm text-muted-foreground'>
-                  {q
-                    ? `No triggers match "${search}".`
-                    : 'No app triggers or webhook endpoints yet.'}
-                </div>
-              ) : (
-                <div className='space-y-4'>
-                  {filteredApps.length > 0 && (
-                    <Section title='Apps'>
-                      {filteredApps.map((s) => (
-                        <ToolSelectRow
-                          key={`${s.installation.installationId}:${s.trigger.triggerId}`}
-                          id={`${s.installation.installationId}:${s.trigger.triggerId}`}
-                          iconId={s.installation.app.avatarUrl ?? 'package'}
-                          color={null}
-                          label={s.trigger.label}
-                          description={s.trigger.description}
-                          subtitle={s.installation.app.title}
-                          installed={false}
-                          onSelect={() => onSelect(s)}
-                        />
-                      ))}
-                    </Section>
-                  )}
+        {!isEmpty && !isLoadingCold && <CommandEmpty>No triggers found.</CommandEmpty>}
 
-                  <Section title='Webhook endpoints'>
-                    {filteredEndpoints.length > 0 ? (
-                      filteredEndpoints.map((s) => (
-                        <ToolSelectRow
-                          key={s.endpoint.id}
-                          id={s.endpoint.id}
-                          iconId='webhook'
-                          color={null}
-                          label={s.endpoint.name}
-                          description={s.endpoint.url}
-                          subtitle={`${s.endpoint.verification} verification`}
-                          installed={false}
-                          onSelect={() => onSelect(s)}
-                        />
-                      ))
-                    ) : (
-                      <EmptyEndpoints href={manageEndpointsHref} />
-                    )}
-                  </Section>
-                </div>
-              )}
-            </div>
-          </ScrollArea>
-        </div>
-      </DialogContent>
-    </Dialog>
+        {appSources.length > 0 && (
+          <CommandGroup heading='Apps'>
+            {appSources.map((s) => (
+              <TriggerSourceItem
+                key={`${s.installation.installationId}:${s.trigger.triggerId}`}
+                value={`${s.trigger.label} ${s.installation.app.title} ${s.trigger.triggerId}`}
+                icon={<AppIcon iconId={s.installation.app.avatarUrl ?? 'package'} size='sm' />}
+                label={s.trigger.label}
+                subtitle={s.installation.app.title}
+                selected={isSelected?.(s) ?? false}
+                onSelect={() => onSelect(s)}
+              />
+            ))}
+          </CommandGroup>
+        )}
+
+        {!isEmpty && (endpointSources.length > 0 || !isLoading) && (
+          <CommandGroup heading='Webhook endpoints'>
+            {endpointSources.length > 0 ? (
+              endpointSources.map((s) => (
+                <TriggerSourceItem
+                  key={s.endpoint.id}
+                  value={`${s.endpoint.name} ${s.endpoint.id}`}
+                  icon={<Webhook className='size-4 text-muted-foreground' />}
+                  label={s.endpoint.name}
+                  subtitle={`${s.endpoint.verification} verification`}
+                  selected={isSelected?.(s) ?? false}
+                  onSelect={() => onSelect(s)}
+                  onEdit={onEditEndpoint ? () => onEditEndpoint(s.endpoint) : undefined}
+                />
+              ))
+            ) : (
+              <EmptyEndpoints href={manageEndpointsHref} />
+            )}
+          </CommandGroup>
+        )}
+      </CommandList>
+    </Command>
   )
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+function TriggerSourceItem({
+  value,
+  icon,
+  label,
+  subtitle,
+  selected,
+  onEdit,
+  onSelect,
+}: {
+  value: string
+  icon: ReactNode
+  label: string
+  subtitle?: string
+  selected: boolean
+  onEdit?: () => void
+  onSelect: () => void
+}) {
   return (
-    <div className='space-y-1'>
-      <p className='px-1 text-xs font-medium uppercase tracking-wide text-muted-foreground'>
-        {title}
-      </p>
-      {children}
-    </div>
+    <CommandItem value={value} onSelect={onSelect} className='group cursor-pointer h-8 gap-2'>
+      <span className='flex size-5 shrink-0 items-center justify-center'>{icon}</span>
+      <span className='shrink-0'>{label}</span>
+      {subtitle && (
+        <span className='min-w-0 flex-1 truncate text-xs text-muted-foreground'>{subtitle}</span>
+      )}
+      <div className='ml-auto flex shrink-0 items-center gap-1.5 pl-2'>
+        {onEdit && (
+          <Button
+            type='button'
+            variant='ghost'
+            size='sm'
+            className='h-6 px-2 opacity-0 transition-opacity group-hover:opacity-100 group-data-[selected=true]:opacity-100'
+            onClick={(e) => {
+              e.stopPropagation()
+              onEdit()
+            }}>
+            Edit
+          </Button>
+        )}
+        {selected && (
+          <div className='flex size-4 shrink-0 items-center justify-center rounded-full border border-blue-800 bg-info'>
+            <Check className='size-2.5! text-white' strokeWidth={4} />
+          </div>
+        )}
+      </div>
+    </CommandItem>
   )
 }
 
 function EmptyEndpoints({ href }: { href?: string }) {
   return (
-    <div className='flex flex-col items-center gap-2 rounded-md border border-dashed py-6 text-center'>
+    <div className='flex flex-col items-center gap-2 px-2 py-4 text-center'>
       <Webhook className='size-5 text-muted-foreground' />
       <p className='text-sm text-muted-foreground'>No webhook endpoints yet.</p>
       {href && (

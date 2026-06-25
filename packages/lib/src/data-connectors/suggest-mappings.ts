@@ -13,63 +13,13 @@ import type { FieldType as FieldTypeValue } from '@auxx/database/types'
 import { toResourceFieldId } from '@auxx/types/field'
 import { generateId } from '@auxx/utils'
 import { isFieldTypeCompatible } from '../custom-fields/types'
+import { collectSchemaLeaves, lastSegment } from '../json-schema'
 import type { ResourceField } from '../resources'
 import type { FieldMapping } from './types'
-
-/** A scalar source leaf extracted from the Layer-A source schema. */
-export interface SourceLeaf {
-  /** Record-relative dotted path, e.g. `email` / `customer.email`. */
-  path: string
-  /** JSON-schema scalar type at this path (`string` / `number` / `boolean` / …). */
-  jsonType: string
-}
-
-interface JsonSchemaNode {
-  type?: string | string[]
-  format?: string
-  properties?: Record<string, JsonSchemaNode>
-  items?: JsonSchemaNode
-}
-
-function nodeType(node: JsonSchemaNode): string {
-  const t = node.type
-  if (Array.isArray(t)) return t.find((x) => x !== 'null') ?? 'string'
-  return t ?? 'object'
-}
-
-/**
- * Flatten a source JSON schema into scalar leaves, RECORD-relative (an array-root
- * schema descends into its element shape so paths read `email`, not `[].email` —
- * matching a root mapping's subtree). Object branches recurse with a dotted prefix;
- * array branches are skipped (they become their own fan-out mappings, not fields).
- */
-export function collectSchemaLeaves(schema: Record<string, unknown>): SourceLeaf[] {
-  const root = schema as JsonSchemaNode
-  const start = nodeType(root) === 'array' && root.items ? root.items : root
-  const out: SourceLeaf[] = []
-  const walk = (node: JsonSchemaNode, prefix: string) => {
-    if (nodeType(node) !== 'object' || !node.properties) return
-    for (const [key, child] of Object.entries(node.properties)) {
-      const path = prefix ? `${prefix}.${key}` : key
-      const t = nodeType(child)
-      if (t === 'object') walk(child, path)
-      else if (t === 'array')
-        continue // a collection → its own mapping, not a field
-      else out.push({ path, jsonType: t })
-    }
-  }
-  walk(start, '')
-  return out
-}
 
 /** Canonical name form so `first_name` ↔ `firstName` ↔ `First Name` all collide. */
 function normalizeName(s: string): string {
   return s.toLowerCase().replace(/[^a-z0-9]/g, '')
-}
-
-/** Last segment of a dotted path (`customer.email` → `email`). */
-function lastSegment(path: string): string {
-  return path.split('.').pop() ?? path
 }
 
 /** The representative {@link FieldType} a source leaf's values carry. */

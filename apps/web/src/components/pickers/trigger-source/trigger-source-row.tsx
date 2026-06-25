@@ -35,6 +35,9 @@ export function TriggerSourceRow({
       title={title}
       secondary={secondary}
       secondaryFill
+      // Clicking anywhere on the row re-opens the picker (edit). The actions slot
+      // stops propagation, so the hover Edit/Remove buttons still act on their own.
+      onToggleOpen={onEdit}
       actions={
         onEdit || onDelete ? (
           <>

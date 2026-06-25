@@ -41,6 +41,7 @@ import React, {
   useRef,
   useState,
 } from 'react'
+import { useBoundCredential } from '~/components/apps/hooks/use-bound-credential'
 import { useAppsContext } from '~/components/apps/providers/apps-context'
 import { AppAccountPopover } from '~/components/apps/ui/app-account-popover'
 import { AppIcon } from '~/components/apps/ui/app-icon'
@@ -100,18 +101,28 @@ const KeyboardShortcut = ({ shortcut }: { shortcut: string }) => (
 )
 
 /**
- * Drawer-header icon for app nodes. Pulls connection presence/status from
- * the same source `AppSettingsTrigger` already uses so the header icon and
- * the trigger button never disagree. See
+ * Drawer-header icon for app nodes. Derives status from the node's *bound*
+ * connection (the same source `AppSettingsTrigger` uses) so the header icon and
+ * the trigger button never disagree — and so neither goes green off an unrelated
+ * connection the node isn't actually bound to. See
  * plans/kopilot/apps/agent-credentials.md §5.9.
  */
-function AppPanelIcon({ appId, iconId, color }: { appId: string; iconId: string; color: string }) {
-  const { appConnections } = useAppsContext()
-  const connection = appConnections.find((c) => c.appId === appId)
-  const status = connection
-    ? ((connection.connectionStatus as 'connected' | 'expired' | 'not_connected') ??
-      'not_connected')
-    : 'not_connected'
+function AppPanelIcon({
+  connectionId,
+  iconId,
+  color,
+}: {
+  connectionId?: string
+  iconId: string
+  color: string
+}) {
+  const bound = useBoundCredential(connectionId)
+  const status: 'connected' | 'expired' | 'not_connected' =
+    bound.status === 'connected'
+      ? 'connected'
+      : bound.status === 'expired'
+        ? 'expired'
+        : 'not_connected'
   return (
     <AppWithStatusIcon
       iconId={iconId}
@@ -129,23 +140,21 @@ function AppPanelIcon({ appId, iconId, color }: { appId: string; iconId: string;
  */
 const AppSettingsTrigger = React.forwardRef<
   HTMLDivElement,
-  React.ComponentPropsWithoutRef<'div'> & { appId: string }
->(({ appId, ...props }, ref) => {
-  const { appInstallations, appConnections } = useAppsContext()
+  React.ComponentPropsWithoutRef<'div'> & { appId: string; connectionId?: string }
+>(({ appId, connectionId, ...props }, ref) => {
+  const { appInstallations } = useAppsContext()
+  const bound = useBoundCredential(connectionId)
 
   const installation = appInstallations.find((i) => i.app.id === appId)
   const hasConnectionDef = !!(
     installation?.connectionDefinitions?.user || installation?.connectionDefinitions?.organization
   )
 
-  const connection = appConnections.find((c) => c.appId === appId)
-  const status = connection?.connectionStatus ?? 'not_connected'
-
   const dotColor = !hasConnectionDef
     ? null
-    : status === 'connected'
+    : bound.status === 'connected'
       ? 'bg-green-500'
-      : status === 'expired'
+      : bound.status === 'expired'
         ? 'bg-amber-400'
         : 'bg-red-500'
 
@@ -371,7 +380,11 @@ export const BasePanel = memo<BasePanelProps>(
         <DrawerHeader
           icon={
             appContext ? (
-              <AppPanelIcon appId={appContext.appId} iconId={nodeIconName} color={nodeColor} />
+              <AppPanelIcon
+                connectionId={appContext.connectionId}
+                iconId={nodeIconName}
+                color={nodeColor}
+              />
             ) : (
               <AppIcon
                 iconId={nodeIconName}
@@ -551,8 +564,12 @@ export const BasePanel = memo<BasePanelProps>(
                     onPick={(credId) => appContext.onConnectionChange?.(credId)}
                     onConnected={(credId) => appContext.onConnectionChange?.(credId)}
                     onRemove={() => appContext.onConnectionChange?.(undefined)}
-                    allowPersonal={false}
-                    trigger={<AppSettingsTrigger appId={appContext.appId} />}
+                    trigger={
+                      <AppSettingsTrigger
+                        appId={appContext.appId}
+                        connectionId={appContext.connectionId}
+                      />
+                    }
                     appSettings={{
                       appSlug: appContext.appSlug,
                       installationType: appContext.installationType,

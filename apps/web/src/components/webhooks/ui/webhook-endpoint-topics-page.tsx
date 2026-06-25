@@ -168,44 +168,50 @@ export function WebhookEndpointTopicsPage({ endpoint, onBack }: WebhookEndpointT
             description='Add a topic, or capture a delivery below and use its shape.'
           />
         )}
-        {topics.map((topic) => {
-          const badge = schemaBadge(topic)
-          return (
-            <TreeRow
-              key={topic.id}
-              icon={<Tags className='size-4' />}
-              isOpen={selectedId === topic.id}
-              onToggleOpen={() => select(topic.id)}
-              rowClassName={selectedId === topic.id ? 'bg-background' : undefined}
-              title={
-                <AutosizeInput
-                  value={topic.key}
-                  onChange={(e) => patchTopic(topic.id, { key: e.target.value })}
-                  onClick={(e) => e.stopPropagation()}
-                  placeholder='topic.key'
-                  inputClassName='bg-transparent text-sm text-foreground outline-none'
-                  minWidth={40}
-                />
-              }
-              secondary={
-                <span
-                  className={`inline-flex items-center rounded border px-1 text-[10px] font-medium uppercase tracking-wide ${
-                    badge.muted ? 'text-muted-foreground' : 'text-foreground'
-                  }`}>
-                  {badge.label}
-                </span>
-              }
-              actions={
-                <TreeRowButton
-                  variant='destructive'
-                  tooltipText='Delete topic'
-                  onClick={() => void deleteTopic(topic)}>
-                  <Trash2 />
-                </TreeRowButton>
-              }
-            />
-          )
-        })}
+        <div className='flex flex-col gap-0.5'>
+          {topics.map((topic) => {
+            const badge = schemaBadge(topic)
+            return (
+              <TreeRow
+                key={topic.id}
+                icon={<Tags className='size-4' />}
+                isOpen={selectedId === topic.id}
+                onToggleOpen={() => select(topic.id)}
+                rowClassName={
+                  selectedId === topic.id
+                    ? 'bg-primary-100 hover:bg-primary-150'
+                    : 'bg-primary-50 hover:bg-primary-100'
+                }
+                title={
+                  <AutosizeInput
+                    value={topic.key}
+                    onChange={(e) => patchTopic(topic.id, { key: e.target.value })}
+                    onClick={(e) => e.stopPropagation()}
+                    placeholder='topic.key'
+                    inputClassName='bg-transparent text-sm text-foreground outline-none'
+                    minWidth={40}
+                  />
+                }
+                secondary={
+                  <span
+                    className={`inline-flex items-center rounded border px-1 text-[10px] font-medium uppercase tracking-wide ${
+                      badge.muted ? 'text-muted-foreground' : 'text-foreground'
+                    }`}>
+                    {badge.label}
+                  </span>
+                }
+                actions={
+                  <TreeRowButton
+                    variant='destructive'
+                    tooltipText='Delete topic'
+                    onClick={() => void deleteTopic(topic)}>
+                    <Trash2 />
+                  </TreeRowButton>
+                }
+              />
+            )
+          })}
+        </div>
 
         {adding && (
           <div className='flex items-center gap-2 px-1 py-1'>

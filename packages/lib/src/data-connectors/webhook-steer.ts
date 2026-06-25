@@ -2,7 +2,7 @@
 // Pure resolution of a webhook delivery → fetch-steering directive (sync bridge §4).
 // Given a stream's `webhookTrigger` config + the delivery's `triggerData`, decide
 // whether this event is a DELETE (skip the fetch, archive by externalId) or a
-// FETCH (extract `{token}` values to steer the regular connector fetch at, then
+// FETCH (extract `{path}` values to steer the regular connector fetch at, then
 // sink the FETCH result). Kept free of DB/connector deps so it unit-tests on plain
 // payload fixtures — the side-effecting slice (`runWebhookEventSlice`) consumes it.
 
@@ -49,11 +49,11 @@ function isDeleteEvent(
 
 /**
  * Resolve a webhook delivery into a steering directive. A delete short-circuits to
- * an externalId to archive; otherwise every declared token is read out of the
- * payload (envelope-relative dotted paths) into the `{token}` context the fetch
- * interpolates. Tokens whose path returns nothing are omitted — the fetch's
- * `assertResolved` then fails the event into the dead-letter rather than firing a
- * malformed request.
+ * an externalId to archive; otherwise every declared payload path is read out of the
+ * payload (envelope-relative dotted paths) into the `{path}` context the fetch
+ * interpolates — the path IS the placeholder key (no rename, v7). Paths that return
+ * nothing are omitted — the fetch's `assertResolved` then fails the event into the
+ * dead-letter rather than firing a malformed request.
  */
 export function resolveWebhookSteer(
   trigger: StreamWebhookTrigger,
@@ -66,9 +66,9 @@ export function resolveWebhookSteer(
     return { kind: 'delete', externalId }
   }
   const triggerContext: Record<string, string> = {}
-  for (const [token, path] of Object.entries(trigger.tokens ?? {})) {
+  for (const path of trigger.paths ?? []) {
     const value = getByPath(triggerData, path)
-    if (value !== undefined && value !== null) triggerContext[token] = scalar(value)
+    if (value !== undefined && value !== null) triggerContext[path] = scalar(value)
   }
   return { kind: 'fetch', triggerContext }
 }

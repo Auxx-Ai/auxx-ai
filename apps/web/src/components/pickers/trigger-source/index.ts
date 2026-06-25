@@ -1,5 +1,6 @@
 // apps/web/src/components/pickers/trigger-source/index.ts
-export { TriggerSourcePicker } from './trigger-source-picker'
+export { TriggerSourceList } from './trigger-source-picker'
+export { TriggerSourcePickerPopover } from './trigger-source-picker-popover'
 export { TriggerSourceRow } from './trigger-source-row'
 export {
   type AppTriggerSource,

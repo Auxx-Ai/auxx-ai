@@ -6,6 +6,7 @@ import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { CheckCircle2, FileJson, XCircle } from 'lucide-react'
 import { TestEventList } from '~/components/workflow/shared/test-events'
+import { CodeEditor, CodeLanguage } from '~/components/workflow/ui/code-editor'
 import type { WebhookTestEvent } from './types'
 
 interface WebhookTestEventsProps {
@@ -21,57 +22,61 @@ export function WebhookTestEvents({ events, onClear, onUseAsSchema }: WebhookTes
       onClear={onClear}
       emptyTitle='No webhook events captured yet'
       emptyDescription='Send a request to your test webhook URL to see it here'
-      renderEventBadges={(event) => (
-        <>
+      renderTitle={(event) => (
+        <span className='flex items-center gap-1.5'>
           <Badge variant={event.method === 'GET' ? 'secondary' : 'default'} className='text-xs'>
             {event.method}
           </Badge>
           {event.responseStatus != null &&
             (event.responseStatus >= 200 && event.responseStatus < 300 ? (
-              <CheckCircle2 className='h-4 w-4 text-green-500' />
+              <CheckCircle2 className='size-4 text-green-500' />
             ) : (
-              <XCircle className='h-4 w-4 text-red-500' />
+              <XCircle className='size-4 text-red-500' />
             ))}
-        </>
+        </span>
       )}
-      renderEventDetail={(event) => (
+      renderDetail={(event) => (
         <>
           {Object.keys(event.query).length > 0 && (
-            <div>
-              <h5 className='text-xs font-medium mb-1'>Query Parameters</h5>
-              <pre className='text-xs bg-muted p-2 rounded overflow-x-auto'>
-                {JSON.stringify(event.query, null, 2)}
-              </pre>
-            </div>
+            <CodeEditor
+              language={CodeLanguage.json}
+              value={JSON.stringify(event.query, null, 2)}
+              readOnly
+              minHeight={80}
+              title='QUERY PARAMETERS'
+              gradientBorder={false}
+            />
           )}
-          <div>
-            <h5 className='text-xs font-medium mb-1'>Headers</h5>
-            <pre className='text-xs bg-muted p-2 rounded overflow-x-auto max-h-32 overflow-y-auto'>
-              {JSON.stringify(event.headers, null, 2)}
-            </pre>
-          </div>
-          {event.body && (
-            <div>
-              <h5 className='text-xs font-medium mb-1'>Body</h5>
-              <pre className='text-xs bg-muted p-2 rounded overflow-x-auto max-h-48 overflow-y-auto'>
-                {JSON.stringify(event.body, null, 2)}
-              </pre>
-            </div>
+          <CodeEditor
+            language={CodeLanguage.json}
+            value={JSON.stringify(event.headers, null, 2)}
+            readOnly
+            minHeight={80}
+            title='HEADERS'
+            gradientBorder={false}
+          />
+          {event.body != null && (
+            <CodeEditor
+              language={CodeLanguage.json}
+              value={JSON.stringify(event.body, null, 2)}
+              readOnly
+              minHeight={120}
+              title='BODY'
+              gradientBorder={false}
+            />
           )}
         </>
       )}
-      renderEventActions={
+      renderActions={
         onUseAsSchema
           ? (event) =>
               event.method === 'POST' && event.body ? (
-                <Button
-                  variant='ghost'
-                  size='xs'
-                  onClick={() => onUseAsSchema(event.body)}
-                  className='h-6 text-xs'>
-                  <FileJson className='h-3 w-3 mr-1' />
-                  Use as Schema Template
-                </Button>
+                <div className='flex justify-end'>
+                  <Button variant='outline' size='xs' onClick={() => onUseAsSchema(event.body)}>
+                    <FileJson />
+                    Use as Schema Template
+                  </Button>
+                </div>
               ) : null
           : undefined
       }

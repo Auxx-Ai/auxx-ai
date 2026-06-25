@@ -134,7 +134,9 @@ const VarEditorFieldRow: React.FC<VarEditorFieldRowProps> = ({
         'group/field-row relative flex border-b dark:border-b-[#404754]/20',
         className
       )}>
-      <div data-slot='field-row-label' className='flex flex-row gap-1 ps-2 items-center'>
+      <div
+        data-slot='field-row-label'
+        className='flex flex-row gap-1 ps-2 items-center [&_svg]:size-4'>
         {showIcon && (icon ? icon : <VarTypeIcon type={type!} />)}
         <div className='text-sm'>
           <span className='text-primary-600'>{title}</span>

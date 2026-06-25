@@ -21,7 +21,19 @@ const textSchema = z
   .unknown()
   .transform((v) => (v === null || v === undefined ? '' : String(v).trim()))
 
-const numberSchema = z.number().finite()
+const numberSchema = z
+  .unknown()
+  .transform((v) => {
+    if (typeof v === 'number') return Number.isFinite(v) ? v : z.NEVER
+    // Coerce numeric strings (e.g. Shopify money fields arrive as "10.00"),
+    // consistent with the loose coercion the text/boolean/date schemas already do.
+    if (typeof v === 'string' && v.trim() !== '') {
+      const n = Number(v)
+      if (Number.isFinite(n)) return n
+    }
+    return z.NEVER
+  })
+  .pipe(z.number().finite())
 
 const booleanSchema = z.unknown().transform((v) => {
   if (typeof v === 'boolean') return v

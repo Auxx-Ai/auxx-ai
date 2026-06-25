@@ -5,7 +5,7 @@ import { Button } from '@auxx/ui/components/button'
 import { EmptySection, Section } from '@auxx/ui/components/section'
 import { toastError } from '@auxx/ui/components/toast'
 import TreeRow, { TreeRowButton } from '@auxx/ui/components/tree-row'
-import { Layers, Plus, Table2, Trash2 } from 'lucide-react'
+import { ArrowRight, Layers, Plus, Table2, Trash2 } from 'lucide-react'
 import { useResources } from '~/components/resources'
 import { useConfirm } from '~/hooks/use-confirm'
 import { api } from '~/trpc/react'
@@ -38,7 +38,16 @@ function StreamRow({
     <TreeRow
       icon={<Table2 className='size-4' />}
       title={stream.streamKey ?? 'Untitled stream'}
-      secondary={defLabels.length > 0 ? `→ ${defLabels.join(' · ')}` : 'no targets yet'}
+      secondary={
+        defLabels.length > 0 ? (
+          <span className='flex items-center gap-1'>
+            <ArrowRight className='size-3 shrink-0' />
+            {defLabels.join(' · ')}
+          </span>
+        ) : (
+          'no targets yet'
+        )
+      }
       onToggleOpen={onSelect}
       rowClassName='cursor-pointer'
       trailing={

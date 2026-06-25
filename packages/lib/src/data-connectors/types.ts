@@ -79,6 +79,19 @@ export interface DataConnectorConfig {
    * (templates do; bare generic-rest doesn't, so the UI hides the choice).
    */
   backfillWindowSpan?: 'all' | 'last_90_days' | 'last_12_months'
+  /**
+   * Webhook-sync SIGNAL — which inbound event drives this connector (v7). One per
+   * connector: a connector is bound to a single credential/baseUrl = one provider, so
+   * every stream shares the same signal; only topic/token STEERING differs per stream
+   * (see {@link StreamWebhookTrigger}). Exactly ONE of:
+   *   • `triggerId` — an APP webhook trigger (matched by `dispatchAppTriggerToConnectors`
+   *     off the connector's app connection).
+   *   • `webhookEndpointId` — a generic `WebhookEndpoint` (matched by
+   *     `dispatchWebhookEndpointToConnectors`). Fetch auth still comes from the connector's
+   *     own `credentialId`; the endpoint only provides the signal.
+   * Absent ⇒ not webhook-bound. Set when `syncBehavior === 'webhook'`.
+   */
+  webhookTrigger?: { triggerId?: string; webhookEndpointId?: string }
 }
 
 /**
@@ -135,32 +148,24 @@ export interface StreamRequestConfig {
    */
   backfillWindow?: { sinceParam: string; format?: 'iso' | 'unix' }
   /**
-   * Present only on `syncBehavior='webhook'` streams (app-trigger sync bridge,
-   * plans/data-connectors/v4/app-trigger-sync-bridge-plan.md). Binds this stream to
-   * an app webhook trigger and declares how a delivery STEERS the regular fetch: map
-   * `{token}` values out of `triggerData`, interpolate them into `path`/`params`/
-   * `headers`/`body` (which become `{token}`-templatable), run the normal fetch, and
-   * sink the FETCH result as the canonical record. The webhook is the signal; the
-   * fetch is the truth.
+   * Per-stream webhook STEERING (generic-REST only — `webhookTrigger` SIGNAL lives on
+   * {@link DataConnectorConfig.webhookTrigger} since v7). Present only on
+   * `syncBehavior='webhook'` streams (sync bridge, plans/data-connectors/v4). Declares
+   * how a matched delivery steers the regular fetch: expose payload `{path}` values out of
+   * `triggerData`, interpolate them into `path`/`params`/`headers`/`body` (which become
+   * `{path}`-templatable), run the normal fetch, and sink the FETCH result as the
+   * canonical record. The webhook is the signal; the fetch is the truth. App connectors
+   * ignore this (their fetch is fixed — `requestModel:'fixed'`).
    */
   webhookTrigger?: StreamWebhookTrigger
 }
 
 /**
- * How a webhook-sync stream is driven by an app trigger (sync bridge §3.1). Lives
- * inside {@link StreamRequestConfig} (jsonb on the stream — no schema column).
+ * Per-stream webhook STEERING for a generic-REST stream (sync bridge §3.1). Lives
+ * inside {@link StreamRequestConfig} (jsonb on the stream). The SIGNAL (which trigger/
+ * endpoint drives the connector) is connector-level — {@link DataConnectorConfig.webhookTrigger}.
  */
 export interface StreamWebhookTrigger {
-  /**
-   * The steering signal source — exactly ONE of these is set:
-   *   • `triggerId` — an APP webhook trigger (matches `AppWebhookHandler.triggerId`),
-   *     dispatched by `dispatchAppTriggerToConnectors` off the connector's app connection.
-   *   • `webhookEndpointId` — a generic `WebhookEndpoint`, dispatched by
-   *     `dispatchWebhookEndpointToConnectors`. The connector still uses its own
-   *     `credentialId` for fetch auth; the endpoint only provides the signal.
-   */
-  triggerId?: string
-  webhookEndpointId?: string
   /**
    * Discriminate multiplexed deliveries with the SAME `matchesFilter()` helper the
    * agent app-trigger path uses. Flagship apps fan MANY topics through ONE triggerId
@@ -171,11 +176,14 @@ export interface StreamWebhookTrigger {
    */
   filter?: Record<string, unknown>
   /**
-   * token name → dotted path into `triggerData` (read with the connector's `getByPath`).
-   * Paths are ENVELOPE-relative: prefer the trigger's normalized outputs (`resourceId`,
-   * `updatedAt`) over digging into the raw body. e.g. `{ orderId: 'resourceId' }`.
+   * Payload paths exposed as `{path}` placeholders for the fetch (no rename — the path
+   * IS the placeholder, v7). Each dotted path is read out of `triggerData` with the
+   * connector's `getByPath` and made available as `{path}` to interpolate into
+   * `path`/`params`/`headers`/`body`. Paths are ENVELOPE-relative: prefer the trigger's
+   * normalized outputs (`resourceId`, `updatedAt`) over the raw body. e.g.
+   * `['resourceId', 'updatedAt']` → `{resourceId}` / `{updatedAt}` in the request.
    */
-  tokens: Record<string, string>
+  paths: string[]
   /** When the event is a delete, skip the fetch and archive by externalId. */
   deleteWhen?: { tokenTruthy?: string } | { topicEquals?: string }
   /** Dotted path into `triggerData` for the externalId to archive on delete. e.g. `'resourceId'`. */

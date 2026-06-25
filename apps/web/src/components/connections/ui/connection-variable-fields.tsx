@@ -5,6 +5,7 @@ import { HIDDEN_VALUE } from '@auxx/credentials/crypto/client'
 import type { ConnectionVariable } from '@auxx/database'
 import { FieldType } from '@auxx/database/enums'
 import type { FieldOptions } from '@auxx/lib/field-values/client'
+import { mapFieldTypeToBaseType } from '@auxx/lib/workflow-engine/client'
 import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
 import { BaseType } from '~/components/workflow/types'
 import { VarEditorFieldRow } from '~/components/workflow/ui/input-editor/var-editor'
@@ -95,7 +96,7 @@ export function ConnectionVariableFields({
             key={variable.key}
             title={variable.label}
             description={variable.description}
-            type={BaseType.STRING}
+            type={mapFieldTypeToBaseType(variable.type ?? FieldType.TEXT)}
             showIcon
             isRequired={variable.required !== false}
             validationError={errors[variable.key]}>

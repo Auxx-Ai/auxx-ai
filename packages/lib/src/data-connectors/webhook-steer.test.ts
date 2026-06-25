@@ -5,33 +5,29 @@ import type { StreamWebhookTrigger } from './connectors/types'
 import { resolveWebhookSteer } from './webhook-steer'
 
 const base: StreamWebhookTrigger = {
-  triggerId: 'shopify.shopify-trigger',
-  tokens: { orderId: 'resourceId' },
+  paths: ['resourceId'],
 }
 
 describe('resolveWebhookSteer', () => {
-  it('extracts envelope-relative tokens into a fetch context', () => {
+  it('extracts envelope-relative paths into a fetch context (path = placeholder key)', () => {
     const steer = resolveWebhookSteer(base, { resourceId: '123', topic: 'orders/create' })
-    expect(steer).toEqual({ kind: 'fetch', triggerContext: { orderId: '123' } })
+    expect(steer).toEqual({ kind: 'fetch', triggerContext: { resourceId: '123' } })
   })
 
   it('reads nested dotted paths', () => {
-    const steer = resolveWebhookSteer(
-      { ...base, tokens: { orderId: 'payload.id' } },
-      { payload: { id: 999 } }
-    )
-    expect(steer).toEqual({ kind: 'fetch', triggerContext: { orderId: '999' } })
+    const steer = resolveWebhookSteer({ ...base, paths: ['payload.id'] }, { payload: { id: 999 } })
+    expect(steer).toEqual({ kind: 'fetch', triggerContext: { 'payload.id': '999' } })
   })
 
-  it('comma-joins array token values', () => {
+  it('comma-joins array path values', () => {
     const steer = resolveWebhookSteer(
-      { ...base, tokens: { ids: 'resourceIds' } },
+      { ...base, paths: ['resourceIds'] },
       { resourceIds: [1, 2, 3] }
     )
-    expect(steer).toEqual({ kind: 'fetch', triggerContext: { ids: '1,2,3' } })
+    expect(steer).toEqual({ kind: 'fetch', triggerContext: { resourceIds: '1,2,3' } })
   })
 
-  it('omits tokens whose path returns nothing (the fetch then fails them)', () => {
+  it('omits paths that return nothing (the fetch then fails them)', () => {
     const steer = resolveWebhookSteer(base, { topic: 'orders/create' })
     expect(steer).toEqual({ kind: 'fetch', triggerContext: {} })
   })

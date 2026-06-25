@@ -220,11 +220,6 @@ function ConnectionItem({
       )}
       {actionable && expired && <TriangleAlert className='size-3.5 shrink-0 text-amber-600' />}
       <div className='ml-auto flex items-center gap-1.5'>
-        {selected && (
-          <div className='flex size-4 items-center justify-center rounded-full border border-blue-800 bg-info'>
-            <Check className='size-2.5! text-white' strokeWidth={4} />
-          </div>
-        )}
         {actionable && (
           <Button
             type='button'
@@ -245,6 +240,18 @@ function ConnectionItem({
             }}>
             {actionLabel}
           </Button>
+        )}
+        {selected && (
+          <div
+            className={cn(
+              'flex size-4 items-center justify-center rounded-full border border-blue-800 bg-info',
+              // Yield the trailing slot to the action button whenever it reveals so the
+              // button always sits at the end of the row.
+              'group-hover:hidden group-focus-within:hidden group-data-[selected=true]:hidden',
+              expired && 'hidden'
+            )}>
+            <Check className='size-2.5! text-white' strokeWidth={4} />
+          </div>
         )}
       </div>
     </CommandItem>

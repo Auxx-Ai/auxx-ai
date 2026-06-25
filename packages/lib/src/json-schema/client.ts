@@ -8,5 +8,11 @@
  * @see ../../package.json `exports` → `@auxx/lib/json-schema/client`
  */
 
+export {
+  type CollectLeavesOptions,
+  collectSchemaLeaves,
+  lastSegment,
+  type SourceLeaf,
+} from './flatten'
 export { inferJsonSchema, type JsonSchema } from './infer'
 export { sanitizeFormatsForOpenAiStrict, stripVendorKeywords, VENDOR_KEYWORD } from './vendor'

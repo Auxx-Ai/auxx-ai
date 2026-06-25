@@ -3,8 +3,9 @@
 // source schema + the name/type heuristic that proposes source→field bindings.
 
 import { describe, expect, it } from 'vitest'
+import { collectSchemaLeaves } from '../json-schema'
 import type { ResourceField } from '../resources'
-import { collectSchemaLeaves, suggestFieldMappings } from './suggest-mappings'
+import { suggestFieldMappings } from './suggest-mappings'
 
 /** Minimal writable target field; override `capabilities`/`fieldType` per case. */
 function field(partial: Partial<ResourceField> & { id: string; key: string }): ResourceField {
@@ -46,6 +47,20 @@ describe('collectSchemaLeaves', () => {
       items: { type: 'object', properties: { id: { type: 'string' } } },
     })
     expect(leaves).toEqual([{ path: 'id', jsonType: 'string' }])
+  })
+
+  it('surfaces scalar arrays when includeScalarArrays is set, still skipping object arrays', () => {
+    const schema = {
+      type: 'object',
+      properties: {
+        ids: { type: 'array', items: { type: 'number' } },
+        items: { type: 'array', items: { type: 'object', properties: { x: { type: 'string' } } } },
+      },
+    }
+    expect(collectSchemaLeaves(schema)).toEqual([])
+    expect(collectSchemaLeaves(schema, { includeScalarArrays: true })).toEqual([
+      { path: 'ids', jsonType: 'number' },
+    ])
   })
 })
 

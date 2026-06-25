@@ -3,18 +3,16 @@
 // send — the endpoint's public URL is the test path): toggle listening, watch deliveries
 // land, expand a row to inspect its raw payload. Endpoint-scoped by default; pass `topic` to
 // scope a binding view to matching deliveries, with a muted hint counting deliveries on other
-// topics so a topic typo is visible. Rows render as TreeRows with the payload inside the
-// expandable (mirrors components/evals/ui/eval-tool-responses.tsx).
+// topics so a topic typo is visible. The row/expand/payload chrome comes from the shared
+// TestEventList; this file only supplies the topic scoping + endpoint-specific seams.
 
 'use client'
 
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
-import { TreeRow } from '@auxx/ui/components/tree-row'
-import { formatDistanceToNow } from 'date-fns'
-import { Clock, Radio, Sparkles } from 'lucide-react'
-import { useMemo, useState } from 'react'
-import { TriggerEventInspector } from '~/components/workflow/shared/test-events'
+import { Radio, Sparkles } from 'lucide-react'
+import { useMemo } from 'react'
+import { TestEventList, TriggerEventInspector } from '~/components/workflow/shared/test-events'
 import { CodeEditor, CodeLanguage } from '~/components/workflow/ui/code-editor'
 import {
   useWebhookEndpointTestListener,
@@ -28,6 +26,8 @@ interface WebhookEndpointInspectorProps {
   title?: string
   description?: string
   initialOpen?: boolean
+  /** Forwarded to the underlying `Section` (e.g. to override padding in a scroll column). */
+  className?: string
   /**
    * When supplied, each captured delivery gains a "Use shape as schema" action
    * (the Setup-topics page wires this to infer + store a topic's payload schema).
@@ -42,6 +42,7 @@ export function WebhookEndpointInspector({
   title = 'Deliveries',
   description = 'Listen for live deliveries to this endpoint.',
   initialOpen = false,
+  className,
   onUseEventShape,
 }: WebhookEndpointInspectorProps) {
   const listener = useWebhookEndpointTestListener(endpointId)
@@ -53,6 +54,7 @@ export function WebhookEndpointInspector({
       title={title}
       description={description}
       initialOpen={initialOpen}
+      className={className}
       renderEvents={(events, onClear) => (
         <WebhookEndpointEventList
           events={events}
@@ -65,6 +67,12 @@ export function WebhookEndpointInspector({
   )
 }
 
+/**
+ * Thin wrapper over the shared {@link TestEventList}: applies the optional topic scope
+ * (filtering deliveries + counting the rest for the hint footer) and supplies the
+ * endpoint-specific seams (Radio icon, topic-badge title, payload `CodeEditor`, the
+ * "Use shape as schema" action). The row/expand/payload chrome lives in the shared list.
+ */
 function WebhookEndpointEventList({
   events,
   onClear,
@@ -76,99 +84,64 @@ function WebhookEndpointEventList({
   scopedTopic: string | null
   onUseEventShape?: (event: WebhookEndpointTestEvent) => void
 }) {
-  const [expanded, setExpanded] = useState<Set<string>>(new Set())
-  const toggle = (id: string) =>
-    setExpanded((prev) => {
-      const next = new Set(prev)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
-      return next
-    })
-
   const { shown, otherCount } = useMemo(() => {
     if (!scopedTopic) return { shown: events, otherCount: 0 }
     const shown = events.filter((e) => e.topic === scopedTopic)
     return { shown, otherCount: events.length - shown.length }
   }, [events, scopedTopic])
 
-  if (shown.length === 0) {
-    return (
-      <div className='space-y-2'>
-        <div className='py-8 text-center text-muted-foreground'>
-          <p className='text-sm'>
-            {scopedTopic ? `No deliveries on "${scopedTopic}" yet` : 'No deliveries captured yet'}
-          </p>
-          <p className='mt-1 text-xs'>Deliveries to this endpoint will appear here in real time.</p>
-        </div>
-        {scopedTopic && otherCount > 0 && (
-          <OtherTopicsHint count={otherCount} topic={scopedTopic} />
-        )}
-      </div>
-    )
-  }
+  const footer =
+    scopedTopic && otherCount > 0 ? (
+      <OtherTopicsHint count={otherCount} topic={scopedTopic} />
+    ) : undefined
 
   return (
-    <div className='space-y-2'>
-      <div className='flex items-center justify-between'>
-        <span className='text-xs text-muted-foreground'>
-          {shown.length} {shown.length === 1 ? 'delivery' : 'deliveries'} captured
-        </span>
-        <Button variant='ghost' size='xs' className='h-6' onClick={onClear}>
-          Clear all
-        </Button>
-      </div>
-
-      <div className='max-h-96 space-y-0.5 overflow-y-auto'>
-        {shown.map((event) => (
-          <TreeRow
-            key={event.id}
-            icon={<Radio className='size-4' />}
-            title={
-              event.topic ? (
-                <Badge variant='secondary' className='text-xs'>
-                  {event.topic}
-                </Badge>
-              ) : (
-                <span className='text-xs text-muted-foreground'>(no topic)</span>
-              )
-            }
-            secondary={
-              <span className='flex items-center gap-1.5 text-xs text-muted-foreground'>
-                <Clock className='size-3' />
-                {formatDistanceToNow(new Date(event.timestamp), { addSuffix: true })}
-                {event.eventId && (
-                  <span className='max-w-32 truncate font-mono'>{event.eventId}</span>
-                )}
-              </span>
-            }
-            expandable
-            isOpen={expanded.has(event.id)}
-            onToggleOpen={() => toggle(event.id)}>
-            <div className='space-y-2 py-1.5 pe-2 ps-12'>
-              <CodeEditor
-                language={CodeLanguage.json}
-                value={JSON.stringify(event.triggerData, null, 2)}
-                readOnly
-                minHeight={120}
-                title='PAYLOAD'
-                gradientBorder={false}
-              />
-              {onUseEventShape && (
-                <div className='flex justify-end'>
-                  <Button variant='outline' size='xs' onClick={() => onUseEventShape(event)}>
-                    <Sparkles />
-                    Use shape as schema
-                    {event.topic ? ` for "${event.topic}"` : ''}
-                  </Button>
-                </div>
-              )}
-            </div>
-          </TreeRow>
-        ))}
-      </div>
-
-      {scopedTopic && otherCount > 0 && <OtherTopicsHint count={otherCount} topic={scopedTopic} />}
-    </div>
+    <TestEventList<WebhookEndpointTestEvent>
+      events={shown}
+      onClear={onClear}
+      icon={<Radio className='size-4' />}
+      countNoun={{ one: 'delivery', many: 'deliveries' }}
+      emptyTitle={
+        scopedTopic ? `No deliveries on "${scopedTopic}" yet` : 'No deliveries captured yet'
+      }
+      emptyDescription='Deliveries to this endpoint will appear here in real time.'
+      footer={footer}
+      renderTitle={(event) =>
+        event.topic ? (
+          <Badge variant='secondary' className='text-xs'>
+            {event.topic}
+          </Badge>
+        ) : (
+          <span className='text-xs text-muted-foreground'>(no topic)</span>
+        )
+      }
+      renderMeta={(event) =>
+        event.eventId ? <span className='max-w-32 truncate font-mono'>{event.eventId}</span> : null
+      }
+      renderDetail={(event) => (
+        <CodeEditor
+          language={CodeLanguage.json}
+          value={JSON.stringify(event.triggerData, null, 2)}
+          readOnly
+          minHeight={120}
+          title='PAYLOAD'
+          gradientBorder={false}
+        />
+      )}
+      renderActions={
+        onUseEventShape
+          ? (event) => (
+              <div className='flex justify-end'>
+                <Button variant='outline' size='xs' onClick={() => onUseEventShape(event)}>
+                  <Sparkles />
+                  Use shape as schema
+                  {event.topic ? ` for "${event.topic}"` : ''}
+                </Button>
+              </div>
+            )
+          : undefined
+      }
+    />
   )
 }
 

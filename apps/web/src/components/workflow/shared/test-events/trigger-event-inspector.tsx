@@ -30,6 +30,8 @@ interface TriggerEventInspectorProps<T extends BaseTestEvent> {
   title?: string
   description?: string
   initialOpen?: boolean
+  /** Forwarded to the underlying `Section` wrapper (e.g. to override padding in a scroll column). */
+  className?: string
   /** Renders the captured events (e.g. the shared `TestEventList`). */
   renderEvents: (events: T[], onClear: () => void) => ReactNode
   /**
@@ -48,6 +50,7 @@ export function TriggerEventInspector<T extends BaseTestEvent>({
   title = 'Deliveries',
   description = 'Listen for incoming events in real time.',
   initialOpen = true,
+  className,
   renderEvents,
   send,
 }: TriggerEventInspectorProps<T>) {
@@ -57,6 +60,14 @@ export function TriggerEventInspector<T extends BaseTestEvent>({
   const [showTestEditor, setShowTestEditor] = useState(false)
   const [testData, setTestData] = useState(() => send?.sampleData ?? '{}')
   const [isSending, setIsSending] = useState(false)
+
+  // The body only has something to reveal while listening, once results exist, or when a
+  // manual "Send Test Event" affordance is offered. With nothing to show, collapse the
+  // section and drop the chevron. `userOpen` tracks manual collapse; starting to listen
+  // makes the body available again and re-opens it automatically.
+  const [userOpen, setUserOpen] = useState(initialOpen)
+  const expandable = isListening || events.length > 0 || !!send
+  const open = expandable && userOpen
 
   const handleSendTest = useCallback(async () => {
     if (!send) return
@@ -81,53 +92,54 @@ export function TriggerEventInspector<T extends BaseTestEvent>({
     <Section
       title={title}
       description={description}
-      initialOpen={initialOpen}
+      open={open}
+      collapsible={expandable}
+      onOpenChange={setUserOpen}
+      // When non-collapsible, Section forces the Collapsible open, so its `data-[state=closed]:pb-0`
+      // never fires and the bodyless header keeps a dead `pb-4`. Zero it via the inner data-slot.
+      className={cn(className, !expandable && '[&_[data-slot=section]]:pb-0')}
       actions={
-        <div className='flex items-center gap-2'>
-          <div
-            className={cn(
-              'size-2 rounded-full',
-              connectionStatus === 'connected'
-                ? 'bg-green-500'
-                : connectionStatus === 'connecting'
-                  ? 'bg-yellow-500 animate-pulse'
-                  : 'bg-gray-400'
-            )}
-          />
-          <span className='text-xs text-muted-foreground'>
-            {connectionStatus === 'connected'
-              ? 'Listening'
-              : connectionStatus === 'connecting'
-                ? 'Connecting...'
-                : 'Disconnected'}
-          </span>
-        </div>
+        // The button is the connection indicator — its label/pulse reflect the live SSE state
+        // (idle → connecting → listening), so no separate status badge is needed.
+        <Button
+          variant='outline'
+          size='xs'
+          className={cn(
+            isListening &&
+              'bg-bad-200 hover:bg-bad-200 text-bad-500 hover:text-bad-500 border-bad-300'
+          )}
+          onClick={() => {
+            if (isListening) {
+              stopListening()
+            } else {
+              startListening()
+              setUserOpen(true) // starting to listen always opens the section to reveal events
+            }
+          }}>
+          {isListening ? (
+            <span
+              className={cn(
+                'size-2.5 animate-pulse rounded-full',
+                connectionStatus === 'connecting' ? 'bg-yellow-500' : 'bg-bad-500'
+              )}
+            />
+          ) : (
+            <Radio />
+          )}
+          {!isListening
+            ? 'Listen for Events'
+            : connectionStatus === 'connecting'
+              ? 'Connecting…'
+              : 'Listening…'}
+        </Button>
       }>
       <div className='space-y-3'>
-        <div className='flex items-center gap-2'>
-          <Button
-            variant='outline'
-            size='sm'
-            className={cn(
-              isListening &&
-                'bg-bad-200 hover:bg-bad-200 text-bad-500 hover:text-bad-500 border-bad-300'
-            )}
-            onClick={() => (isListening ? stopListening() : startListening())}>
-            {isListening ? (
-              <span className='size-2.5 rounded-full bg-bad-500 animate-pulse' />
-            ) : (
-              <Radio />
-            )}
-            {isListening ? 'Listening...' : 'Listen for Events'}
+        {send && (
+          <Button variant='outline' size='sm' onClick={() => setShowTestEditor(!showTestEditor)}>
+            <Play />
+            Send Test Event
           </Button>
-
-          {send && (
-            <Button variant='outline' size='sm' onClick={() => setShowTestEditor(!showTestEditor)}>
-              <Play />
-              Send Test Event
-            </Button>
-          )}
-        </div>
+        )}
 
         {send && showTestEditor && (
           <div className='space-y-2'>

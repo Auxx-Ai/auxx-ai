@@ -3,6 +3,10 @@
 // See plans/data-connectors/. Server-only (BullMQ, crypto): never import this
 // barrel from client code.
 
+// Tier 2 mapping suggester (create-sync-flow §3.2) — heuristic source→field proposals.
+// Schema flattening moved to `@auxx/lib/json-schema` (v7, client-safe); re-exported here
+// for back-compat with existing data-connectors importers.
+export { collectSchemaLeaves, type SourceLeaf } from '../json-schema'
 // App-catalog → setup materialization (create-sync-flow §3.1, Tier 1)
 export { appCatalogStreamSchema, buildSchemaFromFieldPaths } from './app-catalog'
 // Connector runtime — the shared definition+credential seam + test-fetch
@@ -180,9 +184,7 @@ export {
   DATA_CONNECTOR_STALE_SWEEP_JOB_NAME,
   dataConnectorStaleSweepJob,
 } from './stale-sweep-job'
-// Tier 2 mapping suggester (create-sync-flow §3.2) — heuristic source→field proposals
-export type { SourceLeaf } from './suggest-mappings'
-export { collectSchemaLeaves, suggestFieldMappings } from './suggest-mappings'
+export { suggestFieldMappings } from './suggest-mappings'
 // Sync-core adapters (Step 3) — DC implementations of the shared seams
 export {
   applySyncStateToStream,

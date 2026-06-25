@@ -27,16 +27,11 @@ import {
 } from '~/components/schema-editor/ui/schema-editor-dialog'
 import type { RouterOutputs } from '~/trpc/react'
 import { useBufferedConfig } from '../hooks/use-buffered-config'
+import { useRegisterSaver } from '../hooks/use-connector-edits'
 import { useSourcePaths } from '../hooks/use-source-paths'
 import { useStreamMutations } from '../hooks/use-stream-mutations'
-import {
-  type BackfillWindowSpan,
-  describePagination,
-  type PaginationSpec,
-} from '../lib/describe-pagination'
-import { detectPagination } from '../lib/detect-pagination'
 import { MappingTree } from './mapping-tree'
-import { PaginationSummary } from './pagination-summary'
+import { PaginationSection } from './pagination-section'
 import {
   JsonBodyEditor,
   RecordKeyValueEditor,
@@ -44,7 +39,6 @@ import {
   RevealChip,
 } from './request-editors'
 import { StreamSample } from './stream-sample'
-import { WebhookTriggerBindingSection } from './webhook-trigger-binding-section'
 
 type Connector = NonNullable<RouterOutputs['dataConnector']['getById']>
 type Stream = RouterOutputs['dataConnector']['listStreams'][number]
@@ -134,7 +128,6 @@ export function StreamConfigPanel({
     saveRequestConfig,
     setStreamSchema,
     sampleFetch,
-    applyPagination,
     isSavingRequest,
     isSampling,
   } = useStreamMutations(connector.id)
@@ -169,6 +162,17 @@ export function StreamConfigPanel({
   )
   const [showBody, setShowBody] = useState(() => Object.keys(requestConfig.body ?? {}).length > 0)
   const [bodyValid, setBodyValid] = useState(true)
+
+  // Fold the request draft into the connector-wide save bar (no inline Save
+  // button). Gate dirty on `bodyValid` so an unparseable JSON body never commits
+  // — mirrors the old button's `disabled={!bodyValid}`. Only generic-rest streams
+  // expose the request editor, so a non-dirty saver elsewhere is a harmless no-op.
+  useRegisterSaver(
+    `request:${stream.id}`,
+    request.isDirty && bodyValid,
+    isSavingRequest,
+    request.commit
+  )
   const rawSyncMode = (stream.syncMode as 'snapshot' | 'incremental' | 'webhook') ?? 'snapshot'
   // The picker only exposes snapshot/incremental; treat webhook as snapshot here.
   const syncMode: 'snapshot' | 'incremental' =
@@ -212,39 +216,6 @@ export function StreamConfigPanel({
   // Only surface a provenance sentence when it's actionable (inferred/manual).
   // Catalog ("came predefined") and the empty state say nothing useful — hide them.
   const schemaSentence = hasSchema ? SCHEMA_SOURCE_SENTENCE[stream.schemaSource] : null
-
-  // Pagination transparency (Step 10): describe the stream's configured spec and,
-  // after a test fetch, an inform-only detected proposal. Read-only — both render
-  // through PaginationSummary. The "Use this" apply is wired but hidden (§3.4).
-  const pagination = (stream.requestConfig as { pagination?: PaginationSpec } | null)?.pagination
-  const backfillWindowSpan = (
-    connector.config as { backfillWindowSpan?: BackfillWindowSpan } | null
-  )?.backfillWindowSpan
-  const pageSizeFallback = numericParam(requestConfig.params)
-  const configuredPagination = describePagination(pagination, {
-    backfillWindowSpan,
-    pageSizeFallback,
-  })
-  const detected = sample
-    ? detectPagination({
-        body: sample.response,
-        headers: sample.responseHeaders,
-        pageRecordCount: sample.recordCount,
-        pageLimit: pagination?.pageSize ?? pageSizeFallback,
-      })
-    : null
-  const detectedPagination = detected
-    ? describePagination(detected.spec, { pageSizeFallback })
-    : null
-
-  const handleUsePagination = () => {
-    if (!detected) return
-    const merged = {
-      ...((stream.requestConfig as Record<string, unknown>) ?? {}),
-      pagination: detected.spec,
-    }
-    void applyPagination(stream.id, merged as Parameters<typeof applyPagination>[1])
-  }
 
   const body = (
     <>
@@ -290,17 +261,6 @@ export function StreamConfigPanel({
                   onChange={(e) => request.set({ ...request.value, path: e.target.value })}
                   placeholder='/orders or full URL'
                 />
-                <InputGroupAddon align='inline-end'>
-                  <Button
-                    size='xs'
-                    variant='outline'
-                    className='me-0.5'
-                    disabled={!request.isDirty || isSavingRequest || !bodyValid}
-                    loading={isSavingRequest}
-                    onClick={() => void request.commit()}>
-                    Save request
-                  </Button>
-                </InputGroupAddon>
               </InputGroup>
 
               {/* Reveal chips — headers / query params / body stay hidden until clicked. */}
@@ -356,13 +316,6 @@ export function StreamConfigPanel({
           </Section>
         )}
 
-        {/* 1b. Webhook trigger binding — only when the connector syncs on webhooks
-            (app-trigger sync bridge §7). Binds this stream to an app trigger + maps
-            the payload tokens that steer the request above. */}
-        {isGenericRest && showConfigure && connector.syncBehavior === 'webhook' && (
-          <WebhookTriggerBindingSection connector={connector} stream={stream} />
-        )}
-
         {/* 2. Sample — the single live test-fetch; feeds the schema below */}
         {showConfigure && (
           <>
@@ -389,25 +342,7 @@ export function StreamConfigPanel({
 
             {/* 2b. Pagination — read-only "how this fetch paginates" (generic-rest) */}
             {isGenericRest && (
-              <Section
-                title='Pagination'
-                icon={<Waypoints className='size-4' />}
-                initialOpen
-                collapsible={false}
-                description='How this fetch reads through multiple pages.'>
-                <div className='flex flex-col gap-3'>
-                  <PaginationSummary description={configuredPagination} variant='configured' />
-                  {detectedPagination && detected && (
-                    <PaginationSummary
-                      description={detectedPagination}
-                      variant='detected'
-                      note={detected.note}
-                      onUse={handleUsePagination}
-                      useLoading={isSavingRequest}
-                    />
-                  )}
-                </div>
-              </Section>
+              <PaginationSection connector={connector} stream={stream} sample={sample} />
             )}
 
             {/* 3. Schema — derived from the sample or hand-edited */}
@@ -497,14 +432,4 @@ export function StreamConfigPanel({
   ) : (
     body
   )
-}
-
-/** Pull a numeric page-size from common limit-style query params, for the size row. */
-function numericParam(params?: Record<string, unknown>): number | undefined {
-  for (const key of ['limit', 'per_page', 'page_size', 'maxResults', 'pageSize']) {
-    const value = params?.[key]
-    if (typeof value === 'number') return value
-    if (typeof value === 'string' && /^\d+$/.test(value)) return Number(value)
-  }
-  return undefined
 }
