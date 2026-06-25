@@ -56,9 +56,10 @@ const appInputSchema = z.object({
 })
 
 const webhookInputSchema = z.object({
-  kind: z.literal('webhook'),
-  triggerConnectionId: z.string().min(1),
-  triggerTopic: z.string().min(1),
+  kind: z.literal('webhook-endpoint'),
+  triggerWebhookEndpointId: z.string().min(1),
+  // Empty ⇒ matches every delivery (endpoints with no topicSource extract topic '').
+  triggerTopic: z.string().default(''),
   filter: z.record(z.string(), z.unknown()).optional(),
 })
 
@@ -96,6 +97,7 @@ function rowToDto(row: typeof schema.AgentTrigger.$inferSelect) {
     triggerAppTriggerId: row.triggerAppTriggerId,
     triggerInstallationId: row.triggerInstallationId,
     triggerConnectionId: row.triggerConnectionId,
+    triggerWebhookEndpointId: row.triggerWebhookEndpointId,
     triggerTopic: row.triggerTopic,
     config: row.config,
     instructions: row.instructions,

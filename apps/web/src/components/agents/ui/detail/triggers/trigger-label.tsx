@@ -20,13 +20,13 @@ export function TriggerLabel({ row }: { row: Trigger }) {
   const isCrudEvent = row.kind === 'event' && !!row.entityDefinitionId && !!row.triggerType
   const { resource } = useResource(isCrudEvent ? row.entityDefinitionId : undefined)
   const { appInstallations } = useAppsContext()
-  const webhookConnections = api.connections.webhookConnections.useQuery(undefined, {
-    enabled: row.kind === 'webhook',
+  const webhookEndpoints = api.webhookEndpoint.list.useQuery(undefined, {
+    enabled: row.kind === 'webhook-endpoint',
   })
 
-  if (row.kind === 'webhook' && row.triggerConnectionId) {
-    const connection = webhookConnections.data?.find((c) => c.id === row.triggerConnectionId)
-    const name = connection?.name ?? row.triggerConnectionId
+  if (row.kind === 'webhook-endpoint' && row.triggerWebhookEndpointId) {
+    const endpoint = webhookEndpoints.data?.find((e) => e.id === row.triggerWebhookEndpointId)
+    const name = endpoint?.name ?? row.triggerWebhookEndpointId
     return <span>{row.triggerTopic ? `${name} · ${row.triggerTopic}` : name}</span>
   }
 

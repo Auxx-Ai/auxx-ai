@@ -30,7 +30,7 @@ export interface AgentAppTriggerJobData {
  * Worker handler for autonomous app- and webhook-endpoint-driven triggers on
  * `AgentTrigger`. Sibling to the workflow `executeAppTriggeredWorkflow` path — runs
  * on the same scheduled-trigger queue as the other agent workers. Handles both
- * `kind: 'app'` (appId/triggerId/installationId) and `kind: 'webhook'`
+ * `kind: 'app'` (appId/triggerId/installationId) and `kind: 'webhook-endpoint'`
  * (webhookEndpointId/topic); the session triggerContext carries whichever is present.
  */
 export async function executeAgentAppTrigger(job: Job<AgentAppTriggerJobData>) {
@@ -60,7 +60,11 @@ export async function executeAgentAppTrigger(job: Job<AgentAppTriggerJobData>) {
   }
 
   const trigger = agent.triggers.find((t) => t.id === agentTriggerId)
-  if (!trigger || !trigger.enabled || (trigger.kind !== 'app' && trigger.kind !== 'webhook')) {
+  if (
+    !trigger ||
+    !trigger.enabled ||
+    (trigger.kind !== 'app' && trigger.kind !== 'webhook-endpoint')
+  ) {
     logger.warn('Stale agent app trigger — skipping', {
       agentTriggerId,
       reason: !trigger ? 'missing' : !trigger.enabled ? 'disabled' : 'wrong-kind',

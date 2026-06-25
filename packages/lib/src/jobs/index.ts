@@ -80,6 +80,10 @@ export {
   type ConnectorAppTriggerStreamJobData,
   runConnectorAppTriggerStream,
 } from './data-connector/app-trigger-sync-stream-job'
+export {
+  type ConnectorWebhookEndpointDispatchJobData,
+  dispatchWebhookEndpointToConnectors,
+} from './data-connector/webhook-endpoint-sync-dispatch-job'
 // Datasets
 export {
   batchOperationJob,

@@ -17,6 +17,7 @@ export function getTriggerLabel(trigger: {
   eventType: string | null
   triggerAppId: string | null
   triggerAppTriggerId: string | null
+  triggerTopic?: string | null
   config: Record<string, unknown>
 }): string {
   return baseLabel(trigger)
@@ -29,6 +30,7 @@ function baseLabel(trigger: {
   eventType: string | null
   triggerAppId: string | null
   triggerAppTriggerId: string | null
+  triggerTopic?: string | null
   config: Record<string, unknown>
 }): string {
   switch (trigger.kind) {
@@ -45,6 +47,8 @@ function baseLabel(trigger: {
         return `${trigger.triggerAppId} · ${trigger.triggerAppTriggerId}`
       }
       return 'App trigger'
+    case 'webhook-endpoint':
+      return trigger.triggerTopic ? `Webhook · ${trigger.triggerTopic}` : 'Webhook endpoint'
     case 'mention':
       return 'Mention'
     case 'assignment':

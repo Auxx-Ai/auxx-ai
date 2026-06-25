@@ -27,10 +27,14 @@ export type ConnectorAppTriggerStreamJobData = {
   connectorId: string
   streamKey: string
   organizationId: string
-  appInstallationId: string
-  triggerId: string
   triggerData: Record<string, unknown>
   eventId: string
+  /** Present when the steering signal is an APP trigger (DLQ labels off these). */
+  appInstallationId?: string
+  triggerId?: string
+  /** Present when the steering signal is a generic WebhookEndpoint instead. */
+  webhookEndpointId?: string
+  topic?: string
   /** How many times this event has been deferred for a throttle (re-enqueue guard). */
   rateLimitRetries?: number
 }
@@ -99,11 +103,24 @@ async function deferForThrottle(job: Job<ConnectorAppTriggerStreamJobData>, retr
  * inspector list shape, §5.2 / §7.4) before BullMQ discards the job on `removeOnFail`.
  */
 async function deadLetter(job: Job<ConnectorAppTriggerStreamJobData>, err: unknown) {
-  const { appInstallationId, triggerId, eventId, connectorId, streamKey, triggerData } = job.data
+  const {
+    appInstallationId,
+    triggerId,
+    webhookEndpointId,
+    topic,
+    eventId,
+    connectorId,
+    streamKey,
+    triggerData,
+  } = job.data
   try {
     const redis = await getRedisClient(false)
     if (!redis) return
-    const key = `app-trigger-test:${appInstallationId}:${triggerId}:dlq`
+    // Sit the DLQ beside whichever inspector list fed the event: app triggers use
+    // `app-trigger-test:<inst>:<triggerId>:*`, generic endpoints `webhook-endpoint:<id>:<topic>:*`.
+    const key = webhookEndpointId
+      ? `webhook-endpoint:${webhookEndpointId}:${topic ?? ''}:dlq`
+      : `app-trigger-test:${appInstallationId}:${triggerId}:dlq`
     const entry = {
       id: eventId,
       timestamp: new Date().toISOString(),

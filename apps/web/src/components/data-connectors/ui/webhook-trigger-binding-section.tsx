@@ -1,11 +1,10 @@
 // apps/web/src/components/data-connectors/ui/webhook-trigger-binding-section.tsx
 'use client'
 
-import type { CatalogTriggerProjection } from '@auxx/database'
 import { Button } from '@auxx/ui/components/button'
 import { Input } from '@auxx/ui/components/input'
 import { Label } from '@auxx/ui/components/label'
-import { EmptySection, Section } from '@auxx/ui/components/section'
+import { Section } from '@auxx/ui/components/section'
 import {
   Select,
   SelectContent,
@@ -14,9 +13,14 @@ import {
   SelectValue,
 } from '@auxx/ui/components/select'
 import { toastError } from '@auxx/ui/components/toast'
-import { Plus, Webhook, X } from 'lucide-react'
+import { Pencil, Plus, Webhook, X } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useAppsContext } from '~/components/apps/providers/apps-context'
+import {
+  type TriggerSource,
+  TriggerSourcePicker,
+  useTriggerSources,
+} from '~/components/pickers/trigger-source'
 import { AppTriggerTestSection } from '~/components/workflow/apps/trigger/app-trigger-test-section'
 import { api, type RouterOutputs } from '~/trpc/react'
 
@@ -25,7 +29,8 @@ type Stream = RouterOutputs['dataConnector']['listStreams'][number]
 
 /** The persisted webhookTrigger block, mirrored from the lib StreamWebhookTrigger. */
 type WebhookTriggerConfig = {
-  triggerId: string
+  triggerId?: string
+  webhookEndpointId?: string
   filter?: Record<string, unknown>
   tokens: Record<string, string>
   deleteWhen?: { tokenTruthy?: string } | { topicEquals?: string }
@@ -36,12 +41,26 @@ type WebhookTriggerConfig = {
 type TokenRow = { token: string; path: string }
 type DeleteMode = 'none' | 'topic' | 'field'
 
+/** The bound signal: an app trigger OR a generic webhook endpoint (exactly one). */
+type BoundSource =
+  | { kind: 'app'; triggerId: string }
+  | { kind: 'webhook-endpoint'; webhookEndpointId: string }
+
+function savedSource(saved: WebhookTriggerConfig | undefined): BoundSource | null {
+  if (saved?.webhookEndpointId) {
+    return { kind: 'webhook-endpoint', webhookEndpointId: saved.webhookEndpointId }
+  }
+  if (saved?.triggerId) return { kind: 'app', triggerId: saved.triggerId }
+  return null
+}
+
 /**
- * Webhook-sync stream binding (app-trigger sync bridge §7). Shown when the
- * connector's `syncBehavior` is `webhook`: pick which app trigger drives this
- * stream, map payload tokens that steer the fetch, optionally scope by topic, and
- * watch live deliveries through the shared app-trigger inspector. Persists into the
- * stream's `requestConfig.webhookTrigger` (merged — never clobbers the request).
+ * Webhook-sync stream binding (unified-trigger-picker §4.2). Shown when the connector's
+ * `syncBehavior` is `webhook`: pick which signal drives this stream — an installed-app
+ * webhook trigger OR a generic WebhookEndpoint — via the shared `TriggerSourcePicker`, map
+ * payload tokens that steer the fetch, optionally scope by topic, and (for app triggers)
+ * watch live deliveries through the app-trigger inspector. Persists into the stream's
+ * `requestConfig.webhookTrigger` (merged — never clobbers the request).
  */
 export function WebhookTriggerBindingSection({
   connector,
@@ -52,23 +71,31 @@ export function WebhookTriggerBindingSection({
 }) {
   const { appInstallations, appConnections } = useAppsContext()
 
-  // Resolve the app installation behind this connector's connection — directly off
-  // the connector, else via the app connection bound by `credentialId`.
+  // Resolve the app installation behind this connector's connection (if any) so app
+  // triggers can be scoped to it. Endpoints are app-less, so this may be null.
   const installationId = useMemo(() => {
     if (connector.appInstallationId) return connector.appInstallationId
     const conn = appConnections.find((c) => c.id === connector.credentialId)
     return conn?.appInstallationId ?? null
   }, [connector.appInstallationId, connector.credentialId, appConnections])
 
-  const triggers: CatalogTriggerProjection[] = useMemo(() => {
-    const inst = appInstallations.find((i) => i.installationId === installationId)
-    return inst?.workflowTriggers ?? inst?.agentTriggers ?? []
-  }, [appInstallations, installationId])
+  const appId = useMemo(
+    () => appInstallations.find((i) => i.installationId === installationId)?.app.id,
+    [appInstallations, installationId]
+  )
+
+  // Resolve display names + the selected app trigger's output schema from the same
+  // sources the picker lists, so the saved binding renders a label not a raw id.
+  const { appSources, endpointSources } = useTriggerSources({
+    surface: 'workflow',
+    appIdFilter: appId,
+  })
 
   const saved = (stream.requestConfig as { webhookTrigger?: WebhookTriggerConfig } | null)
     ?.webhookTrigger
 
-  const [triggerId, setTriggerId] = useState(saved?.triggerId ?? '')
+  const [source, setSource] = useState<BoundSource | null>(() => savedSource(saved))
+  const [pickerOpen, setPickerOpen] = useState(false)
   const [rows, setRows] = useState<TokenRow[]>(() =>
     saved?.tokens && Object.keys(saved.tokens).length > 0
       ? Object.entries(saved.tokens).map(([token, path]) => ({ token, path }))
@@ -87,31 +114,38 @@ export function WebhookTriggerBindingSection({
   })
   const utils = api.useUtils()
 
-  const selectedTrigger = triggers.find((t) => t.triggerId === triggerId) ?? null
-  // The trigger's declared output fields (the `triggerData` envelope it emits, e.g.
-  // `resourceId`, `updatedAt`, `topic`, `payload`) — suggested in the token + delete
-  // path pickers so authors map against real, labeled, envelope-relative paths over
-  // guessing. Nested provider specifics (e.g. `payload.financial_status`) stay
-  // free-typed. Empty until the app declares `schema.outputs` on the trigger.
+  const selectedAppTrigger =
+    source?.kind === 'app'
+      ? (appSources.find((s) => s.trigger.triggerId === source.triggerId)?.trigger ?? null)
+      : null
+  const selectedEndpoint =
+    source?.kind === 'webhook-endpoint'
+      ? (endpointSources.find((s) => s.endpoint.id === source.webhookEndpointId)?.endpoint ?? null)
+      : null
+
+  const sourceLabel =
+    source?.kind === 'app'
+      ? (selectedAppTrigger?.label ?? source.triggerId)
+      : source?.kind === 'webhook-endpoint'
+        ? (selectedEndpoint?.name ?? source.webhookEndpointId)
+        : null
+
+  // The app trigger's declared output fields (the `triggerData` envelope it emits, e.g.
+  // `resourceId`, `updatedAt`, `topic`, `payload`) — suggested in the token + delete path
+  // pickers. Empty for endpoints (raw body) and until the app declares `schema.outputs`.
   const suggestedPaths = useMemo(
-    () => Object.keys(selectedTrigger?.outputsJsonSchema ?? {}),
-    [selectedTrigger]
+    () => Object.keys(selectedAppTrigger?.outputsJsonSchema ?? {}),
+    [selectedAppTrigger]
   )
 
-  if (!installationId) {
-    return (
-      <Section title='Webhook trigger' icon={<Webhook className='size-4' />} initialOpen>
-        <EmptySection
-          icon={<Webhook />}
-          title='Webhook sync needs an app connection'
-          description='Connect this source to an app that declares webhook triggers (e.g. Shopify) to bind one.'
-        />
-      </Section>
-    )
+  const handlePick = (picked: TriggerSource) => {
+    if (picked.kind === 'app') setSource({ kind: 'app', triggerId: picked.trigger.triggerId })
+    else setSource({ kind: 'webhook-endpoint', webhookEndpointId: picked.endpoint.id })
+    setPickerOpen(false)
   }
 
   const handleSave = async () => {
-    if (!triggerId) {
+    if (!source) {
       toastError({ title: 'Pick a trigger' })
       return
     }
@@ -132,7 +166,9 @@ export function WebhookTriggerBindingSection({
           ? { tokenTruthy: deleteValue.trim() }
           : undefined
     const webhookTrigger: WebhookTriggerConfig = {
-      triggerId,
+      ...(source.kind === 'app'
+        ? { triggerId: source.triggerId }
+        : { webhookEndpointId: source.webhookEndpointId }),
       tokens,
       ...(topicList.length > 0 ? { filter: { topic: { in: topicList } } } : {}),
       ...(deleteWhen ? { deleteWhen } : {}),
@@ -158,30 +194,38 @@ export function WebhookTriggerBindingSection({
       title='Webhook trigger'
       icon={<Webhook className='size-4' />}
       initialOpen
-      description='Which app event drives this stream, and how its payload steers the fetch.'>
+      description='Which event drives this stream, and how its payload steers the fetch.'>
+      <TriggerSourcePicker
+        open={pickerOpen}
+        onOpenChange={setPickerOpen}
+        onSelect={handlePick}
+        surface='workflow'
+        appIdFilter={appId}
+      />
+
       <div className='flex flex-col gap-4 px-1'>
-        {triggers.length === 0 ? (
-          <EmptySection icon={<Webhook />} title='This app declares no webhook triggers' />
-        ) : (
-          <div className='flex flex-col gap-1.5'>
-            <Label>Trigger</Label>
-            <Select value={triggerId} onValueChange={setTriggerId}>
-              <SelectTrigger>
-                <SelectValue placeholder='Select a trigger…' />
-              </SelectTrigger>
-              <SelectContent>
-                {triggers.map((t) => (
-                  <SelectItem key={t.triggerId} value={t.triggerId}>
-                    {t.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {selectedTrigger?.description && (
-              <p className='text-xs text-muted-foreground'>{selectedTrigger.description}</p>
-            )}
-          </div>
-        )}
+        <div className='flex flex-col gap-1.5'>
+          <Label>Trigger</Label>
+          {sourceLabel ? (
+            <div className='flex items-center gap-2 rounded-md border bg-muted/30 px-3 py-2'>
+              <Webhook className='size-4 text-muted-foreground' />
+              <span className='flex-1 truncate text-sm font-medium'>{sourceLabel}</span>
+              <Button variant='ghost' size='icon-sm' onClick={() => setPickerOpen(true)}>
+                <Pencil />
+              </Button>
+            </div>
+          ) : (
+            <Button variant='outline' className='self-start' onClick={() => setPickerOpen(true)}>
+              Select a trigger…
+            </Button>
+          )}
+          {selectedAppTrigger?.description && (
+            <p className='text-xs text-muted-foreground'>{selectedAppTrigger.description}</p>
+          )}
+          {selectedEndpoint && (
+            <p className='text-xs text-muted-foreground'>{selectedEndpoint.url}</p>
+          )}
+        </div>
 
         <div className='flex flex-col gap-1.5'>
           <Label>Payload tokens</Label>
@@ -291,9 +335,9 @@ export function WebhookTriggerBindingSection({
           Save binding
         </Button>
 
-        {triggerId && (
+        {source?.kind === 'app' && installationId && (
           <div className='border-t pt-3'>
-            <AppTriggerTestSection installationId={installationId} triggerId={triggerId} />
+            <AppTriggerTestSection installationId={installationId} triggerId={source.triggerId} />
           </div>
         )}
       </div>

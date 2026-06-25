@@ -1,7 +1,7 @@
 // packages/lib/src/jobs/agent/webhook-endpoint-dispatch-job.ts
 // Sibling to `dispatchAppTriggerToAgents` (app-trigger-dispatch-job.ts), for the
 // provider-agnostic inbound webhook ingress. One verified delivery → all agent triggers
-// whose `kind: 'webhook'` matches `(endpointId, topic)`. Same `:agents` dedup suffix,
+// whose `kind: 'webhook-endpoint'` matches `(endpointId, topic)`. Same `:agents` dedup suffix,
 // same `matchesFilter`, same `executeAgentAppTrigger` executor — only the matcher differs.
 
 import { getRedisClient } from '@auxx/redis'
@@ -56,7 +56,7 @@ export async function dispatchWebhookEndpointToAgents(
   }> = []
   for (const agent of agents) {
     for (const trigger of agent.triggers) {
-      if (trigger.kind !== 'webhook' || !trigger.enabled) continue
+      if (trigger.kind !== 'webhook-endpoint' || !trigger.enabled) continue
       if (trigger.triggerWebhookEndpointId !== endpointId) continue
       if (trigger.triggerTopic !== topic) continue
       matches.push({ agentId: agent.id, triggerId: trigger.id, config: trigger.config })
