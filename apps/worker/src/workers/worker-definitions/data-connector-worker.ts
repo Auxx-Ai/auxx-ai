@@ -8,9 +8,7 @@
 import { database as db } from '@auxx/database'
 import {
   type BackfillSliceJobData,
-  type ConnectorWebhookJobData,
   runBackfillSlice,
-  runConnectorWebhook,
   SLICE_LOCK_DURATION_MS,
   startConnectorSync,
 } from '@auxx/lib/data-connectors'
@@ -62,17 +60,10 @@ async function handleBackfillSlice(ctx: JobContext<BackfillSliceJobData>) {
   await runBackfillSlice(db, { connectorId, organizationId, streamId, runId }, ctx.signal)
 }
 
-/** One verified webhook delivery → apply its sink actions (Step 8A). */
-async function handleConnectorWebhook(ctx: JobContext<ConnectorWebhookJobData>) {
-  const { connectorId, organizationId, actions, eventId } = ctx.data
-  await runConnectorWebhook(db, { connectorId, organizationId, actions, eventId })
-}
-
 const jobMappings = {
   'data-connector-sync': handleDataConnectorSync,
   'data-connector-sweep': handleDataConnectorSweep,
   'data-connector-backfill-slice': handleBackfillSlice,
-  'data-connector-webhook': handleConnectorWebhook,
 }
 
 export function startDataConnectorWorker() {

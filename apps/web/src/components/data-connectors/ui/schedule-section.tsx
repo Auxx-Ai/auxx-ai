@@ -12,18 +12,9 @@ import {
 import { Label } from '@auxx/ui/components/label'
 import { RadioGroup, RadioGroupItem } from '@auxx/ui/components/radio-group'
 import { EmptySection, Section } from '@auxx/ui/components/section'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@auxx/ui/components/select'
 import { toastError } from '@auxx/ui/components/toast'
 import { ChevronDown, Clock, Webhook } from 'lucide-react'
-import { useEffect, useState } from 'react'
 import { useAppsContext } from '~/components/apps/providers/apps-context'
-import { ConnectionWebhookTestSection } from '~/components/connections/triggers/connection-webhook-test-section'
 import {
   type ScheduledState,
   ScheduleEditor,
@@ -70,18 +61,9 @@ export function ScheduleSection({ connector }: ScheduleSectionProps) {
     onError: (e) => toastError({ title: 'Could not save schedule', description: e.message }),
   })
 
-  // Webhook mode is gated on the connection's provider having a webhook spec. `topics === null`
-  // ⇒ no spec ⇒ don't offer the option. A connector subscribes to the provider's FULL topic set
-  // (the sink drops actions for unmapped streams), so there's no per-topic config — the topic
-  // picker below only scopes the live delivery inspector.
   const connectionId = connector.credentialId ?? null
-  const webhookTopics = api.connections.webhookTopics.useQuery(
-    { connectionId: connectionId ?? '' },
-    { enabled: !!connectionId }
-  )
-  const topics = webhookTopics.data?.topics ?? null
 
-  // App-trigger sync bridge (plans/data-connectors/v4): webhook mode is ALSO offered
+  // App-trigger sync bridge (plans/data-connectors/v4): webhook mode is offered
   // when the connection's app declares webhook triggers — that's the path real app
   // connections take (the legacy provider-spec gate above matches none of them). The
   // per-stream trigger binding lives in the stream config, not here.
@@ -101,17 +83,7 @@ export function ScheduleSection({ connector }: ScheduleSectionProps) {
   const webhookEndpoints = api.webhookEndpoint.list.useQuery()
   const hasWebhookEndpoints = (webhookEndpoints.data?.length ?? 0) > 0
 
-  const webhookSupported =
-    (!!connectionId && Array.isArray(topics) && topics.length > 0) ||
-    appTriggerCapable ||
-    hasWebhookEndpoints
-
-  const [inspectorTopic, setInspectorTopic] = useState<string>()
-  useEffect(() => {
-    if (topics && topics.length > 0 && (!inspectorTopic || !topics.includes(inspectorTopic))) {
-      setInspectorTopic(topics[0])
-    }
-  }, [topics, inspectorTopic])
+  const webhookSupported = appTriggerCapable || hasWebhookEndpoints
 
   // The window radio only makes sense when a stream declares which param carries the
   // backfill floor (templates do; bare generic-rest doesn't — Step 9 §1.2/§3.2). We
@@ -244,33 +216,6 @@ export function ScheduleSection({ connector }: ScheduleSectionProps) {
               title='Webhook sync'
               description='Records update automatically as the provider sends webhook deliveries. Run the first full import with “Sync now”.'
             />
-
-            {topics && topics.length > 0 && (
-              <div className='flex flex-col gap-1 text-xs text-muted-foreground'>
-                <span className='font-medium text-foreground'>Subscribed events</span>
-                {topics.map((t) => (
-                  <span key={t}>{t}</span>
-                ))}
-              </div>
-            )}
-
-            {connectionId && topics && topics.length > 0 && inspectorTopic && (
-              <div className='flex flex-col gap-2 border-t pt-4'>
-                <Select value={inspectorTopic} onValueChange={setInspectorTopic}>
-                  <SelectTrigger size='sm' className='w-full'>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {topics.map((t) => (
-                      <SelectItem key={t} value={t}>
-                        {t}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <ConnectionWebhookTestSection connectionId={connectionId} topic={inspectorTopic} />
-              </div>
-            )}
           </div>
         )}
 

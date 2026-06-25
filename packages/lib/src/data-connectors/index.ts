@@ -5,7 +5,6 @@
 
 // App-catalog → setup materialization (create-sync-flow §3.1, Tier 1)
 export { appCatalogStreamSchema, buildSchemaFromFieldPaths } from './app-catalog'
-export { reconcileConnectionWebhooks } from './connection-webhook-registration'
 // Connector runtime — the shared definition+credential seam + test-fetch
 export type {
   PreparedConnectorFetch,
@@ -30,8 +29,8 @@ export type {
   SyncSourceStream,
 } from './connector-sync-source'
 export { createConnectorStreamSyncSource } from './connector-sync-source'
-// Webhook ingress + registration (Step 8 + Direction 2 — unified connection ingress)
-export { applyWebhookActions, runConnectorWebhook, runWebhookEventSlice } from './connector-webhook'
+// Webhook-steered fetch slice (app-trigger / WebhookEndpoint sync bridge)
+export { runWebhookEventSlice } from './connector-webhook'
 export type {
   AppConnectorContext,
   ConnectorCheckpoint,
@@ -61,18 +60,12 @@ export {
   genericRestConnector,
   isConnectorCheckpoint,
 } from './connectors'
-export type {
-  BackfillSliceJobData,
-  ConnectorWebhookJobData,
-  DataConnectorSyncJobData,
-} from './data-connector-queue'
+export type { BackfillSliceJobData, DataConnectorSyncJobData } from './data-connector-queue'
 // Queue + scheduler
 export {
   BACKFILL_SLICE_JOB,
-  CONNECTOR_WEBHOOK_JOB,
   enqueueBackfillSlice,
   enqueueConnectorSync,
-  enqueueConnectorWebhook,
 } from './data-connector-queue'
 export {
   reconcileConnectorSchedulers,
@@ -207,7 +200,6 @@ export { getAllConnectorTemplates, getConnectorTemplateById } from './templates'
 // Canonical engine types
 export type {
   ConnectorRequestModel,
-  ConnectorWebhookState,
   DataConnectorType,
   FieldMapping,
   FieldMergeStrategy,
@@ -217,18 +209,7 @@ export type {
   ScheduledTriggerConfig,
   SyncMode,
   TargetMode,
-  WebhookAction,
-  WebhookCapability,
-  WebhookSubscription,
 } from './types'
 // Watermark comparison (steady mode, G2)
 export { isNumericWatermark, maxWatermark } from './watermark'
 export { resolveWebhookSteer, type WebhookSteer } from './webhook-steer'
-// Webhook capability drivers + resolver (Step 8)
-export {
-  fixtureWebhookCapability,
-  resolveConnectionWebhookCapability,
-  resolveWebhookCapability,
-  shopifyWebhookCapability,
-  stripeWebhookCapability,
-} from './webhooks'
