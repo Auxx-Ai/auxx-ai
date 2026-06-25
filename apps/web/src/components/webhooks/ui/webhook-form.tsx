@@ -1,4 +1,4 @@
-// apps/web/src/app/(protected)/app/settings/webhooks/_components/webhook-form.tsx
+// apps/web/src/components/webhooks/ui/webhook-form.tsx
 'use client'
 
 import type { WebhookEntity as Webhook } from '@auxx/database/types'
@@ -21,8 +21,8 @@ import { standardSchemaResolver } from '@hookform/resolvers/standard-schema'
 import { type ReactNode, useEffect, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
+import { useWebhook } from '../hooks/use-webhook'
 import { EventTypePicker } from './event-type-picker'
-import { useWebhook } from './use-webhook'
 
 const webhookSchema = z.object({
   id: z.string().optional(),

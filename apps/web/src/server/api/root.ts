@@ -85,6 +85,7 @@ import { timelineRouter } from './routers/timeline'
 import { usageRouter } from './routers/usage'
 import { userRouter } from './routers/user'
 import { webhookRouters } from './routers/webhook'
+import { webhookEndpointRouter } from './routers/webhook-endpoint'
 import { workflowRouter } from './routers/workflow'
 
 /**
@@ -177,6 +178,7 @@ export const appRouter = createTRPCRouter({
   user: userRouter,
   workflow: workflowRouter,
   webhook: webhookRouters,
+  webhookEndpoint: webhookEndpointRouter,
   dataImport: dataImportRouter,
   dataConnector: dataConnectorRouter,
 })

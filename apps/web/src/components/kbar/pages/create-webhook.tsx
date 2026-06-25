@@ -1,7 +1,7 @@
 // apps/web/src/components/kbar/pages/create-webhook.tsx
 'use client'
 
-import { WebhookForm } from '~/app/(protected)/app/settings/webhooks/_components/webhook-form'
+import { WebhookForm } from '~/components/webhooks/ui/webhook-form'
 import { useCommandPaletteStore } from '../store'
 
 /**

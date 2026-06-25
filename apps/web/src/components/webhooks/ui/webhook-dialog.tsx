@@ -1,4 +1,4 @@
-// apps/web/src/app/(protected)/app/settings/webhooks/_components/dialog-webhook.tsx
+// apps/web/src/components/webhooks/ui/webhook-dialog.tsx
 'use client'
 import type { WebhookEntity as Webhook } from '@auxx/database/types'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@auxx/ui/components/dialog'

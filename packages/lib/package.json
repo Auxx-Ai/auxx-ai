@@ -922,6 +922,12 @@
       "import": "./dist/webhooks/types.mjs",
       "default": "./src/webhooks/types.ts"
     },
+    "./webhooks/webhook-endpoint": {
+      "types": "./src/webhooks/webhook-endpoint/index.ts",
+      "source": "./src/webhooks/webhook-endpoint/index.ts",
+      "import": "./dist/webhooks/webhook-endpoint/index.mjs",
+      "default": "./src/webhooks/webhook-endpoint/index.ts"
+    },
     "./widgets/types": {
       "types": "./src/widgets/types.ts",
       "source": "./src/widgets/types.ts",

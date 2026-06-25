@@ -2,17 +2,14 @@
 'use client'
 
 import { FeatureKey } from '@auxx/lib/permissions/client'
-import { Button } from '@auxx/ui/components/button'
-import { Lock, PlusCircle, PlusIcon, Webhook } from 'lucide-react'
-import { useState } from 'react'
+import { Lock } from 'lucide-react'
 import { EmptyState } from '~/components/global/empty-state'
 import SettingsPage from '~/components/global/settings-page'
+import { WebhookEndpointsSection } from '~/components/webhooks/ui/webhook-endpoints-section'
+import { WebhooksSection } from '~/components/webhooks/ui/webhooks-section'
 import { useFeatureFlags } from '~/providers/feature-flag-provider'
-import { DialogWebhook } from './_components/dialog-webhook'
-import { WebhookList } from './_components/webhook-list'
 
 export default function WebhooksPage() {
-  const [createDialogOpen, setCreateDialogOpen] = useState(false)
   const { hasAccess } = useFeatureFlags()
 
   if (!hasAccess(FeatureKey.webhooks)) {
@@ -34,35 +31,12 @@ export default function WebhooksPage() {
   return (
     <SettingsPage
       title='Webhooks'
-      description='Manage webhooks to integrate with external services. Webhooks allow you to receive notifications when specific events occur in the application.'
-      button={
-        <Button variant='outline' size='sm' onClick={() => setCreateDialogOpen(true)}>
-          <PlusIcon />
-          Create
-        </Button>
-      }
+      description='Send Auxx events to external services when something happens.'
       breadcrumbs={[{ title: 'Settings', href: '/app/settings' }, { title: 'Webhooks' }]}>
-      <WebhookList
-        empty={
-          <EmptyState
-            icon={Webhook}
-            title='No webhooks found.'
-            description={<>Create your first webhook to get started.</>}
-            button={
-              <Button size='sm' variant='outline' onClick={() => setCreateDialogOpen(true)}>
-                <PlusCircle />
-                Create Webhook
-              </Button>
-            }
-          />
-        }
-      />
-
-      <DialogWebhook
-        open={createDialogOpen}
-        onClose={() => setCreateDialogOpen(false)}
-        onSuccess={() => setCreateDialogOpen(false)}
-      />
+      <div className='flex flex-1 flex-col gap-8 p-3 sm:p-6'>
+        <WebhooksSection />
+        <WebhookEndpointsSection />
+      </div>
     </SettingsPage>
   )
 }
