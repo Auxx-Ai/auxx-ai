@@ -24,13 +24,7 @@ interface StreamSampleProps {
  * section below Mappings. See plans/data-connectors/claude/05-frontend.md §4.
  */
 export function StreamSample({ sample, onUseShape }: StreamSampleProps) {
-  if (!sample) {
-    return (
-      <p className='px-1 text-xs text-muted-foreground'>
-        Run a test fetch to pull a few real records from the source.
-      </p>
-    )
-  }
+  if (!sample) return null
 
   return (
     <div className='flex flex-col gap-2 px-1'>

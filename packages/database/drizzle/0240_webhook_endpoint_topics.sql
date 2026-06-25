@@ -1,0 +1,1 @@
+ALTER TABLE "WebhookEndpoint" ADD COLUMN "topics" jsonb DEFAULT '[]'::jsonb NOT NULL;

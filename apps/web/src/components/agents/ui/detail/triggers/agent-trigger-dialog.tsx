@@ -12,7 +12,6 @@ import {
   DialogTitle,
 } from '@auxx/ui/components/dialog'
 import { Field, FieldLabel } from '@auxx/ui/components/field'
-import { Input } from '@auxx/ui/components/input'
 import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
 import { Field as ResourceField } from '@auxx/ui/components/section'
@@ -50,6 +49,7 @@ import { ResourcePicker } from '~/components/pickers/resource-picker'
 import { TriggerSourceRow } from '~/components/pickers/trigger-source'
 import { useResources } from '~/components/resources/hooks/use-resources'
 import { WebhookEndpointInspector } from '~/components/webhooks/ui/webhook-endpoint-inspector'
+import { WebhookTopicPicker } from '~/components/webhooks/ui/webhook-topic-picker'
 import { VarEditorField } from '~/components/workflow/ui/input-editor/var-editor'
 import { useConfirm } from '~/hooks/use-confirm'
 import { api, type RouterOutputs } from '~/trpc/react'
@@ -588,14 +588,13 @@ export function AgentTriggerDialog({
                 </Field>
                 <Field orientation='vertical'>
                   <FieldLabel>Topic {webhookContext.hasTopicSource ? '' : '(optional)'}</FieldLabel>
-                  <Input
+                  <WebhookTopicPicker
+                    endpointId={webhookContext.webhookEndpointId}
+                    value={webhookTopic ? [webhookTopic] : []}
+                    onChange={(keys) => setWebhookTopic(keys[0] ?? '')}
                     placeholder={
-                      webhookContext.hasTopicSource
-                        ? 'e.g. payment_intent.succeeded'
-                        : 'Leave blank to match every delivery'
+                      webhookContext.hasTopicSource ? 'Select or add a topic…' : 'Every delivery'
                     }
-                    value={webhookTopic}
-                    onChange={(e) => setWebhookTopic(e.target.value)}
                   />
                 </Field>
                 <WebhookEndpointInspector

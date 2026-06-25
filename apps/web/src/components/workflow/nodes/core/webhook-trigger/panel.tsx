@@ -2,7 +2,6 @@
 
 'use client'
 
-import { Input } from '@auxx/ui/components/input'
 import {
   Select,
   SelectContent,
@@ -12,6 +11,7 @@ import {
 } from '@auxx/ui/components/select'
 import React, { useMemo } from 'react'
 import { WebhookEndpointInspector } from '~/components/webhooks/ui/webhook-endpoint-inspector'
+import { WebhookTopicPicker } from '~/components/webhooks/ui/webhook-topic-picker'
 import { useNodeCrud, useReadOnly } from '~/components/workflow/hooks'
 import { BasePanel } from '~/components/workflow/nodes/shared/base/base-panel'
 import Field from '~/components/workflow/ui/field'
@@ -93,15 +93,14 @@ const WebhookTriggerPanelComponent: React.FC<WebhookTriggerPanelProps> = ({ node
                   ? 'Only fire on deliveries whose extracted topic matches.'
                   : 'Optional — leave blank to fire on every delivery.'
               }>
-              <Input
-                value={nodeData.topic}
-                onChange={(e) => handleTopicChange(e.target.value)}
-                placeholder={
-                  selectedEndpoint?.topicSource
-                    ? 'e.g. payment_intent.succeeded'
-                    : 'Leave blank for all'
-                }
+              <WebhookTopicPicker
+                endpointId={nodeData.webhookEndpointId}
+                value={nodeData.topic ? [nodeData.topic] : []}
+                onChange={(keys) => handleTopicChange(keys[0] ?? '')}
                 disabled={isReadOnly}
+                placeholder={
+                  selectedEndpoint?.topicSource ? 'Select or add a topic…' : 'All deliveries'
+                }
               />
             </Field>
           )}

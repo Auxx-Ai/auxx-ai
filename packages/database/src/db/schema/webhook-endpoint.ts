@@ -7,6 +7,27 @@ import { Organization } from './organization'
 import { User } from './user'
 
 /**
+ * One declared topic an endpoint can emit. `key` is the matcher — it equals the
+ * string the endpoint's `topicSource` extracts from a delivery, so consuming
+ * surfaces store that exact value. The schema (when present) describes one
+ * delivery's payload, inferred from a captured delivery or hand-authored.
+ */
+export interface WebhookEndpointTopic {
+  /** Stable entry id (createId) — survives renames; identity for edit/delete. */
+  id: string
+  /** The matched topic value (equals the string `topicSource` extracts). */
+  key: string
+  /** Optional friendly label; defaults to `key` in the UI. */
+  name?: string
+  /** JSON Schema for one delivery's payload. Absent ⇒ shape not captured yet. */
+  schema?: Record<string, unknown>
+  /** Provenance of `schema`. Absent when there's no schema. */
+  schemaSource?: 'inferred' | 'manual'
+  /** The inspector `eventId` an inferred schema came from (provenance/debug). */
+  sampleEventId?: string
+}
+
+/**
  * An org-scoped INBOUND webhook endpoint: a user-created URL that external
  * systems POST to. Bound to nothing (no app, no connection) — the id IS the
  * capability. Distinct from the OUTBOUND `Webhook` table (Auxx → other apps).
@@ -43,6 +64,15 @@ export const WebhookEndpoint = pgTable(
      * GitHub event header). Absent ⇒ every delivery matches.
      */
     topicSource: jsonb().$type<{ kind: 'header' | 'path'; value: string }>(),
+    /**
+     * Optional catalog of the distinct topics this endpoint emits (the values its
+     * `topicSource` extracts, e.g. Stripe `payment_intent.succeeded`). Each may carry
+     * a JSON Schema describing one delivery's payload, authored from a captured live
+     * delivery or by hand. Drives the topic picker in consuming surfaces (agent
+     * triggers, data-connector stream bindings, workflow nodes); the schema is stored
+     * for later field-binding. Empty ⇒ free-form topics, as before.
+     */
+    topics: jsonb().$type<WebhookEndpointTopic[]>().default([]).notNull(),
     /** Liveness — point write on each delivery (mirrors DataConnector.lastWebhookEventAt). */
     lastEventAt: timestamp({ precision: 3 }),
     createdById: text().references((): AnyPgColumn => User.id, {

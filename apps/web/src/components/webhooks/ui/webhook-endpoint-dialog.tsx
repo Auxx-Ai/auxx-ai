@@ -15,7 +15,7 @@ import {
 import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import { Label } from '@auxx/ui/components/label'
 import { useCopy } from '@auxx/ui/hooks/use-copy'
-import { Check, Copy, KeyRound, Link, Radio, TriangleAlert } from 'lucide-react'
+import { Check, Copy, KeyRound, Link, Tags, TriangleAlert } from 'lucide-react'
 import { type ReactNode, useEffect, useState } from 'react'
 import { ConnectionVariableFields } from '~/components/connections/ui/connection-variable-fields'
 import {
@@ -25,7 +25,7 @@ import {
 import { Tooltip } from '~/components/global/tooltip'
 import { VarEditorField } from '~/components/workflow/ui/input-editor/var-editor'
 import { useWebhookEndpoint, type WebhookEndpointRow } from '../hooks/use-webhook-endpoint'
-import { WebhookEndpointInspector } from './webhook-endpoint-inspector'
+import { WebhookEndpointTopicsPage } from './webhook-endpoint-topics-page'
 
 interface WebhookEndpointDialogProps {
   open: boolean
@@ -171,7 +171,7 @@ export function WebhookEndpointDialog({ open, onClose, endpoint }: WebhookEndpoi
   const isEdit = !!endpoint
   const { create, update, rotateSecret } = useWebhookEndpoint()
 
-  const [page, setPage] = useState<'configure' | 'created' | 'deliveries'>('configure')
+  const [page, setPage] = useState<'configure' | 'created' | 'topics'>('configure')
   const [values, setValues] = useState<Record<string, string>>(() => seedValues(endpoint))
   const [errors, setErrors] = useState<Record<string, string>>({})
   /** The reveal shown on `created`: the endpoint URL + the one-time plaintext secret. */
@@ -247,10 +247,16 @@ export function WebhookEndpointDialog({ open, onClose, endpoint }: WebhookEndpoi
         <DialogNav
           title={isEdit ? 'Edit webhook endpoint' : 'New webhook endpoint'}
           description='Receive events from any system at a generated URL.'
+          // The `topics` page is a drill-down from `configure` — offer a Back button.
+          // `created` is a terminal confirmation, so it has none.
+          onBack={page === 'topics' ? () => setPage('configure') : undefined}
           crumbs={[
-            { label: isEdit ? endpoint.name : 'New endpoint' },
+            {
+              label: isEdit ? endpoint.name : 'New endpoint',
+              onClick: page === 'topics' ? () => setPage('configure') : undefined,
+            },
             ...(page === 'created' ? [{ label: revealed?.title ?? 'Created' }] : []),
-            ...(page === 'deliveries' ? [{ label: 'Deliveries' }] : []),
+            ...(page === 'topics' ? [{ label: 'Topics' }] : []),
           ]}
         />
 
@@ -265,15 +271,21 @@ export function WebhookEndpointDialog({ open, onClose, endpoint }: WebhookEndpoi
               {isEdit && (
                 <div className='space-y-2'>
                   <CopyRow label='Webhook URL' value={endpoint.url} icon={<Link />} />
-                  <Button
-                    variant='outline'
-                    size='sm'
-                    type='button'
-                    className='self-start'
-                    onClick={() => setPage('deliveries')}>
-                    <Radio />
-                    View deliveries
-                  </Button>
+                  {endpoint.topicSource ? (
+                    <Button
+                      variant='outline'
+                      size='sm'
+                      type='button'
+                      className='self-start'
+                      onClick={() => setPage('topics')}>
+                      <Tags />
+                      Setup topics
+                    </Button>
+                  ) : (
+                    <p className='text-xs text-muted-foreground'>
+                      Set a topic source below to define topics and capture their schemas.
+                    </p>
+                  )}
                 </div>
               )}
 
@@ -363,26 +375,10 @@ export function WebhookEndpointDialog({ open, onClose, endpoint }: WebhookEndpoi
             </form>
           </DialogNavPage>
 
-          <DialogNavPage value='deliveries' size='md'>
-            <div className='flex flex-col gap-4 p-4'>
-              {isEdit && (
-                <WebhookEndpointInspector
-                  endpointId={endpoint.id}
-                  title='Deliveries'
-                  description='Live deliveries to this endpoint (kept for ~5 minutes).'
-                  initialOpen
-                />
-              )}
-              <DialogFooter>
-                <Button
-                  variant='outline'
-                  size='sm'
-                  type='button'
-                  onClick={() => setPage('configure')}>
-                  Back
-                </Button>
-              </DialogFooter>
-            </div>
+          <DialogNavPage value='topics' size='md'>
+            {isEdit && page === 'topics' && (
+              <WebhookEndpointTopicsPage endpoint={endpoint} onBack={() => setPage('configure')} />
+            )}
           </DialogNavPage>
         </DialogNavPages>
       </DialogContent>

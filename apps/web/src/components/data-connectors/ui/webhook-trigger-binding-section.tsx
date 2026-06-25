@@ -23,6 +23,7 @@ import {
   useTriggerSources,
 } from '~/components/pickers/trigger-source'
 import { WebhookEndpointInspector } from '~/components/webhooks/ui/webhook-endpoint-inspector'
+import { WebhookTopicPicker } from '~/components/webhooks/ui/webhook-topic-picker'
 import { AppTriggerTestSection } from '~/components/workflow/apps/trigger/app-trigger-test-section'
 import { api, type RouterOutputs } from '~/trpc/react'
 
@@ -103,7 +104,7 @@ export function WebhookTriggerBindingSection({
       ? Object.entries(saved.tokens).map(([token, path]) => ({ token, path }))
       : [{ token: '', path: '' }]
   )
-  const [topics, setTopics] = useState(() => topicsFromFilter(saved?.filter))
+  const [topics, setTopics] = useState<string[]>(() => topicListFromFilter(saved?.filter))
   // Delete-event binding: how a delivery is recognized as a delete (skip the fetch,
   // archive by externalId) — `topic` matches the multiplexed topic, `field` tests a
   // truthy payload path. `deleteIdPath` is the resource id to archive.
@@ -143,10 +144,7 @@ export function WebhookTriggerBindingSection({
   // Scope the live inspector to the bound topic when the binding targets exactly one;
   // multiple (or none) ⇒ show every delivery to the endpoint.
   const singleTopic = useMemo(() => {
-    const list = topics
-      .split(',')
-      .map((s) => s.trim())
-      .filter(Boolean)
+    const list = topics.map((s) => s.trim()).filter(Boolean)
     return list.length === 1 ? list[0] : undefined
   }, [topics])
 
@@ -167,10 +165,7 @@ export function WebhookTriggerBindingSection({
       const p = path.trim()
       if (t && p) tokens[t] = p
     }
-    const topicList = topics
-      .split(',')
-      .map((s) => s.trim())
-      .filter(Boolean)
+    const topicList = topics.map((s) => s.trim()).filter(Boolean)
     const deleteWhen =
       deleteMode === 'topic' && deleteValue.trim()
         ? { topicEquals: deleteValue.trim() }
@@ -283,14 +278,23 @@ export function WebhookTriggerBindingSection({
         <div className='flex flex-col gap-1.5'>
           <Label>Topics (optional)</Label>
           <p className='text-xs text-muted-foreground'>
-            Comma-separated topics to scope this stream when one trigger multiplexes many (e.g.{' '}
+            Scope this stream to specific topics when one trigger multiplexes many (e.g.{' '}
             <code>orders/create, orders/paid</code>). Leave blank for all.
           </p>
-          <Input
-            placeholder='orders/create, orders/paid'
-            value={topics}
-            onChange={(e) => setTopics(e.target.value)}
-          />
+          {source?.kind === 'webhook-endpoint' ? (
+            <WebhookTopicPicker
+              multi
+              endpointId={source.webhookEndpointId}
+              value={topics}
+              onChange={setTopics}
+            />
+          ) : (
+            <Input
+              placeholder='orders/create,orders/paid'
+              value={topics.join(',')}
+              onChange={(e) => setTopics(e.target.value.split(','))}
+            />
+          )}
         </div>
 
         <div className='flex flex-col gap-1.5'>
@@ -377,12 +381,12 @@ function deleteValueFromSaved(saved: WebhookTriggerConfig | undefined): string {
   return ''
 }
 
-/** Pull a comma-joined topic string out of a saved `{ topic: { in: [...] } }` filter. */
-function topicsFromFilter(filter: Record<string, unknown> | undefined): string {
+/** Pull the topic list out of a saved `{ topic: { in: [...] } }` filter. */
+function topicListFromFilter(filter: Record<string, unknown> | undefined): string[] {
   const topic = filter?.topic
   if (topic && typeof topic === 'object' && Array.isArray((topic as { in?: unknown }).in)) {
-    return ((topic as { in: unknown[] }).in as unknown[]).map(String).join(', ')
+    return ((topic as { in: unknown[] }).in as unknown[]).map(String)
   }
-  if (typeof topic === 'string') return topic
-  return ''
+  if (typeof topic === 'string') return [topic]
+  return []
 }

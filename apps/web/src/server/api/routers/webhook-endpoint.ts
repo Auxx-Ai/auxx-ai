@@ -21,6 +21,14 @@ const topicSourceSchema = z.object({
   kind: z.enum(['header', 'path']),
   value: z.string().min(1),
 })
+const topicSchema = z.object({
+  id: z.string().min(1),
+  key: z.string().min(1),
+  name: z.string().optional(),
+  schema: z.record(z.string(), z.unknown()).optional(),
+  schemaSource: z.enum(['inferred', 'manual']).optional(),
+  sampleEventId: z.string().optional(),
+})
 
 export const webhookEndpointRouter = createTRPCRouter({
   list: protectedProcedure.query(({ ctx }) =>
@@ -40,6 +48,7 @@ export const webhookEndpointRouter = createTRPCRouter({
         signaturePrefix: z.string().optional(),
         signatureEncoding: signatureEncodingSchema.optional(),
         topicSource: topicSourceSchema.nullish(),
+        topics: z.array(topicSchema).optional(),
       })
     )
     .mutation(({ ctx, input }) =>
@@ -59,6 +68,7 @@ export const webhookEndpointRouter = createTRPCRouter({
         signaturePrefix: z.string().nullish(),
         signatureEncoding: signatureEncodingSchema.optional(),
         topicSource: topicSourceSchema.nullish(),
+        topics: z.array(topicSchema).optional(),
       })
     )
     .mutation(({ ctx, input }) => {
