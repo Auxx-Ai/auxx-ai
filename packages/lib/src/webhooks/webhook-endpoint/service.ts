@@ -9,12 +9,13 @@ import { randomBytes } from 'node:crypto'
 import { getApiUrl } from '@auxx/config/urls'
 import { decryptValue, encryptValue } from '@auxx/credentials'
 import { type Database, schema } from '@auxx/database'
-import type { WebhookEndpointEntity } from '@auxx/database/types'
+import type { WebhookEndpointEntity, WebhookEndpointTopic } from '@auxx/database/types'
 import { and, desc, eq } from 'drizzle-orm'
 import { BadRequestError, NotFoundError } from '../../errors'
 
 export type WebhookEndpointVerification = 'none' | 'token' | 'hmac'
 export type WebhookEndpointTopicSource = { kind: 'header' | 'path'; value: string }
+export type { WebhookEndpointTopic }
 
 /** A WebhookEndpoint projected for the UI — the secret never leaves the server; `hasSecret` marks it set. */
 export interface WebhookEndpointSummary {
@@ -28,6 +29,8 @@ export interface WebhookEndpointSummary {
   signaturePrefix: string | null
   signatureEncoding: 'hex' | 'base64'
   topicSource: WebhookEndpointTopicSource | null
+  /** Declared topics (with optional per-topic payload schema). Empty ⇒ free-form. */
+  topics: WebhookEndpointTopic[]
   lastEventAt: Date | null
   createdAt: Date
   updatedAt: Date
@@ -55,10 +58,35 @@ function toSummary(row: WebhookEndpointEntity): WebhookEndpointSummary {
     signaturePrefix: row.signaturePrefix,
     signatureEncoding: row.signatureEncoding,
     topicSource: row.topicSource ?? null,
+    topics: row.topics ?? [],
     lastEventAt: row.lastEventAt,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   }
+}
+
+/**
+ * Validate a declared-topics array: topics are only meaningful when the endpoint
+ * extracts a topic (`topicSource` set), each entry needs a non-empty `key`, and
+ * keys must be unique. Returns the cleaned array (trimmed keys).
+ */
+function normalizeTopics(
+  topics: WebhookEndpointTopic[] | undefined,
+  topicSource: WebhookEndpointTopicSource | null
+): WebhookEndpointTopic[] | undefined {
+  if (topics === undefined) return undefined
+  if (topics.length === 0) return []
+  if (!topicSource) {
+    throw new BadRequestError('Configure a topic source before defining topics.')
+  }
+  const seen = new Set<string>()
+  return topics.map((t) => {
+    const key = t.key.trim()
+    if (!key) throw new BadRequestError('Each topic needs a key.')
+    if (seen.has(key)) throw new BadRequestError(`Duplicate topic "${key}".`)
+    seen.add(key)
+    return { ...t, key, name: t.name?.trim() || undefined }
+  })
 }
 
 async function loadEndpoint(
@@ -104,6 +132,7 @@ export interface CreateWebhookEndpointParams {
   signaturePrefix?: string | null
   signatureEncoding?: 'hex' | 'base64'
   topicSource?: WebhookEndpointTopicSource | null
+  topics?: WebhookEndpointTopic[]
   createdById?: string | null
 }
 
@@ -121,6 +150,8 @@ export async function createWebhookEndpoint(
 
   const minted = input.verification === 'none' ? null : mintSecret()
   const isHmac = input.verification === 'hmac'
+  const topicSource = input.topicSource ?? null
+  const topics = normalizeTopics(input.topics, topicSource) ?? []
 
   const [row] = await db
     .insert(schema.WebhookEndpoint)
@@ -132,7 +163,8 @@ export async function createWebhookEndpoint(
       signatureHeader: isHmac ? (input.signatureHeader ?? null) : null,
       signaturePrefix: isHmac ? (input.signaturePrefix ?? null) : null,
       signatureEncoding: input.signatureEncoding ?? 'hex',
-      topicSource: input.topicSource ?? null,
+      topicSource,
+      topics,
       createdById: input.createdById ?? null,
     })
     .returning()
@@ -148,6 +180,7 @@ export interface UpdateWebhookEndpointParams {
   signaturePrefix?: string | null
   signatureEncoding?: 'hex' | 'base64'
   topicSource?: WebhookEndpointTopicSource | null
+  topics?: WebhookEndpointTopic[]
 }
 
 /**
@@ -190,6 +223,12 @@ export async function updateWebhookEndpoint(
     set.signaturePrefix = null
   }
   if (patch.topicSource !== undefined) set.topicSource = patch.topicSource
+  if (patch.topics !== undefined) {
+    // Resolve the effective topic source: the incoming patch wins, else the stored one.
+    const nextTopicSource =
+      patch.topicSource !== undefined ? patch.topicSource : (current.topicSource ?? null)
+    set.topics = normalizeTopics(patch.topics, nextTopicSource) ?? []
+  }
 
   const [row] = await db
     .update(schema.WebhookEndpoint)

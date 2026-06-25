@@ -56,7 +56,6 @@ const SCHEMA_SOURCE_SENTENCE: Record<string, string> = {
   inferred: 'Schema auto-detected from a live response.',
   manual: 'Schema edited by hand.',
 }
-const SCHEMA_SOURCE_NONE = 'No schema yet — run a test fetch to detect one.'
 
 const METHOD_OPTIONS = [
   { value: 'GET', label: 'GET' },
@@ -210,9 +209,9 @@ export function StreamConfigPanel({
   const handleSaveSchema = (schema: Record<string, unknown>, source: 'inferred' | 'manual') =>
     setStreamSchema(stream.id, schema, source)
 
-  const schemaSentence = hasSchema
-    ? (SCHEMA_SOURCE_SENTENCE[stream.schemaSource] ?? SCHEMA_SOURCE_SENTENCE.manual)
-    : SCHEMA_SOURCE_NONE
+  // Only surface a provenance sentence when it's actionable (inferred/manual).
+  // Catalog ("came predefined") and the empty state say nothing useful — hide them.
+  const schemaSentence = hasSchema ? SCHEMA_SOURCE_SENTENCE[stream.schemaSource] : null
 
   // Pagination transparency (Step 10): describe the stream's configured spec and,
   // after a test fetch, an inform-only detected proposal. Read-only — both render
@@ -372,6 +371,7 @@ export function StreamConfigPanel({
               icon={<FlaskConical className='size-4' />}
               initialOpen
               collapsible={false}
+              className={sample ? undefined : '[&_[data-slot=section]]:pb-0'}
               description='Pull a few real records to see what the source returns.'
               actions={
                 <Button
@@ -416,14 +416,14 @@ export function StreamConfigPanel({
               icon={<Database className='size-4' />}
               initialOpen
               collapsible={false}
+              className='[&_[data-slot=section]]:pb-0'
+              description={schemaSentence ?? undefined}
               actions={
                 <Button variant='ghost' size='xs' onClick={openEdit}>
                   <Pencil />
                   Edit
                 </Button>
-              }>
-              <p className='px-1 pb-2 text-xs text-muted-foreground'>{schemaSentence}</p>
-            </Section>
+              }></Section>
 
             {/* 4. Sync mode */}
             <Section
