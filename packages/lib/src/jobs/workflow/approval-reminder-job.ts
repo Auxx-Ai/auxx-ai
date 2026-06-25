@@ -4,10 +4,10 @@ import { WEBAPP_URL } from '@auxx/config/server'
 import { database as db, schema } from '@auxx/database'
 import { ApprovalStatus } from '@auxx/database/enums'
 import { createScopedLogger } from '@auxx/logger'
-import type { Job } from 'bullmq'
 import { and, eq, inArray } from 'drizzle-orm'
 import { NotificationService } from '../../notifications/notification-service'
 import { enqueueEmailJob } from '../email'
+import type { JobContext } from '../types'
 
 const logger = createScopedLogger('approval-reminder-job')
 interface ApprovalReminderJobData {
@@ -19,7 +19,8 @@ interface ApprovalReminderJobData {
  * This job is scheduled at intervals after an approval request is created
  * to remind assignees to take action
  */
-export async function approvalReminderJob(job: Job<ApprovalReminderJobData>) {
+export async function approvalReminderJob(ctx: JobContext<ApprovalReminderJobData>) {
+  const job = ctx.job
   const { approvalRequestId, reminderNumber } = job.data
   try {
     logger.info('Processing approval reminder', {

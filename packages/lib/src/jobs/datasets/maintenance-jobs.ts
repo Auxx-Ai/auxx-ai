@@ -2,9 +2,9 @@
 
 import { database as db, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import type { Job } from 'bullmq'
 import { and, count, eq, inArray, isNull, or } from 'drizzle-orm'
 import { DocumentProcessingQueue } from '../../datasets/workers/document-processing-queue'
+import type { JobContext } from '../types'
 
 const logger = createScopedLogger('dataset-maintenance-jobs')
 
@@ -36,7 +36,8 @@ interface OrphanedDataCleanupJobData {
 /**
  * Clean up dataset resources
  */
-export const cleanupDatasetJob = async (job: Job<DatasetCleanupJobData>) => {
+export const cleanupDatasetJob = async (ctx: JobContext<DatasetCleanupJobData>) => {
+  const job = ctx.job
   const { datasetId, organizationId, cleanupType, options = {} } = job.data
 
   logger.info('Starting dataset cleanup job', {
@@ -166,7 +167,8 @@ export const cleanupDatasetJob = async (job: Job<DatasetCleanupJobData>) => {
 /**
  * Reindex dataset for improved search performance
  */
-export const reindexDatasetJob = async (job: Job<DatasetReindexJobData>) => {
+export const reindexDatasetJob = async (ctx: JobContext<DatasetReindexJobData>) => {
+  const job = ctx.job
   const { datasetId, organizationId, options } = job.data
 
   logger.info('Starting dataset reindex job', {
@@ -274,7 +276,8 @@ export const reindexDatasetJob = async (job: Job<DatasetReindexJobData>) => {
 /**
  * Clean up orphaned data across organization
  */
-export const cleanupOrphanedDataJob = async (job: Job<OrphanedDataCleanupJobData>) => {
+export const cleanupOrphanedDataJob = async (ctx: JobContext<OrphanedDataCleanupJobData>) => {
+  const job = ctx.job
   const { organizationId } = job.data
 
   logger.info('Starting orphaned data cleanup job', {

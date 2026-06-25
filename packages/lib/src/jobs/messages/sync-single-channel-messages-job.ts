@@ -3,11 +3,11 @@
 import { type Database, database as db, schema } from '@auxx/database'
 import { SYNC_STATUS } from '@auxx/database/enums'
 import { createScopedLogger } from '@auxx/logger'
-import type { Job } from 'bullmq'
 import { and, eq } from 'drizzle-orm'
 import { type ChannelProviderType, MessageService } from '../../email/message-service'
 import { publisher } from '../../events/publisher'
 import type { MessageSyncProcessingEvent } from '../../events/types'
+import type { JobContext } from '../types'
 
 /** Max backoff for sync throttle: 1 hour */
 const MAX_THROTTLE_BACKOFF_MS = 3_600_000
@@ -44,10 +44,9 @@ export type SyncSingleChannelMessagesJobData = {
 }
 
 export const syncSingleChannelMessagesJob = async (
-  jobOrCtx: Job<SyncSingleChannelMessagesJobData>
+  ctx: JobContext<SyncSingleChannelMessagesJobData>
 ) => {
-  // createJobHandler passes a JobContext; extract the real BullMQ Job
-  const job: Job<SyncSingleChannelMessagesJobData> = (jobOrCtx as any).job ?? jobOrCtx
+  const job = ctx.job
   const {
     syncJobId,
     organizationId,

@@ -2,7 +2,6 @@
 
 import { database as db, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import type { Job } from 'bullmq'
 import { and, eq, inArray, isNull } from 'drizzle-orm'
 import { MessageStorageService } from '../../email/email-storage'
 import { FolderDiscoveryService } from '../../email/labels/folder-discovery-service'
@@ -15,6 +14,7 @@ import type { ImapImportBatchJobData } from '../../providers/imap/types'
 import { ProviderRegistryService } from '../../providers/provider-registry-service'
 import { getQueue } from '../queues'
 import { Queues } from '../queues/types'
+import type { JobContext } from '../types'
 
 const logger = createScopedLogger('job:message-list-fetch')
 
@@ -38,10 +38,9 @@ export interface MessageListFetchJobData {
  * For IMAP full sync: uses windowed UID scanning with checkpoints and
  * enqueues self-contained import batches instead of Redis cache.
  */
-export const messageListFetchJob = async (jobOrCtx: Job<MessageListFetchJobData>) => {
-  // createJobHandler passes a JobContext; extract the real BullMQ Job
-  const job: Job<MessageListFetchJobData> = (jobOrCtx as any).job ?? jobOrCtx
-  const signal = (jobOrCtx as any).signal as AbortSignal | undefined
+export const messageListFetchJob = async (ctx: JobContext<MessageListFetchJobData>) => {
+  const job = ctx.job
+  const signal = ctx.signal
 
   const { integrationId, organizationId, provider } = job.data
   const now = new Date()

@@ -3,11 +3,11 @@
 import { ShopifyBillingProvider } from '@auxx/billing'
 import { database as db, schema } from '@auxx/database'
 import { getRedisClient } from '@auxx/redis'
-import type { Job } from 'bullmq'
 import { and, eq, isNotNull, ne } from 'drizzle-orm'
 import { z } from 'zod'
 import { onCacheEvent } from '../../cache'
 import { createScopedLogger } from '../../logger'
+import type { JobContext } from '../types'
 
 const logger = createScopedLogger('shopify-billing-sync-job')
 
@@ -38,8 +38,9 @@ const COOLDOWN_SECONDS = 30
  * logged and skipped so one Admin API hiccup doesn't stall the tick.
  */
 export async function shopifyBillingSyncJob(
-  job: Job<ShopifyBillingSyncJobData>
+  ctx: JobContext<ShopifyBillingSyncJobData>
 ): Promise<ShopifyBillingSyncResult> {
+  const job = ctx.job
   const input = payloadSchema.parse(job.data ?? {})
   const result: ShopifyBillingSyncResult = { total: 0, synced: 0, skipped: 0, errors: 0 }
 

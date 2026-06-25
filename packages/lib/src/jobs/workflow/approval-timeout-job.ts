@@ -4,10 +4,10 @@ import { database as db, schema } from '@auxx/database'
 import { ApprovalStatus } from '@auxx/database/enums'
 import type { ApprovalRequestEntity as ApprovalRequest } from '@auxx/database/types'
 import { createScopedLogger } from '@auxx/logger'
-import type { Job } from 'bullmq'
 import { eq } from 'drizzle-orm'
 import { publisher } from '../../events/publisher'
 import { WorkflowExecutionService } from '../../workflows/workflow-execution-service'
+import type { JobContext } from '../types'
 
 const logger = createScopedLogger('approval-timeout-job')
 interface ApprovalTimeoutJobData {
@@ -20,7 +20,8 @@ interface ApprovalTimeoutJobData {
  * This job is scheduled when an approval request is created and executes
  * when the approval expires without a response
  */
-export async function approvalTimeoutJob(job: Job<ApprovalTimeoutJobData>) {
+export async function approvalTimeoutJob(ctx: JobContext<ApprovalTimeoutJobData>) {
+  const job = ctx.job
   const { approvalRequestId, workflowRunId, nodeId } = job.data
   try {
     logger.info('Processing approval timeout', { approvalRequestId, workflowRunId, nodeId })

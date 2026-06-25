@@ -2,10 +2,10 @@
 
 import { database as db, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import type { Job } from 'bullmq'
 import { and, eq, inArray, isNotNull, isNull } from 'drizzle-orm'
 import { resolveEffectiveSyncMode } from '../../providers/sync-mode-resolver'
 import { getQueue, Queues } from '../queues'
+import type { JobContext } from '../types'
 
 const logger = createScopedLogger('webhook-renewal-scanner')
 
@@ -51,7 +51,8 @@ const OAUTH_PROVIDERS = ['google', 'outlook'] as const
  *
  * Runs every 15 minutes via cron.
  */
-export const webhookRenewalScannerJob = async (job: Job<WebhookRenewalScannerJobData>) => {
+export const webhookRenewalScannerJob = async (ctx: JobContext<WebhookRenewalScannerJobData>) => {
+  const job = ctx.job
   const { dryRun = false } = job.data
 
   logger.info('Starting webhook renewal scanner', {

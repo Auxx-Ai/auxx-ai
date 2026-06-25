@@ -3,11 +3,11 @@
 import { WEBAPP_URL } from '@auxx/config/server'
 import { database as db, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import type { Job } from 'bullmq'
 import { addHours } from 'date-fns'
 import { and, eq, gte, lte } from 'drizzle-orm'
 import { z } from 'zod'
 import { enqueueEmailJob } from '../email'
+import type { JobContext } from '../types'
 
 const payloadSchema = z.object({
   dryRun: z.boolean().default(false),
@@ -31,7 +31,8 @@ export interface GettingStartedStats {
  * Sends email 1-2 hours after trial signup.
  * Runs every 30 minutes to catch new signups.
  */
-export const sendGettingStartedEmailsJob = async (job: Job) => {
+export const sendGettingStartedEmailsJob = async (ctx: JobContext) => {
+  const job = ctx.job
   const input = payloadSchema.parse(job.data)
   const stats: GettingStartedStats = {
     scanned: 0,

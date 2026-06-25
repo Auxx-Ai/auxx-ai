@@ -3,10 +3,10 @@
 import { createScopedLogger } from '@auxx/logger'
 import { createSession } from '@auxx/services'
 import type { RecordId } from '@auxx/types/resource'
-import type { Job } from 'bullmq'
 import { enqueueAgentJob } from '../../ai/agent-framework/enqueue-agent-job'
 import { buildTriggerSeedMessage } from '../../ai/agent-framework/trigger-seed-message'
 import { getCachedAgentById } from '../../cache'
+import type { JobContext } from '../types'
 
 const logger = createScopedLogger('agent-mention-trigger-job')
 
@@ -26,7 +26,8 @@ export interface AgentMentionTriggerJobData {
  * becomes the run-as user — user-scope tools resolve via their credentials —
  * while the agent itself still owns the session row (`userId` below).
  */
-export async function executeAgentMentionTrigger(job: Job<AgentMentionTriggerJobData>) {
+export async function executeAgentMentionTrigger(ctx: JobContext<AgentMentionTriggerJobData>) {
+  const job = ctx.job
   const {
     agentTriggerId,
     agentId,

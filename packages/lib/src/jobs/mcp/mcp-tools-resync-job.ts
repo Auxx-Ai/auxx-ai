@@ -2,10 +2,10 @@
 
 import { database as db, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import type { Job } from 'bullmq'
 import { and, eq } from 'drizzle-orm'
 import pLimit from 'p-limit'
 import { syncMcpTools } from '../../ai/mcp/sync'
+import type { JobContext } from '../types'
 
 const logger = createScopedLogger('mcp-tools-resync-job')
 
@@ -34,7 +34,8 @@ interface ResyncStats {
  * Runs with bounded concurrency; a single server's failure is recorded as `lastSyncError`
  * (by `syncMcpTools`) and never aborts the batch.
  */
-export const mcpToolsResyncJob = async (job: Job<McpToolsResyncJobData>) => {
+export const mcpToolsResyncJob = async (ctx: JobContext<McpToolsResyncJobData>) => {
+  const job = ctx.job
   const concurrency = job.data.concurrency ?? 5
 
   const stats: ResyncStats = {

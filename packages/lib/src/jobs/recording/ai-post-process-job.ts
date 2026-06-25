@@ -2,9 +2,9 @@
 
 import { database as db } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import type { Job } from 'bullmq'
 import { runAIPostProcess } from '../../recording/ai/post-process'
 import type { PostProcessScope } from '../../recording/ai/types'
+import type { JobContext } from '../types'
 
 const logger = createScopedLogger('job:ai-post-process')
 
@@ -20,8 +20,8 @@ export interface AIPostProcessJobData {
  * Run AI post-processing (summary, chapters, default insights) for a recording.
  * Enqueued after transcription completes, or manually via the recording drawer.
  */
-export const aiPostProcessJob = async (jobOrCtx: Job<AIPostProcessJobData>) => {
-  const job: Job<AIPostProcessJobData> = (jobOrCtx as any).job ?? jobOrCtx
+export const aiPostProcessJob = async (ctx: JobContext<AIPostProcessJobData>) => {
+  const job = ctx.job
   const { recordingId, organizationId, scope, userId, trigger } = job.data
 
   logger.info('Starting AI post-processing', {

@@ -1,10 +1,10 @@
 // packages/lib/src/jobs/workflow/app-trigger-dispatch-job.ts
 
 import { getRedisClient } from '@auxx/redis'
-import type { Job } from 'bullmq'
 import { getOrgCache } from '../../cache'
 import { createScopedLogger } from '../../logger'
 import { executeAppTriggeredWorkflow } from '../../workflow-engine/execution/trigger-app-workflow'
+import type { JobContext } from '../types'
 
 const logger = createScopedLogger('app-trigger-dispatch-job')
 
@@ -25,7 +25,8 @@ export type AppTriggerDispatchJobData = {
  * 2. Query all published + enabled workflows matching the app trigger (via cache)
  * 3. Execute each matching workflow with the trigger data
  */
-export async function dispatchAppTrigger(job: Job<AppTriggerDispatchJobData>) {
+export async function dispatchAppTrigger(ctx: JobContext<AppTriggerDispatchJobData>) {
+  const job = ctx.job
   const {
     appInstallationId,
     appId,

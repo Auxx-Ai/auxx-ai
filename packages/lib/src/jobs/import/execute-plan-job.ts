@@ -4,7 +4,6 @@ import { database as db, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { getPublishingClient } from '@auxx/redis'
 import { toRecordId } from '@auxx/types/resource'
-import type { Job } from 'bullmq'
 import { eq } from 'drizzle-orm'
 import {
   createEventPublisher,
@@ -17,6 +16,7 @@ import {
 import type { ImportMappingProperty, ImportPlan } from '../../import/types'
 import { UnifiedCrudHandler } from '../../resources/crud/unified-handler'
 import { invalidateSnapshots } from '../../snapshot'
+import type { JobContext } from '../types'
 
 const logger = createScopedLogger('execute-plan-job')
 
@@ -32,7 +32,8 @@ export interface ExecutePlanJobProps {
  * Job handler for executing an import plan.
  * Creates/updates records based on the plan.
  */
-export async function executePlanJob(job: Job<ExecutePlanJobProps>): Promise<void> {
+export async function executePlanJob(ctx: JobContext<ExecutePlanJobProps>): Promise<void> {
+  const job = ctx.job
   const { jobId, planId, organizationId, userId } = job.data
 
   logger.info('Starting plan execution', { jobId, planId, organizationId })

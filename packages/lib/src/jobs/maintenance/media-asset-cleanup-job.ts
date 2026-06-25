@@ -2,10 +2,10 @@
 
 import { database as db, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import type { Job } from 'bullmq'
 import { and, eq, isNotNull, isNull, lte, sql } from 'drizzle-orm'
 import { MediaAssetService } from '../../files/core/media-asset-service'
 import { StorageManager } from '../../files/storage/storage-manager'
+import type { JobContext } from '../types'
 
 const logger = createScopedLogger('media-asset-cleanup-job')
 
@@ -29,7 +29,8 @@ interface CleanupStats {
  * Clean up expired MediaAssets based on metadata
  * This job handles temporary files created by WorkflowProcessor and other processors
  */
-export const cleanupExpiredMediaAssetsJob = async (job: Job<MediaAssetCleanupJobData>) => {
+export const cleanupExpiredMediaAssetsJob = async (ctx: JobContext<MediaAssetCleanupJobData>) => {
+  const job = ctx.job
   const { organizationId, options = {} } = job.data
   const { maxAgeHours = 24, batchSize = 100, dryRun = false } = options
 

@@ -1,9 +1,9 @@
 // packages/lib/src/jobs/recording/transcribe-recording-job.ts
 
 import { createScopedLogger } from '@auxx/logger'
-import type { Job } from 'bullmq'
 import { processTranscript } from '../../recording/transcription'
 import { getQueue, Queues } from '../queues'
+import type { JobContext } from '../types'
 import type { AIPostProcessJobData } from './ai-post-process-job'
 
 const logger = createScopedLogger('job:transcribe-recording')
@@ -17,8 +17,8 @@ export interface TranscribeRecordingJobData {
  * Fetch the transcript from the bot provider and store it in the database.
  * Enqueued when the provider sends a `transcript.done` webhook.
  */
-export const transcribeRecordingJob = async (jobOrCtx: Job<TranscribeRecordingJobData>) => {
-  const job: Job<TranscribeRecordingJobData> = (jobOrCtx as any).job ?? jobOrCtx
+export const transcribeRecordingJob = async (ctx: JobContext<TranscribeRecordingJobData>) => {
+  const job = ctx.job
   const { recordingId, organizationId } = job.data
 
   logger.info('Starting transcription', {

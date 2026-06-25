@@ -12,11 +12,11 @@
 
 import { database as db, schema } from '@auxx/database'
 import { getRedisClient } from '@auxx/redis'
-import type { Job } from 'bullmq'
 import { and, eq, inArray, ne } from 'drizzle-orm'
 import { matchesFilter } from '../../agents/agent-trigger-queries'
 import { createScopedLogger } from '../../logger'
 import { getQueue, Queues } from '../queues'
+import type { JobContext } from '../types'
 
 const logger = createScopedLogger('data-connector-app-trigger-dispatch-job')
 
@@ -42,7 +42,10 @@ export const APP_TRIGGER_SYNC_STREAM_JOB = 'app-trigger-sync-stream'
  * 22 topics through one triggerId, on `triggerData.topic`). Fan-to-all — two
  * connectors/streams binding the same trigger is legitimate fan-out, not a conflict.
  */
-export async function dispatchAppTriggerToConnectors(job: Job<ConnectorAppTriggerDispatchJobData>) {
+export async function dispatchAppTriggerToConnectors(
+  ctx: JobContext<ConnectorAppTriggerDispatchJobData>
+) {
+  const job = ctx.job
   const { appInstallationId, triggerId, connectionId, triggerData, eventId, organizationId } =
     job.data
 

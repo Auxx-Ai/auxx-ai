@@ -1,11 +1,11 @@
 // packages/lib/src/jobs/shopify/sync-customers-job.ts
 import { database as db, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import type { Job } from 'bullmq'
 import { eq } from 'drizzle-orm'
 import { createShopifyAdminClient } from '../../shopify/shopify-webhooks'
 import { CustomerSync } from '../../shopify/sync-customers'
 import { SyncManager } from '../../sync-manager'
+import type { JobContext } from '../types'
 
 const logger = createScopedLogger('sync-customers')
 
@@ -15,7 +15,8 @@ export type SyncCustomersJobProps = {
   integrationId: string
 }
 
-export const syncCustomersJob = async (job: Job<SyncCustomersJobProps>) => {
+export const syncCustomersJob = async (ctx: JobContext<SyncCustomersJobProps>) => {
+  const job = ctx.job
   const { syncId, organizationId, integrationId } = job.data
   const syncJob = await SyncManager.start(syncId)
 

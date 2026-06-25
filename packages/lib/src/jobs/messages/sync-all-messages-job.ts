@@ -2,7 +2,6 @@
 
 import { database as db, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import type { Job } from 'bullmq'
 import { and, eq, inArray } from 'drizzle-orm'
 import type { ChannelProviderType } from '../../email/message-service'
 import { publisher } from '../../events/publisher'
@@ -12,6 +11,7 @@ import type {
   MessageSyncProcessingEvent,
 } from '../../events/types'
 import { getQueue, Queues } from '../queues'
+import type { JobContext } from '../types'
 import type { MonitorMessageSyncJobData } from './monitor-message-sync-job'
 import type { SyncSingleChannelMessagesJobData } from './sync-single-channel-messages-job'
 
@@ -27,7 +27,8 @@ export type StartMessageSyncJobData = {
 
 export const MONITOR_INITIAL_DELAY_MS = 10000 // Schedule monitor job 10 seconds after enqueueing children
 
-export const startMessageSyncJob = async (job: Job<StartMessageSyncJobData>) => {
+export const startMessageSyncJob = async (ctx: JobContext<StartMessageSyncJobData>) => {
+  const job = ctx.job
   const { syncJobId, organizationId, userId, since: sinceString } = job.data // Use syncJobId
   const since = sinceString ? new Date(sinceString) : undefined
 

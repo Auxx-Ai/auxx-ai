@@ -1,6 +1,5 @@
 // packages/lib/src/jobs/mcp/__tests__/mcp-tools-resync-job.test.ts
 
-import type { Job } from 'bullmq'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 interface ResyncRow {
@@ -38,10 +37,12 @@ vi.mock('../../../ai/mcp/sync', () => ({
   },
 }))
 
+import type { JobContext } from '../../types'
 import { mcpToolsResyncJob } from '../mcp-tools-resync-job'
 
-function makeJob(): Job {
-  return { id: 'job-1', data: {} } as unknown as Job
+function makeJob(): JobContext {
+  // Shaped like a JobContext: the handler reads the real job off `ctx.job`.
+  return { job: { id: 'job-1', data: {} }, data: {} } as unknown as JobContext
 }
 
 beforeEach(() => {

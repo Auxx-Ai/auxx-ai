@@ -1,6 +1,6 @@
 // apps/worker/src/workers/utils/createJobHandler.ts
 
-import type { JobContext, JobHandler, LegacyJobHandler } from '@auxx/lib/jobs'
+import type { JobContext, JobHandler } from '@auxx/lib/jobs'
 import { createScopedLogger } from '@auxx/logger'
 import { type Job, UnrecoverableError } from 'bullmq'
 
@@ -61,9 +61,7 @@ function createJobContext<T>(job: Job<T>, signal?: AbortSignal): JobContext<T> {
  * @param jobMappings Object mapping job names to their handler functions
  * @returns A function that processes jobs based on the provided mappings
  */
-export function createJobHandler<T extends Record<string, JobHandler | LegacyJobHandler>>(
-  jobMappings: T
-) {
+export function createJobHandler<T extends Record<string, JobHandler>>(jobMappings: T) {
   return async (job: Job, token?: string, signal?: AbortSignal) => {
     const jobName = job.name
     const jobFunction = jobMappings[jobName as keyof T]
@@ -84,9 +82,10 @@ export function createJobHandler<T extends Record<string, JobHandler | LegacyJob
     }
 
     try {
-      // Create context and call handler
+      // Create context and call handler. Every handler is a JobHandler that takes a
+      // JobContext; native job fields are read via ctx.job.
       const ctx = createJobContext(job, signal)
-      return await jobFunction(ctx as any)
+      return await jobFunction(ctx)
     } catch (error) {
       if (error instanceof JobCancelledError) {
         logger.info('Job cancelled gracefully', { jobId: job.id, jobName })

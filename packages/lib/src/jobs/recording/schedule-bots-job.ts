@@ -1,8 +1,8 @@
 // packages/lib/src/jobs/recording/schedule-bots-job.ts
 
 import { createScopedLogger } from '@auxx/logger'
-import type { Job } from 'bullmq'
 import { scheduleBotsForUpcomingMeetings } from '../../recording/bot'
+import type { JobContext } from '../types'
 
 const logger = createScopedLogger('job:schedule-bots')
 
@@ -13,8 +13,8 @@ export interface ScheduleBotsJobData {
 /**
  * Cron job (every 2 min): scan for upcoming meetings and auto-schedule recording bots.
  */
-export const scheduleBotsForUpcomingMeetingsJob = async (jobOrCtx: Job<ScheduleBotsJobData>) => {
-  const job: Job<ScheduleBotsJobData> = (jobOrCtx as any).job ?? jobOrCtx
+export const scheduleBotsForUpcomingMeetingsJob = async (ctx: JobContext<ScheduleBotsJobData>) => {
+  const job = ctx.job
 
   logger.info('Starting bot scheduling scan', { jobId: job.id })
 

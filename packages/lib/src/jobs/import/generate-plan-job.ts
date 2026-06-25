@@ -3,7 +3,6 @@
 import { database as db, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { getPublishingClient } from '@auxx/redis'
-import type { Job } from 'bullmq'
 import { eq } from 'drizzle-orm'
 import {
   createEventPublisher,
@@ -15,6 +14,7 @@ import {
   updateResolutionsWithLookupResults,
 } from '../../import'
 import type { ImportMappingProperty } from '../../import/types'
+import type { JobContext } from '../types'
 
 const logger = createScopedLogger('generate-plan-job')
 
@@ -28,7 +28,8 @@ export interface GeneratePlanJobProps {
  * Job handler for generating an import plan.
  * Analyzes all rows and creates plan records.
  */
-export async function generatePlanJob(job: Job<GeneratePlanJobProps>): Promise<void> {
+export async function generatePlanJob(ctx: JobContext<GeneratePlanJobProps>): Promise<void> {
+  const job = ctx.job
   const { jobId, organizationId } = job.data
 
   logger.info('Starting plan generation', { jobId, organizationId })

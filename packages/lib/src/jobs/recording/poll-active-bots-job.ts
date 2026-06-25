@@ -1,9 +1,9 @@
 // packages/lib/src/jobs/recording/poll-active-bots-job.ts
 
 import { createScopedLogger } from '@auxx/logger'
-import type { Job } from 'bullmq'
 import { pollBotStatus } from '../../recording/bot'
 import { findRecording } from '../../recording/recording-queries'
+import type { JobContext } from '../types'
 
 const logger = createScopedLogger('job:poll-active-bots')
 
@@ -17,8 +17,8 @@ const ACTIVE_STATUSES = ['joining', 'waiting', 'admitted', 'recording'] as const
 /**
  * Cron job (every 1 min): poll active bot statuses as a safety net for missed webhooks.
  */
-export const pollActiveBotsJob = async (jobOrCtx: Job<PollActiveBotsJobData>) => {
-  const job: Job<PollActiveBotsJobData> = (jobOrCtx as any).job ?? jobOrCtx
+export const pollActiveBotsJob = async (ctx: JobContext<PollActiveBotsJobData>) => {
+  const job = ctx.job
 
   const activeRecordings = await findRecording(
     { status: [...ACTIVE_STATUSES] },

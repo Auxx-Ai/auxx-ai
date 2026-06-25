@@ -1,8 +1,8 @@
 // packages/lib/src/jobs/recording/process-recording-job.ts
 
 import { createScopedLogger } from '@auxx/logger'
-import type { Job } from 'bullmq'
 import { downloadAndStoreRecordingMedia } from '../../recording/bot'
+import type { JobContext } from '../types'
 import { enqueueGenerateVideoAssetsJob } from './generate-video-assets-job'
 
 const logger = createScopedLogger('job:process-recording')
@@ -16,8 +16,8 @@ export interface ProcessRecordingJobData {
  * Download recording media from the provider and store in S3.
  * Enqueued when the provider sends a `recording.done` webhook.
  */
-export const processRecordingJob = async (jobOrCtx: Job<ProcessRecordingJobData>) => {
-  const job: Job<ProcessRecordingJobData> = (jobOrCtx as any).job ?? jobOrCtx
+export const processRecordingJob = async (ctx: JobContext<ProcessRecordingJobData>) => {
+  const job = ctx.job
   const { recordingId, organizationId } = job.data
 
   logger.info('Processing recording media', {

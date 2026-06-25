@@ -3,11 +3,11 @@
 import { WEBAPP_URL } from '@auxx/config/server'
 import { database as db, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import type { Job } from 'bullmq'
 import { addDays } from 'date-fns'
 import { and, eq, gte, isNull, lte } from 'drizzle-orm'
 import { z } from 'zod'
 import { enqueueEmailJob } from '../email'
+import type { JobContext } from '../types'
 
 const payloadSchema = z.object({
   dryRun: z.boolean().default(false),
@@ -32,7 +32,8 @@ export interface MidTrialStats {
  * Sends email at the midpoint of the trial (day 7 of 14).
  * Runs daily at 10 AM.
  */
-export const sendMidTrialEmailsJob = async (job: Job) => {
+export const sendMidTrialEmailsJob = async (ctx: JobContext) => {
+  const job = ctx.job
   const input = payloadSchema.parse(job.data)
   const stats: MidTrialStats = {
     scanned: 0,

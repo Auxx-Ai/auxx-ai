@@ -4,7 +4,6 @@ import { database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { toResourceFieldId } from '@auxx/types/field'
 import { parseRecordId, toRecordId } from '@auxx/types/resource'
-import type { Job } from 'bullmq'
 import { and, eq, isNotNull, isNull, lt, sql } from 'drizzle-orm'
 import { createCallModel } from '../../ai/agent-framework/llm-adapter'
 import { ModelType } from '../../ai/providers/types'
@@ -20,6 +19,7 @@ import {
   getTerminalStages,
   SCANNED_ENTITY_SLUGS,
 } from '../../work-items/stale-defaults'
+import type { JobContext } from '../types'
 
 const logger = createScopedLogger('job:next-action-stale-scanner')
 
@@ -50,7 +50,8 @@ export interface NextActionStaleScannerJobData {
  * `computedForActivityAt` predates the entity's current `lastActivityAt` to
  * STALE in one bulk update.
  */
-export async function nextActionStaleScannerJob(job: Job<NextActionStaleScannerJobData>) {
+export async function nextActionStaleScannerJob(ctx: JobContext<NextActionStaleScannerJobData>) {
+  const job = ctx.job
   const { dryRun = false, organizationId } = job.data
   const startedAt = Date.now()
   logger.info('Starting AI suggestion stale scanner', { dryRun, organizationId, jobId: job.id })
@@ -66,10 +67,6 @@ export async function nextActionStaleScannerJob(job: Job<NextActionStaleScannerJ
   let totalStaled = 0
 
   for (const org of enabledOrgs) {
-    if (job.token === undefined) {
-      // Best-effort heartbeat extension — ignore failures.
-    }
-
     // Resolve the org's default LLM. Skip the org if no model is configured;
     // the scanner shouldn't surface "we couldn't pick a model" as a per-entity
     // failure repeated 50 times.

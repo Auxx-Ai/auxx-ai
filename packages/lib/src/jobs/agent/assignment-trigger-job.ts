@@ -2,10 +2,10 @@
 
 import { createScopedLogger } from '@auxx/logger'
 import { createSession } from '@auxx/services'
-import type { Job } from 'bullmq'
 import { enqueueAgentJob } from '../../ai/agent-framework/enqueue-agent-job'
 import { buildTriggerSeedMessage } from '../../ai/agent-framework/trigger-seed-message'
 import { getCachedAgentById } from '../../cache'
+import type { JobContext } from '../types'
 
 const logger = createScopedLogger('agent-assignment-trigger-job')
 
@@ -24,7 +24,10 @@ export interface AgentAssignmentTriggerJobData {
  * Fires when an agent is assigned to a ticket via `ticket:assignee:added`.
  * The agent owns the session; the assigner is recorded in trigger context.
  */
-export async function executeAgentAssignmentTrigger(job: Job<AgentAssignmentTriggerJobData>) {
+export async function executeAgentAssignmentTrigger(
+  ctx: JobContext<AgentAssignmentTriggerJobData>
+) {
+  const job = ctx.job
   const { agentTriggerId, agentId, organizationId, threadRecordId, assignerUserId, firedAt } =
     job.data
 

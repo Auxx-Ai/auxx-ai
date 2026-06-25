@@ -1,8 +1,8 @@
 // packages/lib/src/jobs/maintenance/app-storage-sweep-job.ts
 
 import { createScopedLogger } from '@auxx/logger'
-import type { Job } from 'bullmq'
 import { countExpiredAppStorage, deleteExpiredAppStorage } from '../../apps/app-storage'
+import type { JobContext } from '../types'
 
 const logger = createScopedLogger('app-storage-sweep')
 
@@ -28,8 +28,9 @@ export interface AppStorageSweepStats {
  * count without deleting.
  */
 export async function appStorageSweepJob(
-  job: Job<AppStorageSweepJobData>
+  ctx: JobContext<AppStorageSweepJobData>
 ): Promise<AppStorageSweepStats> {
+  const job = ctx.job
   const { batchSize = 1000, dryRun = false } = job.data
   logger.info('Starting app storage sweep', { batchSize, dryRun })
 

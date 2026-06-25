@@ -2,10 +2,10 @@
 
 import { database as db, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import type { Job } from 'bullmq'
 import { and, eq, isNull } from 'drizzle-orm'
 import { getQueue } from '../queues'
 import { Queues } from '../queues/types'
+import type { JobContext } from '../types'
 
 /**
  * Logger for the calendar sync scanner.
@@ -27,7 +27,8 @@ export interface CalendarSyncScannerJobData {
 /**
  * Scan enabled Google integrations and enqueue calendar sync jobs.
  */
-export const calendarSyncScannerJob = async (job: Job<CalendarSyncScannerJobData>) => {
+export const calendarSyncScannerJob = async (ctx: JobContext<CalendarSyncScannerJobData>) => {
+  const job = ctx.job
   const { dryRun = false } = job.data
   const now = new Date()
   const queue = getQueue(Queues.calendarSyncQueue)

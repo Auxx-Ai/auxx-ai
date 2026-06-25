@@ -20,6 +20,7 @@ import { createStorageManager } from '../../files/storage/storage-manager'
 import { createScopedLogger } from '../../logger'
 import { getRealtimeService, rooms } from '../../realtime'
 import { toRecordId } from '../../resources/resource-id'
+import type { JobContext } from '../types'
 
 /**
  * Schema for thumbnail generation job payload
@@ -46,7 +47,8 @@ const logger = createScopedLogger('generate-thumbnail-job')
 /**
  * Worker job for generating thumbnails in background
  */
-export const generateThumbnailJob = async (job: any): Promise<void> => {
+export const generateThumbnailJob = async (ctx: JobContext): Promise<void> => {
+  const job = ctx.job
   const payload = job.data as GenerateThumbnailPayload
   const startTime = Date.now()
   const { orgId, userId, versionId, preset, opts, key, visibility } = payload

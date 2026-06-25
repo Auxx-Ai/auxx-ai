@@ -2,11 +2,11 @@
 
 import { database as db, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import type { Job } from 'bullmq'
 import { and, eq, inArray, isNull, lt, or } from 'drizzle-orm'
 import { resolveEffectiveSyncMode } from '../../providers/sync-mode-resolver'
 import { getQueue } from '../queues'
 import { Queues } from '../queues/types'
+import type { JobContext } from '../types'
 
 const logger = createScopedLogger('job:polling-sync-scanner')
 
@@ -21,7 +21,8 @@ export interface PollingSyncScannerJobData {
  * Scanner job that runs on a schedule (default: every 5 min).
  * Finds polling-mode integrations that need work and enqueues jobs.
  */
-export const pollingSyncScannerJob = async (job: Job<PollingSyncScannerJobData>) => {
+export const pollingSyncScannerJob = async (ctx: JobContext<PollingSyncScannerJobData>) => {
+  const job = ctx.job
   const { dryRun = false } = job.data
   const now = new Date()
 

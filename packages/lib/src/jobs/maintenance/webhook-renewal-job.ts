@@ -3,9 +3,9 @@
 import { WEBAPP_URL } from '@auxx/config/server'
 import { database as db, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import type { Job } from 'bullmq'
 import { and, eq, isNull } from 'drizzle-orm'
 import { ProviderRegistryService } from '../../providers/provider-registry-service'
+import type { JobContext } from '../types'
 
 const logger = createScopedLogger('webhook-renewal-job')
 
@@ -32,8 +32,9 @@ interface WebhookRenewalJobResult {
  * pass). The provider's `setupWebhook` resolves a fresh token from the resolver on its own.
  */
 export const webhookRenewalJob = async (
-  job: Job<WebhookRenewalJobData>
+  ctx: JobContext<WebhookRenewalJobData>
 ): Promise<WebhookRenewalJobResult> => {
+  const job = ctx.job
   const { integrationId, organizationId, provider } = job.data
 
   logger.info('Starting webhook renewal', {

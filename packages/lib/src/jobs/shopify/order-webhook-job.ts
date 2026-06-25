@@ -2,16 +2,17 @@
 
 import { database as db, schema } from '@auxx/database'
 import { SYNC_STATUS } from '@auxx/database/enums'
-import type { Job } from 'bullmq'
 import { and, eq } from 'drizzle-orm'
 import { fetchOrder, upsertOrder } from '../../shopify/sync-orders'
+import type { JobContext } from '../types'
 import {
   getWebhookDataAndStart,
   shopifyWebhookLogger as logger,
   type WebhookJobDataProps,
 } from './utils'
 
-export const orderWebhookJob = async (job: Job<WebhookJobDataProps>) => {
+export const orderWebhookJob = async (ctx: JobContext<WebhookJobDataProps>) => {
+  const job = ctx.job
   const webhook = await getWebhookDataAndStart(job)
   if (!webhook) {
     return

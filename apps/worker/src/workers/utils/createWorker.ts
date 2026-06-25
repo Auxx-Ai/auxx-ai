@@ -1,6 +1,6 @@
 // apps/worker/src/workers/utils/createWorker.ts
 
-import type { JobHandler, LegacyJobHandler } from '@auxx/lib/jobs'
+import type { JobHandler } from '@auxx/lib/jobs'
 import type { Queues } from '@auxx/lib/jobs/queues'
 import { createScopedLogger } from '@auxx/logger'
 import { getConnectionOptions } from '@auxx/redis'
@@ -31,7 +31,7 @@ export interface EnhancedWorkerOptions extends Omit<WorkerOptions, 'connection'>
  * @param workerOptions Worker configuration options
  * @returns A configured BullMQ Worker instance
  */
-export function createWorker<T extends Record<string, JobHandler | LegacyJobHandler>>(
+export function createWorker<T extends Record<string, JobHandler>>(
   queue: Queues,
   jobMappings: T,
   workerOptions?: EnhancedWorkerOptions

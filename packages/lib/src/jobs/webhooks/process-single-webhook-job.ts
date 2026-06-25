@@ -2,10 +2,10 @@
 
 import { database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import type { Job } from 'bullmq'
 import { and, eq } from 'drizzle-orm'
 import type { AuxxEvent, Events } from '../../events/types'
 import { WebhookService } from '../../webhooks/webhook-service'
+import type { JobContext } from '../types'
 
 const logger = createScopedLogger('webhook-jobs')
 
@@ -13,7 +13,8 @@ const WEBHOOK_EVENTS: Array<Events> = ['user:created', 'project:created']
 
 export type ProcessSingleWebhookJobData = { event: any; webhookId: string; organizationId: string }
 
-export const processSingleWebhookJob = async (job: Job<ProcessSingleWebhookJobData>) => {
+export const processSingleWebhookJob = async (ctx: JobContext<ProcessSingleWebhookJobData>) => {
+  const job = ctx.job
   const { event, webhookId, organizationId } = job.data
   logger.info(`Processing webhook job for event: ${event.type} and webhookId: ${webhookId}`)
   const webhookService = new WebhookService(organizationId)

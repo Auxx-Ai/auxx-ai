@@ -2,10 +2,10 @@
 
 import { createScopedLogger } from '@auxx/logger'
 import { createSession } from '@auxx/services'
-import type { Job } from 'bullmq'
 import { enqueueAgentJob } from '../../ai/agent-framework/enqueue-agent-job'
 import { buildTriggerSeedMessage } from '../../ai/agent-framework/trigger-seed-message'
 import { getCachedAgentById } from '../../cache'
+import type { JobContext } from '../types'
 
 const logger = createScopedLogger('agent-event-trigger-job')
 
@@ -24,7 +24,8 @@ export interface AgentEventTriggerJobData {
  * to the workflow event-trigger path — same scheduled-trigger queue,
  * dispatched by `job.name = 'executeAgentEventTrigger'`.
  */
-export async function executeAgentEventTrigger(job: Job<AgentEventTriggerJobData>) {
+export async function executeAgentEventTrigger(ctx: JobContext<AgentEventTriggerJobData>) {
+  const job = ctx.job
   const { agentTriggerId, agentId, organizationId, eventType, recordId, resourceData, firedAt } =
     job.data
 

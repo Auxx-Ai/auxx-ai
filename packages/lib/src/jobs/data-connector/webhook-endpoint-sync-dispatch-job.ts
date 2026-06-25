@@ -14,11 +14,11 @@
 
 import { database as db, schema } from '@auxx/database'
 import { getRedisClient } from '@auxx/redis'
-import type { Job } from 'bullmq'
 import { and, eq, inArray, ne } from 'drizzle-orm'
 import { matchesFilter } from '../../agents/agent-trigger-queries'
 import { createScopedLogger } from '../../logger'
 import { getQueue, Queues } from '../queues'
+import type { JobContext } from '../types'
 import { APP_TRIGGER_SYNC_STREAM_JOB } from './app-trigger-sync-dispatch-job'
 
 const logger = createScopedLogger('data-connector-webhook-endpoint-dispatch-job')
@@ -40,8 +40,9 @@ export type ConnectorWebhookEndpointDispatchJobData = {
  * streams binding the same endpoint is legitimate fan-out.
  */
 export async function dispatchWebhookEndpointToConnectors(
-  job: Job<ConnectorWebhookEndpointDispatchJobData>
+  ctx: JobContext<ConnectorWebhookEndpointDispatchJobData>
 ) {
+  const job = ctx.job
   const { endpointId, topic, triggerData, eventId, organizationId } = job.data
 
   // Generic endpoints carry the discriminator topic in a SEPARATE field (extracted from a

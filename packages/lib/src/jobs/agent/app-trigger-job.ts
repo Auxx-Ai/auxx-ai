@@ -2,10 +2,10 @@
 
 import { createScopedLogger } from '@auxx/logger'
 import { createSession } from '@auxx/services'
-import type { Job } from 'bullmq'
 import { enqueueAgentJob } from '../../ai/agent-framework/enqueue-agent-job'
 import { buildTriggerSeedMessage } from '../../ai/agent-framework/trigger-seed-message'
 import { getCachedAgentById } from '../../cache'
+import type { JobContext } from '../types'
 
 const logger = createScopedLogger('agent-app-trigger-job')
 
@@ -33,7 +33,8 @@ export interface AgentAppTriggerJobData {
  * `kind: 'app'` (appId/triggerId/installationId) and `kind: 'webhook-endpoint'`
  * (webhookEndpointId/topic); the session triggerContext carries whichever is present.
  */
-export async function executeAgentAppTrigger(job: Job<AgentAppTriggerJobData>) {
+export async function executeAgentAppTrigger(ctx: JobContext<AgentAppTriggerJobData>) {
+  const job = ctx.job
   const {
     agentTriggerId,
     agentId,

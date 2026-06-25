@@ -2,10 +2,10 @@
 
 import { reportOrgSeatDay, type SeatDayReport } from '@auxx/billing'
 import { database as db, schema } from '@auxx/database'
-import type { Job } from 'bullmq'
 import { and, eq, isNotNull, ne } from 'drizzle-orm'
 import { z } from 'zod'
 import { createScopedLogger } from '../../logger'
+import type { JobContext } from '../types'
 
 const logger = createScopedLogger('shopify-seat-usage-job')
 
@@ -47,8 +47,9 @@ function utcDayMinus(offsetDays: number): Date {
  * See plans/billing/v2/14-shopify-per-seat-usage-meter-hack.md §5.3.
  */
 export async function shopifySeatUsageJob(
-  job: Job<ShopifySeatUsageJobData>
+  ctx: JobContext<ShopifySeatUsageJobData>
 ): Promise<ShopifySeatUsageResult> {
+  const job = ctx.job
   const input = payloadSchema.parse(job.data ?? {})
   const result: ShopifySeatUsageResult = {
     total: 0,
