@@ -92,7 +92,7 @@ function getWebhookTriggerOutputVariables(
  * Connection webhook trigger node definition.
  */
 export const webhookTriggerDefinition: NodeDefinition<WebhookTriggerNodeData> = {
-  id: NodeType.WEBHOOK_TRIGGER,
+  id: NodeType.WEBHOOK_ENDPOINT,
   category: NodeCategory.TRIGGER,
   displayName: 'Connection Webhook',
   description: 'Trigger when a connection receives a webhook on a topic',
@@ -101,7 +101,7 @@ export const webhookTriggerDefinition: NodeDefinition<WebhookTriggerNodeData> = 
   schema: webhookTriggerNodeDataSchema,
   defaultData: webhookTriggerDefaultData,
   canRunSingle: false, // Triggers cannot be run individually
-  triggerType: WorkflowTriggerType.WEBHOOK_TRIGGER,
+  triggerType: WorkflowTriggerType.WEBHOOK_ENDPOINT,
   validator: validateWebhookTriggerData,
   outputVariables: getWebhookTriggerOutputVariables as any,
 }

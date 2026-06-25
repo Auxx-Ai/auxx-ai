@@ -23,7 +23,9 @@ export { ConfigStorage } from './config/config-storage'
 // Crypto (versioned secret box)
 export {
   decryptSecrets,
+  decryptValue,
   encryptSecrets,
+  encryptValue,
   isV2Payload,
 } from './crypto'
 export type { LoginTokenError, LoginTokenPayload, VerifiedLoginToken } from './login-token'

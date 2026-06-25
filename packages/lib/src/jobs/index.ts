@@ -21,10 +21,6 @@ export {
   executeAgentAssignmentTrigger,
 } from './agent/assignment-trigger-job'
 export {
-  type AgentConnectionWebhookDispatchJobData,
-  dispatchConnectionWebhookToAgents,
-} from './agent/connection-webhook-dispatch-job'
-export {
   type AgentEventTriggerJobData,
   executeAgentEventTrigger,
 } from './agent/event-trigger-job'
@@ -36,6 +32,10 @@ export {
   type AgentScheduledTriggerJobData,
   executeAgentScheduledTrigger,
 } from './agent/scheduled-trigger-job'
+export {
+  type AgentWebhookEndpointDispatchJobData,
+  dispatchWebhookEndpointToAgents,
+} from './agent/webhook-endpoint-dispatch-job'
 // AI autofill
 export { type AiAutofillJobData, aiAutofillJob } from './ai-autofill/ai-autofill-job'
 // AI suggestion scanner
@@ -247,10 +247,6 @@ export {
 export { approvalReminderJob } from './workflow/approval-reminder-job'
 export { approvalTimeoutJob } from './workflow/approval-timeout-job'
 export {
-  type ConnectionWebhookDispatchJobData,
-  dispatchConnectionWebhook,
-} from './workflow/connection-webhook-dispatch-job'
-export {
   executePollingTrigger,
   type PollingTriggerJobData,
 } from './workflow/polling-trigger-job'
@@ -263,4 +259,8 @@ export {
   executeScheduledTrigger,
   type ScheduledTriggerJobData,
 } from './workflow/scheduled-trigger-job'
+export {
+  dispatchWebhookEndpoint,
+  type WebhookEndpointDispatchJobData,
+} from './workflow/webhook-endpoint-dispatch-job'
 export { workflowFileCleanupJob } from './workflow/workflow-file-cleanup-job'

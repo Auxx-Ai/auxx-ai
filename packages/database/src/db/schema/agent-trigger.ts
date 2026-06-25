@@ -6,15 +6,16 @@ import { Agent } from './agent'
 import { AppInstallation } from './app-installation'
 import { Organization } from './organization'
 import { User } from './user'
+import { WebhookEndpoint } from './webhook-endpoint'
 
 /**
  * Per-agent autonomous trigger. One row per scheduled/event/app trigger.
  *
  * Hot routing columns (`triggerType`, `entityDefinitionId`, `eventType`,
  * `triggerAppId`, `triggerAppTriggerId`, `triggerInstallationId`,
- * `triggerConnectionId`) mirror the convention used on the `Workflow`
- * table — they are populated per kind and indexed for fast dispatcher
- * lookups. The kind-specific tail lives in JSONB `config`.
+ * `triggerConnectionId`, `triggerWebhookEndpointId`) mirror the convention used
+ * on the `Workflow` table — they are populated per kind and indexed for fast
+ * dispatcher lookups. The kind-specific tail lives in JSONB `config`.
  *
  * See plans/kopilot/agents/phase-2-triggers.md §3.1.
  */
@@ -40,10 +41,10 @@ export const AgentTrigger = pgTable(
       }),
 
     /**
-     * 'scheduled' | 'event' | 'app' | 'webhook'. Phase 1.5 adds 'mention' |
-     * 'assignment'. For 'webhook', the trigger is keyed on
-     * `(triggerConnectionId, triggerTopic)` — a provider webhook delivery on
-     * that connection + topic fires the agent (installation-free, like 'event').
+     * 'scheduled' | 'event' | 'app' | 'webhook-endpoint'. Phase 1.5 adds 'mention' |
+     * 'assignment'. For 'webhook-endpoint', the trigger is keyed on
+     * `(triggerWebhookEndpointId, triggerTopic)` — an inbound delivery to that
+     * endpoint + topic fires the agent (installation-free, like 'event').
      */
     kind: text().notNull(),
 
@@ -94,13 +95,21 @@ export const AgentTrigger = pgTable(
     /**
      * For `kind: 'app'`: optional connection scope. Loose match — a row
      * with NULL matches any connection; with a value, must equal.
-     * For `kind: 'webhook'`: the connection the provider webhook arrives on
-     * (required — paired with `triggerTopic`).
+     * Shared with app triggers — NOT used by the webhook-endpoint trigger.
      */
     triggerConnectionId: text(),
 
     /**
-     * For `kind: 'webhook'`: the provider topic (`orders/create`) this trigger
+     * For `kind: 'webhook-endpoint'`: the WebhookEndpoint this trigger fires on
+     * (required — paired with `triggerTopic`). NULL for all other kinds.
+     */
+    triggerWebhookEndpointId: text().references((): AnyPgColumn => WebhookEndpoint.id, {
+      onUpdate: 'cascade',
+      onDelete: 'set null',
+    }),
+
+    /**
+     * For `kind: 'webhook-endpoint'`: the topic (`orders/create`) this trigger
      * fires on. NULL for all other kinds.
      */
     triggerTopic: text(),
@@ -171,7 +180,7 @@ export const AgentTrigger = pgTable(
       'btree',
       table.organizationId.asc().nullsLast(),
       table.enabled.asc().nullsLast(),
-      table.triggerConnectionId.asc().nullsLast(),
+      table.triggerWebhookEndpointId.asc().nullsLast(),
       table.triggerTopic.asc().nullsLast()
     ),
   ]

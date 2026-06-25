@@ -1,8 +1,8 @@
-// packages/lib/src/jobs/workflow/connection-webhook-dispatch-job.ts
-// Sibling to `dispatchAppTrigger` (app-trigger-dispatch-job.ts), for the unified
-// connection webhook ingress (Direction 2). One verified delivery → all workflows whose
-// webhook-trigger matches `(connectionId, topic)`. Same queue, same executor, same
-// dedup pattern — only the cache matcher (`byConnectionWebhook`) differs.
+// packages/lib/src/jobs/workflow/webhook-endpoint-dispatch-job.ts
+// Sibling to `dispatchAppTrigger` (app-trigger-dispatch-job.ts), for the provider-agnostic
+// inbound webhook ingress. One verified delivery → all workflows whose webhook-endpoint
+// trigger matches `(endpointId, topic)`. Same queue, same executor, same dedup pattern —
+// only the cache matcher (`byWebhookEndpoint`) differs.
 
 import { getRedisClient } from '@auxx/redis'
 import type { Job } from 'bullmq'
@@ -10,10 +10,10 @@ import { getOrgCache } from '../../cache'
 import { createScopedLogger } from '../../logger'
 import { executeAppTriggeredWorkflow } from '../../workflow-engine/execution/trigger-app-workflow'
 
-const logger = createScopedLogger('connection-webhook-dispatch-job')
+const logger = createScopedLogger('webhook-endpoint-dispatch-job')
 
-export type ConnectionWebhookDispatchJobData = {
-  connectionId: string
+export type WebhookEndpointDispatchJobData = {
+  endpointId: string
   topic: string
   triggerData: Record<string, unknown>
   eventId: string
@@ -21,30 +21,30 @@ export type ConnectionWebhookDispatchJobData = {
 }
 
 /**
- * BullMQ job handler: dispatch a connection webhook delivery to all matching workflows.
+ * BullMQ job handler: dispatch a webhook-endpoint delivery to all matching workflows.
  *
- * 1. Dedup check via Redis NX key (5-minute TTL), independent of the sink + agent fires.
- * 2. Query published + enabled `webhook-trigger` workflows matching `(connectionId, topic)`.
+ * 1. Dedup check via Redis NX key (5-minute TTL), independent of the agent fire.
+ * 2. Query published + enabled `webhook-endpoint` workflows matching `(endpointId, topic)`.
  * 3. Execute each with the delivery payload as trigger data.
  */
-export async function dispatchConnectionWebhook(job: Job<ConnectionWebhookDispatchJobData>) {
-  const { connectionId, topic, triggerData, eventId, organizationId } = job.data
+export async function dispatchWebhookEndpoint(job: Job<WebhookEndpointDispatchJobData>) {
+  const { endpointId, topic, triggerData, eventId, organizationId } = job.data
 
-  logger.info('Dispatching connection webhook', {
-    connectionId,
+  logger.info('Dispatching webhook endpoint', {
+    endpointId,
     topic,
     eventId,
     organizationId,
     jobId: job.id,
   })
 
-  const dedupKey = `connection-webhook-dedup:${connectionId}:${topic}:${eventId}`
+  const dedupKey = `webhook-endpoint-dispatch-dedup:${endpointId}:${topic}:${eventId}`
   try {
     const redis = await getRedisClient(false)
     if (redis) {
       const setResult = await redis.set(dedupKey, '1', 'EX', 300, 'NX')
       if (!setResult) {
-        logger.warn('Duplicate connection webhook event, skipping', { dedupKey, eventId })
+        logger.warn('Duplicate webhook endpoint event, skipping', { dedupKey, eventId })
         return { workflowRunIds: [] }
       }
     } else {
@@ -60,11 +60,11 @@ export async function dispatchConnectionWebhook(job: Job<ConnectionWebhookDispat
   try {
     const matchingApps = await getOrgCache()
       .from(organizationId, 'workflowApps')
-      .byConnectionWebhook({ connectionId, topic })
+      .byWebhookEndpoint({ endpointId, topic })
 
     if (matchingApps.length === 0) {
-      logger.info('No matching workflows for connection webhook', {
-        connectionId,
+      logger.info('No matching workflows for webhook endpoint', {
+        endpointId,
         topic,
         organizationId,
       })
@@ -81,31 +81,31 @@ export async function dispatchConnectionWebhook(job: Job<ConnectionWebhookDispat
         workflowAppId: app.id,
         organizationId,
         triggerData,
-        connectionId,
+        webhookEndpointId: endpointId,
         topic,
         eventId,
       })
       if (result.isOk()) {
         workflowRunIds.push(result.value.workflowRunId)
       } else {
-        logger.error('Failed to execute connection-webhook workflow', {
+        logger.error('Failed to execute webhook-endpoint workflow', {
           workflowAppId: app.id,
           error: result.error,
         })
       }
     }
 
-    logger.info('Connection webhook dispatch complete', {
+    logger.info('Webhook endpoint dispatch complete', {
       triggeredWorkflows: workflowRunIds.length,
       totalMatching: matchingApps.length,
-      connectionId,
+      endpointId,
       topic,
       eventId,
     })
     return { workflowRunIds }
   } catch (error) {
-    logger.error('Connection webhook dispatch failed', {
-      connectionId,
+    logger.error('Webhook endpoint dispatch failed', {
+      endpointId,
       topic,
       eventId,
       organizationId,

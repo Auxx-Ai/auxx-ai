@@ -19,12 +19,13 @@ export async function executeAppTriggeredWorkflow(params: {
   workflowAppId: string
   organizationId: string
   triggerData: Record<string, unknown>
-  /** App-trigger provenance (omitted for a connection webhook-trigger). */
+  /** App-trigger provenance (omitted for a webhook-endpoint trigger). */
   appId?: string
   triggerId?: string
   installationId?: string
-  /** Connection webhook-trigger provenance (omitted for an app-trigger). */
   connectionId?: string
+  /** Webhook-endpoint provenance (omitted for an app-trigger). */
+  webhookEndpointId?: string
   topic?: string
   eventId: string
 }) {
@@ -36,6 +37,7 @@ export async function executeAppTriggeredWorkflow(params: {
     triggerId,
     installationId,
     connectionId,
+    webhookEndpointId,
     topic,
     eventId,
   } = params
@@ -47,6 +49,7 @@ export async function executeAppTriggeredWorkflow(params: {
     triggerId,
     installationId,
     connectionId,
+    webhookEndpointId,
     topic,
     eventId,
   })
@@ -76,11 +79,11 @@ export async function executeAppTriggeredWorkflow(params: {
   if (
     publishedWorkflow.triggerType !== 'app-trigger' &&
     publishedWorkflow.triggerType !== 'app-polling-trigger' &&
-    publishedWorkflow.triggerType !== 'webhook-trigger'
+    publishedWorkflow.triggerType !== 'webhook-endpoint'
   ) {
     return err({
       code: 'WORKFLOW_TYPE_MISMATCH' as const,
-      message: `Workflow type mismatch. Expected 'app-trigger', 'app-polling-trigger', or 'webhook-trigger', got '${publishedWorkflow.triggerType}'`,
+      message: `Workflow type mismatch. Expected 'app-trigger', 'app-polling-trigger', or 'webhook-endpoint', got '${publishedWorkflow.triggerType}'`,
       expected: 'app-trigger',
       actual: publishedWorkflow.triggerType,
     })
@@ -102,6 +105,7 @@ export async function executeAppTriggeredWorkflow(params: {
           trigger_id: triggerId,
           installation_id: installationId,
           connection_id: connectionId,
+          webhook_endpoint_id: webhookEndpointId,
           topic,
           event_id: eventId,
           triggered_at: new Date().toISOString(),

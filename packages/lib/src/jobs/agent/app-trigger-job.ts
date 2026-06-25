@@ -13,12 +13,13 @@ export interface AgentAppTriggerJobData {
   agentTriggerId: string
   agentId: string
   organizationId: string
-  /** App-trigger provenance (omitted for a connection webhook-trigger). */
+  /** App-trigger provenance (omitted for a webhook-endpoint trigger). */
   appId?: string
   triggerId?: string
   installationId?: string
-  connectionId: string | null
-  /** Connection webhook-trigger provenance (omitted for an app-trigger). */
+  connectionId?: string | null
+  /** Webhook-endpoint provenance (omitted for an app-trigger). */
+  webhookEndpointId?: string
   topic?: string
   triggerData: Record<string, unknown>
   eventId: string
@@ -26,11 +27,11 @@ export interface AgentAppTriggerJobData {
 }
 
 /**
- * Worker handler for autonomous app- and connection-webhook-driven triggers on
+ * Worker handler for autonomous app- and webhook-endpoint-driven triggers on
  * `AgentTrigger`. Sibling to the workflow `executeAppTriggeredWorkflow` path — runs
  * on the same scheduled-trigger queue as the other agent workers. Handles both
  * `kind: 'app'` (appId/triggerId/installationId) and `kind: 'webhook'`
- * (connectionId/topic); the session triggerContext carries whichever is present.
+ * (webhookEndpointId/topic); the session triggerContext carries whichever is present.
  */
 export async function executeAgentAppTrigger(job: Job<AgentAppTriggerJobData>) {
   const {
@@ -41,6 +42,7 @@ export async function executeAgentAppTrigger(job: Job<AgentAppTriggerJobData>) {
     triggerId,
     installationId,
     connectionId,
+    webhookEndpointId,
     topic,
     triggerData,
     eventId,
@@ -78,11 +80,12 @@ export async function executeAgentAppTrigger(job: Job<AgentAppTriggerJobData>) {
       triggerId,
       installationId,
       connectionId,
+      webhookEndpointId,
       topic,
       eventId,
       firedAt,
     },
-    domainState: { triggerResource: triggerData, appConnectionId: connectionId },
+    domainState: { triggerResource: triggerData, appConnectionId: connectionId ?? null },
     modelId: agent.modelId,
   })
 

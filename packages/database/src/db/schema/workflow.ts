@@ -14,6 +14,7 @@ import {
 } from './_shared'
 import { Organization } from './organization'
 import { User } from './user'
+import { WebhookEndpoint } from './webhook-endpoint'
 import { WorkflowApp } from './workflow-app'
 
 /** Drizzle table for workflow */
@@ -31,13 +32,17 @@ export const Workflow = pgTable(
     description: text(),
     enabled: boolean().default(true).notNull(),
     version: integer().default(1).notNull(),
-    triggerType: text(), // 'form', 'manual', 'created', 'updated', 'deleted', 'scheduled', 'message-received', 'app-trigger', 'webhook-trigger'
+    triggerType: text(), // 'form', 'manual', 'created', 'updated', 'deleted', 'scheduled', 'message-received', 'app-trigger', 'webhook-endpoint'
     entityDefinitionId: text(), // Entity identifier (system or custom) - nullable for form/scheduled/message-received triggers
     triggerAppId: text(), // Extension app ID for app-trigger type (e.g., 'y5yf1eh8lr1')
     triggerTriggerId: text(), // Trigger ID within the app for app-trigger type (e.g., 'order-created')
     triggerInstallationId: text(), // Specific app installation ID for app-trigger type
-    triggerConnectionId: text(), // Credential ID for app-trigger / webhook-trigger connection
-    triggerTopic: text(), // Provider topic for webhook-trigger type (e.g., 'orders/create')
+    triggerConnectionId: text(), // Credential ID for app-trigger connection (shared; NOT the webhook-endpoint trigger)
+    triggerWebhookEndpointId: text().references((): AnyPgColumn => WebhookEndpoint.id, {
+      onUpdate: 'cascade',
+      onDelete: 'set null',
+    }), // WebhookEndpoint id for the webhook-endpoint trigger type
+    triggerTopic: text(), // Provider topic for webhook-endpoint type (e.g., 'orders/create')
     createdAt: timestamp({ precision: 3 }).defaultNow().notNull(),
     updatedAt: timestamp({ precision: 3 }).notNull(),
     createdById: text().references((): AnyPgColumn => User.id, {
@@ -73,7 +78,7 @@ export const Workflow = pgTable(
     index('Workflow_orgId_webhookTrigger_idx').using(
       'btree',
       table.organizationId.asc().nullsLast(),
-      table.triggerConnectionId.asc().nullsLast(),
+      table.triggerWebhookEndpointId.asc().nullsLast(),
       table.triggerTopic.asc().nullsLast()
     ),
   ]

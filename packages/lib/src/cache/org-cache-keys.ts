@@ -131,7 +131,9 @@ export interface CachedAgentTrigger {
   triggerAppTriggerId: string | null
   triggerInstallationId: string | null
   triggerConnectionId: string | null
-  /** For `kind: 'webhook'`: the provider topic (`orders/create`). NULL otherwise. */
+  /** For `kind: 'webhook'`: the WebhookEndpoint id. NULL otherwise. */
+  triggerWebhookEndpointId: string | null
+  /** For `kind: 'webhook'`: the topic (`orders/create`). NULL otherwise. */
   triggerTopic: string | null
   config: Record<string, unknown> | null
   instructions: Record<string, unknown> | null
