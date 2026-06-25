@@ -3,7 +3,7 @@
 
 import { Button } from '@auxx/ui/components/button'
 import { Section } from '@auxx/ui/components/section'
-import { Plug } from 'lucide-react'
+import { Plug, Trash2 } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useAppsContext } from '~/components/apps/providers/apps-context'
 import { AppWithStatusIcon } from '~/components/apps/ui/app-with-status-icon'
@@ -97,6 +97,11 @@ export function ConnectionSection({ connector }: ConnectionSectionProps) {
   const bindCredential = (credentialId: string, appInstallationId: string | null = null) =>
     update.mutate({ id: connector.id, credentialId, appInstallationId })
 
+  // Connections are optional (public endpoints need none) — clear the binding by
+  // writing null for both the credential and its app installation.
+  const unbindCredential = () =>
+    update.mutate({ id: connector.id, credentialId: null, appInstallationId: null })
+
   const connected = !!connector.credentialId
 
   // Resolve the bound connection to surface its real icon + name (e.g. "Gmail")
@@ -158,25 +163,38 @@ export function ConnectionSection({ connector }: ConnectionSectionProps) {
                       : 'Connect an account to authorize this connector.'
               }
               actions={() => (
-                <ConnectionPickerPopover
-                  value={connector.credentialId ?? undefined}
-                  onPick={(credentialId, row) =>
-                    bindCredential(credentialId, row.appInstallationId)
-                  }
-                  onCreateNew={() => setAddOpen(true)}
-                  preferredCredentialIds={preferredCredentialIds}
-                  preferredLabel={preferredLabel ?? undefined}
-                  trigger={
-                    <Button variant='outline' size='sm'>
-                      <Plug />
-                      {connected
-                        ? 'Switch connection'
-                        : preferredLabel
-                          ? `Connect ${preferredLabel}`
-                          : 'Connect'}
+                <div className='flex items-center gap-1.5'>
+                  <ConnectionPickerPopover
+                    value={connector.credentialId ?? undefined}
+                    onPick={(credentialId, row) =>
+                      bindCredential(credentialId, row.appInstallationId)
+                    }
+                    onCreateNew={() => setAddOpen(true)}
+                    preferredCredentialIds={preferredCredentialIds}
+                    preferredLabel={preferredLabel ?? undefined}
+                    trigger={
+                      <Button variant='outline' size='sm'>
+                        <Plug />
+                        {connected
+                          ? 'Switch connection'
+                          : preferredLabel
+                            ? `Connect ${preferredLabel}`
+                            : 'Connect'}
+                      </Button>
+                    }
+                  />
+                  {/* Connections are optional — clear the binding for public endpoints. */}
+                  {connected && (
+                    <Button
+                      variant='outline'
+                      size='sm'
+                      aria-label='Remove connection'
+                      loading={update.isPending}
+                      onClick={() => unbindCredential()}>
+                      <Trash2 />
                     </Button>
-                  }
-                />
+                  )}
+                </div>
               )}
             />
           </ConnectionList>

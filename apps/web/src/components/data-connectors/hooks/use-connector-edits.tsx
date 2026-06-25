@@ -22,6 +22,8 @@ interface Saver {
 }
 
 interface EditsStore {
+  /** When true, registered sections persist their drafts automatically (setup mode). */
+  autoSave: boolean
   subscribe: (cb: () => void) => () => void
   snapshot: () => { isDirty: boolean; isSaving: boolean }
   set: (id: string, saver: Saver) => void
@@ -36,7 +38,7 @@ interface EditsStore {
  * latest `set` while the cached snapshot stays referentially stable between flips
  * (required by `useSyncExternalStore`).
  */
-function createStore(): EditsStore {
+function createStore(autoSave: boolean): EditsStore {
   const savers = new Map<string, Saver>()
   const listeners = new Set<() => void>()
   let cached = { isDirty: false, isSaving: false }
@@ -55,6 +57,7 @@ function createStore(): EditsStore {
   }
 
   return {
+    autoSave,
     subscribe(cb) {
       listeners.add(cb)
       return () => void listeners.delete(cb)
@@ -77,9 +80,19 @@ function createStore(): EditsStore {
 
 const EditsContext = createContext<EditsStore | null>(null)
 
-/** Scopes one shared save buffer over the sections it wraps. */
-export function ConnectorEditsProvider({ children }: { children: ReactNode }) {
-  const store = useMemo(() => createStore(), [])
+/**
+ * Scopes one shared save buffer over the sections it wraps. Pass `autoSave` (setup
+ * mode) to have sections persist their drafts automatically — no manual save click
+ * before the stepper's gated "Continue".
+ */
+export function ConnectorEditsProvider({
+  children,
+  autoSave = false,
+}: {
+  children: ReactNode
+  autoSave?: boolean
+}) {
+  const store = useMemo(() => createStore(autoSave), [autoSave])
   return <EditsContext.Provider value={store}>{children}</EditsContext.Provider>
 }
 
@@ -103,7 +116,19 @@ export function useRegisterSaver(
   }, [store, id, isDirty, isSaving])
 
   useEffect(() => () => store?.remove(id), [store, id])
+
+  // Auto-save (setup mode): debounce a commit while the section is dirty. The effect
+  // re-runs on every render, so continuous edits keep clearing and re-arming the
+  // timer (a draft change re-renders the section); once edits settle for `DEBOUNCE_MS`
+  // it fires once. A save in flight or a clean section arms nothing.
+  useEffect(() => {
+    if (!store?.autoSave || !isDirty || isSaving) return
+    const timer = setTimeout(() => void commitRef.current(), DEBOUNCE_MS)
+    return () => clearTimeout(timer)
+  })
 }
+
+const DEBOUNCE_MS = 700
 
 const EMPTY = { isDirty: false, isSaving: false }
 
@@ -117,6 +142,7 @@ export function useConnectorEdits() {
   )
   return {
     ...snapshot,
+    autoSave: store?.autoSave ?? false,
     commitAll: store?.commitAll ?? (async () => {}),
   }
 }

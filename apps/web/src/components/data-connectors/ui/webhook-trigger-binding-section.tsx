@@ -13,14 +13,16 @@ import {
   SelectValue,
 } from '@auxx/ui/components/select'
 import { toastError } from '@auxx/ui/components/toast'
-import { Pencil, Plus, Webhook, X } from 'lucide-react'
+import { Plus, Webhook, X } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useAppsContext } from '~/components/apps/providers/apps-context'
 import {
   type TriggerSource,
   TriggerSourcePicker,
+  TriggerSourceRow,
   useTriggerSources,
 } from '~/components/pickers/trigger-source'
+import { WebhookEndpointInspector } from '~/components/webhooks/ui/webhook-endpoint-inspector'
 import { AppTriggerTestSection } from '~/components/workflow/apps/trigger/app-trigger-test-section'
 import { api, type RouterOutputs } from '~/trpc/react'
 
@@ -138,6 +140,16 @@ export function WebhookTriggerBindingSection({
     [selectedAppTrigger]
   )
 
+  // Scope the live inspector to the bound topic when the binding targets exactly one;
+  // multiple (or none) ⇒ show every delivery to the endpoint.
+  const singleTopic = useMemo(() => {
+    const list = topics
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean)
+    return list.length === 1 ? list[0] : undefined
+  }, [topics])
+
   const handlePick = (picked: TriggerSource) => {
     if (picked.kind === 'app') setSource({ kind: 'app', triggerId: picked.trigger.triggerId })
     else setSource({ kind: 'webhook-endpoint', webhookEndpointId: picked.endpoint.id })
@@ -206,24 +218,18 @@ export function WebhookTriggerBindingSection({
       <div className='flex flex-col gap-4 px-1'>
         <div className='flex flex-col gap-1.5'>
           <Label>Trigger</Label>
-          {sourceLabel ? (
-            <div className='flex items-center gap-2 rounded-md border bg-muted/30 px-3 py-2'>
-              <Webhook className='size-4 text-muted-foreground' />
-              <span className='flex-1 truncate text-sm font-medium'>{sourceLabel}</span>
-              <Button variant='ghost' size='icon-sm' onClick={() => setPickerOpen(true)}>
-                <Pencil />
-              </Button>
-            </div>
+          {source && sourceLabel ? (
+            <TriggerSourceRow
+              icon={<Webhook className='size-4 text-muted-foreground' />}
+              title={sourceLabel}
+              secondary={selectedEndpoint?.url ?? selectedAppTrigger?.description}
+              onEdit={() => setPickerOpen(true)}
+              onDelete={() => setSource(null)}
+            />
           ) : (
             <Button variant='outline' className='self-start' onClick={() => setPickerOpen(true)}>
               Select a trigger…
             </Button>
-          )}
-          {selectedAppTrigger?.description && (
-            <p className='text-xs text-muted-foreground'>{selectedAppTrigger.description}</p>
-          )}
-          {selectedEndpoint && (
-            <p className='text-xs text-muted-foreground'>{selectedEndpoint.url}</p>
           )}
         </div>
 
@@ -338,6 +344,16 @@ export function WebhookTriggerBindingSection({
         {source?.kind === 'app' && installationId && (
           <div className='border-t pt-3'>
             <AppTriggerTestSection installationId={installationId} triggerId={source.triggerId} />
+          </div>
+        )}
+
+        {source?.kind === 'webhook-endpoint' && (
+          <div className='border-t pt-3'>
+            <WebhookEndpointInspector
+              endpointId={source.webhookEndpointId}
+              topic={singleTopic}
+              description='Live deliveries to this endpoint matching this binding.'
+            />
           </div>
         )}
       </div>

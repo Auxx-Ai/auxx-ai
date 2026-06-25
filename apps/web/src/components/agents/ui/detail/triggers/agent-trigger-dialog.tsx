@@ -47,7 +47,9 @@ import {
   seedDefaults,
 } from '~/components/global/schema-form'
 import { ResourcePicker } from '~/components/pickers/resource-picker'
+import { TriggerSourceRow } from '~/components/pickers/trigger-source'
 import { useResources } from '~/components/resources/hooks/use-resources'
+import { WebhookEndpointInspector } from '~/components/webhooks/ui/webhook-endpoint-inspector'
 import { VarEditorField } from '~/components/workflow/ui/input-editor/var-editor'
 import { useConfirm } from '~/hooks/use-confirm'
 import { api, type RouterOutputs } from '~/trpc/react'
@@ -139,6 +141,8 @@ interface AgentTriggerDialogProps {
     hasTopicSource: boolean
   }
   onSuccess?: () => void
+  /** Re-pick the source (app trigger / webhook endpoint) — closes the dialog and re-opens the picker. */
+  onRepick?: () => void
 }
 
 interface EventState {
@@ -192,6 +196,7 @@ export function AgentTriggerDialog({
   appSelection,
   webhookSelection,
   onSuccess,
+  onRepick,
 }: AgentTriggerDialogProps) {
   const isEditMode = !!trigger
   const effectiveKind: Kind = isEditMode && trigger ? (trigger.kind as Kind) : kind
@@ -329,6 +334,15 @@ export function AgentTriggerDialog({
     })
     if (confirmed) destroy.mutate({ id: trigger.id })
   }
+
+  // The source chip's Trash2 removes the binding: delete the row when editing, otherwise
+  // abandon the in-progress selection (close the dialog). When the chip is shown it owns
+  // delete, so the footer's Delete button steps aside for app / webhook kinds.
+  const handleSourceRemove = () => {
+    if (isEditMode) void handleDelete()
+    else onOpenChange(false)
+  }
+  const chipHandlesDelete = (isAppKind && !!appContext) || (isWebhookKind && !!webhookContext)
 
   const fieldNodes = useMemo(
     () => readFieldNodes(appContext?.inputsJsonSchema),
@@ -480,23 +494,13 @@ export function AgentTriggerDialog({
               <>
                 <Field orientation='vertical'>
                   <FieldLabel>Trigger</FieldLabel>
-                  <div className='flex items-center gap-3 rounded-md border bg-muted/30 px-3 py-2'>
-                    <AppIcon
-                      iconId={appContext.appAvatarUrl ?? 'package'}
-                      size='lg'
-                      className='border border-foreground/5'
-                    />
-                    <div className='flex min-w-0 flex-col'>
-                      <span className='truncate text-sm font-medium'>
-                        {appContext.appTitle} · {appContext.triggerLabel}
-                      </span>
-                      {appContext.triggerDescription && (
-                        <span className='truncate text-xs text-muted-foreground'>
-                          {appContext.triggerDescription}
-                        </span>
-                      )}
-                    </div>
-                  </div>
+                  <TriggerSourceRow
+                    icon={<AppIcon iconId={appContext.appAvatarUrl ?? 'package'} size='sm' />}
+                    title={`${appContext.appTitle} · ${appContext.triggerLabel}`}
+                    secondary={appContext.triggerDescription}
+                    onEdit={!isEditMode ? onRepick : undefined}
+                    onDelete={handleSourceRemove}
+                  />
                 </Field>
 
                 <Field orientation='vertical'>
@@ -574,17 +578,13 @@ export function AgentTriggerDialog({
               <>
                 <Field orientation='vertical'>
                   <FieldLabel>Trigger</FieldLabel>
-                  <div className='flex items-center gap-3 rounded-md border bg-muted/30 px-3 py-2'>
-                    <AppIcon iconId='webhook' size='lg' className='border border-foreground/5' />
-                    <div className='flex min-w-0 flex-col'>
-                      <span className='truncate text-sm font-medium'>
-                        {webhookContext.endpointName}
-                      </span>
-                      <span className='truncate text-xs text-muted-foreground'>
-                        {webhookContext.endpointUrl}
-                      </span>
-                    </div>
-                  </div>
+                  <TriggerSourceRow
+                    icon={<AppIcon iconId='webhook' size='sm' />}
+                    title={webhookContext.endpointName}
+                    secondary={webhookContext.endpointUrl}
+                    onEdit={!isEditMode ? onRepick : undefined}
+                    onDelete={handleSourceRemove}
+                  />
                 </Field>
                 <Field orientation='vertical'>
                   <FieldLabel>Topic {webhookContext.hasTopicSource ? '' : '(optional)'}</FieldLabel>
@@ -598,6 +598,11 @@ export function AgentTriggerDialog({
                     onChange={(e) => setWebhookTopic(e.target.value)}
                   />
                 </Field>
+                <WebhookEndpointInspector
+                  endpointId={webhookContext.webhookEndpointId}
+                  topic={webhookTopic}
+                  description='Live deliveries to this endpoint matching this trigger.'
+                />
               </>
             ) : null}
 
@@ -620,7 +625,7 @@ export function AgentTriggerDialog({
           </div>
 
           <DialogFooter className='flex sm:justify-between!'>
-            {isEditMode && !isBuiltinKind ? (
+            {isEditMode && !isBuiltinKind && !chipHandlesDelete ? (
               <Button
                 type='button'
                 size='sm'
