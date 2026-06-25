@@ -90,7 +90,7 @@ export class ImapProvider extends BaseMessageProvider implements ChannelProvider
     this.integration = integration
 
     // Reveal the full credential bag (not channel tokens — IMAP stores host/port/auth config).
-    // Post-backfill these rows are `kind: 'integration'`, `type: 'imap'`: secrets hold the
+    // Post-backfill these rows are `kind: 'connection'`, `type: 'imap'`: secrets hold the
     // connection objects (authMode/imap/smtp/ldap), metadata holds `{ provider }`. Reconstruct
     // the legacy shape as `{ ...metadata, ...secrets }`. The store's org filter is the cross-org guard.
     if (!integration.credentialId) {

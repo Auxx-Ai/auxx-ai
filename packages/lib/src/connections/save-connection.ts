@@ -2,7 +2,7 @@
 // Persist a platform-provider connection (the third owner). The app/mcp owners have
 // their own savers (saveAppConnection / saveMcpConnection) that also fan out to
 // installation custom-fields / tool-sync; a platform provider is just a Credential —
-// `kind:'workflow'`, `type:<providerKey>`, linked to its ConnectionDefinition — so this
+// `kind:'connection'`, `type:<providerKey>`, linked to its ConnectionDefinition — so this
 // is the lean equivalent the unified OAuth route calls.
 
 import {
@@ -62,7 +62,7 @@ function pickSecrets(data: SaveConnectionInput['connectionData']): Record<string
 /**
  * Save a platform-provider connection (OAuth callback or manual secret). Upserts: a `connectionId`
  * rotates the existing row (reconnect) and resets its refresh circuit breaker; otherwise inserts a
- * new `kind:'workflow'` credential typed by `providerKey` and linked to its ConnectionDefinition.
+ * new `kind:'connection'` credential typed by `providerKey` and linked to its ConnectionDefinition.
  */
 export async function saveConnection(input: SaveConnectionInput): Promise<Result<string, Error>> {
   const { organizationId } = input
@@ -117,7 +117,7 @@ export async function saveConnection(input: SaveConnectionInput): Promise<Result
   const created = await insertCredential({
     organizationId,
     createdById: input.createdById,
-    kind: 'workflow',
+    kind: 'connection',
     type: input.providerKey,
     connectionDefinitionId: input.connectionDefinitionId,
     userId: input.userId,
@@ -148,7 +148,7 @@ async function dedupeLabel(
 ): Promise<string> {
   const existing = await listCredentials({
     organizationId: scope.organizationId,
-    kind: 'workflow',
+    kind: 'connection',
     type: scope.providerKey,
     userId: scope.userId,
   })

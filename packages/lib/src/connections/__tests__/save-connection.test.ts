@@ -1,7 +1,7 @@
 // packages/lib/src/connections/__tests__/save-connection.test.ts
 //
 // saveConnection is the platform-owner persist: it must write a row the runtime resolver can
-// find — `kind:'workflow'`, `type:<providerKey>`, the `connectionDefinitionId` FK — split secrets
+// find — `kind:'connection'`, `type:<providerKey>`, the `connectionDefinitionId` FK — split secrets
 // from plaintext metadata, and on reconnect rotate-in-place + reset the refresh circuit breaker.
 
 import { ok } from 'neverthrow'
@@ -55,7 +55,7 @@ beforeEach(() => {
 })
 
 describe('saveConnection — platform-owner persist', () => {
-  it('inserts a kind:workflow row typed by providerKey and linked to its definition', async () => {
+  it('inserts a kind:connection row typed by providerKey and linked to its definition', async () => {
     const res = await saveConnection({
       ...BASE,
       userId: 'user-1', // per-user (def.global === false)
@@ -70,7 +70,7 @@ describe('saveConnection — platform-owner persist', () => {
     expect(res._unsafeUnwrap()).toBe('cred-1')
     const inserted = insertCredential.mock.calls[0]![0]
     expect(inserted).toMatchObject({
-      kind: 'workflow',
+      kind: 'connection',
       type: 'googleOAuth2Api',
       connectionDefinitionId: 'def-1',
       organizationId: 'org-1',
@@ -121,7 +121,7 @@ describe('saveConnection — platform-owner persist', () => {
 
     expect(listCredentials).toHaveBeenCalledWith({
       organizationId: 'org-1',
-      kind: 'workflow',
+      kind: 'connection',
       type: 'googleOAuth2Api',
       userId: 'user-1',
     })

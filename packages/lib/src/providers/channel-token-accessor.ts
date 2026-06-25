@@ -10,6 +10,7 @@ import {
 import { database as db, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { and, eq, isNull } from 'drizzle-orm'
+import { channelProviderKey, resolveChannelDefinitionId } from '../channels/channel-connection-def'
 import { resolveConnectionForRuntime } from '../connections/resolve-connection-for-runtime'
 import { ensureFreshCredentialToken } from '../credentials/ensure-fresh-credential-token'
 
@@ -179,11 +180,13 @@ export async function setChannelTokens(
       })
     }
   } else {
+    const providerKey = channelProviderKey(channel.provider)
     const created = await insertCredential({
       organizationId: channel.organizationId,
       createdById: meta?.createdById ?? null,
-      kind: 'integration',
-      type: channel.provider,
+      kind: 'connection',
+      type: providerKey,
+      connectionDefinitionId: await resolveChannelDefinitionId(db, providerKey),
       name: `${channel.provider} - ${channel.email ?? 'channel'}`,
       secrets: {
         accessToken: tokens.accessToken ?? null,

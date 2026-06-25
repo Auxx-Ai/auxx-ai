@@ -27,8 +27,8 @@ import { TRPCError } from '@trpc/server'
 import { z } from 'zod'
 import { createTRPCRouter, notDemo, protectedProcedure } from '~/server/api/trpc'
 
-/** The four credential families (mirrors `CredentialKind` in @auxx/credentials). */
-const credentialKindSchema = z.enum(['app', 'mcp', 'integration', 'workflow'])
+/** The credential families (mirrors `CredentialKind` in @auxx/credentials). */
+const credentialKindSchema = z.enum(['app', 'mcp', 'connection'])
 
 /**
  * Consecutive refresh failures at which a connection's circuit breaker is "open"
@@ -67,7 +67,7 @@ function gateConnectionVariables(
  */
 export const connectionsRouter = createTRPCRouter({
   /**
-   * Lists connections across kinds (`app | integration | workflow`). Default
+   * Lists connections across kinds (`app | mcp | connection`). Default
    * (no input) — the Settings → Channels → Connections card grid: admins see all
    * org connections; members see their own + org-scoped ones. With input, the
    * picker narrows by `kind`/`type` and can force org-scoped rows only.
@@ -98,7 +98,7 @@ export const connectionsRouter = createTRPCRouter({
       const isAdmin = await isAdminOrOwner(organizationId, ctx.session.user.id)
       const result = await listCredentials({
         organizationId,
-        kind: input?.kind ?? ['app', 'integration', 'workflow'],
+        kind: input?.kind ?? ['app', 'mcp', 'connection'],
         type: input?.type,
         // `orgScopedOnly` forces `userId: null`; otherwise apply member visibility —
         // admins see everything, members see their own + org-scoped rows.
@@ -248,7 +248,7 @@ export const connectionsRouter = createTRPCRouter({
     const isAdmin = await isAdminOrOwner(organizationId, ctx.session.user.id)
     const result = await listCredentials({
       organizationId,
-      kind: ['app', 'integration', 'workflow'],
+      kind: ['app', 'mcp', 'connection'],
       ...(isAdmin ? {} : { ownedByOrOrgScoped: ctx.session.user.id }),
     })
     if (result.isErr()) {

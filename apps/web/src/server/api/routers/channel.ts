@@ -5,6 +5,7 @@ import { type Database, schema } from '@auxx/database'
 import { getCachedAgentById, onCacheEvent } from '@auxx/lib/cache'
 import {
   addExcludedSender as addExcludedSenderToChannel,
+  channelProviderKey,
   countBillableChannels,
   createChannel,
   disconnect as disconnectChannel,
@@ -13,6 +14,7 @@ import {
   getProviderType,
   linkChannelToInbox,
   list as listChannels,
+  resolveChannelDefinitionId,
   syncAllMessages,
   syncMessages,
   toggle as toggleChannel,
@@ -788,11 +790,13 @@ export const channelRouter = createTRPCRouter({
 
       // Encrypt and store credentials. Object-valued fields (imap/smtp/ldap
       // bags) land in secrets wholesale; scalar non-secrets in metadata.
+      const imapProviderKey = channelProviderKey('imap')
       const created = await insertCredential({
         organizationId,
         createdById: userId,
-        kind: 'integration',
-        type: 'imap',
+        kind: 'connection',
+        type: imapProviderKey,
+        connectionDefinitionId: await resolveChannelDefinitionId(ctx.db, imapProviderKey),
         name: `IMAP - ${input.email}`,
         ...splitSensitiveFields(credentialData as Record<string, unknown>),
       })

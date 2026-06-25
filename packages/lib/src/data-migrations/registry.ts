@@ -3,6 +3,8 @@
 import { ALL_ENTITY_MIGRATIONS } from '../seed/entity-migrations'
 import { migration024VerifyCredentialV2Backfill } from './migrations/024-verify-credential-v2-backfill'
 import { migration025ReseedPlatformProviders } from './migrations/025-reseed-platform-providers'
+import { migration026NormalizeChannelCredentials } from './migrations/026-normalize-channel-credentials'
+import { migration027BackfillCredentialDefinitionFk } from './migrations/027-backfill-credential-definition-fk'
 import { assertUniqueMigrationIds } from './plan'
 import type { DataMigrationDef } from './types'
 import { wrapEntityMigration } from './wrap-entity-migration'
@@ -22,6 +24,8 @@ function buildRegistry(): DataMigrationDef[] {
     // Pure-data migrations go here, e.g. migration024BackfillFoo
     migration024VerifyCredentialV2Backfill,
     migration025ReseedPlatformProviders,
+    migration026NormalizeChannelCredentials,
+    migration027BackfillCredentialDefinitionFk,
   ]
 
   all.sort((a, b) => a.id.localeCompare(b.id))

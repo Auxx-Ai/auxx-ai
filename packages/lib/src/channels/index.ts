@@ -2,6 +2,11 @@
 
 export { getOrgChannelProviderMap, invalidateOrgChannelProviderMap } from './cache'
 export { PLATFORM_CAPABILITIES, type PlatformCapabilities } from './capabilities'
+export {
+  CHANNEL_PROVIDER_TO_KEY,
+  channelProviderKey,
+  resolveChannelDefinitionId,
+} from './channel-connection-def'
 export { disconnect } from './disconnect'
 export { type CreateChannelInput, createChannel, linkChannelToInbox } from './lifecycle'
 export { countBillableChannels, getProviderType, list } from './list'

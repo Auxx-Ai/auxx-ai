@@ -1,0 +1,1 @@
+ALTER TABLE "Credential" ALTER COLUMN "kind" SET DEFAULT 'connection';

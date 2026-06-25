@@ -26,7 +26,7 @@ export type PickerConnection = RouterOutputs['connections']['list'][number]
  * Credential families this picker can bind. `mcp` is intentionally excluded —
  * MCP creds are server-bound, not a fetch credential.
  */
-export type PickerKind = 'app' | 'integration' | 'workflow'
+export type PickerKind = 'app' | 'connection'
 
 interface ConnectionPickerProps {
   /** Currently-bound credentialId. */
@@ -88,7 +88,7 @@ export function ConnectionPicker({
     return {
       preferred,
       apps: rest.filter((c) => c.kind === 'app'),
-      keys: rest.filter((c) => c.kind === 'integration' || c.kind === 'workflow'),
+      keys: rest.filter((c) => c.kind === 'connection'),
     }
   }, [connections, preferredCredentialIds])
 
@@ -201,8 +201,8 @@ function ConnectionItem({
 }) {
   const isApp = connection.kind === 'app'
   const expired = connection.status === 'expired'
-  // Option A: only app + platform (workflow) rows act; channel/integration rows are bind-only.
-  const actionable = !!onAction && (isApp || connection.kind === 'workflow')
+  // App + connection rows act (reconnect/edit); the provider catalog routes OAuth vs secret below.
+  const actionable = !!onAction && (isApp || connection.kind === 'connection')
   // App rows + platform OAuth rows re-authorize ("Reconnect"); platform secrets re-enter ("Edit").
   const isReconnect = isApp || providerByKey?.get(connection.type)?.connectionType === 'oauth2-code'
   const actionLabel = isReconnect ? 'Reconnect' : 'Edit'
