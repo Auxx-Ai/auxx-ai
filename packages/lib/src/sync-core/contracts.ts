@@ -86,6 +86,15 @@ export interface SyncState {
   backfillStartedAt?: string
   /** Cross-run throttle hard-gate (ported from the channel side). */
   throttle?: { failureCount: number; retryAfter?: string }
+  /**
+   * Consecutive slices that advanced and claimed more pages but moved NEITHER the
+   * cursor NOR the record count — the signature of a stuck pagination loop (an
+   * upstream that replays a page while signalling `has_more`). Reset to 0 on real
+   * progress; the runner fails the run past a small strike limit so a frozen cursor
+   * can't spin a continuation chain forever (the heartbeat stays warm, so the
+   * stale-sweep never catches it). See pagination-stall-guard-plan.md §2.
+   */
+  noProgressStrikes?: number
 }
 
 /**

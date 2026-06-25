@@ -21,6 +21,11 @@ import type {
 
 const logger = createScopedLogger('sync-core-slice-runner')
 
+/** Consecutive no-progress slices tolerated before the runner fails a stalled chain
+ *  (fails on strike `STALL_STRIKE_LIMIT + 1`). Tiny on purpose — bail within a few
+ *  slices, not thousands of pages. */
+const STALL_STRIKE_LIMIT = 2
+
 /** Directive returned to the worker after one slice. */
 export type SliceOutcome =
   | {
@@ -94,6 +99,34 @@ export async function runSyncSlice(args: RunSliceArgs): Promise<SliceOutcome> {
       ? (result.nextCursor ?? state.cursor)
       : state.cursor
 
+  // Stall guard (provider-agnostic backstop — protects app connectors / future channel
+  // sync that drive their own pagination, where generic-rest's inner token check can't
+  // reach). A full slice that advanced and still claims more, yet moved NOTHING (no
+  // records, cursor unchanged), is a stall candidate. One blip (a graceful abort, a
+  // transient empty page) is tolerated; STALL_STRIKE_LIMIT+1 consecutive ones fail the
+  // run — far cheaper than spinning a continuation chain to the page ceiling.
+  const noProgress =
+    advance &&
+    result.hasMore &&
+    result.recordsProcessed === 0 &&
+    cursorKey(nextCursor) === cursorKey(state.cursor)
+  const strikes = noProgress ? (state.noProgressStrikes ?? 0) + 1 : 0
+  if (strikes > STALL_STRIKE_LIMIT) {
+    const err = new Error(
+      `sync stalled: ${strikes} consecutive slices made no progress ` +
+        `(cursor ${cursorKey(state.cursor) ?? 'none'} unchanged) — failing to avoid an infinite chain.`
+    )
+    logger.error('pagination stalled', {
+      sourceId: source.id,
+      phase,
+      cursor: cursorKey(state.cursor),
+      strikes,
+    })
+    await stateStore.save({ ...state, noProgressStrikes: strikes }) // persist for observability
+    await ledger.fail(err)
+    return { action: 'failed', error: err }
+  }
+
   const next: SyncState = {
     ...state,
     phase,
@@ -101,6 +134,7 @@ export async function runSyncSlice(args: RunSliceArgs): Promise<SliceOutcome> {
     // The source returns a monotonic max watermark; the core just stores it on advance.
     watermark: advance ? (result.watermark ?? state.watermark) : state.watermark,
     recordsSeen: (state.recordsSeen ?? 0) + result.recordsProcessed,
+    noProgressStrikes: strikes,
   }
 
   // Checkpoint AFTER the slice — a crash/restart resumes here, never from page 1.

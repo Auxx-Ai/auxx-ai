@@ -20,7 +20,9 @@ import { RadioTab, RadioTabItem } from '@auxx/ui/components/radio-tab'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { EmptySection, Section } from '@auxx/ui/components/section'
 import { ChevronDown, Database, FlaskConical, Pencil, RefreshCw, Waypoints } from 'lucide-react'
-import { type ReactNode, useState } from 'react'
+import { type ReactNode, useMemo, useState } from 'react'
+import type { HttpRequestFieldContextValue } from '~/components/global/http-request'
+import { makeTokenFieldEditor } from '~/components/global/token-field'
 import {
   SchemaEditorDialog,
   type SeededFrom,
@@ -38,6 +40,7 @@ import {
   RequestEditorBlock,
   RevealChip,
 } from './request-editors'
+import { makeSteeringTokenSource } from './steering-token-source'
 import { StreamSample } from './stream-sample'
 
 type Connector = NonNullable<RouterOutputs['dataConnector']['getById']>
@@ -178,6 +181,24 @@ export function StreamConfigPanel({
   const syncMode: 'snapshot' | 'incremental' =
     rawSyncMode === 'incremental' ? 'incremental' : 'snapshot'
 
+  // Webhook streams steer the fetch with `{path}` placeholders declared in the
+  // Webhook steering section. Token-enable the request fields (URL + header/param
+  // values) so those paths are insertable via the `{` picker, not hand-typed.
+  const isWebhook = rawSyncMode === 'webhook'
+  const steeringPaths = useMemo<string[]>(() => {
+    const wt = (stream.requestConfig as { webhookTrigger?: { paths?: string[] } } | null)
+      ?.webhookTrigger
+    return wt?.paths ?? []
+  }, [stream.requestConfig])
+  const tokenFieldContext = useMemo<HttpRequestFieldContextValue>(() => {
+    const tokenSource = makeSteeringTokenSource(steeringPaths)
+    return {
+      FieldEditor: makeTokenFieldEditor(tokenSource),
+      keyPlaceholder: 'Enter key…',
+      valuePlaceholder: 'Type { to insert a field…',
+    }
+  }, [steeringPaths])
+
   const handleTestFetch = async () => {
     const result = await sampleFetch({
       id: connector.id,
@@ -256,11 +277,21 @@ export function StreamConfigPanel({
                     </DropdownMenuContent>
                   </DropdownMenu>
                 </InputGroupAddon>
-                <InputGroupInput
-                  value={request.value.path}
-                  onChange={(e) => request.set({ ...request.value, path: e.target.value })}
-                  placeholder='/orders or full URL'
-                />
+                {isWebhook ? (
+                  <div className='flex-1'>
+                    <tokenFieldContext.FieldEditor
+                      value={request.value.path}
+                      onChange={(path) => request.set({ ...request.value, path })}
+                      placeholder='/orders/{id}.json'
+                    />
+                  </div>
+                ) : (
+                  <InputGroupInput
+                    value={request.value.path}
+                    onChange={(e) => request.set({ ...request.value, path: e.target.value })}
+                    placeholder='/orders or full URL'
+                  />
+                )}
               </InputGroup>
 
               {/* Reveal chips — headers / query params / body stay hidden until clicked. */}
@@ -292,6 +323,7 @@ export function StreamConfigPanel({
                   <RecordKeyValueEditor
                     record={request.value.headers}
                     onChange={(headers) => request.set({ ...request.value, headers })}
+                    fieldContext={isWebhook ? tokenFieldContext : undefined}
                   />
                 </RequestEditorBlock>
               )}
@@ -300,6 +332,7 @@ export function StreamConfigPanel({
                   <RecordKeyValueEditor
                     record={request.value.params}
                     onChange={(params) => request.set({ ...request.value, params })}
+                    fieldContext={isWebhook ? tokenFieldContext : undefined}
                   />
                 </RequestEditorBlock>
               )}

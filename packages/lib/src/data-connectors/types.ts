@@ -234,6 +234,8 @@ export interface ConnectorStreamState {
   cursor?: string
   /** Set by a connector's terminal `nextState` when its backfill is exhausted. */
   backfillComplete?: boolean
+  /** Consecutive no-progress slices (stall guard) — see the core `SyncState`. */
+  noProgressStrikes?: number
   [key: string]: unknown
 }
 
@@ -308,6 +310,22 @@ export class ConnectorRateLimitError extends RateLimitError {
     public readonly retryAfterMs?: number
   ) {
     super(message, retryAfterMs !== undefined ? Math.ceil(retryAfterMs / 1_000) : undefined)
+  }
+}
+
+/**
+ * Thrown by a connector fetch when pagination stops making progress — the upstream
+ * hands back the SAME resume token it was just given while still signalling more
+ * pages (an endpoint that ignores the cursor param and replays a page). Unlike
+ * {@link ConnectorRateLimitError} this is NOT retriable: re-fetching just re-freezes.
+ * It is neither a rate-limit nor an abort, so it propagates out of `runConnectorSlice`
+ * and the slice-runner closes the run `failed` with this message — surfacing the real
+ * cause instead of silently completing a backfill that only ever saw page 1.
+ */
+export class PaginationStalledError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'PaginationStalledError'
   }
 }
 

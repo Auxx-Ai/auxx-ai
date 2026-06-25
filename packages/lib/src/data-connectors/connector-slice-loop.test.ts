@@ -5,7 +5,11 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { SliceBudget, SyncSliceCtx } from '../sync-core/contracts'
 import { runConnectorSlice } from './connector-slice-loop'
-import { ConnectorRateLimitError, type ConnectorYield } from './connectors/types'
+import {
+  ConnectorRateLimitError,
+  type ConnectorYield,
+  PaginationStalledError,
+} from './connectors/types'
 
 const BIG_BUDGET: SliceBudget = { maxPages: 1_000, maxRecords: 1_000_000, maxMs: 1_000_000 }
 
@@ -168,6 +172,19 @@ describe('runConnectorSlice', () => {
         now: () => 0,
       })
     ).rejects.toThrow('boom')
+  })
+
+  it('propagates a PaginationStalledError (not swallowed like a rate-limit/abort)', async () => {
+    // A non-advancing-cursor stall is permanent — it must surface to fail the run, not
+    // get treated as a retriable throttle.
+    await expect(
+      runConnectorSlice({
+        fetch: fakeFetch([rec('a'), checkpoint('c1')], new PaginationStalledError('stuck')),
+        sink: async () => {},
+        ctx: ctx(),
+        now: () => 0,
+      })
+    ).rejects.toBeInstanceOf(PaginationStalledError)
   })
 
   it('a cancelled signal yields gracefully (not a failure)', async () => {

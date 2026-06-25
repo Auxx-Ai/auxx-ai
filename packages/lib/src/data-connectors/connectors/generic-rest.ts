@@ -22,6 +22,7 @@ import {
   type DataConnectorDefinition,
   type FetchResult,
   type PaginationSpec,
+  PaginationStalledError,
   type StreamIncrementalConfig,
   type StreamRequestConfig,
 } from './types'
@@ -509,6 +510,20 @@ async function* fetchRecords(args: ConnectorFetchArgs): AsyncIterable<ConnectorY
       // Final checkpoint with no cursor ⇒ this phase is exhausted. Carry the watermark.
       yield { __checkpoint: true, watermark }
       return
+    }
+    // Stall guard (inner, precise — the token is in hand). A next token EQUAL to the one
+    // we just sent, while `has_more` was not false, means pagination is stuck (an endpoint
+    // that ignores the cursor param and replays a page). page/offset tokens are monotonic
+    // indices and never trip this; only value-carried tokens (cursor / next-url /
+    // link-header) can freeze. Fail loudly — silently completing would mark a backfill
+    // "done" having seen only page 1, under-syncing real data. See
+    // pagination-stall-guard-plan.md §1.
+    if (next === cursor) {
+      throw new PaginationStalledError(
+        `generic-rest: ${method} ${url} returned a non-advancing ${pagination?.kind} cursor ` +
+          `(${JSON.stringify(next)}) while has_more was not false — check the pagination config ` +
+          `(cursorPath / cursorRecordField) against the endpoint.`
+      )
     }
     cursor = next
     pageIndex += 1
