@@ -3,6 +3,7 @@
 import type { Job } from 'bullmq'
 import { subDays } from 'date-fns'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import type { JobContext } from '../../types'
 
 // ---- chainable mock for Drizzle query builder ----
 // The source uses two query shapes:
@@ -94,18 +95,23 @@ vi.mock('../../../organizations', () => ({
 
 // ---- helpers ----
 
-function makeJob(overrides: Partial<Job['data']> = {}): Job {
+function makeJob(overrides: Partial<Job['data']> = {}): JobContext {
+  // Shaped like a JobContext: the handler reads the real job off `ctx.job`.
+  // Mirror `updateProgress` at both levels (as the real context does) so tests can
+  // assert on `job.updateProgress` while the handler calls `ctx.job.updateProgress`.
+  const data = {
+    dryRun: false,
+    gracePeriodDays: 14,
+    batchSize: 10,
+    sendNotifications: true,
+    ...overrides,
+  }
+  const updateProgress = vi.fn()
   return {
-    id: 'test-job-123',
-    data: {
-      dryRun: false,
-      gracePeriodDays: 14,
-      batchSize: 10,
-      sendNotifications: true,
-      ...overrides,
-    },
-    updateProgress: vi.fn(),
-  } as unknown as Job
+    job: { id: 'test-job-123', data, updateProgress },
+    data,
+    updateProgress,
+  } as unknown as JobContext
 }
 
 function buildExpiredTrialRow(overrides: Record<string, unknown> = {}) {
@@ -162,7 +168,10 @@ describe('expiredTrialAccountCleanupJob', () => {
 
   describe('payload validation', () => {
     it('should apply default values when fields are omitted', async () => {
-      const job = { id: 'j1', data: {}, updateProgress: vi.fn() } as unknown as Job
+      const job = {
+        job: { id: 'j1', data: {}, updateProgress: vi.fn() },
+        data: {},
+      } as unknown as JobContext
 
       const stats = await expiredTrialAccountCleanupJob(job)
 

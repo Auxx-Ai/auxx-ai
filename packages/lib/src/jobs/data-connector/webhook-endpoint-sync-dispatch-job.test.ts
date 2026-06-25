@@ -29,7 +29,8 @@ vi.mock('@auxx/redis', () => ({ getRedisClient: async () => null }))
 import { dispatchWebhookEndpointToConnectors } from './webhook-endpoint-sync-dispatch-job'
 
 function job(data: Record<string, unknown>) {
-  return { data, id: 'job1' } as never
+  // Shaped like a JobContext: handlers read the real job off `ctx.job`.
+  return { job: { data, id: 'job1' }, data } as never
 }
 
 const base = {

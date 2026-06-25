@@ -1,6 +1,5 @@
 // packages/lib/src/jobs/maintenance/__tests__/app-storage-sweep-job.test.ts
 
-import type { Job } from 'bullmq'
 import { ok } from 'neverthrow'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -16,10 +15,12 @@ vi.mock('@auxx/logger', () => ({
   createScopedLogger: () => ({ info: () => {}, warn: () => {}, error: () => {} }),
 }))
 
+import type { JobContext } from '../../types'
 import { appStorageSweepJob } from '../app-storage-sweep-job'
 
-function job(data: Record<string, unknown>): Job {
-  return { data } as Job
+function job(data: Record<string, unknown>): JobContext {
+  // Shaped like a JobContext: the handler reads the real job off `ctx.job`.
+  return { job: { data }, data } as unknown as JobContext
 }
 
 beforeEach(() => {
