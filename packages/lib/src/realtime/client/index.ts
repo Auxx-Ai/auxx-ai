@@ -3,6 +3,7 @@
 export type {
   AiStatus,
   AiValueMetadata,
+  DataConnectorSyncEvent,
   FieldValuesUpdatedEvent,
   FieldValueUpdateEntry,
   InboxSyncCompletedEvent,

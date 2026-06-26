@@ -16,6 +16,7 @@ import { ArchiveX, History, Plus, RefreshCw, SkipForward, Trash2, XCircle } from
 import { Fragment, useState } from 'react'
 import { VisualIcon } from '~/components/icons/ui/visual-icon'
 import { api, type RouterOutputs } from '~/trpc/react'
+import { useConnectorSyncRealtime } from '../hooks/use-connector-sync-realtime'
 import { ConnectorBackfillProgress } from './connector-backfill-progress'
 import { ConnectorFreshnessPanel } from './connector-freshness-panel'
 import { ConnectorRunErrors } from './connector-run-errors'
@@ -138,12 +139,17 @@ export function ConnectorRunsPanel({
   initialStatus,
   sourceLabel,
 }: ConnectorRunsPanelProps) {
+  // Live run progress + lifecycle via the `dataConnector:sync` feed (self-sufficient
+  // so the panel updates even when docked without the detail view). The polls below
+  // are a 15s safety net — realtime is best-effort with no missed-event replay.
+  useConnectorSyncRealtime(connectorId)
+
   const statusQuery = api.dataConnector.getStatus.useQuery(
     { id: connectorId },
     {
       refetchInterval: (query) => {
         const s = query.state.data?.status ?? initialStatus
-        return s === 'syncing' || s === 'provisioning' ? 4000 : false
+        return s === 'syncing' || s === 'provisioning' ? 15000 : false
       },
     }
   )
@@ -152,7 +158,7 @@ export function ConnectorRunsPanel({
 
   const runs = api.dataConnector.listRuns.useQuery(
     { id: connectorId, limit: 50 },
-    { refetchInterval: isSyncing ? 4000 : false }
+    { refetchInterval: isSyncing ? 15000 : false }
   )
 
   const rows = runs.data ?? []

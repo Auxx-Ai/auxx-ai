@@ -24,6 +24,7 @@ import {
   enqueueConnectorSync,
 } from './data-connector-queue'
 import { backfillProvisionedFieldRefs, provisionConnectorMappings } from './provisioning'
+import { publishConnectorSync } from './realtime'
 import {
   claimForSync,
   finalizeConnector,
@@ -262,6 +263,9 @@ export async function startConnectorSync(
     phase,
     streams: streams.length,
   })
+  // Light up every open detail view immediately — including for a webhook/scheduled
+  // run the 4s poll never armed for (it only polls when status already reads syncing).
+  await publishConnectorSync(db, organizationId, dataConnectorId, 'run-started')
   return true
 }
 
@@ -430,6 +434,7 @@ export async function runBackfillSlice(
           sampleLimit: run.sampleLimit,
           startedAt: run.startedAt,
         })
+        await publishConnectorSync(db, organizationId, connectorId, 'run-finished')
         return
       }
     }
@@ -454,6 +459,7 @@ export async function runBackfillSlice(
           ceiling: MAX_BACKFILL_RECORDS,
           startedAt: run.startedAt,
         })
+        await publishConnectorSync(db, organizationId, connectorId, 'run-finished')
         return
       }
     }
@@ -469,6 +475,9 @@ export async function runBackfillSlice(
       { connectorId, organizationId, streamId, runId },
       { delayMs: outcome.retryAfterMs }
     )
+    // Live counter motion — the slice folded its counts + persisted stream state, so
+    // the snapshot read reflects this slice. Throttled per-connector.
+    await publishConnectorSync(db, organizationId, connectorId, 'progress')
     return
   }
 
@@ -476,6 +485,7 @@ export async function runBackfillSlice(
     // The runner already failed the run; release the connector so it isn't stuck
     // 'syncing'. Sibling streams will see the run no longer 'running' and stop.
     await finalizeConnector(db, connectorId, { ok: false, error: outcome.error.message })
+    await publishConnectorSync(db, organizationId, connectorId, 'run-finished')
     return
   }
 
@@ -486,6 +496,10 @@ export async function runBackfillSlice(
   if (outcome.completedPhase === 'steady') {
     await source.finalizeSteady()
   }
+  // A stream finished. For the LAST stream the connector is now live/finalized; for
+  // an earlier one it's still syncing with this stream done. Either way the snapshot
+  // tells the truth — emit a lifecycle frame so the history panel + freshness refetch.
+  await publishConnectorSync(db, organizationId, connectorId, 'run-finished')
 }
 
 // ── Stale-run sweep (H5) ──────────────────────────────────────────────────────────
@@ -517,10 +531,12 @@ export async function sweepStaleConnectorRuns(
         ...(opts.dataConnectorId ? [eq(T.dataConnectorId, opts.dataConnectorId)] : [])
       )
     )
-    .returning({ id: T.id, dataConnectorId: T.dataConnectorId })
+    .returning({ id: T.id, dataConnectorId: T.dataConnectorId, organizationId: T.organizationId })
 
   for (const run of stale) {
     await finalizeConnector(db, run.dataConnectorId, { ok: false, error: 'sync stalled' })
+    // Unstick any open detail view that was watching the crashed chain.
+    await publishConnectorSync(db, run.organizationId, run.dataConnectorId, 'run-finished')
   }
   if (stale.length > 0) {
     logger.warn('sweepStaleConnectorRuns: failed stale runs + released connectors', {
