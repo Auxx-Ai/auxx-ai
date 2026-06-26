@@ -558,6 +558,8 @@ export const SUPPORTED_PROVIDERS = [
   'deepseek',
   'qwen',
   'kimi',
+  'zai',
+  'grok',
 ] as const
 
 export type SupportedProvider = (typeof SUPPORTED_PROVIDERS)[number]

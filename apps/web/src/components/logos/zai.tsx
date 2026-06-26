@@ -1,0 +1,26 @@
+// apps/web/src/components/logos/zai.tsx
+import type { SVGProps } from 'react'
+
+type IconProps = { dark?: boolean } & SVGProps<SVGSVGElement>
+
+const Zai = ({ dark: _, ...props }: IconProps) => (
+  <svg
+    xmlns='http://www.w3.org/2000/svg'
+    viewBox='0 0 512 512'
+    fillRule='evenodd'
+    clipRule='evenodd'
+    strokeLinejoin='round'
+    strokeMiterlimit={2}
+    {...props}>
+    <path
+      fill='#3859FF'
+      d='M503 114.333v280c0 60.711-49.29 110-110 110H113c-60.711 0-110-49.289-110-110v-280c0-60.71 49.289-110 110-110h280c60.71 0 110 49.29 110 110z'
+    />
+    <path
+      fill='#fff'
+      d='M140 150 L372 150 L372 206 L236 306 L372 306 L372 362 L140 362 L140 306 L276 206 L140 206 Z'
+    />
+  </svg>
+)
+
+export default Zai

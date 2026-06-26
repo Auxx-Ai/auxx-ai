@@ -193,6 +193,26 @@ export const KimiIcon = (props: IconProps) => (
   </svg>
 )
 
+export const ZaiIcon = (props: IconProps) => (
+  <svg
+    xmlns='http://www.w3.org/2000/svg'
+    viewBox='0 0 512 512'
+    fillRule='evenodd'
+    clipRule='evenodd'
+    strokeLinejoin='round'
+    strokeMiterlimit={2}
+    {...props}>
+    <path
+      fill='#3859FF'
+      d='M503 114.333v280c0 60.711-49.29 110-110 110H113c-60.711 0-110-49.289-110-110v-280c0-60.71 49.289-110 110-110h280c60.71 0 110 49.29 110 110z'
+    />
+    <path
+      fill='#fff'
+      d='M140 150 L372 150 L372 206 L236 306 L372 306 L372 362 L140 362 L140 306 L276 206 L140 206 Z'
+    />
+  </svg>
+)
+
 export const PerplexityIcon = (props: IconProps) => (
   <svg xmlns='http://www.w3.org/2000/svg' width='80' height='80' viewBox='0 0 48 48' {...props}>
     <path
@@ -446,6 +466,19 @@ export const OpenRouterIcon = (props: IconProps) => (
 )
 
 export const XAiIcon = (props: IconProps) => (
+  <svg
+    xmlns='http://www.w3.org/2000/svg'
+    preserveAspectRatio='xMidYMid'
+    style={{ enableBackground: 'new 0 0 841.89 595.28' }}
+    viewBox='0 0 841.89 595.28'
+    {...props}>
+    <path d='m557.09 211.99 8.31 326.37h66.56l8.32-445.18zM640.28 56.91H538.72L379.35 284.53l50.78 72.52zM201.61 538.36h101.56l50.79-72.52-50.79-72.53zM201.61 211.99l228.52 326.37h101.56L303.17 211.99z' />
+  </svg>
+)
+
+// Grok (xAI) provider icon. Seeded with the xAI glyph — replace the SVG with the
+// Grok logo when ready.
+export const GrokIcon = (props: IconProps) => (
   <svg
     xmlns='http://www.w3.org/2000/svg'
     preserveAspectRatio='xMidYMid'
@@ -789,10 +822,12 @@ export const PROVIDER_ICONS: Record<string, React.ComponentType<IconProps>> = {
   gemini: GeminiIcon,
   openrouter: OpenRouterIcon,
   xai: XAiIcon,
+  grok: GrokIcon,
   groq: GroqIcon,
   deepseek: DeepSeekIcon,
   qwen: QwenIcon,
   kimi: KimiIcon,
+  zai: ZaiIcon,
   azure: AzureIcon,
   mcp: McpIcon,
   mistral: MistralIcon,

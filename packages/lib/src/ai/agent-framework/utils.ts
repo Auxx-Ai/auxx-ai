@@ -275,6 +275,16 @@ export function partsToWireFormat(parts: ContentPart[]): Message[] {
     }
   }
 
+  // A fully-empty assistant message (no text, no tool calls, no reasoning)
+  // carries zero information — it's the in-progress placeholder the query loop
+  // seeds on the first iteration before any deltas arrive. Anthropic tolerates
+  // it, but OpenAI-compatible providers (Kimi, DeepSeek, …) reject an empty
+  // assistant message ("the message at position N with role 'assistant' must
+  // not be empty"). Emit nothing so it never reaches the wire.
+  if (textContent.length === 0 && toolCalls.length === 0 && reasoningChunks.length === 0) {
+    return []
+  }
+
   const assistant: Message = {
     role: 'assistant',
     content: textContent.length > 0 ? textContent : toolCalls.length > 0 ? null : '',
