@@ -42,15 +42,22 @@ export async function publishConnectorSync(
     lastProgressEmit.delete(connectorId)
   }
 
-  const data = await buildSnapshot(db, organizationId, connectorId, kind)
-  if (!data) return
+  // Wholly fire-and-forget: the snapshot read + publish must NEVER throw into a sync
+  // run or webhook job — a realtime hiccup is not a sync failure. Callers `await` this
+  // without their own try/catch, so the guarantee has to live here.
+  try {
+    const data = await buildSnapshot(db, organizationId, connectorId, kind)
+    if (!data) return
 
-  // Lazy-import the realtime barrel: a static import from a data-connectors module
-  // creates a load-time cycle (realtime → publish-helpers → cache → …) that breaks
-  // vi.mock interception in the connector smoke tests. Same pattern as
-  // `connector-sync-source.emitRecordsInvalidated`.
-  const { getRealtimeService, publishDataConnectorSync } = await import('../realtime')
-  await publishDataConnectorSync(getRealtimeService(), organizationId, data).catch(() => {})
+    // Lazy-import the realtime barrel: a static import from a data-connectors module
+    // creates a load-time cycle (realtime → publish-helpers → cache → …) that breaks
+    // vi.mock interception in the connector smoke tests. Same pattern as
+    // `connector-sync-source.emitRecordsInvalidated`.
+    const { getRealtimeService, publishDataConnectorSync } = await import('../realtime')
+    await publishDataConnectorSync(getRealtimeService(), organizationId, data)
+  } catch {
+    // swallowed — realtime is best-effort
+  }
 }
 
 /**

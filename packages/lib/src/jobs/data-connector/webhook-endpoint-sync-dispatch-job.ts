@@ -1,11 +1,12 @@
 // packages/lib/src/jobs/data-connector/webhook-endpoint-sync-dispatch-job.ts
 // The connector-sink leg of the generic WebhookEndpoint fan-out (unified-trigger-picker
 // §4.4). Sibling to `dispatchAppTriggerToConnectors` (the APP-trigger leg) and to the
-// workflow/agent `dispatchWebhookEndpoint*` jobs: one verified endpoint delivery → a full
-// run-based sync of every webhook-sync DataConnector bound to this `webhookEndpointId`
-// with ≥1 stream whose `filter` matches the payload. THIN — dedup + match + steer a sync
-// via `enqueueConnectorSync({ trigger: 'webhook' })` (same path as "Sync now"), so the
-// delivery gets a `DataConnectorRun` history row + refreshed `lastSyncedAt` + reconciliation.
+// workflow/agent `dispatchWebhookEndpoint*` jobs: one verified endpoint delivery → a sync of
+// every webhook-sync DataConnector bound to this `webhookEndpointId` with ≥1 stream whose
+// `filter` matches the payload. THIN — dedup + match + route by mode: steerable streams
+// (`{path}` set) get a per-stream steer job (targeted PARTIAL run), non-steerable cursor
+// streams get the full `enqueueConnectorSync`. Either way the delivery yields a
+// `DataConnectorRun` history row + refreshed `lastSyncedAt`.
 // Match key is `webhookEndpointId`, NOT `credentialId`: generic endpoints aren't
 // connection-bound, so a connector opts in via its connector-level
 // `config.webhookTrigger.webhookEndpointId` (v7 — one signal per connector); each of its
@@ -17,7 +18,9 @@ import { and, eq, inArray, ne } from 'drizzle-orm'
 import { matchesFilter } from '../../agents/agent-trigger-queries'
 import { enqueueConnectorSync } from '../../data-connectors/data-connector-queue'
 import { createScopedLogger } from '../../logger'
+import { getQueue, Queues } from '../queues'
 import type { JobContext } from '../types'
+import { type ConnectorWebhookSteerJobData, WEBHOOK_STEER_JOB } from './webhook-steer-job'
 
 const logger = createScopedLogger('data-connector-webhook-endpoint-dispatch-job')
 
@@ -62,7 +65,7 @@ export async function dispatchWebhookEndpointToConnectors(
       const setResult = await redis.set(dedupKey, '1', 'EX', 300, 'NX')
       if (!setResult) {
         logger.warn('Duplicate connector webhook-endpoint event, skipping', { dedupKey, eventId })
-        return { connectorsSynced: 0 }
+        return { steerJobs: 0, connectorsFullSynced: 0 }
       }
     }
   } catch (err) {
@@ -87,7 +90,7 @@ export async function dispatchWebhookEndpointToConnectors(
   const connectors = candidates.filter(
     (c) => c.config?.webhookTrigger?.webhookEndpointId === endpointId
   )
-  if (connectors.length === 0) return { connectorsSynced: 0 }
+  if (connectors.length === 0) return { steerJobs: 0, connectorsFullSynced: 0 }
 
   const streams = await db.query.DataConnectorStream.findMany({
     where: and(
@@ -100,25 +103,49 @@ export async function dispatchWebhookEndpointToConnectors(
     columns: { dataConnectorId: true, streamKey: true, requestConfig: true },
   })
 
-  // A connector is relevant when ≥1 of its enabled streams' `webhookTrigger.filter`
-  // matches this payload (topic discrimination). One full sync per relevant connector —
-  // the run covers all its streams, so we don't fan per-stream.
-  const relevant = new Set<string>()
+  // Match streams by `webhookTrigger.filter` (topic discrimination), then SPLIT by mode —
+  // same routing as the app-trigger leg (webhook-steered-partial-run-plan):
+  //  • steerable (`{path}` set) → a targeted PARTIAL run via the per-stream steer job.
+  //  • non-steerable cursor stream → the full run-based sync (`enqueueConnectorSync`).
+  // A connector with ANY non-steerable matched stream full-syncs (superset covers the rest).
+  const matched: { connectorId: string; streamKey: string; steerable: boolean }[] = []
   for (const stream of streams) {
     const wt = stream.requestConfig?.webhookTrigger
     if (!stream.streamKey || !wt) continue
     if (!matchesFilter(wt.filter, matchData)) continue
-    relevant.add(stream.dataConnectorId)
+    matched.push({
+      connectorId: stream.dataConnectorId,
+      streamKey: stream.streamKey,
+      steerable: (wt.paths?.length ?? 0) > 0,
+    })
   }
 
-  for (const connectorId of relevant) {
+  const fullSyncConnectors = new Set(matched.filter((m) => !m.steerable).map((m) => m.connectorId))
+  const queue = getQueue(Queues.appTriggerQueue)
+  let steerJobs = 0
+  for (const m of matched) {
+    if (!m.steerable || fullSyncConnectors.has(m.connectorId)) continue
+    // No `jobId` — each delivery is a distinct record, so steered runs must NOT coalesce.
+    await queue.add(WEBHOOK_STEER_JOB, {
+      connectorId: m.connectorId,
+      streamKey: m.streamKey,
+      organizationId,
+      webhookEndpointId: endpointId,
+      topic,
+      triggerData: matchData,
+      eventId,
+    } satisfies ConnectorWebhookSteerJobData)
+    steerJobs++
+  }
+  for (const connectorId of fullSyncConnectors) {
     await enqueueConnectorSync({ connectorId, organizationId, trigger: 'webhook' })
   }
 
   logger.debug('Dispatched connector webhook endpoint', {
     endpointId,
     eventId,
-    connectorsSynced: relevant.size,
+    steerJobs,
+    connectorsFullSynced: fullSyncConnectors.size,
   })
-  return { connectorsSynced: relevant.size }
+  return { steerJobs, connectorsFullSynced: fullSyncConnectors.size }
 }

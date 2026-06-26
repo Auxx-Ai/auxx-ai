@@ -33,6 +33,8 @@ export type {
   SyncSourceStream,
 } from './connector-sync-source'
 export { createConnectorStreamSyncSource } from './connector-sync-source'
+// Webhook-steered PARTIAL run (plans/data-connectors/v2/webhook-steered-partial-run-plan)
+export { runWebhookSteeredRun } from './connector-webhook'
 export type {
   AppConnectorContext,
   ConnectorCheckpoint,

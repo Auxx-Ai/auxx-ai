@@ -1,8 +1,8 @@
 // packages/lib/src/jobs/data-connector/webhook-endpoint-sync-dispatch-job.test.ts
 // The connector webhook-endpoint matcher (v7): a delivery matches webhook-sync connectors
-// whose CONNECTOR-level `config.webhookTrigger.webhookEndpointId` matches, then steers a full
-// run-based sync for each connector with ≥1 stream whose `webhookTrigger.filter` passes.
-// DB + redis + enqueue faked.
+// whose CONNECTOR-level `config.webhookTrigger.webhookEndpointId` matches, then routes each
+// matched stream by mode — steerable (`{path}` set) → a per-stream steer job (targeted PARTIAL
+// run); non-steerable cursor stream → the full `enqueueConnectorSync`. DB/redis/queue faked.
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -24,9 +24,16 @@ vi.mock('../../data-connectors/data-connector-queue', () => ({
   enqueueConnectorSync: (...a: unknown[]) => enqueueConnectorSync(...a),
 }))
 
+const queueAdd = vi.fn()
+vi.mock('../queues', () => ({
+  getQueue: () => ({ add: (...a: unknown[]) => queueAdd(...a) }),
+  Queues: { appTriggerQueue: 'app-trigger-queue' },
+}))
+
 vi.mock('@auxx/redis', () => ({ getRedisClient: async () => null }))
 
 import { dispatchWebhookEndpointToConnectors } from './webhook-endpoint-sync-dispatch-job'
+import { WEBHOOK_STEER_JOB } from './webhook-steer-job'
 
 function job(data: Record<string, unknown>) {
   // Shaped like a JobContext: handlers read the real job off `ctx.job`.
@@ -46,7 +53,7 @@ beforeEach(() => {
 })
 
 describe('dispatchWebhookEndpointToConnectors', () => {
-  it('steers a webhook sync for a connector whose signal matches the endpoint', async () => {
+  it('enqueues a steer job for a steerable stream (paths set), with the folded topic', async () => {
     findManyConnectors.mockResolvedValue([
       { id: 'dc1', config: { webhookTrigger: { webhookEndpointId: 'ep1' } } },
     ])
@@ -54,11 +61,40 @@ describe('dispatchWebhookEndpointToConnectors', () => {
       {
         dataConnectorId: 'dc1',
         streamKey: 'orders',
-        requestConfig: { webhookTrigger: { tokens: {} } },
+        requestConfig: { webhookTrigger: { paths: ['id'] } },
       },
     ])
     const result = await dispatchWebhookEndpointToConnectors(job(base))
-    expect(result).toEqual({ connectorsSynced: 1 })
+    expect(result).toEqual({ steerJobs: 1, connectorsFullSynced: 0 })
+    expect(enqueueConnectorSync).not.toHaveBeenCalled()
+    expect(queueAdd).toHaveBeenCalledTimes(1)
+    expect(queueAdd.mock.calls[0]?.[0]).toBe(WEBHOOK_STEER_JOB)
+    expect(queueAdd.mock.calls[0]?.[1]).toMatchObject({
+      connectorId: 'dc1',
+      streamKey: 'orders',
+      organizationId: 'org1',
+      webhookEndpointId: 'ep1',
+      topic: 'orders/create',
+      eventId: 'evt1',
+      // the steer job receives the topic-folded payload so `resolveWebhookSteer` sees it
+      triggerData: { id: 1, topic: 'orders/create' },
+    })
+  })
+
+  it('full-syncs a non-steerable cursor stream (no paths)', async () => {
+    findManyConnectors.mockResolvedValue([
+      { id: 'dc1', config: { webhookTrigger: { webhookEndpointId: 'ep1' } } },
+    ])
+    findManyStreams.mockResolvedValue([
+      {
+        dataConnectorId: 'dc1',
+        streamKey: 'orders',
+        requestConfig: { webhookTrigger: { paths: [] } },
+      },
+    ])
+    const result = await dispatchWebhookEndpointToConnectors(job(base))
+    expect(result).toEqual({ steerJobs: 0, connectorsFullSynced: 1 })
+    expect(queueAdd).not.toHaveBeenCalled()
     expect(enqueueConnectorSync).toHaveBeenCalledTimes(1)
     expect(enqueueConnectorSync.mock.calls[0]?.[0]).toMatchObject({
       connectorId: 'dc1',
@@ -73,9 +109,10 @@ describe('dispatchWebhookEndpointToConnectors', () => {
       { id: 'dc2', config: { webhookTrigger: undefined } },
     ])
     const result = await dispatchWebhookEndpointToConnectors(job(base))
-    expect(result).toEqual({ connectorsSynced: 0 })
+    expect(result).toEqual({ steerJobs: 0, connectorsFullSynced: 0 })
     expect(findManyStreams).not.toHaveBeenCalled()
     expect(enqueueConnectorSync).not.toHaveBeenCalled()
+    expect(queueAdd).not.toHaveBeenCalled()
   })
 
   it('matches a topic-scoped stream when the topic is only in the separate field (header/path source)', async () => {
@@ -97,7 +134,7 @@ describe('dispatchWebhookEndpointToConnectors', () => {
     const result = await dispatchWebhookEndpointToConnectors(
       job({ ...base, triggerData: { id: 1 } }) // no `topic` in the body
     )
-    expect(result).toEqual({ connectorsSynced: 1 })
+    expect(result).toEqual({ steerJobs: 0, connectorsFullSynced: 1 })
     expect(enqueueConnectorSync).toHaveBeenCalledTimes(1)
   })
 
@@ -117,8 +154,9 @@ describe('dispatchWebhookEndpointToConnectors', () => {
     const result = await dispatchWebhookEndpointToConnectors(
       job({ ...base, triggerData: { id: 1 } })
     )
-    expect(result).toEqual({ connectorsSynced: 0 })
+    expect(result).toEqual({ steerJobs: 0, connectorsFullSynced: 0 })
     expect(enqueueConnectorSync).not.toHaveBeenCalled()
+    expect(queueAdd).not.toHaveBeenCalled()
   })
 
   it('skips streams with no steering block and streams whose filter rejects the payload', async () => {
@@ -130,11 +168,12 @@ describe('dispatchWebhookEndpointToConnectors', () => {
       {
         dataConnectorId: 'dc1',
         streamKey: 'b',
-        requestConfig: { webhookTrigger: { tokens: {}, filter: { topic: 'orders/delete' } } },
+        requestConfig: { webhookTrigger: { paths: [], filter: { topic: 'orders/delete' } } },
       },
     ])
     const result = await dispatchWebhookEndpointToConnectors(job(base))
-    expect(result).toEqual({ connectorsSynced: 0 })
+    expect(result).toEqual({ steerJobs: 0, connectorsFullSynced: 0 })
     expect(enqueueConnectorSync).not.toHaveBeenCalled()
+    expect(queueAdd).not.toHaveBeenCalled()
   })
 })
