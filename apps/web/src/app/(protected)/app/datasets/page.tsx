@@ -4,6 +4,7 @@
 
 import { FeatureKey } from '@auxx/lib/permissions/client'
 import { ListCard } from '@auxx/ui/components/list-card'
+import { ListPageScroll } from '@auxx/ui/components/list-page-scroll'
 import {
   MainPage,
   MainPageBreadcrumb,
@@ -11,7 +12,6 @@ import {
   MainPageContent,
   MainPageHeader,
 } from '@auxx/ui/components/main-page'
-import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { Lock } from 'lucide-react'
 import {
   CreateDatasetButton,
@@ -45,12 +45,9 @@ function DatasetsPageContent() {
         <DatasetsStatsCards stats={stats} />
 
         {/* Filters + Datasets Content */}
-        <ScrollArea className='flex-1 min-h-0 bg-muted @container'>
-          <div className='sticky top-0 z-10 backdrop-blur-sm'>
-            <DatasetsFilterBar />
-          </div>
+        <ListPageScroll toolbar={<DatasetsFilterBar />}>
           {isLoading ? (
-            <div className='grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 p-3'>
+            <div className='grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4'>
               {[...Array(8)].map((_, i) => (
                 <ListCard key={`skeleton-${i}`} loading descriptionLines={0} />
               ))}
@@ -62,7 +59,7 @@ function DatasetsPageContent() {
           ) : (
             <DatasetsTableView />
           )}
-        </ScrollArea>
+        </ListPageScroll>
       </MainPageContent>
     </MainPage>
   )

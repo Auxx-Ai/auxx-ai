@@ -21,7 +21,7 @@ export function DatasetsGridView() {
   }
 
   return (
-    <div className='grid gap-4 @md:grid-cols-2 @lg:grid-cols-3 @xl:grid-cols-4 p-3'>
+    <div className='grid gap-4 @md:grid-cols-2 @lg:grid-cols-3 @xl:grid-cols-4'>
       {items.map((dataset) => (
         <DatasetCard
           key={dataset.id}

@@ -130,7 +130,7 @@ export function DatasetsTableView() {
   const { items, refetch } = useDatasets()
 
   return (
-    <div className='border rounded-lg my-2 mx-3'>
+    <div className='border rounded-lg'>
       <Table>
         <TableHeader>
           <TableRow>

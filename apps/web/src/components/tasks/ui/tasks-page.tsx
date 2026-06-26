@@ -3,6 +3,7 @@
 'use client'
 
 import type { TaskSortConfig } from '@auxx/lib/tasks/client'
+import { ListPageScroll } from '@auxx/ui/components/list-page-scroll'
 import {
   MainPage,
   MainPageBreadcrumb,
@@ -10,7 +11,6 @@ import {
   MainPageContent,
   MainPageHeader,
 } from '@auxx/ui/components/main-page'
-import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { useState } from 'react'
 import type { Condition } from '~/components/conditions'
 import { api } from '~/trpc/react'
@@ -48,8 +48,8 @@ export function TasksPage() {
         <TasksStatsCards stats={stats ?? null} />
 
         {/* Filter Bar + Task List */}
-        <ScrollArea className='flex-1 min-h-0 bg-muted dark:bg-[#1e2227] @container'>
-          <div className='sticky top-0 z-10 backdrop-blur-sm'>
+        <ListPageScroll
+          toolbar={
             <TaskFilterBar
               filters={filters}
               onFiltersChange={setFilters}
@@ -58,16 +58,15 @@ export function TasksPage() {
               includeCompleted={includeCompleted}
               onIncludeCompletedChange={setIncludeCompleted}
             />
-          </div>
+          }>
           <TasksList
             viewMode='global'
             filters={filters}
             sort={sort}
             includeCompleted={includeCompleted}
             showEntityReferences
-            className='p-3'
           />
-        </ScrollArea>
+        </ListPageScroll>
       </MainPageContent>
     </MainPage>
   )

@@ -4,6 +4,9 @@
 
 import { FeatureKey } from '@auxx/lib/permissions/client'
 import { Button } from '@auxx/ui/components/button'
+import { InputSearch } from '@auxx/ui/components/input-search'
+import { ListPageScroll } from '@auxx/ui/components/list-page-scroll'
+import { ListToolbar } from '@auxx/ui/components/list-toolbar'
 import {
   MainPage,
   MainPageBreadcrumb,
@@ -25,6 +28,7 @@ import { useFeatureFlags } from '~/providers/feature-flag-provider'
 export default function ConnectorsPage() {
   const { hasAccess } = useFeatureFlags()
   const [pickerOpen, setPickerOpen] = useState(false)
+  const [search, setSearch] = useState('')
   const canConnect = hasAccess(FeatureKey.dataConnectors)
 
   return (
@@ -44,7 +48,19 @@ export default function ConnectorsPage() {
       </MainPageHeader>
       <MainPageContent>
         {canConnect ? (
-          <ConnectorList onConnect={() => setPickerOpen(true)} />
+          <ListPageScroll
+            toolbar={
+              <ListToolbar>
+                <InputSearch
+                  value={search}
+                  placeholder='Search connectors...'
+                  onChange={(e) => setSearch(e.target.value)}
+                />
+              </ListToolbar>
+            }
+            bodyClassName='flex-1 flex flex-col min-h-0'>
+            <ConnectorList onConnect={() => setPickerOpen(true)} search={search} />
+          </ListPageScroll>
         ) : (
           <EmptyState
             icon={Lock}

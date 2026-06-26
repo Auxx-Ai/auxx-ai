@@ -11,6 +11,8 @@ import { ConnectorCard, ConnectorFallbackIcon } from './connector-card'
 interface ConnectorListProps {
   /** Opens the "Connect a source" picker (owned by the page; also in the header). */
   onConnect: () => void
+  /** Client-side filter on connector name (from the toolbar search). */
+  search?: string
 }
 
 /**
@@ -20,13 +22,17 @@ interface ConnectorListProps {
  * action lives in the page header; `onConnect` opens its picker.
  * See plans/data-connectors/claude/05-frontend.md §1.
  */
-export function ConnectorList({ onConnect }: ConnectorListProps) {
+export function ConnectorList({ onConnect, search }: ConnectorListProps) {
   const connectors = api.dataConnector.list.useQuery()
 
   const rows = connectors.data ?? []
+  const query = search?.trim().toLowerCase() ?? ''
+  const filtered = query
+    ? rows.filter((connector) => connector.name.toLowerCase().includes(query))
+    : rows
 
   return (
-    <div className='flex flex-1 flex-col gap-4 p-4'>
+    <div className='flex flex-1 flex-col gap-4'>
       {connectors.isLoading ? (
         <div className='grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3'>
           {[0, 1, 2].map((i) => (
@@ -45,9 +51,15 @@ export function ConnectorList({ onConnect }: ConnectorListProps) {
             </Button>
           }
         />
+      ) : filtered.length === 0 ? (
+        <EmptyState
+          icon={ConnectorFallbackIcon}
+          title='No matching connectors'
+          description={`No connectors match “${search?.trim()}”.`}
+        />
       ) : (
         <div className='grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3'>
-          {rows.map((connector) => (
+          {filtered.map((connector) => (
             <ConnectorCard key={connector.id} connector={connector} />
           ))}
         </div>
