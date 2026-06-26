@@ -8,11 +8,17 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const findManyConnectors = vi.fn()
 const findManyStreams = vi.fn()
+const updateSet = vi.fn()
 vi.mock('@auxx/database', () => ({
   database: {
     query: {
       DataConnector: { findMany: (...a: unknown[]) => findManyConnectors(...a) },
       DataConnectorStream: { findMany: (...a: unknown[]) => findManyStreams(...a) },
+    },
+    // `markWebhookEventReceived` stamps `lastWebhookEventAt` for every touched connector.
+    update: (...a: unknown[]) => {
+      updateSet(...a)
+      return { set: () => ({ where: async () => undefined }) }
     },
   },
   // Column refs are only fed to the (ignored) where-builder — any object works.
@@ -159,12 +165,33 @@ describe('dispatchWebhookEndpointToConnectors', () => {
     expect(queueAdd).not.toHaveBeenCalled()
   })
 
-  it('skips streams with no steering block and streams whose filter rejects the payload', async () => {
+  it('full-syncs a connector whose only stream has no steering block (signal-only binding)', async () => {
+    // The user's scenario: connector signal bound, stream is just `GET /orders` with no
+    // per-stream `webhookTrigger`. A delivery must still full-sync it (no `{path}` ⇒ not
+    // steerable) and yield a run-history row — the connector-level signal IS the binding.
     findManyConnectors.mockResolvedValue([
       { id: 'dc1', config: { webhookTrigger: { webhookEndpointId: 'ep1' } } },
     ])
     findManyStreams.mockResolvedValue([
-      { dataConnectorId: 'dc1', streamKey: 'a', requestConfig: {} }, // no webhookTrigger
+      { dataConnectorId: 'dc1', streamKey: 'orders', requestConfig: { path: '/orders' } },
+    ])
+    const result = await dispatchWebhookEndpointToConnectors(job(base))
+    expect(result).toEqual({ steerJobs: 0, connectorsFullSynced: 1 })
+    expect(queueAdd).not.toHaveBeenCalled()
+    expect(enqueueConnectorSync).toHaveBeenCalledTimes(1)
+    expect(enqueueConnectorSync.mock.calls[0]?.[0]).toMatchObject({
+      connectorId: 'dc1',
+      organizationId: 'org1',
+      trigger: 'webhook',
+    })
+  })
+
+  it('full-syncs a no-steering stream but skips a sibling whose filter rejects the payload', async () => {
+    findManyConnectors.mockResolvedValue([
+      { id: 'dc1', config: { webhookTrigger: { webhookEndpointId: 'ep1' } } },
+    ])
+    findManyStreams.mockResolvedValue([
+      { dataConnectorId: 'dc1', streamKey: 'a', requestConfig: {} }, // no webhookTrigger → match-all
       {
         dataConnectorId: 'dc1',
         streamKey: 'b',
@@ -172,8 +199,9 @@ describe('dispatchWebhookEndpointToConnectors', () => {
       },
     ])
     const result = await dispatchWebhookEndpointToConnectors(job(base))
-    expect(result).toEqual({ steerJobs: 0, connectorsFullSynced: 0 })
-    expect(enqueueConnectorSync).not.toHaveBeenCalled()
+    // Stream `a` full-syncs dc1 (one connector ⇒ count 1); `b`'s filter rejects orders/create.
+    expect(result).toEqual({ steerJobs: 0, connectorsFullSynced: 1 })
+    expect(enqueueConnectorSync).toHaveBeenCalledTimes(1)
     expect(queueAdd).not.toHaveBeenCalled()
   })
 })

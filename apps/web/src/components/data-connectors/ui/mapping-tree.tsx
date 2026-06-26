@@ -3,7 +3,7 @@
 
 import { Button } from '@auxx/ui/components/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
-import { GridTreeRow, TreeRowButton } from '@auxx/ui/components/tree-row'
+import { TreeRowButton } from '@auxx/ui/components/tree-row'
 import { Braces, Brackets, Hash, Plus } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { ResourcePickerContent } from '~/components/pickers/resource-picker'
@@ -18,8 +18,8 @@ import {
 import { useStreamMutations } from '../hooks/use-stream-mutations'
 import { BranchRow } from './branch-row'
 import { CappedNodeList } from './capped-node-list'
-import { MAPPING_COLS } from './mapping-columns'
 import { MappingNode } from './mapping-node'
+import { MappingRow } from './mapping-row'
 
 type Mapping = RouterOutputs['dataConnector']['listStreams'][number]['mappings'][number]
 
@@ -157,8 +157,7 @@ export function MappingTree({
 
   return (
     <div className='flex flex-col py-1'>
-      <GridTreeRow
-        columns={MAPPING_COLS}
+      <MappingRow
         depth={0}
         expandable
         chevronOnHover
@@ -179,17 +178,13 @@ export function MappingTree({
             )}
           </span>
         }
-        cells={[
-          <span key='arrow' />,
-          <span key='target' />,
-          <div key='actions' className='flex w-full items-center justify-end pr-1'>
-            <CreateMappingAction
-              tooltip='Map whole payload → own record'
-              label={isEmpty ? 'Map record' : undefined}
-              onPick={(defId) => createMapping(rootBase, defId)}
-            />
-          </div>,
-        ]}>
+        actions={
+          <CreateMappingAction
+            tooltip='Map whole payload → own record'
+            label={isEmpty ? 'Map record' : undefined}
+            onPick={(defId) => createMapping(rootBase, defId)}
+          />
+        }>
         {topTree.length === 0 ? (
           <div className='px-3 py-2 text-[11px] text-muted-foreground'>
             No source schema yet — generate or edit the schema above to map fields.
@@ -212,7 +207,7 @@ export function MappingTree({
             )}
           />
         )}
-      </GridTreeRow>
+      </MappingRow>
     </div>
   )
 }
@@ -296,8 +291,7 @@ function TopSourceNode(props: TopSourceNodeProps) {
 function InertLeafRow({ depth, node }: { depth: number; node: SourcePath }) {
   const Icon = node.type === 'array' ? Brackets : Hash
   return (
-    <GridTreeRow
-      columns={MAPPING_COLS}
+    <MappingRow
       depth={depth}
       icon={<Icon className='size-3.5 text-muted-foreground/40' />}
       title={

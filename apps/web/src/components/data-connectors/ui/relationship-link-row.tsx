@@ -2,10 +2,10 @@
 'use client'
 
 import { EntityIcon } from '@auxx/ui/components/icons'
-import { GridTreeRow, TreeRowButton } from '@auxx/ui/components/tree-row'
-import { ArrowRight, Link2, Trash2 } from 'lucide-react'
+import { TreeRowButton } from '@auxx/ui/components/tree-row'
+import { Link2, Trash2 } from 'lucide-react'
 import { useResourceProperty } from '~/components/resources'
-import { MAPPING_COLS } from './mapping-columns'
+import { MappingRow } from './mapping-row'
 
 interface RelationshipLinkRowProps {
   depth: number
@@ -34,8 +34,7 @@ export function RelationshipLinkRow({
 }: RelationshipLinkRowProps) {
   const target = useResourceProperty(targetDefinitionId, ['label', 'icon'])
   return (
-    <GridTreeRow
-      columns={MAPPING_COLS}
+    <MappingRow
       depth={depth}
       icon={<Link2 className='size-3.5 text-muted-foreground' />}
       title={
@@ -44,21 +43,19 @@ export function RelationshipLinkRow({
           <span className='text-[10px] text-muted-foreground/60'>via {viaPath}</span>
         </span>
       }
-      cells={[
-        <span key='arrow' className='flex w-full justify-center text-muted-foreground'>
-          <ArrowRight className='size-3.5' />
-        </span>,
-        // Target column — the related def (implied by the relationship field).
-        <span key='target' className='flex h-9 w-full items-center gap-1.5 px-2 text-xs'>
+      arrow='filled'
+      // Target column — the related def (implied by the relationship field).
+      target={
+        <span className='flex h-9 w-full items-center gap-1.5 px-2 text-xs'>
           {target && <EntityIcon iconId={target.icon ?? 'table'} size='xs' />}
           <span className='truncate'>{target?.label ?? 'record'}</span>
-        </span>,
-        <div key='actions' className='flex w-full items-center justify-end gap-1 pr-1'>
-          <TreeRowButton variant='destructive' tooltipText='Remove link' onClick={onClear}>
-            <Trash2 />
-          </TreeRowButton>
-        </div>,
-      ]}
+        </span>
+      }
+      actions={
+        <TreeRowButton variant='destructive' tooltipText='Remove link' onClick={onClear}>
+          <Trash2 />
+        </TreeRowButton>
+      }
     />
   )
 }

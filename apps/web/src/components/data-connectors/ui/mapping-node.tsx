@@ -1,17 +1,30 @@
 // apps/web/src/components/data-connectors/ui/mapping-node.tsx
 'use client'
 
+import type { FieldType } from '@auxx/database/types'
+import { fieldTypeOptions } from '@auxx/lib/custom-fields/types'
 import type { ResourceField } from '@auxx/lib/resources/client'
+import { mapBaseTypeToFieldType } from '@auxx/lib/workflow-engine/client'
 import { getRelatedEntityDefinitionId, type RelationshipConfig } from '@auxx/types/custom-field'
-import { type FieldReference, fieldRefToKey, toResourceFieldId } from '@auxx/types/field'
+import {
+  type FieldReference,
+  fieldRefToKey,
+  getFieldDefinitionId,
+  getFieldId,
+  isFieldPath,
+  keyToFieldRef,
+  type ResourceFieldId,
+  toFieldPath,
+  toResourceFieldId,
+} from '@auxx/types/field'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { EntityIcon } from '@auxx/ui/components/icons'
 import { toastError } from '@auxx/ui/components/toast'
 import { SimpleTooltip } from '@auxx/ui/components/tooltip'
-import { GridTreeRow, TreeRowButton } from '@auxx/ui/components/tree-row'
+import { TreeRowButton } from '@auxx/ui/components/tree-row'
 import { generateId } from '@auxx/utils'
-import { ArrowRight, FunctionSquare, Loader2, Plus, Sparkles, Trash2 } from 'lucide-react'
+import { FunctionSquare, Loader2, Plus, Sparkles, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 import { ResourcePicker } from '~/components/pickers/resource-picker'
 import { useResourceFields, useResourceProperty } from '~/components/resources'
@@ -28,9 +41,18 @@ import type { FieldMapping, useStreamMutations } from '../hooks/use-stream-mutat
 import { BranchRow } from './branch-row'
 import { CappedNodeList } from './capped-node-list'
 import { FieldCalcDialog } from './field-calc-dialog'
-import { MAPPING_COLS } from './mapping-columns'
+import {
+  bareTokenSource,
+  bindingFor,
+  isBareToken,
+  removeBindingForSource,
+  retargetFormulaEntry,
+  setEntryIdentityRole,
+  upsertBinding,
+} from './field-mapping-edits'
+import { type IdentityRole, IdentityRoleControl } from './identity-role-control'
 import { MappingFieldPicker } from './mapping-field-picker'
-import { MergeStrategyToggle } from './merge-strategy-toggle'
+import { FieldRowActions, MappingRow } from './mapping-row'
 import { RelationshipLinkRow } from './relationship-link-row'
 import { SourceLeafRow } from './source-leaf-row'
 
@@ -42,6 +64,19 @@ type Mapping = RouterOutputs['dataConnector']['listStreams'][number]['mappings']
  */
 function refOf(field: ResourceField, entityDefinitionId: string | null | undefined): string {
   return field.resourceFieldId ?? toResourceFieldId(entityDefinitionId ?? '', field.id)
+}
+
+/**
+ * The field-type icon for an applied target field — mirrors {@link FieldItem}'s
+ * regular-field branch so the trigger chip matches the picker-list row. Falls back
+ * to the BaseType→FieldType mapping for system fields, then a generic `circle`.
+ */
+function fieldIconId(field: ResourceField | undefined): string | undefined {
+  if (!field) return undefined
+  const fieldType =
+    (field.fieldType as FieldType) ||
+    (field.type ? mapBaseTypeToFieldType(field.type as any) : undefined)
+  return (fieldType && fieldTypeOptions[fieldType]?.iconId) ?? 'circle'
 }
 
 /** The related def a relationship field points at, or null if it has none. */
@@ -66,20 +101,22 @@ function recordNoun(raw: string): string {
 
 /**
  * Plain-language description of where a mapping's records come from, derived from
- * the defined source schema. A named branch borrows its field name (`draft` →
- * "each draft"); the unnamed array ROOT (`[]`) has no schema name, so it falls
- * back to the stream's own noun (stream key `todos` → "each todo").
+ * the defined source schema. An ARRAY branch fans out one record per element, so it
+ * reads "each <noun>" (`drafts[]` → "each draft"); a SINGULAR object branch is one
+ * record, so it reads "one <noun>" (`customer` → "one customer"). The unnamed array
+ * ROOT (`[]`) has no schema name, so it falls back to the stream's own noun (stream
+ * key `todos` → "each todo"). Returns the parts split so the header can style the
+ * qualifier like a field's TYPE token and the noun like its LABEL (row-consistent).
  */
-function describeRootPath(rootPath: string, fallbackNoun?: string): string {
-  if (rootPath === '') return 'whole payload'
+function describeRootPath(
+  rootPath: string,
+  fallbackNoun?: string
+): { qualifier: string; noun: string } {
+  if (rootPath === '') return { qualifier: 'whole', noun: 'payload' }
+  const isArray = rootPath.endsWith('[]')
   const seg = rootPath.replace(/\[\]$/, '').split('.').pop()
-  if (seg) return `each ${recordNoun(seg)}`
-  return fallbackNoun ? `each ${recordNoun(fallbackNoun)}` : 'each item'
-}
-
-/** A degenerate single-token `{path}` expression (one-click row, not a calc). */
-function isBareToken(expression: string): boolean {
-  return /^\{[^{}]+\}$/.test(expression.trim())
+  const noun = seg ? recordNoun(seg) : fallbackNoun ? recordNoun(fallbackNoun) : 'item'
+  return { qualifier: isArray ? 'each' : 'one', noun }
 }
 
 /** The fan-out rootPath for a branch node — arrays keep their `[]` suffix. */
@@ -130,9 +167,10 @@ export function MappingNode({
   syncedDefIds,
 }: MappingNodeProps) {
   const [open, setOpen] = useState(true)
-  // The binding entry whose formula the dialog is editing (null = closed). Set to
-  // a draft entry's id when "Add formula" appends a fresh row.
-  const [calcEntryId, setCalcEntryId] = useState<string | null>(null)
+  // The formula entry the dialog is editing (null = closed). Carries the OWNING
+  // mapping id too, so the dialog can edit a drilled formula whose entry lives on a
+  // flat child — not just one on this parent mapping.
+  const [calcTarget, setCalcTarget] = useState<{ mappingId: string; entryId: string } | null>(null)
   const { setMappingTarget, removeMapping, setFieldMappings, fanOut } = mutations
 
   // Target def display + fields, read from the resource store (the same source
@@ -180,6 +218,18 @@ export function MappingNode({
   const patchEntry = (id: string, patch: Partial<FieldMapping>) =>
     writeEntries(fieldMappings.map((e) => (e.id === id ? { ...e, ...patch } : e)))
 
+  // Patch an entry on ANY mapping (this one or a flat child) — needed because a
+  // drilled formula's entry lives on a child. Reads the target mapping's entries
+  // from the shared index so the write is over its current array.
+  const patchEntryIn = (mappingId: string, entryId: string, patch: Partial<FieldMapping>) => {
+    const entries = (byMappingId.get(mappingId)?.fieldMappings ?? []) as FieldMapping[]
+    setFieldMappings(
+      streamId,
+      mappingId,
+      entries.map((e) => (e.id === entryId ? { ...e, ...patch } : e))
+    )
+  }
+
   // Every target field already bound by SOME entry — the pickers exclude these so
   // two entries can't fight over one field (an array allows it; the UI forbids it).
   const usedTargetKeys = new Set(
@@ -197,12 +247,19 @@ export function MappingNode({
   // branch node at `line_items` matches a child mapping with rootPath
   // `line_items[]`.
   const childMappings = childrenOf.get(mapping.id) ?? []
+  // FLAT drilled children (unified picker §2): a child that reads the SAME subtree as
+  // this mapping (`rootPath: ''`) to write a related def — created by drilling a leaf's
+  // target across a relationship (e.g. `email → Contact.Email`). They surface INLINE on
+  // their source leaf (via `drilledBindBySourcePath`), NOT as nested nodes — so they're
+  // partitioned out of the branch/ref indexing below.
+  const flatDrilledChildren = childMappings.filter((c) => c.rootPath === '')
+  const nonFlatChildren = childMappings.filter((c) => c.rootPath !== '')
   // Reference children (flat-FK links, Approach B) live on a SCALAR leaf, not a
   // branch — index them separately so a linked leaf renders in "linked" state
   // instead of being promoted to a nested MappingNode (the upsert fan-out path).
-  const upsertChildren = childMappings.filter((c) => c.linkMode !== 'reference')
+  const upsertChildren = nonFlatChildren.filter((c) => c.linkMode !== 'reference')
   const refChildByNodePath = new Map<string, Mapping>()
-  for (const c of childMappings) {
+  for (const c of nonFlatChildren) {
     if (c.linkMode === 'reference') refChildByNodePath.set(c.rootPath.replace(/\[\]$/, ''), c)
   }
   const childByNodePath = new Map<string, Mapping>()
@@ -211,6 +268,29 @@ export function MappingNode({
   // would otherwise vanish — render them appended so they stay editable/removable.
   const orphanChildren = upsertChildren.filter(
     (c) => !branchPaths.has(c.rootPath.replace(/\[\]$/, ''))
+  )
+
+  // A leaf bound ACROSS a relationship: its binding lives on a flat drilled child, but
+  // the leaf keeps its row (only the target chip reaches across). Index source path →
+  // { child, entry } so the leaf renders the drilled chip + routes its controls to the
+  // child mapping (unified picker §5).
+  const drilledBindBySourcePath = new Map<string, { child: Mapping; entry: FieldMapping }>()
+  for (const c of flatDrilledChildren) {
+    for (const e of (c.fieldMappings ?? []) as FieldMapping[]) {
+      if (e.targetFieldRef == null || !isBareToken(e.expression)) continue
+      drilledBindBySourcePath.set(bareTokenSource(e.expression), { child: c, entry: e })
+    }
+  }
+
+  // DRILLED FORMULAS (formula-drill-targets §2): a NON-bare entry on a flat child is a
+  // formula whose computed value writes a related def across the relationship — the
+  // formula analog of a drilled leaf bind. Bare entries on the same child are leaf
+  // binds (rendered inline via `drilledBindBySourcePath`); non-bare ones surface here
+  // as their own formula rows on this parent.
+  const drilledFormulaRows = flatDrilledChildren.flatMap((child) =>
+    ((child.fieldMappings ?? []) as FieldMapping[])
+      .filter((e) => !isBareToken(e.expression))
+      .map((entry) => ({ child, entry }))
   )
 
   // Reverse-index bare-token entries: source path → the binding entry on it.
@@ -307,10 +387,16 @@ export function MappingNode({
   const addFormula = () => {
     const id = generateId()
     writeEntries([...fieldMappings, { id, targetFieldRef: null, expression: '', sourceFields: {} }])
-    setCalcEntryId(id)
+    setCalcTarget({ mappingId: mapping.id, entryId: id })
   }
 
-  const calcEntry = calcEntryId ? fieldMappings.find((e) => e.id === calcEntryId) : undefined
+  // The formula being edited may live on this parent OR a flat child — resolve it
+  // from the shared index by the dialog's owning mapping id.
+  const calcEntry = calcTarget
+    ? ((byMappingId.get(calcTarget.mappingId)?.fieldMappings ?? []) as FieldMapping[]).find(
+        (e) => e.id === calcTarget.entryId
+      )
+    : undefined
 
   const toggleTargetMode = () =>
     setMappingTarget(streamId, {
@@ -372,10 +458,210 @@ export function MappingNode({
     })
   }
 
+  // Bind a leaf ACROSS a relationship (unified picker §2/§4): drill the target graph to
+  // a field on a related def — e.g. `email → Contact.Email`. Desugars to a FLAT
+  // contributing child mapping (`rootPath ''` reads THIS mapping's subtree,
+  // map-record.ts:285) carrying the binding, reusing one child per drilled
+  // relationship. v1 is single-hop (a 2-segment FieldPath).
+  const assignDrilled = (node: SourceTreeNode, _field: ResourceField, ref: FieldReference) => {
+    if (!isFieldPath(ref) || ref.length !== 2) {
+      toastError({
+        title: 'Multi-hop links not supported yet',
+        description: 'Pick a field one relationship away from this record.',
+      })
+      return
+    }
+    const rel = ref[0] // the drilled relationship, e.g. "order:contact"
+    const targetRef = ref[1] // the bound field on the related def, e.g. "contact:email"
+    const relatedDefId = getFieldDefinitionId(targetRef)
+    const relKey = fieldRefToKey(rel)
+    // Drop any prior DIRECT binding on this source — it now writes the related record.
+    if (sourceToEntry.has(node.path)) {
+      writeEntries(removeBindingForSource(fieldMappings, node.path))
+    }
+    const existing = flatDrilledChildren.find((c) => c.relationshipFieldKey === relKey)
+    if (existing) {
+      setFieldMappings(
+        streamId,
+        existing.id,
+        upsertBinding((existing.fieldMappings ?? []) as FieldMapping[], node.path, targetRef)
+      )
+      return
+    }
+    fanOut(streamId, {
+      parentMappingId: mapping.id,
+      rootPath: '', // flat: reads THIS mapping's subtree
+      linkMode: 'upsert', // server derives reference vs upsert from the bindings
+      targetMode: 'contributing',
+      entityDefinitionId: relatedDefId,
+      relationshipFieldKey: relKey,
+      fieldMappings: [bindingFor(node.path, targetRef)],
+    })
+  }
+
+  // Clear a drilled binding — drop it from the flat child, removing the child entirely
+  // once it carries no bindings (it existed only for drilled binds).
+  const clearDrilled = (node: SourceTreeNode) => {
+    const drilled = drilledBindBySourcePath.get(node.path)
+    if (!drilled) return
+    const remaining = removeBindingForSource(
+      (drilled.child.fieldMappings ?? []) as FieldMapping[],
+      node.path
+    )
+    if (remaining.length === 0) removeMapping(streamId, drilled.child.id)
+    else setFieldMappings(streamId, drilled.child.id, remaining)
+  }
+
+  // Identity role on a drilled leaf → patch the flat child's binding (External ID is a
+  // radio WITHIN that child — the related record's own key).
+  const setDrilledIdentityRole = (node: SourceTreeNode, role: 'externalId' | 'match' | null) => {
+    const drilled = drilledBindBySourcePath.get(node.path)
+    if (!drilled) return
+    setFieldMappings(
+      streamId,
+      drilled.child.id,
+      setEntryIdentityRole(
+        (drilled.child.fieldMappings ?? []) as FieldMapping[],
+        drilled.entry.id,
+        role,
+        deriveNormalize(drilled.entry.targetFieldRef ?? '')
+      )
+    )
+  }
+
+  // Merge strategy on a drilled leaf → patch the flat child's binding.
+  const setDrilledMerge = (node: SourceTreeNode, value: string) => {
+    const drilled = drilledBindBySourcePath.get(node.path)
+    if (!drilled) return
+    setFieldMappings(
+      streamId,
+      drilled.child.id,
+      ((drilled.child.fieldMappings ?? []) as FieldMapping[]).map((e) =>
+        e.id === drilled.entry.id
+          ? { ...e, mergeStrategy: value as FieldMapping['mergeStrategy'] }
+          : e
+      )
+    )
+  }
+
+  // ── Formula drill-across-relationship (formula-drill-targets §3) ──────────────
+  // A formula entry's "home" is either THIS parent mapping (a root-scalar target) or a
+  // flat child (a target a relationship away). Picking a target moves the entry to its
+  // desired home, preserving the expression. The flat child is REUSED per relationship
+  // (shared with drilled leaf binds) and GC'd when its last entry leaves.
+
+  // v1 drills are single-hop — a 2-segment FieldPath. Returns [rel, targetRef] or null
+  // (after toasting) for a root scalar / deeper path.
+  const asSingleHop = (ref: FieldReference): [ResourceFieldId, ResourceFieldId] | null => {
+    if (!isFieldPath(ref) || ref.length !== 2) {
+      toastError({
+        title: 'Multi-hop links not supported yet',
+        description: 'Pick a field one relationship away from this record.',
+      })
+      return null
+    }
+    return [ref[0], ref[1]]
+  }
+
+  // Upsert a (re-homed) formula entry into the flat child for `rel`, creating it if
+  // absent. The entry already carries its far-field target + expression.
+  const upsertFormulaIntoRelChild = (rel: ResourceFieldId, entry: FieldMapping) => {
+    const relKey = fieldRefToKey(rel)
+    const relatedDefId = getFieldDefinitionId(entry.targetFieldRef as ResourceFieldId)
+    const existing = flatDrilledChildren.find((c) => c.relationshipFieldKey === relKey)
+    if (existing) {
+      const next = [
+        ...((existing.fieldMappings ?? []) as FieldMapping[]).filter((e) => e.id !== entry.id),
+        entry,
+      ]
+      setFieldMappings(streamId, existing.id, next)
+      return
+    }
+    fanOut(streamId, {
+      parentMappingId: mapping.id,
+      rootPath: '', // flat: reads THIS mapping's subtree
+      linkMode: 'upsert', // server derives reference vs upsert from the bindings
+      targetMode: 'contributing',
+      entityDefinitionId: relatedDefId,
+      relationshipFieldKey: relKey,
+      fieldMappings: [entry],
+    })
+  }
+
+  // Drop a formula entry from a flat child, GC'ing the child when nothing remains.
+  const removeFormulaFromChild = (child: Mapping, entryId: string) => {
+    const remaining = ((child.fieldMappings ?? []) as FieldMapping[]).filter(
+      (e) => e.id !== entryId
+    )
+    if (remaining.length === 0) removeMapping(streamId, child.id)
+    else setFieldMappings(streamId, child.id, remaining)
+  }
+
+  // A HOME formula gains a drilled target → move it onto the relationship's flat child.
+  const drillHomeFormula = (entry: FieldMapping, ref: FieldReference) => {
+    const hop = asSingleHop(ref)
+    if (!hop) return
+    writeEntries(fieldMappings.filter((e) => e.id !== entry.id))
+    upsertFormulaIntoRelChild(hop[0], retargetFormulaEntry(entry, hop[1]))
+  }
+
+  // A DRILLED formula is retargeted to a ROOT scalar → move it back to this parent.
+  const undrillFormula = (child: Mapping, entry: FieldMapping, targetRef: string) => {
+    removeFormulaFromChild(child, entry.id)
+    writeEntries([...fieldMappings, retargetFormulaEntry(entry, targetRef)])
+  }
+
+  // A DRILLED formula gains another drilled target → retarget in place when the
+  // relationship is unchanged, else move it to the new relationship's child.
+  const redrillFormula = (child: Mapping, entry: FieldMapping, ref: FieldReference) => {
+    const hop = asSingleHop(ref)
+    if (!hop) return
+    if (child.relationshipFieldKey === fieldRefToKey(hop[0])) {
+      patchEntryIn(child.id, entry.id, { targetFieldRef: hop[1] })
+      return
+    }
+    removeFormulaFromChild(child, entry.id)
+    upsertFormulaIntoRelChild(hop[0], retargetFormulaEntry(entry, hop[1]))
+  }
+
+  // Identity role on a HOME formula (formula-drill-targets §5.1) — keyed by ENTRY ID,
+  // since a formula has no single source path. External ID stays a radio WITHIN this
+  // mapping (the record's own key); the runtime evaluates the expression as the key,
+  // so a composite/computed External ID works with no engine change.
+  const setFormulaIdentityRole = (entryId: string, role: IdentityRole) => {
+    const entry = fieldMappings.find((e) => e.id === entryId)
+    writeEntries(
+      setEntryIdentityRole(
+        fieldMappings,
+        entryId,
+        role,
+        deriveNormalize(entry?.targetFieldRef ?? '')
+      )
+    )
+  }
+
+  // Identity role on a DRILLED formula → patch the flat child's entry (External ID is a
+  // radio WITHIN that child — the related record's own key).
+  const setDrilledFormulaIdentityRole = (
+    child: Mapping,
+    entry: FieldMapping,
+    role: IdentityRole
+  ) => {
+    setFieldMappings(
+      streamId,
+      child.id,
+      setEntryIdentityRole(
+        (child.fieldMappings ?? []) as FieldMapping[],
+        entry.id,
+        role,
+        deriveNormalize(entry.targetFieldRef ?? '')
+      )
+    )
+  }
+
   return (
     <>
-      <GridTreeRow
-        columns={MAPPING_COLS}
+      <MappingRow
         depth={depth}
         expandable
         chevronOnHover
@@ -384,17 +670,21 @@ export function MappingNode({
         icon={<EntityIcon iconId={resource?.icon ?? 'table'} size='xs' />}
         title={
           // The rootPath is fixed by the source row this mapping was created from
-          // (`data` → "each data") — a static label, not a chooser.
-          <span className='text-xs text-muted-foreground'>
-            {describeRootPath(mapping.rootPath, streamKey)}
-          </span>
+          // (`data` → "each data") — a static label, not a chooser. Styled to match a
+          // source leaf: qualifier reads like the TYPE token, noun like the field LABEL.
+          (() => {
+            const { qualifier, noun } = describeRootPath(mapping.rootPath, streamKey)
+            return (
+              <span className='flex items-center gap-1.5'>
+                <span className='text-[10px] uppercase text-muted-foreground/60'>{qualifier}</span>
+                <span className='font-mono text-sm'>{noun}</span>
+              </span>
+            )
+          })()
         }
-        cells={[
-          <span key='arrow' className='flex w-full justify-center text-muted-foreground'>
-            <ArrowRight className='size-3.5' />
-          </span>,
+        arrow='filled'
+        target={
           <ResourcePicker
-            key='target'
             value={mapping.entityDefinitionId ? [mapping.entityDefinitionId] : []}
             onChange={() => {}}
             entityDefinedOnly
@@ -408,8 +698,10 @@ export function MappingNode({
               })
             }
             triggerProps={{ className: 'h-9 w-full justify-between rounded-none px-2 text-xs' }}
-          />,
-          <div key='actions' className='flex w-full items-center justify-end gap-1 pr-1'>
+          />
+        }
+        actions={
+          <>
             <SimpleTooltip
               side='left'
               delayDuration={500}
@@ -454,8 +746,8 @@ export function MappingNode({
               onClick={() => removeMapping(streamId, mapping.id)}>
               <Trash2 />
             </TreeRowButton>
-          </div>,
-        ]}>
+          </>
+        }>
         {sourceTree.length === 0 ? (
           <div
             style={{ paddingLeft: `${(depth + 1) * 1.5}rem` }}
@@ -467,7 +759,10 @@ export function MappingNode({
             nodes={sourceTree}
             childDepth={depth + 1}
             isCappable={(n) =>
-              !n.isBranch && !sourceToEntry.has(n.path) && !refChildByNodePath.has(n.path)
+              !n.isBranch &&
+              !sourceToEntry.has(n.path) &&
+              !refChildByNodePath.has(n.path) &&
+              !drilledBindBySourcePath.has(n.path)
             }
             renderNode={(node) => (
               <SourceNode
@@ -481,6 +776,7 @@ export function MappingNode({
                 usedTargetKeys={usedTargetKeys}
                 childByNodePath={childByNodePath}
                 refChildByNodePath={refChildByNodePath}
+                drilledBindBySourcePath={drilledBindBySourcePath}
                 onAssign={assignTarget}
                 onClear={clearEntry}
                 onMergeChange={(id, value) =>
@@ -490,6 +786,10 @@ export function MappingNode({
                 onFanOutRelationship={materializeRelatedChild}
                 onLinkRelationship={linkRelationship}
                 onClearLink={(refChildId) => removeMapping(streamId, refChildId)}
+                onAssignDrilled={assignDrilled}
+                onClearDrilled={clearDrilled}
+                onSetDrilledIdentityRole={setDrilledIdentityRole}
+                onDrilledMergeChange={setDrilledMerge}
                 // Child-mapping recursion context.
                 connectorId={connectorId}
                 streamId={streamId}
@@ -518,8 +818,11 @@ export function MappingNode({
                 label={
                   e.targetFieldRef ? (fieldByRef(e.targetFieldRef)?.label ?? e.targetFieldRef) : ''
                 }
+                iconId={e.targetFieldRef ? fieldIconId(fieldByRef(e.targetFieldRef)) : undefined}
                 expression={e.expression}
                 mergeStrategy={e.mergeStrategy ?? 'overwrite'}
+                // Drilling is offered once a target def is set (formula-drill-targets §4).
+                allowRelationships={mapping.entityDefinitionId != null}
                 // Exclude keys other entries already bind, so a formula can't be
                 // retargeted onto a field already in use.
                 excludeKeys={
@@ -527,30 +830,52 @@ export function MappingNode({
                     ? new Set([...usedTargetKeys].filter((k) => k !== e.targetFieldRef))
                     : usedTargetKeys
                 }
-                onEdit={() => setCalcEntryId(e.id)}
+                identityRole={e.identityRole?.kind ?? null}
+                canMatch={e.targetFieldRef != null}
+                onSetIdentityRole={(role) => setFormulaIdentityRole(e.id, role)}
+                onEdit={() => setCalcTarget({ mappingId: mapping.id, entryId: e.id })}
                 onRetarget={(newKey) => retargetEntry(e.id, newKey)}
+                onDrilledAssign={(ref) => drillHomeFormula(e, ref)}
                 onMergeChange={(value) =>
                   patchEntry(e.id, { mergeStrategy: value as FieldMapping['mergeStrategy'] })
                 }
                 onClear={() => clearEntry(e.id)}
               />
             ))}
+            {/* Drilled formulas — a computed value written across a relationship; its
+              entry lives on a flat child, but it renders here as a formula row whose
+              chip reaches across ("Contact › Full name"). */}
+            {drilledFormulaRows.map(({ child, entry }) => (
+              <DrilledFormulaRow
+                key={entry.id}
+                depth={depth + 1}
+                parentEntityDefinitionId={mapping.entityDefinitionId}
+                child={child}
+                entry={entry}
+                excludeKeys={usedTargetKeys}
+                onSetIdentityRole={(role) => setDrilledFormulaIdentityRole(child, entry, role)}
+                onEdit={() => setCalcTarget({ mappingId: child.id, entryId: entry.id })}
+                onRetargetRoot={(newKey) => undrillFormula(child, entry, newKey)}
+                onDrilledAssign={(ref) => redrillFormula(child, entry, ref)}
+                onMergeChange={(value) =>
+                  patchEntryIn(child.id, entry.id, {
+                    mergeStrategy: value as FieldMapping['mergeStrategy'],
+                  })
+                }
+                onClear={() => removeFormulaFromChild(child, entry.id)}
+              />
+            ))}
             {mapping.entityDefinitionId != null && (
-              <GridTreeRow
-                columns={MAPPING_COLS}
+              <MappingRow
                 depth={depth + 1}
                 icon={<Plus className='size-3.5 text-muted-foreground/50' />}
                 // "Add formula" persists a fresh draft row (no target yet) and opens
                 // the expression dialog on it — you author the formula first and pick
-                // the destination field after (or leave it unassigned for later).
-                title={
-                  <Button
-                    variant='transparent'
-                    onClick={addFormula}
-                    className='h-9 w-full justify-start rounded-none px-1 text-sm text-muted-foreground hover:bg-primary/5'>
-                    Add formula
-                  </Button>
-                }
+                // the destination field after (or leave it unassigned for later). The
+                // WHOLE row is the click target (onToggleOpen drives the row onClick),
+                // and the label reads like a field (font-mono text-sm, foreground).
+                onToggleOpen={addFormula}
+                title={<span className='font-mono text-sm'>Add formula</span>}
               />
             )}
           </>
@@ -574,14 +899,15 @@ export function MappingNode({
             syncedDefIds={syncedDefIds}
           />
         ))}
-      </GridTreeRow>
+      </MappingRow>
 
       {/* The formula editor — opened by a formula row's source button or the
           "Add formula" row. Source paths are scoped to this mapping's subtree
-          (matching the runtime). */}
+          (matching the runtime); a drilled formula's flat child reads the SAME
+          subtree (`rootPath ''`), so the same paths apply. */}
       <FieldCalcDialog
-        open={calcEntryId !== null}
-        onOpenChange={(o) => !o && setCalcEntryId(null)}
+        open={calcTarget !== null}
+        onOpenChange={(o) => !o && setCalcTarget(null)}
         targetLabel={
           calcEntry?.targetFieldRef
             ? (fieldByRef(calcEntry.targetFieldRef)?.label ?? calcEntry.targetFieldRef)
@@ -590,8 +916,8 @@ export function MappingNode({
         expression={calcEntry?.expression ?? ''}
         sourcePaths={leafPathsUnder(sourcePaths, prefix)}
         onSave={(expression, sourceFields) => {
-          if (!calcEntryId) return
-          patchEntry(calcEntryId, { expression, sourceFields })
+          if (!calcTarget) return
+          patchEntryIn(calcTarget.mappingId, calcTarget.entryId, { expression, sourceFields })
         }}
       />
     </>
@@ -614,6 +940,8 @@ interface SourceNodeProps {
   childByNodePath: Map<string, Mapping>
   /** Reference children (id-only links) keyed by FK source path. */
   refChildByNodePath: Map<string, Mapping>
+  /** Leaves bound ACROSS a relationship: source path → the flat child + its binding. */
+  drilledBindBySourcePath: Map<string, { child: Mapping; entry: FieldMapping }>
   onAssign: (sourcePath: string, targetKey: string) => void
   /** Per-entry mutations operate on the binding's stable id. */
   onClear: (entryId: string) => void
@@ -626,6 +954,14 @@ interface SourceNodeProps {
   onLinkRelationship: (node: SourceTreeNode, field: ResourceField, ref: FieldReference) => void
   /** Remove an id-only link (delete its reference child mapping). */
   onClearLink: (refChildId: string) => void
+  /** Bind a leaf ACROSS a relationship — a drilled `FieldPath` (unified picker §2). */
+  onAssignDrilled: (node: SourceTreeNode, field: ResourceField, ref: FieldReference) => void
+  /** Clear a leaf's drilled binding (and its flat child if now empty). */
+  onClearDrilled: (node: SourceTreeNode) => void
+  /** Set / clear a drilled leaf's identity role (routes to the flat child's binding). */
+  onSetDrilledIdentityRole: (node: SourceTreeNode, role: 'externalId' | 'match' | null) => void
+  /** Change a drilled leaf's merge strategy (routes to the flat child's binding). */
+  onDrilledMergeChange: (node: SourceTreeNode, value: string) => void
   // Child-mapping recursion context (forwarded to a nested MappingNode).
   connectorId: string
   streamId: string
@@ -662,6 +998,15 @@ function SourceNode(props: SourceNodeProps) {
   } = props
   const [open, setOpen] = useState(true)
 
+  // Drilled-binding context — a leaf bound ACROSS a relationship (its value writes a
+  // related record). Resolve the related def's label + the bound field's label for the
+  // chip ("Contact › Email"). Hooks run unconditionally (null def when not drilled) so
+  // order stays stable across the branch/leaf early returns below.
+  const drilled = !node.isBranch ? props.drilledBindBySourcePath.get(node.path) : undefined
+  const drilledDefId = drilled?.child.entityDefinitionId ?? null
+  const drilledDef = useResourceProperty(drilledDefId, ['label'])
+  const { fields: drilledDefFields } = useResourceFields(drilledDefId)
+
   // A child mapping at this branch → render it inline (promoted state).
   const childMapping = node.isBranch ? childByNodePath.get(node.path) : undefined
   if (childMapping) {
@@ -697,7 +1042,10 @@ function SourceNode(props: SourceNodeProps) {
           nodes={node.children}
           childDepth={depth + 1}
           isCappable={(n) =>
-            !n.isBranch && !props.sourceToEntry.has(n.path) && !props.refChildByNodePath.has(n.path)
+            !n.isBranch &&
+            !props.sourceToEntry.has(n.path) &&
+            !props.refChildByNodePath.has(n.path) &&
+            !props.drilledBindBySourcePath.has(n.path)
           }
           renderNode={(child) => (
             <SourceNode key={child.path} {...props} node={child} depth={depth + 1} />
@@ -707,15 +1055,36 @@ function SourceNode(props: SourceNodeProps) {
     )
   }
 
-  const entry = sourceToEntry.get(node.path)
-  const assignedTargetKey = entry?.targetFieldRef ?? undefined
-  const assignedLabel = assignedTargetKey
-    ? targetFields.find((f) => refOf(f, mapping.entityDefinitionId) === assignedTargetKey)?.label
+  const directEntry = sourceToEntry.get(node.path)
+  const assignedTargetKey = directEntry?.targetFieldRef ?? undefined
+  const assignedField = assignedTargetKey
+    ? targetFields.find((f) => refOf(f, mapping.entityDefinitionId) === assignedTargetKey)
     : undefined
+  const assignedLabel = assignedField?.label
+  const assignedIconId = fieldIconId(assignedField)
   // Exclude target keys bound elsewhere (keep this leaf's own key selectable).
   const excludeKeys = assignedTargetKey
     ? new Set([...usedTargetKeys].filter((k) => k !== assignedTargetKey))
     : usedTargetKeys
+
+  // A drilled binding (this leaf's value writes a related def, via a flat child) — the
+  // chip reaches across the relationship ("Contact › Email") and the controls route to
+  // the child. Direct and drilled are mutually exclusive on one leaf.
+  let drilledLabel: string | undefined
+  let drilledRef: FieldReference | undefined
+  let drilledIconId: string | undefined
+  if (drilled?.entry.targetFieldRef) {
+    const drilledField = drilledDefFields.find(
+      (f) => refOf(f, drilledDefId) === drilled.entry.targetFieldRef
+    )
+    const fieldLabel =
+      drilledField?.label ?? getFieldId(drilled.entry.targetFieldRef as ResourceFieldId)
+    drilledLabel = `${drilledDef?.label ?? 'Related'} › ${fieldLabel}`
+    drilledIconId = fieldIconId(drilledField)
+    const relRef = keyToFieldRef(drilled.child.relationshipFieldKey ?? '')
+    const relSegs = isFieldPath(relRef) ? relRef : [relRef as ResourceFieldId]
+    drilledRef = toFieldPath([...relSegs, drilled.entry.targetFieldRef as ResourceFieldId])
+  }
 
   // Id-only relationship link (§9.6a Case B): a `reference` child mapping on this
   // leaf path links the FK to a relationship. Independent of the scalar binding —
@@ -729,10 +1098,12 @@ function SourceNode(props: SourceNodeProps) {
     : undefined
   // `linkedField` was matched on refKey, so its canonical ref IS refKey.
   const linkedFieldRef = linkedField ? refKey : undefined
-  // The current identity role on this leaf (External ID anchor / secondary Match).
-  const identityRole = entry?.identityRole?.kind ?? null
-  // Relationships are linkable on a SCALAR FK leaf only (array fan-out is a branch
-  // drill, not a leaf link), once a target def is set.
+  // The active binding (drilled child's entry, else the direct entry) drives the
+  // identity-role + merge controls.
+  const activeEntry = drilled?.entry ?? directEntry
+  const identityRole = activeEntry?.identityRole?.kind ?? null
+  // Relationships are linkable/drillable on a SCALAR leaf only (array fan-out is a
+  // branch drill), once a target def is set.
   const allowRelationships = node.type !== 'array' && !!mapping.entityDefinitionId
 
   return (
@@ -742,6 +1113,7 @@ function SourceNode(props: SourceNodeProps) {
         node={node}
         entityDefinitionId={mapping.entityDefinitionId}
         assignedLabel={assignedLabel}
+        assignedIconId={drilledIconId ?? assignedIconId}
         assignedTargetKey={assignedTargetKey}
         excludeKeys={excludeKeys}
         // Quick-create is available whenever a target def is set — both owned
@@ -751,14 +1123,24 @@ function SourceNode(props: SourceNodeProps) {
         canCreate={!!mapping.entityDefinitionId}
         isOwned={targetMode === 'owned'}
         identityRole={identityRole}
-        mergeStrategy={entry?.mergeStrategy ?? 'overwrite'}
+        mergeStrategy={activeEntry?.mergeStrategy ?? 'overwrite'}
         allowRelationships={allowRelationships}
-        syncedDefIds={props.syncedDefIds}
         linkedFieldRef={linkedFieldRef}
+        drilledLabel={drilledLabel}
+        drilledRef={drilledRef}
         onAssign={(targetKey) => onAssign(node.path, targetKey)}
-        onClear={() => entry && onClear(entry.id)}
-        onMergeChange={(value) => entry && onMergeChange(entry.id, value)}
-        onSetIdentityRole={(role) => onSetIdentityRole(node.path, role)}
+        onDrilledAssign={(field, ref) => props.onAssignDrilled(node, field, ref)}
+        onClear={() =>
+          drilled ? props.onClearDrilled(node) : directEntry && onClear(directEntry.id)
+        }
+        onMergeChange={(value) =>
+          drilled
+            ? props.onDrilledMergeChange(node, value)
+            : directEntry && onMergeChange(directEntry.id, value)
+        }
+        onSetIdentityRole={(role) =>
+          drilled ? props.onSetDrilledIdentityRole(node, role) : onSetIdentityRole(node.path, role)
+        }
         onLinkRelationship={(field, ref) => props.onLinkRelationship(node, field, ref)}
       />
       {refChild && (
@@ -778,20 +1160,36 @@ function SourceNode(props: SourceNodeProps) {
 
 interface FormulaRowProps {
   depth: number
-  /** The def whose fields the formula can target. Null until a target def is picked. */
+  /** The def the picker drills/binds FROM. Null until a target def is picked. */
   entityDefinitionId: string | null
   /** Target field key this formula currently writes into (`''` if unassigned). */
   targetKey: string
   /** Resolved label for the target field. */
   label: string
+  /** Resolved icon id for the target field (for the picker chip). */
+  iconId?: string
   /** The calc expression (shown on the source button; click it to edit). */
   expression: string
   mergeStrategy: string
   /** Target keys bound by other entries — excluded from the retarget picker. */
   excludeKeys?: Set<string>
+  /** Show relationships in the picker so the formula can drill ACROSS one (§4). */
+  allowRelationships?: boolean
+  /** Chip text when bound across a relationship ("Contact › Full name"). */
+  drilledLabel?: string
+  /** The drilled `FieldPath`, for the picker's selected check on the far field. */
+  drilledRef?: FieldReference
+  /** This formula's identity role (External ID / Match), keyed by entry id (§5.1). */
+  identityRole?: IdentityRole
+  /** Offer the "Match existing" option — needs a bound target to compare against. */
+  canMatch?: boolean
   onEdit: () => void
-  /** Re-point the formula at a different target field key. */
+  /** Re-point the formula at a different ROOT target field key. */
   onRetarget: (newKey: string) => void
+  /** The picker drilled to a far field — bind the computed value across the relationship. */
+  onDrilledAssign?: (ref: FieldReference) => void
+  /** Set / clear this formula's identity role. Absent → no identifier control. */
+  onSetIdentityRole?: (role: IdentityRole) => void
   onMergeChange: (value: string) => void
   onClear: () => void
 }
@@ -802,44 +1200,61 @@ interface FormulaRowProps {
  * source leaf. Mirrors a leaf row: the source cell is a button (showing the calc
  * expression, or "Set formula…") that opens {@link FieldCalcDialog}; the target
  * column is a field picker (a formula produces a scalar — string-typed for the
- * compat filter). No Match toggle (no single source path to match identity on).
+ * compat filter). With {@link allowRelationships} the picker can drill ACROSS a
+ * relationship to write a related def (formula-drill-targets §4). The identity
+ * control (keyed by entry id) marks the computed value as the record's External ID
+ * or a Match key (§5.1) — the runtime evaluates the expression as the key.
  */
 function FormulaRow({
   depth,
   entityDefinitionId,
   targetKey,
   label,
+  iconId,
   expression,
   mergeStrategy,
   excludeKeys,
+  allowRelationships,
+  drilledLabel,
+  drilledRef,
+  identityRole,
+  canMatch,
   onEdit,
   onRetarget,
+  onDrilledAssign,
+  onSetIdentityRole,
   onMergeChange,
   onClear,
 }: FormulaRowProps) {
   return (
-    <GridTreeRow
-      columns={MAPPING_COLS}
+    <MappingRow
       depth={depth}
       icon={<FunctionSquare className='size-3.5' />}
       // Source cell = a button that opens the formula dialog (shows the expression
-      // when set); target column = the field it writes into.
+      // when set), trailed by the identity key icon; target column = the field it
+      // writes into.
       title={
-        <Button
-          variant='transparent'
-          onClick={onEdit}
-          className={`h-9 w-full justify-start rounded-none px-1 text-xs hover:bg-primary/5 ${
-            expression ? 'font-mono' : 'text-muted-foreground'
-          }`}>
-          <span className='truncate'>{expression || 'Set formula…'}</span>
-        </Button>
+        <span className='flex w-full items-center gap-1'>
+          <Button
+            variant='transparent'
+            onClick={onEdit}
+            className={`h-9 min-w-0 flex-1 justify-start rounded-none px-1 text-xs hover:bg-primary/5 ${
+              expression ? 'font-mono' : 'text-muted-foreground'
+            }`}>
+            <span className='truncate'>{expression || 'Set formula…'}</span>
+          </Button>
+          {onSetIdentityRole && (
+            <IdentityRoleControl
+              role={identityRole ?? null}
+              canMatch={!!canMatch}
+              onChange={onSetIdentityRole}
+            />
+          )}
+        </span>
       }
-      cells={[
-        <span key='arrow' className='flex w-full justify-center text-muted-foreground'>
-          <ArrowRight className='size-3.5' />
-        </span>,
+      arrow='filled'
+      target={
         <MappingFieldPicker
-          key='target'
           entityDefinitionId={entityDefinitionId}
           // A formula has no single source type — it yields a scalar; 'string'
           // drives the (TEXT-compatible) target filter. Quick-create is off; a
@@ -847,21 +1262,102 @@ function FormulaRow({
           sourceType='string'
           sourcePath=''
           assignedKey={targetKey || undefined}
-          assignedLabel={label}
+          // Drilled chip wins; else the field label, or undefined (not '') so the
+          // picker falls back to its "Apply field…" placeholder.
+          assignedLabel={drilledLabel ?? (label || undefined)}
+          assignedIconId={iconId}
+          drilledRef={drilledRef}
           excludeKeys={excludeKeys}
           canCreate={false}
+          allowRelationships={allowRelationships}
           onAssign={onRetarget}
+          // The picker hands back (field, ref); a formula only needs the path.
+          onDrilledAssign={onDrilledAssign ? (_field, ref) => onDrilledAssign(ref) : undefined}
           onClear={onClear}
-        />,
-        <div key='actions' className='flex w-full items-center justify-end gap-1 pr-1'>
-          {/* Right-aligned merge badge → trash, matching the leaf/header rows. No
-              Identifier — a formula has no single source path to match identity on. */}
-          <MergeStrategyToggle value={mergeStrategy} onValueChange={onMergeChange} />
-          <TreeRowButton variant='destructive' tooltipText='Remove formula' onClick={onClear}>
-            <Trash2 />
-          </TreeRowButton>
-        </div>,
-      ]}
+        />
+      }
+      // Right-aligned merge → trash, matching the leaf/header rows. No Identifier —
+      // a formula has no single source path to match identity on.
+      actions={
+        <FieldRowActions
+          mergeStrategy={mergeStrategy}
+          onMergeChange={onMergeChange}
+          onClear={onClear}
+          clearTooltip='Remove formula'
+        />
+      }
+    />
+  )
+}
+
+/**
+ * A formula bound ACROSS a relationship (formula-drill-targets §4): its entry lives
+ * on a flat child mapping, but it renders as a {@link FormulaRow} on the parent whose
+ * picker roots at the PARENT def (so it offers the same drill) and whose chip reaches
+ * across to "Def › Field". Resolves that chip + the far field's icon from the child's
+ * def. Controls route to the child's entry via the handlers from the parent.
+ */
+function DrilledFormulaRow({
+  depth,
+  parentEntityDefinitionId,
+  child,
+  entry,
+  excludeKeys,
+  onSetIdentityRole,
+  onEdit,
+  onRetargetRoot,
+  onDrilledAssign,
+  onMergeChange,
+  onClear,
+}: {
+  depth: number
+  parentEntityDefinitionId: string | null
+  child: Mapping
+  entry: FieldMapping
+  excludeKeys?: Set<string>
+  onSetIdentityRole: (role: IdentityRole) => void
+  onEdit: () => void
+  onRetargetRoot: (newKey: string) => void
+  onDrilledAssign: (ref: FieldReference) => void
+  onMergeChange: (value: string) => void
+  onClear: () => void
+}) {
+  const def = useResourceProperty(child.entityDefinitionId, ['label'])
+  const { fields } = useResourceFields(child.entityDefinitionId)
+  const targetRef = (entry.targetFieldRef ?? null) as ResourceFieldId | null
+  const farField = targetRef
+    ? fields.find((f) => refOf(f, child.entityDefinitionId) === targetRef)
+    : undefined
+  const fieldLabel = targetRef ? (farField?.label ?? getFieldId(targetRef)) : ''
+  const drilledLabel = `${def?.label ?? 'Related'} › ${fieldLabel}`
+  // Rebuild the drilled FieldPath ([rel…, targetRef]) for the picker's selected check.
+  const relRef = keyToFieldRef(child.relationshipFieldKey ?? '')
+  const relSegs = isFieldPath(relRef) ? relRef : [relRef as ResourceFieldId]
+  const drilledRef = targetRef ? toFieldPath([...relSegs, targetRef]) : undefined
+
+  return (
+    <FormulaRow
+      depth={depth}
+      // Root the picker at the PARENT def so it offers the same drill.
+      entityDefinitionId={parentEntityDefinitionId}
+      targetKey={targetRef ?? ''}
+      label={fieldLabel}
+      iconId={fieldIconId(farField)}
+      expression={entry.expression}
+      mergeStrategy={entry.mergeStrategy ?? 'overwrite'}
+      excludeKeys={excludeKeys}
+      allowRelationships={parentEntityDefinitionId != null}
+      drilledLabel={drilledLabel}
+      drilledRef={drilledRef}
+      // External ID here keys the RELATED record (a radio within the flat child).
+      identityRole={entry.identityRole?.kind ?? null}
+      canMatch={targetRef != null}
+      onSetIdentityRole={onSetIdentityRole}
+      onEdit={onEdit}
+      onRetarget={onRetargetRoot}
+      onDrilledAssign={onDrilledAssign}
+      onMergeChange={onMergeChange}
+      onClear={onClear}
     />
   )
 }

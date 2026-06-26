@@ -124,10 +124,12 @@ function evaluateFields(mapping: DecodedMapping, subtree: unknown): Record<strin
 /**
  * Resolve a mapping's secondary identity-match values from the source subtree.
  * Every bound field whose `identityRole.kind === 'match'` is a secondary identity
- * key (the external id is always the primary): read its subtree-relative source
- * path (the bare-token binding's single `sourceFields` value) and pair it with the
- * target field key it must equal; the sink normalizes + looks up. No flagged
- * fields → no candidates → the record creates / re-identifies by external id.
+ * key (the external id is always the primary): evaluate its binding's CALC value —
+ * the same `evaluateFieldValue` used for projection + the External ID, so a FORMULA
+ * match key (`concat({store},{order_no})`) works, and a bare token still resolves to
+ * its single source value — and pair it with the target field key it must equal; the
+ * sink normalizes + looks up. No flagged fields → no candidates → the record creates
+ * / re-identifies by external id.
  */
 function identityCandidates(
   mapping: DecodedMapping,
@@ -136,11 +138,9 @@ function identityCandidates(
   const candidates: ProjectedRecord['identityCandidates'] = []
   for (const fm of mapping.fieldMappings) {
     if (fm.identityRole?.kind !== 'match' || fm.targetFieldRef == null) continue
-    const sourcePath = Object.values(fm.sourceFields)[0]
-    if (!sourcePath) continue
     candidates.push({
       targetFieldRef: fm.targetFieldRef,
-      value: getByPath(subtree, sourcePath),
+      value: evaluateFieldValue(fm, subtree),
       normalize: fm.identityRole.normalize,
     })
   }

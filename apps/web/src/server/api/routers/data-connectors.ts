@@ -500,7 +500,13 @@ export const dataConnectorRouter = createTRPCRouter({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      return deleteConnector(ctx.db, ctx.session.organizationId, input.id, input.syncedData)
+      return deleteConnector(
+        ctx.db,
+        ctx.session.organizationId,
+        ctx.session.userId,
+        input.id,
+        input.syncedData
+      )
     }),
 
   syncNow: adminProcedure
