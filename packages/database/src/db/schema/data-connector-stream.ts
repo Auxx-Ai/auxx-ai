@@ -41,7 +41,10 @@ export const DataConnectorStream = pgTable(
     // from the target (owned/contributing is per-mapping) — so no `existing` tag here.
     schemaSource: text().default('catalog').notNull(), // 'catalog' | 'inferred' | 'manual'
 
-    syncMode: text().default('snapshot').notNull(), // 'snapshot' | 'incremental' | 'webhook'
+    // Completeness strategy for full runs (gates orphan reconciliation). Webhook steering is
+    // an orthogonal trigger concern (syncBehavior='webhook' + requestConfig.webhookTrigger),
+    // NOT a sync mode — see SyncMode in @auxx/lib data-connectors/types.
+    syncMode: text().default('snapshot').notNull(), // 'snapshot' | 'incremental'
 
     // Per-stream request config (generic-rest only).
     requestConfig: jsonb().$type<StreamRequestConfig>(),

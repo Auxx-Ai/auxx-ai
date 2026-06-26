@@ -63,6 +63,7 @@ export {
   fixtureConnector,
   genericRestConnector,
   isConnectorCheckpoint,
+  PermanentSteerError,
 } from './connectors'
 export type { BackfillSliceJobData, DataConnectorSyncJobData } from './data-connector-queue'
 // Queue + scheduler

@@ -15,6 +15,7 @@ import { and, eq, inArray, ne } from 'drizzle-orm'
 import { matchesFilter } from '../../agents/agent-trigger-queries'
 import { enqueueConnectorSync } from '../../data-connectors/data-connector-queue'
 import { markWebhookEventReceived } from '../../data-connectors/service'
+import { isSteerableDelivery } from '../../data-connectors/webhook-steer'
 import { createScopedLogger } from '../../logger'
 import { getQueue, Queues } from '../queues'
 import type { JobContext } from '../types'
@@ -104,9 +105,12 @@ export async function dispatchAppTriggerToConnectors(
   })
 
   // Match streams by `webhookTrigger.filter` (topic discrimination), then SPLIT by mode:
-  //  • steerable (`{path}` set) → a targeted PARTIAL run that fetches only the changed
-  //    record (the steer job, per-stream so retries stay isolated).
-  //  • non-steerable (cursor stream, no `{path}`) → the full run-based sync (enqueueConnectorSync).
+  //  • steerable → a targeted PARTIAL run that fetches only the changed record (the steer
+  //    job, per-stream so retries stay isolated). `isSteerableDelivery` checks not just that
+  //    the stream declares `{path}` steering but that THIS delivery resolves every token the
+  //    request needs — an unresolvable delivery falls through to a full sync instead of
+  //    opening a partial run doomed to fail `assertResolved`.
+  //  • non-steerable (cursor stream, or a delivery missing a token) → the full run-based sync.
   // A connector with ANY non-steerable matched stream full-syncs; the full crawl is a superset
   // that covers its steerable streams too, so we skip their steer jobs (no double-ingest).
   const matched: { connectorId: string; streamKey: string; steerable: boolean }[] = []
@@ -117,7 +121,7 @@ export async function dispatchAppTriggerToConnectors(
     matched.push({
       connectorId: stream.dataConnectorId,
       streamKey: stream.streamKey,
-      steerable: (wt.paths?.length ?? 0) > 0,
+      steerable: isSteerableDelivery(stream.requestConfig, triggerData),
     })
   }
 

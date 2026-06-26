@@ -693,7 +693,7 @@ export const dataConnectorRouter = createTRPCRouter({
         streamKey: z.string().min(1).nullish(),
         sourceSchema: z.record(z.string(), z.unknown()).nullish(),
         schemaSource: z.enum(['catalog', 'inferred', 'manual']).optional(),
-        syncMode: z.enum(['snapshot', 'incremental', 'webhook']).optional(),
+        syncMode: z.enum(['snapshot', 'incremental']).optional(),
         requestConfig: requestConfigSchema.nullish(),
         enabled: z.boolean().optional(),
       })
@@ -727,7 +727,7 @@ export const dataConnectorRouter = createTRPCRouter({
       z.object({
         streamId: z.string(),
         requestConfig: requestConfigSchema,
-        syncMode: z.enum(['snapshot', 'incremental', 'webhook']).optional(),
+        syncMode: z.enum(['snapshot', 'incremental']).optional(),
         enabled: z.boolean().optional(),
       })
     )

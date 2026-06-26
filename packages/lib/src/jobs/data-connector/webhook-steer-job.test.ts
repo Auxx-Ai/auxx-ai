@@ -7,26 +7,38 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { runWebhookSteeredRun, ConnectorRateLimitError, queueAdd, redis } = vi.hoisted(() => {
-  class ConnectorRateLimitError extends Error {
-    retryAfterMs?: number
-    constructor(retryAfterMs?: number) {
-      super('throttled')
-      this.name = 'ConnectorRateLimitError'
-      this.retryAfterMs = retryAfterMs
+const { runWebhookSteeredRun, ConnectorRateLimitError, PermanentSteerError, queueAdd, redis } =
+  vi.hoisted(() => {
+    class ConnectorRateLimitError extends Error {
+      retryAfterMs?: number
+      constructor(retryAfterMs?: number) {
+        super('throttled')
+        this.name = 'ConnectorRateLimitError'
+        this.retryAfterMs = retryAfterMs
+      }
     }
-  }
-  return {
-    runWebhookSteeredRun: vi.fn(),
-    ConnectorRateLimitError,
-    queueAdd: vi.fn(),
-    redis: { lpush: vi.fn(), ltrim: vi.fn(), expire: vi.fn() },
-  }
-})
+    class PermanentSteerError extends Error {
+      constructor(message: string) {
+        super(message)
+        this.name = 'PermanentSteerError'
+      }
+    }
+    return {
+      runWebhookSteeredRun: vi.fn(),
+      ConnectorRateLimitError,
+      PermanentSteerError,
+      queueAdd: vi.fn(),
+      redis: { lpush: vi.fn(), ltrim: vi.fn(), expire: vi.fn() },
+    }
+  })
 
 vi.mock('@auxx/database', () => ({ database: {} }))
 vi.mock('@auxx/redis', () => ({ getRedisClient: async () => redis }))
-vi.mock('../../data-connectors', () => ({ runWebhookSteeredRun, ConnectorRateLimitError }))
+vi.mock('../../data-connectors', () => ({
+  runWebhookSteeredRun,
+  ConnectorRateLimitError,
+  PermanentSteerError,
+}))
 vi.mock('../queues', () => ({
   getQueue: () => ({ add: (...a: unknown[]) => queueAdd(...a) }),
   Queues: { appTriggerQueue: 'appTriggerQueue' },
@@ -96,6 +108,16 @@ describe('runConnectorWebhookSteer', () => {
     expect(redis.lpush).toHaveBeenCalledOnce()
     const [key] = redis.lpush.mock.calls[0] as [string, string]
     expect(key).toBe('app-trigger-test:inst1:shopify.shopify-trigger:dlq')
+  })
+
+  it('dead-letters a permanent error immediately without re-throwing or retrying', async () => {
+    // A PermanentSteerError (e.g. unresolved `{token}`) replays identically — fail-fast on
+    // attempt 0: dead-letter once, return (no throw ⇒ no BullMQ retry).
+    runWebhookSteeredRun.mockRejectedValue(new PermanentSteerError('unresolved webhook token {id}'))
+    const result = await runConnectorWebhookSteer(ctx({ attempts: 5, attemptsMade: 0 }))
+    expect(result).toMatchObject({ ok: false, permanent: true })
+    expect(redis.lpush).toHaveBeenCalledOnce()
+    expect(queueAdd).not.toHaveBeenCalled()
   })
 
   it('re-throws without dead-lettering when attempts remain', async () => {

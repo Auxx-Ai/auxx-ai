@@ -56,7 +56,9 @@ export async function runConnectorWebhookSteer(
   // Lazy-import the heavy data-connectors barrel at call time (it pulls the sink / crud
   // spine) — keeps this job file light and side-effect-free for vitest.
   const { database: db } = await import('@auxx/database')
-  const { runWebhookSteeredRun, ConnectorRateLimitError } = await import('../../data-connectors')
+  const { runWebhookSteeredRun, ConnectorRateLimitError, PermanentSteerError } = await import(
+    '../../data-connectors'
+  )
 
   try {
     await runWebhookSteeredRun(db, {
@@ -71,8 +73,22 @@ export async function runConnectorWebhookSteer(
     if (err instanceof ConnectorRateLimitError) {
       return await deferForThrottle(job, err.retryAfterMs)
     }
-    // Last attempt → dead-letter before `removeOnFail` discards the job, then re-throw so
-    // BullMQ records the terminal failure.
+    // Permanent (deterministic) failure — e.g. an unresolved `{token}` because the payload
+    // path returned nothing. Retrying replays the identical delivery and fails the same way,
+    // so dead-letter NOW and return (don't re-throw → no BullMQ retry). The run row was
+    // already finalized `failed` by runWebhookSteeredRun.
+    if (err instanceof PermanentSteerError) {
+      await deadLetter(job, err)
+      logger.warn('Connector webhook steer permanent failure — dead-lettered without retry', {
+        connectorId,
+        streamKey,
+        eventId,
+        error: err.message,
+      })
+      return { ok: false, permanent: true }
+    }
+    // Transient → last attempt dead-letters before `removeOnFail` discards the job, then
+    // re-throws so BullMQ records the terminal failure (and retries earlier attempts).
     const maxAttempts = job.opts.attempts ?? 5
     if (job.attemptsMade >= maxAttempts - 1) {
       await deadLetter(job, err)

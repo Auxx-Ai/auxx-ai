@@ -5,6 +5,7 @@ import { migration024VerifyCredentialV2Backfill } from './migrations/024-verify-
 import { migration025ReseedPlatformProviders } from './migrations/025-reseed-platform-providers'
 import { migration026NormalizeChannelCredentials } from './migrations/026-normalize-channel-credentials'
 import { migration027BackfillCredentialDefinitionFk } from './migrations/027-backfill-credential-definition-fk'
+import { migration028DataConnectorStreamSyncModeWebhook } from './migrations/028-data-connector-stream-syncmode-webhook'
 import { assertUniqueMigrationIds } from './plan'
 import type { DataMigrationDef } from './types'
 import { wrapEntityMigration } from './wrap-entity-migration'
@@ -26,6 +27,7 @@ function buildRegistry(): DataMigrationDef[] {
     migration025ReseedPlatformProviders,
     migration026NormalizeChannelCredentials,
     migration027BackfillCredentialDefinitionFk,
+    migration028DataConnectorStreamSyncModeWebhook,
   ]
 
   all.sort((a, b) => a.id.localeCompare(b.id))

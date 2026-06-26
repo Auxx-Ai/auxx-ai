@@ -23,4 +23,4 @@ export type {
   StreamIncrementalConfig,
   StreamRequestConfig,
 } from './types'
-export { ConnectorRateLimitError, isConnectorCheckpoint } from './types'
+export { ConnectorRateLimitError, isConnectorCheckpoint, PermanentSteerError } from './types'
