@@ -4,11 +4,12 @@
 // whether this event is a DELETE (skip the fetch, archive by externalId) or a
 // FETCH (extract `{path}` values to steer the regular connector fetch at, then
 // sink the FETCH result). Kept free of DB/connector deps so it unit-tests on plain
-// payload fixtures. NOTE: not currently wired into the sync path — webhook deliveries now
-// steer a full run-based sync (see dispatchAppTriggerToConnectors); retained for a future
-// targeted point-write mode that fetches only the changed record via `{path}` steering.
+// payload fixtures. `resolveWebhookSteer` drives the steered partial run
+// (runWebhookSteeredRun); `isSteerableDelivery` drives the dispatch-time decision
+// of whether a delivery steers a partial run or falls through to a full sync.
 
-import type { StreamWebhookTrigger } from './connectors/types'
+import { unresolvedPlaceholders } from '@auxx/utils'
+import type { StreamRequestConfig, StreamWebhookTrigger } from './connectors/types'
 
 /** A resolved steering directive for one webhook delivery. */
 export type WebhookSteer =
@@ -73,4 +74,52 @@ export function resolveWebhookSteer(
     if (value !== undefined && value !== null) triggerContext[path] = scalar(value)
   }
   return { kind: 'fetch', triggerContext }
+}
+
+/** Collect every string leaf of a value (depth-first) for placeholder scanning. */
+function collectStringLeaves(value: unknown, acc: string[]): void {
+  if (typeof value === 'string') acc.push(value)
+  else if (Array.isArray(value)) for (const item of value) collectStringLeaves(item, acc)
+  else if (value && typeof value === 'object')
+    for (const v of Object.values(value)) collectStringLeaves(v, acc)
+}
+
+/**
+ * Every `{token}` the steered request template references across path/params/headers/body.
+ * These are exactly the placeholders the fetch's `assertResolved` would reject if a payload
+ * path returned nothing — lifted here so the dispatcher can decide steerability BEFORE
+ * opening a run, and the save path can validate the template against the declared paths.
+ */
+export function requiredSteerTokens(
+  requestConfig: StreamRequestConfig | null | undefined
+): string[] {
+  if (!requestConfig) return []
+  const leaves: string[] = []
+  collectStringLeaves(requestConfig.path, leaves)
+  collectStringLeaves(requestConfig.params, leaves)
+  collectStringLeaves(requestConfig.headers, leaves)
+  collectStringLeaves(requestConfig.body, leaves)
+  return [...new Set(leaves.flatMap(unresolvedPlaceholders))]
+}
+
+/**
+ * Can THIS delivery steer a targeted partial fetch on this stream? True iff the stream
+ * declares steering (`{path}` paths, or a delete predicate) AND the delivery resolves
+ * everything the request needs:
+ *   • delete → the externalId path resolved (else there's nothing to archive);
+ *   • fetch  → every `{token}` in the request template resolved from the payload.
+ * A stream with no steering, or a delivery missing a required token, is NOT steerable — the
+ * caller routes it to a full run-based sync instead of opening a doomed partial run (which
+ * would otherwise fail `assertResolved` and dead-letter).
+ */
+export function isSteerableDelivery(
+  requestConfig: StreamRequestConfig | null | undefined,
+  triggerData: Record<string, unknown>
+): boolean {
+  const wt = requestConfig?.webhookTrigger
+  if (!wt) return false
+  const steer = resolveWebhookSteer(wt, triggerData)
+  if (steer.kind === 'delete') return steer.externalId != null
+  if ((wt.paths?.length ?? 0) === 0) return false
+  return requiredSteerTokens(requestConfig).every((t) => t in steer.triggerContext)
 }

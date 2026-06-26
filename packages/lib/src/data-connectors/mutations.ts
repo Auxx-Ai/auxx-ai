@@ -49,6 +49,7 @@ import type {
   SyncMode,
   TargetMode,
 } from './types'
+import { requiredSteerTokens } from './webhook-steer'
 
 const logger = createScopedLogger('data-connector-mutations')
 
@@ -739,6 +740,25 @@ export async function deleteConnector(
 
 // ── Streams ─────────────────────────────────────────────────────────────────
 
+/**
+ * Reject a steering config whose request template references a `{token}` not declared in
+ * the steering `paths`. At runtime such a token never resolves (the steer context is built
+ * only from the declared paths), so the fetch would fail `assertResolved` on EVERY delivery
+ * and dead-letter silently. Catching it at save turns that footgun into an edit-time error.
+ */
+function assertSteeringConfigValid(requestConfig: StreamRequestConfig | null | undefined): void {
+  const wt = requestConfig?.webhookTrigger
+  if (!wt || (wt.paths?.length ?? 0) === 0) return
+  const declared = new Set(wt.paths)
+  const missing = requiredSteerTokens(requestConfig).filter((t) => !declared.has(t))
+  if (missing.length > 0) {
+    throw new BadRequestError(
+      `Webhook steering references undeclared token(s) {${missing.join('}, {')}}. ` +
+        'Add them to the steering payload paths, or remove them from the request.'
+    )
+  }
+}
+
 export interface AddStreamInput {
   /** Omitted for a blank, not-yet-named stream — the user names it inline later. */
   streamKey?: string | null
@@ -757,6 +777,7 @@ export async function addStream(
   input: AddStreamInput
 ): Promise<DataConnectorStreamRow> {
   await loadConnectorRow(db, organizationId, dataConnectorId)
+  assertSteeringConfigValid(input.requestConfig)
   const [row] = await db
     .insert(schema.DataConnectorStream)
     .values({
@@ -847,6 +868,7 @@ export async function setStreamRequestConfig(
   streamId: string,
   input: { requestConfig: StreamRequestConfig; syncMode?: SyncMode; enabled?: boolean }
 ): Promise<DataConnectorStreamRow> {
+  assertSteeringConfigValid(input.requestConfig)
   return db.transaction(async (tx) => {
     const existing = await loadStreamRow(tx, organizationId, streamId)
     const impact = classifyStreamRequestChange(existing, input)

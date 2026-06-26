@@ -20,6 +20,7 @@ import { and, eq, inArray, ne } from 'drizzle-orm'
 import { matchesFilter } from '../../agents/agent-trigger-queries'
 import { enqueueConnectorSync } from '../../data-connectors/data-connector-queue'
 import { markWebhookEventReceived } from '../../data-connectors/service'
+import { isSteerableDelivery } from '../../data-connectors/webhook-steer'
 import { createScopedLogger } from '../../logger'
 import { getQueue, Queues } from '../queues'
 import type { JobContext } from '../types'
@@ -117,13 +118,14 @@ export async function dispatchWebhookEndpointToConnectors(
     // The connector-level signal is the binding; per-stream `webhookTrigger` only REFINES it.
     // A stream with no steering block still reacts: no `filter` ⇒ matches every topic
     // (`matchesFilter` treats absent/empty as match-all), no `paths` ⇒ not steerable ⇒ a full
-    // run-based sync. Adding `{path}` paths upgrades it to a targeted partial (steered) run.
+    // run-based sync. Adding `{path}` paths upgrades it to a targeted partial (steered) run —
+    // but only when THIS delivery resolves every token the request needs (else full sync).
     const wt = stream.requestConfig?.webhookTrigger
     if (!matchesFilter(wt?.filter, matchData)) continue
     matched.push({
       connectorId: stream.dataConnectorId,
       streamKey: stream.streamKey,
-      steerable: (wt?.paths?.length ?? 0) > 0,
+      steerable: isSteerableDelivery(stream.requestConfig, matchData),
     })
   }
 

@@ -262,11 +262,12 @@ function WebhookSteeringEditor({ connector, stream }: { connector: Connector; st
         : {}),
     }
     const existing = (stream.requestConfig ?? {}) as Record<string, unknown>
+    // Steering lives in `requestConfig.webhookTrigger`; `syncMode` stays the completeness
+    // axis (snapshot/incremental) so a steered stream can still reconcile on its sweeps.
     return setStreamRequestConfig
       .mutateAsync({
         streamId: stream.id,
         requestConfig: { ...existing, webhookTrigger },
-        syncMode: 'webhook',
       })
       .then(() => utils.dataConnector.listStreams.invalidate({ id: connector.id }))
   }

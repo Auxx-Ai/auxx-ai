@@ -176,15 +176,14 @@ export function StreamConfigPanel({
     isSavingRequest,
     request.commit
   )
-  const rawSyncMode = (stream.syncMode as 'snapshot' | 'incremental' | 'webhook') ?? 'snapshot'
-  // The picker only exposes snapshot/incremental; treat webhook as snapshot here.
   const syncMode: 'snapshot' | 'incremental' =
-    rawSyncMode === 'incremental' ? 'incremental' : 'snapshot'
+    stream.syncMode === 'incremental' ? 'incremental' : 'snapshot'
 
-  // Webhook streams steer the fetch with `{path}` placeholders declared in the
-  // Webhook steering section. Token-enable the request fields (URL + header/param
-  // values) so those paths are insertable via the `{` picker, not hand-typed.
-  const isWebhook = rawSyncMode === 'webhook'
+  // Webhook-driven connectors steer the fetch with `{path}` placeholders declared in the
+  // Webhook steering section. Token-enable the request fields (URL + header/param values)
+  // so those paths are insertable via the `{` picker, not hand-typed. Gated on the
+  // connector's trigger type — steering is orthogonal to syncMode (completeness).
+  const isSteered = connector.syncBehavior === 'webhook'
   const steeringPaths = useMemo<string[]>(() => {
     const wt = (stream.requestConfig as { webhookTrigger?: { paths?: string[] } } | null)
       ?.webhookTrigger
@@ -277,7 +276,7 @@ export function StreamConfigPanel({
                     </DropdownMenuContent>
                   </DropdownMenu>
                 </InputGroupAddon>
-                {isWebhook ? (
+                {isSteered ? (
                   <div className='flex-1'>
                     <tokenFieldContext.FieldEditor
                       value={request.value.path}
@@ -323,7 +322,7 @@ export function StreamConfigPanel({
                   <RecordKeyValueEditor
                     record={request.value.headers}
                     onChange={(headers) => request.set({ ...request.value, headers })}
-                    fieldContext={isWebhook ? tokenFieldContext : undefined}
+                    fieldContext={isSteered ? tokenFieldContext : undefined}
                   />
                 </RequestEditorBlock>
               )}
@@ -332,7 +331,7 @@ export function StreamConfigPanel({
                   <RecordKeyValueEditor
                     record={request.value.params}
                     onChange={(params) => request.set({ ...request.value, params })}
-                    fieldContext={isWebhook ? tokenFieldContext : undefined}
+                    fieldContext={isSteered ? tokenFieldContext : undefined}
                   />
                 </RequestEditorBlock>
               )}

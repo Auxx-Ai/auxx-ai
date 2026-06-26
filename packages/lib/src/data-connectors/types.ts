@@ -329,6 +329,19 @@ export class PaginationStalledError extends Error {
   }
 }
 
+/**
+ * A deterministic, non-retriable failure of a webhook-steered fetch — e.g. a payload path
+ * that returned no value, leaving an unresolved `{token}` in the request. Replaying the same
+ * delivery fails identically, so the steer job dead-letters it on the FIRST attempt instead
+ * of burning the bounded BullMQ retries (which are meant for transient 5xx/network errors).
+ */
+export class PermanentSteerError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'PermanentSteerError'
+  }
+}
+
 /** A connector fetch result — a stream of records (+ resume checkpoints) plus the next cursor. */
 export interface FetchResult {
   records: AsyncIterable<ConnectorYield>
@@ -559,7 +572,14 @@ export interface ResyncPending {
 
 export type LinkMode = 'upsert' | 'reference'
 export type TargetMode = 'owned' | 'contributing'
-export type SyncMode = 'snapshot' | 'incremental' | 'webhook'
+/**
+ * A stream's completeness strategy for FULL (backfill/sweep/scheduled/manual) runs, which
+ * also gates orphan reconciliation: `snapshot` re-crawls everything every run (absence =
+ * deletion → reconcile), `incremental` fetches watermark deltas (absence ≠ deletion → no
+ * reconcile unless a sweep). Webhook-steered partial runs are an orthogonal, per-delivery
+ * trigger concern (`syncBehavior='webhook'` + per-stream steering config) — NOT a sync mode.
+ */
+export type SyncMode = 'snapshot' | 'incremental'
 export type OrphanBehavior = 'archive' | 'mark_deleted' | 'ignore'
 
 // ── Scheduled-trigger config (jsonb on DataConnector) ─────────────────────────

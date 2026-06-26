@@ -23,6 +23,7 @@ import {
   type FetchResult,
   type PaginationSpec,
   PaginationStalledError,
+  PermanentSteerError,
   type StreamIncrementalConfig,
   type StreamRequestConfig,
 } from './types'
@@ -96,7 +97,9 @@ function assertResolved(parts: unknown[]): void {
   for (const part of parts) collectStringLeaves(part, leaves)
   const unresolved = leaves.flatMap(unresolvedPlaceholders)
   if (unresolved.length > 0) {
-    throw new Error(
+    // Deterministic: the same delivery fails identically on retry — flag it permanent so the
+    // steer job dead-letters immediately instead of burning bounded retries.
+    throw new PermanentSteerError(
       `generic-rest: unresolved webhook token(s) {${[...new Set(unresolved)].join('}, {')}} — ` +
         'the steering payload path returned no value'
     )
