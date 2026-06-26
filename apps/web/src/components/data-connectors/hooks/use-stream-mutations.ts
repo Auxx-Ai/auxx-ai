@@ -2,17 +2,13 @@
 'use client'
 
 import { toastError } from '@auxx/ui/components/toast'
-import { generateId } from '@auxx/utils'
 import { useCallback } from 'react'
-import { api, type RouterOutputs } from '~/trpc/react'
-
-type Stream = RouterOutputs['dataConnector']['listStreams'][number]
-type Mapping = Stream['mappings'][number]
+import { api } from '~/trpc/react'
 
 /**
  * The request fields the stream config UI edits and persists — a subset of the
- * engine's `StreamRequestConfig`. Threaded whole through `saveRequestConfig` and
- * `setSyncMode` so headers/params/body are never dropped on a partial write.
+ * engine's `StreamRequestConfig`. The canonical client shape the draft store + commit
+ * diff hold for a stream's request config.
  */
 export type UiRequestConfig = {
   path?: string
@@ -56,353 +52,25 @@ export type FieldMapping = {
 export type FieldMappings = FieldMapping[]
 
 /**
- * Optimistic stream + mapping mutations against the React-Query cache, with
- * rollback-on-error. The optimistic write mirrors the server's response shape,
- * so success needs no refetch — only failure restores the pre-edit snapshot.
- *
- * Mirrors `agents/.../use-toolset-mutations.ts` for the instant toggles. For
- * consistency this is the single mutation surface for a stream: it ALSO exposes
- * the deliberate/imperative mutations (`saveRequestConfig`, `setStreamSchema`,
- * `sampleFetch`) which stay invalidate-on-success rather than optimistic. See
- * plans/data-connectors/claude/06-frontend-update-handling.md §5.
- *
- * Every mapping read lives in the `listStreams` cache (mappings nested per
- * stream — plan 08 §3), so the optimistic mapping patches target that array, not
- * a separate per-stream query. All mapping field writes route through the single
- * `updateMapping` mutation.
+ * Imperative stream READS for the editor. Since the unified saving model
+ * (plans/data-connectors/v4) every PERSISTING stream/mapping edit goes through the
+ * connector draft store + `commit()` — this hook is now only the live test-fetch,
+ * which sends the (uncommitted) draft request config and persists nothing. That's why
+ * the old optimistic-immediate mutation surface (and its per-edit `getStatus`
+ * invalidation storm) is gone.
  */
-export function useStreamMutations(connectorId: string) {
-  const utils = api.useUtils()
-  const invalidateStreams = () =>
-    void utils.dataConnector.listStreams.invalidate({ id: connectorId })
-  // getStatus carries `resyncPending` but only polls while syncing — an idle connector
-  // won't refetch on its own, so a structural edit must nudge it or the re-sync banner
-  // stays hidden until reload. Cheap, and harmless on cosmetic edits.
-  const invalidateStatus = () => void utils.dataConnector.getStatus.invalidate({ id: connectorId })
-
-  // Optimistic (instant-toggle) mutations — no invalidate, rollback on error.
-  const updateStreamM = api.dataConnector.updateStream.useMutation()
-  const setStreamRequestConfigM = api.dataConnector.setStreamRequestConfig.useMutation()
-  const updateMappingM = api.dataConnector.updateMapping.useMutation()
-  const removeMappingM = api.dataConnector.removeMapping.useMutation()
-
-  // Deliberate / imperative mutations — invalidate-on-success + error toast.
-  // Co-located here for consistency (one mutation surface per stream) even
-  // though they aren't optimistic. A second `setStreamRequestConfig` instance
-  // backs the explicit Save (the bare one above stays optimistic for setSyncMode).
-  const saveRequestConfigM = api.dataConnector.setStreamRequestConfig.useMutation({
-    onSuccess: () => {
-      invalidateStreams()
-      invalidateStatus()
-    },
-    onError: (e) => toastError({ title: 'Could not save request', description: e.message }),
-  })
-  const setStreamSchemaM = api.dataConnector.setStreamSchema.useMutation({
-    onSuccess: invalidateStreams,
-    onError: (e) => toastError({ title: 'Could not save schema', description: e.message }),
-  })
+export function useStreamMutations(_connectorId: string) {
   const sampleFetchM = api.dataConnector.sampleFetch.useMutation({
     onError: (e) => toastError({ title: 'Test-fetch failed', description: e.message }),
   })
-  // Bare instance for the optimistic fan-out — invalidate + rollback are handled
-  // inline in `fanOut` so the temp child row reconciles to the server row.
-  const addChildMappingM = api.dataConnector.addMapping.useMutation()
-
-  // ── Stream-cache optimistic runner ────────────────────────────────────────
-  const patchStream = useCallback(
-    async (
-      streamId: string,
-      patch: Partial<Stream>,
-      run: () => Promise<unknown>,
-      errorTitle: string
-    ) => {
-      const key = { id: connectorId }
-      const previous = utils.dataConnector.listStreams.getData(key)
-      utils.dataConnector.listStreams.setData(key, (old) =>
-        old?.map((s) => (s.id === streamId ? { ...s, ...patch } : s))
-      )
-      try {
-        await run()
-        void utils.dataConnector.getStatus.invalidate({ id: connectorId })
-      } catch (err) {
-        utils.dataConnector.listStreams.setData(key, previous)
-        toastError({
-          title: errorTitle,
-          description: err instanceof Error ? err.message : 'Unknown error',
-        })
-      }
-    },
-    [connectorId, utils.dataConnector.listStreams, utils.dataConnector.getStatus]
-  )
-
-  // ── Mapping-cache optimistic runner ───────────────────────────────────────
-  // Mappings live nested in the `listStreams` cache; patch the matching stream's
-  // `mappings` array and roll the whole snapshot back on error.
-  const patchMappings = useCallback(
-    async (
-      streamId: string,
-      next: (rows: Mapping[]) => Mapping[],
-      run: () => Promise<unknown>,
-      errorTitle: string
-    ) => {
-      const key = { id: connectorId }
-      const previous = utils.dataConnector.listStreams.getData(key)
-      utils.dataConnector.listStreams.setData(key, (old) =>
-        old?.map((s) => (s.id === streamId ? { ...s, mappings: next(s.mappings) } : s))
-      )
-      try {
-        await run()
-        void utils.dataConnector.getStatus.invalidate({ id: connectorId })
-      } catch (err) {
-        utils.dataConnector.listStreams.setData(key, previous)
-        toastError({
-          title: errorTitle,
-          description: err instanceof Error ? err.message : 'Unknown error',
-        })
-      }
-    },
-    [connectorId, utils.dataConnector.listStreams, utils.dataConnector.getStatus]
-  )
-
-  // ── Mapping toggles ───────────────────────────────────────────────────────
-  const setMappingTarget = useCallback(
-    (
-      streamId: string,
-      input: {
-        mappingId: string
-        entityDefinitionId: string | null
-        targetMode: 'owned' | 'contributing'
-        linkMode: 'upsert' | 'reference'
-      }
-    ) =>
-      patchMappings(
-        streamId,
-        (rows) =>
-          rows.map((m) =>
-            m.id === input.mappingId
-              ? {
-                  ...m,
-                  targetMode: input.targetMode,
-                  linkMode: input.linkMode,
-                  entityDefinitionId: input.entityDefinitionId,
-                }
-              : m
-          ),
-        () => updateMappingM.mutateAsync(input),
-        'Could not change target'
-      ),
-    [patchMappings, updateMappingM]
-  )
-
-  const setRootPath = useCallback(
-    (streamId: string, mappingId: string, rootPath: string) =>
-      patchMappings(
-        streamId,
-        (rows) => rows.map((m) => (m.id === mappingId ? { ...m, rootPath } : m)),
-        () => updateMappingM.mutateAsync({ mappingId, rootPath }),
-        'Could not change root path'
-      ),
-    [patchMappings, updateMappingM]
-  )
-
-  const setFieldMappings = useCallback(
-    (streamId: string, mappingId: string, fieldMappings: FieldMappings) =>
-      patchMappings(
-        streamId,
-        (rows) =>
-          rows.map((m) =>
-            m.id === mappingId
-              ? { ...m, fieldMappings: fieldMappings as Mapping['fieldMappings'] }
-              : m
-          ),
-        () => updateMappingM.mutateAsync({ mappingId, fieldMappings }),
-        'Could not save field'
-      ),
-    [patchMappings, updateMappingM]
-  )
-
-  // ── Fan-out / reference (materialize a child mapping) ─────────────────────
-  // Optimistic insert of a temp child row so the branch re-renders as a
-  // MappingNode immediately, reconciled to the server row on settle. Mirrors the
-  // `patchMappings` rollback pattern (plan §5.1, §8.4).
-  const fanOut = useCallback(
-    (
-      streamId: string,
-      input: {
-        /** Null for a top-level mapping created straight off a source row. */
-        parentMappingId: string | null
-        rootPath: string
-        linkMode: 'upsert' | 'reference'
-        targetMode: 'owned' | 'contributing'
-        entityDefinitionId: string
-        /** The drilled relationship edge to the parent, as a serialized FieldReference. */
-        relationshipFieldKey?: string | null
-        /** Initial field bindings (e.g. a reference branch ships its External-ID anchor). */
-        fieldMappings?: FieldMapping[]
-      }
-    ) => {
-      const key = { id: connectorId }
-      const previous = utils.dataConnector.listStreams.getData(key)
-      const streamMappings = previous?.find((s) => s.id === streamId)?.mappings
-      const tempId = `temp_${generateId()}`
-      // Prefer cloning an existing row (every column present), but an empty stream
-      // has none — fall back to a literal temp row. Either way it reconciles to the
-      // server row on invalidate.
-      const template =
-        (input.parentMappingId
-          ? streamMappings?.find((m) => m.id === input.parentMappingId)
-          : undefined) ?? streamMappings?.[0]
-      const seedFieldMappings = (input.fieldMappings ?? []) as Mapping['fieldMappings']
-      const tempRow: Mapping = template
-        ? {
-            ...template,
-            id: tempId,
-            parentMappingId: input.parentMappingId,
-            rootPath: input.rootPath,
-            linkMode: input.linkMode,
-            targetMode: input.targetMode,
-            entityDefinitionId: input.entityDefinitionId,
-            relationshipFieldKey: input.relationshipFieldKey ?? null,
-            fieldMappings: seedFieldMappings,
-          }
-        : {
-            id: tempId,
-            dataConnectorStreamId: streamId,
-            organizationId: '',
-            parentMappingId: input.parentMappingId,
-            rootPath: input.rootPath,
-            linkMode: input.linkMode,
-            relationshipFieldKey: input.relationshipFieldKey ?? null,
-            targetMode: input.targetMode,
-            entityDefinitionId: input.entityDefinitionId,
-            fieldMappings: seedFieldMappings,
-            orphanBehavior: 'ignore',
-            createdAt: new Date(),
-            updatedAt: new Date(),
-          }
-      utils.dataConnector.listStreams.setData(key, (old) =>
-        old?.map((s) => (s.id === streamId ? { ...s, mappings: [...s.mappings, tempRow] } : s))
-      )
-      addChildMappingM
-        .mutateAsync({
-          dataConnectorStreamId: streamId,
-          parentMappingId: input.parentMappingId,
-          rootPath: input.rootPath,
-          linkMode: input.linkMode,
-          targetMode: input.targetMode,
-          entityDefinitionId: input.entityDefinitionId,
-          relationshipFieldKey: input.relationshipFieldKey ?? null,
-          fieldMappings: input.fieldMappings,
-        })
-        .then(() => void utils.dataConnector.listStreams.invalidate(key))
-        .catch((err) => {
-          utils.dataConnector.listStreams.setData(key, previous)
-          toastError({
-            title: 'Could not add mapping',
-            description: err instanceof Error ? err.message : 'Unknown error',
-          })
-        })
-    },
-    [connectorId, utils.dataConnector.listStreams, addChildMappingM]
-  )
-
-  const removeMapping = useCallback(
-    (streamId: string, mappingId: string) =>
-      patchMappings(
-        streamId,
-        // Drop the row and any descendants (parentMappingId chain).
-        (rows) => {
-          const removed = new Set([mappingId])
-          let grew = true
-          while (grew) {
-            grew = false
-            for (const m of rows) {
-              if (m.parentMappingId && removed.has(m.parentMappingId) && !removed.has(m.id)) {
-                removed.add(m.id)
-                grew = true
-              }
-            }
-          }
-          return rows.filter((m) => !removed.has(m.id))
-        },
-        () => removeMappingM.mutateAsync({ mappingId }),
-        'Could not remove mapping'
-      ),
-    [patchMappings, removeMappingM]
-  )
-
-  // ── Stream rename (optimistic) ────────────────────────────────────────────
-  const renameStream = useCallback(
-    (streamId: string, streamKey: string) =>
-      patchStream(
-        streamId,
-        { streamKey } as Partial<Stream>,
-        () => updateStreamM.mutateAsync({ streamId, streamKey }),
-        'Could not rename stream'
-      ),
-    [patchStream, updateStreamM]
-  )
-
-  // ── Stream sync-mode toggle (atomic) ──────────────────────────────────────
-  const setSyncMode = useCallback(
-    (streamId: string, syncMode: 'snapshot' | 'incremental', requestConfig: UiRequestConfig) =>
-      patchStream(
-        streamId,
-        { syncMode } as Partial<Stream>,
-        () => setStreamRequestConfigM.mutateAsync({ streamId, requestConfig, syncMode }),
-        'Could not save sync mode'
-      ),
-    [patchStream, setStreamRequestConfigM]
-  )
-
-  // ── Deliberate / imperative wrappers (invalidate-based) ───────────────────
-  const saveRequestConfig = useCallback(
-    (streamId: string, requestConfig: UiRequestConfig) =>
-      saveRequestConfigM.mutateAsync({ streamId, requestConfig }),
-    [saveRequestConfigM]
-  )
-
-  const setStreamSchema = useCallback(
-    (
-      streamId: string,
-      sourceSchema: Record<string, unknown>,
-      schemaSource: 'inferred' | 'manual'
-    ) => setStreamSchemaM.mutate({ streamId, sourceSchema, schemaSource }),
-    [setStreamSchemaM]
-  )
 
   const sampleFetch = useCallback(
     (input: Parameters<typeof sampleFetchM.mutateAsync>[0]) => sampleFetchM.mutateAsync(input),
     [sampleFetchM]
   )
 
-  // Persist a detected pagination spec by merging it onto the stream's whole
-  // request config (path/method/headers/params/body preserved). Powers the hidden
-  // "Use this" action (Step 10 §3.4); reuses the normal setStreamRequestConfig.
-  const applyPagination = useCallback(
-    (
-      streamId: string,
-      requestConfig: Parameters<typeof saveRequestConfigM.mutateAsync>[0]['requestConfig']
-    ) => saveRequestConfigM.mutateAsync({ streamId, requestConfig }),
-    [saveRequestConfigM]
-  )
-
   return {
-    // Optimistic instant toggles
-    setMappingTarget,
-    setRootPath,
-    setFieldMappings,
-    fanOut,
-    removeMapping,
-    renameStream,
-    setSyncMode,
-    // Deliberate / imperative (invalidate-based)
-    saveRequestConfig,
-    setStreamSchema,
     sampleFetch,
-    applyPagination,
-    // Pending flags
-    isSavingRequest: saveRequestConfigM.isPending,
     isSampling: sampleFetchM.isPending,
   }
 }

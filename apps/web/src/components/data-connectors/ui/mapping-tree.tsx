@@ -7,7 +7,6 @@ import { TreeRowButton } from '@auxx/ui/components/tree-row'
 import { Braces, Brackets, Hash, Plus } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { ResourcePickerContent } from '~/components/pickers/resource-picker'
-import { api, type RouterOutputs } from '~/trpc/react'
 import {
   buildSourceTree,
   lastSegment,
@@ -15,21 +14,27 @@ import {
   type SourceTreeNode,
   subtreeUnder,
 } from '../hooks/use-source-paths'
-import { useStreamMutations } from '../hooks/use-stream-mutations'
+import {
+  type DraftMapping,
+  getConnectorDraftState,
+  type MappingDraftMutations,
+  useConnectorDraftStore,
+  visibleMappings,
+} from '../stores/connector-draft-store'
 import { BranchRow } from './branch-row'
 import { CappedNodeList } from './capped-node-list'
 import { MappingNode } from './mapping-node'
 import { MappingRow } from './mapping-row'
 
-type Mapping = RouterOutputs['dataConnector']['listStreams'][number]['mappings'][number]
+// The mapping tree renders from the connector DRAFT store (plans/data-connectors/v4):
+// fan-out/remove are temp-id/tombstone draft edits, committed by the connector save bar.
+type Mapping = DraftMapping
 
 interface MappingTreeProps {
   connectorId: string
   streamId: string
   /** The stream key — the record noun for the unnamed array root. */
   streamKey: string
-  /** The stream's mappings (loaded with the stream — plan 08 §3). */
-  mappings: Mapping[]
   sourcePaths: SourcePath[]
   /** The stream's raw source schema (Layer A) — fed to the Tier 2 suggester. */
   sourceSchema?: Record<string, unknown> | null
@@ -54,30 +59,52 @@ export function MappingTree({
   connectorId,
   streamId,
   streamKey,
-  mappings: rows,
   sourcePaths,
   sourceSchema,
 }: MappingTreeProps) {
-  const mutations = useStreamMutations(connectorId)
-  const { fanOut } = mutations
+  // Render the stream's mappings from the DRAFT (optimistic, never the network): a
+  // fan-out/remove shows instantly and only commits via the save bar (the live-safety
+  // win, plan §P3). `_deleted` tombstones are hidden.
+  const draftStream = useConnectorDraftStore((s) =>
+    s.draft.streams.find((st) => st.id === streamId)
+  )
+  const draftStreams = useConnectorDraftStore((s) => s.draft.streams)
+  const rows = useMemo(() => (draftStream ? visibleMappings(draftStream) : []), [draftStream])
   const [rootOpen, setRootOpen] = useState(true)
 
-  // Which defs the WHOLE connector already syncs (not just this stream) — a soft
-  // HINT the field picker uses to mark relationships whose related record is
-  // already streamed elsewhere. Under def-keyed resolution (v3 §9.6) it is no longer
-  // a hard gate: drilling a relationship lazily contributes to the related def. Read
-  // from the shared `listStreams` cache the parent already populated — no extra fetch.
-  const { data: allStreams } = api.dataConnector.listStreams.useQuery({ id: connectorId })
+  // Draft-backed mapping mutations — the adapter that replaces `use-stream-mutations`'s
+  // optimistic-immediate cache writes. Imperative store access, so no render deps.
+  const mutations = useMemo<MappingDraftMutations>(
+    () => ({
+      fanOut: (sid, input) => getConnectorDraftState().addMapping(sid, input),
+      setFieldMappings: (sid, mappingId, fieldMappings) =>
+        getConnectorDraftState().updateMapping(sid, mappingId, { fieldMappings }),
+      setMappingTarget: (sid, input) =>
+        getConnectorDraftState().updateMapping(sid, input.mappingId, {
+          entityDefinitionId: input.entityDefinitionId,
+          targetMode: input.targetMode,
+          linkMode: input.linkMode,
+        }),
+      removeMapping: (sid, mappingId) => getConnectorDraftState().removeMapping(sid, mappingId),
+    }),
+    []
+  )
+  const { fanOut } = mutations
+
+  // Which defs the WHOLE connector already syncs (not just this stream) — a soft HINT
+  // the field picker uses to mark relationships whose related record is already streamed
+  // elsewhere. Under def-keyed resolution (v3 §9.6) it's no longer a hard gate. Derived
+  // from the DRAFT so an unsaved drill counts immediately (no extra query).
   const syncedDefIds = useMemo(() => {
     const ids = new Set<string>()
-    for (const s of allStreams ?? []) {
-      for (const m of s.mappings) {
+    for (const s of draftStreams) {
+      for (const m of visibleMappings(s)) {
         if (m.linkMode === 'reference' || !m.entityDefinitionId) continue
         ids.add(m.entityDefinitionId)
       }
     }
     return ids
-  }, [allStreams])
+  }, [draftStreams])
 
   // The payload root type dictates the whole-payload rootPath: an array root fans
   // out per element (`[]`); an object root is a single record (`''`).
@@ -231,7 +258,7 @@ interface TopSourceNodeProps {
   sourcePaths: SourcePath[]
   byMappingId: Map<string, Mapping>
   childrenOf: Map<string | null, Mapping[]>
-  mutations: ReturnType<typeof useStreamMutations>
+  mutations: MappingDraftMutations
   syncedDefIds: Set<string>
 }
 

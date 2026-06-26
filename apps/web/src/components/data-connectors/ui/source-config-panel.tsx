@@ -7,7 +7,6 @@ import type { FieldOptions } from '@auxx/lib/field-values/client'
 import { Field, FieldLabel } from '@auxx/ui/components/field'
 import { Input } from '@auxx/ui/components/input'
 import { Section } from '@auxx/ui/components/section'
-import { toastError } from '@auxx/ui/components/toast'
 import { Globe, Settings2 } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
@@ -15,13 +14,8 @@ import { type FieldEntry, readFieldNodes, seedDefaults } from '~/components/glob
 import { BaseType } from '~/components/workflow/types'
 import { VarEditorField, VarEditorFieldRow } from '~/components/workflow/ui/input-editor/var-editor'
 import { api } from '~/trpc/react'
-import { useRegisterSaver } from '../hooks/use-connector-edits'
+import { getConnectorDraftState, useConnectorDraftStore } from '../stores/connector-draft-store'
 import { RecordKeyValueEditor, RequestEditorBlock, RevealChip } from './request-editors'
-
-/** Order-independent serialization for dirty comparison (header order is cosmetic). */
-function canonRecord(record: Record<string, string>): string {
-  return JSON.stringify(Object.entries(record).sort(([a], [b]) => a.localeCompare(b)))
-}
 
 type Connector = NonNullable<ReturnType<typeof api.dataConnector.getById.useQuery>['data']>
 
@@ -41,53 +35,39 @@ interface SourceConfigPanelProps {
  *   renderer).
  */
 export function SourceConfigPanel({ connector }: SourceConfigPanelProps) {
-  const utils = api.useUtils()
   const isApp = connector.definitionKind === 'app'
-
-  const update = api.dataConnector.update.useMutation({
-    onSuccess: () => void utils.dataConnector.getById.invalidate({ id: connector.id }),
-    onError: (e) => toastError({ title: 'Could not save', description: e.message }),
-  })
-  // Awaitable so the connector-wide save bar can commit it alongside other sections.
-  const save = (config: Record<string, unknown>) => update.mutateAsync({ id: connector.id, config })
-
   if (!isApp) {
-    return <GenericRestSource connector={connector} onSave={save} saving={update.isPending} />
+    return <GenericRestSource connector={connector} />
   }
-
-  return <AppConfigSource connector={connector} onSave={save} saving={update.isPending} />
+  return <AppConfigSource connector={connector} />
 }
 
 // ── generic-rest: base URL + shared headers ───────────────────────────────────
 
-function GenericRestSource({
-  connector,
-  onSave,
-  saving,
-}: {
-  connector: Connector
-  onSave: (config: Record<string, unknown>) => Promise<unknown> | unknown
-  saving: boolean
-}) {
-  const config = (connector.config ?? {}) as {
+function GenericRestSource({ connector }: { connector: Connector }) {
+  // Render from the draft store (optimistic) — nothing persists until the save bar's
+  // `commit()` (the unified saving model, plans/data-connectors/v4).
+  const config = useConnectorDraftStore((s) => s.draft.config) as {
     endpoint?: { baseUrl?: string; headers?: Record<string, string> }
   }
-  const [baseUrl, setBaseUrl] = useState(config.endpoint?.baseUrl ?? '')
-  const [headers, setHeaders] = useState<Record<string, string>>(config.endpoint?.headers ?? {})
+  const baseUrl = config.endpoint?.baseUrl ?? ''
+  const headers = config.endpoint?.headers ?? {}
   // Reveal the headers editor by default when the connector already has some.
   const [showHeaders, setShowHeaders] = useState(
-    () => Object.keys(config.endpoint?.headers ?? {}).length > 0
+    () => Object.keys((connector.config as typeof config)?.endpoint?.headers ?? {}).length > 0
   )
 
-  const handleSave = () => {
-    const endpoint = { ...(config.endpoint ?? {}), baseUrl, headers }
-    return onSave({ ...(connector.config ?? {}), endpoint })
+  // Merge a patch onto the endpoint, preserving sibling config keys (backfill window,
+  // webhook signal). Read the latest draft config to avoid a stale closure between edits.
+  const patchEndpoint = (patch: { baseUrl?: string; headers?: Record<string, string> }) => {
+    const cur = getConnectorDraftState().draft.config as {
+      endpoint?: Record<string, unknown>
+    }
+    getConnectorDraftState().setConfig({
+      ...cur,
+      endpoint: { ...(cur.endpoint ?? {}), ...patch },
+    })
   }
-
-  const isDirty =
-    baseUrl !== (config.endpoint?.baseUrl ?? '') ||
-    canonRecord(headers) !== canonRecord(config.endpoint?.headers ?? {})
-  useRegisterSaver('source', isDirty, saving, handleSave)
 
   return (
     <div className='flex flex-col'>
@@ -102,7 +82,7 @@ function GenericRestSource({
             <FieldLabel>Base URL</FieldLabel>
             <Input
               value={baseUrl}
-              onChange={(e) => setBaseUrl(e.target.value)}
+              onChange={(e) => patchEndpoint({ baseUrl: e.target.value })}
               placeholder='https://api.example.com/v1'
             />
           </Field>
@@ -118,7 +98,10 @@ function GenericRestSource({
 
           {showHeaders && (
             <RequestEditorBlock title='Shared headers'>
-              <RecordKeyValueEditor record={headers} onChange={setHeaders} />
+              <RecordKeyValueEditor
+                record={headers}
+                onChange={(next) => patchEndpoint({ headers: next })}
+              />
             </RequestEditorBlock>
           )}
         </div>
@@ -129,38 +112,30 @@ function GenericRestSource({
 
 // ── app / template: schema-driven config form ─────────────────────────────────
 
-function AppConfigSource({
-  connector,
-  onSave,
-  saving,
-}: {
-  connector: Connector
-  onSave: (config: Record<string, unknown>) => Promise<unknown> | unknown
-  saving: boolean
-}) {
+function AppConfigSource({ connector }: { connector: Connector }) {
   // The connector's declared config schema, fetched from the app catalog via
   // tRPC (05c §3). Falls back to a `config._schema` blob if the catalog omits it.
   const { data } = api.dataConnector.connectorSchema.useQuery({ id: connector.id })
+  const draftConfig = useConnectorDraftStore((s) => s.draft.config)
   const schema =
     (data?.configJsonSchema as Record<string, unknown> | null) ??
-    (connector.config as { _schema?: Record<string, unknown> })?._schema ??
+    (draftConfig as { _schema?: Record<string, unknown> })?._schema ??
     null
   // Per-field dynamic-select hints (tool-backed dropdowns). Keyed by config field.
   const optionHints = (data?.configOptionHints ?? null) as Record<string, ActionInputHint> | null
   const fields = useMemo(() => readFieldNodes(schema), [schema])
-  const baseline = useMemo(
-    () => ({ ...seedDefaults(fields), ...(connector.config ?? {}) }) as Record<string, unknown>,
-    [fields, connector.config]
+  const defaults = useMemo(() => seedDefaults(fields) as Record<string, unknown>, [fields])
+  // Declared field values render from the draft (optimistic), defaults filling the gaps.
+  const values = useMemo(
+    () => ({ ...defaults, ...draftConfig }) as Record<string, unknown>,
+    [defaults, draftConfig]
   )
-  const [values, setValues] = useState<Record<string, unknown>>(() => baseline)
-
-  // Dirty per declared field (order-independent); feeds the connector-wide save bar.
-  const isDirty = fields.some(
-    (f) => JSON.stringify(values[f.key]) !== JSON.stringify(baseline[f.key])
-  )
-  useRegisterSaver('source', isDirty, saving, () =>
-    onSave({ ...(connector.config ?? {}), ...values })
-  )
+  // Write a single field back onto the draft config (preserving sibling keys); commit
+  // persists. Read the latest config to avoid a stale closure between edits.
+  const setValue = (key: string, next: unknown) => {
+    const cur = getConnectorDraftState().draft.config
+    getConnectorDraftState().setConfig({ ...cur, [key]: next })
+  }
 
   if (fields.length === 0) {
     return null
@@ -179,7 +154,7 @@ function AppConfigSource({
           className='p-0 sm:[&_[data-slot=field-row-label]]:w-70!'>
           {fields.map((entry) => {
             const hint = optionHints?.[entry.key]
-            const onChange = (next: unknown) => setValues((v) => ({ ...v, [entry.key]: next }))
+            const onChange = (next: unknown) => setValue(entry.key, next)
             return hint?.kind === 'dynamic-select' ? (
               <ToolBackedSelectRow
                 key={entry.key}

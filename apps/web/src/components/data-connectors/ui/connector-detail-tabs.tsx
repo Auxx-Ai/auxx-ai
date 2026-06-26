@@ -9,7 +9,8 @@ import { useQueryState } from 'nuqs'
 import { useCallback, useMemo } from 'react'
 import { useScrollSpy } from '~/hooks/use-scroll-spy'
 import { api } from '~/trpc/react'
-import { ConnectorEditsProvider } from '../hooks/use-connector-edits'
+import { useConnectorCommit } from '../hooks/use-connector-commit'
+import { useConnectorDraftSync } from '../hooks/use-connector-draft-sync'
 import { ConnectionSection } from './connection-section'
 import { ConnectorSaveBar } from './connector-save-bar'
 import { ConnectorSetupStepper } from './connector-setup-stepper'
@@ -69,6 +70,15 @@ export function ConnectorDetailTabs({
     [streams.data, selectedStreamId]
   )
 
+  // The unified saving model (plans/data-connectors/v4): one draft store seeded from
+  // these queries drives every editor, and a single `commit()` flushes it. A `pending`
+  // connector (first-run setup) autosaves on a debounce; any other status is manual
+  // (the floating save bar). Mounted once here so BOTH the stepper and the flat editor
+  // share the draft. Replaces the old `ConnectorEditsProvider` registry.
+  const isPending = asConnectorStatus(connector.status) === 'pending'
+  const commit = useConnectorCommit()
+  useConnectorDraftSync({ connector, streams: streams.data, autoSave: isPending, commit })
+
   // Stack: root → stream. The formula editor is now a dialog (in the mapping
   // tree), not a pushed drill; the connector source config is inlined in the
   // Connection section.
@@ -110,87 +120,81 @@ export function ConnectorDetailTabs({
   // A `pending` connector is in first-run setup → render the guided stepper. Any
   // other status renders today's flat tabbed editor. Both mount the identical
   // section components against the identical mutations (create-sync-flow-plan §2).
-  if (asConnectorStatus(connector.status) === 'pending') {
-    return (
-      <ConnectorEditsProvider autoSave>
-        <ConnectorSetupStepper connector={connector} />
-      </ConnectorEditsProvider>
-    )
+  if (isPending) {
+    return <ConnectorSetupStepper connector={connector} />
   }
 
   return (
-    <ConnectorEditsProvider>
-      <div className='flex min-h-0 flex-1 flex-col'>
-        <NavStack
-          stack={stack}
-          onStackChange={handleStackChange}
-          className='flex min-h-0 flex-1 flex-col'>
-          <NavStackBar className='shrink-0 border-b bg-primary-150' />
-          <NavStackPanels className='min-h-0 flex-1'>
-            <NavStackPanel
-              value='root'
-              className='h-full bg-neutral-100 dark:bg-background'
-              bar={
-                <Tabs value={tab} onValueChange={handleTabChange}>
-                  <TabsList className='w-full justify-start rounded-none bg-transparent px-2'>
-                    {CONNECTOR_TABS.map((value) => {
-                      const Icon = TAB_ICONS[value]
-                      return (
-                        <TabsTrigger key={value} value={value} variant='outline'>
-                          <Icon />
-                          {TAB_LABELS[value]}
-                        </TabsTrigger>
-                      )
-                    })}
-                  </TabsList>
-                </Tabs>
-              }>
-              <div className='flex h-full flex-col'>
-                {resyncBanner}
-                <div className='relative min-h-0 flex-1'>
-                  <ScrollArea
-                    viewportRef={scrollContainerRef}
-                    className='h-full'
-                    scrollbarClassName='w-1.5 z-20'
-                    noFade>
-                    <div ref={assignRef('connection')}>
-                      <ConnectionSection connector={connector} />
-                    </div>
-                    <div ref={assignRef('streams')}>
-                      <StreamsSection
-                        connector={connector}
-                        onSelect={(id) => setSelectedStreamId(id)}
-                      />
-                    </div>
-                    <div ref={assignRef('schedule')}>
-                      <ScheduleSection connector={connector} />
-                    </div>
+    <div className='flex min-h-0 flex-1 flex-col'>
+      <NavStack
+        stack={stack}
+        onStackChange={handleStackChange}
+        className='flex min-h-0 flex-1 flex-col'>
+        <NavStackBar className='shrink-0 border-b bg-primary-150' />
+        <NavStackPanels className='min-h-0 flex-1'>
+          <NavStackPanel
+            value='root'
+            className='h-full bg-neutral-100 dark:bg-background'
+            bar={
+              <Tabs value={tab} onValueChange={handleTabChange}>
+                <TabsList className='w-full justify-start rounded-none bg-transparent px-2'>
+                  {CONNECTOR_TABS.map((value) => {
+                    const Icon = TAB_ICONS[value]
+                    return (
+                      <TabsTrigger key={value} value={value} variant='outline'>
+                        <Icon />
+                        {TAB_LABELS[value]}
+                      </TabsTrigger>
+                    )
+                  })}
+                </TabsList>
+              </Tabs>
+            }>
+            <div className='flex h-full flex-col'>
+              {resyncBanner}
+              <div className='relative min-h-0 flex-1'>
+                <ScrollArea
+                  viewportRef={scrollContainerRef}
+                  className='h-full'
+                  scrollbarClassName='w-1.5 z-20'
+                  noFade>
+                  <div ref={assignRef('connection')}>
+                    <ConnectionSection connector={connector} />
+                  </div>
+                  <div ref={assignRef('streams')}>
+                    <StreamsSection
+                      connector={connector}
+                      onSelect={(id) => setSelectedStreamId(id)}
+                    />
+                  </div>
+                  <div ref={assignRef('schedule')}>
+                    <ScheduleSection connector={connector} />
+                  </div>
 
-                    {mobileRunsPanel && <div className='h-[60vh]'>{mobileRunsPanel}</div>}
+                  {mobileRunsPanel && <div className='h-[60vh]'>{mobileRunsPanel}</div>}
 
-                    <div className='h-[40vh]' />
-                  </ScrollArea>
-                  <ConnectorSaveBar />
-                </div>
-              </div>
-            </NavStackPanel>
-
-            <NavStackPanel
-              value='stream'
-              className='h-full bg-neutral-100 dark:bg-background'
-              bar={streamBar}>
-              {/* `relative` so the floating save bar anchors to this panel — the
-                  root panel's bar is offscreen while drilled into a stream. */}
-              <div className='relative h-full'>
-                {selectedStream ? (
-                  <StreamConfigPanel connector={connector} stream={selectedStream} />
-                ) : null}
+                  <div className='h-[40vh]' />
+                </ScrollArea>
                 <ConnectorSaveBar />
               </div>
-            </NavStackPanel>
-          </NavStackPanels>
-        </NavStack>
-      </div>
-    </ConnectorEditsProvider>
+            </div>
+          </NavStackPanel>
+
+          <NavStackPanel
+            value='stream'
+            className='h-full bg-neutral-100 dark:bg-background'
+            bar={streamBar}>
+            {/* `relative` so the floating save bar anchors to this panel — the
+                  root panel's bar is offscreen while drilled into a stream. */}
+            <div className='relative h-full'>
+              {selectedStream ? (
+                <StreamConfigPanel connector={connector} stream={selectedStream} />
+              ) : null}
+              <ConnectorSaveBar />
+            </div>
+          </NavStackPanel>
+        </NavStackPanels>
+      </NavStack>
+    </div>
   )
 }

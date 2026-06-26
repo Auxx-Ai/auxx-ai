@@ -118,6 +118,14 @@ export {
   provisionSpecsForMapping,
   provisionTarget,
 } from './provisioning'
+// Sync-action readiness predicate (v3 §1) — also client-safe via `./client`.
+export {
+  type ConnectorReadiness,
+  getConnectorReadiness,
+  READINESS_REASON,
+  type ReadinessProblem,
+  type ReadinessStream,
+} from './readiness'
 export { type ConnectorSyncEventKind, publishConnectorSync } from './realtime'
 export { archiveExternalId, handleConnectorDelete, reconcileOrphans } from './reconciliation'
 export { resolveRelationships } from './relationship-pass'

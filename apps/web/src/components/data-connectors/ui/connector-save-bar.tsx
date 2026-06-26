@@ -4,23 +4,33 @@
 import { Button } from '@auxx/ui/components/button'
 import { Loader2 } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
-import { useConnectorEdits } from '../hooks/use-connector-edits'
+import { useConnectorCommit } from '../hooks/use-connector-commit'
+import {
+  selectCanCommit,
+  selectIsDirty,
+  useConnectorDraftStore,
+} from '../stores/connector-draft-store'
 
 /** A touch past critical so the button springs up with a slight overshoot. */
 const SPRING = { type: 'spring', stiffness: 420, damping: 26 } as const
 
 /**
- * The single, universal save control for the connector root panel — a floating
- * button pinned to the bottom of the panel that springs up from nothing when some
- * wrapped section (source config, schedule) is dirty and springs back down when it
- * isn't. Overlays the scroll content (doesn't take layout), and commits every
- * dirty section at once. Replaces the per-section Save buttons.
+ * The single, universal save control for the connector editor — a floating button
+ * pinned to the bottom of the panel that springs up when the draft is dirty (any
+ * section: source, schedule, request, webhook steering, mappings) and springs back
+ * when it isn't. It commits the WHOLE draft at once (`commit()` — the unified saving
+ * model, plans/data-connectors/v4). Reads the draft store's `isDirty`/`canCommit`/
+ * `isSaving` selectors directly — no section registry.
  *
- * In auto-save mode (setup) there's no manual commit — drafts persist on a debounce —
- * so the bar degrades to a passive "Saving…" pill shown only while a save is in flight.
+ * In auto-save mode (setup) there's no manual commit — the draft flushes on a debounce
+ * — so the bar degrades to a passive "Saving…" pill shown only while a save is in flight.
  */
 export function ConnectorSaveBar() {
-  const { isDirty, isSaving, autoSave, commitAll } = useConnectorEdits()
+  const isDirty = useConnectorDraftStore(selectIsDirty)
+  const canCommit = useConnectorDraftStore(selectCanCommit)
+  const isSaving = useConnectorDraftStore((s) => s.isSaving)
+  const autoSave = useConnectorDraftStore((s) => s.autoSave)
+  const commit = useConnectorCommit()
 
   // Setup mode: no button, just transient save feedback.
   if (autoSave) {
@@ -58,7 +68,9 @@ export function ConnectorSaveBar() {
               className='shadow-lg'
               loading={isSaving}
               loadingText='Saving...'
-              onClick={() => void commitAll()}>
+              // Dirty but invalid (e.g. unparseable request body) → visible-but-disabled.
+              disabled={!canCommit}
+              onClick={() => void commit()}>
               Save changes
             </Button>
           </motion.div>

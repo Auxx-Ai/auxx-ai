@@ -1,7 +1,6 @@
 // apps/web/src/components/data-connectors/ui/webhook-signal-section.tsx
 'use client'
 
-import { toastError } from '@auxx/ui/components/toast'
 import { TreeRow } from '@auxx/ui/components/tree-row'
 import { Webhook } from 'lucide-react'
 import { useMemo, useState } from 'react'
@@ -14,7 +13,8 @@ import {
 } from '~/components/pickers/trigger-source'
 import { WebhookEndpointInspector } from '~/components/webhooks/ui/webhook-endpoint-inspector'
 import { AppTriggerTestSection } from '~/components/workflow/apps/trigger/app-trigger-test-section'
-import { api, type RouterOutputs } from '~/trpc/react'
+import type { RouterOutputs } from '~/trpc/react'
+import { getConnectorDraftState, useConnectorDraftStore } from '../stores/connector-draft-store'
 
 type Connector = NonNullable<RouterOutputs['dataConnector']['getById']>
 
@@ -44,7 +44,6 @@ function savedSource(signal: WebhookSignal | undefined): BoundSource | null {
  */
 export function WebhookSignalSection({ connector }: { connector: Connector }) {
   const { appInstallations, appConnections } = useAppsContext()
-  const utils = api.useUtils()
 
   // Resolve the app installation behind this connector's connection (if any) so app
   // triggers can be scoped to it. Endpoints are app-less, so this may be null.
@@ -64,13 +63,12 @@ export function WebhookSignalSection({ connector }: { connector: Connector }) {
     appIdFilter: appId,
   })
 
-  const saved = (connector.config as { webhookTrigger?: WebhookSignal } | null)?.webhookTrigger
+  // Read the signal from the DRAFT config so an unsaved pick is reflected; the unified
+  // save bar persists it with everything else (plans/data-connectors/v4).
+  const draftConfig = useConnectorDraftStore((s) => s.draft.config)
+  const saved = (draftConfig as { webhookTrigger?: WebhookSignal }).webhookTrigger
   const [source, setSource] = useState<BoundSource | null>(() => savedSource(saved))
   const [pickerOpen, setPickerOpen] = useState(false)
-
-  const update = api.dataConnector.update.useMutation({
-    onError: (e) => toastError({ title: 'Error saving webhook trigger', description: e.message }),
-  })
 
   const selectedAppTrigger =
     source?.kind === 'app'
@@ -88,26 +86,23 @@ export function WebhookSignalSection({ connector }: { connector: Connector }) {
         ? (selectedEndpoint?.name ?? source.webhookEndpointId)
         : null
 
-  // Persist the signal (or clear it) into config.webhookTrigger, merged so the rest of
-  // the connector config (endpoint/filters/backfillWindowSpan) survives.
-  const persist = async (next: BoundSource | null) => {
+  // Write the signal (or clear it) into the DRAFT config.webhookTrigger, merged so the
+  // rest of the connector config (endpoint/filters/backfillWindowSpan) survives. The save
+  // bar commits it — nothing persists on pick.
+  const persist = (next: BoundSource | null) => {
     setSource(next)
     const signal: WebhookSignal | undefined = !next
       ? undefined
       : next.kind === 'app'
         ? { triggerId: next.triggerId }
         : { webhookEndpointId: next.webhookEndpointId }
-    const existingConfig = (connector.config as Record<string, unknown> | null) ?? {}
-    await update.mutateAsync({
-      id: connector.id,
-      config: { ...existingConfig, webhookTrigger: signal },
-    })
-    await utils.dataConnector.getById.invalidate({ id: connector.id })
+    const cur = getConnectorDraftState().draft.config
+    getConnectorDraftState().setConfig({ ...cur, webhookTrigger: signal })
   }
 
   const handlePick = (picked: TriggerSource) => {
     setPickerOpen(false)
-    void persist(
+    persist(
       picked.kind === 'app'
         ? { kind: 'app', triggerId: picked.trigger.triggerId }
         : { kind: 'webhook-endpoint', webhookEndpointId: picked.endpoint.id }

@@ -12,8 +12,8 @@ import {
 import { Label } from '@auxx/ui/components/label'
 import { RadioGroup, RadioGroupItem } from '@auxx/ui/components/radio-group'
 import { EmptySection, Section } from '@auxx/ui/components/section'
-import { toastError } from '@auxx/ui/components/toast'
 import { ChevronDown, Clock, Webhook } from 'lucide-react'
+import { useEffect, useState } from 'react'
 import { useAppsContext } from '~/components/apps/providers/apps-context'
 import {
   type ScheduledState,
@@ -22,8 +22,11 @@ import {
   scheduledStateFromConfig,
 } from '~/components/global/schedule'
 import { api } from '~/trpc/react'
-import { useBufferedConfig } from '../hooks/use-buffered-config'
-import { useRegisterSaver } from '../hooks/use-connector-edits'
+import {
+  getConnectorDraftState,
+  selectIsDirty,
+  useConnectorDraftStore,
+} from '../stores/connector-draft-store'
 import { WebhookSignalInspector, WebhookSignalSection } from './webhook-signal-section'
 import { WebhookSteeringSection } from './webhook-steering-section'
 
@@ -56,13 +59,6 @@ interface ScheduleSectionProps {
  * `syncBehavior: 'webhook'` + `scheduleConfig: null`, and `updateConnector` reconciles).
  */
 export function ScheduleSection({ connector }: ScheduleSectionProps) {
-  const utils = api.useUtils()
-
-  const update = api.dataConnector.update.useMutation({
-    onSuccess: () => void utils.dataConnector.getById.invalidate({ id: connector.id }),
-    onError: (e) => toastError({ title: 'Could not save schedule', description: e.message }),
-  })
-
   const connectionId = connector.credentialId ?? null
 
   // App-trigger sync bridge (plans/data-connectors/v4): webhook mode is offered
@@ -98,61 +94,70 @@ export function ScheduleSection({ connector }: ScheduleSectionProps) {
   const supportsWindow = (streams.data ?? []).some(
     (s) => (s.requestConfig as { backfillWindow?: { sinceParam?: string } } | null)?.backfillWindow
   )
-  const persistedSpan = ((connector.config as { backfillWindowSpan?: BackfillWindowSpan } | null)
-    ?.backfillWindowSpan ?? 'all') as BackfillWindowSpan
 
-  // Behavior + schedule + backfill window are one buffered draft behind a single Save
-  // — flip mode to 'auto' for autosave (plan §6). All edits dirty the same draft.
-  const draft = useBufferedConfig(
-    {
-      behavior: (connector.syncBehavior as SyncBehavior) ?? 'manual',
-      schedule: scheduledStateFromConfig(
-        connector.scheduleConfig as Record<string, unknown> | null
-      ),
-      windowSpan: persistedSpan,
-    },
-    (value) => {
-      // `update` replaces config wholesale, so merge the span into the existing
-      // config — and only send it when it changed, to avoid clobbering a concurrent
-      // config edit on a pure schedule save.
-      const windowChanged = value.windowSpan !== persistedSpan
-      const configPatch = windowChanged
-        ? {
-            config: {
-              ...((connector.config as Record<string, unknown> | null) ?? {}),
-              backfillWindowSpan: value.windowSpan,
-            },
-          }
-        : {}
-      if (value.behavior === 'scheduled') {
-        const config = scheduledConfigFromState(value.schedule)
-        if (!config) {
-          toastError({
-            title: 'Invalid schedule',
-            description: 'Pick a valid cadence before saving.',
-          })
-          return
-        }
-        return update.mutateAsync({
-          id: connector.id,
-          syncBehavior: 'scheduled',
-          scheduleConfig: config,
-          ...configPatch,
-        })
-      }
-      return update.mutateAsync({
-        id: connector.id,
-        syncBehavior: value.behavior,
-        scheduleConfig: null,
-        ...configPatch,
-      })
-    },
-    { mode: 'manual' }
+  // Behavior + schedule + backfill window all edit the one connector draft (the unified
+  // saving model, plans/data-connectors/v4) — committed together by the floating save bar.
+  const setSyncBehavior = useConnectorDraftStore((s) => s.setSyncBehavior)
+  const setScheduleConfig = useConnectorDraftStore((s) => s.setScheduleConfig)
+  const setBackfillWindowSpan = useConnectorDraftStore((s) => s.setBackfillWindowSpan)
+  const setStreamValidity = useConnectorDraftStore((s) => s.setStreamValidity)
+  const behavior = useConnectorDraftStore((s) => s.draft.syncBehavior) as SyncBehavior
+  const windowSpan = useConnectorDraftStore(
+    (s) =>
+      ((s.draft.config as { backfillWindowSpan?: BackfillWindowSpan }).backfillWindowSpan ??
+        'all') as BackfillWindowSpan
   )
-  const { behavior, schedule, windowSpan } = draft.value
 
-  // Feeds the connector-wide save bar; no per-section Save button.
-  useRegisterSaver('schedule', draft.isDirty, update.isPending, draft.commit)
+  // The cadence editor holds local `ScheduledState` so an invalid intermediate edit stays
+  // visible (the draft only ever holds a VALID config). Seeded from persisted config;
+  // re-seeds on a server move only while the draft is clean (never clobbers an edit).
+  const [schedule, setSchedule] = useState<ScheduledState>(() =>
+    scheduledStateFromConfig(connector.scheduleConfig as Record<string, unknown> | null)
+  )
+  useEffect(() => {
+    if (!selectIsDirty(getConnectorDraftState())) {
+      setSchedule(
+        scheduledStateFromConfig(connector.scheduleConfig as Record<string, unknown> | null)
+      )
+    }
+  }, [connector.scheduleConfig])
+
+  // A non-stream validity key — blocks commit while a "scheduled" behavior has no valid
+  // cadence (replaces the old toast-and-bail). Cleared when the cadence becomes valid.
+  const scheduleValidityKey = `schedule:${connector.id}`
+
+  // Mirror a cadence edit into the draft. Reverting to the original writes the EXACT
+  // snapshot config (no false-dirty from re-serialization, jsonb key reorder);
+  // an invalid cadence blocks commit instead of persisting a broken schedule.
+  const commitSchedule = (next: ScheduledState) => {
+    setSchedule(next)
+    const seedConfig = (getConnectorDraftState().snapshot?.scheduleConfig ?? null) as Record<
+      string,
+      unknown
+    > | null
+    if (JSON.stringify(next) === JSON.stringify(scheduledStateFromConfig(seedConfig))) {
+      setScheduleConfig(seedConfig)
+      setStreamValidity(scheduleValidityKey, true)
+      return
+    }
+    const config = scheduledConfigFromState(next)
+    setScheduleConfig((config as Record<string, unknown> | null) ?? null)
+    setStreamValidity(scheduleValidityKey, !!config)
+  }
+
+  // Behavior change also resets the schedule config: 'scheduled' rebuilds it from the
+  // current cadence, everything else clears it (manual / webhook never schedule).
+  const changeBehavior = (next: SyncBehavior) => {
+    setSyncBehavior(next)
+    if (next === 'scheduled') {
+      const config = scheduledConfigFromState(schedule)
+      setScheduleConfig((config as Record<string, unknown> | null) ?? null)
+      setStreamValidity(scheduleValidityKey, !!config)
+    } else {
+      setScheduleConfig(null)
+      setStreamValidity(scheduleValidityKey, true)
+    }
+  }
 
   // Webhook mode on a generic-REST connector. The connector-level SIGNAL picker is
   // inlined directly in the Schedule body (no longer its own "Webhook trigger" section);
@@ -187,7 +192,7 @@ export function ScheduleSection({ connector }: ScheduleSectionProps) {
             <DropdownMenuContent align='end'>
               <DropdownMenuRadioGroup
                 value={behavior}
-                onValueChange={(v) => draft.set({ ...draft.value, behavior: v as SyncBehavior })}>
+                onValueChange={(v) => changeBehavior(v as SyncBehavior)}>
                 <DropdownMenuRadioItem value='manual' indicator='check'>
                   Manual
                 </DropdownMenuRadioItem>
@@ -217,7 +222,7 @@ export function ScheduleSection({ connector }: ScheduleSectionProps) {
               <ScheduleEditor
                 value={schedule}
                 minMinutes={MIN_CONNECTOR_INTERVAL_MINUTES}
-                onChange={(next: ScheduledState) => draft.set({ ...draft.value, schedule: next })}
+                onChange={(next: ScheduledState) => commitSchedule(next)}
               />
               <p className='text-xs text-muted-foreground'>
                 Minimum cadence is {MIN_CONNECTOR_INTERVAL_MINUTES} minutes — connectors don’t sync
@@ -247,9 +252,7 @@ export function ScheduleSection({ connector }: ScheduleSectionProps) {
               </p>
               <RadioGroup
                 value={windowSpan}
-                onValueChange={(v) =>
-                  draft.set({ ...draft.value, windowSpan: v as BackfillWindowSpan })
-                }
+                onValueChange={(v) => setBackfillWindowSpan(v as BackfillWindowSpan)}
                 className='gap-2 pt-1'>
                 {WINDOW_OPTIONS.map((opt) => (
                   <div key={opt.value} className='flex items-center gap-2'>

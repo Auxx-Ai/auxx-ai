@@ -21,11 +21,13 @@ import {
   finishConnectorSetup,
   getAllConnectorTemplates,
   getConnector,
+  getConnectorReadiness,
   getConnectorTemplateById,
   listConnectors,
   listRuns,
   listStreams,
   provisionConnectorMappings,
+  READINESS_REASON,
   removeMapping,
   removeStream,
   sampleConnectorFetch,
@@ -525,6 +527,16 @@ export const dataConnectorRouter = createTRPCRouter({
       if (result.isErr()) {
         throw new TRPCError({ code: 'NOT_FOUND', message: result.error.message })
       }
+      // Readiness backstop — block a half-built config from enqueuing a run that
+      // would quietly do nothing (the worker's silent no-op). Authoritative gate.
+      const streams = await listStreams(ctx.db, ctx.session.organizationId, input.id)
+      const readiness = getConnectorReadiness(result.value, streams)
+      if (!readiness.canSync) {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: READINESS_REASON[readiness.problems[0]],
+        })
+      }
       await enqueueConnectorSync({
         connectorId: input.id,
         organizationId: ctx.session.organizationId,
@@ -610,6 +622,15 @@ export const dataConnectorRouter = createTRPCRouter({
       const result = await getConnector(ctx.db, ctx.session.organizationId, input.id)
       if (result.isErr()) {
         throw new TRPCError({ code: 'NOT_FOUND', message: result.error.message })
+      }
+      // Test-fetch only needs an endpoint (canSample) — it discovers the schema
+      // before any stream/mapping exists, so streams are irrelevant here.
+      const readiness = getConnectorReadiness(result.value, [])
+      if (!readiness.canSample) {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: READINESS_REASON[readiness.problems[0]],
+        })
       }
       // Test-fetch reuses the exact fetch path the scheduled sync runs (same
       // definition + resolved credential), stopping at the first raw page — so
