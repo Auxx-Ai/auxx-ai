@@ -1,10 +1,10 @@
 // apps/web/src/components/webhooks/ui/webhook-endpoint-card.tsx
 'use client'
 
+import { ListCard, type ListCardMenuItem, renderBadgeChips } from '@auxx/ui/components/list-card'
 import { useCopy } from '@auxx/ui/hooks/use-copy'
 import { formatDistanceToNow } from 'date-fns'
 import { Copy, Inbox, Pencil, Trash, TriangleAlert } from 'lucide-react'
-import { AppListCard, type AppListCardMenuItem } from '~/components/apps/ui/app-list-card'
 import type { WebhookEndpointRow } from '../hooks/use-webhook-endpoint'
 
 interface WebhookEndpointCardProps {
@@ -31,7 +31,7 @@ function describeEndpoint(endpoint: WebhookEndpointRow): string {
 }
 
 /**
- * One inbound {@link WebhookEndpoint} rendered with the shared {@link AppListCard}.
+ * One inbound {@link WebhookEndpoint} rendered with the shared {@link ListCard}.
  * Subtitle is the derived public URL; the three-dot menu carries Copy URL / Edit / Delete;
  * clicking the card body opens Edit. An unverified (`none`) endpoint shows an amber `Open`
  * badge. See plans/data-connectors/v6/webhooks-ui-plan.md §5.
@@ -39,20 +39,22 @@ function describeEndpoint(endpoint: WebhookEndpointRow): string {
 export function WebhookEndpointCard({ endpoint, onEdit, onDelete }: WebhookEndpointCardProps) {
   const { copy } = useCopy({ toastMessage: 'Webhook URL copied' })
 
-  const menuItems: AppListCardMenuItem[] = [
+  const menuItems: ListCardMenuItem[] = [
     { label: 'Copy URL', icon: <Copy />, onClick: () => copy(endpoint.url) },
     { label: 'Edit', icon: <Pencil />, onClick: onEdit },
     { label: 'Delete', icon: <Trash />, onClick: onDelete, destructive: true },
   ]
 
   return (
-    <AppListCard
+    <ListCard
       title={endpoint.name}
       description={describeEndpoint(endpoint)}
       icon={<Inbox className='size-4' />}
-      badges={
+      headerEnd={
         endpoint.verification === 'none'
-          ? [{ label: 'Open', icon: <TriangleAlert className='size-3 text-amber-600' /> }]
+          ? renderBadgeChips([
+              { label: 'Open', icon: <TriangleAlert className='size-3 text-amber-600' /> },
+            ])
           : undefined
       }
       onClick={onEdit}

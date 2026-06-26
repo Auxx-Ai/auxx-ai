@@ -1,9 +1,9 @@
 // apps/web/src/components/connections/ui/connection-card.tsx
 'use client'
 
+import { ListCard, type ListCardMenuItem, renderBadgeChips } from '@auxx/ui/components/list-card'
 import { Link2, Pencil, RefreshCw, Trash, TriangleAlert } from 'lucide-react'
 import { AppIcon } from '~/components/apps/ui/app-icon'
-import { AppListCard, type AppListCardMenuItem } from '~/components/apps/ui/app-list-card'
 import type { RouterOutputs } from '~/trpc/react'
 
 /** A single connection row as projected by `connections.list`. */
@@ -24,7 +24,7 @@ interface ConnectionCardProps {
 }
 
 /**
- * One connection rendered with the shared {@link AppListCard} — the same card the
+ * One connection rendered with the shared {@link ListCard} — the same card the
  * apps/MCP grid uses. The three-dot menu carries Edit + Delete; clicking the card body
  * opens the edit dialog. See plans/connections/unify-connection-definition.md §15.
  */
@@ -45,7 +45,7 @@ export function ConnectionCard({
     ? `${scopeLabel} · added by ${connection.createdBy.name}`
     : `${scopeLabel} connection`
 
-  const menuItems: AppListCardMenuItem[] = []
+  const menuItems: ListCardMenuItem[] = []
   if (onAction) {
     menuItems.push({
       label: actionLabel,
@@ -69,12 +69,12 @@ export function ConnectionCard({
   ]
 
   return (
-    <AppListCard
+    <ListCard
       title={title}
       subtitle={subtitle}
       description={description}
       icon={<AppIcon iconId={iconId} size='sm' />}
-      badges={badges.length > 0 ? badges : undefined}
+      headerEnd={renderBadgeChips(badges)}
       onClick={onAction}
       menuItems={menuItems}
     />

@@ -1,12 +1,12 @@
 'use client'
 import { Input } from '@auxx/ui/components/input'
+import { ListCard, renderBadgeChips } from '@auxx/ui/components/list-card'
 // apps/web/src/app/(protected)/app/settings/apps/installed/page.tsx
 import { Code, Trash } from 'lucide-react'
 import { useState } from 'react'
 import { dedupeInstallationsByApp } from '~/components/apps/dedupe-installations'
 import { useUninstallApp } from '~/components/apps/hooks/use-uninstall-app'
 import { AppIcon } from '~/components/apps/ui/app-icon'
-import { AppListCard } from '~/components/apps/ui/app-list-card'
 import SettingsPage from '~/components/global/settings-page'
 import { api } from '~/trpc/react'
 
@@ -84,7 +84,7 @@ export default function AppsInstalledListPage() {
         ) : (
           <div className='grid w-full gap-2 @sm:grid-cols-1 @md:grid-cols-2 @2xl:grid-cols-3'>
             {filteredInstalledApps.map(({ app, installation }) => (
-              <AppListCard
+              <ListCard
                 key={app.id}
                 title={app.title}
                 description={app.description}
@@ -92,10 +92,10 @@ export default function AppsInstalledListPage() {
                 icon={app.avatarUrl ? <AppIcon iconId={app.avatarUrl} size='sm' /> : undefined}
                 subtitle={`By ${app.developerAccount.title}`}
                 verified={app.verified}
-                badges={[
+                headerEnd={renderBadgeChips([
                   ...(app.isDevelopment ? [{ icon: <Code className='size-3' /> }] : []),
                   ...(app.isInstalled ? [{ label: 'Installed' }] : []),
-                ]}
+                ])}
                 menuItems={[
                   {
                     label: 'Uninstall',

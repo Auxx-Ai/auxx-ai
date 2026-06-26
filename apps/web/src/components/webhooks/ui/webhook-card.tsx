@@ -2,9 +2,9 @@
 'use client'
 
 import type { WebhookEntity as Webhook } from '@auxx/database/types'
+import { ListCard, type ListCardMenuItem, renderBadgeChips } from '@auxx/ui/components/list-card'
 import { formatDistanceToNow } from 'date-fns'
 import { Pencil, Send, Trash, Webhook as WebhookIcon } from 'lucide-react'
-import { AppListCard, type AppListCardMenuItem } from '~/components/apps/ui/app-list-card'
 
 interface WebhookCardProps {
   webhook: Webhook
@@ -40,24 +40,24 @@ function describeWebhook(webhook: Webhook): string {
 }
 
 /**
- * One outgoing webhook rendered with the shared {@link AppListCard} (the apps/connections card).
+ * One outgoing webhook rendered with the shared {@link ListCard} (the apps/connections card).
  * The three-dot menu carries Edit / Test / Delete; clicking the card body opens Edit.
  * Mirrors {@link ConnectionCard}. See plans/data-connectors/v6/webhooks-ui-plan.md §4.
  */
 export function WebhookCard({ webhook, onEdit, onTest, onDelete, testing }: WebhookCardProps) {
-  const menuItems: AppListCardMenuItem[] = [
+  const menuItems: ListCardMenuItem[] = [
     { label: 'Edit', icon: <Pencil />, onClick: onEdit },
     { label: 'Test', icon: <Send />, onClick: onTest, disabled: testing },
     { label: 'Delete', icon: <Trash />, onClick: onDelete, destructive: true },
   ]
 
   return (
-    <AppListCard
+    <ListCard
       title={webhook.name}
       subtitle={urlHost(webhook.url)}
       description={describeWebhook(webhook)}
       icon={<WebhookIcon className='size-4' />}
-      badges={webhook.isActive ? undefined : [{ label: 'Inactive' }]}
+      headerEnd={webhook.isActive ? undefined : renderBadgeChips([{ label: 'Inactive' }])}
       onClick={onEdit}
       menuItems={menuItems}
     />

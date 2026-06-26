@@ -3,6 +3,7 @@ import { constants } from '@auxx/config/client'
 import { FeatureKey } from '@auxx/lib/permissions/client'
 import { Button } from '@auxx/ui/components/button'
 import { Input } from '@auxx/ui/components/input'
+import { ListCard, renderBadgeChips } from '@auxx/ui/components/list-card'
 import {
   BarChart3,
   Bot,
@@ -22,7 +23,6 @@ import { useLayoutEffect, useRef, useState } from 'react'
 import { dedupeInstallationsByApp } from '~/components/apps/dedupe-installations'
 import { useUninstallApp } from '~/components/apps/hooks/use-uninstall-app'
 import { AppIcon } from '~/components/apps/ui/app-icon'
-import { AppListCard } from '~/components/apps/ui/app-list-card'
 import SettingsPage, { SettingsSection } from '~/components/global/settings-page'
 import { McpAppsSection } from '~/components/mcp/ui/mcp-apps-section'
 import { useUser } from '~/hooks/use-user'
@@ -259,7 +259,7 @@ export default function IntegrationList() {
               installedAppsToShow.length > 0 ? (
                 <div className='grid w-full gap-2 @sm:grid-cols-1 @md:grid-cols-2 @2xl:grid-cols-3'>
                   {installedAppsToShow.map(({ app, installation }) => (
-                    <AppListCard
+                    <ListCard
                       key={app.id}
                       title={app.title}
                       description={app.description}
@@ -269,10 +269,10 @@ export default function IntegrationList() {
                       }
                       subtitle={`By ${app.developerAccount.title}`}
                       verified={app.verified}
-                      badges={[
+                      headerEnd={renderBadgeChips([
                         ...(app.isDevelopment ? [{ icon: <Code className='size-3' /> }] : []),
                         ...(app.isInstalled ? [{ label: 'Installed' }] : []),
-                      ]}
+                      ])}
                       menuItems={[
                         {
                           label: 'Uninstall',
@@ -292,13 +292,15 @@ export default function IntegrationList() {
             ) : memberInstalledCards.length > 0 ? (
               <div className='grid w-full gap-2 @sm:grid-cols-1 @md:grid-cols-2 @2xl:grid-cols-3'>
                 {memberInstalledCards.map((app) => (
-                  <AppListCard
+                  <ListCard
                     key={app.id}
                     title={app.title}
                     description={app.description}
                     href={`/app/settings/apps/installed/${app.slug}`}
                     icon={app.avatarUrl ? <AppIcon iconId={app.avatarUrl} size='sm' /> : undefined}
-                    badges={app.isDevelopment ? [{ icon: <Code className='size-3' /> }] : []}
+                    headerEnd={renderBadgeChips(
+                      app.isDevelopment ? [{ icon: <Code className='size-3' /> }] : []
+                    )}
                   />
                 ))}
               </div>
@@ -378,7 +380,7 @@ export default function IntegrationList() {
                           {hasCategoryApps ? (
                             <div className='grid w-full gap-2 sm:grid-cols-2'>
                               {categoryApps.map((app) => (
-                                <AppListCard
+                                <ListCard
                                   key={app.id}
                                   title={app.title}
                                   description={app.description}
@@ -390,12 +392,12 @@ export default function IntegrationList() {
                                   }
                                   subtitle={`By ${app.developerAccount.title}`}
                                   verified={app.verified}
-                                  badges={[
+                                  headerEnd={renderBadgeChips([
                                     ...(app.isDevelopment
                                       ? [{ icon: <Code className='size-3' /> }]
                                       : []),
                                     ...(app.isInstalled ? [{ label: 'Installed' }] : []),
-                                  ]}
+                                  ])}
                                   menuItems={
                                     app.isInstalled
                                       ? [

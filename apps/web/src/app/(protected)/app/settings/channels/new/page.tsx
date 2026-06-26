@@ -3,11 +3,11 @@
 'use client'
 
 import { Button } from '@auxx/ui/components/button'
+import { ListCard } from '@auxx/ui/components/list-card'
 import { toastError } from '@auxx/ui/components/toast'
 import { ArrowLeft, Mail, MessageSquare } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useConnectFlow } from '~/components/apps/hooks/use-connect-flow'
-import { AppListCard } from '~/components/apps/ui/app-list-card'
 import { platformScope, platformTarget } from '~/components/connections/ui/connection-targets'
 import SettingsPage from '~/components/global/settings-page'
 import { api } from '~/trpc/react'
@@ -142,7 +142,7 @@ export default function IntegrationChooserPage() {
             const icon = integration.icon ?? getIntegrationProviderIcon(integration.type, 'size-4')
             if (integration.createInline) {
               return (
-                <AppListCard
+                <ListCard
                   key={integration.type}
                   title={integration.title}
                   description={integration.description}
@@ -156,7 +156,7 @@ export default function IntegrationChooserPage() {
             if (integration.connectProviderKey) {
               const providerKey = integration.connectProviderKey
               return (
-                <AppListCard
+                <ListCard
                   key={integration.type}
                   title={integration.title}
                   description={integration.description}
@@ -168,7 +168,7 @@ export default function IntegrationChooserPage() {
               )
             }
             return (
-              <AppListCard
+              <ListCard
                 key={integration.type}
                 title={integration.title}
                 description={integration.description}
