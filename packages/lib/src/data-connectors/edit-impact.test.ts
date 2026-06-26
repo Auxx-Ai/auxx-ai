@@ -77,27 +77,34 @@ describe('classifyMappingChange — rebind (identity)', () => {
 
   it('adding a match flag is rebind', () => {
     const prev = mapping({ fieldMappings: [fm({ id: 'a' })] })
-    const next = [fm({ id: 'a', match: { normalize: 'email' } })]
+    const next = [fm({ id: 'a', identityRole: { kind: 'match', normalize: 'email' } })]
     const out = classifyMappingChange(prev, { fieldMappings: next })
     expect(out.level).toBe('rebind')
     expect(out.reasons).toContain('identity-match')
   })
 
   it('removing a match flag is rebind', () => {
-    const prev = mapping({ fieldMappings: [fm({ id: 'a', match: { normalize: 'email' } })] })
+    const prev = mapping({
+      fieldMappings: [fm({ id: 'a', identityRole: { kind: 'match', normalize: 'email' } })],
+    })
     const next = [fm({ id: 'a' })]
     expect(classifyMappingChange(prev, { fieldMappings: next }).level).toBe('rebind')
   })
 
   it('changing the match normalizer is rebind', () => {
-    const prev = mapping({ fieldMappings: [fm({ id: 'a', match: { normalize: 'email' } })] })
-    const next = [fm({ id: 'a', match: { normalize: 'phone' } })]
+    const prev = mapping({
+      fieldMappings: [fm({ id: 'a', identityRole: { kind: 'match', normalize: 'email' } })],
+    })
+    const next = [fm({ id: 'a', identityRole: { kind: 'match', normalize: 'phone' } })]
     expect(classifyMappingChange(prev, { fieldMappings: next }).level).toBe('rebind')
   })
 
   it('removing a match-flagged field entirely is rebind', () => {
     const prev = mapping({
-      fieldMappings: [fm({ id: 'a' }), fm({ id: 'b', match: { normalize: 'email' } })],
+      fieldMappings: [
+        fm({ id: 'a' }),
+        fm({ id: 'b', identityRole: { kind: 'match', normalize: 'email' } }),
+      ],
     })
     expect(classifyMappingChange(prev, { fieldMappings: [fm({ id: 'a' })] }).level).toBe('rebind')
   })

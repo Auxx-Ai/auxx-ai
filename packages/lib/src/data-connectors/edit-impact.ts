@@ -38,9 +38,15 @@ function isWriting(fm: Pick<FieldMapping, 'mergeStrategy'>): boolean {
   return (fm.mergeStrategy ?? 'overwrite') !== 'ignore'
 }
 
-/** Stable signature of a field's identity-match config (absent ⇒ not a match key). */
-function matchSig(fm: Pick<FieldMapping, 'match'>): string {
-  return fm.match ? (fm.match.normalize ?? 'none') : ''
+/**
+ * Stable signature of a field's identity ROLE (absent ⇒ no role). Covers both the
+ * secondary `match` key AND the primary `externalId` anchor — changing either
+ * re-keys identity, so a diff is a `rebind` (relationship-linking v3 §9.5).
+ */
+function identitySig(fm: Pick<FieldMapping, 'identityRole'>): string {
+  const r = fm.identityRole
+  if (!r) return ''
+  return r.kind === 'match' ? `match:${r.normalize ?? 'none'}` : `externalId:${r.order ?? 0}`
 }
 
 /**
@@ -61,13 +67,13 @@ function diffFieldMappings(prev: FieldMapping[], next: FieldMapping[]): string[]
   for (const fm of next) {
     const before = prevById.get(fm.id)
     if (!before) {
-      // New entry. A match-flagged add changes secondary identity → rebind.
-      if (fm.match) reasons.push('identity-match')
+      // New entry. An identity-role add (match key OR external-id anchor) → rebind.
+      if (fm.identityRole) reasons.push('identity-match')
       else if (isWriting(fm) && fm.targetFieldRef != null) reasons.push('field-added')
       continue
     }
-    // Identity-match flag flip → rebind.
-    if (matchSig(before) !== matchSig(fm)) reasons.push('identity-match')
+    // Identity-role change (match flip / normalize / external-id order) → rebind.
+    if (identitySig(before) !== identitySig(fm)) reasons.push('identity-match')
     // Retarget A→B (both concrete) needs re-projection of the new column.
     if (
       before.targetFieldRef != null &&
@@ -88,9 +94,9 @@ function diffFieldMappings(prev: FieldMapping[], next: FieldMapping[]): string[]
     if (beforeStrat === 'ignore' && isWriting(fm)) reasons.push('merge-ignore-to-write')
   }
 
-  // A match-flagged entry that was REMOVED also changes secondary identity → rebind.
+  // An identity-role entry that was REMOVED also re-keys identity → rebind.
   for (const fm of prev) {
-    if (fm.match && !nextById.has(fm.id)) reasons.push('identity-match')
+    if (fm.identityRole && !nextById.has(fm.id)) reasons.push('identity-match')
   }
   return reasons
 }
@@ -116,10 +122,10 @@ export interface MappingPatch {
 
 /**
  * Classify a mapping edit. `rebind` columns: `rootPath`, `parentMappingId`,
- * `entityDefinitionId`, `targetMode`, `linkMode`, and any per-field `match` flag
- * change (the only identity inputs that actually exist on the mapping — there is no
- * `identityStrategy`/`connectorFieldKey` column). `relationshipFieldKey`/`orphanBehavior`
- * are cosmetic. Field-mapping content diffs decide rebackfill vs cosmetic.
+ * `entityDefinitionId`, `targetMode`, `linkMode`, and any per-field `identityRole`
+ * change (the external-id anchor or secondary match key — the only identity inputs
+ * that exist on the mapping). `relationshipFieldKey`/`orphanBehavior` are cosmetic.
+ * Field-mapping content diffs decide rebackfill vs cosmetic.
  */
 export function classifyMappingChange(
   prev: DataConnectorMappingRow,

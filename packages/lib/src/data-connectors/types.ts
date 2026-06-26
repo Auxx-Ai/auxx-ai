@@ -506,14 +506,23 @@ export interface FieldMapping {
   expression: string
   sourceFields: Record<string, string>
   /**
-   * When present, this bound field is ALSO a secondary identity key. The external
-   * id is always the primary key (the DataConnectorItem binding); on first link
-   * (before a binding exists) the sink looks for an existing entity whose value of
-   * this target field equals the source value and merges into it. Absent = the
-   * field is projected only. `normalize` is derived from the target field type at
-   * toggle time (email/phone/domain), else 'none'.
+   * The identity ROLE this bound field plays (relationship-linking v3 §9.5). One
+   * discriminated union structurally enforces "at most one role per field":
+   *   • `externalId` — designates this field as (part of) the upstream stable id
+   *     used for re-identification + link anchoring (§9.3a). `order` sequences a
+   *     first-non-null fallback CHAIN (`id → email`); absent ⇒ the synthetic
+   *     `${parentExternalId}:${index}` is the last resort. Replaces the old silent
+   *     `subtreeExternalId` guess — now explicit + editable.
+   *   • `match` — a SECONDARY identity key. The external id stays the primary key
+   *     (the DataConnectorItem binding); on first contact (no binding yet) the sink
+   *     looks for an existing entity whose value of this target field equals the
+   *     source value and adopts it. `normalize` is derived from the target field
+   *     type at toggle time (email/phone/domain), else 'none'.
+   * Absent = the field is projected only.
    */
-  match?: { normalize?: IdentityNormalize }
+  identityRole?:
+    | { kind: 'externalId'; order?: number }
+    | { kind: 'match'; normalize?: IdentityNormalize }
   /** Per-field write behavior (folded in from the old parallel map). Absent ⇒ 'overwrite'. */
   mergeStrategy?: FieldMergeStrategy
   /**

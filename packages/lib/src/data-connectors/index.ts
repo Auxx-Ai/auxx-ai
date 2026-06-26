@@ -114,6 +114,7 @@ export type {
 export {
   backfillProvisionedFieldRefs,
   provisionConnectorMappings,
+  provisionSpecsForMapping,
   provisionTarget,
 } from './provisioning'
 export { type ConnectorSyncEventKind, publishConnectorSync } from './realtime'

@@ -7,7 +7,7 @@ import { GridTreeRow, TreeRowButton } from '@auxx/ui/components/tree-row'
 import { Braces, Brackets, Hash, Plus } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { ResourcePickerContent } from '~/components/pickers/resource-picker'
-import type { RouterOutputs } from '~/trpc/react'
+import { api, type RouterOutputs } from '~/trpc/react'
 import {
   buildSourceTree,
   lastSegment,
@@ -61,6 +61,23 @@ export function MappingTree({
   const mutations = useStreamMutations(connectorId)
   const { fanOut } = mutations
   const [rootOpen, setRootOpen] = useState(true)
+
+  // Which defs the WHOLE connector already syncs (not just this stream) — a soft
+  // HINT the field picker uses to mark relationships whose related record is
+  // already streamed elsewhere. Under def-keyed resolution (v3 §9.6) it is no longer
+  // a hard gate: drilling a relationship lazily contributes to the related def. Read
+  // from the shared `listStreams` cache the parent already populated — no extra fetch.
+  const { data: allStreams } = api.dataConnector.listStreams.useQuery({ id: connectorId })
+  const syncedDefIds = useMemo(() => {
+    const ids = new Set<string>()
+    for (const s of allStreams ?? []) {
+      for (const m of s.mappings) {
+        if (m.linkMode === 'reference' || !m.entityDefinitionId) continue
+        ids.add(m.entityDefinitionId)
+      }
+    }
+    return ids
+  }, [allStreams])
 
   // The payload root type dictates the whole-payload rootPath: an array root fans
   // out per element (`[]`); an object root is a single record (`''`).
@@ -125,6 +142,7 @@ export function MappingTree({
     byMappingId,
     childrenOf,
     mutations,
+    syncedDefIds,
   }
 
   // A mapped whole-payload root owns the entire subtree (single-record source, or
@@ -219,6 +237,7 @@ interface TopSourceNodeProps {
   byMappingId: Map<string, Mapping>
   childrenOf: Map<string | null, Mapping[]>
   mutations: ReturnType<typeof useStreamMutations>
+  syncedDefIds: Set<string>
 }
 
 /**
@@ -246,6 +265,7 @@ function TopSourceNode(props: TopSourceNodeProps) {
           byMappingId={props.byMappingId}
           childrenOf={props.childrenOf}
           mutations={props.mutations}
+          syncedDefIds={props.syncedDefIds}
         />
       )
     }

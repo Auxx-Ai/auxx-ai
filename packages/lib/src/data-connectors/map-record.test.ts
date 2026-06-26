@@ -91,7 +91,7 @@ describe('mapRecord', () => {
           targetFieldRef: 'def1:contact_email',
           expression: '{email}',
           sourceFields: { email: 'email' },
-          match: { normalize: 'email' },
+          identityRole: { kind: 'match', normalize: 'email' },
         },
       ],
     })
@@ -200,10 +200,144 @@ describe('mapRecord', () => {
 
     expect(writes[0]?.mapping.row.id).toBe('root')
     const childWrite = writes.find((w) => w.mapping.row.id === 'child')
+    // map-record emits a cardinality-NEUTRAL relation (sink-source resolves the
+    // belongs_to/has_many side against the cache). The child carries its own
+    // external id + the authored relationship ref + its own (related) def.
     expect(childWrite?.parentRelation).toMatchObject({
       parentMappingId: 'root',
-      fieldKey: 'customer',
-      targetExternalId: 'c1',
+      relationshipRef: 'customer',
+      childExternalId: 'c1',
+      relatedDef: 'def1',
     })
+  })
+
+  // ── Drilled relationship linking (v3 §9) ─────────────────────────────────────
+
+  it('id-only reference emits a neutral edge carrying the related def + child id', () => {
+    // Order has a `customer_id` scalar FK drilled to the `customer` relationship; the
+    // reference mapping's own def IS the related (Customer) def — DEF-KEYED, so the
+    // two-pass resolves against (connector, relatedDef, childExternalId), not a frozen
+    // mapping pointer.
+    const root = mapping({ id: 'order', rootPath: '[]' })
+    const ref = mapping({
+      id: 'order-customer-ref',
+      rootPath: 'customer_id',
+      parentMappingId: 'order',
+      linkMode: 'reference',
+      relationshipFieldKey: 'order:customer',
+      entityDefinitionId: 'cust_def',
+    })
+
+    const writes = mapRecord([root, ref], rawPayload([{ id: 'o1', customer_id: 'c1' }]))
+
+    const refWrite = writes.find((w) => w.mapping.row.id === 'order-customer-ref')
+    // A reference writes nothing — it only registers the pending edge on the parent.
+    expect(refWrite?.projected).toBeNull()
+    expect(refWrite?.parentRelation).toEqual({
+      parentMappingId: 'order',
+      parentExternalId: 'o1',
+      childMappingId: 'order-customer-ref',
+      childExternalId: 'c1',
+      relationshipRef: 'order:customer',
+      relatedDef: 'cust_def',
+    })
+  })
+
+  it('emits a CLEAR edge when a reference FK is empty (clear-on-empty)', () => {
+    const root = mapping({ id: 'order', rootPath: '[]' })
+    const ref = mapping({
+      id: 'order-customer-ref',
+      rootPath: 'customer_id',
+      parentMappingId: 'order',
+      linkMode: 'reference',
+      relationshipFieldKey: 'order:customer',
+      entityDefinitionId: 'cust_def',
+    })
+
+    // FK absent, null, and empty-string all clear the edge (null childExternalId).
+    for (const payload of [
+      { id: 'o1' },
+      { id: 'o1', customer_id: null },
+      { id: 'o1', customer_id: '' },
+    ]) {
+      const writes = mapRecord([root, ref], rawPayload([payload]))
+      const refWrite = writes.find((w) => w.mapping.row.id === 'order-customer-ref')
+      expect(refWrite?.projected).toBeNull()
+      expect(refWrite?.parentRelation).toEqual({
+        parentMappingId: 'order',
+        parentExternalId: 'o1',
+        childMappingId: 'order-customer-ref',
+        childExternalId: null,
+        relationshipRef: 'order:customer',
+        relatedDef: 'cust_def',
+      })
+    }
+  })
+
+  it('an embedded upsert child carries its OWN def as the related def (def-keyed)', () => {
+    const root = mapping({ id: 'root', rootPath: '' })
+    const child = mapping({
+      id: 'child',
+      rootPath: 'customer',
+      parentMappingId: 'root',
+      relationshipFieldKey: 'order:customer',
+      entityDefinitionId: 'cust_def',
+    })
+
+    const writes = mapRecord([child, root], source({ customer: { id: 'c1' } }))
+    const childWrite = writes.find((w) => w.mapping.row.id === 'child')
+    expect(childWrite?.parentRelation?.relatedDef).toBe('cust_def')
+    expect(childWrite?.parentRelation?.childExternalId).toBe('c1')
+  })
+
+  // ── Explicit External-ID designation (v3 §9.3a) ──────────────────────────────
+
+  it('uses a designated External-ID field over the heuristic guess', () => {
+    const m = mapping({
+      rootPath: 'customer',
+      fieldMappings: [
+        {
+          id: 'e1',
+          targetFieldRef: null,
+          expression: '{email}',
+          sourceFields: { email: 'email' },
+          identityRole: { kind: 'externalId' },
+        },
+      ],
+    })
+    // The subtree has a natural `id`, but the designated `email` wins.
+    const writes = mapRecord([m], source({ customer: { id: 'cust_1', email: 'a@b.com' } }))
+    expect(writes[0]?.projected?.externalId).toBe('a@b.com')
+  })
+
+  it('External-ID supports an ordered first-non-null fallback chain', () => {
+    const m = mapping({
+      rootPath: 'customer',
+      fieldMappings: [
+        {
+          id: 'primary',
+          targetFieldRef: null,
+          expression: '{id}',
+          sourceFields: { id: 'id' },
+          identityRole: { kind: 'externalId', order: 0 },
+        },
+        {
+          id: 'fallback',
+          targetFieldRef: null,
+          expression: '{email}',
+          sourceFields: { email: 'email' },
+          identityRole: { kind: 'externalId', order: 1 },
+        },
+      ],
+    })
+    // `id` is null → falls through to `email`.
+    const writes = mapRecord([m], source({ customer: { id: null, email: 'a@b.com' } }))
+    expect(writes[0]?.projected?.externalId).toBe('a@b.com')
+  })
+
+  it('an UPSERT mapping with an empty subtree is skipped (no clear)', () => {
+    const m = mapping({ id: 'cust', rootPath: 'customer' })
+    const writes = mapRecord([m], source({ customer: null }))
+    expect(writes).toHaveLength(0)
   })
 })

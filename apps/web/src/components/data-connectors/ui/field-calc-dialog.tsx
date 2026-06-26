@@ -147,22 +147,23 @@ function CalcForm({ expression, sourcePaths, onCancel, onSave }: CalcFormProps) 
   }
 
   return (
-    <div className='flex flex-col gap-5'>
-      <CalcFormulaInput
-        expression={expression}
-        onChange={(expr) => setValue(expr)}
-        tokenSource={tokenSource}
-        label='Expression'
-        showFunctionsHelp
-        placeholder='concat({first_name}, " ", {last_name})'
-      />
+    <div className='flex flex-col '>
+      <div className='mb-3'>
+        <CalcFormulaInput
+          expression={expression}
+          onChange={(expr) => setValue(expr)}
+          tokenSource={tokenSource}
+          label='Expression'
+          showFunctionsHelp
+          placeholder='concat({first_name}, " ", {last_name})'
+        />
+      </div>
 
       {sourcePaths.length === 0 && (
-        <span className='text-xs text-muted-foreground'>
+        <span className='text-xs text-muted-foreground mb-3'>
           No source schema yet — generate one in the stream first.
         </span>
       )}
-
       <CalcTokensUsed
         tokens={validation.extractedFields}
         tokenSource={tokenSource}

@@ -83,6 +83,7 @@ export function FieldPickerInnerContent({
   skipLabel = 'Skip',
   searchPlaceholder = 'Search fields...',
   onBackFromRoot,
+  disableDrillDown = false,
   externalNavigation,
   renderAdditionalContent,
   renderHeaderContent,
@@ -266,7 +267,7 @@ export function FieldPickerInnerContent({
         }
         return
       }
-      if (e.key === 'ArrowRight') {
+      if (e.key === 'ArrowRight' && !disableDrillDown) {
         const selected = (e.currentTarget as HTMLElement).querySelector<HTMLElement>(
           '[cmdk-item][data-selected="true"]'
         )
@@ -279,7 +280,7 @@ export function FieldPickerInnerContent({
         }
       }
     },
-    [isAtRoot, pop, onBackFromRoot, search, filteredFields, handleDrillInto]
+    [isAtRoot, pop, onBackFromRoot, search, filteredFields, handleDrillInto, disableDrillDown]
   )
 
   // Shared content (input + list)
@@ -338,9 +339,11 @@ export function FieldPickerInnerContent({
                 key={field.id}
                 field={field}
                 isSelected={isFieldSelected(field)}
-                canDrillDown={!!field.relationship}
+                canDrillDown={!!field.relationship && !disableDrillDown}
                 onSelect={() => handleSelectField(field)}
-                onDrillDown={field.relationship ? () => handleDrillInto(field) : undefined}
+                onDrillDown={
+                  field.relationship && !disableDrillDown ? () => handleDrillInto(field) : undefined
+                }
               />
             ))}
           </CommandGroup>

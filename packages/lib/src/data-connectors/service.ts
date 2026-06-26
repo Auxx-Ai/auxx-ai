@@ -39,6 +39,13 @@ export interface DecodedMapping {
   targetMode: TargetMode
   entityDefinitionId: string
   parentMappingId: string | null
+  /**
+   * The drilled relationship edge to the parent, as a serialized `FieldReference`
+   * (`fieldRefToKey`) — a `ResourceFieldId` (`order:customer`) for a single-drill
+   * embedded/reference edge, or a `::`-joined `FieldPath` for a deeper drill
+   * (relationship-linking v3 §9.5). Null on the root mapping. Self-scoping: the
+   * parent def is `getRootEntityId`, the target def the next segment.
+   */
   relationshipFieldKey: string | null
   orphanBehavior: OrphanBehavior
   fieldMappings: FieldMapping[]
@@ -614,6 +621,32 @@ export async function findItem(
   return row ?? null
 }
 
+/**
+ * Def-keyed bind lookup: (dataConnectorId, entityDefinitionId, externalId) → the
+ * first live item row, regardless of which mapping wrote it (relationship-linking
+ * v3 §9.6). Backs both the two-pass resolver (build-order independent) and the
+ * sink's def-keyed instance reuse-read. Prefers a row that already carries an
+ * `entityInstanceId` (a bound record) and skips archived rows, so a stale/unbound
+ * sibling never shadows the real instance. Backed by the additive
+ * `(dataConnectorId, entityDefinitionId, externalId)` index.
+ */
+export async function findItemByDef(
+  db: Database,
+  dataConnectorId: string,
+  entityDefinitionId: string,
+  externalId: string
+): Promise<DataConnectorItemRow | null> {
+  const rows = await db.query.DataConnectorItem.findMany({
+    where: and(
+      eq(schema.DataConnectorItem.dataConnectorId, dataConnectorId),
+      eq(schema.DataConnectorItem.entityDefinitionId, entityDefinitionId),
+      eq(schema.DataConnectorItem.externalId, externalId)
+    ),
+  })
+  // Best-effort dedup: a bound, non-archived row wins; else the first row.
+  return rows.find((r) => r.entityInstanceId && !r.archivedAt) ?? rows[0] ?? null
+}
+
 /** All item rows for a mapping (orphan diffing). */
 export async function listItemsForMapping(
   db: Database,
@@ -640,9 +673,17 @@ export async function listItemsWithPendingRelations(
 }
 
 export interface PendingRelation {
+  /** The relationship field id to write on THIS item's instance (belongs_to side). */
   fieldKey: string
-  targetMappingId: string
-  targetExternalId: string
+  /**
+   * The entity def the `targetExternalId` resolves against — DEF-KEYED resolution
+   * (relationship-linking v3 §9.6), so the two-pass finds the target by
+   * `(connector, def, externalId)` regardless of which mapping wrote it. Null for a
+   * CLEAR.
+   */
+  targetDef: string | null
+  /** The target's upstream id. Null for a CLEAR (FK went empty → null the field). */
+  targetExternalId: string | null
 }
 
 export interface UpsertItemInput {
@@ -742,6 +783,26 @@ export async function setItemPendingRelations(
   await db
     .update(schema.DataConnectorItem)
     .set({ pendingRelations: pendingRelations.length > 0 ? pendingRelations : null })
+    .where(eq(schema.DataConnectorItem.id, itemId))
+}
+
+/**
+ * Persist BOTH the still-pending relations and the live-edge bookkeeping after a
+ * two-pass over an item. `linkedRelations` is the set of field keys this connector
+ * currently maintains an edge on — grown on a resolved set, shrunk on an applied
+ * clear (the clear-on-empty fire-once guard reads it at the sink).
+ */
+export async function setItemRelationState(
+  db: Database,
+  itemId: string,
+  state: { pendingRelations: PendingRelation[]; linkedRelations: string[] }
+): Promise<void> {
+  await db
+    .update(schema.DataConnectorItem)
+    .set({
+      pendingRelations: state.pendingRelations.length > 0 ? state.pendingRelations : null,
+      linkedRelations: state.linkedRelations.length > 0 ? state.linkedRelations : null,
+    })
     .where(eq(schema.DataConnectorItem.id, itemId))
 }
 

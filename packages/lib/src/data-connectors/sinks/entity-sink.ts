@@ -21,6 +21,7 @@ import { buildWriteKeyToFieldId } from '../field-id-resolver'
 import {
   type DecodedMapping,
   findItem,
+  findItemByDef,
   listItemsForMapping,
   markItemArchived,
   type PendingRelation,
@@ -336,6 +337,29 @@ async function computeDriftedInstances(
   return new Set(rows.map((r) => r.entityId))
 }
 
+/**
+ * Whether another LIVE (non-archived) binding of this connector references the same
+ * entity instance (relationship-linking v3 §9.6 step 5). Under def-keyed sharing one
+ * instance can be co-owned by several mappings; archiving one source must not strip a
+ * record a sibling binding still maintains. Excludes the binding being archived.
+ */
+async function findOtherLiveBinding(
+  ctx: SyncCtx,
+  itemId: string,
+  entityInstanceId: string
+): Promise<boolean> {
+  const row = await ctx.db.query.DataConnectorItem.findFirst({
+    where: and(
+      eq(schema.DataConnectorItem.dataConnectorId, ctx.connector.id),
+      eq(schema.DataConnectorItem.entityInstanceId, entityInstanceId),
+      ne(schema.DataConnectorItem.id, itemId),
+      isNull(schema.DataConnectorItem.archivedAt)
+    ),
+    columns: { id: true },
+  })
+  return !!row
+}
+
 export const entitySink: EntitySink = {
   async upsertRecord(ctx, mapping, record) {
     ctx.counters.fetched += 1
@@ -368,13 +392,29 @@ export const entitySink: EntitySink = {
           ctx,
           bound.id,
           bound.pendingRelations ?? [],
-          record.pendingRelations
+          record.pendingRelations,
+          new Set(bound.linkedRelations ?? [])
         )
       }
       return
     }
 
     let instanceId: string | null = bound?.entityInstanceId ?? null
+    // 1b. Def-keyed instance reuse-read (relationship-linking v3 §9.6 step 4). Before
+    //     match/create, reuse an instance ANY mapping already bound for
+    //     (connector, def, externalId) — so an embedded `Order → Customer` branch
+    //     converges on the Customers stream's Contact instead of minting a duplicate.
+    //     Best-effort (no lock): the rare concurrent first-contact still double-creates,
+    //     same tolerance as Match (§9.3a).
+    if (!instanceId) {
+      const shared = await findItemByDef(
+        ctx.db,
+        ctx.connector.id,
+        mapping.entityDefinitionId,
+        record.externalId
+      )
+      instanceId = shared?.entityInstanceId ?? null
+    }
     if (!instanceId) {
       const resolved = await resolveIdentity(ctx, mapping, record, refToConcrete)
       instanceId = resolved.instanceId
@@ -402,13 +442,15 @@ export const entitySink: EntitySink = {
             : undefined
         await touchItem(ctx.db, bound.id, ctx.runId, newerStamp)
         ctx.counters.skipped += 1
-        // Still re-register pending relations so a later-arriving target resolves.
+        // Still re-register pending relations so a later-arriving target resolves
+        // (and a clear-on-empty edge fires even when the source is otherwise unchanged).
         if (record.pendingRelations.length > 0) {
           await mergePendingRelations(
             ctx,
             bound.id,
             bound.pendingRelations ?? [],
-            record.pendingRelations
+            record.pendingRelations,
+            new Set(bound.linkedRelations ?? [])
           )
         }
         return
@@ -489,7 +531,11 @@ export const entitySink: EntitySink = {
       entityInstanceId: instanceId,
       contentHash,
       managedFields: mergedManaged,
-      pendingRelations: mergePending(bound?.pendingRelations ?? [], record.pendingRelations),
+      pendingRelations: mergePending(
+        bound?.pendingRelations ?? [],
+        record.pendingRelations,
+        new Set(bound?.linkedRelations ?? [])
+      ),
       upstreamUpdatedAt: record.upstreamUpdatedAt ?? null,
       lastSeenRunId: ctx.runId,
     })
@@ -498,6 +544,17 @@ export const entitySink: EntitySink = {
   async archiveRecord(ctx, item, behavior) {
     if (behavior === 'ignore' || !item.entityInstanceId) return
     if (behavior === 'archive') {
+      // Def-keyed sharing guard (relationship-linking v3 §9.6 step 5): the SAME
+      // instance may be bound by more than one mapping (an embedded child + a
+      // sibling stream). Archive the instance only when NO other live binding of
+      // this connector still references it — else just stamp this binding archived
+      // and leave the record (a sibling still owns it). This chokepoint catches both
+      // owned orphan reconcile and the explicit-delete path.
+      const otherLive = await findOtherLiveBinding(ctx, item.id, item.entityInstanceId)
+      if (otherLive) {
+        await markItemArchived(ctx.db, item.id, ctx.runId)
+        return
+      }
       const recordId = toRecordId(item.entityDefinitionId, item.entityInstanceId)
       try {
         await ctx.ownedCrud.archive(recordId, {
@@ -529,17 +586,31 @@ export const entitySink: EntitySink = {
   },
 }
 
-/** Union two pending-relation lists, de-duplicated by their tuple. */
-function mergePending(existing: PendingRelation[], incoming: PendingRelation[]): PendingRelation[] {
-  const seen = new Set<string>()
-  const out: PendingRelation[] = []
-  for (const r of [...existing, ...incoming]) {
-    const k = `${r.fieldKey}|${r.targetMappingId}|${r.targetExternalId}`
-    if (seen.has(k)) continue
-    seen.add(k)
-    out.push(r)
+/**
+ * Merge incoming pending relations onto an item's existing ones, LAST-WINS by
+ * `fieldKey` (v1 `belongs_to` = one edge per field). A clear (FK went empty) or a
+ * changed set for a field supersedes any stale pending set for that field —
+ * otherwise a never-resolved set could land after a clear and re-establish the
+ * edge. A clear whose field has no live edge (`fieldKey ∉ linkedRelations`) is
+ * dropped, and discards any abandoned pending set for it (set in run 1 but never
+ * resolved, FK empties in run 2 ⇒ no edge, correct).
+ */
+export function mergePending(
+  existing: PendingRelation[],
+  incoming: PendingRelation[],
+  linkedRelations: Set<string>
+): PendingRelation[] {
+  const byField = new Map<string, PendingRelation>()
+  for (const r of existing) byField.set(r.fieldKey, r)
+  for (const r of incoming) {
+    const isClear = r.targetExternalId === null
+    if (isClear && !linkedRelations.has(r.fieldKey)) {
+      byField.delete(r.fieldKey)
+      continue
+    }
+    byField.set(r.fieldKey, r)
   }
-  return out
+  return [...byField.values()]
 }
 
 /** Persist a merged pending-relations list onto an already-bound item. */
@@ -547,7 +618,8 @@ async function mergePendingRelations(
   ctx: SyncCtx,
   itemId: string,
   existing: PendingRelation[],
-  incoming: PendingRelation[]
+  incoming: PendingRelation[],
+  linkedRelations: Set<string>
 ): Promise<void> {
-  await setItemPendingRelations(ctx.db, itemId, mergePending(existing, incoming))
+  await setItemPendingRelations(ctx.db, itemId, mergePending(existing, incoming, linkedRelations))
 }

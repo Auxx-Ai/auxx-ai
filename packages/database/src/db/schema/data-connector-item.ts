@@ -53,11 +53,25 @@ export const DataConnectorItem = pgTable(
     // ownership on a shared/contributing record). Read-only enforcement itself is
     // the CustomField capability (isUpdatable=false), not a frozen-set here.
     managedFields: jsonb().$type<string[]>().default([]).notNull(),
-    // Edges to wire in the two-pass: the related record's mapping + upstream id.
+    // Edges to wire in the two-pass (relationship-linking v3 §9.6). Each carries the
+    // relationship field id to write on THIS instance (belongs_to side) plus the
+    // target's def + upstream id — DEF-KEYED resolution, so build-order stops
+    // mattering (the frozen `targetMappingId` pointer is gone). A `null`
+    // targetExternalId (and null targetDef) is a CLEAR edge — the FK went empty, so
+    // the two-pass nulls the relationship field (clear-on-empty).
     pendingRelations:
       jsonb().$type<
-        Array<{ fieldKey: string; targetMappingId: string; targetExternalId: string }>
+        Array<{
+          fieldKey: string
+          targetDef: string | null
+          targetExternalId: string | null
+        }>
       >(),
+    // Field keys this connector currently maintains a live relationship edge on
+    // (clear-on-empty bookkeeping). A clear fires once on the set→empty transition
+    // (the sink drops a clear whose field isn't here), then stays silent. Also the
+    // provenance guard: the connector only clears edges it recorded as having set.
+    linkedRelations: jsonb().$type<string[]>(),
 
     upstreamUpdatedAt: timestamp({ precision: 3 }),
     lastSeenRunId: text(), // orphan diff: not seen this run ⇒ candidate
@@ -78,6 +92,16 @@ export const DataConnectorItem = pgTable(
     index('DataConnectorItem_entityInstanceId_idx').using(
       'btree',
       table.entityInstanceId.asc().nullsLast()
+    ),
+    // DEF-KEYED resolution (relationship-linking v3 §9.10): backs the two-pass
+    // resolver's `findItemByDef` + the sink's def-keyed instance reuse-read.
+    // NON-unique on purpose — two mappings legitimately bind the same
+    // (connector, def, externalId) to one shared `entityInstanceId`.
+    index('DataConnectorItem_dataConnectorId_entityDefinitionId_externalId_idx').using(
+      'btree',
+      table.dataConnectorId.asc().nullsLast(),
+      table.entityDefinitionId.asc().nullsLast(),
+      table.externalId.asc().nullsLast()
     ),
     // Orphan reconciliation diff (owned + snapshot): rows of this mapping not
     // stamped with the run.

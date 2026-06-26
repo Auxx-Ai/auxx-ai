@@ -1,0 +1,2 @@
+ALTER TABLE "DataConnectorItem" ADD COLUMN "linkedRelations" jsonb;--> statement-breakpoint
+CREATE INDEX "DataConnectorItem_dataConnectorId_entityDefinitionId_externalId_idx" ON "DataConnectorItem" USING btree ("dataConnectorId","entityDefinitionId","externalId");

@@ -43,7 +43,14 @@ export const DataConnectorMapping = pgTable(
       onUpdate: 'cascade',
       onDelete: 'cascade',
     }),
-    relationshipFieldKey: text(), // field on the PARENT def that holds the edge
+    // The drilled relationship edge to the parent, stored as a serialized
+    // `FieldReference` (`fieldRefToKey`) — a `ResourceFieldId` (`order:customer`) for
+    // a single-drill edge, or a `::`-joined `FieldPath` for a deeper drill
+    // (relationship-linking v3 §9.5). Self-scoping (parent def = `getRootEntityId`);
+    // the related def is the next path segment. Was a bare field key; the runtime
+    // resolves the target def DEF-KEYED, so the frozen `referenceTargetMappingId`
+    // pointer that lived here is gone.
+    relationshipFieldKey: text(),
 
     // Target binding. 'owned' → connector provisioned the def; 'contributing' →
     // writes into a pre-existing def (incl. system contact/ticket). For 'reference'

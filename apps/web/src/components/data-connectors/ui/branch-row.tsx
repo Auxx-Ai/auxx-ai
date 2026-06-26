@@ -1,10 +1,14 @@
 // apps/web/src/components/data-connectors/ui/branch-row.tsx
 'use client'
 
+import type { ResourceField } from '@auxx/lib/resources/client'
+import type { FieldReference } from '@auxx/types/field'
+import { Button } from '@auxx/ui/components/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
 import { GridTreeRow, TreeRowButton } from '@auxx/ui/components/tree-row'
-import { Braces, Brackets, Plus } from 'lucide-react'
+import { Braces, Brackets, ChevronDown, Link2, Plus } from 'lucide-react'
 import { useState } from 'react'
+import { FieldPickerContent } from '~/components/pickers/field-picker'
 import { ResourcePickerContent } from '~/components/pickers/resource-picker'
 import { lastSegment, type SourceTreeNode } from '../hooks/use-source-paths'
 import { MAPPING_COLS } from './mapping-columns'
@@ -14,8 +18,19 @@ interface BranchRowProps {
   node: SourceTreeNode
   isOpen: boolean
   onToggleOpen: () => void
-  /** Materialize a child mapping that upserts records under this branch. */
-  onFanOut: (entityDefinitionId: string) => void
+  /**
+   * Materialize a TOP-LEVEL child mapping by free def pick (only at the payload
+   * root, where there is no enclosing mapping to drill a relationship off of).
+   */
+  onFanOut?: (entityDefinitionId: string) => void
+  /**
+   * The enclosing mapping's target def — present for a branch INSIDE a mapping.
+   * When set, the fan-out becomes a relationship DRILL off this def (§11.1): the
+   * child's def is DERIVED from the drilled relationship, never freely picked.
+   */
+  parentEntityDefinitionId?: string | null
+  /** Materialize a related child mapping from a relationship drilled off the parent def. */
+  onFanOutRelationship?: (field: ResourceField, ref: FieldReference) => void
   /**
    * No mapping exists anywhere in the tree yet (the wizard's first state). Surfaces
    * a faint "or map separately" hint and forces the fan-out button visible (no
@@ -26,14 +41,16 @@ interface BranchRowProps {
 }
 
 /**
- * An object/array source branch (plan §3.1, §5.3). A passive container by
- * default — its scalar leaves bind onto the enclosing mapping. The `⊕` action
- * promotes the branch into its own child `DataConnectorMapping` (**Fan out →
- * own def**, upsert) against the picked target def. Once promoted the branch
- * re-renders as a `MappingNode`; this row is the un-promoted state.
- *
- * (The reference / link-only fan-out mode stays in the schema + runtime but is
- * not yet surfaced in the UI.)
+ * An object/array source branch (relationship-linking v3 §11). A passive container
+ * by default — its scalar leaves bind onto the enclosing mapping. The `⊕` action
+ * fans the branch out into its own child `DataConnectorMapping`:
+ *  - INSIDE a mapping ({@link parentEntityDefinitionId} set) → **drill a relationship**
+ *    off the parent def; the related def is derived, the edge is the drilled
+ *    relationship, the mode is forced contributing. This is the core inversion that
+ *    makes a null `relationshipFieldKey` unrepresentable (§9.2).
+ *  - at the payload ROOT (no enclosing mapping) → a free def pick (the entry def).
+ * Once promoted the branch re-renders as a `MappingNode`; this row is the un-promoted
+ * state.
  */
 export function BranchRow({
   depth,
@@ -41,6 +58,8 @@ export function BranchRow({
   isOpen,
   onToggleOpen,
   onFanOut,
+  parentEntityDefinitionId,
+  onFanOutRelationship,
   isEmpty = false,
   children,
 }: BranchRowProps) {
@@ -48,10 +67,8 @@ export function BranchRow({
   const isArray = node.type === 'array'
   const Icon = isArray ? Brackets : Braces
 
-  const handlePick = (entityDefinitionId: string) => {
-    onFanOut(entityDefinitionId)
-    setMenuOpen(false)
-  }
+  // Relationship-drill mode when this branch sits inside a mapping with a target def.
+  const drillMode = !!parentEntityDefinitionId && !!onFanOutRelationship
 
   return (
     <GridTreeRow
@@ -71,31 +88,76 @@ export function BranchRow({
           )}
         </span>
       }
-      // A passive container — no arrow/target. The fan-out action sits in the
-      // last column, aligned with the other rows' action clusters.
+      // Inside a mapping the TARGET cell carries a visible relationship picker (the
+      // same `FieldPickerContent` every leaf uses, drill-down ON) — you drill into a
+      // relationship and click it to link, no separate `+` affordance. At the payload
+      // ROOT (no def to drill off) the only action is the free-def fan-out, kept in
+      // the last column.
       cells={[
         <span key='arrow' />,
-        <span key='target' />,
-        <div key='actions' className='flex w-full items-center justify-end pr-1'>
-          <Popover open={menuOpen} onOpenChange={setMenuOpen}>
+        drillMode ? (
+          <Popover key='target' open={menuOpen} onOpenChange={setMenuOpen}>
             <PopoverTrigger asChild>
-              <TreeRowButton tooltipText='Fan out → own def' persistent={isEmpty}>
-                <Plus />
-              </TreeRowButton>
+              <Button
+                variant='transparent'
+                className='h-9 w-full justify-between rounded-none px-2 text-xs text-muted-foreground hover:bg-primary/5'>
+                <span className='flex items-center gap-1.5 truncate'>
+                  <Link2 className='size-3.5 opacity-60' />
+                  Link via relationship…
+                </span>
+                <ChevronDown className='size-3 opacity-50' />
+              </Button>
             </PopoverTrigger>
-            <PopoverContent align='end' className='w-64 p-0'>
+            <PopoverContent align='start' className='w-72 p-0'>
               <div className='border-b px-2 py-1.5 text-[10px] font-medium uppercase text-muted-foreground'>
-                Fan out → own def
+                Link via a relationship
               </div>
-              <ResourcePickerContent
-                value={[]}
-                onChange={() => {}}
-                onSelectSingle={handlePick}
-                entityDefinedOnly
-                placeholder='Search entity definitions…'
+              {/* Drill the parent def's relationship graph and click the relationship
+                  to link (drill into it, then select its header row). The related def
+                  is derived from the picked relationship — never freely chosen. */}
+              <FieldPickerContent
+                entityDefinitionId={parentEntityDefinitionId!}
+                filterField={(f) => !!f.relationship}
+                mode='single'
+                closeOnSelect
+                onClose={() => setMenuOpen(false)}
+                searchPlaceholder='Search relationships…'
+                onSelect={(ref, field) => {
+                  if (!field.relationship) return
+                  onFanOutRelationship?.(field, ref)
+                  setMenuOpen(false)
+                }}
               />
             </PopoverContent>
           </Popover>
+        ) : (
+          <span key='target' />
+        ),
+        <div key='actions' className='flex w-full items-center justify-end pr-1'>
+          {!drillMode && onFanOut && (
+            <Popover open={menuOpen} onOpenChange={setMenuOpen}>
+              <PopoverTrigger asChild>
+                <TreeRowButton tooltipText='Fan out → own def' persistent={isEmpty}>
+                  <Plus />
+                </TreeRowButton>
+              </PopoverTrigger>
+              <PopoverContent align='end' className='w-72 p-0'>
+                <div className='border-b px-2 py-1.5 text-[10px] font-medium uppercase text-muted-foreground'>
+                  Fan out → own def
+                </div>
+                <ResourcePickerContent
+                  value={[]}
+                  onChange={() => {}}
+                  onSelectSingle={(entityDefinitionId) => {
+                    onFanOut?.(entityDefinitionId)
+                    setMenuOpen(false)
+                  }}
+                  entityDefinedOnly
+                  placeholder='Search entity definitions…'
+                />
+              </PopoverContent>
+            </Popover>
+          )}
         </div>,
       ]}>
       {children}

@@ -143,7 +143,7 @@ export function buildContributingMatchBindings(
       targetFieldRef: toResourceFieldId(entityDefinitionId, target.id),
       expression: `{${relativePath}}`,
       sourceFields: { [relativePath]: relativePath },
-      match: { normalize: deriveNormalizeFromType(target.type) },
+      identityRole: { kind: 'match', normalize: deriveNormalizeFromType(target.type) },
     })
   }
   return bindings
