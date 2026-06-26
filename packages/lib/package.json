@@ -286,6 +286,12 @@
       "import": "./dist/data-connectors/index.mjs",
       "default": "./src/data-connectors/index.ts"
     },
+    "./data-connectors/client": {
+      "types": "./src/data-connectors/client.ts",
+      "source": "./src/data-connectors/client.ts",
+      "import": "./dist/data-connectors/client.mjs",
+      "default": "./src/data-connectors/client.ts"
+    },
     "./data-migrations": {
       "types": "./src/data-migrations/index.ts",
       "source": "./src/data-migrations/index.ts",

@@ -6,7 +6,7 @@ import { Button } from '@auxx/ui/components/button'
 import { useNavStack } from '@auxx/ui/components/nav-stack'
 import { ChevronLeft } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
-import { useStreamMutations } from '../hooks/use-stream-mutations'
+import { getConnectorDraftState, useConnectorDraftStore } from '../stores/connector-draft-store'
 
 interface StreamDetailBarProps {
   connectorId: string
@@ -19,12 +19,15 @@ interface StreamDetailBarProps {
  * Shared-bar content for the pushed `stream` drill level. Carries the iOS-style
  * back affordance plus an inline-editable stream name — the stream is created
  * blank from the section and named here (mirrors the agent `ProcedureDetailBar`).
- * Rename is optimistic via `useStreamMutations`.
+ * Rename writes the connector DRAFT (plans/data-connectors/v4); the save bar commits it.
  */
 export function StreamDetailBar({ connectorId, streamId, streamKey }: StreamDetailBarProps) {
   const { pop } = useNavStack()
-  const { renameStream } = useStreamMutations(connectorId)
-  const name = streamKey ?? ''
+  // Prefer the draft's stream name so an unsaved rename shows live; fall back to the prop.
+  const draftKey = useConnectorDraftStore(
+    (s) => s.draft.streams.find((st) => st.id === streamId)?.streamKey
+  )
+  const name = draftKey ?? streamKey ?? ''
 
   // Local draft so typing stays smooth; the optimistic write lands on commit.
   // Re-seed from `streamKey` when it changes externally (stream switch, refetch)
@@ -43,7 +46,7 @@ export function StreamDetailBar({ connectorId, streamId, streamKey }: StreamDeta
       setEditValue(name)
       return
     }
-    void renameStream(streamId, trimmed)
+    getConnectorDraftState().renameStream(streamId, trimmed)
   }
 
   const handleKeyDown = (e: React.KeyboardEvent) => {

@@ -7,7 +7,6 @@ import { Section } from '@auxx/ui/components/section'
 import { Waypoints } from 'lucide-react'
 import { Tooltip } from '~/components/global/tooltip'
 import type { RouterOutputs } from '~/trpc/react'
-import { useStreamMutations } from '../hooks/use-stream-mutations'
 import {
   type BackfillWindowSpan,
   describePagination,
@@ -15,6 +14,7 @@ import {
   type PaginationSpec,
 } from '../lib/describe-pagination'
 import { detectPagination } from '../lib/detect-pagination'
+import { getConnectorDraftState, useConnectorDraftStore } from '../stores/connector-draft-store'
 
 type Connector = NonNullable<RouterOutputs['dataConnector']['getById']>
 type Stream = RouterOutputs['dataConnector']['listStreams'][number]
@@ -47,16 +47,23 @@ interface PaginationSectionProps {
  * descriptions from the stream/sample and owns the apply mutation.
  */
 export function PaginationSection({ connector, stream, sample }: PaginationSectionProps) {
-  const { applyPagination, isSavingRequest } = useStreamMutations(connector.id)
+  // Read the request config from the draft (reflects an unsaved edit); "Use this" writes
+  // back to the draft and the save bar commits it (plans/data-connectors/v4).
+  const draftStream = useConnectorDraftStore((s) =>
+    s.draft.streams.find((st) => st.id === stream.id)
+  )
+  const draftSpan = useConnectorDraftStore(
+    (s) => (s.draft.config as { backfillWindowSpan?: BackfillWindowSpan }).backfillWindowSpan
+  )
 
-  const requestConfig = (stream.requestConfig ?? {}) as {
+  const requestConfig = (draftStream?.requestConfig ?? stream.requestConfig ?? {}) as {
     params?: Record<string, unknown>
     pagination?: PaginationSpec
   }
   const pagination = requestConfig.pagination
-  const backfillWindowSpan = (
-    connector.config as { backfillWindowSpan?: BackfillWindowSpan } | null
-  )?.backfillWindowSpan
+  const backfillWindowSpan =
+    draftSpan ??
+    (connector.config as { backfillWindowSpan?: BackfillWindowSpan } | null)?.backfillWindowSpan
   const pageSizeFallback = numericParam(requestConfig.params)
 
   const configuredPagination = describePagination(pagination, {
@@ -77,11 +84,9 @@ export function PaginationSection({ connector, stream, sample }: PaginationSecti
 
   const handleUsePagination = () => {
     if (!detected) return
-    const merged = {
-      ...((stream.requestConfig as Record<string, unknown>) ?? {}),
-      pagination: detected.spec,
-    }
-    void applyPagination(stream.id, merged as Parameters<typeof applyPagination>[1])
+    const cur = (getConnectorDraftState().draft.streams.find((s) => s.id === stream.id)
+      ?.requestConfig ?? {}) as Record<string, unknown>
+    getConnectorDraftState().setRequestConfig(stream.id, { ...cur, pagination: detected.spec })
   }
 
   const hasDetected = !!(detectedPagination && detected)
@@ -102,11 +107,7 @@ export function PaginationSection({ connector, stream, sample }: PaginationSecti
           <span className='text-xs text-muted-foreground'>Detected from test fetch</span>
           <PaginationBadge description={detectedPagination} note={detected.note} />
           {SHOW_USE_DETECTED_PAGINATION && (
-            <Button
-              variant='outline'
-              size='xs'
-              loading={isSavingRequest}
-              onClick={handleUsePagination}>
+            <Button variant='outline' size='xs' onClick={handleUsePagination}>
               Use this
             </Button>
           )}

@@ -23,15 +23,15 @@ import { ChevronDown, Database, FlaskConical, Pencil, RefreshCw, Waypoints } fro
 import { type ReactNode, useMemo, useState } from 'react'
 import type { HttpRequestFieldContextValue } from '~/components/global/http-request'
 import { makeTokenFieldEditor } from '~/components/global/token-field'
+import { Tooltip } from '~/components/global/tooltip'
 import {
   SchemaEditorDialog,
   type SeededFrom,
 } from '~/components/schema-editor/ui/schema-editor-dialog'
 import type { RouterOutputs } from '~/trpc/react'
-import { useBufferedConfig } from '../hooks/use-buffered-config'
-import { useRegisterSaver } from '../hooks/use-connector-edits'
 import { useSourcePaths } from '../hooks/use-source-paths'
 import { useStreamMutations } from '../hooks/use-stream-mutations'
+import { getConnectorDraftState, useConnectorDraftStore } from '../stores/connector-draft-store'
 import { MappingTree } from './mapping-tree'
 import { PaginationSection } from './pagination-section'
 import {
@@ -119,76 +119,91 @@ export function StreamConfigPanel({
     responseHeaders?: Record<string, string>
   } | null>(null)
 
-  const sourcePaths = useSourcePaths(stream.sourceSchema as Record<string, unknown> | null)
-  const hasSchema = !!stream.sourceSchema
+  // Render config from the draft store (optimistic) — nothing persists until the save
+  // bar's `commit()` (the unified saving model, plans/data-connectors/v4). Fall back to
+  // the server prop for the first frame before the bridge seeds the store.
+  const draftStream = useConnectorDraftStore((s) =>
+    s.draft.streams.find((st) => st.id === stream.id)
+  )
+  const draftBehavior = useConnectorDraftStore((s) => s.draft.syncBehavior)
+  const setStreamValidity = useConnectorDraftStore((s) => s.setStreamValidity)
 
-  // Single mutation surface for the stream: optimistic toggles (setSyncMode,
-  // …) + deliberate/imperative saves (saveRequestConfig, setStreamSchema,
-  // sampleFetch). Sync-mode is optimistic; the request form is a buffered
-  // explicit Save (flip mode to 'auto' for autosave — plan §5/§6).
-  const {
-    setSyncMode,
-    saveRequestConfig,
-    setStreamSchema,
-    sampleFetch,
-    isSavingRequest,
-    isSampling,
-  } = useStreamMutations(connector.id)
+  // Test-fetch readiness (plan §7a, `canSample`) — needs only an endpoint, and is
+  // dirty-EXEMPT (it's the tool that sends the uncommitted draft request config to
+  // discover the schema before any save). Soft-disabled only once the draft is seeded;
+  // before that we defer to the server guard (Phase 0) rather than flash a false-disable.
+  const draftSeeded = useConnectorDraftStore((s) => s.connectorId === connector.id)
+  const draftConfig = useConnectorDraftStore((s) => s.draft.config)
+  const draftCredentialId = useConnectorDraftStore((s) => s.meta?.credentialId ?? null)
+  const canSample = isGenericRest
+    ? !!(draftConfig as { endpoint?: { baseUrl?: string } }).endpoint?.baseUrl
+    : !!draftCredentialId
+  const sampleBlockReason =
+    draftSeeded && !canSample ? (isGenericRest ? 'Add a base URL' : 'Connect an account') : null
 
-  const requestConfig = (stream.requestConfig ?? {}) as {
+  const liveRequestConfig = (draftStream?.requestConfig ?? stream.requestConfig ?? {}) as {
     path?: string
     method?: 'GET' | 'POST'
     headers?: Record<string, string>
     params?: Record<string, unknown>
     body?: Record<string, unknown>
+    webhookTrigger?: { paths?: string[] }
   }
-  const request = useBufferedConfig(
-    {
-      path: requestConfig.path ?? '',
-      method: requestConfig.method ?? 'GET',
-      headers: requestConfig.headers ?? {},
-      params: requestConfig.params ?? {},
-      body: requestConfig.body ?? {},
-    },
-    (draft) => saveRequestConfig(stream.id, draft),
-    { mode: 'manual' }
-  )
+  const liveSourceSchema = (draftStream?.sourceSchema ?? stream.sourceSchema) as Record<
+    string,
+    unknown
+  > | null
+  const liveSchemaSource = draftStream?.schemaSource ?? stream.schemaSource
+
+  const sourcePaths = useSourcePaths(liveSourceSchema)
+  const hasSchema = !!liveSourceSchema
+
+  // Imperative reads only — the live test-fetch (sampleFetch); the persisting writes
+  // (request config, schema, sync mode) are draft setters now.
+  const { sampleFetch, isSampling } = useStreamMutations(connector.id)
+
+  // The request fields rendered from the draft.
+  const reqValue = {
+    path: liveRequestConfig.path ?? '',
+    method: liveRequestConfig.method ?? 'GET',
+    headers: liveRequestConfig.headers ?? {},
+    params: liveRequestConfig.params ?? {},
+    body: liveRequestConfig.body ?? {},
+  }
+  // Merge a request edit onto the draft's full requestConfig so pagination / webhook
+  // steering / backfill-window keys survive. Reads the latest draft to avoid stale closures.
+  const setRequest = (next: typeof reqValue) => {
+    const cur = (getConnectorDraftState().draft.streams.find((s) => s.id === stream.id)
+      ?.requestConfig ?? {}) as Record<string, unknown>
+    getConnectorDraftState().setRequestConfig(stream.id, { ...cur, ...next })
+  }
 
   // Progressive disclosure — each sub-editor stays hidden until revealed, but
   // starts open when its config already has content (a saved request is never
-  // hidden). `bodyValid` gates Save on a JSON parse error.
+  // hidden). `bodyValid` blocks commit on a JSON parse error (via stream validity).
   const [showHeaders, setShowHeaders] = useState(
-    () => Object.keys(requestConfig.headers ?? {}).length > 0
+    () => Object.keys(liveRequestConfig.headers ?? {}).length > 0
   )
   const [showParams, setShowParams] = useState(
-    () => Object.keys(requestConfig.params ?? {}).length > 0
+    () => Object.keys(liveRequestConfig.params ?? {}).length > 0
   )
-  const [showBody, setShowBody] = useState(() => Object.keys(requestConfig.body ?? {}).length > 0)
-  const [bodyValid, setBodyValid] = useState(true)
+  const [showBody, setShowBody] = useState(
+    () => Object.keys(liveRequestConfig.body ?? {}).length > 0
+  )
+  const setBodyValid = (valid: boolean) => setStreamValidity(stream.id, valid)
 
-  // Fold the request draft into the connector-wide save bar (no inline Save
-  // button). Gate dirty on `bodyValid` so an unparseable JSON body never commits
-  // — mirrors the old button's `disabled={!bodyValid}`. Only generic-rest streams
-  // expose the request editor, so a non-dirty saver elsewhere is a harmless no-op.
-  useRegisterSaver(
-    `request:${stream.id}`,
-    request.isDirty && bodyValid,
-    isSavingRequest,
-    request.commit
-  )
   const syncMode: 'snapshot' | 'incremental' =
-    stream.syncMode === 'incremental' ? 'incremental' : 'snapshot'
+    (draftStream?.syncMode ?? stream.syncMode) === 'incremental' ? 'incremental' : 'snapshot'
 
   // Webhook-driven connectors steer the fetch with `{path}` placeholders declared in the
   // Webhook steering section. Token-enable the request fields (URL + header/param values)
-  // so those paths are insertable via the `{` picker, not hand-typed. Gated on the
-  // connector's trigger type — steering is orthogonal to syncMode (completeness).
-  const isSteered = connector.syncBehavior === 'webhook'
-  const steeringPaths = useMemo<string[]>(() => {
-    const wt = (stream.requestConfig as { webhookTrigger?: { paths?: string[] } } | null)
-      ?.webhookTrigger
-    return wt?.paths ?? []
-  }, [stream.requestConfig])
+  // so those paths are insertable via the `{` picker, not hand-typed. Gated on the draft
+  // behavior — steering is orthogonal to syncMode (completeness).
+  const isSteered = draftBehavior === 'webhook'
+  const steeringPaths = useMemo<string[]>(
+    () => liveRequestConfig.webhookTrigger?.paths ?? [],
+    [liveRequestConfig.webhookTrigger]
+  )
   const tokenFieldContext = useMemo<HttpRequestFieldContextValue>(() => {
     const tokenSource = makeSteeringTokenSource(steeringPaths)
     return {
@@ -198,17 +213,21 @@ export function StreamConfigPanel({
     }
   }, [steeringPaths])
 
+  // Schema writes go to the draft store; commit persists them (and re-derives nothing).
+  const setStreamSchema = (schema: Record<string, unknown>, source: 'inferred' | 'manual') =>
+    getConnectorDraftState().setStreamSchema(stream.id, schema, source)
+
   const handleTestFetch = async () => {
     const result = await sampleFetch({
       id: connector.id,
       streamKey: stream.streamKey,
-      requestConfig: isGenericRest ? request.value : undefined,
+      requestConfig: isGenericRest ? reqValue : undefined,
     })
     setSample(result)
     // Auto-set the inferred schema (the raw response shape) when none exists yet.
     if (!hasSchema && result.response != null) {
       const inferred = inferJsonSchema(result.response) as Record<string, unknown>
-      setStreamSchema(stream.id, inferred, 'inferred')
+      setStreamSchema(inferred, 'inferred')
     }
   }
 
@@ -217,25 +236,22 @@ export function StreamConfigPanel({
   const handleUseShape = () => {
     if (sample?.response == null) return
     const inferred = inferJsonSchema(sample.response) as Record<string, unknown>
-    setStreamSchema(stream.id, inferred, 'inferred')
+    setStreamSchema(inferred, 'inferred')
   }
 
   const openEdit = () =>
     setSeed({
-      schema: (stream.sourceSchema as Record<string, unknown>) ?? EMPTY_SCHEMA,
-      seededFrom: hasSchema
-        ? stream.schemaSource === 'inferred'
-          ? 'inferred'
-          : 'existing'
-        : 'empty',
+      schema: liveSourceSchema ?? EMPTY_SCHEMA,
+      seededFrom: hasSchema ? (liveSchemaSource === 'inferred' ? 'inferred' : 'existing') : 'empty',
     })
 
   const handleSaveSchema = (schema: Record<string, unknown>, source: 'inferred' | 'manual') =>
-    setStreamSchema(stream.id, schema, source)
+    setStreamSchema(schema, source)
 
   // Only surface a provenance sentence when it's actionable (inferred/manual).
   // Catalog ("came predefined") and the empty state say nothing useful — hide them.
-  const schemaSentence = hasSchema ? SCHEMA_SOURCE_SENTENCE[stream.schemaSource] : null
+  const schemaSentence =
+    hasSchema && liveSchemaSource ? SCHEMA_SOURCE_SENTENCE[liveSchemaSource] : null
 
   const body = (
     <>
@@ -254,15 +270,15 @@ export function StreamConfigPanel({
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                       <InputGroupButton variant='ghost' className='pr-1.5! text-xs'>
-                        {request.value.method}
+                        {reqValue.method}
                         <ChevronDown className='size-3' />
                       </InputGroupButton>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align='start' className='[--radius:0.95rem]'>
                       <DropdownMenuRadioGroup
-                        value={request.value.method}
+                        value={reqValue.method}
                         onValueChange={(v) =>
-                          request.set({ ...request.value, method: v as 'GET' | 'POST' })
+                          setRequest({ ...reqValue, method: v as 'GET' | 'POST' })
                         }>
                         {METHOD_OPTIONS.map((option) => (
                           <DropdownMenuRadioItem
@@ -279,15 +295,15 @@ export function StreamConfigPanel({
                 {isSteered ? (
                   <div className='flex-1'>
                     <tokenFieldContext.FieldEditor
-                      value={request.value.path}
-                      onChange={(path) => request.set({ ...request.value, path })}
+                      value={reqValue.path}
+                      onChange={(path) => setRequest({ ...reqValue, path })}
                       placeholder='/orders/{id}.json'
                     />
                   </div>
                 ) : (
                   <InputGroupInput
-                    value={request.value.path}
-                    onChange={(e) => request.set({ ...request.value, path: e.target.value })}
+                    value={reqValue.path}
+                    onChange={(e) => setRequest({ ...reqValue, path: e.target.value })}
                     placeholder='/orders or full URL'
                   />
                 )}
@@ -297,20 +313,20 @@ export function StreamConfigPanel({
               <div className='flex flex-wrap items-center gap-1.5'>
                 <RevealChip
                   label='Headers'
-                  count={Object.keys(request.value.headers).length}
+                  count={Object.keys(reqValue.headers).length}
                   active={showHeaders}
                   onClick={() => setShowHeaders((v) => !v)}
                 />
                 <RevealChip
                   label='Query params'
-                  count={Object.keys(request.value.params).length}
+                  count={Object.keys(reqValue.params).length}
                   active={showParams}
                   onClick={() => setShowParams((v) => !v)}
                 />
-                {request.value.method === 'POST' && (
+                {reqValue.method === 'POST' && (
                   <RevealChip
                     label='Body'
-                    count={Object.keys(request.value.body).length > 0 ? 'JSON' : 0}
+                    count={Object.keys(reqValue.body).length > 0 ? 'JSON' : 0}
                     active={showBody}
                     onClick={() => setShowBody((v) => !v)}
                   />
@@ -320,8 +336,8 @@ export function StreamConfigPanel({
               {showHeaders && (
                 <RequestEditorBlock title='Headers'>
                   <RecordKeyValueEditor
-                    record={request.value.headers}
-                    onChange={(headers) => request.set({ ...request.value, headers })}
+                    record={reqValue.headers}
+                    onChange={(headers) => setRequest({ ...reqValue, headers })}
                     fieldContext={isSteered ? tokenFieldContext : undefined}
                   />
                 </RequestEditorBlock>
@@ -329,17 +345,17 @@ export function StreamConfigPanel({
               {showParams && (
                 <RequestEditorBlock title='Query params'>
                   <RecordKeyValueEditor
-                    record={request.value.params}
-                    onChange={(params) => request.set({ ...request.value, params })}
+                    record={reqValue.params}
+                    onChange={(params) => setRequest({ ...reqValue, params })}
                     fieldContext={isSteered ? tokenFieldContext : undefined}
                   />
                 </RequestEditorBlock>
               )}
-              {request.value.method === 'POST' && showBody && (
+              {reqValue.method === 'POST' && showBody && (
                 <RequestEditorBlock title='Body'>
                   <JsonBodyEditor
-                    value={request.value.body}
-                    onChange={(body) => request.set({ ...request.value, body })}
+                    value={reqValue.body}
+                    onChange={(body) => setRequest({ ...reqValue, body })}
                     onValidChange={setBodyValid}
                   />
                 </RequestEditorBlock>
@@ -358,17 +374,29 @@ export function StreamConfigPanel({
               collapsible={false}
               className={sample ? undefined : '[&_[data-slot=section]]:pb-0'}
               description='Pull a few real records to see what the source returns.'
-              actions={
-                <Button
-                  variant='outline'
-                  size='xs'
-                  loading={isSampling}
-                  loadingText='Fetching...'
-                  onClick={() => void handleTestFetch()}>
-                  <FlaskConical />
-                  Test fetch
-                </Button>
-              }>
+              actions={(() => {
+                const testFetchButton = (
+                  <Button
+                    variant='outline'
+                    size='xs'
+                    loading={isSampling}
+                    loadingText='Fetching...'
+                    aria-disabled={!!sampleBlockReason}
+                    className={sampleBlockReason ? 'cursor-not-allowed opacity-50' : undefined}
+                    onClick={() => {
+                      if (sampleBlockReason) return
+                      void handleTestFetch()
+                    }}>
+                    <FlaskConical />
+                    Test fetch
+                  </Button>
+                )
+                return sampleBlockReason ? (
+                  <Tooltip content={sampleBlockReason}>{testFetchButton}</Tooltip>
+                ) : (
+                  testFetchButton
+                )
+              })()}>
               <StreamSample sample={sample} onUseShape={handleUseShape} />
             </Section>
 
@@ -402,9 +430,7 @@ export function StreamConfigPanel({
                 <RadioTab
                   value={syncMode}
                   onValueChange={(v) =>
-                    // Pass the whole buffered request so toggling mode never drops
-                    // saved headers/params/body (setStreamRequestConfig writes it whole).
-                    setSyncMode(stream.id, v as 'snapshot' | 'incremental', request.value)
+                    getConnectorDraftState().setSyncMode(stream.id, v as 'snapshot' | 'incremental')
                   }
                   size='sm'>
                   <RadioTabItem value='snapshot' size='sm'>
@@ -438,9 +464,8 @@ export function StreamConfigPanel({
               connectorId={connector.id}
               streamId={stream.id}
               streamKey={stream.streamKey ?? ''}
-              mappings={stream.mappings}
               sourcePaths={sourcePaths}
-              sourceSchema={stream.sourceSchema as Record<string, unknown> | null}
+              sourceSchema={liveSourceSchema}
             />
           </Section>
         )}

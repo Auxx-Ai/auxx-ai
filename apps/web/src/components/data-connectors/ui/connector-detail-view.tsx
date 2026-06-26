@@ -1,6 +1,11 @@
 // apps/web/src/components/data-connectors/ui/connector-detail-view.tsx
 'use client'
 
+import {
+  getConnectorReadiness,
+  READINESS_REASON,
+  type ReadinessStream,
+} from '@auxx/lib/data-connectors/client'
 import { Button } from '@auxx/ui/components/button'
 import {
   DropdownMenu,
@@ -18,7 +23,9 @@ import {
 import { ChevronDown, FlaskConical, Pause, Play, Plug, RefreshCw, Trash } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useQueryState } from 'nuqs'
+import { useMemo } from 'react'
 import { AppIcon } from '~/components/apps/ui/app-icon'
+import { Tooltip } from '~/components/global/tooltip'
 import { useConfirm } from '~/hooks/use-confirm'
 import { useMedia } from '~/hooks/use-media'
 import { useDockStore } from '~/stores/dock-store'
@@ -26,6 +33,11 @@ import { api } from '~/trpc/react'
 import { useConnectorMutations } from '../hooks/use-connector-mutations'
 import { useConnectorSyncRealtime } from '../hooks/use-connector-sync-realtime'
 import { resolveSyncStatus } from '../lib/resolve-sync-status'
+import {
+  selectIsDirty,
+  useConnectorDraftStore,
+  visibleMappings,
+} from '../stores/connector-draft-store'
 import { ConnectorDetailTabs } from './connector-detail-tabs'
 import { ConnectorResyncBanner } from './connector-resync-banner'
 import { ConnectorRunsPanel } from './connector-runs-panel'
@@ -109,6 +121,47 @@ export function ConnectorDetailView({ connector }: ConnectorDetailViewProps) {
     isDeleting,
   } = useConnectorMutations()
 
+  // Readiness + dirty gate for the sync actions (plan §7a). Computed off the DRAFT so it
+  // previews what the config WILL be once saved (never stale), and combined with the
+  // dirty gate so "Sync now" can't act on a half-edited config. We only soft-disable once
+  // the draft is SEEDED for this connector (the editor mounted it) — before that we defer
+  // to the authoritative server guard (Phase 0) rather than flash a false-disabled button.
+  const draftSeeded = useConnectorDraftStore((s) => s.connectorId === connector.id)
+  const draftMeta = useConnectorDraftStore((s) => s.meta)
+  const draftStreams = useConnectorDraftStore((s) => s.draft.streams)
+  const draftConfig = useConnectorDraftStore((s) => s.draft.config)
+  const isDirty = useConnectorDraftStore(selectIsDirty)
+  const readiness = useMemo(() => {
+    if (!draftSeeded || !draftMeta) return null
+    const streams: ReadinessStream[] = draftStreams.map((s) => ({
+      enabled: s.enabled,
+      streamKey: s.streamKey || null,
+      sourceSchema: s.sourceSchema,
+      requestConfig: s.requestConfig ?? null,
+      mappings: visibleMappings(s).map((m) => ({
+        entityDefinitionId: m.entityDefinitionId,
+        fieldMappings: m.fieldMappings,
+      })),
+    }))
+    return getConnectorReadiness(
+      {
+        definitionKind: draftMeta.definitionKind,
+        config: draftConfig as never,
+        credentialId: draftMeta.credentialId,
+      },
+      streams
+    )
+  }, [draftSeeded, draftMeta, draftStreams, draftConfig])
+
+  // Sync / Sample need a COMPLETE config (readiness) AND a SAVED one (not dirty) — §7a.
+  // Reason text, or null when the action is allowed.
+  const syncBlockReason =
+    readiness && !readiness.canSync
+      ? READINESS_REASON[readiness.problems[0] ?? 'no-endpoint']
+      : isDirty
+        ? 'Save changes first'
+        : null
+
   const handleDelete = async (syncedData: 'keep' | 'archive' | 'delete') => {
     const copy = {
       keep: 'Synced records are kept; only the connector is removed.',
@@ -139,21 +192,45 @@ export function ConnectorDetailView({ connector }: ConnectorDetailViewProps) {
       <MainPageHeader
         action={
           <div className='flex items-center gap-2'>
-            <Button
-              variant='outline'
-              size='sm'
-              loading={isSyncPending}
-              loadingText='Syncing...'
-              disabled={isSyncing}
-              onClick={() => syncNow(connector.id)}>
-              <RefreshCw />
-              Sync now
-            </Button>
+            {/* Soft-disable (not native `disabled`) when the config is incomplete OR unsaved
+                so a tooltip can explain why; native `disabled` stays for the in-flight state. */}
+            {(() => {
+              const syncButton = (
+                <Button
+                  variant='outline'
+                  size='sm'
+                  loading={isSyncPending}
+                  loadingText='Syncing...'
+                  disabled={isSyncing}
+                  aria-disabled={!!syncBlockReason}
+                  className={syncBlockReason ? 'cursor-not-allowed opacity-50' : undefined}
+                  onClick={() => {
+                    if (syncBlockReason) return
+                    syncNow(connector.id)
+                  }}>
+                  <RefreshCw />
+                  Sync now
+                </Button>
+              )
+              return syncBlockReason ? (
+                <Tooltip content={syncBlockReason}>{syncButton}</Tooltip>
+              ) : (
+                syncButton
+              )
+            })()}
             {/* Sample sync (trial-sync §5.3): a bounded first look, available after setup
                 too — pick a per-stream size; the run parks for review when it's done. */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant='outline' size='sm' disabled={isSyncing}>
+                <Button
+                  variant='outline'
+                  size='sm'
+                  disabled={isSyncing}
+                  aria-disabled={!!syncBlockReason}
+                  className={syncBlockReason ? 'cursor-not-allowed opacity-50' : undefined}
+                  onClick={(e) => {
+                    if (syncBlockReason) e.preventDefault()
+                  }}>
                   <FlaskConical />
                   Sample
                   <ChevronDown />

@@ -28,7 +28,7 @@ import { FunctionSquare, Loader2, Plus, Sparkles, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 import { ResourcePicker } from '~/components/pickers/resource-picker'
 import { useResourceFields, useResourceProperty } from '~/components/resources'
-import { api, type RouterOutputs } from '~/trpc/react'
+import { api } from '~/trpc/react'
 import {
   absolutePrefix,
   buildSourceTree,
@@ -37,7 +37,8 @@ import {
   type SourceTreeNode,
   subtreeUnder,
 } from '../hooks/use-source-paths'
-import type { FieldMapping, useStreamMutations } from '../hooks/use-stream-mutations'
+import type { FieldMapping } from '../hooks/use-stream-mutations'
+import type { DraftMapping, MappingDraftMutations } from '../stores/connector-draft-store'
 import { BranchRow } from './branch-row'
 import { CappedNodeList } from './capped-node-list'
 import { FieldCalcDialog } from './field-calc-dialog'
@@ -56,7 +57,11 @@ import { FieldRowActions, MappingRow } from './mapping-row'
 import { RelationshipLinkRow } from './relationship-link-row'
 import { SourceLeafRow } from './source-leaf-row'
 
-type Mapping = RouterOutputs['dataConnector']['listStreams'][number]['mappings'][number]
+// The mapping tree now renders from the connector DRAFT store (plans/data-connectors/v4),
+// so a row is a `DraftMapping` (fan-out/remove are temp-id/tombstone draft edits). The UI
+// reads only the common subset (id, def, link/target mode, fieldMappings, rootPath, parent,
+// relationshipFieldKey), all present on `DraftMapping`.
+type Mapping = DraftMapping
 
 /**
  * Canonical `ResourceFieldId` for a target field — what bindings store. Prefer the
@@ -139,7 +144,7 @@ export interface MappingNodeProps {
   /** All mappings indexed by id — for `absolutePrefix` + child lookup. */
   byMappingId: Map<string, Mapping>
   childrenOf: Map<string | null, Mapping[]>
-  mutations: ReturnType<typeof useStreamMutations>
+  mutations: MappingDraftMutations
   /** Entity defs this connector already syncs — a soft hint for the link picker. */
   syncedDefIds: Set<string>
 }
@@ -970,7 +975,7 @@ interface SourceNodeProps {
   sourcePaths: SourcePath[]
   byMappingId: Map<string, Mapping>
   childrenOf: Map<string | null, Mapping[]>
-  mutations: ReturnType<typeof useStreamMutations>
+  mutations: MappingDraftMutations
   syncedDefIds: Set<string>
 }
 

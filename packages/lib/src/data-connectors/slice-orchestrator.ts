@@ -166,6 +166,17 @@ export async function startConnectorSync(
     return false
   }
   const { connector, streams } = loaded
+  if (streams.length === 0) {
+    // `loadConnector` drops untargeted/unnamed streams, so a connector that slipped
+    // past the readiness guard (e.g. an enqueue from before the guard, or a config
+    // edit that emptied the last usable stream) lands here. Surface the silent no-op
+    // instead of returning `true` from a run that touches nothing.
+    logger.warn(
+      'startConnectorSync: connector has no usable streams (no targeted mappings or unnamed) — nothing to sync',
+      { dataConnectorId }
+    )
+    return false
+  }
 
   const claimed = await claimForSync(db, dataConnectorId)
   if (!claimed) {

@@ -5,17 +5,15 @@ import { collectSchemaLeaves, type SourceLeaf } from '@auxx/lib/json-schema/clie
 import { Checkbox } from '@auxx/ui/components/checkbox'
 import { Label } from '@auxx/ui/components/label'
 import { Section } from '@auxx/ui/components/section'
-import { toastError } from '@auxx/ui/components/toast'
 import TreeRow from '@auxx/ui/components/tree-row'
 import { Table2, Webhook } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useAppsContext } from '~/components/apps/providers/apps-context'
 import { useTriggerSources } from '~/components/pickers/trigger-source'
 import { type Tag, TagInput } from '~/components/tag-input/tag-input'
 import { WebhookTopicPicker } from '~/components/webhooks/ui/webhook-topic-picker'
-import { api, type RouterOutputs } from '~/trpc/react'
-import { useBufferedConfig } from '../hooks/use-buffered-config'
-import { useRegisterSaver } from '../hooks/use-connector-edits'
+import type { RouterOutputs } from '~/trpc/react'
+import { getConnectorDraftState, selectIsDirty } from '../stores/connector-draft-store'
 
 type Connector = NonNullable<RouterOutputs['dataConnector']['getById']>
 type Stream = RouterOutputs['dataConnector']['listStreams'][number]
@@ -155,35 +153,30 @@ function WebhookSteeringEditor({ connector, stream }: { connector: Connector; st
   const saved = (stream.requestConfig as { webhookTrigger?: WebhookTriggerConfig } | null)
     ?.webhookTrigger
 
-  const setStreamRequestConfig = api.dataConnector.setStreamRequestConfig.useMutation({
-    onError: (e) => toastError({ title: 'Error saving webhook binding', description: e.message }),
+  // The editable steering fields are local UI state; every change mirrors into the
+  // connector draft (`requestConfig.webhookTrigger`) and the unified save bar commits it
+  // (plans/data-connectors/v4). The `delete*` fields round-trip but their editor is hidden.
+  const seedDraft = (): SteeringDraft => ({
+    paths: saved?.paths ?? [],
+    topics: topicListFromFilter(saved?.filter),
+    deleteMode: deleteModeFromSaved(saved),
+    deleteValue: deleteValueFromSaved(saved),
+    deleteIdPath: saved?.deleteExternalIdPath ?? '',
   })
-  const utils = api.useUtils()
+  const [value, setValue] = useState<SteeringDraft>(seedDraft)
+  const { paths, topics } = value
+  // Re-seed local state from the server shape only while the draft is clean (after a
+  // commit / connector switch) — never clobber an in-progress edit.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: re-seed keys off the saved block
+  useEffect(() => {
+    if (!selectIsDirty(getConnectorDraftState())) setValue(seedDraft())
+  }, [saved])
 
-  // One buffered draft behind the connector-wide save bar — no per-section Save
-  // button. `paths`/`topics` are the edited fields. The `delete*` fields are kept in the
-  // draft (initialized from / persisted back to `saved`) so any existing delete config
-  // round-trips, but their editor is intentionally hidden from the UI for now.
-  const draft = useBufferedConfig<SteeringDraft>(
-    {
-      paths: saved?.paths ?? [],
-      topics: topicListFromFilter(saved?.filter),
-      deleteMode: deleteModeFromSaved(saved),
-      deleteValue: deleteValueFromSaved(saved),
-      deleteIdPath: saved?.deleteExternalIdPath ?? '',
-    },
-    (value) => persist(value),
-    { mode: 'manual' }
-  )
-  const { paths, topics } = draft.value
-
-  // Feeds the connector-wide save bar; no per-section Save button.
-  useRegisterSaver(
-    `webhook-steering:${stream.id}`,
-    draft.isDirty,
-    setStreamRequestConfig.isPending,
-    draft.commit
-  )
+  // Apply an edit: update local state + write the built steering block onto the draft.
+  const setDraft = (next: SteeringDraft) => {
+    setValue(next)
+    getConnectorDraftState().setWebhookSteering(stream.id, buildSteering(next))
+  }
 
   // Flatten the bound signal's schema into pickable dotted leaves (incl. scalar arrays —
   // a `{path}` comma-joins them). App trigger → its `outputsJsonSchema`; endpoint → the
@@ -224,14 +217,14 @@ function WebhookSteeringEditor({ connector, stream }: { connector: Connector; st
     [paths, leafPaths]
   )
 
-  const setTopics = (next: string[]) => draft.set({ ...draft.value, topics: next })
+  const setTopics = (next: string[]) => setDraft({ ...value, topics: next })
   const setTopicTags = (next: Tag[] | ((prev: Tag[]) => Tag[])) => {
     const list = typeof next === 'function' ? next(topicTags) : next
     setTopics([...new Set(list.map((t) => t.text.trim()).filter(Boolean))])
   }
   const togglePath = (path: string) =>
-    draft.set({
-      ...draft.value,
+    setDraft({
+      ...value,
       paths: selected.has(path) ? paths.filter((p) => p !== path) : [...paths, path],
     })
   // The TagInput owns the off-schema paths; keep the schema-selected ones and swap the rest.
@@ -239,37 +232,7 @@ function WebhookSteeringEditor({ connector, stream }: { connector: Connector; st
     const list = typeof next === 'function' ? next(customTags) : next
     const custom = [...new Set(list.map((t) => t.text.trim()).filter(Boolean))]
     const schemaSelected = paths.filter((p) => leafPaths.has(p))
-    draft.set({ ...draft.value, paths: [...schemaSelected, ...custom] })
-  }
-
-  // Build the steering block from the draft and merge it onto the stream's request
-  // config (never clobbers path/params/pagination), then refresh the streams list.
-  const persist = (value: SteeringDraft) => {
-    const pathList = [...new Set(value.paths.map((p) => p.trim()).filter(Boolean))]
-    const topicList = value.topics.map((s) => s.trim()).filter(Boolean)
-    const deleteWhen =
-      value.deleteMode === 'topic' && value.deleteValue.trim()
-        ? { topicEquals: value.deleteValue.trim() }
-        : value.deleteMode === 'field' && value.deleteValue.trim()
-          ? { tokenTruthy: value.deleteValue.trim() }
-          : undefined
-    const webhookTrigger: WebhookTriggerConfig = {
-      paths: pathList,
-      ...(topicList.length > 0 ? { filter: { topic: { in: topicList } } } : {}),
-      ...(deleteWhen ? { deleteWhen } : {}),
-      ...(deleteWhen && value.deleteIdPath.trim()
-        ? { deleteExternalIdPath: value.deleteIdPath.trim() }
-        : {}),
-    }
-    const existing = (stream.requestConfig ?? {}) as Record<string, unknown>
-    // Steering lives in `requestConfig.webhookTrigger`; `syncMode` stays the completeness
-    // axis (snapshot/incremental) so a steered stream can still reconcile on its sweeps.
-    return setStreamRequestConfig
-      .mutateAsync({
-        streamId: stream.id,
-        requestConfig: { ...existing, webhookTrigger },
-      })
-      .then(() => utils.dataConnector.listStreams.invalidate({ id: connector.id }))
+    setDraft({ ...value, paths: [...schemaSelected, ...custom] })
   }
 
   return (
@@ -350,6 +313,26 @@ function WebhookSteeringEditor({ connector, stream }: { connector: Connector; st
       </div>
     </div>
   )
+}
+
+/** Build the persisted steering block from the editor draft (paths/topics/delete). */
+function buildSteering(value: SteeringDraft): WebhookTriggerConfig {
+  const pathList = [...new Set(value.paths.map((p) => p.trim()).filter(Boolean))]
+  const topicList = value.topics.map((s) => s.trim()).filter(Boolean)
+  const deleteWhen =
+    value.deleteMode === 'topic' && value.deleteValue.trim()
+      ? { topicEquals: value.deleteValue.trim() }
+      : value.deleteMode === 'field' && value.deleteValue.trim()
+        ? { tokenTruthy: value.deleteValue.trim() }
+        : undefined
+  return {
+    paths: pathList,
+    ...(topicList.length > 0 ? { filter: { topic: { in: topicList } } } : {}),
+    ...(deleteWhen ? { deleteWhen } : {}),
+    ...(deleteWhen && value.deleteIdPath.trim()
+      ? { deleteExternalIdPath: value.deleteIdPath.trim() }
+      : {}),
+  }
 }
 
 /** One-line summary of a stream's saved steering, for the collapsed row. */
