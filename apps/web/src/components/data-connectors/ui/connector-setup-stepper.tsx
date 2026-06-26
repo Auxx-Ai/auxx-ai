@@ -25,6 +25,8 @@ import {
 import { toastError } from '@auxx/ui/components/toast'
 import { Check, Clock, FlaskConical, Layers, Play, Plug, Waypoints } from 'lucide-react'
 import { useMemo, useState } from 'react'
+import { useAppsContext } from '~/components/apps/providers/apps-context'
+import { isMissing, readFieldNodes } from '~/components/global/schema-form'
 import { api, type RouterOutputs } from '~/trpc/react'
 import { useConnectorMutations } from '../hooks/use-connector-mutations'
 import {
@@ -122,7 +124,38 @@ export function ConnectorSetupStepper({ connector }: ConnectorSetupStepperProps)
   )
   const stepOrder = useMemo(() => steps.map((s) => s.id), [steps])
 
-  const progress = deriveSetupProgress(connector, streams)
+  // Connect requirements for an app connector (generic-rest ignores these): a credential
+  // is required when the app exposes a connection definition, and the declared config
+  // schema decides whether there's a settings form to fill. Both come from sources a pure
+  // connector+streams read can't see, so we resolve them here and hand them to the hook.
+  const { appInstallations } = useAppsContext()
+  const requiresConnection = useMemo(() => {
+    if (connector.definitionKind !== 'app') return false
+    const slug = connector.type.startsWith('app:') ? connector.type.slice('app:'.length) : null
+    const inst = appInstallations.find(
+      (i) => i.installationId === connector.appInstallationId || i.app.slug === slug
+    )
+    return !!(inst?.connectionDefinitions?.user || inst?.connectionDefinitions?.organization)
+  }, [connector.definitionKind, connector.type, connector.appInstallationId, appInstallations])
+
+  const schemaQuery = api.dataConnector.connectorSchema.useQuery(
+    { id: connector.id },
+    { enabled: connector.definitionKind === 'app' }
+  )
+  const configFields = useMemo(
+    () => readFieldNodes(schemaQuery.data?.configJsonSchema as Record<string, unknown> | null),
+    [schemaQuery.data]
+  )
+  const requiredConfigSatisfied = useMemo(() => {
+    const cfg = (connector.config ?? {}) as Record<string, unknown>
+    return configFields.filter((f) => f.required).every((f) => !isMissing(cfg[f.key]))
+  }, [configFields, connector.config])
+
+  const progress = deriveSetupProgress(connector, streams, {
+    requiresConnection,
+    hasConfigForm: configFields.length > 0,
+    requiredConfigSatisfied,
+  })
 
   // Per-stream readiness drives the Map step's overview badges + its `every`-stream gate.
   const readinessById = useMemo<Record<string, StreamReadiness>>(
@@ -143,9 +176,12 @@ export function ConnectorSetupStepper({ connector }: ConnectorSetupStepperProps)
   // Visual completion (filled indicator + check + filled rail). Distinct from
   // gating: Schedule isn't shown completed until the user actually reaches it —
   // otherwise it renders as a dark, done-looking step while still on step 1.
+  // Connect is only pre-completed when it's trivial (nothing to authorize/configure);
+  // otherwise it's the opening step and the passing rule (`idx < activeIdx`) marks it
+  // done once the user advances past it — never a pre-filled check they didn't earn.
   // Passing-completed (`idx < activeIdx`) is added per-step in the render.
   const completedById: Record<SetupStepId, boolean> = {
-    connect: progress.connect,
+    connect: progress.connectTrivial,
     sample: progress.sample,
     map: progress.map,
     schedule: false,
@@ -165,10 +201,12 @@ export function ConnectorSetupStepper({ connector }: ConnectorSetupStepperProps)
     onError: (e) => toastError({ title: 'Could not add stream', description: e.message }),
   })
 
-  // Active (expanded) step. Defaults to the first incomplete step; the user can
-  // click any unlocked step header to jump back to it.
-  const [active, setActive] = useState<SetupStepId>(
-    () => stepOrder.find((id) => !doneById[id]) ?? 'run'
+  // Active (expanded) step. Opens on Connect unless it's trivially nothing-to-do
+  // (then the first incomplete step) — so a connector that still needs a connection
+  // or has settings to set never silently skips straight to "Run". The user can
+  // click any unlocked step header to jump back.
+  const [active, setActive] = useState<SetupStepId>(() =>
+    progress.connectTrivial ? (stepOrder.find((id) => !doneById[id]) ?? 'run') : 'connect'
   )
 
   // Guard: if the active step was filtered out (sample drops once streams load),
