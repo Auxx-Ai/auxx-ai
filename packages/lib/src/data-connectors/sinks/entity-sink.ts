@@ -481,10 +481,13 @@ export const entitySink: EntitySink = {
         const created = await handler.create(mapping.entityDefinitionId, writeSet, {
           skipSnapshotInvalidation: true,
           skipEvents: true,
-          provenance:
-            mapping.targetMode === 'owned'
-              ? { integrationSource: ctx.connector.id, externalId: record.externalId }
-              : undefined,
+          // Stamp instance-level provenance on every connector-CREATED record — owned
+          // AND contributing alike. This is the durable "this connector minted this
+          // instance" marker that lets connector deletion delete the records it created
+          // (a connector that provisions its own def, or contributing that mints a brand
+          // new instance) while leaving records it merely ENRICHED (a pre-existing
+          // Contact it matched by email — no/other integrationSource) untouched.
+          provenance: { integrationSource: ctx.connector.id, externalId: record.externalId },
         })
         instanceId = created.instance.id
         ctx.counters.created += 1

@@ -13,6 +13,7 @@ import { generateId } from '@auxx/utils'
 import { and, eq, inArray } from 'drizzle-orm'
 import { getCachedCustomFields, getCachedEntityDefId } from '../cache'
 import { BadRequestError, NotFoundError } from '../errors'
+import { toRecordId } from '../resources/resource-id'
 import { appCatalogStreamSchema, buildContributingMatchBindings } from './app-catalog'
 import { removeConnectorScheduler, syncConnectorScheduler } from './data-connector-scheduler'
 import {
@@ -670,17 +671,17 @@ export type DeleteSyncedDataBehavior = 'keep' | 'archive' | 'delete'
 
 /**
  * Delete a connector. The provisioned def/fields and synced entity records are the
- * user's CRM data — we never auto-delete them. `behavior` governs the bound
- * **owned** EntityInstances (via DataConnectorItem):
+ * user's CRM data — we never auto-delete them. `behavior` governs the entity records
+ * this connector CREATED, identified by the `integrationSource = connector.id` stamp
+ * the sink writes on every minted instance (owned and contributing alike):
  *   - 'keep'    → leave records untouched (default).
- *   - 'archive' → soft-delete the owned instances (set archivedAt).
- *   - 'delete'  → hard-delete the owned instances.
+ *   - 'archive' → soft-delete the created instances (set archivedAt).
+ *   - 'delete'  → hard-delete the created instances.
  *
- * `behavior` applies to OWNED records only. Contributing records belong to the
- * user (the connector only enriched pre-existing Contacts/Tickets), so they are
- * ALWAYS kept regardless of `behavior`; their per-cell
- * `FieldValue.managedByConnectorId` markers are nulled automatically by the FK
- * `set null` when the connector row cascades away.
+ * Records the connector merely ENRICHED — a pre-existing Contact/Ticket it matched
+ * and contributed fields to — carry a different/no `integrationSource`, so they are
+ * ALWAYS kept regardless of `behavior`; their per-cell `FieldValue.managedByConnectorId`
+ * markers are nulled automatically by the FK `set null` when the connector row cascades.
  *
  * The DataConnector row + its streams/mappings/items/runs cascade on delete; the
  * `dataConnectorId` FK on EntityDefinition/CustomField is `set null`, so provisioned
@@ -689,6 +690,7 @@ export type DeleteSyncedDataBehavior = 'keep' | 'archive' | 'delete'
 export async function deleteConnector(
   db: Database,
   organizationId: string,
+  userId: string,
   id: string,
   behavior: DeleteSyncedDataBehavior = 'keep'
 ): Promise<{ success: boolean }> {
@@ -697,49 +699,34 @@ export async function deleteConnector(
   await removeConnectorScheduler(id)
 
   if (behavior !== 'keep') {
-    // archive/delete applies ONLY to OWNED records — the connector created those
-    // (mirror rows). Contributing records belong to the user (the connector merely
-    // enriched existing Contacts/Tickets), so they are ALWAYS kept; their per-cell
+    // archive/delete applies to records THIS connector CREATED — owned mirror rows
+    // AND contributing instances it minted — identified by the instance-level
+    // `integrationSource = connector.id` stamp the sink writes on create. Records the
+    // connector merely enriched (a pre-existing Contact/Ticket it matched) carry a
+    // different/no `integrationSource` and are ALWAYS kept; their per-cell
     // `FieldValue.managedByConnectorId` markers null automatically via the FK.
-    const ownedMappings = await db
-      .select({ id: schema.DataConnectorMapping.id })
-      .from(schema.DataConnectorMapping)
-      .innerJoin(
-        schema.DataConnectorStream,
-        eq(schema.DataConnectorMapping.dataConnectorStreamId, schema.DataConnectorStream.id)
-      )
+    const created = await db
+      .select({ id: schema.EntityInstance.id, defId: schema.EntityInstance.entityDefinitionId })
+      .from(schema.EntityInstance)
       .where(
         and(
-          eq(schema.DataConnectorStream.dataConnectorId, id),
-          eq(schema.DataConnectorMapping.targetMode, 'owned')
+          eq(schema.EntityInstance.organizationId, organizationId),
+          eq(schema.EntityInstance.integrationSource, id)
         )
       )
-    const ownedMappingIds = ownedMappings.map((m) => m.id)
-
-    if (ownedMappingIds.length > 0) {
-      const items = await db.query.DataConnectorItem.findMany({
-        where: and(
-          eq(schema.DataConnectorItem.dataConnectorId, id),
-          inArray(schema.DataConnectorItem.mappingId, ownedMappingIds)
-        ),
-        columns: { entityInstanceId: true },
-      })
-      const instanceIds = items
-        .map((i) => i.entityInstanceId)
-        .filter((v): v is string => v !== null)
-      if (instanceIds.length > 0) {
-        if (behavior === 'archive') {
-          for (const instanceId of instanceIds) {
-            await db
-              .update(schema.EntityInstance)
-              .set({ archivedAt: new Date() })
-              .where(eq(schema.EntityInstance.id, instanceId))
-          }
-        } else {
-          for (const instanceId of instanceIds) {
-            await db.delete(schema.EntityInstance).where(eq(schema.EntityInstance.id, instanceId))
-          }
-        }
+    if (created.length > 0) {
+      // Route through the UnifiedCrudHandler (NOT a raw db.delete) so each record
+      // archive/delete fires the same side-effects as a UI delete: FieldValue cleanup,
+      // comment removal, pre-delete hooks, snapshot invalidation, and the domain +
+      // realtime (`record:archived` / `record:deleted`) events. Lazy-imported so the
+      // pure-helper exports of this module stay loadable without the crud chain.
+      const { UnifiedCrudHandler } = await import('../resources/crud/unified-handler')
+      const crud = new UnifiedCrudHandler(organizationId, userId, db)
+      const recordIds = created.map((r) => toRecordId(r.defId, r.id))
+      if (behavior === 'archive') {
+        await crud.bulkArchive(recordIds)
+      } else {
+        await crud.bulkDelete(recordIds)
       }
     }
   }
@@ -935,13 +922,14 @@ function deriveLinkMode(
   fallback: LinkMode
 ): LinkMode {
   if (!parentMappingId || !relationshipFieldKey) return fallback
-  const writesNonId = fieldMappings.some(
-    (fm) =>
-      fm.targetFieldRef != null &&
-      fm.identityRole?.kind !== 'externalId' &&
-      (fm.mergeStrategy ?? 'overwrite') !== 'ignore'
+  // A binding to a real target field means we WRITE/contribute the related record
+  // (upsert) — even when that field is ALSO the External ID (e.g. a drilled
+  // `email → Contact.Email` keyed by email). Only a TARGET-LESS External-ID anchor
+  // (point-at-someone-else's record by id, `targetFieldRef: null`) keeps it `reference`.
+  const writesField = fieldMappings.some(
+    (fm) => fm.targetFieldRef != null && (fm.mergeStrategy ?? 'overwrite') !== 'ignore'
   )
-  if (writesNonId) return 'upsert'
+  if (writesField) return 'upsert'
   // `reference` (point at someone else's record by id) is only meaningful once an
   // External ID anchor is designated. A freshly-drilled, still-unconfigured branch
   // has neither fields nor an anchor — treat it as `upsert` so it never trips the

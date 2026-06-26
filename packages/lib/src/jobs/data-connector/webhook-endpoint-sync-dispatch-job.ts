@@ -2,8 +2,10 @@
 // The connector-sink leg of the generic WebhookEndpoint fan-out (unified-trigger-picker
 // §4.4). Sibling to `dispatchAppTriggerToConnectors` (the APP-trigger leg) and to the
 // workflow/agent `dispatchWebhookEndpoint*` jobs: one verified endpoint delivery → a sync of
-// every webhook-sync DataConnector bound to this `webhookEndpointId` with ≥1 stream whose
-// `filter` matches the payload. THIN — dedup + match + route by mode: steerable streams
+// every webhook-sync DataConnector bound to this `webhookEndpointId`. The connector-level signal
+// IS the binding; a stream reacts unless its OWN `webhookTrigger.filter` excludes the topic (a
+// stream with no steering block matches every topic). THIN — dedup + match + route by mode:
+// steerable streams
 // (`{path}` set) get a per-stream steer job (targeted PARTIAL run), non-steerable cursor
 // streams get the full `enqueueConnectorSync`. Either way the delivery yields a
 // `DataConnectorRun` history row + refreshed `lastSyncedAt`.
@@ -111,13 +113,17 @@ export async function dispatchWebhookEndpointToConnectors(
   // A connector with ANY non-steerable matched stream full-syncs (superset covers the rest).
   const matched: { connectorId: string; streamKey: string; steerable: boolean }[] = []
   for (const stream of streams) {
+    if (!stream.streamKey) continue
+    // The connector-level signal is the binding; per-stream `webhookTrigger` only REFINES it.
+    // A stream with no steering block still reacts: no `filter` ⇒ matches every topic
+    // (`matchesFilter` treats absent/empty as match-all), no `paths` ⇒ not steerable ⇒ a full
+    // run-based sync. Adding `{path}` paths upgrades it to a targeted partial (steered) run.
     const wt = stream.requestConfig?.webhookTrigger
-    if (!stream.streamKey || !wt) continue
-    if (!matchesFilter(wt.filter, matchData)) continue
+    if (!matchesFilter(wt?.filter, matchData)) continue
     matched.push({
       connectorId: stream.dataConnectorId,
       streamKey: stream.streamKey,
-      steerable: (wt.paths?.length ?? 0) > 0,
+      steerable: (wt?.paths?.length ?? 0) > 0,
     })
   }
 

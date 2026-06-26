@@ -5,8 +5,13 @@ import { FieldType } from '@auxx/database/enums'
 import type { FieldType as FieldTypeType } from '@auxx/database/types'
 import { FIELD_TYPE_GROUPS, fieldTypeOptions } from '@auxx/lib/custom-fields/types'
 import type { ResourceField } from '@auxx/lib/resources/client'
-import { getRelatedEntityDefinitionId, type RelationshipConfig } from '@auxx/types/custom-field'
-import { type FieldReference, type ResourceFieldId, toResourceFieldId } from '@auxx/types/field'
+import {
+  type FieldPath,
+  type FieldReference,
+  getFieldDefinitionId,
+  isFieldPath,
+  toResourceFieldId,
+} from '@auxx/types/field'
 import { Button } from '@auxx/ui/components/button'
 import { EntityIcon } from '@auxx/ui/components/icons'
 import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
@@ -49,77 +54,96 @@ function inferFieldType(path: string, sourceType: string, format?: string): Fiel
 }
 
 interface MappingFieldPickerProps {
-  /** The def whose fields are the binding targets. Null until a target is picked. */
+  /**
+   * Whether this picker binds a scalar leaf ('leaf') or fans out a related record
+   * from an object/array branch ('branch'). Both drill the same relationship graph;
+   * 'branch' only ever selects a relationship (the fan-out target).
+   */
+  kind?: 'leaf' | 'branch'
+  /** The def the picker drills/binds FROM (the enclosing mapping's def). Null = no def yet. */
   entityDefinitionId: string | null
-  /** The source node being bound — drives the type filter + quick-create seed. */
-  sourceType: string
-  sourcePath: string
+  /** The source node being bound — drives the type filter + quick-create seed ('leaf'). */
+  sourceType?: string
+  sourcePath?: string
   /** Detected source string `format` — seeds the quick-create field type (§2.2). */
   sourceFormat?: string
-  /** The currently-bound target field ref (`ResourceFieldId`), if any. */
-  assignedKey: string | undefined
-  /** Resolved label for the bound ref (for the chip), if known. */
-  assignedLabel: string | undefined
-  /** Target field refs already bound by other entries — hidden (uniqueness). */
+  /** The currently-bound DIRECT target field ref (`ResourceFieldId`), if any. */
+  assignedKey?: string | undefined
+  /** Resolved label for the bound ref/path (for the chip), if known. */
+  assignedLabel?: string | undefined
+  /**
+   * Resolved icon id for the applied field — mirrors the field icon the picker list
+   * shows ({@link FieldItem}), so the trigger chip matches the row you picked.
+   */
+  assignedIconId?: string | undefined
+  /**
+   * Set when this leaf is bound ACROSS a relationship (a drilled `FieldPath`, e.g.
+   * `order:email → ["order:contact","contact:email"]`). Drives the in-list selected
+   * check on the far field; the chip shows {@link assignedLabel}.
+   */
+  drilledRef?: FieldReference
+  /** Target field refs already bound by other entries on the ROOT def — hidden (uniqueness). */
   excludeKeys?: Set<string>
   /** Quick-create is wired only for owned defs (plan decision 3). */
-  canCreate: boolean
-  /** Bind this source node to the chosen target field (canonical `ResourceFieldId`). */
-  onAssign: (fieldRef: string) => void
+  canCreate?: boolean
+  /** Trigger placeholder when nothing is assigned (default "Apply field…"). */
+  placeholder?: string
+  /** Bind this source node to a DIRECT field on the current def (canonical `ResourceFieldId`). */
+  onAssign?: (fieldRef: string) => void
+  /** Bind this source node ACROSS a relationship — a drilled `FieldPath` (§2 unified model). */
+  onDrilledAssign?: (field: ResourceField, ref: FieldPath) => void
   /** Unbind this source node — surfaced as the in-picker "Don't map" option. */
-  onClear: () => void
+  onClear?: () => void
   /**
-   * Flat-FK relationship linking (Approach B). When set, the picker ALSO lists the
-   * parent def's existing RELATIONSHIP fields (the inversion of the default
-   * exclusion): selecting one links this FK leaf to that relationship. The link is
-   * INDEPENDENT of any scalar binding on the same leaf (a leaf can be both) — it's
-   * surfaced on its own sub-row, not in this cell. Only relationships whose related
-   * def this connector syncs are offered (`syncedDefIds`).
+   * Whether RELATIONSHIP fields are shown (and so drillable). Off for formula rows
+   * and array leaves. Always on for a 'branch'.
    */
   allowRelationships?: boolean
-  /** Entity defs this connector syncs (upsert) — gates which relationships resolve. */
-  syncedDefIds?: Set<string>
   /** The currently-linked relationship field's ref, for the in-list selected check. */
   linkedFieldRef?: string
-  /** Link this FK leaf to the chosen relationship (desugars to an id-only reference branch). */
-  onLinkRelationship?: (field: ResourceField, ref: FieldReference) => void
-}
-
-/** A relationship field whose related def is synced — i.e. a valid link target. */
-function isLinkableRelationship(field: ResourceField, syncedDefIds?: Set<string>): boolean {
-  if (!field.relationship) return false
-  if (!syncedDefIds) return true
-  const relatedDefId = getRelatedEntityDefinitionId(field.relationship as RelationshipConfig)
-  return !!relatedDefId && syncedDefIds.has(relatedDefId)
+  /**
+   * A relationship was selected (not drilled past). 'leaf' → id-only link the FK to it;
+   * 'branch' → fan the branch out into a related child record. The handler decides which.
+   */
+  onSelectRelationship?: (field: ResourceField, ref: FieldReference) => void
 }
 
 /**
- * The leaf-row target control — a single self-managed {@link Popover} whose body
- * swaps between the {@link FieldPickerContent} list and an inline quick-create
- * form (a `view` flip, no stacked popovers). Filters targets by source-type
- * compatibility, and on owned defs offers a quick-create seeded from the source
- * node (friendly name + value-aware type).
+ * The unified target control (relationship-linking v3 — unified picker). One
+ * self-managed {@link Popover} that drills the relationship graph from
+ * {@link entityDefinitionId}: select a scalar at root → bind it directly; drill a
+ * relationship and select a scalar → bind ACROSS the relationship (a `FieldPath`);
+ * select a relationship itself → link/fan-out a related record. The same control
+ * renders on leaf rows AND branch rows so nothing reads as a different cell.
  */
 export function MappingFieldPicker({
+  kind = 'leaf',
   entityDefinitionId,
-  sourceType,
-  sourcePath,
+  sourceType = 'string',
+  sourcePath = '',
   sourceFormat,
   assignedKey,
   assignedLabel,
+  assignedIconId,
+  drilledRef,
   excludeKeys,
-  canCreate,
+  canCreate = false,
+  placeholder,
   onAssign,
+  onDrilledAssign,
   onClear,
   allowRelationships = false,
-  syncedDefIds,
   linkedFieldRef,
-  onLinkRelationship,
+  onSelectRelationship,
 }: MappingFieldPickerProps) {
   const [open, setOpen] = useState(false)
   const [view, setView] = useState<'pick' | 'create'>('pick')
 
-  const chipLabel = assignedKey ? (assignedLabel ?? assignedKey) : 'Apply field…'
+  const isBranch = kind === 'branch'
+  const showRelationships = isBranch || allowRelationships
+  const isAssigned = !!assignedKey || !!drilledRef
+  const chipLabel =
+    assignedLabel ?? (isAssigned ? (assignedKey ?? 'Linked') : (placeholder ?? 'Apply field…'))
 
   // No target def yet — nothing to resolve against. Show a disabled trigger;
   // binding unlocks once a target def is picked (plan 08 §3.4).
@@ -147,56 +171,75 @@ export function MappingFieldPicker({
       <PopoverTrigger asChild>
         <Button
           variant='transparent'
-          className={`h-9 w-full justify-between rounded-none px-2 text-xs hover:bg-primary/5 ${
-            assignedKey ? '' : 'text-muted-foreground'
+          className={`h-9 w-full justify-between rounded-none px-2 text-xs hover:bg-primary-200/20 ${
+            isAssigned ? '' : 'text-primary-400'
           }`}>
-          <span className='truncate'>{chipLabel}</span>
-          <ChevronDown className='size-3 opacity-50' />
+          <span className='flex min-w-0 items-center gap-1.5'>
+            {isAssigned && assignedIconId && (
+              <EntityIcon
+                iconId={assignedIconId}
+                size='sm'
+                className='inset-shadow-xs inset-shadow-black/20 shrink-0 bg-primary-300'
+              />
+            )}
+            <span className='truncate'>{chipLabel}</span>
+          </span>
+          <ChevronDown className='size-3 shrink-0 opacity-50' />
         </Button>
       </PopoverTrigger>
       <PopoverContent className='w-72 p-0' align='start'>
         {view === 'pick' ? (
           <FieldPickerContent
             entityDefinitionId={entityDefinitionId}
-            // Mark the bound scalar AND the linked relationship (independent) with a
-            // check — a leaf can carry both.
+            // Check the bound DIRECT scalar, the drilled FieldPath, and any id-only
+            // link — a leaf can carry both a value bind and a link.
             fieldReferences={
-              [assignedKey, linkedFieldRef].filter((r): r is string => !!r) as ResourceFieldId[]
+              [assignedKey, linkedFieldRef, drilledRef].filter(
+                (r): r is FieldReference => !!r
+              ) as FieldReference[]
             }
-            // Approach B: list the parent def's RELATIONSHIP fields too (the
-            // inversion of the default exclusion) so a flat FK can link to one.
-            excludeFields={allowRelationships ? [] : [FieldType.RELATIONSHIP]}
-            // A scalar target must be writable + type-compatible + not already bound.
-            // A relationship is a link target instead — kept only when its related
-            // def is synced by this connector (so the edge can resolve).
-            filterField={(f) =>
-              f.relationship
-                ? allowRelationships && isLinkableRelationship(f, syncedDefIds)
-                : !excludeKeys?.has(
-                    f.resourceFieldId ?? toResourceFieldId(entityDefinitionId, f.id)
-                  ) &&
-                  isWritableTarget(f) &&
-                  isSourceTargetCompatible(f.fieldType, sourceType)
-            }
-            // Relationship rows are select-only here (link the FK), never drilled.
-            disableDrillDown={allowRelationships}
+            // Show relationships (so they're drillable) for leaves that allow them and
+            // for every branch; otherwise hide them (formula rows / array leaves).
+            excludeFields={showRelationships ? [] : [FieldType.RELATIONSHIP]}
+            // Relationships are always shown (drillable). A scalar target must be
+            // writable + type-compatible; the no-double-bind exclusion only applies to
+            // the ROOT def (a drilled-into related def has its own keyspace). A branch
+            // binds no scalar — only its relationships are selectable.
+            filterField={(f) => {
+              if (f.relationship) return showRelationships
+              if (isBranch) return false
+              const rfid = f.resourceFieldId ?? toResourceFieldId(entityDefinitionId, f.id)
+              const notExcluded =
+                getFieldDefinitionId(rfid) === entityDefinitionId ? !excludeKeys?.has(rfid) : true
+              return (
+                notExcluded &&
+                isWritableTarget(f) &&
+                isSourceTargetCompatible(f.fieldType, sourceType)
+              )
+            }}
             mode='single'
             closeOnSelect
             onClose={() => setOpen(false)}
-            searchPlaceholder='Search fields…'
+            searchPlaceholder={isBranch ? 'Search relationships…' : 'Search fields…'}
             onSelect={(ref, field) => {
+              // Relationship picked → link (leaf) / fan out (branch).
               if (field.relationship) {
-                onLinkRelationship?.(field, ref)
+                onSelectRelationship?.(field, ref)
                 return
               }
-              onAssign(field.resourceFieldId ?? toResourceFieldId(entityDefinitionId, field.id))
+              // Scalar reached by drilling → bind across the relationship.
+              if (isFieldPath(ref)) {
+                onDrilledAssign?.(field, ref)
+                return
+              }
+              // Scalar at root → bind directly on the current def.
+              onAssign?.(field.resourceFieldId ?? toResourceFieldId(entityDefinitionId, field.id))
             }}
-            // Skip = unbind the SCALAR. Unlinking a relationship lives on the link
-            // sub-row, not here. Only offered once a scalar is bound.
-            onSkip={assignedKey ? onClear : undefined}
+            // Skip = unbind whatever is currently bound on this leaf (direct or drilled).
+            onSkip={!isBranch && isAssigned ? onClear : undefined}
             skipLabel="Don't map this field"
             createLabel='Quick create'
-            onCreateField={canCreate ? () => setView('create') : undefined}
+            onCreateField={!isBranch && canCreate ? () => setView('create') : undefined}
           />
         ) : (
           <QuickCreateFieldForm

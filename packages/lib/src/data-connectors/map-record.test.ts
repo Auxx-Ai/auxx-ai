@@ -104,6 +104,31 @@ describe('mapRecord', () => {
     ])
   })
 
+  it('evaluates a multi-source FORMULA as a `match` key (not just one raw field)', () => {
+    const m = mapping({
+      id: 'order',
+      rootPath: '',
+      targetMode: 'contributing',
+      fieldMappings: [
+        // A computed match key over two source fields — the candidate value must be the
+        // EVALUATED expression, not an arbitrary single `sourceFields` path.
+        {
+          id: 'e1',
+          targetFieldRef: 'def1:order_key',
+          expression: 'concat({store}, "-", {order_no})',
+          sourceFields: { store: 'store', order_no: 'order_no' },
+          identityRole: { kind: 'match', normalize: 'none' },
+        },
+      ],
+    })
+
+    const writes = mapRecord([m], source({ store: 'us', order_no: '1001' }))
+
+    expect(writes[0]?.projected?.identityCandidates).toEqual([
+      { targetFieldRef: 'def1:order_key', value: 'us-1001', normalize: 'none' },
+    ])
+  })
+
   it('fans a top-level array payload out via a `[]` root, deriving ids from each element', () => {
     // The generic-rest case: the raw response IS the array; the root mapping
     // selects records with rootPath `[]`, no connector-provided id hint.

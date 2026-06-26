@@ -3,18 +3,14 @@
 
 import type { ResourceField } from '@auxx/lib/resources/client'
 import type { FieldReference } from '@auxx/types/field'
-import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
-import { SimpleTooltip } from '@auxx/ui/components/tooltip'
-import { GridTreeRow, TreeRowButton } from '@auxx/ui/components/tree-row'
-import { cn } from '@auxx/ui/lib/utils'
-import { ArrowRight, Brackets, Check, Hash, KeyRound, Trash2 } from 'lucide-react'
+import { Brackets, Hash } from 'lucide-react'
 import { lastSegment, type SourcePath } from '../hooks/use-source-paths'
-import { MAPPING_COLS } from './mapping-columns'
+import { type IdentityRole, IdentityRoleControl } from './identity-role-control'
 import { MappingFieldPicker } from './mapping-field-picker'
-import { MergeStrategyToggle } from './merge-strategy-toggle'
+import { FieldRowActions, MappingRow } from './mapping-row'
 
 /** The identity role a leaf currently plays (relationship-linking v3 §9.4). */
-export type LeafIdentityRole = 'externalId' | 'match' | null
+export type LeafIdentityRole = IdentityRole
 
 /**
  * Short type token for the leaf badge. Prefers a detected string `format`
@@ -51,6 +47,8 @@ interface SourceLeafRowProps {
   entityDefinitionId: string | null
   /** Resolved label for the bound key (for the chip). */
   assignedLabel: string | undefined
+  /** Resolved icon id for the applied field (direct or drilled) — shown on the chip. */
+  assignedIconId?: string | undefined
   assignedTargetKey: string | undefined
   /** Target keys bound by other entries — excluded from this leaf's picker. */
   excludeKeys?: Set<string>
@@ -63,10 +61,18 @@ interface SourceLeafRowProps {
   identityRole: LeafIdentityRole
   /** Relationship linking — the picker is the entry point; the link renders on a sub-row. */
   allowRelationships?: boolean
-  syncedDefIds?: Set<string>
   /** The currently-linked relationship field's ref, for the picker's selected check. */
   linkedFieldRef?: string
+  /**
+   * Set when this leaf is bound ACROSS a relationship (unified picker §2) — its value
+   * is written onto a related record. {@link drilledLabel} is the chip ("Contact ›
+   * Email"); {@link drilledRef} drives the in-picker selected check on the far field.
+   */
+  drilledLabel?: string
+  drilledRef?: FieldReference
   onAssign: (targetKey: string) => void
+  /** Bind this leaf ACROSS a relationship — a drilled `FieldPath`. */
+  onDrilledAssign?: (field: ResourceField, ref: FieldReference) => void
   onClear: () => void
   onMergeChange: (value: string) => void
   /** Set / clear this leaf's identity role (External ID anchor or secondary Match). */
@@ -86,6 +92,7 @@ export function SourceLeafRow({
   node,
   entityDefinitionId,
   assignedLabel,
+  assignedIconId,
   assignedTargetKey,
   excludeKeys,
   mergeStrategy,
@@ -93,20 +100,21 @@ export function SourceLeafRow({
   isOwned,
   identityRole,
   allowRelationships,
-  syncedDefIds,
   linkedFieldRef,
+  drilledLabel,
+  drilledRef,
   onAssign,
+  onDrilledAssign,
   onClear,
   onMergeChange,
   onSetIdentityRole,
   onLinkRelationship,
 }: SourceLeafRowProps) {
-  const isMapped = !!assignedTargetKey
+  const isMapped = !!assignedTargetKey || !!drilledRef
   const isArray = node.type === 'array'
   const Icon = isArray ? Brackets : Hash
   return (
-    <GridTreeRow
-      columns={MAPPING_COLS}
+    <MappingRow
       depth={depth}
       icon={<Icon className={isMapped ? 'size-3.5' : 'size-3.5 text-muted-foreground/50'} />}
       title={
@@ -128,140 +136,42 @@ export function SourceLeafRow({
           )}
         </span>
       }
-      cells={[
-        // The arrow always shows (the field picker is always present, even when
-        // unbound) — dimmed until a target field is bound.
-        <span
-          key='arrow'
-          className={`flex w-full justify-center ${
-            isMapped ? 'text-muted-foreground' : 'text-muted-foreground/40'
-          }`}>
-          <ArrowRight className='size-3.5' />
-        </span>,
-        // Target column — the field picker fills the cell and blends into the row.
+      // The arrow always shows (the field picker is always present, even when
+      // unbound) — dimmed until a target field is bound.
+      arrow={isMapped ? 'filled' : 'dim'}
+      // Target column — the field picker fills the cell and blends into the row.
+      target={
         <MappingFieldPicker
-          key='target'
+          kind='leaf'
           entityDefinitionId={entityDefinitionId}
           sourceType={node.type}
           sourcePath={node.path}
           sourceFormat={node.format}
           assignedKey={assignedTargetKey}
-          assignedLabel={assignedLabel}
+          assignedLabel={drilledLabel ?? assignedLabel}
+          assignedIconId={assignedIconId}
+          drilledRef={drilledRef}
           excludeKeys={excludeKeys}
           canCreate={canCreate}
           allowRelationships={allowRelationships}
-          syncedDefIds={syncedDefIds}
           linkedFieldRef={linkedFieldRef}
           onAssign={onAssign}
+          onDrilledAssign={onDrilledAssign}
           onClear={onClear}
-          onLinkRelationship={onLinkRelationship}
-        />,
-        // Actions — a right-aligned badge cluster (merge → clear). The identity role
-        // now lives in the title (§9.4), not here.
-        <div key='actions' className='flex w-full items-center justify-end gap-1 pr-1'>
-          {isMapped && (
-            <>
-              {/* Merge strategy only matters when the def is shared. An owned
-                  mapping is the sole writer, so every field is an implicit
-                  overwrite — no toggle. */}
-              {!isOwned && (
-                <MergeStrategyToggle value={mergeStrategy} onValueChange={onMergeChange} />
-              )}
-              <TreeRowButton
-                variant='destructive'
-                tooltipText="Don't map this field"
-                onClick={onClear}>
-                <Trash2 />
-              </TreeRowButton>
-            </>
-          )}
-        </div>,
-      ]}
-    />
-  )
-}
-
-/**
- * The unified identity-role control (relationship-linking v3 §9.4) — one `KeyRound`
- * icon that replaces both the old silent external-id guess and the separate "Match"
- * badge. State is conveyed by visibility + color (the glyph never changes):
- *   • none → hover-reveal, muted;  • External ID → always-on, primary/blue;
- *   • Match → always-on, amber. Click opens a tiny context-aware popover.
- */
-function IdentityRoleControl({
-  role,
-  canMatch,
-  onChange,
-}: {
-  role: LeafIdentityRole
-  canMatch: boolean
-  onChange: (role: LeafIdentityRole) => void
-}) {
-  const tooltip =
-    role === 'externalId'
-      ? 'External ID — the upstream key that dedups this record and anchors its links.'
-      : role === 'match'
-        ? 'Match — a secondary key used to adopt an existing record (external id stays primary).'
-        : 'Mark as an identifier (External ID or Match).'
-  return (
-    <Popover>
-      <SimpleTooltip side='top' delayDuration={500} content={tooltip}>
-        <PopoverTrigger asChild>
-          <button
-            type='button'
-            className={cn(
-              'inline-flex size-4 shrink-0 items-center justify-center rounded-sm transition-colors',
-              role === 'externalId' && 'text-primary',
-              role === 'match' && 'text-amber-500',
-              !role &&
-                'text-muted-foreground/0 group-hover/tree-row:text-muted-foreground/50 hover:text-muted-foreground'
-            )}>
-            <KeyRound className='size-3.5' />
-          </button>
-        </PopoverTrigger>
-      </SimpleTooltip>
-      <PopoverContent align='start' className='w-52 p-1'>
-        <RoleOption label='Not an identifier' active={!role} onClick={() => onChange(null)} />
-        <RoleOption
-          label='External ID'
-          hint='Primary upstream key'
-          active={role === 'externalId'}
-          onClick={() => onChange('externalId')}
+          onSelectRelationship={onLinkRelationship}
         />
-        {canMatch && (
-          <RoleOption
-            label='Match existing'
-            hint='Secondary adoption key'
-            active={role === 'match'}
-            onClick={() => onChange('match')}
+      }
+      // Actions — merge → clear. The identity role now lives in the title (§9.4).
+      actions={
+        isMapped && (
+          <FieldRowActions
+            isOwned={isOwned}
+            mergeStrategy={mergeStrategy}
+            onMergeChange={onMergeChange}
+            onClear={onClear}
           />
-        )}
-      </PopoverContent>
-    </Popover>
-  )
-}
-
-function RoleOption({
-  label,
-  hint,
-  active,
-  onClick,
-}: {
-  label: string
-  hint?: string
-  active: boolean
-  onClick: () => void
-}) {
-  return (
-    <button
-      type='button'
-      onClick={onClick}
-      className='flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-xs hover:bg-muted'>
-      <Check className={cn('size-3.5 shrink-0', active ? 'opacity-100' : 'opacity-0')} />
-      <span className='flex flex-col'>
-        <span>{label}</span>
-        {hint && <span className='text-[10px] text-muted-foreground'>{hint}</span>}
-      </span>
-    </button>
+        )
+      }
+    />
   )
 }

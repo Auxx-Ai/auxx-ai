@@ -15,6 +15,8 @@ vi.mock('@auxx/database', () => ({
       DataConnector: { findMany: (...a: unknown[]) => findManyConnectors(...a) },
       DataConnectorStream: { findMany: (...a: unknown[]) => findManyStreams(...a) },
     },
+    // `markWebhookEventReceived` stamps `lastWebhookEventAt` for every touched connector.
+    update: () => ({ set: () => ({ where: async () => undefined }) }),
   },
   schema: new Proxy({}, { get: () => new Proxy({}, { get: () => ({}) }) }),
 }))
