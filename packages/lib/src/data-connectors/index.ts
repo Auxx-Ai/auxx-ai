@@ -122,6 +122,11 @@ export { resolveRelationships } from './relationship-pass'
 // Orchestrator + passes
 export type { ResolveConnectorConfigOptionsInput } from './resolve-config-options'
 export { resolveConnectorConfigOptions } from './resolve-config-options'
+// Nightly run-history retention — maintenance-schedule handler
+export {
+  DATA_CONNECTOR_RUN_RETENTION_JOB_NAME,
+  dataConnectorRunRetentionJob,
+} from './run-retention-job'
 // Status-line schedule derivation (Step 9 §3.3)
 export type { ConnectorScheduleInfo, DeriveScheduleInput } from './schedule-info'
 export { deriveConnectorScheduleInfo } from './schedule-info'
@@ -157,6 +162,7 @@ export {
   listStreams,
   loadConnector,
   markItemArchived,
+  markWebhookEventReceived,
   newRunCounters,
   openRun,
   persistStreamState,

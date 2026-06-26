@@ -256,6 +256,22 @@ export async function setupSchedules() {
     }
   )
 
+  // Data-connector run-history retention — nightly at 03:30. Trims each connector
+  // active in the last 25h back to its newest 200 finished runs so the run table
+  // stays bounded under a 15-min sync cadence (~96 runs/day/connector otherwise).
+  await maintenanceQueue.upsertJobScheduler(
+    'dataConnectorRunRetentionJob',
+    { pattern: '30 3 * * *' },
+    {
+      opts: {
+        attempts: 1,
+        priority: 10,
+        removeOnComplete: { count: 14 },
+        removeOnFail: { count: 30 },
+      },
+    }
+  )
+
   // Every day at 8 AM
   await maintenanceQueue.upsertJobScheduler(
     'requestDocumentSuggestionsJob',

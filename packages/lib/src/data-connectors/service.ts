@@ -369,6 +369,31 @@ export async function finalizeConnector(
   }
 }
 
+/**
+ * Stamp `lastWebhookEventAt = now()` on each connector a verified webhook delivery
+ * just matched. This is the liveness signal the freshness panel's "Last event" cell
+ * reads for webhook-sync connectors — it advances on every delivery, independent of
+ * whether the delivery routed to a steered partial run or a full sync (those update
+ * `lastSyncedAt` via `finalizeConnector` only once their run finalizes). Org-scoped;
+ * a no-op on an empty id list.
+ */
+export async function markWebhookEventReceived(
+  db: Database,
+  organizationId: string,
+  dataConnectorIds: string[]
+): Promise<void> {
+  if (dataConnectorIds.length === 0) return
+  await db
+    .update(schema.DataConnector)
+    .set({ lastWebhookEventAt: new Date() })
+    .where(
+      and(
+        eq(schema.DataConnector.organizationId, organizationId),
+        inArray(schema.DataConnector.id, dataConnectorIds)
+      )
+    )
+}
+
 /** Current run-level fetched count (the per-run ingest total folded by the ledger). */
 export async function getRunFetched(db: Database, runId: string): Promise<number> {
   const row = await db.query.DataConnectorRun.findFirst({
