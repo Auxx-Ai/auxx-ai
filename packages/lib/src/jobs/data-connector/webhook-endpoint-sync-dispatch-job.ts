@@ -17,6 +17,7 @@ import { getRedisClient } from '@auxx/redis'
 import { and, eq, inArray, ne } from 'drizzle-orm'
 import { matchesFilter } from '../../agents/agent-trigger-queries'
 import { enqueueConnectorSync } from '../../data-connectors/data-connector-queue'
+import { markWebhookEventReceived } from '../../data-connectors/service'
 import { createScopedLogger } from '../../logger'
 import { getQueue, Queues } from '../queues'
 import type { JobContext } from '../types'
@@ -119,6 +120,13 @@ export async function dispatchWebhookEndpointToConnectors(
       steerable: (wt.paths?.length ?? 0) > 0,
     })
   }
+
+  // Advance the "Last event" liveness stamp for every connector this delivery touched,
+  // regardless of how it routes below — the run-based paths only refresh `lastSyncedAt`
+  // once their run finalizes, which can lag a busy delivery.
+  await markWebhookEventReceived(db, organizationId, [
+    ...new Set(matched.map((m) => m.connectorId)),
+  ])
 
   const fullSyncConnectors = new Set(matched.filter((m) => !m.steerable).map((m) => m.connectorId))
   const queue = getQueue(Queues.appTriggerQueue)

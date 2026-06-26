@@ -1,9 +1,11 @@
 // apps/web/src/components/data-connectors/ui/connector-runs-panel.tsx
 'use client'
 
+import { Alert } from '@auxx/ui/components/alert'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { ButtonGroup, ButtonGroupSeparator } from '@auxx/ui/components/button-group'
+import { AnimatedCollapsibleContent } from '@auxx/ui/components/collapsible'
 import { DrawerHeader } from '@auxx/ui/components/drawer'
 import { EntityIcon } from '@auxx/ui/components/icons'
 import { LastUpdated } from '@auxx/ui/components/last-updated'
@@ -65,7 +67,7 @@ function RunCounts({ run, className }: { run: ConnectorRun; className?: string }
               title={f.label}
               className={cn('text-[11px] font-normal', f.className)}>
               <Icon />
-              <span className='hidden @md/runs:inline'>{f.label}</span>
+              <span className='hidden @lg/runs:inline'>{f.label}</span>
               {run[f.key]}
             </Button>
           </Fragment>
@@ -99,31 +101,71 @@ function RunRow({ run, sourceLabel }: { run: ConnectorRun; sourceLabel: string }
       title={meta.label}
       description={metaParts.join(' · ')}
       rowClassName='hover:bg-primary-100'
-      secondary={<RunCounts run={run} className='ms-2' />}
-      actions={
-        <div className='flex items-center gap-2 whitespace-nowrap text-xs text-muted-foreground'>
+      secondary={
+        <div className='ms-2 flex items-center gap-2 whitespace-nowrap text-xs text-muted-foreground'>
+          <LastUpdated timestamp={new Date(run.startedAt)} />
           {run.relationshipWarnings > 0 && (
             <span className='text-amber-600'>
               {run.relationshipWarnings} {pluralize(run.relationshipWarnings, 'warning')}
             </span>
           )}
-          <LastUpdated timestamp={new Date(run.startedAt)} />
         </div>
       }
+      actions={<RunCounts run={run} />}
       expandable={hasErrors}
       isOpen={hasErrors ? open : undefined}
       onToggleOpen={hasErrors ? () => setOpen((v) => !v) : undefined}>
       {hasErrors && (
-        <div className='mt-1 me-2 ms-8 flex flex-col gap-1 rounded-md border border-red-200 bg-red-50 p-2 text-xs text-red-700'>
+        <Alert variant='destructive' className='mt-1 me-2 ms-8 flex flex-col gap-1 text-xs'>
           {errors.slice(0, 3).map((e, i) => (
-            <div key={i} className='truncate'>
-              <span className='font-mono'>{e.externalId}</span>: {e.error}
+            <div key={i} className='break-words'>
+              {e.error}
             </div>
           ))}
           <ConnectorRunErrors errors={errors} connectorLabel={sourceLabel} runId={run.id} />
-        </div>
+        </Alert>
       )}
     </TreeRow>
+  )
+}
+
+/** How many runs render before the "Show more" row collapses the rest. */
+const VISIBLE_RUN_LIMIT = 7
+
+/**
+ * The run history list: the latest {@link VISIBLE_RUN_LIMIT} runs, then a
+ * "Show more" tree row that reveals the remainder in an animated collapse. The
+ * extra runs are siblings of the toggle row (not its children) so they keep the
+ * flat-list indentation.
+ */
+function RunHistoryList({ rows, sourceLabel }: { rows: ConnectorRun[]; sourceLabel: string }) {
+  const [showAll, setShowAll] = useState(false)
+  const visible = rows.slice(0, VISIBLE_RUN_LIMIT)
+  const hidden = rows.slice(VISIBLE_RUN_LIMIT)
+
+  return (
+    <div className='@container/runs flex flex-col ps-2 pe-4'>
+      {visible.map((run) => (
+        <RunRow key={run.id} run={run} sourceLabel={sourceLabel} />
+      ))}
+      {hidden.length > 0 && (
+        <>
+          <AnimatedCollapsibleContent open={showAll} className='flex flex-col'>
+            {hidden.map((run) => (
+              <RunRow key={run.id} run={run} sourceLabel={sourceLabel} />
+            ))}
+          </AnimatedCollapsibleContent>
+          <TreeRow
+            icon={<History className='size-4' />}
+            title={showAll ? 'Show less' : `Show ${hidden.length} more`}
+            rowClassName='hover:bg-primary-100'
+            expandable
+            isOpen={showAll}
+            onToggleOpen={() => setShowAll((v) => !v)}
+          />
+        </>
+      )}
+    </div>
   )
 }
 
@@ -232,11 +274,7 @@ export function ConnectorRunsPanel({
               />
             </div>
           ) : (
-            <div className='@container/runs flex flex-col ps-2 pe-4'>
-              {rows.map((run) => (
-                <RunRow key={run.id} run={run} sourceLabel={sourceLabel} />
-              ))}
-            </div>
+            <RunHistoryList rows={rows} sourceLabel={sourceLabel} />
           )}
         </Section>
       </ScrollArea>
