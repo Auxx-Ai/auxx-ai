@@ -79,6 +79,12 @@ export {
   type ConnectorWebhookEndpointDispatchJobData,
   dispatchWebhookEndpointToConnectors,
 } from './data-connector/webhook-endpoint-sync-dispatch-job'
+// Webhook-steered PARTIAL run child job (plans/data-connectors/v2/webhook-steered-partial-run-plan)
+export {
+  type ConnectorWebhookSteerJobData,
+  runConnectorWebhookSteer,
+  WEBHOOK_STEER_JOB,
+} from './data-connector/webhook-steer-job'
 // Datasets
 export {
   batchOperationJob,
