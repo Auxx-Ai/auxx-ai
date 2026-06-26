@@ -1,15 +1,36 @@
 // packages/lib/src/ai/providers/qwen/qwen-llm-client.ts
 
+import type { Message } from '../../clients/base/types'
 import { OpenAILLMClient } from '../openai/openai-llm-client'
 
 /**
  * Qwen LLM client that extends OpenAI's client.
  *
- * Qwen's DashScope API is OpenAI-compatible. For the initial qwen-plus-latest
- * model (non-reasoning), no overrides are needed — the OpenAI-compatible client
- * handles everything.
+ * Qwen's DashScope API is OpenAI-compatible. The Qwen 3.6/3.7 models support a
+ * thinking mode, but on the compatible-mode endpoint commercial models run
+ * non-thinking by default (we don't send `enable_thinking`), so they behave as
+ * standard chat models.
  *
- * Future: When thinking models (qwen3.5-flash, qwen3-max) are added, override
- * prepareReasoningContent() — likely same as DeepSeek (keep only last assistant's).
+ * The `prepareReasoningContent()` override below is a safety net: if thinking is
+ * ever enabled, the API returns `reasoning_content` alongside `content`, and
+ * (like DeepSeek) prior turns' reasoning must NOT be sent back while the most
+ * recent assistant message's reasoning must be preserved within the current
+ * tool-calling cycle.
  */
-export class QwenLLMClient extends OpenAILLMClient {}
+export class QwenLLMClient extends OpenAILLMClient {
+  protected override prepareReasoningContent(messages: Message[]): Message[] {
+    const lastAssistantWithReasoningIdx = messages.findLastIndex(
+      (m) => m.role === 'assistant' && m.reasoning_content
+    )
+
+    if (lastAssistantWithReasoningIdx === -1) return messages
+
+    return messages.map((msg, i) => {
+      if (i < lastAssistantWithReasoningIdx && msg.role === 'assistant' && msg.reasoning_content) {
+        const { reasoning_content, ...rest } = msg
+        return rest
+      }
+      return msg
+    })
+  }
+}

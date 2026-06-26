@@ -58,6 +58,20 @@ export const PROVIDER_THEMES: Record<string, ProviderTheme> = {
     textColor: 'text-white',
     borderColor: 'border-blue-200',
   },
+  zai: {
+    icon: 'zai',
+    color: '#3859FF', // Z.AI blue
+    bgColor: 'bg-blue-600',
+    textColor: 'text-white',
+    borderColor: 'border-blue-200',
+  },
+  grok: {
+    icon: 'grok',
+    color: '#000000', // xAI black
+    bgColor: 'bg-black',
+    textColor: 'text-white',
+    borderColor: 'border-gray-200',
+  },
 }
 
 // Icon mappings for backwards compatibility
@@ -69,4 +83,6 @@ export const PROVIDER_ICON_LETTERS: Record<string, string> = {
   deepseek: 'D',
   qwen: 'Qw',
   kimi: 'Ki',
+  zai: 'Z',
+  grok: 'Gr',
 }

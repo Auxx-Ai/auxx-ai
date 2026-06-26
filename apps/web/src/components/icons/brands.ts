@@ -24,6 +24,7 @@ export const BRAND_ICONS = {
   gmail: { hasDark: false },
   google: { hasDark: false },
   'google-drive': { hasDark: false },
+  grok: { hasDark: false },
   groq: { hasDark: false },
   huggingface: { hasDark: false },
   instagram: { hasDark: false },
@@ -40,6 +41,7 @@ export const BRAND_ICONS = {
   sentry: { hasDark: true },
   shopify: { hasDark: false },
   stripe: { hasDark: false },
+  zai: { hasDark: false },
   zapier: { hasDark: false },
 } as const satisfies Record<string, { hasDark: boolean }>
 

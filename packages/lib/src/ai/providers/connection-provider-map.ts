@@ -13,6 +13,8 @@ export const AI_PROVIDER_CONNECTION_KEY: Record<string, string> = {
   deepseek: 'deepseekApi',
   qwen: 'qwenApi',
   kimi: 'kimiApi',
+  zai: 'zaiApi',
+  grok: 'grokApi',
   cohere: 'cohereApi',
 }
 
@@ -45,5 +47,7 @@ export const AI_SYSTEM_ENV_MAP: Record<string, Record<string, string>> = {
   deepseek: { apiKey: 'DEEPSEEK_API_KEY' },
   qwen: { apiKey: 'QWEN_API_KEY', apiBase: 'QWEN_API_BASE' },
   kimi: { apiKey: 'KIMI_API_KEY' },
+  zai: { apiKey: 'ZAI_API_KEY' },
+  grok: { apiKey: 'XAI_API_KEY' },
   cohere: { apiKey: 'COHERE_API_KEY' },
 }

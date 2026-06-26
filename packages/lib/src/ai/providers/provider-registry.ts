@@ -6,11 +6,13 @@ import type { ProviderClient } from './base/provider-client'
 import { ProviderError } from './base/types'
 import { DEEPSEEK_CAPABILITIES, DEEPSEEK_MODELS } from './deepseek/deepseek-defaults'
 import { GOOGLE_CAPABILITIES, GOOGLE_MODELS } from './google/google-defaults'
+import { GROK_CAPABILITIES, GROK_MODELS } from './grok/grok-defaults'
 import { GROQ_CAPABILITIES, GROQ_MODELS } from './groq/groq-defaults'
 import { KIMI_CAPABILITIES, KIMI_MODELS } from './kimi/kimi-defaults'
 import { OPENAI_CAPABILITIES, OPENAI_MODELS } from './openai/openai-defaults'
 import { QWEN_CAPABILITIES, QWEN_MODELS } from './qwen/qwen-defaults'
 import type { ModelCapabilities, ProviderCapabilities } from './types'
+import { ZAI_CAPABILITIES, ZAI_MODELS } from './zai/zai-defaults'
 
 const logger = createScopedLogger('ProviderRegistry')
 
@@ -23,6 +25,8 @@ const serverLoaders: Record<string, () => Promise<any>> = {
   deepseek: () => import('./deepseek'),
   qwen: () => import('./qwen'),
   kimi: () => import('./kimi'),
+  zai: () => import('./zai'),
+  grok: () => import('./grok'),
 }
 
 /**
@@ -37,6 +41,8 @@ export const providerPositions: string[] = [
   'deepseek',
   'qwen',
   'kimi',
+  'zai',
+  'grok',
 ]
 
 export interface ProviderRegistration {
@@ -71,6 +77,8 @@ export class ProviderRegistry {
     ...DEEPSEEK_MODELS,
     ...QWEN_MODELS,
     ...KIMI_MODELS,
+    ...ZAI_MODELS,
+    ...GROK_MODELS,
   }
 
   /** Static provider capabilities imported from provider-specific files */
@@ -82,6 +90,8 @@ export class ProviderRegistry {
     deepseek: DEEPSEEK_CAPABILITIES,
     qwen: QWEN_CAPABILITIES,
     kimi: KIMI_CAPABILITIES,
+    zai: ZAI_CAPABILITIES,
+    grok: GROK_CAPABILITIES,
   }
 
   /** Provider definitions for dynamic loading */
@@ -120,6 +130,16 @@ export class ProviderRegistry {
       id: 'kimi',
       modulePath: './kimi',
       clientClassName: 'KimiClient',
+    },
+    {
+      id: 'zai',
+      modulePath: './zai',
+      clientClassName: 'ZaiClient',
+    },
+    {
+      id: 'grok',
+      modulePath: './grok',
+      clientClassName: 'GrokClient',
     },
   ]
 

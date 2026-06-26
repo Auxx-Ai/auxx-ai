@@ -39,6 +39,32 @@ describe('partsToWireFormat — assistant text only', () => {
   })
 })
 
+describe('partsToWireFormat — empty placeholder', () => {
+  it('emits nothing for an empty parts array (the iteration-1 in-progress placeholder)', () => {
+    const wire = partsToWireFormat([], messageId)
+    // An empty assistant message carries no information and is rejected by
+    // OpenAI-compatible providers (Kimi: "the message ... must not be empty").
+    expect(wire).toHaveLength(0)
+  })
+
+  it('emits nothing when all text parts are empty and there are no tool calls', () => {
+    const parts: ContentPart[] = [
+      { type: 'text', text: '' },
+      { type: 'text', text: '' },
+    ]
+    const wire = partsToWireFormat(parts, messageId)
+    expect(wire).toHaveLength(0)
+  })
+
+  it('still emits a reasoning-only assistant message (Anthropic keeps thinking)', () => {
+    const parts: ContentPart[] = [{ type: 'thinking', text: 'internal reasoning' }]
+    const wire = partsToWireFormat(parts, messageId)
+    expect(wire).toHaveLength(1)
+    expect(wire[0]?.role).toBe('assistant')
+    expect(wire[0]?.reasoning_content).toContain('internal reasoning')
+  })
+})
+
 describe('partsToWireFormat — assistant + single tool', () => {
   it('emits [assistant{ tool_calls:[...] }, tool{ tool_call_id, content }]', () => {
     const parts: ContentPart[] = [

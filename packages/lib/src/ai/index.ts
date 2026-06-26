@@ -89,6 +89,7 @@ export {
 } from './providers/config'
 export { DeepSeekClient } from './providers/deepseek/deepseek-client'
 export { GoogleClient } from './providers/google/google-client'
+export { GrokClient } from './providers/grok/grok-client'
 export { GroqClient } from './providers/groq/groq-client'
 export { KimiClient } from './providers/kimi/kimi-client'
 // ===== EXISTING PROVIDER CLIENTS =====
@@ -116,6 +117,7 @@ export type {
   ProviderData,
   ProviderType,
 } from './providers/types'
+export { ZaiClient } from './providers/zai/zai-client'
 // ===== QUOTA MANAGEMENT =====
 export { QuotaService } from './quota'
 // ===== USAGE TRACKING =====
