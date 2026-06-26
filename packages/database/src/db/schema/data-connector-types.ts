@@ -219,10 +219,15 @@ export interface FieldMapping {
   expression: string
   sourceFields: Record<string, string>
   /**
-   * When present, this bound field is also a secondary identity-match key (the
-   * external id is the always-on primary).
+   * The identity ROLE this bound field plays (relationship-linking v3 §9.5). Mirror
+   * of the engine `FieldMapping.identityRole`. `externalId` designates the upstream
+   * stable id (re-identification + link anchor; `order` sequences a fallback chain);
+   * `match` is a secondary adoption key (external id stays primary). At most one role
+   * per field.
    */
-  match?: { normalize?: IdentityNormalize }
+  identityRole?:
+    | { kind: 'externalId'; order?: number }
+    | { kind: 'match'; normalize?: IdentityNormalize }
   /** Per-field write behavior (folded in from the old parallel map). Absent ⇒ 'overwrite'. */
   mergeStrategy?: FieldMergeStrategy
   /**

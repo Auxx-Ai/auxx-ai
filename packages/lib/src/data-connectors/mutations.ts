@@ -371,7 +371,12 @@ async function buildTemplateFieldMappings(
       expression,
       sourceFields,
     }
-    if (f.match) mapping.match = typeof f.match === 'object' ? f.match : {}
+    if (f.match) {
+      mapping.identityRole = {
+        kind: 'match',
+        ...(typeof f.match === 'object' ? f.match : {}),
+      }
+    }
     // Provisioned field's name = its key (the stable appFieldKey the sync-time
     // provisioning + ref write-back match on).
     if (f.provision) mapping.provision = { name: f.key, ...f.provision }
@@ -915,6 +920,59 @@ export interface AddMappingInput {
   orphanBehavior?: OrphanBehavior
 }
 
+/**
+ * Derive a relationship branch's `linkMode` from its field bindings
+ * (relationship-linking v3 §9.6a) — there is no user toggle. A branch that maps
+ * only its External ID (or nothing) is a lazy `reference` (point at someone else's
+ * record); a branch that writes any non-identity field is an `upsert` (contribute
+ * the record). Only applied to a related branch (has a parent + a drilled edge);
+ * the root mapping stays whatever was requested (always `upsert`).
+ */
+function deriveLinkMode(
+  parentMappingId: string | null | undefined,
+  relationshipFieldKey: string | null | undefined,
+  fieldMappings: FieldMapping[],
+  fallback: LinkMode
+): LinkMode {
+  if (!parentMappingId || !relationshipFieldKey) return fallback
+  const writesNonId = fieldMappings.some(
+    (fm) =>
+      fm.targetFieldRef != null &&
+      fm.identityRole?.kind !== 'externalId' &&
+      (fm.mergeStrategy ?? 'overwrite') !== 'ignore'
+  )
+  if (writesNonId) return 'upsert'
+  // `reference` (point at someone else's record by id) is only meaningful once an
+  // External ID anchor is designated. A freshly-drilled, still-unconfigured branch
+  // has neither fields nor an anchor — treat it as `upsert` so it never trips the
+  // anchor guard at creation (the §9.7 deadlock). It flips to `reference` the moment
+  // the user marks an External ID and maps nothing else (the link-only case).
+  const hasAnchor = fieldMappings.some((fm) => fm.identityRole?.kind === 'externalId')
+  return hasAnchor ? 'reference' : 'upsert'
+}
+
+/**
+ * Correctness guard (relationship-linking v3 §9.7): a `reference` branch — point at
+ * another record by id — MUST designate an External ID to anchor the link, or it can
+ * never resolve (the §3.2 dangling-link bug). An embedded `upsert` child is never
+ * blocked (it always has the synthetic `parent:index` fallback). The editor sets the
+ * anchor atomically on link creation, so this is a backstop for a hand-cleared anchor.
+ */
+function assertReferenceAnchored(
+  linkMode: LinkMode,
+  parentMappingId: string | null | undefined,
+  relationshipFieldKey: string | null | undefined,
+  fieldMappings: FieldMapping[]
+): void {
+  if (linkMode !== 'reference' || !parentMappingId || !relationshipFieldKey) return
+  const hasAnchor = fieldMappings.some((fm) => fm.identityRole?.kind === 'externalId')
+  if (!hasAnchor) {
+    throw new BadRequestError(
+      'This relationship link points at another record by id, so it needs an External ID field to resolve. Mark the id field as the External ID.'
+    )
+  }
+}
+
 /** Create a mapping (one target def a fetch lands in). */
 export async function addMapping(
   db: Database,
@@ -923,18 +981,31 @@ export async function addMapping(
 ): Promise<DataConnectorMappingRow> {
   await loadStreamRow(db, organizationId, input.dataConnectorStreamId)
   assertFieldRefsMatchDef(input.entityDefinitionId, input.fieldMappings)
+  const fieldMappings = input.fieldMappings ?? []
+  const linkMode = deriveLinkMode(
+    input.parentMappingId,
+    input.relationshipFieldKey,
+    fieldMappings,
+    input.linkMode ?? 'upsert'
+  )
+  assertReferenceAnchored(
+    linkMode,
+    input.parentMappingId,
+    input.relationshipFieldKey,
+    fieldMappings
+  )
   const [row] = await db
     .insert(schema.DataConnectorMapping)
     .values({
       dataConnectorStreamId: input.dataConnectorStreamId,
       organizationId,
       rootPath: input.rootPath ?? '',
-      linkMode: input.linkMode ?? 'upsert',
+      linkMode,
       targetMode: input.targetMode,
       entityDefinitionId: input.entityDefinitionId,
       parentMappingId: input.parentMappingId ?? null,
       relationshipFieldKey: input.relationshipFieldKey ?? null,
-      fieldMappings: input.fieldMappings ?? [],
+      fieldMappings,
       orphanBehavior: input.orphanBehavior ?? 'ignore',
     })
     .returning()
@@ -988,11 +1059,27 @@ export async function updateMapping(
         : existing.entityDefinitionId
     assertFieldRefsMatchDef(effectiveDefId, patch.fieldMappings)
     const impact = classifyMappingChange(existing, patch)
+    // `linkMode` is derived, never user-set (§9.6a): recompute it from the EFFECTIVE
+    // branch (a field-binding or relationship edit can flip id-only ⇄ has-fields).
+    const effectiveFieldMappings = patch.fieldMappings ?? existing.fieldMappings ?? []
+    const effectiveParent =
+      patch.parentMappingId !== undefined ? patch.parentMappingId : existing.parentMappingId
+    const effectiveRelRef =
+      patch.relationshipFieldKey !== undefined
+        ? patch.relationshipFieldKey
+        : existing.relationshipFieldKey
+    const linkMode = deriveLinkMode(
+      effectiveParent,
+      effectiveRelRef,
+      effectiveFieldMappings,
+      (patch.linkMode ?? existing.linkMode) as LinkMode
+    )
+    assertReferenceAnchored(linkMode, effectiveParent, effectiveRelRef, effectiveFieldMappings)
     const [row] = await tx
       .update(schema.DataConnectorMapping)
       .set({
         ...(patch.rootPath !== undefined ? { rootPath: patch.rootPath } : {}),
-        ...(patch.linkMode !== undefined ? { linkMode: patch.linkMode } : {}),
+        linkMode,
         ...(patch.parentMappingId !== undefined ? { parentMappingId: patch.parentMappingId } : {}),
         ...(patch.relationshipFieldKey !== undefined
           ? { relationshipFieldKey: patch.relationshipFieldKey }

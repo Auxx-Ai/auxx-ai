@@ -11,6 +11,7 @@ import { evaluateCalcExpression } from '@auxx/utils/calc-expression'
 import type { ConnectorRecord } from './connectors/types'
 import type { DecodedMapping } from './service'
 import type { ProjectedRecord } from './sinks/types'
+import type { FieldMapping } from './types'
 import { parseUpstreamUpdatedAt } from './watermark'
 
 /** One mapping's projection result for a single source record. */
@@ -19,17 +20,25 @@ export interface MappedWrite {
   /** Present for `upsert` mappings — the record to write. Null for `reference`. */
   projected: ProjectedRecord | null
   /**
-   * Relation this mapping contributes to its PARENT (embedded upsert child or
-   * id-only reference). Null for the root mapping. The orchestrator stamps it
-   * onto the parent INSTANCE's item (keyed by parentMappingId + parentExternalId)
-   * after that parent record is written.
+   * The drilled relationship edge this mapping contributes (embedded upsert child or
+   * id-only reference). Null for the root mapping. Cardinality-NEUTRAL — map-record
+   * is a pure function with no field cache, so it emits the raw intent (the authored
+   * `relationshipRef` + both ends' mappings/ids/defs) and the orchestrator
+   * (`sink-source-record`) resolves cardinality against the cache: a belongs_to edge
+   * stamps onto the PARENT instance, a has_many edge side-flips onto each CHILD via
+   * the inverse key (relationship-linking v3 §9.6 step 6).
    */
   parentRelation: {
     parentMappingId: string
     parentExternalId: string
-    fieldKey: string
-    targetMappingId: string
-    targetExternalId: string
+    /** This mapping (the child / reference branch). */
+    childMappingId: string
+    /** The child instance's external id. Null for a CLEAR (FK went empty). */
+    childExternalId: string | null
+    /** The authored relationship edge, serialized `FieldReference` (`fieldRefToKey`). */
+    relationshipRef: string
+    /** This (child / reference) mapping's own target def — the belongs_to target def. */
+    relatedDef: string
   } | null
 }
 
@@ -76,45 +85,49 @@ function extractSubtrees(
 }
 
 /**
- * Evaluate one mapping's CALC field expressions against a subtree. A one-click
- * row is the bare `{source}` token — `sourceFields` maps each placeholder to the
- * subtree-relative source path. The placeholder context is built from the
- * mapping's declared source fields so the CALC evaluator resolves `{...}` refs.
+ * Evaluate one binding entry's CALC expression against a subtree. A one-click row
+ * is the bare `{source}` token — `sourceFields` maps each placeholder to the
+ * subtree-relative source path. The placeholder context is built from the entry's
+ * declared source fields so the CALC evaluator resolves `{...}` refs. Used both for
+ * projecting target fields AND for reading a designated External-ID value (which may
+ * itself be a CALC composite — `{sku}-{variant}`, §9.4).
+ */
+function evaluateFieldValue(fm: FieldMapping, subtree: unknown): unknown {
+  const subtreeObj =
+    subtree && typeof subtree === 'object' ? (subtree as Record<string, unknown>) : null
+  const ctx: Record<string, unknown> = {}
+  for (const [placeholder, sourcePath] of Object.entries(fm.sourceFields ?? {})) {
+    ctx[placeholder] =
+      subtreeObj && !sourcePath.includes('.') && !sourcePath.includes('[')
+        ? subtreeObj[sourcePath]
+        : getByPath(subtree, sourcePath)
+  }
+  // Degenerate one-click case: an id-only subtree (e.g. a scalar) with a single
+  // {source} token mapping to the whole subtree.
+  if (Object.keys(ctx).length === 0 && fm.expression.trim() === '{source}') return subtree
+  return evaluateCalcExpression(fm.expression, ctx)
+}
+
+/**
+ * Evaluate one mapping's CALC field expressions against a subtree, keyed by each
+ * binding's `targetFieldRef`. Unassigned drafts (no target) are skipped.
  */
 function evaluateFields(mapping: DecodedMapping, subtree: unknown): Record<string, unknown> {
   const out: Record<string, unknown> = {}
-  const subtreeObj =
-    subtree && typeof subtree === 'object' ? (subtree as Record<string, unknown>) : null
-
   for (const fm of mapping.fieldMappings) {
-    // Unassigned draft (no target yet) — projected nowhere, skip.
-    if (fm.targetFieldRef == null) continue
-    // Build the placeholder → value context for this expression.
-    const ctx: Record<string, unknown> = {}
-    for (const [placeholder, sourcePath] of Object.entries(fm.sourceFields ?? {})) {
-      ctx[placeholder] =
-        subtreeObj && !sourcePath.includes('.') && !sourcePath.includes('[')
-          ? subtreeObj[sourcePath]
-          : getByPath(subtree, sourcePath)
-    }
-    // Degenerate one-click case: an id-only subtree (e.g. a scalar) with a single
-    // {source} token mapping to the whole subtree.
-    if (Object.keys(ctx).length === 0 && fm.expression.trim() === '{source}') {
-      out[fm.targetFieldRef] = subtree
-      continue
-    }
-    out[fm.targetFieldRef] = evaluateCalcExpression(fm.expression, ctx)
+    if (fm.targetFieldRef == null) continue // unassigned draft — projected nowhere
+    out[fm.targetFieldRef] = evaluateFieldValue(fm, subtree)
   }
   return out
 }
 
 /**
- * Resolve a mapping's identity match values from the source subtree. Every bound
- * field flagged `match` is a secondary identity key (the external id is always
- * the primary): read its subtree-relative source path (the bare-token binding's
- * single `sourceFields` value) and pair it with the target field key it must
- * equal; the sink normalizes + looks up. No flagged fields → no candidates →
- * the record creates by external id.
+ * Resolve a mapping's secondary identity-match values from the source subtree.
+ * Every bound field whose `identityRole.kind === 'match'` is a secondary identity
+ * key (the external id is always the primary): read its subtree-relative source
+ * path (the bare-token binding's single `sourceFields` value) and pair it with the
+ * target field key it must equal; the sink normalizes + looks up. No flagged
+ * fields → no candidates → the record creates / re-identifies by external id.
  */
 function identityCandidates(
   mapping: DecodedMapping,
@@ -122,19 +135,54 @@ function identityCandidates(
 ): ProjectedRecord['identityCandidates'] {
   const candidates: ProjectedRecord['identityCandidates'] = []
   for (const fm of mapping.fieldMappings) {
-    if (!fm.match || fm.targetFieldRef == null) continue
+    if (fm.identityRole?.kind !== 'match' || fm.targetFieldRef == null) continue
     const sourcePath = Object.values(fm.sourceFields)[0]
     if (!sourcePath) continue
     candidates.push({
       targetFieldRef: fm.targetFieldRef,
       value: getByPath(subtree, sourcePath),
-      normalize: fm.match.normalize,
+      normalize: fm.identityRole.normalize,
     })
   }
   return candidates
 }
 
-/** Derive the external id of a subtree (its own id, falling back to index). */
+/**
+ * The explicit, user-designated external id of a subtree (relationship-linking v3
+ * §9.3a) — the ordered `externalId`-role chain, first non-null wins (`id → email`).
+ * Each entry's value is the CALC result of its expression, so a composite key
+ * (`{sku}-{variant}`) works with no new mechanism. Returns null when nothing is
+ * designated (or every designated source is blank) → the caller falls back to the
+ * heuristic guess. This replaces the silent `subtreeExternalId` guess as the
+ * PRIMARY anchor.
+ */
+function designatedExternalId(mapping: DecodedMapping, subtree: unknown): string | null {
+  const entries = mapping.fieldMappings
+    .filter((fm) => fm.identityRole?.kind === 'externalId')
+    .sort((a, b) => extOrder(a) - extOrder(b))
+  for (const fm of entries) {
+    const v = evaluateFieldValue(fm, subtree)
+    // An External ID must be a scalar the runtime can stringify into a stable key.
+    // Skip objects/arrays — e.g. a `{source}` anchor accidentally evaluated against a
+    // whole object subtree would otherwise `String()` to '[object Object]' and collapse
+    // every record onto one external id (§9.4 is coercible-scalars only).
+    if (v == null || v === '' || typeof v === 'object') continue
+    return String(v)
+  }
+  return null
+}
+
+/** The fallback `order` of an `externalId`-role entry (absent ⇒ 0 = primary). */
+function extOrder(fm: FieldMapping): number {
+  return fm.identityRole?.kind === 'externalId' ? (fm.identityRole.order ?? 0) : 0
+}
+
+/**
+ * Heuristic external id of a subtree (its own id, falling back to a synthetic
+ * index). Used only when nothing is explicitly designated as External ID — the
+ * editor pre-fills the designation from this same heuristic, so the common case
+ * stays zero-click while a wrong guess is now visible + overridable (§9.4).
+ */
 function subtreeExternalId(
   parentExternalId: string,
   subtree: unknown,
@@ -161,9 +209,11 @@ function subtreeDisplayName(subtree: unknown, fallback: string): string {
 }
 
 /**
- * The external id of a subtree. A whole-record root mapping (`rootPath ''` at the
- * top level) may use the connector-provided hint when the subtree can't identify
- * itself; fan-out + nested subtrees always derive from the subtree itself.
+ * The external id of a subtree (relationship-linking v3 §9.6 step 1). Precedence:
+ *   1. the explicit, user-designated External-ID chain (`designatedExternalId`) —
+ *      the anchor that fixes §3.2's silent mis-targeting;
+ *   2. the connector-provided hint for a whole-record root mapping;
+ *   3. the heuristic guess (`id`/`externalId`/… else synthetic `parent:index`).
  */
 function resolveExternalId(
   mapping: DecodedMapping,
@@ -172,6 +222,8 @@ function resolveExternalId(
   parentExternalId: string | null,
   rootHintId: string
 ): string {
+  const designated = designatedExternalId(mapping, subtree)
+  if (designated != null) return designated
   if (mapping.rootPath === '' && parentExternalId === null && rootHintId) return rootHintId
   return subtreeExternalId(parentExternalId ?? rootHintId, subtree, index)
 }
@@ -224,21 +276,48 @@ export function mapRecord(
   }
 
   const walk = (mapping: DecodedMapping, parent: unknown, parentExternalId: string | null) => {
+    const isReference = mapping.linkMode === 'reference'
+    const linksParent =
+      mapping.parentMappingId != null &&
+      mapping.relationshipFieldKey != null &&
+      parentExternalId !== null
+
     for (const { value: subtree, index } of extractSubtrees(parent, mapping.rootPath)) {
-      if (subtree === undefined || subtree === null) continue
+      // Empty subtree: a `reference` flat-FK clears the edge (clear-on-empty);
+      // an `upsert` mapping has nothing to write, so it's skipped as before. The
+      // empty-string FK only counts as empty for a reference (an upsert subtree of
+      // `''` is left to today's behavior — null/undefined only).
+      const isEmpty = subtree === undefined || subtree === null || (isReference && subtree === '')
+      if (isEmpty) {
+        if (isReference && linksParent) {
+          writes.push({
+            mapping,
+            projected: null,
+            parentRelation: {
+              parentMappingId: mapping.parentMappingId!,
+              parentExternalId: parentExternalId!,
+              childMappingId: mapping.row.id,
+              childExternalId: null, // CLEAR — FK went empty
+              relationshipRef: mapping.relationshipFieldKey!,
+              relatedDef: mapping.entityDefinitionId,
+            },
+          })
+        }
+        continue
+      }
 
       const externalId = resolveExternalId(mapping, subtree, index, parentExternalId, rootHintId)
 
-      const parentRelation =
-        mapping.parentMappingId && mapping.relationshipFieldKey && parentExternalId !== null
-          ? {
-              parentMappingId: mapping.parentMappingId,
-              parentExternalId,
-              fieldKey: mapping.relationshipFieldKey,
-              targetMappingId: mapping.row.id,
-              targetExternalId: externalId,
-            }
-          : null
+      const parentRelation = linksParent
+        ? {
+            parentMappingId: mapping.parentMappingId!,
+            parentExternalId: parentExternalId!,
+            childMappingId: mapping.row.id,
+            childExternalId: externalId,
+            relationshipRef: mapping.relationshipFieldKey!,
+            relatedDef: mapping.entityDefinitionId,
+          }
+        : null
 
       if (mapping.linkMode === 'reference') {
         // Reference: no write — just register the pending relation on the parent.

@@ -73,6 +73,14 @@ export interface FieldPickerContentProps {
    * (e.g. pop the outer placeholder nav stack).
    */
   onBackFromRoot?: () => void
+
+  /**
+   * Suppress relationship drill-down so relationship rows are SELECT-only (the
+   * row's main click selects the relationship field itself instead of navigating
+   * into the related def's fields). Used by the data-connector link picker, where
+   * a relationship field is a binding target, not a path to drill.
+   */
+  disableDrillDown?: boolean
 }
 
 /**

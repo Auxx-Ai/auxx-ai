@@ -16,7 +16,7 @@ import type { FieldType } from '@auxx/database/types'
 import { createScopedLogger } from '@auxx/logger'
 import { createCustomField } from '@auxx/services/custom-fields'
 import { createEntityDefinition } from '@auxx/services/entity-definitions'
-import { getFieldId, toResourceFieldId } from '@auxx/types/field'
+import { toResourceFieldId } from '@auxx/types/field'
 import { and, eq } from 'drizzle-orm'
 import { getCachedCustomFields } from '../cache'
 import { onCacheEvent } from '../cache/invalidate'
@@ -82,6 +82,9 @@ export async function provisionTarget(
   target: ProvisionTarget
 ): Promise<ProvisionResult> {
   let entityDefinitionId = target.entityDefinitionId ?? null
+  // A caller-provided def is ADOPTED, not authored — never seize ownership of it.
+  // Only a def this call creates (owned-def path below) gets the dataConnectorId FK.
+  const creatingOwnedDef = entityDefinitionId == null
 
   // ── 1. Resolve / create the def ──────────────────────────────────────────────
   if (!entityDefinitionId) {
@@ -124,8 +127,11 @@ export async function provisionTarget(
   const defId = entityDefinitionId
   if (!defId) throw new Error('Failed to resolve entity definition for provisioning')
 
-  // Owned defs carry the dataConnectorId FK; contributing defs never do (01 §5).
-  if (target.targetMode === 'owned') {
+  // The dataConnectorId FK marks a def the connector AUTHORED — stamped only on the
+  // owned def this call just created. Adopting a pre-existing def (a manual owned
+  // mapping onto the system `contact` def, or any contributing target) must NOT
+  // claim it; owned runtime behavior keys off mapping.targetMode, not this FK.
+  if (creatingOwnedDef) {
     await db
       .update(schema.EntityDefinition)
       .set({ dataConnectorId, updatedAt: new Date() })
@@ -231,64 +237,58 @@ async function provisionField(
 }
 
 /**
+ * The fields a mapping declares for provisioning — exactly its `provision`-hint
+ * entries. A field with no hint carries a concrete `targetFieldRef` to an EXISTING
+ * field (reused, never re-created) or a null draft, so it yields no spec. Pure +
+ * exported so the create-vs-reuse invariant is unit-testable without a DB.
+ */
+export function provisionSpecsForMapping(mapping: DecodedMapping): ProvisionFieldSpec[] {
+  const specs: ProvisionFieldSpec[] = []
+  for (const fm of mapping.fieldMappings) {
+    if (!fm.provision) continue
+    // `targetFieldRef` is null until the post-provision write-back; the stable
+    // `appFieldKey` is the provision name.
+    specs.push({
+      appFieldKey: fm.provision.name,
+      name: fm.provision.name,
+      type: fm.provision.type,
+      icon: fm.provision.icon,
+      isHidden: fm.provision.isHidden,
+      isUpdatable: false,
+      isCreatable: false,
+    })
+  }
+  return specs
+}
+
+/**
  * Provision schema for every owned/contributing mapping of a connector. Derives the
  * field specs from each mapping's `fieldMappings`. `reference` mappings write
  * nothing, so they need no provisioning. A mapping carrying an `entityDefinitionId`
  * provisions onto it directly.
  *
- * Field-type resolution (05d): a `FieldMapping.provision` hint (set by the template
- * installer) declares the field's type/name, so connector-introduced fields land
- * with the right type instead of defaulting to TEXT. Without a hint:
- *   - owned mode   → create the field with the `fieldTypeFor` type (the def is
- *                    fresh; manual owned mappings declare no hint). Backward-compat.
- *   - contributing → SKIP. A no-hint contributing field is one reused from the
- *                    existing def (email/name) — never re-created (the UI only
- *                    allows new fields in owned mode), so provisioning leaves it be.
+ * Field creation is driven EXCLUSIVELY by the `FieldMapping.provision` hint (set by
+ * the template/app installer), which declares the field's name + type. A mapping
+ * with no hint carries a concrete `targetFieldRef` to an EXISTING field (or is a null
+ * draft) — owned and contributing alike — so provisioning never creates it. (Owned is
+ * a per-mapping behavior flag — archive-on-orphan + the owned write handler, keyed off
+ * `mapping.targetMode`; it does NOT mean the connector authored the def's schema.)
  */
 export async function provisionConnectorMappings(
   db: Database,
   organizationId: string,
   dataConnectorId: string,
-  mappings: DecodedMapping[],
-  fieldTypeFor: (mappingId: string, fieldKey: string) => FieldType = () => 'TEXT' as FieldType
+  mappings: DecodedMapping[]
 ): Promise<ProvisionResult[]> {
   const results: ProvisionResult[] = []
   for (const mapping of mappings) {
     if (mapping.linkMode === 'reference') continue
 
-    const fields: ProvisionFieldSpec[] = []
-    for (const fm of mapping.fieldMappings) {
-      if (fm.provision) {
-        // Provisioned field — `targetFieldRef` is null until the post-provision
-        // write-back; the stable `appFieldKey` is the provision name.
-        fields.push({
-          appFieldKey: fm.provision.name,
-          name: fm.provision.name,
-          type: fm.provision.type,
-          icon: fm.provision.icon,
-          isHidden: fm.provision.isHidden,
-          isUpdatable: false,
-          isCreatable: false,
-        })
-        continue
-      }
-      // Unassigned draft (no target yet) — nothing to provision, skip.
-      const ref = fm.targetFieldRef
-      if (!ref) continue
-      if (mapping.targetMode === 'owned') {
-        const fieldId = getFieldId(ref)
-        fields.push({
-          appFieldKey: fieldId,
-          name: fieldId,
-          type: fieldTypeFor(mapping.row.id, fieldId),
-          isUpdatable: false,
-          isCreatable: false,
-        })
-      }
-      // contributing + no hint → reused existing field; skip.
-    }
-    // Contributing needs at least one field to do; owned still creates the def.
-    if (fields.length === 0 && mapping.targetMode === 'contributing') continue
+    const fields = provisionSpecsForMapping(mapping)
+    // Nothing to create AND the def already exists ⇒ nothing to do (no fields to
+    // provision, no def to create or stamp). The only no-fields case that must still
+    // call through is creating a fresh owned def (entityDefinitionId null).
+    if (fields.length === 0 && mapping.entityDefinitionId != null) continue
 
     const result = await provisionTarget(db, organizationId, dataConnectorId, {
       targetMode: mapping.targetMode,

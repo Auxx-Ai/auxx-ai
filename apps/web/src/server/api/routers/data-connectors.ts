@@ -180,9 +180,17 @@ const fieldMappingSchema = z.object({
   targetFieldRef: resourceFieldIdSchema.nullable(),
   expression: z.string(),
   sourceFields: z.record(z.string(), z.string()),
-  // Present → this bound field is also a secondary identity-match key.
-  match: z
-    .object({ normalize: z.enum(['email', 'phone', 'domain', 'none']).optional() })
+  // The identity ROLE this field plays (relationship-linking v3 §9.5) — the
+  // primary `externalId` anchor (with an optional fallback-chain `order`) or a
+  // secondary `match` key. At most one per field (structurally enforced by the union).
+  identityRole: z
+    .union([
+      z.object({ kind: z.literal('externalId'), order: z.number().int().optional() }),
+      z.object({
+        kind: z.literal('match'),
+        normalize: z.enum(['email', 'phone', 'domain', 'none']).optional(),
+      }),
+    ])
     .optional(),
   mergeStrategy: mergeStrategySchema.optional(),
 })
@@ -746,6 +754,7 @@ export const dataConnectorRouter = createTRPCRouter({
         targetMode: z.enum(['owned', 'contributing']),
         entityDefinitionId: z.string(),
         parentMappingId: z.string().nullish(),
+        // The drilled relationship edge as a serialized FieldReference (§9.5).
         relationshipFieldKey: z.string().nullish(),
         fieldMappings: z.array(fieldMappingSchema).optional(),
         orphanBehavior: z.enum(['archive', 'mark_deleted', 'ignore']).optional(),

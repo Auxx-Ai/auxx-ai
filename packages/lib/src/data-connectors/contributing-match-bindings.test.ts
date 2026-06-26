@@ -38,8 +38,8 @@ describe('buildContributingMatchBindings', () => {
       // Source path is stored subtree-relative ('email', not 'customer.email').
       expression: '{email}',
       sourceFields: { email: 'email' },
-      // EMAIL field type → email normalize.
-      match: { normalize: 'email' },
+      // EMAIL field type → email normalize, carried on the `match` identity role.
+      identityRole: { kind: 'match', normalize: 'email' },
     })
   })
 

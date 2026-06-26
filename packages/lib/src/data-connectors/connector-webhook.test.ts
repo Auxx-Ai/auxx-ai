@@ -21,6 +21,7 @@ const {
   ConnectorRateLimitError,
   fetchFn,
   deleteWhere,
+  resolveRelationships,
 } = vi.hoisted(() => {
   class ConnectorRateLimitError extends Error {
     retryAfterMs?: number
@@ -44,6 +45,7 @@ const {
     ConnectorRateLimitError,
     fetchFn: vi.fn(),
     deleteWhere: vi.fn(),
+    resolveRelationships: vi.fn(),
   }
 })
 
@@ -69,6 +71,9 @@ vi.mock('./connectors', () => ({ ConnectorRateLimitError }))
 vi.mock('./connectors/types', () => ({ isConnectorCheckpoint: () => false }))
 vi.mock('./reconciliation', () => ({
   archiveExternalId: (...a: unknown[]) => archiveExternalId(...a),
+}))
+vi.mock('./relationship-pass', () => ({
+  resolveRelationships: (...a: unknown[]) => resolveRelationships(...a),
 }))
 vi.mock('./service', () => ({
   loadConnector: (...a: unknown[]) => loadConnector(...a),

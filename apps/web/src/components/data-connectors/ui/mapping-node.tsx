@@ -2,7 +2,8 @@
 'use client'
 
 import type { ResourceField } from '@auxx/lib/resources/client'
-import { toResourceFieldId } from '@auxx/types/field'
+import { getRelatedEntityDefinitionId, type RelationshipConfig } from '@auxx/types/custom-field'
+import { type FieldReference, fieldRefToKey, toResourceFieldId } from '@auxx/types/field'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { EntityIcon } from '@auxx/ui/components/icons'
@@ -30,9 +31,25 @@ import { FieldCalcDialog } from './field-calc-dialog'
 import { MAPPING_COLS } from './mapping-columns'
 import { MappingFieldPicker } from './mapping-field-picker'
 import { MergeStrategyToggle } from './merge-strategy-toggle'
+import { RelationshipLinkRow } from './relationship-link-row'
 import { SourceLeafRow } from './source-leaf-row'
 
 type Mapping = RouterOutputs['dataConnector']['listStreams'][number]['mappings'][number]
+
+/**
+ * Canonical `ResourceFieldId` for a target field — what bindings store. Prefer the
+ * field's own `resourceFieldId`, else compose it from the mapping's def.
+ */
+function refOf(field: ResourceField, entityDefinitionId: string | null | undefined): string {
+  return field.resourceFieldId ?? toResourceFieldId(entityDefinitionId ?? '', field.id)
+}
+
+/** The related def a relationship field points at, or null if it has none. */
+function relatedDefOf(field: ResourceField): string | null {
+  return field.relationship
+    ? getRelatedEntityDefinitionId(field.relationship as RelationshipConfig)
+    : null
+}
 
 /** Naive singularizer for record nouns (`todos → todo`, `line_items → line item`). */
 function singularize(word: string): string {
@@ -86,6 +103,8 @@ export interface MappingNodeProps {
   byMappingId: Map<string, Mapping>
   childrenOf: Map<string | null, Mapping[]>
   mutations: ReturnType<typeof useStreamMutations>
+  /** Entity defs this connector already syncs — a soft hint for the link picker. */
+  syncedDefIds: Set<string>
 }
 
 /**
@@ -108,6 +127,7 @@ export function MappingNode({
   byMappingId,
   childrenOf,
   mutations,
+  syncedDefIds,
 }: MappingNodeProps) {
   const [open, setOpen] = useState(true)
   // The binding entry whose formula the dialog is editing (null = closed). Set to
@@ -123,13 +143,9 @@ export function MappingNode({
   const targetMode = mapping.targetMode as 'owned' | 'contributing'
   const fieldMappings = (mapping.fieldMappings ?? []) as FieldMapping[]
 
-  // Canonical `ResourceFieldId` for a target field — what bindings store. Prefer
-  // the field's own `resourceFieldId`, else compose it from the mapping's def.
-  const refOf = (f: ResourceField): string =>
-    f.resourceFieldId ?? toResourceFieldId(mapping.entityDefinitionId ?? '', f.id)
   // Find the target field a stored ref points at (label/normalize resolution).
   const fieldByRef = (ref: string | null | undefined): ResourceField | undefined =>
-    ref ? targetFields.find((f) => refOf(f) === ref) : undefined
+    ref ? targetFields.find((f) => refOf(f, mapping.entityDefinitionId) === ref) : undefined
 
   // Persist a new entry array (the single mapping field-write surface).
   const writeEntries = (next: FieldMapping[]) => setFieldMappings(streamId, mapping.id, next)
@@ -164,11 +180,6 @@ export function MappingNode({
   const patchEntry = (id: string, patch: Partial<FieldMapping>) =>
     writeEntries(fieldMappings.map((e) => (e.id === id ? { ...e, ...patch } : e)))
 
-  // Target field refs flagged as secondary identity-match keys (external id is
-  // always the primary). The blue "Match" badges on leaves reflect this set.
-  const matchKeys = new Set(
-    fieldMappings.filter((e) => e.match && e.targetFieldRef != null).map((e) => e.targetFieldRef!)
-  )
   // Every target field already bound by SOME entry — the pickers exclude these so
   // two entries can't fight over one field (an array allows it; the UI forbids it).
   const usedTargetKeys = new Set(
@@ -186,11 +197,19 @@ export function MappingNode({
   // branch node at `line_items` matches a child mapping with rootPath
   // `line_items[]`.
   const childMappings = childrenOf.get(mapping.id) ?? []
+  // Reference children (flat-FK links, Approach B) live on a SCALAR leaf, not a
+  // branch — index them separately so a linked leaf renders in "linked" state
+  // instead of being promoted to a nested MappingNode (the upsert fan-out path).
+  const upsertChildren = childMappings.filter((c) => c.linkMode !== 'reference')
+  const refChildByNodePath = new Map<string, Mapping>()
+  for (const c of childMappings) {
+    if (c.linkMode === 'reference') refChildByNodePath.set(c.rootPath.replace(/\[\]$/, ''), c)
+  }
   const childByNodePath = new Map<string, Mapping>()
-  for (const c of childMappings) childByNodePath.set(c.rootPath.replace(/\[\]$/, ''), c)
+  for (const c of upsertChildren) childByNodePath.set(c.rootPath.replace(/\[\]$/, ''), c)
   // Children whose branch isn't in the current schema (e.g. schema regenerated)
   // would otherwise vanish — render them appended so they stay editable/removable.
-  const orphanChildren = childMappings.filter(
+  const orphanChildren = upsertChildren.filter(
     (c) => !branchPaths.has(c.rootPath.replace(/\[\]$/, ''))
   )
 
@@ -228,7 +247,7 @@ export function MappingNode({
   const retargetEntry = (id: string, newRef: string) => patchEntry(id, { targetFieldRef: newRef })
 
   // Normalizer for a match key, derived from the target field's storage type so
-  // the toggle stays one-click (no normalize selector).
+  // the role stays one-click (no normalize selector).
   const deriveNormalize = (targetRef: string): 'email' | 'phone' | 'domain' | 'none' => {
     const ft = fieldByRef(targetRef)?.fieldType
     if (ft === 'EMAIL') return 'email'
@@ -236,13 +255,52 @@ export function MappingNode({
     if (ft === 'URL') return 'domain'
     return 'none'
   }
-  // Flip a bound entry's secondary-identity-match flag (by entry id).
-  const toggleMatch = (id: string) => {
-    const e = fieldMappings.find((x) => x.id === id)
-    if (!e) return
-    patchEntry(id, {
-      match: e.match ? undefined : { normalize: deriveNormalize(e.targetFieldRef ?? '') },
-    })
+
+  // Set / clear a leaf's identity role (relationship-linking v3 §9.4). External ID
+  // is the primary upstream key (radio — picking it elsewhere moves it) and can live
+  // on an UNMAPPED leaf (an entry with no target). Match is a secondary key and
+  // needs a bound target. Clearing a role on an External-ID-only entry drops the
+  // entry entirely (it only existed to carry the role).
+  const setIdentityRole = (sourcePath: string, role: 'externalId' | 'match' | null) => {
+    let next = fieldMappings
+    // Radio: a single primary External ID per mapping — clear it elsewhere first.
+    if (role === 'externalId') {
+      next = next.map((e) =>
+        e.identityRole?.kind === 'externalId' ? { ...e, identityRole: undefined } : e
+      )
+    }
+    const idx = next.findIndex(
+      (e) => isBareToken(e.expression) && e.expression.replace(/^\{|\}$/g, '') === sourcePath
+    )
+    if (idx === -1) {
+      // No entry on this leaf yet — External ID creates an unmapped (target-less) one.
+      if (role == null) return
+      next = [
+        ...next,
+        {
+          id: generateId(),
+          targetFieldRef: null,
+          expression: `{${sourcePath}}`,
+          sourceFields: { [sourcePath]: sourcePath },
+          identityRole:
+            role === 'externalId' ? { kind: 'externalId' } : { kind: 'match', normalize: 'none' },
+        },
+      ]
+    } else {
+      const e = next[idx]!
+      if (role == null && e.targetFieldRef == null) {
+        next = next.filter((_, i) => i !== idx)
+      } else {
+        const identityRole =
+          role == null
+            ? undefined
+            : role === 'externalId'
+              ? ({ kind: 'externalId' } as const)
+              : ({ kind: 'match', normalize: deriveNormalize(e.targetFieldRef ?? '') } as const)
+        next = next.map((x, i) => (i === idx ? { ...x, identityRole } : x))
+      }
+    }
+    writeEntries(next)
   }
 
   // Append a persisted draft formula (no target yet) and open the dialog on it.
@@ -262,20 +320,57 @@ export function MappingNode({
       linkMode,
     })
 
-  // Materialize a child mapping at a branch (fan out → own def, upsert). The
-  // reference (link-only) link mode stays in the schema/runtime but is not yet
-  // exposed in the UI.
-  const materializeChild = (node: SourceTreeNode, entityDefinitionId: string) =>
+  // Materialize a child mapping at a branch by DRILLING a relationship off this
+  // mapping's def (relationship-linking v3 §11.1 — the core inversion). The related
+  // def is DERIVED from the drilled relationship (never freely picked), the edge is
+  // the drilled `FieldReference`, and the mode is forced `contributing` — so a null
+  // `relationshipFieldKey` and an owned-on-system-def footgun are both unrepresentable.
+  const materializeRelatedChild = (
+    node: SourceTreeNode,
+    field: ResourceField,
+    ref: FieldReference
+  ) => {
+    const relatedDefId = relatedDefOf(field)
+    if (!relatedDefId) return
     fanOut(streamId, {
       parentMappingId: mapping.id,
       rootPath: branchRootPath(node),
-      linkMode: 'upsert',
-      targetMode: 'owned',
-      entityDefinitionId,
-      // relationshipFieldKey left null until provisioning wires the parent
-      // relation field (plan §8.1).
-      relationshipFieldKey: null,
+      linkMode: 'upsert', // server derives reference vs upsert from the field bindings
+      targetMode: 'contributing',
+      entityDefinitionId: relatedDefId,
+      relationshipFieldKey: fieldRefToKey(ref),
     })
+  }
+
+  // Link a flat-FK SCALAR leaf to an existing relationship by drilling it (the
+  // id-only reference case, §9.6a Case B). Desugars to a child mapping rooted at the
+  // FK path whose ONLY binding is the FK marked External ID — so the runtime derives
+  // `reference` and anchors the lazy link on that id (no frozen target pointer). A
+  // prior link on the same leaf is replaced.
+  const linkRelationship = (node: SourceTreeNode, field: ResourceField, ref: FieldReference) => {
+    const relatedDefId = relatedDefOf(field)
+    if (!relatedDefId) return
+    const prior = refChildByNodePath.get(node.path)
+    if (prior) removeMapping(streamId, prior.id)
+    fanOut(streamId, {
+      parentMappingId: mapping.id,
+      rootPath: node.path,
+      linkMode: 'reference',
+      targetMode: 'contributing',
+      entityDefinitionId: relatedDefId,
+      relationshipFieldKey: fieldRefToKey(ref),
+      // Ship the anchor atomically: the FK value IS the related record's external id.
+      fieldMappings: [
+        {
+          id: generateId(),
+          targetFieldRef: null,
+          expression: '{source}',
+          sourceFields: {},
+          identityRole: { kind: 'externalId' },
+        },
+      ],
+    })
+  }
 
   return (
     <>
@@ -371,7 +466,9 @@ export function MappingNode({
           <CappedNodeList
             nodes={sourceTree}
             childDepth={depth + 1}
-            isCappable={(n) => !n.isBranch && !sourceToEntry.has(n.path)}
+            isCappable={(n) =>
+              !n.isBranch && !sourceToEntry.has(n.path) && !refChildByNodePath.has(n.path)
+            }
             renderNode={(node) => (
               <SourceNode
                 key={node.path}
@@ -382,15 +479,17 @@ export function MappingNode({
                 targetFields={targetFields}
                 sourceToEntry={sourceToEntry}
                 usedTargetKeys={usedTargetKeys}
-                matchKeys={matchKeys}
                 childByNodePath={childByNodePath}
+                refChildByNodePath={refChildByNodePath}
                 onAssign={assignTarget}
                 onClear={clearEntry}
                 onMergeChange={(id, value) =>
                   patchEntry(id, { mergeStrategy: value as FieldMapping['mergeStrategy'] })
                 }
-                onToggleMatch={toggleMatch}
-                onFanOut={materializeChild}
+                onSetIdentityRole={setIdentityRole}
+                onFanOutRelationship={materializeRelatedChild}
+                onLinkRelationship={linkRelationship}
+                onClearLink={(refChildId) => removeMapping(streamId, refChildId)}
                 // Child-mapping recursion context.
                 connectorId={connectorId}
                 streamId={streamId}
@@ -400,6 +499,7 @@ export function MappingNode({
                 byMappingId={byMappingId}
                 childrenOf={childrenOf}
                 mutations={mutations}
+                syncedDefIds={syncedDefIds}
               />
             )}
           />
@@ -471,6 +571,7 @@ export function MappingNode({
             childrenOf={childrenOf}
             mutations={mutations}
             streamKey={streamKey}
+            syncedDefIds={syncedDefIds}
           />
         ))}
       </GridTreeRow>
@@ -510,15 +611,21 @@ interface SourceNodeProps {
   sourceToEntry: Map<string, FieldMapping>
   /** Every target key bound by some entry — leaf pickers exclude the rest. */
   usedTargetKeys: Set<string>
-  /** Target keys flagged as secondary identity-match keys. */
-  matchKeys: Set<string>
   childByNodePath: Map<string, Mapping>
+  /** Reference children (id-only links) keyed by FK source path. */
+  refChildByNodePath: Map<string, Mapping>
   onAssign: (sourcePath: string, targetKey: string) => void
   /** Per-entry mutations operate on the binding's stable id. */
   onClear: (entryId: string) => void
   onMergeChange: (entryId: string, value: string) => void
-  onToggleMatch: (entryId: string) => void
-  onFanOut: (node: SourceTreeNode, entityDefinitionId: string) => void
+  /** Set / clear a leaf's identity role (External ID anchor or secondary Match). */
+  onSetIdentityRole: (sourcePath: string, role: 'externalId' | 'match' | null) => void
+  /** Drill a relationship off the parent def to fan a branch out into its own mapping. */
+  onFanOutRelationship: (node: SourceTreeNode, field: ResourceField, ref: FieldReference) => void
+  /** Link a flat-FK leaf to an existing relationship (id-only reference). */
+  onLinkRelationship: (node: SourceTreeNode, field: ResourceField, ref: FieldReference) => void
+  /** Remove an id-only link (delete its reference child mapping). */
+  onClearLink: (refChildId: string) => void
   // Child-mapping recursion context (forwarded to a nested MappingNode).
   connectorId: string
   streamId: string
@@ -528,6 +635,7 @@ interface SourceNodeProps {
   byMappingId: Map<string, Mapping>
   childrenOf: Map<string | null, Mapping[]>
   mutations: ReturnType<typeof useStreamMutations>
+  syncedDefIds: Set<string>
 }
 
 /**
@@ -545,13 +653,12 @@ function SourceNode(props: SourceNodeProps) {
     targetFields,
     sourceToEntry,
     usedTargetKeys,
-    matchKeys,
     childByNodePath,
     onAssign,
     onClear,
     onMergeChange,
-    onToggleMatch,
-    onFanOut,
+    onSetIdentityRole,
+    onFanOutRelationship,
   } = props
   const [open, setOpen] = useState(true)
 
@@ -570,6 +677,7 @@ function SourceNode(props: SourceNodeProps) {
         byMappingId={props.byMappingId}
         childrenOf={props.childrenOf}
         mutations={props.mutations}
+        syncedDefIds={props.syncedDefIds}
       />
     )
   }
@@ -581,11 +689,16 @@ function SourceNode(props: SourceNodeProps) {
         node={node}
         isOpen={open}
         onToggleOpen={() => setOpen((o) => !o)}
-        onFanOut={(entityDefinitionId) => onFanOut(node, entityDefinitionId)}>
+        // A branch INSIDE a mapping fans out by drilling a relationship off the
+        // parent def (§11.1) — the related def is derived, never freely picked.
+        parentEntityDefinitionId={mapping.entityDefinitionId}
+        onFanOutRelationship={(field, ref) => onFanOutRelationship(node, field, ref)}>
         <CappedNodeList
           nodes={node.children}
           childDepth={depth + 1}
-          isCappable={(n) => !n.isBranch && !props.sourceToEntry.has(n.path)}
+          isCappable={(n) =>
+            !n.isBranch && !props.sourceToEntry.has(n.path) && !props.refChildByNodePath.has(n.path)
+          }
           renderNode={(child) => (
             <SourceNode key={child.path} {...props} node={child} depth={depth + 1} />
           )}
@@ -597,37 +710,67 @@ function SourceNode(props: SourceNodeProps) {
   const entry = sourceToEntry.get(node.path)
   const assignedTargetKey = entry?.targetFieldRef ?? undefined
   const assignedLabel = assignedTargetKey
-    ? targetFields.find(
-        (f) =>
-          (f.resourceFieldId ?? toResourceFieldId(mapping.entityDefinitionId ?? '', f.id)) ===
-          assignedTargetKey
-      )?.label
+    ? targetFields.find((f) => refOf(f, mapping.entityDefinitionId) === assignedTargetKey)?.label
     : undefined
   // Exclude target keys bound elsewhere (keep this leaf's own key selectable).
   const excludeKeys = assignedTargetKey
     ? new Set([...usedTargetKeys].filter((k) => k !== assignedTargetKey))
     : usedTargetKeys
+
+  // Id-only relationship link (§9.6a Case B): a `reference` child mapping on this
+  // leaf path links the FK to a relationship. Independent of the scalar binding —
+  // the leaf keeps its scalar cell; the link renders on its own sub-row. The stored
+  // `relationshipFieldKey` is a serialized FieldReference (single-drill = the
+  // relationship's `ResourceFieldId`), so resolve the field by that ref.
+  const refChild = props.refChildByNodePath.get(node.path)
+  const refKey = refChild?.relationshipFieldKey ?? undefined
+  const linkedField = refKey
+    ? targetFields.find((f) => refOf(f, mapping.entityDefinitionId) === refKey)
+    : undefined
+  // `linkedField` was matched on refKey, so its canonical ref IS refKey.
+  const linkedFieldRef = linkedField ? refKey : undefined
+  // The current identity role on this leaf (External ID anchor / secondary Match).
+  const identityRole = entry?.identityRole?.kind ?? null
+  // Relationships are linkable on a SCALAR FK leaf only (array fan-out is a branch
+  // drill, not a leaf link), once a target def is set.
+  const allowRelationships = node.type !== 'array' && !!mapping.entityDefinitionId
+
   return (
-    <SourceLeafRow
-      depth={depth}
-      node={node}
-      entityDefinitionId={mapping.entityDefinitionId}
-      assignedLabel={assignedLabel}
-      assignedTargetKey={assignedTargetKey}
-      excludeKeys={excludeKeys}
-      // Quick-create is available whenever a target def is set — both owned
-      // (the connector provisions the def) and contributing (adding a field to
-      // an existing def). The `customField.create` mutation is the backstop for
-      // a def that rejects new fields.
-      canCreate={!!mapping.entityDefinitionId}
-      isOwned={targetMode === 'owned'}
-      isMatch={assignedTargetKey ? matchKeys.has(assignedTargetKey) : false}
-      mergeStrategy={entry?.mergeStrategy ?? 'overwrite'}
-      onAssign={(targetKey) => onAssign(node.path, targetKey)}
-      onClear={() => entry && onClear(entry.id)}
-      onMergeChange={(value) => entry && onMergeChange(entry.id, value)}
-      onToggleMatch={() => entry && onToggleMatch(entry.id)}
-    />
+    <>
+      <SourceLeafRow
+        depth={depth}
+        node={node}
+        entityDefinitionId={mapping.entityDefinitionId}
+        assignedLabel={assignedLabel}
+        assignedTargetKey={assignedTargetKey}
+        excludeKeys={excludeKeys}
+        // Quick-create is available whenever a target def is set — both owned
+        // (the connector provisions the def) and contributing (adding a field to
+        // an existing def). The `customField.create` mutation is the backstop for
+        // a def that rejects new fields.
+        canCreate={!!mapping.entityDefinitionId}
+        isOwned={targetMode === 'owned'}
+        identityRole={identityRole}
+        mergeStrategy={entry?.mergeStrategy ?? 'overwrite'}
+        allowRelationships={allowRelationships}
+        syncedDefIds={props.syncedDefIds}
+        linkedFieldRef={linkedFieldRef}
+        onAssign={(targetKey) => onAssign(node.path, targetKey)}
+        onClear={() => entry && onClear(entry.id)}
+        onMergeChange={(value) => entry && onMergeChange(entry.id, value)}
+        onSetIdentityRole={(role) => onSetIdentityRole(node.path, role)}
+        onLinkRelationship={(field, ref) => props.onLinkRelationship(node, field, ref)}
+      />
+      {refChild && (
+        <RelationshipLinkRow
+          depth={depth + 1}
+          fieldLabel={linkedField?.label ?? refChild.relationshipFieldKey ?? 'relationship'}
+          targetDefinitionId={refChild.entityDefinitionId}
+          viaPath={node.path}
+          onClear={() => props.onClearLink(refChild.id)}
+        />
+      )}
+    </>
   )
 }
 

@@ -4,7 +4,9 @@
 import { FieldType } from '@auxx/database/enums'
 import type { FieldType as FieldTypeType } from '@auxx/database/types'
 import { FIELD_TYPE_GROUPS, fieldTypeOptions } from '@auxx/lib/custom-fields/types'
-import { type ResourceFieldId, toResourceFieldId } from '@auxx/types/field'
+import type { ResourceField } from '@auxx/lib/resources/client'
+import { getRelatedEntityDefinitionId, type RelationshipConfig } from '@auxx/types/custom-field'
+import { type FieldReference, type ResourceFieldId, toResourceFieldId } from '@auxx/types/field'
 import { Button } from '@auxx/ui/components/button'
 import { EntityIcon } from '@auxx/ui/components/icons'
 import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
@@ -66,6 +68,29 @@ interface MappingFieldPickerProps {
   onAssign: (fieldRef: string) => void
   /** Unbind this source node — surfaced as the in-picker "Don't map" option. */
   onClear: () => void
+  /**
+   * Flat-FK relationship linking (Approach B). When set, the picker ALSO lists the
+   * parent def's existing RELATIONSHIP fields (the inversion of the default
+   * exclusion): selecting one links this FK leaf to that relationship. The link is
+   * INDEPENDENT of any scalar binding on the same leaf (a leaf can be both) — it's
+   * surfaced on its own sub-row, not in this cell. Only relationships whose related
+   * def this connector syncs are offered (`syncedDefIds`).
+   */
+  allowRelationships?: boolean
+  /** Entity defs this connector syncs (upsert) — gates which relationships resolve. */
+  syncedDefIds?: Set<string>
+  /** The currently-linked relationship field's ref, for the in-list selected check. */
+  linkedFieldRef?: string
+  /** Link this FK leaf to the chosen relationship (desugars to an id-only reference branch). */
+  onLinkRelationship?: (field: ResourceField, ref: FieldReference) => void
+}
+
+/** A relationship field whose related def is synced — i.e. a valid link target. */
+function isLinkableRelationship(field: ResourceField, syncedDefIds?: Set<string>): boolean {
+  if (!field.relationship) return false
+  if (!syncedDefIds) return true
+  const relatedDefId = getRelatedEntityDefinitionId(field.relationship as RelationshipConfig)
+  return !!relatedDefId && syncedDefIds.has(relatedDefId)
 }
 
 /**
@@ -86,6 +111,10 @@ export function MappingFieldPicker({
   canCreate,
   onAssign,
   onClear,
+  allowRelationships = false,
+  syncedDefIds,
+  linkedFieldRef,
+  onLinkRelationship,
 }: MappingFieldPickerProps) {
   const [open, setOpen] = useState(false)
   const [view, setView] = useState<'pick' | 'create'>('pick')
@@ -129,27 +158,41 @@ export function MappingFieldPicker({
         {view === 'pick' ? (
           <FieldPickerContent
             entityDefinitionId={entityDefinitionId}
-            // Mark the currently-bound field with a check.
-            fieldReferences={assignedKey ? [assignedKey as ResourceFieldId] : []}
-            excludeFields={[FieldType.RELATIONSHIP]}
-            // Only fields the sync can actually write (creatable + updatable, not
-            // computed), whose type accepts this source value, and that no other
-            // entry already binds (uniqueness — the array allows dupes, the UI
-            // forbids them).
-            filterField={(f) =>
-              !excludeKeys?.has(f.resourceFieldId ?? toResourceFieldId(entityDefinitionId, f.id)) &&
-              isWritableTarget(f) &&
-              isSourceTargetCompatible(f.fieldType, sourceType)
+            // Mark the bound scalar AND the linked relationship (independent) with a
+            // check — a leaf can carry both.
+            fieldReferences={
+              [assignedKey, linkedFieldRef].filter((r): r is string => !!r) as ResourceFieldId[]
             }
+            // Approach B: list the parent def's RELATIONSHIP fields too (the
+            // inversion of the default exclusion) so a flat FK can link to one.
+            excludeFields={allowRelationships ? [] : [FieldType.RELATIONSHIP]}
+            // A scalar target must be writable + type-compatible + not already bound.
+            // A relationship is a link target instead — kept only when its related
+            // def is synced by this connector (so the edge can resolve).
+            filterField={(f) =>
+              f.relationship
+                ? allowRelationships && isLinkableRelationship(f, syncedDefIds)
+                : !excludeKeys?.has(
+                    f.resourceFieldId ?? toResourceFieldId(entityDefinitionId, f.id)
+                  ) &&
+                  isWritableTarget(f) &&
+                  isSourceTargetCompatible(f.fieldType, sourceType)
+            }
+            // Relationship rows are select-only here (link the FK), never drilled.
+            disableDrillDown={allowRelationships}
             mode='single'
             closeOnSelect
             onClose={() => setOpen(false)}
             searchPlaceholder='Search fields…'
-            onSelect={(_ref, field) =>
+            onSelect={(ref, field) => {
+              if (field.relationship) {
+                onLinkRelationship?.(field, ref)
+                return
+              }
               onAssign(field.resourceFieldId ?? toResourceFieldId(entityDefinitionId, field.id))
-            }
-            // Skip = unbind. Only offered once a field is bound (an unbound source
-            // node is already "not mapped").
+            }}
+            // Skip = unbind the SCALAR. Unlinking a relationship lives on the link
+            // sub-row, not here. Only offered once a scalar is bound.
             onSkip={assignedKey ? onClear : undefined}
             skipLabel="Don't map this field"
             createLabel='Quick create'

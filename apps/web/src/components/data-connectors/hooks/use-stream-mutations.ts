@@ -30,18 +30,24 @@ export type FieldMergeStrategy =
   | 'manual_review'
   | 'ignore'
 
+/** The identity role a binding plays (relationship-linking v3 §9.5). */
+export type IdentityRole =
+  | { kind: 'externalId'; order?: number }
+  | { kind: 'match'; normalize?: 'email' | 'phone' | 'domain' | 'none' }
+
 /**
  * One binding entry. Identity is the stable `id`; `targetFieldRef` is a canonical
  * `ResourceFieldId` (`${entityDefinitionId}:${fieldId}`), nullable (`null` = an
- * unassigned draft formula the runtime skips). `match` flags the bound field as a
- * secondary identity key (external id stays primary).
+ * unassigned draft formula / External-ID-only entry the runtime doesn't write).
+ * `identityRole` designates the field as the primary `externalId` anchor or a
+ * secondary `match` key.
  */
 export type FieldMapping = {
   id: string
   targetFieldRef: string | null
   expression: string
   sourceFields: Record<string, string>
-  match?: { normalize?: 'email' | 'phone' | 'domain' | 'none' }
+  identityRole?: IdentityRole
   mergeStrategy?: FieldMergeStrategy
   /** Provisioning hint (template-seeded only; the UI never sets it, but preserves it). */
   provision?: { name: string; type: string; icon?: string; isHidden?: boolean }
@@ -229,8 +235,10 @@ export function useStreamMutations(connectorId: string) {
         linkMode: 'upsert' | 'reference'
         targetMode: 'owned' | 'contributing'
         entityDefinitionId: string
-        /** Parent→child relation field key; null until provisioning wires it (plan §8.1). */
+        /** The drilled relationship edge to the parent, as a serialized FieldReference. */
         relationshipFieldKey?: string | null
+        /** Initial field bindings (e.g. a reference branch ships its External-ID anchor). */
+        fieldMappings?: FieldMapping[]
       }
     ) => {
       const key = { id: connectorId }
@@ -244,6 +252,7 @@ export function useStreamMutations(connectorId: string) {
         (input.parentMappingId
           ? streamMappings?.find((m) => m.id === input.parentMappingId)
           : undefined) ?? streamMappings?.[0]
+      const seedFieldMappings = (input.fieldMappings ?? []) as Mapping['fieldMappings']
       const tempRow: Mapping = template
         ? {
             ...template,
@@ -254,7 +263,7 @@ export function useStreamMutations(connectorId: string) {
             targetMode: input.targetMode,
             entityDefinitionId: input.entityDefinitionId,
             relationshipFieldKey: input.relationshipFieldKey ?? null,
-            fieldMappings: [] as Mapping['fieldMappings'],
+            fieldMappings: seedFieldMappings,
           }
         : {
             id: tempId,
@@ -266,7 +275,7 @@ export function useStreamMutations(connectorId: string) {
             relationshipFieldKey: input.relationshipFieldKey ?? null,
             targetMode: input.targetMode,
             entityDefinitionId: input.entityDefinitionId,
-            fieldMappings: [] as Mapping['fieldMappings'],
+            fieldMappings: seedFieldMappings,
             orphanBehavior: 'ignore',
             createdAt: new Date(),
             updatedAt: new Date(),
@@ -283,6 +292,7 @@ export function useStreamMutations(connectorId: string) {
           targetMode: input.targetMode,
           entityDefinitionId: input.entityDefinitionId,
           relationshipFieldKey: input.relationshipFieldKey ?? null,
+          fieldMappings: input.fieldMappings,
         })
         .then(() => void utils.dataConnector.listStreams.invalidate(key))
         .catch((err) => {

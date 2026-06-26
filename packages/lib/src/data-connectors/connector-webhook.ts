@@ -20,6 +20,7 @@ import { ConnectorRateLimitError } from './connectors'
 import { isConnectorCheckpoint } from './connectors/types'
 import { publishConnectorSync } from './realtime'
 import { archiveExternalId } from './reconciliation'
+import { resolveRelationships } from './relationship-pass'
 import {
   countConnectorItems,
   finalizeConnector,
@@ -124,6 +125,14 @@ export async function runWebhookSteeredRun(
       }
     }
 
+    // Resolve relationships before finalizing (relationship-linking v3 §9.6 step 7).
+    // Unlike `reconcileOrphans` (which archives unseen records — unsafe on a subset, so
+    // still skipped), the relationship pass is additive + self-deferring + already
+    // connector-wide, so it's safe on a partial run and also clears edges stranded by
+    // earlier deliveries. Without it, webhook-steered connectors never form relationships.
+    await resolveRelationships(ctx)
+
+    // Invalidate snapshots AFTER the pass so the relationship writes refresh the grid too.
     for (const defId of ctx.touchedDefs) {
       await invalidateSnapshots({ organizationId, resourceType: defId })
     }
