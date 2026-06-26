@@ -2,6 +2,7 @@
 'use client'
 
 import { Button } from '@auxx/ui/components/button'
+import { ListCard } from '@auxx/ui/components/list-card'
 import { Plus } from 'lucide-react'
 import { EmptyState } from '~/components/global/empty-state'
 import { api } from '~/trpc/react'
@@ -29,7 +30,7 @@ export function ConnectorList({ onConnect }: ConnectorListProps) {
       {connectors.isLoading ? (
         <div className='grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3'>
           {[0, 1, 2].map((i) => (
-            <div key={i} className='h-28 animate-pulse rounded-2xl border bg-muted/30' />
+            <ListCard key={i} loading descriptionLines={0} />
           ))}
         </div>
       ) : rows.length === 0 ? (

@@ -1,8 +1,8 @@
 // apps/web/src/components/agents/ui/list/agents-grid-view.tsx
 'use client'
 
+import { ListCard } from '@auxx/ui/components/list-card'
 import { useMemo } from 'react'
-import { LoadingSpinner } from '~/components/global/loading-content'
 import { useAgentSearch } from '../../hooks/use-agent-search'
 import { useAgents } from '../../hooks/use-agents'
 import type { AgentListItem } from '../../store/agent-store'
@@ -49,7 +49,18 @@ export function AgentsGridView() {
   }, [agents, search])
 
   if (!hasLoadedOnce) {
-    return <LoadingSpinner />
+    return (
+      <div className='flex flex-col gap-8'>
+        <section className='flex flex-col gap-4'>
+          <h2 className='text-sm font-semibold text-muted-foreground'>Chat agents</h2>
+          <div className='grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4'>
+            {[...Array(4)].map((_, i) => (
+              <ListCard key={`skeleton-${i}`} loading descriptionLines={1} />
+            ))}
+          </div>
+        </section>
+      </div>
+    )
   }
 
   // Truly empty (no agents in org) or no search matches — the onboarding /

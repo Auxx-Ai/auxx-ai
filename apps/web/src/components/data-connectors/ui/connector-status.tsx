@@ -1,6 +1,7 @@
 // apps/web/src/components/data-connectors/ui/connector-status.tsx
 'use client'
 
+import type { ListCardStatusTone } from '@auxx/ui/components/list-card'
 import { cn } from '@auxx/ui/lib/utils'
 import {
   AlertTriangle,
@@ -27,7 +28,9 @@ export type RunStatus = 'running' | 'completed' | 'partial' | 'failed'
 
 interface StatusMeta {
   label: string
-  /** Tailwind bg class for the small list-card status dot. */
+  /** Semantic tone for the shared `ListCard` status dot. */
+  tone: ListCardStatusTone
+  /** Tailwind bg class for the standalone {@link ConnectorStatusDot}. */
   dot: string
   /** Pill icon + classes for the detail-page status pill. */
   icon: React.ComponentType<{ className?: string }>
@@ -39,6 +42,7 @@ interface StatusMeta {
 export const CONNECTOR_STATUS_META: Record<ConnectorStatus, StatusMeta> = {
   pending: {
     label: 'Not set up',
+    tone: 'muted',
     dot: 'bg-muted-foreground/40',
     icon: Wrench,
     pill: 'text-muted-foreground border-border bg-primary-50',
@@ -48,6 +52,7 @@ export const CONNECTOR_STATUS_META: Record<ConnectorStatus, StatusMeta> = {
     // Configured, never synced, scheduler-eligible — a positive, settled idle state,
     // visibly distinct from `live`'s solid green and `pending`'s grey.
     label: 'Ready',
+    tone: 'info',
     dot: 'bg-info',
     icon: CircleDashed,
     pill: 'text-info border-info/30 bg-info/10',
@@ -55,6 +60,7 @@ export const CONNECTOR_STATUS_META: Record<ConnectorStatus, StatusMeta> = {
   },
   provisioning: {
     label: 'Provisioning',
+    tone: 'warning',
     dot: 'bg-warning-500',
     icon: Loader2,
     pill: 'text-amber-600 border-amber-200 bg-amber-50',
@@ -62,6 +68,7 @@ export const CONNECTOR_STATUS_META: Record<ConnectorStatus, StatusMeta> = {
   },
   syncing: {
     label: 'Syncing',
+    tone: 'warning',
     dot: 'bg-warning-500',
     icon: RefreshCw,
     pill: 'text-amber-600 border-amber-200 bg-amber-50',
@@ -69,6 +76,7 @@ export const CONNECTOR_STATUS_META: Record<ConnectorStatus, StatusMeta> = {
   },
   live: {
     label: 'Live',
+    tone: 'good',
     dot: 'bg-good-500',
     icon: CheckCircle2,
     pill: 'text-green-600 border-green-200 bg-green-50',
@@ -76,6 +84,7 @@ export const CONNECTOR_STATUS_META: Record<ConnectorStatus, StatusMeta> = {
   },
   error: {
     label: 'Error',
+    tone: 'error',
     dot: 'bg-destructive',
     icon: AlertTriangle,
     pill: 'text-red-600 border-red-200 bg-red-50',
@@ -83,6 +92,7 @@ export const CONNECTOR_STATUS_META: Record<ConnectorStatus, StatusMeta> = {
   },
   paused: {
     label: 'Paused',
+    tone: 'muted',
     dot: 'bg-muted-foreground/40',
     icon: PauseCircle,
     pill: 'text-muted-foreground border-border bg-primary-50',

@@ -1,10 +1,10 @@
 // apps/web/src/components/mcp/ui/mcp-app-card.tsx
 'use client'
 
+import { ListCard, renderBadgeChips } from '@auxx/ui/components/list-card'
 import { toastError } from '@auxx/ui/components/toast'
 import { Plug, Trash } from 'lucide-react'
 import { AppIcon } from '~/components/apps/ui/app-icon'
-import { AppListCard } from '~/components/apps/ui/app-list-card'
 import { useConfirm } from '~/hooks/use-confirm'
 import { api } from '~/trpc/react'
 import type { McpServerListEntry } from '../hooks/use-mcp-servers'
@@ -26,7 +26,7 @@ interface McpAppCardProps {
 }
 
 /**
- * `AppListCard`-shaped card for an MCP server, used in both the browse (curated) and installed
+ * `ListCard`-shaped card for an MCP server, used in both the browse (curated) and installed
  * sections of Settings → Apps. Carries an "MCP" badge; connected servers also show a status badge.
  * Links to the server's detail page.
  */
@@ -59,7 +59,7 @@ export function McpAppCard({ server, canUninstall, onRemoved }: McpAppCardProps)
   return (
     <>
       <ConfirmDialog />
-      <AppListCard
+      <ListCard
         title={server.name}
         description={server.description}
         href={`/app/settings/apps/mcp/${server.slug}`}
@@ -71,7 +71,10 @@ export function McpAppCard({ server, canUninstall, onRemoved }: McpAppCardProps)
           )
         }
         subtitle={server.isCustom ? 'Custom server' : 'Curated'}
-        badges={[{ label: 'MCP' }, ...(statusLabel ? [{ label: statusLabel }] : [])]}
+        headerEnd={renderBadgeChips([
+          { label: 'MCP' },
+          ...(statusLabel ? [{ label: statusLabel }] : []),
+        ])}
         menuItems={
           showUninstall
             ? [

@@ -3,6 +3,7 @@
 'use client'
 
 import { FeatureKey } from '@auxx/lib/permissions/client'
+import { ListCard } from '@auxx/ui/components/list-card'
 import {
   MainPage,
   MainPageBreadcrumb,
@@ -11,7 +12,6 @@ import {
   MainPageHeader,
 } from '@auxx/ui/components/main-page'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
-import { Skeleton } from '@auxx/ui/components/skeleton'
 import { Lock } from 'lucide-react'
 import {
   CreateDatasetButton,
@@ -52,11 +52,7 @@ function DatasetsPageContent() {
           {isLoading ? (
             <div className='grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 p-3'>
               {[...Array(8)].map((_, i) => (
-                <div key={i} className='border rounded-lg p-4'>
-                  <Skeleton className='h-4 w-3/4 mb-2' />
-                  <Skeleton className='h-3 w-1/2 mb-4' />
-                  <Skeleton className='h-20 w-full' />
-                </div>
+                <ListCard key={`skeleton-${i}`} loading descriptionLines={0} />
               ))}
             </div>
           ) : items.length === 0 ? (
