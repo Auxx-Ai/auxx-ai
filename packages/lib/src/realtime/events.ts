@@ -48,6 +48,7 @@ export type ResourceSyncEvent =
   | RecordDeletedEvent
   | RecordArchivedEvent
   | RecordsInvalidatedEvent
+  | DataConnectorSyncEvent
 
 /** Field values changed (from mutations, triggers, cost recalc, etc.) */
 export interface FieldValuesUpdatedEvent {
@@ -135,6 +136,45 @@ export interface RecordsInvalidatedEvent {
   event: 'records:invalidated'
   data: {
     entityDefinitionId: string
+  }
+}
+
+/**
+ * Live data-connector sync signal on the org channel. Lets the connector detail
+ * view move WITHOUT the 4s `getStatus` poll (and lights up webhook/scheduled runs
+ * the poll never armed for). The payload mirrors the realtime-relevant subset of
+ * `getStatus` so the client can patch the cached query directly on the hot
+ * `progress` path; lifecycle edges (`run-started` / `run-finished`) refetch the
+ * authoritative shape (new run row, freshness, schedule, resyncPending).
+ *
+ * `kind` is purely a client routing hint — `progress` patches in place, the two
+ * lifecycle kinds invalidate. Fields are raw DB column values (free-text status /
+ * trigger) the client normalizes, matching how `getStatus` returns them.
+ */
+export interface DataConnectorSyncEvent {
+  event: 'dataConnector:sync'
+  data: {
+    connectorId: string
+    kind: 'run-started' | 'progress' | 'run-finished'
+    /** Connector lifecycle status: 'syncing' | 'provisioning' | 'live' | 'error' | 'paused' | … */
+    connectorStatus: string
+    /** ISO; advances on a successful finalize. Null when never synced. */
+    lastSyncedAt: string | null
+    /** Latest run snapshot (the connector's newest `DataConnectorRun`). */
+    runId?: string
+    runStatus?: string
+    phase?: 'backfill' | 'steady' | null
+    trigger?: string
+    /** Live aggregate records-seen across all streams (sum of per-stream state). */
+    recordsSeen: number
+    created: number
+    updated: number
+    perStream: {
+      streamKey: string
+      recordsSeen: number
+      phase: 'backfill' | 'steady'
+      done: boolean
+    }[]
   }
 }
 

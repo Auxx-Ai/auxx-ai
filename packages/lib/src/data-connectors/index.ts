@@ -114,6 +114,7 @@ export {
   provisionConnectorMappings,
   provisionTarget,
 } from './provisioning'
+export { type ConnectorSyncEventKind, publishConnectorSync } from './realtime'
 export { archiveExternalId, handleConnectorDelete, reconcileOrphans } from './reconciliation'
 export { resolveRelationships } from './relationship-pass'
 // Orchestrator + passes

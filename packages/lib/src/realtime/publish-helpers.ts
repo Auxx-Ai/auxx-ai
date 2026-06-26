@@ -2,6 +2,7 @@
 
 import { getOrgCache } from '../cache'
 import type {
+  DataConnectorSyncEvent,
   FieldValueUpdateEntry,
   MailSyncEvent,
   MessageMeta,
@@ -85,6 +86,27 @@ export async function publishRecordsInvalidated(
       realtimeService.publish(roomKey, 'records:invalidated', { entityDefinitionId }, options)
     )
   )
+}
+
+/**
+ * Publish `dataConnector:sync` on the org channel — the live connector-sync status
+ * signal (see `DataConnectorSyncEvent`). Coarse + org-wide like `records:invalidated`.
+ * No `excludeSocketId`: sync runs in the worker (no originating browser socket), so
+ * every open tab — including the one that clicked "Sync now" — should light up.
+ *
+ * Gated on `realtimeSync`. Fire-and-forget: errors swallowed so a Pusher hiccup
+ * never blocks the sync job.
+ */
+export async function publishDataConnectorSync(
+  realtimeService: RealtimeService,
+  organizationId: string,
+  data: DataConnectorSyncEvent['data']
+) {
+  const { features } = await getOrgCache().getOrRecompute(organizationId, ['features'])
+  if (!features?.realtimeSync) return
+  await realtimeService
+    .publish(rooms.orgPresence(organizationId), 'dataConnector:sync', data)
+    .catch(() => {})
 }
 
 // ════════════════════════════════════════════════════════════════════════════

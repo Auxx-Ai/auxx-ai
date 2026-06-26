@@ -24,6 +24,7 @@ import { useMedia } from '~/hooks/use-media'
 import { useDockStore } from '~/stores/dock-store'
 import { api } from '~/trpc/react'
 import { useConnectorMutations } from '../hooks/use-connector-mutations'
+import { useConnectorSyncRealtime } from '../hooks/use-connector-sync-realtime'
 import { resolveSyncStatus } from '../lib/resolve-sync-status'
 import { ConnectorDetailTabs } from './connector-detail-tabs'
 import { ConnectorResyncBanner } from './connector-resync-banner'
@@ -66,18 +67,22 @@ export function ConnectorDetailView({ connector }: ConnectorDetailViewProps) {
   const isPaused = status === 'paused'
 
   // Live status for the freshness line + the derived "Action needed" reconnect CTA.
-  // Polls only while a sync is in flight (4s, matching the Runs panel — same query
-  // key, so the two share one request). The header Sync/Pause/Resume buttons stay on
-  // the optimistic getById `status` so their instant feedback is preserved.
+  // The `dataConnector:sync` realtime feed (below) drives the snappy updates; this
+  // poll is now just a SAFETY NET while a sync is in flight (realtime is best-effort
+  // with no missed-event replay — a dropped frame must still converge). 15s, matching
+  // the Runs panel — same query key, so the two share one request. The header
+  // Sync/Pause/Resume buttons stay on the optimistic getById `status`.
   const statusQuery = api.dataConnector.getStatus.useQuery(
     { id: connector.id },
     {
       refetchInterval: (query) => {
         const s = query.state.data?.status ?? connector.status
-        return s === 'syncing' || s === 'provisioning' ? 4000 : false
+        return s === 'syncing' || s === 'provisioning' ? 15000 : false
       },
     }
   )
+  // Push live run progress + lifecycle into the shared getStatus/listRuns caches.
+  useConnectorSyncRealtime(connector.id)
   const live = statusQuery.data
   const liveStatus = asConnectorStatus(live?.status ?? connector.status)
   // The run status is a free-text DB column; normalize it once for the resolver + status line.
