@@ -22,7 +22,15 @@ interface MailFilterState {
   /** The search query currently applied to the list (use the deferred value for consistency). */
   searchQuery?: string // Use the deferred value from Mailbox here
 
-  selectedThreadIds: string[]
+  /**
+   * Explicit scoped selection for embedded mini-lists (e.g. the ticket /
+   * contact conversation tabs) that render their own short thread list outside
+   * the global mailbox. The main mailbox deliberately omits this — its items
+   * read per-thread selection from the thread-selection store
+   * (`useIsThreadSelected`) so a selection change re-renders only the affected
+   * row instead of every context consumer.
+   */
+  selectedThreadIds?: string[]
 
   /** Current view mode - determines whether checkboxes are shown and selection behavior */
   viewMode: ViewMode
