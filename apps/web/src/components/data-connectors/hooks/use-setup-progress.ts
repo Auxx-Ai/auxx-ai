@@ -1,11 +1,6 @@
 // apps/web/src/components/data-connectors/hooks/use-setup-progress.ts
 'use client'
 
-import type { RouterOutputs } from '~/trpc/react'
-
-type Connector = NonNullable<RouterOutputs['dataConnector']['getById']>
-type Stream = RouterOutputs['dataConnector']['listStreams'][number]
-
 /** The setup stepper's ordered steps (create-sync-flow-plan §2.1). */
 export type SetupStepId = 'connect' | 'sample' | 'map' | 'schedule' | 'run'
 
@@ -13,13 +8,33 @@ export type SetupStepId = 'connect' | 'sample' | 'map' | 'schedule' | 'run'
 export type StreamReadiness = 'ready' | 'needs-mapping'
 
 /**
+ * Minimal shapes the setup predicates read. The server `getById`/`listStreams` rows
+ * AND the editor draft (`ConnectorDraft`/`DraftStream`) both satisfy these — so the
+ * stepper can gate off the DRAFT (the client source of truth, never a commit behind)
+ * while keeping the same predicates the server-row tests exercise.
+ */
+export interface ProgressMappingRow {
+  fieldMappings?: ({ targetFieldRef: string | null } | null)[] | null
+}
+export interface ProgressStreamRow {
+  enabled: boolean
+  sourceSchema: Record<string, unknown> | null
+  mappings: ProgressMappingRow[]
+}
+export interface ProgressConnectorRow {
+  definitionKind: string
+  config: { endpoint?: { baseUrl?: string } } | Record<string, unknown> | null
+  credentialId: string | null
+}
+
+/**
  * A stream is ready once it has ≥1 mapping with a bound `targetFieldRef`. A row with
  * zero bound bindings (a freshly materialized draft — owned never is, a contributing
  * default-mapping is until authored) needs attention (multi-stream-setup-plan §4.1).
  */
-export function deriveStreamReadiness(stream: Stream): StreamReadiness {
+export function deriveStreamReadiness(stream: ProgressStreamRow): StreamReadiness {
   const bound = stream.mappings.some((m) =>
-    m.fieldMappings?.some((fm) => fm.targetFieldRef != null)
+    m.fieldMappings?.some((fm) => fm?.targetFieldRef != null)
   )
   return bound ? 'ready' : 'needs-mapping'
 }
@@ -60,8 +75,8 @@ export interface ConnectRequirements {
  * detail view already queries (`getById` + `listStreams`). See plan §2.2.
  */
 export function deriveSetupProgress(
-  connector: Connector,
-  streams: Stream[],
+  connector: ProgressConnectorRow,
+  streams: ProgressStreamRow[],
   connectReqs: ConnectRequirements
 ): SetupProgress {
   const isGenericRest = connector.definitionKind !== 'app'

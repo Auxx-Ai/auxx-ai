@@ -164,7 +164,16 @@ export function WebhookSignalInspector({ connector }: { connector: Connector }) 
     appConnections.find((c) => c.id === connector.credentialId)?.appInstallationId ??
     null
 
-  const saved = (connector.config as { webhookTrigger?: WebhookSignal } | null)?.webhookTrigger
+  // Follow the DRAFT signal so the inspector swaps the instant the picker binds an
+  // endpoint/trigger — the commit no longer refetches getById, so `connector.config`
+  // lags until a reload (plans/data-connectors/v4). Fall back to the server prop until
+  // the store is seeded for this connector so a committed signal never flashes empty.
+  const draftSeeded = useConnectorDraftStore((s) => s.connectorId === connector.id)
+  const draftConfig = useConnectorDraftStore((s) => s.draft.config)
+  const cfg = (draftSeeded ? draftConfig : connector.config) as {
+    webhookTrigger?: WebhookSignal
+  } | null
+  const saved = cfg?.webhookTrigger
   const source = savedSource(saved)
 
   // These inspectors render their own `Section`; inside the connector's scroll column the

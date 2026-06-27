@@ -92,17 +92,22 @@ export function useConnectorDraftSync(input: {
   const meta = useMemo(() => toConnectorMeta(connector), [connector])
 
   const lastSeededKey = useRef<string | null>(null)
-  const lastConnectorId = useRef<string | null>(null)
 
-  // Seed / re-seed. On a connector-id change, always seed (page-scoped lifecycle).
-  // Otherwise re-seed only when the server shape changed AND the draft is clean.
+  // Seed / re-seed. Seed whenever the store isn't already holding THIS connector —
+  // a fresh mount, a connector-id change (page-scoped lifecycle), or a store that was
+  // wiped by the unmount `reset()` cleanup. The last case is what React StrictMode
+  // exercises in dev: it runs every effect setup → cleanup → setup, so the cleanup
+  // resets the store while this effect's refs survive — guarding on the live store
+  // `connectorId` (not a ref) is what lets the second setup re-seed. Otherwise re-seed
+  // only when the server shape changed AND the draft is clean (a background refresh
+  // must never clobber an uncommitted edit, invariant I1).
   useEffect(() => {
-    const connectorChanged = lastConnectorId.current !== connector.id
-    const dirty = selectIsDirty(useConnectorDraftStore.getState())
-    if (connectorChanged || (serverKey !== lastSeededKey.current && !dirty)) {
+    const state = useConnectorDraftStore.getState()
+    const notSeeded = state.connectorId !== connector.id
+    const dirty = selectIsDirty(state)
+    if (notSeeded || (serverKey !== lastSeededKey.current && !dirty)) {
       seed(connector.id, meta, serverDraft)
       lastSeededKey.current = serverKey
-      lastConnectorId.current = connector.id
     }
   }, [connector.id, serverKey, serverDraft, meta, seed])
 

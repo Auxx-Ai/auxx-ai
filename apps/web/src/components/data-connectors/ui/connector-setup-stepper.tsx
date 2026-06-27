@@ -32,10 +32,13 @@ import { useConnectorMutations } from '../hooks/use-connector-mutations'
 import {
   deriveSetupProgress,
   deriveStreamReadiness,
+  type ProgressConnectorRow,
+  type ProgressStreamRow,
   type SetupStepId,
   type StreamReadiness,
 } from '../hooks/use-setup-progress'
 import { useStreamMutations } from '../hooks/use-stream-mutations'
+import { useConnectorDraftStore, visibleMappings } from '../stores/connector-draft-store'
 import { ConnectionSection } from './connection-section'
 import { ConnectorSaveBar } from './connector-save-bar'
 import { ScheduleSection } from './schedule-section'
@@ -109,6 +112,33 @@ export function ConnectorSetupStepper({ connector }: ConnectorSetupStepperProps)
   const streams = useMemo(() => streamsQuery.data ?? [], [streamsQuery.data])
   const primaryStream = streams[0] ?? null
 
+  // Gate the stepper off the DRAFT — the client source of truth. The autosave commit
+  // reconciles the draft in place and deliberately does NOT refetch getById/listStreams
+  // (it would re-seed the draft mid-keystroke and erase what's being typed — the same
+  // page-query-invalidate anti-pattern the agents editor avoids), so the server
+  // `connector`/`streams` props now lag a commit behind. The draft never does, so a step
+  // unlocks the instant its edit lands. Fall back to the server props until the store is
+  // seeded (one render on mount) so nothing flashes locked.
+  const draftSeeded = useConnectorDraftStore((s) => s.connectorId === connector.id)
+  const draftConfig = useConnectorDraftStore((s) => s.draft.config)
+  const draftStreams = useConnectorDraftStore((s) => s.draft.streams)
+  const gatingStreams = useMemo<Array<ProgressStreamRow & { id: string }>>(() => {
+    const source = draftSeeded
+      ? draftStreams.map((s) => ({
+          id: s.id,
+          enabled: s.enabled,
+          sourceSchema: s.sourceSchema,
+          mappings: visibleMappings(s),
+        }))
+      : streams.map((s) => ({
+          id: s.id,
+          enabled: s.enabled,
+          sourceSchema: s.sourceSchema as Record<string, unknown> | null,
+          mappings: s.mappings as ProgressStreamRow['mappings'],
+        }))
+    return source
+  }, [draftSeeded, draftStreams, streams])
+
   // A catalog-supplied schema (app connectors always; templates that ship one)
   // means there's nothing to "pull a sample" for — the source shape arrived at
   // create time. Drop that step; instead offer an optional live preview inside
@@ -147,11 +177,16 @@ export function ConnectorSetupStepper({ connector }: ConnectorSetupStepperProps)
     [schemaQuery.data]
   )
   const requiredConfigSatisfied = useMemo(() => {
-    const cfg = (connector.config ?? {}) as Record<string, unknown>
+    const cfg = ((draftSeeded ? draftConfig : connector.config) ?? {}) as Record<string, unknown>
     return configFields.filter((f) => f.required).every((f) => !isMissing(cfg[f.key]))
-  }, [configFields, connector.config])
+  }, [configFields, draftSeeded, draftConfig, connector.config])
 
-  const progress = deriveSetupProgress(connector, streams, {
+  const progressConnector: ProgressConnectorRow = {
+    definitionKind: connector.definitionKind,
+    config: (draftSeeded ? draftConfig : connector.config) as ProgressConnectorRow['config'],
+    credentialId: connector.credentialId,
+  }
+  const progress = deriveSetupProgress(progressConnector, gatingStreams, {
     requiresConnection,
     hasConfigForm: configFields.length > 0,
     requiredConfigSatisfied,
@@ -159,8 +194,8 @@ export function ConnectorSetupStepper({ connector }: ConnectorSetupStepperProps)
 
   // Per-stream readiness drives the Map step's overview badges + its `every`-stream gate.
   const readinessById = useMemo<Record<string, StreamReadiness>>(
-    () => Object.fromEntries(streams.map((s) => [s.id, deriveStreamReadiness(s)])),
-    [streams]
+    () => Object.fromEntries(gatingStreams.map((s) => [s.id, deriveStreamReadiness(s)])),
+    [gatingStreams]
   )
 
   // Gating: can the user advance past this step? Schedule is always satisfiable
