@@ -7,6 +7,7 @@ import {
   type ReadinessStream,
 } from '@auxx/lib/data-connectors/client'
 import { Button } from '@auxx/ui/components/button'
+import { ButtonGroup, ButtonGroupSeparator } from '@auxx/ui/components/button-group'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -20,7 +21,8 @@ import {
   MainPageContent,
   MainPageHeader,
 } from '@auxx/ui/components/main-page'
-import { ChevronDown, FlaskConical, Pause, Play, Plug, RefreshCw, Trash } from 'lucide-react'
+import { cn } from '@auxx/ui/lib/utils'
+import { ChevronDown, Plug, RefreshCw, Trash } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useQueryState } from 'nuqs'
 import { useMemo } from 'react'
@@ -107,6 +109,22 @@ export function ConnectorDetailView({ connector }: ConnectorDetailViewProps) {
     latestRun,
   })
 
+  // Pause/resume cluster pill: a colored dot + short label.
+  // green=live/ready · amber=syncing/provisioning · red=paused or action-needed.
+  // Drive paused/syncing off the OPTIMISTIC getById `status` (same source the toggle
+  // uses) so a click flips the dot instantly — the `getStatus` poll lags and only
+  // refetches mid-sync. `action-needed` is the one state that comes from the resolver.
+  const actionNeeded = resolved.state === 'action-needed'
+  const pillDotClass =
+    isPaused || actionNeeded ? 'bg-red-500' : isSyncing ? 'bg-amber-500' : 'bg-emerald-500'
+  const pillLabel = isPaused
+    ? 'Paused'
+    : actionNeeded
+      ? 'Action needed'
+      : isSyncing
+        ? 'Syncing'
+        : 'Live'
+
   const {
     syncNow,
     sampleSync,
@@ -191,103 +209,123 @@ export function ConnectorDetailView({ connector }: ConnectorDetailViewProps) {
       <MainPageHeader
         action={
           <div className='flex items-center gap-2'>
-            {/* Soft-disable (not native `disabled`) when the config is incomplete OR unsaved
-                so a tooltip can explain why; native `disabled` stays for the in-flight state. */}
-            {(() => {
-              const syncButton = (
-                <Button
-                  variant='outline'
-                  size='sm'
-                  loading={isSyncPending}
-                  loadingText='Syncing...'
-                  disabled={isSyncing}
-                  aria-disabled={!!syncBlockReason}
-                  className={syncBlockReason ? 'cursor-not-allowed opacity-50' : undefined}
-                  onClick={() => {
-                    if (syncBlockReason) return
-                    syncNow(connector.id)
-                  }}>
-                  <RefreshCw />
-                  Sync now
-                </Button>
-              )
-              return syncBlockReason ? (
-                <Tooltip content={syncBlockReason}>{syncButton}</Tooltip>
-              ) : (
-                syncButton
-              )
-            })()}
-            {/* Sample sync (trial-sync §5.3): a bounded first look, available after setup
-                too — pick a per-stream size; the run parks for review when it's done. */}
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  variant='outline'
-                  size='sm'
-                  disabled={isSyncing}
-                  aria-disabled={!!syncBlockReason}
-                  className={syncBlockReason ? 'cursor-not-allowed opacity-50' : undefined}
-                  onClick={(e) => {
-                    if (syncBlockReason) e.preventDefault()
-                  }}>
-                  <FlaskConical />
-                  Sample
-                  <ChevronDown />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align='end'>
-                {[50, 100, 500].map((n) => (
-                  <DropdownMenuItem key={n} onClick={() => sampleSync(connector.id, n)}>
-                    Sample {n} per stream
-                  </DropdownMenuItem>
-                ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
-            {resolved.state === 'action-needed' && (
-              <Button variant='outline' size='sm' onClick={() => void setTab('connection')}>
+            {/* Reconnect stays a standalone CTA to the left of the cluster, shown only
+                when the connection needs attention (the resolver's action-needed state). */}
+            {actionNeeded && (
+              <Button variant='outline' size='xs' onClick={() => void setTab('connection')}>
                 <Plug />
                 Reconnect
               </Button>
             )}
-            {isPaused ? (
-              <Button
-                variant='outline'
-                size='sm'
-                loading={isResuming}
-                onClick={() => resume(connector.id)}>
-                <Play />
-                Resume
-              </Button>
-            ) : (
-              <Button
-                variant='outline'
-                size='sm'
-                loading={isPausing}
-                onClick={() => pause(connector.id)}>
-                <Pause />
-                Pause
-              </Button>
-            )}
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant='destructive' size='sm' loading={isDeleting}>
-                  <Trash />
-                  Delete
-                  <ChevronDown />
+            <ButtonGroup className='shrink-0'>
+              {/* Pause/resume toggle: the colored dot conveys live status, clicking it
+                  flips paused ⇄ live. Decision uses the authoritative `isPaused`; the
+                  dot/label follow the live polled status. */}
+              <Tooltip content={isPaused ? 'Click to resume' : 'Click to pause'}>
+                <Button
+                  variant='outline'
+                  size='xs'
+                  className='gap-2 border-r-0'
+                  loading={isPausing || isResuming}
+                  loadingText=''
+                  onClick={() => (isPaused ? resume(connector.id) : pause(connector.id))}>
+                  <span className={cn('inline-block size-2 rounded-full', pillDotClass)} />
+                  {pillLabel}
                 </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align='end'>
-                <DropdownMenuItem onClick={() => void handleDelete('keep')}>
-                  Delete, keep synced records
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => void handleDelete('archive')}>
-                  Delete, archive synced records
-                </DropdownMenuItem>
-                <DropdownMenuItem variant='destructive' onClick={() => void handleDelete('delete')}>
-                  Delete connector and synced records
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+              </Tooltip>
+
+              <ButtonGroupSeparator />
+
+              {/* Sync now is the split button's primary action; soft-disable (not native
+                  `disabled`) when the config is incomplete OR unsaved so a tooltip can
+                  explain why; native `disabled` stays for the in-flight state. */}
+              {(() => {
+                const syncButton = (
+                  <Button
+                    variant='outline'
+                    size='xs'
+                    className={cn('border-r-0', syncBlockReason && 'cursor-not-allowed opacity-50')}
+                    loading={isSyncPending}
+                    loadingText='Syncing...'
+                    disabled={isSyncing}
+                    aria-disabled={!!syncBlockReason}
+                    onClick={() => {
+                      if (syncBlockReason) return
+                      syncNow(connector.id)
+                    }}>
+                    <RefreshCw />
+                    Sync now
+                  </Button>
+                )
+                return syncBlockReason ? (
+                  <Tooltip content={syncBlockReason}>{syncButton}</Tooltip>
+                ) : (
+                  syncButton
+                )
+              })()}
+
+              <ButtonGroupSeparator />
+
+              {/* Sample sync (trial-sync §5.3): the attached chevron opens per-stream
+                  sizes; same readiness gate as Sync now. The run parks for review. */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant='outline'
+                    size='xs'
+                    className={cn(
+                      'border-r-0 px-1.5',
+                      syncBlockReason && 'cursor-not-allowed opacity-50'
+                    )}
+                    disabled={isSyncing}
+                    aria-disabled={!!syncBlockReason}
+                    aria-label='Sample sync'
+                    onClick={(e) => {
+                      if (syncBlockReason) e.preventDefault()
+                    }}>
+                    <ChevronDown />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align='end'>
+                  {[50, 100, 500].map((n) => (
+                    <DropdownMenuItem key={n} onClick={() => sampleSync(connector.id, n)}>
+                      Sample {n} per stream
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+
+              <ButtonGroupSeparator />
+
+              {/* Delete overflow menu — keep / archive / delete synced records. */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant='outline'
+                    size='xs'
+                    className='px-1.5'
+                    loading={isDeleting}
+                    loadingText=''
+                    aria-label='Delete connector'>
+                    <Trash />
+                    <ChevronDown />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align='end'>
+                  <DropdownMenuItem onClick={() => void handleDelete('keep')}>
+                    Delete, keep synced records
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => void handleDelete('archive')}>
+                    Delete, archive synced records
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    variant='destructive'
+                    onClick={() => void handleDelete('delete')}>
+                    Delete connector and synced records
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </ButtonGroup>
           </div>
         }>
         <MainPageBreadcrumb>

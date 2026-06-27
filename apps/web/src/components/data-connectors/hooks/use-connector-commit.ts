@@ -6,15 +6,16 @@ import { useCallback } from 'react'
 import { api } from '~/trpc/react'
 import { type CommitPlan, diffConnectorDraft, isEmptyPlan } from '../lib/connector-commit-diff'
 import { getConnectorDraftState, useConnectorDraftStore } from '../stores/connector-draft-store'
-import { toConnectorDraft, toConnectorMeta } from './use-connector-draft-sync'
 
 /**
  * The commit/flush engine (plan §5) — the ONLY place connector configuration is
  * written. Reads the draft store imperatively, diffs it against the committed
  * snapshot, issues the minimal ordered set of tRPC mutations (resolving temp ids to
- * server ids), then re-seeds the store from the authoritative refetch so the draft
- * adopts real ids + server-derived fields (`linkMode`, §5.4). Nothing here fires on
- * keystroke — only on `commit()` (invariant P3).
+ * server ids), then reconciles the draft IN PLACE (`applyCommit`): it adopts the new
+ * server ids for created mappings and re-baselines the snapshot — no getById/listStreams
+ * refetch, because re-seeding would erase keystrokes typed during the round-trip. The
+ * client draft is authoritative. Nothing here fires on keystroke — only on `commit()`
+ * (invariant P3).
  *
  * Lives in a hook (not the store) so the store stays free of `api`/network imports.
  */
@@ -97,6 +98,9 @@ export function useConnectorCommit() {
       for (const d of plan.mappingDeletes) {
         await removeMapping.mutateAsync({ mappingId: d.mappingId })
       }
+
+      // The temp→real id map the caller uses to reconcile the draft in place (no refetch).
+      return tempToReal
     },
     [
       update,
@@ -111,8 +115,9 @@ export function useConnectorCommit() {
 
   /**
    * Flush the draft. Diffs against the snapshot, runs the ordered mutations, then
-   * re-seeds from the authoritative refetch. All-or-nothing: any failure rolls the
-   * draft back to the snapshot and surfaces one toast (plan §R2).
+   * reconciles the draft in place (adopt created-mapping ids + re-baseline the
+   * snapshot) — no refetch. All-or-nothing: any failure rolls the draft back to the
+   * snapshot and surfaces one toast (plan §R2).
    */
   const commit = useCallback(async () => {
     const state = getConnectorDraftState()
@@ -121,30 +126,25 @@ export function useConnectorCommit() {
     const plan = diffConnectorDraft(snapshot, draft)
     if (isEmptyPlan(plan)) return
 
+    // The baseline we're about to persist — captured BEFORE the round-trip so edits
+    // typed during it stay in the live draft (they're not in `committed`).
+    const committed = JSON.parse(JSON.stringify(draft)) as typeof draft
+
     setSaving(true)
     try {
-      await runPlan(connectorId, plan)
+      const tempToReal = await runPlan(connectorId, plan)
 
-      // Re-seed from the authoritative shape — real ids, server-derived `linkMode`.
-      // The single intentional post-commit refetch (replaces the per-edit storm, §5.4).
-      await Promise.all([
-        utils.dataConnector.getById.invalidate({ id: connectorId }),
-        utils.dataConnector.listStreams.invalidate({ id: connectorId }),
-      ])
-      const [connector, streams] = await Promise.all([
-        utils.dataConnector.getById.fetch({ id: connectorId }),
-        utils.dataConnector.listStreams.fetch({ id: connectorId }),
-      ])
-      if (connector) {
-        getConnectorDraftState().seed(
-          connectorId,
-          toConnectorMeta(connector),
-          toConnectorDraft(connector, streams)
-        )
-      }
+      // Reconcile the draft IN PLACE — adopt the freshly-minted server ids for created
+      // mappings and re-baseline the snapshot to `committed`. Deliberately NO
+      // getById/listStreams refetch + re-seed: a re-seed replaces the live draft and
+      // erases keystrokes made during the round-trip (the page-query-invalidate
+      // anti-pattern the agents editor calls out). The client draft is authoritative;
+      // anything edited since this commit stays dirty and flushes on the next autosave.
+      getConnectorDraftState().applyCommit(committed, tempToReal)
 
-      // One status nudge per commit, only for a resync-affecting change (§5.3) — kills
-      // the per-keystroke `getStatus` storm.
+      // One status nudge per commit, only for a resync-affecting change (§5.3). This is
+      // `getStatus` only (the status pill / resync banner) — it never feeds a controlled
+      // input, so it can't clobber typing. Kills the per-keystroke `getStatus` storm.
       if (plan.structural) {
         void utils.dataConnector.getStatus.invalidate({ id: connectorId })
       }

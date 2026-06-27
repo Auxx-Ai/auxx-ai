@@ -13,7 +13,11 @@ import { useTriggerSources } from '~/components/pickers/trigger-source'
 import { type Tag, TagInput } from '~/components/tag-input/tag-input'
 import { WebhookTopicPicker } from '~/components/webhooks/ui/webhook-topic-picker'
 import type { RouterOutputs } from '~/trpc/react'
-import { getConnectorDraftState, selectIsDirty } from '../stores/connector-draft-store'
+import {
+  getConnectorDraftState,
+  selectIsDirty,
+  useConnectorDraftStore,
+} from '../stores/connector-draft-store'
 
 type Connector = NonNullable<RouterOutputs['dataConnector']['getById']>
 type Stream = RouterOutputs['dataConnector']['listStreams'][number]
@@ -142,7 +146,15 @@ function WebhookSteeringEditor({ connector, stream }: { connector: Connector; st
     appIdFilter: appId,
   })
 
-  const signal = (connector.config as { webhookTrigger?: WebhookSignal } | null)?.webhookTrigger
+  // Read the SIGNAL from the DRAFT so the topics picker + payload-field checklist resolve
+  // the instant the connector-level picker binds an endpoint/trigger — the commit no longer
+  // refetches getById, so `connector.config` lags until a reload (plans/data-connectors/v4).
+  // Server prop fallback until the store seeds, so a committed signal never flashes empty.
+  const draftSeeded = useConnectorDraftStore((s) => s.connectorId === connector.id)
+  const draftConfig = useConnectorDraftStore((s) => s.draft.config)
+  const signal = (
+    (draftSeeded ? draftConfig : connector.config) as { webhookTrigger?: WebhookSignal } | null
+  )?.webhookTrigger
   const selectedAppTrigger = signal?.triggerId
     ? (appSources.find((s) => s.trigger.triggerId === signal.triggerId)?.trigger ?? null)
     : null

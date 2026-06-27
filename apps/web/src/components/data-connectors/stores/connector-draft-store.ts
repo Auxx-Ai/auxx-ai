@@ -142,6 +142,15 @@ interface ConnectorDraftState {
 
   // ── lifecycle ──
   seed: (connectorId: string, meta: ConnectorMeta, server: ConnectorDraft) => void
+  /**
+   * Post-commit reconcile WITHOUT a server refetch (the commit no longer invalidates
+   * getById/listStreams — a re-seed would clobber keystrokes typed during the
+   * round-trip). Adopts the freshly-minted server ids for any created mappings
+   * (`tempToReal`) in the live draft, and re-baselines the snapshot to `committed`
+   * (the draft as it was when the commit began) so `isDirty` reflects only edits made
+   * SINCE the commit — those stay in the draft and flush on the next autosave.
+   */
+  applyCommit: (committed: ConnectorDraft, tempToReal: Map<string, string>) => void
   reset: () => void
   setSaving: (isSaving: boolean) => void
   setAutoSave: (autoSave: boolean) => void
@@ -182,6 +191,29 @@ const EMPTY_DRAFT: ConnectorDraft = {
 /** A temp id the server has never seen — minted for fan-out/add until commit. */
 export function isTempId(id: string): boolean {
   return id.startsWith('temp_')
+}
+
+/**
+ * Replace temp mapping ids (and any child `parentMappingId` that points at one) with
+ * their committed server ids. A no-op when nothing was created — returns the same draft
+ * reference so a config/field-only commit doesn't churn the mapping tree.
+ */
+function remapMappingIds(draft: ConnectorDraft, map: Map<string, string>): ConnectorDraft {
+  if (map.size === 0) return draft
+  return {
+    ...draft,
+    streams: draft.streams.map((s) => ({
+      ...s,
+      mappings: s.mappings.map((m) => ({
+        ...m,
+        id: map.get(m.id) ?? m.id,
+        parentMappingId:
+          m.parentMappingId && map.has(m.parentMappingId)
+            ? (map.get(m.parentMappingId) as string)
+            : m.parentMappingId,
+      })),
+    })),
+  }
 }
 
 /** Map a draft stream's mappings, replacing the one with `mappingId`. */
@@ -253,6 +285,12 @@ export const useConnectorDraftStore = create<ConnectorDraftState>()(
         streamValidity: {},
       })
     },
+
+    applyCommit: (committed, tempToReal) =>
+      set((s) => ({
+        draft: remapMappingIds(s.draft, tempToReal),
+        snapshot: remapMappingIds(committed, tempToReal),
+      })),
 
     reset: () =>
       set({
