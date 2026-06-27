@@ -101,7 +101,7 @@ export function GuideDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       {/* Paged guides shrink-wrap to the animating body (`content`); static ones
           use the fixed width preset. */}
-      <DialogContent size={paged ? 'content' : size} innerClassName='p-0'>
+      <DialogContent size={paged ? 'content' : size} position='tc' innerClassName='p-0'>
         <div className='flex flex-col'>
           <DialogNav
             title={title}
