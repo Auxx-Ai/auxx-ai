@@ -72,7 +72,7 @@ export function ProcedureBlocksPopover() {
           </Button>
         </PopoverTrigger>
         <PopoverContent align='end' className='w-72 p-0'>
-          <Command shouldFilter={false} className='rounded-lg'>
+          <Command shouldFilter={false} className='rounded-2xl'>
             <CommandList>
               {isEmpty && <CommandPlaceholder>No building blocks yet</CommandPlaceholder>}
 

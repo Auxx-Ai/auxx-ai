@@ -12,7 +12,7 @@ import type { DataConnectorConfig } from './types'
 export type ReadinessProblem =
   | 'no-endpoint' // no base URL (generic-rest) / no bound connection (app)
   | 'no-stream' // no enabled stream at all
-  | 'stream-no-path' // best stream missing streamKey / requestConfig.path
+  | 'stream-no-path' // best stream missing requestConfig.path
   | 'stream-no-schema' // best stream missing sourceSchema
   | 'no-mapping' // best stream has no targeted mapping with a field mapping
 
@@ -33,7 +33,6 @@ export interface ConnectorReadiness {
  */
 export interface ReadinessStream {
   enabled: boolean
-  streamKey: string | null
   sourceSchema: Record<string, unknown> | null
   requestConfig: { path?: string } | null
   mappings: { entityDefinitionId: string | null; fieldMappings: unknown[] | null }[]
@@ -65,15 +64,14 @@ const STREAM_STEPS = ['stream-no-path', 'stream-no-schema', 'no-mapping'] as con
 /**
  * First failing step of an enabled stream, in order path → schema → mapping, or
  * `null` when fully configured. `requirePath` is false for app connectors (their
- * fetch is fixed — no request path to author).
+ * fetch is fixed — no request path to author). A stream needs no user-facing name
+ * to sync — its stable `streamId` is the functional key (see slice-orchestrator).
  */
 function firstStreamFailure(
   stream: ReadinessStream,
   requirePath: boolean
 ): (typeof STREAM_STEPS)[number] | null {
-  const hasKey = !!stream.streamKey && stream.streamKey.length > 0
-  const hasPath = !requirePath || !!stream.requestConfig?.path
-  if (!hasKey || !hasPath) return 'stream-no-path'
+  if (requirePath && !stream.requestConfig?.path) return 'stream-no-path'
   if (!hasSchema(stream.sourceSchema)) return 'stream-no-schema'
   if (!hasTargetedMapping(stream.mappings)) return 'no-mapping'
   return null
@@ -84,10 +82,10 @@ function firstStreamFailure(
  *
  * - `canSample` = endpoint present (generic-rest: `config.endpoint.baseUrl`;
  *   app connector: a bound `credentialId`). Enough for a Test fetch.
- * - `canSync` = `canSample` AND ≥1 ENABLED, fully-configured stream (streamKey,
- *   a request path for generic-rest, a non-empty `sourceSchema`, and a targeted
- *   mapping with ≥1 field mapping). At least one — never every — stream, so a
- *   connector mid-build of a second stream still syncs the first.
+ * - `canSync` = `canSample` AND ≥1 ENABLED, fully-configured stream (a request
+ *   path for generic-rest, a non-empty `sourceSchema`, and a targeted mapping
+ *   with ≥1 field mapping — no user-facing name required). At least one — never
+ *   every — stream, so a connector mid-build of a second stream still syncs the first.
  *
  * Pure: reads only the named fields, no DB. `problems[0]` is the actionable hint.
  */

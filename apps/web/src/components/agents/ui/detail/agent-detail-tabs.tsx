@@ -15,6 +15,7 @@ import { Section } from '@auxx/ui/components/section'
 import { Tabs, TabsList, TabsTrigger } from '@auxx/ui/components/tabs'
 import {
   BookOpen,
+  CircleHelp,
   Clock,
   FileText,
   ListChecks,
@@ -38,6 +39,7 @@ import { ProcedureEditor } from '../../procedures/ui/procedure-editor'
 import { ProceduresSection } from '../../procedures/ui/procedures-section'
 import type { AgentDetail } from '../../store/agent-store'
 import type { AutosaveState } from '../shared/autosave-indicator'
+import { AgentGuideDialog } from './agent-guide-dialog'
 import { AgentHero } from './agent-hero'
 import { BindingsSection } from './bindings/bindings-section'
 import { KnowledgeSectionContent } from './knowledge/knowledge-section-content'
@@ -89,6 +91,7 @@ export function AgentDetailTabs({ agent, onAutosaveChange }: AgentDetailTabsProp
   const [selectedProcedureId, setSelectedProcedureId] = useQueryState('procedure')
   const [drill, setDrill] = useQueryState('drill')
   const [addingKind, setAddingKind] = useState<'scheduled' | 'event' | 'source' | null>(null)
+  const [guideOpen, setGuideOpen] = useState(false)
   // Lifted from the pushed ProcedureEditor so the detail bar (rendered by
   // <NavStackBar>, a separate subtree) can show live Saving…/Saved next to Publish.
   const [procedureAutosave, setProcedureAutosave] = useState<AutosaveState>({ kind: 'idle' })
@@ -208,6 +211,14 @@ export function AgentDetailTabs({ agent, onAutosaveChange }: AgentDetailTabsProp
                         </TabsTrigger>
                       )
                     })}
+                    <Button
+                      variant='ghost'
+                      size='xs'
+                      className='ml-auto'
+                      onClick={() => setGuideOpen(true)}>
+                      <CircleHelp />
+                      Guide
+                    </Button>
                   </TabsList>
                 </Tabs>
               }>
@@ -324,6 +335,14 @@ export function AgentDetailTabs({ agent, onAutosaveChange }: AgentDetailTabsProp
           </NavStackPanels>
         </NavStack>
       </ProcedureDraftProvider>
+      {guideOpen && (
+        <AgentGuideDialog
+          open={guideOpen}
+          onOpenChange={setGuideOpen}
+          canProcedures={canProcedures}
+          isChat={agent.kind === 'chat'}
+        />
+      )}
     </div>
   )
 }

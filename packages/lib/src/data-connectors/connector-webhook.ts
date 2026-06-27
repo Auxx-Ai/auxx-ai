@@ -69,7 +69,10 @@ export async function runWebhookSteeredRun(
     return
   }
   const { connector, streams } = loaded
-  const stream = streams.find((s) => s.stream.streamKey === streamKey)
+  // Match by the functional key — a named stream uses its streamKey, an unnamed one its
+  // stable streamId (the dispatch enqueues the same fallback). Keeps webhook deletes +
+  // steered fetches routable for streams the user never named.
+  const stream = streams.find((s) => (s.stream.streamKey ?? s.stream.id) === streamKey)
   const webhookTrigger = stream?.stream.requestConfig?.webhookTrigger
   if (!stream || !webhookTrigger) {
     logger.info('runWebhookSteeredRun: stream unmapped or not webhook-bound, dropping', {

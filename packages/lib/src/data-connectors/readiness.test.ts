@@ -23,7 +23,6 @@ const withBaseUrl = genericRest({ endpoint: { baseUrl: 'https://api.example.com'
 /** A fully-configured generic-rest stream. Override fields to break it. */
 const completeStream = (over: Partial<ReadinessStream> = {}): ReadinessStream => ({
   enabled: true,
-  streamKey: 'orders',
   sourceSchema: { id: { type: 'string' } },
   requestConfig: { path: '/orders' },
   mappings: [{ entityDefinitionId: 'def_1', fieldMappings: [{ id: 'fm_1' }] }],
@@ -77,9 +76,11 @@ describe('getConnectorReadiness — canSync (streams)', () => {
     expect(r.problems[0]).toBe('stream-no-path')
   })
 
-  it('stream missing a streamKey → stream-no-path', () => {
-    const r = getConnectorReadiness(withBaseUrl, [completeStream({ streamKey: null })])
-    expect(r.problems[0]).toBe('stream-no-path')
+  it('a user-facing name is not required to sync → an unnamed but complete stream syncs', () => {
+    // The stable streamId is the functional key; a blank name never blocks sync.
+    const r = getConnectorReadiness(withBaseUrl, [completeStream()])
+    expect(r.canSync).toBe(true)
+    expect(r.problems).toEqual([])
   })
 
   it('stream with path but no schema → stream-no-schema', () => {
@@ -132,7 +133,7 @@ describe('getConnectorReadiness — canSync (streams)', () => {
 
   it('multi-stream none complete: reports the closest-to-complete stream reason', () => {
     const r = getConnectorReadiness(withBaseUrl, [
-      completeStream({ streamKey: null }), // fails earliest (path)
+      completeStream({ requestConfig: null }), // fails earliest (path)
       completeStream({ mappings: [{ entityDefinitionId: null, fieldMappings: null }] }), // fails latest (mapping)
     ])
     expect(r.canSync).toBe(false)

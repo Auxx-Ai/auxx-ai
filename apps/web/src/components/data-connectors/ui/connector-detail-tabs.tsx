@@ -1,12 +1,13 @@
 // apps/web/src/components/data-connectors/ui/connector-detail-tabs.tsx
 'use client'
 
+import { Button } from '@auxx/ui/components/button'
 import { NavStack, NavStackBar, NavStackPanel, NavStackPanels } from '@auxx/ui/components/nav-stack'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { Tabs, TabsList, TabsTrigger } from '@auxx/ui/components/tabs'
-import { Clock, Layers, Plug } from 'lucide-react'
+import { CircleHelp, Clock, Layers, Plug } from 'lucide-react'
 import { useQueryState } from 'nuqs'
-import { useCallback, useMemo } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { useScrollSpy } from '~/hooks/use-scroll-spy'
 import { api } from '~/trpc/react'
 import { useConnectorCommit } from '../hooks/use-connector-commit'
@@ -18,6 +19,7 @@ import { asConnectorStatus } from './connector-status'
 import { ScheduleSection } from './schedule-section'
 import { StreamConfigPanel } from './stream-config-panel'
 import { StreamDetailBar } from './stream-detail-bar'
+import { StreamGuideDialog } from './stream-guide-dialog'
 import { StreamsSection } from './streams-section'
 
 type Connector = NonNullable<ReturnType<typeof api.dataConnector.getById.useQuery>['data']>
@@ -63,6 +65,11 @@ export function ConnectorDetailTabs({
 }: ConnectorDetailTabsProps) {
   const [tab, setTab] = useQueryState('tab', { defaultValue: 'connection' })
   const [selectedStreamId, setSelectedStreamId] = useQueryState('stream')
+  const [guideOpen, setGuideOpen] = useState(false)
+
+  // Branch the guide copy on connector kind (05c §7), matching `StreamConfigPanel`:
+  // app-kind connectors don't expose the request/pagination controls the guide explains.
+  const isGenericRest = connector.definitionKind !== 'app'
 
   const streams = api.dataConnector.listStreams.useQuery({ id: connector.id })
   const selectedStream = useMemo(
@@ -114,6 +121,7 @@ export function ConnectorDetailTabs({
       connectorId={connector.id}
       streamId={selectedStream.id}
       streamKey={selectedStream.streamKey}
+      isGenericRest={isGenericRest}
     />
   ) : null
 
@@ -147,6 +155,14 @@ export function ConnectorDetailTabs({
                       </TabsTrigger>
                     )
                   })}
+                  <Button
+                    variant='ghost'
+                    size='xs'
+                    className='ml-auto'
+                    onClick={() => setGuideOpen(true)}>
+                    <CircleHelp />
+                    Guide
+                  </Button>
                 </TabsList>
               </Tabs>
             }>
@@ -195,6 +211,13 @@ export function ConnectorDetailTabs({
           </NavStackPanel>
         </NavStackPanels>
       </NavStack>
+      {guideOpen && (
+        <StreamGuideDialog
+          open={guideOpen}
+          onOpenChange={setGuideOpen}
+          isGenericRest={isGenericRest}
+        />
+      )}
     </div>
   )
 }
