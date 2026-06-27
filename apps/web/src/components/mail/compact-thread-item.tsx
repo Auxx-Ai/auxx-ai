@@ -26,7 +26,12 @@ import {
   useThreadMutation,
   useThreadReadStatus,
 } from '~/components/threads/hooks'
-import { useSelectionAnchorId, useThreadSelectionStore } from '~/components/threads/store'
+import {
+  useHasSelection,
+  useIsThreadSelected,
+  useSelectionAnchorId,
+  useThreadSelectionStore,
+} from '~/components/threads/store'
 import { threadFieldResolver } from '~/components/threads/utils/thread-field-resolver'
 import { useIsRecordProcessing } from '~/components/workflow/use-is-record-processing'
 import { AssigneeChip } from './assignee-chip'
@@ -56,7 +61,7 @@ export const CompactThreadItem = memo(function CompactThreadItem({
   onTagClick,
   onAssignClick,
 }: CompactThreadItemProps) {
-  const { selectedThreadIds, viewMode, filterConditions } = useMailFilter()
+  const { viewMode, filterConditions } = useMailFilter()
   const { thread, isLoading: isThreadLoading, isDeleted } = useThread({ threadId })
   const { message: latestMessage } = useMessage({
     messageId: thread?.latestMessageId,
@@ -90,17 +95,14 @@ export const CompactThreadItem = memo(function CompactThreadItem({
   const hasDraft = (thread?.draftIds?.length ?? 0) > 0
   const hasScheduledMessage = (thread?.scheduledMessageCount ?? 0) > 0
 
-  const isMultiSelected = useMemo(
-    () => selectedThreadIds.includes(threadId),
-    [selectedThreadIds, threadId]
-  )
+  const isMultiSelected = useIsThreadSelected(threadId)
 
   const isFocused = useThreadSelectionStore((s) => s.focusedThreadId === threadId)
   const isProcessing = useIsRecordProcessing(toRecordId('thread', threadId))
 
   const [isMenuOpen, setIsMenuOpen] = useState(false)
 
-  const hasAnySelected = selectedThreadIds.length > 0
+  const hasAnySelected = useHasSelection()
   const showCheckbox = viewMode === 'edit' || isFocused || hasAnySelected
 
   const handleClick = useCallback(

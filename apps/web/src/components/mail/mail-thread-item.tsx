@@ -42,6 +42,7 @@ import {
 } from '~/components/threads/hooks'
 import {
   useIsThreadActive,
+  useIsThreadSelected,
   useSelectionAnchorId,
   useThreadSelectionStore,
 } from '~/components/threads/store'
@@ -209,7 +210,10 @@ export const MailThreadItem = memo(function MailThreadItem({
   threadIds,
 }: MailThreadItemProps) {
   // --- Get filter context ---
-  const { selectedThreadIds, viewMode, filterConditions } = useMailFilter()
+  // `selectedThreadIds` is only provided by embedded mini-lists (ticket/contact
+  // tabs). In the main mailbox it's undefined and we fall back to the granular
+  // thread-selection store so toggling one checkbox re-renders only that row.
+  const { viewMode, filterConditions, selectedThreadIds: scopedSelectedIds } = useMailFilter()
 
   // --- NEW: Use ID-based hooks ---
   const { thread, isLoading: isThreadLoading, isDeleted } = useThread({ threadId })
@@ -255,10 +259,10 @@ export const MailThreadItem = memo(function MailThreadItem({
   // isMultiSelected = user-driven checkbox selection (drives checkbox + drag payload).
   // isActive = the thread currently open in the detail pane.
   // isHighlighted = visual blue highlight: either currently open OR checkbox-selected.
-  const isMultiSelected = useMemo(
-    () => selectedThreadIds.includes(threadId),
-    [selectedThreadIds, threadId]
-  )
+  const globalIsSelected = useIsThreadSelected(threadId)
+  const isMultiSelected = scopedSelectedIds
+    ? scopedSelectedIds.includes(threadId)
+    : globalIsSelected
   const isActive = useIsThreadActive(threadId)
   const isHighlighted = isActive || isMultiSelected
   const isProcessing = useIsRecordProcessing(toRecordId('thread', threadId))
@@ -270,7 +274,8 @@ export const MailThreadItem = memo(function MailThreadItem({
       type: 'thread',
       threadId,
       get draggedThreadIds() {
-        return selectedThreadIds.includes(threadId) ? selectedThreadIds : [threadId]
+        const selected = useThreadSelectionStore.getState().selectedThreadIds
+        return selected.includes(threadId) ? selected : [threadId]
       },
     },
     disabled: !threadId,

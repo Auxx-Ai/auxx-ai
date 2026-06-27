@@ -64,7 +64,6 @@ import { RecordDrawer } from '~/components/records/record-drawer'
 import {
   useActiveThreadId,
   useActiveThreadVersion,
-  useSelectedThreadIds,
   useThreadSelectionStore,
   useViewMode,
 } from '~/components/threads'
@@ -210,9 +209,6 @@ function MailboxInner({
   const { hasAccess } = useFeatureFlags()
   const kopilotEnabled = hasAccess('kopilot')
 
-  // Use new selection store directly
-  const selectedThreads = useSelectedThreadIds()
-
   // Fetch pending actions count
   // const { data: pendingActionsCount } = api.proposedAction.getPendingCount.useQuery(undefined, {
   //   refetchInterval: 5 * 60 * 1000, // Refetch 2 min
@@ -333,7 +329,6 @@ function MailboxInner({
       contextId,
       statusSlug: activeStatusSlug, // Use the active slug derived from URL/state
       searchQuery: deferredSearchQuery || undefined, // Use deferred query for consistency
-      selectedThreadIds: selectedThreads, // Pass selected IDs down
       viewMode, // Add view mode state
       sortBy, // Add sort option state
       sortDirection, // Add sort direction state
@@ -347,7 +342,6 @@ function MailboxInner({
       contextId,
       activeStatusSlug,
       deferredSearchQuery,
-      selectedThreads,
       viewMode,
       sortBy,
       sortDirection,
