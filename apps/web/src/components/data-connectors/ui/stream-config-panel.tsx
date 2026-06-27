@@ -19,7 +19,15 @@ import {
 import { RadioTab, RadioTabItem } from '@auxx/ui/components/radio-tab'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { EmptySection, Section } from '@auxx/ui/components/section'
-import { ChevronDown, Database, FlaskConical, Pencil, RefreshCw, Waypoints } from 'lucide-react'
+import {
+  ChevronDown,
+  CircleHelp,
+  Database,
+  FlaskConical,
+  Pencil,
+  RefreshCw,
+  Waypoints,
+} from 'lucide-react'
 import { type ReactNode, useMemo, useState } from 'react'
 import type { HttpRequestFieldContextValue } from '~/components/global/http-request'
 import { makeTokenFieldEditor } from '~/components/global/token-field'
@@ -41,6 +49,7 @@ import {
   RevealChip,
 } from './request-editors'
 import { makeSteeringTokenSource } from './steering-token-source'
+import { StreamGuideDialog } from './stream-guide-dialog'
 import { StreamSample } from './stream-sample'
 
 type Connector = NonNullable<RouterOutputs['dataConnector']['getById']>
@@ -109,6 +118,7 @@ export function StreamConfigPanel({
   // Branch on the persisted definitionKind (05c §7), not a `type` prefix sniff.
   const isGenericRest = connector.definitionKind !== 'app'
 
+  const [helpOpen, setHelpOpen] = useState(false)
   const [seed, setSeed] = useState<{
     schema: Record<string, unknown>
     seededFrom: SeededFrom
@@ -459,7 +469,17 @@ export function StreamConfigPanel({
             icon={<Database className='size-4' />}
             initialOpen
             collapsible={false}
-            description='Project subtrees of the source onto target definitions.'>
+            description='Project subtrees of the source onto target definitions.'
+            actions={
+              <Button
+                variant='ghost'
+                size='xs'
+                onClick={() => setHelpOpen(true)}
+                aria-label='Mapping help'>
+                <CircleHelp />
+                Help
+              </Button>
+            }>
             <MappingTree
               connectorId={connector.id}
               streamId={stream.id}
@@ -479,6 +499,14 @@ export function StreamConfigPanel({
         policy={{ emitRequired: false, root: 'any', rootLabel: 'record', freeformNames: true }}
         onSave={handleSaveSchema}
       />
+      {helpOpen && (
+        <StreamGuideDialog
+          open={helpOpen}
+          onOpenChange={setHelpOpen}
+          initialPage='mapping'
+          isGenericRest={isGenericRest}
+        />
+      )}
     </>
   )
 

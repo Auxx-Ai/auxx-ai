@@ -104,7 +104,7 @@ export async function dispatchWebhookEndpointToConnectors(
       ),
       eq(schema.DataConnectorStream.enabled, true)
     ),
-    columns: { dataConnectorId: true, streamKey: true, requestConfig: true },
+    columns: { id: true, dataConnectorId: true, streamKey: true, requestConfig: true },
   })
 
   // Match streams by `webhookTrigger.filter` (topic discrimination), then SPLIT by mode —
@@ -114,7 +114,6 @@ export async function dispatchWebhookEndpointToConnectors(
   // A connector with ANY non-steerable matched stream full-syncs (superset covers the rest).
   const matched: { connectorId: string; streamKey: string; steerable: boolean }[] = []
   for (const stream of streams) {
-    if (!stream.streamKey) continue
     // The connector-level signal is the binding; per-stream `webhookTrigger` only REFINES it.
     // A stream with no steering block still reacts: no `filter` ⇒ matches every topic
     // (`matchesFilter` treats absent/empty as match-all), no `paths` ⇒ not steerable ⇒ a full
@@ -124,7 +123,9 @@ export async function dispatchWebhookEndpointToConnectors(
     if (!matchesFilter(wt?.filter, matchData)) continue
     matched.push({
       connectorId: stream.dataConnectorId,
-      streamKey: stream.streamKey,
+      // An unnamed stream routes by its stable streamId (the functional key) — same
+      // fallback the sync/steer paths use, so a nameless stream is still webhook-routable.
+      streamKey: stream.streamKey ?? stream.id,
       steerable: isSteerableDelivery(stream.requestConfig, matchData),
     })
   }

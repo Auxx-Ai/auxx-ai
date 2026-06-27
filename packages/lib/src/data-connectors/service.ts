@@ -142,9 +142,9 @@ export async function loadConnector(
         .filter((m) => m.entityDefinitionId !== null)
         .map(decodeMapping),
     }))
-    // Skip unconfigured streams: no targeted mappings, or not yet named (a blank
-    // stream has no streamKey, so there's nothing to fetch).
-    .filter((s) => s.mappings.length > 0 && !!s.stream.streamKey)
+    // Skip unconfigured streams: no targeted mappings means nowhere for a fetch to
+    // land. A missing streamKey is fine — the stable streamId is the functional key.
+    .filter((s) => s.mappings.length > 0)
 
   return { connector, streams }
 }

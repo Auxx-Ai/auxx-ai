@@ -135,7 +135,6 @@ export function ConnectorDetailView({ connector }: ConnectorDetailViewProps) {
     if (!draftSeeded || !draftMeta) return null
     const streams: ReadinessStream[] = draftStreams.map((s) => ({
       enabled: s.enabled,
-      streamKey: s.streamKey || null,
       sourceSchema: s.sourceSchema,
       requestConfig: s.requestConfig ?? null,
       mappings: visibleMappings(s).map((m) => ({

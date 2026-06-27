@@ -101,7 +101,7 @@ export async function dispatchAppTriggerToConnectors(
       ),
       eq(schema.DataConnectorStream.enabled, true)
     ),
-    columns: { dataConnectorId: true, streamKey: true, requestConfig: true },
+    columns: { id: true, dataConnectorId: true, streamKey: true, requestConfig: true },
   })
 
   // Match streams by `webhookTrigger.filter` (topic discrimination), then SPLIT by mode:
@@ -116,11 +116,13 @@ export async function dispatchAppTriggerToConnectors(
   const matched: { connectorId: string; streamKey: string; steerable: boolean }[] = []
   for (const stream of streams) {
     const wt = stream.requestConfig?.webhookTrigger
-    if (!stream.streamKey || !wt) continue
+    if (!wt) continue
     if (!matchesFilter(wt.filter, triggerData)) continue
     matched.push({
       connectorId: stream.dataConnectorId,
-      streamKey: stream.streamKey,
+      // An unnamed stream routes by its stable streamId (the functional key) — same
+      // fallback the sync/steer paths use, so a nameless stream is still webhook-routable.
+      streamKey: stream.streamKey ?? stream.id,
       steerable: isSteerableDelivery(stream.requestConfig, triggerData),
     })
   }

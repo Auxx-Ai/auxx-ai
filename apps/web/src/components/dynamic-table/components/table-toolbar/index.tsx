@@ -16,6 +16,7 @@ import {
   ArrowDownUp,
   ArrowLeft,
   ChevronLeft,
+  CircleHelp,
   Download,
   RefreshCw,
   Save,
@@ -37,6 +38,7 @@ import { useActiveView, useTableFilters, useTableViews } from '../../stores/stor
 import type { ViewConfig, ViewType } from '../../types'
 import { ColumnManager } from './column-manager'
 import { KanbanViewSettings } from './kanban-view-settings'
+import { RecordsGuideDialog } from './records-guide-dialog'
 import { TableFilterBuilder } from './table-filter-builder'
 import { ViewSelector } from './view-selector'
 
@@ -112,6 +114,9 @@ export function TableToolbar<TData = any>({
 
   // Mobile search toggle
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false)
+
+  // Records help guide
+  const [guideOpen, setGuideOpen] = useState(false)
 
   // Local search state for immediate UI feedback
   const [localSearchQuery, setLocalSearchQuery] = useState(searchQuery)
@@ -283,6 +288,18 @@ export function TableToolbar<TData = any>({
 
       {/* Custom children */}
       {children && <div className='group-data-[search-expanded]/toolbar:hidden'>{children}</div>}
+
+      {/* Help guide — always last */}
+      <Tooltip content='Records guide'>
+        <Button
+          variant='ghost'
+          size='sm'
+          className='ml-auto group-data-[search-expanded]/toolbar:hidden'
+          onClick={() => setGuideOpen(true)}>
+          <CircleHelp />
+        </Button>
+      </Tooltip>
+      {guideOpen && <RecordsGuideDialog open={guideOpen} onOpenChange={setGuideOpen} />}
     </div>
   )
 }

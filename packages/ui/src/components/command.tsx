@@ -318,7 +318,14 @@ function CommandBreadcrumb({
 function Command({ className, ...props }: React.ComponentProps<typeof CommandPrimitive>) {
   return (
     <CommandPrimitive
-      className={cn('flex h-full w-full flex-col  rounded-2xl text-popover-foreground', className)}
+      className={cn(
+        'flex h-full w-full flex-col  rounded-2xl text-popover-foreground',
+        // When there's no CommandInput above the list, the list sits flush at the
+        // top — round its top corners to the container radius so its overflow-clip
+        // trims the first group's sticky label to match (no square corner poke).
+        '[&:not(:has([cmdk-input-wrapper]))>[data-slot=command-list]]:rounded-t-[inherit]',
+        className
+      )}
       {...props}
     />
   )
@@ -580,6 +587,7 @@ function CommandGroup({
 function CommandGroupLabel({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
   return (
     <div
+      data-slot='command-group-label'
       className={cn(
         'sticky top-0 z-10 -mt-1 -mx-1 bg-background/90 backdrop-blur-lg px-2 py-1.5 text-xs font-medium text-muted-foreground mask-b-from-80%',
         className

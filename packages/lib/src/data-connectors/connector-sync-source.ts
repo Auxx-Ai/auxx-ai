@@ -154,8 +154,9 @@ class ConnectorStreamSyncSource implements ConnectorSyncSource {
   async fetchSlice(ctx: SyncSliceCtx): Promise<SliceResult> {
     const counters = newRunCounters()
     const syncCtx = await this.buildCtx(counters, this.deps.stream.mappings)
-    const streamKey = this.deps.stream.streamKey
-    if (!streamKey) throw new Error(`SyncSource ${this.id}: stream has no streamKey`)
+    // A stream needs no user-facing name to sync — fall back to the stable streamId
+    // as the functional fetch/record key when it's unnamed.
+    const streamKey = this.deps.stream.streamKey || this.deps.stream.streamId
 
     // Async bulk export (Step 7): a large BACKFILL runs the initiate→poll→download
     // lifecycle instead of synchronous paging. Steady deltas still page/webhook, so

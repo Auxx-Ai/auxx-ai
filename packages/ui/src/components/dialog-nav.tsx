@@ -32,8 +32,15 @@ const SPRING = { type: 'spring', stiffness: 300, damping: 30 } as const
 
 export interface DialogNavCrumb {
   label: ReactNode
-  /** Omit on the last/current crumb; set to make it a clickable jump-back. */
+  /** Set to make the crumb a clickable jump (back or forward). */
   onClick?: () => void
+  /**
+   * Mark this crumb as the current page (highlighted, non-interactive). When no
+   * crumb sets `active`, the **last** crumb is treated as current. Set it to show
+   * every destination at once and let the active one be any of them — e.g. a
+   * bidirectional `Setup › Mapping` header where either side can be current.
+   */
+  active?: boolean
   icon?: ReactNode
 }
 
@@ -42,6 +49,12 @@ export interface DialogNavProps {
   title: string
   /** sr-only DialogDescription. */
   description?: string
+  /**
+   * A visible leading label before the crumbs (e.g. "Help"), separated from them
+   * by a divider. Use when the crumbs act as tabs and you still want a fixed
+   * dialog title in front of them.
+   */
+  heading?: ReactNode
   crumbs: DialogNavCrumb[]
   /** Renders the leading "‹ Back" button when provided. */
   onBack?: () => void
@@ -60,12 +73,15 @@ export interface DialogNavProps {
 export function DialogNav({
   title,
   description,
+  heading,
   crumbs,
   onBack,
   backDisabled,
   actions,
   className,
 }: DialogNavProps) {
+  // When no crumb marks itself active, fall back to "last crumb is current".
+  const hasExplicitActive = crumbs.some((c) => c.active)
   return (
     <DialogHeader
       className={cn(
@@ -85,8 +101,14 @@ export function DialogNav({
             <Separator orientation='vertical' className='h-5' />
           </>
         )}
+        {heading && (
+          <>
+            <span className='px-2 font-medium text-foreground text-sm'>{heading}</span>
+            {crumbs.length > 0 && <Separator orientation='vertical' className='h-5' />}
+          </>
+        )}
         {crumbs.map((crumb, i) => {
-          const isLast = i === crumbs.length - 1
+          const isCurrent = hasExplicitActive ? !!crumb.active : i === crumbs.length - 1
           return (
             <Fragment key={i}>
               {i > 0 && <Separator orientation='vertical' className='h-5' />}
@@ -94,8 +116,8 @@ export function DialogNav({
                 variant='ghost'
                 size='sm'
                 onClick={crumb.onClick}
-                disabled={isLast || !crumb.onClick}
-                className={isLast ? 'pointer-events-none' : undefined}>
+                disabled={isCurrent || !crumb.onClick}
+                className={isCurrent ? 'pointer-events-none' : undefined}>
                 {crumb.icon}
                 {crumb.label}
               </Button>

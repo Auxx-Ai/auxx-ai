@@ -4,15 +4,18 @@
 import { AutosizeInput, type AutosizeInputRef } from '@auxx/ui/components/autosize-input'
 import { Button } from '@auxx/ui/components/button'
 import { useNavStack } from '@auxx/ui/components/nav-stack'
-import { ChevronLeft } from 'lucide-react'
+import { ChevronLeft, CircleHelp } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { getConnectorDraftState, useConnectorDraftStore } from '../stores/connector-draft-store'
+import { StreamGuideDialog } from './stream-guide-dialog'
 
 interface StreamDetailBarProps {
   connectorId: string
   streamId: string
   /** Null until the user names the stream — the input shows its placeholder. */
   streamKey: string | null
+  /** Hides request/pagination copy in the guide for app-kind connectors. */
+  isGenericRest: boolean
 }
 
 /**
@@ -21,8 +24,14 @@ interface StreamDetailBarProps {
  * blank from the section and named here (mirrors the agent `ProcedureDetailBar`).
  * Rename writes the connector DRAFT (plans/data-connectors/v4); the save bar commits it.
  */
-export function StreamDetailBar({ connectorId, streamId, streamKey }: StreamDetailBarProps) {
+export function StreamDetailBar({
+  connectorId,
+  streamId,
+  streamKey,
+  isGenericRest,
+}: StreamDetailBarProps) {
   const { pop } = useNavStack()
+  const [guideOpen, setGuideOpen] = useState(false)
   // Prefer the draft's stream name so an unsaved rename shows live; fall back to the prop.
   const draftKey = useConnectorDraftStore(
     (s) => s.draft.streams.find((st) => st.id === streamId)?.streamKey
@@ -81,6 +90,17 @@ export function StreamDetailBar({ connectorId, streamId, streamKey }: StreamDeta
         minWidth={40}
         maxWidth={240}
       />
+      <Button variant='ghost' size='xs' className='ml-auto' onClick={() => setGuideOpen(true)}>
+        <CircleHelp />
+        Guide
+      </Button>
+      {guideOpen && (
+        <StreamGuideDialog
+          open={guideOpen}
+          onOpenChange={setGuideOpen}
+          isGenericRest={isGenericRest}
+        />
+      )}
     </div>
   )
 }

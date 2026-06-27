@@ -89,7 +89,10 @@ export function PaginationSection({ connector, stream, sample }: PaginationSecti
     getConnectorDraftState().setRequestConfig(stream.id, { ...cur, pagination: detected.spec })
   }
 
-  const hasDetected = !!(detectedPagination && detected)
+  // Once the configured pagination already matches the detection, there's nothing
+  // to apply — hide the whole proposal (otherwise "Use this" lingers after a click).
+  const alreadyUsingDetected = !!(detected && samePaginationSpec(pagination, detected.spec))
+  const hasDetected = !!(detectedPagination && detected && !alreadyUsingDetected)
 
   return (
     <Section
@@ -102,7 +105,7 @@ export function PaginationSection({ connector, stream, sample }: PaginationSecti
       className={hasDetected ? undefined : '[&_[data-slot=section]]:pb-0'}
       description='How this fetch reads through multiple pages.'
       actions={<PaginationBadge description={configuredPagination} />}>
-      {detectedPagination && detected && (
+      {hasDetected && detectedPagination && detected && (
         <div className='flex items-center gap-2 px-1'>
           <span className='text-xs text-muted-foreground'>Detected from test fetch</span>
           <PaginationBadge description={detectedPagination} note={detected.note} />
@@ -159,6 +162,17 @@ function PaginationTooltip({
       )}
       {note && <p className='text-amber-600 dark:text-amber-500'>{note}</p>}
     </div>
+  )
+}
+
+/** Shallow spec equality — pagination specs are flat records of scalars. */
+function samePaginationSpec(a?: PaginationSpec, b?: PaginationSpec): boolean {
+  if (!a || !b) return false
+  const ka = Object.keys(a).sort()
+  const kb = Object.keys(b).sort()
+  if (ka.length !== kb.length) return false
+  return ka.every(
+    (k, i) => k === kb[i] && (a as Record<string, unknown>)[k] === (b as Record<string, unknown>)[k]
   )
 }
 
