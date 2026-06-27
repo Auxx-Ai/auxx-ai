@@ -261,6 +261,17 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions = {}) {
   const mutation = api.fieldValue.set.useMutation()
   const bulkMutation = api.fieldValue.setBulk.useMutation()
 
+  // react-query's useMutation returns a NEW wrapper object on every render (it
+  // has no useMemo around `{ ...result, mutate, mutateAsync }`), but the bound
+  // .mutate / .mutateAsync fns are stable for the observer's lifetime. Depend on
+  // those stable fns in the callbacks below — never the wrapper object — so the
+  // callbacks keep a stable identity across unrelated re-renders. Otherwise any
+  // memo/context derived from them (e.g. the records table's cellSelectionConfig,
+  // which every cell consumes via context) is rebuilt every render and re-renders
+  // the entire table on each selection toggle.
+  const { mutate: setMutate, mutateAsync: setMutateAsync } = mutation
+  const { mutate: bulkMutate, mutateAsync: bulkMutateAsync } = bulkMutation
+
   /**
    * Save a field value with optimistic update.
    * @param recordId - Full RecordId (entityDefinitionId:entityInstanceId)
@@ -299,7 +310,7 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions = {}) {
       }
 
       // Fire mutation
-      mutation.mutate(
+      setMutate(
         { recordId: normalizedRecordId, fieldId, value, ...(ai ? { ai: true } : {}) },
         {
           onSuccess: (result) => {
@@ -321,7 +332,7 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions = {}) {
         }
       )
     },
-    [mutation, onSuccess, getFieldMetadata, syncInverseCache]
+    [setMutate, onSuccess, getFieldMetadata, syncInverseCache]
   )
 
   /**
@@ -362,7 +373,7 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions = {}) {
       }
 
       // try {
-      const result = await mutation.mutateAsync({
+      const result = await setMutateAsync({
         recordId: normalizedRecordId,
         fieldId,
         value,
@@ -392,7 +403,7 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions = {}) {
       //   return undefined
       // }
     },
-    [mutation, onSuccess, getFieldMetadata, syncInverseCache]
+    [setMutateAsync, onSuccess, getFieldMetadata, syncInverseCache]
   )
 
   /**
@@ -430,7 +441,7 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions = {}) {
       const apiValues = fieldValues.map(({ fieldId, value }) => ({ fieldId, value }))
 
       try {
-        await bulkMutation.mutateAsync({
+        await bulkMutateAsync({
           recordIds: [normalizedRecordId],
           values: apiValues,
           ...(ai ? { ai: true } : {}),
@@ -467,7 +478,7 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions = {}) {
         return false
       }
     },
-    [bulkMutation, onSuccess]
+    [bulkMutateAsync, onSuccess]
   )
 
   /**
@@ -508,7 +519,7 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions = {}) {
       }
 
       // Fire mutation (keep original fieldId — server resolves systemAttributes)
-      bulkMutation.mutate(
+      bulkMutate(
         {
           recordIds: normalizedRecordIds,
           values: [{ fieldId, value }],
@@ -550,7 +561,7 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions = {}) {
         }
       )
     },
-    [bulkMutation, onSuccess]
+    [bulkMutate, onSuccess]
   )
 
   /**
@@ -590,7 +601,7 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions = {}) {
       // Build API payload (keep original fieldIds — server resolves systemAttributes)
       const apiValues = fieldValues.map(({ fieldId, value }) => ({ fieldId, value }))
 
-      bulkMutation.mutate(
+      bulkMutate(
         {
           recordIds: normalizedRecordIds,
           values: apiValues,
@@ -632,7 +643,7 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions = {}) {
         }
       )
     },
-    [bulkMutation, onSuccess]
+    [bulkMutate, onSuccess]
   )
 
   return {

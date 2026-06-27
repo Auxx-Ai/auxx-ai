@@ -19,6 +19,7 @@ import {
 import { FillDragProvider } from './context/fill-drag-context'
 import { RangeDragProvider } from './context/range-drag-context'
 import { TableConfigProvider, useTableConfig } from './context/table-config-context'
+import { TableIdProvider } from './context/table-id-context'
 import { TableInstanceProvider, useTableInstance } from './context/table-instance-context'
 import { useViewMetadata, ViewMetadataProvider } from './context/view-metadata-context'
 import { useCellClipboard } from './hooks/use-cell-clipboard'
@@ -103,6 +104,14 @@ function DynamicViewInner<TData extends object>({
     indexer,
     config: cellSelectionConfig,
   })
+
+  // Stable context values — `beginDrag`/`beginFillDrag` are already useCallback,
+  // so wrapping them in memoized objects keeps the provider value referentially
+  // stable. Without this, every DynamicView render (e.g. on each selection
+  // change) handed cells a fresh `{ beginDrag }` object, forcing every cell
+  // consuming the range/fill-drag context to re-render — the whole-table churn.
+  const rangeDragValue = useMemo(() => ({ beginDrag }), [beginDrag])
+  const fillDragValue = useMemo(() => ({ beginFillDrag }), [beginFillDrag])
 
   // Keyboard navigation + range extension.
   useCellNavigation({
@@ -199,12 +208,14 @@ function DynamicViewInner<TData extends object>({
   // Shared overlays (rendered outside scroll area so they cover the full container)
   const overlays = (
     <>
-      {/* Inline loading indicator */}
+      {/* Inline refetch indicator — a small top pill that neither dims nor
+          covers the table, so existing rows stay visible and interactive
+          while more records resolve. */}
       {!isInitialLoading && isLoading && hasData && (
-        <div className='absolute inset-0 bg-background/50 flex items-center justify-center pointer-events-none z-10'>
-          <div className='flex items-center gap-2 text-sm text-muted-foreground bg-background px-3 py-2 rounded-md shadow-sm'>
+        <div className='pointer-events-none absolute inset-x-0 top-2 z-10 flex justify-center'>
+          <div className='flex items-center gap-2 rounded-md bg-background px-3 py-1.5 text-sm text-muted-foreground shadow-sm ring-1 ring-border'>
             <div className='size-4 animate-spin rounded-full border-2 border-primary border-t-transparent' />
-            <span>Loading...</span>
+            <span>Loading…</span>
           </div>
         </div>
       )}
@@ -241,8 +252,8 @@ function DynamicViewInner<TData extends object>({
       {toolbar}
 
       <CellIndexerProvider value={indexer}>
-        <RangeDragProvider value={{ beginDrag }}>
-          <FillDragProvider value={{ beginFillDrag }}>
+        <RangeDragProvider value={rangeDragValue}>
+          <FillDragProvider value={fillDragValue}>
             <TableScrollArea viewportRef={scrollContainerRef}>
               {isInitialLoading ? (
                 <TableContentSkeleton rowCount={12} showCheckbox={enableCheckbox} columnCount={5} />
@@ -476,23 +487,25 @@ export function DynamicView<TData extends object = object>(props: DynamicTablePr
   // The useCellSelection() hook in child components will connect to the store
 
   return (
-    <TableConfigProvider value={configValue}>
-      <TableInstanceProvider value={instanceValue}>
-        <ViewMetadataProvider value={metadataValue}>
-          <CellSelectionConfigProvider config={cellSelection}>
-            <div className={cn('flex-1', className)}>
-              <DynamicViewInner<TData>
-                searchQuery={searchQuery}
-                setSearchQuery={setSearchQuery}
-                isSavingView={isSavingView}
-                hasUnsavedViewChanges={hasUnsavedViewChanges}
-                saveCurrentView={saveCurrentView}
-                resetViewChanges={resetViewChanges}
-              />
-            </div>
-          </CellSelectionConfigProvider>
-        </ViewMetadataProvider>
-      </TableInstanceProvider>
-    </TableConfigProvider>
+    <TableIdProvider value={tableProps.tableId}>
+      <TableConfigProvider value={configValue}>
+        <TableInstanceProvider value={instanceValue}>
+          <ViewMetadataProvider value={metadataValue}>
+            <CellSelectionConfigProvider config={cellSelection}>
+              <div className={cn('flex-1', className)}>
+                <DynamicViewInner<TData>
+                  searchQuery={searchQuery}
+                  setSearchQuery={setSearchQuery}
+                  isSavingView={isSavingView}
+                  hasUnsavedViewChanges={hasUnsavedViewChanges}
+                  saveCurrentView={saveCurrentView}
+                  resetViewChanges={resetViewChanges}
+                />
+              </div>
+            </CellSelectionConfigProvider>
+          </ViewMetadataProvider>
+        </TableInstanceProvider>
+      </TableConfigProvider>
+    </TableIdProvider>
   )
 }

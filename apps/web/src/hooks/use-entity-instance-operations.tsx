@@ -3,7 +3,7 @@
 
 import { parseRecordId, type RecordId, toRecordId } from '@auxx/lib/resources/client'
 import { toastError } from '@auxx/ui/components/toast'
-import { useCallback, useRef } from 'react'
+import { useCallback } from 'react'
 import type { EntityRow } from '~/app/(protected)/app/custom/[slug]/_components/types'
 import { useRecordStore } from '~/components/resources/store/record-store'
 import { useConfirm } from '~/hooks/use-confirm'
@@ -84,10 +84,6 @@ export function useEntityInstanceOperations(options: UseEntityInstanceOperations
     },
   })
 
-  // Refs for stable callback access (avoids recreating callbacks when mutations change)
-  const deleteInstanceRef = useRef(deleteInstance)
-  deleteInstanceRef.current = deleteInstance
-
   const bulkDeleteInstances = api.record.bulkDelete.useMutation({
     onSuccess: () => {
       onClearSelection?.()
@@ -107,6 +103,17 @@ export function useEntityInstanceOperations(options: UseEntityInstanceOperations
     },
   })
 
+  // react-query's useMutation returns a NEW wrapper object every render, but the
+  // bound .mutate / .mutateAsync fns are stable for the observer's lifetime.
+  // Depend on these (never the wrapper) in the handlers below so the handlers —
+  // and therefore the records-table `primaryCellRender`, which closes over
+  // handleArchive/handleDelete — keep a stable identity across unrelated
+  // re-renders. See use-save-field-value.ts for the same pattern.
+  const { mutate: archiveMutate } = archiveInstance
+  const { mutate: deleteMutate } = deleteInstance
+  const { mutateAsync: bulkDeleteMutateAsync } = bulkDeleteInstances
+  const { mutateAsync: bulkArchiveMutateAsync } = bulkArchiveInstances
+
   // ============================================================
   // Handlers
   // ============================================================
@@ -122,10 +129,10 @@ export function useEntityInstanceOperations(options: UseEntityInstanceOperations
         destructive: false,
       })
       if (confirmed) {
-        archiveInstance.mutate({ recordId: buildRecordId(instanceId) })
+        archiveMutate({ recordId: buildRecordId(instanceId) })
       }
     },
-    [confirmArchive, resourceLabel, archiveInstance, buildRecordId]
+    [confirmArchive, resourceLabel, archiveMutate, buildRecordId]
   )
 
   /** Handle delete action with confirmation */
@@ -139,10 +146,10 @@ export function useEntityInstanceOperations(options: UseEntityInstanceOperations
         destructive: true,
       })
       if (confirmed) {
-        deleteInstance.mutate({ recordId: buildRecordId(instanceId) })
+        deleteMutate({ recordId: buildRecordId(instanceId) })
       }
     },
-    [confirmDelete, resourceLabel, deleteInstance, buildRecordId]
+    [confirmDelete, resourceLabel, deleteMutate, buildRecordId]
   )
 
   /** Handle bulk delete action with confirmation */
@@ -157,7 +164,7 @@ export function useEntityInstanceOperations(options: UseEntityInstanceOperations
         destructive: true,
       })
       if (confirmed) {
-        const result = await bulkDeleteInstances.mutateAsync({
+        const result = await bulkDeleteMutateAsync({
           recordIds: rows.map((r) => buildRecordId(r.id)),
         })
 
@@ -184,7 +191,7 @@ export function useEntityInstanceOperations(options: UseEntityInstanceOperations
       confirmDelete,
       resourceLabel,
       resourcePlural,
-      bulkDeleteInstances,
+      bulkDeleteMutateAsync,
       buildRecordId,
       entityDefinitionId,
       onRefetch,
@@ -203,15 +210,15 @@ export function useEntityInstanceOperations(options: UseEntityInstanceOperations
         destructive: false,
       })
       if (confirmed) {
-        await bulkArchiveInstances.mutateAsync({
+        await bulkArchiveMutateAsync({
           recordIds: rows.map((r) => buildRecordId(r.id)),
         })
       }
     },
-    [confirmArchive, resourceLabel, resourcePlural, bulkArchiveInstances, buildRecordId]
+    [confirmArchive, resourceLabel, resourcePlural, bulkArchiveMutateAsync, buildRecordId]
   )
 
-  /** Handle delete from drawer with confirmation (uses ref for stable callback) */
+  /** Handle delete from drawer with confirmation */
   const handleDrawerDelete = useCallback(
     async (instanceId: string) => {
       const confirmed = await confirmDelete({
@@ -222,11 +229,11 @@ export function useEntityInstanceOperations(options: UseEntityInstanceOperations
         destructive: true,
       })
       if (confirmed) {
-        deleteInstanceRef.current.mutate({ recordId: buildRecordId(instanceId) })
+        deleteMutate({ recordId: buildRecordId(instanceId) })
         onDrawerClose?.()
       }
     },
-    [confirmDelete, resourceLabel, onDrawerClose, buildRecordId]
+    [confirmDelete, resourceLabel, onDrawerClose, buildRecordId, deleteMutate]
   )
 
   return {

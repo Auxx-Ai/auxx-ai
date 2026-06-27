@@ -67,10 +67,22 @@ export function VirtualTableBody<TData>({
   // Intersection observer for bottom detection
   const { ref: bottomRef, inView } = useInView({ threshold: 0, rootMargin: '500px' })
 
+  // Edge-trigger load-more: fire once when the sentinel enters view, and not
+  // again until it has left and re-entered. The effect is level-triggered on
+  // `onScrollToBottom`, which is recreated on every `isFetchingNextPage` toggle.
+  // Because fetched ID pages only gain row height once their records resolve
+  // asynchronously, the sentinel can stay within the rootMargin across several
+  // fetch cycles — without this guard each completed fetch re-fires the effect
+  // and cascades into loading every remaining page from a single scroll.
+  const hasFiredLoadMore = useRef(false)
   useEffect(() => {
-    if (inView && onScrollToBottom) {
-      onScrollToBottom()
+    if (!inView) {
+      hasFiredLoadMore.current = false
+      return
     }
+    if (hasFiredLoadMore.current) return
+    hasFiredLoadMore.current = true
+    onScrollToBottom?.()
   }, [inView, onScrollToBottom])
 
   // Calculate shadow position based on left-pinned columns
@@ -178,7 +190,14 @@ export function VirtualTableBody<TData>({
   const rowVirtualizer = useVirtualizer({
     count: rows.length,
     estimateSize: () => ROW_HEIGHT,
-    getScrollElement: () => containerRef.current,
+    // Must be the actual scrolling element (the base-ui ScrollArea.Viewport,
+    // wired via scrollContainerRef) — NOT containerRef, which is the inner
+    // `min-w-full` content wrapper that never scrolls. Pointing the virtualizer
+    // at the non-scrolling wrapper made it mis-measure the viewport as the full
+    // content height, so it rendered every loaded row (~200) instead of just the
+    // visible window (~30). The shadow scroll-listener below already treats
+    // scrollContainerRef as the scroller.
+    getScrollElement: () => scrollContainerRef.current,
     measureElement:
       typeof window !== 'undefined' && navigator.userAgent.indexOf('Firefox') === -1
         ? (element) => element?.getBoundingClientRect().height

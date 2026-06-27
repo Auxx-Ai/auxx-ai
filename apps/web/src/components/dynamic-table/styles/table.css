@@ -97,6 +97,49 @@
   scroll-margin-left: calc(var(--pinned-left-width, 0px) + 50px);
 }
 
+/* Row selection + last-clicked cell backgrounds.
+   Driven by the row wrapper's data-state / data-last-clicked rather than a
+   per-cell className. Folding these into the cell className made every cell's
+   className change on a selection toggle, busting the SelectableTableCell memo
+   and re-rendering every visible cell on select-all (rows × cols → ~seconds).
+   Now the row wrapper just flips an attribute (cheap re-render) and these rules
+   repaint its cells with zero cell re-renders.
+
+   Scoped to `.group/tablerow` so unrelated `[data-state='selected']` elsewhere
+   can't match, and wrapped in `:where()` so specificity stays at 0 — the
+   unlayered `.cell-in-range` / `.cell-active` rules below still win where a
+   selected row also carries cell-range / active-cell state, matching the prior
+   behavior (those were unlayered vs the cell's layered bg utility). Ordered
+   last-clicked → selected so a row that is both reads as selected. */
+/* last-clicked: no dark variant in the original — primary-150/200 resolve per
+   theme through the --color-* vars, so no separate dark rule is needed. */
+:where(.group\/tablerow[data-last-clicked] [data-col]) {
+  background-color: var(--color-primary-150);
+}
+:where(.group\/tablerow[data-last-clicked]:hover [data-col]) {
+  background-color: var(--color-primary-200);
+}
+/* selected: blue-50/100 (light) vs blue-950/900 (dark) is a manual shade swap,
+   so the dark value is injected via a local custom property. The dark selector
+   mirrors the project's `dark:` custom-variant exactly (incl. the data-kb-mode
+   overrides) and is written once here; the base/hover rules just read the var. */
+:where(.group\/tablerow[data-state='selected'] [data-col]) {
+  --_row-sel-bg: var(--color-blue-50);
+  --_row-sel-bg-hover: var(--color-blue-100);
+  background-color: var(--_row-sel-bg);
+  color: var(--color-primary-900);
+}
+:where(.group\/tablerow[data-state='selected']:hover [data-col]) {
+  background-color: var(--_row-sel-bg-hover);
+}
+:where(.dark .group\/tablerow[data-state='selected'] [data-col]):not(
+    :where([data-kb-mode='light'] *)
+  ),
+:where([data-kb-mode='dark'] .group\/tablerow[data-state='selected'] [data-col]) {
+  --_row-sel-bg: var(--color-blue-950);
+  --_row-sel-bg-hover: var(--color-blue-900);
+}
+
 /* Active cell affordance — single focused cell within the range. Drives content
    expansion in ExpandableCell / PrimaryCell via the existing `.cell-selected`
    alias (both classes are set on the active cell). Pointer events stay enabled

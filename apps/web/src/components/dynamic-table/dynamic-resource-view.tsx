@@ -7,7 +7,14 @@ import type { RecordId, ResourceField } from '@auxx/lib/resources/client'
 import { toFieldId, toResourceFieldId } from '@auxx/types/field'
 import Loader from '@auxx/ui/components/loader'
 import { type DockedPanelConfig, MainPageContent } from '@auxx/ui/components/main-page'
-import { type MutableRefObject, type ReactNode, useCallback, useEffect, useMemo } from 'react'
+import {
+  type MutableRefObject,
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+} from 'react'
 import { type RecordMeta, toRecordId, useRecordList, useResource } from '~/components/resources'
 import { useFieldValueSyncer } from '~/components/resources/hooks/use-field-value-syncer'
 import type {
@@ -240,6 +247,15 @@ export function DynamicResourceView<TRow extends RecordMeta = RecordMeta>({
     [entityDefinitionId, columnOverrides]
   )
 
+  // `primaryCellRender` closes over volatile callbacks (archive/delete handlers
+  // built on react-query mutation objects + a non-memoized useConfirm), so its
+  // identity changes on every render. Reading it through a ref keeps the column
+  // defs — and therefore TanStack's cell objects, which are memoized on column
+  // identity — referentially stable, so a row re-render (e.g. select-all) doesn't
+  // rebuild and re-render every cell. The cell still invokes the latest fn.
+  const primaryCellRenderRef = useRef(primaryCellRender)
+  primaryCellRenderRef.current = primaryCellRender
+
   const columns: ExtendedColumnDef<TRow>[] = useMemo(() => {
     if (!entityDefinitionId) return []
     const sortedFields = customFields.filter((f) => f.active !== false)
@@ -261,7 +277,7 @@ export function DynamicResourceView<TRow extends RecordMeta = RecordMeta>({
           enableHiding: false,
           minSize: 200,
           size: 300,
-          cell: ({ row }) => primaryCellRender(row.original),
+          cell: ({ row }) => primaryCellRenderRef.current(row.original),
         }
       : null
 
@@ -270,7 +286,7 @@ export function DynamicResourceView<TRow extends RecordMeta = RecordMeta>({
       .map(createEntityFieldColumn)
 
     return primaryColumn ? [primaryColumn, ...otherColumns] : otherColumns
-  }, [customFields, resource, createEntityFieldColumn, entityDefinitionId, primaryCellRender])
+  }, [customFields, resource, createEntityFieldColumn, entityDefinitionId])
 
   if (isLoading) {
     const loader = (

@@ -11,7 +11,7 @@ import {
   DialogTitle,
 } from '@auxx/ui/components/dialog'
 import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
-import { useState } from 'react'
+import { useCallback, useState } from 'react'
 
 interface ConfirmOptions {
   title?: string
@@ -31,7 +31,12 @@ export function useConfirm() {
   const [options, setOptions] = useState<ConfirmOptions>({})
   const [callback, setCallback] = useState<ConfirmCallback | null>(null)
 
-  const confirm = (options: ConfirmOptions = {}): Promise<boolean> => {
+  // Stable identity across renders — the closure only captures useState setters,
+  // which React guarantees stable. Consumers (e.g. useEntityInstanceOperations)
+  // put `confirm` in callback dep arrays; an unstable identity there cascades
+  // into the records-table column defs (primaryCellRender) and re-renders the
+  // whole grid on unrelated updates.
+  const confirm = useCallback((options: ConfirmOptions = {}): Promise<boolean> => {
     return new Promise((resolve) => {
       setOptions({
         title: options.title || 'Confirm',
@@ -44,7 +49,7 @@ export function useConfirm() {
       setCallback(() => resolve)
       setOpen(true)
     })
-  }
+  }, [])
 
   const handleConfirm = () => {
     setOpen(false)
