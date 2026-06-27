@@ -23,9 +23,9 @@ import {
   useMessage,
   useMessageParticipants,
   useThread,
-  useThreadMutation,
   useThreadReadStatus,
 } from '~/components/threads/hooks'
+import { useThreadActions } from '~/components/threads/providers'
 import {
   useHasSelection,
   useIsThreadSelected,
@@ -76,7 +76,7 @@ export const CompactThreadItem = memo(function CompactThreadItem({
   const selectRange = useThreadSelectionStore((s) => s.selectRange)
   const setFocusedThread = useThreadSelectionStore((s) => s.setFocusedThread)
   const selectionAnchorId = useSelectionAnchorId()
-  const { update, isUpdating } = useThreadMutation()
+  const { update } = useThreadActions()
   const { data: session } = useSession()
   const currentUserId = session?.user?.id
 
@@ -362,8 +362,6 @@ export const CompactThreadItem = memo(function CompactThreadItem({
                       ? senderParticipant.identifier
                       : undefined
                   }
-                  update={update}
-                  isUpdating={isUpdating}
                   onOpenChange={setIsMenuOpen}
                 />
               </div>
