@@ -22,7 +22,7 @@ export {
   useThreadSelection,
 } from './hooks'
 // Providers
-export { ThreadDataProvider } from './providers'
+export { ThreadActionsProvider, ThreadDataProvider, useThreadActions } from './providers'
 // Stores
 export {
   type ActorId,

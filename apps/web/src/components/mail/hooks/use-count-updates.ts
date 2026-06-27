@@ -49,7 +49,15 @@ export interface ViewDefinition {
  * // In mutation onError:
  * rollback()
  */
-export function useCountUpdates(views: ViewDefinition[] = []) {
+/**
+ * Stable empty default so a no-arg `useCountUpdates()` call doesn't allocate a
+ * fresh `views` array each render — that would bust every memoized callback
+ * below and, transitively, the hoisted thread-action callbacks that depend on
+ * them (see ThreadActionsProvider).
+ */
+const EMPTY_VIEWS: ViewDefinition[] = []
+
+export function useCountUpdates(views: ViewDefinition[] = EMPTY_VIEWS) {
   const { data: session } = useSession()
   const currentUserId = session?.user?.id
   const conditionContext = useMemo(() => ({ currentUserId }), [currentUserId])

@@ -37,9 +37,9 @@ import {
   useMessage,
   useMessageParticipants,
   useThread,
-  useThreadMutation,
   useThreadReadStatus,
 } from '~/components/threads/hooks'
+import { useThreadActions } from '~/components/threads/providers'
 import {
   useIsThreadActive,
   useIsThreadSelected,
@@ -61,25 +61,19 @@ export function ProcessingMenu({
   threadId,
   integrationId,
   senderEmail,
-  update,
-  isUpdating,
   onOpenChange,
 }: {
   threadId: string
   integrationId?: string
   senderEmail?: string
-  update: (
-    threadId: string,
-    updates: { status?: 'OPEN' | 'ARCHIVED' | 'SPAM' | 'TRASH' | 'IGNORED' }
-  ) => void
-  isUpdating: boolean
   onOpenChange?: (open: boolean) => void
 }) {
   const onSuccess = useCallback(() => {
     console.log('Workflow triggered successfully')
   }, [])
 
-  const { merge } = useThreadMutation()
+  // Shared, hoisted thread actions (one instance app-wide) — see ThreadActionsProvider.
+  const { update, merge } = useThreadActions()
 
   const handleMergeInto = useCallback(
     (ids: RecordId[]) => {
@@ -95,7 +89,10 @@ export function ProcessingMenu({
 
   const addExcludedSender = api.channel.addExcludedSender.useMutation({
     onSuccess: () => {
-      update(threadId, { status: 'IGNORED' })
+      // `IGNORED` is a valid backend status that the client `ThreadStatus`
+      // union omits; the store + mutation accept it at runtime (previously
+      // bridged by a widened `update` prop type on this menu).
+      update(threadId, { status: 'IGNORED' } as unknown as Parameters<typeof update>[1])
     },
   })
 
@@ -154,24 +151,19 @@ export function ProcessingMenu({
           </DropdownMenuSubContent>
         </DropdownMenuSub>
         <DropdownMenuSeparator />
-        <DropdownMenuItem
-          onClick={() => update(threadId, { status: 'ARCHIVED' })}
-          disabled={isUpdating}>
+        <DropdownMenuItem onClick={() => update(threadId, { status: 'ARCHIVED' })}>
           <Archive />
           Archive
           <DropdownMenuShortcut>D</DropdownMenuShortcut>
         </DropdownMenuItem>
         <DropdownMenuItem
           onClick={() => update(threadId, { status: 'TRASH' })}
-          disabled={isUpdating}
           variant='destructive'>
           <Trash2 />
           Trash Thread
           <DropdownMenuShortcut>#</DropdownMenuShortcut>
         </DropdownMenuItem>
-        <DropdownMenuItem
-          onClick={() => update(threadId, { status: 'SPAM' })}
-          disabled={isUpdating}>
+        <DropdownMenuItem onClick={() => update(threadId, { status: 'SPAM' })}>
           <MailWarning />
           Mark as spam
           <DropdownMenuShortcut>!</DropdownMenuShortcut>
@@ -229,9 +221,6 @@ export const MailThreadItem = memo(function MailThreadItem({
   const setSelectionAnchor = useThreadSelectionStore((s) => s.setSelectionAnchor)
   const selectRange = useThreadSelectionStore((s) => s.selectRange)
   const selectionAnchorId = useSelectionAnchorId()
-
-  // --- Thread mutations using new unified hook ---
-  const { update, isUpdating } = useThreadMutation()
 
   const { data: session } = useSession()
   const currentUserId = session?.user?.id
@@ -471,8 +460,6 @@ export const MailThreadItem = memo(function MailThreadItem({
                           ? senderParticipant.identifier
                           : undefined
                       }
-                      update={update}
-                      isUpdating={isUpdating}
                     />
                   </div>
                 </div>
@@ -523,8 +510,6 @@ export const MailThreadItem = memo(function MailThreadItem({
                   ? senderParticipant.identifier
                   : undefined
               }
-              update={update}
-              isUpdating={isUpdating}
             />
           </div>
         </motion.div>

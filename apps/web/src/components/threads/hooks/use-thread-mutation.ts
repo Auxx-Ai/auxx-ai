@@ -226,7 +226,7 @@ export function useThreadMutation() {
       updateThreadOptimistic,
       confirmOptimistic,
       rollbackOptimistic,
-      updateMutation,
+      updateMutation.mutate,
       applyCountUpdates,
       restoreSnapshot,
     ]
@@ -269,7 +269,7 @@ export function useThreadMutation() {
       updateThreadOptimistic,
       confirmOptimistic,
       rollbackOptimistic,
-      updateBulkMutation,
+      updateBulkMutation.mutate,
       applyCountUpdates,
       restoreSnapshot,
     ]
@@ -321,7 +321,7 @@ export function useThreadMutation() {
       removeThread,
       undeleteThread,
       getThread,
-      removeMutation,
+      removeMutation.mutate,
       currentUserId,
       buildThreadContext,
       restoreSnapshot,
@@ -387,7 +387,7 @@ export function useThreadMutation() {
       removeThread,
       undeleteThread,
       getThread,
-      removeBulkMutation,
+      removeBulkMutation.mutate,
       currentUserId,
       buildThreadContext,
       restoreSnapshot,
@@ -471,7 +471,7 @@ export function useThreadMutation() {
       getThread,
       removeThread,
       undeleteThread,
-      updateBulkMutation,
+      updateBulkMutation.mutate,
       closeIfActive,
       currentUserId,
       updateThreadOptimistic,
@@ -496,7 +496,7 @@ export function useThreadMutation() {
         }
       )
     },
-    [updateMutation]
+    [updateMutation.mutate]
   )
 
   return {

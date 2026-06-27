@@ -17,7 +17,7 @@ import { SignatureDialogRoot } from '~/components/signatures/ui/signature-dialog
 import { SnippetDialogRoot } from '~/components/snippets/snippet-dialog-root'
 import { SubscriptionEnded } from '~/components/subscriptions/subscription-ended'
 import { FloatingTaskRoot } from '~/components/tasks/ui/floating-task-root'
-import { ThreadDataProvider } from '~/components/threads'
+import { ThreadActionsProvider, ThreadDataProvider } from '~/components/threads'
 import { useIsSelfHosted } from '~/hooks/use-deployment-mode'
 import { useDehydratedOrganizations } from '~/providers/dehydrated-state-provider'
 import { useOrganizationIdContext } from '~/providers/feature-flag-provider'
@@ -83,13 +83,15 @@ export function AppLayoutWrapper({ children, user }: AppLayoutWrapperProps) {
       <AuxxAppProviders>
         <ChannelProvider>
           <ThreadDataProvider>
-            <Dashboard user={user}>{children}</Dashboard>
-            <FloatingComposeRoot />
-            <FloatingTaskRoot />
-            <GlobalCreateRoot />
-            <SignatureDialogRoot />
-            <SnippetDialogRoot />
-            <CommandPalette />
+            <ThreadActionsProvider>
+              <Dashboard user={user}>{children}</Dashboard>
+              <FloatingComposeRoot />
+              <FloatingTaskRoot />
+              <GlobalCreateRoot />
+              <SignatureDialogRoot />
+              <SnippetDialogRoot />
+              <CommandPalette />
+            </ThreadActionsProvider>
           </ThreadDataProvider>
         </ChannelProvider>
       </AuxxAppProviders>
