@@ -647,6 +647,12 @@ export function RecordsView({
     [resource?.plural, resource?.label, createHotkey, setIsCreateDialogOpen]
   )
 
+  // Memoized element — passing a fresh `<EmptyStateComponent />` inline made the
+  // DynamicView config-context value change on every render, re-rendering the
+  // table body. EmptyStateComponent is already stable (useCallback), so this
+  // element stays referentially stable too.
+  const emptyStateElement = useMemo(() => <EmptyStateComponent />, [EmptyStateComponent])
+
   const dockedPanels = useMemo<DockedPanelConfig[]>(() => {
     if (!isDocked || !isDrawerOpen || !selectedInstanceId || !entityDefinitionId) return []
     return [
@@ -738,7 +744,7 @@ export function RecordsView({
       cellSelection={cellSelectionConfig}
       bulkActions={bulkActions}
       renderSearchBar={renderSearchBar}
-      emptyState={<EmptyStateComponent />}
+      emptyState={emptyStateElement}
       dockedPanels={dockedPanels}
       onRowSelectionChange={handleRowSelectionChange}
       onAddNew={() => setIsCreateDialogOpen(true)}

@@ -29,7 +29,8 @@ interface VirtualTableCellProps<TData> {
 function VirtualTableCellInner<TData>({ cell, columnId, className }: VirtualTableCellProps<TData>) {
   const ref = useRef<HTMLDivElement>(null)
 
-  // DEBUG: Flash yellow on re-render to visualize which cells are updating
+  // DEBUG: Flash yellow on re-render to visualize which cells are updating.
+  // Re-add `useEffect` to the react import to re-enable.
   // useEffect(() => {
   //   const el = ref.current
   //   if (!el) return

@@ -47,6 +47,21 @@ function SelectableTableCellInner<TData>({
 
   const cellRef = useRef<HTMLDivElement>(null)
 
+  // DEBUG: Flash yellow on re-render to visualize which cells are updating.
+  // Re-add `useEffect` to the react import to re-enable.
+  // useEffect(() => {
+  //   const el = cellRef.current
+  //   if (!el) return
+
+  //   el.style.backgroundColor = 'rgba(255, 200, 0, 0.5)'
+  //   el.style.transition = 'background-color 0.5s ease-out'
+  //   const timeout = setTimeout(() => {
+  //     el.style.backgroundColor = ''
+  //   }, 100)
+
+  //   return () => clearTimeout(timeout)
+  // })
+
   const isSystemColumn = columnId === '_checkbox'
 
   const field = cellSelectionConfig?.getFieldDefinition?.(columnId)

@@ -12,9 +12,7 @@ import { VirtualTableCell } from './virtual-table-cell'
 
 const CELL_DEFAULT =
   'group/tablecell h-full bg-primary-50/80 dark:bg-background group-hover/tablerow:bg-primary-100/80 group-hover/tablerow:dark:bg-primary-100/80 text-primary-600'
-const CELL_SELECTED =
-  'bg-blue-50 dark:bg-blue-950 group-hover/tablerow:bg-blue-100 dark:group-hover/tablerow:bg-blue-900 text-primary-900'
-const CELL_LAST_CLICKED = 'bg-primary-150 group-hover/tablerow:bg-primary-200'
+const CELL_PINNED = `${CELL_DEFAULT} sm:backdrop-blur-sm`
 
 interface VirtualTableRowProps<TData> {
   row: Row<TData>
@@ -114,17 +112,19 @@ function VirtualTableRowInner<TData>({
     }
   }
 
-  const cellClassName = cn(
-    CELL_DEFAULT,
-    isSelected && CELL_SELECTED,
-    isLastClicked && CELL_LAST_CLICKED
-  )
-  const pinnedCellClassName = cn(cellClassName, 'sm:backdrop-blur-sm')
+  // Selected / last-clicked cell backgrounds are applied via CSS keyed off the
+  // row wrapper's data-state / data-last-clicked (styles/table.css), NOT folded
+  // into the cell className. Keeping className stable means the SelectableTableCell
+  // memo holds across selection changes, so select-all re-renders only the row
+  // wrappers (cheap) instead of every visible cell (rows × cols → ~seconds).
+  const cellClassName = CELL_DEFAULT
+  const pinnedCellClassName = CELL_PINNED
 
   return (
     <div ref={mergedRef} data-index={virtualRow.index} className='absolute w-full' style={style}>
       <div
-        data-state={isSelected && 'selected'}
+        data-state={isSelected ? 'selected' : undefined}
+        data-last-clicked={isLastClicked || undefined}
         aria-selected={isSelected}
         className={cn(
           'flex group/tablerow w-full border-y border-background rounded-md',

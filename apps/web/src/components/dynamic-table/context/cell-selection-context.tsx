@@ -12,7 +12,7 @@ import type {
 } from '../types'
 import { isSingleCell, rangeContains, singleRange } from '../utils/range'
 import { useCellIndexerContext } from './cell-indexer-context'
-import { useTableConfig } from './table-config-context'
+import { useTableId } from './table-id-context'
 
 // ============================================================================
 // CONTEXT FOR CONFIG (static)
@@ -46,7 +46,7 @@ export function useCellSelectionConfig(): CellSelectionConfig | undefined {
 
 /** True for the anchor cell only (drives `.cell-active`, editor target, focus ring, paste origin) */
 export function useIsActiveCell(rowId: string, columnId: string): boolean {
-  const { tableId } = useTableConfig()
+  const tableId = useTableId()
   return useSelectionStore((s) => {
     const r = s.tables[tableId]?.range
     if (!r) return false
@@ -60,7 +60,7 @@ export function useIsActiveCell(rowId: string, columnId: string): boolean {
  * cell. Returns false for the 1×1 case (anchor == focus, nothing to tint).
  */
 export function useIsInRange(rowId: string, columnId: string): boolean {
-  const { tableId } = useTableConfig()
+  const tableId = useTableId()
   const indexer = useCellIndexerContext()
   return useSelectionStore((s) => {
     const r = s.tables[tableId]?.range
@@ -83,7 +83,7 @@ export function useIsInRange(rowId: string, columnId: string): boolean {
  * are already handled by the `.cell-in-range` gate.
  */
 export function useIsCopySource(rowId: string, columnId: string): boolean {
-  const { tableId } = useTableConfig()
+  const tableId = useTableId()
   return useSelectionStore((s) => {
     const c = s.tables[tableId]?.copyHighlight
     if (!c || !isSingleCell(c)) return false
@@ -93,7 +93,7 @@ export function useIsCopySource(rowId: string, columnId: string): boolean {
 
 /** True iff this cell is the editing target */
 export function useIsEditingCell(rowId: string, columnId: string): boolean {
-  const { tableId } = useTableConfig()
+  const tableId = useTableId()
   return useSelectionStore((s) => {
     const e = s.tables[tableId]?.editingCell
     if (!e) return false
@@ -108,7 +108,7 @@ export function useIsEditingCell(rowId: string, columnId: string): boolean {
  * the selector would trip Zustand's getSnapshot loop.
  */
 export function useActiveCell(): CellAddress | null {
-  const { tableId } = useTableConfig()
+  const tableId = useTableId()
   const rowId = useSelectionStore((s) => s.tables[tableId]?.range?.anchor.rowId ?? null)
   const columnId = useSelectionStore((s) => s.tables[tableId]?.range?.anchor.columnId ?? null)
   return useMemo(() => (rowId && columnId ? { rowId, columnId } : null), [rowId, columnId])
@@ -116,7 +116,7 @@ export function useActiveCell(): CellAddress | null {
 
 /** Current range (full object). Use sparingly — changes on every focus move. */
 export function useRange(): CellRange | null {
-  const { tableId } = useTableConfig()
+  const tableId = useTableId()
   return useSelectionStore((s) => s.tables[tableId]?.range ?? null)
 }
 
@@ -133,7 +133,7 @@ export interface CellRangeActions {
 }
 
 export function useRangeActions(): CellRangeActions {
-  const { tableId } = useTableConfig()
+  const tableId = useTableId()
   const setRange = useSelectionStore((s) => s.setRange)
   const setRangeFocus = useSelectionStore((s) => s.setRangeFocus)
   const setSelectedCell = useSelectionStore((s) => s.setSelectedCell)
@@ -167,7 +167,7 @@ interface CellSelectionContextValue {
 }
 
 export function useCellSelection(): CellSelectionContextValue {
-  const { tableId } = useTableConfig()
+  const tableId = useTableId()
   const cellSelectionConfig = useContext(CellSelectionConfigContext)
 
   // 1×1 shim: subscribe to the primitives that decide whether the shim is

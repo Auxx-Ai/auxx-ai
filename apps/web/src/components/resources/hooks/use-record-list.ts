@@ -200,9 +200,17 @@ export function useRecordList<T extends RecordMeta = RecordMeta>({
   // ─── RETURN ────────────────────────────────────────────────────────
   // Return IDs and resolved items from record store
 
-  // Prefer cached data if available
-  const recordIds =
-    cachedList?.ids ?? (data?.pages?.flatMap((p: { ids: string[] }) => p.ids) || EMPTY_IDS)
+  // Prefer cached data if available. Memoized so the array keeps a stable
+  // identity across unrelated re-renders (e.g. a selection toggle). `records`
+  // below depends on it, and an unstable `records` becomes an unstable `data`
+  // prop to TanStack — whose core row model is memoized on `data` identity, so a
+  // new array rebuilds every row + cell object and re-renders every visible cell
+  // (the whole-table flash on select-all). The inline `flatMap` returned a fresh
+  // array each render whenever the list cache was absent/stale.
+  const recordIds = useMemo(
+    () => cachedList?.ids ?? (data?.pages?.flatMap((p: { ids: string[] }) => p.ids) || EMPTY_IDS),
+    [cachedList, data]
+  )
   const total = cachedList?.total ?? data?.pages?.[data.pages.length - 1]?.total ?? 0
 
   // ─── RESOLVE RECORDS FROM RECORD STORE ─────────────────────────────────
