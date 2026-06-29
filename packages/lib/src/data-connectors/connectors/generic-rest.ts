@@ -30,6 +30,13 @@ import {
 
 const logger = createScopedLogger('data-connector-generic-rest')
 
+// Reachability-probe timeout for the FIRST request of a fresh fetch chain. Short
+// enough that an unreachable host (offline dev server, wrong base URL) surfaces an
+// error in seconds rather than spinning on the transport's 30s default. Subsequent
+// pages fall back to the default — a reachable-but-slow paginated API keeps the
+// full budget once the first page proves the host is up.
+const PROBE_TIMEOUT_MS = 10_000
+
 // ── Webhook fetch steering (sync bridge §4) ──────────────────────────────────
 // A webhook-steered fetch interpolates `{token}` placeholders (resolved from the
 // delivery payload) into the request's path/params/headers/body using the SAME
@@ -457,12 +464,19 @@ async function* fetchRecords(args: ConnectorFetchArgs): AsyncIterable<ConnectorY
     // The HTTP transport applies the resolved connection's declarative auth
     // (header/basic/query), sends the request, handles rate limits (429 +
     // Retry-After / Shopify-GraphQL throttle / backoff), and normalizes the response.
+    // Reachability probe: the FIRST request of a fresh chain (no resume cursor, page
+    // 0) gets a short timeout so an unreachable host fails in seconds instead of
+    // sitting on the full 30s budget. Resumed/subsequent pages keep the default so a
+    // slow-but-alive paginated API isn't penalized.
+    const isProbe = fetched === 0 && !cursor && pageIndex === 0
     const response = await httpTransport.request(applyCredential, {
       method,
       url,
       headers: baseHeaders,
       body: method === 'POST' ? steeredBody : undefined,
       rateLimit,
+      timeoutMs: isProbe ? PROBE_TIMEOUT_MS : undefined,
+      signal: args.signal,
     })
 
     // H1: a throttle the transport did NOT sleep through (the sliced source sets

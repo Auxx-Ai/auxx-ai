@@ -113,6 +113,15 @@ describe('resolveSyncStatus', () => {
     expect(r.detail).toBe('Importing orders — 3,250 records so far')
   })
 
+  it('reads as Connecting while a fresh backfill has seen no records yet', () => {
+    const r = resolveSyncStatus(
+      { status: 'syncing', latestRun: { status: 'running', phase: 'backfill', recordsSeen: 0 } },
+      NOW
+    )
+    expect(r).toMatchObject({ state: 'syncing', label: 'Connecting', primaryAction: 'pause' })
+    expect(r.detail).toBe('Reaching the source…')
+  })
+
   it('does not show "records so far" for a steady run', () => {
     const r = resolveSyncStatus(
       { status: 'syncing', latestRun: { status: 'running', phase: 'steady', recordsSeen: 9999 } },

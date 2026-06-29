@@ -116,7 +116,9 @@ function RunRow({ run, sourceLabel }: { run: ConnectorRun; sourceLabel: string }
       isOpen={hasErrors ? open : undefined}
       onToggleOpen={hasErrors ? () => setOpen((v) => !v) : undefined}>
       {hasErrors && (
-        <Alert variant='destructive' className='mt-1 me-2 ms-8 flex flex-col gap-1 text-xs'>
+        <Alert
+          variant='destructive'
+          className='mt-1 me-2 ms-8 flex w-auto flex-col items-start gap-1 text-xs'>
           {errors.slice(0, 3).map((e, i) => (
             <div key={i} className='break-words'>
               {e.error}
