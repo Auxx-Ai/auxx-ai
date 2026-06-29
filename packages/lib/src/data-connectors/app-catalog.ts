@@ -90,6 +90,22 @@ export interface ContributingTargetField {
   systemAttribute: string | null
   /** Storage field type (EMAIL / PHONE_INTL / URL / …) → the match `normalize` strategy. */
   type: string
+  /**
+   * Capability flags — present on the cached `CustomFieldEntity`, undefined on the
+   * test/literal shape. Only the zero-config auto-binder ({@link buildContributingAutoBindings})
+   * reads them, to skip non-writable / computed targets (`id`, `created_at`, the computed
+   * `fullName`). The explicit binders ignore them — an author who names a target owns the choice.
+   */
+  isCreatable?: boolean
+  isUpdatable?: boolean
+  isComputed?: boolean
+}
+
+/** A target is a safe auto-bind sink unless it's computed or can be neither created nor updated. */
+function isWritableTarget(field: ContributingTargetField): boolean {
+  if (field.isComputed) return false
+  if (field.isCreatable === false && field.isUpdatable === false) return false
+  return true
 }
 
 /**
@@ -173,6 +189,65 @@ export function buildContributingFieldBindings(
     // with the rootPath prefix), else its relative path is undefined for this root.
     if (!sourceField || (prefix && !sourceField.sourcePath.startsWith(prefix))) continue
     bindings.push(bindSourceToTarget(entityDefinitionId, prefix, sourceField, target))
+  }
+  return bindings
+}
+
+/**
+ * Zero-config fallback for a contributing mapping that declared NO explicit
+ * `fieldBindings` (approach B, automap-plan §5): name-match every LEAF source field
+ * sitting directly under `rootPath` to a target field, binding only UNAMBIGUOUS,
+ * writable hits. Lets a contributing stream land first/last/phone pre-mapped even when
+ * the app author writes no `fieldBindings` boilerplate — explicit `fieldBindings`
+ * always take precedence (the caller runs this only when none were declared).
+ *
+ * Conservative by construction:
+ *   - only LEAF fields directly on the root object (relative path has no `.`/`[]`) —
+ *     nested + array-element fields are skipped, same spirit as the match binder;
+ *   - a target two source fields both resolve to is AMBIGUOUS and dropped (never guess);
+ *   - non-writable / computed targets (`id`, `created_at`, the computed `fullName`) are
+ *     skipped via {@link isWritableTarget}, so a Shopify `id` never lands on contact `id`;
+ *   - emits plain (no `identityRole`) `FieldMapping`s; the external id is never bound.
+ * Match-key targets are de-duped by the caller (match's `identityRole` wins). Every
+ * binding stays overridable in the Map step.
+ */
+export function buildContributingAutoBindings(
+  entityDefinitionId: string,
+  rootPath: string,
+  sourceFields: CatalogDataConnector['streams'][number]['fields'],
+  defFields: ContributingTargetField[]
+): FieldMapping[] {
+  if (rootPath.includes('[]')) return []
+
+  const fieldByKey = buildTargetFieldIndex(defFields)
+  const prefix = rootPath ? `${rootPath}.` : ''
+
+  // Group candidates by resolved target id so a target claimed by 2+ sources is ambiguous.
+  const byTarget = new Map<
+    string,
+    {
+      source: CatalogDataConnector['streams'][number]['fields'][number]
+      target: ContributingTargetField
+    }[]
+  >()
+  for (const sourceField of sourceFields) {
+    const path = sourceField.sourcePath
+    if (prefix && !path.startsWith(prefix)) continue
+    const relative = prefix ? path.slice(prefix.length) : path
+    // Only leaf fields directly on the root object — skip nested + array-element paths.
+    if (relative.includes('.') || relative.includes('[]')) continue
+    const target = fieldByKey.get(relative) ?? fieldByKey.get(normalizeFieldKey(relative))
+    if (!target || !isWritableTarget(target)) continue
+    const list = byTarget.get(target.id) ?? []
+    list.push({ source: sourceField, target })
+    byTarget.set(target.id, list)
+  }
+
+  const bindings: FieldMapping[] = []
+  for (const candidates of byTarget.values()) {
+    if (candidates.length !== 1) continue // ambiguous → skip
+    const { source, target } = candidates[0]!
+    bindings.push(bindSourceToTarget(entityDefinitionId, prefix, source, target))
   }
   return bindings
 }

@@ -5,6 +5,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   appCatalogStreamSchema,
+  buildContributingAutoBindings,
   buildContributingFieldBindings,
   buildSchemaFromFieldPaths,
   type ContributingTargetField,
@@ -152,5 +153,118 @@ describe('buildContributingFieldBindings', () => {
       targetFieldRef: 'def_contact:f_email',
       expression: '{email}',
     })
+  })
+})
+
+describe('buildContributingAutoBindings (zero-config heuristic)', () => {
+  // Mirrors the system `contact` def: writable first/last/phone, non-writable `id` +
+  // `created_at`, computed `fullName`.
+  const contactFields: ContributingTargetField[] = [
+    {
+      id: 'f_id',
+      name: 'ID',
+      systemAttribute: 'id',
+      type: 'TEXT',
+      isCreatable: false,
+      isUpdatable: false,
+    },
+    { id: 'f_first', name: 'First Name', systemAttribute: 'first_name', type: 'TEXT' },
+    { id: 'f_last', name: 'Last Name', systemAttribute: 'last_name', type: 'TEXT' },
+    { id: 'f_phone', name: 'Phone', systemAttribute: 'phone', type: 'PHONE_INTL' },
+    { id: 'f_full', name: 'Name', systemAttribute: 'full_name', type: 'TEXT', isComputed: true },
+    {
+      id: 'f_created',
+      name: 'Created',
+      systemAttribute: 'created_at',
+      type: 'DATETIME',
+      isCreatable: false,
+      isUpdatable: false,
+    },
+  ]
+
+  it('name-matches leaf source fields to writable targets at root, no identityRole', () => {
+    const bindings = buildContributingAutoBindings(
+      'def_contact',
+      '',
+      [
+        { fieldKey: 'firstName', sourcePath: 'first_name', type: 'TEXT', name: 'First Name' },
+        { fieldKey: 'lastName', sourcePath: 'last_name', type: 'TEXT', name: 'Last Name' },
+        { fieldKey: 'phone', sourcePath: 'phone', type: 'TEXT', name: 'Phone' },
+      ],
+      contactFields
+    )
+    expect(bindings.map((b) => b.targetFieldRef).sort()).toEqual([
+      'def_contact:f_first',
+      'def_contact:f_last',
+      'def_contact:f_phone',
+    ])
+    expect(bindings.every((b) => b.identityRole === undefined)).toBe(true)
+  })
+
+  it('skips non-writable (id, created_at) and computed (fullName) targets', () => {
+    const bindings = buildContributingAutoBindings(
+      'def_contact',
+      '',
+      [
+        { fieldKey: 'id', sourcePath: 'id', type: 'TEXT', name: 'Shopify ID' },
+        { fieldKey: 'createdAt', sourcePath: 'created_at', type: 'DATETIME', name: 'Created' },
+        { fieldKey: 'fullName', sourcePath: 'full_name', type: 'TEXT', name: 'Name' },
+      ],
+      contactFields
+    )
+    expect(bindings).toHaveLength(0)
+  })
+
+  it('skips a target two source fields both resolve to (ambiguous)', () => {
+    const bindings = buildContributingAutoBindings(
+      'def_contact',
+      '',
+      [
+        { fieldKey: 'firstName', sourcePath: 'first_name', type: 'TEXT', name: 'First Name' },
+        { fieldKey: 'givenName', sourcePath: 'First Name', type: 'TEXT', name: 'Given' },
+      ],
+      contactFields
+    )
+    expect(bindings).toHaveLength(0)
+  })
+
+  it('skips nested + array-element source paths, keeps only direct leaves', () => {
+    const bindings = buildContributingAutoBindings(
+      'def_contact',
+      'customer',
+      [
+        {
+          fieldKey: 'firstName',
+          sourcePath: 'customer.first_name',
+          type: 'TEXT',
+          name: 'First Name',
+        },
+        { fieldKey: 'city', sourcePath: 'customer.address.phone', type: 'TEXT', name: 'Nested' },
+        { fieldKey: 'tag', sourcePath: 'customer.tags[].phone', type: 'TEXT', name: 'Array' },
+      ],
+      contactFields
+    )
+    expect(bindings).toHaveLength(1)
+    expect(bindings[0]).toMatchObject({
+      targetFieldRef: 'def_contact:f_first',
+      expression: '{first_name}',
+    })
+  })
+
+  it('drops everything for an array-rooted mapping', () => {
+    const bindings = buildContributingAutoBindings(
+      'def_contact',
+      'line_items[]',
+      [
+        {
+          fieldKey: 'firstName',
+          sourcePath: 'line_items[].first_name',
+          type: 'TEXT',
+          name: 'First Name',
+        },
+      ],
+      contactFields
+    )
+    expect(bindings).toHaveLength(0)
   })
 })
