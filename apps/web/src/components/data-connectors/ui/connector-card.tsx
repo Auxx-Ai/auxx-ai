@@ -172,25 +172,32 @@ export function ConnectorCard({ connector, streamCount }: ConnectorCardProps) {
               </DropdownMenuItem>
             )}
             <DropdownMenuSeparator />
-            <DropdownMenuSub>
-              <DropdownMenuSubTrigger variant='destructive'>
+            {connector.itemCount > 0 ? (
+              <DropdownMenuSub>
+                <DropdownMenuSubTrigger variant='destructive'>
+                  <Trash />
+                  Delete
+                </DropdownMenuSubTrigger>
+                <DropdownMenuSubContent>
+                  <DropdownMenuItem onClick={wrap(() => handleDelete('keep'))}>
+                    Delete, keep synced records
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={wrap(() => handleDelete('archive'))}>
+                    Delete, archive synced records
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    variant='destructive'
+                    onClick={wrap(() => handleDelete('delete'))}>
+                    Delete connector and synced records
+                  </DropdownMenuItem>
+                </DropdownMenuSubContent>
+              </DropdownMenuSub>
+            ) : (
+              <DropdownMenuItem variant='destructive' onClick={wrap(() => handleDelete('delete'))}>
                 <Trash />
                 Delete
-              </DropdownMenuSubTrigger>
-              <DropdownMenuSubContent>
-                <DropdownMenuItem onClick={wrap(() => handleDelete('keep'))}>
-                  Delete, keep synced records
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={wrap(() => handleDelete('archive'))}>
-                  Delete, archive synced records
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  variant='destructive'
-                  onClick={wrap(() => handleDelete('delete'))}>
-                  Delete connector and synced records
-                </DropdownMenuItem>
-              </DropdownMenuSubContent>
-            </DropdownMenuSub>
+              </DropdownMenuItem>
+            )}
           </>
         }
       />
