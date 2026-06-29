@@ -20,6 +20,10 @@ export type GettingStartedGoal = {
   ctaText: string
   /** Where the CTA goes — internal app route or external URL. */
   href: string
+  /** Relative docs path for the "Learn more" link, joined onto useEnv().docsUrl. */
+  docsPath: string
+  /** Optional preview image shown in the hovercard; falls back to the icon. */
+  previewImage?: string
   /** External links open in a new tab. */
   external?: boolean
   /** Goals with no server signal are marked complete when the CTA is clicked. */
@@ -34,6 +38,7 @@ const GOALS: Record<GoalKey, Omit<GettingStartedGoal, 'key'>> = {
     color: 'blue',
     ctaText: 'Connect inbox',
     href: '/app/settings/channels',
+    docsPath: '/help/getting-started/connect-inbox',
   },
   'setup-agent': {
     label: 'Set up an AI agent',
@@ -42,6 +47,7 @@ const GOALS: Record<GoalKey, Omit<GettingStartedGoal, 'key'>> = {
     color: 'purple',
     ctaText: 'Set up agent',
     href: '/app/agents',
+    docsPath: '/help/agents/creating-an-agent',
   },
   'create-workflow': {
     label: 'Create a workflow',
@@ -50,6 +56,7 @@ const GOALS: Record<GoalKey, Omit<GettingStartedGoal, 'key'>> = {
     color: 'amber',
     ctaText: 'New workflow',
     href: '/app/workflows',
+    docsPath: '/help/ai/creating-workflows',
   },
   'create-field': {
     label: 'Create a custom field',
@@ -58,6 +65,7 @@ const GOALS: Record<GoalKey, Omit<GettingStartedGoal, 'key'>> = {
     color: 'teal',
     ctaText: 'Add field',
     href: '/app/settings/custom-fields',
+    docsPath: '/help/workspace/custom-fields',
   },
   'invite-team': {
     label: 'Invite your team',
@@ -66,6 +74,7 @@ const GOALS: Record<GoalKey, Omit<GettingStartedGoal, 'key'>> = {
     color: 'green',
     ctaText: 'Invite teammates',
     href: '/app/settings/members',
+    docsPath: '/help/getting-started/invite-team',
   },
   'install-extension': {
     label: 'Install the extension',
@@ -74,6 +83,7 @@ const GOALS: Record<GoalKey, Omit<GettingStartedGoal, 'key'>> = {
     color: 'indigo',
     ctaText: 'Get the extension',
     href: EXTENSION_STORE_URL,
+    docsPath: '/help/getting-started/install-extension',
     external: true,
     markOnClick: true,
   },
