@@ -304,11 +304,20 @@ export function MappingNode({
     if (isBareToken(e.expression)) sourceToEntry.set(e.expression.replace(/^\{|\}$/g, ''), e)
   }
 
+  // Visible leaf paths under THIS mapping's subtree — a bare-token entry on one of
+  // these renders on its leaf (External-ID anchor included), so it must NOT also
+  // surface as a formula row.
+  const visibleLeafPaths = new Set(relativeSubtree.filter((p) => !p.isBranch).map((p) => p.path))
+
   // Formula rows = computed entries (a multi-source formula has no single leaf to
-  // anchor on) PLUS unassigned drafts (`targetFieldRef: null`), which are persisted
-  // half-authored formulas with nowhere to live on the source tree yet.
+  // anchor on) PLUS target-less entries with nowhere to live on the source tree: a
+  // half-authored formula draft, or an orphaned bare token whose source path vanished
+  // (schema regenerated) — kept here so it stays editable/removable. A bare-token
+  // External-ID anchor on a VISIBLE leaf renders on that leaf, never here.
   const formulaEntries = fieldMappings.filter(
-    (e) => !isBareToken(e.expression) || e.targetFieldRef == null
+    (e) =>
+      !isBareToken(e.expression) ||
+      (e.targetFieldRef == null && !visibleLeafPaths.has(bareTokenSource(e.expression)))
   )
 
   const assignTarget = (sourcePath: string, targetRef: string) => {
