@@ -10,6 +10,7 @@ import {
   SidebarRail,
 } from '@auxx/ui/components/sidebar'
 import type * as React from 'react'
+import { GettingStartedGroup } from '~/components/getting-started/ui/getting-started-group'
 import { MailSidebar } from '~/components/global/sidebar/mail-sidebar'
 import { SIDEBAR_MENU } from '~/constants/menu'
 import AppFooter from './app-footer'
@@ -54,6 +55,7 @@ export default function AppSidebar({ user, ...props }: Prop) {
           <EntitySidebarNav />
         </SidebarContent>
         <SidebarFooter>
+          <GettingStartedGroup />
           <AppFooter />
         </SidebarFooter>
         <SidebarRail />

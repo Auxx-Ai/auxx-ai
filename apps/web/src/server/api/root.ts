@@ -43,6 +43,7 @@ import { featurePermissionsRouter } from './routers/featurePermissions'
 import { fieldValueRouter } from './routers/fieldValue'
 import { fileRouter } from './routers/file'
 import { folderRouter } from './routers/folder'
+import { gettingStartedRouter } from './routers/getting-started'
 import { inboxRouter } from './routers/inbox'
 import { knowledgeBaseRouter } from './routers/kb'
 import { knowledgeSourceRouter } from './routers/knowledge-sources'
@@ -135,6 +136,7 @@ export const appRouter = createTRPCRouter({
   extension: extensionRouter,
   favorite: favoriteRouter,
   featurePermission: featurePermissionsRouter,
+  gettingStarted: gettingStartedRouter,
   inbox: inboxRouter,
   channel: channelRouter,
   channelReauth: channelReauthRouter,
