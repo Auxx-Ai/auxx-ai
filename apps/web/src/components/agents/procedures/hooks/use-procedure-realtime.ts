@@ -3,7 +3,6 @@
 'use client'
 
 import { useCallback } from 'react'
-import { useFeatureFlags } from '~/providers/feature-flag-provider'
 import { useOrgChannel } from '~/realtime/hooks'
 import { api } from '~/trpc/react'
 
@@ -30,13 +29,10 @@ export function useProcedureRealtime({
   selectedProcedureId,
   onExternalDraftChange,
 }: UseProcedureRealtimeOptions) {
-  const { hasAccess } = useFeatureFlags()
-  const realtimeSyncEnabled = hasAccess('realtimeSync')
   const utils = api.useUtils()
 
   const onEvent = useCallback(
     (event: string, payload: unknown) => {
-      if (!realtimeSyncEnabled) return
       if (event !== 'procedure:updated' || !selectedProcedureId) return
       const data = payload as { procedureId?: string } | null
       if (data?.procedureId !== selectedProcedureId) return
@@ -44,7 +40,7 @@ export function useProcedureRealtime({
         .invalidate({ id: selectedProcedureId })
         .then(() => onExternalDraftChange())
     },
-    [realtimeSyncEnabled, selectedProcedureId, onExternalDraftChange, utils]
+    [selectedProcedureId, onExternalDraftChange, utils]
   )
 
   useOrgChannel({ onEvent })

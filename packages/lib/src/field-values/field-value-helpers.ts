@@ -873,8 +873,7 @@ async function resolveNameFieldDisplayValue(
 /**
  * Publish a `record:updated` realtime event carrying just the denormalized
  * column(s) that changed. Matches RecordUpdatedEvent's intended contract:
- * "denormalized columns changed". Gated on the org's realtimeSync feature
- * flag and excludes the originating socket.
+ * "denormalized columns changed". Excludes the originating socket.
  */
 async function publishRecordColumnUpdate(
   ctx: FieldValueContext,
@@ -887,8 +886,6 @@ async function publishRecordColumnUpdate(
   }
 ): Promise<void> {
   try {
-    const { features } = await getOrgCache().getOrRecompute(ctx.organizationId, ['features'])
-    if (!features?.realtimeSync) return
     const recordId = toRecordId(entityDefId, entityInstanceId)
     getRealtimeService()
       .publish(

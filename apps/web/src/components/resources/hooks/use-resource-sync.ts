@@ -11,7 +11,6 @@ import type {
   RecordUpdatedEvent,
 } from '@auxx/lib/realtime'
 import { useCallback } from 'react'
-import { useFeatureFlags } from '~/providers/feature-flag-provider'
 import { useOrgChannel } from '~/realtime/hooks'
 import { api } from '~/trpc/react'
 import { useFieldValueStore } from '../store/field-value-store'
@@ -23,8 +22,6 @@ import { useRecordStore } from '../store/record-store'
  * Mount once in the app layout.
  */
 export function useResourceSync() {
-  const { hasAccess } = useFeatureFlags()
-  const realtimeSyncEnabled = hasAccess('realtimeSync')
   const utils = api.useUtils()
 
   // Store actions (selectors to avoid re-renders)
@@ -122,7 +119,6 @@ export function useResourceSync() {
 
   const onEvent = useCallback(
     (event: string, payload: unknown) => {
-      if (!realtimeSyncEnabled) return
       switch (event) {
         case 'fieldValues:updated':
           return handleFieldValuesUpdated(payload)
@@ -139,7 +135,6 @@ export function useResourceSync() {
       }
     },
     [
-      realtimeSyncEnabled,
       handleFieldValuesUpdated,
       handleRecordCreated,
       handleRecordUpdated,

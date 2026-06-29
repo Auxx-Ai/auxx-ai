@@ -3,7 +3,6 @@
 'use client'
 
 import { useCallback } from 'react'
-import { useFeatureFlags } from '~/providers/feature-flag-provider'
 import { useOrgChannel } from '~/realtime/hooks'
 import { api } from '~/trpc/react'
 
@@ -21,13 +20,10 @@ import { api } from '~/trpc/react'
  * where the selected procedure id and reload key live.
  */
 export function useAgentRealtime() {
-  const { hasAccess } = useFeatureFlags()
-  const realtimeSyncEnabled = hasAccess('realtimeSync')
   const utils = api.useUtils()
 
   const onEvent = useCallback(
     (event: string) => {
-      if (!realtimeSyncEnabled) return
       if (event === 'agent:updated') {
         void utils.agent.getById.invalidate()
         void utils.agent.list.invalidate()
@@ -38,7 +34,7 @@ export function useAgentRealtime() {
         void utils.agentProcedure.list.invalidate()
       }
     },
-    [realtimeSyncEnabled, utils]
+    [utils]
   )
 
   useOrgChannel({ onEvent })

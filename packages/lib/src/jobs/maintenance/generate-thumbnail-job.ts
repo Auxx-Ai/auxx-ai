@@ -4,7 +4,6 @@ import { database as db, schema } from '@auxx/database'
 import { getRedisClient } from '@auxx/redis'
 import { and, eq, inArray, isNull, sql } from 'drizzle-orm'
 import { z } from 'zod'
-import { getOrgCache } from '../../cache'
 import { MediaAssetService } from '../../files/core/media-asset-service'
 import {
   getMimeTypeForFormat,
@@ -476,8 +475,6 @@ async function publishAvatarResolved(params: {
 }): Promise<void> {
   const { orgId, cdnUrl, instances } = params
   try {
-    const { features } = await getOrgCache().getOrRecompute(orgId, ['features'])
-    if (!features?.realtimeSync) return
     const realtime = getRealtimeService()
     const updatedAt = new Date().toISOString()
     await Promise.all(

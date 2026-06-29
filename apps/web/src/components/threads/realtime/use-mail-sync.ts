@@ -17,7 +17,6 @@ import type {
 import { extractUniqueParticipantIds } from '@auxx/types'
 import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { useUser } from '~/hooks/use-user'
-import { useFeatureFlags } from '~/providers/feature-flag-provider'
 import { useInboxChannels, useOrgChannel } from '~/realtime/hooks'
 import { api } from '~/trpc/react'
 import { useInboxes } from '../hooks'
@@ -33,14 +32,10 @@ import { useMessageArrivalCue } from './use-message-arrival-cue'
  * for thread/message events and to the org channel for participant events,
  * then fans events into the thread / message / message-list / participant
  * stores. Mounted once in `AuxxAppProviders`.
- *
- * Gated on the `realtimeMail` feature flag — when off, the hook does nothing.
  */
 export function useMailSync() {
   const { user } = useUser()
   const currentUserId = user?.id ?? null
-  const { hasAccess } = useFeatureFlags()
-  const realtimeMailEnabled = hasAccess('realtimeMail')
 
   const { inboxes } = useInboxes()
 
@@ -287,12 +282,11 @@ export function useMailSync() {
   // Org-channel event dispatcher (currently just participant updates).
   const onOrgEvent = useCallback(
     (event: string, payload: unknown) => {
-      if (!realtimeMailEnabled) return
       if (event === 'participant:updated') {
         handleParticipantUpdated(payload as ParticipantUpdatedEvent['data'])
       }
     },
-    [realtimeMailEnabled, handleParticipantUpdated]
+    [handleParticipantUpdated]
   )
 
   // Catch-up on (re)subscribe. Pusher does NOT replay events published while a
@@ -357,7 +351,7 @@ export function useMailSync() {
     []
   )
 
-  useInboxChannels(realtimeMailEnabled ? slugs : [], {
+  useInboxChannels(slugs, {
     onEvent: onInboxEvent,
     onSubscribed: handleInboxSubscribed,
   })
