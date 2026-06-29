@@ -16,6 +16,7 @@ import { BadRequestError, NotFoundError } from '../errors'
 import { toRecordId } from '../resources/resource-id'
 import {
   appCatalogStreamSchema,
+  buildContributingAutoBindings,
   buildContributingFieldBindings,
   buildContributingMatchBindings,
 } from './app-catalog'
@@ -564,12 +565,24 @@ async function materializeAppContributingMappings(
       defFields
     )
     const boundTargets = new Set(matchBindings.map((b) => b.targetFieldRef))
-    const valueBindings = buildContributingFieldBindings(
-      entityDefinitionId,
-      mapping.rootPath,
-      fieldBindings ?? [],
-      stream.fields,
-      defFields
+    // Author-declared `fieldBindings` win; if none were declared, fall back to the
+    // zero-config name-match heuristic (automap-plan §5). Either way, drop any target a
+    // match key already claimed (match's `identityRole` wins).
+    const valueBindings = (
+      (fieldBindings?.length ?? 0) > 0
+        ? buildContributingFieldBindings(
+            entityDefinitionId,
+            mapping.rootPath,
+            fieldBindings ?? [],
+            stream.fields,
+            defFields
+          )
+        : buildContributingAutoBindings(
+            entityDefinitionId,
+            mapping.rootPath,
+            stream.fields,
+            defFields
+          )
     ).filter((b) => !boundTargets.has(b.targetFieldRef))
     const fieldMappings = [...matchBindings, ...valueBindings]
 
