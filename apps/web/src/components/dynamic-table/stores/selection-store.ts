@@ -188,7 +188,17 @@ export const useSelectionStore = create<SelectionStore>()(
             newSelection = { ...rowSelection, [rowId]: !rowSelection[rowId] }
             newLastIndex = allRowIds.indexOf(rowId)
           } else {
-            newSelection = { [rowId]: true }
+            // Bulk mode: a plain row-body click toggles this row in/out, matching
+            // the checkbox. The previous `{ [rowId]: true }` collapsed the whole
+            // multi-selection to a single row — so a stray click on the row body
+            // (easy to hit when rapidly clicking the narrow checkbox column) wiped
+            // every other checked row.
+            newSelection = { ...rowSelection }
+            if (newSelection[rowId]) {
+              delete newSelection[rowId]
+            } else {
+              newSelection[rowId] = true
+            }
             newLastIndex = allRowIds.indexOf(rowId)
           }
 
