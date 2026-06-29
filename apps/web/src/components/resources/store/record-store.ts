@@ -26,6 +26,12 @@ export interface RecordMeta {
   avatarUrl?: string
   createdAt: string | Date
   updatedAt: string | Date
+  /**
+   * Data-connector / integration provenance (from `EntityInstance.integrationSource`).
+   * Holds the owning DataConnector id for synced records; null/undefined otherwise.
+   * Drives the "Synced from <connector>" source badge.
+   */
+  integrationSource?: string | null
   /** Additional database fields from the specific resource table */
   [key: string]: unknown
 }

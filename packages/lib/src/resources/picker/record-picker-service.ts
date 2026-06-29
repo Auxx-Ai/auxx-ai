@@ -608,6 +608,8 @@ export class RecordPickerService {
       avatarUrl: string | null
       createdAt: string
       updatedAt: string
+      integrationSource?: string | null
+      externalId?: string | null
     }
   ): RecordPickerItem {
     const { displayName, secondaryInfo } = resolveEntityDisplay(
@@ -621,6 +623,8 @@ export class RecordPickerService {
       displayName,
       secondaryInfo,
       avatarUrl: instance.avatarUrl || undefined,
+      integrationSource: instance.integrationSource ?? null,
+      externalId: instance.externalId ?? null,
       data: instance,
       createdAt: instance.createdAt,
       updatedAt: instance.updatedAt,

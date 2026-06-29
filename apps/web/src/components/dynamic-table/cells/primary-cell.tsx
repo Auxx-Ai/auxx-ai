@@ -29,6 +29,9 @@ export interface PrimaryCellProps {
   /** Dropdown menu items passed as children for maximum flexibility */
   children: React.ReactNode
 
+  /** Optional inline node rendered right after the title (e.g. a source badge). */
+  suffix?: React.ReactNode
+
   /** Optional: Font weight for title (default: 'medium') */
   fontWeight?: 'normal' | 'medium' | 'semibold'
 
@@ -47,6 +50,7 @@ export function PrimaryCell({
   prefixIcon,
   onTitleClick,
   children,
+  suffix,
   fontWeight = 'medium',
   titleClassName = '',
 }: PrimaryCellProps) {
@@ -55,19 +59,22 @@ export function PrimaryCell({
 
   return (
     <div className='flex items-center justify-between w-full min-h-9 pl-3 pr-1 text-sm group/primary'>
-      <button
-        className={cn(
-          'flex items-center gap-2 text-left underline decoration-muted-foreground/50 hover:decoration-muted-foreground truncate max-w-[calc(100%-40px)]',
-          fontWeightClass,
-          titleClassName
-        )}
-        onClick={(e) => {
-          e.stopPropagation()
-          onTitleClick()
-        }}>
-        {prefixIcon}
-        <span className='truncate'>{displayValue}</span>
-      </button>
+      <div className='flex items-center gap-1.5 min-w-0 max-w-[calc(100%-40px)]'>
+        <button
+          className={cn(
+            'flex items-center gap-2 text-left underline decoration-muted-foreground/50 hover:decoration-muted-foreground truncate min-w-0',
+            fontWeightClass,
+            titleClassName
+          )}
+          onClick={(e) => {
+            e.stopPropagation()
+            onTitleClick()
+          }}>
+          {prefixIcon}
+          <span className='truncate'>{displayValue}</span>
+        </button>
+        {suffix}
+      </div>
 
       <div onClick={(e) => e.stopPropagation()} className='shrink-0'>
         <DropdownMenu>

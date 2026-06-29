@@ -31,6 +31,7 @@ import { EntityInstanceDialog } from '~/components/custom-fields/ui/entity-insta
 import { BaseEntityDrawer } from '~/components/drawers/base-entity-drawer'
 import { getHeaderActions } from '~/components/drawers/drawer-action-registry'
 import { FavoriteToggleMenuItem } from '~/components/favorites/ui/favorite-toggle-menu-item'
+import { ConnectorSourceBadge } from '~/components/fields/connector-source-badge'
 import { Tooltip } from '~/components/global/tooltip'
 import { CommandContext, RecordCommandActions } from '~/components/kbar/contextual'
 import { KopilotContext } from '~/components/kopilot/context'
@@ -423,14 +424,23 @@ export const RecordDrawer = React.memo(function RecordDrawer({
                 inverse
               />
             )}
-            <div className='flex flex-col align-start w-full'>
-              <div className='text-lg font-medium text-neutral-900 dark:text-neutral-400 truncate'>
-                {isRecordLoading ? (
-                  <div className='mb-1'>
-                    <Skeleton className='h-6 w-80' />
-                  </div>
-                ) : (
-                  displayName || 'Untitled'
+            <div className='flex flex-col align-start w-full min-w-0'>
+              <div className='flex items-center gap-2 min-w-0'>
+                <div className='text-lg font-medium text-neutral-900 dark:text-neutral-400 truncate min-w-0'>
+                  {isRecordLoading ? (
+                    <div className='mb-1'>
+                      <Skeleton className='h-6 w-80' />
+                    </div>
+                  ) : (
+                    displayName || 'Untitled'
+                  )}
+                </div>
+                {!isRecordLoading && (
+                  <ConnectorSourceBadge
+                    integrationSource={cachedRecord?.integrationSource}
+                    variant='chip'
+                    className='shrink-0'
+                  />
                 )}
               </div>
               <div className='text-xs text-neutral-500 truncate'>
