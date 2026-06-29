@@ -165,6 +165,7 @@ interface ConnectorDraftState {
 
   // ── stream setters (draft-only) ──
   renameStream: (streamId: string, streamKey: string) => void
+  setStreamEnabled: (streamId: string, enabled: boolean) => void
   setSyncMode: (streamId: string, syncMode: SyncMode) => void
   setRequestConfig: (streamId: string, requestConfig: UiRequestConfig) => void
   setStreamSchema: (
@@ -319,6 +320,9 @@ export const useConnectorDraftStore = create<ConnectorDraftState>()(
 
     renameStream: (streamId, streamKey) =>
       set((s) => ({ draft: patchStream(s.draft, streamId, (st) => ({ ...st, streamKey })) })),
+
+    setStreamEnabled: (streamId, enabled) =>
+      set((s) => ({ draft: patchStream(s.draft, streamId, (st) => ({ ...st, enabled })) })),
 
     setSyncMode: (streamId, syncMode) =>
       set((s) => ({ draft: patchStream(s.draft, streamId, (st) => ({ ...st, syncMode })) })),

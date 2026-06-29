@@ -209,6 +209,7 @@ export interface CatalogConnectorDefaultMapping {
         mode: 'contributing'
         entityKind: string
         matchFieldKeys?: string[]
+        fieldBindings?: { sourceFieldKey: string; targetKey: string }[]
       }
 }
 

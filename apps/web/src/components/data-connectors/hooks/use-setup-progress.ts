@@ -50,7 +50,7 @@ export interface SetupProgress {
   connectTrivial: boolean
   /** At least one stream has a source schema (a successful sample → "use as schema"). */
   sample: boolean
-  /** EVERY stream is `ready` (≥1 mapping with a bound `targetFieldRef`). */
+  /** EVERY *enabled* stream is `ready` (≥1 mapping with a bound `targetFieldRef`). */
   map: boolean
   /** Map satisfied → the terminal "Run first sync" CTA is enabled
    *  (Sample is implied by Map; Schedule defaults to Manual). */
@@ -102,9 +102,11 @@ export function deriveSetupProgress(
   }
 
   const sample = streams.some((s) => s.sourceSchema != null)
-  // Every stream must be mapped — an app connector that fans out to N streams (or
-  // carries a draft contributing mapping) can't finish setup with a half-authored
-  // fan-out (multi-stream-setup-plan §4.2).
-  const map = streams.length > 0 && streams.every((s) => deriveStreamReadiness(s) === 'ready')
+  // Every *enabled* stream must be mapped — an app connector that fans out to N streams
+  // can't finish setup with a half-authored fan-out, but a stream the org toggled off
+  // is excluded (it won't sync). This realigns the gate with the backend readiness
+  // filter (`readiness.ts` does `streams.filter(s => s.enabled)`). (§3.2.)
+  const enabled = streams.filter((s) => s.enabled)
+  const map = enabled.length > 0 && enabled.every((s) => deriveStreamReadiness(s) === 'ready')
   return { connect, connectTrivial, sample, map, canRun: map }
 }

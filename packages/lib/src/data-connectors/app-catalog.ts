@@ -118,6 +118,69 @@ export function buildContributingMatchBindings(
   // single deterministic source path for a key, so skip auto-binding them.
   if (rootPath.includes('[]')) return []
 
+  const fieldByKey = buildTargetFieldIndex(defFields)
+  const prefix = rootPath ? `${rootPath}.` : ''
+  const bindings: FieldMapping[] = []
+  for (const key of matchFieldKeys) {
+    const target = fieldByKey.get(key) ?? fieldByKey.get(normalizeFieldKey(key))
+    if (!target) continue
+    const absolutePath = `${prefix}${key}`
+    const sourceField = sourceFields.find((f) => f.sourcePath === absolutePath)
+    if (!sourceField) continue
+    bindings.push(
+      bindSourceToTarget(entityDefinitionId, prefix, sourceField, target, {
+        kind: 'match',
+        normalize: deriveNormalizeFromType(target.type),
+      })
+    )
+  }
+  return bindings
+}
+
+/**
+ * Pre-bind a contributing mapping's author-declared NON-identity `fieldBindings`
+ * (e.g. `first_name` → contact's first-name attribute) into plain `FieldMapping`
+ * entries (no `identityRole`) — the symmetric counterpart to
+ * {@link buildContributingMatchBindings}. Lets an app author state how a stream's
+ * fields land in the contributing def so the stream is born closer to `ready` instead
+ * of a bare identity-only draft (multi-stream-setup-plan §3.4A). A binding resolves
+ * only when BOTH sides resolve unambiguously:
+ *   - source — a declared stream field by `fieldKey` (`binding.sourceFieldKey`);
+ *   - target — a field on the contributing def keyed by `binding.targetKey` (its
+ *     `systemAttribute`, name, or normalized name).
+ * Array-rooted mappings and unresolved bindings are dropped (the row keeps whatever
+ * draft state remains). The external id is never bound here.
+ */
+export function buildContributingFieldBindings(
+  entityDefinitionId: string,
+  rootPath: string,
+  fieldBindings: { sourceFieldKey: string; targetKey: string }[],
+  sourceFields: CatalogDataConnector['streams'][number]['fields'],
+  defFields: ContributingTargetField[]
+): FieldMapping[] {
+  if (fieldBindings.length === 0) return []
+  // An array root has no single deterministic subtree-relative path, same as match keys.
+  if (rootPath.includes('[]')) return []
+
+  const fieldByKey = buildTargetFieldIndex(defFields)
+  const prefix = rootPath ? `${rootPath}.` : ''
+  const bindings: FieldMapping[] = []
+  for (const { sourceFieldKey, targetKey } of fieldBindings) {
+    const target = fieldByKey.get(targetKey) ?? fieldByKey.get(normalizeFieldKey(targetKey))
+    if (!target) continue
+    const sourceField = sourceFields.find((f) => f.fieldKey === sourceFieldKey)
+    // The source field must live under this mapping's subtree (its sourcePath starts
+    // with the rootPath prefix), else its relative path is undefined for this root.
+    if (!sourceField || (prefix && !sourceField.sourcePath.startsWith(prefix))) continue
+    bindings.push(bindSourceToTarget(entityDefinitionId, prefix, sourceField, target))
+  }
+  return bindings
+}
+
+/** Build the target-field lookup keyed by systemAttribute / name (+ normalized). */
+function buildTargetFieldIndex(
+  defFields: ContributingTargetField[]
+): Map<string, ContributingTargetField> {
   const fieldByKey = new Map<string, ContributingTargetField>()
   for (const fld of defFields) {
     if (fld.systemAttribute) {
@@ -127,26 +190,30 @@ export function buildContributingMatchBindings(
     fieldByKey.set(fld.name, fld)
     fieldByKey.set(normalizeFieldKey(fld.name), fld)
   }
+  return fieldByKey
+}
 
-  const prefix = rootPath ? `${rootPath}.` : ''
-  const bindings: FieldMapping[] = []
-  for (const key of matchFieldKeys) {
-    const target = fieldByKey.get(key) ?? fieldByKey.get(normalizeFieldKey(key))
-    if (!target) continue
-    const absolutePath = `${prefix}${key}`
-    const sourceField = sourceFields.find((f) => f.sourcePath === absolutePath)
-    if (!sourceField) continue
-    // Subtree-relative path (strip the rootPath prefix the source field declares).
-    const relativePath = sourceField.sourcePath.slice(prefix.length)
-    bindings.push({
-      id: generateId(),
-      targetFieldRef: toResourceFieldId(entityDefinitionId, target.id),
-      expression: `{${relativePath}}`,
-      sourceFields: { [relativePath]: relativePath },
-      identityRole: { kind: 'match', normalize: deriveNormalizeFromType(target.type) },
-    })
+/**
+ * Construct one `FieldMapping` binding a resolved source field to a resolved target,
+ * computing the subtree-relative source path (strip the `rootPath` prefix — `mapRecord`
+ * evaluates a rooted mapping against subtree-relative paths). Pass `identityRole` to
+ * flag it a secondary-identity match; omit for a plain value binding.
+ */
+function bindSourceToTarget(
+  entityDefinitionId: string,
+  prefix: string,
+  sourceField: CatalogDataConnector['streams'][number]['fields'][number],
+  target: ContributingTargetField,
+  identityRole?: FieldMapping['identityRole']
+): FieldMapping {
+  const relativePath = prefix ? sourceField.sourcePath.slice(prefix.length) : sourceField.sourcePath
+  return {
+    id: generateId(),
+    targetFieldRef: toResourceFieldId(entityDefinitionId, target.id),
+    expression: `{${relativePath}}`,
+    sourceFields: { [relativePath]: relativePath },
+    ...(identityRole ? { identityRole } : {}),
   }
-  return bindings
 }
 
 /** The source schema for an app catalog stream — prefer its canonical sample. */

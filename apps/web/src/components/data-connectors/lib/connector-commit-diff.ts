@@ -53,7 +53,12 @@ export interface MappingUpdatePatch {
 
 export interface CommitPlan {
   connectorUpdate: ConnectorUpdatePatch | null
-  streamRenames: Array<{ streamId: string; streamKey: string }>
+  /**
+   * Per-stream `updateStream` calls — a `streamKey` rename and/or an `enabled`
+   * toggle. An enabled-only change is cosmetic (no resync), so it never sets
+   * `structural`.
+   */
+  streamRenames: Array<{ streamId: string; streamKey?: string; enabled?: boolean }>
   streamRequestConfigs: Array<{
     streamId: string
     requestConfig: UiRequestConfig
@@ -214,8 +219,15 @@ export function diffConnectorDraft(snapshot: ConnectorDraft, draft: ConnectorDra
     const prev = prevStreams.get(stream.id)
     if (!prev) continue
 
-    if (prev.streamKey !== stream.streamKey)
-      streamRenames.push({ streamId: stream.id, streamKey: stream.streamKey })
+    const streamKeyChanged = prev.streamKey !== stream.streamKey
+    const enabledChanged = prev.enabled !== stream.enabled
+    if (streamKeyChanged || enabledChanged)
+      // Enabled-only is cosmetic — deliberately does NOT set `structural`.
+      streamRenames.push({
+        streamId: stream.id,
+        ...(streamKeyChanged ? { streamKey: stream.streamKey } : {}),
+        ...(enabledChanged ? { enabled: stream.enabled } : {}),
+      })
 
     const requestChanged = !eq(prev.requestConfig, stream.requestConfig)
     const syncModeChanged = prev.syncMode !== stream.syncMode

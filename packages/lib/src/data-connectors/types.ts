@@ -382,6 +382,9 @@ export interface ConnectorDefaultMapping {
         entityKind: string
         /** Target field keys to flag as secondary identity-match keys (e.g. `['email']`). */
         matchFieldKeys?: string[]
+        /** Non-identity field bindings pre-declared by the app author (e.g. `first_name`
+         *  → contact first-name). Bound by key like match keys, sans `identityRole`. */
+        fieldBindings?: { sourceFieldKey: string; targetKey: string }[]
       }
 }
 

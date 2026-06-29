@@ -3,6 +3,7 @@
 
 import { Button } from '@auxx/ui/components/button'
 import { EmptySection, Section } from '@auxx/ui/components/section'
+import { Switch } from '@auxx/ui/components/switch'
 import { toastError } from '@auxx/ui/components/toast'
 import TreeRow, { TreeRowButton } from '@auxx/ui/components/tree-row'
 import { ArrowRight, Layers, Plus, Table2, Trash2 } from 'lucide-react'
@@ -24,10 +25,12 @@ function StreamRow({
   stream,
   onSelect,
   onDelete,
+  onToggleEnabled,
 }: {
   stream: Stream
   onSelect: () => void
   onDelete: () => void
+  onToggleEnabled: (enabled: boolean) => void
 }) {
   const { getResourceById } = useResources()
   const defLabels = stream.mappings
@@ -51,9 +54,16 @@ function StreamRow({
       onToggleOpen={onSelect}
       rowClassName='cursor-pointer'
       trailing={
-        <TreeRowButton variant='destructive' tooltipText='Delete stream' onClick={onDelete}>
-          <Trash2 />
-        </TreeRowButton>
+        <div className='flex items-center gap-1'>
+          <Switch
+            size='xs'
+            checked={stream.enabled}
+            onCheckedChange={(enabled) => onToggleEnabled(enabled)}
+          />
+          <TreeRowButton variant='destructive' tooltipText='Delete stream' onClick={onDelete}>
+            <Trash2 />
+          </TreeRowButton>
+        </div>
       }
     />
   )
@@ -83,6 +93,24 @@ export function StreamsSection({ connector, onSelect }: StreamsSectionProps) {
   const removeStream = api.dataConnector.removeStream.useMutation({
     onSuccess: () => void utils.dataConnector.listStreams.invalidate({ id: connector.id }),
     onError: (e) => toastError({ title: 'Could not delete stream', description: e.message }),
+  })
+
+  // Direct optimistic toggle (mirrors the procedure switch + the trash beside it).
+  // Enabling/disabling a stream is cosmetic — no resync, no archiving.
+  const toggleStream = api.dataConnector.updateStream.useMutation({
+    onMutate: async ({ streamId, enabled }) => {
+      await utils.dataConnector.listStreams.cancel({ id: connector.id })
+      const prev = utils.dataConnector.listStreams.getData({ id: connector.id })
+      utils.dataConnector.listStreams.setData({ id: connector.id }, (cached) =>
+        cached?.map((s) => (s.id === streamId ? { ...s, enabled: enabled ?? s.enabled } : s))
+      )
+      return { prev }
+    },
+    onError: (e, _v, ctx) => {
+      if (ctx?.prev) utils.dataConnector.listStreams.setData({ id: connector.id }, ctx.prev)
+      toastError({ title: 'Could not update stream', description: e.message })
+    },
+    onSettled: () => void utils.dataConnector.listStreams.invalidate({ id: connector.id }),
   })
 
   const handleDelete = async (stream: Stream) => {
@@ -133,6 +161,7 @@ export function StreamsSection({ connector, onSelect }: StreamsSectionProps) {
               stream={stream}
               onSelect={() => onSelect(stream.id)}
               onDelete={() => void handleDelete(stream)}
+              onToggleEnabled={(enabled) => toggleStream.mutate({ streamId: stream.id, enabled })}
             />
           ))}
         </div>

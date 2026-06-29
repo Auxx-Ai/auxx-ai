@@ -758,7 +758,13 @@ export const dataConnectorRouter = createTRPCRouter({
     }),
 
   updateStream: adminProcedure
-    .input(z.object({ streamId: z.string(), streamKey: z.string().min(1).optional() }))
+    .input(
+      z.object({
+        streamId: z.string(),
+        streamKey: z.string().min(1).optional(),
+        enabled: z.boolean().optional(),
+      })
+    )
     .mutation(async ({ ctx, input }) => {
       const { streamId, ...rest } = input
       return updateStream(ctx.db, ctx.session.organizationId, streamId, rest)
