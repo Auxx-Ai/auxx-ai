@@ -6,6 +6,7 @@
     "connect-inbox",
     "connect-shopify",
     "navigate-dashboard",
-    "invite-team"
+    "invite-team",
+    "install-extension"
   ]
 }

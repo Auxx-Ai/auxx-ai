@@ -19,10 +19,11 @@ import {
   SidebarMenuItem,
   SidebarMenuSub,
 } from '@auxx/ui/components/sidebar'
-import { CheckCheck, MoreHorizontal, Rocket, X } from 'lucide-react'
+import { CheckCheck, ExternalLink, MoreHorizontal, Rocket, X } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { type MouseEvent, useCallback, useRef, useState } from 'react'
 import { useSidebarState } from '~/hooks/use-sidebar-state'
+import { useEnv } from '~/providers/dehydrated-state-provider'
 import type { GettingStartedGoal } from '../client'
 import { useGettingStarted } from '../hooks/use-getting-started'
 import { GettingStartedStep } from './getting-started-step'
@@ -44,6 +45,7 @@ function stop(e: MouseEvent) {
  */
 export function GettingStartedGroup() {
   const router = useRouter()
+  const { docsUrl } = useEnv()
   const { getSectionOpen, toggleSection } = useSidebarState()
   const {
     isLoading,
@@ -63,8 +65,9 @@ export function GettingStartedGroup() {
   const [hoveredKey, setHoveredKey] = useState<string | null>(null)
 
   // Callback ref: measure the whole group (header + progress + items) whenever
-  // it actually mounts, and track its height as the accordion animates. Used to
-  // make the side panel exactly as tall as the group.
+  // it actually mounts, and track its height as the accordion animates. Used as
+  // the side panel's min-height so it aligns with the group but can grow taller
+  // when its own content needs more room.
   const measureRef = useCallback((node: HTMLDivElement | null) => {
     observerRef.current?.disconnect()
     if (!node) return
@@ -83,7 +86,6 @@ export function GettingStartedGroup() {
   // Default the panel to the first incomplete step until the user hovers one.
   const activeGoal =
     goals.find((g) => g.key === hoveredKey) ?? goals.find((g) => !completed.has(g.key)) ?? goals[0]
-  const activeCompleted = !!activeGoal && completed.has(activeGoal.key)
 
   const handleCTA = (goal: GettingStartedGoal) => {
     if (goal.markOnClick) markGoalComplete(goal.key)
@@ -97,7 +99,7 @@ export function GettingStartedGroup() {
   return (
     <SidebarMenu>
       <SidebarMenuItem>
-        <HoverCard openDelay={60} closeDelay={80}>
+        <HoverCard openDelay={250} closeDelay={200}>
           <HoverCardTrigger asChild>
             <div ref={measureRef}>
               <SidebarMenuButton asChild tooltip='Getting started'>
@@ -161,20 +163,40 @@ export function GettingStartedGroup() {
               side='right'
               align='start'
               sideOffset={12}
-              style={{ height: panelHeight }}
-              className='flex w-64 flex-col p-3'>
-              <div className='flex items-center gap-2'>
+              style={{ minHeight: panelHeight }}
+              // Invisible bridge (`before`) spans the `sideOffset` gap so a
+              // diagonal cursor path from the list to the card stays over a
+              // hoverable region and the card doesn't close mid-traversal.
+              className="relative flex w-64 flex-col p-3 before:absolute before:right-full before:top-0 before:h-full before:w-3 before:content-['']">
+              {/* Step preview; grows to push the title + description block to the
+                  bottom of the panel. Shows the goal's image when set, otherwise
+                  its icon as a placeholder visual. */}
+              <div className='flex min-h-24 flex-1 items-center justify-center overflow-hidden rounded-lg bg-primary-200'>
+                {activeGoal.previewImage ? (
+                  <img src={activeGoal.previewImage} alt='' className='size-full object-cover' />
+                ) : (
+                  <EntityIcon iconId={activeGoal.iconId} color={activeGoal.color} size='xl' />
+                )}
+              </div>
+              <div className='mt-3 flex items-center gap-2'>
                 <EntityIcon iconId={activeGoal.iconId} color={activeGoal.color} size='default' />
                 <span className='text-sm font-medium'>{activeGoal.label}</span>
               </div>
-              <p className='mt-2 text-sm text-muted-foreground'>{activeGoal.description}</p>
-              <Button
-                size='sm'
-                variant={activeCompleted ? 'outline' : 'default'}
-                className='mt-auto w-full'
-                onClick={() => handleCTA(activeGoal)}>
-                {activeCompleted ? 'Done' : activeGoal.ctaText}
-              </Button>
+              <p className='mt-1 text-sm text-muted-foreground'>{activeGoal.description}</p>
+              <div className='mt-3 flex items-center gap-2'>
+                <Button size='sm' onClick={() => handleCTA(activeGoal)}>
+                  {activeGoal.ctaText}
+                </Button>
+                <Button size='sm' variant='outline' asChild>
+                  <a
+                    href={`${docsUrl}${activeGoal.docsPath}`}
+                    target='_blank'
+                    rel='noopener noreferrer'>
+                    Learn more
+                    <ExternalLink />
+                  </a>
+                </Button>
+              </div>
             </HoverCardContent>
           )}
         </HoverCard>
