@@ -220,6 +220,14 @@ export interface CatalogConnectorDefaultMapping {
         entityKind: string
         /** Target field keys to flag as secondary identity-match keys (e.g. `['email']`). */
         matchFieldKeys?: string[]
+        /**
+         * Non-identity field bindings the app author pre-declares so a contributing
+         * stream is born closer to `ready` (e.g. `first_name` → contact's first-name
+         * attribute). Each binds a source field to a target `contact` field by key —
+         * the same resolver the match keys use, just without an `identityRole`.
+         * Unresolved bindings are dropped (the row stays a `needs-mapping` draft).
+         */
+        fieldBindings?: { sourceFieldKey: string; targetKey: string }[]
       }
 }
 

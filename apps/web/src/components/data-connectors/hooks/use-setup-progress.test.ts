@@ -2,7 +2,13 @@
 
 import { describe, expect, it } from 'vitest'
 import type { RouterOutputs } from '~/trpc/react'
-import { deriveStreamReadiness } from './use-setup-progress'
+import {
+  type ConnectRequirements,
+  deriveSetupProgress,
+  deriveStreamReadiness,
+  type ProgressConnectorRow,
+  type ProgressStreamRow,
+} from './use-setup-progress'
 
 type Stream = RouterOutputs['dataConnector']['listStreams'][number]
 
@@ -34,5 +40,45 @@ describe('deriveStreamReadiness', () => {
         stream([{ targetFieldRefs: [null] }, { targetFieldRefs: [null, 'def:field'] }])
       )
     ).toBe('ready')
+  })
+})
+
+describe('deriveSetupProgress — map gate filters by enabled', () => {
+  // A generic-rest connector with an endpoint satisfies Connect, isolating the map gate.
+  const connector: ProgressConnectorRow = {
+    definitionKind: 'rest',
+    config: { endpoint: { baseUrl: 'https://api.example.com' } },
+    credentialId: null,
+  }
+  const reqs: ConnectRequirements = {
+    requiresConnection: false,
+    hasConfigForm: false,
+    requiredConfigSatisfied: true,
+  }
+  const ready = (enabled: boolean): ProgressStreamRow => ({
+    enabled,
+    sourceSchema: { type: 'object' },
+    mappings: [{ fieldMappings: [{ targetFieldRef: 'def:field' }] }],
+  })
+  const notReady = (enabled: boolean): ProgressStreamRow => ({
+    enabled,
+    sourceSchema: { type: 'object' },
+    mappings: [{ fieldMappings: [{ targetFieldRef: null }] }],
+  })
+
+  it('passes when an enabled stream is ready and a disabled one is not', () => {
+    expect(deriveSetupProgress(connector, [ready(true), notReady(false)], reqs).map).toBe(true)
+  })
+
+  it('passes when the only not-ready stream is disabled', () => {
+    expect(deriveSetupProgress(connector, [ready(true), notReady(false)], reqs).map).toBe(true)
+  })
+
+  it('blocks when a not-ready stream is enabled', () => {
+    expect(deriveSetupProgress(connector, [ready(true), notReady(true)], reqs).map).toBe(false)
+  })
+
+  it('blocks (map:false) when every stream is disabled', () => {
+    expect(deriveSetupProgress(connector, [ready(false), ready(false)], reqs).map).toBe(false)
   })
 })

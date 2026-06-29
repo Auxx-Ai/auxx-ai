@@ -143,6 +143,16 @@ export interface ConnectorDefaultMapping {
          * incoming record into an existing entity on first link.
          */
         matchFieldKeys?: string[]
+        /**
+         * Non-identity field bindings the author pre-declares so a contributing
+         * stream lands closer to `ready` — e.g. `{ sourceFieldKey: 'first_name',
+         * targetKey: 'first_name' }` binds the source field to the contact's
+         * first-name attribute. `targetKey` resolves against the target def's
+         * `systemAttribute` / field name; unresolved bindings are dropped (the
+         * mapping stays a setup draft). The external id is never bound here — it
+         * rides `ConnectorRecord.externalId`.
+         */
+        fieldBindings?: { sourceFieldKey: string; targetKey: string }[]
       }
 }
 

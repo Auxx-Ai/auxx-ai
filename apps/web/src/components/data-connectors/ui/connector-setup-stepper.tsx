@@ -5,7 +5,7 @@ import { Button } from '@auxx/ui/components/button'
 import { RadioGroup } from '@auxx/ui/components/radio-group'
 import { RadioGroupItemCard } from '@auxx/ui/components/radio-group-item'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
-import { EmptySection } from '@auxx/ui/components/section'
+import { EmptySection, Section } from '@auxx/ui/components/section'
 import {
   Select,
   SelectContent,
@@ -110,7 +110,6 @@ export function ConnectorSetupStepper({ connector }: ConnectorSetupStepperProps)
   const utils = api.useUtils()
   const streamsQuery = api.dataConnector.listStreams.useQuery({ id: connector.id })
   const streams = useMemo(() => streamsQuery.data ?? [], [streamsQuery.data])
-  const primaryStream = streams[0] ?? null
 
   // Gate the stepper off the DRAFT — the client source of truth. The autosave commit
   // reconciles the draft in place and deliberately does NOT refetch getById/listStreams
@@ -139,14 +138,32 @@ export function ConnectorSetupStepper({ connector }: ConnectorSetupStepperProps)
     return source
   }, [draftSeeded, draftStreams, streams])
 
+  // The enabled streams (draft-backed once seeded) are the ones setup must satisfy —
+  // a stream the org toggled off neither gates nor needs a sample. Step structure and
+  // the Connect/Sample bodies key off these, not `streams[0]` (§3.3).
+  const enabledStreams = useMemo(() => {
+    const enabledById = new Map(draftStreams.map((s) => [s.id, s.enabled]))
+    return streams.filter((s) => (draftSeeded ? (enabledById.get(s.id) ?? s.enabled) : s.enabled))
+  }, [streams, draftStreams, draftSeeded])
+
+  // The stream Connect previews / the Sample step configures. Prefer the first enabled
+  // stream still lacking a catalog schema (the one a sample is actually for); else the
+  // first enabled stream. Falls back to the whole list when nothing is enabled yet.
+  const sampleStream =
+    enabledStreams.find((s) => s.schemaSource !== 'catalog' || s.sourceSchema == null) ??
+    enabledStreams[0] ??
+    streams[0] ??
+    null
+
   // A catalog-supplied schema (app connectors always; templates that ship one)
   // means there's nothing to "pull a sample" for — the source shape arrived at
-  // create time. Drop that step; instead offer an optional live preview inside
-  // Connect so the user can still confirm the connection returns real data.
-  // `schemaSource === 'catalog'` is the stable signal — a user-pulled sample
-  // stamps 'inferred', so this never flips mid-setup.
+  // create time. Drop that step only when EVERY enabled stream already carries a
+  // catalog schema; a mix keeps Sample for the schema-less ones. `schemaSource ===
+  // 'catalog'` is the stable signal — a user-pulled sample stamps 'inferred', so this
+  // never flips mid-setup.
   const catalogSchema =
-    primaryStream?.schemaSource === 'catalog' && primaryStream.sourceSchema != null
+    enabledStreams.length > 0 &&
+    enabledStreams.every((s) => s.schemaSource === 'catalog' && s.sourceSchema != null)
 
   const steps = useMemo(
     () => (catalogSchema ? STEPS.filter((s) => s.id !== 'sample') : STEPS),
@@ -267,18 +284,18 @@ export function ConnectorSetupStepper({ connector }: ConnectorSetupStepperProps)
         return (
           <>
             <ConnectionSection connector={connector} />
-            {catalogSchema && progress.connect && primaryStream && (
-              <ConnectPreview connector={connector} stream={primaryStream} />
+            {catalogSchema && progress.connect && sampleStream && (
+              <ConnectPreview connector={connector} stream={sampleStream} />
             )}
           </>
         )
       case 'sample':
-        if (!primaryStream)
+        if (!sampleStream)
           return <NoStreamPrompt addStream={addStream} connectorId={connector.id} />
         return (
           <StreamConfigPanel
             connector={connector}
-            stream={primaryStream}
+            stream={sampleStream}
             view='configure'
             scroll={false}
           />
@@ -463,14 +480,18 @@ function ConnectPreview({ connector, stream }: { connector: Connector; stream: S
   }
 
   return (
-    <div className='mt-2 flex flex-col gap-2 border-t px-1 pt-3'>
-      <div className='flex items-center justify-between gap-3'>
-        <div className='flex flex-col'>
-          <span className='text-sm font-medium'>Preview records</span>
-          <span className='text-xs text-muted-foreground'>
-            Optional — confirm the connection returns real data before the first sync.
-          </span>
-        </div>
+    // A real Section (not a bare div) so it matches Connection / Connector settings
+    // above it — same uppercase header + divider, no offset hand-rolled border.
+    <Section
+      title='Preview records'
+      icon={<FlaskConical className='size-4' />}
+      initialOpen
+      collapsible={false}
+      // Drop the body padding while there's no sample yet (the shared empty-body
+      // pattern — cf. stream-config-panel / pagination-section).
+      className={sample ? undefined : '[&_[data-slot=section]]:pb-0'}
+      description='Optional — confirm the connection returns real data before the first sync.'
+      actions={
         <Button
           size='sm'
           variant='outline'
@@ -480,9 +501,13 @@ function ConnectPreview({ connector, stream }: { connector: Connector; stream: S
           <FlaskConical />
           {sample ? 'Refresh' : 'Preview'}
         </Button>
-      </div>
-      {sample && <StreamSample sample={sample} />}
-    </div>
+      }>
+      {sample && (
+        <div className='px-1'>
+          <StreamSample sample={sample} />
+        </div>
+      )}
+    </Section>
   )
 }
 

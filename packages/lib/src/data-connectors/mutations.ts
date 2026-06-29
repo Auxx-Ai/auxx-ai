@@ -14,7 +14,11 @@ import { and, eq, inArray } from 'drizzle-orm'
 import { getCachedCustomFields, getCachedEntityDefId } from '../cache'
 import { BadRequestError, NotFoundError } from '../errors'
 import { toRecordId } from '../resources/resource-id'
-import { appCatalogStreamSchema, buildContributingMatchBindings } from './app-catalog'
+import {
+  appCatalogStreamSchema,
+  buildContributingFieldBindings,
+  buildContributingMatchBindings,
+} from './app-catalog'
 import { removeConnectorScheduler, syncConnectorScheduler } from './data-connector-scheduler'
 import {
   classifyConnectorChange,
@@ -537,7 +541,7 @@ async function materializeAppContributingMappings(
 ): Promise<void> {
   for (const mapping of stream.defaultMappings ?? []) {
     if (mapping.target.mode !== 'contributing') continue
-    const { entityKind, matchFieldKeys } = mapping.target
+    const { entityKind, matchFieldKeys, fieldBindings } = mapping.target
 
     const entityDefinitionId = await getCachedEntityDefId(organizationId, entityKind)
     if (!entityDefinitionId) {
@@ -550,13 +554,24 @@ async function materializeAppContributingMappings(
     }
 
     const defFields = await getCachedCustomFields(organizationId, entityDefinitionId)
-    const fieldMappings = buildContributingMatchBindings(
+    // Identity-match bindings first; then author-declared non-identity field bindings,
+    // skipping any target a match key already claimed (match's `identityRole` wins).
+    const matchBindings = buildContributingMatchBindings(
       entityDefinitionId,
       mapping.rootPath,
       matchFieldKeys ?? [],
       stream.fields,
       defFields
     )
+    const boundTargets = new Set(matchBindings.map((b) => b.targetFieldRef))
+    const valueBindings = buildContributingFieldBindings(
+      entityDefinitionId,
+      mapping.rootPath,
+      fieldBindings ?? [],
+      stream.fields,
+      defFields
+    ).filter((b) => !boundTargets.has(b.targetFieldRef))
+    const fieldMappings = [...matchBindings, ...valueBindings]
 
     await addMapping(db, organizationId, {
       dataConnectorStreamId: streamId,
@@ -799,18 +814,26 @@ export async function addStream(
   return row
 }
 
-/** Rename a stream (update its streamKey). */
+/**
+ * Update a stream's `streamKey` and/or `enabled` flag.
+ *
+ * Toggling `enabled` is non-structural (cosmetic per `edit-impact.ts`) — the next
+ * sync includes/excludes the stream naturally, so no cursor invalidation or
+ * record archiving happens here. Use `setStreamRequestConfig` for steering changes
+ * that carry cursor side effects.
+ */
 export async function updateStream(
   db: Database,
   organizationId: string,
   streamId: string,
-  input: { streamKey?: string }
+  input: { streamKey?: string; enabled?: boolean }
 ): Promise<DataConnectorStreamRow> {
   await loadStreamRow(db, organizationId, streamId)
   const [row] = await db
     .update(schema.DataConnectorStream)
     .set({
       ...(input.streamKey !== undefined ? { streamKey: input.streamKey } : {}),
+      ...(input.enabled !== undefined ? { enabled: input.enabled } : {}),
       updatedAt: new Date(),
     })
     .where(eq(schema.DataConnectorStream.id, streamId))

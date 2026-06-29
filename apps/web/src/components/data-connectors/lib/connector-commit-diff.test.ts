@@ -281,6 +281,27 @@ describe('stream config', () => {
     const plan = diffConnectorDraft(snap, draft)
     expect(plan.streamRenames).toEqual([{ streamId: 'stream_1', streamKey: 'invoices' }])
   })
+
+  it('enabled-only toggle → one streamRenames entry with { enabled }, NOT structural', () => {
+    const [snap, draft] = withEdits(() => {
+      getConnectorDraftState().setStreamEnabled('stream_1', false)
+    })
+    const plan = diffConnectorDraft(snap, draft)
+    expect(plan.streamRenames).toEqual([{ streamId: 'stream_1', enabled: false }])
+    expect(plan.structural).toBe(false)
+  })
+
+  it('streamKey + enabled change merge into one entry', () => {
+    const [snap, draft] = withEdits(() => {
+      getConnectorDraftState().renameStream('stream_1', 'invoices')
+      getConnectorDraftState().setStreamEnabled('stream_1', false)
+    })
+    const plan = diffConnectorDraft(snap, draft)
+    expect(plan.streamRenames).toEqual([
+      { streamId: 'stream_1', streamKey: 'invoices', enabled: false },
+    ])
+    expect(plan.structural).toBe(false)
+  })
 })
 
 describe('mixed commit ordering', () => {

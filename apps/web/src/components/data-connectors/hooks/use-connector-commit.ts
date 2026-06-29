@@ -41,7 +41,13 @@ export function useConnectorCommit() {
         independent.push(update.mutateAsync({ id: connectorId, ...plan.connectorUpdate }))
       }
       for (const r of plan.streamRenames) {
-        independent.push(updateStream.mutateAsync({ streamId: r.streamId, streamKey: r.streamKey }))
+        independent.push(
+          updateStream.mutateAsync({
+            streamId: r.streamId,
+            ...(r.streamKey !== undefined ? { streamKey: r.streamKey } : {}),
+            ...(r.enabled !== undefined ? { enabled: r.enabled } : {}),
+          })
+        )
       }
       for (const rc of plan.streamRequestConfigs) {
         independent.push(
