@@ -5,7 +5,13 @@
 // re-registration is driven from create/update (pause/resume is a `status` patch
 // through update) so a cadence or lifecycle change is reflected in BullMQ immediately.
 
-import { type CatalogDataConnector, type Database, schema, type Transaction } from '@auxx/database'
+import {
+  type CatalogConnectorRelationshipDecl,
+  type CatalogDataConnector,
+  type Database,
+  schema,
+  type Transaction,
+} from '@auxx/database'
 import type { FieldType } from '@auxx/database/types'
 import { createScopedLogger } from '@auxx/logger'
 import { getFieldDefinitionId, getFieldId, toResourceFieldId } from '@auxx/types/field'
@@ -27,7 +33,12 @@ import {
   classifyStreamRequestChange,
   type StructuralImpact,
 } from './edit-impact'
-import { type ProvisionFieldSpec, provisionTarget } from './provisioning'
+import {
+  type ProvisionFieldSpec,
+  provisionRelationshipField,
+  provisionTarget,
+  resolveRelationshipTargetDefId,
+} from './provisioning'
 import {
   countConnectorItems,
   countMappingItems,
@@ -418,33 +429,122 @@ export async function createConnectorFromAppCatalog(
     ...input,
     definitionKind: 'app',
   })
+
+  // Owned materialization is a CONNECTOR-LEVEL two-pass (owned-relationship-provisioning-plan §3.3):
+  // an edge references a target def by id, and a cross-stream `reference` targets ANOTHER stream's
+  // def — so ALL defs must exist before ANY edge is provisioned. Pass 1 creates defs + scalar fields
+  // + mappings (+ parentMappingId) across every stream, accumulating `apiSlug → defId`; pass 2 then
+  // provisions every declared relationship edge.
+  const defIdByApiSlug: Record<string, string> = {}
+  const pendingEdges: PendingOwnedEdge[] = []
   for (const stream of catalog.streams) {
     const streamRow = await addStream(db, organizationId, connector.id, {
       streamKey: stream.key,
       ...appCatalogStreamSchema(stream),
       syncMode: stream.syncMode ?? 'snapshot',
     })
-    await materializeAppOwnedMappings(db, organizationId, connector.id, streamRow.id, stream)
+    await provisionStreamOwnedDefs(
+      db,
+      organizationId,
+      connector.id,
+      streamRow.id,
+      stream,
+      defIdByApiSlug,
+      pendingEdges
+    )
     await materializeAppContributingMappings(db, organizationId, streamRow.id, stream)
   }
+
+  // Pass 2 — edges. Every def now exists, so each declared relationship resolves its target.
+  for (const edge of pendingEdges) {
+    const relatedResourceId = await resolveRelationshipTargetDefId(
+      db,
+      organizationId,
+      edge.relationship.targetRef,
+      edge.ownTargetDefId,
+      defIdByApiSlug
+    )
+    if (!relatedResourceId) {
+      logger.warn('Skipping connector relationship edge — target def unresolved', {
+        dataConnectorId: connector.id,
+        fieldKey: edge.relationship.fieldKey,
+        targetRef: edge.relationship.targetRef,
+      })
+      continue
+    }
+    await provisionRelationshipField(
+      db,
+      organizationId,
+      connector.id,
+      edge.parentDefId,
+      relatedResourceId,
+      {
+        appFieldKey: edge.relationship.fieldKey,
+        name: edge.relationship.name,
+        cardinality: edge.relationship.cardinality,
+        inverseName: edge.relationship.inverseName,
+      }
+    )
+  }
+
   return connector
 }
 
+/** A relationship edge collected in pass 1, provisioned in pass 2 once every def exists. */
+interface PendingOwnedEdge {
+  relationship: CatalogConnectorRelationshipDecl
+  /** Def the forward edge lives on (the parent mapping's def). */
+  parentDefId: string
+  /** Default target when the edge has no `targetRef` — the declaring mapping's own owned def. */
+  ownTargetDefId: string
+}
+
 /**
- * Materialize a catalog stream's `owned` default-mappings into provisioned defs +
- * `DataConnectorMapping` rows. The declared stream fields ARE the owned def's schema,
- * so we provision the def + a field per declaration, then bind concrete
- * `${defId}:${fieldId}` refs (no `@app:` late-binding — the connector owns the def).
- * `contributing` targets are skipped (left to the stepper).
+ * The parent of `rootPath` among `all` is the mapping whose rootPath is the longest
+ * proper boundary-prefix: `''` parents everything, `line_items[]` parents
+ * `line_items[].variants[]`. A bare prefix that doesn't end on a path boundary
+ * (`line_items` vs `line_items_extra[]`) is rejected. Returns null for a root mapping.
  */
-async function materializeAppOwnedMappings(
+export function ownedParentRootPath(rootPath: string, all: string[]): string | null {
+  const isBoundaryPrefix = (parent: string) => {
+    if (parent === rootPath) return false
+    if (parent === '') return true
+    if (!rootPath.startsWith(parent)) return false
+    const next = rootPath[parent.length]
+    return next === '.' || next === '['
+  }
+  const parents = all.filter(isBoundaryPrefix)
+  if (parents.length === 0) return null
+  return parents.reduce((longest, p) => (p.length > longest.length ? p : longest))
+}
+
+/**
+ * Pass 1 of connector-level owned materialization: provision each owned mapping's def +
+ * scalar fields + `DataConnectorMapping` row (with `parentMappingId` wired from rootPath
+ * nesting so the fan-out's `parentRelation` forms). Accumulates `apiSlug → defId` into
+ * `defIdByApiSlug` (shared across streams so a cross-stream `reference` resolves) and
+ * appends each declared relationship to `pendingEdges` for pass 2. Relationship *fields*
+ * are NOT created here — that's pass 2, after every def exists
+ * (owned-relationship-provisioning-plan §3.3/§3.4).
+ */
+async function provisionStreamOwnedDefs(
   db: Database,
   organizationId: string,
   dataConnectorId: string,
   streamId: string,
-  stream: CatalogDataConnector['streams'][number]
+  stream: CatalogDataConnector['streams'][number],
+  defIdByApiSlug: Record<string, string>,
+  pendingEdges: PendingOwnedEdge[]
 ): Promise<void> {
-  for (const mapping of stream.defaultMappings ?? []) {
+  const owned = (stream.defaultMappings ?? []).filter((m) => m.target.mode === 'owned')
+  const allRootPaths = owned.map((m) => m.rootPath)
+  // Parents before children so a child's `parentMappingId` always resolves.
+  const ordered = [...owned].sort((a, b) => a.rootPath.length - b.rootPath.length)
+
+  const mappingIdByRootPath: Record<string, string> = {}
+  const defIdByRootPath: Record<string, string> = {}
+
+  for (const mapping of ordered) {
     if (mapping.target.mode !== 'owned') continue
     const { entity } = mapping.target
 
@@ -466,12 +566,16 @@ async function materializeAppOwnedMappings(
       }
     )
 
-    await addMapping(db, organizationId, {
+    const parentRootPath = ownedParentRootPath(mapping.rootPath, allRootPaths)
+    const parentMappingId = parentRootPath != null ? mappingIdByRootPath[parentRootPath] : null
+
+    const row = await addMapping(db, organizationId, {
       dataConnectorStreamId: streamId,
       rootPath: mapping.rootPath,
       linkMode: mapping.linkMode ?? ('upsert' as LinkMode),
       targetMode: 'owned' as TargetMode,
       entityDefinitionId,
+      parentMappingId,
       relationshipFieldKey: mapping.relationshipFieldKey ?? null,
       fieldMappings: buildOwnedFieldMappings(entityDefinitionId, fieldIdByKey, stream.fields),
       // Incremental connectors only see the delta each run, so unseen ≠ deleted —
@@ -479,6 +583,20 @@ async function materializeAppOwnedMappings(
       // reconcile; v1 keeps it safe.
       orphanBehavior: 'ignore' as OrphanBehavior,
     })
+
+    mappingIdByRootPath[mapping.rootPath] = row.id
+    defIdByRootPath[mapping.rootPath] = entityDefinitionId
+    defIdByApiSlug[entity.apiSlug] = entityDefinitionId
+
+    // Collect the edge for pass 2. The forward field lives on the PARENT def; with no
+    // parent (a root mapping) there's nothing to attach to, so skip.
+    if (mapping.relationship && parentRootPath != null) {
+      pendingEdges.push({
+        relationship: mapping.relationship,
+        parentDefId: defIdByRootPath[parentRootPath]!,
+        ownTargetDefId: entityDefinitionId,
+      })
+    }
   }
 }
 
@@ -525,7 +643,7 @@ export function buildOwnedFieldMappings(
 /**
  * Materialize a catalog stream's `contributing` default-mappings into draft
  * `DataConnectorMapping` rows — the symmetric counterpart to
- * {@link materializeAppOwnedMappings}. Unlike an owned target (the connector
+ * {@link provisionStreamOwnedDefs}. Unlike an owned target (the connector
  * provisions the def + binds every field), a contributing target merges INTO an
  * existing system def (e.g. `contact`), so we only resolve the def and best-effort
  * pre-bind the declared identity-match keys (`matchFieldKeys`, e.g. `['email']`). Any

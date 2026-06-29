@@ -121,6 +121,33 @@ export interface ConnectorEntityDecl {
 }
 
 /**
+ * The edge's target def. For an owned child the target IS this mapping's own owned
+ * def — omit `targetRef` (provisioning resolves it from the mapping's provisioned
+ * def). For a `reference` to another stream's def, name that target by owned
+ * `apiSlug` or contributing `entityKind`.
+ */
+export type ConnectorRelationshipTargetRef = { ownedApiSlug: string } | { entityKind: string }
+
+/**
+ * Provisioning declaration for a parent↔child relationship edge (v5). Drives
+ * auto-creation of the relationship field (+ inverse) on the parent def at
+ * connector materialization. `fieldKey` must match the mapping's
+ * `relationshipFieldKey` so the fan-out resolves the provisioned field.
+ */
+export interface ConnectorRelationshipDecl {
+  /** Stable field key of the edge created on the PARENT def (== `relationshipFieldKey`). */
+  fieldKey: string
+  /** Display name for the forward edge (e.g. `'Line Items'`). */
+  name: string
+  /** Forward cardinality from PARENT → this mapping's target. */
+  cardinality: 'has_many' | 'has_one' | 'belongs_to' | 'many_to_many'
+  /** Display name for the auto-created inverse edge on the child/target def. */
+  inverseName: string
+  /** Target def of the edge; omit for an owned child (resolves to the mapping's own def). */
+  targetRef?: ConnectorRelationshipTargetRef
+}
+
+/**
  * A recommended fan-out mapping the connector suggests (05 §4). The user
  * confirms/overrides at setup; branches not declared here are inferred from the
  * schema tree.
@@ -130,8 +157,20 @@ export interface ConnectorDefaultMapping {
   rootPath: string
   /** Default: `upsert` for embedded data, `reference` for id-only branches. */
   linkMode?: 'upsert' | 'reference'
-  /** Edge on the PARENT def that holds this relationship. */
+  /**
+   * Runtime pointer the fan-out reads to find the edge field at write time. Keep it
+   * equal to `relationship.fieldKey` when `relationship` is declared. A bare key (no
+   * `relationship`) resolves against a PRE-EXISTING edge — e.g. a reference FK to a
+   * field the connector doesn't provision.
+   */
   relationshipFieldKey?: string
+  /**
+   * Provisioning declaration for the parent↔child edge this mapping links on. When
+   * present, connector materialization auto-creates the relationship field (+ its
+   * inverse) on the parent def so the link actually forms at sync time. Omit for
+   * bare-key references that resolve to a pre-existing edge.
+   */
+  relationship?: ConnectorRelationshipDecl
   target:
     | { mode: 'owned'; entity: ConnectorEntityDecl }
     | {

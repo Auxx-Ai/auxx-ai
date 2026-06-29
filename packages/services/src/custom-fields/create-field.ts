@@ -264,6 +264,16 @@ export async function createCustomField(input: CreateCustomFieldInput, tx?: Tran
         entityDefinitionId,
         relationship,
         systemAttribute,
+        // Connector/app ownership: the FORWARD field is the idempotency anchor, so
+        // it carries `appFieldKey` + the ownership FKs + read-only capability flags;
+        // the inverse rides along (stamped with the FKs only, never the app key).
+        appFieldKey,
+        appInstallationId,
+        connectionId,
+        dataConnectorId,
+        isCreatable,
+        isUpdatable,
+        isHidden,
       },
       db
     )
@@ -480,6 +490,15 @@ async function createRelationshipFieldWithInverse(
     entityDefinitionId?: string | null
     relationship?: RelationshipOptions
     systemAttribute?: string
+    /** App/connector ownership — stamped on the FORWARD field only (idempotency anchor). */
+    appFieldKey?: string
+    appInstallationId?: string
+    connectionId?: string
+    /** Stamped on BOTH forward + inverse so a `dataConnectorId`-keyed cleanup sweep removes both. */
+    dataConnectorId?: string
+    isCreatable?: boolean
+    isUpdatable?: boolean
+    isHidden?: boolean
   },
   db: Database | Transaction = database
 ) {
@@ -492,9 +511,14 @@ async function createRelationshipFieldWithInverse(
     entityDefinitionId,
     relationship,
     systemAttribute,
+    appFieldKey,
+    appInstallationId,
+    connectionId,
+    dataConnectorId,
+    isCreatable,
+    isUpdatable,
+    isHidden,
   } = input
-
-  console.log('Creating relationship field:', input)
 
   // Validate relationship options are provided
   if (!relationship) {
@@ -567,6 +591,14 @@ async function createRelationshipFieldWithInverse(
         organizationId,
         sortOrder: primarySortOrder,
         systemAttribute,
+        // App/connector ownership — FORWARD field is the idempotency anchor.
+        appInstallationId: appInstallationId ?? null,
+        connectionId: connectionId ?? null,
+        appFieldKey: appFieldKey ?? null,
+        dataConnectorId: dataConnectorId ?? null,
+        ...(isCreatable !== undefined && { isCreatable }),
+        ...(isUpdatable !== undefined && { isUpdatable }),
+        ...(isHidden !== undefined && { isHidden }),
         updatedAt: new Date(),
         options: {
           icon,
@@ -600,6 +632,12 @@ async function createRelationshipFieldWithInverse(
         organizationId,
         sortOrder: inverseSortOrder,
         systemAttribute: inverseSystemAttribute,
+        // Connector ownership FK only (NO appFieldKey — the inverse is never looked up
+        // for provisioning, only cascaded); lets the `dataConnectorId` sweep remove it.
+        dataConnectorId: dataConnectorId ?? null,
+        // The inverse mirrors the forward's user-read-only capability for connector edges.
+        ...(isCreatable !== undefined && { isCreatable }),
+        ...(isUpdatable !== undefined && { isUpdatable }),
         updatedAt: new Date(),
         options: {
           icon: inverseIcon,

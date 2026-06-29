@@ -205,11 +205,31 @@ export interface CatalogConnectorField {
   capabilities?: { hidden?: boolean; filterable?: boolean }
 }
 
+/**
+ * Provisioning declaration for a parent↔child relationship edge (v5). Drives
+ * auto-creation of the relationship field (+ inverse) on the parent def at
+ * connector materialization. Mirrors the SDK `ConnectorRelationshipDecl`.
+ */
+export interface CatalogConnectorRelationshipDecl {
+  /** Stable field key of the edge created on the PARENT def (== `relationshipFieldKey`). */
+  fieldKey: string
+  /** Display name for the forward edge (e.g. `'Line Items'`). */
+  name: string
+  /** Forward cardinality from PARENT → this mapping's target. */
+  cardinality: 'has_many' | 'has_one' | 'belongs_to' | 'many_to_many'
+  /** Display name for the auto-created inverse edge on the child/target def. */
+  inverseName: string
+  /** Target def; omit for an owned child (resolves to the mapping's own provisioned def). */
+  targetRef?: { ownedApiSlug: string } | { entityKind: string }
+}
+
 /** A recommended fan-out mapping projected from a data connector's stream. */
 export interface CatalogConnectorDefaultMapping {
   rootPath: string
   linkMode?: 'upsert' | 'reference'
   relationshipFieldKey?: string
+  /** Provisioning decl for the parent↔child edge — auto-creates the field at materialization. */
+  relationship?: CatalogConnectorRelationshipDecl
   target:
     | {
         mode: 'owned'
