@@ -312,17 +312,27 @@ export function ConnectorDetailView({ connector }: ConnectorDetailViewProps) {
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align='end'>
-                  <DropdownMenuItem onClick={() => void handleDelete('keep')}>
-                    Delete, keep synced records
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => void handleDelete('archive')}>
-                    Delete, archive synced records
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    variant='destructive'
-                    onClick={() => void handleDelete('delete')}>
-                    Delete connector and synced records
-                  </DropdownMenuItem>
+                  {(live?.itemCount ?? connector.itemCount) > 0 ? (
+                    <>
+                      <DropdownMenuItem onClick={() => void handleDelete('keep')}>
+                        Delete, keep synced records
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => void handleDelete('archive')}>
+                        Delete, archive synced records
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        variant='destructive'
+                        onClick={() => void handleDelete('delete')}>
+                        Delete connector and synced records
+                      </DropdownMenuItem>
+                    </>
+                  ) : (
+                    <DropdownMenuItem
+                      variant='destructive'
+                      onClick={() => void handleDelete('delete')}>
+                      Delete connector
+                    </DropdownMenuItem>
+                  )}
                 </DropdownMenuContent>
               </DropdownMenu>
             </ButtonGroup>
