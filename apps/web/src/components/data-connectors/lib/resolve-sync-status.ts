@@ -171,13 +171,20 @@ export function resolveSyncStatus(
     // "records so far" is a backfill concept; steady deltas use the run +n/+n line.
     const isBackfill = !latestRun || latestRun.phase !== 'steady'
     const noun = latestRun?.primaryStreamLabel?.trim() || 'records'
+    // No page has landed yet on a fresh backfill — we're still establishing the
+    // connection / awaiting the first response. Reading this as "Connecting…" keeps an
+    // unreachable host from looking like a healthy in-progress import (it'll flip to
+    // Error once the reachability probe times out).
+    const connecting = isBackfill && records === 0
     const detail =
       isBackfill && records > 0
         ? `Importing ${noun} — ${records.toLocaleString()} records so far`
-        : 'Syncing…'
+        : connecting
+          ? 'Reaching the source…'
+          : 'Syncing…'
     return {
       state: 'syncing',
-      label: status === 'provisioning' ? 'Provisioning' : 'Syncing',
+      label: status === 'provisioning' ? 'Provisioning' : connecting ? 'Connecting' : 'Syncing',
       detail,
       primaryAction: 'pause',
     }

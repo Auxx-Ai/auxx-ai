@@ -199,6 +199,7 @@ class ConnectorStreamSyncSource implements ConnectorSyncSource {
           requestConfig: this.deps.stream.requestConfig ?? undefined,
           // H1 — never sleep on a throttle inside a slice.
           rateLimitOverride: { maxRetries: 0 },
+          signal: ctx.signal,
         }),
       sink: (record) =>
         sinkSourceRecord(syncCtx, this.deps.stream.mappings, record, this.updatedAtPath),

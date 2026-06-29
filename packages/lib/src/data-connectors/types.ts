@@ -441,6 +441,13 @@ export interface ConnectorFetchArgs {
    */
   rateLimitOverride?: Partial<RateLimitPolicy>
   /**
+   * The slice's cancellation signal (worker lock budget / graceful shutdown).
+   * Threaded into the HTTP transport so an in-flight request aborts when the
+   * slice does — without it the connector relies solely on the transport's own
+   * per-request timeout.
+   */
+  signal?: AbortSignal
+  /**
    * Sample/test-fetch only: invoked once per fetched page with the transport's
    * normalized response headers (lowercased keys). Lets the builder's test-fetch
    * surface `link-header` pagination without putting transport metadata on
