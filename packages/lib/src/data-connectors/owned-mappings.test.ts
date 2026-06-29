@@ -5,7 +5,7 @@
 
 import { toResourceFieldId } from '@auxx/types/field'
 import { describe, expect, it } from 'vitest'
-import { buildOwnedFieldMappings, ownedProvisionSpecs } from './mutations'
+import { buildOwnedFieldMappings, ownedParentRootPath, ownedProvisionSpecs } from './mutations'
 
 type CatalogField = Parameters<typeof ownedProvisionSpecs>[0][number]
 
@@ -92,5 +92,32 @@ describe('buildOwnedFieldMappings', () => {
     for (const m of mappings) {
       expect(m.targetFieldRef?.startsWith(`${defId}:`)).toBe(true)
     }
+  })
+})
+
+describe('ownedParentRootPath', () => {
+  // The fan-out's `parentRelation` only forms when each child mapping carries a
+  // `parentMappingId` — derived from rootPath nesting at materialization.
+  const ALL = ['', 'line_items[]', 'line_items[].variants[]']
+
+  it('a root mapping has no parent', () => {
+    expect(ownedParentRootPath('', ALL)).toBeNull()
+  })
+
+  it('a one-level child parents to the root', () => {
+    expect(ownedParentRootPath('line_items[]', ALL)).toBe('')
+  })
+
+  it('a nested child parents to the LONGEST proper prefix, not the root', () => {
+    expect(ownedParentRootPath('line_items[].variants[]', ALL)).toBe('line_items[]')
+  })
+
+  it('rejects a bare prefix that does not end on a path boundary', () => {
+    // `line_items` is a textual prefix of `line_items_extra[]` but not a path parent.
+    expect(ownedParentRootPath('line_items_extra[]', ['', 'line_items[]'])).toBe('')
+  })
+
+  it('returns null when no candidate prefix exists (no root declared)', () => {
+    expect(ownedParentRootPath('orders[].lines[]', ['orders[].lines[]', 'customers[]'])).toBeNull()
   })
 })

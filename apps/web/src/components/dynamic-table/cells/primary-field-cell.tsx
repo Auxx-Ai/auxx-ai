@@ -6,6 +6,7 @@ import { parseResourceFieldId, type ResourceFieldId } from '@auxx/types/field'
 import { extractValue, type TypedFieldValue } from '@auxx/types/field-value'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { memo, type ReactNode, useMemo } from 'react'
+import { ConnectorSourceBadge } from '~/components/fields/connector-source-badge'
 import { toRecordId, useRecord, useResource } from '~/components/resources'
 import { useField } from '~/components/resources/hooks/use-field'
 import { useFieldValue } from '~/components/resources/hooks/use-field-values'
@@ -100,6 +101,13 @@ export const PrimaryFieldCell = memo(function PrimaryFieldCell({
           color={resource?.color || 'gray'}
           size='xs'
           inverse
+        />
+      }
+      suffix={
+        <ConnectorSourceBadge
+          integrationSource={record?.integrationSource}
+          variant='icon'
+          className='shrink-0'
         />
       }>
       {children}

@@ -31,6 +31,8 @@ export type {
   ConnectorFieldCapabilities,
   ConnectorFieldDecl,
   ConnectorRecord,
+  ConnectorRelationshipDecl,
+  ConnectorRelationshipTargetRef,
   ConnectorStreamDecl,
   ConnectorStreamState,
   DataConnectorDefinition,

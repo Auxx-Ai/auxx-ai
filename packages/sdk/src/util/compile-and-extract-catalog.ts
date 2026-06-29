@@ -195,11 +195,21 @@ export interface CatalogConnectorField {
   capabilities?: { hidden?: boolean; filterable?: boolean }
 }
 
+/** Provisioning decl for a parent↔child edge — mirrors SDK `ConnectorRelationshipDecl`. */
+export interface CatalogConnectorRelationshipDecl {
+  fieldKey: string
+  name: string
+  cardinality: 'has_many' | 'has_one' | 'belongs_to' | 'many_to_many'
+  inverseName: string
+  targetRef?: { ownedApiSlug: string } | { entityKind: string }
+}
+
 /** A recommended fan-out mapping projected from a data connector's stream. */
 export interface CatalogConnectorDefaultMapping {
   rootPath: string
   linkMode?: 'upsert' | 'reference'
   relationshipFieldKey?: string
+  relationship?: CatalogConnectorRelationshipDecl
   target:
     | {
         mode: 'owned'

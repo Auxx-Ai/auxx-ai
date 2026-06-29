@@ -55,6 +55,17 @@ export interface RecordPickerItem {
    */
   color?: string
 
+  /**
+   * Data-connector / integration provenance, denormalized from
+   * `EntityInstance.integrationSource`. For connector-synced records this holds
+   * the owning DataConnector id; null for hand-created records. Drives the
+   * "Synced from <connector>" source badge.
+   */
+  integrationSource?: string | null
+
+  /** Upstream id within the integration source (e.g. Shopify customer id). */
+  externalId?: string | null
+
   /** Full row data (for custom rendering) */
   data: Record<string, unknown>
 

@@ -14,8 +14,9 @@
 import { type Database, schema } from '@auxx/database'
 import type { FieldType } from '@auxx/database/types'
 import { createScopedLogger } from '@auxx/logger'
-import { createCustomField } from '@auxx/services/custom-fields'
+import { createCustomField, resolveEntityDefinitionIdByKind } from '@auxx/services/custom-fields'
 import { createEntityDefinition } from '@auxx/services/entity-definitions'
+import type { RelationshipType } from '@auxx/types/custom-field'
 import { toResourceFieldId } from '@auxx/types/field'
 import { and, eq } from 'drizzle-orm'
 import { getCachedCustomFields } from '../cache'
@@ -176,6 +177,102 @@ export async function provisionTarget(
   })
 
   return { entityDefinitionId: defId, provisionedFieldKeys, fieldIdByKey }
+}
+
+/** Where a relationship edge points. `undefined` ⇒ an owned child (the mapping's own def). */
+export type RelationshipTargetRef = { ownedApiSlug: string } | { entityKind: string }
+
+/** The parent↔child edge a mapping declares for provisioning (mirrors the catalog decl). */
+export interface ProvisionRelationshipSpec {
+  /** Stable key of the forward edge on the PARENT def (== `relationshipFieldKey`). */
+  appFieldKey: string
+  /** Display name for the forward edge. */
+  name: string
+  /** Forward cardinality from PARENT → target. */
+  cardinality: RelationshipType
+  /** Display name for the auto-created inverse edge on the target def. */
+  inverseName: string
+}
+
+/**
+ * Resolve a relationship edge's target `EntityDefinition.id`. For an owned child the
+ * target IS the mapping's own provisioned def (`ownTargetDefId`); a `targetRef` names a
+ * cross-stream owned def (by `apiSlug`, resolved from the connector-wide pass-1 map) or
+ * a contributing/system def (by `entityKind`). Returns null when the target can't be
+ * resolved (e.g. a disabled stream) so the caller skips the edge rather than pointing it
+ * at a non-existent def.
+ */
+export async function resolveRelationshipTargetDefId(
+  db: Database,
+  organizationId: string,
+  targetRef: RelationshipTargetRef | undefined,
+  ownTargetDefId: string,
+  defIdByApiSlug: Record<string, string>
+): Promise<string | null> {
+  if (!targetRef) return ownTargetDefId
+  if ('ownedApiSlug' in targetRef) return defIdByApiSlug[targetRef.ownedApiSlug] ?? null
+  return resolveEntityDefinitionIdByKind({ kind: targetRef.entityKind, organizationId }, db)
+}
+
+/**
+ * Provision the parent↔child relationship edge (+ auto-created inverse) on the PARENT
+ * def. Idempotent per `(dataConnectorId, appFieldKey)` exactly like a scalar field
+ * (mirrors {@link provisionField}): looks up an existing forward edge by `appFieldKey` on
+ * the parent def, re-stamping ownership if the FK was nulled on a prior delete; creates
+ * via `createCustomField({ type: 'RELATIONSHIP' })` otherwise — the relationship-capable
+ * service that also auto-wires the inverse (NOT the app-field provisioner that bans
+ * relationships). The forward field is the idempotency anchor, so a re-run short-circuits
+ * here before re-entering the creator and never duplicates the inverse.
+ *
+ * `relatedResourceId` is the resolved target def id (see {@link resolveRelationshipTargetDefId});
+ * pass a non-null value — a null target must be skipped by the caller.
+ */
+export async function provisionRelationshipField(
+  db: Database,
+  organizationId: string,
+  dataConnectorId: string,
+  parentDefId: string,
+  relatedResourceId: string,
+  spec: ProvisionRelationshipSpec
+): Promise<{ id: string; created: boolean } | null> {
+  // Idempotent adoption: match by appFieldKey WITHOUT a dataConnectorId filter so a
+  // delete+reconnect re-adopts the orphaned edge instead of colliding (see provisionField).
+  const existingFields = await getCachedCustomFields(organizationId, parentDefId)
+  const existing = existingFields.find((f) => f.appFieldKey === spec.appFieldKey)
+  if (existing) {
+    if (existing.dataConnectorId !== dataConnectorId) {
+      await db
+        .update(schema.CustomField)
+        .set({ dataConnectorId, updatedAt: new Date() })
+        .where(eq(schema.CustomField.id, existing.id))
+    }
+    return { id: existing.id, created: false }
+  }
+
+  const result = await createCustomField({
+    organizationId,
+    entityDefinitionId: parentDefId,
+    name: spec.name,
+    type: 'RELATIONSHIP' as FieldType,
+    appFieldKey: spec.appFieldKey,
+    dataConnectorId,
+    // Connector-owned edges are user-read-only, like every other provisioned field.
+    isUpdatable: false,
+    isCreatable: false,
+    relationship: {
+      relatedResourceId,
+      relationshipType: spec.cardinality,
+      inverseName: spec.inverseName,
+    },
+  })
+  if (result.isErr()) {
+    // A user/system field already owns this name → benign no-op (mirrors provisionField).
+    if (result.error.code === 'DUPLICATE_FIELD_NAME') return null
+    throw new Error(result.error.message)
+  }
+
+  await onCacheEvent('custom-field.created', { orgId: organizationId })
+  return { id: result.value.id, created: true }
 }
 
 /**
