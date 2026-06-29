@@ -4,7 +4,6 @@
 
 import type { DataConnectorSyncEvent } from '@auxx/lib/realtime'
 import { useCallback } from 'react'
-import { useFeatureFlags } from '~/providers/feature-flag-provider'
 import { useOrgChannel } from '~/realtime/hooks'
 import { api, type RouterOutputs } from '~/trpc/react'
 
@@ -23,13 +22,10 @@ type ConnectorStatusData = RouterOutputs['dataConnector']['getStatus']
  * safety poll while syncing so a dropped frame still converges.
  */
 export function useConnectorSyncRealtime(connectorId: string) {
-  const { hasAccess } = useFeatureFlags()
-  const realtimeSyncEnabled = hasAccess('realtimeSync')
   const utils = api.useUtils()
 
   const onEvent = useCallback(
     (event: string, payload: unknown) => {
-      if (!realtimeSyncEnabled) return
       if (event !== 'dataConnector:sync') return
       const data = payload as DataConnectorSyncEvent['data']
       if (data.connectorId !== connectorId) return
@@ -51,7 +47,7 @@ export function useConnectorSyncRealtime(connectorId: string) {
       utils.dataConnector.getStatus.invalidate({ id: connectorId })
       utils.dataConnector.listRuns.invalidate({ id: connectorId })
     },
-    [realtimeSyncEnabled, connectorId, utils]
+    [connectorId, utils]
   )
 
   useOrgChannel({ onEvent })

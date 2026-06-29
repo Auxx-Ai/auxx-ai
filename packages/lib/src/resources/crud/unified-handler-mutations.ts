@@ -9,7 +9,7 @@ import {
   getEntityInstance,
   updateEntityInstance,
 } from '@auxx/services/entity-instances'
-import { findCachedResource, getOrgCache } from '../../cache'
+import { findCachedResource } from '../../cache'
 import { CommentService } from '../../comments'
 import { UnprocessableEntityError } from '../../errors'
 import { publisher } from '../../events/publisher'
@@ -390,28 +390,25 @@ export async function createEntity(
 
   // Publish record:created realtime event
   if (!options.skipEvents) {
-    const { features } = await getOrgCache().getOrRecompute(ctx.organizationId, ['features'])
-    if (features?.realtimeSync) {
-      getRealtimeService()
-        .publish(
-          rooms.orgPresence(ctx.organizationId),
-          'record:created',
-          {
-            entityDefinitionId: entityDef.id,
-            record: {
-              id: freshInstance.id,
-              recordId,
-              displayName: freshInstance.displayName,
-              avatarUrl: freshInstance.avatarUrl,
-              secondaryDisplayValue: freshInstance.secondaryDisplayValue,
-              createdAt: freshInstance.createdAt,
-              updatedAt: freshInstance.updatedAt,
-            },
+    getRealtimeService()
+      .publish(
+        rooms.orgPresence(ctx.organizationId),
+        'record:created',
+        {
+          entityDefinitionId: entityDef.id,
+          record: {
+            id: freshInstance.id,
+            recordId,
+            displayName: freshInstance.displayName,
+            avatarUrl: freshInstance.avatarUrl,
+            secondaryDisplayValue: freshInstance.secondaryDisplayValue,
+            createdAt: freshInstance.createdAt,
+            updatedAt: freshInstance.updatedAt,
           },
-          { excludeSocketId: ctx.socketId }
-        )
-        .catch(() => {})
-    }
+        },
+        { excludeSocketId: ctx.socketId }
+      )
+      .catch(() => {})
   }
 
   // Return the fresh instance so callers (e.g. the create_entity tool) have a
@@ -504,28 +501,25 @@ export async function updateEntity(
   // denormalized metadata (displayName, etc). Field-value changes ride on
   // fieldValues:updated; this event is only for the record-level columns.
   if (!options.skipEvents) {
-    const { features } = await getOrgCache().getOrRecompute(ctx.organizationId, ['features'])
-    if (features?.realtimeSync) {
-      getRealtimeService()
-        .publish(
-          rooms.orgPresence(ctx.organizationId),
-          'record:updated',
-          {
-            entityDefinitionId: entityDef.id,
-            record: {
-              id: freshInstance.id,
-              recordId: resolvedRecordId,
-              displayName: freshInstance.displayName,
-              avatarUrl: freshInstance.avatarUrl,
-              secondaryDisplayValue: freshInstance.secondaryDisplayValue,
-              createdAt: freshInstance.createdAt,
-              updatedAt: freshInstance.updatedAt,
-            },
+    getRealtimeService()
+      .publish(
+        rooms.orgPresence(ctx.organizationId),
+        'record:updated',
+        {
+          entityDefinitionId: entityDef.id,
+          record: {
+            id: freshInstance.id,
+            recordId: resolvedRecordId,
+            displayName: freshInstance.displayName,
+            avatarUrl: freshInstance.avatarUrl,
+            secondaryDisplayValue: freshInstance.secondaryDisplayValue,
+            createdAt: freshInstance.createdAt,
+            updatedAt: freshInstance.updatedAt,
           },
-          { excludeSocketId: ctx.socketId }
-        )
-        .catch(() => {})
-    }
+        },
+        { excludeSocketId: ctx.socketId }
+      )
+      .catch(() => {})
   }
 
   // Return the fresh instance so callers see the post-update denormalized columns.
@@ -581,17 +575,14 @@ export async function archiveEntity(
 
   // Publish record:archived realtime event
   if (!options.skipEvents) {
-    const { features } = await getOrgCache().getOrRecompute(ctx.organizationId, ['features'])
-    if (features?.realtimeSync) {
-      getRealtimeService()
-        .publish(
-          rooms.orgPresence(ctx.organizationId),
-          'record:archived',
-          { recordId, entityDefinitionId: entityDef.id },
-          { excludeSocketId: ctx.socketId }
-        )
-        .catch(() => {})
-    }
+    getRealtimeService()
+      .publish(
+        rooms.orgPresence(ctx.organizationId),
+        'record:archived',
+        { recordId, entityDefinitionId: entityDef.id },
+        { excludeSocketId: ctx.socketId }
+      )
+      .catch(() => {})
   }
 
   // Return the instance we already fetched (archivedAt is the only change)
@@ -730,17 +721,14 @@ export async function deleteEntity(
     })
 
     // Publish record:deleted realtime event
-    const { features } = await getOrgCache().getOrRecompute(ctx.organizationId, ['features'])
-    if (features?.realtimeSync) {
-      getRealtimeService()
-        .publish(
-          rooms.orgPresence(ctx.organizationId),
-          'record:deleted',
-          { recordId, entityDefinitionId: entityDef.id },
-          { excludeSocketId: ctx.socketId }
-        )
-        .catch(() => {})
-    }
+    getRealtimeService()
+      .publish(
+        rooms.orgPresence(ctx.organizationId),
+        'record:deleted',
+        { recordId, entityDefinitionId: entityDef.id },
+        { excludeSocketId: ctx.socketId }
+      )
+      .catch(() => {})
   }
 }
 

@@ -3,7 +3,6 @@
 'use client'
 
 import { useCallback } from 'react'
-import { useFeatureFlags } from '~/providers/feature-flag-provider'
 import { useOrgChannel } from '~/realtime/hooks'
 import { api } from '~/trpc/react'
 
@@ -31,13 +30,10 @@ interface UsePersonaRealtimeOptions {
  * are discarded by the remount.
  */
 export function usePersonaRealtime({ agentId, onExternalPromptChange }: UsePersonaRealtimeOptions) {
-  const { hasAccess } = useFeatureFlags()
-  const realtimeSyncEnabled = hasAccess('realtimeSync')
   const utils = api.useUtils()
 
   const onEvent = useCallback(
     (event: string, payload: unknown) => {
-      if (!realtimeSyncEnabled) return
       if (event !== 'agent:updated') return
       const data = payload as { agentId?: string } | null
       if (data?.agentId !== agentId) return
@@ -45,7 +41,7 @@ export function usePersonaRealtime({ agentId, onExternalPromptChange }: UsePerso
       // slug-keyed cache entries in one call (the detail page keys by slug).
       void utils.agent.getById.invalidate().then(() => onExternalPromptChange())
     },
-    [realtimeSyncEnabled, agentId, onExternalPromptChange, utils]
+    [agentId, onExternalPromptChange, utils]
   )
 
   useOrgChannel({ onEvent })

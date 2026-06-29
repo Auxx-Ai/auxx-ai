@@ -1,6 +1,5 @@
 // @auxx/lib/realtime/publish-helpers.ts
 
-import { getOrgCache } from '../cache'
 import type {
   DataConnectorSyncEvent,
   FieldValueUpdateEntry,
@@ -30,10 +29,6 @@ export async function publishFieldValueUpdates(
   options?: { excludeSocketId?: string }
 ) {
   if (entries.length === 0) return
-
-  // Check realtimeSync feature flag (cached per-org, fast lookup)
-  const { features } = await getOrgCache().getOrRecompute(organizationId, ['features'])
-  if (!features?.realtimeSync) return
 
   const roomKey = rooms.orgPresence(organizationId)
 
@@ -67,8 +62,7 @@ export async function publishFieldValueUpdates(
  * per-record realtime to keep an open grid live with a single coarse refetch per
  * def per slice instead of thousands of per-record events.
  *
- * Gated on `realtimeSync`. Fire-and-forget: errors are swallowed so a Pusher
- * hiccup never blocks the sync.
+ * Fire-and-forget: errors are swallowed so a Pusher hiccup never blocks the sync.
  */
 export async function publishRecordsInvalidated(
   realtimeService: RealtimeService,
@@ -77,8 +71,6 @@ export async function publishRecordsInvalidated(
   options?: { excludeSocketId?: string }
 ) {
   if (args.entityDefinitionIds.length === 0) return
-  const { features } = await getOrgCache().getOrRecompute(organizationId, ['features'])
-  if (!features?.realtimeSync) return
 
   const roomKey = rooms.orgPresence(organizationId)
   await Promise.allSettled(
@@ -94,32 +86,24 @@ export async function publishRecordsInvalidated(
  * No `excludeSocketId`: sync runs in the worker (no originating browser socket), so
  * every open tab — including the one that clicked "Sync now" — should light up.
  *
- * Gated on `realtimeSync`. Fire-and-forget: errors swallowed so a Pusher hiccup
- * never blocks the sync job.
+ * Fire-and-forget: errors swallowed so a Pusher hiccup never blocks the sync job.
  */
 export async function publishDataConnectorSync(
   realtimeService: RealtimeService,
   organizationId: string,
   data: DataConnectorSyncEvent['data']
 ) {
-  const { features } = await getOrgCache().getOrRecompute(organizationId, ['features'])
-  if (!features?.realtimeSync) return
   await realtimeService
     .publish(rooms.orgPresence(organizationId), 'dataConnector:sync', data)
     .catch(() => {})
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-// Mail publish helpers — gated on `realtimeMail` feature flag
+// Mail publish helpers
 // ════════════════════════════════════════════════════════════════════════════
 
 interface MailPublishOptions {
   excludeSocketId?: string
-}
-
-async function isMailRealtimeEnabled(organizationId: string): Promise<boolean> {
-  const { features } = await getOrgCache().getOrRecompute(organizationId, ['features'])
-  return Boolean(features?.realtimeMail)
 }
 
 /** Resolve a nullable inboxId to its registry slug. `null` → `'none'`. */
@@ -137,7 +121,6 @@ export async function publishThreadCreated(
   args: { threadId: string; inboxId: string | null; inboxRecordId?: string | null },
   options?: MailPublishOptions
 ) {
-  if (!(await isMailRealtimeEnabled(organizationId))) return
   await realtimeService
     .publish(
       inboxRoom(organizationId, args.inboxId),
@@ -165,7 +148,6 @@ export async function publishThreadUpdated(
   },
   options?: MailPublishOptions
 ) {
-  if (!(await isMailRealtimeEnabled(organizationId))) return
   const payload = { threadId: args.threadId, patch: { id: args.threadId, ...args.patch } }
   const targets = new Set<string | null>([args.inboxId])
   if (args.previousInboxId !== undefined && args.previousInboxId !== args.inboxId) {
@@ -190,7 +172,6 @@ export async function publishThreadDeleted(
   args: { threadId: string; inboxId: string | null },
   options?: MailPublishOptions
 ) {
-  if (!(await isMailRealtimeEnabled(organizationId))) return
   await realtimeService
     .publish(
       inboxRoom(organizationId, args.inboxId),
@@ -208,7 +189,6 @@ export async function publishMessageCreated(
   args: { messageId: string; threadId: string; inboxId: string | null },
   options?: MailPublishOptions
 ) {
-  if (!(await isMailRealtimeEnabled(organizationId))) return
   await realtimeService
     .publish(
       inboxRoom(organizationId, args.inboxId),
@@ -231,7 +211,6 @@ export async function publishMessageUpdated(
   },
   options?: MailPublishOptions
 ) {
-  if (!(await isMailRealtimeEnabled(organizationId))) return
   await realtimeService
     .publish(
       inboxRoom(organizationId, args.inboxId),
@@ -253,7 +232,6 @@ export async function publishMessageDeleted(
   args: { messageId: string; threadId: string; inboxId: string | null },
   options?: MailPublishOptions
 ) {
-  if (!(await isMailRealtimeEnabled(organizationId))) return
   await realtimeService
     .publish(
       inboxRoom(organizationId, args.inboxId),
@@ -275,7 +253,6 @@ export async function publishParticipantUpdated(
   args: { participantId: string; patch: Partial<ParticipantMeta> },
   options?: MailPublishOptions
 ) {
-  if (!(await isMailRealtimeEnabled(organizationId))) return
   await realtimeService
     .publish(
       rooms.orgPresence(organizationId),
@@ -301,7 +278,6 @@ export async function publishInboxSyncCompleted(
   args: { inboxId: string | null },
   options?: MailPublishOptions
 ) {
-  if (!(await isMailRealtimeEnabled(organizationId))) return
   await realtimeService
     .publish(
       inboxRoom(organizationId, args.inboxId),
@@ -328,7 +304,6 @@ export async function flushMailBatch(
   options?: MailPublishOptions
 ) {
   if (events.length === 0) return
-  if (!(await isMailRealtimeEnabled(organizationId))) return
 
   const buckets = new Map<string, MailSyncEvent[]>()
   for (const { inboxId, event } of events) {
@@ -349,7 +324,7 @@ export async function flushMailBatch(
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-// Agent admin helpers — gated on `realtimeSync` feature flag
+// Agent admin helpers
 // ════════════════════════════════════════════════════════════════════════════
 
 /**
@@ -357,8 +332,7 @@ export async function flushMailBatch(
  * agent write so the detail-page rail invalidates `api.agent.getById` /
  * `api.agent.list` without any tool-output side channel.
  *
- * Gated on `realtimeSync` — orgs without realtime fall back to React Query's
- * stale-time / focus-refetch behavior. Fire-and-forget: errors are swallowed
+ * Fire-and-forget: errors are swallowed
  * so a Pusher hiccup never blocks the underlying agent mutation.
  */
 export async function publishAgentUpdated(
@@ -367,8 +341,6 @@ export async function publishAgentUpdated(
   args: { agentId: string },
   options?: { excludeSocketId?: string }
 ) {
-  const { features } = await getOrgCache().getOrRecompute(organizationId, ['features'])
-  if (!features?.realtimeSync) return
   await realtimeService
     .publish(rooms.orgPresence(organizationId), 'agent:updated', { agentId: args.agentId }, options)
     .catch(() => {})
@@ -381,8 +353,7 @@ export async function publishAgentUpdated(
  * the draft doc. The editor's own tRPC autosave must NOT emit this — it would
  * invalidate the author's in-flight editing.
  *
- * Gated on `realtimeSync` — orgs without realtime fall back to React Query's
- * stale-time / focus-refetch behavior. Fire-and-forget: errors are swallowed
+ * Fire-and-forget: errors are swallowed
  * so a Pusher hiccup never blocks the underlying procedure write.
  */
 export async function publishProcedureUpdated(
@@ -391,8 +362,6 @@ export async function publishProcedureUpdated(
   args: { procedureId: string; agentId: string },
   options?: { excludeSocketId?: string }
 ) {
-  const { features } = await getOrgCache().getOrRecompute(organizationId, ['features'])
-  if (!features?.realtimeSync) return
   await realtimeService
     .publish(
       rooms.orgPresence(organizationId),
@@ -410,8 +379,7 @@ export async function publishProcedureUpdated(
  * (the drawer already self-invalidates); the Kopilot tools omit it (server-
  * origin) so the author's own tab refreshes — exactly the persona-prompt path.
  *
- * Gated on `realtimeSync` — orgs without realtime fall back to React Query's
- * stale-time / focus-refetch behavior. Fire-and-forget: errors are swallowed
+ * Fire-and-forget: errors are swallowed
  * so a Pusher hiccup never blocks the underlying case write.
  */
 export async function publishEvalCaseChanged(
@@ -420,8 +388,6 @@ export async function publishEvalCaseChanged(
   args: { agentId: string },
   options?: { excludeSocketId?: string }
 ) {
-  const { features } = await getOrgCache().getOrRecompute(organizationId, ['features'])
-  if (!features?.realtimeSync) return
   await realtimeService
     .publish(
       rooms.orgPresence(organizationId),

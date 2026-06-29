@@ -3,7 +3,6 @@
 'use client'
 
 import { useCallback } from 'react'
-import { useFeatureFlags } from '~/providers/feature-flag-provider'
 import { useOrgChannel } from '~/realtime/hooks'
 import { api } from '~/trpc/react'
 
@@ -21,18 +20,16 @@ import { api } from '~/trpc/react'
  * while the editor's own tRPC writes do (and self-invalidate via `onSaved`).
  */
 export function useEvalCasesRealtime(agentId: string) {
-  const { hasAccess } = useFeatureFlags()
-  const realtimeSyncEnabled = hasAccess('realtimeSync')
   const utils = api.useUtils()
 
   const onEvent = useCallback(
     (event: string, payload: unknown) => {
-      if (!realtimeSyncEnabled || event !== 'eval:case-changed') return
+      if (event !== 'eval:case-changed') return
       const data = payload as { agentId?: string } | null
       if (data?.agentId !== agentId) return
       void utils.eval.list.invalidate({ agentId })
     },
-    [realtimeSyncEnabled, agentId, utils]
+    [agentId, utils]
   )
 
   useOrgChannel({ onEvent })
