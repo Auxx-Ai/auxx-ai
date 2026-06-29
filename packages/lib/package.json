@@ -466,6 +466,18 @@
       "import": "./dist/geo/index.mjs",
       "default": "./src/geo/index.ts"
     },
+    "./getting-started": {
+      "types": "./src/getting-started/index.ts",
+      "source": "./src/getting-started/index.ts",
+      "import": "./dist/getting-started/index.mjs",
+      "default": "./src/getting-started/index.ts"
+    },
+    "./getting-started/client": {
+      "types": "./src/getting-started/client.ts",
+      "source": "./src/getting-started/client.ts",
+      "import": "./dist/getting-started/client.mjs",
+      "default": "./src/getting-started/client.ts"
+    },
     "./groups": {
       "types": "./src/groups/index.ts",
       "source": "./src/groups/index.ts",

@@ -79,6 +79,15 @@ export const sidebarSettings = {
 
 // Define a catalog of available settings with their metadata
 export const SETTINGS_CATALOG: Record<string, SettingConfig> = {
+  'onboarding.gettingStarted': {
+    key: 'onboarding.gettingStarted',
+    scope: 'ONBOARDING',
+    // GettingStartedState — { dismissedAt: string | null; manualCompletions: string[] }
+    defaultValue: { dismissedAt: null, manualCompletions: [] },
+    type: 'object',
+    organizationOnly: true,
+    description: 'Getting-started checklist state (dismissal + manual completions)',
+  },
   'appearance.logo': {
     key: 'appearance.logo',
     scope: 'APPEARANCE',
