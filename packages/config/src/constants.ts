@@ -63,6 +63,15 @@ export const constants = {
     { value: 'support', label: 'Support', icon: 'headphones' },
   ] as const,
 
+  /** Webhook endpoint template categories shown in the "Add endpoint" gallery */
+  webhookTemplateCategories: [
+    { value: 'all', label: 'All Templates', icon: 'layout-grid' },
+    { value: 'e-commerce', label: 'E-Commerce', icon: 'shopping-bag' },
+    { value: 'payments', label: 'Payments', icon: 'credit-card' },
+    { value: 'developer', label: 'Developer', icon: 'code' },
+    { value: 'custom', label: 'Custom', icon: 'webhook' },
+  ] as const,
+
   /** Agent template categories shown in the "Create from template" dialog */
   agentTemplateCategories: [
     { value: 'all', label: 'All Templates', icon: 'layout-grid' },

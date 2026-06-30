@@ -940,6 +940,12 @@
       "import": "./dist/webhooks/index.mjs",
       "default": "./src/webhooks/index.ts"
     },
+    "./webhooks/endpoint-templates": {
+      "types": "./src/webhooks/endpoint-templates/index.ts",
+      "source": "./src/webhooks/endpoint-templates/index.ts",
+      "import": "./dist/webhooks/endpoint-templates/index.mjs",
+      "default": "./src/webhooks/endpoint-templates/index.ts"
+    },
     "./webhooks/types": {
       "types": "./src/webhooks/types.ts",
       "source": "./src/webhooks/types.ts",

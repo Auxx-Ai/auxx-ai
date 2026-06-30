@@ -2,6 +2,7 @@
 'use client'
 
 import { Button } from '@auxx/ui/components/button'
+import { ListCard } from '@auxx/ui/components/list-card'
 import { Inbox, Plus } from 'lucide-react'
 import { useState } from 'react'
 import { SettingsSection } from '~/components/global/settings-page'
@@ -9,6 +10,7 @@ import { useConfirm } from '~/hooks/use-confirm'
 import { useWebhookEndpoint, type WebhookEndpointRow } from '../hooks/use-webhook-endpoint'
 import { WebhookEndpointCard } from './webhook-endpoint-card'
 import { WebhookEndpointDialog } from './webhook-endpoint-dialog'
+import { WebhookEndpointTemplateDialog } from './webhook-endpoint-template-dialog'
 import { WebhookPlaceholderCard } from './webhook-placeholder-card'
 
 /**
@@ -47,6 +49,15 @@ export function WebhookEndpointsSection() {
       title='Incoming'
       description='Receive events from any system — get a URL, paste it anywhere.'
       action={addButton}>
+      {isLoading && (
+        <div className='@container'>
+          <div className='grid gap-2 @md:grid-cols-2 @2xl:grid-cols-3'>
+            {[...Array(3)].map((_, i) => (
+              <ListCard key={`skeleton-${i}`} loading descriptionLines={0} />
+            ))}
+          </div>
+        </div>
+      )}
       {!isLoading && (
         <div className='@container'>
           <div className='grid gap-2 @md:grid-cols-2 @2xl:grid-cols-3'>
@@ -71,7 +82,7 @@ export function WebhookEndpointsSection() {
         </div>
       )}
 
-      <WebhookEndpointDialog open={createOpen} onClose={() => setCreateOpen(false)} />
+      <WebhookEndpointTemplateDialog open={createOpen} onClose={() => setCreateOpen(false)} />
       {editing && (
         <WebhookEndpointDialog
           open={!!editing}

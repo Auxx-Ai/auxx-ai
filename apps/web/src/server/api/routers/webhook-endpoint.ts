@@ -5,6 +5,10 @@
 // All logic lives in the `@auxx/lib/webhooks/webhook-endpoint` service (Drizzle, thrown AuxxErrors).
 
 import {
+  getWebhookEndpointTemplate,
+  listWebhookEndpointTemplates,
+} from '@auxx/lib/webhooks/endpoint-templates'
+import {
   createWebhookEndpoint,
   deleteWebhookEndpoint,
   getWebhookEndpoint,
@@ -15,7 +19,7 @@ import {
 import { z } from 'zod'
 import { createTRPCRouter, protectedProcedure } from '../trpc'
 
-const verificationSchema = z.enum(['none', 'token', 'hmac'])
+const verificationSchema = z.enum(['none', 'token', 'hmac', 'stripe'])
 const signatureEncodingSchema = z.enum(['hex', 'base64'])
 const topicSourceSchema = z.object({
   kind: z.enum(['header', 'path']),
@@ -35,6 +39,13 @@ export const webhookEndpointRouter = createTRPCRouter({
     listWebhookEndpoints(ctx.db, ctx.session.organizationId)
   ),
 
+  /** Predefined endpoint templates (Shopify/Stripe/GitHub + blank) for the "Add" gallery. */
+  getTemplates: protectedProcedure.query(() => listWebhookEndpointTemplates()),
+
+  getTemplateById: protectedProcedure
+    .input(z.object({ id: z.string().min(1) }))
+    .query(({ input }) => getWebhookEndpointTemplate(input.id)),
+
   get: protectedProcedure
     .input(z.object({ id: z.string().min(1) }))
     .query(({ ctx, input }) => getWebhookEndpoint(ctx.db, ctx.session.organizationId, input.id)),
@@ -43,10 +54,13 @@ export const webhookEndpointRouter = createTRPCRouter({
     .input(
       z.object({
         name: z.string().min(1, 'Name is required'),
+        provider: z.string().optional(),
         verification: verificationSchema.default('hmac'),
         signatureHeader: z.string().optional(),
         signaturePrefix: z.string().optional(),
         signatureEncoding: signatureEncodingSchema.optional(),
+        /** Provider-minted signing secret pasted by the user (Stripe `whsec_…`). */
+        secret: z.string().optional(),
         topicSource: topicSourceSchema.nullish(),
         topics: z.array(topicSchema).optional(),
       })
@@ -77,9 +91,10 @@ export const webhookEndpointRouter = createTRPCRouter({
     }),
 
   rotateSecret: protectedProcedure
-    .input(z.object({ id: z.string().min(1) }))
+    // `secret` is the replacement `whsec_…` for stripe endpoints; token/hmac mint a fresh one.
+    .input(z.object({ id: z.string().min(1), secret: z.string().optional() }))
     .mutation(({ ctx, input }) =>
-      rotateWebhookEndpointSecret(ctx.db, ctx.session.organizationId, input.id)
+      rotateWebhookEndpointSecret(ctx.db, ctx.session.organizationId, input.id, input.secret)
     ),
 
   delete: protectedProcedure

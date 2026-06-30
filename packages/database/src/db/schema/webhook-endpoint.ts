@@ -46,8 +46,14 @@ export const WebhookEndpoint = pgTable(
       .references((): AnyPgColumn => Organization.id, { onUpdate: 'cascade', onDelete: 'cascade' }),
     /** User-facing label, e.g. "Typeform leads". */
     name: text().notNull(),
-    /** How inbound deliveries are verified. */
-    verification: text().$type<'none' | 'token' | 'hmac'>().default('hmac').notNull(),
+    /**
+     * Template/provider this endpoint was created from ('shopify' | 'stripe' |
+     * 'github'), or null for a from-scratch endpoint. Drives card branding and
+     * the edit dialog's provider identity.
+     */
+    provider: text(),
+    /** How inbound deliveries are verified. `stripe` uses the dedicated `stripe-sig` scheme. */
+    verification: text().$type<'none' | 'token' | 'hmac' | 'stripe'>().default('hmac').notNull(),
     /**
      * AES-256-GCM at rest (@auxx/credentials secret-box, `v2:` format); decrypted
      * at verify. HMAC key or bearer token. Null for `verification: 'none'`.

@@ -3,6 +3,7 @@
 
 import type { WebhookEntity as Webhook } from '@auxx/database/types'
 import { Button } from '@auxx/ui/components/button'
+import { ListCard } from '@auxx/ui/components/list-card'
 import { Plus, Webhook as WebhookIcon } from 'lucide-react'
 import { useState } from 'react'
 import { SettingsSection } from '~/components/global/settings-page'
@@ -48,6 +49,15 @@ export function WebhooksSection() {
       title='Outgoing'
       description='Send Auxx events to an external URL when something happens.'
       action={addButton}>
+      {isLoading && (
+        <div className='@container'>
+          <div className='grid gap-2 @md:grid-cols-2 @2xl:grid-cols-3'>
+            {[...Array(3)].map((_, i) => (
+              <ListCard key={`skeleton-${i}`} loading descriptionLines={0} />
+            ))}
+          </div>
+        </div>
+      )}
       {!isLoading && (
         <div className='@container'>
           <div className='grid gap-2 @md:grid-cols-2 @2xl:grid-cols-3'>

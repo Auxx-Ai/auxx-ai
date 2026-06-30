@@ -4,8 +4,15 @@
 import { ListCard, type ListCardMenuItem, renderBadgeChips } from '@auxx/ui/components/list-card'
 import { useCopy } from '@auxx/ui/hooks/use-copy'
 import { formatDistanceToNow } from 'date-fns'
-import { Copy, Inbox, Pencil, Trash, TriangleAlert } from 'lucide-react'
+import { Copy, Pencil, Trash, TriangleAlert } from 'lucide-react'
+import { AppIcon } from '~/components/apps/ui/app-icon'
 import type { WebhookEndpointRow } from '../hooks/use-webhook-endpoint'
+
+/**
+ * Providers with a brand mark (`brand:<slug>`, rendered by AppIcon). Other / null providers
+ * fall back to the generic inbox icon.
+ */
+const BRAND_PROVIDERS = new Set(['shopify', 'stripe', 'github'])
 
 interface WebhookEndpointCardProps {
   endpoint: WebhookEndpointRow
@@ -19,6 +26,7 @@ const VERIFICATION_LABEL: Record<WebhookEndpointRow['verification'], string> = {
   none: 'Open',
   token: 'Token',
   hmac: 'HMAC',
+  stripe: 'Stripe',
 }
 
 /** "HMAC · Last event 2 hours ago" — verification mode + liveness, under the title. */
@@ -45,11 +53,16 @@ export function WebhookEndpointCard({ endpoint, onEdit, onDelete }: WebhookEndpo
     { label: 'Delete', icon: <Trash />, onClick: onDelete, destructive: true },
   ]
 
+  const iconId =
+    endpoint.provider && BRAND_PROVIDERS.has(endpoint.provider)
+      ? `brand:${endpoint.provider}`
+      : 'inbox'
+
   return (
     <ListCard
       title={endpoint.name}
       description={describeEndpoint(endpoint)}
-      icon={<Inbox className='size-4' />}
+      icon={<AppIcon iconId={iconId} size='sm' />}
       headerEnd={
         endpoint.verification === 'none'
           ? renderBadgeChips([

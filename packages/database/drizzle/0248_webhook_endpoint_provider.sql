@@ -1,0 +1,1 @@
+ALTER TABLE "WebhookEndpoint" ADD COLUMN "provider" text;
