@@ -98,6 +98,27 @@ export async function publishDataConnectorSync(
     .catch(() => {})
 }
 
+/**
+ * Publish `resource:created` / `resource:updated` / `resource:deleted` on the org
+ * channel — a coarse "the resource list changed" nudge (see `ResourceDefChangedEvent`).
+ * Like `publishDataConnectorSync`, no `excludeSocketId`: connector provisioning runs in
+ * the worker (no originating socket), and a redundant invalidate on the acting client
+ * is harmless — so every caller (UI service + worker) stays uniform.
+ *
+ * Fire-and-forget: errors swallowed so a Pusher hiccup never blocks the write.
+ */
+export async function publishResourceDefChanged(
+  realtimeService: RealtimeService,
+  organizationId: string,
+  args: { entityDefinitionId: string; kind: 'created' | 'updated' | 'deleted' }
+) {
+  await realtimeService
+    .publish(rooms.orgPresence(organizationId), `resource:${args.kind}`, {
+      entityDefinitionId: args.entityDefinitionId,
+    })
+    .catch(() => {})
+}
+
 // ════════════════════════════════════════════════════════════════════════════
 // Mail publish helpers
 // ════════════════════════════════════════════════════════════════════════════

@@ -8,10 +8,10 @@ import {
   updateEntityDefinition,
 } from '@auxx/services/entity-definitions'
 import type { Result } from 'neverthrow'
-import { onCacheEvent } from '../cache/invalidate'
 import { ForbiddenError } from '../errors'
 import { DisplayFieldService, type DisplayFieldType } from '../field-values'
 import { deleteEntityDefinitionDeep } from './delete-entity-definition'
+import { notifyEntityDefChanged } from './notify'
 import type { CreateEntityDefinitionInput, UpdateEntityDefinitionInput } from './types'
 
 /**
@@ -101,7 +101,7 @@ export class EntityDefinitionService {
       standardType: input.standardType ?? null,
     })
     const value = unwrapResult(result)
-    await onCacheEvent('entity-def.created', { orgId: this.organizationId })
+    await notifyEntityDefChanged(this.organizationId, value.id, 'created')
     return value
   }
 
@@ -163,7 +163,7 @@ export class EntityDefinitionService {
       }
     }
 
-    await onCacheEvent('entity-def.updated', { orgId: this.organizationId })
+    await notifyEntityDefChanged(this.organizationId, id, 'updated')
     return result.value
   }
 
@@ -199,10 +199,10 @@ export class EntityDefinitionService {
       id,
       organizationId: this.organizationId,
     })
-    // The def AND its fields are gone (plus cross-entity partner fields), so bust
-    // both the entity-def and custom-field projections.
-    await onCacheEvent('entity-def.deleted', { orgId: this.organizationId })
-    await onCacheEvent('custom-field.deleted', { orgId: this.organizationId })
+    // The def AND its fields are gone (plus cross-entity partner fields). The notify
+    // helper busts both the entity-def and custom-field projections for `deleted`,
+    // then broadcasts `resource:deleted`.
+    await notifyEntityDefChanged(this.organizationId, id, 'deleted')
     return summary
   }
 }
