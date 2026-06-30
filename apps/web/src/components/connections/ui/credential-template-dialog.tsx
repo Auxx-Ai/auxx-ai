@@ -1,4 +1,4 @@
-// apps/web/src/components/connections/ui/add-connection-dialog.tsx
+// apps/web/src/components/connections/ui/credential-template-dialog.tsx
 'use client'
 
 import { Button } from '@auxx/ui/components/button'
@@ -99,7 +99,7 @@ export type ConnectionRestriction =
   | { kind: 'app'; appSlug: string }
   | { kind: 'provider'; providerKey: string }
 
-interface AddConnectionDialogProps {
+interface CredentialTemplateDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   /** Platform built-in providers (Google, Postgres, Stripe, …). */
@@ -122,7 +122,7 @@ interface AddConnectionDialogProps {
  * the same dialog, no stacked modal. Persistence + the OAuth popup are reused from
  * {@link useConnectFlow}. See plans/connections/unify-connection-definition.md §15.
  */
-export function AddConnectionDialog({
+export function CredentialTemplateDialog({
   open,
   onOpenChange,
   providers,
@@ -131,7 +131,7 @@ export function AddConnectionDialog({
   onConnected,
   restrictTo,
   onConnectedCredential,
-}: AddConnectionDialogProps) {
+}: CredentialTemplateDialogProps) {
   const [values, setValues] = useState<Record<string, string>>({})
   const [token, setToken] = useState('')
   const [name, setName] = useState('')
