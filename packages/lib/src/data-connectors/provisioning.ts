@@ -21,6 +21,7 @@ import { toResourceFieldId } from '@auxx/types/field'
 import { and, eq } from 'drizzle-orm'
 import { getCachedCustomFields } from '../cache'
 import { onCacheEvent } from '../cache/invalidate'
+import { notifyEntityDefChanged } from '../entity-definitions/notify'
 import { NotFoundError } from '../errors'
 import {
   type DataConnectorMappingRow,
@@ -98,6 +99,10 @@ export async function provisionTarget(
   // A caller-provided def is ADOPTED, not authored — never seize ownership of it.
   // Only a def this call creates (owned-def path below) gets the dataConnectorId FK.
   const creatingOwnedDef = entityDefinitionId == null
+  // Did THIS call genuinely author a new def? `true` only on the create branch —
+  // an adopted existing def stays `false` so the terminal notify fires `updated`,
+  // never a phantom `resource:created`.
+  let createdNewDef = false
 
   // ── 1. Resolve / create the def ──────────────────────────────────────────────
   if (!entityDefinitionId) {
@@ -133,8 +138,8 @@ export async function provisionTarget(
       entityDefinitionId = existing.id
     } else {
       entityDefinitionId = created.value.id
+      createdNewDef = true
     }
-    await onCacheEvent('entity-def.created', { orgId: organizationId })
   }
 
   const defId = entityDefinitionId
@@ -178,7 +183,6 @@ export async function provisionTarget(
       .update(schema.EntityDefinition)
       .set({ primaryDisplayFieldId, updatedAt: new Date() })
       .where(eq(schema.EntityDefinition.id, defId))
-    await onCacheEvent('entity-def.updated', { orgId: organizationId })
   }
 
   // Wire the declared avatar/display-image field — same direct-pointer write as the
@@ -193,8 +197,13 @@ export async function provisionTarget(
       .update(schema.EntityDefinition)
       .set({ avatarFieldId, updatedAt: new Date() })
       .where(eq(schema.EntityDefinition.id, defId))
-    await onCacheEvent('entity-def.updated', { orgId: organizationId })
   }
+
+  // Fire ONCE per provision (not per internal pointer write): one cache recompute +
+  // one coarse `resource:*` realtime nudge so open clients refetch the resource list.
+  // `created` only on a genuine new owned def; adopt + field/pointer-only runs emit
+  // `updated`. The orthogonal `custom-field.created` bust above stays separate.
+  await notifyEntityDefChanged(organizationId, defId, createdNewDef ? 'created' : 'updated')
 
   logger.info('Provisioned connector target', {
     dataConnectorId,

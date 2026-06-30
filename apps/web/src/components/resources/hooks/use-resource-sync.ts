@@ -117,6 +117,18 @@ export function useResourceSync() {
     [invalidateLists, utils]
   )
 
+  // A resource (entity DEFINITION) was created / renamed / removed elsewhere —
+  // in another tab, or by background connector provisioning. Coarse refetch: mirror
+  // the acting client's `invalidateResourceDefinitions()` so a remote client reaches
+  // the same freshness (sidebar/provider AND the workflow-node/picker lists that read
+  // `entityDefinition.getAll`). Payload is ignored — the resource list is small.
+  const handleResourceDefChanged = useCallback(() => {
+    utils.resource.list.invalidate()
+    utils.entityDefinition.getAll.invalidate()
+    utils.entityDefinition.getBySlug.invalidate()
+    utils.entityDefinition.getById.invalidate()
+  }, [utils])
+
   const onEvent = useCallback(
     (event: string, payload: unknown) => {
       switch (event) {
@@ -132,6 +144,10 @@ export function useResourceSync() {
           return handleRecordArchived(payload)
         case 'records:invalidated':
           return handleRecordsInvalidated(payload)
+        case 'resource:created':
+        case 'resource:updated':
+        case 'resource:deleted':
+          return handleResourceDefChanged()
       }
     },
     [
@@ -141,6 +157,7 @@ export function useResourceSync() {
       handleRecordDeleted,
       handleRecordArchived,
       handleRecordsInvalidated,
+      handleResourceDefChanged,
     ]
   )
 

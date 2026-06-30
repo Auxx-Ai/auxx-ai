@@ -8,6 +8,7 @@ export {
   selectStreamsWithoutRoot,
 } from './delete-entity-definition'
 export { EntityDefinitionService } from './entity-definition-service'
+export { notifyEntityDefChanged } from './notify'
 export {
   type CreateEntityDefinitionInput,
   createEntityDefinitionSchema,

@@ -48,6 +48,7 @@ export type ResourceSyncEvent =
   | RecordDeletedEvent
   | RecordArchivedEvent
   | RecordsInvalidatedEvent
+  | ResourceDefChangedEvent
   | DataConnectorSyncEvent
 
 /** Field values changed (from mutations, triggers, cost recalc, etc.) */
@@ -137,6 +138,20 @@ export interface RecordsInvalidatedEvent {
   data: {
     entityDefinitionId: string
   }
+}
+
+/**
+ * An entity DEFINITION (resource) was created / renamed / removed — fires from
+ * every server path that creates/updates/deletes a def (UI `EntityDefinitionService`
+ * AND background connector provisioning). Coarse + invalidation-only, mirroring
+ * `records:invalidated`: the resource list is small and cheap, so the client
+ * refetches it rather than merging a payload. Three names (not one `kind` field)
+ * keep the client `switch` uniform with the record events. Payload is minimal —
+ * add `apiSlug`/`singular` later only if a consumer needs an optimistic insert.
+ */
+export interface ResourceDefChangedEvent {
+  event: 'resource:created' | 'resource:updated' | 'resource:deleted'
+  data: { entityDefinitionId: string }
 }
 
 /**
