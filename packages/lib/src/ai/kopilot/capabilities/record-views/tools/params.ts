@@ -18,11 +18,11 @@ const VIEW_PROPERTIES: Record<string, unknown> = {
         operator: {
           type: 'string',
           description:
-            'Filter operator. Common: "is", "is not", "contains", ">", "<", ">=", "<=", "empty", "not empty", "in", "not in", "before", "after", "today", "this_week", "this_month".',
+            'Filter operator. Common: "is", "is not", "contains", ">", "<", ">=", "<=", "empty", "not empty", "in", "not in". Dates: "within_days" / "older_than_days" (value = number of days), "before" / "after" / "on_date" (value = absolute date "YYYY-MM-DD"), "today" / "yesterday" / "this_week" / "this_month" (no value).',
         },
         value: {
           description:
-            'Comparison value. Use the option value key for select fields (e.g. "ACTIVE" not "Active"). For "in"/"not in", pass an array.',
+            'Comparison value. Use the option value key for select fields (e.g. "ACTIVE" not "Active"). For "in"/"not in", pass an array. For dates, "in the last N days" is "within_days" with a NUMBER (e.g. 30) — NOT "after" with a relative string like "now-30d"; "before"/"after"/"on_date" take an absolute "YYYY-MM-DD" date.',
         },
       },
       required: ['field', 'operator'],
@@ -67,6 +67,28 @@ export const RECORD_VIEW_CREATE_PARAMS: Record<string, unknown> = {
     ...VIEW_PROPERTIES,
   },
   required: ['name'],
+  additionalProperties: false,
+}
+
+/**
+ * Parameters for `update_table_view` — a required `viewId` plus an optional
+ * rename and any of the filter/sort/column props. Only the props passed change;
+ * everything else on the view is kept.
+ */
+export const RECORD_VIEW_UPDATE_PARAMS: Record<string, unknown> = {
+  type: 'object',
+  properties: {
+    viewId: {
+      type: 'string',
+      description: 'Id of the view to edit — get it from list_table_views.',
+    },
+    name: {
+      type: 'string',
+      description: 'New name for the view (max 50 chars). Omit to keep the current name.',
+    },
+    ...VIEW_PROPERTIES,
+  },
+  required: ['viewId'],
   additionalProperties: false,
 }
 
