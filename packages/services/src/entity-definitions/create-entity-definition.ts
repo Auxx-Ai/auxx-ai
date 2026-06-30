@@ -20,6 +20,12 @@ export interface CreateEntityDefinitionParams {
   plural: string
   entityType?: EntityType
   standardType?: StandardType
+  /** Stable owner-scoped identity key (see EntityDefinition.sourceKey). */
+  sourceKey?: string | null
+  /** Owning AppInstallation (app-installed defs). */
+  appInstallationId?: string | null
+  /** Owning DataConnector (connector-owned defs). */
+  dataConnectorId?: string | null
 }
 
 /**
@@ -27,8 +33,19 @@ export interface CreateEntityDefinitionParams {
  * Validates slug uniqueness before creation
  */
 export async function createEntityDefinition(params: CreateEntityDefinitionParams) {
-  const { organizationId, apiSlug, icon, color, singular, plural, entityType, standardType } =
-    params
+  const {
+    organizationId,
+    apiSlug,
+    icon,
+    color,
+    singular,
+    plural,
+    entityType,
+    standardType,
+    sourceKey,
+    appInstallationId,
+    dataConnectorId,
+  } = params
 
   // Check if slug is reserved (system entity type)
   if (RESERVED_API_SLUGS.includes(apiSlug.toLowerCase() as any)) {
@@ -67,6 +84,9 @@ export async function createEntityDefinition(params: CreateEntityDefinitionParam
         plural,
         entityType: entityType ?? null,
         standardType: standardType ?? null,
+        sourceKey: sourceKey ?? null,
+        appInstallationId: appInstallationId ?? null,
+        dataConnectorId: dataConnectorId ?? null,
         updatedAt: new Date(),
       })
       .returning(),

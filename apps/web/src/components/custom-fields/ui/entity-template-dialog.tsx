@@ -40,6 +40,13 @@ interface EntityTemplateDialogProps {
   preSelectedTemplateIds?: string[]
   /** Called after successful installation with the full result including fieldIdMap */
   onComplete?: (result: EntityTemplateInstallResult) => void
+  /**
+   * Connector/app ownership to stamp on installed defs + fields (v6). Set when the
+   * dialog is opened inside a connector wizard so the installed record-type defs are
+   * connector-owned (delete prompt) and app-owned (uninstall cleanup + appFieldKey
+   * idempotency). Absent for a plain gallery install.
+   */
+  installContext?: { dataConnectorId?: string; appInstallationId?: string }
 }
 
 type EntityTemplate = RouterOutputs['entityDefinition']['getTemplates'][number]
@@ -55,6 +62,7 @@ export function EntityTemplateDialog({
   onOpenChange,
   preSelectedTemplateIds,
   onComplete,
+  installContext,
 }: EntityTemplateDialogProps) {
   const router = useRouter()
   const { resources, customResources, getResourceById } = useResources()
@@ -340,6 +348,7 @@ export function EntityTemplateDialog({
       templateIds: templateIdsToCreate,
       ...(Object.keys(modifications).length > 0 && { fieldModifications: modifications }),
       ...(Object.keys(linkedEntities).length > 0 && { linkedEntities }),
+      ...(installContext && { installContext }),
     })
   }
 

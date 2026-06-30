@@ -12,6 +12,7 @@ import {
   timestamp,
   uniqueIndex,
 } from './_shared'
+import { AppInstallation } from './app-installation'
 import { CustomField } from './custom-field'
 import { DataConnector } from './data-connector'
 import { Organization } from './organization'
@@ -77,12 +78,42 @@ export const EntityDefinition = pgTable(
       onUpdate: 'cascade',
       onDelete: 'set null',
     }),
+
+    /** Owning AppInstallation when this def is installed from an app's record
+     *  type. `cascade` on delete — an app-owned def goes away with the app.
+     *  NULL for connector-only, template, and user-created defs. */
+    appInstallationId: text().references((): AnyPgColumn => AppInstallation.id, {
+      onUpdate: 'cascade',
+      onDelete: 'cascade',
+    }),
+
+    /** Stable identity key for the def, scoped by its owner. Double-duty:
+     *  - Owned (app/connector): the manifest record-type key (e.g. 'orders') —
+     *    the strict adopt/dedupe key, UNIQUE per owner via the partial index.
+     *  - Ownerless template: the source templateId (e.g. 'product') — loose,
+     *    NON-unique provenance (the installer appends `-2`/`-3` on re-install).
+     *  NULL for user-created defs. */
+    sourceKey: text(),
   },
   (table) => [
     // Unique constraint: apiSlug must be unique per organization (only for non-archived)
     uniqueIndex('EntityDefinition_apiSlug_organizationId_key')
       .using('btree', table.apiSlug.asc().nullsLast(), table.organizationId.asc().nullsLast())
       .where(sql`${table.archivedAt} IS NULL`),
+    // Owner-scoped stable identity: an owned def (app or connector) is one-per-owner
+    // per sourceKey. Partial + owner-gated so ownerless template defs (NULL owner)
+    // may repeat — the template installer appends `-2`/`-3` and double-install is legal.
+    uniqueIndex('EntityDefinition_source_key')
+      .using(
+        'btree',
+        sql`COALESCE(${table.appInstallationId}, '')`,
+        sql`COALESCE(${table.dataConnectorId}, '')`,
+        table.sourceKey.asc().nullsLast(),
+        table.organizationId.asc().nullsLast()
+      )
+      .where(
+        sql`${table.sourceKey} IS NOT NULL AND ${table.archivedAt} IS NULL AND (${table.appInstallationId} IS NOT NULL OR ${table.dataConnectorId} IS NOT NULL)`
+      ),
     // Index for organization lookups
     index('EntityDefinition_organizationId_idx').using(
       'btree',

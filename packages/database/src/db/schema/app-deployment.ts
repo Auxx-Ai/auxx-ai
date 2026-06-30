@@ -224,7 +224,7 @@ export interface CatalogConnectorRelationshipDecl {
   /** Display name for the auto-created inverse edge on the child/target def. */
   inverseName: string
   /** Target def; omit for an owned child (resolves to the mapping's own provisioned def). */
-  targetRef?: { ownedApiSlug: string } | { entityKind: string }
+  targetRef?: { ownedKey: string } | { entityKind: string }
 }
 
 /** A recommended fan-out mapping projected from a data connector's stream. */
@@ -238,6 +238,8 @@ export interface CatalogConnectorDefaultMapping {
     | {
         mode: 'owned'
         entity: {
+          /** Stable owner-scoped identity key (distinct from cosmetic `apiSlug`). */
+          key: string
           apiSlug: string
           singular: string
           plural: string

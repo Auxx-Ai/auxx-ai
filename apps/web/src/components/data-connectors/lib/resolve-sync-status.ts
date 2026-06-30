@@ -153,7 +153,19 @@ export function resolveSyncStatus(
     }
   }
 
-  if (status === 'syncing' || status === 'provisioning') {
+  if (status === 'provisioning') {
+    // Provisioning is LOCAL schema work — creating the connector's entity defs, fields,
+    // and relationship edges before the first slice. It never touches the source, so it
+    // must not borrow the "Reaching the source…" copy (that wrongly reads as a network
+    // stall). It's inline + fast; no run exists yet, so there's nothing to pause.
+    return {
+      state: 'syncing',
+      label: 'Provisioning',
+      detail: 'Setting up entities and fields…',
+    }
+  }
+
+  if (status === 'syncing') {
     // Rate-limited is derived: a throttled slice stamped `rateLimited.until` in the
     // future. Once it passes (the next slice ran), fall through to plain syncing.
     const until = latestRun?.rateLimitedUntil
@@ -184,7 +196,7 @@ export function resolveSyncStatus(
           : 'Syncing…'
     return {
       state: 'syncing',
-      label: status === 'provisioning' ? 'Provisioning' : connecting ? 'Connecting' : 'Syncing',
+      label: connecting ? 'Connecting' : 'Syncing',
       detail,
       primaryAction: 'pause',
     }

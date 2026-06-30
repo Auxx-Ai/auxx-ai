@@ -560,6 +560,7 @@ async function createLazyStreamOwnedMappings(
 
     const targetSpec: ConnectorMappingTargetSpec = {
       ownedDef: {
+        sourceKey: entity.key,
         apiSlug: entity.apiSlug,
         singular: entity.singular,
         plural: entity.plural,
@@ -829,7 +830,20 @@ export async function finishConnectorSetup(
     .update(schema.DataConnector)
     .set({ status: 'provisioning', updatedAt: new Date() })
     .where(eq(schema.DataConnector.id, id))
-  await materializeConnectorTargets(db, organizationId, id)
+  // Materialize is pure schema work (no source fetch), but a relationship-edge
+  // collision or a slug clash can still throw. Roll the status back to `pending` on
+  // failure so the connector is never stranded mid-`provisioning` — the `!== 'pending'`
+  // guard above would otherwise make this a permanent dead-end no later call can clear.
+  // Re-throw so the tRPC mutation surfaces the reason to the wizard.
+  try {
+    await materializeConnectorTargets(db, organizationId, id)
+  } catch (error) {
+    await db
+      .update(schema.DataConnector)
+      .set({ status: 'pending', updatedAt: new Date() })
+      .where(eq(schema.DataConnector.id, id))
+    throw error
+  }
   const [updated] = await db
     .update(schema.DataConnector)
     .set({ status: 'ready', updatedAt: new Date() })

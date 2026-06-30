@@ -1723,6 +1723,13 @@
       "when": 1782789932724,
       "tag": "0245_drop_legacy_shopify_tables",
       "breakpoints": true
+    },
+    {
+      "idx": 246,
+      "version": "7",
+      "when": 1782840139947,
+      "tag": "0246_entity_def_source_key",
+      "breakpoints": true
     }
   ]
 }

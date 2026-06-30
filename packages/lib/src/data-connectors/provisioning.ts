@@ -60,6 +60,9 @@ export interface ProvisionTarget {
   entityDefinitionId?: string | null
   /** Owned-def declaration (used only when entityDefinitionId is absent + owned). */
   ownedDef?: {
+    /** Stable owner-scoped identity key (manifest key). Falls back to `apiSlug`
+     *  pre-manifest-key. The adopt/dedupe key, never the cosmetic `apiSlug`. */
+    sourceKey?: string
     apiSlug: string
     singular: string
     plural: string
@@ -111,6 +114,9 @@ export async function provisionTarget(
         'Contributing targets require an existing entityDefinitionId; only owned targets create a def'
       )
     }
+    // Stable owner-scoped identity for the owned def — the adopt/dedupe key.
+    // Falls back to `apiSlug` until the manifest carries an explicit key (Phase 2).
+    const ownedSourceKey = target.ownedDef.sourceKey ?? target.ownedDef.apiSlug
     const created = await createEntityDefinition({
       organizationId,
       apiSlug: target.ownedDef.apiSlug,
@@ -124,13 +130,17 @@ export async function provisionTarget(
       // in the UI: entityType/standardType stay null. Setting 'standard'/'custom'
       // here misclassifies it (e.g. escapes the custom-entity quota, which counts
       // `isNull(entityType)`) and diverges from every user-created entity.
+      // Stamp the stable identity so re-provisions adopt by `(owner, sourceKey)`.
+      sourceKey: ownedSourceKey,
     })
     if (created.isErr()) {
-      // SLUG_ALREADY_EXISTS → the user (or a prior run) already owns this slug; adopt it.
+      // SLUG_ALREADY_EXISTS → a prior run/the user already owns this slug; adopt by
+      // the stable `(dataConnectorId, sourceKey)` identity, never the cosmetic apiSlug.
       const existing = await db.query.EntityDefinition.findFirst({
         where: and(
           eq(schema.EntityDefinition.organizationId, organizationId),
-          eq(schema.EntityDefinition.apiSlug, target.ownedDef.apiSlug)
+          eq(schema.EntityDefinition.dataConnectorId, dataConnectorId),
+          eq(schema.EntityDefinition.sourceKey, ownedSourceKey)
         ),
         columns: { id: true },
       })
@@ -216,7 +226,7 @@ export async function provisionTarget(
 }
 
 /** Where a relationship edge points. `undefined` ⇒ an owned child (the mapping's own def). */
-export type RelationshipTargetRef = { ownedApiSlug: string } | { entityKind: string }
+export type RelationshipTargetRef = { ownedKey: string } | { entityKind: string }
 
 /** The parent↔child edge a mapping declares for provisioning (mirrors the catalog decl). */
 export interface ProvisionRelationshipSpec {
@@ -233,20 +243,20 @@ export interface ProvisionRelationshipSpec {
 /**
  * Resolve a relationship edge's target `EntityDefinition.id`. For an owned child the
  * target IS the mapping's own provisioned def (`ownTargetDefId`); a `targetRef` names a
- * cross-stream owned def (by `apiSlug`, resolved from the connector-wide pass-1 map) or
- * a contributing/system def (by `entityKind`). Returns null when the target can't be
- * resolved (e.g. a disabled stream) so the caller skips the edge rather than pointing it
- * at a non-existent def.
+ * cross-stream owned def (by stable `ownedKey`, resolved from the connector-wide pass-1
+ * map) or a contributing/system def (by `entityKind`). Returns null when the target
+ * can't be resolved (e.g. a disabled stream) so the caller skips the edge rather than
+ * pointing it at a non-existent def.
  */
 export async function resolveRelationshipTargetDefId(
   db: Database,
   organizationId: string,
   targetRef: RelationshipTargetRef | undefined,
   ownTargetDefId: string,
-  defIdByApiSlug: Record<string, string>
+  defIdByOwnedKey: Record<string, string>
 ): Promise<string | null> {
   if (!targetRef) return ownTargetDefId
-  if ('ownedApiSlug' in targetRef) return defIdByApiSlug[targetRef.ownedApiSlug] ?? null
+  if ('ownedKey' in targetRef) return defIdByOwnedKey[targetRef.ownedKey] ?? null
   return resolveEntityDefinitionIdByKind({ kind: targetRef.entityKind, organizationId }, db)
 }
 
@@ -533,7 +543,7 @@ export async function materializeConnectorTargets(
   const mappingRows = streams.flatMap((s) => s.mappings)
   if (mappingRows.length === 0) return
 
-  const defIdByApiSlug: Record<string, string> = {}
+  const defIdByOwnedKey: Record<string, string> = {}
 
   // ── Pass 1 — defs + fields ────────────────────────────────────────────────────
   // Owned (lazy, null def) creates/adopts its def from the persisted `targetSpec`;
@@ -567,7 +577,10 @@ export async function materializeConnectorTargets(
         .where(eq(schema.DataConnectorMapping.id, row.id))
       row.entityDefinitionId = result.entityDefinitionId
     }
-    if (ownedDef) defIdByApiSlug[ownedDef.apiSlug] = result.entityDefinitionId
+    // Key by the stable owned key (manifest key) so a cross-stream `ownedKey` targetRef
+    // resolves; fall back to apiSlug for specs that predate the key.
+    if (ownedDef)
+      defIdByOwnedKey[ownedDef.sourceKey ?? ownedDef.apiSlug] = result.entityDefinitionId
   }
 
   // ── Backfill concrete refs ───────────────────────────────────────────────────
@@ -607,7 +620,7 @@ export async function materializeConnectorTargets(
       organizationId,
       rel.targetRef,
       row.entityDefinitionId ?? '',
-      defIdByApiSlug
+      defIdByOwnedKey
     )
     if (!relatedResourceId) {
       logger.warn('Skipping connector relationship edge — target def unresolved', {

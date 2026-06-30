@@ -80,6 +80,7 @@ export const shopifyCoreDataConnector = defineDataConnector({
           target: {
             mode: 'owned',
             entity: {
+              key: 'orders',
               apiSlug: 'shopify_orders',
               singular: 'Shopify Order',
               plural: 'Shopify Orders',
@@ -110,6 +111,7 @@ export const shopifyCoreDataConnector = defineDataConnector({
           target: {
             mode: 'owned',
             entity: {
+              key: 'line_items',
               apiSlug: 'shopify_line_items',
               singular: 'Line Item',
               plural: 'Line Items',
@@ -125,11 +127,12 @@ export const shopifyCoreDataConnector = defineDataConnector({
             name: 'Product',
             cardinality: 'belongs_to',
             inverseName: 'Line Items',
-            targetRef: { ownedApiSlug: 'shopify_products' },
+            targetRef: { ownedKey: 'products' },
           },
           target: {
             mode: 'owned',
             entity: {
+              key: 'products',
               apiSlug: 'shopify_products',
               singular: 'Shopify Product',
               plural: 'Shopify Products',

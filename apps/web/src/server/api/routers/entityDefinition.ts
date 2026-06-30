@@ -6,7 +6,12 @@ import {
   createEntityDefinitionSchema,
   updateEntityDefinitionSchema,
 } from '@auxx/lib/entity-definitions/types'
-import { getAllTemplates, getTemplateById, installTemplates } from '@auxx/lib/entity-templates'
+import {
+  getOrgTemplateSummaries,
+  installTemplates,
+  resolveOrgTemplateById,
+  resolveOrgTemplatesByIds,
+} from '@auxx/lib/entity-templates'
 import { ForbiddenError } from '@auxx/lib/errors'
 import { FeatureKey, FeaturePermissionService } from '@auxx/lib/permissions'
 import { checkSlugExists } from '@auxx/services/entity-definitions'
@@ -195,18 +200,22 @@ export const entityDefinitionRouter = createTRPCRouter({
    */
   getTemplates: protectedProcedure
     .input(z.object({ category: z.string().optional() }).optional())
-    .query(({ input }) => getAllTemplates(input?.category)),
+    .query(({ ctx, input }) =>
+      getOrgTemplateSummaries(ctx.session.organizationId, input?.category)
+    ),
 
   /**
    * Get full template details (with fields) for preview
    */
-  getTemplateById: protectedProcedure.input(z.object({ id: z.string() })).query(({ input }) => {
-    const template = getTemplateById(input.id)
-    if (!template) {
-      throw new Error('Template not found')
-    }
-    return template
-  }),
+  getTemplateById: protectedProcedure
+    .input(z.object({ id: z.string() }))
+    .query(async ({ ctx, input }) => {
+      const template = await resolveOrgTemplateById(ctx.session.organizationId, input.id)
+      if (!template) {
+        throw new Error('Template not found')
+      }
+      return template
+    }),
 
   /**
    * Install selected templates — creates entity definitions with fields
@@ -236,6 +245,14 @@ export const entityDefinitionRouter = createTRPCRouter({
             })
           )
           .optional(),
+        // Connector/app ownership stamped on installed defs + fields when the install
+        // runs inside a connector wizard (v6).
+        installContext: z
+          .object({
+            dataConnectorId: z.string().optional(),
+            appInstallationId: z.string().optional(),
+          })
+          .optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -261,11 +278,12 @@ export const entityDefinitionRouter = createTRPCRouter({
         }
       }
 
-      return await installTemplates(
-        ctx.session.organizationId,
-        input.templateIds,
-        input.fieldModifications,
-        input.linkedEntities
-      )
+      return await installTemplates(ctx.session.organizationId, input.templateIds, {
+        fieldModifications: input.fieldModifications,
+        linkedEntities: input.linkedEntities,
+        // Org-aware so `app:*` record-type templates resolve from installed-app catalogs.
+        resolveTemplates: (ids) => resolveOrgTemplatesByIds(ctx.session.organizationId, ids),
+        installContext: input.installContext,
+      })
     }),
 })

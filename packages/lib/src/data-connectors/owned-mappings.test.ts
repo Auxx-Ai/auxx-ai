@@ -96,7 +96,7 @@ describe('partitionOwnedFields', () => {
       rootPath: '',
       target: {
         mode: 'owned' as const,
-        entity: { apiSlug: 'shopify_orders', singular: 'O', plural: 'Os' },
+        entity: { key: 'orders', apiSlug: 'shopify_orders', singular: 'O', plural: 'Os' },
       },
     },
     { rootPath: 'customer', target: { mode: 'contributing' as const, entityKind: 'contact' } },
@@ -104,7 +104,7 @@ describe('partitionOwnedFields', () => {
       rootPath: 'line_items[]',
       target: {
         mode: 'owned' as const,
-        entity: { apiSlug: 'shopify_line_items', singular: 'L', plural: 'Ls' },
+        entity: { key: 'line_items', apiSlug: 'shopify_line_items', singular: 'L', plural: 'Ls' },
       },
     },
     {
@@ -112,7 +112,7 @@ describe('partitionOwnedFields', () => {
       linkMode: 'reference' as const,
       target: {
         mode: 'owned' as const,
-        entity: { apiSlug: 'shopify_products', singular: 'P', plural: 'Ps' },
+        entity: { key: 'products', apiSlug: 'shopify_products', singular: 'P', plural: 'Ps' },
       },
     },
   ]
