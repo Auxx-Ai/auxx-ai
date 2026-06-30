@@ -17,6 +17,18 @@ import { OpenAILLMClient } from '../openai/openai-llm-client'
  */
 export class DeepSeekLLMClient extends OpenAILLMClient {
   /**
+   * DeepSeek's OpenAI-compatible endpoint only supports legacy JSON mode
+   * (`response_format: { type: 'json_object' }`), not strict Structured Outputs
+   * (`{ type: 'json_schema' }`) — sending the latter returns
+   * `400 This response_format type is unavailable now`. Returning false routes
+   * json_schema requests through the base client's downgrade path, which emits
+   * json_object and injects the schema into the system prompt.
+   */
+  protected override modelSupportsStrictJsonSchema(): boolean {
+    return false
+  }
+
+  /**
    * Strip reasoning_content from all assistant messages except the last one.
    * DeepSeek requires that reasoning_content from prior turns is NOT sent back,
    * but the most recent assistant message's reasoning must be preserved within

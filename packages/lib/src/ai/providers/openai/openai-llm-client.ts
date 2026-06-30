@@ -596,7 +596,7 @@ export class OpenAILLMClient extends LLMClient {
    * Pre-gpt-4o models (gpt-4-turbo, gpt-4, gpt-3.5-turbo) and the original gpt-4o-2024-05-13
    * only support legacy JSON mode (`json_object`), not strict schema enforcement.
    */
-  private modelSupportsStrictJsonSchema(model: string): boolean {
+  protected modelSupportsStrictJsonSchema(model: string): boolean {
     const base = this.getBaseModel(model)
     if (base === 'gpt-4o-2024-05-13') return false
     if (base.startsWith('gpt-4-turbo')) return false

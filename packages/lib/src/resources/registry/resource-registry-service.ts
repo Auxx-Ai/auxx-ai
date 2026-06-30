@@ -110,6 +110,7 @@ type EntityDefinitionWithFields = {
   organizationId: string
   entityType: string | null
   isVisible: boolean
+  dataConnectorId: string | null
   primaryDisplayField: { id: string; name: string; type: string } | null
   secondaryDisplayField: { id: string; name: string; type: string } | null
   avatarField: { id: string; name: string; type: string } | null
@@ -146,6 +147,7 @@ function toCustomResourceBase(
     entityDefinitionId: def.id,
     organizationId: def.organizationId,
     isVisible: def.isVisible,
+    dataConnectorId: def.dataConnectorId ?? undefined,
     display: {
       primaryDisplayField: toDisplayFieldConfig(def.primaryDisplayField),
       secondaryDisplayField: toDisplayFieldConfig(def.secondaryDisplayField),

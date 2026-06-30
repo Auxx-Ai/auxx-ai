@@ -855,9 +855,13 @@ export type DeleteSyncedDataBehavior = 'keep' | 'archive' | 'delete'
  * ALWAYS kept regardless of `behavior`; their per-cell `FieldValue.managedByConnectorId`
  * markers are nulled automatically by the FK `set null` when the connector row cascades.
  *
- * The DataConnector row + its streams/mappings/items/runs cascade on delete; the
- * `dataConnectorId` FK on EntityDefinition/CustomField is `set null`, so provisioned
- * schema survives (now an ordinary user-owned def/field).
+ * The DataConnector row + its streams/mappings/items/runs cascade on delete. For
+ * `keep`/`archive` the `dataConnectorId` FK on EntityDefinition/CustomField is `set null`,
+ * so provisioned schema survives as an ordinary user-owned def/field. For `delete` (a full
+ * wipe) the provisioned SCHEMA is torn down too — owned defs (+ their columns/records and
+ * the inverse relationship fields they planted on shared defs like Contacts) and any
+ * contributing columns added to shared defs — so nothing is left stranded to collide when
+ * the connector is set up again.
  */
 export async function deleteConnector(
   db: Database,
@@ -899,6 +903,64 @@ export async function deleteConnector(
         await crud.bulkArchive(recordIds)
       } else {
         await crud.bulkDelete(recordIds)
+      }
+    }
+  }
+
+  // Full wipe (behavior='delete'): tear down the provisioned SCHEMA too, so a re-setup
+  // starts clean instead of tripping over a stranded def/relationship. 'keep'/'archive'
+  // deliberately leave the schema in place (the FK just nulls), keeping the synced data as
+  // ordinary user-owned entities.
+  if (behavior === 'delete') {
+    // Route every teardown through the sanctioned service entry points (NOT raw db.delete)
+    // so each one busts the org cache (resources / customFields / entityDefs) and fires the
+    // same events a UI delete would. Connector fields aren't protected (no
+    // appInstallationId / systemAttribute), so the services delete them cleanly. Lazy-import
+    // to keep this module's pure-helper exports loadable without the teardown chains.
+    const { EntityDefinitionService } = await import('../entity-definitions')
+    const { CustomFieldService } = await import('../custom-fields')
+
+    // Owned defs first: `delete()` runs the deep teardown (columns, records, items,
+    // mappings, AND the inverse relationship fields planted on shared defs) and busts the
+    // entity-def + custom-field projections. Still tagged with this connector's id here —
+    // the FK set-null fires only on the connector-row delete below.
+    const ownedDefs = await db
+      .select({ id: schema.EntityDefinition.id })
+      .from(schema.EntityDefinition)
+      .where(
+        and(
+          eq(schema.EntityDefinition.organizationId, organizationId),
+          eq(schema.EntityDefinition.dataConnectorId, id)
+        )
+      )
+    if (ownedDefs.length > 0) {
+      const defService = new EntityDefinitionService(organizationId, userId)
+      for (const ownedDef of ownedDefs) {
+        await defService.delete(ownedDef.id)
+      }
+    }
+
+    // Then any contributing columns the connector added to SHARED defs (e.g. fields on the
+    // system Contact def) — tagged by `dataConnectorId` but not owned by a torn-down def.
+    // `deleteField` handles values + relationship inverses + display-field cleanup and busts
+    // the custom-field cache.
+    const strayFields = await db
+      .select({
+        id: schema.CustomField.id,
+        entityDefinitionId: schema.CustomField.entityDefinitionId,
+      })
+      .from(schema.CustomField)
+      .where(
+        and(
+          eq(schema.CustomField.organizationId, organizationId),
+          eq(schema.CustomField.dataConnectorId, id)
+        )
+      )
+    if (strayFields.length > 0) {
+      const fieldService = new CustomFieldService(organizationId, userId, db)
+      for (const stray of strayFields) {
+        if (!stray.entityDefinitionId) continue
+        await fieldService.deleteField(toResourceFieldId(stray.entityDefinitionId, stray.id))
       }
     }
   }
