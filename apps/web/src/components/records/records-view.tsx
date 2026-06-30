@@ -38,6 +38,7 @@ import { EmptyState } from '~/components/global/empty-state'
 import { getCreateHotkey } from '~/components/global-create/system-hotkeys'
 import { CommandAction, CommandContext } from '~/components/kbar/contextual'
 import { useCommandPaletteStore } from '~/components/kbar/store'
+import { KopilotContext } from '~/components/kopilot/context'
 import { MergeDialog } from '~/components/merge'
 import { type RecordMeta, toRecordId, useResource } from '~/components/resources'
 import { useRunAiBulkGenerate } from '~/components/resources/hooks/run-ai-bulk-generate'
@@ -764,6 +765,14 @@ export function RecordsView({
 
   return (
     <>
+      {/* Tell Kopilot which entity table is on screen — enables the
+          records-page view tools (preview/create view). */}
+      <KopilotContext
+        page='records'
+        activeResourceId={entityDefinitionId}
+        activeResourceLabel={resource.plural}
+      />
+
       {/* Command-palette table scope — surfaces the table's create + bulk
           operations in cmd+k. Selection-aware rows render only when rows are
           selected; their subtitles reflect the live count. */}

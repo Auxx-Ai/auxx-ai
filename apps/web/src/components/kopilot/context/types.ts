@@ -5,7 +5,7 @@
  * `@auxx/lib/ai/kopilot`. Inlined because that subpath isn't exported as a
  * client-safe path. Keep in sync with the lib type.
  */
-export type SessionRefKind = 'thread' | 'record' | 'kb' | 'article' | 'actor' | 'agent'
+export type SessionRefKind = 'thread' | 'record' | 'resource' | 'kb' | 'article' | 'actor' | 'agent'
 
 /** Mirror of `SessionRef` from `@auxx/lib/ai/kopilot/types`. */
 export interface SessionRef {

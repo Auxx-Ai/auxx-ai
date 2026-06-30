@@ -15,10 +15,12 @@ export {
   createKopilotCapabilities,
   createMailCapabilities,
   createNativeWorkflowCapabilities,
+  createRecordViewCapabilities,
   createSuggestRepliesGlobalCapability,
   createTaskCapabilities,
   createToolDepsFactory,
   KB_PAGE,
+  RECORDS_PAGE,
   WORKFLOW_AI_NODE_PAGE,
   WORKFLOW_NATIVE_TOOLSET_SLUG,
 } from './capabilities'
