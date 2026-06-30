@@ -58,9 +58,14 @@ export const DataConnectorMapping = pgTable(
     targetMode: text().notNull(), // 'owned' | 'contributing'
     // Nullable: a mapping can exist before a target def is picked (the user picks
     // it in the UI). The runtime skips untargeted mappings.
+    // `cascade`: deleting a target def removes the mappings that point at it (and,
+    // via the `parentMappingId` self-cascade, their descendant mappings in the same
+    // stream). The entity-def delete path (`deleteEntityDefinitionDeep`) pairs this
+    // with a connector-integrity sweep that tears down streams left without a root
+    // mapping — see plans/entitydefinition/delete-entity-definition-plan.md §3.3.
     entityDefinitionId: text().references((): AnyPgColumn => EntityDefinition.id, {
       onUpdate: 'cascade',
-      onDelete: 'restrict',
+      onDelete: 'cascade',
     }),
 
     // Array of binding entries. Each carries a stable `id` (identity) + a nullable

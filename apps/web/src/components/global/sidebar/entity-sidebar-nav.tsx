@@ -32,7 +32,7 @@ import {
   sortableKeyboardCoordinates,
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable'
-import { Archive, LayoutTemplate, Pencil, Plus, Settings, Settings2 } from 'lucide-react'
+import { Archive, LayoutTemplate, Pencil, Plus, Settings, Settings2, Trash2 } from 'lucide-react'
 import { usePathname, useRouter } from 'next/navigation'
 import { useCallback, useEffect, useState } from 'react'
 import { EntityDefinitionDialog } from '~/components/custom-fields/ui/entity-definition-dialog'
@@ -43,6 +43,7 @@ import { useEntityDefinitionMutations, useResources } from '~/components/resourc
 import { LimitReachedDialog } from '~/components/subscriptions/limit-reached-dialog'
 import { useConfirm } from '~/hooks/use-confirm'
 import { type ProcessedEntity, useEntitySidebar } from '~/hooks/use-entity-sidebar'
+import { useUser } from '~/hooks/use-user'
 import { useFeatureFlags } from '~/providers/feature-flag-provider'
 import { EditableSidebarItem } from './editable-sidebar-item'
 import { SidebarItem } from './sidebar-item'
@@ -64,7 +65,8 @@ export function EntitySidebarNav() {
   const [limitDialogOpen, setLimitDialogOpen] = useState(false)
   const [editingEntityId, setEditingEntityId] = useState<EntityDefinitionId | null>(null)
   const [confirm, ConfirmDialog] = useConfirm()
-  const { archiveEntity } = useEntityDefinitionMutations()
+  const { archiveEntity, deleteEntity } = useEntityDefinitionMutations()
+  const { isAdminOrOwner } = useUser()
   const { getGroupOpen, toggleGroup } = useSidebarStateContext()
   const isOpen = getGroupOpen('records')
   const { isAtLimit, getLimit } = useFeatureFlags()
@@ -166,6 +168,31 @@ export function EntitySidebarNav() {
     }
   }
 
+  /** Permanently delete an entity definition (records, fields, relationships). */
+  async function handleDeleteEntity(entity: CustomResource) {
+    const confirmed = await confirm({
+      title: `Delete "${entity.label}" permanently?`,
+      description:
+        `This permanently deletes ${entity.plural} — every record, all custom fields, and the ` +
+        'opposite side of any relationships pointing to it. Sync connectors that target this ' +
+        'entity will also be torn down. This cannot be undone.',
+      confirmText: 'Delete permanently',
+      cancelText: 'Cancel',
+      destructive: true,
+    })
+
+    if (confirmed) {
+      deleteEntity.mutate(
+        { id: entity.id },
+        {
+          onError: (error) => {
+            toastError({ title: 'Failed to delete entity', description: error.message })
+          },
+        }
+      )
+    }
+  }
+
   /** Check if an entity route is active */
   function isActive(entity: ProcessedEntity) {
     const url = entity.href
@@ -197,6 +224,9 @@ export function EntitySidebarNav() {
     if (!resource) return null
 
     const isSystemEntity = !!resource.entityType
+    // Archive + permanent delete are admin/owner only (org-wide destructive ops);
+    // the server enforces this too via `adminProcedure`.
+    const canRemove = !isSystemEntity && isAdminOrOwner
 
     return (
       <>
@@ -215,10 +245,15 @@ export function EntitySidebarNav() {
           onClick={() => router.push(`/app/settings/custom-fields/${entity.apiSlug}`)}>
           <Settings /> Manage Fields
         </DropdownMenuItem>
-        {!isSystemEntity && <DropdownMenuSeparator />}
-        {!isSystemEntity && (
+        {canRemove && <DropdownMenuSeparator />}
+        {canRemove && (
           <DropdownMenuItem onClick={() => handleArchiveEntity(resource)} variant='destructive'>
             <Archive /> Archive
+          </DropdownMenuItem>
+        )}
+        {canRemove && (
+          <DropdownMenuItem onClick={() => handleDeleteEntity(resource)} variant='destructive'>
+            <Trash2 /> Delete permanently
           </DropdownMenuItem>
         )}
       </>

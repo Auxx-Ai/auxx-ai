@@ -1709,6 +1709,13 @@
       "when": 1782781793040,
       "tag": "0243_connector_mapping_target_spec",
       "breakpoints": true
+    },
+    {
+      "idx": 244,
+      "version": "7",
+      "when": 1782784953075,
+      "tag": "0244_cascade_connector_mapping_on_entitydef_delete",
+      "breakpoints": true
     }
   ]
 }

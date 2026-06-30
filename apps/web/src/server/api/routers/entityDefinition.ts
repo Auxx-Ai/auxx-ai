@@ -13,7 +13,7 @@ import { checkSlugExists } from '@auxx/services/entity-definitions'
 import { and, count, eq, isNull } from 'drizzle-orm'
 import { z } from 'zod'
 import { recordAuditFromCtx } from '../audit-context'
-import { createTRPCRouter, protectedProcedure } from '../trpc'
+import { adminProcedure, createTRPCRouter, protectedProcedure } from '../trpc'
 
 export const entityDefinitionRouter = createTRPCRouter({
   /**
@@ -144,57 +144,51 @@ export const entityDefinitionRouter = createTRPCRouter({
     }),
 
   /**
-   * Archive an entity definition (soft delete)
-   * Convenience endpoint that calls update internally
+   * Archive an entity definition (soft delete). Admin/owner only — removing an
+   * entity type (even reversibly) is an org-wide destructive action.
    */
-  archive: protectedProcedure
-    .input(z.object({ id: z.string() }))
-    .mutation(async ({ ctx, input }) => {
-      const service = new EntityDefinitionService(ctx.session.organizationId, ctx.session.user.id)
-      const archived = await service.archive(input.id)
-      await recordAuditFromCtx(ctx, {
-        category: 'settings',
-        action: 'entityDef.archived',
-        targetType: 'EntityDefinition',
-        targetId: input.id,
-      })
-      return archived
-    }),
+  archive: adminProcedure.input(z.object({ id: z.string() })).mutation(async ({ ctx, input }) => {
+    const service = new EntityDefinitionService(ctx.session.organizationId, ctx.session.user.id)
+    const archived = await service.archive(input.id)
+    await recordAuditFromCtx(ctx, {
+      category: 'settings',
+      action: 'entityDef.archived',
+      targetType: 'EntityDefinition',
+      targetId: input.id,
+    })
+    return archived
+  }),
 
   /**
-   * Restore an archived entity definition
-   * Convenience endpoint that calls update internally
+   * Restore an archived entity definition. Admin/owner only (pairs with archive).
    */
-  restore: protectedProcedure
-    .input(z.object({ id: z.string() }))
-    .mutation(async ({ ctx, input }) => {
-      const service = new EntityDefinitionService(ctx.session.organizationId, ctx.session.user.id)
-      const restored = await service.restore(input.id)
-      await recordAuditFromCtx(ctx, {
-        category: 'settings',
-        action: 'entityDef.restored',
-        targetType: 'EntityDefinition',
-        targetId: input.id,
-      })
-      return restored
-    }),
+  restore: adminProcedure.input(z.object({ id: z.string() })).mutation(async ({ ctx, input }) => {
+    const service = new EntityDefinitionService(ctx.session.organizationId, ctx.session.user.id)
+    const restored = await service.restore(input.id)
+    await recordAuditFromCtx(ctx, {
+      category: 'settings',
+      action: 'entityDef.restored',
+      targetType: 'EntityDefinition',
+      targetId: input.id,
+    })
+    return restored
+  }),
 
   /**
-   * Permanently delete an entity definition
+   * Permanently delete an entity definition (with relationship + connector
+   * teardown). Admin/owner only — this is irreversible and org-wide.
    */
-  delete: protectedProcedure
-    .input(z.object({ id: z.string() }))
-    .mutation(async ({ ctx, input }) => {
-      const service = new EntityDefinitionService(ctx.session.organizationId, ctx.session.user.id)
-      const deleted = await service.delete(input.id)
-      await recordAuditFromCtx(ctx, {
-        category: 'settings',
-        action: 'entityDef.deleted',
-        targetType: 'EntityDefinition',
-        targetId: input.id,
-      })
-      return deleted
-    }),
+  delete: adminProcedure.input(z.object({ id: z.string() })).mutation(async ({ ctx, input }) => {
+    const service = new EntityDefinitionService(ctx.session.organizationId, ctx.session.user.id)
+    const deleted = await service.delete(input.id)
+    await recordAuditFromCtx(ctx, {
+      category: 'settings',
+      action: 'entityDef.deleted',
+      targetType: 'EntityDefinition',
+      targetId: input.id,
+    })
+    return deleted
+  }),
 
   /**
    * List all available entity templates (lightweight, no field details)

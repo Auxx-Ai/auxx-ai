@@ -171,6 +171,30 @@ export function useEntityDefinitionMutations() {
     },
   })
 
+  const deleteEntity = api.entityDefinition.delete.useMutation({
+    // Optimistically remove from the store (same mechanics as archive: drop from
+    // resourceMap + arrays, keep the original for rollback). On success the
+    // resource is gone for good; on error we put it back.
+    onMutate: async (variables) => {
+      const store = getResourceStoreState()
+      store.markResourceArchived(variables.id)
+      return { entityDefinitionId: variables.id }
+    },
+
+    onSuccess: (_result, _variables, context) => {
+      if (!context) return
+      getResourceStoreState().confirmResourceArchive(context.entityDefinitionId)
+      invalidateResourceDefinitions()
+    },
+
+    onError: (error, _variables, context) => {
+      if (context) {
+        getResourceStoreState().rollbackResourceArchive(context.entityDefinitionId)
+      }
+      toastError({ title: 'Failed to delete entity', description: error.message })
+    },
+  })
+
   const restoreEntity = api.entityDefinition.restore.useMutation({
     onMutate: async (variables) => {
       // For restore, we mark that we're expecting this resource to come back
@@ -198,5 +222,6 @@ export function useEntityDefinitionMutations() {
     updateEntity,
     archiveEntity,
     restoreEntity,
+    deleteEntity,
   }
 }
