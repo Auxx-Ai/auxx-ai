@@ -1,8 +1,6 @@
-import { schema } from '@auxx/database'
 import { FeatureKey, FeaturePermissionService } from '@auxx/lib/permissions'
 import { WebhookService } from '@auxx/lib/webhooks'
 import { WEBHOOK_EVENT_TYPES } from '@auxx/lib/webhooks/types'
-import { and, desc, eq } from 'drizzle-orm'
 import { z } from 'zod'
 import { createTRPCRouter, notDemo, protectedProcedure } from '../trpc'
 
@@ -116,38 +114,5 @@ export const webhookRouters = createTRPCRouter({
       }
 
       return result.value
-    }),
-
-  // old. delete
-  getEvents: protectedProcedure
-    .input(
-      z.object({
-        provider: z.enum(['google', 'shopify']).default('shopify'),
-        topic: z.string().optional(),
-      })
-    )
-    .query(async ({ ctx, input }) => {
-      const { organizationId } = ctx.session
-
-      const conditions = [
-        eq(schema.Subscription.organizationId, organizationId),
-        eq(schema.Subscription.provider, input.provider),
-      ]
-      if (input.topic) conditions.push(eq(schema.Subscription.topic, input.topic))
-
-      const rows = await ctx.db
-        .select({
-          id: schema.Subscription.id,
-          provider: schema.Subscription.provider,
-          topic: schema.Subscription.topic,
-          active: schema.Subscription.active,
-          integrationId: schema.Subscription.integrationId,
-          createdAt: schema.Subscription.createdAt,
-        })
-        .from(schema.Subscription)
-        .where(and(...conditions))
-        .orderBy(desc(schema.Subscription.createdAt))
-
-      return { subscriptions: rows }
     }),
 })

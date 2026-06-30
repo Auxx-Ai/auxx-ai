@@ -1716,6 +1716,13 @@
       "when": 1782784953075,
       "tag": "0244_cascade_connector_mapping_on_entitydef_delete",
       "breakpoints": true
+    },
+    {
+      "idx": 245,
+      "version": "7",
+      "when": 1782789932724,
+      "tag": "0245_drop_legacy_shopify_tables",
+      "breakpoints": true
     }
   ]
 }

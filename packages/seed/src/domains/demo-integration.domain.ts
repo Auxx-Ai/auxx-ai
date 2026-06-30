@@ -1,38 +1,34 @@
 // packages/seed/src/domains/demo-integration.domain.ts
-// Creates mock Integration and ShopifyIntegration records for demo organizations
+// Creates mock Integration records for demo organizations
 
 import { getDemoEmailDomain } from '@auxx/lib/demo'
 import { createId } from '@paralleldrive/cuid2'
 
 /**
  * DemoIntegrationDomain creates the integration records that other domain seeders
- * (CommerceDomain, CommunicationDomain) require in their context.
+ * (CommunicationDomain) require in their context.
  *
  * These are DB-only records — DemoGuard blocks all real sync/send operations
  * for demo organizations.
  */
 export class DemoIntegrationDomain {
   private readonly organizationId: string
-  private readonly userId: string
 
-  constructor(organizationId: string, userId: string) {
+  constructor(organizationId: string, _userId: string) {
     this.organizationId = organizationId
-    this.userId = userId
   }
 
   /**
-   * Creates email Integration, InboxIntegration link, and ShopifyIntegration records.
+   * Creates email Integration and InboxIntegration link records.
    * Uses onConflictDoNothing for idempotency.
    */
   async insertDirectly(db: any): Promise<{
     integrationId: string
-    shopifyIntegrationId: string
   }> {
     const { schema } = await import('@auxx/database')
     const { eq, and } = await import('drizzle-orm')
 
     const integrationId = createId()
-    const shopifyIntegrationId = createId()
     const now = new Date()
 
     // Create email Integration record
@@ -110,24 +106,6 @@ export class DemoIntegrationDomain {
       }
     }
 
-    // Create ShopifyIntegration record
-    console.log('🛍️  Creating demo Shopify integration...')
-    await db
-      .insert(schema.ShopifyIntegration)
-      .values({
-        id: shopifyIntegrationId,
-        organizationId: this.organizationId,
-        createdById: this.userId,
-        shopDomain: 'demo-shop.myshopify.com',
-        accessToken: 'demo-token',
-        scope: 'read_products,read_orders,read_customers',
-        enabled: true,
-        updatedAt: now,
-        createdAt: now,
-      })
-      .onConflictDoNothing()
-    console.log('✅ Demo Shopify integration created')
-
-    return { integrationId, shopifyIntegrationId }
+    return { integrationId }
   }
 }

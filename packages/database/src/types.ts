@@ -217,7 +217,6 @@ export type {
 export type { ParticipantEntity } from './db/schema/participant'
 export type { ProviderConfigurationEntity } from './db/schema/provider-configuration'
 export type { ProviderPreferenceEntity } from './db/schema/provider-preference'
-export type { ShopifyIntegrationEntity } from './db/schema/shopify-integration'
 export type {
   CreateStorageLocationInput,
   StorageLocationEntity,
@@ -228,7 +227,6 @@ export type { TimelineEventEntity } from './db/schema/timeline-event'
 export type { UserEntity } from './db/schema/user'
 export type { WebhookEntity } from './db/schema/webhook'
 export type { WebhookEndpointEntity, WebhookEndpointTopic } from './db/schema/webhook-endpoint'
-export type { WebhookEventEntity } from './db/schema/webhook-event'
 export type { WorkflowEntity } from './db/schema/workflow'
 export type { WorkflowAppEntity } from './db/schema/workflow-app'
 export type { WorkflowNodeExecutionEntity } from './db/schema/workflow-node-execution'

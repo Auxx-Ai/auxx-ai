@@ -57,8 +57,6 @@ export class ServiceIntegrator {
     const organizations: Array<{ id: string; ownerId: string }> = []
     const integrations: Array<{ id: string; organizationId: string }> = []
     const inboxes: Array<{ id: string; organizationId: string }> = []
-    const shopifyIntegrations: Array<{ id: string; organizationId: string; createdById: string }> =
-      []
     const defaultAssignments = new Map<string, string>()
 
     const organizationTarget = Math.max(1, this.scenario.scales.organizations)
@@ -107,14 +105,6 @@ export class ServiceIntegrator {
       const integrationId = await this.ensureIntegration(organizationId, now, i)
       integrations.push({ id: integrationId, organizationId })
 
-      const shopifyIntegrationId = await this.ensureShopifyIntegration(
-        organizationId,
-        owner.id,
-        now,
-        i
-      )
-      shopifyIntegrations.push({ id: shopifyIntegrationId, organizationId, createdById: owner.id })
-
       const inboxId = await this.ensureInbox(organizationId, now, i)
       inboxes.push({ id: inboxId, organizationId })
 
@@ -146,7 +136,7 @@ export class ServiceIntegrator {
       await this.ensureDefaultOrganization(userId, organizationId, now)
     }
 
-    return { organizations, integrations, inboxes, shopifyIntegrations }
+    return { organizations, integrations, inboxes }
   }
 
   /**
@@ -254,52 +244,6 @@ export class ServiceIntegrator {
       .returning({ id: schema.Integration.id })
 
     return inserted[0]?.id ?? integrationId
-  }
-
-  /**
-   * ensureShopifyIntegration provisions a Shopify integration per organization.
-   * @param organizationId - Organization that owns the Shopify integration.
-   * @param createdById - User who created the integration.
-   * @param updatedAt - Timestamp reused for deterministic updates.
-   * @param index - Zero-based organization index for uniqueness helpers.
-   * @returns The Shopify integration identifier.
-   */
-  private async ensureShopifyIntegration(
-    organizationId: string,
-    createdById: string,
-    updatedAt: Date,
-    index: number
-  ): Promise<string> {
-    const shopDomain = `seeded-shop-${index + 1}.myshopify.com`
-    const accessToken = `seeded-token-${index + 1}`
-
-    const id = createId()
-
-    const inserted = await database
-      .insert(schema.ShopifyIntegration)
-      .values({
-        id,
-        organizationId,
-        createdById,
-        shopDomain,
-        accessToken,
-        scope: 'read_products,write_products,read_customers,write_customers',
-        enabled: true,
-        updatedAt,
-        createdAt: updatedAt,
-      })
-      .onConflictDoUpdate({
-        target: [schema.ShopifyIntegration.organizationId, schema.ShopifyIntegration.shopDomain],
-        set: {
-          updatedAt,
-          enabled: true,
-          accessToken,
-          scope: 'read_products,write_products,read_customers,write_customers',
-        },
-      })
-      .returning({ id: schema.ShopifyIntegration.id })
-
-    return inserted[0]?.id ?? id
   }
 
   /**
