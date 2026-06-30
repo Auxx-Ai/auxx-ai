@@ -25,6 +25,8 @@ export interface ProcessedEntity {
   isLocked: boolean
   isVisible: boolean
   href: string
+  /** Set when this entity def is owned by a data connector (sync badge). */
+  dataConnectorId?: string
 }
 
 /** A folder definition in the Records sidebar. */
@@ -113,6 +115,7 @@ export function useEntitySidebar({ scope = 'SIDEBAR' }: UseEntitySidebarOptions 
         isLocked: false,
         isVisible: visibility[resource.id] !== false,
         href: resource.entityType ? `/app/${resource.apiSlug}` : `/app/custom/${resource.apiSlug}`,
+        dataConnectorId: resource.dataConnectorId,
       }))
 
     const entityMap = new Map(baseEntities.map((e) => [e.id, e]))
