@@ -101,6 +101,12 @@ export const shopifyCoreDataConnector = defineDataConnector({
         {
           rootPath: 'line_items[]',
           relationshipFieldKey: 'lineItems',
+          relationship: {
+            fieldKey: 'lineItems',
+            name: 'Line Items',
+            cardinality: 'has_many',
+            inverseName: 'Order',
+          },
           target: {
             mode: 'owned',
             entity: {
@@ -114,6 +120,13 @@ export const shopifyCoreDataConnector = defineDataConnector({
           rootPath: 'line_items[].product_id',
           linkMode: 'reference',
           relationshipFieldKey: 'product',
+          relationship: {
+            fieldKey: 'product',
+            name: 'Product',
+            cardinality: 'belongs_to',
+            inverseName: 'Line Items',
+            targetRef: { ownedApiSlug: 'shopify_products' },
+          },
           target: {
             mode: 'owned',
             entity: {

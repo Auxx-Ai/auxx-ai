@@ -554,8 +554,50 @@ export interface FieldMapping {
    * when the target def is missing it; ignored when the field already exists
    * (e.g. `email`/`name` reused from a system def). Absent on hand-authored UI
    * mappings — those bind to fields that already exist.
+   *
+   * `appFieldKey` (05e) is the STABLE idempotency key the provisioner + ref
+   * write-back match on; `name` is the display label. Owned Shopify fields need the
+   * two to differ (`appFieldKey: 'name'`, display `'Order Name'`). Absent ⇒ key
+   * falls back to `name` (templates, where the two coincide).
    */
-  provision?: { name: string; type: FieldType; icon?: string; isHidden?: boolean }
+  provision?: {
+    name: string
+    type: FieldType
+    icon?: string
+    isHidden?: boolean
+    appFieldKey?: string
+  }
+}
+
+/**
+ * The persisted, user-editable target declaration for a LAZILY-provisioned owned
+ * mapping (05e — connector-target-resources-splice). Stored as a nullable jsonb
+ * `targetSpec` on a `DataConnectorMapping`: null for contributing mappings (their
+ * system def already exists), set for owned/edge mappings so materialization can
+ * create the def + relationship edge WITHOUT consulting the live app catalog (which
+ * may have changed between setup and first sync).
+ *
+ * MUST stay byte-compatible with the DB mirror `ConnectorMappingTargetSpec` in
+ * `@auxx/database` schema/`data-connector-types.ts`.
+ */
+export interface ConnectorMappingTargetSpec {
+  /** Owned-def shell — the def to create (or adopt by `apiSlug`) at materialize. */
+  ownedDef?: {
+    apiSlug: string
+    singular: string
+    plural: string
+    icon?: string
+    /** `appFieldKey` of the field to wire as the def's primary display field. */
+    primaryDisplayFieldKey?: string
+  }
+  /** Parent↔child relationship edge to provision once every def exists. */
+  relationship?: {
+    fieldKey: string
+    name: string
+    cardinality: 'has_many' | 'has_one' | 'belongs_to' | 'many_to_many'
+    inverseName?: string
+    targetRef?: { ownedApiSlug: string } | { entityKind: string }
+  }
 }
 
 /**

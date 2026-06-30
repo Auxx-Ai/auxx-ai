@@ -233,8 +233,46 @@ export interface FieldMapping {
   /**
    * Provisioning hint for a connector-introduced target field (05d) — used to
    * create a missing target field with the declared type/name at sync time.
+   * `appFieldKey` (05e) is the STABLE idempotency key the provisioner + ref
+   * write-back match on; `name` is the display label. When absent the key falls
+   * back to `name` (templates, where the two coincide).
    */
-  provision?: { name: string; type: FieldType; icon?: string; isHidden?: boolean }
+  provision?: {
+    name: string
+    type: FieldType
+    icon?: string
+    isHidden?: boolean
+    appFieldKey?: string
+  }
+}
+
+/**
+ * The persisted, user-editable target declaration for a LAZILY-provisioned owned
+ * mapping (05e). Stored as a nullable jsonb `targetSpec` on
+ * {@link DataConnectorMapping}: null for contributing mappings (their system def
+ * already exists), set for owned/edge mappings so materialization can create the
+ * def + relationship edge WITHOUT consulting the live app catalog (which may have
+ * changed between setup and first sync). Mirrors `ConnectorMappingTargetSpec` in
+ * `@auxx/lib/data-connectors/types`.
+ */
+export interface ConnectorMappingTargetSpec {
+  /** Owned-def shell — the def to create (or adopt by `apiSlug`) at materialize. */
+  ownedDef?: {
+    apiSlug: string
+    singular: string
+    plural: string
+    icon?: string
+    /** `appFieldKey` of the field to wire as the def's primary display field. */
+    primaryDisplayFieldKey?: string
+  }
+  /** Parent↔child relationship edge to provision once every def exists. */
+  relationship?: {
+    fieldKey: string
+    name: string
+    cardinality: 'has_many' | 'has_one' | 'belongs_to' | 'many_to_many'
+    inverseName?: string
+    targetRef?: { ownedApiSlug: string } | { entityKind: string }
+  }
 }
 
 /**

@@ -96,9 +96,27 @@ describe('compileAndExtractCatalog — data connectors', () => {
         matchFieldKeys: ['email'],
       },
     })
+    // The line_items[] owned child carries the relationship provisioning decl that
+    // drives auto-creation of the has_many edge (+ inverse) at materialization.
+    expect(mappings[2]).toMatchObject({
+      rootPath: 'line_items[]',
+      relationshipFieldKey: 'lineItems',
+      relationship: {
+        fieldKey: 'lineItems',
+        name: 'Line Items',
+        cardinality: 'has_many',
+        inverseName: 'Order',
+      },
+      target: { mode: 'owned', entity: { apiSlug: 'shopify_line_items' } },
+    })
     expect(mappings[3]).toMatchObject({
       rootPath: 'line_items[].product_id',
       linkMode: 'reference',
+      relationship: {
+        fieldKey: 'product',
+        cardinality: 'belongs_to',
+        targetRef: { ownedApiSlug: 'shopify_products' },
+      },
       target: { mode: 'owned', entity: { apiSlug: 'shopify_products' } },
     })
 

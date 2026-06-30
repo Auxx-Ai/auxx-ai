@@ -24,11 +24,14 @@ import { toastError } from '@auxx/ui/components/toast'
 import { SimpleTooltip } from '@auxx/ui/components/tooltip'
 import { TreeRowButton } from '@auxx/ui/components/tree-row'
 import { generateId } from '@auxx/utils'
-import { FunctionSquare, Loader2, Plus, Sparkles, Trash2 } from 'lucide-react'
+import { FunctionSquare, Link2, Loader2, Plus, Sparkles, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 import { ResourcePicker } from '~/components/pickers/resource-picker'
-import { useResourceFields, useResourceProperty } from '~/components/resources'
 import { api } from '~/trpc/react'
+import {
+  useConnectorResourceFields,
+  useConnectorResourceProperty,
+} from '../hooks/use-connector-resources'
 import {
   absolutePrefix,
   buildSourceTree,
@@ -38,6 +41,11 @@ import {
   subtreeUnder,
 } from '../hooks/use-source-paths'
 import type { FieldMapping } from '../hooks/use-stream-mutations'
+import {
+  potentialFieldRef,
+  projectPotentialResource,
+  provisionKey,
+} from '../lib/connector-target-projection'
 import type { DraftMapping, MappingDraftMutations } from '../stores/connector-draft-store'
 import { BranchRow } from './branch-row'
 import { CappedNodeList } from './capped-node-list'
@@ -178,10 +186,15 @@ export function MappingNode({
   const [calcTarget, setCalcTarget] = useState<{ mappingId: string; entryId: string } | null>(null)
   const { setMappingTarget, removeMapping, setFieldMappings, fanOut } = mutations
 
-  // Target def display + fields, read from the resource store (the same source
-  // the ResourcePicker/FieldPicker use) — no parallel projection needed.
-  const resource = useResourceProperty(mapping.entityDefinitionId, ['icon', 'label'])
-  const { fields: targetFields } = useResourceFields(mapping.entityDefinitionId)
+  // Target def display + fields — PROJECTION-FIRST (05e): a real def resolves via the
+  // global resource store; a lazy owned def (not yet provisioned) projects from the
+  // mapping's `targetSpec` + `provision` specs so it shows "Shopify Orders" + "Order
+  // Name" before the def exists.
+  const resource = useConnectorResourceProperty(mapping, ['icon', 'label'])
+  const { fields: targetFields } = useConnectorResourceFields(mapping)
+  // The potential (not-yet-created) owned def, when this mapping is lazy. Drives the
+  // "New entity · X" target affordance.
+  const potential = projectPotentialResource(mapping)
   const linkMode = mapping.linkMode as 'upsert' | 'reference'
   const targetMode = mapping.targetMode as 'owned' | 'contributing'
   const fieldMappings = (mapping.fieldMappings ?? []) as FieldMapping[]
@@ -698,21 +711,63 @@ export function MappingNode({
         }
         arrow='filled'
         target={
-          <ResourcePicker
-            value={mapping.entityDefinitionId ? [mapping.entityDefinitionId] : []}
-            onChange={() => {}}
-            entityDefinedOnly
-            emptyLabel='Target def…'
-            onSelectSingle={(entityDefinitionId) =>
-              setMappingTarget(streamId, {
-                mappingId: mapping.id,
-                entityDefinitionId,
-                targetMode,
-                linkMode,
-              })
-            }
-            triggerProps={{ className: 'h-9 w-full justify-between rounded-none px-2 text-xs' }}
-          />
+          // A lazy owned target shows the POTENTIAL entity ("New · Shopify Orders", will
+          // be created at first sync) with a secondary "Link existing" that adopts an
+          // existing def instead (05e §4.5). A real / contributing target keeps the
+          // plain picker.
+          potential ? (
+            <div className='flex h-9 w-full items-center justify-between gap-1 px-2 text-xs'>
+              <SimpleTooltip
+                side='left'
+                delayDuration={500}
+                content={`A new "${potential.label}" entity will be created when this connector first syncs.`}>
+                <span className='flex min-w-0 items-center gap-1.5'>
+                  <EntityIcon iconId={potential.icon} size='xs' />
+                  <span className='truncate'>{potential.label}</span>
+                  <Badge variant='emerald' size='xs'>
+                    New
+                  </Badge>
+                </span>
+              </SimpleTooltip>
+              <ResourcePicker
+                value={[]}
+                onChange={() => {}}
+                entityDefinedOnly
+                onSelectSingle={(entityDefinitionId) =>
+                  setMappingTarget(streamId, {
+                    mappingId: mapping.id,
+                    entityDefinitionId,
+                    targetMode,
+                    linkMode,
+                  })
+                }>
+                <SimpleTooltip side='left' content='Link an existing entity instead'>
+                  <Button
+                    variant='ghost'
+                    size='icon'
+                    className='size-6 shrink-0 text-muted-foreground'>
+                    <Link2 />
+                  </Button>
+                </SimpleTooltip>
+              </ResourcePicker>
+            </div>
+          ) : (
+            <ResourcePicker
+              value={mapping.entityDefinitionId ? [mapping.entityDefinitionId] : []}
+              onChange={() => {}}
+              entityDefinedOnly
+              emptyLabel='Target def…'
+              onSelectSingle={(entityDefinitionId) =>
+                setMappingTarget(streamId, {
+                  mappingId: mapping.id,
+                  entityDefinitionId,
+                  targetMode,
+                  linkMode,
+                })
+              }
+              triggerProps={{ className: 'h-9 w-full justify-between rounded-none px-2 text-xs' }}
+            />
+          )
         }
         actions={
           <>
@@ -1018,8 +1073,14 @@ function SourceNode(props: SourceNodeProps) {
   // order stays stable across the branch/leaf early returns below.
   const drilled = !node.isBranch ? props.drilledBindBySourcePath.get(node.path) : undefined
   const drilledDefId = drilled?.child.entityDefinitionId ?? null
-  const drilledDef = useResourceProperty(drilledDefId, ['label'])
-  const { fields: drilledDefFields } = useResourceFields(drilledDefId)
+  // Projection-first (05e): a drilled child may target a lazy owned def too.
+  const drilledDef = useConnectorResourceProperty(drilled?.child ?? null, ['label'])
+  const { fields: drilledDefFields } = useConnectorResourceFields(drilled?.child ?? null)
+  // Reference-link target def — resolved here (before the early returns) so its label +
+  // icon survive a lazy owned target (05e). Hooks run unconditionally; `refChild` is a
+  // leaf-only concern (null on a branch).
+  const refChild = !node.isBranch ? props.refChildByNodePath.get(node.path) : undefined
+  const refChildResource = useConnectorResourceProperty(refChild ?? null, ['label', 'icon'])
 
   // A child mapping at this branch → render it inline (promoted state).
   const childMapping = node.isBranch ? childByNodePath.get(node.path) : undefined
@@ -1070,7 +1131,11 @@ function SourceNode(props: SourceNodeProps) {
   }
 
   const directEntry = sourceToEntry.get(node.path)
-  const assignedTargetKey = directEntry?.targetFieldRef ?? undefined
+  // A provisioned-but-not-yet-created field has no concrete ref; resolve its chip via
+  // the synthetic `@potential:` ref so it shows the provision NAME, not an empty cell.
+  const assignedTargetKey =
+    directEntry?.targetFieldRef ??
+    (directEntry?.provision ? potentialFieldRef(provisionKey(directEntry.provision)) : undefined)
   const assignedField = assignedTargetKey
     ? targetFields.find((f) => refOf(f, mapping.entityDefinitionId) === assignedTargetKey)
     : undefined
@@ -1104,8 +1169,8 @@ function SourceNode(props: SourceNodeProps) {
   // leaf path links the FK to a relationship. Independent of the scalar binding —
   // the leaf keeps its scalar cell; the link renders on its own sub-row. The stored
   // `relationshipFieldKey` is a serialized FieldReference (single-drill = the
-  // relationship's `ResourceFieldId`), so resolve the field by that ref.
-  const refChild = props.refChildByNodePath.get(node.path)
+  // relationship's `ResourceFieldId`), so resolve the field by that ref. (`refChild` +
+  // its resolved def are hoisted above for rules-of-hooks.)
   const refKey = refChild?.relationshipFieldKey ?? undefined
   const linkedField = refKey
     ? targetFields.find((f) => refOf(f, mapping.entityDefinitionId) === refKey)
@@ -1161,7 +1226,8 @@ function SourceNode(props: SourceNodeProps) {
         <RelationshipLinkRow
           depth={depth + 1}
           fieldLabel={linkedField?.label ?? refChild.relationshipFieldKey ?? 'relationship'}
-          targetDefinitionId={refChild.entityDefinitionId}
+          targetLabel={refChildResource?.label}
+          targetIcon={refChildResource?.icon}
           viaPath={node.path}
           onClear={() => props.onClearLink(refChild.id)}
         />
@@ -1336,8 +1402,8 @@ function DrilledFormulaRow({
   onMergeChange: (value: string) => void
   onClear: () => void
 }) {
-  const def = useResourceProperty(child.entityDefinitionId, ['label'])
-  const { fields } = useResourceFields(child.entityDefinitionId)
+  const def = useConnectorResourceProperty(child, ['label'])
+  const { fields } = useConnectorResourceFields(child)
   const targetRef = (entry.targetFieldRef ?? null) as ResourceFieldId | null
   const farField = targetRef
     ? fields.find((f) => refOf(f, child.entityDefinitionId) === targetRef)

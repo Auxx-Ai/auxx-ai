@@ -1702,6 +1702,13 @@
       "when": 1782762984240,
       "tag": "0242_add_onboarding_setting_scope",
       "breakpoints": true
+    },
+    {
+      "idx": 243,
+      "version": "7",
+      "when": 1782781793040,
+      "tag": "0243_connector_mapping_target_spec",
+      "breakpoints": true
     }
   ]
 }

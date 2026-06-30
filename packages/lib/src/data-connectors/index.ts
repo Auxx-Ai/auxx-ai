@@ -114,6 +114,7 @@ export type {
 // Schema provisioning (owned + contributing, 01 §5)
 export {
   backfillProvisionedFieldRefs,
+  materializeConnectorTargets,
   provisionConnectorMappings,
   provisionSpecsForMapping,
   provisionTarget,
@@ -218,6 +219,7 @@ export type {
 export { getAllConnectorTemplates, getConnectorTemplateById } from './templates'
 // Canonical engine types
 export type {
+  ConnectorMappingTargetSpec,
   ConnectorRequestModel,
   DataConnectorType,
   FieldMapping,

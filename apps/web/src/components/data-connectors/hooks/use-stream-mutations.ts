@@ -45,8 +45,15 @@ export type FieldMapping = {
   sourceFields: Record<string, string>
   identityRole?: IdentityRole
   mergeStrategy?: FieldMergeStrategy
-  /** Provisioning hint (template-seeded only; the UI never sets it, but preserves it). */
-  provision?: { name: string; type: string; icon?: string; isHidden?: boolean }
+  /** Provisioning hint (template/app-seeded; the UI never sets it, but preserves it).
+   *  `appFieldKey` (05e) is the stable idempotency key, distinct from the display `name`. */
+  provision?: {
+    name: string
+    type: string
+    icon?: string
+    isHidden?: boolean
+    appFieldKey?: string
+  }
 }
 /** A mapping's bindings — an ordered array of entries (not keyed by target). */
 export type FieldMappings = FieldMapping[]

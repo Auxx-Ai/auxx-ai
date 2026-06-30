@@ -23,7 +23,7 @@ import {
   enqueueBackfillSlice,
   enqueueConnectorSync,
 } from './data-connector-queue'
-import { backfillProvisionedFieldRefs, provisionConnectorMappings } from './provisioning'
+import { materializeConnectorTargets } from './provisioning'
 import { publishConnectorSync } from './realtime'
 import {
   claimForSync,
@@ -160,6 +160,14 @@ export async function startConnectorSync(
   // Clear a crashed prior chain first so its stuck claim can't block us (H5).
   await sweepStaleConnectorRuns(db, { dataConnectorId })
 
+  // Materialize lazy owned targets BEFORE loadConnector (05e). Lazy owned mappings carry
+  // a null `entityDefinitionId` that `loadConnector` filters out and `decodeMapping`
+  // throws on, so the def/field/edge provisioning + ref backfill must run on the RAW rows
+  // first. Idempotent (adopt-by-slug, fields keyed by appFieldKey, backfill only fills
+  // null refs), so it's safe for every connector — including already-materialized ones
+  // and generic-rest connectors whose `provision`-spec fields it subsumes.
+  await materializeConnectorTargets(db, organizationId, dataConnectorId)
+
   const loaded = await loadConnector(db, organizationId, dataConnectorId)
   if (!loaded) {
     logger.warn('startConnectorSync: connector not found or has no mappings', { dataConnectorId })
@@ -184,15 +192,9 @@ export async function startConnectorSync(
     return false
   }
 
-  // Provision target schema before pinning so the snapshot carries the stamped field
-  // refs (mirrors the single-shot path). App connectors resolve `@app:` refs live.
-  if (connector.definitionKind !== 'app') {
-    const targeted = streams.flatMap((s) => s.mappings)
-    if (targeted.length > 0) {
-      await provisionConnectorMappings(db, organizationId, dataConnectorId, targeted)
-      await backfillProvisionedFieldRefs(db, organizationId, dataConnectorId, targeted)
-    }
-  }
+  // Target schema is provisioned + ref-backfilled by `materializeConnectorTargets` above
+  // (runs before `loadConnector`, on the raw rows). The connection `@app:` live-resolution
+  // in the sink is a separate, unaffected concern.
 
   // Phase decision (homogeneous per connector, G2):
   //  - Incremental connector (every stream `syncMode='incremental'`): backfill ONCE

@@ -14,7 +14,6 @@ import {
   createConnectorFromAppCatalog,
   createConnectorFromTemplate,
   type DataConnectorType,
-  decodeMapping,
   deleteConnector,
   deriveConnectorScheduleInfo,
   enqueueConnectorSync,
@@ -26,7 +25,7 @@ import {
   listConnectors,
   listRuns,
   listStreams,
-  provisionConnectorMappings,
+  materializeConnectorTargets,
   READINESS_REASON,
   removeMapping,
   removeStream,
@@ -586,16 +585,11 @@ export const dataConnectorRouter = createTRPCRouter({
     if (result.isErr()) {
       throw new TRPCError({ code: 'NOT_FOUND', message: result.error.message })
     }
-    // Gather decoded mappings across the connector's streams (untargeted rows —
-    // a seeded root with no def yet — can't provision, so skip them).
-    const streams = await listStreams(ctx.db, organizationId, input.id)
-    const decoded = []
-    for (const stream of streams) {
-      for (const row of stream.mappings) {
-        if (row.entityDefinitionId !== null) decoded.push(decodeMapping(row))
-      }
-    }
-    return provisionConnectorMappings(ctx.db, organizationId, input.id, decoded)
+    // Materialize the connector's lazy owned targets (05e): create/adopt owned defs +
+    // fields, backfill refs, provision relationship edges — the same logic every
+    // finalize path (first sync, finishSetup) runs. Idempotent (adopt-by-slug).
+    await materializeConnectorTargets(ctx.db, organizationId, input.id)
+    return { success: true }
   }),
 
   // ── Stream setup (admin) ──────────────────────────────────────────────────
