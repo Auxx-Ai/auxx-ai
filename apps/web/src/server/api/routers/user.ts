@@ -4,7 +4,6 @@ import { MediaAssetService } from '@auxx/lib/files'
 import { isAdminOrOwner } from '@auxx/lib/members'
 import { FeaturePermissionService } from '@auxx/lib/permissions'
 import { UserSettingsService } from '@auxx/lib/settings'
-import { autoSyncShopify } from '@auxx/lib/shopify'
 import { TRPCError } from '@trpc/server'
 import { and, count, eq, isNull } from 'drizzle-orm'
 import { z } from 'zod'
@@ -176,14 +175,9 @@ export const userRouter = createTRPCRouter({
   updateSetting: protectedProcedure
     .input(z.object({ path: z.string(), value: z.any() }))
     .mutation(async ({ ctx, input }) => {
-      // const userId = ctx.session.user.id
-      const { organizationId, userId } = ctx.session
+      const { userId } = ctx.session
 
       await UserSettingsService.set(userId, input.path, input.value)
-
-      if (input.path == 'shopify.autoSync') {
-        autoSyncShopify(userId, organizationId)
-      }
     }),
 
   removeAvatar: protectedProcedure

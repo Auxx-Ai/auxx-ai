@@ -4,7 +4,7 @@ import { listCredentials, revealSecrets } from '@auxx/credentials/store'
 import { database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { and, eq, sql } from 'drizzle-orm'
-import { createShopifyAdminClient } from './shopify-webhooks'
+import { createShopifyAdminClient } from './admin-client'
 
 const logger = createScopedLogger('shopify/chat-metafields')
 

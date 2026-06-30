@@ -224,13 +224,6 @@ export {
   type TranscribeRecordingJobData,
   transcribeRecordingJob,
 } from './recording'
-// Shopify
-export { customerWebhookJob } from './shopify/customer-webhook-job'
-export { orderWebhookJob } from './shopify/order-webhook-job'
-export { productWebhookJob } from './shopify/product-webhook-job'
-export { type SyncCustomersJobProps, syncCustomersJob } from './shopify/sync-customers-job'
-export { type SyncOrdersJobProps, syncOrdersJob } from './shopify/sync-orders-job'
-export { type SyncProductsJobProps, syncProductsJob } from './shopify/sync-products-job'
 // Tasks
 export {
   type TaskDeadlineScannerJobData,
