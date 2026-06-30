@@ -18,6 +18,7 @@ import { format, formatDistanceToNow } from 'date-fns'
 import { CheckSquare } from 'lucide-react'
 import { useMemo } from 'react'
 import { FileIcon } from '~/components/files/utils/file-icon'
+import { VisualIcon } from '~/components/icons/ui/visual-icon'
 import { ActorBadge, RecordBadge } from '~/components/resources/ui'
 import { ItemsCellView } from '~/components/ui/items-list-view'
 import { TagsCellView } from '~/components/ui/tags-view'
@@ -380,13 +381,23 @@ export function renderPhoneValue(
 }
 
 /**
- * Render URL value as copyable link
+ * Render URL value as a copyable link, or — when the field opts into
+ * `urlDisplay: 'image'` — as an image thumbnail (e.g. product images / avatar URLs).
  */
-export function renderUrlValue(value: unknown): React.ReactNode {
+export function renderUrlValue(value: unknown, config?: CellConfig): React.ReactNode {
   if (value == null || value === '') return <EmptyCell />
 
   const url = String(value)
   const href = url.startsWith('http') ? url : `https://${url}`
+
+  if (config?.options?.urlDisplay === 'image') {
+    return (
+      <ExpandableCell mode='horizontal'>
+        <VisualIcon value={href} fit='cover' imageFallback fallbackIconId='image' />
+      </ExpandableCell>
+    )
+  }
+
   return (
     <ExpandableCell mode='horizontal'>
       <div>
@@ -588,7 +599,7 @@ const cellRenderers: Record<string, CellRenderer> = {
   EMAIL: (value) => renderEmailValue(value),
   PHONE_INTL: (value, formatting, config) =>
     renderPhoneValue(value, formatting as PhoneColumnFormatting, config),
-  URL: (value) => renderUrlValue(value),
+  URL: (value, _formatting, config) => renderUrlValue(value, config),
 
   // Boolean - pass config for displayOptions
   CHECKBOX: (value, _, config) => renderCheckboxValue(value, config),

@@ -264,6 +264,8 @@ export interface ConnectorMappingTargetSpec {
     icon?: string
     /** `appFieldKey` of the field to wire as the def's primary display field. */
     primaryDisplayFieldKey?: string
+    /** `appFieldKey` of the field to wire as the def's avatar/display image. */
+    avatarFieldKey?: string
   }
   /** Parent↔child relationship edge to provision once every def exists. */
   relationship?: {

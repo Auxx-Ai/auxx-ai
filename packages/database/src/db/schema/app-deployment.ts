@@ -237,7 +237,14 @@ export interface CatalogConnectorDefaultMapping {
   target:
     | {
         mode: 'owned'
-        entity: { apiSlug: string; singular: string; plural: string; primaryDisplayField?: string }
+        entity: {
+          apiSlug: string
+          singular: string
+          plural: string
+          primaryDisplayField?: string
+          /** `fieldKey` of a URL/FILE field to wire as the def's avatar/display image. */
+          avatarField?: string
+        }
       }
     | {
         mode: 'contributing'

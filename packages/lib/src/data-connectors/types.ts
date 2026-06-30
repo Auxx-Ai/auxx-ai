@@ -398,6 +398,8 @@ export interface ConnectorEntityDecl {
   singular: string
   plural: string
   primaryDisplayField?: string
+  /** `fieldKey` of a URL/FILE field to wire as the def's avatar/display image. */
+  avatarField?: string
 }
 
 /** One stream (fetch) declaration. */
@@ -597,6 +599,8 @@ export interface ConnectorMappingTargetSpec {
     icon?: string
     /** `appFieldKey` of the field to wire as the def's primary display field. */
     primaryDisplayFieldKey?: string
+    /** `appFieldKey` of the field to wire as the def's avatar/display image. */
+    avatarFieldKey?: string
   }
   /** Parent↔child relationship edge to provision once every def exists. */
   relationship?: {

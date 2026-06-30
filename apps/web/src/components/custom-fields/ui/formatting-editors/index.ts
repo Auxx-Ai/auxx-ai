@@ -9,6 +9,7 @@ export { DateTimeFormattingEditor } from './datetime-formatting-editor'
 export { NumberFormattingEditor } from './number-formatting-editor'
 export { PhoneFormattingEditor } from './phone-formatting-editor'
 export { TimeFormattingEditor } from './time-formatting-editor'
+export { UrlFormattingEditor } from './url-formatting-editor'
 
 /**
  * Display options type for internal state.
@@ -32,6 +33,8 @@ export interface DisplayOptions {
   falseLabel?: string
   // PHONE options
   phoneFormat?: 'raw' | 'national' | 'international'
+  // URL options
+  urlDisplay?: 'link' | 'image'
 }
 
 /** Keys that are display options (flat on field.options) */
@@ -48,6 +51,7 @@ const DISPLAY_OPTION_KEYS: (keyof DisplayOptions)[] = [
   'trueLabel',
   'falseLabel',
   'phoneFormat',
+  'urlDisplay',
 ]
 
 /**

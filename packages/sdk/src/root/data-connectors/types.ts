@@ -133,6 +133,8 @@ export interface ConnectorEntityDecl {
   singular: string
   plural: string
   primaryDisplayField?: string
+  /** `fieldKey` of a URL/FILE field to wire as the def's avatar/display image. */
+  avatarField?: string
 }
 
 /**
