@@ -5,13 +5,7 @@
 // re-registration is driven from create/update (pause/resume is a `status` patch
 // through update) so a cadence or lifecycle change is reflected in BullMQ immediately.
 
-import {
-  type CatalogConnectorRelationshipDecl,
-  type CatalogDataConnector,
-  type Database,
-  schema,
-  type Transaction,
-} from '@auxx/database'
+import { type CatalogDataConnector, type Database, schema, type Transaction } from '@auxx/database'
 import type { FieldType } from '@auxx/database/types'
 import { createScopedLogger } from '@auxx/logger'
 import { getFieldDefinitionId, getFieldId, toResourceFieldId } from '@auxx/types/field'
@@ -33,12 +27,7 @@ import {
   classifyStreamRequestChange,
   type StructuralImpact,
 } from './edit-impact'
-import {
-  type ProvisionFieldSpec,
-  provisionRelationshipField,
-  provisionTarget,
-  resolveRelationshipTargetDefId,
-} from './provisioning'
+import { materializeConnectorTargets } from './provisioning'
 import {
   countConnectorItems,
   countMappingItems,
@@ -55,6 +44,7 @@ import type {
   ConnectorTemplateMapping,
 } from './templates'
 import type {
+  ConnectorMappingTargetSpec,
   DataConnectorConfig,
   DataConnectorType,
   FieldMapping,
@@ -410,14 +400,16 @@ async function buildTemplateFieldMappings(
  * stamped `catalog`. The request is baked into the app (`fixed` model), so streams
  * carry no `requestConfig`.
  *
- * Each stream's `owned` default-mappings ARE materialized here (step-11 gap 2): the
- * owned `EntityDefinition` + its fields are provisioned up front from the declared
- * stream schema, and a `DataConnectorMapping` carrying concrete field refs is created
- * — the connector fully owns the def, so no `@app:` late-binding / stepper authoring
- * is needed for the happy path. `contributing` default-mappings are ALSO materialized
- * (as draft rows — multi-stream-setup-plan §5): they merge into an existing system def,
- * so only the def + declared identity-match keys are wired up front; any unresolved
- * field is left for the setup overview to surface as `needs-mapping`.
+ * Owned default-mappings are created as LAZY rows here (05e — connector-target-resources
+ * -splice): a `DataConnectorMapping` with `entityDefinitionId: null`, the persisted
+ * `targetSpec` (owned-def shell + relationship edge), and `fieldMappings` carrying a
+ * `provision` spec + null ref per field. The owned `EntityDefinition`s + columns + edges
+ * are NOT created here — they materialize at finish/first sync (`materializeConnectorTargets`),
+ * so abandoning setup leaves no orphan defs and the mapping editor shows the POTENTIAL
+ * entity until it exists. `contributing` default-mappings are ALSO materialized (as draft
+ * rows — multi-stream-setup-plan §5): they merge into an existing system def, so the def +
+ * declared identity-match keys are wired up front; any unresolved field is left for the
+ * setup overview to surface as `needs-mapping`.
  */
 export async function createConnectorFromAppCatalog(
   db: Database,
@@ -430,154 +422,158 @@ export async function createConnectorFromAppCatalog(
     definitionKind: 'app',
   })
 
-  // Owned materialization is a CONNECTOR-LEVEL two-pass (owned-relationship-provisioning-plan §3.3):
-  // an edge references a target def by id, and a cross-stream `reference` targets ANOTHER stream's
-  // def — so ALL defs must exist before ANY edge is provisioned. Pass 1 creates defs + scalar fields
-  // + mappings (+ parentMappingId) across every stream, accumulating `apiSlug → defId`; pass 2 then
-  // provisions every declared relationship edge.
-  const defIdByApiSlug: Record<string, string> = {}
-  const pendingEdges: PendingOwnedEdge[] = []
   for (const stream of catalog.streams) {
     const streamRow = await addStream(db, organizationId, connector.id, {
       streamKey: stream.key,
       ...appCatalogStreamSchema(stream),
       syncMode: stream.syncMode ?? 'snapshot',
     })
-    await provisionStreamOwnedDefs(
-      db,
-      organizationId,
-      connector.id,
-      streamRow.id,
-      stream,
-      defIdByApiSlug,
-      pendingEdges
-    )
+    await createLazyStreamOwnedMappings(db, organizationId, streamRow.id, stream)
     await materializeAppContributingMappings(db, organizationId, streamRow.id, stream)
-  }
-
-  // Pass 2 — edges. Every def now exists, so each declared relationship resolves its target.
-  for (const edge of pendingEdges) {
-    const relatedResourceId = await resolveRelationshipTargetDefId(
-      db,
-      organizationId,
-      edge.relationship.targetRef,
-      edge.ownTargetDefId,
-      defIdByApiSlug
-    )
-    if (!relatedResourceId) {
-      logger.warn('Skipping connector relationship edge — target def unresolved', {
-        dataConnectorId: connector.id,
-        fieldKey: edge.relationship.fieldKey,
-        targetRef: edge.relationship.targetRef,
-      })
-      continue
-    }
-    await provisionRelationshipField(
-      db,
-      organizationId,
-      connector.id,
-      edge.parentDefId,
-      relatedResourceId,
-      {
-        appFieldKey: edge.relationship.fieldKey,
-        name: edge.relationship.name,
-        cardinality: edge.relationship.cardinality,
-        inverseName: edge.relationship.inverseName,
-      }
-    )
   }
 
   return connector
 }
 
-/** A relationship edge collected in pass 1, provisioned in pass 2 once every def exists. */
-interface PendingOwnedEdge {
-  relationship: CatalogConnectorRelationshipDecl
-  /** Def the forward edge lives on (the parent mapping's def). */
-  parentDefId: string
-  /** Default target when the edge has no `targetRef` — the declaring mapping's own owned def. */
-  ownTargetDefId: string
+/**
+ * Is `prefix` a path-boundary prefix of `path`? `''` prefixes everything; an exact
+ * match counts; otherwise `path` must continue at a boundary (`.` or `[`) so
+ * `line_items[]` matches `line_items[].sku` but NOT `line_items_extra[]`.
+ */
+function isBoundaryPrefix(path: string, prefix: string): boolean {
+  if (prefix === '') return true
+  if (!path.startsWith(prefix)) return false
+  if (path.length === prefix.length) return true
+  const next = path[prefix.length]
+  return next === '.' || next === '['
+}
+
+/** Strip a mapping's rootPath off a field's sourcePath, leaving a subtree-relative path. */
+function relativeSourcePath(sourcePath: string, rootPath: string): string {
+  if (rootPath === '') return sourcePath
+  return sourcePath.slice(rootPath.length).replace(/^\./, '')
 }
 
 /**
  * The parent of `rootPath` among `all` is the mapping whose rootPath is the longest
- * proper boundary-prefix: `''` parents everything, `line_items[]` parents
+ * PROPER boundary-prefix: `''` parents everything, `line_items[]` parents
  * `line_items[].variants[]`. A bare prefix that doesn't end on a path boundary
  * (`line_items` vs `line_items_extra[]`) is rejected. Returns null for a root mapping.
  */
 export function ownedParentRootPath(rootPath: string, all: string[]): string | null {
-  const isBoundaryPrefix = (parent: string) => {
-    if (parent === rootPath) return false
-    if (parent === '') return true
-    if (!rootPath.startsWith(parent)) return false
-    const next = rootPath[parent.length]
-    return next === '.' || next === '['
-  }
-  const parents = all.filter(isBoundaryPrefix)
+  const parents = all.filter((p) => p !== rootPath && isBoundaryPrefix(rootPath, p))
   if (parents.length === 0) return null
   return parents.reduce((longest, p) => (p.length > longest.length ? p : longest))
 }
 
+/** A stream field assigned to an owned mapping, with its subtree-relative source path. */
+export interface OwnedFieldEntry {
+  field: CatalogDataConnector['streams'][number]['fields'][number]
+  /** sourcePath relative to the owning mapping's rootPath (e.g. `sku`, not `line_items[].sku`). */
+  relativeSourcePath: string
+}
+
 /**
- * Pass 1 of connector-level owned materialization: provision each owned mapping's def +
- * scalar fields + `DataConnectorMapping` row (with `parentMappingId` wired from rootPath
- * nesting so the fan-out's `parentRelation` forms). Accumulates `apiSlug → defId` into
- * `defIdByApiSlug` (shared across streams so a cross-stream `reference` resolves) and
- * appends each declared relationship to `pendingEdges` for pass 2. Relationship *fields*
- * are NOT created here — that's pass 2, after every def exists
- * (owned-relationship-provisioning-plan §3.3/§3.4).
+ * Partition a stream's declared fields across its OWNED-upsert mappings (the multi-level
+ * field split the relationship-provisioning plan deferred). Each field is assigned to the
+ * mapping — of ANY mode — whose rootPath is the LONGEST boundary-prefix of its sourcePath;
+ * only fields owned by an owned-upsert mapping are returned (those become real columns on
+ * that mapping's def). A field claimed by a `contributing` branch (`customer.email`) or a
+ * `reference` branch (`line_items[].product_id`, the id-only edge FK) is excluded — those
+ * paths bind/stamp it themselves and must not surface as an owned-def column. Returned
+ * sourcePaths are rewritten subtree-relative so `mapRecord` resolves them against each
+ * extracted subtree. Pure + exported for unit coverage.
  */
-async function provisionStreamOwnedDefs(
+export function partitionOwnedFields(
+  fields: CatalogDataConnector['streams'][number]['fields'],
+  mappings: NonNullable<CatalogDataConnector['streams'][number]['defaultMappings']>
+): Record<string, OwnedFieldEntry[]> {
+  const allRootPaths = mappings.map((m) => m.rootPath)
+  const ownedUpsertRootPaths = new Set(
+    mappings
+      .filter((m) => m.target.mode === 'owned' && (m.linkMode ?? 'upsert') !== 'reference')
+      .map((m) => m.rootPath)
+  )
+
+  const partition: Record<string, OwnedFieldEntry[]> = {}
+  for (const field of fields) {
+    const owners = allRootPaths.filter((r) => isBoundaryPrefix(field.sourcePath, r))
+    if (owners.length === 0) continue
+    const owner = owners.reduce((longest, r) => (r.length > longest.length ? r : longest))
+    if (!ownedUpsertRootPaths.has(owner)) continue
+    ;(partition[owner] ??= []).push({
+      field,
+      relativeSourcePath: relativeSourcePath(field.sourcePath, owner),
+    })
+  }
+  return partition
+}
+
+/**
+ * Create the LAZY owned mappings for a catalog stream (05e). One
+ * `DataConnectorMapping` per owned default-mapping, with `entityDefinitionId: null`,
+ * the persisted `targetSpec` (owned-def shell + relationship edge), and `fieldMappings`
+ * carrying a `provision` spec + null ref per declared field. NO `EntityDefinition`s,
+ * columns, or relationship edges are created here — those materialize at finish/first
+ * sync via `materializeConnectorTargets`. `parentMappingId` is still wired from rootPath
+ * nesting (parents first) so the fan-out tree forms before any def exists.
+ */
+async function createLazyStreamOwnedMappings(
   db: Database,
   organizationId: string,
-  dataConnectorId: string,
   streamId: string,
-  stream: CatalogDataConnector['streams'][number],
-  defIdByApiSlug: Record<string, string>,
-  pendingEdges: PendingOwnedEdge[]
+  stream: CatalogDataConnector['streams'][number]
 ): Promise<void> {
-  const owned = (stream.defaultMappings ?? []).filter((m) => m.target.mode === 'owned')
+  const allMappings = stream.defaultMappings ?? []
+  const owned = allMappings.filter((m) => m.target.mode === 'owned')
   const allRootPaths = owned.map((m) => m.rootPath)
+  // Each owned-upsert def gets ONLY its own subtree's fields (multi-level partition).
+  const partition = partitionOwnedFields(stream.fields, allMappings)
   // Parents before children so a child's `parentMappingId` always resolves.
   const ordered = [...owned].sort((a, b) => a.rootPath.length - b.rootPath.length)
 
   const mappingIdByRootPath: Record<string, string> = {}
-  const defIdByRootPath: Record<string, string> = {}
 
   for (const mapping of ordered) {
     if (mapping.target.mode !== 'owned') continue
     const { entity } = mapping.target
-
-    // The declared stream fields become the owned def's schema.
-    const { entityDefinitionId, fieldIdByKey } = await provisionTarget(
-      db,
-      organizationId,
-      dataConnectorId,
-      {
-        targetMode: 'owned',
-        entityDefinitionId: null,
-        ownedDef: {
-          apiSlug: entity.apiSlug,
-          singular: entity.singular,
-          plural: entity.plural,
-          primaryDisplayFieldKey: entity.primaryDisplayField,
-        },
-        fields: ownedProvisionSpecs(stream.fields),
-      }
-    )
+    // A `reference` owned mapping (id-only edge, e.g. line→product) owns no columns —
+    // its entry list is empty; it still carries the owned-def shell + edge in targetSpec.
+    const entries = partition[mapping.rootPath] ?? []
 
     const parentRootPath = ownedParentRootPath(mapping.rootPath, allRootPaths)
     const parentMappingId = parentRootPath != null ? mappingIdByRootPath[parentRootPath] : null
+
+    const targetSpec: ConnectorMappingTargetSpec = {
+      ownedDef: {
+        apiSlug: entity.apiSlug,
+        singular: entity.singular,
+        plural: entity.plural,
+        primaryDisplayFieldKey: entity.primaryDisplayField,
+      },
+    }
+    // The forward edge lives on the PARENT def; with no parent (a root mapping) there's
+    // nothing to attach to, so the relationship is only persisted on a child mapping.
+    if (mapping.relationship && parentRootPath != null) {
+      targetSpec.relationship = {
+        fieldKey: mapping.relationship.fieldKey,
+        name: mapping.relationship.name,
+        cardinality: mapping.relationship.cardinality,
+        inverseName: mapping.relationship.inverseName,
+        targetRef: mapping.relationship.targetRef,
+      }
+    }
 
     const row = await addMapping(db, organizationId, {
       dataConnectorStreamId: streamId,
       rootPath: mapping.rootPath,
       linkMode: mapping.linkMode ?? ('upsert' as LinkMode),
       targetMode: 'owned' as TargetMode,
-      entityDefinitionId,
+      entityDefinitionId: null,
       parentMappingId,
       relationshipFieldKey: mapping.relationshipFieldKey ?? null,
-      fieldMappings: buildOwnedFieldMappings(entityDefinitionId, fieldIdByKey, stream.fields),
+      fieldMappings: buildLazyOwnedFieldMappings(entries),
+      targetSpec,
       // Incremental connectors only see the delta each run, so unseen ≠ deleted —
       // never archive owned orphans automatically. Full-snapshot sweeps can still
       // reconcile; v1 keeps it safe.
@@ -585,59 +581,31 @@ async function provisionStreamOwnedDefs(
     })
 
     mappingIdByRootPath[mapping.rootPath] = row.id
-    defIdByRootPath[mapping.rootPath] = entityDefinitionId
-    defIdByApiSlug[entity.apiSlug] = entityDefinitionId
-
-    // Collect the edge for pass 2. The forward field lives on the PARENT def; with no
-    // parent (a root mapping) there's nothing to attach to, so skip.
-    if (mapping.relationship && parentRootPath != null) {
-      pendingEdges.push({
-        relationship: mapping.relationship,
-        parentDefId: defIdByRootPath[parentRootPath]!,
-        ownTargetDefId: entityDefinitionId,
-      })
-    }
   }
 }
 
-/** Owned-def schema = the declared stream fields, provisioned connector-read-only. */
-export function ownedProvisionSpecs(
-  fields: CatalogDataConnector['streams'][number]['fields']
-): ProvisionFieldSpec[] {
-  return fields.map((f) => ({
-    appFieldKey: f.fieldKey,
-    name: f.name,
-    type: f.type as FieldType,
-    isHidden: f.capabilities?.hidden ?? false,
-    isUpdatable: false,
-    isCreatable: false,
-  }))
-}
-
 /**
- * Bind each declared field to its provisioned column with a concrete
- * `${defId}:${fieldId}` ref. The expression mirrors the manual editor —
- * `{<sourcePath>}` over an identity `sourceFields` map (the connector's
- * `ConnectorRecord.fields` is keyed by `sourcePath`). A field that collided with a
- * pre-existing user field (no id in `fieldIdByKey`) is skipped.
+ * Lazy field mappings for an owned mapping (05e): instead of a concrete provisioned
+ * ref, each entry carries `targetFieldRef: null` + a `provision` spec (the column to
+ * create at materialize, keyed by the stable `appFieldKey`). The expression mirrors
+ * the manual editor — `{<relativeSourcePath>}` over an identity `sourceFields` map —
+ * with the SUBTREE-relative path (`sku`, not `line_items[].sku`) because `mapRecord`
+ * evaluates a child mapping's fields against its extracted subtree. The concrete ref
+ * is stamped by `backfillProvisionedFieldRefs` once the column exists.
  */
-export function buildOwnedFieldMappings(
-  entityDefinitionId: string,
-  fieldIdByKey: Record<string, string>,
-  fields: CatalogDataConnector['streams'][number]['fields']
-): FieldMapping[] {
-  return fields.flatMap((f) => {
-    const fieldId = fieldIdByKey[f.fieldKey]
-    if (!fieldId) return []
-    return [
-      {
-        id: generateId(),
-        targetFieldRef: toResourceFieldId(entityDefinitionId, fieldId),
-        expression: `{${f.sourcePath}}`,
-        sourceFields: { [f.sourcePath]: f.sourcePath },
-      },
-    ]
-  })
+export function buildLazyOwnedFieldMappings(entries: OwnedFieldEntry[]): FieldMapping[] {
+  return entries.map(({ field, relativeSourcePath: relPath }) => ({
+    id: generateId(),
+    targetFieldRef: null,
+    expression: `{${relPath}}`,
+    sourceFields: { [relPath]: relPath },
+    provision: {
+      name: field.name,
+      appFieldKey: field.fieldKey,
+      type: field.type as FieldType,
+      isHidden: field.capabilities?.hidden ?? false,
+    },
+  }))
 }
 
 /**
@@ -797,6 +765,12 @@ export async function updateConnector(
  * untouched; Finish can never regress a live/syncing connector. The scheduler was
  * registered at create time and `ready ≠ paused`, so a scheduled connector stays
  * eligible with no re-registration. See optional-first-sync-plan §3.4.
+ *
+ * Before flipping to `ready` it materializes the connector's LAZY owned targets inline
+ * (05e — `materializeConnectorTargets`): "Finish without syncing" still creates the
+ * owned defs/fields/edges so the entities show in nav. The status is stamped
+ * `provisioning` during the (fast, inline) materialize, then `ready`. Idempotent, so a
+ * subsequent first sync re-running materialize is a no-op.
  */
 export async function finishConnectorSetup(
   db: Database,
@@ -805,6 +779,11 @@ export async function finishConnectorSetup(
 ): Promise<DataConnectorRow> {
   const row = await loadConnectorRow(db, organizationId, id)
   if (row.status !== 'pending') return row
+  await db
+    .update(schema.DataConnector)
+    .set({ status: 'provisioning', updatedAt: new Date() })
+    .where(eq(schema.DataConnector.id, id))
+  await materializeConnectorTargets(db, organizationId, id)
   const [updated] = await db
     .update(schema.DataConnector)
     .set({ status: 'ready', updatedAt: new Date() })
@@ -1076,10 +1055,16 @@ export interface AddMappingInput {
   rootPath?: string
   linkMode?: LinkMode
   targetMode: TargetMode
-  entityDefinitionId: string
+  /**
+   * Null for a LAZILY-provisioned owned mapping (the def is created at finish/first
+   * sync from `targetSpec`); set for contributing mappings (their system def exists).
+   */
+  entityDefinitionId: string | null
   parentMappingId?: string | null
   relationshipFieldKey?: string | null
   fieldMappings?: FieldMapping[]
+  /** Persisted owned-def + edge declaration for lazy materialization (05e). */
+  targetSpec?: ConnectorMappingTargetSpec | null
   orphanBehavior?: OrphanBehavior
 }
 
@@ -1170,6 +1155,7 @@ export async function addMapping(
       parentMappingId: input.parentMappingId ?? null,
       relationshipFieldKey: input.relationshipFieldKey ?? null,
       fieldMappings,
+      targetSpec: input.targetSpec ?? null,
       orphanBehavior: input.orphanBehavior ?? 'ignore',
     })
     .returning()

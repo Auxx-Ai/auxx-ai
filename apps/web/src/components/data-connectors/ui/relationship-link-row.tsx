@@ -4,15 +4,16 @@
 import { EntityIcon } from '@auxx/ui/components/icons'
 import { TreeRowButton } from '@auxx/ui/components/tree-row'
 import { Link2, Trash2 } from 'lucide-react'
-import { useResourceProperty } from '~/components/resources'
 import { MappingRow } from './mapping-row'
 
 interface RelationshipLinkRowProps {
   depth: number
   /** The relationship field on THIS def the edge writes into. */
   fieldLabel: string
-  /** The related def the link resolves to (for its icon + label). */
-  targetDefinitionId: string | null
+  /** Resolved label of the related def (real or projected potential, 05e). */
+  targetLabel?: string
+  /** Resolved icon id of the related def. */
+  targetIcon?: string
   /** The FK source path that anchors the edge — shown as a `via` caption. */
   viaPath: string
   onClear: () => void
@@ -28,11 +29,11 @@ interface RelationshipLinkRowProps {
 export function RelationshipLinkRow({
   depth,
   fieldLabel,
-  targetDefinitionId,
+  targetLabel,
+  targetIcon,
   viaPath,
   onClear,
 }: RelationshipLinkRowProps) {
-  const target = useResourceProperty(targetDefinitionId, ['label', 'icon'])
   return (
     <MappingRow
       depth={depth}
@@ -47,8 +48,8 @@ export function RelationshipLinkRow({
       // Target column — the related def (implied by the relationship field).
       target={
         <span className='flex h-9 w-full items-center gap-1.5 px-2 text-xs'>
-          {target && <EntityIcon iconId={target.icon ?? 'table'} size='xs' />}
-          <span className='truncate'>{target?.label ?? 'record'}</span>
+          {targetLabel && <EntityIcon iconId={targetIcon ?? 'table'} size='xs' />}
+          <span className='truncate'>{targetLabel ?? 'record'}</span>
         </span>
       }
       actions={

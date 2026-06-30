@@ -42,6 +42,9 @@ export function toConnectorDraft(connector: Connector, streams: Stream[]): Conne
         linkMode: (m.linkMode as 'upsert' | 'reference') ?? 'upsert',
         targetMode: (m.targetMode as 'owned' | 'contributing') ?? 'owned',
         entityDefinitionId: m.entityDefinitionId ?? null,
+        targetSpec:
+          (m.targetSpec as ConnectorDraft['streams'][number]['mappings'][number]['targetSpec']) ??
+          null,
         orphanBehavior: (m.orphanBehavior as 'archive' | 'mark_deleted' | 'ignore') ?? 'ignore',
         fieldMappings: (m.fieldMappings ??
           []) as ConnectorDraft['streams'][number]['mappings'][number]['fieldMappings'],

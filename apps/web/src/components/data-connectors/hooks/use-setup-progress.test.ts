@@ -30,6 +30,15 @@ describe('deriveStreamReadiness', () => {
     expect(deriveStreamReadiness(stream([{ targetFieldRefs: [null] }]))).toBe('needs-mapping')
   })
 
+  it('is ready for a lazy owned mapping whose entries carry a provision spec (null ref)', () => {
+    // 05e: an owned def is provisioned lazily, so its fields have null refs + a provision
+    // hint until first sync. That still counts as bound (else setup would be blocked).
+    const s = {
+      mappings: [{ fieldMappings: [{ targetFieldRef: null, provision: { name: 'Order Name' } }] }],
+    } as unknown as Stream
+    expect(deriveStreamReadiness(s)).toBe('ready')
+  })
+
   it('needs mapping when a stream has no mappings at all', () => {
     expect(deriveStreamReadiness(stream([]))).toBe('needs-mapping')
   })

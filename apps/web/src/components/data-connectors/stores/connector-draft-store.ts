@@ -31,6 +31,30 @@ export type SyncMode = 'snapshot' | 'incremental'
 export type SchemaSource = 'catalog' | 'inferred' | 'manual'
 
 /**
+ * The persisted owned-def + edge declaration for a LAZILY-provisioned owned mapping
+ * (05e). Read-only in the draft (the user never edits it) — carried so the mapping
+ * editor can render the POTENTIAL entity before its def exists. Structural mirror of
+ * `ConnectorMappingTargetSpec` (server) — kept local so the client store imports no
+ * server type.
+ */
+export interface DraftTargetSpec {
+  ownedDef?: {
+    apiSlug: string
+    singular: string
+    plural: string
+    icon?: string
+    primaryDisplayFieldKey?: string
+  }
+  relationship?: {
+    fieldKey: string
+    name: string
+    cardinality: string
+    inverseName?: string
+    targetRef?: { ownedApiSlug: string } | { entityKind: string }
+  }
+}
+
+/**
  * A draft mapping row. `id` is a server id, or `temp_…` for a not-yet-created row
  * (fan-out). `parentMappingId` may reference a temp id (a child of an uncommitted
  * parent) — the commit resolves it. `_deleted` tombstones a removed row: the row
@@ -45,6 +69,8 @@ export interface DraftMapping {
   linkMode: 'upsert' | 'reference'
   targetMode: 'owned' | 'contributing'
   entityDefinitionId: string | null
+  /** Lazy owned-def + edge declaration (05e). Null/absent for contributing / real-def rows. */
+  targetSpec?: DraftTargetSpec | null
   orphanBehavior: 'archive' | 'mark_deleted' | 'ignore'
   fieldMappings: FieldMapping[]
   _deleted?: boolean
@@ -356,6 +382,8 @@ export const useConnectorDraftStore = create<ConnectorDraftState>()(
             linkMode: mapping.linkMode,
             targetMode: mapping.targetMode,
             entityDefinitionId: mapping.entityDefinitionId,
+            // Fan-out / hand-added rows are never lazy owned — they bind to a real def.
+            targetSpec: null,
             orphanBehavior: mapping.orphanBehavior ?? 'ignore',
             fieldMappings: mapping.fieldMappings ?? [],
           },

@@ -22,7 +22,13 @@ import { and, eq } from 'drizzle-orm'
 import { getCachedCustomFields } from '../cache'
 import { onCacheEvent } from '../cache/invalidate'
 import { NotFoundError } from '../errors'
-import type { DecodedMapping } from './service'
+import {
+  type DataConnectorMappingRow,
+  type DecodedMapping,
+  decodeMapping,
+  listStreams,
+} from './service'
+import type { FieldMapping } from './types'
 
 const logger = createScopedLogger('data-connector-provisioning')
 
@@ -339,14 +345,18 @@ async function provisionField(
  * field (reused, never re-created) or a null draft, so it yields no spec. Pure +
  * exported so the create-vs-reuse invariant is unit-testable without a DB.
  */
-export function provisionSpecsForMapping(mapping: DecodedMapping): ProvisionFieldSpec[] {
+export function provisionSpecsForMapping(mapping: {
+  fieldMappings: FieldMapping[]
+}): ProvisionFieldSpec[] {
   const specs: ProvisionFieldSpec[] = []
   for (const fm of mapping.fieldMappings) {
     if (!fm.provision) continue
-    // `targetFieldRef` is null until the post-provision write-back; the stable
-    // `appFieldKey` is the provision name.
+    // `targetFieldRef` is null until the post-provision write-back. The stable
+    // idempotency key is `provision.appFieldKey` when set (owned fields whose key
+    // differs from the display name, e.g. `name` vs "Order Name"), else `name`
+    // (templates, where the two coincide).
     specs.push({
-      appFieldKey: fm.provision.name,
+      appFieldKey: fm.provision.appFieldKey ?? fm.provision.name,
       name: fm.provision.name,
       type: fm.provision.type,
       icon: fm.provision.icon,
@@ -415,12 +425,13 @@ export async function backfillProvisionedFieldRefs(
     let changed = false
     for (const fm of mapping.fieldMappings) {
       if (!fm.provision || fm.targetFieldRef != null) continue
+      const appFieldKey = fm.provision.appFieldKey ?? fm.provision.name
       const field = await db.query.CustomField.findFirst({
         where: and(
           eq(schema.CustomField.organizationId, organizationId),
           eq(schema.CustomField.entityDefinitionId, mapping.entityDefinitionId),
           eq(schema.CustomField.dataConnectorId, dataConnectorId),
-          eq(schema.CustomField.appFieldKey, fm.provision.name)
+          eq(schema.CustomField.appFieldKey, appFieldKey)
         ),
         columns: { id: true },
       })
@@ -434,5 +445,136 @@ export async function backfillProvisionedFieldRefs(
         .set({ fieldMappings: mapping.fieldMappings, updatedAt: new Date() })
         .where(eq(schema.DataConnectorMapping.id, mapping.row.id))
     }
+  }
+}
+
+/**
+ * Materialize a connector's LAZY owned targets (05e — connector-target-resources-splice).
+ * The home for what the eager `provisionStreamOwnedDefs` + pass-2 edge loop did, but
+ * driven by the PERSISTED mapping rows (`targetSpec` + `provision` specs), not the live
+ * app catalog — so it's catalog-independent and runs at finalize/first-sync.
+ *
+ * CRITICAL: operates on RAW rows. A lazy owned mapping has `entityDefinitionId: null`,
+ * which `decodeMapping` throws on and `loadConnector` filters out — so this MUST run on
+ * the raw `listStreams` rows BEFORE any decode, and BEFORE `loadConnector` in the sync
+ * path. Materializes ENABLED streams only.
+ *
+ * Idempotent: `provisionTarget` adopts a def by `apiSlug` and provisions fields keyed by
+ * `(dataConnectorId, appFieldKey)`, `backfillProvisionedFieldRefs` only fills null refs,
+ * and `provisionRelationshipField` adopts an existing edge by `appFieldKey` — so a
+ * re-run (finalize-then-sync, or an already-materialized eager connector) never dupes.
+ *
+ * Flow: (1) provision/adopt each owned def + its columns and write the resolved def id
+ * back onto the null-def row; (2) backfill the concrete `targetFieldRef`s; (3) provision
+ * each declared relationship edge now that every def exists.
+ */
+export async function materializeConnectorTargets(
+  db: Database,
+  organizationId: string,
+  dataConnectorId: string
+): Promise<void> {
+  // RAW rows for ENABLED streams. `listStreams` does NOT filter null-def mappings, so
+  // lazy owned rows are visible here (unlike `loadConnector`, which drops them).
+  const streams = (await listStreams(db, organizationId, dataConnectorId)).filter((s) => s.enabled)
+  const mappingRows = streams.flatMap((s) => s.mappings)
+  if (mappingRows.length === 0) return
+
+  const defIdByApiSlug: Record<string, string> = {}
+
+  // ── Pass 1 — defs + fields ────────────────────────────────────────────────────
+  // Owned (lazy, null def) creates/adopts its def from the persisted `targetSpec`;
+  // contributing provisions any declared `provision` fields onto its existing def.
+  // `reference` link-only mappings own no columns — they're handled in the edge pass.
+  for (const row of mappingRows) {
+    if (row.linkMode === 'reference') continue
+    const ownedDef = row.targetSpec?.ownedDef
+    // Raw-row `fieldMappings` are the DB mirror shape (plain-string refs); cast to the
+    // engine `FieldMapping` — `provisionSpecsForMapping` only reads `.provision`.
+    const fields = provisionSpecsForMapping({
+      fieldMappings: row.fieldMappings as unknown as FieldMapping[],
+    })
+    // Nothing to create: an already-targeted mapping (contributing, or an
+    // already-materialized owned) with no provisionable fields is a no-op.
+    if (!ownedDef && (row.entityDefinitionId == null || fields.length === 0)) continue
+
+    const result = await provisionTarget(db, organizationId, dataConnectorId, {
+      targetMode: row.targetMode as 'owned' | 'contributing',
+      entityDefinitionId: row.entityDefinitionId,
+      ownedDef,
+      fields,
+    })
+
+    // Write the resolved def id back onto a lazily-created owned row (was null), and
+    // mutate the in-memory row so the backfill + edge pass see it.
+    if (row.entityDefinitionId == null) {
+      await db
+        .update(schema.DataConnectorMapping)
+        .set({ entityDefinitionId: result.entityDefinitionId, updatedAt: new Date() })
+        .where(eq(schema.DataConnectorMapping.id, row.id))
+      row.entityDefinitionId = result.entityDefinitionId
+    }
+    if (ownedDef) defIdByApiSlug[ownedDef.apiSlug] = result.entityDefinitionId
+  }
+
+  // ── Backfill concrete refs ───────────────────────────────────────────────────
+  // Every owned def + column now exists; decode the rows that gained a def and carry
+  // unresolved provisioned fields, and stamp their concrete `targetFieldRef`s.
+  const decodedForBackfill = mappingRows
+    .filter(
+      (r) =>
+        r.linkMode !== 'reference' &&
+        r.entityDefinitionId != null &&
+        r.fieldMappings.some((fm) => fm.provision && fm.targetFieldRef == null)
+    )
+    .map((r) => decodeMapping(r))
+  if (decodedForBackfill.length > 0) {
+    await backfillProvisionedFieldRefs(db, organizationId, dataConnectorId, decodedForBackfill)
+  }
+
+  // ── Pass 2 — relationship edges ──────────────────────────────────────────────
+  // The forward edge lives on the PARENT def; resolve the target (cross-stream by
+  // apiSlug, owned-child by its own def). A target in a disabled stream resolves null
+  // → skip-with-log; enabling that stream + re-sync forms the edge later (idempotent).
+  const rowById = new Map<string, DataConnectorMappingRow>(mappingRows.map((r) => [r.id, r]))
+  for (const row of mappingRows) {
+    const rel = row.targetSpec?.relationship
+    if (!rel || !row.parentMappingId) continue
+    const parentDefId = rowById.get(row.parentMappingId)?.entityDefinitionId ?? null
+    if (!parentDefId) {
+      logger.warn('Skipping connector relationship edge — parent def unresolved', {
+        dataConnectorId,
+        mappingId: row.id,
+        fieldKey: rel.fieldKey,
+      })
+      continue
+    }
+    const relatedResourceId = await resolveRelationshipTargetDefId(
+      db,
+      organizationId,
+      rel.targetRef,
+      row.entityDefinitionId ?? '',
+      defIdByApiSlug
+    )
+    if (!relatedResourceId) {
+      logger.warn('Skipping connector relationship edge — target def unresolved', {
+        dataConnectorId,
+        fieldKey: rel.fieldKey,
+        targetRef: rel.targetRef,
+      })
+      continue
+    }
+    await provisionRelationshipField(
+      db,
+      organizationId,
+      dataConnectorId,
+      parentDefId,
+      relatedResourceId,
+      {
+        appFieldKey: rel.fieldKey,
+        name: rel.name,
+        cardinality: rel.cardinality,
+        inverseName: rel.inverseName ?? rel.name,
+      }
+    )
   }
 }

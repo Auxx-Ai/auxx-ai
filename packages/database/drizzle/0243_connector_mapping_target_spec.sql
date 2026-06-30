@@ -1,0 +1,1 @@
+ALTER TABLE "DataConnectorMapping" ADD COLUMN "targetSpec" jsonb;

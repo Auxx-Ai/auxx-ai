@@ -14,7 +14,7 @@ export type StreamReadiness = 'ready' | 'needs-mapping'
  * while keeping the same predicates the server-row tests exercise.
  */
 export interface ProgressMappingRow {
-  fieldMappings?: ({ targetFieldRef: string | null } | null)[] | null
+  fieldMappings?: ({ targetFieldRef: string | null; provision?: unknown } | null)[] | null
 }
 export interface ProgressStreamRow {
   enabled: boolean
@@ -28,13 +28,15 @@ export interface ProgressConnectorRow {
 }
 
 /**
- * A stream is ready once it has ≥1 mapping with a bound `targetFieldRef`. A row with
- * zero bound bindings (a freshly materialized draft — owned never is, a contributing
- * default-mapping is until authored) needs attention (multi-stream-setup-plan §4.1).
+ * A stream is ready once it has ≥1 mapping with a bound field — either a concrete
+ * `targetFieldRef` OR a `provision` spec (a lazy owned field awaiting materialization,
+ * 05e; its ref is null until first sync/finish). A row with zero such bindings (a
+ * contributing default-mapping until authored) needs attention (multi-stream-setup-plan
+ * §4.1). Readiness is NOT gated on a non-null `entityDefinitionId` — owned defs are lazy.
  */
 export function deriveStreamReadiness(stream: ProgressStreamRow): StreamReadiness {
   const bound = stream.mappings.some((m) =>
-    m.fieldMappings?.some((fm) => fm?.targetFieldRef != null)
+    m.fieldMappings?.some((fm) => fm?.targetFieldRef != null || fm?.provision != null)
   )
   return bound ? 'ready' : 'needs-mapping'
 }
