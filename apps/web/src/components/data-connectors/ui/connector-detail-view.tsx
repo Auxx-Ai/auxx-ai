@@ -28,6 +28,7 @@ import { useQueryState } from 'nuqs'
 import { useMemo } from 'react'
 import { AppIcon } from '~/components/apps/ui/app-icon'
 import { Tooltip } from '~/components/global/tooltip'
+import { useResources } from '~/components/resources/hooks/use-resources'
 import { useConfirm } from '~/hooks/use-confirm'
 import { useMedia } from '~/hooks/use-media'
 import { useDockStore } from '~/stores/dock-store'
@@ -75,6 +76,16 @@ export function ConnectorDetailView({ connector }: ConnectorDetailViewProps) {
 
   const [confirm, ConfirmDialog] = useConfirm()
   const [, setTab] = useQueryState('tab')
+
+  // Owned entity defs this connector provisioned — already on the cached resource
+  // shape (`CustomResource.dataConnectorId`), so no extra query. Used to spell out
+  // the blast radius in the `delete` confirm copy. Contributing columns on shared
+  // defs aren't counted (they survive a `delete` as user-owned).
+  const { customResources } = useResources()
+  const ownedDefs = useMemo(
+    () => customResources.filter((r) => r.dataConnectorId === connector.id),
+    [customResources, connector.id]
+  )
 
   const status = asConnectorStatus(connector.status)
   const isSyncing = status === 'syncing' || status === 'provisioning'
@@ -180,10 +191,15 @@ export function ConnectorDetailView({ connector }: ConnectorDetailViewProps) {
         : null
 
   const handleDelete = async (syncedData: 'keep' | 'archive' | 'delete') => {
+    const ownedDefsClause = ownedDefs.length
+      ? `, including ${ownedDefs.length} entity ${
+          ownedDefs.length === 1 ? 'definition' : 'definitions'
+        } (${ownedDefs.map((d) => d.label).join(', ')}) and all their records`
+      : ''
     const copy = {
       keep: 'Synced records are kept; only the connector is removed.',
       archive: 'Synced records are archived and the connector is removed.',
-      delete: 'Synced records and the connector are permanently deleted.',
+      delete: `Synced records and the connector are permanently deleted${ownedDefsClause}.`,
     }[syncedData]
     const ok = await confirm({
       title: 'Delete connector?',

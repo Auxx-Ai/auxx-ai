@@ -86,6 +86,12 @@ interface MappingFieldPickerProps {
   excludeKeys?: Set<string>
   /** Quick-create is wired only for owned defs (plan decision 3). */
   canCreate?: boolean
+  /**
+   * The enclosing mapping is OWNED — the owned-mode sink writes via its bypass crud
+   * handler, so the def's connector-managed (user-read-only) columns are valid
+   * targets. Relaxes {@link isWritableTarget} for those fields.
+   */
+  ownedWrite?: boolean
   /** Trigger placeholder when nothing is assigned (default "Apply field…"). */
   placeholder?: string
   /** Bind this source node to a DIRECT field on the current def (canonical `ResourceFieldId`). */
@@ -128,6 +134,7 @@ export function MappingFieldPicker({
   drilledRef,
   excludeKeys,
   canCreate = false,
+  ownedWrite = false,
   placeholder,
   onAssign,
   onDrilledAssign,
@@ -141,9 +148,16 @@ export function MappingFieldPicker({
 
   const isBranch = kind === 'branch'
   const showRelationships = isBranch || allowRelationships
+  // A VALUE binding (direct scalar or drilled-across) vs a link-only leaf (an id-only
+  // relationship whose FK anchors an edge but writes no column). Both make the trigger
+  // read "active"; only a value binding drives the icon + the in-picker "Don't map".
   const isAssigned = !!assignedKey || !!drilledRef
+  const isLinked = !!linkedFieldRef
+  const isActive = isAssigned || isLinked
+  // Chip prefers a value/drill label, then the bound key, then a bare "Linked" for a
+  // link-only leaf (the relationship renders its own sub-row), else the placeholder.
   const chipLabel =
-    assignedLabel ?? (isAssigned ? (assignedKey ?? 'Linked') : (placeholder ?? 'Apply field…'))
+    assignedLabel ?? assignedKey ?? (isLinked ? 'Linked' : (placeholder ?? 'Apply field…'))
 
   // No target def yet — show a disabled trigger; binding unlocks once a target def is
   // picked (plan 08 §3.4).
@@ -172,7 +186,7 @@ export function MappingFieldPicker({
         <Button
           variant='transparent'
           className={`h-9 w-full justify-between rounded-none px-2 text-xs hover:bg-primary-200/20 ${
-            isAssigned ? '' : 'text-primary-400'
+            isActive ? '' : 'text-primary-400'
           }`}>
           <span className='flex min-w-0 items-center gap-1.5'>
             {isAssigned && assignedIconId && (
@@ -213,7 +227,7 @@ export function MappingFieldPicker({
                 getFieldDefinitionId(rfid) === entityDefinitionId ? !excludeKeys?.has(rfid) : true
               return (
                 notExcluded &&
-                isWritableTarget(f) &&
+                isWritableTarget(f, { ownedWrite }) &&
                 isSourceTargetCompatible(f.fieldType, sourceType)
               )
             }}
@@ -245,6 +259,7 @@ export function MappingFieldPicker({
           <QuickCreateFieldForm
             entityDefinitionId={entityDefinitionId}
             sourceType={sourceType}
+            ownedWrite={ownedWrite}
             excludeKeys={excludeKeys}
             seedName={humanizeFieldPath(sourcePath)}
             seedType={inferFieldType(sourcePath, sourceType, sourceFormat)}
@@ -293,6 +308,7 @@ function useFieldTypeGroups(): OptionGroup[] {
 function QuickCreateFieldForm({
   entityDefinitionId,
   sourceType,
+  ownedWrite,
   excludeKeys,
   seedName,
   seedType,
@@ -301,6 +317,7 @@ function QuickCreateFieldForm({
 }: {
   entityDefinitionId: string
   sourceType: string
+  ownedWrite?: boolean
   excludeKeys?: Set<string>
   seedName: string
   seedType: FieldTypeType
@@ -329,10 +346,10 @@ function QuickCreateFieldForm({
     const alreadyMapped = excludeKeys?.has(ref) ?? false
     const bindable =
       !alreadyMapped &&
-      isWritableTarget(existing) &&
+      isWritableTarget(existing, { ownedWrite }) &&
       isSourceTargetCompatible(existing.fieldType, sourceType)
     return { existing, ref, bindable, alreadyMapped }
-  }, [trimmed, fields, entityDefinitionId, excludeKeys, sourceType])
+  }, [trimmed, fields, entityDefinitionId, excludeKeys, sourceType, ownedWrite])
 
   const canSubmit = !!trimmed && !conflict && !create.isPending
 

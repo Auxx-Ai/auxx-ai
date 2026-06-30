@@ -7,10 +7,12 @@ import type { CatalogDataConnector } from '@auxx/database'
 import { describe, expect, it } from 'vitest'
 import {
   buildAppOwnedFieldMappings,
+  buildReferenceAnchor,
   type OwnedFieldEntry,
   ownedParentRootPath,
   partitionOwnedFields,
   projectConnectorOwnedTargets,
+  relativeSourcePath,
 } from './mutations'
 
 type CatalogField = OwnedFieldEntry['field']
@@ -209,6 +211,41 @@ describe('partitionOwnedFields', () => {
     expect(line.some((e) => e.field.fieldKey === 'lineItems.productId')).toBe(false)
     // The reference mapping (shopify_products) owns no columns at all.
     expect(result['line_items[].product_id']).toBeUndefined()
+  })
+})
+
+describe('relativeSourcePath (nested-child rootPath relativization)', () => {
+  // The seeders relativize a child mapping's payload-absolute manifest rootPath
+  // against its parent's rootPath before storing it — the shape the editor + sync
+  // runtime expect. Same helper that strips a field's sourcePath against its owner.
+  it('strips a grandchild rootPath against its array parent', () => {
+    // The product reference under line_items[]: `line_items[].product_id` must store
+    // as `product_id` so it matches the relative leaf node + resolves at sync.
+    expect(relativeSourcePath('line_items[].product_id', 'line_items[]')).toBe('product_id')
+  })
+
+  it('strips an object-branch child rootPath', () => {
+    expect(relativeSourcePath('customer.address', 'customer')).toBe('address')
+  })
+
+  it('leaves a top-level child unchanged (parent is the root)', () => {
+    // A one-level child parents to `''` → absolute == relative (accidentally correct
+    // before the fix, which is why only depth-≥2 children regressed).
+    expect(relativeSourcePath('line_items[]', '')).toBe('line_items[]')
+    expect(relativeSourcePath('customer', '')).toBe('customer')
+  })
+})
+
+describe('buildReferenceAnchor', () => {
+  it('synthesizes the {source} External-ID anchor a reference edge needs', () => {
+    const anchor = buildReferenceAnchor()
+    // Matches the interactive linkRelationship shape exactly: target-less, the FK value
+    // ({source}) IS the related record's external id.
+    expect(anchor.targetFieldRef).toBeNull()
+    expect(anchor.expression).toBe('{source}')
+    expect(anchor.sourceFields).toEqual({})
+    expect(anchor.identityRole).toEqual({ kind: 'externalId' })
+    expect(anchor.id).toBeTruthy()
   })
 })
 

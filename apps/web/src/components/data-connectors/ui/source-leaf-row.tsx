@@ -110,16 +110,21 @@ export function SourceLeafRow({
   onSetIdentityRole,
   onLinkRelationship,
 }: SourceLeafRowProps) {
+  // A VALUE binding (direct or drilled) vs a link-only leaf (an id-only relationship
+  // FK that anchors an edge but writes no column). Both read "active" (lit icon/arrow);
+  // only a value binding shows the merge/clear actions + can serve as a Match key.
   const isMapped = !!assignedTargetKey || !!drilledRef
+  const isLinked = !!linkedFieldRef
+  const isActive = isMapped || isLinked
   const isArray = node.type === 'array'
   const Icon = isArray ? Brackets : Hash
   return (
     <MappingRow
       depth={depth}
-      icon={<Icon className={isMapped ? 'size-3.5' : 'size-3.5 text-muted-foreground/50'} />}
+      icon={<Icon className={isActive ? 'size-3.5' : 'size-3.5 text-muted-foreground/50'} />}
       title={
         <span className='flex items-center gap-1.5'>
-          <span className={`font-mono text-sm ${isMapped ? '' : 'text-muted-foreground'}`}>
+          <span className={`font-mono text-sm ${isActive ? '' : 'text-muted-foreground'}`}>
             {lastSegment(node.path)}
           </span>
           <span className='text-[10px] uppercase text-muted-foreground/60'>
@@ -137,8 +142,8 @@ export function SourceLeafRow({
         </span>
       }
       // The arrow always shows (the field picker is always present, even when
-      // unbound) — dimmed until a target field is bound.
-      arrow={isMapped ? 'filled' : 'dim'}
+      // unbound) — dimmed until the leaf is value-bound OR linked.
+      arrow={isActive ? 'filled' : 'dim'}
       // Target column — the field picker fills the cell and blends into the row.
       target={
         <MappingFieldPicker
@@ -153,6 +158,7 @@ export function SourceLeafRow({
           drilledRef={drilledRef}
           excludeKeys={excludeKeys}
           canCreate={canCreate}
+          ownedWrite={isOwned}
           allowRelationships={allowRelationships}
           linkedFieldRef={linkedFieldRef}
           onAssign={onAssign}

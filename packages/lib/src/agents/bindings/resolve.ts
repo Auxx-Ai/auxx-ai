@@ -19,7 +19,7 @@ import {
 import { parseRecordId, type RecordId } from '@auxx/types/resource'
 import type { Subject, ToolContext } from '../../ai/agent-framework/tool-context'
 import {
-  getCachedEntityDefId,
+  findCachedResource,
   getCachedFieldMap,
   getCachedInstalledApps,
 } from '../../cache/org-cache-helpers'
@@ -160,8 +160,12 @@ async function resolveAppSegmentsWith(
     }
     const credId = credIdForSlug(app.slug)
     if (!credId) return null // no bound store → "connect a store"
-    const entityDefId = await getCachedEntityDefId(orgId, slug)
-    if (!entityDefId) return null
+    // Resolve the leading segment the way the rest of the app does — by id OR
+    // entityType OR apiSlug. Connector-owned defs key by apiSlug (entityType is
+    // null); agent bindings key by entityType. Both live in the `resources` cache.
+    const resource = await findCachedResource(orgId, slug)
+    if (!resource) return null
+    const entityDefId = resource.entityDefinitionId
     const cfId = await resolveAppFieldId(orgId, entityDefId, app.slug, app.key, credId)
     if (!cfId) return null
     rewritten.push(toResourceFieldId(entityDefId, cfId))

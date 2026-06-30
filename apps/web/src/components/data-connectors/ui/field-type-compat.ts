@@ -6,17 +6,23 @@ import { isFieldTypeCompatible } from '@auxx/lib/custom-fields/client'
 import type { ResourceField } from '@auxx/lib/resources/client'
 
 /**
- * Can the connector sink keep this target field in sync? The sink upserts via
- * `UnifiedCrudHandler`, which silently drops non-creatable values on create and
- * non-updatable values on update — so a field that isn't BOTH creatable and
- * updatable (or is computed/derived) can never be reliably written by an ongoing
- * sync. Such fields (record id, createdAt, ticket number, formula/rollup fields,
- * …) are filtered out of the mapping target pickers. Normal custom fields are
- * creatable + updatable, so the common owned/contributing case is unaffected.
+ * Can the connector sink keep this target field in sync? Computed/derived fields
+ * (formula/rollup) are never writable. Otherwise a field needs to be both creatable
+ * and updatable so an ongoing sync can write it on create AND update — that filters
+ * out record id, createdAt, ticket number, etc. from the mapping target pickers.
+ *
+ * `ownedWrite` (the mapping is OWNED) flips this for connector-managed columns: an
+ * owned def's own columns are stamped user-read-only (`isCreatable`/`isUpdatable`
+ * false) by the v6 template projector, but the owned-mode sink populates them via
+ * its bypass crud handler — so they ARE valid targets. Gated to connector/app-owned
+ * fields (`dataConnectorId`/`isAppOwned`) so a pure system field (e.g. Created By)
+ * on an owned def stays hidden. Contributing mappings keep the strict check.
  */
-export function isWritableTarget(field: ResourceField): boolean {
+export function isWritableTarget(field: ResourceField, opts?: { ownedWrite?: boolean }): boolean {
   const c = field.capabilities
-  return c.creatable && c.updatable && !c.computed
+  if (c.computed) return false
+  if (c.creatable && c.updatable) return true
+  return !!opts?.ownedWrite && (field.dataConnectorId != null || !!field.isAppOwned)
 }
 
 /**

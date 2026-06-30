@@ -123,6 +123,15 @@ class ConnectorRunLedger implements RunLedger {
       failed: sql`${T.failed} + ${c.failed ?? 0}`,
       pagesProcessed: sql`${T.pagesProcessed} + ${entry.pagesProcessed ?? 0}`,
       rateLimitWaitMs: sql`${T.rateLimitWaitMs} + ${entry.rateLimitWaitMs ?? 0}`,
+      // Append this slice's dropped/failed sample onto the run row so a run that
+      // silently drops every field value can't present as clean (Step 9 §8). Soft-
+      // capped at ~50 entries (stop appending past 50) — it's a sample, not a log.
+      // No sample this slice ⇒ self-assign so a NULL stays NULL (the clean-run shape).
+      errorSample: entry.errorSample?.length
+        ? sql`CASE WHEN jsonb_array_length(coalesce(${T.errorSample}, '[]'::jsonb)) < 50
+            THEN coalesce(${T.errorSample}, '[]'::jsonb) || ${JSON.stringify(entry.errorSample)}::jsonb
+            ELSE ${T.errorSample} END`
+        : sql`${T.errorSample}`,
       heartbeatAt: new Date(),
     }
 
@@ -159,9 +168,14 @@ class ConnectorRunLedger implements RunLedger {
     const T = schema.DataConnectorRun
     const row = await this.db.query.DataConnectorRun.findFirst({
       where: eq(T.id, this.runId),
-      columns: { failed: true },
+      columns: { failed: true, errorSample: true },
     })
-    const status = (row?.failed ?? 0) > 0 ? 'partial' : 'completed'
+    // A run is 'partial' if the entity write threw (`failed`) OR any record/field was
+    // dropped before the write (an `errorSample` entry — e.g. an unresolved field ref).
+    // Pre-write drops don't bump `failed`, so without this an all-dropped run reported
+    // `completed / failed: 0` while writing no data (Step 9 §8).
+    const status =
+      (row?.failed ?? 0) > 0 || (row?.errorSample?.length ?? 0) > 0 ? 'partial' : 'completed'
     await this.db
       .update(T)
       .set({ status, finishedAt: new Date(), durationMs: Date.now() - this.startedAt.getTime() })

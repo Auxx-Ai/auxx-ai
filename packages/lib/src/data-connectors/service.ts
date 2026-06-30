@@ -8,6 +8,7 @@ import { type Database, database as defaultDb, schema, type Transaction } from '
 import { createScopedLogger } from '@auxx/logger'
 import { and, asc, count, desc, eq, inArray, ne, sql } from 'drizzle-orm'
 import { err, ok, type Result } from 'neverthrow'
+import type { SyncRunErrorSample } from '../sync-core/contracts'
 import { maxLevel } from './edit-impact'
 import type {
   FieldMapping,
@@ -234,8 +235,9 @@ export interface RunCounters {
   // `tier` classifies the failure for the two-tier error UI (Step 9 §1.1):
   // 'invalid' = bad shape / missing identity, dropped before the write;
   // 'rejected' = the entity write itself threw. Omitted ⇒ engine-level error
-  // (stale sweep / ledger fail), rendered under a neutral "Error" bucket.
-  errorSample: Array<{ externalId: string; error: string; tier?: 'invalid' | 'rejected' }>
+  // (stale sweep / ledger fail), rendered under a neutral "Error" bucket. Shared
+  // with the sliced sync-core ledger fold (`SliceLedgerEntry.errorSample`).
+  errorSample: SyncRunErrorSample[]
 }
 
 export function newRunCounters(): RunCounters {

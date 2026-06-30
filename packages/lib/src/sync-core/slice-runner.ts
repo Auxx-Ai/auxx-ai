@@ -147,6 +147,7 @@ export async function runSyncSlice(args: RunSliceArgs): Promise<SliceOutcome> {
   const checkpointKey = advance ? (exhausted ? `done:${phase}` : cursorKey(nextCursor)) : undefined
   await ledger.recordSlice({
     counters: result.counters,
+    errorSample: result.errorSample,
     pagesProcessed: result.pagesProcessed,
     rateLimitWaitMs: result.rateLimitWaitMs,
     checkpointKey,
