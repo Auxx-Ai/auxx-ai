@@ -7,7 +7,6 @@ import {
   CheckSquare,
   CircleAlert,
   ComponentIcon,
-  Contact2,
   Database,
   Feather,
   FileUp,
@@ -19,13 +18,11 @@ import {
   Layers,
   Map,
   MessagesSquare,
-  Package,
   Palette,
   PersonStanding,
   Ratio,
   Rows3,
   Settings,
-  ShoppingBag,
   Sparkles,
   Sun,
   Tag,
@@ -59,7 +56,6 @@ export type SidebarProps = {
 } & FieldProps
 
 import type * as React from 'react'
-import { ShopifyIcon } from './icons'
 
 // {
 //   id: uuid(),
@@ -69,11 +65,6 @@ import { ShopifyIcon } from './icons'
 //   items: [{ id: uuid(), label: 'Inbox', slug: 'inbox', icon: <Inbox /> }],
 // },
 
-export const SHOPIFY_MENU: SidebarProps[] = [
-  { id: 'shopify-customers', label: 'Customers', slug: 'customers', icon: <Contact2 /> },
-  { id: 'shopify-orders', label: 'Orders', slug: 'orders', icon: <ShoppingBag /> },
-  { id: 'shopify-products', label: 'Products', slug: 'products', icon: <Package /> },
-]
 export const MAIL_MENU: SidebarProps[] = []
 
 export const SIDEBAR_MENU: SidebarProps[] = [
@@ -114,15 +105,6 @@ export const SIDEBAR_MENU: SidebarProps[] = [
     featureKey: 'workflows',
   },
   { id: 'tasks', label: 'Tasks', slug: 'tasks', icon: <CheckSquare /> },
-  {
-    id: 'shopify',
-    label: 'Shopify',
-    slug: 'shopify',
-    icon: <ShopifyIcon />,
-    preventNavigation: true,
-    featureKey: 'shopify',
-    items: SHOPIFY_MENU,
-  },
   {
     id: 'resources',
     label: 'Resources',
@@ -275,14 +257,6 @@ export const SETTINGS_MENU: SidebarProps[] = [
       //   slug: 'google',
       //   icon: <GoogleIcon />,
       // },
-      {
-        id: 'integrations-shopify',
-        label: 'Shopify',
-        slug: 'shopify',
-        icon: <ShopifyIcon />,
-        access: 'ADMIN',
-        featureKey: 'shopify',
-      },
     ],
   },
   // Admin

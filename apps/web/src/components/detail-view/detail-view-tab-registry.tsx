@@ -29,8 +29,6 @@ export const DETAIL_VIEW_TAB_COMPONENTS: Record<
   // ─────────────────────────────────────────────────────────────────
   'contact:tickets': () =>
     import('../drawers/tabs/contact-tickets-tab').then((m) => ({ default: m.ContactTicketsTab })),
-  'contact:orders': () =>
-    import('../drawers/tabs/contact-orders-tab').then((m) => ({ default: m.ContactOrdersTab })),
 
   // ─────────────────────────────────────────────────────────────────
   // TICKET TABS

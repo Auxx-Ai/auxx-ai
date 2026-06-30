@@ -31,7 +31,6 @@ import { TimelineTab } from '~/components/timeline'
 import { useDockStore } from '~/stores/dock-store'
 import { api } from '~/trpc/react'
 // import { toast } from '@auxx/ui/components/toast'
-import CustomerOrdersTab from './customer-orders-tab'
 import CustomerSourcesCard from './customer-sources-card'
 import CustomerSpamDialog from './customer-spam-dialog'
 import CustomerTicketsTab from './customer-tickets-tab'
@@ -194,9 +193,6 @@ export function ContactDetail({ id }: { id: string }) {
             <TabsTrigger value='tickets' variant='outline'>
               Tickets
             </TabsTrigger>
-            <TabsTrigger value='orders' variant='outline'>
-              Orders
-            </TabsTrigger>
             <TabsTrigger value='timeline' variant='outline'>
               Timeline
             </TabsTrigger>
@@ -204,10 +200,6 @@ export function ContactDetail({ id }: { id: string }) {
 
           <TabsContent value='tickets' className='flex flex-col flex-1 min-h-0 '>
             <CustomerTicketsTab customer={customer} contactId={id} />
-          </TabsContent>
-
-          <TabsContent value='orders' className='flex flex-col flex-1 min-h-0 p-6 overflow-y-auto'>
-            <CustomerOrdersTab customer={customer} shopifyCustomers={customer.shopifyCustomers} />
           </TabsContent>
 
           <TabsContent value='timeline' className='flex flex-col flex-1 min-h-0'>

@@ -28,7 +28,6 @@ export const DETAIL_VIEW_CONFIG_REGISTRY: DetailViewConfigRegistry = {
     entityType: 'contact',
     mainTabs: [
       { value: 'tickets', label: 'Tickets', icon: 'ticket' },
-      { value: 'orders', label: 'Orders', icon: 'shopping-bag' },
       { value: 'timeline', label: 'Timeline', icon: 'clock' },
       { value: 'tasks', label: 'Tasks', icon: 'list-todo' },
     ],

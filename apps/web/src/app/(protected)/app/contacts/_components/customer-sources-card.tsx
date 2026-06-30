@@ -15,7 +15,6 @@ interface CustomerSourcesCardProps {
  */
 export default function CustomerSourcesCard({ customer }: CustomerSourcesCardProps) {
   const sources = customer.customerSources || []
-  const shopifyCustomers = customer.shopifyCustomers || []
 
   // Group sources by type for display
   const groupedSources: Record<string, any[]> = sources.reduce(
@@ -28,11 +27,6 @@ export default function CustomerSourcesCard({ customer }: CustomerSourcesCardPro
     },
     {}
   )
-
-  // Add Shopify customers as sources if they exist
-  if (shopifyCustomers.length > 0) {
-    groupedSources['SHOPIFY'] = shopifyCustomers
-  }
 
   // Check if customer has associated emails (apart from primary)
   const additionalEmails =
@@ -59,12 +53,7 @@ export default function CustomerSourcesCard({ customer }: CustomerSourcesCardPro
                 {sourceItems.map((item: any, index: number) => (
                   <li key={index} className='flex items-center text-muted-foreground'>
                     <LinkIcon className='mr-1.5 size-3 shrink-0' />
-                    {sourceType === 'SHOPIFY' ? (
-                      <span className='truncate'>
-                        Shopify Customer {item.id.toString()}
-                        {item.email && ` (${item.email})`}
-                      </span>
-                    ) : item.email ? (
+                    {item.email ? (
                       <span className='truncate'>{item.email}</span>
                     ) : (
                       <span>ID: {item.sourceId}</span>

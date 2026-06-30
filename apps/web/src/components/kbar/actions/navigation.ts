@@ -292,41 +292,6 @@ export function useNavigationActions(): PaletteAction[] {
         perform: () => nav('/files'),
       })
     }
-    if (hasAccess('shopify')) {
-      actions.push(
-        {
-          id: 'nav.shopify',
-          label: 'Shopify',
-          subtitle: 'Shopify customers',
-          icon: 'shopping-cart',
-          keywords: 'shopify customers store',
-          shortcut: SHORTCUTS['nav.shopify'],
-          perform: () => nav('/shopify/customers'),
-        },
-        {
-          id: 'nav.shopify.customers',
-          label: 'Shopify · Customers',
-          icon: 'users',
-          keywords: 'shopify customers',
-          perform: () => nav('/shopify/customers'),
-        },
-        {
-          id: 'nav.shopify.orders',
-          label: 'Shopify · Orders',
-          icon: 'receipt',
-          keywords: 'shopify orders',
-          perform: () => nav('/shopify/orders'),
-        },
-        {
-          id: 'nav.shopify.products',
-          label: 'Shopify · Products',
-          icon: 'package',
-          keywords: 'shopify products',
-          perform: () => nav('/shopify/products'),
-        }
-      )
-    }
-
     return actions
   }, [hasAccess, isAdminOrOwner, nav])
 }

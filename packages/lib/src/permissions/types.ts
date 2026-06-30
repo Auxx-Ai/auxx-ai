@@ -35,7 +35,6 @@ export enum FeatureKey {
   datasets = 'datasets',
   files = 'files',
   webhooks = 'webhooks',
-  shopify = 'shopify',
   devTools = 'devTools',
   unverifiedApps = 'unverifiedApps',
   kopilot = 'kopilot',
@@ -118,7 +117,6 @@ export const FEATURE_REGISTRY: FeatureMetadata[] = [
   { key: FeatureKey.datasets, type: 'boolean', label: 'Datasets', group: 'Data' },
   { key: FeatureKey.files, type: 'boolean', label: 'Files', group: 'Storage' },
   { key: FeatureKey.webhooks, type: 'boolean', label: 'Webhooks', group: 'Integrations' },
-  { key: FeatureKey.shopify, type: 'boolean', label: 'Shopify', group: 'Integrations' },
   { key: FeatureKey.devTools, type: 'boolean', label: 'Dev Tools', group: 'Internal' },
   {
     key: FeatureKey.unverifiedApps,

@@ -30,8 +30,6 @@ export const SHORTCUTS: Record<string, string[]> = {
   'nav.kb': ['g', 'k'],
   'nav.datasets': ['g', 'd'],
   'nav.files': ['g', 'f'],
-  // Shopify moved off `g,s` (it used to shadow every `g,s,*` shared-inbox chord).
-  'nav.shopify': ['g', 'h'],
 
   // ── Shared Inbox (3-key siblings; no `g,s` parent chord, so all reachable) ─
   'nav.sharedInbox.unassigned': ['g', 's', 'u'],
@@ -58,7 +56,6 @@ export const SHORTCUTS: Record<string, string[]> = {
   'settings.tags': ['s', 't'],
   'settings.apps': ['s', 'p'],
   'settings.webhooks': ['s', 'w'],
-  'settings.shopify': ['s', 'h'],
 
   // ── Theme ───────────────────────────────────────────────────────────────
   'theme.toggle': ['t', 't'],
