@@ -26,7 +26,6 @@ import { commentRouter } from './routers/comment'
 import { configVariableRouter } from './routers/config-variable'
 import { connectionsRouter } from './routers/connections'
 import { contactRouter } from './routers/contact'
-import { customerRouter } from './routers/customer'
 import { customFieldRouter } from './routers/customField'
 import { dataConnectorRouter } from './routers/data-connectors'
 import { dataImportRouter } from './routers/data-import'
@@ -56,7 +55,6 @@ import { mediaAssetRouter } from './routers/mediaAsset'
 import { memberRouter } from './routers/member'
 import { messageRouter } from './routers/message'
 import { notificationRouter } from './routers/notification'
-import { orderRouter } from './routers/order'
 import { organizationRouter } from './routers/organization'
 import { participantRouter } from './routers/participant'
 import { procedureRouter } from './routers/procedure'
@@ -128,7 +126,6 @@ export const appRouter = createTRPCRouter({
   file: fileRouter,
   folder: folderRouter,
   mediaAsset: mediaAssetRouter,
-  customer: customerRouter,
   emailTemplate: emailTemplateRouter,
   eval: evalRouter,
   entityDefinition: entityDefinitionRouter,
@@ -150,7 +147,6 @@ export const appRouter = createTRPCRouter({
   member: memberRouter,
   message: messageRouter,
   notification: notificationRouter,
-  order: orderRouter,
   organization: organizationRouter,
   participant: participantRouter,
   procedure: procedureRouter,

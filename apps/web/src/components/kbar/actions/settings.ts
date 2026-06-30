@@ -184,16 +184,6 @@ export function useSettingsActions(): PaletteAction[] {
           perform: () => goToSetting('webhooks'),
         })
       }
-      if (hasAccess('shopify')) {
-        actions.push({
-          id: 'settings.shopify',
-          label: 'Shopify Settings',
-          icon: 'shopping-cart',
-          keywords: 'shopify',
-          shortcut: SHORTCUTS['settings.shopify'],
-          perform: () => goToSetting('shopify'),
-        })
-      }
       // Billing is cloud-only and lost its `s,b` chord to Inbox settings.
       if (!selfHosted) {
         actions.push({
