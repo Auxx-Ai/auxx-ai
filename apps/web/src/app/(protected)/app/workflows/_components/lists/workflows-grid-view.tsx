@@ -9,8 +9,15 @@ import { LastUpdated } from '@auxx/ui/components/last-updated'
 import { ListCard } from '@auxx/ui/components/list-card'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 import { Copy, Edit, Pause, Play, Trash } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { FavoriteToggleMenuItem } from '~/components/favorites/ui/favorite-toggle-menu-item'
+import {
+  useBulkMode,
+  useIsPending,
+  useIsSelected,
+  useListSelection,
+  usePendingLabel,
+} from '~/components/list-selection'
 import { DuplicateWorkflowDialog } from '~/components/workflow/dialogs/duplicate-workflow-dialog'
 import { WorkflowFormDialog } from '~/components/workflow/dialogs/workflow-form-dialog'
 import { unifiedNodeRegistry } from '~/components/workflow/nodes/unified-registry'
@@ -27,6 +34,11 @@ function WorkflowCard({ workflow }: WorkflowCardProps) {
   const [confirm, ConfirmDialog] = useConfirm()
   const [editDialogOpen, setEditDialogOpen] = useState(false)
   const [duplicateDialogOpen, setDuplicateDialogOpen] = useState(false)
+  const bulkMode = useBulkMode()
+  const selected = useIsSelected(workflow.id)
+  const pending = useIsPending(workflow.id)
+  const pendingLabel = usePendingLabel()
+  const toggle = useListSelection((s) => s.toggle)
 
   const updateWorkflow = api.workflow.update.useMutation({
     onSuccess: () => {
@@ -72,6 +84,12 @@ function WorkflowCard({ workflow }: WorkflowCardProps) {
       <ListCard
         href={`/app/workflows/${workflow.id}`}
         ariaLabel={workflow.name}
+        selectable
+        selecting={bulkMode}
+        selected={selected}
+        onSelectChange={(_, e) => toggle(workflow.id, { shiftKey: e.shiftKey })}
+        pending={pending}
+        pendingLabel={pendingLabel}
         title={workflow.name}
         icon={
           workflow.icon ? (
@@ -147,6 +165,11 @@ function WorkflowCard({ workflow }: WorkflowCardProps) {
 
 export function WorkflowsGridView() {
   const { workflows } = useWorkflows()
+  const setItemIds = useListSelection((s) => s.setItemIds)
+
+  useEffect(() => {
+    setItemIds(workflows.map((w) => w.id))
+  }, [workflows, setItemIds])
 
   return (
     <div className='grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4'>

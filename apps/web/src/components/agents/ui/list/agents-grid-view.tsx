@@ -2,7 +2,8 @@
 'use client'
 
 import { ListCard } from '@auxx/ui/components/list-card'
-import { useMemo } from 'react'
+import { useEffect, useMemo } from 'react'
+import { useListSelection } from '~/components/list-selection'
 import { useAgentSearch } from '../../hooks/use-agent-search'
 import { useAgents } from '../../hooks/use-agents'
 import type { AgentListItem } from '../../store/agent-store'
@@ -39,6 +40,7 @@ function AgentGrid({ agents }: { agents: AgentListItem[] }) {
 export function AgentsGridView() {
   const { agents, hasLoadedOnce } = useAgents()
   const { search } = useAgentSearch()
+  const setItemIds = useListSelection((s) => s.setItemIds)
 
   const { chat, internal } = useMemo(() => {
     const matched = filterAgents(agents, search)
@@ -47,6 +49,12 @@ export function AgentsGridView() {
       internal: sortDraftFirst(matched.filter((a) => a.kind !== 'chat')),
     }
   }, [agents, search])
+
+  // Keep the selection store's ordered ID list in sync (chat section, then
+  // internal) so shift+click range and Cmd/Ctrl+A act on what's on screen.
+  useEffect(() => {
+    setItemIds([...chat, ...internal].map((a) => a.id))
+  }, [chat, internal, setItemIds])
 
   if (!hasLoadedOnce) {
     return (

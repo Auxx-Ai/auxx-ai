@@ -3,6 +3,7 @@
 export { CreateDatasetButton } from './create-dataset-button'
 export { CreateDatasetDialog } from './create-dataset-dialog'
 export { DatasetCard } from './dataset-card'
+export { DatasetsBulkBar } from './datasets-bulk-bar'
 export { DatasetsEmptyState } from './datasets-empty-state'
 export { DatasetsFilterBar } from './datasets-filter-bar'
 export { DatasetsGridView } from './datasets-grid-view'

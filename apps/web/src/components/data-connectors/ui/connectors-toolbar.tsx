@@ -1,14 +1,18 @@
-// apps/web/src/components/agents/ui/list/agents-search-bar.tsx
+// apps/web/src/components/data-connectors/ui/connectors-toolbar.tsx
 'use client'
 
 import { InputSearch } from '@auxx/ui/components/input-search'
 import { ListBulkToggle } from '@auxx/ui/components/list-bulk-toggle'
 import { ListToolbar, ListToolbarGroup } from '@auxx/ui/components/list-toolbar'
 import { useBulkMode, useListSelection } from '~/components/list-selection'
-import { useAgentSearch } from '../../hooks/use-agent-search'
 
-export function AgentsSearchBar() {
-  const { search, setSearch } = useAgentSearch()
+interface ConnectorsToolbarProps {
+  search: string
+  onSearchChange: (value: string) => void
+}
+
+/** Connectors list toolbar — name search + the bulk-select toggle. */
+export function ConnectorsToolbar({ search, onSearchChange }: ConnectorsToolbarProps) {
   const bulkMode = useBulkMode()
   const setBulkMode = useListSelection((s) => s.setBulkMode)
 
@@ -16,8 +20,8 @@ export function AgentsSearchBar() {
     <ListToolbar>
       <InputSearch
         value={search}
-        onChange={(e) => setSearch(e.target.value)}
-        placeholder='Search agents…'
+        placeholder='Search connectors...'
+        onChange={(e) => onSearchChange(e.target.value)}
       />
       <ListToolbarGroup align='end'>
         <ListBulkToggle active={bulkMode} onActiveChange={setBulkMode} />

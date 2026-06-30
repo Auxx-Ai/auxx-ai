@@ -4,7 +4,9 @@
 import { Button } from '@auxx/ui/components/button'
 import { ListCard } from '@auxx/ui/components/list-card'
 import { Plus } from 'lucide-react'
+import { useEffect, useMemo } from 'react'
 import { EmptyState } from '~/components/global/empty-state'
+import { useListSelection } from '~/components/list-selection'
 import { api } from '~/trpc/react'
 import { ConnectorCard, ConnectorFallbackIcon } from './connector-card'
 
@@ -24,12 +26,20 @@ interface ConnectorListProps {
  */
 export function ConnectorList({ onConnect, search }: ConnectorListProps) {
   const connectors = api.dataConnector.list.useQuery()
+  const setItemIds = useListSelection((s) => s.setItemIds)
 
   const rows = connectors.data ?? []
   const query = search?.trim().toLowerCase() ?? ''
-  const filtered = query
-    ? rows.filter((connector) => connector.name.toLowerCase().includes(query))
-    : rows
+  const filtered = useMemo(
+    () => (query ? rows.filter((connector) => connector.name.toLowerCase().includes(query)) : rows),
+    [rows, query]
+  )
+
+  // Keep the selection store's ordered ID list in sync with the visible cards.
+  const itemIds = useMemo(() => filtered.map((c) => c.id), [filtered])
+  useEffect(() => {
+    setItemIds(itemIds)
+  }, [itemIds, setItemIds])
 
   return (
     <div className='flex flex-1 flex-col gap-4'>

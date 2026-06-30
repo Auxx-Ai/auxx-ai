@@ -14,6 +14,13 @@ import { ListCard } from '@auxx/ui/components/list-card'
 import { Cable, FileText, FlaskConical, Pause, Play, RefreshCw, Trash } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { AppIcon } from '~/components/apps/ui/app-icon'
+import {
+  useBulkMode,
+  useIsPending,
+  useIsSelected,
+  useListSelection,
+  usePendingLabel,
+} from '~/components/list-selection'
 import { useConfirm } from '~/hooks/use-confirm'
 import { useConnectorMutations } from '../hooks/use-connector-mutations'
 import { asConnectorStatus, CONNECTOR_STATUS_META } from './connector-status'
@@ -70,6 +77,11 @@ function iconIdForType(type: string): string {
 export function ConnectorCard({ connector, streamCount }: ConnectorCardProps) {
   const router = useRouter()
   const [confirm, ConfirmDialog] = useConfirm()
+  const bulkMode = useBulkMode()
+  const selected = useIsSelected(connector.id)
+  const pending = useIsPending(connector.id)
+  const pendingLabel = usePendingLabel()
+  const toggle = useListSelection((s) => s.toggle)
 
   const status = asConnectorStatus(connector.status)
   const meta = CONNECTOR_STATUS_META[status]
@@ -112,6 +124,12 @@ export function ConnectorCard({ connector, streamCount }: ConnectorCardProps) {
       <ListCard
         href={href}
         ariaLabel={connector.name}
+        selectable
+        selecting={bulkMode}
+        selected={selected}
+        onSelectChange={(_, e) => toggle(connector.id, { shiftKey: e.shiftKey })}
+        pending={pending}
+        pendingLabel={pendingLabel}
         title={connector.name}
         icon={
           <AppIcon

@@ -3,6 +3,7 @@
 'use client'
 
 import { InputSearch } from '@auxx/ui/components/input-search'
+import { ListBulkToggle } from '@auxx/ui/components/list-bulk-toggle'
 import { ListToolbar, ListToolbarGroup } from '@auxx/ui/components/list-toolbar'
 import {
   Select,
@@ -12,6 +13,7 @@ import {
   SelectValue,
 } from '@auxx/ui/components/select'
 import { ViewModeToggle } from '@auxx/ui/components/view-mode-toggle'
+import { useBulkMode, useListSelection } from '~/components/list-selection'
 import { useDatasets } from './datasets-provider'
 
 /**
@@ -20,6 +22,8 @@ import { useDatasets } from './datasets-provider'
 export function DatasetsFilterBar() {
   const { searchQuery, setSearchQuery, selectedStatus, setSelectedStatus, viewMode, setViewMode } =
     useDatasets()
+  const bulkMode = useBulkMode()
+  const setBulkMode = useListSelection((s) => s.setBulkMode)
 
   return (
     <ListToolbar>
@@ -43,6 +47,7 @@ export function DatasetsFilterBar() {
       <InputSearch value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
 
       <ListToolbarGroup align='end'>
+        {viewMode === 'grid' && <ListBulkToggle active={bulkMode} onActiveChange={setBulkMode} />}
         <ViewModeToggle value={viewMode} onValueChange={setViewMode} />
       </ListToolbarGroup>
     </ListToolbar>

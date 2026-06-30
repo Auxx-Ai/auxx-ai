@@ -3,6 +3,8 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
+import { useEffect } from 'react'
+import { useListSelection } from '~/components/list-selection'
 import { DatasetCard } from './dataset-card'
 import { useDatasets } from './datasets-provider'
 
@@ -12,6 +14,11 @@ import { useDatasets } from './datasets-provider'
 export function DatasetsGridView() {
   const { items, refetch } = useDatasets()
   const router = useRouter()
+  const setItemIds = useListSelection((s) => s.setItemIds)
+
+  useEffect(() => {
+    setItemIds(items.map((d) => d.id))
+  }, [items, setItemIds])
 
   /**
    * Navigate to dataset detail page
