@@ -2,7 +2,6 @@
 
 import {
   createEntityDefinition,
-  deleteEntityDefinition,
   getEntityDefinition,
   getEntityDefinitionBySlug,
   listEntityDefinitions,
@@ -10,7 +9,9 @@ import {
 } from '@auxx/services/entity-definitions'
 import type { Result } from 'neverthrow'
 import { onCacheEvent } from '../cache/invalidate'
+import { ForbiddenError } from '../errors'
 import { DisplayFieldService, type DisplayFieldType } from '../field-values'
+import { deleteEntityDefinitionDeep } from './delete-entity-definition'
 import type { CreateEntityDefinitionInput, UpdateEntityDefinitionInput } from './types'
 
 /**
@@ -168,9 +169,14 @@ export class EntityDefinitionService {
 
   /**
    * Archive an entity definition (soft delete)
-   * Convenience method that calls update with archivedAt set
+   * Convenience method that calls update with archivedAt set.
+   * System entities (any non-null entityType) are not archivable.
    */
   async archive(id: string) {
+    const existing = await this.getById(id)
+    if (existing && existing.entityType !== null) {
+      throw new ForbiddenError('System entities cannot be archived')
+    }
     return this.update(id, { archivedAt: new Date() })
   }
 
@@ -183,16 +189,20 @@ export class EntityDefinitionService {
   }
 
   /**
-   * Permanently delete an entity definition
-   * Should only be used with caution - prefer archive()
+   * Permanently delete an entity definition with full relationship + connector
+   * teardown (see `deleteEntityDefinitionDeep`). Should be used with caution —
+   * prefer archive(). Returns a summary of the collateral teardown so the caller
+   * can tell the user what else was removed (partner fields, sync streams).
    */
   async delete(id: string) {
-    const result = await deleteEntityDefinition({
+    const summary = await deleteEntityDefinitionDeep({
       id,
       organizationId: this.organizationId,
     })
-    const value = unwrapResult(result)
+    // The def AND its fields are gone (plus cross-entity partner fields), so bust
+    // both the entity-def and custom-field projections.
     await onCacheEvent('entity-def.deleted', { orgId: this.organizationId })
-    return value
+    await onCacheEvent('custom-field.deleted', { orgId: this.organizationId })
+    return summary
   }
 }

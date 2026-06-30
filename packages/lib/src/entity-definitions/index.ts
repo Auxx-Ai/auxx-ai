@@ -1,5 +1,12 @@
 // packages/lib/src/entity-definitions/index.ts
 
+export {
+  deleteEntityDefinitionDeep,
+  type EntityDefinitionDeleteSummary,
+  selectCalcFieldsToDisable,
+  selectPartnerFieldIds,
+  selectStreamsWithoutRoot,
+} from './delete-entity-definition'
 export { EntityDefinitionService } from './entity-definition-service'
 export {
   type CreateEntityDefinitionInput,
