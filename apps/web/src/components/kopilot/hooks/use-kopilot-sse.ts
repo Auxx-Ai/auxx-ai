@@ -158,7 +158,10 @@ export function useKopilotSSE({ pendingRequest, onRequestSent }: UseKopilotSSEOp
           })
           // Side-channel snapshot embedded in tool output:
           // - `_suggestReplies` → render chips above the composer
-          // - `_kopilotRecordView` → drive the records table (preview / created view)
+          // - `_kopilotRecordView` → per-session table UI directive (apply a
+          //   transient preview, or switch to the just created/edited view).
+          //   The cross-client DATA refresh rides the `tableView:changed`
+          //   realtime event (see use-table-view-realtime) — never fetched here.
           const output = (data.output ?? null) as {
             _suggestReplies?: { version?: string; prompts?: Array<{ id: string; label: string }> }
             _kopilotRecordView?: KopilotRecordViewPayload
@@ -168,9 +171,6 @@ export function useKopilotSSE({ pendingRequest, onRequestSent }: UseKopilotSSEOp
           }
           if (output?._kopilotRecordView) {
             applyKopilotRecordView(output._kopilotRecordView)
-            if (output._kopilotRecordView.kind === 'created') {
-              utils.tableView.listAll.invalidate()
-            }
           }
           // Also mark a matching approval system message as approved on
           // completion — the tool actually ran.

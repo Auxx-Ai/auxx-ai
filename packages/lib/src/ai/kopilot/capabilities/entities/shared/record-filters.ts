@@ -57,6 +57,7 @@ export type QueryWarning =
   | { kind: 'empty_in_array'; field: string; hint: string }
   | { kind: 'multi_hop_dot_notation'; field: string; hint: string }
   | { kind: 'entity_name_normalized'; from: string; to: string; hint: string }
+  | { kind: 'invalid_value'; field: string; operator: string; value: unknown; hint: string }
 
 /** Zod mirror of {@link QueryWarning} for tool output schemas. */
 export const QueryWarningSchema = z.object({
@@ -189,6 +190,43 @@ export function validateFilters(
         hint: `Operator "${filter.operator}" is not valid for field "${fieldDef.label}" (type: ${fieldDef.type}).`,
       })
       continue
+    }
+
+    // Date value shape — the operator is valid for the field, but the value has
+    // to match it. Catches relative-token hallucinations like `after: "now-30d"`
+    // that would otherwise save a filter the records table UI can't render.
+    if (opDef.category === 'date' && opDef.requiresValue) {
+      const wantsDayCount =
+        filter.operator === 'within_days' || filter.operator === 'older_than_days'
+      if (wantsDayCount) {
+        const days = typeof filter.value === 'number' ? filter.value : Number(filter.value)
+        if (!Number.isFinite(days)) {
+          warnings.push({
+            kind: 'invalid_value',
+            field: filter.field,
+            operator: filter.operator,
+            value: filter.value,
+            hint: `"${filter.operator}" expects a NUMBER of days (e.g. 30), not "${String(filter.value)}". For "in the last 30 days" use within_days with value 30.`,
+          })
+          continue
+        }
+      } else {
+        // before / after / on_date / not_on_date — absolute date.
+        const ts =
+          filter.value instanceof Date
+            ? filter.value.getTime()
+            : new Date(filter.value as string).getTime()
+        if (Number.isNaN(ts)) {
+          warnings.push({
+            kind: 'invalid_value',
+            field: filter.field,
+            operator: filter.operator,
+            value: filter.value,
+            hint: `"${filter.operator}" expects an absolute date like "2026-05-30", not "${String(filter.value)}". For relative ranges use within_days (last N days), or this_month / this_week / today (no value).`,
+          })
+          continue
+        }
+      }
     }
 
     // Empty in/not-in array — drops silently in SQL, meaningless intent from the LLM

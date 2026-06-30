@@ -397,3 +397,30 @@ export async function publishEvalCaseChanged(
     )
     .catch(() => {})
 }
+
+/**
+ * Publish `tableView:changed` on the org channel. Fires from server-side saved-
+ * view writes (today: the Kopilot record-view tools — create / update / set-
+ * default) so the records page re-lists `tableView.listAll` and re-seeds the
+ * dynamic-table store without any tool-output fetch in the kopilot SSE hook.
+ * Kopilot tools omit `excludeSocketId` (server-origin) so the author's own table
+ * refreshes too.
+ *
+ * Fire-and-forget: errors are swallowed so a Pusher hiccup never blocks the
+ * underlying view write.
+ */
+export async function publishTableViewChanged(
+  realtimeService: RealtimeService,
+  organizationId: string,
+  args: { tableId?: string; kind: 'created' | 'updated' | 'defaultChanged' | 'deleted' },
+  options?: { excludeSocketId?: string }
+) {
+  await realtimeService
+    .publish(
+      rooms.orgPresence(organizationId),
+      'tableView:changed',
+      { tableId: args.tableId, kind: args.kind },
+      options
+    )
+    .catch(() => {})
+}

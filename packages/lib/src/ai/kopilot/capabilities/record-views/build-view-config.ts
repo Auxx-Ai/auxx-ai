@@ -49,6 +49,16 @@ export interface BuiltViewConfig {
   logicalOperator: 'AND' | 'OR'
 }
 
+/** Only the `ViewConfig` keys the spec actually touched — the merge unit for updates. */
+export interface ViewConfigPatch {
+  patch: Partial<ViewConfig>
+  warnings: QueryWarning[]
+  appliedFilterCount: number
+  requestedFilterCount: number
+  validFilters: SimplifiedFilter[]
+  logicalOperator: 'AND' | 'OR'
+}
+
 /** Column id used by the records table store + saved views for a field. */
 export function fieldColumnId(field: ResourceField, entityDefinitionId: string): string {
   return field.resourceFieldId ?? toResourceFieldId(entityDefinitionId, toFieldId(field.id))
@@ -60,55 +70,73 @@ function findField(resource: Resource, identifier: string): ResourceField | unde
   )
 }
 
-export function buildViewConfig(
+/**
+ * Build a **partial** `ViewConfig` containing only the keys the spec provided —
+ * the unit `update_table_view` shallow-merges over an existing config so
+ * UI-set sizing/pinning/formatting survive an edit. A field is "touched" only
+ * when its spec property is present:
+ * - `filters` present (even `[]` — an explicit clear) → `patch.filters`
+ * - `sort` present → `patch.sorting`
+ * - `columns` present and non-empty → `patch.columnVisibility` + `patch.columnOrder`
+ */
+export function buildViewConfigPatch(
   spec: ViewSpec,
   resource: Resource,
   entityDefinitionId: string
-): BuiltViewConfig {
-  const requested = spec.filters ?? []
-  const { valid, warnings } = validateFilters(requested, resource)
+): ViewConfigPatch {
+  const warnings: QueryWarning[] = []
+  const patch: Partial<ViewConfig> = {}
+  const logicalOperator = spec.logicalOperator ?? 'AND'
 
-  // Records view filters key on a single column id — drop relationship paths.
+  // Filters
+  let appliedFilterCount = 0
+  let requestedFilterCount = 0
   const directFilters: SimplifiedFilter[] = []
-  for (const f of valid) {
-    if (f.field.includes('.')) {
-      warnings.push({
-        kind: 'multi_hop_dot_notation',
-        field: f.field,
-        hint: `Relationship filters (e.g. "${f.field}") can't be saved in a record view yet — only direct fields. Filter on a direct field instead.`,
-      })
-      continue
+  if (spec.filters !== undefined) {
+    requestedFilterCount = spec.filters.length
+    const { valid, warnings: filterWarnings } = validateFilters(spec.filters, resource)
+    warnings.push(...filterWarnings)
+
+    // Records view filters key on a single column id — drop relationship paths.
+    for (const f of valid) {
+      if (f.field.includes('.')) {
+        warnings.push({
+          kind: 'multi_hop_dot_notation',
+          field: f.field,
+          hint: `Relationship filters (e.g. "${f.field}") can't be saved in a record view yet — only direct fields. Filter on a direct field instead.`,
+        })
+        continue
+      }
+      directFilters.push(f)
     }
-    directFilters.push(f)
+
+    const conditions: Condition[] = directFilters
+      .map((f, i): Condition | null => {
+        const field = findField(resource, f.field)
+        if (!field) return null
+        return {
+          id: `f-${i}`,
+          fieldId: fieldColumnId(field, entityDefinitionId),
+          operator: f.operator as Condition['operator'],
+          value: f.value,
+        }
+      })
+      .filter((c): c is Condition => c !== null)
+
+    appliedFilterCount = conditions.length
+    patch.filters =
+      conditions.length > 0
+        ? [{ id: 'kopilot-view', conditions, logicalOperator }]
+        : ([] as ConditionGroup[])
   }
 
-  const conditions: Condition[] = directFilters
-    .map((f, i): Condition | null => {
-      const field = findField(resource, f.field)
-      if (!field) return null
-      return {
-        id: `f-${i}`,
-        fieldId: fieldColumnId(field, entityDefinitionId),
-        operator: f.operator as Condition['operator'],
-        value: f.value,
-      }
-    })
-    .filter((c): c is Condition => c !== null)
-
-  const filters: ConditionGroup[] =
-    conditions.length > 0
-      ? [{ id: 'kopilot-view', conditions, logicalOperator: spec.logicalOperator ?? 'AND' }]
-      : []
-
   // Sort
-  const sorting: Array<{ id: string; desc: boolean }> = []
-  if (spec.sort) {
+  if (spec.sort !== undefined) {
     const field = findField(resource, spec.sort.field)
     if (field) {
-      sorting.push({
-        id: fieldColumnId(field, entityDefinitionId),
-        desc: spec.sort.direction === 'desc',
-      })
+      patch.sorting = [
+        { id: fieldColumnId(field, entityDefinitionId), desc: spec.sort.direction === 'desc' },
+      ]
     } else {
       warnings.push({
         kind: 'unknown_field',
@@ -120,10 +148,9 @@ export function buildViewConfig(
 
   // Columns — when specified, show ONLY the listed fields (special columns like
   // selection/primary aren't in `fields`, so they stay visible by default).
-  let columnVisibility: Record<string, boolean> = {}
-  let columnOrder: string[] = []
-  if (spec.columns && spec.columns.length > 0) {
+  if (spec.columns !== undefined && spec.columns.length > 0) {
     const wanted = new Set<string>()
+    const columnOrder: string[] = []
     for (const c of spec.columns) {
       const field = findField(resource, c)
       if (!field) {
@@ -139,32 +166,61 @@ export function buildViewConfig(
       if (!columnOrder.includes(colId)) columnOrder.push(colId)
     }
     if (wanted.size > 0) {
-      columnVisibility = Object.fromEntries(
-        resource.fields.map((f) => [
-          fieldColumnId(f, entityDefinitionId),
-          wanted.has(fieldColumnId(f, entityDefinitionId)),
-        ])
+      patch.columnVisibility = Object.fromEntries(
+        resource.fields.map((f) => {
+          const colId = fieldColumnId(f, entityDefinitionId)
+          return [colId, wanted.has(colId)]
+        })
       )
-    } else {
-      columnOrder = []
+      patch.columnOrder = columnOrder
     }
   }
 
+  return {
+    patch,
+    warnings,
+    appliedFilterCount,
+    requestedFilterCount,
+    validFilters: directFilters,
+    logicalOperator,
+  }
+}
+
+/**
+ * Build a complete {@link ViewConfig} for a brand-new view — the patch spread
+ * over the empty defaults. Behaviorally identical to building each key inline:
+ * untouched keys fall back to their empty defaults.
+ */
+export function buildViewConfig(
+  spec: ViewSpec,
+  resource: Resource,
+  entityDefinitionId: string
+): BuiltViewConfig {
+  const {
+    patch,
+    warnings,
+    appliedFilterCount,
+    requestedFilterCount,
+    validFilters,
+    logicalOperator,
+  } = buildViewConfigPatch(spec, resource, entityDefinitionId)
+
   const config: ViewConfig = {
-    filters,
-    sorting,
-    columnVisibility,
-    columnOrder,
+    filters: [],
+    sorting: [],
+    columnVisibility: {},
+    columnOrder: [],
     columnSizing: {},
     viewType: 'table',
+    ...patch,
   }
 
   return {
     config,
     warnings,
-    appliedFilterCount: conditions.length,
-    requestedFilterCount: requested.length,
-    validFilters: directFilters,
-    logicalOperator: spec.logicalOperator ?? 'AND',
+    appliedFilterCount,
+    requestedFilterCount,
+    validFilters,
+    logicalOperator,
   }
 }

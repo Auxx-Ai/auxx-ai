@@ -403,3 +403,14 @@ export interface EvalCaseChangedEvent {
   event: 'eval:case-changed'
   data: { agentId: string }
 }
+
+/**
+ * A saved table view changed server-side — created, edited, made default, or
+ * deleted (today: the Kopilot record-view tools). Refresh signal only: the
+ * records page re-lists `tableView.listAll` and re-seeds the dynamic-table
+ * store. `tableId` scopes which table changed; `kind` is for debugging.
+ */
+export interface TableViewChangedEvent {
+  event: 'tableView:changed'
+  data: { tableId?: string; kind: 'created' | 'updated' | 'defaultChanged' | 'deleted' }
+}

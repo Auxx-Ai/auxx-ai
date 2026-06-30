@@ -32,6 +32,7 @@ import {
   DynamicResourceView,
   type DynamicResourceViewHandle,
 } from '~/components/dynamic-table/dynamic-resource-view'
+import { useTableViewRealtime } from '~/components/dynamic-table/hooks/use-table-view-realtime'
 import { decodeColumnId } from '~/components/dynamic-table/utils/column-id'
 import { FavoriteToggleMenuItem } from '~/components/favorites/ui/favorite-toggle-menu-item'
 import { EmptyState } from '~/components/global/empty-state'
@@ -94,6 +95,9 @@ export function RecordsView({
 }: RecordsViewProps) {
   const resolvedBasePath = basePath ?? `/app/custom/${slug}`
   const router = useRouter()
+
+  // Cross-client saved-view refresh (e.g. Kopilot create/update/set-default).
+  useTableViewRealtime()
 
   // Dock state
   const isDocked = useEffectiveDockState()

@@ -66,6 +66,16 @@ Example: { name: "Open tickets", filters: [{ field: "status", operator: "is", va
         userId: agentDeps.userId,
       })
 
+      // Realtime: re-list the table's views on every records page in the org
+      // (lazy import — realtime → cache → capabilities would be a static cycle).
+      const { getRealtimeService, publishTableViewChanged } = await import(
+        '../../../../../realtime'
+      )
+      await publishTableViewChanged(getRealtimeService(), agentDeps.organizationId, {
+        tableId,
+        kind: 'created',
+      })
+
       return {
         success: true,
         output: {
