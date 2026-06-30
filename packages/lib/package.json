@@ -844,6 +844,12 @@
       "import": "./dist/signatures/index.mjs",
       "default": "./src/signatures/index.ts"
     },
+    "./snippets": {
+      "types": "./src/snippets/index.ts",
+      "source": "./src/snippets/index.ts",
+      "import": "./dist/snippets/index.mjs",
+      "default": "./src/snippets/index.ts"
+    },
     "./tags": {
       "types": "./src/tags/index.ts",
       "source": "./src/tags/index.ts",
