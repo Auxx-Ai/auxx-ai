@@ -1,0 +1,4 @@
+ALTER TABLE "EntityDefinition" ADD COLUMN "appInstallationId" text;--> statement-breakpoint
+ALTER TABLE "EntityDefinition" ADD COLUMN "sourceKey" text;--> statement-breakpoint
+ALTER TABLE "EntityDefinition" ADD CONSTRAINT "EntityDefinition_appInstallationId_AppInstallation_id_fk" FOREIGN KEY ("appInstallationId") REFERENCES "public"."AppInstallation"("id") ON DELETE cascade ON UPDATE cascade;--> statement-breakpoint
+CREATE UNIQUE INDEX "EntityDefinition_source_key" ON "EntityDefinition" USING btree (COALESCE("appInstallationId", ''),COALESCE("dataConnectorId", ''),"sourceKey","organizationId") WHERE "EntityDefinition"."sourceKey" IS NOT NULL AND "EntityDefinition"."archivedAt" IS NULL AND ("EntityDefinition"."appInstallationId" IS NOT NULL OR "EntityDefinition"."dataConnectorId" IS NOT NULL);

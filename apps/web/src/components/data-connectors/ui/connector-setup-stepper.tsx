@@ -361,6 +361,8 @@ export function ConnectorSetupStepper({ connector }: ConnectorSetupStepperProps)
             <div className='flex items-center gap-2'>
               <Button
                 loading={isSyncing}
+                variant='outline'
+                size='sm'
                 loadingText='Starting…'
                 disabled={!progress.canRun}
                 onClick={() =>
@@ -372,7 +374,8 @@ export function ConnectorSetupStepper({ connector }: ConnectorSetupStepperProps)
                 Run sync
               </Button>
               <Button
-                variant='outline'
+                variant='ghost'
+                size='sm'
                 loading={isFinishing}
                 disabled={!progress.canRun}
                 onClick={() => void finishSetup(connector.id)}>

@@ -98,22 +98,22 @@ describe('resolveRelationshipTargetDefId', () => {
     expect(id).toBe('def_line_item')
   })
 
-  it('a cross-stream ownedApiSlug resolves from the connector-wide pass-1 map', async () => {
+  it('a cross-stream ownedKey resolves from the connector-wide pass-1 map', async () => {
     const id = await resolveRelationshipTargetDefId(
       noDb,
       ORG,
-      { ownedApiSlug: 'product' },
+      { ownedKey: 'product' },
       'def_line_item',
       { product: 'def_product', order: 'def_order' }
     )
     expect(id).toBe('def_product')
   })
 
-  it('an unresolved ownedApiSlug (disabled stream) returns null — caller skips the edge', async () => {
+  it('an unresolved ownedKey (disabled stream) returns null — caller skips the edge', async () => {
     const id = await resolveRelationshipTargetDefId(
       noDb,
       ORG,
-      { ownedApiSlug: 'product' },
+      { ownedKey: 'product' },
       'def_line_item',
       {}
     )

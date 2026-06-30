@@ -591,8 +591,10 @@ export interface FieldMapping {
  * `@auxx/database` schema/`data-connector-types.ts`.
  */
 export interface ConnectorMappingTargetSpec {
-  /** Owned-def shell — the def to create (or adopt by `apiSlug`) at materialize. */
+  /** Owned-def shell — the def to create (or adopt by `(owner, sourceKey)`) at materialize. */
   ownedDef?: {
+    /** Stable owner-scoped identity key (manifest key); the adopt/dedupe key. */
+    sourceKey?: string
     apiSlug: string
     singular: string
     plural: string
@@ -608,7 +610,7 @@ export interface ConnectorMappingTargetSpec {
     name: string
     cardinality: 'has_many' | 'has_one' | 'belongs_to' | 'many_to_many'
     inverseName?: string
-    targetRef?: { ownedApiSlug: string } | { entityKind: string }
+    targetRef?: { ownedKey: string } | { entityKind: string }
   }
 }
 

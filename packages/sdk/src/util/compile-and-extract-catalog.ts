@@ -205,7 +205,7 @@ export interface CatalogConnectorRelationshipDecl {
   name: string
   cardinality: 'has_many' | 'has_one' | 'belongs_to' | 'many_to_many'
   inverseName: string
-  targetRef?: { ownedApiSlug: string } | { entityKind: string }
+  targetRef?: { ownedKey: string } | { entityKind: string }
 }
 
 /** A recommended fan-out mapping projected from a data connector's stream. */
@@ -218,6 +218,8 @@ export interface CatalogConnectorDefaultMapping {
     | {
         mode: 'owned'
         entity: {
+          /** Stable owner-scoped identity key (distinct from cosmetic `apiSlug`). */
+          key: string
           apiSlug: string
           singular: string
           plural: string

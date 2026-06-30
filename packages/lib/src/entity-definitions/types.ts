@@ -23,6 +23,13 @@ export const createEntityDefinitionSchema = z.object({
   plural: z.string().min(1, 'Plural name is required').max(100),
   entityType: z.enum(EntityTypeValues).nullable().optional(),
   standardType: z.enum(StandardTypeValues).nullable().optional(),
+  /** Stable owner-scoped identity key (manifest key when owned, templateId when
+   *  template-installed). See EntityDefinition.sourceKey. */
+  sourceKey: z.string().nullable().optional(),
+  /** Owning AppInstallation (app-installed defs). */
+  appInstallationId: z.string().nullable().optional(),
+  /** Owning DataConnector (connector-owned defs). */
+  dataConnectorId: z.string().nullable().optional(),
 })
 
 /** Input type for creating an entity definition */

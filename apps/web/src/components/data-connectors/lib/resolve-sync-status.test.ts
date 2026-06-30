@@ -130,8 +130,12 @@ describe('resolveSyncStatus', () => {
     expect(r.detail).toBe('Syncing…')
   })
 
-  it('labels provisioning distinctly', () => {
-    expect(resolveSyncStatus({ status: 'provisioning' }, NOW).label).toBe('Provisioning')
+  it('labels provisioning distinctly and reads as local schema setup, not a source fetch', () => {
+    const r = resolveSyncStatus({ status: 'provisioning' }, NOW)
+    expect(r).toMatchObject({ state: 'syncing', label: 'Provisioning' })
+    expect(r.detail).toBe('Setting up entities and fields…')
+    // Provisioning never touches the source — it must not borrow the syncing copy.
+    expect(r.detail).not.toBe('Reaching the source…')
   })
 
   it('maps live → synced with a per-run delta', () => {

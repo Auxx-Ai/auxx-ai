@@ -6,8 +6,33 @@ import { checkSlugExists, createEntityDefinition } from '@auxx/services/entity-d
 import { eq } from 'drizzle-orm'
 import { onCacheEvent } from '../cache/invalidate'
 import { getTemplatesByIds } from './template-registry'
-import type { EntityTemplateField } from './types'
+import type { EntityTemplate, EntityTemplateField } from './types'
 import { isSymbolicRef, parseSymbolicRef } from './types'
+
+/** Options controlling how templates are resolved + installed. */
+export interface InstallTemplatesOptions {
+  fieldModifications?: Record<string, Record<string, { customName?: string; removed?: boolean }>>
+  linkedEntities?: Record<
+    string,
+    { entityDefinitionId: string; newRelationshipFieldTemplateIds?: string[] }
+  >
+  /**
+   * Org-aware resolver merging the static gallery with templates projected from the
+   * org's installed apps. Defaults to the static registry — pass `resolveOrgTemplatesByIds`
+   * (bound to the org) to install `app:*` record-type templates.
+   */
+  resolveTemplates?: (ids: string[]) => Promise<EntityTemplate[]>
+  /**
+   * Connector/app ownership stamped on the created defs + fields (v6). When the install
+   * runs inside a connector wizard, these mark the defs as connector-owned (drives the
+   * connector-delete prompt) and app-owned (uninstall cleanup + appFieldKey idempotency).
+   * Absent for a plain gallery install.
+   */
+  installContext?: {
+    dataConnectorId?: string
+    appInstallationId?: string
+  }
+}
 
 /** Result of installing templates */
 export interface InstallTemplatesResult {
@@ -40,18 +65,16 @@ export interface InstallTemplatesResult {
 export async function installTemplates(
   organizationId: string,
   templateIds: string[],
-  fieldModifications?: Record<string, Record<string, { customName?: string; removed?: boolean }>>,
-  linkedEntities?: Record<
-    string,
-    {
-      entityDefinitionId: string
-      newRelationshipFieldTemplateIds?: string[]
-    }
-  >
+  options: InstallTemplatesOptions = {}
 ): Promise<InstallTemplatesResult> {
+  const { fieldModifications, linkedEntities, resolveTemplates, installContext } = options
+
   // Merge templateIds with linked entity template IDs so all templates are resolved
   const allTemplateIds = [...new Set([...templateIds, ...Object.keys(linkedEntities ?? {})])]
-  const templates = getTemplatesByIds(allTemplateIds)
+  // Resolve org-aware (static gallery + app-projected) when a resolver is provided,
+  // else fall back to the static registry.
+  const resolve = resolveTemplates ?? (async (ids: string[]) => getTemplatesByIds(ids))
+  const templates = await resolve(allTemplateIds)
   if (templates.length === 0) {
     throw new Error('No valid templates found for the provided IDs')
   }
@@ -156,6 +179,12 @@ export async function installTemplates(
       color: template.entity.color,
       singular: template.entity.singular,
       plural: template.entity.plural,
+      // Always stamp the stable identity: the app/connector manifest key when owned,
+      // else the templateId (ownerless provenance). Owner FKs are stamped only inside a
+      // connector wizard (installContext) so owned defs are one-per-owner per sourceKey.
+      sourceKey: template.entity.sourceKey ?? template.id,
+      appInstallationId: installContext?.appInstallationId,
+      dataConnectorId: installContext?.dataConnectorId,
     })
 
     if (result.isErr()) {
@@ -189,7 +218,12 @@ export async function installTemplates(
       if (mod?.removed) continue
 
       const fieldToCreate = mod?.customName ? { ...field, name: mod.customName } : field
-      const result = await createField(fieldToCreate, organizationId, entityDefinitionId)
+      const result = await createField(
+        fieldToCreate,
+        organizationId,
+        entityDefinitionId,
+        installContext
+      )
 
       if (result.ok) {
         fieldIdMap.set(`${template.id}:${field.templateFieldId}`, result.fieldId)
@@ -271,7 +305,8 @@ export async function installTemplates(
           },
         },
         organizationId,
-        entityDefinitionId
+        entityDefinitionId,
+        installContext
       )
 
       if (result.ok) {
@@ -331,15 +366,21 @@ export async function installTemplates(
 async function createField(
   field: EntityTemplateField,
   organizationId: string,
-  entityDefinitionId: string
+  entityDefinitionId: string,
+  installContext?: InstallTemplatesOptions['installContext']
 ): Promise<{ ok: true; fieldId: string } | { ok: false; error: string }> {
   const { templateFieldId, ...fieldInput } = field
 
   const result = await createCustomField({
+    // `...fieldInput` already carries the projected app-template field's `appFieldKey`;
+    // the install context stamps the owner FKs so the field is connector-/app-owned and
+    // idempotent per `(owner, appFieldKey)` on re-install.
     ...fieldInput,
     organizationId,
     entityDefinitionId,
     isCustom: true,
+    appInstallationId: installContext?.appInstallationId ?? fieldInput.appInstallationId,
+    dataConnectorId: installContext?.dataConnectorId ?? fieldInput.dataConnectorId,
     // Store templateFieldId as systemAttribute so template resolution can match
     // fields reliably even if the user renames them later
     systemAttribute: templateFieldId,

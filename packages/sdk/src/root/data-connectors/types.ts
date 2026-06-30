@@ -129,6 +129,13 @@ export interface ConnectorFieldDecl {
 
 /** Minimal entity declaration for an owned-mode default mapping. */
 export interface ConnectorEntityDecl {
+  /**
+   * Stable owner-scoped identity key for the owned def (e.g. `'orders'`). Distinct
+   * from the cosmetic, collision-suffixed `apiSlug` — this is the adopt/dedupe key
+   * the platform links the def by (`(owner, sourceKey)`) and the cross-stream
+   * relationship target ref (`ownedKey`).
+   */
+  key: string
   apiSlug: string
   singular: string
   plural: string
@@ -141,9 +148,9 @@ export interface ConnectorEntityDecl {
  * The edge's target def. For an owned child the target IS this mapping's own owned
  * def — omit `targetRef` (provisioning resolves it from the mapping's provisioned
  * def). For a `reference` to another stream's def, name that target by owned
- * `apiSlug` or contributing `entityKind`.
+ * `ownedKey` (the sibling owned def's stable `key`) or contributing `entityKind`.
  */
-export type ConnectorRelationshipTargetRef = { ownedApiSlug: string } | { entityKind: string }
+export type ConnectorRelationshipTargetRef = { ownedKey: string } | { entityKind: string }
 
 /**
  * Provisioning declaration for a parent↔child relationship edge (v5). Drives

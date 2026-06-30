@@ -85,7 +85,7 @@ describe('compileAndExtractCatalog — data connectors', () => {
     expect(mappings).toHaveLength(4)
     expect(mappings[0]).toMatchObject({
       rootPath: '',
-      target: { mode: 'owned', entity: { apiSlug: 'shopify_orders' } },
+      target: { mode: 'owned', entity: { key: 'orders', apiSlug: 'shopify_orders' } },
     })
     expect(mappings[1]).toMatchObject({
       rootPath: 'customer',
@@ -107,7 +107,7 @@ describe('compileAndExtractCatalog — data connectors', () => {
         cardinality: 'has_many',
         inverseName: 'Order',
       },
-      target: { mode: 'owned', entity: { apiSlug: 'shopify_line_items' } },
+      target: { mode: 'owned', entity: { key: 'line_items', apiSlug: 'shopify_line_items' } },
     })
     expect(mappings[3]).toMatchObject({
       rootPath: 'line_items[].product_id',
@@ -115,9 +115,9 @@ describe('compileAndExtractCatalog — data connectors', () => {
       relationship: {
         fieldKey: 'product',
         cardinality: 'belongs_to',
-        targetRef: { ownedApiSlug: 'shopify_products' },
+        targetRef: { ownedKey: 'products' },
       },
-      target: { mode: 'owned', entity: { apiSlug: 'shopify_products' } },
+      target: { mode: 'owned', entity: { key: 'products', apiSlug: 'shopify_products' } },
     })
 
     // exampleRecord rides the catalog verbatim.

@@ -39,6 +39,8 @@ export type SchemaSource = 'catalog' | 'inferred' | 'manual'
  */
 export interface DraftTargetSpec {
   ownedDef?: {
+    /** Stable owner-scoped identity key (manifest key). */
+    sourceKey?: string
     apiSlug: string
     singular: string
     plural: string
@@ -50,7 +52,7 @@ export interface DraftTargetSpec {
     name: string
     cardinality: string
     inverseName?: string
-    targetRef?: { ownedApiSlug: string } | { entityKind: string }
+    targetRef?: { ownedKey: string } | { entityKind: string }
   }
 }
 

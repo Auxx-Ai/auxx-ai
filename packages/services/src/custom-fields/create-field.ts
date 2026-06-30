@@ -158,6 +158,43 @@ async function getLastFieldSortOrder(
 }
 
 /**
+ * Resolve a non-colliding field name on a target def, appending " 2", " 3", … until
+ * free — mirroring the slug-dedupe in the entity-template installer.
+ *
+ * Used for the AUTO-CREATED inverse of a relationship field: unlike the forward field
+ * (whose name the caller pre-checks → `DUPLICATE_FIELD_NAME`), the inverse name is the
+ * caller's `inverseName`, which can clash with a field already on the related def (a
+ * pre-existing "Orders" relationship on Contact, an orphaned inverse from a deleted
+ * connector, …). It carries no `appFieldKey` to dedupe by and shares the user/system
+ * namespace (`appInstallationId IS NULL` — the `CustomField_name_org_model_entity_key`
+ * partial unique index), so a raw insert would unique-violate and abort the whole
+ * transaction. Deduping keeps the relationship instead of crashing the caller.
+ */
+async function resolveUniqueFieldName(
+  db: Database | Transaction,
+  organizationId: string,
+  modelType: string,
+  entityDefinitionId: string,
+  desiredName: string
+): Promise<string> {
+  for (let attempt = 1; attempt <= 50; attempt++) {
+    const candidate = attempt === 1 ? desiredName : `${desiredName} ${attempt}`
+    const existing = await db.query.CustomField.findFirst({
+      where: and(
+        eq(schema.CustomField.name, candidate),
+        eq(schema.CustomField.organizationId, organizationId),
+        eq(schema.CustomField.modelType, modelType as any),
+        eq(schema.CustomField.entityDefinitionId, entityDefinitionId),
+        isNull(schema.CustomField.appInstallationId)
+      ),
+      columns: { id: true },
+    })
+    if (!existing) return candidate
+  }
+  throw new Error(`Cannot find an available field name for "${desiredName}"`)
+}
+
+/**
  * Create a new custom field
  * For RELATIONSHIP type, automatically creates the inverse field
  *
@@ -621,10 +658,21 @@ async function createRelationshipFieldWithInverse(
     // Inverse field's inverseResourceFieldId points back to the primary field
     const inverseRelatedEntityDefinitionId = entityDefinitionId!
 
+    // Dedupe the inverse name if the target def already owns a field by that name
+    // (pre-existing relationship, orphaned inverse, …). The forward field is the only
+    // idempotency anchor; the inverse must never unique-violate and roll back the txn.
+    const resolvedInverseName = await resolveUniqueFieldName(
+      tx,
+      organizationId,
+      inverseModelType,
+      inverseEntityDefinitionId,
+      inverseName
+    )
+
     const inverseFieldResult = await tx
       .insert(schema.CustomField)
       .values({
-        name: inverseName,
+        name: resolvedInverseName,
         type: 'RELATIONSHIP',
         description: inverseDescription,
         modelType: inverseModelType as any,
