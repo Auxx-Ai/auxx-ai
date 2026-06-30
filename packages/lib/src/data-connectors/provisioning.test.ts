@@ -6,11 +6,10 @@
 // field's own id. The DB orchestration (`provisionConnectorMappings`/`provisionTarget`)
 // has no vitest harness — this locks the derivation it feeds.
 
-import type { Database } from '@auxx/database'
 import type { FieldType } from '@auxx/database/types'
 import { toResourceFieldId } from '@auxx/types/field'
 import { describe, expect, it } from 'vitest'
-import { provisionSpecsForMapping, resolveRelationshipTargetDefId } from './provisioning'
+import { provisionSpecsForMapping } from './provisioning'
 import type { DecodedMapping } from './service'
 import type { FieldMapping } from './types'
 
@@ -78,68 +77,5 @@ describe('provisionSpecsForMapping', () => {
         isCreatable: false,
       },
     ])
-  })
-})
-
-describe('resolveRelationshipTargetDefId', () => {
-  const ORG = 'org_1'
-  // A db that explodes if touched — proves the owned/apiSlug branches never query.
-  const noDb = new Proxy(
-    {},
-    {
-      get: () => () => {
-        throw new Error('db must not be touched')
-      },
-    }
-  ) as unknown as Database
-
-  it('an owned child (no targetRef) resolves to its OWN provisioned def', async () => {
-    const id = await resolveRelationshipTargetDefId(noDb, ORG, undefined, 'def_line_item', {})
-    expect(id).toBe('def_line_item')
-  })
-
-  it('a cross-stream ownedKey resolves from the connector-wide pass-1 map', async () => {
-    const id = await resolveRelationshipTargetDefId(
-      noDb,
-      ORG,
-      { ownedKey: 'product' },
-      'def_line_item',
-      { product: 'def_product', order: 'def_order' }
-    )
-    expect(id).toBe('def_product')
-  })
-
-  it('an unresolved ownedKey (disabled stream) returns null — caller skips the edge', async () => {
-    const id = await resolveRelationshipTargetDefId(
-      noDb,
-      ORG,
-      { ownedKey: 'product' },
-      'def_line_item',
-      {}
-    )
-    expect(id).toBeNull()
-  })
-
-  it('an entityKind targetRef resolves the system/contributing def by kind', async () => {
-    const calls: unknown[] = []
-    const fakeDb = {
-      query: {
-        EntityDefinition: {
-          findFirst: async (args: unknown) => {
-            calls.push(args)
-            return { id: 'def_contact' }
-          },
-        },
-      },
-    } as unknown as Database
-    const id = await resolveRelationshipTargetDefId(
-      fakeDb,
-      ORG,
-      { entityKind: 'contact' },
-      'def_line_item',
-      {}
-    )
-    expect(id).toBe('def_contact')
-    expect(calls).toHaveLength(1)
   })
 })

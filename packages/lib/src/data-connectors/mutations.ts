@@ -6,9 +6,13 @@
 // through update) so a cadence or lifecycle change is reflected in BullMQ immediately.
 
 import { type CatalogDataConnector, type Database, schema, type Transaction } from '@auxx/database'
-import type { FieldType } from '@auxx/database/types'
 import { createScopedLogger } from '@auxx/logger'
-import { getFieldDefinitionId, getFieldId, toResourceFieldId } from '@auxx/types/field'
+import {
+  getFieldDefinitionId,
+  isAppFieldRef,
+  toAppFieldRef,
+  toResourceFieldId,
+} from '@auxx/types/field'
 import { generateId } from '@auxx/utils'
 import { and, eq, inArray } from 'drizzle-orm'
 import { getCachedCustomFields, getCachedEntityDefId } from '../cache'
@@ -44,7 +48,6 @@ import type {
   ConnectorTemplateMapping,
 } from './templates'
 import type {
-  ConnectorMappingTargetSpec,
   DataConnectorConfig,
   DataConnectorType,
   FieldMapping,
@@ -284,7 +287,7 @@ function assertFieldRefsMatchDef(
   for (const fm of fieldMappings) {
     const ref = fm.targetFieldRef
     if (ref == null) continue
-    if (getFieldId(ref).startsWith('@app:')) continue
+    if (isAppFieldRef(ref)) continue
     if (getFieldDefinitionId(ref) !== entityDefinitionId) {
       throw new BadRequestError(
         `Field mapping targetFieldRef '${ref}' does not belong to entity definition '${entityDefinitionId}'`
@@ -400,16 +403,17 @@ async function buildTemplateFieldMappings(
  * stamped `catalog`. The request is baked into the app (`fixed` model), so streams
  * carry no `requestConfig`.
  *
- * Owned default-mappings are created as LAZY rows here (05e — connector-target-resources
- * -splice): a `DataConnectorMapping` with `entityDefinitionId: null`, the persisted
- * `targetSpec` (owned-def shell + relationship edge), and `fieldMappings` carrying a
- * `provision` spec + null ref per field. The owned `EntityDefinition`s + columns + edges
- * are NOT created here — they materialize at finish/first sync (`materializeConnectorTargets`),
- * so abandoning setup leaves no orphan defs and the mapping editor shows the POTENTIAL
- * entity until it exists. `contributing` default-mappings are ALSO materialized (as draft
- * rows — multi-stream-setup-plan §5): they merge into an existing system def, so the def +
- * declared identity-match keys are wired up front; any unresolved field is left for the
- * setup overview to surface as `needs-mapping`.
+ * Owned default-mappings are seeded UNBOUND (v6 — install-target-defs-via-templates,
+ * "Option A"): a `DataConnectorMapping` with `entityDefinitionId: null`, NO `provision`,
+ * and `fieldMappings` carrying the connection-late-bound `@app:` ref
+ * (`${apiSlug}:@app:${slug}:${fieldKey}`) per declared field. The owned
+ * `EntityDefinition`s + columns + relationship edges are created when the user installs
+ * the app's record-type templates from the Map step (the reused `EntityTemplateDialog`);
+ * the install `onComplete` then sets each owned mapping's `entityDefinitionId` and
+ * rewrites the late-bound refs to concrete field ids. Until installed, the owned mapping
+ * is unbound (readiness flags it `no-mapping`) and the Map step offers the install/pick
+ * affordance. `contributing` default-mappings are materialized here against the existing
+ * system def (their identity-match keys pre-bound — multi-stream-setup-plan §5).
  */
 export async function createConnectorFromAppCatalog(
   db: Database,
@@ -422,6 +426,10 @@ export async function createConnectorFromAppCatalog(
     definitionKind: 'app',
   })
 
+  // The app slug namespaces the late-bound `@app:` field refs the owned mappings carry
+  // (resolved at sync time against the connector's connection). `input.type` is `app:<slug>`.
+  const appSlug = input.type.startsWith('app:') ? input.type.slice('app:'.length) : input.type
+
   for (const stream of catalog.streams) {
     const streamRow = await addStream(db, organizationId, connector.id, {
       streamKey: stream.key,
@@ -429,13 +437,14 @@ export async function createConnectorFromAppCatalog(
       syncMode: stream.syncMode ?? 'snapshot',
     })
     // Owned mappings first so a nested contributing mapping (e.g. order → customer)
-    // can parent to the owned root it hangs off — the parentMappingId both forms the
-    // fan-out tree at sync AND lets pass-2 provision the relationship edge.
-    const ownedMappingIdByRootPath = await createLazyStreamOwnedMappings(
+    // can parent to the owned root it hangs off — the parentMappingId forms the fan-out
+    // tree at sync AND anchors the install-created relationship edge.
+    const ownedMappingIdByRootPath = await seedAppOwnedMappings(
       db,
       organizationId,
       streamRow.id,
-      stream
+      stream,
+      appSlug
     )
     await materializeAppContributingMappings(
       db,
@@ -524,19 +533,22 @@ export function partitionOwnedFields(
 }
 
 /**
- * Create the LAZY owned mappings for a catalog stream (05e). One
- * `DataConnectorMapping` per owned default-mapping, with `entityDefinitionId: null`,
- * the persisted `targetSpec` (owned-def shell + relationship edge), and `fieldMappings`
- * carrying a `provision` spec + null ref per declared field. NO `EntityDefinition`s,
- * columns, or relationship edges are created here — those materialize at finish/first
- * sync via `materializeConnectorTargets`. `parentMappingId` is still wired from rootPath
- * nesting (parents first) so the fan-out tree forms before any def exists.
+ * Seed the UNBOUND owned mappings for a catalog stream (v6 — install-target-defs-via
+ * -templates, "Option A"). One `DataConnectorMapping` per owned default-mapping, with
+ * `entityDefinitionId: null` and `fieldMappings` carrying the connection-late-bound
+ * `@app:` ref per declared field. NO `EntityDefinition`s, columns,
+ * or relationship edges are created here — they are created when the user installs the
+ * app's record-type templates from the Map step (the reused `EntityTemplateDialog`), and
+ * the install `onComplete` then binds each mapping's def + concrete field refs.
+ * `parentMappingId` is wired from rootPath nesting (parents first) so the fan-out tree —
+ * and the install-created relationship edge it anchors — forms before any def exists.
  */
-async function createLazyStreamOwnedMappings(
+async function seedAppOwnedMappings(
   db: Database,
   organizationId: string,
   streamId: string,
-  stream: CatalogDataConnector['streams'][number]
+  stream: CatalogDataConnector['streams'][number],
+  appSlug: string
 ): Promise<Record<string, string>> {
   const allMappings = stream.defaultMappings ?? []
   const owned = allMappings.filter((m) => m.target.mode === 'owned')
@@ -552,33 +564,11 @@ async function createLazyStreamOwnedMappings(
     if (mapping.target.mode !== 'owned') continue
     const { entity } = mapping.target
     // A `reference` owned mapping (id-only edge, e.g. line→product) owns no columns —
-    // its entry list is empty; it still carries the owned-def shell + edge in targetSpec.
+    // its entry list is empty; it only carries the structural link (parent + edge key).
     const entries = partition[mapping.rootPath] ?? []
 
     const parentRootPath = ownedParentRootPath(mapping.rootPath, allRootPaths)
     const parentMappingId = parentRootPath != null ? mappingIdByRootPath[parentRootPath] : null
-
-    const targetSpec: ConnectorMappingTargetSpec = {
-      ownedDef: {
-        sourceKey: entity.key,
-        apiSlug: entity.apiSlug,
-        singular: entity.singular,
-        plural: entity.plural,
-        primaryDisplayFieldKey: entity.primaryDisplayField,
-        avatarFieldKey: entity.avatarField,
-      },
-    }
-    // The forward edge lives on the PARENT def; with no parent (a root mapping) there's
-    // nothing to attach to, so the relationship is only persisted on a child mapping.
-    if (mapping.relationship && parentRootPath != null) {
-      targetSpec.relationship = {
-        fieldKey: mapping.relationship.fieldKey,
-        name: mapping.relationship.name,
-        cardinality: mapping.relationship.cardinality,
-        inverseName: mapping.relationship.inverseName,
-        targetRef: mapping.relationship.targetRef,
-      }
-    }
 
     const row = await addMapping(db, organizationId, {
       dataConnectorStreamId: streamId,
@@ -588,8 +578,11 @@ async function createLazyStreamOwnedMappings(
       entityDefinitionId: null,
       parentMappingId,
       relationshipFieldKey: mapping.relationshipFieldKey ?? null,
-      fieldMappings: buildLazyOwnedFieldMappings(entries),
-      targetSpec,
+      // Late-bound refs key on the manifest apiSlug; the install rewrites them to
+      // concrete `${defId}:${fieldId}` once the def exists (or fixes the slug segment
+      // to the actual installed slug). Until then they resolve at sync via the `@app:`
+      // path — so even an uninstalled-but-slug-matching def would still bind.
+      fieldMappings: buildAppOwnedFieldMappings(entries, appSlug, entity.apiSlug),
       // Incremental connectors only see the delta each run, so unseen ≠ deleted —
       // never archive owned orphans automatically. Full-snapshot sweeps can still
       // reconcile; v1 keeps it safe.
@@ -603,29 +596,67 @@ async function createLazyStreamOwnedMappings(
 }
 
 /**
- * Lazy field mappings for an owned mapping (05e): instead of a concrete provisioned
- * ref, each entry carries `targetFieldRef: null` + a `provision` spec (the column to
- * create at materialize, keyed by the stable `appFieldKey`). The expression mirrors
- * the manual editor — `{<relativeSourcePath>}` over an identity `sourceFields` map —
- * with the SUBTREE-relative path (`sku`, not `line_items[].sku`) because `mapRecord`
- * evaluates a child mapping's fields against its extracted subtree. The concrete ref
- * is stamped by `backfillProvisionedFieldRefs` once the column exists.
+ * Field mappings for an UNBOUND owned mapping (v6 — Option A). Each entry carries the
+ * connection-late-bound `@app:` ref `${ownedApiSlug}:@app:${appSlug}:${fieldKey}` — the
+ * fieldKey rides in the ref so the install `onComplete` can rewrite it to a concrete id
+ * (`fieldIdMap[app:slug:ownedKey:fieldKey]`), and the ref also resolves at sync time
+ * against the connector's connection (no rewrite needed when the installed def's slug
+ * matches). The expression mirrors the manual editor — `{<relativeSourcePath>}` over an
+ * identity `sourceFields` map — with the SUBTREE-relative path (`sku`, not
+ * `line_items[].sku`) because `mapRecord` evaluates a child mapping against its subtree.
  */
-export function buildLazyOwnedFieldMappings(entries: OwnedFieldEntry[]): FieldMapping[] {
+export function buildAppOwnedFieldMappings(
+  entries: OwnedFieldEntry[],
+  appSlug: string,
+  ownedApiSlug: string
+): FieldMapping[] {
   return entries.map(({ field, relativeSourcePath: relPath }) => ({
     id: generateId(),
-    targetFieldRef: null,
+    targetFieldRef: toAppFieldRef(ownedApiSlug, appSlug, field.fieldKey),
     expression: `{${relPath}}`,
     sourceFields: { [relPath]: relPath },
-    provision: {
-      name: field.name,
-      appFieldKey: field.fieldKey,
-      type: field.type as FieldType,
-      isHidden: field.capabilities?.hidden ?? false,
-      options: field.options,
-      addressComponents: field.addressComponents,
-    },
   }))
+}
+
+/**
+ * Project the owned record types a connector's app catalog declares — one entry per
+ * owned default-mapping (BOTH the upsert mapping that owns the def's columns AND any
+ * `reference` link mapping pointing at the same owned key). The install `onComplete`
+ * uses this to bind every owned mapping to the freshly-installed def by matching its
+ * `ownedKey` (carried in the installed def's `app:<slug>:<key>` templateId) to the
+ * mapping's `(streamKey, rootPath)`. Pure + exported for the router query + unit tests.
+ */
+export interface ConnectorOwnedTarget {
+  /** Stable owner-scoped manifest key (the install templateId's last segment). */
+  ownedKey: string
+  /** Manifest apiSlug — the late-bound refs' first segment + slug-conflict fallback. */
+  apiSlug: string
+  /** The stream this owned mapping lives in (matches `DraftStream.streamKey`). */
+  streamKey: string
+  /** The owned mapping's rootPath within the stream (matches `DraftMapping.rootPath`). */
+  rootPath: string
+  /** The installable template id (`app:<slug>:<ownedKey>`). */
+  templateId: string
+}
+
+export function projectConnectorOwnedTargets(
+  appSlug: string,
+  catalog: CatalogDataConnector
+): ConnectorOwnedTarget[] {
+  const targets: ConnectorOwnedTarget[] = []
+  for (const stream of catalog.streams) {
+    for (const m of stream.defaultMappings ?? []) {
+      if (m.target.mode !== 'owned') continue
+      targets.push({
+        ownedKey: m.target.entity.key,
+        apiSlug: m.target.entity.apiSlug,
+        streamKey: stream.key,
+        rootPath: m.rootPath,
+        templateId: `app:${appSlug}:${m.target.entity.key}`,
+      })
+    }
+  }
+  return targets
 }
 
 /**
@@ -697,25 +728,12 @@ async function materializeAppContributingMappings(
 
     // A nested contributing branch (e.g. the order stream's embedded `customer`)
     // hangs off the owned root it's drilled from. Wiring `parentMappingId` makes
-    // mapRecord emit the parent→child relation at sync; persisting the relationship
-    // into `targetSpec` makes pass-2 provision the edge field on the PARENT (owned)
-    // def. The forward edge lives on the parent, so both require a resolved parent.
+    // mapRecord emit the parent→child relation at sync; the edge field itself is
+    // created when the owned def is installed via the entity-template flow (v6) — the
+    // sink resolves the link def-keyed by `relationshipFieldKey`.
     const parentRootPath = ownedParentRootPath(mapping.rootPath, ownedRootPaths)
     const parentMappingId =
       parentRootPath != null ? (ownedMappingIdByRootPath[parentRootPath] ?? null) : null
-
-    const targetSpec: ConnectorMappingTargetSpec | null =
-      mapping.relationship && parentMappingId != null
-        ? {
-            relationship: {
-              fieldKey: mapping.relationship.fieldKey,
-              name: mapping.relationship.name,
-              cardinality: mapping.relationship.cardinality,
-              inverseName: mapping.relationship.inverseName,
-              targetRef: mapping.relationship.targetRef,
-            },
-          }
-        : null
 
     await addMapping(db, organizationId, {
       dataConnectorStreamId: streamId,
@@ -726,7 +744,6 @@ async function materializeAppContributingMappings(
       parentMappingId,
       relationshipFieldKey: mapping.relationshipFieldKey ?? null,
       fieldMappings,
-      targetSpec,
       orphanBehavior: 'ignore' as OrphanBehavior,
     })
   }
@@ -813,11 +830,11 @@ export async function updateConnector(
  * registered at create time and `ready ≠ paused`, so a scheduled connector stays
  * eligible with no re-registration. See optional-first-sync-plan §3.4.
  *
- * Before flipping to `ready` it materializes the connector's LAZY owned targets inline
- * (05e — `materializeConnectorTargets`): "Finish without syncing" still creates the
- * owned defs/fields/edges so the entities show in nav. The status is stamped
- * `provisioning` during the (fast, inline) materialize, then `ready`. Idempotent, so a
- * subsequent first sync re-running materialize is a no-op.
+ * Before flipping to `ready` it provisions the connector's `provision`-hint fields
+ * inline (`materializeConnectorTargets`, the generic-rest template path) so the columns
+ * exist before any sync. App-owned defs are installed separately via the entity-template
+ * flow (v6). The status is stamped `provisioning` during the (fast, inline) provision,
+ * then `ready`. Idempotent, so a subsequent first sync re-running it is a no-op.
  */
 export async function finishConnectorSetup(
   db: Database,
@@ -830,11 +847,11 @@ export async function finishConnectorSetup(
     .update(schema.DataConnector)
     .set({ status: 'provisioning', updatedAt: new Date() })
     .where(eq(schema.DataConnector.id, id))
-  // Materialize is pure schema work (no source fetch), but a relationship-edge
-  // collision or a slug clash can still throw. Roll the status back to `pending` on
-  // failure so the connector is never stranded mid-`provisioning` — the `!== 'pending'`
-  // guard above would otherwise make this a permanent dead-end no later call can clear.
-  // Re-throw so the tRPC mutation surfaces the reason to the wizard.
+  // Field provisioning is pure schema work (no source fetch), but a field-name clash
+  // can still throw. Roll the status back to `pending` on failure so the connector is
+  // never stranded mid-`provisioning` — the `!== 'pending'` guard above would otherwise
+  // make this a permanent dead-end no later call can clear. Re-throw so the tRPC
+  // mutation surfaces the reason to the wizard.
   try {
     await materializeConnectorTargets(db, organizationId, id)
   } catch (error) {
@@ -1178,15 +1195,13 @@ export interface AddMappingInput {
   linkMode?: LinkMode
   targetMode: TargetMode
   /**
-   * Null for a LAZILY-provisioned owned mapping (the def is created at finish/first
-   * sync from `targetSpec`); set for contributing mappings (their system def exists).
+   * Null for an unbound app-owned mapping (its def is installed via the entity-template
+   * flow, v6); set for contributing mappings (their system def exists).
    */
   entityDefinitionId: string | null
   parentMappingId?: string | null
   relationshipFieldKey?: string | null
   fieldMappings?: FieldMapping[]
-  /** Persisted owned-def + edge declaration for lazy materialization (05e). */
-  targetSpec?: ConnectorMappingTargetSpec | null
   orphanBehavior?: OrphanBehavior
 }
 
@@ -1277,7 +1292,6 @@ export async function addMapping(
       parentMappingId: input.parentMappingId ?? null,
       relationshipFieldKey: input.relationshipFieldKey ?? null,
       fieldMappings,
-      targetSpec: input.targetSpec ?? null,
       orphanBehavior: input.orphanBehavior ?? 'ignore',
     })
     .returning()

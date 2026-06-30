@@ -45,10 +45,6 @@ interface SourceLeafRowProps {
   node: SourcePath
   /** The enclosing mapping's def — the binding target. Null until a def is picked. */
   entityDefinitionId: string | null
-  /** The target is a not-yet-created (lazily-provisioned) owned def — bind via provisions (05e). */
-  willCreate?: boolean
-  /** Projected provision columns for a {@link willCreate} target — the picker's field list. */
-  projectedFields?: ResourceField[]
   /** Resolved label for the bound key (for the chip). */
   assignedLabel: string | undefined
   /** Resolved icon id for the applied field (direct or drilled) — shown on the chip. */
@@ -82,8 +78,6 @@ interface SourceLeafRowProps {
   /** Set / clear this leaf's identity role (External ID anchor or secondary Match). */
   onSetIdentityRole: (role: LeafIdentityRole) => void
   onLinkRelationship?: (field: ResourceField, ref: FieldReference) => void
-  /** Bind / quick-create this leaf onto a projected provision column of a lazy owned def. */
-  onAssignProvision?: (provision: { name: string; type: string; appFieldKey?: string }) => void
 }
 
 /**
@@ -97,8 +91,6 @@ export function SourceLeafRow({
   depth,
   node,
   entityDefinitionId,
-  willCreate,
-  projectedFields,
   assignedLabel,
   assignedIconId,
   assignedTargetKey,
@@ -117,7 +109,6 @@ export function SourceLeafRow({
   onMergeChange,
   onSetIdentityRole,
   onLinkRelationship,
-  onAssignProvision,
 }: SourceLeafRowProps) {
   const isMapped = !!assignedTargetKey || !!drilledRef
   const isArray = node.type === 'array'
@@ -153,10 +144,6 @@ export function SourceLeafRow({
         <MappingFieldPicker
           kind='leaf'
           entityDefinitionId={entityDefinitionId}
-          willCreate={willCreate}
-          projectedFields={projectedFields}
-          onProvisionSelect={onAssignProvision}
-          onProvisionCreate={onAssignProvision}
           sourceType={node.type}
           sourcePath={node.path}
           sourceFormat={node.format}

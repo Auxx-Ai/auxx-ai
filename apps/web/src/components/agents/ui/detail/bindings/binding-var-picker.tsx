@@ -9,6 +9,7 @@ import {
   isFieldPath,
   parseResourceFieldId,
   type ResourceFieldId,
+  toAppFieldRef,
   toResourceFieldId,
 } from '@auxx/types/field'
 import { Button } from '@auxx/ui/components/button'
@@ -193,10 +194,7 @@ function BindingVarPickerContent({ argFieldType, onSelect }: BindingVarPickerCon
         if (slug) {
           const terminal = segments[segments.length - 1]!
           const { entityDefinitionId } = parseResourceFieldId(terminal)
-          segments[segments.length - 1] = toResourceFieldId(
-            entityDefinitionId,
-            `@app:${slug}:${field.appFieldKey}`
-          )
+          segments[segments.length - 1] = toAppFieldRef(entityDefinitionId, slug, field.appFieldKey)
         }
       }
       onSelect(segments.length === 1 ? segments[0]! : segments)

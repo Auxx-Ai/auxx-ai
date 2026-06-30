@@ -168,12 +168,12 @@ async function startConnectorSyncInner(
   // Clear a crashed prior chain first so its stuck claim can't block us (H5).
   await sweepStaleConnectorRuns(db, { dataConnectorId })
 
-  // Materialize lazy owned targets BEFORE loadConnector (05e). Lazy owned mappings carry
-  // a null `entityDefinitionId` that `loadConnector` filters out and `decodeMapping`
-  // throws on, so the def/field/edge provisioning + ref backfill must run on the RAW rows
-  // first. Idempotent (adopt-by-slug, fields keyed by appFieldKey, backfill only fills
-  // null refs), so it's safe for every connector — including already-materialized ones
-  // and generic-rest connectors whose `provision`-spec fields it subsumes.
+  // Provision `provision`-hint fields BEFORE loadConnector (the generic-rest template
+  // path — e.g. stripe). Runs on the RAW rows so it executes before `decodeMapping`
+  // (which throws on a null-def row) and `loadConnector` (which filters those out).
+  // Idempotent (fields keyed by appFieldKey, backfill only fills null refs). App-owned
+  // defs aren't created here — they're installed via the entity-template flow (v6); an
+  // unbound owned row is simply skipped until its def is installed.
   await materializeConnectorTargets(db, organizationId, dataConnectorId)
 
   const loaded = await loadConnector(db, organizationId, dataConnectorId)

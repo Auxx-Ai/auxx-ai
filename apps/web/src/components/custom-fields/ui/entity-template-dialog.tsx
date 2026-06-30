@@ -97,11 +97,27 @@ export function EntityTemplateDialog({
     }
   }, [open, preSelectedTemplateIds])
 
-  // Fetch full template detail when one is selected
-  const { data: templateDetail } = api.entityDefinition.getTemplateById.useQuery(
-    { id: selectedTemplateId ?? '' },
-    { enabled: !!selectedTemplateId }
+  // Full detail for the selected template AND its companions, in ONE roundtrip. The
+  // install banner pre-selects the whole sibling set, so the batch loads everything up
+  // front; a gallery click knows only the primary until its detail arrives, then the
+  // companions fold into the same batch (one refetch, then stable).
+  const detailIds = useMemo(() => {
+    const ids = new Set<string>()
+    if (selectedTemplateId) ids.add(selectedTemplateId)
+    for (const id of preSelectedTemplateIds ?? []) ids.add(id)
+    // Companions are listed on the summary too, so a gallery click folds them into the
+    // same batch (no detail→companions waterfall).
+    const summary = templates?.find((t) => t.id === selectedTemplateId)
+    for (const id of summary?.companions ?? []) ids.add(id)
+    return [...ids]
+  }, [selectedTemplateId, preSelectedTemplateIds, templates])
+
+  const { data: detailList } = api.entityDefinition.getTemplateByIds.useQuery(
+    { ids: detailIds },
+    { enabled: detailIds.length > 0 }
   )
+  const detailById = useMemo(() => new Map((detailList ?? []).map((t) => [t.id, t])), [detailList])
+  const templateDetail = selectedTemplateId ? detailById.get(selectedTemplateId) : undefined
 
   // Install mutation
   const utils = api.useUtils()
@@ -127,15 +143,10 @@ export function EntityTemplateDialog({
     },
   })
 
-  // Fetch companion template details for preview cards
+  // Companion details for the preview cards — already loaded by the batch above.
   const companionIds = templateDetail?.companions ?? []
-  const companionQueries = api.useQueries((t) =>
-    companionIds.map((id) =>
-      t.entityDefinition.getTemplateById({ id }, { enabled: !!selectedTemplateId })
-    )
-  )
-  const companionTemplateDetails = companionQueries
-    .map((q) => q.data)
+  const companionTemplateDetails = companionIds
+    .map((id) => detailById.get(id))
     .filter(Boolean) as NonNullable<typeof templateDetail>[]
 
   // ── Conflict detection ──────────────────────────────────────────────

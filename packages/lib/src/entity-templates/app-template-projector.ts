@@ -87,20 +87,31 @@ export function projectAppConnectorTemplates(
       entity: Extract<CatalogMapping['target'], { mode: 'owned' }>['entity']
       stream: CatalogStream
       rootPath: string
+      isReference: boolean
     }
   >()
   for (const stream of connector.streams) {
     for (const m of stream.defaultMappings ?? []) {
       if (m.target.mode !== 'owned') continue
-      if (!ownedByKey.has(m.target.entity.key)) {
-        ownedByKey.set(m.target.entity.key, {
-          entity: m.target.entity,
-          stream,
-          rootPath: m.rootPath,
-        })
+      const key = m.target.entity.key
+      // A `reference` mapping only LINKS to a def owned elsewhere — it carries no
+      // columns. Prefer the real owner (the stream that roots the def with its fields)
+      // over a link-only reference declaration of the same def, so the projected
+      // template isn't the empty reference. A reference-only def (no owning stream,
+      // e.g. the fixture's products) still yields a template so its edge resolves.
+      const isReference = m.linkMode === 'reference'
+      const existing = ownedByKey.get(key)
+      if (!existing || (existing.isReference && !isReference)) {
+        ownedByKey.set(key, { entity: m.target.entity, stream, rootPath: m.rootPath, isReference })
       }
     }
   }
+
+  // Every owned def the connector declares is an installable companion of the others:
+  // they're a cohesive set (order → line_items → products) the connector provisions
+  // together, so the template dialog previews + installs the whole graph at once —
+  // mirroring how a static template lists its `companions`.
+  const allOwnedTemplateIds = [...ownedByKey.keys()].map((k) => appTemplateId(appSlug, k))
 
   const templates: EntityTemplate[] = []
   for (const [key, { entity, stream, rootPath }] of ownedByKey) {
@@ -137,8 +148,9 @@ export function projectAppConnectorTemplates(
       fields[0]?.templateFieldId ??
       ''
 
+    const templateId = appTemplateId(appSlug, key)
     templates.push({
-      id: appTemplateId(appSlug, key),
+      id: templateId,
       name: entity.singular,
       description: `${entity.plural} synced from the ${appTitle} app.`,
       categories: ['app'],
@@ -153,6 +165,8 @@ export function projectAppConnectorTemplates(
       },
       primaryDisplayField,
       avatarField: entity.avatarField,
+      // The connector's other owned defs, so the dialog renders them as companion cards.
+      companions: allOwnedTemplateIds.filter((id) => id !== templateId),
       fields,
     })
   }

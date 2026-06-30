@@ -1,9 +1,10 @@
 // apps/web/src/components/agents/ui/detail/bindings/hooks/use-binding-ref-label.ts
 'use client'
 
-import type { Resource, ResourceField } from '@auxx/lib/resources/client'
+import { resolveFieldRef } from '@auxx/lib/resources/client'
 import {
   fieldRefToKey,
+  isAppFieldRef,
   parseResourceFieldId,
   type ResourceFieldId,
   toFieldPath,
@@ -12,36 +13,9 @@ import { useCallback, useMemo } from 'react'
 import { useResourceStore } from '~/components/resources'
 import { api } from '~/trpc/react'
 
-/** Sentinel marking a connection-late-bound app field segment (`@app:<slug>:<key>`). */
-const APP_SEGMENT_PREFIX = '@app:'
-
 /** Capitalize an entity-type slug for display ("participant" → "Participant"). */
 function capitalize(slug: string): string {
   return slug.charAt(0).toUpperCase() + slug.slice(1)
-}
-
-/** Parse an `@app:<slug>:<key>` field part. Returns null for non-app parts. */
-function parseAppFieldPart(fieldId: string): { slug: string; key: string } | null {
-  if (!fieldId.startsWith(APP_SEGMENT_PREFIX)) return null
-  const rest = fieldId.slice(APP_SEGMENT_PREFIX.length)
-  const sep = rest.indexOf(':')
-  if (sep <= 0) return null
-  return { slug: rest.slice(0, sep), key: rest.slice(sep + 1) }
-}
-
-/** Find the concrete app-owned field an `@app:<slug>:<key>` segment names. */
-function findAppField(
-  resource: Resource | undefined,
-  slug: string,
-  key: string,
-  slugByInstallationId: Map<string, string>
-): ResourceField | undefined {
-  return resource?.fields.find(
-    (f) =>
-      f.appFieldKey === key &&
-      f.appInstallationId &&
-      slugByInstallationId.get(f.appInstallationId) === slug
-  )
 }
 
 /** Map installationId → app slug from the cached installed-apps query. */
@@ -62,7 +36,7 @@ function useAppSlugMap(): Map<string, string> {
  * installed apps. Handles the three segment forms the resolver understands:
  *
  *   - `<entity>:self`              → "<Entity label> ID"
- *   - `<entity>:@app:<slug>:<key>` → the app field's label
+ *   - `<entity>:@app:<slug>:<key>` → the app field's label (shared `resolveFieldRef`)
  *   - `<entity>:<fieldId>`         → the field's label
  *
  * Paths join with " → ". Unresolvable segments fall back to the raw ref.
@@ -79,16 +53,21 @@ export function useBindingRefLabel(): (ref: string | string[] | undefined) => st
       return segments
         .map((segment) => {
           const { entityDefinitionId, fieldId } = parseResourceFieldId(segment as ResourceFieldId)
-          const resource = resourceMap.get(entityDefinitionId)
 
           if (fieldId === 'self') {
-            return `${resource?.label ?? capitalize(entityDefinitionId)} ID`
+            return `${resourceMap.get(entityDefinitionId)?.label ?? capitalize(entityDefinitionId)} ID`
           }
 
-          const app = parseAppFieldPart(fieldId)
-          if (app) {
-            const field = findAppField(resource, app.slug, app.key, slugByInstallationId)
-            return field?.label ?? segment
+          if (isAppFieldRef(segment)) {
+            const resource = resourceMap.get(entityDefinitionId)
+            return (
+              resolveFieldRef(
+                resource?.fields ?? [],
+                entityDefinitionId,
+                segment,
+                slugByInstallationId
+              )?.field.label ?? segment
+            )
           }
 
           return fieldMap[segment as ResourceFieldId]?.label ?? segment
@@ -119,16 +98,16 @@ export function useBindingRefBadgeKey(): (ref: string | string[] | undefined) =>
         const { entityDefinitionId, fieldId } = parseResourceFieldId(segment as ResourceFieldId)
         if (fieldId === 'self') return null
 
-        const app = parseAppFieldPart(fieldId)
-        if (app) {
-          const field = findAppField(
-            resourceMap.get(entityDefinitionId),
-            app.slug,
-            app.key,
+        if (isAppFieldRef(segment)) {
+          const resource = resourceMap.get(entityDefinitionId)
+          const match = resolveFieldRef(
+            resource?.fields ?? [],
+            entityDefinitionId,
+            segment,
             slugByInstallationId
           )
-          if (!field?.resourceFieldId) return null
-          resolved.push(field.resourceFieldId)
+          if (!match) return null
+          resolved.push(match.concreteRef)
           continue
         }
 

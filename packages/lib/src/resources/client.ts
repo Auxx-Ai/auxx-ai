@@ -85,11 +85,13 @@ export type {
 export { getFieldOutputKey } from './registry/field-types'
 // Field utility functions (client-safe)
 export {
+  fieldMatchesRef,
   getDisplayFields,
   getFieldOperators,
   isComputedField,
   isSystemField,
   isValidOperatorForField,
+  resolveFieldRef,
   setEntityVariables,
   setResourceVariables,
   sortFieldsForDisplay,

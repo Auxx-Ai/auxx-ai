@@ -1,9 +1,9 @@
 // apps/web/src/components/resources/store/resource-store.ts
 
 import type { CustomResource, Resource, ResourceField } from '@auxx/lib/resources/client'
-import { isCustomResource } from '@auxx/lib/resources/client'
+import { isCustomResource, resolveFieldRef } from '@auxx/lib/resources/client'
 import type { ResourceFieldId } from '@auxx/types/field'
-import { parseResourceFieldId, toResourceFieldId } from '@auxx/types/field'
+import { parseAppFieldRef, parseResourceFieldId, toResourceFieldId } from '@auxx/types/field'
 import { deepEqual, shallowEqual } from '@auxx/utils/objects'
 import { create } from 'zustand'
 import { subscribeWithSelector } from 'zustand/middleware'
@@ -125,6 +125,13 @@ interface ResourceStoreState {
 
   /** Get effective resource with optimistic field overlays */
   getEffectiveResource: (entityDefinitionId: string) => Resource | undefined
+
+  /**
+   * Resolve a stored ref to its effective field — concrete `${defId}:${fieldId}` OR
+   * late-bound `${apiSlug}:@app:${appSlug}:${appFieldKey}` (resolved to the connector/
+   * app-created column by `appFieldKey`). The single chokepoint behind the field hooks.
+   */
+  getFieldByRef: (ref: string | null | undefined) => ResourceField | undefined
 
   // ─────────────────────────────────────────────────────────────────
   // OPTIMISTIC UPDATE ACTIONS
@@ -543,6 +550,25 @@ export const useResourceStore = create<ResourceStoreState>()(
 
     getResourceById: (entityDefinitionIdOrApiSlug) => {
       return get().resourceMap.get(entityDefinitionIdOrApiSlug)
+    },
+
+    getFieldByRef: (ref) => {
+      if (!ref) return undefined
+      // Concrete `${defId}:${fieldId}` fast path — read the memoized overlay map for a
+      // stable reference (keeps the field hooks granular).
+      const direct = get().fieldMap[ref as ResourceFieldId]
+      if (direct) return direct
+      // Late-bound `@app:` ref → resolve to the now-created column by appFieldKey. The
+      // def segment is an apiSlug (connector refs) OR a real def id (binding refs);
+      // getEffectiveResource accepts both (resourceMap is keyed by id + apiSlug) and
+      // returns overlay-aware fields, so a freshly-installed column resolves.
+      const parts = parseAppFieldRef(ref)
+      if (!parts) return undefined
+      const resource = get().getEffectiveResource(parts.defSegment)
+      if (!resource) return undefined
+      const resolved = resolveFieldRef(resource.fields, resource.id, ref)
+      if (!resolved) return undefined
+      return get().fieldMap[resolved.concreteRef] ?? resolved.field
     },
 
     getEffectiveField: (key) => {
