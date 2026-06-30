@@ -366,6 +366,10 @@ export interface ConnectorFieldDecl {
   /** Flag PII — surfaced + default-excluded in the mapping UI. */
   pii?: boolean
   capabilities?: ConnectorFieldCapabilities
+  /** Predefined select option set (SINGLE_SELECT / MULTI_SELECT / TAGS). */
+  options?: Array<{ value: string; label?: string; color?: string }>
+  /** Sub-field set for an ADDRESS_STRUCT field. */
+  addressComponents?: string[]
 }
 
 /** A recommended fan-out mapping the connector suggests (05 §4). User confirms at setup. */
@@ -566,6 +570,10 @@ export interface FieldMapping {
     icon?: string
     isHidden?: boolean
     appFieldKey?: string
+    /** Predefined select options to provision (SINGLE_SELECT / MULTI_SELECT / TAGS). */
+    options?: Array<{ value: string; label?: string; color?: string }>
+    /** Sub-field set to provision for an ADDRESS_STRUCT field. */
+    addressComponents?: string[]
   }
 }
 

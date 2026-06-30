@@ -193,6 +193,10 @@ export interface CatalogConnectorField {
   name: string
   pii?: boolean
   capabilities?: { hidden?: boolean; filterable?: boolean }
+  /** Predefined select option set (SINGLE_SELECT / MULTI_SELECT / TAGS). */
+  options?: Array<{ value: string; label?: string; color?: string }>
+  /** Sub-field set for an ADDRESS_STRUCT field. */
+  addressComponents?: string[]
 }
 
 /** Provisioning decl for a parent↔child edge — mirrors SDK `ConnectorRelationshipDecl`. */
@@ -706,6 +710,8 @@ export async function compileAndExtractCatalog(): Promise<
         name: decl.name,
         pii: decl.pii,
         capabilities: decl.capabilities,
+        options: decl.options,
+        addressComponents: decl.addressComponents,
       })),
       defaultMappings: stream.defaultMappings,
       exampleRecord: stream.exampleRecord,
@@ -864,6 +870,8 @@ interface RawConnectorFieldDecl {
   name: string
   pii?: boolean
   capabilities?: { hidden?: boolean; filterable?: boolean }
+  options?: Array<{ value: string; label?: string; color?: string }>
+  addressComponents?: string[]
 }
 
 interface RawConnectorStream {

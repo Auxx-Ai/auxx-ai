@@ -68,7 +68,18 @@ async function resolveEdge(
     lastSeg.includes(':') ? lastSeg : toResourceFieldId(parentDef, lastSeg)
   ) as ResourceFieldId
   const ownerDef = getFieldDefinitionId(forwardRef)
-  const forwardFieldId = getFieldId(forwardRef)
+  const derivedFieldId = getFieldId(forwardRef)
+
+  // Resolve the forward field up front (needed for cardinality AND its real id). A
+  // connector-provisioned RELATIONSHIP field has an AUTO-GENERATED id distinct from
+  // its `appFieldKey` — so the authored `relationshipFieldKey` ('lineItems') matches
+  // the field's `appFieldKey`, NOT its id. Match on all three, then use the resolved
+  // field's REAL id for the forward edge (the derived id is just the authored key).
+  const fields = await getFields(ownerDef)
+  const field = fields.find(
+    (f) => f.id === derivedFieldId || f.resourceFieldId === forwardRef || f.appFieldKey === lastSeg
+  )
+  const forwardFieldId = field?.id ?? derivedFieldId
 
   // CLEAR — belongs_to only (a reference FK that went empty). Null the parent field.
   if (rel.childExternalId === null) {
@@ -78,8 +89,6 @@ async function resolveEdge(
     }
   }
 
-  const fields = await getFields(ownerDef)
-  const field = fields.find((f) => f.id === forwardFieldId || f.resourceFieldId === forwardRef)
   const config = field?.relationship as RelationshipConfig | undefined
   const cardinality = config?.relationshipType
 

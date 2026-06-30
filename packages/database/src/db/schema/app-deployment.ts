@@ -203,6 +203,10 @@ export interface CatalogConnectorField {
   name: string
   pii?: boolean
   capabilities?: { hidden?: boolean; filterable?: boolean }
+  /** Predefined select option set (SINGLE_SELECT / MULTI_SELECT / TAGS) provisioned onto the owned column. */
+  options?: Array<{ value: string; label?: string; color?: string }>
+  /** Sub-field set for an ADDRESS_STRUCT field (e.g. `['street', 'city', 'state', 'country']`). */
+  addressComponents?: string[]
 }
 
 /**

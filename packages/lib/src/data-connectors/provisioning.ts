@@ -16,7 +16,7 @@ import type { FieldType } from '@auxx/database/types'
 import { createScopedLogger } from '@auxx/logger'
 import { createCustomField, resolveEntityDefinitionIdByKind } from '@auxx/services/custom-fields'
 import { createEntityDefinition } from '@auxx/services/entity-definitions'
-import type { RelationshipType } from '@auxx/types/custom-field'
+import type { RelationshipType, SelectOption } from '@auxx/types/custom-field'
 import { toResourceFieldId } from '@auxx/types/field'
 import { and, eq } from 'drizzle-orm'
 import { getCachedCustomFields } from '../cache'
@@ -45,6 +45,10 @@ export interface ProvisionFieldSpec {
   isCreatable?: boolean
   /** External-id / raw-payload bookkeeping fields are hidden from the grid. */
   isHidden?: boolean
+  /** Predefined select options (SINGLE_SELECT / MULTI_SELECT / TAGS). */
+  options?: Array<{ value: string; label?: string; color?: string }>
+  /** Sub-field set for an ADDRESS_STRUCT field. */
+  addressComponents?: string[]
 }
 
 /** One owned/contributing target the connector provisions schema for. */
@@ -327,6 +331,17 @@ async function provisionField(
     icon: field.icon,
     appFieldKey: field.appFieldKey,
     dataConnectorId,
+    // Predefined enum options / address sub-fields, when the connector declared
+    // them. Options are normalized to `SelectOption` (label defaults to value, color
+    // is the constrained palette) the same way the app-field provisioner does.
+    options: field.options?.length
+      ? field.options.map((o) => ({
+          value: o.value,
+          label: o.label ?? o.value,
+          color: o.color as SelectOption['color'],
+        }))
+      : undefined,
+    addressComponents: field.addressComponents,
     isUpdatable: field.isUpdatable ?? false,
     isCreatable: field.isCreatable ?? false,
     isHidden: field.isHidden ?? false,
@@ -361,6 +376,8 @@ export function provisionSpecsForMapping(mapping: {
       type: fm.provision.type,
       icon: fm.provision.icon,
       isHidden: fm.provision.isHidden,
+      options: fm.provision.options,
+      addressComponents: fm.provision.addressComponents,
       isUpdatable: false,
       isCreatable: false,
     })
