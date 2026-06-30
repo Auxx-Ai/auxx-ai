@@ -13,7 +13,7 @@ import type { WebhookEndpointEntity, WebhookEndpointTopic } from '@auxx/database
 import { and, desc, eq } from 'drizzle-orm'
 import { BadRequestError, NotFoundError } from '../../errors'
 
-export type WebhookEndpointVerification = 'none' | 'token' | 'hmac'
+export type WebhookEndpointVerification = 'none' | 'token' | 'hmac' | 'stripe'
 export type WebhookEndpointTopicSource = { kind: 'header' | 'path'; value: string }
 export type { WebhookEndpointTopic }
 
@@ -21,6 +21,8 @@ export type { WebhookEndpointTopic }
 export interface WebhookEndpointSummary {
   id: string
   name: string
+  /** Template/provider this endpoint came from ('shopify'|'stripe'|'github'), or null. */
+  provider: string | null
   /** Derived public inbound URL — never stored. */
   url: string
   verification: WebhookEndpointVerification
@@ -51,6 +53,7 @@ function toSummary(row: WebhookEndpointEntity): WebhookEndpointSummary {
   return {
     id: row.id,
     name: row.name,
+    provider: row.provider ?? null,
     url: webhookEndpointUrl(row.id),
     verification: row.verification,
     hasSecret: !!row.secret,
@@ -127,18 +130,28 @@ export async function getWebhookEndpoint(
 
 export interface CreateWebhookEndpointParams {
   name: string
+  /** Template/provider this endpoint came from. Persisted for branding/identity. */
+  provider?: string | null
   verification: WebhookEndpointVerification
   signatureHeader?: string | null
   signaturePrefix?: string | null
   signatureEncoding?: 'hex' | 'base64'
+  /**
+   * Provider-minted signing secret pasted by the user (Stripe `whsec_…`). Required for
+   * `stripe` verification, where Auxx stores — rather than mints — the secret.
+   */
+  secret?: string
   topicSource?: WebhookEndpointTopicSource | null
   topics?: WebhookEndpointTopic[]
   createdById?: string | null
 }
 
 /**
- * Create an endpoint, minting a secret for `token`/`hmac` verification (`none` ⇒ no secret,
- * an open URL). Returns the row + the one-time **plaintext** secret (null for `none`).
+ * Create an endpoint. For `token`/`hmac` Auxx **mints** a secret (you paste it into the
+ * provider) and returns its one-time plaintext. For `stripe` the secret is **provider-minted**
+ * (Stripe's `whsec_…`) so the caller pastes it in (`input.secret`) — it is stored, never
+ * returned. `none` ⇒ no secret (open URL). Returns the row + the one-time plaintext (null
+ * unless we minted one).
  */
 export async function createWebhookEndpoint(
   db: Database,
@@ -148,8 +161,22 @@ export async function createWebhookEndpoint(
   const name = input.name.trim()
   if (!name) throw new BadRequestError('Name is required')
 
-  const minted = input.verification === 'none' ? null : mintSecret()
   const isHmac = input.verification === 'hmac'
+  const isStripe = input.verification === 'stripe'
+
+  // Stripe's secret is pasted (provider-minted); token/hmac are Auxx-minted; none has none.
+  let encryptedSecret: string | null = null
+  let plaintextToReveal: string | null = null
+  if (isStripe) {
+    const pasted = input.secret?.trim()
+    if (!pasted) throw new BadRequestError('A signing secret is required for Stripe verification.')
+    encryptedSecret = encryptValue(pasted)
+  } else if (input.verification !== 'none') {
+    const minted = mintSecret()
+    encryptedSecret = minted.encrypted
+    plaintextToReveal = minted.plaintext
+  }
+
   const topicSource = input.topicSource ?? null
   const topics = normalizeTopics(input.topics, topicSource) ?? []
 
@@ -158,8 +185,9 @@ export async function createWebhookEndpoint(
     .values({
       organizationId,
       name,
+      provider: input.provider ?? null,
       verification: input.verification,
-      secret: minted?.encrypted ?? null,
+      secret: encryptedSecret,
       signatureHeader: isHmac ? (input.signatureHeader ?? null) : null,
       signaturePrefix: isHmac ? (input.signaturePrefix ?? null) : null,
       signatureEncoding: input.signatureEncoding ?? 'hex',
@@ -170,7 +198,7 @@ export async function createWebhookEndpoint(
     .returning()
   if (!row) throw new Error('Failed to create webhook endpoint')
 
-  return { endpoint: toSummary(row), secret: minted?.plaintext ?? null }
+  return { endpoint: toSummary(row), secret: plaintextToReveal }
 }
 
 export interface UpdateWebhookEndpointParams {
@@ -244,27 +272,46 @@ export async function updateWebhookEndpoint(
   return toSummary(row)
 }
 
-/** Mint a fresh secret, returning its one-time plaintext. Rejected for `none` (open) endpoints. */
+/**
+ * Replace an endpoint's signing secret. For `token`/`hmac` Auxx mints a fresh secret and
+ * returns its one-time plaintext. For `stripe` the secret is provider-minted, so the caller
+ * supplies the new `whsec_…` (`newSecret`) — it is stored and `secret` comes back null
+ * (nothing to reveal). Rejected for `none` (open) endpoints.
+ */
 export async function rotateWebhookEndpointSecret(
   db: Database,
   organizationId: string,
-  id: string
-): Promise<{ secret: string }> {
+  id: string,
+  newSecret?: string
+): Promise<{ secret: string | null }> {
   const current = await loadEndpoint(db, organizationId, id)
   if (current.verification === 'none') {
     throw new BadRequestError('Open endpoints (no verification) have no secret to rotate.')
   }
-  const minted = mintSecret()
+
+  let encrypted: string
+  let plaintextToReveal: string | null
+  if (current.verification === 'stripe') {
+    const pasted = newSecret?.trim()
+    if (!pasted) throw new BadRequestError('A new signing secret is required.')
+    encrypted = encryptValue(pasted)
+    plaintextToReveal = null
+  } else {
+    const minted = mintSecret()
+    encrypted = minted.encrypted
+    plaintextToReveal = minted.plaintext
+  }
+
   await db
     .update(schema.WebhookEndpoint)
-    .set({ secret: minted.encrypted, updatedAt: new Date() })
+    .set({ secret: encrypted, updatedAt: new Date() })
     .where(
       and(
         eq(schema.WebhookEndpoint.id, id),
         eq(schema.WebhookEndpoint.organizationId, organizationId)
       )
     )
-  return { secret: minted.plaintext }
+  return { secret: plaintextToReveal }
 }
 
 export async function deleteWebhookEndpoint(

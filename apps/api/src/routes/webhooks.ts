@@ -9,6 +9,7 @@ import {
   normalizeHeaders,
   timingSafeStringEqual,
   verifyHmacSignature,
+  verifyStripeSignature,
 } from '@auxx/lib/webhooks'
 import { createScopedLogger } from '@auxx/logger'
 import { getRedisClient } from '@auxx/redis'
@@ -145,13 +146,15 @@ async function isEndpointRateLimited(endpointId: string): Promise<boolean> {
 /**
  * Verify an inbound delivery against the endpoint's own secret. Reuses the canonical
  * timing-safe helpers (`verifyHmacSignature`, `timingSafeStringEqual`).
- *   none  → accept (open endpoint — the UI flags it)
- *   token → constant-time compare of a Bearer header / `?token=` against the secret
- *   hmac  → HMAC over the raw body, compared to the configured signature header
+ *   none   → accept (open endpoint — the UI flags it)
+ *   token  → constant-time compare of a Bearer header / `?token=` against the secret
+ *   hmac   → HMAC over the raw body, compared to the configured signature header
+ *   stripe → the `Stripe-Signature` scheme (`t=,v1=` over `${t}.${rawBody}`) — the secret
+ *            is Stripe's pasted `whsec_…`
  */
 function verifyEndpointDelivery(
   endpoint: {
-    verification: 'none' | 'token' | 'hmac'
+    verification: 'none' | 'token' | 'hmac' | 'stripe'
     secret: string | null
     signatureHeader: string | null
     signaturePrefix: string | null
@@ -170,6 +173,10 @@ function verifyEndpointDelivery(
     const auth = headers.authorization ?? ''
     const provided = auth.toLowerCase().startsWith('bearer ') ? auth.slice(7) : (queryToken ?? '')
     return timingSafeStringEqual(provided, secret)
+  }
+
+  if (endpoint.verification === 'stripe') {
+    return verifyStripeSignature({ rawBody, header: headers['stripe-signature'] ?? '', secret })
   }
 
   // hmac
