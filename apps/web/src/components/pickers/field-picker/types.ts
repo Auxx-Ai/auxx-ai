@@ -22,6 +22,16 @@ export interface FieldPickerContentProps {
   /** Entity definition ID to show fields for */
   entityDefinitionId: string
 
+  /**
+   * Optional explicit field list to render at the ROOT instead of resolving them
+   * from {@link entityDefinitionId} via the resource store. Used for a not-yet-created
+   * (lazily-provisioned) def whose columns live only as projected provision specs — the
+   * def has no id to resolve against yet. Drill-down still resolves a related def's
+   * fields from the store; projected provision fields carry no relationships, so they
+   * never drill.
+   */
+  fields?: ResourceField[]
+
   /** Already selected field references */
   fieldReferences?: FieldReference[]
 

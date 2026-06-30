@@ -62,6 +62,19 @@ interface MappingFieldPickerProps {
   kind?: 'leaf' | 'branch'
   /** The def the picker drills/binds FROM (the enclosing mapping's def). Null = no def yet. */
   entityDefinitionId: string | null
+  /**
+   * The enclosing mapping targets a not-yet-created (lazily-provisioned) owned def
+   * (05e). There's no real `entityDefinitionId` to resolve against, so the picker
+   * operates on {@link projectedFields} (the columns the def will create) and binds /
+   * quick-creates as `provision` specs instead of concrete `ResourceFieldId`s.
+   */
+  willCreate?: boolean
+  /** Projected provision fields for a {@link willCreate} target — the picker's root list. */
+  projectedFields?: ResourceField[]
+  /** Bind a source node to one of the potential def's projected provision columns. */
+  onProvisionSelect?: (provision: { name: string; type: string; appFieldKey?: string }) => void
+  /** Quick-create a new column on the potential def (writes a `provision` spec). */
+  onProvisionCreate?: (provision: { name: string; type: FieldTypeType }) => void
   /** The source node being bound — drives the type filter + quick-create seed ('leaf'). */
   sourceType?: string
   sourcePath?: string
@@ -119,6 +132,10 @@ interface MappingFieldPickerProps {
 export function MappingFieldPicker({
   kind = 'leaf',
   entityDefinitionId,
+  willCreate = false,
+  projectedFields,
+  onProvisionSelect,
+  onProvisionCreate,
   sourceType = 'string',
   sourcePath = '',
   sourceFormat,
@@ -145,9 +162,15 @@ export function MappingFieldPicker({
   const chipLabel =
     assignedLabel ?? (isAssigned ? (assignedKey ?? 'Linked') : (placeholder ?? 'Apply field…'))
 
-  // No target def yet — nothing to resolve against. Show a disabled trigger;
-  // binding unlocks once a target def is picked (plan 08 §3.4).
-  if (!entityDefinitionId) {
+  // A lazily-provisioned owned target has no `entityDefinitionId` yet, but its columns
+  // are known from the projected provision specs — so the picker stays live, resolving
+  // and binding against those instead of a real def (05e).
+  const isLazy = !entityDefinitionId && willCreate
+  const hasTarget = !!entityDefinitionId || isLazy
+
+  // No target at all — neither a real def nor a potential owned one. Show a disabled
+  // trigger; binding unlocks once a target def is picked (plan 08 §3.4).
+  if (!hasTarget) {
     return (
       <Button
         variant='transparent'
@@ -190,7 +213,10 @@ export function MappingFieldPicker({
       <PopoverContent className='w-72 p-0' align='start'>
         {view === 'pick' ? (
           <FieldPickerContent
-            entityDefinitionId={entityDefinitionId}
+            entityDefinitionId={entityDefinitionId ?? ''}
+            // A lazy owned target has no def to resolve — render its projected provision
+            // columns directly (05e).
+            fields={isLazy ? projectedFields : undefined}
             // Check the bound DIRECT scalar, the drilled FieldPath, and any id-only
             // link — a leaf can carry both a value bind and a link.
             fieldReferences={
@@ -208,9 +234,14 @@ export function MappingFieldPicker({
             filterField={(f) => {
               if (f.relationship) return showRelationships
               if (isBranch) return false
-              const rfid = f.resourceFieldId ?? toResourceFieldId(entityDefinitionId, f.id)
-              const notExcluded =
-                getFieldDefinitionId(rfid) === entityDefinitionId ? !excludeKeys?.has(rfid) : true
+              const rfid = f.resourceFieldId ?? toResourceFieldId(entityDefinitionId ?? '', f.id)
+              // Lazy projected fields are keyed by a `@potential:` ref (no def segment),
+              // so just honor the uniqueness exclusion; a real def also checks ownership.
+              const notExcluded = isLazy
+                ? !excludeKeys?.has(rfid)
+                : getFieldDefinitionId(rfid) === entityDefinitionId
+                  ? !excludeKeys?.has(rfid)
+                  : true
               return (
                 notExcluded &&
                 isWritableTarget(f) &&
@@ -227,13 +258,25 @@ export function MappingFieldPicker({
                 onSelectRelationship?.(field, ref)
                 return
               }
+              // Lazy owned target → bind to a projected provision column (no concrete
+              // ref exists yet; the binding carries the provision spec instead).
+              if (isLazy) {
+                onProvisionSelect?.({
+                  name: field.label,
+                  type: field.fieldType as string,
+                  appFieldKey: field.id,
+                })
+                return
+              }
               // Scalar reached by drilling → bind across the relationship.
               if (isFieldPath(ref)) {
                 onDrilledAssign?.(field, ref)
                 return
               }
               // Scalar at root → bind directly on the current def.
-              onAssign?.(field.resourceFieldId ?? toResourceFieldId(entityDefinitionId, field.id))
+              onAssign?.(
+                field.resourceFieldId ?? toResourceFieldId(entityDefinitionId ?? '', field.id)
+              )
             }}
             // Skip = unbind whatever is currently bound on this leaf (direct or drilled).
             onSkip={!isBranch && isAssigned ? onClear : undefined}
@@ -241,9 +284,21 @@ export function MappingFieldPicker({
             createLabel='Quick create'
             onCreateField={!isBranch && canCreate ? () => setView('create') : undefined}
           />
+        ) : isLazy ? (
+          // The def doesn't exist yet, so we can't mint a real field — author a
+          // provision spec instead; materialize creates the column at first sync (05e).
+          <ProvisionCreateForm
+            seedName={humanizeFieldPath(sourcePath)}
+            seedType={inferFieldType(sourcePath, sourceType, sourceFormat)}
+            onBack={() => setView('pick')}
+            onCreated={(provision) => {
+              onProvisionCreate?.(provision)
+              onOpenChange(false)
+            }}
+          />
         ) : (
           <QuickCreateFieldForm
-            entityDefinitionId={entityDefinitionId}
+            entityDefinitionId={entityDefinitionId ?? ''}
             sourceType={sourceType}
             excludeKeys={excludeKeys}
             seedName={humanizeFieldPath(sourcePath)}
@@ -257,6 +312,97 @@ export function MappingFieldPicker({
         )}
       </PopoverContent>
     </Popover>
+  )
+}
+
+/**
+ * Inline name + type authoring for a NEW column on a not-yet-created (lazily-provisioned)
+ * owned def (05e). Unlike {@link QuickCreateFieldForm}, it runs no mutation — the def has
+ * no id yet — and hands back a `provision` spec the caller stores on the binding; the
+ * column is created at materialize (finish / first sync). The type picker is the full
+ * {@link FIELD_TYPE_GROUPS} catalog (minus RELATIONSHIP), pre-seeded from the source node.
+ */
+function ProvisionCreateForm({
+  seedName,
+  seedType,
+  onBack,
+  onCreated,
+}: {
+  seedName: string
+  seedType: FieldTypeType
+  onBack: () => void
+  onCreated: (provision: { name: string; type: FieldTypeType }) => void
+}) {
+  const [name, setName] = useState(seedName)
+  const [type, setType] = useState<FieldTypeType>(seedType)
+  const [typePickerOpen, setTypePickerOpen] = useState(false)
+  const groups = useFieldTypeGroups()
+
+  const trimmed = name.trim()
+  const canSubmit = !!trimmed
+  const submit = () => {
+    if (!canSubmit) return
+    onCreated({ name: trimmed, type })
+  }
+
+  const selectedTypeOption = fieldTypeOptions[type]
+  const selectedAsOption: Option | null = selectedTypeOption
+    ? { value: type, label: selectedTypeOption.label, iconId: selectedTypeOption.iconId }
+    : null
+
+  return (
+    <div className='flex flex-col gap-2 p-3'>
+      <button
+        type='button'
+        onClick={onBack}
+        className='-ml-1 flex w-fit items-center gap-1 text-xs font-medium text-muted-foreground hover:text-foreground'>
+        <ChevronLeft className='size-3.5' />
+        New field
+      </button>
+
+      <input
+        autoFocus
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') submit()
+          if (e.key === 'Escape') onBack()
+        }}
+        placeholder='Field name'
+        className='w-full rounded-md border bg-background px-2 py-1 text-sm outline-none focus:ring-1 focus:ring-ring'
+      />
+
+      <ComboPicker
+        groups={groups}
+        selected={selectedAsOption}
+        multi={false}
+        className='w-[var(--radix-popover-trigger-width)]!'
+        open={typePickerOpen}
+        onOpen={() => setTypePickerOpen(true)}
+        onClose={() => setTypePickerOpen(false)}
+        onChange={(opt) => {
+          if (opt && !Array.isArray(opt)) setType(opt.value as FieldTypeType)
+          setTypePickerOpen(false)
+        }}
+        showSearch
+        searchPlaceholder='Search field types…'>
+        <Button variant='outline' size='sm' className='h-7 w-full justify-between text-xs'>
+          <span className='flex items-center gap-2'>
+            {selectedTypeOption && (
+              <EntityIcon iconId={selectedTypeOption.iconId} variant='default' size='xs' />
+            )}
+            {selectedTypeOption?.label ?? 'Select type'}
+          </span>
+          <ChevronsUpDown className='size-3.5 opacity-50' />
+        </Button>
+      </ComboPicker>
+
+      <div className='flex justify-end gap-1.5'>
+        <Button variant='outline' size='xs' disabled={!canSubmit} onClick={submit}>
+          Add field
+        </Button>
+      </div>
+    </div>
   )
 }
 
