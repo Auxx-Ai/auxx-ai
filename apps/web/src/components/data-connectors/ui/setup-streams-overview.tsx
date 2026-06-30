@@ -11,6 +11,7 @@ import { useResources } from '~/components/resources'
 import type { RouterOutputs } from '~/trpc/react'
 import type { StreamReadiness } from '../hooks/use-setup-progress'
 import { useConnectorDraftStore } from '../stores/connector-draft-store'
+import { InstallOwnedDefs } from './install-owned-defs'
 import { StreamConfigPanel } from './stream-config-panel'
 
 type Connector = NonNullable<RouterOutputs['dataConnector']['getById']>
@@ -45,6 +46,9 @@ export function SetupStreamsOverview({
 
   return (
     <div className='flex flex-col gap-1.5 px-1 py-1'>
+      {/* App connector with owned record types not yet created — install them up front
+          so the owned mappings bind to real defs (v6). Self-hides once all are bound. */}
+      <InstallOwnedDefs connector={connector} />
       {streams.map((stream) => (
         <StreamOverviewRow
           key={stream.id}

@@ -142,4 +142,61 @@ describe('projectAppConnectorTemplates', () => {
   it('does not project contributing targets (customer → contact) as templates', () => {
     expect(byId.has('app:shopify:contact')).toBe(false)
   })
+
+  it('lists the connector’s other owned defs as companions (never self)', () => {
+    const orders = byId.get('app:shopify:orders')
+    expect(orders?.companions?.slice().sort()).toEqual([
+      'app:shopify:line_items',
+      'app:shopify:products',
+    ])
+    expect(orders?.companions).not.toContain('app:shopify:orders')
+  })
+})
+
+describe('projectAppConnectorTemplates — reference vs real owner dedup', () => {
+  // `products` is REFERENCED by the order stream (link-only, no columns) AND OWNED by a
+  // dedicated product stream (its real columns). The reference is declared first, so a
+  // naive first-wins dedup would project the empty reference; the owning stream must win.
+  const CONNECTOR_WITH_PRODUCT_STREAM: CatalogDataConnector = {
+    ...CONNECTOR,
+    streams: [
+      ...CONNECTOR.streams,
+      {
+        key: 'product',
+        displayFieldKey: 'title',
+        fields: [
+          { fieldKey: 'id', sourcePath: 'id', type: 'TEXT', name: 'Product ID' },
+          { fieldKey: 'title', sourcePath: 'title', type: 'TEXT', name: 'Title' },
+        ],
+        defaultMappings: [
+          {
+            rootPath: '',
+            target: {
+              mode: 'owned',
+              entity: {
+                key: 'products',
+                apiSlug: 'shopify_products',
+                singular: 'Product',
+                plural: 'Products',
+                primaryDisplayField: 'title',
+              },
+            },
+          },
+        ],
+      },
+    ],
+  }
+
+  const products = new Map(
+    projectAppConnectorTemplates('shopify', 'Shopify', CONNECTOR_WITH_PRODUCT_STREAM).map((t) => [
+      t.id,
+      t,
+    ])
+  ).get('app:shopify:products')
+
+  it('sources the products template from the owning stream, not the empty reference', () => {
+    const scalar = products?.fields.filter((f) => f.type !== 'RELATIONSHIP') ?? []
+    expect(scalar.map((f) => f.templateFieldId)).toEqual(['id', 'title'])
+    expect(products?.primaryDisplayField).toBe('title')
+  })
 })

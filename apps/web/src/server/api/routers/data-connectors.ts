@@ -25,7 +25,7 @@ import {
   listConnectors,
   listRuns,
   listStreams,
-  materializeConnectorTargets,
+  projectConnectorOwnedTargets,
   READINESS_REASON,
   removeMapping,
   removeStream,
@@ -280,6 +280,42 @@ export const dataConnectorRouter = createTRPCRouter({
       : null
     return { ...connector, connectionHint }
   }),
+
+  /**
+   * The OWNED record types this connector's app catalog declares (v6 —
+   * install-target-defs-via-templates). One entry per owned default-mapping, each
+   * carrying its installable `templateId` (`app:<slug>:<ownedKey>`) + the
+   * `(streamKey, rootPath)` of the mapping that targets it. The Map step uses this to
+   * (1) open the reused `EntityTemplateDialog` with the app's owned templates
+   * pre-selected, and (2) bind every owned mapping to the freshly-installed def in the
+   * install `onComplete`. Empty for a non-app connector or one whose app declares no
+   * owned targets. The owned def's stable identity is its `sourceKey` (== `ownedKey`).
+   */
+  ownedTargets: protectedProcedure
+    .input(z.object({ id: z.string() }))
+    .query(async ({ ctx, input }) => {
+      const result = await getConnector(ctx.db, ctx.session.organizationId, input.id)
+      if (result.isErr()) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: result.error.message })
+      }
+      const connector = result.value
+      const empty = { appSlug: null as string | null, appTitle: null as string | null, targets: [] }
+      if (!connector.type.startsWith('app:')) return empty
+
+      const slug = connector.type.slice('app:'.length)
+      const installedApps = await getCachedInstalledApps(ctx.session.organizationId)
+      const app =
+        installedApps.find((a) => a.installationId === connector.appInstallationId) ??
+        installedApps.find((a) => a.app.slug === slug)
+      const catalog = app?.dataConnectors?.[0] ?? null
+      if (!catalog) return { ...empty, appSlug: slug, appTitle: app?.app.title ?? slug }
+
+      return {
+        appSlug: slug as string | null,
+        appTitle: (app?.app.title ?? slug) as string | null,
+        targets: projectConnectorOwnedTargets(slug, catalog),
+      }
+    }),
 
   /**
    * Status poll for the in-flight sync UI (4s while syncing). Beyond the raw
@@ -573,24 +609,6 @@ export const dataConnectorRouter = createTRPCRouter({
       await backfillPendingChange(ctx.db, ctx.session.organizationId, input.id)
       return { success: true }
     }),
-
-  /**
-   * Provision schema for every owned/contributing mapping of a connector
-   * (provision the def + the mapped fields, 01 §5). Idempotent — re-running
-   * reconciles additively keyed by (dataConnectorId, appFieldKey).
-   */
-  provision: adminProcedure.input(z.object({ id: z.string() })).mutation(async ({ ctx, input }) => {
-    const organizationId = ctx.session.organizationId
-    const result = await getConnector(ctx.db, organizationId, input.id)
-    if (result.isErr()) {
-      throw new TRPCError({ code: 'NOT_FOUND', message: result.error.message })
-    }
-    // Materialize the connector's lazy owned targets (05e): create/adopt owned defs +
-    // fields, backfill refs, provision relationship edges — the same logic every
-    // finalize path (first sync, finishSetup) runs. Idempotent (adopt-by-slug).
-    await materializeConnectorTargets(ctx.db, organizationId, input.id)
-    return { success: true }
-  }),
 
   // ── Stream setup (admin) ──────────────────────────────────────────────────
 

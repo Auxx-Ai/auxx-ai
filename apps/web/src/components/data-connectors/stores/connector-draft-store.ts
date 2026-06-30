@@ -31,32 +31,6 @@ export type SyncMode = 'snapshot' | 'incremental'
 export type SchemaSource = 'catalog' | 'inferred' | 'manual'
 
 /**
- * The persisted owned-def + edge declaration for a LAZILY-provisioned owned mapping
- * (05e). Read-only in the draft (the user never edits it) — carried so the mapping
- * editor can render the POTENTIAL entity before its def exists. Structural mirror of
- * `ConnectorMappingTargetSpec` (server) — kept local so the client store imports no
- * server type.
- */
-export interface DraftTargetSpec {
-  ownedDef?: {
-    /** Stable owner-scoped identity key (manifest key). */
-    sourceKey?: string
-    apiSlug: string
-    singular: string
-    plural: string
-    icon?: string
-    primaryDisplayFieldKey?: string
-  }
-  relationship?: {
-    fieldKey: string
-    name: string
-    cardinality: string
-    inverseName?: string
-    targetRef?: { ownedKey: string } | { entityKind: string }
-  }
-}
-
-/**
  * A draft mapping row. `id` is a server id, or `temp_…` for a not-yet-created row
  * (fan-out). `parentMappingId` may reference a temp id (a child of an uncommitted
  * parent) — the commit resolves it. `_deleted` tombstones a removed row: the row
@@ -71,8 +45,6 @@ export interface DraftMapping {
   linkMode: 'upsert' | 'reference'
   targetMode: 'owned' | 'contributing'
   entityDefinitionId: string | null
-  /** Lazy owned-def + edge declaration (05e). Null/absent for contributing / real-def rows. */
-  targetSpec?: DraftTargetSpec | null
   orphanBehavior: 'archive' | 'mark_deleted' | 'ignore'
   fieldMappings: FieldMapping[]
   _deleted?: boolean
@@ -206,6 +178,11 @@ interface ConnectorDraftState {
   // ── mapping setters (temp-id / tombstone, draft-only) ──
   addMapping: (streamId: string, mapping: AddMappingDraft) => string
   updateMapping: (streamId: string, mappingId: string, patch: MappingPatch) => void
+  /** Patch many mappings (possibly across streams) in ONE store mutation — one
+   *  re-render + one dirty tick. Used by bulk binds (e.g. owned-def install). */
+  updateMappings: (
+    updates: Array<{ streamId: string; mappingId: string; patch: MappingPatch }>
+  ) => void
   removeMapping: (streamId: string, mappingId: string) => void
 }
 
@@ -384,8 +361,6 @@ export const useConnectorDraftStore = create<ConnectorDraftState>()(
             linkMode: mapping.linkMode,
             targetMode: mapping.targetMode,
             entityDefinitionId: mapping.entityDefinitionId,
-            // Fan-out / hand-added rows are never lazy owned — they bind to a real def.
-            targetSpec: null,
             orphanBehavior: mapping.orphanBehavior ?? 'ignore',
             fieldMappings: mapping.fieldMappings ?? [],
           },
@@ -400,6 +375,17 @@ export const useConnectorDraftStore = create<ConnectorDraftState>()(
           rows.map((m) => (m.id === mappingId ? { ...m, ...patch } : m))
         ),
       })),
+
+    updateMappings: (updates) =>
+      set((s) => {
+        let draft = s.draft
+        for (const { streamId, mappingId, patch } of updates) {
+          draft = patchStreamMappings(draft, streamId, (rows) =>
+            rows.map((m) => (m.id === mappingId ? { ...m, ...patch } : m))
+          )
+        }
+        return { draft }
+      }),
 
     removeMapping: (streamId, mappingId) =>
       set((s) => ({

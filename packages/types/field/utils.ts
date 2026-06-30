@@ -72,6 +72,51 @@ export function getFieldDefinitionId(resourceFieldId: ResourceFieldId): string {
   return parseResourceFieldId(resourceFieldId).entityDefinitionId
 }
 
+/** Marker for a connection-late-bound app-field segment (`@app:<slug>:<key>`). */
+const APP_SEGMENT = '@app:'
+
+/** Components of a late-bound app-field ref. */
+export interface AppFieldRefParts {
+  /** First segment — the manifest apiSlug (connector refs) or real def id (binding refs). */
+  defSegment: string
+  appSlug: string
+  appFieldKey: string
+}
+
+/**
+ * Is this a late-bound app-field ref (`${defSegment}:@app:${appSlug}:${appFieldKey}`)?
+ * The `@app:` marker lives in the fieldId segment (everything after the first `:`).
+ */
+export function isAppFieldRef(ref: string): boolean {
+  return getFieldId(ref as ResourceFieldId).startsWith(APP_SEGMENT)
+}
+
+/**
+ * Parse a late-bound app-field ref into its parts, or null if it isn't one.
+ * `appFieldKey` may contain dots (`lineItems.title`) but never colons, so a single
+ * split after the slug is correct.
+ */
+export function parseAppFieldRef(ref: string): AppFieldRefParts | null {
+  if (!isAppFieldRef(ref)) return null
+  const defSegment = getFieldDefinitionId(ref as ResourceFieldId)
+  const body = getFieldId(ref as ResourceFieldId).slice(APP_SEGMENT.length)
+  const sep = body.indexOf(':')
+  if (sep <= 0) return null
+  return { defSegment, appSlug: body.slice(0, sep), appFieldKey: body.slice(sep + 1) }
+}
+
+/**
+ * Build a late-bound app-field ref `${defSegment}:@app:${appSlug}:${appFieldKey}`.
+ * The single constructor for this form — use instead of hand-building the string.
+ */
+export function toAppFieldRef(
+  defSegment: string,
+  appSlug: string,
+  appFieldKey: string
+): ResourceFieldId {
+  return toResourceFieldId(defSegment, `${APP_SEGMENT}${appSlug}:${appFieldKey}`)
+}
+
 /**
  * Create ResourceFieldId[] from entityDefinitionId and array of field IDs.
  */

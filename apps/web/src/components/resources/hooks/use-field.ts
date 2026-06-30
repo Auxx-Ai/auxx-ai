@@ -65,11 +65,13 @@ export interface ResourceFieldWithEffective extends ResourceField {
 export function useField(
   resourceFieldId: ResourceFieldId | null | undefined
 ): ResourceFieldWithEffective | undefined {
-  // Subscribe to specific field in fieldMap
-  // Only re-renders when this specific field changes (due to reference stability)
+  // Subscribe to the resolved field. `getFieldByRef` resolves a concrete
+  // `${defId}:${fieldId}` (fieldMap fast path, stable ref) OR a late-bound
+  // `${apiSlug}:@app:${appSlug}:${appFieldKey}` ref (to the connector/app-created
+  // column), so every caller resolves app refs without doing it themselves.
   const field = useResourceStore((state) => {
     if (!resourceFieldId) return undefined
-    return state.fieldMap[resourceFieldId]
+    return state.getFieldByRef(resourceFieldId)
   })
 
   // Add effectiveFieldType for CALC fields
@@ -105,7 +107,7 @@ export function useFields(
     useShallow((state) => {
       return resourceFieldIds.map((rfId) => {
         if (!rfId) return undefined
-        return state.fieldMap[rfId]
+        return state.getFieldByRef(rfId)
       })
     })
   )

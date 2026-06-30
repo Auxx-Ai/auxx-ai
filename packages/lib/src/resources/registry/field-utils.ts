@@ -1,5 +1,6 @@
 // packages/lib/src/resources/registry/field-utils.ts
 
+import { parseAppFieldRef, type ResourceFieldId, toResourceFieldId } from '@auxx/types/field'
 import type { ExecutionContextManager } from '../../workflow-engine/core/execution-context'
 import { getOperatorsForType } from '../../workflow-engine/operators/type-operator-map'
 import { createResourceReference } from '../../workflow-engine/types/resource-reference'
@@ -7,6 +8,55 @@ import { BaseType } from '../types'
 import { RESOURCE_FIELD_REGISTRY, type TableId } from './field-registry'
 import { getFieldOutputKey, type ResourceField } from './field-types'
 import { isCustomResourceId } from './types'
+
+/** The concrete `${defId}:${fieldId}` ref for a field, preferring its own `resourceFieldId`. */
+function concreteRefOf(
+  field: ResourceField,
+  entityDefinitionId: string | null | undefined
+): ResourceFieldId {
+  return field.resourceFieldId ?? toResourceFieldId(entityDefinitionId ?? '', field.id)
+}
+
+/**
+ * Does `field` satisfy a stored target ref? Matches a concrete `${defId}:${fieldId}`
+ * ref directly, OR a late-bound `@app:` ref by the field's `appFieldKey` (the
+ * connector/app-created column). Pass `slugByInstallationId` to additionally require the
+ * field's installation to belong to the ref's app slug — disambiguates two apps sharing a
+ * key (mirrors the runtime `resolveAppFieldId`). Display/selection only; never mutates.
+ */
+export function fieldMatchesRef(
+  field: ResourceField,
+  entityDefinitionId: string | null | undefined,
+  ref: string,
+  slugByInstallationId?: Map<string, string>
+): boolean {
+  if (concreteRefOf(field, entityDefinitionId) === ref) return true
+  const parts = parseAppFieldRef(ref)
+  if (!parts || field.appFieldKey !== parts.appFieldKey) return false
+  if (!slugByInstallationId) return true
+  return (
+    field.appInstallationId != null &&
+    slugByInstallationId.get(field.appInstallationId) === parts.appSlug
+  )
+}
+
+/**
+ * Resolve a stored ref (concrete OR late-bound `@app:`) to its `ResourceField` + concrete
+ * `ResourceFieldId`, or null if nothing in `fields` matches. The pure twin of the resource
+ * store's `getFieldByRef`, for callers that hold a field list but not the store.
+ */
+export function resolveFieldRef(
+  fields: ResourceField[],
+  entityDefinitionId: string | null | undefined,
+  ref: string | null | undefined,
+  slugByInstallationId?: Map<string, string>
+): { field: ResourceField; concreteRef: ResourceFieldId } | null {
+  if (!ref) return null
+  const field = fields.find((f) =>
+    fieldMatchesRef(f, entityDefinitionId, ref, slugByInstallationId)
+  )
+  return field ? { field, concreteRef: concreteRefOf(field, entityDefinitionId) } : null
+}
 
 /**
  * Get valid operators for a resource field.

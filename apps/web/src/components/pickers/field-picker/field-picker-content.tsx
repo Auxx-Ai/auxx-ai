@@ -4,10 +4,15 @@
 
 import { FieldTypeValues } from '@auxx/database/enums'
 import type { FieldType } from '@auxx/database/types'
-import type { ResourceField } from '@auxx/lib/resources/client'
+import { fieldMatchesRef, type ResourceField } from '@auxx/lib/resources/client'
 import { getRelatedEntityDefinitionId, type RelationshipConfig } from '@auxx/types/custom-field'
 import type { FieldReference, ResourceFieldId } from '@auxx/types/field'
-import { isFieldPath, parseResourceFieldId, toFieldPath } from '@auxx/types/field'
+import {
+  getFieldDefinitionId,
+  isFieldPath,
+  parseResourceFieldId,
+  toFieldPath,
+} from '@auxx/types/field'
 import {
   Command,
   CommandBreadcrumb,
@@ -133,20 +138,23 @@ export function FieldPickerInnerContent({
   const isFieldSelected = useCallback(
     (field: ResourceField): boolean => {
       if (!field.resourceFieldId) return false
+      const defId = getFieldDefinitionId(field.resourceFieldId)
 
       // Build the full path for this field
       const pathIds = stack.map((item) => item.resourceFieldId)
       pathIds.push(field.resourceFieldId)
 
-      // Check if any fieldReference matches
+      // Check if any fieldReference matches. The terminal segment is matched via
+      // `fieldMatchesRef` so a late-bound `@app:` ref selects its concrete column.
       return fieldReferences.some((ref) => {
         if (isFieldPath(ref)) {
-          // Compare paths
           if (ref.length !== pathIds.length) return false
-          return ref.every((id, i) => id === pathIds[i])
+          return ref.every((id, i) =>
+            i === ref.length - 1 ? fieldMatchesRef(field, defId, id) : id === pathIds[i]
+          )
         }
-        // Direct ResourceFieldId comparison (only at root)
-        return stack.length === 0 && ref === field.resourceFieldId
+        // Direct comparison (only at root) — concrete or late-bound `@app:`.
+        return stack.length === 0 && fieldMatchesRef(field, defId, ref)
       })
     },
     [fieldReferences, stack]

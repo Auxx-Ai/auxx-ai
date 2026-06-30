@@ -8,7 +8,7 @@
 import { createId } from '@paralleldrive/cuid2'
 import { type AnyPgColumn, index, jsonb, pgTable, text, timestamp } from './_shared'
 import { DataConnectorStream } from './data-connector-stream'
-import type { ConnectorMappingTargetSpec, FieldMapping } from './data-connector-types'
+import type { FieldMapping } from './data-connector-types'
 import { EntityDefinition } from './entity-definition'
 import { Organization } from './organization'
 
@@ -78,13 +78,6 @@ export const DataConnectorMapping = pgTable(
     // the external id is always the primary key.
     fieldMappings: jsonb().$type<FieldMapping[]>().default([]).notNull(),
 
-    // The persisted, user-editable target declaration for a LAZILY-provisioned owned
-    // mapping (05e). Nullable: set for owned/edge mappings (the def is created/adopted
-    // at finish/first-sync from THIS spec, never the live catalog); null for
-    // contributing mappings (whose system def already exists). Lets the mapping editor
-    // render the POTENTIAL entity before its def exists, and materialization stay
-    // catalog-independent.
-    targetSpec: jsonb().$type<ConnectorMappingTargetSpec>(),
     orphanBehavior: text().default('ignore').notNull(), // 'archive' | 'mark_deleted' | 'ignore'
 
     createdAt: timestamp({ precision: 3 }).defaultNow().notNull(),

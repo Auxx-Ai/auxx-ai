@@ -218,6 +218,16 @@ export const entityDefinitionRouter = createTRPCRouter({
     }),
 
   /**
+   * Get full details for MANY templates in one roundtrip (the install dialog loads a
+   * primary + its companions at once). Returns only the ids that resolve, in input
+   * order; unknown ids are silently dropped. App-projected templates re-derive from the
+   * installed-app catalog once (not per id).
+   */
+  getTemplateByIds: protectedProcedure
+    .input(z.object({ ids: z.array(z.string()).max(20) }))
+    .query(({ ctx, input }) => resolveOrgTemplatesByIds(ctx.session.organizationId, input.ids)),
+
+  /**
    * Install selected templates — creates entity definitions with fields
    */
   createFromTemplates: protectedProcedure

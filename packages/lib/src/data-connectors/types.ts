@@ -580,41 +580,6 @@ export interface FieldMapping {
 }
 
 /**
- * The persisted, user-editable target declaration for a LAZILY-provisioned owned
- * mapping (05e — connector-target-resources-splice). Stored as a nullable jsonb
- * `targetSpec` on a `DataConnectorMapping`: null for contributing mappings (their
- * system def already exists), set for owned/edge mappings so materialization can
- * create the def + relationship edge WITHOUT consulting the live app catalog (which
- * may have changed between setup and first sync).
- *
- * MUST stay byte-compatible with the DB mirror `ConnectorMappingTargetSpec` in
- * `@auxx/database` schema/`data-connector-types.ts`.
- */
-export interface ConnectorMappingTargetSpec {
-  /** Owned-def shell — the def to create (or adopt by `(owner, sourceKey)`) at materialize. */
-  ownedDef?: {
-    /** Stable owner-scoped identity key (manifest key); the adopt/dedupe key. */
-    sourceKey?: string
-    apiSlug: string
-    singular: string
-    plural: string
-    icon?: string
-    /** `appFieldKey` of the field to wire as the def's primary display field. */
-    primaryDisplayFieldKey?: string
-    /** `appFieldKey` of the field to wire as the def's avatar/display image. */
-    avatarFieldKey?: string
-  }
-  /** Parent↔child relationship edge to provision once every def exists. */
-  relationship?: {
-    fieldKey: string
-    name: string
-    cardinality: 'has_many' | 'has_one' | 'belongs_to' | 'many_to_many'
-    inverseName?: string
-    targetRef?: { ownedKey: string } | { entityKind: string }
-  }
-}
-
-/**
  * Pending re-sync marker (jsonb on `DataConnector.resyncPending`, nullable).
  * Stamped by the mapping-edit-safety mutations when a structural edit means existing
  * synced records no longer reflect the current config; cleared on the next full

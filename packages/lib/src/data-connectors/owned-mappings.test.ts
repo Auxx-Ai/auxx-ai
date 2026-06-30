@@ -3,12 +3,14 @@
 // (step-11 gap 2). The DB orchestration in `createConnectorFromAppCatalog` has no
 // vitest harness; these cover the ref-binding logic that's easy to get wrong.
 
+import type { CatalogDataConnector } from '@auxx/database'
 import { describe, expect, it } from 'vitest'
 import {
-  buildLazyOwnedFieldMappings,
+  buildAppOwnedFieldMappings,
   type OwnedFieldEntry,
   ownedParentRootPath,
   partitionOwnedFields,
+  projectConnectorOwnedTargets,
 } from './mutations'
 
 type CatalogField = OwnedFieldEntry['field']
@@ -16,7 +18,7 @@ type CatalogField = OwnedFieldEntry['field']
 const FIELDS: CatalogField[] = [
   { fieldKey: 'id', sourcePath: 'id', type: 'TEXT', name: 'GitHub ID' },
   { fieldKey: 'title', sourcePath: 'title', type: 'TEXT', name: 'Title' },
-  // fieldKey differs from sourcePath — the provisioned column keys on fieldKey,
+  // fieldKey differs from sourcePath — the late-bound ref keys on fieldKey,
   // the projection expression keys on sourcePath.
   { fieldKey: 'author', sourcePath: 'user_login', type: 'TEXT', name: 'Author' },
   {
@@ -28,50 +30,119 @@ const FIELDS: CatalogField[] = [
   },
 ]
 
-describe('buildLazyOwnedFieldMappings', () => {
+describe('buildAppOwnedFieldMappings', () => {
   // Root-level fields: the subtree-relative path equals the sourcePath.
   const entries = FIELDS.map((field) => ({ field, relativeSourcePath: field.sourcePath }))
 
-  it('emits a provision spec + null ref per field, keyed by appFieldKey, name as display', () => {
-    const mappings = buildLazyOwnedFieldMappings(entries)
-    // Every declared field becomes a lazy entry (nothing dropped — no DB ids needed yet).
+  it('emits the late-bound @app ref per field, keyed by fieldKey, no provision', () => {
+    const mappings = buildAppOwnedFieldMappings(entries, 'github', 'github_issues')
+    // Every declared field becomes an entry (nothing dropped — no DB ids needed yet).
     expect(mappings).toHaveLength(4)
 
-    const author = mappings.find((m) => m.provision?.appFieldKey === 'author')
+    const author = mappings.find((m) => m.targetFieldRef?.endsWith(':author'))
     expect(author).toBeDefined()
-    expect(author?.targetFieldRef).toBeNull()
-    expect(author?.provision).toEqual({
-      name: 'Author',
-      appFieldKey: 'author',
-      type: 'TEXT',
-      isHidden: false,
-    })
+    // The ref is `${ownedApiSlug}:@app:${appSlug}:${fieldKey}` — the fieldKey rides
+    // in the ref so the install can rewrite it; it also resolves at sync time.
+    expect(author?.targetFieldRef).toBe('github_issues:@app:github:author')
+    // Option A carries no `provision` hint — install creates the column.
+    expect(author?.provision).toBeUndefined()
     // Expression reads the relative source path, not the fieldKey.
     expect(author?.expression).toBe('{user_login}')
     expect(author?.sourceFields).toEqual({ user_login: 'user_login' })
     expect(author?.id).toBeTruthy()
   })
 
-  it('honors hidden capabilities in the provision spec', () => {
-    const mappings = buildLazyOwnedFieldMappings(entries)
-    const secret = mappings.find((m) => m.provision?.appFieldKey === 'secret')
-    expect(secret?.provision?.isHidden).toBe(true)
-  })
-
   it('keys a child mapping expression on the SUBTREE-relative path, not the full sourcePath', () => {
-    // A `line_items[]` child: the provision key stays the stable fieldKey, but the
-    // expression must read `{sku}` (the subtree is one line item), not `{line_items[].sku}`.
-    const childMappings = buildLazyOwnedFieldMappings([
-      {
-        field: { fieldKey: 'sku', sourcePath: 'line_items[].sku', type: 'TEXT', name: 'SKU' },
-        relativeSourcePath: 'sku',
-      },
-    ])
+    // A `line_items[]` child: the ref keys on the stable fieldKey, but the expression
+    // must read `{sku}` (the subtree is one line item), not `{line_items[].sku}`.
+    const childMappings = buildAppOwnedFieldMappings(
+      [
+        {
+          field: { fieldKey: 'sku', sourcePath: 'line_items[].sku', type: 'TEXT', name: 'SKU' },
+          relativeSourcePath: 'sku',
+        },
+      ],
+      'shopify',
+      'shopify_line_items'
+    )
     expect(childMappings).toHaveLength(1)
     expect(childMappings[0]?.expression).toBe('{sku}')
     expect(childMappings[0]?.sourceFields).toEqual({ sku: 'sku' })
-    expect(childMappings[0]?.provision?.appFieldKey).toBe('sku')
-    expect(childMappings[0]?.targetFieldRef).toBeNull()
+    expect(childMappings[0]?.targetFieldRef).toBe('shopify_line_items:@app:shopify:sku')
+  })
+})
+
+describe('projectConnectorOwnedTargets', () => {
+  // Two streams: a products stream that OWNS the product def, and an orders stream that
+  // owns the order def AND references the product def (the line→product edge).
+  const catalog = {
+    streams: [
+      {
+        key: 'products',
+        defaultMappings: [
+          {
+            rootPath: '',
+            target: {
+              mode: 'owned',
+              entity: { key: 'products', apiSlug: 'shopify_products', singular: 'P', plural: 'Ps' },
+            },
+          },
+        ],
+      },
+      {
+        key: 'orders',
+        defaultMappings: [
+          {
+            rootPath: '',
+            target: {
+              mode: 'owned',
+              entity: { key: 'orders', apiSlug: 'shopify_orders', singular: 'O', plural: 'Os' },
+            },
+          },
+          // A contributing customer branch — NOT owned, must be skipped.
+          { rootPath: 'customer', target: { mode: 'contributing', entityKind: 'contact' } },
+          // A `reference` owned mapping pointing at the SAME product key as the products
+          // stream — both must surface so onComplete binds both to the one product def.
+          {
+            rootPath: 'line_items[].product_id',
+            linkMode: 'reference',
+            target: {
+              mode: 'owned',
+              entity: { key: 'products', apiSlug: 'shopify_products', singular: 'P', plural: 'Ps' },
+            },
+          },
+        ],
+      },
+    ],
+  } as unknown as CatalogDataConnector
+
+  const targets = projectConnectorOwnedTargets('shopify', catalog)
+
+  it('emits one entry per owned mapping, skipping contributing branches', () => {
+    expect(targets).toHaveLength(3)
+    expect(targets.some((t) => t.streamKey === 'orders' && t.rootPath === 'customer')).toBe(false)
+  })
+
+  it('stamps the app:<slug>:<ownedKey> templateId + (streamKey, rootPath)', () => {
+    const orders = targets.find((t) => t.ownedKey === 'orders')
+    expect(orders).toEqual({
+      ownedKey: 'orders',
+      apiSlug: 'shopify_orders',
+      streamKey: 'orders',
+      rootPath: '',
+      templateId: 'app:shopify:orders',
+    })
+  })
+
+  it('surfaces the reference mapping under the same ownedKey as its upsert def', () => {
+    const products = targets.filter((t) => t.ownedKey === 'products')
+    expect(products).toHaveLength(2)
+    expect(products.map((t) => `${t.streamKey}:${t.rootPath}`).sort()).toEqual([
+      'orders:line_items[].product_id',
+      'products:',
+    ])
+    // Same templateId regardless of which stream/mapping declares it.
+    expect(new Set(products.map((t) => t.templateId))).toEqual(new Set(['app:shopify:products']))
   })
 })
 

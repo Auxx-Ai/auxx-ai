@@ -84,6 +84,7 @@ export { mapRecord } from './map-record'
 export type {
   AddMappingInput,
   AddStreamInput,
+  ConnectorOwnedTarget,
   CreateConnectorInput,
   DeleteSyncedDataBehavior,
   UpdateConnectorInput,
@@ -98,6 +99,7 @@ export {
   createConnectorFromTemplate,
   deleteConnector,
   finishConnectorSetup,
+  projectConnectorOwnedTargets,
   removeMapping,
   removeStream,
   setStreamRequestConfig,
@@ -219,7 +221,6 @@ export type {
 export { getAllConnectorTemplates, getConnectorTemplateById } from './templates'
 // Canonical engine types
 export type {
-  ConnectorMappingTargetSpec,
   ConnectorRequestModel,
   DataConnectorType,
   FieldMapping,
