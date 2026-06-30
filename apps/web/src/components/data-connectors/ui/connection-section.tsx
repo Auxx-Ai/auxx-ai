@@ -12,9 +12,9 @@ import { ConnectionList } from '~/components/apps/ui/connection-list'
 import { ConnectionPickerPopover } from '~/components/apps/ui/connection-picker-popover'
 import { ConnectionRow, type ConnectionStatus } from '~/components/apps/ui/connection-row'
 import {
-  AddConnectionDialog,
   type ConnectionRestriction,
-} from '~/components/connections/ui/add-connection-dialog'
+  CredentialTemplateDialog,
+} from '~/components/connections/ui/credential-template-dialog'
 import { api, type RouterOutputs } from '~/trpc/react'
 import { SourceConfigPanel } from './source-config-panel'
 
@@ -204,7 +204,7 @@ export function ConnectionSection({ connector }: ConnectionSectionProps) {
       {/* Connector-level fetch config, inlined below the credential. */}
       <SourceConfigPanel connector={connector} />
 
-      <AddConnectionDialog
+      <CredentialTemplateDialog
         open={addOpen}
         onOpenChange={setAddOpen}
         providers={providers}

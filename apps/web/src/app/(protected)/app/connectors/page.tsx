@@ -14,10 +14,10 @@ import {
 } from '@auxx/ui/components/main-page'
 import { Lock, Plus } from 'lucide-react'
 import { useState } from 'react'
-import { ConnectSourceDialog } from '~/components/data-connectors/ui/connect-source-dialog'
 import { ConnectorList } from '~/components/data-connectors/ui/connector-list'
 import { ConnectorsBulkBar } from '~/components/data-connectors/ui/connectors-bulk-bar'
 import { ConnectorsToolbar } from '~/components/data-connectors/ui/connectors-toolbar'
+import { SourceTemplateDialog } from '~/components/data-connectors/ui/source-template-dialog'
 import { EmptyState } from '~/components/global/empty-state'
 import { ListSelectionProvider } from '~/components/list-selection'
 import { useFeatureFlags } from '~/providers/feature-flag-provider'
@@ -66,7 +66,7 @@ export default function ConnectorsPage() {
           />
         )}
       </MainPageContent>
-      <ConnectSourceDialog open={pickerOpen} onOpenChange={setPickerOpen} />
+      <SourceTemplateDialog open={pickerOpen} onOpenChange={setPickerOpen} />
     </MainPage>
   )
 }

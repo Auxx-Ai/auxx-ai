@@ -15,12 +15,12 @@ import { SettingsSection } from '~/components/global/settings-page'
 import { useConfirm } from '~/hooks/use-confirm'
 import { useUser } from '~/hooks/use-user'
 import { api } from '~/trpc/react'
-import { AddConnectionDialog } from './add-connection-dialog'
 import { ConnectionCard, type ConnectionRow } from './connection-card'
 import { ConnectionDetailDialog } from './connection-detail-dialog'
 import type { DetailMethod } from './connection-detail-page'
 import { ConnectionStackCard } from './connection-stack-card'
 import { appTarget, platformTarget } from './connection-targets'
+import { CredentialTemplateDialog } from './credential-template-dialog'
 import { type ConnectionGroup, groupConnections } from './group-connections'
 import { McpReconnectController } from './mcp-reconnect-controller'
 
@@ -416,7 +416,7 @@ export function ConnectionsSection() {
       )}
 
       {addOpen && (
-        <AddConnectionDialog
+        <CredentialTemplateDialog
           open={addOpen}
           onOpenChange={setAddOpen}
           providers={providers}
