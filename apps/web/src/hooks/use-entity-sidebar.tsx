@@ -1,15 +1,19 @@
 // apps/web/src/hooks/use-entity-sidebar.tsx
 
+import { generateId } from '@auxx/utils'
 import { useCallback, useMemo, useRef, useState } from 'react'
 import { useResources } from '~/components/resources/hooks'
 import { useSettings } from '~/hooks/use-settings'
+import { useUser } from '~/hooks/use-user'
 
-/** Setting keys for entity sidebar */
+/** Setting keys for the Records sidebar (all org-wide / admin-editable). */
 const ENTITY_ORDER_SETTING_KEY = 'sidebar.entities.order'
 const ENTITY_VISIBILITY_SETTING_KEY = 'sidebar.entities.visibility'
 const ENTITY_GROUP_VISIBILITY_SETTING_KEY = 'sidebar.entities.groupVisible'
+const ENTITY_FOLDERS_SETTING_KEY = 'sidebar.entities.folders'
+const ENTITY_FOLDER_ITEMS_SETTING_KEY = 'sidebar.entities.folderItems'
 
-/** Processed entity with visibility and ordering metadata */
+/** Processed entity with visibility metadata */
 export interface ProcessedEntity {
   id: string
   apiSlug: string
@@ -23,30 +27,80 @@ export interface ProcessedEntity {
   href: string
 }
 
+/** A folder definition in the Records sidebar. */
+export interface EntityFolder {
+  id: string
+  title: string
+}
+
+/** A node in the root sequence: either a folder or a top-level entity. */
+export type EntityRootNode =
+  | { nodeType: 'FOLDER'; folder: EntityFolder }
+  | { nodeType: 'ENTITY'; entity: ProcessedEntity }
+
+/** Tree shape consumed by the sidebar: root nodes + per-folder children. */
+export interface EntityTree {
+  rootSequence: EntityRootNode[]
+  folderItems: Record<string, ProcessedEntity[]>
+  folders: EntityFolder[]
+}
+
 interface UseEntitySidebarOptions {
   scope?: string
 }
 
 /**
- * Hook for managing entity sidebar state including edit mode, visibility, and ordering.
- * Follows the same patterns as useMailSidebar.
+ * Hook for the Records sidebar: org-wide folders, ordering, and visibility.
+ *
+ * Layout is stored entirely in org settings (no DB table) and is editable by
+ * admins/owners only. Reordering/visibility/folder ops write through
+ * `updateOrganizationSetting` (which enforces admin server-side and broadcasts
+ * `org.settings.changed` to every member).
  */
 export function useEntitySidebar({ scope = 'SIDEBAR' }: UseEntitySidebarOptions = {}) {
   const [isEditMode, setIsEditMode] = useState(false)
   const lastToggleTime = useRef<number>(0)
 
-  const { getSetting, updateUserSetting, isLoading: settingsLoading } = useSettings({ scope })
+  const {
+    getSetting,
+    updateOrganizationSetting,
+    isLoading: settingsLoading,
+  } = useSettings({ scope })
   const { customResources, isLoading: resourcesLoading } = useResources()
+  const { isAdminOrOwner } = useUser()
 
-  /** Process entities: apply saved order and visibility */
-  const entities = useMemo((): ProcessedEntity[] => {
-    // Get saved order and visibility settings
-    const entityOrder = (getSetting(ENTITY_ORDER_SETTING_KEY) as string[]) || []
-    const visibilitySettings =
-      (getSetting(ENTITY_VISIBILITY_SETTING_KEY) as Record<string, boolean>) || {}
+  // ── Typed reads ────────────────────────────────────────────────────────────
+  const readOrder = useCallback(
+    () => (getSetting(ENTITY_ORDER_SETTING_KEY) as string[]) || [],
+    [getSetting]
+  )
+  const readVisibility = useCallback(
+    () => (getSetting(ENTITY_VISIBILITY_SETTING_KEY) as Record<string, boolean>) || {},
+    [getSetting]
+  )
+  const readFolders = useCallback(
+    () => (getSetting(ENTITY_FOLDERS_SETTING_KEY) as EntityFolder[]) || [],
+    [getSetting]
+  )
+  const readFolderItems = useCallback(
+    () => (getSetting(ENTITY_FOLDER_ITEMS_SETTING_KEY) as Record<string, string[]>) || {},
+    [getSetting]
+  )
 
-    // Convert custom resources to processed entities, filtering out hidden entities
-    const allEntities: ProcessedEntity[] = (customResources || [])
+  /** Persist an org-scoped layout setting (admin only, enforced server-side). */
+  const setOrg = useCallback(
+    (key: string, value: unknown) => updateOrganizationSetting(key, value as never, false),
+    [updateOrganizationSetting]
+  )
+
+  // ── Tree ─────────────────────────────────────────────────────────────────
+  const tree = useMemo((): EntityTree => {
+    const order = readOrder()
+    const visibility = readVisibility()
+    const folders = readFolders()
+    const folderItemsRaw = readFolderItems()
+
+    const baseEntities: ProcessedEntity[] = (customResources || [])
       .filter((resource) => resource.isVisible !== false)
       .map((resource) => ({
         id: resource.id,
@@ -57,91 +111,191 @@ export function useEntitySidebar({ scope = 'SIDEBAR' }: UseEntitySidebarOptions 
         color: resource.color,
         entityType: resource.entityType,
         isLocked: false,
-        isVisible: visibilitySettings[resource.id] !== false,
+        isVisible: visibility[resource.id] !== false,
         href: resource.entityType ? `/app/${resource.apiSlug}` : `/app/custom/${resource.apiSlug}`,
       }))
 
-    // Create a map for quick lookup
-    const entityMap = new Map(allEntities.map((entity) => [entity.id, entity]))
+    const entityMap = new Map(baseEntities.map((e) => [e.id, e]))
+    const folderIds = new Set(folders.map((f) => f.id))
 
-    // Build sorted list based on saved order
-    const sortedEntities: ProcessedEntity[] = []
-    const processedIds = new Set<string>()
-
-    // First, add entities in saved order
-    entityOrder.forEach((id) => {
-      const entity = entityMap.get(id)
-      if (entity) {
-        sortedEntities.push({
-          ...entity,
-          isVisible: entity.isLocked ? true : visibilitySettings[id] !== false,
-        })
-        processedIds.add(id)
+    // Resolve folder children, tracking which entities are claimed by a folder.
+    const assigned = new Set<string>()
+    const folderItems: Record<string, ProcessedEntity[]> = {}
+    for (const folder of folders) {
+      const ids = folderItemsRaw[folder.id] ?? []
+      const resolved: ProcessedEntity[] = []
+      for (const eid of ids) {
+        const entity = entityMap.get(eid)
+        if (entity && !assigned.has(eid)) {
+          resolved.push(entity)
+          assigned.add(eid)
+        }
       }
-    })
+      folderItems[folder.id] = resolved
+    }
 
-    // Then, append any entities not in saved order (new entities)
-    allEntities.forEach((entity) => {
-      if (!processedIds.has(entity.id)) {
-        sortedEntities.push({
-          ...entity,
-          isVisible: entity.isLocked ? true : visibilitySettings[entity.id] !== false,
-        })
+    // Build the root sequence from `order` (folders + root entities interleaved).
+    const rootSequence: EntityRootNode[] = []
+    const seenFolders = new Set<string>()
+    const seenRootEntities = new Set<string>()
+    for (const id of order) {
+      if (folderIds.has(id)) {
+        if (seenFolders.has(id)) continue
+        const folder = folders.find((f) => f.id === id)
+        if (folder) {
+          rootSequence.push({ nodeType: 'FOLDER', folder })
+          seenFolders.add(id)
+        }
+      } else {
+        const entity = entityMap.get(id)
+        if (entity && !assigned.has(id) && !seenRootEntities.has(id)) {
+          rootSequence.push({ nodeType: 'ENTITY', entity })
+          seenRootEntities.add(id)
+        }
       }
-    })
+    }
+    // Append folders/entities not present in `order` (newly created).
+    for (const folder of folders) {
+      if (!seenFolders.has(folder.id)) {
+        rootSequence.push({ nodeType: 'FOLDER', folder })
+        seenFolders.add(folder.id)
+      }
+    }
+    for (const entity of baseEntities) {
+      if (!assigned.has(entity.id) && !seenRootEntities.has(entity.id)) {
+        rootSequence.push({ nodeType: 'ENTITY', entity })
+        seenRootEntities.add(entity.id)
+      }
+    }
 
-    return sortedEntities
-  }, [customResources, getSetting])
+    return { rootSequence, folderItems, folders }
+  }, [customResources, readOrder, readVisibility, readFolders, readFolderItems])
 
-  /** Get group visibility setting */
+  /** Group visibility setting */
   const isGroupVisible = useMemo((): boolean => {
-    const setting = getSetting(ENTITY_GROUP_VISIBILITY_SETTING_KEY)
-    return setting !== false
+    return getSetting(ENTITY_GROUP_VISIBILITY_SETTING_KEY) !== false
   }, [getSetting])
 
-  /** Toggle edit mode with debounce */
+  // ── Edit mode ──────────────────────────────────────────────────────────────
   const toggleEditMode = useCallback(() => {
     const now = Date.now()
-    if (now - lastToggleTime.current < 300) {
-      return
-    }
+    if (now - lastToggleTime.current < 300) return
     lastToggleTime.current = now
     setIsEditMode((prev) => !prev)
   }, [])
 
-  /** Update entity visibility */
+  // ── Visibility ─────────────────────────────────────────────────────────────
   const updateEntityVisibility = useCallback(
     (entityId: string, isVisible: boolean) => {
-      const currentSettings =
-        (getSetting(ENTITY_VISIBILITY_SETTING_KEY) as Record<string, boolean>) || {}
-      const updatedSettings = { ...currentSettings, [entityId]: isVisible }
-      updateUserSetting(ENTITY_VISIBILITY_SETTING_KEY, updatedSettings)
+      setOrg(ENTITY_VISIBILITY_SETTING_KEY, { ...readVisibility(), [entityId]: isVisible })
     },
-    [getSetting, updateUserSetting]
+    [readVisibility, setOrg]
   )
 
-  /** Update entity order */
-  const updateEntityOrder = useCallback(
-    (orderedEntityIds: string[]) => {
-      updateUserSetting(ENTITY_ORDER_SETTING_KEY, orderedEntityIds)
-    },
-    [updateUserSetting]
-  )
-
-  /** Toggle group visibility */
   const toggleGroupVisibility = useCallback(() => {
-    const currentValue = getSetting(ENTITY_GROUP_VISIBILITY_SETTING_KEY) !== false
-    updateUserSetting(ENTITY_GROUP_VISIBILITY_SETTING_KEY, !currentValue)
-  }, [getSetting, updateUserSetting])
+    const current = getSetting(ENTITY_GROUP_VISIBILITY_SETTING_KEY) !== false
+    setOrg(ENTITY_GROUP_VISIBILITY_SETTING_KEY, !current)
+  }, [getSetting, setOrg])
+
+  // ── Ordering ───────────────────────────────────────────────────────────────
+  /** Reorder the root sequence (array of folder/entity IDs). */
+  const reorderRoot = useCallback(
+    (orderedIds: string[]) => setOrg(ENTITY_ORDER_SETTING_KEY, orderedIds),
+    [setOrg]
+  )
+
+  /** Reorder entities within a folder. */
+  const reorderWithinFolder = useCallback(
+    (folderId: string, orderedEntityIds: string[]) => {
+      setOrg(ENTITY_FOLDER_ITEMS_SETTING_KEY, {
+        ...readFolderItems(),
+        [folderId]: orderedEntityIds,
+      })
+    },
+    [readFolderItems, setOrg]
+  )
+
+  // ── Folder CRUD ────────────────────────────────────────────────────────────
+  const createFolder = useCallback(
+    (title: string) => {
+      const id = generateId()
+      setOrg(ENTITY_FOLDERS_SETTING_KEY, [...readFolders(), { id, title }])
+      setOrg(ENTITY_ORDER_SETTING_KEY, [...readOrder(), id])
+      return id
+    },
+    [readFolders, readOrder, setOrg]
+  )
+
+  const renameFolder = useCallback(
+    (folderId: string, title: string) => {
+      setOrg(
+        ENTITY_FOLDERS_SETTING_KEY,
+        readFolders().map((f) => (f.id === folderId ? { ...f, title } : f))
+      )
+    },
+    [readFolders, setOrg]
+  )
+
+  /** Delete a folder; its entities fall back to the root (appended). */
+  const deleteFolder = useCallback(
+    (folderId: string) => {
+      const items = readFolderItems()
+      const children = items[folderId] ?? []
+      const { [folderId]: _removed, ...restItems } = items
+      setOrg(
+        ENTITY_FOLDERS_SETTING_KEY,
+        readFolders().filter((f) => f.id !== folderId)
+      )
+      setOrg(ENTITY_FOLDER_ITEMS_SETTING_KEY, restItems)
+      setOrg(ENTITY_ORDER_SETTING_KEY, [
+        ...readOrder().filter((id) => id !== folderId),
+        ...children,
+      ])
+    },
+    [readFolderItems, readFolders, readOrder, setOrg]
+  )
+
+  /**
+   * Move an entity into a folder (or to the root when `folderId` is null).
+   * Removes it from wherever it currently lives first.
+   */
+  const moveEntityToFolder = useCallback(
+    (entityId: string, folderId: string | null, index?: number) => {
+      const order = readOrder().filter((id) => id !== entityId)
+      const items = readFolderItems()
+      const nextItems: Record<string, string[]> = {}
+      for (const [fid, arr] of Object.entries(items)) {
+        nextItems[fid] = arr.filter((id) => id !== entityId)
+      }
+
+      if (folderId) {
+        const arr = nextItems[folderId] ?? []
+        arr.splice(index ?? arr.length, 0, entityId)
+        nextItems[folderId] = arr
+      } else {
+        order.splice(index ?? order.length, 0, entityId)
+      }
+
+      setOrg(ENTITY_ORDER_SETTING_KEY, order)
+      setOrg(ENTITY_FOLDER_ITEMS_SETTING_KEY, nextItems)
+    },
+    [readOrder, readFolderItems, setOrg]
+  )
 
   return {
     isEditMode,
-    entities,
     isLoading: resourcesLoading || settingsLoading,
+    canEdit: isAdminOrOwner,
+    tree,
+    isGroupVisible,
     toggleEditMode,
     updateEntityVisibility,
-    updateEntityOrder,
-    isGroupVisible,
     toggleGroupVisibility,
+    reorderRoot,
+    reorderWithinFolder,
+    createFolder,
+    renameFolder,
+    deleteFolder,
+    moveEntityToFolder,
   }
 }

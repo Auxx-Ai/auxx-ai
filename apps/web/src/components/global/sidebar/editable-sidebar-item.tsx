@@ -3,6 +3,7 @@
 
 import { Badge } from '@auxx/ui/components/badge'
 import { Checkbox } from '@auxx/ui/components/checkbox'
+import { cn } from '@auxx/ui/lib/utils'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { GripVertical } from 'lucide-react'
@@ -19,6 +20,10 @@ interface EditableSidebarItemProps {
   className?: string
   // Props for dnd-kit integration (optional, only passed when draggable)
   isDraggable?: boolean
+  /** Arbitrary data attached to the sortable, read in the DndContext's onDragEnd. */
+  dndData?: Record<string, unknown>
+  /** Show a blue drop-target outline while another row is dragged over this one. */
+  showDropIndicator?: boolean
 }
 
 export function EditableSidebarItem({
@@ -31,12 +36,18 @@ export function EditableSidebarItem({
   onToggleVisibility,
   className = '',
   isDraggable = true, // Default to not draggable
+  dndData,
+  showDropIndicator = false,
 }: EditableSidebarItemProps) {
   // DnD logic
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
-    id: id,
-    disabled: isLocked || !isDraggable,
-  }) // Disable sorting if locked or not explicitly draggable
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging, isOver } =
+    useSortable({
+      id: id,
+      disabled: isLocked || !isDraggable,
+      data: dndData,
+    }) // Disable sorting if locked or not explicitly draggable
+
+  const isDropOver = showDropIndicator && isOver && !isDragging
 
   const style: HTMLAttributes<HTMLDivElement>['style'] = isDraggable
     ? {
@@ -51,9 +62,12 @@ export function EditableSidebarItem({
     <div
       ref={isDraggable ? setNodeRef : undefined} // Only set ref if draggable
       style={style}
-      className={`flex h-7 w-full items-center justify-between px-2 text-sm ${
-        isDragging ? 'shadow-lg' : ''
-      } ${className}`}>
+      className={cn(
+        'flex h-7 w-full items-center justify-between rounded-md px-2 text-sm',
+        isDragging && 'shadow-lg',
+        isDropOver && 'bg-blue-500/10 ring-2 ring-inset ring-blue-500/50',
+        className
+      )}>
       <div className='flex items-center'>
         {isDraggable && !isLocked ? (
           // Draggable handle (only if draggable and not locked)

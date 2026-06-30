@@ -54,18 +54,21 @@ export const sidebarSettings = {
     type: 'object',
     description: 'Visibility settings for sidebar groups (Me, Views, Shared)',
   },
+  // Records sidebar layout is org-wide (shared by everyone, admin-editable).
   'sidebar.entities.order': {
     key: 'sidebar.entities.order',
     scope: 'SIDEBAR',
     defaultValue: [],
     type: 'object',
-    description: 'Order of entity definitions in the Records sidebar',
+    organizationOnly: true,
+    description: 'Order of root-level Records sidebar nodes (interleaved folder + entity IDs)',
   },
   'sidebar.entities.visibility': {
     key: 'sidebar.entities.visibility',
     scope: 'SIDEBAR',
     defaultValue: {},
     type: 'object',
+    organizationOnly: true,
     description: 'Visibility settings for entity definitions in the Records sidebar',
   },
   'sidebar.entities.groupVisible': {
@@ -73,7 +76,24 @@ export const sidebarSettings = {
     scope: 'SIDEBAR',
     defaultValue: true,
     type: 'boolean',
+    organizationOnly: true,
     description: 'Visibility of the Records group in sidebar',
+  },
+  'sidebar.entities.folders': {
+    key: 'sidebar.entities.folders',
+    scope: 'SIDEBAR',
+    defaultValue: [], // Array<{ id: string; title: string }>
+    type: 'object',
+    organizationOnly: true,
+    description: 'Folder definitions for the Records sidebar',
+  },
+  'sidebar.entities.folderItems': {
+    key: 'sidebar.entities.folderItems',
+    scope: 'SIDEBAR',
+    defaultValue: {}, // Record<folderId, entityId[]>
+    type: 'object',
+    organizationOnly: true,
+    description: 'Ordered entity IDs within each Records sidebar folder (membership + order)',
   },
 }
 

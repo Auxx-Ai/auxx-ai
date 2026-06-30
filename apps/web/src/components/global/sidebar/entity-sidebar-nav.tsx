@@ -17,9 +17,11 @@ import {
 } from '@auxx/ui/components/sidebar'
 import { toastError } from '@auxx/ui/components/toast'
 import {
+  type Active,
   closestCenter,
   DndContext,
   type DragEndEvent,
+  type DragStartEvent,
   KeyboardSensor,
   PointerSensor,
   useSensor,
@@ -32,9 +34,19 @@ import {
   sortableKeyboardCoordinates,
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable'
-import { Archive, LayoutTemplate, Pencil, Plus, Settings, Settings2, Trash2 } from 'lucide-react'
+import {
+  Archive,
+  FolderPlus,
+  LayoutTemplate,
+  Pencil,
+  Plus,
+  Settings,
+  Settings2,
+  Trash2,
+} from 'lucide-react'
 import { usePathname, useRouter } from 'next/navigation'
 import { useCallback, useEffect, useState } from 'react'
+import { DndStateProvider } from '~/app/context/dnd-state-context'
 import { EntityDefinitionDialog } from '~/components/custom-fields/ui/entity-definition-dialog'
 import { EntityTemplateDialog } from '~/components/custom-fields/ui/entity-template-dialog'
 import { SidebarGroupHeader } from '~/components/global/sidebar/sidebar-group-header'
@@ -46,16 +58,31 @@ import { type ProcessedEntity, useEntitySidebar } from '~/hooks/use-entity-sideb
 import { useUser } from '~/hooks/use-user'
 import { useFeatureFlags } from '~/providers/feature-flag-provider'
 import { EditableSidebarItem } from './editable-sidebar-item'
+import { EntityFolder, entityDndId, folderDndId } from './entity-folder'
 import { SidebarItem } from './sidebar-item'
 import { useSidebarStateContext } from './sidebar-state-context'
 
-/** Entity ID type for sidebar state */
-type EntityDefinitionId = string
+/** dnd-kit drag payload for Records nodes. */
+interface DragData {
+  kind: 'entity' | 'folder' | 'folderDrop'
+  entityId?: string
+  folderId?: string
+  /** 'root' or a folder id — which container the dragged entity lives in. */
+  container?: string
+}
+
+const ROOT = 'root'
+
+/** The raw (unprefixed) id a drop target points at. */
+function rawIdOf(d?: DragData): string | undefined {
+  if (!d) return undefined
+  return d.kind === 'entity' ? d.entityId : d.folderId
+}
 
 /**
- * Sidebar navigation component for dynamic entity definitions.
- * Displays entity definitions under "Records" section with icons.
- * Supports edit mode with drag-and-drop reordering and visibility toggles.
+ * Sidebar navigation for entity definitions ("Records").
+ * Org-wide layout with folders, drag-and-drop reordering, and visibility
+ * toggles — all editable by admins/owners inside Edit mode.
  */
 export function EntitySidebarNav() {
   const pathname = usePathname()
@@ -63,7 +90,10 @@ export function EntitySidebarNav() {
   const [dialogOpen, setDialogOpen] = useState(false)
   const [templateDialogOpen, setTemplateDialogOpen] = useState(false)
   const [limitDialogOpen, setLimitDialogOpen] = useState(false)
-  const [editingEntityId, setEditingEntityId] = useState<EntityDefinitionId | null>(null)
+  const [editingEntityId, setEditingEntityId] = useState<string | null>(null)
+  const [activeDndItem, setActiveDndItem] = useState<Active | null>(null)
+  const [creatingFolder, setCreatingFolder] = useState(false)
+  const [draftFolderTitle, setDraftFolderTitle] = useState('')
   const [confirm, ConfirmDialog] = useConfirm()
   const { archiveEntity, deleteEntity } = useEntityDefinitionMutations()
   const { isAdminOrOwner } = useUser()
@@ -75,77 +105,104 @@ export function EntitySidebarNav() {
   const atEntityLimit = isAtLimit(FeatureKey.entities, userCreatedEntityCount)
   const entityLimit = getLimit(FeatureKey.entities)
 
-  // Use the entity sidebar hook for edit mode, visibility, and ordering
   const {
     isEditMode,
-    entities,
+    tree,
     isLoading,
+    canEdit,
     toggleEditMode,
     updateEntityVisibility,
-    updateEntityOrder,
     isGroupVisible,
     toggleGroupVisibility,
+    reorderRoot,
+    reorderWithinFolder,
+    createFolder,
+    renameFolder,
+    deleteFolder,
+    moveEntityToFolder,
   } = useEntitySidebar()
 
-  // DnD sensors setup
   const sensors = useSensors(
-    useSensor(PointerSensor, {
-      activationConstraint: { distance: 5 },
-    }),
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   )
 
   // Close edit mode when unmounting
   useEffect(() => {
     return () => {
-      if (isEditMode) {
-        toggleEditMode()
-      }
+      if (isEditMode) toggleEditMode()
     }
   }, [isEditMode, toggleEditMode])
 
-  /** Toggle the Records group open/closed state */
   function handleToggleOpen() {
     toggleGroup('records')
   }
 
-  /** Toggle entity visibility in edit mode */
-  const handleToggleVisibility = useCallback(
-    (entityId: string) => {
-      const entity = entities.find((e) => e.id === entityId)
-      if (entity && !entity.isLocked) {
-        updateEntityVisibility(entityId, !entity.isVisible)
-      }
-    },
-    [entities, updateEntityVisibility]
+  // ── DnD ──────────────────────────────────────────────────────────────────
+  const rootRawIds = tree.rootSequence.map((n) =>
+    n.nodeType === 'FOLDER' ? n.folder.id : n.entity.id
   )
 
-  /** Handle drag end event for reordering */
+  const handleDragStart = useCallback((event: DragStartEvent) => {
+    setActiveDndItem(event.active)
+  }, [])
+
   const handleDragEnd = useCallback(
     (event: DragEndEvent) => {
       const { active, over } = event
+      setActiveDndItem(null)
+      if (!over) return
+      const a = active.data.current as DragData | undefined
+      const o = over.data.current as DragData | undefined
+      if (!a) return
 
-      if (over && active.id !== over.id) {
-        const oldIndex = entities.findIndex((item) => item.id === active.id)
-        const newIndex = entities.findIndex((item) => item.id === over.id)
+      // Entity dropped onto a folder (its drop target or the folder row itself).
+      if (a.kind === 'entity' && (o?.kind === 'folderDrop' || o?.kind === 'folder')) {
+        if (a.container !== o.folderId) moveEntityToFolder(a.entityId!, o.folderId!)
+        return
+      }
 
-        if (oldIndex !== -1 && newIndex !== -1) {
-          const newOrderedEntities = arrayMove(entities, oldIndex, newIndex)
-          const newOrderIds = newOrderedEntities.map((entity) => entity.id)
-          updateEntityOrder(newOrderIds)
+      if (active.id === over.id) return
+
+      // Folder reordered among root nodes.
+      if (a.kind === 'folder') {
+        const from = rootRawIds.indexOf(a.folderId!)
+        const to = rootRawIds.indexOf(rawIdOf(o)!)
+        if (from !== -1 && to !== -1 && from !== to) reorderRoot(arrayMove(rootRawIds, from, to))
+        return
+      }
+
+      // Entity reorder / cross-container move.
+      const overContainer = o?.container ?? ROOT
+      if (overContainer === a.container) {
+        if (a.container === ROOT) {
+          const from = rootRawIds.indexOf(a.entityId!)
+          const to = rootRawIds.indexOf(rawIdOf(o)!)
+          if (from !== -1 && to !== -1 && from !== to) reorderRoot(arrayMove(rootRawIds, from, to))
+        } else {
+          const ids = (tree.folderItems[a.container!] ?? []).map((e) => e.id)
+          const from = ids.indexOf(a.entityId!)
+          const to = ids.indexOf(o?.entityId ?? '')
+          if (from !== -1 && to !== -1 && from !== to)
+            reorderWithinFolder(a.container!, arrayMove(ids, from, to))
         }
+      } else if (overContainer === ROOT) {
+        const idx = rootRawIds.indexOf(rawIdOf(o)!)
+        moveEntityToFolder(a.entityId!, null, idx === -1 ? undefined : idx)
+      } else {
+        const idx = (tree.folderItems[overContainer] ?? []).findIndex((e) => e.id === o?.entityId)
+        moveEntityToFolder(a.entityId!, overContainer, idx === -1 ? undefined : idx)
       }
     },
-    [entities, updateEntityOrder]
+    [rootRawIds, tree.folderItems, moveEntityToFolder, reorderRoot, reorderWithinFolder]
   )
 
-  /** Open dialog in edit mode */
+  // ── Entity actions ─────────────────────────────────────────────────────────
   function handleEditEntity(entity: CustomResource) {
     setEditingEntityId(entity.id)
     setDialogOpen(true)
   }
 
-  /** Archive an entity definition */
   async function handleArchiveEntity(entity: CustomResource) {
     const confirmed = await confirm({
       title: `Archive "${entity.label}"?`,
@@ -155,7 +212,6 @@ export function EntitySidebarNav() {
       cancelText: 'Cancel',
       destructive: true,
     })
-
     if (confirmed) {
       archiveEntity.mutate(
         { id: entity.id },
@@ -168,7 +224,6 @@ export function EntitySidebarNav() {
     }
   }
 
-  /** Permanently delete an entity definition (records, fields, relationships). */
   async function handleDeleteEntity(entity: CustomResource) {
     const confirmed = await confirm({
       title: `Delete "${entity.label}" permanently?`,
@@ -180,7 +235,6 @@ export function EntitySidebarNav() {
       cancelText: 'Cancel',
       destructive: true,
     })
-
     if (confirmed) {
       deleteEntity.mutate(
         { id: entity.id },
@@ -193,13 +247,11 @@ export function EntitySidebarNav() {
     }
   }
 
-  /** Check if an entity route is active */
   function isActive(entity: ProcessedEntity) {
     const url = entity.href
     return pathname === url || pathname.startsWith(`${url}/`)
   }
 
-  /** Render icon component for entity definition */
   function renderIcon(iconId: string, color: string) {
     return (
       <EntityIcon
@@ -212,20 +264,12 @@ export function EntitySidebarNav() {
     )
   }
 
-  // Filtered entities for normal mode (only visible ones)
-  const visibleEntities = entities.filter((e) => e.isVisible)
-  const allEntityIds = entities.map((e) => e.id)
-  const allItemsHidden = visibleEntities.length === 0
-
-  /** Get edit items for an entity */
+  /** Per-entity dropdown items (normal mode). */
   function getEditItems(entity: ProcessedEntity) {
-    // Find the corresponding custom resource for edit/archive actions
     const resource = customResources?.find((r) => r.id === entity.id)
     if (!resource) return null
 
     const isSystemEntity = !!resource.entityType
-    // Archive + permanent delete are admin/owner only (org-wide destructive ops);
-    // the server enforces this too via `adminProcedure`.
     const canRemove = !isSystemEntity && isAdminOrOwner
 
     return (
@@ -260,42 +304,80 @@ export function EntitySidebarNav() {
     )
   }
 
-  /** Render entity list in edit mode with DnD */
-  function renderEditModeList() {
-    if (entities.length === 0) {
-      return (
-        <SidebarMenuItem>
-          <div className='px-2 py-1.5 text-sm text-muted-foreground'>No entities to edit</div>
-        </SidebarMenuItem>
-      )
-    }
-
+  // ── Row renderers ──────────────────────────────────────────────────────────
+  function renderEntityRowNormal(entity: ProcessedEntity, parentFolderId: string | null) {
     return (
-      <DndContext
-        sensors={sensors}
-        collisionDetection={closestCenter}
-        onDragEnd={handleDragEnd}
-        modifiers={[restrictToVerticalAxis]}>
-        <SortableContext items={allEntityIds} strategy={verticalListSortingStrategy}>
-          {entities.map((entity) => (
-            <SidebarMenuItem key={entity.id} className='p-0'>
-              <EditableSidebarItem
-                id={entity.id}
-                name={entity.plural}
-                icon={renderIcon(entity.icon, entity.color)}
-                isVisible={entity.isVisible}
-                isLocked={entity.isLocked}
-                onToggleVisibility={handleToggleVisibility}
-                isDraggable={true}
-              />
-            </SidebarMenuItem>
-          ))}
-        </SortableContext>
-      </DndContext>
+      <SidebarMenuItem key={entity.id}>
+        <SidebarItem
+          id={entity.id}
+          name={entity.plural}
+          href={entity.href}
+          icon={renderIcon(entity.icon, entity.color)}
+          isActive={isActive(entity)}
+          isSubmenu={parentFolderId !== null}
+          editItems={getEditItems(entity)}
+        />
+      </SidebarMenuItem>
     )
   }
 
-  /** Render entity list in normal mode */
+  function renderEntityRowEdit(entity: ProcessedEntity, parentFolderId: string | null) {
+    return (
+      <SidebarMenuItem key={entity.id} className='p-0'>
+        <EditableSidebarItem
+          id={entityDndId(entity.id)}
+          name={entity.plural}
+          icon={renderIcon(entity.icon, entity.color)}
+          isVisible={entity.isVisible}
+          isLocked={entity.isLocked}
+          onToggleVisibility={() => updateEntityVisibility(entity.id, !entity.isVisible)}
+          isDraggable={canEdit}
+          showDropIndicator
+          dndData={{ kind: 'entity', entityId: entity.id, container: parentFolderId ?? ROOT }}
+        />
+      </SidebarMenuItem>
+    )
+  }
+
+  // ── Folder create ──────────────────────────────────────────────────────────
+  function startCreateFolder() {
+    setDraftFolderTitle('')
+    setCreatingFolder(true)
+  }
+
+  function commitCreateFolder() {
+    const title = draftFolderTitle.trim()
+    if (title) createFolder(title)
+    setCreatingFolder(false)
+    setDraftFolderTitle('')
+  }
+
+  function cancelCreateFolder() {
+    setCreatingFolder(false)
+    setDraftFolderTitle('')
+  }
+
+  const folderDraftRow = creatingFolder ? (
+    <SidebarItem
+      id='__new_entity_folder__'
+      name=''
+      href='#'
+      icon={<FolderPlus />}
+      isEditing
+      editValue={draftFolderTitle}
+      onEditChange={setDraftFolderTitle}
+      onEditCommit={commitCreateFolder}
+      onEditCancel={cancelCreateFolder}
+    />
+  ) : null
+
+  // ── Empty / content state ──────────────────────────────────────────────────
+  const hasVisibleContent = tree.rootSequence.some((n) =>
+    n.nodeType === 'FOLDER'
+      ? (tree.folderItems[n.folder.id] ?? []).some((e) => e.isVisible)
+      : n.entity.isVisible
+  )
+
   function renderNormalModeList() {
     if (isLoading) {
       return (
@@ -306,25 +388,72 @@ export function EntitySidebarNav() {
       )
     }
 
-    return visibleEntities.map((entity) => {
-      const entityActive = isActive(entity)
-
-      return (
-        <SidebarMenuItem key={entity.id}>
-          <SidebarItem
-            id={entity.id}
-            name={entity.plural}
-            href={entity.href}
-            icon={renderIcon(entity.icon, entity.color)}
-            isActive={entityActive}
-            editItems={getEditItems(entity)}
+    return tree.rootSequence.map((node) => {
+      if (node.nodeType === 'FOLDER') {
+        const items = (tree.folderItems[node.folder.id] ?? []).filter((e) => e.isVisible)
+        return (
+          <EntityFolder
+            key={node.folder.id}
+            folder={node.folder}
+            items={items}
+            isEditMode={false}
+            canEdit={canEdit}
+            onRename={renameFolder}
+            onDelete={deleteFolder}
+            renderChild={(entity) => renderEntityRowNormal(entity, node.folder.id)}
           />
-        </SidebarMenuItem>
-      )
+        )
+      }
+      if (!node.entity.isVisible) return null
+      return renderEntityRowNormal(node.entity, null)
     })
   }
 
-  /** Handle create entity click — show limit dialog or open entity dialog */
+  function renderEditModeList() {
+    if (tree.rootSequence.length === 0) {
+      return (
+        <SidebarMenuItem>
+          <div className='px-2 py-1.5 text-sm text-muted-foreground'>No entities to edit</div>
+        </SidebarMenuItem>
+      )
+    }
+
+    const rootIds = tree.rootSequence.map((n) =>
+      n.nodeType === 'FOLDER' ? folderDndId(n.folder.id) : entityDndId(n.entity.id)
+    )
+
+    return (
+      <DndContext
+        sensors={sensors}
+        collisionDetection={closestCenter}
+        onDragStart={handleDragStart}
+        onDragEnd={handleDragEnd}
+        modifiers={[restrictToVerticalAxis]}>
+        <DndStateProvider activeDndItem={activeDndItem}>
+          <SortableContext items={rootIds} strategy={verticalListSortingStrategy}>
+            {tree.rootSequence.map((node) => {
+              if (node.nodeType === 'FOLDER') {
+                return (
+                  <EntityFolder
+                    key={node.folder.id}
+                    folder={node.folder}
+                    items={tree.folderItems[node.folder.id] ?? []}
+                    isEditMode
+                    canEdit={canEdit}
+                    onRename={renameFolder}
+                    onDelete={deleteFolder}
+                    renderChild={(entity) => renderEntityRowEdit(entity, node.folder.id)}
+                  />
+                )
+              }
+              return renderEntityRowEdit(node.entity, null)
+            })}
+          </SortableContext>
+        </DndStateProvider>
+      </DndContext>
+    )
+  }
+
   function handleCreateFromBlank(e: React.MouseEvent) {
     e.stopPropagation()
     if (atEntityLimit) {
@@ -335,7 +464,6 @@ export function EntitySidebarNav() {
     }
   }
 
-  /** Handle create from template click — show limit dialog or open template dialog */
   function handleCreateFromTemplate(e: React.MouseEvent) {
     e.stopPropagation()
     if (atEntityLimit) {
@@ -356,6 +484,7 @@ export function EntitySidebarNav() {
           toggleOpen={handleToggleOpen}
           isGroupVisible={isGroupVisible}
           onToggleGroupVisibility={toggleGroupVisibility}
+          hideEditOption={!canEdit}
           additionalOptions={
             <>
               <DropdownMenuItem
@@ -365,8 +494,16 @@ export function EntitySidebarNav() {
                 }}>
                 <Settings /> Manage Entities
               </DropdownMenuItem>
+              {canEdit && (
+                <DropdownMenuItem
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    startCreateFolder()
+                  }}>
+                  <FolderPlus /> New folder
+                </DropdownMenuItem>
+              )}
               <DropdownMenuSeparator />
-              {/* <DropdownMenuLabel>Create Entity</DropdownMenuLabel> */}
               <DropdownMenuItem onClick={handleCreateFromBlank}>
                 <Plus /> Create entity
               </DropdownMenuItem>
@@ -381,8 +518,9 @@ export function EntitySidebarNav() {
           }
         />
 
-        {/* Empty state when all items hidden (but group is visible) */}
-        <SidebarGroupCollapse open={allItemsHidden && !isEditMode && isOpen && isGroupVisible}>
+        {/* Empty state when nothing is visible (group still visible). */}
+        <SidebarGroupCollapse
+          open={!hasVisibleContent && !isEditMode && isOpen && isGroupVisible && canEdit}>
           <SidebarMenu>
             <SidebarMenuItem>
               <SidebarMenuButton onClick={toggleEditMode}>
@@ -393,21 +531,23 @@ export function EntitySidebarNav() {
           </SidebarMenu>
         </SidebarGroupCollapse>
 
-        {/* Entity list - only show when group is visible or in edit mode */}
-        <SidebarGroupCollapse open={(isEditMode || (isOpen && isGroupVisible)) && !allItemsHidden}>
-          <SidebarMenu>{isEditMode ? renderEditModeList() : renderNormalModeList()}</SidebarMenu>
-        </SidebarGroupCollapse>
-
-        {/* Edit mode list when all items are hidden */}
-        <SidebarGroupCollapse open={isEditMode && allItemsHidden}>
-          <SidebarMenu>{renderEditModeList()}</SidebarMenu>
+        {/* Entity list. */}
+        <SidebarGroupCollapse
+          open={(isEditMode || (isOpen && isGroupVisible)) && (hasVisibleContent || isEditMode)}>
+          <SidebarMenu className='gap-0'>
+            {folderDraftRow}
+            {isEditMode ? renderEditModeList() : renderNormalModeList()}
+          </SidebarMenu>
         </SidebarGroupCollapse>
       </SidebarGroup>
 
-      {/* Done button footer for edit mode */}
+      {/* Edit-mode footer. */}
       {isEditMode && (
-        <div className='flex shrink-0 items-center justify-end gap-2 border-t p-2'>
-          <Button className='w-full rounded-md' size='sm' onClick={toggleEditMode}>
+        <div className='flex shrink-0 items-center justify-between gap-2 border-t p-2'>
+          <Button variant='outline' size='sm' onClick={startCreateFolder}>
+            <FolderPlus /> New folder
+          </Button>
+          <Button className='rounded-md' size='sm' onClick={toggleEditMode}>
             Done
           </Button>
         </div>
