@@ -564,6 +564,7 @@ async function createLazyStreamOwnedMappings(
         singular: entity.singular,
         plural: entity.plural,
         primaryDisplayFieldKey: entity.primaryDisplayField,
+        avatarFieldKey: entity.avatarField,
       },
     }
     // The forward edge lives on the PARENT def; with no parent (a root mapping) there's

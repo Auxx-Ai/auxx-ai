@@ -270,6 +270,8 @@ export const displayOptionsSchema = z.object({
   falseLabel: z.string().optional(),
   // PHONE display options
   phoneFormat: z.enum(['raw', 'national', 'international']).optional(),
+  // URL display options — render the value as a clickable link (default) or as an image thumbnail
+  urlDisplay: z.enum(['link', 'image']).optional(),
   // CURRENCY display options (decimals + useGrouping shared with NUMBER)
   currencyCode: z.string().length(3).optional(),
   currencyDisplay: z.enum(['symbol', 'code', 'name', 'compact']).optional(),
@@ -303,6 +305,7 @@ export const FIELD_TYPE_DISPLAY_OPTIONS: Partial<Record<string, (keyof DisplayOp
   [FieldTypeEnum.TIME]: ['format', 'timeFormat'],
   [FieldTypeEnum.CHECKBOX]: ['checkboxStyle', 'trueLabel', 'falseLabel'],
   [FieldTypeEnum.PHONE_INTL]: ['phoneFormat'],
+  [FieldTypeEnum.URL]: ['urlDisplay'],
 }
 
 /**

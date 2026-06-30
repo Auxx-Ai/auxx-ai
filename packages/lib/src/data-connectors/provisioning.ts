@@ -66,6 +66,8 @@ export interface ProvisionTarget {
     color?: string
     /** `appFieldKey` of the field to wire as the def's primary display field. */
     primaryDisplayFieldKey?: string
+    /** `appFieldKey` of the field to wire as the def's avatar/display image. */
+    avatarFieldKey?: string
   }
   fields: ProvisionFieldSpec[]
 }
@@ -175,6 +177,21 @@ export async function provisionTarget(
     await db
       .update(schema.EntityDefinition)
       .set({ primaryDisplayFieldId, updatedAt: new Date() })
+      .where(eq(schema.EntityDefinition.id, defId))
+    await onCacheEvent('entity-def.updated', { orgId: organizationId })
+  }
+
+  // Wire the declared avatar/display-image field — same direct-pointer write as the
+  // primary display field above. Rendering the URL field as an image is the field's
+  // own `urlDisplay` option (set by the connector's field provision), not forced here.
+  const avatarFieldId =
+    target.targetMode === 'owned' && target.ownedDef?.avatarFieldKey
+      ? fieldIdByKey[target.ownedDef.avatarFieldKey]
+      : undefined
+  if (avatarFieldId) {
+    await db
+      .update(schema.EntityDefinition)
+      .set({ avatarFieldId, updatedAt: new Date() })
       .where(eq(schema.EntityDefinition.id, defId))
     await onCacheEvent('entity-def.updated', { orgId: organizationId })
   }

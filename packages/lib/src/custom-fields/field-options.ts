@@ -53,6 +53,12 @@ export interface FieldOptions {
   phoneFormat?: 'raw' | 'national' | 'international'
 
   // ─────────────────────────────────────────────────────────────
+  // URL (flat)
+  // ─────────────────────────────────────────────────────────────
+  /** Render the URL as a clickable link (default) or as an image thumbnail. */
+  urlDisplay?: 'link' | 'image'
+
+  // ─────────────────────────────────────────────────────────────
   // SELECT (flat)
   // ─────────────────────────────────────────────────────────────
   maxItemsShown?: number

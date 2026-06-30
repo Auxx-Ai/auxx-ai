@@ -85,6 +85,7 @@ import {
   PhoneFormattingEditor,
   parseDisplayOptions,
   TimeFormattingEditor,
+  UrlFormattingEditor,
 } from './formatting-editors'
 import { OptionsEditor, parseSelectOptions, type SelectOption } from './options-editor'
 import { RelationshipFieldEditor, type RelationshipOptions } from './relationship-field-editor'
@@ -686,6 +687,7 @@ export function CustomFieldForm({
       FieldType.TIME,
       FieldType.CHECKBOX,
       FieldType.PHONE_INTL,
+      FieldType.URL,
     ].includes(type)
   }
 
@@ -711,6 +713,13 @@ export function CustomFieldForm({
         return <BooleanFormattingEditor options={displayOptions} onChange={setDisplayOptions} />
       case FieldType.PHONE_INTL:
         return <PhoneFormattingEditor options={displayOptions} onChange={setDisplayOptions} />
+      case FieldType.URL:
+        return (
+          <UrlFormattingEditor
+            options={displayOptions}
+            onChange={(opts) => setDisplayOptions((prev) => ({ ...prev, ...opts }))}
+          />
+        )
       default:
         return null
     }
