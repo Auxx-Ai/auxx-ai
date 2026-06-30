@@ -20,7 +20,7 @@
  */
 
 import type { z } from 'zod/v4'
-import type { FieldType } from '../fields/field-types.js'
+import type { FieldSelectOption, FieldType } from '../fields/field-types.js'
 import type { ActionInputHint } from '../tools/types.js'
 
 /**
@@ -110,6 +110,21 @@ export interface ConnectorFieldDecl {
   /** Flag PII — surfaced + default-excluded in the mapping UI. */
   pii?: boolean
   capabilities?: ConnectorFieldCapabilities
+  /**
+   * Predefined option set for `SINGLE_SELECT` / `MULTI_SELECT` / `TAGS` fields.
+   * When present, the platform provisions the owned column with these options so a
+   * synced value renders as a real (colored, filterable) enum chip. Declare the
+   * provider's FULL value set — an incoming value outside the list is rejected at
+   * sink. Ignored for non-select types.
+   */
+  options?: FieldSelectOption[]
+  /**
+   * Sub-field set for an `ADDRESS_STRUCT` field, e.g. `['street', 'city', 'state',
+   * 'country']`. Controls which address components the provisioned field surfaces.
+   * The synced value must be shaped `{ street1, street2, city, state, zipCode,
+   * country }`. Ignored for non-address types.
+   */
+  addressComponents?: string[]
 }
 
 /** Minimal entity declaration for an owned-mode default mapping. */

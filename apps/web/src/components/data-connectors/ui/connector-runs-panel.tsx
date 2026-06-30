@@ -131,6 +131,269 @@ function RunRow({ run, sourceLabel }: { run: ConnectorRun; sourceLabel: string }
   )
 }
 
+// ──────────────────────────────────────────────────────────────────────────
+// DEV-ONLY UI mock. Flip `MOCK_SCENARIO` away from 'off' to render the Runs drawer
+// against canned synced data without standing up a real connector + sync. Lets
+// us iterate on the freshness / backfill / run-history layout. DELETE before
+// shipping — nothing here is reachable when the scenario is 'off'.
+//   • 'live'     → steady state: freshness panel + a rich run history
+//   • 'backfill' → first import in flight (unknown total)
+//   • 'sampling' → trial sample run in flight (known denominator)
+// ──────────────────────────────────────────────────────────────────────────
+const MOCK_SCENARIO: 'off' | 'live' | 'backfill' | 'sampling' = 'off'
+
+type StatusData = RouterOutputs['dataConnector']['getStatus']
+
+/** Build one fake run row, filling every required column so the fixture stays terse. */
+function mockRun(partial: Partial<ConnectorRun> & { id: string }): ConnectorRun {
+  return {
+    dataConnectorId: 'mock-connector',
+    organizationId: 'mock-org',
+    trigger: 'manual',
+    mode: 'incremental',
+    status: 'completed',
+    phase: 'steady',
+    sampleLimit: null,
+    fetched: 0,
+    created: 0,
+    updated: 0,
+    skipped: 0,
+    archived: 0,
+    deleted: 0,
+    failed: 0,
+    relationshipWarnings: 0,
+    pagesProcessed: 1,
+    rateLimitWaitMs: 0,
+    errorSample: null,
+    progress: null,
+    chainSnapshot: null,
+    cursorBefore: null,
+    cursorAfter: null,
+    startedAt: new Date(),
+    heartbeatAt: new Date(),
+    finishedAt: new Date(),
+    durationMs: 1200,
+    ...partial,
+  } as ConnectorRun
+}
+
+/** Relative timestamp helper for the fixtures (N ms ago). */
+const ago = (ms: number) => new Date(Date.now() - ms)
+
+/** Canned `getStatus` + `listRuns` data per scenario, shaped exactly like the queries. */
+function buildMockData(scenario: Exclude<typeof MOCK_SCENARIO, 'off'>): {
+  status: StatusData
+  runs: ConnectorRun[]
+} {
+  if (scenario === 'backfill' || scenario === 'sampling') {
+    const sampleLimit = scenario === 'sampling' ? 500 : null
+    const perStream = [
+      {
+        streamKey: 'customers',
+        recordsSeen: scenario === 'sampling' ? 500 : 1840,
+        phase: 'steady' as const,
+        done: true,
+      },
+      {
+        streamKey: 'orders',
+        recordsSeen: scenario === 'sampling' ? 312 : 6204,
+        phase: 'backfill' as const,
+        done: false,
+      },
+      {
+        streamKey: 'products',
+        recordsSeen: scenario === 'sampling' ? 88 : 742,
+        phase: 'backfill' as const,
+        done: false,
+      },
+    ]
+    const recordsSeen = perStream.reduce((n, s) => n + s.recordsSeen, 0)
+    return {
+      status: {
+        status: 'syncing',
+        syncBehavior: 'scheduled',
+        lastSyncedAt: null,
+        lastWebhookEventAt: null,
+        itemCount: recordsSeen,
+        error: null,
+        resyncPending: null,
+        nextSyncAt: null,
+        cadenceLabel: 'every 15 minutes',
+        latestRun: {
+          id: 'mock-run-live',
+          status: 'running',
+          phase: 'backfill',
+          trigger: 'manual',
+          mode: 'snapshot',
+          recordsSeen,
+          created: 0,
+          updated: 0,
+          startedAt: ago(42_000),
+          finishedAt: null,
+          rateLimitedUntil: null,
+          pausedReason: null,
+          sampleLimit,
+          primaryStreamLabel: 'orders',
+        },
+        perStream,
+      } as StatusData,
+      runs: [
+        mockRun({
+          id: 'mock-run-live',
+          status: 'running',
+          phase: 'backfill',
+          mode: 'snapshot',
+          sampleLimit,
+          startedAt: ago(42_000),
+          finishedAt: null,
+          durationMs: null,
+        }),
+      ],
+    }
+  }
+
+  // 'live' — steady state with a rich history.
+  return {
+    status: {
+      status: 'live',
+      syncBehavior: 'scheduled',
+      lastSyncedAt: ago(8 * 60_000),
+      lastWebhookEventAt: null,
+      itemCount: 8786,
+      error: null,
+      resyncPending: null,
+      nextSyncAt: new Date(Date.now() + 7 * 60_000).toISOString(),
+      cadenceLabel: 'every 15 minutes',
+      latestRun: {
+        id: 'mock-run-1',
+        status: 'completed',
+        phase: 'steady',
+        trigger: 'scheduled',
+        mode: 'incremental',
+        recordsSeen: 124,
+        created: 12,
+        updated: 38,
+        startedAt: ago(8 * 60_000),
+        finishedAt: ago(8 * 60_000 - 4200),
+        rateLimitedUntil: null,
+        pausedReason: null,
+        sampleLimit: null,
+        primaryStreamLabel: 'orders',
+      },
+      perStream: [
+        { streamKey: 'customers', recordsSeen: 1840, phase: 'steady', done: true },
+        { streamKey: 'orders', recordsSeen: 6204, phase: 'steady', done: true },
+        { streamKey: 'products', recordsSeen: 742, phase: 'steady', done: true },
+      ],
+    } as StatusData,
+    runs: [
+      mockRun({
+        id: 'mock-run-1',
+        trigger: 'scheduled',
+        created: 12,
+        updated: 38,
+        skipped: 70,
+        fetched: 124,
+        startedAt: ago(8 * 60_000),
+        finishedAt: ago(8 * 60_000 - 4200),
+        durationMs: 4200,
+      }),
+      mockRun({
+        id: 'mock-run-2',
+        trigger: 'scheduled',
+        updated: 5,
+        skipped: 119,
+        fetched: 124,
+        relationshipWarnings: 2,
+        startedAt: ago(23 * 60_000),
+        durationMs: 3100,
+      }),
+      mockRun({
+        id: 'mock-run-3',
+        trigger: 'manual',
+        status: 'partial',
+        phase: 'backfill',
+        mode: 'snapshot',
+        sampleLimit: 500,
+        created: 488,
+        skipped: 0,
+        failed: 12,
+        fetched: 500,
+        startedAt: ago(2 * 3600_000),
+        durationMs: 18400,
+        errorSample: [
+          { externalId: 'cust_8812', error: 'Missing required field: email', tier: 'invalid' },
+          { externalId: 'cust_9043', error: 'Address line exceeds 255 chars', tier: 'rejected' },
+          {
+            externalId: 'cust_9101',
+            error: 'Phone number failed E.164 validation',
+            tier: 'invalid',
+          },
+        ],
+      }),
+      mockRun({
+        id: 'mock-run-4',
+        trigger: 'scheduled',
+        status: 'failed',
+        updated: 0,
+        fetched: 0,
+        failed: 1,
+        startedAt: ago(5 * 3600_000),
+        durationMs: 900,
+        errorSample: [{ externalId: '', error: 'Upstream returned 503 Service Unavailable' }],
+      }),
+      mockRun({
+        id: 'mock-run-5',
+        trigger: 'manual',
+        mode: 'snapshot',
+        phase: 'backfill',
+        created: 8786,
+        fetched: 8786,
+        startedAt: ago(26 * 3600_000),
+        durationMs: 142000,
+      }),
+      mockRun({
+        id: 'mock-run-6',
+        trigger: 'scheduled',
+        updated: 3,
+        skipped: 121,
+        fetched: 124,
+        startedAt: ago(27 * 3600_000),
+        durationMs: 2800,
+      }),
+      mockRun({
+        id: 'mock-run-7',
+        trigger: 'scheduled',
+        updated: 1,
+        skipped: 123,
+        fetched: 124,
+        startedAt: ago(28 * 3600_000),
+        durationMs: 2600,
+      }),
+      mockRun({
+        id: 'mock-run-8',
+        trigger: 'scheduled',
+        archived: 4,
+        updated: 2,
+        skipped: 118,
+        fetched: 124,
+        startedAt: ago(29 * 3600_000),
+        durationMs: 2900,
+      }),
+      mockRun({
+        id: 'mock-run-9',
+        trigger: 'scheduled',
+        deleted: 1,
+        updated: 6,
+        skipped: 117,
+        fetched: 124,
+        startedAt: ago(30 * 3600_000),
+        durationMs: 3050,
+      }),
+    ],
+  }
+}
+
 /** How many runs render before the "Show more" row collapses the rest. */
 const VISIBLE_RUN_LIMIT = 7
 
@@ -197,7 +460,12 @@ export function ConnectorRunsPanel({
       },
     }
   )
-  const status = statusQuery.data?.status ?? initialStatus
+  // DEV-ONLY: when `MOCK_SCENARIO` is on, override the live query data so the panel
+  // renders against canned synced data. No-op (and tree-shakeable) when it's 'off'.
+  const mock = MOCK_SCENARIO === 'off' ? null : buildMockData(MOCK_SCENARIO)
+  const statusData = mock?.status ?? statusQuery.data
+
+  const status = statusData?.status ?? initialStatus
   const isSyncing = status === 'syncing' || status === 'provisioning'
 
   const runs = api.dataConnector.listRuns.useQuery(
@@ -205,21 +473,26 @@ export function ConnectorRunsPanel({
     { refetchInterval: isSyncing ? 15000 : false }
   )
 
-  const rows = runs.data ?? []
+  const rows = mock?.runs ?? runs.data ?? []
 
   // Live initial-backfill card (Step 9 §10.2): only while a backfill chain is in
   // flight. Steady runs use the per-run counts below; this is the "first import" view.
-  const latestRun = statusQuery.data?.latestRun
-  const perStream = statusQuery.data?.perStream ?? []
+  const latestRun = statusData?.latestRun
+  const perStream = statusData?.perStream ?? []
   const showBackfill = isSyncing && latestRun?.phase === 'backfill' && perStream.length > 0
 
   // Steady freshness summary (Step 9 §10.3): once the source has synced and isn't
   // mid-backfill, show last/next synced + the latest run's delta instead of the card.
-  const lastSyncedAt = statusQuery.data?.lastSyncedAt ?? null
+  const lastSyncedAt = statusData?.lastSyncedAt ?? null
   // Webhook syncs never stamp `lastSyncedAt`, so a webhook delivery counts as freshness
   // too — else a live webhook-sync connector would show no freshness panel at all (§9).
-  const lastWebhookEventAt = statusQuery.data?.lastWebhookEventAt ?? null
+  const lastWebhookEventAt = statusData?.lastWebhookEventAt ?? null
   const showFreshness = !showBackfill && (!!lastSyncedAt || !!lastWebhookEventAt)
+
+  // Persist the per-stream breakdown after a run finishes (not mid-backfill) so the
+  // sync result lingers instead of vanishing the instant the connector goes `live`.
+  // Settled, solid state — sits above the freshness grid.
+  const showCompletedSummary = !isSyncing && perStream.length > 0 && !!lastSyncedAt
 
   return (
     <div className='flex flex-1 min-h-0 flex-col bg-background'>
@@ -234,7 +507,7 @@ export function ConnectorRunsPanel({
             </Badge>
           ) : (
             <Badge variant='outline' size='sm'>
-              {statusQuery.data?.itemCount ?? 0} records
+              {statusData?.itemCount ?? 0} records
             </Badge>
           )
         }
@@ -249,13 +522,22 @@ export function ConnectorRunsPanel({
         />
       )}
 
+      {showCompletedSummary && (
+        <ConnectorBackfillProgress
+          sourceLabel={sourceLabel}
+          perStream={perStream}
+          completed
+          syncedAt={lastSyncedAt}
+        />
+      )}
+
       {showFreshness && (
         <ConnectorFreshnessPanel
           lastSyncedAt={lastSyncedAt}
           lastWebhookEventAt={lastWebhookEventAt}
-          nextSyncAt={statusQuery.data?.nextSyncAt ?? null}
-          cadenceLabel={statusQuery.data?.cadenceLabel ?? null}
-          syncBehavior={statusQuery.data?.syncBehavior ?? 'manual'}
+          nextSyncAt={statusData?.nextSyncAt ?? null}
+          cadenceLabel={statusData?.cadenceLabel ?? null}
+          syncBehavior={statusData?.syncBehavior ?? 'manual'}
           latestRun={latestRun}
         />
       )}

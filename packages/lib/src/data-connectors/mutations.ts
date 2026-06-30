@@ -428,8 +428,22 @@ export async function createConnectorFromAppCatalog(
       ...appCatalogStreamSchema(stream),
       syncMode: stream.syncMode ?? 'snapshot',
     })
-    await createLazyStreamOwnedMappings(db, organizationId, streamRow.id, stream)
-    await materializeAppContributingMappings(db, organizationId, streamRow.id, stream)
+    // Owned mappings first so a nested contributing mapping (e.g. order → customer)
+    // can parent to the owned root it hangs off — the parentMappingId both forms the
+    // fan-out tree at sync AND lets pass-2 provision the relationship edge.
+    const ownedMappingIdByRootPath = await createLazyStreamOwnedMappings(
+      db,
+      organizationId,
+      streamRow.id,
+      stream
+    )
+    await materializeAppContributingMappings(
+      db,
+      organizationId,
+      streamRow.id,
+      stream,
+      ownedMappingIdByRootPath
+    )
   }
 
   return connector
@@ -523,7 +537,7 @@ async function createLazyStreamOwnedMappings(
   organizationId: string,
   streamId: string,
   stream: CatalogDataConnector['streams'][number]
-): Promise<void> {
+): Promise<Record<string, string>> {
   const allMappings = stream.defaultMappings ?? []
   const owned = allMappings.filter((m) => m.target.mode === 'owned')
   const allRootPaths = owned.map((m) => m.rootPath)
@@ -582,6 +596,8 @@ async function createLazyStreamOwnedMappings(
 
     mappingIdByRootPath[mapping.rootPath] = row.id
   }
+
+  return mappingIdByRootPath
 }
 
 /**
@@ -604,6 +620,8 @@ export function buildLazyOwnedFieldMappings(entries: OwnedFieldEntry[]): FieldMa
       appFieldKey: field.fieldKey,
       type: field.type as FieldType,
       isHidden: field.capabilities?.hidden ?? false,
+      options: field.options,
+      addressComponents: field.addressComponents,
     },
   }))
 }
@@ -624,8 +642,11 @@ async function materializeAppContributingMappings(
   db: Database,
   organizationId: string,
   streamId: string,
-  stream: CatalogDataConnector['streams'][number]
+  stream: CatalogDataConnector['streams'][number],
+  /** rootPath → owned-mapping id, so a nested contributing branch can find its parent. */
+  ownedMappingIdByRootPath: Record<string, string> = {}
 ): Promise<void> {
+  const ownedRootPaths = Object.keys(ownedMappingIdByRootPath)
   for (const mapping of stream.defaultMappings ?? []) {
     if (mapping.target.mode !== 'contributing') continue
     const { entityKind, matchFieldKeys, fieldBindings } = mapping.target
@@ -672,14 +693,38 @@ async function materializeAppContributingMappings(
     ).filter((b) => !boundTargets.has(b.targetFieldRef))
     const fieldMappings = [...matchBindings, ...valueBindings]
 
+    // A nested contributing branch (e.g. the order stream's embedded `customer`)
+    // hangs off the owned root it's drilled from. Wiring `parentMappingId` makes
+    // mapRecord emit the parent→child relation at sync; persisting the relationship
+    // into `targetSpec` makes pass-2 provision the edge field on the PARENT (owned)
+    // def. The forward edge lives on the parent, so both require a resolved parent.
+    const parentRootPath = ownedParentRootPath(mapping.rootPath, ownedRootPaths)
+    const parentMappingId =
+      parentRootPath != null ? (ownedMappingIdByRootPath[parentRootPath] ?? null) : null
+
+    const targetSpec: ConnectorMappingTargetSpec | null =
+      mapping.relationship && parentMappingId != null
+        ? {
+            relationship: {
+              fieldKey: mapping.relationship.fieldKey,
+              name: mapping.relationship.name,
+              cardinality: mapping.relationship.cardinality,
+              inverseName: mapping.relationship.inverseName,
+              targetRef: mapping.relationship.targetRef,
+            },
+          }
+        : null
+
     await addMapping(db, organizationId, {
       dataConnectorStreamId: streamId,
       rootPath: mapping.rootPath,
       linkMode: mapping.linkMode ?? ('upsert' as LinkMode),
       targetMode: 'contributing' as TargetMode,
       entityDefinitionId,
+      parentMappingId,
       relationshipFieldKey: mapping.relationshipFieldKey ?? null,
       fieldMappings,
+      targetSpec,
       orphanBehavior: 'ignore' as OrphanBehavior,
     })
   }

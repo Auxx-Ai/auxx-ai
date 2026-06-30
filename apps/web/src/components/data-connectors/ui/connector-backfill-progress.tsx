@@ -1,9 +1,10 @@
 // apps/web/src/components/data-connectors/ui/connector-backfill-progress.tsx
 'use client'
 
+import { Badge } from '@auxx/ui/components/badge'
 import { LastUpdated } from '@auxx/ui/components/last-updated'
 import { cn } from '@auxx/ui/lib/utils'
-import { ArrowRight } from 'lucide-react'
+import { CheckCircle2 } from 'lucide-react'
 
 /** One stream's live import progress, projected from `getStatus.perStream`. */
 export interface BackfillStreamProgress {
@@ -25,6 +26,15 @@ interface ConnectorBackfillProgressProps {
    * since a sample HAS a known denominator (unlike a full backfill).
    */
   sampleLimit?: number | null
+  /**
+   * Render the settled, post-sync state: no more candy-stripe motion, a "Synced"
+   * header with a check, and the freshness time in the footer instead of "Started".
+   * Lets the per-stream breakdown LINGER after a run finishes rather than vanishing
+   * the instant the connector flips `syncing → live`.
+   */
+  completed?: boolean
+  /** Freshness time shown in the completed footer (lastSyncedAt). */
+  syncedAt?: Date | string | null
 }
 
 /**
@@ -39,34 +49,60 @@ export function ConnectorBackfillProgress({
   startedAt,
   perStream,
   sampleLimit,
+  completed = false,
+  syncedAt,
 }: ConnectorBackfillProgressProps) {
   const total = perStream.reduce((n, s) => n + s.recordsSeen, 0)
   const isSample = sampleLimit != null
 
+  const header = completed
+    ? `Synced from ${sourceLabel}`
+    : isSample
+      ? `Sampling from ${sourceLabel}`
+      : `Importing from ${sourceLabel}`
+
   return (
     <div className='flex flex-col gap-3 border-b bg-muted/30 px-4 py-3'>
-      <div className='text-xs font-semibold text-muted-foreground'>
-        {isSample ? `Sampling from ${sourceLabel}` : `Importing from ${sourceLabel}`}
+      <div className='flex items-center gap-1.5 text-xs font-semibold text-muted-foreground'>
+        {completed && <CheckCircle2 className='size-3.5 text-info' />}
+        {header}
       </div>
 
       <div className='flex flex-col gap-2'>
         {perStream.map((s) => (
-          <StreamRow key={s.streamKey || '∅'} stream={s} sampleLimit={sampleLimit} />
+          <StreamRow
+            key={s.streamKey || '∅'}
+            stream={s}
+            sampleLimit={sampleLimit}
+            done={completed}
+          />
         ))}
       </div>
 
-      <PipelineFlow />
-
       <div className='text-[11px] text-muted-foreground'>
-        {startedAt && (
+        {completed ? (
           <>
-            <LastUpdated timestamp={startedAt} prefix='Started' className='text-[11px]' />
-            {' · '}
+            {`${total.toLocaleString()} records synced`}
+            {syncedAt && (
+              <>
+                {' · '}
+                <LastUpdated timestamp={syncedAt} className='text-[11px]' />
+              </>
+            )}
+          </>
+        ) : (
+          <>
+            {startedAt && (
+              <>
+                <LastUpdated timestamp={startedAt} prefix='Started' className='text-[11px]' />
+                {' · '}
+              </>
+            )}
+            {isSample
+              ? `Sampling up to ${sampleLimit?.toLocaleString()} per stream`
+              : `${total.toLocaleString()} records so far`}
           </>
         )}
-        {isSample
-          ? `Sampling up to ${sampleLimit?.toLocaleString()} per stream`
-          : `${total.toLocaleString()} records so far`}
       </div>
     </div>
   )
@@ -76,14 +112,17 @@ export function ConnectorBackfillProgress({
 function StreamRow({
   stream,
   sampleLimit,
+  done: forceDone = false,
 }: {
   stream: BackfillStreamProgress
   sampleLimit?: number | null
+  /** Force the settled (solid, "done") look — the card-level completed state. */
+  done?: boolean
 }) {
   // A sample HAS a denominator (the cap), so show "N of limit" + a real fill ratio —
   // the one place a backfill bar isn't faking a percent (full backfills never know total).
   const capped = sampleLimit != null && stream.recordsSeen >= sampleLimit
-  const done = stream.done || capped
+  const done = forceDone || stream.done || capped
   const fillPct =
     sampleLimit != null ? Math.min(100, Math.round((stream.recordsSeen / sampleLimit) * 100)) : null
   return (
@@ -91,11 +130,11 @@ function StreamRow({
       <span className='w-24 shrink-0 truncate capitalize' title={stream.streamKey}>
         {stream.streamKey || 'Records'}
       </span>
-      <div className='h-1.5 flex-1 overflow-hidden rounded-full bg-foreground/10'>
+      <div className='h-1.5 flex-1 overflow-hidden rounded-full bg-primary-500'>
         <div
           className={cn(
-            'h-full rounded-full',
-            done ? 'bg-green-500/70' : 'animate-pulse bg-amber-500/70',
+            'h-full rounded-full bg-info',
+            !done && 'candy-stripes',
             fillPct == null && 'w-full'
           )}
           style={fillPct != null ? { width: `${fillPct}%` } : undefined}
@@ -106,30 +145,11 @@ function StreamRow({
           ? `${stream.recordsSeen.toLocaleString()} / ${sampleLimit.toLocaleString()}`
           : stream.recordsSeen.toLocaleString()}
       </span>
-      <span className={cn('w-16 shrink-0 text-right', done ? 'text-green-600' : 'text-amber-600')}>
-        {done ? 'done' : 'fetching…'}
-      </span>
-    </div>
-  )
-}
-
-/**
- * The Fetch → Map → Save flow metaphor (Stitch). Our engine streams records through
- * all three continuously, so during a backfill all three read as active — it conveys
- * "data is flowing", not staged percentages.
- */
-function PipelineFlow() {
-  return (
-    <div className='flex items-center gap-1.5 text-[11px] text-muted-foreground'>
-      {['Fetch', 'Map', 'Save'].map((label, i) => (
-        <span key={label} className='inline-flex items-center gap-1.5'>
-          {i > 0 && <ArrowRight className='size-3 opacity-50' />}
-          <span className='inline-flex items-center gap-1'>
-            <span className='size-1.5 animate-pulse rounded-full bg-amber-500' />
-            {label}
-          </span>
-        </span>
-      ))}
+      <div className='flex w-16 shrink-0 justify-end'>
+        <Badge size='xs' variant={done ? 'green' : 'amber'}>
+          {done ? 'done' : 'fetching…'}
+        </Badge>
+      </div>
     </div>
   )
 }

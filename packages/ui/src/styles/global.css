@@ -873,6 +873,44 @@
   }
 }
 
+@theme inline {
+  --animate-candy-stripes: candy-stripes 1s linear infinite;
+
+  @keyframes candy-stripes {
+    from {
+      background-position: 1rem 0;
+    }
+    to {
+      background-position: 0 0;
+    }
+  }
+}
+
+/* Indeterminate "candy cane" progress fill — diagonal stripes sliding over the
+   element's own background color. Pair with a `bg-*` color (the stripes are a
+   translucent white overlay). Used for unknown-total backfills where there's no
+   real percentage to show. */
+.candy-stripes {
+  background-image: linear-gradient(
+    45deg,
+    rgba(255, 255, 255, 0.25) 25%,
+    transparent 25%,
+    transparent 50%,
+    rgba(255, 255, 255, 0.25) 50%,
+    rgba(255, 255, 255, 0.25) 75%,
+    transparent 75%,
+    transparent
+  );
+  background-size: 1rem 1rem;
+  animation: var(--animate-candy-stripes);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .candy-stripes {
+    animation: none;
+  }
+}
+
 .glass {
   /* Blur effect */
   backdrop-filter: blur(10px);

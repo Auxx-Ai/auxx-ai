@@ -1,6 +1,6 @@
 // packages/lib/src/apps/lambda/invoke-lambda-executor.ts
 
-import { INTERNAL_LAMBDA_URL, LAMBDA_URL } from '@auxx/config/server'
+import { INTERNAL_LAMBDA_URL } from '@auxx/config/server'
 import { signInboundRequest } from '@auxx/credentials/lambda-auth'
 import type { Result } from 'neverthrow'
 import { err, ok } from 'neverthrow'
@@ -80,15 +80,6 @@ export async function invokeLambdaExecutor(params: {
   lambdaUrl?: string
 }): Promise<Result<LambdaExecutionResult, LambdaExecutionError>> {
   const { payload, caller, lambdaUrl = INTERNAL_LAMBDA_URL } = params
-
-  console.log('[invoke-lambda] URL resolution debug:', {
-    resolvedUrl: lambdaUrl,
-    envInternalLambdaUrl: process.env.LAMBDA_INTERNAL_URL,
-    envLambdaUrl: process.env.LAMBDA_URL,
-    configInternalLambdaUrl: INTERNAL_LAMBDA_URL,
-    configLambdaUrl: LAMBDA_URL,
-    caller,
-  })
 
   try {
     const body = JSON.stringify(payload)
