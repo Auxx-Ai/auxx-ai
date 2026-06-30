@@ -131,27 +131,35 @@ function computeBackfillFloor(
 
 // ── Start a connector sync (backfill or steady) ──────────────────────────────────
 
+export interface StartConnectorSyncOptions {
+  trigger?: 'manual' | 'scheduled' | 'webhook' | 'backfill' | 'sweep'
+  /**
+   * Per-stream sample cap (trial-sync §4). Set ⇒ a SAMPLE run: each stream backfills
+   * only this many records, then the run parks for review. Always forces the backfill
+   * phase (you can't "sample" a steady delta) and is persisted per-run, never on the
+   * connector — the "Sync everything" resume passes no cap and runs to completion.
+   */
+  sampleLimit?: number | null
+}
+
 /**
  * Begin a connector backfill as a continuation chain. Sweeps a stale prior run,
  * claims the connector, provisions the target schema, decides the phase (backfill vs
  * steady — see below), opens ONE run pinned to the decoded mapping snapshot (B2),
  * seeds the completion latch (B1), and enqueues the first slice per stream. Returns
  * false when the connector is missing/unmapped or already syncing.
+ *
+ * Setup runs BEFORE `openRun` (sweep, provision, claim) — a throw there (e.g. a
+ * relationship-edge provisioning collision) would otherwise leave NO run row and the
+ * connector stuck reading `live`, so the failure never surfaces and BullMQ just retries
+ * silently. The public {@link startConnectorSync} wraps this to stamp `connector.error`
+ * on any such pre-run throw; once a run is open, `runBackfillSlice` owns the bookkeeping.
  */
-export async function startConnectorSync(
+async function startConnectorSyncInner(
   db: Database,
   organizationId: string,
   dataConnectorId: string,
-  options: {
-    trigger?: 'manual' | 'scheduled' | 'webhook' | 'backfill' | 'sweep'
-    /**
-     * Per-stream sample cap (trial-sync §4). Set ⇒ a SAMPLE run: each stream backfills
-     * only this many records, then the run parks for review. Always forces the backfill
-     * phase (you can't "sample" a steady delta) and is persisted per-run, never on the
-     * connector — the "Sync everything" resume passes no cap and runs to completion.
-     */
-    sampleLimit?: number | null
-  } = {}
+  options: StartConnectorSyncOptions = {}
 ): Promise<boolean> {
   // A sweep is a full reconciling re-crawl (Step 8C): force the backfill phase even
   // for an incremental connector that's been running steady deltas, so it lists every
@@ -280,6 +288,36 @@ export async function startConnectorSync(
   // run the 4s poll never armed for (it only polls when status already reads syncing).
   await publishConnectorSync(db, organizationId, dataConnectorId, 'run-started')
   return true
+}
+
+/**
+ * Public entry. Runs the orchestration and, on any throw during setup (before a run
+ * exists to record its own failure), stamps `connector.status = 'error'` with the
+ * message + logs the underlying `cause` (which the neverthrow `fromDatabase` wrapper
+ * otherwise hides) so the connector page shows "failed + why" instead of silently
+ * reading `live` while the job loops through BullMQ retries. Re-throws so the job is
+ * still recorded as failed.
+ */
+export async function startConnectorSync(
+  db: Database,
+  organizationId: string,
+  dataConnectorId: string,
+  options: StartConnectorSyncOptions = {}
+): Promise<boolean> {
+  try {
+    return await startConnectorSyncInner(db, organizationId, dataConnectorId, options)
+  } catch (error) {
+    const err = error instanceof Error ? error : new Error(String(error))
+    logger.error('startConnectorSync failed during setup — marking connector errored', {
+      dataConnectorId,
+      organizationId,
+      error: err.message,
+      cause: err.cause instanceof Error ? err.cause.message : err.cause,
+    })
+    await finalizeConnector(db, dataConnectorId, { ok: false, error: err.message })
+    await publishConnectorSync(db, organizationId, dataConnectorId, 'run-finished')
+    throw err
+  }
 }
 
 // ── Backfill a pending mapping-edit change (Layer 2 — "Backfill now") ─────────────

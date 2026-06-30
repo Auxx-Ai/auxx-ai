@@ -66,6 +66,13 @@ export interface CustomResource extends BaseResource {
   apiSlug: string
   entityDefinitionId: string
   organizationId: string
+  /**
+   * Data-connector ownership — set when this entity def was provisioned as an
+   * `owned` target by a connector (mirrors `ResourceField.dataConnectorId` at the
+   * field level). Lets cached read paths identify a connector's owned resources
+   * without a fresh DB query. Undefined for user-authored / adopted defs.
+   */
+  dataConnectorId?: string
   display: {
     /** Primary display field with full metadata */
     primaryDisplayField: DisplayFieldConfig | null

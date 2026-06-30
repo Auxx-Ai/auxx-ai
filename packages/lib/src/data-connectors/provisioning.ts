@@ -293,9 +293,20 @@ export async function provisionRelationshipField(
     },
   })
   if (result.isErr()) {
-    // A user/system field already owns this name → benign no-op (mirrors provisionField).
+    // A user/system field already owns the FORWARD name → benign no-op (mirrors provisionField).
     if (result.error.code === 'DUPLICATE_FIELD_NAME') return null
-    throw new Error(result.error.message)
+    // Surface the underlying DB cause — `fromDatabase` hides it behind a generic
+    // "Database operation ... failed", so without this the connector error reads as an
+    // opaque wrapper. The common case is the auto-created INVERSE edge colliding with a
+    // field of the same name already on the target def (e.g. an orphaned inverse left by
+    // a previously deleted connector → unique violation on CustomField_name_org_model_entity_key).
+    const cause = (result.error as { cause?: unknown }).cause
+    throw new Error(
+      `Failed to provision relationship "${spec.name}" (inverse "${spec.inverseName}"): ${
+        cause instanceof Error ? cause.message : result.error.message
+      }`,
+      cause instanceof Error ? { cause } : undefined
+    )
   }
 
   await onCacheEvent('custom-field.created', { orgId: organizationId })
