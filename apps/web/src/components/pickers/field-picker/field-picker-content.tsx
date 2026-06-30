@@ -70,6 +70,7 @@ function shouldExcludeField(field: ResourceField, excludeFields?: ExcludeFilter[
  */
 export function FieldPickerInnerContent({
   entityDefinitionId,
+  fields: rootFieldsOverride,
   fieldReferences = [],
   excludeFields,
   filterField,
@@ -98,8 +99,11 @@ export function FieldPickerInnerContent({
   // Determine which entity to show fields for
   const currentEntityDefinitionId = current?.targetEntityDefinitionId ?? entityDefinitionId
 
-  // Get fields for current entity
-  const { fields } = useResourceFields(currentEntityDefinitionId)
+  // Get fields for current entity. A root-level override (projected provision fields
+  // for a not-yet-created def) wins only at the root; once drilled into a real related
+  // def, resolve that def's fields from the store as usual.
+  const { fields: storeFields } = useResourceFields(currentEntityDefinitionId)
+  const fields = isAtRoot && rootFieldsOverride ? rootFieldsOverride : storeFields
 
   // Get current entity's label and icon (for drilled-down view)
   const entityProps = useResourceProperty(currentEntityDefinitionId, ['label', 'icon', 'color'])

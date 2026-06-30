@@ -77,6 +77,10 @@ export function projectProvisionFields(
       label: fm.provision.name,
       name: fm.provision.name,
       fieldType: fm.provision.type as FieldType,
+      active: true,
+      // A provisioned column the connector will create — fully writable by the sync,
+      // so it passes the target picker's `isWritableTarget` capability gate.
+      capabilities: { creatable: true, updatable: true, computed: false },
     } as unknown as ResourceField)
   }
   return fields

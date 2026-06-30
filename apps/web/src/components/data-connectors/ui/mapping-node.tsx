@@ -349,6 +349,27 @@ export function MappingNode({
   }
   const clearEntry = (id: string) => writeEntries(fieldMappings.filter((e) => e.id !== id))
 
+  // Bind a source leaf onto a LAZY owned def's column (05e): the def doesn't exist yet,
+  // so there's no concrete `targetFieldRef` — the entry carries the `provision` spec and
+  // materialize creates the column (then backfills the ref) at finish / first sync. Drops
+  // any prior bare-token entry on this source (1 source → 1 target), same as assignTarget.
+  const assignProvision = (
+    sourcePath: string,
+    provision: { name: string; type: string; appFieldKey?: string }
+  ) => {
+    const next = fieldMappings.filter(
+      (e) => !(isBareToken(e.expression) && bareTokenSource(e.expression) === sourcePath)
+    )
+    next.push({
+      id: generateId(),
+      targetFieldRef: null,
+      provision,
+      expression: `{${sourcePath}}`,
+      sourceFields: { [sourcePath]: sourcePath },
+    })
+    writeEntries(next)
+  }
+
   // Re-point a formula at a different target field. Identity is the entry id, so
   // this is a single field set — merge/match ride along, no re-key.
   const retargetEntry = (id: string, newRef: string) => patchEntry(id, { targetFieldRef: newRef })
@@ -841,6 +862,8 @@ export function MappingNode({
                 mapping={mapping}
                 targetMode={targetMode}
                 targetFields={targetFields}
+                willCreate={!!potential}
+                onAssignProvision={assignProvision}
                 sourceToEntry={sourceToEntry}
                 usedTargetKeys={usedTargetKeys}
                 childByNodePath={childByNodePath}
@@ -1002,6 +1025,13 @@ interface SourceNodeProps {
   mapping: Mapping
   targetMode: 'owned' | 'contributing'
   targetFields: ResourceField[]
+  /** The target is a not-yet-created (lazily-provisioned) owned def (05e). */
+  willCreate: boolean
+  /** Bind / quick-create a leaf onto a lazy owned def's projected provision column. */
+  onAssignProvision: (
+    sourcePath: string,
+    provision: { name: string; type: string; appFieldKey?: string }
+  ) => void
   /** Reverse index: source path → the bare-token binding entry on it. */
   sourceToEntry: Map<string, FieldMapping>
   /** Every target key bound by some entry — leaf pickers exclude the rest. */
@@ -1191,15 +1221,18 @@ function SourceNode(props: SourceNodeProps) {
         depth={depth}
         node={node}
         entityDefinitionId={mapping.entityDefinitionId}
+        willCreate={props.willCreate}
+        projectedFields={props.willCreate ? targetFields : undefined}
+        onAssignProvision={(provision) => props.onAssignProvision(node.path, provision)}
         assignedLabel={assignedLabel}
         assignedIconId={drilledIconId ?? assignedIconId}
         assignedTargetKey={assignedTargetKey}
         excludeKeys={excludeKeys}
-        // Quick-create is available whenever a target def is set — both owned
-        // (the connector provisions the def) and contributing (adding a field to
-        // an existing def). The `customField.create` mutation is the backstop for
-        // a def that rejects new fields.
-        canCreate={!!mapping.entityDefinitionId}
+        // Quick-create is available whenever there's a target — a real def (owned or
+        // contributing; the `customField.create` mutation mints the field) OR a lazy
+        // owned def not yet created (05e), where it authors a `provision` spec the
+        // connector materializes at first sync.
+        canCreate={!!mapping.entityDefinitionId || props.willCreate}
         isOwned={targetMode === 'owned'}
         identityRole={identityRole}
         mergeStrategy={activeEntry?.mergeStrategy ?? 'overwrite'}
