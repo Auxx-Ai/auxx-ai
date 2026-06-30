@@ -19,6 +19,10 @@ interface KopilotContextProps {
   activeRecordId?: string
   activeRecordLabel?: string
 
+  /** Entity TYPE the user is viewing (records table page). id = entityDefinitionId. */
+  activeResourceId?: string
+  activeResourceLabel?: string
+
   activeKnowledgeBaseId?: string
   activeKnowledgeBaseLabel?: string
 
@@ -55,6 +59,8 @@ export function KopilotContext(props: KopilotContextProps): null {
     activeContactLabel,
     activeRecordId,
     activeRecordLabel,
+    activeResourceId,
+    activeResourceLabel,
     activeKnowledgeBaseId,
     activeKnowledgeBaseLabel,
     activeArticleId,
@@ -69,6 +75,8 @@ export function KopilotContext(props: KopilotContextProps): null {
     // Contacts are records — the recordId prefix tells the agent it's a contact.
     pushSurfaceRef(references, 'record', activeContactId, activeContactLabel)
     pushSurfaceRef(references, 'record', activeRecordId, activeRecordLabel)
+    // The entity type whose table the user is viewing — drives records-page view tools.
+    pushSurfaceRef(references, 'resource', activeResourceId, activeResourceLabel)
     pushSurfaceRef(references, 'kb', activeKnowledgeBaseId, activeKnowledgeBaseLabel)
     pushSurfaceRef(references, 'article', activeArticleId, activeArticleLabel)
     // Agent surface chips are pinned — the agent IS the subject of the
@@ -89,6 +97,8 @@ export function KopilotContext(props: KopilotContextProps): null {
     activeContactLabel,
     activeRecordId,
     activeRecordLabel,
+    activeResourceId,
+    activeResourceLabel,
     activeKnowledgeBaseId,
     activeKnowledgeBaseLabel,
     activeArticleId,

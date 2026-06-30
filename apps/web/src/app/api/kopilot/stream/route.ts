@@ -27,6 +27,7 @@ import {
   createKopilotCapabilities,
   createKopilotDomainConfig,
   createMailCapabilities,
+  createRecordViewCapabilities,
   createSuggestRepliesGlobalCapability,
   createTaskCapabilities,
   generateSessionTitle,
@@ -575,6 +576,7 @@ async function runInProcessPath(params: {
   registry.register(createKopilotCapabilities(getToolDeps))
   registry.register(createKbReadCapabilities(getToolDeps))
   registry.register(createKbCapabilities(getToolDeps))
+  registry.register(createRecordViewCapabilities(getToolDeps))
   registry.register(createSuggestRepliesGlobalCapability(getToolDeps))
   if (page === 'agents.builder') {
     registry.register(await createAgentsBuilderCapabilities(getToolDeps, organizationId))

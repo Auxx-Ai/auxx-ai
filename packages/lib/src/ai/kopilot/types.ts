@@ -10,6 +10,7 @@
 export type SessionRefKind =
   | 'thread' // mail thread id
   | 'record' // any RecordId — `contact:<id>`, `<defId>:<id>`, etc. Contacts are records.
+  | 'resource' // an entity TYPE the user is viewing — id is the entityDefinitionId. Records-table page.
   | 'kb' // knowledge base id
   | 'article' // article id
   | 'actor' // `user:<id>` or `group:<id>`

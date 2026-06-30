@@ -2,6 +2,10 @@
 
 import { generateId } from '@auxx/utils/generateId'
 import { useCallback, useEffect, useRef, useState } from 'react'
+import {
+  applyKopilotRecordView,
+  type KopilotRecordViewPayload,
+} from '~/components/records/apply-kopilot-view'
 import { type SSEConfig, useSSE } from '~/hooks/use-sse'
 import { api } from '~/trpc/react'
 import type { KopilotRequest } from '../stores/kopilot-store'
@@ -154,11 +158,19 @@ export function useKopilotSSE({ pendingRequest, onRequestSent }: UseKopilotSSEOp
           })
           // Side-channel snapshot embedded in tool output:
           // - `_suggestReplies` → render chips above the composer
+          // - `_kopilotRecordView` → drive the records table (preview / created view)
           const output = (data.output ?? null) as {
             _suggestReplies?: { version?: string; prompts?: Array<{ id: string; label: string }> }
+            _kopilotRecordView?: KopilotRecordViewPayload
           } | null
           if (output?._suggestReplies?.prompts) {
             setPendingChipPrompts(output._suggestReplies.prompts)
+          }
+          if (output?._kopilotRecordView) {
+            applyKopilotRecordView(output._kopilotRecordView)
+            if (output._kopilotRecordView.kind === 'created') {
+              utils.tableView.listAll.invalidate()
+            }
           }
           // Also mark a matching approval system message as approved on
           // completion — the tool actually ran.
