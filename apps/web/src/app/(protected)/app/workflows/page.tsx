@@ -12,9 +12,11 @@ import {
 } from '@auxx/ui/components/main-page'
 import { Lock } from 'lucide-react'
 import { EmptyState } from '~/components/global/empty-state'
+import { ListSelectionProvider } from '~/components/list-selection'
 import { useFeatureFlags } from '~/providers/feature-flag-provider'
 import { CreateWorkflowButton } from './_components/buttons/create-workflow-button'
 import { WorkflowsFilterBar } from './_components/filters/workflows-filter-bar'
+import { WorkflowsBulkBar } from './_components/lists/workflows-bulk-bar'
 import { WorkflowsList } from './_components/lists/workflows-list'
 import { WorkflowsProvider } from './_components/providers/workflows-provider'
 import { WorkflowsStatsCards } from './_components/stats/workflows-stats-cards'
@@ -34,11 +36,14 @@ function WorkflowsPageContent() {
         <WorkflowsStatsCards />
 
         {/* Filters + Workflows List */}
-        <ListPageScroll
-          toolbar={<WorkflowsFilterBar />}
-          bodyClassName='flex-1 flex flex-col min-h-0'>
-          <WorkflowsList />
-        </ListPageScroll>
+        <ListSelectionProvider>
+          <ListPageScroll
+            toolbar={<WorkflowsFilterBar />}
+            bodyClassName='flex-1 flex flex-col min-h-0'>
+            <WorkflowsList />
+          </ListPageScroll>
+          <WorkflowsBulkBar />
+        </ListSelectionProvider>
       </MainPageContent>
     </MainPage>
   )

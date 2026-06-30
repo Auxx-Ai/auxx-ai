@@ -3,6 +3,7 @@
 
 import { InputSearch } from '@auxx/ui/components/input-search'
 import { Label } from '@auxx/ui/components/label'
+import { ListBulkToggle } from '@auxx/ui/components/list-bulk-toggle'
 import { ListToolbar, ListToolbarGroup } from '@auxx/ui/components/list-toolbar'
 import {
   Select,
@@ -13,6 +14,7 @@ import {
 } from '@auxx/ui/components/select'
 import { Switch } from '@auxx/ui/components/switch'
 import { ViewModeToggle } from '@auxx/ui/components/view-mode-toggle'
+import { useBulkMode, useListSelection } from '~/components/list-selection'
 import { useWorkflows } from '../providers/workflows-provider'
 import { getAllTriggers } from '../utils/trigger-info'
 
@@ -27,6 +29,9 @@ export function WorkflowsFilterBar() {
     viewMode,
     setViewMode,
   } = useWorkflows()
+
+  const bulkMode = useBulkMode()
+  const setBulkMode = useListSelection((s) => s.setBulkMode)
 
   const triggerTypes = getAllTriggers().map((trigger) => ({
     value: trigger.id,
@@ -60,6 +65,7 @@ export function WorkflowsFilterBar() {
       />
 
       <ListToolbarGroup align='end'>
+        {viewMode === 'grid' && <ListBulkToggle active={bulkMode} onActiveChange={setBulkMode} />}
         <div className='flex items-center space-x-2 h-7'>
           <Switch
             id='show-disabled'

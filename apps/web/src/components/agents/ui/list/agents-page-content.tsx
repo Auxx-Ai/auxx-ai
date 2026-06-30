@@ -9,6 +9,8 @@ import {
   MainPageContent,
   MainPageHeader,
 } from '@auxx/ui/components/main-page'
+import { ListSelectionProvider } from '~/components/list-selection'
+import { AgentsBulkBar } from './agents-bulk-bar'
 import { AgentsGridView } from './agents-grid-view'
 import { AgentsSearchBar } from './agents-search-bar'
 import { CreateAgentButton } from './create-agent-button'
@@ -24,9 +26,14 @@ export function AgentsPageContent() {
       </MainPageHeader>
 
       <MainPageContent>
-        <ListPageScroll toolbar={<AgentsSearchBar />} bodyClassName='flex-1 flex flex-col min-h-0'>
-          <AgentsGridView />
-        </ListPageScroll>
+        <ListSelectionProvider>
+          <ListPageScroll
+            toolbar={<AgentsSearchBar />}
+            bodyClassName='flex-1 flex flex-col min-h-0'>
+            <AgentsGridView />
+          </ListPageScroll>
+          <AgentsBulkBar />
+        </ListSelectionProvider>
       </MainPageContent>
     </MainPage>
   )

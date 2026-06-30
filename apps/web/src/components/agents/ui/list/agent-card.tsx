@@ -7,6 +7,13 @@ import { LastUpdated } from '@auxx/ui/components/last-updated'
 import { ListCard } from '@auxx/ui/components/list-card'
 import { Archive, ArchiveRestore, MessageCircle, Pencil, Trash2 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
+import {
+  useBulkMode,
+  useIsPending,
+  useIsSelected,
+  useListSelection,
+  usePendingLabel,
+} from '~/components/list-selection'
 import { useConfirm } from '~/hooks/use-confirm'
 import { useAgentMutations } from '../../hooks/use-agent-mutations'
 import type { AgentListItem } from '../../store/agent-store'
@@ -20,6 +27,11 @@ export function AgentCard({ agent }: AgentCardProps) {
   const router = useRouter()
   const { archiveAgent, unarchiveAgent, deleteAgent, deleteSetupDraft } = useAgentMutations()
   const [confirm, ConfirmDialog] = useConfirm()
+  const bulkMode = useBulkMode()
+  const selected = useIsSelected(agent.id)
+  const pending = useIsPending(agent.id)
+  const pendingLabel = usePendingLabel()
+  const toggle = useListSelection((s) => s.toggle)
 
   const archived = agent.archivedAt != null
   const isDraft = agent.setupCompletedAt == null && !archived
@@ -72,6 +84,12 @@ export function AgentCard({ agent }: AgentCardProps) {
       <ListCard
         href={`/app/agents/${agent.slug}`}
         ariaLabel={displayName}
+        selectable
+        selecting={bulkMode}
+        selected={selected}
+        onSelectChange={(_, e) => toggle(agent.id, { shiftKey: e.shiftKey })}
+        pending={pending}
+        pendingLabel={pendingLabel}
         title={displayName}
         titleLines={1}
         classNames={agent.name ? undefined : { title: 'font-medium italic text-muted-foreground' }}

@@ -4,9 +4,7 @@
 
 import { FeatureKey } from '@auxx/lib/permissions/client'
 import { Button } from '@auxx/ui/components/button'
-import { InputSearch } from '@auxx/ui/components/input-search'
 import { ListPageScroll } from '@auxx/ui/components/list-page-scroll'
-import { ListToolbar } from '@auxx/ui/components/list-toolbar'
 import {
   MainPage,
   MainPageBreadcrumb,
@@ -18,7 +16,10 @@ import { Lock, Plus } from 'lucide-react'
 import { useState } from 'react'
 import { ConnectSourceDialog } from '~/components/data-connectors/ui/connect-source-dialog'
 import { ConnectorList } from '~/components/data-connectors/ui/connector-list'
+import { ConnectorsBulkBar } from '~/components/data-connectors/ui/connectors-bulk-bar'
+import { ConnectorsToolbar } from '~/components/data-connectors/ui/connectors-toolbar'
 import { EmptyState } from '~/components/global/empty-state'
+import { ListSelectionProvider } from '~/components/list-selection'
 import { useFeatureFlags } from '~/providers/feature-flag-provider'
 
 /**
@@ -48,19 +49,14 @@ export default function ConnectorsPage() {
       </MainPageHeader>
       <MainPageContent>
         {canConnect ? (
-          <ListPageScroll
-            toolbar={
-              <ListToolbar>
-                <InputSearch
-                  value={search}
-                  placeholder='Search connectors...'
-                  onChange={(e) => setSearch(e.target.value)}
-                />
-              </ListToolbar>
-            }
-            bodyClassName='flex-1 flex flex-col min-h-0'>
-            <ConnectorList onConnect={() => setPickerOpen(true)} search={search} />
-          </ListPageScroll>
+          <ListSelectionProvider>
+            <ListPageScroll
+              toolbar={<ConnectorsToolbar search={search} onSearchChange={setSearch} />}
+              bodyClassName='flex-1 flex flex-col min-h-0'>
+              <ConnectorList onConnect={() => setPickerOpen(true)} search={search} />
+            </ListPageScroll>
+            <ConnectorsBulkBar />
+          </ListSelectionProvider>
         ) : (
           <EmptyState
             icon={Lock}

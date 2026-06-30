@@ -2,6 +2,7 @@
 'use client'
 
 import { Button } from '@auxx/ui/components/button'
+import { Checkbox } from '@auxx/ui/components/checkbox'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -11,7 +12,7 @@ import {
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { SimpleTooltip as Tooltip } from '@auxx/ui/components/tooltip'
 import { cn } from '@auxx/ui/lib/utils'
-import { BadgeCheck, MoreVertical } from 'lucide-react'
+import { BadgeCheck, Loader2, MoreVertical } from 'lucide-react'
 import { Slot as SlotPrimitive } from 'radix-ui'
 import type * as React from 'react'
 
@@ -93,6 +94,20 @@ export interface ListCardProps {
   menuItems?: ListCardMenuItem[]
   /** Raw `<DropdownMenuContent>` children — for submenus. Wins over `menuItems`. */
   menu?: React.ReactNode
+
+  // ---- selection (bulk mode) ----
+  /** Surface supports selection → reveal a checkbox on hover (top-right corner). */
+  selectable?: boolean
+  /** Bulk mode active → checkbox always shown; whole-card click toggles instead of navigating. */
+  selecting?: boolean
+  /** Controlled selected state → highlight + checked box. */
+  selected?: boolean
+  /** Toggle handler; receives the mouse event so callers can read `e.shiftKey` for range select. */
+  onSelectChange?: (next: boolean, e: React.MouseEvent) => void
+  /** Show a blurred, non-interactive "Deleting…" overlay (a bulk action is in flight). */
+  pending?: boolean
+  /** Centered label for the pending overlay. Default `Deleting…`. */
+  pendingLabel?: React.ReactNode
 
   // ---- interaction ----
   href?: string
@@ -181,6 +196,12 @@ export function ListCard({
   trailing,
   menuItems,
   menu,
+  selectable,
+  selecting,
+  selected,
+  onSelectChange,
+  pending,
+  pendingLabel,
   href,
   onClick,
   disabled,
@@ -191,16 +212,24 @@ export function ListCard({
   classNames,
 }: ListCardProps) {
   const isPlaceholder = variant === 'placeholder'
-  const interactive = !loading && !disabled && Boolean(href || onClick || link)
-  const hasMenu = !loading && Boolean(menu || menuItems?.length)
+  const interactive =
+    !loading && !disabled && !pending && (selecting || Boolean(href || onClick || link))
+  // While selecting, the per-card menu + header badge yield to the checkbox/bulk bar.
+  const hasMenu = !loading && !selecting && Boolean(menu || menuItems?.length)
   const hasFooter = !loading && Boolean(badges || trailing)
+  const showCheckbox = !loading && !pending && (selectable || selecting)
 
   const rootClass = cn(
     'group/list-card relative flex w-full flex-col gap-2 rounded-2xl border p-3 text-left',
     isPlaceholder
       ? 'border-dashed bg-primary-50 hover:bg-primary-50/50 hover:outline-5 hover:outline-primary-50'
       : 'bg-background dark:bg-primary-50 hover:bg-primary-50/50 hover:outline-5 hover:outline-primary-100 dark:hover:outline-primary-50/50',
-    interactive && 'cursor-pointer',
+    // Selected: a persistent info ring (even when not hovering), info tint that
+    // stays on hover (a touch darker), and an info hover ring.
+    selected &&
+      'border-info/90 outline-5 outline-info/20 bg-info/5 hover:bg-info/10 hover:outline-info/10 dark:bg-info/10 dark:hover:bg-info/10 dark:hover:outline-info/20',
+    // Pointer cursor only while bulk-selecting; normal cards keep the default cursor.
+    selecting && 'cursor-pointer',
     disabled && 'cursor-not-allowed opacity-60',
     className,
     classNames?.root
@@ -209,26 +238,50 @@ export function ListCard({
   const stop = (e: React.MouseEvent) => e.stopPropagation()
   const resolvedAriaLabel = ariaLabel ?? (typeof title === 'string' ? title : undefined)
 
-  const overlay = interactive ? (
-    link ? (
-      <SlotPrimitive.Slot className={OVERLAY_CLASS}>{link}</SlotPrimitive.Slot>
-    ) : href ? (
-      <a className={OVERLAY_CLASS} href={href} aria-label={resolvedAriaLabel} />
-    ) : (
-      <button
-        type='button'
-        className={OVERLAY_CLASS}
-        onClick={onClick}
-        aria-label={resolvedAriaLabel}
-      />
-    )
+  const overlay = !interactive ? null : selecting ? (
+    // Bulk mode: the stretched overlay toggles selection instead of navigating.
+    <button
+      type='button'
+      className={cn(OVERLAY_CLASS, 'cursor-pointer')}
+      aria-label={resolvedAriaLabel}
+      onClick={(e) => onSelectChange?.(!selected, e)}
+    />
+  ) : link ? (
+    <SlotPrimitive.Slot className={cn(OVERLAY_CLASS, 'cursor-default')}>{link}</SlotPrimitive.Slot>
+  ) : href ? (
+    <a className={cn(OVERLAY_CLASS, 'cursor-default')} href={href} aria-label={resolvedAriaLabel} />
+  ) : (
+    <button
+      type='button'
+      className={cn(OVERLAY_CLASS, 'cursor-default')}
+      onClick={onClick}
+      aria-label={resolvedAriaLabel}
+    />
+  )
+
+  // Top-right checkbox: always visible while selecting, hover-revealed otherwise.
+  // Wrapped in a div (not the Checkbox's own handler) so the click MouseEvent —
+  // and `e.shiftKey` for range select — reaches `onSelectChange`.
+  const checkbox = showCheckbox ? (
+    <div
+      data-slot='list-card-select'
+      className={cn(
+        'absolute right-3 top-2 z-20',
+        !selecting && 'opacity-0 transition-opacity group-hover/list-card:opacity-100'
+      )}
+      onClick={(e) => {
+        e.stopPropagation()
+        onSelectChange?.(!selected, e)
+      }}>
+      <Checkbox checked={selected} className='pointer-events-none size-4' />
+    </div>
   ) : null
 
   const menuNode = hasMenu ? (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button
-          className='relative z-10 rounded-lg opacity-0 transition-opacity duration-300 group-hover/list-card:opacity-100 data-[state=open]:bg-muted! data-[state=open]:opacity-100!'
+          className='-mr-1 relative z-10 rounded-lg opacity-0 transition-opacity duration-300 group-hover/list-card:opacity-100 data-[state=open]:bg-muted! data-[state=open]:opacity-100!'
           variant='ghost'
           size='icon-xs'
           onClick={stop}>
@@ -257,6 +310,7 @@ export function ListCard({
   return (
     <div data-slot='list-card' className={rootClass}>
       {overlay}
+      {checkbox}
 
       {/* Header: media + title column */}
       <div data-slot='list-card-header' className='flex w-full flex-row items-start gap-2'>
@@ -305,7 +359,7 @@ export function ListCard({
                 )}
               </div>
             )}
-            {!loading && headerEnd && (
+            {!loading && !selecting && headerEnd && (
               <div data-slot='list-card-header-end' className='relative z-10 shrink-0'>
                 {headerEnd}
               </div>
@@ -361,13 +415,23 @@ export function ListCard({
       ) : hasFooter ? (
         <div
           data-slot='list-card-footer'
-          className={cn('mt-auto flex items-center justify-between gap-2', classNames?.footer)}>
+          // min-h-6 holds the footer at the menu-button height so the card doesn't
+          // shrink when the menu is hidden while selecting.
+          className={cn(
+            'mt-auto flex min-h-6 items-center justify-between gap-2',
+            classNames?.footer
+          )}>
           <div
             data-slot='list-card-badges'
             className={cn('flex min-w-0 items-center gap-1', classNames?.badges)}>
             {badges}
           </div>
-          <div className='relative z-10 flex items-center gap-1'>
+          {/* While selecting, let clicks fall through to the toggle overlay. */}
+          <div
+            className={cn(
+              'relative z-10 flex items-center gap-1',
+              selecting && 'pointer-events-none'
+            )}>
             {trailing}
             {menuNode}
           </div>
@@ -375,6 +439,17 @@ export function ListCard({
       ) : (
         // No footer content: float the menu bottom-right (preserves the app-card look).
         hasMenu && <div className='absolute bottom-2 right-2 z-10'>{menuNode}</div>
+      )}
+
+      {/* Pending overlay: blurs the card behind a centered "Deleting…" label and
+          blocks interaction while a bulk action is in flight. */}
+      {pending && (
+        <div
+          data-slot='list-card-pending'
+          className='absolute inset-0 z-30 flex items-center justify-center gap-2 rounded-2xl bg-background/50 text-sm font-medium text-muted-foreground backdrop-blur-sm'>
+          <Loader2 className='size-4 animate-spin' />
+          {pendingLabel ?? 'Deleting…'}
+        </div>
       )}
     </div>
   )

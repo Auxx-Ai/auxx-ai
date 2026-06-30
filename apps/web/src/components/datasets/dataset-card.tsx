@@ -12,6 +12,13 @@ import { Tooltip } from '@auxx/ui/components/tooltip'
 import { formatBytes } from '@auxx/utils'
 import { Archive, Database, Search, Settings, Trash } from 'lucide-react'
 import { FavoriteToggleMenuItem } from '~/components/favorites/ui/favorite-toggle-menu-item'
+import {
+  useBulkMode,
+  useIsPending,
+  useIsSelected,
+  useListSelection,
+  usePendingLabel,
+} from '~/components/list-selection'
 import { useDatasetActions } from './hooks/use-dataset-actions'
 
 interface DatasetCardProps {
@@ -35,6 +42,12 @@ export function DatasetCard({ dataset, onClick, onActionComplete }: DatasetCardP
       onSuccess: onActionComplete,
     })
 
+  const bulkMode = useBulkMode()
+  const selected = useIsSelected(dataset.id)
+  const pending = useIsPending(dataset.id)
+  const pendingLabel = usePendingLabel()
+  const toggle = useListSelection((s) => s.toggle)
+
   const status = STATUS_DOT[dataset.status] ?? STATUS_DOT.ARCHIVED
   const creatorName = dataset.createdBy.name ?? dataset.createdBy.email ?? '?'
   const creatorInitial = creatorName.charAt(0).toUpperCase()
@@ -50,6 +63,12 @@ export function DatasetCard({ dataset, onClick, onActionComplete }: DatasetCardP
       <ListCard
         onClick={onClick}
         ariaLabel={dataset.name}
+        selectable
+        selecting={bulkMode}
+        selected={selected}
+        onSelectChange={(_, e) => toggle(dataset.id, { shiftKey: e.shiftKey })}
+        pending={pending}
+        pendingLabel={pendingLabel}
         title={dataset.name}
         icon={<Database className='size-4' />}
         status={status}

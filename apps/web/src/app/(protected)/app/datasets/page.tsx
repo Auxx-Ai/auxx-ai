@@ -15,6 +15,7 @@ import {
 import { Lock } from 'lucide-react'
 import {
   CreateDatasetButton,
+  DatasetsBulkBar,
   DatasetsEmptyState,
   DatasetsFilterBar,
   DatasetsGridView,
@@ -24,6 +25,7 @@ import {
   useDatasets,
 } from '~/components/datasets'
 import { EmptyState } from '~/components/global/empty-state'
+import { ListSelectionProvider } from '~/components/list-selection'
 import { useFeatureFlags } from '~/providers/feature-flag-provider'
 
 /**
@@ -45,21 +47,24 @@ function DatasetsPageContent() {
         <DatasetsStatsCards stats={stats} />
 
         {/* Filters + Datasets Content */}
-        <ListPageScroll toolbar={<DatasetsFilterBar />}>
-          {isLoading ? (
-            <div className='grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4'>
-              {[...Array(8)].map((_, i) => (
-                <ListCard key={`skeleton-${i}`} loading descriptionLines={0} />
-              ))}
-            </div>
-          ) : items.length === 0 ? (
-            <DatasetsEmptyState searchQuery={searchQuery} selectedStatus={selectedStatus} />
-          ) : viewMode === 'grid' ? (
-            <DatasetsGridView />
-          ) : (
-            <DatasetsTableView />
-          )}
-        </ListPageScroll>
+        <ListSelectionProvider>
+          <ListPageScroll toolbar={<DatasetsFilterBar />}>
+            {isLoading ? (
+              <div className='grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4'>
+                {[...Array(8)].map((_, i) => (
+                  <ListCard key={`skeleton-${i}`} loading descriptionLines={0} />
+                ))}
+              </div>
+            ) : items.length === 0 ? (
+              <DatasetsEmptyState searchQuery={searchQuery} selectedStatus={selectedStatus} />
+            ) : viewMode === 'grid' ? (
+              <DatasetsGridView />
+            ) : (
+              <DatasetsTableView />
+            )}
+          </ListPageScroll>
+          <DatasetsBulkBar />
+        </ListSelectionProvider>
       </MainPageContent>
     </MainPage>
   )
