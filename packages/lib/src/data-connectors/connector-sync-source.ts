@@ -175,7 +175,7 @@ class ConnectorStreamSyncSource implements ConnectorSyncSource {
           sinkSourceRecord(syncCtx, this.deps.stream.mappings, record, this.updatedAtPath),
       })
       await this.emitRecordsInvalidated(syncCtx.touchedDefs)
-      return { ...result, counters: toSyncCounters(counters) }
+      return { ...result, counters: toSyncCounters(counters), errorSample: counters.errorSample }
     }
 
     // Backfill paginates from the top/cursor (snapshot); steady incremental injects
@@ -206,7 +206,7 @@ class ConnectorStreamSyncSource implements ConnectorSyncSource {
     })
 
     await this.emitRecordsInvalidated(syncCtx.touchedDefs)
-    return { ...result, counters: toSyncCounters(counters) }
+    return { ...result, counters: toSyncCounters(counters), errorSample: counters.errorSample }
   }
 
   /**
@@ -317,7 +317,10 @@ class ConnectorStreamSyncSource implements ConnectorSyncSource {
     // Fold finalize-only counters (archived/deleted/relationshipWarnings). No
     // checkpoint key ⇒ always folds (runs exactly once, last stream only).
     const ledger = createConnectorRunLedger(this.deps.db, this.deps.run, this.deps.stream.streamId)
-    await ledger.recordSlice({ counters: toSyncCounters(counters) })
+    await ledger.recordSlice({
+      counters: toSyncCounters(counters),
+      errorSample: counters.errorSample,
+    })
 
     // Close the run for backfill (delegated by the runner); steady already finalized
     // in the runner. Then release the connector claim + stamp the item count.

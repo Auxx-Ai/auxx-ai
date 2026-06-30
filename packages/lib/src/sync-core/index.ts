@@ -13,6 +13,7 @@ export type {
   SyncCursor,
   SyncPhase,
   SyncRunCounters,
+  SyncRunErrorSample,
   SyncSliceCtx,
   SyncSource,
   SyncState,

@@ -471,8 +471,15 @@ function isBoundaryPrefix(path: string, prefix: string): boolean {
   return next === '.' || next === '['
 }
 
-/** Strip a mapping's rootPath off a field's sourcePath, leaving a subtree-relative path. */
-function relativeSourcePath(sourcePath: string, rootPath: string): string {
+/**
+ * Strip a `rootPath` prefix off a `path`, leaving it relative to that subtree —
+ * `('line_items[].sku', 'line_items[]') → 'sku'`. Used both to relativize a field's
+ * sourcePath against its owning mapping AND to relativize a nested child mapping's
+ * own (payload-absolute, manifest) rootPath against its parent's rootPath before it
+ * is stored (`absolutePrefix`/`subtreeUnder`/`mapRecord` all expect parent-relative).
+ * `rootPath` must be a boundary-prefix of `path` (the caller resolves it that way).
+ */
+export function relativeSourcePath(sourcePath: string, rootPath: string): string {
   if (rootPath === '') return sourcePath
   return sourcePath.slice(rootPath.length).replace(/^\./, '')
 }
@@ -566,23 +573,39 @@ async function seedAppOwnedMappings(
     // A `reference` owned mapping (id-only edge, e.g. line→product) owns no columns —
     // its entry list is empty; it only carries the structural link (parent + edge key).
     const entries = partition[mapping.rootPath] ?? []
+    const linkMode = mapping.linkMode ?? ('upsert' as LinkMode)
 
     const parentRootPath = ownedParentRootPath(mapping.rootPath, allRootPaths)
     const parentMappingId = parentRootPath != null ? mappingIdByRootPath[parentRootPath] : null
 
     const row = await addMapping(db, organizationId, {
       dataConnectorStreamId: streamId,
-      rootPath: mapping.rootPath,
-      linkMode: mapping.linkMode ?? ('upsert' as LinkMode),
+      // STORE parent-relative. The manifest rootPath is payload-absolute (so
+      // `ownedParentRootPath` can nest it: `'' ⊂ line_items[] ⊂ line_items[].product_id`),
+      // but every consumer — `absolutePrefix`, `subtreeUnder`, and the sync `mapRecord`
+      // subtree descent — treats a child's stored rootPath as relative to its parent.
+      // Relativize against the parent we just resolved; top-level children (parent `''`)
+      // are unchanged. NB: `mappingIdByRootPath` below stays keyed by the ABSOLUTE path,
+      // because parent detection nests on absolute paths.
+      rootPath:
+        parentRootPath != null
+          ? relativeSourcePath(mapping.rootPath, parentRootPath)
+          : mapping.rootPath,
+      linkMode,
       targetMode: 'owned' as TargetMode,
       entityDefinitionId: null,
       parentMappingId,
       relationshipFieldKey: mapping.relationshipFieldKey ?? null,
-      // Late-bound refs key on the manifest apiSlug; the install rewrites them to
+      // A `reference` edge carries only its External-ID anchor (the FK value IS the
+      // related record's external id). An upsert mapping owns its subtree's columns:
+      // late-bound refs key on the manifest apiSlug; the install rewrites them to
       // concrete `${defId}:${fieldId}` once the def exists (or fixes the slug segment
       // to the actual installed slug). Until then they resolve at sync via the `@app:`
       // path — so even an uninstalled-but-slug-matching def would still bind.
-      fieldMappings: buildAppOwnedFieldMappings(entries, appSlug, entity.apiSlug),
+      fieldMappings:
+        linkMode === 'reference'
+          ? [buildReferenceAnchor()]
+          : buildAppOwnedFieldMappings(entries, appSlug, entity.apiSlug),
       // Incremental connectors only see the delta each run, so unseen ≠ deleted —
       // never archive owned orphans automatically. Full-snapshot sweeps can still
       // reconcile; v1 keeps it safe.
@@ -616,6 +639,26 @@ export function buildAppOwnedFieldMappings(
     expression: `{${relPath}}`,
     sourceFields: { [relPath]: relPath },
   }))
+}
+
+/**
+ * The External-ID anchor a `reference` (id-only edge) mapping carries so the FK value
+ * resolves to the related record's external id at sync. A bare scalar-rooted reference
+ * (e.g. `line_items[].product_id → product`) declares no `fieldMappings` in the manifest
+ * — but with an empty entry list the edge has nothing to anchor on and stays inert. This
+ * synthesizes the same anchor the interactive `linkRelationship` ships (`{source}` over
+ * the reference's own scalar, marked External ID), so a manifest-seeded reference resolves
+ * identically with no manifest change. The seeder owns this default; the manifest stays
+ * declarative.
+ */
+export function buildReferenceAnchor(): FieldMapping {
+  return {
+    id: generateId(),
+    targetFieldRef: null,
+    expression: '{source}',
+    sourceFields: {},
+    identityRole: { kind: 'externalId' },
+  }
 }
 
 /**
@@ -724,7 +767,12 @@ async function materializeAppContributingMappings(
             defFields
           )
     ).filter((b) => !boundTargets.has(b.targetFieldRef))
-    const fieldMappings = [...matchBindings, ...valueBindings]
+    const linkMode = mapping.linkMode ?? ('upsert' as LinkMode)
+    // A `reference` contributing edge owns no value columns — it carries only the
+    // External-ID anchor (the FK resolves to the related record at sync), mirroring the
+    // interactive `linkRelationship`. Otherwise bind match + author/auto value fields.
+    const fieldMappings =
+      linkMode === 'reference' ? [buildReferenceAnchor()] : [...matchBindings, ...valueBindings]
 
     // A nested contributing branch (e.g. the order stream's embedded `customer`)
     // hangs off the owned root it's drilled from. Wiring `parentMappingId` makes
@@ -737,8 +785,14 @@ async function materializeAppContributingMappings(
 
     await addMapping(db, organizationId, {
       dataConnectorStreamId: streamId,
-      rootPath: mapping.rootPath,
-      linkMode: mapping.linkMode ?? ('upsert' as LinkMode),
+      // STORE parent-relative (see `seedAppOwnedMappings`): only when a parent was
+      // resolved — top-level contributing branches keep their absolute (== relative)
+      // path. `ownedMappingIdByRootPath` lookups stay keyed ABSOLUTE.
+      rootPath:
+        parentRootPath != null
+          ? relativeSourcePath(mapping.rootPath, parentRootPath)
+          : mapping.rootPath,
+      linkMode,
       targetMode: 'contributing' as TargetMode,
       entityDefinitionId,
       parentMappingId,

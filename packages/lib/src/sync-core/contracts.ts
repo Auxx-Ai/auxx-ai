@@ -71,6 +71,22 @@ export interface SyncRunCounters {
 }
 
 /**
+ * One dropped/failed record sampled for the run's error UI. `tier` classifies the
+ * failure: 'invalid' = bad shape / missing identity, dropped BEFORE the write;
+ * 'rejected' = the entity write itself threw. Omitted ⇒ engine-level error.
+ *
+ * This rides ALONGSIDE the numeric `SyncRunCounters` (which can't carry an array)
+ * so a slice that silently drops every field value can no longer present as a clean
+ * run — the sample is folded onto the run row. Mirrors `DataConnectorRun.errorSample`
+ * (the only `RunLedger` sink today).
+ */
+export interface SyncRunErrorSample {
+  externalId: string
+  error: string
+  tier?: 'invalid' | 'rejected'
+}
+
+/**
  * Durable per-stream sync state. The `SyncStateStore` maps this onto whatever the
  * sink uses for persistence (data-connectors: `DataConnectorStream.state` jsonb;
  * channels: `Integration` columns). The core reads/writes it as an opaque blob.
@@ -134,6 +150,8 @@ export interface SliceResult {
   commit: SliceCommit
   /** Counter deltas for this slice, folded into the run ledger. */
   counters?: Partial<SyncRunCounters>
+  /** Dropped/failed records sampled this slice, appended onto the run's error sample. */
+  errorSample?: SyncRunErrorSample[]
 }
 
 /**
@@ -143,6 +161,8 @@ export interface SliceResult {
 export interface SliceLedgerEntry {
   /** Entity counter deltas (created/updated/skipped/…). */
   counters?: Partial<SyncRunCounters>
+  /** Dropped/failed records sampled this slice, jsonb-appended onto the run row. */
+  errorSample?: SyncRunErrorSample[]
   /** Pages fetched this slice. */
   pagesProcessed?: number
   /** Rate-limit wait this slice. */

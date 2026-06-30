@@ -99,6 +99,35 @@ describe('runSyncSlice', () => {
     expect(ledger.slices[0]?.counters).toEqual({ created: 50 })
   })
 
+  it('forwards the slice error sample into the ledger entry (Step 9 §8)', async () => {
+    const state = fakeStateStore({ phase: 'backfill' })
+    const ledger = fakeLedger()
+    await runSyncSlice({
+      source: source({
+        slice: {
+          recordsProcessed: 1,
+          pagesProcessed: 1,
+          nextCursor: { kind: 'token', value: 'pg_1' },
+          hasMore: true,
+          commit: 'all',
+          counters: { created: 1 },
+          // A pre-write drop (unresolved field ref) — does NOT bump `failed`, so the
+          // sample is the only signal the run wrote nothing for this record.
+          errorSample: [{ externalId: 'p1', error: 'unresolved targetFieldRef', tier: 'invalid' }],
+        },
+      }),
+      stateStore: state.store,
+      ledger: ledger.ledger,
+      throttle: THROTTLE,
+      budget: BUDGET,
+      signal: new AbortController().signal,
+    })
+
+    expect(ledger.slices[0]?.errorSample).toEqual([
+      { externalId: 'p1', error: 'unresolved targetFieldRef', tier: 'invalid' },
+    ])
+  })
+
   it('HOLDS the cursor and passes no idempotency key on a transient failure', async () => {
     const state = fakeStateStore({ phase: 'backfill', cursor: { kind: 'token', value: 'pg_3' } })
     const ledger = fakeLedger()
