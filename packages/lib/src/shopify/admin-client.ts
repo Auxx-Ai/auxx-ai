@@ -1,5 +1,4 @@
 // packages/lib/src/shopify/admin-client.ts
-import type { ShopifyIntegrationEntity } from '@auxx/database/types'
 import { createScopedLogger } from '@auxx/logger'
 import { createAdminApiClient } from '@shopify/admin-api-client'
 
@@ -10,9 +9,7 @@ const logger = createScopedLogger('shopify/admin-client')
  * `chat-metafields` to write Auxx chat metafields onto the shop. Billing has its
  * own Admin client in `@auxx/billing`.
  */
-export function createShopifyAdminClient(
-  integration: Pick<ShopifyIntegrationEntity, 'shopDomain' | 'accessToken'>
-) {
+export function createShopifyAdminClient(integration: { shopDomain: string; accessToken: string }) {
   if (!integration.shopDomain || !integration.accessToken) {
     throw new Error('Missing required integration properties: shopDomain or accessToken')
   }

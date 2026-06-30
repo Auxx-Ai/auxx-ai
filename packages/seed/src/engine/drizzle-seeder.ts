@@ -130,7 +130,6 @@ export class DrizzleSeeder {
     const { BillingDomain } = await import('../domains/billing.domain')
     const { McpDomain } = await import('../domains/mcp.domain')
     const { ConnectionsDomain } = await import('../domains/connections.domain')
-    const { CommerceDomain } = await import('../domains/commerce.domain')
     const { CommunicationDomain } = await import('../domains/communication.domain')
     const { AiDomain } = await import('../domains/ai.domain')
     const { CrmDomain } = await import('../domains/crm.domain')
@@ -179,14 +178,6 @@ export class DrizzleSeeder {
       const organization = new OrganizationDomain(this.scenario, context, domainOptions)
       await organization.insertDirectly(this.db)
       console.log('✅ Organization data inserted')
-
-      // Commerce inserts
-      if (this.scenario.scales.products > 0 || this.scenario.scales.customers > 0) {
-        console.log('💾 Inserting commerce data directly...')
-        const commerce = new CommerceDomain(this.scenario, context, domainOptions)
-        await commerce.insertDirectly(this.db)
-        console.log('✅ Commerce data inserted')
-      }
 
       // Ticket inserts (Tickets, Replies, Notes, Assignments, Relations)
       if (this.scenario.scales.tickets > 0) {
@@ -264,7 +255,6 @@ export class DrizzleSeeder {
         organizations: [],
         integrations: [],
         inboxes: [],
-        shopifyIntegrations: [],
       },
     }
   }
@@ -290,8 +280,6 @@ export class DrizzleSeeder {
     }
 
     const targetSchema = {
-      Product: schema.Product,
-      shopify_customers: schema.shopify_customers,
       Thread: schema.Thread,
       AiUsage: schema.AiUsage,
     }
@@ -342,21 +330,6 @@ export class DrizzleSeeder {
 
       console.log('  ↳ Deleting threads...')
       await this.db.delete(schema.Thread).where(eq(schema.Thread.organizationId, organizationId))
-
-      // 3. Commerce domain (Orders → Addresses → Products/Customers)
-      console.log('  ↳ Deleting orders...')
-      await this.db.delete(schema.Order).where(eq(schema.Order.organizationId, organizationId))
-
-      console.log('  ↳ Deleting addresses...')
-      await this.db.delete(schema.Address).where(eq(schema.Address.organizationId, organizationId))
-
-      console.log('  ↳ Deleting products...')
-      await this.db.delete(schema.Product).where(eq(schema.Product.organizationId, organizationId))
-
-      console.log('  ↳ Deleting customers...')
-      await this.db
-        .delete(schema.shopify_customers)
-        .where(eq(schema.shopify_customers.organizationId, organizationId))
 
       // 5. CRM domain (Participants → FieldValues → EntityInstances)
       console.log('  ↳ Deleting participants...')

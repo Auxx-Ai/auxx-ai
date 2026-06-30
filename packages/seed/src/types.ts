@@ -52,16 +52,6 @@ export interface ServiceIntegratorInbox {
   organizationId: string
 }
 
-/** ServiceIntegratorShopifyIntegration describes a provisioned Shopify integration reference. */
-export interface ServiceIntegratorShopifyIntegration {
-  /** id stores the Shopify integration identifier. */
-  id: string
-  /** organizationId links the integration to its owning organization. */
-  organizationId: string
-  /** createdById stores the administrator who created the integration. */
-  createdById: string
-}
-
 /** ServiceIntegratorResult captures service-level entities shared with refinements. */
 export interface ServiceIntegratorResult {
   /** organizations enumerates ensured organizations. */
@@ -70,8 +60,6 @@ export interface ServiceIntegratorResult {
   integrations: ServiceIntegratorIntegration[]
   /** inboxes enumerates ensured inboxes. */
   inboxes: ServiceIntegratorInbox[]
-  /** shopifyIntegrations enumerates ensured Shopify integrations. */
-  shopifyIntegrations: ServiceIntegratorShopifyIntegration[]
 }
 
 /** SeedingContext conveys prior seeding outputs for refinement builders. */

@@ -15,14 +15,11 @@ import {
   File,
   McpServer,
   Organization,
-  ShopifyIntegration,
   StorageLocation,
-  Subscription,
   SyncJob,
   User,
   Webhook,
   WebhookDelivery,
-  WebhookEvent,
   Workflow,
   WorkflowApp,
   WorkflowFile,
@@ -50,21 +47,6 @@ export const aiIntegrationRelations = relations(AiIntegration, ({ one }) => ({
   user: one(User, {
     fields: [AiIntegration.userId],
     references: [User.id],
-  }),
-}))
-
-export const webhookEventRelations = relations(WebhookEvent, ({ one }) => ({
-  shopifyIntegration: one(ShopifyIntegration, {
-    fields: [WebhookEvent.integrationId],
-    references: [ShopifyIntegration.id],
-  }),
-  organization: one(Organization, {
-    fields: [WebhookEvent.organizationId],
-    references: [Organization.id],
-  }),
-  subscription: one(Subscription, {
-    fields: [WebhookEvent.subscriptionId],
-    references: [Subscription.id],
   }),
 }))
 

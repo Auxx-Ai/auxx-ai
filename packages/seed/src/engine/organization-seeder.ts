@@ -181,21 +181,6 @@ export class OrganizationSeeder {
         .delete(schema.EntityInstance)
         .where(eq(schema.EntityInstance.organizationId, organizationId))
 
-      // 5. Commerce domain (Orders → Addresses → Products/Customers)
-      console.log('  ↳ Deleting orders...')
-      await db.delete(schema.Order).where(eq(schema.Order.organizationId, organizationId))
-
-      console.log('  ↳ Deleting addresses...')
-      await db.delete(schema.Address).where(eq(schema.Address.organizationId, organizationId))
-
-      console.log('  ↳ Deleting products...')
-      await db.delete(schema.Product).where(eq(schema.Product.organizationId, organizationId))
-
-      console.log('  ↳ Deleting customers...')
-      await db
-        .delete(schema.shopify_customers)
-        .where(eq(schema.shopify_customers.organizationId, organizationId))
-
       // 6. CRM domain (Participants)
       console.log('  ↳ Deleting participants...')
       await db
@@ -291,20 +276,6 @@ export class OrganizationSeeder {
         .where(eq(schema.Organization.id, organizationId))
       logger.info('seedOrganizationDirectly: Inboxes fetched', { count: inboxes.length })
 
-      // Fetch shopify integrations
-      logger.info('seedOrganizationDirectly: Fetching shopify integrations')
-      const shopifyIntegrations = await db
-        .select({
-          id: schema.ShopifyIntegration.id,
-          organizationId: schema.ShopifyIntegration.organizationId,
-          createdById: schema.ShopifyIntegration.createdById,
-        })
-        .from(schema.ShopifyIntegration)
-        .where(eq(schema.ShopifyIntegration.organizationId, organizationId))
-      logger.info('seedOrganizationDirectly: Shopify integrations fetched', {
-        count: shopifyIntegrations.length,
-      })
-
       // Fetch organization members/users
       logger.info('seedOrganizationDirectly: Fetching members')
       const members = await db
@@ -336,11 +307,6 @@ export class OrganizationSeeder {
           organizations: [{ id: org.id, ownerId: org.ownerId }],
           integrations: integrations.map((i) => ({ id: i.id, organizationId: i.organizationId })),
           inboxes: inboxes.map((i) => ({ id: i.inboxId!, organizationId: i.organizationId })),
-          shopifyIntegrations: shopifyIntegrations.map((i) => ({
-            id: i.id,
-            organizationId: i.organizationId,
-            createdById: i.createdById,
-          })),
         },
       }
       logger.info('seedOrganizationDirectly: Context built', {
@@ -395,15 +361,6 @@ export class OrganizationSeeder {
           )
           .where(eq(schema.Organization.id, organizationId))
 
-        const freshShopify = await db
-          .select({
-            id: schema.ShopifyIntegration.id,
-            organizationId: schema.ShopifyIntegration.organizationId,
-            createdById: schema.ShopifyIntegration.createdById,
-          })
-          .from(schema.ShopifyIntegration)
-          .where(eq(schema.ShopifyIntegration.organizationId, organizationId))
-
         // Update context with fresh integration data
         context.services.integrations = freshIntegrations.map((i) => ({
           id: i.id,
@@ -413,16 +370,10 @@ export class OrganizationSeeder {
           id: i.inboxId!,
           organizationId: i.organizationId,
         }))
-        context.services.shopifyIntegrations = freshShopify.map((i) => ({
-          id: i.id,
-          organizationId: i.organizationId,
-          createdById: i.createdById,
-        }))
 
         logger.info('seedOrganizationDirectly: Context refreshed with demo integrations', {
           integrations: context.services.integrations.length,
           inboxes: context.services.inboxes.length,
-          shopifyIntegrations: context.services.shopifyIntegrations.length,
         })
       }
 
@@ -432,7 +383,6 @@ export class OrganizationSeeder {
       logger.info('seedOrganizationDirectly: Loading domain classes')
       const { CrmDomain } = await import('../domains/crm.domain')
       const { OrganizationDomain } = await import('../domains/organization.domain')
-      const { CommerceDomain } = await import('../domains/commerce.domain')
       const { TicketDomain } = await import('../domains/ticket.domain')
       const { CommunicationDomain } = await import('../domains/communication.domain')
       const { AiDomain } = await import('../domains/ai.domain')
@@ -457,15 +407,6 @@ export class OrganizationSeeder {
       const organization = new OrganizationDomain(scenarioWithRefinements, context, domainOptions)
       await organization.insertDirectly(db)
       logger.info('seedOrganizationDirectly: Organization domain complete')
-
-      // Commerce (only if shopify integration exists and scales > 0)
-      if (context.services.shopifyIntegrations.length > 0 && scenario.scales.products > 0) {
-        logger.info('seedOrganizationDirectly: Seeding commerce domain')
-        console.log('💾 Inserting commerce data...')
-        const commerce = new CommerceDomain(scenarioWithRefinements, context, domainOptions)
-        await commerce.insertDirectly(db)
-        logger.info('seedOrganizationDirectly: Commerce domain complete')
-      }
 
       // Tickets
       if (scenario.scales.tickets > 0) {

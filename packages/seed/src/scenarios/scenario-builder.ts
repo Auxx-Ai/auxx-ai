@@ -3,7 +3,6 @@
 
 import { RelationalDomainBuilder } from '../builders/relational-domain-builder'
 import { AiDomain } from '../domains/ai.domain'
-import { CommerceDomain } from '../domains/commerce.domain'
 import { CommunicationDomain } from '../domains/communication.domain'
 import { OrganizationDomain } from '../domains/organization.domain'
 import { WorkflowDomain } from '../domains/workflow.domain'
@@ -60,14 +59,12 @@ export class ScenarioBuilder {
       ...definition,
       scales,
       buildRefinements(refinementContext: SeedingContext): DomainRefinementMap {
-        const commerce = new CommerceDomain(scenario, refinementContext)
         const communication = new CommunicationDomain(scenario, refinementContext)
         const organization = new OrganizationDomain(scenario)
         const ai = new AiDomain(scenario, refinementContext)
         const workflow = new WorkflowDomain(scenario)
 
         const builders = [
-          commerce.buildRefinements(),
           communication.buildRefinements(),
           organization.buildRefinements(),
           ai.buildRefinements(),
@@ -123,17 +120,12 @@ export class ScenarioBuilder {
             return relationalBuilder.buildIntegrationRefinements()
 
           case 4:
-            // Phase 4: Business Entities (Thread, Product, Customer)
+            // Phase 4: Business Entities (Thread)
             return (helpers: unknown) => {
-              const commerceRefinements = relationalBuilder.buildCommerceRefinements(context)
               const communicationRefinements =
                 relationalBuilder.buildCommunicationRefinements(context)
 
-              // Merge refinements from both domains
-              const commerce = commerceRefinements(helpers)
-              const communication = communicationRefinements(helpers)
-
-              return { ...commerce, ...communication }
+              return communicationRefinements(helpers)
             }
 
           case 5:

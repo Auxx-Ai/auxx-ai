@@ -148,87 +148,6 @@ export class RelationalDomainBuilder {
 
   // ---- Phase 4: Business Entities ----
 
-  /** buildCommerceRefinements creates commerce entity refinements */
-  buildCommerceRefinements(
-    context?: SeedingContext
-  ): (helpers: unknown) => Record<string, unknown> {
-    return (helpers: any) => {
-      console.log('🛒 Building Commerce refinements')
-
-      const customerAssignments = this.generateCommerceAssignments(
-        this.scenario.scales.customers,
-        context
-      )
-      const customerIds = this.generateCustomerIds()
-      const productAssignments = this.generateCommerceAssignments(
-        this.scenario.scales.products,
-        context
-      )
-      const productIds = this.generateProductIds()
-      const customerTimestamps = this.generateTimestampPairs(this.scenario.scales.customers)
-      const productTimestamps = this.generateTimestampPairs(this.scenario.scales.products)
-
-      return {
-        shopify_customers: {
-          count: this.scenario.scales.customers,
-          columns: {
-            id: helpers.valuesFromArray({ values: customerIds }),
-            firstName: helpers.valuesFromArray({ values: this.generateFirstNames() }),
-            lastName: helpers.valuesFromArray({ values: this.generateLastNames() }),
-            email: helpers.valuesFromArray({ values: this.generateCustomerEmails() }),
-            phone: helpers.valuesFromArray({ values: this.generatePhoneNumbers() }),
-            numberOfOrders: helpers.valuesFromArray({ values: this.generateOrderCounts() }),
-            state: helpers.valuesFromArray({ values: this.generateCustomerStates() }),
-            amountSpent: helpers.valuesFromArray({ values: this.generateAmountSpent() }),
-            verifiedEmail: helpers.valuesFromArray({ values: this.generateVerifiedFlags() }),
-            tags: helpers.valuesFromArray({ values: this.generateCustomerTags() }),
-            createdAt: helpers.valuesFromArray({ values: customerTimestamps.createdAt }),
-            updatedAt: helpers.valuesFromArray({ values: customerTimestamps.updatedAt }),
-            organizationId: helpers.valuesFromArray({
-              values: customerAssignments.map((assignment) => assignment.organizationId),
-            }),
-            integrationId: helpers.valuesFromArray({
-              values: customerAssignments.map((assignment) => assignment.integrationId),
-            }),
-          },
-        },
-        Product: {
-          count: this.scenario.scales.products,
-          columns: {
-            id: helpers.valuesFromArray({ values: productIds }),
-            title: helpers.valuesFromArray({ values: this.generateProductTitles() }),
-            descriptionHtml: helpers.valuesFromArray({
-              values: this.generateProductDescriptions(),
-            }),
-            vendor: helpers.valuesFromArray({ values: this.generateVendors() }),
-            productType: helpers.valuesFromArray({ values: this.generateProductTypes() }),
-            handle: helpers.valuesFromArray({ values: this.generateProductHandles() }),
-            status: helpers.valuesFromArray({ values: this.generateProductStatuses() }),
-            hasOnlyDefaultVariant: helpers.valuesFromArray({
-              values: this.generateDefaultVariantFlags(),
-            }),
-            tracksInventory: helpers.valuesFromArray({
-              values: this.generateInventoryTrackingFlags(),
-            }),
-            totalInventory: helpers.valuesFromArray({ values: this.generateTotalInventory() }),
-            tags: helpers.valuesFromArray({ values: this.generateProductTags() }),
-            createdAt: helpers.valuesFromArray({ values: productTimestamps.createdAt }),
-            updatedAt: helpers.valuesFromArray({ values: productTimestamps.updatedAt }),
-            organizationId: helpers.valuesFromArray({
-              values: productAssignments.map((assignment) => assignment.organizationId),
-            }),
-            integrationId: helpers.valuesFromArray({
-              values: productAssignments.map((assignment) => assignment.integrationId),
-            }),
-            publishedAt: helpers.valuesFromArray({
-              values: this.generatePublishedAtDates(productTimestamps.createdAt),
-            }),
-          },
-        },
-      }
-    }
-  }
-
   /** buildCommunicationRefinements creates communication entity refinements */
   buildCommunicationRefinements(
     context?: SeedingContext
@@ -895,32 +814,6 @@ export class RelationalDomainBuilder {
       ids.push(base + BigInt(i))
     }
     return ids
-  }
-
-  /** generateCommerceAssignments pairs organization and integration IDs for commerce entities. */
-  private generateCommerceAssignments(
-    count: number,
-    context?: SeedingContext
-  ): Array<{ organizationId: string; integrationId: string }> {
-    const contextualIntegrations = context?.services.shopifyIntegrations ?? []
-    if (contextualIntegrations.length > 0) {
-      return Array.from({ length: count }, (_, index) => {
-        const integration = contextualIntegrations[index % contextualIntegrations.length]!
-        return { organizationId: integration.organizationId, integrationId: integration.id }
-      })
-    }
-
-    const orgIds = this.idPoolManager.getOrganizationIds()
-    const integrationIds = this.idPoolManager.getIntegrationIds()
-
-    if (orgIds.length === 0 || integrationIds.length === 0) {
-      throw new Error('Commerce refinements require organization and integration ID pools')
-    }
-
-    return Array.from({ length: count }, (_, index) => ({
-      organizationId: orgIds[index % orgIds.length]!,
-      integrationId: integrationIds[index % integrationIds.length]!,
-    }))
   }
 
   /** generateTimestampPairs produces deterministic createdAt/updatedAt pairs. */
