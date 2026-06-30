@@ -10,7 +10,6 @@ export enum Queues {
   webhooksQueue = 'webhooks',
   // documentsQueue = 'documentsQueue',
   // documentSuggestionsQueue = 'documentSuggestionsQueue',
-  shopifyQueue = 'shopify',
   embeddingQueue = 'embedding',
   uploadQueue = 'upload',
   messageSyncQueue = 'messageSync',

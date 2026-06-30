@@ -11,8 +11,6 @@ const logger = createScopedLogger('org-webhook-coordinator')
 export interface WebhookDisconnectResult {
   /** email stores Google/Outlook integrations that were disconnected */
   email: Array<{ id: string; provider: string }>
-  /** shopify stores Shopify integrations that were disconnected */
-  shopify: Array<{ id: string }>
 }
 
 /**
@@ -33,7 +31,6 @@ export class OrganizationWebhookCoordinator {
 
     const disconnected: WebhookDisconnectResult = {
       email: [],
-      shopify: [],
     }
 
     try {
@@ -48,16 +45,6 @@ export class OrganizationWebhookCoordinator {
         .from(schema.Integration)
         .where(eq(schema.Integration.organizationId, this.organizationId))
       logger.info('Integrations fetched', { count: integrations.length })
-
-      logger.info('Fetching shopify integrations for webhook disconnect')
-      const shopifyIntegrations = await db
-        .select({
-          id: schema.ShopifyIntegration.id,
-          organizationId: schema.ShopifyIntegration.organizationId,
-        })
-        .from(schema.ShopifyIntegration)
-        .where(eq(schema.ShopifyIntegration.organizationId, this.organizationId))
-      logger.info('Shopify integrations fetched', { count: shopifyIntegrations.length })
 
       // Disconnect email integrations (Google, Outlook)
       for (const integration of integrations) {
@@ -92,32 +79,9 @@ export class OrganizationWebhookCoordinator {
         }
       }
 
-      // Disconnect Shopify integrations
-      for (const integration of shopifyIntegrations) {
-        try {
-          // Dynamically import to avoid circular dependencies
-          const { disableWebhooks } = await import('@auxx/lib/shopify')
-
-          await disableWebhooks(integration.id)
-
-          disconnected.shopify.push({ id: integration.id })
-
-          logger.info('Disabled Shopify webhooks', {
-            integrationId: integration.id,
-          })
-        } catch (error) {
-          logger.error('Failed to disable Shopify webhooks', {
-            integrationId: integration.id,
-            error,
-          })
-          // Continue with other integrations even if one fails
-        }
-      }
-
       logger.info('Webhook disconnection completed', {
         organizationId: this.organizationId,
         emailCount: disconnected.email.length,
-        shopifyCount: disconnected.shopify.length,
       })
 
       return disconnected
@@ -137,7 +101,6 @@ export class OrganizationWebhookCoordinator {
     logger.info('Reconnecting webhooks for organization', {
       organizationId: this.organizationId,
       emailCount: disconnectResult.email.length,
-      shopifyCount: disconnectResult.shopify.length,
     })
 
     let successCount = 0
@@ -166,30 +129,6 @@ export class OrganizationWebhookCoordinator {
             logger.error('Failed to reconnect webhook', {
               integrationId: id,
               provider,
-              error,
-            })
-            failureCount++
-            // Continue with other integrations even if one fails
-          }
-        }
-      }
-
-      // Reconnect Shopify integrations
-      if (disconnectResult.shopify.length > 0) {
-        const { setupShopifyWebhooks } = await import('@auxx/lib/shopify')
-
-        for (const { id } of disconnectResult.shopify) {
-          try {
-            await setupShopifyWebhooks(id)
-
-            logger.info('Reconnected Shopify webhooks', {
-              integrationId: id,
-            })
-
-            successCount++
-          } catch (error) {
-            logger.error('Failed to reconnect Shopify webhooks', {
-              integrationId: id,
               error,
             })
             failureCount++

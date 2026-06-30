@@ -29,7 +29,6 @@ import { startPollingTriggerWorker } from './worker-definitions/polling-trigger-
 import { startRecordingBotWorker } from './worker-definitions/recording-bot-worker'
 import { startRecordingProcessingWorker } from './worker-definitions/recording-processing-worker'
 import { startScheduledTriggerWorker } from './worker-definitions/scheduled-trigger-worker'
-import { startShopifyWorker } from './worker-definitions/shopify-worker'
 import { startThumbnailWorker } from './worker-definitions/thumbnail-worker'
 import { startWebhooksWorker } from './worker-definitions/webhook-worker'
 import { startWorkflowDelayWorker } from './worker-definitions/workflow-delay-worker'
@@ -48,8 +47,6 @@ export async function startWorkers() {
   const webhooksWorker = startWebhooksWorker()
 
   const messageSyncWorker = startMessageSyncWorker()
-  // processes all shopify related jobs
-  const shopifyWorker = startShopifyWorker()
   // processes workflow delay jobs
   const workflowDelayWorker = startWorkflowDelayWorker()
   // processes scheduled triggers for workflows
@@ -120,7 +117,6 @@ export async function startWorkers() {
     eventHandlersWorker,
     maintenanceWorker,
     webhooksWorker,
-    shopifyWorker,
     messageSyncWorker,
     workflowDelayWorker,
     scheduledTriggerWorker,
