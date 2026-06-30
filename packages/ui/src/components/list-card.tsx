@@ -221,13 +221,16 @@ export function ListCard({
 
   const rootClass = cn(
     'group/list-card relative flex w-full flex-col gap-2 rounded-2xl border p-3 text-left',
-    isPlaceholder
-      ? 'border-dashed bg-primary-50 hover:bg-primary-50/50 hover:outline-5 hover:outline-primary-50'
-      : 'bg-background dark:bg-primary-50 hover:bg-primary-50/50 hover:outline-5 hover:outline-primary-100 dark:hover:outline-primary-50/50',
+    isPlaceholder ? 'border-dashed bg-primary-50' : 'bg-background dark:bg-primary-50',
+    !pending &&
+      (isPlaceholder
+        ? 'hover:bg-primary-50/50 hover:outline-5 hover:outline-primary-50'
+        : 'hover:bg-primary-50/50 hover:outline-5 hover:outline-primary-100 dark:hover:outline-primary-50/50'),
     // Selected: a persistent info ring (even when not hovering), info tint that
     // stays on hover (a touch darker), and an info hover ring.
-    selected &&
-      'border-info/90 outline-5 outline-info/20 bg-info/5 hover:bg-info/10 hover:outline-info/10 dark:bg-info/10 dark:hover:bg-info/10 dark:hover:outline-info/20',
+    !pending &&
+      selected &&
+      'border-info/90 outline-5 outline-info/20 bg-info/5 hover:bg-info/8 hover:outline-info/10 dark:bg-info/10 dark:hover:bg-info/10 dark:hover:outline-info/20',
     // Pointer cursor only while bulk-selecting; normal cards keep the default cursor.
     selecting && 'cursor-pointer',
     disabled && 'cursor-not-allowed opacity-60',
@@ -446,7 +449,7 @@ export function ListCard({
       {pending && (
         <div
           data-slot='list-card-pending'
-          className='absolute inset-0 z-30 flex items-center justify-center gap-2 rounded-2xl bg-background/50 text-sm font-medium text-muted-foreground backdrop-blur-sm'>
+          className='absolute inset-0 z-30 flex items-center justify-center gap-2 rounded-2xl bg-background/50 text-sm font-medium text-foreground/50 backdrop-blur-sm'>
           <Loader2 className='size-4 animate-spin' />
           {pendingLabel ?? 'Deleting…'}
         </div>

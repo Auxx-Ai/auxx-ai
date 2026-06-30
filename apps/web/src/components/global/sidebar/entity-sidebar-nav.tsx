@@ -6,7 +6,6 @@ import type { CustomResource } from '@auxx/lib/resources/client'
 import { AnimatedGradientText } from '@auxx/ui/components/animated-gradient-text'
 import { Button } from '@auxx/ui/components/button'
 import { DropdownMenuItem, DropdownMenuSeparator } from '@auxx/ui/components/dropdown-menu'
-import { EntityIcon } from '@auxx/ui/components/icons'
 import {
   SidebarGroup,
   SidebarGroupCollapse,
@@ -49,6 +48,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { DndStateProvider } from '~/app/context/dnd-state-context'
 import { EntityDefinitionDialog } from '~/components/custom-fields/ui/entity-definition-dialog'
 import { EntityTemplateDialog } from '~/components/custom-fields/ui/entity-template-dialog'
+import { EntityIconWithConnector } from '~/components/data-connectors/ui/entity-icon-with-connector'
 import { SidebarGroupHeader } from '~/components/global/sidebar/sidebar-group-header'
 import { useCreateEntityStore } from '~/components/global-create/create-entity-store'
 import { useEntityDefinitionMutations, useResources } from '~/components/resources/hooks'
@@ -252,14 +252,16 @@ export function EntitySidebarNav() {
     return pathname === url || pathname.startsWith(`${url}/`)
   }
 
-  function renderIcon(iconId: string, color: string) {
+  function renderIcon(entity: ProcessedEntity) {
     return (
-      <EntityIcon
-        iconId={iconId}
-        color={color ?? 'gray'}
+      <EntityIconWithConnector
+        iconId={entity.icon}
+        color={entity.color ?? 'gray'}
         size='sm'
         inverse
         className='-ms-0.5 inset-shadow-xs inset-shadow-black/20'
+        dataConnectorId={entity.dataConnectorId}
+        tooltip={`${entity.plural} are synced by a data connector`}
       />
     )
   }
@@ -312,7 +314,7 @@ export function EntitySidebarNav() {
           id={entity.id}
           name={entity.plural}
           href={entity.href}
-          icon={renderIcon(entity.icon, entity.color)}
+          icon={renderIcon(entity)}
           isActive={isActive(entity)}
           isSubmenu={parentFolderId !== null}
           editItems={getEditItems(entity)}
@@ -327,7 +329,7 @@ export function EntitySidebarNav() {
         <EditableSidebarItem
           id={entityDndId(entity.id)}
           name={entity.plural}
-          icon={renderIcon(entity.icon, entity.color)}
+          icon={renderIcon(entity)}
           isVisible={entity.isVisible}
           isLocked={entity.isLocked}
           onToggleVisibility={() => updateEntityVisibility(entity.id, !entity.isVisible)}
