@@ -3,7 +3,7 @@
 import { type CatalogPayload, database, schema, type Transaction } from '@auxx/database'
 import { and, eq, isNotNull } from 'drizzle-orm'
 import { err, ok } from 'neverthrow'
-import { provisionAppFields } from '../custom-fields/app-field-provisioning'
+import { applyInstallationCatalog } from '../custom-fields/app-field-provisioning'
 import { fromDatabase } from '../shared/utils'
 import type { InstallAppInput } from './schemas'
 
@@ -246,14 +246,17 @@ export async function installApp(input: InstallAppInput) {
         installation = created
       }
 
-      // Provision the app's installation-scoped custom fields (app-registered
-      // custom fields §5). Connection-scoped fields are provisioned later, per
-      // connected account, off connection-added. Idempotent, so reinstall
-      // re-creating the same definitions is a no-op.
-      await provisionAppFields(
-        selectedDeployment!.catalog as CatalogPayload | null,
-        'installation',
-        { appInstallationId: installation.id, organizationId, appSlug: app.slug },
+      // Reconcile the app's custom fields against the catalog (installation- AND
+      // connection-scoped, for any existing org-scoped connections a reactivated
+      // installation kept). Best-effort warm-up — the authoritative reconcile runs
+      // at connector sync setup, which parks visibly on any error.
+      await applyInstallationCatalog(
+        {
+          appInstallationId: installation.id,
+          organizationId,
+          appSlug: app.slug,
+          catalog: selectedDeployment!.catalog as CatalogPayload | null,
+        },
         tx
       )
 

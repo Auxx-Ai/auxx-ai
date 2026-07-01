@@ -14,7 +14,7 @@ import {
   renameAppConnection,
   safeSerializeMetadata,
 } from '@auxx/services/app-connections'
-import { getInstallationCatalog, provisionAppFields } from '@auxx/services/custom-fields'
+import { getInstallationCatalog, reconcileAppFields } from '@auxx/services/custom-fields'
 import { eq } from 'drizzle-orm'
 import { err, ok } from 'neverthrow'
 import { onCacheEvent } from '../../cache/invalidate'
@@ -237,6 +237,9 @@ export async function saveAppConnection(
       return err(breakerReset.error)
     }
 
+    // No app-field provisioning here — connector sync setup runs the authoritative
+    // reconcile (create/drift/orphan) and parks visibly on any error, so a field the
+    // catalog gained since this connection was created self-heals on the next sync.
     logger.info('Successfully reconnected app connection:', { credentialId: options.connectionId })
     return ok(options.connectionId)
   }
@@ -303,10 +306,13 @@ export async function saveAppConnection(
         where: eq(schema.App.id, appId),
         columns: { slug: true },
       })
-      await provisionAppFields(catalog, 'connection', {
+      // Reconcile the whole installation against the catalog now that a new
+      // org-scoped connection exists — creates this connection's connection-scoped
+      // fields (and heals any drift). The authoritative reconcile still runs at sync
+      // setup; this warm-up just makes the fields resolvable before the first sync.
+      await reconcileAppFields(catalog, {
         appInstallationId,
         organizationId,
-        connectionId: created.id,
         appSlug: appRow?.slug ?? appId,
       })
       // Bust the customFields org cache immediately — otherwise a freshly
@@ -314,7 +320,7 @@ export async function saveAppConnection(
       // 24h TTL, silently dropping the connector's/chat's first write.
       await onCacheEvent('custom-field.created', { orgId: organizationId })
     } catch (error) {
-      logger.error('Failed to provision connection-scoped app fields', {
+      logger.error('Failed to reconcile app fields for new connection', {
         error: error instanceof Error ? error.message : String(error),
         credentialId: created.id,
         appInstallationId,

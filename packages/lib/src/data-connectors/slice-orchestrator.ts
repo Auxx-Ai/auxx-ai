@@ -13,7 +13,11 @@
 import type { Database } from '@auxx/database'
 import { schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
+import { getInstallationCatalog, reconcileAppFields } from '@auxx/services/custom-fields'
+import type { ResourceFieldId } from '@auxx/types/field'
 import { and, eq, inArray, lt } from 'drizzle-orm'
+import { resolveConnectorFieldRef } from '../agents/bindings/resolve'
+import { onCacheEvent } from '../cache/invalidate'
 import type { ThrottleHandle } from '../sync-core/contracts'
 import { runSyncSlice } from '../sync-core/slice-runner'
 import { prepareConnectorFetch } from './connector-runtime'
@@ -176,6 +180,41 @@ async function startConnectorSyncInner(
   // unbound owned row is simply skipped until its def is installed.
   await materializeConnectorTargets(db, organizationId, dataConnectorId)
 
+  // App-field reconcile — the AUTHORITATIVE provisioning call site. An app-backed
+  // connector's late-bound `@app:` refs resolve at sink time against connection-scoped
+  // `CustomField` rows; those must exist and be current (create/drift/orphan) BEFORE the
+  // sink writes. Reconcile now; PARK on any error — the throw here (before `openRun`) is
+  // stamped onto `connector.error` by the public {@link startConnectorSync} wrapper, so
+  // the connector page shows "failed + why" instead of dropping every record silently.
+  const appConnector = await db.query.DataConnector.findFirst({
+    where: eq(schema.DataConnector.id, dataConnectorId),
+    columns: { appInstallationId: true },
+  })
+  if (appConnector?.appInstallationId) {
+    const installation = await db.query.AppInstallation.findFirst({
+      where: eq(schema.AppInstallation.id, appConnector.appInstallationId),
+      with: { app: { columns: { slug: true } } },
+    })
+    const catalog = await getInstallationCatalog(appConnector.appInstallationId)
+    const result = await reconcileAppFields(catalog, {
+      appInstallationId: appConnector.appInstallationId,
+      organizationId,
+      appSlug: installation?.app?.slug ?? '',
+    })
+    if (result.created + result.updated + result.orphaned > 0) {
+      // Bust the customFields org cache so the @app: rail resolves the reconciled
+      // fields on this very sync instead of after the TTL (services can't invalidate).
+      await onCacheEvent('custom-field.created', { orgId: organizationId })
+    }
+    if (result.errors.length > 0) {
+      throw new Error(
+        `app-field reconcile failed: ${result.errors
+          .map((e) => `${e.appFieldKey}: ${e.reason}`)
+          .join('; ')}`
+      )
+    }
+  }
+
   const loaded = await loadConnector(db, organizationId, dataConnectorId)
   if (!loaded) {
     logger.warn('startConnectorSync: connector not found or has no mappings', { dataConnectorId })
@@ -192,6 +231,34 @@ async function startConnectorSyncInner(
       { dataConnectorId }
     )
     return false
+  }
+
+  // Pre-flight ref resolution — resolve every distinct mapped `targetFieldRef` ONCE
+  // against the connector's bound connection and PARK if any is unresolvable (a
+  // late-bound `@app:` ref whose CustomField the reconcile above couldn't provision).
+  // Concrete refs resolve trivially; this turns thousands of silent per-record drops
+  // in the sink into one visible setup error. The sink's own `resolveFieldRefs` stays
+  // as the per-record resolver — post-pre-flight, an unresolved ref there is a genuine
+  // mid-run anomaly, not the primary failure surface.
+  const distinctRefs = new Set<string>()
+  for (const s of streams) {
+    for (const m of s.mappings) {
+      for (const fm of m.fieldMappings) {
+        if (fm.targetFieldRef != null) distinctRefs.add(fm.targetFieldRef)
+      }
+    }
+  }
+  const unresolvedRefs: string[] = []
+  for (const ref of distinctRefs) {
+    const resolved = await resolveConnectorFieldRef(
+      ref as ResourceFieldId,
+      organizationId,
+      connector.credentialId ?? undefined
+    )
+    if (!resolved) unresolvedRefs.push(ref)
+  }
+  if (unresolvedRefs.length > 0) {
+    throw new Error(`unresolved target field refs: ${unresolvedRefs.join(', ')}`)
   }
 
   const claimed = await claimForSync(db, dataConnectorId)

@@ -103,6 +103,11 @@ export interface ContributingTargetField {
   appFieldKey?: string | null
   /** Stamped by provisioning when the declaring `defineFields` entry is `identity: true`. */
   isIdentity?: boolean
+  /** Owning app's slug, stamped by provisioning — scopes `targetAppField` matches to the
+   *  connector's OWN app so a sibling app's identically-keyed field (Stripe `customerId` vs
+   *  Shopify `customerId`) can't satisfy the match. Rows provisioned before slug-stamping
+   *  have `null` and fail closed (the reconciler re-stamps `appSlug` on every sync). */
+  appSlug?: string | null
 }
 
 /** A target is a safe auto-bind sink unless it's computed or can be neither created nor updated. */
@@ -206,7 +211,13 @@ export function buildContributingFieldBindings(
       // identity iff ANY copy is. The concrete field is resolved connection-scoped at sync
       // (the late-bound `@app:` ref), so this branch only needs the flag — never `.find()`
       // the first arbitrary row and read its label.
-      const matches = defFields.filter((f) => f.appFieldKey === targetAppField)
+      // Scope the match to this connector's OWN app (`appSlug`) — matching by
+      // `appFieldKey` alone let a sibling app's identically-keyed field satisfy the
+      // check (Stripe `customerId` for Shopify's binder). A `null`-slug row (provisioned
+      // before slug-stamping) fails closed; the reconciler re-stamps it on the next sync.
+      const matches = defFields.filter(
+        (f) => f.appFieldKey === targetAppField && f.appSlug === appSlug
+      )
       if (matches.length === 0) continue
       const isIdentityField = matches.some((f) => f.isIdentity)
       bindings.push(
