@@ -19,6 +19,7 @@ import { publisher } from '../../events/publisher'
 import { FieldValueService } from '../../field-values'
 import { normalizeForLookup } from '../../field-values/normalize-for-lookup'
 import { typedColumnMatch } from '../../field-values/typed-column-match'
+import { upsertRecordIdentity } from '../../identity'
 import { getOrCreateSnapshot, getSnapshotChunk, invalidateSnapshots } from '../../snapshot'
 import { getCommonHooks, getSystemHooks } from '../hooks'
 import { RecordPickerService } from '../picker'
@@ -62,6 +63,20 @@ type CustomFieldEntity = typeof schema.CustomField.$inferSelect
 type EntityInstanceEntity = typeof schema.EntityInstance.$inferSelect
 
 const lookupLogger = createScopedLogger('unified-handler-lookup')
+
+/**
+ * Parse an `external_id` value (`"<source>:<value>"`, e.g. `"gmail:jane@x.com"`,
+ * `"website:acme.com"`) into a `RecordIdentity` `(source, externalId)`. The
+ * `external_id` array attribute is retired; app-less external ids now live in
+ * the identity index, so both the extension dedupe lookup and its create-write
+ * route through this. Returns `null` for unprefixed / malformed values.
+ */
+function parseExternalIdentity(raw: unknown): { source: string; externalId: string } | null {
+  if (typeof raw !== 'string') return null
+  const idx = raw.indexOf(':')
+  if (idx <= 0 || idx >= raw.length - 1) return null
+  return { source: raw.slice(0, idx), externalId: raw.slice(idx + 1) }
+}
 
 /**
  * Candidate for `lookupByField` — one field reference + value to try. Two shapes,
@@ -221,9 +236,7 @@ export class UnifiedCrudHandler {
    *
    * @param entityDefinitionId - 'contact', 'ticket', or UUID for custom entities
    * @param values - Field values to set (map of fieldId -> value)
-   * @param options - Optional CRUD options (skipEvents, skipSnapshotInvalidation,
-   *   provenance — a trusted `{ integrationSource, externalId }` stamp for
-   *   owned-mode connector/importer writes)
+   * @param options - Optional CRUD options (skipEvents, skipSnapshotInvalidation)
    * @returns CreateEntityResult with instance, recordId, and all field values
    */
   async create(
@@ -232,7 +245,60 @@ export class UnifiedCrudHandler {
     options: CrudOptions = {}
   ): Promise<CreateEntityResult> {
     await this.warmCache(entityDefinitionId)
-    return createEntity(this.getMutationContext(), entityDefinitionId, values, options)
+    // The `external_id` ARRAY attribute is retired (contact/company). Its writers
+    // (browser extension) still send it under `values` as an array; peel it off
+    // and mirror each entry into the `RecordIdentity` index (app-less link)
+    // instead of a FieldValue. Gated on Array to leave `thread`'s scalar
+    // `external_id` dbColumn — a plain string — on the normal write path.
+    const isRetiredArray = Array.isArray(values.external_id)
+    const { external_id, ...rest } = values
+    const result = await createEntity(
+      this.getMutationContext(),
+      entityDefinitionId,
+      isRetiredArray ? rest : values,
+      options
+    )
+    if (isRetiredArray) {
+      await this.mirrorExternalIdentities(result.instance, external_id)
+    }
+    return result
+  }
+
+  /**
+   * Mirror one or more retired-`external_id` values into `RecordIdentity` as
+   * app-less links (`source=<prefix>`, no app/connection/field). Best-effort:
+   * a malformed value or unique-key clash is skipped, never fails the create.
+   */
+  private async mirrorExternalIdentities(
+    instance: EntityInstanceEntity,
+    external_id: unknown
+  ): Promise<void> {
+    const raws = Array.isArray(external_id) ? external_id : [external_id]
+    for (const raw of raws) {
+      const parsed = parseExternalIdentity(raw)
+      if (!parsed) continue
+      const result = await upsertRecordIdentity(
+        {
+          organizationId: this.organizationId,
+          entityInstanceId: instance.id,
+          entityDefinitionId: instance.entityDefinitionId,
+          source: parsed.source,
+          externalId: parsed.externalId,
+          appInstallationId: null,
+          connectionId: null,
+          appFieldKey: null,
+          fieldId: null,
+        },
+        this.db
+      )
+      if (!result.ok) {
+        lookupLogger.warn('Failed to mirror external_id into RecordIdentity', {
+          organizationId: this.organizationId,
+          entityInstanceId: instance.id,
+          source: parsed.source,
+        })
+      }
+    }
   }
 
   /**
@@ -362,6 +428,56 @@ export class UnifiedCrudHandler {
 
     for (const candidate of params.candidates) {
       if (items.length >= params.limit) break
+
+      // `external_id` is retired as a FieldValue attribute — resolve it against
+      // the `RecordIdentity` index instead (app-less link, source-scoped).
+      if ('systemAttribute' in candidate && candidate.systemAttribute === 'external_id') {
+        const parsed = parseExternalIdentity(candidate.value)
+        if (!parsed) {
+          skipped.push({ candidate, reason: 'unparseable external_id' })
+          continue
+        }
+        anyValid = true
+        const remaining = params.limit - items.length
+        const rows = await this.db
+          .select({
+            entityId: schema.RecordIdentity.entityInstanceId,
+            displayName: schema.EntityInstance.displayName,
+            secondaryDisplayValue: schema.EntityInstance.secondaryDisplayValue,
+            avatarUrl: schema.EntityInstance.avatarUrl,
+          })
+          .from(schema.RecordIdentity)
+          .innerJoin(
+            schema.EntityInstance,
+            eq(schema.EntityInstance.id, schema.RecordIdentity.entityInstanceId)
+          )
+          .where(
+            and(
+              eq(schema.RecordIdentity.organizationId, this.organizationId),
+              eq(schema.RecordIdentity.entityDefinitionId, entityDef.id),
+              eq(schema.RecordIdentity.source, parsed.source),
+              eq(schema.RecordIdentity.externalId, parsed.externalId)
+            )
+          )
+          .limit(remaining + 1)
+        for (const row of rows) {
+          const recordId = toRecordId(entityDef.id, row.entityId)
+          if (seen.has(recordId)) continue
+          if (items.length >= params.limit) {
+            hasMore = true
+            break
+          }
+          seen.add(recordId)
+          items.push({
+            recordId,
+            matchedBy: { systemAttribute: candidate.systemAttribute, value: candidate.value },
+            displayName: row.displayName,
+            secondaryDisplayValue: row.secondaryDisplayValue,
+            avatarUrl: row.avatarUrl,
+          })
+        }
+        continue
+      }
 
       const field =
         'fieldId' in candidate

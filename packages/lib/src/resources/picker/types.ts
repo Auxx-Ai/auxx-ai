@@ -27,6 +27,22 @@ export interface GetResourcesInput {
 }
 
 /**
+ * Compact app-origin identity chip, derived from the `RecordIdentity` index.
+ * Drives the record-grain "Synced from <app>" source badge (replaces the
+ * retired `EntityInstance.integrationSource`). Only app-origin identities
+ * (`appInstallationId` set) become chips; app-less links (chat, social) surface
+ * in the External identities card, not the badge.
+ */
+export interface RecordSourceChip {
+  /** App slug of the identity's origin, e.g. `'shopify'`. */
+  source: string
+  /** Installed app id, for branding resolution. */
+  appInstallationId: string
+  /** Store/connection scope; null for installation-scoped identities. */
+  connectionId: string | null
+}
+
+/**
  * Record item formatted for picker display
  */
 export interface RecordPickerItem {
@@ -56,15 +72,11 @@ export interface RecordPickerItem {
   color?: string
 
   /**
-   * Data-connector / integration provenance, denormalized from
-   * `EntityInstance.integrationSource`. For connector-synced records this holds
-   * the owning DataConnector id; null for hand-created records. Drives the
-   * "Synced from <connector>" source badge.
+   * App-origin identity chips derived from the `RecordIdentity` index (deduped
+   * by app + connection). Drives the record-grain "Synced from <app>" source
+   * badge. Absent/empty for records with no app identity.
    */
-  integrationSource?: string | null
-
-  /** Upstream id within the integration source (e.g. Shopify customer id). */
-  externalId?: string | null
+  sources?: RecordSourceChip[]
 
   /** Full row data (for custom rendering) */
   data: Record<string, unknown>

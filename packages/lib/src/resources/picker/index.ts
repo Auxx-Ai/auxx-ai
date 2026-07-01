@@ -9,4 +9,5 @@ export type {
   GlobalSearchResult,
   PaginatedResourcesResult,
   RecordPickerItem,
+  RecordSourceChip,
 } from './types'

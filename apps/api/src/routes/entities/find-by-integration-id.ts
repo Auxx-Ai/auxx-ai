@@ -4,24 +4,15 @@
  * Lambda SDK callback for `ctx.entities.findByIntegrationId`.
  *
  * Authorized via the `entities` callback token scope minted by
- * `prepareLambdaContext` for AI tool invocations. Looks up a record by
- * `(orgId, kind, integrationSource, externalId)` and returns the auxx
- * recordId (`<defId>:<instId>`) plus the display name.
- *
- * Dual-read (plans/data-connectors/v7/option-3-multi-source-identity-store-plan.md
- * Phase 1): tries the `RecordIdentity` index first, then falls back to the
- * legacy `EntityInstance.integrationSource`/`externalId` columns. The index
- * has no writers yet (Phases 2-4), so today this always falls through — the
- * dual-read is what lets those later phases light this route up with zero
- * further changes here. Drop the fallback once the Phase-6 backfill lands.
+ * `prepareLambdaContext` for AI tool invocations. Resolves a record from the
+ * `RecordIdentity` index by `(orgId, kind, source, externalId)` and returns the
+ * auxx recordId (`<defId>:<instId>`) plus the display name.
  *
  * See plans/kopilot/apps/credentials.md §3.6 and refs.md §4.1.
  */
 
-import { database, schema } from '@auxx/database'
 import { getCachedEntityDefId } from '@auxx/lib/cache'
 import { findRecordByIdentity } from '@auxx/lib/identity'
-import { and, eq } from 'drizzle-orm'
 import { Hono } from 'hono'
 import { z } from 'zod'
 import { verifyCallbackAuth } from '../../lib/callback-auth'
@@ -66,29 +57,7 @@ entities.post('/find-by-integration-id', async (c) => {
     source,
     externalId,
   })
-  if (indexed) {
-    return c.json({ entity: indexed })
-  }
-
-  const instance = await database.query.EntityInstance.findFirst({
-    where: and(
-      eq(schema.EntityInstance.organizationId, auth.organizationId),
-      eq(schema.EntityInstance.entityDefinitionId, defId),
-      eq(schema.EntityInstance.integrationSource, source),
-      eq(schema.EntityInstance.externalId, externalId)
-    ),
-    columns: { id: true, displayName: true },
-  })
-
-  if (!instance) {
-    return c.json({ entity: null })
-  }
-  return c.json({
-    entity: {
-      recordId: `${defId}:${instance.id}`,
-      displayName: instance.displayName,
-    },
-  })
+  return c.json({ entity: indexed })
 })
 
 export default entities

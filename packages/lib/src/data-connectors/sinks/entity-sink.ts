@@ -577,9 +577,14 @@ export const entitySink: EntitySink = {
       refToConcrete
     )
 
-    // 4. Write — owned uses the bypass handler + provenance; contributing uses
-    //    the standard handler and leaves the row pair alone.
+    // 4. Write — owned uses the bypass handler; contributing uses the standard
+    //    handler and leaves the row pair alone. `justCreated` marks a minted
+    //    instance so the binding (below) records "this connector created this
+    //    record" — the durable marker that lets connector deletion touch only
+    //    records it created, leaving ENRICHED pre-existing records untouched
+    //    (replaces the retired `EntityInstance.integrationSource` stamp).
     const handler = mapping.targetMode === 'owned' ? ctx.ownedCrud : ctx.crud
+    let justCreated = false
     try {
       if (instanceId) {
         const recordId = toRecordId(mapping.entityDefinitionId, instanceId)
@@ -592,15 +597,9 @@ export const entitySink: EntitySink = {
         const created = await handler.create(mapping.entityDefinitionId, writeSet, {
           skipSnapshotInvalidation: true,
           skipEvents: true,
-          // Stamp instance-level provenance on every connector-CREATED record — owned
-          // AND contributing alike. This is the durable "this connector minted this
-          // instance" marker that lets connector deletion delete the records it created
-          // (a connector that provisions its own def, or contributing that mints a brand
-          // new instance) while leaving records it merely ENRICHED (a pre-existing
-          // Contact it matched by email — no/other integrationSource) untouched.
-          provenance: { integrationSource: ctx.connector.id, externalId: record.externalId },
         })
         instanceId = created.instance.id
+        justCreated = true
         ctx.counters.created += 1
       }
     } catch (error) {
@@ -657,6 +656,7 @@ export const entitySink: EntitySink = {
       ),
       upstreamUpdatedAt: record.upstreamUpdatedAt ?? null,
       lastSeenRunId: ctx.runId,
+      mintedInstance: justCreated,
     })
   },
 

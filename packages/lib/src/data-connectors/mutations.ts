@@ -1134,18 +1134,27 @@ export async function deleteConnector(
 
   if (behavior !== 'keep') {
     // archive/delete applies to records THIS connector CREATED — owned mirror rows
-    // AND contributing instances it minted — identified by the instance-level
-    // `integrationSource = connector.id` stamp the sink writes on create. Records the
-    // connector merely enriched (a pre-existing Contact/Ticket it matched) carry a
-    // different/no `integrationSource` and are ALWAYS kept; their per-cell
-    // `FieldValue.managedByConnectorId` markers null automatically via the FK.
+    // AND contributing instances it minted — identified by the sticky
+    // `DataConnectorItem.mintedInstance` flag the sink sets on create (replaces the
+    // retired `EntityInstance.integrationSource` stamp). Records the connector merely
+    // ENRICHED (a pre-existing Contact/Ticket it matched) carry `mintedInstance=false`
+    // and are ALWAYS kept; their per-cell `FieldValue.managedByConnectorId` markers
+    // null automatically via the FK.
     const created = await db
-      .select({ id: schema.EntityInstance.id, defId: schema.EntityInstance.entityDefinitionId })
-      .from(schema.EntityInstance)
+      .selectDistinct({
+        id: schema.EntityInstance.id,
+        defId: schema.EntityInstance.entityDefinitionId,
+      })
+      .from(schema.DataConnectorItem)
+      .innerJoin(
+        schema.EntityInstance,
+        eq(schema.EntityInstance.id, schema.DataConnectorItem.entityInstanceId)
+      )
       .where(
         and(
-          eq(schema.EntityInstance.organizationId, organizationId),
-          eq(schema.EntityInstance.integrationSource, id)
+          eq(schema.DataConnectorItem.organizationId, organizationId),
+          eq(schema.DataConnectorItem.dataConnectorId, id),
+          eq(schema.DataConnectorItem.mintedInstance, true)
         )
       )
     if (created.length > 0) {

@@ -437,7 +437,7 @@ export const RecordDrawer = React.memo(function RecordDrawer({
                 </div>
                 {!isRecordLoading && (
                   <ConnectorSourceBadge
-                    integrationSource={cachedRecord?.integrationSource}
+                    sources={cachedRecord?.sources}
                     variant='chip'
                     className='shrink-0'
                   />

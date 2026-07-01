@@ -5,6 +5,7 @@ import { createScopedLogger } from '@auxx/logger'
 import { isEntityDefinitionType, type RecordId } from '@auxx/types/resource'
 import { and, asc, desc, eq, ilike, inArray, or, type SQL, sql } from 'drizzle-orm'
 import { getCachedEntityDefId, getCachedResource, getOrgCache } from '../../cache'
+import { getRecordIdentitiesForRecords } from '../../identity'
 import {
   type CustomResource,
   isCustomResource,
@@ -23,6 +24,7 @@ import type {
   GlobalSearchResult,
   PaginatedResourcesResult,
   RecordPickerItem,
+  RecordSourceChip,
 } from './types'
 
 const logger = createScopedLogger('record-picker-service')
@@ -608,8 +610,6 @@ export class RecordPickerService {
       avatarUrl: string | null
       createdAt: string
       updatedAt: string
-      integrationSource?: string | null
-      externalId?: string | null
     }
   ): RecordPickerItem {
     const { displayName, secondaryInfo } = resolveEntityDisplay(
@@ -623,8 +623,6 @@ export class RecordPickerService {
       displayName,
       secondaryInfo,
       avatarUrl: instance.avatarUrl || undefined,
-      integrationSource: instance.integrationSource ?? null,
-      externalId: instance.externalId ?? null,
       data: instance,
       createdAt: instance.createdAt,
       updatedAt: instance.updatedAt,
@@ -729,7 +727,40 @@ export class RecordPickerService {
       })
     )
 
+    await this.attachRecordSources(result)
     return result
+  }
+
+  /**
+   * Attach app-origin identity chips (`sources[]`) to a batch of picker items
+   * from the `RecordIdentity` index — the record-grain source badge, replacing
+   * the retired `EntityInstance.integrationSource`. App-less links (chat,
+   * social) carry no `appInstallationId` and are skipped here (they surface in
+   * the External identities card). Deduped by app + connection.
+   */
+  private async attachRecordSources(items: Record<RecordId, RecordPickerItem>): Promise<void> {
+    const recordKeys = Object.keys(items) as RecordId[]
+    if (recordKeys.length === 0) return
+
+    const identities = await getRecordIdentitiesForRecords(this.organizationId, recordKeys, this.db)
+    for (const [recordId, rows] of identities) {
+      const item = items[recordId]
+      if (!item) continue
+      const seen = new Set<string>()
+      const sources: RecordSourceChip[] = []
+      for (const row of rows) {
+        if (!row.appInstallationId) continue
+        const dedupeKey = `${row.appInstallationId}:${row.connectionId ?? ''}`
+        if (seen.has(dedupeKey)) continue
+        seen.add(dedupeKey)
+        sources.push({
+          source: row.source,
+          appInstallationId: row.appInstallationId,
+          connectionId: row.connectionId,
+        })
+      }
+      if (sources.length > 0) item.sources = sources
+    }
   }
 
   /**

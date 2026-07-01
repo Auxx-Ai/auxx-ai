@@ -582,6 +582,23 @@ export async function setupSchedules() {
     }
   )
 
+  // Every day at 4:30 AM - Reconcile the RecordIdentity index against the
+  // identity FieldValue cells (drift backstop for any un-instrumented writer).
+  await maintenanceQueue.upsertJobScheduler(
+    'reconcileRecordIdentitiesJob',
+    { pattern: '30 4 * * *' },
+    {
+      data: {},
+      opts: {
+        attempts: 2,
+        backoff: { type: 'exponential', delay: 60000 },
+        priority: 10,
+        removeOnComplete: { count: 14 },
+        removeOnFail: { count: 30 },
+      },
+    }
+  )
+
   // Dataset maintenance schedules
 
   // Every day at 3 AM - Clean up orphaned dataset data

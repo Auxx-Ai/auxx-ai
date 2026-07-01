@@ -23,6 +23,7 @@ import {
   oauth2TokenRefreshScannerJob,
   orphanedAppBundleCleanupJob,
   quotaResetJob,
+  reconcileRecordIdentitiesJob,
   recordUsageEventJob,
   sendGettingStartedEmailsJob,
   sendMidTrialEmailsJob,
@@ -171,6 +172,10 @@ const jobMappings = {
 
   // Data migrations runner (enqueued at boot + from the superadmin panel)
   dataMigrationsJob,
+
+  // RecordIdentity drift backstop (daily; rebuilds the index from
+  // FieldValue ⋈ CustomField(isIdentity) for any un-instrumented writer)
+  reconcileRecordIdentitiesJob,
 
   // Global data-connector stale-run sweep (every 5 min; fails cold runs + releases
   // their connector claim so a crashed continuation chain can't strand a connector)

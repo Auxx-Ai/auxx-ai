@@ -361,30 +361,6 @@ export const CONTACT_FIELDS: Record<string, ResourceField> = {
     placeholder: 'Enter notes',
   },
 
-  externalId: {
-    id: toFieldId('externalId'),
-    key: 'externalId',
-    label: 'External ID',
-    type: BaseType.STRING,
-    fieldType: FieldType.TEXT,
-    isSystem: true,
-    systemAttribute: 'external_id',
-    systemSortOrder: 'b0',
-    nullable: true,
-    isIdentifier: true,
-    options: { multi: true },
-    capabilities: {
-      filterable: true,
-      sortable: false,
-      creatable: true,
-      updatable: true,
-      configurable: false,
-      hidden: true,
-    },
-    description:
-      'Stable source identifiers (e.g. linkedin:slug, gmail:email) set when a record is captured via the Auxx extension. Multi-value — a contact may be captured from several sources.',
-  },
-
   createdAt: {
     id: toFieldId('createdAt'),
     key: 'createdAt',

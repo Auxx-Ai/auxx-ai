@@ -154,6 +154,10 @@ export {
 } from './maintenance/org-seed-job'
 export { type QuotaResetStats, quotaResetJob } from './maintenance/quota-reset-job'
 export {
+  type ReconcileRecordIdentitiesStats,
+  reconcileRecordIdentitiesJob,
+} from './maintenance/reconcile-record-identities-job'
+export {
   type StalePendingMessageSweeperStats,
   stalePendingMessageSweeperJob,
 } from './maintenance/stale-pending-message-sweeper-job'

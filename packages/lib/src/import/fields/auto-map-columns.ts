@@ -117,7 +117,11 @@ const FIELD_ALIASES: Record<string, string[]> = {
   notes: ['notes', 'note', 'comments', 'comment', 'description', 'memo', 'remarks'],
   createdAt: ['createdat', 'created', 'datecreated', 'creationdate', 'createdon'],
   updatedAt: ['updatedat', 'updated', 'datemodified', 'modifieddate', 'modifiedon'],
-  externalId: ['externalid', 'external_id', 'extid', 'customerid', 'clientid', 'refid'],
+  // NOTE: the `external_id` array attribute is retired (identities now live in
+  // the `RecordIdentity` index). Auto-mapping `externalid`/`customerid`/… into
+  // the index under a user-named source is a follow-up (needs import-mapping UI
+  // + writer work — see plan open-decision 9); until then these columns are
+  // left unmapped rather than pointed at a dropped field.
 }
 
 /** Match result with score for sorting */

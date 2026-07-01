@@ -5,7 +5,16 @@
 // See plans/data-connectors/.
 
 import { createId } from '@paralleldrive/cuid2'
-import { type AnyPgColumn, index, jsonb, pgTable, text, timestamp, uniqueIndex } from './_shared'
+import {
+  type AnyPgColumn,
+  boolean,
+  index,
+  jsonb,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+} from './_shared'
 import { DataConnector } from './data-connector'
 import { DataConnectorMapping } from './data-connector-mapping'
 import { EntityDefinition } from './entity-definition'
@@ -47,6 +56,15 @@ export const DataConnectorItem = pgTable(
       onUpdate: 'cascade',
       onDelete: 'set null',
     }), // null until first bind
+
+    /**
+     * True when THIS connector CREATED (minted) the bound instance, false when it
+     * merely matched + enriched a pre-existing record. Sticky (once true, stays
+     * true across re-syncs). Replaces the retired `EntityInstance.integrationSource`
+     * marker — `deleteConnector`'s archive/delete only touches minted records so
+     * an enriched pre-existing Contact is never removed with the connector.
+     */
+    mintedInstance: boolean().default(false).notNull(),
 
     contentHash: text(), // sorted-key hash → skip-unchanged
     // Which target field keys this connector writes for this record (per-field

@@ -2,77 +2,53 @@
 
 'use client'
 
+import type { RecordSourceChip } from '@auxx/lib/resources/client'
 import { Badge } from '@auxx/ui/components/badge'
 import { cn } from '@auxx/ui/lib/utils'
 import { useMemo } from 'react'
 import { useAppsContext } from '~/components/apps/providers/apps-context'
 import { AppIcon } from '~/components/apps/ui/app-icon'
 import { Tooltip } from '~/components/global/tooltip'
-import {
-  type ResolvedConnector,
-  useConnector,
-} from '~/components/resources/hooks/use-connector-name'
 
 interface ConnectorSourceBadgeProps {
   /**
-   * `EntityInstance.integrationSource` — a DataConnector id for connector-synced
-   * records, null/undefined for hand-created records. Anything that doesn't
-   * resolve to a known connector renders nothing (handles legacy free-form
-   * sources).
+   * App-origin identity chips from the `RecordIdentity` index (replaces the
+   * retired `EntityInstance.integrationSource`). The badge renders the first
+   * chip that resolves to an installed app; empty/unresolved → nothing.
    */
-  integrationSource: string | null | undefined
+  sources: RecordSourceChip[] | null | undefined
   /** `icon` → bare logo (grid primary cell); `chip` → logo + name (drawer header). */
   variant: 'icon' | 'chip'
   className?: string
 }
 
-/** `"app:shopify"` → `"shopify"`; null for non-app connector types. */
-function slugFromType(type: string): string | null {
-  return type.startsWith('app:') ? type.slice('app:'.length) : null
-}
-
 /**
- * Entity-level "Synced from <connector>" indicator. Resolves the record's
- * `integrationSource` (a DataConnector id) to its installed app's branding via
- * the existing `useConnector` + `useAppsContext` hooks — the same pair the
- * connector builder uses — so the badge shows the real app logo + title.
+ * Entity-level "Synced from <app>" indicator. Resolves the record's app-origin
+ * identity chips (from the `RecordIdentity` index) to their installed app's
+ * branding via `useAppsContext` — so the badge shows the real app logo + title.
  *
  * Complements the per-cell `ConnectorLockBadge` (field-grain provenance) with a
- * record-grain marker. Renders `null` until resolved / when the source isn't a
- * known connector, so unmanaged rows pay nothing visually.
+ * record-grain marker. Renders `null` when the record has no app identity or
+ * the app isn't installed, so unmanaged rows pay nothing visually.
  */
-export function ConnectorSourceBadge({
-  integrationSource,
-  variant,
-  className,
-}: ConnectorSourceBadgeProps) {
-  const connector = useConnector(integrationSource)
-  // Resolve nothing until the source maps to a known connector. Gating the
-  // inner component here means hand-created records (the common case) never read
-  // `useAppsContext` — so the badge is safe to render in tables that may live
-  // outside `AppsProvider` (e.g. KB articles), which carry no integrationSource.
-  if (!connector) return null
-  return <ResolvedSourceBadge connector={connector} variant={variant} className={className} />
-}
-
-function ResolvedSourceBadge({
-  connector,
-  variant,
-  className,
-}: { connector: ResolvedConnector } & Pick<ConnectorSourceBadgeProps, 'variant' | 'className'>) {
+export function ConnectorSourceBadge({ sources, variant, className }: ConnectorSourceBadgeProps) {
   const { appInstallations } = useAppsContext()
 
   const app = useMemo(() => {
-    const slug = slugFromType(connector.type)
-    return appInstallations.find(
-      (i) => i.installationId === connector.appInstallationId || (slug && i.app.slug === slug)
-    )?.app
-  }, [connector, appInstallations])
+    if (!sources?.length) return null
+    for (const chip of sources) {
+      const match = appInstallations.find(
+        (i) => i.installationId === chip.appInstallationId || i.app.slug === chip.source
+      )?.app
+      if (match) return match
+    }
+    return null
+  }, [sources, appInstallations])
 
-  // Prefer the connector's own name (e.g. "Shopify Customers"); fall back to the
-  // app title. Logo = the app's uploaded avatar, else a generic plug.
-  const label = connector.name || app?.title || 'a data connector'
-  const iconId = app?.avatarUrl ?? 'plug'
+  if (!app) return null
+
+  const label = app.title || 'a connected app'
+  const iconId = app.avatarUrl ?? 'plug'
 
   if (variant === 'icon') {
     return (
