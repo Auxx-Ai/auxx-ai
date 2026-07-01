@@ -26,6 +26,8 @@ export enum Queues {
   oauth2RefreshQueue = 'oauth2-refresh',
   // Data import queue
   dataImportQueue = 'data-import',
+  // Data export queue (background CSV record export)
+  dataExportQueue = 'data-export',
   // Polling sync queue
   pollingSyncQueue = 'polling-sync',
   // Calendar sync queue

@@ -11,6 +11,7 @@ import { startAppTriggerWorker } from './worker-definitions/app-trigger-worker'
 import { startCalendarSyncWorker } from './worker-definitions/calendar-sync-worker'
 import { startChatAgentWorker } from './worker-definitions/chat-agent-worker'
 import { startDataConnectorWorker } from './worker-definitions/data-connector-worker'
+import { startDataExportWorker } from './worker-definitions/data-export-worker'
 import { startDataImportWorker } from './worker-definitions/data-import-worker'
 import { startDatasetEmbeddingWorker } from './worker-definitions/dataset-embedding-worker'
 import { startDatasetMaintenanceWorker } from './worker-definitions/dataset-maintenance-worker'
@@ -65,6 +66,9 @@ export async function startWorkers() {
 
   // Data import worker (plan generation and execution)
   const dataImportWorker = startDataImportWorker()
+
+  // Data export worker (background CSV record export)
+  const dataExportWorker = startDataExportWorker()
 
   // Polling sync worker (two-phase email sync pipeline)
   const pollingSyncWorker = startPollingSyncWorker()
@@ -126,6 +130,7 @@ export async function startWorkers() {
     thumbnailWorker,
     oauth2RefreshWorker,
     dataImportWorker,
+    dataExportWorker,
     pollingSyncWorker,
     calendarSyncWorker,
     emailWorker,

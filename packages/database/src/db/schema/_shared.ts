@@ -581,6 +581,15 @@ export const importJobStatus = pgEnum('ImportJobStatus', [
   'canceled', // User canceled
 ])
 
+// Export job status lifecycle
+export const exportJobStatus = pgEnum('ExportJobStatus', [
+  'pending', // Queued, not yet picked up by the worker
+  'processing', // Worker is paging + writing rows
+  'completed', // CSV built and uploaded to storage
+  'failed', // Export failed (see error column)
+  'canceled', // User canceled
+])
+
 // Import plan status
 export const importPlanStatus = pgEnum('ImportPlanStatus', [
   'planning', // Analyzing rows

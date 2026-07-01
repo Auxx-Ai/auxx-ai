@@ -102,6 +102,8 @@ export {
 export { createEmailEnqueuer, enqueueEmailJob } from './email/enqueue-email-job'
 export { sendEmailJob } from './email/send-email-job'
 export type { EmailPayloadByType, EmailType, SendEmailJobData } from './email/types'
+// Data export job
+export { type ExportRecordsJobData, exportRecordsJob } from './export/export-records-job'
 // Flows
 export {
   createDocumentProcessingFlow,

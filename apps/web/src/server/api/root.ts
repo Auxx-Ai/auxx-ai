@@ -28,6 +28,7 @@ import { connectionsRouter } from './routers/connections'
 import { contactRouter } from './routers/contact'
 import { customFieldRouter } from './routers/customField'
 import { dataConnectorRouter } from './routers/data-connectors'
+import { dataExportRouter } from './routers/data-export'
 import { dataImportRouter } from './routers/data-import'
 import { datasetRouter } from './routers/dataset'
 import { documentRouter } from './routers/document'
@@ -178,6 +179,7 @@ export const appRouter = createTRPCRouter({
   webhook: webhookRouters,
   webhookEndpoint: webhookEndpointRouter,
   dataImport: dataImportRouter,
+  dataExport: dataExportRouter,
   dataConnector: dataConnectorRouter,
 })
 // inferReactQueryProcedureOptions
