@@ -34,6 +34,26 @@ describe('flattenSourceSchema', () => {
     expect(paths).toContain('line_items[].sku')
     expect(paths).toContain('line_items[].price')
   })
+
+  it('flattens an `x-auxx-fieldType` struct node as a single typed value leaf', () => {
+    const schema = {
+      type: 'object',
+      properties: {
+        shipping_address: {
+          type: 'object',
+          'x-auxx-fieldType': 'ADDRESS_STRUCT',
+          properties: { street1: { type: 'string' }, city: { type: 'string' } },
+        },
+      },
+    }
+    const paths = flattenSourceSchema(schema)
+    const addr = paths.find((p) => p.path === 'shipping_address')
+    expect(addr).toMatchObject({ isBranch: false, fieldType: 'ADDRESS_STRUCT', type: 'object' })
+    // It does NOT explode into its components.
+    expect(paths.map((p) => p.path)).not.toContain('shipping_address.street1')
+    // And it IS a mappable leaf (passes leafPathsUnder's `!isBranch` filter).
+    expect(leafPathsUnder(paths, '').map((p) => p.path)).toContain('shipping_address')
+  })
 })
 
 describe('leafPathsUnder', () => {

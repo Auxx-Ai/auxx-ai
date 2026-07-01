@@ -62,6 +62,22 @@ describe('collectSchemaLeaves', () => {
       { path: 'ids', jsonType: 'number' },
     ])
   })
+
+  it('emits an `x-auxx-fieldType` struct node as one leaf (carrying the type, not its components)', () => {
+    const leaves = collectSchemaLeaves({
+      type: 'object',
+      properties: {
+        shipping_address: {
+          type: 'object',
+          'x-auxx-fieldType': 'ADDRESS_STRUCT',
+          properties: { city: { type: 'string' } },
+        },
+      },
+    })
+    expect(leaves).toEqual([
+      { path: 'shipping_address', jsonType: 'object', fieldType: 'ADDRESS_STRUCT' },
+    ])
+  })
 })
 
 describe('suggestFieldMappings', () => {
@@ -121,6 +137,40 @@ describe('suggestFieldMappings', () => {
       targets
     )
     expect(proposals).toEqual([])
+  })
+
+  it('binds a struct leaf to a same-named ADDRESS_STRUCT target (and not to a TEXT one)', () => {
+    const schema = {
+      type: 'object',
+      properties: {
+        shipping_address: {
+          type: 'object',
+          'x-auxx-fieldType': 'ADDRESS_STRUCT',
+          properties: { city: { type: 'string' } },
+        },
+      },
+    }
+    // TEXT target → struct source incompatible, no proposal.
+    expect(
+      suggestFieldMappings(DEF, schema, [
+        field({ id: 'addr', key: 'shippingAddress', label: 'Shipping Address', fieldType: 'TEXT' }),
+      ])
+    ).toEqual([])
+    // ADDRESS_STRUCT target → binds the whole-object leaf.
+    const proposals = suggestFieldMappings(DEF, schema, [
+      field({
+        id: 'addr',
+        key: 'shippingAddress',
+        label: 'Shipping Address',
+        fieldType: 'ADDRESS_STRUCT',
+      }),
+    ])
+    expect(proposals).toHaveLength(1)
+    expect(proposals[0]).toMatchObject({
+      targetFieldRef: `${DEF}:addr`,
+      expression: '{shipping_address}',
+      sourceFields: { shipping_address: 'shipping_address' },
+    })
   })
 
   it('binds at most one source per target field', () => {

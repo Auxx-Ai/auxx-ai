@@ -2,7 +2,7 @@
 
 import type { ResourceField } from '@auxx/lib/resources/client'
 import { describe, expect, it } from 'vitest'
-import { isWritableTarget } from './field-type-compat'
+import { isSourceTargetCompatible, isWritableTarget } from './field-type-compat'
 
 /** Minimal ResourceField with just the bits isWritableTarget reads. */
 function field(
@@ -44,5 +44,26 @@ describe('isWritableTarget', () => {
     // e.g. Created By on an owned def — not connector/app-managed, so it stays out.
     const sysCol = field({ creatable: false, updatable: false })
     expect(isWritableTarget(sysCol, { ownedWrite: true })).toBe(false)
+  })
+})
+
+describe('isSourceTargetCompatible', () => {
+  it('null target is always compatible', () => {
+    expect(isSourceTargetCompatible(null, 'object')).toBe(true)
+  })
+
+  it('reduces an object source to JSON when no declared field type', () => {
+    // object → JSON; ADDRESS_STRUCT accepts JSON, TEXT does not.
+    expect(isSourceTargetCompatible('ADDRESS_STRUCT', 'object')).toBe(true)
+    expect(isSourceTargetCompatible('TEXT', 'object')).toBe(false)
+  })
+
+  it('uses the declared struct type directly, constraining to its accepting sinks', () => {
+    // An ADDRESS_STRUCT source binds to ADDRESS_STRUCT (self), ADDRESS, and JSON only.
+    expect(isSourceTargetCompatible('ADDRESS_STRUCT', 'object', 'ADDRESS_STRUCT')).toBe(true)
+    expect(isSourceTargetCompatible('ADDRESS', 'object', 'ADDRESS_STRUCT')).toBe(true)
+    expect(isSourceTargetCompatible('JSON', 'object', 'ADDRESS_STRUCT')).toBe(true)
+    expect(isSourceTargetCompatible('TEXT', 'object', 'ADDRESS_STRUCT')).toBe(false)
+    expect(isSourceTargetCompatible('NUMBER', 'object', 'ADDRESS_STRUCT')).toBe(false)
   })
 })

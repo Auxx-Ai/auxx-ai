@@ -3,7 +3,7 @@
 
 import type { ResourceField } from '@auxx/lib/resources/client'
 import type { FieldReference } from '@auxx/types/field'
-import { Brackets, Hash } from 'lucide-react'
+import { Braces, Brackets, Hash } from 'lucide-react'
 import { lastSegment, type SourcePath } from '../hooks/use-source-paths'
 import { type IdentityRole, IdentityRoleControl } from './identity-role-control'
 import { MappingFieldPicker } from './mapping-field-picker'
@@ -13,12 +13,19 @@ import { FieldRowActions, MappingRow } from './mapping-row'
 export type LeafIdentityRole = IdentityRole
 
 /**
- * Short type token for the leaf badge. Prefers a detected string `format`
+ * Short type token for the leaf badge. A declared struct field type wins (an
+ * `ADDRESS_STRUCT` leaf reads `ADDRESS`), then a detected string `format`
  * (`uri`/`email`/`date`/…) over the bare JSON type, so the badge matches what
  * quick-create seeds — a `url`-valued string reads `URL`, not `STRING`. The
  * badge's `uppercase` class handles casing.
  */
 function sourceTypeLabel(node: SourcePath): string {
+  // `ADDRESS_STRUCT` → `address`, `NAME` → `name` (CSS uppercases for display).
+  if (node.fieldType)
+    return node.fieldType
+      .replace(/_STRUCT$/, '')
+      .replace(/_/g, ' ')
+      .toLowerCase()
   switch (node.format) {
     case 'uri':
       return 'url'
@@ -117,7 +124,8 @@ export function SourceLeafRow({
   const isLinked = !!linkedFieldRef
   const isActive = isMapped || isLinked
   const isArray = node.type === 'array'
-  const Icon = isArray ? Brackets : Hash
+  // A struct leaf (object value, e.g. ADDRESS_STRUCT) reads as `{}`; arrays `[]`; scalars `#`.
+  const Icon = isArray ? Brackets : node.fieldType ? Braces : Hash
   return (
     <MappingRow
       depth={depth}
@@ -150,6 +158,7 @@ export function SourceLeafRow({
           kind='leaf'
           entityDefinitionId={entityDefinitionId}
           sourceType={node.type}
+          sourceFieldType={node.fieldType}
           sourcePath={node.path}
           sourceFormat={node.format}
           assignedKey={assignedTargetKey}

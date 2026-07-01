@@ -6,6 +6,7 @@
 import type { CatalogDataConnector } from '@auxx/database'
 import { describe, expect, it } from 'vitest'
 import {
+  appRelationshipFieldKey,
   buildAppOwnedFieldMappings,
   buildReferenceAnchor,
   type OwnedFieldEntry,
@@ -233,6 +234,26 @@ describe('relativeSourcePath (nested-child rootPath relativization)', () => {
     // before the fix, which is why only depth-≥2 children regressed).
     expect(relativeSourcePath('line_items[]', '')).toBe('line_items[]')
     expect(relativeSourcePath('customer', '')).toBe('customer')
+  })
+})
+
+describe('appRelationshipFieldKey', () => {
+  it('wraps a bare manifest key in the parent-scoped @app: envelope', () => {
+    // The edge field lives on the parent (line_item) def, so the leading segment is the
+    // parent slug; resolution keys on `@app:<appSlug>:<key>` (the leading slug is cosmetic).
+    expect(appRelationshipFieldKey('product', 'shopify', 'shopify_line_items')).toBe(
+      'shopify_line_items:@app:shopify:product'
+    )
+  })
+
+  it('passes null/undefined through (no edge to namespace)', () => {
+    expect(appRelationshipFieldKey(null, 'shopify', 'shopify_line_items')).toBeNull()
+    expect(appRelationshipFieldKey(undefined, 'shopify', 'shopify_line_items')).toBeNull()
+  })
+
+  it('never emits a bare token a ref slot could mistake for an apiSlug/field id', () => {
+    const ref = appRelationshipFieldKey('lineItems', 'shopify', 'shopify_orders')!
+    expect(ref).toContain(':@app:')
   })
 })
 

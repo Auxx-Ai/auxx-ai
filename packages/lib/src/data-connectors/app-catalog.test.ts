@@ -9,6 +9,7 @@ import {
   buildContributingFieldBindings,
   buildSchemaFromFieldPaths,
   type ContributingTargetField,
+  overlayDeclaredFieldTypes,
 } from './app-catalog'
 
 describe('buildSchemaFromFieldPaths', () => {
@@ -72,6 +73,71 @@ describe('appCatalogStreamSchema', () => {
       type: 'object',
       properties: { name: { type: 'string' } },
     })
+  })
+
+  it('stamps x-auxx-fieldType on an ADDRESS_STRUCT field node (keeping its components)', () => {
+    const result = appCatalogStreamSchema({
+      key: 'order',
+      displayFieldKey: 'name',
+      fields: [
+        { fieldKey: 'id', sourcePath: 'id', type: 'TEXT', name: 'ID' },
+        {
+          fieldKey: 'shippingAddress',
+          sourcePath: 'shipping_address',
+          type: 'ADDRESS_STRUCT',
+          name: 'Shipping Address',
+        },
+      ],
+      exampleRecord: {
+        id: 'o1',
+        shipping_address: { street1: '123 Main St', city: 'Austin', country: 'US' },
+      },
+    })
+    const props = (result.sourceSchema as { properties: Record<string, Record<string, unknown>> })
+      .properties
+    expect(props.shipping_address['x-auxx-fieldType']).toBe('ADDRESS_STRUCT')
+    // Components survive in the schema — only the CLIENT flatten stops descending.
+    expect(props.shipping_address.properties).toHaveProperty('city')
+  })
+})
+
+describe('overlayDeclaredFieldTypes', () => {
+  it('stamps a nested + array-element struct path', () => {
+    const schema = {
+      type: 'object',
+      properties: {
+        customer: {
+          type: 'object',
+          properties: { address: { type: 'object', properties: { city: { type: 'string' } } } },
+        },
+        line_items: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: { ship: { type: 'object', properties: { zip: { type: 'string' } } } },
+          },
+        },
+      },
+    }
+    overlayDeclaredFieldTypes(schema, [
+      { fieldKey: 'a', sourcePath: 'customer.address', type: 'ADDRESS_STRUCT', name: 'A' },
+      { fieldKey: 'b', sourcePath: 'line_items[].ship', type: 'ADDRESS_STRUCT', name: 'B' },
+    ])
+    const props = schema.properties as Record<string, Record<string, Record<string, unknown>>>
+    expect(props.customer.properties.address['x-auxx-fieldType']).toBe('ADDRESS_STRUCT')
+    const itemProps = (
+      props.line_items.items as { properties: Record<string, Record<string, unknown>> }
+    ).properties
+    expect(itemProps.ship['x-auxx-fieldType']).toBe('ADDRESS_STRUCT')
+  })
+
+  it('ignores non-struct fields and absent paths', () => {
+    const schema = { type: 'object', properties: { name: { type: 'string' } } }
+    overlayDeclaredFieldTypes(schema, [
+      { fieldKey: 'name', sourcePath: 'name', type: 'TEXT', name: 'Name' },
+      { fieldKey: 'gone', sourcePath: 'missing', type: 'ADDRESS_STRUCT', name: 'Gone' },
+    ])
+    expect(schema).toEqual({ type: 'object', properties: { name: { type: 'string' } } })
   })
 })
 

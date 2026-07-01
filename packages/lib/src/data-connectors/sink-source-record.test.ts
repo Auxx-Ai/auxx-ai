@@ -17,7 +17,8 @@ vi.mock('./reconciliation', () => ({ archiveExternalId: vi.fn() }))
 
 // Field cache: the order def carries a connector-provisioned `Line Items` has_many
 // field whose REAL id differs from its `appFieldKey` ('lineItems') — the exact shape
-// that broke `resolveEdge` (it matched on id/resourceFieldId, never appFieldKey).
+// `resolveEdge` must resolve via the late-bound `@app:` ref (it matches by appFieldKey,
+// never the provisioned id).
 const fieldsByDef: Record<string, ResourceField[]> = {}
 vi.mock('../cache', () => ({
   getCachedResourceFields: (_org: string, defId: string) =>
@@ -82,9 +83,10 @@ describe('sinkSourceRecord — relationship edge resolution', () => {
       rootPath: 'line_items[]',
       entityDefinitionId: 'lineDef',
       parentMappingId: 'orderMap',
-      // The authored key is the app's relationship.fieldKey — equals appFieldKey,
-      // NOT the provisioned field id.
-      relationshipFieldKey: 'lineItems',
+      // The seeded key is the late-bound `@app:` envelope — its `appFieldKey` segment
+      // ('lineItems') matches the provisioned field's appFieldKey, NOT its id. The
+      // leading slug is cosmetic; resolveEdge resolves on the parent def.
+      relationshipFieldKey: 'shopify_orders:@app:shopify:lineItems',
     })
 
     const source: ConnectorRecord = {

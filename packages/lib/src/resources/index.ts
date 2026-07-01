@@ -70,6 +70,7 @@ export type {
 // Resource types (system + custom)
 export {
   ENTITY_DEFINITION_TYPES,
+  fieldMatchesRef,
   getAllFields,
   getCreatableFields,
   getField,
@@ -96,6 +97,7 @@ export {
   RESOURCE_FIELD_REGISTRY,
   RESOURCE_TABLE_MAP,
   RESOURCE_TABLE_REGISTRY,
+  resolveFieldRef,
   setEntityVariables,
   setResourceVariables,
 } from './registry'

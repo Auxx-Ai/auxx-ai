@@ -64,6 +64,12 @@ interface MappingFieldPickerProps {
   entityDefinitionId: string | null
   /** The source node being bound — drives the type filter + quick-create seed ('leaf'). */
   sourceType?: string
+  /**
+   * The source leaf's DECLARED struct field type (`ADDRESS_STRUCT`), when it carries one.
+   * Constrains the target filter to that type's accepting sinks and seeds quick-create to
+   * it — bypassing the lossy `object → JSON` reduction the bare `sourceType` would apply.
+   */
+  sourceFieldType?: FieldTypeType
   sourcePath?: string
   /** Detected source string `format` — seeds the quick-create field type (§2.2). */
   sourceFormat?: string
@@ -126,6 +132,7 @@ export function MappingFieldPicker({
   kind = 'leaf',
   entityDefinitionId,
   sourceType = 'string',
+  sourceFieldType,
   sourcePath = '',
   sourceFormat,
   assignedKey,
@@ -228,7 +235,7 @@ export function MappingFieldPicker({
               return (
                 notExcluded &&
                 isWritableTarget(f, { ownedWrite }) &&
-                isSourceTargetCompatible(f.fieldType, sourceType)
+                isSourceTargetCompatible(f.fieldType, sourceType, sourceFieldType)
               )
             }}
             mode='single'
@@ -259,10 +266,11 @@ export function MappingFieldPicker({
           <QuickCreateFieldForm
             entityDefinitionId={entityDefinitionId}
             sourceType={sourceType}
+            sourceFieldType={sourceFieldType}
             ownedWrite={ownedWrite}
             excludeKeys={excludeKeys}
             seedName={humanizeFieldPath(sourcePath)}
-            seedType={inferFieldType(sourcePath, sourceType, sourceFormat)}
+            seedType={sourceFieldType ?? inferFieldType(sourcePath, sourceType, sourceFormat)}
             onBack={() => setView('pick')}
             onCreated={(fieldRef) => {
               onAssign(fieldRef)
@@ -308,6 +316,7 @@ function useFieldTypeGroups(): OptionGroup[] {
 function QuickCreateFieldForm({
   entityDefinitionId,
   sourceType,
+  sourceFieldType,
   ownedWrite,
   excludeKeys,
   seedName,
@@ -317,6 +326,7 @@ function QuickCreateFieldForm({
 }: {
   entityDefinitionId: string
   sourceType: string
+  sourceFieldType?: FieldTypeType
   ownedWrite?: boolean
   excludeKeys?: Set<string>
   seedName: string
@@ -347,9 +357,9 @@ function QuickCreateFieldForm({
     const bindable =
       !alreadyMapped &&
       isWritableTarget(existing, { ownedWrite }) &&
-      isSourceTargetCompatible(existing.fieldType, sourceType)
+      isSourceTargetCompatible(existing.fieldType, sourceType, sourceFieldType)
     return { existing, ref, bindable, alreadyMapped }
-  }, [trimmed, fields, entityDefinitionId, excludeKeys, sourceType, ownedWrite])
+  }, [trimmed, fields, entityDefinitionId, excludeKeys, sourceType, sourceFieldType, ownedWrite])
 
   const canSubmit = !!trimmed && !conflict && !create.isPending
 

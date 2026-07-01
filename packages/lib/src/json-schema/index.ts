@@ -10,6 +10,7 @@ export {
   collectSchemaLeaves,
   lastSegment,
   type SourceLeaf,
+  STRUCT_FIELD_TYPE_KEYWORD,
 } from './flatten'
 export { inferJsonSchema, type JsonSchema } from './infer'
 export { sanitizeFormatsForOpenAiStrict, stripVendorKeywords, VENDOR_KEYWORD } from './vendor'

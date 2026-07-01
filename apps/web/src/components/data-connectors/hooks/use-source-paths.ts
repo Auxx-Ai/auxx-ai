@@ -1,6 +1,8 @@
 // apps/web/src/components/data-connectors/hooks/use-source-paths.ts
 'use client'
 
+import type { FieldType } from '@auxx/database/types'
+import { STRUCT_FIELD_TYPE_KEYWORD } from '@auxx/lib/json-schema/client'
 import { useMemo } from 'react'
 
 /** A leaf/branch path in the source (Layer A) schema, for the inline pickers. */
@@ -11,6 +13,12 @@ export interface SourcePath {
   type: string
   /** Detected JSON-schema string `format` (`email` / `uri` / `date` / `time` / `date-time`). */
   format?: string
+  /**
+   * Declared STRUCT field type when the node maps as ONE value (`ADDRESS_STRUCT`). Set by
+   * the catalog schema overlay; turns an object node into a typed value leaf rather than a
+   * branch to explode. Drives the badge, the picker's type filter, and quick-create seed.
+   */
+  fieldType?: FieldType
   /** Depth (for indenting the picker list). */
   depth: number
   /** True for object/array branches (not directly mappable as a value). */
@@ -22,6 +30,7 @@ interface JsonSchemaNode {
   format?: string
   properties?: Record<string, JsonSchemaNode>
   items?: JsonSchemaNode
+  [STRUCT_FIELD_TYPE_KEYWORD]?: string
 }
 
 function typeOf(node: JsonSchemaNode): string {
@@ -54,6 +63,20 @@ export function flattenSourceSchema(
       for (const [key, child] of Object.entries(node.properties)) {
         const childPath = prefix ? `${prefix}.${key}` : key
         const childType = typeOf(child)
+        // A declared struct field (e.g. ADDRESS_STRUCT) maps as ONE value — emit a typed
+        // value leaf and DON'T descend into its components.
+        const structType = child[STRUCT_FIELD_TYPE_KEYWORD]
+        if (structType) {
+          out.push({
+            path: childPath,
+            type: childType,
+            format: child.format,
+            fieldType: structType as FieldType,
+            depth,
+            isBranch: false,
+          })
+          continue
+        }
         const isBranch =
           childType === 'object' || (childType === 'array' && !!child.items?.properties)
         out.push({ path: childPath, type: childType, format: child.format, depth, isBranch })

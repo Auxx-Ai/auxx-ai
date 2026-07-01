@@ -11,13 +11,15 @@ import type { RelationshipConfig } from '@auxx/types/custom-field'
 import {
   getFieldDefinitionId,
   getFieldId,
+  isAppFieldRef,
   isFieldPath,
   keyToFieldRef,
+  parseAppFieldRef,
   type ResourceFieldId,
   toResourceFieldId,
 } from '@auxx/types/field'
 import { getCachedResourceFields } from '../cache'
-import type { ResourceField } from '../resources'
+import { type ResourceField, resolveFieldRef } from '../resources'
 import type { ConnectorRecord } from './connectors/types'
 import type { MappedWrite } from './map-record'
 import { mapRecord } from './map-record'
@@ -61,25 +63,28 @@ async function resolveEdge(
   // The drilled relationship lives on the parent def; a deeper FieldPath nests via
   // child mappings (each a single drill), so the last segment is the edge field.
   const lastSeg = isFieldPath(ref) ? ref[ref.length - 1]! : ref
-  // A bare authored key (template/app connectors store just the field id, e.g.
-  // `customer`) carries no def prefix — qualify it against the parent mapping's def.
-  // A def-qualified ref (UI `order:customer`) or a deeper path segment is used as-is.
-  const forwardRef = (
-    lastSeg.includes(':') ? lastSeg : toResourceFieldId(parentDef, lastSeg)
-  ) as ResourceFieldId
-  const ownerDef = getFieldDefinitionId(forwardRef)
-  const derivedFieldId = getFieldId(forwardRef)
-
-  // Resolve the forward field up front (needed for cardinality AND its real id). A
-  // connector-provisioned RELATIONSHIP field has an AUTO-GENERATED id distinct from
-  // its `appFieldKey` — so the authored `relationshipFieldKey` ('lineItems') matches
-  // the field's `appFieldKey`, NOT its id. Match on all three, then use the resolved
-  // field's REAL id for the forward edge (the derived id is just the authored key).
+  // The edge field lives on the PARENT def. Two ref forms reach here: a concrete
+  // `defId:fieldId` segment (UI `order:customer` or a deeper drilled hop) names its OWN
+  // def; a late-bound `<slug>:@app:<app>:<key>` ref (app/template connectors) resolves on
+  // the parent — its leading slug is the manifest apiSlug, NOT a real def id. Resolve
+  // through the SAME resolver the editor uses (`resolveFieldRef` → concrete OR `@app:`,
+  // which matches a connector-provisioned RELATIONSHIP field's AUTO-GENERATED id by its
+  // `appFieldKey`), so display + sync never diverge. Then use the field's REAL id.
+  const ownerDef =
+    !isAppFieldRef(lastSeg) && lastSeg.includes(':') ? getFieldDefinitionId(lastSeg) : parentDef
   const fields = await getFields(ownerDef)
-  const field = fields.find(
-    (f) => f.id === derivedFieldId || f.resourceFieldId === forwardRef || f.appFieldKey === lastSeg
-  )
-  const forwardFieldId = field?.id ?? derivedFieldId
+  const field = resolveFieldRef(fields, ownerDef, lastSeg)?.field
+  // Fall back to the authored id when nothing resolves (shouldn't happen post-install):
+  // the bare app key for an `@app:` ref, else the def-qualified concrete id.
+  const forwardFieldId =
+    field?.id ??
+    (isAppFieldRef(lastSeg)
+      ? (parseAppFieldRef(lastSeg)?.appFieldKey ?? lastSeg)
+      : getFieldId(
+          (lastSeg.includes(':')
+            ? lastSeg
+            : toResourceFieldId(parentDef, lastSeg)) as ResourceFieldId
+        ))
 
   // CLEAR — belongs_to only (a reference FK that went empty). Null the parent field.
   if (rel.childExternalId === null) {
