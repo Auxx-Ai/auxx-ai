@@ -5,6 +5,7 @@ import { getCachedResource } from '@auxx/lib/cache'
 import { conditionGroupSchema } from '@auxx/lib/conditions'
 import { BadRequestError } from '@auxx/lib/errors'
 import { getDescendantIds } from '@auxx/lib/field-values'
+import { getRecordIdentityViews } from '@auxx/lib/identity'
 import {
   type LookupCandidate,
   RESOURCE_TABLE_REGISTRY,
@@ -180,6 +181,27 @@ export const recordRouter = createTRPCRouter({
         throw new TRPCError({
           code: 'INTERNAL_SERVER_ERROR',
           message: `Failed to fetch record: ${error.message}`,
+        })
+      }
+    }),
+
+  /**
+   * External identities linked to a record — the "External identities" card
+   * data source (RecordIdentity index, decorated from org cache). One batch
+   * query, no N+1. Values themselves still render as normal FieldValues in the
+   * field grid; this surfaces the cross-system/cross-store link set.
+   */
+  getIdentities: protectedProcedure
+    .input(z.object({ recordId: recordIdSchema }))
+    .query(async ({ ctx, input }) => {
+      const { organizationId } = ctx.session
+      try {
+        return await getRecordIdentityViews(organizationId, input.recordId as RecordId)
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : 'Unknown error'
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: `Failed to fetch record identities: ${message}`,
         })
       }
     }),

@@ -365,4 +365,30 @@ describe('mapRecord', () => {
     const writes = mapRecord([m], source({ customer: null }))
     expect(writes).toHaveLength(0)
   })
+
+  // ── connectionAppFields (identity plan phase 3) ──────────────────────────────
+
+  it('skips a connectionMetaKey-flagged binding — the sink injects its value, not the source subtree', () => {
+    const m = mapping({
+      fieldMappings: [
+        {
+          id: 'e1',
+          targetFieldRef: 'def1:total',
+          expression: '{total_price}',
+          sourceFields: { total_price: 'total_price' },
+        },
+        {
+          id: 'conn',
+          targetFieldRef: 'def1:@app:shopify:storeDomain',
+          expression: '',
+          sourceFields: {},
+          connectionMetaKey: 'shopDomain',
+        },
+      ],
+    })
+    const writes = mapRecord([m], source({ total_price: '49.99' }))
+    // Only the normal binding is projected — the connection-meta ref is absent
+    // entirely, never evaluated against the (irrelevant) source subtree.
+    expect(writes[0]?.projected?.fields).toEqual({ 'def1:total': '49.99' })
+  })
 })

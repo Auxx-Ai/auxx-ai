@@ -24,6 +24,7 @@ import { toRecordId } from '../resources/resource-id'
 import {
   appCatalogStreamSchema,
   buildContributingAutoBindings,
+  buildContributingConnectionAppFields,
   buildContributingFieldBindings,
   buildContributingMatchBindings,
 } from './app-catalog'
@@ -869,7 +870,7 @@ async function materializeAppContributingMappings(
   const ownedRootPaths = Object.keys(ownedMappingIdByRootPath)
   for (const mapping of stream.defaultMappings ?? []) {
     if (mapping.target.mode !== 'contributing') continue
-    const { entityKind, matchFieldKeys, fieldBindings } = mapping.target
+    const { entityKind, matchFieldKeys, fieldBindings, connectionAppFields } = mapping.target
 
     const entityDefinitionId = await getCachedEntityDefId(organizationId, entityKind)
     if (!entityDefinitionId) {
@@ -899,6 +900,7 @@ async function materializeAppContributingMappings(
       (fieldBindings?.length ?? 0) > 0
         ? buildContributingFieldBindings(
             entityDefinitionId,
+            appSlug,
             mapping.rootPath,
             fieldBindings ?? [],
             stream.fields,
@@ -911,12 +913,22 @@ async function materializeAppContributingMappings(
             defFields
           )
     ).filter((b) => !boundTargets.has(b.targetFieldRef))
+    // Connection-metadata fields (e.g. `storeDomain`) — no source binding, so no
+    // boundTargets filter applies; a declared connectionAppFields target never
+    // collides with a match/value binding in practice (different app fields).
+    const connMetaBindings = buildContributingConnectionAppFields(
+      entityDefinitionId,
+      appSlug,
+      connectionAppFields ?? []
+    )
     const linkMode = mapping.linkMode ?? ('upsert' as LinkMode)
     // A `reference` contributing edge owns no value columns — it carries only the
     // External-ID anchor (the FK resolves to the related record at sync), mirroring the
     // interactive `linkRelationship`. Otherwise bind match + author/auto value fields.
     const fieldMappings =
-      linkMode === 'reference' ? [buildReferenceAnchor()] : [...matchBindings, ...valueBindings]
+      linkMode === 'reference'
+        ? [buildReferenceAnchor()]
+        : [...matchBindings, ...valueBindings, ...connMetaBindings]
 
     // A nested contributing branch (e.g. the order stream's embedded `customer`)
     // hangs off the owned root it's drilled from. Wiring `parentMappingId` makes

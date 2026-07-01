@@ -231,6 +231,12 @@ export interface FieldMapping {
   /** Per-field write behavior (folded in from the old parallel map). Absent ⇒ 'overwrite'. */
   mergeStrategy?: FieldMergeStrategy
   /**
+   * This binding writes a value read from the connector's CONNECTION METADATA
+   * (e.g. Shopify `shopDomain`), not the source record subtree. Mirror of the
+   * engine `FieldMapping.connectionMetaKey` (`@auxx/lib/data-connectors/types`).
+   */
+  connectionMetaKey?: string
+  /**
    * Provisioning hint for a connector-introduced target field (05d) — used to
    * create a missing target field with the declared type/name at sync time.
    * `appFieldKey` (05e) is the STABLE idempotency key the provisioner + ref

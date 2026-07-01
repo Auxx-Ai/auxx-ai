@@ -36,15 +36,3 @@ export function chatExternalId(userId: string): string {
 export function shopifyExternalId(shopDomain: string, customerId: string): string {
   return buildServerExternalId('shopify', `${shopDomain.trim()}:${customerId.trim()}`)
 }
-
-/**
- * If `userId` already starts with a known server-source prefix (`shopify:`),
- * return it verbatim; otherwise wrap with `chat:`. Used by the JWT contact
- * resolver so a JWT minted by our Shopify App Proxy (which encodes
- * `shopify:<shop>:<id>` directly into the `user_id` claim) doesn't get
- * double-namespaced to `chat:shopify:<shop>:<id>`.
- */
-export function resolveServerExternalId(userId: string): string {
-  if (userId.startsWith('shopify:')) return userId
-  return chatExternalId(userId)
-}

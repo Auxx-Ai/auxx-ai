@@ -220,11 +220,22 @@ export interface ConnectorDefaultMapping {
          * stream lands closer to `ready` — e.g. `{ sourceFieldKey: 'first_name',
          * targetKey: 'first_name' }` binds the source field to the contact's
          * first-name attribute. `targetKey` resolves against the target def's
-         * `systemAttribute` / field name; unresolved bindings are dropped (the
-         * mapping stays a setup draft). The external id is never bound here — it
-         * rides `ConnectorRecord.externalId`.
+         * `systemAttribute` / field name. `targetAppField` (mutually exclusive
+         * with `targetKey`) instead names an app-declared field by its
+         * `appFieldKey` (`defineFields`) — when that field is `identity: true`,
+         * the binding auto-stamps `identityRole: { kind: 'externalId' }`, the
+         * mechanism `isExternalId` uses for owned defs, extended to contributing.
+         * Unresolved bindings are dropped (the mapping stays a setup draft).
          */
-        fieldBindings?: { sourceFieldKey: string; targetKey: string }[]
+        fieldBindings?: { sourceFieldKey: string; targetKey?: string; targetAppField?: string }[]
+        /**
+         * Fill a plain (non-identity) app field from the connector's CONNECTION
+         * METADATA (e.g. Shopify `shopDomain`) rather than the source record —
+         * the only synthetic write channel. `appFieldKey` must name a declared,
+         * non-identity app field; `from` is the connection metadata key
+         * (`ConnectorConnection.metadata`).
+         */
+        connectionAppFields?: { appFieldKey: string; from: string }[]
       }
 }
 

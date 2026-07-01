@@ -10,6 +10,7 @@
 // dedupe + the receiver's event-id dedupe. The full-sync path (enqueueConnectorSync) still
 // handles cursor streams that have no `{path}` to steer — see the dispatch jobs.
 
+import { getCredential } from '@auxx/credentials/store'
 import { type Database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { eq } from 'drizzle-orm'
@@ -201,6 +202,20 @@ async function buildWebhookCtx(
     await crud.warmCache(defId)
     await ownedCrud.warmCache(defId)
   }
+  // Best-effort — a webhook-steered partial run never fails on a metadata load miss.
+  let connectionMeta: Record<string, unknown> | null = null
+  if (connector.credentialId) {
+    const result = await getCredential(connector.credentialId, organizationId)
+    if (result.isOk()) {
+      connectionMeta = result.value.metadata
+    } else {
+      logger.warn('Failed to load connection metadata for connectionAppFields', {
+        connectorId: connector.id,
+        credentialId: connector.credentialId,
+        error: result.error.message,
+      })
+    }
+  }
   return {
     db,
     orgId: organizationId,
@@ -210,5 +225,6 @@ async function buildWebhookCtx(
     ownedCrud,
     counters,
     touchedDefs: new Set<string>(),
+    connectionMeta,
   }
 }

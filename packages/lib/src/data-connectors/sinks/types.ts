@@ -50,6 +50,13 @@ export interface SyncCtx {
   /** Entity definition ids touched this run — invalidated once at the end. */
   touchedDefs: Set<string>
   /**
+   * The bound connection's plaintext `metadata` (e.g. Shopify `shopDomain`) — the
+   * source `connectionAppFields` bindings read from (`connectionMetaKey`). `null`
+   * when the connector has no bound connection or the credential failed to load;
+   * `undefined` is never persisted (always resolved once per ctx build).
+   */
+  connectionMeta?: Record<string, unknown> | null
+  /**
    * Reconciliation sweep run (Step 8C). A sweep is a full id-crawl whose purpose is
    * to catch deletes the watermark poll/webhooks missed. When set, `reconcileOrphans`
    * archives unseen orphans even for `incremental` streams (absence IS deletion,

@@ -39,6 +39,9 @@ export const DETAIL_VIEW_CONFIG_REGISTRY: DetailViewConfigRegistry = {
     },
     defaultTab: 'tickets',
     defaultSidebarTab: 'overview',
+    // Renders nothing when the contact has no external identities (card
+    // returns null), so it's inert until an app/store/chat links the record.
+    sidebarCards: [{ value: 'external-identities', label: 'External identities' }],
   },
 
   ticket: {
