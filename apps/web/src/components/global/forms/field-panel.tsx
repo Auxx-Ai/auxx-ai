@@ -1,18 +1,44 @@
 // apps/web/src/components/global/forms/field-panel.tsx
+'use client'
 
 import { Button } from '@auxx/ui/components/button'
 import { cn } from '@auxx/ui/lib/utils'
 import { cva, type VariantProps } from 'class-variance-authority'
 import { X } from 'lucide-react'
 import type React from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { Tooltip, TooltipExplanation } from '~/components/global/tooltip'
 import type { BaseType } from '~/components/workflow/types/unified-types'
 import { VarTypeIcon } from '~/components/workflow/utils/icon-helper'
+import { safeLocalStorage } from '~/lib/safe-localstorage'
 import { ValidationErrorBadge } from './validation-error-badge'
+
+/** Default label column width in px — matches the previous hardcoded `w-40` (10rem). */
+const DEFAULT_LABEL_WIDTH = 160
+const MIN_LABEL_WIDTH = 96
+/** Max label width as a fraction of the panel width, so content never collapses. */
+const MAX_LABEL_FRACTION = 0.7
+
+const RESIZE_EVENT = 'auxx:field-panel-resize'
+const storageKey = (resizeId: string) => `auxx:field-panel:label-w:${resizeId}`
+
+interface FieldPanelResizeDetail {
+  resizeId: string
+  width: number
+  /** false while dragging (DOM-only updates), true on release/reset (state + storage) */
+  commit: boolean
+  /** Emitting panel element, so it can ignore its own events */
+  source: HTMLElement | null
+}
+
+const dispatchResize = (detail: FieldPanelResizeDetail) => {
+  window.dispatchEvent(new CustomEvent<FieldPanelResizeDetail>(RESIZE_EVENT, { detail }))
+}
 
 /**
  * Variants for FieldPanel orientation
- * Controls how FieldPanelRow children lay out their label and content
+ * Controls how FieldPanelRow children lay out their label and content.
+ * The label column width comes from --field-panel-label-w, set inline on the panel root.
  */
 const fieldPanelVariants = cva(
   [
@@ -27,7 +53,9 @@ const fieldPanelVariants = cva(
           // field-row: horizontal layout (default behavior)
           '[&_[data-slot=field-row]]:flex-row [&_[data-slot=field-row]]:items-start',
           // field-row-label: fixed width and height
-          '[&_[data-slot=field-row-label]]:w-40 [&_[data-slot=field-row-label]]:shrink-0 [&_[data-slot=field-row-label]]:min-h-8',
+          '[&_[data-slot=field-row-label]]:w-(--field-panel-label-w) [&_[data-slot=field-row-label]]:shrink-0 [&_[data-slot=field-row-label]]:min-h-8',
+          // gutter between the label/content boundary (where the resize line sits) and the content
+          '[&_[data-slot=field-row-content]]:ps-2',
         ],
         vertical: [
           // field-row: vertical layout (stacked)
@@ -42,16 +70,41 @@ const fieldPanelVariants = cva(
           '[&_[data-slot=field-row]]:flex-col [&_[data-slot=field-row]]:items-stretch',
           '[&_[data-slot=field-row-label]]:w-full [&_[data-slot=field-row-label]]:shrink [&_[data-slot=field-row-label]]:pt-1.5 [&_[data-slot=field-row-label]]:pb-1 [&_[data-slot=field-row-content]]:ps-2',
           '[&_[data-slot=field-row]]:pb-1',
-          // @sm+ : horizontal layout
+        ],
+      },
+      /** Container width at which a responsive panel flips to horizontal (sm=24rem, md=28rem) */
+      breakpoint: {
+        sm: [],
+        md: [],
+      },
+    },
+    compoundVariants: [
+      // Horizontal layout above the container breakpoint
+      // (field-row-content keeps its ps-2 as the boundary gutter)
+      {
+        orientation: 'responsive',
+        breakpoint: 'sm',
+        className: [
           '@sm:[&_[data-slot=field-row]]:flex-row @sm:[&_[data-slot=field-row]]:items-start',
-          '@sm:[&_[data-slot=field-row-label]]:w-40 @sm:[&_[data-slot=field-row-label]]:shrink-0 @sm:[&_[data-slot=field-row-label]]:min-h-8',
-          '@sm:[&_[data-slot=field-row-label]]:pt-0 @sm:[&_[data-slot=field-row-label]]:pb-0 @sm:[&_[data-slot=field-row-content]]:ps-0',
+          '@sm:[&_[data-slot=field-row-label]]:w-(--field-panel-label-w) @sm:[&_[data-slot=field-row-label]]:shrink-0 @sm:[&_[data-slot=field-row-label]]:min-h-8',
+          '@sm:[&_[data-slot=field-row-label]]:pt-0 @sm:[&_[data-slot=field-row-label]]:pb-0',
           '@sm:[&_[data-slot=field-row]]:pb-0',
         ],
       },
-    },
+      {
+        orientation: 'responsive',
+        breakpoint: 'md',
+        className: [
+          '@md:[&_[data-slot=field-row]]:flex-row @md:[&_[data-slot=field-row]]:items-start',
+          '@md:[&_[data-slot=field-row-label]]:w-(--field-panel-label-w) @md:[&_[data-slot=field-row-label]]:shrink-0 @md:[&_[data-slot=field-row-label]]:min-h-8',
+          '@md:[&_[data-slot=field-row-label]]:pt-0 @md:[&_[data-slot=field-row-label]]:pb-0',
+          '@md:[&_[data-slot=field-row]]:pb-0',
+        ],
+      },
+    ],
     defaultVariants: {
       orientation: 'responsive',
+      breakpoint: 'sm',
     },
   }
 )
@@ -65,21 +118,143 @@ interface FieldPanelProps extends VariantProps<typeof fieldPanelVariants> {
   validationError?: string
   validationType?: 'error' | 'warning'
   className?: string
+  /**
+   * Opt-in drag-resizing of the label column (horizontal / responsive-at-@sm only).
+   * The width persists in localStorage under this id; mounted panels sharing the
+   * same id resize together in real time. Double-click the divider to reset.
+   */
+  resizeId?: string
+  /** Label column width in px. Also the reset target when resizing. Default 160 (the old w-40). */
+  defaultLabelWidth?: number
 }
 
-const FieldPanel: React.FC<FieldPanelProps> = ({
+function FieldPanel({
   children,
   validationError,
   validationType = 'error',
   orientation = 'responsive',
+  breakpoint = 'sm',
   className,
-}) => {
+  resizeId,
+  defaultLabelWidth = DEFAULT_LABEL_WIDTH,
+}: FieldPanelProps) {
+  const panelRef = useRef<HTMLDivElement>(null)
+  const dragState = useRef<{ startX: number; startWidth: number; maxWidth: number } | null>(null)
+  const [labelWidth, setLabelWidth] = useState(defaultLabelWidth)
+  const [isResizing, setIsResizing] = useState(false)
+  // The label column starts after the panel's left padding, which callers can
+  // override via className (e.g. p-0) — measure it instead of assuming px-1.5
+  const [padLeft, setPadLeft] = useState('0.375rem')
+
+  // Hydrate the stored width before paint (avoids a visible width jump)
+  useLayoutEffect(() => {
+    if (!resizeId) return
+    const stored = Number(safeLocalStorage.get(storageKey(resizeId)))
+    if (Number.isFinite(stored) && stored >= MIN_LABEL_WIDTH) setLabelWidth(stored)
+    if (panelRef.current) setPadLeft(getComputedStyle(panelRef.current).paddingLeft)
+  }, [resizeId])
+
+  // Follow resizes from other mounted panels sharing this resizeId
+  useEffect(() => {
+    if (!resizeId) return
+    const onResize = (e: Event) => {
+      const detail = (e as CustomEvent<FieldPanelResizeDetail>).detail
+      if (detail.resizeId !== resizeId || detail.source === panelRef.current) return
+      if (detail.commit) {
+        setLabelWidth(detail.width)
+      } else {
+        // Mid-drag: mutate the CSS var directly, no re-render
+        panelRef.current?.style.setProperty('--field-panel-label-w', `${detail.width}px`)
+      }
+    }
+    window.addEventListener(RESIZE_EVENT, onResize)
+    return () => window.removeEventListener(RESIZE_EVENT, onResize)
+  }, [resizeId])
+
+  const widthFromDrag = (clientX: number) => {
+    const drag = dragState.current!
+    return Math.min(
+      drag.maxWidth,
+      Math.max(MIN_LABEL_WIDTH, drag.startWidth + clientX - drag.startX)
+    )
+  }
+
+  const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    e.preventDefault()
+    e.currentTarget.setPointerCapture(e.pointerId)
+    const panelWidth = panelRef.current?.offsetWidth ?? 0
+    dragState.current = {
+      startX: e.clientX,
+      startWidth: labelWidth,
+      maxWidth: Math.max(MIN_LABEL_WIDTH, panelWidth * MAX_LABEL_FRACTION),
+    }
+    setIsResizing(true)
+  }
+
+  const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!dragState.current) return
+    const width = widthFromDrag(e.clientX)
+    panelRef.current?.style.setProperty('--field-panel-label-w', `${width}px`)
+    dispatchResize({ resizeId: resizeId!, width, commit: false, source: panelRef.current })
+  }
+
+  const handlePointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!dragState.current) return
+    const width = widthFromDrag(e.clientX)
+    dragState.current = null
+    setIsResizing(false)
+    setLabelWidth(width)
+    safeLocalStorage.set(storageKey(resizeId!), String(width))
+    dispatchResize({ resizeId: resizeId!, width, commit: true, source: panelRef.current })
+  }
+
+  const handleDoubleClick = () => {
+    setLabelWidth(defaultLabelWidth)
+    safeLocalStorage.remove(storageKey(resizeId!))
+    dispatchResize({
+      resizeId: resizeId!,
+      width: defaultLabelWidth,
+      commit: true,
+      source: panelRef.current,
+    })
+  }
+
+  const showResizer = !!resizeId && orientation !== 'vertical'
+
   return (
     <div
+      ref={panelRef}
       data-slot='field'
       data-orientation={orientation}
-      className={cn(fieldPanelVariants({ orientation }), className)}>
+      style={{ '--field-panel-label-w': `${labelWidth}px` } as React.CSSProperties}
+      className={cn(fieldPanelVariants({ orientation, breakpoint }), className)}>
       {children}
+      {showResizer && (
+        <div
+          aria-hidden
+          className={cn(
+            // Only rendered for fine pointers (mouse/trackpad) — no drag affordance on touch devices
+            'group/resizer absolute inset-y-0 z-10 hidden w-2.5 -translate-x-1/2 cursor-col-resize touch-none',
+            // In responsive mode the handle also requires the container to lay out horizontally
+            orientation !== 'responsive'
+              ? 'pointer-fine:block'
+              : breakpoint === 'md'
+                ? 'pointer-fine:@md:block'
+                : 'pointer-fine:@sm:block'
+          )}
+          style={{ left: `calc(var(--field-panel-label-w) + ${padLeft})` }}
+          onPointerDown={handlePointerDown}
+          onPointerMove={handlePointerMove}
+          onPointerUp={handlePointerUp}
+          onDoubleClick={handleDoubleClick}>
+          <div
+            className={cn(
+              'mx-auto h-full w-px bg-primary-200 opacity-0 transition-opacity group-hover/resizer:opacity-100',
+              isResizing && 'opacity-100 bg-info'
+            )}
+          />
+        </div>
+      )}
       <ValidationErrorBadge error={validationError} type={validationType} />
     </div>
   )
@@ -104,7 +279,7 @@ interface FieldPanelRowProps {
  * Labeled row inside a FieldPanel: label (with optional icon/description) + content.
  * Formerly VarEditorFieldRow.
  */
-const FieldPanelRow: React.FC<FieldPanelRowProps> = ({
+function FieldPanelRow({
   children,
   title,
   description,
@@ -116,7 +291,7 @@ const FieldPanelRow: React.FC<FieldPanelRowProps> = ({
   showIcon = false,
   className,
   onClear,
-}) => {
+}: FieldPanelRowProps) {
   return (
     <div
       data-slot='field-row'

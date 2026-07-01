@@ -10,8 +10,8 @@ import { useEffect } from 'react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
+import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
 import { BaseType } from '~/components/workflow/types'
-import { VarEditorField, VarEditorFieldRow } from '~/components/workflow/ui/input-editor/var-editor'
 import { useDraftSettingsAutosave } from '../../../hooks/use-draft-settings-autosave'
 import { type KnowledgeBase, selectDraftedSections } from '../../../store/knowledge-base-store'
 import { SectionStatusBadge } from '../section-header'
@@ -66,12 +66,12 @@ export function ModesSection({ knowledgeBaseId, knowledgeBase }: ModesSectionPro
       description='Light/dark mode behaviour for visitors.'
       actions={<SectionStatusBadge drafted={drafted} saving={isSaving} savedAt={lastSavedAt} />}>
       <Form {...form}>
-        <VarEditorField orientation='responsive' className='p-0'>
+        <FieldPanel orientation='responsive' className='p-0' resizeId='kb-settings'>
           <FormField
             control={form.control}
             name='showMode'
             render={({ field, fieldState }) => (
-              <VarEditorFieldRow
+              <FieldPanelRow
                 title='Show switcher'
                 description='Allow users to switch between light and dark mode.'
                 type={BaseType.BOOLEAN}
@@ -83,7 +83,7 @@ export function ModesSection({ knowledgeBaseId, knowledgeBase }: ModesSectionPro
                   value={field.value}
                   onChange={(v) => field.onChange(v)}
                 />
-              </VarEditorFieldRow>
+              </FieldPanelRow>
             )}
           />
 
@@ -91,7 +91,7 @@ export function ModesSection({ knowledgeBaseId, knowledgeBase }: ModesSectionPro
             control={form.control}
             name='defaultMode'
             render={({ field, fieldState }) => (
-              <VarEditorFieldRow
+              <FieldPanelRow
                 title='Default mode'
                 description='All your viewers will see this mode by default.'
                 type={BaseType.ENUM}
@@ -105,10 +105,10 @@ export function ModesSection({ knowledgeBaseId, knowledgeBase }: ModesSectionPro
                   placeholder='Pick…'
                   triggerProps={{ className: 'w-full' }}
                 />
-              </VarEditorFieldRow>
+              </FieldPanelRow>
             )}
           />
-        </VarEditorField>
+        </FieldPanel>
       </Form>
     </Section>
   )

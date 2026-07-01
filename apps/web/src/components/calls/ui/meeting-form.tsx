@@ -7,9 +7,9 @@ import { DialogFooter } from '@auxx/ui/components/dialog'
 import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 import { type ReactNode, useCallback, useEffect, useState } from 'react'
+import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
 import { BaseType } from '~/components/workflow/types'
 import { ConstantInputAdapter } from '~/components/workflow/ui/input-editor/constant-input-adapter'
-import { VarEditorField, VarEditorFieldRow } from '~/components/workflow/ui/input-editor/var-editor'
 import { api } from '~/trpc/react'
 
 const PLATFORM_OPTIONS = [
@@ -160,11 +160,14 @@ export function MeetingForm({ open, onSuccess, onClose, onCancel, header }: Meet
     <>
       {header?.({ title })}
 
-      <VarEditorField
+      <FieldPanel
         orientation='responsive'
-        className='p-0 sm:[&_[data-slot=field-row-label]]:w-50'>
+        breakpoint='md'
+        resizeId='meeting-form'
+        defaultLabelWidth={200}
+        className='p-0'>
         {/* Title */}
-        <VarEditorFieldRow
+        <FieldPanelRow
           title='Title'
           type={BaseType.STRING}
           showIcon
@@ -178,10 +181,10 @@ export function MeetingForm({ open, onSuccess, onClose, onCancel, header }: Meet
             placeholder='Meeting title'
             disabled={isPending}
           />
-        </VarEditorFieldRow>
+        </FieldPanelRow>
 
         {/* Platform */}
-        <VarEditorFieldRow title='Platform' type={BaseType.ENUM} showIcon>
+        <FieldPanelRow title='Platform' type={BaseType.ENUM} showIcon>
           <ConstantInputAdapter
             value={values.platform}
             onChange={(_, val) => handleChange('platform', val)}
@@ -189,10 +192,10 @@ export function MeetingForm({ open, onSuccess, onClose, onCancel, header }: Meet
             disabled={isPending}
             fieldOptions={{ enum: PLATFORM_OPTIONS }}
           />
-        </VarEditorFieldRow>
+        </FieldPanelRow>
 
         {/* Date & Time */}
-        <VarEditorFieldRow
+        <FieldPanelRow
           title='Date & Time'
           type={BaseType.DATETIME}
           showIcon
@@ -205,10 +208,10 @@ export function MeetingForm({ open, onSuccess, onClose, onCancel, header }: Meet
             varType={BaseType.DATETIME}
             disabled={isPending}
           />
-        </VarEditorFieldRow>
+        </FieldPanelRow>
 
         {/* Duration */}
-        <VarEditorFieldRow
+        <FieldPanelRow
           title='Duration'
           type={BaseType.ENUM}
           showIcon
@@ -222,11 +225,11 @@ export function MeetingForm({ open, onSuccess, onClose, onCancel, header }: Meet
             disabled={isPending}
             fieldOptions={{ enum: DURATION_OPTIONS }}
           />
-        </VarEditorFieldRow>
+        </FieldPanelRow>
 
         {/* Meeting URL — only for non-Google Meet */}
         {isManualUrl && (
-          <VarEditorFieldRow
+          <FieldPanelRow
             title='Meeting URL'
             type={BaseType.URL}
             showIcon
@@ -240,11 +243,11 @@ export function MeetingForm({ open, onSuccess, onClose, onCancel, header }: Meet
               placeholder='https://zoom.us/j/...'
               disabled={isPending}
             />
-          </VarEditorFieldRow>
+          </FieldPanelRow>
         )}
 
         {/* Participants */}
-        <VarEditorFieldRow title='Participants' type={BaseType.RELATION} showIcon>
+        <FieldPanelRow title='Participants' type={BaseType.RELATION} showIcon>
           <ConstantInputAdapter
             value={values.participants}
             onChange={(_, val) => handleChange('participants', val)}
@@ -256,10 +259,10 @@ export function MeetingForm({ open, onSuccess, onClose, onCancel, header }: Meet
               relationshipType: 'has_many',
             }}
           />
-        </VarEditorFieldRow>
+        </FieldPanelRow>
 
         {/* Description */}
-        <VarEditorFieldRow title='Description' type={BaseType.STRING} showIcon>
+        <FieldPanelRow title='Description' type={BaseType.STRING} showIcon>
           <ConstantInputAdapter
             value={values.description}
             onChange={(_, val) => handleChange('description', val)}
@@ -268,8 +271,8 @@ export function MeetingForm({ open, onSuccess, onClose, onCancel, header }: Meet
             disabled={isPending}
             fieldOptions={{ string: { multiline: true } }}
           />
-        </VarEditorFieldRow>
-      </VarEditorField>
+        </FieldPanelRow>
+      </FieldPanel>
 
       <DialogFooter>
         <Button type='button' variant='ghost' size='sm' onClick={cancel} disabled={isPending}>

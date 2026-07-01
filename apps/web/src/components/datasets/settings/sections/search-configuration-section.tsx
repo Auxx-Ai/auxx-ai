@@ -12,9 +12,9 @@ import { FileText, Lightbulb, Search, Sparkles, Zap } from 'lucide-react'
 import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
+import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
 import { SettingsSection } from '~/components/global/settings-page'
 import { ConstantInputAdapter } from '~/components/workflow/ui/input-editor/constant-input-adapter'
-import { VarEditorField, VarEditorFieldRow } from '~/components/workflow/ui/input-editor/var-editor'
 import { api } from '~/trpc/react'
 
 interface SearchConfigurationSectionProps {
@@ -186,13 +186,13 @@ export function SearchConfigurationSection({
       })
     }
   }
-  /** Renders search type specific options using VarEditorField layout */
+  /** Renders search type specific options using FieldPanel layout */
   const renderSearchTypeOptions = () => {
     switch (selectedSearchType) {
       case 'vector':
         return (
-          <VarEditorField className='p-0 [&_[data-slot=field-row-label]]:w-50'>
-            <VarEditorFieldRow
+          <FieldPanel className='p-0' resizeId='dataset-settings' defaultLabelWidth={200}>
+            <FieldPanelRow
               title='Similarity Threshold'
               description='Minimum similarity score (0.0 - 1.0)'
               type={BaseType.NUMBER}
@@ -204,9 +204,9 @@ export function SearchConfigurationSection({
                 placeholder='0.7'
                 disabled={readOnly}
               />
-            </VarEditorFieldRow>
+            </FieldPanelRow>
 
-            <VarEditorFieldRow
+            <FieldPanelRow
               title='Maximum Results'
               description='Maximum number of results to return'
               type={BaseType.NUMBER}
@@ -218,9 +218,9 @@ export function SearchConfigurationSection({
                 placeholder='20'
                 disabled={readOnly}
               />
-            </VarEditorFieldRow>
+            </FieldPanelRow>
 
-            <VarEditorFieldRow
+            <FieldPanelRow
               title='Include Metadata'
               description='Include document metadata in results'
               type={BaseType.BOOLEAN}
@@ -232,9 +232,9 @@ export function SearchConfigurationSection({
                 fieldOptions={{ variant: 'switch' }}
                 disabled={readOnly}
               />
-            </VarEditorFieldRow>
+            </FieldPanelRow>
 
-            <VarEditorFieldRow
+            <FieldPanelRow
               title='Search Mode'
               description='Algorithm for selecting and ranking results'
               type={BaseType.ENUM}
@@ -253,13 +253,13 @@ export function SearchConfigurationSection({
                 placeholder='Select search mode'
                 disabled={readOnly}
               />
-            </VarEditorFieldRow>
-          </VarEditorField>
+            </FieldPanelRow>
+          </FieldPanel>
         )
       case 'text':
         return (
-          <VarEditorField className='p-0 [&_[data-slot=field-row-label]]:w-50'>
-            <VarEditorFieldRow
+          <FieldPanel className='p-0' resizeId='dataset-settings' defaultLabelWidth={200}>
+            <FieldPanelRow
               title='Fuzzy Search'
               description='Enable fuzzy matching for typos and variations'
               type={BaseType.BOOLEAN}
@@ -271,9 +271,9 @@ export function SearchConfigurationSection({
                 fieldOptions={{ variant: 'switch' }}
                 disabled={readOnly}
               />
-            </VarEditorFieldRow>
+            </FieldPanelRow>
 
-            <VarEditorFieldRow
+            <FieldPanelRow
               title='Phrase Search'
               description='Enable exact phrase matching with quotes'
               type={BaseType.BOOLEAN}
@@ -285,9 +285,9 @@ export function SearchConfigurationSection({
                 fieldOptions={{ variant: 'switch' }}
                 disabled={readOnly}
               />
-            </VarEditorFieldRow>
+            </FieldPanelRow>
 
-            <VarEditorFieldRow
+            <FieldPanelRow
               title='Boolean Mode'
               description='Support AND, OR, NOT operators in queries'
               type={BaseType.BOOLEAN}
@@ -299,9 +299,9 @@ export function SearchConfigurationSection({
                 fieldOptions={{ variant: 'switch' }}
                 disabled={readOnly}
               />
-            </VarEditorFieldRow>
+            </FieldPanelRow>
 
-            <VarEditorFieldRow
+            <FieldPanelRow
               title='Ranking Algorithm'
               description='Algorithm for scoring and ranking text matches'
               type={BaseType.ENUM}
@@ -319,9 +319,9 @@ export function SearchConfigurationSection({
                 placeholder='Select ranking algorithm'
                 disabled={readOnly}
               />
-            </VarEditorFieldRow>
+            </FieldPanelRow>
 
-            <VarEditorFieldRow
+            <FieldPanelRow
               title='Minimum Score'
               description='Minimum relevance score to include results'
               type={BaseType.NUMBER}
@@ -333,13 +333,13 @@ export function SearchConfigurationSection({
                 placeholder='0.1'
                 disabled={readOnly}
               />
-            </VarEditorFieldRow>
-          </VarEditorField>
+            </FieldPanelRow>
+          </FieldPanel>
         )
       case 'hybrid':
         return (
-          <VarEditorField className='p-0 [&_[data-slot=field-row-label]]:w-50'>
-            <VarEditorFieldRow
+          <FieldPanel className='p-0' resizeId='dataset-settings' defaultLabelWidth={200}>
+            <FieldPanelRow
               title='Vector Weight'
               description='Weight for vector search results (0.0 - 1.0)'
               type={BaseType.NUMBER}
@@ -351,9 +351,9 @@ export function SearchConfigurationSection({
                 placeholder='0.6'
                 disabled={readOnly}
               />
-            </VarEditorFieldRow>
+            </FieldPanelRow>
 
-            <VarEditorFieldRow
+            <FieldPanelRow
               title='Text Weight'
               description='Weight for text search results (0.0 - 1.0)'
               type={BaseType.NUMBER}
@@ -365,9 +365,9 @@ export function SearchConfigurationSection({
                 placeholder='0.4'
                 disabled={readOnly}
               />
-            </VarEditorFieldRow>
+            </FieldPanelRow>
 
-            <VarEditorFieldRow
+            <FieldPanelRow
               title='Combination Method'
               description='Method for combining vector and text results'
               type={BaseType.ENUM}
@@ -386,8 +386,8 @@ export function SearchConfigurationSection({
                 placeholder='Select combination method'
                 disabled={readOnly}
               />
-            </VarEditorFieldRow>
-          </VarEditorField>
+            </FieldPanelRow>
+          </FieldPanel>
         )
       default:
         return null

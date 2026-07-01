@@ -243,7 +243,10 @@ export function PartFormDialog({ open, onOpenChange, recordId, onSuccess }: Part
 
         <FieldPanel
           orientation='responsive'
-          className='p-0 sm:[&_[data-slot=field-row-label]]:w-50'>
+          breakpoint='md'
+          resizeId='part-form'
+          defaultLabelWidth={200}
+          className='p-0'>
           {/* Title */}
           <FieldPanelRow
             title='Title'
@@ -356,7 +359,12 @@ export function PartFormDialog({ open, onOpenChange, recordId, onSuccess }: Part
             </button>
 
             {showSupplier && (
-              <FieldPanel className='p-0 mt-4 ' orientation='responsive'>
+              <FieldPanel
+                className='p-0 mt-4'
+                orientation='responsive'
+                breakpoint='md'
+                resizeId='part-form'
+                defaultLabelWidth={200}>
                 <VendorPartFields
                   values={vendorPartValues}
                   onChange={handleVendorPartChange}

@@ -2,10 +2,10 @@
 'use client'
 
 import { getInstanceId, type RecordId, toRecordId } from '@auxx/lib/field-values/client'
+import { FieldPanelRow } from '~/components/global/forms/field-panel'
 import { MultiRelationInput } from '~/components/shared/multi-relation-input'
 import { BaseType } from '~/components/workflow/types'
 import { ConstantInputAdapter } from '~/components/workflow/ui/input-editor/constant-input-adapter'
-import { VarEditorFieldRow } from '~/components/workflow/ui/input-editor/var-editor'
 
 /**
  * Default values for vendor part form fields
@@ -60,14 +60,14 @@ export function VendorPartFields({
     <>
       {/* Contact Selection */}
       {showContactField && (
-        <VarEditorFieldRow
+        <FieldPanelRow
           title='Vendor'
           isRequired
           validationError={errors?.entityInstanceId}
           validationType='error'>
           <MultiRelationInput
             entityDefinitionId='contact'
-            className='w-full'
+            className='w-full ps-0'
             value={values.entityInstanceId ? [toRecordId('contact', values.entityInstanceId)] : []}
             onChange={(recordIds: RecordId[]) =>
               onChange('entityInstanceId', recordIds[0] ? getInstanceId(recordIds[0]) : '')
@@ -76,11 +76,11 @@ export function VendorPartFields({
             disabled={disabled || disableContactEdit}
             multi={false}
           />
-        </VarEditorFieldRow>
+        </FieldPanelRow>
       )}
 
       {/* Vendor SKU */}
-      <VarEditorFieldRow
+      <FieldPanelRow
         title='Supplier SKU'
         description='The SKU or part number used by this supplier'
         type={BaseType.STRING}
@@ -95,10 +95,10 @@ export function VendorPartFields({
           placeholder="Supplier's part number"
           disabled={disabled}
         />
-      </VarEditorFieldRow>
+      </FieldPanelRow>
 
       {/* Unit Price */}
-      <VarEditorFieldRow title='Unit Price' type={BaseType.CURRENCY} showIcon>
+      <FieldPanelRow title='Unit Price' type={BaseType.CURRENCY} showIcon>
         <ConstantInputAdapter
           value={values.unitPrice}
           onChange={(_, val) => onChange('unitPrice', val)}
@@ -107,10 +107,10 @@ export function VendorPartFields({
           disabled={disabled}
           fieldOptions={{ currency: { currencyCode: 'USD' } }}
         />
-      </VarEditorFieldRow>
+      </FieldPanelRow>
 
       {/* Tariff Rate */}
-      <VarEditorFieldRow
+      <FieldPanelRow
         title='Tariff Rate (%)'
         description='Percentage of unit price'
         type={BaseType.NUMBER}
@@ -122,10 +122,10 @@ export function VendorPartFields({
           placeholder='0'
           disabled={disabled}
         />
-      </VarEditorFieldRow>
+      </FieldPanelRow>
 
       {/* Shipping Cost */}
-      <VarEditorFieldRow
+      <FieldPanelRow
         title='Shipping Cost'
         description='Per-unit shipping/freight'
         type={BaseType.CURRENCY}
@@ -138,10 +138,10 @@ export function VendorPartFields({
           disabled={disabled}
           fieldOptions={{ currency: { currencyCode: 'USD' } }}
         />
-      </VarEditorFieldRow>
+      </FieldPanelRow>
 
       {/* Other Cost */}
-      <VarEditorFieldRow
+      <FieldPanelRow
         title='Other Cost'
         description='Insurance, brokerage, handling'
         type={BaseType.CURRENCY}
@@ -154,10 +154,10 @@ export function VendorPartFields({
           disabled={disabled}
           fieldOptions={{ currency: { currencyCode: 'USD' } }}
         />
-      </VarEditorFieldRow>
+      </FieldPanelRow>
 
       {/* Lead Time */}
-      <VarEditorFieldRow
+      <FieldPanelRow
         title='Lead Time'
         description='Days to receive order'
         type={BaseType.NUMBER}
@@ -169,10 +169,10 @@ export function VendorPartFields({
           placeholder='Days'
           disabled={disabled}
         />
-      </VarEditorFieldRow>
+      </FieldPanelRow>
 
       {/* Min Order Qty */}
-      <VarEditorFieldRow
+      <FieldPanelRow
         title='Min Order'
         description='Minimum order quantity'
         type={BaseType.NUMBER}
@@ -184,10 +184,10 @@ export function VendorPartFields({
           placeholder='Qty'
           disabled={disabled}
         />
-      </VarEditorFieldRow>
+      </FieldPanelRow>
 
       {/* Is Preferred */}
-      <VarEditorFieldRow
+      <FieldPanelRow
         title='Preferred'
         description='Mark as preferred supplier for this part'
         type={BaseType.BOOLEAN}
@@ -199,7 +199,7 @@ export function VendorPartFields({
           disabled={disabled}
           fieldOptions={{ variant: 'switch' }}
         />
-      </VarEditorFieldRow>
+      </FieldPanelRow>
     </>
   )
 }

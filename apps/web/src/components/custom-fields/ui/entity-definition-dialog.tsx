@@ -40,13 +40,13 @@ import { Spinner } from '@auxx/ui/components/spinner'
 import { toastError } from '@auxx/ui/components/toast'
 import { Check, X } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
 import {
   useEntityDefinitionMutations,
   useResource,
   useResourceFields,
   useResources,
 } from '~/components/resources/hooks'
-import { VarEditorField, VarEditorFieldRow } from '~/components/workflow/ui/input-editor/var-editor'
 import { useDebouncedCallback } from '~/hooks/use-debounced-value'
 import { useDirtyCheck } from '~/hooks/use-dirty-state'
 import { useUnsavedChangesGuard } from '~/hooks/use-unsaved-changes-guard'
@@ -528,8 +528,8 @@ export function EntityDefinitionDialog({
                   </div>
 
                   <Field>
-                    <VarEditorField className='p-0'>
-                      <VarEditorFieldRow
+                    <FieldPanel className='p-0'>
+                      <FieldPanelRow
                         title='Display Field'
                         description='This field will be shown as the main name in pickers'>
                         <Select
@@ -551,8 +551,8 @@ export function EntityDefinitionDialog({
                               ))}
                           </SelectContent>
                         </Select>
-                      </VarEditorFieldRow>
-                      <VarEditorFieldRow
+                      </FieldPanelRow>
+                      <FieldPanelRow
                         title='Subtitle Field'
                         description='Optional subtitle shown below the primary name'>
                         <Select
@@ -572,8 +572,8 @@ export function EntityDefinitionDialog({
                             ))}
                           </SelectContent>
                         </Select>
-                      </VarEditorFieldRow>
-                      <VarEditorFieldRow
+                      </FieldPanelRow>
+                      <FieldPanelRow
                         title='Avatar Field'
                         description='Image field to use as avatar in pickers'>
                         <Select
@@ -593,8 +593,8 @@ export function EntityDefinitionDialog({
                               ))}
                           </SelectContent>
                         </Select>
-                      </VarEditorFieldRow>
-                    </VarEditorField>
+                      </FieldPanelRow>
+                    </FieldPanel>
                   </Field>
                 </>
               )}

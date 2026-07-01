@@ -10,9 +10,9 @@ import { Section } from '@auxx/ui/components/section'
 import { Globe, Settings2 } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
+import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
 import { type FieldEntry, readFieldNodes, seedDefaults } from '~/components/global/schema-form'
 import { BaseType } from '~/components/workflow/types'
-import { VarEditorField, VarEditorFieldRow } from '~/components/workflow/ui/input-editor/var-editor'
 import { api } from '~/trpc/react'
 import { getConnectorDraftState, useConnectorDraftStore } from '../stores/connector-draft-store'
 import { RecordKeyValueEditor, RequestEditorBlock, RevealChip } from './request-editors'
@@ -149,7 +149,7 @@ function AppConfigSource({ connector }: { connector: Connector }) {
         initialOpen
         collapsible={false}
         description='Options declared by this connector.'>
-        <VarEditorField
+        <FieldPanel
           orientation='responsive'
           className='p-0 sm:[&_[data-slot=field-row-label]]:w-70!'>
           {fields.map((entry) => {
@@ -173,7 +173,7 @@ function AppConfigSource({ connector }: { connector: Connector }) {
               />
             )
           })}
-        </VarEditorField>
+        </FieldPanel>
       </Section>
     </div>
   )
@@ -202,7 +202,7 @@ function baseTypeFor(fieldType: FieldType): BaseType {
 const ROW_TRIGGER_PROPS = { className: 'w-full ps-0 pe-1' }
 
 /**
- * A plain connector-config field rendered as a `VarEditorFieldRow` + matching
+ * A plain connector-config field rendered as a `FieldPanelRow` + matching
  * `FieldInputAdapter` control (mirrors `ConnectionVariableFields`). Text / number /
  * checkbox by the field's JSON-Schema type.
  */
@@ -217,7 +217,7 @@ function ConfigFieldRow({
 }) {
   const fieldType = fieldTypeFor(entry)
   return (
-    <VarEditorFieldRow
+    <FieldPanelRow
       title={entry.meta.label ?? entry.key}
       description={entry.meta.description}
       type={baseTypeFor(fieldType)}
@@ -230,7 +230,7 @@ function ConfigFieldRow({
         placeholder={entry.meta.placeholder}
         triggerProps={ROW_TRIGGER_PROPS}
       />
-    </VarEditorFieldRow>
+    </FieldPanelRow>
   )
 }
 
@@ -279,7 +279,7 @@ function ToolBackedSelectRow({
   const fieldOptions: FieldOptions = { options }
 
   return (
-    <VarEditorFieldRow
+    <FieldPanelRow
       title={entry.meta.label ?? entry.key}
       description={entry.meta.description}
       type={BaseType.STRING}
@@ -304,6 +304,6 @@ function ToolBackedSelectRow({
         useValueAsLabel={allowCustom}
         triggerProps={ROW_TRIGGER_PROPS}
       />
-    </VarEditorFieldRow>
+    </FieldPanelRow>
   )
 }

@@ -14,9 +14,9 @@ import { useMemo, useState } from 'react'
 import { AppIcon } from '~/components/apps/ui/app-icon'
 import { ConnectionVariableFields } from '~/components/connections/ui/connection-variable-fields'
 import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
+import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
 import { TemplateGalleryDialog } from '~/components/templates/ui'
 import { BaseType } from '~/components/workflow/types'
-import { VarEditorField, VarEditorFieldRow } from '~/components/workflow/ui/input-editor/var-editor'
 import type { RouterOutputs } from '~/trpc/react'
 import { api } from '~/trpc/react'
 import { useMcpOAuthPopup } from '../hooks/use-mcp-oauth-popup'
@@ -380,10 +380,8 @@ export function McpTemplateDialog({ open, onOpenChange, onConnected }: McpTempla
                 </a>
               )}
             </div>
-            <VarEditorField
-              orientation='responsive'
-              className='p-0 sm:[&_[data-slot=field-row-label]]:w-40'>
-              <VarEditorFieldRow
+            <FieldPanel orientation='responsive' resizeId='mcp-server' className='p-0'>
+              <FieldPanelRow
                 title='Client ID'
                 type={BaseType.STRING}
                 showIcon
@@ -396,8 +394,8 @@ export function McpTemplateDialog({ open, onOpenChange, onConnected }: McpTempla
                   placeholder='From your OAuth app'
                   disabled={isSubmitting}
                 />
-              </VarEditorFieldRow>
-              <VarEditorFieldRow
+              </FieldPanelRow>
+              <FieldPanelRow
                 title='Client Secret'
                 type={BaseType.STRING}
                 showIcon
@@ -414,8 +412,8 @@ export function McpTemplateDialog({ open, onOpenChange, onConnected }: McpTempla
                   }
                   disabled={isSubmitting}
                 />
-              </VarEditorFieldRow>
-            </VarEditorField>
+              </FieldPanelRow>
+            </FieldPanel>
           </>
         )}
         {template.docsUrl && (
@@ -434,9 +432,7 @@ export function McpTemplateDialog({ open, onOpenChange, onConnected }: McpTempla
   function renderVariableFields(template: McpTemplate) {
     return (
       <div className='flex flex-col gap-2 p-3'>
-        <VarEditorField
-          orientation='responsive'
-          className='p-0 sm:[&_[data-slot=field-row-label]]:w-40'>
+        <FieldPanel orientation='responsive' resizeId='mcp-server' className='p-0'>
           <ConnectionVariableFields
             variables={template.connectionVariables ?? []}
             values={values}
@@ -447,7 +443,7 @@ export function McpTemplateDialog({ open, onOpenChange, onConnected }: McpTempla
             errors={errors}
             disabled={isSubmitting}
           />
-        </VarEditorField>
+        </FieldPanel>
         {template.docsUrl && (
           <a
             href={template.docsUrl}

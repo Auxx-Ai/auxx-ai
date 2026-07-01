@@ -18,11 +18,11 @@ import { BookOpen, Bot, Sparkles } from 'lucide-react'
 import { useCallback, useMemo } from 'react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
+import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
 import { SettingsSection } from '~/components/global/settings-page'
 import { ActorPicker } from '~/components/pickers/actor-picker'
 import { MultiRelationInput } from '~/components/shared/multi-relation-input'
 import { BaseType } from '~/components/workflow/types'
-import { VarEditorField, VarEditorFieldRow } from '~/components/workflow/ui/input-editor/var-editor'
 import { api } from '~/trpc/react'
 import { FeaturedArticlesField } from '../featured-articles-field'
 
@@ -118,8 +118,8 @@ export function AiSection({ widget, channelId }: AiSectionProps) {
             icon={Bot}
             title='Agent'
             description='The AI agent that replies to incoming chat messages.'>
-            <VarEditorField orientation='responsive' className='p-0'>
-              <VarEditorFieldRow
+            <FieldPanel orientation='responsive' resizeId='chat-widget-settings' className='p-0'>
+              <FieldPanelRow
                 title='AI Auto-Reply'
                 description='Pick an Agent that responds automatically to new chat messages. Leave unset to require a human reply.'
                 type={BaseType.ACTOR}
@@ -135,8 +135,8 @@ export function AiSection({ widget, channelId }: AiSectionProps) {
                   disabled={update.isPending}
                   triggerProps={{ className: 'w-full ps-0 pe-1' }}
                 />
-              </VarEditorFieldRow>
-            </VarEditorField>
+              </FieldPanelRow>
+            </FieldPanel>
           </SettingsSection>
         </div>
 
@@ -145,14 +145,14 @@ export function AiSection({ widget, channelId }: AiSectionProps) {
             icon={BookOpen}
             title='Knowledge base'
             description="Source articles for the widget's Home and Browse screens.">
-            <VarEditorField orientation='responsive' className='p-0'>
+            <FieldPanel orientation='responsive' resizeId='chat-widget-settings' className='p-0'>
               <FormField
                 control={form.control}
                 name='knowledgeBaseId'
                 render={({ field, fieldState }) => {
                   const recordId = field.value ? (`kb:${field.value}` as RecordId) : null
                   return (
-                    <VarEditorFieldRow
+                    <FieldPanelRow
                       title='Knowledge base'
                       description="Articles from this KB power the widget's featured cards and Browse all view."
                       type={BaseType.RELATION}
@@ -178,11 +178,11 @@ export function AiSection({ widget, channelId }: AiSectionProps) {
                         }}
                       />
                       <KbVisibilityWarning knowledgeBaseId={field.value} />
-                    </VarEditorFieldRow>
+                    </FieldPanelRow>
                   )
                 }}
               />
-            </VarEditorField>
+            </FieldPanel>
           </SettingsSection>
 
           <div>

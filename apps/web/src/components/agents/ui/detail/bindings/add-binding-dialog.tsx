@@ -10,8 +10,8 @@ import { EntityIcon } from '@auxx/ui/components/icons'
 import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { type ReactNode, useEffect, useMemo, useState } from 'react'
+import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
 import { ToolReferenceList } from '~/components/pickers/tool-picker/tool-reference-list'
-import { VarEditorField, VarEditorFieldRow } from '~/components/workflow/ui/input-editor/var-editor'
 import { argToFieldType } from '~/lib/agents/bindings/arg-to-field-type'
 import type { AgentDetail } from '../../../store/agent-store'
 import { BindingValueEditor } from './binding-value-editor'
@@ -63,7 +63,7 @@ function isIncomplete(source: VarSource): boolean {
 /**
  * Add/edit a tool's input **overrides**. Two steps:
  *   1. Tool select — reuses `ToolReferenceList`, scoped to enabled tools.
- *   2. All-inputs panel — every top-level input as a `VarEditorField` row with
+ *   2. All-inputs panel — every top-level input as a `FieldPanelRow` with
  *      an inline constant⇄dynamic value editor. Empty rows mean "model decides"
  *      (no override) and are pruned on save, leaving the tool on its author
  *      defaults. See plans/chat/v8 phase-5.
@@ -172,13 +172,13 @@ export function AddBindingDialog({
                       This tool has no top-level inputs.
                     </p>
                   ) : (
-                    <VarEditorField className='p-0'>
+                    <FieldPanel className='p-0' resizeId='agent-binding' breakpoint='md'>
                       {args.map((arg) => {
                         const mapped = argToFieldType(arg.schema)
                         const source = draft[arg.name] ?? MODEL_DECIDES
 
                         return (
-                          <VarEditorFieldRow
+                          <FieldPanelRow
                             key={arg.name}
                             title={arg.name}
                             description={arg.schema.description}
@@ -201,10 +201,10 @@ export function AddBindingDialog({
                                 {mapped.reason}
                               </p>
                             )}
-                          </VarEditorFieldRow>
+                          </FieldPanelRow>
                         )
                       })}
-                    </VarEditorField>
+                    </FieldPanel>
                   )}
                 </div>
               </ScrollArea>

@@ -16,12 +16,12 @@ import {
 import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import { toastError } from '@auxx/ui/components/toast'
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
 import { toRecordId, useRecordList, useResourceProperty } from '~/components/resources'
 import { useSaveFieldValue } from '~/components/resources/hooks/use-save-field-value'
 import { useSystemValues } from '~/components/resources/hooks/use-system-values'
 import { BaseType } from '~/components/workflow/types'
 import { ConstantInputAdapter } from '~/components/workflow/ui/input-editor/constant-input-adapter'
-import { VarEditorField, VarEditorFieldRow } from '~/components/workflow/ui/input-editor/var-editor'
 import { api } from '~/trpc/react'
 
 const SUBPART_SYSTEM_ATTRIBUTES = [
@@ -251,9 +251,9 @@ export function SubpartDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <VarEditorField className='p-0'>
+        <FieldPanel className='p-0' breakpoint='md' resizeId='subpart'>
           {/* Subpart Selection */}
-          <VarEditorFieldRow
+          <FieldPanelRow
             title='Subpart'
             description='Component to add'
             isRequired
@@ -270,10 +270,10 @@ export function SubpartDialog({
                 excludeIds: isEditMode ? undefined : excludedPartIds,
               }}
             />
-          </VarEditorFieldRow>
+          </FieldPanelRow>
 
           {/* Quantity */}
-          <VarEditorFieldRow
+          <FieldPanelRow
             title='Quantity'
             description='Number of units required per parent part'
             type={BaseType.NUMBER}
@@ -288,10 +288,10 @@ export function SubpartDialog({
               placeholder='1'
               disabled={isPending}
             />
-          </VarEditorFieldRow>
+          </FieldPanelRow>
 
           {/* Notes */}
-          <VarEditorFieldRow
+          <FieldPanelRow
             title='Notes'
             description='Optional notes about this component usage'
             type={BaseType.STRING}
@@ -304,8 +304,8 @@ export function SubpartDialog({
               disabled={isPending}
               fieldOptions={{ string: { multiline: true } }}
             />
-          </VarEditorFieldRow>
-        </VarEditorField>
+          </FieldPanelRow>
+        </FieldPanel>
 
         <DialogFooter>
           <Button

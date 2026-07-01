@@ -10,8 +10,8 @@ import { useEffect } from 'react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
+import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
 import { BaseType } from '~/components/workflow/types'
-import { VarEditorField, VarEditorFieldRow } from '~/components/workflow/ui/input-editor/var-editor'
 import { useDraftSettingsAutosave } from '../../../hooks/use-draft-settings-autosave'
 import { type KnowledgeBase, selectDraftedSections } from '../../../store/knowledge-base-store'
 import { SectionStatusBadge } from '../section-header'
@@ -59,12 +59,12 @@ export function BrandingSection({ knowledgeBaseId, knowledgeBase }: BrandingSect
       description='Title and short description shown on your knowledge base.'
       actions={<SectionStatusBadge drafted={drafted} saving={isSaving} savedAt={lastSavedAt} />}>
       <Form {...form}>
-        <VarEditorField orientation='vertical' className='p-0'>
+        <FieldPanel orientation='vertical' className='p-0' resizeId='kb-settings'>
           <FormField
             control={form.control}
             name='name'
             render={({ field, fieldState }) => (
-              <VarEditorFieldRow
+              <FieldPanelRow
                 title='Title'
                 description='Overwrite the title and icon of your content when published.'
                 type={BaseType.STRING}
@@ -77,7 +77,7 @@ export function BrandingSection({ knowledgeBaseId, knowledgeBase }: BrandingSect
                   onChange={(v) => field.onChange(v ?? '')}
                   placeholder='My Knowledge Base'
                 />
-              </VarEditorFieldRow>
+              </FieldPanelRow>
             )}
           />
 
@@ -85,7 +85,7 @@ export function BrandingSection({ knowledgeBaseId, knowledgeBase }: BrandingSect
             control={form.control}
             name='description'
             render={({ field, fieldState }) => (
-              <VarEditorFieldRow
+              <FieldPanelRow
                 title='Description'
                 description='A brief description of your knowledge base.'
                 type={BaseType.STRING}
@@ -97,10 +97,10 @@ export function BrandingSection({ knowledgeBaseId, knowledgeBase }: BrandingSect
                   onChange={(v) => field.onChange(v ?? '')}
                   placeholder='Enter a description...'
                 />
-              </VarEditorFieldRow>
+              </FieldPanelRow>
             )}
           />
-        </VarEditorField>
+        </FieldPanel>
       </Form>
     </Section>
   )

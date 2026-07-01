@@ -12,7 +12,7 @@ import { ChevronRight, KeyRound, Link, Tags, TriangleAlert } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { ConnectionVariableFields } from '~/components/connections/ui/connection-variable-fields'
 import { validateConnectionVariables } from '~/components/connections/ui/connection-variable-validation'
-import { VarEditorField, VarEditorFieldRow } from '~/components/workflow/ui/input-editor/var-editor'
+import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
 import { useWebhookEndpoint, type WebhookEndpointRow } from '../hooks/use-webhook-endpoint'
 import type { WebhookEndpointReveal } from './webhook-endpoint-created'
 import { CopyRow } from './webhook-endpoint-created'
@@ -189,9 +189,12 @@ export function WebhookEndpointConfigureForm({
 
       <div className='flex flex-col gap-2'>
         <div className='text-xs font-medium text-muted-foreground'>Configuration</div>
-        <VarEditorField
+        <FieldPanel
           orientation='responsive'
-          className='p-0 sm:[&_[data-slot=field-row-label]]:w-50!'>
+          breakpoint='md'
+          resizeId='webhook-endpoint'
+          defaultLabelWidth={200}
+          className='p-0'>
           <ConnectionVariableFields
             variables={endpointVars(values.topicSourceKind, {
               includeStripeSecret: mode === 'create',
@@ -201,7 +204,7 @@ export function WebhookEndpointConfigureForm({
             errors={errors}
             disabled={pending}
           />
-        </VarEditorField>
+        </FieldPanel>
       </div>
 
       {values.verification === 'none' && (
@@ -214,10 +217,13 @@ export function WebhookEndpointConfigureForm({
       )}
 
       {isEdit && endpoint?.hasSecret && (
-        <VarEditorField
+        <FieldPanel
           orientation='responsive'
-          className='p-0 sm:[&_[data-slot=field-row-label]]:w-50!'>
-          <VarEditorFieldRow title='Signing secret' icon={<KeyRound />} showIcon>
+          breakpoint='md'
+          resizeId='webhook-endpoint'
+          defaultLabelWidth={200}
+          className='p-0'>
+          <FieldPanelRow title='Signing secret' icon={<KeyRound />} showIcon>
             {isStripeEdit && replacingSecret ? (
               <div className='flex min-h-8 items-center gap-2 pe-1'>
                 <Input
@@ -263,8 +269,8 @@ export function WebhookEndpointConfigureForm({
                 </Button>
               </div>
             )}
-          </VarEditorFieldRow>
-        </VarEditorField>
+          </FieldPanelRow>
+        </FieldPanel>
       )}
 
       {isEdit &&

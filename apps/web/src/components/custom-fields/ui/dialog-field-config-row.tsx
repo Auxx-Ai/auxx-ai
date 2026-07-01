@@ -22,7 +22,7 @@ interface DialogFieldConfigRowProps {
 
 /**
  * Sortable row for dialog config mode.
- * Mirrors VarEditorFieldRow DOM structure (data-slot="field-row") so there is
+ * Mirrors FieldPanelRow DOM structure (data-slot="field-row") so there is
  * zero layout shift when toggling between normal and config mode.
  * GripVertical replaces the type icon; Switch replaces the input content.
  */
@@ -57,7 +57,7 @@ export const DialogFieldConfigRow = memo(function DialogFieldConfigRow({
         isDragging && 'bg-accent rounded',
         !isVisible && 'opacity-50'
       )}>
-      {/* Label area — matches VarEditorFieldRow [data-slot="field-row-label"] */}
+      {/* Label area — matches FieldPanelRow [data-slot="field-row-label"] */}
       <div
         data-slot='field-row-label'
         className='flex flex-row gap-1 ps-2 items-center cursor-grab active:cursor-grabbing'
@@ -69,7 +69,7 @@ export const DialogFieldConfigRow = memo(function DialogFieldConfigRow({
         </div>
       </div>
 
-      {/* Content area — matches VarEditorFieldRow [data-slot="field-row-content"] */}
+      {/* Content area — matches FieldPanelRow [data-slot="field-row-content"] */}
       <div
         data-slot='field-row-content'
         className='w-full flex-1 flex items-center justify-end pe-2 py-1.5'>

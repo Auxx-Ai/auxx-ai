@@ -8,4 +8,8 @@ export const safeLocalStorage = {
     if (typeof window === 'undefined') return // SSR guard
     localStorage.setItem(key, value)
   },
+  remove(key: string) {
+    if (typeof window === 'undefined') return // SSR guard
+    localStorage.removeItem(key)
+  },
 }

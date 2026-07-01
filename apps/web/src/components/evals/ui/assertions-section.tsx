@@ -16,7 +16,7 @@ import { Ban, Flag, ListChecks, MessageSquareText, Plus, Wrench } from 'lucide-r
 import type { ReactNode } from 'react'
 import { useMemo } from 'react'
 import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
-import { VarEditorField, VarEditorFieldRow } from '~/components/workflow/ui/input-editor/var-editor'
+import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
 import { useToolGroups } from '../hooks/use-tool-groups'
 import { ToolSelect } from './tool-select'
 
@@ -113,11 +113,11 @@ export function AssertionsSection({ agentId, assertions, onChange }: AssertionsS
             description='A case must assert at least one outcome before it can pass.'
           />
         ) : (
-          <VarEditorField className='p-0'>
+          <FieldPanel className='p-0'>
             {assertions.map((a) => {
               const meta = ASSERTION_META[a.type]
               return (
-                <VarEditorFieldRow
+                <FieldPanelRow
                   key={a.id}
                   title={meta?.label ?? a.type}
                   description={meta?.description}
@@ -129,10 +129,10 @@ export function AssertionsSection({ agentId, assertions, onChange }: AssertionsS
                     toolOptions={toolOptions}
                     onChange={(next) => patch(a.id, next)}
                   />
-                </VarEditorFieldRow>
+                </FieldPanelRow>
               )
             })}
-          </VarEditorField>
+          </FieldPanel>
         )}
       </div>
     </Section>

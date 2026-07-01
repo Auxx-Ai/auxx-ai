@@ -12,8 +12,8 @@ import { useEffect } from 'react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
+import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
 import { BaseType } from '~/components/workflow/types'
-import { VarEditorField, VarEditorFieldRow } from '~/components/workflow/ui/input-editor/var-editor'
 import { useDraftSettingsAutosave } from '../../../hooks/use-draft-settings-autosave'
 import { type KnowledgeBase, selectDraftedSections } from '../../../store/knowledge-base-store'
 import { SectionStatusBadge } from '../section-header'
@@ -108,12 +108,12 @@ export function StylingSection({ knowledgeBaseId, knowledgeBase }: StylingSectio
         title='Site styles'
         description='Typography, icons and shapes.'
         actions={<SectionStatusBadge drafted={drafted} saving={isSaving} savedAt={lastSavedAt} />}>
-        <VarEditorField orientation='responsive' className='p-0'>
+        <FieldPanel orientation='responsive' className='p-0' resizeId='kb-settings'>
           <FormField
             control={form.control}
             name='fontFamily'
             render={({ field, fieldState }) => (
-              <VarEditorFieldRow
+              <FieldPanelRow
                 title='Font family'
                 type={BaseType.ENUM}
                 showIcon
@@ -126,14 +126,14 @@ export function StylingSection({ knowledgeBaseId, knowledgeBase }: StylingSectio
                   placeholder='System default'
                   triggerProps={{ className: 'w-full' }}
                 />
-              </VarEditorFieldRow>
+              </FieldPanelRow>
             )}
           />
           <FormField
             control={form.control}
             name='cornerStyle'
             render={({ field, fieldState }) => (
-              <VarEditorFieldRow
+              <FieldPanelRow
                 title='Corner style'
                 type={BaseType.ENUM}
                 showIcon
@@ -146,14 +146,14 @@ export function StylingSection({ knowledgeBaseId, knowledgeBase }: StylingSectio
                   placeholder='Pick…'
                   triggerProps={{ className: 'w-full' }}
                 />
-              </VarEditorFieldRow>
+              </FieldPanelRow>
             )}
           />
           <FormField
             control={form.control}
             name='searchbarPosition'
             render={({ field, fieldState }) => (
-              <VarEditorFieldRow
+              <FieldPanelRow
                 title='Search bar'
                 description="Pick the style of the search bar. On small screens it's displayed as an icon button."
                 type={BaseType.ENUM}
@@ -167,10 +167,10 @@ export function StylingSection({ knowledgeBaseId, knowledgeBase }: StylingSectio
                   placeholder='Pick…'
                   triggerProps={{ className: 'w-full' }}
                 />
-              </VarEditorFieldRow>
+              </FieldPanelRow>
             )}
           />
-        </VarEditorField>
+        </FieldPanel>
       </Section>
 
       <Section title='Sidebar style' description='How active items render in the sidebar.'>
