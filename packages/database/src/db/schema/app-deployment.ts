@@ -193,6 +193,9 @@ export interface CatalogAppField {
     computed?: boolean
     hidden?: boolean
   }
+  /** This field is an external-system identity (e.g. Shopify `customerId`) —
+   *  drives the sink write-ownership rule + the `RecordIdentity` mirror. */
+  identity?: boolean
 }
 
 /** One source field declaration projected from a data connector's stream. */

@@ -111,6 +111,12 @@ export class EntityMergeService {
         entityDefinitionId
       )
 
+      // 6b. Re-point RecordIdentity rows. Archive (step 7) is a soft delete, so
+      // the FK cascade never fires — without this, source index rows (incl.
+      // app-less chat visitorId links, which have no FieldValue to carry them)
+      // are stranded on the archived source and lost.
+      const identitiesRedirected = await this.redirectRecordIdentities(tx, sourceIds, targetId)
+
       // 7. Archive sources
       await this.archiveSourceInstances(tx, sourceIds)
 
@@ -123,6 +129,7 @@ export class EntityMergeService {
         fieldsMerged,
         taskReferencesTransferred,
         relationshipsRedirected,
+        identitiesRedirected,
       }
     })
 
@@ -504,6 +511,99 @@ export class EntityMergeService {
     // Batch delete (1 query)
     if (idsToDelete.length > 0) {
       await tx.delete(schema.FieldValue).where(inArray(schema.FieldValue.id, idsToDelete))
+    }
+
+    return idsToUpdate.length
+  }
+
+  // ─────────────────────────────────────────────────────────────────
+  // RECORDIDENTITY REDIRECT
+  // ─────────────────────────────────────────────────────────────────
+
+  /**
+   * Move source `RecordIdentity` rows onto the target, deduping on the
+   * `(entityInstanceId, source, connectionId, appFieldKey)` unique key —
+   * mirrors `redirectExternalRelationships`'s group/dedupe/batch shape.
+   * Re-pointing a row only changes `entityInstanceId`, so the OTHER unique key
+   * `(organizationId, source, connectionId, appFieldKey, externalId)` is never
+   * touched and can't collide here.
+   */
+  private async redirectRecordIdentities(
+    tx: Transaction,
+    sourceIds: string[],
+    targetId: string
+  ): Promise<number> {
+    const sourceRows = await tx
+      .select({
+        id: schema.RecordIdentity.id,
+        source: schema.RecordIdentity.source,
+        connectionId: schema.RecordIdentity.connectionId,
+        appFieldKey: schema.RecordIdentity.appFieldKey,
+      })
+      .from(schema.RecordIdentity)
+      .where(
+        and(
+          inArray(schema.RecordIdentity.entityInstanceId, sourceIds),
+          eq(schema.RecordIdentity.organizationId, this.organizationId)
+        )
+      )
+
+    if (sourceRows.length === 0) return 0
+
+    const kindKey = (row: {
+      source: string
+      connectionId: string | null
+      appFieldKey: string | null
+    }) => `${row.source}:${row.connectionId ?? ''}:${row.appFieldKey ?? ''}`
+
+    const byKind = new Map<string, typeof sourceRows>()
+    for (const row of sourceRows) {
+      const key = kindKey(row)
+      const existing = byKind.get(key)
+      if (existing) existing.push(row)
+      else byKind.set(key, [row])
+    }
+
+    const targetRows = await tx
+      .select({
+        source: schema.RecordIdentity.source,
+        connectionId: schema.RecordIdentity.connectionId,
+        appFieldKey: schema.RecordIdentity.appFieldKey,
+      })
+      .from(schema.RecordIdentity)
+      .where(
+        and(
+          eq(schema.RecordIdentity.entityInstanceId, targetId),
+          eq(schema.RecordIdentity.organizationId, this.organizationId)
+        )
+      )
+    const targetHasKind = new Set(targetRows.map(kindKey))
+
+    const idsToUpdate: string[] = []
+    const idsToDelete: string[] = []
+    for (const [key, rows] of byKind) {
+      if (targetHasKind.has(key)) {
+        // Target already carries this identity kind — the source rows are
+        // redundant duplicates, not a new fact about the merged record.
+        idsToDelete.push(...rows.map((r) => r.id))
+      } else {
+        const [first, ...rest] = rows
+        if (first) {
+          idsToUpdate.push(first.id)
+          idsToDelete.push(...rest.map((r) => r.id))
+          targetHasKind.add(key)
+        }
+      }
+    }
+
+    if (idsToUpdate.length > 0) {
+      await tx
+        .update(schema.RecordIdentity)
+        .set({ entityInstanceId: targetId })
+        .where(inArray(schema.RecordIdentity.id, idsToUpdate))
+    }
+    if (idsToDelete.length > 0) {
+      await tx.delete(schema.RecordIdentity).where(inArray(schema.RecordIdentity.id, idsToDelete))
     }
 
     return idsToUpdate.length

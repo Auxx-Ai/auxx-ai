@@ -253,7 +253,7 @@ export async function installApp(input: InstallAppInput) {
       await provisionAppFields(
         selectedDeployment!.catalog as CatalogPayload | null,
         'installation',
-        { appInstallationId: installation.id, organizationId },
+        { appInstallationId: installation.id, organizationId, appSlug: app.slug },
         tx
       )
 

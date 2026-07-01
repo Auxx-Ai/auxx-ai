@@ -72,7 +72,11 @@ export const INVALIDATION_GRAPH: Record<string, InvalidationMapping> = {
   // App lifecycle events
   'app.installed': ['installedApps'],
   'app.uninstalled': ['installedApps'],
-  'app.deployment.changed': ['installedApps'],
+  // Rolling installations onto a new deployment (auto-update) reprovisions
+  // installation-scoped app fields for every affected org — bust customFields
+  // too, or a freshly provisioned field is unresolved by the @app: rail until
+  // its TTL (plans/data-connectors/v7/option-3-multi-source-identity-store-plan.md).
+  'app.deployment.changed': ['installedApps', 'customFields'],
   'app.connection-def.changed': ['installedApps'],
   // App connection (credential) lifecycle — bust the catalog cache because
   // `installedAppsProvider` denormalizes org-scope presence (decision B2 / G2).

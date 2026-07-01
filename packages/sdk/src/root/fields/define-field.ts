@@ -28,6 +28,15 @@ interface BaseAppFieldDefinition {
   readonly name: string
   readonly description?: string
   readonly capabilities?: FieldCapabilities
+  /**
+   * This field is an external-system identity (e.g. Shopify `customerId`),
+   * not a plain attribute — a contributing binding that targets it
+   * auto-stamps `identityRole: { kind: 'externalId' }` on its `FieldMapping`,
+   * and the sink write-ownership rule (fill-blank + drift-exempt +
+   * no-provenance) applies. Scalar single-value fields only — see
+   * `defineField`'s validation.
+   */
+  readonly identity?: boolean
 }
 
 /** Scalar field — `options`/`relationship`/`calc` are forbidden. */
@@ -78,6 +87,33 @@ export type AppFieldDefinition =
   | CalcAppFieldDefinition
 
 /**
+ * Field types an `identity: true` field may use. The `RecordIdentity` index
+ * stores one `externalId` per (record, source, connection, appFieldKey) and
+ * can't mirror multi-row or non-scalar values cleanly, so
+ * select/relationship/calc/multi-value/file/json fields are rejected.
+ */
+const NON_IDENTITY_FIELD_TYPES = new Set<FieldType>([
+  'RELATIONSHIP',
+  'CALC',
+  'SINGLE_SELECT',
+  'MULTI_SELECT',
+  'TAGS',
+  'FILE',
+  'JSON',
+  'ACTOR',
+])
+
+function assertValidIdentityField(field: AppFieldDefinition): void {
+  if (!field.identity) return
+  if (NON_IDENTITY_FIELD_TYPES.has(field.type)) {
+    throw new Error(
+      `defineField: "${field.appFieldKey}" cannot be identity: true with type "${field.type}" — ` +
+        'identity fields must be a scalar single-value type (TEXT unless another scalar is needed)'
+    )
+  }
+}
+
+/**
  * Validate + type a single field definition. The `const` type parameter
  * preserves the literal `appFieldKey`, option values, and `type` so the
  * generated `auxx-env.d.ts` (Layer 2) can type `ctx.entities` precisely.
@@ -88,6 +124,7 @@ export function defineField<const F extends AppFieldDefinition>(field: F): F {
       `defineField: invalid appFieldKey "${field.appFieldKey}" — must match ${APP_FIELD_KEY_RE.source}`
     )
   }
+  assertValidIdentityField(field)
   return field
 }
 
@@ -111,6 +148,7 @@ export function defineFields<const F extends readonly AppFieldDefinition[]>(fiel
       )
     }
     seen.add(dedupeKey)
+    assertValidIdentityField(field)
   }
   return fields
 }

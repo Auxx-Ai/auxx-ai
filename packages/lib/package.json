@@ -508,6 +508,12 @@
       "import": "./dist/health/queue-metrics.mjs",
       "default": "./src/health/queue-metrics.ts"
     },
+    "./identity": {
+      "types": "./src/identity/index.ts",
+      "source": "./src/identity/index.ts",
+      "import": "./dist/identity/index.mjs",
+      "default": "./src/identity/index.ts"
+    },
     "./import": {
       "types": "./src/import/index.ts",
       "source": "./src/import/index.ts",

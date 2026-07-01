@@ -218,6 +218,10 @@ export type { ParticipantEntity } from './db/schema/participant'
 export type { ProviderConfigurationEntity } from './db/schema/provider-configuration'
 export type { ProviderPreferenceEntity } from './db/schema/provider-preference'
 export type {
+  RecordIdentityEntity,
+  RecordIdentityInsert,
+} from './db/schema/record-identity'
+export type {
   CreateStorageLocationInput,
   StorageLocationEntity,
 } from './db/schema/storage-location'

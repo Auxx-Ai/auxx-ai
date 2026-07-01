@@ -30,4 +30,5 @@ export interface MergeEntitiesResult {
   fieldsMerged: number
   taskReferencesTransferred: number
   relationshipsRedirected: number
+  identitiesRedirected: number
 }

@@ -254,6 +254,10 @@ export const appsRouter = createTRPCRouter({
       }
 
       await onCacheEvent('app.installed', { orgId: organizationId })
+      // Installation-scoped app fields were just provisioned — bust the
+      // customFields cache now instead of waiting on its TTL, or a fresh
+      // field can be unresolved by the @app: rail on the first write.
+      await onCacheEvent('custom-field.created', { orgId: organizationId })
 
       await recordAuditFromCtx(ctx, {
         category: 'apps',

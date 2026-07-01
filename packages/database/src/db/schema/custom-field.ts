@@ -115,6 +115,20 @@ export const CustomField = pgTable(
       onUpdate: 'cascade',
       onDelete: 'set null',
     }),
+
+    /** Declared `identity: true` in the app's `defineFields` — this field is an
+     *  external-system id (e.g. Shopify `customerId`), not a plain attribute.
+     *  Drives the sink's fill-blank/drift-exempt/no-provenance write rule and
+     *  lets `reconcileRecordIdentities` + the "linked systems" UI find identity
+     *  cells generically (`FieldValue ⋈ CustomField(isIdentity)`) without
+     *  walking connector mappings. Default false for non-app and non-identity
+     *  app fields. See plans/data-connectors/v7/option-3-multi-source-identity-store-plan.md. */
+    isIdentity: boolean().default(false).notNull(),
+
+    /** Denormalized app slug (e.g. `'shopify'`) for app-owned fields — the
+     *  `RecordIdentity.source` value, supplied without joining AppInstallation.
+     *  NULL for non-app fields. */
+    appSlug: text(),
   },
   (table) => [
     index('CustomField_modelType_idx').using('btree', table.modelType.asc().nullsLast()),

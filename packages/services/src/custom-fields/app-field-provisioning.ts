@@ -79,6 +79,9 @@ export interface ProvisionContext {
   organizationId: string
   /** Credential.id for `scope: 'connection'` fields; omit for installation scope. */
   connectionId?: string
+  /** The app's slug (e.g. 'shopify') — stamped onto identity-flagged fields as
+   *  `CustomField.appSlug`, the `RecordIdentity.source` value. */
+  appSlug: string
 }
 
 /**
@@ -126,6 +129,8 @@ export async function provisionAppField(
       appInstallationId: ctx.appInstallationId,
       connectionId: ctx.connectionId,
       appFieldKey: field.appFieldKey,
+      isIdentity: field.identity ?? false,
+      appSlug: ctx.appSlug,
       ...capabilitiesToColumns(field.capabilities),
     },
     tx
