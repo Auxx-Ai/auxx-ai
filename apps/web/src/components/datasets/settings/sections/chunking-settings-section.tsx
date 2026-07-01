@@ -11,9 +11,9 @@ import { standardSchemaResolver } from '@hookform/resolvers/standard-schema'
 import { Book, Brain, FileText, Layers, Scissors } from 'lucide-react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
+import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
 import { SettingsSection } from '~/components/global/settings-page'
 import { ConstantInputAdapter } from '~/components/workflow/ui/input-editor/constant-input-adapter'
-import { VarEditorField, VarEditorFieldRow } from '~/components/workflow/ui/input-editor/var-editor'
 import { api } from '~/trpc/react'
 
 interface ChunkingSettingsSectionProps {
@@ -198,8 +198,8 @@ export function ChunkingSettingsSection({
               icon={StrategyIcon}
               title={`${strategyInfo?.label} Parameters`}
               description='Configure chunk size and overlap settings.'>
-              <VarEditorField className='p-0 [&_[data-slot=field-row-label]]:w-60'>
-                <VarEditorFieldRow
+              <FieldPanel className='p-0' resizeId='dataset-settings' defaultLabelWidth={240}>
+                <FieldPanelRow
                   title='Chunk Size'
                   description='Target size for each chunk in characters (100-5000)'
                   type={BaseType.NUMBER}
@@ -211,9 +211,9 @@ export function ChunkingSettingsSection({
                     placeholder='1000'
                     disabled={readOnly}
                   />
-                </VarEditorFieldRow>
+                </FieldPanelRow>
 
-                <VarEditorFieldRow
+                <FieldPanelRow
                   title='Chunk Overlap'
                   description='Overlapping characters between adjacent chunks (0-1000)'
                   type={BaseType.NUMBER}
@@ -225,9 +225,9 @@ export function ChunkingSettingsSection({
                     placeholder='200'
                     disabled={readOnly}
                   />
-                </VarEditorFieldRow>
+                </FieldPanelRow>
 
-                <VarEditorFieldRow
+                <FieldPanelRow
                   title='Custom Delimiter'
                   description='Split text at this delimiter. Default is double newline (paragraph breaks).'
                   type={BaseType.STRING}
@@ -239,9 +239,9 @@ export function ChunkingSettingsSection({
                     placeholder='\n\n'
                     disabled={readOnly}
                   />
-                </VarEditorFieldRow>
+                </FieldPanelRow>
 
-                <VarEditorFieldRow
+                <FieldPanelRow
                   title='Normalize Whitespace'
                   description='Replace consecutive spaces, newlines, and tabs with single characters'
                   type={BaseType.BOOLEAN}
@@ -253,9 +253,9 @@ export function ChunkingSettingsSection({
                     fieldOptions={{ variant: 'switch' }}
                     disabled={readOnly}
                   />
-                </VarEditorFieldRow>
+                </FieldPanelRow>
 
-                <VarEditorFieldRow
+                <FieldPanelRow
                   title='Remove URLs & Emails'
                   description='Delete all URLs and email addresses from content before chunking'
                   type={BaseType.BOOLEAN}
@@ -267,8 +267,8 @@ export function ChunkingSettingsSection({
                     fieldOptions={{ variant: 'switch' }}
                     disabled={readOnly}
                   />
-                </VarEditorFieldRow>
-              </VarEditorField>
+                </FieldPanelRow>
+              </FieldPanel>
 
               <div className='space-y-4 mt-4'>
                 {/* Overlap validation warning */}

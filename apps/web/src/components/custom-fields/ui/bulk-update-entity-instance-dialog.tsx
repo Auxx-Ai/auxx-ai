@@ -15,10 +15,10 @@ import {
 } from '@auxx/ui/components/dialog'
 import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { FieldPanel } from '~/components/global/forms/field-panel'
 import { useResource } from '~/components/resources'
 import { useFieldValueSyncer } from '~/components/resources/hooks/use-field-value-syncer'
 import { useSaveFieldValue } from '~/components/resources/hooks/use-save-field-value'
-import { VarEditorField } from '~/components/workflow/ui/input-editor/var-editor'
 import { useDirtyCheck } from '~/hooks/use-dirty-state'
 import { useUnsavedChangesGuard } from '~/hooks/use-unsaved-changes-guard'
 import { FieldInputRow } from './field-input-row'
@@ -218,7 +218,7 @@ export function BulkUpdateEntityInstanceDialog({
             </DialogDescription>
           </DialogHeader>
 
-          <VarEditorField className='p-0'>
+          <FieldPanel className='p-0' breakpoint='md' resizeId='bulk-update-entity-instance'>
             {editableFields.map((field) => {
               // Disable unique fields when editing multiple instances (would violate uniqueness)
               const isUniqueDisabled = field.isUnique && instanceCount > 1
@@ -237,7 +237,7 @@ export function BulkUpdateEntityInstanceDialog({
                 />
               )
             })}
-          </VarEditorField>
+          </FieldPanel>
 
           {editableFields.length === 0 && (
             <div className='text-sm text-muted-foreground text-center py-8'>

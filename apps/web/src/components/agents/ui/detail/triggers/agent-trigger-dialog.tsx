@@ -32,6 +32,7 @@ import { AppIcon } from '~/components/apps/ui/app-icon'
 import { DEFAULT_TABS } from '~/components/editor/inline-picker'
 import type { ReferenceTab } from '~/components/editor/inline-picker/nodes/reference-picker-node'
 import { PromptEditor } from '~/components/editor/prompt-editor'
+import { FieldPanel } from '~/components/global/forms/field-panel'
 import {
   DEFAULT_SCHEDULED_STATE,
   type ScheduledState,
@@ -50,7 +51,6 @@ import { TriggerSourceRow } from '~/components/pickers/trigger-source'
 import { useResources } from '~/components/resources/hooks/use-resources'
 import { WebhookEndpointInspector } from '~/components/webhooks/ui/webhook-endpoint-inspector'
 import { WebhookTopicPicker } from '~/components/webhooks/ui/webhook-topic-picker'
-import { VarEditorField } from '~/components/workflow/ui/input-editor/var-editor'
 import { useConfirm } from '~/hooks/use-confirm'
 import { api, type RouterOutputs } from '~/trpc/react'
 
@@ -459,7 +459,7 @@ export function AgentTriggerDialog({
               <ResourceField
                 title='Resource'
                 description='Select the operation and type of resource for this trigger'>
-                <VarEditorField className='px-0.5'>
+                <FieldPanel className='px-0.5'>
                   <div className='flex flex-row'>
                     <div>
                       <Select
@@ -488,7 +488,7 @@ export function AgentTriggerDialog({
                       />
                     </div>
                   </div>
-                </VarEditorField>
+                </FieldPanel>
               </ResourceField>
             ) : effectiveKind === 'app' && appContext ? (
               <>

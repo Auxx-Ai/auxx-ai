@@ -28,9 +28,9 @@ import {
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
+import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
 import { SettingsSection } from '~/components/global/settings-page'
 import { BaseType } from '~/components/workflow/types'
-import { VarEditorField, VarEditorFieldRow } from '~/components/workflow/ui/input-editor/var-editor'
 import { api } from '~/trpc/react'
 
 interface BehaviorSectionProps {
@@ -96,14 +96,14 @@ export function BehaviorSection({ widget, channelId }: BehaviorSectionProps) {
             icon={SlidersHorizontal}
             title='Engagement'
             description='How and when the widget engages visitors.'>
-            <VarEditorField
+            <FieldPanel
               orientation='horizontal'
               className='p-0 **:data-[slot=field-row-label]:w-auto! @sm:**:data-[slot=field-row-label]:w-auto! **:data-[slot=field-row-content]:flex **:data-[slot=field-row-content]:justify-end **:data-[slot=field-row-content]:pe-3'>
               <FormField
                 control={form.control}
                 name='autoOpen'
                 render={({ field, fieldState }) => (
-                  <VarEditorFieldRow
+                  <FieldPanelRow
                     title='Auto-open'
                     description='Automatically open the widget when a visitor lands on the page.'
                     type={BaseType.BOOLEAN}
@@ -118,7 +118,7 @@ export function BehaviorSection({ widget, channelId }: BehaviorSectionProps) {
                         onChange={(v) => field.onChange(Boolean(v))}
                       />
                     </div>
-                  </VarEditorFieldRow>
+                  </FieldPanelRow>
                 )}
               />
 
@@ -126,7 +126,7 @@ export function BehaviorSection({ widget, channelId }: BehaviorSectionProps) {
                 control={form.control}
                 name='collectUserInfo'
                 render={({ field, fieldState }) => (
-                  <VarEditorFieldRow
+                  <FieldPanelRow
                     title='Collect Visitor Info'
                     description='Prompt visitors for name and email before the chat starts.'
                     type={BaseType.BOOLEAN}
@@ -139,7 +139,7 @@ export function BehaviorSection({ widget, channelId }: BehaviorSectionProps) {
                       value={field.value}
                       onChange={(v) => field.onChange(Boolean(v))}
                     />
-                  </VarEditorFieldRow>
+                  </FieldPanelRow>
                 )}
               />
 
@@ -147,7 +147,7 @@ export function BehaviorSection({ widget, channelId }: BehaviorSectionProps) {
                 control={form.control}
                 name='homeShowRecentMessage'
                 render={({ field, fieldState }) => (
-                  <VarEditorFieldRow
+                  <FieldPanelRow
                     title='Show recent message card'
                     description="Show a card linking to the visitor's most recent conversation."
                     type={BaseType.BOOLEAN}
@@ -160,7 +160,7 @@ export function BehaviorSection({ widget, channelId }: BehaviorSectionProps) {
                       value={field.value}
                       onChange={(v) => field.onChange(Boolean(v))}
                     />
-                  </VarEditorFieldRow>
+                  </FieldPanelRow>
                 )}
               />
 
@@ -168,7 +168,7 @@ export function BehaviorSection({ widget, channelId }: BehaviorSectionProps) {
                 control={form.control}
                 name='homeShowSendMessageCta'
                 render={({ field, fieldState }) => (
-                  <VarEditorFieldRow
+                  <FieldPanelRow
                     title='Show "Send us a message" card'
                     description='Always-visible CTA that starts a new conversation.'
                     type={BaseType.BOOLEAN}
@@ -181,7 +181,7 @@ export function BehaviorSection({ widget, channelId }: BehaviorSectionProps) {
                       value={field.value}
                       onChange={(v) => field.onChange(Boolean(v))}
                     />
-                  </VarEditorFieldRow>
+                  </FieldPanelRow>
                 )}
               />
 
@@ -189,7 +189,7 @@ export function BehaviorSection({ widget, channelId }: BehaviorSectionProps) {
                 control={form.control}
                 name='allowDownloadTranscript'
                 render={({ field, fieldState }) => (
-                  <VarEditorFieldRow
+                  <FieldPanelRow
                     title='Allow transcript download'
                     description='Let visitors download a conversation as text.'
                     type={BaseType.BOOLEAN}
@@ -202,7 +202,7 @@ export function BehaviorSection({ widget, channelId }: BehaviorSectionProps) {
                       value={field.value}
                       onChange={(v) => field.onChange(Boolean(v))}
                     />
-                  </VarEditorFieldRow>
+                  </FieldPanelRow>
                 )}
               />
 
@@ -210,7 +210,7 @@ export function BehaviorSection({ widget, channelId }: BehaviorSectionProps) {
                 control={form.control}
                 name='brandingFooterEnabled'
                 render={({ field, fieldState }) => (
-                  <VarEditorFieldRow
+                  <FieldPanelRow
                     title='Show "Powered by" footer'
                     description='Display Auxx branding at the bottom of the widget.'
                     type={BaseType.BOOLEAN}
@@ -223,10 +223,10 @@ export function BehaviorSection({ widget, channelId }: BehaviorSectionProps) {
                       value={field.value}
                       onChange={(v) => field.onChange(Boolean(v))}
                     />
-                  </VarEditorFieldRow>
+                  </FieldPanelRow>
                 )}
               />
-            </VarEditorField>
+            </FieldPanel>
           </SettingsSection>
 
           <SettingsSection

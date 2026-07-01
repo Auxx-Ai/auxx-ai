@@ -23,8 +23,8 @@ import type React from 'react'
 import { type FormEvent, useEffect, useMemo, useState } from 'react'
 import { useCredentialForm } from '~/components/connections/hooks/use-credential-form'
 import { ConnectionVariableFields } from '~/components/connections/ui/connection-variable-fields'
+import { FieldPanel } from '~/components/global/forms/field-panel'
 import { AiProviderPicker } from '~/components/pickers/ai-provider-picker'
-import { VarEditorField } from '~/components/workflow/ui/input-editor/var-editor'
 import { useConfirm } from '~/hooks/use-confirm'
 import { api } from '~/trpc/react'
 import type { ProviderConfiguration } from './utils'
@@ -374,9 +374,12 @@ export function CredentialConfigurationDialog({
                     <h3 className='text-sm font-semibold uppercase text-primary-500'>
                       {isProviderMode ? 'Provider Credentials' : 'Model Credentials'}
                     </h3>
-                    <VarEditorField
+                    <FieldPanel
                       orientation='responsive'
-                      className='p-0 sm:[&_[data-slot=field-row-label]]:w-70!'>
+                      breakpoint='md'
+                      className='p-0'
+                      resizeId='ai-credential'
+                      defaultLabelWidth={280}>
                       <ConnectionVariableFields
                         variables={visibleFields}
                         values={values}
@@ -384,7 +387,7 @@ export function CredentialConfigurationDialog({
                         errors={errors}
                         savedSecrets={savedSecrets}
                       />
-                    </VarEditorField>
+                    </FieldPanel>
                   </div>
                 </>
               )}

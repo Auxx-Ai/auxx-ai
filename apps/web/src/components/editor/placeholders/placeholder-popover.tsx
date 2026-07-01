@@ -9,7 +9,7 @@ import { Separator } from '@auxx/ui/components/separator'
 import { ArrowRightLeft, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 import { FieldInputRow } from '~/components/custom-fields/ui/field-input-row'
-import { VarEditorField } from '~/components/workflow/ui/input-editor/var-editor'
+import { FieldPanel } from '~/components/global/forms/field-panel'
 import { PlaceholderPickerContent } from './placeholder-picker-content'
 
 interface PlaceholderPopoverProps {
@@ -76,7 +76,7 @@ export function PlaceholderPopover({
       <div className='text-xs text-muted-foreground px-1'>{breadcrumb}</div>
 
       {fallbackSupported && field && fieldType ? (
-        <VarEditorField orientation='vertical'>
+        <FieldPanel orientation='vertical'>
           <FieldInputRow
             field={field}
             value={currentValue}
@@ -86,7 +86,7 @@ export function PlaceholderPopover({
             }}
             placeholder='Fallback value...'
           />
-        </VarEditorField>
+        </FieldPanel>
       ) : (
         <div className='text-xs text-muted-foreground px-1 py-2'>
           Fallback not available for this field type.

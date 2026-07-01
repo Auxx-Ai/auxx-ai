@@ -27,12 +27,12 @@ import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
+import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
 import { SettingsSection } from '~/components/global/settings-page'
 import { InboxDialog } from '~/components/inbox/inbox-dialog'
 import { useResource } from '~/components/resources/hooks/use-resource'
 import { MultiRelationInput } from '~/components/shared/multi-relation-input'
 import { BaseType } from '~/components/workflow/types'
-import { VarEditorField, VarEditorFieldRow } from '~/components/workflow/ui/input-editor/var-editor'
 import { api } from '~/trpc/react'
 
 interface GeneralSectionProps {
@@ -132,12 +132,12 @@ export function GeneralSection({ widget, channelId, onDelete }: GeneralSectionPr
             icon={Settings}
             title='General'
             description='Internal name, header text, and active status.'>
-            <VarEditorField orientation='responsive' className='p-0'>
+            <FieldPanel orientation='responsive' resizeId='chat-widget-settings' className='p-0'>
               <FormField
                 control={form.control}
                 name='name'
                 render={({ field, fieldState }) => (
-                  <VarEditorFieldRow
+                  <FieldPanelRow
                     title='Widget Name'
                     description='Shown only to your team.'
                     type={BaseType.STRING}
@@ -151,7 +151,7 @@ export function GeneralSection({ widget, channelId, onDelete }: GeneralSectionPr
                       onChange={(v) => field.onChange((v as string) ?? '')}
                       placeholder='Internal name'
                     />
-                  </VarEditorFieldRow>
+                  </FieldPanelRow>
                 )}
               />
 
@@ -159,7 +159,7 @@ export function GeneralSection({ widget, channelId, onDelete }: GeneralSectionPr
                 control={form.control}
                 name='title'
                 render={({ field, fieldState }) => (
-                  <VarEditorFieldRow
+                  <FieldPanelRow
                     title='Header Title'
                     description='Appears at the top of the widget.'
                     type={BaseType.STRING}
@@ -173,7 +173,7 @@ export function GeneralSection({ widget, channelId, onDelete }: GeneralSectionPr
                       onChange={(v) => field.onChange((v as string) ?? '')}
                       placeholder='Chat'
                     />
-                  </VarEditorFieldRow>
+                  </FieldPanelRow>
                 )}
               />
 
@@ -181,7 +181,7 @@ export function GeneralSection({ widget, channelId, onDelete }: GeneralSectionPr
                 control={form.control}
                 name='subtitle'
                 render={({ field, fieldState }) => (
-                  <VarEditorFieldRow
+                  <FieldPanelRow
                     title='Subtitle'
                     description='Shown under the header title.'
                     type={BaseType.STRING}
@@ -194,7 +194,7 @@ export function GeneralSection({ widget, channelId, onDelete }: GeneralSectionPr
                       onChange={(v) => field.onChange((v as string) ?? '')}
                       placeholder='We typically reply in minutes'
                     />
-                  </VarEditorFieldRow>
+                  </FieldPanelRow>
                 )}
               />
 
@@ -202,7 +202,7 @@ export function GeneralSection({ widget, channelId, onDelete }: GeneralSectionPr
                 control={form.control}
                 name='isActive'
                 render={({ field, fieldState }) => (
-                  <VarEditorFieldRow
+                  <FieldPanelRow
                     title='Active'
                     description='When off, the widget will not render or accept new chats.'
                     type={BaseType.BOOLEAN}
@@ -215,11 +215,11 @@ export function GeneralSection({ widget, channelId, onDelete }: GeneralSectionPr
                       value={field.value}
                       onChange={(v) => field.onChange(Boolean(v))}
                     />
-                  </VarEditorFieldRow>
+                  </FieldPanelRow>
                 )}
               />
 
-              <VarEditorFieldRow
+              <FieldPanelRow
                 title='Inbox'
                 description='Where new chat conversations land.'
                 type={BaseType.RELATION}
@@ -236,9 +236,9 @@ export function GeneralSection({ widget, channelId, onDelete }: GeneralSectionPr
                   onCreate={() => setInboxDialogOpen(true)}
                   createLabel='Create inbox'
                 />
-              </VarEditorFieldRow>
+              </FieldPanelRow>
 
-              <VarEditorFieldRow
+              <FieldPanelRow
                 title='Privacy URL'
                 description='When set, the widget shows a consent banner under the composer linking to this URL. Leave blank to hide.'
                 type={BaseType.STRING}
@@ -263,8 +263,8 @@ export function GeneralSection({ widget, channelId, onDelete }: GeneralSectionPr
                     disabled={update.isPending}
                   />
                 </div>
-              </VarEditorFieldRow>
-            </VarEditorField>
+              </FieldPanelRow>
+            </FieldPanel>
           </SettingsSection>
         </div>
 

@@ -9,8 +9,8 @@ import { useEffect } from 'react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
+import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
 import { BaseType } from '~/components/workflow/types'
-import { VarEditorField, VarEditorFieldRow } from '~/components/workflow/ui/input-editor/var-editor'
 import { useKnowledgeBaseMutations } from '../../../hooks/use-knowledge-base-mutations'
 import type { KnowledgeBase } from '../../../store/knowledge-base-store'
 import { registerSettingsSubmit } from '../settings-submit-registry'
@@ -78,12 +78,12 @@ export function IdentitySection({ knowledgeBaseId, knowledgeBase }: IdentitySect
     <Section title='Identity' description='URL and access for this knowledge base.'>
       <Form {...form}>
         <form onSubmit={form.handleSubmit(onSubmit)}>
-          <VarEditorField orientation='vertical' className='p-0'>
+          <FieldPanel orientation='vertical' className='p-0' resizeId='kb-settings'>
             <FormField
               control={form.control}
               name='slug'
               render={({ field, fieldState }) => (
-                <VarEditorFieldRow
+                <FieldPanelRow
                   title='URL slug'
                   description='Used in the URL of your knowledge base.'
                   type={BaseType.STRING}
@@ -97,7 +97,7 @@ export function IdentitySection({ knowledgeBaseId, knowledgeBase }: IdentitySect
                     placeholder='my-knowledge-base'
                     disabled={isUpdating}
                   />
-                </VarEditorFieldRow>
+                </FieldPanelRow>
               )}
             />
 
@@ -105,7 +105,7 @@ export function IdentitySection({ knowledgeBaseId, knowledgeBase }: IdentitySect
               control={form.control}
               name='visibility'
               render={({ field, fieldState }) => (
-                <VarEditorFieldRow
+                <FieldPanelRow
                   title='Visibility'
                   description='Public knowledge bases are accessible to anyone with the link. Internal knowledge bases require visitors to sign in and be a member of your organization.'
                   type={BaseType.ENUM}
@@ -120,10 +120,10 @@ export function IdentitySection({ knowledgeBaseId, knowledgeBase }: IdentitySect
                     disabled={isUpdating}
                     triggerProps={{ className: 'w-full' }}
                   />
-                </VarEditorFieldRow>
+                </FieldPanelRow>
               )}
             />
-          </VarEditorField>
+          </FieldPanel>
         </form>
       </Form>
     </Section>

@@ -29,8 +29,8 @@ import type { ReactNode } from 'react'
 import { useMemo } from 'react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
+import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
 import { AiModelPicker, type ModelPickerItem } from '~/components/pickers/ai-model-picker'
-import { VarEditorField, VarEditorFieldRow } from '~/components/workflow/ui/input-editor/var-editor'
 import { api } from '~/trpc/react'
 
 const createDatasetSchema = z.object({
@@ -192,8 +192,12 @@ export function DatasetForm({ onSuccess, onClose, onCancel, header }: DatasetFor
             )}
           />
 
-          <VarEditorField className='p-0 [&_[data-slot=field-row-label]]:w-30'>
-            <VarEditorFieldRow
+          <FieldPanel
+            className='p-0'
+            resizeId='dataset-form'
+            defaultLabelWidth={120}
+            breakpoint='md'>
+            <FieldPanelRow
               title='Model'
               description='Select a text embedding model from your configured providers'>
               <FormField
@@ -216,11 +220,11 @@ export function DatasetForm({ onSuccess, onClose, onCancel, header }: DatasetFor
                   </FormItem>
                 )}
               />
-            </VarEditorFieldRow>
+            </FieldPanelRow>
 
             {/* Dimension selector - only show if model supports configurable dimensions */}
             {hasConfigurableDimensions && (
-              <VarEditorFieldRow
+              <FieldPanelRow
                 title='Dimensions'
                 description={
                   dimensionRule?.help ||
@@ -249,9 +253,9 @@ export function DatasetForm({ onSuccess, onClose, onCancel, header }: DatasetFor
                     </FormItem>
                   )}
                 />
-              </VarEditorFieldRow>
+              </FieldPanelRow>
             )}
-          </VarEditorField>
+          </FieldPanel>
 
           <DialogFooter>
             <Button

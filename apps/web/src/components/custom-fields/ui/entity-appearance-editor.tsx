@@ -13,9 +13,9 @@ import {
   SelectValue,
 } from '@auxx/ui/components/select'
 import { AlertTriangle, Check, Palette } from 'lucide-react'
+import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
 import { SettingsSection } from '~/components/global/settings-page'
 import { useEntityDefinitionMutations } from '~/components/resources/hooks'
-import { VarEditorField, VarEditorFieldRow } from '~/components/workflow/ui/input-editor/var-editor'
 
 /** Props for EntityAppearanceEditor */
 interface EntityAppearanceEditorProps {
@@ -102,10 +102,8 @@ export function EntityAppearanceEditor({
         <div className='grid grid-cols-1 sm:grid-cols-2 gap-6'>
           {/* Left column: Select fields */}
           <div>
-            <VarEditorField className='p-0 dark:bg-primary-50'>
-              <VarEditorFieldRow
-                title='Display Field'
-                description='Shown as the main name in pickers'>
+            <FieldPanel className='p-0 dark:bg-primary-50'>
+              <FieldPanelRow title='Display Field' description='Shown as the main name in pickers'>
                 {disabled ? (
                   <span className='text-sm text-muted-foreground h-7.5 flex items-center'>
                     {primaryField?.name ?? 'None'}
@@ -135,10 +133,8 @@ export function EntityAppearanceEditor({
                     </SelectContent>
                   </Select>
                 )}
-              </VarEditorFieldRow>
-              <VarEditorFieldRow
-                title='Subtitle Field'
-                description='Optional subtitle below the name'>
+              </FieldPanelRow>
+              <FieldPanelRow title='Subtitle Field' description='Optional subtitle below the name'>
                 {disabled ? (
                   <span className='text-sm text-muted-foreground h-7.5 flex items-center'>
                     {secondaryField?.name ?? secondaryField?.label ?? 'None'}
@@ -162,8 +158,8 @@ export function EntityAppearanceEditor({
                     </SelectContent>
                   </Select>
                 )}
-              </VarEditorFieldRow>
-              <VarEditorFieldRow title='Avatar Field' description='Image field for avatar'>
+              </FieldPanelRow>
+              <FieldPanelRow title='Avatar Field' description='Image field for avatar'>
                 {disabled ? (
                   <span className='text-sm text-muted-foreground h-7.5 flex items-center'>
                     {avatarField?.name ?? avatarField?.label ?? 'None'}
@@ -187,7 +183,7 @@ export function EntityAppearanceEditor({
                     </SelectContent>
                   </Select>
                 )}
-              </VarEditorFieldRow>
+              </FieldPanelRow>
               {avatarWarnings.length > 0 && (
                 <div className='flex gap-2 px-3 py-2 text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30 rounded-md mx-2 mb-2'>
                   <AlertTriangle className='size-3.5 shrink-0 mt-0.5' />
@@ -198,7 +194,7 @@ export function EntityAppearanceEditor({
                   </div>
                 </div>
               )}
-            </VarEditorField>
+            </FieldPanel>
           </div>
 
           {/* Right column: Preview */}

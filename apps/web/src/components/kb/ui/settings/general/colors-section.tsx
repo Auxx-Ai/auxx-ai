@@ -9,9 +9,9 @@ import { standardSchemaResolver } from '@hookform/resolvers/standard-schema'
 import { useEffect, useState } from 'react'
 import { type UseFormReturn, useForm } from 'react-hook-form'
 import { z } from 'zod'
+import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
 import { ColorField } from '~/components/ui/color-field'
 import { BaseType } from '~/components/workflow/types'
-import { VarEditorField, VarEditorFieldRow } from '~/components/workflow/ui/input-editor/var-editor'
 import { useDraftSettingsAutosave } from '../../../hooks/use-draft-settings-autosave'
 import { type KnowledgeBase, selectDraftedSections } from '../../../store/knowledge-base-store'
 import { SectionStatusBadge } from '../section-header'
@@ -75,7 +75,7 @@ function ColorPaletteFields({ form, mode }: ColorPaletteFieldsProps) {
   const suffix = mode === 'light' ? 'Light' : 'Dark'
 
   return (
-    <VarEditorField orientation='responsive' className='p-0'>
+    <FieldPanel orientation='responsive' className='p-0' resizeId='kb-settings'>
       {colorRows.map((row) => {
         const fieldName = `${row.key}Color${suffix}` as keyof ColorsFormValues
         return (
@@ -84,7 +84,7 @@ function ColorPaletteFields({ form, mode }: ColorPaletteFieldsProps) {
             control={form.control}
             name={fieldName}
             render={({ field, fieldState }) => (
-              <VarEditorFieldRow
+              <FieldPanelRow
                 title={row.label}
                 description={row.description}
                 type={BaseType.STRING}
@@ -95,12 +95,12 @@ function ColorPaletteFields({ form, mode }: ColorPaletteFieldsProps) {
                   onChange={field.onChange}
                   placeholder='Pick a color'
                 />
-              </VarEditorFieldRow>
+              </FieldPanelRow>
             )}
           />
         )
       })}
-    </VarEditorField>
+    </FieldPanel>
   )
 }
 

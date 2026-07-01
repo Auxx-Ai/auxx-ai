@@ -12,8 +12,8 @@ import { useEffect } from 'react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { useFileSelect } from '~/components/file-select'
+import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
 import { FileSelectPicker } from '~/components/pickers/file-select-picker'
-import { VarEditorField, VarEditorFieldRow } from '~/components/workflow/ui/input-editor/var-editor'
 import { useDraftSettingsAutosave } from '../../../hooks/use-draft-settings-autosave'
 import { type KnowledgeBase, selectDraftedSections } from '../../../store/knowledge-base-store'
 import { SectionStatusBadge } from '../section-header'
@@ -121,12 +121,12 @@ export function LogosSection({ knowledgeBaseId, knowledgeBase }: LogosSectionPro
       description="Replace the content's title with a custom logo. Recommended width: 600px or wider."
       actions={<SectionStatusBadge drafted={drafted} saving={isSaving} savedAt={lastSavedAt} />}>
       <Form {...form}>
-        <VarEditorField orientation='vertical' className='p-0'>
+        <FieldPanel orientation='vertical' className='p-0' resizeId='kb-settings'>
           <FormField
             control={form.control}
             name='logoLight'
             render={({ field, fieldState }) => (
-              <VarEditorFieldRow
+              <FieldPanelRow
                 title='Light mode logo'
                 showIcon
                 icon={<Sun className='size-3.5' />}
@@ -137,7 +137,7 @@ export function LogosSection({ knowledgeBaseId, knowledgeBase }: LogosSectionPro
                   onChange={(v) => field.onChange(v)}
                   knowledgeBaseId={knowledgeBaseId}
                 />
-              </VarEditorFieldRow>
+              </FieldPanelRow>
             )}
           />
 
@@ -145,7 +145,7 @@ export function LogosSection({ knowledgeBaseId, knowledgeBase }: LogosSectionPro
             control={form.control}
             name='logoDark'
             render={({ field, fieldState }) => (
-              <VarEditorFieldRow
+              <FieldPanelRow
                 title='Dark mode logo'
                 showIcon
                 icon={<Moon className='size-3.5' />}
@@ -156,10 +156,10 @@ export function LogosSection({ knowledgeBaseId, knowledgeBase }: LogosSectionPro
                   onChange={(v) => field.onChange(v)}
                   knowledgeBaseId={knowledgeBaseId}
                 />
-              </VarEditorFieldRow>
+              </FieldPanelRow>
             )}
           />
-        </VarEditorField>
+        </FieldPanel>
       </Form>
     </Section>
   )

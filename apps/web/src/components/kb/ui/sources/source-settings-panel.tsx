@@ -14,8 +14,8 @@ import { Cog, FileText, ScrollText, X } from 'lucide-react'
 import { parseAsStringLiteral, useQueryState } from 'nuqs'
 import { useMemo, useState } from 'react'
 import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
+import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
 import { BaseType } from '~/components/workflow/types'
-import { VarEditorField, VarEditorFieldRow } from '~/components/workflow/ui/input-editor/var-editor'
 import { api } from '~/trpc/react'
 import { CrawlSectionTree, type SitemapNode } from '../editor/crawl-section-picker'
 import { type ScheduleConfig, SyncFrequencyPicker } from '../editor/sync-frequency-picker'
@@ -185,8 +185,8 @@ function GeneralPanel({ source }: { source: KnowledgeSource }) {
       <ScrollArea className='flex min-h-0 flex-1 flex-col'>
         <div className='pb-20 [&_[data-slot=section]]:pr-5'>
           <Section title='Source' description='What this source ingests and how it’s named.'>
-            <VarEditorField orientation='vertical' className='p-0'>
-              <VarEditorFieldRow
+            <FieldPanel orientation='vertical' className='p-0' resizeId='kb-source-settings'>
+              <FieldPanelRow
                 title='Name'
                 description='Shown in the Sources list.'
                 type={BaseType.STRING}
@@ -199,11 +199,11 @@ function GeneralPanel({ source }: { source: KnowledgeSource }) {
                   placeholder='Source name'
                   disabled={update.isPending}
                 />
-              </VarEditorFieldRow>
+              </FieldPanelRow>
 
               {isWebsite && (
                 <>
-                  <VarEditorFieldRow
+                  <FieldPanelRow
                     title='Website URL'
                     description='The site root the crawler maps and re-syncs.'
                     type={BaseType.STRING}
@@ -215,9 +215,9 @@ function GeneralPanel({ source }: { source: KnowledgeSource }) {
                       placeholder='https://docs.example.com'
                       disabled={update.isPending}
                     />
-                  </VarEditorFieldRow>
+                  </FieldPanelRow>
 
-                  <VarEditorFieldRow
+                  <FieldPanelRow
                     title='Only main content'
                     description='Strip nav, headers, and footers from each page.'
                     type={BaseType.STRING}
@@ -228,9 +228,9 @@ function GeneralPanel({ source }: { source: KnowledgeSource }) {
                       onChange={(v) => setMainContentOnly(Boolean(v))}
                       disabled={update.isPending}
                     />
-                  </VarEditorFieldRow>
+                  </FieldPanelRow>
 
-                  <VarEditorFieldRow
+                  <FieldPanelRow
                     title='Exclude URLs'
                     description='One path or URL per line — never ingested.'
                     type={BaseType.STRING}
@@ -243,10 +243,10 @@ function GeneralPanel({ source }: { source: KnowledgeSource }) {
                       className='font-mono text-sm'
                       disabled={update.isPending}
                     />
-                  </VarEditorFieldRow>
+                  </FieldPanelRow>
                 </>
               )}
-            </VarEditorField>
+            </FieldPanel>
           </Section>
 
           {isWebsite && (

@@ -17,8 +17,8 @@ import { useRouter } from 'next/navigation'
 import { useState } from 'react'
 import { AppIcon } from '~/components/apps/ui/app-icon'
 import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
+import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
 import { BaseType } from '~/components/workflow/types'
-import { VarEditorField, VarEditorFieldRow } from '~/components/workflow/ui/input-editor/var-editor'
 import type { RouterOutputs } from '~/trpc/react'
 import { api } from '~/trpc/react'
 import { useMcpOAuthPopup } from '../hooks/use-mcp-oauth-popup'
@@ -609,10 +609,8 @@ export function AddMcpServerDialog({
   function renderFields() {
     return (
       <>
-        <VarEditorField
-          orientation='responsive'
-          className='p-0 sm:[&_[data-slot=field-row-label]]:w-40'>
-          <VarEditorFieldRow
+        <FieldPanel orientation='responsive' resizeId='mcp-server' className='p-0'>
+          <FieldPanelRow
             title='Name'
             type={BaseType.STRING}
             showIcon
@@ -628,9 +626,9 @@ export function AddMcpServerDialog({
                 disabled={isSubmitting}
               />
             </div>
-          </VarEditorFieldRow>
+          </FieldPanelRow>
 
-          <VarEditorFieldRow
+          <FieldPanelRow
             title='Endpoint URL'
             type={BaseType.STRING}
             showIcon
@@ -643,9 +641,9 @@ export function AddMcpServerDialog({
               placeholder='https://example.com/mcp'
               disabled={isSubmitting}
             />
-          </VarEditorFieldRow>
+          </FieldPanelRow>
 
-          <VarEditorFieldRow title='Authentication' type={BaseType.STRING} showIcon>
+          <FieldPanelRow title='Authentication' type={BaseType.STRING} showIcon>
             <FieldInputAdapter
               fieldType={FieldType.SINGLE_SELECT}
               triggerProps={{ className: 'w-full ps-0 pe-1' }}
@@ -654,11 +652,11 @@ export function AddMcpServerDialog({
               onChange={(v) => setAuth(((v as string[])[0] as AuthMode) ?? 'auto')}
               disabled={isSubmitting}
             />
-          </VarEditorFieldRow>
+          </FieldPanelRow>
 
           {auth === 'bearer' && (
             <>
-              <VarEditorFieldRow
+              <FieldPanelRow
                 title='Token'
                 type={BaseType.STRING}
                 showIcon
@@ -671,8 +669,8 @@ export function AddMcpServerDialog({
                   placeholder={isUpdate ? 'Leave blank to keep current token' : 'Secret token'}
                   disabled={isSubmitting}
                 />
-              </VarEditorFieldRow>
-              <VarEditorFieldRow title='Header name' type={BaseType.STRING} showIcon>
+              </FieldPanelRow>
+              <FieldPanelRow title='Header name' type={BaseType.STRING} showIcon>
                 <FieldInputAdapter
                   fieldType={FieldType.TEXT}
                   value={headerName}
@@ -680,12 +678,12 @@ export function AddMcpServerDialog({
                   placeholder='Authorization'
                   disabled={isSubmitting}
                 />
-              </VarEditorFieldRow>
+              </FieldPanelRow>
             </>
           )}
 
           {auth === 'headers' && (
-            <VarEditorFieldRow
+            <FieldPanelRow
               title='Headers'
               type={BaseType.STRING}
               showIcon
@@ -729,12 +727,12 @@ export function AddMcpServerDialog({
                   Add header
                 </Button>
               </div>
-            </VarEditorFieldRow>
+            </FieldPanelRow>
           )}
 
           {auth === 'oauth' && (
             <>
-              <VarEditorFieldRow
+              <FieldPanelRow
                 title='Client ID'
                 type={BaseType.STRING}
                 showIcon
@@ -746,8 +744,8 @@ export function AddMcpServerDialog({
                   placeholder='Blank tries automatic registration (DCR)'
                   disabled={isSubmitting}
                 />
-              </VarEditorFieldRow>
-              <VarEditorFieldRow
+              </FieldPanelRow>
+              <FieldPanelRow
                 title='Client Secret'
                 type={BaseType.STRING}
                 showIcon
@@ -766,12 +764,12 @@ export function AddMcpServerDialog({
                   }
                   disabled={isSubmitting}
                 />
-              </VarEditorFieldRow>
+              </FieldPanelRow>
             </>
           )}
 
           {placeholders.map((p) => (
-            <VarEditorFieldRow
+            <FieldPanelRow
               key={p}
               title={p}
               type={BaseType.STRING}
@@ -787,9 +785,9 @@ export function AddMcpServerDialog({
                 placeholder={`Value for ${p}`}
                 disabled={isSubmitting}
               />
-            </VarEditorFieldRow>
+            </FieldPanelRow>
           ))}
-        </VarEditorField>
+        </FieldPanel>
 
         {auth === 'oauth' && (
           <div className='mt-4'>
@@ -805,10 +803,8 @@ export function AddMcpServerDialog({
               Advanced OAuth settings
             </button>
             {showOAuthAdvanced && (
-              <VarEditorField
-                orientation='responsive'
-                className='p-0 mt-4 sm:[&_[data-slot=field-row-label]]:w-40'>
-                <VarEditorFieldRow
+              <FieldPanel orientation='responsive' resizeId='mcp-server' className='p-0 mt-4'>
+                <FieldPanelRow
                   title='Authorize URL'
                   type={BaseType.STRING}
                   showIcon
@@ -820,8 +816,8 @@ export function AddMcpServerDialog({
                     placeholder='Blank uses OAuth discovery'
                     disabled={isSubmitting}
                   />
-                </VarEditorFieldRow>
-                <VarEditorFieldRow
+                </FieldPanelRow>
+                <FieldPanelRow
                   title='Token URL'
                   type={BaseType.STRING}
                   showIcon
@@ -833,8 +829,8 @@ export function AddMcpServerDialog({
                     placeholder='Blank uses OAuth discovery'
                     disabled={isSubmitting}
                   />
-                </VarEditorFieldRow>
-                <VarEditorFieldRow title='Scopes' type={BaseType.STRING} showIcon>
+                </FieldPanelRow>
+                <FieldPanelRow title='Scopes' type={BaseType.STRING} showIcon>
                   <FieldInputAdapter
                     fieldType={FieldType.TEXT}
                     value={scopes}
@@ -842,11 +838,11 @@ export function AddMcpServerDialog({
                     placeholder='Space-separated, e.g. read write'
                     disabled={isSubmitting}
                   />
-                </VarEditorFieldRow>
-                <VarEditorFieldRow title='Callback URL' type={BaseType.STRING} showIcon>
+                </FieldPanelRow>
+                <FieldPanelRow title='Callback URL' type={BaseType.STRING} showIcon>
                   {renderCallbackUrl()}
-                </VarEditorFieldRow>
-              </VarEditorField>
+                </FieldPanelRow>
+              </FieldPanel>
             )}
           </div>
         )}

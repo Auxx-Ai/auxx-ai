@@ -14,11 +14,11 @@ import { generateId } from '@auxx/utils'
 import { FlaskConical, Play, User, Wrench } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
+import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
 import { useResourceProperty } from '~/components/resources'
 import { useSystemValues } from '~/components/resources/hooks/use-system-values'
 import { MultiRelationInput } from '~/components/shared/multi-relation-input'
 import { AutoResolveBadge } from '~/components/workflow/nodes/core/answer/components/auto-resolve-badge'
-import { VarEditorField, VarEditorFieldRow } from '~/components/workflow/ui/input-editor/var-editor'
 import { api } from '~/trpc/react'
 import { AutosaveIndicator, type AutosaveState } from '../../agents/ui/shared/autosave-indicator'
 import { AssertionsSection } from './assertions-section'
@@ -390,26 +390,24 @@ function EvalCaseForm({
           icon={<User className='size-4' />}
           className='[&>[data-slot=section]>[data-slot=section-content]]:-mx-3'>
           <div className='flex flex-col ps-2 pe-4'>
-            <VarEditorField className='p-0'>
-              <VarEditorFieldRow title='Opening message' isRequired>
+            <FieldPanel className='p-0'>
+              <FieldPanelRow title='Opening message' isRequired>
                 <FieldInputAdapter
                   fieldType={FieldType.RICH_TEXT}
                   value={config.openingMessage}
                   onChange={(v) => setConfigField('openingMessage', (v as string) ?? '')}
                   placeholder='I want to cancel my order'
                 />
-              </VarEditorFieldRow>
-              <VarEditorFieldRow
-                title='Customer context'
-                description='Background the persona knows.'>
+              </FieldPanelRow>
+              <FieldPanelRow title='Customer context' description='Background the persona knows.'>
                 <FieldInputAdapter
                   fieldType={FieldType.RICH_TEXT}
                   value={config.customerContext ?? ''}
                   onChange={(v) => setConfigField('customerContext', (v as string) || null)}
                   placeholder='Has not received an order confirmation.'
                 />
-              </VarEditorFieldRow>
-              <VarEditorFieldRow
+              </FieldPanelRow>
+              <FieldPanelRow
                 title='Customer record'
                 description='Simulate as this contact — the agent resolves its data.'>
                 <MultiRelationInput
@@ -420,10 +418,8 @@ function EvalCaseForm({
                   placeholder='Select a contact'
                   triggerProps={{ className: 'w-full ps-0' }}
                 />
-              </VarEditorFieldRow>
-              <VarEditorFieldRow
-                title='Email'
-                description='The email the customer gives when asked.'>
+              </FieldPanelRow>
+              <FieldPanelRow title='Email' description='The email the customer gives when asked.'>
                 <div className='relative flex items-center'>
                   {hasContact && (
                     <div className='z-10 me-0.5 shrink-0 @sm:absolute @sm:right-full @sm:top-1/2 @sm:-translate-y-1/2'>
@@ -453,8 +449,8 @@ function EvalCaseForm({
                     />
                   )}
                 </div>
-              </VarEditorFieldRow>
-              <VarEditorFieldRow title='Name'>
+              </FieldPanelRow>
+              <FieldPanelRow title='Name'>
                 <div className='relative flex items-center'>
                   {hasContact && (
                     <div className='z-10 me-0.5 shrink-0 @sm:absolute @sm:right-full @sm:top-1/2 @sm:-translate-y-1/2'>
@@ -484,8 +480,8 @@ function EvalCaseForm({
                     />
                   )}
                 </div>
-              </VarEditorFieldRow>
-              <VarEditorFieldRow title='Channel'>
+              </FieldPanelRow>
+              <FieldPanelRow title='Channel'>
                 <FieldInputAdapter
                   fieldType={FieldType.SINGLE_SELECT}
                   fieldOptions={{ options: CHANNEL_OPTIONS }}
@@ -495,22 +491,22 @@ function EvalCaseForm({
                     setConfigField('channel', ((v as string[])[0] as 'chat' | 'email') ?? 'chat')
                   }
                 />
-              </VarEditorFieldRow>
-              <VarEditorFieldRow title='Max customer turns'>
+              </FieldPanelRow>
+              <FieldPanelRow title='Max customer turns'>
                 <FieldInputAdapter
                   fieldType={FieldType.NUMBER}
                   value={config.maxCustomerTurns}
                   onChange={(v) => setConfigField('maxCustomerTurns', Number(v) || 1)}
                 />
-              </VarEditorFieldRow>
-            </VarEditorField>
+              </FieldPanelRow>
+            </FieldPanel>
           </div>
         </Section>
 
         {/* Execution policy */}
         <Section title='Execution' icon={<Wrench className='size-4' />}>
-          <VarEditorField className='p-0 **:data-[slot=field-row-label]:w-auto! @sm:**:data-[slot=field-row-label]:w-auto! **:data-[slot=field-row-content]:flex **:data-[slot=field-row-content]:justify-end **:data-[slot=field-row-content]:pe-3'>
-            <VarEditorFieldRow
+          <FieldPanel className='p-0 **:data-[slot=field-row-label]:w-auto! @sm:**:data-[slot=field-row-label]:w-auto! **:data-[slot=field-row-content]:flex **:data-[slot=field-row-content]:justify-end **:data-[slot=field-row-content]:pe-3'>
+            <FieldPanelRow
               title='Execute read-only tools live'
               description='Passthrough lets idempotent tools execute; writes are always mocked. Off = fully offline (unmatched calls fail closed).'>
               <div className='flex h-8 items-center'>
@@ -525,8 +521,8 @@ function EvalCaseForm({
                   }
                 />
               </div>
-            </VarEditorFieldRow>
-          </VarEditorField>
+            </FieldPanelRow>
+          </FieldPanel>
         </Section>
 
         {/* Tool responses */}

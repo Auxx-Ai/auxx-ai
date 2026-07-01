@@ -8,8 +8,8 @@ import { standardSchemaResolver } from '@hookform/resolvers/standard-schema'
 import { useEffect } from 'react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
+import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
 import { BaseType } from '~/components/workflow/types'
-import { VarEditorField, VarEditorFieldRow } from '~/components/workflow/ui/input-editor/var-editor'
 import { useDraftSettingsAutosave } from '../../../hooks/use-draft-settings-autosave'
 import { type KnowledgeBase, selectDraftedSections } from '../../../store/knowledge-base-store'
 import { SectionStatusBadge } from '../section-header'
@@ -68,12 +68,12 @@ export function FooterSection({ knowledgeBaseId, knowledgeBase }: FooterSectionP
       onEnableChange={(checked) => form.setValue('footerEnabled', checked, { shouldDirty: true })}
       actions={<SectionStatusBadge drafted={drafted} saving={isSaving} savedAt={lastSavedAt} />}>
       <Form {...form}>
-        <VarEditorField orientation='vertical' className='p-0'>
+        <FieldPanel orientation='vertical' className='p-0' resizeId='kb-settings'>
           <FormField
             control={form.control}
             name='footerNavigation'
             render={({ field, fieldState }) => (
-              <VarEditorFieldRow
+              <FieldPanelRow
                 title='Navigation'
                 description='Configure the navigation menu items for the footer. Drag to rearrange.'
                 type={BaseType.ARRAY}
@@ -85,10 +85,10 @@ export function FooterSection({ knowledgeBaseId, knowledgeBase }: FooterSectionP
                   onChange={field.onChange}
                   disabled={!footerEnabled}
                 />
-              </VarEditorFieldRow>
+              </FieldPanelRow>
             )}
           />
-        </VarEditorField>
+        </FieldPanel>
       </Form>
     </Section>
   )

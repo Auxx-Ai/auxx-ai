@@ -11,10 +11,10 @@ import { LayoutGrid, MessageSquare, Moon, Palette, Smartphone, Sun, SunMoon } fr
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
+import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
 import { SettingsSection } from '~/components/global/settings-page'
 import { ColorField } from '~/components/ui/color-field'
 import { BaseType } from '~/components/workflow/types'
-import { VarEditorField, VarEditorFieldRow } from '~/components/workflow/ui/input-editor/var-editor'
 import { api } from '~/trpc/react'
 import { GreetingEditor } from '../greeting-editor'
 import { SuggestedRepliesEditor } from '../suggested-replies-editor'
@@ -137,14 +137,16 @@ export function AppearanceSection({ widget, channelId }: AppearanceSectionProps)
               icon={Palette}
               title='Branding'
               description='The color and logo shown on the widget header.'>
-              <VarEditorField
+              <FieldPanel
                 orientation='responsive'
-                className='p-0 **:data-[slot=field-row-label]:w-[12rem]! @sm:**:data-[slot=field-row-label]:w-[12rem]!'>
+                resizeId='chat-widget-settings'
+                defaultLabelWidth={192}
+                className='p-0'>
                 <FormField
                   control={form.control}
                   name='defaultTheme'
                   render={({ field, fieldState }) => (
-                    <VarEditorFieldRow
+                    <FieldPanelRow
                       title='Theme'
                       description='Default color scheme. The embed script can override this per-page via data-theme.'
                       type={BaseType.ENUM}
@@ -164,7 +166,7 @@ export function AppearanceSection({ widget, channelId }: AppearanceSectionProps)
                         placeholder='Choose theme'
                         triggerProps={{ className: 'w-full ps-0 pe-1' }}
                       />
-                    </VarEditorFieldRow>
+                    </FieldPanelRow>
                   )}
                 />
 
@@ -172,7 +174,7 @@ export function AppearanceSection({ widget, channelId }: AppearanceSectionProps)
                   control={form.control}
                   name='primaryColor'
                   render={({ field, fieldState }) => (
-                    <VarEditorFieldRow
+                    <FieldPanelRow
                       title='Primary Color'
                       description='Used for the launcher button, send buttons, and accent UI.'
                       type={BaseType.STRING}
@@ -185,7 +187,7 @@ export function AppearanceSection({ widget, channelId }: AppearanceSectionProps)
                         onChange={field.onChange}
                         placeholder='Pick a color'
                       />
-                    </VarEditorFieldRow>
+                    </FieldPanelRow>
                   )}
                 />
 
@@ -194,7 +196,7 @@ export function AppearanceSection({ widget, channelId }: AppearanceSectionProps)
                     control={form.control}
                     name='primaryColorDark'
                     render={({ field, fieldState }) => (
-                      <VarEditorFieldRow
+                      <FieldPanelRow
                         title='Primary Color (dark)'
                         description='Primary color in dark mode. Optional — falls back to the light primary color.'
                         type={BaseType.STRING}
@@ -206,7 +208,7 @@ export function AppearanceSection({ widget, channelId }: AppearanceSectionProps)
                           onChange={field.onChange}
                           placeholder='Same as light'
                         />
-                      </VarEditorFieldRow>
+                      </FieldPanelRow>
                     )}
                   />
                 ) : null}
@@ -215,7 +217,7 @@ export function AppearanceSection({ widget, channelId }: AppearanceSectionProps)
                   control={form.control}
                   name='headerColor'
                   render={({ field, fieldState }) => (
-                    <VarEditorFieldRow
+                    <FieldPanelRow
                       title='Header Color'
                       description='Background of the Home greeting band. Leave empty to derive from the brand color. Text color is auto-picked for contrast.'
                       type={BaseType.STRING}
@@ -228,7 +230,7 @@ export function AppearanceSection({ widget, channelId }: AppearanceSectionProps)
                         placeholder='Auto (brand)'
                         clearable
                       />
-                    </VarEditorFieldRow>
+                    </FieldPanelRow>
                   )}
                 />
 
@@ -237,7 +239,7 @@ export function AppearanceSection({ widget, channelId }: AppearanceSectionProps)
                     control={form.control}
                     name='headerColorDark'
                     render={({ field, fieldState }) => (
-                      <VarEditorFieldRow
+                      <FieldPanelRow
                         title='Header Color (dark)'
                         description='Home greeting band color in dark mode. Optional — falls back to the light header color.'
                         type={BaseType.STRING}
@@ -249,7 +251,7 @@ export function AppearanceSection({ widget, channelId }: AppearanceSectionProps)
                           onChange={field.onChange}
                           placeholder='Same as light'
                         />
-                      </VarEditorFieldRow>
+                      </FieldPanelRow>
                     )}
                   />
                 ) : null}
@@ -258,7 +260,7 @@ export function AppearanceSection({ widget, channelId }: AppearanceSectionProps)
                   control={form.control}
                   name='logoLight'
                   render={({ field, fieldState }) => (
-                    <VarEditorFieldRow
+                    <FieldPanelRow
                       title='Light mode logo'
                       description='Shown on the dark primary-colored header band.'
                       icon={<Sun className='size-3.5' />}
@@ -270,7 +272,7 @@ export function AppearanceSection({ widget, channelId }: AppearanceSectionProps)
                         onChange={(v) => field.onChange(v)}
                         chatWidgetId={chatWidgetId}
                       />
-                    </VarEditorFieldRow>
+                    </FieldPanelRow>
                   )}
                 />
 
@@ -278,7 +280,7 @@ export function AppearanceSection({ widget, channelId }: AppearanceSectionProps)
                   control={form.control}
                   name='logoDark'
                   render={({ field, fieldState }) => (
-                    <VarEditorFieldRow
+                    <FieldPanelRow
                       title='Dark mode logo'
                       description='Used when the resolved theme is dark. Falls back to the light logo if unset.'
                       icon={<Moon className='size-3.5' />}
@@ -290,10 +292,10 @@ export function AppearanceSection({ widget, channelId }: AppearanceSectionProps)
                         onChange={(v) => field.onChange(v)}
                         chatWidgetId={chatWidgetId}
                       />
-                    </VarEditorFieldRow>
+                    </FieldPanelRow>
                   )}
                 />
-              </VarEditorField>
+              </FieldPanel>
             </SettingsSection>
 
             <SettingsSection
@@ -301,12 +303,12 @@ export function AppearanceSection({ widget, channelId }: AppearanceSectionProps)
               icon={LayoutGrid}
               title='Layout'
               description='Where and how the widget appears on the page.'>
-              <VarEditorField orientation='responsive' className='p-0'>
+              <FieldPanel orientation='responsive' resizeId='chat-widget-settings' className='p-0'>
                 <FormField
                   control={form.control}
                   name='position'
                   render={({ field, fieldState }) => (
-                    <VarEditorFieldRow
+                    <FieldPanelRow
                       title='Position'
                       description='Corner of the page where the widget anchors.'
                       type={BaseType.ENUM}
@@ -326,7 +328,7 @@ export function AppearanceSection({ widget, channelId }: AppearanceSectionProps)
                         placeholder='Choose position'
                         triggerProps={{ className: 'w-full' }}
                       />
-                    </VarEditorFieldRow>
+                    </FieldPanelRow>
                   )}
                 />
 
@@ -334,7 +336,7 @@ export function AppearanceSection({ widget, channelId }: AppearanceSectionProps)
                   control={form.control}
                   name='mobileFullScreen'
                   render={({ field, fieldState }) => (
-                    <VarEditorFieldRow
+                    <FieldPanelRow
                       title='Mobile Full Screen'
                       description='Expand the widget to fill the screen on small devices.'
                       type={BaseType.BOOLEAN}
@@ -349,10 +351,10 @@ export function AppearanceSection({ widget, channelId }: AppearanceSectionProps)
                           onChange={(v) => field.onChange(Boolean(v))}
                         />
                       </div>
-                    </VarEditorFieldRow>
+                    </FieldPanelRow>
                   )}
                 />
-              </VarEditorField>
+              </FieldPanel>
             </SettingsSection>
           </div>
 

@@ -25,7 +25,7 @@ type Mode = 'constant' | 'var'
 
 /**
  * The inline value control for one tool input, placed inside a
- * `VarEditorFieldRow`. A left mode-toggle (constant ⇄ dynamic field) plus the
+ * `FieldPanelRow`. A left mode-toggle (constant ⇄ dynamic field) plus the
  * active input. The empty state means **"model decides"** (`{ kind:'model' }`)
  * — the row's hover `X` returns a bound input to it. See plans/chat/v8 phase-5.
  */

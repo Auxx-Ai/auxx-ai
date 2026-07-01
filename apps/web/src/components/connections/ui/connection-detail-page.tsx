@@ -9,7 +9,7 @@ import { RadioGroupItemCard } from '@auxx/ui/components/radio-group-item'
 import { cn } from '@auxx/ui/lib/utils'
 import { KeyRound, Plug } from 'lucide-react'
 import { ConnectionVariableFields } from '~/components/connections/ui/connection-variable-fields'
-import { VarEditorField } from '~/components/workflow/ui/input-editor/var-editor'
+import { FieldPanel } from '~/components/global/forms/field-panel'
 
 /** One connect method an item exposes (the detail page renders + collects input for it). */
 export interface DetailMethod {
@@ -153,9 +153,12 @@ export function ConnectionDetailPage({
       {chosen && methodNeedsFields(chosen) && (
         <div className='flex flex-col gap-2'>
           <div className='text-xs font-medium text-muted-foreground'>Credentials</div>
-          <VarEditorField
+          <FieldPanel
             orientation='responsive'
-            className='p-0 sm:[&_[data-slot=field-row-label]]:w-70!'>
+            breakpoint='md'
+            resizeId='connection-detail'
+            defaultLabelWidth={280}
+            className='p-0'>
             <ConnectionVariableFields
               variables={chosen.connectionVariables ?? []}
               values={values}
@@ -168,7 +171,7 @@ export function ConnectionDetailPage({
               savedSecrets={savedSecrets}
               tokenSaved={tokenSaved}
             />
-          </VarEditorField>
+          </FieldPanel>
         </div>
       )}
     </div>

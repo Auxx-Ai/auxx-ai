@@ -14,7 +14,7 @@ import {
 import { toastError } from '@auxx/ui/components/toast'
 import { useState } from 'react'
 import { ConnectionVariableFields } from '~/components/connections/ui/connection-variable-fields'
-import { VarEditorField } from '~/components/workflow/ui/input-editor/var-editor'
+import { FieldPanel } from '~/components/global/forms/field-panel'
 import { api } from '~/trpc/react'
 import { useMcpOAuthPopup } from '../hooks/use-mcp-oauth-popup'
 
@@ -126,9 +126,7 @@ export function ConnectCuratedDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <VarEditorField
-          orientation='responsive'
-          className='p-0 sm:[&_[data-slot=field-row-label]]:w-40'>
+        <FieldPanel orientation='responsive' resizeId='mcp-server' className='p-0'>
           <ConnectionVariableFields
             variables={connectionVariables}
             values={values}
@@ -139,7 +137,7 @@ export function ConnectCuratedDialog({
             errors={errors}
             disabled={isPending}
           />
-        </VarEditorField>
+        </FieldPanel>
 
         <DialogFooter>
           <Button type='button' variant='ghost' size='sm' onClick={close} disabled={isPending}>

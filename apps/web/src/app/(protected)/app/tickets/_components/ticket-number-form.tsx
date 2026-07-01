@@ -11,9 +11,9 @@ import { Hash } from 'lucide-react'
 import { useEffect } from 'react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
+import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
 import { SettingsSection } from '~/components/global/settings-page'
 import { ConstantInputAdapter } from '~/components/workflow/ui/input-editor/constant-input-adapter'
-import { VarEditorField, VarEditorFieldRow } from '~/components/workflow/ui/input-editor/var-editor'
 import { api } from '~/trpc/react'
 
 const formSchema = z.object({
@@ -178,9 +178,9 @@ export default function TicketNumberingSettings() {
         description='Configure how ticket numbers are generated.'>
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)}>
-            <VarEditorField className='p-0 [&_[data-slot=field-row-label]]:w-60'>
+            <FieldPanel className='p-0 [&_[data-slot=field-row-label]]:w-60'>
               {/* Prefix Settings */}
-              <VarEditorFieldRow
+              <FieldPanelRow
                 title='Use Prefix'
                 description='Enable to use a prefix for ticket numbers (e.g., SUP-0001)'
                 type={BaseType.BOOLEAN}
@@ -191,11 +191,11 @@ export default function TicketNumberingSettings() {
                   varType={BaseType.BOOLEAN}
                   fieldOptions={{ variant: 'switch' }}
                 />
-              </VarEditorFieldRow>
+              </FieldPanelRow>
 
               {form.watch('usePrefix') && (
                 <>
-                  <VarEditorFieldRow
+                  <FieldPanelRow
                     title='Prefix Text'
                     description='Short text to prefix the ticket number (e.g., SUP)'
                     type={BaseType.STRING}
@@ -206,9 +206,9 @@ export default function TicketNumberingSettings() {
                       varType={BaseType.STRING}
                       placeholder='SUP'
                     />
-                  </VarEditorFieldRow>
+                  </FieldPanelRow>
 
-                  <VarEditorFieldRow
+                  <FieldPanelRow
                     title='Include Date'
                     description='Add date component to prefix (e.g., SUP2403-0001)'
                     type={BaseType.BOOLEAN}
@@ -219,10 +219,10 @@ export default function TicketNumberingSettings() {
                       varType={BaseType.BOOLEAN}
                       fieldOptions={{ variant: 'switch' }}
                     />
-                  </VarEditorFieldRow>
+                  </FieldPanelRow>
 
                   {form.watch('useDateInPrefix') && (
-                    <VarEditorFieldRow
+                    <FieldPanelRow
                       title='Date Format'
                       description='Format of the date component in the prefix'
                       type={BaseType.ENUM}
@@ -233,13 +233,13 @@ export default function TicketNumberingSettings() {
                         varType={BaseType.ENUM}
                         fieldOptions={{ enum: DATE_FORMAT_OPTIONS }}
                       />
-                    </VarEditorFieldRow>
+                    </FieldPanelRow>
                   )}
                 </>
               )}
 
               {/* Suffix Settings */}
-              <VarEditorFieldRow
+              <FieldPanelRow
                 title='Use Suffix'
                 description='Enable to use a suffix for ticket numbers (e.g., 0001-SUP)'
                 type={BaseType.BOOLEAN}
@@ -250,10 +250,10 @@ export default function TicketNumberingSettings() {
                   varType={BaseType.BOOLEAN}
                   fieldOptions={{ variant: 'switch' }}
                 />
-              </VarEditorFieldRow>
+              </FieldPanelRow>
 
               {form.watch('useSuffix') && (
-                <VarEditorFieldRow
+                <FieldPanelRow
                   title='Suffix Text'
                   description='Text to append after the ticket number'
                   type={BaseType.STRING}
@@ -264,11 +264,11 @@ export default function TicketNumberingSettings() {
                     varType={BaseType.STRING}
                     placeholder='SUP'
                   />
-                </VarEditorFieldRow>
+                </FieldPanelRow>
               )}
 
               {/* Number Format */}
-              <VarEditorFieldRow
+              <FieldPanelRow
                 title='Padding Length'
                 description='Number of digits to pad the numeric part (e.g., 4 for 0001)'
                 type={BaseType.NUMBER}
@@ -279,9 +279,9 @@ export default function TicketNumberingSettings() {
                   varType={BaseType.NUMBER}
                   placeholder='4'
                 />
-              </VarEditorFieldRow>
+              </FieldPanelRow>
 
-              <VarEditorFieldRow
+              <FieldPanelRow
                 title='Separator'
                 description='Character(s) to separate parts (e.g., -, ., _)'
                 type={BaseType.STRING}
@@ -292,8 +292,8 @@ export default function TicketNumberingSettings() {
                   varType={BaseType.STRING}
                   placeholder='-'
                 />
-              </VarEditorFieldRow>
-            </VarEditorField>
+              </FieldPanelRow>
+            </FieldPanel>
 
             {/* Preview Section */}
             <div className='mt-6 rounded-xl border bg-primary-100/30 p-4'>

@@ -21,9 +21,9 @@ import { AlertTriangle, Brain, CheckCircle, Info, Lightbulb } from 'lucide-react
 import { useMemo } from 'react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
+import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
 import { SettingsSection } from '~/components/global/settings-page'
 import { AiModelPicker, type ModelPickerItem } from '~/components/pickers/ai-model-picker'
-import { VarEditorField, VarEditorFieldRow } from '~/components/workflow/ui/input-editor/var-editor'
 import { api } from '~/trpc/react'
 
 /**
@@ -195,8 +195,8 @@ export function EmbeddingSettingsSection({
             }
             description='Select an embedding model for vector search.'>
             {/* Model Selection */}
-            <VarEditorField className='p-0 [&_[data-slot=field-row-label]]:w-60'>
-              <VarEditorFieldRow
+            <FieldPanel className='p-0' resizeId='dataset-settings' defaultLabelWidth={240}>
+              <FieldPanelRow
                 title='Embedding Model'
                 description='Select a text embedding model from your configured providers'>
                 <FormField
@@ -219,11 +219,11 @@ export function EmbeddingSettingsSection({
                     </FormItem>
                   )}
                 />
-              </VarEditorFieldRow>
+              </FieldPanelRow>
 
               {/* Dimension selector - only show if model supports configurable dimensions */}
               {hasConfigurableDimensions && (
-                <VarEditorFieldRow
+                <FieldPanelRow
                   title='Embedding Dimensions'
                   description={
                     dimensionRule?.help ||
@@ -253,9 +253,9 @@ export function EmbeddingSettingsSection({
                       </FormItem>
                     )}
                   />
-                </VarEditorFieldRow>
+                </FieldPanelRow>
               )}
-            </VarEditorField>
+            </FieldPanel>
 
             {/* Warning for dimension changes on existing datasets */}
             {dimensionChanged && (

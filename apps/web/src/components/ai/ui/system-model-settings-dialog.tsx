@@ -17,8 +17,8 @@ import { toastError } from '@auxx/ui/components/toast'
 import { Settings2 } from 'lucide-react'
 import type React from 'react'
 import { useState } from 'react'
+import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
 import { AiModelPicker, type ModelPickerItem } from '~/components/pickers/ai-model-picker'
-import { VarEditorField, VarEditorFieldRow } from '~/components/workflow/ui/input-editor/var-editor'
 import { api } from '~/trpc/react'
 
 /**
@@ -73,7 +73,7 @@ interface SystemModelSettingsDialogProps {
 
 /**
  * Dialog for configuring system-wide default models per ModelType
- * Uses VarEditorField pattern similar to entity-instance-dialog.tsx
+ * Uses FieldPanel pattern similar to entity-instance-dialog.tsx
  */
 export function SystemModelSettingsDialog({
   trigger,
@@ -154,9 +154,9 @@ export function SystemModelSettingsDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <VarEditorField orientation='responsive'>
+        <FieldPanel orientation='responsive' breakpoint='md' resizeId='ai-system-model'>
           {MODEL_TYPE_CONFIG.map(({ type, label, description }) => (
-            <VarEditorFieldRow key={type} title={label} description={description}>
+            <FieldPanelRow key={type} title={label} description={description}>
               {unifiedModelData ? (
                 <AiModelPicker
                   data={unifiedModelData}
@@ -172,9 +172,9 @@ export function SystemModelSettingsDialog({
               ) : (
                 <Skeleton className='mt-2 h-5 w-25' />
               )}
-            </VarEditorFieldRow>
+            </FieldPanelRow>
           ))}
-        </VarEditorField>
+        </FieldPanel>
 
         <DialogFooter>
           <Button variant='ghost' size='sm' onClick={() => setOpen(false)} disabled={isPending}>

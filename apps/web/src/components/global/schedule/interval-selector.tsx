@@ -14,7 +14,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@auxx/ui/components/select'
-import { VarEditorField } from '~/components/workflow/ui/input-editor/var-editor'
+import { FieldPanel } from '~/components/global/forms/field-panel'
 
 export type Interval = 'minutes' | 'hours' | 'days' | 'weeks'
 
@@ -40,7 +40,7 @@ interface IntervalSelectorProps {
 
 /**
  * Inline [Unit] [Number] selector matching the workflow scheduled trigger
- * look. Uses VarEditorField for the container styling and NumberInput +
+ * look. Uses FieldPanel for the container styling and NumberInput +
  * NumberInputArrows for the value input — no ReactFlow context required.
  */
 export function IntervalSelector({
@@ -52,7 +52,7 @@ export function IntervalSelector({
 }: IntervalSelectorProps) {
   const minValue = minIntervalValue(interval, minMinutes)
   return (
-    <VarEditorField className='py-0 pe-0 ps-0.5'>
+    <FieldPanel className='py-0 pe-0 ps-0.5'>
       <div className='flex flex-row items-center gap-2'>
         <Select value={interval} onValueChange={(v) => onIntervalChange(v as Interval)}>
           <SelectTrigger size='sm' className='w-24'>
@@ -77,6 +77,6 @@ export function IntervalSelector({
           </NumberInput>
         </div>
       </div>
-    </VarEditorField>
+    </FieldPanel>
   )
 }

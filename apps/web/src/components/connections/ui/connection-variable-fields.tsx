@@ -7,8 +7,8 @@ import { FieldType } from '@auxx/database/enums'
 import type { FieldOptions } from '@auxx/lib/field-values/client'
 import { mapFieldTypeToBaseType } from '@auxx/lib/workflow-engine/client'
 import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
+import { FieldPanelRow } from '~/components/global/forms/field-panel'
 import { BaseType } from '~/components/workflow/types'
-import { VarEditorFieldRow } from '~/components/workflow/ui/input-editor/var-editor'
 import { isFieldVisible } from './connection-variable-validation'
 
 interface ConnectionVariableFieldsProps {
@@ -73,7 +73,7 @@ function triggerPropsFor(v: ConnectionVariable) {
  * Connection-variable rows + optional bearer-token row, shared by the curated connect dialog
  * and the template dialog's fields step. Each row renders the control matching its platform
  * `FieldType` (text/number/checkbox/select), masks `secret` fields, and respects
- * `displayOptions.show` visibility. Render inside a `VarEditorField`.
+ * `displayOptions.show` visibility. Render inside a `FieldPanel`.
  */
 export function ConnectionVariableFields({
   variables,
@@ -92,7 +92,7 @@ export function ConnectionVariableFields({
       {variables
         .filter((variable) => isFieldVisible(variable, values))
         .map((variable) => (
-          <VarEditorFieldRow
+          <FieldPanelRow
             key={variable.key}
             title={variable.label}
             description={variable.description}
@@ -114,11 +114,11 @@ export function ConnectionVariableFields({
                 variable.secret && savedSecrets?.has(variable.key) ? HIDDEN_VALUE : undefined
               }
             />
-          </VarEditorFieldRow>
+          </FieldPanelRow>
         ))}
 
       {showToken && (
-        <VarEditorFieldRow
+        <FieldPanelRow
           title='Token'
           type={BaseType.STRING}
           showIcon
@@ -134,7 +134,7 @@ export function ConnectionVariableFields({
             disabled={disabled}
             revertValue={tokenSaved ? HIDDEN_VALUE : undefined}
           />
-        </VarEditorFieldRow>
+        </FieldPanelRow>
       )}
     </>
   )

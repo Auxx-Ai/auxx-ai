@@ -12,8 +12,8 @@ import { AlertTriangle, Braces, Play } from 'lucide-react'
 import { type ReactNode, useMemo, useState } from 'react'
 import { topLevelArgs } from '~/components/agents/ui/detail/bindings/tool-args'
 import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
+import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
 import { CodeEditor, CodeLanguage } from '~/components/workflow/ui/code-editor'
-import { VarEditorField, VarEditorFieldRow } from '~/components/workflow/ui/input-editor/var-editor'
 import { argToFieldType } from '~/lib/agents/bindings/arg-to-field-type'
 import type { RouterOutputs } from '~/trpc/react'
 import { api } from '~/trpc/react'
@@ -123,11 +123,11 @@ export function McpToolRunPanel({ serverId, tool, onResult }: McpToolRunPanelPro
         toolArgs.length === 0 ? (
           <p className='px-2 py-3 text-muted-foreground text-xs'>This tool takes no inputs.</p>
         ) : (
-          <VarEditorField className='p-0'>
+          <FieldPanel className='p-0'>
             {toolArgs.map((arg) => {
               const mapped = argToFieldType(arg.schema)
               return (
-                <VarEditorFieldRow
+                <FieldPanelRow
                   key={arg.name}
                   title={arg.name}
                   description={arg.schema.description}
@@ -149,10 +149,10 @@ export function McpToolRunPanel({ serverId, tool, onResult }: McpToolRunPanelPro
                       onChange={(e) => setArg(arg.name, parseLooseJson(e.target.value))}
                     />
                   )}
-                </VarEditorFieldRow>
+                </FieldPanelRow>
               )
             })}
-          </VarEditorField>
+          </FieldPanel>
         )
       ) : (
         <CodeEditor
