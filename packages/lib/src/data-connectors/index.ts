@@ -102,6 +102,7 @@ export {
   projectConnectorOwnedTargets,
   removeMapping,
   removeStream,
+  resolveSoleAppConnection,
   setStreamRequestConfig,
   setStreamSchema,
   updateConnector,

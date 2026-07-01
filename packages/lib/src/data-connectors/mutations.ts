@@ -5,6 +5,7 @@
 // re-registration is driven from create/update (pause/resume is a `status` patch
 // through update) so a cadence or lifecycle change is reflected in BullMQ immediately.
 
+import { listCredentials } from '@auxx/credentials/store'
 import { type CatalogDataConnector, type Database, schema, type Transaction } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import {
@@ -396,6 +397,28 @@ async function buildTemplateFieldMappings(
 }
 
 /**
+ * Resolve the connection to auto-bind a fresh app connector to. Returns the id ONLY
+ * when the org has exactly one org-scoped connection for this app installation — the
+ * unambiguous case worth auto-linking. Zero (nothing to link) or two-plus (the user
+ * must disambiguate) → `null`, so the connector is created unbound. Personal
+ * (user-scoped) connections are excluded: a background sync must bind a shared org
+ * connection so it doesn't break for other members.
+ */
+export async function resolveSoleAppConnection(
+  organizationId: string,
+  appInstallationId: string
+): Promise<string | null> {
+  const result = await listCredentials({
+    organizationId,
+    kind: 'app',
+    appInstallationId,
+    userId: null,
+  })
+  if (result.isErr()) return null
+  return result.value.length === 1 ? result.value[0].id : null
+}
+
+/**
  * Create a connector from an installed app's catalog declaration (create-sync-flow
  * §3.1, Tier 1). Mirrors {@link createConnectorFromTemplate}: an `app:<slug>`
  * connector + one pre-filled stream per declared catalog stream, each with the
@@ -421,9 +444,21 @@ export async function createConnectorFromAppCatalog(
   input: Omit<CreateConnectorInput, 'definitionKind' | 'templateId' | 'config'>,
   catalog: CatalogDataConnector
 ): Promise<DataConnectorRow> {
+  // Auto-link the connection when the connector needs one and the org has EXACTLY one
+  // for this app installation — the unambiguous case (e.g. a single Shopify account
+  // already connected). Zero (nothing to link) or two-plus (ambiguous — the user must
+  // choose) leaves it unbound, so the Connect step prompts a pick. Only when the caller
+  // didn't already pass a credential.
+  const credentialId =
+    input.credentialId ??
+    (catalog.requiresConnection && input.appInstallationId
+      ? await resolveSoleAppConnection(organizationId, input.appInstallationId)
+      : null)
+
   const connector = await createConnector(db, organizationId, {
     ...input,
     definitionKind: 'app',
+    credentialId,
   })
 
   // The app slug namespaces the late-bound `@app:` field refs the owned mappings carry
