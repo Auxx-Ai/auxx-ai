@@ -2,10 +2,19 @@
 
 // App-registered custom field provisioning
 export {
+  type AppFieldReconcileAction,
+  type AppFieldReconcileError,
+  type AppFieldUpdateChanges,
+  applyInstallationCatalog,
+  computeAppFieldReconcileActions,
+  type ExistingAppFieldRow,
   getInstallationCatalog,
   type ProvisionContext,
+  type ProvisionOutcome,
   provisionAppField,
   provisionAppFields,
+  type ReconcileResult,
+  reconcileAppFields,
   resolveEntityDefinitionIdByKind,
 } from './app-field-provisioning'
 // Uniqueness checks

@@ -9,6 +9,7 @@ export default defineConfig({
       './apps/web/vitest.config.ts',
       './packages/billing/vitest.config.ts',
       './packages/lib/vitest.config.ts',
+      './packages/services/vitest.config.ts',
       './packages/workflow-nodes/vitest.config.ts',
       './packages/database/vitest.config.ts',
       './packages/credentials/vitest.config.ts',

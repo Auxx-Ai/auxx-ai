@@ -241,6 +241,7 @@ describe('buildContributingFieldBindings', () => {
           systemAttribute: null,
           type: 'TEXT',
           appFieldKey: 'customerId',
+          appSlug: 'shopify',
           isIdentity: true,
         },
       ]
@@ -271,6 +272,7 @@ describe('buildContributingFieldBindings', () => {
           systemAttribute: null,
           type: 'TEXT',
           appFieldKey: 'customerId',
+          appSlug: 'shopify',
           isIdentity: false,
         },
         {
@@ -279,6 +281,7 @@ describe('buildContributingFieldBindings', () => {
           systemAttribute: null,
           type: 'TEXT',
           appFieldKey: 'customerId',
+          appSlug: 'shopify',
           isIdentity: true,
         },
       ]
@@ -304,6 +307,7 @@ describe('buildContributingFieldBindings', () => {
           systemAttribute: null,
           type: 'TEXT',
           appFieldKey: 'storeDomain',
+          appSlug: 'shopify',
           isIdentity: false,
         },
       ]
@@ -311,6 +315,52 @@ describe('buildContributingFieldBindings', () => {
     expect(bindings).toHaveLength(1)
     expect(bindings[0]!.targetFieldRef).toBe('def_contact:@app:shopify:storeDomain')
     expect(bindings[0]!.identityRole).toBeUndefined()
+  })
+
+  it('does NOT match a targetAppField whose row belongs to a DIFFERENT app (slug scope)', () => {
+    // The org also runs Stripe, which provisioned its own `customerId` on contact.
+    // Shopify's binder (appSlug 'shopify') must never bind to the Stripe row.
+    const bindings = buildContributingFieldBindings(
+      'def_contact',
+      'shopify',
+      '',
+      [{ sourceFieldKey: 'shopify_id', targetAppField: 'customerId' }],
+      [{ fieldKey: 'shopify_id', sourcePath: 'id', type: 'TEXT', name: 'Shopify ID' }],
+      [
+        {
+          id: 'cf_cust_stripe',
+          name: 'Stripe customer ID',
+          systemAttribute: null,
+          type: 'TEXT',
+          appFieldKey: 'customerId',
+          appSlug: 'stripe',
+          isIdentity: true,
+        },
+      ]
+    )
+    expect(bindings).toHaveLength(0)
+  })
+
+  it('does NOT match a targetAppField whose row has a null appSlug (fails closed)', () => {
+    const bindings = buildContributingFieldBindings(
+      'def_contact',
+      'shopify',
+      '',
+      [{ sourceFieldKey: 'shopify_id', targetAppField: 'customerId' }],
+      [{ fieldKey: 'shopify_id', sourcePath: 'id', type: 'TEXT', name: 'Shopify ID' }],
+      [
+        {
+          id: 'cf_cust_legacy',
+          name: 'Shopify customer ID',
+          systemAttribute: null,
+          type: 'TEXT',
+          appFieldKey: 'customerId',
+          appSlug: null,
+          isIdentity: true,
+        },
+      ]
+    )
+    expect(bindings).toHaveLength(0)
   })
 
   it('drops a targetAppField binding whose appFieldKey is not declared', () => {

@@ -39,7 +39,7 @@ vi.mock('@auxx/services/app-connections', () => ({
 
 vi.mock('@auxx/services/custom-fields', () => ({
   getInstallationCatalog: async () => ({}),
-  provisionAppFields: async () => undefined,
+  reconcileAppFields: async () => ({ created: 0, updated: 0, orphaned: 0, errors: [] }),
 }))
 
 vi.mock('../../events', () => ({

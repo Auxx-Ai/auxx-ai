@@ -3,7 +3,7 @@
 import { type CatalogPayload, database, schema, type Transaction } from '@auxx/database'
 import { and, eq, isNull } from 'drizzle-orm'
 import { err, ok } from 'neverthrow'
-import { provisionAppFields } from '../custom-fields/app-field-provisioning'
+import { applyInstallationCatalog } from '../custom-fields/app-field-provisioning'
 import { fromDatabase } from '../shared/utils'
 
 /**
@@ -49,13 +49,16 @@ export async function rollForwardInstallations(params: { appId: string; deployme
         })
 
       for (const installation of updated) {
-        await provisionAppFields(
-          deployment.catalog as CatalogPayload | null,
-          'installation',
+        // Reconcile the new catalog's custom fields per installation (installation-
+        // AND connection-scoped, for any existing org-scoped connections). Best-effort
+        // warm-up — the authoritative reconcile runs at connector sync setup and parks
+        // visibly on any error, so a bad field must not abort the roll-forward txn.
+        await applyInstallationCatalog(
           {
             appInstallationId: installation.id,
             organizationId: installation.organizationId,
             appSlug: deployment.app.slug,
+            catalog: deployment.catalog as CatalogPayload | null,
           },
           tx
         )
