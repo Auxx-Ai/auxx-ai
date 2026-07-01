@@ -45,6 +45,8 @@ interface ConnectorDetailTabsProps {
   connector: Connector
   /** On mobile (no dock) the Runs panel is appended as a tab/section. */
   mobileRunsPanel?: React.ReactNode
+  /** Parked-sample review banner — pinned under the tabs strip, above the resync banner. */
+  sampleReviewBanner?: React.ReactNode
   /** Pending mapping-edit re-sync banner — pinned directly under the tabs strip. */
   resyncBanner?: React.ReactNode
 }
@@ -61,6 +63,7 @@ interface ConnectorDetailTabsProps {
 export function ConnectorDetailTabs({
   connector,
   mobileRunsPanel,
+  sampleReviewBanner,
   resyncBanner,
 }: ConnectorDetailTabsProps) {
   const [tab, setTab] = useQueryState('tab', { defaultValue: 'connection' })
@@ -167,6 +170,7 @@ export function ConnectorDetailTabs({
               </Tabs>
             }>
             <div className='flex h-full flex-col'>
+              {sampleReviewBanner}
               {resyncBanner}
               <div className='relative min-h-0 flex-1'>
                 <ScrollArea

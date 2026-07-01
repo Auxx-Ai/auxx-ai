@@ -46,11 +46,11 @@ export function SampleReviewBanner({
       onClose={() => setDismissed(true)}
       action={
         <div className='flex items-center gap-2'>
-          <Button variant='outline' size='sm' onClick={onEditMappings}>
+          <Button variant='outline' size='xs' onClick={onEditMappings}>
             <Waypoints />
             Edit mappings
           </Button>
-          <Button size='sm' loading={isSyncing} loadingText='Starting…' onClick={onSyncEverything}>
+          <Button size='xs' loading={isSyncing} loadingText='Starting…' onClick={onSyncEverything}>
             <RefreshCw />
             Sync everything
           </Button>

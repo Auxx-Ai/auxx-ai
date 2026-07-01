@@ -46,7 +46,7 @@ export function ConnectorResyncBanner({
       action={
         <Button
           variant='outline'
-          size='sm'
+          size='xs'
           loading={isBackfilling}
           loadingText='Backfilling...'
           onClick={onBackfill}>
