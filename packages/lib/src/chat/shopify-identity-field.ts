@@ -5,12 +5,16 @@ import { type Database, database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { toRecordId } from '@auxx/types/resource'
 import { and, eq, isNull } from 'drizzle-orm'
+import { getCachedEntityDefId } from '../cache'
 import { FieldValueService } from '../field-values/field-value-service'
+import { upsertRecordIdentity } from '../identity'
 
 const log = createScopedLogger('chat-shopify-identity-field')
 
 /** The app-stable field key the Shopify app registers (see auxxai-apps fields.ts). */
 const SHOPIFY_CUSTOMER_ID_FIELD_KEY = 'customerId'
+/** `RecordIdentity.source` — the Shopify app's slug. */
+const SHOPIFY_SOURCE = 'shopify'
 
 interface WriteShopifyCustomerIdInput {
   organizationId: string
@@ -123,5 +127,39 @@ export async function writeShopifyCustomerIdField(
     fieldId: field.id,
     value: shopifyCustomerId,
   })
+
+  // 5. Mirror into the reverse-lookup index. Converges with the connector on
+  //    the same (connection, appFieldKey) cell by construction. Best-effort —
+  //    a missed mirror never fails the passport write; reconcileRecordIdentities
+  //    is the backstop.
+  const contactDefId = await getCachedEntityDefId(organizationId, 'contact')
+  if (!contactDefId) {
+    log.warn('No entity definition for contact — skipping RecordIdentity mirror', {
+      organizationId,
+    })
+    return true
+  }
+  const mirrored = await upsertRecordIdentity(
+    {
+      organizationId,
+      entityInstanceId: contactId,
+      entityDefinitionId: contactDefId,
+      source: SHOPIFY_SOURCE,
+      appInstallationId: installation.id,
+      connectionId,
+      appFieldKey: SHOPIFY_CUSTOMER_ID_FIELD_KEY,
+      fieldId: field.id,
+      externalId: shopifyCustomerId,
+    },
+    db
+  )
+  if (!mirrored.ok) {
+    log.warn('Failed to mirror Shopify customerId into RecordIdentity', {
+      organizationId,
+      contactId,
+      error: mirrored.error.message,
+    })
+  }
+
   return true
 }

@@ -16,6 +16,8 @@ import type { TypedFieldValue } from '@auxx/types/field-value'
 import { stableHash } from '@auxx/utils/hash'
 import { and, eq, inArray, isNull, ne, or } from 'drizzle-orm'
 import { resolveConnectorFieldRef } from '../../agents/bindings/resolve'
+import { getCachedFieldMap } from '../../cache'
+import { upsertRecordIdentity } from '../../identity'
 import { toRecordId } from '../../resources/resource-id'
 import { buildWriteKeyToFieldId } from '../field-id-resolver'
 import {
@@ -155,7 +157,11 @@ async function buildWriteSet(
   record: ProjectedRecord,
   existingInstanceId: string | null,
   refToConcrete: Map<string, ResourceFieldId>
-): Promise<{ writeSet: Record<string, unknown>; managedFields: string[] }> {
+): Promise<{
+  writeSet: Record<string, unknown>
+  managedFields: string[]
+  identityFieldKeys: string[]
+}> {
   // managedFields stay keyed by the raw `targetFieldRef` — the same key space as
   // `record.fields`, `mergeByKey`, and the prior runs' stored `managedFields`
   // (used by the `connector_owned_only` ownership check below).
@@ -163,16 +169,27 @@ async function buildWriteSet(
   // Write-set keys are concrete field ids (`getFieldId(resolvedRef)`) — what
   // `setFieldValues`/`createEntity` expect (a bare uuid or systemAttribute).
   const writeSet: Record<string, unknown> = {}
+  // Concrete write-set keys of identity-flagged fields (`identityRole.kind ===
+  // 'externalId'`) resolved this run — used by the caller to mirror into
+  // RecordIdentity and to exclude from contributing provenance stamping.
+  const identityFieldKeys: string[] = []
 
   // Per-field merge strategy, derived from the binding entries (folded in from the
   // old parallel column). Keyed by raw `targetFieldRef`; unassigned drafts skipped.
   const mergeByKey = new Map<string, FieldMergeStrategy>()
+  // Identity-flagged refs (owned `isExternalId` or contributing `identity: true`
+  // target). Write-ownership rule below: fill-blank + drift-exempt (see
+  // computeDriftedInstances) + no-provenance (see stampContributingProvenance's
+  // caller) — enforced by the sink regardless of the mapping's own
+  // `mergeStrategy`, so a connector author can't misconfigure this away.
+  const identityRefs = new Set<string>()
   for (const fm of mapping.fieldMappings) {
-    if (fm.targetFieldRef != null && fm.mergeStrategy) {
-      mergeByKey.set(fm.targetFieldRef, fm.mergeStrategy)
-    }
+    if (fm.targetFieldRef == null) continue
+    if (fm.mergeStrategy) mergeByKey.set(fm.targetFieldRef, fm.mergeStrategy)
+    if (fm.identityRole?.kind === 'externalId') identityRefs.add(fm.targetFieldRef)
   }
-  const strategyFor = (key: string): FieldMergeStrategy => mergeByKey.get(key) ?? 'overwrite'
+  const strategyFor = (key: string): FieldMergeStrategy =>
+    identityRefs.has(key) ? 'fill_blank' : (mergeByKey.get(key) ?? 'overwrite')
 
   // Read current values once (only needed for fill_blank / connector_owned_only).
   const needsCurrent = managedFields.some((k) => {
@@ -192,6 +209,7 @@ async function buildWriteSet(
     const concrete = refToConcrete.get(rawRef)
     if (!concrete) continue // unresolved @app: ref — already recorded in resolveFieldRefs
     const fieldId = getFieldId(concrete)
+    if (identityRefs.has(rawRef)) identityFieldKeys.push(fieldId)
 
     if (strategy === 'overwrite') {
       writeSet[fieldId] = value
@@ -219,7 +237,7 @@ async function buildWriteSet(
     }
   }
 
-  return { writeSet, managedFields }
+  return { writeSet, managedFields, identityFieldKeys }
 }
 
 /**
@@ -261,6 +279,60 @@ async function stampContributingProvenance(
 }
 
 /**
+ * Mirror this run's identity-flagged writes into `RecordIdentity` — the
+ * write-through reverse-lookup index. Runs for BOTH owned and contributing
+ * mode (an owned Shopify order becomes a hub record keyed by its order id,
+ * same as a contributing contact's `customerId`) — one rule covers both,
+ * per the identity plan. Best-effort: a mirror failure is logged, never fails
+ * the sync — `reconcileRecordIdentities` is the drift backstop.
+ */
+async function mirrorIdentityWrites(
+  ctx: SyncCtx,
+  mapping: DecodedMapping,
+  instanceId: string,
+  externalId: string,
+  identityFieldKeys: string[]
+): Promise<void> {
+  if (identityFieldKeys.length === 0) return
+
+  const fieldMap = await getCachedFieldMap(ctx.orgId, mapping.entityDefinitionId)
+  for (const fieldId of identityFieldKeys) {
+    const field = fieldMap.get(fieldId)
+    if (!field) continue
+    if (!field.appSlug) {
+      logger.warn('identity field has no appSlug — skipping RecordIdentity mirror', {
+        connectorId: ctx.connector.id,
+        fieldId,
+        appFieldKey: field.appFieldKey,
+      })
+      continue
+    }
+    const mirrored = await upsertRecordIdentity(
+      {
+        organizationId: ctx.orgId,
+        entityInstanceId: instanceId,
+        entityDefinitionId: mapping.entityDefinitionId,
+        source: field.appSlug,
+        appInstallationId: field.appInstallationId,
+        connectionId: field.connectionId,
+        appFieldKey: field.appFieldKey,
+        fieldId: field.id,
+        externalId,
+      },
+      ctx.db
+    )
+    if (!mirrored.ok) {
+      logger.warn('Failed to mirror identity write into RecordIdentity', {
+        connectorId: ctx.connector.id,
+        mappingId: mapping.row.id,
+        fieldId,
+        error: mirrored.error.message,
+      })
+    }
+  }
+}
+
+/**
  * The set of bound instance ids for `mapping` whose `overwrite` cells have
  * DRIFTED — i.e. a `FieldValue.managedByConnectorId` that this connector stamped
  * on write is now cleared (someone hand-edited the cell in the grid) or owned by
@@ -293,10 +365,14 @@ async function computeDriftedInstances(
 
   // `overwrite` is the default when a binding carries no explicit mergeStrategy
   // (mirrors `strategyFor` in buildWriteSet), so an unset strategy counts here.
+  // Identity-flagged refs are excluded — the sink forces them to fill-blank
+  // (mirrors `strategyFor`'s override), so they never re-assert and can't drift.
   const overwriteRefs = mapping.fieldMappings
     .filter(
       (fm) =>
-        fm.targetFieldRef != null && (fm.mergeStrategy == null || fm.mergeStrategy === 'overwrite')
+        fm.targetFieldRef != null &&
+        fm.identityRole?.kind !== 'externalId' &&
+        (fm.mergeStrategy == null || fm.mergeStrategy === 'overwrite')
     )
     .map((fm) => fm.targetFieldRef as ResourceFieldId)
   if (overwriteRefs.length === 0) return new Set()
@@ -458,7 +534,7 @@ export const entitySink: EntitySink = {
     }
 
     // 3. Build the write set with per-field merge strategy.
-    const { writeSet, managedFields } = await buildWriteSet(
+    const { writeSet, managedFields, identityFieldKeys } = await buildWriteSet(
       ctx,
       mapping,
       record,
@@ -513,13 +589,18 @@ export const entitySink: EntitySink = {
     // 4b. Contributing mode — stamp per-cell provenance on the written values so
     //     the grid/drawer can show a "Synced by <connector>" marker. Owned mode
     //     skips this (column-grain provenance lives on CustomField.dataConnectorId).
+    //     Identity fields are excluded — no false "synced by connector" badge
+    //     over a value that may be chat-verified.
     if (mapping.targetMode === 'contributing' && instanceId) {
-      await stampContributingProvenance(
-        ctx,
-        mapping.entityDefinitionId,
-        instanceId,
-        Object.keys(writeSet)
-      )
+      const stampableKeys = Object.keys(writeSet).filter((key) => !identityFieldKeys.includes(key))
+      await stampContributingProvenance(ctx, mapping.entityDefinitionId, instanceId, stampableKeys)
+    }
+
+    // 4c. Mirror identity-flagged fields into RecordIdentity, regardless of
+    //     whether fill-blank actually wrote this run — the mirror stays in
+    //     sync with the (already-established) cell value either way.
+    if (instanceId) {
+      await mirrorIdentityWrites(ctx, mapping, instanceId, record.externalId, identityFieldKeys)
     }
 
     // 5. Upsert the binding — merge any new managed fields with prior ones

@@ -7,6 +7,7 @@ import {
   rotateSecrets,
   updateCredential,
 } from '@auxx/credentials/store'
+import { database, schema } from '@auxx/database'
 import {
   logger,
   mergeConnectionVariables,
@@ -14,7 +15,9 @@ import {
   safeSerializeMetadata,
 } from '@auxx/services/app-connections'
 import { getInstallationCatalog, provisionAppFields } from '@auxx/services/custom-fields'
+import { eq } from 'drizzle-orm'
 import { err, ok } from 'neverthrow'
+import { onCacheEvent } from '../../cache/invalidate'
 import { mergeManualConnectionEdit } from '../../connections/merge-manual-edit'
 import { triggerAppEvent } from '../events'
 import { resolveActiveInstallationId } from '../installations/resolve-active-installation'
@@ -296,11 +299,20 @@ export async function saveAppConnection(
   if (userId === null) {
     try {
       const catalog = await getInstallationCatalog(appInstallationId)
+      const appRow = await database.query.App.findFirst({
+        where: eq(schema.App.id, appId),
+        columns: { slug: true },
+      })
       await provisionAppFields(catalog, 'connection', {
         appInstallationId,
         organizationId,
         connectionId: created.id,
+        appSlug: appRow?.slug ?? appId,
       })
+      // Bust the customFields org cache immediately — otherwise a freshly
+      // provisioned field can be unresolved by the @app: rail for up to the
+      // 24h TTL, silently dropping the connector's/chat's first write.
+      await onCacheEvent('custom-field.created', { orgId: organizationId })
     } catch (error) {
       logger.error('Failed to provision connection-scoped app fields', {
         error: error instanceof Error ? error.message : String(error),

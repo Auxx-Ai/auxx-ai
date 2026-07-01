@@ -106,6 +106,13 @@ export interface CreateCustomFieldInput {
   appFieldKey?: string
   /** Owning data connector. Set => connector-provisioned (owned-mode schema). */
   dataConnectorId?: string
+  /** Declared `identity: true` in the app's `defineFields` — an external-system
+   *  id, not a plain attribute. Drives the sink write-ownership rule + the
+   *  `RecordIdentity` mirror. Default false. */
+  isIdentity?: boolean
+  /** App slug (e.g. 'shopify') for app-owned fields — the `RecordIdentity.source`
+   *  value, supplied without joining AppInstallation. */
+  appSlug?: string
 }
 
 /**
@@ -228,6 +235,8 @@ export async function createCustomField(input: CreateCustomFieldInput, tx?: Tran
     connectionId,
     appFieldKey,
     dataConnectorId,
+    isIdentity,
+    appSlug,
   } = input
 
   // Use provided transaction or default to global database
@@ -500,6 +509,8 @@ export async function createCustomField(input: CreateCustomFieldInput, tx?: Tran
         connectionId: connectionId ?? null,
         appFieldKey: appFieldKey ?? null,
         dataConnectorId: dataConnectorId ?? null,
+        isIdentity: isIdentity ?? false,
+        appSlug: appSlug ?? null,
         updatedAt: new Date(),
         ...capabilityFlags,
       })

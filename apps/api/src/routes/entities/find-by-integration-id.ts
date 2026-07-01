@@ -4,18 +4,23 @@
  * Lambda SDK callback for `ctx.entities.findByIntegrationId`.
  *
  * Authorized via the `entities` callback token scope minted by
- * `prepareLambdaContext` for AI tool invocations. Looks up an
- * `EntityInstance` by `(orgId, kind, integrationSource, externalId)` and
- * returns the auxx recordId (`<defId>:<instId>`) plus the display name.
+ * `prepareLambdaContext` for AI tool invocations. Looks up a record by
+ * `(orgId, kind, integrationSource, externalId)` and returns the auxx
+ * recordId (`<defId>:<instId>`) plus the display name.
  *
- * Schema dependency: `EntityInstance.integrationSource` + `externalId` +
- * composite index — already shipped in the Wedge A migration.
+ * Dual-read (plans/data-connectors/v7/option-3-multi-source-identity-store-plan.md
+ * Phase 1): tries the `RecordIdentity` index first, then falls back to the
+ * legacy `EntityInstance.integrationSource`/`externalId` columns. The index
+ * has no writers yet (Phases 2-4), so today this always falls through — the
+ * dual-read is what lets those later phases light this route up with zero
+ * further changes here. Drop the fallback once the Phase-6 backfill lands.
  *
  * See plans/kopilot/apps/credentials.md §3.6 and refs.md §4.1.
  */
 
 import { database, schema } from '@auxx/database'
 import { getCachedEntityDefId } from '@auxx/lib/cache'
+import { findRecordByIdentity } from '@auxx/lib/identity'
 import { and, eq } from 'drizzle-orm'
 import { Hono } from 'hono'
 import { z } from 'zod'
@@ -53,6 +58,16 @@ entities.post('/find-by-integration-id', async (c) => {
   const defId = await getCachedEntityDefId(auth.organizationId, kind)
   if (!defId) {
     return c.json({ entity: null })
+  }
+
+  const indexed = await findRecordByIdentity({
+    organizationId: auth.organizationId,
+    entityDefinitionId: defId,
+    source,
+    externalId,
+  })
+  if (indexed) {
+    return c.json({ entity: indexed })
   }
 
   const instance = await database.query.EntityInstance.findFirst({

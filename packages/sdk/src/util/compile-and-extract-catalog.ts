@@ -183,6 +183,9 @@ export interface CatalogAppField {
     computed?: boolean
     hidden?: boolean
   }
+  /** This field is an external-system identity (e.g. Shopify `customerId`) —
+   *  drives the sink write-ownership rule + the `RecordIdentity` mirror. */
+  identity?: boolean
 }
 
 /** One source field declaration projected from a data connector's stream. */
@@ -661,6 +664,7 @@ export async function compileAndExtractCatalog(): Promise<
       relationship: field.relationship,
       calc: field.calc,
       capabilities: field.capabilities,
+      identity: field.identity,
     })
   }
 
@@ -874,6 +878,7 @@ interface RawAppField {
   relationship?: { targetEntity: string; cardinality: 'one' | 'many' }
   calc?: { expression: string }
   capabilities?: CatalogAppField['capabilities']
+  identity?: boolean
 }
 
 interface RawConnectorFieldDecl {

@@ -27,6 +27,7 @@ export async function rollForwardInstallations(params: { appId: string; deployme
           eq(schema.AppDeployment.id, deploymentId),
           eq(schema.AppDeployment.appId, appId)
         ),
+        with: { app: { columns: { slug: true } } },
       })
       if (!deployment) {
         throw new Error(`Deployment not found: ${deploymentId}`)
@@ -51,7 +52,11 @@ export async function rollForwardInstallations(params: { appId: string; deployme
         await provisionAppFields(
           deployment.catalog as CatalogPayload | null,
           'installation',
-          { appInstallationId: installation.id, organizationId: installation.organizationId },
+          {
+            appInstallationId: installation.id,
+            organizationId: installation.organizationId,
+            appSlug: deployment.app.slug,
+          },
           tx
         )
       }

@@ -113,6 +113,9 @@ export const shopifyRouter = createTRPCRouter({
       if (installResult.isOk()) {
         installationId = installResult.value.installation.id
         await onCacheEvent('app.installed', { orgId: organizationId })
+        // Installation-scoped app fields (e.g. customerId) were just
+        // provisioned — bust the customFields cache now, not on its TTL.
+        await onCacheEvent('custom-field.created', { orgId: organizationId })
       } else if (installResult.error.code === 'APP_ALREADY_INSTALLED') {
         const installedApps = await getOrgCache().get(organizationId, 'installedApps')
         installationId =
