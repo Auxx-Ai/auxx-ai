@@ -198,8 +198,17 @@ export function buildContributingFieldBindings(
     if (!sourceField || (prefix && !sourceField.sourcePath.startsWith(prefix))) continue
 
     if (targetAppField) {
-      const appField = defFields.find((f) => f.appFieldKey === targetAppField)
-      if (!appField) continue
+      // App fields are CONNECTION-SCOPED — an org with multiple connections of the same
+      // app has one `CustomField` per connection (e.g. a `customerId` per Shopify store),
+      // so matching by `appFieldKey` alone is ambiguous. `identity` is a manifest constant
+      // across a field's connection-scoped copies, so a stale pre-feature copy
+      // (`isIdentity=false`) must not mask a correctly-stamped one: treat the app field as
+      // identity iff ANY copy is. The concrete field is resolved connection-scoped at sync
+      // (the late-bound `@app:` ref), so this branch only needs the flag — never `.find()`
+      // the first arbitrary row and read its label.
+      const matches = defFields.filter((f) => f.appFieldKey === targetAppField)
+      if (matches.length === 0) continue
+      const isIdentityField = matches.some((f) => f.isIdentity)
       bindings.push(
         bindSourceToAppField(
           entityDefinitionId,
@@ -207,7 +216,7 @@ export function buildContributingFieldBindings(
           targetAppField,
           prefix,
           sourceField,
-          appField.isIdentity ? { kind: 'externalId' } : undefined
+          isIdentityField ? { kind: 'externalId' } : undefined
         )
       )
       continue
