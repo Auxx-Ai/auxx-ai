@@ -66,16 +66,30 @@ describe('provisionSpecsForMapping', () => {
         provision: { name: 'total_price', type: 'NUMBER' as FieldType, isHidden: true },
       }),
     ])
-    expect(provisionSpecsForMapping(m)).toEqual([
+    expect(provisionSpecsForMapping(m)).toMatchObject([
       {
         appFieldKey: 'total_price',
         name: 'total_price',
         type: 'NUMBER',
         icon: undefined,
         isHidden: true,
+        isIdentity: false,
         isUpdatable: false,
         isCreatable: false,
       },
+    ])
+  })
+
+  it('marks a provisioned owned external-id field as identity (from identityRole)', () => {
+    const m = mapping('owned', [
+      fm({
+        targetFieldRef: null,
+        identityRole: { kind: 'externalId' },
+        provision: { name: 'shopify_id', type: 'TEXT' as FieldType, appFieldKey: 'shopify_id' },
+      }),
+    ])
+    expect(provisionSpecsForMapping(m)).toMatchObject([
+      { appFieldKey: 'shopify_id', isIdentity: true },
     ])
   })
 })

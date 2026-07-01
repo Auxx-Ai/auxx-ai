@@ -26,6 +26,7 @@ import { UnifiedCrudHandler } from '../resources/crud/unified-handler'
 import { invalidateSnapshots } from '../snapshot'
 import type { SliceResult, SyncRunCounters, SyncSliceCtx, SyncSource } from '../sync-core/contracts'
 import { runAsyncExportSlice } from './async-export'
+import { flattenConnectionMeta } from './connection-meta'
 import { runConnectorSlice } from './connector-slice-loop'
 import { reconcileManagedMarkers, reconcileOrphans } from './reconciliation'
 import { resolveRelationships } from './relationship-pass'
@@ -392,7 +393,7 @@ class ConnectorStreamSyncSource implements ConnectorSyncSource {
       })
       return null
     }
-    return result.value.metadata
+    return flattenConnectionMeta(result.value)
   }
 }
 
