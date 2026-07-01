@@ -60,6 +60,11 @@ jobs:
           fi
 
       - uses: actions/checkout@v6
+        with:
+          # Full history + tags so the post-publish release commit can rebase
+          # onto the latest main before pushing, and so "Check tag availability"
+          # sees remote tags (see "Commit version bump & tag").
+          fetch-depth: 0
 
       - uses: pnpm/action-setup@v4
 
@@ -150,6 +155,12 @@ jobs:
             exit 1
           fi
 
+      # npm has already published by this point (irreversible), so the release
+      # commit + tag MUST land on main — otherwise main's package.json stays
+      # behind npm and every future run re-bumps to the same taken version and
+      # dies on "cannot publish over <version>". main may have advanced since
+      # checkout, so rebase the one-line bump onto the latest main and push
+      # tag + branch ATOMICALLY (never an orphaned tag), retrying on races.
       - name: Commit version bump & tag
         if: ${{ !inputs.dry-run }}
         run: |
@@ -157,8 +168,23 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add packages/chat/package.json
           git commit -m "chore(chat): release @auxx/chat@${CHAT_VERSION}"
-          git tag "chat-v${CHAT_VERSION}"
-          git push origin main --tags
+          for attempt in 1 2 3 4 5; do
+            git fetch origin main
+            if ! git rebase origin/main; then
+              git rebase --abort || true
+              echo "::error::Cannot rebase the version bump onto main (conflict on package.json). Reconcile manually."
+              exit 1
+            fi
+            git tag -f "chat-v${CHAT_VERSION}"
+            if git push --atomic origin main "refs/tags/chat-v${CHAT_VERSION}"; then
+              echo "Pushed release commit + tag chat-v${CHAT_VERSION} (attempt ${attempt})"
+              exit 0
+            fi
+            echo "Push rejected (main moved); retrying (${attempt}/5)…"
+            sleep 3
+          done
+          echo "::error::Failed to push release commit + tag after 5 attempts. npm has ${CHAT_VERSION} but main is behind — reconcile packages/chat/package.json to ${CHAT_VERSION} on main before the next run."
+          exit 1
 
       - name: Create GitHub Release
         if: ${{ !inputs.dry-run }}

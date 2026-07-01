@@ -2,7 +2,13 @@
 
 import { getQueue } from '../jobs/queues'
 import type { Queues } from '../jobs/queues/types'
-import type { QueueMetricsResponse, QueueMetricsTimeRange, QueueRunsResponse } from './types'
+import type {
+  CleanableJobState,
+  QueueMetricsResponse,
+  QueueMetricsTimeRange,
+  QueueRunsResponse,
+  QueueScheduler,
+} from './types'
 
 /** Number of minutes of data to fetch per time range */
 const POINTS_NEEDED: Record<QueueMetricsTimeRange, number> = {
@@ -26,17 +32,27 @@ export async function getQueueMetrics(
   const pointsNeeded = POINTS_NEEDED[timeRange]
   const samplingFactor = Math.ceil(pointsNeeded / TARGET_VISUALIZATION_POINTS)
 
-  const [workers, failedMetrics, completedMetrics, waiting, active, delayed, failed, completed] =
-    await Promise.all([
-      queue.getWorkers(),
-      queue.getMetrics('failed', 0, pointsNeeded - 1),
-      queue.getMetrics('completed', 0, pointsNeeded - 1),
-      queue.getWaitingCount(),
-      queue.getActiveCount(),
-      queue.getDelayedCount(),
-      queue.getFailedCount(),
-      queue.getCompletedCount(),
-    ])
+  const [
+    workers,
+    failedMetrics,
+    completedMetrics,
+    waiting,
+    active,
+    delayed,
+    failed,
+    completed,
+    paused,
+  ] = await Promise.all([
+    queue.getWorkers(),
+    queue.getMetrics('failed', 0, pointsNeeded - 1),
+    queue.getMetrics('completed', 0, pointsNeeded - 1),
+    queue.getWaitingCount(),
+    queue.getActiveCount(),
+    queue.getDelayedCount(),
+    queue.getFailedCount(),
+    queue.getCompletedCount(),
+    queue.isPaused(),
+  ])
 
   const totalJobs = failed + completed
   const failureRate = totalJobs > 0 ? Number(((failed / totalJobs) * 100).toFixed(1)) : 0
@@ -54,6 +70,7 @@ export async function getQueueMetrics(
     active,
     delayed,
     failureRate,
+    paused,
     data: [
       { id: 'Completed', data: completedData.map((y, x) => ({ x, y })) },
       { id: 'Failed', data: failedData.map((y, x) => ({ x, y })) },
@@ -94,19 +111,75 @@ export async function getQueueRuns(
 }
 
 /**
- * Clear all failed jobs for a queue.
+ * List all job schedulers (repeatable cron entries) registered on a queue.
+ * A scheduler whose job name no longer has a worker handler is orphaned — it keeps
+ * spawning jobs that fail with "Job function not found" until it is removed.
  */
-export async function clearQueueFailedJobs(queueName: string): Promise<{ cleared: number }> {
+export async function getQueueSchedulers(queueName: string): Promise<QueueScheduler[]> {
   const queue = getQueue(queueName as Queues)
-  const failed = await queue.getFailed(0, -1)
+  const schedulers = await queue.getJobSchedulers(0, -1, true)
 
-  let cleared = 0
-  for (const job of failed) {
-    await job.remove()
-    cleared++
-  }
+  return schedulers.map((s) => ({
+    key: s.key,
+    name: s.name,
+    pattern: s.pattern ?? null,
+    every: s.every ?? null,
+    next: s.next ? new Date(s.next).toISOString() : null,
+    tz: s.tz ?? null,
+  }))
+}
 
-  return { cleared }
+/**
+ * Remove a single job scheduler, stopping it from spawning any further jobs.
+ * Existing queued/failed jobs are unaffected — clear those separately.
+ */
+export async function removeQueueScheduler(
+  queueName: string,
+  schedulerId: string
+): Promise<{ removed: boolean }> {
+  const queue = getQueue(queueName as Queues)
+  const removed = await queue.removeJobScheduler(schedulerId)
+  return { removed }
+}
+
+/**
+ * Pause a queue — workers stop picking up new jobs; jobs already in progress finish.
+ * Reversible via {@link resumeQueue}.
+ */
+export async function pauseQueue(queueName: string): Promise<{ paused: boolean }> {
+  const queue = getQueue(queueName as Queues)
+  await queue.pause()
+  return { paused: true }
+}
+
+/**
+ * Resume a paused queue so workers start picking up jobs again.
+ */
+export async function resumeQueue(queueName: string): Promise<{ paused: boolean }> {
+  const queue = getQueue(queueName as Queues)
+  await queue.resume()
+  return { paused: false }
+}
+
+/**
+ * Drain a queue — remove all waiting and delayed jobs. Active jobs and completed/failed
+ * history are left untouched.
+ */
+export async function drainQueue(queueName: string): Promise<void> {
+  const queue = getQueue(queueName as Queues)
+  await queue.drain(true)
+}
+
+/**
+ * Remove every job in the given state from a queue (grace 0, unlimited).
+ */
+export async function cleanQueueJobs(
+  queueName: string,
+  state: CleanableJobState
+): Promise<{ cleared: number }> {
+  const queue = getQueue(queueName as Queues)
+  const removed = await queue.clean(0, 0, state)
+  return { cleared: removed.length }
 }
 
 /** Summarize a job return value to a display string */

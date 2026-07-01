@@ -253,6 +253,43 @@ describe('buildContributingFieldBindings', () => {
     })
   })
 
+  it('stamps identityRole when ANY connection-scoped copy of the app field is identity (not find-first)', () => {
+    // Multiple connections of the same app → one `customerId` CustomField per connection.
+    // The oldest/first copy is a stale pre-feature row (isIdentity:false); a correctly
+    // stamped copy for the current connection is later in the list. Find-first would read
+    // the stale row's flag and skip identityRole — the bug. `.some()` must not.
+    const bindings = buildContributingFieldBindings(
+      'def_contact',
+      'shopify',
+      '',
+      [{ sourceFieldKey: 'shopify_id', targetAppField: 'customerId' }],
+      [{ fieldKey: 'shopify_id', sourcePath: 'id', type: 'TEXT', name: 'Shopify ID' }],
+      [
+        {
+          id: 'cf_cust_stale',
+          name: 'Shopify customer ID',
+          systemAttribute: null,
+          type: 'TEXT',
+          appFieldKey: 'customerId',
+          isIdentity: false,
+        },
+        {
+          id: 'cf_cust_current',
+          name: 'Shopify customer ID',
+          systemAttribute: null,
+          type: 'TEXT',
+          appFieldKey: 'customerId',
+          isIdentity: true,
+        },
+      ]
+    )
+    expect(bindings).toHaveLength(1)
+    expect(bindings[0]).toMatchObject({
+      targetFieldRef: 'def_contact:@app:shopify:customerId',
+      identityRole: { kind: 'externalId' },
+    })
+  })
+
   it('binds targetAppField with no identityRole when the app field is not identity: true', () => {
     const bindings = buildContributingFieldBindings(
       'def_contact',
