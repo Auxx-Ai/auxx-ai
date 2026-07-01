@@ -1,5 +1,53 @@
 # Changelog
 
+## [0.1.171](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.170...auxx-v0.1.171) (2026-07-01)
+
+
+### Features
+
+* **custom-fields:** render URL fields as image thumbnails + connector avatar field wiring ([#1009](https://github.com/Auxx-Ai/auxx-ai/issues/1009)) ([c177884](https://github.com/Auxx-Ai/auxx-ai/commit/c177884ddff6b5035b5ab6c25a32ad0d627b18c0))
+* **data-connectors:** connector-declared External ID on owned defs ([#1022](https://github.com/Auxx-Ai/auxx-ai/issues/1022)) ([4093321](https://github.com/Auxx-Ai/auxx-ai/commit/40933216293ffbefd4515c83502041b491d6c477))
+* **data-connectors:** fix [@app](https://github.com/app): owned-def field resolution + surface dropped fields ([#1019](https://github.com/Auxx-Ai/auxx-ai/issues/1019)) ([4c6b122](https://github.com/Auxx-Ai/auxx-ai/commit/4c6b122ab616b17a34d8f901d72154be1089b4a5))
+* **data-connectors:** lazy owned-def provisioning + potential-entity display ([#1002](https://github.com/Auxx-Ai/auxx-ai/issues/1002)) ([5ee07eb](https://github.com/Auxx-Ai/auxx-ai/commit/5ee07ebccfc9f5ac5fb87dc4c7275857c04ff717))
+* **data-connectors:** multi-stream app-connector setup ([#987](https://github.com/Auxx-Ai/auxx-ai/issues/987)) ([9103ee5](https://github.com/Auxx-Ai/auxx-ai/commit/9103ee5e52697b2a2a767637effb0368bc0c33ed))
+* **data-connectors:** owned relationship provisioning + record source badge ([#997](https://github.com/Auxx-Ai/auxx-ai/issues/997)) ([8537523](https://github.com/Auxx-Ai/auxx-ai/commit/853752302ed7dc6361b62a613c306b2e17878ec3))
+* **data-connectors:** rebuild source picker on shared template gallery ([#1015](https://github.com/Auxx-Ai/auxx-ai/issues/1015)) ([cdb85e9](https://github.com/Auxx-Ai/auxx-ai/commit/cdb85e96645f4db5a8ebebf124d7e06b6abececc))
+* **data-connectors:** select/address field provisioning + nested rel parenting + sync UI polish ([#1008](https://github.com/Auxx-Ai/auxx-ai/issues/1008)) ([3be936b](https://github.com/Auxx-Ai/auxx-ai/commit/3be936bf7bef2015ee901a4fa2e2b3bb02bf9483))
+* **data-connectors:** share one entity definition across connectors + delete-safety ([#1024](https://github.com/Auxx-Ai/auxx-ai/issues/1024)) ([be73ceb](https://github.com/Auxx-Ai/auxx-ai/commit/be73cebf99fd997677777fea13af07365114d101))
+* **data-connectors:** use declared requiresConnection for Connect + auto-link sole connection ([#1021](https://github.com/Auxx-Ai/auxx-ai/issues/1021)) ([f13d182](https://github.com/Auxx-Ai/auxx-ai/commit/f13d182dd313fd75968ba00c5b6c0391036001c4))
+* **data-connectors:** v6 late-bound [@app](https://github.com/app) refs + delete projection layer (P5-6) ([#1016](https://github.com/Auxx-Ai/auxx-ai/issues/1016)) ([ae4a5a6](https://github.com/Auxx-Ai/auxx-ai/commit/ae4a5a62eaceb83fe01aee434cfdc98b37745634))
+* **data-connectors:** v6 sourceKey identity + app record-types as templates (P1-4) ([#1013](https://github.com/Auxx-Ai/auxx-ai/issues/1013)) ([99bd6fb](https://github.com/Auxx-Ai/auxx-ai/commit/99bd6fb713a279dfd1b77f367a04bebe38e38854))
+* **data-connectors:** zero-config name-match auto-binder for contributing mappings ([#996](https://github.com/Auxx-Ai/auxx-ai/issues/996)) ([77d2b2c](https://github.com/Auxx-Ai/auxx-ai/commit/77d2b2cb8c0b356b113faebc184b81d94dba8dd3))
+* **database:** add ONBOARDING value to SettingScope enum ([#990](https://github.com/Auxx-Ai/auxx-ai/issues/990)) ([d983cf8](https://github.com/Auxx-Ai/auxx-ai/commit/d983cf8ab46d0e36db1b31a8b197d21518fead5b))
+* **entity-definitions:** hard-delete with relationship + connector teardown ([#1003](https://github.com/Auxx-Ai/auxx-ai/issues/1003)) ([564b174](https://github.com/Auxx-Ai/auxx-ai/commit/564b174d179fe1595bc7708dc3b1485bdcaa2252))
+* **export:** entity records → CSV via background job + realtime progress ([#1027](https://github.com/Auxx-Ai/auxx-ai/issues/1027)) ([f568032](https://github.com/Auxx-Ai/auxx-ai/commit/f568032a9f2bb86da80f34a25f82be22b353010f))
+* **getting-started:** action + Learn more buttons in checklist hovercard ([#995](https://github.com/Auxx-Ai/auxx-ai/issues/995)) ([3c92425](https://github.com/Auxx-Ai/auxx-ai/commit/3c92425797293c6c2dff7a5bc2bb7aa99aed75e8))
+* **getting-started:** onboarding checklist in the sidebar footer ([#994](https://github.com/Auxx-Ai/auxx-ai/issues/994)) ([a55d324](https://github.com/Auxx-Ai/auxx-ai/commit/a55d324a4eb98759b548e1ff2fdede76215784c1))
+* **identity:** add RecordIdentity index + write-ownership rule (Phases 1-2) ([#1025](https://github.com/Auxx-Ai/auxx-ai/issues/1025)) ([fec71c9](https://github.com/Auxx-Ai/auxx-ai/commit/fec71c99f5cea920365f61b0e15bfdaddef7b1f8))
+* **identity:** connector + chat converge on RecordIdentity index (Phases 3-5) ([#1026](https://github.com/Auxx-Ai/auxx-ai/issues/1026)) ([d837cb1](https://github.com/Auxx-Ai/auxx-ai/commit/d837cb190da152abc92fa397066441e4744d7981))
+* **identity:** retire single-source EntityInstance columns for RecordIdentity index (Phase 6) ([#1028](https://github.com/Auxx-Ai/auxx-ai/issues/1028)) ([4a41b69](https://github.com/Auxx-Ai/auxx-ai/commit/4a41b69674692b9ebe9621cbc4649cd3fac49486))
+* **kopilot:** records-page tools to list, update, and default table views ([#1001](https://github.com/Auxx-Ai/auxx-ai/issues/1001)) ([9118543](https://github.com/Auxx-Ai/auxx-ai/commit/9118543fd47041b096f29cccfb4521d3cd02c56c))
+* **kopilot:** records-page tools to preview + save table views ([#998](https://github.com/Auxx-Ai/auxx-ai/issues/998)) ([ba31d37](https://github.com/Auxx-Ai/auxx-ai/commit/ba31d37f8b88f2f513d4c1d281d06ed9270fb88c))
+* **realtime:** broadcast resource:created/updated/deleted on entity-def changes ([#1011](https://github.com/Auxx-Ai/auxx-ai/issues/1011)) ([863dd85](https://github.com/Auxx-Ai/auxx-ai/commit/863dd8568afc01efabbb9eb441b84325b5c283b0))
+* **records-sidebar:** org-wide folders for entity definitions ([#1012](https://github.com/Auxx-Ai/auxx-ai/issues/1012)) ([350ea7b](https://github.com/Auxx-Ai/auxx-ai/commit/350ea7ba3c6428651a1a665ab2df6cd58afddb1d))
+* **sidebar:** connector-sync badge on connector-owned record types ([#1018](https://github.com/Auxx-Ai/auxx-ai/issues/1018)) ([187f89e](https://github.com/Auxx-Ai/auxx-ai/commit/187f89ecc25c9ac8592a1e89fabbdfdf8ac3d53d))
+* **sidebar:** make connector-sync badge link to its connector ([#1023](https://github.com/Auxx-Ai/auxx-ai/issues/1023)) ([6fa7660](https://github.com/Auxx-Ai/auxx-ai/commit/6fa766010016c4dcacb6ccf6c843a347e5238e1b))
+* **ui:** bulk select + delete/archive for list-card grids ([#1014](https://github.com/Auxx-Ai/auxx-ai/issues/1014)) ([8cb9365](https://github.com/Auxx-Ai/auxx-ai/commit/8cb93659104a19d116bf6aedab206b09b2a5b4df))
+* **webhooks:** inbound endpoint templates + topic catalog ([#1017](https://github.com/Auxx-Ai/auxx-ai/issues/1017)) ([9583a78](https://github.com/Auxx-Ai/auxx-ai/commit/9583a78438919dae4c1f958bbb1a5b7a070e21b1))
+
+
+### Bug Fixes
+
+* **data-connectors:** collapse delete menu when no records synced ([#991](https://github.com/Auxx-Ai/auxx-ai/issues/991)) ([c1015a6](https://github.com/Auxx-Ai/auxx-ai/commit/c1015a6d3b97ce8c3fdf0b29c9d450c4d538e2ed))
+* **data-connectors:** full-wipe schema teardown + surface setup-phase errors ([#1010](https://github.com/Auxx-Ai/auxx-ai/issues/1010)) ([2bc4b64](https://github.com/Auxx-Ai/auxx-ai/commit/2bc4b64bb773acbc1a6803997db6f82acb39a5ca))
+* **data-connectors:** lazy owned-def field picker projection-aware ([#1005](https://github.com/Auxx-Ai/auxx-ai/issues/1005)) ([1af71d6](https://github.com/Auxx-Ai/auxx-ai/commit/1af71d67e99bbf9c82a904f16b7a240e5c1b6c53))
+* **data-connectors:** namespace app relationshipFieldKey + struct source-field mapping ([#1020](https://github.com/Auxx-Ai/auxx-ai/issues/1020)) ([46911ff](https://github.com/Auxx-Ai/auxx-ai/commit/46911ff67a21370139ca7e33cfbc0d25ae31c8a2))
+* **data-connectors:** stop double-rendering visible-leaf bare tokens as formula rows ([#992](https://github.com/Auxx-Ai/auxx-ai/issues/992)) ([cfad2d2](https://github.com/Auxx-Ai/auxx-ai/commit/cfad2d253132b2e91379cb27ffe8888842b10538))
+* **dynamic-table:** bulk-mode row click toggles instead of collapsing selection ([#993](https://github.com/Auxx-Ai/auxx-ai/issues/993)) ([f1223bf](https://github.com/Auxx-Ai/auxx-ai/commit/f1223bfe40375eccd02132d84d2b1b221f6c7495))
+* **export:** populate CSV cells + reorganize export/import history UI ([#1029](https://github.com/Auxx-Ai/auxx-ai/issues/1029)) ([cf316d1](https://github.com/Auxx-Ai/auxx-ai/commit/cf316d15929acac8ee82445e268ba332ed03897b))
+* **identity:** stamp appSlug/isIdentity durably so RecordIdentity mirrors + reconcile work ([#1030](https://github.com/Auxx-Ai/auxx-ai/issues/1030)) ([b328fa1](https://github.com/Auxx-Ai/auxx-ai/commit/b328fa128ea4fb29c2592bc26d71a67c648de10b))
+* **records:** primary cell shows loading skeleton instead of "Untitled" ([#999](https://github.com/Auxx-Ai/auxx-ai/issues/999)) ([6f30ddd](https://github.com/Auxx-Ai/auxx-ai/commit/6f30ddd378762001468accaf78b01cff17d2ec5c))
+
 ## [0.1.170](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.169...auxx-v0.1.170) (2026-06-29)
 
 
