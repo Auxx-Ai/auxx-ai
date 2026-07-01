@@ -5,165 +5,22 @@ import { Button } from '@auxx/ui/components/button'
 import { cn } from '@auxx/ui/lib/utils'
 
 import { EditorContent } from '@tiptap/react'
-import { cva, type VariantProps } from 'class-variance-authority'
 import { ChevronsLeftRightEllipsis, X } from 'lucide-react'
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { InlinePickerPopover } from '~/components/editor/inline-picker'
-import { Tooltip, TooltipExplanation } from '~/components/global/tooltip'
-import { type BaseType, type UnifiedVariable, VAR_MODE } from '~/components/workflow/types'
+import { Tooltip } from '~/components/global/tooltip'
+import { type UnifiedVariable, VAR_MODE } from '~/components/workflow/types'
 import { VariablePicker } from '~/components/workflow/ui/variables/variable-picker'
 import {
   VariableTagContextMenu,
   VariableTagDropdown,
 } from '~/components/workflow/ui/variables/variable-tag-context-menu'
 import { containsVariableReference } from '~/components/workflow/utils/variable-utils'
-import { VarTypeIcon } from '../../utils'
 import { VariableExplorerEnhanced } from '../variables/variable-explorer-enhanced'
 import VariableTag from '../variables/variable-tag'
 import { ConstantInputAdapter as ConstantInput } from './constant-input-adapter'
 import { useWorkflowVariableEditor } from './hooks/use-workflow-variable-editor'
 import type { VarEditorProps } from './types'
-import { ValidationErrorBadge } from './validation-error-badge'
-
-/**
- * Variants for VarEditorField orientation
- * Controls how VarEditorFieldRow children lay out their label and content
- */
-const varEditorFieldVariants = cva(
-  [
-    'relative grow rounded-2xl px-1.5 py-0.5',
-    'bg-primary-200/30 dark:bg-[#23272e]/30 border flex flex-col focus-within:border-primary-300',
-    '[&>[data-slot=field-row]:not(:has(~[data-slot=field-row]))]:border-b-0',
-  ],
-  {
-    variants: {
-      orientation: {
-        horizontal: [
-          // field-row: horizontal layout (default behavior)
-          '[&_[data-slot=field-row]]:flex-row [&_[data-slot=field-row]]:items-start',
-          // field-row-label: fixed width and height
-          '[&_[data-slot=field-row-label]]:w-40 [&_[data-slot=field-row-label]]:shrink-0 [&_[data-slot=field-row-label]]:min-h-8',
-        ],
-        vertical: [
-          // field-row: vertical layout (stacked)
-          '[&_[data-slot=field-row]]:flex-col [&_[data-slot=field-row]]:items-stretch',
-          // field-row-label: full width
-          '[&_[data-slot=field-row-label]]:w-full [&_[data-slot=field-row-label]]:shrink [&_[data-slot=field-row-label]]:pt-1.5 [&_[data-slot=field-row-label]]:pb-1 [&_[data-slot=field-row-content]]:ps-2',
-          '[&_[data-slot=field-row]]:pb-1',
-        ],
-        responsive: [
-          '@container',
-          // Base (mobile): vertical layout
-          '[&_[data-slot=field-row]]:flex-col [&_[data-slot=field-row]]:items-stretch',
-          '[&_[data-slot=field-row-label]]:w-full [&_[data-slot=field-row-label]]:shrink [&_[data-slot=field-row-label]]:pt-1.5 [&_[data-slot=field-row-label]]:pb-1 [&_[data-slot=field-row-content]]:ps-2',
-          '[&_[data-slot=field-row]]:pb-1',
-          // @sm+ : horizontal layout
-          '@sm:[&_[data-slot=field-row]]:flex-row @sm:[&_[data-slot=field-row]]:items-start',
-          '@sm:[&_[data-slot=field-row-label]]:w-40 @sm:[&_[data-slot=field-row-label]]:shrink-0 @sm:[&_[data-slot=field-row-label]]:min-h-8',
-          '@sm:[&_[data-slot=field-row-label]]:pt-0 @sm:[&_[data-slot=field-row-label]]:pb-0 @sm:[&_[data-slot=field-row-content]]:ps-0',
-          '@sm:[&_[data-slot=field-row]]:pb-0',
-        ],
-      },
-    },
-    defaultVariants: {
-      orientation: 'responsive',
-    },
-  }
-)
-
-/**
- * Wrapper component for VarEditor field styling
- */
-interface VarEditorFieldProps extends VariantProps<typeof varEditorFieldVariants> {
-  children: React.ReactNode
-  validationError?: string
-  validationType?: 'error' | 'warning'
-  className?: string
-}
-
-const VarEditorField: React.FC<VarEditorFieldProps> = ({
-  children,
-  validationError,
-  validationType = 'error',
-  orientation = 'responsive',
-  className,
-}) => {
-  return (
-    <div
-      data-slot='field'
-      data-orientation={orientation}
-      className={cn(varEditorFieldVariants({ orientation }), className)}>
-      {children}
-      <ValidationErrorBadge error={validationError} type={validationType} />
-    </div>
-  )
-}
-
-interface VarEditorFieldRowProps {
-  children: React.ReactNode
-  title: string
-  description?: string
-  isRequired?: boolean
-  validationError?: string
-  validationType?: 'error' | 'warning'
-  type?: BaseType
-  showIcon?: boolean
-  icon?: React.ReactNode
-  className?: string
-  /** When provided, renders a clear button on row hover (positioned on the right edge) */
-  onClear?: () => void
-}
-
-const VarEditorFieldRow: React.FC<VarEditorFieldRowProps> = ({
-  children,
-  title,
-  description,
-  isRequired = false,
-  validationError,
-  validationType = 'error',
-  type,
-  icon,
-  showIcon = false,
-  className,
-  onClear,
-}) => {
-  return (
-    <div
-      data-slot='field-row'
-      className={cn(
-        'group/field-row relative flex border-b dark:border-b-[#404754]/20',
-        className
-      )}>
-      <div
-        data-slot='field-row-label'
-        className='flex flex-row gap-1 ps-2 items-center [&_svg]:size-4'>
-        {showIcon && (icon ? icon : <VarTypeIcon type={type!} />)}
-        <div className='text-sm'>
-          <span className='text-primary-600'>{title}</span>
-          {isRequired && <span className='text-red-500'>*</span>}
-        </div>
-        {description && <TooltipExplanation text={description} />}
-      </div>
-      <div data-slot='field-row-content' className='w-full flex-1 relative'>
-        {children}
-      </div>
-      {onClear && (
-        <div className='absolute -right-2 top-1/2 -translate-y-1/2 opacity-0 group-hover/field-row:opacity-100 transition-opacity z-10'>
-          <Tooltip content='Clear content'>
-            <Button
-              variant='ghost'
-              size='icon-xs'
-              className='size-4 bg-primary-500/30 text-primary-100 transition-colors hover:bg-bad-100 hover:text-bad-500'
-              onClick={onClear}>
-              <X className='size-3!' />
-            </Button>
-          </Tooltip>
-        </div>
-      )}
-      <ValidationErrorBadge error={validationError} type={validationType} />
-    </div>
-  )
-}
 
 const VarEditor: React.FC<VarEditorProps> = React.memo(
   ({
@@ -468,4 +325,13 @@ const VarEditor: React.FC<VarEditorProps> = React.memo(
   }
 )
 
-export { VarEditor, VarEditorField, VarEditorFieldRow }
+export { VarEditor }
+
+/**
+ * @deprecated Moved to `~/components/global/forms/field-panel` as FieldPanel / FieldPanelRow.
+ * Import from there in new code; these aliases exist so existing imports keep working.
+ */
+export {
+  FieldPanel as VarEditorField,
+  FieldPanelRow as VarEditorFieldRow,
+} from '~/components/global/forms/field-panel'

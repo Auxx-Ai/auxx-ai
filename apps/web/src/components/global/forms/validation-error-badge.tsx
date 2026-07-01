@@ -1,4 +1,4 @@
-// apps/web/src/components/workflow/ui/input-editor/validation-error-badge.tsx
+// apps/web/src/components/global/forms/validation-error-badge.tsx
 
 import { cn } from '@auxx/ui/lib/utils'
 import { AlertTriangle } from 'lucide-react'

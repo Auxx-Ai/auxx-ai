@@ -15,12 +15,12 @@ import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import { toastError } from '@auxx/ui/components/toast'
 import { ChevronDown, ChevronRight } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
+import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
 import { useResourceProperty } from '~/components/resources'
 import { useSaveFieldValue } from '~/components/resources/hooks/use-save-field-value'
 import { useSystemValues } from '~/components/resources/hooks/use-system-values'
 import { BaseType } from '~/components/workflow/types'
 import { ConstantInputAdapter } from '~/components/workflow/ui/input-editor/constant-input-adapter'
-import { VarEditorField, VarEditorFieldRow } from '~/components/workflow/ui/input-editor/var-editor'
 import { api } from '~/trpc/react'
 import {
   defaultVendorPartValues,
@@ -241,11 +241,11 @@ export function PartFormDialog({ open, onOpenChange, recordId, onSuccess }: Part
           </DialogDescription>
         </DialogHeader>
 
-        <VarEditorField
+        <FieldPanel
           orientation='responsive'
           className='p-0 sm:[&_[data-slot=field-row-label]]:w-50'>
           {/* Title */}
-          <VarEditorFieldRow
+          <FieldPanelRow
             title='Title'
             type={BaseType.STRING}
             showIcon
@@ -259,10 +259,10 @@ export function PartFormDialog({ open, onOpenChange, recordId, onSuccess }: Part
               placeholder='Part name'
               disabled={isPending}
             />
-          </VarEditorFieldRow>
+          </FieldPanelRow>
 
           {/* SKU */}
-          <VarEditorFieldRow
+          <FieldPanelRow
             title='SKU'
             description='This must be unique across all parts'
             type={BaseType.STRING}
@@ -278,14 +278,10 @@ export function PartFormDialog({ open, onOpenChange, recordId, onSuccess }: Part
               placeholder='Unique part number'
               disabled={isPending}
             />
-          </VarEditorFieldRow>
+          </FieldPanelRow>
 
           {/* Category */}
-          <VarEditorFieldRow
-            title='Category'
-            type={BaseType.STRING}
-            showIcon
-            orientation='responsive'>
+          <FieldPanelRow title='Category' type={BaseType.STRING} showIcon orientation='responsive'>
             <ConstantInputAdapter
               value={values.category}
               onChange={(_, val) => handleChange('category', val)}
@@ -293,10 +289,10 @@ export function PartFormDialog({ open, onOpenChange, recordId, onSuccess }: Part
               placeholder='Category'
               disabled={isPending}
             />
-          </VarEditorFieldRow>
+          </FieldPanelRow>
 
           {/* HS Code */}
-          <VarEditorFieldRow
+          <FieldPanelRow
             title='HS Code'
             description='Harmonized System Code for customs'
             type={BaseType.STRING}
@@ -309,10 +305,10 @@ export function PartFormDialog({ open, onOpenChange, recordId, onSuccess }: Part
               placeholder='Harmonized System Code'
               disabled={isPending}
             />
-          </VarEditorFieldRow>
+          </FieldPanelRow>
 
           {/* Shopify Product Link ID */}
-          <VarEditorFieldRow
+          <FieldPanelRow
             title='Shopify Product ID'
             description='Link to a Shopify product'
             orientation='responsive'
@@ -325,10 +321,10 @@ export function PartFormDialog({ open, onOpenChange, recordId, onSuccess }: Part
               placeholder='Shopify Product ID (optional)'
               disabled={isPending}
             />
-          </VarEditorFieldRow>
+          </FieldPanelRow>
 
           {/* Description */}
-          <VarEditorFieldRow
+          <FieldPanelRow
             title='Description'
             type={BaseType.STRING}
             orientation='responsive'
@@ -341,8 +337,8 @@ export function PartFormDialog({ open, onOpenChange, recordId, onSuccess }: Part
               disabled={isPending}
               fieldOptions={{ string: { multiline: true } }}
             />
-          </VarEditorFieldRow>
-        </VarEditorField>
+          </FieldPanelRow>
+        </FieldPanel>
 
         {/* Collapsible Supplier Section - Only shown in create mode */}
         {!isEditMode && (
@@ -360,14 +356,14 @@ export function PartFormDialog({ open, onOpenChange, recordId, onSuccess }: Part
             </button>
 
             {showSupplier && (
-              <VarEditorField className='p-0 mt-4 ' orientation='responsive'>
+              <FieldPanel className='p-0 mt-4 ' orientation='responsive'>
                 <VendorPartFields
                   values={vendorPartValues}
                   onChange={handleVendorPartChange}
                   errors={vendorPartErrors}
                   disabled={isPending}
                 />
-              </VarEditorField>
+              </FieldPanel>
             )}
           </div>
         )}
