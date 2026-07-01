@@ -86,6 +86,11 @@ export function ConnectorDetailView({ connector }: ConnectorDetailViewProps) {
     () => customResources.filter((r) => r.dataConnectorId === connector.id),
     [customResources, connector.id]
   )
+  // Owned defs ANOTHER connector still maps to — a `delete` keeps these (reassigns
+  // ownership) rather than tears them down. Split them out of the delete-blast-radius
+  // copy so "delete definitions" doesn't imply a shared record type gets wiped.
+  const sharedOwnedDefs = api.dataConnector.sharedOwnedDefs.useQuery({ id: connector.id })
+  const sharedDefIds = useMemo(() => new Set(sharedOwnedDefs.data ?? []), [sharedOwnedDefs.data])
 
   const status = asConnectorStatus(connector.status)
   const isSyncing = status === 'syncing' || status === 'provisioning'
@@ -191,15 +196,26 @@ export function ConnectorDetailView({ connector }: ConnectorDetailViewProps) {
         : null
 
   const handleDelete = async (syncedData: 'keep' | 'archive' | 'delete') => {
-    const ownedDefsClause = ownedDefs.length
-      ? `, including ${ownedDefs.length} entity ${
-          ownedDefs.length === 1 ? 'definition' : 'definitions'
-        } (${ownedDefs.map((d) => d.label).join(', ')}) and all their records`
+    // Owned defs split into those THIS delete tears down (sole owner) vs those it keeps
+    // (another connector still maps to them — reassigned, not deleted).
+    const toDelete = ownedDefs.filter((d) => !sharedDefIds.has(d.id))
+    const keptShared = ownedDefs.filter((d) => sharedDefIds.has(d.id))
+    const deleteClause = toDelete.length
+      ? `, including ${toDelete.length} entity ${
+          toDelete.length === 1 ? 'definition' : 'definitions'
+        } (${toDelete.map((d) => d.label).join(', ')}) and all their records`
+      : ''
+    const sharedClause = keptShared.length
+      ? ` ${keptShared.length} record ${keptShared.length === 1 ? 'type' : 'types'} (${keptShared
+          .map((d) => d.label)
+          .join(', ')}) ${
+          keptShared.length === 1 ? 'is' : 'are'
+        } shared with another connector and will be kept.`
       : ''
     const copy = {
       keep: 'Synced records are kept; only the connector is removed.',
       archive: 'Synced records are archived and the connector is removed.',
-      delete: `Synced records and the connector are permanently deleted${ownedDefsClause}.`,
+      delete: `Synced records and the connector are permanently deleted${deleteClause}.${sharedClause}`,
     }[syncedData]
     const ok = await confirm({
       title: 'Delete connector?',

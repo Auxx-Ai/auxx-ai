@@ -24,6 +24,7 @@ import {
   getConnectorTemplateById,
   listConnectors,
   listRuns,
+  listSharedOwnedDefIds,
   listStreams,
   projectConnectorOwnedTargets,
   READINESS_REASON,
@@ -538,6 +539,17 @@ export const dataConnectorRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const { id, ...patch } = input
       return updateConnector(ctx.db, ctx.session.organizationId, id, patch)
+    }),
+
+  /**
+   * Owned-def ids of this connector that another connector ALSO maps to — a `delete`
+   * KEEPS them (reassigns ownership) instead of tearing them down. The detail view joins
+   * these against the cached resource labels to spell out "shared → kept" in the confirm.
+   */
+  sharedOwnedDefs: protectedProcedure
+    .input(z.object({ id: z.string() }))
+    .query(async ({ ctx, input }) => {
+      return listSharedOwnedDefIds(ctx.db, ctx.session.organizationId, input.id)
     }),
 
   delete: adminProcedure

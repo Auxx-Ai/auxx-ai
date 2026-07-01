@@ -99,6 +99,7 @@ export {
   createConnectorFromTemplate,
   deleteConnector,
   finishConnectorSetup,
+  listSharedOwnedDefIds,
   projectConnectorOwnedTargets,
   removeMapping,
   removeStream,
