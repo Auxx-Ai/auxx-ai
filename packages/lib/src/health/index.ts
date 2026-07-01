@@ -1,10 +1,20 @@
 // packages/lib/src/health/index.ts
 
 export { getIndicatorHealth, getSystemHealth } from './health-service'
-export { clearQueueFailedJobs, getQueueMetrics, getQueueRuns } from './queue-metrics'
+export {
+  cleanQueueJobs,
+  drainQueue,
+  getQueueMetrics,
+  getQueueRuns,
+  getQueueSchedulers,
+  pauseQueue,
+  removeQueueScheduler,
+  resumeQueue,
+} from './queue-metrics'
 export { HealthStateManager } from './state-manager'
 export { withHealthCheckTimeout } from './timeout'
 export {
+  type CleanableJobState,
   FAILURE_RATE_THRESHOLD,
   HEALTH_CHECK_TIMEOUT_MS,
   HEALTH_ERROR_MESSAGES,
@@ -20,5 +30,6 @@ export {
   type QueueMetricsTimeRange,
   type QueueRun,
   type QueueRunsResponse,
+  type QueueScheduler,
   type SystemHealth,
 } from './types'

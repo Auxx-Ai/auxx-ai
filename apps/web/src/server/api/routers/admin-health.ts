@@ -1,7 +1,16 @@
 // apps/web/src/server/api/routers/admin-health.ts
 
 import { getIndicatorHealth, getSystemHealth } from '@auxx/lib/health/health-service'
-import { clearQueueFailedJobs, getQueueMetrics, getQueueRuns } from '@auxx/lib/health/queue-metrics'
+import {
+  cleanQueueJobs,
+  drainQueue,
+  getQueueMetrics,
+  getQueueRuns,
+  getQueueSchedulers,
+  pauseQueue,
+  removeQueueScheduler,
+  resumeQueue,
+} from '@auxx/lib/health/queue-metrics'
 import { z } from 'zod'
 import { createTRPCRouter, superAdminProcedure } from '~/server/api/trpc'
 
@@ -10,6 +19,9 @@ const indicatorIdSchema = z.enum(['database', 'redis', 'worker', 'jobs', 'app'])
 
 /** Valid time ranges for queue metrics */
 const timeRangeSchema = z.enum(['1H', '4H', '12H', '1D', '7D'])
+
+/** Job states that can be bulk-cleared */
+const cleanableStateSchema = z.enum(['completed', 'failed', 'delayed', 'wait'])
 
 /**
  * Admin health monitoring router — system health overview, indicator details, queue metrics.
@@ -53,10 +65,45 @@ export const adminHealthRouter = createTRPCRouter({
       return getQueueRuns(input.queueName, input.status, input.cursor, input.limit)
     }),
 
-  /** Clear all failed jobs for a queue */
-  clearFailedJobs: superAdminProcedure
+  /** Clear all jobs in a given state for a queue */
+  cleanJobs: superAdminProcedure
+    .input(z.object({ queueName: z.string(), state: cleanableStateSchema }))
+    .mutation(async ({ input }) => {
+      return cleanQueueJobs(input.queueName, input.state)
+    }),
+
+  /** Remove all waiting + delayed jobs from a queue */
+  drainQueue: superAdminProcedure
     .input(z.object({ queueName: z.string() }))
     .mutation(async ({ input }) => {
-      return clearQueueFailedJobs(input.queueName)
+      return drainQueue(input.queueName)
+    }),
+
+  /** Pause a queue — workers stop picking up new jobs */
+  pauseQueue: superAdminProcedure
+    .input(z.object({ queueName: z.string() }))
+    .mutation(async ({ input }) => {
+      return pauseQueue(input.queueName)
+    }),
+
+  /** Resume a paused queue */
+  resumeQueue: superAdminProcedure
+    .input(z.object({ queueName: z.string() }))
+    .mutation(async ({ input }) => {
+      return resumeQueue(input.queueName)
+    }),
+
+  /** List job schedulers (repeatable cron entries) for a queue */
+  getQueueSchedulers: superAdminProcedure
+    .input(z.object({ queueName: z.string() }))
+    .query(async ({ input }) => {
+      return getQueueSchedulers(input.queueName)
+    }),
+
+  /** Remove a job scheduler so it stops spawning further jobs */
+  removeScheduler: superAdminProcedure
+    .input(z.object({ queueName: z.string(), schedulerId: z.string() }))
+    .mutation(async ({ input }) => {
+      return removeQueueScheduler(input.queueName, input.schedulerId)
     }),
 })

@@ -79,8 +79,13 @@ export interface QueueMetricsResponse {
   active: number
   delayed: number
   failureRate: number
+  /** Whether the queue is paused (workers stop picking up new jobs) */
+  paused: boolean
   data: QueueMetricsSeries[]
 }
+
+/** Job states that can be bulk-cleared from a queue */
+export type CleanableJobState = 'completed' | 'failed' | 'delayed' | 'wait'
 
 /** Indicator definition used by the orchestrator */
 export interface HealthIndicatorDefinition {
@@ -108,6 +113,22 @@ export interface QueueRun {
 export interface QueueRunsResponse {
   runs: QueueRun[]
   nextCursor: number | null
+}
+
+/** A registered job scheduler (repeatable cron entry) on a queue */
+export interface QueueScheduler {
+  /** Scheduler id used to remove it */
+  key: string
+  /** Job name this scheduler spawns */
+  name: string
+  /** Cron pattern, if pattern-based */
+  pattern: string | null
+  /** Fixed interval in ms, if interval-based */
+  every: number | null
+  /** Next scheduled run (ISO string) */
+  next: string | null
+  /** Timezone, if set */
+  tz: string | null
 }
 
 /** Error message constants */
