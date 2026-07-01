@@ -323,7 +323,7 @@ export const SETTINGS_MENU: SidebarProps[] = [
       { id: 'admin-tags', label: 'Tags', slug: 'tags', icon: <Tag />, access: 'ADMIN' },
       {
         id: 'admin-import-history',
-        label: 'Import History',
+        label: 'Import & Export',
         slug: 'import-history',
         icon: <Import />,
         access: 'ADMIN',

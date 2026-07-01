@@ -3,7 +3,7 @@
 import { database as db } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import type { FieldReference } from '@auxx/types/field'
-import type { RecordId } from '@auxx/types/resource'
+import { type RecordId, toRecordId } from '@auxx/types/resource'
 import type { ConditionGroup } from '../../conditions/types'
 import type { ExportColumn } from '../../export'
 import {
@@ -82,7 +82,10 @@ export async function exportRecordsJob(ctx: JobContext<ExportRecordsJobData>): P
     while (true) {
       ctx.throwIfCancelled()
 
-      const ids = page.ids as RecordId[]
+      // `listFiltered` returns bare instance ids; wrap them into full RecordIds
+      // (`entityDefId:instanceId`) before any value/name lookup — `batchGetValues`
+      // and `getByIds` both parse the def prefix out of the id.
+      const ids = page.ids.map((id) => toRecordId(job.entityDefinitionId, id))
       if (ids.length > 0) {
         const results = await fetchValues(fvs, ids, fieldRefs)
         await hydrateRelationNames(handler, results, nameCache)

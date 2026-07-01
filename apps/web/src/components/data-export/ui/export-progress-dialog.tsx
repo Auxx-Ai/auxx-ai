@@ -11,6 +11,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@auxx/ui/components/dialog'
+import { Kbd } from '@auxx/ui/components/kbd'
 import { Progress } from '@auxx/ui/components/progress'
 import { toastError } from '@auxx/ui/components/toast'
 import { CheckCircle2, Download, Loader2, XCircle } from 'lucide-react'
@@ -79,7 +80,7 @@ export function ExportProgressDialog({ jobId, open, onOpenChange }: ExportProgre
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent size='sm'>
+      <DialogContent size='sm' position='tc'>
         <DialogHeader>
           <DialogTitle>Export to CSV</DialogTitle>
           <DialogDescription>
@@ -93,7 +94,7 @@ export function ExportProgressDialog({ jobId, open, onOpenChange }: ExportProgre
           </DialogDescription>
         </DialogHeader>
 
-        <div className='flex flex-col gap-3 py-2'>
+        <div className='flex flex-col gap-3'>
           {isRunning && (
             <>
               <div className='flex items-center gap-2 text-sm text-muted-foreground'>
@@ -125,19 +126,29 @@ export function ExportProgressDialog({ jobId, open, onOpenChange }: ExportProgre
 
         <DialogFooter>
           {isRunning && (
-            <Button variant='outline' onClick={handleCancel} loading={cancel.isPending}>
-              Cancel export
+            <Button
+              variant='destructive-hover'
+              size='sm'
+              onClick={handleCancel}
+              loading={cancel.isPending}
+              loadingText='Canceling...'>
+              Cancel export <Kbd shortcut='esc' variant='ghost' size='sm' />
             </Button>
           )}
           {status === 'completed' && (
-            <Button onClick={handleDownload} loading={getDownloadUrl.isPending}>
+            <Button
+              variant='outline'
+              size='sm'
+              onClick={handleDownload}
+              loading={getDownloadUrl.isPending}
+              loadingText='Preparing...'>
               <Download />
               Download CSV
             </Button>
           )}
           {(status === 'failed' || status === 'canceled') && (
-            <Button variant='outline' onClick={() => onOpenChange(false)}>
-              Close
+            <Button variant='ghost' size='sm' onClick={() => onOpenChange(false)}>
+              Close <Kbd shortcut='esc' variant='ghost' size='sm' />
             </Button>
           )}
         </DialogFooter>

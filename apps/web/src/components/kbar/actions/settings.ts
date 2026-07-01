@@ -167,9 +167,9 @@ export function useSettingsActions(): PaletteAction[] {
         },
         {
           id: 'settings.importHistory',
-          label: 'Import History',
+          label: 'Import & Export',
           icon: 'download',
-          keywords: 'import history',
+          keywords: 'import export history data transfer',
           perform: () => goToSetting('import-history'),
         }
       )
