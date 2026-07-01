@@ -14,11 +14,11 @@ import {
 import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import { toastError } from '@auxx/ui/components/toast'
 import { useCallback, useEffect, useState } from 'react'
+import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
 import { useResourceProperty } from '~/components/resources'
 import { useSaveFieldValue } from '~/components/resources/hooks/use-save-field-value'
 import { useSystemValues } from '~/components/resources/hooks/use-system-values'
 import { MultiRelationInput } from '~/components/shared/multi-relation-input'
-import { VarEditorField, VarEditorFieldRow } from '~/components/workflow/ui/input-editor/var-editor'
 import { api } from '~/trpc/react'
 import {
   defaultVendorPartValues,
@@ -241,10 +241,10 @@ export function VendorPartDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <VarEditorField className='p-0'>
+        <FieldPanel className='p-0' breakpoint='md' resizeId='vendor-part'>
           {/* Part Selection - only shown in contact-centric mode */}
           {isContactMode && (
-            <VarEditorFieldRow
+            <FieldPanelRow
               title='Part'
               isRequired
               validationError={errors.partId}
@@ -259,7 +259,7 @@ export function VendorPartDialog({
                 disabled={isPending || isEditMode}
                 multi={false}
               />
-            </VarEditorFieldRow>
+            </FieldPanelRow>
           )}
 
           {/* Shared vendor part fields */}
@@ -271,7 +271,7 @@ export function VendorPartDialog({
             disableContactEdit={isEditMode}
             showContactField={isPartMode}
           />
-        </VarEditorField>
+        </FieldPanel>
 
         <DialogFooter>
           <Button

@@ -10,7 +10,7 @@ import type { ResourceField } from '@auxx/lib/resources/client'
 import { type ActorId, isActorId, toActorId } from '@auxx/types/actor'
 import type { ActorOptions, RelationshipConfig } from '@auxx/types/custom-field'
 import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
-import { VarEditorFieldRow } from '~/components/workflow/ui/input-editor/var-editor'
+import { FieldPanelRow } from '~/components/global/forms/field-panel'
 
 /**
  * Extract ActorIds from various value formats.
@@ -85,7 +85,7 @@ interface FieldInputRowProps {
 }
 
 /**
- * Renders a single field input row with VarEditorFieldRow layout.
+ * Renders a single field input row with FieldPanelRow layout.
  * Uses FieldInputAdapter which handles all field types including relationships.
  */
 export function FieldInputRow({
@@ -145,7 +145,7 @@ export function FieldInputRow({
   }
 
   return (
-    <VarEditorFieldRow
+    <FieldPanelRow
       title={field.label}
       description={field.description}
       type={field.type}
@@ -162,6 +162,6 @@ export function FieldInputRow({
         disabled={disabled}
         triggerProps={{ className: 'ps-0 pe-1 w-full' }}
       />
-    </VarEditorFieldRow>
+    </FieldPanelRow>
   )
 }

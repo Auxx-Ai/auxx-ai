@@ -5,10 +5,10 @@ import { Button } from '@auxx/ui/components/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
 import { toastError } from '@auxx/ui/components/toast'
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
 import { toRecordId, useResourceProperty } from '~/components/resources'
 import { BaseType } from '~/components/workflow/types'
 import { ConstantInputAdapter } from '~/components/workflow/ui/input-editor/constant-input-adapter'
-import { VarEditorField, VarEditorFieldRow } from '~/components/workflow/ui/input-editor/var-editor'
 import { api } from '~/trpc/react'
 
 type Direction = 'add' | 'remove'
@@ -128,9 +128,9 @@ export function StockAdjustmentPopover({
         <div className='space-y-3'>
           <h4 className='text-sm font-semibold'>Adjust Stock</h4>
 
-          <VarEditorField className='p-0'>
+          <FieldPanel className='p-0'>
             {/* Mode */}
-            <VarEditorFieldRow
+            <FieldPanelRow
               title='Mode'
               type={BaseType.ENUM}
               showIcon
@@ -147,11 +147,11 @@ export function StockAdjustmentPopover({
                 fieldOptions={quantityModeFieldOptions}
                 disabled={isPending}
               />
-            </VarEditorFieldRow>
+            </FieldPanelRow>
 
             {/* Direction */}
             {!isSetToMode && (
-              <VarEditorFieldRow
+              <FieldPanelRow
                 title='Direction'
                 type={BaseType.ENUM}
                 showIcon
@@ -164,11 +164,11 @@ export function StockAdjustmentPopover({
                   fieldOptions={directionFieldOptions}
                   disabled={isPending}
                 />
-              </VarEditorFieldRow>
+              </FieldPanelRow>
             )}
 
             {/* Quantity */}
-            <VarEditorFieldRow title='Quantity' type={BaseType.NUMBER} showIcon isRequired>
+            <FieldPanelRow title='Quantity' type={BaseType.NUMBER} showIcon isRequired>
               <ConstantInputAdapter
                 value={quantity}
                 onChange={(_, val) => setQuantity(val ?? null)}
@@ -183,10 +183,10 @@ export function StockAdjustmentPopover({
                   {quantity - currentQoH}
                 </p>
               )}
-            </VarEditorFieldRow>
+            </FieldPanelRow>
 
             {/* Reason */}
-            <VarEditorFieldRow title='Reason' type={BaseType.STRING} showIcon>
+            <FieldPanelRow title='Reason' type={BaseType.STRING} showIcon>
               <ConstantInputAdapter
                 value={reason}
                 onChange={(_, val) => setReason(val ?? '')}
@@ -194,10 +194,10 @@ export function StockAdjustmentPopover({
                 placeholder='e.g. Recount, Damaged goods'
                 disabled={isPending}
               />
-            </VarEditorFieldRow>
+            </FieldPanelRow>
 
             {/* Reference */}
-            <VarEditorFieldRow title='Reference' type={BaseType.STRING} showIcon>
+            <FieldPanelRow title='Reference' type={BaseType.STRING} showIcon>
               <ConstantInputAdapter
                 value={reference}
                 onChange={(_, val) => setReference(val ?? '')}
@@ -205,11 +205,11 @@ export function StockAdjustmentPopover({
                 placeholder='e.g. PO-1234, RMA-567'
                 disabled={isPending}
               />
-            </VarEditorFieldRow>
+            </FieldPanelRow>
 
             {/* Adjust subparts toggle — only shown when part has subparts and in "Adjust by" mode */}
             {hasSubparts && !isSetToMode && (
-              <VarEditorFieldRow
+              <FieldPanelRow
                 title='Adjust subparts'
                 type={BaseType.BOOLEAN}
                 showIcon
@@ -221,9 +221,9 @@ export function StockAdjustmentPopover({
                   fieldOptions={{ variant: 'switch' }}
                   disabled={isPending}
                 />
-              </VarEditorFieldRow>
+              </FieldPanelRow>
             )}
-          </VarEditorField>
+          </FieldPanel>
 
           {/* Info hint when adjust subparts is enabled */}
           {adjustSubparts && (

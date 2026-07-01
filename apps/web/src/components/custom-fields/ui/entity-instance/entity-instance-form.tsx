@@ -35,10 +35,10 @@ import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } fro
 import { useDynamicTableStore } from '~/components/dynamic-table/stores/dynamic-table-store'
 import { useOrgFieldView } from '~/components/dynamic-table/stores/store-selectors'
 import { useFieldView } from '~/components/fields/hooks/use-field-view'
+import { FieldPanel } from '~/components/global/forms/field-panel'
 import { useResource } from '~/components/resources'
 import { useFieldValueSyncer } from '~/components/resources/hooks/use-field-value-syncer'
 import { useSaveFieldValue } from '~/components/resources/hooks/use-save-field-value'
-import { VarEditorField } from '~/components/workflow/ui/input-editor/var-editor'
 import { useDirtyCheck } from '~/hooks/use-dirty-state'
 import { api } from '~/trpc/react'
 import { DialogFieldConfigRow } from '../dialog-field-config-row'
@@ -655,8 +655,10 @@ export function EntityInstanceForm({
         </div>
 
         {isConfigMode ? (
-          /* Config mode: sortable field list with visibility switches */
-          <VarEditorField className='p-0'>
+          /* Config mode: sortable field list with visibility switches.
+             No resizeId here — the resize strip would steal pointer-downs from
+             the row drag-and-drop. */
+          <FieldPanel className='p-0'>
             <DndContext
               sensors={sensors}
               collisionDetection={closestCenter}
@@ -677,12 +679,15 @@ export function EntityInstanceForm({
                 })}
               </SortableContext>
             </DndContext>
-          </VarEditorField>
+          </FieldPanel>
         ) : (
           /* Normal mode: form inputs */
           <>
             <div ref={formRef}>
-              <VarEditorField className='p-0'>
+              <FieldPanel
+                className='p-0'
+                breakpoint='md'
+                resizeId={`entity-instance:${entityDefinitionId}`}>
                 {editableFields.map((field) => (
                   <FieldInputRow
                     key={field.id}
@@ -698,7 +703,7 @@ export function EntityInstanceForm({
                     disabled={isPending}
                   />
                 ))}
-              </VarEditorField>
+              </FieldPanel>
             </div>
 
             {editableFields.length === 0 && (
