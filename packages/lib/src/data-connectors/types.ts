@@ -389,8 +389,12 @@ export interface ConnectorDefaultMapping {
         /** Target field keys to flag as secondary identity-match keys (e.g. `['email']`). */
         matchFieldKeys?: string[]
         /** Non-identity field bindings pre-declared by the app author (e.g. `first_name`
-         *  → contact first-name). Bound by key like match keys, sans `identityRole`. */
-        fieldBindings?: { sourceFieldKey: string; targetKey: string }[]
+         *  → contact first-name). Bound by key like match keys, sans `identityRole` — unless
+         *  `targetAppField` names an `identity: true` app field, which auto-stamps one. */
+        fieldBindings?: { sourceFieldKey: string; targetKey?: string; targetAppField?: string }[]
+        /** Fill a plain (non-identity) app field from connection metadata (e.g. Shopify
+         *  `shopDomain`) — the only synthetic write channel. See SDK mirror for details. */
+        connectionAppFields?: { appFieldKey: string; from: string }[]
       }
 }
 
@@ -556,6 +560,15 @@ export interface FieldMapping {
     | { kind: 'match'; normalize?: IdentityNormalize }
   /** Per-field write behavior (folded in from the old parallel map). Absent ⇒ 'overwrite'. */
   mergeStrategy?: FieldMergeStrategy
+  /**
+   * This binding writes a value read from the connector's CONNECTION METADATA
+   * (e.g. Shopify `shopDomain`), not the source record subtree — the SDK
+   * `connectionAppFields` synthetic-write channel. The value is
+   * `ctx.connectionMeta?.[connectionMetaKey]`, injected by the sink before the
+   * normal write-set build; `expression`/`sourceFields` are unused (map-record
+   * skips evaluating these entries). Never carries an `identityRole`.
+   */
+  connectionMetaKey?: string
   /**
    * Provisioning hint for a connector-introduced target field (05d). Consumed by
    * `provisionConnectorMappings` to create the field with the declared type/name

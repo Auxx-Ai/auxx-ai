@@ -27,6 +27,65 @@ interface WriteShopifyCustomerIdInput {
   db?: Database
 }
 
+/** The Shopify app installation + bound store connection for one shop domain. */
+export interface ShopifyStoreConnection {
+  appId: string
+  installationId: string
+  connectionId: string
+}
+
+/**
+ * Resolve the Shopify app installation + the store `Credential` bound to a
+ * trusted shop domain, org-scoped. This is the same app→installation→credential
+ * chain `writeShopifyCustomerIdField` walks and the same binding check
+ * `shopify-proxy.ts` performs at JWT mint — extracted so the chat JWT resolver
+ * can reuse it for connection-scoped identity lookup.
+ *
+ * `shopDomain` MUST come from an App-Proxy-signed JWT claim, never a spoofable
+ * client attribute. Returns `null` (never throws) when the app isn't installed,
+ * credentials can't be listed, or no connection matches the shop.
+ */
+export async function resolveShopifyStoreConnection(
+  organizationId: string,
+  shopDomain: string,
+  db: Database = database
+): Promise<ShopifyStoreConnection | null> {
+  const shopifyApp = await db.query.App.findFirst({
+    where: eq(schema.App.slug, 'shopify'),
+    columns: { id: true },
+  })
+  if (!shopifyApp) return null
+
+  const installation = await db.query.AppInstallation.findFirst({
+    where: and(
+      eq(schema.AppInstallation.appId, shopifyApp.id),
+      eq(schema.AppInstallation.organizationId, organizationId),
+      isNull(schema.AppInstallation.uninstalledAt)
+    ),
+    columns: { id: true },
+  })
+  if (!installation) return null
+
+  const credsResult = await listCredentials({
+    organizationId,
+    kind: 'app',
+    appId: shopifyApp.id,
+    userId: null,
+  })
+  if (credsResult.isErr()) {
+    log.warn('Failed to list Shopify credentials during connection resolution', {
+      organizationId,
+      error: credsResult.error.message,
+    })
+    return null
+  }
+
+  const connectionId = credsResult.value.find((cred) => cred.metadata.shopDomain === shopDomain)?.id
+  if (!connectionId) return null
+
+  return { appId: shopifyApp.id, installationId: installation.id, connectionId }
+}
+
 /**
  * Write the verified visitor's Shopify customer id onto their contact's
  * **connection-scoped** `customerId` app field, so the chat restriction engine
@@ -58,53 +117,22 @@ export async function writeShopifyCustomerIdField(
   const db = input.db ?? database
   const { organizationId, contactId, shopDomain, shopifyCustomerId } = input
 
-  // 1. Shopify app + its live installation for this org.
-  const shopifyApp = await db.query.App.findFirst({
-    where: eq(schema.App.slug, 'shopify'),
-    columns: { id: true },
-  })
-  if (!shopifyApp) return false
-
-  const installation = await db.query.AppInstallation.findFirst({
-    where: and(
-      eq(schema.AppInstallation.appId, shopifyApp.id),
-      eq(schema.AppInstallation.organizationId, organizationId),
-      isNull(schema.AppInstallation.uninstalledAt)
-    ),
-    columns: { id: true },
-  })
-  if (!installation) return false
-
-  // 2. Resolve the bound store connection by matching the trusted shop domain
-  //    against the plaintext credential metadata (mirrors shopify-proxy binding).
-  const credsResult = await listCredentials({
-    organizationId,
-    kind: 'app',
-    appId: shopifyApp.id,
-    userId: null,
-  })
-  if (credsResult.isErr()) {
-    log.warn('Failed to list Shopify credentials during identity-field write', {
-      organizationId,
-      error: credsResult.error.message,
-    })
-    return false
-  }
-
-  const connectionId = credsResult.value.find((cred) => cred.metadata.shopDomain === shopDomain)?.id
-  if (!connectionId) {
+  // 1+2. Shopify app installation + the store connection bound to this domain.
+  const store = await resolveShopifyStoreConnection(organizationId, shopDomain, db)
+  if (!store) {
     log.warn('No bound Shopify connection for shop domain — skipping customerId field write', {
       organizationId,
       shopDomain,
     })
     return false
   }
+  const { installationId, connectionId } = store
 
   // 3. The connection-scoped customerId field def for this store.
   const field = await db.query.CustomField.findFirst({
     where: and(
       eq(schema.CustomField.organizationId, organizationId),
-      eq(schema.CustomField.appInstallationId, installation.id),
+      eq(schema.CustomField.appInstallationId, installationId),
       eq(schema.CustomField.connectionId, connectionId),
       eq(schema.CustomField.appFieldKey, SHOPIFY_CUSTOMER_ID_FIELD_KEY)
     ),
@@ -145,7 +173,7 @@ export async function writeShopifyCustomerIdField(
       entityInstanceId: contactId,
       entityDefinitionId: contactDefId,
       source: SHOPIFY_SOURCE,
-      appInstallationId: installation.id,
+      appInstallationId: installationId,
       connectionId,
       appFieldKey: SHOPIFY_CUSTOMER_ID_FIELD_KEY,
       fieldId: field.id,

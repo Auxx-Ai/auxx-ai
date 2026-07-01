@@ -18,6 +18,7 @@
 //   B2 — the chain decodes against a PINNED mapping snapshot (`mappings` captured
 //        at construction), not live config — a mid-backfill edit can't skew slices.
 
+import { getCredential } from '@auxx/credentials/store'
 import type { Database } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import type { RuntimeConnectionData } from '../connections/resolve-connection-for-runtime'
@@ -141,6 +142,8 @@ class ConnectorStreamSyncSource implements ConnectorSyncSource {
   private crud?: UnifiedCrudHandler
   private ownedCrud?: UnifiedCrudHandler
   private readonly warmedDefs = new Set<string>()
+  /** Bound connection's plaintext metadata (`connectionAppFields` source), loaded once. */
+  private connectionMeta?: Record<string, unknown> | null
 
   constructor(private readonly deps: ConnectorSyncSourceDeps) {
     this.id = `${deps.connector.id}:${deps.stream.streamId}`
@@ -359,6 +362,9 @@ class ConnectorStreamSyncSource implements ConnectorSyncSource {
       await this.ownedCrud.warmCache(m.entityDefinitionId)
       this.warmedDefs.add(m.entityDefinitionId)
     }
+    if (this.connectionMeta === undefined) {
+      this.connectionMeta = await this.loadConnectionMeta()
+    }
     return {
       db: this.deps.db,
       orgId: this.deps.organizationId,
@@ -369,7 +375,24 @@ class ConnectorStreamSyncSource implements ConnectorSyncSource {
       counters,
       touchedDefs: new Set<string>(),
       sweep: this.deps.sweep ?? false,
+      connectionMeta: this.connectionMeta,
     }
+  }
+
+  /** Load the bound connection's plaintext metadata once per instance (best-effort). */
+  private async loadConnectionMeta(): Promise<Record<string, unknown> | null> {
+    const credentialId = this.deps.connector.credentialId
+    if (!credentialId) return null
+    const result = await getCredential(credentialId, this.deps.organizationId)
+    if (result.isErr()) {
+      logger.warn('Failed to load connection metadata for connectionAppFields', {
+        connectorId: this.deps.connector.id,
+        credentialId,
+        error: result.error.message,
+      })
+      return null
+    }
+    return result.value.metadata
   }
 }
 

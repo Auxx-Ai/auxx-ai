@@ -67,6 +67,14 @@ export const DRAWER_TAB_CARD_COMPONENTS: Record<
   () => Promise<{ default: ComponentType<DrawerTabProps> }>
 > = {
   // ─────────────────────────────────────────────────────────────────
+  // CONTACT OVERVIEW CARDS
+  // ─────────────────────────────────────────────────────────────────
+  'contact:external-identities': () =>
+    import('./cards/contact-external-identities-card').then((m) => ({
+      default: m.ContactExternalIdentitiesCard,
+    })),
+
+  // ─────────────────────────────────────────────────────────────────
   // TICKET OVERVIEW CARDS
   // ─────────────────────────────────────────────────────────────────
   'ticket:metrics': () =>

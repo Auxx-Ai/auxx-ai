@@ -237,7 +237,8 @@ export interface CatalogConnectorDefaultMapping {
         mode: 'contributing'
         entityKind: string
         matchFieldKeys?: string[]
-        fieldBindings?: { sourceFieldKey: string; targetKey: string }[]
+        fieldBindings?: { sourceFieldKey: string; targetKey?: string; targetAppField?: string }[]
+        connectionAppFields?: { appFieldKey: string; from: string }[]
       }
 }
 
@@ -710,6 +711,47 @@ export async function compileAndExtractCatalog(): Promise<
           code: 'CATALOG_VALIDATION_FAILED',
           message: `Connector "${connector.id}" config "${fieldKey}": dynamic-select requires valuePath and labelTemplate`,
         })
+      }
+    }
+
+    // Cross-validate app-field-targeting contributing bindings against this app's
+    // declared `fields[]` (identity plan, phase 3): `targetAppField` must name a
+    // field the app declares for the SAME contributing entityKind;
+    // `connectionAppFields` must name a declared NON-identity field there too
+    // (connection metadata can't fill an identity cell).
+    for (const stream of connector.streams ?? []) {
+      for (const mapping of stream.defaultMappings ?? []) {
+        if (mapping.target.mode !== 'contributing') continue
+        const { entityKind, fieldBindings, connectionAppFields } = mapping.target
+        const fieldByKey = new Map(
+          cataloguedFields
+            .filter((f) => f.targetEntity === entityKind)
+            .map((f) => [f.appFieldKey, f])
+        )
+        for (const binding of fieldBindings ?? []) {
+          if (!binding.targetAppField) continue
+          if (!fieldByKey.has(binding.targetAppField)) {
+            return errored({
+              code: 'CATALOG_VALIDATION_FAILED',
+              message: `Connector "${connector.id}" stream "${stream.key}": targetAppField "${binding.targetAppField}" is not a declared field on "${entityKind}"`,
+            })
+          }
+        }
+        for (const conn of connectionAppFields ?? []) {
+          const field = fieldByKey.get(conn.appFieldKey)
+          if (!field) {
+            return errored({
+              code: 'CATALOG_VALIDATION_FAILED',
+              message: `Connector "${connector.id}" stream "${stream.key}": connectionAppFields "${conn.appFieldKey}" is not a declared field on "${entityKind}"`,
+            })
+          }
+          if (field.identity) {
+            return errored({
+              code: 'CATALOG_VALIDATION_FAILED',
+              message: `Connector "${connector.id}" stream "${stream.key}": connectionAppFields "${conn.appFieldKey}" targets an identity field — connection metadata cannot fill an identity field`,
+            })
+          }
+        }
       }
     }
 

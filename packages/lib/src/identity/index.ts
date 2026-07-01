@@ -14,3 +14,8 @@ export type {
   UpsertRecordIdentityInput,
 } from './types'
 export { upsertRecordIdentity } from './upsert'
+export {
+  decorateRecordIdentities,
+  getRecordIdentityViews,
+  type RecordIdentityView,
+} from './view'

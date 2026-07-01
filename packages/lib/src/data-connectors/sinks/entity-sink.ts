@@ -62,6 +62,36 @@ function isBlank(value: unknown): boolean {
 }
 
 /**
+ * Merge this mapping's `connectionAppFields` values (connection metadata, e.g.
+ * Shopify `shopDomain`) into a COPY of the record's fields before the normal
+ * write-set pipeline runs — reusing every existing ref-resolution / merge-strategy /
+ * provenance / content-hash code path for free (map-record already skipped
+ * evaluating these `connectionMetaKey`-flagged entries against the source subtree,
+ * since they have nothing to evaluate). A key with no metadata value (no bound
+ * connection, credential load failed, or the metadata is missing that key) is left
+ * out entirely rather than writing `null` over a previously-synced value.
+ */
+function injectConnectionAppFields(
+  ctx: SyncCtx,
+  mapping: DecodedMapping,
+  record: ProjectedRecord
+): ProjectedRecord {
+  const connMetaFields = mapping.fieldMappings.filter(
+    (fm): fm is typeof fm & { connectionMetaKey: string; targetFieldRef: string } =>
+      fm.connectionMetaKey != null && fm.targetFieldRef != null
+  )
+  if (connMetaFields.length === 0) return record
+
+  const fields = { ...record.fields }
+  for (const fm of connMetaFields) {
+    const value = ctx.connectionMeta?.[fm.connectionMetaKey]
+    if (value === undefined) continue
+    fields[fm.targetFieldRef] = value
+  }
+  return { ...record, fields }
+}
+
+/**
  * Resolve every distinct `targetFieldRef` a record references (write fields +
  * identity candidates) to a concrete `ResourceFieldId`. Concrete refs pass
  * through; the late-bound `@app:` form resolves against the connector's bound
@@ -440,6 +470,11 @@ export const entitySink: EntitySink = {
   async upsertRecord(ctx, mapping, record) {
     ctx.counters.fetched += 1
     ctx.touchedDefs.add(mapping.entityDefinitionId)
+
+    // Fold in connection-metadata-sourced fields (e.g. Shopify `storeDomain`)
+    // before anything else reads `record.fields` — downstream logic treats them
+    // exactly like any other mapped field from here on.
+    record = injectConnectionAppFields(ctx, mapping, record)
 
     // Resolve every mapped `targetFieldRef` to a concrete field id once — both the
     // identity lookup and the write set key off this table (§3.3).

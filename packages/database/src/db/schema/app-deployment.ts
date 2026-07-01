@@ -262,10 +262,19 @@ export interface CatalogConnectorDefaultMapping {
          * Non-identity field bindings the app author pre-declares so a contributing
          * stream is born closer to `ready` (e.g. `first_name` → contact's first-name
          * attribute). Each binds a source field to a target `contact` field by key —
-         * the same resolver the match keys use, just without an `identityRole`.
-         * Unresolved bindings are dropped (the row stays a `needs-mapping` draft).
+         * the same resolver the match keys use, just without an `identityRole`, unless
+         * `targetAppField` names an `identity: true` app field (auto-stamps one — the
+         * `isExternalId` mechanism extended to contributing). Unresolved bindings are
+         * dropped (the row stays a `needs-mapping` draft).
          */
-        fieldBindings?: { sourceFieldKey: string; targetKey: string }[]
+        fieldBindings?: { sourceFieldKey: string; targetKey?: string; targetAppField?: string }[]
+        /**
+         * Fill a plain (non-identity) app field from the connector's CONNECTION
+         * METADATA (e.g. Shopify `shopDomain`) rather than the source record — the
+         * only synthetic write channel. `appFieldKey` must name a declared,
+         * non-identity app field; `from` is the connection metadata key.
+         */
+        connectionAppFields?: { appFieldKey: string; from: string }[]
       }
 }
 

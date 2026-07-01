@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest'
 import {
   appCatalogStreamSchema,
   buildContributingAutoBindings,
+  buildContributingConnectionAppFields,
   buildContributingFieldBindings,
   buildSchemaFromFieldPaths,
   type ContributingTargetField,
@@ -155,6 +156,7 @@ describe('buildContributingFieldBindings', () => {
   it('binds by systemAttribute and by normalized name, subtree-relative, no identityRole', () => {
     const bindings = buildContributingFieldBindings(
       'def_contact',
+      'shopify',
       'customer',
       [
         { sourceFieldKey: 'first_name', targetKey: 'first_name' }, // → by systemAttribute
@@ -176,6 +178,7 @@ describe('buildContributingFieldBindings', () => {
   it('drops a binding whose target key does not resolve', () => {
     const bindings = buildContributingFieldBindings(
       'def_contact',
+      'shopify',
       'customer',
       [{ sourceFieldKey: 'unknown', targetKey: 'no_such_field' }],
       sourceFields,
@@ -187,6 +190,7 @@ describe('buildContributingFieldBindings', () => {
   it('drops a binding whose source field key is unknown', () => {
     const bindings = buildContributingFieldBindings(
       'def_contact',
+      'shopify',
       'customer',
       [{ sourceFieldKey: 'missing_source', targetKey: 'first_name' }],
       sourceFields,
@@ -198,6 +202,7 @@ describe('buildContributingFieldBindings', () => {
   it('drops everything for an array-rooted mapping', () => {
     const bindings = buildContributingFieldBindings(
       'def_contact',
+      'shopify',
       'line_items[]',
       [{ sourceFieldKey: 'first_name', targetKey: 'first_name' }],
       sourceFields,
@@ -209,6 +214,7 @@ describe('buildContributingFieldBindings', () => {
   it('binds at root (no prefix) with the full source path', () => {
     const bindings = buildContributingFieldBindings(
       'def_contact',
+      'shopify',
       '',
       [{ sourceFieldKey: 'email', targetKey: 'email' }],
       [{ fieldKey: 'email', sourcePath: 'email', type: 'EMAIL', name: 'Email' }],
@@ -219,6 +225,87 @@ describe('buildContributingFieldBindings', () => {
       targetFieldRef: 'def_contact:f_email',
       expression: '{email}',
     })
+  })
+
+  it('binds targetAppField to the late-bound @app: ref, stamping identityRole when the app field is identity: true', () => {
+    const bindings = buildContributingFieldBindings(
+      'def_contact',
+      'shopify',
+      '',
+      [{ sourceFieldKey: 'shopify_id', targetAppField: 'customerId' }],
+      [{ fieldKey: 'shopify_id', sourcePath: 'id', type: 'TEXT', name: 'Shopify ID' }],
+      [
+        {
+          id: 'cf_cust_us',
+          name: 'Shopify customer ID',
+          systemAttribute: null,
+          type: 'TEXT',
+          appFieldKey: 'customerId',
+          isIdentity: true,
+        },
+      ]
+    )
+    expect(bindings).toHaveLength(1)
+    expect(bindings[0]).toMatchObject({
+      targetFieldRef: 'def_contact:@app:shopify:customerId',
+      expression: '{id}',
+      identityRole: { kind: 'externalId' },
+    })
+  })
+
+  it('binds targetAppField with no identityRole when the app field is not identity: true', () => {
+    const bindings = buildContributingFieldBindings(
+      'def_contact',
+      'shopify',
+      '',
+      [{ sourceFieldKey: 'domain', targetAppField: 'storeDomain' }],
+      [{ fieldKey: 'domain', sourcePath: 'domain', type: 'TEXT', name: 'Domain' }],
+      [
+        {
+          id: 'cf_domain',
+          name: 'Shopify store',
+          systemAttribute: null,
+          type: 'TEXT',
+          appFieldKey: 'storeDomain',
+          isIdentity: false,
+        },
+      ]
+    )
+    expect(bindings).toHaveLength(1)
+    expect(bindings[0]!.targetFieldRef).toBe('def_contact:@app:shopify:storeDomain')
+    expect(bindings[0]!.identityRole).toBeUndefined()
+  })
+
+  it('drops a targetAppField binding whose appFieldKey is not declared', () => {
+    const bindings = buildContributingFieldBindings(
+      'def_contact',
+      'shopify',
+      '',
+      [{ sourceFieldKey: 'shopify_id', targetAppField: 'noSuchField' }],
+      [{ fieldKey: 'shopify_id', sourcePath: 'id', type: 'TEXT', name: 'Shopify ID' }],
+      defFields
+    )
+    expect(bindings).toHaveLength(0)
+  })
+})
+
+describe('buildContributingConnectionAppFields', () => {
+  it('builds a connectionMetaKey-flagged FieldMapping per entry, never carrying identityRole', () => {
+    const bindings = buildContributingConnectionAppFields('def_contact', 'shopify', [
+      { appFieldKey: 'storeDomain', from: 'shopDomain' },
+    ])
+    expect(bindings).toHaveLength(1)
+    expect(bindings[0]).toMatchObject({
+      targetFieldRef: 'def_contact:@app:shopify:storeDomain',
+      connectionMetaKey: 'shopDomain',
+      expression: '',
+      sourceFields: {},
+    })
+    expect(bindings[0]!.identityRole).toBeUndefined()
+  })
+
+  it('returns an empty array for no entries', () => {
+    expect(buildContributingConnectionAppFields('def_contact', 'shopify', [])).toEqual([])
   })
 })
 

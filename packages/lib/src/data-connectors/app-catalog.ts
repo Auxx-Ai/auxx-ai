@@ -5,7 +5,7 @@
 // with the DB write helpers in `createConnectorFromAppCatalog`.
 
 import type { CatalogDataConnector } from '@auxx/database'
-import { toResourceFieldId } from '@auxx/types/field'
+import { toAppFieldRef, toResourceFieldId } from '@auxx/types/field'
 import { generateId } from '@auxx/utils'
 import { inferJsonSchema, STRUCT_FIELD_TYPE_KEYWORD } from '../json-schema'
 import type { FieldMapping, IdentityNormalize } from './types'
@@ -99,6 +99,10 @@ export interface ContributingTargetField {
   isCreatable?: boolean
   isUpdatable?: boolean
   isComputed?: boolean
+  /** The app-declared `appFieldKey` this row provisioned from, if any (null for system attrs). */
+  appFieldKey?: string | null
+  /** Stamped by provisioning when the declaring `defineFields` entry is `identity: true`. */
+  isIdentity?: boolean
 }
 
 /** A target is a safe auto-bind sink unless it's computed or can be neither created nor updated. */
@@ -162,15 +166,21 @@ export function buildContributingMatchBindings(
  * of a bare identity-only draft (multi-stream-setup-plan §3.4A). A binding resolves
  * only when BOTH sides resolve unambiguously:
  *   - source — a declared stream field by `fieldKey` (`binding.sourceFieldKey`);
- *   - target — a field on the contributing def keyed by `binding.targetKey` (its
- *     `systemAttribute`, name, or normalized name).
+ *   - target — either `targetKey` against a field on the contributing def (its
+ *     `systemAttribute`, name, or normalized name), OR `targetAppField` (mutually
+ *     exclusive) against a declared app field's `appFieldKey` — resolved to the
+ *     connection-late-bound `@app:` ref (not a concrete id, since the field may be
+ *     connection-scoped) via `toAppFieldRef`. A `targetAppField` binding whose app
+ *     field is `identity: true` auto-stamps `identityRole: { kind: 'externalId' }`
+ *     (the `isExternalId` mechanism, extended to contributing).
  * Array-rooted mappings and unresolved bindings are dropped (the row keeps whatever
- * draft state remains). The external id is never bound here.
+ * draft state remains). The external id is never bound via `targetKey`.
  */
 export function buildContributingFieldBindings(
   entityDefinitionId: string,
+  appSlug: string,
   rootPath: string,
-  fieldBindings: { sourceFieldKey: string; targetKey: string }[],
+  fieldBindings: { sourceFieldKey: string; targetKey?: string; targetAppField?: string }[],
   sourceFields: CatalogDataConnector['streams'][number]['fields'],
   defFields: ContributingTargetField[]
 ): FieldMapping[] {
@@ -181,16 +191,56 @@ export function buildContributingFieldBindings(
   const fieldByKey = buildTargetFieldIndex(defFields)
   const prefix = rootPath ? `${rootPath}.` : ''
   const bindings: FieldMapping[] = []
-  for (const { sourceFieldKey, targetKey } of fieldBindings) {
-    const target = fieldByKey.get(targetKey) ?? fieldByKey.get(normalizeFieldKey(targetKey))
-    if (!target) continue
+  for (const { sourceFieldKey, targetKey, targetAppField } of fieldBindings) {
     const sourceField = sourceFields.find((f) => f.fieldKey === sourceFieldKey)
     // The source field must live under this mapping's subtree (its sourcePath starts
     // with the rootPath prefix), else its relative path is undefined for this root.
     if (!sourceField || (prefix && !sourceField.sourcePath.startsWith(prefix))) continue
+
+    if (targetAppField) {
+      const appField = defFields.find((f) => f.appFieldKey === targetAppField)
+      if (!appField) continue
+      bindings.push(
+        bindSourceToAppField(
+          entityDefinitionId,
+          appSlug,
+          targetAppField,
+          prefix,
+          sourceField,
+          appField.isIdentity ? { kind: 'externalId' } : undefined
+        )
+      )
+      continue
+    }
+    if (!targetKey) continue
+    const target = fieldByKey.get(targetKey) ?? fieldByKey.get(normalizeFieldKey(targetKey))
+    if (!target) continue
     bindings.push(bindSourceToTarget(entityDefinitionId, prefix, sourceField, target))
   }
   return bindings
+}
+
+/**
+ * Build the `FieldMapping[]` for a contributing mapping's `connectionAppFields` —
+ * plain (never identity) app fields filled from the connector's CONNECTION METADATA
+ * (e.g. Shopify `shopDomain`) rather than the source record. The only synthetic
+ * write channel: no source binding, so `expression`/`sourceFields` are unused and
+ * `connectionMetaKey` carries the metadata key the sink reads at write time
+ * (`ctx.connectionMeta`). Always the late-bound `@app:` ref — connection metadata is
+ * per-connection by nature, same reasoning as `targetAppField`.
+ */
+export function buildContributingConnectionAppFields(
+  entityDefinitionId: string,
+  appSlug: string,
+  connectionAppFields: { appFieldKey: string; from: string }[]
+): FieldMapping[] {
+  return connectionAppFields.map(({ appFieldKey, from }) => ({
+    id: generateId(),
+    targetFieldRef: toAppFieldRef(entityDefinitionId, appSlug, appFieldKey),
+    expression: '',
+    sourceFields: {},
+    connectionMetaKey: from,
+  }))
 }
 
 /**
@@ -285,6 +335,31 @@ function bindSourceToTarget(
   return {
     id: generateId(),
     targetFieldRef: toResourceFieldId(entityDefinitionId, target.id),
+    expression: `{${relativePath}}`,
+    sourceFields: { [relativePath]: relativePath },
+    ...(identityRole ? { identityRole } : {}),
+  }
+}
+
+/**
+ * Same as {@link bindSourceToTarget}, but for a `targetAppField` binding: the
+ * target is an app-declared field named by `appFieldKey`, resolved to the
+ * connection-late-bound `@app:` ref (never a concrete id — the field may be
+ * connection-scoped, so resolution defers to sync time against the connector's
+ * bound connection, same as owned `isExternalId` fields).
+ */
+function bindSourceToAppField(
+  entityDefinitionId: string,
+  appSlug: string,
+  appFieldKey: string,
+  prefix: string,
+  sourceField: CatalogDataConnector['streams'][number]['fields'][number],
+  identityRole?: FieldMapping['identityRole']
+): FieldMapping {
+  const relativePath = prefix ? sourceField.sourcePath.slice(prefix.length) : sourceField.sourcePath
+  return {
+    id: generateId(),
+    targetFieldRef: toAppFieldRef(entityDefinitionId, appSlug, appFieldKey),
     expression: `{${relativePath}}`,
     sourceFields: { [relativePath]: relativePath },
     ...(identityRole ? { identityRole } : {}),

@@ -116,6 +116,9 @@ function evaluateFields(mapping: DecodedMapping, subtree: unknown): Record<strin
   const out: Record<string, unknown> = {}
   for (const fm of mapping.fieldMappings) {
     if (fm.targetFieldRef == null) continue // unassigned draft — projected nowhere
+    // connectionMetaKey bindings read connection metadata, not the source subtree —
+    // the sink injects their value before the write set is built (entity-sink.ts).
+    if (fm.connectionMetaKey != null) continue
     out[fm.targetFieldRef] = evaluateFieldValue(fm, subtree)
   }
   return out

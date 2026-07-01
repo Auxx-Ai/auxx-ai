@@ -313,12 +313,24 @@ passportRoute.post('/', async (c) => {
           : undefined,
         bootAttributes,
       })
+      // Shopify App-Proxy-signed identity claims (set in shopify-proxy.ts) —
+      // never a spoofable client attribute. Present → the resolver resolves
+      // tier-1 by the connection-scoped `customerId` index (converges with
+      // connector-synced contacts) and skips the app-less `chat` link.
+      const shopDomain = claims.attributes.shopify_shop_domain
+      const shopifyCustomerId = claims.attributes.shopify_customer_id
+      const shopifyIdentity =
+        typeof shopDomain === 'string' && typeof shopifyCustomerId === 'string'
+          ? { shopDomain, customerId: shopifyCustomerId }
+          : undefined
+
       try {
         const resolved = await findOrCreateContactFromJwt({
           organizationId: widget.organizationId,
           userId: claims.userId,
           email: claims.email,
           attributes: writes,
+          ...(shopifyIdentity ? { shopify: shopifyIdentity } : {}),
         })
         identityVerified = true
         contactId = resolved.contactId
@@ -370,15 +382,13 @@ passportRoute.post('/', async (c) => {
         // tools' scope arg to this visitor. Both values come from the
         // App-Proxy-SIGNED JWT claims (set in shopify-proxy.ts) — never from a
         // spoofable client attribute. Best-effort: a failure never blocks mint.
-        const shopDomain = claims.attributes.shopify_shop_domain
-        const shopifyCustomerId = claims.attributes.shopify_customer_id
-        if (typeof shopDomain === 'string' && typeof shopifyCustomerId === 'string') {
+        if (shopifyIdentity) {
           try {
             await writeShopifyCustomerIdField({
               organizationId: widget.organizationId,
               contactId: resolved.contactId,
-              shopDomain,
-              shopifyCustomerId,
+              shopDomain: shopifyIdentity.shopDomain,
+              shopifyCustomerId: shopifyIdentity.customerId,
             })
           } catch (error) {
             log.warn('Failed to write Shopify customerId identity field', {
