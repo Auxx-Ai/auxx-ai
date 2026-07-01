@@ -45,6 +45,8 @@ interface FormulaRowProps {
   identityRole?: IdentityRole
   /** Offer the "Match existing" option — needs a bound target to compare against. */
   canMatch?: boolean
+  /** This formula is under an app OWNED mapping — lock the declared External ID, suppress others. */
+  appManaged?: boolean
   /** The mapping is OWNED — relaxes the picker's writable filter to owned columns. */
   ownedWrite?: boolean
   onEdit: () => void
@@ -83,6 +85,7 @@ export function FormulaRow({
   drilledRef,
   identityRole,
   canMatch,
+  appManaged,
   ownedWrite,
   onEdit,
   onRetarget,
@@ -112,6 +115,7 @@ export function FormulaRow({
             <IdentityRoleControl
               role={identityRole ?? null}
               canMatch={!!canMatch}
+              appManaged={appManaged}
               onChange={onSetIdentityRole}
             />
           )}

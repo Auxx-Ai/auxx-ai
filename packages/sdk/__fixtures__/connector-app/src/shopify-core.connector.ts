@@ -44,7 +44,12 @@ export const shopifyCoreDataConnector = defineDataConnector({
       // embedded customer + line_items. PII flags on customer fields are
       // surfaced + default-excluded in the mapping UI.
       fields: {
-        id: { type: 'TEXT', name: 'Order ID', sourcePath: 'id' },
+        shopify_id: {
+          type: 'TEXT',
+          name: 'Shopify Order ID',
+          sourcePath: 'id',
+          isExternalId: true,
+        },
         name: { type: 'TEXT', name: 'Order Name', sourcePath: 'name' },
         totalPrice: { type: 'CURRENCY', name: 'Total', sourcePath: 'total_price' },
         financialStatus: {

@@ -66,6 +66,8 @@ interface SourceLeafRowProps {
   isOwned: boolean
   /** The identity role this leaf plays (external-id anchor / secondary match / none). */
   identityRole: LeafIdentityRole
+  /** This leaf is under an app OWNED mapping — lock the declared External ID, suppress others. */
+  appManaged?: boolean
   /** Relationship linking — the picker is the entry point; the link renders on a sub-row. */
   allowRelationships?: boolean
   /** The currently-linked relationship field's ref, for the picker's selected check. */
@@ -106,6 +108,7 @@ export function SourceLeafRow({
   canCreate,
   isOwned,
   identityRole,
+  appManaged,
   allowRelationships,
   linkedFieldRef,
   drilledLabel,
@@ -144,6 +147,7 @@ export function SourceLeafRow({
             <IdentityRoleControl
               role={identityRole}
               canMatch={isMapped}
+              appManaged={appManaged}
               onChange={onSetIdentityRole}
             />
           )}

@@ -207,6 +207,8 @@ export interface CatalogConnectorField {
   options?: Array<{ value: string; label?: string; color?: string }>
   /** Sub-field set for an ADDRESS_STRUCT field (e.g. `['street', 'city', 'state', 'country']`). */
   addressComponents?: string[]
+  /** This field's value is the owned record's stable external id — the seeder stamps `identityRole: externalId` on its mapping. */
+  isExternalId?: boolean
 }
 
 /**

@@ -682,12 +682,36 @@ export function buildAppOwnedFieldMappings(
   appSlug: string,
   ownedApiSlug: string
 ): FieldMapping[] {
-  return entries.map(({ field, relativeSourcePath: relPath }) => ({
-    id: generateId(),
-    targetFieldRef: toAppFieldRef(ownedApiSlug, appSlug, field.fieldKey),
-    expression: `{${relPath}}`,
-    sourceFields: { [relPath]: relPath },
-  }))
+  // The manifest may flag one field as the owned record's External ID (`isExternalId`).
+  // v1 allows at most one per owned def — first-wins, warn on extras — so the stamped
+  // `identityRole` is unambiguous.
+  let externalIdClaimed = false
+  return entries.map(({ field, relativeSourcePath: relPath }) => {
+    // Stamp the External-ID anchor onto the flagged field's mapping WITHOUT dropping its
+    // column write: it keeps its `targetFieldRef` (writes the "Shopify ID" column) and
+    // gains `identityRole: externalId` (drives record identity). `resolveExternalId` then
+    // reads this same value — which equals the app's `ConnectorRecord.externalId` — so the
+    // visible column and the record's identity agree by construction. `deriveLinkMode`
+    // stays `upsert` (a real target write always wins), so this never flips an owned def
+    // to `reference`.
+    let isExternalId = field.isExternalId === true
+    if (isExternalId && externalIdClaimed) {
+      logger.warn('Multiple isExternalId fields on one owned def — ignoring extra', {
+        appSlug,
+        ownedApiSlug,
+        fieldKey: field.fieldKey,
+      })
+      isExternalId = false
+    }
+    if (isExternalId) externalIdClaimed = true
+    return {
+      id: generateId(),
+      targetFieldRef: toAppFieldRef(ownedApiSlug, appSlug, field.fieldKey),
+      expression: `{${relPath}}`,
+      sourceFields: { [relPath]: relPath },
+      ...(isExternalId ? { identityRole: { kind: 'externalId' as const } } : {}),
+    }
+  })
 }
 
 /**
