@@ -7,7 +7,7 @@
 import type { CatalogDataConnector } from '@auxx/database'
 import { toResourceFieldId } from '@auxx/types/field'
 import { generateId } from '@auxx/utils'
-import { inferJsonSchema } from '../json-schema'
+import { inferJsonSchema, STRUCT_FIELD_TYPE_KEYWORD } from '../json-schema'
 import type { FieldMapping, IdentityNormalize } from './types'
 
 /** A catalog source field's declared type → the JSON-schema scalar type it carries. */
@@ -291,6 +291,57 @@ function bindSourceToTarget(
   }
 }
 
+/**
+ * Source field types that carry a STRUCT value (one nested object that maps as a
+ * single value, not a branch to explode). The schema overlay stamps these so the
+ * mapping editor renders the node as a typed value leaf bound to a matching target
+ * field — see plans/data-connectors/v6/address-struct-mapping-plan.md. `NAME` is a
+ * candidate but lacks a JSON/object compat entry today, so it stays out for now.
+ */
+export const STRUCT_SOURCE_FIELD_TYPES = new Set(['ADDRESS_STRUCT'])
+
+interface MutableSchemaNode {
+  type?: string | string[]
+  properties?: Record<string, MutableSchemaNode>
+  items?: MutableSchemaNode
+  [key: string]: unknown
+}
+
+/** Descend a dotted, `[]`-aware `sourcePath` into the inferred schema. Null if absent. */
+function findSchemaNode(root: MutableSchemaNode, sourcePath: string): MutableSchemaNode | null {
+  let node: MutableSchemaNode | undefined = root
+  for (const rawSeg of sourcePath.split('.').filter(Boolean)) {
+    const isArray = rawSeg.endsWith('[]')
+    const seg = isArray ? rawSeg.slice(0, -2) : rawSeg
+    const child = node?.properties?.[seg]
+    if (!child) return null
+    // An array property carries its element shape under `items` — descend into it so a
+    // path segment like `line_items[]` lands on the element, not the array container.
+    node = isArray && child.type === 'array' && child.items ? child.items : child
+  }
+  return node ?? null
+}
+
+/**
+ * Stamp each STRUCT-typed declared field's {@link STRUCT_FIELD_TYPE_KEYWORD} onto the
+ * schema node at its `sourcePath`, so the client flatten/suggester treat that node as a
+ * single typed value leaf instead of an object branch. Mutates `schema` in place (it's
+ * freshly built by the caller). Fields without a struct type, or whose node is absent
+ * from the example record, are skipped.
+ */
+export function overlayDeclaredFieldTypes(
+  schema: Record<string, unknown>,
+  fields: CatalogDataConnector['streams'][number]['fields']
+): Record<string, unknown> {
+  const root = schema as MutableSchemaNode
+  for (const f of fields) {
+    if (!STRUCT_SOURCE_FIELD_TYPES.has(f.type)) continue
+    const node = findSchemaNode(root, f.sourcePath)
+    if (node) node[STRUCT_FIELD_TYPE_KEYWORD] = f.type
+  }
+  return schema
+}
+
 /** The source schema for an app catalog stream — prefer its canonical sample. */
 export function appCatalogStreamSchema(stream: CatalogDataConnector['streams'][number]): {
   sourceSchema: Record<string, unknown>
@@ -299,5 +350,6 @@ export function appCatalogStreamSchema(stream: CatalogDataConnector['streams'][n
   const sourceSchema = stream.exampleRecord
     ? (inferJsonSchema(stream.exampleRecord) as Record<string, unknown>)
     : buildSchemaFromFieldPaths(stream.fields)
+  overlayDeclaredFieldTypes(sourceSchema, stream.fields)
   return { sourceSchema, schemaSource: 'catalog' }
 }

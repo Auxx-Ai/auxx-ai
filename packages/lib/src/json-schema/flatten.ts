@@ -3,12 +3,23 @@
 // server-side mapping suggester (`data-connectors/suggest-mappings`) and client UIs
 // (webhook token-path pickers) share one walker. Extracted from suggest-mappings (v7).
 
+/**
+ * JSON-Schema extension keyword carrying a node's declared STRUCT field type
+ * (e.g. `ADDRESS_STRUCT`). Stamped by the data-connector catalog overlay so a struct
+ * source value flattens as a single typed leaf instead of an object branch — see
+ * plans/data-connectors/v6/address-struct-mapping-plan.md. Unknown keywords are ignored
+ * by JSON-Schema and survive the `sourceSchema` jsonb round-trip.
+ */
+export const STRUCT_FIELD_TYPE_KEYWORD = 'x-auxx-fieldType'
+
 /** A scalar source leaf extracted from a JSON schema, with its record-relative path. */
 export interface SourceLeaf {
   /** Record-relative dotted path, e.g. `email` / `customer.email`. */
   path: string
   /** JSON-schema scalar type at this path (`string` / `number` / `boolean` / …). */
   jsonType: string
+  /** Declared STRUCT field type when the node is a typed struct leaf (`ADDRESS_STRUCT`). */
+  fieldType?: string
 }
 
 interface JsonSchemaNode {
@@ -16,6 +27,7 @@ interface JsonSchemaNode {
   format?: string
   properties?: Record<string, JsonSchemaNode>
   items?: JsonSchemaNode
+  [STRUCT_FIELD_TYPE_KEYWORD]?: string
 }
 
 function nodeType(node: JsonSchemaNode): string {
@@ -54,7 +66,11 @@ export function collectSchemaLeaves(
     for (const [key, child] of Object.entries(node.properties)) {
       const path = prefix ? `${prefix}.${key}` : key
       const t = nodeType(child)
-      if (t === 'object') walk(child, path)
+      // A struct-typed node maps as ONE value — emit it as a leaf and don't descend into
+      // its components (mirrors the client flatten in `use-source-paths`).
+      const structType = child[STRUCT_FIELD_TYPE_KEYWORD]
+      if (structType) out.push({ path, jsonType: t, fieldType: structType })
+      else if (t === 'object') walk(child, path)
       else if (t === 'array') {
         // A collection of objects → its own mapping, not a field. A collection of
         // scalars can steer a comma-joined token when the caller opts in.

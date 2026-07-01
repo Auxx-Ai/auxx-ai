@@ -53,11 +53,18 @@ function jsonSourceFieldType(jsonType: string): FieldTypeType {
  * `jsonType` is a source leaf's JSON-schema type. A computed formula has no
  * single source type — it produces a scalar string/number, so pass `'string'`
  * (→ TEXT) for formula targets.
+ *
+ * `sourceFieldType` is the leaf's DECLARED field type when it carries one (a struct
+ * source like `ADDRESS_STRUCT`). When set it's checked directly, so the target list is
+ * exactly that type's accepting sinks (`ADDRESS_STRUCT` → ADDRESS_STRUCT / ADDRESS / JSON)
+ * rather than the lossy `object → JSON` widening.
  */
 export function isSourceTargetCompatible(
   target: FieldTypeType | null | undefined,
-  jsonType: string
+  jsonType: string,
+  sourceFieldType?: FieldTypeType
 ): boolean {
   if (!target) return true
+  if (sourceFieldType) return isFieldTypeCompatible(target, sourceFieldType)
   return isFieldTypeCompatible(target, jsonSourceFieldType(jsonType))
 }

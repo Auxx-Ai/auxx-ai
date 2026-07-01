@@ -66,12 +66,14 @@ export function suggestFieldMappings(
   for (const leaf of leaves) {
     const leafName = normalizeName(lastSegment(leaf.path))
     if (!leafName) continue
+    // A struct leaf (e.g. ADDRESS_STRUCT) carries its declared field type — match against
+    // it directly so it binds to a same-named struct target; else reduce the JSON type.
+    const sourceFieldType =
+      (leaf.fieldType as FieldTypeValue | undefined) ?? jsonToFieldType(leaf.jsonType)
     const match = writable.find((f) => {
       if (used.has(f.id)) return false
       if (![normalizeName(f.key), normalizeName(f.label)].includes(leafName)) return false
-      if (f.fieldType && !isFieldTypeCompatible(f.fieldType, jsonToFieldType(leaf.jsonType))) {
-        return false
-      }
+      if (f.fieldType && !isFieldTypeCompatible(f.fieldType, sourceFieldType)) return false
       return true
     })
     if (!match) continue
