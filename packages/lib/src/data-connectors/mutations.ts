@@ -15,8 +15,10 @@ import {
   toResourceFieldId,
 } from '@auxx/types/field'
 import { generateId } from '@auxx/utils'
-import { and, eq, inArray } from 'drizzle-orm'
+import { and, eq, inArray, isNull, ne } from 'drizzle-orm'
 import { getCachedCustomFields, getCachedEntityDefId } from '../cache'
+import { onCacheEvent } from '../cache/invalidate'
+import { notifyEntityDefChanged } from '../entity-definitions/notify'
 import { BadRequestError, NotFoundError } from '../errors'
 import { toRecordId } from '../resources/resource-id'
 import {
@@ -479,7 +481,8 @@ export async function createConnectorFromAppCatalog(
       organizationId,
       streamRow.id,
       stream,
-      appSlug
+      appSlug,
+      input.appInstallationId
     )
     await materializeAppContributingMappings(
       db,
@@ -576,13 +579,50 @@ export function partitionOwnedFields(
 }
 
 /**
- * Seed the UNBOUND owned mappings for a catalog stream (v6 — install-target-defs-via
- * -templates, "Option A"). One `DataConnectorMapping` per owned default-mapping, with
- * `entityDefinitionId: null` and `fieldMappings` carrying the connection-late-bound
- * `@app:` ref per declared field. NO `EntityDefinition`s, columns,
- * or relationship edges are created here — they are created when the user installs the
- * app's record-type templates from the Map step (the reused `EntityTemplateDialog`), and
- * the install `onComplete` then binds each mapping's def + concrete field refs.
+ * The id of an existing, non-archived app-owned def for `sourceKey` under this app
+ * install, or `null` to fork a new one. Adoption REQUIRES the same `appInstallationId`:
+ * owned field values sync through `@app:` refs resolved by `appFieldKey` + install (R1),
+ * so a different install's columns wouldn't resolve — a different install forks instead.
+ * `sourceKey === entity.key` (Phase 2). Ownership (`dataConnectorId`) is deliberately NOT
+ * re-stamped — it stays with the def's first owner; the second connector just adds a
+ * mapping. See `plans/data-connectors/v6/shared-definitions-across-connectors-plan.md`.
+ */
+export async function adoptSharedOwnedDefId(
+  db: Database,
+  organizationId: string,
+  appInstallationId: string | null | undefined,
+  sourceKey: string
+): Promise<string | null> {
+  if (!appInstallationId) return null
+  const [existing] = await db
+    .select({ id: schema.EntityDefinition.id })
+    .from(schema.EntityDefinition)
+    .where(
+      and(
+        eq(schema.EntityDefinition.organizationId, organizationId),
+        eq(schema.EntityDefinition.appInstallationId, appInstallationId),
+        eq(schema.EntityDefinition.sourceKey, sourceKey),
+        isNull(schema.EntityDefinition.archivedAt)
+      )
+    )
+    .limit(1)
+  return existing?.id ?? null
+}
+
+/**
+ * Seed the owned mappings for a catalog stream (v6 — install-target-defs-via-templates,
+ * "Option A"). One `DataConnectorMapping` per owned default-mapping, with `fieldMappings`
+ * carrying the connection-late-bound `@app:` ref per declared field.
+ *
+ * A mapping is seeded **bound** when an app-owned def for its record type already exists
+ * for this app install — see `adoptSharedOwnedDefId`: a second connector for the SAME app
+ * install (e.g. GitHub Issues repo 1 + repo 2) shares ONE def instead of forking, with
+ * records kept attributable per-connector via `integrationSource`. Otherwise it is seeded
+ * UNBOUND (`entityDefinitionId: null`) — no `EntityDefinition`s, columns, or relationship
+ * edges are created here; they are created when the user installs the app's record-type
+ * templates from the Map step (the reused `EntityTemplateDialog`), and the install
+ * `onComplete` binds each mapping's def + concrete field refs.
+ *
  * `parentMappingId` is wired from rootPath nesting (parents first) so the fan-out tree —
  * and the install-created relationship edge it anchors — forms before any def exists.
  */
@@ -591,7 +631,8 @@ async function seedAppOwnedMappings(
   organizationId: string,
   streamId: string,
   stream: CatalogDataConnector['streams'][number],
-  appSlug: string
+  appSlug: string,
+  appInstallationId: string | null | undefined
 ): Promise<Record<string, string>> {
   const allMappings = stream.defaultMappings ?? []
   const owned = allMappings.filter((m) => m.target.mode === 'owned')
@@ -610,6 +651,15 @@ async function seedAppOwnedMappings(
     // its entry list is empty; it only carries the structural link (parent + edge key).
     const entries = partition[mapping.rootPath] ?? []
     const linkMode = mapping.linkMode ?? ('upsert' as LinkMode)
+
+    // Share an existing app-owned def for this record type instead of forking a new
+    // one (null → the install banner creates it). The def's `sourceKey === entity.key`.
+    const entityDefinitionId = await adoptSharedOwnedDefId(
+      db,
+      organizationId,
+      appInstallationId,
+      entity.key
+    )
 
     const parentRootPath = ownedParentRootPath(mapping.rootPath, allRootPaths)
     const parentMappingId = parentRootPath != null ? mappingIdByRootPath[parentRootPath] : null
@@ -638,7 +688,7 @@ async function seedAppOwnedMappings(
           : mapping.rootPath,
       linkMode,
       targetMode: 'owned' as TargetMode,
-      entityDefinitionId: null,
+      entityDefinitionId,
       parentMappingId,
       relationshipFieldKey: appRelationshipFieldKey(
         mapping.relationshipFieldKey,
@@ -1129,17 +1179,61 @@ export async function deleteConnector(
           eq(schema.EntityDefinition.dataConnectorId, id)
         )
       )
-    if (ownedDefs.length > 0) {
-      const defService = new EntityDefinitionService(organizationId, userId)
-      for (const ownedDef of ownedDefs) {
+    // A def SHARED with another connector (that connector still maps to it — e.g. GitHub
+    // Issues repo 1 + repo 2 into one def) must NOT be torn down: `delete()` cascades the
+    // other connector's mappings AND every record in the def, blowing past the per-record
+    // `integrationSource` scoping. For a shared def we keep it, reassign ownership to a
+    // surviving connector (stays `'connector'`-locked + survives this row's delete), and
+    // let the record wipe above (scoped to `integrationSource = id`) remove only THIS
+    // connector's rows. See shared-definitions-across-connectors-plan.md.
+    const defService = new EntityDefinitionService(organizationId, userId)
+    const keptSharedDefIds = new Set<string>()
+    for (const ownedDef of ownedDefs) {
+      const otherOwners = await db
+        .selectDistinct({ connectorId: schema.DataConnectorStream.dataConnectorId })
+        .from(schema.DataConnectorMapping)
+        .innerJoin(
+          schema.DataConnectorStream,
+          eq(schema.DataConnectorStream.id, schema.DataConnectorMapping.dataConnectorStreamId)
+        )
+        .where(
+          and(
+            eq(schema.DataConnectorMapping.entityDefinitionId, ownedDef.id),
+            eq(schema.DataConnectorMapping.organizationId, organizationId),
+            ne(schema.DataConnectorStream.dataConnectorId, id)
+          )
+        )
+      if (otherOwners.length === 0) {
         await defService.delete(ownedDef.id)
+        continue
       }
+      // Reassign to a deterministic survivor. Move the def AND its columns owned by THIS
+      // connector (so the stray-field sweep below skips them and they stay locked under
+      // the survivor). Do this BEFORE the connector-row delete so its FK set-null can't
+      // fire on the reassigned rows.
+      const survivorId = [...otherOwners.map((o) => o.connectorId)].sort()[0]
+      await db
+        .update(schema.EntityDefinition)
+        .set({ dataConnectorId: survivorId, updatedAt: new Date() })
+        .where(eq(schema.EntityDefinition.id, ownedDef.id))
+      await db
+        .update(schema.CustomField)
+        .set({ dataConnectorId: survivorId, updatedAt: new Date() })
+        .where(
+          and(
+            eq(schema.CustomField.entityDefinitionId, ownedDef.id),
+            eq(schema.CustomField.dataConnectorId, id)
+          )
+        )
+      keptSharedDefIds.add(ownedDef.id)
+      await notifyEntityDefChanged(organizationId, ownedDef.id, 'updated')
+      await onCacheEvent('custom-field.updated', { orgId: organizationId })
     }
 
     // Then any contributing columns the connector added to SHARED defs (e.g. fields on the
     // system Contact def) — tagged by `dataConnectorId` but not owned by a torn-down def.
     // `deleteField` handles values + relationship inverses + display-field cleanup and busts
-    // the custom-field cache.
+    // the custom-field cache. Skip columns on a kept shared def — they were reassigned above.
     const strayFields = await db
       .select({
         id: schema.CustomField.id,
@@ -1156,6 +1250,7 @@ export async function deleteConnector(
       const fieldService = new CustomFieldService(organizationId, userId, db)
       for (const stray of strayFields) {
         if (!stray.entityDefinitionId) continue
+        if (keptSharedDefIds.has(stray.entityDefinitionId)) continue
         await fieldService.deleteField(toResourceFieldId(stray.entityDefinitionId, stray.id))
       }
     }
@@ -1165,6 +1260,45 @@ export async function deleteConnector(
 
   logger.info('Deleted data connector', { id, behavior })
   return { success: true }
+}
+
+/**
+ * Owned-def ids of `connectorId` that ANOTHER connector also maps to — the defs a
+ * `delete` KEEPS (reassigning ownership) instead of tearing down (see `deleteConnector`'s
+ * shared-def guard). Powers the "shared → kept" delete-confirm copy. Empty when the
+ * connector owns no defs or none are shared.
+ */
+export async function listSharedOwnedDefIds(
+  db: Database,
+  organizationId: string,
+  connectorId: string
+): Promise<string[]> {
+  const ownedDefs = await db
+    .select({ id: schema.EntityDefinition.id })
+    .from(schema.EntityDefinition)
+    .where(
+      and(
+        eq(schema.EntityDefinition.organizationId, organizationId),
+        eq(schema.EntityDefinition.dataConnectorId, connectorId)
+      )
+    )
+  if (ownedDefs.length === 0) return []
+  const ownedIds = ownedDefs.map((d) => d.id)
+  const shared = await db
+    .selectDistinct({ defId: schema.DataConnectorMapping.entityDefinitionId })
+    .from(schema.DataConnectorMapping)
+    .innerJoin(
+      schema.DataConnectorStream,
+      eq(schema.DataConnectorStream.id, schema.DataConnectorMapping.dataConnectorStreamId)
+    )
+    .where(
+      and(
+        inArray(schema.DataConnectorMapping.entityDefinitionId, ownedIds),
+        eq(schema.DataConnectorMapping.organizationId, organizationId),
+        ne(schema.DataConnectorStream.dataConnectorId, connectorId)
+      )
+    )
+  return shared.map((s) => s.defId).filter((defId): defId is string => defId != null)
 }
 
 // ── Streams ─────────────────────────────────────────────────────────────────

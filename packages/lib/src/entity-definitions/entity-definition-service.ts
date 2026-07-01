@@ -170,11 +170,13 @@ export class EntityDefinitionService {
   /**
    * Archive an entity definition (soft delete)
    * Convenience method that calls update with archivedAt set.
-   * System entities (any non-null entityType) are not archivable.
+   * System entities (any real, non-empty entityType) are not archivable.
    */
   async archive(id: string) {
     const existing = await this.getById(id)
-    if (existing && existing.entityType !== null) {
+    // Truthy check (not `!== null`): a legacy owned-def path wrote an empty-string
+    // entityType, which must NOT count as a system entity (see deleteEntityDefinitionDeep).
+    if (existing?.entityType) {
       throw new ForbiddenError('System entities cannot be archived')
     }
     return this.update(id, { archivedAt: new Date() })

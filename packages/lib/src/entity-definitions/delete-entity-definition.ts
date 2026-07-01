@@ -162,7 +162,11 @@ export async function deleteEntityDefinitionDeep(params: {
     .limit(1)
 
   if (!def) throw new NotFoundError('Entity definition not found')
-  if (def.entityType !== null) {
+  // System entities carry a real, non-empty entityType (contact, ticket, …). Custom
+  // and connector-owned defs have `null` — but a legacy owned-def create path wrote an
+  // empty string, so treat '' the same as null (a truthy check), else those defs are
+  // wrongly refused as "system" and can never be deleted (e.g. on connector teardown).
+  if (def.entityType) {
     throw new ForbiddenError('System entities cannot be deleted')
   }
 
