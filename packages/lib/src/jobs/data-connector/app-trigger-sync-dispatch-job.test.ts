@@ -5,7 +5,7 @@
 // (targeted PARTIAL run); non-steerable cursor stream → the full `enqueueConnectorSync`.
 // DB/redis/queue/enqueue faked.
 
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const findManyConnectors = vi.fn()
 const findManyStreams = vi.fn()
@@ -166,5 +166,77 @@ describe('dispatchAppTriggerToConnectors', () => {
     expect(findManyStreams).not.toHaveBeenCalled()
     expect(enqueueConnectorSync).not.toHaveBeenCalled()
     expect(queueAdd).not.toHaveBeenCalled()
+  })
+
+  describe('steer-burst debounce (v9 §8)', () => {
+    beforeEach(() => {
+      vi.useFakeTimers()
+      vi.setSystemTime(0)
+    })
+    afterEach(() => {
+      vi.useRealTimers()
+    })
+
+    it('carries a deterministic jobId + delay + removeOn* opts when debounceMs is set', async () => {
+      findManyConnectors.mockResolvedValue([
+        { id: 'dc1', config: { webhookTrigger: { triggerId: 'shopify.shopify-trigger' } } },
+      ])
+      findManyStreams.mockResolvedValue([
+        {
+          id: 'stream1',
+          dataConnectorId: 'dc1',
+          streamKey: 'variant',
+          requestConfig: { webhookTrigger: { paths: ['resourceId'], debounceMs: 10_000 } },
+        },
+      ])
+      await dispatchAppTriggerToConnectors(job(base))
+      const opts = queueAdd.mock.calls[0]?.[2]
+      expect(opts).toMatchObject({ delay: 10_000, removeOnComplete: true, removeOnFail: true })
+      expect(opts.jobId).toContain('dc1')
+      expect(opts.jobId).toContain('variant')
+      expect(opts.jobId).toContain('resourceId%3D1') // token value ('1', from base.triggerData) URI-encoded
+    })
+
+    it('coalesces two deliveries for the SAME record into one jobId', async () => {
+      findManyConnectors.mockResolvedValue([
+        { id: 'dc1', config: { webhookTrigger: { triggerId: 'shopify.shopify-trigger' } } },
+      ])
+      findManyStreams.mockResolvedValue([
+        {
+          id: 'stream1',
+          dataConnectorId: 'dc1',
+          streamKey: 'variant',
+          requestConfig: { webhookTrigger: { paths: ['resourceId'], debounceMs: 10_000 } },
+        },
+      ])
+      await dispatchAppTriggerToConnectors(job({ ...base, eventId: 'evt1' }))
+      await dispatchAppTriggerToConnectors(job({ ...base, eventId: 'evt2' }))
+      const jobId1 = queueAdd.mock.calls[0]?.[2]?.jobId
+      const jobId2 = queueAdd.mock.calls[1]?.[2]?.jobId
+      expect(jobId1).toBe(jobId2)
+    })
+
+    it('does NOT coalesce deliveries about DIFFERENT records', async () => {
+      findManyConnectors.mockResolvedValue([
+        { id: 'dc1', config: { webhookTrigger: { triggerId: 'shopify.shopify-trigger' } } },
+      ])
+      findManyStreams.mockResolvedValue([
+        {
+          id: 'stream1',
+          dataConnectorId: 'dc1',
+          streamKey: 'variant',
+          requestConfig: { webhookTrigger: { paths: ['resourceId'], debounceMs: 10_000 } },
+        },
+      ])
+      await dispatchAppTriggerToConnectors(
+        job({ ...base, eventId: 'evt1', triggerData: { resourceId: '1', topic: 'orders/create' } })
+      )
+      await dispatchAppTriggerToConnectors(
+        job({ ...base, eventId: 'evt2', triggerData: { resourceId: '2', topic: 'orders/create' } })
+      )
+      const jobId1 = queueAdd.mock.calls[0]?.[2]?.jobId
+      const jobId2 = queueAdd.mock.calls[1]?.[2]?.jobId
+      expect(jobId1).not.toBe(jobId2)
+    })
   })
 })

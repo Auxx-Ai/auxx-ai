@@ -462,6 +462,7 @@ export const settingScope = pgEnum('SettingScope', [
   'RECORDING',
   'KOPILOT',
   'ONBOARDING',
+  'INVENTORY_BRIDGE',
 ])
 export const signatureSharingType = pgEnum('SignatureSharingType', [
   'PRIVATE',

@@ -10,8 +10,16 @@ import {
   DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
 import { Label } from '@auxx/ui/components/label'
+import { LastUpdated } from '@auxx/ui/components/last-updated'
 import { RadioGroup, RadioGroupItem } from '@auxx/ui/components/radio-group'
 import { EmptySection, Section } from '@auxx/ui/components/section'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@auxx/ui/components/select'
 import { ChevronDown, Clock, Webhook } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useAppsContext } from '~/components/apps/providers/apps-context'
@@ -49,6 +57,138 @@ interface ScheduleSectionProps {
   connector: Connector
 }
 
+type SweepFrequency = 'off' | 'daily' | 'weekly'
+
+interface SweepCadence {
+  frequency: SweepFrequency
+  hour: number
+}
+
+// The nightly-check default when a webhook connector has no scheduleConfig (null) —
+// matches SWEEP_CRON ('0 3 * * *') in data-connector-scheduler.ts.
+const DEFAULT_SWEEP_HOUR = 3
+
+/**
+ * Parse a webhook-mode `scheduleConfig` into the Nightly-check Selects' state (Phase 6):
+ * `null` → nightly default (daily 3am); `{ triggerInterval: 'off' }` → off; a
+ * `0 H * * D` cron → daily (`D === '*'`) or weekly (`D === '0'`) at hour H. Anything
+ * unrecognized falls back to the daily default rather than throwing.
+ */
+function parseSweepCadence(config: Record<string, unknown> | null | undefined): SweepCadence {
+  if (!config) return { frequency: 'daily', hour: DEFAULT_SWEEP_HOUR }
+  if (config.triggerInterval === 'off') return { frequency: 'off', hour: DEFAULT_SWEEP_HOUR }
+  const cron = typeof config.customCron === 'string' ? config.customCron : ''
+  const parts = cron.trim().split(/\s+/)
+  if (parts.length === 5) {
+    const hour = Number(parts[1])
+    if (Number.isInteger(hour) && hour >= 0 && hour <= 23) {
+      return { frequency: parts[4] === '*' ? 'daily' : 'weekly', hour }
+    }
+  }
+  return { frequency: 'daily', hour: DEFAULT_SWEEP_HOUR }
+}
+
+/** Serialize a Nightly-check selection into the `scheduleConfig` blob (weekly = Sunday). */
+function sweepCadenceToConfig(freq: SweepFrequency, hour: number): Record<string, unknown> {
+  if (freq === 'off') return { triggerInterval: 'off', timeBetweenTriggers: {} }
+  const dayOfWeek = freq === 'weekly' ? '0' : '*'
+  return {
+    triggerInterval: 'custom',
+    customCron: `0 ${hour} * * ${dayOfWeek}`,
+    timeBetweenTriggers: {},
+  }
+}
+
+/** Hour-of-day as a `3:00 AM` label. */
+function formatHourLabel(hour: number): string {
+  const period = hour < 12 ? 'AM' : 'PM'
+  const twelve = hour % 12 === 0 ? 12 : hour % 12
+  return `${twelve}:00 ${period}`
+}
+
+/**
+ * The webhook-mode "Nightly check" block (Phase 6): a Frequency (off/daily/weekly)
+ * + Time (hour-of-day) pair writing the sweep cadence into the connector draft, plus a
+ * read-only "Last check" stamp from the most recent `sweep`-triggered run. Reverting to
+ * the persisted cadence writes the EXACT snapshot value so it doesn't read as dirty.
+ */
+function SweepCadenceSection({ connector }: { connector: Connector }) {
+  const setScheduleConfig = useConnectorDraftStore((s) => s.setScheduleConfig)
+  const scheduleConfig = useConnectorDraftStore((s) => s.draft.scheduleConfig)
+  const cadence = parseSweepCadence(scheduleConfig)
+
+  const apply = (frequency: SweepFrequency, hour: number) => {
+    const seed = (getConnectorDraftState().snapshot?.scheduleConfig ?? null) as Record<
+      string,
+      unknown
+    > | null
+    const seedCadence = parseSweepCadence(seed)
+    // Selecting the persisted cadence again → write the untouched snapshot (avoids a
+    // false-dirty diff, e.g. null-default vs an explicit `0 3 * * *`).
+    if (seedCadence.frequency === frequency && (frequency === 'off' || seedCadence.hour === hour)) {
+      setScheduleConfig(seed)
+      return
+    }
+    setScheduleConfig(sweepCadenceToConfig(frequency, hour))
+  }
+
+  // listRuns is newest-first (desc startedAt), so the first sweep row is the latest.
+  const runs = api.dataConnector.listRuns.useQuery({ id: connector.id, limit: 50 })
+  const lastSweep = runs.data?.find((r) => r.trigger === 'sweep') ?? null
+
+  return (
+    <div className='flex flex-col gap-3 border-t pt-4'>
+      <div className='flex flex-col gap-1'>
+        <div className='text-sm font-medium'>Nightly check</div>
+        <p className='text-xs text-muted-foreground'>
+          Re-verifies your data in case a webhook delivery was missed.
+        </p>
+      </div>
+      <div className='flex flex-wrap items-center gap-2'>
+        <Select
+          value={cadence.frequency}
+          onValueChange={(v) => apply(v as SweepFrequency, cadence.hour)}>
+          <SelectTrigger size='sm' className='w-32'>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value='off'>Off</SelectItem>
+            <SelectItem value='daily'>Daily</SelectItem>
+            <SelectItem value='weekly'>Weekly</SelectItem>
+          </SelectContent>
+        </Select>
+        <Select
+          value={String(cadence.hour)}
+          onValueChange={(v) => apply(cadence.frequency, Number(v))}
+          disabled={cadence.frequency === 'off'}>
+          <SelectTrigger size='sm' className='w-28'>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {Array.from({ length: 24 }, (_, h) => (
+              <SelectItem key={h} value={String(h)}>
+                {formatHourLabel(h)}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+      {cadence.frequency === 'off' && (
+        <p className='text-xs text-amber-600'>
+          Missed webhook deliveries and deletions will not be corrected automatically.
+        </p>
+      )}
+      {lastSweep && (
+        <LastUpdated
+          timestamp={new Date(lastSweep.startedAt)}
+          prefix='Last check: '
+          className='text-xs text-muted-foreground'
+        />
+      )}
+    </div>
+  )
+}
+
 /**
  * Schedule section — a header dropdown over the connector's single
  * `syncBehavior` (Manual · Scheduled · Webhook), NOT a list of triggers (05 §5).
@@ -73,7 +213,10 @@ export function ScheduleSection({ connector }: ScheduleSectionProps) {
       null
     if (!installationId) return false
     const inst = appInstallations.find((i) => i.installationId === installationId)
-    return (inst?.workflowTriggers?.length ?? inst?.agentTriggers?.length ?? 0) > 0
+    return (
+      (inst?.workflowTriggers?.length ?? inst?.agentTriggers?.length ?? 0) > 0 ||
+      Boolean(inst?.dataConnectors?.[0]?.webhookTrigger)
+    )
   })()
 
   // Generic WebhookEndpoints can drive a webhook-sync stream too (app-less). If the org
@@ -146,13 +289,18 @@ export function ScheduleSection({ connector }: ScheduleSectionProps) {
   }
 
   // Behavior change also resets the schedule config: 'scheduled' rebuilds it from the
-  // current cadence, everything else clears it (manual / webhook never schedule).
+  // current cadence; 'webhook' clears it to the nightly-default sweep (the Nightly-check
+  // Selects below write a real config on edit); 'manual' clears it (never schedules).
   const changeBehavior = (next: SyncBehavior) => {
     setSyncBehavior(next)
     if (next === 'scheduled') {
       const config = scheduledConfigFromState(schedule)
       setScheduleConfig((config as Record<string, unknown> | null) ?? null)
       setStreamValidity(scheduleValidityKey, !!config)
+    } else if (next === 'webhook') {
+      // Webhook mode: scheduleConfig now means the SWEEP cadence; null = nightly default.
+      setScheduleConfig(null)
+      setStreamValidity(scheduleValidityKey, true)
     } else {
       setScheduleConfig(null)
       setStreamValidity(scheduleValidityKey, true)
@@ -243,6 +391,10 @@ export function ScheduleSection({ connector }: ScheduleSectionProps) {
               />
             </div>
           )}
+
+          {/* Nightly sweep cadence — shared by both webhook branches (generic-REST +
+              app connector), the self-heal for missed webhook deliveries (v9 Phase 6). */}
+          {behavior === 'webhook' && <SweepCadenceSection connector={connector} />}
 
           {supportsWindow && (
             <div className='flex flex-col gap-2 border-t pt-4'>

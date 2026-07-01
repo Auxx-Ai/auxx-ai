@@ -121,5 +121,9 @@ export function isSteerableDelivery(
   const steer = resolveWebhookSteer(wt, triggerData)
   if (steer.kind === 'delete') return steer.externalId != null
   if ((wt.paths?.length ?? 0) === 0) return false
-  return requiredSteerTokens(requestConfig).every((t) => t in steer.triggerContext)
+  const required = requiredSteerTokens(requestConfig)
+  if (required.length > 0) return required.every((t) => t in steer.triggerContext)
+  // Fixed-model (app) streams carry no {token} request template — the declared paths ARE
+  // the contract, so all of them must resolve or the delivery falls back to a full sync.
+  return (wt.paths ?? []).every((p) => p in steer.triggerContext)
 }

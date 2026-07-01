@@ -78,6 +78,43 @@ export {
   syncConnectorScheduler,
   syncConnectorSweepScheduler,
 } from './data-connector-scheduler'
+// Inventory→part consumption bridge (v9) — config, watermark store, and the pass
+export {
+  INVENTORY_BRIDGE_SETTING_KEY,
+  type InventoryBridgeConfigEntry,
+  readInventoryBridgeConfig,
+  removeInventoryBridgeConfigEntries,
+  upsertInventoryBridgeConfigEntry,
+} from './inventory-bridge-config'
+export {
+  applyPendingInventoryDelta,
+  type LinkInventorySourceInput,
+  linkInventorySource,
+  listInventoryBridgeSources,
+  listPartInventoryLinks,
+  type PartInventoryLink,
+  unlinkInventorySource,
+  updateInventoryLinkMode,
+} from './inventory-bridge-linking'
+export {
+  type InventoryBridgePassResult,
+  runInventoryBridgePass,
+} from './inventory-bridge-pass'
+export {
+  INVENTORY_BRIDGE_EDGE_ATTR,
+  type ProvisionInventoryBridgeInput,
+  provisionInventoryBridge,
+} from './inventory-bridge-provisioning'
+export {
+  advanceWatermarkCAS,
+  deleteInventoryBridgeLink,
+  getInventoryBridgeLink,
+  type InventoryBridgeMode,
+  listInventoryBridgeLinksForConnector,
+  listInventoryBridgeLinksForPart,
+  setInventoryBridgeLinkMode,
+  upsertInventoryBridgeLink,
+} from './inventory-bridge-store'
 export type { MappedWrite } from './map-record'
 // Mapping layer
 export { mapRecord } from './map-record'
@@ -104,6 +141,8 @@ export {
   removeMapping,
   removeStream,
   resolveSoleAppConnection,
+  restampConnectorWebhookBindings,
+  restampWebhookBindingsForDeployment,
   setStreamRequestConfig,
   setStreamSchema,
   updateConnector,

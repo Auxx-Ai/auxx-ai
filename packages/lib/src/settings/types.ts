@@ -65,6 +65,8 @@ export interface SettingConfig {
     | 'SIDEBAR'
     | 'RECORDING'
     | 'KOPILOT'
+    | 'ONBOARDING'
+    | 'INVENTORY_BRIDGE'
   defaultValue: SettingValue
   type: 'string' | 'number' | 'boolean' | 'object' | 'color' | 'font' | 'image'
   description?: string

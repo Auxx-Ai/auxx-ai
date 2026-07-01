@@ -1,6 +1,7 @@
 // apps/build/src/server/api/routers/versions.ts
 
 import { invalidateAppCatalog, invalidateOrgsByDeploymentId, onCacheEvent } from '@auxx/lib/cache'
+import { restampWebhookBindingsForDeployment } from '@auxx/lib/data-connectors'
 import { createScopedLogger } from '@auxx/logger'
 import {
   calculateNextVersion,
@@ -101,6 +102,7 @@ export const versionsRouter = createTRPCRouter({
       }
 
       await invalidateOrgsByDeploymentId(input.deploymentId, ctx.db)
+      await restampWebhookBindingsForDeployment(input.deploymentId, ctx.db)
       await invalidateAppCatalog()
 
       return result.value

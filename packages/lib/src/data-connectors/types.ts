@@ -195,6 +195,12 @@ export interface StreamWebhookTrigger {
    * filtered paginated fan-in (e.g. "all line items for order {orderId}").
    */
   resultShape?: 'single' | 'collection'
+  /**
+   * Coalesce same-record steer bursts: same resolved steer-token values within this
+   * many ms collapse into a single delayed steer job (BullMQ `jobId` + `delay`).
+   * 0/absent = steer immediately (today's behavior).
+   */
+  debounceMs?: number
 }
 
 // ── Stream state / connector output (03 §1) ───────────────────────────────────
@@ -631,7 +637,8 @@ export type OrphanBehavior = 'archive' | 'mark_deleted' | 'ignore'
 // ── Scheduled-trigger config (jsonb on DataConnector) ─────────────────────────
 
 export interface ScheduledTriggerConfig {
-  triggerInterval: 'minutes' | 'hours' | 'days' | 'weeks' | 'custom'
+  /** `'off'` is only meaningful as a webhook-mode SWEEP cadence (v9 §5) — no self-heal. */
+  triggerInterval: 'minutes' | 'hours' | 'days' | 'weeks' | 'custom' | 'off'
   timeBetweenTriggers: {
     minutes?: number | string
     hours?: number | string

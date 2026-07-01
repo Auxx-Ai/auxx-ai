@@ -1772,6 +1772,20 @@
       "when": 1782883528141,
       "tag": "0252_drop_entity_instance_integration_columns",
       "breakpoints": true
+    },
+    {
+      "idx": 253,
+      "version": "7",
+      "when": 1782941139949,
+      "tag": "0253_inventory_bridge_link",
+      "breakpoints": true
+    },
+    {
+      "idx": 254,
+      "version": "7",
+      "when": 1782941543697,
+      "tag": "0254_inventory_bridge_link_source_def",
+      "breakpoints": true
     }
   ]
 }

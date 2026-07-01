@@ -6,6 +6,7 @@ import type { RecordId } from '@auxx/types/resource'
 import type { ComponentType } from 'react'
 import { ContactComposeAction } from './actions/contact-compose-action'
 import { CreateNoteAction } from './actions/create-note-action'
+import { LinkInventorySourceAction } from './actions/link-inventory-source-action'
 import { TicketReplyAction } from './actions/ticket-reply-action'
 
 /**
@@ -28,7 +29,7 @@ export interface DrawerActionProps {
 const DRAWER_HEADER_ACTIONS: Record<string, ComponentType<DrawerActionProps>[]> = {
   contact: [ContactComposeAction, CreateNoteAction],
   ticket: [TicketReplyAction, CreateNoteAction],
-  part: [CreateNoteAction],
+  part: [LinkInventorySourceAction, CreateNoteAction],
 }
 
 export function getHeaderActions(entityType: string): ComponentType<DrawerActionProps>[] {

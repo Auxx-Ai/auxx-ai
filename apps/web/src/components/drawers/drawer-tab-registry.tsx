@@ -90,7 +90,7 @@ export const DRAWER_TAB_CARD_COMPONENTS: Record<
   // PART OVERVIEW CARDS
   // ─────────────────────────────────────────────────────────────────
   'part:inventory': () =>
-    import('./cards/part-inventory-card').then((m) => ({ default: m.PartInventoryCard })),
+    import('./cards/part-inventory-tab').then((m) => ({ default: m.PartInventoryTab })),
 }
 
 /**

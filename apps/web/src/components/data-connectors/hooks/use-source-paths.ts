@@ -14,9 +14,10 @@ export interface SourcePath {
   /** Detected JSON-schema string `format` (`email` / `uri` / `date` / `time` / `date-time`). */
   format?: string
   /**
-   * Declared STRUCT field type when the node maps as ONE value (`ADDRESS_STRUCT`). Set by
-   * the catalog schema overlay; turns an object node into a typed value leaf rather than a
-   * branch to explode. Drives the badge, the picker's type filter, and quick-create seed.
+   * The node's DECLARED field type when it carries one (`CURRENCY`, `SINGLE_SELECT`,
+   * `ADDRESS_STRUCT`, …). Set by the catalog schema overlay; a stamped node maps as ONE
+   * value (a struct object becomes a typed value leaf rather than a branch to explode).
+   * Drives the badge, the picker's type filter, and quick-create seed.
    */
   fieldType?: FieldType
   /** Depth (for indenting the picker list). */

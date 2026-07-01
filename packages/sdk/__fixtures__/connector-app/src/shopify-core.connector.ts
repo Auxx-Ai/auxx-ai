@@ -19,6 +19,7 @@ export const shopifyCoreDataConnector = defineDataConnector({
   label: 'Shopify Core Data',
   requiresConnection: true,
   iconKey: 'shopping-bag',
+  webhookTrigger: { triggerId: 'shopify.shopify-trigger' },
   config: z.object({
     includeDraftProducts: z.boolean().default(false),
     collection: z.string().optional(),
@@ -40,6 +41,7 @@ export const shopifyCoreDataConnector = defineDataConnector({
     {
       key: 'order',
       displayFieldKey: 'name',
+      webhookTrigger: { filter: { topic: 'orders/updated' }, paths: ['resourceId'] },
       // SOURCE schema (Layer A) — the shape of one fetched order, including the
       // embedded customer + line_items. PII flags on customer fields are
       // surfaced + default-excluded in the mapping UI.

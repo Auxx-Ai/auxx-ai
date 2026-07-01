@@ -6,7 +6,13 @@
 // through update) so a cadence or lifecycle change is reflected in BullMQ immediately.
 
 import { listCredentials } from '@auxx/credentials/store'
-import { type CatalogDataConnector, type Database, schema, type Transaction } from '@auxx/database'
+import {
+  type CatalogDataConnector,
+  type CatalogPayload,
+  type Database,
+  schema,
+  type Transaction,
+} from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import {
   getFieldDefinitionId,
@@ -462,6 +468,12 @@ export async function createConnectorFromAppCatalog(
     ...input,
     definitionKind: 'app',
     credentialId,
+    // Stamp the webhook SIGNAL unconditionally — the dispatch job already gates on
+    // `syncBehavior === 'webhook'`, and stamping always means the user can flip
+    // modes later without a re-stamp (v9 §1).
+    config: catalog.webhookTrigger
+      ? { webhookTrigger: { triggerId: catalog.webhookTrigger.triggerId } }
+      : {},
   })
 
   // The app slug namespaces the late-bound `@app:` field refs the owned mappings carry
@@ -473,6 +485,7 @@ export async function createConnectorFromAppCatalog(
       streamKey: stream.key,
       ...appCatalogStreamSchema(stream),
       syncMode: stream.syncMode ?? 'snapshot',
+      requestConfig: stream.webhookTrigger ? { webhookTrigger: stream.webhookTrigger } : null,
     })
     // Owned mappings first so a nested contributing mapping (e.g. order → customer)
     // can parent to the owned root it hangs off — the parentMappingId forms the fan-out
@@ -496,6 +509,104 @@ export async function createConnectorFromAppCatalog(
   }
 
   return connector
+}
+
+/**
+ * Re-project an app catalog's webhook binding onto existing app connectors after a
+ * roll-forward — DataConnector.config.webhookTrigger + each matching stream's
+ * requestConfig.webhookTrigger are overwritten from the catalog (manifest is source,
+ * rows are projection). Streams are matched by streamKey; other requestConfig keys
+ * (none exist for app streams today) are preserved via spread.
+ */
+export async function restampConnectorWebhookBindings(
+  db: DbOrTx,
+  organizationId: string,
+  appInstallationId: string,
+  catalog: CatalogDataConnector
+): Promise<void> {
+  const connectors = await db.query.DataConnector.findMany({
+    where: and(
+      eq(schema.DataConnector.appInstallationId, appInstallationId),
+      eq(schema.DataConnector.organizationId, organizationId),
+      eq(schema.DataConnector.definitionKind, 'app')
+    ),
+  })
+
+  for (const connector of connectors) {
+    const config = { ...(connector.config ?? {}) } as DataConnectorConfig
+    if (catalog.webhookTrigger) {
+      config.webhookTrigger = { triggerId: catalog.webhookTrigger.triggerId }
+    } else {
+      delete config.webhookTrigger
+    }
+    await db
+      .update(schema.DataConnector)
+      .set({ config, updatedAt: new Date() })
+      .where(eq(schema.DataConnector.id, connector.id))
+
+    const streamRows = await db.query.DataConnectorStream.findMany({
+      where: and(
+        eq(schema.DataConnectorStream.dataConnectorId, connector.id),
+        eq(schema.DataConnectorStream.organizationId, organizationId)
+      ),
+    })
+    const streamRowByKey = new Map(streamRows.map((row) => [row.streamKey, row]))
+
+    for (const catalogStream of catalog.streams) {
+      const row = streamRowByKey.get(catalogStream.key)
+      if (!row) continue
+      const requestConfig = { ...(row.requestConfig ?? {}) } as StreamRequestConfig
+      if (catalogStream.webhookTrigger) {
+        requestConfig.webhookTrigger = catalogStream.webhookTrigger
+      } else {
+        delete requestConfig.webhookTrigger
+      }
+      await db
+        .update(schema.DataConnectorStream)
+        .set({ requestConfig, updatedAt: new Date() })
+        .where(eq(schema.DataConnectorStream.id, row.id))
+    }
+  }
+}
+
+/**
+ * Re-stamp webhook bindings for every active installation currently on a deployment
+ * — the app-layer counterpart of `invalidateOrgsByDeploymentId` (same
+ * `currentDeploymentId` + `uninstalledAt IS NULL` query), called after a roll-forward
+ * commits. `@auxx/services` (roll-forward's home) sits below `@auxx/lib` in the
+ * package tiers and can't call back into it, so this runs as a separate best-effort
+ * step from the app layer — same non-transactional posture as the cache invalidation
+ * it runs alongside. No-ops when the deployment declares no data connectors.
+ */
+export async function restampWebhookBindingsForDeployment(
+  deploymentId: string,
+  db: Database
+): Promise<void> {
+  const deployment = await db.query.AppDeployment.findFirst({
+    where: eq(schema.AppDeployment.id, deploymentId),
+    columns: { catalog: true },
+  })
+  const dataConnectors = (deployment?.catalog as CatalogPayload | null)?.dataConnectors
+  if (!dataConnectors?.length) return
+
+  const installations = await db.query.AppInstallation.findMany({
+    where: and(
+      eq(schema.AppInstallation.currentDeploymentId, deploymentId),
+      isNull(schema.AppInstallation.uninstalledAt)
+    ),
+    columns: { id: true, organizationId: true },
+  })
+
+  for (const installation of installations) {
+    for (const connectorCatalog of dataConnectors) {
+      await restampConnectorWebhookBindings(
+        db,
+        installation.organizationId,
+        installation.id,
+        connectorCatalog
+      )
+    }
+  }
 }
 
 /**
@@ -1000,11 +1111,11 @@ export async function updateConnector(
   id: string,
   patch: UpdateConnectorInput
 ): Promise<DataConnectorRow> {
-  // Selecting manual/webhook clears the cadence so the scheduler is removed.
+  // scheduleConfig is mode-scoped (v9 §5): sync cadence for 'scheduled', SWEEP cadence
+  // for 'webhook' (null = default nightly, {triggerInterval:'off'} = no sweep). Only
+  // 'manual' force-clears it — selecting webhook must NOT null out a sweep cadence.
   const scheduleConfig =
-    patch.syncBehavior && patch.syncBehavior !== 'scheduled'
-      ? null
-      : (patch.scheduleConfig ?? undefined)
+    patch.syncBehavior === 'manual' ? null : (patch.scheduleConfig ?? undefined)
 
   // The write + edit-safety stamp run in one transaction so a structural edit can't
   // half-apply (BullMQ scheduler + webhook are external — they run after commit).
@@ -1131,6 +1242,28 @@ export async function deleteConnector(
   // Existence guard (throws NotFound if missing) — no longer need the row itself.
   await loadConnectorRow(db, organizationId, id)
   await removeConnectorScheduler(id)
+
+  // v9 inventory bridge: drop the INVENTORY_BRIDGE config entries for this connector's
+  // target defs (the watermark rows cascade via FK on the connector-row delete below).
+  // Lazy import — the config helper pulls the settings/cache barrels that would break
+  // this module's mocked unit tests at load. Best-effort.
+  try {
+    const targetDefs = await db
+      .selectDistinct({ defId: schema.DataConnectorMapping.entityDefinitionId })
+      .from(schema.DataConnectorMapping)
+      .innerJoin(
+        schema.DataConnectorStream,
+        eq(schema.DataConnectorStream.id, schema.DataConnectorMapping.dataConnectorStreamId)
+      )
+      .where(eq(schema.DataConnectorStream.dataConnectorId, id))
+    const defIds = targetDefs.map((r) => r.defId).filter((d): d is string => d != null)
+    if (defIds.length > 0) {
+      const { removeInventoryBridgeConfigEntries } = await import('./inventory-bridge-config')
+      await removeInventoryBridgeConfigEntries(db, organizationId, defIds)
+    }
+  } catch {
+    // Config cleanup is best-effort; an orphan entry is harmless (the pass no-ops without links).
+  }
 
   if (behavior !== 'keep') {
     // archive/delete applies to records THIS connector CREATED — owned mirror rows

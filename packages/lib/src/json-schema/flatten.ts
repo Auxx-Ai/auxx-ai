@@ -4,11 +4,12 @@
 // (webhook token-path pickers) share one walker. Extracted from suggest-mappings (v7).
 
 /**
- * JSON-Schema extension keyword carrying a node's declared STRUCT field type
- * (e.g. `ADDRESS_STRUCT`). Stamped by the data-connector catalog overlay so a struct
- * source value flattens as a single typed leaf instead of an object branch — see
- * plans/data-connectors/v6/address-struct-mapping-plan.md. Unknown keywords are ignored
- * by JSON-Schema and survive the `sourceSchema` jsonb round-trip.
+ * JSON-Schema extension keyword carrying a node's DECLARED field type (`CURRENCY`,
+ * `SINGLE_SELECT`, `ADDRESS_STRUCT`, …). Stamped by the data-connector catalog overlay
+ * so the badge/suggester see the declared semantic instead of the bare JSON scalar; a
+ * stamped node also flattens as a single typed leaf instead of an object branch (the
+ * STRUCT case — see plans/data-connectors/v6/address-struct-mapping-plan.md). Unknown
+ * keywords are ignored by JSON-Schema and survive the `sourceSchema` jsonb round-trip.
  */
 export const STRUCT_FIELD_TYPE_KEYWORD = 'x-auxx-fieldType'
 
@@ -18,7 +19,7 @@ export interface SourceLeaf {
   path: string
   /** JSON-schema scalar type at this path (`string` / `number` / `boolean` / …). */
   jsonType: string
-  /** Declared STRUCT field type when the node is a typed struct leaf (`ADDRESS_STRUCT`). */
+  /** The node's declared field type when it carries one (`CURRENCY`, `ADDRESS_STRUCT`, …). */
   fieldType?: string
 }
 

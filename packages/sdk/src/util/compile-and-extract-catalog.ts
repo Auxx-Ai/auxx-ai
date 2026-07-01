@@ -251,6 +251,8 @@ export interface CatalogConnectorStream {
   fields: CatalogConnectorField[]
   defaultMappings?: CatalogConnectorDefaultMapping[]
   exampleRecord?: Record<string, unknown>
+  /** Per-stream webhook STEERING — see `ConnectorStreamDecl.webhookTrigger` (root types). */
+  webhookTrigger?: { filter?: Record<string, unknown>; paths: string[]; debounceMs?: number }
 }
 
 /**
@@ -273,6 +275,8 @@ export interface CatalogDataConnector {
    */
   configOptionHints?: Record<string, ActionInputHint>
   streams: CatalogConnectorStream[]
+  /** Connector-level webhook SIGNAL — see `DataConnectorDefinition.webhookTrigger` (root types). */
+  webhookTrigger?: { triggerId: string }
 }
 
 export interface CatalogPayload {
@@ -773,6 +777,7 @@ export async function compileAndExtractCatalog(): Promise<
       })),
       defaultMappings: stream.defaultMappings,
       exampleRecord: stream.exampleRecord,
+      webhookTrigger: stream.webhookTrigger,
     }))
 
     cataloguedDataConnectors.push({
@@ -783,6 +788,7 @@ export async function compileAndExtractCatalog(): Promise<
       configJsonSchema,
       ...(connector.configOptions ? { configOptionHints: connector.configOptions } : {}),
       streams,
+      webhookTrigger: connector.webhookTrigger,
     })
   }
 
@@ -941,6 +947,7 @@ interface RawConnectorStream {
   fields: Record<string, RawConnectorFieldDecl>
   defaultMappings?: CatalogConnectorDefaultMapping[]
   exampleRecord?: Record<string, unknown>
+  webhookTrigger?: { filter?: Record<string, unknown>; paths: string[]; debounceMs?: number }
 }
 
 interface RawDataConnector {
@@ -953,6 +960,7 @@ interface RawDataConnector {
   /** Per-config-field presentation overrides (tool-backed dynamic selects). */
   configOptions?: Record<string, ActionInputHint>
   streams: RawConnectorStream[]
+  webhookTrigger?: { triggerId: string }
 }
 
 interface RawApp {

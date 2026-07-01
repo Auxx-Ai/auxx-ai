@@ -51,7 +51,7 @@ describe('buildSchemaFromFieldPaths', () => {
 })
 
 describe('appCatalogStreamSchema', () => {
-  it('prefers exampleRecord (inferred) over field paths', () => {
+  it('unions declared field paths with exampleRecord shape (definition is the contract)', () => {
     const result = appCatalogStreamSchema({
       key: 'order',
       displayFieldKey: 'name',
@@ -59,9 +59,51 @@ describe('appCatalogStreamSchema', () => {
       exampleRecord: { id: 'o1', customer: { email: 'a@b.com' } },
     })
     expect(result.schemaSource).toBe('catalog')
-    // Inferred from the sample → carries the nested customer object.
+    // Example-only shape survives alongside the declared field.
     const props = (result.sourceSchema as { properties: Record<string, unknown> }).properties
+    expect(props).toHaveProperty('id')
     expect(props).toHaveProperty('customer')
+  })
+
+  it('keeps a declared field the exampleRecord omits (nested under an array fan-out)', () => {
+    const result = appCatalogStreamSchema({
+      key: 'product',
+      displayFieldKey: 'title',
+      fields: [
+        { fieldKey: 'v.option1', sourcePath: 'variants[].option1', type: 'TEXT', name: 'Option 1' },
+        { fieldKey: 'v.option2', sourcePath: 'variants[].option2', type: 'TEXT', name: 'Option 2' },
+      ],
+      // The example variant only carries option1 — option2 must still exist.
+      exampleRecord: { variants: [{ option1: 'Medium' }] },
+    })
+    const props = (result.sourceSchema as { properties: Record<string, any> }).properties
+    const variantProps = props.variants.items.properties
+    expect(variantProps.option1).toMatchObject({ type: 'string' })
+    expect(variantProps.option2).toMatchObject({ type: 'string' })
+  })
+
+  it('refines a leaf with the example wire type and stamps the declared field type', () => {
+    const result = appCatalogStreamSchema({
+      key: 'product',
+      displayFieldKey: 'title',
+      fields: [{ fieldKey: 'price', sourcePath: 'price', type: 'CURRENCY', name: 'Price' }],
+      // Shopify sends money as a string — the wire type wins over the CURRENCY→number guess.
+      exampleRecord: { price: '19.99' },
+    })
+    const props = (result.sourceSchema as { properties: Record<string, any> }).properties
+    expect(props.price.type).toBe('string')
+    expect(props.price['x-auxx-fieldType']).toBe('CURRENCY')
+  })
+
+  it('keeps the declared type when the example value is null', () => {
+    const result = appCatalogStreamSchema({
+      key: 'order',
+      displayFieldKey: 'name',
+      fields: [{ fieldKey: 'note', sourcePath: 'note', type: 'TEXT', name: 'Note' }],
+      exampleRecord: { note: null },
+    })
+    const props = (result.sourceSchema as { properties: Record<string, any> }).properties
+    expect(props.note.type).toBe('string')
   })
 
   it('falls back to field paths when there is no exampleRecord', () => {
@@ -72,7 +114,7 @@ describe('appCatalogStreamSchema', () => {
     })
     expect(result.sourceSchema).toEqual({
       type: 'object',
-      properties: { name: { type: 'string' } },
+      properties: { name: { type: 'string', 'x-auxx-fieldType': 'TEXT' } },
     })
   })
 
@@ -132,13 +174,44 @@ describe('overlayDeclaredFieldTypes', () => {
     expect(itemProps.ship['x-auxx-fieldType']).toBe('ADDRESS_STRUCT')
   })
 
-  it('ignores non-struct fields and absent paths', () => {
-    const schema = { type: 'object', properties: { name: { type: 'string' } } }
+  it('stamps non-struct declared types on scalar leaves, ignores absent paths', () => {
+    const schema = {
+      type: 'object',
+      properties: { name: { type: 'string' }, price: { type: 'string' } },
+    }
     overlayDeclaredFieldTypes(schema, [
       { fieldKey: 'name', sourcePath: 'name', type: 'TEXT', name: 'Name' },
+      { fieldKey: 'price', sourcePath: 'price', type: 'CURRENCY', name: 'Price' },
       { fieldKey: 'gone', sourcePath: 'missing', type: 'ADDRESS_STRUCT', name: 'Gone' },
     ])
-    expect(schema).toEqual({ type: 'object', properties: { name: { type: 'string' } } })
+    const props = schema.properties as Record<string, Record<string, unknown>>
+    expect(props.name['x-auxx-fieldType']).toBe('TEXT')
+    expect(props.price['x-auxx-fieldType']).toBe('CURRENCY')
+    expect(props).not.toHaveProperty('missing')
+  })
+
+  it('never stamps a non-struct type on a branch (object or array-of-objects)', () => {
+    const schema = {
+      type: 'object',
+      properties: {
+        customer: { type: 'object', properties: { email: { type: 'string' } } },
+        line_items: {
+          type: 'array',
+          items: { type: 'object', properties: { sku: { type: 'string' } } },
+        },
+        tags: { type: 'array', items: { type: 'string' } },
+      },
+    }
+    overlayDeclaredFieldTypes(schema, [
+      { fieldKey: 'customer', sourcePath: 'customer', type: 'JSON', name: 'Customer' },
+      { fieldKey: 'lines', sourcePath: 'line_items', type: 'JSON', name: 'Lines' },
+      { fieldKey: 'tags', sourcePath: 'tags', type: 'TAGS', name: 'Tags' },
+    ])
+    const props = schema.properties as Record<string, Record<string, unknown>>
+    // Branches keep exploding — no stamp; an array of SCALARS is a value leaf — stamped.
+    expect(props.customer).not.toHaveProperty('x-auxx-fieldType')
+    expect(props.line_items).not.toHaveProperty('x-auxx-fieldType')
+    expect(props.tags['x-auxx-fieldType']).toBe('TAGS')
   })
 })
 
