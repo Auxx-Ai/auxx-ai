@@ -16,6 +16,7 @@ import { createScopedLogger } from '@auxx/logger'
 import { eq } from 'drizzle-orm'
 import { UnifiedCrudHandler } from '../resources/crud/unified-handler'
 import { invalidateSnapshots } from '../snapshot'
+import { flattenConnectionMeta } from './connection-meta'
 import { prepareConnectorFetch } from './connector-runtime'
 import { ConnectorRateLimitError } from './connectors'
 import { isConnectorCheckpoint } from './connectors/types'
@@ -207,7 +208,7 @@ async function buildWebhookCtx(
   if (connector.credentialId) {
     const result = await getCredential(connector.credentialId, organizationId)
     if (result.isOk()) {
-      connectionMeta = result.value.metadata
+      connectionMeta = flattenConnectionMeta(result.value)
     } else {
       logger.warn('Failed to load connection metadata for connectionAppFields', {
         connectorId: connector.id,

@@ -39,6 +39,14 @@ export interface ProvisionFieldSpec {
   isCreatable?: boolean
   /** External-id / raw-payload bookkeeping fields are hidden from the grid. */
   isHidden?: boolean
+  /**
+   * Marks an owned external-id field as an identity cell (from the mapping's
+   * `identityRole: externalId`). Stamped onto `CustomField.isIdentity` so the
+   * `reconcileRecordIdentities` backstop rebuilds its `RecordIdentity` mirror —
+   * without it, an owned identity relies solely on the sink, which never re-runs
+   * for a content-hash-unchanged record (see the reconcile design note).
+   */
+  isIdentity?: boolean
   /** Predefined select options (SINGLE_SELECT / MULTI_SELECT / TAGS). */
   options?: Array<{ value: string; label?: string; color?: string }>
   /** Sub-field set for an ADDRESS_STRUCT field. */
@@ -51,6 +59,13 @@ export interface ProvisionTarget {
   targetMode: 'owned' | 'contributing'
   /** The existing def to provision onto — required (this never creates a def). */
   entityDefinitionId: string | null
+  /**
+   * The connector's app slug (`app:<slug>` → `<slug>`), stamped onto every
+   * provisioned `CustomField.appSlug`. The identity sink-mirror reads it as the
+   * `RecordIdentity.source`, so an owned external-id field can't mirror without
+   * it. Null for builtin/generic-rest connectors (no app origin).
+   */
+  appSlug?: string | null
   fields: ProvisionFieldSpec[]
 }
 
@@ -89,7 +104,14 @@ export async function provisionTarget(
   const provisionedFieldKeys: string[] = []
   const fieldIdByKey: Record<string, string> = {}
   for (const field of target.fields) {
-    const result = await provisionField(db, organizationId, dataConnectorId, defId, field)
+    const result = await provisionField(
+      db,
+      organizationId,
+      dataConnectorId,
+      defId,
+      field,
+      target.appSlug ?? null
+    )
     if (!result) continue
     fieldIdByKey[field.appFieldKey] = result.id
     if (result.created) provisionedFieldKeys.push(field.appFieldKey)
@@ -127,7 +149,8 @@ async function provisionField(
   organizationId: string,
   dataConnectorId: string,
   entityDefinitionId: string,
-  field: ProvisionFieldSpec
+  field: ProvisionFieldSpec,
+  appSlug: string | null
 ): Promise<{ id: string; created: boolean } | null> {
   // Already provisioned on this def? Look up by `appFieldKey` in the org cache —
   // matched WITHOUT a dataConnectorId filter so a delete+reconnect ADOPTS the
@@ -138,13 +161,19 @@ async function provisionField(
   const existingFields = await getCachedCustomFields(organizationId, entityDefinitionId)
   const existing = existingFields.find((f) => f.appFieldKey === field.appFieldKey)
   if (existing) {
-    // Re-stamp ownership if a prior connector's delete nulled (or never set) the FK.
-    // The cached value may be stale here (the FK-null cascade doesn't invalidate),
-    // so the write is idempotent and harmless when already ours.
-    if (existing.dataConnectorId !== dataConnectorId) {
+    // Re-stamp ownership if a prior connector's delete nulled (or never set) the FK,
+    // and back-fill `appSlug` on a field provisioned before this column was written
+    // (owned identity fields can't mirror into RecordIdentity without it). The cached
+    // value may be stale here (the FK-null cascade doesn't invalidate), so the write
+    // is idempotent and harmless when already ours.
+    const patch: Partial<typeof schema.CustomField.$inferInsert> = {}
+    if (existing.dataConnectorId !== dataConnectorId) patch.dataConnectorId = dataConnectorId
+    if (appSlug && existing.appSlug !== appSlug) patch.appSlug = appSlug
+    if (field.isIdentity && !existing.isIdentity) patch.isIdentity = true
+    if (Object.keys(patch).length > 0) {
       await db
         .update(schema.CustomField)
-        .set({ dataConnectorId, updatedAt: new Date() })
+        .set({ ...patch, updatedAt: new Date() })
         .where(eq(schema.CustomField.id, existing.id))
     }
     return { id: existing.id, created: false }
@@ -161,6 +190,11 @@ async function provisionField(
     icon: field.icon,
     appFieldKey: field.appFieldKey,
     dataConnectorId,
+    // App origin — lets the identity sink-mirror resolve RecordIdentity.source for
+    // owned external-id fields. Null/undefined for builtin/generic-rest connectors.
+    appSlug: appSlug ?? undefined,
+    // Owned external-id → identity cell, so reconcile backstops its mirror.
+    isIdentity: field.isIdentity ?? false,
     // Predefined enum options / address sub-fields, when the connector declared
     // them. Options are normalized to `SelectOption` (label defaults to value, color
     // is the constrained palette) the same way the app-field provisioner does.
@@ -206,6 +240,8 @@ export function provisionSpecsForMapping(mapping: {
       type: fm.provision.type,
       icon: fm.provision.icon,
       isHidden: fm.provision.isHidden,
+      // Owned external-id field → identity cell, so reconcile backstops its mirror.
+      isIdentity: fm.identityRole?.kind === 'externalId',
       options: fm.provision.options,
       addressComponents: fm.provision.addressComponents,
       isUpdatable: false,
@@ -234,6 +270,7 @@ export async function provisionConnectorMappings(
   dataConnectorId: string,
   mappings: DecodedMapping[]
 ): Promise<ProvisionResult[]> {
+  const appSlug = await getConnectorAppSlug(db, dataConnectorId)
   const results: ProvisionResult[] = []
   for (const mapping of mappings) {
     if (mapping.linkMode === 'reference') continue
@@ -247,11 +284,27 @@ export async function provisionConnectorMappings(
     const result = await provisionTarget(db, organizationId, dataConnectorId, {
       targetMode: mapping.targetMode,
       entityDefinitionId: mapping.entityDefinitionId,
+      appSlug,
       fields,
     })
     results.push(result)
   }
   return results
+}
+
+/**
+ * Derive the connector's app slug from `DataConnector.type` (`app:<slug>` →
+ * `<slug>`). Null for builtin/generic-rest connectors. Stamped onto every
+ * provisioned field's `appSlug` so the identity sink-mirror can resolve a
+ * `RecordIdentity.source`. One query per provisioning pass (not per field).
+ */
+async function getConnectorAppSlug(db: Database, dataConnectorId: string): Promise<string | null> {
+  const row = await db.query.DataConnector.findFirst({
+    where: eq(schema.DataConnector.id, dataConnectorId),
+    columns: { type: true },
+  })
+  if (!row?.type) return null
+  return row.type.startsWith('app:') ? row.type.slice('app:'.length) : null
 }
 
 /**
@@ -324,6 +377,8 @@ export async function materializeConnectorTargets(
   const mappingRows = streams.flatMap((s) => s.mappings)
   if (mappingRows.length === 0) return
 
+  const appSlug = await getConnectorAppSlug(db, dataConnectorId)
+
   // ── Provision `provision`-hint fields onto each mapping's existing def ─────────
   for (const row of mappingRows) {
     if (row.linkMode === 'reference') continue
@@ -339,6 +394,7 @@ export async function materializeConnectorTargets(
     await provisionTarget(db, organizationId, dataConnectorId, {
       targetMode: row.targetMode as 'owned' | 'contributing',
       entityDefinitionId: row.entityDefinitionId,
+      appSlug,
       fields,
     })
   }

@@ -10,7 +10,7 @@ import {
 } from '@auxx/database'
 import type { FieldType } from '@auxx/database/types'
 import { createScopedLogger } from '@auxx/logger'
-import { eq } from 'drizzle-orm'
+import { and, eq, isNull } from 'drizzle-orm'
 import { type CreateCustomFieldInput, createCustomField } from './create-field'
 import type { SelectOption } from './types'
 
@@ -136,9 +136,33 @@ export async function provisionAppField(
     tx
   )
 
-  if (result.isErr() && result.error.code !== 'DUPLICATE_FIELD_NAME') {
-    // Don't silently lose a declared field — surface real failures.
-    throw new Error(`Failed to provision app field "${field.appFieldKey}": ${result.error.message}`)
+  if (result.isErr()) {
+    if (result.error.code !== 'DUPLICATE_FIELD_NAME') {
+      // Don't silently lose a declared field — surface real failures.
+      throw new Error(
+        `Failed to provision app field "${field.appFieldKey}": ${result.error.message}`
+      )
+    }
+    // The field already exists — `createCustomField` no-ops on a duplicate and never
+    // updates it. Re-stamp the identity metadata so a catalog change (adding
+    // `identity: true`, or a field provisioned before these columns existed) propagates
+    // to the existing row on redeploy/reconnect. Keyed by the app-field identity
+    // `(installation, connection, appFieldKey)` — never touches a user field of the same
+    // name (no `appFieldKey`). Idempotent.
+    const db = tx ?? database
+    await db
+      .update(schema.CustomField)
+      .set({ isIdentity: field.identity ?? false, appSlug: ctx.appSlug, updatedAt: new Date() })
+      .where(
+        and(
+          eq(schema.CustomField.organizationId, ctx.organizationId),
+          eq(schema.CustomField.appInstallationId, ctx.appInstallationId),
+          eq(schema.CustomField.appFieldKey, field.appFieldKey),
+          ctx.connectionId
+            ? eq(schema.CustomField.connectionId, ctx.connectionId)
+            : isNull(schema.CustomField.connectionId)
+        )
+      )
   }
 }
 
