@@ -50,6 +50,7 @@ export type ResourceSyncEvent =
   | RecordsInvalidatedEvent
   | ResourceDefChangedEvent
   | DataConnectorSyncEvent
+  | DataExportJobEvent
 
 /** Field values changed (from mutations, triggers, cost recalc, etc.) */
 export interface FieldValuesUpdatedEvent {
@@ -190,6 +191,31 @@ export interface DataConnectorSyncEvent {
       phase: 'backfill' | 'steady'
       done: boolean
     }[]
+  }
+}
+
+/**
+ * Live CSV-export progress signal on the org channel. A background export job
+ * (see `packages/lib/src/jobs/export`) emits `started` once, throttled `progress`
+ * frames as it pages through records, and `finished` on completion/failure.
+ *
+ * `kind` is a client routing hint: `progress` patches the cached `dataExport.getById`
+ * counters in place; `started` / `finished` invalidate it to pull the authoritative
+ * row (status, fileName, size). Payload is kept small (<10KB) for Pusher/Soketi.
+ */
+export interface DataExportJobEvent {
+  event: 'dataExport:job'
+  data: {
+    exportJobId: string
+    kind: 'started' | 'progress' | 'finished'
+    /** Terminal/lifecycle status: 'processing' | 'completed' | 'failed' | 'canceled'. */
+    status?: string
+    /** Rows processed so far (progress frames). */
+    processed?: number
+    /** Total matching rows (known after the first page). */
+    total?: number
+    /** Output file name (finished frames). */
+    fileName?: string
   }
 }
 

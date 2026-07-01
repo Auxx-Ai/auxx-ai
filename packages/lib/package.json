@@ -394,6 +394,18 @@
       "import": "./dist/events/handlers/index.mjs",
       "default": "./src/events/handlers/index.ts"
     },
+    "./export": {
+      "types": "./src/export/index.ts",
+      "source": "./src/export/index.ts",
+      "import": "./dist/export/index.mjs",
+      "default": "./src/export/index.ts"
+    },
+    "./export/client": {
+      "types": "./src/export/client.ts",
+      "source": "./src/export/client.ts",
+      "import": "./dist/export/client.mjs",
+      "default": "./src/export/client.ts"
+    },
     "./favorites": {
       "types": "./src/favorites/index.ts",
       "source": "./src/favorites/index.ts",

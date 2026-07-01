@@ -2,6 +2,7 @@
 
 import type {
   DataConnectorSyncEvent,
+  DataExportJobEvent,
   FieldValueUpdateEntry,
   MailSyncEvent,
   MessageMeta,
@@ -95,6 +96,24 @@ export async function publishDataConnectorSync(
 ) {
   await realtimeService
     .publish(rooms.orgPresence(organizationId), 'dataConnector:sync', data)
+    .catch(() => {})
+}
+
+/**
+ * Publish `dataExport:job` on the org channel — the live CSV-export progress
+ * signal (see `DataExportJobEvent`). Coarse + org-wide like `publishDataConnectorSync`.
+ * No `excludeSocketId`: exports run in the worker (no originating browser socket),
+ * so every open tab lights up.
+ *
+ * Fire-and-forget: errors swallowed so a Pusher hiccup never blocks the export job.
+ */
+export async function publishDataExportJob(
+  realtimeService: RealtimeService,
+  organizationId: string,
+  data: DataExportJobEvent['data']
+) {
+  await realtimeService
+    .publish(rooms.orgPresence(organizationId), 'dataExport:job', data)
     .catch(() => {})
 }
 

@@ -11,6 +11,7 @@ import {
   DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
 import { InputSearch } from '@auxx/ui/components/input-search'
+import { toastError } from '@auxx/ui/components/toast'
 import { cn } from '@auxx/ui/lib/utils'
 import {
   ArrowDownUp,
@@ -26,15 +27,24 @@ import {
 import Link from 'next/link'
 import type { ReactNode } from 'react'
 import { useEffect, useMemo, useState } from 'react'
+import { useExportColumns } from '~/components/data-export/hooks/use-export-columns'
+import { ExportProgressDialog } from '~/components/data-export/ui/export-progress-dialog'
 import { Tooltip } from '~/components/global/tooltip'
 import { useResourceFields } from '~/components/resources/hooks'
 import { useDebounce } from '~/hooks/use-debounced-value'
+import { api } from '~/trpc/react'
 import { useTableConfig } from '../../context/table-config-context'
 import { useTableInstance } from '../../context/table-instance-context'
 import { useViewMetadata } from '../../context/view-metadata-context'
 import { useDynamicTableStore } from '../../stores/dynamic-table-store'
 import { useSetFilters } from '../../stores/store-actions'
-import { useActiveView, useTableFilters, useTableViews } from '../../stores/store-selectors'
+import {
+  useActiveView,
+  useActiveViewId,
+  useTableFilters,
+  useTableSorting,
+  useTableViews,
+} from '../../stores/store-selectors'
 import type { ViewConfig, ViewType } from '../../types'
 import { ColumnManager } from './column-manager'
 import { KanbanViewSettings } from './kanban-view-settings'
@@ -117,6 +127,51 @@ export function TableToolbar<TData = any>({
 
   // Records help guide
   const [guideOpen, setGuideOpen] = useState(false)
+
+  // CSV export
+  const activeViewId = useActiveViewId(tableId)
+  const sorting = useTableSorting(tableId)
+  const { viewColumns, allColumns } = useExportColumns(tableId, entityDefinitionId)
+  const createExport = api.dataExport.create.useMutation()
+  const [exportJobId, setExportJobId] = useState<string | null>(null)
+  const [exportDialogOpen, setExportDialogOpen] = useState(false)
+
+  const startExport = async (exportType: 'view' | 'all') => {
+    if (!entityDefinitionId) return
+    const columns = exportType === 'view' ? viewColumns : allColumns
+    if (columns.length === 0) {
+      toastError({ title: 'Nothing to export', description: 'There are no columns to export.' })
+      return
+    }
+
+    const dateStamp = new Date().toISOString().slice(0, 10)
+    const base = exportType === 'view' ? (currentView?.name ?? 'view') : 'all-records'
+    const slug =
+      base
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '') || 'records'
+
+    try {
+      const { id } = await createExport.mutateAsync({
+        entityDefinitionId,
+        exportType,
+        tableId,
+        viewId: exportType === 'view' ? (activeViewId ?? undefined) : undefined,
+        filters: exportType === 'view' ? filters : undefined,
+        sorting: exportType === 'view' ? sorting : undefined,
+        columns,
+        fileName: `${slug}-${dateStamp}.csv`,
+      })
+      setExportJobId(id)
+      setExportDialogOpen(true)
+    } catch (error) {
+      toastError({
+        title: 'Export failed to start',
+        description: error instanceof Error ? error.message : 'Please try again.',
+      })
+    }
+  }
 
   // Local search state for immediate UI feedback
   const [localSearchQuery, setLocalSearchQuery] = useState(searchQuery)
@@ -207,11 +262,15 @@ export function TableToolbar<TData = any>({
                 </Link>
               </DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem disabled>
+              <DropdownMenuItem
+                disabled={!entityDefinitionId || createExport.isPending}
+                onSelect={() => startExport('view')}>
                 <Download />
                 Export current view as CSV
               </DropdownMenuItem>
-              <DropdownMenuItem disabled>
+              <DropdownMenuItem
+                disabled={!entityDefinitionId || createExport.isPending}
+                onSelect={() => startExport('all')}>
                 <Download />
                 Export all records as CSV
               </DropdownMenuItem>
@@ -300,6 +359,14 @@ export function TableToolbar<TData = any>({
         </Button>
       </Tooltip>
       {guideOpen && <RecordsGuideDialog open={guideOpen} onOpenChange={setGuideOpen} />}
+
+      {exportJobId && (
+        <ExportProgressDialog
+          jobId={exportJobId}
+          open={exportDialogOpen}
+          onOpenChange={setExportDialogOpen}
+        />
+      )}
     </div>
   )
 }
