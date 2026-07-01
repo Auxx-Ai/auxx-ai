@@ -251,7 +251,12 @@ export const dataConnectorRouter = createTRPCRouter({
       }
       const connector = result.value
       if (!connector.type.startsWith('app:')) {
-        return { requestModel: 'builder' as const, configJsonSchema: null, configOptionHints: null }
+        return {
+          requestModel: 'builder' as const,
+          configJsonSchema: null,
+          configOptionHints: null,
+          requiresConnection: false,
+        }
       }
       const slug = connector.type.replace(/^app:/, '')
       const installedApps = await getCachedInstalledApps(ctx.session.organizationId)
@@ -263,6 +268,10 @@ export const dataConnectorRouter = createTRPCRouter({
         requestModel: dc?.requestModel ?? ('fixed' as const),
         configJsonSchema: dc?.configJsonSchema ?? null,
         configOptionHints: dc?.configOptionHints ?? null,
+        // The app-declared, connector-level connection requirement (the same signal
+        // the runtime adapter gates on). The setup wizard's Connect step keys off this
+        // — NOT off whether the installed app merely exposes a connection definition.
+        requiresConnection: dc?.requiresConnection ?? false,
       }
     }),
 
@@ -488,7 +497,10 @@ export const dataConnectorRouter = createTRPCRouter({
               name: input.name,
               type: input.type as DataConnectorType,
               credentialId: input.credentialId,
-              appInstallationId: input.appInstallationId,
+              // Stamp the resolved installation so the connector is pinned to the exact
+              // app install (keeps token refresh wired) AND the auto-link can count that
+              // install's connections. Falls back to a client-supplied id, then null.
+              appInstallationId: input.appInstallationId ?? app?.installationId ?? null,
               syncBehavior: input.syncBehavior,
               scheduleConfig: input.scheduleConfig,
               createdById: ctx.session.userId,

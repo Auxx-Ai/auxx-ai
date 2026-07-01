@@ -25,7 +25,6 @@ import {
 import { toastError } from '@auxx/ui/components/toast'
 import { Check, Clock, FlaskConical, Layers, Play, Plug, Waypoints } from 'lucide-react'
 import { useMemo, useState } from 'react'
-import { useAppsContext } from '~/components/apps/providers/apps-context'
 import { isMissing, readFieldNodes } from '~/components/global/schema-form'
 import { api, type RouterOutputs } from '~/trpc/react'
 import { useConnectorMutations } from '../hooks/use-connector-mutations'
@@ -172,23 +171,19 @@ export function ConnectorSetupStepper({ connector }: ConnectorSetupStepperProps)
   const stepOrder = useMemo(() => steps.map((s) => s.id), [steps])
 
   // Connect requirements for an app connector (generic-rest ignores these): a credential
-  // is required when the app exposes a connection definition, and the declared config
-  // schema decides whether there's a settings form to fill. Both come from sources a pure
-  // connector+streams read can't see, so we resolve them here and hand them to the hook.
-  const { appInstallations } = useAppsContext()
-  const requiresConnection = useMemo(() => {
-    if (connector.definitionKind !== 'app') return false
-    const slug = connector.type.startsWith('app:') ? connector.type.slice('app:'.length) : null
-    const inst = appInstallations.find(
-      (i) => i.installationId === connector.appInstallationId || i.app.slug === slug
-    )
-    return !!(inst?.connectionDefinitions?.user || inst?.connectionDefinitions?.organization)
-  }, [connector.definitionKind, connector.type, connector.appInstallationId, appInstallations])
-
+  // is required when the connector's OWN catalog declares `requiresConnection` (the same
+  // signal the runtime adapter gates on — NOT whether the app merely exposes a connection
+  // definition, which is app-level and over-counts client-credentials connectors), and the
+  // declared config schema decides whether there's a settings form to fill. Both ride the
+  // `connectorSchema` query — sources a pure connector+streams read can't see.
   const schemaQuery = api.dataConnector.connectorSchema.useQuery(
     { id: connector.id },
     { enabled: connector.definitionKind === 'app' }
   )
+  // Stay conservative (assume required) until the schema resolves, so the Connect step is
+  // never auto-skipped before we actually know the connector needs no connection.
+  const requiresConnection =
+    connector.definitionKind === 'app' ? (schemaQuery.data?.requiresConnection ?? true) : false
   const configFields = useMemo(
     () => readFieldNodes(schemaQuery.data?.configJsonSchema as Record<string, unknown> | null),
     [schemaQuery.data]
