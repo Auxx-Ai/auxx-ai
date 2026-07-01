@@ -82,7 +82,7 @@ export function useRecordBatchFetcher() {
         displayName: item.displayName,
         secondaryInfo: item.secondaryInfo,
         avatarUrl: item.avatarUrl,
-        integrationSource: item.integrationSource ?? null,
+        sources: item.sources,
       }
 
       const entityDefinitionId = getDefinitionId(canonicalRecordId)

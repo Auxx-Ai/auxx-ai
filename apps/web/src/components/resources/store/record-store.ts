@@ -2,7 +2,12 @@
 
 import '~/lib/immer-config' // Enables Map/Set support for immer
 import type { ConditionGroup } from '@auxx/lib/conditions/client'
-import { parseRecordId, type RecordId, toRecordId } from '@auxx/lib/resources/client'
+import {
+  parseRecordId,
+  type RecordId,
+  type RecordSourceChip,
+  toRecordId,
+} from '@auxx/lib/resources/client'
 import { create } from 'zustand'
 import { subscribeWithSelector } from 'zustand/middleware'
 import { immer } from 'zustand/middleware/immer'
@@ -27,11 +32,11 @@ export interface RecordMeta {
   createdAt: string | Date
   updatedAt: string | Date
   /**
-   * Data-connector / integration provenance (from `EntityInstance.integrationSource`).
-   * Holds the owning DataConnector id for synced records; null/undefined otherwise.
-   * Drives the "Synced from <connector>" source badge.
+   * App-origin identity chips derived from the `RecordIdentity` index. Drives
+   * the record-grain "Synced from <app>" source badge. Absent for records with
+   * no app identity.
    */
-  integrationSource?: string | null
+  sources?: RecordSourceChip[]
   /** Additional database fields from the specific resource table */
   [key: string]: unknown
 }

@@ -700,6 +700,8 @@ export interface UpsertItemInput {
   pendingRelations?: PendingRelation[]
   upstreamUpdatedAt?: Date | null
   lastSeenRunId: string
+  /** True when the sink CREATED the bound instance this run (vs matched). Sticky. */
+  mintedInstance?: boolean
 }
 
 /**
@@ -726,6 +728,8 @@ export async function upsertItem(
         upstreamUpdatedAt: input.upstreamUpdatedAt ?? existing.upstreamUpdatedAt,
         lastSeenRunId: input.lastSeenRunId,
         lastSyncedAt: now,
+        // Sticky: once this connector minted the instance it stays minted.
+        mintedInstance: input.mintedInstance || existing.mintedInstance,
         archivedAt: null,
         error: null,
       })
@@ -749,6 +753,7 @@ export async function upsertItem(
       upstreamUpdatedAt: input.upstreamUpdatedAt ?? null,
       lastSeenRunId: input.lastSeenRunId,
       lastSyncedAt: now,
+      mintedInstance: input.mintedInstance ?? false,
     })
     .returning()
   return row!

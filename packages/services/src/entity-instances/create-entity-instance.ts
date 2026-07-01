@@ -17,14 +17,6 @@ export interface CreateEntityInstanceParams {
   avatarUrl?: string | null
   /** Generic metadata JSONB */
   metadata?: Record<string, unknown> | null
-  /**
-   * Denormalized integration source (e.g. 'shopify', a data-connector id).
-   * Powers `findByIntegrationId` lookups. Only set by trusted write paths
-   * (importers, data connectors) — left null for user-driven creates.
-   */
-  integrationSource?: string | null
-  /** External id within the integration source. Paired with `integrationSource`. */
-  externalId?: string | null
 }
 
 /**
@@ -42,8 +34,6 @@ export async function createEntityInstance(params: CreateEntityInstanceParams, t
     secondaryDisplayValue,
     avatarUrl,
     metadata,
-    integrationSource,
-    externalId,
   } = params
 
   const db = tx ?? database
@@ -60,8 +50,6 @@ export async function createEntityInstance(params: CreateEntityInstanceParams, t
         secondaryDisplayValue: secondaryDisplayValue ?? null,
         avatarUrl: avatarUrl ?? null,
         metadata: metadata ?? null,
-        integrationSource: integrationSource ?? null,
-        externalId: externalId ?? null,
         // Initialize activity at creation — keeps freshness scanners from
         // surfacing brand-new entities as stale on first scan.
         lastActivityAt: now,

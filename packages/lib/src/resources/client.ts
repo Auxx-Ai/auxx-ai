@@ -27,6 +27,7 @@ export type {
   GetResourcesInput,
   PaginatedResourcesResult,
   RecordPickerItem,
+  RecordSourceChip,
 } from './picker'
 // Detail view configuration (client-safe)
 export {

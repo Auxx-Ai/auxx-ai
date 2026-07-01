@@ -1765,6 +1765,13 @@
       "when": 1782882979343,
       "tag": "0251_add_export_job",
       "breakpoints": true
+    },
+    {
+      "idx": 252,
+      "version": "7",
+      "when": 1782883528141,
+      "tag": "0252_drop_entity_instance_integration_columns",
+      "breakpoints": true
     }
   ]
 }
