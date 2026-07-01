@@ -252,7 +252,11 @@ export function EntitySidebarNav() {
     return pathname === url || pathname.startsWith(`${url}/`)
   }
 
-  function renderIcon(entity: ProcessedEntity) {
+  /**
+   * `interactive` makes the connector badge route to its connector. Enabled in
+   * normal mode; left off in edit mode so the badge doesn't hijack drag/reorder.
+   */
+  function renderIcon(entity: ProcessedEntity, interactive = false) {
     return (
       <EntityIconWithConnector
         iconId={entity.icon}
@@ -261,6 +265,11 @@ export function EntitySidebarNav() {
         inverse
         className='-ms-0.5 inset-shadow-xs inset-shadow-black/20'
         dataConnectorId={entity.dataConnectorId}
+        connectorHref={
+          interactive && entity.dataConnectorId
+            ? `/app/connectors/${entity.dataConnectorId}`
+            : undefined
+        }
         tooltip={`${entity.plural} are synced by a data connector`}
       />
     )
@@ -314,7 +323,7 @@ export function EntitySidebarNav() {
           id={entity.id}
           name={entity.plural}
           href={entity.href}
-          icon={renderIcon(entity)}
+          icon={renderIcon(entity, true)}
           isActive={isActive(entity)}
           isSubmenu={parentFolderId !== null}
           editItems={getEditItems(entity)}
