@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.1.172](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.171...auxx-v0.1.172) (2026-07-01)
+
+
+### Features
+
+* **health:** queue admin controls + DC identity fix + chat release CI ([#1031](https://github.com/Auxx-Ai/auxx-ai/issues/1031)) ([42722e2](https://github.com/Auxx-Ai/auxx-ai/commit/42722e29b99151e16b9f46198aef796e3e601609))
+
+
+### Bug Fixes
+
+* **apps:** mark app About page as client to fix Tooltip crash ([#1033](https://github.com/Auxx-Ai/auxx-ai/issues/1033)) ([5c978f9](https://github.com/Auxx-Ai/auxx-ai/commit/5c978f98e06fa5906b25bf905e6675c33bb28355))
+
 ## [0.1.171](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.170...auxx-v0.1.171) (2026-07-01)
 
 
