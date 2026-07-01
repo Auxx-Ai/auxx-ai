@@ -451,6 +451,7 @@ export async function createConnectorFromAppCatalog(
       organizationId,
       streamRow.id,
       stream,
+      appSlug,
       ownedMappingIdByRootPath
     )
   }
@@ -577,6 +578,15 @@ async function seedAppOwnedMappings(
 
     const parentRootPath = ownedParentRootPath(mapping.rootPath, allRootPaths)
     const parentMappingId = parentRootPath != null ? mappingIdByRootPath[parentRootPath] : null
+    // The edge field lives on the PARENT def — namespace the relationship key with the
+    // parent's apiSlug (cosmetic), falling back to this mapping's own slug for a
+    // top-level reference (no parent in scope).
+    const parentManifest =
+      parentRootPath != null ? owned.find((m) => m.rootPath === parentRootPath) : undefined
+    const parentSlug =
+      parentManifest?.target.mode === 'owned'
+        ? parentManifest.target.entity.apiSlug
+        : entity.apiSlug
 
     const row = await addMapping(db, organizationId, {
       dataConnectorStreamId: streamId,
@@ -595,7 +605,11 @@ async function seedAppOwnedMappings(
       targetMode: 'owned' as TargetMode,
       entityDefinitionId: null,
       parentMappingId,
-      relationshipFieldKey: mapping.relationshipFieldKey ?? null,
+      relationshipFieldKey: appRelationshipFieldKey(
+        mapping.relationshipFieldKey,
+        appSlug,
+        parentSlug
+      ),
       // A `reference` edge carries only its External-ID anchor (the FK value IS the
       // related record's external id). An upsert mapping owns its subtree's columns:
       // late-bound refs key on the manifest apiSlug; the install rewrites them to
@@ -639,6 +653,25 @@ export function buildAppOwnedFieldMappings(
     expression: `{${relPath}}`,
     sourceFields: { [relPath]: relPath },
   }))
+}
+
+/**
+ * Wrap a manifest's BARE `relationshipFieldKey` (e.g. `product`) into the same
+ * connection-late-bound `@app:` envelope the owned field refs use —
+ * `${parentSlug}:@app:${appSlug}:${key}`. A bare token in a ref slot is ambiguous (it
+ * could read as an apiSlug or a concrete field id); the envelope is self-describing and
+ * carries the app slug so two apps sharing a key can't collide. The edge field lives on
+ * the PARENT def, so the (cosmetic) leading segment is the parent's slug — the sink +
+ * editor resolve def-keyed on `@app:${appSlug}:${key}` and never read the leading segment.
+ * The manual editor already stores a concrete `defId:fieldId`, so after this no ref slot
+ * ever holds a bare key. `null`/absent passes through.
+ */
+export function appRelationshipFieldKey(
+  bareKey: string | null | undefined,
+  appSlug: string,
+  parentSlug: string
+): string | null {
+  return bareKey ? toAppFieldRef(parentSlug, appSlug, bareKey) : null
 }
 
 /**
@@ -719,6 +752,8 @@ async function materializeAppContributingMappings(
   organizationId: string,
   streamId: string,
   stream: CatalogDataConnector['streams'][number],
+  /** Namespaces the late-bound `@app:` relationship-field refs (`app:<slug>`). */
+  appSlug: string,
   /** rootPath → owned-mapping id, so a nested contributing branch can find its parent. */
   ownedMappingIdByRootPath: Record<string, string> = {}
 ): Promise<void> {
@@ -782,6 +817,19 @@ async function materializeAppContributingMappings(
     const parentRootPath = ownedParentRootPath(mapping.rootPath, ownedRootPaths)
     const parentMappingId =
       parentRootPath != null ? (ownedMappingIdByRootPath[parentRootPath] ?? null) : null
+    // The edge field lives on the PARENT def — namespace the relationship key with the
+    // parent's slug (cosmetic), falling back to this mapping's own entity for a top-level
+    // contributing reference.
+    const parentManifest =
+      parentRootPath != null
+        ? (stream.defaultMappings ?? []).find((m) => m.rootPath === parentRootPath)
+        : undefined
+    const parentSlug =
+      parentManifest?.target.mode === 'owned'
+        ? parentManifest.target.entity.apiSlug
+        : parentManifest?.target.mode === 'contributing'
+          ? parentManifest.target.entityKind
+          : entityKind
 
     await addMapping(db, organizationId, {
       dataConnectorStreamId: streamId,
@@ -796,7 +844,11 @@ async function materializeAppContributingMappings(
       targetMode: 'contributing' as TargetMode,
       entityDefinitionId,
       parentMappingId,
-      relationshipFieldKey: mapping.relationshipFieldKey ?? null,
+      relationshipFieldKey: appRelationshipFieldKey(
+        mapping.relationshipFieldKey,
+        appSlug,
+        parentSlug
+      ),
       fieldMappings,
       orphanBehavior: 'ignore' as OrphanBehavior,
     })
