@@ -125,6 +125,15 @@ export interface ConnectorFieldDecl {
    * country }`. Ignored for non-address types.
    */
   addressComponents?: string[]
+  /**
+   * This field's value is the owned record's stable external id; the platform marks it
+   * the record's External ID (the dedupe/link key) — a visible, read-only blue-key
+   * column, not a synthetic managed row. Owned streams only, one per owned def; must be
+   * a coercible scalar (TEXT/NUMBER). The seeder stamps `identityRole: externalId` on the
+   * field's mapping (keeping its column write), so `resolveExternalId`'s
+   * `designatedExternalId` reads the same value the app sets on `ConnectorRecord.externalId`.
+   */
+  isExternalId?: boolean
 }
 
 /** Minimal entity declaration for an owned-mode default mapping. */

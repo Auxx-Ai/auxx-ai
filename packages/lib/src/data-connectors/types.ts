@@ -370,6 +370,8 @@ export interface ConnectorFieldDecl {
   options?: Array<{ value: string; label?: string; color?: string }>
   /** Sub-field set for an ADDRESS_STRUCT field. */
   addressComponents?: string[]
+  /** This field's value is the owned record's stable external id (dedupe/link key). */
+  isExternalId?: boolean
 }
 
 /** A recommended fan-out mapping the connector suggests (05 §4). User confirms at setup. */

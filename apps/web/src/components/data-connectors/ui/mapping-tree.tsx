@@ -23,6 +23,7 @@ import {
 } from '../stores/connector-draft-store'
 import { BranchRow } from './branch-row'
 import { CappedNodeList } from './capped-node-list'
+import { MappingConnectorProvider } from './mapping-connector-context'
 import { MappingNode } from './mapping-node'
 import { MappingRow } from './mapping-row'
 
@@ -38,6 +39,10 @@ interface MappingTreeProps {
   sourcePaths: SourcePath[]
   /** The stream's raw source schema (Layer A) — fed to the Tier 2 suggester. */
   sourceSchema?: Record<string, unknown> | null
+  /** The connector is app-backed — drives the app-managed External ID indicator. */
+  isAppConnector: boolean
+  /** The app's display title (for the managed-id note); null when unresolved. */
+  appLabel: string | null
 }
 
 /** The fan-out rootPath for a branch node — arrays keep their `[]` suffix. */
@@ -61,6 +66,8 @@ export function MappingTree({
   streamKey,
   sourcePaths,
   sourceSchema,
+  isAppConnector,
+  appLabel,
 }: MappingTreeProps) {
   // Render the stream's mappings from the DRAFT (optimistic, never the network): a
   // fan-out/remove shows instantly and only commits via the save bar (the live-safety
@@ -176,66 +183,70 @@ export function MappingTree({
   // an envelope the user chose to treat as one record) — render just that node.
   if (rootMapping) {
     return (
-      <div className='flex flex-col py-1'>
-        <MappingNode mapping={rootMapping} depth={0} {...recursionCtx} />
-      </div>
+      <MappingConnectorProvider value={{ isAppConnector, appLabel }}>
+        <div className='flex flex-col py-1'>
+          <MappingNode mapping={rootMapping} depth={0} {...recursionCtx} />
+        </div>
+      </MappingConnectorProvider>
     )
   }
 
   return (
-    <div className='flex flex-col py-1'>
-      <MappingRow
-        depth={0}
-        expandable
-        chevronOnHover
-        isOpen={rootOpen}
-        onToggleOpen={() => setRootOpen((o) => !o)}
-        icon={
-          rootIsArray ? (
-            <Brackets className='size-3.5 text-muted-foreground/60' />
+    <MappingConnectorProvider value={{ isAppConnector, appLabel }}>
+      <div className='flex flex-col py-1'>
+        <MappingRow
+          depth={0}
+          expandable
+          chevronOnHover
+          isOpen={rootOpen}
+          onToggleOpen={() => setRootOpen((o) => !o)}
+          icon={
+            rootIsArray ? (
+              <Brackets className='size-3.5 text-muted-foreground/60' />
+            ) : (
+              <Braces className='size-3.5 text-muted-foreground/60' />
+            )
+          }
+          title={
+            <span className='text-xs text-muted-foreground'>
+              {rootIsArray ? `each ${streamKey || 'item'}` : 'whole payload'}
+              {isEmpty && (
+                <span className='ml-2 text-muted-foreground/50'>· map to a record to begin</span>
+              )}
+            </span>
+          }
+          actions={
+            <CreateMappingAction
+              tooltip='Map whole payload → own record'
+              label={isEmpty ? 'Map record' : undefined}
+              onPick={(defId) => createMapping(rootBase, defId)}
+            />
+          }>
+          {topTree.length === 0 ? (
+            <div className='px-3 py-2 text-[11px] text-muted-foreground'>
+              No source schema yet — generate or edit the schema above to map fields.
+            </div>
           ) : (
-            <Braces className='size-3.5 text-muted-foreground/60' />
-          )
-        }
-        title={
-          <span className='text-xs text-muted-foreground'>
-            {rootIsArray ? `each ${streamKey || 'item'}` : 'whole payload'}
-            {isEmpty && (
-              <span className='ml-2 text-muted-foreground/50'>· map to a record to begin</span>
-            )}
-          </span>
-        }
-        actions={
-          <CreateMappingAction
-            tooltip='Map whole payload → own record'
-            label={isEmpty ? 'Map record' : undefined}
-            onPick={(defId) => createMapping(rootBase, defId)}
-          />
-        }>
-        {topTree.length === 0 ? (
-          <div className='px-3 py-2 text-[11px] text-muted-foreground'>
-            No source schema yet — generate or edit the schema above to map fields.
-          </div>
-        ) : (
-          <CappedNodeList
-            nodes={topTree}
-            childDepth={1}
-            isCappable={(n) => !n.isBranch}
-            renderNode={(node) => (
-              <TopSourceNode
-                key={node.path}
-                node={node}
-                depth={1}
-                isEmpty={isEmpty}
-                branchMappingByPath={branchMappingByPath}
-                onCreate={createMapping}
-                {...recursionCtx}
-              />
-            )}
-          />
-        )}
-      </MappingRow>
-    </div>
+            <CappedNodeList
+              nodes={topTree}
+              childDepth={1}
+              isCappable={(n) => !n.isBranch}
+              renderNode={(node) => (
+                <TopSourceNode
+                  key={node.path}
+                  node={node}
+                  depth={1}
+                  isEmpty={isEmpty}
+                  branchMappingByPath={branchMappingByPath}
+                  onCreate={createMapping}
+                  {...recursionCtx}
+                />
+              )}
+            />
+          )}
+        </MappingRow>
+      </div>
+    </MappingConnectorProvider>
   )
 }
 

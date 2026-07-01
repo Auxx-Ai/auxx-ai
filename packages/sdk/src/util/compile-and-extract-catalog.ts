@@ -197,6 +197,8 @@ export interface CatalogConnectorField {
   options?: Array<{ value: string; label?: string; color?: string }>
   /** Sub-field set for an ADDRESS_STRUCT field. */
   addressComponents?: string[]
+  /** This field's value is the owned record's stable external id (dedupe/link key). */
+  isExternalId?: boolean
 }
 
 /** Provisioning decl for a parent↔child edge — mirrors SDK `ConnectorRelationshipDecl`. */
@@ -721,6 +723,7 @@ export async function compileAndExtractCatalog(): Promise<
         capabilities: decl.capabilities,
         options: decl.options,
         addressComponents: decl.addressComponents,
+        isExternalId: decl.isExternalId,
       })),
       defaultMappings: stream.defaultMappings,
       exampleRecord: stream.exampleRecord,
@@ -881,6 +884,7 @@ interface RawConnectorFieldDecl {
   capabilities?: { hidden?: boolean; filterable?: boolean }
   options?: Array<{ value: string; label?: string; color?: string }>
   addressComponents?: string[]
+  isExternalId?: boolean
 }
 
 interface RawConnectorStream {

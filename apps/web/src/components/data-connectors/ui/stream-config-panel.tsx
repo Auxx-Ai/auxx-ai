@@ -29,6 +29,7 @@ import {
   Waypoints,
 } from 'lucide-react'
 import { type ReactNode, useMemo, useState } from 'react'
+import { useAppsContext } from '~/components/apps/providers/apps-context'
 import type { HttpRequestFieldContextValue } from '~/components/global/http-request'
 import { makeTokenFieldEditor } from '~/components/global/token-field'
 import { Tooltip } from '~/components/global/tooltip'
@@ -117,6 +118,15 @@ export function StreamConfigPanel({
   const showMappings = view !== 'configure'
   // Branch on the persisted definitionKind (05c §7), not a `type` prefix sniff.
   const isGenericRest = connector.definitionKind !== 'app'
+
+  // Resolve the app's display title for the app-managed External ID indicator (an app
+  // connector's `type` is `app:<slug>`). Falls back to the slug, then null.
+  const { appInstallations } = useAppsContext()
+  const appLabel = useMemo(() => {
+    if (isGenericRest || !connector.type.startsWith('app:')) return null
+    const slug = connector.type.slice('app:'.length)
+    return appInstallations.find((i) => i.app.slug === slug)?.app.title ?? slug
+  }, [isGenericRest, connector.type, appInstallations])
 
   const [helpOpen, setHelpOpen] = useState(false)
   const [seed, setSeed] = useState<{
@@ -486,6 +496,8 @@ export function StreamConfigPanel({
               streamKey={stream.streamKey ?? ''}
               sourcePaths={sourcePaths}
               sourceSchema={liveSourceSchema}
+              isAppConnector={!isGenericRest}
+              appLabel={appLabel}
             />
           </Section>
         )}

@@ -30,6 +30,7 @@ import { CappedNodeList } from './capped-node-list'
 import { FieldCalcDialog } from './field-calc-dialog'
 import { isBareToken } from './field-mapping-edits'
 import { DrilledFormulaRow, FormulaRow } from './formula-row'
+import { isAppOwnedManaged, useMappingConnector } from './mapping-connector-context'
 import { describeRootPath, fieldIconId } from './mapping-node-helpers'
 import { MappingRow } from './mapping-row'
 import { computeMappingView } from './mapping-view'
@@ -97,6 +98,15 @@ export function MappingNode({
   const linkMode = mapping.linkMode as 'upsert' | 'reference'
   const targetMode = mapping.targetMode as 'owned' | 'contributing'
   const fieldMappings = (mapping.fieldMappings ?? []) as FieldMapping[]
+
+  // Every OWNED mapping of an app connector declares its record's External ID as a real
+  // field (the seeder stamps `identityRole: externalId` on it). So the editor marks that
+  // leaf's key blue + locked and suppresses the "External ID" option on every other owned
+  // leaf — a user-set one would silently override the app's record identity (see
+  // connector-declared-external-id-plan). The app label for the tooltip is read from
+  // context inside `IdentityRoleControl` (tree-wide constant, not drilled).
+  const { isAppConnector } = useMappingConnector()
+  const appManaged = isAppOwnedManaged(isAppConnector, mapping)
 
   // Find the target field a stored ref points at (label/normalize resolution).
   const fieldByRef = (ref: string | null | undefined): ResourceField | undefined =>
@@ -285,6 +295,7 @@ export function MappingNode({
                 depth={depth + 1}
                 mapping={mapping}
                 targetMode={targetMode}
+                appManaged={appManaged}
                 targetFields={targetFields}
                 sourceToEntry={view.sourceToEntry}
                 usedTargetKeys={usedTargetKeys}
@@ -346,6 +357,7 @@ export function MappingNode({
                 }
                 identityRole={e.identityRole?.kind ?? null}
                 canMatch={e.targetFieldRef != null}
+                appManaged={appManaged}
                 ownedWrite={targetMode === 'owned'}
                 onSetIdentityRole={(role) => actions.setFormulaIdentityRole(e.id, role)}
                 onEdit={() => setCalcTarget({ mappingId: mapping.id, entryId: e.id })}
@@ -454,6 +466,8 @@ interface SourceNodeProps {
   /** The enclosing mapping (binding target for leaves under it). */
   mapping: Mapping
   targetMode: 'owned' | 'contributing'
+  /** App OWNED mapping — mark the declared External ID + suppress it on other direct leaves. */
+  appManaged: boolean
   targetFields: ResourceField[]
   /** Reverse index: source path → the bare-token binding entry on it. */
   sourceToEntry: Map<string, FieldMapping>
@@ -650,6 +664,9 @@ function SourceNode(props: SourceNodeProps) {
         canCreate={!!mapping.entityDefinitionId}
         isOwned={targetMode === 'owned'}
         identityRole={identityRole}
+        // A drilled leaf sets a RELATED def's identity (via its flat child), so only a
+        // direct binding on this app owned mapping is managed.
+        appManaged={props.appManaged && !drilled}
         mergeStrategy={activeEntry?.mergeStrategy ?? 'overwrite'}
         allowRelationships={allowRelationships}
         linkedFieldRef={linkedFieldRef}

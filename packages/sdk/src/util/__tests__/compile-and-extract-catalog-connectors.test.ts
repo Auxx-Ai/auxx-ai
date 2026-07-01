@@ -67,7 +67,15 @@ describe('compileAndExtractCatalog — data connectors', () => {
     expect(stream).toMatchObject({ key: 'order', displayFieldKey: 'name' })
 
     const byKey = new Map((stream?.fields ?? []).map((f) => [f.fieldKey, f]))
-    expect(byKey.get('id')).toMatchObject({ sourcePath: 'id', type: 'TEXT' })
+    // The declared external-id flag survives extraction onto the catalog field (the id
+    // field is keyed `shopify_id` — a real owned column, not the bare `id` a def reserves).
+    expect(byKey.get('shopify_id')).toMatchObject({
+      sourcePath: 'id',
+      type: 'TEXT',
+      isExternalId: true,
+    })
+    // Unflagged fields don't carry it.
+    expect(byKey.get('name')?.isExternalId).toBeUndefined()
     expect(byKey.get('totalPrice')).toMatchObject({ sourcePath: 'total_price', type: 'CURRENCY' })
     // PII flag survives serialization.
     expect(byKey.get('customer.email')).toMatchObject({

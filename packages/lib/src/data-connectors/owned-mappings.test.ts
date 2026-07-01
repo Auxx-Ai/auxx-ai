@@ -55,6 +55,52 @@ describe('buildAppOwnedFieldMappings', () => {
     expect(author?.id).toBeTruthy()
   })
 
+  it('stamps identityRole.externalId on the isExternalId field, keeping its column write', () => {
+    const flagged: CatalogField[] = [
+      {
+        fieldKey: 'shopify_id',
+        sourcePath: 'id',
+        type: 'TEXT',
+        name: 'Shopify Order ID',
+        isExternalId: true,
+      },
+      { fieldKey: 'name', sourcePath: 'name', type: 'TEXT', name: 'Order Name' },
+    ]
+    const mappings = buildAppOwnedFieldMappings(
+      flagged.map((field) => ({ field, relativeSourcePath: field.sourcePath })),
+      'shopify',
+      'shopify_orders'
+    )
+    const idEntry = mappings.find((m) => m.targetFieldRef?.endsWith(':shopify_id'))
+    // The flagged field is the External ID anchor AND still writes its own column.
+    expect(idEntry?.identityRole).toEqual({ kind: 'externalId' })
+    expect(idEntry?.targetFieldRef).toBe('shopify_orders:@app:shopify:shopify_id')
+    expect(idEntry?.expression).toBe('{id}')
+    // Unflagged fields carry no identity role.
+    const nameEntry = mappings.find((m) => m.targetFieldRef?.endsWith(':name'))
+    expect(nameEntry?.identityRole).toBeUndefined()
+  })
+
+  it('is inert when no field is flagged (unchanged behavior)', () => {
+    const mappings = buildAppOwnedFieldMappings(entries, 'github', 'github_issues')
+    expect(mappings.every((m) => m.identityRole === undefined)).toBe(true)
+  })
+
+  it('first-wins when two fields are flagged on one owned def', () => {
+    const twoFlagged: CatalogField[] = [
+      { fieldKey: 'a', sourcePath: 'a', type: 'TEXT', name: 'A', isExternalId: true },
+      { fieldKey: 'b', sourcePath: 'b', type: 'TEXT', name: 'B', isExternalId: true },
+    ]
+    const mappings = buildAppOwnedFieldMappings(
+      twoFlagged.map((field) => ({ field, relativeSourcePath: field.sourcePath })),
+      'shopify',
+      'shopify_orders'
+    )
+    const stamped = mappings.filter((m) => m.identityRole?.kind === 'externalId')
+    expect(stamped).toHaveLength(1)
+    expect(stamped[0]?.targetFieldRef).toBe('shopify_orders:@app:shopify:a')
+  })
+
   it('keys a child mapping expression on the SUBTREE-relative path, not the full sourcePath', () => {
     // A `line_items[]` child: the ref keys on the stable fieldKey, but the expression
     // must read `{sku}` (the subtree is one line item), not `{line_items[].sku}`.
