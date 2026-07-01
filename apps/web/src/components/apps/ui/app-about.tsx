@@ -1,5 +1,7 @@
 // apps/web/src/components/apps/ui/app-about.tsx
 
+'use client'
+
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { Item, ItemContent, ItemGroup, ItemHeader } from '@auxx/ui/components/item'
