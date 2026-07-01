@@ -389,16 +389,6 @@ export function ConnectorDetailView({ connector }: ConnectorDetailViewProps) {
         </MainPageBreadcrumb>
       </MainPageHeader>
 
-      {/* Parked-sample review (trial-sync §5.2): after a sample run pauses the
-          connector, offer to look at the records, then sync everything (resume). */}
-      <SampleReviewBanner
-        show={liveStatus === 'paused' && latestRun?.pausedReason === 'sample'}
-        recordCount={live?.itemCount ?? connector.itemCount}
-        onSyncEverything={() => syncNow(connector.id)}
-        onEditMappings={() => void setTab('streams')}
-        isSyncing={isSyncPending}
-      />
-
       <MainPageContent
         dockedPanels={
           isDesktop
@@ -417,6 +407,17 @@ export function ConnectorDetailView({ connector }: ConnectorDetailViewProps) {
         <ConnectorDetailTabs
           connector={connector}
           mobileRunsPanel={!isDesktop ? runsPanel : null}
+          sampleReviewBanner={
+            // Parked-sample review (trial-sync §5.2): after a sample run pauses the
+            // connector, offer to look at the records, then sync everything (resume).
+            <SampleReviewBanner
+              show={liveStatus === 'paused' && latestRun?.pausedReason === 'sample'}
+              recordCount={live?.itemCount ?? connector.itemCount}
+              onSyncEverything={() => syncNow(connector.id)}
+              onEditMappings={() => void setTab('streams')}
+              isSyncing={isSyncPending}
+            />
+          }
           resyncBanner={
             <ConnectorResyncBanner
               pending={live?.resyncPending}
