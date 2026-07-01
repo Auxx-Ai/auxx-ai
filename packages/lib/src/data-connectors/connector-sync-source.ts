@@ -104,8 +104,11 @@ export interface ConnectorSyncSourceDeps {
    */
   allStreams: SyncSourceStream[]
   /**
-   * Reconciliation sweep (Step 8C) — sets `ctx.sweep` so `reconcileOrphans` archives
-   * orphans even for incremental streams (a full id-crawl: absence IS deletion).
+   * Reconciliation sweep (Step 8C, REVISED v9 §3). Self-heals missed webhooks: a
+   * `syncMode='incremental'` stream fetches a cheap watermark catch-up instead of a
+   * full re-crawl (and, per `reconcileOrphans`, never archives — absence ≠ deletion
+   * even under a sweep, since it no longer saw every record); a `syncMode='snapshot'`
+   * stream still full re-crawls + archives orphans as before.
    */
   sweep?: boolean
   /**
@@ -185,8 +188,17 @@ class ConnectorStreamSyncSource implements ConnectorSyncSource {
     // Backfill paginates from the top/cursor (snapshot); steady incremental injects
     // the watermark delta floor (Step 5). The connector reads `state.backfillCursor`
     // to resume regardless, so backfill always passes 'snapshot'.
+    //
+    // A sweep self-heals missed webhooks. Incremental streams (honest updated_at) only
+    // need a watermark catch-up — forcing a full re-crawl on them is what made sweeps
+    // unaffordable on big stores (v9 §3). Snapshot streams still full-crawl (their
+    // sources can't report deltas), which is also what keeps their orphan reconciliation
+    // valid. `this.deps.sweep`, not `ctx.sweep` — `ctx: SyncSliceCtx` (sync-core) carries
+    // no sweep flag; the sweep signal lives on this source's own deps (see `buildCtx`,
+    // which threads the same `this.deps.sweep` onto `SyncCtx.sweep` for `reconcileOrphans`).
+    const sweepIncremental = this.deps.sweep === true && this.deps.stream.syncMode === 'incremental'
     const mode: 'snapshot' | 'incremental' =
-      ctx.phase === 'steady' && this.deps.stream.syncMode === 'incremental'
+      (ctx.phase === 'steady' || sweepIncremental) && this.deps.stream.syncMode === 'incremental'
         ? 'incremental'
         : 'snapshot'
 
@@ -338,6 +350,26 @@ class ConnectorStreamSyncSource implements ConnectorSyncSource {
     // touches only deltas, so it must NOT clear a pending rebackfill/rebind.
     if (opts.phase === 'backfill') {
       await clearResyncPending(this.deps.db, this.deps.connector.id)
+    }
+
+    // v9 inventory→part bridge: post-sink (the sink writes with skipEvents, so no
+    // per-record hook fired) compare synced quantities to the watermark and deduct
+    // linked parts. Best-effort — a bridge failure must never fail the sync run.
+    // Lazy import: the pass pulls the cache/settings/crud barrels, which break the
+    // mocked sync-source unit tests at module load (it never runs there anyway).
+    try {
+      const { runInventoryBridgePass } = await import('./inventory-bridge-pass')
+      await runInventoryBridgePass(
+        this.deps.db,
+        this.deps.organizationId,
+        this.deps.connector.id,
+        allMappings.map((m) => m.entityDefinitionId)
+      )
+    } catch (err) {
+      logger.error('inventory bridge pass failed', {
+        connectorId: this.deps.connector.id,
+        error: err instanceof Error ? err.message : String(err),
+      })
     }
   }
 

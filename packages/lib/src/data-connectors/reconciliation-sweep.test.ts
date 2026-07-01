@@ -1,7 +1,8 @@
 // packages/lib/src/data-connectors/reconciliation-sweep.test.ts
-// Step 8C — the sweep gate on reconcileOrphans. An incremental stream normally skips
-// orphan archival (absence ≠ deletion); under `ctx.sweep` (a full id-crawl) it
-// archives the unseen orphans, since absence IS deletion. The sink is mocked.
+// Step 8C, REVISED v9 §3 — reconcileOrphans is snapshot-only, unconditionally. An
+// incremental stream NEVER archives orphans here, sweep or not: since v9 a sweep runs
+// incremental streams as a watermark catch-up (not a full id-crawl), so absence no
+// longer implies deletion even under `ctx.sweep`. The sink is mocked.
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { reconcileOrphans } from './reconciliation'
@@ -57,18 +58,24 @@ describe('reconcileOrphans sweep gate', () => {
     expect(archiveRecord).not.toHaveBeenCalled()
   })
 
-  it('archives the unseen orphan of an incremental stream during a sweep', async () => {
+  // REGRESSION GUARD (v9 §3): a sweep runs an incremental stream as a watermark
+  // catch-up — it does NOT see every record — so archiving its unseen "orphans" would
+  // mass-archive the whole stream. The old sweep override is gone; incremental streams
+  // never archive here, sweep or not. Deletes on incremental streams come from delete
+  // webhooks (or promoting the stream to syncMode='snapshot').
+  it('still skips an incremental stream during a sweep (no mass-archive)', async () => {
     await reconcileOrphans(ctx(true), [{ syncMode: 'incremental', mappings: [mapping] }])
-    expect(archiveRecord).toHaveBeenCalledTimes(1)
-    expect(archiveRecord).toHaveBeenCalledWith(
-      expect.anything(),
-      expect.objectContaining({ id: 'i-orphan' }),
-      'archive'
-    )
+    expect(listExistingItems).not.toHaveBeenCalled()
+    expect(archiveRecord).not.toHaveBeenCalled()
   })
 
   it('still archives a snapshot stream regardless of the sweep flag', async () => {
     await reconcileOrphans(ctx(false), [{ syncMode: 'snapshot', mappings: [mapping] }])
+    expect(archiveRecord).toHaveBeenCalledTimes(1)
+  })
+
+  it('archives a snapshot stream during a sweep too', async () => {
+    await reconcileOrphans(ctx(true), [{ syncMode: 'snapshot', mappings: [mapping] }])
     expect(archiveRecord).toHaveBeenCalledTimes(1)
   })
 })

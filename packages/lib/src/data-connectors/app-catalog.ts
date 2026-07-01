@@ -397,9 +397,22 @@ export const STRUCT_SOURCE_FIELD_TYPES = new Set(['ADDRESS_STRUCT'])
 
 interface MutableSchemaNode {
   type?: string | string[]
+  format?: string
   properties?: Record<string, MutableSchemaNode>
   items?: MutableSchemaNode
   [key: string]: unknown
+}
+
+/**
+ * A node's effective (non-null) JSON type. `null` when the node carries no type
+ * information at all — a null-only example value (`{ type: 'null' }`) or an empty
+ * `items: {}` from an empty sampled array — i.e. nothing worth merging.
+ */
+function schemaNodeType(node: MutableSchemaNode): string | null {
+  const t = node.type
+  if (Array.isArray(t)) return t.find((x) => x !== 'null') ?? null
+  if (t === 'null') return null
+  return t ?? (node.properties ? 'object' : null)
 }
 
 /** Descend a dotted, `[]`-aware `sourcePath` into the inferred schema. Null if absent. */
@@ -418,11 +431,14 @@ function findSchemaNode(root: MutableSchemaNode, sourcePath: string): MutableSch
 }
 
 /**
- * Stamp each STRUCT-typed declared field's {@link STRUCT_FIELD_TYPE_KEYWORD} onto the
- * schema node at its `sourcePath`, so the client flatten/suggester treat that node as a
- * single typed value leaf instead of an object branch. Mutates `schema` in place (it's
- * freshly built by the caller). Fields without a struct type, or whose node is absent
- * from the example record, are skipped.
+ * Stamp each declared field's type ({@link STRUCT_FIELD_TYPE_KEYWORD}) onto the schema
+ * node at its `sourcePath`, so the mapping editor's badge/picker and the suggester see
+ * the DECLARED type (`CURRENCY`, `SINGLE_SELECT`, …) instead of the bare JSON scalar.
+ * STRUCT types additionally make the flatteners treat the node as a single typed value
+ * leaf instead of an object branch — so a non-struct type is never stamped on a branch
+ * node (an object, or an array of objects: a mis-declared manifest must not collapse a
+ * real branch or a fan-out subtree). Mutates `schema` in place (it's freshly built by
+ * the caller).
  */
 export function overlayDeclaredFieldTypes(
   schema: Record<string, unknown>,
@@ -430,21 +446,75 @@ export function overlayDeclaredFieldTypes(
 ): Record<string, unknown> {
   const root = schema as MutableSchemaNode
   for (const f of fields) {
-    if (!STRUCT_SOURCE_FIELD_TYPES.has(f.type)) continue
     const node = findSchemaNode(root, f.sourcePath)
-    if (node) node[STRUCT_FIELD_TYPE_KEYWORD] = f.type
+    if (!node) continue
+    const t = schemaNodeType(node)
+    const isBranch =
+      t === 'object' ||
+      (t === 'array' && node.items != null && schemaNodeType(node.items) === 'object')
+    if (STRUCT_SOURCE_FIELD_TYPES.has(f.type) || !isBranch) {
+      node[STRUCT_FIELD_TYPE_KEYWORD] = f.type
+    }
   }
   return schema
 }
 
-/** The source schema for an app catalog stream — prefer its canonical sample. */
+/**
+ * Merge the example-inferred schema ONTO the declaration-derived one, in place. The
+ * declared fields are the contract — every declared `sourcePath` survives even when
+ * the `exampleRecord` omits it — while the example contributes wire truth: the actual
+ * scalar type where the declaration's guess disagrees (Shopify money is a `"19.99"`
+ * string, not a number), detected string `format`s, and any extra shape the
+ * declaration doesn't cover.
+ */
+function mergeExampleNode(declared: MutableSchemaNode, example: MutableSchemaNode): void {
+  const exType = schemaNodeType(example)
+  if (exType === null) return // null-only / empty example node — the declaration stands
+  const decType = schemaNodeType(declared)
+
+  if (exType === 'object' && decType === 'object') {
+    const decProps = (declared.properties ??= {})
+    for (const [key, exChild] of Object.entries(example.properties ?? {})) {
+      const decChild = decProps[key]
+      if (decChild) mergeExampleNode(decChild, exChild)
+      else decProps[key] = exChild
+    }
+    return
+  }
+  if (exType === 'array' && decType === 'array') {
+    if (declared.items && example.items) mergeExampleNode(declared.items, example.items)
+    else if (example.items) declared.items = example.items
+    return
+  }
+
+  // Scalar refinement or shape disagreement — the example is wire truth; replace the node.
+  declared.type = example.type
+  if (example.format !== undefined) declared.format = example.format
+  else delete declared.format
+  if (example.properties) declared.properties = example.properties
+  else delete declared.properties
+  if (example.items) declared.items = example.items
+  else delete declared.items
+}
+
+/**
+ * The source schema for an app catalog stream — DEFINITION-first. The declared fields
+ * drive which paths exist (they are the projection contract; the `exampleRecord` is an
+ * illustration, so a field missing from the example must still appear in the mapping
+ * tree); the example refines scalar types/formats and adds undeclared shape. Declared
+ * field types ride each leaf via {@link overlayDeclaredFieldTypes}.
+ */
 export function appCatalogStreamSchema(stream: CatalogDataConnector['streams'][number]): {
   sourceSchema: Record<string, unknown>
   schemaSource: 'catalog'
 } {
-  const sourceSchema = stream.exampleRecord
-    ? (inferJsonSchema(stream.exampleRecord) as Record<string, unknown>)
-    : buildSchemaFromFieldPaths(stream.fields)
+  const sourceSchema = buildSchemaFromFieldPaths(stream.fields)
+  if (stream.exampleRecord) {
+    mergeExampleNode(
+      sourceSchema as MutableSchemaNode,
+      inferJsonSchema(stream.exampleRecord) as MutableSchemaNode
+    )
+  }
   overlayDeclaredFieldTypes(sourceSchema, stream.fields)
   return { sourceSchema, schemaSource: 'catalog' }
 }

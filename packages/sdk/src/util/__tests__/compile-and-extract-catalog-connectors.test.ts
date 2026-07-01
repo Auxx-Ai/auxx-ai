@@ -40,6 +40,7 @@ describe('compileAndExtractCatalog — data connectors', () => {
       label: 'Shopify Core Data',
       requiresConnection: true,
       iconKey: 'shopping-bag',
+      webhookTrigger: { triggerId: 'shopify.shopify-trigger' },
     })
 
     // Config schema projected from the zod schema.
@@ -64,7 +65,11 @@ describe('compileAndExtractCatalog — data connectors', () => {
     // One stream, with the source fields flattened (fieldKey carried).
     expect(connector?.streams).toHaveLength(1)
     const stream = connector?.streams[0]
-    expect(stream).toMatchObject({ key: 'order', displayFieldKey: 'name' })
+    expect(stream).toMatchObject({
+      key: 'order',
+      displayFieldKey: 'name',
+      webhookTrigger: { filter: { topic: 'orders/updated' }, paths: ['resourceId'] },
+    })
 
     const byKey = new Map((stream?.fields ?? []).map((f) => [f.fieldKey, f]))
     // The declared external-id flag survives extraction onto the catalog field (the id

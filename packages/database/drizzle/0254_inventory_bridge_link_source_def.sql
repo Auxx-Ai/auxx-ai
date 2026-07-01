@@ -1,0 +1,2 @@
+ALTER TABLE "InventoryBridgeLink" ADD COLUMN "sourceDefId" text NOT NULL;--> statement-breakpoint
+ALTER TABLE "InventoryBridgeLink" ADD CONSTRAINT "InventoryBridgeLink_sourceDefId_EntityDefinition_id_fk" FOREIGN KEY ("sourceDefId") REFERENCES "public"."EntityDefinition"("id") ON DELETE cascade ON UPDATE cascade;

@@ -34,9 +34,12 @@ type ReconcilableStream = { syncMode: SyncMode; mappings: DecodedMapping[] }
  */
 export async function reconcileOrphans(ctx: SyncCtx, streams: ReconcilableStream[]): Promise<void> {
   for (const { syncMode, mappings } of streams) {
-    // Incremental: absence ≠ deletion — UNLESS this is a sweep (a full id-crawl, so
-    // absence IS deletion; Step 8C). The final-slice gate is enforced by the caller.
-    if (syncMode !== 'snapshot' && !ctx.sweep) continue
+    // Incremental: absence ≠ deletion — ALWAYS. Since v9 §3 a sweep runs incremental
+    // streams as a watermark catch-up (they did NOT see every record), so the old
+    // sweep override would mass-archive them. Deletes on incremental streams are
+    // carried by delete webhooks; a stream that needs crawl-based delete detection
+    // must be syncMode='snapshot'.
+    if (syncMode !== 'snapshot') continue
     for (const mapping of mappings) {
       if (mapping.targetMode !== 'owned') continue // never archive co-owned records
       if (mapping.linkMode !== 'upsert') continue // reference mappings write nothing

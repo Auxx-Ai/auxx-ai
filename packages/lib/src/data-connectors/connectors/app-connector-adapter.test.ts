@@ -84,13 +84,17 @@ function page(records: ConnectorRecord[], nextState: Record<string, unknown>) {
 }
 
 /** Drive the adapter's fetch and collect everything the generator yields. */
-async function drain(state: Record<string, unknown> = {}): Promise<ConnectorYield[]> {
+async function drain(
+  state: Record<string, unknown> = {},
+  triggerContext?: Record<string, string>
+): Promise<ConnectorYield[]> {
   const { records } = await appConnectorAdapter('app:test', ctx()).fetch({
     streamKey: 'thing',
     mode: 'snapshot',
     state: state as never,
     credential: null,
     config: {} as never,
+    triggerContext,
   })
   const out: ConnectorYield[] = []
   for await (const y of records) out.push(y)
@@ -192,6 +196,20 @@ describe('appConnectorAdapter pagination', () => {
       organizationConnection: { metadata: unknown }
     }
     expect(lambdaArgs.organizationConnection.metadata).toEqual(RESOLVED_METADATA)
+  })
+
+  it('includes triggerContext in the lambda payload on a steered fetch', async () => {
+    invokeLambdaExecutor.mockResolvedValueOnce(page([], { backfillComplete: true }))
+    await drain({}, { resourceId: '123' })
+    const payload = invokeLambdaExecutor.mock.calls[0]![0].payload
+    expect(payload.triggerContext).toEqual({ resourceId: '123' })
+  })
+
+  it('leaves triggerContext undefined on a normal (non-steered) fetch', async () => {
+    invokeLambdaExecutor.mockResolvedValueOnce(page([], { backfillComplete: true }))
+    await drain()
+    const payload = invokeLambdaExecutor.mock.calls[0]![0].payload
+    expect(payload.triggerContext).toBeUndefined()
   })
 })
 

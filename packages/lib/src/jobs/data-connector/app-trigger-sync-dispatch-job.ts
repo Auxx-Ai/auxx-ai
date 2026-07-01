@@ -15,7 +15,7 @@ import { and, eq, inArray, ne } from 'drizzle-orm'
 import { matchesFilter } from '../../agents/agent-trigger-queries'
 import { enqueueConnectorSync } from '../../data-connectors/data-connector-queue'
 import { markWebhookEventReceived } from '../../data-connectors/service'
-import { isSteerableDelivery } from '../../data-connectors/webhook-steer'
+import { isSteerableDelivery, resolveWebhookSteer } from '../../data-connectors/webhook-steer'
 import { createScopedLogger } from '../../logger'
 import { getQueue, Queues } from '../queues'
 import type { JobContext } from '../types'
@@ -113,17 +113,36 @@ export async function dispatchAppTriggerToConnectors(
   //  • non-steerable (cursor stream, or a delivery missing a token) → the full run-based sync.
   // A connector with ANY non-steerable matched stream full-syncs; the full crawl is a superset
   // that covers its steerable streams too, so we skip their steer jobs (no double-ingest).
-  const matched: { connectorId: string; streamKey: string; steerable: boolean }[] = []
+  const matched: {
+    connectorId: string
+    streamKey: string
+    steerable: boolean
+    debounceMs?: number
+    tokenKey: string
+  }[] = []
   for (const stream of streams) {
     const wt = stream.requestConfig?.webhookTrigger
     if (!wt) continue
     if (!matchesFilter(wt.filter, triggerData)) continue
+    // Resolve the steer once — `isSteerableDelivery` already re-derives it internally,
+    // but the resolve is cheap/pure and we need the token VALUES here to key the
+    // debounce jobId (§8), not just the steerable/not-steerable verdict.
+    const steer = resolveWebhookSteer(wt, triggerData)
+    const tokenKey =
+      steer.kind === 'fetch'
+        ? Object.entries(steer.triggerContext)
+            .sort()
+            .map(([k, v]) => `${k}=${v}`)
+            .join('&')
+        : ''
     matched.push({
       connectorId: stream.dataConnectorId,
       // An unnamed stream routes by its stable streamId (the functional key) — same
       // fallback the sync/steer paths use, so a nameless stream is still webhook-routable.
       streamKey: stream.streamKey ?? stream.id,
       steerable: isSteerableDelivery(stream.requestConfig, triggerData),
+      debounceMs: wt.debounceMs,
+      tokenKey,
     })
   }
 
@@ -139,9 +158,7 @@ export async function dispatchAppTriggerToConnectors(
   let steerJobs = 0
   for (const m of matched) {
     if (!m.steerable || fullSyncConnectors.has(m.connectorId)) continue
-    // No `jobId` — each delivery is a distinct record, so steered runs must NOT coalesce
-    // (the dispatch-level redis dedup already drops duplicate deliveries of one eventId).
-    await queue.add(WEBHOOK_STEER_JOB, {
+    const jobData = {
       connectorId: m.connectorId,
       streamKey: m.streamKey,
       organizationId,
@@ -149,7 +166,25 @@ export async function dispatchAppTriggerToConnectors(
       triggerId,
       triggerData,
       eventId,
-    } satisfies ConnectorWebhookSteerJobData)
+    } satisfies ConnectorWebhookSteerJobData
+    // Same-record burst coalescing (v9 §8): the jobId is keyed on the RESOLVED steer-token
+    // VALUES, so two deliveries about different records (e.g. two different orders) never
+    // share an id — the old "each delivery is a distinct record" invariant holds by
+    // construction. Deliveries about the SAME record inside one debounce window collapse
+    // into a single delayed job that fetches the final truth once. The window is bucketed
+    // by wall-clock so a delivery landing while a previous job is ACTIVE falls into the
+    // next bucket instead of being silently dropped by BullMQ id-dedup.
+    const debounceMs = m.debounceMs ?? 0
+    const opts =
+      debounceMs > 0
+        ? {
+            jobId: steerJobId(m.connectorId, m.streamKey, m.tokenKey, debounceMs),
+            delay: debounceMs,
+            removeOnComplete: true,
+            removeOnFail: true,
+          }
+        : undefined
+    await queue.add(WEBHOOK_STEER_JOB, jobData, opts)
     steerJobs++
   }
   for (const connectorId of fullSyncConnectors) {
@@ -163,4 +198,15 @@ export async function dispatchAppTriggerToConnectors(
     connectorsFullSynced: fullSyncConnectors.size,
   })
   return { steerJobs, connectorsFullSynced: fullSyncConnectors.size }
+}
+
+/** Deterministic steer-job id: same record + same debounce bucket → same id (coalesce). */
+function steerJobId(
+  connectorId: string,
+  streamKey: string,
+  tokenKey: string,
+  debounceMs: number
+): string {
+  const bucket = Math.floor(Date.now() / debounceMs)
+  return `steer__${connectorId}__${streamKey}__${encodeURIComponent(tokenKey)}__${bucket}`
 }

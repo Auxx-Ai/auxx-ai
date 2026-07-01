@@ -287,6 +287,13 @@ export interface CatalogConnectorStream {
   fields: CatalogConnectorField[]
   defaultMappings?: CatalogConnectorDefaultMapping[]
   exampleRecord?: Record<string, unknown>
+  /**
+   * Per-stream webhook STEERING. `filter` matches against the delivery's triggerData;
+   * `paths` name triggerData fields exposed to the app's execute as `triggerContext`;
+   * `debounceMs` coalesces same-record bursts. See {@link CatalogDataConnector.webhookTrigger}
+   * for the connector-level SIGNAL this steering pairs with.
+   */
+  webhookTrigger?: { filter?: Record<string, unknown>; paths: string[]; debounceMs?: number }
 }
 
 /**
@@ -317,6 +324,11 @@ export interface CatalogDataConnector {
    */
   configOptionHints?: Record<string, ActionInputHint>
   streams: CatalogConnectorStream[]
+  /**
+   * Connector-level webhook SIGNAL: which app trigger drives webhook-sync for this
+   * connector (one per connector). E.g. `{ triggerId: 'shopify.shopify-trigger' }`.
+   */
+  webhookTrigger?: { triggerId: string }
 }
 
 export interface CatalogPayload {

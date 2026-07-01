@@ -261,6 +261,7 @@ export function appConnectorAdapter(
             mode: args.mode,
             state: { cursor: flat.cursor, updatedSince: flat.updatedSince },
             config,
+            triggerContext: args.triggerContext, // ← webhook steer tokens (undefined on normal syncs)
             context: lambdaContext,
             timeout: 30000,
           },

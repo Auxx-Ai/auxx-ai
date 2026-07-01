@@ -83,6 +83,32 @@ describe('connector-level', () => {
     expect(plan.structural).toBe(true)
   })
 
+  it('webhook-mode sweep-cadence edit → connectorUpdate carries only scheduleConfig, structural', () => {
+    // Lock-in (v9 Phase 6): in webhook mode `scheduleConfig` IS the sweep cadence. A
+    // cadence-only edit (syncBehavior unchanged) still emits a scheduleConfig update and
+    // counts as structural — the diff code is field-generic, this guards that contract.
+    const webhookDraft = baseDraft()
+    webhookDraft.syncBehavior = 'webhook'
+    getConnectorDraftState().reset()
+    getConnectorDraftState().seed('conn_1', META, webhookDraft)
+    getConnectorDraftState().setScheduleConfig({
+      triggerInterval: 'custom',
+      customCron: '0 5 * * *',
+      timeBetweenTriggers: {},
+    })
+    const { snapshot, draft } = getConnectorDraftState()
+    const plan = diffConnectorDraft(snapshot!, draft)
+    expect(plan.connectorUpdate).toEqual({
+      scheduleConfig: {
+        triggerInterval: 'custom',
+        customCron: '0 5 * * *',
+        timeBetweenTriggers: {},
+      },
+    })
+    expect(plan.connectorUpdate).not.toHaveProperty('syncBehavior')
+    expect(plan.structural).toBe(true)
+  })
+
   it('config edit (base url) → connectorUpdate sends the whole config blob', () => {
     const [snap, draft] = withEdits(() => {
       getConnectorDraftState().setConfig({ endpoint: { baseUrl: 'https://api.test/v2' } })

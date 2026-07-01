@@ -45,6 +45,7 @@ import { fileRouter } from './routers/file'
 import { folderRouter } from './routers/folder'
 import { gettingStartedRouter } from './routers/getting-started'
 import { inboxRouter } from './routers/inbox'
+import { inventoryBridgeRouter } from './routers/inventory-bridge'
 import { knowledgeBaseRouter } from './routers/kb'
 import { knowledgeSourceRouter } from './routers/knowledge-sources'
 import { kopilotRouter } from './routers/kopilot'
@@ -181,6 +182,7 @@ export const appRouter = createTRPCRouter({
   dataImport: dataImportRouter,
   dataExport: dataExportRouter,
   dataConnector: dataConnectorRouter,
+  inventoryBridge: inventoryBridgeRouter,
 })
 // inferReactQueryProcedureOptions
 // export type definition of API

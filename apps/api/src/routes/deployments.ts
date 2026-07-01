@@ -3,6 +3,7 @@
 
 import { database, schema } from '@auxx/database'
 import { invalidateAppCatalog, invalidateOrgsByDeploymentId, onCacheEvent } from '@auxx/lib/cache'
+import { restampWebhookBindingsForDeployment } from '@auxx/lib/data-connectors'
 import { calculateNextVersion, updateDeploymentStatus } from '@auxx/services/app-versions'
 import { verifyAppAccess } from '@auxx/services/developer-accounts'
 import { stableStringify } from '@auxx/utils/json'
@@ -287,6 +288,7 @@ deployments.post('/:appId/deployments', requireScope(['developer', 'apps:write']
       await onCacheEvent('build.app.updated', { developerAccountId: app.developerAccountId })
     }
     await invalidateOrgsByDeploymentId(deployment.id, database)
+    await restampWebhookBindingsForDeployment(deployment.id, database)
     await invalidateAppCatalog()
 
     return c.json({

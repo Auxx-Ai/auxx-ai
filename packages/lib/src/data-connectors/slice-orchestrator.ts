@@ -86,10 +86,12 @@ const NO_THROTTLE: ThrottleHandle = { run: (fn) => fn() }
 interface ChainSnapshot {
   streams: SyncSourceStream[]
   /**
-   * Reconciliation sweep (Step 8C). A full id-crawl whose purpose is catching deletes
-   * that webhooks/the watermark poll missed. Runs as a backfill chain (resumable,
-   * archive-after-final-slice) but with `ctx.sweep` set so `reconcileOrphans` archives
-   * orphans even for incremental streams. Threaded onto every slice's `SyncCtx`.
+   * Reconciliation sweep (Step 8C, REVISED v9 §3). Self-heals missed webhooks. Runs as
+   * a backfill chain (resumable, archive-after-final-slice), but per-stream: a
+   * `syncMode='incremental'` stream fetches a cheap watermark catch-up and never
+   * archives (absence ≠ deletion — it didn't see every record); a
+   * `syncMode='snapshot'` stream still full re-crawls + archives orphans. Threaded
+   * onto every slice's `SyncCtx`.
    */
   sweep?: boolean
 }
@@ -165,9 +167,11 @@ async function startConnectorSyncInner(
   dataConnectorId: string,
   options: StartConnectorSyncOptions = {}
 ): Promise<boolean> {
-  // A sweep is a full reconciling re-crawl (Step 8C): force the backfill phase even
-  // for an incremental connector that's been running steady deltas, so it lists every
-  // id and archives the ones that vanished. `ctx.sweep` flows from the run snapshot.
+  // A sweep self-heals missed webhooks (Step 8C, REVISED v9 §3): force the backfill
+  // phase even for an incremental connector that's been running steady deltas. Per
+  // stream: `syncMode='snapshot'` still re-lists every id and archives vanished ones;
+  // `syncMode='incremental'` instead fetches a cheap watermark catch-up (its state is
+  // deliberately NOT reset below) and never archives. `sweep` flows from the run snapshot.
   const isSweep = options.trigger === 'sweep'
   // Clear a crashed prior chain first so its stuck claim can't block us (H5).
   await sweepStaleConnectorRuns(db, { dataConnectorId })
@@ -298,7 +302,13 @@ async function startConnectorSyncInner(
     for (const [i, s] of streams.entries()) {
       const st = streamStates[i] ?? {}
       const resumable = incrementalConnector && st.phase === 'backfill' && !!st.backfillCursor
-      if (resumable) continue
+      // A sweep on an incremental stream is a watermark catch-up (v9 §3), not a fresh
+      // crawl — resetting state here would wipe the persisted watermark and turn every
+      // sweep into an unbounded from-scratch fetch on that stream, which is exactly the
+      // cost the per-stream syncMode split (Phase 4) exists to avoid. Snapshot streams
+      // still reset (their orphan reconciliation needs the full re-crawl).
+      const sweepIncrementalKeep = isSweep && s.syncMode === 'incremental'
+      if (resumable || sweepIncrementalKeep) continue
       // Pin the floor per stream — the param is connector-level but the format is
       // declared per stream; streams without a `backfillWindow` get no floor.
       const window = s.stream.requestConfig?.backfillWindow

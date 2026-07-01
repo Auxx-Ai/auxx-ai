@@ -229,6 +229,8 @@ const DataConnectorExecutionSchema = AppEventSchema.extend({
   mode: z.enum(['snapshot', 'incremental']),
   state: z.record(z.string(), z.unknown()),
   config: z.record(z.string(), z.unknown()),
+  /** Webhook steer tokens (present only on a webhook-steered partial fetch). */
+  triggerContext: z.record(z.string(), z.string()).optional(),
 })
 
 // ============================================================================

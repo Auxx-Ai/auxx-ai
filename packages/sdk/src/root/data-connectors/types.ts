@@ -257,6 +257,18 @@ export interface ConnectorStreamDecl {
   defaultMappings?: ConnectorDefaultMapping[]
   /** Canonical sample → schema preview + dry-run before the first live fetch. */
   exampleRecord?: Record<string, unknown>
+  /**
+   * Per-stream webhook STEERING. `filter` matches against the delivery's triggerData
+   * (e.g. { topic: 'inventory_levels/update' }); `paths` name triggerData fields exposed
+   * to the app's execute as `triggerContext`; `debounceMs` coalesces same-record bursts.
+   * A stream with `filter` but empty `paths` causes a FULL connector sync per delivery —
+   * never ship that for high-volume topics.
+   */
+  webhookTrigger?: {
+    filter?: Record<string, unknown>
+    paths: string[]
+    debounceMs?: number
+  }
 }
 
 /**
@@ -279,6 +291,13 @@ export interface ConnectorExecuteArgs<TConfig = Record<string, unknown>> {
   connection: ConnectorConnection | null
   /** The connector's validated config (from the `config` zod schema). */
   config: TConfig
+  /**
+   * Webhook steering tokens (present only on a webhook-steered partial fetch).
+   * Keys are the paths declared in the stream's `webhookTrigger.paths`; values are the
+   * corresponding values from the delivery payload. When set, fetch ONLY the affected
+   * record(s) and return `nextState: { backfillComplete: true }`.
+   */
+  triggerContext?: Record<string, string>
 }
 
 /**
@@ -325,6 +344,11 @@ export interface DataConnectorDefinition<TConfigSchema extends z.ZodTypeAny = z.
   streams: ConnectorStreamDecl[]
   /** Optional icon key for the connector card. */
   iconKey?: string
+  /**
+   * Connector-level webhook SIGNAL: which app trigger drives webhook-sync for this
+   * connector (one per connector). E.g. { triggerId: 'shopify.shopify-trigger' }.
+   */
+  webhookTrigger?: { triggerId: string }
   /**
    * Server handler — fetches from the provider and yields source-shaped
    * `ConnectorRecord` batches. Lives in a `.connector.server.ts(x)` module so

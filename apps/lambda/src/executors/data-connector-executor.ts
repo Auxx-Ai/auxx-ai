@@ -40,7 +40,17 @@ export async function executeDataConnector(
     context: any
   }
 ): Promise<ExecutionResult> {
-  const { bundleCode, connectorId, streamKey, mode, state, config, context, timeout } = options
+  const {
+    bundleCode,
+    connectorId,
+    streamKey,
+    mode,
+    state,
+    config,
+    triggerContext,
+    context,
+    timeout,
+  } = options
 
   console.log('[DataConnectorExecutor] Starting execution:', { connectorId, streamKey, mode })
 
@@ -85,6 +95,7 @@ export async function executeDataConnector(
         state,
         connection,
         config,
+        triggerContext,
       })
 
       // Materialize records (array or async iterable) into a bounded array.

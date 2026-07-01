@@ -109,10 +109,14 @@ const intervalCount = z.union([z.number(), z.string()]).optional()
  */
 const MIN_CONNECTOR_INTERVAL_MINUTES = 15
 
-/** ScheduledTriggerConfig (shared agent/workflow frequency model). Minutes is floored at 15 (04). */
+/**
+ * ScheduledTriggerConfig (shared agent/workflow frequency model). Minutes is floored at
+ * 15 (04). `'off'` (v9 §5) is a webhook-mode-only SWEEP cadence — no self-heal; the
+ * refinements below reject it outside webhook mode and constrain webhook mode's shape.
+ */
 const scheduleConfigSchema = z
   .object({
-    triggerInterval: z.enum(['minutes', 'hours', 'days', 'weeks', 'custom']),
+    triggerInterval: z.enum(['minutes', 'hours', 'days', 'weeks', 'custom', 'off']),
     timeBetweenTriggers: z.object({
       minutes: intervalCount,
       hours: intervalCount,
@@ -525,16 +529,44 @@ export const dataConnectorRouter = createTRPCRouter({
 
   update: adminProcedure
     .input(
-      z.object({
-        id: z.string(),
-        name: z.string().min(1).optional(),
-        config: connectorConfigSchema.optional(),
-        credentialId: z.string().nullish(),
-        appInstallationId: z.string().nullish(),
-        // Lifecycle toggle (pause/resume). Other statuses are engine-owned.
-        status: z.enum(['paused', 'live']).optional(),
-        ...scheduleFields,
-      })
+      z
+        .object({
+          id: z.string(),
+          name: z.string().min(1).optional(),
+          config: connectorConfigSchema.optional(),
+          credentialId: z.string().nullish(),
+          appInstallationId: z.string().nullish(),
+          // Lifecycle toggle (pause/resume). Other statuses are engine-owned.
+          status: z.enum(['paused', 'live']).optional(),
+          ...scheduleFields,
+        })
+        // v9 §5: scheduleConfig is mode-scoped — 'off' is a webhook-only SWEEP cadence,
+        // and webhook mode only writes 'off'/'custom' (the UI's Daily/Weekly Selects
+        // write a customCron — see schedule-section.tsx). Both refinements only fire
+        // when `syncBehavior` is present in THIS call — a cadence-only edit (mode
+        // unchanged) has no syncBehavior in the payload to cross-check against; the
+        // persistence rule in `updateConnector` is the actual source of truth there.
+        .refine(
+          (v) =>
+            v.scheduleConfig?.triggerInterval !== 'off' ||
+            v.syncBehavior === undefined ||
+            v.syncBehavior === 'webhook',
+          {
+            message: "'off' is only a valid cadence in webhook mode.",
+            path: ['scheduleConfig'],
+          }
+        )
+        .refine(
+          (v) =>
+            v.syncBehavior !== 'webhook' ||
+            !v.scheduleConfig ||
+            v.scheduleConfig.triggerInterval === 'off' ||
+            v.scheduleConfig.triggerInterval === 'custom',
+          {
+            message: "Webhook-mode cadence must be 'off' or a custom cron.",
+            path: ['scheduleConfig'],
+          }
+        )
     )
     .mutation(async ({ ctx, input }) => {
       const { id, ...patch } = input
