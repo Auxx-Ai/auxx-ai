@@ -6,6 +6,11 @@
 > This is the living reference for how records, fields, and field values work end-to-end.
 > It supersedes the older `plans/entity/unified-entity-architecture-v5.md` (Jan 2026), which predates
 > the row-id canonical field-identity change (`#734`, 2026-06-03) and several schema additions.
+>
+> **Companion — the reactive layer.** How records/fields *react* to changes (record rules,
+> field/entity triggers, conditions/actions, and sync-change events for connector/import writes)
+> lives in **`entity-events-architecture-guide.md`**. This guide covers the data model + read/write
+> path; that one covers "when X changes, do Y".
 
 ---
 
@@ -202,7 +207,10 @@ relationship add/remove variants. A write:
 5. Canonicalizes relationship ids (system type → EntityDefinition UUID).
 6. Persists — UPDATE for single-value, DELETE+INSERT for multi-value.
 7. Syncs inverse relationships (`relationship-sync.ts`), updates denormalized `displayName` if a display
-   field changed, publishes field-trigger + realtime events (excluding the originating socket).
+   field changed, publishes field-trigger + realtime events (excluding the originating socket). The
+   field-trigger step is the entry into the **record-rules engine** — see
+   `entity-events-architecture-guide.md`. (Connector/import writes use `skipEvents` and instead feed
+   the sync-change manifest; same guide, §8.)
 
 **Read path** (`field-value-queries.ts`): `getValue` (single), `getValues` (multi-field, single JOIN to
 avoid N+1, returns `Map<fieldId, …>`), and `batchGetValues` — the workhorse that powers `fieldValue.batchGet`.

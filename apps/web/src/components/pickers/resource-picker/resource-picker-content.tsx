@@ -22,7 +22,8 @@ const EMPTY_EXCLUDE_IDS: string[] = []
 
 /**
  * ResourcePickerContent - Inner content for the resource picker.
- * Renders a searchable list of resources grouped by System and Custom.
+ * Renders a searchable list of resources grouped by System and Custom,
+ * wrapped in its own `Command` shell.
  *
  * Features:
  * - Search filtering by resource label
@@ -30,7 +31,21 @@ const EMPTY_EXCLUDE_IDS: string[] = []
  * - Multi-select or single-select mode
  * - Shows selected items at top, available items below
  */
-export function ResourcePickerContent({
+export function ResourcePickerContent({ className, ...props }: ResourcePickerContentProps) {
+  return (
+    <Command shouldFilter={false} className={cn('rounded-lg', className)}>
+      <ResourceCommandBody {...props} />
+    </Command>
+  )
+}
+
+/**
+ * ResourceCommandBody - the input + grouped resource list WITHOUT a surrounding
+ * `Command` shell. Exposed so it can be embedded inside a parent `Command`
+ * (e.g. the resource-field picker's unified navigation) that owns the shell.
+ * `ResourcePickerContent` is the standalone wrapper around this.
+ */
+export function ResourceCommandBody({
   value,
   onChange,
   multi = false,
@@ -39,12 +54,11 @@ export function ResourcePickerContent({
   disabled = false,
   placeholder = 'Search resources...',
   isLoading: externalLoading = false,
-  className,
   excludeIds = EMPTY_EXCLUDE_IDS,
   includeSystem = true,
   includeCustom = true,
   entityDefinedOnly = false,
-}: ResourcePickerContentProps) {
+}: Omit<ResourcePickerContentProps, 'className'>) {
   const [search, setSearch] = useState('')
 
   // Notify parent about capture state on mount/unmount
@@ -133,7 +147,7 @@ export function ResourcePickerContent({
   const showGroupHeadings = includeSystem && includeCustom
 
   return (
-    <Command shouldFilter={false} className={cn('rounded-lg', className)}>
+    <>
       <CommandInput
         placeholder={placeholder}
         value={search}
@@ -197,6 +211,6 @@ export function ResourcePickerContent({
           </CommandGroup>
         )}
       </CommandList>
-    </Command>
+    </>
   )
 }
