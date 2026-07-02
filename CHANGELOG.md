@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.1.173](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.172...auxx-v0.1.173) (2026-07-02)
+
+
+### Features
+
+* **apps:** reconcile app fields at connector sync (create/drift/orphan) ([#1034](https://github.com/Auxx-Ai/auxx-ai/issues/1034)) ([c8680c5](https://github.com/Auxx-Ai/auxx-ai/commit/c8680c51f7864acb6a37d3d5cc9124e6cfc159a5))
+* **data-connectors:** app icons + connector descriptions in source picker ([#1046](https://github.com/Auxx-Ai/auxx-ai/issues/1046)) ([9996e50](https://github.com/Auxx-Ai/auxx-ai/commit/9996e507d9bf007f42276c46d767b9d6c2e4ed2a))
+* **data-connectors:** app-connector webhook summaries; vendor-part FieldInputAdapter ([#1041](https://github.com/Auxx-Ai/auxx-ai/issues/1041)) ([2f0866b](https://github.com/Auxx-Ai/auxx-ai/commit/2f0866b07ad243e71a1c5123d19140056ce48ecb))
+* **data-connectors:** inventory→part bridge, webhook sweep fix, debounce coalescing ([#1038](https://github.com/Auxx-Ai/auxx-ai/issues/1038)) ([b531429](https://github.com/Auxx-Ai/auxx-ai/commit/b531429d25bae90564ba17d48ff90a9db4c044bd))
+* **data-connectors:** managed inventory deduction record rule (v9) ([#1048](https://github.com/Auxx-Ai/auxx-ai/issues/1048)) ([de36918](https://github.com/Auxx-Ai/auxx-ai/commit/de36918ebbbedfb1c8136f3ad187e8c96ad76fb8))
+* **inventory-bridge:** part-side inventory source link rows ([#1051](https://github.com/Auxx-Ai/auxx-ai/issues/1051)) ([b186520](https://github.com/Auxx-Ai/auxx-ai/commit/b186520a2931c00928b7c69fdfe9b3d429189168))
+* **pickers:** unified ResourceFieldPicker (resource → field drill-down) ([#1047](https://github.com/Auxx-Ai/auxx-ai/issues/1047)) ([9b6b11c](https://github.com/Auxx-Ai/auxx-ai/commit/9b6b11ce5ad98b72d27bf0117c4ac2c103f3706c))
+* **record-rules:** add dynamic field rules engine ([#1042](https://github.com/Auxx-Ai/auxx-ai/issues/1042)) ([8bc172f](https://github.com/Auxx-Ai/auxx-ai/commit/8bc172f03c47e9edacef0957083ded836c56686c))
+* **record-rules:** redesign settings dialog with FieldPanel + DialogNav ([#1043](https://github.com/Auxx-Ai/auxx-ai/issues/1043)) ([b17c761](https://github.com/Auxx-Ai/auxx-ai/commit/b17c7618c859956c80591e399edbd921e3c340ea))
+* **record-rules:** sync manifest engine, field-hook unification, run retention ([#1044](https://github.com/Auxx-Ai/auxx-ai/issues/1044)) ([db266de](https://github.com/Auxx-Ai/auxx-ai/commit/db266ded1cd23862d7e04aeb2457825f9555fd0d))
+* **shopify:** multi-store Part 1 — fix App Store claim + admin unlink billing ([#1052](https://github.com/Auxx-Ai/auxx-ai/issues/1052)) ([6334282](https://github.com/Auxx-Ai/auxx-ai/commit/63342826a649521a6e07f72feb2706a7fdc57802))
+* **subscription:** skip billing address + payment collection for free plans ([#1049](https://github.com/Auxx-Ai/auxx-ai/issues/1049)) ([4dd4762](https://github.com/Auxx-Ai/auxx-ai/commit/4dd4762de5a26083661b47dd92cc92fe499fd34f))
+
+
+### Bug Fixes
+
+* **data-connectors:** pin sample review banner under tabs strip ([#1036](https://github.com/Auxx-Ai/auxx-ai/issues/1036)) ([b375c24](https://github.com/Auxx-Ai/auxx-ai/commit/b375c24666510ceab73d9f09c48bf01adb8adcad))
+* **data-connectors:** scope app-field reconciler to manifest fields; move provisioning to lib ([#1040](https://github.com/Auxx-Ai/auxx-ai/issues/1040)) ([d0ff37a](https://github.com/Auxx-Ai/auxx-ai/commit/d0ff37a190bc77cbdd227a7d0cbb253b85979ed0))
+* **realtime:** serve notification sounds + unify on new-message cue ([#1050](https://github.com/Auxx-Ai/auxx-ai/issues/1050)) ([49d81aa](https://github.com/Auxx-Ai/auxx-ai/commit/49d81aaa76cf936e84e73e06284f2c71cd76d1d8))
+
 ## [0.1.172](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.171...auxx-v0.1.172) (2026-07-01)
 
 
