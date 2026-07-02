@@ -1,14 +1,15 @@
 // apps/web/src/components/manufacturing/parts/stock-adjustment-popover.tsx
 'use client'
 
+import { FieldType } from '@auxx/database/enums'
 import { Button } from '@auxx/ui/components/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
 import { toastError } from '@auxx/ui/components/toast'
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
 import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
 import { toRecordId, useResourceProperty } from '~/components/resources'
 import { BaseType } from '~/components/workflow/types'
-import { ConstantInputAdapter } from '~/components/workflow/ui/input-editor/constant-input-adapter'
 import { api } from '~/trpc/react'
 
 type Direction = 'add' | 'remove'
@@ -117,9 +118,8 @@ export function StockAdjustmentPopover({
   const isSetToMode = quantityMode === 'set_to'
   const isPending = createRecord.isPending
 
-  const directionFieldOptions = useMemo(() => ({ enum: DIRECTION_OPTIONS }), [])
-  const quantityModeFieldOptions = useMemo(() => ({ enum: QUANTITY_MODE_OPTIONS }), [])
-  const quantityFieldOptions = useMemo(() => ({ number: { min: 0 } }), [])
+  const directionFieldOptions = useMemo(() => ({ options: DIRECTION_OPTIONS }), [])
+  const quantityModeFieldOptions = useMemo(() => ({ options: QUANTITY_MODE_OPTIONS }), [])
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -136,14 +136,14 @@ export function StockAdjustmentPopover({
               showIcon
               isRequired
               description='Adjust by a relative amount or set to an absolute quantity'>
-              <ConstantInputAdapter
+              <FieldInputAdapter
+                fieldType={FieldType.SINGLE_SELECT}
                 value={quantityMode}
-                onChange={(_, val) => {
-                  const mode = (val as QuantityMode) ?? 'adjust_by'
+                onChange={(val) => {
+                  const mode = ((val as string[])[0] as QuantityMode) ?? 'adjust_by'
                   setQuantityMode(mode)
                   if (mode === 'set_to') setAdjustSubparts(false)
                 }}
-                varType={BaseType.ENUM}
                 fieldOptions={quantityModeFieldOptions}
                 disabled={isPending}
               />
@@ -157,10 +157,10 @@ export function StockAdjustmentPopover({
                 showIcon
                 isRequired
                 description='Whether to add or remove stock'>
-                <ConstantInputAdapter
+                <FieldInputAdapter
+                  fieldType={FieldType.SINGLE_SELECT}
                   value={direction}
-                  onChange={(_, val) => setDirection((val as Direction) ?? 'add')}
-                  varType={BaseType.ENUM}
+                  onChange={(val) => setDirection(((val as string[])[0] as Direction) ?? 'add')}
                   fieldOptions={directionFieldOptions}
                   disabled={isPending}
                 />
@@ -169,13 +169,12 @@ export function StockAdjustmentPopover({
 
             {/* Quantity */}
             <FieldPanelRow title='Quantity' type={BaseType.NUMBER} showIcon isRequired>
-              <ConstantInputAdapter
+              <FieldInputAdapter
+                fieldType={FieldType.NUMBER}
                 value={quantity}
-                onChange={(_, val) => setQuantity(val ?? null)}
-                varType={BaseType.NUMBER}
+                onChange={(val) => setQuantity((val as number) ?? null)}
                 placeholder={isSetToMode ? String(currentQoH) : '0'}
                 disabled={isPending}
-                fieldOptions={quantityFieldOptions}
               />
               {isSetToMode && quantity !== null && (
                 <p className='text-xs text-muted-foreground mt-1'>
@@ -187,10 +186,10 @@ export function StockAdjustmentPopover({
 
             {/* Reason */}
             <FieldPanelRow title='Reason' type={BaseType.STRING} showIcon>
-              <ConstantInputAdapter
+              <FieldInputAdapter
+                fieldType={FieldType.TEXT}
                 value={reason}
-                onChange={(_, val) => setReason(val ?? '')}
-                varType={BaseType.STRING}
+                onChange={(val) => setReason((val as string) ?? '')}
                 placeholder='e.g. Recount, Damaged goods'
                 disabled={isPending}
               />
@@ -198,10 +197,10 @@ export function StockAdjustmentPopover({
 
             {/* Reference */}
             <FieldPanelRow title='Reference' type={BaseType.STRING} showIcon>
-              <ConstantInputAdapter
+              <FieldInputAdapter
+                fieldType={FieldType.TEXT}
                 value={reference}
-                onChange={(_, val) => setReference(val ?? '')}
-                varType={BaseType.STRING}
+                onChange={(val) => setReference((val as string) ?? '')}
                 placeholder='e.g. PO-1234, RMA-567'
                 disabled={isPending}
               />
@@ -214,10 +213,10 @@ export function StockAdjustmentPopover({
                 type={BaseType.BOOLEAN}
                 showIcon
                 description='Cascade this adjustment to all leaf component parts based on the bill of materials'>
-                <ConstantInputAdapter
+                <FieldInputAdapter
+                  fieldType={FieldType.CHECKBOX}
                   value={adjustSubparts}
-                  onChange={(_, val) => setAdjustSubparts(val ?? false)}
-                  varType={BaseType.BOOLEAN}
+                  onChange={(val) => setAdjustSubparts((val as boolean) ?? false)}
                   fieldOptions={{ variant: 'switch' }}
                   disabled={isPending}
                 />

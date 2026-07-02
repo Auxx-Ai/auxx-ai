@@ -2,9 +2,10 @@
 
 'use client'
 
+import { FieldType } from '@auxx/database/enums'
+import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
 import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
 import { BaseType } from '~/components/workflow/types/unified-types'
-import { ConstantInputAdapter } from '~/components/workflow/ui/input-editor/constant-input-adapter'
 
 /**
  * String options for text field configuration
@@ -33,7 +34,7 @@ export function TextOptionsEditor({ options, onChange, disabled }: TextOptionsEd
   /**
    * Handle individual option changes
    */
-  const handleChange = (key: keyof TextOptions) => (_content: string, value: any) => {
+  const handleChange = (key: keyof TextOptions) => (value: unknown) => {
     onChange({ ...options, [key]: value })
   }
 
@@ -44,11 +45,11 @@ export function TextOptionsEditor({ options, onChange, disabled }: TextOptionsEd
         title='Multiline'
         description='Allow multiple lines of text (textarea)'
         type={BaseType.BOOLEAN}>
-        <ConstantInputAdapter
+        <FieldInputAdapter
+          fieldType={FieldType.CHECKBOX}
           value={options.multiline ?? false}
           onChange={handleChange('multiline')}
           fieldOptions={{ variant: 'switch' }}
-          varType={BaseType.BOOLEAN}
           disabled={disabled}
         />
       </FieldPanelRow>
@@ -58,10 +59,10 @@ export function TextOptionsEditor({ options, onChange, disabled }: TextOptionsEd
         title='Min Length'
         description='Minimum number of characters required'
         type={BaseType.NUMBER}>
-        <ConstantInputAdapter
+        <FieldInputAdapter
+          fieldType={FieldType.NUMBER}
           value={options.minLength ?? ''}
           onChange={handleChange('minLength')}
-          varType={BaseType.NUMBER}
           placeholder='No minimum'
           disabled={disabled}
         />
@@ -72,10 +73,10 @@ export function TextOptionsEditor({ options, onChange, disabled }: TextOptionsEd
         title='Max Length'
         description='Maximum number of characters allowed'
         type={BaseType.NUMBER}>
-        <ConstantInputAdapter
+        <FieldInputAdapter
+          fieldType={FieldType.NUMBER}
           value={options.maxLength ?? ''}
           onChange={handleChange('maxLength')}
-          varType={BaseType.NUMBER}
           placeholder='No maximum'
           disabled={disabled}
         />

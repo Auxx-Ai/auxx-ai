@@ -1,5 +1,6 @@
 // apps/web/src/components/datasets/settings/sections/chunking-settings-section.tsx
 'use client'
+import { FieldType } from '@auxx/database/enums'
 import type { ChunkSettings, DatasetEntity as Dataset } from '@auxx/database/types'
 import { BaseType } from '@auxx/lib/workflow-engine/client'
 import { Button } from '@auxx/ui/components/button'
@@ -11,9 +12,9 @@ import { standardSchemaResolver } from '@hookform/resolvers/standard-schema'
 import { Book, Brain, FileText, Layers, Scissors } from 'lucide-react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
+import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
 import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
 import { SettingsSection } from '~/components/global/settings-page'
-import { ConstantInputAdapter } from '~/components/workflow/ui/input-editor/constant-input-adapter'
 import { api } from '~/trpc/react'
 
 interface ChunkingSettingsSectionProps {
@@ -204,10 +205,10 @@ export function ChunkingSettingsSection({
                   description='Target size for each chunk in characters (100-5000)'
                   type={BaseType.NUMBER}
                   showIcon={true}>
-                  <ConstantInputAdapter
+                  <FieldInputAdapter
+                    fieldType={FieldType.NUMBER}
                     value={form.watch('size') ?? ''}
-                    onChange={(_, val) => form.setValue('size', val)}
-                    varType={BaseType.NUMBER}
+                    onChange={(val) => form.setValue('size', val as number)}
                     placeholder='1000'
                     disabled={readOnly}
                   />
@@ -218,10 +219,10 @@ export function ChunkingSettingsSection({
                   description='Overlapping characters between adjacent chunks (0-1000)'
                   type={BaseType.NUMBER}
                   showIcon={true}>
-                  <ConstantInputAdapter
+                  <FieldInputAdapter
+                    fieldType={FieldType.NUMBER}
                     value={form.watch('overlap') ?? ''}
-                    onChange={(_, val) => form.setValue('overlap', val)}
-                    varType={BaseType.NUMBER}
+                    onChange={(val) => form.setValue('overlap', val as number)}
                     placeholder='200'
                     disabled={readOnly}
                   />
@@ -232,10 +233,10 @@ export function ChunkingSettingsSection({
                   description='Split text at this delimiter. Default is double newline (paragraph breaks).'
                   type={BaseType.STRING}
                   showIcon={true}>
-                  <ConstantInputAdapter
+                  <FieldInputAdapter
+                    fieldType={FieldType.TEXT}
                     value={form.watch('delimiter') ?? ''}
-                    onChange={(_, val) => form.setValue('delimiter', val || '\n\n')}
-                    varType={BaseType.STRING}
+                    onChange={(val) => form.setValue('delimiter', (val as string) || '\n\n')}
                     placeholder='\n\n'
                     disabled={readOnly}
                   />
@@ -246,10 +247,12 @@ export function ChunkingSettingsSection({
                   description='Replace consecutive spaces, newlines, and tabs with single characters'
                   type={BaseType.BOOLEAN}
                   showIcon={true}>
-                  <ConstantInputAdapter
+                  <FieldInputAdapter
+                    fieldType={FieldType.CHECKBOX}
                     value={form.watch('preprocessing.normalizeWhitespace')}
-                    onChange={(_, val) => form.setValue('preprocessing.normalizeWhitespace', val)}
-                    varType={BaseType.BOOLEAN}
+                    onChange={(val) =>
+                      form.setValue('preprocessing.normalizeWhitespace', val as boolean)
+                    }
                     fieldOptions={{ variant: 'switch' }}
                     disabled={readOnly}
                   />
@@ -260,10 +263,12 @@ export function ChunkingSettingsSection({
                   description='Delete all URLs and email addresses from content before chunking'
                   type={BaseType.BOOLEAN}
                   showIcon={true}>
-                  <ConstantInputAdapter
+                  <FieldInputAdapter
+                    fieldType={FieldType.CHECKBOX}
                     value={form.watch('preprocessing.removeUrlsAndEmails')}
-                    onChange={(_, val) => form.setValue('preprocessing.removeUrlsAndEmails', val)}
-                    varType={BaseType.BOOLEAN}
+                    onChange={(val) =>
+                      form.setValue('preprocessing.removeUrlsAndEmails', val as boolean)
+                    }
                     fieldOptions={{ variant: 'switch' }}
                     disabled={readOnly}
                   />

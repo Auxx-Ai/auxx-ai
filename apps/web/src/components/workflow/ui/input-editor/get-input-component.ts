@@ -1,6 +1,7 @@
 // apps/web/src/components/workflow/ui/input-editor/get-input-component.ts
 
 import type { RelationshipType } from '@auxx/types/custom-field'
+import type { RecordId } from '@auxx/types/resource'
 import {
   ActorInput,
   AddressInput,
@@ -98,8 +99,8 @@ export interface FieldOptions {
   relatedEntityDefinitionId?: string
   /** For RELATION types - relationship cardinality (has_many, belongs_to, etc.) */
   relationshipType?: RelationshipType
-  /** For RELATION types - entity instance IDs to exclude from picker results */
-  excludeIds?: string[]
+  /** For RELATION types - RecordIds to exclude from picker results */
+  excludeIds?: RecordId[]
   /** For ACTOR type — actor picker configuration */
   actor?: { target?: 'user' | 'group' | 'both'; multiple?: boolean }
   /** For MULTI_SELECT type — triggers MultiSelectInput instead of ArrayInput */

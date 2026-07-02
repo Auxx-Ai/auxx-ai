@@ -1,5 +1,6 @@
 // apps/web/src/components/datasets/settings/sections/search-configuration-section.tsx
 'use client'
+import { FieldType } from '@auxx/database/enums'
 import type { DatasetEntity as Dataset } from '@auxx/database/types'
 import { BaseType } from '@auxx/lib/workflow-engine/client'
 import { Button } from '@auxx/ui/components/button'
@@ -12,9 +13,9 @@ import { FileText, Lightbulb, Search, Sparkles, Zap } from 'lucide-react'
 import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
+import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
 import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
 import { SettingsSection } from '~/components/global/settings-page'
-import { ConstantInputAdapter } from '~/components/workflow/ui/input-editor/constant-input-adapter'
 import { api } from '~/trpc/react'
 
 interface SearchConfigurationSectionProps {
@@ -197,10 +198,10 @@ export function SearchConfigurationSection({
               description='Minimum similarity score (0.0 - 1.0)'
               type={BaseType.NUMBER}
               showIcon={true}>
-              <ConstantInputAdapter
+              <FieldInputAdapter
+                fieldType={FieldType.NUMBER}
                 value={form.watch('similarityThreshold') ?? ''}
-                onChange={(_, val) => form.setValue('similarityThreshold', val)}
-                varType={BaseType.NUMBER}
+                onChange={(val) => form.setValue('similarityThreshold', val as number)}
                 placeholder='0.7'
                 disabled={readOnly}
               />
@@ -211,10 +212,10 @@ export function SearchConfigurationSection({
               description='Maximum number of results to return'
               type={BaseType.NUMBER}
               showIcon={true}>
-              <ConstantInputAdapter
+              <FieldInputAdapter
+                fieldType={FieldType.NUMBER}
                 value={form.watch('maxResults') ?? ''}
-                onChange={(_, val) => form.setValue('maxResults', val)}
-                varType={BaseType.NUMBER}
+                onChange={(val) => form.setValue('maxResults', val as number)}
                 placeholder='20'
                 disabled={readOnly}
               />
@@ -225,10 +226,10 @@ export function SearchConfigurationSection({
               description='Include document metadata in results'
               type={BaseType.BOOLEAN}
               showIcon={true}>
-              <ConstantInputAdapter
+              <FieldInputAdapter
+                fieldType={FieldType.CHECKBOX}
                 value={form.watch('includeMetadata') ?? false}
-                onChange={(_, val) => form.setValue('includeMetadata', val)}
-                varType={BaseType.BOOLEAN}
+                onChange={(val) => form.setValue('includeMetadata', val as boolean)}
                 fieldOptions={{ variant: 'switch' }}
                 disabled={readOnly}
               />
@@ -239,12 +240,17 @@ export function SearchConfigurationSection({
               description='Algorithm for selecting and ranking results'
               type={BaseType.ENUM}
               showIcon={true}>
-              <ConstantInputAdapter
+              <FieldInputAdapter
+                fieldType={FieldType.SINGLE_SELECT}
                 value={form.watch('searchMode') ?? ''}
-                onChange={(_, val) => form.setValue('searchMode', val)}
-                varType={BaseType.ENUM}
+                onChange={(val) =>
+                  form.setValue(
+                    'searchMode',
+                    (val as string[])[0] as 'similarity' | 'mmr' | 'similarity_score_threshold'
+                  )
+                }
                 fieldOptions={{
-                  enum: [
+                  options: [
                     { label: 'Similarity', value: 'similarity' },
                     { label: 'MMR (Max Marginal Relevance)', value: 'mmr' },
                     { label: 'Score Threshold', value: 'similarity_score_threshold' },
@@ -264,10 +270,10 @@ export function SearchConfigurationSection({
               description='Enable fuzzy matching for typos and variations'
               type={BaseType.BOOLEAN}
               showIcon={true}>
-              <ConstantInputAdapter
+              <FieldInputAdapter
+                fieldType={FieldType.CHECKBOX}
                 value={form.watch('fuzzySearch') ?? false}
-                onChange={(_, val) => form.setValue('fuzzySearch', val)}
-                varType={BaseType.BOOLEAN}
+                onChange={(val) => form.setValue('fuzzySearch', val as boolean)}
                 fieldOptions={{ variant: 'switch' }}
                 disabled={readOnly}
               />
@@ -278,10 +284,10 @@ export function SearchConfigurationSection({
               description='Enable exact phrase matching with quotes'
               type={BaseType.BOOLEAN}
               showIcon={true}>
-              <ConstantInputAdapter
+              <FieldInputAdapter
+                fieldType={FieldType.CHECKBOX}
                 value={form.watch('phraseSearch') ?? false}
-                onChange={(_, val) => form.setValue('phraseSearch', val)}
-                varType={BaseType.BOOLEAN}
+                onChange={(val) => form.setValue('phraseSearch', val as boolean)}
                 fieldOptions={{ variant: 'switch' }}
                 disabled={readOnly}
               />
@@ -292,10 +298,10 @@ export function SearchConfigurationSection({
               description='Support AND, OR, NOT operators in queries'
               type={BaseType.BOOLEAN}
               showIcon={true}>
-              <ConstantInputAdapter
+              <FieldInputAdapter
+                fieldType={FieldType.CHECKBOX}
                 value={form.watch('booleanMode') ?? false}
-                onChange={(_, val) => form.setValue('booleanMode', val)}
-                varType={BaseType.BOOLEAN}
+                onChange={(val) => form.setValue('booleanMode', val as boolean)}
                 fieldOptions={{ variant: 'switch' }}
                 disabled={readOnly}
               />
@@ -306,12 +312,14 @@ export function SearchConfigurationSection({
               description='Algorithm for scoring and ranking text matches'
               type={BaseType.ENUM}
               showIcon={true}>
-              <ConstantInputAdapter
+              <FieldInputAdapter
+                fieldType={FieldType.SINGLE_SELECT}
                 value={form.watch('rankingMode') ?? ''}
-                onChange={(_, val) => form.setValue('rankingMode', val)}
-                varType={BaseType.ENUM}
+                onChange={(val) =>
+                  form.setValue('rankingMode', (val as string[])[0] as 'bm25' | 'tfidf')
+                }
                 fieldOptions={{
-                  enum: [
+                  options: [
                     { label: 'BM25 (Best Match)', value: 'bm25' },
                     { label: 'TF-IDF', value: 'tfidf' },
                   ],
@@ -326,10 +334,10 @@ export function SearchConfigurationSection({
               description='Minimum relevance score to include results'
               type={BaseType.NUMBER}
               showIcon={true}>
-              <ConstantInputAdapter
+              <FieldInputAdapter
+                fieldType={FieldType.NUMBER}
                 value={form.watch('minScore') ?? ''}
-                onChange={(_, val) => form.setValue('minScore', val)}
-                varType={BaseType.NUMBER}
+                onChange={(val) => form.setValue('minScore', val as number)}
                 placeholder='0.1'
                 disabled={readOnly}
               />
@@ -344,10 +352,10 @@ export function SearchConfigurationSection({
               description='Weight for vector search results (0.0 - 1.0)'
               type={BaseType.NUMBER}
               showIcon={true}>
-              <ConstantInputAdapter
+              <FieldInputAdapter
+                fieldType={FieldType.NUMBER}
                 value={form.watch('vectorWeight') ?? ''}
-                onChange={(_, val) => form.setValue('vectorWeight', val)}
-                varType={BaseType.NUMBER}
+                onChange={(val) => form.setValue('vectorWeight', val as number)}
                 placeholder='0.6'
                 disabled={readOnly}
               />
@@ -358,10 +366,10 @@ export function SearchConfigurationSection({
               description='Weight for text search results (0.0 - 1.0)'
               type={BaseType.NUMBER}
               showIcon={true}>
-              <ConstantInputAdapter
+              <FieldInputAdapter
+                fieldType={FieldType.NUMBER}
                 value={form.watch('textWeight') ?? ''}
-                onChange={(_, val) => form.setValue('textWeight', val)}
-                varType={BaseType.NUMBER}
+                onChange={(val) => form.setValue('textWeight', val as number)}
                 placeholder='0.4'
                 disabled={readOnly}
               />
@@ -372,12 +380,17 @@ export function SearchConfigurationSection({
               description='Method for combining vector and text results'
               type={BaseType.ENUM}
               showIcon={true}>
-              <ConstantInputAdapter
+              <FieldInputAdapter
+                fieldType={FieldType.SINGLE_SELECT}
                 value={form.watch('combineMethod') ?? ''}
-                onChange={(_, val) => form.setValue('combineMethod', val)}
-                varType={BaseType.ENUM}
+                onChange={(val) =>
+                  form.setValue(
+                    'combineMethod',
+                    (val as string[])[0] as 'rrf' | 'weighted_sum' | 'linear_combination'
+                  )
+                }
                 fieldOptions={{
-                  enum: [
+                  options: [
                     { label: 'Weighted Sum', value: 'weighted_sum' },
                     { label: 'Reciprocal Rank Fusion', value: 'rrf' },
                     { label: 'Linear Combination', value: 'linear_combination' },
