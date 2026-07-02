@@ -34,7 +34,7 @@ export const PlanSubscription = pgTable(
       onDelete: 'cascade',
     }), // Nullable - populated by better-auth lifecycle hooks
     plan: text().notNull(), // Better-auth requires plan name ("free", "starter", etc.)
-    billingProvider: text().default('stripe').notNull(), // 'stripe' | 'shopify'
+    billingProvider: text().default('stripe'), // 'stripe' | 'shopify' | null (null = unlinked: row exists, linked to no provider)
     status: text().default('incomplete').notNull(), // Stripe subscription status
     seats: integer().default(1).notNull(),
     billingCycle: billingCycle().default('MONTHLY').notNull(),

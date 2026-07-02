@@ -771,6 +771,79 @@ export const adminRouter = createTRPCRouter({
         return { success: true }
       }),
 
+    /**
+     * Detach the subscription row from BOTH billing providers without deleting it.
+     *
+     * The switch mechanism for the anchor shop (multi-store plan §1b): an unlinked row
+     * matches neither finalize branch (`billingProvider === 'stripe'`/`'shopify'`) so the
+     * next App Store claim falls straight through to the upsert and re-anchors the SAME
+     * row in place. Preserving the row is the point — the dead-Stripe reconcile path
+     * DELETES it (zeroing credits + custom limits); unlink must not.
+     *
+     * Nulls the provider linkage (`billingProvider`, Stripe/Shopify ids, scheduled-change
+     * fields) and resets cancellation flags. Leaves `plan`/`planId`/`status`/
+     * `creditsBalance`/custom limits untouched (force-status + create-subscription own those).
+     */
+    unlinkBillingProvider: superAdminProcedure
+      .input(
+        z.object({
+          organizationId: z.string(),
+          reason: z.string().min(10, 'Reason must be at least 10 characters'),
+        })
+      )
+      .mutation(async ({ ctx, input }) => {
+        const existing = await ctx.db
+          .select({
+            id: schema.PlanSubscription.id,
+            billingProvider: schema.PlanSubscription.billingProvider,
+          })
+          .from(schema.PlanSubscription)
+          .where(eq(schema.PlanSubscription.organizationId, input.organizationId))
+          .then((rows) => rows[0])
+
+        if (!existing) {
+          throw new Error('Organization has no subscription to unlink')
+        }
+
+        await ctx.db
+          .update(schema.PlanSubscription)
+          .set({
+            billingProvider: null,
+            stripeCustomerId: null,
+            stripeSubscriptionId: null,
+            shopifyShopDomain: null,
+            shopifyShopGid: null,
+            scheduledPlanId: null,
+            scheduledPlan: null,
+            scheduledBillingCycle: null,
+            scheduledSeats: null,
+            scheduledChangeAt: null,
+            cancelAtPeriodEnd: false,
+            canceledAt: null,
+            updatedAt: new Date(),
+          })
+          .where(eq(schema.PlanSubscription.id, existing.id))
+
+        // Bust the org `subscription` cache key (invalidation-graph: plan.changed).
+        await onCacheEvent('plan.changed', { orgId: input.organizationId })
+
+        await recordAuditFromCtx(ctx, {
+          organizationId: input.organizationId,
+          category: 'billing',
+          action: 'subscription.billing_unlinked_by_admin',
+          actorType: 'admin',
+          visibility: 'internal',
+          targetType: 'Organization',
+          targetId: input.organizationId,
+          metadata: {
+            previousBillingProvider: existing.billingProvider,
+            reason: input.reason,
+          },
+        })
+
+        return { success: true }
+      }),
+
     // ========== Enterprise Management ==========
 
     /**
