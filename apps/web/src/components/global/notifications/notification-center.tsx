@@ -28,7 +28,7 @@ import { useEffect, useRef, useState } from 'react'
 import { HumanConfirmationDialog } from '~/components/workflow/dialogs/human-confirmation-dialog'
 import { useIsMobile } from '~/hooks/use-mobile'
 import { useUser } from '~/hooks/use-user'
-import { NEW_NOTIFICATION_SOUND, playNotificationSound } from '~/lib/play-notification-sound'
+import { NEW_MESSAGE_SOUND, playNotificationSound } from '~/lib/play-notification-sound'
 import { useDehydratedSettings } from '~/providers/dehydrated-state-provider'
 import { useRealtimeRoom } from '~/realtime/hooks'
 import { api } from '~/trpc/react'
@@ -175,7 +175,7 @@ export const NotificationCenter = () => {
     selectedApprovalId: undefined as string | undefined,
   })
   // Mock pending actions count - replace with actual API call when available
-  const pendingActionsCount = 3
+
   // Get notifications
   const {
     data,
@@ -475,7 +475,7 @@ export function useNotificationSubscription(userId: string) {
               count: (prev?.count ?? 0) + 1,
             }))
             // Chime in step with the badge tick, gated on the preference.
-            if (bellSoundRef.current) playNotificationSound(NEW_NOTIFICATION_SOUND)
+            if (bellSoundRef.current) playNotificationSound(NEW_MESSAGE_SOUND)
           }
           // The dropdown list spans all orgs and only fetches while open, so
           // invalidate is a no-op when closed and refetches fresh (with the
