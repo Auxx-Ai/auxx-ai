@@ -39,6 +39,7 @@ import {
   webhookRenewalScannerJob,
 } from '@auxx/lib/jobs'
 import { Queues } from '@auxx/lib/jobs/queues'
+import { recordRuleRunRetentionJob } from '@auxx/lib/record-rules'
 import { createScopedLogger } from '@auxx/logger'
 import { createWorker } from '../utils/createWorker'
 
@@ -184,6 +185,10 @@ const jobMappings = {
   // Nightly data-connector run-history retention (trims each recently-active
   // connector back to its newest 200 finished runs so the table stays bounded)
   dataConnectorRunRetentionJob,
+
+  // Nightly RecordRuleRun retention (age-prunes rule-firing logs older than 60d;
+  // sync + system-rule firings multiply these rows)
+  recordRuleRunRetentionJob,
 }
 
 export function startMaintenanceWorker() {

@@ -36,7 +36,17 @@ type EntityInstanceEntity = typeof schema.EntityInstance.$inferSelect
  * Options for CRUD operations
  */
 export interface CrudOptions {
-  /** Skip event publishing (for bulk imports) */
+  /**
+   * Skip the per-write event fan-out: the bus event, realtime publish, timeline entry,
+   * and per-field-change hooks. Used by bulk writers (connector sink, CSV import).
+   *
+   * B2 CONTRACT (see plans/events/b2-sync-change-manifest-plan.md, D9): suppression and
+   * delivery are two halves of one contract. Every NON-SEED bulk writer that sets
+   * `skipEvents: true` MUST feed `sync-manifest-collector` (via `capture-field-changes`)
+   * so record rules still see the writes and fire with `source: 'sync'`. Seed writers
+   * are the ONLY documented exemption (they stay silent forever). "Silent skipEvents"
+   * therefore means seed-only — anything else is a bug.
+   */
   skipEvents?: boolean
   /** Skip snapshot invalidation (caller will invalidate once at end) */
   skipSnapshotInvalidation?: boolean

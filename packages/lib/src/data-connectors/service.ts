@@ -6,8 +6,9 @@
 
 import { type Database, database as defaultDb, schema, type Transaction } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import { and, asc, count, desc, eq, inArray, ne, sql } from 'drizzle-orm'
+import { and, asc, count, desc, eq, inArray, isNull, ne, sql } from 'drizzle-orm'
 import { err, ok, type Result } from 'neverthrow'
+import type { SyncChangeManifest } from '../record-rules/sync-manifest-types'
 import type { SyncRunErrorSample } from '../sync-core/contracts'
 import { maxLevel } from './edit-impact'
 import type {
@@ -319,6 +320,120 @@ export async function finalizeRun(
       durationMs: Date.now() - input.startedAt.getTime(),
     })
     .where(eq(schema.DataConnectorRun.id, runId))
+}
+
+/**
+ * Fold a slice's sync-change manifest fragment (B2) into the run row, merging under a
+ * row lock so sibling stream chains folding into the SAME run can't clobber each other
+ * (the sliced sync-core runs slices as separate jobs — a run-scoped in-memory collector
+ * can't span them, so persistence is per-slice, mirroring how counters fold in the
+ * ledger). No-op when the fragment is null (nothing subscribed captured). Lazy-imports
+ * the pure `mergeManifests` to stay clear of the record-rules import cycle.
+ */
+export async function foldRunManifest(
+  db: Database,
+  runId: string,
+  fragment: SyncChangeManifest | null
+): Promise<void> {
+  if (!fragment) return
+  const { mergeManifests } = await import('../record-rules/sync-manifest-collector')
+  await db.transaction(async (tx) => {
+    const [row] = await tx
+      .select({ manifest: schema.DataConnectorRun.manifest })
+      .from(schema.DataConnectorRun)
+      .where(eq(schema.DataConnectorRun.id, runId))
+      .for('update')
+    const merged = mergeManifests((row?.manifest as SyncChangeManifest | null) ?? null, fragment)
+    await tx
+      .update(schema.DataConnectorRun)
+      .set({ manifest: merged })
+      .where(eq(schema.DataConnectorRun.id, runId))
+  })
+}
+
+/** Read the folded manifest from a run row (consumer + publish decision). */
+export async function getRunManifest(
+  db: Database,
+  runId: string
+): Promise<SyncChangeManifest | null> {
+  const row = await db.query.DataConnectorRun.findFirst({
+    where: eq(schema.DataConnectorRun.id, runId),
+    columns: { manifest: true },
+  })
+  return (row?.manifest as SyncChangeManifest | null) ?? null
+}
+
+/**
+ * B2: atomically claim a run's manifest for once-only consumption. Returns true for
+ * exactly ONE caller per run (`UPDATE … WHERE manifestConsumedAt IS NULL RETURNING` is
+ * row-atomic); every redelivered/re-published `sync:records:changed` after that gets
+ * false and must no-op — rule actions (notify, enqueue-workflow, set-field) carry no
+ * idempotency of their own.
+ */
+export async function claimRunManifestConsumed(db: Database, runId: string): Promise<boolean> {
+  const rows = await db
+    .update(schema.DataConnectorRun)
+    .set({ manifestConsumedAt: new Date() })
+    .where(
+      and(eq(schema.DataConnectorRun.id, runId), isNull(schema.DataConnectorRun.manifestConsumedAt))
+    )
+    .returning({ id: schema.DataConnectorRun.id })
+  return rows.length > 0
+}
+
+/**
+ * B2 (F8): stamp a run's manifest as truncated after a slice's fold failed, so the
+ * consumer + UI see "incomplete" instead of a silently full-looking manifest. Creates
+ * a minimal empty-but-truncated manifest when no slice managed to fold at all.
+ */
+export async function markRunManifestDegraded(db: Database, runId: string): Promise<void> {
+  const T = schema.DataConnectorRun
+  const empty = JSON.stringify({
+    version: 1,
+    truncated: true,
+    changes: {},
+    createdRecordIds: [],
+    archivedRecordIds: [],
+  })
+  await db
+    .update(T)
+    .set({
+      manifest: sql`jsonb_set(coalesce(${T.manifest}, ${empty}::jsonb), '{truncated}', 'true'::jsonb)`,
+    })
+    .where(eq(T.id, runId))
+}
+
+/**
+ * B2: publish the ONE `sync:records:changed` pointer event for a run's folded manifest.
+ * Called once per run — at the bulk connector-level finalize (last stream, past the
+ * backfill latch) and at the webhook-steered finalize. No-op when the run row holds no
+ * manifest. Best-effort: never throws — a publish failure must not fail the sync.
+ * Lazy-imports the publisher (events boundary).
+ */
+export async function publishSyncRecordsChanged(
+  db: Database,
+  args: { organizationId: string; dataConnectorId: string; runId: string }
+): Promise<void> {
+  try {
+    const manifest = await getRunManifest(db, args.runId)
+    if (!manifest) return
+
+    const { publisher } = await import('../events/publisher')
+    await publisher.publishLater({
+      type: 'sync:records:changed',
+      data: {
+        source: 'connector',
+        organizationId: args.organizationId,
+        runId: args.runId,
+        dataConnectorId: args.dataConnectorId,
+      },
+    })
+  } catch (error) {
+    logger.error('failed to publish sync:records:changed', {
+      ...args,
+      error: error instanceof Error ? error.message : String(error),
+    })
+  }
 }
 
 /**

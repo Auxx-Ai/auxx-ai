@@ -7,6 +7,7 @@ import { getRelatedEntityDefinitionId, type RelationshipConfig } from '@auxx/typ
 import { parseRecordId, type RecordId, toRecordId } from '@auxx/types/resource'
 import { and, eq, type SQL, sql } from 'drizzle-orm'
 import { getCachedResourceFields } from '../cache'
+import { extractFieldValueScalar } from '../field-values/field-value-scalar'
 import {
   RESOURCE_FIELD_REGISTRY,
   RESOURCE_TABLE_MAP,
@@ -17,25 +18,6 @@ import { isCustomResourceId } from './registry/types'
 import { BaseType } from './types'
 
 const logger = createScopedLogger('resource-fetcher')
-
-/**
- * Extract the actual value from a FieldValue row's typed columns.
- * FieldValue stores data in typed columns (valueText, valueNumber, etc.)
- * rather than a single JSONB column.
- */
-function extractTypedFieldValue(fv: Record<string, any>): any {
-  return (
-    fv.valueText ??
-    fv.valueNumber ??
-    fv.valueBoolean ??
-    fv.valueDate ??
-    fv.valueJson ??
-    fv.optionId ??
-    fv.relatedEntityId ??
-    fv.actorId ??
-    null
-  )
-}
 
 /**
  * Enrich a single resource with virtual fields
@@ -228,7 +210,7 @@ export async function fetchResourceById(
           const field = value.field
           if (field) {
             const outputKey = field.systemAttribute ?? field.id
-            fieldValues[outputKey] = extractTypedFieldValue(value)
+            fieldValues[outputKey] = extractFieldValueScalar(value)
           }
         }
       }
@@ -615,7 +597,7 @@ async function fetchHasManyCustomEntity(
       for (const value of instance.values ?? []) {
         const fieldName = fieldIdToName.get(value.fieldId)
         if (fieldName) {
-          fieldValues[fieldName] = extractTypedFieldValue(value)
+          fieldValues[fieldName] = extractFieldValueScalar(value)
         }
       }
 

@@ -1,13 +1,8 @@
 // packages/lib/src/field-hooks/register-hooks.ts
 
 import { handleRecordRulesOnFieldChange } from '../record-rules/hook-handler'
-import { recalculatePartCost, recalculatePartCostOnEntityChange } from './post/bom-cost-triggers'
-import { explodeBomMovement } from './post/bom-movement-triggers'
-import { enrichCompanyOnCreate } from './post/company-triggers'
-import { recalculatePartQoH, recalculateStockStatus } from './post/inventory-triggers'
 import { publishFieldChangeEvent } from './post/publish-field-change-event'
 import { touchActivityOnFieldChange } from './post/touch-activity-on-field-change'
-import { clearOtherPreferred } from './post/vendor-part-triggers'
 import {
   dropUnauthorizedSystemFlag,
   rejectDeleteIfSystemTag,
@@ -16,10 +11,10 @@ import {
 import {
   registerEntityFieldChangeHooks,
   registerEntityPreDeleteHooks,
-  registerEntityTriggers,
   registerFieldPreHooks,
-  registerFieldTriggers,
 } from './registry'
+import { registerEntitySystemRules } from './system-entity-rules'
+import { registerFieldSystemRules } from './system-record-rules'
 
 /**
  * Register all field and entity hooks (pre + post).
@@ -30,28 +25,16 @@ export function registerAllHooks(): void {
   // POST-WRITE TRIGGERS
   // ---------------------------------------------------------------------------
 
-  // BOM cost field triggers — fire when specific field values change
-  registerFieldTriggers('vendor_part_unit_price', [recalculatePartCost])
-  registerFieldTriggers('vendor_part_shipping_cost', [recalculatePartCost])
-  registerFieldTriggers('vendor_part_tariff_rate', [recalculatePartCost])
-  registerFieldTriggers('vendor_part_other_cost', [recalculatePartCost])
-  registerFieldTriggers('vendor_part_is_preferred', [recalculatePartCost, clearOtherPreferred])
-  registerFieldTriggers('subpart_quantity', [recalculatePartCost])
+  // BOM cost / stock-status FIELD triggers migrated onto the record-rules engine as
+  // server-declared system rules with native actions (B2 §8). Declared + handlers
+  // registered here so both web and worker see them once the bootstrap runs.
+  registerFieldSystemRules()
 
-  // BOM cost entity triggers — fire when vendor_part or subpart entities are created/deleted
-  registerEntityTriggers('vendor-parts', [recalculatePartCostOnEntityChange])
-  registerEntityTriggers('subparts', [recalculatePartCostOnEntityChange])
-
-  // Inventory triggers — fire when stock movements are created/deleted
-  // explodeBomMovement must run BEFORE recalculatePartQoH so child movements
-  // exist before the parent's QoH is recalculated
-  registerEntityTriggers('stock-movements', [explodeBomMovement, recalculatePartQoH])
-
-  // Stock status trigger — fire when reorder point changes
-  registerFieldTriggers('part_reorder_point', [recalculateStockStatus])
-
-  // Company enrichment — fetch website on company create to fill in name, notes, logo
-  registerEntityTriggers('companies', [enrichCompanyOnCreate])
+  // BOM cost / stock explode+QoH / company enrichment ENTITY triggers migrated onto the
+  // record-rules engine as lifecycle system rules with native actions (B2 §9). They now
+  // dispatch through door 2 (`handleRecordRules`) + the manifest consumer, so they gain
+  // sync/import visibility for free. Replaces the deleted ENTITY_TRIGGERS registry.
+  registerEntitySystemRules()
 
   // Field-change post-hook — fires `<prefix>:field:updated` after every field
   // write. Registered globally so contacts, tickets, companies, and custom

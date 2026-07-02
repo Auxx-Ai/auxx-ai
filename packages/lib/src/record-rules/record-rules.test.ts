@@ -84,6 +84,16 @@ describe('matchesFieldTransition', () => {
     expect(matchesFieldTransition('created', null, 'x')).toBe(false)
     expect(matchesFieldTransition('deleted', 'x', null)).toBe(false)
   })
+
+  // F4: jsonb round-trips reorder object keys — an identical object must compare equal
+  // regardless of key order (deep, arrays keep their order).
+  it('changed: object equality is key-order-insensitive (jsonb round-trip)', () => {
+    expect(
+      matchesFieldTransition('changed', { a: 1, b: { d: 4, c: 3 } }, { b: { c: 3, d: 4 }, a: 1 })
+    ).toBe(false)
+    expect(matchesFieldTransition('changed', { a: 1 }, { a: 2 })).toBe(true)
+    expect(matchesFieldTransition('changed', [1, 2], [2, 1])).toBe(true)
+  })
 })
 
 describe('resolver', () => {

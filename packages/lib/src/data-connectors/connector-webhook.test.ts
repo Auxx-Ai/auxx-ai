@@ -22,6 +22,8 @@ const {
   fetchFn,
   deleteWhere,
   resolveRelationships,
+  foldRunManifest,
+  publishSyncRecordsChanged,
 } = vi.hoisted(() => {
   class ConnectorRateLimitError extends Error {
     retryAfterMs?: number
@@ -46,6 +48,8 @@ const {
     fetchFn: vi.fn(),
     deleteWhere: vi.fn(),
     resolveRelationships: vi.fn(),
+    foldRunManifest: vi.fn(async () => {}),
+    publishSyncRecordsChanged: vi.fn(async () => {}),
   }
 })
 
@@ -82,6 +86,9 @@ vi.mock('./service', () => ({
   finalizeConnector: (...a: unknown[]) => finalizeConnector(...a),
   countConnectorItems: (...a: unknown[]) => countConnectorItems(...a),
   newRunCounters: () => ({ created: 0, updated: 0, deleted: 0, archived: 0 }),
+  foldRunManifest: (...a: unknown[]) => foldRunManifest(...a),
+  markRunManifestDegraded: vi.fn(async () => {}),
+  publishSyncRecordsChanged: (...a: unknown[]) => publishSyncRecordsChanged(...a),
 }))
 vi.mock('./sink-source-record', () => ({
   sinkSourceRecord: (ctx: { touchedDefs: Set<string> }, ...a: unknown[]) => {
@@ -91,6 +98,17 @@ vi.mock('./sink-source-record', () => ({
 }))
 vi.mock('./webhook-steer', () => ({
   resolveWebhookSteer: (...a: unknown[]) => resolveWebhookSteer(...a),
+}))
+// buildWebhookCtx builds a B2 manifest collector (cache/db) — stub to the no-op.
+vi.mock('../record-rules/sync-manifest-collector', () => ({
+  loadManifestCollector: async () => ({
+    enabled: false,
+    subscriptionsFor: () => undefined,
+    recordChange: () => {},
+    recordCreated: () => {},
+    recordArchived: () => {},
+    toJson: () => null,
+  }),
 }))
 
 import { runWebhookSteeredRun } from './connector-webhook'

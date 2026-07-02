@@ -76,6 +76,7 @@ export type Events =
   | 'company:created'
   | 'company:deleted'
   | 'field:trigger'
+  | 'sync:records:changed'
   | 'integration:connected'
   | 'integration:connection_failed'
   | 'shopify:connected'
@@ -773,6 +774,23 @@ export type FieldTriggerJobEvent = AuxxEventGeneric<
   }
 >
 
+/**
+ * B2 — pointer event for a bulk writer's sync-change manifest. Carries pointers only:
+ * the manifest lives on the DataConnectorRun row (connector runs) or the ImportJob row
+ * (imports). The record-rules sync consumer refetches, claims once-only consumption,
+ * and fires the engine with `source: 'sync'`. See plans/events/b2-sync-change-manifest-plan.md.
+ */
+export type SyncRecordsChangedEvent = AuxxEventGeneric<
+  'sync:records:changed',
+  {
+    source: 'connector' | 'import'
+    organizationId: string
+    runId?: string
+    dataConnectorId?: string
+    importRef?: string
+  }
+>
+
 export type MembershipCreatedEvent = AuxxEventGeneric<
   'membership:created',
   {
@@ -942,6 +960,7 @@ export type AuxxEvent =
   | CompanyCreatedEvent
   | CompanyDeletedEvent
   | FieldTriggerJobEvent
+  | SyncRecordsChangedEvent
   | IntegrationConnectedEvent
   | IntegrationConnectionFailedEvent
   | ShopifyConnectedEvent
@@ -1020,6 +1039,7 @@ export interface IEventsHandlers {
   'company:created': EventHandler<CompanyCreatedEvent>[]
   'company:deleted': EventHandler<CompanyDeletedEvent>[]
   'field:trigger': EventHandler<FieldTriggerJobEvent>[]
+  'sync:records:changed': EventHandler<SyncRecordsChangedEvent>[]
   'integration:connected': EventHandler<IntegrationConnectedEvent>[]
   'integration:connection_failed': EventHandler<IntegrationConnectionFailedEvent>[]
   'shopify:connected': EventHandler<ShopifyConnectedEvent>[]

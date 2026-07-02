@@ -1,7 +1,9 @@
 // packages/lib/src/conditions/index.ts
 
+// Field-ref collector (partial-snapshot classification for record-rules sync consumer)
+export type { CollectedConditionFields } from './collect-field-ids'
+export { collectConditionFieldIds } from './collect-field-ids'
 export type { FieldResolver } from './evaluate'
-
 // Condition evaluator for client-side filtering
 export { evaluateConditions } from './evaluate'
 export type { FieldInputConfig } from './field-input-modes'

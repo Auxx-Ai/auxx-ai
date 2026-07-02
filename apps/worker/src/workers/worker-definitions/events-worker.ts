@@ -2,9 +2,9 @@ import {
   createAuditLog,
   createEventJob,
   createTimelineEvent,
-  handleEntityTriggers,
   handleFieldTriggerJob,
   handleRecordRules,
+  handleSyncRecordRules,
   publishEventJob,
   publishThreadEventToRealtime,
   publishToAnalyticsJob,
@@ -32,8 +32,8 @@ const eventHandlersJobMappings = {
   triggerResourceWorkflows,
   triggerAgents,
   handleFieldTriggerJob,
-  handleEntityTriggers,
   handleRecordRules,
+  handleSyncRecordRules,
   publishThreadEventToRealtime,
 }
 

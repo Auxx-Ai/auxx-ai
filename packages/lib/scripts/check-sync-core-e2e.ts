@@ -53,9 +53,7 @@ const { SLICE_BUDGET, sweepStaleConnectorRuns } = await import(
 )
 const { loadConnector, claimForSync, openRun, initConnectorBackfillLatch, persistStreamState } =
   await import('../src/data-connectors/service')
-const { provisionConnectorMappings, backfillProvisionedFieldRefs } = await import(
-  '../src/data-connectors/provisioning'
-)
+const { materializeConnectorTargets } = await import('../src/data-connectors/provisioning')
 const { prepareConnectorFetch } = await import('../src/data-connectors/connector-runtime')
 const { createConnectorStreamSyncSource } = await import(
   '../src/data-connectors/connector-sync-source'
@@ -251,16 +249,15 @@ function freshBackfillState(prev: Record<string, unknown>, startedAtIso: string)
 /** Mirror of slice-orchestrator.startConnectorSync (minus the BullMQ enqueue). */
 async function startChain(trigger: 'manual' | 'backfill') {
   await sweepStaleConnectorRuns(db, { dataConnectorId })
+  // BEFORE loadConnector (matches the real orchestrator): materialize persists the
+  // provisioned refs, and loadConnector below reads them back resolved.
+  await materializeConnectorTargets(db, organizationId, dataConnectorId)
   const loaded = await loadConnector(db, organizationId, dataConnectorId)
   if (!loaded) throw new Error('loadConnector returned null')
   const { connector: conn, streams } = loaded
 
   if (!(await claimForSync(db, dataConnectorId)))
     throw new Error('claimForSync failed (already syncing)')
-
-  const targeted = streams.flatMap((s) => s.mappings)
-  await provisionConnectorMappings(db, organizationId, dataConnectorId, targeted)
-  await backfillProvisionedFieldRefs(db, organizationId, dataConnectorId, targeted)
 
   const incrementalConnector = streams.every((s) => s.syncMode === 'incremental')
   const streamStates = streams.map((s) => (s.stream.state as Record<string, unknown>) ?? {})

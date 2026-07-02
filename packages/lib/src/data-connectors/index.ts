@@ -158,7 +158,6 @@ export type {
 export {
   backfillProvisionedFieldRefs,
   materializeConnectorTargets,
-  provisionConnectorMappings,
   provisionSpecsForMapping,
   provisionTarget,
 } from './provisioning'
@@ -207,7 +206,9 @@ export {
   finalizeConnector,
   finalizeRun,
   findItem,
+  foldRunManifest,
   getConnector,
+  getRunManifest,
   initConnectorBackfillLatch,
   listConnectors,
   listItemsForMapping,

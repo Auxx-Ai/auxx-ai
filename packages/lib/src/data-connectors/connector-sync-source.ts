@@ -37,8 +37,11 @@ import {
   type DecodedMapping,
   decrementConnectorBackfillLatch,
   finalizeConnector,
+  foldRunManifest,
+  markRunManifestDegraded,
   newRunCounters,
   parkConnectorSampleIfLastStream,
+  publishSyncRecordsChanged,
   type RunCounters,
 } from './service'
 import { sinkSourceRecord } from './sink-source-record'
@@ -182,6 +185,7 @@ class ConnectorStreamSyncSource implements ConnectorSyncSource {
           sinkSourceRecord(syncCtx, this.deps.stream.mappings, record, this.updatedAtPath),
       })
       await this.emitRecordsInvalidated(syncCtx.touchedDefs)
+      await this.persistManifest(syncCtx)
       return { ...result, counters: toSyncCounters(counters), errorSample: counters.errorSample }
     }
 
@@ -222,6 +226,7 @@ class ConnectorStreamSyncSource implements ConnectorSyncSource {
     })
 
     await this.emitRecordsInvalidated(syncCtx.touchedDefs)
+    await this.persistManifest(syncCtx)
     return { ...result, counters: toSyncCounters(counters), errorSample: counters.errorSample }
   }
 
@@ -256,6 +261,34 @@ class ConnectorStreamSyncSource implements ConnectorSyncSource {
     await publishRecordsInvalidated(getRealtimeService(), this.deps.organizationId, {
       entityDefinitionIds: defIds,
     }).catch(() => {})
+  }
+
+  /**
+   * B2: fold this slice's captured sync-change manifest into the run row. Best-effort —
+   * a manifest failure must never fail the sync — but NOT silent: retry once (the
+   * shared run row's `FOR UPDATE` makes transient lock contention the likely failure),
+   * then stamp the manifest `truncated` so the consumer and the run UI see an
+   * incomplete manifest instead of a full-looking one (F8 — a re-run can't recover the
+   * loss anyway: the content-hash skip means re-synced unchanged records capture
+   * nothing). No-op when nothing subscribed was captured (`toJson()` null).
+   */
+  private async persistManifest(ctx: SyncCtx): Promise<void> {
+    const fragment = ctx.manifest.toJson()
+    if (!fragment) return
+    for (let attempt = 0; ; attempt++) {
+      try {
+        await foldRunManifest(this.deps.db, this.deps.run.id, fragment)
+        return
+      } catch (err) {
+        if (attempt === 0) continue
+        logger.error('failed to fold sync-change manifest — marking manifest degraded', {
+          runId: this.deps.run.id,
+          error: err instanceof Error ? err.message : String(err),
+        })
+        await markRunManifestDegraded(this.deps.db, this.deps.run.id).catch(() => {})
+        return
+      }
+    }
   }
 
   /**
@@ -352,6 +385,17 @@ class ConnectorStreamSyncSource implements ConnectorSyncSource {
       await clearResyncPending(this.deps.db, this.deps.connector.id)
     }
 
+    // B2: fold this finalize's writes (orphan archival, relationship resolution) into
+    // the run manifest, THEN publish ONE pointer event for the whole run. This runs
+    // once per run (last stream, past the backfill latch), by which point every slice
+    // has folded — so the event points at the complete manifest.
+    await this.persistManifest(syncCtx)
+    await publishSyncRecordsChanged(this.deps.db, {
+      organizationId: this.deps.organizationId,
+      dataConnectorId: this.deps.connector.id,
+      runId: this.deps.run.id,
+    })
+
     // v9 inventory→part bridge: post-sink (the sink writes with skipEvents, so no
     // per-record hook fired) compare synced quantities to the watermark and deduct
     // linked parts. Best-effort — a bridge failure must never fail the sync run.
@@ -398,6 +442,10 @@ class ConnectorStreamSyncSource implements ConnectorSyncSource {
     if (this.connectionMeta === undefined) {
       this.connectionMeta = await this.loadConnectionMeta()
     }
+    // B2: build a subscription-aware manifest collector (zero-cost no-op stub when the
+    // org has no enabled record rules). Lazy-imported — crosses into record-rules.
+    const { loadManifestCollector } = await import('../record-rules/sync-manifest-collector')
+    const manifest = await loadManifestCollector(this.deps.organizationId)
     return {
       db: this.deps.db,
       orgId: this.deps.organizationId,
@@ -406,6 +454,7 @@ class ConnectorStreamSyncSource implements ConnectorSyncSource {
       crud: this.crud,
       ownedCrud: this.ownedCrud,
       counters,
+      manifest,
       touchedDefs: new Set<string>(),
       sweep: this.deps.sweep ?? false,
       connectionMeta: this.connectionMeta,

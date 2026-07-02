@@ -1,0 +1,1 @@
+ALTER TABLE "DataConnectorRun" ADD COLUMN "manifest" jsonb;

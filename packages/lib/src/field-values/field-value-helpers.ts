@@ -385,6 +385,37 @@ export function rowsToTypedValues(
 }
 
 /**
+ * Reduce a typed field value (or array/null) to the flat scalar space that
+ * `extractFieldValueScalar` (field-value-scalar.ts) produces — text/number/boolean/date/json
+ * → `.value`, option → `optionId`, relationship → `recordId`, actor → `actorId`. Keeps
+ * captured OLD values (from `batchGetExistingFieldValues`) comparable with the raw NEW
+ * values a bulk writer holds, so transition matching + condition evaluation on a
+ * manifest behave like the interactive path (B2 plan — manifest value space).
+ */
+export function flattenTypedFieldValue(
+  value: TypedFieldValue | TypedFieldValue[] | null | undefined
+): unknown {
+  if (value == null) return null
+  if (Array.isArray(value)) return value.map((v) => flattenTypedFieldValue(v))
+  switch (value.type) {
+    case 'text':
+    case 'number':
+    case 'boolean':
+    case 'date':
+    case 'json':
+      return value.value
+    case 'option':
+      return value.optionId
+    case 'relationship':
+      return value.recordId
+    case 'actor':
+      return value.actorId
+    default:
+      return null
+  }
+}
+
+/**
  * Validate that a typed value has actual content (not just defaults).
  */
 export function isValidTypedValue(value: TypedFieldValue, fieldType: FieldType): boolean {

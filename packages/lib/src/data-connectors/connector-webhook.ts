@@ -27,9 +27,12 @@ import {
   countConnectorItems,
   finalizeConnector,
   finalizeRun,
+  foldRunManifest,
   loadConnector,
+  markRunManifestDegraded,
   newRunCounters,
   openRun,
+  publishSyncRecordsChanged,
   type RunCounters,
   type StreamWithMappings,
 } from './service'
@@ -156,6 +159,25 @@ export async function runWebhookSteeredRun(
     // freshness advances instantly, instead of waiting on the 15s safety poll.
     await publishConnectorSync(db, organizationId, connectorId, 'run-finished')
 
+    // B2: a steered run is single-process, so its collector holds the whole manifest —
+    // fold it onto the run row, then publish ONE pointer event. Best-effort: the run is
+    // already finalized above, so a fold failure must NOT bubble into the outer catch
+    // (it would overwrite the completed run row with status 'failed').
+    try {
+      await foldRunManifest(db, run.id, ctx.manifest.toJson())
+    } catch (foldErr) {
+      logger.error('failed to fold steered-run sync-change manifest — marking degraded', {
+        runId: run.id,
+        error: foldErr instanceof Error ? foldErr.message : String(foldErr),
+      })
+      await markRunManifestDegraded(db, run.id).catch(() => {})
+    }
+    await publishSyncRecordsChanged(db, {
+      organizationId,
+      dataConnectorId: connectorId,
+      runId: run.id,
+    })
+
     // v9 inventory→part bridge: a steered run bypasses the slice-orchestrator finalize,
     // so run the watermark pass here too. Best-effort — never fail the run on a bridge error.
     // Lazy import — the pass pulls barrels that break this file's mocked unit test.
@@ -235,6 +257,9 @@ async function buildWebhookCtx(
       })
     }
   }
+  // B2: subscription-aware manifest collector for the steered run's writes.
+  const { loadManifestCollector } = await import('../record-rules/sync-manifest-collector')
+  const manifest = await loadManifestCollector(organizationId)
   return {
     db,
     orgId: organizationId,
@@ -243,6 +268,7 @@ async function buildWebhookCtx(
     crud,
     ownedCrud,
     counters,
+    manifest,
     touchedDefs: new Set<string>(),
     connectionMeta,
   }

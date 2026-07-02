@@ -1191,7 +1191,7 @@ export async function finishConnectorSetup(
   // make this a permanent dead-end no later call can clear. Re-throw so the tRPC
   // mutation surfaces the reason to the wizard.
   try {
-    await materializeConnectorTargets(db, organizationId, id)
+    await materializeConnectorTargets(db, organizationId, id, row.type)
   } catch (error) {
     await db
       .update(schema.DataConnector)

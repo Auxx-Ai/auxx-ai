@@ -90,9 +90,10 @@ export const RecordRuleRun = pgTable(
     organizationId: text()
       .notNull()
       .references((): AnyPgColumn => Organization.id, { onUpdate: 'cascade', onDelete: 'cascade' }),
-    ruleId: text()
-      .notNull()
-      .references((): AnyPgColumn => RecordRule.id, { onUpdate: 'cascade', onDelete: 'cascade' }),
+    // Plain text on purpose (no FK): system rules (`system:<key>`) are code-declared,
+    // not RecordRule rows, and their runs must be loggable too. Retention pruning
+    // handles cleanup for deleted user rules.
+    ruleId: text().notNull(),
     // Plain text on purpose (no FK): 'deleted' rules must log runs for records that no
     // longer exist.
     entityInstanceId: text().notNull(),

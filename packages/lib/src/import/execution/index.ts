@@ -15,8 +15,11 @@ export {
   type StrategyExecutionResult,
 } from './execute-strategy'
 export {
+  claimImportManifestConsumed,
+  getImportManifest,
   markJobCompleted,
   markJobExecuting,
   markJobFailed,
+  saveImportManifest,
   updateJobProgress,
 } from './track-progress'

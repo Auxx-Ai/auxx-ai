@@ -175,13 +175,21 @@ async function startConnectorSyncInner(
   // Clear a crashed prior chain first so its stuck claim can't block us (H5).
   await sweepStaleConnectorRuns(db, { dataConnectorId })
 
+  // One connector-row fetch feeds both the provision pass (type → appSlug) and the
+  // app-field reconcile below (appInstallationId).
+  const connectorRow = await db.query.DataConnector.findFirst({
+    where: eq(schema.DataConnector.id, dataConnectorId),
+    columns: { type: true, appInstallationId: true },
+  })
+
   // Provision `provision`-hint fields BEFORE loadConnector (the generic-rest template
   // path — e.g. stripe). Runs on the RAW rows so it executes before `decodeMapping`
   // (which throws on a null-def row) and `loadConnector` (which filters those out).
-  // Idempotent (fields keyed by appFieldKey, backfill only fills null refs). App-owned
+  // Idempotent (fields keyed by appFieldKey, backfill only fills null refs) and a
+  // near-no-op in steady state (fast path returns after the stream listing). App-owned
   // defs aren't created here — they're installed via the entity-template flow (v6); an
   // unbound owned row is simply skipped until its def is installed.
-  await materializeConnectorTargets(db, organizationId, dataConnectorId)
+  await materializeConnectorTargets(db, organizationId, dataConnectorId, connectorRow?.type ?? null)
 
   // App-field reconcile — the AUTHORITATIVE provisioning call site. An app-backed
   // connector's late-bound `@app:` refs resolve at sink time against connection-scoped
@@ -189,13 +197,9 @@ async function startConnectorSyncInner(
   // sink writes. Reconcile now; PARK on any error — the throw here (before `openRun`) is
   // stamped onto `connector.error` by the public {@link startConnectorSync} wrapper, so
   // the connector page shows "failed + why" instead of dropping every record silently.
-  const appConnector = await db.query.DataConnector.findFirst({
-    where: eq(schema.DataConnector.id, dataConnectorId),
-    columns: { appInstallationId: true },
-  })
-  if (appConnector?.appInstallationId) {
+  if (connectorRow?.appInstallationId) {
     const result = await reconcileInstallationAppFields({
-      appInstallationId: appConnector.appInstallationId,
+      appInstallationId: connectorRow.appInstallationId,
       organizationId,
     })
     if (result.errors.length > 0) {

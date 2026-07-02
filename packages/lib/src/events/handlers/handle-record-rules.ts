@@ -14,10 +14,16 @@ const logger = createScopedLogger('record-rules-lifecycle')
 export const handleRecordRules = async ({ data: event }: { data: AuxxEvent }) => {
   try {
     const match = getResourceTriggerMatch(event)
-    if (!match || match.triggerType === 'updated') return
+    if (!match || match.triggerType === 'updated') {
+      if (!match) logger.debug('No resource trigger match — skipping', { eventType: event.type })
+      return
+    }
 
     const organizationId = event.data.organizationId
-    if (!organizationId) return
+    if (!organizationId) {
+      logger.debug('Event has no organizationId — skipping', { eventType: event.type })
+      return
+    }
 
     const { getCachedRecordRules, getCachedEntityDefId } = await import('../../cache')
 
@@ -28,17 +34,30 @@ export const handleRecordRules = async ({ data: event }: { data: AuxxEvent }) =>
       match.entityDefinitionId
 
     const on = match.triggerType === 'created' ? 'created' : 'deleted'
-    const rules = (await getCachedRecordRules(organizationId)).filter(
+    const allRules = await getCachedRecordRules(organizationId)
+    const rules = allRules.filter(
       (rule) =>
         rule.enabled &&
         rule.fieldId === null &&
         rule.on === on &&
         rule.entityDefinitionId === entityDefinitionId
     )
+    logger.debug('Lifecycle event matched against cached rules', {
+      eventType: event.type,
+      organizationId,
+      entityDefinitionId,
+      on,
+      cachedRules: allRules.length,
+      cachedSystemRules: allRules.filter((r) => r.isSystem).map((r) => r.id),
+      matched: rules.map((r) => r.id),
+    })
     if (rules.length === 0) return
 
     const recordId = getEventRecordId(event, match)
-    if (!recordId) return
+    if (!recordId) {
+      logger.debug('Could not resolve recordId from event — skipping', { eventType: event.type })
+      return
+    }
     const { entityInstanceId } = parseRecordId(recordId)
 
     // Deleted records can't be fetched — evaluate conditions against the event's
@@ -53,14 +72,23 @@ export const handleRecordRules = async ({ data: event }: { data: AuxxEvent }) =>
         ? { id: entityInstanceId, entityDefinitionId, fieldValues: eventData ?? {} }
         : undefined
 
-    const { fireRecordRules } = await import('../../record-rules/engine')
-    await fireRecordRules(rules, {
+    // Batch entry point so native lifecycle rules (migrated ENTITY_TRIGGERS — BOM cost /
+    // stock explode+QoH / company enrich, B2 §9) get the raw create/delete-time `eventData`
+    // this event already carries, without a DB refetch. Non-native user rules run per-record
+    // with the snapshot exactly as before (batch-of-1 ≡ single).
+    logger.debug('Dispatching lifecycle rules', {
+      eventType: event.type,
+      entityInstanceId,
+      hasEventData: eventData !== null,
+      eventDataKeys: eventData ? Object.keys(eventData) : [],
+    })
+    const { fireRecordRulesBatch } = await import('../../record-rules/engine')
+    await fireRecordRulesBatch(rules, {
       organizationId,
       entityDefinitionId,
-      entityInstanceId,
       source: 'interactive',
       userId: typeof payload.userId === 'string' ? payload.userId : undefined,
-      snapshot,
+      events: [{ entityInstanceId, snapshot, eventData: eventData ?? undefined }],
     })
   } catch (error) {
     logger.error('Record-rule lifecycle dispatch failed', {

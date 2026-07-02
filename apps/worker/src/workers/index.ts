@@ -273,6 +273,21 @@ export async function setupSchedules() {
     }
   )
 
+  // RecordRuleRun retention — nightly at 03:45. Age-prunes rule-firing logs older than
+  // 60 days in bounded batches; sync + system-rule firings multiply these rows.
+  await maintenanceQueue.upsertJobScheduler(
+    'recordRuleRunRetentionJob',
+    { pattern: '45 3 * * *' },
+    {
+      opts: {
+        attempts: 1,
+        priority: 10,
+        removeOnComplete: { count: 14 },
+        removeOnFail: { count: 30 },
+      },
+    }
+  )
+
   // Every day at 8 AM
   await maintenanceQueue.upsertJobScheduler(
     'requestDocumentSuggestionsJob',

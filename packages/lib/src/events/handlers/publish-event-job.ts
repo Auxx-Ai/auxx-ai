@@ -1,7 +1,6 @@
 // packages/lib/src/events/handlers/publish-event-job.ts
 
 import type { Job } from 'bullmq'
-import { handleEntityTriggers } from '../../field-hooks/entity-hook-handler'
 import { handleFieldTriggerJob } from '../../field-hooks/field-hook-job'
 import { getQueue } from '../../jobs/queues'
 import { Queues } from '../../jobs/queues/types'
@@ -9,6 +8,7 @@ import type { AuxxEvent, IEventsHandlers } from '../types'
 import { createAuditLog } from './create-audit-log'
 import { createTimelineEvent } from './create-timeline-event'
 import { handleRecordRules } from './handle-record-rules'
+import { handleSyncRecordRules } from './handle-sync-record-rules'
 import { publishThreadEventToRealtime } from './publish-thread-event-to-realtime'
 import { sendInvitationUserJob } from './send-invitation-user-job'
 import { triggerAgents } from './trigger-agents'
@@ -116,7 +116,6 @@ export const EventHandlers: IEventsHandlers = {
   // Entity instance events → CREATE TIMELINE + ENTITY TRIGGERS + WORKFLOWS
   'entity:created': [
     createTimelineEvent,
-    handleEntityTriggers,
     triggerResourceWorkflows,
     triggerAgents,
     handleRecordRules,
@@ -124,7 +123,6 @@ export const EventHandlers: IEventsHandlers = {
   'entity:updated': [createTimelineEvent, triggerResourceWorkflows, triggerAgents],
   'entity:deleted': [
     createTimelineEvent,
-    handleEntityTriggers,
     triggerResourceWorkflows,
     triggerAgents,
     handleRecordRules,
@@ -132,56 +130,24 @@ export const EventHandlers: IEventsHandlers = {
   'entity:field:updated': [createTimelineEvent],
 
   // Stock movement events → ENTITY TRIGGERS (inventory QoH recalculation) + WORKFLOWS
-  'stock_movement:created': [
-    handleEntityTriggers,
-    triggerResourceWorkflows,
-    triggerAgents,
-    handleRecordRules,
-  ],
-  'stock_movement:deleted': [
-    handleEntityTriggers,
-    triggerResourceWorkflows,
-    triggerAgents,
-    handleRecordRules,
-  ],
+  'stock_movement:created': [triggerResourceWorkflows, triggerAgents, handleRecordRules],
+  'stock_movement:deleted': [triggerResourceWorkflows, triggerAgents, handleRecordRules],
 
   // Vendor part / subpart events → ENTITY TRIGGERS (BOM cost recalculation) + WORKFLOWS
-  'vendor_part:created': [
-    handleEntityTriggers,
-    triggerResourceWorkflows,
-    triggerAgents,
-    handleRecordRules,
-  ],
-  'vendor_part:deleted': [
-    handleEntityTriggers,
-    triggerResourceWorkflows,
-    triggerAgents,
-    handleRecordRules,
-  ],
-  'subpart:created': [
-    handleEntityTriggers,
-    triggerResourceWorkflows,
-    triggerAgents,
-    handleRecordRules,
-  ],
-  'subpart:deleted': [
-    handleEntityTriggers,
-    triggerResourceWorkflows,
-    triggerAgents,
-    handleRecordRules,
-  ],
+  'vendor_part:created': [triggerResourceWorkflows, triggerAgents, handleRecordRules],
+  'vendor_part:deleted': [triggerResourceWorkflows, triggerAgents, handleRecordRules],
+  'subpart:created': [triggerResourceWorkflows, triggerAgents, handleRecordRules],
+  'subpart:deleted': [triggerResourceWorkflows, triggerAgents, handleRecordRules],
 
   // Company events → TIMELINE + ENTITY TRIGGERS (website enrichment on create) + WORKFLOWS
   'company:created': [
     createTimelineEvent,
-    handleEntityTriggers,
     triggerResourceWorkflows,
     triggerAgents,
     handleRecordRules,
   ],
   'company:deleted': [
     createTimelineEvent,
-    handleEntityTriggers,
     triggerResourceWorkflows,
     triggerAgents,
     handleRecordRules,
@@ -189,6 +155,9 @@ export const EventHandlers: IEventsHandlers = {
 
   // Field trigger events → FIELD TRIGGER HANDLERS
   'field:trigger': [handleFieldTriggerJob],
+
+  // B2 — bulk-writer sync-change manifest → record rules with `source: 'sync'`.
+  'sync:records:changed': [handleSyncRecordRules],
 
   // Integration events → AUDIT LOG (+ analytics)
   'integration:connected': [createAuditLog],
