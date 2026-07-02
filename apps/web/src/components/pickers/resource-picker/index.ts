@@ -3,5 +3,5 @@
 export type { ResourceItemProps } from './resource-item'
 export { ResourceItem } from './resource-item'
 export { ResourcePicker } from './resource-picker'
-export { ResourcePickerContent } from './resource-picker-content'
+export { ResourceCommandBody, ResourcePickerContent } from './resource-picker-content'
 export type { ResourcePickerContentProps, ResourcePickerProps } from './types'

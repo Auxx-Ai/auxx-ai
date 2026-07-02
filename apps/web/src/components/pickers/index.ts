@@ -32,8 +32,18 @@ export { MultiSelectPicker } from './multi-select-picker'
 export type { RecordItemProps, RecordPickerContentProps, RecordPickerProps } from './record-picker'
 export { RecordItem, RecordPicker, RecordPickerContent } from './record-picker'
 export type {
+  ResourceFieldPickerContentProps,
+  ResourceFieldPickerProps,
+} from './resource-field-picker'
+export { ResourceFieldPicker, ResourceFieldPickerContent } from './resource-field-picker'
+export type {
   ResourceItemProps,
   ResourcePickerContentProps,
   ResourcePickerProps,
 } from './resource-picker'
-export { ResourceItem, ResourcePicker, ResourcePickerContent } from './resource-picker'
+export {
+  ResourceCommandBody,
+  ResourceItem,
+  ResourcePicker,
+  ResourcePickerContent,
+} from './resource-picker'
