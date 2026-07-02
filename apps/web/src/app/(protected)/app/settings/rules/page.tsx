@@ -2,6 +2,7 @@
 'use client'
 
 import SettingsPage from '~/components/global/settings-page'
+import { InventorySourcesSection } from '~/components/inventory-bridge/ui/inventory-sources-section'
 import { RecordRulesSection } from '~/components/record-rules/ui/record-rules-section'
 
 export default function RulesPage() {
@@ -12,6 +13,7 @@ export default function RulesPage() {
       breadcrumbs={[{ title: 'Settings', href: '/app/settings' }, { title: 'Rules' }]}>
       <div className='flex flex-1 flex-col gap-8 p-3 sm:p-6'>
         <RecordRulesSection />
+        <InventorySourcesSection />
       </div>
     </SettingsPage>
   )

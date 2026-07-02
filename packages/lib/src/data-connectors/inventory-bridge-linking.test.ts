@@ -1,6 +1,6 @@
 // packages/lib/src/data-connectors/inventory-bridge-linking.test.ts
-// B3 linking helpers — link/unlink/apply. crud + store + config + cache are mocked; the db
-// is used only for the numeric field-value reads.
+// B3 linking helpers — link/unlink/apply. crud + store + source-resolver + cache are mocked;
+// the db is used only for the numeric field-value reads.
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -9,7 +9,8 @@ const h = vi.hoisted(() => ({
   createSpy: vi.fn(async () => ({})),
   requireDefId: vi.fn(async () => 'def_part'),
   getDefId: vi.fn(async () => 'def_mv'),
-  readConfig: vi.fn(),
+  resolveSource: vi.fn(),
+  listSources: vi.fn(async () => []),
   upsertLink: vi.fn(async () => ({})),
   deleteLink: vi.fn(async () => {}),
   getLink: vi.fn(),
@@ -31,7 +32,10 @@ vi.mock('../resources/crud/unified-handler', () => ({
     create = h.createSpy
   },
 }))
-vi.mock('./inventory-bridge-config', () => ({ readInventoryBridgeConfig: h.readConfig }))
+vi.mock('./inventory-bridge-rule', () => ({
+  resolveInventorySource: h.resolveSource,
+  listInventorySources: h.listSources,
+}))
 vi.mock('./inventory-bridge-store', () => ({
   advanceWatermarkCAS: h.advanceCAS,
   deleteInventoryBridgeLink: h.deleteLink,
@@ -82,7 +86,7 @@ beforeEach(() => {
   vi.clearAllMocks()
   h.numberByField.clear()
   h.numberBySysAttr.clear()
-  h.readConfig.mockResolvedValue([ENTRY])
+  h.resolveSource.mockResolvedValue(ENTRY)
   h.advanceCAS.mockResolvedValue(true)
   h.requireDefId.mockResolvedValue('def_part')
   h.getDefId.mockResolvedValue('def_mv')

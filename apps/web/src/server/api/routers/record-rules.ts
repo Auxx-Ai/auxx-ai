@@ -4,9 +4,11 @@
 // admin-gated. Mutations bust the `recordRules` org cache via `record-rule.changed`.
 
 import { getCachedCustomFields, onCacheEvent } from '@auxx/lib/cache'
+import { ForbiddenError } from '@auxx/lib/errors'
 import {
   createRecordRule,
   deleteRecordRule,
+  getRecordRuleById,
   LIFECYCLE_TRANSITIONS,
   listRecordRuleRuns,
   listRecordRules,
@@ -17,6 +19,20 @@ import {
 } from '@auxx/lib/record-rules'
 import { z } from 'zod'
 import { adminProcedure, createTRPCRouter, protectedProcedure } from '~/server/api/trpc'
+
+/** Managed rules (inventory-source setup, …) are edit/delete-locked; only `enabled` toggles. */
+async function assertNotManaged(
+  db: Parameters<typeof getRecordRuleById>[0],
+  organizationId: string,
+  ruleId: string
+): Promise<void> {
+  const rule = await getRecordRuleById(db, organizationId, ruleId)
+  if (rule?.managed) {
+    throw new ForbiddenError(
+      'This rule is managed by a feature setup and cannot be edited or deleted here.'
+    )
+  }
+}
 
 const onSchema = z.enum([
   'changed',
@@ -114,6 +130,7 @@ export const recordRulesRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const organizationId = ctx.session.organizationId
       const { ruleId, fieldRef, ...rest } = input
+      await assertNotManaged(ctx.db, organizationId, ruleId)
       const fieldId =
         fieldRef !== undefined && rest.entityDefinitionId && rest.on
           ? await normalizeFieldRef(organizationId, {
@@ -147,6 +164,7 @@ export const recordRulesRouter = createTRPCRouter({
     .input(z.object({ ruleId: z.string().min(1) }))
     .mutation(async ({ ctx, input }) => {
       const organizationId = ctx.session.organizationId
+      await assertNotManaged(ctx.db, organizationId, input.ruleId)
       await deleteRecordRule(ctx.db, organizationId, input.ruleId)
       await onCacheEvent('record-rule.changed', { orgId: organizationId })
     }),

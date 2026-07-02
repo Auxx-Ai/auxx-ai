@@ -56,6 +56,12 @@ export const RecordRule = pgTable(
     // Ordered action array (RecordRuleAction[] — typed in @auxx/lib/record-rules).
     // Failure semantics: continue-and-report; per-action outcomes land in RecordRuleRun.
     actions: jsonb().$type<unknown[]>().notNull(),
+    // Managed rules are provisioned by a feature flow (e.g. inventory-source setup), not the
+    // generic builder. They MAY carry `native` actions and are edit/delete-locked in the UI;
+    // only `enabled` is user-toggleable. NULL = an ordinary user rule. A nullable text
+    // discriminator (not a boolean) so a future managed feature knows WHICH feature owns the
+    // row (e.g. to clean up). Extend the union as more managed features land.
+    managed: text().$type<'inventory' | null>(),
     enabled: boolean().default(true).notNull(),
     createdByUserId: text().references((): AnyPgColumn => User.id, {
       onUpdate: 'cascade',

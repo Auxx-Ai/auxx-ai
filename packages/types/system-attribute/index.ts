@@ -114,7 +114,6 @@ export const SYSTEM_ATTRIBUTES = [
   'part_unit_price',
   'part_cost',
   'hs_code',
-  'shopify_product_link_id',
   'part_vendor_parts',
   'part_subparts',
   'part_used_in_assemblies',

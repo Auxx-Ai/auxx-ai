@@ -90,6 +90,13 @@ export interface CachedRecordRule {
   actions: RecordRuleAction[]
   enabled: boolean
   /**
+   * Managed-feature marker (mirrors the `managed` DB column). Non-null ⇔ the row is
+   * provisioned + locked by a feature flow (e.g. `'inventory'` — inventory-source setup);
+   * such rows MAY carry native actions and are edit/delete-locked in `settings/rules`.
+   * NULL/undefined ⇔ an ordinary user rule.
+   */
+  managed?: 'inventory' | null
+  /**
    * True for code-declared system rules unioned into the cache at compute time
    * (`system-rules.ts`) — NOT a DB row. Excluded from the tRPC `list` output and UI.
    */
