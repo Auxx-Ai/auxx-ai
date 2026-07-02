@@ -32,8 +32,8 @@ interface RelationInputProps extends NodeInputProps {
   relatedEntityDefinitionId?: string
   /** Relationship cardinality type (has_many, belongs_to, etc.) */
   relationshipType?: RelationshipType
-  /** Entity instance IDs to exclude from picker results */
-  excludeIds?: string[]
+  /** RecordIds to exclude from picker results */
+  excludeIds?: RecordId[]
   /** Whether to show the clear button on the picker trigger (defaults to multi value) */
   showClear?: boolean
 }

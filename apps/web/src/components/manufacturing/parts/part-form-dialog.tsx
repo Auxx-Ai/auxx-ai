@@ -1,6 +1,7 @@
 // apps/web/src/components/manufacturing/parts/part-form-dialog.tsx
 'use client'
 
+import { FieldType } from '@auxx/database/enums'
 import { type RecordId, toRecordId } from '@auxx/lib/resources/client'
 import { Button } from '@auxx/ui/components/button'
 import {
@@ -15,12 +16,12 @@ import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import { toastError } from '@auxx/ui/components/toast'
 import { ChevronDown, ChevronRight } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
+import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
 import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
 import { useResourceProperty } from '~/components/resources'
 import { useSaveFieldValue } from '~/components/resources/hooks/use-save-field-value'
 import { useSystemValues } from '~/components/resources/hooks/use-system-values'
 import { BaseType } from '~/components/workflow/types'
-import { ConstantInputAdapter } from '~/components/workflow/ui/input-editor/constant-input-adapter'
 import { api } from '~/trpc/react'
 import {
   defaultVendorPartValues,
@@ -255,10 +256,10 @@ export function PartFormDialog({ open, onOpenChange, recordId, onSuccess }: Part
             isRequired
             validationError={errors.title}
             validationType='error'>
-            <ConstantInputAdapter
+            <FieldInputAdapter
+              fieldType={FieldType.TEXT}
               value={values.title}
-              onChange={(_, val) => handleChange('title', val)}
-              varType={BaseType.STRING}
+              onChange={(val) => handleChange('title', val)}
               placeholder='Part name'
               disabled={isPending}
             />
@@ -274,10 +275,10 @@ export function PartFormDialog({ open, onOpenChange, recordId, onSuccess }: Part
             isRequired
             validationError={errors.sku}
             validationType='error'>
-            <ConstantInputAdapter
+            <FieldInputAdapter
+              fieldType={FieldType.TEXT}
               value={values.sku}
-              onChange={(_, val) => handleChange('sku', val)}
-              varType={BaseType.STRING}
+              onChange={(val) => handleChange('sku', val)}
               placeholder='Unique part number'
               disabled={isPending}
             />
@@ -285,10 +286,10 @@ export function PartFormDialog({ open, onOpenChange, recordId, onSuccess }: Part
 
           {/* Category */}
           <FieldPanelRow title='Category' type={BaseType.STRING} showIcon orientation='responsive'>
-            <ConstantInputAdapter
+            <FieldInputAdapter
+              fieldType={FieldType.TEXT}
               value={values.category}
-              onChange={(_, val) => handleChange('category', val)}
-              varType={BaseType.STRING}
+              onChange={(val) => handleChange('category', val)}
               placeholder='Category'
               disabled={isPending}
             />
@@ -301,10 +302,10 @@ export function PartFormDialog({ open, onOpenChange, recordId, onSuccess }: Part
             type={BaseType.STRING}
             orientation='responsive'
             showIcon>
-            <ConstantInputAdapter
+            <FieldInputAdapter
+              fieldType={FieldType.TEXT}
               value={values.hsCode}
-              onChange={(_, val) => handleChange('hsCode', val)}
-              varType={BaseType.STRING}
+              onChange={(val) => handleChange('hsCode', val)}
               placeholder='Harmonized System Code'
               disabled={isPending}
             />
@@ -317,10 +318,10 @@ export function PartFormDialog({ open, onOpenChange, recordId, onSuccess }: Part
             orientation='responsive'
             type={BaseType.STRING}
             showIcon>
-            <ConstantInputAdapter
+            <FieldInputAdapter
+              fieldType={FieldType.TEXT}
               value={values.shopifyProductLinkId}
-              onChange={(_, val) => handleChange('shopifyProductLinkId', val)}
-              varType={BaseType.STRING}
+              onChange={(val) => handleChange('shopifyProductLinkId', val)}
               placeholder='Shopify Product ID (optional)'
               disabled={isPending}
             />
@@ -332,13 +333,13 @@ export function PartFormDialog({ open, onOpenChange, recordId, onSuccess }: Part
             type={BaseType.STRING}
             orientation='responsive'
             showIcon>
-            <ConstantInputAdapter
+            <FieldInputAdapter
+              fieldType={FieldType.TEXT}
               value={values.description}
-              onChange={(_, val) => handleChange('description', val)}
-              varType={BaseType.STRING}
+              onChange={(val) => handleChange('description', val)}
               placeholder='Enter a detailed description of the part'
               disabled={isPending}
-              fieldOptions={{ string: { multiline: true } }}
+              fieldOptions={{ multiline: true }}
             />
           </FieldPanelRow>
         </FieldPanel>

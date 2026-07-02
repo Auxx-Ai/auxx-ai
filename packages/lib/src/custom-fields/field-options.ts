@@ -2,6 +2,7 @@
 
 import type { FieldType } from '@auxx/database/types'
 import type { ActorOptions, RelationshipConfig, SelectOptionColor } from '@auxx/types/custom-field'
+import type { RecordId } from '@auxx/types/resource'
 
 /**
  * Unified field options interface.
@@ -97,6 +98,11 @@ export interface FieldOptions {
   // RELATIONSHIP (nested - uses RelationshipConfig from @auxx/types/custom-field)
   // ─────────────────────────────────────────────────────────────
   relationship?: RelationshipConfig
+  /**
+   * RecordIds to exclude from RELATIONSHIP picker results (e.g. cycle/duplicate prevention).
+   * Runtime-only filter passed by the caller — never persisted to CustomField.options.
+   */
+  excludeIds?: RecordId[]
 
   // ─────────────────────────────────────────────────────────────
   // ACTOR (nested - uses ActorOptions from @auxx/types/custom-field)

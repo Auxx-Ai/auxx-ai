@@ -44,8 +44,8 @@ export interface MultiRelationInputProps {
   /** Allow multiple selections (default: true) */
   multi?: boolean
 
-  /** IDs to exclude from search results (entityInstanceIds) */
-  excludeIds?: string[]
+  /** RecordIds to exclude from search results */
+  excludeIds?: RecordId[]
 
   /** Callback when "Create new" is clicked (for complex creation flows via dialog) */
   onCreate?: () => void
@@ -126,7 +126,7 @@ export function MultiRelationInput({
   const selectOptions = useMemo(() => {
     const items = searchResults?.items || []
     return items
-      .filter((item) => !excludeIds.includes(item.id))
+      .filter((item) => !excludeIds.includes(item.recordId as RecordId))
       .map((item) => ({
         label: item.displayName,
         value: item.recordId,

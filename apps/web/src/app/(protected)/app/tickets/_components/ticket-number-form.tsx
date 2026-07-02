@@ -2,6 +2,7 @@
 
 'use client'
 
+import { FieldType } from '@auxx/database/enums'
 import { BaseType } from '@auxx/lib/workflow-engine/types'
 import { Button } from '@auxx/ui/components/button'
 import { Form } from '@auxx/ui/components/form'
@@ -11,9 +12,9 @@ import { Hash } from 'lucide-react'
 import { useEffect } from 'react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
+import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
 import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
 import { SettingsSection } from '~/components/global/settings-page'
-import { ConstantInputAdapter } from '~/components/workflow/ui/input-editor/constant-input-adapter'
 import { api } from '~/trpc/react'
 
 const formSchema = z.object({
@@ -185,10 +186,10 @@ export default function TicketNumberingSettings() {
                 description='Enable to use a prefix for ticket numbers (e.g., SUP-0001)'
                 type={BaseType.BOOLEAN}
                 showIcon>
-                <ConstantInputAdapter
+                <FieldInputAdapter
+                  fieldType={FieldType.CHECKBOX}
                   value={form.watch('usePrefix')}
-                  onChange={(_, val) => form.setValue('usePrefix', val)}
-                  varType={BaseType.BOOLEAN}
+                  onChange={(val) => form.setValue('usePrefix', val as boolean)}
                   fieldOptions={{ variant: 'switch' }}
                 />
               </FieldPanelRow>
@@ -200,10 +201,10 @@ export default function TicketNumberingSettings() {
                     description='Short text to prefix the ticket number (e.g., SUP)'
                     type={BaseType.STRING}
                     showIcon>
-                    <ConstantInputAdapter
+                    <FieldInputAdapter
+                      fieldType={FieldType.TEXT}
                       value={form.watch('prefix') ?? ''}
-                      onChange={(_, val) => form.setValue('prefix', val)}
-                      varType={BaseType.STRING}
+                      onChange={(val) => form.setValue('prefix', val as string)}
                       placeholder='SUP'
                     />
                   </FieldPanelRow>
@@ -213,10 +214,10 @@ export default function TicketNumberingSettings() {
                     description='Add date component to prefix (e.g., SUP2403-0001)'
                     type={BaseType.BOOLEAN}
                     showIcon>
-                    <ConstantInputAdapter
+                    <FieldInputAdapter
+                      fieldType={FieldType.CHECKBOX}
                       value={form.watch('useDateInPrefix')}
-                      onChange={(_, val) => form.setValue('useDateInPrefix', val)}
-                      varType={BaseType.BOOLEAN}
+                      onChange={(val) => form.setValue('useDateInPrefix', val as boolean)}
                       fieldOptions={{ variant: 'switch' }}
                     />
                   </FieldPanelRow>
@@ -227,11 +228,13 @@ export default function TicketNumberingSettings() {
                       description='Format of the date component in the prefix'
                       type={BaseType.ENUM}
                       showIcon>
-                      <ConstantInputAdapter
+                      <FieldInputAdapter
+                        fieldType={FieldType.SINGLE_SELECT}
                         value={form.watch('dateFormat')}
-                        onChange={(_, val) => form.setValue('dateFormat', val)}
-                        varType={BaseType.ENUM}
-                        fieldOptions={{ enum: DATE_FORMAT_OPTIONS }}
+                        onChange={(val) =>
+                          form.setValue('dateFormat', (val as string[])[0] ?? 'YYMM')
+                        }
+                        fieldOptions={{ options: DATE_FORMAT_OPTIONS }}
                       />
                     </FieldPanelRow>
                   )}
@@ -244,10 +247,10 @@ export default function TicketNumberingSettings() {
                 description='Enable to use a suffix for ticket numbers (e.g., 0001-SUP)'
                 type={BaseType.BOOLEAN}
                 showIcon>
-                <ConstantInputAdapter
+                <FieldInputAdapter
+                  fieldType={FieldType.CHECKBOX}
                   value={form.watch('useSuffix')}
-                  onChange={(_, val) => form.setValue('useSuffix', val)}
-                  varType={BaseType.BOOLEAN}
+                  onChange={(val) => form.setValue('useSuffix', val as boolean)}
                   fieldOptions={{ variant: 'switch' }}
                 />
               </FieldPanelRow>
@@ -258,10 +261,10 @@ export default function TicketNumberingSettings() {
                   description='Text to append after the ticket number'
                   type={BaseType.STRING}
                   showIcon>
-                  <ConstantInputAdapter
+                  <FieldInputAdapter
+                    fieldType={FieldType.TEXT}
                     value={form.watch('suffix') ?? ''}
-                    onChange={(_, val) => form.setValue('suffix', val)}
-                    varType={BaseType.STRING}
+                    onChange={(val) => form.setValue('suffix', val as string)}
                     placeholder='SUP'
                   />
                 </FieldPanelRow>
@@ -273,10 +276,10 @@ export default function TicketNumberingSettings() {
                 description='Number of digits to pad the numeric part (e.g., 4 for 0001)'
                 type={BaseType.NUMBER}
                 showIcon>
-                <ConstantInputAdapter
+                <FieldInputAdapter
+                  fieldType={FieldType.NUMBER}
                   value={form.watch('paddingLength')}
-                  onChange={(_, val) => form.setValue('paddingLength', val)}
-                  varType={BaseType.NUMBER}
+                  onChange={(val) => form.setValue('paddingLength', val as number)}
                   placeholder='4'
                 />
               </FieldPanelRow>
@@ -286,10 +289,10 @@ export default function TicketNumberingSettings() {
                 description='Character(s) to separate parts (e.g., -, ., _)'
                 type={BaseType.STRING}
                 showIcon>
-                <ConstantInputAdapter
+                <FieldInputAdapter
+                  fieldType={FieldType.TEXT}
                   value={form.watch('separator')}
-                  onChange={(_, val) => form.setValue('separator', val)}
-                  varType={BaseType.STRING}
+                  onChange={(val) => form.setValue('separator', val as string)}
                   placeholder='-'
                 />
               </FieldPanelRow>

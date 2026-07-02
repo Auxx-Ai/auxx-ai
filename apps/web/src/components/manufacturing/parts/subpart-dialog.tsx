@@ -1,9 +1,11 @@
 // apps/web/src/components/manufacturing/parts/subpart-dialog.tsx
 'use client'
 
+import { FieldType } from '@auxx/database/enums'
 import type { ConditionGroup } from '@auxx/lib/conditions/client'
 import { getInstanceId, isRecordId, type RecordId } from '@auxx/lib/resources/client'
-import type { ResourceFieldId } from '@auxx/types/field'
+import type { RelationshipConfig } from '@auxx/types/custom-field'
+import { type ResourceFieldId, toResourceFieldId } from '@auxx/types/field'
 import { Button } from '@auxx/ui/components/button'
 import {
   Dialog,
@@ -16,13 +18,20 @@ import {
 import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import { toastError } from '@auxx/ui/components/toast'
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
 import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
 import { toRecordId, useRecordList, useResourceProperty } from '~/components/resources'
 import { useSaveFieldValue } from '~/components/resources/hooks/use-save-field-value'
 import { useSystemValues } from '~/components/resources/hooks/use-system-values'
 import { BaseType } from '~/components/workflow/types'
-import { ConstantInputAdapter } from '~/components/workflow/ui/input-editor/constant-input-adapter'
 import { api } from '~/trpc/react'
+
+/** Synthetic relationship config for the ad-hoc "child part" picker (not backed by a real field) */
+const CHILD_PART_RELATIONSHIP: RelationshipConfig = {
+  inverseResourceFieldId: toResourceFieldId('part', 'id'),
+  relationshipType: 'belongs_to',
+  isInverse: false,
+}
 
 const SUBPART_SYSTEM_ATTRIBUTES = [
   'subpart_child_part',
@@ -108,26 +117,24 @@ export function SubpartDialog({
 
   // Build exclusion set: parent part + descendants + already-added child parts
   const excludedPartIds = useMemo(() => {
-    const ids: string[] = [parentPartId]
+    const ids: RecordId[] = [toRecordId(partDefId ?? 'part', parentPartId)]
 
-    // Add descendant instance IDs (prevents cycles)
+    // Add descendant RecordIds (prevents cycles)
     if (descendants) {
-      for (const rid of descendants) {
-        ids.push(getInstanceId(rid))
-      }
+      ids.push(...descendants)
     }
 
-    // Add existing child part IDs (prevents duplicates)
+    // Add existing child part RecordIds (prevents duplicates)
     for (const record of existingSubpartRecords) {
       // record.systemValues may contain the child part reference
       const childVal = (record as any).fieldValues?.subpart_child_part
       if (childVal && isRecordId(childVal)) {
-        ids.push(getInstanceId(childVal))
+        ids.push(childVal)
       }
     }
 
     return [...new Set(ids)]
-  }, [parentPartId, descendants, existingSubpartRecords])
+  }, [parentPartId, partDefId, descendants, existingSubpartRecords])
 
   // Initialize/reset values when dialog opens
   useEffect(() => {
@@ -169,12 +176,12 @@ export function SubpartDialog({
     })
   }, [])
 
-  // Handle childPartId change — extract instance ID from RecordId if needed
+  // Handle childPartId change — extract instance ID from the selected RecordId
   const handleChildPartChange = useCallback(
-    (_: string, value: any) => {
-      const rawValue = typeof value === 'string' ? value : ''
-      const instanceId = isRecordId(rawValue) ? getInstanceId(rawValue) : rawValue
-      handleChange('childPartId', instanceId)
+    (value: unknown) => {
+      const recordIds = value as RecordId[]
+      const first = recordIds[0]
+      handleChange('childPartId', first ? getInstanceId(first) : '')
     },
     [handleChange]
   )
@@ -258,15 +265,14 @@ export function SubpartDialog({
             description='Component to add'
             isRequired
             validationError={errors.childPartId}>
-            <ConstantInputAdapter
-              value={childPartRecordId}
+            <FieldInputAdapter
+              fieldType={FieldType.RELATIONSHIP}
+              value={childPartRecordId ? [childPartRecordId] : []}
               onChange={handleChildPartChange}
-              varType={BaseType.RELATION}
               placeholder='Select a component...'
               disabled={isPending || isEditMode}
               fieldOptions={{
-                relatedEntityDefinitionId: 'part',
-                relationshipType: 'belongs_to',
+                relationship: CHILD_PART_RELATIONSHIP,
                 excludeIds: isEditMode ? undefined : excludedPartIds,
               }}
             />
@@ -281,10 +287,10 @@ export function SubpartDialog({
             isRequired
             validationError={errors.quantity}
             validationType='error'>
-            <ConstantInputAdapter
+            <FieldInputAdapter
+              fieldType={FieldType.NUMBER}
               value={values.quantity}
-              onChange={(_, val) => handleChange('quantity', val ?? 1)}
-              varType={BaseType.NUMBER}
+              onChange={(val) => handleChange('quantity', val ?? 1)}
               placeholder='1'
               disabled={isPending}
             />
@@ -296,13 +302,13 @@ export function SubpartDialog({
             description='Optional notes about this component usage'
             type={BaseType.STRING}
             showIcon>
-            <ConstantInputAdapter
+            <FieldInputAdapter
+              fieldType={FieldType.TEXT}
               value={values.notes}
-              onChange={(_, val) => handleChange('notes', val ?? '')}
-              varType={BaseType.STRING}
+              onChange={(val) => handleChange('notes', val ?? '')}
               placeholder='Optional notes...'
               disabled={isPending}
-              fieldOptions={{ string: { multiline: true } }}
+              fieldOptions={{ multiline: true }}
             />
           </FieldPanelRow>
         </FieldPanel>
