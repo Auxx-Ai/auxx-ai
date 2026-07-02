@@ -147,7 +147,7 @@ export function RecordRulesSection() {
         rule={editing}
       />
       {runsFor && <RecordRuleRunsDialog rule={runsFor} open onClose={() => setRunsFor(null)} />}
-      {ConfirmDialog}
+      <ConfirmDialog />
     </SettingsSection>
   )
 }
