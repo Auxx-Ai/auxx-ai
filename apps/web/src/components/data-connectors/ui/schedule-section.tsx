@@ -35,7 +35,12 @@ import {
   selectIsDirty,
   useConnectorDraftStore,
 } from '../stores/connector-draft-store'
-import { WebhookSignalInspector, WebhookSignalSection } from './webhook-signal-section'
+import {
+  AppWebhookSignalSummary,
+  AppWebhookSteeringSummary,
+  WebhookSignalInspector,
+  WebhookSignalSection,
+} from './webhook-signal-section'
 import { WebhookSteeringSection } from './webhook-steering-section'
 
 type Connector = NonNullable<ReturnType<typeof api.dataConnector.getById.useQuery>['data']>
@@ -201,34 +206,36 @@ function SweepCadenceSection({ connector }: { connector: Connector }) {
 export function ScheduleSection({ connector }: ScheduleSectionProps) {
   const connectionId = connector.credentialId ?? null
 
-  // App-trigger sync bridge (plans/data-connectors/v4): webhook mode is offered
-  // when the connection's app declares webhook triggers — that's the path real app
-  // connections take (the legacy provider-spec gate above matches none of them). The
-  // per-stream trigger binding lives in the stream config, not here.
   const { appInstallations, appConnections } = useAppsContext()
-  const appTriggerCapable = (() => {
+  const installation = (() => {
     const installationId =
       connector.appInstallationId ??
       appConnections.find((c) => c.id === connectionId)?.appInstallationId ??
       null
-    if (!installationId) return false
-    const inst = appInstallations.find((i) => i.installationId === installationId)
-    return (
-      (inst?.workflowTriggers?.length ?? inst?.agentTriggers?.length ?? 0) > 0 ||
-      Boolean(inst?.dataConnectors?.[0]?.webhookTrigger)
-    )
+    if (!installationId) return undefined
+    return appInstallations.find((i) => i.installationId === installationId)
   })()
-
-  // Generic WebhookEndpoints can drive a webhook-sync stream too (app-less). If the org
-  // has any, webhook mode is offered regardless of the connection's app/provider.
-  const webhookEndpoints = api.webhookEndpoint.list.useQuery()
-  const hasWebhookEndpoints = (webhookEndpoints.data?.length ?? 0) > 0
-
-  const webhookSupported = appTriggerCapable || hasWebhookEndpoints
 
   // Webhook steering (signal picker + token mapping) only applies to generic-REST
   // connectors — app connectors have a fixed fetch that ignores webhook tokens (v7).
   const isGenericRest = connector.definitionKind !== 'app'
+
+  // Generic WebhookEndpoints can drive a webhook-sync stream too (app-less). If the org
+  // has any, webhook mode is offered for generic-REST regardless of the connection's app.
+  const webhookEndpoints = api.webhookEndpoint.list.useQuery(undefined, {
+    enabled: isGenericRest,
+  })
+  const hasWebhookEndpoints = (webhookEndpoints.data?.length ?? 0) > 0
+
+  // Webhook mode gate. Generic-REST: the user binds any signal — an app trigger from
+  // the connection's app or a generic WebhookEndpoint — so either capability offers it.
+  // App connector: the signal is manifest-owned (v9) — offered ONLY when the app's
+  // catalog declares `dataConnectors[0].webhookTrigger`; without that declaration
+  // webhook mode would match no deliveries, so the option is hidden entirely.
+  const webhookSupported = isGenericRest
+    ? (installation?.workflowTriggers?.length ?? installation?.agentTriggers?.length ?? 0) > 0 ||
+      hasWebhookEndpoints
+    : Boolean(installation?.dataConnectors?.[0]?.webhookTrigger)
 
   // The window radio only makes sense when a stream declares which param carries the
   // backfill floor (templates do; bare generic-rest doesn't — Step 9 §1.2/§3.2). We
@@ -307,10 +314,11 @@ export function ScheduleSection({ connector }: ScheduleSectionProps) {
     }
   }
 
-  // Webhook mode on a generic-REST connector. The connector-level SIGNAL picker is
-  // inlined directly in the Schedule body (no longer its own "Webhook trigger" section);
-  // the per-stream STEERING stays a real section BELOW Schedule so its padding/borders
-  // match the other top-level sections (v7).
+  // The connector-level SIGNAL picker (generic-REST only — an app connector's signal is
+  // manifest-owned and rendered read-only in the app branch below) is inlined directly
+  // in the Schedule body (no longer its own "Webhook trigger" section); the per-stream
+  // STEERING editor stays a real section BELOW Schedule so its padding/borders match
+  // the other top-level sections (v7).
   const showWebhookSignal = behavior === 'webhook' && isGenericRest
   // Steering lives on the connector page (never the stream window): WebhookSteeringSection
   // inlines a single stream's editor, or lists an expandable row per stream when there are many.
@@ -382,6 +390,9 @@ export function ScheduleSection({ connector }: ScheduleSectionProps) {
           {/* Generic-REST webhook: the SIGNAL picker is inlined here, not its own section. */}
           {showWebhookSignal && <WebhookSignalSection connector={connector} />}
 
+          {/* App-connector webhook: the signal + steering are manifest-owned (v9), so
+              they render read-only — which app trigger drives the sync and which
+              deliveries steer which stream. No picker, no editor. */}
           {behavior === 'webhook' && !isGenericRest && (
             <div className='flex flex-col gap-3'>
               <EmptySection
@@ -389,6 +400,8 @@ export function ScheduleSection({ connector }: ScheduleSectionProps) {
                 title='Webhook sync'
                 description='Records update automatically as the provider sends webhook deliveries. Run the first full import with “Sync now”.'
               />
+              <AppWebhookSignalSummary connector={connector} />
+              <AppWebhookSteeringSummary streams={streamList} />
             </div>
           )}
 
@@ -421,8 +434,9 @@ export function ScheduleSection({ connector }: ScheduleSectionProps) {
       </Section>
 
       {/* The bound signal's live inspector renders its own Section, so it sits here as a
-          sibling below Schedule rather than nested in the inline signal picker. */}
-      {showWebhookSignal && <WebhookSignalInspector connector={connector} />}
+          sibling below Schedule. Both connector kinds get it (v9) — its app branch shows
+          the trigger's test/listen panel; it self-nulls when no signal is bound. */}
+      {behavior === 'webhook' && <WebhookSignalInspector connector={connector} />}
 
       {/* Steering on the connector page (inline for one stream, expandable rows for many).
           The connector-level WebhookSignalInspector above already shows the endpoint's

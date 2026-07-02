@@ -1,6 +1,7 @@
 // apps/web/src/components/manufacturing/parts/vendor-part-dialog.tsx
 'use client'
 
+import { FieldType } from '@auxx/database/enums'
 import { getInstanceId, isRecordId, type RecordId, toRecordId } from '@auxx/lib/field-values/client'
 import { Button } from '@auxx/ui/components/button'
 import {
@@ -14,11 +15,12 @@ import {
 import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import { toastError } from '@auxx/ui/components/toast'
 import { useCallback, useEffect, useState } from 'react'
+import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
 import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
 import { useResourceProperty } from '~/components/resources'
+import { useSystemField } from '~/components/resources/hooks/use-field'
 import { useSaveFieldValue } from '~/components/resources/hooks/use-save-field-value'
 import { useSystemValues } from '~/components/resources/hooks/use-system-values'
-import { MultiRelationInput } from '~/components/shared/multi-relation-input'
 import { api } from '~/trpc/react'
 import {
   defaultVendorPartValues,
@@ -74,6 +76,10 @@ export function VendorPartDialog({
   const vendorPartDefId = useResourceProperty('vendor_part', 'id')
   const partDefId = useResourceProperty('part', 'id')
   const contactDefId = useResourceProperty('contact', 'id')
+
+  // Field definition for the Part relationship picker (contact-centric mode) — sourced live
+  // so FieldInputAdapter gets a real RelationshipConfig and can offer "create new part"
+  const partField = useSystemField('vendor_part_part')
 
   // Load initial values for edit mode via system attributes
   const { values: systemValues } = useSystemValues(recordId, VENDOR_PART_SYSTEM_ATTRIBUTES, {
@@ -249,15 +255,17 @@ export function VendorPartDialog({
               isRequired
               validationError={errors.partId}
               validationType='error'>
-              <MultiRelationInput
-                entityDefinitionId='part'
+              <FieldInputAdapter
+                fieldType={partField?.fieldType ?? FieldType.RELATIONSHIP}
+                triggerProps={{ className: 'w-full ps-0 pe-1' }}
+                fieldOptions={partField?.options}
                 value={values.partId ? [toRecordId('part', values.partId)] : []}
-                onChange={(recordIds: RecordId[]) =>
-                  handleChange('partId', recordIds[0] ? getInstanceId(recordIds[0]) : '')
-                }
+                onChange={(recordIds) => {
+                  const ids = recordIds as RecordId[]
+                  handleChange('partId', ids[0] ? getInstanceId(ids[0]) : '')
+                }}
                 placeholder='Select part...'
                 disabled={isPending || isEditMode}
-                multi={false}
               />
             </FieldPanelRow>
           )}

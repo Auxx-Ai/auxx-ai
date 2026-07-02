@@ -14,9 +14,11 @@ import {
 import { WebhookEndpointInspector } from '~/components/webhooks/ui/webhook-endpoint-inspector'
 import { AppTriggerTestSection } from '~/components/workflow/apps/trigger/app-trigger-test-section'
 import type { RouterOutputs } from '~/trpc/react'
+import { describeSteering, type StreamSteering } from '../lib/describe-steering'
 import { getConnectorDraftState, useConnectorDraftStore } from '../stores/connector-draft-store'
 
 type Connector = NonNullable<RouterOutputs['dataConnector']['getById']>
+type Stream = RouterOutputs['dataConnector']['listStreams'][number]
 
 /** The connector-level webhook SIGNAL (v7): exactly one of an app trigger / endpoint. */
 type WebhookSignal = { triggerId?: string; webhookEndpointId?: string }
@@ -39,8 +41,9 @@ function savedSource(signal: WebhookSignal | undefined): BoundSource | null {
  * `connector.config.webhookTrigger`, not per-stream. Per-stream topic/token STEERING lives
  * in {@link WebhookSteeringSection}. Persists immediately via `dataConnector.update`
  * (merged into the existing config). Rendered inline inside the Schedule section's webhook
- * branch for generic-REST connectors only (app connectors can't consume a steered webhook)
- * — it is NOT its own section, so it carries no `Section` wrapper.
+ * branch for generic-REST connectors only — an app connector's signal is manifest-owned
+ * (v9), shown read-only by {@link AppWebhookSignalSummary} instead. It is NOT its own
+ * section, so it carries no `Section` wrapper.
  */
 export function WebhookSignalSection({ connector }: { connector: Connector }) {
   const { appInstallations, appConnections } = useAppsContext()
@@ -145,6 +148,94 @@ export function WebhookSignalSection({ connector }: { connector: Connector }) {
           </div>
         }
       />
+    </div>
+  )
+}
+
+/**
+ * Read-only counterpart of {@link WebhookSignalSection} for APP connectors (v9): the
+ * signal is manifest-owned (stamped onto `config.webhookTrigger` at connector creation
+ * and app roll-forward), so there is no picker — just which app trigger drives the
+ * sync. An unstamped row falls back to what the installed app's catalog declares
+ * (roll-forward restamp heals the row). Webhook mode isn't offered without that
+ * declaration, so "neither" only happens on a legacy row — renders nothing then.
+ */
+export function AppWebhookSignalSummary({ connector }: { connector: Connector }) {
+  const { appInstallations, appConnections } = useAppsContext()
+
+  const installationId = useMemo(() => {
+    if (connector.appInstallationId) return connector.appInstallationId
+    const conn = appConnections.find((c) => c.id === connector.credentialId)
+    return conn?.appInstallationId ?? null
+  }, [connector.appInstallationId, connector.credentialId, appConnections])
+
+  const installation = appInstallations.find((i) => i.installationId === installationId)
+
+  const { appSources } = useTriggerSources({
+    surface: 'workflow',
+    appIdFilter: installation?.app.id,
+  })
+
+  // Read the stamped signal draft-seeded (the commit path doesn't refetch getById, so
+  // `connector.config` can lag). The app UI never edits `webhookTrigger` — this only
+  // guards against reading a stale server prop.
+  const draftSeeded = useConnectorDraftStore((s) => s.connectorId === connector.id)
+  const draftConfig = useConnectorDraftStore((s) => s.draft.config)
+  const cfg = (draftSeeded ? draftConfig : connector.config) as {
+    webhookTrigger?: WebhookSignal
+  } | null
+  const stampedTriggerId = cfg?.webhookTrigger?.triggerId ?? null
+
+  // Unstamped row (created before v9 stamping, no roll-forward since): show what the
+  // catalog declares — the row is a projection of it (one connector per app).
+  const declaredTriggerId = installation?.dataConnectors?.[0]?.webhookTrigger?.triggerId ?? null
+  const triggerId = stampedTriggerId ?? declaredTriggerId
+
+  if (!triggerId) return null
+
+  const trigger = appSources.find((s) => s.trigger.triggerId === triggerId)?.trigger ?? null
+
+  return (
+    <div className='flex flex-col gap-1.5'>
+      <TriggerSourceRow
+        icon={<Webhook className='size-4 text-muted-foreground' />}
+        title={trigger?.label ?? triggerId}
+        secondary={trigger?.description}
+      />
+      {!stampedTriggerId && (
+        <p className='text-xs text-amber-600'>
+          Declared by the app but not active on this connector yet — update the app to activate it.
+        </p>
+      )}
+    </div>
+  )
+}
+
+/**
+ * Read-only per-stream steering summary for APP connectors (v9): which deliveries
+ * steer which stream, from the manifest-stamped `requestConfig.webhookTrigger`. The
+ * editable counterpart for generic-REST is `WebhookSteeringSection`. Renders nothing
+ * when no stream declares steering (the signal summary already tells that story).
+ */
+export function AppWebhookSteeringSummary({ streams }: { streams: Stream[] }) {
+  const steered = streams.flatMap((stream) => {
+    const steering = (stream.requestConfig as { webhookTrigger?: StreamSteering } | null)
+      ?.webhookTrigger
+    return steering ? [{ stream, steering }] : []
+  })
+  if (steered.length === 0) return null
+
+  return (
+    <div className='flex flex-col gap-1'>
+      {steered.map(({ stream, steering }) => (
+        <p key={stream.id} className='text-xs text-muted-foreground'>
+          <span className='font-medium text-foreground'>
+            {stream.streamKey ?? 'Untitled stream'}
+          </span>
+          {' — '}
+          {describeSteering(steering)}
+        </p>
+      ))}
     </div>
   )
 }
