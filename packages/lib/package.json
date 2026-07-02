@@ -778,6 +778,18 @@
       "import": "./dist/realtime/client/index.mjs",
       "default": "./src/realtime/client/index.ts"
     },
+    "./record-rules": {
+      "types": "./src/record-rules/index.ts",
+      "source": "./src/record-rules/index.ts",
+      "import": "./dist/record-rules/index.mjs",
+      "default": "./src/record-rules/index.ts"
+    },
+    "./record-rules/client": {
+      "types": "./src/record-rules/client.ts",
+      "source": "./src/record-rules/client.ts",
+      "import": "./dist/record-rules/client.mjs",
+      "default": "./src/record-rules/client.ts"
+    },
     "./recording": {
       "types": "./src/recording/index.ts",
       "source": "./src/recording/index.ts",

@@ -1,6 +1,7 @@
 // packages/lib/src/cache/org-cache-helpers.ts
 
 import type { CustomFieldEntity } from '@auxx/database/types'
+import type { CachedRecordRule } from '../record-rules/types'
 import type { ResourceField } from '../resources/registry/field-types'
 import type { Resource } from '../resources/registry/types'
 import type {
@@ -101,6 +102,13 @@ export async function getCachedFieldMap(
 export async function getAllCachedCustomFields(orgId: string): Promise<CustomFieldEntity[]> {
   const customFields = await getOrgCache().get(orgId, 'customFields')
   return Object.values(customFields).flat()
+}
+
+/**
+ * Get all record rules for an organization (enabled + disabled; dispatch filters).
+ */
+export async function getCachedRecordRules(orgId: string): Promise<CachedRecordRule[]> {
+  return getOrgCache().get(orgId, 'recordRules')
 }
 
 /**

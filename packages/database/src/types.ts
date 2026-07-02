@@ -222,6 +222,11 @@ export type {
   RecordIdentityInsert,
 } from './db/schema/record-identity'
 export type {
+  RecordRuleEntity,
+  RecordRuleOn,
+  RecordRuleRunEntity,
+} from './db/schema/record-rule'
+export type {
   CreateStorageLocationInput,
   StorageLocationEntity,
 } from './db/schema/storage-location'

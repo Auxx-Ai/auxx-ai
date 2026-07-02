@@ -29,6 +29,7 @@ import type { DehydratedOrganization } from '../dehydration/types'
 import type { Inbox } from '../inboxes/types'
 import type { Overage } from '../permissions/overage-detection-service'
 import type { FeatureMapObject } from '../permissions/types'
+import type { CachedRecordRule } from '../record-rules/types'
 import type { Resource } from '../resources/registry/types'
 import type { SettingValue } from '../settings/types'
 import type { CachedChannel } from './providers/channels-provider'
@@ -495,6 +496,7 @@ export interface OrgCacheDataMap {
   installedApps: CachedInstalledApp[]
   mcpServers: CachedMcpServer[]
   workflowApps: CachedWorkflowApp[]
+  recordRules: CachedRecordRule[]
 
   // AI provider data (15-min TTL, invalidated via ai-provider/model events)
   aiProviderConfigs: Record<string, ProviderConfiguration>
@@ -540,6 +542,7 @@ export const ORG_CACHE_KEY_CONFIG: Record<
   installedApps: { prefix: 'org:installed-apps:v5', ttlSeconds: 900 },
   mcpServers: { prefix: 'org:mcpServers', ttlSeconds: ONE_DAY },
   workflowApps: { prefix: 'org:workflow-apps', ttlSeconds: ONE_DAY },
+  recordRules: { prefix: 'org:record-rules', ttlSeconds: ONE_DAY },
 
   // AI provider data (15-min TTL)
   aiProviderConfigs: { prefix: 'org:ai-provider-configs', ttlSeconds: 900 },

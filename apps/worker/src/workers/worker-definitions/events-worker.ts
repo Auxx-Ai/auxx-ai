@@ -4,6 +4,7 @@ import {
   createTimelineEvent,
   handleEntityTriggers,
   handleFieldTriggerJob,
+  handleRecordRules,
   publishEventJob,
   publishThreadEventToRealtime,
   publishToAnalyticsJob,
@@ -32,6 +33,7 @@ const eventHandlersJobMappings = {
   triggerAgents,
   handleFieldTriggerJob,
   handleEntityTriggers,
+  handleRecordRules,
   publishThreadEventToRealtime,
 }
 

@@ -31,7 +31,8 @@ export const INVALIDATION_GRAPH: Record<string, InvalidationMapping> = {
 
   'custom-field.created': ['resources', 'customFields'],
   'custom-field.updated': ['resources', 'customFields'],
-  'custom-field.deleted': ['resources', 'customFields'],
+  // A field delete cascades its RecordRules away (FK) — bust the rules cache too.
+  'custom-field.deleted': ['resources', 'customFields', 'recordRules'],
 
   // entityDefs/entityDefSlugs — invalidate slugs on create/delete/update (archive changes visibility)
   'entity-def.created': ['resources', 'entityDefs', 'entityDefSlugs', 'customFields', 'overages'],
@@ -61,6 +62,9 @@ export const INVALIDATION_GRAPH: Record<string, InvalidationMapping> = {
   'inbox.created': ['inboxes'],
   'inbox.updated': ['inboxes'],
   'inbox.deleted': ['inboxes'],
+
+  // Record-rule lifecycle events
+  'record-rule.changed': ['recordRules'],
 
   // Workflow lifecycle events
   'workflow.published': ['workflowApps'],

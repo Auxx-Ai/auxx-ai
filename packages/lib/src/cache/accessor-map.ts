@@ -4,6 +4,7 @@ import type { CustomFieldEntity, OrganizationRole } from '@auxx/database/types'
 import type { Inbox } from '../inboxes/types'
 import type { Overage } from '../permissions/overage-detection-service'
 import type { FeatureMapObject } from '../permissions/types'
+import type { CachedRecordRule } from '../record-rules/types'
 import type { ResourceField } from '../resources/registry/field-types'
 import type { Resource } from '../resources/registry/types'
 import type {
@@ -43,6 +44,9 @@ export interface OrgCacheAccessorMap {
 
   // Custom accessor (provider-defined)
   workflowApps: WorkflowAppsAccessor
+
+  // Record rules — plain array, dispatch filters in memory
+  recordRules: ArrayAccessor<CachedRecordRule>
 }
 
 /** Resource accessor — ArrayAccessor + custom sugar methods */

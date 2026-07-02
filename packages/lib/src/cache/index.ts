@@ -63,6 +63,7 @@ export {
   getCachedMembersByUserIds,
   getCachedOrgHasActiveChat,
   getCachedOrgProfile,
+  getCachedRecordRules,
   getCachedResource,
   getCachedResourceFields,
   getCachedResources,

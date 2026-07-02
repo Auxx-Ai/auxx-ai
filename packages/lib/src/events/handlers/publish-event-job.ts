@@ -8,6 +8,7 @@ import { Queues } from '../../jobs/queues/types'
 import type { AuxxEvent, IEventsHandlers } from '../types'
 import { createAuditLog } from './create-audit-log'
 import { createTimelineEvent } from './create-timeline-event'
+import { handleRecordRules } from './handle-record-rules'
 import { publishThreadEventToRealtime } from './publish-thread-event-to-realtime'
 import { sendInvitationUserJob } from './send-invitation-user-job'
 import { triggerAgents } from './trigger-agents'
@@ -22,9 +23,14 @@ export const EventHandlers: IEventsHandlers = {
   'membership:created': [sendInvitationUserJob, createAuditLog],
 
   // Ticket events → CREATE TIMELINE
-  'ticket:created': [createTimelineEvent, triggerResourceWorkflows, triggerAgents],
+  'ticket:created': [
+    createTimelineEvent,
+    triggerResourceWorkflows,
+    triggerAgents,
+    handleRecordRules,
+  ],
   'ticket:updated': [createTimelineEvent, triggerResourceWorkflows, triggerAgents],
-  'ticket:deleted': [triggerResourceWorkflows, triggerAgents],
+  'ticket:deleted': [triggerResourceWorkflows, triggerAgents, handleRecordRules],
   'ticket:status:changed': [createTimelineEvent, triggerAgents],
   'ticket:assignee:added': [triggerAgents],
   'ticket:assignee:removed': [triggerAgents],
@@ -80,9 +86,19 @@ export const EventHandlers: IEventsHandlers = {
   'webhook:delivery:created': [updateWebhookLastTriggeredAt],
 
   // Contact events → CREATE TIMELINE + TRIGGER WORKFLOWS
-  'contact:created': [createTimelineEvent, triggerResourceWorkflows, triggerAgents],
+  'contact:created': [
+    createTimelineEvent,
+    triggerResourceWorkflows,
+    triggerAgents,
+    handleRecordRules,
+  ],
   'contact:updated': [createTimelineEvent, triggerResourceWorkflows, triggerAgents],
-  'contact:deleted': [createTimelineEvent, triggerResourceWorkflows, triggerAgents],
+  'contact:deleted': [
+    createTimelineEvent,
+    triggerResourceWorkflows,
+    triggerAgents,
+    handleRecordRules,
+  ],
   'contact:merged': [createTimelineEvent],
   'contact:field:updated': [createTimelineEvent],
   'contact:group:added': [createTimelineEvent],
@@ -103,6 +119,7 @@ export const EventHandlers: IEventsHandlers = {
     handleEntityTriggers,
     triggerResourceWorkflows,
     triggerAgents,
+    handleRecordRules,
   ],
   'entity:updated': [createTimelineEvent, triggerResourceWorkflows, triggerAgents],
   'entity:deleted': [
@@ -110,18 +127,49 @@ export const EventHandlers: IEventsHandlers = {
     handleEntityTriggers,
     triggerResourceWorkflows,
     triggerAgents,
+    handleRecordRules,
   ],
   'entity:field:updated': [createTimelineEvent],
 
   // Stock movement events → ENTITY TRIGGERS (inventory QoH recalculation) + WORKFLOWS
-  'stock_movement:created': [handleEntityTriggers, triggerResourceWorkflows, triggerAgents],
-  'stock_movement:deleted': [handleEntityTriggers, triggerResourceWorkflows, triggerAgents],
+  'stock_movement:created': [
+    handleEntityTriggers,
+    triggerResourceWorkflows,
+    triggerAgents,
+    handleRecordRules,
+  ],
+  'stock_movement:deleted': [
+    handleEntityTriggers,
+    triggerResourceWorkflows,
+    triggerAgents,
+    handleRecordRules,
+  ],
 
   // Vendor part / subpart events → ENTITY TRIGGERS (BOM cost recalculation) + WORKFLOWS
-  'vendor_part:created': [handleEntityTriggers, triggerResourceWorkflows, triggerAgents],
-  'vendor_part:deleted': [handleEntityTriggers, triggerResourceWorkflows, triggerAgents],
-  'subpart:created': [handleEntityTriggers, triggerResourceWorkflows, triggerAgents],
-  'subpart:deleted': [handleEntityTriggers, triggerResourceWorkflows, triggerAgents],
+  'vendor_part:created': [
+    handleEntityTriggers,
+    triggerResourceWorkflows,
+    triggerAgents,
+    handleRecordRules,
+  ],
+  'vendor_part:deleted': [
+    handleEntityTriggers,
+    triggerResourceWorkflows,
+    triggerAgents,
+    handleRecordRules,
+  ],
+  'subpart:created': [
+    handleEntityTriggers,
+    triggerResourceWorkflows,
+    triggerAgents,
+    handleRecordRules,
+  ],
+  'subpart:deleted': [
+    handleEntityTriggers,
+    triggerResourceWorkflows,
+    triggerAgents,
+    handleRecordRules,
+  ],
 
   // Company events → TIMELINE + ENTITY TRIGGERS (website enrichment on create) + WORKFLOWS
   'company:created': [
@@ -129,12 +177,14 @@ export const EventHandlers: IEventsHandlers = {
     handleEntityTriggers,
     triggerResourceWorkflows,
     triggerAgents,
+    handleRecordRules,
   ],
   'company:deleted': [
     createTimelineEvent,
     handleEntityTriggers,
     triggerResourceWorkflows,
     triggerAgents,
+    handleRecordRules,
   ],
 
   // Field trigger events → FIELD TRIGGER HANDLERS
