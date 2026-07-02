@@ -1,11 +1,12 @@
 // apps/web/src/components/manufacturing/parts/vendor-part-fields.tsx
 'use client'
 
+import { FieldType } from '@auxx/database/enums'
 import { getInstanceId, type RecordId, toRecordId } from '@auxx/lib/field-values/client'
+import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
 import { FieldPanelRow } from '~/components/global/forms/field-panel'
-import { MultiRelationInput } from '~/components/shared/multi-relation-input'
+import { useSystemField } from '~/components/resources/hooks/use-field'
 import { BaseType } from '~/components/workflow/types'
-import { ConstantInputAdapter } from '~/components/workflow/ui/input-editor/constant-input-adapter'
 
 /**
  * Default values for vendor part form fields
@@ -56,6 +57,8 @@ export function VendorPartFields({
   disableContactEdit,
   showContactField = true,
 }: VendorPartFieldsProps) {
+  const contactField = useSystemField('vendor_part_contact')
+
   return (
     <>
       {/* Contact Selection */}
@@ -65,16 +68,17 @@ export function VendorPartFields({
           isRequired
           validationError={errors?.entityInstanceId}
           validationType='error'>
-          <MultiRelationInput
-            entityDefinitionId='contact'
-            className='w-full ps-0'
+          <FieldInputAdapter
+            triggerProps={{ className: 'w-full ps-0 pe-1' }}
+            fieldType={contactField?.fieldType ?? FieldType.RELATIONSHIP}
+            fieldOptions={contactField?.options}
             value={values.entityInstanceId ? [toRecordId('contact', values.entityInstanceId)] : []}
-            onChange={(recordIds: RecordId[]) =>
-              onChange('entityInstanceId', recordIds[0] ? getInstanceId(recordIds[0]) : '')
-            }
+            onChange={(recordIds) => {
+              const ids = recordIds as RecordId[]
+              onChange('entityInstanceId', ids[0] ? getInstanceId(ids[0]) : '')
+            }}
             placeholder='Select contact...'
             disabled={disabled || disableContactEdit}
-            multi={false}
           />
         </FieldPanelRow>
       )}
@@ -88,10 +92,10 @@ export function VendorPartFields({
         isRequired
         validationError={errors?.vendorSku}
         validationType='error'>
-        <ConstantInputAdapter
+        <FieldInputAdapter
+          fieldType={FieldType.TEXT}
           value={values.vendorSku}
-          onChange={(_, val) => onChange('vendorSku', val)}
-          varType={BaseType.STRING}
+          onChange={(val) => onChange('vendorSku', val)}
           placeholder="Supplier's part number"
           disabled={disabled}
         />
@@ -99,13 +103,13 @@ export function VendorPartFields({
 
       {/* Unit Price */}
       <FieldPanelRow title='Unit Price' type={BaseType.CURRENCY} showIcon>
-        <ConstantInputAdapter
+        <FieldInputAdapter
+          fieldType={FieldType.CURRENCY}
           value={values.unitPrice}
-          onChange={(_, val) => onChange('unitPrice', val)}
-          varType={BaseType.CURRENCY}
+          onChange={(val) => onChange('unitPrice', val)}
           placeholder='0.00'
           disabled={disabled}
-          fieldOptions={{ currency: { currencyCode: 'USD' } }}
+          fieldOptions={{ currencyCode: 'USD' }}
         />
       </FieldPanelRow>
 
@@ -115,10 +119,10 @@ export function VendorPartFields({
         description='Percentage of unit price'
         type={BaseType.NUMBER}
         showIcon>
-        <ConstantInputAdapter
+        <FieldInputAdapter
+          fieldType={FieldType.NUMBER}
           value={values.tariffRate}
-          onChange={(_, val) => onChange('tariffRate', val)}
-          varType={BaseType.NUMBER}
+          onChange={(val) => onChange('tariffRate', val)}
           placeholder='0'
           disabled={disabled}
         />
@@ -130,13 +134,13 @@ export function VendorPartFields({
         description='Per-unit shipping/freight'
         type={BaseType.CURRENCY}
         showIcon>
-        <ConstantInputAdapter
+        <FieldInputAdapter
+          fieldType={FieldType.CURRENCY}
           value={values.shippingCost}
-          onChange={(_, val) => onChange('shippingCost', val)}
-          varType={BaseType.CURRENCY}
+          onChange={(val) => onChange('shippingCost', val)}
           placeholder='0.00'
           disabled={disabled}
-          fieldOptions={{ currency: { currencyCode: 'USD' } }}
+          fieldOptions={{ currencyCode: 'USD' }}
         />
       </FieldPanelRow>
 
@@ -146,13 +150,13 @@ export function VendorPartFields({
         description='Insurance, brokerage, handling'
         type={BaseType.CURRENCY}
         showIcon>
-        <ConstantInputAdapter
+        <FieldInputAdapter
+          fieldType={FieldType.CURRENCY}
           value={values.otherCost}
-          onChange={(_, val) => onChange('otherCost', val)}
-          varType={BaseType.CURRENCY}
+          onChange={(val) => onChange('otherCost', val)}
           placeholder='0.00'
           disabled={disabled}
-          fieldOptions={{ currency: { currencyCode: 'USD' } }}
+          fieldOptions={{ currencyCode: 'USD' }}
         />
       </FieldPanelRow>
 
@@ -162,10 +166,10 @@ export function VendorPartFields({
         description='Days to receive order'
         type={BaseType.NUMBER}
         showIcon>
-        <ConstantInputAdapter
+        <FieldInputAdapter
+          fieldType={FieldType.NUMBER}
           value={values.leadTime}
-          onChange={(_, val) => onChange('leadTime', val)}
-          varType={BaseType.NUMBER}
+          onChange={(val) => onChange('leadTime', val)}
           placeholder='Days'
           disabled={disabled}
         />
@@ -177,10 +181,10 @@ export function VendorPartFields({
         description='Minimum order quantity'
         type={BaseType.NUMBER}
         showIcon>
-        <ConstantInputAdapter
+        <FieldInputAdapter
+          fieldType={FieldType.NUMBER}
           value={values.minOrderQty}
-          onChange={(_, val) => onChange('minOrderQty', val)}
-          varType={BaseType.NUMBER}
+          onChange={(val) => onChange('minOrderQty', val)}
           placeholder='Qty'
           disabled={disabled}
         />
@@ -192,10 +196,10 @@ export function VendorPartFields({
         description='Mark as preferred supplier for this part'
         type={BaseType.BOOLEAN}
         showIcon>
-        <ConstantInputAdapter
+        <FieldInputAdapter
+          fieldType={FieldType.CHECKBOX}
           value={values.isPreferred}
-          onChange={(_, val) => onChange('isPreferred', val)}
-          varType={BaseType.BOOLEAN}
+          onChange={(val) => onChange('isPreferred', val)}
           disabled={disabled}
           fieldOptions={{ variant: 'switch' }}
         />
