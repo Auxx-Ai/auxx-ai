@@ -306,6 +306,8 @@ export interface CatalogConnectorStream {
 export interface CatalogDataConnector {
   id: string
   label: string
+  /** One-line description shown in the connect-a-source picker (optional). */
+  description: string | null
   requiresConnection: boolean
   iconKey: string | null
   /**

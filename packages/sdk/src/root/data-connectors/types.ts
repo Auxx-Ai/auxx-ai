@@ -327,6 +327,8 @@ export interface DataConnectorDefinition<TConfigSchema extends z.ZodTypeAny = z.
   id: string
   /** Human label shown in the connector picker. */
   label: string
+  /** One-line description shown in the connect-a-source picker. */
+  description?: string
   /** Whether the connector needs the app's OAuth connection to fetch. */
   requiresConnection: boolean
   /** Connector-level config schema (filters, toggles). */

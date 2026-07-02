@@ -221,7 +221,13 @@ export const dataConnectorRouter = createTRPCRouter({
         type: `app:${app.app.slug}`,
         connectorId: dc.id,
         label: dc.label,
+        // Connector-declared description, falling back to the app's own so a
+        // connector that omits one still reads meaningfully in the picker.
+        description: dc.description ?? app.app.description ?? '',
         iconKey: dc.iconKey,
+        // The app's real logo (raw URL) → rendered via `AppIcon`; falls back to
+        // the generic `package` glyph. Same cascade as installed-apps-provider.
+        appIconId: app.app.avatarUrl ?? 'package',
         requiresConnection: dc.requiresConnection,
         requestModel: dc.requestModel ?? ('fixed' as const),
       }))

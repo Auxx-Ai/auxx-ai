@@ -17,6 +17,7 @@ import shopifyCoreSync from './shopify-core.connector.server'
 export const shopifyCoreDataConnector = defineDataConnector({
   id: 'shopify.core',
   label: 'Shopify Core Data',
+  description: 'Sync orders and customers from Shopify.',
   requiresConnection: true,
   iconKey: 'shopping-bag',
   webhookTrigger: { triggerId: 'shopify.shopify-trigger' },

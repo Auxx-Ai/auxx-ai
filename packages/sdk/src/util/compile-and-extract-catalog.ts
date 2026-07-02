@@ -264,6 +264,8 @@ export interface CatalogConnectorStream {
 export interface CatalogDataConnector {
   id: string
   label: string
+  /** One-line description shown in the connect-a-source picker (optional). */
+  description: string | null
   requiresConnection: boolean
   iconKey: string | null
   /** Connector-level config schema (JSON Schema, from the `config` zod schema). */
@@ -783,6 +785,7 @@ export async function compileAndExtractCatalog(): Promise<
     cataloguedDataConnectors.push({
       id: connector.id,
       label: connector.label,
+      description: connector.description ?? null,
       requiresConnection: Boolean(connector.requiresConnection),
       iconKey: connector.iconKey ?? null,
       configJsonSchema,
@@ -953,6 +956,7 @@ interface RawConnectorStream {
 interface RawDataConnector {
   id: string
   label: string
+  description?: string
   requiresConnection?: boolean
   iconKey?: string
   /** zod schema — projected to JSON Schema via zodToProviderToolSchema. */
