@@ -7,19 +7,16 @@ import {
   rotateSecrets,
   updateCredential,
 } from '@auxx/credentials/store'
-import { database, schema } from '@auxx/database'
 import {
   logger,
   mergeConnectionVariables,
   renameAppConnection,
   safeSerializeMetadata,
 } from '@auxx/services/app-connections'
-import { getInstallationCatalog, reconcileAppFields } from '@auxx/services/custom-fields'
-import { eq } from 'drizzle-orm'
 import { err, ok } from 'neverthrow'
-import { onCacheEvent } from '../../cache/invalidate'
 import { mergeManualConnectionEdit } from '../../connections/merge-manual-edit'
 import { triggerAppEvent } from '../events'
+import { reconcileInstallationAppFields } from '../installations/app-field-provisioning'
 import { resolveActiveInstallationId } from '../installations/resolve-active-installation'
 
 /**
@@ -301,24 +298,12 @@ export async function saveAppConnection(
   // is ON DELETE CASCADE).
   if (userId === null) {
     try {
-      const catalog = await getInstallationCatalog(appInstallationId)
-      const appRow = await database.query.App.findFirst({
-        where: eq(schema.App.id, appId),
-        columns: { slug: true },
-      })
       // Reconcile the whole installation against the catalog now that a new
       // org-scoped connection exists — creates this connection's connection-scoped
-      // fields (and heals any drift). The authoritative reconcile still runs at sync
-      // setup; this warm-up just makes the fields resolvable before the first sync.
-      await reconcileAppFields(catalog, {
-        appInstallationId,
-        organizationId,
-        appSlug: appRow?.slug ?? appId,
-      })
-      // Bust the customFields org cache immediately — otherwise a freshly
-      // provisioned field can be unresolved by the @app: rail for up to the
-      // 24h TTL, silently dropping the connector's/chat's first write.
-      await onCacheEvent('custom-field.created', { orgId: organizationId })
+      // fields (and heals any drift), busting the customFields org cache when
+      // anything changed. The authoritative reconcile still runs at sync setup;
+      // this warm-up just makes the fields resolvable before the first sync.
+      await reconcileInstallationAppFields({ appInstallationId, organizationId })
     } catch (error) {
       logger.error('Failed to reconcile app fields for new connection', {
         error: error instanceof Error ? error.message : String(error),

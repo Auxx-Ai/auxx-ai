@@ -36,8 +36,15 @@ export type {
 } from './get-available-apps'
 export { getAvailableApps } from './get-available-apps'
 export { getDeveloperApp } from './get-developer-app'
+export {
+  applyInstallationCatalog,
+  getInstallationCatalog,
+  reconcileInstallationAppFields,
+} from './installations/app-field-provisioning'
 export { getInstallationDeployment } from './installations/get-installation-deployment'
+export { type InstallAppOutput, installApp } from './installations/install-app'
 export { resolveActiveInstallationId } from './installations/resolve-active-installation'
+export { rollForwardInstallations } from './installations/roll-forward-installations'
 export type {
   ConsoleLog,
   LambdaExecutionError,
@@ -52,3 +59,4 @@ export {
   KNOWN_ERROR_STATUS,
   prepareLambdaContext,
 } from './lambda'
+export { updateDeploymentStatus } from './versions/update-deployment-status'

@@ -37,9 +37,13 @@ vi.mock('@auxx/services/app-connections', () => ({
   safeSerializeMetadata: (m: unknown) => m,
 }))
 
-vi.mock('@auxx/services/custom-fields', () => ({
-  getInstallationCatalog: async () => ({}),
-  reconcileAppFields: async () => ({ created: 0, updated: 0, orphaned: 0, errors: [] }),
+vi.mock('../../installations/app-field-provisioning', () => ({
+  reconcileInstallationAppFields: async () => ({
+    created: 0,
+    updated: 0,
+    orphaned: 0,
+    errors: [],
+  }),
 }))
 
 vi.mock('../../events', () => ({

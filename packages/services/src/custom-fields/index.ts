@@ -1,22 +1,7 @@
 // packages/services/src/custom-fields/index.ts
 
-// App-registered custom field provisioning
-export {
-  type AppFieldReconcileAction,
-  type AppFieldReconcileError,
-  type AppFieldUpdateChanges,
-  applyInstallationCatalog,
-  computeAppFieldReconcileActions,
-  type ExistingAppFieldRow,
-  getInstallationCatalog,
-  type ProvisionContext,
-  type ProvisionOutcome,
-  provisionAppField,
-  provisionAppFields,
-  type ReconcileResult,
-  reconcileAppFields,
-  resolveEntityDefinitionIdByKind,
-} from './app-field-provisioning'
+// App-registered custom field provisioning lives in @auxx/lib
+// (apps/installations/app-field-provisioning) — it needs the tier-3 org cache.
 // Uniqueness checks
 export {
   type CheckUniqueValueInput,

@@ -1,5 +1,6 @@
 // apps/build/src/server/api/routers/versions.ts
 
+import { updateDeploymentStatus } from '@auxx/lib/apps'
 import { invalidateAppCatalog, invalidateOrgsByDeploymentId, onCacheEvent } from '@auxx/lib/cache'
 import { restampWebhookBindingsForDeployment } from '@auxx/lib/data-connectors'
 import { createScopedLogger } from '@auxx/logger'
@@ -7,7 +8,6 @@ import {
   calculateNextVersion,
   listDeployments,
   promoteToProduction,
-  updateDeploymentStatus,
 } from '@auxx/services/app-versions'
 import { TRPCError } from '@trpc/server'
 import { z } from 'zod'

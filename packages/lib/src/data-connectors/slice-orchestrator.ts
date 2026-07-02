@@ -13,11 +13,10 @@
 import type { Database } from '@auxx/database'
 import { schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import { getInstallationCatalog, reconcileAppFields } from '@auxx/services/custom-fields'
 import type { ResourceFieldId } from '@auxx/types/field'
 import { and, eq, inArray, lt } from 'drizzle-orm'
 import { resolveConnectorFieldRef } from '../agents/bindings/resolve'
-import { onCacheEvent } from '../cache/invalidate'
+import { reconcileInstallationAppFields } from '../apps/installations/app-field-provisioning'
 import type { ThrottleHandle } from '../sync-core/contracts'
 import { runSyncSlice } from '../sync-core/slice-runner'
 import { prepareConnectorFetch } from './connector-runtime'
@@ -195,21 +194,10 @@ async function startConnectorSyncInner(
     columns: { appInstallationId: true },
   })
   if (appConnector?.appInstallationId) {
-    const installation = await db.query.AppInstallation.findFirst({
-      where: eq(schema.AppInstallation.id, appConnector.appInstallationId),
-      with: { app: { columns: { slug: true } } },
-    })
-    const catalog = await getInstallationCatalog(appConnector.appInstallationId)
-    const result = await reconcileAppFields(catalog, {
+    const result = await reconcileInstallationAppFields({
       appInstallationId: appConnector.appInstallationId,
       organizationId,
-      appSlug: installation?.app?.slug ?? '',
     })
-    if (result.created + result.updated + result.orphaned > 0) {
-      // Bust the customFields org cache so the @app: rail resolves the reconciled
-      // fields on this very sync instead of after the TTL (services can't invalidate).
-      await onCacheEvent('custom-field.created', { orgId: organizationId })
-    }
     if (result.errors.length > 0) {
       throw new Error(
         `app-field reconcile failed: ${result.errors
