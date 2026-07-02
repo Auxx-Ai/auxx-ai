@@ -314,6 +314,13 @@ export const SETTINGS_MENU: SidebarProps[] = [
         access: 'ADMIN',
       },
       {
+        id: 'admin-rules',
+        label: 'Rules',
+        slug: 'rules',
+        icon: <Zap />,
+        access: 'ADMIN',
+      },
+      {
         id: 'settings-activity-log',
         label: 'Account Activity',
         slug: 'activity-log',

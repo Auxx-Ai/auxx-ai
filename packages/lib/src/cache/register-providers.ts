@@ -29,6 +29,7 @@ import { overagesProvider } from './providers/overages-provider'
 import { planMapProvider } from './providers/plan-map-provider'
 import { plansProvider } from './providers/plans-provider'
 import { publishedAppsProvider } from './providers/published-apps-provider'
+import { recordRulesProvider } from './providers/record-rules-provider'
 import { resourcesProvider } from './providers/resources-provider'
 import { subscriptionProvider } from './providers/subscription-provider'
 import { systemUserProvider } from './providers/system-user-provider'
@@ -74,6 +75,7 @@ export function registerAllProviders(
   orgCache.register('installedApps', installedAppsProvider)
   orgCache.register('mcpServers', mcpServersProvider)
   orgCache.register('workflowApps', workflowAppsProvider)
+  orgCache.register('recordRules', recordRulesProvider)
 
   // Org-scoped: AI provider data
   orgCache.register('aiProviderConfigs', aiProviderConfigsProvider)

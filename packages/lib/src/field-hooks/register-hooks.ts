@@ -1,5 +1,6 @@
 // packages/lib/src/field-hooks/register-hooks.ts
 
+import { handleRecordRulesOnFieldChange } from '../record-rules/hook-handler'
 import { recalculatePartCost, recalculatePartCostOnEntityChange } from './post/bom-cost-triggers'
 import { explodeBomMovement } from './post/bom-movement-triggers'
 import { enrichCompanyOnCreate } from './post/company-triggers'
@@ -55,7 +56,13 @@ export function registerAllHooks(): void {
   // Field-change post-hook — fires `<prefix>:field:updated` after every field
   // write. Registered globally so contacts, tickets, companies, and custom
   // entities all produce timeline entries.
-  registerEntityFieldChangeHooks('*', [publishFieldChangeEvent, touchActivityOnFieldChange])
+  // handleRecordRulesOnFieldChange dispatches org-configured RecordRules (it
+  // no-ops fast when the org has none and lazy-imports its own internals).
+  registerEntityFieldChangeHooks('*', [
+    publishFieldChangeEvent,
+    touchActivityOnFieldChange,
+    handleRecordRulesOnFieldChange,
+  ])
 
   // ---------------------------------------------------------------------------
   // PRE-WRITE HOOKS

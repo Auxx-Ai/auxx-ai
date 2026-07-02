@@ -1786,6 +1786,13 @@
       "when": 1782941543697,
       "tag": "0254_inventory_bridge_link_source_def",
       "breakpoints": true
+    },
+    {
+      "idx": 255,
+      "version": "7",
+      "when": 1782960170273,
+      "tag": "0255_record_rules",
+      "breakpoints": true
     }
   ]
 }

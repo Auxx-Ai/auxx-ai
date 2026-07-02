@@ -5,6 +5,7 @@ export { handleFieldTriggerJob } from '../../field-hooks/field-hook-job'
 export { createAuditLog } from './create-audit-log'
 export { createEventJob } from './create-event-job'
 export { createTimelineEvent } from './create-timeline-event'
+export { handleRecordRules } from './handle-record-rules'
 export { EventHandlers, publishEventJob } from './publish-event-job'
 export {
   publishThreadEventToRealtime,
