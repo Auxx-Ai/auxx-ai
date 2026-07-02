@@ -45,7 +45,29 @@ export interface NotifyAction {
   message: string
 }
 
-export type RecordRuleAction = SetFieldAction | EnqueueWorkflowAction | NotifyAction
+/**
+ * Invoke a code-registered handler (batch signature) once per rule across a fire
+ * batch. SERVER-DECLARED ONLY — never accepted from the tRPC router or the UI; used
+ * exclusively by system rules (see `system-rules.ts`, `registerNativeRuleHandler`).
+ */
+export interface NativeAction {
+  type: 'native'
+  /** Key registered via `registerNativeRuleHandler`. */
+  handler: string
+}
+
+export type RecordRuleAction = SetFieldAction | EnqueueWorkflowAction | NotifyAction | NativeAction
+
+/**
+ * Does an action list contain a native action? THE shared predicate for routing a rule
+ * between the two dispatch doors: door 1 (`hook-handler.ts`) EXCLUDES native rules and
+ * the batched field-trigger door (`collect-triggers.ts` + `field-hook-job.ts`) fires
+ * ONLY them — the two sides must stay exact complements, so both call this. A rule is
+ * all-native or native-free (`assertRuleShape` / `declareSystemRules`), never mixed.
+ */
+export function hasNativeAction(actions: readonly RecordRuleAction[]): boolean {
+  return actions.some((a) => a.type === 'native')
+}
 
 /** Per-action result recorded on the RecordRuleRun row (continue-and-report semantics). */
 export interface RecordRuleActionOutcome {
@@ -67,6 +89,45 @@ export interface CachedRecordRule {
   condition: ConditionGroup[]
   actions: RecordRuleAction[]
   enabled: boolean
+  /**
+   * True for code-declared system rules unioned into the cache at compute time
+   * (`system-rules.ts`) — NOT a DB row. Excluded from the tRPC `list` output and UI.
+   */
+  isSystem?: boolean
+}
+
+/** One record event within a batch fire (see `fireRecordRulesBatch`). */
+export interface RecordRuleBatchEvent {
+  entityInstanceId: string
+  /** Field-transition context — absent on lifecycle events. */
+  fieldId?: string
+  oldValue?: unknown
+  newValue?: unknown
+  /** Record payload for condition evaluation; see `RecordRuleFireContext.snapshot`. */
+  snapshot?: Record<string, unknown> | null
+  /**
+   * Raw create/delete-time field values keyed by systemAttribute (the legacy
+   * `EntityTriggerEvent.values` shape). Populated by the dispatching door when it holds
+   * them — interactive lifecycle passes `event.data.eventData`, the sync consumer passes
+   * `manifest.createdValues`. Forwarded verbatim to native handlers; NEVER refetched (a DB
+   * refetch is wrong for the transient stock-movement `adjust_subparts` flag — see
+   * plans/events/b2-phase9-option-a-plan.md Part 1).
+   */
+  eventData?: Record<string, unknown>
+}
+
+/**
+ * Context handed to the batch engine entry point. Rules are pre-filtered by def by the
+ * caller; the batch matches each rule to each event (field id + transition, or
+ * lifecycle) and fires non-native actions per record, native actions once per rule.
+ */
+export interface RecordRuleBatchContext {
+  organizationId: string
+  entityDefinitionId: string
+  source: 'interactive' | 'sync'
+  /** Actor of the originating write, when there was one. */
+  userId?: string
+  events: RecordRuleBatchEvent[]
 }
 
 /** Context handed to the engine for one candidate firing. */

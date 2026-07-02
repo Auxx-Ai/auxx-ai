@@ -4,11 +4,53 @@
 // registry and must not create import cycles or break vi.mock in unit tests.
 
 import { createScopedLogger } from '@auxx/logger'
-import { toRecordId } from '@auxx/types/resource'
+import { type RecordId, toRecordId } from '@auxx/types/resource'
 import type { RecordSnapshot } from './resolver'
 import type { CachedRecordRule, RecordRuleAction, RecordRuleFireContext } from './types'
 
 const logger = createScopedLogger('record-rules-actions')
+
+/**
+ * Batch event shape a native rule handler receives — signature-compatible with the
+ * legacy `FieldTriggerHandler` (`field-hooks/types.ts`) so manufacturing triggers can
+ * be wrapped unchanged when they migrate onto system rules (see B2 plan D11).
+ */
+export interface NativeRuleHandlerEvent {
+  recordIds: RecordId[]
+  organizationId: string
+  userId?: string
+  /** Lifecycle transition for entity rules (`created`/`deleted`); absent for field firings. */
+  action?: 'created' | 'deleted'
+  /**
+   * Raw event values per record (systemAttribute-keyed), forwarded from the dispatching
+   * door. Present for lifecycle firings that captured create/delete-time values; absent for
+   * field-change firings. Entity-trigger wrappers read the per-record entry to reconstruct
+   * the legacy `EntityTriggerEvent.values`.
+   */
+  eventDataByRecordId?: Record<RecordId, Record<string, unknown>>
+}
+
+export type NativeRuleHandler = (event: NativeRuleHandlerEvent) => Promise<void>
+
+const nativeHandlers = new Map<string, NativeRuleHandler>()
+
+/**
+ * Register a native rule handler under a stable key. Called at module init by the
+ * server-side declarations that back system rules — NEVER from user input.
+ */
+export function registerNativeRuleHandler(key: string, fn: NativeRuleHandler): void {
+  nativeHandlers.set(key, fn)
+}
+
+/** Look up a registered native handler; `undefined` when the key is unknown. */
+export function getNativeRuleHandler(key: string): NativeRuleHandler | undefined {
+  return nativeHandlers.get(key)
+}
+
+/** Test-only: clear the native handler registry. */
+export function __clearNativeRuleHandlers(): void {
+  nativeHandlers.clear()
+}
 
 /**
  * Execute one action. Returns the outcome status; throws on failure (the engine
@@ -99,5 +141,11 @@ export async function executeRuleAction(
       }
       return 'ok'
     }
+
+    case 'native':
+      // Native actions are dispatched once-per-rule by the batch entry point
+      // (`fireRecordRulesBatch`), never through the per-record path. Defensive skip
+      // keeps the switch exhaustive.
+      return 'skipped'
   }
 }

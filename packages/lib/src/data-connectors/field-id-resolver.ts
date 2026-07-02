@@ -9,6 +9,7 @@
 // FieldValue rows. Centralized here so the two paths can never diverge.
 
 import { getCachedCustomFields } from '../cache'
+import { buildWriteKeyToFieldIdMap } from '../field-values/write-key-map'
 
 /**
  * Build a `(writeKey → CustomField.id)` map for an entity definition from the
@@ -22,10 +23,5 @@ export async function buildWriteKeyToFieldId(
   entityDefinitionId: string
 ): Promise<Map<string, string>> {
   const fields = await getCachedCustomFields(orgId, entityDefinitionId)
-  const map = new Map<string, string>()
-  for (const f of fields) {
-    map.set(f.id, f.id)
-    if (f.systemAttribute) map.set(f.systemAttribute, f.id)
-  }
-  return map
+  return buildWriteKeyToFieldIdMap(fields)
 }

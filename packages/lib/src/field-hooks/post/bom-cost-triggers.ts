@@ -5,7 +5,7 @@ import { createScopedLogger } from '@auxx/logger'
 import { parseRecordId } from '@auxx/types/resource'
 import { and, eq, inArray } from 'drizzle-orm'
 import { recalculateAffectedParts, recalculateAllPartCosts } from '../../bom/cost-calculator'
-import type { EntityTriggerHandler, FieldTriggerHandler } from '../types'
+import type { FieldTriggerHandler } from '../types'
 
 const logger = createScopedLogger('field-hooks:bom-cost')
 
@@ -45,58 +45,62 @@ const recalculatePartCost: FieldTriggerHandler = async (event) => {
 }
 
 /**
- * Recalculate part cost when a vendor_part or subpart entity is created or deleted.
- * The event.values contains the field values at the time of creation/deletion.
+ * Batch cost recalc for a group of vendor-part/subpart lifecycle events (B2 §9). Replaces
+ * the per-record `recalculatePartCostOnEntityChange` when these triggers run as native
+ * record-rule actions: resolves every parent part across the whole batch, deduped, in at
+ * most ONE DB query (only for records whose parent wasn't threaded in `values`), then a
+ * single `recalculateAffectedParts`. On a bulk import of N vendor parts this is 1 lookup +
+ * 1 recalc instead of N × (lookup + recalc). `relationshipAttr` is fixed by the declaring
+ * def (vendor-parts ⇒ `vendor_part_part`, subparts ⇒ `subpart_parent_part`).
  */
-const recalculatePartCostOnEntityChange: EntityTriggerHandler = async (event) => {
-  const { organizationId, entitySlug, entityInstanceId, action, values } = event
+export async function recalculatePartCostForEntityBatch(params: {
+  organizationId: string
+  relationshipAttr: 'vendor_part_part' | 'subpart_parent_part'
+  action?: 'created' | 'deleted'
+  records: Array<{ entityInstanceId: string; values?: Record<string, unknown> }>
+}): Promise<void> {
+  const { organizationId, relationshipAttr, action, records } = params
+  if (records.length === 0) return
 
-  // Extract the parent part ID from event values
-  let parentPartId: string | undefined
-
-  if (entitySlug === 'vendor-parts') {
-    parentPartId = extractRelatedEntityId(values, 'vendor_part_part')
-  } else if (entitySlug === 'subparts') {
-    parentPartId = extractRelatedEntityId(values, 'subpart_parent_part')
+  const partIds = new Set<string>()
+  const missing: string[] = []
+  for (const { entityInstanceId, values } of records) {
+    const fromValues = values ? extractRelatedEntityId(values, relationshipAttr) : undefined
+    if (fromValues) partIds.add(fromValues)
+    else missing.push(entityInstanceId)
   }
 
-  // If not in event values, look it up from field values directly
-  // (works for both created and deleted — field values persist after archive)
-  if (!parentPartId) {
-    const ids = await batchResolvePartIds(
-      [entityInstanceId],
-      organizationId,
-      entitySlug === 'vendor-parts' ? 'vendor_part_part' : 'subpart_parent_part'
-    )
-    parentPartId = ids[0]
+  // Single lookup for the records whose parent wasn't threaded (deletes with no captured
+  // values, or non-string relationship formats). Soft-archive keeps FieldValue rows, so
+  // deletes still resolve here.
+  if (missing.length > 0) {
+    const resolved = await batchResolvePartIds(missing, organizationId, relationshipAttr)
+    for (const id of resolved) partIds.add(id)
   }
 
-  if (!parentPartId) {
-    // For deletions, field values may be gone — fall back to full org recalculation
+  if (partIds.size === 0) {
     if (action === 'deleted') {
       logger.info('Falling back to full org cost recalculation on entity deletion', {
-        entitySlug,
-        entityInstanceId,
+        relationshipAttr,
+        recordCount: records.length,
       })
       await recalculateAllPartCosts(organizationId)
       return
     }
-    logger.warn('Could not determine affected part for entity change', {
-      entitySlug,
-      entityInstanceId,
-      action,
+    logger.warn('Could not determine affected parts for entity cost recalc', {
+      relationshipAttr,
+      recordCount: records.length,
     })
     return
   }
 
-  logger.info('Recalculating part cost from entity change', {
-    entitySlug,
+  logger.info('Recalculating part costs from entity change (batch)', {
+    relationshipAttr,
     action,
-    partId: parentPartId,
+    affectedParts: partIds.size,
     organizationId,
   })
-
-  await recalculateAffectedParts(organizationId, [parentPartId])
+  await recalculateAffectedParts(organizationId, [...partIds])
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────
@@ -147,4 +151,4 @@ function extractRelatedEntityId(
   return value.includes(':') ? parseRecordId(value as any).entityInstanceId : value
 }
 
-export { recalculatePartCost, recalculatePartCostOnEntityChange }
+export { recalculatePartCost }

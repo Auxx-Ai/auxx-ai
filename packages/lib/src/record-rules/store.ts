@@ -11,7 +11,7 @@ import type {
   RecordRuleActionOutcome,
   RecordRuleOn,
 } from './types'
-import { FIELD_TRANSITIONS, LIFECYCLE_TRANSITIONS } from './types'
+import { FIELD_TRANSITIONS, hasNativeAction, LIFECYCLE_TRANSITIONS } from './types'
 
 export interface RecordRuleInput {
   entityDefinitionId: string
@@ -23,8 +23,13 @@ export interface RecordRuleInput {
   enabled?: boolean
 }
 
-/** Invariant: fieldId IS NULL ⇔ on ∈ ('created','deleted'). */
-function assertRuleShape(input: Pick<RecordRuleInput, 'fieldId' | 'on' | 'actions'>): void {
+/**
+ * Validate a user/DB rule's shape before it is persisted (the tRPC create/update path).
+ * Invariant: fieldId IS NULL ⇔ on ∈ ('created','deleted'). Also rejects `native` actions
+ * — those are server-declared only (system rules, see `system-rules.ts`); user rules can
+ * neither declare them nor mix them with other actions.
+ */
+export function assertRuleShape(input: Pick<RecordRuleInput, 'fieldId' | 'on' | 'actions'>): void {
   const isLifecycle = LIFECYCLE_TRANSITIONS.includes(input.on)
   if (isLifecycle && input.fieldId) {
     throw new BadRequestError(`A '${input.on}' rule must not have a fieldId`)
@@ -37,6 +42,9 @@ function assertRuleShape(input: Pick<RecordRuleInput, 'fieldId' | 'on' | 'action
   }
   if (!Array.isArray(input.actions) || input.actions.length === 0) {
     throw new BadRequestError('A rule needs at least one action')
+  }
+  if (hasNativeAction(input.actions)) {
+    throw new BadRequestError('Native actions are server-declared only')
   }
 }
 

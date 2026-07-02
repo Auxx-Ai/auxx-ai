@@ -2,29 +2,16 @@
 
 import type { SystemAttribute } from '@auxx/types/system-attribute'
 import { registerAllHooks } from './register-hooks'
-import type {
-  EntityFieldChangeHandler,
-  EntityPreDeleteHandler,
-  EntityTriggerHandler,
-  FieldPreHookHandler,
-  FieldTriggerHandler,
-} from './types'
+import type { EntityFieldChangeHandler, EntityPreDeleteHandler, FieldPreHookHandler } from './types'
 
 // =============================================================================
 // POST-WRITE TRIGGER REGISTRIES
 // =============================================================================
 
-/**
- * Field triggers — fire when a specific systemAttribute value changes.
- * Keyed by SystemAttribute for compile-time validation.
- */
-export const FIELD_TRIGGERS: Partial<Record<SystemAttribute, FieldTriggerHandler[]>> = {}
-
-/**
- * Entity triggers — fire when an entity of a specific slug is created or deleted.
- * Keyed by entity apiSlug (e.g., 'vendor-parts', 'subparts').
- */
-export const ENTITY_TRIGGERS: Record<string, EntityTriggerHandler[]> = {}
+// NOTE: both compile-time trigger registries were removed — the manufacturing FIELD
+// triggers (B2 §8) and ENTITY triggers (B2 §9) now live on the record-rules engine as
+// server-declared system rules (see `field-hooks/system-record-rules.ts` +
+// `field-hooks/system-entity-rules.ts`).
 
 // =============================================================================
 // PRE-WRITE HOOK REGISTRIES
@@ -59,48 +46,15 @@ function ensureInitialized(): void {
   registerAllHooks()
 }
 
-// =============================================================================
-// POST-WRITE TRIGGER ACCESSORS (existing behavior)
-// =============================================================================
-
-/** Get all field trigger handlers for a given systemAttribute */
-export function getFieldTriggers(systemAttribute: SystemAttribute): FieldTriggerHandler[] {
-  ensureInitialized()
-  return FIELD_TRIGGERS[systemAttribute] ?? []
-}
-
-/** Get all entity trigger handlers for a given entity slug */
-export function getEntityTriggers(entitySlug: string): EntityTriggerHandler[] {
-  ensureInitialized()
-  return ENTITY_TRIGGERS[entitySlug] ?? []
-}
-
-/** Check if any field triggers are registered for a given systemAttribute */
-export function hasFieldTriggers(systemAttribute: SystemAttribute): boolean {
-  ensureInitialized()
-  const triggers = FIELD_TRIGGERS[systemAttribute]
-  return triggers !== undefined && triggers.length > 0
-}
-
 /**
- * Register field trigger handlers for a systemAttribute.
- * Appends to any existing handlers.
+ * Self-init entry point for readers OUTSIDE this registry that depend on the hook
+ * bootstrap's side effects — e.g. the recordRules cache provider needs
+ * `registerFieldSystemRules()`'s declarations before it computes the rule union, or a
+ * fresh process whose first record-rules touch is a connector sync would cache a
+ * system-rule-free union org-wide. Idempotent (one-shot latch).
  */
-export function registerFieldTriggers(
-  systemAttribute: SystemAttribute,
-  handlers: FieldTriggerHandler[]
-): void {
-  const existing = FIELD_TRIGGERS[systemAttribute] ?? []
-  FIELD_TRIGGERS[systemAttribute] = [...existing, ...handlers]
-}
-
-/**
- * Register entity trigger handlers for an entity slug.
- * Appends to any existing handlers.
- */
-export function registerEntityTriggers(entitySlug: string, handlers: EntityTriggerHandler[]): void {
-  const existing = ENTITY_TRIGGERS[entitySlug] ?? []
-  ENTITY_TRIGGERS[entitySlug] = [...existing, ...handlers]
+export function ensureHooksRegistered(): void {
+  ensureInitialized()
 }
 
 // =============================================================================

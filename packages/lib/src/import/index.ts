@@ -24,6 +24,7 @@ export {
   type BatchRecord,
   buildMultipleRecordData,
   buildRecordData,
+  claimImportManifestConsumed,
   type ExecuteBatchContext,
   type ExecutePlanOptions,
   type ExecuteRowContext,
@@ -32,12 +33,14 @@ export {
   executePlan,
   executeRow,
   executeStrategy,
+  getImportManifest,
   getSourceValue,
   markJobCompleted,
   markJobExecuting,
   markJobFailed,
   type SourceRow,
   type StrategyExecutionResult,
+  saveImportManifest,
   updateJobProgress,
 } from './execution'
 // Field utilities

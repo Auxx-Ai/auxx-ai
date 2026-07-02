@@ -11,7 +11,7 @@
 // Functional (Drizzle + neverthrow underneath the service calls); no model classes.
 
 import { type Database, schema } from '@auxx/database'
-import type { FieldType } from '@auxx/database/types'
+import type { CustomFieldEntity, FieldType } from '@auxx/database/types'
 import { createScopedLogger } from '@auxx/logger'
 import { createCustomField } from '@auxx/services/custom-fields'
 import type { SelectOption } from '@auxx/types/custom-field'
@@ -101,8 +101,18 @@ export async function provisionTarget(
   }
 
   // ── Provision each mapped field idempotently ─────────────────────────────────
+  // ONE cache read per target (not per field) — safe because `appFieldKey`s are
+  // distinct within a target, so a field created mid-loop can never be the lookup
+  // target of a later iteration.
+  const cachedFields = await getCachedCustomFields(organizationId, defId)
+  const existingByKey = new Map<string, CustomFieldEntity>()
+  for (const f of cachedFields) {
+    if (f.appFieldKey) existingByKey.set(f.appFieldKey, f)
+  }
+
   const provisionedFieldKeys: string[] = []
   const fieldIdByKey: Record<string, string> = {}
+  let adoptedCount = 0
   for (const field of target.fields) {
     const result = await provisionField(
       db,
@@ -110,29 +120,36 @@ export async function provisionTarget(
       dataConnectorId,
       defId,
       field,
-      target.appSlug ?? null
+      target.appSlug ?? null,
+      existingByKey
     )
     if (!result) continue
     fieldIdByKey[field.appFieldKey] = result.id
     if (result.created) provisionedFieldKeys.push(field.appFieldKey)
+    if (result.adopted) adoptedCount++
   }
 
   if (provisionedFieldKeys.length > 0) {
     await onCacheEvent('custom-field.created', { orgId: organizationId })
   }
 
-  // Fire ONCE per provision: one cache recompute + one coarse `resource:*` realtime
-  // nudge so open clients refetch the resource list. The def is adopted (never authored
-  // here), so this is always an `updated` notify; the orthogonal `custom-field.created`
-  // bust above stays separate.
-  await notifyEntityDefChanged(organizationId, defId, 'updated')
+  // Fire ONCE per provision — one cache recompute + one coarse `resource:*` realtime
+  // nudge so open clients refetch the resource list — and ONLY when something actually
+  // changed (created or adopted): this runs at the start of EVERY sync run, so an
+  // unconditional notify would recompute + broadcast on every steady-state tick. The
+  // def is adopted (never authored here), so this is always an `updated` notify; the
+  // orthogonal `custom-field.created` bust above stays separate.
+  if (provisionedFieldKeys.length > 0 || adoptedCount > 0) {
+    await notifyEntityDefChanged(organizationId, defId, 'updated')
 
-  logger.info('Provisioned connector target', {
-    dataConnectorId,
-    entityDefinitionId: defId,
-    targetMode: target.targetMode,
-    provisioned: provisionedFieldKeys.length,
-  })
+    logger.info('Provisioned connector target', {
+      dataConnectorId,
+      entityDefinitionId: defId,
+      targetMode: target.targetMode,
+      provisioned: provisionedFieldKeys.length,
+      adopted: adoptedCount,
+    })
+  }
 
   return { entityDefinitionId: defId, provisionedFieldKeys, fieldIdByKey }
 }
@@ -140,9 +157,10 @@ export async function provisionTarget(
 /**
  * Provision one field if absent. Idempotent per `(appFieldKey, entityDefinitionId)`
  * and additionally guarded against an existing display-name collision (a field the
- * user already owns). Returns the field's concrete id + whether it was created this
- * call, or `null` when a name collision left it unresolvable (contributing mode
- * never touches an existing user field).
+ * user already owns). Returns the field's concrete id + whether it was created (this
+ * call inserted it) or adopted (an existing field got a re-stamp write), or `null`
+ * when a name collision left it unresolvable (contributing mode never touches an
+ * existing user field).
  */
 async function provisionField(
   db: Database,
@@ -150,16 +168,17 @@ async function provisionField(
   dataConnectorId: string,
   entityDefinitionId: string,
   field: ProvisionFieldSpec,
-  appSlug: string | null
-): Promise<{ id: string; created: boolean } | null> {
-  // Already provisioned on this def? Look up by `appFieldKey` in the org cache —
-  // matched WITHOUT a dataConnectorId filter so a delete+reconnect ADOPTS the
-  // orphaned field (the FK is `set null` on connector delete) instead of colliding
-  // on its name and dropping it from the mapping. `appFieldKey` is set only by
-  // app/connector provisioning — never on a user-authored column — so adoption is
-  // safe. (The cache can't under-report: createCustomField invalidates on create.)
-  const existingFields = await getCachedCustomFields(organizationId, entityDefinitionId)
-  const existing = existingFields.find((f) => f.appFieldKey === field.appFieldKey)
+  appSlug: string | null,
+  existingByKey: Map<string, CustomFieldEntity>
+): Promise<{ id: string; created: boolean; adopted: boolean } | null> {
+  // Already provisioned on this def? Look up by `appFieldKey` in the org-cache
+  // snapshot the caller fetched — matched WITHOUT a dataConnectorId filter so a
+  // delete+reconnect ADOPTS the orphaned field (the FK is `set null` on connector
+  // delete) instead of colliding on its name and dropping it from the mapping.
+  // `appFieldKey` is set only by app/connector provisioning — never on a
+  // user-authored column — so adoption is safe. (The cache can't under-report a
+  // prior provision: `provisionTarget` fires `custom-field.created` after creating.)
+  const existing = existingByKey.get(field.appFieldKey)
   if (existing) {
     // Re-stamp ownership if a prior connector's delete nulled (or never set) the FK,
     // and back-fill `appSlug` on a field provisioned before this column was written
@@ -170,13 +189,14 @@ async function provisionField(
     if (existing.dataConnectorId !== dataConnectorId) patch.dataConnectorId = dataConnectorId
     if (appSlug && existing.appSlug !== appSlug) patch.appSlug = appSlug
     if (field.isIdentity && !existing.isIdentity) patch.isIdentity = true
-    if (Object.keys(patch).length > 0) {
+    const adopted = Object.keys(patch).length > 0
+    if (adopted) {
       await db
         .update(schema.CustomField)
         .set({ ...patch, updatedAt: new Date() })
         .where(eq(schema.CustomField.id, existing.id))
     }
-    return { id: existing.id, created: false }
+    return { id: existing.id, created: false, adopted }
   }
 
   // Create via the app-field path, stamping `dataConnectorId` on the insert.
@@ -215,7 +235,7 @@ async function provisionField(
     throw new Error(result.error.message)
   }
 
-  return { id: result.value.id, created: true }
+  return { id: result.value.id, created: true, adopted: false }
 }
 
 /**
@@ -252,91 +272,68 @@ export function provisionSpecsForMapping(mapping: {
 }
 
 /**
- * Provision schema for every owned/contributing mapping of a connector. Derives the
- * field specs from each mapping's `fieldMappings`. `reference` mappings write
- * nothing, so they need no provisioning. A mapping carrying an `entityDefinitionId`
- * provisions onto it directly.
- *
- * Field creation is driven EXCLUSIVELY by the `FieldMapping.provision` hint (set by
- * the template/app installer), which declares the field's name + type. A mapping
- * with no hint carries a concrete `targetFieldRef` to an EXISTING field (or is a null
- * draft) — owned and contributing alike — so provisioning never creates it. (Owned is
- * a per-mapping behavior flag — archive-on-orphan + the owned write handler, keyed off
- * `mapping.targetMode`; it does NOT mean the connector authored the def's schema.)
+ * Derive a connector's app slug from its `DataConnector.type` (`app:<slug>` →
+ * `<slug>`). Null for builtin/generic-rest connectors. Stamped onto every
+ * provisioned field's `appSlug` so the identity sink-mirror can resolve a
+ * `RecordIdentity.source`. Pure + exported for unit tests.
  */
-export async function provisionConnectorMappings(
-  db: Database,
-  organizationId: string,
-  dataConnectorId: string,
-  mappings: DecodedMapping[]
-): Promise<ProvisionResult[]> {
-  const appSlug = await getConnectorAppSlug(db, dataConnectorId)
-  const results: ProvisionResult[] = []
-  for (const mapping of mappings) {
-    if (mapping.linkMode === 'reference') continue
-    // A null-def mapping is an unbound app-owned row (its def is installed via the
-    // entity-template flow, v6) — provisioning never authors a def, so skip it.
-    if (mapping.entityDefinitionId == null) continue
-
-    const fields = provisionSpecsForMapping(mapping)
-    if (fields.length === 0) continue
-
-    const result = await provisionTarget(db, organizationId, dataConnectorId, {
-      targetMode: mapping.targetMode,
-      entityDefinitionId: mapping.entityDefinitionId,
-      appSlug,
-      fields,
-    })
-    results.push(result)
-  }
-  return results
+export function appSlugFromConnectorType(type: string | null | undefined): string | null {
+  if (!type) return null
+  return type.startsWith('app:') ? type.slice('app:'.length) : null
 }
 
 /**
- * Derive the connector's app slug from `DataConnector.type` (`app:<slug>` →
- * `<slug>`). Null for builtin/generic-rest connectors. Stamped onto every
- * provisioned field's `appSlug` so the identity sink-mirror can resolve a
- * `RecordIdentity.source`. One query per provisioning pass (not per field).
+ * True when the raw mapping row carries a `provision` hint whose concrete
+ * `targetFieldRef` hasn't been backfilled yet — i.e. the row still needs a
+ * provisioning pass. Pure + exported for unit tests; the steady-state sync
+ * fast path in `materializeConnectorTargets` keys off it.
  */
-async function getConnectorAppSlug(db: Database, dataConnectorId: string): Promise<string | null> {
-  const row = await db.query.DataConnector.findFirst({
-    where: eq(schema.DataConnector.id, dataConnectorId),
-    columns: { type: true },
-  })
-  if (!row?.type) return null
-  return row.type.startsWith('app:') ? row.type.slice('app:'.length) : null
+export function mappingNeedsProvisioning(
+  fieldMappings: Array<{ provision?: unknown; targetFieldRef?: unknown }>
+): boolean {
+  return fieldMappings.some((fm) => fm.provision && fm.targetFieldRef == null)
 }
 
 /**
  * Fill the concrete `ResourceFieldId` on each provisioned field mapping after its
  * field has been created (the generic-rest provision case — app connectors resolve
- * their `@app:` refs live in the sink, no write-back). Resolves the field by
- * `(dataConnectorId, entityDefinitionId, appFieldKey = provision.name)`, stamps
- * `fm.targetFieldRef`, and persists the mutated `fieldMappings`. Mutates the
- * decoded mappings in place so the current run's sink sees the resolved refs.
+ * their `@app:` refs live in the sink, no write-back). Resolves the field id from
+ * `fieldIdsByDef` (the `fieldIdByKey` maps `provisionTarget` just returned — write-path
+ * ids, so no staleness) and only falls back to a per-field DB lookup by
+ * `(dataConnectorId, entityDefinitionId, appFieldKey)` for keys not in the map (the
+ * standalone e2e-script caller passes no map). The fallback must stay a DB query, NOT
+ * `getCachedCustomFields`: it filters on `dataConnectorId`, which the org cache can
+ * report stale (the adoption re-stamp write doesn't invalidate). Stamps
+ * `fm.targetFieldRef` and persists the mutated `fieldMappings`. Mutates the decoded
+ * mappings in place so the current run's sink sees the resolved refs.
  */
 export async function backfillProvisionedFieldRefs(
   db: Database,
   organizationId: string,
   dataConnectorId: string,
-  mappings: DecodedMapping[]
+  mappings: DecodedMapping[],
+  fieldIdsByDef?: Map<string, Record<string, string>>
 ): Promise<void> {
   for (const mapping of mappings) {
     let changed = false
     for (const fm of mapping.fieldMappings) {
       if (!fm.provision || fm.targetFieldRef != null) continue
       const appFieldKey = fm.provision.appFieldKey ?? fm.provision.name
-      const field = await db.query.CustomField.findFirst({
-        where: and(
-          eq(schema.CustomField.organizationId, organizationId),
-          eq(schema.CustomField.entityDefinitionId, mapping.entityDefinitionId),
-          eq(schema.CustomField.dataConnectorId, dataConnectorId),
-          eq(schema.CustomField.appFieldKey, appFieldKey)
-        ),
-        columns: { id: true },
-      })
-      if (!field) continue
-      fm.targetFieldRef = toResourceFieldId(mapping.entityDefinitionId, field.id)
+      let fieldId = fieldIdsByDef?.get(mapping.entityDefinitionId)?.[appFieldKey]
+      if (!fieldId) {
+        const field = await db.query.CustomField.findFirst({
+          where: and(
+            eq(schema.CustomField.organizationId, organizationId),
+            eq(schema.CustomField.entityDefinitionId, mapping.entityDefinitionId),
+            eq(schema.CustomField.dataConnectorId, dataConnectorId),
+            eq(schema.CustomField.appFieldKey, appFieldKey)
+          ),
+          columns: { id: true },
+        })
+        fieldId = field?.id
+      }
+      if (!fieldId) continue
+      fm.targetFieldRef = toResourceFieldId(mapping.entityDefinitionId, fieldId)
       changed = true
     }
     if (changed) {
@@ -358,32 +355,61 @@ export async function backfillProvisionedFieldRefs(
  * Operates on RAW rows so it can run BEFORE `loadConnector`/`decodeMapping` in the sync
  * path (those filter/throw on null-def rows). Materializes ENABLED streams only.
  *
+ * Runs at the START of every sync run, so the steady state (every provision hint
+ * already backfilled to a concrete ref) is the hot path: it returns right after
+ * `listStreams` — no connector/appSlug query, no cache reads, no notify. Only rows
+ * with an unresolved provisioned field pay the full provision+backfill pass. (Trade-off:
+ * the adoption re-stamp in `provisionField` no longer re-runs every sync — fine, since
+ * delete+reconnect creates fresh null-ref rows that still take the full path.)
+ *
  * Idempotent: `provisionTarget` provisions fields keyed by `(dataConnectorId, appFieldKey)`
  * and `backfillProvisionedFieldRefs` only fills null refs — so a re-run (finalize then
  * sync) never dupes.
  *
  * Flow: (1) provision each mapping's `provision` columns onto its existing def; (2)
- * backfill the concrete `targetFieldRef`s.
+ * backfill the concrete `targetFieldRef`s from the ids step 1 returned.
+ *
+ * @param connectorType Pass `DataConnector.type` when the caller already holds the row
+ *   (both call sites do) to skip the fallback lookup query.
  */
 export async function materializeConnectorTargets(
   db: Database,
   organizationId: string,
-  dataConnectorId: string
+  dataConnectorId: string,
+  connectorType?: string | null
 ): Promise<void> {
   // RAW rows for ENABLED streams. `listStreams` does NOT filter null-def mappings, so
   // unbound owned rows are visible here (unlike `loadConnector`, which drops them) and
   // skipped below.
   const streams = (await listStreams(db, organizationId, dataConnectorId)).filter((s) => s.enabled)
-  const mappingRows = streams.flatMap((s) => s.mappings)
-  if (mappingRows.length === 0) return
 
-  const appSlug = await getConnectorAppSlug(db, dataConnectorId)
+  // ── Steady-state fast path ────────────────────────────────────────────────────
+  // Only bound, writing rows with an unresolved provisioned field need work.
+  const pendingRows = streams
+    .flatMap((s) => s.mappings)
+    .filter(
+      (r) =>
+        r.linkMode !== 'reference' &&
+        r.entityDefinitionId != null &&
+        mappingNeedsProvisioning(r.fieldMappings)
+    )
+  if (pendingRows.length === 0) return
+
+  const appSlug =
+    connectorType !== undefined
+      ? appSlugFromConnectorType(connectorType)
+      : appSlugFromConnectorType(
+          (
+            await db.query.DataConnector.findFirst({
+              where: eq(schema.DataConnector.id, dataConnectorId),
+              columns: { type: true },
+            })
+          )?.type
+        )
 
   // ── Provision `provision`-hint fields onto each mapping's existing def ─────────
-  for (const row of mappingRows) {
-    if (row.linkMode === 'reference') continue
-    // Unbound owned row (def installed via templates, v6) — nothing to provision yet.
-    if (row.entityDefinitionId == null) continue
+  const fieldIdsByDef = new Map<string, Record<string, string>>()
+  for (const row of pendingRows) {
     // Raw-row `fieldMappings` are the DB mirror shape (plain-string refs); cast to the
     // engine `FieldMapping` — `provisionSpecsForMapping` only reads `.provision`.
     const fields = provisionSpecsForMapping({
@@ -391,26 +417,26 @@ export async function materializeConnectorTargets(
     })
     if (fields.length === 0) continue
 
-    await provisionTarget(db, organizationId, dataConnectorId, {
+    const result = await provisionTarget(db, organizationId, dataConnectorId, {
       targetMode: row.targetMode as 'owned' | 'contributing',
       entityDefinitionId: row.entityDefinitionId,
       appSlug,
       fields,
     })
+    fieldIdsByDef.set(result.entityDefinitionId, {
+      ...fieldIdsByDef.get(result.entityDefinitionId),
+      ...result.fieldIdByKey,
+    })
   }
 
   // ── Backfill concrete refs ───────────────────────────────────────────────────
-  // Every provisioned column now exists; decode the rows carrying unresolved
-  // provisioned fields and stamp their concrete `targetFieldRef`s.
-  const decodedForBackfill = mappingRows
-    .filter(
-      (r) =>
-        r.linkMode !== 'reference' &&
-        r.entityDefinitionId != null &&
-        r.fieldMappings.some((fm) => fm.provision && fm.targetFieldRef == null)
-    )
-    .map((r) => decodeMapping(r))
-  if (decodedForBackfill.length > 0) {
-    await backfillProvisionedFieldRefs(db, organizationId, dataConnectorId, decodedForBackfill)
-  }
+  // Every provisioned column now exists; stamp the pending rows' concrete
+  // `targetFieldRef`s from the ids `provisionTarget` just returned (no re-query).
+  await backfillProvisionedFieldRefs(
+    db,
+    organizationId,
+    dataConnectorId,
+    pendingRows.map((r) => decodeMapping(r)),
+    fieldIdsByDef
+  )
 }

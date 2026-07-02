@@ -3,6 +3,7 @@
 
 import type { Database } from '@auxx/database'
 import type { ResourceFieldId } from '@auxx/types/field'
+import type { ManifestCollector } from '../../record-rules/sync-manifest-collector'
 import type { UnifiedCrudHandler } from '../../resources/crud/unified-handler'
 import type { DataConnectorRow, DecodedMapping, PendingRelation, RunCounters } from '../service'
 
@@ -47,6 +48,13 @@ export interface SyncCtx {
   ownedCrud: UnifiedCrudHandler
   /** Mutable run counters. */
   counters: RunCounters
+  /**
+   * Sync-change manifest collector (B2). Accumulates subscribed field writes +
+   * lifecycle ids as the sink writes (which suppress per-write events via
+   * `skipEvents`), so record rules can react at finalize. The no-op stub when the org
+   * has no enabled rules — capture sites gate on `manifest.enabled`.
+   */
+  manifest: ManifestCollector
   /** Entity definition ids touched this run — invalidated once at the end. */
   touchedDefs: Set<string>
   /**

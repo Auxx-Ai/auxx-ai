@@ -1793,6 +1793,27 @@
       "when": 1782960170273,
       "tag": "0255_record_rules",
       "breakpoints": true
+    },
+    {
+      "idx": 256,
+      "version": "7",
+      "when": 1782969340261,
+      "tag": "0256_data_connector_run_manifest",
+      "breakpoints": true
+    },
+    {
+      "idx": 257,
+      "version": "7",
+      "when": 1783013709142,
+      "tag": "0257_sync_manifest_consume_claim",
+      "breakpoints": true
+    },
+    {
+      "idx": 258,
+      "version": "7",
+      "when": 1783017365052,
+      "tag": "0258_drop_record_rule_run_rule_fk",
+      "breakpoints": true
     }
   ]
 }

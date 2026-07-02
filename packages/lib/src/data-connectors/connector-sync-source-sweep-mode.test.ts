@@ -6,6 +6,20 @@
 // machinery is touched (mirrors the isolation style of app-connector-adapter.test.ts).
 
 import { describe, expect, it, vi } from 'vitest'
+
+// buildCtx builds a B2 manifest collector (loadManifestCollector → cache/db). Stub it to
+// the no-op so this DB-free isolation test never reaches the org cache.
+vi.mock('../record-rules/sync-manifest-collector', () => ({
+  loadManifestCollector: async () => ({
+    enabled: false,
+    subscriptionsFor: () => undefined,
+    recordChange: () => {},
+    recordCreated: () => {},
+    recordArchived: () => {},
+    toJson: () => null,
+  }),
+}))
+
 import type { SyncSliceCtx } from '../sync-core/contracts'
 import type { ConnectorSyncSourceDeps, SyncSourceStream } from './connector-sync-source'
 import { createConnectorStreamSyncSource } from './connector-sync-source'

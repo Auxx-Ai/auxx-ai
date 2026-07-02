@@ -61,6 +61,26 @@ export const DataConnectorRun = pgTable(
     // can't skew slices already in flight; every slice job decodes against this, not
     // live config. Null for legacy single-shot runs. See plans/data-connectors/v3.
     chainSnapshot: jsonb().$type<Record<string, unknown>>(),
+    // B2 — sync-change manifest folded across this run's slices. The connector sink
+    // writes with `skipEvents: true` (no per-write fan-out); this captures the
+    // subscribed field writes (`{o,n}`) + created/archived ids so record rules can
+    // react at finalize. Structural mirror of `SyncChangeManifest` in
+    // `@auxx/lib/record-rules` (can't import across the tier boundary — keep the two
+    // in sync BY HAND, including literal types like `version: 1`). Null when the
+    // org has no enabled rules on any touched def (zero-cost path). See
+    // plans/events/b2-sync-change-manifest-plan.md.
+    manifest: jsonb().$type<{
+      version: 1
+      truncated: boolean
+      changes: Record<string, Record<string, { o?: unknown; n: unknown }>>
+      createdRecordIds: string[]
+      archivedRecordIds: string[]
+    }>(),
+    // B2 — once-per-run consume claim for the manifest. The `sync:records:changed`
+    // consumer atomically stamps this (`… WHERE manifestConsumedAt IS NULL RETURNING`)
+    // before firing any rule action, so a redelivered event or a re-entered finalize
+    // can never double-fire notifications / workflow enqueues / set-field writes.
+    manifestConsumedAt: timestamp({ precision: 3 }),
     cursorBefore: jsonb(),
     cursorAfter: jsonb(),
     startedAt: timestamp({ precision: 3 }).defaultNow().notNull(),

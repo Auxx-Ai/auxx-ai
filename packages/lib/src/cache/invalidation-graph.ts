@@ -29,15 +29,34 @@ export const INVALIDATION_GRAPH: Record<string, InvalidationMapping> = {
   'org.updated': ['orgProfile'],
   'org.deleted': [], // flush all, handled specially
 
-  'custom-field.created': ['resources', 'customFields'],
-  'custom-field.updated': ['resources', 'customFields'],
+  // System rules resolve field ids from the customFields projection — any customFields
+  // change can change which system rules resolve for an org, so recompute the union.
+  'custom-field.created': ['resources', 'customFields', 'recordRules'],
+  'custom-field.updated': ['resources', 'customFields', 'recordRules'],
   // A field delete cascades its RecordRules away (FK) — bust the rules cache too.
   'custom-field.deleted': ['resources', 'customFields', 'recordRules'],
 
-  // entityDefs/entityDefSlugs — invalidate slugs on create/delete/update (archive changes visibility)
-  'entity-def.created': ['resources', 'entityDefs', 'entityDefSlugs', 'customFields', 'overages'],
-  'entity-def.updated': ['resources', 'entityDefs', 'entityDefSlugs'],
-  'entity-def.deleted': ['resources', 'entityDefs', 'entityDefSlugs', 'customFields', 'overages'],
+  // entityDefs/entityDefSlugs — invalidate slugs on create/delete/update (archive changes visibility).
+  // recordRules rides along: system rules resolve their target def BY SLUG through the
+  // entityDefSlugs projection, so a slug rename/create/delete changes which rules
+  // resolve — same reason custom-field.* busts it below.
+  'entity-def.created': [
+    'resources',
+    'entityDefs',
+    'entityDefSlugs',
+    'customFields',
+    'overages',
+    'recordRules',
+  ],
+  'entity-def.updated': ['resources', 'entityDefs', 'entityDefSlugs', 'recordRules'],
+  'entity-def.deleted': [
+    'resources',
+    'entityDefs',
+    'entityDefSlugs',
+    'customFields',
+    'overages',
+    'recordRules',
+  ],
 
   'channel.connected': ['channelProviders', 'inboxes', 'channels', 'overages'],
   'channel.disconnected': ['channelProviders', 'inboxes', 'channels', 'overages'],

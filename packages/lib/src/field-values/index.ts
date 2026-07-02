@@ -57,6 +57,7 @@ export {
   type CachedField,
   createFieldValueContext,
   type FieldValueContext,
+  flattenTypedFieldValue,
   getField,
   getFieldTypeMapByDefinition,
   getInverseInfoFromField,
@@ -93,6 +94,8 @@ export {
   getValue,
   getValues,
 } from './field-value-queries'
+// FieldValue row → flat scalar (shared by resource-fetcher + record-rules snapshot-fetcher)
+export { extractFieldValueScalar } from './field-value-scalar'
 // Services
 export { FieldValueService } from './field-value-service'
 // NEW: Centralized Formatter API (preferred)
@@ -180,7 +183,6 @@ export {
 } from './relationship-validators'
 // Typed column match (shared between write-path dedup and read-path lookup)
 export { type TypedColumnMatch, typedColumnMatch } from './typed-column-match'
-
 // Service types
 export type {
   AddRelationValuesBulkInput,
@@ -212,3 +214,5 @@ export type {
   SetValueWithTypeInput,
   TypedFieldValueResult,
 } from './types'
+// writeKey (id | systemAttribute) → CustomField.id resolution
+export { buildWriteKeyToFieldIdMap } from './write-key-map'

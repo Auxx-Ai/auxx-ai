@@ -107,6 +107,12 @@ export async function executePlanJob(ctx: JobContext<ExecutePlanJobProps>): Prom
     await crudHandler.warmCache(entityDefinitionId)
     logger.debug('Cache warmed for import', { entityDefinitionId })
 
+    // B2: the import writes with `skipEvents: true` (below), so build a manifest
+    // collector to capture subscribed field/lifecycle changes for record rules. No-op
+    // stub (zero cost) when the org has no enabled rules on this def.
+    const { loadManifestCollector } = await import('../../record-rules/sync-manifest-collector')
+    const manifest = await loadManifestCollector(organizationId)
+
     const createRecord = async (data: {
       standardFields: Record<string, unknown>
       customFields: Record<string, unknown>
@@ -125,6 +131,34 @@ export async function executePlanJob(ctx: JobContext<ExecutePlanJobProps>): Prom
         skipEvents: true,
         skipSnapshotInvalidation: true,
       })
+
+      // B2: capture lifecycle-created + `set`-transition field writes for record rules.
+      if (manifest.enabled) {
+        const subs = manifest.subscriptionsFor(entityDefinitionId)
+        if (subs) {
+          const rid = toRecordId(entityDefinitionId, instance.id)
+          const { captureCreateFieldChanges, captureCreatedValues } = await import(
+            '../../record-rules/capture-field-changes'
+          )
+          if (subs.lifecycle.created) {
+            // Thread raw created values for native entity-trigger lifecycle handlers on the
+            // sync door (Phase 9 / Option A) — no DB read, mergedData is in hand.
+            const createdValues = await captureCreatedValues(
+              organizationId,
+              entityDefinitionId,
+              mergedData
+            )
+            manifest.recordCreated(rid, createdValues ?? undefined)
+          }
+          const entries = await captureCreateFieldChanges(
+            organizationId,
+            entityDefinitionId,
+            mergedData,
+            subs.fieldIds
+          )
+          if (entries) manifest.recordChange(rid, entries)
+        }
+      }
 
       logger.debug('Created record', { id: instance.id, entityDefinitionId })
       return { id: instance.id }
@@ -151,6 +185,28 @@ export async function executePlanJob(ctx: JobContext<ExecutePlanJobProps>): Prom
       const recordId = toRecordId(entityDefinitionId, id)
       logger.debug('Calling crudHandler.update', { recordId, entityDefinitionId, id })
 
+      // B2: read old values for subscribed written fields BEFORE the write.
+      let captured: Record<
+        string,
+        import('../../record-rules/sync-manifest-types').ManifestFieldChange
+      > | null = null
+      if (manifest.enabled) {
+        const subs = manifest.subscriptionsFor(entityDefinitionId)
+        if (subs?.fieldIds.size) {
+          const { captureUpdateFieldChanges } = await import(
+            '../../record-rules/capture-field-changes'
+          )
+          captured = await captureUpdateFieldChanges(
+            db,
+            organizationId,
+            entityDefinitionId,
+            id,
+            mergedData,
+            subs.fieldIds
+          )
+        }
+      }
+
       // Use UnifiedCrudHandler with skipEvents and skipSnapshotInvalidation.
       // `modes` is undefined — every field falls through to 'set' (today's
       // behavior); `options` moved to the fourth positional slot.
@@ -158,6 +214,7 @@ export async function executePlanJob(ctx: JobContext<ExecutePlanJobProps>): Prom
         skipEvents: true,
         skipSnapshotInvalidation: true,
       })
+      if (captured) manifest.recordChange(recordId, captured)
 
       logger.debug('Updated record', { recordId, entityDefinitionId })
       return { id: instance.id }
@@ -209,6 +266,31 @@ export async function executePlanJob(ctx: JobContext<ExecutePlanJobProps>): Prom
 
     // Mark job as completed
     await markJobCompleted(db, jobId, result.statistics)
+
+    // B2: persist the captured manifest on the ImportJob row and publish ONE pointer
+    // event — the same row-transport the connector path uses (no inline cap, no silent
+    // truncation). Best-effort — a manifest failure must never fail the import.
+    try {
+      const captured = manifest.toJson()
+      if (captured) {
+        const { saveImportManifest } = await import('../../import')
+        await saveImportManifest(db, jobId, captured)
+        const { publisher } = await import('../../events/publisher')
+        await publisher.publishLater({
+          type: 'sync:records:changed',
+          data: {
+            source: 'import',
+            organizationId,
+            importRef: jobId,
+          },
+        })
+      }
+    } catch (manifestErr) {
+      logger.error('failed to publish import sync:records:changed', {
+        jobId,
+        error: manifestErr instanceof Error ? manifestErr.message : String(manifestErr),
+      })
+    }
 
     await publishEvent({
       type: 'execution:complete',

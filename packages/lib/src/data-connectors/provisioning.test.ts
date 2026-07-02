@@ -3,13 +3,18 @@
 // provisioned ONLY from a `provision` hint; a concrete `targetFieldRef` reuses an
 // existing field and yields no spec. Guards the duplicate-field regression where an
 // owned mapping onto an existing def created a TEXT column named after each target
-// field's own id. The DB orchestration (`provisionConnectorMappings`/`provisionTarget`)
-// has no vitest harness — this locks the derivation it feeds.
+// field's own id. The DB orchestration (`materializeConnectorTargets`/`provisionTarget`)
+// has no vitest harness — this locks the derivation it feeds, plus the steady-state
+// fast-path predicate and the `app:<slug>` type parse.
 
 import type { FieldType } from '@auxx/database/types'
 import { toResourceFieldId } from '@auxx/types/field'
 import { describe, expect, it } from 'vitest'
-import { provisionSpecsForMapping } from './provisioning'
+import {
+  appSlugFromConnectorType,
+  mappingNeedsProvisioning,
+  provisionSpecsForMapping,
+} from './provisioning'
 import type { DecodedMapping } from './service'
 import type { FieldMapping } from './types'
 
@@ -91,5 +96,54 @@ describe('provisionSpecsForMapping', () => {
     expect(provisionSpecsForMapping(m)).toMatchObject([
       { appFieldKey: 'shopify_id', isIdentity: true },
     ])
+  })
+})
+
+describe('mappingNeedsProvisioning', () => {
+  it('false when every provision hint already has a concrete ref (steady state)', () => {
+    expect(
+      mappingNeedsProvisioning([
+        fm({
+          targetFieldRef: toResourceFieldId(DEF, 'f_total'),
+          provision: { name: 'total_price', type: 'NUMBER' as FieldType },
+        }),
+        fm({ targetFieldRef: toResourceFieldId(DEF, 'f_email') }), // no hint
+      ])
+    ).toBe(false)
+  })
+
+  it('false for hint-less mappings — concrete refs and unassigned drafts alike', () => {
+    expect(
+      mappingNeedsProvisioning([
+        fm({ targetFieldRef: toResourceFieldId(DEF, 'f_email') }),
+        fm({ targetFieldRef: null }), // draft, no hint → nothing to provision
+      ])
+    ).toBe(false)
+    expect(mappingNeedsProvisioning([])).toBe(false)
+  })
+
+  it('true when a provision hint is still unresolved (null ref)', () => {
+    expect(
+      mappingNeedsProvisioning([
+        fm({ targetFieldRef: toResourceFieldId(DEF, 'f_email') }),
+        fm({
+          targetFieldRef: null,
+          provision: { name: 'total_price', type: 'NUMBER' as FieldType },
+        }),
+      ])
+    ).toBe(true)
+  })
+})
+
+describe('appSlugFromConnectorType', () => {
+  it('parses the app slug from an `app:<slug>` connector type', () => {
+    expect(appSlugFromConnectorType('app:shopify')).toBe('shopify')
+  })
+
+  it('yields null for builtin/generic-rest types and missing values', () => {
+    expect(appSlugFromConnectorType('generic-rest')).toBeNull()
+    expect(appSlugFromConnectorType(null)).toBeNull()
+    expect(appSlugFromConnectorType(undefined)).toBeNull()
+    expect(appSlugFromConnectorType('')).toBeNull()
   })
 })

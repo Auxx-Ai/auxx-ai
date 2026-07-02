@@ -2,8 +2,8 @@
 
 import type { SystemAttribute } from '@auxx/types/system-attribute'
 import { isSystemAttribute } from '@auxx/types/system-attribute'
-import { getAllCachedCustomFields } from '../cache'
-import { hasFieldTriggers } from './registry'
+import { getAllCachedCustomFields, getCachedRecordRules } from '../cache'
+import { hasNativeAction } from '../record-rules/types'
 
 export interface TriggeredField {
   fieldId: string
@@ -11,10 +11,12 @@ export interface TriggeredField {
 }
 
 /**
- * Given a list of fieldIds that were mutated, check which ones have
- * systemAttributes with registered triggers. Uses org cache only (no DB calls).
+ * Given a list of fieldIds that were mutated, return the ones that carry a NATIVE
+ * (server-declared) record rule — i.e. the migrated manufacturing triggers (B2 §8). Uses
+ * org cache only (no DB calls). Non-native user rules are dispatched separately by the
+ * field-change hook (door 1), so they are intentionally excluded here.
  *
- * Returns the list of triggered systemAttributes with their fieldIds.
+ * Returns the triggered systemAttributes with their fieldIds.
  */
 export async function collectTriggeredFields(
   organizationId: string,
@@ -22,16 +24,28 @@ export async function collectTriggeredFields(
 ): Promise<TriggeredField[]> {
   if (fieldIds.length === 0) return []
 
-  const allFields = await getAllCachedCustomFields(organizationId)
+  const [allFields, rules] = await Promise.all([
+    getAllCachedCustomFields(organizationId),
+    getCachedRecordRules(organizationId),
+  ])
+
+  // Field row ids that have at least one enabled native rule.
+  const nativeFieldIds = new Set<string>()
+  for (const rule of rules) {
+    if (!rule.enabled || rule.fieldId === null) continue
+    if (hasNativeAction(rule.actions)) nativeFieldIds.add(rule.fieldId)
+  }
+  if (nativeFieldIds.size === 0) return []
+
   const fieldMap = new Map(allFields.map((f) => [f.id, f]))
 
   const results: TriggeredField[] = []
-  for (let i = 0; i < fieldIds.length; i++) {
-    const field = fieldMap.get(fieldIds[i]!)
+  for (const fieldId of fieldIds) {
+    if (!nativeFieldIds.has(fieldId)) continue
+    const field = fieldMap.get(fieldId)
     if (!field?.systemAttribute) continue
     if (!isSystemAttribute(field.systemAttribute)) continue
-    if (!hasFieldTriggers(field.systemAttribute)) continue
-    results.push({ fieldId: fieldIds[i]!, systemAttribute: field.systemAttribute })
+    results.push({ fieldId, systemAttribute: field.systemAttribute })
   }
 
   return results

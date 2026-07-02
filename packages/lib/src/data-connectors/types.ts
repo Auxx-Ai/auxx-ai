@@ -577,7 +577,7 @@ export interface FieldMapping {
   connectionMetaKey?: string
   /**
    * Provisioning hint for a connector-introduced target field (05d). Consumed by
-   * `provisionConnectorMappings` to create the field with the declared type/name
+   * `materializeConnectorTargets` to create the field with the declared type/name
    * when the target def is missing it; ignored when the field already exists
    * (e.g. `email`/`name` reused from a system def). Absent on hand-authored UI
    * mappings — those bind to fields that already exist.

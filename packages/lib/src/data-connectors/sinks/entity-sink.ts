@@ -18,6 +18,7 @@ import { and, eq, inArray, isNull, ne, or } from 'drizzle-orm'
 import { resolveConnectorFieldRef } from '../../agents/bindings/resolve'
 import { getCachedFieldMap } from '../../cache'
 import { upsertRecordIdentity } from '../../identity'
+import type { ManifestFieldChange } from '../../record-rules/sync-manifest-types'
 import { toRecordId } from '../../resources/resource-id'
 import { buildWriteKeyToFieldId } from '../field-id-resolver'
 import {
@@ -466,6 +467,60 @@ async function findOtherLiveBinding(
   return !!row
 }
 
+/**
+ * B2 sync-change capture. Reads existing values for the subset of `writeSet` keys the
+ * org has an enabled field rule on (via the collector's subscription index), so record
+ * rules can transition-match `{o, n}` for a connector write that suppressed per-write
+ * events. Returns null when nothing subscribed is written (no query issued). MUST be
+ * called BEFORE the write so `o` is the pre-write value. Field-value deps are
+ * lazy-imported so the sink's mocked unit tests (no manifest) never load them.
+ */
+async function captureSubscribedChanges(
+  ctx: SyncCtx,
+  entityDefinitionId: string,
+  instanceId: string,
+  writeSet: Record<string, unknown>
+): Promise<Record<string, ManifestFieldChange> | null> {
+  const subs = ctx.manifest.subscriptionsFor(entityDefinitionId)
+  if (!subs || subs.fieldIds.size === 0) return null
+  const { captureUpdateFieldChanges } = await import('../../record-rules/capture-field-changes')
+  return captureUpdateFieldChanges(
+    ctx.db,
+    ctx.orgId,
+    entityDefinitionId,
+    instanceId,
+    writeSet,
+    subs.fieldIds
+  )
+}
+
+/**
+ * B2 capture for a CREATE: subscribed written fields with no `o` (the row is new), so
+ * `set` field rules fire on synced creates. No DB read.
+ */
+async function buildCreateChangeEntries(
+  ctx: SyncCtx,
+  entityDefinitionId: string,
+  writeSet: Record<string, unknown>,
+  subscribedFieldIds: ReadonlySet<string>
+): Promise<Record<string, ManifestFieldChange> | null> {
+  const { captureCreateFieldChanges } = await import('../../record-rules/capture-field-changes')
+  return captureCreateFieldChanges(ctx.orgId, entityDefinitionId, writeSet, subscribedFieldIds)
+}
+
+/**
+ * B2 §9: raw created values (systemAttribute-keyed) for native entity-trigger lifecycle
+ * handlers on the sync door. No DB read — the writeSet is already in hand.
+ */
+async function buildCreatedValues(
+  ctx: SyncCtx,
+  entityDefinitionId: string,
+  writeSet: Record<string, unknown>
+): Promise<Record<string, unknown> | null> {
+  const { captureCreatedValues } = await import('../../record-rules/capture-field-changes')
+  return captureCreatedValues(ctx.orgId, entityDefinitionId, writeSet)
+}
+
 export const entitySink: EntitySink = {
   async upsertRecord(ctx, mapping, record) {
     ctx.counters.fetched += 1
@@ -588,11 +643,30 @@ export const entitySink: EntitySink = {
     try {
       if (instanceId) {
         const recordId = toRecordId(mapping.entityDefinitionId, instanceId)
+        // B2: read pre-write old values for subscribed fields BEFORE the write.
+        //
+        // KNOWN NON-ATOMICITY (F10): capture-read → write → recordChange are three
+        // unlocked steps. A concurrent interactive edit (or sibling stream slice) on
+        // the same subscribed field in that window can yield a manifest transition
+        // that never happened as written. Tolerated: it needs same-field overlap
+        // during an in-flight sync AND an old-value-conditioned rule; fixing it means
+        // pushing capture inside the write's transaction (or RETURNING the prior
+        // value from the write itself).
+        //
+        // KNOWN N+1 (F9): one pre-read per updated record that writes a subscribed
+        // field. Records stream one at a time and the instanceId only exists after
+        // per-record identity resolution, so there is no slice-level id list to batch
+        // against — and the content-hash skip above means only genuinely changed
+        // records pay it.
+        const captured = ctx.manifest?.enabled
+          ? await captureSubscribedChanges(ctx, mapping.entityDefinitionId, instanceId, writeSet)
+          : null
         await handler.update(recordId, writeSet, undefined, {
           skipSnapshotInvalidation: true,
           skipEvents: true,
         })
         ctx.counters.updated += 1
+        if (captured) ctx.manifest.recordChange(recordId, captured)
       } else {
         const created = await handler.create(mapping.entityDefinitionId, writeSet, {
           skipSnapshotInvalidation: true,
@@ -601,6 +675,31 @@ export const entitySink: EntitySink = {
         instanceId = created.instance.id
         justCreated = true
         ctx.counters.created += 1
+        // B2: lifecycle-created + `set`-transition capture for synced creates.
+        if (ctx.manifest?.enabled) {
+          const recordId = toRecordId(mapping.entityDefinitionId, instanceId)
+          const subs = ctx.manifest.subscriptionsFor(mapping.entityDefinitionId)
+          if (subs) {
+            if (subs.lifecycle.created) {
+              // Thread the raw created values so native entity-trigger lifecycle handlers
+              // (e.g. enrichCompanyOnCreate) can read them on the sync door without a DB
+              // refetch (Phase 9 / Option A). No DB read — writeSet is already in hand.
+              const createdValues = await buildCreatedValues(
+                ctx,
+                mapping.entityDefinitionId,
+                writeSet
+              )
+              ctx.manifest.recordCreated(recordId, createdValues ?? undefined)
+            }
+            const entries = await buildCreateChangeEntries(
+              ctx,
+              mapping.entityDefinitionId,
+              writeSet,
+              subs.fieldIds
+            )
+            if (entries) ctx.manifest.recordChange(recordId, entries)
+          }
+        }
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
@@ -682,6 +781,14 @@ export const entitySink: EntitySink = {
         })
         ctx.touchedDefs.add(item.entityDefinitionId)
         ctx.counters.archived += 1
+        // B2: lifecycle-deleted capture for synced archives (soft-archive; the record
+        // still exists, so the consumer can snapshot last-known values).
+        if (
+          ctx.manifest?.enabled &&
+          ctx.manifest.subscriptionsFor(item.entityDefinitionId)?.lifecycle.deleted
+        ) {
+          ctx.manifest.recordArchived(recordId)
+        }
       } catch (error) {
         logger.warn('archiveRecord failed', {
           itemId: item.id,

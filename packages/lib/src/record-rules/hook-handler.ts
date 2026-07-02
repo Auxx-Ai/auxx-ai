@@ -9,6 +9,7 @@
 import { createScopedLogger } from '@auxx/logger'
 import { parseRecordId } from '@auxx/types/resource'
 import type { EntityFieldChangeEvent } from '../field-hooks/types'
+import { hasNativeAction } from './types'
 
 const logger = createScopedLogger('record-rules-hook')
 
@@ -23,11 +24,14 @@ export async function handleRecordRulesOnFieldChange(event: EntityFieldChangeEve
     if (rules.length === 0) return
 
     // A rule's fieldId is normalized to the field row id at write time, but match
-    // the systemAttribute too — refs resolve by either form.
+    // the systemAttribute too — refs resolve by either form. Native (system) rules are
+    // excluded: they dispatch through the batched field-trigger door (`field-hook-job.ts`)
+    // so bulk edits recalc once, and the per-record path skips native actions anyway.
     const candidates = rules.filter(
       (rule) =>
         rule.enabled &&
         rule.fieldId !== null &&
+        !hasNativeAction(rule.actions) &&
         (rule.fieldId === event.field.id ||
           (event.field.systemAttribute && rule.fieldId === event.field.systemAttribute))
     )

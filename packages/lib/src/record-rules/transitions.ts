@@ -5,13 +5,30 @@
 import { isEmpty } from '@auxx/utils/objects'
 import type { RecordRuleOn } from './types'
 
+/**
+ * Serialize with OBJECT KEYS SORTED — jsonb round-trips reorder keys (Postgres stores
+ * them length-then-bytewise), so a manifest `o` read back from a run row would never
+ * `JSON.stringify`-equal an identical `n` captured in writer key order. Same trap as
+ * content hashing (see `stableHash`). Arrays keep their order (it's meaningful).
+ */
+function stableStringify(value: unknown): string {
+  return JSON.stringify(value, (_k, v) => {
+    if (v && typeof v === 'object' && !Array.isArray(v)) {
+      const sorted: Record<string, unknown> = {}
+      for (const key of Object.keys(v).sort()) sorted[key] = (v as Record<string, unknown>)[key]
+      return sorted
+    }
+    return v
+  })
+}
+
 function valuesEqual(a: unknown, b: unknown): boolean {
   if (a === b) return true
   if (a == null && b == null) return true
   if (a == null || b == null) return false
   if (typeof a === 'object' || typeof b === 'object') {
     try {
-      return JSON.stringify(a) === JSON.stringify(b)
+      return stableStringify(a) === stableStringify(b)
     } catch {
       return false
     }

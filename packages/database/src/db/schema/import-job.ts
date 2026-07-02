@@ -67,6 +67,23 @@ export const ImportJob = pgTable(
     // { created, updated, skipped, failed, durationMs }
     statistics: jsonb(),
 
+    // B2 — sync-change manifest captured by the import's skipEvents writes, persisted
+    // here so the `sync:records:changed` pointer event stays payload-free (same
+    // transport as DataConnectorRun.manifest — no inline cap, no truncation).
+    // Structural mirror of `SyncChangeManifest` in `@auxx/lib/record-rules` (can't
+    // import across the tier boundary — keep in sync BY HAND, incl. `version: 1`).
+    manifest: jsonb().$type<{
+      version: 1
+      truncated: boolean
+      changes: Record<string, Record<string, { o?: unknown; n: unknown }>>
+      createdRecordIds: string[]
+      archivedRecordIds: string[]
+    }>(),
+    // B2 — once-per-import consume claim for the manifest (atomic
+    // `… WHERE manifestConsumedAt IS NULL RETURNING` in the event consumer), so a
+    // redelivered event can never double-fire rule actions.
+    manifestConsumedAt: timestamp({ precision: 3 }),
+
     // Creator
     createdById: text().references((): AnyPgColumn => User.id, {
       onUpdate: 'cascade',
