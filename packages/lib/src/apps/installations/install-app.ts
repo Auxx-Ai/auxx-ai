@@ -1,11 +1,12 @@
-// packages/services/src/apps/install-app.ts
+// packages/lib/src/apps/installations/install-app.ts
 
 import { type CatalogPayload, database, schema, type Transaction } from '@auxx/database'
+import type { InstallAppInput } from '@auxx/services/apps'
+import { fromDatabase } from '@auxx/services/shared/utils'
 import { and, eq, isNotNull } from 'drizzle-orm'
 import { err, ok } from 'neverthrow'
-import { applyInstallationCatalog } from '../custom-fields/app-field-provisioning'
-import { fromDatabase } from '../shared/utils'
-import type { InstallAppInput } from './schemas'
+import { onCacheEvent } from '../../cache/invalidate'
+import { applyInstallationCatalog } from './app-field-provisioning'
 
 /**
  * Installation result
@@ -288,6 +289,11 @@ export async function installApp(input: InstallAppInput) {
   }
 
   const { installation, deployment } = transactionResult.value
+
+  // Bust the customFields org cache AFTER commit so the warm-up's provisioned
+  // fields are resolvable immediately (busting mid-tx would let a concurrent read
+  // refill the cache from pre-commit rows).
+  await onCacheEvent('custom-field.created', { orgId: organizationId })
 
   return ok({
     installation: {

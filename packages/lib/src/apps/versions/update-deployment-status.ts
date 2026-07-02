@@ -1,11 +1,11 @@
-// packages/services/src/app-versions/update-deployment-status.ts
+// packages/lib/src/apps/versions/update-deployment-status.ts
 
 import { AppDeployment, database } from '@auxx/database'
+import { findActiveReviewDeployment, reconcileAppReviewState } from '@auxx/services/app-versions'
+import { fromDatabase } from '@auxx/services/shared/utils'
 import { eq } from 'drizzle-orm'
 import { err, ok } from 'neverthrow'
-import { rollForwardInstallations } from '../app-installations/roll-forward-installations'
-import { fromDatabase } from '../shared/utils'
-import { findActiveReviewDeployment, reconcileAppReviewState } from './reconcile-app-review-state'
+import { rollForwardInstallations } from '../installations/roll-forward-installations'
 
 /**
  * Valid developer-side status transitions:

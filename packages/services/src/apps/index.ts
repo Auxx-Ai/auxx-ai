@@ -1,6 +1,5 @@
 export * from './create-app'
 export * from './errors'
-export * from './install-app'
 export * from './list-app-event-logs'
 export * from './list-apps-for-user'
 export * from './register-oauth-app'

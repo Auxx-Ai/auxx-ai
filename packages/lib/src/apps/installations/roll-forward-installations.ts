@@ -1,10 +1,11 @@
-// packages/services/src/app-installations/roll-forward-installations.ts
+// packages/lib/src/apps/installations/roll-forward-installations.ts
 
 import { type CatalogPayload, database, schema, type Transaction } from '@auxx/database'
+import { fromDatabase } from '@auxx/services/shared/utils'
 import { and, eq, isNull } from 'drizzle-orm'
 import { err, ok } from 'neverthrow'
-import { applyInstallationCatalog } from '../custom-fields/app-field-provisioning'
-import { fromDatabase } from '../shared/utils'
+import { onCacheEvent } from '../../cache/invalidate'
+import { applyInstallationCatalog } from './app-field-provisioning'
 
 /**
  * Move all active production installations of an app to a newly published
@@ -77,8 +78,17 @@ export async function rollForwardInstallations(params: { appId: string; deployme
     })
   }
 
+  const organizationIds = [...new Set(transactionResult.value.map((i) => i.organizationId))]
+
+  // Bust each org's customFields cache AFTER commit so the warm-up's provisioned
+  // fields are resolvable immediately (mid-tx busting would let a concurrent read
+  // refill the cache from pre-commit rows).
+  for (const orgId of organizationIds) {
+    await onCacheEvent('custom-field.created', { orgId })
+  }
+
   return ok({
     installationIds: transactionResult.value.map((i) => i.id),
-    organizationIds: [...new Set(transactionResult.value.map((i) => i.organizationId))],
+    organizationIds,
   })
 }

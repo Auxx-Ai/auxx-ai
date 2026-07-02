@@ -2,9 +2,10 @@
 // Deployment management routes
 
 import { database, schema } from '@auxx/database'
+import { updateDeploymentStatus } from '@auxx/lib/apps'
 import { invalidateAppCatalog, invalidateOrgsByDeploymentId, onCacheEvent } from '@auxx/lib/cache'
 import { restampWebhookBindingsForDeployment } from '@auxx/lib/data-connectors'
-import { calculateNextVersion, updateDeploymentStatus } from '@auxx/services/app-versions'
+import { calculateNextVersion } from '@auxx/services/app-versions'
 import { verifyAppAccess } from '@auxx/services/developer-accounts'
 import { stableStringify } from '@auxx/utils/json'
 import { and, eq } from 'drizzle-orm'

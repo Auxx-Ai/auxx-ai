@@ -7,6 +7,7 @@ import {
   getAppDeployments,
   getAppWithInstallationStatus,
   getAvailableApps,
+  installApp,
   saveAppConnection,
 } from '@auxx/lib/apps'
 import { getCachedAppBySlug, getOrgCache, onCacheEvent } from '@auxx/lib/cache'
@@ -23,7 +24,6 @@ import {
 } from '@auxx/services/app-connections'
 import { getAppSettings, saveAppSettings, schemaToZod } from '@auxx/services/app-settings'
 import {
-  installApp,
   installAppRequestSchema,
   listAppsQuerySchema,
   listDeploymentsQuerySchema,

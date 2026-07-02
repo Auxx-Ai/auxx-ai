@@ -1,6 +1,7 @@
 // packages/lib/src/entity-templates/template-installer.ts
 
 import { database, schema } from '@auxx/database'
+import { createScopedLogger } from '@auxx/logger'
 import { createCustomField } from '@auxx/services/custom-fields'
 import { checkSlugExists, createEntityDefinition } from '@auxx/services/entity-definitions'
 import { eq } from 'drizzle-orm'
@@ -8,6 +9,8 @@ import { onCacheEvent } from '../cache/invalidate'
 import { getTemplatesByIds } from './template-registry'
 import type { EntityTemplate, EntityTemplateField } from './types'
 import { isSymbolicRef, parseSymbolicRef } from './types'
+
+const logger = createScopedLogger('entity-templates')
 
 /** Options controlling how templates are resolved + installed. */
 export interface InstallTemplatesOptions {
@@ -112,7 +115,13 @@ export async function installTemplates(
         systemEntityMap.set(refTarget, def.id)
       } else {
         // System entity not found — will skip relationship fields referencing it
-        console.warn(`System entity type "${refTarget}" not found for org ${organizationId}`)
+        logger.warn(
+          'installTemplates: system entity type not found — relationship fields referencing it will be skipped',
+          {
+            refTarget,
+            organizationId,
+          }
+        )
       }
     }
   }
@@ -228,9 +237,14 @@ export async function installTemplates(
       if (result.ok) {
         fieldIdMap.set(`${template.id}:${field.templateFieldId}`, result.fieldId)
       } else {
-        console.warn(
-          `Failed to create field "${field.name}" on template "${template.id}": ${result.error}`
-        )
+        // Ships to the log store — a swallowed create here surfaces later as a
+        // missing column / unresolved `@app:` ref, which is undiagnosable without it.
+        logger.warn('installTemplates: failed to create template field', {
+          fieldName: field.name,
+          templateId: template.id,
+          organizationId,
+          error: result.error,
+        })
       }
     }
   }

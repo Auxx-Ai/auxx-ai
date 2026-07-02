@@ -1,12 +1,11 @@
 // apps/api/src/routes/organizations/apps.ts
 
 import { database } from '@auxx/database'
-import { getAppWithInstallationStatus, getAvailableApps } from '@auxx/lib/apps'
+import { getAppWithInstallationStatus, getAvailableApps, installApp } from '@auxx/lib/apps'
 import { getCachedAppBySlug, resolveAppSlug } from '@auxx/lib/cache'
 import { getInstalledApps } from '@auxx/services/app-installations'
 import { listDeployments } from '@auxx/services/app-versions'
 import {
-  installApp,
   installAppRequestSchema,
   listAppEventLogs,
   listAppsQuerySchema,

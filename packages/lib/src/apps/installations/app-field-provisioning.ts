@@ -1,4 +1,8 @@
-// packages/services/src/custom-fields/app-field-provisioning.ts
+// packages/lib/src/apps/installations/app-field-provisioning.ts
+// App-registered custom-field provisioning: the manifest-field provisioner + the
+// create/drift/orphan reconciler (the authoritative provisioning path), plus the
+// catalog-loading entry points callers use. Moved from @auxx/services so it can use
+// the org cache directly (kind→def resolution, post-reconcile invalidation).
 
 import {
   type CatalogAppField,
@@ -10,37 +14,22 @@ import {
 } from '@auxx/database'
 import type { CustomFieldEntity, FieldType } from '@auxx/database/types'
 import { createScopedLogger } from '@auxx/logger'
-import { and, eq, inArray, isNull } from 'drizzle-orm'
-import { type CreateCustomFieldInput, createCustomField } from './create-field'
-import type { SelectOption } from './types'
+import {
+  type CreateCustomFieldInput,
+  createCustomField,
+  type SelectOption,
+} from '@auxx/services/custom-fields'
+import { and, eq, inArray, isNotNull, isNull } from 'drizzle-orm'
+import { getCachedEntityDefId } from '../../cache'
+import { onCacheEvent } from '../../cache/invalidate'
 
 const logger = createScopedLogger('app-fields')
 
 /**
- * Resolve an `EntityRefKind` to the org's `EntityDefinition.id`. The kind **is**
- * the `entityType` (there is one def per entityType per org). Returns null when
- * no def matches (caller logs + skips).
- *
- * Stays a DB query: this runs at install/connection/sync time on the tier-2
- * services layer, which can't import the tier-3 org cache. The hot read path
- * (`apps/api` value-I/O routes) uses `getCachedEntityDefId` instead.
- */
-export async function resolveEntityDefinitionIdByKind(
-  params: { kind: string; organizationId: string },
-  db: Database | Transaction = database
-): Promise<string | null> {
-  const def = await db.query.EntityDefinition.findFirst({
-    where: (defs, { eq: e, and: a }) =>
-      a(e(defs.organizationId, params.organizationId), e(defs.entityType, params.kind)),
-    columns: { id: true },
-  })
-  return def?.id ?? null
-}
-
-/**
  * Map a catalog field's author-set capabilities → `CustomField` column flags.
- * Mirrors `@auxx/lib` `mapCapabilities` (which tier-2 services can't import);
- * the column names are the same so this stays trivially in sync.
+ * Deliberately NOT the registry's `mapCapabilities` — that takes the required-prop
+ * `FieldCapabilities` shape, while catalog capabilities are all-optional. The
+ * column names and defaults match, so the two stay trivially in sync.
  */
 function capabilitiesToColumns(caps: CatalogAppField['capabilities']) {
   return {
@@ -113,10 +102,10 @@ export async function provisionAppField(
     return 'skipped'
   }
 
-  const entityDefinitionId = await resolveEntityDefinitionIdByKind(
-    { kind: field.targetEntity, organizationId: ctx.organizationId },
-    tx
-  )
+  // The catalog `targetEntity` IS the entityType (one def per entityType per org).
+  // Cache-resolved; defs pre-exist any install/sync transaction, so a tx caller
+  // never needs read-your-writes here.
+  const entityDefinitionId = await getCachedEntityDefId(ctx.organizationId, field.targetEntity)
   if (!entityDefinitionId) {
     logger.warn('cannot resolve targetEntity — skipping field', {
       appFieldKey: field.appFieldKey,
@@ -156,25 +145,37 @@ export async function provisionAppField(
   return 'created'
 }
 
-/**
- * Provision every declared field of a given scope from a deployment catalog.
- * Thin helper over {@link provisionAppField}; the full reconciler
- * ({@link reconcileAppFields}) is the authoritative path — this stays for callers
- * that only want the plain create pass for a single scope.
- */
-export async function provisionAppFields(
-  catalog: CatalogPayload | null | undefined,
-  scope: 'installation' | 'connection',
-  ctx: ProvisionContext,
-  tx?: Transaction
-): Promise<void> {
-  const fields = (catalog?.fields ?? []).filter((f) => f.scope === scope)
-  for (const field of fields) {
-    await provisionAppField(field, ctx, tx)
-  }
-}
-
 // ── Reconciler (create / drift / orphan) ─────────────────────────────────────────
+
+/**
+ * Universe filter for the reconciler. Two provisioning universes share the
+ * `(appInstallationId, appFieldKey)` namespace and the reconciler must only ever
+ * touch the one it owns:
+ *
+ *  1. MANIFEST app fields (the app's `fields.ts`) — created by
+ *     {@link provisionAppField}, `dataConnectorId` always NULL, living on org defs
+ *     resolved by entity kind. The reconciler's universe.
+ *  2. Connector-machinery columns — template-installed owned-def columns (v6) and
+ *     provisioned connector columns (v5), stamped with `dataConnectorId` at create.
+ *     Owned by template install / `materializeConnectorTargets`; the reconciler must
+ *     never touch these (its orphan sweep would eat them — their keys are absent
+ *     from `catalog.fields` by construction).
+ *
+ * `dataConnectorId` alone is NOT a stable discriminator: connector delete with
+ * keep/archive `set null`s the FK while `appInstallationId` (and `appFieldKey`, the
+ * reconnect-adoption anchor) survive, so a kept owned-def column would masquerade as
+ * a manifest field. Manifest fields can never live on an APP-OWNED def (their
+ * `targetEntity` resolves by entity kind), and def-level `appInstallationId` survives
+ * connector deletion — so rows on app-owned defs are excluded too.
+ */
+export function isManifestAppFieldRow(
+  row: { dataConnectorId: string | null; entityDefinitionId: string | null },
+  appOwnedDefIds: ReadonlySet<string>
+): boolean {
+  if (row.dataConnectorId != null) return false
+  if (row.entityDefinitionId != null && appOwnedDefIds.has(row.entityDefinitionId)) return false
+  return true
+}
 
 /** The existing-row projection the pure diff reads — a subset of `CustomFieldEntity`. */
 export type ExistingAppFieldRow = Pick<
@@ -325,7 +326,7 @@ function diffFieldColumns(
 }
 
 const cellKey = (appFieldKey: string, connectionId: string | null): string =>
-  `${appFieldKey} ${connectionId ?? ''}`
+  `${appFieldKey} ${connectionId ?? ''}`
 
 /**
  * Pure diff (DB-free, unit-testable) — the desired cells (each declared field ×
@@ -357,9 +358,10 @@ export function computeAppFieldReconcileActions(params: {
   }
 
   for (const field of catalogFields) {
-    // RELATIONSHIP fields aren't provisioned in v1 (their inverse wiring isn't
-    // covered) — skip create/update; their key stays in the catalog so their rows
-    // are never orphaned either.
+    // MANIFEST relationship fields aren't provisioned in v1 (their inverse wiring
+    // isn't covered) — skip create/update; their key stays in the catalog so their
+    // rows are never orphaned either. Connector-template relationship fields are the
+    // other universe and never reach this diff (see isManifestAppFieldRow).
     if (field.type === 'RELATIONSHIP') continue
 
     const cellConnectionIds: (string | null)[] =
@@ -394,7 +396,8 @@ export function computeAppFieldReconcileActions(params: {
   // Orphans — rows whose `appFieldKey` no longer appears in the catalog. v1 rule
   // (see plan §1a.5): only orphan by missing key; leave connectionId-mismatch rows
   // alone (connection deletion already cascades them). Hide rows that hold values
-  // (reversible, no name-collision), delete empty ones.
+  // (reversible, no name-collision), delete empty ones. The keyless-row skip is
+  // defensive — post-`isManifestAppFieldRow` nothing keyless should reach this diff.
   for (const row of existingRows) {
     if (!row.appFieldKey || catalogKeys.has(row.appFieldKey)) continue
     if (hasValues(row.id)) {
@@ -427,11 +430,15 @@ export interface ReconcileResult {
 
 /**
  * Full app-field reconciler — the authoritative provisioning path (called at sync
- * setup and, best-effort, from lifecycle warm-ups). Loads the installation's app
- * fields + its org-scoped connections, computes the create/update/orphan diff,
- * and executes it. Returns counts + per-field errors; does NOT invalidate the org
- * cache (tier-2 services can't import the tier-3 cache) — lib-side callers do that
- * when any action executed.
+ * setup and, best-effort, from lifecycle warm-ups). Loads the installation's
+ * MANIFEST app-field rows (connector-machinery columns are excluded — see
+ * {@link isManifestAppFieldRow}) + its org-scoped connections, computes the
+ * create/update/orphan diff, and executes it. Returns counts + per-field errors.
+ *
+ * Does NOT invalidate the org cache itself: no-tx callers should use
+ * {@link reconcileInstallationAppFields} (which busts when anything changed);
+ * tx callers must bust AFTER their transaction commits — invalidating mid-tx lets a
+ * concurrent read refill the cache from pre-commit rows.
  */
 export async function reconcileAppFields(
   catalog: CatalogPayload | null | undefined,
@@ -441,12 +448,14 @@ export async function reconcileAppFields(
   const db = tx ?? database
   const catalogFields = catalog?.fields ?? []
 
-  const existingRows: ExistingAppFieldRow[] = await db.query.CustomField.findMany({
+  const loadedRows = await db.query.CustomField.findMany({
     where: eq(schema.CustomField.appInstallationId, ctx.appInstallationId),
     columns: {
       id: true,
       appFieldKey: true,
       connectionId: true,
+      dataConnectorId: true,
+      entityDefinitionId: true,
       type: true,
       name: true,
       description: true,
@@ -463,6 +472,27 @@ export async function reconcileAppFields(
       isHidden: true,
     },
   })
+
+  // Partition off the connector-machinery universe. The filter runs in JS (rows per
+  // installation number in the dozens) so `isManifestAppFieldRow` stays a pure,
+  // unit-testable predicate — and NULL `entityDefinitionId` needs no SQL NOT-IN care.
+  const rowDefIds = [
+    ...new Set(loadedRows.map((r) => r.entityDefinitionId).filter((d): d is string => d != null)),
+  ]
+  const appOwnedDefIds = new Set<string>()
+  if (rowDefIds.length > 0) {
+    const ownedDefs = await db.query.EntityDefinition.findMany({
+      where: and(
+        inArray(schema.EntityDefinition.id, rowDefIds),
+        isNotNull(schema.EntityDefinition.appInstallationId)
+      ),
+      columns: { id: true },
+    })
+    for (const def of ownedDefs) appOwnedDefIds.add(def.id)
+  }
+  const existingRows: ExistingAppFieldRow[] = loadedRows.filter((row) =>
+    isManifestAppFieldRow(row, appOwnedDefIds)
+  )
 
   // Nothing declared and nothing provisioned — cheapest exit.
   if (catalogFields.length === 0 && existingRows.length === 0) {
@@ -561,10 +591,43 @@ export async function reconcileAppFields(
 }
 
 /**
+ * Standard no-tx entry: run the reconciler for an installation against its ACTIVE
+ * deployment catalog — loads the catalog + app slug, reconciles, and busts the
+ * customFields org cache when anything changed (a stale entry would leave a freshly
+ * provisioned field unresolvable by the `@app:` rail for up to the TTL).
+ *
+ * Used by the authoritative sync-setup call site (throws on `result.errors` → parks
+ * the connector) and the connection-save warm-up (logs and continues) — the caller
+ * decides what to do with the returned errors.
+ */
+export async function reconcileInstallationAppFields(params: {
+  appInstallationId: string
+  organizationId: string
+}): Promise<ReconcileResult> {
+  const installation = await database.query.AppInstallation.findFirst({
+    where: eq(schema.AppInstallation.id, params.appInstallationId),
+    with: { app: { columns: { slug: true } } },
+  })
+  const catalog = await getInstallationCatalog(params.appInstallationId)
+  const result = await reconcileAppFields(catalog, {
+    appInstallationId: params.appInstallationId,
+    organizationId: params.organizationId,
+    appSlug: installation?.app?.slug ?? '',
+  })
+  if (result.created + result.updated + result.orphaned > 0) {
+    await onCacheEvent('custom-field.created', { orgId: params.organizationId })
+  }
+  return result
+}
+
+/**
  * Warm-up event: "a catalog version became active" (install / reactivate / deploy
  * roll-forward). Runs the full reconcile best-effort — a bad catalog field must
  * never abort an install or block a deploy, because the authoritative sync-setup
  * reconcile will park the connector visibly anyway. Never throws.
+ *
+ * Runs inside the caller's transaction — the caller busts the customFields org
+ * cache AFTER commit (see {@link reconcileAppFields} on why not mid-tx).
  */
 export async function applyInstallationCatalog(
   params: {

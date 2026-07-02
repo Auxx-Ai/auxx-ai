@@ -1,18 +1,15 @@
-// packages/services/src/custom-fields/__tests__/app-field-provisioning.test.ts
-// Pure-diff coverage for the app-field reconciler (create / drift / orphan). No DB
-// harness — `computeAppFieldReconcileActions` is DB-free by construction.
+// packages/lib/src/apps/installations/app-field-provisioning.test.ts
+// Pure-diff coverage for the app-field reconciler (create / drift / orphan) and its
+// universe partition. No DB harness — both functions under test are DB-free by
+// construction.
 
 import type { CatalogAppField } from '@auxx/database'
-import { describe, expect, it, vi } from 'vitest'
-
-// The pure diff under test touches no DB — but importing the module pulls
-// `@auxx/database` (DATABASE_URL at load). Stub it; the diff never reads it.
-vi.mock('@auxx/database', () => ({ database: {}, schema: {} }))
-
+import { describe, expect, it } from 'vitest'
 import {
   computeAppFieldReconcileActions,
   type ExistingAppFieldRow,
-} from '../app-field-provisioning'
+  isManifestAppFieldRow,
+} from './app-field-provisioning'
 
 const APP_SLUG = 'shopify'
 
@@ -234,5 +231,57 @@ describe('computeAppFieldReconcileActions', () => {
     })
     expect(actions).toEqual([])
     expect(errors).toEqual([])
+  })
+})
+
+// The universe partition guarding the orphan sweep: template-installed owned-def
+// columns share `(appInstallationId, appFieldKey)` with manifest app fields but must
+// never enter the reconcile diff — the sweep would eat them (their keys are absent
+// from `catalog.fields` by construction). Live repro: connector v471uzaw8ard1naqelld1krr.
+describe('isManifestAppFieldRow', () => {
+  const APP_OWNED_DEF_IDS = new Set(['def_shopify_orders'])
+
+  it('keeps a manifest app field (no connector stamp, kind-resolved org def)', () => {
+    expect(
+      isManifestAppFieldRow(
+        { dataConnectorId: null, entityDefinitionId: 'def_contact' },
+        APP_OWNED_DEF_IDS
+      )
+    ).toBe(true)
+  })
+
+  it('excludes a template-installed owned-def column (dataConnectorId stamped)', () => {
+    expect(
+      isManifestAppFieldRow(
+        { dataConnectorId: 'dc_1', entityDefinitionId: 'def_shopify_orders' },
+        APP_OWNED_DEF_IDS
+      )
+    ).toBe(false)
+  })
+
+  it('excludes a connector column on a shared def (dataConnectorId stamped, org def)', () => {
+    expect(
+      isManifestAppFieldRow(
+        { dataConnectorId: 'dc_1', entityDefinitionId: 'def_contact' },
+        APP_OWNED_DEF_IDS
+      )
+    ).toBe(false)
+  })
+
+  it('excludes a keep-deleted owned-def column (FK set-nulled, def still app-owned)', () => {
+    // deleteConnector with behavior keep/archive nulls `dataConnectorId` while
+    // `appInstallationId` + `appFieldKey` survive — the row must still be excluded.
+    expect(
+      isManifestAppFieldRow(
+        { dataConnectorId: null, entityDefinitionId: 'def_shopify_orders' },
+        APP_OWNED_DEF_IDS
+      )
+    ).toBe(false)
+  })
+
+  it('keeps a defless row (defensive — manifest universe by elimination)', () => {
+    expect(
+      isManifestAppFieldRow({ dataConnectorId: null, entityDefinitionId: null }, APP_OWNED_DEF_IDS)
+    ).toBe(true)
   })
 })
