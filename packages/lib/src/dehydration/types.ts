@@ -136,8 +136,9 @@ export interface DehydratedOrganization {
     seats: number
     billingCycle: 'MONTHLY' | 'ANNUAL'
 
-    // Billing provider routing (client-safe — no Stripe/Shopify secrets)
-    billingProvider: 'stripe' | 'shopify'
+    // Billing provider routing (client-safe — no Stripe/Shopify secrets).
+    // `null` = unlinked (admin detached the row from both providers); consumers fall back to 'stripe'.
+    billingProvider: 'stripe' | 'shopify' | null
     shopifyShopDomain: string | null
     capabilities: import('@auxx/billing').BillingCapabilities
 

@@ -1,0 +1,1 @@
+ALTER TABLE "PlanSubscription" ALTER COLUMN "billingProvider" DROP NOT NULL;

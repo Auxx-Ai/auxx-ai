@@ -1,5 +1,5 @@
 import { getProvider, type ShopifyBillingProvider, stripeClient } from '@auxx/billing'
-import { findCredential } from '@auxx/credentials/store'
+import { listCredentials, setDefaultCredential } from '@auxx/credentials/store'
 import { database as db, schema } from '@auxx/database'
 import { installApp, saveAppConnection } from '@auxx/lib/apps'
 import { getOrgCache, isOrgMember, onCacheEvent, resolveAppSlug } from '@auxx/lib/cache'
@@ -8,7 +8,7 @@ import { OrganizationService } from '@auxx/lib/organizations'
 import { createScopedLogger } from '@auxx/logger'
 import { getRedisClient } from '@auxx/redis'
 import { TRPCError } from '@trpc/server'
-import { eq } from 'drizzle-orm'
+import { and, eq, ne, sql } from 'drizzle-orm'
 import { cookies } from 'next/headers'
 import { z } from 'zod'
 import { setUserDefaultOrganization } from '~/server/auth/set-default-organization'
@@ -100,6 +100,54 @@ export const shopifyRouter = createTRPCRouter({
         throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Shopify app not found' })
       }
 
+      // --- Validate before mutating (1c + 1d) --------------------------------
+      // Every rejecting branch below runs here — before installApp, saveAppConnection,
+      // and the claim burn — so a conflict exits with NOTHING mutated and the claim intact.
+
+      // 1c — cross-org guard (Decision 4 gate). A Shopify grant is per (app, shop) and we
+      // store an independent token copy per org credential row; two orgs holding copies for
+      // the same shop mutually revoke each other on every token issue/refresh (Part 3). Until
+      // the shared-token work lands, a shop may live in exactly one workspace. Reject a claim
+      // for a shop already connected to a DIFFERENT org, naming the holder.
+      const crossOrgConflict = await db.query.Credential.findFirst({
+        where: and(
+          eq(schema.Credential.kind, 'app'),
+          eq(schema.Credential.appId, appId),
+          ne(schema.Credential.organizationId, organizationId),
+          sql`${schema.Credential.metadata}->>'shopDomain' = ${claim.shop}`
+        ),
+        columns: { organizationId: true },
+      })
+      if (crossOrgConflict) {
+        const conflictOrg = await db.query.Organization.findFirst({
+          where: eq(schema.Organization.id, crossOrgConflict.organizationId),
+          columns: { name: true },
+        })
+        throw new ConflictError(
+          `${claim.shop} is already connected to another workspace${
+            conflictOrg?.name ? ` (${conflictOrg.name})` : ''
+          }. A store can be connected to only one workspace.`
+        )
+      }
+
+      // 1d — resolve the billing branch on the existing PlanSubscription up front. The only
+      // rejecting billing branch (a live Shopify workspace claiming a DIFFERENT shop) throws
+      // here so the mutations never run. The remaining reconcile branches reuse this row below.
+      const existing = await db.query.PlanSubscription.findFirst({
+        where: eq(schema.PlanSubscription.organizationId, organizationId),
+      })
+      if (
+        existing?.billingProvider === 'shopify' &&
+        existing.status !== 'canceled' &&
+        existing.shopifyShopDomain !== claim.shop
+      ) {
+        // One workspace bills exactly one shop. Re-claiming a *different* shop into an
+        // already-billed workspace is a genuine conflict — name the shop that holds it.
+        throw new ConflictError(
+          `This workspace already bills through Shopify for ${existing.shopifyShopDomain}. Choose a different workspace for this shop.`
+        )
+      }
+
       // Lazy: ensure AppInstallation exists for this org. If already installed,
       // resolve the installationId via the cached installedApps set.
       let installationId: string | null = null
@@ -150,19 +198,22 @@ export const shopifyRouter = createTRPCRouter({
         seed: claim.shop,
       })
 
-      // Reuse the single org-scoped Shopify connection if one already exists. Without
-      // this, every App Store (re)install inserts a fresh Credential row — and
-      // since Shopify revokes the old token whenever it issues a new one, getAppConnection
-      // can hand a stale (revoked) row to the Admin API read, 401-ing the billing sync so
-      // the PlanSubscription never leaves `incomplete`. One shop = one org-scoped token,
-      // updated in place.
-      const existingConnResult = await findCredential({
+      // 1a — reconnect the credential FOR THIS SHOP if one exists; otherwise insert a new
+      // one. A workspace can hold several Shopify stores (one org-scoped credential each,
+      // keyed by `metadata.shopDomain`). Reconnecting the same shop in place is the
+      // legitimate reinstall/token-refresh case — Shopify revokes the old token when it
+      // issues a new one, so a stale row would 401 the Admin API billing read. A DIFFERENT
+      // shop's claim must NOT overwrite an existing store's token (the corruption bug); it
+      // inserts a fresh row instead, leaving the other store syncing untouched.
+      const orgConnsResult = await listCredentials({
         organizationId,
         kind: 'app',
         appId,
         userId: null,
       })
-      const existingConn = existingConnResult.isOk() ? existingConnResult.value : null
+      const sameShopConn = orgConnsResult.isOk()
+        ? orgConnsResult.value.find((c) => c.metadata.shopDomain === claim.shop)
+        : undefined
 
       const saveResult = await saveAppConnection(
         appId,
@@ -186,7 +237,7 @@ export const shopifyRouter = createTRPCRouter({
             connectionVariables: { shop: claim.shop.replace(/\.myshopify\.com$/, '') },
           },
         },
-        existingConn ? { connectionId: existingConn.id } : undefined
+        sameShopConn ? { connectionId: sameShopConn.id } : undefined
       )
 
       if (saveResult.isErr()) {
@@ -199,20 +250,18 @@ export const shopifyRouter = createTRPCRouter({
           message: 'Failed to save Shopify connection',
         })
       }
+      // The credential id for the claimed shop (reconnected or freshly inserted). Used to
+      // flip the primary connection to this shop whenever we establish a Shopify anchor.
+      const claimedCredentialId = saveResult.value
 
       await redis.del(claimKey)
       cookieStore.delete(CLAIM_COOKIE_NAME)
 
-      // Reconcile any pre-existing PlanSubscription row. Hot path: new claim signup
-      // hits no row (shopify-claim signupSource skipped the trial seeder). Fallback
-      // path: existing Auxx user signed in on the claim page — their org may have a
-      // Stripe trial or live Stripe subscription that has to be reconciled before we
-      // upsert the Shopify billing row (PlanSubscription has uniqueIndex on
-      // organizationId).
-      const existing = await db.query.PlanSubscription.findFirst({
-        where: (s, { eq: e }) => e(s.organizationId, organizationId),
-      })
-
+      // Reconcile the pre-existing PlanSubscription row loaded above (1d). Hot path: a fresh
+      // claim signup has no row (shopify-claim signupSource skipped the trial seeder).
+      // Fallback path: an existing Auxx user signed in on the claim page — their org may
+      // carry a Stripe trial/live subscription reconciled here before the Shopify upsert
+      // (PlanSubscription has a uniqueIndex on organizationId).
       if (existing?.billingProvider === 'stripe') {
         // Operating model (plans/billing/00-multi-provider-billing-overview.md §4.5): an
         // existing Stripe-billed org that connects Shopify keeps its Stripe billing. We
@@ -255,19 +304,11 @@ export const shopifyRouter = createTRPCRouter({
         }
         await db.delete(schema.PlanSubscription).where(eq(schema.PlanSubscription.id, existing.id))
       } else if (existing?.billingProvider === 'shopify' && existing.status !== 'canceled') {
-        // The selected workspace is already billed through Shopify. Don't try to
-        // re-link it — decide where to send the merchant based on the existing row.
-        if (existing.shopifyShopDomain !== claim.shop) {
-          // One org bills exactly one shop. Re-claiming a *different* shop into an
-          // already-billed workspace is a genuine conflict — name the shop that holds it.
-          throw new ConflictError(
-            `This workspace already bills through Shopify for ${existing.shopifyShopDomain}. Choose a different workspace for this shop.`
-          )
-        }
-
-        // Same shop, already linked. An `incomplete` row means the merchant never
-        // approved a plan on Shopify's hosted page — resume plan selection. Any live
-        // status (active/trialing/past_due/paused) just opens their workspace.
+        // The selected workspace is already billed through Shopify for THIS shop (a
+        // different shop already threw ConflictError up front). Don't re-link — decide
+        // where to send the merchant based on the existing row. An `incomplete` row means
+        // the merchant never approved a plan on Shopify's hosted page — resume plan
+        // selection. Any live status (active/trialing/past_due/paused) just opens the workspace.
         if (existing.status === 'incomplete') {
           const provider = getProvider('shopify') as ShopifyBillingProvider
           const redirectUrl = await provider.getPlanSelectionUrl(organizationId)
@@ -306,11 +347,28 @@ export const shopifyRouter = createTRPCRouter({
           set: {
             billingProvider: 'shopify',
             shopifyShopDomain: claim.shop,
+            // The Shop GID is cached per shop (seat-usage reporter). Re-anchoring to a new
+            // shop — a canceled-shopify reinstall, a dead-Stripe drop, or an unlinked row —
+            // must clear the previous shop's GID so the usage drip re-fetches the right one.
+            shopifyShopGid: null,
             status: 'incomplete',
             canceledAt: null,
             updatedAt: new Date(),
           },
         })
+
+      // Flip the primary org-scoped connection to the anchor shop's credential. Billing
+      // reads the PRIMARY credential's token but the ROW's shop domain — with two stores,
+      // a non-primary anchor credential runs the wrong token against the Admin API → 401 →
+      // the subscription never leaves `incomplete`. No-op when there's only one connection.
+      const primaryFlip = await setDefaultCredential(claimedCredentialId, organizationId)
+      if (primaryFlip.isErr()) {
+        logger.warn('Failed to set claimed Shopify credential as primary', {
+          organizationId,
+          claimedCredentialId,
+          error: primaryFlip.error.message,
+        })
+      }
 
       // Hand back the Shopify hosted pricing-page URL. The merchant picks the plan +
       // interval there, approves, and is redirected to /billing/subscription/activated.

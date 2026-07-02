@@ -21,7 +21,7 @@ import {
 import { Textarea } from '@auxx/ui/components/textarea'
 import { toastError } from '@auxx/ui/components/toast'
 import { format } from 'date-fns'
-import { AlertCircle, Ban, DollarSign, Plus, RefreshCw } from 'lucide-react'
+import { AlertCircle, Ban, DollarSign, Plus, RefreshCw, Unlink } from 'lucide-react'
 import { useState } from 'react'
 import { useConfirm } from '~/hooks/use-confirm'
 import { api } from '~/trpc/react'
@@ -50,6 +50,7 @@ export function SubscriptionManagementSection({
 }: SubscriptionManagementSectionProps) {
   const [confirm, ConfirmDialog] = useConfirm()
   const [cancelReason, setCancelReason] = useState('')
+  const [unlinkReason, setUnlinkReason] = useState('')
   const [newStatus, setNewStatus] = useState('')
   const [statusChangeReason, setStatusChangeReason] = useState('')
   const [creditAmount, setCreditAmount] = useState('')
@@ -81,6 +82,15 @@ export function SubscriptionManagementSection({
     },
     onError: (error) =>
       toastError({ title: 'Failed to change status', description: error.message }),
+  })
+
+  const unlinkBilling = api.admin.billing.unlinkBillingProvider.useMutation({
+    onSuccess: () => {
+      utils.admin.getOrganization.invalidate({ id: organizationId })
+      setUnlinkReason('')
+    },
+    onError: (error) =>
+      toastError({ title: 'Failed to unlink billing', description: error.message }),
   })
 
   const applyCredit = api.admin.billing.applyCreditAdjustment.useMutation({
@@ -154,6 +164,32 @@ export function SubscriptionManagementSection({
         newStatus,
         reason: statusChangeReason,
       })
+    }
+  }
+
+  /**
+   * Handle unlink billing provider — detaches the subscription row from Stripe/Shopify
+   * without deleting it, so the workspace can re-anchor through a fresh App Store claim.
+   */
+  const handleUnlinkBilling = async () => {
+    if (!unlinkReason || unlinkReason.length < 10) {
+      toastError({
+        title: 'Missing information',
+        description: 'Please provide a reason (at least 10 characters)',
+      })
+      return
+    }
+
+    const confirmed = await confirm({
+      title: 'Unlink Billing Provider?',
+      description: `This detaches "${organizationName}" from its billing provider (Stripe/Shopify) but keeps the subscription row, plan, status, and credit balance. The workspace can then re-anchor by installing from the Shopify App Store. Any live Shopify subscription must be canceled separately in the shop's Admin.`,
+      confirmText: 'Unlink Billing',
+      cancelText: 'Cancel',
+      destructive: true,
+    })
+
+    if (confirmed) {
+      unlinkBilling.mutate({ organizationId, reason: unlinkReason })
     }
   }
 
@@ -409,6 +445,39 @@ export function SubscriptionManagementSection({
                   disabled={!newStatus || !statusChangeReason || statusChangeReason.length < 10}>
                   <AlertCircle />
                   Force Status Change
+                </Button>
+              </AccordionContent>
+            </AccordionItem>
+
+            {/* Unlink Billing Provider */}
+            <AccordionItem value='unlink-billing' className='border-b px-4 last:border-b-0'>
+              <AccordionTrigger>Unlink Billing Provider</AccordionTrigger>
+              <AccordionContent className='space-y-3'>
+                <p className='text-sm text-muted-foreground'>
+                  Detach this workspace from Stripe/Shopify without deleting the subscription (keeps
+                  plan, status, and credits). Lets it re-anchor through a fresh Shopify App Store
+                  install. Cancel any live Shopify subscription in the shop's Admin separately.
+                </p>
+                <div>
+                  <Label htmlFor='unlink-reason'>
+                    Reason <span className='text-destructive'>*</span>
+                  </Label>
+                  <Textarea
+                    id='unlink-reason'
+                    placeholder='Why are you unlinking billing? (minimum 10 characters)'
+                    value={unlinkReason}
+                    onChange={(e) => setUnlinkReason(e.target.value)}
+                    rows={2}
+                  />
+                </div>
+                <Button
+                  variant='destructive'
+                  size='sm'
+                  onClick={handleUnlinkBilling}
+                  loading={unlinkBilling.isPending}
+                  disabled={!unlinkReason || unlinkReason.length < 10}>
+                  <Unlink />
+                  Unlink Billing
                 </Button>
               </AccordionContent>
             </AccordionItem>

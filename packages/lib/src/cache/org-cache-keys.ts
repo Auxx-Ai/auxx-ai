@@ -65,8 +65,8 @@ export interface CachedSubscription {
   canceledAt: string | null
   creditsBalance: number
 
-  // Billing provider routing
-  billingProvider: 'stripe' | 'shopify'
+  // Billing provider routing. `null` = unlinked (row detached from both providers); consumers fall back to 'stripe'.
+  billingProvider: 'stripe' | 'shopify' | null
   shopifyShopDomain: string | null
   capabilities: import('@auxx/billing').BillingCapabilities
 
