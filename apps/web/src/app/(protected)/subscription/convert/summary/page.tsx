@@ -9,7 +9,7 @@ import { Input } from '@auxx/ui/components/input'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { toastError } from '@auxx/ui/components/toast'
 import { CardElement, Elements, useElements, useStripe } from '@stripe/react-stripe-js'
-import { Building } from 'lucide-react'
+import { Building, Sparkles } from 'lucide-react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useEffect, useMemo, useRef, useState } from 'react'
@@ -67,6 +67,9 @@ function SummaryContent() {
   }, [paymentMethods])
 
   const shouldCollectNewPaymentMethod = !defaultPaymentMethod || !useExistingPaymentMethod
+
+  // Free plans skip billing address + payment collection entirely.
+  const isFreePlan = !!state.selectedPlan?.isFree
 
   const {
     register,
@@ -157,13 +160,31 @@ function SummaryContent() {
 
   /** Handle form submission */
   const onSubmit = async (data: BillingAddressFormData) => {
-    if (!stripe || !elements) {
-      toastError({ title: 'Error', description: 'Payment system not ready' })
+    if (!state.selectedPlan) {
+      toastError({ title: 'Error', description: 'No plan selected' })
       return
     }
 
-    if (!state.selectedPlan) {
-      toastError({ title: 'Error', description: 'No plan selected' })
+    // Free plan: no billing address or payment method required — go straight to the
+    // subscription update ($0 Stripe price activates immediately without a card).
+    if (isFreePlan) {
+      try {
+        await updateSubscriptionDirect.mutateAsync({
+          planName: state.selectedPlan.name,
+          billingCycle: state.billingCycle,
+          seats: state.addons.seats,
+        })
+      } catch (error: any) {
+        toastError({
+          title: 'Error processing request',
+          description: error.message || 'An unexpected error occurred',
+        })
+      }
+      return
+    }
+
+    if (!stripe || !elements) {
+      toastError({ title: 'Error', description: 'Payment system not ready' })
       return
     }
 
@@ -309,169 +330,216 @@ function SummaryContent() {
               </CardContent>
             </Card> */}
 
-            {/* Billing Information */}
-            <Card variant='translucent' className='shadow-md shadow-black/20 border-transparent'>
-              <div className='p-3 pb-0'>
-                <Alert
-                  variant='outline'
-                  className='flex items-center gap-3 border-white/20 hover:bg-white/10 '>
-                  <AlertIcon icon={Building}></AlertIcon>
-                  <div className='flex flex-col gap-0'>
-                    <AlertTitle className='pb-0 mt-0 mb-0 text-white'>
-                      {state.selectedPlan.name} Plan
-                    </AlertTitle>
-                    <AlertDescription className='text-white/50'>
-                      ${monthlyPrice.toFixed(2)} per user/month
-                    </AlertDescription>
-                  </div>
-                </Alert>
-              </div>
-              <CardHeader>
-                <CardTitle className='text-lg'>Billing Information</CardTitle>
-              </CardHeader>
-              <CardContent className='space-y-3'>
-                <div className='grid grid-cols-2 gap-3'>
-                  <div>
-                    <Input
-                      variant='translucent'
-                      {...register('email', { required: 'Email is required' })}
-                      placeholder='Email'
-                      size='lg'
-                      type='email'
-                      disabled={isLoadingData}
-                    />
-                    {errors.email && (
-                      <p className='text-xs text-destructive mt-1'>{errors.email.message}</p>
-                    )}
-                  </div>
-                  <div>
-                    <Input
-                      variant='translucent'
-                      size='lg'
-                      {...register('companyName')}
-                      placeholder='Company'
-                      disabled={isLoadingData}
-                    />
-                  </div>
+            {isFreePlan ? (
+              /* Free plan — no billing or payment details required */
+              <Card variant='translucent' className='shadow-md shadow-black/20 border-transparent'>
+                <div className='p-3 pb-0'>
+                  <Alert
+                    variant='outline'
+                    className='flex items-center gap-3 border-white/20 hover:bg-white/10 '>
+                    <AlertIcon icon={Building}></AlertIcon>
+                    <div className='flex flex-col gap-0'>
+                      <AlertTitle className='pb-0 mt-0 mb-0 text-white'>
+                        {state.selectedPlan.name} Plan
+                      </AlertTitle>
+                      <AlertDescription className='text-white/50'>
+                        ${monthlyPrice.toFixed(2)} per user/month
+                      </AlertDescription>
+                    </div>
+                  </Alert>
                 </div>
-
-                <Input
-                  variant='translucent'
-                  size='lg'
-                  {...register('line1', { required: 'Address is required' })}
-                  placeholder='Address Line 1'
-                  disabled={isLoadingData}
-                />
-                {errors.line1 && (
-                  <p className='text-xs text-destructive mt-1'>{errors.line1.message}</p>
-                )}
-
-                <div className='grid grid-cols-3 gap-3'>
-                  <div>
-                    <Input
-                      size='lg'
-                      variant='translucent'
-                      {...register('city', { required: 'City is required' })}
-                      placeholder='City'
-                      disabled={isLoadingData}
-                    />
-                    {errors.city && (
-                      <p className='text-xs text-destructive mt-1'>{errors.city.message}</p>
-                    )}
-                  </div>
-                  <div>
-                    <Input
-                      size='lg'
-                      variant='translucent'
-                      {...register('state')}
-                      placeholder='State'
-                      disabled={isLoadingData}
-                    />
-                  </div>
-                  <div>
-                    <Input
-                      variant='translucent'
-                      size='lg'
-                      {...register('postalCode', { required: 'Postal code is required' })}
-                      placeholder='Postal Code'
-                      disabled={isLoadingData}
-                    />
-                    {errors.postalCode && (
-                      <p className='text-xs text-destructive mt-1'>{errors.postalCode.message}</p>
-                    )}
-                  </div>
-                </div>
-
-                <Controller
-                  name='country'
-                  control={control}
-                  rules={{ required: 'Country is required' }}
-                  render={({ field }) => (
-                    <CountrySelect
-                      variant='translucent'
-                      value={field.value}
-                      onChange={field.onChange}
-                      disabled={isLoadingData}
-                    />
-                  )}
-                />
-                {errors.country && (
-                  <p className='text-xs text-destructive mt-1'>{errors.country.message}</p>
-                )}
-              </CardContent>
-            </Card>
-
-            {/* Payment Information */}
-            <Card variant='translucent' className='shadow-md shadow-black/20 border-transparent'>
-              <CardHeader>
-                <CardTitle className='text-lg'>Payment Information</CardTitle>
-              </CardHeader>
-              <CardContent className='space-y-3'>
-                {defaultPaymentMethod ? (
-                  <div className='flex items-center justify-between rounded-lg border border-white/20 p-3'>
-                    <div>
-                      <p className='text-sm font-medium'>
-                        {defaultPaymentMethod.brand} •••• {defaultPaymentMethod.last4}
-                      </p>
+                <CardHeader>
+                  <CardTitle className='text-lg'>Billing Information</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className='flex items-start gap-3 rounded-lg border border-white/20 bg-white/5 p-4'>
+                    <div className='rounded-full bg-white/10 p-2'>
+                      <Sparkles className='size-5 text-white' />
+                    </div>
+                    <div className='space-y-1'>
+                      <p className='text-sm font-medium text-white'>No payment required</p>
                       <p className='text-xs text-white/50'>
-                        Expires {defaultPaymentMethod.expMonth}/{defaultPaymentMethod.expYear}
+                        The {state.selectedPlan.name} plan is on us — no credit card or billing
+                        details needed. You can add payment information anytime you upgrade to a
+                        paid plan.
                       </p>
                     </div>
-                    <Button
-                      type='button'
-                      variant='ghost'
-                      size='sm'
-                      onClick={() => {
-                        hasManuallySelectedPayment.current = true
-                        setUseExistingPaymentMethod((prev) => !prev)
-                      }}>
-                      {useExistingPaymentMethod ? 'Use a different card' : 'Use saved card'}
-                    </Button>
                   </div>
-                ) : null}
+                </CardContent>
+              </Card>
+            ) : (
+              <>
+                {/* Billing Information */}
+                <Card
+                  variant='translucent'
+                  className='shadow-md shadow-black/20 border-transparent'>
+                  <div className='p-3 pb-0'>
+                    <Alert
+                      variant='outline'
+                      className='flex items-center gap-3 border-white/20 hover:bg-white/10 '>
+                      <AlertIcon icon={Building}></AlertIcon>
+                      <div className='flex flex-col gap-0'>
+                        <AlertTitle className='pb-0 mt-0 mb-0 text-white'>
+                          {state.selectedPlan.name} Plan
+                        </AlertTitle>
+                        <AlertDescription className='text-white/50'>
+                          ${monthlyPrice.toFixed(2)} per user/month
+                        </AlertDescription>
+                      </div>
+                    </Alert>
+                  </div>
+                  <CardHeader>
+                    <CardTitle className='text-lg'>Billing Information</CardTitle>
+                  </CardHeader>
+                  <CardContent className='space-y-3'>
+                    <div className='grid grid-cols-2 gap-3'>
+                      <div>
+                        <Input
+                          variant='translucent'
+                          {...register('email', { required: 'Email is required' })}
+                          placeholder='Email'
+                          size='lg'
+                          type='email'
+                          disabled={isLoadingData}
+                        />
+                        {errors.email && (
+                          <p className='text-xs text-destructive mt-1'>{errors.email.message}</p>
+                        )}
+                      </div>
+                      <div>
+                        <Input
+                          variant='translucent'
+                          size='lg'
+                          {...register('companyName')}
+                          placeholder='Company'
+                          disabled={isLoadingData}
+                        />
+                      </div>
+                    </div>
 
-                {shouldCollectNewPaymentMethod ? (
-                  <div className='p-2 border rounded-lg border-white/20 bg-muted/10'>
-                    <CardElement
-                      options={{
-                        style: {
-                          base: {
-                            fontSize: '14px',
-                            color: 'hsl(var(--foreground))',
-                            '::placeholder': {
-                              color: 'hsl(var(--primary-500))',
-                            },
-                          },
-                          invalid: {
-                            color: 'hsl(var(--destructive))',
-                          },
-                        },
-                      }}
+                    <Input
+                      variant='translucent'
+                      size='lg'
+                      {...register('line1', { required: 'Address is required' })}
+                      placeholder='Address Line 1'
+                      disabled={isLoadingData}
                     />
-                  </div>
-                ) : null}
-              </CardContent>
-            </Card>
+                    {errors.line1 && (
+                      <p className='text-xs text-destructive mt-1'>{errors.line1.message}</p>
+                    )}
+
+                    <div className='grid grid-cols-3 gap-3'>
+                      <div>
+                        <Input
+                          size='lg'
+                          variant='translucent'
+                          {...register('city', { required: 'City is required' })}
+                          placeholder='City'
+                          disabled={isLoadingData}
+                        />
+                        {errors.city && (
+                          <p className='text-xs text-destructive mt-1'>{errors.city.message}</p>
+                        )}
+                      </div>
+                      <div>
+                        <Input
+                          size='lg'
+                          variant='translucent'
+                          {...register('state')}
+                          placeholder='State'
+                          disabled={isLoadingData}
+                        />
+                      </div>
+                      <div>
+                        <Input
+                          variant='translucent'
+                          size='lg'
+                          {...register('postalCode', { required: 'Postal code is required' })}
+                          placeholder='Postal Code'
+                          disabled={isLoadingData}
+                        />
+                        {errors.postalCode && (
+                          <p className='text-xs text-destructive mt-1'>
+                            {errors.postalCode.message}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+
+                    <Controller
+                      name='country'
+                      control={control}
+                      rules={{ required: 'Country is required' }}
+                      render={({ field }) => (
+                        <CountrySelect
+                          variant='translucent'
+                          value={field.value}
+                          onChange={field.onChange}
+                          disabled={isLoadingData}
+                        />
+                      )}
+                    />
+                    {errors.country && (
+                      <p className='text-xs text-destructive mt-1'>{errors.country.message}</p>
+                    )}
+                  </CardContent>
+                </Card>
+
+                {/* Payment Information */}
+                <Card
+                  variant='translucent'
+                  className='shadow-md shadow-black/20 border-transparent'>
+                  <CardHeader>
+                    <CardTitle className='text-lg'>Payment Information</CardTitle>
+                  </CardHeader>
+                  <CardContent className='space-y-3'>
+                    {defaultPaymentMethod ? (
+                      <div className='flex items-center justify-between rounded-lg border border-white/20 p-3'>
+                        <div>
+                          <p className='text-sm font-medium'>
+                            {defaultPaymentMethod.brand} •••• {defaultPaymentMethod.last4}
+                          </p>
+                          <p className='text-xs text-white/50'>
+                            Expires {defaultPaymentMethod.expMonth}/{defaultPaymentMethod.expYear}
+                          </p>
+                        </div>
+                        <Button
+                          type='button'
+                          variant='ghost'
+                          size='sm'
+                          onClick={() => {
+                            hasManuallySelectedPayment.current = true
+                            setUseExistingPaymentMethod((prev) => !prev)
+                          }}>
+                          {useExistingPaymentMethod ? 'Use a different card' : 'Use saved card'}
+                        </Button>
+                      </div>
+                    ) : null}
+
+                    {shouldCollectNewPaymentMethod ? (
+                      <div className='p-2 border rounded-lg border-white/20 bg-muted/10'>
+                        <CardElement
+                          options={{
+                            style: {
+                              base: {
+                                fontSize: '14px',
+                                color: 'hsl(var(--foreground))',
+                                '::placeholder': {
+                                  color: 'hsl(var(--primary-500))',
+                                },
+                              },
+                              invalid: {
+                                color: 'hsl(var(--destructive))',
+                              },
+                            },
+                          }}
+                        />
+                      </div>
+                    ) : null}
+                  </CardContent>
+                </Card>
+              </>
+            )}
             <div className=''>
               <Button variant='translucent' asChild>
                 <Link href='/subscription/convert/addons'>Back</Link>
@@ -483,9 +551,9 @@ function SummaryContent() {
           <div className='col-span-1'>
             <Card
               variant='translucent'
-              className='rounded-2xl bg-foreground/5 backdrop-blur-sm ring-1 ring-foreground/10 p-4 space-y-4 sticky top-0'>
-              <h3 className='font-semibold'>Summary</h3>
-              <div className='space-y-2 text-sm'>
+              className='rounded-2xl bg-foreground/5 backdrop-blur-sm ring-1 ring-foreground/10 p-4 space-y-0 sticky top-0'>
+              <h3 className='font-semibold mb-4'>Summary</h3>
+              <div className='space-y-2 text-sm mb-4'>
                 <div className='flex justify-between'>
                   <span className='text-white/50'>
                     {isLoadingPreview ? (
