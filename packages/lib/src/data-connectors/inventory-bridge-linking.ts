@@ -10,14 +10,15 @@
 import { type Database, schema } from '@auxx/database'
 import { and, eq } from 'drizzle-orm'
 import { getCachedEntityDefId, requireCachedEntityDefId } from '../cache'
-import { NotFoundError } from '../errors'
+import { BadRequestError, NotFoundError } from '../errors'
 import { UnifiedCrudHandler } from '../resources/crud/unified-handler'
 import { toRecordId } from '../resources/resource-id'
-import {
-  type InventoryBridgeConfigEntry,
-  readInventoryBridgeConfig,
-} from './inventory-bridge-config'
 import { INVENTORY_BRIDGE_EDGE_ATTR } from './inventory-bridge-provisioning'
+import {
+  type InventorySource,
+  listInventorySources,
+  resolveInventorySource,
+} from './inventory-bridge-rule'
 import {
   advanceWatermarkCAS,
   deleteInventoryBridgeLink,
@@ -73,19 +74,23 @@ async function readNumberBySystemAttr(
 
 /** The configured inventory sources (picker asks this to know which defs are sources). */
 export async function listInventoryBridgeSources(
+  db: Database,
   organizationId: string
-): Promise<InventoryBridgeConfigEntry[]> {
-  return readInventoryBridgeConfig(organizationId)
+): Promise<{ sourceDefId: string; quantityFieldId: string; relationshipFieldId: string }[]> {
+  return listInventorySources(db, organizationId)
 }
 
-function findEntry(
-  config: InventoryBridgeConfigEntry[],
+/** Resolve a configured source or throw — the source must have a managed rule + a connector. */
+async function requireSource(
+  db: Database,
+  organizationId: string,
   sourceDefId: string
-): InventoryBridgeConfigEntry {
-  const entry = config.find((c) => c.sourceDefId === sourceDefId)
-  if (!entry)
-    throw new NotFoundError(`No inventory bridge source configured for def ${sourceDefId}`)
-  return entry
+): Promise<InventorySource> {
+  const source = await resolveInventorySource(db, organizationId, sourceDefId)
+  if (!source) {
+    throw new NotFoundError(`No inventory source configured for def ${sourceDefId}`)
+  }
+  return source
 }
 
 export interface LinkInventorySourceInput {
@@ -107,8 +112,10 @@ export async function linkInventorySource(
   userId: string,
   input: LinkInventorySourceInput
 ): Promise<void> {
-  const config = await readInventoryBridgeConfig(organizationId)
-  const entry = findEntry(config, input.sourceDefId)
+  const source = await requireSource(db, organizationId, input.sourceDefId)
+  if (!source.dataConnectorId) {
+    throw new BadRequestError(`Inventory source ${input.sourceDefId} has no syncing connector`)
+  }
   const partDefId = await requireCachedEntityDefId(organizationId, 'part')
 
   const crud = new UnifiedCrudHandler(organizationId, userId, db)
@@ -119,11 +126,12 @@ export async function linkInventorySource(
   })
 
   const currentQty =
-    (await readNumberValue(db, organizationId, input.variantInstanceId, entry.quantityFieldId)) ?? 0
+    (await readNumberValue(db, organizationId, input.variantInstanceId, source.quantityFieldId)) ??
+    0
 
   await upsertInventoryBridgeLink(db, {
     organizationId,
-    dataConnectorId: entry.dataConnectorId,
+    dataConnectorId: source.dataConnectorId,
     sourceDefId: input.sourceDefId,
     variantInstanceId: input.variantInstanceId,
     partInstanceId: input.partInstanceId,
@@ -163,8 +171,7 @@ export async function unlinkInventorySource(
   userId: string,
   input: { variantInstanceId: string; sourceDefId: string }
 ): Promise<void> {
-  const config = await readInventoryBridgeConfig(organizationId)
-  findEntry(config, input.sourceDefId) // guard: the source must be a configured bridge source
+  await requireSource(db, organizationId, input.sourceDefId) // guard: must be a configured source
   const crud = new UnifiedCrudHandler(organizationId, userId, db)
   await crud.update(toRecordId(input.sourceDefId, input.variantInstanceId), {
     [INVENTORY_BRIDGE_EDGE_ATTR]: null,
@@ -186,11 +193,10 @@ export async function applyPendingInventoryDelta(
 ): Promise<number> {
   const link = await getInventoryBridgeLink(db, variantInstanceId)
   if (!link) throw new NotFoundError(`No inventory bridge link for ${variantInstanceId}`)
-  const config = await readInventoryBridgeConfig(organizationId)
-  const entry = findEntry(config, link.sourceDefId)
+  const source = await requireSource(db, organizationId, link.sourceDefId)
 
   const current =
-    (await readNumberValue(db, organizationId, variantInstanceId, entry.quantityFieldId)) ?? null
+    (await readNumberValue(db, organizationId, variantInstanceId, source.quantityFieldId)) ?? null
   if (current == null || current >= link.lastSeenQuantity) return 0
 
   const won = await advanceWatermarkCAS(db, link.id, link.lastSeenQuantity, current)
@@ -246,12 +252,13 @@ export async function listPartInventoryLinks(
 ): Promise<PartInventoryLink[]> {
   const links = await listInventoryBridgeLinksForPart(db, organizationId, partInstanceId)
   if (links.length === 0) return []
-  const config = await readInventoryBridgeConfig(organizationId)
+  const sources = await listInventorySources(db, organizationId)
+  const quantityFieldByDef = new Map(sources.map((s) => [s.sourceDefId, s.quantityFieldId]))
   const out: PartInventoryLink[] = []
   for (const link of links) {
-    const entry = config.find((c) => c.sourceDefId === link.sourceDefId)
-    const currentQuantity = entry
-      ? await readNumberValue(db, organizationId, link.variantInstanceId, entry.quantityFieldId)
+    const quantityFieldId = quantityFieldByDef.get(link.sourceDefId)
+    const currentQuantity = quantityFieldId
+      ? await readNumberValue(db, organizationId, link.variantInstanceId, quantityFieldId)
       : null
     const pendingDelta =
       link.mode === 'confirm' && currentQuantity != null && currentQuantity < link.lastSeenQuantity

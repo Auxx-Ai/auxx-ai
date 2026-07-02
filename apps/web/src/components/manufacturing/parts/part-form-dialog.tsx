@@ -35,7 +35,6 @@ const PART_SYSTEM_ATTRIBUTES = [
   'part_description',
   'category',
   'hs_code',
-  'shopify_product_link_id',
 ] as const
 
 /** Props for PartFormDialog component */
@@ -72,7 +71,6 @@ export function PartFormDialog({ open, onOpenChange, recordId, onSuccess }: Part
     sku: '',
     hsCode: '',
     category: '',
-    shopifyProductLinkId: '',
   })
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [showSupplier, setShowSupplier] = useState(false)
@@ -90,7 +88,6 @@ export function PartFormDialog({ open, onOpenChange, recordId, onSuccess }: Part
           sku: (systemValues.part_sku as string) ?? '',
           hsCode: (systemValues.hs_code as string) ?? '',
           category: (systemValues.category as string) ?? '',
-          shopifyProductLinkId: (systemValues.shopify_product_link_id as string) ?? '',
         })
       } else if (!isEditMode) {
         setValues({
@@ -99,7 +96,6 @@ export function PartFormDialog({ open, onOpenChange, recordId, onSuccess }: Part
           sku: '',
           hsCode: '',
           category: '',
-          shopifyProductLinkId: '',
         })
       }
       setErrors({})
@@ -169,11 +165,6 @@ export function PartFormDialog({ open, onOpenChange, recordId, onSuccess }: Part
           },
           { fieldId: 'category', value: values.category || undefined, fieldType: 'TEXT' },
           { fieldId: 'hs_code', value: values.hsCode || undefined, fieldType: 'TEXT' },
-          {
-            fieldId: 'shopify_product_link_id',
-            value: values.shopifyProductLinkId || undefined,
-            fieldType: 'TEXT',
-          },
         ]
 
         const success = await saveMultipleAsync(recordId, fieldValues)
@@ -191,7 +182,6 @@ export function PartFormDialog({ open, onOpenChange, recordId, onSuccess }: Part
             part_description: values.description || undefined,
             category: values.category || undefined,
             hs_code: values.hsCode || undefined,
-            shopify_product_link_id: values.shopifyProductLinkId || undefined,
           },
         })
 
@@ -307,22 +297,6 @@ export function PartFormDialog({ open, onOpenChange, recordId, onSuccess }: Part
               value={values.hsCode}
               onChange={(val) => handleChange('hsCode', val)}
               placeholder='Harmonized System Code'
-              disabled={isPending}
-            />
-          </FieldPanelRow>
-
-          {/* Shopify Product Link ID */}
-          <FieldPanelRow
-            title='Shopify Product ID'
-            description='Link to a Shopify product'
-            orientation='responsive'
-            type={BaseType.STRING}
-            showIcon>
-            <FieldInputAdapter
-              fieldType={FieldType.TEXT}
-              value={values.shopifyProductLinkId}
-              onChange={(val) => handleChange('shopifyProductLinkId', val)}
-              placeholder='Shopify Product ID (optional)'
               disabled={isPending}
             />
           </FieldPanelRow>

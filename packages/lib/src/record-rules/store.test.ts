@@ -31,4 +31,25 @@ describe('assertRuleShape — native actions', () => {
       assertRuleShape({ ...fieldRule, actions: [{ type: 'notify', userIds: ['u'], message: 'm' }] })
     ).not.toThrow()
   })
+
+  it('accepts a native action on a MANAGED rule', () => {
+    expect(() =>
+      assertRuleShape({
+        ...fieldRule,
+        on: 'decreased',
+        actions: [{ type: 'native', handler: 'deductInventory' }],
+        managed: 'inventory',
+      })
+    ).not.toThrow()
+  })
+
+  it('still rejects native without the managed marker', () => {
+    expect(() =>
+      assertRuleShape({
+        ...fieldRule,
+        on: 'decreased',
+        actions: [{ type: 'native', handler: 'deductInventory' }],
+      })
+    ).toThrow(/server-declared/)
+  })
 })

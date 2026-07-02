@@ -1814,6 +1814,13 @@
       "when": 1783017365052,
       "tag": "0258_drop_record_rule_run_rule_fk",
       "breakpoints": true
+    },
+    {
+      "idx": 259,
+      "version": "7",
+      "when": 1783027090371,
+      "tag": "0259_record_rule_managed",
+      "breakpoints": true
     }
   ]
 }

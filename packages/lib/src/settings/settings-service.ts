@@ -108,16 +108,6 @@ export const SETTINGS_CATALOG: Record<string, SettingConfig> = {
     organizationOnly: true,
     description: 'Getting-started checklist state (dismissal + manual completions)',
   },
-  'inventory.bridge': {
-    key: 'inventory.bridge',
-    scope: 'INVENTORY_BRIDGE',
-    // InventoryBridgeConfigEntry[] — { sourceDefId, quantityFieldId, relationshipFieldId }[]
-    defaultValue: [],
-    type: 'object',
-    organizationOnly: true,
-    description:
-      'Inventory→part bridge sources: which entity defs/fields the watermark pass reads to deduct linked parts',
-  },
   'appearance.logo': {
     key: 'appearance.logo',
     scope: 'APPEARANCE',

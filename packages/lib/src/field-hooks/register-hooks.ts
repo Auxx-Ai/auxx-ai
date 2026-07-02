@@ -1,5 +1,6 @@
 // packages/lib/src/field-hooks/register-hooks.ts
 
+import { registerInventoryDeductionRule } from '../data-connectors/inventory-bridge-rule-action'
 import { handleRecordRulesOnFieldChange } from '../record-rules/hook-handler'
 import { publishFieldChangeEvent } from './post/publish-field-change-event'
 import { touchActivityOnFieldChange } from './post/touch-activity-on-field-change'
@@ -35,6 +36,11 @@ export function registerAllHooks(): void {
   // dispatch through door 2 (`handleRecordRules`) + the manifest consumer, so they gain
   // sync/import visibility for free. Replaces the deleted ENTITY_TRIGGERS registry.
   registerEntitySystemRules()
+
+  // v9 inventory→part deduction: the `deductInventory` native action fired by the managed
+  // inventory rule(s). Registered here so both web + worker resolve the handler once the
+  // field-hooks bootstrap runs (the engine self-inits this on a first handler miss).
+  registerInventoryDeductionRule()
 
   // Field-change post-hook — fires `<prefix>:field:updated` after every field
   // write. Registered globally so contacts, tickets, companies, and custom

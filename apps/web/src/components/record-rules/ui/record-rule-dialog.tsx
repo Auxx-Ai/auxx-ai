@@ -28,6 +28,8 @@ export interface EditableRecordRule {
   condition: unknown
   actions: unknown
   enabled: boolean
+  /** Non-null ⇒ feature-provisioned + locked (edit/delete disabled in the UI). */
+  managed?: 'inventory' | null
 }
 
 interface RecordRuleDialogProps {

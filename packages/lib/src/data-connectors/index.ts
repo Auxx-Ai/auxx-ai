@@ -78,14 +78,7 @@ export {
   syncConnectorScheduler,
   syncConnectorSweepScheduler,
 } from './data-connector-scheduler'
-// Inventory→part consumption bridge (v9) — config, watermark store, and the pass
-export {
-  INVENTORY_BRIDGE_SETTING_KEY,
-  type InventoryBridgeConfigEntry,
-  readInventoryBridgeConfig,
-  removeInventoryBridgeConfigEntries,
-  upsertInventoryBridgeConfigEntry,
-} from './inventory-bridge-config'
+// Inventory→part consumption bridge (v9) — managed rule, watermark store, and the pass
 export {
   applyPendingInventoryDelta,
   type LinkInventorySourceInput,
@@ -97,6 +90,9 @@ export {
   updateInventoryLinkMode,
 } from './inventory-bridge-linking'
 export {
+  type DeductVariantInput,
+  type DeductVariantOutcome,
+  deductVariantInventory,
   type InventoryBridgePassResult,
   runInventoryBridgePass,
 } from './inventory-bridge-pass'
@@ -105,6 +101,19 @@ export {
   type ProvisionInventoryBridgeInput,
   provisionInventoryBridge,
 } from './inventory-bridge-provisioning'
+export {
+  DEDUCT_INVENTORY_HANDLER,
+  ensureInventoryDeductionRule,
+  INVENTORY_MANAGED_MARKER,
+  INVENTORY_RULE_NAME,
+  type InventorySource,
+  listInventorySourceRules,
+  listInventorySources,
+  listSyncedDefIds,
+  removeInventoryDeductionRule,
+  resolveInventorySource,
+} from './inventory-bridge-rule'
+export { registerInventoryDeductionRule } from './inventory-bridge-rule-action'
 export {
   advanceWatermarkCAS,
   deleteInventoryBridgeLink,

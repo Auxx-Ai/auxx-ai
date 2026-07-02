@@ -18,14 +18,14 @@
 //
 // See plans/data-connectors/v9/shopify-inventory-part-bridge-plan.md (Piece C).
 
-import { type Database, schema } from '@auxx/database'
+import { type Database, type InventoryBridgeLinkEntity, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { and, eq, inArray } from 'drizzle-orm'
 import { getCachedEntityDefId } from '../cache'
 import { UnifiedCrudHandler } from '../resources/crud/unified-handler'
 import { toRecordId } from '../resources/resource-id'
 import { SystemUserService } from '../users/system-user-service'
-import { readInventoryBridgeConfig } from './inventory-bridge-config'
+import { listInventorySources } from './inventory-bridge-rule'
 import {
   advanceWatermarkCAS,
   deleteInventoryBridgeLink,
@@ -104,9 +104,115 @@ async function readLinkedParts(
   return out
 }
 
+/** Outcome of deducting one variant's cell against its watermark cursor. */
+export type DeductVariantOutcome = 'movement' | 'pending' | 'advanced' | 'cleared' | 'noop'
+
+export interface DeductVariantInput {
+  organizationId: string
+  dataConnectorId: string
+  sourceDefId: string
+  /** The watermark link (cursor + mode + denormalized part). */
+  link: InventoryBridgeLinkEntity
+  /** Current synced quantity cell; null/undefined ⇒ not yet synced (skip). */
+  cell: number | null | undefined
+  /** Current related part via the edge; null ⇒ edge cleared (drop the stale link). */
+  currentPart: string | null
+  partDefId: string
+  movementDefId: string
+  /** Lazily obtain the crud handler — created only when a movement is actually emitted. */
+  getHandler: () => Promise<UnifiedCrudHandler>
+}
+
+/**
+ * The per-variant deduction core (shared by the watermark pass AND the `deductInventory`
+ * native rule action). Compares the current cell to the persisted cursor
+ * (`link.lastSeenQuantity`) and, on a downward change in `auto` mode, CAS-advances the
+ * cursor and emits ONE `sale` movement (`adjust_subparts` → BOM explosion). The cursor —
+ * not the manifest old-value — is the delta source, which is what self-heals dupes / lost
+ * firings on the next change. Running the pass and the rule on the same transition is safe:
+ * whoever advances the cursor first wins the CAS; the other sees `cell == cursor` and no-ops.
+ *
+ * Never throws for a caller-recoverable condition; the CAS/crud calls may still reject and
+ * are the caller's to guard (the rule engine's never-throws contract wraps this).
+ */
+export async function deductVariantInventory(
+  db: Database,
+  input: DeductVariantInput
+): Promise<{ outcome: DeductVariantOutcome; delta?: number }> {
+  const {
+    link,
+    currentPart,
+    cell,
+    organizationId,
+    dataConnectorId,
+    sourceDefId,
+    partDefId,
+    movementDefId,
+  } = input
+  const variantId = link.variantInstanceId
+
+  // The relationship is the source of truth. If the user re-pointed (or cleared) the edge in
+  // the builder, reconcile the denormalized row and re-baseline — no movement.
+  if (currentPart === null) {
+    // Edge cleared outside the picker — drop the stale watermark.
+    await deleteInventoryBridgeLink(db, variantId)
+    return { outcome: 'cleared' }
+  }
+
+  if (cell == null) return { outcome: 'noop' } // no synced quantity yet
+
+  if (currentPart !== link.partInstanceId) {
+    // Re-pointed link: refresh the row + re-baseline to the current cell, no movement.
+    await upsertInventoryBridgeLink(db, {
+      organizationId,
+      dataConnectorId,
+      sourceDefId,
+      variantInstanceId: variantId,
+      partInstanceId: currentPart,
+      lastSeenQuantity: cell,
+      mode: link.mode,
+    })
+    return { outcome: 'advanced' }
+  }
+
+  const wm = link.lastSeenQuantity
+  if (cell === wm) return { outcome: 'noop' } // no change
+
+  if (cell > wm) {
+    // Restock — advance the watermark silently (no movement).
+    await advanceWatermarkCAS(db, link.id, wm, cell)
+    return { outcome: 'advanced' }
+  }
+
+  // cell < wm — a consumption delta. In confirm mode leave it pending (non-advancing); the
+  // part console surfaces + applies it. In auto mode CAS-advance then deduct.
+  if (link.mode === 'confirm') return { outcome: 'pending' }
+
+  const won = await advanceWatermarkCAS(db, link.id, wm, cell)
+  if (!won) return { outcome: 'noop' } // another pass/rule handled this transition
+
+  const handler = await input.getHandler()
+  const delta = wm - cell // positive magnitude
+  await handler.create(movementDefId, {
+    stock_movement_part: toRecordId(partDefId, link.partInstanceId),
+    stock_movement_type: 'sale',
+    stock_movement_quantity: -delta,
+    stock_movement_adjust_subparts: true,
+    stock_movement_reference: `inv:${dataConnectorId}:${variantId}`,
+  })
+  logger.info('Inventory bridge deducted linked part', {
+    organizationId,
+    dataConnectorId,
+    variantInstanceId: variantId,
+    partInstanceId: link.partInstanceId,
+    delta,
+  })
+  return { outcome: 'movement', delta }
+}
+
 /**
  * Run the watermark pass for one connector. `targetDefIds` is the set of entity defs the
- * connector writes into — the pass only considers INVENTORY_BRIDGE sources among them.
+ * connector writes into — the pass only considers inventory sources among them.
  * Safe to call on every connector; returns early when nothing applies.
  */
 export async function runInventoryBridgePass(
@@ -117,11 +223,14 @@ export async function runInventoryBridgePass(
 ): Promise<InventoryBridgePassResult> {
   const result: InventoryBridgePassResult = { movements: 0, pending: 0, advanced: 0 }
 
-  const config = await readInventoryBridgeConfig(organizationId)
-  if (config.length === 0) return result
+  // Backstop sourcing: the inventory sources are now the org's managed inventory rules
+  // (`managed:'inventory'`), resolved to their quantity + relationship fields — NOT a config
+  // setting. The rule (fast path) and this pass (safety net) share the same cursor + CAS.
+  const sources = await listInventorySources(db, organizationId)
+  if (sources.length === 0) return result
 
   const defs = new Set(targetDefIds)
-  const active = config.filter((c) => defs.has(c.sourceDefId))
+  const active = sources.filter((s) => defs.has(s.sourceDefId))
   if (active.length === 0) return result
 
   const links = await listInventoryBridgeLinksForConnector(db, dataConnectorId)
@@ -132,92 +241,44 @@ export async function runInventoryBridgePass(
   const movementDefId = await getCachedEntityDefId(organizationId, 'stock_movement')
   if (!partDefId || !movementDefId) return result
 
-  let handler: UnifiedCrudHandler | null = null
+  // Lazily create the crud handler once across the whole pass — only if a movement fires.
+  let handlerPromise: Promise<UnifiedCrudHandler> | null = null
+  const getHandler = () => {
+    if (!handlerPromise) {
+      handlerPromise = (async () => {
+        const systemUserId = await SystemUserService.getSystemUserForActions(organizationId)
+        return new UnifiedCrudHandler(organizationId, systemUserId, db)
+      })()
+    }
+    return handlerPromise
+  }
 
   for (const entry of active) {
     // Scope to this source's links so a link for another source def is never mistaken
     // for a cleared edge under the wrong relationship field.
     const entryLinks = links.filter((l) => l.sourceDefId === entry.sourceDefId)
     if (entryLinks.length === 0) continue
-    const linkByVariant = new Map(entryLinks.map((l) => [l.variantInstanceId, l]))
     const variantIds = entryLinks.map((l) => l.variantInstanceId)
     const [quantities, linkedParts] = await Promise.all([
       readQuantities(db, organizationId, entry.quantityFieldId, variantIds),
       readLinkedParts(db, organizationId, entry.relationshipFieldId, variantIds),
     ])
 
-    for (const variantId of variantIds) {
-      const link = linkByVariant.get(variantId)
-      if (!link) continue
-
-      // The relationship is the source of truth. If the user re-pointed (or cleared) the
-      // edge in the builder, reconcile the denormalized row and re-baseline — no movement.
-      const currentPart = linkedParts.get(variantId) ?? null
-      if (currentPart === null) {
-        // Edge cleared outside the picker — drop the stale watermark.
-        await deleteInventoryBridgeLink(db, variantId)
-        continue
-      }
-
-      const cell = quantities.get(variantId)
-      if (cell == null) continue // no synced quantity yet
-
-      if (currentPart !== link.partInstanceId) {
-        // Re-pointed link: refresh the row + re-baseline to the current cell, no movement.
-        await upsertInventoryBridgeLink(db, {
-          organizationId,
-          dataConnectorId,
-          sourceDefId: entry.sourceDefId,
-          variantInstanceId: variantId,
-          partInstanceId: currentPart,
-          lastSeenQuantity: cell,
-          mode: link.mode,
-        })
-        result.advanced += 1
-        continue
-      }
-
-      const wm = link.lastSeenQuantity
-      if (cell === wm) continue // no change
-
-      if (cell > wm) {
-        // Restock — phase 1 advances the watermark silently (no movement).
-        await advanceWatermarkCAS(db, link.id, wm, cell)
-        result.advanced += 1
-        continue
-      }
-
-      // cell < wm — a consumption delta. In confirm mode leave it pending (non-advancing);
-      // the part console surfaces + applies it. In auto mode CAS-advance then deduct.
-      if (link.mode === 'confirm') {
-        result.pending += 1
-        continue
-      }
-
-      const won = await advanceWatermarkCAS(db, link.id, wm, cell)
-      if (!won) continue // another pass handled this transition
-
-      if (!handler) {
-        const systemUserId = await SystemUserService.getSystemUserForActions(organizationId)
-        handler = new UnifiedCrudHandler(organizationId, systemUserId, db)
-      }
-
-      const delta = wm - cell // positive magnitude
-      await handler.create(movementDefId, {
-        stock_movement_part: toRecordId(partDefId, link.partInstanceId),
-        stock_movement_type: 'sale',
-        stock_movement_quantity: -delta,
-        stock_movement_adjust_subparts: true,
-        stock_movement_reference: `inv:${dataConnectorId}:${variantId}`,
-      })
-      result.movements += 1
-      logger.info('Inventory bridge deducted linked part', {
+    for (const link of entryLinks) {
+      const { outcome } = await deductVariantInventory(db, {
         organizationId,
         dataConnectorId,
-        variantInstanceId: variantId,
-        partInstanceId: link.partInstanceId,
-        delta,
+        sourceDefId: entry.sourceDefId,
+        link,
+        cell: quantities.get(link.variantInstanceId),
+        currentPart: linkedParts.get(link.variantInstanceId) ?? null,
+        partDefId,
+        movementDefId,
+        getHandler,
       })
+      if (outcome === 'movement') result.movements += 1
+      else if (outcome === 'pending') result.pending += 1
+      else if (outcome === 'advanced') result.advanced += 1
     }
   }
 

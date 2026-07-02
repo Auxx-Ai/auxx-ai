@@ -4,7 +4,7 @@
 
 import { Button } from '@auxx/ui/components/button'
 import { ListCard, type ListCardMenuItem, renderBadgeChips } from '@auxx/ui/components/list-card'
-import { History, Pencil, Plus, Trash, Zap } from 'lucide-react'
+import { History, Lock, Pencil, Plus, Trash, Zap } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { SettingsSection } from '~/components/global/settings-page'
 import { useConfirm } from '~/hooks/use-confirm'
@@ -97,20 +97,36 @@ export function RecordRulesSection() {
 
           {!list.isLoading &&
             rules.map((rule) => {
-              const menuItems: ListCardMenuItem[] = [
-                { label: 'Edit', icon: <Pencil />, onClick: () => setEditing(rule) },
-                { label: 'Run history', icon: <History />, onClick: () => setRunsFor(rule) },
-                {
-                  label: rule.enabled ? 'Disable' : 'Enable',
-                  icon: <Zap />,
-                  onClick: () => setEnabled.mutate({ ruleId: rule.id, enabled: !rule.enabled }),
-                },
-                {
-                  label: 'Delete',
-                  icon: <Trash />,
-                  onClick: () => void handleDelete(rule),
-                  destructive: true,
-                },
+              // Managed rules (e.g. inventory-source setup) are edit/delete-locked; only the
+              // enable toggle + run history are offered, and the card opens run history.
+              const managed = rule.managed != null
+              const menuItems: ListCardMenuItem[] = managed
+                ? [
+                    { label: 'Run history', icon: <History />, onClick: () => setRunsFor(rule) },
+                    {
+                      label: rule.enabled ? 'Disable' : 'Enable',
+                      icon: <Zap />,
+                      onClick: () => setEnabled.mutate({ ruleId: rule.id, enabled: !rule.enabled }),
+                    },
+                  ]
+                : [
+                    { label: 'Edit', icon: <Pencil />, onClick: () => setEditing(rule) },
+                    { label: 'Run history', icon: <History />, onClick: () => setRunsFor(rule) },
+                    {
+                      label: rule.enabled ? 'Disable' : 'Enable',
+                      icon: <Zap />,
+                      onClick: () => setEnabled.mutate({ ruleId: rule.id, enabled: !rule.enabled }),
+                    },
+                    {
+                      label: 'Delete',
+                      icon: <Trash />,
+                      onClick: () => void handleDelete(rule),
+                      destructive: true,
+                    },
+                  ]
+              const badges = [
+                ...(managed ? [{ label: 'Managed', icon: <Lock className='size-3' /> }] : []),
+                ...(rule.enabled ? [] : [{ label: 'Disabled' }]),
               ]
               return (
                 <ListCard
@@ -119,8 +135,8 @@ export function RecordRulesSection() {
                   subtitle={defLabels.get(rule.entityDefinitionId) ?? 'Record'}
                   description={describeRule(rule, defLabels.get(rule.entityDefinitionId))}
                   icon={<Zap className='size-4' />}
-                  headerEnd={rule.enabled ? undefined : renderBadgeChips([{ label: 'Disabled' }])}
-                  onClick={() => setEditing(rule)}
+                  headerEnd={badges.length > 0 ? renderBadgeChips(badges) : undefined}
+                  onClick={() => (managed ? setRunsFor(rule) : setEditing(rule))}
                   menuItems={menuItems}
                 />
               )

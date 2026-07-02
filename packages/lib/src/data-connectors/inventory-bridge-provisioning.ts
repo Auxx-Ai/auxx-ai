@@ -2,8 +2,8 @@
 // B1 — provision the visible link substrate for the v9 inventory→part bridge, part-side,
 // at connector finish/first-sync. Given the identified inventory-source def + its quantity
 // field, this idempotently creates the relationship edge (source `belongs_to` part, with a
-// `soldAsVariants` has_many inverse on part) and writes the INVENTORY_BRIDGE config entry
-// the watermark pass + picker read. Skips silently when the org has no `part` def.
+// `soldAsVariants` has_many inverse on part) and ensures the MANAGED inventory rule (which now
+// declares the source, replacing the retired INVENTORY_BRIDGE config). Skips when no `part` def.
 //
 // The connector manifest never declares `→ part` (locked D1): the caller supplies which def
 // is the inventory source + its quantity field (e.g. Piece A's shopify_variants stream). The
@@ -17,16 +17,18 @@ import { createScopedLogger } from '@auxx/logger'
 import { createCustomField } from '@auxx/services/custom-fields'
 import { and, eq } from 'drizzle-orm'
 import { getCachedEntityDefId } from '../cache'
-import { upsertInventoryBridgeConfigEntry } from './inventory-bridge-config'
+import { ensureInventoryDeductionRule } from './inventory-bridge-rule'
+import { INVENTORY_BRIDGE_EDGE_ATTR } from './inventory-bridge-rule-consts'
 
 const logger = createScopedLogger('inventory-bridge-provisioning')
 
-/** Stable systemAttribute for the source→part edge (idempotent re-provision key). */
-export const INVENTORY_BRIDGE_EDGE_ATTR = 'inventory_bridge_part'
+// Re-exported for existing importers (linking, action). The canonical definition lives in the
+// leaf consts module to keep provisioning ⇄ rule acyclic.
+export { INVENTORY_BRIDGE_EDGE_ATTR } from './inventory-bridge-rule-consts'
 
 export interface ProvisionInventoryBridgeInput {
-  /** The connector that syncs the inventory source (used to scope the config + cleanup). */
-  dataConnectorId: string
+  /** The connector that syncs the inventory source (provenance/logging only; optional). */
+  dataConnectorId?: string
   /** The synced inventory-source entity def (e.g. shopify_variants). */
   sourceDefId: string
   /** The NUMBER field on the source the pass compares to the watermark. */
@@ -36,8 +38,8 @@ export interface ProvisionInventoryBridgeInput {
 }
 
 /**
- * Idempotently provision the bridge edge + config for one inventory source. Returns the
- * edge field id (the config's `relationshipFieldId`), or null when the org has no `part`
+ * Idempotently provision the bridge edge + managed rule for one inventory source. Returns the
+ * edge field id (the source's `relationshipFieldId`), or null when the org has no `part`
  * def (nothing to link to — skip silently).
  */
 export async function provisionInventoryBridge(
@@ -95,11 +97,11 @@ export async function provisionInventoryBridge(
     })
   }
 
-  await upsertInventoryBridgeConfigEntry(db, organizationId, {
-    dataConnectorId: input.dataConnectorId,
+  // The source is now declared by a MANAGED record rule (single source of truth), not a
+  // config setting. Idempotent — the first provision creates it, later ones reuse it.
+  await ensureInventoryDeductionRule(db, organizationId, {
     sourceDefId: input.sourceDefId,
     quantityFieldId: input.quantityFieldId,
-    relationshipFieldId,
   })
 
   return { relationshipFieldId }

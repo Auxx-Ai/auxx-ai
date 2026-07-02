@@ -134,7 +134,6 @@ const FIELD_VIEW_CONFIGS: FieldViewSeedConfig[] = [
       'created_at',
       'updated_at',
       'created_by_id',
-      'shopify_product_link_id',
       'part_quantity_on_hand',
       'part_stock_status',
       // Relationship fields — dedicated drawer tabs exist for these

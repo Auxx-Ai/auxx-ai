@@ -1,26 +1,75 @@
 // apps/web/src/server/api/routers/inventory-bridge.ts
-// tRPC surface for the v9 inventory→part bridge link picker + part console (Piece B3).
-// Thin validated edge over @auxx/lib/data-connectors linking helpers — reads are queries,
-// link/unlink/mode/apply are mutations. All logic lives in lib; this only wires ctx.
+// tRPC surface for the v9 inventory→part bridge: org-level source config (admin) + per-part
+// record linking + the part console. Thin validated edge over @auxx/lib/data-connectors; all
+// logic lives in lib. Configuring a source = admin (provisions the managed rule); linking a
+// record to a configured source = member.
 
+import { getCachedCustomFields, getCachedResources } from '@auxx/lib/cache'
 import {
   applyPendingInventoryDelta,
   linkInventorySource,
   listInventoryBridgeSources,
   listPartInventoryLinks,
+  listSyncedDefIds,
+  provisionInventoryBridge,
+  removeInventoryDeductionRule,
   unlinkInventorySource,
   updateInventoryLinkMode,
 } from '@auxx/lib/data-connectors'
 import { z } from 'zod'
-import { createTRPCRouter, protectedProcedure } from '~/server/api/trpc'
+import { adminProcedure, createTRPCRouter, protectedProcedure } from '~/server/api/trpc'
 
 const modeSchema = z.enum(['auto', 'confirm'])
 
 export const inventoryBridgeRouter = createTRPCRouter({
-  /** Configured inventory sources for the org (which defs the picker can link from). */
-  sources: protectedProcedure.query(({ ctx }) =>
-    listInventoryBridgeSources(ctx.session.organizationId)
+  /** Configured inventory sources for the org, enriched with def + field labels. */
+  sources: protectedProcedure.query(async ({ ctx }) => {
+    const organizationId = ctx.session.organizationId
+    const sources = await listInventoryBridgeSources(ctx.db, organizationId)
+    const resources = await getCachedResources(organizationId)
+    const defLabel = new Map(resources.map((r) => [r.entityDefinitionId, r.label]))
+    return Promise.all(
+      sources.map(async (s) => {
+        const fields = await getCachedCustomFields(organizationId, s.sourceDefId)
+        const field = fields.find((f) => f.id === s.quantityFieldId)
+        return {
+          ...s,
+          defLabel: defLabel.get(s.sourceDefId) ?? 'Resource',
+          fieldLabel: field?.name ?? s.quantityFieldId,
+        }
+      })
+    )
+  }),
+
+  /** Entity defs the org syncs via a connector — the candidate inventory sources (for the picker). */
+  syncedDefIds: protectedProcedure.query(({ ctx }) =>
+    listSyncedDefIds(ctx.db, ctx.session.organizationId)
   ),
+
+  /**
+   * Provision an inventory source (admin): creates the source→part edge + the managed
+   * deduction rule for `(sourceDefId, quantityFieldId)`. Returns `{ provisioned:false,
+   * reason:'no-part-def' }` when the org has no `part` def to link to.
+   */
+  provisionSource: adminProcedure
+    .input(z.object({ sourceDefId: z.string().min(1), quantityFieldId: z.string().min(1) }))
+    .mutation(async ({ ctx, input }) => {
+      const result = await provisionInventoryBridge(ctx.db, ctx.session.organizationId, {
+        sourceDefId: input.sourceDefId,
+        quantityFieldId: input.quantityFieldId,
+      })
+      if (!result) return { provisioned: false as const, reason: 'no-part-def' as const }
+      return { provisioned: true as const, relationshipFieldId: result.relationshipFieldId }
+    }),
+
+  /** Remove an inventory source (admin): deletes its managed deduction rule. */
+  removeSource: adminProcedure
+    .input(z.object({ sourceDefId: z.string().min(1) }))
+    .mutation(({ ctx, input }) =>
+      removeInventoryDeductionRule(ctx.db, ctx.session.organizationId, {
+        sourceDefId: input.sourceDefId,
+      })
+    ),
 
   /** Every inventory link on a part, with watermark + current level + pending delta. */
   linksForPart: protectedProcedure

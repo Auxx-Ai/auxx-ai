@@ -22,12 +22,17 @@ export {
 export { fetchResourceSnapshots } from './snapshot-fetcher'
 export {
   assertRuleShape,
+  createManagedRecordRule,
   createRecordRule,
   dehydrateRecordRule,
+  deleteManagedRecordRulesForDef,
   deleteRecordRule,
+  findManagedRecordRule,
+  getRecordRuleById,
   insertRecordRuleRun,
   listRecordRuleRuns,
   listRecordRules,
+  type ManagedRecordRuleInput,
   type RecordRuleInput,
   type RecordRuleRunInput,
   updateRecordRule,

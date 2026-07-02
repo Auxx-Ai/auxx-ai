@@ -1,0 +1,1 @@
+ALTER TABLE "RecordRule" ADD COLUMN "managed" text;

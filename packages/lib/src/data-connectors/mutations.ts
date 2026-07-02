@@ -1243,10 +1243,10 @@ export async function deleteConnector(
   await loadConnectorRow(db, organizationId, id)
   await removeConnectorScheduler(id)
 
-  // v9 inventory bridge: drop the INVENTORY_BRIDGE config entries for this connector's
-  // target defs (the watermark rows cascade via FK on the connector-row delete below).
-  // Lazy import — the config helper pulls the settings/cache barrels that would break
-  // this module's mocked unit tests at load. Best-effort.
+  // v9 inventory bridge: drop the managed inventory rule(s) for this connector's target defs
+  // (the watermark rows cascade via FK on the connector-row delete below). Lazy import — the
+  // rule helper pulls the record-rules/cache barrels that would break this module's mocked
+  // unit tests at load. Best-effort.
   try {
     const targetDefs = await db
       .selectDistinct({ defId: schema.DataConnectorMapping.entityDefinitionId })
@@ -1258,11 +1258,13 @@ export async function deleteConnector(
       .where(eq(schema.DataConnectorStream.dataConnectorId, id))
     const defIds = targetDefs.map((r) => r.defId).filter((d): d is string => d != null)
     if (defIds.length > 0) {
-      const { removeInventoryBridgeConfigEntries } = await import('./inventory-bridge-config')
-      await removeInventoryBridgeConfigEntries(db, organizationId, defIds)
+      const { removeInventoryDeductionRule } = await import('./inventory-bridge-rule')
+      for (const sourceDefId of defIds) {
+        await removeInventoryDeductionRule(db, organizationId, { sourceDefId })
+      }
     }
   } catch {
-    // Config cleanup is best-effort; an orphan entry is harmless (the pass no-ops without links).
+    // Rule cleanup is best-effort; an orphan managed rule is harmless (it no-ops without links).
   }
 
   if (behavior !== 'keep') {

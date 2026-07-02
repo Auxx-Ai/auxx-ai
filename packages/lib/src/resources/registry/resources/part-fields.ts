@@ -207,27 +207,6 @@ export const PART_FIELDS: Record<string, ResourceField> = {
     description: 'Harmonized System code for customs',
   },
 
-  shopifyProductLinkId: {
-    id: toFieldId('shopifyProductLinkId'),
-    key: 'shopifyProductLinkId',
-    label: 'Shopify Product',
-    type: BaseType.STRING,
-    fieldType: FieldType.TEXT,
-    isSystem: true,
-    systemAttribute: 'shopify_product_link_id',
-    showInPanel: false, // Internal linking field
-    dbColumn: 'shopifyProductLinkId',
-    nullable: true,
-    capabilities: {
-      filterable: true,
-      sortable: false,
-      creatable: true,
-      updatable: true,
-      configurable: false,
-    },
-    description: 'Linked Shopify product ID',
-  },
-
   createdAt: {
     id: toFieldId('createdAt'),
     key: 'createdAt',

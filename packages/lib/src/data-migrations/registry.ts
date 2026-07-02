@@ -7,6 +7,7 @@ import { migration026NormalizeChannelCredentials } from './migrations/026-normal
 import { migration027BackfillCredentialDefinitionFk } from './migrations/027-backfill-credential-definition-fk'
 import { migration028DataConnectorStreamSyncModeWebhook } from './migrations/028-data-connector-stream-syncmode-webhook'
 import { migration029SeedRecordIdentityIndex } from './migrations/029-seed-record-identity-index'
+import { migration030RetireShopifyProductLinkId } from './migrations/030-retire-shopify-product-link-id'
 import { assertUniqueMigrationIds } from './plan'
 import type { DataMigrationDef } from './types'
 import { wrapEntityMigration } from './wrap-entity-migration'
@@ -30,6 +31,7 @@ function buildRegistry(): DataMigrationDef[] {
     migration027BackfillCredentialDefinitionFk,
     migration028DataConnectorStreamSyncModeWebhook,
     migration029SeedRecordIdentityIndex,
+    migration030RetireShopifyProductLinkId,
   ]
 
   all.sort((a, b) => a.id.localeCompare(b.id))

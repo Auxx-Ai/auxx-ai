@@ -13,7 +13,7 @@ const h = vi.hoisted(() => ({
   getCachedEntityDefId: vi.fn(async (_org: string, slug: string) =>
     slug === 'part' ? 'def_part' : slug === 'stock_movement' ? 'def_mv' : undefined
   ),
-  readConfig: vi.fn(),
+  listSources: vi.fn(),
   listLinks: vi.fn(),
   advanceCAS: vi.fn(async () => true),
   upsertLink: vi.fn(async () => ({}) as InventoryBridgeLinkEntity),
@@ -29,7 +29,7 @@ vi.mock('../resources/crud/unified-handler', () => ({
     create = h.createSpy
   },
 }))
-vi.mock('./inventory-bridge-config', () => ({ readInventoryBridgeConfig: h.readConfig }))
+vi.mock('./inventory-bridge-rule', () => ({ listInventorySources: h.listSources }))
 vi.mock('./inventory-bridge-store', () => ({
   listInventoryBridgeLinksForConnector: h.listLinks,
   advanceWatermarkCAS: h.advanceCAS,
@@ -96,12 +96,12 @@ beforeEach(() => {
     slug === 'part' ? 'def_part' : slug === 'stock_movement' ? 'def_mv' : undefined
   )
   h.advanceCAS.mockResolvedValue(true)
-  h.readConfig.mockResolvedValue([ENTRY])
+  h.listSources.mockResolvedValue([ENTRY])
 })
 
 describe('runInventoryBridgePass', () => {
   it('no config ⇒ early return, no reads', async () => {
-    h.readConfig.mockResolvedValue([])
+    h.listSources.mockResolvedValue([])
     const db = fakeDb(new Map(), new Map())
     const r = await runInventoryBridgePass(db, ORG, DC, [SOURCE_DEF])
     expect(r).toEqual({ movements: 0, pending: 0, advanced: 0 })
@@ -229,7 +229,7 @@ describe('runInventoryBridgePass', () => {
     // Only ENTRY (def_variants) is configured, but the store holds a link for a foreign
     // source def too. That foreign link must not be read, deleted, or deducted — otherwise
     // its (absent) edge under the wrong relationship field would look like a cleared link.
-    h.readConfig.mockResolvedValue([ENTRY])
+    h.listSources.mockResolvedValue([ENTRY])
     h.listLinks.mockResolvedValue([
       link({
         id: 'lnk_A',
