@@ -9,6 +9,7 @@ import { toastError } from '@auxx/ui/components/toast'
 import { Boxes, CreditCard, Database, Github, Globe, Plug } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { type ComponentType, useMemo, useState } from 'react'
+import { AppIcon } from '~/components/apps/ui/app-icon'
 import { type TemplateGalleryCategory, TemplateGalleryDialog } from '~/components/templates/ui'
 import { api } from '~/trpc/react'
 
@@ -27,7 +28,7 @@ type SourceItem = {
 } & (
   | { kind: 'builtin'; type: 'generic-rest' }
   | { kind: 'template'; templateId: string; requiresConnection: boolean }
-  | { kind: 'app'; type: string; requiresConnection: boolean }
+  | { kind: 'app'; type: string; requiresConnection: boolean; appIconId: string }
 )
 
 /** Map a catalog `iconKey` to a lucide icon (server sends a stable key, not a component). */
@@ -113,12 +114,13 @@ export function SourceTemplateDialog({ open, onOpenChange }: SourceTemplateDialo
     const appItems: SourceItem[] = data.apps.map((a) => ({
       id: `app:${a.connectorId}`,
       name: a.label,
-      description: '',
+      description: a.description,
       categories: ['apps'],
       iconKey: a.iconKey,
       kind: 'app',
       type: a.type,
       requiresConnection: a.requiresConnection,
+      appIconId: a.appIconId,
     }))
     return [...(builtinItem ? [builtinItem] : []), ...templateItems, ...appItems]
   }, [catalog.data])
@@ -172,8 +174,12 @@ export function SourceTemplateDialog({ open, onOpenChange }: SourceTemplateDialo
       renderIcon={(item) => {
         const Icon = iconFor(item.iconKey)
         return (
-          <div className='flex size-8 shrink-0 items-center justify-center rounded-lg border bg-background'>
-            <Icon className='size-4' />
+          <div className='flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-lg border bg-background'>
+            {item.kind === 'app' ? (
+              <AppIcon iconId={item.appIconId} size='lg' />
+            ) : (
+              <Icon className='size-4' />
+            )}
           </div>
         )
       }}

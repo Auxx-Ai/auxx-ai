@@ -38,6 +38,7 @@ describe('compileAndExtractCatalog — data connectors', () => {
     expect(connector).toMatchObject({
       id: 'shopify.core',
       label: 'Shopify Core Data',
+      description: 'Sync orders and customers from Shopify.',
       requiresConnection: true,
       iconKey: 'shopping-bag',
       webhookTrigger: { triggerId: 'shopify.shopify-trigger' },

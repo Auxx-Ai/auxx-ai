@@ -42,6 +42,7 @@ const CONNECTOR_ID_RE = /^[a-z][a-z0-9]*(\.[a-z][a-z0-9]*)*$/
  * export const shopifyCoreDataConnector = defineDataConnector({
  *   id: 'shopify.core',
  *   label: 'Shopify Core Data',
+ *   description: 'Sync orders, products, and customers from your Shopify store.',
  *   requiresConnection: true,
  *   config: z.object({ includeDraftProducts: z.boolean().default(false) }),
  *   streams: [{ key: 'order', displayFieldKey: 'name', fields: { ... } }],
