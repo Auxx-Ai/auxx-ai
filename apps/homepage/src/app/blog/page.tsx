@@ -6,6 +6,9 @@ import { config } from '~/lib/config'
 import { BlogLayout } from './_components/blog-layout'
 import { BlogListWithPagination } from './_components/blog-list-with-pagination'
 
+// Re-render hourly so future-dated posts appear on their release date.
+export const revalidate = 3600
+
 export const metadata: Metadata = {
   title: `Blog | ${config.shortName}`,
   description:

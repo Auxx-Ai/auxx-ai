@@ -1,0 +1,230 @@
+---
+title: "Verifying Anyone's Webhook: Providers as Data, Not Code"
+description: "How one parametric, timing-safe HMAC verifier and a handful of data presets replaced ~10 hand-rolled signature checks — and the real bugs (throw-on-length-mismatch, non-constant-time compares) we dug out along the way."
+date: "2026-09-08"
+slug: "inbound-webhooks-providers-as-data"
+category:
+  slug: "coding"
+  title: "Coding"
+authors:
+  - name: "Markus Klooth"
+    image: "/images/avatars/markus.jpg"
+tags: ["webhooks", "security", "hmac", "redis", "typescript", "open-source"]
+published: true
+---
+
+There is a URL in our API that accepts a POST from anyone on the internet, with no session, no API key, and no allowlist. That is not a bug report. It is what a webhook receiver *is*: a public, unauthenticated endpoint whose entire security model is "prove you signed these bytes with a secret only we two know."
+
+We needed users to be able to point *any* provider at us — Stripe, Shopify, GitHub, Typeform, some internal tool with a bearer token, some tool with no signature at all — without us shipping a code change per provider. When we audited what we already had, we found roughly ten hand-rolled copies of the same HMAC check scattered across the codebase, and at least two of them were subtly wrong in ways that only a security review catches. This post is about the replacement: **one** parametric, timing-safe verifier, with every provider's signature scheme described as *data*, plus the ingress hardening around it.
+
+The code lives in `packages/lib/src/webhooks/inbound/` and `apps/api/src/routes/webhooks.ts`. Auxx.ai is [open source](https://github.com/auxxai/auxx), so every snippet below is the real thing.
+
+## The id IS the capability
+
+The control table is deliberately boring. A `WebhookEndpoint` row (`packages/database/src/db/schema/webhook-endpoint.ts`) is bound to nothing — no app, no connection, no OAuth identity. It has a name, a verification mode, an encrypted secret, and some signature-shape columns. That's it.
+
+Two design decisions follow from that.
+
+First, the public URL is **derived, never stored**:
+
+```typescript
+/** The public inbound URL for an endpoint — derived from its id, never persisted. */
+export function webhookEndpointUrl(id: string): string {
+  return getApiUrl(`/webhooks/endpoint/${id}`)
+}
+```
+
+There is no URL column to drift out of sync with the routing table, no migration when the API domain changes, and no way for two rows to claim the same path. The cuid in the URL *is* the capability — unguessable, and resolving to exactly one row.
+
+Second, because the id resolves to exactly one org, there is no wrong-org check possible on ingress. The receiver loads the endpoint by id, reads `organizationId` off the row, and that's the tenant. A whole class of confused-deputy bug — "delivery for org A processed under org B" — is structurally unrepresentable.
+
+## Providers as presets
+
+The core claim of this post: a webhook provider's signature scheme is not a code path. It is five or six fields of data.
+
+```typescript
+/** A provider's verification knowledge as data — the unit `verifyWebhook` dispatches on. */
+export interface WebhookVerifyPreset {
+  scheme: WebhookScheme // 'hmac' | 'stripe-sig' | 'shared-token'
+  /** Lowercased header carrying the signature or token. */
+  header: string
+  algo?: HmacAlgo // 'sha256' | 'sha1'
+  encoding?: HmacEncoding // 'base64' | 'hex'
+  /** Header prefix to strip before compare (Meta 'sha256='). */
+  prefix?: string
+  /** Builds the signed message from the raw body. Default identity. */
+  signedPayload?: (rawBody: string) => string
+  /** stripe-sig only — replay tolerance window in seconds. Default 300. */
+  toleranceSec?: number
+}
+```
+
+With that shape, `packages/lib/src/webhooks/inbound/presets.ts` reads like a field guide instead of a module of verify functions:
+
+```typescript
+/** Shopify: HMAC-SHA256 over the raw body, base64, in `x-shopify-hmac-sha256`. */
+export const shopifyPreset: WebhookVerifyPreset = {
+  scheme: 'hmac',
+  header: 'x-shopify-hmac-sha256',
+  algo: 'sha256',
+  encoding: 'base64',
+}
+
+/** Meta (Facebook / Instagram): HMAC-SHA256 hex, `sha256=`-prefixed. */
+export const metaPreset: WebhookVerifyPreset = {
+  scheme: 'hmac',
+  header: 'x-hub-signature-256',
+  algo: 'sha256',
+  encoding: 'hex',
+  prefix: 'sha256=',
+}
+```
+
+Shopify and Meta differ by encoding and a prefix. Svix-style providers differ by a `v1,` prefix and a base64-decoded key. Mailgun signs `${timestamp}${token}` instead of the body — that's what `signedPayload` is for. In every case the *logic* is the same, so it lives in one place, `verifyHmacSignature`, and a preset is a data entry. Adding a provider is a diff you can review in ten seconds, and there is exactly one implementation to get right.
+
+A small dispatcher (`verify/index.ts`) routes a preset to the right primitive:
+
+```typescript
+export function verifyWebhook(
+  preset: WebhookVerifyPreset,
+  input: { rawBody: string; headers: Record<string, string>; secret: string | null }
+): boolean {
+  const { rawBody, headers, secret } = input
+  if (!secret) return false
+
+  switch (preset.scheme) {
+    case 'stripe-sig':
+      return verifyStripeSignature({ rawBody, header: headers[preset.header] ?? '', secret })
+    case 'shared-token':
+      return timingSafeStringEqual(headers[preset.header] ?? '', secret)
+    default:
+      return verifyHmacSignature({ rawBody, signature: headers[preset.header] ?? '', secret, ...preset })
+  }
+}
+```
+
+No secret means no trust: `secret: null` returns `false`, never "skip verification."
+
+## Bug archaeology
+
+Consolidating ten copies into one is only worth doing if the one copy is *correct*, and this is where the audit got interesting. The comments in the new code name the bugs it replaced, because the bugs are the reason the code looks the way it does.
+
+**Bug class one: `timingSafeEqual` throws.** Node's `crypto.timingSafeEqual` requires equal-length buffers and *throws* on a mismatch. That sounds pedantic until an attacker (or just a misconfigured provider — we found this one via OpenPhone deliveries) sends a signature of the wrong length and your verify path becomes an unhandled exception instead of a clean 401. Depending on the surrounding code, that's a 500, a crashed worker, or a retry storm.
+
+**Bug class two: plain `!==`.** Two of the hand-rolled copies — the Facebook and Instagram receivers — compared HMAC digests with ordinary string inequality. String comparison short-circuits on the first differing byte, which leaks how much of the signature was correct through response timing. Byte-at-a-time signature forgery over the network is harder than the textbook makes it sound, but "constant-time compare for secrets" is table stakes, and we were not meeting it in two places.
+
+Both classes die in one eleven-line function, and everything in the system routes through it:
+
+```typescript
+// packages/lib/src/webhooks/inbound/verify/compare.ts
+import { timingSafeEqual } from 'node:crypto'
+
+/**
+ * Constant-time string equality that tolerates length mismatch (returns false
+ * rather than throwing).
+ */
+export function timingSafeStringEqual(a: string, b: string): boolean {
+  const ab = Buffer.from(a)
+  const bb = Buffer.from(b)
+  return ab.length === bb.length && timingSafeEqual(ab, bb)
+}
+```
+
+The length check itself is not constant-time, and that's fine — the length of an HMAC digest is public knowledge (32 bytes for SHA-256). What must be constant-time is the comparison of equal-length candidates, and it is.
+
+**Bug class three: verifying re-serialized JSON.** The subtlest one. The provider signed the exact bytes it sent. If your framework parses the body into an object and you compute the HMAC over `JSON.stringify(parsed)`, you are verifying a *different byte sequence* — key order, whitespace, and unicode escaping all differ — and verification fails intermittently in ways that look like the provider's fault. So the ingress reads the raw body once, before any parsing, and every verify function takes `rawBody`. The type doc says it outright: *"The RAW request bytes (HMAC is never computed over re-serialized JSON)."* Parsing happens **after** the signature passes, and if the body isn't JSON we keep the raw string rather than failing.
+
+## Four modes, two secret directions
+
+User-created endpoints expose four verification modes:
+
+| Mode | What it checks | Who mints the secret |
+|---|---|---|
+| `none` | Nothing — open URL, flagged in the UI | nobody |
+| `token` | Constant-time compare of a `Bearer` header (or `?token=`) against the secret | **Auxx mints**, you paste it into the provider |
+| `hmac` | HMAC over the raw body vs. a configurable signature header/prefix/encoding | **Auxx mints**, you paste it into the provider |
+| `stripe` | Stripe's `t=,v1=` scheme over `${t}.${rawBody}`, with replay window | **Stripe mints** (`whsec_…`), you paste it into Auxx |
+
+The column that matters isn't the algorithm — it's the last one. For `token` and `hmac`, we generate `randomBytes(32).toString('base64url')` and the user configures their sender with it. For `stripe`, the direction inverts: Stripe generates the signing secret when you register the endpoint in their dashboard, and the user pastes *their* secret into *us*. Same table, same encrypted column, opposite provenance. Get this wrong in the UX and users end up pasting our secret into a field Stripe will never read, wondering why every delivery 401s.
+
+## Stripe's replay window stays
+
+It was tempting to treat Stripe as "just HMAC with a funny header format." It is not, and flattening it would have been a downgrade. The dedicated verifier (`verify/stripe-sig.ts`) is behaviorally faithful to Stripe's own `constructEvent`, and the file comment explains why: dropping the timestamp window *"would make this primitive WEAKER than the SDK it replaces."*
+
+```typescript
+const { t, v1 } = parseStripeSigHeader(header) // t=<ts>,v1=<hmac>,v1=<hmac>,…
+
+// Replay protection — reject a stale (or future-dated) timestamp.
+const ts = Number.parseInt(t, 10)
+const now = Math.floor(Date.now() / 1000)
+if (Math.abs(now - ts) > toleranceSec) return false // default 300s
+
+const expected = createHmac('sha256', secret)
+  .update(`${t}.${rawBody}`, 'utf8')
+  .digest('hex')
+return v1.some((sig) => timingSafeStringEqual(sig, expected))
+```
+
+Two details do real work here. The timestamp is *inside* the signed payload (`${t}.${rawBody}`), so an attacker who captured a valid delivery can't just refresh `t` — changing it invalidates the signature, and keeping it trips the 300-second window. And the header can carry *multiple* `v1` signatures: during secret rotation Stripe signs with both old and new keys, so we accept **any** matching `v1`, exactly as their SDK does. A stricter-looking "first signature must match" check would break every customer mid-rotation.
+
+## Secrets are shown exactly once
+
+Every secret in this system is AES-256-GCM encrypted at rest via the same secret box the connections system uses (we covered its envelope format in [the secret lifecycle post](/blog/connections-part-2-secret-lifecycle)). The service layer (`packages/lib/src/webhooks/webhook-endpoint/service.ts`) enforces a one-time-reveal rule: `createWebhookEndpoint` and `rotateWebhookEndpointSecret` return the plaintext of a freshly minted secret once, and no read path ever returns it again — the UI projection masks it down to a boolean:
+
+```typescript
+export interface WebhookEndpointSummary {
+  // ...
+  hasSecret: boolean // the secret never leaves the server
+}
+```
+
+If you lose the secret, you rotate it. There is no "show secret" button to build, no audit question about who viewed it, and no plaintext sitting in a tRPC response cache. The update path enforces the invariant from the other side too: you can't switch an endpoint *into* `token` or `hmac` mode while it has no stored secret — rotate first, then switch.
+
+## Dedupe: sha256 of the bytes, and fail open
+
+Providers redeliver. Networks duplicate. Our idempotency check is deliberately primitive: hash the raw body, `SET NX` a marker in Redis, drop the delivery if the marker already existed.
+
+```typescript
+// apps/api/src/routes/webhooks.ts
+const eventId = createHash('sha256').update(rawBody).digest('hex')
+const deduped = await dedupeWebhookEvent('webhook-endpoint-dedup', `${endpointId}:${eventId}`, 300)
+if (deduped) return c.json({ ok: true, duplicate: true }, 200)
+```
+
+No configured id header to trust, no per-provider event-id extraction — identical bytes within the five-minute window are the same event, by definition. The interesting decision is in the helper's failure mode (`dedupe/redis.ts`): if Redis is unreachable, it returns `false` — *process the event*. The file comment states the philosophy so nobody "fixes" it later: **"better a dup than a miss, and downstream sinks dedupe too."** A webhook you drop is gone forever; a webhook you process twice hits consumers that are idempotent anyway. Dedupe here is an optimization, not a correctness gate, so it fails open.
+
+## Defense in depth on a public POST
+
+Verification proves authenticity, but an unauthenticated endpoint also has to survive garbage and abuse *before* it spends any real work. The ingress (`handleWebhookEndpoint`) layers cheap checks first:
+
+**Body cap, checked twice.** The declared `Content-Length` is compared against a 1 MB cap *before* the body is read — no point buffering a claimed 500 MB upload just to reject it — then the actual byte length is re-checked after reading, because `Content-Length` is attacker-controlled and can lie in both directions.
+
+**Per-endpoint rate limit.** A fixed-window `INCR` + `EXPIRE` counter in Redis, 60 requests a minute per endpoint. And once again it fails open: Redis down means deliveries flow, not a self-inflicted outage of every customer's webhooks. The same reasoning as dedupe — the limiter protects *us* on the margin; it is not load-bearing for correctness.
+
+**Order matters.** Cap → load endpoint → rate limit → verify → dedupe → parse. Every step is cheaper than the one after it, and JSON parsing — the step most likely to be handed adversarial input — happens only after the signature has already proven the sender holds the secret.
+
+## One endpoint, many topics
+
+A Stripe account sends `payment_intent.succeeded`, `invoice.paid`, and thirty other event types through one URL. Forcing an endpoint per event type would be miserable, so an endpoint can declare a `topicSource` — extract the topic from a header (GitHub's `x-github-event`) or a JSON path (Stripe's `type`) — and the receiver stamps every delivery with it.
+
+On top of that sits a topic *catalog*: the endpoint row carries a `topics` array, and each entry can hold a JSON Schema describing one delivery's payload — inferred from a real captured delivery (with the sample's event id kept for provenance) or hand-authored. That schema is what turns a webhook from "a blob arrived" into something the rest of the platform can bind fields against: agent triggers, workflow nodes, and [data-connector stream steering](/blog/data-connectors-part-3-slices-webhooks-scale) all pick a `(endpoint, topic)` pair and get a typed payload shape to map from. An endpoint with no `topicSource` still works — every delivery matches, topic `''`.
+
+## After the 401s: fan-out and the inspector
+
+Once a delivery is verified, deduped, and topic-stamped, the receiver does exactly two things and returns 200 fast.
+
+It fans out to three queue jobs, keyed on `(endpointId, topic)` — one delivery, three independent consumers:
+
+```typescript
+await appTriggerQueue.add('dispatchWebhookEndpoint', dispatchPayload) // workflows
+await appTriggerQueue.add('dispatchWebhookEndpointToAgents', dispatchPayload) // agent triggers
+await appTriggerQueue.add('dispatchWebhookEndpointToConnectors', dispatchPayload) // sync steering
+```
+
+And it `LPUSH`es the delivery into a per-endpoint Redis list, trimmed to the last 50 and expiring after five minutes. That list feeds a live SSE stream in the app — a delivery inspector where you watch real payloads arrive while you're wiring a provider up. Anyone who has debugged webhooks by tailing production logs knows why this feature exists. It's also where "infer a JSON Schema from a captured delivery" gets its captures. A throttled `lastEventAt` stamp (at most one DB write per endpoint per minute, gated by another Redis `NX` key) gives the endpoint list a cheap liveness signal.
+
+## Closing
+
+The security posture of this whole system comes down to a few sentences. Raw bytes are sacred: verify what was sent, never what you re-serialized. Comparison of secrets is constant-time and length-guarded, in exactly one function everybody imports. Providers are rows of data over one verifier, because ten copies of crypto code means ten chances to write `!==`. Availability machinery — dedupe, rate limiting — fails open by explicit philosophy, while authenticity checks never do. A missing secret is a rejection, not a skip.
+
+None of it is novel cryptography. All of it is the difference between a webhook receiver you trust on the public internet and ten copies of one you don't. The code is in `packages/lib/src/webhooks/inbound/` — [read it, or point your own webhooks at it](https://github.com/auxxai/auxx).

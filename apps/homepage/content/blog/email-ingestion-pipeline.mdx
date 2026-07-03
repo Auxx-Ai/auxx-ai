@@ -1,0 +1,397 @@
+---
+title: "How an Email Becomes a Ticket: Inside Our Ingestion Pipeline"
+description: "Gmail push notifications, Outlook Graph subscriptions, and raw SES MIME all converge on one ingest function. A deep dive into the dedup cascade, threading, rate limits, and realtime fan-out that turn email into support tickets."
+date: "2026-08-25"
+slug: "email-ingestion-pipeline"
+category:
+  slug: "coding"
+  title: "Coding"
+authors:
+  - name: "Markus Klooth"
+    image: "/images/avatars/markus.jpg"
+tags: ["email", "gmail", "outlook", "webhooks", "typescript", "open-source"]
+published: true
+---
+
+Every email arrives twice.
+
+Send a reply from our app and we write it to the database immediately, so the agent sees it in the thread without waiting. Then, seconds later, Gmail's push notification fires: "something changed in this mailbox." We sync, and the provider hands us the exact same message back — with a different ID, in a different shape, through a different code path. Naive ingestion stores it again. Now the customer's thread has two copies of your reply, or worse, two threads.
+
+This isn't an edge case. It's the steady state of any helpdesk that both sends and syncs email. The same duplication happens when a teammate is CC'd on two connected mailboxes, when a webhook and a scheduled poll race each other, and when a sync retries after a partial failure. If your ingestion isn't idempotent, email will find every hole.
+
+This post walks through how an email becomes a ticket in Auxx.ai: three very different transports converging on one choke point, the dedup cascade that keeps threads clean, and the small decisions — trusting provider thread IDs, promoting placeholder IDs, lazy attachment fetching — that make the whole thing boring in production. Auxx.ai is [open source](https://github.com/auxxai/auxx), so every file mentioned here is real code you can read.
+
+## Three doors, one room
+
+Email reaches us through three transports:
+
+1. **Gmail** — Google Cloud Pub/Sub push notifications, backed by the Gmail History API.
+2. **Outlook** — Microsoft Graph change subscriptions, backed by delta queries.
+3. **Forwarded mail** — raw MIME received by AWS SES, dropped in S3, handed off through SQS to a worker.
+
+Plus a fourth path that isn't a transport at all: a BullMQ polling subsystem that periodically syncs every mailbox regardless of whether push is working. More on that later.
+
+The critical design decision is that none of these paths writes messages directly. They all normalize into a common `MessageData` shape and call one function: `storeMessage` in `packages/lib/src/ingest/store-message.ts`. Reconciliation, participant resolution, thread upserts, metadata updates, and realtime fan-out live in exactly one place. When we fixed the double-arrival bug, we fixed it for all three doors at once.
+
+## The webhook is a doorbell, not a delivery
+
+Neither Gmail nor Microsoft delivers email content through their webhooks. Both send a notification that means "something changed — come look." The Gmail Pub/Sub payload is just an email address and a history ID:
+
+```typescript
+// apps/web/src/app/api/google/webhook/route.ts
+const dataStr = Buffer.from(body.message.data, 'base64').toString('utf-8')
+const data = JSON.parse(dataStr) // { emailAddress, historyId }
+
+const [integration] = await db
+  .select({ id, organizationId, lastHistoryId })
+  .from(schema.Integration)
+  .where(and(
+    eq(schema.Integration.provider, 'google'),
+    eq(schema.Integration.enabled, true),
+    sql`${schema.Integration.metadata} ->> 'email' = ${data.emailAddress}`
+  ))
+```
+
+Microsoft's notification carries a subscription ID and a resource path, but we treat it the same way. Both handlers end in the identical line: kick off an incremental sync for that integration. The webhook carries zero content; the sync machinery does all the work. This has a pleasant consequence — a dropped, duplicated, or reordered webhook can't corrupt anything. The worst case is a sync that finds nothing new.
+
+One detail that bites people: **always acknowledge**. If no integration matches a Pub/Sub message, we still return 200, because a 4xx/5xx makes Pub/Sub retry forever against an address that will never resolve. Same for Graph. The webhook handler's job is to be cheap, safe, and un-crashable.
+
+## Two philosophies of webhook security
+
+Here's where Google and Microsoft diverge sharply.
+
+**Google signs its pushes.** Every Pub/Sub push carries a Google-issued JWT in the `Authorization` header. We verify it against Google's public JWKS keys — RS256, with an allowlist of audiences and issuers:
+
+```typescript
+// apps/web/src/app/api/google/webhook/route.ts
+const publicKey = await getSigningKey(decoded.header.kid) // from googleapis JWKS
+const verified = jwt.verify(token, publicKey, {
+  algorithms: ['RS256'],
+  audience: [
+    WEBAPP_URL,
+    'https://pubsub.googleapis.com/google.pubsub.v1.Subscriber',
+    configService.get<string>('GOOGLE_PUBSUB_SERVICE_ACCOUNT_EMAIL'),
+  ].filter(Boolean),
+  issuer: ['https://accounts.google.com', 'googleidtoken.googleapis.com'],
+})
+```
+
+This is real cryptographic proof of origin. No shared secrets to rotate, nothing stored in your database that an attacker could steal to forge notifications.
+
+**Microsoft uses a handshake plus a shared secret.** When you create a Graph subscription, Microsoft immediately calls your endpoint with a `validationToken` you must echo back as plain text — proof that you own the URL:
+
+```typescript
+// apps/web/src/app/api/outlook/webhook/route.ts
+export async function GET(req: NextRequest): Promise<NextResponse> {
+  const validationToken = new URL(req.url).searchParams.get('validationToken')
+  if (validationToken) {
+    return new NextResponse(validationToken, {
+      status: 200,
+      headers: { 'Content-Type': 'text/plain' },
+    })
+  }
+  return NextResponse.json({ status: 'ok', timestamp: Date.now() })
+}
+```
+
+After that, every notification carries back the `clientState` secret you set at subscription time. We generate one per integration, store it in the integration's metadata, and compare with a constant-time equality check (`timingSafeStringEqual`) so response timing can't leak the secret byte by byte. It works, but it's a weaker guarantee than Google's: anyone who obtains the secret can forge notifications, so it has to be treated like a credential.
+
+## Cursors: history IDs vs delta links
+
+Both providers give you incremental sync, and both can invalidate your cursor. The failure modes differ.
+
+**Gmail** hands out monotonically increasing history IDs. You register a watch on the inbox:
+
+```typescript
+// packages/lib/src/providers/google/webhooks/setup-webhook.ts
+const response = await gmail.users.watch({
+  userId: 'me',
+  requestBody: {
+    topicName,                        // Pub/Sub topic
+    labelIds: ['INBOX'],              // watch only the inbox
+    labelFilterBehavior: 'INCLUDE',
+  },
+})
+// persist response.data.historyId and response.data.expiration
+```
+
+Then on every sync you call `users.history.list` from your persisted `lastHistoryId`, collecting `messageAdded`, `messageDeleted`, and `labelRemoved` records (we treat removal of the `INBOX` label as a deletion — an archived message shouldn't sit in the helpdesk as unresolved). Gmail's history log is finite, though: come back after too long and the API returns 404. Our sync catches that and falls back to a full `messages.list` pass, rebuilding the cursor from the highest history ID it sees.
+
+The subtle part is *when to advance the cursor*. If a page of history contained a message we failed to ingest for a transient reason — a 429, a storage hiccup — advancing `lastHistoryId` past that page silently drops the message forever. So we track a `safeHistoryId` that only moves when a page had zero retriable failures:
+
+```typescript
+// packages/lib/src/providers/google/messages/sync-messages.ts
+if (result.retriableFailures.length > 0 || failedFetchIds.length > 0) {
+  hasRetriableFailures = true // historyId will not advance past this page
+}
+if (!hasRetriableFailures) {
+  safeHistoryId = highestHistoryId
+}
+// ...
+const effectiveHistoryId = hasRetriableFailures ? safeHistoryId : highestHistoryId
+```
+
+The next cycle re-reads the failed page. Ingestion is idempotent (that's the whole second half of this post), so re-processing already-stored messages costs a few no-op upserts and nothing else. Cursor safety is cheap when dedup is free.
+
+**Outlook** replaces the numeric cursor with an opaque delta link. You run a delta query against the inbox, page through with the Graph SDK's `PageIterator`, and the final page hands you a new delta link to persist. Two Outlook-specific traps are worth knowing about:
+
+First, Outlook message IDs are *not stable by default*. Move a message to another folder and its ID changes — catastrophic if that ID is your dedup key. Graph fixes this with an opt-in header we send on every request:
+
+```typescript
+// packages/lib/src/providers/outlook/outlook-provider.ts
+const IMMUTABLE_ID_PREFER =
+  `odata.maxpagesize=${OUTLOOK_MAX_PAGE_SIZE}, IdType="ImmutableId"`
+
+response = await this.client.api(url)
+  .headers({ Prefer: IMMUTABLE_ID_PREFER })
+  .get()
+
+const pageIterator = new PageIterator(this.client, response, callback, {
+  headers: { Prefer: IMMUTABLE_ID_PREFER },
+})
+```
+
+Miss that header on even one code path and you'll chase phantom duplicates for weeks.
+
+Second, delta links expire too — Graph returns a 410 instead of Gmail's 404. We detect it, reset to a fresh delta query, and resync. And the same cursor-safety rule applies: the delta link only advances when the batch had no retriable ingest failures.
+
+Fetching message bodies is also a study in contrasts that ends in the same number. Gmail has a dedicated batch endpoint; we cap it at 20 messages per request because larger batches started drawing per-item 429s, and retry stragglers in batches of 5 with exponential backoff. Microsoft Graph's generic `/$batch` endpoint has a hard documented limit of — also 20.
+
+Side by side:
+
+| | Gmail | Outlook (Microsoft Graph) |
+| --- | --- | --- |
+| Push transport | Cloud Pub/Sub push | Change subscription → HTTPS callback |
+| Notification payload | `{ emailAddress, historyId }` | Subscription ID + resource path |
+| Webhook auth | Google-signed JWT verified via JWKS | `validationToken` echo + `clientState` secret |
+| Incremental cursor | Numeric `historyId` | Opaque delta link |
+| Cursor expiry | 404 → full message-list resync | 410 → reset delta query |
+| Registration lifetime | Watch expires (~1 week), renew | Subscription ~3 days max, renew |
+| Stable message IDs | Native | Only with `Prefer: IdType="ImmutableId"` |
+| Batch fetch limit | 20 (self-imposed, 429s above that) | 20 (documented `/$batch` limit) |
+
+Both registrations decay, which is one more reason push can never be the only tier.
+
+## The third door: raw MIME over SES
+
+Some customers don't connect a mailbox at all — they forward `support@their-domain.com` to an address we host. That mail arrives at AWS SES, which writes the raw MIME to S3 and invokes a deliberately tiny Lambda (`apps/mail-ingress`). The Lambda does one thing: validate the event shape with Zod and enqueue a versioned pointer to SQS.
+
+```typescript
+// apps/mail-ingress/src/ses-inbound-receiver.ts
+interface SesInboundQueueMessage {
+  version: 1
+  provider: 'ses'
+  sesMessageId: string
+  s3Bucket: string
+  s3Key: string
+  recipients: string[]
+  receivedAt: string
+}
+```
+
+No parsing, no database access, no business logic in the Lambda. Everything interesting happens in the worker (`apps/worker/src/inbound-email/`), which long-polls the queue and processes each pointer: fetch the raw email from S3, parse the MIME, resolve which organization's channel owns the recipient address, check the sender allowlist, and ingest.
+
+The error handling is the part worth copying. A malformed email will never parse successfully no matter how many times you retry it, so the processor throws a typed `PermanentProcessingError` for poison messages, and the poller treats the two failure classes differently:
+
+```typescript
+// apps/worker/src/inbound-email/sqs-poller.ts
+try {
+  await this.processMessage(message) // deletes SQS message on success
+} catch (error) {
+  const isPermanent = error instanceof PermanentProcessingError
+  if (isPermanent) {
+    await this.deleteMessage(message)  // don't retry poison
+    await this.deleteRawEmail(message) // clean up the S3 object too
+  }
+  // transient errors: do nothing — visibility timeout expires, SQS redelivers
+}
+```
+
+Transient failures cost nothing to handle: we simply don't delete the message, and SQS redelivers it after the visibility timeout. Ordering, retry, and backoff are the queue's job, not ours.
+
+The SES path also has a threading problem the OAuth paths don't: there's no provider to assign a thread ID. We derive one from the MIME headers ourselves — and this is the *only* place in the codebase where we do:
+
+```typescript
+// packages/lib/src/email/inbound/inbound-email-processor.ts
+function deriveExternalThreadId(message): string {
+  const firstReference = message.references?.split(/\s+/).find(Boolean)
+  return (
+    firstReference ||           // root of the References chain
+    message.inReplyTo ||        // direct parent
+    message.internetMessageId || // this message starts a thread
+    `ses:${message.sesMessageId}`
+  )
+}
+```
+
+## The polling safety net
+
+Push breaks. Watches expire mid-week, subscriptions lapse, webhooks get eaten by deploys. The polling subsystem (`packages/lib/src/jobs/polling/`) is what makes those failures invisible: a scanner job runs every five minutes, finds integrations whose effective sync mode is polling — or whose push registration has gone quiet — and enqueues sync jobs with a 30-second claim cooldown so overlapping scanners can't double-enqueue. IMAP accounts, which have no push at all, live entirely on this tier.
+
+The point isn't that polling is a legacy fallback. It's that push is an *optimization* of polling. Every mailbox is guaranteed to sync eventually; push just makes "eventually" feel like "instantly." Because both paths run the exact same idempotent sync, a webhook and a scheduled poll racing each other produce no duplicates — the second one finds nothing to do. The job infrastructure underneath this is its own story, which we covered in [our BullMQ series](/blog/bullmq-job-queue-architecture-part-1).
+
+## The choke point: a dedup cascade
+
+Everything above is plumbing to get a normalized `MessageData` into `storeMessage`. Now the real problem: is this message new?
+
+We answer with a cascade of checks, ordered from most to least reliable.
+
+**Tier 1: the Internet Message-ID.** Every email carries a globally unique `Message-ID` header, assigned once by the originating server and preserved across every hop. It's the one identifier that survives the double-arrival problem — the copy we wrote locally at send time and the copy Gmail syncs back share it, even though their provider IDs differ. So it's the first check, scoped to the organization:
+
+```typescript
+// packages/lib/src/ingest/store-message.ts
+const existingByMsgId = await ctx.db
+  .select({ id, threadId, externalId, textPlain, textHtml })
+  .from(schema.Message)
+  .where(and(
+    eq(schema.Message.organizationId, messageData.organizationId),
+    eq(schema.Message.internetMessageId, messageData.internetMessageId)
+  ))
+  .limit(1)
+```
+
+On a hit we don't insert — we *merge*. The provider's copy wins for external IDs, timestamps, and history IDs; our local copy's body is kept if the provider's is missing. The row ends up as the union of both arrivals. Before this check even runs its course, a dedicated reconciler handles the sharpest version of the race: it looks for messages with `sendStatus` of `PENDING` or `SENT` matching the incoming Message-ID — "is this the sync-back of something we just sent?" — with a subject-plus-five-minute-window fallback for providers that mangle headers.
+
+**Tier 2: the provider ID.** If there's no Message-ID match, we check `(integrationId, externalId)` — has this exact provider message been stored through this exact integration before? This catches straightforward re-syncs: an expired-cursor full resync, an overlapping poll, a retried page.
+
+**Tier 3: the heuristic.** Last resort, for genuinely degenerate cases where IDs are absent or mismatched: find the thread by its external thread ID, then look for a message within ±2 minutes of the incoming `sentAt` with the same sender and a similar subject. "Similar" is deliberately dumb:
+
+```typescript
+// packages/lib/src/ingest/reconciliation/is-similar-subject.ts
+const normalize = (s: string) =>
+  s.toLowerCase().replace(/^(re:|fwd:|fw:)\s*/gi, '').trim()
+
+if (normalized1 === normalized2) return true
+// handles truncated subjects
+if (normalized1.includes(normalized2) || normalized2.includes(normalized1)) return true
+```
+
+Strip reply prefixes, compare, allow substring containment for providers that truncate. No Levenshtein, no embeddings. The heuristic is a tie-breaker inside a thread and a time window, not a general matcher — keeping it dumb keeps its false-positive surface tiny.
+
+And if all three tiers miss but the insert still hits a unique-constraint violation — two workers ingesting the same message in the same instant — the error handler catches Postgres error `23505`, re-selects by `(integrationId, externalId)`, and returns the winner. The database constraint is the final tier of the cascade.
+
+## Placeholder promotion
+
+When you hit send in our app, the provider hasn't assigned IDs yet — the API call is still in flight. But the message and thread rows need to exist *now*, with unique external IDs, or the UI can't show them. So locally-created rows get placeholder IDs: `pending_`, `draft_`, `new_` prefixes.
+
+Reconciliation is where placeholders get promoted. When the provider's copy arrives with the real thread ID, we check whether the matched thread is still wearing a placeholder and swap it:
+
+```typescript
+// packages/lib/src/ingest/store-message.ts
+const ext = thread?.externalId
+if (
+  !ext ||
+  ext.startsWith('new_') ||
+  ext.startsWith('pending_') ||
+  ext.startsWith('draft_') ||
+  (ext.includes('-') && ext.length === 36) // bare UUID fallback
+) {
+  await ctx.db
+    .update(schema.Thread)
+    .set({ externalId: messageData.externalThreadId })
+    .where(eq(schema.Thread.id, existingMessage.threadId))
+}
+```
+
+This matters because thread identity hangs on that column. Threads upsert with `onConflictDoUpdate` targeting `[integrationId, externalId]`:
+
+```typescript
+await ctx.db.insert(schema.Thread)
+  .values({ externalId: messageData.externalThreadId, integrationId, /* ... */ })
+  .onConflictDoUpdate({
+    target: [schema.Thread.integrationId, schema.Thread.externalId],
+    set: { subject: messageData.subject || undefined },
+  })
+```
+
+If the thread were still holding `pending_abc123` when the customer's reply arrived carrying the real Gmail thread ID, the upsert would find no conflict and create a second thread. The conversation forks; the agent answers half of it. Promotion is what keeps one conversation in one row.
+
+## Threading: trust the provider
+
+There's a tempting rabbit hole here: implement RFC 5322 threading yourself. Walk `References` and `In-Reply-To` chains, build the conversation graph, handle clients that omit headers, handle mailing-list managers that rewrite them.
+
+We don't. Gmail already computed a `threadId`; Outlook already computed a `conversationId`. Both providers have spent two decades tuning their conversation grouping against every broken mail client in existence, and — more importantly — their grouping is what the *user sees* in their own mailbox. If we re-derived threads and disagreed with Gmail, we'd be wrong even when we were right: the support agent's view wouldn't match the mailbox it mirrors.
+
+So the rule is: the provider's thread ID is the thread key, full stop. Header-walking exists in exactly one place — the SES path, where there's no provider to defer to — and subject similarity exists in exactly one place, as a tie-breaker inside the reconciliation heuristic. Threading heuristics are a liability you should scope as narrowly as possible.
+
+## Rate limits and backoff
+
+Gmail's quota system is priced per operation, not per request — a send costs 20× a fetch. Every Gmail API call goes through a throttler that knows the real cost table:
+
+```typescript
+// packages/lib/src/utils/rate-limiter/provider-configs.ts
+export const GMAIL_QUOTA_COSTS = {
+  'messages.get': 5,
+  'messages.list': 5,
+  'messages.send': 100,
+  'messages.batchGet': 50,
+  'messages.import': 250,
+  // ...
+}
+```
+
+A throttler that counts requests instead of quota units will happily let a burst of sends exhaust a per-user quota that a thousand fetches wouldn't dent. Costing each call correctly means backpressure kicks in before Google starts rejecting.
+
+When a sync fails anyway, the failure is priced too. BullMQ retries the job a few times; only on the *final* attempt do we mark the integration as throttled, with exponential backoff from 30 seconds to a one-hour cap:
+
+```typescript
+// packages/lib/src/jobs/messages/sync-single-channel-messages-job.ts
+const newCount = (integration?.throttleFailureCount ?? 0) + 1
+const backoffMs = Math.min(
+  BASE_THROTTLE_BACKOFF_MS * 2 ** (newCount - 1), // 30s, 60s, 120s...
+  MAX_THROTTLE_BACKOFF_MS                          // capped at 1h
+)
+```
+
+The polling scanner respects `throttleRetryAfter`, so a failing mailbox stops being hammered without anyone paging. One success resets the counter. And users can cancel a long-running sync: the job checks a `SyncJob` status flag and exits gracefully rather than being killed mid-batch — which matters, because a killed batch is exactly the "page with retriable failures" case the cursor-safety logic exists for.
+
+## Attachments are lazy, bodies are offloaded
+
+A naive sync downloads every attachment inline. Ours never stores bytes in the message row at all. HTML bodies get uploaded to object storage first; the message row stores an `htmlBodyStorageLocationId` and nulls `textHtml`. If the body upload fails, we degrade gracefully — store the message with inline HTML rather than losing it.
+
+Attachments are stricter. Gmail embeds small parts directly in the message payload and requires a separate API call per large part, so we fetch only what's needed — and only for messages that turned out to be *new*:
+
+```typescript
+// packages/lib/src/providers/google/messages/gmail-inbound-content-ingestor.ts
+const { messageId, isNew } = await this.storageService.storeMessage(messageData)
+
+if (!isNew) {
+  // reconciled with an existing row — its attachments already exist
+  return messageId
+}
+const { resolved, failedCount } = await fetchAllGmailAttachmentBytes(
+  messageData.externalId, providerAttachments, fetchContext
+)
+```
+
+That `isNew` check is the dedup cascade paying rent: every reconciled double-arrival skips its attachment fetches entirely, which on a Gmail resync is most of the API budget. Downstream, the app never touches the bytes either — attachments are served to the browser as short-lived signed URLs straight from object storage.
+
+## The last mile: counts and fan-out
+
+After a message lands, the thread's denormalized metadata — `messageCount`, `firstMessageAt`, `lastMessageAt`, `latestMessageId`, `participantCount` — is recomputed in a single SQL statement with correlated subqueries (`updateThreadMetadataEfficient`). One round trip, always consistent with the actual rows, and deliberately fail-soft: a metadata failure logs and swallows rather than rolling back an ingested message.
+
+Then the frontend finds out. Every stored message publishes a realtime event — with one crucial suppression:
+
+```typescript
+// packages/lib/src/ingest/store-message.ts
+if (ctx.inSyncBatch) {
+  // batch sync: just record the inbox as touched;
+  // one `inbox:syncCompleted` fires per inbox at the end
+  ctx.touchedInboxIds.add(inboxIdForChannel)
+} else {
+  if (isNewThread) {
+    await publishThreadCreated(realtime, orgId, { threadId, inboxId },
+      { excludeSocketId: ctx.socketId })
+  }
+  await publishMessageCreated(realtime, orgId, { messageId, threadId, inboxId },
+    { excludeSocketId: ctx.socketId })
+}
+```
+
+Two details here. `excludeSocketId` solves the realtime cousin of the double-arrival problem: the tab that sent a reply already rendered it optimistically, so echoing the event back would make the message flicker or double-render — the originating socket is excluded from the fan-out. And during batch syncs, per-message events are suppressed entirely. A 2,000-message backfill emitting 2,000 `message:created` events would make every open tab refetch 2,000 times; instead the orchestrator emits one `inbox:syncCompleted` per touched inbox and the frontend refreshes its thread list once.
+
+## Boring by design
+
+The pipeline, end to end: three transports normalize into one `MessageData` shape; webhooks act as doorbells that trigger cursor-based syncs; polling guarantees the syncs happen even when the doorbells don't ring; and a single ingest function makes every arrival idempotent through a cascade that starts with the one identifier email actually guarantees. Every hard-won rule — advance cursors only past clean pages, trust provider thread IDs, promote placeholders, fetch attachments only for new messages — exists because the naive version corrupted a real thread at some point.
+
+If you're connecting your own support mailbox, the user-facing side of all this lives in our [Gmail](/blog/gmail-customer-support-guide) and [Outlook](/blog/outlook-customer-support-guide) guides. And that realtime fan-out at the end — the channels, the auth, why we run our own websocket infrastructure — is where the story continues, in [our self-hosted realtime series](/blog/self-hosted-realtime-part-1-sockudo-rooms-auth).

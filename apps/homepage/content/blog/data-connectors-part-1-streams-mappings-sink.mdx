@@ -1,0 +1,221 @@
+---
+title: "Building a Data Connector Engine, Part 1: Streams, Mappings, and the Entity Sink"
+description: "How we built the sync engine that pulls Shopify orders, Stripe customers, and any REST API into our entity system: streams, recursive mapping trees, and one choke-point writer. Part 1 of a three-part series."
+date: "2026-07-07"
+slug: "data-connectors-part-1-streams-mappings-sink"
+category:
+  slug: "coding"
+  title: "Coding"
+authors:
+  - name: "Markus Klooth"
+    image: "/images/avatars/markus.jpg"
+tags: ["sync", "integrations", "postgres", "drizzle", "typescript", "open-source"]
+published: true
+---
+
+Every external system disagrees with every other external system about everything: pagination, ids, nesting, timestamps, deletes. If you build one integration at a time, you rebuild the same sync engine at a time, and each copy has its own bugs.
+
+So we built the engine once. Data Connectors is the machinery that pulls external records — Shopify customers, Stripe subscriptions, any JSON-over-HTTP API — into our [custom-fields entity system](/blog/custom-fields-part-1-entity-definitions) and keeps them correct through webhooks, crashes, rate limits, and multi-thousand-record backfills. This is not a "we integrated Shopify" post. It is a walkthrough of the generic spine that makes every integration the same integration.
+
+The plan for the series:
+
+1. **This post** covers the data model and the write path: streams, the recursive mapping tree, and the entity sink that is the only thing allowed to write.
+2. **[Part 2](/blog/data-connectors-part-2-identity-relationships-reconciliation)** is about identity: how a record stays the *same* record across re-syncs, how cross-record references resolve, and how orphans get reconciled without archiving half your CRM.
+3. **[Part 3](/blog/data-connectors-part-3-slices-webhooks-scale)** is the orchestration layer: bounded resumable slices, opaque cursors, the webhook philosophy, and async bulk exports.
+
+The engine lives in `packages/lib/src/data-connectors/`, with the provider-agnostic orchestration shell in `packages/lib/src/sync-core/`. Auxx.ai is [open source](https://github.com/auxxai/auxx), so you can read along.
+
+## The shape of the problem
+
+We wanted one spine where three very different kinds of connectors are interchangeable: a no-code generic REST connector a user configures in the UI, a third-party app connector running in a sandbox (our Shopify app lives in a separate repo and ships its connector as data), and a dependency-free fixture connector we use to prove the spine in tests.
+
+The whole resolution surface is one function, in `packages/lib/src/data-connectors/connectors/registry.ts`:
+
+```typescript
+export function connectorFor(type: string, context?: AppConnectorContext): DataConnectorDefinition {
+  if (type.startsWith('app:')) return appConnectorAdapter(type, context)
+  const builtin = BUILTIN_CONNECTORS[type] // 'generic-rest', 'fixture'
+  if (!builtin) throw new NotFoundError(`Unknown data connector type: ${type}`)
+  return builtin
+}
+```
+
+The rule downstream of this function is absolute: the orchestrator never branches on provider. Provider-specific logic belongs inside the connector's `fetch`, nowhere else. That single constraint is what keeps the engine an engine instead of a pile of if-statements.
+
+It also has a compounding payoff: new SaaS integrations become *data*, not code. A template in `packages/lib/src/data-connectors/templates/defs/stripe.json` seeds a generic-rest connector pre-wired with an endpoint, streams, and recommended field mappings. Nobody writes a Stripe connector class.
+
+## Five control tables
+
+The persistent model is five tables, all in `packages/database/src/db/schema/`:
+
+| Table | Role |
+|-------|------|
+| `DataConnector` | The definition: type, config (endpoint, filters, webhook signal), the bound credential, schedule, status. |
+| `DataConnectorStream` | One fetch = one source schema. Holds the request config, the inferred/declared `sourceSchema`, and the durable per-stream sync `state` (phase, cursor, watermark). |
+| `DataConnectorMapping` | The fan-out. One row per target entity definition a fetch lands in, with a self-FK `parentMappingId` for nested subtrees. |
+| `DataConnectorItem` | The durable binding between one upstream record and one entity instance, per mapping. The heart of identity — Part 2 is mostly about this table. |
+| `DataConnectorRun` | The health ledger: one row per sync with per-category counts, a progress snapshot, and a heartbeat. |
+
+The split that matters most is stream vs. mapping. A **stream** says how to fetch — path, params, pagination, incremental config. A **mapping** says where a piece of the fetched payload lands. One stream fans out to N mappings, which is how a single `GET /orders.json` produces Orders, Line Items, *and* enriched Contacts in one pass.
+
+## The connector contract: records and checkpoints
+
+A connector's only job is to fetch and yield raw payloads, one page at a time, with a resume point between pages. The contract, from `packages/lib/src/data-connectors/types.ts`:
+
+```typescript
+interface ConnectorRecord {
+  streamKey: string
+  fields: unknown        // the RAW payload (array OR object) — the source schema mirrors this
+  externalId?: string    // optional hint, used only for a whole-record root
+  deleted?: boolean      // tombstone — an explicit upstream delete
+  contentHash?: string   // optional; the sink computes a sorted-key hash if absent
+}
+
+interface ConnectorCheckpoint {
+  __checkpoint: true
+  cursor?: SyncCursor    // resume the NEXT page from here; absent ⇒ that was the last page
+  watermark?: string     // max watermark observed through this page
+}
+
+type ConnectorYield = ConnectorRecord | ConnectorCheckpoint
+
+interface FetchResult {
+  records: AsyncIterable<ConnectorYield>  // lazy — records interleaved with checkpoints
+  nextState: ConnectorStreamState
+}
+```
+
+Two decisions in here shaped everything downstream.
+
+First, `fields` is the *raw* payload — for generic REST it is literally the HTTP response body. The connector does no mapping. That means the source schema the mapping UI shows is exactly what a test-fetch returns, so what you configure against and what syncs at 3 a.m. can never diverge.
+
+Second, the checkpoint sentinel interleaved into the record stream. A connector emits one after every page it finishes yielding. The engine never interprets the cursor inside it; it just persists it and hands it back on the next fetch. This one type is what makes the sliced, crash-resumable orchestration in Part 3 possible — the slice runner can stop at any page boundary and know exactly where to pick up.
+
+## Owned vs. contributing: the target is a choice
+
+The first design decision a mapping encodes: does this connector *own* its destination, or does it *contribute* to one that already exists?
+
+**Owned mode** provisions a new entity definition and owns it. Shopify Orders is a definition your org did not have before the connector existed. The connector creates the fields (read-only in the grid — `isUpdatable: false`, because hand-editing a synced field is a lie that lasts until the next sync), stamps provenance at the column level, and is allowed to archive records that vanish upstream.
+
+**Contributing mode** writes field-by-field into a definition that already exists — including the system `contact` and `ticket` definitions the helpdesk runs on. A Shopify customer contributes an email, a name, and a total-spent figure onto a Contact that may also be co-owned by a Stripe connector and edited by humans. Contributing mode has per-field ownership, protects shared editable fields with conservative merge strategies, and **never** archives an instance on absence — other owners share it.
+
+This choice is per-mapping, not per-connector. Our Shopify connector uses both in one sync: orders and line items as owned definitions, customers contributing into `contact`.
+
+## One fetch fans out via a recursive mapping tree
+
+Here is the part we like best. A raw payload like a Shopify order is a tree: the order, an embedded `customer` object, a `line_items` array. The mapping layer mirrors that shape with a tree of `DataConnectorMapping` rows connected by the self-FK `parentMappingId`. Each mapping declares a `rootPath` — `''` for the whole record, `customer` for an embedded object, `line_items[]` for each array element — and child mappings extract *relative to their parent's subtree*.
+
+`mapRecord` in `packages/lib/src/data-connectors/map-record.ts` is a pure recursive walk:
+
+```typescript
+const walk = (mapping, parent, parentExternalId) => {
+  for (const { value: subtree, index } of extractSubtrees(parent, mapping.rootPath)) {
+    const externalId = resolveExternalId(mapping, subtree, index, parentExternalId, rootHintId)
+
+    writes.push({
+      mapping,
+      projected: {
+        externalId,
+        fields: evaluateFields(mapping, subtree),
+        identityCandidates: identityCandidates(mapping, subtree),
+        pendingRelations: [],
+      },
+      parentRelation, // the relationship edge back to the parent instance
+    })
+
+    // Recurse into children RELATIVE to this subtree.
+    for (const child of childrenOf.get(mapping.row.id) ?? []) {
+      walk(child, subtree, externalId)
+    }
+  }
+}
+```
+
+One order record in, N projected writes out: one for the Order, one per Line Item, one for the Customer, each carrying the edge that links it back to its parent.
+
+Field values inside a mapping are CALC expressions — the same formula language our computed custom fields use. A one-click mapping is the degenerate `{source}` token; a composite is `concat({first_name}, ' ', {last_name})`. The `sourceFields` map binds each placeholder to a subtree-relative path, so the same expression works whether the mapping sits at the root or three levels deep.
+
+The orchestrator around the walk, `sinkSourceRecord` in `packages/lib/src/data-connectors/sink-source-record.ts`, enforces one ordering rule: **parents are written before children**, so when a line item's relationship edge resolves, the order it points at already exists. It also handles tombstones — a record with `deleted: true` archives every projected binding instead of upserting anything.
+
+## jsonb gotchas as design constraints
+
+Two of our early bugs came from the same root cause, and both turned into durable design rules.
+
+Postgres `jsonb` does not preserve key order. It normalizes objects, and keys come back sorted however Postgres pleases. Two consequences:
+
+**Field mappings are an array of entries, not a keyed object.** Each entry carries a stable generated `id` that the UI and patch operations address; nothing keys by the target field:
+
+```typescript
+interface FieldMapping {
+  id: string                              // stable entry id — React key + patch handle, never reused
+  targetFieldRef: ResourceFieldId | null  // null = unassigned draft, skipped at runtime
+  expression: string                      // CALC: '{source}' or 'concat({sku},{variant})'
+  sourceFields: Record<string, string>    // placeholder → subtree-relative source path
+  identityRole?: { kind: 'externalId'; order?: number } | { kind: 'match'; normalize?: IdentityNormalize }
+  mergeStrategy?: FieldMergeStrategy
+}
+```
+
+An entry survives before it has a target (a draft formula), and retargeting a binding does not re-key anything. If we had keyed the map by target field, both of those would have been migrations.
+
+**Change detection hashes with sorted keys, never `JSON.stringify`.** The sink skips unchanged records by content hash. Our first version stringified the mapped fields — and because jsonb reorders keys on the round-trip, records read back from the database hashed differently than the ones just mapped, so every re-sync looked like a change. Thousands of no-op writes per run, invisible until you looked at the `updated` counters. The fix is a sorted-key hash, and it is now a rule enforced in one place:
+
+```typescript
+// entity-sink.ts — sorted-key hash, immune to jsonb key reordering
+const contentHash = stableHash({ fields: record.fields, displayName: record.displayName })
+if (bound?.entityInstanceId && bound.contentHash === contentHash) {
+  await touchItem(ctx.db, bound.id, ctx.runId)  // still mark "seen this run"
+  ctx.counters.skipped += 1
+  return
+}
+```
+
+Note the `touchItem` even on a skip. "Seen this run" drives orphan reconciliation (Part 2), so a skipped record must still prove it exists.
+
+## The entity sink is the only writer
+
+Everything above produces `ProjectedRecord`s. Exactly one code path consumes them: `packages/lib/src/data-connectors/sinks/entity-sink.ts`. Whether the fetch came from built-in lib code, a sandboxed app, a scheduled backfill, or a webhook-steered point fetch, all entity writes funnel through this file, and it writes through the same `UnifiedCrudHandler` the rest of the platform uses — so every value passes the typed field-value converters, and nothing a connector syncs can bypass validation.
+
+Having one choke point is what makes per-field merge strategies enforceable. Each binding declares how the connector is allowed to write:
+
+```typescript
+type FieldMergeStrategy =
+  | 'overwrite'             // the connector owns this field's value
+  | 'fill_blank'            // write only when the target is empty
+  | 'connector_owned_only'  // write only fields this connector established
+  | 'manual_review'         // log a conflict, never write
+  | 'ignore'
+```
+
+`fill_blank` is the workhorse for contributing mode. A Shopify customer's name fills an empty Contact name but never clobbers one a support agent typed in:
+
+```typescript
+if (strategy === 'fill_blank') {
+  const cur = current ? rawOf(current.get(fieldId)) : undefined
+  if (isBlank(cur)) writeSet[fieldId] = value
+  continue
+}
+```
+
+There is a subtle interaction between `overwrite` and the content-hash skip that bit us. The hash covers the *source* only, so a hand-edit on the destination is invisible to it: someone edits a synced cell in the grid, the source has not changed, and the connector skips forever — an `overwrite` field that never re-asserts itself. The fix is a drift check: contributing writes stamp `FieldValue.managedByConnectorId`, and once per mapping per slice one bulk query finds bound instances whose overwrite cells lost that stamp. Those records bypass the skip and get re-asserted, which re-stamps the marker and heals them.
+
+One more thing the sink does that matters at scale: writes go out with `skipEvents: true`. A 5,000-record backfill firing the full per-write event fan-out — field hooks, activity timeline, the [BullMQ event bus](/blog/bullmq-job-queue-architecture-part-1), realtime — would be a self-inflicted storm. Instead the sink accumulates a compact manifest of changes to fields that automation rules actually watch, and publishes a single `sync:records:changed` event when the run finalizes. Automations still react to synced data; they just react once.
+
+## What the engine refuses to know
+
+Tally what never appeared in this post: no Shopify API shapes, no Stripe endpoints, no OAuth. The engine knows streams, mappings, projected records, and the sink contract. Provider knowledge lives behind `fetch` and nowhere else. That is the whole trick, and it is the same trick as our [agent engine](/blog/agent-engine-part-1-domain-agnostic-harness): own the loop, make the domain plug in.
+
+## Next up
+
+We can now turn one raw API payload into a tree of entity writes. What we have not answered is the question that makes sync *sync* rather than import: when the same Shopify customer arrives for the fifth time, how does the engine know it is the same record — and when a customer disappears upstream, who is allowed to archive what?
+
+That is [Part 2](/blog/data-connectors-part-2-identity-relationships-reconciliation): identity resolution, the bind table, pending relationships, and reconciliation.
+
+If you want to read ahead, the entry points are:
+
+- `packages/lib/src/data-connectors/connectors/types.ts`, the connector contract
+- `packages/lib/src/data-connectors/map-record.ts`, the recursive mapping walk
+- `packages/lib/src/data-connectors/sink-source-record.ts`, the fan-out orchestrator
+- `packages/lib/src/data-connectors/sinks/entity-sink.ts`, the only writer
+
+Auxx.ai is [open source](https://github.com/auxxai/auxx). PRs welcome.

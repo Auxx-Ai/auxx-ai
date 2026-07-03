@@ -1,0 +1,301 @@
+---
+title: "Record Rules: Building an Automation Engine That Survives Bulk Sync"
+description: "Every CRM has 'when field X changes, do Y' automation. The hard part nobody writes about is what happens when 50,000 records change at once with events suppressed — our answer is a change manifest that turns O(records) events into O(1)."
+date: "2026-09-01"
+slug: "record-rules-automation-engine"
+category:
+  slug: "coding"
+  title: "Coding"
+authors:
+  - name: "Markus Klooth"
+    image: "/images/avatars/markus.jpg"
+tags: ["automation", "events", "sync", "postgres", "typescript", "open-source"]
+published: true
+---
+
+Every CRM has record automation. "When priority changes to urgent, notify the manager." "When a deal closes, kick off a workflow." The trigger-condition-action model is forty years old and there is nothing interesting left to say about it.
+
+Here is the part nobody writes about: what happens when 50,000 records change at once because a connector sync ran, and every one of those writes deliberately suppressed its events?
+
+Bulk writers cannot afford per-record event fan-out. Our connector sink and CSV importer write with `skipEvents: true`, because a 50k-record sync that fired the full per-write pipeline — field hooks, activity, timeline, the event bus, realtime — would enqueue hundreds of thousands of jobs into workers that process one at a time. So bulk writes are silent. Which means your automations silently never fire on synced data. The rule that notifies you when an order flips to `refunded` works perfectly when a human edits the field and does nothing when Shopify tells you the same thing through a sync.
+
+This post is about how we solved that: a per-run change manifest that turns O(records) events into **O(1) events per sync**, and the engine behind it. Along the way: why transition direction lives on the rule instead of in conditions, why we deleted our compile-time trigger registries, and an honest accounting of the at-most-once delivery trade we made and the backstop it forces.
+
+The code lives in `packages/lib/src/record-rules/`. Auxx.ai is [open source](https://github.com/auxxai/auxx), so you can read along.
+
+## The model: transitions live on the rule
+
+A record rule is a row: watch this field on this [entity definition](/blog/custom-fields-part-1-entity-definitions) (or the record lifecycle), and when the transition matches and conditions hold, run these actions.
+
+The transition selector is where the first real design decision hides:
+
+```typescript
+/** Transition selector. Direction semantics live on the rule, NOT in conditions. */
+export type RecordRuleOn =
+  | 'changed'
+  | 'increased'
+  | 'decreased'
+  | 'set'
+  | 'cleared'
+  | 'created'
+  | 'deleted'
+```
+
+Field rules (`changed | increased | decreased | set | cleared`) require a `fieldId`. Lifecycle rules (`created | deleted`) have `fieldId = null`. That invariant is enforced at the store layer, and the two dispatch paths index on exactly those columns.
+
+Why does direction — increased, decreased, set, cleared — live on the rule instead of in the condition builder? Because the condition evaluator only ever sees one snapshot. Our conditions system (`ConditionGroup[]`, the same evaluator that powers table filters and workflow branches) evaluates a record's *current* state. "Decreased" is not a property of a state; it is a property of an (old, new) pair. Trying to express old→new comparisons in a single-snapshot evaluator means either threading phantom "previous value" fields through every condition context or building a second evaluator. We did neither. The rule carries the direction, and a small dedicated matcher handles it:
+
+```typescript
+export function matchesFieldTransition(on: RecordRuleOn, oldValue: unknown, newValue: unknown) {
+  switch (on) {
+    case 'changed':
+      return !valuesEqual(oldValue, newValue)
+    case 'increased': {
+      const prev = asNumber(oldValue)
+      const next = asNumber(newValue)
+      return prev !== null && next !== null && next > prev
+    }
+    case 'set':
+      return isEmpty(oldValue) && !isEmpty(newValue)
+    case 'cleared':
+      return !isEmpty(oldValue) && isEmpty(newValue)
+    // ...
+  }
+}
+```
+
+The split buys us the whole conditions system for free. Cross-field conditions, relationship-path references ("only when the linked company's tier is enterprise") — all of it works in rules with zero new evaluator code, because conditions only ever answer "does the current snapshot match," and the transition matcher answers "did the change qualify."
+
+One small trap worth pulling out of `valuesEqual`: comparing jsonb values with `JSON.stringify` is wrong, because Postgres reorders object keys on the round-trip. An old value read back from a run row would never stringify-equal an identical new value captured in writer key order. We serialize with sorted keys everywhere a jsonb value gets compared or hashed.
+
+## Actions: ordered, continue-and-report
+
+A rule carries an ordered array of actions, from a union of four:
+
+| Action | What it does |
+| --- | --- |
+| `set-field` | write a value onto the triggering record, as the system user |
+| `enqueue-workflow` | enqueue a published workflow with the record snapshot as payload |
+| `notify` | in-app notification to specific members |
+| `native` | invoke a code-registered handler — server-declared only |
+
+Failure semantics are continue-and-report: one failed action never blocks the rest, and every action's outcome lands on an execution-log row (`RecordRuleRun`) as `{ actionIndex, type, status, error? }`. A rule's run is `ok`, `partial`, or `failed`, and you can open the run history in the settings UI and see exactly which action broke.
+
+The `native` variant deserves a closer look, because it carries a structural invariant:
+
+```typescript
+/**
+ * Does an action list contain a native action? THE shared predicate for routing a rule
+ * between the two dispatch doors ... A rule is all-native or native-free, never mixed.
+ */
+export function hasNativeAction(actions: readonly RecordRuleAction[]): boolean {
+  return actions.some((a) => a.type === 'native')
+}
+```
+
+A rule is all-native or native-free, never mixed — enforced at the store on the DB path and at declaration time for system rules. Native actions are how our internal recalculation logic rides the engine (more on that below), and they are server-declared only. The tRPC action schema literally has no `native` variant, so the public API cannot construct one; the store check is the second lock on the same door:
+
+```typescript
+if (hasNativeAction(input.actions) && !input.managed) {
+  throw new BadRequestError('Native actions are server-declared only')
+}
+```
+
+Why the all-or-nothing rule shape? Because native rules dispatch through a *batched* door (one handler call for N records) and everything else dispatches per record. A mixed rule would need to be split across both paths and its run log would lie about ordering. Forbidding the mix keeps the two doors exact complements — both call `hasNativeAction`, so they cannot drift.
+
+## Four doors, one engine
+
+Writes reach the engine through four dispatch sites:
+
+```
+             WRITE SOURCE                    DOOR                        ENGINE
+  ─────────────────────────────   ──────────────────────────   ───────────────────────
+  interactive / API field write → '*' field-hook seam          ┐
+  interactive bulk (native only) → batched field-trigger door  ┤
+  record created / deleted        → lifecycle event bus         ┼─▶ fireRecordRules[Batch]
+  connector sync / CSV import     → sync:records:changed        ┘    match → conditions → actions
+                                    (the change manifest)            + RecordRuleRun log
+```
+
+Door 1 is the interactive path: a wildcard field-change hook fires inline on every interactive or API field write, looks up the cached rules for that field, and runs the non-native ones. Door 1b is its native complement: a batched field-trigger collector that fires only native rules, and batches them under bulk edits so a 200-row bulk update triggers one recalculation, not 200. Door 2 is the record lifecycle bus, handling `created`/`deleted` rules from the event system. Door 3 is the sync manifest, which is the point of this post.
+
+All four converge on two engine entry points — `fireRecordRules` for a single record event, `fireRecordRulesBatch` for a batch — and the batch path routes internally on `hasNativeAction`: non-native rules go through the per-record path (one snapshot load shared by all of a record's rules), native rules get their handler invoked **once across the whole batch** with the full `recordIds[]`, while still logging one run row per record so every firing stays debuggable.
+
+The rules themselves come from the [org cache](/blog/how-we-implemented-caching-part-1), not the table. The hot dispatch path never issues a rules query; the cached set is invalidated on every rule mutation and on custom-field changes.
+
+## The problem: `skipEvents` makes synced data invisible
+
+Now the headline problem. Our [data-connector sink](/blog/data-connectors-part-1-streams-mappings-sink) — the component that writes synced Shopify orders, contacts, and inventory into the entity system — writes with `skipEvents: true`. So does the CSV importer. This is not an oversight; it is load-bearing. The per-write fan-out is expensive by design, because interactive writes are rare and each one deserves the full treatment. Sync writes arrive fifty thousand at a time.
+
+But `skipEvents` suppresses *everything*: field hooks, the event bus, workflows, webhooks, realtime. Door 1 never fires. Door 2 never fires. From the reactive system's point of view, synced data does not change. Your `refunded` rule is enabled, correctly configured, and permanently asleep for exactly the writes it was built for.
+
+The naive fix is to un-suppress: publish per-record events from the sync path. We measured what that means. A 50k-record sync would enqueue hundreds of thousands of jobs into event workers that intentionally run at concurrency 1. The queue backlog would starve every other event consumer in the org for hours. Per-record events during bulk sync are not slow — they are an outage.
+
+So we went the other way: if the writes are batched, the event should be too.
+
+## The fix: a per-run change manifest
+
+During a sync run, the writer accumulates a `SyncChangeManifest` — a compact record of what changed:
+
+```typescript
+SyncChangeManifest {
+  version: 1
+  truncated: boolean                                    // caps hit (5000 changed / 10000 lifecycle)
+  changes: Record<RecordId, Record<outputKey, {o?, n}>> // subscribed field writes, old→new
+  createdRecordIds: RecordId[]                          // only if the def has a `created` rule
+  archivedRecordIds: RecordId[]                         // only if the def has a `deleted` rule
+  createdValues?: Record<RecordId, Record<sysAttr, raw>> // raw create values for native handlers
+}
+```
+
+Three properties make this survive scale instead of just relocating the problem.
+
+**It captures subscribed fields only.** Before the run starts, the writer derives a subscription index from the cached rules: which fields and lifecycle transitions does *some enabled rule* actually watch, per definition? A sync touching 40 fields on a def where one rule watches `financial_status` captures old→new for exactly that one field. And the degenerate case is genuinely free:
+
+```typescript
+/** Build a collector from a pre-computed subscription index (pure — testable). */
+export function createManifestCollector(subs: SyncRuleSubscriptions): ManifestCollector {
+  if (Object.keys(subs).length === 0) return NOOP_COLLECTOR
+  return new RealCollector(subs)
+}
+```
+
+An org with no rules gets a no-op stub. The sink calls the collector unconditionally at its write sites; the gating lives inside. Zero rules means zero captured bytes and zero extra reads — the feature costs nothing until someone uses it.
+
+**It folds across sliced jobs.** A bulk sync is not one process. Our sync core slices work into separate queue jobs that run concurrently across streams, so the collector is per-slice, and each slice folds its fragment into the run row under a row lock:
+
+```typescript
+export async function foldRunManifest(db, runId, fragment) {
+  if (!fragment) return
+  const { mergeManifests } = await import('../record-rules/sync-manifest-collector')
+  await db.transaction(async (tx) => {
+    const [row] = await tx
+      .select({ manifest: schema.DataConnectorRun.manifest })
+      .from(schema.DataConnectorRun)
+      .where(eq(schema.DataConnectorRun.id, runId))
+      .for('update')
+    const merged = mergeManifests(row?.manifest ?? null, fragment)
+    await tx.update(schema.DataConnectorRun).set({ manifest: merged })
+      .where(eq(schema.DataConnectorRun.id, runId))
+  })
+}
+```
+
+`SELECT ... FOR UPDATE`, merge in memory, write back. Race-safe across sibling slices without any coordination beyond the row lock. The merge itself has one subtle rule: per field, the *first* fragment's old value wins and the *last* new value wins — including old-value *absence*. A record created and then updated in the same run must fold to "created with final value," not "changed from its creation value," or a `set` rule (which checks that the old value was empty) would never fire on it.
+
+**It publishes one event per run.** At finalize, the sync publishes a single `sync:records:changed` event carrying pointers only — `{ source, organizationId, runId }`. The manifest stays on the run row; the event is a doorbell, not a payload. That is the O(1) claim: a sync that touches one subscribed record and a sync that touches fifty thousand both cost the event system exactly one job.
+
+The consumer (door 3) resolves the manifest from the run row, transition-matches every captured field write against the cached rules, and calls `fireRecordRulesBatch` with `source: 'sync'`. It even plans snapshots intelligently: when a rule's conditions only reference fields that are in the manifest, it builds a partial snapshot from the captured values and skips the database entirely; records that need more get one bulk fetch across the whole run.
+
+## At-most-once, and the backstop it forces
+
+Here is where we made a trade worth being honest about.
+
+The manifest event can be delivered twice. A re-entered finalize can re-publish it; BullMQ can redeliver the consumer's job. And rule actions carry no idempotency of their own — `notify` twice is two notifications, `enqueue-workflow` twice is two workflow runs. So the consumer claims the manifest exactly once, with a row-atomic compare-and-swap, *before* firing anything:
+
+```typescript
+/**
+ * B2: atomically claim a run's manifest for once-only consumption. Returns true for
+ * exactly ONE caller per run (`UPDATE … WHERE manifestConsumedAt IS NULL RETURNING`
+ * is row-atomic); every redelivered `sync:records:changed` after that must no-op.
+ */
+export async function claimRunManifestConsumed(db, runId): Promise<boolean> {
+  const rows = await db
+    .update(schema.DataConnectorRun)
+    .set({ manifestConsumedAt: new Date() })
+    .where(and(eq(T.id, runId), isNull(T.manifestConsumedAt)))
+    .returning({ id: T.id })
+  return rows.length > 0
+}
+```
+
+Claim-before-fire makes the system **at-most-once by design**. If the consumer crashes halfway through firing, the remainder is lost — the claim is already stamped, and a retry no-ops. We chose lost-event over double-event deliberately: a missed notification is an annoyance, a duplicated inventory deduction is corrupted data.
+
+But at-most-once has a consequence that has to be engineered around, not wished away. A lost firing will *never* come back. The field value is already written; the next sync sees no change; the manifest will not re-capture it. For cosmetic reactions that is fine. For ledger-like consumers — our inventory deduction, which decrements part stock when a linked source quantity drops — a lost firing means a silently wrong ledger, forever.
+
+So the contract for ledger-like consumers is: the event is a fast path, never the source of truth. The inventory bridge keeps its own watermark, advanced with a compare-and-swap only when the reaction actually lands, and pairs it with a reconcile pass that re-derives the correct state from *absolute* values on every sync. When the event fires, the reconcile finds nothing to do. When the event was lost, the reconcile catches it on the next run. This is the same pattern stream-processing people reach for with Kafka consumers; it just usually is not framed around CRM inventory. The framing does not change the math: at-most-once plus a state-derived reconcile equals eventual correctness with fast common-case latency.
+
+## Deleting the compile-time trigger registries
+
+Before this engine existed, our internal automations — BOM cost recalculation when a vendor price changes, quantity-on-hand recomputation when a stock movement lands, company enrichment on create — lived in two hard-coded registries: `FIELD_TRIGGERS` and `ENTITY_TRIGGERS`, keyed by field and entity type at compile time.
+
+We deleted both. Not primarily for uniformity — for sync visibility. The code triggers rode the same `publishEvents` gate as everything else, which means a vendor price arriving via connector sync silently skipped its cost recalc, exactly the bug class the manifest was built to kill. Re-expressing the triggers as rules on the same engine bought them door 3 for free.
+
+They became *system rules*: code-declared, RecordRule-shaped, never stored:
+
+```typescript
+export interface SystemRuleDeclaration {
+  /** Stable key — becomes the cached rule id (`system:<key>`). */
+  key: string
+  name: string
+  /** Entity definition slug this rule targets. */
+  defSlug: string
+  /** Field rules reference the field by systemAttribute. Omit for lifecycle rules. */
+  fieldRef?: { systemAttribute: string }
+  on: RecordRuleOn
+  /** Ordered actions — ALL native (server-declared). */
+  actions: RecordRuleAction[]
+}
+```
+
+`declareSystemRules([...])` registers declarations at module init. At cache-compute time, a resolver maps each declaration to the org's concrete ids — definition by slug, field by system attribute within the definition — and drops any the org lacks. The cached rule set is the **union** of DB rows and resolved system rules, so the four doors dispatch both kinds identically and cannot tell them apart. The native handlers are thin wrappers that call the original trigger functions unchanged; the fourteen manufacturing rules migrated without touching their recalculation logic.
+
+The run log needed one accommodation: `RecordRuleRun.ruleId` is plain text with no foreign key, because `system:mfg-vendor-part-cost` is not a row. (Its sibling `entityInstanceId` has no FK either — `deleted` rules must log runs for records that no longer exist. We learned the FK lesson via a migration that dropped it after every system-rule insert failed.)
+
+## Managed rules: when a system rule can't reach
+
+System rules key off *stable* slugs — `vendor-parts`, `stock-movements`, definitions Auxx ships to every org identically. But some automations need to target definitions that only exist per-org. An inventory source like `shopify_variants` is a connector-owned definition with a different id in every org that installs it. No slug-keyed declaration can name it.
+
+For those, the feature flow provisions a real DB row with a `managed` discriminator:
+
+```typescript
+// Managed rules are provisioned by a feature flow, not the generic builder. They MAY
+// carry `native` actions and are edit/delete-locked in the UI; only `enabled` is
+// user-toggleable. A nullable text discriminator (not a boolean) so a future managed
+// feature knows WHICH feature owns the row.
+managed: text().$type<'inventory' | null>(),
+```
+
+A managed row is the one place a DB rule may carry a native action — `assertRuleShape` allows it only when the marker is set, and only server-side feature code can set it. The discriminator is a string, not a boolean, so teardown knows which feature owns which rows. Users see managed rules in the settings list but can only toggle them.
+
+## Never throw, never recurse forever
+
+An automation engine sits inside other people's code paths — a field write, an event handler, a sync finalize. It must never break its host. Every failure in the engine degrades to a logged outcome on the run row; `fireRecordRules` and `fireRecordRulesBatch` do not have a throwing path.
+
+The subtler hazard is recursion. A rule's `set-field` action writes a field — which fires the field-change hook inline — which may match another rule — whose action writes another field. Two rules pointed at each other is an infinite loop written in a settings UI. The guard is an `AsyncLocalStorage` chain:
+
+```typescript
+/** Max rule→action→rule re-entrancy within one causal chain. */
+const MAX_RULE_DEPTH = 3
+
+interface RuleChainState {
+  depth: number
+  /** `${ruleId}:${entityInstanceId}` pairs that already fired in this chain. */
+  seen: Set<string>
+}
+
+const ruleChain = new AsyncLocalStorage<RuleChainState>()
+```
+
+Each firing runs its actions inside a child chain state with `depth + 1` and the pair added to the seen-set. A rule that already fired for the same record within one causal chain is skipped; anything deeper than three hops is cut off with a warning. `AsyncLocalStorage` matters here because the chain crosses async boundaries — the write, the inline hook, the next rule's actions — without any explicit context threading through the CRUD layer.
+
+## Open problems, honestly
+
+One known sharp edge remains, and it is self-inflicted. The cached rule union — DB rows plus resolved system rules — has a one-day TTL and is invalidated by rule and field mutations. But it is *not* versioned by the system-rule declaration set. Deploy a build that adds or changes a system-rule declaration, and every org keeps serving the stale union until its TTL expires: the new trigger silently does not fire for up to a day. We found this the way you would expect — a freshly shipped system rule doing nothing in production while every test passed.
+
+Today's mitigation is a manual cache-flush script run after declaration changes, which is exactly as fragile as it sounds. The real fix is mechanical and unbuilt: hash the declaration keys into the cached value and recompute on mismatch, or flush the key on boot. DB-row rules are unaffected — their mutations invalidate correctly — but "remember to run the script" is not an invariant, and we are not pretending otherwise.
+
+## Closing
+
+The trigger-condition-action model was the easy 20 percent. The remaining 80 was making it hold under the write patterns a real system produces: transitions that need an (old, new) pair a snapshot evaluator cannot see, bulk syncs that suppress the very events automations depend on, delivery guarantees that force ledger consumers to carry their own reconcile, and internal triggers that deserved the same dispatch machinery as user rules instead of a privileged side channel.
+
+The manifest is the piece we would defend hardest. Capture only what rules subscribe to, fold fragments under a row lock, ring one doorbell per run. O(1) events per sync is a small claim to state and a surprisingly deep one to keep true.
+
+If you want to read the code, start with:
+
+- `packages/lib/src/record-rules/engine.ts`, the two entry points
+- `packages/lib/src/record-rules/sync-manifest-collector.ts`, the collector and the fold
+- `packages/lib/src/events/handlers/handle-sync-record-rules.ts`, door 3
+- `packages/lib/src/record-rules/system-rules.ts`, the declaration resolver
+
+Auxx.ai is [open source](https://github.com/auxxai/auxx). PRs welcome.

@@ -1,0 +1,246 @@
+---
+title: "Self-Hosted Realtime, Part 1: Sockudo, Rooms, and Channel Auth"
+description: "How we replaced hosted Pusher with a single Rust container and built a typed room registry with ACL dispatch on top of the Pusher protocol. Part 1 of a two-part series on our realtime architecture."
+date: "2026-07-28"
+slug: "self-hosted-realtime-part-1-sockudo-rooms-auth"
+category:
+  slug: "coding"
+  title: "Coding"
+authors:
+  - name: "Markus Klooth"
+    image: "/images/avatars/markus.jpg"
+tags: ["realtime", "websockets", "pusher", "react", "typescript", "open-source"]
+published: true
+---
+
+We replaced hosted Pusher with a single Rust container, and not one line of our publishing or subscribing code changed. That is not a brag about our abstraction layer — it is a fact about the Pusher protocol, which has quietly become a de-facto standard with multiple independent server implementations.
+
+This is the first of two posts on how realtime works at Auxx.ai:
+
+1. **This post** covers the server side: why we self-host, the deployment (one Dockerfile, a fistful of env vars), the typed room registry, and how channel auth becomes an ACL dispatch.
+2. **[Part 2](/blog/self-hosted-realtime-part-2-client-patterns)** is the client side: echo suppression via socket ids, refcounted subscriptions with `useSyncExternalStore`, realtime-driven query invalidation, and keeping collaborative TipTap editors in sync without CRDTs.
+
+Auxx.ai is [open source](https://github.com/auxxai/auxx), so every file mentioned here is readable in full.
+
+## Why self-host at all
+
+Hosted Pusher is genuinely good software, and we ran on it for a long time. But we publish a lot of small messages. Every field edit, every incoming email, every data-connector sync progress frame, every presence idle-flip fans out over websockets. At that volume, per-message pricing stops being a rounding error, and the round-trip through someone else's cloud adds latency we can see.
+
+The usual objection to self-hosting realtime is operational: websocket servers are stateful, connection-heavy, and annoying to run. That objection dissolved when we realized the Pusher *protocol* outlived any single vendor. `pusher-js` on the client and the `pusher` npm package on the server speak a documented wire protocol, and several open-source servers implement it.
+
+We picked [Sockudo](https://sockudo.io) — an actively maintained, open-source, Pusher-protocol-compatible websocket server written in Rust. It lives in our monorepo as `apps/echtzeit` ("realtime" in German), and the entire app is a Dockerfile:
+
+```dockerfile
+# apps/echtzeit/Dockerfile
+FROM ghcr.io/sockudo/sockudo:4.6.0
+
+ENV HOST=0.0.0.0 \
+    PORT=6001 \
+    APP_MANAGER_DRIVER=memory \
+    SSL_ENABLED=false \
+    HTTP_API_USAGE_ENABLED=false \
+    SOCKUDO_DEFAULT_APP_ENABLED=true \
+    SOCKUDO_DEFAULT_APP_ENABLE_CLIENT_MESSAGES=false \
+    WEBSOCKET_MAX_PAYLOAD_KB=100
+
+EXPOSE 6001 9601
+```
+
+There is no `package.json`, no `node_modules`, no config file. Sockudo prefers TOML config but every knob we need has a documented environment variable, so we run env-only and avoid config-schema drift across versions. Locally it runs as a Docker Compose service next to Postgres and Redis; in production it is one Railway service running the pinned image, so dev and prod execute byte-identical binaries.
+
+Two deployment details deserve a callout, because both bit us.
+
+**Credential parity is the number one footgun.** Sockudo's `SOCKUDO_DEFAULT_APP_ID/KEY/SECRET` must be *identical* to the `PUSHER_APP_ID/KEY/SECRET` the app services use. Channel auth is an HMAC signed with the shared secret; if the values drift, the transport stays healthy, the health checks stay green, and every single private-channel subscription silently fails. On Railway we point both sides at the same shared variables so parity is structural, not disciplinary.
+
+**Allowed origins fail permanently, not loudly.** Sockudo can restrict which origins may open a websocket. If an origin doesn't match, the client receives `pusher:error` code `4009` — which sits in Pusher's do-not-reconnect band (4000–4099). That is a *permanent silent failure*, not a visible retry loop. We currently leave the list empty (our embeddable chat widget lives on arbitrary customer domains and shares the app), but if you ever set one: port matters, scheme matters, and `*.example.com` does not match the bare `example.com`.
+
+Note also `SOCKUDO_DEFAULT_APP_ENABLE_CLIENT_MESSAGES=false`. Every event in our system is server-published. We will come back to why.
+
+## Opaque room keys, not channel strings
+
+The Pusher protocol has three channel families, distinguished by prefix: public channels (no auth), `private-` channels (server-signed subscription), and `presence-` channels (signed, plus a member roster). The prefix is load-bearing — it decides whether the client hits your auth endpoint at all.
+
+Scattering those prefixes through application code is how you end up with a subscription to `private-org-123` on one screen and `presence-org-123` on another, which are *different channels*. So we made room identity opaque. Callers never write channel strings; they build a key through typed helpers:
+
+```typescript
+// packages/lib/src/realtime/room-keys.ts
+export const rooms = {
+  /** Org-wide events (records, agents, mail batches outside an inbox). */
+  orgEvents: (organizationId: string) => `org-${organizationId}-events`,
+  /** Org presence room (member online/idle). */
+  orgPresence: (organizationId: string) => `org-${organizationId}`,
+  /** Per-inbox channel. */
+  orgInbox: (organizationId: string, inboxSlug: string) =>
+    `org-${organizationId}-inbox-${inboxSlug}`,
+  /** Private per-user channel (notifications, personal events). */
+  user: (userId: string) => `user-${userId}`,
+  /** Per-chat-thread admin channel. */
+  chatThread: (threadId: string) => `thread-${threadId}`,
+  /** Visitor's chat session (widget-side). */
+  chatSession: (sessionId: string) => `chat-${sessionId}`,
+}
+```
+
+A single regex table maps every key to its kind, and the Pusher prefix is derived from the kind in exactly one function:
+
+```typescript
+export function roomKindFor(roomKey: string): RoomKind | null {
+  if (/^org-.+-inbox-.+$/.test(roomKey)) return 'plain'
+  if (/^org-.+-events$/.test(roomKey)) return 'plain'
+  if (roomKey.startsWith('org-')) return 'presence'
+  if (roomKey.startsWith('user-')) return 'plain'
+  if (roomKey.startsWith('thread-')) return 'plain'
+  if (roomKey.startsWith('chat-')) return 'public'
+  return null
+}
+
+export function toPusherChannel(roomKey: string): string | null {
+  const kind = roomKindFor(roomKey)
+  if (!kind) return null
+  if (kind === 'presence') return `presence-${roomKey}`
+  if (kind === 'public') return roomKey
+  return `private-${roomKey}`
+}
+```
+
+Order matters in that table — the specific `-inbox-` and `-events` patterns must run before the generic `org-` presence match, because matching is greedy.
+
+Here is the part that looks like duplication and isn't: this file exists *twice*, conceptually. `room-keys.ts` is client-safe — pure string functions, no imports beyond types. `rooms.ts` re-exports all of it and adds the server-only piece: an `authorize()` function per room family, which touches the database, the inbox service, and membership checks. The browser bundle imports `room-keys.ts` and never pulls in a line of DB code. We could have unified them behind clever conditional exports; keeping the split dumb and visible has been worth more.
+
+## Channel auth is an ACL dispatch
+
+When `pusher-js` wants to join a `private-` or `presence-` channel, it POSTs the socket id and channel name to your auth endpoint and expects back an HMAC signature. Most codebases implement this as a pile of `if (channel.startsWith(...))` in a route handler. Ours is a registry dispatch.
+
+The server registry has one entry per room family — a matcher and an ACL:
+
+```typescript
+// packages/lib/src/realtime/rooms.ts
+const REGISTRY: RoomDef[] = [
+  // Per-inbox channel: `org-{orgId}-inbox-{inboxSlug}`
+  {
+    kind: 'plain',
+    match: (k) => /^org-.+-inbox-.+$/.test(k),
+    authorize: async (key, ctx) => {
+      const [orgPart, inboxSlug] = key.split('-inbox-')
+      const orgId = orgPart.replace(/^org-/, '')
+      if (!(await isOrgMember(orgId, ctx))) return false
+      if (inboxSlug === 'none') return true // triage: open to all members
+      const inboxService = new InboxService(database, orgId, ctx.session!.userId)
+      return inboxService.hasUserAccess(toRecordId('inbox', inboxSlug), ctx.session!.userId)
+    },
+  },
+  // Private user channel: `user-{userId}`
+  {
+    kind: 'plain',
+    match: (k) => k.startsWith('user-'),
+    authorize: (key, ctx) =>
+      !!ctx.session && ctx.session.userId === key.slice('user-'.length),
+  },
+  // ...org events, org presence, threads, visitor channels
+]
+```
+
+The auth route itself is thin — it parses the form body, resolves the session, and hands off to `RealtimeService.authorize()`. That method does one thing worth stealing:
+
+```typescript
+// packages/lib/src/realtime/realtime-service.ts
+async authorize(socketId, channelName, ctx, userData) {
+  const roomKey = fromPusherChannel(channelName)
+  if (!roomKey) return null
+  const def = findRoom(roomKey)
+  if (!def) return null
+  // Reject if the channel prefix doesn't match the registered kind.
+  const expected = toPusherChannel(roomKey)
+  if (expected !== channelName) return null
+
+  const allowed = await def.authorize(roomKey, ctx)
+  if (!allowed) return null
+  return this.provider.authenticate(socketId, channelName, userData)
+}
+```
+
+It strips the prefix to recover the room key, then *recomputes* the expected channel name from the registry and compares. A client that asks to join `private-org-123` — the org presence room, registered as a `presence-` channel — gets rejected even though the org membership ACL would have passed. Without that check, a malicious or buggy client could subscribe to a presence room as a private channel and dodge the roster semantics, or vice versa. The kind is part of the room's identity, so auth enforces it.
+
+Adding a new room family is now a three-line ritual: one helper on `rooms`, one branch in `roomKindFor`, one registry entry with its ACL. There is nowhere else to forget.
+
+## The deliberately public channel
+
+One room family is unsigned on purpose: `chat-{sessionId}`, the visitor-side channel of our support chat widget.
+
+The widget bootstraps on an arbitrary customer's website before any session or identity exists. Requiring signed auth there means standing up an anonymous-credential flow just to receive your own transcript echo. Instead, the channel is a raw public Pusher channel: the name embeds a random, unguessable session id, and the only thing published on it is that visitor's own conversation. Once a visitor is identified, the private `visitor-{participantId}` and `thread-{threadId}` channels take over with real passport-signed auth (Part 2 covers how the widget signs those).
+
+Security-by-unguessable-name is a deliberate, scoped trade — the same one Google Docs makes with "anyone with the link." The registry still carries an entry for `chat-` rooms so key resolution works, with a comment admitting that its `authorize` hook is unreachable: Pusher never asks the server to sign a public channel.
+
+## Typed events, and why the server publishes everything
+
+Every event that crosses the wire has a TypeScript shape in `packages/lib/src/realtime/events.ts` — `fieldValues:updated`, `record:created`, `thread:updated`, `message:created`, `dataConnector:sync`, about two dozen in all. Payloads are partial-by-design patches: missing key means "don't touch", `null` means "clear". The client applies them to Zustand stores without refetching (how field-value events drive the frontend store is its own post — see [the custom fields sync engine](/blog/custom-fields-part-3-frontend-sync-engine)).
+
+Server code never calls the provider directly. Each event family gets a publish helper that owns its room routing and its chunking:
+
+```typescript
+// packages/lib/src/realtime/publish-helpers.ts
+export async function publishMessageCreated(
+  realtimeService: RealtimeService,
+  organizationId: string,
+  args: { messageId: string; threadId: string; inboxId: string | null },
+  options?: { excludeSocketId?: string }
+) {
+  await realtimeService
+    .publish(
+      inboxRoom(organizationId, args.inboxId),
+      'message:created',
+      { messageId: args.messageId, threadId: args.threadId },
+      options
+    )
+    .catch(() => {})
+}
+```
+
+Note the `.catch(() => {})`. Publishing is fire-and-forget everywhere: a realtime hiccup must never fail the mutation that triggered it. Realtime is an accelerant, not a source of truth — the truth is in Postgres, and Part 2 shows how the client recovers when events are missed.
+
+The helpers also encode payload discipline. The Pusher protocol caps event payloads (10KB on hosted Pusher; we raised Sockudo's cap to 100KB for headroom but kept the discipline), so `publishFieldValueUpdates` chunks entries 50 at a time, and bulk paths like data-connector backfills don't publish per-record events at all — they emit one coarse `records:invalidated` per entity definition per slice, and the client refetches once instead of drowning in a firehose.
+
+This is also why client events are disabled at the server. Pusher lets clients broadcast directly to each other on presence channels, and it is tempting for things like "user is idle." We route even that through the server: a tRPC mutation calls `publishMemberUpdate`, which emits a custom `member-update` event on the presence channel. Every event on the wire has therefore passed through code we control — validated, typed, and attributable. `SOCKUDO_DEFAULT_APP_ENABLE_CLIENT_MESSAGES=false` makes the policy mechanical.
+
+One clarification, since we also stream AI responses: token streaming in [our agent engine](/blog/agent-engine-part-1-domain-agnostic-harness) rides SSE, not websockets. SSE fits a one-shot, one-consumer stream tied to a request; the websocket layer is for fan-out to whoever happens to be looking. Different problems, different transports.
+
+## The fallback seam
+
+We kept hosted Pusher as a config-level fallback, and it costs almost nothing to maintain. The server provider branches once, on `PUSHER_HOST`:
+
+```typescript
+// packages/lib/src/realtime/providers/pusher.ts
+if (host) {
+  const port = String(configService.get<number>('PUSHER_PORT') ?? 443)
+  const useTLS = configService.get<boolean>('PUSHER_USE_TLS') !== false
+  this.pusher = new Pusher({ appId, key, secret, host, port, useTLS })
+  logger.info('Pusher initialized (self-hosted Sockudo)', { host, port, useTLS })
+} else if (cluster) {
+  this.pusher = new Pusher({ appId, key, secret, cluster, useTLS: true })
+  logger.info('Pusher initialized (hosted cloud)')
+}
+```
+
+The client adapter mirrors the same branch, with one dev-quality-of-life detail: transports are gated on TLS, so a plain-`ws` localhost container doesn't send `pusher-js` into a wss upgrade retry loop:
+
+```typescript
+// packages/lib/src/realtime/client/adapters/pusher.ts
+enabledTransports: config.forceTLS === false ? ['ws'] : ['ws', 'wss'],
+```
+
+Unset `PUSHER_HOST` and the whole system falls back to Pusher cloud. That seam is what made the migration boring: we flipped environments one at a time, and the room registry, the ACLs, the publish helpers, and every consumer were none the wiser. When your abstraction survives swapping the entire transport vendor underneath it, the abstraction is drawn at the right line.
+
+## Next up
+
+Everything so far is the easy half. The server publishes typed events into authorized rooms — fine. The hard half is what the client does with them: how the tab that *caused* a mutation avoids double-applying its own event, how forty components share one channel without forty subscriptions, what happens to subscriptions when a user switches organizations, and how far you can push "collaborative" text editing on plain events before you need CRDTs.
+
+That is [Part 2](/blog/self-hosted-realtime-part-2-client-patterns).
+
+If you want to read ahead, the entry points are:
+
+- `apps/echtzeit/README.md`, the deployment story
+- `packages/lib/src/realtime/room-keys.ts` and `rooms.ts`, the two halves of the registry
+- `packages/lib/src/realtime/realtime-service.ts`, publish + authorize
+- `apps/web/src/app/api/pusher/auth/route.ts`, the auth endpoint
+
+PRs welcome.
