@@ -13,6 +13,27 @@ export interface CalcFunction {
 }
 
 /**
+ * Shared empty-value predicate: true for null/undefined/''/whitespace-only string.
+ * Mirrors coalesce's skip rule with an added trim.
+ */
+function isEmptyValue(value: unknown): boolean {
+  return value == null || (typeof value === 'string' && value.trim() === '')
+}
+
+/**
+ * Spreadsheet-style loose equality: null/undefined ≙ ''; if both sides are numeric,
+ * compare numerically; otherwise case-sensitive string equality.
+ */
+function looseEquals(a: unknown, b: unknown): boolean {
+  const an = a ?? ''
+  const bn = b ?? ''
+  const aIsNum = an !== '' && !Number.isNaN(Number(an))
+  const bIsNum = bn !== '' && !Number.isNaN(Number(bn))
+  if (aIsNum && bIsNum) return Number(an) === Number(bn)
+  return String(an) === String(bn)
+}
+
+/**
  * Registry of available calculation functions.
  * All functions are safe (no eval) and handle null/undefined gracefully.
  */
@@ -47,6 +68,17 @@ export const CALC_FUNCTIONS: Record<string, CalcFunction> = {
     fn: (str: unknown) => String(str ?? '').length,
     minArgs: 1,
     maxArgs: 1,
+  },
+  // Registry key is lowercase because the parser lowercases function names; the
+  // display `name` keeps its camelCase spelling for the picker/help UI.
+  joinnonempty: {
+    name: 'joinNonEmpty',
+    fn: (sep: unknown, ...values: unknown[]) =>
+      values
+        .filter((v) => !isEmptyValue(v))
+        .map((v) => String(v))
+        .join(String(sep ?? '')),
+    minArgs: 2,
   },
 
   // ─────────────────────────────────────────────────────────────
@@ -117,6 +149,66 @@ export const CALC_FUNCTIONS: Record<string, CalcFunction> = {
   },
 
   // ─────────────────────────────────────────────────────────────
+  // Comparison functions
+  // ─────────────────────────────────────────────────────────────
+  eq: {
+    name: 'eq',
+    fn: (a: unknown, b: unknown) => looseEquals(a, b),
+    minArgs: 2,
+    maxArgs: 2,
+  },
+  ne: {
+    name: 'ne',
+    fn: (a: unknown, b: unknown) => !looseEquals(a, b),
+    minArgs: 2,
+    maxArgs: 2,
+  },
+  gt: {
+    name: 'gt',
+    fn: (a: unknown, b: unknown) => {
+      const x = Number(a)
+      const y = Number(b)
+      if (Number.isNaN(x) || Number.isNaN(y)) return null
+      return x > y
+    },
+    minArgs: 2,
+    maxArgs: 2,
+  },
+  gte: {
+    name: 'gte',
+    fn: (a: unknown, b: unknown) => {
+      const x = Number(a)
+      const y = Number(b)
+      if (Number.isNaN(x) || Number.isNaN(y)) return null
+      return x >= y
+    },
+    minArgs: 2,
+    maxArgs: 2,
+  },
+  lt: {
+    name: 'lt',
+    fn: (a: unknown, b: unknown) => {
+      const x = Number(a)
+      const y = Number(b)
+      if (Number.isNaN(x) || Number.isNaN(y)) return null
+      return x < y
+    },
+    minArgs: 2,
+    maxArgs: 2,
+  },
+  lte: {
+    name: 'lte',
+    fn: (a: unknown, b: unknown) => {
+      const x = Number(a)
+      const y = Number(b)
+      if (Number.isNaN(x) || Number.isNaN(y)) return null
+      return x <= y
+    },
+    minArgs: 2,
+    maxArgs: 2,
+  },
+
+  // ─────────────────────────────────────────────────────────────
   // Logic functions
   // ─────────────────────────────────────────────────────────────
   if: {
@@ -124,6 +216,28 @@ export const CALC_FUNCTIONS: Record<string, CalcFunction> = {
     fn: (cond: unknown, thenVal: unknown, elseVal: unknown) => (cond ? thenVal : elseVal),
     minArgs: 3,
     maxArgs: 3,
+  },
+  and: {
+    name: 'and',
+    fn: (...args: unknown[]) => args.every((a) => Boolean(a)),
+    minArgs: 2,
+  },
+  or: {
+    name: 'or',
+    fn: (...args: unknown[]) => args.some((a) => Boolean(a)),
+    minArgs: 2,
+  },
+  not: {
+    name: 'not',
+    fn: (x: unknown) => !x,
+    minArgs: 1,
+    maxArgs: 1,
+  },
+  isempty: {
+    name: 'isEmpty',
+    fn: (x: unknown) => isEmptyValue(x),
+    minArgs: 1,
+    maxArgs: 1,
   },
   coalesce: {
     name: 'coalesce',
@@ -459,6 +573,12 @@ export function getAvailableFunctions(): Array<{
       example: 'length({description})',
     },
     {
+      name: 'joinNonEmpty',
+      description: 'Join values with a separator, skipping empty ones',
+      signature: 'joinNonEmpty(separator, ...values)',
+      example: 'joinNonEmpty(" / ", {Option 1}, {Option 2}, {Option 3})',
+    },
+    {
       name: 'add',
       description: 'Add numbers',
       signature: 'add(...numbers)',
@@ -514,10 +634,70 @@ export function getAvailableFunctions(): Array<{
       example: 'max({a}, {b}, {c})',
     },
     {
+      name: 'eq',
+      description: 'Equal (loose: null ≙ "", numeric-aware)',
+      signature: 'eq(a, b)',
+      example: 'if(eq({Option 1}, "Default Title"), {Product Title}, {Option 1})',
+    },
+    {
+      name: 'ne',
+      description: 'Not equal',
+      signature: 'ne(a, b)',
+      example: 'ne({status}, "closed")',
+    },
+    {
+      name: 'gt',
+      description: 'Greater than (numeric; null if non-numeric)',
+      signature: 'gt(a, b)',
+      example: 'gt({quantity}, 0)',
+    },
+    {
+      name: 'gte',
+      description: 'Greater than or equal',
+      signature: 'gte(a, b)',
+      example: 'gte({stock}, {threshold})',
+    },
+    {
+      name: 'lt',
+      description: 'Less than',
+      signature: 'lt(a, b)',
+      example: 'lt({price}, 100)',
+    },
+    {
+      name: 'lte',
+      description: 'Less than or equal',
+      signature: 'lte(a, b)',
+      example: 'lte({age}, 18)',
+    },
+    {
       name: 'if',
       description: 'Conditional',
       signature: 'if(condition, then, else)',
       example: 'if({isActive}, "Yes", "No")',
+    },
+    {
+      name: 'and',
+      description: 'True if all arguments are truthy',
+      signature: 'and(...conditions)',
+      example: 'and(gt({stock}, 0), {isActive})',
+    },
+    {
+      name: 'or',
+      description: 'True if any argument is truthy',
+      signature: 'or(...conditions)',
+      example: 'or({isVip}, gt({orders}, 10))',
+    },
+    {
+      name: 'not',
+      description: 'Boolean negation',
+      signature: 'not(condition)',
+      example: 'not(isEmpty({email}))',
+    },
+    {
+      name: 'isEmpty',
+      description: 'True for null, empty, or whitespace-only',
+      signature: 'isEmpty(value)',
+      example: 'if(isEmpty({nickname}), {firstName}, {nickname})',
     },
     {
       name: 'coalesce',
