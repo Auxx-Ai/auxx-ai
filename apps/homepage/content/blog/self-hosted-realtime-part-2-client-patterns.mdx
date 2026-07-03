@@ -1,0 +1,250 @@
+---
+title: "Self-Hosted Realtime, Part 2: Echo Suppression, Refcounting, and Live Editors"
+description: "The client side of our realtime stack: one header that kills echo everywhere, refcounted subscriptions with useSyncExternalStore, and collaborative-ish TipTap editors without CRDTs. Part 2 of a two-part series."
+date: "2026-08-04"
+slug: "self-hosted-realtime-part-2-client-patterns"
+category:
+  slug: "coding"
+  title: "Coding"
+authors:
+  - name: "Markus Klooth"
+    image: "/images/avatars/markus.jpg"
+tags: ["realtime", "websockets", "pusher", "react", "typescript", "open-source"]
+published: true
+---
+
+The hardest bug class in a realtime UI isn't a missed event. It's the event you receive that you shouldn't act on — the echo of your own mutation arriving a hundred milliseconds after your optimistic update already applied it, and stomping it.
+
+This is the second of two posts on how realtime works at Auxx.ai:
+
+1. **[Part 1](/blog/self-hosted-realtime-part-1-sockudo-rooms-auth)** covered the server: self-hosting Sockudo (a Rust, Pusher-protocol-compatible websocket server), the typed room registry, and channel auth as ACL dispatch.
+2. **This post** is the client: echo suppression via one tRPC header, refcounted channel subscriptions with `useSyncExternalStore`, realtime-driven React Query invalidation, and how far we push live TipTap editors without CRDTs.
+
+Auxx.ai is [open source](https://github.com/auxxai/auxx); every file here is in the repo.
+
+## One header kills echo everywhere
+
+Here is the failure. You type a field value. The client applies it optimistically, fires the tRPC mutation, the server writes it and publishes `fieldValues:updated` to the org channel. Your tab is subscribed to the org channel. The event arrives, and the store applies "new" data on top of state that may have already moved on — a keystroke lost, a cursor jump, a chip flickering out and back.
+
+Most teams fix this per feature: a "pending mutations" set here, a timestamp comparison there, an `isOwnEvent` flag somewhere else. Every one of those is a reimplementation of the same idea, and each has its own bugs. The Pusher protocol already has the primitive: `trigger()` accepts a `socket_id` parameter, and the connection with that id is excluded from delivery. The only problem is plumbing — the socket id lives in the browser, and the publish happens on the server.
+
+So we thread it through the one pipe every mutation already travels: tRPC headers. The client attaches its live socket id to *every* request:
+
+```typescript
+// apps/web/src/trpc/react.tsx
+unstable_httpBatchStreamLink({
+  url: getBaseUrl() + '/api/trpc',
+  headers: () => {
+    const headers = new Headers()
+    headers.set('x-trpc-source', 'nextjs-react')
+    const socketId = getRealtimeSocketId()
+    if (socketId) {
+      headers.set('x-realtime-socket-id', socketId)
+    }
+    return headers
+  },
+}),
+```
+
+`getRealtimeSocketId()` is a non-reactive read off the adapter — it's for headers, not rendering, so it triggers no re-renders and costs nothing. Server-side, any mutation that publishes reads the header and passes it down:
+
+```typescript
+// apps/web/src/server/api/routers/fieldValue.ts
+const service = new FieldValueService(
+  ctx.session.organizationId,
+  ctx.session.user.id,
+  ctx.db,
+  ctx.headers.get('x-realtime-socket-id') ?? undefined
+)
+```
+
+...and the provider forwards it as Pusher's exclusion param:
+
+```typescript
+// packages/lib/src/realtime/providers/pusher.ts
+const params: Record<string, string> = {}
+if (options?.excludeSocketId) {
+  params.socket_id = options.excludeSocketId
+}
+await this.pusher.trigger(channel, event, data, params)
+```
+
+That's the whole trick. The originating tab trusts its optimistic state; every *other* tab and teammate gets the event. No per-feature dedup logic, no timestamps, no flags. When we audit a new mutation, the checklist item is one line: does it thread `excludeSocketId`?
+
+The interesting cases are the ones that deliberately *don't*. Worker-originated publishes — data-connector sync progress, CSV export jobs, AI autofill results — have no originating browser socket, and the tab that clicked "Sync now" absolutely should light up. Those helpers omit the option on purpose, and the doc comments say so. Echo suppression is for "I already applied this," not "I asked for this."
+
+## A refcounted registry under `useSyncExternalStore`
+
+The org channel is subscribed by the field-value sync engine, the presence roster, the agent-detail refresher, the notification badge, and a dozen other hooks — often several of them mounted at once. Naively, that's a dozen Pusher subscriptions to the same channel, a dozen auth round-trips, and a teardown ordering nightmare.
+
+The adapter (`packages/lib/src/realtime/client/adapters/pusher.ts`) collapses them with a refcounted registry. First subscriber to a room key creates the Pusher channel and binds one `bind_global` listener; later subscribers just add their handler to a set and bump the count:
+
+```typescript
+let entry = this.rooms.get(roomKey)
+if (!entry) {
+  const channel = this.pusher.subscribe(channelName)
+  entry = { channel, refCount: 0, handlers: new Set() }
+  const globalListener = (event: string, payload: unknown) => {
+    if (event.startsWith('pusher:')) return // internals filtered
+    const current = this.rooms.get(roomKey)
+    if (!current) return
+    for (const h of current.handlers) h.onEvent?.(event, payload)
+  }
+  channel.bind_global(globalListener)
+  this.rooms.set(roomKey, entry)
+}
+entry.handlers.add(handlers)
+entry.refCount += 1
+```
+
+Unsubscribe decrements; the channel is torn down only when the count hits zero. One socket, one channel object, one listener per room, however many consumers.
+
+React sees this store through `useSyncExternalStore`, and the detail that makes it work is snapshot identity. The adapter keeps two views of its state: the live `Map<roomKey, RoomEntry>` that drives subscriptions, and a frozen `Set<string>` snapshot exposed to React — replaced with a new reference *only when membership changes*:
+
+```typescript
+private rooms = new Map<string, RoomEntry>()
+private roomsSnapshot: ReadonlySet<string> = new Set()
+
+getRoomMapSnapshot = (): ReadonlySet<string> => this.roomsSnapshot
+
+private refreshRoomsSnapshot() {
+  this.roomsSnapshot = new Set(this.rooms.keys())
+}
+```
+
+`useSyncExternalStore` calls the snapshot function on every notification and re-renders when the reference changes. Return a fresh `new Set(...)` each call and every message on any channel re-renders every subscribed component — the app "works" and is molasses. Keep one frozen reference and swap it only on subscribe/unsubscribe, and a thousand events flow through with zero renders. Snapshot identity stability is the entire difference between "works" and "works at scale."
+
+Two more adapter behaviors earn their keep:
+
+**Pre-connect buffering.** React mounts children before parents run effects, so a deep component's `useRealtimeRoom` often fires before the layout-level provider calls `connect()`. Instead of dropping or throwing, subscriptions land in a `pendingSubs` queue and are replayed when the connection comes up — and the returned handle's `unsubscribe` works correctly whether the replay happened yet or not.
+
+**Late-join replay.** Pusher fires `subscription_succeeded` once per channel. A second consumer attaching to an already-subscribed room would never see it — so it would never run its catch-up logic, and on presence channels would never see the roster. The adapter detects `channel.subscribed` and replays `onSubscribed` (and the member snapshot) to the new handler via `queueMicrotask`, matching the ordering of a fresh subscription.
+
+## Org switches, and knowing what to keep
+
+Auxx.ai users can belong to multiple organizations and switch between them without a page load. Realtime subscriptions are org-scoped, so a switch has to tear down the old org's rooms — otherwise they linger in the refcount store and the old org's events keep flowing into the new org's UI.
+
+The lifecycle hook does surgical teardown with a predicate:
+
+```typescript
+// apps/web/src/realtime/use-realtime-lifecycle.ts
+if (previousOrgRef.current && previousOrgRef.current !== organizationId) {
+  const stalePrefix = `org-${previousOrgRef.current}`
+  realtimeAdapter.unsubscribeMatching(
+    (key) =>
+      key === stalePrefix || key.startsWith(`${stalePrefix}-`) || key.startsWith('thread-')
+  )
+}
+```
+
+Torn down: the old org's presence room, its `-events` and per-inbox channels, and every `thread-*` room (chat threads belong to exactly one org). Deliberately kept: `user-{userId}` — the same human crossed orgs, and their personal notification channel shouldn't blink. Feature hooks then re-subscribe naturally on the next render with the new org id. The teardown handles the past; React handles the future.
+
+## Realtime → React Query, one hook shape everywhere
+
+Most of our realtime consumers don't apply payloads at all. They treat events as *invalidation signals* for React Query. The pattern is small enough to show whole:
+
+```typescript
+// apps/web/src/components/agents/hooks/use-agent-realtime.ts
+export function useAgentRealtime() {
+  const utils = api.useUtils()
+
+  const onEvent = useCallback(
+    (event: string) => {
+      if (event === 'agent:updated') {
+        void utils.agent.getById.invalidate()
+        void utils.agent.list.invalidate()
+      }
+      if (event === 'procedure:updated') {
+        void utils.procedure.getById.invalidate()
+        void utils.procedure.list.invalidate()
+      }
+    },
+    [utils]
+  )
+
+  useOrgChannel({ onEvent })
+}
+```
+
+Subscribe to a room, invalidate the queries the event names. The server stays honest (payloads carry ids, not denormalized state that can drift), the client stays simple (React Query owns fetching, caching, dedup), and the refcounted adapter means ten such hooks cost one channel. We have this exact shape for mail, agents, data connectors, notifications, table views, eval cases — new features copy the file and rename the events.
+
+The heavyweight consumers — the mail sync engine (`use-mail-sync.ts`) and the field-value store covered in [the custom fields series](/blog/custom-fields-part-3-frontend-sync-engine) — apply partial patches into Zustand stores instead, because a full refetch per keystroke-sized event would be absurd. But even they fall back to coarse invalidation for bulk paths: sync backfills suppress per-message events server-side and emit one `inbox:syncCompleted`, and the client answers with one `thread.listIds.invalidate()`.
+
+One honest wrinkle: Pusher does not replay events published while a channel was mid-subscribe, and our inbox channels bind in two phases (the real inbox list arrives from an async query). Messages landing in that window would simply vanish until a manual refresh. So `use-mail-sync.ts` treats every `onSubscribed` — including re-subscribes after reconnect — as a catch-up trigger: refetch the thread list and reconcile the open thread's messages additively, appending only missing ids so nothing flashes. Realtime is the accelerant; the catch-up path is the guarantee.
+
+## Live TipTap editors without CRDTs
+
+Several of our TipTap surfaces are fed content from outside their own `onUpdate` — autosave echoes from the server, AI tools writing into an open procedure editor, a teammate editing the same record's notes. The naive wiring (`useEffect` that calls `setContent` whenever the prop changes) destroys the editor: every save echo resets the cursor, open slash-command chips vanish, and fast typists lose keystrokes.
+
+Our fix is a gate, `useExternalContentSync`, built on one idea: *canonically fingerprint every doc, and refuse to apply a doc you've already seen.*
+
+```typescript
+// apps/web/src/components/editor/inline-picker/hooks/use-external-content-sync.ts
+useEffect(() => {
+  if (!editor || editor.isDestroyed) return
+  const key = canonicalKey(incoming)
+  if (key === lastAppliedKeyRef.current) return
+  // Echo of one of our own recent edits — the editor has typed past this
+  // version, so applying it would revert live edits. Trust the editor.
+  if (localEditSetRef.current.has(key)) return
+  if (isPickerOpenRef.current) {
+    pendingRef.current = incoming
+    return
+  }
+  applyContent(editor, incoming)
+  lastAppliedKeyRef.current = key
+}, [editor, incoming, applyContent, canonicalKey])
+```
+
+The pieces:
+
+**Canonical keys, not `JSON.stringify`.** Content round-trips through a Postgres JSONB column, and JSONB does not preserve key order. The same doc comes back with keys shuffled, so a naive stringify compares unequal and the hook re-applies your own content on every save echo. `canonicalKey` is a key-order-insensitive `stableStringify`, and the editor's own `applyContent` uses it too, skipping the `setContent` entirely when the docs already match.
+
+**A ring of recent local edits, not just the last one.** The editor stamps every outbound change: `onUpdate` calls `markLocalEdit(stableStringify(json))`. Keys go into a bounded 64-entry ring. When a server echo arrives late — after you've typed three more characters — it matches an entry in the ring and is skipped, even though it's no longer the *most recent* local state. Keeping only the last key isn't enough; save echoes arrive out of order with typing.
+
+**Deferral while a picker is open.** An inbound apply while a slash-command chip is open would destroy the chip mid-interaction. Incoming content is stashed and flushed the moment the picker closes — unless a local edit superseded it in the meantime, in which case the stash is dropped.
+
+For *replacing* content wholesale — a teammate's Kopilot tool rewrote the procedure you have open — patching an editor in place is the wrong tool. Those editors are seed-once by design, keyed on `${procedureId}:${reloadKey}`; the realtime handler invalidates the query and bumps `reloadKey`, and the editor remounts cleanly with the new doc.
+
+Now the honest part: **this is not collaborative editing.** There is no merging. If two people type into the same document in the same second, last write wins and somebody's sentence is gone. What this architecture actually delivers is: your own echoes never hurt you, external replacements land cleanly when you're not typing, and read-only viewers of a document see it update live. That covers a CRM's real concurrency profile — one active writer, N viewers, occasional machine writers — for a few hundred lines of hook code.
+
+The moment your product needs two humans typing in one paragraph — cursors, per-character merging, offline edits reconciling — stop extending this and reach for Yjs. TipTap's collaboration layer is built on it, and a CRDT is the correct data structure for that problem. We know precisely where our line is: suppression and replacement, yes; merging, no. Knowing where the line is *before* you cross it is the difference between a pragmatic pattern and technical debt.
+
+## Two clients by design
+
+Our embeddable chat widget also speaks realtime — and it does not use any of the adapter code above. It ships its own dependency-free client, `packages/chat/src/transport/realtime-client.ts`: one shared Pusher socket per widget, a refcounted channel registry with per-caller handles, and nothing else.
+
+That sounds like a DRY violation. It's a bundle boundary. The widget loads on arbitrary customer websites where every kilobyte is somebody else's page weight; the admin adapter sits in a lib package that assumes our monorepo's world. The two implementations *mirror each other's design* — the comments in each point at the other — but share zero code, on purpose. Don't DRY across a bundle-size boundary; you'll ship your whole world to someone else's homepage.
+
+The one genuinely widget-specific piece is auth. Widget visitors don't have session cookies; they have a short-lived signed "passport." The Pusher auth handler is installed once for the connection but reads the passport *at call time*, so token refresh keeps working across the socket's lifetime:
+
+```typescript
+// packages/chat/src/transport/realtime-client.ts
+customHandler: async ({ socketId, channelName }, callback) => {
+  const { passport } = await getChatPassport(channelId)
+  const res = await fetch(`${getApiBase()}/api/chat/pusher/auth`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${passport}` },
+    body: new URLSearchParams({ socket_id: socketId, channel_name: channelName }),
+  })
+  // ...
+}
+```
+
+Pusher only invokes the handler for `private-` channels, so the public `chat-{sessionId}` transcript channel from Part 1 rides the same socket with no auth at all. And when a passport goes stale mid-session, a `subscription_error` triggers exactly one passport-clearing re-subscribe per channel — re-subscribing re-runs the auth handler, which mints a fresh passport — guarded so a hard auth failure can't spin.
+
+## Closing the series
+
+Two posts, one system. The server half is almost boring on purpose: a pinned Rust container speaking a protocol that outlived its vendor, a room registry where every channel's ACL lives in one table, and publish helpers that make payload discipline structural. The client half is where realtime products are actually won or lost: one header that ends echo bugs as a category, snapshot identity that keeps a thousand events from becoming a thousand renders, invalidation hooks cheap enough to copy per feature, and an editor sync gate that knows exactly which problems it refuses to solve.
+
+If you take one thing: centralize echo suppression in your RPC client. Every team building on websockets reinvents it per feature, and it's one header.
+
+Entry points, if you want to dig:
+
+- `packages/lib/src/realtime/client/adapters/pusher.ts`, the refcounted adapter
+- `apps/web/src/trpc/react.tsx`, the socket-id header
+- `apps/web/src/components/threads/realtime/use-mail-sync.ts`, the heavyweight consumer
+- `apps/web/src/components/editor/inline-picker/hooks/use-external-content-sync.ts`, the editor gate
+- `packages/chat/src/transport/realtime-client.ts`, the widget client
+
+Auxx.ai is open source. PRs welcome.

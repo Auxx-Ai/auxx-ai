@@ -10,6 +10,10 @@ import { config } from '~/lib/config'
 import { mdxComponents } from '../_components/mdx-components'
 import { PostHeader } from '../_components/post-header'
 
+// Re-render hourly so future-dated posts appear on their release date.
+// Slugs not in generateStaticParams (unreleased posts) render on demand.
+export const revalidate = 3600
+
 export function generateStaticParams() {
   return getAllSlugs().map((slug) => ({ slug }))
 }

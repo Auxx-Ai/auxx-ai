@@ -3,6 +3,9 @@
 import { getHomepageUrl } from '@auxx/config/client'
 import { getAllPosts } from '~/lib/blog'
 
+// Re-render hourly so future-dated posts appear on their release date.
+export const revalidate = 3600
+
 export function GET() {
   const baseUrl = getHomepageUrl()
   const posts = getAllPosts()

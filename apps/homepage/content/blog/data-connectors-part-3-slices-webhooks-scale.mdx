@@ -1,0 +1,215 @@
+---
+title: "Building a Data Connector Engine, Part 3: Slices, Webhooks, and Surviving 50,000 Records"
+description: "The orchestration layer of our sync engine: bounded resumable slices, a three-state commit verdict, opaque cursors across six pagination styles, and why the webhook is the signal but the fetch is the truth. Part 3 of a three-part series."
+date: "2026-07-21"
+slug: "data-connectors-part-3-slices-webhooks-scale"
+category:
+  slug: "coding"
+  title: "Coding"
+authors:
+  - name: "Markus Klooth"
+    image: "/images/avatars/markus.jpg"
+tags: ["sync", "integrations", "postgres", "drizzle", "typescript", "open-source"]
+published: true
+---
+
+A sync that works on 50 records and dies on 50,000 is not a sync engine; it is a demo. The failure is always the same shape: one worker job tries to crawl an entire upstream dataset, holds its lock for minutes, hits a rate limit or a deploy or a crash somewhere around page 40 — and starts over from page 1.
+
+This final post is about the orchestration layer that makes our data connectors boring at scale: syncs as chains of bounded, resumable slices, a commit protocol for when a cursor may advance, and a webhook model with one rule we will defend to the death.
+
+The plan for the series:
+
+1. **[Part 1](/blog/data-connectors-part-1-streams-mappings-sink)** covered the data model and the write path: streams, mapping trees, and the entity sink.
+2. **[Part 2](/blog/data-connectors-part-2-identity-relationships-reconciliation)** was identity and correctness: the bind table, deferred relationships, and reconciliation.
+3. **This post** is the orchestration layer: slices, cursors, webhooks, and async bulk exports.
+
+The provider-agnostic spine lives in `packages/lib/src/sync-core/`, the connector-side orchestration in `packages/lib/src/data-connectors/`. Auxx.ai is [open source](https://github.com/auxxai/auxx), so you can read every line quoted here in context.
+
+## A sync is a chain of slices
+
+The core idea: a sync run is not one job. It is a *chain* of short jobs, each of which fetches a few pages, sinks them, checkpoints an opaque cursor onto the stream row, and re-enqueues its successor on our [BullMQ queue layer](/blog/bullmq-job-queue-architecture-part-1). Each slice is bounded by a budget, and it stops at whichever limit it hits first:
+
+```typescript
+// sync-core/contracts.ts
+interface SliceBudget {
+  maxPages: number    // hard cap on pages fetched in one slice
+  maxRecords: number  // hard cap on records processed
+  maxMs: number       // wall-clock for ACTIVE work — NOT counting throttle waits
+}
+
+// slice-orchestrator.ts — the production tuning
+export const SLICE_BUDGET = { maxPages: 20, maxRecords: 5_000, maxMs: 25_000 } as const
+export const SLICE_LOCK_DURATION_MS = 90_000
+```
+
+`maxMs` sits well under the BullMQ `lockDuration`, so a slice can never outlive its lock. And a slice **never sleeps on a throttle while holding that lock** — when the upstream says 429, the connector throws immediately (the sliced source sets `rateLimitOverride: { maxRetries: 0 }` on the transport), and the *re-enqueue delay* carries the backoff instead. Workers work or they yield; they do not nap.
+
+The shared runner in `packages/lib/src/sync-core/slice-runner.ts` runs exactly one slice and returns a directive — `reenqueue`, `complete`, or `failed`. The chain is nothing more than the worker acting on `reenqueue`. And because the cursor is checkpointed after *every* slice, a crashed worker, a deploy, or a swept-stale run resumes from the last committed page. Never page 1. On a 50,000-record backfill that difference is the difference between an engine and a prayer.
+
+Two guardrails ride along the chain. A per-run ingest ceiling parks a runaway backfill (`paused`, resumable from the checkpoint) rather than letting a mis-targeted endpoint ingest unbounded volume. And stale-run detection keys on a heartbeat, not a start time — a chain spanning twenty minutes of short jobs is perfectly healthy, so `sweepStaleConnectorRuns` fails only runs whose `heartbeatAt` (bumped by every slice's ledger fold) has gone cold, then releases the connector claim so the next trigger can resume.
+
+## The three-state commit verdict
+
+The subtle question in any checkpointed system: when is it safe to advance the cursor? A binary answer — advance on success, hold on failure — has a fatal corner: a poison record at a page boundary either blocks the cursor forever or vanishes silently. So the verdict is three-state, and the core enforces it:
+
+```typescript
+// sync-core/contracts.ts
+type SliceCommit =
+  | 'all'                // clean slice — advance the cursor
+  | 'partial-retriable'  // transient failure (429, 5xx, timeout) — HOLD the cursor, re-fetch
+  | 'partial-permanent'  // poison records that will never parse — ADVANCE past them
+```
+
+`partial-retriable` holds ground so nothing is lost; `partial-permanent` gives up ground deliberately so one malformed record cannot wedge a 50,000-record backfill, feeding the run's `failed` counter instead.
+
+Rate limits get the most interesting treatment, in `packages/lib/src/data-connectors/connector-slice-loop.ts`. Whether a 429 is retriable depends on *when* it hit:
+
+```typescript
+} catch (error) {
+  if (error instanceof ConnectorRateLimitError) {
+    rateLimitWaitMs += error.retryAfterMs ?? 0
+    // Made progress this slice → commit it and advance; the next slice resumes
+    // at the last good page and re-hits the limit after the backoff delay.
+    if (pages > 0) {
+      return { recordsProcessed, pagesProcessed: pages, nextCursor,
+               hasMore: true, commit: 'all', rateLimitWaitMs }
+    }
+    // Zero progress (throttled on the first page) → hold the cursor, back off.
+    return { recordsProcessed: 0, pagesProcessed: 0,
+             hasMore: true, commit: 'partial-retriable', rateLimitWaitMs }
+  }
+  throw error // permanent — the runner closes the run as failed
+}
+```
+
+A throttle after three good pages is not a failure; it is a slice that ended early. Commit the three pages, advance, pace the next slice by `retryAfterMs`. Only a throttle with zero progress holds the cursor.
+
+The runner adds two more invariants. Ledger folds are idempotent: each slice's counter contribution carries the serialized post-slice cursor as a `checkpointKey`, so a BullMQ job replay that already committed cannot double-count `created`/`updated`. And a stall guard counts consecutive slices that advanced, claimed more pages, and moved *nothing* — the signature of an upstream replaying the same page while signalling `has_more` — and fails the run after a couple of strikes instead of spinning a warm-heartbeat continuation chain forever.
+
+## Opaque cursors, six pagination dialects
+
+The engine never interprets a cursor. It persists this and hands it back:
+
+```typescript
+// sync-core/contracts.ts
+interface SyncCursor {
+  kind: 'token' | 'nextUrl' | 'headerLocator' | 'offset' | 'pageNumber' | 'historyId' | 'deltaLink'
+  value: string
+}
+```
+
+`kind` is advisory metadata for debugging; the core branches on it never. Underneath, the generic-REST connector speaks six pagination dialects, configured per stream:
+
+| Kind | Resume token | Example |
+|------|--------------|---------|
+| `cursor` | body field, or a field of the last record | Stripe `starting_after`, Shopify page cursors |
+| `page` | incrementing page number | plain sequential pages |
+| `offset` | computed offset, 0- or 1-based | QuickBooks `STARTPOSITION` |
+| `link-header` | `Link: <url>; rel="next"` header | classic REST hypermedia |
+| `next-url` | full next-page URL in the body | Salesforce `nextRecordsUrl` |
+| `none` | — | single-page endpoints |
+
+App connectors — like our Shopify app, which lives in a separate repo and runs sandboxed — do not even expose their pagination. The app returns one page per `execute` call plus its own cursor, and a tiny codec round-trips it through the engine as an opaque token:
+
+```typescript
+// connectors/app-connector-state.ts
+export function decodeCursor(cursor?: SyncCursor): unknown {
+  if (!cursor || typeof cursor.value !== 'string') return undefined
+  try {
+    return JSON.parse(cursor.value)
+  } catch {
+    return undefined // a malformed/legacy cursor must never fail a live sync
+  }
+}
+
+export function encodeCursor(value: unknown): SyncCursor {
+  return { kind: 'token', value: JSON.stringify(value) }
+}
+```
+
+That silent `catch` is deliberate. Cursors are durable state that outlives deploys; when we changed the cursor format once, connectors in the wild still held the old shape. Decoding tolerantly — a bad cursor means "start fresh," never "crash the sync" — turned a would-be incident into a slightly slower run.
+
+## The webhook is the signal; the fetch is the truth
+
+Now the philosophical hill. When a webhook delivery arrives — `orders/updated`, with a payload that looks temptingly like the whole order — we never write that payload into the entity system. Ever.
+
+Webhook payloads are the least trustworthy data an integration receives: they get truncated, they race each other, providers version them separately from their read APIs, and they arrive shaped differently from what your mappings were configured against. So a delivery does exactly one thing: it *steers* a targeted run of the normal fetch. Per-stream config declares which payload paths become `{path}` placeholders in the regular request template:
+
+```typescript
+// types.ts — per-stream steering (trimmed)
+interface StreamWebhookTrigger {
+  filter?: Record<string, unknown>  // topic discrimination, e.g. { topic: 'orders/create' }
+  paths: string[]                   // payload paths exposed as {path} placeholders
+  deleteWhen?: { tokenTruthy?: string } | { topicEquals?: string }
+  deleteExternalIdPath?: string     // the externalId to archive on a delete event
+}
+```
+
+A pure resolver (`packages/lib/src/data-connectors/webhook-steer.ts`) turns delivery plus config into a directive:
+
+```typescript
+export type WebhookSteer =
+  | { kind: 'fetch'; triggerContext: Record<string, string> }
+  | { kind: 'delete'; externalId: string | null }
+```
+
+A delete archives by external id and skips the fetch. Everything else runs `definition.fetch` seeded with the resolved `triggerContext` — same auth, same base URL, same mappings, same entity sink as a bulk sync, just pointed at `GET /orders/{resourceId}` instead of the whole collection. The webhook told us *something changed*; the API tells us *what it is now*. One flagship app multiplexes 22 topics through a single trigger, and the per-stream `filter` picks the subset each stream cares about.
+
+The equally important half is what a steered run refuses to do, in `packages/lib/src/data-connectors/connector-webhook.ts`. It opens a run row so the delivery shows up in the UI — but closes it as `partial`, runs **no orphan reconciliation** (a run that observed one record and then reconciled would archive every *other* record in the collection), and **never advances the watermark or cursor** (webhook events are out-of-band of the steady delta floor; letting them move it would punch holes in the next incremental run). It is a point write, not a sync. Idempotency comes free from Part 1's machinery: event-id dedup at the receiver plus the sink's content-hash skip.
+
+How deliveries get verified, deduplicated, and dispatched before any of this — the inbound webhook endpoint layer with its HMAC verification and topic extraction — deserves its own write-up; we'll cover the inbound webhook verification layer in a future post.
+
+## Async bulk exports: polling without holding a lock
+
+Some providers refuse to paginate big reads at all. Shopify Bulk Operations and Salesforce Bulk API 2.0 take a query, run it asynchronously server-side, and eventually hand back a result file. The naive integration holds a worker for the duration: submit, poll, poll, poll, download. Minutes of lock for seconds of work.
+
+We modeled it on the machinery we already had: an async export is a slice chain where a slice is a *phase of the job*, not a page. From `packages/lib/src/data-connectors/async-export/slice-loop.ts`:
+
+```typescript
+if (state.stage === 'poll') {
+  const status = await driver.poll(state.handle)
+
+  if (status.state === 'running') {
+    const polls = (state.polls ?? 0) + 1
+    return step({ ...state, polls }, pollDelayMs(polls)) // re-enqueue, capped backoff
+  }
+  if (status.state === 'completed') {
+    // Move to download on the NEXT slice — don't chain a multi-minute
+    // download onto a poll slice.
+    return step({ stage: 'download', url: status.url }, 0)
+  }
+  // failed / expired → re-initiate, bounded; past the budget, fail the run.
+}
+```
+
+A poll slice does no record work and returns in milliseconds; "waiting for the export" is spread across many tiny re-enqueued jobs with capped exponential backoff (5s to 60s), and the phase state rides the same opaque `SyncCursor` as everything else. The only provider-specific code is a three-method driver: `initiate`, `poll`, `download`.
+
+The download phase has one delight. Bulk exports emit *flat* JSONL — an order on one line, each line item on its own line pointing back via `__parentId`, in no guaranteed order. Part 1's mapping trees want nested records, so a provider-neutral helper re-nests the file before it hits the sink:
+
+```typescript
+// async-export/restitch.ts — index all rows first, then link, so a child
+// arriving before its parent (or grandchildren in any order) still nests.
+export function restitchByParentId(rows: Iterable<unknown>, options: RestitchOptions = {}): Rec[]
+```
+
+Because it mutates shared references in the index, grandchildren come along for free: a child attached to its parent already carries its own attached children. After restitching, a bulk export is indistinguishable from paginated fetch output, and the entire mapping/sink spine applies unchanged.
+
+## What we'd do differently
+
+The cross-connection throttle is still a stub. The slice loop handles per-request 429s well, but the `ThrottleHandle` seam — meant to share one rate budget across every source hitting the same upstream account — is currently a no-op passthrough. Two connectors on one Shopify store can still gang up on its limit and take turns backing off instead of coordinating.
+
+Downloads aren't resumable mid-file. A cancelled async-export download re-fetches the whole file; the content-hash skip makes the re-sink idempotent, so it is correct but wasteful. Splitting the download into resumable chunks is deferred until a real dataset makes us.
+
+## Closing the series
+
+Three posts, one design stance: put all the provider chaos behind one narrow contract, and make everything downstream of it boring. Connectors fetch raw pages and emit checkpoints (Part 1). Identity lives in a bind table and deletes require proof (Part 2). Orchestration is bounded slices that checkpoint relentlessly, and webhooks steer fetches rather than being trusted (this post). The payoff is that "add a Stripe integration" is a JSON template, and a 50,000-record backfill is just a longer chain of the same 25-second jobs.
+
+The entry points, if you want to go deeper:
+
+- `packages/lib/src/sync-core/contracts.ts`, the whole shared spine in ~200 lines of types
+- `packages/lib/src/sync-core/slice-runner.ts`, cursor-safety and checkpointing
+- `packages/lib/src/data-connectors/slice-orchestrator.ts`, the continuation chain
+- `packages/lib/src/data-connectors/webhook-steer.ts` and `connector-webhook.ts`, the steering model
+- `packages/lib/src/data-connectors/async-export/`, bulk exports as sliced phases
+
+Auxx.ai is [open source](https://github.com/auxxai/auxx). PRs welcome.

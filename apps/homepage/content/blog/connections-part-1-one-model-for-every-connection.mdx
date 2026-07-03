@@ -1,0 +1,238 @@
+---
+title: "Connections, Part 1: One Model for Every Connection"
+description: "How we collapsed OAuth2, client-credentials, API keys, and multi-field secrets into one blueprint table and one instance table — and made auth application declarative data instead of per-provider code. Part 1 of a two-part series."
+date: "2026-08-11"
+slug: "connections-part-1-one-model-for-every-connection"
+category:
+  slug: "coding"
+  title: "Coding"
+authors:
+  - name: "Markus Klooth"
+    image: "/images/avatars/markus.jpg"
+tags: ["oauth", "security", "secrets", "postgres", "typescript", "open-source"]
+published: true
+---
+
+Every platform eventually grows five half-compatible ways to store an API key. Nobody plans it. The email integration ships first and stores its OAuth tokens on its own table. The workflow engine arrives and adds "credential types" with a registry of per-provider classes. The AI features need provider keys, so those get a table. An app platform shows up, and apps obviously need their own connections. MCP servers land, and they have opinions about OAuth too. Five features, five stores, five hand-rolled copies of `buildAuthHeaders`, five different answers to "when does this token get refreshed?"
+
+We had exactly this. Then we collapsed all of it into two tables — one blueprint, one instance — and made "how does this credential become request auth" a piece of declarative data instead of code. This two-part series is about that model:
+
+1. **This post** covers the data model: the two tables, the `connectionType` discriminator, the exactly-one-owner constraint (with a Postgres gotcha worth knowing), and declarative auth application.
+2. **[Part 2](/blog/connections-part-2-secret-lifecycle)** is the secret lifecycle: masking, merge-never-replace editing, and the token refresh machinery — the part everyone gets wrong.
+
+The code lives mostly in `packages/lib/src/connections/` and `packages/credentials/src/`. Auxx.ai is [open source](https://github.com/auxxai/auxx), so you can read along.
+
+## Blueprint and instance
+
+The whole model is two tables.
+
+`ConnectionDefinition` is the blueprint: what a connection to a given provider *is*. Its OAuth endpoints, its scopes, which form fields the user fills in, how the resolved credential gets applied to a request. There is one row per provider-and-method, and it carries no user data.
+
+`Credential` is the instance: one organization's actual connection. The encrypted tokens, the account email, the expiry timestamp. Every credential points at the definition that shaped it:
+
+```typescript
+// packages/database/src/db/schema/credential.ts
+export const Credential = pgTable('Credential', {
+  organizationId: text().notNull(),
+  /** Discriminator: which credential family owns this row. */
+  kind: text().notNull().default('connection'), // 'app' | 'mcp' | 'connection'
+  // Direct link to the provider blueprint (any owner).
+  connectionDefinitionId: text().references(() => ConnectionDefinition.id),
+
+  /** AES-256-GCM blob — secrets ONLY (tokens, keys, passwords). */
+  encryptedSecrets: text().notNull(),
+  /** Plaintext non-secret companion data: scopes, account email, shop domain… */
+  metadata: jsonb().$type<Record<string, unknown>>().default({}).notNull(),
+
+  // OAuth2 expiry and refresh tracking (expiresAt is the ONLY home of expiry)
+  expiresAt: timestamp({ precision: 3 }),
+  // ...
+})
+```
+
+The important claim is what sits on top of these two tables: email channels, installed apps, MCP servers, workflow HTTP nodes, and [AI provider keys](/blog/multi-provider-ai-system-part-1) are *all* `Credential` rows. When the Gmail channel needs an access token, it goes through the same resolver as a Shopify app connection or an Anthropic API key. One decrypt path, one refresh path, one place to get auth right.
+
+Before this, each of those was its own little fiefdom. Channels stored tokens on the integration row and ran their own OAuth refresh. Workflow credentials had a registry of `ICredentialType` classes. The differences between them were accidents of when they were written, not design.
+
+## Four connection types, one discriminator
+
+The blueprint's central column is `connectionType`, and it has exactly four values:
+
+| Type | What it means | Token production |
+| --- | --- | --- |
+| `oauth2-code` | Browser redirect, user consents | Refresh token rotation |
+| `client-credentials` | Server-minted M2M OAuth2 | Re-mint from client id/secret |
+| `secret` | API key or multi-field secret bag | None — the secret is the credential |
+| `none` | No auth (public APIs) | None |
+
+The deliberate move here is what `client-credentials` is *not*: it is not a separate feature. It reuses the same OAuth2 minting columns as `oauth2-code` — token URL, client id/secret, scopes — minus the browser-redirect fields, because there is no browser. The schema comment says it plainly:
+
+```typescript
+// packages/database/src/db/schema/connection-definition.ts
+// Connection type: oauth2-code, client-credentials, secret, none.
+// `client-credentials` is the server-minted M2M OAuth2 grant — same minting
+// columns as oauth2-code (sans the browser-redirect fields), downstream an
+// ordinary bearer connection.
+connectionType: text().notNull(),
+```
+
+"Downstream an ordinary bearer connection" is the payoff. Once a token exists, nothing that consumes the connection cares how it was produced. The HTTP transport, the auth application, the runtime resolver — they all see a bearer token. Only the token-production path (mint vs. refresh, covered in part 2) knows the difference. UPS and FedEx connect with `client-credentials`; Gmail connects with `oauth2-code`; a request through either looks identical from the transport's point of view.
+
+`secret` covers everything from a single Telegram bot token to a Postgres connection's `host` + `port` + `user` + `password`. The definition declares its form fields as `connectionVariables` — a JSONB array where each variable carries a key, a label, a field type, and crucially a `secret` flag that decides whether the value is encrypted or stored as plain metadata. The connect form is rendered entirely from this array. Adding a new secret-type provider is data entry, not code.
+
+## Exactly one owner, enforced in Postgres
+
+A definition is owned by exactly one of three things: an app (apps ship their own connection methods — we covered that platform in [Building Your Own App Store](/blog/building-your-own-app-store-part-1)), an MCP server, or the platform itself via a `providerKey` string like `gmail` or `postgres`.
+
+"Exactly one" is the kind of invariant that quietly rots if you only enforce it in application code. Somebody writes a seeding script, forgets a field, and now a row has two owners and the resolver picks one at random. So it lives in the database:
+
+```typescript
+// packages/database/src/db/schema/connection-definition.ts
+check(
+  'ConnectionDefinition_owner_check',
+  sql`(("appId" IS NOT NULL)::int
+     + ("mcpServerId" IS NOT NULL)::int
+     + ("providerKey" IS NOT NULL)::int) = 1
+   AND ("appId" IS NULL OR "key" IS NOT NULL)`
+),
+```
+
+The `::int` cast trick sums the three "is present" booleans and requires the sum to be exactly 1. Cheap, readable, impossible to bypass.
+
+The second clause of that constraint — app rows must carry a `key` — exists because of a Postgres behavior that bites almost everyone once. We wanted "no duplicate connection methods per app version," which sounds like a partial unique index:
+
+```typescript
+// Distinct methods per app/version. Partial (apps only).
+uniqueIndex('ConnectionDefinition_app_key_major_idx')
+  .on(table.appId, table.key, table.major)
+  .where(sql`"appId" IS NOT NULL`),
+```
+
+Here is the gotcha: **Postgres treats NULLs as distinct in unique indexes.** If `key` is allowed to be NULL, then `(app_123, NULL, 1)` and `(app_123, NULL, 1)` are two *different* index entries, and your unique index enforces nothing. Every app-owned row with a NULL `key` sails past it. The index looks like protection and provides none.
+
+The fix is in the CHECK constraint above: app-owned rows *must* have a `key`, so the NULL case can never reach the index. The comment in the schema file spells it out — "else the partial unique index above is toothless — Postgres treats NULLs as distinct." We hit the same trap a second time on `Credential`, where "at most one default connection per (org, app)" needed a partial index scoped with `"userId" IS NULL` in the predicate, because NULL-userId rows would otherwise all count as distinct in a composite unique.
+
+(Postgres 15 added `NULLS NOT DISTINCT` for exactly this. If you can require it, use it. We support the constraint-plus-partial-index pattern because it also documents the invariant.)
+
+## Auth as data: `authApply`
+
+The single biggest source of duplicated code in the old world was the last step: taking a resolved credential and putting it on an HTTP request. Every consumer had its own copy. The workflow HTTP node had `buildAuthHeaders` with a switch statement per auth style. Each data connector reimplemented it. The differences were bugs waiting to be found.
+
+Now the definition *declares* it, as JSONB:
+
+```typescript
+// packages/database/src/db/schema/connection-definition.ts
+export type AuthInsertion =
+  | { in: 'header'; name: string; format?: string }
+  | { in: 'basic'; userField?: string; passwordField?: string }
+  | { in: 'query'; name: string; format?: string }
+
+export type AuthApply =
+  | AuthInsertion
+  | { insertions: AuthInsertion[]; headers?: Record<string, string> }
+```
+
+Three insertion kinds cover essentially every REST API we have met: set a header, do HTTP Basic from two fields, or append a query parameter. Templates interpolate `{value}` — the resolved token or secret — and any `{fieldKey}` from the connection variables. The canonical case is one constant:
+
+```typescript
+// packages/lib/src/connections/auth-apply.ts
+/** The canonical bearer-token application: `Authorization: Bearer <token>`. */
+export const BEARER_AUTH: AuthApply = {
+  in: 'header',
+  name: 'Authorization',
+  format: 'Bearer {value}',
+}
+```
+
+The multi-insertion form exists because real providers are weird. Supabase wants the same key in *both* an `apikey` header and an `Authorization` header. Notion wants a constant `Notion-Version` header on every request alongside the bearer token — that is the `headers` bag, applied verbatim with no interpolation.
+
+One function interprets the spec, and it is the only place a resolved connection becomes request auth:
+
+```typescript
+// packages/lib/src/connections/auth-apply.ts
+export function applyAuth(
+  req: RequestParts,
+  conn: RuntimeConnectionAuthData,
+  spec: AuthApply | null | undefined
+): RequestParts {
+  if (!spec) return req
+  const insertions = 'insertions' in spec ? spec.insertions : [spec]
+  let out: RequestParts = req
+  for (const ins of insertions) {
+    out = applyInsertion(out, conn, ins)
+  }
+  // ...constant headers merged verbatim
+  return out
+}
+```
+
+There is one ergonomic default worth calling out. App authors writing an `oauth2-code` definition almost never think about `authApply`, because an OAuth2 access token is *always* a bearer token. So when a definition declares nothing, the resolver falls back:
+
+```typescript
+export function defaultAuthApply(
+  connectionType: 'oauth2-code' | 'client-credentials' | 'secret'
+): AuthApply | null {
+  return connectionType === 'oauth2-code' || connectionType === 'client-credentials'
+    ? BEARER_AUTH
+    : null
+}
+```
+
+Secret connections get no default — an API key could go anywhere, so the definition must say where. And `authApply` is deliberately `null` for database and email connections: those are secret bags a driver reads via `connection.fields`, not HTTP request auth, and they never reach `applyAuth` at all.
+
+## Secrets and metadata never share a column
+
+Every credential splits its data across two columns, and the split is a security boundary, not a convenience.
+
+`encryptedSecrets` holds tokens, keys, and passwords — nothing else — as an AES-256-GCM box with a `v2:` version prefix. `metadata` holds everything that is useful but not secret: OAuth scopes, the connected account's email, the Shopify shop domain, plain connection variables. Metadata is plain JSONB you can query, index, and display without a decrypt.
+
+The discipline this buys is that "show me the user's connections" never touches ciphertext, and nothing sensitive ever leaks into a queryable column because someone found it convenient. One companion rule: `expiresAt` lives as a real column on `Credential` and is *the only home of expiry*. Earlier versions had expiry data both inside the encrypted blob and outside it, and they disagreed exactly when it mattered. The schema comment is now load-bearing documentation.
+
+## One resolver, shared transports
+
+Everything converges at `packages/lib/src/connections/resolve-connection-for-runtime.ts`. Give it any owner — an `appId`, an `mcpServerId`, a `providerKey`, or a specific `connectionId` — and it finds the definition, finds the credential, decrypts, lazily refreshes an expiring token (part 2's subject), and hands back one shape:
+
+```typescript
+export interface RuntimeConnectionData {
+  id: string
+  type: ConnectionType
+  /** The resolved token (oauth2) or API secret. */
+  value: string
+  /** Merged connection-variable map (plain + secret-flagged). */
+  fields?: Record<string, string>
+  authApply?: AuthApply | null
+  /** Request origin from the definition's baseUrlTemplate, e.g. 'https://acme.myshopify.com'. */
+  baseUrl?: string
+}
+```
+
+Note `baseUrl`. A definition can declare a `baseUrlTemplate` like `https://{shop}.myshopify.com` or `https://api.telegram.org/bot{value}`, interpolated from the same variables at resolve time. A consumer can then make a request with just a relative path — `/admin/api/2024-10/orders.json` — and the connection contributes its own origin.
+
+The HTTP transport is where it all lands. Auth runs last, after URL assembly, so query-style auth appends to the finished URL:
+
+```typescript
+// packages/lib/src/connections/transports/http.ts
+let parts: RequestParts = { headers, url: buildUrl(resolveUrl(req.url, conn), req.query) }
+if (conn) parts = applyAuth(parts, conn, conn.authApply)
+```
+
+Data connectors syncing Shopify orders, the workflow HTTP node, and connection-backed agent tools all sit on this transport. A SQL transport shares the same `RuntimeConnectionData` interface for connections whose "auth" is a driver reading `conn.fields` — its `query()` signature is locked even though the Postgres implementation lands with its first consumer.
+
+And because the resolver dispatches on `connectionType` rather than on `kind`, every credential family got lazy token refresh for free. Email channels are the cleanest example: `getChannelAccessToken` in `packages/lib/src/providers/channel-token-accessor.ts` resolves the channel's credential through this exact seam. The Gmail SDK provider still owns message operations, but it stopped owning OAuth the day this landed.
+
+## What the model refuses to know
+
+The test of a unification like this is what *doesn't* exist. There is no `GmailToken` table. There is no per-provider refresh job. There is no switch statement over provider names in the transport. A new REST provider is a `ConnectionDefinition` row: a `connectionType`, some `connectionVariables`, an `authApply`, maybe a `baseUrlTemplate`. The connect form renders itself from the variables, the resolver resolves it, and the transport authenticates with it — no new code on any of those paths.
+
+The part we have not covered is the part with the sharpest edges: what happens to the secret itself over its lifetime. How do you let a user edit one field of a multi-field secret without the form ever seeing the others? How do you refresh a token that three workers want to refresh simultaneously? Why does a fixed refresh-ahead window make short-lived tokens *permanently* expiring?
+
+That is [Part 2](/blog/connections-part-2-secret-lifecycle).
+
+If you want to read ahead, the entry points are:
+
+- `packages/database/src/db/schema/connection-definition.ts`, the blueprint table
+- `packages/database/src/db/schema/credential.ts`, the instance table
+- `packages/lib/src/connections/auth-apply.ts`, declarative auth application
+- `packages/lib/src/connections/resolve-connection-for-runtime.ts`, the one resolver
+
+Auxx.ai is open source. PRs welcome.

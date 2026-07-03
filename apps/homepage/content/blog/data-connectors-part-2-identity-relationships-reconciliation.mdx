@@ -1,0 +1,214 @@
+---
+title: "Building a Data Connector Engine, Part 2: Identity, Relationships, and Reconciliation"
+description: "How synced records stay the same record: the identity cascade, the bind table, deferred relationship resolution, and why deletes are the hardest part of sync. Part 2 of a three-part series."
+date: "2026-07-14"
+slug: "data-connectors-part-2-identity-relationships-reconciliation"
+category:
+  slug: "coding"
+  title: "Coding"
+authors:
+  - name: "Markus Klooth"
+    image: "/images/avatars/markus.jpg"
+tags: ["sync", "integrations", "postgres", "drizzle", "typescript", "open-source"]
+published: true
+---
+
+The hard part of a sync engine is not fetching data. It is that the same Shopify customer will arrive a thousand times — from a backfill, a nightly delta, a webhook, a manual re-sync — and every single arrival has to land on the same record, forever, even after someone renames the customer, changes their email, or edits the mapping config.
+
+Get identity wrong and you get duplicates, which users forgive once. Get deletion wrong and you archive live customer records, which they do not forgive at all. This post is about how our data connector engine handles both.
+
+The plan for the series:
+
+1. **[Part 1](/blog/data-connectors-part-1-streams-mappings-sink)** covered the data model and the write path: streams, the recursive mapping tree, and the entity sink.
+2. **This post** is identity and correctness: the three-step identity cascade, the bind table, pending relationships, and orphan reconciliation.
+3. **[Part 3](/blog/data-connectors-part-3-slices-webhooks-scale)** is the orchestration layer: bounded resumable slices, opaque cursors, webhooks, and async bulk exports.
+
+The code lives in `packages/lib/src/data-connectors/`. Auxx.ai is [open source](https://github.com/auxxai/auxx), so everything quoted here is real.
+
+## The bind table
+
+The obvious way to remember which entity record corresponds to which upstream record is to stamp `externalId` on the entity row. We did not do that, and the reasons compound.
+
+Instead there is a dedicated table, `DataConnectorItem` — one row per (mapping, upstream record), binding an `externalId` to an `entityInstanceId`. Its unique index *is* the identity model:
+
+```typescript
+// packages/database/src/db/schema/data-connector-item.ts
+uniqueIndex('DataConnectorItem_dataConnectorId_mappingId_externalId_key').using(
+  'btree',
+  table.dataConnectorId.asc().nullsLast(),
+  table.mappingId.asc().nullsLast(),
+  table.externalId.asc().nullsLast()
+)
+```
+
+Why a bind table beats a stamped column:
+
+- **Multi-source records.** A Contact enriched by both Shopify and Stripe has *two* upstream identities. A single `externalId` column forces the sources to fight; two bind rows coexist.
+- **Per-mapping identity.** One fetch fans out to several mappings (Part 1), and each projected subtree has its own external id. The binding is keyed by mapping, so an order and its embedded customer bind independently even though they came from one payload.
+- **Bookkeeping lives off the entity row.** The item row carries the content hash, the pending relationship edges, an upstream version stamp, and `lastSeenRunId` — all sync plumbing that has no business polluting a CRM record.
+- **Provenance without ambiguity.** A `mintedInstance` boolean records whether this connector *created* the instance or merely matched and enriched a pre-existing one. When you delete a connector and choose "delete synced records," only minted records go — a Contact that existed before the connector and got enriched by it survives. We originally stamped `integrationSource` on the entity row for this; the boolean on the binding replaced it because the row-level stamp could not answer "who created it" once two sources wrote the same record.
+
+## The identity cascade
+
+Every projected record entering the sink (`packages/lib/src/data-connectors/sinks/entity-sink.ts`) resolves its target instance through an ordered cascade. Trimmed from `upsertRecord`:
+
+```typescript
+// 1. Exact bind — the steady-state match, hit on every re-sync after the first.
+const bound = await findItem(ctx.db, ctx.connector.id, mapping.row.id, record.externalId)
+let instanceId = bound?.entityInstanceId ?? null
+
+// 2. Def-keyed reuse — another mapping of this connector already bound
+//    (definition, externalId). An embedded Order → Customer branch converges
+//    on the Customers stream's Contact instead of minting a duplicate.
+if (!instanceId) {
+  const shared = await findItemByDef(
+    ctx.db, ctx.connector.id, mapping.entityDefinitionId, record.externalId
+  )
+  instanceId = shared?.entityInstanceId ?? null
+}
+
+// 3. Secondary match keys — adopt an existing record (e.g. by normalized email).
+if (!instanceId) {
+  const resolved = await resolveIdentity(ctx, mapping, record, refToConcrete)
+  instanceId = resolved.instanceId
+}
+
+// 4. Still nothing → create, then bind. The binding makes steps 2–4 one-time events.
+```
+
+Step 3 is what makes contributing mode humane. A field mapping can be flagged with an identity role:
+
+```typescript
+identityRole?:
+  | { kind: 'externalId'; order?: number }          // (part of) the upstream stable id
+  | { kind: 'match'; normalize?: IdentityNormalize } // a SECONDARY match key
+```
+
+A Shopify customer mapping flags `email` as a `match` key with `normalize: 'email'`. On first contact — no binding yet — the sink looks for an existing Contact whose email equals the source value after normalization:
+
+```typescript
+function normalizeMatch(value: unknown, normalize?: 'email' | 'phone' | 'domain' | 'none'): string {
+  const s = String(value ?? '').trim()
+  if (normalize === 'email') return s.toLowerCase()
+  if (normalize === 'domain')
+    return s.toLowerCase().replace(/^https?:\/\//, '').replace(/\/.*$/, '')
+  return s
+}
+```
+
+If it finds one, it adopts it and writes the binding. From then on, step 1 wins on the exact index and the match logic never runs again for that record. Matching is a *bootstrap*, not the steady state — that distinction matters, because match keys are mutable (people change emails) while the binding is not.
+
+The `externalId` role is the other half. The external id of a subtree used to be a silent heuristic (`id`, else `externalId`, else a synthetic `parent:index`). Now the user — or the connector's manifest — explicitly designates which field is the upstream stable id, as an ordered fallback chain (`id → email`, first non-null wins). Because the designation is a normal CALC binding, a composite key like `{sku}-{variant}` costs no new mechanism. The heuristic still exists, but only as the pre-filled default: a wrong guess is now visible and overridable instead of silently mis-keying every record.
+
+One war story from this exact area. Connection-scoped app fields meant one entity definition could hold *two* `customerId` fields — one per connected store — and a `.find()` in our materialization code grabbed the first field carrying an identity role, regardless of which connection it belonged to. Records from store B got their identity stamped onto store A's field. The fix was embarrassingly small (check all candidates with `.some()` against the right connection instead of taking the first), but the lesson generalizes: identity code must never say "first match wins" over a set that can legitimately contain more than one.
+
+## Races and out-of-order arrivals
+
+Two guards in the sink exist purely because reality is concurrent.
+
+The def-keyed reuse read (step 2) is deliberately best-effort — no lock. Two streams first-contacting the same customer in the same instant can still double-create. We accepted that: the window is one record wide, one time, and a lock across every record write would cost more than the rare duplicate it prevents.
+
+The out-of-order guard is stricter. Webhook deliveries for the same record can race: event A fetches version 1, event B fetches version 2, A's write lands last, and last-write-wins persists stale data. When both the incoming record and the binding carry an upstream `updatedAt`, the sink drops a strictly-older write:
+
+```typescript
+if (
+  bound?.entityInstanceId &&
+  bound.upstreamUpdatedAt &&
+  record.upstreamUpdatedAt &&
+  record.upstreamUpdatedAt.getTime() < bound.upstreamUpdatedAt.getTime()
+) {
+  await touchItem(ctx.db, bound.id, ctx.runId) // still counts as "seen"
+  ctx.counters.skipped += 1
+  return
+}
+```
+
+The version stamp lives on the binding — again, sync plumbing kept off the entity row.
+
+## Relationships resolve later, on purpose
+
+A line item points at a product. An order points at a customer. But sync order is not dependency order: the order may arrive before the product catalog has ever synced. You cannot write a relationship to a record that does not exist yet.
+
+So cross-record references never write directly. The mapping layer emits them as *pending relations* on the binding row:
+
+```typescript
+pendingRelations: Array<{
+  fieldKey: string                 // the relationship field to write on THIS instance
+  targetDef: string | null         // the target's entity definition
+  targetExternalId: string | null  // the target's upstream id; null = CLEAR (FK went empty)
+}>
+```
+
+A separate pass, `packages/lib/src/data-connectors/relationship-pass.ts`, runs after the streams finish. For each pending edge it resolves the target *def-keyed* — by (connector, target definition, external id), through whichever mapping happened to sync it — and writes the real relationship field value:
+
+```typescript
+const target = rel.targetDef
+  ? await findItemByDef(ctx.db, ctx.connector.id, rel.targetDef, rel.targetExternalId)
+  : null
+if (!target?.entityInstanceId) {
+  stillPending.push(rel) // target not synced yet — defer to a later run
+  ctx.counters.relationshipWarnings += 1
+  continue
+}
+await ctx.crud.update(parentRecordId, { [rel.fieldKey]: targetRecordId }, undefined, {
+  skipSnapshotInvalidation: true,
+})
+```
+
+Three properties fall out of this design. It is **self-deferring**: an unresolved edge stays pending and resolves on any later run, with a `relationshipWarnings` counter surfacing how many are still dangling. It is **build-order independent**: an earlier version froze a pointer to the mapping that owned the target, which broke the moment you reordered mappings; keying by definition made ordering irrelevant. And it handles **clears**: a foreign key that goes empty upstream produces a pending relation with a null target, which nulls the field exactly once — guarded by a `linkedRelations` ledger of edges the connector actually set, so it never clears an edge a human created.
+
+Cardinality gets one more trick. A `belongs_to` edge stamps the parent's field directly. A `has_many` edge can't — you don't write "all line items" onto the order. Instead `sink-source-record.ts` side-flips it: each child gets the inverse `belongs_to` edge pointing at the parent, and the parent's collection syncs automatically through the entity system's inverse-field machinery from [our custom fields series](/blog/custom-fields-part-1-entity-definitions).
+
+## Deletes are the hardest part of sync
+
+Ask anyone who has built one of these: creates are easy, updates are annoying, deletes are where the engineering lives. Most APIs will happily tell you everything that exists and nothing about what stopped existing. You are left inferring deletion from *absence* — and absence is exactly what a partial fetch, a crashed run, and a filtered query also look like.
+
+Our rules, in `packages/lib/src/data-connectors/reconciliation.ts`:
+
+**Orphan reconciliation runs only where absence is meaningful.** Every record the sink touches gets stamped with `lastSeenRunId` — even content-hash skips. After a run that crawled *everything*, a binding not stamped with this run's id is an orphan:
+
+```typescript
+export async function reconcileOrphans(ctx: SyncCtx, streams: ReconcilableStream[]) {
+  for (const { syncMode, mappings } of streams) {
+    if (syncMode !== 'snapshot') continue     // incremental: absence ≠ deletion — ALWAYS
+    for (const mapping of mappings) {
+      if (mapping.targetMode !== 'owned') continue  // never archive co-owned records
+      if (mapping.linkMode !== 'upsert') continue
+      if (mapping.orphanBehavior === 'ignore') continue
+
+      const items = await entitySink.listExistingItems(ctx, mapping)
+      for (const item of items) {
+        if (item.lastSeenRunId === ctx.runId) continue // seen this run
+        await entitySink.archiveRecord(ctx, item, mapping.orphanBehavior)
+      }
+    }
+  }
+}
+```
+
+Each `continue` is a scar. Incremental streams fetch watermark deltas — they did not see every record, so absence proves nothing, and deletes on those streams must come from explicit signals (a tombstone record, an event-feed `*.deleted`, a webhook delete). Contributing mappings never archive, period — the instance is co-owned by other connectors and by humans. And archiving itself has one more guard: under def-keyed sharing, one instance can be bound by several mappings, so `archiveRecord` archives the instance only when *no other live binding* of the connector still references it.
+
+**Reconciliation is gated behind a completion latch.** This is the invariant we consider non-negotiable: a partial backfill must never archive records it simply hasn't reached yet. In the sliced orchestration (Part 3), a backfill spans many bounded jobs across multiple streams. The shared slice runner fires `finalizeBackfill` exactly once, when a stream's backfill genuinely exhausts — and the connector-side source gates even that behind an atomic per-connector latch (`initConnectorBackfillLatch`, seeded to the stream count) so only the *last* stream to finish triggers reconciliation and the relationship pass. A crash mid-backfill leaves the phase at `backfill`; the retry resumes from the checkpoint and reconciliation waits.
+
+**A periodic sweep catches what webhooks miss.** A webhook-driven connector that misses a delete delivery would hold the ghost record forever. The scheduled sweep re-runs the backfill machinery: snapshot streams do a full re-crawl and archive true orphans; incremental streams do a cheap watermark catch-up and — per the rule above — archive nothing.
+
+## Provisioning happens lazily, and loudly
+
+One last correctness layer sits before any record flows. A connector's target schema — owned definitions, provisioned fields, late-bound `@app:` field references — is materialized at sync start (`materializeConnectorTargets` in `packages/lib/src/data-connectors/provisioning.ts`), idempotently keyed so re-runs are near-no-ops.
+
+Then a pre-flight pass in the orchestrator resolves every distinct `targetFieldRef` the mappings reference, once, against the connector's bound connection. If any ref cannot resolve, the sync refuses to start and parks the connector with the error. The alternative — which we lived through — is thousands of per-record "unresolved ref, skipping field" drops that present as a *successful* run with mysteriously empty columns. One visible setup error beats a silent one repeated five thousand times. (The per-record resolver in the sink still exists, backed by the [org-level cache](/blog/how-we-implemented-caching-part-1), but after pre-flight it only catches genuine mid-run anomalies.)
+
+## Next up
+
+We now have records that keep their identity across a thousand arrivals, relationships that resolve whenever their targets show up, and deletes that only fire when absence actually proves something. What we have quietly assumed all along is that a sync can *finish* — that a worker can hold a job long enough to crawl an entire Shopify store.
+
+It can't, and it shouldn't. [Part 3](/blog/data-connectors-part-3-slices-webhooks-scale) is the orchestration layer: budgeted slices that checkpoint after every page, the three-state commit verdict that decides when a cursor may advance, opaque cursors across six pagination styles, and why a webhook is a signal but never the truth.
+
+If you want to read ahead:
+
+- `packages/lib/src/data-connectors/sinks/entity-sink.ts`, the identity cascade
+- `packages/database/src/db/schema/data-connector-item.ts`, the bind table
+- `packages/lib/src/data-connectors/relationship-pass.ts`, deferred edges
+- `packages/lib/src/data-connectors/reconciliation.ts`, orphan handling
+
+Auxx.ai is [open source](https://github.com/auxxai/auxx). PRs welcome.

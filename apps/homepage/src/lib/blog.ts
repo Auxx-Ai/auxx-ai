@@ -8,11 +8,20 @@ import type { BlogPost, Category } from '~/types/blog'
 
 const CONTENT_DIR = path.join(process.cwd(), 'content', 'blog')
 
+/**
+ * A post is visible once its date has passed (dates parse as UTC midnight).
+ * Combined with ISR revalidation on the blog routes, this lets us commit
+ * future-dated posts that go live automatically without a redeploy.
+ */
+function isReleased(date: string): boolean {
+  return new Date(date).getTime() <= Date.now()
+}
+
 function parseMdxFile(filePath: string): BlogPost | null {
   const raw = fs.readFileSync(filePath, 'utf-8')
   const { data, content } = matter(raw)
 
-  if (!data.published) return null
+  if (!data.published || !isReleased(data.date)) return null
 
   const stats = readingTime(content)
 
@@ -57,7 +66,7 @@ export function getPostBySlug(slug: string): { post: BlogPost; content: string }
     const raw = fs.readFileSync(filePath, 'utf-8')
     const { data, content } = matter(raw)
 
-    if (data.slug === slug && data.published) {
+    if (data.slug === slug && data.published && isReleased(data.date)) {
       const stats = readingTime(content)
       return {
         post: {
