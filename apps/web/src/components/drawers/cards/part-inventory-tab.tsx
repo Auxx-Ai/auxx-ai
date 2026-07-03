@@ -3,17 +3,15 @@
 
 import type { DrawerTabProps } from '../drawer-tab-registry'
 import { PartInventoryCard } from './part-inventory-card'
-import { PartLinkedInventoryCard } from './part-linked-inventory-card'
 
 /**
- * The part "Inventory" tab: the stock/movements card plus the linked inventory-sources console
- * (v9 bridge — renders only when the part has links).
+ * The part "Inventory" tab: the stock/movements card, which now also folds in the linked
+ * inventory-sources console (v9 bridge) as a section when the part has synced feeds.
  */
 export function PartInventoryTab(props: DrawerTabProps) {
   return (
     <div className='flex flex-col gap-3'>
       <PartInventoryCard {...props} />
-      <PartLinkedInventoryCard partId={props.entityInstanceId} />
     </div>
   )
 }

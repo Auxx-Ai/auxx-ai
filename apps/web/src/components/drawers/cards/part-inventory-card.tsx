@@ -20,6 +20,7 @@ import { StockAdjustmentPopover } from '~/components/manufacturing/parts/stock-a
 import { toRecordId, useRecordList, useResourceProperty } from '~/components/resources'
 import { useSystemValues } from '~/components/resources/hooks/use-system-values'
 import type { DrawerTabProps } from '../drawer-tab-registry'
+import { PartLinkedInventorySection } from './part-linked-inventory-card'
 
 /** Map movement type values to badge color variants */
 const TYPE_COLOR_MAP: Record<string, Variant> = Object.fromEntries(
@@ -306,6 +307,9 @@ export function PartInventoryCard({ recordId, entityInstanceId }: DrawerTabProps
             </motion.div>
           )}
         </AnimatePresence>
+
+        {/* Synced inventory feeds (v9 bridge) — renders only when the part has links */}
+        <PartLinkedInventorySection partId={partId} />
       </div>
     </div>
   )
