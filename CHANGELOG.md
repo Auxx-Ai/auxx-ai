@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.1.174](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.173...auxx-v0.1.174) (2026-07-03)
+
+
+### Features
+
+* **inventory-bridge:** fold linked sources into part inventory card ([#1053](https://github.com/Auxx-Ai/auxx-ai/issues/1053)) ([6c6108f](https://github.com/Auxx-Ai/auxx-ai/commit/6c6108f68401213b1478a33bd4d5ca870f733d59))
+
+
+### Bug Fixes
+
+* **custom-fields:** persist CALC option edits and compute calc cells without a source-value arrival ([#1055](https://github.com/Auxx-Ai/auxx-ai/issues/1055)) ([8da512b](https://github.com/Auxx-Ai/auxx-ai/commit/8da512be5370883e104b20c0d821ab63c7d8ab21))
+
 ## [0.1.173](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.172...auxx-v0.1.173) (2026-07-02)
 
 
