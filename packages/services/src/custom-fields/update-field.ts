@@ -3,7 +3,7 @@
 import { database, schema } from '@auxx/database'
 import { FieldType as FieldTypeEnum } from '@auxx/database/enums'
 import type { CustomFieldEntity, FieldType } from '@auxx/database/types'
-import type { AiOptions } from '@auxx/types/custom-field'
+import type { AiOptions, CalcOptions } from '@auxx/types/custom-field'
 import { parseResourceFieldId, type ResourceFieldId } from '@auxx/types/field'
 import { and, eq } from 'drizzle-orm'
 import { err, ok } from 'neverthrow'
@@ -56,6 +56,7 @@ export interface UpdateCustomFieldInput {
   options?:
     | SelectOption[]
     | { file: FileOptions }
+    | { calc: CalcOptions }
     | { options: SelectOption[]; ai?: AiOptions }
     | (DisplayOptions & { ai?: AiOptions })
   addressComponents?: string[]
@@ -241,6 +242,16 @@ export async function updateCustomField(input: UpdateCustomFieldInput) {
     if (fieldType === FieldTypeEnum.ADDRESS_STRUCT) {
       if (addressComponents !== undefined) {
         fieldOptions.addressComponents = addressComponents
+      }
+    }
+
+    // Handle CALC field options. Without this branch the incoming `options.calc`
+    // is dropped and the stale calc from `...currentField.options` is re-saved,
+    // so expression edits silently never persist (create has this branch; update
+    // was missing it).
+    if (fieldType === FieldTypeEnum.CALC) {
+      if (options !== undefined && !Array.isArray(options) && 'calc' in options) {
+        fieldOptions.calc = (options as { calc: CalcOptions }).calc
       }
     }
 

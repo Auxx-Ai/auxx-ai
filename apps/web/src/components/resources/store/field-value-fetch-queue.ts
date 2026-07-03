@@ -4,6 +4,7 @@ import type { AiStatus, AiValueMetadata } from '@auxx/lib/realtime/client'
 import type { RecordId } from '@auxx/lib/resources/client'
 import { isResourceFieldId, type ResourceFieldId } from '@auxx/types/field'
 import { generateId } from '@auxx/utils/generateId'
+import { ensureCalcValue } from './calc-value-computer'
 import { computedFieldRegistry } from './computed-field-registry'
 import {
   buildFieldValueKey,
@@ -92,6 +93,13 @@ class FieldValueFetchQueue {
             queued = true
           }
         }
+        // Nothing queued means no source arrival will ever trigger a compute
+        // (zero-source literal formula, or every source already cached) —
+        // compute now from store state. ensureCalcValue no-ops while sources
+        // are still in flight from an earlier batch.
+        if (!queued) {
+          this.ensureComputedValue(recordId, normalizedRef as ResourceFieldId)
+        }
         return queued
       }
     }
@@ -142,6 +150,7 @@ class FieldValueFetchQueue {
       ) {
         const config = computedFieldRegistry.getConfig(normalizedRef as ResourceFieldId)
         if (config) {
+          let queuedForCalc = false
           for (const sourceFieldId of Object.values(config.sourceFields)) {
             const sourceKey = buildFieldValueKey(recordId, sourceFieldId)
             if (sourceKey in store.values || store.isKeyFetching(sourceKey)) continue
@@ -149,6 +158,12 @@ class FieldValueFetchQueue {
             const sourceNormalized = normalizeFieldRef(recordId, sourceFieldId)
             this.pending.push({ recordId, fieldRef: sourceNormalized, key: sourceKey })
             queued.push(sourceKey)
+            queuedForCalc = true
+          }
+          // No source arrival will trigger a compute — compute now from
+          // store state (zero-source formula or all sources cached).
+          if (!queuedForCalc) {
+            this.ensureComputedValue(recordId, normalizedRef as ResourceFieldId)
           }
           continue // Skip the computed field itself
         }
@@ -171,6 +186,17 @@ class FieldValueFetchQueue {
     }
 
     return queued
+  }
+
+  /**
+   * Compute a CALC/NAME value directly from store state when decomposition
+   * queued no source fetches — without this, zero-source formulas and
+   * calc columns whose sources are already cached never get a value.
+   */
+  private ensureComputedValue(recordId: RecordId, calcFieldId: ResourceFieldId) {
+    const key = buildFieldValueKey(recordId, calcFieldId)
+    if (key in useFieldValueStore.getState().values) return
+    ensureCalcValue(recordId, calcFieldId)
   }
 
   /**
