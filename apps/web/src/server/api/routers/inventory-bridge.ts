@@ -71,7 +71,7 @@ export const inventoryBridgeRouter = createTRPCRouter({
       })
     ),
 
-  /** Every inventory link on a part, with watermark + current level + pending delta. */
+  /** Every inventory link on a part, with current level + pending delta (source label resolved client-side). */
   linksForPart: protectedProcedure
     .input(z.object({ partInstanceId: z.string() }))
     .query(({ ctx, input }) =>
