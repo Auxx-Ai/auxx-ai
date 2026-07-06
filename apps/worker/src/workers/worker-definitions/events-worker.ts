@@ -10,6 +10,7 @@ import {
   publishToAnalyticsJob,
   sendInvitationUserJob,
   triggerAgents,
+  triggerResourceDispatch,
   triggerResourceWorkflows,
   updateWebhookLastTriggeredAt,
 } from '@auxx/lib/events/handlers'
@@ -29,6 +30,9 @@ const eventHandlersJobMappings = {
   updateWebhookLastTriggeredAt,
   createTimelineEvent,
   createAuditLog,
+  // Combined CRUD dispatcher; the standalone pair stays registered for
+  // direct-match-only events and jobs already queued at deploy time.
+  triggerResourceDispatch,
   triggerResourceWorkflows,
   triggerAgents,
   handleFieldTriggerJob,
@@ -37,10 +41,12 @@ const eventHandlersJobMappings = {
   publishThreadEventToRealtime,
 }
 
+// IO-bound handlers; concurrency > 1 drops the queue-global FIFO ordering,
+// which the handlers tolerate (idempotent upserts, out-of-order guards).
 export function startEventsWorker() {
-  return createWorker(Queues.eventsQueue, eventsJobMappings)
+  return createWorker(Queues.eventsQueue, eventsJobMappings, { concurrency: 10 })
 }
 
 export function startEventHandlersWorker() {
-  return createWorker(Queues.eventHandlersQueue, eventHandlersJobMappings)
+  return createWorker(Queues.eventHandlersQueue, eventHandlersJobMappings, { concurrency: 20 })
 }

@@ -19,7 +19,10 @@ const h = vi.hoisted(() => ({
 
 vi.mock('@auxx/database', () => ({ database: {} }))
 vi.mock('./actions', () => ({ executeRuleAction: h.executeRuleAction }))
-vi.mock('./store', () => ({ insertRecordRuleRun: h.insertRecordRuleRun }))
+vi.mock('./store', () => ({
+  insertRecordRuleRun: h.insertRecordRuleRun,
+  insertRecordRuleRuns: vi.fn(async () => {}),
+}))
 vi.mock('../resources/resource-fetcher', () => ({ fetchResourceById: h.fetchResourceById }))
 vi.mock('../cache', () => ({ getCachedResourceFields: h.getCachedResourceFields }))
 

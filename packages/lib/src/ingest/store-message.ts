@@ -183,10 +183,10 @@ export async function storeMessage(
       return storeIgnoredMessage(ctx, messageData)
     }
 
-    const participantInputsWithRoles: Array<{
-      role: ParticipantRole
-      data: ParticipantInputData
-    }> = []
+    // Resolved (role, participantId) pairs for MessageParticipant links,
+    // captured while processing so the link insert doesn't re-derive
+    // identifier types.
+    const resolvedParticipantLinks: Array<{ role: ParticipantRole; participantId: string }> = []
 
     // Per-message cache (NOT per-batch) — dedupes when the same identifier
     // appears in multiple roles on this message, and the iteration below is
@@ -232,8 +232,14 @@ export async function storeMessage(
 
     for (const { role, data } of allInputs) {
       if (data?.identifier) {
-        participantInputsWithRoles.push({ role, data })
-        await processAndCacheParticipant(data, role)
+        const participant = await processAndCacheParticipant(data, role)
+        if (participant?.id) {
+          resolvedParticipantLinks.push({ role, participantId: participant.id })
+        } else {
+          ctx.logger.error(
+            `Participant record missing for ${data.identifier} while collecting MessageParticipant links.`
+          )
+        }
       } else {
         ctx.logger.warn('Skipping participant input due to missing identifier', { role })
       }
@@ -262,75 +268,61 @@ export async function storeMessage(
       if (participant?.id) currentMessageParticipantIds.push(participant.id)
     }
 
-    const threadData = await ctx.db
-      .insert(schema.Thread)
-      .values({
-        externalId: messageData.externalThreadId,
-        integrationId: messageData.integrationId,
-        organizationId: messageData.organizationId,
-        inboxId: messageData.inboxId ?? null,
-        subject: messageData.subject ?? 'No Subject',
-        status: ThreadStatus.OPEN,
-        firstMessageAt: messageData.sentAt,
-        lastMessageAt: messageData.sentAt,
-        messageCount: 1,
-        participantCount: currentMessageParticipantIds.length,
-      })
-      .onConflictDoUpdate({
-        target: [schema.Thread.integrationId, schema.Thread.externalId],
-        set: {
-          subject: messageData.subject || undefined,
-          inboxId: messageData.inboxId ?? undefined,
-        },
-      })
-      .returning({
-        id: schema.Thread.id,
-        inboxId: schema.Thread.inboxId,
-        messageCount: schema.Thread.messageCount,
-        firstMessageAt: schema.Thread.firstMessageAt,
-        lastMessageAt: schema.Thread.lastMessageAt,
-        participantCount: schema.Thread.participantCount,
-      })
+    // Core write set in one transaction: thread upsert → message upsert →
+    // latestMessageId → MessageParticipant links. One pool acquire, atomic.
+    // Participant upserts stay OUTSIDE — they publish realtime events and
+    // create contacts, which must not run inside a transaction holding a
+    // connection against the 30s idle-in-transaction timeout.
+    const { thread, isNewThread, messageRecord } = await ctx.db.transaction(async (tx) => {
+      const threadData = await tx
+        .insert(schema.Thread)
+        .values({
+          externalId: messageData.externalThreadId,
+          integrationId: messageData.integrationId,
+          organizationId: messageData.organizationId,
+          inboxId: messageData.inboxId ?? null,
+          subject: messageData.subject ?? 'No Subject',
+          status: ThreadStatus.OPEN,
+          firstMessageAt: messageData.sentAt,
+          lastMessageAt: messageData.sentAt,
+          messageCount: 1,
+          participantCount: currentMessageParticipantIds.length,
+        })
+        .onConflictDoUpdate({
+          target: [schema.Thread.integrationId, schema.Thread.externalId],
+          set: {
+            subject: messageData.subject || undefined,
+            inboxId: messageData.inboxId ?? undefined,
+          },
+        })
+        .returning({
+          id: schema.Thread.id,
+          inboxId: schema.Thread.inboxId,
+          messageCount: schema.Thread.messageCount,
+          firstMessageAt: schema.Thread.firstMessageAt,
+          lastMessageAt: schema.Thread.lastMessageAt,
+          participantCount: schema.Thread.participantCount,
+        })
 
-    const thread = threadData[0]
-    const isNewThread =
-      (thread.messageCount ?? 0) === 1 &&
-      thread.firstMessageAt?.getTime() === messageData.sentAt.getTime()
+      const thread = threadData[0]
+      const isNewThread =
+        (thread.messageCount ?? 0) === 1 &&
+        thread.firstMessageAt?.getTime() === messageData.sentAt.getTime()
 
-    const messageRecords = await ctx.db
-      .insert(schema.Message)
-      .values({
-        externalThreadId: messageData.externalThreadId,
-        threadId: thread.id,
-        organizationId: messageData.organizationId,
-        integrationId: messageData.integrationId,
-        historyId: messageData.historyId ? Number(messageData.historyId) : null,
-        createdAt: messageData.createdTime,
-        updatedAt: new Date(),
-        sentAt: messageData.sentAt,
-        receivedAt: messageData.receivedAt,
-        internetMessageId: extractInternetMessageId(messageData) || messageData.internetMessageId,
-        subject: messageData.subject ?? '',
-        hasAttachments: messageData.hasAttachments,
-        textHtml: messageData.htmlBodyStorageLocationId ? null : messageData.textHtml,
-        textPlain: messageData.textPlain,
-        snippet: messageData.snippet,
-        htmlBodyStorageLocationId: messageData.htmlBodyStorageLocationId ?? null,
-        metadata: messageData.metadata || null,
-        isInbound: messageData.isInbound,
-        isFirstInThread: isNewThread,
-        fromId: senderParticipantId,
-        replyToId: firstReplyToParticipantId,
-      })
-      .onConflictDoUpdate({
-        target: [schema.Message.integrationId, schema.Message.externalId],
-        set: {
+      const messageRecords = await tx
+        .insert(schema.Message)
+        .values({
+          externalThreadId: messageData.externalThreadId,
           threadId: thread.id,
+          organizationId: messageData.organizationId,
+          integrationId: messageData.integrationId,
           historyId: messageData.historyId ? Number(messageData.historyId) : null,
+          createdAt: messageData.createdTime,
           updatedAt: new Date(),
           sentAt: messageData.sentAt,
           receivedAt: messageData.receivedAt,
-          subject: messageData.subject || '',
+          internetMessageId: extractInternetMessageId(messageData) || messageData.internetMessageId,
+          subject: messageData.subject ?? '',
           hasAttachments: messageData.hasAttachments,
           textHtml: messageData.htmlBodyStorageLocationId ? null : messageData.textHtml,
           textPlain: messageData.textPlain,
@@ -338,53 +330,60 @@ export async function storeMessage(
           htmlBodyStorageLocationId: messageData.htmlBodyStorageLocationId ?? null,
           metadata: messageData.metadata || null,
           isInbound: messageData.isInbound,
+          isFirstInThread: isNewThread,
           fromId: senderParticipantId,
           replyToId: firstReplyToParticipantId,
-        },
-      })
-      .returning({ id: schema.Message.id })
-
-    const messageRecord = messageRecords[0]
-
-    if (isNewThread && messageRecord?.id) {
-      await ctx.db
-        .update(schema.Thread)
-        .set({ latestMessageId: messageRecord.id })
-        .where(eq(schema.Thread.id, thread.id))
-    }
-
-    const messageParticipantData: any[] = []
-    for (const { role, data } of participantInputsWithRoles) {
-      if (!data?.identifier) continue
-      const identifierType = await determineIdentifierType(
-        ctx,
-        data.identifier,
-        messageData.integrationId
-      )
-      const normalizedId = normalizeIdentifier(data.identifier, identifierType)
-      const participantId = participantCache.get(`${identifierType}:${normalizedId}`)?.id
-      if (participantId) {
-        messageParticipantData.push({
-          messageId: messageRecord.id,
-          participantId,
-          role,
         })
-      } else {
-        ctx.logger.error(
-          `Participant ID not found in cache for ${normalizedId} while creating MessageParticipant links.`
-        )
-      }
-    }
-    if (messageParticipantData.length > 0) {
-      await ctx.db
-        .insert(schema.MessageParticipant)
-        .values(messageParticipantData)
-        .onConflictDoNothing()
+        .onConflictDoUpdate({
+          target: [schema.Message.integrationId, schema.Message.externalId],
+          set: {
+            threadId: thread.id,
+            historyId: messageData.historyId ? Number(messageData.historyId) : null,
+            updatedAt: new Date(),
+            sentAt: messageData.sentAt,
+            receivedAt: messageData.receivedAt,
+            subject: messageData.subject || '',
+            hasAttachments: messageData.hasAttachments,
+            textHtml: messageData.htmlBodyStorageLocationId ? null : messageData.textHtml,
+            textPlain: messageData.textPlain,
+            snippet: messageData.snippet,
+            htmlBodyStorageLocationId: messageData.htmlBodyStorageLocationId ?? null,
+            metadata: messageData.metadata || null,
+            isInbound: messageData.isInbound,
+            fromId: senderParticipantId,
+            replyToId: firstReplyToParticipantId,
+          },
+        })
+        .returning({ id: schema.Message.id })
 
-      ctx.logger.debug(
-        `Created/Skipped ${messageParticipantData.length} MessageParticipant links for message ${messageRecord.id}`
-      )
-    }
+      const messageRecord = messageRecords[0]
+
+      if (isNewThread && messageRecord?.id) {
+        await tx
+          .update(schema.Thread)
+          .set({ latestMessageId: messageRecord.id })
+          .where(eq(schema.Thread.id, thread.id))
+      }
+
+      if (resolvedParticipantLinks.length > 0) {
+        await tx
+          .insert(schema.MessageParticipant)
+          .values(
+            resolvedParticipantLinks.map(({ role, participantId }) => ({
+              messageId: messageRecord.id,
+              participantId,
+              role,
+            }))
+          )
+          .onConflictDoNothing()
+      }
+
+      return { thread, isNewThread, messageRecord }
+    })
+
+    ctx.logger.debug(
+      `Created/Skipped ${resolvedParticipantLinks.length} MessageParticipant links for message ${messageRecord.id}`
+    )
 
     const shouldUpdateThreadMetadata =
       !isNewThread &&

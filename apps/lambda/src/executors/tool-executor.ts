@@ -17,6 +17,7 @@
  * migrate (T7/T8). Old files stay in place until T12 strips them.
  */
 
+import { compileBundle } from '../bundle-cache.ts'
 import {
   cleanupServerRuntimeHelpers,
   getCapturedLogs,
@@ -91,8 +92,7 @@ function setupSandbox(
 
   // Mirrors workflow-block-executor — append `return { __AUXX_TOOLS__ }`
   // so we extract the registry from the bundle's top-level scope.
-  const codeWithReturn = bundleCode + '\nreturn { __AUXX_TOOLS__ };'
-  const fn = new Function(codeWithReturn)
+  const fn = compileBundle(bundleCode, 'return { __AUXX_TOOLS__ };')
   const result = fn()
   const tools = result.__AUXX_TOOLS__
 

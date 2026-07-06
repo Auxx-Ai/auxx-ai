@@ -18,5 +18,7 @@ const messageProcessingJobMappings = {
 export function startMessageProcessingWorker() {
   logger.info(`Starting worker for queue: ${Queues.messageProcessingQueue}`)
 
-  return createWorker(Queues.messageProcessingQueue, messageProcessingJobMappings)
+  return createWorker(Queues.messageProcessingQueue, messageProcessingJobMappings, {
+    concurrency: 5,
+  })
 }

@@ -1,5 +1,6 @@
 // apps/lambda/src/executors/polling-trigger-executor.ts
 
+import { compileBundle } from '../bundle-cache.ts'
 import {
   cleanupServerRuntimeHelpers,
   getCapturedLogs,
@@ -29,9 +30,10 @@ export async function executePollingTrigger(
     // Execute bundle to register workflow blocks
     // Return stdin_workflow_block_handlers_default which properly forwards all args,
     // unlike __AUXX_WORKFLOW_BLOCKS__ which only forwards `input` in older bundles.
-    const codeWithReturn =
-      bundleCode + '\nreturn { __AUXX_WORKFLOW_BLOCKS__, stdin_workflow_block_handlers_default };'
-    const fn = new Function(codeWithReturn)
+    const fn = compileBundle(
+      bundleCode,
+      'return { __AUXX_WORKFLOW_BLOCKS__, stdin_workflow_block_handlers_default };'
+    )
     const result = fn()
     const workflowBlockHandler = result.stdin_workflow_block_handlers_default
     const workflowBlocks = result.__AUXX_WORKFLOW_BLOCKS__

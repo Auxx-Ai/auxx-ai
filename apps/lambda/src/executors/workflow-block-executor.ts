@@ -5,6 +5,7 @@
  * Executes workflow blocks in a sandboxed environment with the Workflow SDK
  */
 
+import { compileBundle } from '../bundle-cache.ts'
 import {
   cleanupServerRuntimeHelpers,
   getCapturedLogs,
@@ -92,8 +93,7 @@ async function executeInSandbox(
     // appended return. `__AUXX_TOOLS__` must reach `globalThis` so router-style
     // blocks can dispatch to internal tools via `ctx.runTool` (which resolves
     // off `globalThis.__AUXX_TOOLS__`). Cleared in the `finally` below.
-    const codeWithReturn = bundleCode + '\nreturn { __AUXX_WORKFLOW_BLOCKS__, __AUXX_TOOLS__ };'
-    const fn = new Function(codeWithReturn)
+    const fn = compileBundle(bundleCode, 'return { __AUXX_WORKFLOW_BLOCKS__, __AUXX_TOOLS__ };')
     const result = fn()
     const workflowBlocks = result.__AUXX_WORKFLOW_BLOCKS__
 

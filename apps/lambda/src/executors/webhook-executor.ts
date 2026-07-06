@@ -5,6 +5,7 @@
  * Executes app webhook handlers in a Deno sandbox with Web Platform Request/Response APIs.
  */
 
+import { compileBundle } from '../bundle-cache.ts'
 import {
   type ConsoleLog,
   cleanupServerRuntimeHelpers,
@@ -68,8 +69,7 @@ async function executeWebhookInSandbox(
     injectServerRuntimeHelpers(context)
 
     // Use Function constructor to access top-level variables
-    const codeWithReturn = bundleCode + '\nreturn { stdin_webhooks_default };'
-    const fn = new Function(codeWithReturn)
+    const fn = compileBundle(bundleCode, 'return { stdin_webhooks_default };')
     const handlers = fn()
     const stdin_webhooks_default = handlers.stdin_webhooks_default
 

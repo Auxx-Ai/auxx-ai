@@ -22,6 +22,7 @@
  * See plans/data-connectors/claude/03-connectors-and-sources.md §4.
  */
 
+import { compileBundle } from '../bundle-cache.ts'
 import {
   cleanupServerRuntimeHelpers,
   getCapturedLogs,
@@ -59,8 +60,7 @@ export async function executeDataConnector(
   try {
     // Mirror the tool/workflow-block executors — append a return so we extract
     // the connector registry from the bundle's top-level scope.
-    const codeWithReturn = bundleCode + '\nreturn { __AUXX_DATA_CONNECTORS__ };'
-    const fn = new Function(codeWithReturn)
+    const fn = compileBundle(bundleCode, 'return { __AUXX_DATA_CONNECTORS__ };')
     const result = fn()
     const connectors = result.__AUXX_DATA_CONNECTORS__
 

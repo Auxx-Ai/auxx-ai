@@ -11,6 +11,7 @@
  * - Memory limit enforcement (via Lambda config)
  */
 
+import { compileBundle } from '../bundle-cache.ts'
 import {
   type ConsoleLog,
   cleanupServerRuntimeHelpers,
@@ -91,8 +92,7 @@ async function executeInSandbox(
     injectServerRuntimeHelpers(context)
 
     // 2. Use Function constructor to access top-level variables
-    const codeWithReturn = bundleCode + '\nreturn { stdin_default };'
-    const fn = new Function(codeWithReturn)
+    const fn = compileBundle(bundleCode, 'return { stdin_default };')
     const handlers = fn()
     const stdin_default = handlers.stdin_default
 

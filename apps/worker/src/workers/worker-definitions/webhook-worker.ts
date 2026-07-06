@@ -8,5 +8,5 @@ const jobMappings = {
 }
 
 export function startWebhooksWorker() {
-  return createWorker(Queues.webhooksQueue, jobMappings)
+  return createWorker(Queues.webhooksQueue, jobMappings, { concurrency: 10 })
 }
