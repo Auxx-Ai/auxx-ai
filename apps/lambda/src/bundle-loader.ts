@@ -5,6 +5,7 @@
  */
 
 import { GetObjectCommand, S3Client } from '@aws-sdk/client-s3'
+import { getCachedBundle, setCachedBundle } from './bundle-cache.ts'
 import { parseError } from './utils.ts'
 
 /** Custom S3 endpoint for non-AWS providers */
@@ -54,7 +55,12 @@ export async function loadBundle(appId: string, serverBundleSha: string): Promis
     }
   }
 
-  // Production: Download from S3
+  // Production: bundles are content-addressed (immutable SHA), so a cache
+  // hit skips the S3 round-trip entirely.
+  const cacheKey = `${appId}:${serverBundleSha}`
+  const cached = getCachedBundle(cacheKey)
+  if (cached !== undefined) return cached
+
   const bucketName = Deno.env.get('S3_PRIVATE_BUCKET')
 
   if (!bucketName) {
@@ -81,5 +87,6 @@ export async function loadBundle(appId: string, serverBundleSha: string): Promis
     key: s3Key,
   })
 
+  setCachedBundle(cacheKey, bundleCode)
   return bundleCode
 }

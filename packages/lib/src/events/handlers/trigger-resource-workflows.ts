@@ -96,11 +96,25 @@ export function getEventRecordId(event: AuxxEvent, match: ResourceTriggerMatch):
   return toRecordId(match.entityDefinitionId, instanceId)
 }
 
+/** Fetches the full resolved record for an event's subject resource. */
+export type ResourceFetcher = (recordId: RecordId, organizationId: string) => Promise<any | null>
+
 /**
  * Event handler that triggers workflows when resource events occur.
  * Fetches matching workflows and queues execution jobs.
  */
-export const triggerResourceWorkflows = async ({ data: event }: { data: AuxxEvent }) => {
+export const triggerResourceWorkflows = async ({ data: event }: { data: AuxxEvent }) =>
+  dispatchResourceWorkflows(event, fetchResourceById)
+
+/**
+ * Core workflow dispatch with an injectable record fetcher so the combined
+ * CRUD dispatcher (`trigger-resource-dispatch.ts`) can share one
+ * `fetchResourceById` result with the agent dispatcher.
+ */
+export const dispatchResourceWorkflows = async (
+  event: AuxxEvent,
+  fetchResource: ResourceFetcher
+) => {
   // 1. Map event to workflow trigger criteria
   const match = getResourceTriggerMatch(event)
   if (!match) {
@@ -138,7 +152,7 @@ export const triggerResourceWorkflows = async ({ data: event }: { data: AuxxEven
     return
   }
 
-  const resourceData = await fetchResourceById(recordId, event.data.organizationId)
+  const resourceData = await fetchResource(recordId, event.data.organizationId)
   if (!resourceData) {
     logger.warn('Resource not found, skipping workflows', {
       recordId,

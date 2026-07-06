@@ -8,7 +8,11 @@ import { Queues } from '../../jobs/queues/types'
 import { fetchResourceById } from '../../resources/resource-fetcher'
 import { parseRecordId } from '../../resources/resource-id'
 import type { AuxxEvent } from '../types'
-import { getEventRecordId, getResourceTriggerMatch } from './trigger-resource-workflows'
+import {
+  getEventRecordId,
+  getResourceTriggerMatch,
+  type ResourceFetcher,
+} from './trigger-resource-workflows'
 
 const logger = createScopedLogger('trigger-agents')
 
@@ -27,7 +31,15 @@ const logger = createScopedLogger('trigger-agents')
  * All trigger reads come from the org `agents` cache — see
  * plans/kopilot/agents/cache/plan.md.
  */
-export const triggerAgents = async ({ data: event }: { data: AuxxEvent }) => {
+export const triggerAgents = async ({ data: event }: { data: AuxxEvent }) =>
+  dispatchAgentTriggers(event, fetchResourceById)
+
+/**
+ * Core agent-trigger dispatch with an injectable record fetcher so the
+ * combined CRUD dispatcher (`trigger-resource-dispatch.ts`) can share one
+ * `fetchResourceById` result with the workflow dispatcher.
+ */
+export const dispatchAgentTriggers = async (event: AuxxEvent, fetchResource: ResourceFetcher) => {
   const organizationId = (event.data as { organizationId?: string }).organizationId
   if (!organizationId) {
     logger.debug('Skipping agent triggers — event has no organizationId', { type: event.type })
@@ -61,7 +73,7 @@ export const triggerAgents = async ({ data: event }: { data: AuxxEvent }) => {
 
     if (crudMatches.length > 0) {
       const recordId = getEventRecordId(event, match)
-      const resourceData = recordId ? await fetchResourceById(recordId, organizationId) : null
+      const resourceData = recordId ? await fetchResource(recordId, organizationId) : null
       const payload = (resourceData ?? event.data) as Record<string, unknown>
 
       for (const m of crudMatches) {

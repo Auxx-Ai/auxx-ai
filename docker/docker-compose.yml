@@ -194,6 +194,8 @@ services:
     env_file: .env
     environment:
       <<: [*common-env, *db-env, *db-pool-env, *redis-env, *url-env]
+      # Worker runs ~130 concurrent BullMQ job slots — needs more pool headroom
+      DB_POOL_MAX: "30"
       WORKER_PORT: ${WORKER_PORT:-3005}
       API_INTERNAL_URL: http://api:${API_PORT:-3007}
       LAMBDA_URL: http://lambda:${LAMBDA_PORT:-3008}

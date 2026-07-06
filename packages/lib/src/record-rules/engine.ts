@@ -14,7 +14,7 @@ import { type RecordId, toRecordId, toRecordIds } from '@auxx/types/resource'
 import { evaluateConditions, normalizeStatusConditions } from '../conditions/evaluate'
 import { executeRuleAction, getNativeRuleHandler } from './actions'
 import { makeSnapshotResolver, type RecordSnapshot } from './resolver'
-import { insertRecordRuleRun } from './store'
+import { insertRecordRuleRun, insertRecordRuleRuns } from './store'
 import { matchesFieldTransition } from './transitions'
 import type {
   CachedRecordRule,
@@ -344,10 +344,12 @@ export async function fireRecordRulesBatch(
       logger.debug('Native rule completed', { ruleId: rule.id, records: recordIds.length })
     }
 
-    // One run row per record (D11 — system-rule firings are fully debuggable).
-    for (const event of eventByInstance.values()) {
-      try {
-        await insertRecordRuleRun(database, {
+    // One run row per record (D11 — system-rule firings are fully debuggable),
+    // written as a single batch INSERT per rule firing.
+    try {
+      await insertRecordRuleRuns(
+        database,
+        [...eventByInstance.values()].map((event) => ({
           organizationId: ctx.organizationId,
           ruleId: rule.id,
           entityInstanceId: event.entityInstanceId,
@@ -357,13 +359,13 @@ export async function fireRecordRulesBatch(
           newValue: event.newValue,
           outcomes,
           status,
-        })
-      } catch (error) {
-        logger.error('Failed to write record-rule run log (native batch)', {
-          ruleId: rule.id,
-          error: error instanceof Error ? error.message : String(error),
-        })
-      }
+        }))
+      )
+    } catch (error) {
+      logger.error('Failed to write record-rule run log (native batch)', {
+        ruleId: rule.id,
+        error: error instanceof Error ? error.message : String(error),
+      })
     }
   }
 }

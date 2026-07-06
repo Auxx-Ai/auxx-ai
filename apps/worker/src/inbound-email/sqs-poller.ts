@@ -166,27 +166,31 @@ class SqsInboundEmailPoller implements InboundEmailPoller {
 
         const messages = response.Messages ?? []
 
-        for (const message of messages) {
-          if (this.isStopping) break
+        // Process the batch concurrently (max 5 per receive); each message
+        // keeps its own error isolation and permanent-failure cleanup.
+        await Promise.allSettled(
+          messages.map(async (message) => {
+            if (this.isStopping) return
 
-          try {
-            await this.processMessage(message)
-          } catch (error) {
-            const isPermanent = error instanceof PermanentProcessingError
+            try {
+              await this.processMessage(message)
+            } catch (error) {
+              const isPermanent = error instanceof PermanentProcessingError
 
-            logger.error('Failed to process inbound email SQS message', {
-              error: error instanceof Error ? error.message : String(error),
-              messageId: message.MessageId,
-              receiveCount: message.Attributes?.ApproximateReceiveCount,
-              permanent: isPermanent,
-            })
+              logger.error('Failed to process inbound email SQS message', {
+                error: error instanceof Error ? error.message : String(error),
+                messageId: message.MessageId,
+                receiveCount: message.Attributes?.ApproximateReceiveCount,
+                permanent: isPermanent,
+              })
 
-            if (isPermanent) {
-              await this.deleteMessage(message)
-              await this.deleteRawEmail(message)
+              if (isPermanent) {
+                await this.deleteMessage(message)
+                await this.deleteRawEmail(message)
+              }
             }
-          }
-        }
+          })
+        )
       } catch (error) {
         logger.error('Inbound email SQS poller receive failed', {
           error: error instanceof Error ? error.message : String(error),

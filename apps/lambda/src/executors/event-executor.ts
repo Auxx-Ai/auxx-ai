@@ -5,6 +5,7 @@
  * Executes app event handlers in a Deno sandbox.
  */
 
+import { compileBundle } from '../bundle-cache.ts'
 import {
   type ConsoleLog,
   cleanupServerRuntimeHelpers,
@@ -66,8 +67,7 @@ async function executeEventInSandbox(
     injectServerRuntimeHelpers(context)
 
     // Use Function constructor instead of import to access top-level variables
-    const codeWithReturn = bundleCode + '\nreturn { stdin_events_default };'
-    const fn = new Function(codeWithReturn)
+    const fn = compileBundle(bundleCode, 'return { stdin_events_default };')
     const handlers = fn()
     const stdin_events_default = handlers.stdin_events_default
 

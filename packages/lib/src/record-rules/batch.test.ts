@@ -11,6 +11,7 @@ const h = vi.hoisted(() => {
   return {
     executeRuleAction: vi.fn(async () => 'ok' as const),
     insertRecordRuleRun: vi.fn(async () => {}),
+    insertRecordRuleRuns: vi.fn(async () => {}),
     fetchResourceById: vi.fn(),
     getCachedResourceFields: vi.fn(async () => []),
     nativeHandler: vi.fn(async () => {}),
@@ -24,7 +25,10 @@ vi.mock('./actions', () => ({
   executeRuleAction: h.executeRuleAction,
   getNativeRuleHandler: h.getNativeRuleHandler,
 }))
-vi.mock('./store', () => ({ insertRecordRuleRun: h.insertRecordRuleRun }))
+vi.mock('./store', () => ({
+  insertRecordRuleRun: h.insertRecordRuleRun,
+  insertRecordRuleRuns: h.insertRecordRuleRuns,
+}))
 vi.mock('../resources/resource-fetcher', () => ({ fetchResourceById: h.fetchResourceById }))
 vi.mock('../cache', () => ({ getCachedResourceFields: h.getCachedResourceFields }))
 
@@ -76,8 +80,9 @@ describe('fireRecordRulesBatch — native actions', () => {
       organizationId: 'org_1',
       userId: undefined,
     })
-    // Per D11: one run row PER record.
-    expect(h.insertRecordRuleRun).toHaveBeenCalledTimes(3)
+    // Per D11: one run row PER record, written as ONE batch insert.
+    expect(h.insertRecordRuleRuns).toHaveBeenCalledTimes(1)
+    expect(h.insertRecordRuleRuns.mock.calls[0][1]).toHaveLength(3)
     // Native path bypasses the per-record executor.
     expect(h.executeRuleAction).not.toHaveBeenCalled()
   })
@@ -97,7 +102,8 @@ describe('fireRecordRulesBatch — native actions', () => {
     })
     expect(h.nativeHandler).toHaveBeenCalledTimes(1)
     expect(h.nativeHandler.mock.calls[0][0]).toMatchObject({ recordIds: ['def_1:i1'] })
-    expect(h.insertRecordRuleRun).toHaveBeenCalledTimes(1)
+    expect(h.insertRecordRuleRuns).toHaveBeenCalledTimes(1)
+    expect(h.insertRecordRuleRuns.mock.calls[0][1]).toHaveLength(1)
   })
 
   it('unknown handler key → outcome failed, logged run row, never throws', async () => {
@@ -105,8 +111,8 @@ describe('fireRecordRulesBatch — native actions', () => {
     await fireRecordRulesBatch([nativeRule], { ...baseCtx, events: [fieldEvent('i1', 'a', 'b')] })
 
     expect(h.nativeHandler).not.toHaveBeenCalled()
-    expect(h.insertRecordRuleRun).toHaveBeenCalledTimes(1)
-    expect(h.insertRecordRuleRun.mock.calls[0][1]).toMatchObject({ status: 'failed' })
+    expect(h.insertRecordRuleRuns).toHaveBeenCalledTimes(1)
+    expect(h.insertRecordRuleRuns.mock.calls[0][1][0]).toMatchObject({ status: 'failed' })
   })
 
   it('propagates userId to the native handler', async () => {

@@ -283,17 +283,25 @@ export interface RecordRuleRunInput {
 
 /** Best-effort execution log — a failed insert must never break the firing. */
 export async function insertRecordRuleRun(db: Database, input: RecordRuleRunInput) {
-  await db.insert(schema.RecordRuleRun).values({
-    organizationId: input.organizationId,
-    ruleId: input.ruleId,
-    entityInstanceId: input.entityInstanceId,
-    source: input.source,
-    fieldId: input.fieldId ?? null,
-    oldValue: input.oldValue ?? null,
-    newValue: input.newValue ?? null,
-    outcomes: input.outcomes,
-    status: input.status,
-  })
+  await insertRecordRuleRuns(db, [input])
+}
+
+/** Batch variant: one INSERT for a whole native-rule firing (one row per record). */
+export async function insertRecordRuleRuns(db: Database, inputs: RecordRuleRunInput[]) {
+  if (inputs.length === 0) return
+  await db.insert(schema.RecordRuleRun).values(
+    inputs.map((input) => ({
+      organizationId: input.organizationId,
+      ruleId: input.ruleId,
+      entityInstanceId: input.entityInstanceId,
+      source: input.source,
+      fieldId: input.fieldId ?? null,
+      oldValue: input.oldValue ?? null,
+      newValue: input.newValue ?? null,
+      outcomes: input.outcomes,
+      status: input.status,
+    }))
+  )
 }
 
 export async function listRecordRuleRuns(

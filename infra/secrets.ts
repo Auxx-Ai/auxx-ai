@@ -342,8 +342,10 @@ export function getSelectedEnvVars(
     REDIS_PASSWORD,
     ELASTICACHE_TLS: process.env.ELASTICACHE_TLS || 'true',
     SUPER_ADMIN_EMAIL: getSecretValue('SUPER_ADMIN_EMAIL'),
-    // Database pool tuning per service
-    DB_POOL_MAX: app === 'web' ? '3' : app === 'api' ? '5' : '10',
+    // Database pool tuning per service. Worker gets headroom for its ~130
+    // concurrent BullMQ job slots; sized so old+new worker during a deploy
+    // (2× pool) stay well under Postgres max_connections.
+    DB_POOL_MAX: app === 'web' ? '3' : app === 'api' ? '5' : app === 'worker' ? '30' : '10',
     DB_POOL_IDLE_TIMEOUT: app === 'web' ? '10000' : '30000',
     APP_NAME: `auxx-${app}`,
   }
