@@ -299,9 +299,9 @@ export function mappingNeedsProvisioning(
  * field has been created (the generic-rest provision case — app connectors resolve
  * their `@app:` refs live in the sink, no write-back). Resolves the field id from
  * `fieldIdsByDef` (the `fieldIdByKey` maps `provisionTarget` just returned — write-path
- * ids, so no staleness) and only falls back to a per-field DB lookup by
- * `(dataConnectorId, entityDefinitionId, appFieldKey)` for keys not in the map (the
- * standalone e2e-script caller passes no map). The fallback must stay a DB query, NOT
+ * ids, so no staleness) and only falls back to a single batched DB lookup over the
+ * connector's fields for keys not in the map (the standalone e2e-script caller passes
+ * no map). The fallback must stay a DB query, NOT
  * `getCachedCustomFields`: it filters on `dataConnectorId`, which the org cache can
  * report stale (the adoption re-stamp write doesn't invalidate). Stamps
  * `fm.targetFieldRef` and persists the mutated `fieldMappings`. Mutates the decoded
@@ -314,24 +314,41 @@ export async function backfillProvisionedFieldRefs(
   mappings: DecodedMapping[],
   fieldIdsByDef?: Map<string, Record<string, string>>
 ): Promise<void> {
+  // Resolve every key the write-path map can't cover with ONE query over the
+  // connector's fields (instead of a findFirst per field mapping).
+  const needsFallback = mappings.some((mapping) =>
+    mapping.fieldMappings.some(
+      (fm) =>
+        fm.provision &&
+        fm.targetFieldRef == null &&
+        !fieldIdsByDef?.get(mapping.entityDefinitionId)?.[
+          fm.provision.appFieldKey ?? fm.provision.name
+        ]
+    )
+  )
+  const fallbackIdByDefKey = new Map<string, string>()
+  if (needsFallback) {
+    const fields = await db.query.CustomField.findMany({
+      where: and(
+        eq(schema.CustomField.organizationId, organizationId),
+        eq(schema.CustomField.dataConnectorId, dataConnectorId)
+      ),
+      columns: { id: true, entityDefinitionId: true, appFieldKey: true },
+    })
+    for (const field of fields) {
+      if (field.appFieldKey == null) continue
+      fallbackIdByDefKey.set(`${field.entityDefinitionId} ${field.appFieldKey}`, field.id)
+    }
+  }
+
   for (const mapping of mappings) {
     let changed = false
     for (const fm of mapping.fieldMappings) {
       if (!fm.provision || fm.targetFieldRef != null) continue
       const appFieldKey = fm.provision.appFieldKey ?? fm.provision.name
-      let fieldId = fieldIdsByDef?.get(mapping.entityDefinitionId)?.[appFieldKey]
-      if (!fieldId) {
-        const field = await db.query.CustomField.findFirst({
-          where: and(
-            eq(schema.CustomField.organizationId, organizationId),
-            eq(schema.CustomField.entityDefinitionId, mapping.entityDefinitionId),
-            eq(schema.CustomField.dataConnectorId, dataConnectorId),
-            eq(schema.CustomField.appFieldKey, appFieldKey)
-          ),
-          columns: { id: true },
-        })
-        fieldId = field?.id
-      }
+      const fieldId =
+        fieldIdsByDef?.get(mapping.entityDefinitionId)?.[appFieldKey] ??
+        fallbackIdByDefKey.get(`${mapping.entityDefinitionId} ${appFieldKey}`)
       if (!fieldId) continue
       fm.targetFieldRef = toResourceFieldId(mapping.entityDefinitionId, fieldId)
       changed = true

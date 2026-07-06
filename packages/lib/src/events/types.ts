@@ -233,6 +233,12 @@ export type ThreadArchivedEvent = AuxxEventGeneric<
     organizationId: string
     /** The user who archived the thread. */
     userId: string
+    /**
+     * Chat visitor Participant id from `Thread.metadata` (`null` for email
+     * threads). Emitters that have the thread row in hand set this so the
+     * realtime handler can skip a Thread SELECT.
+     */
+    visitorParticipantId?: string | null
   }
 >
 export type ThreadDeletedEvent = AuxxEventGeneric<
@@ -249,6 +255,8 @@ export type ThreadReopenedEvent = AuxxEventGeneric<
     organizationId: string
     /** The user who reopened the thread. */
     userId: string
+    /** See ThreadArchivedEvent.visitorParticipantId. */
+    visitorParticipantId?: string | null
   }
 >
 export type ThreadRestoredEvent = AuxxEventGeneric<
@@ -267,6 +275,8 @@ export type ThreadTakenOverEvent = AuxxEventGeneric<
     userId: string
     /** Handoff state prior to the take-over (always `'ai'` today, but typed for future flows). */
     previousState: 'ai' | 'human'
+    /** See ThreadArchivedEvent.visitorParticipantId. */
+    visitorParticipantId?: string | null
   }
 >
 export type ThreadReturnedToAiEvent = AuxxEventGeneric<
@@ -276,6 +286,8 @@ export type ThreadReturnedToAiEvent = AuxxEventGeneric<
     organizationId: string
     /** The user who handed the thread back to the AI agent. */
     userId: string
+    /** See ThreadArchivedEvent.visitorParticipantId. */
+    visitorParticipantId?: string | null
   }
 >
 export type ThreadAssigneeChangedEvent = AuxxEventGeneric<
@@ -285,6 +297,8 @@ export type ThreadAssigneeChangedEvent = AuxxEventGeneric<
     organizationId: string
     fromUserId: string | null
     toUserId: string | null
+    /** See ThreadArchivedEvent.visitorParticipantId. */
+    visitorParticipantId?: string | null
   }
 >
 export type ThreadVisitorIdentifiedEvent = AuxxEventGeneric<

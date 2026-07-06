@@ -3,7 +3,7 @@
 import { revealSecrets } from '@auxx/credentials/store'
 import { database as db, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import { and, eq, isNotNull, lte } from 'drizzle-orm'
+import { and, eq, inArray, isNotNull, lte } from 'drizzle-orm'
 import { getQueue, Queues } from '../queues'
 import type { JobContext } from '../types'
 
@@ -46,10 +46,10 @@ interface ScannerStats {
  *
  * Strategy:
  * - Query ConnectionDefinitions with oauth2RefreshTokenIntervalSeconds set
- * - Find active Credential (app-connections) for each definition
- * - Validate credentials have refresh tokens (decrypt and check)
- * - Check circuit breaker state (skip if open)
- * - Calculate if refresh is due based on schedule or expiration
+ * - Batch-load their Credentials (two inArray queries: app-owned, mcp-owned)
+ * - Check circuit breaker state (skip if open) — plain columns
+ * - Calculate if refresh is due based on schedule or expiration — plain columns
+ * - Only for due credentials: decrypt and validate a refresh token exists
  * - Enqueue individual refresh jobs to oauth2RefreshQueue
  */
 export const oauth2TokenRefreshScannerJob = async (
@@ -96,62 +96,72 @@ export const oauth2TokenRefreshScannerJob = async (
 
     await job.updateProgress(30)
 
-    // For each definition, find active Credential
+    // Batch-load credentials for all definitions up front (was one query per definition).
+    // MCP definitions own their credentials via mcpServerId + kind 'mcp';
+    // app definitions via appId + kind 'app'.
+    const credentialColumns = {
+      id: true,
+      organizationId: true,
+      appId: true,
+      mcpServerId: true,
+      expiresAt: true,
+      lastRefreshAt: true,
+      lastRefreshFailureAt: true,
+      consecutiveRefreshFailures: true,
+      createdAt: true,
+    } as const
+    const appIds = [
+      ...new Set(
+        connectionDefinitions.filter((d) => !d.mcpServerId && d.appId).map((d) => d.appId!)
+      ),
+    ]
+    const mcpServerIds = [
+      ...new Set(connectionDefinitions.filter((d) => d.mcpServerId).map((d) => d.mcpServerId!)),
+    ]
+    const [appCredentials, mcpCredentials] = await Promise.all([
+      appIds.length
+        ? db.query.Credential.findMany({
+            columns: credentialColumns,
+            where: and(eq(schema.Credential.kind, 'app'), inArray(schema.Credential.appId, appIds)),
+          })
+        : [],
+      mcpServerIds.length
+        ? db.query.Credential.findMany({
+            columns: credentialColumns,
+            where: and(
+              eq(schema.Credential.kind, 'mcp'),
+              inArray(schema.Credential.mcpServerId, mcpServerIds)
+            ),
+          })
+        : [],
+    ])
+    const credentialsByAppId = new Map<string, typeof appCredentials>()
+    for (const credential of appCredentials) {
+      if (!credential.appId) continue
+      const group = credentialsByAppId.get(credential.appId) ?? []
+      group.push(credential)
+      credentialsByAppId.set(credential.appId, group)
+    }
+    const credentialsByMcpServerId = new Map<string, typeof mcpCredentials>()
+    for (const credential of mcpCredentials) {
+      if (!credential.mcpServerId) continue
+      const group = credentialsByMcpServerId.get(credential.mcpServerId) ?? []
+      group.push(credential)
+      credentialsByMcpServerId.set(credential.mcpServerId, group)
+    }
+
     for (const definition of connectionDefinitions) {
       try {
-        // MCP definitions own their credentials via mcpServerId + kind 'mcp';
-        // app definitions via appId + kind 'app'.
-        const isMcp = !!definition.mcpServerId
-        const credentials = await db.query.Credential.findMany({
-          columns: {
-            id: true,
-            organizationId: true,
-            appId: true,
-            mcpServerId: true,
-            expiresAt: true,
-            lastRefreshAt: true,
-            lastRefreshFailureAt: true,
-            consecutiveRefreshFailures: true,
-            createdAt: true,
-          },
-          where: isMcp
-            ? and(
-                eq(schema.Credential.mcpServerId, definition.mcpServerId!),
-                eq(schema.Credential.kind, 'mcp')
-              )
-            : and(
-                eq(schema.Credential.appId, definition.appId!),
-                eq(schema.Credential.kind, 'app')
-              ),
-        })
+        const credentials = definition.mcpServerId
+          ? (credentialsByMcpServerId.get(definition.mcpServerId) ?? [])
+          : definition.appId
+            ? (credentialsByAppId.get(definition.appId) ?? [])
+            : []
 
         for (const credential of credentials) {
           stats.connectionsScanned++
 
-          // Validate credential has a refresh token (reveal via the store — N is small).
-          const revealed = await revealSecrets<{ refreshToken?: string }>(
-            credential.id,
-            credential.organizationId
-          )
-          if (revealed.isErr()) {
-            stats.errors++
-            logger.error('Error revealing credential', {
-              credentialId: credential.id,
-              error: revealed.error.message,
-            })
-            continue
-          }
-          if (!revealed.value.secrets.refreshToken) {
-            stats.skippedNoRefreshToken++
-            logger.debug('Skipping credential - no refresh token available', {
-              credentialId: credential.id,
-              organizationId: credential.organizationId,
-              note: 'OAuth2 requires offline_access or offline scope for refresh tokens',
-            })
-            continue
-          }
-
-          // Circuit breaker check: Skip if circuit is open
+          // Circuit breaker check: Skip if circuit is open (plain columns — no decrypt)
           const isCircuitOpen =
             credential.consecutiveRefreshFailures >= 5 &&
             credential.lastRefreshFailureAt &&
@@ -167,7 +177,7 @@ export const oauth2TokenRefreshScannerJob = async (
             continue
           }
 
-          // Check if refresh is due
+          // Check if refresh is due (plain columns — expiresAt is the only home of expiry)
           const refreshIntervalSeconds = definition.oauth2RefreshTokenIntervalSeconds!
           const refreshIntervalMs = refreshIntervalSeconds * 1000
 
@@ -193,6 +203,29 @@ export const oauth2TokenRefreshScannerJob = async (
               timeSinceLastRefresh: Math.round(timeSinceLastRefresh / 1000),
               refreshIntervalSeconds,
               expiresAt: credential.expiresAt,
+            })
+            continue
+          }
+
+          // Only now decrypt: validate the due credential has a refresh token.
+          const revealed = await revealSecrets<{ refreshToken?: string }>(
+            credential.id,
+            credential.organizationId
+          )
+          if (revealed.isErr()) {
+            stats.errors++
+            logger.error('Error revealing credential', {
+              credentialId: credential.id,
+              error: revealed.error.message,
+            })
+            continue
+          }
+          if (!revealed.value.secrets.refreshToken) {
+            stats.skippedNoRefreshToken++
+            logger.debug('Skipping credential - no refresh token available', {
+              credentialId: credential.id,
+              organizationId: credential.organizationId,
+              note: 'OAuth2 requires offline_access or offline scope for refresh tokens',
             })
             continue
           }
