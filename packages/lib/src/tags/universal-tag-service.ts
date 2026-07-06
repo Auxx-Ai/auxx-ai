@@ -6,6 +6,7 @@ import { createScopedLogger } from '@auxx/logger'
 import { generateId } from '@auxx/utils'
 import { randomUUID } from 'crypto'
 import { and, eq, isNotNull } from 'drizzle-orm'
+import { getOrgCache } from '../cache'
 
 const logger = createScopedLogger('universal-tag-service')
 
@@ -137,25 +138,13 @@ export class UniversalTagService {
   }
 
   /**
-   * Get the CustomField ID for thread_tags (cached per instance)
+   * Get the CustomField ID for thread_tags (org cache)
    */
-  private threadTagsFieldId: string | null = null
   private async getThreadTagsFieldId(): Promise<string | null> {
-    if (this.threadTagsFieldId) return this.threadTagsFieldId
-
-    const result = await this.db
-      .select({ id: schema.CustomField.id })
-      .from(schema.CustomField)
-      .where(
-        and(
-          eq(schema.CustomField.systemAttribute, 'thread_tags'),
-          eq(schema.CustomField.organizationId, this.organizationId)
-        )
-      )
-      .limit(1)
-
-    this.threadTagsFieldId = result[0]?.id ?? null
-    return this.threadTagsFieldId
+    const field = await getOrgCache()
+      .from(this.organizationId, 'customFields')
+      .bySystemAttribute('thread_tags')
+    return field?.id ?? null
   }
 
   /**

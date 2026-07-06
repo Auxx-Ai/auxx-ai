@@ -6,7 +6,7 @@ import { buildFieldValueKey, type FieldId } from '@auxx/types/field'
 import type { RecordId } from '@auxx/types/resource'
 import { parseRecordId, toRecordId } from '@auxx/types/resource'
 import { and, eq, inArray, ne } from 'drizzle-orm'
-import { requireCachedEntityDefId } from '../../cache'
+import { getOrgCache, requireCachedEntityDefId } from '../../cache'
 import { getRealtimeService, publishFieldValueUpdates } from '../../realtime'
 import type { FieldTriggerHandler } from '../types'
 
@@ -79,18 +79,11 @@ export const clearOtherPreferred: FieldTriggerHandler = async (event) => {
     if (siblingIds.length === 0) continue
 
     // 4. Clear isPreferred on siblings (direct DB update to avoid triggering recursion)
-    const isPreferredField = await database
-      .select({ id: schema.CustomField.id })
-      .from(schema.CustomField)
-      .where(
-        and(
-          eq(schema.CustomField.systemAttribute, 'vendor_part_is_preferred'),
-          eq(schema.CustomField.organizationId, organizationId)
-        )
-      )
-      .limit(1)
+    const isPreferredField = await getOrgCache()
+      .from(organizationId, 'customFields')
+      .bySystemAttribute('vendor_part_is_preferred')
 
-    const fieldId = isPreferredField[0]?.id
+    const fieldId = isPreferredField?.id
     if (!fieldId) continue
 
     await database

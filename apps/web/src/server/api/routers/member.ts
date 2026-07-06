@@ -2,12 +2,12 @@
 
 import { schema } from '@auxx/database'
 import { MemberType, OrganizationRole } from '@auxx/database/enums'
-import { onCacheEvent } from '@auxx/lib/cache'
+import { getCachedMembers, onCacheEvent } from '@auxx/lib/cache'
 import { DehydrationService } from '@auxx/lib/dehydration'
-import { MemberService } from '@auxx/lib/members'
+import { findMemberByUser, MemberService } from '@auxx/lib/members'
 import { createScopedLogger } from '@auxx/logger'
 import { TRPCError } from '@trpc/server'
-import { and, eq, ilike, or } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 import { z } from 'zod'
 import { recordAuditFromCtx } from '~/server/api/audit-context'
 import { createTRPCRouter, notDemo, protectedProcedure } from '~/server/api/trpc'
@@ -32,27 +32,20 @@ export const memberRouter = createTRPCRouter({
       const { organizationId } = ctx.session
       const query = input.query.toLowerCase()
 
-      const rows = await ctx.db
-        .select({
-          userId: schema.OrganizationMember.userId,
-          name: schema.User.name,
-          email: schema.User.email,
-        })
-        .from(schema.OrganizationMember)
-        .innerJoin(schema.User, eq(schema.OrganizationMember.userId, schema.User.id))
-        .where(
-          and(
-            eq(schema.OrganizationMember.organizationId, organizationId),
-            eq(schema.User.userType, 'USER'),
-            or(ilike(schema.User.name, `%${query}%`), ilike(schema.User.email, `%${query}%`))
-          )
-        )
-        .limit(10)
+      const members = await getCachedMembers(organizationId)
 
-      return rows.map((row) => ({
-        id: row.userId,
-        name: row.name || row.email || 'Unknown',
-      }))
+      return members
+        .filter(
+          (m) =>
+            m.user?.userType === 'USER' &&
+            ((m.user.name ?? '').toLowerCase().includes(query) ||
+              (m.user.email ?? '').toLowerCase().includes(query))
+        )
+        .slice(0, 10)
+        .map((m) => ({
+          id: m.userId,
+          name: m.user?.name || m.user?.email || 'Unknown',
+        }))
     }),
 
   /** Get all members with optional filtering */
@@ -69,36 +62,26 @@ export const memberRouter = createTRPCRouter({
       const { organizationId } = ctx.session
       const { excludeGroupId, search } = input ?? {}
 
-      // Build where conditions
-      const whereConditions = [
-        eq(schema.OrganizationMember.organizationId, organizationId),
-        eq(schema.User.userType, 'USER'),
-      ]
+      const searchLower = search?.toLowerCase()
+      const cachedMembers = await getCachedMembers(organizationId)
 
-      if (search) {
-        whereConditions.push(
-          or(ilike(schema.User.name, `%${search}%`), ilike(schema.User.email, `%${search}%`))!
-        )
-      }
-
-      const rows = await ctx.db
-        .select({
-          id: schema.OrganizationMember.id,
-          userId: schema.OrganizationMember.userId,
-          role: schema.OrganizationMember.role,
-          status: schema.OrganizationMember.status,
-          organizationId: schema.OrganizationMember.organizationId,
-          user: {
-            id: schema.User.id,
-            name: schema.User.name,
-            email: schema.User.email,
-            image: schema.User.image,
-            userType: schema.User.userType,
-          },
+      const rows = cachedMembers
+        .filter((m) => {
+          if (m.user?.userType !== 'USER') return false
+          if (!searchLower) return true
+          return (
+            (m.user.name ?? '').toLowerCase().includes(searchLower) ||
+            (m.user.email ?? '').toLowerCase().includes(searchLower)
+          )
         })
-        .from(schema.OrganizationMember)
-        .innerJoin(schema.User, eq(schema.OrganizationMember.userId, schema.User.id))
-        .where(and(...whereConditions))
+        .map((m) => ({
+          id: m.id,
+          userId: m.userId,
+          role: m.role,
+          status: m.status,
+          organizationId: m.organizationId,
+          user: m.user!,
+        }))
 
       // Filter out members already in group if excludeGroupId provided
       if (excludeGroupId) {
@@ -138,13 +121,7 @@ export const memberRouter = createTRPCRouter({
 
   /** Get current user's membership */
   getUserMembership: protectedProcedure.query(async ({ ctx }) => {
-    const membership = await ctx.db.query.OrganizationMember.findFirst({
-      where: (members, { eq, and }) =>
-        and(
-          eq(members.organizationId, ctx.session.organizationId),
-          eq(members.userId, ctx.session.userId)
-        ),
-    })
+    const membership = await findMemberByUser(ctx.session.organizationId, ctx.session.userId)
     if (!membership) {
       throw new TRPCError({
         code: 'NOT_FOUND',

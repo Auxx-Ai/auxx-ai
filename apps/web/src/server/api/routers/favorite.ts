@@ -1,7 +1,5 @@
 // apps/web/src/server/api/routers/favorite.ts
 
-import type { Database } from '@auxx/database'
-import { schema } from '@auxx/database'
 import { getUserCache } from '@auxx/lib/cache'
 import {
   addFavorite,
@@ -14,8 +12,8 @@ import {
   reorderFavorites,
 } from '@auxx/lib/favorites'
 import { FAVORITE_FOLDER_TITLE_MAX, type FavoriteTargetIdsMap } from '@auxx/lib/favorites/client'
+import { findMemberByUser } from '@auxx/lib/members'
 import { TRPCError } from '@trpc/server'
-import { and, eq } from 'drizzle-orm'
 import type { Result } from 'neverthrow'
 import { z } from 'zod'
 import { createTRPCRouter, protectedProcedure } from '~/server/api/trpc'
@@ -78,25 +76,8 @@ const createFolderInput = z.object({
   title: z.string().min(1).max(FAVORITE_FOLDER_TITLE_MAX),
 })
 
-async function loadMemberContext(
-  db: Database,
-  userId: string,
-  organizationId: string
-): Promise<MemberContext> {
-  const [member] = await db
-    .select({
-      id: schema.OrganizationMember.id,
-      userId: schema.OrganizationMember.userId,
-      organizationId: schema.OrganizationMember.organizationId,
-    })
-    .from(schema.OrganizationMember)
-    .where(
-      and(
-        eq(schema.OrganizationMember.userId, userId),
-        eq(schema.OrganizationMember.organizationId, organizationId)
-      )
-    )
-    .limit(1)
+async function loadMemberContext(userId: string, organizationId: string): Promise<MemberContext> {
+  const member = await findMemberByUser(organizationId, userId)
   if (!member) {
     throw new TRPCError({ code: 'FORBIDDEN', message: 'Membership not found' })
   }
@@ -124,43 +105,43 @@ export const favoriteRouter = createTRPCRouter({
   }),
 
   add: protectedProcedure.input(addInput).mutation(async ({ ctx, input }) => {
-    const member = await loadMemberContext(ctx.db, ctx.session.userId, ctx.session.organizationId)
+    const member = await loadMemberContext(ctx.session.userId, ctx.session.organizationId)
     return unwrap(await addFavorite(member, input as Parameters<typeof addFavorite>[1], ctx.db))
   }),
 
   remove: protectedProcedure
     .input(z.object({ favoriteId: z.string() }))
     .mutation(async ({ ctx, input }) => {
-      const member = await loadMemberContext(ctx.db, ctx.session.userId, ctx.session.organizationId)
+      const member = await loadMemberContext(ctx.session.userId, ctx.session.organizationId)
       unwrap(await removeFavorite(member, input.favoriteId, ctx.db))
       return { ok: true }
     }),
 
   reorder: protectedProcedure.input(reorderInput).mutation(async ({ ctx, input }) => {
-    const member = await loadMemberContext(ctx.db, ctx.session.userId, ctx.session.organizationId)
+    const member = await loadMemberContext(ctx.session.userId, ctx.session.organizationId)
     unwrap(await reorderFavorites(member, input.updates, ctx.db))
     return { ok: true }
   }),
 
   move: protectedProcedure.input(moveInput).mutation(async ({ ctx, input }) => {
-    const member = await loadMemberContext(ctx.db, ctx.session.userId, ctx.session.organizationId)
+    const member = await loadMemberContext(ctx.session.userId, ctx.session.organizationId)
     unwrap(await moveToFolder(member, input.favoriteId, input.parentFolderId, ctx.db))
     return { ok: true }
   }),
 
   createFolder: protectedProcedure.input(createFolderInput).mutation(async ({ ctx, input }) => {
-    const member = await loadMemberContext(ctx.db, ctx.session.userId, ctx.session.organizationId)
+    const member = await loadMemberContext(ctx.session.userId, ctx.session.organizationId)
     return unwrap(await createFolder(member, input.title, ctx.db))
   }),
 
   renameFolder: protectedProcedure.input(renameFolderInput).mutation(async ({ ctx, input }) => {
-    const member = await loadMemberContext(ctx.db, ctx.session.userId, ctx.session.organizationId)
+    const member = await loadMemberContext(ctx.session.userId, ctx.session.organizationId)
     unwrap(await renameFolder(member, input.folderId, input.title, ctx.db))
     return { ok: true }
   }),
 
   deleteFolder: protectedProcedure.input(folderIdInput).mutation(async ({ ctx, input }) => {
-    const member = await loadMemberContext(ctx.db, ctx.session.userId, ctx.session.organizationId)
+    const member = await loadMemberContext(ctx.session.userId, ctx.session.organizationId)
     unwrap(await deleteFolder(member, input.folderId, ctx.db))
     return { ok: true }
   }),

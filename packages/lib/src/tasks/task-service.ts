@@ -585,39 +585,13 @@ export class TaskService {
       filteredTasks = filteredTasks.filter((t) => referencedTaskIds.has(t.id))
     }
 
-    // Load relations for each task
-    const tasksWithRelations: TaskWithRelations[] = await Promise.all(
-      filteredTasks.map(async (task) => {
-        // Get assignments - only need user IDs to convert to ActorId
-        const assignmentRows = await this.db.query.TaskAssignment.findMany({
-          where: (a, { eq, and, isNull }) => and(eq(a.taskId, task.id), isNull(a.unassignedAt)),
-          columns: { assignedToUserId: true },
-        })
-
-        // Convert to ActorId[]
-        const assignments = assignmentRows.map((a) => toActorId('user', a.assignedToUserId))
-
-        // Load only IDs
-        const referenceRows = await this.db.query.TaskReference.findMany({
-          where: (r, { eq, and, isNull }) => and(eq(r.taskId, task.id), isNull(r.deletedAt)),
-          columns: {
-            referencedEntityDefinitionId: true,
-            referencedEntityInstanceId: true,
-          },
-        })
-
-        // Convert to RecordId[]
-        const references = referenceRows.map((ref) =>
-          toRecordId(ref.referencedEntityDefinitionId, ref.referencedEntityInstanceId)
-        )
-
-        return {
-          ...task,
-          assignments,
-          references,
-        }
-      })
-    )
+    // Load relations for all tasks in two batched queries
+    const relations = await this.loadTaskRelations(filteredTasks.map((t) => t.id))
+    const tasksWithRelations: TaskWithRelations[] = filteredTasks.map((task) => ({
+      ...task,
+      assignments: relations.assignmentsByTask.get(task.id) ?? [],
+      references: relations.referencesByTask.get(task.id) ?? [],
+    }))
 
     const nextCursor = hasMore
       ? resultTasks[resultTasks.length - 1]?.createdAt?.toISOString()
@@ -696,49 +670,72 @@ export class TaskService {
       limit: 50,
     })
 
-    // Helper to load relations for tasks
-    const loadRelations = async (tasks: TaskEntity[]): Promise<TaskWithRelations[]> => {
-      return Promise.all(
-        tasks.map(async (task) => {
-          // Get assignments - only need user IDs to convert to ActorId
-          const assignmentRows = await this.db.query.TaskAssignment.findMany({
-            where: (a, { eq, and, isNull }) => and(eq(a.taskId, task.id), isNull(a.unassignedAt)),
-            columns: { assignedToUserId: true },
-          })
-
-          // Convert to ActorId[]
-          const assignments = assignmentRows.map((a) => toActorId('user', a.assignedToUserId))
-
-          // Load only IDs
-          const referenceRows = await this.db.query.TaskReference.findMany({
-            where: (r, { eq, and, isNull }) => and(eq(r.taskId, task.id), isNull(r.deletedAt)),
-            columns: {
-              referencedEntityDefinitionId: true,
-              referencedEntityInstanceId: true,
-            },
-          })
-
-          // Convert to RecordId[]
-          const references = referenceRows.map((ref) =>
-            toRecordId(ref.referencedEntityDefinitionId, ref.referencedEntityInstanceId)
-          )
-
-          return {
-            ...task,
-            assignments,
-            references,
-          }
-        })
-      )
-    }
+    // Load relations for all buckets in two batched queries
+    const allTasks = [
+      ...todayTasks,
+      ...thisWeekTasks,
+      ...upcomingTasks,
+      ...overdueTasks,
+      ...completedTasks,
+    ]
+    const relations = await this.loadTaskRelations(allTasks.map((t) => t.id))
+    const withRelations = (tasks: TaskEntity[]): TaskWithRelations[] =>
+      tasks.map((task) => ({
+        ...task,
+        assignments: relations.assignmentsByTask.get(task.id) ?? [],
+        references: relations.referencesByTask.get(task.id) ?? [],
+      }))
 
     return {
-      today: await loadRelations(todayTasks),
-      thisWeek: await loadRelations(thisWeekTasks),
-      upcoming: await loadRelations(upcomingTasks),
-      overdue: await loadRelations(overdueTasks),
-      completed: await loadRelations(completedTasks),
+      today: withRelations(todayTasks),
+      thisWeek: withRelations(thisWeekTasks),
+      upcoming: withRelations(upcomingTasks),
+      overdue: withRelations(overdueTasks),
+      completed: withRelations(completedTasks),
     }
+  }
+
+  /**
+   * Batch-load active assignments and non-deleted references for a set of tasks.
+   * Two queries total regardless of task count.
+   */
+  private async loadTaskRelations(taskIds: string[]): Promise<{
+    assignmentsByTask: Map<string, ActorId[]>
+    referencesByTask: Map<string, RecordId[]>
+  }> {
+    const assignmentsByTask = new Map<string, ActorId[]>()
+    const referencesByTask = new Map<string, RecordId[]>()
+    if (taskIds.length === 0) return { assignmentsByTask, referencesByTask }
+
+    const [assignmentRows, referenceRows] = await Promise.all([
+      this.db.query.TaskAssignment.findMany({
+        where: (a, { and, inArray, isNull }) =>
+          and(inArray(a.taskId, taskIds), isNull(a.unassignedAt)),
+        columns: { taskId: true, assignedToUserId: true },
+      }),
+      this.db.query.TaskReference.findMany({
+        where: (r, { and, inArray, isNull }) =>
+          and(inArray(r.taskId, taskIds), isNull(r.deletedAt)),
+        columns: {
+          taskId: true,
+          referencedEntityDefinitionId: true,
+          referencedEntityInstanceId: true,
+        },
+      }),
+    ])
+
+    for (const row of assignmentRows) {
+      const list = assignmentsByTask.get(row.taskId) ?? []
+      list.push(toActorId('user', row.assignedToUserId))
+      assignmentsByTask.set(row.taskId, list)
+    }
+    for (const row of referenceRows) {
+      const list = referencesByTask.get(row.taskId) ?? []
+      list.push(toRecordId(row.referencedEntityDefinitionId, row.referencedEntityInstanceId))
+      referencesByTask.set(row.taskId, list)
+    }
+
+    return { assignmentsByTask, referencesByTask }
   }
 
   /**

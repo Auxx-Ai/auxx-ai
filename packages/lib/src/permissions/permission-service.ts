@@ -400,6 +400,14 @@ export class PermissionService {
         return true
       }
 
+      // Fast path: the per-org entityDefs cache holds only this org's definitions,
+      // so a hit IS the ownership check. Misses (archived defs, custom defs without
+      // an entityType, cache staleness) fall through to the DB.
+      const cachedDefs = await getOrgCache().get(this.organizationId, 'entityDefs')
+      if (Object.values(cachedDefs).includes(definitionId)) {
+        return true
+      }
+
       const definition = await this.statements.getEntityDefinitionStatement.execute({
         definitionId,
       })
