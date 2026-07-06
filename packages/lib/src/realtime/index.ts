@@ -49,6 +49,7 @@ export type {
 export {
   flushMailBatch,
   publishAgentUpdated,
+  publishCountsChanged,
   publishDataConnectorSync,
   publishDataExportJob,
   publishEvalCaseChanged,

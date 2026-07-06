@@ -176,7 +176,6 @@ export * from './two-factor'
 export * from './upload-session'
 export * from './usage-event'
 export * from './user'
-export * from './user-inbox-unread-count'
 export * from './user-setting'
 // VendorPart table dropped — vendor parts now use EntityInstance + FieldValue
 export * from './verification'

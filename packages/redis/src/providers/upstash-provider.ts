@@ -452,6 +452,43 @@ export function createUpstashClient(): RedisClient {
       }
     },
 
+    // Hash operations
+    hgetall: async (key: string) => {
+      try {
+        return (await upstashClient.hgetall(key)) as Record<string, string> | null
+      } catch (error) {
+        logger.error('Error hgetall in Upstash', { key, error: (error as Error).message })
+        throw error
+      }
+    },
+
+    hset: async (key: string, fields: Record<string, string | number>) => {
+      try {
+        return await upstashClient.hset(key, fields)
+      } catch (error) {
+        logger.error('Error hset in Upstash', { key, error: (error as Error).message })
+        throw error
+      }
+    },
+
+    hdel: async (key: string, ...fields: string[]) => {
+      try {
+        return await upstashClient.hdel(key, ...fields)
+      } catch (error) {
+        logger.error('Error hdel in Upstash', { key, error: (error as Error).message })
+        throw error
+      }
+    },
+
+    hincrby: async (key: string, field: string, amount: number) => {
+      try {
+        return await upstashClient.hincrby(key, field, amount)
+      } catch (error) {
+        logger.error('Error hincrby in Upstash', { key, field, error: (error as Error).message })
+        throw error
+      }
+    },
+
     // Pipeline support (Upstash supports pipelines via REST)
     pipeline: () => upstashClient.pipeline() as any,
 

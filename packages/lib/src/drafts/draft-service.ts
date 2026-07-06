@@ -66,8 +66,20 @@ export class DraftService {
       throw new Error('Failed to create draft')
     }
 
+    this.applyDraftsCountDelta(1)
     logger.info('Draft created', { draftId: draft.id })
     return this.mapToDraft(draft)
+  }
+
+  /** Fire-and-forget sidebar drafts-count delta; drift heals at reconcile. */
+  private applyDraftsCountDelta(delta: number): void {
+    void import('../threads/mail-counts')
+      .then(({ applyMailCountDeltas }) =>
+        applyMailCountDeltas(this.organizationId, [
+          { userId: this.userId, deltas: { drafts: delta } },
+        ])
+      )
+      .catch(() => {})
   }
 
   /**
@@ -188,6 +200,7 @@ export class DraftService {
       return { success: true }
     }
 
+    this.applyDraftsCountDelta(-1)
     logger.info('Draft deleted', { draftId })
     return { success: true }
   }

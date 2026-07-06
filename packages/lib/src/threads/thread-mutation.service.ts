@@ -110,6 +110,7 @@ export class ThreadMutationService {
           organizationId: this.organizationId,
           actorUserId: this.actorUserId,
         })
+        await this.markCountsStale()
         return {
           id: threadId,
           success: true,
@@ -122,6 +123,7 @@ export class ThreadMutationService {
           throw new BadRequestError('Unmerge requires an authenticated actor')
         }
         await mergeService.unmerge(threadId, this.actorUserId)
+        await this.markCountsStale()
         return {
           id: threadId,
           success: true,
@@ -301,6 +303,14 @@ export class ThreadMutationService {
         })
       }
 
+      if ('status' in dbUpdates || 'assigneeId' in dbUpdates || 'inboxId' in dbUpdates) {
+        await this.applyCountDeltasForUpdate(
+          threadId,
+          previous ?? { inboxId: null, status: null, assigneeId: null },
+          dbUpdates
+        )
+      }
+
       return {
         id: threadId,
         success: true,
@@ -316,6 +326,88 @@ export class ThreadMutationService {
       throw new Error(
         `Database error updating thread ${threadId}: ${error instanceof Error ? error.message : error}`
       )
+    }
+  }
+
+  /**
+   * Exact counter deltas for a single-thread update (status / assignee /
+   * inbox move). A thread is "counted" for a user when it is OPEN and unread
+   * for them; the unread set is one indexed read-status query plus cached org
+   * members. Never throws — a missed delta is drift that reconciliation heals.
+   */
+  private async applyCountDeltasForUpdate(
+    threadId: string,
+    prev: { inboxId: string | null; status: string | null; assigneeId: string | null },
+    dbUpdates: Record<string, any>
+  ): Promise<void> {
+    try {
+      const next = {
+        inboxId: 'inboxId' in dbUpdates ? (dbUpdates.inboxId ?? null) : (prev.inboxId ?? null),
+        status: 'status' in dbUpdates ? dbUpdates.status : prev.status,
+        assigneeId:
+          'assigneeId' in dbUpdates ? (dbUpdates.assigneeId ?? null) : (prev.assigneeId ?? null),
+      }
+      const prevOpen = prev.status === 'OPEN'
+      const nextOpen = next.status === 'OPEN'
+      const inboxChanged = (prev.inboxId ?? null) !== next.inboxId
+      const assigneeChanged = (prev.assigneeId ?? null) !== next.assigneeId
+      if (prevOpen === nextOpen && !inboxChanged && !assigneeChanged) return
+
+      const readRows = await this.db
+        .select({
+          userId: schema.ThreadReadStatus.userId,
+          isRead: schema.ThreadReadStatus.isRead,
+        })
+        .from(schema.ThreadReadStatus)
+        .where(eq(schema.ThreadReadStatus.threadId, threadId))
+      const readMap = new Map(readRows.map((r) => [r.userId, r.isRead]))
+
+      // Lazy imports: mail-counts pulls in UnreadService; cache barrel is heavy.
+      const [{ getCachedMembers }, { applyMailCountDeltas }] = await Promise.all([
+        import('../cache'),
+        import('./mail-counts'),
+      ])
+      const members = await getCachedMembers(this.organizationId)
+      const unreadUserIds = members
+        .map((m) => m.userId)
+        .filter((userId) => readMap.get(userId) !== true)
+
+      const deltas: { userId: string; deltas: Record<string, number> }[] = []
+      for (const userId of unreadUserIds) {
+        const d: Record<string, number> = {}
+        if (prevOpen && prev.inboxId) d[`si:${prev.inboxId}`] = (d[`si:${prev.inboxId}`] ?? 0) - 1
+        if (nextOpen && next.inboxId) d[`si:${next.inboxId}`] = (d[`si:${next.inboxId}`] ?? 0) + 1
+        if (prevOpen && userId === prev.assigneeId) d.inbox = (d.inbox ?? 0) - 1
+        if (nextOpen && userId === next.assigneeId) d.inbox = (d.inbox ?? 0) + 1
+        if (Object.values(d).some((v) => v !== 0)) deltas.push({ userId, deltas: d })
+      }
+      if (deltas.length > 0) {
+        await applyMailCountDeltas(this.organizationId, deltas, {
+          fastReconcileUserId: this.actorUserId ?? undefined,
+        })
+      }
+    } catch (error) {
+      logger.warn('Failed to apply thread count deltas', {
+        threadId,
+        error: (error as Error).message,
+      })
+    }
+  }
+
+  /**
+   * Slow path for bulk/rare mutations (bulk update, merge, delete): mark every
+   * member's counts stale and let the worker recount instead of computing
+   * per-thread delta math. Never throws.
+   */
+  private async markCountsStale(): Promise<void> {
+    try {
+      const { markMailCountsStaleForOrgMembers } = await import('./mail-counts')
+      await markMailCountsStaleForOrgMembers(this.organizationId)
+    } catch (error) {
+      logger.warn('Failed to mark counts stale', {
+        organizationId: this.organizationId,
+        error: (error as Error).message,
+      })
     }
   }
 
@@ -342,6 +434,7 @@ export class ThreadMutationService {
           organizationId: this.organizationId,
           actorUserId: this.actorUserId,
         })
+        await this.markCountsStale()
         return { count: result.sourceThreadIds.length }
       }
       if (updates.mergedIntoThreadId === null) {
@@ -351,6 +444,7 @@ export class ThreadMutationService {
         for (const sourceId of threadIds) {
           await mergeService.unmerge(sourceId, this.actorUserId)
         }
+        await this.markCountsStale()
         return { count: threadIds.length }
       }
     }
@@ -460,6 +554,10 @@ export class ThreadMutationService {
             )
           )
         )
+      }
+
+      if ('status' in dbUpdates || 'assigneeId' in dbUpdates || 'inboxId' in dbUpdates) {
+        await this.markCountsStale()
       }
 
       return { count: result.length }
@@ -848,6 +946,7 @@ export class ThreadMutationService {
         { threadId, inboxId: result[0].inboxId ?? null },
         { excludeSocketId: this.socketId }
       )
+      await this.markCountsStale()
 
       logger.info('Thread permanently deleted', { threadId })
       return { success: true }
@@ -901,6 +1000,7 @@ export class ThreadMutationService {
           )
         )
       )
+      await this.markCountsStale()
 
       return { count: result.length }
     } catch (error: unknown) {

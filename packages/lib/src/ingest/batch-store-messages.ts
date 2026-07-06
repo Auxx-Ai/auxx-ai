@@ -2,6 +2,7 @@
 
 import { v4 as uuidv4 } from 'uuid'
 import { getRealtimeService, publishInboxSyncCompleted } from '../realtime'
+import { markMailCountsStaleForOrgMembers } from '../threads/mail-counts'
 import { type IngestContext, resetBatchCaches } from './context'
 import { storeMessage } from './store-message'
 import type { MessageData } from './types'
@@ -111,6 +112,9 @@ export async function batchStoreMessages(
           )
         )
       )
+      // Per-message count deltas are skipped during sync — one recount per
+      // member settles the badges instead.
+      await markMailCountsStaleForOrgMembers(organizationId)
     }
   }
 

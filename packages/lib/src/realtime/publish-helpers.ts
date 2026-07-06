@@ -205,6 +205,15 @@ export async function publishThreadUpdated(
   )
 }
 
+/**
+ * Publish `counts:changed` on a user's room — a refresh ping for sidebar
+ * counts. Payload carries only the userId; the client refetches
+ * `thread.getCounts` (one Redis roundtrip) on receipt.
+ */
+export async function publishCountsChanged(realtimeService: RealtimeService, userId: string) {
+  await realtimeService.publish(rooms.user(userId), 'counts:changed', { userId }).catch(() => {})
+}
+
 /** Publish `thread:deleted` on the inbox channel. */
 export async function publishThreadDeleted(
   realtimeService: RealtimeService,

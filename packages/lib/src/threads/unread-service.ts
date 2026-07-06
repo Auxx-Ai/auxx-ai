@@ -1,7 +1,7 @@
 // packages/lib/src/threads/unread-service.ts
 import { type Database, database as db, schema, type Transaction } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import { and, count, eq, inArray, isNull, lt, or, sql } from 'drizzle-orm'
+import { and, count, eq, inArray, isNull, or, sql } from 'drizzle-orm'
 
 type DbOrTx = Database | Transaction
 
@@ -9,7 +9,6 @@ import { resolveConditionContext } from '../conditions/resolve-context'
 import type { ConditionGroup } from '../conditions/types'
 import { buildConditionGroupsQuery } from '../mail-query/condition-query-builder'
 import { getRealtimeService, publishThreadUpdated } from '../realtime'
-import type { FullCountsResponse, UserUnreadCounts } from './types'
 
 const logger = createScopedLogger('unread-service')
 
@@ -26,14 +25,10 @@ export class UnreadService {
     // _db parameter is kept for compatibility but not used - we use the imported db directly
   }
 
-  private getRedisCountKey(inboxId: string, userId: string): string {
-    if (!userId) userId = this.userId // Use the class userId if not provided
-    return `unread_count:org:${this.organizationId}:inbox:${inboxId}:user:${userId}`
-  }
-
   /**
-   * Calculates the unread count for a specific user and inbox.
-   * This is the core logic based on last message date vs last read date.
+   * Counts unread OPEN threads in one inbox for the current user (no
+   * read-status row, or an explicit isRead=false row). Used by the mail-counts
+   * reconcile recount.
    *
    * @param tx Optional active tx — when called from inside `db.transaction()`,
    *   pass it through so reads share the same connection instead of grabbing
@@ -41,9 +36,8 @@ export class UnreadService {
    */
   async calculateUnreadCountForUserInbox(inboxId: string, tx?: DbOrTx): Promise<number> {
     const dbOrTx = tx ?? db
-    // Count threads without read status entries for the user
-    const threadsWithoutReadStatus = await dbOrTx
-      .select({ threadId: schema.Thread.id })
+    const result = await dbOrTx
+      .select({ count: count() })
       .from(schema.Thread)
       .leftJoin(
         schema.ThreadReadStatus,
@@ -55,111 +49,13 @@ export class UnreadService {
       .where(
         and(
           eq(schema.Thread.organizationId, this.organizationId),
-          // Filter by inboxId directly on Thread
-          eq(schema.Thread.inboxId, inboxId),
-          eq(schema.Thread.status, 'OPEN' as any)
-        )
-      )
-
-    // Count threads with explicit unread status
-    const threadsWithUnreadStatus = await dbOrTx
-      .select({ threadId: schema.Thread.id })
-      .from(schema.Thread)
-      .innerJoin(schema.ThreadReadStatus, eq(schema.ThreadReadStatus.threadId, schema.Thread.id))
-      .where(
-        and(
-          eq(schema.Thread.organizationId, this.organizationId),
-          // Filter by inboxId directly on Thread
           eq(schema.Thread.inboxId, inboxId),
           eq(schema.Thread.status, 'OPEN' as any),
-          eq(schema.ThreadReadStatus.userId, this.userId),
-          or(
-            eq(schema.ThreadReadStatus.lastReadAt, null),
-            eq(schema.ThreadReadStatus.isRead, false)
-          )
+          or(isNull(schema.ThreadReadStatus.userId), eq(schema.ThreadReadStatus.isRead, false))
         )
       )
 
-    const totalCount = threadsWithoutReadStatus.length + threadsWithUnreadStatus.length
-    logger.debug(
-      `Calculated unread count for user ${this.userId} in inbox ${inboxId}: ${totalCount}`
-    )
-    return totalCount
-
-    // TODO: Revisit the WHERE clause for accuracy vs. performance.
-    // A potentially more accurate count might require fetching thread IDs and their lastMessageDate,
-    // fetching corresponding ThreadReadStatus, and comparing dates in the application code.
-    // For now, the above count relies heavily on keeping `isRead` accurate.
-  }
-
-  /**
-   * Updates the aggregated unread count in the database and Redis cache.
-   *
-   * @param tx Optional active tx — see {@link calculateUnreadCountForUserInbox}.
-   */
-  async updateUserInboxUnreadCount(inboxId: string, userId?: string, tx?: DbOrTx): Promise<any> {
-    if (!userId) userId = this.userId // Use the class userId if not provided
-    const dbOrTx = tx ?? db
-    const calculatedCount = await this.calculateUnreadCountForUserInbox(inboxId, tx)
-    const _redisKey = this.getRedisCountKey(inboxId, userId)
-
-    logger.info(
-      `Updating unread count for user ${userId} in inbox ${inboxId} to ${calculatedCount}`
-    )
-
-    // Check if record exists
-    const [existingRecord] = await dbOrTx
-      .select()
-      .from(schema.UserInboxUnreadCount)
-      .where(
-        and(
-          eq(schema.UserInboxUnreadCount.organizationId, this.organizationId),
-          eq(schema.UserInboxUnreadCount.inboxId, inboxId),
-          eq(schema.UserInboxUnreadCount.userId, userId)
-        )
-      )
-      .limit(1)
-
-    let updatedRecord: any
-    const now = new Date()
-
-    if (existingRecord) {
-      // Update existing record
-      await dbOrTx
-        .update(schema.UserInboxUnreadCount)
-        .set({
-          unreadCount: calculatedCount,
-          lastUpdatedAt: new Date(),
-        })
-        .where(
-          and(
-            eq(schema.UserInboxUnreadCount.organizationId, this.organizationId),
-            eq(schema.UserInboxUnreadCount.inboxId, inboxId),
-            eq(schema.UserInboxUnreadCount.userId, userId)
-          )
-        )
-
-      updatedRecord = { ...existingRecord, unreadCount: calculatedCount, updatedAt: now }
-    } else {
-      // Create new record
-      const [newRecord] = await dbOrTx
-        .insert(schema.UserInboxUnreadCount)
-        .values({
-          organizationId: this.organizationId,
-          inboxId: inboxId,
-          userId,
-          unreadCount: calculatedCount,
-          lastUpdatedAt: new Date(),
-        })
-        .returning()
-
-      updatedRecord = newRecord
-    }
-
-    // Update Redis Cache (Set with an expiration?)
-    // await redis.set(redisKey, calculatedCount, 'EX', 3600); // Cache for 1 hour
-
-    return updatedRecord
+    return result[0]?.count ?? 0
   }
 
   /**
@@ -175,11 +71,13 @@ export class UnreadService {
 
     if (threadIds.length === 0) return
 
-    // Fetch threads with inboxIds
+    // Fetch threads with the fields count deltas need (inbox, status, assignee)
     const threads = await db
       .select({
         id: schema.Thread.id,
         inboxId: schema.Thread.inboxId,
+        status: schema.Thread.status,
+        assigneeId: schema.Thread.assigneeId,
       })
       .from(schema.Thread)
       .where(
@@ -190,6 +88,22 @@ export class UnreadService {
       )
 
     if (threads.length === 0) return
+
+    // Previous read state per thread — the upsert below can't reveal whether
+    // it actually flipped anything, and deltas must only move on real flips.
+    const previousReadRows = await db
+      .select({
+        threadId: schema.ThreadReadStatus.threadId,
+        isRead: schema.ThreadReadStatus.isRead,
+      })
+      .from(schema.ThreadReadStatus)
+      .where(
+        and(
+          inArray(schema.ThreadReadStatus.threadId, threadIds),
+          eq(schema.ThreadReadStatus.userId, targetUserId)
+        )
+      )
+    const previousReadMap = new Map(previousReadRows.map((r) => [r.threadId, r.isRead]))
 
     // Get latest message IDs only when marking as read
     const threadMessageMap = new Map<string, string | null>()
@@ -211,7 +125,6 @@ export class UnreadService {
       }
     }
 
-    const affectedInboxIds = [...new Set(threads.map((t) => t.inboxId).filter(Boolean))] as string[]
     const now = new Date()
 
     await db.transaction(async (tx) => {
@@ -240,14 +153,29 @@ export class UnreadService {
             })
         })
       )
-
-      // Update counts for all affected inboxes
-      await Promise.all(
-        affectedInboxIds.map((inboxId) =>
-          this.updateUserInboxUnreadCount(inboxId, targetUserId, tx)
-        )
-      )
     })
+
+    // Counter deltas (post-commit): ±1 per thread that actually flipped, only
+    // while the thread is OPEN (counts include only OPEN threads). Marking an
+    // unrowed thread unread is a no-op — no row already means unread.
+    const countDeltas: Array<{ userId: string; deltas: Record<string, number> }> = []
+    for (const thread of threads) {
+      const wasRead = previousReadMap.get(thread.id) ?? false
+      const flipped = isRead ? !wasRead : wasRead
+      if (!flipped || thread.status !== 'OPEN') continue
+      const delta = isRead ? -1 : 1
+      const deltas: Record<string, number> = {}
+      if (thread.inboxId) deltas[`si:${thread.inboxId}`] = delta
+      if (thread.assigneeId === targetUserId) deltas.inbox = delta
+      if (Object.keys(deltas).length > 0) countDeltas.push({ userId: targetUserId, deltas })
+    }
+    if (countDeltas.length > 0) {
+      // Lazy import — mail-counts statically imports this service.
+      const { applyMailCountDeltas } = await import('./mail-counts')
+      await applyMailCountDeltas(this.organizationId, countDeltas, {
+        fastReconcileUserId: targetUserId,
+      })
+    }
 
     logger.info(
       `Set ${threads.length} thread(s) to ${isRead ? 'read' : 'unread'} for user ${targetUserId}`
@@ -270,219 +198,6 @@ export class UnreadService {
         )
       )
     )
-  }
-
-  /**
-   * Fetches unread counts for all inboxes AND personal sections for a user.
-   * Enhanced to include inbox and assigned counts.
-   */
-  async getUnreadCountsForUser(userId?: string): Promise<UserUnreadCounts> {
-    // TODO: Implement Redis caching check here
-    // const cachedCounts = await redis.get(...) pattern matching? MGET?
-    // if (cachedCounts) return cachedCounts;
-    if (!userId) userId = this.userId
-
-    logger.debug(`Fetching enhanced unread counts from DB for user ${userId}`)
-
-    // Get existing shared inbox counts
-    const countsFromDb = await db
-      .select({
-        inboxId: schema.UserInboxUnreadCount.inboxId,
-        unreadCount: schema.UserInboxUnreadCount.unreadCount,
-      })
-      .from(schema.UserInboxUnreadCount)
-      .where(
-        and(
-          eq(schema.UserInboxUnreadCount.userId, userId),
-          eq(schema.UserInboxUnreadCount.organizationId, this.organizationId)
-        )
-      )
-
-    // Get personal counts in parallel
-    const [personalInboxCount, assignedCount] = await Promise.all([
-      // Count all unread threads in personal inbox context
-      (async () => {
-        // Count threads without read status
-        const threadsWithoutStatus = await db
-          .select({ threadId: schema.Thread.id })
-          .from(schema.Thread)
-          .leftJoin(
-            schema.ThreadReadStatus,
-            and(
-              eq(schema.ThreadReadStatus.threadId, schema.Thread.id),
-              eq(schema.ThreadReadStatus.userId, userId)
-            )
-          )
-          .where(
-            and(
-              eq(schema.Thread.organizationId, this.organizationId),
-              eq(schema.ThreadReadStatus.userId, null)
-            )
-          )
-
-        // Count threads with explicit unread status
-        const threadsWithUnreadStatus = await db
-          .select({ threadId: schema.Thread.id })
-          .from(schema.Thread)
-          .innerJoin(
-            schema.ThreadReadStatus,
-            eq(schema.ThreadReadStatus.threadId, schema.Thread.id)
-          )
-          .where(
-            and(
-              eq(schema.Thread.organizationId, this.organizationId),
-              eq(schema.ThreadReadStatus.userId, userId),
-              eq(schema.ThreadReadStatus.isRead, false)
-            )
-          )
-
-        return threadsWithoutStatus.length + threadsWithUnreadStatus.length
-      })(),
-
-      // Count unread threads assigned to user
-      (async () => {
-        // Count assigned threads without read status
-        const assignedWithoutStatus = await db
-          .select({ threadId: schema.Thread.id })
-          .from(schema.Thread)
-          .leftJoin(
-            schema.ThreadReadStatus,
-            and(
-              eq(schema.ThreadReadStatus.threadId, schema.Thread.id),
-              eq(schema.ThreadReadStatus.userId, userId)
-            )
-          )
-          .where(
-            and(
-              eq(schema.Thread.organizationId, this.organizationId),
-              eq(schema.Thread.assigneeId, userId),
-              eq(schema.ThreadReadStatus.userId, null)
-            )
-          )
-
-        // Count assigned threads with explicit unread status
-        const assignedWithUnreadStatus = await db
-          .select({ threadId: schema.Thread.id })
-          .from(schema.Thread)
-          .innerJoin(
-            schema.ThreadReadStatus,
-            eq(schema.ThreadReadStatus.threadId, schema.Thread.id)
-          )
-          .where(
-            and(
-              eq(schema.Thread.organizationId, this.organizationId),
-              eq(schema.Thread.assigneeId, userId),
-              eq(schema.ThreadReadStatus.userId, userId),
-              eq(schema.ThreadReadStatus.isRead, false)
-            )
-          )
-
-        return assignedWithoutStatus.length + assignedWithUnreadStatus.length
-      })(),
-    ])
-
-    // Build the enhanced counts map
-    const countsMap: UserUnreadCounts = {}
-
-    // Add shared inbox counts (existing logic)
-    for (const item of countsFromDb) {
-      countsMap[item.inboxId] = item.unreadCount
-    }
-
-    // Add personal counts with special keys
-    countsMap.inbox = personalInboxCount
-    countsMap.assigned = assignedCount
-    // Note: drafts and sent intentionally omitted - no unread concept
-
-    logger.debug(`Enhanced unread counts for user ${userId}:`, {
-      sharedInboxes: countsFromDb.length,
-      personalInbox: personalInboxCount,
-      assigned: assignedCount,
-      finalCountsMap: countsMap,
-    })
-
-    return countsMap
-  }
-
-  // --- Helper potentially needed when new messages arrive ---
-  /**
-   * When a new message arrives, potentially mark the thread as unread
-   * for users who had previously read it before this message.
-   */
-  async handleNewMessage(threadId: string, newMessageDate: Date): Promise<void> {
-    // Get thread with direct inboxId
-    const [thread] = await db
-      .select({ inboxId: schema.Thread.inboxId })
-      .from(schema.Thread)
-      .where(
-        and(eq(schema.Thread.id, threadId), eq(schema.Thread.organizationId, this.organizationId))
-      )
-      .limit(1)
-
-    if (!thread || !thread.inboxId) return
-
-    const inboxId = thread.inboxId
-
-    // Find users who read this thread *before* the new message
-    const usersToUpdate = await db
-      .select({ userId: schema.ThreadReadStatus.userId })
-      .from(schema.ThreadReadStatus)
-      .where(
-        and(
-          eq(schema.ThreadReadStatus.threadId, threadId),
-          eq(schema.ThreadReadStatus.organizationId, this.organizationId),
-          eq(schema.ThreadReadStatus.isRead, true),
-          lt(schema.ThreadReadStatus.lastReadAt, newMessageDate)
-        )
-      )
-
-    if (usersToUpdate.length > 0) {
-      const userIds = usersToUpdate.map((u) => u.userId)
-      await db.transaction(async (tx) => {
-        // Mark as unread for these users
-        await tx
-          .update(schema.ThreadReadStatus)
-          .set({
-            isRead: false,
-            // Keep lastReadAt, it indicates when they *last* read, even if now unread
-          })
-          .where(
-            and(
-              eq(schema.ThreadReadStatus.threadId, threadId),
-              inArray(schema.ThreadReadStatus.userId, userIds)
-            )
-          )
-
-        // Update aggregate counts for all affected users in this inbox.
-        // Pass `tx` so the inner SELECTs/UPDATEs share this connection instead
-        // of grabbing fresh ones (which deadlocks under bulk fan-out).
-        const updateCountPromises = userIds.map((userId) =>
-          this.updateUserInboxUnreadCount(inboxId, userId, tx)
-        )
-        await Promise.all(updateCountPromises)
-      })
-      logger.info(
-        `Marked thread ${threadId} as unread for ${userIds.length} users due to new message`
-      )
-
-      // Per-user `thread:updated { isUnread: true, userId }` so each affected
-      // user's open tabs flip the unread badge without a refetch.
-      const realtime = getRealtimeService()
-      await Promise.allSettled(
-        userIds.map((userId) =>
-          publishThreadUpdated(
-            realtime,
-            this.organizationId,
-            {
-              threadId,
-              inboxId,
-              patch: { isUnread: true, userId },
-            },
-            { excludeSocketId: this.socketId }
-          )
-        )
-      )
-    }
   }
 
   // ============================================================================
@@ -551,33 +266,6 @@ export class UnreadService {
   }
 
   /**
-   * Gets all shared inbox counts for the organization.
-   * Returns a map of inboxId -> unread count.
-   */
-  async getSharedInboxCounts(): Promise<Record<string, number>> {
-    // Get counts from pre-calculated table
-    const countsFromDb = await db
-      .select({
-        inboxId: schema.UserInboxUnreadCount.inboxId,
-        unreadCount: schema.UserInboxUnreadCount.unreadCount,
-      })
-      .from(schema.UserInboxUnreadCount)
-      .where(
-        and(
-          eq(schema.UserInboxUnreadCount.userId, this.userId),
-          eq(schema.UserInboxUnreadCount.organizationId, this.organizationId)
-        )
-      )
-
-    const countsMap: Record<string, number> = {}
-    for (const item of countsFromDb) {
-      countsMap[item.inboxId] = item.unreadCount
-    }
-
-    return countsMap
-  }
-
-  /**
    * Gets all accessible mail view IDs for the current user.
    * Reads from UserCacheService (userMailViews) which already combines personal + shared views.
    */
@@ -643,36 +331,5 @@ export class UnreadService {
     }
 
     return countsMap
-  }
-
-  /**
-   * Get all counts needed for the mail sidebar in a single call.
-   * Fetches personal inbox, drafts, shared inboxes, and view counts.
-   */
-  async getFullCounts(): Promise<FullCountsResponse> {
-    // Get accessible view IDs first (needed for view counts)
-    const viewIds = await this.getAccessibleViewIds()
-
-    // Fetch all counts in parallel
-    const [inbox, drafts, sharedInboxes, views] = await Promise.all([
-      this.getPersonalInboxCount(),
-      this.getDraftsCount(),
-      this.getSharedInboxCounts(),
-      this.getViewCounts(viewIds),
-    ])
-
-    logger.debug(`Full counts for user ${this.userId}:`, {
-      inbox,
-      drafts,
-      sharedInboxesCount: Object.keys(sharedInboxes).length,
-      viewsCount: Object.keys(views).length,
-    })
-
-    return {
-      inbox,
-      drafts,
-      sharedInboxes,
-      views,
-    }
   }
 }

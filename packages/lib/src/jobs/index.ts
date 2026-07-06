@@ -141,6 +141,11 @@ export {
   type GettingStartedStats,
   sendGettingStartedEmailsJob,
 } from './maintenance/getting-started-job'
+// Mail counts reconcile (on-demand, jobId-deduped)
+export {
+  type MailCountsReconcileJobData,
+  mailCountsReconcileJob,
+} from './maintenance/mail-counts-reconcile-job'
 export {
   cleanupExpiredMediaAssetsJob,
   getMediaAssetCleanupStats,

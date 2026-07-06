@@ -1,10 +1,13 @@
 // apps/web/src/components/threads/providers/thread-data-provider.tsx
 'use client'
 
+import { rooms } from '@auxx/lib/realtime/client'
 import type React from 'react'
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import { useMailCountsStore } from '~/components/mail/store'
 import { useTaskStore } from '~/components/tasks/stores/task-store'
+import { useUser } from '~/hooks/use-user'
+import { useRealtimeRoom } from '~/realtime/hooks'
 import { api } from '~/trpc/react'
 import { useMessageStore, useParticipantStore, useThreadStore } from '../store'
 import { useBatchDrain } from './use-batch-drain'
@@ -82,9 +85,13 @@ export function ThreadDataProvider({ children }: ThreadDataProviderProps) {
   // Mail counts fetching
   // ============================================================
   const setCounts = useMailCountsStore((s) => s.setCounts)
+  const utils = api.useUtils()
+  const { userId } = useUser()
 
+  // Counts are served from a Redis counter hash (one roundtrip), delta-updated
+  // server-side and pushed via `counts:changed` — the poll is only a backstop.
   const { data: countsData } = api.thread.getCounts.useQuery(undefined, {
-    refetchInterval: 5 * 60 * 1000, // 5 minutes
+    refetchInterval: 15 * 60 * 1000, // 15 minutes (backstop)
     refetchOnWindowFocus: true,
   })
 
@@ -93,6 +100,20 @@ export function ThreadDataProvider({ children }: ThreadDataProviderProps) {
       setCounts(countsData)
     }
   }, [countsData, setCounts])
+
+  // Server pings the user room after counter deltas / reconciles (debounced
+  // server-side per process). The local debounce coalesces multi-process
+  // pings; the refetch itself is a single Redis read, so this stays cheap.
+  const countsInvalidateTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  useRealtimeRoom(userId ? rooms.user(userId) : null, {
+    onEvent: (event) => {
+      if (event !== 'counts:changed' || countsInvalidateTimer.current) return
+      countsInvalidateTimer.current = setTimeout(() => {
+        countsInvalidateTimer.current = null
+        void utils.thread.getCounts.invalidate()
+      }, 1000)
+    },
+  })
 
   return <>{children}</>
 }

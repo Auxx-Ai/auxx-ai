@@ -395,6 +395,16 @@ export interface InboxSyncCompletedEvent {
   }
 }
 
+/**
+ * Sidebar counts changed for a user (published on their `rooms.user` room,
+ * debounced server-side). Refresh signal only — the client refetches
+ * `thread.getCounts`, which is a single Redis roundtrip.
+ */
+export interface CountsChangedEvent {
+  event: 'counts:changed'
+  data: { userId: string }
+}
+
 /** Union of all mail sync events. */
 export type MailSyncEvent =
   | ThreadCreatedEvent
