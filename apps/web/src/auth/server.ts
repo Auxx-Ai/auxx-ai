@@ -37,6 +37,17 @@ import { requestAuditContext } from '~/server/api/audit-context'
 const logger = createScopedLogger('auth')
 const isProduction = configService.get<string>('NODE_ENV') === 'production'
 
+/**
+ * In-process front for the hourly login-throttle gate in `customSession`.
+ * That callback runs on every getSession, and the Redis `SET NX` it guards
+ * with used to fire on 100% of authenticated calls to claim a signal that is
+ * meaningful at most once/hour/user. Once a window is claimed (by any
+ * instance), remember its expiry locally and skip the Redis round-trip;
+ * Redis NX stays the authoritative cross-instance gate on local miss.
+ */
+const loginThrottleLocal = new Map<string, number>()
+const LOGIN_THROTTLE_WINDOW_SECONDS = 3600
+
 // async function sendViaOpenPhone(to: string, text: string) {
 //   const res = await fetch('https://api.openphone.com/v1/messages', {
 //     method: 'POST',
@@ -644,11 +655,27 @@ export const auth = betterAuth({
       // once/hour per user. Gate on a dedicated Redis NX key, NOT a cached/cookie
       // lastLoginAt: the fire-and-forget write below doesn't refresh those, so gating on
       // them re-fires every request (the audit-row spam we saw). `getRedisClient(false)`
-      // returns undefined on outage → we skip the side effect rather than block session
-      // hydration or spam audits.
-      const redis = await getRedisClient(false)
-      const isFirstLoginThisHour =
-        (await redis?.set(`auth:login-throttle:${extendedUser.id}`, '1', 'NX', 'EX', 3600)) === 'OK'
+      // returns undefined on outage → we skip the side effect (without claiming the
+      // local window, so the next call retries) rather than block session hydration.
+      let isFirstLoginThisHour = false
+      const localWindowExpiry = loginThrottleLocal.get(extendedUser.id)
+      if (!localWindowExpiry || localWindowExpiry <= Date.now()) {
+        const redis = await getRedisClient(false)
+        if (redis) {
+          isFirstLoginThisHour =
+            (await redis.set(
+              `auth:login-throttle:${extendedUser.id}`,
+              '1',
+              'NX',
+              'EX',
+              LOGIN_THROTTLE_WINDOW_SECONDS
+            )) === 'OK'
+          // Claimed (by us or another instance) — skip the Redis round-trip for the
+          // rest of the hour. Bound the map instead of tracking per-entry eviction.
+          if (loginThrottleLocal.size >= 10_000) loginThrottleLocal.clear()
+          loginThrottleLocal.set(extendedUser.id, Date.now() + LOGIN_THROTTLE_WINDOW_SECONDS * 1000)
+        }
+      }
 
       if (isFirstLoginThisHour) {
         const { eq } = await import('drizzle-orm')

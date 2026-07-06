@@ -2,10 +2,9 @@
 
 import { isTrustedHostname, WEBAPP_URL } from '@auxx/config/server'
 import { issueLoginToken } from '@auxx/credentials/login-token'
-import { headers } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { Suspense } from 'react' // Import Suspense
-import { auth } from '~/auth/server'
+import { getSession } from '~/auth/session'
 import { getTrustedAppOrigin } from '~/auth/trusted-apps'
 import { Logo } from '~/components/global/login/logo'
 import LoginForm from '../_components/login-form'
@@ -71,7 +70,7 @@ async function LoginPageContent({ searchParams }: LoginContentProps) {
 async function Login({ searchParams }: LoginPageProps) {
   const q = await searchParams
   const redirectTarget = resolveRedirectTarget(q?.callbackUrl)
-  const session = await auth.api.getSession({ headers: await headers() })
+  const session = await getSession()
 
   if (session?.user) {
     // Cross-app flow: user is already logged in, issue token and redirect to satellite

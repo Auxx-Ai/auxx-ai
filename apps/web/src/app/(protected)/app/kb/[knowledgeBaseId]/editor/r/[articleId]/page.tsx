@@ -8,9 +8,8 @@
 
 import { ArticlePlacement, database } from '@auxx/database'
 import { eq } from 'drizzle-orm'
-import { headers } from 'next/headers'
 import { notFound, redirect } from 'next/navigation'
-import { auth } from '~/auth/server'
+import { getSession } from '~/auth/session'
 
 interface PageProps {
   params: Promise<{ knowledgeBaseId: string; articleId: string }>
@@ -19,7 +18,7 @@ interface PageProps {
 export default async function ArticleIdRedirectPage({ params }: PageProps) {
   const { knowledgeBaseId, articleId } = await params
 
-  const session = await auth.api.getSession({ headers: await headers() })
+  const session = await getSession()
   if (!session?.user) {
     redirect(`/login?callbackUrl=/app/kb/${knowledgeBaseId}/editor/r/${articleId}`)
   }

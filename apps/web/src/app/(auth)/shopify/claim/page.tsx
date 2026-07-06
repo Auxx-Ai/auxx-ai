@@ -5,9 +5,9 @@ import { getOrgCache, getUserCache } from '@auxx/lib/cache'
 import { createScopedLogger } from '@auxx/logger'
 import { getRedisClient } from '@auxx/redis'
 import { and, eq } from 'drizzle-orm'
-import { cookies, headers } from 'next/headers'
+import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
-import { auth } from '~/auth/server'
+import { getSession } from '~/auth/session'
 import { setUserDefaultOrganization } from '~/server/auth/set-default-organization'
 import { confirmAndSyncShopifySubscription } from '~/server/billing/confirm-shopify-subscription'
 import { ClaimExpired } from './_components/claim-expired'
@@ -38,7 +38,7 @@ export default async function ShopifyClaimPage({ searchParams }: PageProps) {
   // Resolve claimToken before the session check so we can carry it through the
   // login round-trip — cross-device / cross-domain signup loses both the cookie
   // and the original URL, so the callback must reconstruct the ?token= param.
-  const session = await auth.api.getSession({ headers: await headers() })
+  const session = await getSession()
   if (!session?.user) {
     const callback = claimToken
       ? `/shopify/claim?token=${encodeURIComponent(claimToken)}`

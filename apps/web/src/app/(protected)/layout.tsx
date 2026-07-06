@@ -1,11 +1,11 @@
 // apps/web/src/app/(protected)/layout.tsx
 
 import { DehydrationService } from '@auxx/lib/dehydration'
-import { cookies, headers } from 'next/headers'
+import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
 import Script from 'next/script'
 import type { ReactNode } from 'react'
-import { auth } from '~/auth/server'
+import { getSession } from '~/auth/session'
 import { DehydratedStateProvider } from '~/providers/dehydrated-state-provider'
 import { FeatureFlagProvider, OrganizationIdProvider } from '~/providers/feature-flag-provider'
 import { PostHogProvider } from '~/providers/posthog-provider'
@@ -19,7 +19,7 @@ interface ProtectedLayoutProps {
  * Handles auth, dehydration, and provides context to all child route groups.
  */
 export default async function ProtectedLayout({ children }: ProtectedLayoutProps) {
-  const session = await auth.api.getSession({ headers: await headers() })
+  const session = await getSession()
 
   // Require authentication — preserve deep link through login flow
   if (!session?.user) {

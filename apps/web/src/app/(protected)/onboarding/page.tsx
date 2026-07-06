@@ -2,9 +2,9 @@
 
 import { database, schema } from '@auxx/database'
 import { eq } from 'drizzle-orm'
-import { cookies, headers } from 'next/headers'
+import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
-import { auth } from '~/auth/server'
+import { getSession } from '~/auth/session'
 
 /**
  * Onboarding entry point that determines where to redirect the user based on:
@@ -13,7 +13,7 @@ import { auth } from '~/auth/server'
  * - Whether the organization has a handle set
  */
 export default async function OnboardingPage() {
-  const session = await auth.api.getSession({ headers: await headers() })
+  const session = await getSession()
 
   if (!session) {
     redirect('/login')

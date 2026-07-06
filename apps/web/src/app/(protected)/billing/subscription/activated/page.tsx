@@ -3,9 +3,8 @@
 import { database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { and, eq } from 'drizzle-orm'
-import { headers } from 'next/headers'
 import { redirect } from 'next/navigation'
-import { auth } from '~/auth/server'
+import { getSession } from '~/auth/session'
 import { confirmAndSyncShopifySubscription } from '~/server/billing/confirm-shopify-subscription'
 
 const logger = createScopedLogger('shopify-billing-activated')
@@ -73,7 +72,7 @@ async function resolveOrgForLanding(opts: {
   }
 
   // Fallback to the session's default org (embedded / missing-shop case).
-  const session = await auth.api.getSession({ headers: await headers() })
+  const session = await getSession()
   const orgId =
     opts.org ??
     (session?.user as { defaultOrganizationId?: string | null } | undefined)?.defaultOrganizationId

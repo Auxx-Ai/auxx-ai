@@ -5,6 +5,7 @@ import { database, schema } from '@auxx/database'
 import { eq } from 'drizzle-orm'
 import type { Context, Next } from 'hono'
 import { errorResponse } from '../lib/response'
+import { getCachedUserRow } from '../lib/user-cache'
 import type { AppContext } from '../types/context'
 
 /**
@@ -36,14 +37,10 @@ export async function developerKeyAuth(c: Context<AppContext>, next: Next, token
   }
 
   // ApiKey.userId is a real User.id. Membership of the target app's developer
-  // account is checked per-app by verifyAppAccess, not here.
-  const users = await database
-    .select()
-    .from(schema.User)
-    .where(eq(schema.User.id, apiKey.userId))
-    .limit(1)
-
-  const user = users[0]
+  // account is checked per-app by verifyAppAccess, not here. The ApiKey lookup
+  // above stays uncached so key revocation applies immediately; the User row
+  // is served from the shared 5-minute cache.
+  const user = await getCachedUserRow(apiKey.userId)
 
   if (!user) {
     return c.json(errorResponse('UNAUTHORIZED', 'User not found'), 401)

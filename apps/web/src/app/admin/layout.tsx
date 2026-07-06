@@ -3,9 +3,8 @@
 import { DehydrationService } from '@auxx/lib/dehydration'
 import { SidebarInset, SidebarProvider } from '@auxx/ui/components/sidebar'
 import type { Metadata } from 'next'
-import { headers } from 'next/headers'
 import { redirect } from 'next/navigation'
-import { auth } from '~/auth/server'
+import { getSession } from '~/auth/session'
 import { DehydratedStateProvider } from '~/providers/dehydrated-state-provider'
 import { FeatureFlagProvider, OrganizationIdProvider } from '~/providers/feature-flag-provider'
 import { AdminAppSidebar } from './_components/app-sidebar'
@@ -20,7 +19,7 @@ export const metadata: Metadata = {
  * Admin layout - only accessible to super admins
  */
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
-  const session = await auth.api.getSession({ headers: await headers() }) // Use cached auth
+  const session = await getSession()
 
   // Verify user is authenticated
   if (!session?.user) {

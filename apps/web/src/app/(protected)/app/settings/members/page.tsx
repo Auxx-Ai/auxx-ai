@@ -6,10 +6,9 @@ import { FeaturePermissionService } from '@auxx/lib/permissions'
 import { FeatureKey } from '@auxx/lib/types'
 import { Button } from '@auxx/ui/components/button'
 import { Plus, RefreshCw } from 'lucide-react'
-import { headers } from 'next/headers'
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
-import { auth } from '~/auth/server'
+import { getSession } from '~/auth/session'
 import { UpgradeBanner } from '~/components/banner/upgrade-banner'
 import SettingsPage from '~/components/global/settings-page'
 import { Tooltip } from '~/components/global/tooltip'
@@ -20,7 +19,7 @@ import { MemberList } from './_components/member-list'
 type Props = {}
 
 export default async function MembersPage({}: Props) {
-  const session = await auth.api.getSession({ headers: await headers() })
+  const session = await getSession()
   const defaultOrganizationId = session?.user?.defaultOrganizationId
 
   // Get data using new tRPC procedures
