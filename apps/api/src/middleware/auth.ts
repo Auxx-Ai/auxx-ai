@@ -1,10 +1,9 @@
 // apps/api/src/middleware/auth.ts
 
-import { database, schema } from '@auxx/database'
-import { eq } from 'drizzle-orm'
 import { createMiddleware } from 'hono/factory'
 import { extractBearerToken, validateBetterAuthToken } from '../lib/jwt-validator'
 import { errorResponse } from '../lib/response'
+import { getCachedUserRow } from '../lib/user-cache'
 import type { AppContext } from '../types/context'
 import { developerKeyAuth } from './developer-key-auth'
 import { internalAuthMiddleware } from './internal-auth'
@@ -56,10 +55,8 @@ export const authMiddleware = createMiddleware<AppContext>(async (c, next) => {
 
   const { userId, scopes } = validation.data
 
-  // Load user from database
-  const users = await database.select().from(schema.User).where(eq(schema.User.id, userId)).limit(1)
-
-  const user = users[0]
+  // Load user (5-minute in-memory cache — same staleness window as the token cache)
+  const user = await getCachedUserRow(userId)
 
   if (!user) {
     return c.json(errorResponse('UNAUTHORIZED', 'User not found'), 401)

@@ -17,11 +17,11 @@ import { initTRPC, type TRPC_ERROR_CODE_KEY, TRPCError } from '@trpc/server'
 import superjson from 'superjson'
 import { ZodError } from 'zod'
 
-import { auth } from '~/auth/server'
+import { getSession } from '~/auth/session'
 import { ensureWebAppInitialized } from '~/server/bootstrap'
 
 type CreateContextOptions = {
-  session: Awaited<ReturnType<typeof auth>> | null
+  session: Awaited<ReturnType<typeof getSession>> | null
   // Add other potential context properties like headers if needed
   headers: Headers
 }
@@ -48,7 +48,10 @@ const createInnerTRPCContext = (opts: CreateContextOptions) => {
  */
 export const createTRPCContext = async (opts: { headers: Headers }) => {
   await ensureWebAppInitialized() // defensive fallback
-  const session = await auth.api.getSession({ headers: opts.headers })
+  // Request-memoized: shares the session lookup with layouts/pages in the same
+  // RSC render instead of re-running it. Reads the request's own headers, which
+  // carry the same cookies as opts.headers in both the fetch adapter and RSC.
+  const session = await getSession()
 
   return createInnerTRPCContext({ session, ...opts, headers: opts.headers })
 }
@@ -310,18 +313,15 @@ export const protectedProcedure = t.procedure
       },
     })
   })
-/*create a new admin route */
-
-export const adminProcedure = t.procedure.use(timingMiddleware).use(async ({ ctx, next }) => {
-  if (!ctx.session || !ctx.session.user) {
-    throw new TRPCError({ code: 'UNAUTHORIZED' })
-  }
-  const organizationId = ctx.session.user.defaultOrganizationId
-  const userId = ctx.session.user.id
-  if (!organizationId || !userId) {
-    throw new TRPCError({ code: 'UNAUTHORIZED', message: 'User not found' })
-  }
-  const allowed = await isAdminOrOwner(organizationId, userId)
+/**
+ * Admin (or owner) procedure
+ *
+ * Builds on `protectedProcedure` so admin routes share the same error-mapping
+ * and mutation rate-limit middleware, then verifies the member's role via the
+ * cached memberRoleMap (no extra DB query).
+ */
+export const adminProcedure = protectedProcedure.use(async ({ ctx, next }) => {
+  const allowed = await isAdminOrOwner(ctx.session.organizationId, ctx.session.userId)
   if (!allowed) {
     throw new TRPCError({
       code: 'FORBIDDEN',
@@ -329,17 +329,7 @@ export const adminProcedure = t.procedure.use(timingMiddleware).use(async ({ ctx
     })
   }
 
-  return next({
-    ctx: {
-      // infers the `session` as non-nullable
-      session: {
-        ...ctx.session,
-        user: ctx.session.user,
-        organizationId: ctx.session.user.defaultOrganizationId!,
-        userId: ctx.session.user.id,
-      },
-    },
-  })
+  return next()
 })
 
 /**

@@ -1,14 +1,12 @@
-import { headers } from 'next/headers'
 import { redirect } from 'next/navigation'
-import { auth } from '~/auth/server'
+import { getSession } from '~/auth/session'
 import SettingsPage from '~/components/global/settings-page'
 import InviteForm from '../_components/invite-form'
 
 type Props = {}
 
 async function InvitePage({}: Props) {
-  // const session = await auth()
-  const session = await auth.api.getSession({ headers: await headers() })
+  const session = await getSession()
 
   if (!session) {
     redirect('/login')
