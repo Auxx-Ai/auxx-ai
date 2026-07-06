@@ -10,6 +10,7 @@ import { useMemo } from 'react'
 import { Tooltip } from '~/components/global/tooltip'
 import { AiModelPicker } from '~/components/pickers/ai-model-picker'
 import ModelIcon from '~/components/workflow/ui/model-parameter/model-icon'
+import { ORG_STATIC_STALE_TIME } from '~/trpc/query-client'
 import { api } from '~/trpc/react'
 import { useAgentMutations } from '../../hooks/use-agent-mutations'
 import type { AgentDetail } from '../../store/agent-store'
@@ -33,7 +34,7 @@ export function AgentModelBadge({ agent }: AgentModelBadgeProps) {
   // fetched once a model is actually pinned.
   const { data, isLoading } = api.aiIntegration.getUnifiedModelData.useQuery(
     { includeDefaults: true, modelTypes: [ModelType.LLM], includeUnconfigured: false },
-    { staleTime: 5 * 60 * 1000, enabled: !!modelId }
+    { staleTime: ORG_STATIC_STALE_TIME, enabled: !!modelId }
   )
 
   const pinned = useMemo(() => {

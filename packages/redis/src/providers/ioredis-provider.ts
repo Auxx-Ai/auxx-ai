@@ -172,6 +172,8 @@ export function createIORedisClient(provider: 'aws' | 'hosted', onDead?: () => v
     // Additional operations for compatibility
     keys: async (pattern: string) => await client.keys(pattern),
     rpop: async (key: string) => await client.rpop(key),
+    lpop: async (key: string, count?: number) =>
+      count === undefined ? await client.lpop(key) : await client.lpop(key, count),
     lpush: async (key: string, ...values: string[]) => await client.lpush(key, ...values),
     rpush: async (key: string, ...values: string[]) => await client.rpush(key, ...values),
     llen: async (key: string) => await client.llen(key),

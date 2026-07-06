@@ -23,8 +23,12 @@ export interface DisplayFieldDep {
 /** Map: sourceEntityType → deps[] */
 type DisplayFieldDepsMap = Map<string, DisplayFieldDep[]>
 
-/** Lazy-built cache per organizationId */
-const depsCache = new Map<string, DisplayFieldDepsMap>()
+/**
+ * Memoized per cached-resources array identity: the `resources` org-cache key is
+ * invalidated on `custom-field.*` / `entity-def.*` events, so a new array from
+ * `getCachedResources` is exactly the signal that the dep map may have changed.
+ */
+const depsByResources = new WeakMap<readonly Resource[], DisplayFieldDepsMap>()
 
 /**
  * Build or retrieve the reverse dependency map for an organization.
@@ -38,27 +42,22 @@ export async function getDisplayFieldDeps(
   organizationId: string,
   sourceEntityType: string
 ): Promise<DisplayFieldDep[]> {
-  let map = depsCache.get(organizationId)
+  const resources = await getCachedResources(organizationId)
+  let map = depsByResources.get(resources)
   if (!map) {
-    map = await buildDepsMap(organizationId)
-    depsCache.set(organizationId, map)
+    map = buildDepsMap(resources)
+    depsByResources.set(resources, map)
   }
   return map.get(sourceEntityType) ?? []
 }
 
-/** Invalidate the cached deps map for an organization (call when entity definitions change). */
-export function invalidateDisplayFieldDeps(organizationId: string): void {
-  depsCache.delete(organizationId)
-}
-
 /**
- * Build the reverse dependency map from all resources in the org cache.
+ * Build the reverse dependency map from the org's cached resources.
  *
  * Iterates all resources, checks if primaryDisplayField or secondaryDisplayField
  * is a RELATIONSHIP type, and if so resolves the target entity type.
  */
-async function buildDepsMap(organizationId: string): Promise<DisplayFieldDepsMap> {
-  const resources = await getCachedResources(organizationId)
+function buildDepsMap(resources: readonly Resource[]): DisplayFieldDepsMap {
   const map: DisplayFieldDepsMap = new Map()
 
   for (const resource of resources) {

@@ -19,6 +19,7 @@ import type React from 'react'
 import { useState } from 'react'
 import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
 import { AiModelPicker, type ModelPickerItem } from '~/components/pickers/ai-model-picker'
+import { ORG_STATIC_STALE_TIME } from '~/trpc/query-client'
 import { api } from '~/trpc/react'
 
 /**
@@ -86,7 +87,7 @@ export function SystemModelSettingsDialog({
   // Single query for all unified model data - shared across all pickers
   const { data: unifiedModelData } = api.aiIntegration.getUnifiedModelData.useQuery(
     { includeDefaults: true, includeUnconfigured: false },
-    { enabled: open, staleTime: 5 * 60 * 1000 }
+    { enabled: open, staleTime: ORG_STATIC_STALE_TIME }
   )
 
   // Fetch current defaults

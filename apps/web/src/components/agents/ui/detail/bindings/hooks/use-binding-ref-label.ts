@@ -11,6 +11,7 @@ import {
 } from '@auxx/types/field'
 import { useCallback, useMemo } from 'react'
 import { useResourceStore } from '~/components/resources'
+import { ORG_STATIC_STALE_TIME } from '~/trpc/query-client'
 import { api } from '~/trpc/react'
 
 /** Capitalize an entity-type slug for display ("participant" → "Participant"). */
@@ -20,7 +21,7 @@ function capitalize(slug: string): string {
 
 /** Map installationId → app slug from the cached installed-apps query. */
 function useAppSlugMap(): Map<string, string> {
-  const installed = api.apps.listInstalled.useQuery({})
+  const installed = api.apps.listInstalled.useQuery({}, { staleTime: ORG_STATIC_STALE_TIME })
   return useMemo(() => {
     const map = new Map<string, string>()
     for (const i of installed.data?.installations ?? []) {

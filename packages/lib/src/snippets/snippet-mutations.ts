@@ -112,7 +112,7 @@ export async function updateSnippet(
           { db, organizationId },
           toRecordId(BuiltInEntityType.snippet, snippetId)
         )
-        canEdit = await resolveCanEdit(db, userId, existing.createdById, shares)
+        canEdit = await resolveCanEdit(organizationId, userId, existing.createdById, shares)
       }
 
       if (!canEdit) {

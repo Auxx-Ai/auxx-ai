@@ -165,7 +165,7 @@ export async function getSnippetWithAccess(
         toRecordId(BuiltInEntityType.snippet, snippetId)
       )
 
-      const canEdit = await resolveCanEdit(db, userId, snippet.createdById, shares)
+      const canEdit = await resolveCanEdit(organizationId, userId, snippet.createdById, shares)
 
       return { snippet: { ...snippet, shares }, canEdit }
     },

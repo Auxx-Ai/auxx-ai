@@ -13,6 +13,7 @@ import { ProviderRow } from '~/components/ai/ui/provider-row'
 import { EmptyState } from '~/components/global/empty-state'
 import SettingsPage from '~/components/global/settings-page'
 import { useUser } from '~/hooks/use-user'
+import { ORG_STATIC_STALE_TIME } from '~/trpc/query-client'
 import { api, type RouterOutputs } from '~/trpc/react'
 import { AiUsageDialog } from './ai-usage-dialog'
 import { BadgeAiQuota } from './badge-ai-quota'
@@ -46,7 +47,7 @@ export function AiModelsList({ initialUnifiedData }: AiModelsListProps) {
   // Use new unified model data API
   const { data, isLoading } = api.aiIntegration.getUnifiedModelData.useQuery(
     { includeDefaults: true },
-    { initialData: initialUnifiedData }
+    { initialData: initialUnifiedData, staleTime: ORG_STATIC_STALE_TIME }
   )
   const providersData = data?.providers || []
 

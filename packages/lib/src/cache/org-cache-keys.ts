@@ -488,6 +488,7 @@ export interface OrgCacheDataMap {
   resources: Resource[]
   customFields: Record<string, CustomFieldEntity[]> // entityDefId → fields
   groups: CachedGroup[] // all entity_group instances
+  groupMembers: Record<string, string[]> // userId → groupInstanceIds (memberType='user' edges only)
   agents: CachedAgent[] // all Agent rows (active + archived); consumers filter archivedAt
   inboxes: Inbox[]
   channels: CachedChannel[]
@@ -509,10 +510,18 @@ export type OrgCacheKeyName = keyof OrgCacheDataMap
 const ONE_DAY = 60 * 60 * 24
 const THIRTY_DAYS = ONE_DAY * 30
 
-/** Key configuration: prefix for Redis keys, TTL, and local-only flag */
+/**
+ * Key configuration: prefix for Redis keys, TTL, and local-only flag.
+ *
+ * `localTtlMs` overrides the in-process LocalCache window (default 100 ms) for
+ * rarely-mutated keys read on every event dispatch. Trade-off: there is no
+ * cache pub/sub, so PEER processes only notice an invalidation once their local
+ * entry expires — cross-process staleness after an admin change equals this
+ * value. Keep it small for keys whose consumers have side effects.
+ */
 export const ORG_CACHE_KEY_CONFIG: Record<
   OrgCacheKeyName,
-  { prefix: string; ttlSeconds: number; localOnly?: boolean }
+  { prefix: string; ttlSeconds: number; localOnly?: boolean; localTtlMs?: number }
 > = {
   // Near-immutable (30-day TTL, invalidated only on create/delete)
   entityDefs: { prefix: 'org:entity-defs', ttlSeconds: THIRTY_DAYS },
@@ -531,7 +540,9 @@ export const ORG_CACHE_KEY_CONFIG: Record<
   resources: { prefix: 'org:resources', ttlSeconds: ONE_DAY },
   customFields: { prefix: 'org:custom-fields', ttlSeconds: ONE_DAY },
   groups: { prefix: 'org:groups', ttlSeconds: ONE_DAY },
-  agents: { prefix: 'org:agents', ttlSeconds: ONE_DAY },
+  groupMembers: { prefix: 'org:group-members', ttlSeconds: ONE_DAY },
+  // Read per CRUD event by agent-trigger dispatch — same rationale as workflowApps.
+  agents: { prefix: 'org:agents', ttlSeconds: ONE_DAY, localTtlMs: 5_000 },
   inboxes: { prefix: 'org:inboxes', ttlSeconds: ONE_DAY },
   channels: { prefix: 'org:channels', ttlSeconds: ONE_DAY },
   overages: { prefix: 'org:overages', ttlSeconds: 900 },
@@ -541,8 +552,12 @@ export const ORG_CACHE_KEY_CONFIG: Record<
   // v5: + methods[] (multi-connection-per-app). See plans/connections/multi-connection-per-app.md.
   installedApps: { prefix: 'org:installed-apps:v5', ttlSeconds: 900 },
   mcpServers: { prefix: 'org:mcpServers', ttlSeconds: ONE_DAY },
-  workflowApps: { prefix: 'org:workflow-apps', ttlSeconds: ONE_DAY },
-  recordRules: { prefix: 'org:record-rules', ttlSeconds: ONE_DAY },
+  // Read per CRUD event by trigger dispatch; changes only on admin edits →
+  // 5 s local window (dispatch enqueues jobs, so peer staleness is benign).
+  workflowApps: { prefix: 'org:workflow-apps', ttlSeconds: ONE_DAY, localTtlMs: 5_000 },
+  // Read per interactive field write. Rules have side effects, so the peer
+  // staleness window stays tight (1 s ≈ 10× fewer steady-state hash GETs).
+  recordRules: { prefix: 'org:record-rules', ttlSeconds: ONE_DAY, localTtlMs: 1_000 },
 
   // AI provider data (15-min TTL)
   aiProviderConfigs: { prefix: 'org:ai-provider-configs', ttlSeconds: 900 },

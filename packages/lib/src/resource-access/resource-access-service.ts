@@ -1,10 +1,11 @@
 // packages/lib/src/resource-access/resource-access-service.ts
 
 import { schema } from '@auxx/database'
-import { MemberType, ResourceGranteeType, ResourcePermission } from '@auxx/database/enums'
+import { ResourceGranteeType, ResourcePermission } from '@auxx/database/enums'
 import type { RecordId } from '@auxx/types/resource'
 import { parseRecordId, toRecordId } from '@auxx/types/resource'
 import { and, desc, eq, inArray, isNull, or } from 'drizzle-orm'
+import { getCachedUserGroupIds } from '../cache'
 import { satisfiesPermission } from './constants'
 import type {
   AccessCheckResult,
@@ -257,14 +258,7 @@ export async function checkAccess(
   }
 
   // 2. Get user's groups (for group-based access)
-  const userGroups = await db.query.EntityGroupMember.findMany({
-    where: and(
-      eq(schema.EntityGroupMember.memberType, MemberType.user),
-      eq(schema.EntityGroupMember.memberRefId, targetUserId)
-    ),
-    columns: { groupInstanceId: true },
-  })
-  const groupIds = userGroups.map((g: { groupInstanceId: string }) => g.groupInstanceId)
+  const groupIds = await getCachedUserGroupIds(organizationId, targetUserId)
 
   // 3. Build grantee conditions
   const granteeConditions = [
@@ -377,14 +371,7 @@ export async function checkTypeAccess(
   }
 
   // Get user's groups
-  const userGroups = await db.query.EntityGroupMember.findMany({
-    where: and(
-      eq(schema.EntityGroupMember.memberType, MemberType.user),
-      eq(schema.EntityGroupMember.memberRefId, targetUserId)
-    ),
-    columns: { groupInstanceId: true },
-  })
-  const groupIds = userGroups.map((g: { groupInstanceId: string }) => g.groupInstanceId)
+  const groupIds = await getCachedUserGroupIds(organizationId, targetUserId)
 
   // Build grantee conditions
   const granteeConditions = [
@@ -536,14 +523,7 @@ export async function getUserAccessibleInstances(
   const { db, organizationId } = ctx
 
   // Get user's groups
-  const userGroups = await db.query.EntityGroupMember.findMany({
-    where: and(
-      eq(schema.EntityGroupMember.memberType, MemberType.user),
-      eq(schema.EntityGroupMember.memberRefId, userId)
-    ),
-    columns: { groupInstanceId: true },
-  })
-  const groupIds = userGroups.map((g: { groupInstanceId: string }) => g.groupInstanceId)
+  const groupIds = await getCachedUserGroupIds(organizationId, userId)
 
   // Build grantee conditions
   const granteeConditions = [

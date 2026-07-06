@@ -2,6 +2,15 @@ import { defaultShouldDehydrateQuery, MutationCache, QueryClient } from '@tansta
 import posthog from 'posthog-js'
 import SuperJSON from 'superjson'
 
+/**
+ * staleTime for org-static queries (installed apps, AI model catalog, …) that
+ * change only through explicit admin mutations, all of which invalidate the
+ * query locally. Capped at 5 min: these lists have no realtime invalidation,
+ * so a change made by ANOTHER admin or tab stays invisible for this window —
+ * a non-stale query also skips the window-focus refetch.
+ */
+export const ORG_STATIC_STALE_TIME = 5 * 60 * 1000
+
 export const createQueryClient = () =>
   new QueryClient({
     mutationCache: new MutationCache({

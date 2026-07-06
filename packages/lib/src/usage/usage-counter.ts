@@ -167,7 +167,7 @@ export class UsageCounter {
     }
   }
 
-  /** Fire-and-forget: record usage event to Postgres via BullMQ */
+  /** Fire-and-forget: buffer usage event in Redis for periodic batch insert to Postgres */
   private enqueueRecordEvent(
     params: {
       orgId: string
@@ -189,7 +189,7 @@ export class UsageCounter {
     }
 
     // Lazy import to avoid circular deps
-    import('./enqueue-usage-event').then((mod) => mod.enqueueUsageEvent(data)).catch(() => {}) // Don't fail the action if queue is down
+    import('./enqueue-usage-event').then((mod) => mod.enqueueUsageEvent(data)).catch(() => {}) // Don't fail the action if Redis is down
   }
 
   /**

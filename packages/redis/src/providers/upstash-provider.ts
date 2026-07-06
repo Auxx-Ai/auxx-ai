@@ -150,6 +150,17 @@ export function createUpstashClient(): RedisClient {
       }
     },
 
+    lpop: async (key: string, count?: number) => {
+      try {
+        return count === undefined
+          ? await upstashClient.lpop(key)
+          : await upstashClient.lpop(key, count)
+      } catch (error) {
+        logger.error('Error popping from Upstash list', { key, error: (error as Error).message })
+        throw error
+      }
+    },
+
     lpush: async (key: string, ...values: string[]) => {
       try {
         return await upstashClient.lpush(key, ...values)

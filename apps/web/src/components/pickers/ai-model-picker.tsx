@@ -19,6 +19,7 @@ import { Bot, Check, ChevronsUpDown, Settings } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import type React from 'react'
 import { useMemo, useState } from 'react'
+import { ORG_STATIC_STALE_TIME } from '~/trpc/query-client'
 import { api, type RouterOutputs } from '~/trpc/react'
 
 /** Type for unified model data from the API */
@@ -143,7 +144,7 @@ export function AiModelPicker({
         includeUnconfigured: showUnconfigured,
       },
       {
-        staleTime: 5 * 60 * 1000, // Cache for 5 minutes
+        staleTime: ORG_STATIC_STALE_TIME,
         enabled: !externalData, // Disable query when external data is provided
       }
     )

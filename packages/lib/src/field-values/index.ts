@@ -39,7 +39,6 @@ export {
   cascadeDependentDisplayNames,
   type DisplayFieldDep,
   getDisplayFieldDeps,
-  invalidateDisplayFieldDeps,
 } from './display-field-deps'
 export { DisplayFieldService } from './display-field-service'
 // Display field types and config

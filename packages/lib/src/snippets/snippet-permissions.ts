@@ -1,8 +1,7 @@
 // packages/lib/src/snippets/snippet-permissions.ts
 
-import { type Database, schema } from '@auxx/database'
 import { ResourceGranteeType, ResourcePermission } from '@auxx/database/enums'
-import { and, eq, inArray } from 'drizzle-orm'
+import { getCachedUserGroupIds } from '../cache'
 import type { ResourceAccessInfo } from '../resource-access'
 
 /**
@@ -12,7 +11,7 @@ import type { ResourceAccessInfo } from '../resource-access'
  * EDIT grant → group-membership EDIT grant.
  */
 export async function resolveCanEdit(
-  db: Database,
+  organizationId: string,
   userId: string,
   createdById: string,
   shares: ResourceAccessInfo[]
@@ -34,16 +33,6 @@ export async function resolveCanEdit(
   )
   if (groupShares.length === 0) return false
 
-  const userGroupMembership = await db.query.EntityGroupMember.findFirst({
-    where: and(
-      eq(schema.EntityGroupMember.memberType, 'user'),
-      eq(schema.EntityGroupMember.memberRefId, userId),
-      inArray(
-        schema.EntityGroupMember.groupInstanceId,
-        groupShares.map((s) => s.granteeId)
-      )
-    ),
-  })
-
-  return !!userGroupMembership
+  const userGroupIds = await getCachedUserGroupIds(organizationId, userId)
+  return groupShares.some((s) => userGroupIds.includes(s.granteeId))
 }

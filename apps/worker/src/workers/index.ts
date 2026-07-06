@@ -169,6 +169,23 @@ export async function setupSchedules() {
     }
   )
 
+  // Usage-event flush — every minute. Drains the Redis buffer (usage:events:buffer)
+  // into batched UsageEvent inserts; eventId + ON CONFLICT DO NOTHING makes
+  // replays after a mid-flush failure idempotent.
+  await maintenanceQueue.upsertJobScheduler(
+    'flushUsageEventsJob',
+    { pattern: '* * * * *' },
+    {
+      opts: {
+        attempts: 2,
+        backoff: { type: 'exponential', delay: 15000 },
+        priority: 6,
+        removeOnComplete: { count: 60 },
+        removeOnFail: { count: 100 },
+      },
+    }
+  )
+
   // Task deadline scanner — every minute (catches up automatically on the
   // first tick after a worker outage; idempotent via Task.firedAt).
   await maintenanceQueue.upsertJobScheduler(

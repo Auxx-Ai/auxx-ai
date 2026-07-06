@@ -178,7 +178,7 @@ export class VectorSearchService {
 
     const embeddings = await Promise.all(
       groups.map((g) =>
-        embeddingService.generateSingle(query, {
+        embeddingService.generateSingleCached(query, {
           modelId: g.model,
           dimensions: g.dimension,
         })
