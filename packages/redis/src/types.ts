@@ -65,6 +65,8 @@ export interface RedisClient {
   // Additional operations for polling-based providers
   keys(pattern: string): Promise<string[]>
   rpop(key: string): Promise<string | null>
+  /** Without `count`, pops one element (string|null); with `count`, pops up to that many (string[]|null). */
+  lpop(key: string, count?: number): Promise<string | string[] | null>
   lpush(key: string, ...values: string[]): Promise<number>
   rpush(key: string, ...values: string[]): Promise<number>
   llen(key: string): Promise<number>

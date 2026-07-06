@@ -4,6 +4,7 @@ import { ApprovalStatus, MemberType } from '@auxx/database/enums'
 import type { ApprovalStatus as ApprovalStatusType } from '@auxx/database/types'
 import { createScopedLogger } from '@auxx/logger'
 import { and, count, desc, eq, gt, gte, inArray, lt, lte, or, sql } from 'drizzle-orm'
+import { getCachedUserGroupIds } from '../../cache'
 import { NotificationService } from '../../notifications/notification-service'
 
 const logger = createScopedLogger('approval-query-service')
@@ -17,22 +18,7 @@ export class ApprovalQueryService {
    * Filters out approvals for workflows that are no longer running
    */
   async getPendingApprovalsForUser(userId: string, organizationId: string) {
-    // Get user's groups through EntityGroupMember
-    const userGroupMemberships = await this.db
-      .select({ groupId: schema.EntityGroupMember.groupInstanceId })
-      .from(schema.EntityGroupMember)
-      .innerJoin(
-        schema.EntityInstance,
-        eq(schema.EntityGroupMember.groupInstanceId, schema.EntityInstance.id)
-      )
-      .where(
-        and(
-          eq(schema.EntityGroupMember.memberType, MemberType.user),
-          eq(schema.EntityGroupMember.memberRefId, userId),
-          eq(schema.EntityInstance.organizationId, organizationId)
-        )
-      )
-    const userGroups = userGroupMemberships.map((gm) => gm.groupId)
+    const userGroups = await getCachedUserGroupIds(organizationId, userId)
     return await this.db
       .select({
         id: schema.ApprovalRequest.id,
@@ -78,22 +64,7 @@ export class ApprovalQueryService {
    * Filters out approvals for workflows that are no longer running
    */
   async getPendingCount(userId: string, organizationId: string): Promise<number> {
-    // Get user's groups through EntityGroupMember
-    const userGroupMemberships = await this.db
-      .select({ groupId: schema.EntityGroupMember.groupInstanceId })
-      .from(schema.EntityGroupMember)
-      .innerJoin(
-        schema.EntityInstance,
-        eq(schema.EntityGroupMember.groupInstanceId, schema.EntityInstance.id)
-      )
-      .where(
-        and(
-          eq(schema.EntityGroupMember.memberType, MemberType.user),
-          eq(schema.EntityGroupMember.memberRefId, userId),
-          eq(schema.EntityInstance.organizationId, organizationId)
-        )
-      )
-    const userGroups = userGroupMemberships.map((gm) => gm.groupId)
+    const userGroups = await getCachedUserGroupIds(organizationId, userId)
     const [{ count }] = await this.db
       .select({ count: sql<number>`count(*)` })
       .from(schema.ApprovalRequest)
@@ -138,22 +109,7 @@ export class ApprovalQueryService {
       )
       .limit(1)
     if (!userMembership) return false
-    // Get user's groups through EntityGroupMember
-    const userGroupMemberships = await this.db
-      .select({ groupId: schema.EntityGroupMember.groupInstanceId })
-      .from(schema.EntityGroupMember)
-      .innerJoin(
-        schema.EntityInstance,
-        eq(schema.EntityGroupMember.groupInstanceId, schema.EntityInstance.id)
-      )
-      .where(
-        and(
-          eq(schema.EntityGroupMember.memberType, MemberType.user),
-          eq(schema.EntityGroupMember.memberRefId, userId),
-          eq(schema.EntityInstance.organizationId, request.organizationId)
-        )
-      )
-    const userGroupIds = userGroupMemberships.map((gm) => gm.groupId)
+    const userGroupIds = await getCachedUserGroupIds(request.organizationId, userId)
     return (
       request.assigneeUsers.includes(userId) ||
       request.assigneeGroups.some((groupId) => userGroupIds.includes(groupId))

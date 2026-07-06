@@ -27,6 +27,7 @@ import {
 } from '~/components/apps/runtime/connection-expired-emitter'
 import { ConnectionExpiredDialog } from '~/components/apps/ui/connection-expired-dialog'
 import { useDehydratedOrganizationId } from '~/providers/dehydrated-state-provider'
+import { ORG_STATIC_STALE_TIME } from '~/trpc/query-client'
 import { api } from '~/trpc/react'
 import { AppDataHandlerContextProvider } from './app-data-handler-context'
 import { AppsContextProvider } from './apps-context'
@@ -66,9 +67,12 @@ export function AppsProvider({ children }: AppsProviderProps) {
     data: result,
     isLoading,
     error,
-  } = api.apps.listInstalled.useQuery({
-    // type filter is optional - omitting it returns all installations (both dev and production)
-  })
+  } = api.apps.listInstalled.useQuery(
+    {
+      // type filter is optional - omitting it returns all installations (both dev and production)
+    },
+    { staleTime: ORG_STATIC_STALE_TIME }
+  )
 
   // Always provide installations (empty during loading)
   const installations = result?.installations || []
@@ -79,7 +83,9 @@ export function AppsProvider({ children }: AppsProviderProps) {
     await utils.apps.listInstalled.invalidate()
   }, [utils])
 
-  const { data: connectionsResult } = api.apps.listConnections.useQuery()
+  const { data: connectionsResult } = api.apps.listConnections.useQuery(undefined, {
+    staleTime: ORG_STATIC_STALE_TIME,
+  })
   const connections = connectionsResult ?? []
 
   // MCP servers — pure data, mapped to the client-safe `ClientMcpServer` shape the builder

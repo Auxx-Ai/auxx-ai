@@ -16,6 +16,11 @@ import { interpolateTemplate } from '@auxx/utils'
 import { err, ok, type Result } from 'neverthrow'
 import { ensureFreshCredentialToken } from '../credentials/ensure-fresh-credential-token'
 import { defaultAuthApply } from './auth-apply'
+import {
+  getDefinitionRuntimeById,
+  getDefinitionRuntimeByMcpServerId,
+  getDefinitionRuntimeByProviderKey,
+} from './connection-definition-runtime-cache'
 
 const logger = createScopedLogger('resolve-connection-for-runtime')
 
@@ -213,11 +218,14 @@ async function resolveAppCredential(
   if (!found.value) return ok(undefined)
   const cred = found.value
 
-  const def = await database.query.ConnectionDefinition.findFirst({
-    where: (d, { eq }) =>
-      cred.connectionDefinitionId ? eq(d.id, cred.connectionDefinitionId) : eq(d.appId, appId),
-    columns: { connectionType: true, authApply: true, baseUrlTemplate: true },
-  })
+  // FK path is cached (global catalog, 5-min process cache); the appId fallback is
+  // a rare legacy-row shape and stays a direct query.
+  const def = cred.connectionDefinitionId
+    ? await getDefinitionRuntimeById(cred.connectionDefinitionId)
+    : await database.query.ConnectionDefinition.findFirst({
+        where: (d, { eq }) => eq(d.appId, appId),
+        columns: { connectionType: true, authApply: true, baseUrlTemplate: true },
+      })
   const connectionType = (def?.connectionType ?? 'secret') as ConnectionType
   return toRuntimeConnection(cred.id, organizationId, connectionType, ensureFresh, {
     authApply: def?.authApply ?? null,
@@ -271,21 +279,21 @@ export async function resolveConnectionForRuntime(
     const ownerMcpServerId = mcpServerId ?? record.mcpServerId
     const ownerProviderKey = providerKey ?? record.type
     // FK-honoring: when the credential names its own definition (`defId`), that row
-    // is authoritative — match it alone. The owner arms (which also match the app's
-    // *sibling* methods) are only a fallback for legacy rows whose FK predates §4,
-    // where `findFirst` over the `or` could otherwise return the wrong method's
-    // connectionType / authApply.
-    const def = await database.query.ConnectionDefinition.findFirst({
-      where: (d, { eq, or }) =>
-        defId
-          ? eq(d.id, defId)
-          : or(
+    // is authoritative — match it alone (cached; the catalog is global and low-churn).
+    // The owner arms (which also match the app's *sibling* methods) are only a
+    // fallback for legacy rows whose FK predates §4, where `findFirst` over the `or`
+    // could otherwise return the wrong method's connectionType / authApply.
+    const def = defId
+      ? await getDefinitionRuntimeById(defId)
+      : await database.query.ConnectionDefinition.findFirst({
+          where: (d, { eq, or }) =>
+            or(
               ownerAppId ? eq(d.appId, ownerAppId) : undefined,
               ownerMcpServerId ? eq(d.mcpServerId, ownerMcpServerId) : undefined,
               ownerProviderKey ? eq(d.providerKey, ownerProviderKey) : undefined
             ),
-      columns: { connectionType: true, authApply: true, baseUrlTemplate: true },
-    })
+          columns: { connectionType: true, authApply: true, baseUrlTemplate: true },
+        })
     const connectionType = (def?.connectionType ??
       (revealed.value.secrets.accessToken ? 'oauth2-code' : 'secret')) as ConnectionType
     const resolved = await shapeFromRevealed(
@@ -318,10 +326,7 @@ export async function resolveConnectionForRuntime(
 
   // MCP owner: org-scoped only.
   if (mcpServerId) {
-    const def = await database.query.ConnectionDefinition.findFirst({
-      where: (d, { eq }) => eq(d.mcpServerId, mcpServerId),
-      columns: { connectionType: true, authApply: true, baseUrlTemplate: true },
-    })
+    const def = await getDefinitionRuntimeByMcpServerId(mcpServerId)
     const found = await findCredential({ organizationId, kind: 'mcp', mcpServerId, userId: null })
     if (found.isErr())
       return err({ code: 'DATABASE_ERROR', message: 'Failed to query MCP credential' })
@@ -339,10 +344,7 @@ export async function resolveConnectionForRuntime(
 
   // Platform provider owner: one definition, scoped by its `global` flag.
   if (providerKey) {
-    const def = await database.query.ConnectionDefinition.findFirst({
-      where: (d, { eq }) => eq(d.providerKey, providerKey),
-      columns: { connectionType: true, global: true, authApply: true, baseUrlTemplate: true },
-    })
+    const def = await getDefinitionRuntimeByProviderKey(providerKey)
     if (!def)
       return err({ code: 'CONNECTION_NOT_FOUND', message: `Provider ${providerKey} not found` })
 

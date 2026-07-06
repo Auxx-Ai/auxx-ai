@@ -16,6 +16,7 @@ import {
   dataMigrationsJob,
   demoCleanupJob,
   expiredTrialAccountCleanupJob,
+  flushUsageEventsJob,
   type JobHandler,
   mcpToolsResyncJob,
   nextActionStaleScannerJob,
@@ -148,7 +149,12 @@ const jobMappings = {
   // Quota management jobs
   quotaResetJob,
 
-  // Usage-event recording (enqueued by UsageGuard after each counted metric)
+  // Usage-event flush (every minute via upsertJobScheduler; drains the Redis
+  // buffer UsageCounter writes to into batched Postgres inserts)
+  flushUsageEventsJob,
+
+  // Legacy per-event usage recording — kept for jobs enqueued by pre-buffer
+  // deploys still in flight at rollout
   recordUsageEvent: recordUsageEventJob,
 
   // Storage cleanup (on-demand, enqueued by disconnect/delete flows)

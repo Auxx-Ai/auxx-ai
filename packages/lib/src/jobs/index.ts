@@ -7,7 +7,7 @@ export {
   sendScheduledMessageJob,
 } from '../mail-schedule'
 // Usage
-export { type RecordUsageEventJobData, recordUsageEventJob } from '../usage'
+export { flushUsageEventsJob, type RecordUsageEventJobData, recordUsageEventJob } from '../usage'
 export {
   type AgentAppTriggerDispatchJobData,
   dispatchAppTriggerToAgents,

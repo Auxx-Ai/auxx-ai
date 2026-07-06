@@ -18,6 +18,7 @@ import { customFieldsProvider } from './providers/custom-fields-provider'
 import { entityDefSlugsProvider } from './providers/entity-def-slugs-provider'
 import { entityDefsProvider } from './providers/entity-defs-provider'
 import { featuresProvider } from './providers/features-provider'
+import { groupMembersProvider } from './providers/group-members-provider'
 import { groupsProvider } from './providers/groups-provider'
 import { inboxesProvider } from './providers/inboxes-provider'
 import { installedAppsProvider } from './providers/installed-apps-provider'
@@ -67,6 +68,7 @@ export function registerAllProviders(
   orgCache.register('resources', resourcesProvider)
   orgCache.register('customFields', customFieldsProvider)
   orgCache.register('groups', groupsProvider)
+  orgCache.register('groupMembers', groupMembersProvider)
   orgCache.register('agents', agentsProvider)
   orgCache.register('inboxes', inboxesProvider)
   orgCache.register('channels', channelsProvider)

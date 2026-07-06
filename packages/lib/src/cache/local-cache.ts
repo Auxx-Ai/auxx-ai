@@ -22,16 +22,28 @@ export class LocalCache {
     private maxEntries: number = 1000
   ) {}
 
-  get<T>(key: string): LocalCacheEntry<T> | undefined {
+  /**
+   * Get a fresh entry. `ttlMs` overrides the instance default for this read —
+   * rarely-mutated keys pass a longer window to skip the Redis hash check.
+   */
+  get<T>(key: string, ttlMs?: number): LocalCacheEntry<T> | undefined {
     const entry = this.cache.get(key)
     if (!entry) return undefined
 
     // Check if entry is stale
-    if (Date.now() - entry.writtenAt > this.ttlMs) {
+    if (Date.now() - entry.writtenAt > (ttlMs ?? this.ttlMs)) {
       return undefined // Stale — caller should check Redis hash
     }
 
     return entry
+  }
+
+  /**
+   * Get an entry regardless of staleness. Used to revalidate a stale entry
+   * against the Redis hash without re-fetching the data payload.
+   */
+  peek<T>(key: string): LocalCacheEntry<T> | undefined {
+    return this.cache.get(key)
   }
 
   set<T>(key: string, value: T, hash: string): void {

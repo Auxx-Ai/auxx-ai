@@ -238,7 +238,7 @@ export class VectorService {
       if (searchType === 'vector' || searchType === 'hybrid') {
         // Generate query embedding with matching dimensions
         const embeddingService = VectorService.getEmbeddingService(organizationId, userId)
-        const queryEmbedding = await embeddingService.generateSingle(query, {
+        const queryEmbedding = await embeddingService.generateSingleCached(query, {
           modelId: dataset.embeddingModel ?? undefined,
           dimensions: dataset.vectorDimension || undefined,
         })

@@ -3,6 +3,7 @@
 import { type Database, schema } from '@auxx/database'
 import { isSelfHosted } from '@auxx/deployment'
 import { eq, sql } from 'drizzle-orm'
+import { getOrgCache } from '../../cache'
 import { createScopedLogger } from '../../logger'
 import { DEFAULT_QUOTA_LIMITS, ProviderQuotaType } from '../providers/types'
 
@@ -162,7 +163,13 @@ export class QuotaService {
       }
     }
 
-    const [row, subscription] = await Promise.all([this.loadRow(), this.loadSubscription()])
+    // The subscription half comes from the org cache (`consumeCredits` keeps it
+    // coherent by invalidating on bonus draws); the quota row stays a fresh read —
+    // the soft-landing model relies on the turn-start gate seeing real `quotaUsed`.
+    const [row, subscription] = await Promise.all([
+      this.loadRow(),
+      getOrgCache().get(this.organizationId, 'subscription'),
+    ])
     if (!row) return null
 
     const bonusCredits = Math.max(0, subscription?.creditsBalance ?? 0)
@@ -216,7 +223,7 @@ export class QuotaService {
     if (amount <= 0) return { fromMonthly: 0, fromBonus: 0 }
     if (isSelfHosted()) return { fromMonthly: amount, fromBonus: 0 }
 
-    return await this.db.transaction(async (tx) => {
+    const result = await this.db.transaction(async (tx) => {
       // Row-lock the quota row for the duration of the transaction so concurrent
       // consumeCredits calls for the same org serialize on the monthly/bonus
       // decision instead of write-skewing each other.
@@ -277,6 +284,22 @@ export class QuotaService {
 
       return { fromMonthly, fromBonus }
     })
+
+    // The turn-start gate reads `creditsBalance` from the `subscription` org-cache
+    // key, which is otherwise only invalidated on plan.* events (24h TTL). Without
+    // this, a drained bonus pool would keep admitting runs until the TTL expired.
+    if (result.fromBonus > 0) {
+      try {
+        await getOrgCache().invalidateAndRecompute(this.organizationId, ['subscription'])
+      } catch (error) {
+        logger.warn('Failed to invalidate subscription cache after bonus draw', {
+          organizationId: this.organizationId,
+          error: error instanceof Error ? error.message : String(error),
+        })
+      }
+    }
+
+    return result
   }
 
   // ===== INTERNAL =====
@@ -284,12 +307,6 @@ export class QuotaService {
   private async loadRow() {
     return this.db.query.OrganizationAiQuota.findFirst({
       where: eq(schema.OrganizationAiQuota.organizationId, this.organizationId),
-    })
-  }
-
-  private async loadSubscription() {
-    return this.db.query.PlanSubscription.findFirst({
-      where: eq(schema.PlanSubscription.organizationId, this.organizationId),
     })
   }
 

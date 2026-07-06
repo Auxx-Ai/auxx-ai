@@ -37,6 +37,7 @@ import { useResourceProperty } from '~/components/resources'
 import { FieldBadge } from '~/components/resources/ui/field-badge'
 import { recordBadgeVariants } from '~/components/resources/ui/record-badge'
 import { isVarFieldTypeCompatible } from '~/lib/agents/bindings/arg-to-field-type'
+import { ORG_STATIC_STALE_TIME } from '~/trpc/query-client'
 import { api } from '~/trpc/react'
 import { useBindingRefBadgeKey, useBindingRefLabel } from './hooks/use-binding-ref-label'
 
@@ -133,7 +134,7 @@ function BindingVarPickerContent({ argFieldType, onSelect }: BindingVarPickerCon
   const { stack, push, pop, isAtRoot } = useCommandNavigation<BindingNavItem>()
   const [rootSearch, setRootSearch] = useState('')
 
-  const installed = api.apps.listInstalled.useQuery({})
+  const installed = api.apps.listInstalled.useQuery({}, { staleTime: ORG_STATIC_STALE_TIME })
   const slugByInstallationId = useMemo(() => {
     const map = new Map<string, string>()
     for (const i of installed.data?.installations ?? []) {

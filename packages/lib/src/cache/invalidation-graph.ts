@@ -66,8 +66,9 @@ export const INVALIDATION_GRAPH: Record<string, InvalidationMapping> = {
 
   'group.created': ['groups'],
   'group.updated': ['groups'],
-  'group.deleted': ['groups'],
-  'group.members.changed': ['groups'],
+  // Deleting a group cascade-deletes its EntityGroupMember rows
+  'group.deleted': ['groups', 'groupMembers'],
+  'group.members.changed': ['groups', 'groupMembers'],
 
   'agent.created': ['agents'],
   'agent.updated': ['agents'],

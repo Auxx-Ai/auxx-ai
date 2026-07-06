@@ -67,6 +67,7 @@ export {
   getCachedResource,
   getCachedResourceFields,
   getCachedResources,
+  getCachedUserGroupIds,
   getEntityDefIdResolver,
   isAgentUser,
   isOrgMember,

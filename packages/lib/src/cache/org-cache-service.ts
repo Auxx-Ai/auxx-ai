@@ -155,9 +155,10 @@ export class OrganizationCacheService {
 
     return this.memoizer.memoize(memoKey, async () => {
       const lk = this.localKey(keyName, orgId)
+      const localTtlMs = ORG_CACHE_KEY_CONFIG[keyName].localTtlMs
 
-      // Stage 1: Local cache check
-      const localEntry = this.localCache.get<OrgCacheDataMap[K]>(lk)
+      // Stage 1: Local cache check (per-key TTL for rarely-mutated keys)
+      const localEntry = this.localCache.get<OrgCacheDataMap[K]>(lk, localTtlMs)
       if (localEntry) {
         return localEntry.value
       }
@@ -166,10 +167,11 @@ export class OrganizationCacheService {
 
       if (redis) {
         try {
-          // Stage 2: Redis hash check
+          // Stage 2: Redis hash check. `peek` returns the entry even when stale,
+          // so an unchanged hash revalidates it without re-fetching the payload.
           const [storedHash, localStaleEntry] = await Promise.all([
             redis.get(this.hashKey(keyName, orgId)),
-            Promise.resolve(this.localCache.get<OrgCacheDataMap[K]>(lk)), // re-check after await
+            Promise.resolve(this.localCache.peek<OrgCacheDataMap[K]>(lk)),
           ])
 
           // If we have a stale local entry with matching hash, it's still valid

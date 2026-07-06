@@ -14,6 +14,12 @@ export const UsageEvent = pgTable(
       .$defaultFn(() => createId())
       .primaryKey()
       .notNull(),
+    /**
+     * Producer-generated idempotency key. The Redis-buffered flush job batch-inserts
+     * with ON CONFLICT DO NOTHING on this column, so a retried batch whose insert
+     * actually committed doesn't double-count. Null on legacy rows.
+     */
+    eventId: text().unique(),
     organizationId: text()
       .notNull()
       .references((): AnyPgColumn => Organization.id, { onDelete: 'cascade' }),

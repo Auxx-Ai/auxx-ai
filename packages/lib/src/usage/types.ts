@@ -38,7 +38,7 @@ export interface UsageStatus {
   percentUsed: number
 }
 
-/** Data for the usage event recording job */
+/** Data for a buffered usage event (flushed to Postgres in batches) */
 export interface RecordUsageEventJobData {
   orgId: string
   metric: string
@@ -47,4 +47,6 @@ export interface RecordUsageEventJobData {
   metadata?: Record<string, unknown>
   periodKey: string
   timestamp: number
+  /** Idempotency key — set at buffer time so a retried flush batch can't double-insert */
+  eventId?: string
 }

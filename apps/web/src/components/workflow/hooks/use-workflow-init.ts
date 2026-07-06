@@ -3,6 +3,7 @@
 import type { Viewport } from '@xyflow/react'
 import { useParams } from 'next/navigation'
 import { useCallback, useEffect, useState } from 'react'
+import { ORG_STATIC_STALE_TIME } from '~/trpc/query-client'
 import { api } from '~/trpc/react'
 import { useWorkflowStore, type WorkflowMetadata } from '../store'
 import { useVarStore } from '../store/use-var-store'
@@ -48,7 +49,7 @@ export const useWorkflowInit = (options?: UseWorkflowInitOptions): UseWorkflowIn
     api.aiIntegration.getUnifiedModelData.useQuery(
       { includeDefaults: true },
       {
-        staleTime: 5 * 60 * 1000, // 5 minute cache
+        staleTime: ORG_STATIC_STALE_TIME,
         // cacheTime: 10 * 60 * 1000, // 10 minute background cache
       }
     )

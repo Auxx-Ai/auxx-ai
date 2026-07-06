@@ -31,6 +31,7 @@ import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
 import { AiModelPicker, type ModelPickerItem } from '~/components/pickers/ai-model-picker'
+import { ORG_STATIC_STALE_TIME } from '~/trpc/query-client'
 import { api } from '~/trpc/react'
 
 const createDatasetSchema = z.object({
@@ -73,11 +74,14 @@ export function DatasetForm({ onSuccess, onClose, onCancel, header }: DatasetFor
 
   const utils = api.useUtils()
 
-  const unifiedModelData = api.aiIntegration.getUnifiedModelData.useQuery({
-    includeDefaults: true,
-    modelTypes: [ModelType.TEXT_EMBEDDING],
-    includeUnconfigured: false,
-  })
+  const unifiedModelData = api.aiIntegration.getUnifiedModelData.useQuery(
+    {
+      includeDefaults: true,
+      modelTypes: [ModelType.TEXT_EMBEDDING],
+      includeUnconfigured: false,
+    },
+    { staleTime: ORG_STATIC_STALE_TIME }
+  )
 
   const createDataset = api.dataset.create.useMutation({
     onSuccess: (dataset) => {

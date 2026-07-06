@@ -8,6 +8,7 @@ import { dedupeInstallationsByApp } from '~/components/apps/dedupe-installations
 import { useUninstallApp } from '~/components/apps/hooks/use-uninstall-app'
 import { AppIcon } from '~/components/apps/ui/app-icon'
 import SettingsPage from '~/components/global/settings-page'
+import { ORG_STATIC_STALE_TIME } from '~/trpc/query-client'
 import { api } from '~/trpc/react'
 
 /**
@@ -15,10 +16,13 @@ import { api } from '~/trpc/react'
  * Displays a list of installed apps with search functionality
  */
 export default function AppsInstalledListPage() {
-  const { data: installedResult } = api.apps.listInstalled.useQuery({
-    // type filter is optional - omitting it returns all installations (both dev and production)
-  })
-  const { data: results } = api.apps.list.useQuery({})
+  const { data: installedResult } = api.apps.listInstalled.useQuery(
+    {
+      // type filter is optional - omitting it returns all installations (both dev and production)
+    },
+    { staleTime: ORG_STATIC_STALE_TIME }
+  )
+  const { data: results } = api.apps.list.useQuery({}, { staleTime: ORG_STATIC_STALE_TIME })
   const { uninstallApp, ConfirmDialog } = useUninstallApp()
 
   // Collapse dev+production installs of the same app to one entry (see helper).

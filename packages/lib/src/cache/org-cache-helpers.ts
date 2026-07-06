@@ -198,6 +198,16 @@ export async function getCachedGroups(orgId: string): Promise<CachedGroup[]> {
   return getOrgCache().get(orgId, 'groups')
 }
 
+/**
+ * Get the group instance IDs a user belongs to (memberType='user' edges), cached.
+ * Includes archived groups — same semantics as the raw EntityGroupMember queries
+ * this replaces.
+ */
+export async function getCachedUserGroupIds(orgId: string, userId: string): Promise<string[]> {
+  const groupMembers = await getOrgCache().get(orgId, 'groupMembers')
+  return groupMembers[userId] ?? []
+}
+
 // ── Agent cache helpers ──
 
 /**

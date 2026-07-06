@@ -27,6 +27,7 @@ import SettingsPage, { SettingsSection } from '~/components/global/settings-page
 import { McpAppsSection } from '~/components/mcp/ui/mcp-apps-section'
 import { useUser } from '~/hooks/use-user'
 import { useFeatureFlags } from '~/providers/feature-flag-provider'
+import { ORG_STATIC_STALE_TIME } from '~/trpc/query-client'
 import { api } from '~/trpc/react'
 
 /** Icon mapping for app categories */
@@ -53,10 +54,16 @@ export default function IntegrationList() {
   const { hasAccess } = useFeatureFlags()
   const hasMcpAccess = hasAccess(FeatureKey.mcp)
   const { uninstallApp, ConfirmDialog } = useUninstallApp()
-  const { data: results } = api.apps.list.useQuery({}, { enabled: isAdminOrOwner })
-  const { data: installedResult } = api.apps.listInstalled.useQuery({
-    // type filter is optional - omitting it returns all installations (both dev and production)
-  })
+  const { data: results } = api.apps.list.useQuery(
+    {},
+    { enabled: isAdminOrOwner, staleTime: ORG_STATIC_STALE_TIME }
+  )
+  const { data: installedResult } = api.apps.listInstalled.useQuery(
+    {
+      // type filter is optional - omitting it returns all installations (both dev and production)
+    },
+    { staleTime: ORG_STATIC_STALE_TIME }
+  )
   // Collapse dev+production installs of the same app to one entry (see helper).
   const installed = dedupeInstallationsByApp(installedResult?.installations ?? [])
   const apps = results?.apps ?? []

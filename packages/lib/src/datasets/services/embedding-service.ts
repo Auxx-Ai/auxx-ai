@@ -1,6 +1,8 @@
 // packages/lib/src/datasets/services/embedding-service.ts
 
 import { createScopedLogger } from '@auxx/logger'
+import { getRedisClient, type RedisClient } from '@auxx/redis'
+import { createHash } from 'crypto'
 import type { TextEmbeddingClient } from '../../ai/clients/base/text-embedding-client'
 import { QuotaExceededError } from '../../ai/orchestrator/types'
 import { getCredentials } from '../../ai/providers/config'
@@ -193,6 +195,61 @@ export class EmbeddingService {
   async generateSingle(text: string, options?: EmbeddingOptions): Promise<number[]> {
     const result = await this.generateEmbeddings([text], options)
     return result.embeddings[0] || []
+  }
+
+  /** TTL for cached query embeddings — output is deterministic, so no invalidation. */
+  private static QUERY_CACHE_TTL_SECONDS = 24 * 60 * 60
+
+  /**
+   * Generate a single embedding through a Redis read-through cache.
+   *
+   * For the SEARCH/QUERY path only — ingest embeddings persist to pgvector and
+   * are never re-requested, so caching them would only waste memory.
+   *
+   * The key is org-scoped and built from the RESOLVED provider/model plus the
+   * effective dimension and the exact input text: an undefined `modelId` falls
+   * back to the org's default embedding model, and BYO credentials can point the
+   * same provider:model at a custom endpoint — both make raw-input or global
+   * keys unsafe.
+   */
+  async generateSingleCached(text: string, options?: EmbeddingOptions): Promise<number[]> {
+    const { provider, model } = await this.resolveProviderAndModel(options)
+    const dimension =
+      options?.dimensions && !isSupportedDimension(options.dimensions)
+        ? normalizeToSupportedDimension(options.dimensions)
+        : options?.dimensions
+    const fingerprint = createHash('sha256')
+      .update(`${provider}:${model}:${dimension ?? 'default'}:${text}`)
+      .digest('hex')
+    const cacheKey = `emb:query:${this.organizationId}:${fingerprint}`
+
+    let redis: RedisClient | undefined
+    try {
+      redis = await getRedisClient(false)
+      const cached = await redis?.get(cacheKey)
+      if (cached) {
+        return JSON.parse(cached) as number[]
+      }
+    } catch {
+      // Cache unavailable — fall through to a direct provider call
+    }
+
+    const embedding = await this.generateSingle(text, options)
+
+    if (redis && embedding.length > 0) {
+      try {
+        await redis.set(
+          cacheKey,
+          JSON.stringify(embedding),
+          'EX',
+          EmbeddingService.QUERY_CACHE_TTL_SECONDS
+        )
+      } catch {
+        // Best-effort write — next search just misses again
+      }
+    }
+
+    return embedding
   }
 
   /**
