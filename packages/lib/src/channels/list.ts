@@ -113,18 +113,9 @@ export async function getProviderType(
   ctx: ChannelCtx,
   channelId: string
 ): Promise<TypedResult<{ provider: string }, NotFoundError>> {
-  const [row] = await ctx.db
-    .select({ provider: schema.Integration.provider })
-    .from(schema.Integration)
-    .where(
-      and(
-        eq(schema.Integration.id, channelId),
-        eq(schema.Integration.organizationId, ctx.organizationId),
-        isNull(schema.Integration.deletedAt)
-      )
-    )
-    .limit(1)
+  const providers = await getOrgCache().get(ctx.organizationId, 'channelProviders')
+  const provider = providers[channelId]
 
-  if (!row) return Result.error(new NotFoundError('Channel not found'))
-  return Result.ok({ provider: row.provider })
+  if (!provider) return Result.error(new NotFoundError('Channel not found'))
+  return Result.ok({ provider })
 }

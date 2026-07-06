@@ -611,14 +611,10 @@ export class UnreadService {
       // Build WHERE condition from view filters
       const whereCondition = buildConditionGroupsQuery(filters, this.organizationId)
 
-      // Count unread OPEN threads matching the filters
-      // Use subquery approach to avoid complex join issues
-
-      // Step 1: Get thread IDs that match the view filters and are OPEN
-      // Step 2: Filter to only unread (no read status or isRead=false)
-
-      // Unread threads without read status
-      const withoutStatusResult = await db
+      // Count unread OPEN threads matching the filters: unread = no read-status
+      // row for this user OR an explicit isRead=false row. One left-joined count
+      // covers both cases.
+      const unreadResult = await db
         .select({ count: count() })
         .from(schema.Thread)
         .leftJoin(
@@ -632,28 +628,11 @@ export class UnreadService {
           and(
             whereCondition,
             eq(schema.Thread.status, 'OPEN' as any),
-            isNull(schema.ThreadReadStatus.userId)
+            or(isNull(schema.ThreadReadStatus.userId), eq(schema.ThreadReadStatus.isRead, false))
           )
         )
 
-      // Unread threads with explicit unread status
-      const withUnreadStatusResult = await db
-        .select({ count: count() })
-        .from(schema.Thread)
-        .innerJoin(schema.ThreadReadStatus, eq(schema.ThreadReadStatus.threadId, schema.Thread.id))
-        .where(
-          and(
-            whereCondition,
-            eq(schema.Thread.status, 'OPEN' as any),
-            eq(schema.ThreadReadStatus.userId, this.userId),
-            eq(schema.ThreadReadStatus.isRead, false)
-          )
-        )
-
-      const totalUnread =
-        (withoutStatusResult[0]?.count ?? 0) + (withUnreadStatusResult[0]?.count ?? 0)
-
-      return { viewId: view.id, count: totalUnread }
+      return { viewId: view.id, count: unreadResult[0]?.count ?? 0 }
     })
 
     const results = await Promise.all(countPromises)

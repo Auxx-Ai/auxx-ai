@@ -3,7 +3,7 @@
 import { schema } from '@auxx/database'
 import { FieldType as FieldTypeEnum } from '@auxx/database/enums'
 import type { FieldType } from '@auxx/database/types'
-import { isArrayReturnFieldType, type TypedFieldValue } from '@auxx/types'
+import { getValueType, isArrayReturnFieldType, type TypedFieldValue } from '@auxx/types'
 import {
   type FieldPath,
   type FieldReference,
@@ -12,7 +12,7 @@ import {
   type ResourceFieldId,
 } from '@auxx/types/field'
 import type { RecordId } from '@auxx/types/resource'
-import { and, asc, eq, inArray } from 'drizzle-orm'
+import { and, asc, eq, inArray, isNotNull, or, type SQL, sql } from 'drizzle-orm'
 import { findCachedResource } from '../cache'
 import type { FieldOptions, NameFieldOptions } from '../custom-fields/field-options'
 import type { AiStatus } from '../realtime/events'
@@ -473,6 +473,36 @@ async function categorizeFields(
 // =============================================================================
 
 /**
+ * Explicit FieldValue projection. `valueJson` is heavy jsonb (file/currency/
+ * address payloads, AI metadata) — it is only shipped when `valueJsonWhen`
+ * matches; other rows get NULL. Pass `true` to always include it.
+ */
+function fieldValueColumns(valueJsonWhen: SQL | true) {
+  return {
+    id: schema.FieldValue.id,
+    entityId: schema.FieldValue.entityId,
+    fieldId: schema.FieldValue.fieldId,
+    sortKey: schema.FieldValue.sortKey,
+    createdAt: schema.FieldValue.createdAt,
+    updatedAt: schema.FieldValue.updatedAt,
+    valueText: schema.FieldValue.valueText,
+    valueNumber: schema.FieldValue.valueNumber,
+    valueBoolean: schema.FieldValue.valueBoolean,
+    valueDate: schema.FieldValue.valueDate,
+    valueJson:
+      valueJsonWhen === true
+        ? schema.FieldValue.valueJson
+        : sql<unknown>`CASE WHEN ${valueJsonWhen} THEN ${schema.FieldValue.valueJson} END`,
+    optionId: schema.FieldValue.optionId,
+    relatedEntityId: schema.FieldValue.relatedEntityId,
+    relatedEntityDefinitionId: schema.FieldValue.relatedEntityDefinitionId,
+    actorId: schema.FieldValue.actorId,
+    aiStatus: schema.FieldValue.aiStatus,
+    managedByConnectorId: schema.FieldValue.managedByConnectorId,
+  }
+}
+
+/**
  * Fetch field values from the FieldValue table and convert to typed results.
  * This is the original FieldValue query, extracted into its own function.
  */
@@ -485,8 +515,19 @@ async function fetchFieldValueResults(
   fieldTypeMap: Map<string, FieldType>,
   fieldOptionsMap: Map<string, FieldOptions | undefined>
 ): Promise<TypedFieldValueResult[]> {
+  // Only json-typed fields store their value in valueJson; AI metadata
+  // piggy-backs on valueJson for ANY type when aiStatus is set. Unknown types
+  // keep valueJson for safety.
+  const jsonFieldIds = fieldIds.filter((fieldId) => {
+    const fieldType = fieldTypeMap.get(fieldId)
+    return !fieldType || getValueType(fieldType) === 'json'
+  })
+  const valueJsonWhen = jsonFieldIds.length
+    ? or(isNotNull(schema.FieldValue.aiStatus), inArray(schema.FieldValue.fieldId, jsonFieldIds))!
+    : isNotNull(schema.FieldValue.aiStatus)
+
   const rows = await ctx.db
-    .select()
+    .select(fieldValueColumns(valueJsonWhen))
     .from(schema.FieldValue)
     .where(
       and(
@@ -891,8 +932,9 @@ async function batchFetchFieldValues(
 ): Promise<Map<RecordId, TypedFieldValue | TypedFieldValue[]>> {
   const entityInstanceIds = recordIds.map((rid) => parseRecordId(rid).entityInstanceId)
 
+  // No AI-metadata read on this path — valueJson only matters for json-typed fields.
   const rows = await ctx.db
-    .select()
+    .select(fieldValueColumns(getValueType(fieldType) === 'json' ? true : sql`false`))
     .from(schema.FieldValue)
     .where(
       and(

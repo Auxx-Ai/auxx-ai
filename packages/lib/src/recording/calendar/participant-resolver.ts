@@ -1,12 +1,11 @@
 // packages/lib/src/recording/calendar/participant-resolver.ts
 
 import { database as db, schema } from '@auxx/database'
-import { createScopedLogger } from '@auxx/logger'
 import type { RecordId } from '@auxx/types/resource'
 import { getDefinitionId, getInstanceId } from '@auxx/types/resource'
-import { and, asc, eq, ilike, inArray, isNull, or, sql } from 'drizzle-orm'
+import { and, asc, eq, ilike, inArray, isNull } from 'drizzle-orm'
 import { err, ok } from 'neverthrow'
-import { getCachedCustomFields } from '../../cache'
+import { getCachedCustomFields, getCachedEntityDefId } from '../../cache'
 import type { CalendarAttendeeInput, RecordingResult, ResolvedParticipant } from './types'
 
 /**
@@ -81,35 +80,17 @@ export async function findCompanyByDomain(
       return ok(null)
     }
 
-    const [companyDefinition] = await db
-      .select({ id: schema.EntityDefinition.id })
-      .from(schema.EntityDefinition)
-      .where(
-        and(
-          eq(schema.EntityDefinition.organizationId, organizationId),
-          eq(schema.EntityDefinition.entityType, 'company')
-        )
-      )
-      .limit(1)
-
-    if (!companyDefinition) {
+    const companyDefId = await getCachedEntityDefId(organizationId, 'company')
+    if (!companyDefId) {
       return ok(null)
     }
 
-    const companyFields = await db
-      .select({ id: schema.CustomField.id })
-      .from(schema.CustomField)
-      .where(
-        and(
-          eq(schema.CustomField.organizationId, organizationId),
-          eq(schema.CustomField.entityDefinitionId, companyDefinition.id),
-          or(
-            eq(schema.CustomField.systemAttribute, 'company_website'),
-            sql`lower(${schema.CustomField.name}) = 'website'`,
-            sql`lower(${schema.CustomField.name}) = 'domain'`
-          )!
-        )
-      )
+    const allCompanyFields = await getCachedCustomFields(organizationId, companyDefId)
+    const companyFields = allCompanyFields.filter(
+      (field) =>
+        field.systemAttribute === 'company_website' ||
+        ['website', 'domain'].includes((field.name ?? '').toLowerCase())
+    )
 
     if (companyFields.length === 0) {
       return ok(null)
@@ -264,32 +245,13 @@ async function findContactEntityInstanceIdByEmail(
   organizationId: string
 ): RecordingResult<string | null> {
   try {
-    const [contactDefinition] = await db
-      .select({ id: schema.EntityDefinition.id })
-      .from(schema.EntityDefinition)
-      .where(
-        and(
-          eq(schema.EntityDefinition.organizationId, organizationId),
-          eq(schema.EntityDefinition.entityType, 'contact')
-        )
-      )
-      .limit(1)
-
-    if (!contactDefinition) {
+    const contactDefId = await getCachedEntityDefId(organizationId, 'contact')
+    if (!contactDefId) {
       return ok(null)
     }
 
-    const [emailField] = await db
-      .select({ id: schema.CustomField.id })
-      .from(schema.CustomField)
-      .where(
-        and(
-          eq(schema.CustomField.organizationId, organizationId),
-          eq(schema.CustomField.entityDefinitionId, contactDefinition.id),
-          eq(schema.CustomField.systemAttribute, 'primary_email')
-        )
-      )
-      .limit(1)
+    const contactFields = await getCachedCustomFields(organizationId, contactDefId)
+    const emailField = contactFields.find((field) => field.systemAttribute === 'primary_email')
 
     if (!emailField) {
       return ok(null)
@@ -310,7 +272,7 @@ async function findContactEntityInstanceIdByEmail(
       .where(
         and(
           eq(schema.EntityInstance.organizationId, organizationId),
-          eq(schema.EntityInstance.entityDefinitionId, contactDefinition.id),
+          eq(schema.EntityInstance.entityDefinitionId, contactDefId),
           isNull(schema.EntityInstance.archivedAt)
         )
       )

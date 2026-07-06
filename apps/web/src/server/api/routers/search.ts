@@ -248,12 +248,17 @@ export const searchRouter = createTRPCRouter({
         }
         case SearchOperator.TAG: {
           // Get tags using unified entity system
-          const result = await listAll({
-            organizationId,
-            userId,
-            db: ctx.db,
-            entityDefinitionId: 'tag',
-          })
+          const result = await listAll(
+            {
+              organizationId,
+              userId,
+              db: ctx.db,
+            },
+            {
+              entityDefinitionId: 'tag',
+              fieldKeys: ['title', 'tag_emoji', 'tag_color'],
+            }
+          )
           const filteredTags = result.items
             .filter((item) => {
               const title = item.fieldValues.title ?? item.displayName ?? ''

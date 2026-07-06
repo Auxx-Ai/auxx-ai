@@ -311,25 +311,25 @@ export class SettingsService {
       throw new Error(`Unknown setting: ${key}`)
     }
 
-    // Get organization setting
-    const [orgSetting] = await this.database
-      .select()
-      .from(schema.OrganizationSetting)
-      .where(
-        and(
-          eq(schema.OrganizationSetting.organizationId, organizationId),
-          eq(schema.OrganizationSetting.key, key)
+    // Injected database (e.g. transaction) → read directly for write-after-read consistency
+    if (this.database !== db) {
+      const [orgSetting] = await this.database
+        .select()
+        .from(schema.OrganizationSetting)
+        .where(
+          and(
+            eq(schema.OrganizationSetting.organizationId, organizationId),
+            eq(schema.OrganizationSetting.key, key)
+          )
         )
-      )
-      .limit(1)
-
-    // If no organization setting, return the default from catalog
-    if (!orgSetting) {
-      return settingConfig.defaultValue
+        .limit(1)
+      return orgSetting ? (orgSetting.value as SettingValue) : settingConfig.defaultValue
     }
 
-    // Return the organization setting
-    return orgSetting.value as SettingValue
+    // Org cache map already merges catalog defaults with persisted org rows
+    const { getOrgCache } = await import('../cache')
+    const settings = await getOrgCache().get(organizationId, 'orgSettings')
+    return key in settings ? settings[key]! : settingConfig.defaultValue
   }
 
   /**

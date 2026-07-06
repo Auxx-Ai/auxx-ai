@@ -620,6 +620,12 @@ export interface ListAllInput {
   apiSlug?: string
   /** Specific field IDs to fetch (all fields if undefined) */
   fieldIds?: FieldId[]
+  /**
+   * Specific field output keys to fetch (e.g. 'title', 'tag_color'). Ignored
+   * when fieldIds is set. Prefer this over fetching all fields — the full
+   * fan-out loads every FieldValue for up to 1000 records.
+   */
+  fieldKeys?: string[]
   /** Include archived records */
   includeArchived?: boolean
 }
@@ -790,9 +796,18 @@ export async function listAll(
   const resourceFieldIdToType = new Map<string, FieldType>()
   let fieldReferences: FieldReference[]
 
-  if (params.fieldIds && params.fieldIds.length > 0) {
+  // Resolve fieldKeys (output keys) to field IDs — callers usually know keys, not IDs.
+  // Unknown keys are dropped; an all-unknown list yields no field values (not all fields).
+  let requestedFieldIds = params.fieldIds
+  if ((!requestedFieldIds || requestedFieldIds.length === 0) && params.fieldKeys) {
+    requestedFieldIds = params.fieldKeys
+      .map((key) => fieldsMap[key]?.id)
+      .filter((id): id is string => Boolean(id)) as FieldId[]
+  }
+
+  if (requestedFieldIds && (requestedFieldIds.length > 0 || params.fieldKeys)) {
     // Use specific fields provided
-    fieldReferences = params.fieldIds.map((fieldId) => {
+    fieldReferences = requestedFieldIds.map((fieldId) => {
       const resourceFieldId = toResourceFieldId(entityDefId, fieldId)
       // Find field by id to get its key and type
       const field = fields.find((f) => f.id === fieldId)

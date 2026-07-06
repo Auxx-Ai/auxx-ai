@@ -59,43 +59,27 @@ export async function linkContactToCompanyByDomain(args: LinkContactArgs): Promi
     // store the canonical `relatedEntityDefinitionId`. Server-side normalization in
     // the field-value mutation path also canonicalizes these, but resolving here
     // keeps callers consistent and avoids any type-name-prefixed RecordIds in transit.
-    const [contactDefId, companyDefId, contactEmployerField, companyPrimaryContactField] =
-      await Promise.all([
-        requireCachedEntityDefId(args.organizationId, 'contact'),
-        requireCachedEntityDefId(args.organizationId, 'company'),
-        db
-          .select({ id: schema.CustomField.id })
-          .from(schema.CustomField)
-          .where(
-            and(
-              eq(schema.CustomField.organizationId, args.organizationId),
-              eq(schema.CustomField.systemAttribute, 'contact_employer')
-            )
-          )
-          .limit(1),
-        db
-          .select({ id: schema.CustomField.id })
-          .from(schema.CustomField)
-          .where(
-            and(
-              eq(schema.CustomField.organizationId, args.organizationId),
-              eq(schema.CustomField.systemAttribute, 'company_primary_contact')
-            )
-          )
-          .limit(1),
-      ])
+    const [contactDefId, companyDefId, linkFields] = await Promise.all([
+      requireCachedEntityDefId(args.organizationId, 'contact'),
+      requireCachedEntityDefId(args.organizationId, 'company'),
+      getOrgCache()
+        .from(args.organizationId, 'customFields')
+        .bySystemAttributes(['contact_employer', 'company_primary_contact']),
+    ])
+    const contactEmployerField = linkFields.contact_employer
+    const companyPrimaryContactField = linkFields.company_primary_contact
 
     const updates: Array<Promise<unknown>> = []
 
     // Only set contact.employer if it's currently empty.
-    if (contactEmployerField[0]) {
+    if (contactEmployerField) {
       const existing = await db
         .select({ id: schema.FieldValue.id })
         .from(schema.FieldValue)
         .where(
           and(
             eq(schema.FieldValue.organizationId, args.organizationId),
-            eq(schema.FieldValue.fieldId, contactEmployerField[0].id),
+            eq(schema.FieldValue.fieldId, contactEmployerField.id),
             eq(schema.FieldValue.entityId, args.contactId),
             isNotNull(schema.FieldValue.relatedEntityId)
           )
@@ -112,14 +96,14 @@ export async function linkContactToCompanyByDomain(args: LinkContactArgs): Promi
     }
 
     // Only set company.primaryContact if it's currently empty.
-    if (companyPrimaryContactField[0]) {
+    if (companyPrimaryContactField) {
       const existing = await db
         .select({ id: schema.FieldValue.id })
         .from(schema.FieldValue)
         .where(
           and(
             eq(schema.FieldValue.organizationId, args.organizationId),
-            eq(schema.FieldValue.fieldId, companyPrimaryContactField[0].id),
+            eq(schema.FieldValue.fieldId, companyPrimaryContactField.id),
             eq(schema.FieldValue.entityId, companyId),
             isNotNull(schema.FieldValue.relatedEntityId)
           )

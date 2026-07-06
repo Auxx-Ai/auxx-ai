@@ -1,11 +1,17 @@
 import { database as db, schema } from '@auxx/database'
-import { getUserCache, isAgentUser, onCacheEvent } from '@auxx/lib/cache'
+import {
+  getCachedMembers,
+  getOrgCache,
+  getUserCache,
+  isAgentUser,
+  onCacheEvent,
+} from '@auxx/lib/cache'
 import { MediaAssetService } from '@auxx/lib/files'
 import { isAdminOrOwner } from '@auxx/lib/members'
 import { FeaturePermissionService } from '@auxx/lib/permissions'
 import { UserSettingsService } from '@auxx/lib/settings'
 import { TRPCError } from '@trpc/server'
-import { and, count, eq, isNull } from 'drizzle-orm'
+import { eq } from 'drizzle-orm'
 import { z } from 'zod'
 import { createTRPCRouter, protectedProcedure } from '~/server/api/trpc'
 
@@ -113,16 +119,8 @@ export const userRouter = createTRPCRouter({
     const featureService = new FeaturePermissionService(db)
     const features = await featureService.getOrganizationFeaturesMap(organizationId)
 
-    const [{ integrationCount }] = await db
-      .select({ integrationCount: count() })
-      .from(schema.Integration)
-      .where(
-        and(
-          eq(schema.Integration.organizationId, organizationId),
-          isNull(schema.Integration.deletedAt)
-        )
-      )
-    const hasIntegrations = integrationCount > 0
+    const channels = await getOrgCache().get(organizationId, 'channels')
+    const hasIntegrations = channels.length > 0
 
     // Fetch avatar URL if user has an avatar asset
     let avatarUrl: string | null = null
@@ -141,17 +139,13 @@ export const userRouter = createTRPCRouter({
       throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Organization ID is required' })
     }
 
-    const members = await db
-      .select({
-        id: schema.User.id,
-        name: schema.User.name,
-        email: schema.User.email,
-      })
-      .from(schema.OrganizationMember)
-      .leftJoin(schema.User, eq(schema.User.id, schema.OrganizationMember.userId))
-      .where(eq(schema.OrganizationMember.organizationId, organizationId))
+    const members = await getCachedMembers(organizationId)
 
-    return members
+    return members.map((m) => ({
+      id: m.user?.id ?? null,
+      name: m.user?.name ?? null,
+      email: m.user?.email ?? null,
+    }))
   }),
 
   settings: protectedProcedure.query(async ({ ctx }) => {
