@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.1.175](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.174...auxx-v0.1.175) (2026-07-06)
+
+
+### Performance Improvements
+
+* **auth:** memoize session lookups and cache auth User rows ([#1057](https://github.com/Auxx-Ai/auxx-ai/issues/1057)) ([3519e6c](https://github.com/Auxx-Ai/auxx-ai/commit/3519e6cd130fd9a850ff261184f657f69a7bd18d))
+* batch usage-event writes and cache hot reads (embeddings, quota, groups, connection defs) ([#1061](https://github.com/Auxx-Ai/auxx-ai/issues/1061)) ([c7bf757](https://github.com/Auxx-Ai/auxx-ai/commit/c7bf75773f64f51ea5a8d309868033437c94a826))
+* cut scanner scans, hot-path logging, and setup-path round-trips (Phase 5) ([#1062](https://github.com/Auxx-Ai/auxx-ai/issues/1062)) ([034cdf5](https://github.com/Auxx-Ai/auxx-ai/commit/034cdf5c4239f8eccbe3557412db4e21aaf60db2))
+* **mail:** serve sidebar thread counts from delta-maintained Redis counters ([#1063](https://github.com/Auxx-Ai/auxx-ai/issues/1063)) ([b5d14db](https://github.com/Auxx-Ai/auxx-ai/commit/b5d14dbed0f66e3ee6879dfe135479a4c47a7cc5))
+* reduce hot-path SQL via batching, projections, and org-cache reads ([#1059](https://github.com/Auxx-Ai/auxx-ai/issues/1059)) ([2ec6769](https://github.com/Auxx-Ai/auxx-ai/commit/2ec6769818cc2cdd2327f27bcb5ebc17527dea95))
+* **worker:** raise event throughput and cut ingest/event-path round-trips ([#1060](https://github.com/Auxx-Ai/auxx-ai/issues/1060)) ([669070a](https://github.com/Auxx-Ai/auxx-ai/commit/669070a47a73c0799dd0a7418c8ba70e0837faba))
+
 ## [0.1.174](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.173...auxx-v0.1.174) (2026-07-03)
 
 
