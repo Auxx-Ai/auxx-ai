@@ -17,6 +17,9 @@ export interface RedisPipeline {
   decrby(key: string, amount: number): RedisPipeline
   sadd(key: string, ...members: string[]): RedisPipeline
   srem(key: string, ...members: string[]): RedisPipeline
+  hset(key: string, fields: Record<string, string | number>): RedisPipeline
+  hdel(key: string, ...fields: string[]): RedisPipeline
+  hincrby(key: string, field: string, amount: number): RedisPipeline
   lpush(key: string, ...values: string[]): RedisPipeline
   rpush(key: string, ...values: string[]): RedisPipeline
   ltrim(key: string, start: number, stop: number): RedisPipeline
@@ -98,6 +101,12 @@ export interface RedisClient {
   incrby(key: string, amount: number): Promise<number>
   decr(key: string): Promise<number>
   decrby(key: string, amount: number): Promise<number>
+
+  // Hash operations
+  hgetall(key: string): Promise<Record<string, string> | null>
+  hset(key: string, fields: Record<string, string | number>): Promise<number>
+  hdel(key: string, ...fields: string[]): Promise<number>
+  hincrby(key: string, field: string, amount: number): Promise<number>
 
   // TTL operations
   ttl(key: string): Promise<number>

@@ -29,6 +29,7 @@ import {
   storeMessage,
 } from '../ingest'
 import { getRealtimeService, publishInboxSyncCompleted } from '../realtime'
+import { markMailCountsStaleForOrgMembers } from '../threads/mail-counts'
 
 // Type re-exports (MessageData etc. live in ingest/types now)
 export type {
@@ -153,6 +154,9 @@ export class MessageStorageService {
               )
             )
           )
+          // Per-message count deltas are skipped during sync — one recount
+          // per member settles the badges instead.
+          await markMailCountsStaleForOrgMembers(organizationId)
         }
       }
     }

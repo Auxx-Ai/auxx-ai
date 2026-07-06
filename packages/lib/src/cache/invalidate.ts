@@ -28,6 +28,13 @@ export async function onCacheEvent(
     developerAccountId?: string
   }
 ): Promise<void> {
+  // Inbox lifecycle reshapes the sidebar counts — bump the mail-counts epoch
+  // so every member's counter hash reconciles lazily on next read.
+  if (context.orgId && (event === 'inbox.created' || event === 'inbox.deleted')) {
+    const { bumpMailCountsEpoch } = await import('../threads/mail-counts')
+    void bumpMailCountsEpoch(context.orgId)
+  }
+
   const mapping = INVALIDATION_GRAPH[event]
   if (!mapping) return
 

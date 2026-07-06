@@ -27,7 +27,6 @@ import {
   ThreadParticipant,
   ThreadReadStatus,
   User,
-  UserInboxUnreadCount,
 } from '../schema'
 
 /**
@@ -78,25 +77,6 @@ export const threadRelations = relations(Thread, ({ one, many }) => ({
   participants: many(ThreadParticipant),
   labels: many(LabelsOnThread),
   // tags: many(TagsOnThread), // DEPRECATED: Tags now use FieldValue via RELATIONSHIP field
-}))
-
-/**
- * UserInboxUnreadCount relations
- * Links to EntityInstance (inbox), Organization, and User
- */
-export const userInboxUnreadCountRelations = relations(UserInboxUnreadCount, ({ one }) => ({
-  inbox: one(EntityInstance, {
-    fields: [UserInboxUnreadCount.inboxId],
-    references: [EntityInstance.id],
-  }),
-  organization: one(Organization, {
-    fields: [UserInboxUnreadCount.organizationId],
-    references: [Organization.id],
-  }),
-  user: one(User, {
-    fields: [UserInboxUnreadCount.userId],
-    references: [User.id],
-  }),
 }))
 
 export const labelRelations = relations(Label, ({ one, many }) => ({

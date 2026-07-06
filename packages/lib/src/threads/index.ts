@@ -10,6 +10,15 @@ export {
   type ThreadWorkItem,
   unlinkEntity,
 } from './links.service'
+export type { MailCountField, UserCountDeltas } from './mail-counts'
+export {
+  applyMailCountDeltas,
+  bumpMailCountsEpoch,
+  computeAndSeedMailCounts,
+  enqueueMailCountsReconcile,
+  getMailCounts,
+  markMailCountsStale,
+} from './mail-counts'
 export type {
   MergeThreadsInput,
   MergeThreadsResult,

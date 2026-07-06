@@ -7,6 +7,7 @@ import { toRecordId } from '@auxx/types/resource'
 import { and, eq, isNull } from 'drizzle-orm'
 import { touchActivityForThreadLinks } from '../entity-instances/activity'
 import { getRealtimeService, publishMessageCreated, publishThreadCreated } from '../realtime'
+import { applyMailCountDeltas } from '../threads/mail-counts'
 import type { IngestContext } from './context'
 import { shouldIgnoreMessage } from './filtering/should-ignore'
 import { storeIgnoredMessage } from './filtering/store-ignored'
@@ -273,7 +274,7 @@ export async function storeMessage(
     // Participant upserts stay OUTSIDE — they publish realtime events and
     // create contacts, which must not run inside a transaction holding a
     // connection against the 30s idle-in-transaction timeout.
-    const { thread, isNewThread, messageRecord } = await ctx.db.transaction(async (tx) => {
+    const txResult = await ctx.db.transaction(async (tx) => {
       const threadData = await tx
         .insert(schema.Thread)
         .values({
@@ -298,6 +299,8 @@ export async function storeMessage(
         .returning({
           id: schema.Thread.id,
           inboxId: schema.Thread.inboxId,
+          status: schema.Thread.status,
+          assigneeId: schema.Thread.assigneeId,
           messageCount: schema.Thread.messageCount,
           firstMessageAt: schema.Thread.firstMessageAt,
           lastMessageAt: schema.Thread.lastMessageAt,
@@ -308,6 +311,25 @@ export async function storeMessage(
       const isNewThread =
         (thread.messageCount ?? 0) === 1 &&
         thread.firstMessageAt?.getTime() === messageData.sentAt.getTime()
+
+      // An inbound reply makes the thread unread again for everyone who had
+      // read it. One bounded UPDATE (rows exist only for users who read it);
+      // users with no row are already "unread" by definition. RETURNING feeds
+      // the count deltas below.
+      let flippedUserIds: string[] = []
+      if (!isNewThread && messageData.isInbound) {
+        const flipped = await tx
+          .update(schema.ThreadReadStatus)
+          .set({ isRead: false })
+          .where(
+            and(
+              eq(schema.ThreadReadStatus.threadId, thread.id),
+              eq(schema.ThreadReadStatus.isRead, true)
+            )
+          )
+          .returning({ userId: schema.ThreadReadStatus.userId })
+        flippedUserIds = flipped.map((f) => f.userId)
+      }
 
       const messageRecords = await tx
         .insert(schema.Message)
@@ -378,8 +400,9 @@ export async function storeMessage(
           .onConflictDoNothing()
       }
 
-      return { thread, isNewThread, messageRecord }
+      return { thread, isNewThread, messageRecord, flippedUserIds }
     })
+    const { thread, isNewThread, messageRecord, flippedUserIds } = txResult
 
     ctx.logger.debug(
       `Created/Skipped ${resolvedParticipantLinks.length} MessageParticipant links for message ${messageRecord.id}`
@@ -410,6 +433,33 @@ export async function storeMessage(
     if (ctx.inSyncBatch) {
       ctx.touchedInboxIds.add(inboxIdForChannel)
     } else {
+      // Counter deltas (post-commit — a rolled-back tx must not move counters).
+      // Counts include only OPEN threads; the upsert never reopens archived
+      // threads, so gate on the returned status. New threads count regardless
+      // of direction (no read rows = unread for everyone, matching the
+      // reconcile queries). During sync batches this is skipped entirely —
+      // the orchestrator marks counts stale once at the end.
+      if (
+        (messageData.isInbound || isNewThread) &&
+        thread.status === ThreadStatus.OPEN &&
+        inboxIdForChannel
+      ) {
+        const userIds = isNewThread
+          ? (
+              await import('../cache').then((m) => m.getCachedMembers(messageData.organizationId))
+            ).map((m) => m.userId)
+          : flippedUserIds
+        await applyMailCountDeltas(
+          messageData.organizationId,
+          userIds.map((userId) => ({
+            userId,
+            deltas: {
+              [`si:${inboxIdForChannel}`]: 1,
+              ...(thread.assigneeId === userId ? { inbox: 1 } : {}),
+            },
+          }))
+        )
+      }
       const realtime = getRealtimeService()
       if (isNewThread) {
         await publishThreadCreated(

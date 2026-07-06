@@ -37,11 +37,7 @@ export function invalidateResource(recordId: RecordId) {
     case 'message':
       // With optimistic store updates, thread lists don't need invalidation.
       // The store is the source of truth and updates are already applied.
-      // Only invalidate getCounts (workflow may have changed status).
-      // queryClient.invalidateQueries({
-      //   queryKey: getQueryKey(api.thread.getCounts),
-      //   exact: false,
-      // })
+      // Sidebar counts refresh via the server's `counts:changed` ping.
       break
 
     case 'contact':
@@ -122,11 +118,7 @@ export function invalidateBatchResources(recordIds: RecordId[]) {
     case 'message':
       // With optimistic store updates, thread lists don't need invalidation.
       // The store is the source of truth and updates are already applied.
-      // Only invalidate getCounts (workflow may have changed status).
-      queryClient.invalidateQueries({
-        queryKey: getQueryKey(api.thread.getCounts),
-        exact: false,
-      })
+      // Sidebar counts refresh via the server's `counts:changed` ping.
       break
 
     case 'contact':

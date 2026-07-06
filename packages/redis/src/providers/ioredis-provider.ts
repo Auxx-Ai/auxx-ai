@@ -220,6 +220,14 @@ export function createIORedisClient(provider: 'aws' | 'hosted', onDead?: () => v
     zscore: async (key: string, member: string) =>
       (await client.zscore(key, member)) as string | null,
 
+    // Hash operations
+    hgetall: async (key: string) => await client.hgetall(key),
+    hset: async (key: string, fields: Record<string, string | number>) =>
+      (await client.hset(key, fields)) as number,
+    hdel: async (key: string, ...fields: string[]) => (await client.hdel(key, ...fields)) as number,
+    hincrby: async (key: string, field: string, amount: number) =>
+      (await client.hincrby(key, field, amount)) as number,
+
     // Atomic counter operations
     incr: async (key: string) => (await client.incr(key)) as number,
     incrby: async (key: string, amount: number) => (await client.incrby(key, amount)) as number,

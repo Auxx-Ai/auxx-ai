@@ -18,6 +18,7 @@ import { MessageSenderService } from '@auxx/lib/messages'
 import { buildPlaceholderContextForThread, resolvePlaceholdersInHtml } from '@auxx/lib/placeholders'
 import { ProviderRegistryService } from '@auxx/lib/providers'
 import {
+  getMailCounts,
   type ListThreadIdsInput,
   linkEntityToThread,
   returnThreadToAi,
@@ -743,8 +744,7 @@ export const threadRouter = createTRPCRouter({
 
   getCounts: protectedProcedure.query(async ({ ctx }) => {
     const { userId, organizationId } = ctx.session
-    const unreadService = new UnreadService(organizationId, userId)
-    return await unreadService.getFullCounts()
+    return await getMailCounts(organizationId, userId)
   }),
   readStatus: protectedProcedure
     .input(

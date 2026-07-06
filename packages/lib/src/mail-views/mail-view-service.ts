@@ -362,6 +362,7 @@ export class MailViewService {
           await redis.del(this.getSharedMailViewsCacheKey())
         }
       }
+      await this.bumpCountsEpoch()
 
       return mailView
     } catch (error) {
@@ -618,6 +619,7 @@ export class MailViewService {
 
       // Invalidate relevant caches
       await this.invalidateMailViewCaches(currentView, data)
+      await this.bumpCountsEpoch()
 
       return updatedView
     } catch (error) {
@@ -629,6 +631,15 @@ export class MailViewService {
       })
       throw error
     }
+  }
+
+  /**
+   * View definitions shape the sidebar view counts — bump the mail-counts
+   * epoch so every member's counter hash reconciles on next read.
+   */
+  private async bumpCountsEpoch(): Promise<void> {
+    const { bumpMailCountsEpoch } = await import('../threads/mail-counts')
+    await bumpMailCountsEpoch(this.organizationId)
   }
 
   /**
@@ -719,6 +730,7 @@ export class MailViewService {
 
       await this.invalidateMailViewThreadsCache(mailViewId)
       await this.invalidateUserMailViewCache(currentView.userId)
+      await this.bumpCountsEpoch()
 
       return true
     } catch (error) {

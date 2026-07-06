@@ -18,6 +18,7 @@ import {
   expiredTrialAccountCleanupJob,
   flushUsageEventsJob,
   type JobHandler,
+  mailCountsReconcileJob,
   mcpToolsResyncJob,
   nextActionStaleScannerJob,
   type OrgSeedJobData,
@@ -159,6 +160,10 @@ const jobMappings = {
 
   // Storage cleanup (on-demand, enqueued by disconnect/delete flows)
   storageCleanupJob,
+
+  // Mail counts reconcile (on-demand, jobId-deduped; enqueued by stale
+  // getCounts reads, interactive mutations, and bulk slow paths)
+  mailCountsReconcile: mailCountsReconcileJob,
 
   // Task deadline scanner (every minute via upsertJobScheduler)
   taskDeadlineScannerJob,

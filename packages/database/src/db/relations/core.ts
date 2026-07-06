@@ -78,7 +78,6 @@ import {
   TwoFactor,
   UploadSession,
   User,
-  UserInboxUnreadCount,
   UserSetting,
   VerificationToken,
   Webhook,
@@ -109,7 +108,6 @@ export const userRelations = relations(User, ({ one, many }) => ({
   verificationTokens: many(VerificationToken),
   passwordResetTokens: many(PasswordResetToken),
   readStatuses: many(ThreadReadStatus),
-  inboxUnreadCounts: many(UserInboxUnreadCount),
   messages: many(Message),
   threads: many(Thread),
   articles: many(Article, {
@@ -192,7 +190,6 @@ export const organizationRelations = relations(Organization, ({ one, many }) => 
   settings: many(OrganizationSetting),
   participants: many(Participant),
   threadReadStatuses: many(ThreadReadStatus),
-  userInboxUnreadCounts: many(UserInboxUnreadCount),
   labels: many(Label),
   emails: many(Message),
   threads: many(Thread),

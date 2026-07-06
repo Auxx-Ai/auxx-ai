@@ -34,6 +34,8 @@ export type {
   BuildUserCacheKeyName,
 } from './build-user-cache-keys'
 export { BuildUserCacheService } from './build-user-cache-service'
+export type { CounterHash } from './counter-cache'
+export { counterHash } from './counter-cache'
 export { consumeOAuthCsrfToken, storeOAuthCsrfToken } from './csrf'
 export {
   flushOrganization,

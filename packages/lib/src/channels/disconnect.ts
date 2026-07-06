@@ -140,13 +140,6 @@ export async function disconnect(
     }
   }
 
-  // Collect affected inbox IDs before deleting data (for count cleanup)
-  const affectedInboxRows = await ctx.db
-    .selectDistinct({ inboxId: schema.Thread.inboxId })
-    .from(schema.Thread)
-    .where(and(eq(schema.Thread.integrationId, channelId), isNotNull(schema.Thread.inboxId)))
-  const affectedInboxIds = affectedInboxRows.map((r) => r.inboxId).filter(Boolean) as string[]
-
   await ctx.db.transaction(async (tx) => {
     await deleteChannelData(tx, channelId, channel.provider)
 
@@ -161,14 +154,10 @@ export async function disconnect(
   // Clear Redis polling cache inline (fast DEL operation)
   await clearImportCache(channelId)
 
-  if (affectedInboxIds.length > 0) {
-    await ctx.db
-      .delete(schema.UserInboxUnreadCount)
-      .where(inArray(schema.UserInboxUnreadCount.inboxId, affectedInboxIds))
-    logger.info(
-      `Deleted stale UserInboxUnreadCount rows for inboxes: ${affectedInboxIds.join(', ')}`
-    )
-  }
+  // Disconnecting removes threads wholesale — invalidate every member's
+  // sidebar counters via the org epoch (reconciled lazily on next read).
+  const { bumpMailCountsEpoch } = await import('../threads/mail-counts')
+  await bumpMailCountsEpoch(ctx.organizationId)
 
   await enqueueStorageCleanupJob({
     type: 'integration',
