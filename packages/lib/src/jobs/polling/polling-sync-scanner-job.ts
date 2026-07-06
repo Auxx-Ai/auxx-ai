@@ -2,7 +2,7 @@
 
 import { database as db, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import { and, eq, inArray, isNull, lt, or } from 'drizzle-orm'
+import { and, eq, inArray, isNull, lt, lte, ne, or } from 'drizzle-orm'
 import { resolveEffectiveSyncMode } from '../../providers/sync-mode-resolver'
 import { getQueue } from '../queues'
 import { Queues } from '../queues/types'
@@ -32,29 +32,28 @@ export const pollingSyncScannerJob = async (ctx: JobContext<PollingSyncScannerJo
     scanned: 0,
     listFetchEnqueued: 0,
     importEnqueued: 0,
-    skippedActive: 0,
-    skippedThrottled: 0,
-    skippedAuthError: 0,
-    skippedWebhookMode: 0,
     errors: 0,
   }
 
   try {
     const pollingSyncQueue = getQueue(Queues.pollingSyncQueue)
 
-    // Query all enabled integrations with email providers
+    // Providers whose 'auto' syncMode resolves to polling. Env-dependent but
+    // process-wide, so compute once per tick and push into the WHERE — the
+    // scan then returns only actionable polling-mode rows instead of every
+    // enabled email integration. Never empty: imap always resolves to polling.
+    const autoPollingProviders = (['google', 'outlook', 'imap'] as const).filter(
+      (provider) => resolveEffectiveSyncMode({ syncMode: 'auto', provider }) === 'polling'
+    )
+
     const integrations = await db
       .select({
         id: schema.Integration.id,
         organizationId: schema.Integration.organizationId,
         provider: schema.Integration.provider,
-        syncMode: schema.Integration.syncMode,
         syncStage: schema.Integration.syncStage,
-        syncStatus: schema.Integration.syncStatus,
         lastSyncedAt: schema.Integration.lastSyncedAt,
         pollingIntervalMs: schema.Integration.pollingIntervalMs,
-        throttleRetryAfter: schema.Integration.throttleRetryAfter,
-        requiresReauth: schema.Credential.requiresReauth,
       })
       .from(schema.Integration)
       .leftJoin(schema.Credential, eq(schema.Credential.id, schema.Integration.credentialId))
@@ -62,7 +61,30 @@ export const pollingSyncScannerJob = async (ctx: JobContext<PollingSyncScannerJo
         and(
           eq(schema.Integration.enabled, true),
           inArray(schema.Integration.provider, ['google', 'outlook', 'imap']),
-          isNull(schema.Integration.deletedAt)
+          isNull(schema.Integration.deletedAt),
+          // Effective polling mode, mirroring resolveEffectiveSyncMode: explicit
+          // 'polling', or anything-but-'webhook' when the provider's auto mode
+          // resolves to polling.
+          or(
+            eq(schema.Integration.syncMode, 'polling'),
+            and(
+              ne(schema.Integration.syncMode, 'webhook'),
+              inArray(schema.Integration.provider, [...autoPollingProviders])
+            )
+          ),
+          // Actionable stages only (FAILED is the relaunch job's; active stages skip)
+          inArray(schema.Integration.syncStage, [
+            'IDLE',
+            'MESSAGE_LIST_FETCH_PENDING',
+            'MESSAGES_IMPORT_PENDING',
+          ]),
+          // Not throttled
+          or(
+            isNull(schema.Integration.throttleRetryAfter),
+            lte(schema.Integration.throttleRetryAfter, now)
+          ),
+          // Not needing re-auth (null credential = no reauth flag = eligible)
+          or(isNull(schema.Credential.requiresReauth), eq(schema.Credential.requiresReauth, false))
         )
       )
 
@@ -70,43 +92,6 @@ export const pollingSyncScannerJob = async (ctx: JobContext<PollingSyncScannerJo
       stats.scanned++
 
       try {
-        // Check if this integration uses polling mode
-        const effectiveMode = resolveEffectiveSyncMode({
-          syncMode: integration.syncMode,
-          provider: integration.provider,
-        })
-
-        if (effectiveMode !== 'polling') {
-          stats.skippedWebhookMode++
-          continue
-        }
-
-        // Skip channels needing re-authentication
-        if (integration.requiresReauth) {
-          stats.skippedAuthError++
-          continue
-        }
-
-        // Skip throttled integrations
-        if (integration.throttleRetryAfter && integration.throttleRetryAfter > now) {
-          stats.skippedThrottled++
-          continue
-        }
-
-        // Skip integrations currently in an active stage
-        if (
-          integration.syncStage === 'MESSAGE_LIST_FETCH' ||
-          integration.syncStage === 'MESSAGES_IMPORT'
-        ) {
-          stats.skippedActive++
-          continue
-        }
-
-        // Skip FAILED (handled by relaunch job)
-        if (integration.syncStage === 'FAILED') {
-          continue
-        }
-
         // IDLE: check if sync is due and atomically transition
         if (integration.syncStage === 'IDLE') {
           const intervalMs = integration.pollingIntervalMs ?? 300000 // 5 min default

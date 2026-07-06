@@ -12,6 +12,15 @@ import type { AppContext } from '../types/context'
 const bundleAssets = new Hono<AppContext>()
 
 /**
+ * Positive-only existence cache for uploaded bundles. Content-addressed keys
+ * (`appId:type:sha`) are immutable, so a confirmed row never needs re-checking;
+ * misses are NOT cached (a bundle mid-publish appears on the next request). A
+ * stale entry after a bundle-row delete degrades gracefully — the S3 GET 404s.
+ */
+const knownBundles = new Set<string>()
+const KNOWN_BUNDLES_MAX = 1000
+
+/**
  * GET /api/v1/bundles/:appId/:bundleType/:sha.js
  * Serve a bundle file by content hash. Immutable — same URL always returns same content.
  *
@@ -30,17 +39,27 @@ bundleAssets.get('/:appId/:bundleType/:filename', async (c) => {
     return c.json({ error: 'Invalid bundle path' }, 400)
   }
 
-  // Verify bundle exists and is uploaded
-  const bundle = await database.query.AppBundle.findFirst({
-    where: and(
-      eq(schema.AppBundle.appId, appId),
-      eq(schema.AppBundle.bundleType, bundleType),
-      eq(schema.AppBundle.sha256, sha256)
-    ),
-  })
+  // Verify bundle exists and is uploaded (cached — assets are immutable)
+  const cacheKey = `${appId}:${bundleType}:${sha256}`
+  if (!knownBundles.has(cacheKey)) {
+    const bundle = await database.query.AppBundle.findFirst({
+      where: and(
+        eq(schema.AppBundle.appId, appId),
+        eq(schema.AppBundle.bundleType, bundleType),
+        eq(schema.AppBundle.sha256, sha256)
+      ),
+      columns: { id: true, uploadedAt: true },
+    })
 
-  if (!bundle || !bundle.uploadedAt) {
-    return c.json({ error: 'Bundle not found' }, 404)
+    if (!bundle || !bundle.uploadedAt) {
+      return c.json({ error: 'Bundle not found' }, 404)
+    }
+
+    if (knownBundles.size >= KNOWN_BUNDLES_MAX) {
+      const oldest = knownBundles.values().next().value
+      if (oldest) knownBundles.delete(oldest)
+    }
+    knownBundles.add(cacheKey)
   }
 
   // Stream from S3

@@ -1,0 +1,2 @@
+DROP INDEX "Task_organizationId_firedAt_deadline_idx";--> statement-breakpoint
+CREATE INDEX "Task_deadline_scanner_idx" ON "Task" USING btree ("deadline") WHERE "firedAt" IS NULL AND "completedAt" IS NULL AND "archivedAt" IS NULL;

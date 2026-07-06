@@ -25,7 +25,7 @@ app.get(
       // Remove the /api/v1/app-runtime prefix to get the actual file path
       // e.g., /api/v1/app-runtime/index.html -> /index.html
       const rewritten = path.replace(/^\/api\/v1\/app-runtime/, '')
-      log.info(`Serving: ${path} -> ${rewritten}`)
+      log.debug(`Serving: ${path} -> ${rewritten}`)
       return rewritten
     },
   })

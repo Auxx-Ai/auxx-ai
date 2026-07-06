@@ -1,7 +1,10 @@
 // @auxx/lib/realtime/realtime-service.ts
 
+import { createScopedLogger } from '@auxx/logger'
 import { type AuthorizeCtx, findRoom, fromPusherChannel, toPusherChannel } from './rooms'
 import type { RealtimeProvider } from './types'
+
+const logger = createScopedLogger('realtime')
 
 /**
  * Provider-agnostic realtime service.
@@ -29,7 +32,7 @@ export class RealtimeService {
     options?: { excludeSocketId?: string }
   ): Promise<boolean> {
     const channel = toPusherChannel(roomKey)
-    console.log('[realtime.publish]', roomKey, event, channel ? '→' : 'NO_CHANNEL')
+    logger.debug('publish', { roomKey, event, channel: channel ?? 'NO_CHANNEL' })
     if (!channel) return false
     return this.provider.publish(channel, event, data, options)
   }

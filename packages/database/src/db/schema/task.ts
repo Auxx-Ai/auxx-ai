@@ -126,15 +126,12 @@ export const Task = pgTable(
       table.completedAt.asc().nullsLast()
     ),
 
-    // Deadline-scanner partial index: only un-fired, active tasks matter.
-    index('Task_organizationId_firedAt_deadline_idx')
-      .using(
-        'btree',
-        table.organizationId.asc().nullsLast(),
-        table.firedAt.asc().nullsLast(),
-        table.deadline.asc().nullsLast()
-      )
-      .where(sql`"completedAt" IS NULL AND "archivedAt" IS NULL`),
+    // Deadline-scanner partial index: the scanner queries globally (no org filter),
+    // so deadline leads and firedAt lives in the predicate — the index contains
+    // only un-fired, active tasks and is range-scannable on deadline.
+    index('Task_deadline_scanner_idx')
+      .using('btree', table.deadline.asc().nullsLast())
+      .where(sql`"firedAt" IS NULL AND "completedAt" IS NULL AND "archivedAt" IS NULL`),
 
     // Note: Full-text search GIN index should be added via raw SQL migration:
     // CREATE INDEX Task_searchText_gin ON "Task" USING GIN(to_tsvector('english', "searchText"))

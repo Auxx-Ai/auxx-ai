@@ -2,7 +2,7 @@
 
 import { database as db, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import { and, eq, isNull } from 'drizzle-orm'
+import { and, eq, isNull, or, sql } from 'drizzle-orm'
 import { getQueue } from '../queues'
 import { Queues } from '../queues/types'
 import type { JobContext } from '../types'
@@ -43,8 +43,6 @@ export const calendarSyncScannerJob = async (ctx: JobContext<CalendarSyncScanner
       id: schema.Integration.id,
       organizationId: schema.Integration.organizationId,
       metadata: schema.Integration.metadata,
-      requiresReauth: schema.Credential.requiresReauth,
-      enabled: schema.Integration.enabled,
       systemUserId: schema.Organization.systemUserId,
       createdById: schema.Organization.createdById,
     })
@@ -55,22 +53,22 @@ export const calendarSyncScannerJob = async (ctx: JobContext<CalendarSyncScanner
       and(
         eq(schema.Integration.enabled, true),
         eq(schema.Integration.provider, 'google'),
-        isNull(schema.Integration.deletedAt)
+        isNull(schema.Integration.deletedAt),
+        // jsonb boolean comparison — matches readCalendarMetadata's `=== true`
+        // exactly (missing key or a "true" string both fail), so the scan only
+        // returns calendar-enabled integrations instead of every Google one.
+        sql`${schema.Integration.metadata} -> 'calendarSyncEnabled' = 'true'::jsonb`,
+        or(isNull(schema.Credential.requiresReauth), eq(schema.Credential.requiresReauth, false))
       )
     )
 
   let enqueued = 0
 
   for (const integration of integrations) {
-    if (integration.requiresReauth) {
-      continue
-    }
-
     const metadata = readCalendarMetadata(integration.metadata)
-    if (!metadata.calendarSyncEnabled) {
-      continue
-    }
 
+    // Cooldown stays in memory: casting a malformed metadata timestamp in SQL
+    // would abort the whole scan; here it just skips the row.
     if (metadata.lastCalendarSyncAt) {
       const lastSyncAt = new Date(metadata.lastCalendarSyncAt)
       if (now.getTime() - lastSyncAt.getTime() < CALENDAR_SYNC_COOLDOWN_MS) {
@@ -121,21 +119,17 @@ export const calendarSyncScannerJob = async (ctx: JobContext<CalendarSyncScanner
 
 /**
  * Read the calendar-specific metadata stored on an integration.
+ * (`calendarSyncEnabled` is filtered in SQL by the scan query.)
  */
 function readCalendarMetadata(metadata: unknown): {
-  calendarSyncEnabled: boolean
   lastCalendarSyncAt: string | null
 } {
   if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) {
-    return {
-      calendarSyncEnabled: false,
-      lastCalendarSyncAt: null,
-    }
+    return { lastCalendarSyncAt: null }
   }
 
   const value = metadata as Record<string, unknown>
   return {
-    calendarSyncEnabled: value.calendarSyncEnabled === true,
     lastCalendarSyncAt:
       typeof value.lastCalendarSyncAt === 'string' ? value.lastCalendarSyncAt : null,
   }

@@ -12,6 +12,7 @@ import { FieldValueService } from '../field-values'
 import { getRealtimeService, publishThreadDeleted, publishThreadUpdated } from '../realtime'
 import type { ThreadMeta } from '../realtime/events'
 import { ThreadMergeService } from './thread-merge.service'
+import type { ChatThreadMetadata } from './types'
 
 const logger = createScopedLogger('thread-mutation-service')
 
@@ -201,12 +202,17 @@ export class ThreadMutationService {
           inboxId: schema.Thread.inboxId,
           status: schema.Thread.status,
           assigneeId: schema.Thread.assigneeId,
+          metadata: schema.Thread.metadata,
         })
         .from(schema.Thread)
         .where(
           and(eq(schema.Thread.id, threadId), eq(schema.Thread.organizationId, this.organizationId))
         )
         .limit(1)
+      // Chat visitor Participant id (null for email threads) — carried on the
+      // lifecycle events below so the realtime handler skips a Thread SELECT.
+      const visitorParticipantId =
+        ((previous?.metadata ?? {}) as Partial<ChatThreadMetadata>).visitorParticipantId ?? null
 
       const result = await this.db
         .update(schema.Thread)
@@ -267,6 +273,7 @@ export class ThreadMutationService {
               threadId,
               organizationId: this.organizationId,
               userId: this.actorUserId,
+              visitorParticipantId,
             },
           })
         } else if (prevStatus === 'ARCHIVED' && nextStatus !== 'ARCHIVED') {
@@ -276,6 +283,7 @@ export class ThreadMutationService {
               threadId,
               organizationId: this.organizationId,
               userId: this.actorUserId,
+              visitorParticipantId,
             },
           })
         }
@@ -288,6 +296,7 @@ export class ThreadMutationService {
             organizationId: this.organizationId,
             fromUserId: previous?.assigneeId ?? null,
             toUserId: dbUpdates.assigneeId,
+            visitorParticipantId,
           },
         })
       }

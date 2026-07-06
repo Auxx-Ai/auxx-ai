@@ -105,7 +105,14 @@ export const publishThreadEventToRealtime = async (job: Job<AuxxEvent>) => {
   // channel is always connected for the widget session; the client dedupes
   // against the per-thread delivery by event `id`. Chat threads only — email
   // threads carry no `visitorParticipantId` and resolve to `null` here.
-  const visitorParticipantId = await resolveVisitorParticipantId(threadId)
+  // Emitters carry the id on the event (visitor:identified as `participantId`);
+  // the Thread SELECT remains only as a fallback for in-flight legacy jobs.
+  const visitorParticipantId =
+    typed.type === 'thread:visitor:identified'
+      ? typed.data.participantId
+      : typed.data.visitorParticipantId !== undefined
+        ? typed.data.visitorParticipantId
+        : await resolveVisitorParticipantId(threadId)
   if (visitorParticipantId) {
     try {
       await getRealtimeService().publish(rooms.visitor(visitorParticipantId), event.type, payload)

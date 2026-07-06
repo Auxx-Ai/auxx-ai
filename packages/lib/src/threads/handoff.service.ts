@@ -6,6 +6,11 @@ import { and, eq } from 'drizzle-orm'
 import { err, ok, type Result } from 'neverthrow'
 import { NotFoundError } from '../errors'
 import { publisher } from '../events/publisher'
+import type { ChatThreadMetadata } from './types'
+
+/** Chat visitor Participant id from Thread.metadata, or null (email threads). */
+const visitorIdFromMetadata = (metadata: unknown): string | null =>
+  ((metadata ?? {}) as Partial<ChatThreadMetadata>).visitorParticipantId ?? null
 
 const logger = createScopedLogger('thread-handoff')
 
@@ -49,10 +54,12 @@ export const takeOverThread = async ({
     .select({
       handoffState: schema.Thread.handoffState,
       assigneeId: schema.Thread.assigneeId,
+      metadata: schema.Thread.metadata,
     })
     .from(schema.Thread)
     .where(and(eq(schema.Thread.id, threadId), eq(schema.Thread.organizationId, organizationId)))
     .limit(1)
+  const visitorParticipantId = visitorIdFromMetadata(previous?.metadata)
 
   const [updated] = await db
     .update(schema.Thread)
@@ -77,6 +84,7 @@ export const takeOverThread = async ({
       organizationId,
       userId,
       previousState: previous?.handoffState ?? 'ai',
+      visitorParticipantId,
     },
   })
 
@@ -92,6 +100,7 @@ export const takeOverThread = async ({
         organizationId,
         fromUserId: previousAssigneeId,
         toUserId: userId,
+        visitorParticipantId,
       },
     })
   }
@@ -122,6 +131,7 @@ export const returnThreadToAi = async ({
       id: schema.Thread.id,
       handoffState: schema.Thread.handoffState,
       assigneeId: schema.Thread.assigneeId,
+      metadata: schema.Thread.metadata,
     })
 
   if (!updated) {
@@ -136,6 +146,7 @@ export const returnThreadToAi = async ({
       threadId: updated.id,
       organizationId,
       userId,
+      visitorParticipantId: visitorIdFromMetadata(updated.metadata),
     },
   })
 
