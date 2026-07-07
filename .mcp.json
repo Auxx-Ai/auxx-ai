@@ -17,7 +17,7 @@
       "command": "sh",
       "args": [
         "-c",
-        "export $(grep ^DATABASE_URL .env | xargs) && pnpm dlx @modelcontextprotocol/server-postgres $DATABASE_URL"
+        "export $(grep ^DATABASE_URL .env | xargs) && URI=$(echo \"$DATABASE_URL\" | sed 's/localhost/host.docker.internal/;s/127.0.0.1/host.docker.internal/') && docker run -i --rm -e DATABASE_URI=\"$URI\" crystaldba/postgres-mcp --access-mode=unrestricted"
       ]
     },
     "chrome-devtools": {
