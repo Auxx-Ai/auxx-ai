@@ -251,6 +251,7 @@ export function FieldInputAdapter({
             disabled={disabled}
             onCreate={handleOpenCreate}
             excludeIds={fieldOptions?.excludeIds}
+            showDefinitionIcon={fieldOptions?.showDefinitionIcon}
             triggerProps={triggerProps}
             open={open}
             onOpenChange={onOpenChange}

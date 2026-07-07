@@ -103,6 +103,12 @@ export interface FieldOptions {
    * Runtime-only filter passed by the caller — never persisted to CustomField.options.
    */
   excludeIds?: RecordId[]
+  /**
+   * When true, RELATIONSHIP picker rows fall back to the related EntityDefinition's
+   * icon/color for records that have no avatar (selected chips already do this).
+   * Runtime-only UI flag passed by the caller — never persisted to CustomField.options.
+   */
+  showDefinitionIcon?: boolean
 
   // ─────────────────────────────────────────────────────────────
   // ACTOR (nested - uses ActorOptions from @auxx/types/custom-field)

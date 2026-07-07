@@ -122,13 +122,29 @@ export async function updateCustomField(input: UpdateCustomFieldInput) {
   // frontend and only stripped `systemAttribute` from the patch below. This
   // closes that hole and extends it to app-owned fields (only uninstall edits
   // those).
+  //
+  // Exception: TAGS options are user-grown data, not configuration — every
+  // newly typed tag persists through this route as an options-only patch
+  // (see select-input-field.tsx handleOptionsChange). Allow that patch on
+  // system TAGS fields; everything else (name, type, …) stays locked, and
+  // app-owned fields stay fully locked.
   if (isProtectedField(currentField)) {
-    return err({
-      code: 'ACCESS_DENIED' as const,
-      message: currentField.appInstallationId
-        ? 'This field is managed by an installed app and cannot be edited'
-        : 'System fields cannot be edited',
-    })
+    const isTagsOptionsOnlyPatch =
+      !currentField.appInstallationId &&
+      currentField.type === FieldTypeEnum.TAGS &&
+      options !== undefined &&
+      type === undefined &&
+      isUnique === undefined &&
+      addressComponents === undefined &&
+      Object.values(data).every((v) => v === undefined)
+    if (!isTagsOptionsOnlyPatch) {
+      return err({
+        code: 'ACCESS_DENIED' as const,
+        message: currentField.appInstallationId
+          ? 'This field is managed by an installed app and cannot be edited'
+          : 'System fields cannot be edited',
+      })
+    }
   }
 
   const fieldType = type || currentField.type

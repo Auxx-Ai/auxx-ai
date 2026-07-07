@@ -285,6 +285,7 @@ export function PartFormDialog({ open, onOpenChange, recordId, onSuccess }: Part
             <FieldInputAdapter
               fieldType={FieldType.TAGS}
               fieldOptions={categoryField?.options}
+              triggerProps={{ className: 'ps-0 pe-1 w-full' }}
               value={values.category}
               onChange={(val) => handleChange('category', val)}
               placeholder='Add categories'
