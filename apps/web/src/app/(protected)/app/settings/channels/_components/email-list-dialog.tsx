@@ -194,6 +194,8 @@ interface EmailFilterSectionProps {
   onSave: (entries: string[]) => void
   isPending: boolean
   activeWarning?: string
+  /** Viewer may not manage this channel — the Edit/Add button disables. */
+  disabled?: boolean
 }
 
 export function EmailFilterSection({
@@ -208,6 +210,7 @@ export function EmailFilterSection({
   onSave,
   isPending,
   activeWarning,
+  disabled,
 }: EmailFilterSectionProps) {
   const [dialogOpen, setDialogOpen] = useState(false)
   const [expanded, setExpanded] = useState(false)
@@ -262,6 +265,7 @@ export function EmailFilterSection({
           variant='outline'
           size='sm'
           className='shrink-0 self-center'
+          disabled={disabled}
           onClick={() => setDialogOpen(true)}>
           {hasEntries ? <Edit /> : <Plus />}
           {hasEntries ? 'Edit' : 'Add'}

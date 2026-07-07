@@ -13,8 +13,10 @@ import type { AuditFeedFilters } from '~/components/activity-log/hooks/use-audit
 import { ActivityLogView } from '~/components/activity-log/ui/activity-log-view'
 import { AuditExportButton } from '~/components/activity-log/ui/audit-export-button'
 import SettingsPage from '~/components/global/settings-page'
+import { useUser } from '~/hooks/use-user'
 
 export default function ActivityLogPage() {
+  useUser({ requireRoles: ['ADMIN', 'OWNER'] })
   const [category, setCategory] = useState<string>('all')
   const [dateRange, setDateRange] = useState<DateRange>(() => ({
     from: startOfDay(addDays(new Date(), -7)),

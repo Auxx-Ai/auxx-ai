@@ -1,9 +1,8 @@
-import IntegrationList from './_components/integration-list'
+// apps/web/src/app/(protected)/app/settings/channels/page.tsx
 
-/**
- * Integrations page
- * Main page for managing integrations
- */
-export default function IntegrationsPage() {
-  return <IntegrationList />
+import { ChannelsPage } from '~/components/channels/ui/channels-page'
+
+/** Channels settings — list + inbox-first gallery connect (channels v2). */
+export default function ChannelsSettingsPage() {
+  return <ChannelsPage />
 }

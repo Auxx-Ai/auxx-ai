@@ -26,7 +26,7 @@ import { TRPCError } from '@trpc/server'
 import { and, eq } from 'drizzle-orm'
 import { z } from 'zod'
 import { recordAuditFromCtx } from '~/server/api/audit-context'
-import { createTRPCRouter, notDemo, protectedProcedure } from '~/server/api/trpc'
+import { adminProcedure, createTRPCRouter, notDemo, protectedProcedure } from '~/server/api/trpc'
 
 export const aiIntegrationRouter = createTRPCRouter({
   /**
@@ -62,7 +62,7 @@ export const aiIntegrationRouter = createTRPCRouter({
   /**
    * Toggle model enabled state for organization
    */
-  toggleModel: protectedProcedure
+  toggleModel: adminProcedure
     .input(z.object({ provider: z.string(), model: z.string(), enabled: z.boolean() }))
     .use(notDemo('configure AI models'))
     .mutation(async ({ input, ctx }) => {
@@ -94,7 +94,7 @@ export const aiIntegrationRouter = createTRPCRouter({
   /**
    * Update model parameter configuration
    */
-  updateModelConfig: protectedProcedure
+  updateModelConfig: adminProcedure
     .input(
       z.object({ provider: z.string(), model: z.string(), config: z.record(z.string(), z.any()) })
     )
@@ -150,7 +150,7 @@ export const aiIntegrationRouter = createTRPCRouter({
   /**
    * Save provider configuration with dynamic credentials
    */
-  saveProviderConfiguration: protectedProcedure
+  saveProviderConfiguration: adminProcedure
     .input(
       z.object({
         provider: z.string(),
@@ -223,7 +223,7 @@ export const aiIntegrationRouter = createTRPCRouter({
    * Remove custom provider credentials (preserves system quota)
    * Clears credentials and switches to SYSTEM mode
    */
-  deleteProviderConfiguration: protectedProcedure
+  deleteProviderConfiguration: adminProcedure
     .input(z.object({ provider: z.string() }))
     .use(notDemo('delete AI providers'))
     .mutation(async ({ input, ctx }) => {
@@ -257,7 +257,7 @@ export const aiIntegrationRouter = createTRPCRouter({
   /**
    * Test provider credentials (replaces aiModel.retest)
    */
-  testProviderCredentials: protectedProcedure
+  testProviderCredentials: adminProcedure
     .input(
       z.object({ provider: z.string(), credentials: z.record(z.string(), z.any()).optional() })
     )
@@ -294,7 +294,7 @@ export const aiIntegrationRouter = createTRPCRouter({
   /**
    * Set provider as default (replaces aiModel.makeDefault)
    */
-  setDefaultProvider: protectedProcedure
+  setDefaultProvider: adminProcedure
     .input(z.object({ provider: z.string() }))
     .mutation(async ({ input, ctx }) => {
       const { userId, organizationId } = ctx.session
@@ -331,7 +331,7 @@ export const aiIntegrationRouter = createTRPCRouter({
   /**
    * Make one of a provider's BYO keys the org-level default (used when a model has no pool).
    */
-  setDefaultProviderKey: protectedProcedure
+  setDefaultProviderKey: adminProcedure
     .input(z.object({ provider: z.string(), credentialId: z.string() }))
     .use(notDemo('set default AI key'))
     .mutation(async ({ input, ctx }) => {
@@ -407,7 +407,7 @@ export const aiIntegrationRouter = createTRPCRouter({
   /**
    * Save custom model configuration (handles both create and update)
    */
-  saveCustomModel: protectedProcedure
+  saveCustomModel: adminProcedure
     .input(
       z.object({
         provider: z.string(),
@@ -500,7 +500,7 @@ export const aiIntegrationRouter = createTRPCRouter({
   /**
    * Delete custom model configuration
    */
-  deleteCustomModel: protectedProcedure
+  deleteCustomModel: adminProcedure
     .input(
       z.object({
         provider: z.string(),
@@ -560,7 +560,7 @@ export const aiIntegrationRouter = createTRPCRouter({
   /**
    * Set a system default model for a specific model type
    */
-  setSystemModelDefault: protectedProcedure
+  setSystemModelDefault: adminProcedure
     .input(
       z.object({
         modelType: z.enum(ModelType),
@@ -585,7 +585,7 @@ export const aiIntegrationRouter = createTRPCRouter({
   /**
    * Remove a system default model for a specific model type
    */
-  removeSystemModelDefault: protectedProcedure
+  removeSystemModelDefault: adminProcedure
     .input(
       z.object({
         modelType: z.enum(ModelType),
@@ -645,7 +645,7 @@ export const aiIntegrationRouter = createTRPCRouter({
   /**
    * Switch provider type preference (system vs custom)
    */
-  switchProviderType: protectedProcedure
+  switchProviderType: adminProcedure
     .input(
       z.object({
         provider: z.string(),

@@ -2,7 +2,7 @@ import { FeatureKey, FeaturePermissionService } from '@auxx/lib/permissions'
 import { WebhookService } from '@auxx/lib/webhooks'
 import { WEBHOOK_EVENT_TYPES } from '@auxx/lib/webhooks/types'
 import { z } from 'zod'
-import { createTRPCRouter, notDemo, protectedProcedure } from '../trpc'
+import { adminProcedure, createTRPCRouter, notDemo, protectedProcedure } from '../trpc'
 
 // Create a zod schema for validating event types
 const eventTypeSchema = z.enum([...(Object.values(WEBHOOK_EVENT_TYPES) as [string, ...string[]])])
@@ -27,7 +27,7 @@ export const webhookRouters = createTRPCRouter({
     return result.value
   }),
 
-  create: protectedProcedure
+  create: adminProcedure
     .input(
       z.object({
         name: z.string().min(1, 'Name is required'),
@@ -49,7 +49,7 @@ export const webhookRouters = createTRPCRouter({
       return result.unwrap()
     }),
 
-  update: protectedProcedure
+  update: adminProcedure
     .input(
       z.object({
         id: z.string(),
@@ -80,28 +80,26 @@ export const webhookRouters = createTRPCRouter({
       return result.unwrap()
     }),
 
-  delete: protectedProcedure
-    .input(z.object({ id: z.string() }))
-    .mutation(async ({ ctx, input }) => {
-      const { organizationId } = ctx.session
+  delete: adminProcedure.input(z.object({ id: z.string() })).mutation(async ({ ctx, input }) => {
+    const { organizationId } = ctx.session
 
-      const service = new WebhookService(organizationId, ctx.db)
+    const service = new WebhookService(organizationId, ctx.db)
 
-      // First verify the webhook belongs to the organization
-      const webhookResult = await service.byId({ id: input.id, organizationId })
+    // First verify the webhook belongs to the organization
+    const webhookResult = await service.byId({ id: input.id, organizationId })
 
-      if (!webhookResult.ok) {
-        throw webhookResult.error
-      }
+    if (!webhookResult.ok) {
+      throw webhookResult.error
+    }
 
-      const result = await service.deleteWebhook({ id: input.id })
+    const result = await service.deleteWebhook({ id: input.id })
 
-      if (!result.ok) {
-        throw result.error
-      }
-    }),
+    if (!result.ok) {
+      throw result.error
+    }
+  }),
 
-  test: protectedProcedure
+  test: adminProcedure
     .input(z.object({ url: z.string().url('Must be a valid URL') }))
     .mutation(async ({ ctx, input }) => {
       const { organizationId } = ctx.session

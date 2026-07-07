@@ -78,9 +78,10 @@ function createSidebarGroup(
   onItemClick?: () => void
 ) {
   const title = group.label
-  // Filter out cloud-only items in self-hosted mode, then by feature access
+  // Filter out cloud-only items in self-hosted mode, then by feature access and role
   let items = selfHosted ? group.items?.filter((item) => !item.cloudOnly) : group.items
   items = items?.filter((item) => !item.featureKey || hasFeatureAccess(item.featureKey))
+  items = items?.filter((item) => !item.access || item.access === role)
   if (!items || items.length === 0) {
     return null
   }

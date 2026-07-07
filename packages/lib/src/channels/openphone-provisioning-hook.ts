@@ -23,6 +23,7 @@ import { ForbiddenError } from '../errors'
 import { publisher } from '../events'
 import { InboxService } from '../inboxes/inbox-service'
 import { FeatureKey, FeaturePermissionService } from '../permissions'
+import { assertSharedConnectInbox } from './connect-inbox'
 import { countBillableChannels } from './list'
 
 const logger = createScopedLogger('openphone-provisioning-hook')
@@ -134,8 +135,23 @@ export const openphoneProvisioningHook: PostConnectHook = {
       integrationId = created!.id
     }
 
-    const inboxService = new InboxService(db, ctx.organizationId, ctx.userId)
-    await inboxService.addIntegrationToDefaultInbox(integrationId)
+    // Inbox-first (channels v2): a new channel REQUIRES a validated shared inbox chosen
+    // up-front (forwarded via `pc_inboxId` → `ctx.extra.inboxId`); a reconnect keeps its
+    // existing link and ignores the param.
+    const existingLink = existingId
+      ? await db.query.InboxIntegration.findFirst({
+          where: eq(schema.InboxIntegration.integrationId, integrationId),
+        })
+      : null
+    if (!existingLink) {
+      const recordId = await assertSharedConnectInbox(
+        db,
+        ctx.organizationId,
+        ctx.extra?.inboxId as string | undefined
+      )
+      const inboxService = new InboxService(db, ctx.organizationId, ctx.userId)
+      await inboxService.addIntegration(recordId, integrationId)
+    }
 
     await onCacheEvent('channel.connected', { orgId: ctx.organizationId })
 

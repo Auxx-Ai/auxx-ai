@@ -25,6 +25,7 @@ import {
 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useMemo, useState } from 'react'
+import { AdminGate } from '~/components/global/admin-gate'
 import { SettingsSection } from '~/components/global/settings-page'
 import { InboxPicker } from '~/components/pickers/inbox-picker'
 import { toRecordId, useRecord, useResource } from '~/components/resources'
@@ -38,13 +39,15 @@ import IntegrationLabels from './integration-labels'
 /** Props for the IntegrationRouting component */
 interface IntegrationRoutingProps {
   integration: any // Replace with stronger typing when available
+  /** Admin, or owner of this personal channel — mutating controls disable otherwise. */
+  canManage: boolean
 }
 
 /**
  * IntegrationRouting component
  * Manages routing settings for an integration to inbox mapping
  */
-export default function IntegrationRouting({ integration }: IntegrationRoutingProps) {
+export default function IntegrationRouting({ integration, canManage }: IntegrationRoutingProps) {
   const router = useRouter()
   const { hasAccess } = useFeatureFlags()
   const [isRemoving, setIsRemoving] = useState(false)
@@ -193,7 +196,7 @@ export default function IntegrationRouting({ integration }: IntegrationRoutingPr
     <div className='p-3 sm:p-6 space-y-6 sm:space-y-10'>
       {/* Calendar Sync — Google integrations with call recordings enabled */}
       {integration.provider === 'google' && hasAccess(FeatureKey.callRecordings) && (
-        <CalendarSyncToggle integrationId={integration.id} />
+        <CalendarSyncToggle integrationId={integration.id} disabled={!canManage} />
       )}
 
       {/* Data Sync — hidden for forwarding integrations */}
@@ -203,16 +206,18 @@ export default function IntegrationRouting({ integration }: IntegrationRoutingPr
           title='Data Sync'
           description='Configure how data from this integration is synced to your inboxes.'
           action={
-            <Button
-              variant='outline'
-              size='sm'
-              onClick={() => syncMessages.mutate({ integrationId: integration.id, days: 7 })}
-              disabled={syncMessages.isPending || integration.syncStatus === 'SYNCING'}
-              loading={syncMessages.isPending}
-              loadingText='Starting...'>
-              <RefreshCw />
-              Sync Messages
-            </Button>
+            <AdminGate action='manage shared channels' allow={canManage}>
+              <Button
+                variant='outline'
+                size='sm'
+                onClick={() => syncMessages.mutate({ integrationId: integration.id, days: 7 })}
+                disabled={syncMessages.isPending || integration.syncStatus === 'SYNCING'}
+                loading={syncMessages.isPending}
+                loadingText='Starting...'>
+                <RefreshCw />
+                Sync Messages
+              </Button>
+            </AdminGate>
           }>
           <div className='space-y-2'>
             <div className='flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-start'>
@@ -252,7 +257,7 @@ export default function IntegrationRouting({ integration }: IntegrationRoutingPr
       )}
 
       {['outlook', 'imap'].includes(integration.provider) && (
-        <IntegrationLabels integration={integration} />
+        <IntegrationLabels integration={integration} disabled={!canManage} />
       )}
 
       <SettingsSection
@@ -280,7 +285,7 @@ export default function IntegrationRouting({ integration }: IntegrationRoutingPr
                 </div>
                 {isLoadingConnectedInbox ? (
                   <Skeleton className='h-7 w-32' />
-                ) : (
+                ) : canManage ? (
                   <InboxPicker
                     selected={connectedInboxRecordId ? [connectedInboxRecordId] : []}
                     onChange={handleSelectInbox}
@@ -293,6 +298,13 @@ export default function IntegrationRouting({ integration }: IntegrationRoutingPr
                       Edit default inbox
                     </Button>
                   </InboxPicker>
+                ) : (
+                  <AdminGate action='manage shared channels' allow={canManage}>
+                    <Button variant='outline' size='sm'>
+                      <Edit />
+                      Edit default inbox
+                    </Button>
+                  </AdminGate>
                 )}
               </div>
             </div>
@@ -307,11 +319,17 @@ export default function IntegrationRouting({ integration }: IntegrationRoutingPr
                 </AlertDescription>
               </Alert>
 
-              <InboxPicker selected={[]} onChange={handleSelectInbox}>
-                <Button variant='default' loading={addIntegration.isPending}>
-                  Connect to inbox
-                </Button>
-              </InboxPicker>
+              {canManage ? (
+                <InboxPicker selected={[]} onChange={handleSelectInbox}>
+                  <Button variant='default' loading={addIntegration.isPending}>
+                    Connect to inbox
+                  </Button>
+                </InboxPicker>
+              ) : (
+                <AdminGate action='manage shared channels' allow={canManage}>
+                  <Button variant='default'>Connect to inbox</Button>
+                </AdminGate>
+              )}
             </div>
           )}
         </div>
@@ -333,13 +351,15 @@ export default function IntegrationRouting({ integration }: IntegrationRoutingPr
                 </div>
               </div>
               <div className='shrink-0'>
-                <Button
-                  variant='destructive'
-                  onClick={handleRemoveIntegration}
-                  disabled={isRemoving}
-                  size='sm'>
-                  Delete Integration
-                </Button>
+                <AdminGate action='manage shared channels' allow={canManage}>
+                  <Button
+                    variant='destructive'
+                    onClick={handleRemoveIntegration}
+                    disabled={isRemoving}
+                    size='sm'>
+                    Delete Integration
+                  </Button>
+                </AdminGate>
               </div>
               <ConfirmDialog />
             </div>
@@ -449,10 +469,13 @@ function AllowedSendersSection({
             )}
           </div>
         </div>
-        <Button variant='outline' size='sm' onClick={() => setDialogOpen(true)}>
-          {hasEntries ? <Edit /> : <Plus />}
-          {hasEntries ? 'Edit' : 'Add senders'}
-        </Button>
+        {/* Forwarding channels are always shared — admin-only regardless of canManage. */}
+        <AdminGate action='edit allowed senders'>
+          <Button variant='outline' size='sm' onClick={() => setDialogOpen(true)}>
+            {hasEntries ? <Edit /> : <Plus />}
+            {hasEntries ? 'Edit' : 'Add senders'}
+          </Button>
+        </AdminGate>
       </div>
 
       {dialogOpen && (

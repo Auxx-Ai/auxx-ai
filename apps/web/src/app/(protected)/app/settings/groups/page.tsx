@@ -8,12 +8,14 @@ import { useState } from 'react'
 import SettingsPage from '~/components/global/settings-page'
 import { GroupDetailDialog, GroupsList, useGroupMutations, useGroups } from '~/components/groups'
 import { useConfirm } from '~/hooks/use-confirm'
+import { useUser } from '~/hooks/use-user'
 
 /**
  * Groups settings page
  * Manages organization groups using the new EntityGroup system
  */
 export default function GroupsPage() {
+  useUser({ requireRoles: ['ADMIN', 'OWNER'] })
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null)
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)

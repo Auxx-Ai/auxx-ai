@@ -104,7 +104,7 @@ export function ThreadDisplay({ centered, expectedThreadId }: ThreadDisplayProps
           }
           button={
             hasOnlyForwardingChannel ? (
-              <Link href='/app/settings/channels/new'>
+              <Link href='/app/settings/channels?connect=1'>
                 <Button variant='outline'>
                   <Plus size={16} />
                   <span>Setup Channel</span>

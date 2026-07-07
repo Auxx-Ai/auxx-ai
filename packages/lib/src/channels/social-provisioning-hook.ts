@@ -24,6 +24,7 @@ import { resolveConnectionForRuntime } from '../connections/resolve-connection-f
 import { publisher } from '../events'
 import { InboxService } from '../inboxes/inbox-service'
 import { setChannelTokens } from '../providers/channel-token-accessor'
+import { assertSharedConnectInbox } from './connect-inbox'
 
 const logger = createScopedLogger('social-provisioning-hook')
 
@@ -353,8 +354,21 @@ export const socialProvisioningHook: PostConnectHook = {
       { createdById: ctx.userId }
     )
 
-    const inboxService = new InboxService(db, ctx.organizationId, ctx.userId)
-    await inboxService.addIntegrationToDefaultInbox(integration.id)
+    // Inbox-first (channels v2): a new (or legacy unlinked) channel REQUIRES a validated
+    // shared inbox chosen up-front (forwarded via `pc_inboxId` → `ctx.extra.inboxId`); a
+    // reconnect of an already-linked channel keeps its link and ignores the param.
+    const existingLink = await db.query.InboxIntegration.findFirst({
+      where: eq(schema.InboxIntegration.integrationId, integration.id),
+    })
+    if (!existingLink) {
+      const recordId = await assertSharedConnectInbox(
+        db,
+        ctx.organizationId,
+        ctx.extra?.inboxId as string | undefined
+      )
+      const inboxService = new InboxService(db, ctx.organizationId, ctx.userId)
+      await inboxService.addIntegration(recordId, integration.id)
+    }
 
     await subscribePageToApp(provider, identity.pageId, identity.longLivedPageToken)
 

@@ -5,7 +5,7 @@ import { schema } from '@auxx/database'
 import { OrganizationType } from '@auxx/database/enums'
 import { onCacheEvent } from '@auxx/lib/cache'
 import { DehydrationService } from '@auxx/lib/dehydration'
-import { MemberService } from '@auxx/lib/members'
+import { isAdminOrOwner, MemberService } from '@auxx/lib/members'
 import { OrganizationService } from '@auxx/lib/organizations'
 import { createScopedLogger } from '@auxx/logger'
 import { TRPCError } from '@trpc/server'
@@ -94,6 +94,13 @@ export const organizationRouter = createTRPCRouter({
       const userEmail = ctx.session.user.email
       const { organizationId } = ctx.session
       const { name, handle, type, website, domains, completedOnboarding } = input
+
+      if (!(await isAdminOrOwner(organizationId, userId))) {
+        throw new TRPCError({
+          code: 'FORBIDDEN',
+          message: 'You must be an admin or owner to update the organization',
+        })
+      }
 
       // Validate handle is not reserved
       if (handle !== undefined && RESERVED_ORGANIZATION_HANDLES.includes(handle as any)) {

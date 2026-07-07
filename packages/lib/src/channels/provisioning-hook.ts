@@ -17,6 +17,7 @@ import { resolveConnectionForRuntime } from '../connections/resolve-connection-f
 import { publisher } from '../events'
 import { InboxService } from '../inboxes/inbox-service'
 import { GoogleOAuthService } from '../providers/google/google-oauth'
+import { assertSharedConnectInbox } from './connect-inbox'
 import { provisionPersonalInbox } from './personal-connection'
 
 const logger = createScopedLogger('channel-provisioning-hook')
@@ -282,7 +283,8 @@ export const channelProvisioningHook: PostConnectHook = {
 
     if (ctx.personal) {
       // Personal account (§11): dedicated restricted inbox owned by the
-      // connector; nothing attaches to the org's Shared Inbox.
+      // connector; the chosen `inboxId` (if any) is ignored — provisioning owns
+      // the destination.
       await provisionPersonalInbox({
         organizationId: ctx.organizationId,
         ownerUserId: ctx.userId,
@@ -290,8 +292,23 @@ export const channelProvisioningHook: PostConnectHook = {
         email: identity.email,
       })
     } else {
-      const inboxService = new InboxService(db, ctx.organizationId, ctx.userId)
-      await inboxService.addIntegrationToDefaultInbox(integration.id)
+      // Shared connect (channels v2): the destination inbox is chosen up-front in
+      // the UI and forwarded as `pc_inboxId` → `ctx.extra.inboxId`. A reconnect of
+      // an already-linked integration keeps its link and ignores the param; a new
+      // (or legacy unlinked) integration REQUIRES a validated shared inbox. Linked
+      // BEFORE seedSync so the first sync lands in the right-visibility inbox.
+      const existingLink = await db.query.InboxIntegration.findFirst({
+        where: eq(schema.InboxIntegration.integrationId, integration.id),
+      })
+      if (!existingLink) {
+        const recordId = await assertSharedConnectInbox(
+          db,
+          ctx.organizationId,
+          ctx.extra?.inboxId as string | undefined
+        )
+        const inboxService = new InboxService(db, ctx.organizationId, ctx.userId)
+        await inboxService.addIntegration(recordId, integration.id)
+      }
     }
 
     await seedSync({

@@ -20,6 +20,7 @@ import { EntityTemplateDialog } from '~/components/custom-fields/ui/entity-templ
 import SettingsPage from '~/components/global/settings-page'
 import { useResources } from '~/components/resources/hooks'
 import { LimitReachedDialog } from '~/components/subscriptions/limit-reached-dialog'
+import { useUser } from '~/hooks/use-user'
 import { useFeatureFlags } from '~/providers/feature-flag-provider'
 
 const BASE_URL = `/app/settings/custom-fields`
@@ -28,6 +29,7 @@ const BASE_URL = `/app/settings/custom-fields`
 const HIDDEN_ENTITY_TYPES = ['signature', 'inbox', 'entity_group', 'tag']
 
 export default function CustomFieldsPage() {
+  useUser({ requireRoles: ['ADMIN', 'OWNER'] })
   const router = useRouter()
   const [dialogOpen, setDialogOpen] = useState(false)
   const [templateDialogOpen, setTemplateDialogOpen] = useState(false)

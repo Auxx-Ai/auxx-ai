@@ -7,9 +7,11 @@ import { EmptyState } from '~/components/global/empty-state'
 import SettingsPage from '~/components/global/settings-page'
 import { WebhookEndpointsSection } from '~/components/webhooks/ui/webhook-endpoints-section'
 import { WebhooksSection } from '~/components/webhooks/ui/webhooks-section'
+import { useUser } from '~/hooks/use-user'
 import { useFeatureFlags } from '~/providers/feature-flag-provider'
 
 export default function WebhooksPage() {
+  useUser({ requireRoles: ['ADMIN', 'OWNER'] })
   const { hasAccess } = useFeatureFlags()
 
   if (!hasAccess(FeatureKey.webhooks)) {

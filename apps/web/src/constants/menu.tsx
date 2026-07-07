@@ -202,8 +202,9 @@ export const SETTINGS_MENU: SidebarProps[] = [
       },
     ],
   },
-  // Channels — header is member-visible so Apps is reachable. Per-item admin
-  // gates below still keep the admin-only entries hidden from members.
+  // Channels — member-visible: members connect/manage their own personal email
+  // accounts here; shared-channel actions are gated in-page. Item-level `access`
+  // is enforced by the sidebar (webhooks stays admin-only).
   {
     id: 'channels',
     label: 'Channels',
@@ -214,7 +215,6 @@ export const SETTINGS_MENU: SidebarProps[] = [
         label: 'Channels',
         slug: 'channels',
         icon: <Waypoints />,
-        access: 'ADMIN',
       },
       {
         id: 'settings-apps',
