@@ -4,6 +4,7 @@ import { isSelfHosted } from '@auxx/deployment'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { redirect } from 'next/navigation'
 import { Suspense } from 'react'
+import { AdminPageGuard } from '~/components/global/admin-page-guard'
 import SettingsPage from '~/components/global/settings-page'
 import { InvoiceList } from '~/components/subscriptions/invoice-list'
 
@@ -18,6 +19,7 @@ export default function InvoicesPage() {
         { title: 'Plans', href: '/app/settings/plans' },
         { title: 'Invoices' },
       ]}>
+      <AdminPageGuard />
       <div className='flex-1 h-full flex flex-col'>
         <Suspense fallback={<InvoiceListSkeleton />}>
           <InvoiceList />

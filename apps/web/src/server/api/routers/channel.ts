@@ -5,6 +5,7 @@ import { type Database, schema } from '@auxx/database'
 import { getCachedAgentById, onCacheEvent } from '@auxx/lib/cache'
 import {
   addExcludedSender as addExcludedSenderToChannel,
+  assertSharedConnectInbox,
   channelProviderKey,
   countBillableChannels,
   createChannel,
@@ -14,6 +15,7 @@ import {
   getProviderType,
   linkChannelToInbox,
   list as listChannels,
+  requireChannelManageAccess,
   resolveChannelDefinitionId,
   supportsPersonalChannelConnection,
   syncAllMessages,
@@ -145,7 +147,8 @@ export const channelRouter = createTRPCRouter({
    */
   list: protectedProcedure.query(async ({ ctx }) => {
     const organizationId = getUserOrganizationId(ctx.session)
-    return listChannels({ db: ctx.db, organizationId })
+    // Passing userId hides other members' personal channels from non-admins.
+    return listChannels({ db: ctx.db, organizationId, userId: ctx.session.userId })
   }),
 
   /**
@@ -157,7 +160,8 @@ export const channelRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const { userId } = ctx.session
       const organizationId = getUserOrganizationId(ctx.session)
-      await requireAdminAccess(userId, organizationId)
+      // Admin, or the owner of this personal channel.
+      await requireChannelManageAccess({ db: ctx.db, organizationId, userId }, input.integrationId)
 
       const result = await disconnectChannel(
         { db: ctx.db, organizationId, userId },
@@ -186,7 +190,7 @@ export const channelRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const { userId } = ctx.session
       const organizationId = getUserOrganizationId(ctx.session)
-      await requireAdminAccess(userId, organizationId)
+      await requireChannelManageAccess({ db: ctx.db, organizationId, userId }, input.integrationId)
 
       const result = await toggleChannel(
         { db: ctx.db, organizationId, userId },
@@ -211,7 +215,7 @@ export const channelRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const { userId } = ctx.session
       const organizationId = getUserOrganizationId(ctx.session)
-      await requireAdminAccess(userId, organizationId)
+      await requireChannelManageAccess({ db: ctx.db, organizationId, userId }, input.integrationId)
 
       const result = await syncMessages(
         { db: ctx.db, organizationId, userId },
@@ -260,7 +264,8 @@ export const channelRouter = createTRPCRouter({
         collectUserInfo: chatWidgetInputSchema.shape.collectUserInfo.optional(),
         offlineMessage: chatWidgetInputSchema.shape.offlineMessage.optional(),
         allowedDomains: chatWidgetInputSchema.shape.allowedDomains.optional(),
-        inboxId: z.string().optional(),
+        // Inbox-first (channels v2): a new chat channel requires a validated shared inbox.
+        inboxId: z.string().min(1),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -269,6 +274,7 @@ export const channelRouter = createTRPCRouter({
       await requireAdminAccess(userId, organizationId)
 
       await checkChannelLimit(ctx.db, organizationId)
+      await assertSharedConnectInbox(ctx.db, organizationId, input.inboxId)
 
       const serviceCtx = { db: ctx.db, organizationId }
       const { inboxId, ...widgetConfig } = input
@@ -483,19 +489,23 @@ export const channelRouter = createTRPCRouter({
    */
   createChatChannel: protectedProcedure
     .use(notDemo('create chat widgets'))
-    .mutation(async ({ ctx }) => {
+    // Inbox-first (channels v2): the destination inbox is chosen in the gallery before create.
+    // An optional name overrides the auto-generated "Chat Widget N".
+    .input(z.object({ inboxId: z.string().min(1), name: z.string().trim().min(1).optional() }))
+    .mutation(async ({ ctx, input }) => {
       const { userId } = ctx.session
       const organizationId = getUserOrganizationId(ctx.session)
       await requireAdminAccess(userId, organizationId)
 
       await checkChannelLimit(ctx.db, organizationId)
+      await assertSharedConnectInbox(ctx.db, organizationId, input.inboxId)
 
       const existingCount = await ctx.db
         .select({ value: count() })
         .from(schema.ChatWidget)
         .where(eq(schema.ChatWidget.organizationId, organizationId))
       const suffix = (existingCount[0]?.value ?? 0) + 1
-      const widgetName = suffix > 1 ? `Chat Widget ${suffix}` : 'Chat Widget'
+      const widgetName = input.name ?? (suffix > 1 ? `Chat Widget ${suffix}` : 'Chat Widget')
 
       const serviceCtx = { db: ctx.db, organizationId }
 
@@ -524,6 +534,9 @@ export const channelRouter = createTRPCRouter({
           welcomeMessageTemplate: defaultWelcomeMessageTemplate(),
           updatedAt: new Date(),
         })
+
+        const linkResult = await linkChannelToInbox(serviceCtx, integration.id, input.inboxId, tx)
+        if (!linkResult.ok) throw linkResult.error
 
         return integration.id
       })
@@ -584,7 +597,7 @@ export const channelRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const { userId } = ctx.session
       const organizationId = getUserOrganizationId(ctx.session)
-      await requireAdminAccess(userId, organizationId)
+      await requireChannelManageAccess({ db: ctx.db, organizationId, userId }, input.integrationId)
 
       const result = await updateChannelSettings(
         { db: ctx.db, organizationId, userId },
@@ -698,6 +711,9 @@ export const channelRouter = createTRPCRouter({
       z
         .object({
           email: z.string().email(),
+          // Inbox-first (channels v2): IMAP now links its destination inbox at connect
+          // time (it previously linked none). Required + validated below.
+          inboxId: z.string().min(1),
           authMode: z.enum(['direct', 'ldap']),
           imapHost: z.string().min(1),
           imapPort: z.coerce.number().int().min(1).max(65535).default(993),
@@ -756,6 +772,8 @@ export const channelRouter = createTRPCRouter({
       const organizationId = getUserOrganizationId(ctx.session)
       await requireAdminAccess(userId, organizationId)
       await checkChannelLimit(ctx.db, organizationId)
+      // Validate the chosen inbox up-front (fail before minting a credential / testing servers).
+      await assertSharedConnectInbox(ctx.db, organizationId, input.inboxId)
 
       const credentialData: ImapCredentialData = {
         authMode: input.authMode,
@@ -829,7 +847,8 @@ export const channelRouter = createTRPCRouter({
       }
       const credentialId = created.value.id
 
-      // Create integration record
+      // Create integration record + link its inbox (inbox-first: linked immediately, no
+      // post-hoc routing-tab step).
       const [integration] = await ctx.db
         .insert(schema.Integration)
         .values({
@@ -844,6 +863,15 @@ export const channelRouter = createTRPCRouter({
           updatedAt: new Date(),
         })
         .returning()
+
+      const linkResult = await linkChannelToInbox(
+        { db: ctx.db, organizationId },
+        integration.id,
+        input.inboxId
+      )
+      if (!linkResult.ok) throw linkResult.error
+
+      await onCacheEvent('channel.connected', { orgId: organizationId })
 
       return { integrationId: integration.id }
     }),
@@ -863,7 +891,7 @@ export const channelRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const { userId } = ctx.session
       const organizationId = getUserOrganizationId(ctx.session)
-      await requireAdminAccess(userId, organizationId)
+      await requireChannelManageAccess({ db: ctx.db, organizationId, userId }, input.integrationId)
 
       // Verify integration belongs to this org
       const [integration] = await ctx.db

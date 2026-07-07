@@ -3,6 +3,7 @@
 import { ArrowLeftRight } from 'lucide-react'
 import { ExportsSection } from '~/components/data-export/ui/exports-section'
 import { ImportsSection } from '~/components/data-import/ui/imports-section'
+import { AdminPageGuard } from '~/components/global/admin-page-guard'
 import SettingsPage from '~/components/global/settings-page'
 
 /**
@@ -17,6 +18,7 @@ export default function ImportExportHistoryPage() {
       title='Import & Export'
       description='View your data imports and exports'
       breadcrumbs={[{ title: 'Settings', href: '/app/settings' }, { title: 'Import & Export' }]}>
+      <AdminPageGuard />
       <div className='flex flex-1 flex-col gap-8 p-3 sm:p-6'>
         <ImportsSection />
         <ExportsSection />

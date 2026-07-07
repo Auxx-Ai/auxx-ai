@@ -2,6 +2,7 @@
 
 import { isMasked, splitConnectionValues } from '@auxx/credentials/crypto'
 import { setDefaultCredential } from '@auxx/credentials/store'
+import type { Database } from '@auxx/database'
 import {
   deleteAppConnection,
   getAppDeployments,
@@ -13,6 +14,7 @@ import {
 import { getCachedAppBySlug, getOrgCache, onCacheEvent } from '@auxx/lib/cache'
 import { mintClientCredentialToken } from '@auxx/lib/connections'
 import { resolveConnectorConfigOptions } from '@auxx/lib/data-connectors'
+import { isAdminOrOwner } from '@auxx/lib/members'
 import { FeatureKey, FeaturePermissionService } from '@auxx/lib/permissions'
 import { resolveQuickActionOptions } from '@auxx/lib/quick-actions'
 import { createScopedLogger } from '@auxx/logger'
@@ -37,6 +39,32 @@ import { recordAuditFromCtx } from '~/server/api/audit-context'
 import { adminProcedure, createTRPCRouter, notDemo, protectedProcedure } from '~/server/api/trpc'
 
 const logger = createScopedLogger('trpc-apps')
+
+/**
+ * Connection-scope gate: user-scoped credentials (Credential.userId set) are managed by their
+ * owner; org-scoped ones (userId null) require admin.
+ */
+async function requireConnectionManageAccess(
+  db: Database,
+  session: { userId: string; organizationId: string },
+  credentialId: string
+): Promise<void> {
+  const credential = await db.query.Credential.findFirst({
+    where: (c, { and, eq }) =>
+      and(eq(c.id, credentialId), eq(c.organizationId, session.organizationId)),
+    columns: { userId: true },
+  })
+  if (!credential) {
+    throw new TRPCError({ code: 'NOT_FOUND', message: 'Connection not found' })
+  }
+  if (credential.userId === session.userId) return
+  if (!(await isAdminOrOwner(session.organizationId, session.userId))) {
+    throw new TRPCError({
+      code: 'FORBIDDEN',
+      message: 'Only admins can manage organization connections',
+    })
+  }
+}
 
 /**
  * Apps router
@@ -396,8 +424,10 @@ export const appsRouter = createTRPCRouter({
     )
     .use(notDemo('delete app connections'))
     .mutation(async ({ ctx, input }) => {
-      const { organizationId } = ctx.session
+      const { organizationId, userId } = ctx.session
       const { credentialId } = input
+
+      await requireConnectionManageAccess(ctx.db, { userId, organizationId }, credentialId)
 
       const result = await deleteAppConnection(credentialId, organizationId)
 
@@ -462,6 +492,17 @@ export const appsRouter = createTRPCRouter({
         ? def.global === true
         : input.connectionType === 'organization'
       const userIdField = isOrgScoped ? null : userId
+
+      // Org-scoped connections are an admin decision; user-scoped ones belong to the caller.
+      if (isOrgScoped && !(await isAdminOrOwner(organizationId, userId))) {
+        throw new TRPCError({
+          code: 'FORBIDDEN',
+          message: 'Only admins can manage organization connections',
+        })
+      }
+      if (!isOrgScoped && connectionId) {
+        await requireConnectionManageAccess(ctx.db, { userId, organizationId }, connectionId)
+      }
 
       const variableDefs = def.connectionVariables ?? []
 
@@ -600,8 +641,10 @@ export const appsRouter = createTRPCRouter({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const { organizationId } = ctx.session
+      const { organizationId, userId } = ctx.session
       const { connectionId, label } = input
+
+      await requireConnectionManageAccess(ctx.db, { userId, organizationId }, connectionId)
 
       const result = await renameAppConnection(connectionId, label, organizationId)
 
@@ -781,7 +824,7 @@ export const appsRouter = createTRPCRouter({
    * Save app settings (from form submission)
    * Validates on server-side before persisting
    */
-  saveSettings: protectedProcedure
+  saveSettings: adminProcedure
     .input(
       z.object({
         appSlug: z.string(),

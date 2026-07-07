@@ -5,11 +5,28 @@ import { claimPersonalInbox, deletePersonalInbox } from '@auxx/lib/channels'
 import { InboxService } from '@auxx/lib/inboxes'
 import { inboxLensFor, type Lens } from '@auxx/lib/permissions/visibility'
 import { ThreadMutationService } from '@auxx/lib/threads'
-import { recordIdSchema, toRecordId } from '@auxx/types/resource'
+import { type RecordId, recordIdSchema, toRecordId } from '@auxx/types/resource'
 import { TRPCError } from '@trpc/server'
 import { z } from 'zod'
 import { recordAuditFromCtx } from '~/server/api/audit-context'
 import { adminProcedure, createTRPCRouter, protectedProcedure } from '~/server/api/trpc'
+
+/**
+ * Inbox-manage gate: org admin or an inbox `admin` grant (Manager delegation).
+ * Personal-channel owners hold the admin grant on their own personal inbox.
+ */
+async function requireInboxManageAccess(
+  inboxService: InboxService,
+  recordId: RecordId,
+  userId: string
+): Promise<void> {
+  if (!(await inboxService.canManageInboxAccess(recordId, userId))) {
+    throw new TRPCError({
+      code: 'FORBIDDEN',
+      message: 'Only admins or inbox managers can manage this inbox',
+    })
+  }
+}
 
 /** Schema for creating an inbox */
 const createInboxSchema = z.object({
@@ -99,6 +116,8 @@ export const inboxRouter = createTRPCRouter({
       const userId = ctx.session.user.id
       const inboxService = new InboxService(ctx.db, organizationId, userId)
 
+      await requireInboxManageAccess(inboxService, toRecordId('inbox', input.inboxId), userId)
+
       await inboxService.deleteInboxById(input.inboxId)
       await recordAuditFromCtx(ctx, {
         category: 'integrations',
@@ -163,6 +182,8 @@ export const inboxRouter = createTRPCRouter({
     const userId = ctx.session.user.id
     const inboxService = new InboxService(ctx.db, organizationId, userId)
 
+    await requireInboxManageAccess(inboxService, input.recordId, userId)
+
     const result = await inboxService.addIntegration(
       input.recordId,
       input.integrationId,
@@ -220,6 +241,12 @@ export const inboxRouter = createTRPCRouter({
       const { organizationId } = ctx.session
       const userId = ctx.session.user.id
       const socketId = ctx.headers?.get?.('x-realtime-socket-id') ?? undefined
+
+      // Moving threads touches both inboxes — require manage access on each side.
+      const inboxService = new InboxService(ctx.db, organizationId, userId)
+      await requireInboxManageAccess(inboxService, input.fromInboxRecordId, userId)
+      await requireInboxManageAccess(inboxService, input.toInboxRecordId, userId)
+
       const viewer = await getCachedUserMailVisibility(userId, organizationId)
       const threadMutation = new ThreadMutationService(
         organizationId,
@@ -259,6 +286,7 @@ export const inboxRouter = createTRPCRouter({
       const inboxService = new InboxService(ctx.db, organizationId, userId)
 
       const recordId = toRecordId('inbox', input.inboxId)
+      await requireInboxManageAccess(inboxService, recordId, userId)
       const result = await inboxService.removeIntegration(recordId, input.integrationId)
       await recordAuditFromCtx(ctx, {
         category: 'integrations',

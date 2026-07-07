@@ -74,6 +74,12 @@ export interface ConnectFlowArgs {
   prefillVariables?: Record<string, string>
   /** Optional return URL for full-redirect fallback. */
   returnTo?: string
+  /**
+   * Opaque post-connect context forwarded to the provider's post-connect hook as `ctx.extra`.
+   * For OAuth defs each entry rides as a `pc_<key>` query param; for secret defs it's passed
+   * through `connections.save`. Channels v2 uses this to carry `{ inboxId }` for inbox-first connects.
+   */
+  postConnect?: Record<string, string>
 }
 
 export interface UseConnectFlow {
@@ -212,6 +218,11 @@ export function useConnectFlow(options: UseConnectFlowOptions = {}): UseConnectF
       if (a.returnTo) params.set('returnTo', a.returnTo)
       for (const [key, value] of Object.entries(vars)) {
         if (value) params.set(`var_${key}`, value)
+      }
+      // Post-connect context (e.g. channels-v2 inbox-first `{ inboxId }`) → `pc_<key>` params,
+      // which the authorize route folds into the OAuth state and the callback hands to the hook.
+      for (const [key, value] of Object.entries(a.postConnect ?? {})) {
+        if (value) params.set(`pc_${key}`, value)
       }
 
       let baseUrl: string
@@ -352,6 +363,9 @@ export function useConnectFlow(options: UseConnectFlowOptions = {}): UseConnectF
           name: chosenName ?? a.target.title,
           ...payload,
           connectionId: a.connectionId,
+          // Secret channels (e.g. Quo) still need inbox-first context at the hook — the OAuth
+          // `pc_*` seam doesn't apply, so it rides through the save mutation as `postConnect`.
+          ...(a.postConnect && { postConnect: a.postConnect }),
         })
       }
     },

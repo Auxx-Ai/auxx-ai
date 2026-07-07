@@ -22,9 +22,11 @@ import { api } from '~/trpc/react'
 
 interface IntegrationLabelsProps {
   integration: { id: string; provider: string }
+  /** Viewer may not manage this channel (member on a shared channel) — render read-only. */
+  disabled?: boolean
 }
 
-export default function IntegrationLabels({ integration }: IntegrationLabelsProps) {
+export default function IntegrationLabels({ integration, disabled }: IntegrationLabelsProps) {
   const [dialogOpen, setDialogOpen] = useState(false)
   const [search, setSearch] = useState('')
   const utils = api.useUtils()
@@ -96,7 +98,11 @@ export default function IntegrationLabels({ integration }: IntegrationLabelsProp
         {isLoading ? (
           <Skeleton className='h-7 w-28' />
         ) : (
-          <Button variant='outline' size='sm' onClick={() => setDialogOpen(true)}>
+          <Button
+            variant='outline'
+            size='sm'
+            disabled={disabled}
+            onClick={() => setDialogOpen(true)}>
             <Edit />
             Edit folders
           </Button>

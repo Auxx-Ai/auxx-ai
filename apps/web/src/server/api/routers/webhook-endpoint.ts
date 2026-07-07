@@ -17,7 +17,7 @@ import {
   updateWebhookEndpoint,
 } from '@auxx/lib/webhooks/webhook-endpoint'
 import { z } from 'zod'
-import { createTRPCRouter, protectedProcedure } from '../trpc'
+import { adminProcedure, createTRPCRouter, protectedProcedure } from '../trpc'
 
 const verificationSchema = z.enum(['none', 'token', 'hmac', 'stripe'])
 const signatureEncodingSchema = z.enum(['hex', 'base64'])
@@ -50,7 +50,7 @@ export const webhookEndpointRouter = createTRPCRouter({
     .input(z.object({ id: z.string().min(1) }))
     .query(({ ctx, input }) => getWebhookEndpoint(ctx.db, ctx.session.organizationId, input.id)),
 
-  create: protectedProcedure
+  create: adminProcedure
     .input(
       z.object({
         name: z.string().min(1, 'Name is required'),
@@ -72,7 +72,7 @@ export const webhookEndpointRouter = createTRPCRouter({
       })
     ),
 
-  update: protectedProcedure
+  update: adminProcedure
     .input(
       z.object({
         id: z.string().min(1),
@@ -90,14 +90,14 @@ export const webhookEndpointRouter = createTRPCRouter({
       return updateWebhookEndpoint(ctx.db, ctx.session.organizationId, id, patch)
     }),
 
-  rotateSecret: protectedProcedure
+  rotateSecret: adminProcedure
     // `secret` is the replacement `whsec_…` for stripe endpoints; token/hmac mint a fresh one.
     .input(z.object({ id: z.string().min(1), secret: z.string().optional() }))
     .mutation(({ ctx, input }) =>
       rotateWebhookEndpointSecret(ctx.db, ctx.session.organizationId, input.id, input.secret)
     ),
 
-  delete: protectedProcedure
+  delete: adminProcedure
     .input(z.object({ id: z.string().min(1) }))
     .mutation(({ ctx, input }) =>
       deleteWebhookEndpoint(ctx.db, ctx.session.organizationId, input.id)

@@ -7,9 +7,11 @@ export {
   channelProviderKey,
   resolveChannelDefinitionId,
 } from './channel-connection-def'
+export { assertSharedConnectInbox } from './connect-inbox'
 export { disconnect } from './disconnect'
 export { type CreateChannelInput, createChannel, linkChannelToInbox } from './lifecycle'
 export { countBillableChannels, getProviderType, list } from './list'
+export { canManageChannel, requireChannelManageAccess } from './manage-access'
 export {
   claimPersonalInbox,
   deletePersonalInbox,

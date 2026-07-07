@@ -7,12 +7,14 @@ import { useParams, useRouter, useSearchParams } from 'next/navigation'
 // ~/app/(protected)/app/settings/channels/_components/integration-tabs.tsx
 import { useState } from 'react'
 import { useChannel, useChannelsLoading } from '~/components/channels/hooks/use-channels'
+import { useAdminGate } from '~/components/global/admin-gate'
 import {
   getIntegrationStatus,
   IntegrationStatusIndicator,
 } from '~/components/global/integration-status-indicator'
 import { ReauthBanner } from '~/components/global/reauth-banner'
 import SettingsPage from '~/components/global/settings-page'
+import { useInboxes } from '~/components/threads/hooks'
 import IntegrationRouting from './integration-routing'
 import IntegrationSettingsAdvanced from './integration-settings-advanced'
 
@@ -29,6 +31,15 @@ export default function IntegrationTabs() {
 
   const isIntegrationsLoading = useChannelsLoading()
   const integration = useChannel(integrationId)
+
+  // Admin, or owner of this personal channel (mirrors requireChannelManageAccess).
+  const { isAdminOrOwner, userId } = useAdminGate()
+  const { inboxes } = useInboxes()
+  const linkedInbox = integration?.inboxId
+    ? inboxes.find((inbox) => inbox.id === integration.inboxId)
+    : undefined
+  const canManage =
+    isAdminOrOwner || (!!linkedInbox?.isPersonal && linkedInbox.ownerUserId === userId)
 
   // Handle tab change
   const handleTabChange = (value: string) => {
@@ -135,11 +146,11 @@ export default function IntegrationTabs() {
           )}
 
           <TabsContent value='routing' className='space-y-4'>
-            <IntegrationRouting integration={integration} />
+            <IntegrationRouting integration={integration} canManage={canManage} />
           </TabsContent>
 
           <TabsContent value='settings' className='space-y-4'>
-            <IntegrationSettingsAdvanced integration={integration} />
+            <IntegrationSettingsAdvanced integration={integration} canManage={canManage} />
           </TabsContent>
         </div>
       </SettingsPage>

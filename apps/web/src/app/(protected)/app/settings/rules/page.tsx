@@ -4,8 +4,10 @@
 import SettingsPage from '~/components/global/settings-page'
 import { InventorySourcesSection } from '~/components/inventory-bridge/ui/inventory-sources-section'
 import { RecordRulesSection } from '~/components/record-rules/ui/record-rules-section'
+import { useUser } from '~/hooks/use-user'
 
 export default function RulesPage() {
+  useUser({ requireRoles: ['ADMIN', 'OWNER'] })
   return (
     <SettingsPage
       title='Rules'

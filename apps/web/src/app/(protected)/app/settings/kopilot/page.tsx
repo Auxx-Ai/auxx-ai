@@ -2,10 +2,12 @@
 'use client'
 
 import SettingsPage from '~/components/global/settings-page'
+import { useUser } from '~/hooks/use-user'
 import { ModelSection } from './_components/model-section'
 import { ToolsetsSection } from './_components/toolsets-section'
 
 export default function KopilotSettingsPage() {
+  useUser({ requireRoles: ['ADMIN', 'OWNER'] })
   return (
     <SettingsPage
       title='Kopilot'

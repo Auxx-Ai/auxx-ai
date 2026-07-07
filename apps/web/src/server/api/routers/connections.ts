@@ -301,6 +301,12 @@ export const connectionsRouter = createTRPCRouter({
         secret: z.string().optional(),
         /** Reconnect: rotate the existing credential instead of inserting. */
         connectionId: z.string().optional(),
+        /**
+         * Opaque post-connect context handed to the provider's hook as `ctx.extra`. The OAuth
+         * flow carries this via `pc_*` params; secret connections (e.g. channels-v2 inbox-first
+         * Quo) route it through here instead. Channels use `{ inboxId }`.
+         */
+        postConnect: z.record(z.string(), z.string()).optional(),
       })
     )
     .use(notDemo('save connection'))
@@ -375,6 +381,7 @@ export const connectionsRouter = createTRPCRouter({
         organizationId,
         userId: ctx.session.user.id,
         ...(input.connectionId && { connectionId: input.connectionId }),
+        ...(input.postConnect && { extra: input.postConnect }),
       })
 
       return { credentialId: result.value }

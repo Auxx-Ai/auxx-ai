@@ -2,7 +2,7 @@
 
 import { type Database, schema } from '@auxx/database'
 import { and, count, eq, inArray, isNull, sql } from 'drizzle-orm'
-import { getOrgCache } from '../cache'
+import { getCachedUserMailVisibility, getOrgCache } from '../cache'
 import { getImportCacheSize } from '../email/polling-import-cache'
 import { NotFoundError } from '../errors'
 import { Result, type TypedResult } from '../result'
@@ -23,9 +23,24 @@ function toDate<T extends Date | null>(v: T | string): T {
  * `syncStageStartedAt`, throttle counters) plus Redis pending-import counts.
  * Sync state isn't cached because it flips too often and is only read on the
  * admin Channels page.
+ *
+ * With a `userId`, non-admin viewers don't see other members' personal
+ * channels (§11) — a channel routed to a personal inbox is only listed for
+ * its owner and admins. Shared channels stay visible to every member.
  */
 export async function list(ctx: ChannelCtx) {
-  const cached = await getOrgCache().get(ctx.organizationId, 'channels')
+  let cached = await getOrgCache().get(ctx.organizationId, 'channels')
+
+  if (ctx.userId) {
+    const vis = await getCachedUserMailVisibility(ctx.userId, ctx.organizationId)
+    if (!vis.isAdmin) {
+      const inboxes = await getOrgCache().get(ctx.organizationId, 'inboxes')
+      const othersPersonal = new Set(
+        inboxes.filter((i) => i.isPersonal && i.ownerUserId !== ctx.userId).map((i) => i.id)
+      )
+      cached = cached.filter((c) => !c.inboxId || !othersPersonal.has(c.inboxId))
+    }
+  }
 
   const ids = cached.map((c) => c.id)
   const liveState = ids.length

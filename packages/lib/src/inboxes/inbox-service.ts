@@ -326,6 +326,12 @@ export class InboxService {
 
   /**
    * Get or create the canonical shared inbox for the organization.
+   *
+   * System-onboarding only: the sole remaining caller is
+   * `ensureForwardingAddressIntegration` (the org's system-managed inbound
+   * forwarding address, which has no user-facing connect step to pick a
+   * destination). Interactive channel connects are inbox-first (channels v2) —
+   * they carry a validated `pc_inboxId` and never fall back to a default inbox.
    */
   async getOrCreateSharedInbox(): Promise<Inbox> {
     const existingInboxes = await this.getInboxes()
@@ -355,6 +361,10 @@ export class InboxService {
 
   /**
    * Add an integration to the canonical shared inbox.
+   *
+   * System-onboarding only (see {@link getOrCreateSharedInbox}). Interactive
+   * channel connects are inbox-first — they validate + link a chosen inbox in
+   * their provisioning hook and never route through here.
    */
   async addIntegrationToSharedInbox(
     integrationId: string,
@@ -363,18 +373,6 @@ export class InboxService {
   ) {
     const sharedInbox = await this.getOrCreateSharedInbox()
     return this.addIntegration(sharedInbox.recordId, integrationId, isDefault, settings)
-  }
-
-  /**
-   * Add integration to the shared inbox.
-   * Kept for backward compatibility with older call sites.
-   */
-  async addIntegrationToDefaultInbox(
-    integrationId: string,
-    isDefault: boolean = true,
-    settings?: Record<string, unknown>
-  ) {
-    return this.addIntegrationToSharedInbox(integrationId, isDefault, settings)
   }
 
   // ═══════════════════════════════════════════════════════════════════════════

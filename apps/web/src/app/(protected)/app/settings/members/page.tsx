@@ -49,6 +49,10 @@ export default async function MembersPage({}: Props) {
   const isAdmin =
     userMembership.role === OrganizationRole.ADMIN || userMembership.role === OrganizationRole.OWNER
 
+  if (!isAdmin) {
+    redirect('/access-denied')
+  }
+
   // Individual workspaces don't need a members page
   if (organization.type === OrganizationType.INDIVIDUAL) {
     // console.log('invidivual org')

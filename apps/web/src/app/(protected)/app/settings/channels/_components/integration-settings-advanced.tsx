@@ -24,6 +24,8 @@ interface IntegrationSettingsAdvancedProps {
     }
     [key: string]: any
   }
+  /** Admin, or owner of this personal channel — mutating controls disable otherwise. */
+  canManage: boolean
 }
 
 /**
@@ -31,6 +33,7 @@ interface IntegrationSettingsAdvancedProps {
  */
 export default function IntegrationSettingsAdvanced({
   integration,
+  canManage,
 }: IntegrationSettingsAdvancedProps) {
   const utils = api.useUtils()
   const updateSettings = api.channel.updateSettings.useMutation({
@@ -85,7 +88,7 @@ export default function IntegrationSettingsAdvanced({
         <RadioGroup
           value={recordCreationMode}
           onValueChange={handleRecordCreationChange}
-          disabled={updateSettings.isPending}>
+          disabled={!canManage || updateSettings.isPending}>
           <RadioGroupItemCard
             label='All contacts'
             value='all'
@@ -118,6 +121,7 @@ export default function IntegrationSettingsAdvanced({
         entries={integration.settings?.excludeSenders ?? []}
         onSave={(entries) => saveFilterSetting('excludeSenders', entries)}
         isPending={updateSettings.isPending}
+        disabled={!canManage}
       />
 
       <EmailFilterSection
@@ -130,6 +134,7 @@ export default function IntegrationSettingsAdvanced({
         entries={integration.settings?.excludeRecipients ?? []}
         onSave={(entries) => saveFilterSetting('excludeRecipients', entries)}
         isPending={updateSettings.isPending}
+        disabled={!canManage}
       />
 
       <EmailFilterSection
@@ -142,6 +147,7 @@ export default function IntegrationSettingsAdvanced({
         entries={integration.settings?.onlyProcessRecipients ?? []}
         onSave={(entries) => saveFilterSetting('onlyProcessRecipients', entries)}
         isPending={updateSettings.isPending}
+        disabled={!canManage}
         activeWarning='All emails not matching these addresses will be automatically ignored.'
       />
     </div>

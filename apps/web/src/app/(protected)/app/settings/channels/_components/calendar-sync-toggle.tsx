@@ -10,13 +10,15 @@ import { api } from '~/trpc/react'
 
 interface CalendarSyncToggleProps {
   integrationId: string
+  /** Viewer may not manage this channel (member on a shared channel) — render read-only. */
+  disabled?: boolean
 }
 
 /**
  * Calendar sync section for Google integrations.
  * Matches the section pattern used in integration-routing.
  */
-export function CalendarSyncToggle({ integrationId }: CalendarSyncToggleProps) {
+export function CalendarSyncToggle({ integrationId, disabled }: CalendarSyncToggleProps) {
   const utils = api.useUtils()
   const { data, isLoading } = api.calendar.getSyncStatus.useQuery()
 
@@ -82,7 +84,7 @@ export function CalendarSyncToggle({ integrationId }: CalendarSyncToggleProps) {
             variant='outline'
             size='sm'
             onClick={handleManualSync}
-            disabled={triggerSync.isPending}
+            disabled={disabled || triggerSync.isPending}
             loading={triggerSync.isPending}
             loadingText='Syncing...'>
             <RefreshCw />
@@ -112,7 +114,7 @@ export function CalendarSyncToggle({ integrationId }: CalendarSyncToggleProps) {
         <Switch
           checked={isEnabled}
           onCheckedChange={handleCheckedChange}
-          disabled={enableSync.isPending || disableSync.isPending}
+          disabled={disabled || enableSync.isPending || disableSync.isPending}
         />
       </div>
     </SettingsSection>

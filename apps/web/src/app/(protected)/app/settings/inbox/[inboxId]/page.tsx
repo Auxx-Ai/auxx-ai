@@ -1,4 +1,5 @@
 // apps/web/src/app/(protected)/app/settings/inbox/[inboxId]/page.tsx
+import { AdminPageGuard } from '~/components/global/admin-page-guard'
 import { InboxDetail } from '~/components/inbox'
 
 export default async function InboxDetailPage({
@@ -8,5 +9,10 @@ export default async function InboxDetailPage({
 }) {
   const { inboxId } = await params
 
-  return <InboxDetail inboxId={inboxId} />
+  return (
+    <>
+      <AdminPageGuard />
+      <InboxDetail inboxId={inboxId} />
+    </>
+  )
 }

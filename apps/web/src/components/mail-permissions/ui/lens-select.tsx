@@ -21,6 +21,8 @@ interface LensSelectProps {
   includeManager?: boolean
   disabled?: boolean
   size?: 'sm' | 'default'
+  /** SelectTrigger style — `transparent` to sit flush inside a FieldPanelRow. */
+  variant?: 'default' | 'transparent'
   className?: string
 }
 
@@ -36,6 +38,7 @@ export function LensSelect({
   includeManager = false,
   disabled = false,
   size = 'sm',
+  variant = 'default',
   className,
 }: LensSelectProps) {
   const gated = useMailPermissionsGated()
@@ -59,7 +62,7 @@ export function LensSelect({
   return (
     <>
       <Select value={value} onValueChange={handleChange} disabled={disabled}>
-        <SelectTrigger size={size} className={className}>
+        <SelectTrigger size={size} variant={variant} className={className}>
           <SelectValue placeholder='Access'>{LENS_LABELS[value]?.label}</SelectValue>
         </SelectTrigger>
         <SelectContent align='end' className='min-w-56'>
