@@ -10,6 +10,7 @@ import { getAppCache, getBuildUserCache, getOrgCache, getUserCache } from './sin
  *
  * @param context.orgId Required for org/user mappings, optional for build-only events
  * @param context.userId Target user for user/build cache invalidation
+ * @param context.userIds Target multiple users (e.g. group membership edits)
  * @param context.broadcastUserKeys If true, invalidate user keys for ALL org members
  * @param context.developerAccountId For build events, invalidate all members of this account
  *
@@ -24,6 +25,7 @@ export async function onCacheEvent(
   context: {
     orgId?: string
     userId?: string
+    userIds?: string[]
     broadcastUserKeys?: boolean
     developerAccountId?: string
   }
@@ -38,25 +40,49 @@ export async function onCacheEvent(
   const mapping = INVALIDATION_GRAPH[event]
   if (!mapping) return
 
+  // Visibility recomputes reshape which inboxes/threads count toward badges
+  // (§10.1): whenever an event touches `userMailVisibility`, the affected
+  // users' counter hashes are stale too. Epoch bump for broadcasts (lazy
+  // reconcile on next read), targeted staleness for specific users.
+  if (
+    context.orgId &&
+    isMixedMapping(mapping) &&
+    'user' in mapping &&
+    mapping.user?.includes('userMailVisibility')
+  ) {
+    const orgId = context.orgId
+    const { bumpMailCountsEpoch, markMailCountsStale } = await import('../threads/mail-counts')
+    if (context.broadcastUserKeys) {
+      void bumpMailCountsEpoch(orgId)
+    } else {
+      const userIds = context.userIds ?? (context.userId ? [context.userId] : [])
+      if (userIds.length > 0) void markMailCountsStale(orgId, userIds)
+    }
+  }
+
   if (isOrgOnlyMapping(mapping)) {
     if (mapping.length > 0 && context.orgId) {
       await getOrgCache().invalidateAndRecompute(context.orgId, mapping)
     }
   } else if (isMixedMapping(mapping)) {
+    // Org keys recompute BEFORE user keys: user providers (userMailVisibility)
+    // compose from org keys, so a concurrent recompute could pin stale org
+    // data into the user entry until its next invalidation.
+    if ('org' in mapping && mapping.org && mapping.org.length > 0 && context.orgId) {
+      await getOrgCache().invalidateAndRecompute(context.orgId, mapping.org)
+    }
+
     const promises: Promise<void>[] = []
 
-    if ('org' in mapping && mapping.org && mapping.org.length > 0 && context.orgId) {
-      promises.push(getOrgCache().invalidateAndRecompute(context.orgId, mapping.org))
-    }
     if ('user' in mapping && mapping.user && mapping.user.length > 0) {
       if (context.broadcastUserKeys && context.orgId) {
         // Invalidate for ALL org members
         promises.push(getUserCache().invalidateOrgUsersForKeys(context.orgId, mapping.user))
-      } else if (context.userId) {
-        // Invalidate for a single user
-        promises.push(
-          getUserCache().invalidateAndRecompute(context.userId, mapping.user, context.orgId)
-        )
+      } else {
+        const userIds = context.userIds ?? (context.userId ? [context.userId] : [])
+        for (const userId of userIds) {
+          promises.push(getUserCache().invalidateAndRecompute(userId, mapping.user, context.orgId))
+        }
       }
     }
     if ('build' in mapping && mapping.build && mapping.build.length > 0) {

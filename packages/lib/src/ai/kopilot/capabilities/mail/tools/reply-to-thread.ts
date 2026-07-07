@@ -1,10 +1,12 @@
 // packages/lib/src/ai/kopilot/capabilities/mail/tools/reply-to-thread.ts
 
 import { z } from 'zod'
+import { getCachedUserMailVisibility } from '../../../../../cache'
 import { getCachedIntegrationCatalog } from '../../../../../cache/integration-catalog'
 import { DraftService } from '../../../../../drafts'
 import { MessageQueryService, MessageSenderService } from '../../../../../messages'
 import { ParticipantService } from '../../../../../participants'
+import { getThreadLens } from '../../../../../permissions/visibility/thread-lens'
 import { ThreadQueryService } from '../../../../../threads'
 import type { AgentToolDefinition } from '../../../../agent-framework/types'
 import type { GetToolDeps } from '../../types'
@@ -155,7 +157,22 @@ export function createReplyToThreadTool(getDeps: GetToolDeps): AgentToolDefiniti
       // somehow missing (e.g. tool invoked through a non-pause path in tests).
       const mode: 'draft' | 'send' = args.mode === 'send' ? 'send' : 'draft'
 
-      const threadService = new ThreadQueryService(agentDeps.organizationId, db)
+      // Kopilot acts as the invoking user (§8.1): replying/drafting requires
+      // `full` lens on the thread (§7) — sub-full viewers get a typed error.
+      const viewer = await getCachedUserMailVisibility(agentDeps.userId, agentDeps.organizationId)
+      const lens = await getThreadLens(db, agentDeps.organizationId, viewer, threadId)
+      if (lens === 'none') {
+        return { success: false, output: null, error: `Thread ${threadId} not found` }
+      }
+      if (lens !== 'full') {
+        return {
+          success: false,
+          output: null,
+          error: 'You have restricted visibility on this thread and cannot reply or draft on it.',
+        }
+      }
+
+      const threadService = new ThreadQueryService(agentDeps.organizationId, db, viewer)
       const [threadMeta] = await threadService.getThreadMetaBatch([threadId], agentDeps.userId)
       if (!threadMeta) {
         return { success: false, output: null, error: `Thread ${threadId} not found` }
@@ -192,7 +209,7 @@ export function createReplyToThreadTool(getDeps: GetToolDeps): AgentToolDefiniti
         resolved = result.value
       } else {
         // Default to last inbound sender for replies.
-        const messageService = new MessageQueryService(agentDeps.organizationId, db)
+        const messageService = new MessageQueryService(agentDeps.organizationId, db, viewer)
         const { messages } = await messageService.getMessagesByThread(threadId)
         const lastInbound = [...messages].reverse().find((m) => m.isInbound)
         const fromEntry = lastInbound?.participants.find((p) => p.startsWith('from:'))

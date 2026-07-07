@@ -70,8 +70,11 @@ export async function computeAndSeedMailCounts(
   orgId: string,
   userId: string
 ): Promise<FullCountsResponse> {
-  const unreadService = new UnreadService(orgId, userId)
-  const { getOrgCache } = await import('../cache')
+  // Counts run as the target user's viewer (§10.1) — the one documented
+  // worker exception to SYSTEM_VISIBILITY: a badge is a per-user artifact.
+  const { getOrgCache, getCachedUserMailVisibility } = await import('../cache')
+  const viewer = await getCachedUserMailVisibility(userId, orgId)
+  const unreadService = new UnreadService(orgId, userId, viewer)
   const redis = await getRedisClient()
 
   const [inboxes, viewIds, epochRaw] = await Promise.all([
@@ -80,12 +83,18 @@ export async function computeAndSeedMailCounts(
     redis.get(epochKey(orgId)),
   ])
 
+  // Unread state is `full`-tier: only inboxes the user sees at `full` carry a
+  // badge (admins: everywhere except others' personal inboxes, §11).
+  const countableInboxes = inboxes.filter((ib) =>
+    viewer.isAdmin ? !viewer.personalInboxIds[ib.id] : viewer.inboxLens[ib.id] === 'full'
+  )
+
   const [inbox, drafts, views, perInbox] = await Promise.all([
     unreadService.getPersonalInboxCount(),
     unreadService.getDraftsCount(),
     unreadService.getViewCounts(viewIds),
     Promise.all(
-      inboxes.map(
+      countableInboxes.map(
         async (ib) => [ib.id, await unreadService.calculateUnreadCountForUserInbox(ib.id)] as const
       )
     ),

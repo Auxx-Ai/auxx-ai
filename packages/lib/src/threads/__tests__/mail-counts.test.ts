@@ -90,11 +90,23 @@ vi.mock('../unread-service', () => ({
 
 // Mock only what mail-counts pulls from the cache barrel — importing the real
 // barrel drags in the agents module and its queue imports.
+// The admin viewer keeps every inbox countable (§10.1 scoping is exercised in
+// the visibility suite; here we assert the seeding mechanics).
 vi.mock('../../cache', () => ({
   getOrgCache: vi.fn(() => ({
     get: vi.fn(async () => [{ id: 'ibx1' }, { id: 'ibx2' }]),
   })),
   getCachedMembers: vi.fn(async () => [{ userId: 'u1' }, { userId: 'u2' }]),
+  getCachedUserMailVisibility: vi.fn(async () => ({
+    userId: 'u1',
+    role: 'ADMIN',
+    isAdmin: true,
+    inboxLens: {},
+    personalInboxIds: {},
+    threadGrants: {},
+    contactGrants: {},
+    entityGrants: {},
+  })),
 }))
 
 import { applyMailCountDeltas, getMailCounts, markMailCountsStale } from '../mail-counts'

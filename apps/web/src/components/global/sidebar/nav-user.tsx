@@ -221,11 +221,14 @@ export function NavUser({ user }: Prop) {
                             <DropdownMenuRadioItem
                               value={membership.organization.id}
                               key={membership.organization.id}
-                              className='gap-2 p-1 pr-3'>
-                              <div className='flex size-5 items-center justify-center rounded-full border'>
-                                <Building2 className='size-3 shrink-0' />
-                              </div>
-                              {membership.organization.name}
+                              indicator='check'
+                              className='p-1 pr-2'>
+                              <span className='flex items-center gap-2'>
+                                <span className='flex size-5 shrink-0 items-center justify-center rounded-full border'>
+                                  <Building2 className='size-3' />
+                                </span>
+                                <span className='truncate'>{membership.organization.name}</span>
+                              </span>
                             </DropdownMenuRadioItem>
                           ))}
                     </DropdownMenuRadioGroup>

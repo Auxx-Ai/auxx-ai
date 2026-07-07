@@ -92,6 +92,7 @@ export type {
 export type { CacheProvider } from './org-cache-provider'
 export { OrganizationCacheService } from './org-cache-service'
 export { PromiseMemoizer } from './promise-memoizer'
+export type { MailGrantEntry, MailGrantIndex } from './providers/mail-grant-index-provider'
 export type { CachedPublishedWorkflow, CachedWorkflowApp } from './providers/workflow-apps-provider'
 // ── Singletons ──
 export {
@@ -102,6 +103,7 @@ export {
   getUserCache,
 } from './singletons'
 export { TokenCacheService } from './token-cache-service'
+export { getCachedUserMailVisibility } from './user-cache-helpers'
 export type {
   CachedFavorite,
   CachedTableView,

@@ -1,5 +1,6 @@
 // apps/web/src/server/api/routers/inbox.ts
 
+import { getCachedUserMailVisibility } from '@auxx/lib/cache'
 import { InboxService } from '@auxx/lib/inboxes'
 import { ThreadMutationService } from '@auxx/lib/threads'
 import { recordIdSchema, toRecordId } from '@auxx/types/resource'
@@ -119,7 +120,14 @@ export const inboxRouter = createTRPCRouter({
     .query(async ({ ctx, input }) => {
       const { organizationId } = ctx.session
       const userId = ctx.session.user.id
-      const threadMutation = new ThreadMutationService(organizationId, ctx.db, undefined, userId)
+      const viewer = await getCachedUserMailVisibility(userId, organizationId)
+      const threadMutation = new ThreadMutationService(
+        organizationId,
+        ctx.db,
+        undefined,
+        userId,
+        viewer
+      )
       return threadMutation.countIntegrationThreadsInInbox(
         input.integrationId,
         input.fromInboxRecordId
@@ -143,7 +151,14 @@ export const inboxRouter = createTRPCRouter({
       const { organizationId } = ctx.session
       const userId = ctx.session.user.id
       const socketId = ctx.headers?.get?.('x-realtime-socket-id') ?? undefined
-      const threadMutation = new ThreadMutationService(organizationId, ctx.db, socketId, userId)
+      const viewer = await getCachedUserMailVisibility(userId, organizationId)
+      const threadMutation = new ThreadMutationService(
+        organizationId,
+        ctx.db,
+        socketId,
+        userId,
+        viewer
+      )
 
       const result = await threadMutation.moveIntegrationThreadsToInbox(
         input.integrationId,

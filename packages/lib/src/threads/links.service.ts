@@ -3,10 +3,27 @@
 import { type Database, database, schema, type Transaction } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { and, eq, isNull } from 'drizzle-orm'
+import type { MailViewer } from '../permissions/visibility/context'
+import { getThreadLens } from '../permissions/visibility/thread-lens'
 
 type DbOrTx = Database | Transaction
 
 const logger = createScopedLogger('thread-links-service')
+
+/**
+ * §7 link gate: linking/unlinking an entity to a thread (and other
+ * thread-scoped actions like chat take-over) requires `full` lens on it.
+ * Replaces the routers' bare existence `db.select`s — an invisible thread is
+ * indistinguishable from a nonexistent one (both return false).
+ */
+export async function canLinkThread(
+  db: Database,
+  organizationId: string,
+  viewer: MailViewer,
+  threadId: string
+): Promise<boolean> {
+  return (await getThreadLens(db, organizationId, viewer, threadId)) === 'full'
+}
 
 export type LinkRole = 'primary' | 'secondary'
 

@@ -6,6 +6,7 @@ import { eq } from 'drizzle-orm'
 import { onCacheEvent } from '../cache'
 import { BadRequestError, type NotFoundError } from '../errors'
 import { createScopedLogger } from '../logger'
+import { SYSTEM_VISIBILITY } from '../permissions/visibility/context'
 import { Result, type TypedResult } from '../result'
 import { ThreadMutationService } from '../threads/thread-mutation.service'
 import { validateChannelOwnership } from './internal/validate'
@@ -107,7 +108,14 @@ async function retroactivelyIgnoreThreads(
   previousSettings: ChannelSettings,
   newSettings: ChannelSettings
 ) {
-  const threadMutation = new ThreadMutationService(ctx.organizationId, ctx.db)
+  // Platform pipeline over the whole channel — explicit SYSTEM principal (§8.3).
+  const threadMutation = new ThreadMutationService(
+    ctx.organizationId,
+    ctx.db,
+    undefined,
+    undefined,
+    SYSTEM_VISIBILITY
+  )
 
   if (newSettings.excludeSenders) {
     const oldEntries = previousSettings.excludeSenders ?? []

@@ -5,21 +5,12 @@ import { ResourceGranteeType, ResourcePermission } from '@auxx/database/enums'
 import { createScopedLogger } from '@auxx/logger'
 import { parseRecordId, type RecordId, toRecordId } from '@auxx/types/resource'
 import { and, eq } from 'drizzle-orm'
-import { onCacheEvent } from '../cache'
-import {
-  checkAccess,
-  getUserAccessibleInstances,
-  setInstanceAccess,
-} from '../resource-access/resource-access-service'
+import { getUserCache, onCacheEvent } from '../cache'
+import type { Lens } from '../permissions/visibility/lens'
+import { hasPermission, setInstanceAccess } from '../resource-access/resource-access-service'
 import type { ResourceAccessContext } from '../resource-access/types'
 import { listAll, UnifiedCrudHandler } from '../resources/crud'
-import type {
-  CreateInboxInput,
-  Inbox,
-  InboxVisibility,
-  InboxWithIntegrations,
-  UpdateInboxInput,
-} from './types'
+import type { CreateInboxInput, Inbox, InboxWithIntegrations, UpdateInboxInput } from './types'
 
 const logger = createScopedLogger('inbox-service')
 
@@ -28,6 +19,15 @@ const logger = createScopedLogger('inbox-service')
  */
 function getInstanceId(recordId: RecordId): string {
   return parseRecordId(recordId).entityInstanceId
+}
+
+/**
+ * Default-lens value for inboxes that predate the `inbox_default_lens` field
+ * (data migration 033 backfills it with exactly this mapping). `org_members`
+ * meant everyone-full; `private`/`custom` meant explicit grantees only.
+ */
+function legacyDefaultLens(visibility: unknown): Lens {
+  return visibility === 'private' || visibility === 'custom' ? 'none' : 'full'
 }
 
 /**
@@ -65,22 +65,26 @@ export class InboxService {
       inbox_description: input.description ?? null,
       inbox_color: input.color ?? 'indigo',
       inbox_status: input.status ?? 'ACTIVE',
+      // Legacy field, kept in sync until Phase 6 removes it. The floor is
+      // defaultLens; there are no org_member ResourceAccess rows anymore.
+      // Callers still passing only `visibility` get the equivalent floor.
       inbox_visibility: input.visibility ?? 'org_members',
+      inbox_default_lens: input.defaultLens ?? legacyDefaultLens(input.visibility),
       inbox_settings: input.settings ?? {},
     }
 
     const result = await this.crudHandler.create('inbox', values)
     const recordId = toRecordId('inbox', result.instance.id)
 
-    // Set default permissions: org_members visibility + creator as admin
-    await this.setVisibilityAccess(recordId, input.visibility ?? 'org_members')
+    // Creator becomes the inbox Manager (admin grant — may manage access).
     if (this.userId) {
       await setInstanceAccess(this.ctx, recordId, ResourceGranteeType.user, [
         { granteeId: this.userId, permission: ResourcePermission.admin },
       ])
     }
 
-    await onCacheEvent('inbox.created', { orgId: this.organizationId })
+    // Inbox floors affect every member's visibility context.
+    await onCacheEvent('inbox.created', { orgId: this.organizationId, broadcastUserKeys: true })
 
     return this.resolveInbox(recordId)
   }
@@ -113,14 +117,12 @@ export class InboxService {
     if (input.color !== undefined) values.inbox_color = input.color
     if (input.status !== undefined) values.inbox_status = input.status
     if (input.settings !== undefined) values.inbox_settings = input.settings
-    if (input.visibility !== undefined) {
-      values.inbox_visibility = input.visibility
-      await this.setVisibilityAccess(recordId, input.visibility)
-    }
+    if (input.visibility !== undefined) values.inbox_visibility = input.visibility
+    if (input.defaultLens !== undefined) values.inbox_default_lens = input.defaultLens
 
     if (Object.keys(values).length > 0) {
       await this.crudHandler.update(recordId, values)
-      await onCacheEvent('inbox.updated', { orgId: this.organizationId })
+      await onCacheEvent('inbox.updated', { orgId: this.organizationId, broadcastUserKeys: true })
     }
 
     return this.resolveInbox(recordId)
@@ -161,7 +163,7 @@ export class InboxService {
     // Delete the entity instance
     await this.crudHandler.delete(recordId)
 
-    await onCacheEvent('inbox.deleted', { orgId: this.organizationId })
+    await onCacheEvent('inbox.deleted', { orgId: this.organizationId, broadcastUserKeys: true })
     await onCacheEvent('channel.inbox-link.changed', { orgId: this.organizationId })
   }
 
@@ -188,33 +190,24 @@ export class InboxService {
   }
 
   /**
-   * Get all inboxes accessible to a user
+   * Get all inboxes visible to a user (effective lens above `none`) — a filter
+   * over the cached `userMailVisibility` context, no per-inbox ACL queries.
    */
   async getInboxesForUser(userId: string): Promise<Inbox[]> {
-    const access = await getUserAccessibleInstances(this.ctx, userId, 'inbox')
-
-    // If user has type-level access, return all inboxes
-    if (access.hasTypeAccess) {
-      return this.getInboxes()
-    }
-
-    const accessibleRecordIds = new Set(access.instances.map((i) => i.recordId))
-    const result = await listAll(
-      { db: this.db, organizationId: this.organizationId, userId: this.userId ?? '' },
-      { entityDefinitionId: 'inbox' }
-    )
-
-    return result.items
-      .filter((item) => accessibleRecordIds.has(item.recordId))
-      .map((item) => this.transformToInbox(item))
+    const vis = await getUserCache().get(userId, 'userMailVisibility', this.organizationId)
+    const inboxes = await this.getInboxes()
+    if (vis.isAdmin) return inboxes
+    return inboxes.filter((inbox) => (vis.inboxLens[inbox.id] ?? 'none') !== 'none')
   }
 
   /**
-   * Check if user has access to an inbox
+   * Check if user has access to an inbox (effective lens above `none`).
+   * Cache read — replaces the former live ResourceAccess check.
    */
   async hasUserAccess(recordId: RecordId, userId: string): Promise<boolean> {
-    const result = await checkAccess(this.ctx, { recordId, userId })
-    return result.hasAccess
+    const vis = await getUserCache().get(userId, 'userMailVisibility', this.organizationId)
+    if (vis.isAdmin) return true
+    return (vis.inboxLens[getInstanceId(recordId)] ?? 'none') !== 'none'
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -222,17 +215,13 @@ export class InboxService {
   // ═══════════════════════════════════════════════════════════════════════════
 
   /**
-   * Set role-based access based on visibility setting
+   * Whether a user may manage this inbox's access (floor edits, grants):
+   * org admin or an inbox `admin` grant (Manager delegation, decision #3).
    */
-  private async setVisibilityAccess(
-    recordId: RecordId,
-    visibility: InboxVisibility
-  ): Promise<void> {
-    const grants =
-      visibility === 'org_members'
-        ? [{ granteeId: 'org_member', permission: ResourcePermission.view }]
-        : []
-    await setInstanceAccess(this.ctx, recordId, ResourceGranteeType.role, grants)
+  async canManageInboxAccess(recordId: RecordId, userId: string): Promise<boolean> {
+    const vis = await getUserCache().get(userId, 'userMailVisibility', this.organizationId)
+    if (vis.isAdmin) return true
+    return hasPermission({ ...this.ctx, userId }, recordId, ResourcePermission.admin)
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -422,6 +411,9 @@ export class InboxService {
       status: ((item.fieldValues.inbox_status as string) ?? 'ACTIVE') as Inbox['status'],
       visibility: ((item.fieldValues.inbox_visibility as string) ??
         'org_members') as Inbox['visibility'],
+      defaultLens:
+        (item.fieldValues.inbox_default_lens as string as Lens) ??
+        legacyDefaultLens(item.fieldValues.inbox_visibility),
       settings: (item.fieldValues.inbox_settings as Record<string, unknown>) ?? {},
       organizationId: item.organizationId,
       createdAt: item.createdAt,
@@ -460,6 +452,9 @@ export class InboxService {
       status: ((getValue('inbox_status') as string) ?? 'ACTIVE') as Inbox['status'],
       visibility: ((getValue('inbox_visibility') as string) ??
         'org_members') as Inbox['visibility'],
+      defaultLens:
+        (getValue('inbox_default_lens') as string as Lens) ??
+        legacyDefaultLens(getValue('inbox_visibility')),
       settings: (getValue('inbox_settings') as Record<string, unknown>) ?? {},
       organizationId: instance.organizationId,
       createdAt: instance.createdAt,

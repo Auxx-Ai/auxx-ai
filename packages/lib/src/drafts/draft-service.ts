@@ -12,6 +12,10 @@ import {
   type UpsertDraftInput,
 } from '@auxx/types/draft'
 import { and, eq, inArray, isNull } from 'drizzle-orm'
+import { ForbiddenError } from '../errors'
+import type { MailViewer } from '../permissions/visibility/context'
+import { isSystemViewer } from '../permissions/visibility/context'
+import { getThreadLens } from '../permissions/visibility/thread-lens'
 
 const logger = createScopedLogger('draft-service')
 
@@ -23,11 +27,30 @@ export class DraftService {
   private db: Database
   private organizationId: string
   private userId: string
+  /**
+   * Visibility principal for the §7 draft-on-thread gate. Interactive callers
+   * pass the user's context; worker paths leave it undefined (SYSTEM-equivalent).
+   */
+  private readonly viewer?: MailViewer
 
-  constructor(db: Database, organizationId: string, userId: string) {
+  constructor(db: Database, organizationId: string, userId: string, viewer?: MailViewer) {
     this.db = db
     this.organizationId = organizationId
     this.userId = userId
+    this.viewer = viewer
+  }
+
+  /** §7: creating/holding a draft ON a thread requires `full` lens on it. */
+  private async assertCanDraftOnThread(threadId: string | null | undefined): Promise<void> {
+    if (!threadId || !this.viewer || isSystemViewer(this.viewer)) return
+    const lens = await getThreadLens(this.db, this.organizationId, this.viewer, threadId)
+    if (lens !== 'full') {
+      throw new ForbiddenError(
+        lens === 'none'
+          ? 'Thread not found.'
+          : 'You do not have full access to this thread and cannot draft on it.'
+      )
+    }
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -39,6 +62,8 @@ export class DraftService {
    * For thread drafts, fails if user already has a draft for that thread.
    */
   async create(input: CreateDraftInput): Promise<Draft> {
+    await this.assertCanDraftOnThread(input.threadId)
+
     logger.info('Creating draft', {
       userId: this.userId,
       threadId: input.threadId,

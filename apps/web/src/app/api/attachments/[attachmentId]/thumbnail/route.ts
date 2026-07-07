@@ -77,6 +77,12 @@ export async function GET(_request: NextRequest, { params }: RouteParams) {
       })
     }
 
+    // Message attachments are `full`-tier (mail-permissions §7).
+    const { canViewAttachment } = await import('../../attachment-visibility')
+    if (!(await canViewAttachment(attachmentId, session.user.id, organizationId))) {
+      return new Response('Not found', { status: 404 })
+    }
+
     // Use same service initialization as download route
     const { AttachmentService } = await import('@auxx/lib/files/server')
     const attachmentService = new AttachmentService(organizationId, session.user.id)

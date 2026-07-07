@@ -1,6 +1,7 @@
 // apps/web/src/server/api/routers/draft.ts
 
 import { IdentifierType } from '@auxx/database/enums'
+import { getCachedUserMailVisibility } from '@auxx/lib/cache'
 import { DraftService } from '@auxx/lib/drafts'
 import { createScopedLogger } from '@auxx/logger'
 import type { DraftAttachment, DraftContent, DraftParticipant } from '@auxx/types/draft'
@@ -113,7 +114,12 @@ export const draftRouter = createTRPCRouter({
    */
   upsert: protectedProcedure.input(UpsertDraftInputSchema).mutation(async ({ ctx, input }) => {
     const { organizationId, userId } = ctx.session
-    const draftService = new DraftService(ctx.db, organizationId, userId)
+    const draftService = new DraftService(
+      ctx.db,
+      organizationId,
+      userId,
+      await getCachedUserMailVisibility(userId, organizationId)
+    )
 
     logger.info('Upserting draft', {
       userId,
@@ -168,7 +174,12 @@ export const draftRouter = createTRPCRouter({
     .input(z.object({ draftId: z.string() }))
     .mutation(async ({ ctx, input }) => {
       const { organizationId, userId } = ctx.session
-      const draftService = new DraftService(ctx.db, organizationId, userId)
+      const draftService = new DraftService(
+        ctx.db,
+        organizationId,
+        userId,
+        await getCachedUserMailVisibility(userId, organizationId)
+      )
 
       logger.info('Deleting draft', { userId, draftId: input.draftId })
 
@@ -187,7 +198,12 @@ export const draftRouter = createTRPCRouter({
     .input(z.object({ draftId: z.string() }))
     .query(async ({ ctx, input }) => {
       const { organizationId, userId } = ctx.session
-      const draftService = new DraftService(ctx.db, organizationId, userId)
+      const draftService = new DraftService(
+        ctx.db,
+        organizationId,
+        userId,
+        await getCachedUserMailVisibility(userId, organizationId)
+      )
 
       const draft = await draftService.getById(input.draftId)
       if (!draft) {
@@ -203,7 +219,12 @@ export const draftRouter = createTRPCRouter({
     .input(z.object({ threadId: z.string() }))
     .query(async ({ ctx, input }) => {
       const { organizationId, userId } = ctx.session
-      const draftService = new DraftService(ctx.db, organizationId, userId)
+      const draftService = new DraftService(
+        ctx.db,
+        organizationId,
+        userId,
+        await getCachedUserMailVisibility(userId, organizationId)
+      )
       const draft = await draftService.getByThreadId(input.threadId)
       return draft ? transformDraftForFrontend(draft) : null
     }),
@@ -215,7 +236,12 @@ export const draftRouter = createTRPCRouter({
     .input(z.object({ threadId: z.string() }))
     .query(async ({ ctx, input }) => {
       const { organizationId, userId } = ctx.session
-      const draftService = new DraftService(ctx.db, organizationId, userId)
+      const draftService = new DraftService(
+        ctx.db,
+        organizationId,
+        userId,
+        await getCachedUserMailVisibility(userId, organizationId)
+      )
       return await draftService.hasDraft(input.threadId)
     }),
 
@@ -226,7 +252,12 @@ export const draftRouter = createTRPCRouter({
     .input(z.object({ threadId: z.string() }))
     .query(async ({ ctx, input }) => {
       const { organizationId, userId } = ctx.session
-      const draftService = new DraftService(ctx.db, organizationId, userId)
+      const draftService = new DraftService(
+        ctx.db,
+        organizationId,
+        userId,
+        await getCachedUserMailVisibility(userId, organizationId)
+      )
       return await draftService.getDraftId(input.threadId)
     }),
 
@@ -237,7 +268,12 @@ export const draftRouter = createTRPCRouter({
     .input(z.object({ limit: z.number().min(1).max(100).optional() }).optional())
     .query(async ({ ctx, input }) => {
       const { organizationId, userId } = ctx.session
-      const draftService = new DraftService(ctx.db, organizationId, userId)
+      const draftService = new DraftService(
+        ctx.db,
+        organizationId,
+        userId,
+        await getCachedUserMailVisibility(userId, organizationId)
+      )
       const drafts = await draftService.listUserDrafts({ limit: input?.limit })
       return drafts.map(transformDraftForFrontend)
     }),
@@ -251,7 +287,12 @@ export const draftRouter = createTRPCRouter({
     .input(z.object({ ids: z.array(z.string()).max(100) }))
     .mutation(async ({ ctx, input }) => {
       const { organizationId, userId } = ctx.session
-      const draftService = new DraftService(ctx.db, organizationId, userId)
+      const draftService = new DraftService(
+        ctx.db,
+        organizationId,
+        userId,
+        await getCachedUserMailVisibility(userId, organizationId)
+      )
 
       logger.debug('Fetching standalone draft metas', { count: input.ids.length })
 

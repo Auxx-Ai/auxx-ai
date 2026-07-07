@@ -22,6 +22,7 @@ import { groupMembersProvider } from './providers/group-members-provider'
 import { groupsProvider } from './providers/groups-provider'
 import { inboxesProvider } from './providers/inboxes-provider'
 import { installedAppsProvider } from './providers/installed-apps-provider'
+import { mailGrantIndexProvider } from './providers/mail-grant-index-provider'
 import { mcpServersProvider } from './providers/mcp-servers-provider'
 import { memberRoleMapProvider, membersProvider } from './providers/members-provider'
 import { orgProfileProvider } from './providers/org-profile-provider'
@@ -36,6 +37,7 @@ import { subscriptionProvider } from './providers/subscription-provider'
 import { systemUserProvider } from './providers/system-user-provider'
 import { userFavoritesProvider } from './providers/user-favorites-provider'
 import { userMailViewsProvider } from './providers/user-mail-views-provider'
+import { userMailVisibilityProvider } from './providers/user-mail-visibility-provider'
 import { userMembershipsProvider } from './providers/user-memberships-provider'
 import { userProfileProvider } from './providers/user-profile-provider'
 import { userSettingsProvider } from './providers/user-settings-provider'
@@ -71,6 +73,7 @@ export function registerAllProviders(
   orgCache.register('groupMembers', groupMembersProvider)
   orgCache.register('agents', agentsProvider)
   orgCache.register('inboxes', inboxesProvider)
+  orgCache.register('mailGrantIndex', mailGrantIndexProvider)
   orgCache.register('channels', channelsProvider)
   orgCache.register('overages', overagesProvider)
   orgCache.register('orgSettings', orgSettingsProvider)
@@ -91,6 +94,7 @@ export function registerAllProviders(
   userCache.register('userMailViews', userMailViewsProvider)
   userCache.register('userTableViews', userTableViewsProvider)
   userCache.register('userFavorites', userFavoritesProvider)
+  userCache.register('userMailVisibility', userMailVisibilityProvider)
 
   // App-scoped (global)
   appCache.register('plans', plansProvider)

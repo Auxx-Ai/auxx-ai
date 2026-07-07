@@ -152,11 +152,14 @@ export class AIComposeService {
   private async getThreadContext(
     threadId: string,
     organizationId: string,
-    _userId: string
+    userId: string
   ): Promise<ThreadContext> {
     try {
-      // Get messages using MessageQueryService
-      const messageQuery = new MessageQueryService(organizationId, this.db)
+      // AI compose inherits the invoking user's lens (mail-permissions §8.1):
+      // an invisible thread 404s, a sub-full one yields blanked bodies.
+      const { getCachedUserMailVisibility } = await import('../../cache')
+      const viewer = await getCachedUserMailVisibility(userId, organizationId)
+      const messageQuery = new MessageQueryService(organizationId, this.db, viewer)
       const { messages: rawMessages } = await messageQuery.getMessagesByThread(threadId)
 
       // Get thread subject with simple query

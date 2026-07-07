@@ -116,8 +116,16 @@ export class ThreadManagerService {
       throw new Error(`Integration ${input.integrationId} not found`)
     }
 
-    // Note: inboxId was removed from Thread schema in migration 0028
-    // Inbox association is now through InboxIntegration table via integrationId
+    // Stamp the inbox from the integration's InboxIntegration mapping so the
+    // thread never falls into the null-inbox visibility class
+    // (mail-permissions Phase 0). Column stays nullable defensively.
+    const inboxId = integration.inboxIntegration?.inboxId ?? null
+    if (!inboxId) {
+      logger.error('Pending thread could not resolve an inboxId for integration', {
+        integrationId: input.integrationId,
+        organizationId: input.organizationId,
+      })
+    }
 
     // Create thread with NULL externalId - will be filled by provider
     // Note: integrationType and messageType removed - derive from Integration.provider
@@ -128,6 +136,7 @@ export class ThreadManagerService {
         subject: input.subject,
         organizationId: input.organizationId,
         integrationId: input.integrationId,
+        inboxId,
         status: ThreadStatus.OPEN,
         messageCount: 0,
         participantCount: 0,

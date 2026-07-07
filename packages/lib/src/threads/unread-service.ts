@@ -7,7 +7,11 @@ type DbOrTx = Database | Transaction
 
 import { resolveConditionContext } from '../conditions/resolve-context'
 import type { ConditionGroup } from '../conditions/types'
+import { ForbiddenError } from '../errors'
 import { buildConditionGroupsQuery } from '../mail-query/condition-query-builder'
+import type { MailViewer } from '../permissions/visibility/context'
+import { isSystemViewer } from '../permissions/visibility/context'
+import { getThreadLensBatch } from '../permissions/visibility/thread-lens'
 import { getRealtimeService, publishThreadUpdated } from '../realtime'
 
 const logger = createScopedLogger('unread-service')
@@ -15,14 +19,16 @@ const logger = createScopedLogger('unread-service')
 export class UnreadService {
   private organizationId: string
   private userId: string
+  /** Visibility principal for count queries (§10.1) — usually `userId`'s own context. */
+  private viewer: MailViewer
   /** Originating socket id for self-echo suppression on realtime publishes. */
   private socketId?: string
 
-  constructor(organizationId: string, userId: string, _db?: any, socketId?: string) {
+  constructor(organizationId: string, userId: string, viewer: MailViewer, socketId?: string) {
     this.organizationId = organizationId
     this.userId = userId
+    this.viewer = viewer
     this.socketId = socketId
-    // _db parameter is kept for compatibility but not used - we use the imported db directly
   }
 
   /**
@@ -70,6 +76,16 @@ export class UnreadService {
     const threadIds = Array.isArray(threadId) ? threadId : [threadId]
 
     if (threadIds.length === 0) return
+
+    // §7: unread state is `full`-tier — mark read/unread requires `full` lens
+    // on every target (there is no visible unread state below `full` to clear).
+    if (!isSystemViewer(this.viewer)) {
+      const lenses = await getThreadLensBatch(db, this.organizationId, this.viewer, threadIds)
+      const blocked = threadIds.filter((id) => lenses.get(id) !== 'full')
+      if (blocked.length > 0) {
+        throw new ForbiddenError('You do not have full access to the selected threads.')
+      }
+    }
 
     // Fetch threads with the fields count deltas need (inbox, status, assignee)
     const threads = await db
@@ -297,7 +313,7 @@ export class UnreadService {
       const filters = resolveConditionContext(rawFilters, { currentUserId: this.userId })
 
       // Build WHERE condition from view filters
-      const whereCondition = buildConditionGroupsQuery(filters, this.organizationId)
+      const whereCondition = buildConditionGroupsQuery(filters, this.organizationId, this.viewer)
 
       // Count unread OPEN threads matching the filters: unread = no read-status
       // row for this user OR an explicit isRead=false row. One left-joined count

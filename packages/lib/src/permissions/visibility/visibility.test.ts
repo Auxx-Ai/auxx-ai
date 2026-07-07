@@ -1,0 +1,239 @@
+// packages/lib/src/permissions/visibility/visibility.test.ts
+
+import { describe, expect, it } from 'vitest'
+import type { ThreadVisibilityInput, UserMailVisibility } from './context'
+import { isSystemViewer, SYSTEM_VISIBILITY } from './context'
+import { effectiveLens, effectiveLensBatch } from './effective-lens'
+import { maxLens, satisfiesLens } from './lens'
+import { redactMessage, redactThreadMeta, redactThreadPatch } from './redact'
+
+const INBOX = 'inbox_1'
+const PERSONAL = 'inbox_personal'
+
+function vis(over: Partial<UserMailVisibility> = {}): UserMailVisibility {
+  return {
+    userId: 'u1',
+    role: 'USER',
+    isAdmin: false,
+    inboxLens: {},
+    personalInboxIds: {},
+    threadGrants: {},
+    contactGrants: {},
+    entityGrants: {},
+    ...over,
+  }
+}
+
+function thread(over: Partial<ThreadVisibilityInput> = {}): ThreadVisibilityInput {
+  return {
+    threadId: 't1',
+    inboxId: INBOX,
+    assigneeId: null,
+    primaryEntityInstanceId: null,
+    participantContactIds: [],
+    ...over,
+  }
+}
+
+describe('lens comparators', () => {
+  it('orders none < metadata < subject < full', () => {
+    expect(satisfiesLens('full', 'subject')).toBe(true)
+    expect(satisfiesLens('metadata', 'subject')).toBe(false)
+    expect(maxLens('metadata', 'subject')).toBe('subject')
+    expect(maxLens('full', 'none')).toBe('full')
+  })
+})
+
+describe('effectiveLens — role framing', () => {
+  it('admin sees full on a normal inbox', () => {
+    expect(effectiveLens(vis({ isAdmin: true }), thread())).toBe('full')
+  })
+
+  it('admin sees full on a null-inbox thread', () => {
+    expect(effectiveLens(vis({ isAdmin: true }), thread({ inboxId: null }))).toBe('full')
+  })
+
+  it("admin is capped at metadata on another user's personal inbox", () => {
+    const v = vis({ isAdmin: true, personalInboxIds: { [PERSONAL]: true } })
+    expect(effectiveLens(v, thread({ inboxId: PERSONAL }))).toBe('metadata')
+  })
+
+  it('admin on a personal inbox is raised by an explicit grant', () => {
+    const v = vis({
+      isAdmin: true,
+      personalInboxIds: { [PERSONAL]: true },
+      threadGrants: { t1: 'subject' },
+    })
+    expect(effectiveLens(v, thread({ inboxId: PERSONAL }))).toBe('subject')
+  })
+
+  it('owner of a personal inbox resolves to full via their Manager inbox floor', () => {
+    const v = vis({
+      isAdmin: true,
+      personalInboxIds: { [PERSONAL]: true },
+      inboxLens: { [PERSONAL]: 'full' },
+    })
+    expect(effectiveLens(v, thread({ inboxId: PERSONAL }))).toBe('full')
+  })
+
+  it('admin assigned to a personal thread gets full', () => {
+    const v = vis({ userId: 'u1', isAdmin: true, personalInboxIds: { [PERSONAL]: true } })
+    expect(effectiveLens(v, thread({ inboxId: PERSONAL, assigneeId: 'u1' }))).toBe('full')
+  })
+})
+
+describe('effectiveLens — non-admin derivations', () => {
+  it('no access → none', () => {
+    expect(effectiveLens(vis(), thread())).toBe('none')
+  })
+
+  it('assignment ⇒ full even on a none inbox', () => {
+    const v = vis({ userId: 'u1' })
+    expect(effectiveLens(v, thread({ inboxId: null, assigneeId: 'u1' }))).toBe('full')
+  })
+
+  it('a different assignee does not grant access', () => {
+    expect(effectiveLens(vis({ userId: 'u1' }), thread({ assigneeId: 'u2' }))).toBe('none')
+  })
+
+  it.each(['metadata', 'subject', 'full'] as const)('inbox floor %s applies', (lens) => {
+    expect(effectiveLens(vis({ inboxLens: { [INBOX]: lens } }), thread())).toBe(lens)
+  })
+
+  it('thread grant applies', () => {
+    expect(effectiveLens(vis({ threadGrants: { t1: 'subject' } }), thread({ inboxId: null }))).toBe(
+      'subject'
+    )
+  })
+
+  it('entity grant applies to the primary entity', () => {
+    const v = vis({ entityGrants: { deal_1: 'full' } })
+    expect(effectiveLens(v, thread({ inboxId: null, primaryEntityInstanceId: 'deal_1' }))).toBe(
+      'full'
+    )
+  })
+
+  it('contact grant applies to a participant contact', () => {
+    const v = vis({ contactGrants: { c1: 'metadata' } })
+    expect(effectiveLens(v, thread({ inboxId: null, participantContactIds: ['c9', 'c1'] }))).toBe(
+      'metadata'
+    )
+  })
+
+  it('takes the max across inbox floor and a thread grant', () => {
+    const v = vis({ inboxLens: { [INBOX]: 'metadata' }, threadGrants: { t1: 'full' } })
+    expect(effectiveLens(v, thread())).toBe('full')
+  })
+
+  it('ignores type-level access — a contact not in contactGrants yields none', () => {
+    // The context only ever carries instance-level grants; a "view all
+    // contacts" type grant must never populate contactGrants (provider concern).
+    const v = vis({ contactGrants: { c1: 'full' } })
+    expect(effectiveLens(v, thread({ inboxId: null, participantContactIds: ['c2'] }))).toBe('none')
+  })
+
+  it('null inbox with no derivations → none', () => {
+    expect(effectiveLens(vis(), thread({ inboxId: null }))).toBe('none')
+  })
+})
+
+describe('effectiveLensBatch', () => {
+  it('maps each thread to its lens', () => {
+    const v = vis({ inboxLens: { [INBOX]: 'subject' } })
+    const out = effectiveLensBatch(v, [
+      thread({ threadId: 'a' }),
+      thread({ threadId: 'b', inboxId: null }),
+    ])
+    expect(out.get('a')).toBe('subject')
+    expect(out.get('b')).toBe('none')
+  })
+})
+
+describe('system viewer', () => {
+  it('is narrowable', () => {
+    expect(isSystemViewer(SYSTEM_VISIBILITY)).toBe(true)
+    expect(isSystemViewer(vis())).toBe(false)
+  })
+})
+
+const META: any = {
+  id: 't1',
+  subject: 'Secret subject',
+  status: 'OPEN',
+  isUnread: true,
+  latestMessageId: 'm1',
+  messageCount: 3,
+  tagIds: [],
+}
+
+describe('redactThreadMeta', () => {
+  it('full passes through unchanged', () => {
+    expect(redactThreadMeta(META, 'full')).toBe(META)
+  })
+
+  it('subject keeps subject but blanks full-only fields', () => {
+    const r = redactThreadMeta(META, 'subject')
+    expect(r.subject).toBe('Secret subject')
+    expect(r.isUnread).toBe(false)
+    expect(r.latestMessageId).toBeNull()
+    expect(r.messageCount).toBe(3)
+  })
+
+  it('metadata blanks subject and full-only fields', () => {
+    const r = redactThreadMeta(META, 'metadata')
+    expect(r.subject).toBe('')
+    expect(r.isUnread).toBe(false)
+    expect(r.latestMessageId).toBeNull()
+  })
+})
+
+describe('redactThreadPatch (allowlist)', () => {
+  it('drops full-only + subject keys at metadata', () => {
+    const patch = { subject: 'x', isUnread: true, status: 'CLOSED', tagIds: [] } as any
+    const r = redactThreadPatch(patch, 'metadata')
+    expect(r).toEqual({ status: 'CLOSED', tagIds: [] })
+  })
+
+  it('keeps subject at subject lens but still drops full-only', () => {
+    const r = redactThreadPatch({ subject: 'x', isUnread: true } as any, 'subject')
+    expect(r).toEqual({ subject: 'x' })
+  })
+
+  it('drops an unclassified new field below full (allowlist)', () => {
+    const r = redactThreadPatch({ status: 'OPEN', brandNewLeak: 'oops' } as any, 'metadata')
+    expect(r).toEqual({ status: 'OPEN' })
+  })
+
+  it('none yields empty', () => {
+    expect(redactThreadPatch({ status: 'OPEN' } as any, 'none')).toEqual({})
+  })
+})
+
+describe('redactMessage', () => {
+  const MESSAGE = {
+    id: 'm1',
+    subject: 'Hi',
+    snippet: 'preview…',
+    textHtml: '<p>body</p>',
+    textPlain: 'body',
+    htmlBodyStorageLocationId: 'loc_1',
+    attachments: [{ id: 'a1' }],
+    hasAttachments: true,
+    isInbound: true,
+  }
+
+  it('full passes through unchanged', () => {
+    expect(redactMessage(MESSAGE, 'full')).toBe(MESSAGE)
+  })
+
+  it('subject (envelope tier) blanks content, keeps attachments an array', () => {
+    const r = redactMessage(MESSAGE, 'subject')
+    expect(r.subject).toBe('Hi')
+    expect(r.snippet).toBeNull()
+    expect(r.textHtml).toBeNull()
+    expect(r.textPlain).toBeNull()
+    expect(r.htmlBodyStorageLocationId).toBeNull()
+    expect(r.attachments).toEqual([])
+    expect(r.isInbound).toBe(true)
+  })
+})

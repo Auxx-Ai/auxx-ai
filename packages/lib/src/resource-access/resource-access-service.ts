@@ -5,7 +5,7 @@ import { ResourceGranteeType, ResourcePermission } from '@auxx/database/enums'
 import type { RecordId } from '@auxx/types/resource'
 import { parseRecordId, toRecordId } from '@auxx/types/resource'
 import { and, desc, eq, inArray, isNull, or } from 'drizzle-orm'
-import { getCachedUserGroupIds } from '../cache'
+import { getCachedUserGroupIds, onCacheEvent } from '../cache'
 import { satisfiesPermission } from './constants'
 import type {
   AccessCheckResult,
@@ -19,6 +19,43 @@ import type {
   RevokeInstanceAccessInput,
   RevokeTypeAccessInput,
 } from './types'
+
+/**
+ * Emit the cache event that busts visibility caches after a ResourceAccess
+ * mutation. User grants invalidate just that user's keys; group/role/team
+ * grants use the org-wide fan-out (the affected user set can't be enumerated
+ * cheaply here). Call AFTER the DB write commits.
+ *
+ * Phase 0 of the mail-permissions plan wires the emission; Phase 1 attaches
+ * the keys (`userMailVisibility`, `mailGrantIndex`) to the invalidation graph.
+ */
+async function emitResourceAccessChanged(
+  organizationId: string,
+  grantees: Array<{ granteeType: ResourceGranteeType; granteeId: string }>
+): Promise<void> {
+  const userIds = new Set<string>()
+  let broadcast = false
+  for (const g of grantees) {
+    if (g.granteeType === ResourceGranteeType.user) userIds.add(g.granteeId)
+    else broadcast = true
+  }
+
+  // A single org-wide fan-out already covers every member — no need to also
+  // enumerate the user grants when broadcasting.
+  if (broadcast) {
+    await onCacheEvent('resource-access.changed', {
+      orgId: organizationId,
+      broadcastUserKeys: true,
+    })
+    return
+  }
+
+  await Promise.all(
+    Array.from(userIds).map((userId) =>
+      onCacheEvent('resource-access.changed', { orgId: organizationId, userId })
+    )
+  )
+}
 
 /**
  * Grant access to a specific entity instance.
@@ -55,6 +92,10 @@ export async function grantInstanceAccess(
         updatedAt: new Date(),
       },
     })
+
+  await emitResourceAccessChanged(organizationId, [
+    { granteeType: input.granteeType, granteeId: input.granteeId },
+  ])
 }
 
 /**
@@ -91,6 +132,10 @@ export async function grantTypeAccess(
         updatedAt: new Date(),
       },
     })
+
+  await emitResourceAccessChanged(organizationId, [
+    { granteeType: input.granteeType, granteeId: input.granteeId },
+  ])
 }
 
 /**
@@ -115,6 +160,12 @@ export async function revokeInstanceAccess(
       )
     )
     .returning()
+
+  if (result.length > 0) {
+    await emitResourceAccessChanged(organizationId, [
+      { granteeType: input.granteeType, granteeId: input.granteeId },
+    ])
+  }
 
   return result.length > 0
 }
@@ -141,6 +192,12 @@ export async function revokeTypeAccess(
     )
     .returning()
 
+  if (result.length > 0) {
+    await emitResourceAccessChanged(organizationId, [
+      { granteeType: input.granteeType, granteeId: input.granteeId },
+    ])
+  }
+
   return result.length > 0
 }
 
@@ -156,9 +213,9 @@ export async function setInstanceAccess(
   const { db, organizationId, userId } = ctx
   const { entityDefinitionId, entityInstanceId } = parseRecordId(recordId)
 
-  await db.transaction(async (tx: typeof db) => {
+  const removed = await db.transaction(async (tx: typeof db) => {
     // Remove existing grants of this type for this instance
-    await tx
+    const deleted = await tx
       .delete(schema.ResourceAccess)
       .where(
         and(
@@ -168,6 +225,7 @@ export async function setInstanceAccess(
           eq(schema.ResourceAccess.granteeType, granteeType)
         )
       )
+      .returning({ granteeId: schema.ResourceAccess.granteeId })
 
     // Insert new grants
     if (grants.length > 0) {
@@ -183,7 +241,16 @@ export async function setInstanceAccess(
         }))
       )
     }
+
+    return deleted
   })
+
+  // Affected grantees = removed ∪ added (a removed grantee also loses access).
+  const affected = new Set([...removed.map((r) => r.granteeId), ...grants.map((g) => g.granteeId)])
+  await emitResourceAccessChanged(
+    organizationId,
+    Array.from(affected, (granteeId) => ({ granteeType, granteeId }))
+  )
 }
 
 /**
@@ -197,9 +264,9 @@ export async function setTypeAccess(
 ): Promise<void> {
   const { db, organizationId, userId } = ctx
 
-  await db.transaction(async (tx: typeof db) => {
+  const removed = await db.transaction(async (tx: typeof db) => {
     // Remove existing type-level grants of this type
-    await tx
+    const deleted = await tx
       .delete(schema.ResourceAccess)
       .where(
         and(
@@ -209,6 +276,7 @@ export async function setTypeAccess(
           eq(schema.ResourceAccess.granteeType, granteeType)
         )
       )
+      .returning({ granteeId: schema.ResourceAccess.granteeId })
 
     // Insert new grants
     if (grants.length > 0) {
@@ -224,7 +292,16 @@ export async function setTypeAccess(
         }))
       )
     }
+
+    return deleted
   })
+
+  // Affected grantees = removed ∪ added (a removed grantee also loses access).
+  const affected = new Set([...removed.map((r) => r.granteeId), ...grants.map((g) => g.granteeId)])
+  await emitResourceAccessChanged(
+    organizationId,
+    Array.from(affected, (granteeId) => ({ granteeType, granteeId }))
+  )
 }
 
 /**

@@ -152,6 +152,36 @@ export const INBOX_FIELDS: Record<string, ResourceField> = {
     description: 'Inbox visibility setting',
   },
 
+  defaultLens: {
+    id: toFieldId('defaultLens'),
+    key: 'defaultLens',
+    label: 'Default Access',
+    type: BaseType.ENUM,
+    fieldType: FieldType.SINGLE_SELECT,
+    isSystem: true,
+    systemAttribute: 'inbox_default_lens',
+    systemSortOrder: 'a5a',
+    nullable: false,
+    defaultValue: 'full',
+    options: {
+      options: [
+        { value: 'none', label: 'No access' },
+        { value: 'metadata', label: 'Activity only' },
+        { value: 'subject', label: 'Subject only' },
+        { value: 'full', label: 'Full access' },
+      ],
+    },
+    capabilities: {
+      filterable: true,
+      sortable: false,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    description:
+      'Org-wide visibility floor: the lens every org member gets on this inbox. Explicit grants can only raise it. Supersedes inbox_visibility (mail-permissions §2.2).',
+  },
+
   createdAt: {
     id: toFieldId('createdAt'),
     key: 'createdAt',

@@ -1,0 +1,3 @@
+ALTER TABLE "ThreadParticipant" ADD COLUMN "entityInstanceId" text;--> statement-breakpoint
+ALTER TABLE "ThreadParticipant" ADD CONSTRAINT "ThreadParticipant_entityInstanceId_EntityInstance_id_fk" FOREIGN KEY ("entityInstanceId") REFERENCES "public"."EntityInstance"("id") ON DELETE set null ON UPDATE cascade;--> statement-breakpoint
+CREATE INDEX "ThreadParticipant_entityInstanceId_threadId_idx" ON "ThreadParticipant" USING btree ("entityInstanceId","threadId");

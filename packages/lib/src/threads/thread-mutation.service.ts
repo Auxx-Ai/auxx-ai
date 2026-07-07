@@ -6,9 +6,12 @@ import { type ActorId, parseActorId } from '@auxx/types/actor'
 import { getInstanceId, parseRecordId, type RecordId, toRecordId } from '@auxx/types/resource'
 import { and, eq, exists, ilike, inArray, notExists, or, sql } from 'drizzle-orm'
 import { getOrgCache } from '../cache'
-import { BadRequestError } from '../errors'
+import { BadRequestError, ForbiddenError } from '../errors'
 import { publisher } from '../events/publisher'
 import { FieldValueService } from '../field-values'
+import type { MailViewer } from '../permissions/visibility/context'
+import { isSystemViewer } from '../permissions/visibility/context'
+import { getThreadLensBatch } from '../permissions/visibility/thread-lens'
 import { getRealtimeService, publishThreadDeleted, publishThreadUpdated } from '../realtime'
 import type { ThreadMeta } from '../realtime/events'
 import { ThreadMergeService } from './thread-merge.service'
@@ -76,11 +79,43 @@ export class ThreadMutationService {
    */
   private readonly actorUserId?: string
 
-  constructor(organizationId: string, db: Database, socketId?: string, actorUserId?: string) {
+  /**
+   * Visibility principal (§7): acting on a thread requires `full` lens.
+   * Workers / platform pipelines pass `SYSTEM_VISIBILITY` explicitly.
+   */
+  private readonly viewer: MailViewer
+
+  constructor(
+    organizationId: string,
+    db: Database,
+    socketId: string | undefined,
+    actorUserId: string | undefined,
+    viewer: MailViewer
+  ) {
     this.organizationId = organizationId
     this.db = db
     this.socketId = socketId
     this.actorUserId = actorUserId
+    this.viewer = viewer
+  }
+
+  /**
+   * §7 write gate: every target thread must be at `full` lens for the viewer.
+   * Bulk ops reject partial-visibility sets outright (no silent partial
+   * apply). Invisible ids fail the same way — indistinguishable from
+   * nonexistent. SYSTEM skips.
+   */
+  private async assertCanActOnThreads(threadIds: string[]): Promise<void> {
+    if (threadIds.length === 0 || isSystemViewer(this.viewer)) return
+    const lenses = await getThreadLensBatch(this.db, this.organizationId, this.viewer, threadIds)
+    const blocked = threadIds.filter((id) => lenses.get(id) !== 'full')
+    if (blocked.length > 0) {
+      throw new ForbiddenError(
+        threadIds.length === 1
+          ? 'You do not have full access to this thread.'
+          : `You do not have full access to ${blocked.length} of the selected threads.`
+      )
+    }
   }
 
   // ═══════════════════════════════════════════════════════════════
@@ -93,6 +128,7 @@ export class ThreadMutationService {
    */
   async update(recordId: RecordId, updates: ThreadUpdates): Promise<MutationResult> {
     const { entityInstanceId: threadId } = parseRecordId(recordId)
+    await this.assertCanActOnThreads([threadId])
 
     // Merge / unmerge routing: when mergedIntoThreadId is present in the
     // updates payload, defer to ThreadMergeService rather than running the
@@ -104,6 +140,7 @@ export class ThreadMutationService {
           throw new BadRequestError('Merge requires an authenticated actor')
         }
         const targetThreadId = getInstanceId(updates.mergedIntoThreadId)
+        await this.assertCanActOnThreads([targetThreadId])
         await mergeService.merge({
           sourceThreadIds: [threadId],
           targetThreadId,
@@ -419,6 +456,7 @@ export class ThreadMutationService {
     if (!recordIds || recordIds.length === 0) return { count: 0 }
 
     const threadIds = recordIds.map((id) => parseRecordId(id).entityInstanceId)
+    await this.assertCanActOnThreads(threadIds)
 
     // Merge / unmerge routing — see notes on `update` above.
     if ('mergedIntoThreadId' in updates) {
@@ -428,6 +466,7 @@ export class ThreadMutationService {
           throw new BadRequestError('Merge requires an authenticated actor')
         }
         const targetThreadId = getInstanceId(updates.mergedIntoThreadId)
+        await this.assertCanActOnThreads([targetThreadId])
         const result = await mergeService.merge({
           sourceThreadIds: threadIds,
           targetThreadId,
@@ -579,6 +618,7 @@ export class ThreadMutationService {
    */
   async remove(recordId: RecordId): Promise<{ success: boolean }> {
     const { entityInstanceId: threadId } = parseRecordId(recordId)
+    await this.assertCanActOnThreads([threadId])
     return this.deletePermanently(threadId)
   }
 
@@ -589,6 +629,7 @@ export class ThreadMutationService {
   async removeBulk(recordIds: RecordId[]): Promise<{ count: number }> {
     if (!recordIds || recordIds.length === 0) return { count: 0 }
     const threadIds = recordIds.map((id) => parseRecordId(id).entityInstanceId)
+    await this.assertCanActOnThreads(threadIds)
     return this.bulkDeletePermanently(threadIds)
   }
 
@@ -848,6 +889,8 @@ export class ThreadMutationService {
     if (!recordIds.length || !relatedRecordIds.length) {
       return { created: 0, skipped: 0, errors: [] }
     }
+
+    await this.assertCanActOnThreads(recordIds.map((id) => parseRecordId(id).entityInstanceId))
 
     logger.info(`Bulk tagging threads`, {
       operation,

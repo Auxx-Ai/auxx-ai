@@ -2,6 +2,7 @@
 
 import { generateId } from '@auxx/utils'
 import { z } from 'zod'
+import { getCachedUserMailVisibility } from '../../../../../cache'
 import type { Condition, ConditionGroup } from '../../../../../conditions'
 import { DraftService } from '../../../../../drafts'
 import { ThreadQueryService } from '../../../../../threads'
@@ -121,7 +122,9 @@ export function createListDraftsTool(getDeps: GetToolDeps): AgentToolDefinition 
     },
     execute: async (args, agentDeps) => {
       const { db } = getDeps()
-      const threadService = new ThreadQueryService(agentDeps.organizationId, db)
+      // Kopilot reads mail as the invoking user (§8.1) — never SYSTEM.
+      const viewer = await getCachedUserMailVisibility(agentDeps.userId, agentDeps.organizationId)
+      const threadService = new ThreadQueryService(agentDeps.organizationId, db, viewer)
       const draftService = new DraftService(db, agentDeps.organizationId, agentDeps.userId)
 
       const conditionGroups = buildDraftConditions(args)

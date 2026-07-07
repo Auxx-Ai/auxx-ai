@@ -1,6 +1,7 @@
 // packages/lib/src/cache/user-cache-keys.ts
 
 import type { DehydratedUser } from '../dehydration/types'
+import type { UserMailVisibility } from '../permissions/visibility/context'
 import type { SettingValue } from '../settings/types'
 
 /** Membership info for user cache */
@@ -68,6 +69,7 @@ export interface UserCacheDataMap {
   userMailViews: CachedMailView[]
   userTableViews: CachedTableView[]
   userFavorites: CachedFavorite[]
+  userMailVisibility: UserMailVisibility
 }
 
 export type UserCacheKeyName = keyof UserCacheDataMap
@@ -78,6 +80,7 @@ export const ORG_SCOPED_USER_KEYS = new Set<UserCacheKeyName>([
   'userMailViews',
   'userTableViews',
   'userFavorites',
+  'userMailVisibility',
 ])
 
 const ONE_DAY = 60 * 60 * 24
@@ -93,4 +96,5 @@ export const USER_CACHE_KEY_CONFIG: Record<
   userMailViews: { prefix: 'user:mail-views', ttlSeconds: ONE_DAY },
   userTableViews: { prefix: 'user:table-views', ttlSeconds: ONE_DAY },
   userFavorites: { prefix: 'user:favorites', ttlSeconds: ONE_DAY },
+  userMailVisibility: { prefix: 'user:mail-visibility', ttlSeconds: ONE_DAY },
 }

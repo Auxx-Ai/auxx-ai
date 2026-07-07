@@ -2,6 +2,7 @@
 export type { ActorId } from '@auxx/types/actor'
 export { returnThreadToAi, takeOverThread } from './handoff.service'
 export {
+  canLinkThread,
   clearPrimaryEntity,
   getWorkItemsForThread,
   type LinkEntityToThreadParams,
