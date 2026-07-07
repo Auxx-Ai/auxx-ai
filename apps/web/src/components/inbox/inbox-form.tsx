@@ -26,7 +26,9 @@ import {
 import { GranteeList } from '~/components/mail-permissions/ui/grantee-list'
 import { LensSelect } from '~/components/mail-permissions/ui/lens-select'
 import { useSaveSystemValues, useSystemValues } from '~/components/resources/hooks'
+import { ActorBadge } from '~/components/resources/ui/actor-badge'
 import { FormColorTagPicker } from '~/components/tags/ui/color-tag-picker'
+import { useInbox } from '~/components/threads/hooks/use-inbox'
 import { useConfirm } from '~/hooks/use-confirm'
 import { useDirtyCheck } from '~/hooks/use-dirty-state'
 import { useUnsavedChangesGuard } from '~/hooks/use-unsaved-changes-guard'
@@ -124,6 +126,12 @@ export function InboxForm({
   const gated = useMailPermissionsGated()
   const [upgradeOpen, setUpgradeOpen] = useState(false)
   const [guideOpen, setGuideOpen] = useState(false)
+
+  // Personal-account inbox (§11): the Access section swaps the floor controls
+  // for an owner row + activity-only note; the owner's Manager row is locked.
+  const { inbox: inboxItem } = useInbox(recordId ?? undefined)
+  const isPersonalInbox = !!inboxItem?.isPersonal
+  const ownerActorId = inboxItem?.ownerUserId ? toActorId('user', inboxItem.ownerUserId) : null
 
   // Fetch system field values for edit mode
   const { values: fieldValues, isLoading: isLoadingValues } = useSystemValues(
@@ -486,39 +494,59 @@ export function InboxForm({
             {/* Access section — org admins and inbox Managers only */}
             {canManageAccess && (
               <>
-                <Field>
-                  <FieldLabel>Access</FieldLabel>
-                  <RadioGroup
-                    value={accessType}
-                    onValueChange={handleAccessTypeChange}
-                    className='grid gap-2 sm:grid-cols-2'>
-                    <RadioGroupItemCard
-                      value='anyone'
-                      label='Everyone'
-                      icon={<UsersIcon />}
-                      description='Everyone in the organization, at a chosen level'
-                    />
-                    <RadioGroupItemCard
-                      value='restricted'
-                      label='Restricted'
-                      icon={<Lock />}
-                      description='Only people and groups you add below'
-                    />
-                  </RadioGroup>
-                </Field>
-
-                {accessType === 'anyone' && (
+                {isPersonalInbox ? (
                   <Field>
-                    <FieldLabel>Everyone can see</FieldLabel>
-                    <LensSelect
-                      value={floorLens}
-                      onChange={(choice) =>
-                        choice !== 'manager' && form.setValue('floorLens', choice)
-                      }
-                      size='default'
-                      className='w-full'
-                    />
+                    <FieldLabel>Access</FieldLabel>
+                    <div className='space-y-2 rounded-md border p-3'>
+                      {ownerActorId && (
+                        <div className='flex items-center justify-between'>
+                          <ActorBadge actorId={ownerActorId} />
+                          <span className='text-muted-foreground text-xs'>Owner</span>
+                        </div>
+                      )}
+                      <p className='text-muted-foreground text-xs'>
+                        Personal account — mail here is private to its owner. Admins can see
+                        activity only; assignment and shares grant access per thread.
+                      </p>
+                    </div>
                   </Field>
+                ) : (
+                  <>
+                    <Field>
+                      <FieldLabel>Access</FieldLabel>
+                      <RadioGroup
+                        value={accessType}
+                        onValueChange={handleAccessTypeChange}
+                        className='grid gap-2 sm:grid-cols-2'>
+                        <RadioGroupItemCard
+                          value='anyone'
+                          label='Everyone'
+                          icon={<UsersIcon />}
+                          description='Everyone in the organization, at a chosen level'
+                        />
+                        <RadioGroupItemCard
+                          value='restricted'
+                          label='Restricted'
+                          icon={<Lock />}
+                          description='Only people and groups you add below'
+                        />
+                      </RadioGroup>
+                    </Field>
+
+                    {accessType === 'anyone' && (
+                      <Field>
+                        <FieldLabel>Everyone can see</FieldLabel>
+                        <LensSelect
+                          value={floorLens}
+                          onChange={(choice) =>
+                            choice !== 'manager' && form.setValue('floorLens', choice)
+                          }
+                          size='default'
+                          className='w-full'
+                        />
+                      </Field>
+                    )}
+                  </>
                 )}
 
                 <Field>
@@ -530,10 +558,13 @@ export function InboxForm({
                     onRevoke={removeGrant}
                     includeManager
                     disabled={isPending}
+                    lockedActorIds={isPersonalInbox && ownerActorId ? [ownerActorId] : []}
                     emptyHint={
-                      accessType === 'restricted'
-                        ? 'No one has access yet. Add people or groups.'
-                        : 'No individual access — everyone uses the level above.'
+                      isPersonalInbox
+                        ? 'Only the owner has access. Add people or groups to share.'
+                        : accessType === 'restricted'
+                          ? 'No one has access yet. Add people or groups.'
+                          : 'No individual access — everyone uses the level above.'
                     }
                   />
                   <button

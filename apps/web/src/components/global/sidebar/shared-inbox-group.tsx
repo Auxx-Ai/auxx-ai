@@ -1,9 +1,11 @@
 // ~/components/global/sidebar/shared-inbox-group.tsx
 'use client'
 
+import { toActorId } from '@auxx/types/actor'
 import { DropdownMenuItem } from '@auxx/ui/components/dropdown-menu'
 import { SidebarMenu, SidebarMenuSubItem } from '@auxx/ui/components/sidebar'
 import { Skeleton } from '@auxx/ui/components/skeleton'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@auxx/ui/components/tooltip'
 import { cn } from '@auxx/ui/lib/utils'
 import {
   closestCenter,
@@ -22,7 +24,7 @@ import {
   sortableKeyboardCoordinates,
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable'
-import { Inbox as InboxIcon, Mail } from 'lucide-react'
+import { Inbox as InboxIcon, Mail, UserRound } from 'lucide-react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useCallback, useState } from 'react'
@@ -32,6 +34,7 @@ import { EditableSidebarItem } from '~/components/global/sidebar/editable-sideba
 import { SidebarItem } from '~/components/global/sidebar/sidebar-item'
 import { InboxDialog } from '~/components/inbox/inbox-dialog'
 import { selectSharedInboxesTotal, useMailCountsStore } from '~/components/mail/store'
+import { useActor } from '~/components/resources/hooks/use-actor'
 
 export interface Inbox {
   id: string
@@ -39,6 +42,27 @@ export interface Inbox {
   color: string
   unassignedCount?: number
   isVisible?: boolean
+  /** Personal-account inbox (mail-permissions §11) — renders the owner affordance. */
+  isPersonal?: boolean
+  ownerUserId?: string | null
+}
+
+/**
+ * Sidebar affordance for a personal inbox (§11): a user icon in place of the
+ * color dot, with a "Personal — {owner}" tooltip.
+ */
+function PersonalInboxIcon({ ownerUserId }: { ownerUserId?: string | null }) {
+  const { actor } = useActor({
+    actorId: ownerUserId ? toActorId('user', ownerUserId) : null,
+  })
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <UserRound className='text-muted-foreground' />
+      </TooltipTrigger>
+      <TooltipContent side='right'>Personal{actor?.name ? ` — ${actor.name}` : ''}</TooltipContent>
+    </Tooltip>
+  )
 }
 
 interface SharedInboxesSectionProps {
@@ -103,6 +127,7 @@ const DroppableInboxSidebarItem = ({
         href={itemHref}
         count={count}
         color={inbox.color || 'indigo'}
+        icon={inbox.isPersonal ? <PersonalInboxIcon ownerUserId={inbox.ownerUserId} /> : undefined}
         isSubmenu={true}
         isActive={isActive}
         editItems={editItems}

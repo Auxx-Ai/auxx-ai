@@ -3,6 +3,7 @@
 import { WEBAPP_URL } from '@auxx/config/urls'
 import type { OAuth2Features } from '@auxx/database'
 import { database as db } from '@auxx/database'
+import { supportsPersonalChannelConnection } from '@auxx/lib/channels'
 import {
   resolveConnectionForRuntime,
   resolveOAuth2Client,
@@ -111,6 +112,18 @@ export async function GET(
       )
     }
 
+    // Personal channel connect (mail-permissions §11.1): mints a USER-scoped
+    // credential feeding a dedicated personal inbox. Only email-like channel
+    // providers are eligible — enforced here, fail closed, independent of the
+    // wizard UI.
+    const personal = searchParams.get('personal') === '1'
+    if (personal && !supportsPersonalChannelConnection(connDef.providerKey)) {
+      return NextResponse.json(
+        { error: 'This channel cannot be connected as a personal account' },
+        { status: 400 }
+      )
+    }
+
     // Generate CSRF state + optional PKCE verifier (RFC 7636)
     const state = crypto.randomBytes(32).toString('hex')
     const features = (connDef.oauth2Features ?? {}) as OAuth2Features
@@ -183,6 +196,7 @@ export async function GET(
         providerKey: connDef.providerKey,
         connectionName: name || connDef.label || connDef.providerKey,
         global: connDef.global,
+        ...(personal && { personal: true }),
         ...(connectionId && { connectionId }),
         ...(codeVerifier && { codeVerifier }),
         ...(validReturnTo && { returnTo: validReturnTo }),

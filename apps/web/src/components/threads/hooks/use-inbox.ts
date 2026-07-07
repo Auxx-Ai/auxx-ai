@@ -18,6 +18,8 @@ export interface InboxRecord extends RecordMeta {
     inbox_color?: string
     inbox_status?: 'ACTIVE' | 'ARCHIVED' | 'PAUSED'
     inbox_default_lens?: 'none' | 'metadata' | 'subject' | 'full'
+    inbox_is_personal?: boolean
+    inbox_owner_user_id?: string
   }
 }
 
@@ -43,6 +45,10 @@ export interface InboxItem {
    * simply never load.
    */
   myLens?: ChannelLens
+  /** Personal-account inbox (§11) — one user's connected mailbox. */
+  isPersonal: boolean
+  /** Owner of a personal inbox; null on shared org inboxes. */
+  ownerUserId: string | null
 }
 
 /**
@@ -90,6 +96,8 @@ export function useInboxes(): UseInboxesResult {
       status: record.fieldValues?.inbox_status,
       defaultLens: record.fieldValues?.inbox_default_lens ?? 'full',
       myLens: lenses[record.id],
+      isPersonal: record.fieldValues?.inbox_is_personal ?? false,
+      ownerUserId: record.fieldValues?.inbox_owner_user_id ?? null,
     }))
 
     // Key map by recordId for direct lookup (thread.inboxId is now RecordId)

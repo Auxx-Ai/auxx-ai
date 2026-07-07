@@ -5,9 +5,12 @@ import type { EntityFieldChangeHandler } from '../types'
 /**
  * Inbox fields whose value feeds every member's cached `userMailVisibility`
  * (mail-permissions §7.1) — changing one recomputes ALL members' contexts.
- * Phase 8 adds `inbox_is_personal` / `inbox_owner_user_id` here.
  */
-const VISIBILITY_ATTRIBUTES = new Set<string>(['inbox_default_lens'])
+const VISIBILITY_ATTRIBUTES = new Set<string>([
+  'inbox_default_lens',
+  'inbox_is_personal',
+  'inbox_owner_user_id',
+])
 
 /**
  * Post-write hook for ANY inbox field change (§7.1). Inboxes have two write

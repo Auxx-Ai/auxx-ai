@@ -154,6 +154,51 @@ export const INBOX_FIELDS: Record<string, ResourceField> = {
       'Org-wide visibility floor: the lens every org member gets on this inbox. Explicit grants can only raise it (mail-permissions §2.2).',
   },
 
+  isPersonal: {
+    id: toFieldId('isPersonal'),
+    key: 'isPersonal',
+    label: 'Personal',
+    type: BaseType.BOOLEAN,
+    fieldType: FieldType.CHECKBOX,
+    isSystem: true,
+    systemAttribute: 'inbox_is_personal',
+    systemSortOrder: 'a5b',
+    nullable: false,
+    defaultValue: false,
+    showInPanel: false,
+    capabilities: {
+      filterable: true,
+      sortable: false,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    description:
+      'Personal-account inbox (mail-permissions §11): owned by one user, admins capped at activity-only, invisible to automation. Set by the personal connect flow; cleared by an admin claim.',
+  },
+
+  ownerUserId: {
+    id: toFieldId('ownerUserId'),
+    key: 'ownerUserId',
+    label: 'Owner',
+    type: BaseType.STRING,
+    fieldType: FieldType.TEXT,
+    isSystem: true,
+    systemAttribute: 'inbox_owner_user_id',
+    systemSortOrder: 'a5c',
+    nullable: true,
+    showInPanel: false,
+    capabilities: {
+      filterable: true,
+      sortable: false,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    description:
+      'User id of the personal-inbox owner (mail-permissions §11). Null on shared org inboxes.',
+  },
+
   createdAt: {
     id: toFieldId('createdAt'),
     key: 'createdAt',

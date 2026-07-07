@@ -28,6 +28,7 @@ import { migration022InboxVisualRef } from './migrations/022-inbox-visual-ref'
 import { migration023ContactVisitorGeoFields } from './migrations/023-contact-visitor-geo-fields'
 import { migration024ThreadVisitFields } from './migrations/024-thread-visit-fields'
 import { migration025InboxDefaultLens } from './migrations/025-inbox-default-lens'
+import { migration026InboxPersonalFields } from './migrations/026-inbox-personal-fields'
 import type { EntityMigration, MigrationRunResult } from './types'
 
 const logger = createScopedLogger('entity-migrations')
@@ -61,6 +62,7 @@ const ALL_MIGRATIONS: EntityMigration[] = [
   migration023ContactVisitorGeoFields,
   migration024ThreadVisitFields,
   migration025InboxDefaultLens,
+  migration026InboxPersonalFields,
 ]
 
 /**

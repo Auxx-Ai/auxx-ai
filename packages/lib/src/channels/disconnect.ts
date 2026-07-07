@@ -22,9 +22,11 @@ type DbHandle = Database | Transaction
 
 /**
  * Delete threads + messages for a channel, clean up MediaAssets, and mark
- * StorageLocations for async S3 deletion.
+ * StorageLocations for async S3 deletion. Exported for the personal-inbox
+ * delete path (§11.4), which destroys channel data without the ownership
+ * validation `disconnect` performs (its integration is already soft-deleted).
  */
-async function deleteChannelData(tx: DbHandle, channelId: string, provider: string) {
+export async function deleteChannelData(tx: DbHandle, channelId: string, provider: string) {
   logger.warn(`Deleting data for channel: ${channelId} (${provider})`)
 
   if (provider === 'chat') {

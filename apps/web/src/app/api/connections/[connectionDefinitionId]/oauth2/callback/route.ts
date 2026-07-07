@@ -259,7 +259,9 @@ export async function GET(
       name: metadata.connectionName,
       organizationId: metadata.organizationId,
       createdById: metadata.userId,
-      userId: metadata.global ? null : metadata.userId,
+      // Personal channel connect (§11) mints a USER-scoped credential even on
+      // a global definition; otherwise scope follows the definition's flag.
+      userId: metadata.personal ? metadata.userId : metadata.global ? null : metadata.userId,
       connectionData: {
         accessToken: tokens.access_token,
         refreshToken: tokens.refresh_token,
@@ -303,6 +305,7 @@ export async function GET(
         organizationId: metadata.organizationId,
         userId: metadata.userId,
         ...(metadata.connectionId && { connectionId: metadata.connectionId }),
+        ...(metadata.personal && { personal: true }),
         ...(metadata.postConnect && { extra: metadata.postConnect }),
       })
     }

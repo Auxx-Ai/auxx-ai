@@ -103,6 +103,31 @@ describe('composeUserMailVisibility', () => {
     expect(vis.threadGrants).toEqual({ t_1: 'full' })
   })
 
+  it("collects OTHERS' personal inboxes into personalInboxIds, never the viewer's own", () => {
+    const vis = composeUserMailVisibility({
+      userId: USER,
+      role: 'ADMIN',
+      inboxes: [
+        { id: 'mine', defaultLens: 'none', isPersonal: true, ownerUserId: USER },
+        { id: 'bobs', defaultLens: 'none', isPersonal: true, ownerUserId: 'u_bob' },
+        { id: 'shared', defaultLens: 'full', isPersonal: false, ownerUserId: null },
+      ],
+      grants: [],
+    })
+    expect(vis.personalInboxIds).toEqual({ bobs: true })
+  })
+
+  it('leaves personalInboxIds empty for a non-member (fail closed, no floors)', () => {
+    const vis = composeUserMailVisibility({
+      userId: USER,
+      role: undefined,
+      inboxes: [{ id: 'bobs', defaultLens: 'none', isPersonal: true, ownerUserId: 'u_bob' }],
+      grants: [],
+    })
+    expect(vis.personalInboxIds).toEqual({})
+    expect(vis.inboxLens).toEqual({})
+  })
+
   it('fails closed for a non-member: no floors, no admin', () => {
     const vis = composeUserMailVisibility({
       userId: USER,
