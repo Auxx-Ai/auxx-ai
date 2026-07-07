@@ -200,8 +200,23 @@ async function seedSync(args: {
   })
 
   if (effectiveMode === 'webhook' && provider === 'google') {
-    await GoogleOAuthService.setupPushNotifications(integrationId)
-    return
+    try {
+      await GoogleOAuthService.setupPushNotifications(integrationId)
+      return
+    } catch (error) {
+      // Watch arming can fail for infra reasons outside the user's control (e.g. the
+      // Pub/Sub topic not granting gmail-api-push publisher). The channel must still
+      // work, so stamp it to polling — 'auto' would resolve back to webhook and the
+      // scanner would skip it — and fall through to the polling pipeline.
+      logger.warn('Gmail watch setup failed — falling back to polling', {
+        integrationId,
+        error: error instanceof Error ? error.message : String(error),
+      })
+      await db
+        .update(schema.Integration)
+        .set({ syncMode: 'polling', updatedAt: new Date() })
+        .where(eq(schema.Integration.id, integrationId))
+    }
   }
 
   // Reconnect on a polling channel needs no backfill re-kick — the existing sync state stands.

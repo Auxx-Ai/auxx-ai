@@ -20,6 +20,7 @@ import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapte
 import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
 import { PartInventoryLinkRows } from '~/components/inventory-bridge/ui/part-inventory-link-rows'
 import { useResourceProperty } from '~/components/resources'
+import { useSystemField } from '~/components/resources/hooks/use-field'
 import { useSaveFieldValue } from '~/components/resources/hooks/use-save-field-value'
 import { useSystemValues } from '~/components/resources/hooks/use-system-values'
 import { BaseType } from '~/components/workflow/types'
@@ -57,7 +58,10 @@ export function PartFormDialog({ open, onOpenChange, recordId, onSuccess }: Part
   // Resolve entity definition IDs
   const partDefId = useResourceProperty('part', 'id')
   const vendorPartDefId = useResourceProperty('vendor_part', 'id')
-  const contactDefId = useResourceProperty('contact', 'id')
+  const companyDefId = useResourceProperty('company', 'id')
+
+  // Live field def for the Category TAGS input (sources existing option pool)
+  const categoryField = useSystemField('category')
 
   // Load initial values for edit mode
   const { values: systemValues } = useSystemValues(recordId, PART_SYSTEM_ATTRIBUTES, {
@@ -71,7 +75,7 @@ export function PartFormDialog({ open, onOpenChange, recordId, onSuccess }: Part
     description: '',
     sku: '',
     hsCode: '',
-    category: '',
+    category: [] as string[],
   })
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [showSupplier, setShowSupplier] = useState(false)
@@ -88,7 +92,8 @@ export function PartFormDialog({ open, onOpenChange, recordId, onSuccess }: Part
           description: (systemValues.part_description as string) ?? '',
           sku: (systemValues.part_sku as string) ?? '',
           hsCode: (systemValues.hs_code as string) ?? '',
-          category: (systemValues.category as string) ?? '',
+          // TAGS reads back as an array of option ids
+          category: Array.isArray(systemValues.category) ? (systemValues.category as string[]) : [],
         })
       } else if (!isEditMode) {
         setValues({
@@ -96,7 +101,7 @@ export function PartFormDialog({ open, onOpenChange, recordId, onSuccess }: Part
           description: '',
           sku: '',
           hsCode: '',
-          category: '',
+          category: [],
         })
       }
       setErrors({})
@@ -129,7 +134,7 @@ export function PartFormDialog({ open, onOpenChange, recordId, onSuccess }: Part
     // Validate vendor part fields if supplier section is shown
     const vpErrors: Record<string, string> = {}
     if (showSupplier) {
-      if (!vendorPartValues.entityInstanceId) vpErrors.entityInstanceId = 'Contact is required'
+      if (!vendorPartValues.entityInstanceId) vpErrors.entityInstanceId = 'Supplier is required'
       if (!vendorPartValues.vendorSku) vpErrors.vendorSku = 'Supplier SKU is required'
     }
     setVendorPartErrors(vpErrors)
@@ -164,7 +169,7 @@ export function PartFormDialog({ open, onOpenChange, recordId, onSuccess }: Part
             value: values.description || undefined,
             fieldType: 'TEXT',
           },
-          { fieldId: 'category', value: values.category || undefined, fieldType: 'TEXT' },
+          { fieldId: 'category', value: values.category, fieldType: 'TAGS' },
           { fieldId: 'hs_code', value: values.hsCode || undefined, fieldType: 'TEXT' },
         ]
 
@@ -181,7 +186,7 @@ export function PartFormDialog({ open, onOpenChange, recordId, onSuccess }: Part
             part_title: values.title,
             part_sku: values.sku,
             part_description: values.description || undefined,
-            category: values.category || undefined,
+            category: values.category.length ? values.category : undefined,
             hs_code: values.hsCode || undefined,
           },
         })
@@ -192,7 +197,7 @@ export function PartFormDialog({ open, onOpenChange, recordId, onSuccess }: Part
             entityDefinitionId: vendorPartDefId,
             values: {
               vendor_part_part: toRecordId(partDefId!, result.instance.id),
-              vendor_part_contact: toRecordId(contactDefId!, vendorPartValues.entityInstanceId),
+              vendor_part_contact: toRecordId(companyDefId!, vendorPartValues.entityInstanceId),
               vendor_part_vendor_sku: vendorPartValues.vendorSku,
               vendor_part_unit_price: vendorPartValues.unitPrice,
               vendor_part_lead_time: vendorPartValues.leadTime,
@@ -275,13 +280,14 @@ export function PartFormDialog({ open, onOpenChange, recordId, onSuccess }: Part
             />
           </FieldPanelRow>
 
-          {/* Category */}
-          <FieldPanelRow title='Category' type={BaseType.STRING} showIcon orientation='responsive'>
+          {/* Category — inline TAGS (free-form, multi-value) */}
+          <FieldPanelRow title='Category' type={BaseType.TAGS} showIcon orientation='responsive'>
             <FieldInputAdapter
-              fieldType={FieldType.TEXT}
+              fieldType={FieldType.TAGS}
+              fieldOptions={categoryField?.options}
               value={values.category}
               onChange={(val) => handleChange('category', val)}
-              placeholder='Category'
+              placeholder='Add categories'
               disabled={isPending}
             />
           </FieldPanelRow>

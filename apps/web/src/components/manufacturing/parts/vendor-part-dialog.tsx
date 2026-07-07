@@ -47,9 +47,9 @@ interface VendorPartDialogProps {
   open: boolean
   /** Callback when open state changes */
   onOpenChange: (open: boolean) => void
-  /** Part ID - provide for part-centric mode (user selects contact) */
+  /** Part ID - provide for part-centric mode (user selects supplier company) */
   partId?: string
-  /** Entity instance ID - provide for contact-centric mode (user selects part) */
+  /** Entity instance ID (company) - provide for company-centric mode (user selects part) */
   entityInstanceId?: string
   /** RecordId for edit mode (format: "entityDefinitionId:entityInstanceId") */
   recordId?: RecordId
@@ -75,7 +75,7 @@ export function VendorPartDialog({
   // Resolve entity definition IDs
   const vendorPartDefId = useResourceProperty('vendor_part', 'id')
   const partDefId = useResourceProperty('part', 'id')
-  const contactDefId = useResourceProperty('contact', 'id')
+  const companyDefId = useResourceProperty('company', 'id')
 
   // Field definition for the Part relationship picker (contact-centric mode) — sourced live
   // so FieldInputAdapter gets a real RelationshipConfig and can offer "create new part"
@@ -164,7 +164,7 @@ export function VendorPartDialog({
   // Validation
   const validate = (): boolean => {
     const newErrors: Record<string, string> = {}
-    if (isPartMode && !values.entityInstanceId) newErrors.entityInstanceId = 'Contact is required'
+    if (isPartMode && !values.entityInstanceId) newErrors.entityInstanceId = 'Supplier is required'
     if (isContactMode && !values.partId) newErrors.partId = 'Part is required'
     if (!values.vendorSku) newErrors.vendorSku = 'Supplier SKU is required'
     setErrors(newErrors)
@@ -216,7 +216,7 @@ export function VendorPartDialog({
         entityDefinitionId: vendorPartDefId!,
         values: {
           vendor_part_part: toRecordId(partDefId!, resolvedPartId),
-          vendor_part_contact: toRecordId(contactDefId!, resolvedEntityInstanceId),
+          vendor_part_contact: toRecordId(companyDefId!, resolvedEntityInstanceId),
           vendor_part_vendor_sku: values.vendorSku,
           vendor_part_unit_price: values.unitPrice,
           vendor_part_shipping_cost: values.shippingCost,
@@ -242,8 +242,8 @@ export function VendorPartDialog({
             {isEditMode
               ? 'Update the supplier configuration'
               : isPartMode
-                ? 'Associate a contact as a supplier for this part'
-                : 'Add a part that this contact supplies'}
+                ? 'Associate a company as a supplier for this part'
+                : 'Add a part that this company supplies'}
           </DialogDescription>
         </DialogHeader>
 
@@ -296,7 +296,7 @@ export function VendorPartDialog({
             size='sm'
             loading={isPending}
             loadingText={isEditMode ? 'Updating...' : 'Adding...'}
-            disabled={!vendorPartDefId || !partDefId || !contactDefId}
+            disabled={!vendorPartDefId || !partDefId || !companyDefId}
             data-dialog-submit>
             {isEditMode ? 'Update Supplier' : 'Add Supplier'}{' '}
             <KbdSubmit variant='outline' size='sm' />

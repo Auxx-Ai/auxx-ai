@@ -123,25 +123,29 @@ export const PART_FIELDS: Record<string, ResourceField> = {
     description: 'Product image used as the part avatar',
   },
 
+  // Category is an inline TAGS field (option-backed, free-form multi-value —
+  // NOT the global Tag entity). Slug stays `category`; values live in
+  // FieldValue.optionId. Options grow dynamically as users add categories.
   category: {
     id: toFieldId('category'),
     key: 'category',
     label: 'Category',
-    type: BaseType.STRING,
-    fieldType: FieldType.TEXT,
+    type: BaseType.TAGS,
+    fieldType: FieldType.TAGS,
     isSystem: true,
     systemAttribute: 'category',
     systemSortOrder: 'a4',
-    dbColumn: 'category',
     nullable: true,
+    options: { options: [] },
     capabilities: {
       filterable: true,
-      sortable: true,
+      sortable: false,
       creatable: true,
       updatable: true,
       configurable: false,
     },
-    placeholder: 'Enter category',
+    placeholder: 'Add categories',
+    description: 'Category tags for this part',
   },
 
   unitPrice: {

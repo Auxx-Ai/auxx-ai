@@ -1,4 +1,4 @@
-// apps/web/src/components/drawers/tabs/contact-parts-tab.tsx
+// apps/web/src/components/drawers/tabs/company-parts-tab.tsx
 'use client'
 
 import type { ConditionGroup } from '@auxx/lib/conditions/client'
@@ -20,9 +20,11 @@ import type { DrawerTabProps } from '../drawer-tab-registry'
 import { ContactVendorPartRow } from './contact-parts-tab-row'
 
 /**
- * Parts tab for contact drawer - shows parts this contact supplies
+ * Parts tab for company drawer - shows parts this company supplies.
+ * Suppliers are modeled as companies; the vendor_part.contact relationship
+ * (slug `vendor_part_contact`) now targets the company entity.
  */
-export function ContactPartsTab({ entityInstanceId }: DrawerTabProps) {
+export function CompanyPartsTab({ entityInstanceId }: DrawerTabProps) {
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [editingRecordId, setEditingRecordId] = useState<string | null>(null)
   const [confirmDelete, ConfirmDeleteDialog] = useConfirm()
@@ -30,15 +32,15 @@ export function ContactPartsTab({ entityInstanceId }: DrawerTabProps) {
   // Resolve vendor_part entity definition ID
   const vendorPartDefId = useResourceProperty('vendor_part', 'id')
 
-  // Filter vendor parts by contact
+  // Filter vendor parts by supplier company
   const filters: ConditionGroup[] = useMemo(
     () => [
       {
-        id: 'contact-filter',
+        id: 'company-filter',
         logicalOperator: 'AND' as const,
         conditions: [
           {
-            id: 'contact-match',
+            id: 'company-match',
             fieldId: 'vendor_part:contact' as ResourceFieldId,
             operator: 'is' as const,
             value: entityInstanceId,
@@ -69,7 +71,7 @@ export function ContactPartsTab({ entityInstanceId }: DrawerTabProps) {
     async (instanceId: string) => {
       const confirmed = await confirmDelete({
         title: 'Remove Part',
-        description: 'Are you sure you want to remove this part from the contact?',
+        description: 'Are you sure you want to remove this part from the company?',
         confirmText: 'Remove',
         cancelText: 'Cancel',
         destructive: true,
@@ -138,7 +140,7 @@ export function ContactPartsTab({ entityInstanceId }: DrawerTabProps) {
             <div className='flex h-24 flex-col items-center justify-center text-center border rounded-lg bg-muted/30'>
               <Package className='mb-2 h-6 w-6 text-muted-foreground' />
               <p className='text-sm text-muted-foreground'>No parts added yet</p>
-              <p className='text-xs text-muted-foreground'>Add parts that this contact supplies</p>
+              <p className='text-xs text-muted-foreground'>Add parts that this company supplies</p>
             </div>
           ) : (
             <div className='rounded-md border'>
@@ -169,7 +171,7 @@ export function ContactPartsTab({ entityInstanceId }: DrawerTabProps) {
         </Section>
       </ScrollArea>
 
-      {/* Vendor Part Dialog - contact mode */}
+      {/* Vendor Part Dialog - company mode */}
       <VendorPartDialog
         open={isDialogOpen}
         onOpenChange={handleDialogOpenChange}

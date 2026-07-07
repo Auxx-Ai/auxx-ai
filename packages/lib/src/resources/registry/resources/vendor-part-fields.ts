@@ -66,10 +66,12 @@ export const VENDOR_PART_FIELDS: Record<string, ResourceField> = {
     description: 'The part this vendor part belongs to',
   },
 
+  // Supplier company. Slug stays `vendor_part_contact` for continuity; the target
+  // entity is `company` (was `contact`).
   contact: {
     id: toFieldId('contact'),
     key: 'contact',
-    label: 'Contact',
+    label: 'Supplier',
     type: BaseType.RELATION,
     fieldType: FieldType.RELATIONSHIP,
     isSystem: true,
@@ -85,17 +87,17 @@ export const VENDOR_PART_FIELDS: Record<string, ResourceField> = {
       configurable: false,
     },
     relationship: {
-      inverseResourceFieldId: 'contact:vendorParts' as ResourceFieldId,
+      inverseResourceFieldId: 'company:vendorParts' as ResourceFieldId,
       relationshipType: 'belongs_to',
       isInverse: false,
     },
     relationshipConfig: {
-      relatedEntityType: 'contact',
+      relatedEntityType: 'company',
       relationshipType: 'belongs_to',
-      inverseName: 'Vendor Parts',
-      inverseSystemAttribute: 'contact_vendor_parts',
+      inverseName: 'Supplier Parts',
+      inverseSystemAttribute: 'company_vendor_parts',
     },
-    description: 'The vendor/supplier contact',
+    description: 'The supplier company for this vendor part',
   },
 
   vendorSku: {

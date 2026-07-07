@@ -48,7 +48,8 @@ export function VendorPartRow({ recordId, onEdit, onDelete, onSetPreferred }: Ve
   const otherCost = values.vendor_part_other_cost as number | null | undefined
   const leadTime = values.vendor_part_lead_time as number | null | undefined
   const isPreferred = values.vendor_part_is_preferred as boolean | undefined
-  const contactId = (values.vendor_part_contact as string[] | undefined)?.[0]
+  // Supplier RecordId (encodes the company entity def); RecordBadge resolves it.
+  const supplierRecordId = (values.vendor_part_contact as string[] | undefined)?.[0]
 
   // Compute landed cost inline: unit_price + shipping + (unit_price * tariff / 100) + other
   const landedCost =
@@ -59,8 +60,8 @@ export function VendorPartRow({ recordId, onEdit, onDelete, onSetPreferred }: Ve
     <TableRow>
       <TableCell className='font-medium'>
         <div className='flex items-center gap-2'>
-          {contactId ? (
-            <RecordBadge recordId={contactId} variant='link' link={{ tab: 'parts' }} />
+          {supplierRecordId ? (
+            <RecordBadge recordId={supplierRecordId} variant='link' link={{ tab: 'parts' }} />
           ) : (
             <span className='text-muted-foreground'>—</span>
           )}

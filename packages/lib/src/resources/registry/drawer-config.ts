@@ -17,11 +17,19 @@ export const DRAWER_CONFIG_REGISTRY: DrawerConfigRegistry = {
     additionalTabs: [
       { value: 'tickets', label: 'Tickets', icon: 'ticket' },
       { value: 'conversations', label: 'Conversations', icon: 'mail' },
-      { value: 'parts', label: 'Parts', icon: 'package' },
     ],
     actions: {
       enableMerge: true,
       enableGroups: true,
+      enableArchive: true,
+      enableDelete: true,
+    },
+  },
+
+  company: {
+    entityType: 'company',
+    additionalTabs: [{ value: 'parts', label: 'Parts', icon: 'package' }],
+    actions: {
       enableArchive: true,
       enableDelete: true,
     },
@@ -51,7 +59,7 @@ export const DRAWER_CONFIG_REGISTRY: DrawerConfigRegistry = {
     entityType: 'part',
     additionalTabs: [
       { value: 'subparts', label: 'Subparts', icon: 'layers' },
-      { value: 'vendors', label: 'Vendors', icon: 'truck' },
+      { value: 'vendors', label: 'Suppliers', icon: 'truck' },
     ],
     actions: {
       enableArchive: true,

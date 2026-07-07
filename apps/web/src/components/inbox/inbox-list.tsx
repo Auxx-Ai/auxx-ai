@@ -1,53 +1,43 @@
 // apps/web/src/components/inbox/inbox-list.tsx
 'use client'
 
-import type { Inbox } from '@auxx/lib/inboxes'
-import type { RecordId } from '@auxx/lib/resources/client'
-import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@auxx/ui/components/dropdown-menu'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@auxx/ui/components/table'
+import { ListCard } from '@auxx/ui/components/list-card'
 import { toastError } from '@auxx/ui/components/toast'
-import {
-  InboxIcon,
-  MoreHorizontal,
-  PencilIcon,
-  PlusIcon,
-  RefreshCw,
-  Trash2Icon,
-} from 'lucide-react'
-import { useRouter } from 'next/navigation'
-import { useState } from 'react'
+import { Inbox as InboxIcon, PlusIcon, Users } from 'lucide-react'
+import { type ReactNode, useState } from 'react'
 import { EmptyState } from '~/components/global/empty-state'
-import SettingsPage from '~/components/global/settings-page'
+import SettingsPage, { SettingsSection } from '~/components/global/settings-page'
 import { useResource } from '~/components/resources'
-import { RecordIcon } from '~/components/resources/ui/record-icon'
 import { useInboxes } from '~/components/threads/hooks'
+import type { InboxItem } from '~/components/threads/hooks/use-inbox'
 import { useConfirm } from '~/hooks/use-confirm'
 import { useUser } from '~/hooks/use-user'
 import { api } from '~/trpc/react'
 import { InboxDialog } from './inbox-dialog'
+import { InboxCard } from './ui/inbox-card'
+import { InboxPlaceholderCard } from './ui/inbox-placeholder-card'
 
-/** Component for displaying the list of inboxes */
+const BREADCRUMBS = [{ title: 'Settings', href: '/app/settings' }, { title: 'Inboxes' }]
+
+const GRID_CLASS = 'grid gap-2 @md:grid-cols-2 @2xl:grid-cols-3'
+
+/** Container-query wrapper so the grid's `@md`/`@2xl` breakpoints resolve. */
+function InboxGrid({ children }: { children: ReactNode }) {
+  return (
+    <div className='@container'>
+      <div className={GRID_CLASS}>{children}</div>
+    </div>
+  )
+}
+
+/** Inbox settings list page — a responsive ListCard grid of shared and personal inboxes. */
 export function InboxList() {
-  const router = useRouter()
   const utils = api.useUtils()
   const [confirm, ConfirmDialog] = useConfirm()
   const [dialogOpen, setDialogOpen] = useState(false)
   // recordId to edit; null opens the dialog in create mode.
-  const [editRecordId, setEditRecordId] = useState<RecordId | null>(null)
+  const [editRecordId, setEditRecordId] = useState<InboxItem['recordId'] | null>(null)
 
   useUser({
     requireOrganization: true,
@@ -56,7 +46,7 @@ export function InboxList() {
 
   // Read inboxes from the generic record store; field-value mutations flush
   // this automatically, so no manual invalidation is required after edits.
-  const { inboxes, records, isLoading: isLoadingInboxes, refresh } = useInboxes()
+  const { inboxes, records, isLoading, refresh } = useInboxes()
   const { resource } = useResource('inbox')
 
   const deleteInbox = api.inbox.delete.useMutation({
@@ -70,34 +60,6 @@ export function InboxList() {
     },
   })
 
-  /** Get status badge based on inbox status */
-  const getStatusBadge = (status: Inbox['status'] | undefined) => {
-    switch (status) {
-      case 'ACTIVE':
-        return <Badge variant='green'>Active</Badge>
-      case 'ARCHIVED':
-        return <Badge variant='gray'>Archived</Badge>
-      case 'PAUSED':
-        return <Badge variant='yellow'>Paused</Badge>
-      default:
-        return <Badge>{status ?? 'Unknown'}</Badge>
-    }
-  }
-
-  /** Get access display based on the org-wide floor lens */
-  const getAccessDisplay = (defaultLens: Inbox['defaultLens'] | undefined) => {
-    switch (defaultLens) {
-      case 'none':
-        return 'Restricted'
-      case 'subject':
-        return 'Subject only'
-      case 'metadata':
-        return 'Activity only'
-      default:
-        return 'All members'
-    }
-  }
-
   /** Open the create inbox dialog */
   const handleCreateInbox = () => {
     setEditRecordId(null)
@@ -105,134 +67,94 @@ export function InboxList() {
   }
 
   /** Open the inbox editor dialog for an existing inbox */
-  const handleEditInbox = (recordId: RecordId) => {
-    setEditRecordId(recordId)
+  const handleEditInbox = (inbox: InboxItem) => {
+    setEditRecordId(inbox.recordId)
     setDialogOpen(true)
   }
 
   /** Delete an inbox after confirmation */
-  const handleDeleteInbox = async (inboxId: string, name: string) => {
+  const handleDeleteInbox = async (inbox: InboxItem) => {
     const confirmed = await confirm({
       title: 'Delete inbox?',
-      description: `This will permanently delete "${name}" and all its settings. This action cannot be undone.`,
+      description: `This will permanently delete "${inbox.name}" and all its settings. This action cannot be undone.`,
       confirmText: 'Delete',
       cancelText: 'Cancel',
       destructive: true,
     })
-    if (confirmed) deleteInbox.mutate({ inboxId })
+    if (confirmed) deleteInbox.mutate({ inboxId: inbox.id })
   }
 
-  /** Navigate to the inbox detail page */
-  const handleRowClick = (inboxId: string) => {
-    router.push(`/app/settings/inbox/${inboxId}`)
-  }
+  const shared = inboxes.filter((inbox) => !inbox.isPersonal)
+  const personal = inboxes.filter((inbox) => inbox.isPersonal)
+
+  const renderCard = (inbox: InboxItem) => (
+    <InboxCard
+      key={inbox.id}
+      inbox={inbox}
+      record={records.find((r) => r.id === inbox.id)}
+      resourceIcon={resource?.icon ?? undefined}
+      resourceColor={resource?.color ?? undefined}
+      onEdit={handleEditInbox}
+      onDelete={handleDeleteInbox}
+      deletePending={deleteInbox.isPending}
+    />
+  )
 
   return (
     <SettingsPage
       title='Inboxes'
       description='Manage your shared inboxes and their settings.'
-      breadcrumbs={[{ title: 'Settings', href: '/app/settings' }, { title: 'Inboxes' }]}
+      breadcrumbs={BREADCRUMBS}
       button={
         <Button variant='outline' size='sm' onClick={handleCreateInbox}>
           <PlusIcon />
           Create Inbox
         </Button>
       }>
-      {isLoadingInboxes ? (
-        <EmptyState
-          icon={RefreshCw}
-          iconClassName='animate-spin'
-          title='Loading inboxes...'
-          description={<>Hang on tight while we load your inboxes...</>}
-          button={<div className='h-12'></div>}
-        />
-      ) : inboxes.length ? (
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead className='w-[300px]'>Inbox</TableHead>
-              <TableHead>Access</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead className='w-[60px]' />
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {inboxes.map((inbox) => {
-              const record = records.find((r) => r.id === inbox.id)
-              const status = Array.isArray(inbox.status) ? inbox.status[0] : inbox.status
-              return (
-                <TableRow
-                  key={inbox.id}
-                  onClick={() => handleRowClick(inbox.id)}
-                  className='cursor-pointer hover:bg-muted'>
-                  <TableCell>
-                    <div className='flex items-center space-x-3'>
-                      <RecordIcon
-                        avatarUrl={record?.avatarUrl}
-                        iconId={resource?.icon ?? 'inbox'}
-                        color={resource?.color ?? 'gray'}
-                        size='xs'
-                      />
-                      <div>
-                        <div className='font-medium'>{inbox.name}</div>
-                        {inbox.description && (
-                          <div className='text-sm text-muted-foreground'>{inbox.description}</div>
-                        )}
-                      </div>
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    {inbox.isPersonal ? (
-                      <Badge variant='gray'>Personal</Badge>
-                    ) : (
-                      getAccessDisplay(inbox.defaultLens)
-                    )}
-                  </TableCell>
-                  <TableCell>{getStatusBadge(status)}</TableCell>
-                  <TableCell>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button
-                          variant='ghost'
-                          size='icon-sm'
-                          aria-label='Inbox actions'
-                          onClick={(e) => e.stopPropagation()}>
-                          <MoreHorizontal />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align='end' onClick={(e) => e.stopPropagation()}>
-                        <DropdownMenuItem onClick={() => handleEditInbox(inbox.recordId)}>
-                          <PencilIcon />
-                          Edit
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          variant='destructive'
-                          disabled={deleteInbox.isPending}
-                          onClick={() => handleDeleteInbox(inbox.id, inbox.name)}>
-                          <Trash2Icon />
-                          Delete
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </TableCell>
-                </TableRow>
-              )
-            })}
-          </TableBody>
-        </Table>
-      ) : (
-        <EmptyState
-          icon={InboxIcon}
-          title='Create your first inbox'
-          description={<>Inboxes help you organize your messages.</>}
-          button={
-            <Button size='sm' variant='outline' onClick={handleCreateInbox}>
-              <PlusIcon />
-              Create Inbox
-            </Button>
-          }
-        />
-      )}
+      <div className='p-3 sm:p-6'>
+        {isLoading ? (
+          <SettingsSection icon={InboxIcon} title='Shared inboxes'>
+            <InboxGrid>
+              {[0, 1, 2].map((i) => (
+                <ListCard key={i} loading />
+              ))}
+            </InboxGrid>
+          </SettingsSection>
+        ) : inboxes.length === 0 ? (
+          <EmptyState
+            icon={InboxIcon}
+            title='Create your first inbox'
+            description={<>Inboxes help you organize your messages.</>}
+            button={
+              <Button size='sm' variant='outline' onClick={handleCreateInbox}>
+                <PlusIcon />
+                Create Inbox
+              </Button>
+            }
+          />
+        ) : (
+          <div className='space-y-6'>
+            <SettingsSection
+              icon={InboxIcon}
+              title='Shared inboxes'
+              description='Inboxes shared across your workspace.'>
+              <InboxGrid>
+                {shared.map(renderCard)}
+                <InboxPlaceholderCard onClick={handleCreateInbox} />
+              </InboxGrid>
+            </SettingsSection>
+
+            {personal.length > 0 && (
+              <SettingsSection
+                icon={Users}
+                title='Personal inboxes'
+                description="Members' connected personal mailboxes.">
+                <InboxGrid>{personal.map(renderCard)}</InboxGrid>
+              </SettingsSection>
+            )}
+          </div>
+        )}
+      </div>
 
       {/* Dialog only renders when open */}
       {dialogOpen && (
