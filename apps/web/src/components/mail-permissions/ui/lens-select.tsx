@@ -1,0 +1,98 @@
+// apps/web/src/components/mail-permissions/ui/lens-select.tsx
+'use client'
+
+import { LENS_CHOICES, LENS_LABELS, type LensChoice } from '@auxx/lib/permissions/visibility/client'
+import { Badge } from '@auxx/ui/components/badge'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectSeparator,
+  SelectTrigger,
+  SelectValue,
+} from '@auxx/ui/components/select'
+import { useState } from 'react'
+import { MailPermissionsUpgradeDialog, useMailPermissionsGated } from './enterprise-gate'
+
+interface LensSelectProps {
+  value: LensChoice
+  onChange: (value: LensChoice) => void
+  /** Renders the separator + Manager entry (inbox surface only). */
+  includeManager?: boolean
+  disabled?: boolean
+  size?: 'sm' | 'default'
+  className?: string
+}
+
+/**
+ * The one tier picker every mail-permission surface uses. Options below
+ * Full access (and the Manager entry) are enterprise-gated: without the
+ * feature they render with an "Enterprise" badge and selecting one opens
+ * the upgrade dialog instead of changing the value.
+ */
+export function LensSelect({
+  value,
+  onChange,
+  includeManager = false,
+  disabled = false,
+  size = 'sm',
+  className,
+}: LensSelectProps) {
+  const gated = useMailPermissionsGated()
+  const [upgradeOpen, setUpgradeOpen] = useState(false)
+
+  const handleChange = (next: string) => {
+    const choice = next as LensChoice
+    if (gated && choice !== 'full') {
+      setUpgradeOpen(true)
+      return
+    }
+    onChange(choice)
+  }
+
+  const enterpriseBadge = (
+    <Badge variant='outline' className='ml-2 px-1 text-[10px]'>
+      Enterprise
+    </Badge>
+  )
+
+  return (
+    <>
+      <Select value={value} onValueChange={handleChange} disabled={disabled}>
+        <SelectTrigger size={size} className={className}>
+          <SelectValue placeholder='Access'>{LENS_LABELS[value]?.label}</SelectValue>
+        </SelectTrigger>
+        <SelectContent align='end' className='min-w-56'>
+          {LENS_CHOICES.map((lens) => (
+            <SelectItem key={lens} value={lens} textValue={LENS_LABELS[lens].label}>
+              <div className='flex flex-col items-start'>
+                <span className='flex items-center'>
+                  {LENS_LABELS[lens].label}
+                  {gated && lens !== 'full' && enterpriseBadge}
+                </span>
+                <span className='text-muted-foreground text-xs'>{LENS_LABELS[lens].helper}</span>
+              </div>
+            </SelectItem>
+          ))}
+          {includeManager && (
+            <>
+              <SelectSeparator />
+              <SelectItem value='manager' textValue={LENS_LABELS.manager.label}>
+                <div className='flex flex-col items-start'>
+                  <span className='flex items-center'>
+                    {LENS_LABELS.manager.label}
+                    {gated && enterpriseBadge}
+                  </span>
+                  <span className='text-muted-foreground text-xs'>
+                    {LENS_LABELS.manager.helper}
+                  </span>
+                </div>
+              </SelectItem>
+            </>
+          )}
+        </SelectContent>
+      </Select>
+      <MailPermissionsUpgradeDialog open={upgradeOpen} onOpenChange={setUpgradeOpen} />
+    </>
+  )
+}

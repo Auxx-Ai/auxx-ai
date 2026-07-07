@@ -780,6 +780,20 @@ export class ThreadQueryService {
     // Note: batchGetThreadTagIds returns RecordIds (from FieldValue.relatedEntityId which stores RecordIds)
     const tagIdMap = await batchGetThreadTagIds(this.db, ids, this.organizationId)
 
+    // Threads with explicit shares (instance grants) — powers the list rows'
+    // share indicator (`hasShares`, metadata tier).
+    const shareRows = await this.db
+      .selectDistinct({ entityInstanceId: schema.ResourceAccess.entityInstanceId })
+      .from(schema.ResourceAccess)
+      .where(
+        and(
+          eq(schema.ResourceAccess.organizationId, this.organizationId),
+          eq(schema.ResourceAccess.entityDefinitionId, 'thread'),
+          inArray(schema.ResourceAccess.entityInstanceId, ids)
+        )
+      )
+    const sharedThreadIds = new Set(shareRows.map((r) => r.entityInstanceId))
+
     // Resolve inbox and ticket entityDefinitionIds from org cache
     const inboxEntityDefId = await requireCachedEntityDefId(this.organizationId, 'inbox')
     const ticketEntityDefId = await requireCachedEntityDefId(this.organizationId, 'ticket')
@@ -929,6 +943,8 @@ export class ThreadQueryService {
             ? toRecordId('thread', t.mergedIntoThreadId)
             : null,
           mergeData: (t.mergeData as ThreadMergeData | null) ?? null,
+          myLens: lens,
+          hasShares: sharedThreadIds.has(t.id),
         } satisfies ThreadMeta
 
         return redactThreadMeta(meta, lens)

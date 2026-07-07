@@ -12,6 +12,7 @@ import type {
   CheckAccessInput,
   CheckTypeAccessInput,
   GrantInstanceAccessInput,
+  GrantLens,
   GrantTypeAccessInput,
   InstanceAccess,
   ResourceAccessContext,
@@ -76,6 +77,7 @@ export async function grantInstanceAccess(
       granteeType: input.granteeType,
       granteeId: input.granteeId,
       permission: input.permission,
+      lens: input.lens ?? null,
       grantedById: userId,
     })
     .onConflictDoUpdate({
@@ -88,6 +90,7 @@ export async function grantInstanceAccess(
       ],
       set: {
         permission: input.permission,
+        lens: input.lens ?? null,
         grantedById: userId,
         updatedAt: new Date(),
       },
@@ -208,7 +211,7 @@ export async function setInstanceAccess(
   ctx: ResourceAccessContext,
   recordId: RecordId,
   granteeType: ResourceGranteeType,
-  grants: Array<{ granteeId: string; permission: ResourcePermission }>
+  grants: Array<{ granteeId: string; permission: ResourcePermission; lens?: GrantLens | null }>
 ): Promise<void> {
   const { db, organizationId, userId } = ctx
   const { entityDefinitionId, entityInstanceId } = parseRecordId(recordId)
@@ -237,6 +240,7 @@ export async function setInstanceAccess(
           granteeType,
           granteeId: g.granteeId,
           permission: g.permission,
+          lens: g.lens ?? null,
           grantedById: userId,
         }))
       )
@@ -551,6 +555,7 @@ export async function getInstanceAccess(
     granteeType: g.granteeType as ResourceGranteeType,
     granteeId: g.granteeId,
     permission: g.permission as ResourcePermission,
+    lens: (g.lens ?? null) as GrantLens | null,
     createdAt: g.createdAt,
   }))
 }

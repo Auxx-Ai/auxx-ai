@@ -10,7 +10,7 @@ import { Skeleton } from '@auxx/ui/components/skeleton'
 import { cn } from '@auxx/ui/lib/utils'
 import { formatDistanceToNowStrict } from 'date-fns'
 import DOMPurify from 'dompurify'
-import { Archive, Clock, ShieldAlert, Tag, Trash2, UserRound } from 'lucide-react'
+import { Archive, Clock, Share2, ShieldAlert, Tag, Trash2, UserRound } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import type React from 'react'
 import { memo, useCallback, useMemo, useState } from 'react'
@@ -68,7 +68,12 @@ export const CompactThreadItem = memo(function CompactThreadItem({
     enabled: !!thread?.latestMessageId,
   })
   const { from: senderParticipant } = useMessageParticipants(latestMessage?.participants ?? [])
-  const { isUnread, markAsRead } = useThreadReadStatus(threadId)
+  const { isUnread: readStatusUnread, markAsRead } = useThreadReadStatus(threadId)
+
+  // Redacted rendering (mail-permissions): below `full` the row never looks
+  // unread (isUnread is full-tier); at `metadata` the subject is absent.
+  const myLens = thread?.myLens ?? 'full'
+  const isUnread = myLens === 'full' && readStatusUnread
 
   const toggleSelection = useThreadSelectionStore((s) => s.toggleSelection)
   const setActiveThread = useThreadSelectionStore((s) => s.setActiveThread)
@@ -288,11 +293,15 @@ export const CompactThreadItem = memo(function CompactThreadItem({
                   'shrink-0 truncate text-xs',
                   isUnread ? 'text-foreground' : 'font-medium text-foreground/90',
                   hasTags ? 'max-w-[40%]' : 'max-w-[50%]',
-                  isLiveChat && 'font-semibold'
+                  isLiveChat && 'font-semibold',
+                  myLens === 'metadata' && 'font-normal text-muted-foreground italic'
                 )}>
-                {thread.subject || '(no subject)'}
+                {myLens === 'metadata' ? 'No access to subject' : thread.subject || '(no subject)'}
               </span>
               {thread.assigneeId && <AssigneeChip assigneeId={thread.assigneeId as ActorId} />}
+              {thread.hasShares && (
+                <Share2 className='size-3 shrink-0 text-muted-foreground' aria-label='Shared' />
+              )}
               {snippet && (
                 <>
                   <span className='shrink-0 text-muted-foreground/50'>—</span>

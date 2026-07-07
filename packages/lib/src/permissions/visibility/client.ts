@@ -7,6 +7,8 @@
 
 export type { Lens } from './lens'
 export { ALL_LENSES, lensRank, maxLens, satisfiesLens } from './lens'
+export type { LensChoice, LensLabel } from './lens-labels'
+export { LENS_CHOICES, LENS_LABELS } from './lens-labels'
 export {
   FULL_ONLY_THREAD_FIELDS,
   MESSAGE_CONTENT_FIELDS,

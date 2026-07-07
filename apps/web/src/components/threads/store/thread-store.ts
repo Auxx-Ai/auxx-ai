@@ -95,6 +95,17 @@ export interface ThreadMeta {
    * been merged into this one.
    */
   mergeData?: ThreadMergeData | null
+
+  /**
+   * The viewer's effective lens on this thread (mail-permissions). Below
+   * `full`, subject/snippet/unread are redacted server-side — rows render
+   * placeholders and never look unread. Optional: absent on patches and
+   * pre-lens cached payloads (treat as `full`).
+   */
+  myLens?: 'metadata' | 'subject' | 'full'
+
+  /** True when the thread has explicit shares (drives the share indicator). */
+  hasShares?: boolean
 }
 
 /** Scheduled message metadata for display in thread conversation view */

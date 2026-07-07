@@ -73,6 +73,10 @@ export const DRAWER_TAB_CARD_COMPONENTS: Record<
     import('./cards/contact-external-identities-card').then((m) => ({
       default: m.ContactExternalIdentitiesCard,
     })),
+  'contact:shared-with': () =>
+    import('./cards/contact-shared-with-card').then((m) => ({
+      default: m.ContactSharedWithCard,
+    })),
 
   // ─────────────────────────────────────────────────────────────────
   // TICKET OVERVIEW CARDS

@@ -1,28 +1,43 @@
 // apps/web/src/components/inbox/inbox-form.tsx
 'use client'
 
-import type { InboxVisibility } from '@auxx/lib/inboxes'
+import { ResourceGranteeType, ResourcePermission } from '@auxx/database/enums'
+import type { Lens, LensChoice } from '@auxx/lib/permissions/visibility/client'
 import { parseRecordId, type RecordId, toRecordId } from '@auxx/lib/resources/client'
+import { type ActorId, parseActorId, toActorId } from '@auxx/types/actor'
 import { Button } from '@auxx/ui/components/button'
 import { DialogFooter } from '@auxx/ui/components/dialog'
 import { Field, FieldGroup, FieldLabel } from '@auxx/ui/components/field'
 import { Form } from '@auxx/ui/components/form'
 import { Input } from '@auxx/ui/components/input'
 import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
-import { Label } from '@auxx/ui/components/label'
-import { RadioGroup, RadioGroupItem } from '@auxx/ui/components/radio-group'
+import { RadioGroup } from '@auxx/ui/components/radio-group'
+import { RadioGroupItemCard } from '@auxx/ui/components/radio-group-item'
 import { Textarea } from '@auxx/ui/components/textarea'
 import { toastError } from '@auxx/ui/components/toast'
-import { Trash2 } from 'lucide-react'
-import { type ReactNode, useEffect, useMemo, useRef } from 'react'
+import { Lock, Trash2, UsersIcon } from 'lucide-react'
+import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react'
 import { useForm } from 'react-hook-form'
-import { MemberGroupFormField } from '~/components/pickers/member-group-form-picker'
+import { AccessLevelsGuide } from '~/components/mail-permissions/ui/access-levels-guide'
+import {
+  MailPermissionsUpgradeDialog,
+  useMailPermissionsGated,
+} from '~/components/mail-permissions/ui/enterprise-gate'
+import { GranteeList } from '~/components/mail-permissions/ui/grantee-list'
+import { LensSelect } from '~/components/mail-permissions/ui/lens-select'
 import { useSaveSystemValues, useSystemValues } from '~/components/resources/hooks'
 import { FormColorTagPicker } from '~/components/tags/ui/color-tag-picker'
 import { useConfirm } from '~/hooks/use-confirm'
 import { useDirtyCheck } from '~/hooks/use-dirty-state'
 import { useUnsavedChangesGuard } from '~/hooks/use-unsaved-changes-guard'
+import { useUser } from '~/hooks/use-user'
 import { api } from '~/trpc/react'
+
+/** A grantee row as the form edits it. */
+interface FormGrant {
+  actorId: ActorId
+  choice: LensChoice
+}
 
 /** Form data for inbox form */
 interface InboxFormData {
@@ -30,10 +45,9 @@ interface InboxFormData {
   description: string
   color: string
   accessType: 'anyone' | 'restricted'
-  memberGroupSelection: {
-    memberIds: string[]
-    groupIds: string[]
-  }
+  /** The org-wide floor when accessType is 'anyone'. Restricted ⇒ floor `none`. */
+  floorLens: Exclude<Lens, 'none'>
+  grants: FormGrant[]
 }
 
 /** Props for the shell-free inbox form core. */
@@ -56,12 +70,39 @@ export interface InboxFormProps {
   header?: (ctx: { title: string }) => ReactNode
 }
 
+/** Map a stored ResourceAccess row to the form's grant shape. */
+function rowToGrant(row: {
+  granteeType: string
+  granteeId: string
+  permission: string
+  lens: string | null
+}): FormGrant {
+  return {
+    actorId: toActorId(row.granteeType === 'group' ? 'group' : 'user', row.granteeId),
+    choice:
+      row.permission === ResourcePermission.admin
+        ? 'manager'
+        : row.permission === ResourcePermission.edit
+          ? 'full'
+          : ((row.lens ?? 'full') as LensChoice),
+  }
+}
+
+/** Stable serialization of grants for dirty comparison. */
+function grantsKey(grants: FormGrant[]): string {
+  return grants
+    .map((g) => `${g.actorId}=${g.choice}`)
+    .sort()
+    .join(',')
+}
+
 /**
- * Shell-free inbox create/edit form: all hooks/state/mutations, the member/group +
- * color pickers, the access radio, the unsaved-changes guard, and the delete
- * affordance. The only host seams are the `header` slot and `onClose`/`onCancel`.
- * `inbox-dialog.tsx` wraps this in a `Dialog`; the command palette hosts it as a
- * page. Behavior is unchanged from the original dialog.
+ * Shell-free inbox create/edit form: all hooks/state/mutations, the Access
+ * section (Everyone/Restricted cards + org-wide level + grantee list, per the
+ * mail-permissions UI plan), the color picker, the unsaved-changes guard, and
+ * the delete affordance. The only host seams are the `header` slot and
+ * `onClose`/`onCancel`. `inbox-dialog.tsx` wraps this in a `Dialog`; the
+ * command palette hosts it as a page.
  */
 export function InboxForm({
   open,
@@ -79,18 +120,43 @@ export function InboxForm({
   // Extract inboxId from recordId for mutations
   const inboxId = recordId ? parseRecordId(recordId).entityInstanceId : null
 
+  const { isAdminOrOwner } = useUser()
+  const gated = useMailPermissionsGated()
+  const [upgradeOpen, setUpgradeOpen] = useState(false)
+  const [guideOpen, setGuideOpen] = useState(false)
+
   // Fetch system field values for edit mode
   const { values: fieldValues, isLoading: isLoadingValues } = useSystemValues(
     recordId,
-    ['inbox_name', 'inbox_description', 'inbox_color', 'inbox_visibility'],
+    ['inbox_name', 'inbox_description', 'inbox_color', 'inbox_visibility', 'inbox_default_lens'],
     { autoFetch: true, enabled: isEditing && !!recordId }
   )
+
+  // Existing instance grants (edit mode) — hydrated into the form, saved
+  // atomically on submit via the replace-all setInstance mutations.
+  const { data: accessRows } = api.resourceAccess.forInstance.useQuery(
+    { recordId: recordId ?? '' },
+    { enabled: isEditing && !!recordId }
+  )
+
+  // Managers (inbox `admin` grantees) may manage access without being org
+  // admins (delegation). Everyone else sees the form without the Access section.
+  const { data: myAccess } = api.resourceAccess.check.useQuery(
+    { recordId: recordId ?? '' },
+    { enabled: isEditing && !!recordId && !isAdminOrOwner }
+  )
+  const canManageAccess =
+    !isEditing || isAdminOrOwner || myAccess?.permission === ResourcePermission.admin
 
   // Save system values with optimistic updates
   const { save: saveSystemValues, isPending: isSavingValues } = useSaveSystemValues(recordId)
 
   // Track if form has been initialized this open cycle
   const isInitialized = useRef(false)
+  // The floor as loaded — `inbox_default_lens` is only written when it changed
+  // (writing it requires manage rights + the enterprise gate below `full`).
+  const initialLensRef = useRef<Lens | null>(null)
+  const initialGrantsRef = useRef<string>('')
 
   // Form setup
   const form = useForm<InboxFormData>({
@@ -99,13 +165,16 @@ export function InboxForm({
       description: '',
       color: 'indigo',
       accessType: 'anyone',
-      memberGroupSelection: { memberIds: [], groupIds: [] },
+      floorLens: 'full',
+      grants: [],
     },
   })
 
   // Watch form values
   const colorValue = form.watch('color')
   const accessType = form.watch('accessType')
+  const floorLens = form.watch('floorLens')
+  const grants = form.watch('grants')
 
   // Combined form values for dirty checking
   // biome-ignore lint/correctness/useExhaustiveDependencies: form.watch values are intentionally used as dependencies for dirty checking
@@ -115,8 +184,10 @@ export function InboxForm({
       description: form.watch('description'),
       color: colorValue,
       accessType,
+      floorLens,
+      grants: grantsKey(grants ?? []),
     }),
-    [form.watch('name'), form.watch('description'), colorValue, accessType]
+    [form.watch('name'), form.watch('description'), colorValue, accessType, floorLens, grants]
   )
 
   // Track dirty state for unsaved changes warning
@@ -137,48 +208,65 @@ export function InboxForm({
       if (isInitialized.current) return
 
       if (isEditing && recordId) {
-        // In edit mode, wait for values to load (inbox_name is required)
+        // In edit mode, wait for values + grants to load (inbox_name is required)
         if (isLoadingValues || fieldValues.inbox_name === undefined) return
+        if (accessRows === undefined) return
 
         isInitialized.current = true
 
         const name = (fieldValues.inbox_name as string) ?? ''
         const description = (fieldValues.inbox_description as string) ?? ''
         const color = (fieldValues.inbox_color as string) ?? 'indigo'
+        // Pre-migration rows may lack the lens value — fall back to the legacy
+        // visibility field's equivalent floor.
         const visibility = fieldValues.inbox_visibility ?? 'org_members'
-        const accessType = visibility === 'org_members' ? 'anyone' : 'restricted'
+        const storedLens =
+          (fieldValues.inbox_default_lens as Lens | undefined) ??
+          (visibility === 'org_members' ? 'full' : 'none')
+        const accessType = storedLens === 'none' ? 'restricted' : 'anyone'
+        const floorLens = storedLens === 'none' ? 'full' : storedLens
+        const grants = accessRows.map(rowToGrant)
 
-        form.reset({
+        initialLensRef.current = storedLens
+        initialGrantsRef.current = grantsKey(grants)
+
+        form.reset({ name, description, color, accessType, floorLens, grants })
+        setInitial({
           name,
           description,
           color,
           accessType,
-          memberGroupSelection: { memberIds: [], groupIds: [] },
+          floorLens,
+          grants: grantsKey(grants),
         })
-        setInitial({ name, description, color, accessType })
       } else {
         // Create mode: reset to defaults
         isInitialized.current = true
+        initialLensRef.current = null
+        initialGrantsRef.current = ''
 
         form.reset({
           name: '',
           description: '',
           color: 'indigo',
           accessType: 'anyone',
-          memberGroupSelection: { memberIds: [], groupIds: [] },
+          floorLens: 'full',
+          grants: [],
         })
         setInitial({
           name: '',
           description: '',
           color: 'indigo',
           accessType: 'anyone',
+          floorLens: 'full',
+          grants: '',
         })
       }
     } else {
       // Reset flag when dialog closes
       isInitialized.current = false
     }
-  }, [open, isEditing, recordId, fieldValues, isLoadingValues, form, setInitial])
+  }, [open, isEditing, recordId, fieldValues, isLoadingValues, accessRows, form, setInitial])
 
   // Get tRPC utils for cache invalidation
   const utils = api.useUtils()
@@ -186,21 +274,30 @@ export function InboxForm({
   // Confirmation dialog for delete
   const [confirm, ConfirmDeleteDialog] = useConfirm()
 
-  /** Invalidate both inbox query caches (tRPC getAll + entity system listAll) */
+  /** Invalidate inbox query caches + the viewer's lens map + grant rows. */
   const invalidateInboxes = () => {
     utils.inbox.getAll.invalidate()
+    utils.inbox.myLenses.invalidate()
     utils.record.listAll.invalidate({ entityDefinitionId: 'inbox' })
+    if (recordId) utils.resourceAccess.forInstance.invalidate({ recordId })
   }
 
   // Create inbox mutation
   const createInbox = api.inbox.create.useMutation({
-    onSuccess: (data) => {
-      invalidateInboxes()
-      onClose()
-      onSuccess?.({ id: data.id, name: data.name, recordId: toRecordId('inbox', data.id) })
-    },
     onError: (error) => {
       toastError({ title: 'Error creating inbox', description: error.message })
+    },
+  })
+
+  // Grant mutations — additive on create, replace-all on edit.
+  const grantInstance = api.resourceAccess.grantInstance.useMutation({
+    onError: (error) => {
+      toastError({ title: 'Error saving access', description: error.message })
+    },
+  })
+  const setInstance = api.resourceAccess.setInstance.useMutation({
+    onError: (error) => {
+      toastError({ title: 'Error saving access', description: error.message })
     },
   })
 
@@ -215,7 +312,12 @@ export function InboxForm({
     },
   })
 
-  const isPending = createInbox.isPending || isSavingValues || deleteInbox.isPending
+  const isPending =
+    createInbox.isPending ||
+    isSavingValues ||
+    deleteInbox.isPending ||
+    grantInstance.isPending ||
+    setInstance.isPending
 
   // Form validation
   const isValid = (form.watch('name') ?? '').trim().length > 0
@@ -224,6 +326,39 @@ export function InboxForm({
   const handleColorChange = (color: string) => {
     form.setValue('color', color)
   }
+
+  const handleAccessTypeChange = (value: string) => {
+    // Restricted means floor `none` — enterprise-gated like every sub-full floor.
+    if (value === 'restricted' && gated && initialLensRef.current !== 'none') {
+      setUpgradeOpen(true)
+      return
+    }
+    form.setValue('accessType', value as 'anyone' | 'restricted')
+  }
+
+  const updateGrant = (actorId: ActorId, choice: LensChoice) => {
+    const current = form.getValues('grants') ?? []
+    const rest = current.filter((g) => g.actorId !== actorId)
+    form.setValue('grants', [...rest, { actorId, choice }])
+  }
+
+  const removeGrant = (actorId: ActorId) => {
+    const current = form.getValues('grants') ?? []
+    form.setValue(
+      'grants',
+      current.filter((g) => g.actorId !== actorId)
+    )
+  }
+
+  /** The setInstance payload for one grantee type. */
+  const grantsPayload = (allGrants: FormGrant[], type: 'user' | 'group') =>
+    allGrants
+      .filter((g) => parseActorId(g.actorId).type === type)
+      .map((g) => ({
+        granteeId: parseActorId(g.actorId).id,
+        permission: g.choice === 'manager' ? ResourcePermission.admin : ResourcePermission.view,
+        lens: g.choice === 'manager' ? undefined : g.choice,
+      }))
 
   // Handle delete with confirmation
   const handleDelete = async () => {
@@ -247,33 +382,75 @@ export function InboxForm({
   const handleSubmit = async (data: InboxFormData) => {
     if (!isValid) return
 
-    const visibility: InboxVisibility = data.accessType === 'anyone' ? 'org_members' : 'custom'
+    const targetLens: Lens = data.accessType === 'anyone' ? data.floorLens : 'none'
+    const legacyVisibility = data.accessType === 'anyone' ? 'org_members' : 'custom'
 
     if (isEditing && recordId) {
-      // Save field values with optimistic updates
-      const success = await saveSystemValues({
+      const values: Record<string, unknown> = {
         inbox_name: data.name.trim(),
         inbox_description: data.description,
         inbox_color: data.color,
-        inbox_visibility: visibility,
-      })
+        inbox_visibility: legacyVisibility,
+      }
+      // Only write the floor when it changed — the write is guarded server-side
+      // (managers only; sub-full floors are enterprise).
+      if (targetLens !== initialLensRef.current) values.inbox_default_lens = targetLens
 
-      if (success) {
-        // Field-value mutations don't invalidate inbox query caches, so picker
-        // rows and badges stay stale until the React Query staleTime expires.
-        // Flush both here so every caller gets fresh data.
+      const success = await saveSystemValues(values)
+      if (!success) return
+
+      if (canManageAccess && grantsKey(data.grants) !== initialGrantsRef.current) {
+        try {
+          await setInstance.mutateAsync({
+            recordId,
+            granteeType: ResourceGranteeType.user,
+            grants: grantsPayload(data.grants, 'user'),
+          })
+          await setInstance.mutateAsync({
+            recordId,
+            granteeType: ResourceGranteeType.group,
+            grants: grantsPayload(data.grants, 'group'),
+          })
+        } catch {
+          return // toast shown by the mutation; keep the form open
+        }
+      }
+
+      // Field-value mutations don't invalidate inbox query caches, so picker
+      // rows and badges stay stale until the React Query staleTime expires.
+      // Flush both here so every caller gets fresh data.
+      invalidateInboxes()
+      onClose()
+      onSuccess?.({ id: inboxId!, name: data.name, recordId })
+    } else {
+      try {
+        const created = await createInbox.mutateAsync({
+          name: data.name.trim(),
+          description: data.description,
+          color: data.color,
+          status: 'ACTIVE',
+          visibility: legacyVisibility,
+          defaultLens: targetLens,
+        })
+        // Additive grants — the server already added the creator's Manager row.
+        const createdRecordId = toRecordId('inbox', created.id)
+        for (const grant of data.grants) {
+          const { type, id } = parseActorId(grant.actorId)
+          await grantInstance.mutateAsync({
+            recordId: createdRecordId,
+            granteeType: type === 'group' ? ResourceGranteeType.group : ResourceGranteeType.user,
+            granteeId: id,
+            permission:
+              grant.choice === 'manager' ? ResourcePermission.admin : ResourcePermission.view,
+            lens: grant.choice === 'manager' ? undefined : grant.choice,
+          })
+        }
         invalidateInboxes()
         onClose()
-        onSuccess?.({ id: inboxId!, name: data.name, recordId })
+        onSuccess?.({ id: created.id, name: created.name, recordId: createdRecordId })
+      } catch {
+        // toasts shown by the mutations; keep the form open
       }
-    } else {
-      createInbox.mutate({
-        name: data.name.trim(),
-        description: data.description,
-        color: data.color,
-        status: 'ACTIVE',
-        visibility,
-      })
     }
   }
 
@@ -314,40 +491,67 @@ export function InboxForm({
               <FormColorTagPicker value={colorValue} onChange={handleColorChange} />
             </Field>
 
-            {/* Access fields */}
-            <Field>
-              <FieldLabel>Access</FieldLabel>
-              <RadioGroup
-                value={accessType}
-                onValueChange={(value) =>
-                  form.setValue('accessType', value as 'anyone' | 'restricted')
-                }
-                className='mt-2 flex flex-col space-y-2'>
-                <div className='flex items-center space-x-2'>
-                  <RadioGroupItem value='anyone' id='anyone' />
-                  <Label htmlFor='anyone' className='cursor-pointer'>
-                    Anyone in the organization
-                  </Label>
-                </div>
-                <div className='flex items-center space-x-2'>
-                  <RadioGroupItem value='restricted' id='restricted' />
-                  <Label htmlFor='restricted' className='cursor-pointer'>
-                    Restricted
-                  </Label>
-                </div>
-              </RadioGroup>
-            </Field>
+            {/* Access section — org admins and inbox Managers only */}
+            {canManageAccess && (
+              <>
+                <Field>
+                  <FieldLabel>Access</FieldLabel>
+                  <RadioGroup
+                    value={accessType}
+                    onValueChange={handleAccessTypeChange}
+                    className='grid gap-2 sm:grid-cols-2'>
+                    <RadioGroupItemCard
+                      value='anyone'
+                      label='Everyone'
+                      icon={<UsersIcon />}
+                      description='Everyone in the organization, at a chosen level'
+                    />
+                    <RadioGroupItemCard
+                      value='restricted'
+                      label='Restricted'
+                      icon={<Lock />}
+                      description='Only people and groups you add below'
+                    />
+                  </RadioGroup>
+                </Field>
 
-            {accessType === 'restricted' && (
-              <div className='pl-6'>
-                <MemberGroupFormField
-                  name='memberGroupSelection'
-                  control={form.control}
-                  label='Select members or groups with access'
-                  description='Only selected members and groups will have access to this inbox'
-                  disabled={isPending}
-                />
-              </div>
+                {accessType === 'anyone' && (
+                  <Field>
+                    <FieldLabel>Everyone can see</FieldLabel>
+                    <LensSelect
+                      value={floorLens}
+                      onChange={(choice) =>
+                        choice !== 'manager' && form.setValue('floorLens', choice)
+                      }
+                      size='default'
+                      className='w-full'
+                    />
+                  </Field>
+                )}
+
+                <Field>
+                  <FieldLabel>People &amp; groups</FieldLabel>
+                  <GranteeList
+                    grants={grants ?? []}
+                    onGrant={updateGrant}
+                    onChangeLens={updateGrant}
+                    onRevoke={removeGrant}
+                    includeManager
+                    disabled={isPending}
+                    emptyHint={
+                      accessType === 'restricted'
+                        ? 'No one has access yet. Add people or groups.'
+                        : 'No individual access — everyone uses the level above.'
+                    }
+                  />
+                  <button
+                    type='button'
+                    className='mt-1 self-start text-muted-foreground text-xs underline-offset-2 hover:underline'
+                    onClick={() => setGuideOpen(true)}>
+                    Learn about access levels
+                  </button>
+                </Field>
+              </>
             )}
           </FieldGroup>
 
@@ -391,6 +595,8 @@ export function InboxForm({
 
       <ConfirmDialog />
       <ConfirmDeleteDialog />
+      <MailPermissionsUpgradeDialog open={upgradeOpen} onOpenChange={setUpgradeOpen} />
+      <AccessLevelsGuide open={guideOpen} onOpenChange={setGuideOpen} />
     </>
   )
 }

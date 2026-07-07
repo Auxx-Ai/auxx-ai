@@ -44,6 +44,7 @@ export enum FeatureKey {
   agentProcedures = 'agentProcedures',
   mcp = 'mcp',
   dataConnectors = 'dataConnectors',
+  mailPermissions = 'mailPermissions',
 
   // ── Static limits (count of things, not time-based) ──
   teammates = 'teammates',
@@ -166,6 +167,13 @@ export const FEATURE_REGISTRY: FeatureMetadata[] = [
     label: 'Data Connectors',
     description: 'Sync external structured records (REST APIs, apps) into the entity system.',
     group: 'Data',
+  },
+  {
+    key: FeatureKey.mailPermissions,
+    type: 'boolean',
+    label: 'Mail Permissions',
+    description: 'Inbox access levels, conversation sharing, and inbox manager delegation.',
+    group: 'Security',
   },
 
   // ── Static limits ──

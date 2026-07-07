@@ -210,6 +210,21 @@ export interface ThreadMeta {
    * have been merged into this one. Null when the thread is neither.
    */
   mergeData: ThreadMergeData | null
+
+  /**
+   * The requesting viewer's effective lens on this thread (mail-permissions
+   * §4). The batch evaluator computes it anyway; exposing it powers the FE's
+   * redacted rendering (`LensBadge`, placeholder rows) without a second
+   * request. Never `'none'` — such threads are dropped from the batch.
+   */
+  myLens: 'metadata' | 'subject' | 'full'
+
+  /**
+   * True when the thread has explicit instance grants (shares). Operational
+   * metadata (metadata tier) — drives the list rows' share indicator and the
+   * header button's avatar cluster hint.
+   */
+  hasShares: boolean
 }
 
 /**

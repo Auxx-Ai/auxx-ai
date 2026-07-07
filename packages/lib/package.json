@@ -718,6 +718,12 @@
       "import": "./dist/permissions/visibility/index.mjs",
       "default": "./src/permissions/visibility/index.ts"
     },
+    "./permissions/visibility/client": {
+      "types": "./src/permissions/visibility/client.ts",
+      "source": "./src/permissions/visibility/client.ts",
+      "import": "./dist/permissions/visibility/client.mjs",
+      "default": "./src/permissions/visibility/client.ts"
+    },
     "./placeholders": {
       "types": "./src/placeholders/index.ts",
       "source": "./src/placeholders/index.ts",

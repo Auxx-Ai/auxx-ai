@@ -14,6 +14,13 @@ export interface ResourceAccessContext {
   userId: string
 }
 
+/**
+ * Visibility lens carried on a mail grant (mail-permissions §2.1). Meaningful
+ * only for `permission='view'` rows on thread/contact/inbox — `edit`/`admin`
+ * always evaluate as `full`. `null`/absent means legacy `full`.
+ */
+export type GrantLens = 'metadata' | 'subject' | 'full'
+
 /** Input for granting access to a specific instance */
 export interface GrantInstanceAccessInput {
   /** RecordId format: "entityDefinitionId:entityInstanceId" */
@@ -21,6 +28,7 @@ export interface GrantInstanceAccessInput {
   granteeType: ResourceGranteeType
   granteeId: string
   permission: ResourcePermission
+  lens?: GrantLens | null
 }
 
 /** Input for granting type-level access (all instances) */
@@ -82,6 +90,7 @@ export interface ResourceAccessInfo {
   granteeType: ResourceGranteeType
   granteeId: string
   permission: ResourcePermission
+  lens: GrantLens | null
   createdAt: Date
 }
 
