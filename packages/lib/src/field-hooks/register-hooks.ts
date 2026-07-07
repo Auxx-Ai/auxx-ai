@@ -5,6 +5,7 @@ import { handleRecordRulesOnFieldChange } from '../record-rules/hook-handler'
 import { invalidateInboxCacheOnFieldChange } from './post/inbox-cache-invalidation'
 import { publishFieldChangeEvent } from './post/publish-field-change-event'
 import { touchActivityOnFieldChange } from './post/touch-activity-on-field-change'
+import { guardInboxDefaultLens } from './pre/inbox-lens-guard'
 import {
   dropUnauthorizedSystemFlag,
   rejectDeleteIfSystemTag,
@@ -69,6 +70,11 @@ export function registerAllHooks(): void {
   // - title / description / emoji / color / parent: reject edits when the
   //   record's is_system_tag is true.
   // - pre-delete: reject deletes of system tags.
+  // Inbox floor wall (mail-permissions §7.1) — only managers may change the
+  // floor, and sub-`full` floors are enterprise-gated. This hook is the
+  // actual enforcement; the inbox form / InboxService are just ergonomics.
+  registerFieldPreHooks('inboxes', 'inbox_default_lens', [guardInboxDefaultLens])
+
   registerFieldPreHooks('tags', 'is_system_tag', [dropUnauthorizedSystemFlag])
   registerFieldPreHooks('tags', 'title', [rejectIfSystemTag])
   registerFieldPreHooks('tags', 'tag_description', [rejectIfSystemTag])

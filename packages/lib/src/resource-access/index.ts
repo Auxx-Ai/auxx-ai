@@ -2,6 +2,13 @@
 
 // Constants
 export { PERMISSION_HIERARCHY, satisfiesPermission } from './constants'
+// Mail sharing guards (mail-permissions §7)
+export {
+  assertCanManageMailSharing,
+  assertCanManageMailTypeAccess,
+  assertMailSharingFeature,
+  isMailSharingDef,
+} from './mail-sharing-guard'
 // Service functions
 export {
   checkAccess,
@@ -23,6 +30,7 @@ export type {
   CheckAccessInput,
   CheckTypeAccessInput,
   GrantInstanceAccessInput,
+  GrantLens,
   GrantTypeAccessInput,
   InstanceAccess,
   ResourceAccessContext,

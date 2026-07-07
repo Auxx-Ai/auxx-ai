@@ -39,6 +39,8 @@ import { ManualTriggerButton } from '~/components/workflow/manual-trigger-button
 import { useConfirm } from '~/hooks/use-confirm'
 import { EditableText } from '../editor/editable-text'
 import { Tooltip } from '../global/tooltip'
+import { LensBadge } from '../mail-permissions/ui/lens-badge'
+import { ThreadSharePopover } from '../mail-permissions/ui/thread-share-popover'
 import { ActorPicker } from '../pickers/actor-picker'
 import { InboxPicker } from '../pickers/inbox-picker'
 import { TagPicker } from '../pickers/tag-picker'
@@ -262,6 +264,7 @@ export function ThreadHeader() {
                 <RecordBadge recordId={thread?.inboxId} hoverCard={false} />
               </InboxPicker>
               <ThreadTicketControl />
+              <LensBadge lens={thread.myLens ?? 'full'} inboxName={inbox?.name} />
             </div>
             {isChatChannel && <ThreadHandoffControl />}
             <ThreadParticipantButton threadId={threadId} />
@@ -341,6 +344,8 @@ export function ThreadHeader() {
                 </Button>
               </Tooltip>
             </ManualTriggerButton>
+
+            <ThreadSharePopover threadId={thread.id} />
 
             <ActorPicker
               key={`assignee-${thread.id}`}

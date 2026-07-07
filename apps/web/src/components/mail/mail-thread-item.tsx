@@ -23,7 +23,16 @@ import { cn } from '@auxx/ui/lib/utils'
 import { useDraggable } from '@dnd-kit/core'
 import { formatDistanceToNowStrict } from 'date-fns'
 import DOMPurify from 'dompurify'
-import { Archive, Ban, Clock, MailWarning, Merge, MoreHorizontal, Trash2 } from 'lucide-react'
+import {
+  Archive,
+  Ban,
+  Clock,
+  MailWarning,
+  Merge,
+  MoreHorizontal,
+  Share2,
+  Trash2,
+} from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import type React from 'react'
 import { memo, useCallback, useMemo } from 'react'
@@ -214,7 +223,12 @@ export const MailThreadItem = memo(function MailThreadItem({
     enabled: !!thread?.latestMessageId,
   })
   const { from: senderParticipant } = useMessageParticipants(latestMessage?.participants ?? [])
-  const { isUnread, markAsRead } = useThreadReadStatus(threadId)
+  const { isUnread: readStatusUnread, markAsRead } = useThreadReadStatus(threadId)
+
+  // Redacted rendering (mail-permissions): below `full` the row never looks
+  // unread (isUnread is full-tier); at `metadata` the subject is absent.
+  const myLens = thread?.myLens ?? 'full'
+  const isUnread = myLens === 'full' && readStatusUnread
 
   // --- Selection store actions ---
   const toggleSelection = useThreadSelectionStore((s) => s.toggleSelection)
@@ -471,11 +485,17 @@ export const MailThreadItem = memo(function MailThreadItem({
                   className={cn(
                     'min-w-0 truncate text-xs font-medium group-aria-selected:text-background/80',
                     hasTags && 'max-w-[60%] shrink-0',
-                    isLiveChat && 'font-semibold'
+                    isLiveChat && 'font-semibold',
+                    myLens === 'metadata' && 'font-normal text-muted-foreground italic'
                   )}>
-                  {thread.subject || '(no subject)'}
+                  {myLens === 'metadata'
+                    ? 'No access to subject'
+                    : thread.subject || '(no subject)'}
                 </div>
                 {thread.assigneeId && <AssigneeChip assigneeId={thread.assigneeId as ActorId} />}
+                {thread.hasShares && (
+                  <Share2 className='size-3 shrink-0 text-muted-foreground' aria-label='Shared' />
+                )}
                 <div className='min-w-0 flex-1'>
                   <OverflowRow collapseSlot='text' className='justify-end' gap={4}>
                     {thread.tagIds?.map((tagId) => (

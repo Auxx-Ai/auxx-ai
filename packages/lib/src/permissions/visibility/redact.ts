@@ -35,6 +35,8 @@ export const THREAD_METADATA_FIELDS: readonly (keyof ThreadMeta)[] = [
   'mergedIntoThreadId',
   'mergeData',
   'latestCommentId',
+  'myLens',
+  'hasShares',
 ]
 
 /** Adds to the metadata set at `subject`+. */

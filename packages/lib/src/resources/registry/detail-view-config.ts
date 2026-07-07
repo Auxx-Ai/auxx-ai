@@ -41,7 +41,13 @@ export const DETAIL_VIEW_CONFIG_REGISTRY: DetailViewConfigRegistry = {
     defaultSidebarTab: 'overview',
     // Renders nothing when the contact has no external identities (card
     // returns null), so it's inert until an app/store/chat links the record.
-    sidebarCards: [{ value: 'external-identities', label: 'External identities' }],
+    sidebarCards: [
+      { value: 'external-identities', label: 'External identities' },
+      // Mail-permissions contact sharing (UI plan §4) — grants every thread
+      // this contact participates in. Admin-managed; hidden for other roles
+      // unless shares already exist.
+      { value: 'shared-with', label: 'Shared with' },
+    ],
   },
 
   ticket: {

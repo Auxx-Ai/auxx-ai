@@ -4,7 +4,7 @@
 import { Alert, AlertDescription } from '@auxx/ui/components/alert'
 import { Button } from '@auxx/ui/components/button'
 import { Skeleton } from '@auxx/ui/components/skeleton'
-import { Ban } from 'lucide-react'
+import { Ban, Lock } from 'lucide-react'
 import { useCallback, useMemo } from 'react'
 import { useChannel } from '~/components/channels/hooks/use-channels'
 import {
@@ -174,6 +174,45 @@ export function ThreadMessages() {
   })
 
   if (!thread) return null
+
+  // Redacted rendering (mail-permissions): below `full`, message content is
+  // blanked server-side. `subject` shows envelope rows under a locked-body
+  // notice; `metadata` has no messages at all — the notice is the whole pane.
+  const myLens = thread.myLens ?? 'full'
+  if (myLens !== 'full') {
+    const notice = (
+      <div className='px-4 pt-2'>
+        <Alert className='flex items-center gap-2'>
+          <Lock className='size-4 shrink-0' />
+          <AlertDescription>
+            Message content is hidden — you have{' '}
+            {myLens === 'subject' ? 'subject-only' : 'activity-only'} access to this conversation.
+          </AlertDescription>
+        </Alert>
+      </div>
+    )
+    if (myLens === 'metadata' || messages.length === 0) {
+      return <div className='flex flex-col pb-4'>{notice}</div>
+    }
+    return (
+      <div className='flex flex-col'>
+        {notice}
+        <div className='flex flex-col gap-4 px-4 py-2 opacity-80'>
+          {messages
+            .filter((m) => m.messageType === 'EMAIL')
+            .map((message) => (
+              <EmailDisplay
+                key={message.id}
+                messageId={message.id}
+                messageActions={messageActions}
+                isOpen={false}
+                isLastMessage={false}
+              />
+            ))}
+        </div>
+      </div>
+    )
+  }
 
   // Loading state
   if (isLoading && messages.length === 0) {

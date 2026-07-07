@@ -185,13 +185,17 @@ export default function ThreadDetails({
     [lastMessage, from, to, cc]
   )
 
+  // Below `full` lens the viewer may not act — reply/forward affordances are
+  // hidden (the server rejects the sends anyway; the UI just doesn't offer).
+  const canReply = (thread?.myLens ?? 'full') === 'full'
+
   // Keyboard shortcuts: R to reply, F to forward the last message
   useHotkey(
     'R',
     () => {
       if (lastEditorMessage) emailActions.onReplyAll(lastEditorMessage)
     },
-    { enabled: !!thread && !isShowReplyBox && !isNested, conflictBehavior: 'allow' }
+    { enabled: !!thread && canReply && !isShowReplyBox && !isNested, conflictBehavior: 'allow' }
   )
 
   useHotkey(
@@ -199,7 +203,7 @@ export default function ThreadDetails({
     () => {
       if (lastEditorMessage) emailActions.onForward(lastEditorMessage)
     },
-    { enabled: !!thread && !isShowReplyBox && !isNested, conflictBehavior: 'allow' }
+    { enabled: !!thread && canReply && !isShowReplyBox && !isNested, conflictBehavior: 'allow' }
   )
 
   if (!thread) {
@@ -244,7 +248,7 @@ export default function ThreadDetails({
         </div>
 
         {/* Reply editor portal target — the editor renders here via portal when docked */}
-        <div ref={replyBoxRef} className=''>
+        <div ref={replyBoxRef} className={canReply ? '' : 'hidden'}>
           {thread.integrationIsExample ? (
             <div className='px-4 py-4 pb-[0px]'>
               <div className='rounded-md border border-dashed border-muted-foreground/30 bg-muted/30 px-4 py-3 text-sm text-muted-foreground'>

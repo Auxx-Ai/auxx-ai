@@ -3,6 +3,9 @@
 import { ResourceGranteeType, ResourcePermission } from '@auxx/database/enums'
 import type { ResourceAccessContext } from '@auxx/lib/resource-access'
 import {
+  assertCanManageMailSharing,
+  assertCanManageMailTypeAccess,
+  assertMailSharingFeature,
   checkAccess,
   checkTypeAccess,
   getInstanceAccess,
@@ -19,6 +22,9 @@ import type { RecordId } from '@auxx/types/resource'
 import { z } from 'zod'
 import { recordAuditFromCtx } from '~/server/api/audit-context'
 import { createTRPCRouter, protectedProcedure } from '../trpc'
+
+/** Visibility lens on mail grants (mail-permissions §2.1). Optional everywhere. */
+const lensSchema = z.enum(['metadata', 'subject', 'full']).nullish()
 
 /** Convert tRPC context to ResourceAccessContext */
 function toContext(ctx: {
@@ -50,14 +56,20 @@ export const resourceAccessRouter = createTRPCRouter({
           ResourcePermission.edit,
           ResourcePermission.admin,
         ]),
+        lens: lensSchema,
       })
     )
     .mutation(async ({ ctx, input }) => {
-      await grantInstanceAccess(toContext(ctx), {
-        recordId: input.recordId as RecordId,
+      const context = toContext(ctx)
+      const recordId = input.recordId as RecordId
+      await assertCanManageMailSharing(context, recordId)
+      await assertMailSharingFeature(context, recordId, [input])
+      await grantInstanceAccess(context, {
+        recordId,
         granteeType: input.granteeType,
         granteeId: input.granteeId,
         permission: input.permission,
+        lens: input.lens,
       })
       await recordAuditFromCtx(ctx, {
         category: 'security',
@@ -69,6 +81,7 @@ export const resourceAccessRouter = createTRPCRouter({
           granteeType: input.granteeType,
           granteeId: input.granteeId,
           permission: input.permission,
+          lens: input.lens ?? null,
         },
       })
       return { success: true }
@@ -94,6 +107,7 @@ export const resourceAccessRouter = createTRPCRouter({
       })
     )
     .mutation(async ({ ctx, input }) => {
+      await assertCanManageMailTypeAccess(toContext(ctx), input.entityDefinitionId)
       await grantTypeAccess(toContext(ctx), input)
       await recordAuditFromCtx(ctx, {
         category: 'security',
@@ -125,7 +139,12 @@ export const resourceAccessRouter = createTRPCRouter({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const revoked = await revokeInstanceAccess(toContext(ctx), {
+      const context = toContext(ctx)
+      await assertCanManageMailSharing(context, input.recordId as RecordId, {
+        selfRevokeGranteeId: input.granteeId,
+        selfRevokeGranteeType: input.granteeType,
+      })
+      const revoked = await revokeInstanceAccess(context, {
         recordId: input.recordId as RecordId,
         granteeType: input.granteeType,
         granteeId: input.granteeId,
@@ -159,6 +178,7 @@ export const resourceAccessRouter = createTRPCRouter({
       })
     )
     .mutation(async ({ ctx, input }) => {
+      await assertCanManageMailTypeAccess(toContext(ctx), input.entityDefinitionId)
       const revoked = await revokeTypeAccess(toContext(ctx), input)
       await recordAuditFromCtx(ctx, {
         category: 'security',
@@ -193,17 +213,17 @@ export const resourceAccessRouter = createTRPCRouter({
               ResourcePermission.edit,
               ResourcePermission.admin,
             ]),
+            lens: lensSchema,
           })
         ),
       })
     )
     .mutation(async ({ ctx, input }) => {
-      await setInstanceAccess(
-        toContext(ctx),
-        input.recordId as RecordId,
-        input.granteeType,
-        input.grants
-      )
+      const context = toContext(ctx)
+      const recordId = input.recordId as RecordId
+      await assertCanManageMailSharing(context, recordId)
+      await assertMailSharingFeature(context, recordId, input.grants)
+      await setInstanceAccess(context, recordId, input.granteeType, input.grants)
       await recordAuditFromCtx(ctx, {
         category: 'security',
         action: 'permission.set',
@@ -239,6 +259,7 @@ export const resourceAccessRouter = createTRPCRouter({
       })
     )
     .mutation(async ({ ctx, input }) => {
+      await assertCanManageMailTypeAccess(toContext(ctx), input.entityDefinitionId)
       await setTypeAccess(toContext(ctx), input.entityDefinitionId, input.granteeType, input.grants)
       await recordAuditFromCtx(ctx, {
         category: 'security',
