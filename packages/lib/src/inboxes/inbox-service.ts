@@ -59,6 +59,10 @@ export class InboxService {
       inbox_default_lens: input.defaultLens ?? 'full',
       inbox_settings: input.settings ?? {},
     }
+    // Only the personal connect provisioning path sets these — writing them
+    // unconditionally would trip the personal-fields guard for member creates.
+    if (input.isPersonal !== undefined) values.inbox_is_personal = input.isPersonal
+    if (input.ownerUserId !== undefined) values.inbox_owner_user_id = input.ownerUserId
 
     const result = await this.crudHandler.create('inbox', values)
     const recordId = toRecordId('inbox', result.instance.id)
@@ -105,6 +109,8 @@ export class InboxService {
     if (input.status !== undefined) values.inbox_status = input.status
     if (input.settings !== undefined) values.inbox_settings = input.settings
     if (input.defaultLens !== undefined) values.inbox_default_lens = input.defaultLens
+    if (input.isPersonal !== undefined) values.inbox_is_personal = input.isPersonal
+    if (input.ownerUserId !== undefined) values.inbox_owner_user_id = input.ownerUserId
 
     if (Object.keys(values).length > 0) {
       await this.crudHandler.update(recordId, values)
@@ -397,6 +403,7 @@ export class InboxService {
       status: ((item.fieldValues.inbox_status as string) ?? 'ACTIVE') as Inbox['status'],
       defaultLens: (item.fieldValues.inbox_default_lens as string as Lens) ?? 'full',
       isPersonal: (item.fieldValues.inbox_is_personal as boolean) ?? false,
+      ownerUserId: (item.fieldValues.inbox_owner_user_id as string) ?? null,
       settings: (item.fieldValues.inbox_settings as Record<string, unknown>) ?? {},
       organizationId: item.organizationId,
       createdAt: item.createdAt,
@@ -435,6 +442,7 @@ export class InboxService {
       status: ((getValue('inbox_status') as string) ?? 'ACTIVE') as Inbox['status'],
       defaultLens: (getValue('inbox_default_lens') as string as Lens) ?? 'full',
       isPersonal: (getValue('inbox_is_personal') as boolean) ?? false,
+      ownerUserId: (getValue('inbox_owner_user_id') as string) ?? null,
       settings: (getValue('inbox_settings') as Record<string, unknown>) ?? {},
       organizationId: instance.organizationId,
       createdAt: instance.createdAt,

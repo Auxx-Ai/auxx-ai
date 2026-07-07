@@ -197,6 +197,8 @@ export const SYSTEM_ATTRIBUTES = [
   'inbox_color',
   'inbox_status',
   'inbox_default_lens',
+  'inbox_is_personal',
+  'inbox_owner_user_id',
   'inbox_settings',
 
   // ─── Signature fields ───────────────────────────────────────────

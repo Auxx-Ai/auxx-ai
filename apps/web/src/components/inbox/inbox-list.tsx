@@ -129,7 +129,13 @@ export function InboxList() {
                       </div>
                     </div>
                   </TableCell>
-                  <TableCell>{getAccessDisplay(inbox.defaultLens)}</TableCell>
+                  <TableCell>
+                    {inbox.isPersonal ? (
+                      <Badge variant='gray'>Personal</Badge>
+                    ) : (
+                      getAccessDisplay(inbox.defaultLens)
+                    )}
+                  </TableCell>
                   <TableCell>{getStatusBadge(status)}</TableCell>
                 </TableRow>
               )

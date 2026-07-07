@@ -9,6 +9,7 @@ export type { ProviderCapabilities } from './types'
  */
 export const PROVIDER_CAPABILITIES: Record<IntegrationProviderType, ProviderCapabilities> = {
   [IntegrationProviderType.google]: {
+    supportsPersonalConnection: true,
     // Gmail capabilities
     canSend: true,
     canReply: true,
@@ -41,6 +42,7 @@ export const PROVIDER_CAPABILITIES: Record<IntegrationProviderType, ProviderCapa
     supportsRichText: true,
   },
   [IntegrationProviderType.facebook]: {
+    supportsPersonalConnection: false,
     // Facebook Messenger capabilities
     canSend: true,
     canReply: true,
@@ -80,6 +82,7 @@ export const PROVIDER_CAPABILITIES: Record<IntegrationProviderType, ProviderCapa
     supportsRichText: false,
   },
   [IntegrationProviderType.instagram]: {
+    supportsPersonalConnection: false,
     // Instagram Direct Message capabilities
     canSend: true,
     canReply: true,
@@ -118,6 +121,7 @@ export const PROVIDER_CAPABILITIES: Record<IntegrationProviderType, ProviderCapa
     supportsRichText: false,
   },
   [IntegrationProviderType.openphone]: {
+    supportsPersonalConnection: false,
     // SMS capabilities (via OpenPhone or similar)
     canSend: true,
     canReply: true,
@@ -153,6 +157,7 @@ export const PROVIDER_CAPABILITIES: Record<IntegrationProviderType, ProviderCapa
     supportsRichText: false,
   },
   [IntegrationProviderType.mailgun]: {
+    supportsPersonalConnection: false,
     // Mailgun email service capabilities
     canSend: true,
     canReply: true,
@@ -185,6 +190,7 @@ export const PROVIDER_CAPABILITIES: Record<IntegrationProviderType, ProviderCapa
     supportsRichText: true,
   },
   [IntegrationProviderType.sms]: {
+    supportsPersonalConnection: false,
     // Generic SMS capabilities
     canSend: true,
     canReply: true,
@@ -220,6 +226,7 @@ export const PROVIDER_CAPABILITIES: Record<IntegrationProviderType, ProviderCapa
     supportsRichText: false,
   },
   [IntegrationProviderType.email]: {
+    supportsPersonalConnection: true,
     // Generic email capabilities
     canSend: true,
     canReply: true,
@@ -252,6 +259,7 @@ export const PROVIDER_CAPABILITIES: Record<IntegrationProviderType, ProviderCapa
     supportsRichText: true,
   },
   [IntegrationProviderType.whatsapp]: {
+    supportsPersonalConnection: false,
     // WhatsApp Business API capabilities
     canSend: true,
     canReply: true,
@@ -289,6 +297,7 @@ export const PROVIDER_CAPABILITIES: Record<IntegrationProviderType, ProviderCapa
     supportsRichText: false,
   },
   [IntegrationProviderType.chat]: {
+    supportsPersonalConnection: false,
     // Generic chat capabilities (internal chat system)
     canSend: true,
     canReply: true,
@@ -324,6 +333,7 @@ export const PROVIDER_CAPABILITIES: Record<IntegrationProviderType, ProviderCapa
     supportsRichText: false,
   },
   [IntegrationProviderType.shopify]: {
+    supportsPersonalConnection: false,
     // Shopify capabilities (not a messaging provider)
     canSend: false,
     canReply: false,
@@ -360,6 +370,7 @@ export const PROVIDER_CAPABILITIES: Record<IntegrationProviderType, ProviderCapa
     supportsRichText: false,
   },
   [IntegrationProviderType.imap]: {
+    supportsPersonalConnection: true,
     // IMAP/SMTP capabilities (self-hosted, enterprise)
     canSend: true,
     canReply: true,
@@ -392,6 +403,7 @@ export const PROVIDER_CAPABILITIES: Record<IntegrationProviderType, ProviderCapa
     supportsRichText: true,
   },
   [IntegrationProviderType.outlook]: {
+    supportsPersonalConnection: true,
     // Outlook/Office 365 capabilities
     canSend: true,
     canReply: true,
@@ -445,6 +457,7 @@ export function getProviderCapabilities(
   return (
     PROVIDER_CAPABILITIES[providerType] || {
       // Default minimal capabilities
+      supportsPersonalConnection: false,
       canSend: false,
       canReply: false,
       canForward: false,

@@ -6,8 +6,10 @@
  * Composed entirely from org caches: members + memberRoleMap + inboxes
  * (defaultLens floor) + the inverted inbox grants in `mailGrantIndex`.
  *
- * Personal-inbox capping (§11) is honored: admins are excluded from others'
- * personal inboxes unless explicitly granted (the set is empty until Phase 8).
+ * Personal-inbox capping (§11) is honored: on a personal inbox only the owner
+ * and explicit full-lens grantees are in the audience — admins are capped at
+ * metadata and the floor is `none` by construction (fail closed even if the
+ * floor were misconfigured).
  */
 export async function getFullLensAudienceForInbox(
   orgId: string,
@@ -27,6 +29,14 @@ export async function getFullLensAudienceForInbox(
 
   const inbox = inboxes.find((i) => i.id === inboxId)
   const audience = new Set<string>()
+
+  if (inbox?.isPersonal) {
+    if (inbox.ownerUserId) audience.add(inbox.ownerUserId)
+    for (const entry of grantIndex.inboxes[inboxId] ?? []) {
+      if (entry.lens === 'full') audience.add(entry.userId)
+    }
+    return [...audience]
+  }
 
   if (inbox?.defaultLens === 'full') {
     for (const m of members) audience.add(m.userId)

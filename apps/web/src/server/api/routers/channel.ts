@@ -15,6 +15,7 @@ import {
   linkChannelToInbox,
   list as listChannels,
   resolveChannelDefinitionId,
+  supportsPersonalChannelConnection,
   syncAllMessages,
   syncMessages,
   toggle as toggleChannel,
@@ -82,15 +83,21 @@ export const channelRouter = createTRPCRouter({
    * Prepare a Gmail/Outlook connect via the unified connections OAuth flow. Enforces
    * admin + channel-limit, then returns the generic authorize URL plus the platform-client
    * approval gate (§3.1) so the UI knows whether to collect a bring-your-own OAuth client.
+   *
+   * Personal connects (mail-permissions §11.1) are open to every member —
+   * the account is theirs; the channel limit still applies. The provider must
+   * support personal connection (fail closed, the authorize route re-checks).
    */
   prepareConnect: protectedProcedure
-    .input(z.object({ provider: z.enum(['google', 'outlook', 'facebook', 'instagram']) }))
+    .input(
+      z.object({
+        provider: z.enum(['google', 'outlook', 'facebook', 'instagram']),
+        personal: z.boolean().optional(),
+      })
+    )
     .query(async ({ ctx, input }) => {
       const { userId } = ctx.session
       const organizationId = getUserOrganizationId(ctx.session)
-
-      await requireAdminAccess(userId, organizationId)
-      await checkChannelLimit(ctx.db, organizationId)
 
       const PROVIDER_KEY_BY_CHANNEL = {
         google: 'gmail',
@@ -99,6 +106,19 @@ export const channelRouter = createTRPCRouter({
         instagram: 'instagram',
       } as const
       const providerKey = PROVIDER_KEY_BY_CHANNEL[input.provider]
+      const supportsPersonal = supportsPersonalChannelConnection(providerKey)
+
+      if (input.personal) {
+        if (!supportsPersonal) {
+          throw new TRPCError({
+            code: 'BAD_REQUEST',
+            message: 'This channel cannot be connected as a personal account',
+          })
+        }
+      } else {
+        await requireAdminAccess(userId, organizationId)
+      }
+      await checkChannelLimit(ctx.db, organizationId)
       const def = await ctx.db.query.ConnectionDefinition.findFirst({
         where: (cd, { eq }) => eq(cd.providerKey, providerKey),
         columns: { oauth2ClientId: true, oauth2ClientSecret: true, platformClientApproved: true },
@@ -116,6 +136,7 @@ export const channelRouter = createTRPCRouter({
         authorizeUrl: `/api/connections/${providerKey}/oauth2/authorize`,
         requiresOwnClient: gate.requiresOwnClient,
         ownClientReason: gate.reason,
+        supportsPersonalConnection: supportsPersonal,
       }
     }),
 

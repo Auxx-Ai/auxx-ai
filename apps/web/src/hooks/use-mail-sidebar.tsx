@@ -70,6 +70,8 @@ export function useMailSidebar({ scope = 'SIDEBAR' }: UseMailSidebarOptions = {}
           name: inbox.name,
           color: inbox.color ?? 'indigo', // Default indigo color
           isVisible: inboxVisibilitySettings[inbox.id] !== false, // Default true
+          isPersonal: inbox.isPersonal,
+          ownerUserId: inbox.ownerUserId,
         })
         processedIds.add(id)
       }
@@ -83,6 +85,8 @@ export function useMailSidebar({ scope = 'SIDEBAR' }: UseMailSidebarOptions = {}
           name: inbox.name,
           color: inbox.color ?? 'indigo', // Default indigo color
           isVisible: inboxVisibilitySettings[inbox.id] !== false, // Default true
+          isPersonal: inbox.isPersonal,
+          ownerUserId: inbox.ownerUserId,
         })
       }
     })

@@ -14,6 +14,10 @@ export interface CreateInboxInput {
   status?: InboxStatus
   /** Org-wide visibility floor (defaults to `full` — everyone sees everything). */
   defaultLens?: Lens
+  /** Personal-account inbox (§11) — set only by the personal connect provisioning path. */
+  isPersonal?: boolean
+  /** Owner of a personal inbox (§11). */
+  ownerUserId?: string
   settings?: Record<string, unknown>
 }
 
@@ -24,6 +28,9 @@ export interface UpdateInboxInput {
   color?: string
   status?: InboxStatus
   defaultLens?: Lens
+  /** Cleared (with `ownerUserId`) by the admin claim action (§11.4). */
+  isPersonal?: boolean
+  ownerUserId?: string | null
   settings?: Record<string, unknown>
 }
 
@@ -44,9 +51,11 @@ export interface Inbox {
   defaultLens: Lens
   /**
    * Personal-account marker (§11) — automation and admin short-circuits treat
-   * personal inboxes as restricted. Stamped by Phase 8; false until then.
+   * personal inboxes as restricted.
    */
   isPersonal: boolean
+  /** Owner of a personal inbox (§11). Null on shared org inboxes. */
+  ownerUserId: string | null
   settings: Record<string, unknown>
   organizationId: string
   createdAt: Date

@@ -1,6 +1,7 @@
 // apps/web/src/server/api/routers/inbox.ts
 
 import { getCachedUserMailVisibility, getOrgCache } from '@auxx/lib/cache'
+import { claimPersonalInbox, deletePersonalInbox } from '@auxx/lib/channels'
 import { InboxService } from '@auxx/lib/inboxes'
 import { inboxLensFor, type Lens } from '@auxx/lib/permissions/visibility'
 import { ThreadMutationService } from '@auxx/lib/threads'
@@ -8,7 +9,7 @@ import { recordIdSchema, toRecordId } from '@auxx/types/resource'
 import { TRPCError } from '@trpc/server'
 import { z } from 'zod'
 import { recordAuditFromCtx } from '~/server/api/audit-context'
-import { createTRPCRouter, protectedProcedure } from '~/server/api/trpc'
+import { adminProcedure, createTRPCRouter, protectedProcedure } from '~/server/api/trpc'
 
 /** Schema for creating an inbox */
 const createInboxSchema = z.object({
@@ -102,6 +103,52 @@ export const inboxRouter = createTRPCRouter({
       await recordAuditFromCtx(ctx, {
         category: 'integrations',
         action: 'inbox.deleted',
+        targetType: 'Inbox',
+        targetId: input.inboxId,
+      })
+      return { success: true }
+    }),
+
+  /**
+   * Claim an ORPHANED personal inbox (mail-permissions §11.4): clears the
+   * personal marker + owner, converting it into a normal restricted org
+   * inbox. Rejected while the owner is still a member.
+   */
+  claimPersonal: adminProcedure
+    .input(z.object({ inboxId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const { organizationId } = ctx.session
+      await claimPersonalInbox({
+        organizationId,
+        adminUserId: ctx.session.user.id,
+        inboxId: input.inboxId,
+      })
+      await recordAuditFromCtx(ctx, {
+        category: 'integrations',
+        action: 'inbox.personal.claimed',
+        targetType: 'Inbox',
+        targetId: input.inboxId,
+      })
+      return { success: true }
+    }),
+
+  /**
+   * Delete an ORPHANED personal inbox (§11.4): destroys its channels'
+   * threads/messages and the inbox itself. Rejected while the owner is
+   * still a member.
+   */
+  deletePersonal: adminProcedure
+    .input(z.object({ inboxId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const { organizationId } = ctx.session
+      await deletePersonalInbox({
+        organizationId,
+        adminUserId: ctx.session.user.id,
+        inboxId: input.inboxId,
+      })
+      await recordAuditFromCtx(ctx, {
+        category: 'integrations',
+        action: 'inbox.personal.deleted',
         targetType: 'Inbox',
         targetId: input.inboxId,
       })

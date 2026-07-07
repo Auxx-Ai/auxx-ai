@@ -6,6 +6,7 @@ import { invalidateInboxCacheOnFieldChange } from './post/inbox-cache-invalidati
 import { publishFieldChangeEvent } from './post/publish-field-change-event'
 import { touchActivityOnFieldChange } from './post/touch-activity-on-field-change'
 import { guardInboxDefaultLens } from './pre/inbox-lens-guard'
+import { guardInboxPersonalFields } from './pre/inbox-personal-guard'
 import {
   dropUnauthorizedSystemFlag,
   rejectDeleteIfSystemTag,
@@ -74,6 +75,11 @@ export function registerAllHooks(): void {
   // floor, and sub-`full` floors are enterprise-gated. This hook is the
   // actual enforcement; the inbox form / InboxService are just ergonomics.
   registerFieldPreHooks('inboxes', 'inbox_default_lens', [guardInboxDefaultLens])
+
+  // Personal-inbox marker wall (§11) — system paths stamp these; user writes
+  // are admin-only (claim/convert).
+  registerFieldPreHooks('inboxes', 'inbox_is_personal', [guardInboxPersonalFields])
+  registerFieldPreHooks('inboxes', 'inbox_owner_user_id', [guardInboxPersonalFields])
 
   registerFieldPreHooks('tags', 'is_system_tag', [dropUnauthorizedSystemFlag])
   registerFieldPreHooks('tags', 'title', [rejectIfSystemTag])

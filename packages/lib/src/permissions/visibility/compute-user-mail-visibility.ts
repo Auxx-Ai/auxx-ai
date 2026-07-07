@@ -36,8 +36,13 @@ export function composeUserMailVisibility(input: {
   userId: string
   /** From the cached memberRoleMap; undefined when not a member (→ no access). */
   role: OrganizationRole | undefined
-  /** Cached inboxes shape — id + defaultLens floor. */
-  inboxes: Array<{ id: string; defaultLens: Lens }>
+  /** Cached inboxes shape — id + defaultLens floor + personal marker (§11). */
+  inboxes: Array<{
+    id: string
+    defaultLens: Lens
+    isPersonal?: boolean
+    ownerUserId?: string | null
+  }>
   grants: VisibilityGrantRow[]
 }): UserMailVisibility {
   const { userId, role, inboxes, grants } = input
@@ -68,10 +73,14 @@ export function composeUserMailVisibility(input: {
   // Non-members get no floor at all — grants alone would be a data bug, but
   // the empty maps fail closed regardless.
   const inboxLens: Record<string, Lens> = {}
+  // OTHERS' personal inboxes (§11) — the viewer's own never caps them, so an
+  // admin-owner keeps the short-circuit on their own mailbox.
+  const personalInboxIds: Record<string, true> = {}
   if (role) {
     for (const inbox of inboxes) {
       const lens = maxLens(inbox.defaultLens, inboxGrants[inbox.id] ?? 'none')
       if (lens !== 'none') inboxLens[inbox.id] = lens
+      if (inbox.isPersonal && inbox.ownerUserId !== userId) personalInboxIds[inbox.id] = true
     }
   }
 
@@ -80,9 +89,7 @@ export function composeUserMailVisibility(input: {
     role: role ?? 'USER',
     isAdmin: role ? isAdmin : false,
     inboxLens,
-    // Personal inboxes arrive in Phase 8 — until then the set is empty and the
-    // admin short-circuit is unconditional.
-    personalInboxIds: {},
+    personalInboxIds,
     threadGrants,
     contactGrants,
     entityGrants,
@@ -148,7 +155,12 @@ export async function computeUserMailVisibility(
   return composeUserMailVisibility({
     userId,
     role: roleMap[userId],
-    inboxes: inboxes.map((i) => ({ id: i.id, defaultLens: i.defaultLens })),
+    inboxes: inboxes.map((i) => ({
+      id: i.id,
+      defaultLens: i.defaultLens,
+      isPersonal: i.isPersonal,
+      ownerUserId: i.ownerUserId,
+    })),
     grants: rows as VisibilityGrantRow[],
   })
 }

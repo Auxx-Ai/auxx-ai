@@ -17,6 +17,7 @@ import { resolveConnectionForRuntime } from '../connections/resolve-connection-f
 import { publisher } from '../events'
 import { InboxService } from '../inboxes/inbox-service'
 import { GoogleOAuthService } from '../providers/google/google-oauth'
+import { provisionPersonalInbox } from './personal-connection'
 
 const logger = createScopedLogger('channel-provisioning-hook')
 
@@ -279,8 +280,19 @@ export const channelProvisioningHook: PostConnectHook = {
       metadataPatch,
     })
 
-    const inboxService = new InboxService(db, ctx.organizationId, ctx.userId)
-    await inboxService.addIntegrationToDefaultInbox(integration.id)
+    if (ctx.personal) {
+      // Personal account (§11): dedicated restricted inbox owned by the
+      // connector; nothing attaches to the org's Shared Inbox.
+      await provisionPersonalInbox({
+        organizationId: ctx.organizationId,
+        ownerUserId: ctx.userId,
+        integrationId: integration.id,
+        email: identity.email,
+      })
+    } else {
+      const inboxService = new InboxService(db, ctx.organizationId, ctx.userId)
+      await inboxService.addIntegrationToDefaultInbox(integration.id)
+    }
 
     await seedSync({
       integrationId: integration.id,

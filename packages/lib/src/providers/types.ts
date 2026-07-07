@@ -42,6 +42,15 @@ export interface ProviderCapabilities {
   canReact: boolean // for social media
   canShare: boolean // for social media
 
+  /**
+   * Whether a user may connect this channel as a PERSONAL account
+   * (mail-permissions §11) — a user-scoped credential feeding a dedicated
+   * personal inbox. Email-likes only; the chat widget, social DMs, and phone
+   * lines are org assets. The connect path enforces this server-side (fail
+   * closed), independent of the wizard UI.
+   */
+  supportsPersonalConnection: boolean
+
   // Send-pipeline shape — drives MessageSenderService.validateInput, usage guard,
   // and post-send sync. Email-likes are all `true`; chat is all `false`. FB/IG
   // are currently `true` for compatibility — see provider-capabilities.ts.

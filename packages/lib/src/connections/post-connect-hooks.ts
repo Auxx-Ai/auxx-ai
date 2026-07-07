@@ -19,6 +19,11 @@ export interface PostConnectHookContext {
   userId: string
   /** Present on reconnect/reauth — the rotated credential id (== `credentialId`). */
   connectionId?: string
+  /**
+   * The credential was minted PERSONAL (user-scoped, mail-permissions §11) —
+   * channel provisioning branches to a dedicated personal inbox.
+   */
+  personal?: boolean
   /** Opaque flow context carried through OAuth state (e.g. calendar-grant target). */
   extra?: Record<string, unknown>
 }

@@ -545,9 +545,9 @@ export const ORG_CACHE_KEY_CONFIG: Record<
   groupMembers: { prefix: 'org:group-members', ttlSeconds: ONE_DAY },
   // Read per CRUD event by agent-trigger dispatch — same rationale as workflowApps.
   agents: { prefix: 'org:agents', ttlSeconds: ONE_DAY, localTtlMs: 5_000 },
-  // v3: + isPersonal (§11 groundwork). v2: + defaultLens (mail-permissions
-  // §2.2). Bump on shape changes.
-  inboxes: { prefix: 'org:inboxes:v3', ttlSeconds: ONE_DAY },
+  // v4: + ownerUserId (§11 personal accounts). v3: + isPersonal. v2: +
+  // defaultLens (mail-permissions §2.2). Bump on shape changes.
+  inboxes: { prefix: 'org:inboxes:v4', ttlSeconds: ONE_DAY },
   // Reverse thread/contact/inbox grant index for realtime publish fanout
   // (§3.1) + ingest count-delta audiences (§10.1). v2: + inboxes bucket.
   mailGrantIndex: { prefix: 'org:mail-grant-index:v2', ttlSeconds: ONE_DAY },

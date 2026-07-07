@@ -416,6 +416,19 @@ export const organizationRouter = createTRPCRouter({
           .where(eq(schema.User.id, userId))
       }
 
+      // Offboarding (mail-permissions §11.4): stop sync on the leaver's
+      // personal channels; their personal inbox stays for admin claim/delete.
+      try {
+        const { disconnectPersonalChannelsForUser } = await import('@auxx/lib/channels')
+        await disconnectPersonalChannelsForUser(organizationId, userId)
+      } catch (error) {
+        logger.error('Failed to disconnect personal channels for leaving member', {
+          organizationId,
+          userId,
+          error: error instanceof Error ? error.message : String(error),
+        })
+      }
+
       await onCacheEvent('member.removed', { orgId: organizationId, userId })
 
       await recordAuditFromCtx(ctx, {

@@ -1082,6 +1082,21 @@ export class MemberService {
       })
     }
 
+    // Offboarding (mail-permissions §11.4): stop sync on the removed member's
+    // personal channels. The inbox + threads keep personal visibility; admins
+    // claim or delete the orphaned inbox explicitly. Lazy import — channels
+    // pulls the provider stack, members must not load it eagerly.
+    try {
+      const { disconnectPersonalChannelsForUser } = await import('../channels/personal-connection')
+      await disconnectPersonalChannelsForUser(organizationId, memberToRemoveId)
+    } catch (error) {
+      logger.error('Failed to disconnect personal channels for removed member', {
+        organizationId,
+        memberToRemoveId,
+        error: error instanceof Error ? error.message : String(error),
+      })
+    }
+
     logger.info('Member removed successfully', { organizationId, memberToRemoveId, removerUserId })
     return { success: true }
   }

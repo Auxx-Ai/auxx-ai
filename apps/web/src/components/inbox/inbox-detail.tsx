@@ -9,6 +9,7 @@ import { useRouter } from 'next/navigation'
 import { useState } from 'react'
 import { EmptyState } from '~/components/global/empty-state'
 import SettingsPage from '~/components/global/settings-page'
+import { OrphanedPersonalInboxBanner } from '~/components/mail-permissions/ui/orphaned-inbox-banner'
 import { api } from '~/trpc/react'
 import { toRecordId, useResource } from '../resources'
 import { useInbox } from '../threads/hooks'
@@ -101,7 +102,10 @@ export function InboxDetail({ inboxId }: { inboxId: string }) {
               </TableBody>
             </Table>
           ) : inbox && integrations ? (
-            <InboxIntegrationsTab inboxId={inboxId} integrations={integrations} />
+            <>
+              <OrphanedPersonalInboxBanner inbox={inbox} />
+              <InboxIntegrationsTab inboxId={inboxId} integrations={integrations} />
+            </>
           ) : (
             <EmptyState
               icon={X}
