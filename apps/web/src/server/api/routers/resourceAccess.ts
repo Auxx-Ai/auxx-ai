@@ -10,7 +10,6 @@ import {
   checkTypeAccess,
   getInstanceAccess,
   getTypeAccess,
-  getUserAccessibleInstances,
   grantInstanceAccess,
   grantTypeAccess,
   revokeInstanceAccess,
@@ -320,20 +319,5 @@ export const resourceAccessRouter = createTRPCRouter({
     )
     .query(async ({ ctx, input }) => {
       return getTypeAccess(toContext(ctx), input.entityDefinitionId)
-    }),
-
-  /** Get instances accessible by current user for an entity type */
-  myInstances: protectedProcedure
-    .input(
-      z.object({
-        entityDefinitionId: z.string(),
-      })
-    )
-    .query(async ({ ctx, input }) => {
-      return getUserAccessibleInstances(
-        toContext(ctx),
-        ctx.session.userId,
-        input.entityDefinitionId
-      )
     }),
 })

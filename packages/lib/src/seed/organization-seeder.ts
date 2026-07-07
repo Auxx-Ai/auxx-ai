@@ -337,7 +337,7 @@ export class OrganizationSeeder {
       description: 'Default shared inbox for all team members',
       color: 'blue',
       status: 'ACTIVE',
-      visibility: 'org_members', // All members have access by default
+      defaultLens: 'full', // All members have access by default
     })
     logger.info('Created default shared inbox', { organizationId, inboxId: defaultInbox.id })
     // You can create additional default inboxes here if needed
@@ -498,7 +498,7 @@ export class OrganizationSeeder {
         description: 'Default shared inbox for all team members',
         color: 'blue',
         status: 'ACTIVE',
-        visibility: 'org_members',
+        defaultLens: 'full',
       })
       logger.info('Created default inbox for existing organization', { organizationId })
     }

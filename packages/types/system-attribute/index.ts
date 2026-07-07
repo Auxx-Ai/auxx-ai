@@ -196,7 +196,6 @@ export const SYSTEM_ATTRIBUTES = [
   'inbox_description',
   'inbox_color',
   'inbox_status',
-  'inbox_visibility',
   'inbox_default_lens',
   'inbox_settings',
 

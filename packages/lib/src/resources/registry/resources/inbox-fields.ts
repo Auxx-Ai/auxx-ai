@@ -124,34 +124,6 @@ export const INBOX_FIELDS: Record<string, ResourceField> = {
     description: 'Inbox status',
   },
 
-  visibility: {
-    id: toFieldId('visibility'),
-    key: 'visibility',
-    label: 'Visibility',
-    type: BaseType.ENUM,
-    fieldType: FieldType.SINGLE_SELECT,
-    isSystem: true,
-    systemAttribute: 'inbox_visibility',
-    systemSortOrder: 'a5',
-    nullable: false,
-    defaultValue: 'org_members',
-    options: {
-      options: [
-        { value: 'org_members', label: 'All Members' },
-        { value: 'private', label: 'Private' },
-        { value: 'custom', label: 'Custom' },
-      ],
-    },
-    capabilities: {
-      filterable: true,
-      sortable: false,
-      creatable: true,
-      updatable: true,
-      configurable: false,
-    },
-    description: 'Inbox visibility setting',
-  },
-
   defaultLens: {
     id: toFieldId('defaultLens'),
     key: 'defaultLens',
@@ -179,7 +151,7 @@ export const INBOX_FIELDS: Record<string, ResourceField> = {
       configurable: false,
     },
     description:
-      'Org-wide visibility floor: the lens every org member gets on this inbox. Explicit grants can only raise it. Supersedes inbox_visibility (mail-permissions §2.2).',
+      'Org-wide visibility floor: the lens every org member gets on this inbox. Explicit grants can only raise it (mail-permissions §2.2).',
   },
 
   createdAt: {

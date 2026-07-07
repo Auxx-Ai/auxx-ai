@@ -17,7 +17,6 @@ export interface InboxRecord extends RecordMeta {
     inbox_description?: string
     inbox_color?: string
     inbox_status?: 'ACTIVE' | 'ARCHIVED' | 'PAUSED'
-    inbox_visibility?: 'org_members' | 'private' | 'custom'
     inbox_default_lens?: 'none' | 'metadata' | 'subject' | 'full'
   }
 }
@@ -32,10 +31,8 @@ export interface InboxItem {
   description?: string | null
   color?: string | null
   status?: 'ACTIVE' | 'ARCHIVED' | 'PAUSED'
-  visibility?: 'org_members' | 'private' | 'custom'
   /**
-   * The org-wide floor (`inbox_default_lens`), with the legacy `visibility`
-   * fallback for pre-migration rows. Drives the share popover's
+   * The org-wide floor (`inbox_default_lens`). Drives the share popover's
    * inherited-access footer and the sidebar's restricted affordance.
    */
   defaultLens: 'none' | 'metadata' | 'subject' | 'full'
@@ -91,13 +88,7 @@ export function useInboxes(): UseInboxesResult {
       description: record.fieldValues?.inbox_description ?? null,
       color: record.fieldValues?.inbox_color ?? null,
       status: record.fieldValues?.inbox_status,
-      visibility: record.fieldValues?.inbox_visibility,
-      defaultLens:
-        record.fieldValues?.inbox_default_lens ??
-        (record.fieldValues?.inbox_visibility === 'org_members' ||
-        !record.fieldValues?.inbox_visibility
-          ? 'full'
-          : 'none'),
+      defaultLens: record.fieldValues?.inbox_default_lens ?? 'full',
       myLens: lenses[record.id],
     }))
 

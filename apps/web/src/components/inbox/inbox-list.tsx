@@ -52,17 +52,17 @@ export function InboxList() {
     }
   }
 
-  /** Get access display based on visibility */
-  const getAccessDisplay = (visibility: Inbox['visibility'] | undefined) => {
-    switch (visibility) {
-      case 'org_members':
-        return 'All members'
-      case 'private':
-        return 'Private'
-      case 'custom':
-        return 'Custom'
+  /** Get access display based on the org-wide floor lens */
+  const getAccessDisplay = (defaultLens: Inbox['defaultLens'] | undefined) => {
+    switch (defaultLens) {
+      case 'none':
+        return 'Restricted'
+      case 'subject':
+        return 'Subject only'
+      case 'metadata':
+        return 'Activity only'
       default:
-        return visibility ?? '—'
+        return 'All members'
     }
   }
 
@@ -108,9 +108,6 @@ export function InboxList() {
             {inboxes.map((inbox) => {
               const record = records.find((r) => r.id === inbox.id)
               const status = Array.isArray(inbox.status) ? inbox.status[0] : inbox.status
-              const visibility = Array.isArray(inbox.visibility)
-                ? inbox.visibility[0]
-                : inbox.visibility
               return (
                 <TableRow
                   key={inbox.id}
@@ -132,7 +129,7 @@ export function InboxList() {
                       </div>
                     </div>
                   </TableCell>
-                  <TableCell>{getAccessDisplay(visibility)}</TableCell>
+                  <TableCell>{getAccessDisplay(inbox.defaultLens)}</TableCell>
                   <TableCell>{getStatusBadge(status)}</TableCell>
                 </TableRow>
               )

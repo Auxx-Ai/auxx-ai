@@ -16,7 +16,6 @@ const createInboxSchema = z.object({
   description: z.string().optional(),
   color: z.string().optional(),
   status: z.enum(['ACTIVE', 'ARCHIVED', 'PAUSED']).optional(),
-  visibility: z.enum(['org_members', 'private', 'custom']).optional(),
   defaultLens: z.enum(['none', 'metadata', 'subject', 'full']).optional(),
   settings: z.record(z.string(), z.unknown()).optional(),
 })
