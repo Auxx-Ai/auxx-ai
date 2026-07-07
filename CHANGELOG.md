@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.1.176](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.175...auxx-v0.1.176) (2026-07-07)
+
+
+### Features
+
+* **channels:** channels v2 UI + member-safe settings ([#1071](https://github.com/Auxx-Ai/auxx-ai/issues/1071)) ([dd25017](https://github.com/Auxx-Ai/auxx-ai/commit/dd250178be9e1dd1c6324cfbd068294c6d76ec65))
+* **inbox:** settings management + unified grantee list ([#1072](https://github.com/Auxx-Ai/auxx-ai/issues/1072)) ([8dd4140](https://github.com/Auxx-Ai/auxx-ai/commit/8dd414076b009b216b9a6b79e3dcae7d0aefaeff))
+* **mail:** automation-system visibility context (phase 7) ([#1069](https://github.com/Auxx-Ai/auxx-ai/issues/1069)) ([dbd9f06](https://github.com/Auxx-Ai/auxx-ai/commit/dbd9f06e94a61bc46075fda7354fbaed9dcc04d2))
+* **mail:** enterprise gate, inbox access UI, sharing surfaces, redacted rendering (phases 4-5) ([#1067](https://github.com/Auxx-Ai/auxx-ai/issues/1067)) ([4cb374d](https://github.com/Auxx-Ai/auxx-ai/commit/4cb374d93a5084c06140c17a78e8353f93d411a6))
+* **mail:** lens-based mail visibility enforcement (phases 0-2) ([#1064](https://github.com/Auxx-Ai/auxx-ai/issues/1064)) ([e5d95a2](https://github.com/Auxx-Ai/auxx-ai/commit/e5d95a2bc7abc2e14c138b7c426dfa61475c0fe6))
+* **mail:** personal email accounts (phase 8) ([#1070](https://github.com/Auxx-Ai/auxx-ai/issues/1070)) ([d49866d](https://github.com/Auxx-Ai/auxx-ai/commit/d49866dfcff1d3bd0e38363256e4e6315fcbd777))
+* **mail:** phase 6 hardening — retire inbox_visibility, audits, dead code ([#1068](https://github.com/Auxx-Ai/auxx-ai/issues/1068)) ([d079902](https://github.com/Auxx-Ai/auxx-ai/commit/d07990294abbea41767f1d39601038043d88b6a4))
+* **mail:** realtime per-lens channels (phase 3) ([#1066](https://github.com/Auxx-Ai/auxx-ai/issues/1066)) ([541b8d1](https://github.com/Auxx-Ai/auxx-ai/commit/541b8d1b3025ba8786fa7e876a07e1b78476f5a4))
+
 ## [0.1.175](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.174...auxx-v0.1.175) (2026-07-06)
 
 
