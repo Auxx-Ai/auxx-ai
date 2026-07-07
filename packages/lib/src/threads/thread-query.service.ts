@@ -32,6 +32,7 @@ import {
 } from '../mail-query/draft-condition-builder'
 import { buildMailVisibilityPredicate } from '../mail-query/visibility-scope'
 import { MailViewService } from '../mail-views/mail-view-service'
+import { getParticipantIdsByMessage } from '../messages/participant-ids'
 import type {
   MailViewer,
   ThreadVisibilityInput,
@@ -795,6 +796,13 @@ export class ThreadQueryService {
     // Note: batchGetThreadTagIds returns RecordIds (from FieldValue.relatedEntityId which stores RecordIds)
     const tagIdMap = await batchGetThreadTagIds(this.db, ids, this.organizationId)
 
+    // Latest-message envelope participants (metadata tier) — lets sub-`full`
+    // viewers see sender identity even though `latestMessageId` is blanked.
+    const participantsByMessage = await getParticipantIdsByMessage(
+      this.db,
+      threads.map((t) => t.latestMessageId).filter((id): id is string => !!id)
+    )
+
     // Threads with explicit shares (instance grants) — powers the list rows'
     // share indicator (`hasShares`, metadata tier).
     const shareRows = await this.db
@@ -934,6 +942,9 @@ export class ThreadQueryService {
           assigneeId: t.assigneeId ? toActorId('user', t.assigneeId) : null,
           latestMessageId: t.latestMessageId ?? null,
           latestCommentId: t.latestCommentId ?? null,
+          participants: t.latestMessageId
+            ? (participantsByMessage.get(t.latestMessageId) ?? [])
+            : [],
           inboxId: t.inboxId ? toRecordId(inboxEntityDefId, t.inboxId) : null,
           // Backwards-compat shim for the frontend: if the primary entity is a
           // Ticket, surface its instance id under the legacy `ticketId` key.

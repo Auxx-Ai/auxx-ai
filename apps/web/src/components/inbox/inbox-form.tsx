@@ -1,23 +1,21 @@
 // apps/web/src/components/inbox/inbox-form.tsx
 'use client'
 
-import { ResourceGranteeType, ResourcePermission } from '@auxx/database/enums'
+import { FieldType, ResourceGranteeType, ResourcePermission } from '@auxx/database/enums'
 import type { Lens, LensChoice } from '@auxx/lib/permissions/visibility/client'
 import { parseRecordId, type RecordId, toRecordId } from '@auxx/lib/resources/client'
 import { type ActorId, parseActorId, toActorId } from '@auxx/types/actor'
 import { Button } from '@auxx/ui/components/button'
 import { DialogFooter } from '@auxx/ui/components/dialog'
-import { Field, FieldGroup, FieldLabel } from '@auxx/ui/components/field'
-import { Form } from '@auxx/ui/components/form'
-import { Input } from '@auxx/ui/components/input'
+import { DialogNavPage, DialogNavPages } from '@auxx/ui/components/dialog-nav'
 import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import { RadioGroup } from '@auxx/ui/components/radio-group'
 import { RadioGroupItemCard } from '@auxx/ui/components/radio-group-item'
-import { Textarea } from '@auxx/ui/components/textarea'
 import { toastError } from '@auxx/ui/components/toast'
-import { Lock, Trash2, UsersIcon } from 'lucide-react'
+import { ChevronRight, Eye, Lock, Shield, Trash2, UsersIcon } from 'lucide-react'
 import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react'
-import { useForm } from 'react-hook-form'
+import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
+import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
 import { AccessLevelsGuide } from '~/components/mail-permissions/ui/access-levels-guide'
 import {
   MailPermissionsUpgradeDialog,
@@ -29,11 +27,13 @@ import { useSaveSystemValues, useSystemValues } from '~/components/resources/hoo
 import { ActorBadge } from '~/components/resources/ui/actor-badge'
 import { FormColorTagPicker } from '~/components/tags/ui/color-tag-picker'
 import { useInbox } from '~/components/threads/hooks/use-inbox'
+import { BaseType } from '~/components/workflow/types'
 import { useConfirm } from '~/hooks/use-confirm'
 import { useDirtyCheck } from '~/hooks/use-dirty-state'
 import { useUnsavedChangesGuard } from '~/hooks/use-unsaved-changes-guard'
 import { useUser } from '~/hooks/use-user'
 import { api } from '~/trpc/react'
+import { InboxMembersPage } from './inbox-members-page'
 
 /** A grantee row as the form edits it. */
 interface FormGrant {
@@ -42,7 +42,7 @@ interface FormGrant {
 }
 
 /** Form data for inbox form */
-interface InboxFormData {
+interface InboxFormValues {
   name: string
   description: string
   color: string
@@ -50,6 +50,15 @@ interface InboxFormData {
   /** The org-wide floor when accessType is 'anyone'. Restricted ⇒ floor `none`. */
   floorLens: Exclude<Lens, 'none'>
   grants: FormGrant[]
+}
+
+const DEFAULT_VALUES: InboxFormValues = {
+  name: '',
+  description: '',
+  color: 'indigo',
+  accessType: 'anyone',
+  floorLens: 'full',
+  grants: [],
 }
 
 /** Props for the shell-free inbox form core. */
@@ -67,9 +76,15 @@ export interface InboxFormProps {
   /** Cancel/back dismiss. Defaults to {@link onClose}; the palette routes it back
    *  to the root action list instead of closing outright. */
   onCancel?: () => void
-  /** Host-specific header. Dialogs render a `DialogHeader`; the palette omits it
-   *  (the breadcrumb supplies the title). */
-  header?: (ctx: { title: string }) => ReactNode
+  /**
+   * Drill "People & groups" into a second page (webhook-dialog style) instead of
+   * rendering the grantee list inline. Enabled by the dialog host (which has the
+   * `DialogNav` shell); the palette leaves it off and keeps the inline list.
+   */
+  enableMembersPage?: boolean
+  /** Host-specific header. Dialogs render a `DialogNav` (with a Back button on the
+   *  members page); the palette omits it (the breadcrumb supplies the title). */
+  header?: (ctx: { title: string; page: 'main' | 'members'; onBack: () => void }) => ReactNode
 }
 
 /** Map a stored ResourceAccess row to the form's grant shape. */
@@ -102,9 +117,10 @@ function grantsKey(grants: FormGrant[]): string {
  * Shell-free inbox create/edit form: all hooks/state/mutations, the Access
  * section (Everyone/Restricted cards + org-wide level + grantee list, per the
  * mail-permissions UI plan), the color picker, the unsaved-changes guard, and
- * the delete affordance. The only host seams are the `header` slot and
- * `onClose`/`onCancel`. `inbox-dialog.tsx` wraps this in a `Dialog`; the
- * command palette hosts it as a page.
+ * the delete affordance. The layout uses the shared `FieldPanel`/`FieldPanelRow`
+ * primitives (label column left, input right). The only host seams are the
+ * `header` slot and `onClose`/`onCancel`. `inbox-dialog.tsx` wraps this in a
+ * `Dialog`; the command palette hosts it as a page.
  */
 export function InboxForm({
   open,
@@ -112,9 +128,13 @@ export function InboxForm({
   onSuccess,
   onClose,
   onCancel,
+  enableMembersPage = false,
   header,
 }: InboxFormProps) {
   const cancel = onCancel ?? onClose
+
+  // Which page is showing — the `members` drill exists only when enabled.
+  const [page, setPage] = useState<'main' | 'members'>('main')
 
   // Determine if editing based on prop
   const isEditing = !!recordId
@@ -166,40 +186,37 @@ export function InboxForm({
   const initialLensRef = useRef<Lens | null>(null)
   const initialGrantsRef = useRef<string>('')
 
-  // Form setup
-  const form = useForm<InboxFormData>({
-    defaultValues: {
-      name: '',
-      description: '',
-      color: 'indigo',
-      accessType: 'anyone',
-      floorLens: 'full',
-      grants: [],
-    },
-  })
+  // Plain value bag + per-field errors (part-form-dialog pattern).
+  const [values, setValues] = useState<InboxFormValues>(DEFAULT_VALUES)
+  const [errors, setErrors] = useState<Record<string, string>>({})
 
-  // Watch form values
-  const colorValue = form.watch('color')
-  const accessType = form.watch('accessType')
-  const floorLens = form.watch('floorLens')
-  const grants = form.watch('grants')
+  const handleChange = <K extends keyof InboxFormValues>(field: K, value: InboxFormValues[K]) => {
+    setValues((prev) => ({ ...prev, [field]: value }))
+    setErrors((prev) => {
+      if (prev[field as string]) {
+        const next = { ...prev }
+        delete next[field as string]
+        return next
+      }
+      return prev
+    })
+  }
 
-  // Combined form values for dirty checking
-  // biome-ignore lint/correctness/useExhaustiveDependencies: form.watch values are intentionally used as dependencies for dirty checking
-  const formValues = useMemo(
+  // Combined snapshot for dirty checking (grants serialized for stability).
+  const formSnapshot = useMemo(
     () => ({
-      name: form.watch('name'),
-      description: form.watch('description'),
-      color: colorValue,
-      accessType,
-      floorLens,
-      grants: grantsKey(grants ?? []),
+      name: values.name,
+      description: values.description,
+      color: values.color,
+      accessType: values.accessType,
+      floorLens: values.floorLens,
+      grants: grantsKey(values.grants),
     }),
-    [form.watch('name'), form.watch('description'), colorValue, accessType, floorLens, grants]
+    [values]
   )
 
   // Track dirty state for unsaved changes warning
-  const { isDirty, setInitial } = useDirtyCheck(formValues)
+  const { isDirty, setInitial } = useDirtyCheck(formSnapshot)
 
   // Guard against accidental close when dirty. The palette hosts this form without
   // a Dialog, so the guard owns the form's own cancel/close path: the Cancel button
@@ -225,51 +242,38 @@ export function InboxForm({
         const name = (fieldValues.inbox_name as string) ?? ''
         const description = (fieldValues.inbox_description as string) ?? ''
         const color = (fieldValues.inbox_color as string) ?? 'indigo'
+        // useSystemValues now collapses SINGLE_SELECT to a scalar, so this is a
+        // plain lens string (was an array — the source of the round-trip bug).
         const storedLens = (fieldValues.inbox_default_lens as Lens | undefined) ?? 'full'
         const accessType = storedLens === 'none' ? 'restricted' : 'anyone'
-        const floorLens = storedLens === 'none' ? 'full' : storedLens
+        const floorLens = (storedLens === 'none' ? 'full' : storedLens) as Exclude<Lens, 'none'>
         const grants = accessRows.map(rowToGrant)
 
         initialLensRef.current = storedLens
         initialGrantsRef.current = grantsKey(grants)
 
-        form.reset({ name, description, color, accessType, floorLens, grants })
-        setInitial({
-          name,
-          description,
-          color,
-          accessType,
-          floorLens,
-          grants: grantsKey(grants),
-        })
+        const next = { name, description, color, accessType, floorLens, grants }
+        setValues(next)
+        setInitial({ ...next, grants: grantsKey(grants) })
       } else {
         // Create mode: reset to defaults
         isInitialized.current = true
         initialLensRef.current = null
         initialGrantsRef.current = ''
 
-        form.reset({
-          name: '',
-          description: '',
-          color: 'indigo',
-          accessType: 'anyone',
-          floorLens: 'full',
-          grants: [],
-        })
-        setInitial({
-          name: '',
-          description: '',
-          color: 'indigo',
-          accessType: 'anyone',
-          floorLens: 'full',
-          grants: '',
-        })
+        setValues(DEFAULT_VALUES)
+        setInitial({ ...DEFAULT_VALUES, grants: '' })
       }
     } else {
       // Reset flag when dialog closes
       isInitialized.current = false
     }
-  }, [open, isEditing, recordId, fieldValues, isLoadingValues, accessRows, form, setInitial])
+  }, [open, isEditing, recordId, fieldValues, isLoadingValues, accessRows, setInitial])
+
+  // Always reopen on the main page (never mid-drill from a previous session).
+  useEffect(() => {
+    if (!open) setPage('main')
+  }, [open])
 
   // Get tRPC utils for cache invalidation
   const utils = api.useUtils()
@@ -323,12 +327,7 @@ export function InboxForm({
     setInstance.isPending
 
   // Form validation
-  const isValid = (form.watch('name') ?? '').trim().length > 0
-
-  // Handle color change from the color picker
-  const handleColorChange = (color: string) => {
-    form.setValue('color', color)
-  }
+  const isValid = values.name.trim().length > 0
 
   const handleAccessTypeChange = (value: string) => {
     // Restricted means floor `none` — enterprise-gated like every sub-full floor.
@@ -336,20 +335,18 @@ export function InboxForm({
       setUpgradeOpen(true)
       return
     }
-    form.setValue('accessType', value as 'anyone' | 'restricted')
+    handleChange('accessType', value as 'anyone' | 'restricted')
   }
 
   const updateGrant = (actorId: ActorId, choice: LensChoice) => {
-    const current = form.getValues('grants') ?? []
-    const rest = current.filter((g) => g.actorId !== actorId)
-    form.setValue('grants', [...rest, { actorId, choice }])
+    const rest = values.grants.filter((g) => g.actorId !== actorId)
+    handleChange('grants', [...rest, { actorId, choice }])
   }
 
   const removeGrant = (actorId: ActorId) => {
-    const current = form.getValues('grants') ?? []
-    form.setValue(
+    handleChange(
       'grants',
-      current.filter((g) => g.actorId !== actorId)
+      values.grants.filter((g) => g.actorId !== actorId)
     )
   }
 
@@ -382,35 +379,38 @@ export function InboxForm({
   }
 
   // Handle form submission
-  const handleSubmit = async (data: InboxFormData) => {
-    if (!isValid) return
+  const handleSubmit = async () => {
+    if (!isValid) {
+      setErrors({ name: 'Name is required' })
+      return
+    }
 
-    const targetLens: Lens = data.accessType === 'anyone' ? data.floorLens : 'none'
+    const targetLens: Lens = values.accessType === 'anyone' ? values.floorLens : 'none'
 
     if (isEditing && recordId) {
-      const values: Record<string, unknown> = {
-        inbox_name: data.name.trim(),
-        inbox_description: data.description,
-        inbox_color: data.color,
+      const systemValues: Record<string, unknown> = {
+        inbox_name: values.name.trim(),
+        inbox_description: values.description,
+        inbox_color: values.color,
       }
       // Only write the floor when it changed — the write is guarded server-side
       // (managers only; sub-full floors are enterprise).
-      if (targetLens !== initialLensRef.current) values.inbox_default_lens = targetLens
+      if (targetLens !== initialLensRef.current) systemValues.inbox_default_lens = targetLens
 
-      const success = await saveSystemValues(values)
+      const success = await saveSystemValues(systemValues)
       if (!success) return
 
-      if (canManageAccess && grantsKey(data.grants) !== initialGrantsRef.current) {
+      if (canManageAccess && grantsKey(values.grants) !== initialGrantsRef.current) {
         try {
           await setInstance.mutateAsync({
             recordId,
             granteeType: ResourceGranteeType.user,
-            grants: grantsPayload(data.grants, 'user'),
+            grants: grantsPayload(values.grants, 'user'),
           })
           await setInstance.mutateAsync({
             recordId,
             granteeType: ResourceGranteeType.group,
-            grants: grantsPayload(data.grants, 'group'),
+            grants: grantsPayload(values.grants, 'group'),
           })
         } catch {
           return // toast shown by the mutation; keep the form open
@@ -422,19 +422,19 @@ export function InboxForm({
       // Flush both here so every caller gets fresh data.
       invalidateInboxes()
       onClose()
-      onSuccess?.({ id: inboxId!, name: data.name, recordId })
+      onSuccess?.({ id: inboxId!, name: values.name, recordId })
     } else {
       try {
         const created = await createInbox.mutateAsync({
-          name: data.name.trim(),
-          description: data.description,
-          color: data.color,
+          name: values.name.trim(),
+          description: values.description,
+          color: values.color,
           status: 'ACTIVE',
           defaultLens: targetLens,
         })
         // Additive grants — the server already added the creator's Manager row.
         const createdRecordId = toRecordId('inbox', created.id)
-        for (const grant of data.grants) {
+        for (const grant of values.grants) {
           const { type, id } = parseActorId(grant.actorId)
           await grantInstance.mutateAsync({
             recordId: createdRecordId,
@@ -456,165 +456,248 @@ export function InboxForm({
 
   const title = isEditing ? 'Edit Inbox' : 'Create Inbox'
 
+  const membersEmptyHint = isPersonalInbox
+    ? 'Only the owner has access. Add people or groups to share.'
+    : values.accessType === 'restricted'
+      ? 'No one has access yet. Add people or groups.'
+      : 'No individual access — everyone uses the level above.'
+  const membersSummary =
+    values.grants.length > 0
+      ? `${values.grants.length} ${values.grants.length === 1 ? 'person or group' : 'people & groups'}`
+      : 'Add people or groups'
+
+  // Page 1 — the configure form (name/color/access). A transparent `<form>` wrapper
+  // (not part of the FieldPanel look) keeps native keyboard-submit working in the
+  // palette host, which has no Dialog shell to run the Cmd+Enter handler. In the
+  // dialog host plain Enter is suppressed by DialogContent and Cmd+Enter clicks the
+  // `data-dialog-submit` button. When the members drill is on, the form pads itself
+  // inside the flush `p-0` DialogNav shell; the palette host supplies its own padding.
+  const configurePage = (
+    <form
+      onSubmit={(e) => {
+        e.preventDefault()
+        void handleSubmit()
+      }}
+      className={enableMembersPage ? 'flex flex-col gap-4 p-4' : 'flex flex-col gap-4'}>
+      <FieldPanel
+        orientation='responsive'
+        breakpoint='md'
+        resizeId='inbox-form'
+        defaultLabelWidth={200}
+        className='p-0'>
+        {/* Name */}
+        <FieldPanelRow
+          title='Name'
+          type={BaseType.STRING}
+          showIcon
+          isRequired
+          validationError={errors.name}
+          validationType='error'>
+          <FieldInputAdapter
+            fieldType={FieldType.TEXT}
+            value={values.name}
+            onChange={(val) => handleChange('name', (val as string) ?? '')}
+            placeholder='Enter inbox name'
+            disabled={isPending}
+          />
+        </FieldPanelRow>
+
+        {/* Description */}
+        <FieldPanelRow title='Description' type={BaseType.STRING} showIcon>
+          <FieldInputAdapter
+            fieldType={FieldType.TEXT}
+            value={values.description}
+            onChange={(val) => handleChange('description', (val as string) ?? '')}
+            placeholder='Optional description'
+            disabled={isPending}
+            fieldOptions={{ multiline: true }}
+          />
+        </FieldPanelRow>
+
+        {/* Color */}
+        <FieldPanelRow title='Color' type={BaseType.ENUM} showIcon>
+          <div className='py-2'>
+            <FormColorTagPicker
+              value={values.color}
+              onChange={(color) => handleChange('color', color)}
+            />
+          </div>
+        </FieldPanelRow>
+
+        {/* Access section — org admins and inbox Managers only */}
+        {canManageAccess &&
+          (isPersonalInbox ? (
+            <FieldPanelRow title='Access' showIcon icon={<Shield />} className='@md:flex-col!'>
+              <div className='space-y-2 rounded-md border p-3'>
+                {ownerActorId && (
+                  <div className='flex items-center justify-between'>
+                    <ActorBadge actorId={ownerActorId} />
+                    <span className='text-muted-foreground text-xs'>Owner</span>
+                  </div>
+                )}
+                <p className='text-muted-foreground text-xs'>
+                  Personal account — mail here is private to its owner. Admins can see activity
+                  only; assignment and shares grant access per thread.
+                </p>
+              </div>
+            </FieldPanelRow>
+          ) : (
+            <>
+              <FieldPanelRow title='Access' showIcon icon={<Shield />} className='@md:flex-col!'>
+                <RadioGroup
+                  value={values.accessType}
+                  onValueChange={handleAccessTypeChange}
+                  className='grid gap-2 py-2 pe-2 sm:grid-cols-2'>
+                  <RadioGroupItemCard
+                    value='anyone'
+                    label='Everyone'
+                    icon={<UsersIcon />}
+                    description='Everyone in the organization, at a chosen level'
+                  />
+                  <RadioGroupItemCard
+                    value='restricted'
+                    label='Restricted'
+                    icon={<Lock />}
+                    description='Only people and groups you add below'
+                  />
+                </RadioGroup>
+              </FieldPanelRow>
+
+              {values.accessType === 'anyone' && (
+                <FieldPanelRow title='Everyone can see' showIcon icon={<Eye />}>
+                  <LensSelect
+                    value={values.floorLens}
+                    onChange={(choice) =>
+                      choice !== 'manager' &&
+                      handleChange('floorLens', choice as Exclude<Lens, 'none'>)
+                    }
+                    size='default'
+                    variant='transparent'
+                    className='w-full'
+                  />
+                </FieldPanelRow>
+              )}
+            </>
+          ))}
+      </FieldPanel>
+
+      {/* People & groups — a standalone section below the panel (like the webhook
+          Topics drill), not a FieldPanelRow. */}
+      {canManageAccess && (
+        <div className='flex flex-col gap-2'>
+          <div className='flex items-center gap-1.5 px-1 text-muted-foreground text-xs font-medium'>
+            <UsersIcon className='size-3.5' />
+            People &amp; groups
+          </div>
+          {enableMembersPage ? (
+            // Drill into the members page (webhook-topics style).
+            <button
+              type='button'
+              onClick={() => setPage('members')}
+              className='flex w-full items-center justify-between rounded-md border px-3 py-2 text-sm hover:bg-muted/50'>
+              <span className='flex items-center gap-2 text-muted-foreground'>
+                {membersSummary}
+              </span>
+              <ChevronRight className='size-4 text-muted-foreground' />
+            </button>
+          ) : (
+            <>
+              <GranteeList
+                grants={values.grants}
+                onGrant={updateGrant}
+                onChangeLens={updateGrant}
+                onRevoke={removeGrant}
+                includeManager
+                disabled={isPending}
+                lockedActorIds={isPersonalInbox && ownerActorId ? [ownerActorId] : []}
+                emptyHint={membersEmptyHint}
+              />
+              <button
+                type='button'
+                className='mt-1 self-start text-muted-foreground text-xs underline-offset-2 hover:underline'
+                onClick={() => setGuideOpen(true)}>
+                Learn about access levels
+              </button>
+            </>
+          )}
+        </div>
+      )}
+
+      <DialogFooter className='flex sm:justify-between!'>
+        {isEditing ? (
+          <Button
+            type='button'
+            size='sm'
+            variant='ghost'
+            onClick={handleDelete}
+            disabled={isPending}
+            className='text-destructive hover:text-destructive'>
+            <Trash2 /> Delete
+          </Button>
+        ) : (
+          <div />
+        )}
+        <div className='flex gap-2'>
+          <Button
+            type='button'
+            size='sm'
+            variant='ghost'
+            onClick={guardedClose}
+            disabled={isPending}>
+            Cancel <Kbd shortcut='esc' variant='ghost' size='sm' />
+          </Button>
+          <Button
+            variant='outline'
+            size='sm'
+            type='submit'
+            loading={isPending}
+            loadingText='Saving...'
+            disabled={!isValid || isPending}
+            data-dialog-submit>
+            {isEditing ? 'Update Inbox' : 'Create Inbox'} <KbdSubmit variant='outline' size='sm' />
+          </Button>
+        </div>
+      </DialogFooter>
+    </form>
+  )
+
+  // Page 2 — the "People & groups" drill (dialog host only).
+  const membersPage = (
+    <InboxMembersPage
+      grants={values.grants}
+      onGrant={updateGrant}
+      onChangeLens={updateGrant}
+      onRevoke={removeGrant}
+      includeManager
+      disabled={isPending}
+      lockedActorIds={isPersonalInbox && ownerActorId ? [ownerActorId] : []}
+      emptyHint={membersEmptyHint}
+      note={
+        isPersonalInbox
+          ? 'Personal account — mail here is private to its owner. Admins can see activity only; assignment and shares grant access per thread.'
+          : undefined
+      }
+      onOpenGuide={() => setGuideOpen(true)}
+      onBack={() => setPage('main')}
+    />
+  )
+
   return (
     <>
-      {header?.({ title })}
+      {header?.({ title, page, onBack: () => setPage('main') })}
 
-      <Form {...form}>
-        <form onSubmit={form.handleSubmit(handleSubmit)}>
-          <FieldGroup className='gap-4'>
-            {/* Name field */}
-            <Field>
-              <FieldLabel>Name</FieldLabel>
-              <Input
-                {...form.register('name', { required: 'Name is required' })}
-                placeholder='Enter inbox name'
-              />
-              {form.formState.errors.name && (
-                <p className='text-sm text-destructive'>{form.formState.errors.name.message}</p>
-              )}
-            </Field>
-
-            {/* Description field */}
-            <Field>
-              <FieldLabel>Description</FieldLabel>
-              <Textarea
-                {...form.register('description')}
-                placeholder='Optional description'
-                rows={3}
-              />
-            </Field>
-
-            {/* Color field */}
-            <Field>
-              <FieldLabel>Color</FieldLabel>
-              <FormColorTagPicker value={colorValue} onChange={handleColorChange} />
-            </Field>
-
-            {/* Access section — org admins and inbox Managers only */}
-            {canManageAccess && (
-              <>
-                {isPersonalInbox ? (
-                  <Field>
-                    <FieldLabel>Access</FieldLabel>
-                    <div className='space-y-2 rounded-md border p-3'>
-                      {ownerActorId && (
-                        <div className='flex items-center justify-between'>
-                          <ActorBadge actorId={ownerActorId} />
-                          <span className='text-muted-foreground text-xs'>Owner</span>
-                        </div>
-                      )}
-                      <p className='text-muted-foreground text-xs'>
-                        Personal account — mail here is private to its owner. Admins can see
-                        activity only; assignment and shares grant access per thread.
-                      </p>
-                    </div>
-                  </Field>
-                ) : (
-                  <>
-                    <Field>
-                      <FieldLabel>Access</FieldLabel>
-                      <RadioGroup
-                        value={accessType}
-                        onValueChange={handleAccessTypeChange}
-                        className='grid gap-2 sm:grid-cols-2'>
-                        <RadioGroupItemCard
-                          value='anyone'
-                          label='Everyone'
-                          icon={<UsersIcon />}
-                          description='Everyone in the organization, at a chosen level'
-                        />
-                        <RadioGroupItemCard
-                          value='restricted'
-                          label='Restricted'
-                          icon={<Lock />}
-                          description='Only people and groups you add below'
-                        />
-                      </RadioGroup>
-                    </Field>
-
-                    {accessType === 'anyone' && (
-                      <Field>
-                        <FieldLabel>Everyone can see</FieldLabel>
-                        <LensSelect
-                          value={floorLens}
-                          onChange={(choice) =>
-                            choice !== 'manager' && form.setValue('floorLens', choice)
-                          }
-                          size='default'
-                          className='w-full'
-                        />
-                      </Field>
-                    )}
-                  </>
-                )}
-
-                <Field>
-                  <FieldLabel>People &amp; groups</FieldLabel>
-                  <GranteeList
-                    grants={grants ?? []}
-                    onGrant={updateGrant}
-                    onChangeLens={updateGrant}
-                    onRevoke={removeGrant}
-                    includeManager
-                    disabled={isPending}
-                    lockedActorIds={isPersonalInbox && ownerActorId ? [ownerActorId] : []}
-                    emptyHint={
-                      isPersonalInbox
-                        ? 'Only the owner has access. Add people or groups to share.'
-                        : accessType === 'restricted'
-                          ? 'No one has access yet. Add people or groups.'
-                          : 'No individual access — everyone uses the level above.'
-                    }
-                  />
-                  <button
-                    type='button'
-                    className='mt-1 self-start text-muted-foreground text-xs underline-offset-2 hover:underline'
-                    onClick={() => setGuideOpen(true)}>
-                    Learn about access levels
-                  </button>
-                </Field>
-              </>
-            )}
-          </FieldGroup>
-
-          <DialogFooter className='flex sm:justify-between!'>
-            {isEditing ? (
-              <Button
-                type='button'
-                size='sm'
-                variant='ghost'
-                onClick={handleDelete}
-                disabled={isPending}
-                className='text-destructive hover:text-destructive'>
-                <Trash2 /> Delete
-              </Button>
-            ) : (
-              <div />
-            )}
-            <div className='flex gap-2'>
-              <Button
-                type='button'
-                size='sm'
-                variant='ghost'
-                onClick={guardedClose}
-                disabled={isPending}>
-                Cancel <Kbd shortcut='esc' variant='ghost' size='sm' />
-              </Button>
-              <Button
-                variant='outline'
-                size='sm'
-                type='submit'
-                loading={isPending}
-                loadingText='Saving...'
-                disabled={!isValid || isPending}>
-                {isEditing ? 'Update Inbox' : 'Create Inbox'}{' '}
-                <KbdSubmit variant='outline' size='sm' />
-              </Button>
-            </div>
-          </DialogFooter>
-        </form>
-      </Form>
+      {enableMembersPage ? (
+        <DialogNavPages value={page}>
+          <DialogNavPage value='main' size='md'>
+            {configurePage}
+          </DialogNavPage>
+          <DialogNavPage value='members' size='md'>
+            {membersPage}
+          </DialogNavPage>
+        </DialogNavPages>
+      ) : (
+        configurePage
+      )}
 
       <ConfirmDialog />
       <ConfirmDeleteDialog />

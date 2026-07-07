@@ -6,7 +6,7 @@ import { createScopedLogger } from '@auxx/logger'
 import { parseRecordId, type RecordId, toRecordId } from '@auxx/types/resource'
 import { and, eq } from 'drizzle-orm'
 import { getUserCache, onCacheEvent } from '../cache'
-import type { Lens } from '../permissions/visibility/lens'
+import { normalizeLens } from '../permissions/visibility/lens'
 import { hasPermission, setInstanceAccess } from '../resource-access/resource-access-service'
 import type { ResourceAccessContext } from '../resource-access/types'
 import { listAll, UnifiedCrudHandler } from '../resources/crud'
@@ -19,6 +19,15 @@ const logger = createScopedLogger('inbox-service')
  */
 function getInstanceId(recordId: RecordId): string {
   return parseRecordId(recordId).entityInstanceId
+}
+
+/**
+ * Field-value reads surface SINGLE_SELECT values as one-element arrays (the
+ * UI-uniform format). Unwrap to a scalar so downstream strict comparisons
+ * (`status === 'ACTIVE'`, lens checks) don't silently misfire.
+ */
+function scalarFieldValue(raw: unknown): unknown {
+  return Array.isArray(raw) ? raw[0] : raw
 }
 
 /**
@@ -398,8 +407,9 @@ export class InboxService {
       name: item.displayName ?? '',
       description: (item.fieldValues.inbox_description as string) ?? null,
       color: (item.fieldValues.inbox_color as string) ?? 'indigo',
-      status: ((item.fieldValues.inbox_status as string) ?? 'ACTIVE') as Inbox['status'],
-      defaultLens: (item.fieldValues.inbox_default_lens as string as Lens) ?? 'full',
+      status: ((scalarFieldValue(item.fieldValues.inbox_status) as string) ??
+        'ACTIVE') as Inbox['status'],
+      defaultLens: normalizeLens(item.fieldValues.inbox_default_lens),
       isPersonal: (item.fieldValues.inbox_is_personal as boolean) ?? false,
       ownerUserId: (item.fieldValues.inbox_owner_user_id as string) ?? null,
       settings: (item.fieldValues.inbox_settings as Record<string, unknown>) ?? {},
@@ -437,8 +447,9 @@ export class InboxService {
       name: instance.displayName ?? '',
       description: (getValue('inbox_description') as string) ?? null,
       color: (getValue('inbox_color') as string) ?? 'indigo',
-      status: ((getValue('inbox_status') as string) ?? 'ACTIVE') as Inbox['status'],
-      defaultLens: (getValue('inbox_default_lens') as string as Lens) ?? 'full',
+      status: ((scalarFieldValue(getValue('inbox_status')) as string) ??
+        'ACTIVE') as Inbox['status'],
+      defaultLens: normalizeLens(getValue('inbox_default_lens')),
       isPersonal: (getValue('inbox_is_personal') as boolean) ?? false,
       ownerUserId: (getValue('inbox_owner_user_id') as string) ?? null,
       settings: (getValue('inbox_settings') as Record<string, unknown>) ?? {},

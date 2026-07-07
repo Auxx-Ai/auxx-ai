@@ -2,7 +2,7 @@
 
 'use client'
 
-import type { ActorId } from '@auxx/types/actor'
+import type { ActorId, ActorType } from '@auxx/types/actor'
 import { parseActorId } from '@auxx/types/actor'
 import { Avatar, AvatarFallback, AvatarImage } from '@auxx/ui/components/avatar'
 import { Skeleton } from '@auxx/ui/components/skeleton'
@@ -11,6 +11,33 @@ import { cva, type VariantProps } from 'class-variance-authority'
 import { Bot, Cog, User, Users, X } from 'lucide-react'
 
 import { useActor } from '~/components/resources/hooks/use-actor'
+
+/**
+ * The avatar-only half of an {@link ActorBadge}: the image with a type-aware
+ * fallback glyph (person / group / agent / system). Presentational — pass the
+ * resolved `type` + `avatarUrl`. Reused wherever the actor's icon is needed
+ * apart from the name (e.g. a TreeRow's leading icon slot).
+ */
+export function ActorAvatar({
+  type,
+  avatarUrl,
+  className,
+}: {
+  type: ActorType
+  avatarUrl?: string | null
+  /** Sizes the avatar box; the fallback glyph scales with it. Defaults to `size-4`. */
+  className?: string
+}) {
+  const Glyph = type === 'system' ? Cog : type === 'group' ? Users : type === 'agent' ? Bot : User
+  return (
+    <Avatar className={cn('size-4', className)} data-slot='actor-icon'>
+      <AvatarImage src={avatarUrl ?? undefined} />
+      <AvatarFallback className='bg-neutral-200 dark:bg-neutral-700'>
+        <Glyph data-slot='actor-fallback-icon' className='size-2.5' />
+      </AvatarFallback>
+    </Avatar>
+  )
+}
 
 /**
  * Variants for the ActorBadge component

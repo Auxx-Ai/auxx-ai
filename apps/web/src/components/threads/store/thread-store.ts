@@ -3,6 +3,7 @@
 import '~/lib/immer-config' // Enables Map/Set support for immer
 import type { ThreadClientFilter } from '@auxx/lib/mail-query/client'
 import type { ThreadMergeData } from '@auxx/lib/threads/types'
+import type { ParticipantId } from '@auxx/types'
 import type { ActorId } from '@auxx/types/actor'
 import type { StandaloneDraftMeta } from '@auxx/types/draft'
 import type { RecordId } from '@auxx/types/resource'
@@ -51,6 +52,14 @@ export interface ThreadMeta {
   // Denormalized for performance (avoid extra fetches for list display)
   latestMessageId: string | null
   latestCommentId: string | null
+
+  /**
+   * Role-prefixed ParticipantId[] of the latest message (from/replyto/to/cc/
+   * bcc). Metadata tier — present at every lens, so rows can render sender
+   * identity even when `latestMessageId` is redacted to null. Optional:
+   * absent on patches and pre-participants cached payloads.
+   */
+  participants?: ParticipantId[]
 
   /** Inbox RecordId (format: "entityDefinitionId:instanceId") or null if unassigned */
   inboxId: RecordId | null

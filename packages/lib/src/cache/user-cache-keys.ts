@@ -96,5 +96,7 @@ export const USER_CACHE_KEY_CONFIG: Record<
   userMailViews: { prefix: 'user:mail-views', ttlSeconds: ONE_DAY },
   userTableViews: { prefix: 'user:table-views', ttlSeconds: ONE_DAY },
   userFavorites: { prefix: 'user:favorites', ttlSeconds: ONE_DAY },
-  userMailVisibility: { prefix: 'user:mail-visibility', ttlSeconds: ONE_DAY },
+  // v2: inboxLens values normalized to scalar lenses (cached entries built
+  // from the pre-v5 `inboxes` shape carried SINGLE_SELECT arrays).
+  userMailVisibility: { prefix: 'user:mail-visibility:v2', ttlSeconds: ONE_DAY },
 }
