@@ -15,6 +15,11 @@ const SHORTCUT_MAP = {
   enter: CornerDownLeft,
   alt: Option,
   option: Option,
+  /**
+   * Platform-adaptive primary modifier: renders `cmd` on Mac and `ctrl`
+   * elsewhere. Resolved at render time via {@link isMac}.
+   */
+  meta: Command,
 } as const
 
 type ShortcutKey = keyof typeof SHORTCUT_MAP
@@ -72,7 +77,9 @@ interface KbdProps extends Omit<React.ComponentProps<'span'>, 'children'>, KbdGr
 
 /** Renders a shortcut as icon or text */
 function renderShortcut(key: ShortcutKey): React.ReactNode {
-  const value = SHORTCUT_MAP[key]
+  // `meta` adapts to the platform: Cmd on Mac, Ctrl elsewhere.
+  const resolvedKey = key === 'meta' ? (isMac() ? 'cmd' : 'ctrl') : key
+  const value = SHORTCUT_MAP[resolvedKey]
   if (typeof value === 'string') {
     return value
   }
@@ -118,7 +125,7 @@ interface KbdSubmitProps extends KbdGroupVariantProps {
 function KbdSubmit({ variant, size, className }: KbdSubmitProps) {
   return (
     <KbdGroup variant={variant} size={size} className={className}>
-      <Kbd shortcut={isMac() ? 'cmd' : 'ctrl'} />
+      <Kbd shortcut='meta' />
       <Kbd shortcut='enter' />
     </KbdGroup>
   )

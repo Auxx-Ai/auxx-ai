@@ -22,7 +22,7 @@ import { getChannelProviderName, getIntegrationProviderIcon } from './channel-ic
 const DETAIL_BASE = '/app/settings/channels'
 
 /** Resolve the corner status dot (tone + tooltip) from the channel's auth/sync state. */
-function channelStatus(channel: Channel): ListCardStatus {
+export function channelStatus(channel: Channel): ListCardStatus {
   if (channel.requiresReauth) return { tone: 'error', label: 'Reconnect required' }
   if (channel.lastAuthError || channel.syncStatus === 'FAILED') {
     return { tone: 'error', label: channel.lastAuthError || 'Sync error' }

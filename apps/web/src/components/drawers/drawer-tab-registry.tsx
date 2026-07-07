@@ -37,8 +37,12 @@ export const DRAWER_TAB_COMPONENTS: Record<
     import('./tabs/contact-conversations-tab').then((m) => ({
       default: m.ContactConversationsTab,
     })),
-  'contact:parts': () =>
-    import('./tabs/contact-parts-tab').then((m) => ({ default: m.ContactPartsTab })),
+
+  // ─────────────────────────────────────────────────────────────────
+  // COMPANY TABS
+  // ─────────────────────────────────────────────────────────────────
+  'company:parts': () =>
+    import('./tabs/company-parts-tab').then((m) => ({ default: m.CompanyPartsTab })),
 
   // ─────────────────────────────────────────────────────────────────
   // TICKET TABS

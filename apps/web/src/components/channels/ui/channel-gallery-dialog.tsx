@@ -30,6 +30,8 @@ const RESIZE_ID = 'channel-connect'
 interface ChannelGalleryDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
+  /** Preselect the delivery inbox (e.g. opened from an inbox's detail page). */
+  initialInboxId?: string
 }
 
 /**
@@ -37,7 +39,11 @@ interface ChannelGalleryDialogProps {
  * opens a detail step that makes inbox selection mandatory before connecting (channels v2):
  * OAuth email (shared/personal + inbox), IMAP (inbox + embedded form), chat, social, and Quo.
  */
-export function ChannelGalleryDialog({ open, onOpenChange }: ChannelGalleryDialogProps) {
+export function ChannelGalleryDialog({
+  open,
+  onOpenChange,
+  initialInboxId,
+}: ChannelGalleryDialogProps) {
   const router = useRouter()
   const utils = api.useUtils()
   const { isAdminOrOwner } = useAdminGate()
@@ -63,7 +69,7 @@ export function ChannelGalleryDialog({ open, onOpenChange }: ChannelGalleryDialo
   // Shared detail state, reset on detail exit. Non-admins start on (and are
   // effectively limited to) the personal scope.
   const defaultScope: 'shared' | 'personal' = isAdminOrOwner ? 'shared' : 'personal'
-  const inbox = useInboxDestination()
+  const inbox = useInboxDestination(initialInboxId)
   const [scope, setScope] = useState<'shared' | 'personal'>(defaultScope)
   const [clientId, setClientId] = useState('')
   const [clientSecret, setClientSecret] = useState('')

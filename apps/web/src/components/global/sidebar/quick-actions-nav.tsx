@@ -26,7 +26,7 @@ export function QuickActionsNav() {
           size='sm'
           className='ml-auto group-data-[collapsible=icon]:hidden'
           variant='outline'>
-          <Kbd shortcut='cmd' />
+          <Kbd shortcut='meta' />
           <Kbd>K</Kbd>
         </KbdGroup>
       </SidebarMenuButton>

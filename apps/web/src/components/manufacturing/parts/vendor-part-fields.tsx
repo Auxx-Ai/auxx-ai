@@ -61,10 +61,10 @@ export function VendorPartFields({
 
   return (
     <>
-      {/* Contact Selection */}
+      {/* Supplier (company) Selection */}
       {showContactField && (
         <FieldPanelRow
-          title='Vendor'
+          title='Supplier'
           isRequired
           validationError={errors?.entityInstanceId}
           validationType='error'>
@@ -72,12 +72,12 @@ export function VendorPartFields({
             triggerProps={{ className: 'w-full ps-0 pe-1' }}
             fieldType={contactField?.fieldType ?? FieldType.RELATIONSHIP}
             fieldOptions={contactField?.options}
-            value={values.entityInstanceId ? [toRecordId('contact', values.entityInstanceId)] : []}
+            value={values.entityInstanceId ? [toRecordId('company', values.entityInstanceId)] : []}
             onChange={(recordIds) => {
               const ids = recordIds as RecordId[]
               onChange('entityInstanceId', ids[0] ? getInstanceId(ids[0]) : '')
             }}
-            placeholder='Select contact...'
+            placeholder='Select supplier...'
             disabled={disabled || disableContactEdit}
           />
         </FieldPanelRow>

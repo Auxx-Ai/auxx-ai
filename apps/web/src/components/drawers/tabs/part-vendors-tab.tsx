@@ -141,7 +141,9 @@ export function PartVendorsTab({ recordId }: DrawerTabProps) {
           <div className='flex h-24 flex-col items-center justify-center text-center border rounded-lg bg-muted/30'>
             <Store className='mb-2 h-6 w-6 text-muted-foreground' />
             <p className='text-sm text-muted-foreground'>No suppliers added yet</p>
-            <p className='text-xs text-muted-foreground'>Add contacts as suppliers for this part</p>
+            <p className='text-xs text-muted-foreground'>
+              Add companies as suppliers for this part
+            </p>
           </div>
         ) : (
           <div className='rounded-md border'>

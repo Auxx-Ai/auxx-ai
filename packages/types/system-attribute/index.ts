@@ -172,6 +172,7 @@ export const SYSTEM_ATTRIBUTES = [
   'company_notes',
   'company_primary_contact',
   'company_employees',
+  'company_vendor_parts',
   'company_meetings',
   'company_enriched_at',
   'company_enrichment_status',

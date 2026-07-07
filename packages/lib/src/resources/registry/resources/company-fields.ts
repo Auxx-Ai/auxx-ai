@@ -363,6 +363,32 @@ export const COMPANY_FIELDS: Record<string, ResourceField> = {
     description: 'Employees associated with this company',
   },
 
+  // Reverse relationship: vendorParts (one-to-many from vendor_part.contact)
+  vendorParts: {
+    id: toFieldId('vendorParts'),
+    key: 'vendorParts',
+    label: 'Supplier Parts',
+    type: BaseType.RELATION,
+    fieldType: FieldType.RELATIONSHIP,
+    isSystem: true,
+    systemAttribute: 'company_vendor_parts',
+    systemSortOrder: 'aCa',
+    showInPanel: false,
+    capabilities: {
+      filterable: true,
+      sortable: false,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    relationship: {
+      inverseResourceFieldId: 'vendor_part:contact' as ResourceFieldId,
+      relationshipType: 'has_many',
+      isInverse: true,
+    },
+    description: 'Parts this company supplies',
+  },
+
   meetings: {
     id: toFieldId('meetings'),
     key: 'meetings',

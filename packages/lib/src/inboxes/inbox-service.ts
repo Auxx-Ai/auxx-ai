@@ -4,8 +4,9 @@ import { type Database, database as defaultDb, schema } from '@auxx/database'
 import { ResourceGranteeType, ResourcePermission } from '@auxx/database/enums'
 import { createScopedLogger } from '@auxx/logger'
 import { parseRecordId, type RecordId, toRecordId } from '@auxx/types/resource'
-import { and, eq } from 'drizzle-orm'
+import { and, eq, isNull } from 'drizzle-orm'
 import { getUserCache, onCacheEvent } from '../cache'
+import { ConflictError } from '../errors'
 import { normalizeLens } from '../permissions/visibility/lens'
 import { hasPermission, setInstanceAccess } from '../resource-access/resource-access-service'
 import type { ResourceAccessContext } from '../resource-access/types'
@@ -137,11 +138,37 @@ export class InboxService {
   }
 
   /**
-   * Delete an inbox by RecordId
+   * Delete an inbox by RecordId.
+   *
+   * Refuses while an ACTIVE channel is still routed here: deleting the link
+   * rows would leave the Integration enabled but orphaned — its sync jobs
+   * fail forever with "Inbox integration not found". Callers must re-route
+   * or disconnect the channels first (`deletePersonalInbox` soft-deletes its
+   * integrations before calling this, so it passes).
    */
   async deleteInbox(recordId: RecordId): Promise<void> {
     const instanceId = getInstanceId(recordId)
     logger.info('Deleting inbox', { recordId, instanceId })
+
+    const activeChannels = await this.db
+      .select({ integrationId: schema.Integration.id })
+      .from(schema.InboxIntegration)
+      .innerJoin(
+        schema.Integration,
+        eq(schema.Integration.id, schema.InboxIntegration.integrationId)
+      )
+      .where(
+        and(
+          eq(schema.InboxIntegration.inboxId, instanceId),
+          eq(schema.Integration.enabled, true),
+          isNull(schema.Integration.deletedAt)
+        )
+      )
+    if (activeChannels.length > 0) {
+      throw new ConflictError(
+        'This inbox still has connected channels. Move them to another inbox or disconnect them first.'
+      )
+    }
 
     // Delete related records first
     await this.db.transaction(async (tx) => {
