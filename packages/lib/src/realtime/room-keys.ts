@@ -21,15 +21,48 @@
  */
 export type RoomKind = 'plain' | 'presence' | 'public'
 
+/**
+ * The lens variants an inbox channel is published at (mail-permissions §6.1).
+ * `none` has no channel — a `none` viewer simply isn't subscribed. The
+ * residual null-inbox (`'none'` slug) channel only exists at `full` and is
+ * admin-only.
+ */
+export type ChannelLens = 'metadata' | 'subject' | 'full'
+
+/** All inbox channel lens variants, ascending. */
+export const CHANNEL_LENSES: readonly ChannelLens[] = ['metadata', 'subject', 'full']
+
+const INBOX_ROOM_RE = /^org-(.+)-inbox-(.+)-(metadata|subject|full)$/
+
+/** Parsed shape of a per-lens inbox room key. */
+export interface InboxRoomKey {
+  organizationId: string
+  /** Raw inbox UUID, or `'none'` for residual null-inbox threads. */
+  inboxSlug: string
+  lens: ChannelLens
+}
+
+/** Parse `org-{org}-inbox-{slug}-{lens}` into its parts, or null. */
+export function parseInboxRoomKey(roomKey: string): InboxRoomKey | null {
+  const match = INBOX_ROOM_RE.exec(roomKey)
+  if (!match) return null
+  return { organizationId: match[1], inboxSlug: match[2], lens: match[3] as ChannelLens }
+}
+
 /** Typed helpers to build room keys. Mirrored on `rooms` for server callers. */
 export const rooms = {
   /** Org-wide events (records, agents, mail batches outside an inbox). */
   orgEvents: (organizationId: string): string => `org-${organizationId}-events`,
   /** Org presence room (member online/idle). */
   orgPresence: (organizationId: string): string => `org-${organizationId}`,
-  /** Per-inbox channel. `inboxSlug` is the raw inbox UUID, or `'none'` for triage. */
-  orgInbox: (organizationId: string, inboxSlug: string): string =>
-    `org-${organizationId}-inbox-${inboxSlug}`,
+  /**
+   * Per-inbox per-lens channel (mail-permissions §6.1). `inboxSlug` is the raw
+   * inbox UUID, or `'none'` for residual null-inbox threads (admin-only,
+   * published at `full` only). Viewers subscribe to exactly their own lens
+   * variant; the server publishes a redacted payload per variant.
+   */
+  orgInbox: (organizationId: string, inboxSlug: string, lens: ChannelLens): string =>
+    `org-${organizationId}-inbox-${inboxSlug}-${lens}`,
   /** Private per-user channel (notifications, personal events). */
   user: (userId: string): string => `user-${userId}`,
   /** Per-chat-thread admin channel. */

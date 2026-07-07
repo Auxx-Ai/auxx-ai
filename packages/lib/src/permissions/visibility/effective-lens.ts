@@ -31,6 +31,17 @@ export function effectiveLens(vis: UserMailVisibility, t: ThreadVisibilityInput)
   return lens
 }
 
+/**
+ * The viewer's lens on an INBOX (not a thread) — the floor every thread in it
+ * inherits before per-thread derivations. Mirrors the admin short-circuit in
+ * {@link effectiveLens}: admins are `full` everywhere except others' personal
+ * inboxes. Used by realtime subscribe auth and the FE `myLenses` read.
+ */
+export function inboxLensFor(vis: UserMailVisibility, inboxId: string): Lens {
+  if (vis.isAdmin && !vis.personalInboxIds[inboxId]) return 'full'
+  return vis.inboxLens[inboxId] ?? 'none'
+}
+
 /** Batch form — a loop over {@link effectiveLens}, keyed by thread id. */
 export function effectiveLensBatch(
   vis: UserMailVisibility,

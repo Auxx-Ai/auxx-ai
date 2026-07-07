@@ -65,6 +65,7 @@ export async function updateThreadMetadataEfficient(
     const [row] = await ctx.db
       .select({
         inboxId: schema.Thread.inboxId,
+        assigneeId: schema.Thread.assigneeId,
         messageCount: schema.Thread.messageCount,
         participantCount: schema.Thread.participantCount,
         firstMessageAt: schema.Thread.firstMessageAt,
@@ -96,6 +97,7 @@ export async function updateThreadMetadataEfficient(
       {
         threadId,
         inboxId: row.inboxId ?? null,
+        assigneeId: row.assigneeId ?? null,
         patch,
       },
       { excludeSocketId: ctx.socketId }

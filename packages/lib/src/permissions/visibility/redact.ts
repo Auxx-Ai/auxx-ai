@@ -122,6 +122,22 @@ const REDACTED_MESSAGE_DEFAULTS: Record<string, unknown> = {
 }
 
 /**
+ * Redact a message PATCH (§6.2) — key-based: content fields are DROPPED (not
+ * blanked) below `full`, so a lower-lens realtime channel never carries body /
+ * snippet / attachment data and never clobbers store state with blanks.
+ * Messages are invisible at `metadata` — callers skip publishing entirely
+ * there rather than calling this.
+ */
+export function redactMessagePatch<T extends Record<string, unknown>>(patch: T, lens: Lens): T {
+  if (satisfiesLens(lens, 'full')) return patch
+  const out = { ...patch }
+  for (const field of MESSAGE_CONTENT_FIELDS) {
+    delete out[field]
+  }
+  return out
+}
+
+/**
  * Project a message down to `lens`. At `full` it passes through; below `full`
  * (envelope tier) content fields are blanked. Messages are invisible at
  * `metadata` — the caller returns nothing / 404 rather than calling this.

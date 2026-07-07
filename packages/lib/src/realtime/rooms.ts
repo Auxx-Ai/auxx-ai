@@ -12,14 +12,20 @@
  */
 
 import { database, Thread } from '@auxx/database'
-import { toRecordId } from '@auxx/types/resource'
 import { eq } from 'drizzle-orm'
-import { InboxService } from '../inboxes'
 import { findMemberByUser } from '../members'
-import { fromPusherChannel, type RoomKind, toPusherChannel } from './room-keys'
+import { getThreadLens, inboxLensFor, satisfiesLens } from '../permissions/visibility'
+import { fromPusherChannel, parseInboxRoomKey, type RoomKind, toPusherChannel } from './room-keys'
 
-export type { RoomKind } from './room-keys'
-export { fromPusherChannel, roomKindFor, rooms, toPusherChannel } from './room-keys'
+export type { ChannelLens, RoomKind } from './room-keys'
+export {
+  CHANNEL_LENSES,
+  fromPusherChannel,
+  parseInboxRoomKey,
+  roomKindFor,
+  rooms,
+  toPusherChannel,
+} from './room-keys'
 
 /**
  * Authorization context handed to every `authorize(...)` call.
@@ -78,39 +84,35 @@ async function getThreadOrgId(threadId: string): Promise<string | null> {
  * (`-inbox-`, `-events`) must come before the generic `org-` presence room.
  */
 const REGISTRY: RoomDef[] = [
-  // Per-inbox channel: `org-{orgId}-inbox-{inboxSlug}`
+  // Per-inbox per-lens channel: `org-{orgId}-inbox-{inboxSlug}-{lens}`
+  //
+  // Auth reads the cached `userMailVisibility` (mail-permissions §6.1): allow
+  // iff the caller's lens on that inbox satisfies the channel's lens. Fails
+  // CLOSED on every error — no dev bypass; a mis-scoped subscription would
+  // stream redacted-tier data to the wrong viewer.
   {
     kind: 'plain',
     match: (k) => /^org-.+-inbox-.+$/.test(k),
     authorize: async (key, ctx) => {
-      const parts = key.split('-inbox-')
-      if (parts.length !== 2) return false
-      const orgId = parts[0].replace(/^org-/, '')
-      const inboxSlug = parts[1]
-      if (!(await isOrgMember(orgId, ctx))) return false
-      // `none` (residual null-inbox threads) is admin-only — the read path
-      // treats those threads as admin+assignee only (mail-permissions
-      // decision #2), so broadcasting their subjects org-wide would leak.
-      // Phase 3 renames the channel; this flip aligns Phase 2.
-      if (inboxSlug === 'none') {
-        try {
-          const { getOrgCache } = await import('../cache')
-          const roleMap = await getOrgCache().get(orgId, 'memberRoleMap')
-          const role = roleMap[ctx.session!.userId]
-          return role === 'OWNER' || role === 'ADMIN'
-        } catch {
-          return DEV
-        }
-      }
+      if (!ctx.session) return false
+      // Un-suffixed legacy keys don't parse and never authorize.
+      const parsed = parseInboxRoomKey(key)
+      if (!parsed) return false
+      const { organizationId: orgId, inboxSlug, lens } = parsed
       try {
-        const inboxService = new InboxService(database, orgId, ctx.session!.userId)
-        const allowed = await inboxService.hasUserAccess(
-          toRecordId('inbox', inboxSlug),
-          ctx.session!.userId
-        )
-        return allowed || DEV
+        const { getCachedUserMailVisibility, getOrgCache } = await import('../cache')
+        const roleMap = await getOrgCache().get(orgId, 'memberRoleMap')
+        if (!roleMap[ctx.session.userId]) return false
+        const viewer = await getCachedUserMailVisibility(ctx.session.userId, orgId)
+        // `none` (residual null-inbox threads) is admin-only — the read path
+        // treats those threads as admin+assignee only (decision #2), so
+        // broadcasting their subjects org-wide would leak. Published at
+        // `full` only.
+        if (inboxSlug === 'none') return viewer.isAdmin
+        const myLens = inboxLensFor(viewer, inboxSlug)
+        return myLens !== 'none' && satisfiesLens(myLens, lens)
       } catch {
-        return DEV
+        return false
       }
     },
   },
@@ -143,19 +145,29 @@ const REGISTRY: RoomDef[] = [
   },
   // Chat thread (admin view): `thread-{threadId}`
   //
-  // Requires membership of the thread's owning org — without this any
-  // authenticated user of any org could subscribe to any thread channel.
-  // Phase 3 of the mail-permissions plan tightens this to
-  // `effectiveLens >= metadata`; org membership is the floor.
+  // Requires membership of the thread's owning org AND `effectiveLens >=
+  // metadata` on the thread (mail-permissions §6.5) — without the org check
+  // any authenticated user of any org could subscribe to any thread channel;
+  // without the lens check a `none` viewer would stream chat transcripts.
+  // Fails closed.
   {
     kind: 'plain',
     match: (k) => k.startsWith('thread-'),
     authorize: async (key, ctx) => {
       if (!ctx.session) return false
       const threadId = key.slice('thread-'.length)
-      const orgId = await getThreadOrgId(threadId)
-      if (!orgId) return DEV
-      return isOrgMember(orgId, ctx)
+      try {
+        const orgId = await getThreadOrgId(threadId)
+        if (!orgId) return false
+        const { getCachedUserMailVisibility, getOrgCache } = await import('../cache')
+        const roleMap = await getOrgCache().get(orgId, 'memberRoleMap')
+        if (!roleMap[ctx.session.userId]) return false
+        const viewer = await getCachedUserMailVisibility(ctx.session.userId, orgId)
+        const lens = await getThreadLens(database, orgId, viewer, threadId)
+        return satisfiesLens(lens, 'metadata')
+      } catch {
+        return false
+      }
     },
   },
   // Visitor chat session (widget-side): `chat-{sessionId}`.

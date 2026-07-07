@@ -44,12 +44,12 @@ export async function onCacheEvent(
   // (§10.1): whenever an event touches `userMailVisibility`, the affected
   // users' counter hashes are stale too. Epoch bump for broadcasts (lazy
   // reconcile on next read), targeted staleness for specific users.
-  if (
-    context.orgId &&
+  const touchesMailVisibility =
+    !!context.orgId &&
     isMixedMapping(mapping) &&
     'user' in mapping &&
-    mapping.user?.includes('userMailVisibility')
-  ) {
+    !!mapping.user?.includes('userMailVisibility')
+  if (touchesMailVisibility && context.orgId) {
     const orgId = context.orgId
     const { bumpMailCountsEpoch, markMailCountsStale } = await import('../threads/mail-counts')
     if (context.broadcastUserKeys) {
@@ -98,6 +98,32 @@ export async function onCacheEvent(
     }
 
     await Promise.all(promises)
+  }
+
+  // Realtime nudge (mail-permissions §6.1): whenever an event reshaped
+  // `userMailVisibility`, tell the affected live clients so they refetch
+  // `inbox.myLenses` and re-derive their per-lens channel subscriptions.
+  // AFTER the invalidations above, so the refetch reads fresh data.
+  // Fire-and-forget — a Pusher hiccup must never fail the mutation.
+  if (touchesMailVisibility && context.orgId) {
+    const orgId = context.orgId
+    void (async () => {
+      // Lazy import — the realtime registry reads this cache module back.
+      const { getRealtimeService } = await import('../realtime')
+      const { rooms } = await import('../realtime/room-keys')
+      const realtime = getRealtimeService()
+      const payload = { organizationId: orgId }
+      if (context.broadcastUserKeys) {
+        await realtime.publish(rooms.orgPresence(orgId), 'visibility:changed', payload)
+      } else {
+        const userIds = context.userIds ?? (context.userId ? [context.userId] : [])
+        await Promise.allSettled(
+          userIds.map((userId) =>
+            realtime.publish(rooms.user(userId), 'visibility:changed', payload)
+          )
+        )
+      }
+    })().catch(() => {})
   }
 }
 

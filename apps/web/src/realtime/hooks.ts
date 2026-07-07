@@ -2,7 +2,12 @@
 
 'use client'
 
-import type { PresenceHandlers, PresenceMember, SubscribeHandlers } from '@auxx/lib/realtime/client'
+import type {
+  ChannelLens,
+  PresenceHandlers,
+  PresenceMember,
+  SubscribeHandlers,
+} from '@auxx/lib/realtime/client'
 import { rooms } from '@auxx/lib/realtime/client'
 import { useCallback, useEffect, useMemo, useRef, useSyncExternalStore } from 'react'
 import { useUser } from '~/hooks/use-user'
@@ -107,61 +112,79 @@ export function useOrgChannel(handlers?: SubscribeHandlers): boolean {
   return useRealtimeRoom(roomKey, handlers ?? {})
 }
 
+/** One per-lens inbox channel subscription request (mail-permissions §6.4). */
+export interface InboxChannelEntry {
+  /** Raw inbox UUID, or `'none'` for the residual triage channel. */
+  slug: string
+  /** The caller's lens on that inbox — subscribe to exactly this variant. */
+  lens: ChannelLens
+}
+
 /**
- * Subscribe to a single inbox channel by slug. Pass `'none'` for the
- * unassigned-triage channel. The hook refcounts subscriptions so multiple
- * components can call it safely.
+ * Subscribe to a single per-lens inbox channel. The hook refcounts
+ * subscriptions so multiple components can call it safely.
  */
 export function useInboxChannel(
-  inboxSlug: string | null | undefined,
+  entry: InboxChannelEntry | null | undefined,
   handlers?: SubscribeHandlers
 ): boolean {
   const { organizationId } = useUser()
-  const roomKey = organizationId && inboxSlug ? rooms.orgInbox(organizationId, inboxSlug) : null
+  const roomKey =
+    organizationId && entry ? rooms.orgInbox(organizationId, entry.slug, entry.lens) : null
   return useRealtimeRoom(roomKey, handlers ?? {})
 }
 
 /**
- * Subscribe to many inbox channels at once. Manages add/remove based on the
- * given slugs. Returns the set of currently-subscribed room keys for the
- * requested slugs only (filtered from the adapter's global room map).
+ * Subscribe to many per-lens inbox channels at once. Manages add/remove based
+ * on the given entries. Returns the set of currently-subscribed room keys for
+ * the requested entries only (filtered from the adapter's global room map).
  *
- * The returned set is referentially stable until either the requested slug
+ * The returned set is referentially stable until either the requested entry
  * set changes or the adapter's subscribed-room contents change for those
- * slugs — required by the `useSyncExternalStore` snapshot contract.
- *
- * Always include `'none'` in the slug set if you want unassigned-triage events.
+ * entries — required by the `useSyncExternalStore` snapshot contract.
  */
 export function useInboxChannels(
-  slugs: readonly string[],
+  entries: readonly InboxChannelEntry[],
   handlers?: SubscribeHandlers
 ): ReadonlySet<string> {
   const { organizationId } = useUser()
   const handlersRef = useRef(handlers)
   handlersRef.current = handlers
 
-  // Stable comma-joined key so the effect only re-runs when the slug set changes.
-  const slugKey = useMemo(() => [...slugs].sort().join(','), [slugs])
+  // Stable comma-joined key so the effect only re-runs when the entry set changes.
+  const entryKey = useMemo(
+    () =>
+      entries
+        .map((e) => `${e.slug}:${e.lens}`)
+        .sort()
+        .join(','),
+    [entries]
+  )
 
   useEffect(() => {
-    if (!organizationId || !slugKey) return
-    const list = slugKey.split(',')
-    const subs = list.map((slug) =>
-      realtimeAdapter.subscribe(rooms.orgInbox(organizationId, slug), {
+    if (!organizationId || !entryKey) return
+    const subs = entryKey.split(',').map((pair) => {
+      const [slug, lens] = pair.split(':')
+      return realtimeAdapter.subscribe(rooms.orgInbox(organizationId, slug, lens as ChannelLens), {
         onEvent: (event, payload) => handlersRef.current?.onEvent?.(event, payload),
         onSubscribed: () => handlersRef.current?.onSubscribed?.(),
       })
-    )
+    })
     return () => {
       for (const s of subs) s.unsubscribe()
     }
-  }, [organizationId, slugKey])
+  }, [organizationId, entryKey])
 
   // Set of room keys we care about for this hook instance.
   const requestedKeys = useMemo<ReadonlySet<string>>(() => {
-    if (!organizationId || !slugKey) return EMPTY_ROOM_SET
-    return new Set(slugKey.split(',').map((slug) => rooms.orgInbox(organizationId, slug)))
-  }, [organizationId, slugKey])
+    if (!organizationId || !entryKey) return EMPTY_ROOM_SET
+    return new Set(
+      entryKey.split(',').map((pair) => {
+        const [slug, lens] = pair.split(':')
+        return rooms.orgInbox(organizationId, slug, lens as ChannelLens)
+      })
+    )
+  }, [organizationId, entryKey])
 
   // Cache the last returned snapshot so identity stays stable until the
   // filtered membership actually changes. `useSyncExternalStore` requires the

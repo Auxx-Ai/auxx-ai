@@ -34,16 +34,22 @@ export async function deleteMessagesByExternalIds(
   const messageIds = messages.map((m) => m.id)
   const affectedThreadIds = [...new Set(messages.map((m) => m.threadId).filter(Boolean))]
 
-  // Capture inboxIds before delete so we can route realtime events.
+  // Capture inboxIds + assignees before delete so we can route realtime events.
   const threadInboxRows = affectedThreadIds.length
     ? await ctx.db
-        .select({ id: schema.Thread.id, inboxId: schema.Thread.inboxId })
+        .select({
+          id: schema.Thread.id,
+          inboxId: schema.Thread.inboxId,
+          assigneeId: schema.Thread.assigneeId,
+        })
         .from(schema.Thread)
         .where(inArray(schema.Thread.id, affectedThreadIds as string[]))
     : []
   const inboxIdByThread = new Map<string, string | null>()
+  const assigneeIdByThread = new Map<string, string | null>()
   for (const row of threadInboxRows) {
     inboxIdByThread.set(row.id, row.inboxId ?? null)
+    assigneeIdByThread.set(row.id, row.assigneeId ?? null)
   }
 
   await ctx.db.delete(schema.Message).where(inArray(schema.Message.id, messageIds))
@@ -75,6 +81,7 @@ export async function deleteMessagesByExternalIds(
           messageId: msg.id,
           threadId: msg.threadId,
           inboxId: inboxIdByThread.get(msg.threadId) ?? null,
+          assigneeId: assigneeIdByThread.get(msg.threadId) ?? null,
         },
         { excludeSocketId: ctx.socketId }
       )
@@ -100,7 +107,7 @@ export async function deleteMessagesByExternalIds(
         await publishThreadDeleted(
           realtime,
           ctx.organizationId,
-          { threadId, inboxId },
+          { threadId, inboxId, assigneeId: assigneeIdByThread.get(threadId) ?? null },
           { excludeSocketId: ctx.socketId }
         )
       }

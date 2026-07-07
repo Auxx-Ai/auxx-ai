@@ -363,7 +363,7 @@ export interface MessageDeletedEvent {
   }
 }
 
-/** Participant metadata changed (org channel). */
+/** Participant metadata changed (the triggering thread's inbox channels). */
 export interface ParticipantUpdatedEvent {
   event: 'participant:updated'
   data: {
@@ -403,6 +403,19 @@ export interface InboxSyncCompletedEvent {
 export interface CountsChangedEvent {
   event: 'counts:changed'
   data: { userId: string }
+}
+
+/**
+ * The viewer's mail visibility changed — a grant was added/revoked, an inbox
+ * default lens moved, or membership/role changed (mail-permissions §6.1).
+ * Published on the affected `rooms.user` channels (targeted invalidations) or
+ * the org presence channel (broadcast). Refresh signal only: the client
+ * refetches `inbox.myLenses`, re-derives its per-lens channel subscriptions,
+ * and invalidates thread lists + counts.
+ */
+export interface VisibilityChangedEvent {
+  event: 'visibility:changed'
+  data: { organizationId: string }
 }
 
 /** Union of all mail sync events. */

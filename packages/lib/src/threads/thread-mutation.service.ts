@@ -259,7 +259,11 @@ export class ThreadMutationService {
         .where(
           and(eq(schema.Thread.id, threadId), eq(schema.Thread.organizationId, this.organizationId))
         )
-        .returning({ id: schema.Thread.id, inboxId: schema.Thread.inboxId })
+        .returning({
+          id: schema.Thread.id,
+          inboxId: schema.Thread.inboxId,
+          assigneeId: schema.Thread.assigneeId,
+        })
 
       if (result.length === 0) {
         throw new Error(`Thread ${threadId} not found`)
@@ -291,6 +295,7 @@ export class ThreadMutationService {
             threadId,
             inboxId: result[0].inboxId ?? null,
             previousInboxId: previous?.inboxId ?? null,
+            assigneeId: result[0].assigneeId ?? null,
             patch,
           },
           { excludeSocketId: this.socketId }
@@ -560,7 +565,11 @@ export class ThreadMutationService {
             eq(schema.Thread.organizationId, this.organizationId)
           )
         )
-        .returning({ id: schema.Thread.id, inboxId: schema.Thread.inboxId })
+        .returning({
+          id: schema.Thread.id,
+          inboxId: schema.Thread.inboxId,
+          assigneeId: schema.Thread.assigneeId,
+        })
 
       const patch: Partial<ThreadMeta> = {}
       if ('status' in dbUpdates) patch.status = dbUpdates.status
@@ -587,6 +596,7 @@ export class ThreadMutationService {
                 threadId: row.id,
                 inboxId: row.inboxId ?? null,
                 previousInboxId: prevInboxIdById.get(row.id) ?? null,
+                assigneeId: row.assigneeId ?? null,
                 patch,
               },
               { excludeSocketId: this.socketId }
@@ -976,7 +986,11 @@ export class ThreadMutationService {
         .where(
           and(eq(schema.Thread.id, threadId), eq(schema.Thread.organizationId, this.organizationId))
         )
-        .returning({ id: schema.Thread.id, inboxId: schema.Thread.inboxId })
+        .returning({
+          id: schema.Thread.id,
+          inboxId: schema.Thread.inboxId,
+          assigneeId: schema.Thread.assigneeId,
+        })
 
       if (result.length === 0) {
         logger.error('Thread not found for permanent deletion.', { threadId })
@@ -986,7 +1000,11 @@ export class ThreadMutationService {
       await publishThreadDeleted(
         getRealtimeService(),
         this.organizationId,
-        { threadId, inboxId: result[0].inboxId ?? null },
+        {
+          threadId,
+          inboxId: result[0].inboxId ?? null,
+          assigneeId: result[0].assigneeId ?? null,
+        },
         { excludeSocketId: this.socketId }
       )
       await this.markCountsStale()
@@ -1025,7 +1043,11 @@ export class ThreadMutationService {
             eq(schema.Thread.organizationId, this.organizationId)
           )
         )
-        .returning({ id: schema.Thread.id, inboxId: schema.Thread.inboxId })
+        .returning({
+          id: schema.Thread.id,
+          inboxId: schema.Thread.inboxId,
+          assigneeId: schema.Thread.assigneeId,
+        })
 
       logger.info('Threads permanently deleted in bulk', {
         requestedCount: threadIds.length,
@@ -1038,7 +1060,7 @@ export class ThreadMutationService {
           publishThreadDeleted(
             realtime,
             this.organizationId,
-            { threadId: row.id, inboxId: row.inboxId ?? null },
+            { threadId: row.id, inboxId: row.inboxId ?? null, assigneeId: row.assigneeId ?? null },
             { excludeSocketId: this.socketId }
           )
         )

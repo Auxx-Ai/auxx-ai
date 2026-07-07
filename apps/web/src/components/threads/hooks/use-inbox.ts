@@ -1,9 +1,11 @@
 // apps/web/src/components/threads/hooks/use-inbox.ts
 
+import type { ChannelLens } from '@auxx/lib/realtime/client'
 import type { RecordId } from '@auxx/types'
 import { useMemo } from 'react'
 import { type FieldInfo, useAllRecords } from '~/components/resources/hooks/use-all-records'
 import type { RecordMeta } from '~/components/resources/store/record-store'
+import { useMyInboxLenses } from './use-my-inbox-lenses'
 
 /**
  * Inbox record type from useAllRecords.
@@ -30,6 +32,13 @@ export interface InboxItem {
   color?: string | null
   status?: 'ACTIVE' | 'ARCHIVED' | 'PAUSED'
   visibility?: 'org_members' | 'private' | 'custom'
+  /**
+   * The viewer's effective lens on this inbox (mail-permissions §6.4).
+   * Undefined while `inbox.myLenses` is loading; never `'none'` — such
+   * inboxes still render (the record itself is org-visible), their threads
+   * simply never load.
+   */
+  myLens?: ChannelLens
 }
 
 /**
@@ -60,6 +69,7 @@ export function useInboxes(): UseInboxesResult {
   const { records, fields, isLoading, error, refresh } = useAllRecords<InboxRecord>({
     entityDefinitionId: 'inbox',
   })
+  const { lenses } = useMyInboxLenses()
 
   // Transform records to simplified inbox items
   const { inboxes, inboxMap } = useMemo(() => {
@@ -75,13 +85,14 @@ export function useInboxes(): UseInboxesResult {
       color: record.fieldValues?.inbox_color ?? null,
       status: record.fieldValues?.inbox_status,
       visibility: record.fieldValues?.inbox_visibility,
+      myLens: lenses[record.id],
     }))
 
     // Key map by recordId for direct lookup (thread.inboxId is now RecordId)
     const map = new Map<RecordId, InboxItem>(items.map((item) => [item.recordId, item]))
 
     return { inboxes: items, inboxMap: map }
-  }, [records])
+  }, [records, lenses])
 
   return {
     inboxes,
