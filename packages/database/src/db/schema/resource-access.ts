@@ -82,6 +82,13 @@ export const ResourceAccess = pgTable(
     /** Permission level granted */
     permission: text().notNull().$type<ResourcePermission>(),
 
+    /**
+     * Visibility lens for mail grants (mail-permissions §2.1). Meaningful only
+     * when `permission = 'view'`; `null` on `edit`/`admin` (full implied) and
+     * on non-mail resources. Existing `view` rows backfill to `'full'`.
+     */
+    lens: text().$type<'metadata' | 'subject' | 'full'>(),
+
     // ─────────────────────────────────────────────────────────────────────────
     // AUDIT
     // ─────────────────────────────────────────────────────────────────────────

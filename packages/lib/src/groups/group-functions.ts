@@ -101,7 +101,8 @@ export async function deleteGroup(ctx: GroupContext, groupId: string): Promise<v
   // Cascade deletes handle members and permissions
   await db.delete(schema.EntityInstance).where(eq(schema.EntityInstance.id, groupId))
 
-  await onCacheEvent('group.deleted', { orgId: ctx.organizationId })
+  // Group grants stop resolving for every former member — fan out user keys.
+  await onCacheEvent('group.deleted', { orgId: ctx.organizationId, broadcastUserKeys: true })
 }
 
 /**
@@ -173,6 +174,20 @@ export async function listAccessibleGroups(
 // ============================================================================
 
 /**
+ * User-key invalidation target for a membership edit: user members are
+ * targeted directly; any non-user member (nested group/entity) falls back to
+ * the org-wide fan-out since the affected users can't be enumerated cheaply.
+ */
+function memberInvalidationTarget(
+  members: Array<{ type: MemberType; id: string }>
+): { userIds: string[] } | { broadcastUserKeys: true } {
+  if (members.every((m) => m.type === MemberType.user)) {
+    return { userIds: members.map((m) => m.id) }
+  }
+  return { broadcastUserKeys: true }
+}
+
+/**
  * Add members to a group
  */
 export async function addMembers(
@@ -210,7 +225,10 @@ export async function addMembers(
   // Update member count
   await updateMemberCount(ctx, groupId)
 
-  await onCacheEvent('group.members.changed', { orgId: ctx.organizationId })
+  await onCacheEvent('group.members.changed', {
+    orgId: ctx.organizationId,
+    ...memberInvalidationTarget(members),
+  })
 
   return {
     added: result.length,
@@ -248,7 +266,10 @@ export async function removeMembers(
 
   await updateMemberCount(ctx, groupId)
 
-  await onCacheEvent('group.members.changed', { orgId: ctx.organizationId })
+  await onCacheEvent('group.members.changed', {
+    orgId: ctx.organizationId,
+    ...memberInvalidationTarget(members),
+  })
 
   return result.length
 }

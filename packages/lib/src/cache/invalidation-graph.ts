@@ -66,9 +66,18 @@ export const INVALIDATION_GRAPH: Record<string, InvalidationMapping> = {
 
   'group.created': ['groups'],
   'group.updated': ['groups'],
-  // Deleting a group cascade-deletes its EntityGroupMember rows
-  'group.deleted': ['groups', 'groupMembers'],
-  'group.members.changed': ['groups', 'groupMembers'],
+  // Deleting a group cascade-deletes its EntityGroupMember rows — group grants
+  // stop resolving for its members, so both visibility caches recompute.
+  'group.deleted': {
+    org: ['groups', 'groupMembers', 'mailGrantIndex'],
+    user: ['userMailVisibility'],
+  },
+  // Emit sites pass the affected `userIds` (or broadcast for non-user member
+  // edits) so the per-user visibility contexts recompute.
+  'group.members.changed': {
+    org: ['groups', 'groupMembers', 'mailGrantIndex'],
+    user: ['userMailVisibility'],
+  },
 
   'agent.created': ['agents'],
   'agent.updated': ['agents'],
@@ -79,9 +88,11 @@ export const INVALIDATION_GRAPH: Record<string, InvalidationMapping> = {
   // runs (the projection joins `activeVersionId`). See phase-4-wiring.md §4.4.
   'procedure.updated': ['agents'],
 
-  'inbox.created': ['inboxes'],
-  'inbox.updated': ['inboxes'],
-  'inbox.deleted': ['inboxes'],
+  // Inbox floors (defaultLens) feed every member's visibility context — emit
+  // sites broadcast user keys (org-wide fan-out).
+  'inbox.created': { org: ['inboxes'], user: ['userMailVisibility'] },
+  'inbox.updated': { org: ['inboxes'], user: ['userMailVisibility'] },
+  'inbox.deleted': { org: ['inboxes'], user: ['userMailVisibility'] },
 
   // Record-rule lifecycle events
   'record-rule.changed': ['recordRules'],
@@ -124,20 +135,26 @@ export const INVALIDATION_GRAPH: Record<string, InvalidationMapping> = {
 
   // ── Mixed events (org + user keys) ──
   'member.added': {
-    user: ['userMemberships'],
-    org: ['members', 'memberRoleMap', 'overages'],
+    user: ['userMemberships', 'userMailVisibility'],
+    org: ['members', 'memberRoleMap', 'overages', 'mailGrantIndex'],
   },
   'member.removed': {
-    user: ['userMemberships'],
-    org: ['members', 'memberRoleMap', 'overages'],
+    user: ['userMemberships', 'userMailVisibility'],
+    org: ['members', 'memberRoleMap', 'overages', 'mailGrantIndex'],
   },
   'member.role.changed': {
-    user: ['userMemberships'],
+    user: ['userMemberships', 'userMailVisibility'],
     org: ['members', 'memberRoleMap'],
   },
   // Chat-duty toggle (Phase 4c) — only the cached `members` row changes
   // (roles untouched), so we keep the invalidation tight.
   'member.chat-duty.changed': ['members'],
+
+  // ── Mail visibility (mail-permissions plan) ──
+  // Emitted by every ResourceAccess grant/revoke/set mutation. User grants
+  // target a single user; group/role/team grants fan out org-wide
+  // (`broadcastUserKeys` at the emit site).
+  'resource-access.changed': { user: ['userMailVisibility'], org: ['mailGrantIndex'] },
 
   // ── Settings events ──
   'org.settings.changed': { org: ['orgSettings'], user: ['userSettings'] },

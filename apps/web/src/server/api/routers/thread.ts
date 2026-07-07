@@ -2,6 +2,7 @@
 
 import { schema } from '@auxx/database'
 import { IdentifierType } from '@auxx/database/enums'
+import { getCachedUserMailVisibility } from '@auxx/lib/cache'
 import { conditionGroupsSchema } from '@auxx/lib/conditions'
 import { DraftService } from '@auxx/lib/drafts'
 import { getUserOrganizationId } from '@auxx/lib/email' // Adjust import path if needed
@@ -15,9 +16,11 @@ import {
   updateScheduledMessageStatus,
 } from '@auxx/lib/mail-schedule'
 import { MessageSenderService } from '@auxx/lib/messages'
+import type { UserMailVisibility } from '@auxx/lib/permissions/visibility'
 import { buildPlaceholderContextForThread, resolvePlaceholdersInHtml } from '@auxx/lib/placeholders'
 import { ProviderRegistryService } from '@auxx/lib/providers'
 import {
+  canLinkThread,
   getMailCounts,
   type ListThreadIdsInput,
   linkEntityToThread,
@@ -75,19 +78,21 @@ const SendMessageInputSchema = z.object({
 // --- Helper Functions ---
 /**
  * Gets userId, organizationId, and instantiates services scoped to the org.
- * Updated to use new modular service architecture.
+ * Loads the caller's cached mail-visibility context once per request — every
+ * service reads through that viewer (mail-permissions §5.4).
  * Throws TRPCError if organizationId is not found.
  */
-const getServiceDependencies = (
+const getServiceDependencies = async (
   ctx: any
-): {
+): Promise<{
   threadQuery: ThreadQueryService
   threadMutation: ThreadMutationService
   messageSender: MessageSenderService
+  viewer: UserMailVisibility
   organizationId: string
   userId: string
   socketId: string | undefined
-} => {
+}> => {
   const userId = ctx.session.user.id as string
   const organizationId = getUserOrganizationId(ctx.session)
   if (!organizationId) {
@@ -96,16 +101,24 @@ const getServiceDependencies = (
   }
   // Realtime self-echo suppression — see plans/realtime/mail/plan.md §2.4.
   const socketId = ctx.headers?.get?.('x-realtime-socket-id') ?? undefined
+  const viewer = await getCachedUserMailVisibility(userId, organizationId)
   // Instantiate new modular services
   const providerRegistry = new ProviderRegistryService(organizationId)
-  const messageSender = new MessageSenderService(organizationId, providerRegistry, ctx.db, socketId)
+  const messageSender = new MessageSenderService(
+    organizationId,
+    providerRegistry,
+    ctx.db,
+    socketId,
+    viewer
+  )
   // New specialized services
-  const threadQuery = new ThreadQueryService(organizationId, ctx.db)
-  const threadMutation = new ThreadMutationService(organizationId, ctx.db, socketId, userId)
+  const threadQuery = new ThreadQueryService(organizationId, ctx.db, viewer)
+  const threadMutation = new ThreadMutationService(organizationId, ctx.db, socketId, userId, viewer)
   return {
     threadQuery,
     threadMutation,
     messageSender,
+    viewer,
     organizationId,
     userId,
     socketId,
@@ -166,7 +179,7 @@ export const threadRouter = createTRPCRouter({
       })
     )
     .query(async ({ ctx, input }) => {
-      const { threadQuery, organizationId, userId } = getServiceDependencies(ctx)
+      const { threadQuery, organizationId, userId } = await getServiceDependencies(ctx)
 
       const serviceInput: ListThreadIdsInput = {
         filter: input.filter,
@@ -199,7 +212,7 @@ export const threadRouter = createTRPCRouter({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const { threadQuery, organizationId, userId } = getServiceDependencies(ctx)
+      const { threadQuery, organizationId, userId } = await getServiceDependencies(ctx)
 
       try {
         logger.debug('Calling threadQuery.getThreadMetaBatch', { count: input.ids.length })
@@ -222,7 +235,7 @@ export const threadRouter = createTRPCRouter({
     .use(notDemo('send emails'))
     .mutation(async ({ ctx, input }) => {
       try {
-        const { messageSender, organizationId, userId } = getServiceDependencies(ctx)
+        const { messageSender, organizationId, userId } = await getServiceDependencies(ctx)
         const {
           integrationId,
           threadId,
@@ -539,7 +552,7 @@ export const threadRouter = createTRPCRouter({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const { threadMutation, organizationId, userId } = getServiceDependencies(ctx)
+      const { threadMutation, organizationId, userId } = await getServiceDependencies(ctx)
       try {
         logger.info('API: Bulk tagging threads', {
           threadCount: input.recordIds.length,
@@ -592,7 +605,7 @@ export const threadRouter = createTRPCRouter({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const { threadMutation, organizationId, userId } = getServiceDependencies(ctx)
+      const { threadMutation, organizationId, userId } = await getServiceDependencies(ctx)
       try {
         logger.info('API: Unified thread update', {
           recordId: input.recordId,
@@ -631,7 +644,7 @@ export const threadRouter = createTRPCRouter({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const { threadMutation, organizationId, userId } = getServiceDependencies(ctx)
+      const { threadMutation, organizationId, userId } = await getServiceDependencies(ctx)
       try {
         logger.info('API: Unified bulk thread update', {
           count: input.recordIds.length,
@@ -662,7 +675,7 @@ export const threadRouter = createTRPCRouter({
   remove: protectedProcedure
     .input(z.object({ recordId: recordIdSchema }))
     .mutation(async ({ ctx, input }) => {
-      const { threadMutation, organizationId, userId } = getServiceDependencies(ctx)
+      const { threadMutation, organizationId, userId } = await getServiceDependencies(ctx)
       try {
         logger.warn('API: Unified thread removal (permanent delete)', {
           recordId: input.recordId,
@@ -691,7 +704,7 @@ export const threadRouter = createTRPCRouter({
   removeBulk: protectedProcedure
     .input(z.object({ recordIds: z.array(recordIdSchema) }))
     .mutation(async ({ ctx, input }) => {
-      const { threadMutation, organizationId, userId } = getServiceDependencies(ctx)
+      const { threadMutation, organizationId, userId } = await getServiceDependencies(ctx)
       try {
         logger.warn('API: Unified bulk thread removal (permanent delete)', {
           count: input.recordIds.length,
@@ -721,7 +734,7 @@ export const threadRouter = createTRPCRouter({
   unmergeBatch: protectedProcedure
     .input(z.object({ batchId: z.string() }))
     .mutation(async ({ ctx, input }) => {
-      const { organizationId, userId } = getServiceDependencies(ctx)
+      const { organizationId, userId } = await getServiceDependencies(ctx)
       const service = new ThreadMergeService(ctx.db, organizationId, userId)
       try {
         await service.unmergeBatch(input.batchId, userId)
@@ -756,7 +769,8 @@ export const threadRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const { userId, organizationId } = ctx.session
       const socketId = ctx.headers?.get?.('x-realtime-socket-id') ?? undefined
-      const unreadService = new UnreadService(organizationId, userId, undefined, socketId)
+      const viewer = await getCachedUserMailVisibility(userId, organizationId)
+      const unreadService = new UnreadService(organizationId, userId, viewer, socketId)
       await unreadService.setReadStatus(input.threadId, input.isRead)
     }),
   /**
@@ -766,7 +780,7 @@ export const threadRouter = createTRPCRouter({
   retrySendMessage: protectedProcedure
     .input(z.object({ messageId: z.string() }))
     .mutation(async ({ ctx, input }) => {
-      const { messageSender, organizationId, userId } = getServiceDependencies(ctx)
+      const { messageSender, organizationId, userId } = await getServiceDependencies(ctx)
       try {
         // Retry isn't meaningful for chat — there's no external provider state
         // to reconcile, and the realtime publish is fire-and-forget on send.
@@ -847,7 +861,12 @@ export const threadRouter = createTRPCRouter({
   linkToTicket: protectedProcedure
     .input(z.object({ threadId: z.string(), ticketId: z.string() }))
     .mutation(async ({ ctx, input }) => {
-      const { organizationId, userId } = getServiceDependencies(ctx)
+      const { organizationId, userId, viewer } = await getServiceDependencies(ctx)
+
+      // §7: linking requires `full` lens; invisible reads as nonexistent.
+      if (!(await canLinkThread(ctx.db, organizationId, viewer, input.threadId))) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Thread not found' })
+      }
 
       try {
         await linkEntityToThread({
@@ -890,7 +909,12 @@ export const threadRouter = createTRPCRouter({
   takeOver: protectedProcedure
     .input(z.object({ threadId: z.string() }))
     .mutation(async ({ ctx, input }) => {
-      const { organizationId, userId } = getServiceDependencies(ctx)
+      const { organizationId, userId, viewer } = await getServiceDependencies(ctx)
+      // §7: take-over is self-assignment — a sub-`full` viewer must not be
+      // able to raise their own lens through it.
+      if (!(await canLinkThread(ctx.db, organizationId, viewer, input.threadId))) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Thread not found' })
+      }
       const result = await takeOverThread({
         db: ctx.db,
         threadId: input.threadId,
@@ -910,7 +934,10 @@ export const threadRouter = createTRPCRouter({
   returnToAi: protectedProcedure
     .input(z.object({ threadId: z.string() }))
     .mutation(async ({ ctx, input }) => {
-      const { organizationId, userId } = getServiceDependencies(ctx)
+      const { organizationId, userId, viewer } = await getServiceDependencies(ctx)
+      if (!(await canLinkThread(ctx.db, organizationId, viewer, input.threadId))) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Thread not found' })
+      }
       const result = await returnThreadToAi({
         db: ctx.db,
         threadId: input.threadId,
@@ -926,21 +953,11 @@ export const threadRouter = createTRPCRouter({
   unlinkFromTicket: protectedProcedure
     .input(z.object({ threadId: z.string() }))
     .mutation(async ({ ctx, input }) => {
-      const { organizationId, userId } = getServiceDependencies(ctx)
+      const { organizationId, userId, viewer } = await getServiceDependencies(ctx)
 
-      // Verify thread belongs to org
-      const [thread] = await ctx.db
-        .select({ id: schema.Thread.id })
-        .from(schema.Thread)
-        .where(
-          and(
-            eq(schema.Thread.id, input.threadId),
-            eq(schema.Thread.organizationId, organizationId)
-          )
-        )
-        .limit(1)
-
-      if (!thread) {
+      // §7 gate replaces the bare org-scope existence check: unlinking
+      // requires `full` lens; invisible reads as nonexistent.
+      if (!(await canLinkThread(ctx.db, organizationId, viewer, input.threadId))) {
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Thread not found' })
       }
 
@@ -968,7 +985,7 @@ export const threadRouter = createTRPCRouter({
   listEvents: protectedProcedure
     .input(z.object({ threadId: z.string() }))
     .query(async ({ ctx, input }) => {
-      const { organizationId } = getServiceDependencies(ctx)
+      const { organizationId } = await getServiceDependencies(ctx)
       const rows = await ctx.db
         .select({
           id: schema.Event.id,

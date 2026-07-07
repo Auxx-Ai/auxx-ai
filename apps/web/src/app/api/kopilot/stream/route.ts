@@ -39,7 +39,8 @@ import { createToolDepsFactory } from '@auxx/lib/ai/kopilot/capabilities'
 import { createMcpCapabilities } from '@auxx/lib/ai/mcp'
 import { getCachedAgentById } from '@auxx/lib/cache'
 import { ForbiddenError } from '@auxx/lib/errors'
-import { FeatureKey, FeaturePermissionService, PermissionService } from '@auxx/lib/permissions'
+import { isAdminOrOwner } from '@auxx/lib/members'
+import { FeatureKey, FeaturePermissionService } from '@auxx/lib/permissions'
 import { docToText } from '@auxx/lib/tiptap'
 import { createScopedLogger } from '@auxx/logger'
 import {
@@ -674,7 +675,7 @@ async function runInProcessPath(params: {
   // for master/builder sessions. Per-request — nothing here is persisted.
   let agentConfigSource: 'active' | 'draft' = 'active'
   if (params.useDraft && !isBuilder && agentId) {
-    const isAdmin = await new PermissionService(organizationId, userId, db).isAdmin()
+    const isAdmin = await isAdminOrOwner(organizationId, userId, db)
     if (isAdmin) agentConfigSource = 'draft'
   }
   const agentConfig = await resolveAgentConfig(organizationId, isBuilder ? null : agentId, db, {

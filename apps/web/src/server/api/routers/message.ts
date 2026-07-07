@@ -1,6 +1,8 @@
 // apps/web/src/server/api/routers/message.ts
 
+import { getCachedUserMailVisibility } from '@auxx/lib/cache'
 import { getUserOrganizationId } from '@auxx/lib/email'
+import { NotFoundError } from '@auxx/lib/errors'
 import { MessageQueryService } from '@auxx/lib/messages'
 import { createScopedLogger } from '@auxx/logger'
 import { TRPCError } from '@trpc/server'
@@ -8,6 +10,22 @@ import { z } from 'zod'
 import { createTRPCRouter, protectedProcedure } from '~/server/api/trpc'
 
 const logger = createScopedLogger('message-router')
+
+/** Resolves the org + the caller's mail-visibility context (§5.4). */
+const getMessageQueryService = async (ctx: any) => {
+  const organizationId = getUserOrganizationId(ctx.session)
+  if (!organizationId) {
+    throw new TRPCError({
+      code: 'UNAUTHORIZED',
+      message: 'User organization context not found.',
+    })
+  }
+  const viewer = await getCachedUserMailVisibility(ctx.session.user.id as string, organizationId)
+  return {
+    organizationId,
+    messageQuery: new MessageQueryService(organizationId, ctx.db, viewer),
+  }
+}
 
 /**
  * Router for message query operations.
@@ -25,15 +43,7 @@ export const messageRouter = createTRPCRouter({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const organizationId = getUserOrganizationId(ctx.session)
-      if (!organizationId) {
-        throw new TRPCError({
-          code: 'UNAUTHORIZED',
-          message: 'User organization context not found.',
-        })
-      }
-
-      const messageQuery = new MessageQueryService(organizationId, ctx.db)
+      const { organizationId, messageQuery } = await getMessageQueryService(ctx)
 
       try {
         logger.debug('Fetching messages by IDs', { count: input.ids.length })
@@ -58,20 +68,15 @@ export const messageRouter = createTRPCRouter({
   listByThread: protectedProcedure
     .input(z.object({ threadId: z.string() }))
     .query(async ({ ctx, input }) => {
-      const organizationId = getUserOrganizationId(ctx.session)
-      if (!organizationId) {
-        throw new TRPCError({
-          code: 'UNAUTHORIZED',
-          message: 'User organization context not found.',
-        })
-      }
-
-      const messageQuery = new MessageQueryService(organizationId, ctx.db)
+      const { organizationId, messageQuery } = await getMessageQueryService(ctx)
 
       try {
         logger.debug('Fetching messages for thread', { threadId: input.threadId })
         return await messageQuery.getMessagesByThread(input.threadId)
       } catch (error: unknown) {
+        if (error instanceof NotFoundError) {
+          throw new TRPCError({ code: 'NOT_FOUND', message: 'Thread not found.' })
+        }
         logger.error('Failed to fetch messages for thread', {
           organizationId,
           threadId: input.threadId,

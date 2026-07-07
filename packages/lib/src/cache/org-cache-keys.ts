@@ -33,6 +33,7 @@ import type { CachedRecordRule } from '../record-rules/types'
 import type { Resource } from '../resources/registry/types'
 import type { SettingValue } from '../settings/types'
 import type { CachedChannel } from './providers/channels-provider'
+import type { MailGrantIndex } from './providers/mail-grant-index-provider'
 import type { CachedWorkflowApp } from './providers/workflow-apps-provider'
 
 /** Member info cached with joined user data */
@@ -491,6 +492,7 @@ export interface OrgCacheDataMap {
   groupMembers: Record<string, string[]> // userId → groupInstanceIds (memberType='user' edges only)
   agents: CachedAgent[] // all Agent rows (active + archived); consumers filter archivedAt
   inboxes: Inbox[]
+  mailGrantIndex: MailGrantIndex
   channels: CachedChannel[]
   overages: Overage[]
   orgSettings: Record<string, SettingValue> // key → value (org defaults only)
@@ -543,7 +545,11 @@ export const ORG_CACHE_KEY_CONFIG: Record<
   groupMembers: { prefix: 'org:group-members', ttlSeconds: ONE_DAY },
   // Read per CRUD event by agent-trigger dispatch — same rationale as workflowApps.
   agents: { prefix: 'org:agents', ttlSeconds: ONE_DAY, localTtlMs: 5_000 },
-  inboxes: { prefix: 'org:inboxes', ttlSeconds: ONE_DAY },
+  // v2: + defaultLens (mail-permissions §2.2). Bump on shape changes.
+  inboxes: { prefix: 'org:inboxes:v2', ttlSeconds: ONE_DAY },
+  // Reverse thread/contact/inbox grant index for realtime publish fanout
+  // (§3.1) + ingest count-delta audiences (§10.1). v2: + inboxes bucket.
+  mailGrantIndex: { prefix: 'org:mail-grant-index:v2', ttlSeconds: ONE_DAY },
   channels: { prefix: 'org:channels', ttlSeconds: ONE_DAY },
   overages: { prefix: 'org:overages', ttlSeconds: 900 },
   orgSettings: { prefix: 'org:settings', ttlSeconds: ONE_DAY },

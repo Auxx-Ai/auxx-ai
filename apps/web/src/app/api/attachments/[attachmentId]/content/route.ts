@@ -36,6 +36,12 @@ export async function GET(_request: NextRequest, { params }: RouteParams) {
       return new Response('Organization required', { status: 403 })
     }
 
+    // Message attachments are `full`-tier (mail-permissions §7).
+    const { canViewAttachment } = await import('../../attachment-visibility')
+    if (!(await canViewAttachment(attachmentId, session.user.id, organizationId))) {
+      return new Response('Not found', { status: 404 })
+    }
+
     const { InboundAttachmentAccessService } = await import('@auxx/lib/email')
     const attachmentAccessService = new InboundAttachmentAccessService()
 

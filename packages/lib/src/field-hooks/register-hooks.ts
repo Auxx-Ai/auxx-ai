@@ -2,6 +2,7 @@
 
 import { registerInventoryDeductionRule } from '../data-connectors/inventory-bridge-rule-action'
 import { handleRecordRulesOnFieldChange } from '../record-rules/hook-handler'
+import { invalidateInboxCacheOnFieldChange } from './post/inbox-cache-invalidation'
 import { publishFieldChangeEvent } from './post/publish-field-change-event'
 import { touchActivityOnFieldChange } from './post/touch-activity-on-field-change'
 import {
@@ -52,6 +53,12 @@ export function registerAllHooks(): void {
     touchActivityOnFieldChange,
     handleRecordRulesOnFieldChange,
   ])
+
+  // Inbox cache coherence (mail-permissions §7.1): the generic records path
+  // (form edits, Kopilot record tools, workflow CRUD) bypasses InboxService
+  // and emitted no cache events — any inbox field write now busts
+  // `org:inboxes`, and lens changes recompute every member's visibility.
+  registerEntityFieldChangeHooks('inboxes', [invalidateInboxCacheOnFieldChange])
 
   // ---------------------------------------------------------------------------
   // PRE-WRITE HOOKS

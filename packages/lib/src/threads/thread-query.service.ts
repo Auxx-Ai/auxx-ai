@@ -30,7 +30,17 @@ import {
   hasUnsupportedDraftConditions,
   isDraftsContextQuery,
 } from '../mail-query/draft-condition-builder'
+import { buildMailVisibilityPredicate } from '../mail-query/visibility-scope'
 import { MailViewService } from '../mail-views/mail-view-service'
+import type {
+  MailViewer,
+  ThreadVisibilityInput,
+  UserMailVisibility,
+} from '../permissions/visibility/context'
+import { isSystemViewer } from '../permissions/visibility/context'
+import { effectiveLensBatch } from '../permissions/visibility/effective-lens'
+import type { Lens } from '../permissions/visibility/lens'
+import { redactThreadMeta } from '../permissions/visibility/redact'
 import type {
   ChannelProvider,
   ListThreadIdsInput,
@@ -79,11 +89,13 @@ export class ThreadQueryService {
   private db: Database
   private mailViewService: MailViewService
   private readonly organizationId: string
+  private readonly viewer: MailViewer
 
-  constructor(organizationId: string, db: Database) {
+  constructor(organizationId: string, db: Database, viewer: MailViewer) {
     this.db = db
     this.organizationId = organizationId
-    this.mailViewService = new MailViewService(this.organizationId, db)
+    this.viewer = viewer
+    this.mailViewService = new MailViewService(this.organizationId, db, viewer)
   }
 
   private buildSenderSortExpression(): SQL {
@@ -358,32 +370,41 @@ export class ThreadQueryService {
 
     logger.debug('Getting thread stats', { organizationId: orgId })
 
+    // §5.1: stats only count threads the viewer can see (SYSTEM/admin skip).
+    const visibility = buildMailVisibilityPredicate(this.viewer)
+    const scoped = (extra?: SQL<unknown>) =>
+      and(
+        eq(schema.Thread.organizationId, orgId),
+        ...(visibility ? [visibility] : []),
+        ...(extra ? [extra] : [])
+      )
+
     try {
       const [total, open, archived, spam, trash] = await Promise.all([
         this.db
           .select({ count: count() })
           .from(schema.Thread)
-          .where(eq(schema.Thread.organizationId, orgId))
+          .where(scoped())
           .then((result) => result[0]?.count || 0),
         this.db
           .select({ count: count() })
           .from(schema.Thread)
-          .where(and(eq(schema.Thread.organizationId, orgId), eq(schema.Thread.status, 'OPEN')))
+          .where(scoped(eq(schema.Thread.status, 'OPEN')))
           .then((result) => result[0]?.count || 0),
         this.db
           .select({ count: count() })
           .from(schema.Thread)
-          .where(and(eq(schema.Thread.organizationId, orgId), eq(schema.Thread.status, 'ARCHIVED')))
+          .where(scoped(eq(schema.Thread.status, 'ARCHIVED')))
           .then((result) => result[0]?.count || 0),
         this.db
           .select({ count: count() })
           .from(schema.Thread)
-          .where(and(eq(schema.Thread.organizationId, orgId), eq(schema.Thread.status, 'SPAM')))
+          .where(scoped(eq(schema.Thread.status, 'SPAM')))
           .then((result) => result[0]?.count || 0),
         this.db
           .select({ count: count() })
           .from(schema.Thread)
-          .where(and(eq(schema.Thread.organizationId, orgId), eq(schema.Thread.status, 'TRASH')))
+          .where(scoped(eq(schema.Thread.status, 'TRASH')))
           .then((result) => result[0]?.count || 0),
       ])
 
@@ -433,7 +454,7 @@ export class ThreadQueryService {
 
     // All other contexts: thread-only query returning RecordIds
     // Build WHERE clause from condition groups
-    const whereCondition = buildConditionGroupsQuery(filter, this.organizationId)
+    const whereCondition = buildConditionGroupsQuery(filter, this.organizationId, this.viewer)
 
     const resolvedSort = this.resolveSortDescriptor(sort)
     const orderByExpressions = this.createOrderByFromDescriptor(resolvedSort)
@@ -487,7 +508,7 @@ export class ThreadQueryService {
     const decodedCursor = this.decodeMixedCursor(cursor)
 
     // Build thread WHERE clause (existing logic)
-    const threadWhereCondition = buildConditionGroupsQuery(filter, this.organizationId)
+    const threadWhereCondition = buildConditionGroupsQuery(filter, this.organizationId, this.viewer)
 
     // Check if standalone drafts should be included
     const includeDrafts = !hasUnsupportedDraftConditions(filter)
@@ -737,6 +758,24 @@ export class ThreadQueryService {
       },
     })
 
+    // Visibility (§5.2): evaluate the viewer's lens per thread once; `none`
+    // rows are dropped below and the rest projected through redactThreadMeta.
+    let lensByThread: Map<string, Lens> | null = null
+    if (!isSystemViewer(this.viewer)) {
+      const contactIds = await this.getParticipantContactIds(
+        threads.map((t) => t.id),
+        this.viewer
+      )
+      const inputs: ThreadVisibilityInput[] = threads.map((t) => ({
+        threadId: t.id,
+        inboxId: t.inboxId ?? null,
+        assigneeId: t.assigneeId ?? null,
+        primaryEntityInstanceId: t.primaryEntityInstanceId ?? null,
+        participantContactIds: contactIds.get(t.id) ?? [],
+      }))
+      lensByThread = effectiveLensBatch(this.viewer, inputs)
+    }
+
     // Fetch tag RecordIds via FieldValue system
     // Note: batchGetThreadTagIds returns RecordIds (from FieldValue.relatedEntityId which stores RecordIds)
     const tagIdMap = await batchGetThreadTagIds(this.db, ids, this.organizationId)
@@ -831,6 +870,10 @@ export class ThreadQueryService {
         const t = threadMap.get(id)
         if (!t) return null
 
+        // Invisible to this viewer — indistinguishable from nonexistent.
+        const lens = lensByThread ? (lensByThread.get(id) ?? 'none') : 'full'
+        if (lens === 'none') return null
+
         // Determine isUnread status
         const status = readStatusMap.get(id)
         let isUnread = true // Default: unread if no status entry
@@ -848,7 +891,7 @@ export class ThreadQueryService {
         // tagIdMap values are already RecordIds (stored in FieldValue.relatedEntityId)
         const tagIds = (tagIdMap.get(id) ?? []) as RecordId[]
 
-        return {
+        const meta = {
           id: t.id,
           subject: t.subject,
           status: t.status as ThreadStatus,
@@ -887,8 +930,44 @@ export class ThreadQueryService {
             : null,
           mergeData: (t.mergeData as ThreadMergeData | null) ?? null,
         } satisfies ThreadMeta
+
+        return redactThreadMeta(meta, lens)
       })
       .filter(Boolean) as ThreadMeta[]
+  }
+
+  /**
+   * Contact instance ids per thread from `ThreadParticipant.entityInstanceId`
+   * (§2.4) — the evaluator input for contact-derived grants. Skipped entirely
+   * when the viewer holds no contact grants.
+   */
+  private async getParticipantContactIds(
+    threadIds: string[],
+    viewer: UserMailVisibility
+  ): Promise<Map<string, string[]>> {
+    const map = new Map<string, string[]>()
+    if (threadIds.length === 0 || Object.keys(viewer.contactGrants).length === 0) return map
+
+    const rows = await this.db
+      .select({
+        threadId: schema.ThreadParticipant.threadId,
+        entityInstanceId: schema.ThreadParticipant.entityInstanceId,
+      })
+      .from(schema.ThreadParticipant)
+      .where(
+        and(
+          inArray(schema.ThreadParticipant.threadId, threadIds),
+          isNotNull(schema.ThreadParticipant.entityInstanceId)
+        )
+      )
+
+    for (const row of rows) {
+      if (!row.entityInstanceId) continue
+      const arr = map.get(row.threadId) ?? []
+      arr.push(row.entityInstanceId)
+      map.set(row.threadId, arr)
+    }
+    return map
   }
 
   /**

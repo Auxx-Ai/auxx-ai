@@ -9,6 +9,8 @@ import type { ConditionGroup } from '../conditions/types'
 import { batchGetThreadTagIds } from '../field-values/relationship-queries'
 import { createScopedLogger } from '../logger'
 import { buildConditionGroupsQuery } from '../mail-query/condition-query-builder'
+import type { MailViewer } from '../permissions/visibility/context'
+import { isSystemViewer } from '../permissions/visibility/context'
 
 const logger = createScopedLogger('mail-view-service')
 
@@ -117,6 +119,7 @@ type UpdateMailViewServiceInput = Partial<{
 export class MailViewService {
   private db: Database
   private organizationId: string
+  private viewer: MailViewer
   private enableCache: boolean
   private cacheTtl: number // in seconds
 
@@ -124,15 +127,18 @@ export class MailViewService {
    * Create a new MailViewService instance
    * @param organizationId Organization ID to scope operations to
    * @param database Optional database instance (defaults to singleton)
+   * @param viewer The mail-visibility principal thread queries evaluate against (§5)
    * @param options Optional service configuration
    */
   constructor(
     organizationId: string,
     database: Database = db,
+    viewer: MailViewer,
     options: { enableCache?: boolean; cacheTtl?: number } = {}
   ) {
     this.db = database
     this.organizationId = organizationId
+    this.viewer = viewer
     this.enableCache = options.enableCache ?? true // Enable by default
     this.cacheTtl = options.cacheTtl ?? 300 // 5 minutes default TTL
   }
@@ -759,8 +765,15 @@ export class MailViewService {
       const page = Math.max(1, pagination.page || 1)
       const pageSize = Math.max(1, Math.min(100, pagination.pageSize || 25))
 
-      // Try to get from cache (include userId to isolate currentUser substitutions)
-      const cacheKey = this.getMailViewThreadsCacheKey(mailViewId, page, pageSize, userId)
+      // Cache isolates per viewer: currentUser substitutions AND the §5.1
+      // visibility predicate both differ per user (system viewer → org-wide).
+      const viewerUserId = isSystemViewer(this.viewer) ? undefined : this.viewer.userId
+      const cacheKey = this.getMailViewThreadsCacheKey(
+        mailViewId,
+        page,
+        pageSize,
+        userId ?? viewerUserId
+      )
       const cachedResult = await this.getFromCache<{
         threads: ThreadWithRelations[]
         total: number
@@ -792,7 +805,11 @@ export class MailViewService {
       const filterGroups = resolveConditionContext(rawFilterGroups, { currentUserId: userId })
 
       // Build the WHERE condition using the condition query builder
-      const whereCondition = buildConditionGroupsQuery(filterGroups, this.organizationId)
+      const whereCondition = buildConditionGroupsQuery(
+        filterGroups,
+        this.organizationId,
+        this.viewer
+      )
 
       // Count total matches for pagination using Drizzle
       const countResult = await this.db

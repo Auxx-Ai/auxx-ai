@@ -27,6 +27,12 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       return new Response('Organization required', { status: 400 })
     }
 
+    // Message attachments are `full`-tier (mail-permissions §7).
+    const { canViewAttachment } = await import('../../attachment-visibility')
+    if (!(await canViewAttachment(attachmentId, session.user.id, organizationId))) {
+      return new Response('Not found', { status: 404 })
+    }
+
     // Use AttachmentService to get download ref (lazy import to avoid bundling sharp unnecessarily)
     const { AttachmentService } = await import('@auxx/lib/files/server')
     const attachmentService = new AttachmentService(organizationId, session.user.id)

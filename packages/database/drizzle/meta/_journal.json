@@ -1849,6 +1849,20 @@
       "when": 1783371040175,
       "tag": "0263_drop_user_inbox_unread_count",
       "breakpoints": true
+    },
+    {
+      "idx": 264,
+      "version": "7",
+      "when": 1783379205560,
+      "tag": "0264_add_thread_participant_entity_instance_id",
+      "breakpoints": true
+    },
+    {
+      "idx": 265,
+      "version": "7",
+      "when": 1783380395221,
+      "tag": "0265_add_lens_to_resource_access",
+      "breakpoints": true
     }
   ]
 }

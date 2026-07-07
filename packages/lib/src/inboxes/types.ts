@@ -1,8 +1,13 @@
 // packages/lib/src/inboxes/types.ts
 
 import type { RecordId } from '@auxx/types/resource'
+import type { Lens } from '../permissions/visibility/lens'
 
-/** Inbox visibility options */
+/**
+ * Inbox visibility options.
+ * @deprecated Superseded by `defaultLens` (mail-permissions §2.2). Kept until
+ * Phase 6 removes the legacy field; new code reads/writes `defaultLens`.
+ */
 export type InboxVisibility = 'org_members' | 'private' | 'custom'
 
 /** Inbox status options */
@@ -15,6 +20,8 @@ export interface CreateInboxInput {
   color?: string
   status?: InboxStatus
   visibility?: InboxVisibility
+  /** Org-wide visibility floor (defaults to `full` — everyone sees everything). */
+  defaultLens?: Lens
   settings?: Record<string, unknown>
 }
 
@@ -25,6 +32,7 @@ export interface UpdateInboxInput {
   color?: string
   status?: InboxStatus
   visibility?: InboxVisibility
+  defaultLens?: Lens
   settings?: Record<string, unknown>
 }
 
@@ -39,6 +47,11 @@ export interface Inbox {
   color: string
   status: InboxStatus
   visibility: InboxVisibility
+  /**
+   * Org-wide visibility floor: the lens every org member gets on this inbox
+   * (mail-permissions §2.2). Explicit grants can only raise it.
+   */
+  defaultLens: Lens
   settings: Record<string, unknown>
   organizationId: string
   createdAt: Date

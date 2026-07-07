@@ -1,7 +1,7 @@
 // apps/web/src/server/api/routers/mailView.ts
 
 import { schema } from '@auxx/database'
-import { onCacheEvent } from '@auxx/lib/cache'
+import { getCachedUserMailVisibility, onCacheEvent } from '@auxx/lib/cache'
 import { conditionGroupsSchema } from '@auxx/lib/conditions/client'
 import { MailViewService } from '@auxx/lib/mail-views'
 import { FeatureKey, FeaturePermissionService } from '@auxx/lib/permissions'
@@ -66,7 +66,11 @@ export const mailViewRouter = createTRPCRouter({
       }
     }
 
-    const mailViewService = new MailViewService(organizationId, ctx.db)
+    const mailViewService = new MailViewService(
+      organizationId,
+      ctx.db,
+      await getCachedUserMailVisibility(ctx.session.user.id, organizationId)
+    )
     const result = await mailViewService.createMailView(userId, input)
     await onCacheEvent('mail-view.changed', { orgId: organizationId, userId })
     return result
@@ -75,7 +79,11 @@ export const mailViewRouter = createTRPCRouter({
   // Get a mail view by ID
   getById: protectedProcedure.input(z.object({ id: z.string() })).query(async ({ ctx, input }) => {
     const { organizationId } = ctx.session
-    const mailViewService = new MailViewService(organizationId, ctx.db)
+    const mailViewService = new MailViewService(
+      organizationId,
+      ctx.db,
+      await getCachedUserMailVisibility(ctx.session.user.id, organizationId)
+    )
 
     const mailView = await mailViewService.getMailView(input.id)
 
@@ -90,7 +98,11 @@ export const mailViewRouter = createTRPCRouter({
   getUserMailViews: protectedProcedure.query(async ({ ctx }) => {
     const { organizationId } = ctx.session
     const userId = ctx.session.user.id
-    const mailViewService = new MailViewService(organizationId, ctx.db)
+    const mailViewService = new MailViewService(
+      organizationId,
+      ctx.db,
+      await getCachedUserMailVisibility(ctx.session.user.id, organizationId)
+    )
 
     return await mailViewService.getUserMailViews(userId)
   }),
@@ -98,7 +110,11 @@ export const mailViewRouter = createTRPCRouter({
   // Get shared mail views for the organization
   getSharedMailViews: protectedProcedure.query(async ({ ctx }) => {
     const { organizationId } = ctx.session
-    const mailViewService = new MailViewService(organizationId, ctx.db)
+    const mailViewService = new MailViewService(
+      organizationId,
+      ctx.db,
+      await getCachedUserMailVisibility(ctx.session.user.id, organizationId)
+    )
 
     return await mailViewService.getSharedMailViews()
   }),
@@ -107,7 +123,11 @@ export const mailViewRouter = createTRPCRouter({
   getAllAccessibleMailViews: protectedProcedure.query(async ({ ctx }) => {
     const { organizationId } = ctx.session
     const userId = ctx.session.user.id
-    const mailViewService = new MailViewService(organizationId, ctx.db)
+    const mailViewService = new MailViewService(
+      organizationId,
+      ctx.db,
+      await getCachedUserMailVisibility(ctx.session.user.id, organizationId)
+    )
 
     const [userViews, sharedViews] = await Promise.all([
       mailViewService.getUserMailViews(userId),
@@ -124,7 +144,11 @@ export const mailViewRouter = createTRPCRouter({
   // Update an existing mail view
   update: protectedProcedure.input(updateMailViewSchema).mutation(async ({ ctx, input }) => {
     const { organizationId } = ctx.session
-    const mailViewService = new MailViewService(organizationId, ctx.db)
+    const mailViewService = new MailViewService(
+      organizationId,
+      ctx.db,
+      await getCachedUserMailVisibility(ctx.session.user.id, organizationId)
+    )
 
     // Check if the user has access to modify this view
     const existingView = await mailViewService.getMailView(input.id)
@@ -151,7 +175,11 @@ export const mailViewRouter = createTRPCRouter({
     .input(z.object({ id: z.string() }))
     .mutation(async ({ ctx, input }) => {
       const { organizationId } = ctx.session
-      const mailViewService = new MailViewService(organizationId, ctx.db)
+      const mailViewService = new MailViewService(
+        organizationId,
+        ctx.db,
+        await getCachedUserMailVisibility(ctx.session.user.id, organizationId)
+      )
 
       // Check if the user has access to delete this view
       const existingView = await mailViewService.getMailView(input.id)
@@ -182,7 +210,11 @@ export const mailViewRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const { organizationId } = ctx.session
       const userId = ctx.session.user.id
-      const mailViewService = new MailViewService(organizationId, ctx.db)
+      const mailViewService = new MailViewService(
+        organizationId,
+        ctx.db,
+        await getCachedUserMailVisibility(ctx.session.user.id, organizationId)
+      )
 
       // Check if the user has access to this view
       const existingView = await mailViewService.getMailView(input.id)
@@ -199,7 +231,11 @@ export const mailViewRouter = createTRPCRouter({
     .input(z.object({ id: z.string() }))
     .mutation(async ({ ctx, input }) => {
       const { organizationId } = ctx.session
-      const mailViewService = new MailViewService(organizationId, ctx.db)
+      const mailViewService = new MailViewService(
+        organizationId,
+        ctx.db,
+        await getCachedUserMailVisibility(ctx.session.user.id, organizationId)
+      )
 
       // Check if the user has access to this view
       const existingView = await mailViewService.getMailView(input.id)
@@ -230,7 +266,11 @@ export const mailViewRouter = createTRPCRouter({
     )
     .query(async ({ ctx, input }) => {
       const { organizationId } = ctx.session
-      const mailViewService = new MailViewService(organizationId, ctx.db)
+      const mailViewService = new MailViewService(
+        organizationId,
+        ctx.db,
+        await getCachedUserMailVisibility(ctx.session.user.id, organizationId)
+      )
 
       // Check if the mail view exists
       const mailView = await mailViewService.getMailView(input.mailViewId)

@@ -11,8 +11,9 @@
  * `./room-keys.ts` so the browser bundle never pulls in DB code.
  */
 
-import { database } from '@auxx/database'
+import { database, Thread } from '@auxx/database'
 import { toRecordId } from '@auxx/types/resource'
+import { eq } from 'drizzle-orm'
 import { InboxService } from '../inboxes'
 import { findMemberByUser } from '../members'
 import { fromPusherChannel, type RoomKind, toPusherChannel } from './room-keys'
@@ -56,6 +57,23 @@ async function isOrgMember(orgId: string, ctx: AuthorizeCtx): Promise<boolean> {
 }
 
 /**
+ * Thread → owning org id. The mapping is immutable (a thread never changes
+ * org), so results are memoized for the process lifetime.
+ */
+const threadOrgCache = new Map<string, string>()
+async function getThreadOrgId(threadId: string): Promise<string | null> {
+  const cached = threadOrgCache.get(threadId)
+  if (cached) return cached
+  const row = await database.query.Thread.findFirst({
+    where: eq(Thread.id, threadId),
+    columns: { organizationId: true },
+  })
+  if (!row) return null
+  threadOrgCache.set(threadId, row.organizationId)
+  return row.organizationId
+}
+
+/**
  * Registry order matters — `match` is greedy, so the more-specific patterns
  * (`-inbox-`, `-events`) must come before the generic `org-` presence room.
  */
@@ -70,8 +88,20 @@ const REGISTRY: RoomDef[] = [
       const orgId = parts[0].replace(/^org-/, '')
       const inboxSlug = parts[1]
       if (!(await isOrgMember(orgId, ctx))) return false
-      // `none` (triage / unassigned) is open to all org members.
-      if (inboxSlug === 'none') return true
+      // `none` (residual null-inbox threads) is admin-only — the read path
+      // treats those threads as admin+assignee only (mail-permissions
+      // decision #2), so broadcasting their subjects org-wide would leak.
+      // Phase 3 renames the channel; this flip aligns Phase 2.
+      if (inboxSlug === 'none') {
+        try {
+          const { getOrgCache } = await import('../cache')
+          const roleMap = await getOrgCache().get(orgId, 'memberRoleMap')
+          const role = roleMap[ctx.session!.userId]
+          return role === 'OWNER' || role === 'ADMIN'
+        } catch {
+          return DEV
+        }
+      }
       try {
         const inboxService = new InboxService(database, orgId, ctx.session!.userId)
         const allowed = await inboxService.hasUserAccess(
@@ -112,10 +142,21 @@ const REGISTRY: RoomDef[] = [
     },
   },
   // Chat thread (admin view): `thread-{threadId}`
+  //
+  // Requires membership of the thread's owning org — without this any
+  // authenticated user of any org could subscribe to any thread channel.
+  // Phase 3 of the mail-permissions plan tightens this to
+  // `effectiveLens >= metadata`; org membership is the floor.
   {
     kind: 'plain',
     match: (k) => k.startsWith('thread-'),
-    authorize: (_key, ctx) => !!ctx.session,
+    authorize: async (key, ctx) => {
+      if (!ctx.session) return false
+      const threadId = key.slice('thread-'.length)
+      const orgId = await getThreadOrgId(threadId)
+      if (!orgId) return DEV
+      return isOrgMember(orgId, ctx)
+    },
   },
   // Visitor chat session (widget-side): `chat-{sessionId}`.
   //

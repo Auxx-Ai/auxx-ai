@@ -5,6 +5,11 @@ import { createScopedLogger } from '@auxx/logger'
 import { type ParticipantId, toParticipantId } from '@auxx/types'
 import { and, eq, inArray, sql } from 'drizzle-orm'
 import { getOrgChannelProviderMap } from '../channels/cache'
+import { NotFoundError } from '../errors'
+import type { MailViewer } from '../permissions/visibility/context'
+import type { Lens } from '../permissions/visibility/lens'
+import { redactMessage } from '../permissions/visibility/redact'
+import { getThreadLensBatch } from '../permissions/visibility/thread-lens'
 import { getMessageTypeFromProvider } from '../providers/type-utils'
 import { ChannelProviderType } from '../providers/types'
 import type {
@@ -23,26 +28,46 @@ const logger = createScopedLogger('message-query-service')
 export class MessageQueryService {
   private readonly organizationId: string
   private db: Database
+  private readonly viewer: MailViewer
 
   /**
    * Creates an instance of MessageQueryService.
    * @param organizationId - The ID of the organization this service operates for.
    * @param db - The Drizzle database instance.
+   * @param viewer - The mail-visibility principal reads evaluate against (§5.2).
    */
-  constructor(organizationId: string, db: Database) {
+  constructor(organizationId: string, db: Database, viewer: MailViewer) {
     this.organizationId = organizationId
     this.db = db
+    this.viewer = viewer
+  }
+
+  /** The viewer's lens on a set of threads (§5.2) — see {@link getThreadLensBatch}. */
+  private async getThreadLenses(threadIds: string[]): Promise<Map<string, Lens>> {
+    return getThreadLensBatch(this.db, this.organizationId, this.viewer, threadIds)
   }
 
   /**
    * Get all messages for a thread with full metadata.
    * Single query - no separate ID listing step.
+   *
+   * Visibility (§5.2): `none` → NotFoundError (indistinguishable from a
+   * missing thread); `metadata` → empty (messages are invisible);
+   * `subject` → envelopes with content fields blanked.
    */
   async getMessagesByThread(threadId: string): Promise<ListMessagesByThreadResult> {
     logger.debug('Fetching messages for thread', {
       organizationId: this.organizationId,
       threadId,
     })
+
+    const threadLens = (await this.getThreadLenses([threadId])).get(threadId) ?? 'none'
+    if (threadLens === 'none') {
+      throw new NotFoundError('Thread not found')
+    }
+    if (threadLens === 'metadata') {
+      return { messages: [], total: 0 }
+    }
 
     const providerMap = await getOrgChannelProviderMap(this.organizationId, this.db)
 
@@ -95,7 +120,7 @@ export class MessageQueryService {
 
       const hasObjectBackedHtml = !!m.htmlBodyStorageLocationId
 
-      return {
+      const meta: MessageMeta = {
         id: m.id,
         threadId: m.threadId,
         subject: m.subject,
@@ -119,6 +144,7 @@ export class MessageQueryService {
         attempts: m.attempts ?? 0,
         attachments: attachmentsByMessage.get(m.id) ?? [],
       }
+      return redactMessage(meta as unknown as Record<string, unknown>, threadLens) as MessageMeta
     })
 
     return { messages, total: messages.length }
@@ -170,14 +196,21 @@ export class MessageQueryService {
       },
     })
 
+    // Visibility (§5.2): lens per parent thread; messages on `none`/`metadata`
+    // threads are dropped, sub-`full` ones lose content fields below.
+    const lensByThread = await this.getThreadLenses([...new Set(messages.map((m) => m.threadId))])
+    const visibleMessages = messages.filter((m) =>
+      ['subject', 'full'].includes(lensByThread.get(m.threadId) ?? 'none')
+    )
+
     // Batch fetch participant IDs for recipients (to, cc, bcc)
-    const messageIds = messages.map((m) => m.id)
+    const messageIds = visibleMessages.map((m) => m.id)
     const participantsByMessage = await this.getParticipantsForMessages(messageIds)
     const attachmentsByMessage = await this.getAttachmentsForMessages(messageIds)
 
     // Create a map for quick lookup
     const messageMap = new Map(
-      messages.map((m) => {
+      visibleMessages.map((m) => {
         const participantData = participantsByMessage.get(m.id)
         const participants = this.buildParticipantIds(m, participantData)
 
@@ -210,7 +243,11 @@ export class MessageQueryService {
           attempts: m.attempts ?? 0,
           attachments: attachmentsByMessage.get(m.id) ?? [],
         }
-        return [m.id, meta]
+        const redacted = redactMessage(
+          meta as unknown as Record<string, unknown>,
+          lensByThread.get(m.threadId) ?? 'none'
+        ) as MessageMeta
+        return [m.id, redacted]
       })
     )
 

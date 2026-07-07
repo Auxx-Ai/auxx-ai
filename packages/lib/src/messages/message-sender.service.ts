@@ -6,10 +6,13 @@ import { createScopedLogger } from '@auxx/logger'
 import { getRedisClient } from '@auxx/redis'
 import { and, asc, desc, eq, sql } from 'drizzle-orm'
 import { touchActivityForThreadLinks } from '../entity-instances/activity'
-import { UsageLimitError } from '../errors'
+import { ForbiddenError, UsageLimitError } from '../errors'
 import { FileService } from '../files/core/file-service'
 import { MediaAssetService } from '../files/core/media-asset-service'
 import { ParticipantService } from '../participants/participant-service'
+import type { MailViewer } from '../permissions/visibility/context'
+import { isSystemViewer } from '../permissions/visibility/context'
+import { getThreadLens } from '../permissions/visibility/thread-lens'
 import type { AttachmentFile } from '../providers/message-provider-interface'
 import type { ProviderRegistryService } from '../providers/provider-registry-service'
 import { getRealtimeService, publishMessageCreated } from '../realtime'
@@ -45,12 +48,21 @@ export class MessageSenderService {
   /** Originating socket id for self-echo suppression on realtime publishes. */
   private readonly socketId?: string
 
+  /**
+   * Visibility principal for the §7 send gate. Interactive callers (tRPC,
+   * Kopilot) pass the user's context; workers / workflow / scheduled sends
+   * leave it undefined, which is SYSTEM-equivalent (Phase 7 revisits).
+   */
+  private readonly viewer?: MailViewer
+
   constructor(
     private organizationId: string,
     private providerRegistry?: ProviderRegistryService,
     private db?: Database,
-    socketId?: string
+    socketId?: string,
+    viewer?: MailViewer
   ) {
+    this.viewer = viewer
     this.threadManager = new ThreadManagerService(organizationId, db)
     this.composer = new MessageComposerService(organizationId, db)
     this.reconciler = new MessageReconcilerService(organizationId, this.threadManager, db)
@@ -59,6 +71,22 @@ export class MessageSenderService {
     this.fileService = new FileService(organizationId, undefined, db)
     this.socketId = socketId
   }
+  /**
+   * §7 send gate — only bites when an interactive viewer was provided.
+   * `none` reads as not-found; `metadata`/`subject` as restricted.
+   */
+  private async assertCanSendOnThread(threadId: string | null): Promise<void> {
+    if (!threadId || !this.viewer || isSystemViewer(this.viewer)) return
+    const lens = await getThreadLens(this.db ?? db, this.organizationId, this.viewer, threadId)
+    if (lens !== 'full') {
+      throw new ForbiddenError(
+        lens === 'none'
+          ? 'Thread not found.'
+          : 'You do not have full access to this thread and cannot send messages on it.'
+      )
+    }
+  }
+
   /**
    * Check if a thread ID is a placeholder
    */
@@ -79,6 +107,11 @@ export class MessageSenderService {
       subject: input.subject,
       recipientCount: input.to.length + (input.cc?.length || 0) + (input.bcc?.length || 0),
     })
+    // §7 write gate: replying on an existing thread requires `full` lens.
+    // New sends (placeholder / absent threadId) have no thread to gate on.
+    await this.assertCanSendOnThread(
+      this.isPlaceholderThreadId(input.threadId) ? null : (input.threadId ?? null)
+    )
     // Validate input (capability-driven — subject/recipients depend on provider)
     const capabilities = await this.getCapabilitiesForIntegration(input.integrationId)
     this.validateInput(input, capabilities)
@@ -785,8 +818,9 @@ export class MessageSenderService {
     try {
       // 1. Load the failed message with all relations
       const failedMessage = await this.loadFailedMessage(input.messageId)
-      // 2. Validate retry eligibility
+      // 2. Validate retry eligibility (+ §7 send gate on the parent thread)
       this.validateRetryEligibility(failedMessage, input.organizationId)
+      await this.assertCanSendOnThread(failedMessage.threadId ?? null)
       // 3. Reset message status and get attempt number
       const attemptNumber = await this.resetMessageForRetry(input.messageId)
       // 4. Extract send parameters from existing message

@@ -31,6 +31,32 @@ export async function GET(_request: NextRequest, { params }: RouteParams) {
       return Response.json({ error: 'Organization required' }, { status: 403 })
     }
 
+    // Body content is `full`-tier (mail-permissions §7): resolve the parent
+    // thread and require full lens — sub-full viewers get the same 404 as a
+    // missing message.
+    const [{ database, schema }, { getCachedUserMailVisibility }, { getThreadLens }] =
+      await Promise.all([
+        import('@auxx/database'),
+        import('@auxx/lib/cache'),
+        import('@auxx/lib/permissions/visibility'),
+      ])
+    const { and, eq } = await import('drizzle-orm')
+    const [message] = await database
+      .select({ threadId: schema.Message.threadId })
+      .from(schema.Message)
+      .where(
+        and(eq(schema.Message.id, messageId), eq(schema.Message.organizationId, organizationId))
+      )
+      .limit(1)
+    if (!message) {
+      return Response.json({ error: 'Not found' }, { status: 404 })
+    }
+    const viewer = await getCachedUserMailVisibility(session.user.id, organizationId)
+    const lens = await getThreadLens(database, organizationId, viewer, message.threadId)
+    if (lens !== 'full') {
+      return Response.json({ error: 'Not found' }, { status: 404 })
+    }
+
     const { InboundBodyAccessService } = await import('@auxx/lib/email')
     const bodyAccessService = new InboundBodyAccessService()
 

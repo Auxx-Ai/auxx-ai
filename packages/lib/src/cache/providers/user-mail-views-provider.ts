@@ -1,6 +1,7 @@
 // packages/lib/src/cache/providers/user-mail-views-provider.ts
 
 import { MailViewService } from '../../mail-views'
+import { SYSTEM_VISIBILITY } from '../../permissions/visibility/context'
 import type { CacheProvider } from '../org-cache-provider'
 import type { CachedMailView } from '../user-cache-keys'
 
@@ -12,7 +13,10 @@ export const userMailViewsProvider: CacheProvider<CachedMailView[]> = {
       throw new Error(`Invalid composite ID for userMailViews: ${compositeId}`)
     }
 
-    const mailViewService = new MailViewService(organizationId, db, { enableCache: false })
+    // View definitions only (no thread queries) — SYSTEM viewer is safe here.
+    const mailViewService = new MailViewService(organizationId, db, SYSTEM_VISIBILITY, {
+      enableCache: false,
+    })
     const views = await mailViewService.getAllUserAccessibleMailViews(userId)
 
     return views.map((v) => ({

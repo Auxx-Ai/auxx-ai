@@ -2,6 +2,8 @@
 
 import { parseRecordId } from '@auxx/types/resource'
 import { z } from 'zod'
+import { getCachedUserMailVisibility } from '../../../../../cache'
+import { NotFoundError } from '../../../../../errors'
 import { MessageQueryService } from '../../../../../messages'
 import { TagService } from '../../../../../tags'
 import { ThreadQueryService } from '../../../../../threads'
@@ -141,13 +143,20 @@ export function createGetThreadDetailTool(getDeps: GetToolDeps): AgentToolDefini
       const { db } = getDeps()
       const threadId = args.threadId as string
 
-      const threadService = new ThreadQueryService(agentDeps.organizationId, db)
-      const messageService = new MessageQueryService(agentDeps.organizationId, db)
+      // Kopilot reads mail as the invoking user (§8.1) — never SYSTEM.
+      const viewer = await getCachedUserMailVisibility(agentDeps.userId, agentDeps.organizationId)
+      const threadService = new ThreadQueryService(agentDeps.organizationId, db, viewer)
+      const messageService = new MessageQueryService(agentDeps.organizationId, db, viewer)
 
-      // Fetch thread meta and messages in parallel
+      // Fetch thread meta and messages in parallel. An invisible thread reads
+      // as nonexistent (§5.2) — the meta batch drops it and the message read
+      // 404s; both collapse into the same not-found reply below.
       const [threadMetas, messageResult] = await Promise.all([
         threadService.getThreadMetaBatch([threadId], agentDeps.userId),
-        messageService.getMessagesByThread(threadId),
+        messageService.getMessagesByThread(threadId).catch((error) => {
+          if (error instanceof NotFoundError) return { messages: [], total: 0 }
+          throw error
+        }),
       ])
 
       const thread = threadMetas[0]

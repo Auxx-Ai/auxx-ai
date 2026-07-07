@@ -12,6 +12,7 @@ import {
 } from '../../../cache'
 import type { Condition, ConditionGroup as MailConditionGroup } from '../../../conditions/types'
 import { buildConditionGroupsQuery } from '../../../mail-query/condition-query-builder'
+import { SYSTEM_VISIBILITY } from '../../../permissions/visibility/context'
 import { FIND_RESOURCE_CONFIGS } from '../../../resources/find-definitions'
 import {
   getFieldOperators,
@@ -843,8 +844,14 @@ export class FindProcessor extends BaseNodeProcessor {
             ]
           : []
 
-    // Build WHERE clause via mail builder (includes org scoping internally)
-    const whereClause = buildConditionGroupsQuery(normalizedGroups, organizationId)
+    // Build WHERE clause via mail builder (includes org scoping internally).
+    // SYSTEM viewer is an interim marker — Phase 7 (mail-permissions §8.2)
+    // swaps configured automation to AUTOMATION_SYSTEM (org channels only).
+    const whereClause = buildConditionGroupsQuery(
+      normalizedGroups,
+      organizationId,
+      SYSTEM_VISIBILITY
+    )
 
     // Build ORDER BY (fall back to SystemConditionBuilder for column resolution)
     const orderByClause = orderBy

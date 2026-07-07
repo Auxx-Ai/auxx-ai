@@ -32,29 +32,44 @@ import {
   threadHasTags,
 } from '../field-values/relationship-queries'
 import { createScopedLogger } from '../logger'
+import type { MailViewer } from '../permissions/visibility/context'
+import {
+  buildMailVisibilityPredicate,
+  buildSearchScopes,
+  type MailSearchScopes,
+} from './visibility-scope'
 
 const logger = createScopedLogger('condition-query-builder')
 
 /**
  * Build Drizzle WHERE condition from ConditionGroup[].
  * Groups are combined with AND at the top level.
+ *
+ * Every query declares its `viewer` (mail-permissions §5.1): the mandatory
+ * visibility predicate is AND-ed into the base scope, and content-bearing
+ * conditions (subject/body/freeText) are additionally scoped per §5.3 so a
+ * filter can't be used to probe content the viewer may not read.
  */
 export function buildConditionGroupsQuery(
   groups: ConditionGroup[],
-  organizationId: string
+  organizationId: string,
+  viewer: MailViewer
 ): SQL<unknown> {
   // Hide soft-merged threads from every list view. The corresponding partial
   // index on Thread keeps this filter free for the hot pagination path.
+  const visibility = buildMailVisibilityPredicate(viewer)
   const baseScope = and(
     eq(Thread.organizationId, organizationId),
-    isNull(Thread.mergedIntoThreadId)
+    isNull(Thread.mergedIntoThreadId),
+    ...(visibility ? [visibility] : [])
   )!
 
   if (groups.length === 0) {
     return baseScope
   }
 
-  const groupConditions = groups.map((group) => buildGroupQuery(group, organizationId))
+  const scopes = buildSearchScopes(viewer)
+  const groupConditions = groups.map((group) => buildGroupQuery(group, organizationId, scopes))
   const validConditions = groupConditions.filter(Boolean) as SQL<unknown>[]
 
   if (validConditions.length === 0) {
@@ -68,9 +83,13 @@ export function buildConditionGroupsQuery(
 /**
  * Build query for a single ConditionGroup.
  */
-function buildGroupQuery(group: ConditionGroup, organizationId: string): SQL<unknown> | null {
+function buildGroupQuery(
+  group: ConditionGroup,
+  organizationId: string,
+  scopes: MailSearchScopes
+): SQL<unknown> | null {
   const conditions = group.conditions
-    .map((c) => buildConditionQuery(c, organizationId))
+    .map((c) => buildConditionQuery(c, organizationId, scopes))
     .filter(Boolean) as SQL<unknown>[]
 
   if (conditions.length === 0) return null
@@ -79,10 +98,23 @@ function buildGroupQuery(group: ConditionGroup, organizationId: string): SQL<unk
   return group.logicalOperator === 'AND' ? and(...conditions)! : or(...conditions)!
 }
 
+/** AND a §5.3 search scope onto a built condition (no scope → pass through). */
+function withScope(
+  condition: SQL<unknown> | null,
+  scope: SQL<unknown> | undefined
+): SQL<unknown> | null {
+  if (!condition || !scope) return condition
+  return and(condition, scope)!
+}
+
 /**
  * Build query for a single Condition.
  */
-function buildConditionQuery(condition: Condition, organizationId: string): SQL<unknown> | null {
+function buildConditionQuery(
+  condition: Condition,
+  organizationId: string,
+  scopes: MailSearchScopes
+): SQL<unknown> | null {
   // Belt-and-suspenders: valueSource must be resolved upstream via
   // resolveConditionContext before reaching this builder.
   if (condition.valueSource) {
@@ -114,9 +146,9 @@ function buildConditionQuery(condition: Condition, organizationId: string): SQL<
       case 'to':
         return buildToQuery(op, value)
       case 'subject':
-        return buildSubjectQuery(op, value)
+        return withScope(buildSubjectQuery(op, value), scopes.subject)
       case 'body':
-        return buildBodyQuery(op, value)
+        return withScope(buildBodyQuery(op, value), scopes.body)
       case 'before':
         return buildBeforeQuery(op, value)
       case 'after':
@@ -126,7 +158,7 @@ function buildConditionQuery(condition: Condition, organizationId: string): SQL<
       case 'hasAttachments':
         return buildHasAttachmentsQuery(op, value)
       case 'freeText':
-        return buildFreeTextQuery(op, value)
+        return buildFreeTextQuery(op, value, scopes)
       case 'hasDraft':
         return buildHasDraftQuery(op, value)
       case 'sent':
@@ -747,17 +779,22 @@ function buildHasAttachmentsQuery(operator: Operator, value: any): SQL<unknown> 
 
 /**
  * Build free text search query.
- * Searches across subject and body fields.
+ * Searches across subject and body fields. Each half carries its own §5.3
+ * scope: subject matches count only on subject-visible threads, body matches
+ * only on full-visible threads.
  */
-function buildFreeTextQuery(operator: Operator, value: any): SQL<unknown> | null {
+function buildFreeTextQuery(
+  operator: Operator,
+  value: any,
+  scopes: MailSearchScopes
+): SQL<unknown> | null {
   if (!value) return null
 
   const { Message } = schema
   const searchTerm = `%${value}%`
 
-  // Search in subject OR body (textPlain / textHtml)
-  return or(
-    ilike(Thread.subject, searchTerm),
+  const subjectMatch = withScope(ilike(Thread.subject, searchTerm), scopes.subject)
+  const bodyMatch = withScope(
     exists(
       db
         .select({ id: sql`1` })
@@ -768,8 +805,12 @@ function buildFreeTextQuery(operator: Operator, value: any): SQL<unknown> | null
             or(ilike(Message.textPlain, searchTerm), ilike(Message.textHtml, searchTerm))
           )
         )
-    )
+    ),
+    scopes.body
   )
+
+  // Search in subject OR body (textPlain / textHtml)
+  return or(subjectMatch!, bodyMatch!)
 }
 
 /**

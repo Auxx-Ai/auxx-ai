@@ -5,6 +5,7 @@ import { createId } from '@paralleldrive/cuid2'
 import {
   type AnyPgColumn,
   boolean,
+  index,
   integer,
   pgTable,
   text,
@@ -12,6 +13,7 @@ import {
   uniqueIndex,
 } from './_shared'
 
+import { EntityInstance } from './entity-instance'
 import { Thread } from './thread'
 
 /** Drizzle table for threadParticipant */
@@ -27,6 +29,11 @@ export const ThreadParticipant = pgTable(
       .references((): AnyPgColumn => Thread.id, { onUpdate: 'cascade', onDelete: 'cascade' }),
     email: text().notNull(),
     name: text(),
+    /** Contact EntityInstance this participant resolves to (contact-derived sharing). */
+    entityInstanceId: text().references((): AnyPgColumn => EntityInstance.id, {
+      onUpdate: 'cascade',
+      onDelete: 'set null',
+    }),
     isInternal: boolean().default(false).notNull(),
     messageCount: integer().default(1).notNull(),
     firstMessageAt: timestamp({ precision: 3 }).notNull(),
@@ -37,6 +44,13 @@ export const ThreadParticipant = pgTable(
       'btree',
       table.threadId.asc().nullsLast(),
       table.email.asc().nullsLast()
+    ),
+    // Contact-derived thread access: "threads where contact C participates" as
+    // one indexed thread-grained join (mail-permissions §2.4).
+    index('ThreadParticipant_entityInstanceId_threadId_idx').using(
+      'btree',
+      table.entityInstanceId.asc().nullsLast(),
+      table.threadId.asc().nullsLast()
     ),
   ]
 )

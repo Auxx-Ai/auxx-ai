@@ -4,7 +4,7 @@ import { schema } from '@auxx/database'
 import { ParticipantRole as ParticipantRoleEnum, ThreadStatus } from '@auxx/database/enums'
 import type { ParticipantEntity as Participant, ParticipantRole } from '@auxx/database/types'
 import { toRecordId } from '@auxx/types/resource'
-import { and, eq, isNull } from 'drizzle-orm'
+import { and, eq, isNull, sql } from 'drizzle-orm'
 import { touchActivityForThreadLinks } from '../entity-instances/activity'
 import { getRealtimeService, publishMessageCreated, publishThreadCreated } from '../realtime'
 import { applyMailCountDeltas } from '../threads/mail-counts'
@@ -269,6 +269,27 @@ export async function storeMessage(
       if (participant?.id) currentMessageParticipantIds.push(participant.id)
     }
 
+    // Ingest guarantee (mail-permissions Phase 0): every thread must carry an
+    // inboxId so it can't fall into the null-inbox visibility class. Resolve it
+    // from the integration's InboxIntegration mapping when the caller didn't
+    // supply one; a failure is logged (the column stays nullable defensively).
+    let resolvedInboxId = messageData.inboxId ?? null
+    if (!resolvedInboxId && messageData.integrationId) {
+      const [link] = await ctx.db
+        .select({ inboxId: schema.InboxIntegration.inboxId })
+        .from(schema.InboxIntegration)
+        .where(eq(schema.InboxIntegration.integrationId, messageData.integrationId))
+        .limit(1)
+      resolvedInboxId = link?.inboxId ?? null
+      if (!resolvedInboxId) {
+        ctx.logger.error('Thread ingest could not resolve an inboxId for integration', {
+          integrationId: messageData.integrationId,
+          organizationId: messageData.organizationId,
+          externalThreadId: messageData.externalThreadId,
+        })
+      }
+    }
+
     // Core write set in one transaction: thread upsert → message upsert →
     // latestMessageId → MessageParticipant links. One pool acquire, atomic.
     // Participant upserts stay OUTSIDE — they publish realtime events and
@@ -281,7 +302,7 @@ export async function storeMessage(
           externalId: messageData.externalThreadId,
           integrationId: messageData.integrationId,
           organizationId: messageData.organizationId,
-          inboxId: messageData.inboxId ?? null,
+          inboxId: resolvedInboxId,
           subject: messageData.subject ?? 'No Subject',
           status: ThreadStatus.OPEN,
           firstMessageAt: messageData.sentAt,
@@ -293,7 +314,7 @@ export async function storeMessage(
           target: [schema.Thread.integrationId, schema.Thread.externalId],
           set: {
             subject: messageData.subject || undefined,
-            inboxId: messageData.inboxId ?? undefined,
+            inboxId: resolvedInboxId ?? undefined,
           },
         })
         .returning({
@@ -400,6 +421,39 @@ export async function storeMessage(
           .onConflictDoNothing()
       }
 
+      // Thread-grained participant rollup (mail-permissions §2.4): mail ingest
+      // didn't write ThreadParticipant rows before — only chat + merges did.
+      // Carrying `entityInstanceId` gives contact-derived sharing one indexed
+      // thread-grained join instead of Message ⋈ MessageParticipant per thread.
+      const rollupRows = Array.from(participantCache.values())
+        .filter((p): p is Participant => !!p?.identifier)
+        .map((p) => ({
+          threadId: thread.id,
+          email: p.identifier,
+          name: p.name ?? null,
+          entityInstanceId: p.entityInstanceId ?? null,
+          isInternal: p.isInternal,
+          messageCount: 1,
+          firstMessageAt: messageData.sentAt,
+          lastMessageAt: messageData.sentAt,
+        }))
+      if (rollupRows.length > 0) {
+        await tx
+          .insert(schema.ThreadParticipant)
+          .values(rollupRows)
+          .onConflictDoUpdate({
+            target: [schema.ThreadParticipant.threadId, schema.ThreadParticipant.email],
+            set: {
+              messageCount: sql`${schema.ThreadParticipant.messageCount} + 1`,
+              firstMessageAt: sql`LEAST(${schema.ThreadParticipant.firstMessageAt}, excluded."firstMessageAt")`,
+              lastMessageAt: sql`GREATEST(${schema.ThreadParticipant.lastMessageAt}, excluded."lastMessageAt")`,
+              // Prefer a freshly resolved contact link / name; keep the old one otherwise.
+              entityInstanceId: sql`COALESCE(excluded."entityInstanceId", ${schema.ThreadParticipant.entityInstanceId})`,
+              name: sql`COALESCE(excluded."name", ${schema.ThreadParticipant.name})`,
+            },
+          })
+      }
+
       return { thread, isNewThread, messageRecord, flippedUserIds }
     })
     const { thread, isNewThread, messageRecord, flippedUserIds } = txResult
@@ -444,10 +498,13 @@ export async function storeMessage(
         thread.status === ThreadStatus.OPEN &&
         inboxIdForChannel
       ) {
+        // New-thread audience = members who see this inbox at `full` (§10.1) —
+        // sub-full viewers have no unread state, so no badge movement. Flipped
+        // users on existing threads had read rows, i.e. full access already.
         const userIds = isNewThread
-          ? (
-              await import('../cache').then((m) => m.getCachedMembers(messageData.organizationId))
-            ).map((m) => m.userId)
+          ? await import('../permissions/visibility/audience').then((m) =>
+              m.getFullLensAudienceForInbox(messageData.organizationId, inboxIdForChannel)
+            )
           : flippedUserIds
         await applyMailCountDeltas(
           messageData.organizationId,
