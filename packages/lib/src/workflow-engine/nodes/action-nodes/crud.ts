@@ -13,7 +13,7 @@ import { normalizeToRecordIds, type RecordId, toRecordId } from '@auxx/types/res
 import { isMultiRelationship } from '@auxx/utils/relationships'
 import { findCachedResource, requireCachedEntityDefId } from '../../../cache'
 import { FieldValueService } from '../../../field-values/field-value-service'
-import { SYSTEM_VISIBILITY } from '../../../permissions/visibility/context'
+import { getAutomationVisibility } from '../../../permissions/visibility/automation-visibility'
 import { UnifiedCrudHandler } from '../../../resources/crud'
 import { CRUD_RESOURCE_CONFIGS, getCrudField } from '../../../resources/crud-definitions'
 import {
@@ -922,16 +922,18 @@ export class CrudNodeProcessor extends BaseNodeProcessor {
       throw new Error('Thread ID is required for update operations')
     }
 
-    // Initialize services. SYSTEM viewer is an interim marker — Phase 7
-    // (mail-permissions §8.2) swaps configured automation to AUTOMATION_SYSTEM.
+    // Initialize services. Configured automation acts as AUTOMATION_SYSTEM
+    // (§8.2): full on org inboxes, zero on personal — the §7 write gates
+    // enforce it per thread.
+    const viewer = await getAutomationVisibility(organizationId)
     const mutationService = new ThreadMutationService(
       organizationId,
       database,
       undefined,
       userId,
-      SYSTEM_VISIBILITY
+      viewer
     )
-    const unreadService = new UnreadService(organizationId, userId, SYSTEM_VISIBILITY)
+    const unreadService = new UnreadService(organizationId, userId, viewer)
 
     // Track results for each action
     const results: Record<string, any> = {

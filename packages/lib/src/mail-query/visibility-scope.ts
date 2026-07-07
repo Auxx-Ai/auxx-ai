@@ -2,8 +2,12 @@
 
 import { database as db, schema } from '@auxx/database'
 import { and, eq, exists, inArray, isNull, not, or, type SQL, sql } from 'drizzle-orm'
-import type { MailViewer, UserMailVisibility } from '../permissions/visibility/context'
-import { isSystemViewer } from '../permissions/visibility/context'
+import type {
+  AutomationVisibility,
+  MailViewer,
+  UserMailVisibility,
+} from '../permissions/visibility/context'
+import { isAutomationViewer, isSystemViewer } from '../permissions/visibility/context'
 import { type Lens, satisfiesLens } from '../permissions/visibility/lens'
 
 const { Thread, ThreadParticipant } = schema
@@ -52,6 +56,17 @@ function grantScopeParts(vis: UserMailVisibility, need: Lens): SQL<unknown>[] {
 }
 
 /**
+ * The §8.2 automation scope: everything except threads in personal inboxes
+ * (§11). `undefined` when no personal inboxes exist — automation then reads
+ * exactly like SYSTEM. Null-inbox threads pass (residual org data).
+ */
+function automationScope(vis: AutomationVisibility): SQL<unknown> | undefined {
+  const personalIds = Object.keys(vis.personalInboxIds)
+  if (personalIds.length === 0) return undefined
+  return or(isNull(Thread.inboxId), not(inArray(Thread.inboxId, personalIds)))!
+}
+
+/**
  * The mandatory §5.1 list predicate: which threads exist at all (≥ metadata)
  * for this viewer. `undefined` means unrestricted — SYSTEM skips, and admins
  * see every thread at ≥ metadata (personal inboxes included, capped at
@@ -59,7 +74,9 @@ function grantScopeParts(vis: UserMailVisibility, need: Lens): SQL<unknown>[] {
  * via assignment or an explicit grant.
  */
 export function buildMailVisibilityPredicate(viewer: MailViewer): SQL<unknown> | undefined {
-  if (isSystemViewer(viewer) || viewer.isAdmin) return undefined
+  if (isSystemViewer(viewer)) return undefined
+  if (isAutomationViewer(viewer)) return automationScope(viewer)
+  if (viewer.isAdmin) return undefined
 
   const parts = grantScopeParts(viewer, 'metadata')
   const inboxIds = idsAtOrAbove(viewer.inboxLens, 'metadata')
@@ -83,6 +100,8 @@ export function buildSearchScope(
   need: 'subject' | 'full'
 ): SQL<unknown> | undefined {
   if (isSystemViewer(viewer)) return undefined
+  // Automation (§8.2): personal inboxes are zero-access at every tier.
+  if (isAutomationViewer(viewer)) return automationScope(viewer)
 
   if (viewer.isAdmin) {
     const excluded = Object.keys(viewer.personalInboxIds).filter(

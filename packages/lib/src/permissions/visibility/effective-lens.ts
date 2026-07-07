@@ -1,6 +1,6 @@
 // packages/lib/src/permissions/visibility/effective-lens.ts
 
-import type { ThreadVisibilityInput, UserMailVisibility } from './context'
+import type { AutomationVisibility, ThreadVisibilityInput, UserMailVisibility } from './context'
 import { DERIVATION_RULES } from './derivation-rules'
 import { type Lens, maxLens } from './lens'
 
@@ -40,6 +40,14 @@ export function effectiveLens(vis: UserMailVisibility, t: ThreadVisibilityInput)
 export function inboxLensFor(vis: UserMailVisibility, inboxId: string): Lens {
   if (vis.isAdmin && !vis.personalInboxIds[inboxId]) return 'full'
   return vis.inboxLens[inboxId] ?? 'none'
+}
+
+/**
+ * The automation evaluator (§8.2) — `full` everywhere except personal inboxes
+ * (§11), where automation has zero access. Null-inbox threads read as org data.
+ */
+export function automationLens(vis: AutomationVisibility, t: ThreadVisibilityInput): Lens {
+  return t.inboxId && vis.personalInboxIds[t.inboxId] ? 'none' : 'full'
 }
 
 /** Batch form — a loop over {@link effectiveLens}, keyed by thread id. */

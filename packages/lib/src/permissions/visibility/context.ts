@@ -35,19 +35,37 @@ export interface UserMailVisibility {
  * The system principal — full access, no per-inbox scoping. A distinct sentinel
  * (not a `UserMailVisibility` with `isAdmin: true`) so every system-power call
  * site is greppable. Workers / ingest / platform pipelines use this.
- *
- * Phase 7 adds a sibling `AUTOMATION_SYSTEM` (full on org channels, none on
- * personal inboxes) for configured automation.
  */
 export const SYSTEM_VISIBILITY = { kind: 'system' } as const
 export type SystemVisibility = typeof SYSTEM_VISIBILITY
 
+/**
+ * The configured-automation principal (§8.2): `full` on every org inbox,
+ * zero access to personal inboxes (§11) — a System-running workflow must not
+ * be a side door around the admin metadata cap. Composed per org from the
+ * cached inboxes shape by `getAutomationVisibility`; a distinct kind so every
+ * automation call site stays greppable. This is the `mode: 'system'` arm of
+ * the recorded future run-as binding.
+ */
+export interface AutomationVisibility {
+  kind: 'automation'
+  /** Personal inboxes (§11) — invisible to automation. Empty until Phase 8 stamps them. */
+  personalInboxIds: Record<string, true>
+}
+
 /** A mail read is always performed by one of these principals. */
-export type MailViewer = UserMailVisibility | SystemVisibility
+export type MailViewer = UserMailVisibility | SystemVisibility | AutomationVisibility
 
 /** Narrow a viewer to the system sentinel. */
 export const isSystemViewer = (v: MailViewer): v is SystemVisibility =>
   'kind' in v && v.kind === 'system'
+
+/** Narrow a viewer to the configured-automation principal. */
+export const isAutomationViewer = (v: MailViewer): v is AutomationVisibility =>
+  'kind' in v && v.kind === 'automation'
+
+/** Narrow a viewer to a real user's cached visibility context. */
+export const isUserViewer = (v: MailViewer): v is UserMailVisibility => !('kind' in v)
 
 /**
  * The per-thread facts the evaluator needs. List paths get

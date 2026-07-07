@@ -1,21 +1,28 @@
 // packages/lib/src/permissions/visibility/index.ts
 
 export { getFullLensAudienceForInbox } from './audience'
+export { getAutomationVisibility } from './automation-visibility'
 export type { VisibilityGrantRow } from './compute-user-mail-visibility'
 export {
   composeUserMailVisibility,
   computeUserMailVisibility,
 } from './compute-user-mail-visibility'
 export type {
+  AutomationVisibility,
   MailViewer,
   SystemVisibility,
   ThreadVisibilityInput,
   UserMailVisibility,
 } from './context'
-export { isSystemViewer, SYSTEM_VISIBILITY } from './context'
+export { isAutomationViewer, isSystemViewer, isUserViewer, SYSTEM_VISIBILITY } from './context'
 export type { DerivationRule } from './derivation-rules'
 export { DERIVATION_RULES } from './derivation-rules'
-export { effectiveLens, effectiveLensBatch, inboxLensFor } from './effective-lens'
+export {
+  automationLens,
+  effectiveLens,
+  effectiveLensBatch,
+  inboxLensFor,
+} from './effective-lens'
 export type { Lens } from './lens'
 export { ALL_LENSES, lensRank, maxLens, satisfiesLens } from './lens'
 export {

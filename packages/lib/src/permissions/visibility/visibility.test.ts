@@ -1,9 +1,9 @@
 // packages/lib/src/permissions/visibility/visibility.test.ts
 
 import { describe, expect, it } from 'vitest'
-import type { ThreadVisibilityInput, UserMailVisibility } from './context'
-import { isSystemViewer, SYSTEM_VISIBILITY } from './context'
-import { effectiveLens, effectiveLensBatch, inboxLensFor } from './effective-lens'
+import type { AutomationVisibility, ThreadVisibilityInput, UserMailVisibility } from './context'
+import { isAutomationViewer, isSystemViewer, isUserViewer, SYSTEM_VISIBILITY } from './context'
+import { automationLens, effectiveLens, effectiveLensBatch, inboxLensFor } from './effective-lens'
 import { maxLens, satisfiesLens } from './lens'
 import { redactMessage, redactMessagePatch, redactThreadMeta, redactThreadPatch } from './redact'
 
@@ -153,6 +153,34 @@ describe('system viewer', () => {
   it('is narrowable', () => {
     expect(isSystemViewer(SYSTEM_VISIBILITY)).toBe(true)
     expect(isSystemViewer(vis())).toBe(false)
+  })
+})
+
+describe('automation viewer (§8.2)', () => {
+  const automation = (personal: string[] = []): AutomationVisibility => ({
+    kind: 'automation',
+    personalInboxIds: Object.fromEntries(personal.map((id) => [id, true as const])),
+  })
+
+  it('narrows distinctly from system and user viewers', () => {
+    expect(isAutomationViewer(automation())).toBe(true)
+    expect(isAutomationViewer(SYSTEM_VISIBILITY)).toBe(false)
+    expect(isAutomationViewer(vis())).toBe(false)
+    expect(isSystemViewer(automation())).toBe(false)
+    expect(isUserViewer(automation())).toBe(false)
+    expect(isUserViewer(vis())).toBe(true)
+  })
+
+  it('reads full on org inboxes and null-inbox threads', () => {
+    expect(automationLens(automation(), thread())).toBe('full')
+    expect(automationLens(automation(), thread({ inboxId: null }))).toBe('full')
+  })
+
+  it('has zero access to personal inboxes — assignment does not raise it', () => {
+    const a = automation([PERSONAL])
+    expect(automationLens(a, thread({ inboxId: PERSONAL }))).toBe('none')
+    expect(automationLens(a, thread({ inboxId: PERSONAL, assigneeId: 'u1' }))).toBe('none')
+    expect(automationLens(a, thread())).toBe('full')
   })
 })
 

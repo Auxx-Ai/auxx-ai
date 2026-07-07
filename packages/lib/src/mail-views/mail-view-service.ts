@@ -10,7 +10,7 @@ import { batchGetThreadTagIds } from '../field-values/relationship-queries'
 import { createScopedLogger } from '../logger'
 import { buildConditionGroupsQuery } from '../mail-query/condition-query-builder'
 import type { MailViewer } from '../permissions/visibility/context'
-import { isSystemViewer } from '../permissions/visibility/context'
+import { isAutomationViewer, isUserViewer } from '../permissions/visibility/context'
 
 const logger = createScopedLogger('mail-view-service')
 
@@ -766,8 +766,13 @@ export class MailViewService {
       const pageSize = Math.max(1, Math.min(100, pagination.pageSize || 25))
 
       // Cache isolates per viewer: currentUser substitutions AND the §5.1
-      // visibility predicate both differ per user (system viewer → org-wide).
-      const viewerUserId = isSystemViewer(this.viewer) ? undefined : this.viewer.userId
+      // visibility predicate both differ per user (system viewer → org-wide;
+      // automation gets its own bucket — it excludes personal inboxes).
+      const viewerUserId = isUserViewer(this.viewer)
+        ? this.viewer.userId
+        : isAutomationViewer(this.viewer)
+          ? 'automation'
+          : undefined
       const cacheKey = this.getMailViewThreadsCacheKey(
         mailViewId,
         page,
