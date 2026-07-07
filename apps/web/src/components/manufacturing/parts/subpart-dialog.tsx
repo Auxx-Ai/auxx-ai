@@ -18,7 +18,7 @@ import {
 import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import { toastError } from '@auxx/ui/components/toast'
 import { generateId } from '@auxx/utils/generateId'
-import { Plus, X } from 'lucide-react'
+import { Plus, Trash2 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
 import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
@@ -335,30 +335,13 @@ export function SubpartDialog({
           </FieldPanel>
         ) : (
           <div className='flex flex-col gap-3 max-h-[55vh] overflow-y-auto pe-1'>
-            {rows.map((row, index) => (
-              <div
-                key={row.key}
-                className='relative rounded-lg border border-border/60 bg-muted/20 p-3'>
-                {rows.length > 1 && (
-                  <div className='mb-2 flex items-center justify-between'>
-                    <span className='text-xs font-medium text-muted-foreground'>
-                      Component {index + 1}
-                    </span>
-                    <Button
-                      type='button'
-                      variant='ghost'
-                      size='xs'
-                      onClick={() => removeRow(row.key)}
-                      disabled={isPending}
-                      aria-label='Remove component'>
-                      <X />
-                    </Button>
-                  </div>
-                )}
-
-                <FieldPanel className='p-0' breakpoint='md' resizeId='subpart'>
+            {rows.map((row) => (
+              <div key={row.key} className='flex flex-row items-start gap-1'>
+                <FieldPanel className='flex-1 p-0' breakpoint='md' resizeId='subpart'>
                   <FieldPanelRow
                     title='Subpart'
+                    type={BaseType.RELATION}
+                    showIcon
                     description='Component to add'
                     isRequired
                     validationError={errors[`${row.key}.childPartId`]}>
@@ -372,11 +355,13 @@ export function SubpartDialog({
                         const first = recordIds[0]
                         updateRow(row.key, 'childPartId', first ? getInstanceId(first) : '')
                       }}
+                      triggerProps={{ className: 'ps-0 pe-1 w-full' }}
                       placeholder='Select a component...'
                       disabled={isPending}
                       fieldOptions={{
                         relationship: CHILD_PART_RELATIONSHIP,
                         excludeIds: excludedForRow(row.key),
+                        showDefinitionIcon: true,
                       }}
                     />
                   </FieldPanelRow>
@@ -413,6 +398,19 @@ export function SubpartDialog({
                     />
                   </FieldPanelRow>
                 </FieldPanel>
+
+                {rows.length > 1 && (
+                  <Button
+                    type='button'
+                    variant='destructive-hover'
+                    className='rounded-lg'
+                    size='icon-xs'
+                    onClick={() => removeRow(row.key)}
+                    disabled={isPending}
+                    aria-label='Remove component'>
+                    <Trash2 />
+                  </Button>
+                )}
               </div>
             ))}
 

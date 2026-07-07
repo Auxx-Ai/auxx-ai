@@ -71,7 +71,7 @@ export function VendorPartFields({
           <FieldInputAdapter
             triggerProps={{ className: 'w-full ps-0 pe-1' }}
             fieldType={contactField?.fieldType ?? FieldType.RELATIONSHIP}
-            fieldOptions={contactField?.options}
+            fieldOptions={{ ...contactField?.options, showDefinitionIcon: true }}
             value={values.entityInstanceId ? [toRecordId('company', values.entityInstanceId)] : []}
             onChange={(recordIds) => {
               const ids = recordIds as RecordId[]

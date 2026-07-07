@@ -3,11 +3,13 @@
 'use client'
 
 import type { RecordId } from '@auxx/lib/resources/client'
+import type { SelectOptionColor } from '@auxx/types/custom-field'
 import { Badge } from '@auxx/ui/components/badge'
 import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
 import { cn } from '@auxx/ui/lib/utils'
 import { useCallback, useMemo, useState } from 'react'
 import { MultiSelectPicker } from '~/components/pickers/multi-select-picker'
+import { useResource } from '~/components/resources/hooks/use-resource'
 import { PickerTrigger, type PickerTriggerOptions } from '~/components/ui/picker-trigger'
 import { api } from '~/trpc/react'
 import { RecordBadge } from '../resources/ui'
@@ -47,6 +49,12 @@ export interface MultiRelationInputProps {
   /** RecordIds to exclude from search results */
   excludeIds?: RecordId[]
 
+  /**
+   * When true, picker rows with no avatar fall back to the related EntityDefinition's
+   * icon/color (matching the selected chips). Default: false.
+   */
+  showDefinitionIcon?: boolean
+
   /** Callback when "Create new" is clicked (for complex creation flows via dialog) */
   onCreate?: () => void
 
@@ -82,6 +90,7 @@ export function MultiRelationInput({
   maxDisplayItems = 3,
   multi = true,
   excludeIds = [],
+  showDefinitionIcon = false,
   onCreate,
   createLabel,
   triggerProps,
@@ -110,6 +119,9 @@ export function MultiRelationInput({
     return Array.isArray(entityDefinitionId) ? entityDefinitionId[0] : entityDefinitionId
   }, [entityDefinitionId])
 
+  // EntityDefinition icon/color fallback for records without an avatar (opt-in)
+  const { resource } = useResource(showDefinitionIcon ? tableId : null)
+
   // Search for items when popover is open
   const { data: searchResults, isLoading: isSearching } = api.record.search.useQuery(
     {
@@ -131,8 +143,12 @@ export function MultiRelationInput({
         label: item.displayName,
         value: item.recordId,
         avatarUrl: item.avatarUrl,
+        // Fall back to the EntityDefinition's icon/color when the record has no avatar
+        ...(showDefinitionIcon
+          ? { icon: resource?.icon, color: resource?.color as SelectOptionColor | undefined }
+          : {}),
       }))
-  }, [searchResults, excludeIds])
+  }, [searchResults, excludeIds, showDefinitionIcon, resource?.icon, resource?.color])
 
   /**
    * Handle selection change from MultiSelectPicker
