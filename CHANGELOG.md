@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.177](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.176...auxx-v0.1.177) (2026-07-07)
+
+
+### Features
+
+* **parts:** definition-icon fallback in relation pickers + system TAGS options ([#1075](https://github.com/Auxx-Ai/auxx-ai/issues/1075)) ([220be54](https://github.com/Auxx-Ai/auxx-ai/commit/220be547221223e29fb9761bbf1001b300240dde))
+* **parts:** parts v2 + inbox/channel UI refinements ([#1073](https://github.com/Auxx-Ai/auxx-ai/issues/1073)) ([8c6e8af](https://github.com/Auxx-Ai/auxx-ai/commit/8c6e8af7220fe5f3f0decab0a7b2359b305e0d79))
+
 ## [0.1.176](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.175...auxx-v0.1.176) (2026-07-07)
 
 
