@@ -42,6 +42,11 @@ export interface Inbox {
    * (mail-permissions §2.2). Explicit grants can only raise it.
    */
   defaultLens: Lens
+  /**
+   * Personal-account marker (§11) — automation and admin short-circuits treat
+   * personal inboxes as restricted. Stamped by Phase 8; false until then.
+   */
+  isPersonal: boolean
   settings: Record<string, unknown>
   organizationId: string
   createdAt: Date

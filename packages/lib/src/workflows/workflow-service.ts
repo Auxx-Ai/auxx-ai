@@ -7,6 +7,7 @@ import { onCacheEvent } from '../cache/invalidate'
 import { getCachedWorkflowAppsList } from '../cache/workflow-app-queries'
 import { getQueue, Queues } from '../jobs/queues'
 import { WorkflowEngine } from '../workflow-engine/core/workflow-engine'
+import { assertMailTriggerNotPersonal } from './mail-trigger-guard'
 import { PollingTriggerService } from './polling-trigger-service'
 import { ScheduledTriggerService } from './scheduled-trigger-service'
 import {
@@ -143,6 +144,9 @@ export class WorkflowService {
 
     logger.info('Creating workflow app', { organizationId, userId, name })
 
+    // §8.2: personal channels are not automatable — reject at save time.
+    await assertMailTriggerNotPersonal(this.db, organizationId, graph)
+
     try {
       // Create WorkflowApp with initial workflow version in a transaction
       const result = await this.db.transaction(async (tx: Transaction) => {
@@ -267,6 +271,11 @@ export class WorkflowService {
 
       if (!existingWorkflowApp) {
         throw new Error('Workflow not found')
+      }
+
+      // §8.2: personal channels are not automatable — reject at save time.
+      if (updateData.graph) {
+        await assertMailTriggerNotPersonal(this.db, organizationId, updateData.graph)
       }
 
       // Separate access settings from workflow fields

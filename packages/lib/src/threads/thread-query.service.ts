@@ -37,8 +37,8 @@ import type {
   ThreadVisibilityInput,
   UserMailVisibility,
 } from '../permissions/visibility/context'
-import { isSystemViewer } from '../permissions/visibility/context'
-import { effectiveLensBatch } from '../permissions/visibility/effective-lens'
+import { isAutomationViewer, isSystemViewer } from '../permissions/visibility/context'
+import { automationLens, effectiveLensBatch } from '../permissions/visibility/effective-lens'
 import type { Lens } from '../permissions/visibility/lens'
 import { redactThreadMeta } from '../permissions/visibility/redact'
 import type {
@@ -761,7 +761,22 @@ export class ThreadQueryService {
     // Visibility (§5.2): evaluate the viewer's lens per thread once; `none`
     // rows are dropped below and the rest projected through redactThreadMeta.
     let lensByThread: Map<string, Lens> | null = null
-    if (!isSystemViewer(this.viewer)) {
+    if (isAutomationViewer(this.viewer)) {
+      // §8.2: full everywhere except personal inboxes — no grant derivations.
+      const viewer = this.viewer
+      lensByThread = new Map(
+        threads.map((t) => [
+          t.id,
+          automationLens(viewer, {
+            threadId: t.id,
+            inboxId: t.inboxId ?? null,
+            assigneeId: null,
+            primaryEntityInstanceId: null,
+            participantContactIds: [],
+          }),
+        ])
+      )
+    } else if (!isSystemViewer(this.viewer)) {
       const contactIds = await this.getParticipantContactIds(
         threads.map((t) => t.id),
         this.viewer

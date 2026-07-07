@@ -3,8 +3,8 @@
 import { type Database, schema } from '@auxx/database'
 import { and, eq, inArray, isNotNull } from 'drizzle-orm'
 import type { MailViewer, ThreadVisibilityInput } from './context'
-import { isSystemViewer } from './context'
-import { effectiveLens } from './effective-lens'
+import { isAutomationViewer, isSystemViewer } from './context'
+import { automationLens, effectiveLens } from './effective-lens'
 import type { Lens } from './lens'
 
 /**
@@ -28,6 +28,34 @@ export async function getThreadLensBatch(
 
   if (isSystemViewer(viewer)) {
     for (const id of threadIds) lenses.set(id, 'full')
+    return lenses
+  }
+
+  // Automation (§8.2): full except personal inboxes. With no personal inboxes
+  // the exclusion is empty — skip the row query like SYSTEM.
+  if (isAutomationViewer(viewer)) {
+    if (Object.keys(viewer.personalInboxIds).length === 0) {
+      for (const id of threadIds) lenses.set(id, 'full')
+      return lenses
+    }
+    const rows = await db
+      .select({ id: schema.Thread.id, inboxId: schema.Thread.inboxId })
+      .from(schema.Thread)
+      .where(
+        and(inArray(schema.Thread.id, threadIds), eq(schema.Thread.organizationId, organizationId))
+      )
+    for (const t of rows) {
+      lenses.set(
+        t.id,
+        automationLens(viewer, {
+          threadId: t.id,
+          inboxId: t.inboxId ?? null,
+          assigneeId: null,
+          primaryEntityInstanceId: null,
+          participantContactIds: [],
+        })
+      )
+    }
     return lenses
   }
 
