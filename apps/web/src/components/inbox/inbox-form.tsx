@@ -128,7 +128,7 @@ export function InboxForm({
   // Fetch system field values for edit mode
   const { values: fieldValues, isLoading: isLoadingValues } = useSystemValues(
     recordId,
-    ['inbox_name', 'inbox_description', 'inbox_color', 'inbox_visibility', 'inbox_default_lens'],
+    ['inbox_name', 'inbox_description', 'inbox_color', 'inbox_default_lens'],
     { autoFetch: true, enabled: isEditing && !!recordId }
   )
 
@@ -217,12 +217,7 @@ export function InboxForm({
         const name = (fieldValues.inbox_name as string) ?? ''
         const description = (fieldValues.inbox_description as string) ?? ''
         const color = (fieldValues.inbox_color as string) ?? 'indigo'
-        // Pre-migration rows may lack the lens value — fall back to the legacy
-        // visibility field's equivalent floor.
-        const visibility = fieldValues.inbox_visibility ?? 'org_members'
-        const storedLens =
-          (fieldValues.inbox_default_lens as Lens | undefined) ??
-          (visibility === 'org_members' ? 'full' : 'none')
+        const storedLens = (fieldValues.inbox_default_lens as Lens | undefined) ?? 'full'
         const accessType = storedLens === 'none' ? 'restricted' : 'anyone'
         const floorLens = storedLens === 'none' ? 'full' : storedLens
         const grants = accessRows.map(rowToGrant)
@@ -383,14 +378,12 @@ export function InboxForm({
     if (!isValid) return
 
     const targetLens: Lens = data.accessType === 'anyone' ? data.floorLens : 'none'
-    const legacyVisibility = data.accessType === 'anyone' ? 'org_members' : 'custom'
 
     if (isEditing && recordId) {
       const values: Record<string, unknown> = {
         inbox_name: data.name.trim(),
         inbox_description: data.description,
         inbox_color: data.color,
-        inbox_visibility: legacyVisibility,
       }
       // Only write the floor when it changed — the write is guarded server-side
       // (managers only; sub-full floors are enterprise).
@@ -429,7 +422,6 @@ export function InboxForm({
           description: data.description,
           color: data.color,
           status: 'ACTIVE',
-          visibility: legacyVisibility,
           defaultLens: targetLens,
         })
         // Additive grants — the server already added the creator's Manager row.

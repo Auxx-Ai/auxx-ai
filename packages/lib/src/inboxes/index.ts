@@ -6,7 +6,6 @@ export type {
   Inbox,
   InboxIntegration,
   InboxStatus,
-  InboxVisibility,
   InboxWithIntegrations,
   UpdateInboxInput,
 } from './types'

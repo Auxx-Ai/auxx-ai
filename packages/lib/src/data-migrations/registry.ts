@@ -11,6 +11,7 @@ import { migration030RetireShopifyProductLinkId } from './migrations/030-retire-
 import { migration031BackfillThreadInboxId } from './migrations/031-backfill-thread-inbox-id'
 import { migration032BackfillThreadParticipants } from './migrations/032-backfill-thread-participants'
 import { migration033InboxVisibilityToDefaultLens } from './migrations/033-inbox-visibility-to-default-lens'
+import { migration034RetireInboxVisibility } from './migrations/034-retire-inbox-visibility'
 import { assertUniqueMigrationIds } from './plan'
 import type { DataMigrationDef } from './types'
 import { wrapEntityMigration } from './wrap-entity-migration'
@@ -38,6 +39,7 @@ function buildRegistry(): DataMigrationDef[] {
     migration031BackfillThreadInboxId,
     migration032BackfillThreadParticipants,
     migration033InboxVisibilityToDefaultLens,
+    migration034RetireInboxVisibility,
   ]
 
   all.sort((a, b) => a.id.localeCompare(b.id))

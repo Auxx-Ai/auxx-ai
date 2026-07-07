@@ -22,15 +22,6 @@ function getInstanceId(recordId: RecordId): string {
 }
 
 /**
- * Default-lens value for inboxes that predate the `inbox_default_lens` field
- * (data migration 033 backfills it with exactly this mapping). `org_members`
- * meant everyone-full; `private`/`custom` meant explicit grantees only.
- */
-function legacyDefaultLens(visibility: unknown): Lens {
-  return visibility === 'private' || visibility === 'custom' ? 'none' : 'full'
-}
-
-/**
  * Service for managing inboxes.
  * Uses RecordId branded types throughout for type safety.
  * Delegates core CRUD to UnifiedCrudHandler, uses ResourceAccess helpers for permissions.
@@ -65,11 +56,7 @@ export class InboxService {
       inbox_description: input.description ?? null,
       inbox_color: input.color ?? 'indigo',
       inbox_status: input.status ?? 'ACTIVE',
-      // Legacy field, kept in sync until Phase 6 removes it. The floor is
-      // defaultLens; there are no org_member ResourceAccess rows anymore.
-      // Callers still passing only `visibility` get the equivalent floor.
-      inbox_visibility: input.visibility ?? 'org_members',
-      inbox_default_lens: input.defaultLens ?? legacyDefaultLens(input.visibility),
+      inbox_default_lens: input.defaultLens ?? 'full',
       inbox_settings: input.settings ?? {},
     }
 
@@ -117,7 +104,6 @@ export class InboxService {
     if (input.color !== undefined) values.inbox_color = input.color
     if (input.status !== undefined) values.inbox_status = input.status
     if (input.settings !== undefined) values.inbox_settings = input.settings
-    if (input.visibility !== undefined) values.inbox_visibility = input.visibility
     if (input.defaultLens !== undefined) values.inbox_default_lens = input.defaultLens
 
     if (Object.keys(values).length > 0) {
@@ -409,11 +395,7 @@ export class InboxService {
       description: (item.fieldValues.inbox_description as string) ?? null,
       color: (item.fieldValues.inbox_color as string) ?? 'indigo',
       status: ((item.fieldValues.inbox_status as string) ?? 'ACTIVE') as Inbox['status'],
-      visibility: ((item.fieldValues.inbox_visibility as string) ??
-        'org_members') as Inbox['visibility'],
-      defaultLens:
-        (item.fieldValues.inbox_default_lens as string as Lens) ??
-        legacyDefaultLens(item.fieldValues.inbox_visibility),
+      defaultLens: (item.fieldValues.inbox_default_lens as string as Lens) ?? 'full',
       settings: (item.fieldValues.inbox_settings as Record<string, unknown>) ?? {},
       organizationId: item.organizationId,
       createdAt: item.createdAt,
@@ -450,11 +432,7 @@ export class InboxService {
       description: (getValue('inbox_description') as string) ?? null,
       color: (getValue('inbox_color') as string) ?? 'indigo',
       status: ((getValue('inbox_status') as string) ?? 'ACTIVE') as Inbox['status'],
-      visibility: ((getValue('inbox_visibility') as string) ??
-        'org_members') as Inbox['visibility'],
-      defaultLens:
-        (getValue('inbox_default_lens') as string as Lens) ??
-        legacyDefaultLens(getValue('inbox_visibility')),
+      defaultLens: (getValue('inbox_default_lens') as string as Lens) ?? 'full',
       settings: (getValue('inbox_settings') as Record<string, unknown>) ?? {},
       organizationId: instance.organizationId,
       createdAt: instance.createdAt,
