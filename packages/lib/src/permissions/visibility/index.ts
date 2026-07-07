@@ -15,13 +15,14 @@ export type {
 export { isSystemViewer, SYSTEM_VISIBILITY } from './context'
 export type { DerivationRule } from './derivation-rules'
 export { DERIVATION_RULES } from './derivation-rules'
-export { effectiveLens, effectiveLensBatch } from './effective-lens'
+export { effectiveLens, effectiveLensBatch, inboxLensFor } from './effective-lens'
 export type { Lens } from './lens'
 export { ALL_LENSES, lensRank, maxLens, satisfiesLens } from './lens'
 export {
   FULL_ONLY_THREAD_FIELDS,
   MESSAGE_CONTENT_FIELDS,
   redactMessage,
+  redactMessagePatch,
   redactThreadMeta,
   redactThreadPatch,
   SUBJECT_TIER_THREAD_FIELDS,

@@ -58,7 +58,13 @@ export async function findOrCreateParticipantRecord(
   ctx: IngestContext,
   participantInput: ParticipantInputData,
   identifierType: IdentifierType,
-  messageContext?: { isInbound: boolean; role: ParticipantRole }
+  messageContext?: { isInbound: boolean; role: ParticipantRole },
+  /**
+   * The inbox the triggering message lands in — routes `participant:updated`
+   * to that inbox's lens channels (mail-permissions §6.2). Null/undefined
+   * falls back to the admin-only `none` channel.
+   */
+  inboxId?: string | null
 ): Promise<Participant> {
   if (!participantInput.identifier) {
     throw new Error('Participant identifier cannot be empty.')
@@ -165,7 +171,7 @@ export async function findOrCreateParticipantRecord(
         await publishParticipantUpdated(
           getRealtimeService(),
           ctx.organizationId,
-          { participantId: participant.id, patch },
+          { participantId: participant.id, patch, inboxId },
           { excludeSocketId: ctx.socketId }
         )
       }

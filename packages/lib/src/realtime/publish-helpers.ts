@@ -1,5 +1,8 @@
 // @auxx/lib/realtime/publish-helpers.ts
 
+import { database, schema } from '@auxx/database'
+import { and, eq, isNotNull } from 'drizzle-orm'
+import { type Lens, maxLens } from '../permissions/visibility/lens'
 import type {
   DataConnectorSyncEvent,
   DataExportJobEvent,
@@ -7,10 +10,12 @@ import type {
   MailSyncEvent,
   MessageMeta,
   ParticipantMeta,
+  ThreadCreatedEvent,
   ThreadMeta,
 } from './events'
+import { shapeMailEventForLens } from './mail-event-shaping'
 import type { RealtimeService } from './realtime-service'
-import { rooms } from './rooms'
+import { CHANNEL_LENSES, rooms } from './rooms'
 
 const CHUNK_SIZE = 50
 
@@ -146,62 +151,171 @@ interface MailPublishOptions {
   excludeSocketId?: string
 }
 
-/** Resolve a nullable inboxId to its registry slug. `null` → `'none'`. */
-function inboxRoom(organizationId: string, inboxId: string | null): string {
-  return rooms.orgInbox(organizationId, inboxId ?? 'none')
+/**
+ * Per-thread routing facts for a mail publish (mail-permissions §6.2/§6.3).
+ * `assigneeId` powers the per-user full-payload fanout to the assignee (who
+ * may lack the inbox channel entirely); callers that don't have it handy pass
+ * `undefined` and skip that fanout leg.
+ */
+interface MailThreadTarget {
+  threadId: string
+  inboxId: string | null
+  /** Publish on the previous inbox's channels too when the thread moved. */
+  previousInboxId?: string | null
+  /** `undefined` = unknown (skip assignee fanout); `null` = unassigned. */
+  assigneeId?: string | null
 }
 
 /**
- * Publish `thread:created` on the inbox channel for the given thread.
- * `inboxId` is the raw EntityInstance id (or null for triage).
+ * Per-user grantee audience for one thread: explicit thread grants plus
+ * contact-derived grants from the cached reverse index (§3.1). The contact
+ * leg needs the thread's participant contact ids — one indexed point query,
+ * run only when the org has contact grants at all (almost always none).
+ * Best-effort: any failure returns what was resolved so far.
  */
-export async function publishThreadCreated(
+async function resolveThreadGrantAudience(
+  organizationId: string,
+  threadId: string
+): Promise<Map<string, Lens>> {
+  const audience = new Map<string, Lens>()
+  try {
+    // Lazy import — cache invalidation lazily imports realtime, so the
+    // realtime module must not statically import the cache barrel back.
+    const { getOrgCache } = await import('../cache')
+    const index = await getOrgCache().get(organizationId, 'mailGrantIndex')
+    for (const entry of index.threads[threadId] ?? []) {
+      audience.set(entry.userId, maxLens(audience.get(entry.userId) ?? 'none', entry.lens))
+    }
+    if (Object.keys(index.contacts).length > 0) {
+      const rows = await database
+        .select({ entityInstanceId: schema.ThreadParticipant.entityInstanceId })
+        .from(schema.ThreadParticipant)
+        .where(
+          and(
+            eq(schema.ThreadParticipant.threadId, threadId),
+            isNotNull(schema.ThreadParticipant.entityInstanceId)
+          )
+        )
+      for (const row of rows) {
+        for (const entry of index.contacts[row.entityInstanceId as string] ?? []) {
+          audience.set(entry.userId, maxLens(audience.get(entry.userId) ?? 'none', entry.lens))
+        }
+      }
+    }
+  } catch {
+    // Fanout is a UX nicety on top of the enforced read path — never throw.
+  }
+  return audience
+}
+
+/**
+ * Publish one mail event for a thread (§6.2/§6.3):
+ *
+ * - Inbox channels: one redacted variant per lens
+ *   (`org-{org}-inbox-{id}-{metadata|subject|full}`). A null inbox publishes
+ *   to the admin-only `none` channel at `full` only.
+ * - Per-user fanout: the assignee gets the full payload on their user
+ *   channel (they may lack the inbox channel); thread/contact grantees get
+ *   the payload redacted to their granted lens.
+ *
+ * Fire-and-forget: errors are swallowed by `Promise.allSettled`.
+ */
+async function publishMailThreadEvent(
   realtimeService: RealtimeService,
   organizationId: string,
-  args: { threadId: string; inboxId: string | null; inboxRecordId?: string | null },
+  target: MailThreadTarget,
+  event: MailSyncEvent,
   options?: MailPublishOptions
 ) {
-  await realtimeService
-    .publish(
-      inboxRoom(organizationId, args.inboxId),
-      'thread:created',
-      { threadId: args.threadId, inboxId: args.inboxRecordId ?? null },
-      options
-    )
-    .catch(() => {})
+  const tasks: Promise<boolean>[] = []
+
+  const inboxIds = new Set<string | null>([target.inboxId])
+  if (target.previousInboxId !== undefined && target.previousInboxId !== target.inboxId) {
+    inboxIds.add(target.previousInboxId ?? null)
+  }
+  for (const inboxId of inboxIds) {
+    const lenses = inboxId === null ? (['full'] as const) : CHANNEL_LENSES
+    for (const lens of lenses) {
+      const shaped = shapeMailEventForLens(event, lens)
+      if (!shaped) continue
+      tasks.push(
+        realtimeService.publish(
+          rooms.orgInbox(organizationId, inboxId ?? 'none', lens),
+          shaped.event,
+          shaped.data,
+          options
+        )
+      )
+    }
+  }
+
+  const audience = await resolveThreadGrantAudience(organizationId, target.threadId)
+  if (target.assigneeId) audience.set(target.assigneeId, 'full')
+  for (const [userId, lens] of audience) {
+    const shaped = shapeMailEventForLens(event, lens)
+    if (!shaped) continue
+    tasks.push(realtimeService.publish(rooms.user(userId), shaped.event, shaped.data, options))
+  }
+
+  await Promise.allSettled(tasks)
 }
 
 /**
- * Publish `thread:updated` with a partial patch on the inbox channel.
- * Pass `previousInboxId` when a thread's inboxId changes — the helper will
- * publish on both the old and new channels so users on each side see the
- * transition (FE drops the row from the old via filter, fetches on the new).
+ * Publish `thread:created` on the thread's inbox channels (every lens
+ * variant) + the per-user grantee fanout. `inboxId` is the raw
+ * EntityInstance id (or null for triage → admin-only `none` channel).
  */
-export async function publishThreadUpdated(
+export async function publishThreadCreated(
   realtimeService: RealtimeService,
   organizationId: string,
   args: {
     threadId: string
     inboxId: string | null
-    previousInboxId?: string | null
-    patch: Partial<ThreadMeta>
+    inboxRecordId?: string | null
+    assigneeId?: string | null
   },
   options?: MailPublishOptions
 ) {
-  const payload = { threadId: args.threadId, patch: { id: args.threadId, ...args.patch } }
-  const targets = new Set<string | null>([args.inboxId])
-  if (args.previousInboxId !== undefined && args.previousInboxId !== args.inboxId) {
-    targets.add(args.previousInboxId ?? null)
-  }
-  await Promise.allSettled(
-    Array.from(targets).map((inboxId) =>
-      realtimeService.publish(
-        inboxRoom(organizationId, inboxId),
-        'thread:updated',
-        payload,
-        options
-      )
-    )
+  await publishMailThreadEvent(
+    realtimeService,
+    organizationId,
+    args,
+    {
+      event: 'thread:created',
+      data: {
+        threadId: args.threadId,
+        inboxId: (args.inboxRecordId ?? null) as ThreadCreatedEvent['data']['inboxId'],
+      },
+    },
+    options
+  )
+}
+
+/**
+ * Publish `thread:updated` with a partial patch on the thread's inbox
+ * channels — redacted per lens variant (§6.2: the patch goes through the
+ * `redactThreadPatch` allowlist, so lower channels never carry subject /
+ * unread / unclassified fields) — plus the per-user grantee fanout.
+ *
+ * Pass `previousInboxId` when a thread's inboxId changes — the helper
+ * publishes on both the old and new channels so users on each side see the
+ * transition (FE drops the row from the old via filter, fetches on the new).
+ */
+export async function publishThreadUpdated(
+  realtimeService: RealtimeService,
+  organizationId: string,
+  args: MailThreadTarget & { patch: Partial<ThreadMeta> },
+  options?: MailPublishOptions
+) {
+  await publishMailThreadEvent(
+    realtimeService,
+    organizationId,
+    args,
+    {
+      event: 'thread:updated',
+      data: { threadId: args.threadId, patch: { id: args.threadId, ...args.patch } },
+    },
+    options
   )
 }
 
@@ -214,41 +328,46 @@ export async function publishCountsChanged(realtimeService: RealtimeService, use
   await realtimeService.publish(rooms.user(userId), 'counts:changed', { userId }).catch(() => {})
 }
 
-/** Publish `thread:deleted` on the inbox channel. */
+/** Publish `thread:deleted` on the inbox channels + grantee fanout. */
 export async function publishThreadDeleted(
   realtimeService: RealtimeService,
   organizationId: string,
-  args: { threadId: string; inboxId: string | null },
+  args: { threadId: string; inboxId: string | null; assigneeId?: string | null },
   options?: MailPublishOptions
 ) {
-  await realtimeService
-    .publish(
-      inboxRoom(organizationId, args.inboxId),
-      'thread:deleted',
-      { threadId: args.threadId },
-      options
-    )
-    .catch(() => {})
+  await publishMailThreadEvent(
+    realtimeService,
+    organizationId,
+    args,
+    { event: 'thread:deleted', data: { threadId: args.threadId } },
+    options
+  )
 }
 
-/** Publish `message:created` on the inbox channel. */
+/**
+ * Publish `message:created` on the thread's inbox channels. Messages are
+ * invisible below `subject`, so the `metadata` variant is skipped (§6.2).
+ */
 export async function publishMessageCreated(
   realtimeService: RealtimeService,
   organizationId: string,
-  args: { messageId: string; threadId: string; inboxId: string | null },
+  args: { messageId: string; threadId: string; inboxId: string | null; assigneeId?: string | null },
   options?: MailPublishOptions
 ) {
-  await realtimeService
-    .publish(
-      inboxRoom(organizationId, args.inboxId),
-      'message:created',
-      { messageId: args.messageId, threadId: args.threadId },
-      options
-    )
-    .catch(() => {})
+  await publishMailThreadEvent(
+    realtimeService,
+    organizationId,
+    args,
+    { event: 'message:created', data: { messageId: args.messageId, threadId: args.threadId } },
+    options
+  )
 }
 
-/** Publish `message:updated` with a partial patch on the inbox channel. */
+/**
+ * Publish `message:updated` with a partial patch on the thread's inbox
+ * channels — content fields are dropped from the `subject` variant and the
+ * event is skipped at `metadata` (§6.2).
+ */
 export async function publishMessageUpdated(
   realtimeService: RealtimeService,
   organizationId: string,
@@ -256,70 +375,80 @@ export async function publishMessageUpdated(
     messageId: string
     threadId: string
     inboxId: string | null
+    assigneeId?: string | null
     patch: Partial<MessageMeta>
   },
   options?: MailPublishOptions
 ) {
-  await realtimeService
-    .publish(
-      inboxRoom(organizationId, args.inboxId),
-      'message:updated',
-      {
+  await publishMailThreadEvent(
+    realtimeService,
+    organizationId,
+    args,
+    {
+      event: 'message:updated',
+      data: {
         messageId: args.messageId,
         threadId: args.threadId,
         patch: { id: args.messageId, threadId: args.threadId, ...args.patch },
       },
-      options
-    )
-    .catch(() => {})
+    },
+    options
+  )
 }
 
-/** Publish `message:deleted` on the inbox channel. */
+/** Publish `message:deleted` on the thread's inbox channels (`subject`+). */
 export async function publishMessageDeleted(
   realtimeService: RealtimeService,
   organizationId: string,
-  args: { messageId: string; threadId: string; inboxId: string | null },
+  args: { messageId: string; threadId: string; inboxId: string | null; assigneeId?: string | null },
   options?: MailPublishOptions
 ) {
-  await realtimeService
-    .publish(
-      inboxRoom(organizationId, args.inboxId),
-      'message:deleted',
-      { messageId: args.messageId, threadId: args.threadId },
-      options
-    )
-    .catch(() => {})
+  await publishMailThreadEvent(
+    realtimeService,
+    organizationId,
+    args,
+    { event: 'message:deleted', data: { messageId: args.messageId, threadId: args.threadId } },
+    options
+  )
 }
 
 /**
- * Publish `participant:updated` on the org channel. Participants aren't
- * inbox-scoped (a contact can be on threads across many inboxes) so this
- * stays org-wide for v1.
+ * Publish `participant:updated` on the triggering thread's inbox channels
+ * (all lens variants — participants are metadata-tier). Moved off the
+ * org-wide channel in mail-permissions Phase 3 so members with no access to
+ * the inbox stop receiving contact-activity signals. `inboxId` undefined /
+ * null routes to the admin-only `none` channel.
  */
 export async function publishParticipantUpdated(
   realtimeService: RealtimeService,
   organizationId: string,
-  args: { participantId: string; patch: Partial<ParticipantMeta> },
+  args: { participantId: string; patch: Partial<ParticipantMeta>; inboxId?: string | null },
   options?: MailPublishOptions
 ) {
-  await realtimeService
-    .publish(
-      rooms.orgPresence(organizationId),
-      'participant:updated',
-      {
-        participantId: args.participantId,
-        patch: { id: args.participantId, ...args.patch },
-      },
-      options
+  const payload = {
+    participantId: args.participantId,
+    patch: { id: args.participantId, ...args.patch },
+  }
+  const inboxId = args.inboxId ?? null
+  const lenses = inboxId === null ? (['full'] as const) : CHANNEL_LENSES
+  await Promise.allSettled(
+    lenses.map((lens) =>
+      realtimeService.publish(
+        rooms.orgInbox(organizationId, inboxId ?? 'none', lens),
+        'participant:updated',
+        payload,
+        options
+      )
     )
-    .catch(() => {})
+  )
 }
 
 /**
- * Signal the end of a server-side sync cycle that touched a given inbox. The
- * client listens and invalidates `thread.listIds` for the inbox — per-message
- * events are suppressed during sync to avoid the realtime → getByIds fan-out
- * that trips the tRPC mutation rate limit.
+ * Signal the end of a server-side sync cycle that touched a given inbox — on
+ * every lens variant (it carries no content; every viewer refreshes their
+ * redacted list). The client invalidates `thread.listIds` on receipt;
+ * per-message events are suppressed during sync to avoid the realtime →
+ * getByIds fan-out that trips the tRPC mutation rate limit.
  */
 export async function publishInboxSyncCompleted(
   realtimeService: RealtimeService,
@@ -327,24 +456,30 @@ export async function publishInboxSyncCompleted(
   args: { inboxId: string | null },
   options?: MailPublishOptions
 ) {
-  await realtimeService
-    .publish(
-      inboxRoom(organizationId, args.inboxId),
-      'inbox:syncCompleted',
-      { inboxId: args.inboxId },
-      options
+  const lenses = args.inboxId === null ? (['full'] as const) : CHANNEL_LENSES
+  await Promise.allSettled(
+    lenses.map((lens) =>
+      realtimeService.publish(
+        rooms.orgInbox(organizationId, args.inboxId ?? 'none', lens),
+        'inbox:syncCompleted',
+        { inboxId: args.inboxId },
+        options
+      )
     )
-    .catch(() => {})
+  )
 }
 
 /**
- * Flush a list of mail events as one or more `mail:batch` frames on the inbox
- * channel. Used by ingest's initial-sync / polling-sync paths to coalesce
- * many events into a small number of frames. Events are chunked at
- * `CHUNK_SIZE` (50) per frame to stay under Pusher's 10KB limit.
+ * Flush a list of mail events as one or more `mail:batch` frames per inbox
+ * lens channel. Used by ingest's initial-sync / polling-sync paths to
+ * coalesce many events into a small number of frames. Each event is shaped
+ * per lens (§6.2) before chunking at `CHUNK_SIZE` (50) per frame to stay
+ * under Pusher's 10KB limit.
  *
  * Events of mixed inboxId may be passed — they are bucketed and flushed per
- * inbox. Use `inboxId = null` for triage (unassigned).
+ * inbox. Use `inboxId = null` for triage (admin-only `none` channel, `full`
+ * variant only). No per-user grantee fanout here — batch flushes are backfill
+ * traffic; grantees recover via list refetch (accepted Phase 3 gap).
  */
 export async function flushMailBatch(
   realtimeService: RealtimeService,
@@ -354,19 +489,26 @@ export async function flushMailBatch(
 ) {
   if (events.length === 0) return
 
-  const buckets = new Map<string, MailSyncEvent[]>()
+  const buckets = new Map<string | null, MailSyncEvent[]>()
   for (const { inboxId, event } of events) {
-    const slug = inboxId ?? 'none'
-    if (!buckets.has(slug)) buckets.set(slug, [])
-    buckets.get(slug)!.push(event)
+    const key = inboxId ?? null
+    if (!buckets.has(key)) buckets.set(key, [])
+    buckets.get(key)!.push(event)
   }
 
   const promises: Promise<boolean>[] = []
-  for (const [slug, list] of buckets) {
-    const roomKey = rooms.orgInbox(organizationId, slug)
-    for (let i = 0; i < list.length; i += CHUNK_SIZE) {
-      const chunk = list.slice(i, i + CHUNK_SIZE)
-      promises.push(realtimeService.publish(roomKey, 'mail:batch', { events: chunk }, options))
+  for (const [inboxId, list] of buckets) {
+    const lenses = inboxId === null ? (['full'] as const) : CHANNEL_LENSES
+    for (const lens of lenses) {
+      const shaped = list
+        .map((event) => shapeMailEventForLens(event, lens))
+        .filter((event): event is MailSyncEvent => event !== null)
+      if (shaped.length === 0) continue
+      const roomKey = rooms.orgInbox(organizationId, inboxId ?? 'none', lens)
+      for (let i = 0; i < shaped.length; i += CHUNK_SIZE) {
+        const chunk = shaped.slice(i, i + CHUNK_SIZE)
+        promises.push(realtimeService.publish(roomKey, 'mail:batch', { events: chunk }, options))
+      }
     }
   }
   await Promise.allSettled(promises)

@@ -20,8 +20,9 @@ export type {
   ThreadDeletedEvent,
   ThreadMeta,
   ThreadUpdatedEvent,
+  VisibilityChangedEvent,
 } from '../events'
-export { type RoomKind, rooms } from '../room-keys'
+export { CHANNEL_LENSES, type ChannelLens, type RoomKind, rooms } from '../room-keys'
 export { PusherRealtimeAdapter } from './adapters/pusher'
 export type {
   PresenceHandlers,

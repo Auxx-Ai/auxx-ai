@@ -208,6 +208,7 @@ export class UnreadService {
           {
             threadId: thread.id,
             inboxId: thread.inboxId ?? null,
+            assigneeId: thread.assigneeId ?? null,
             patch: { isUnread: !isRead, userId: targetUserId },
           },
           { excludeSocketId: this.socketId }

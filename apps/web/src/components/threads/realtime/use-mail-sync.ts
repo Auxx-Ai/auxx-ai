@@ -14,12 +14,18 @@ import type {
   ThreadDeletedEvent,
   ThreadUpdatedEvent,
 } from '@auxx/lib/realtime/client'
+import { rooms } from '@auxx/lib/realtime/client'
 import { extractUniqueParticipantIds } from '@auxx/types'
 import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { useUser } from '~/hooks/use-user'
-import { useInboxChannels, useOrgChannel } from '~/realtime/hooks'
+import {
+  type InboxChannelEntry,
+  useInboxChannels,
+  useOrgChannel,
+  useRealtimeRoom,
+} from '~/realtime/hooks'
 import { api } from '~/trpc/react'
-import { useInboxes } from '../hooks'
+import { useMyInboxLenses } from '../hooks'
 import { useMessageListStore } from '../store/message-list-store'
 import { useMessageStore } from '../store/message-store'
 import { useParticipantStore } from '../store/participant-store'
@@ -28,24 +34,29 @@ import { useThreadStore } from '../store/thread-store'
 import { useMessageArrivalCue } from './use-message-arrival-cue'
 
 /**
- * Mail-side counterpart to `useResourceSync`. Subscribes to per-inbox channels
- * for thread/message events and to the org channel for participant events,
- * then fans events into the thread / message / message-list / participant
- * stores. Mounted once in `AuxxAppProviders`.
+ * Mail-side counterpart to `useResourceSync`. Subscribes to the viewer's
+ * per-inbox PER-LENS channels (mail-permissions §6.4) for thread/message
+ * events and to their private user channel for the per-user grantee fanout +
+ * `visibility:changed`, then fans events into the thread / message /
+ * message-list / participant stores. Mounted once in `AuxxAppProviders`.
  */
 export function useMailSync() {
   const { user } = useUser()
   const currentUserId = user?.id ?? null
 
-  const { inboxes } = useInboxes()
-
-  // Build the slug set from accessible inboxes plus the implicit `none`
-  // (unassigned-triage) channel that every org member subscribes to.
-  const slugs = useMemo(() => {
-    const list = inboxes.map((i) => i.id)
-    list.push('none')
+  // The viewer's lens per inbox — subscribe to exactly that channel variant.
+  // Admins additionally get the residual `none` (triage) channel, published
+  // at `full` only. Nothing is subscribed until the lens read lands.
+  const { lenses, isAdmin, isLoaded } = useMyInboxLenses()
+  const entries = useMemo(() => {
+    if (!isLoaded) return []
+    const list: InboxChannelEntry[] = Object.entries(lenses).map(([slug, lens]) => ({
+      slug,
+      lens,
+    }))
+    if (isAdmin) list.push({ slug: 'none', lens: 'full' })
     return list
-  }, [inboxes])
+  }, [lenses, isAdmin, isLoaded])
 
   // Store actions (selectors to avoid re-renders).
   const requestThread = useThreadStore((s) => s.requestThread)
@@ -245,7 +256,8 @@ export function useMailSync() {
   )
 
   // Inbox-channel event dispatcher. Bound across every active per-inbox room
-  // by `useInboxChannels`.
+  // by `useInboxChannels`, and reused for the per-user grantee fanout on the
+  // user channel (payloads are identical, already redacted server-side).
   const onInboxEvent = useCallback(
     (event: string, payload: unknown) => {
       switch (event) {
@@ -261,6 +273,8 @@ export function useMailSync() {
           return handleMessageUpdated(payload as MessageUpdatedEvent['data'])
         case 'message:deleted':
           return handleMessageDeleted(payload as MessageDeletedEvent['data'])
+        case 'participant:updated':
+          return handleParticipantUpdated(payload as ParticipantUpdatedEvent['data'])
         case 'mail:batch':
           return handleMailBatch(payload as MailBatchEvent['data'])
         case 'inbox:syncCompleted':
@@ -274,25 +288,46 @@ export function useMailSync() {
       handleMessageCreated,
       handleMessageUpdated,
       handleMessageDeleted,
+      handleParticipantUpdated,
       handleMailBatch,
       handleInboxSyncCompleted,
     ]
   )
 
-  // Org-channel event dispatcher (currently just participant updates).
+  // The viewer's visibility changed (grant added/revoked, inbox lens moved,
+  // role changed). Refetch `inbox.myLenses` — the `entries` memo re-derives
+  // and `useInboxChannels` resubscribes to the new per-lens channel set — and
+  // refresh everything lens-dependent that's already on screen.
+  const handleVisibilityChanged = useCallback(() => {
+    utils.inbox.myLenses.invalidate()
+    utils.thread.listIds.invalidate()
+    utils.thread.getCounts.invalidate()
+    invalidateAllContexts()
+  }, [utils, invalidateAllContexts])
+
+  // Org-channel event dispatcher — broadcast visibility changes (e.g. an
+  // inbox default-lens edit) that fan out to every member.
   const onOrgEvent = useCallback(
-    (event: string, payload: unknown) => {
-      if (event === 'participant:updated') {
-        handleParticipantUpdated(payload as ParticipantUpdatedEvent['data'])
-      }
+    (event: string, _payload: unknown) => {
+      if (event === 'visibility:changed') handleVisibilityChanged()
     },
-    [handleParticipantUpdated]
+    [handleVisibilityChanged]
+  )
+
+  // User-channel event dispatcher: targeted visibility changes + the
+  // per-user grantee/assignee mail-event fanout (§6.3).
+  const onUserEvent = useCallback(
+    (event: string, payload: unknown) => {
+      if (event === 'visibility:changed') return handleVisibilityChanged()
+      onInboxEvent(event, payload)
+    },
+    [handleVisibilityChanged, onInboxEvent]
   )
 
   // Catch-up on (re)subscribe. Pusher does NOT replay events published while a
-  // channel was mid-subscribe — and inbox channels bind in two phases (the real
-  // inboxes only after the async `inboxes` query resolves), plus rebind on
-  // every reconnect. Messages sent in those windows never reach
+  // channel was mid-subscribe — and inbox channels only bind after the async
+  // `inbox.myLenses` query resolves, plus rebind on every reconnect and on
+  // visibility changes. Messages sent in those windows never reach
   // `handleMessageCreated` and only surface on a manual refresh. So when an
   // inbox channel finishes subscribing, refetch the thread list and the
   // currently-open thread's messages to recover anything missed.
@@ -351,9 +386,10 @@ export function useMailSync() {
     []
   )
 
-  useInboxChannels(slugs, {
+  useInboxChannels(entries, {
     onEvent: onInboxEvent,
     onSubscribed: handleInboxSubscribed,
   })
   useOrgChannel({ onEvent: onOrgEvent })
+  useRealtimeRoom(currentUserId ? rooms.user(currentUserId) : null, { onEvent: onUserEvent })
 }

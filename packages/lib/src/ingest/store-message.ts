@@ -184,6 +184,29 @@ export async function storeMessage(
       return storeIgnoredMessage(ctx, messageData)
     }
 
+    // Ingest guarantee (mail-permissions Phase 0): every thread must carry an
+    // inboxId so it can't fall into the null-inbox visibility class. Resolve it
+    // from the integration's InboxIntegration mapping when the caller didn't
+    // supply one; a failure is logged (the column stays nullable defensively).
+    // Resolved BEFORE participant processing so `participant:updated` events
+    // can route to this inbox's lens channels (Phase 3 §6.2).
+    let resolvedInboxId = messageData.inboxId ?? null
+    if (!resolvedInboxId && messageData.integrationId) {
+      const [link] = await ctx.db
+        .select({ inboxId: schema.InboxIntegration.inboxId })
+        .from(schema.InboxIntegration)
+        .where(eq(schema.InboxIntegration.integrationId, messageData.integrationId))
+        .limit(1)
+      resolvedInboxId = link?.inboxId ?? null
+      if (!resolvedInboxId) {
+        ctx.logger.error('Thread ingest could not resolve an inboxId for integration', {
+          integrationId: messageData.integrationId,
+          organizationId: messageData.organizationId,
+          externalThreadId: messageData.externalThreadId,
+        })
+      }
+    }
+
     // Resolved (role, participantId) pairs for MessageParticipant links,
     // captured while processing so the link insert doesn't re-derive
     // identifier types.
@@ -217,7 +240,8 @@ export async function storeMessage(
         ctx,
         data,
         identifierType,
-        messageContext
+        messageContext,
+        resolvedInboxId
       )
       participantCache.set(cacheKey, participantRecord)
       return participantRecord
@@ -267,27 +291,6 @@ export async function storeMessage(
     const currentMessageParticipantIds: string[] = []
     for (const participant of participantCache.values()) {
       if (participant?.id) currentMessageParticipantIds.push(participant.id)
-    }
-
-    // Ingest guarantee (mail-permissions Phase 0): every thread must carry an
-    // inboxId so it can't fall into the null-inbox visibility class. Resolve it
-    // from the integration's InboxIntegration mapping when the caller didn't
-    // supply one; a failure is logged (the column stays nullable defensively).
-    let resolvedInboxId = messageData.inboxId ?? null
-    if (!resolvedInboxId && messageData.integrationId) {
-      const [link] = await ctx.db
-        .select({ inboxId: schema.InboxIntegration.inboxId })
-        .from(schema.InboxIntegration)
-        .where(eq(schema.InboxIntegration.integrationId, messageData.integrationId))
-        .limit(1)
-      resolvedInboxId = link?.inboxId ?? null
-      if (!resolvedInboxId) {
-        ctx.logger.error('Thread ingest could not resolve an inboxId for integration', {
-          integrationId: messageData.integrationId,
-          organizationId: messageData.organizationId,
-          externalThreadId: messageData.externalThreadId,
-        })
-      }
     }
 
     // Core write set in one transaction: thread upsert → message upsert →
@@ -526,6 +529,7 @@ export async function storeMessage(
             threadId: thread.id,
             inboxId: inboxIdForChannel,
             inboxRecordId,
+            assigneeId: thread.assigneeId ?? null,
           },
           { excludeSocketId: ctx.socketId }
         )
@@ -537,6 +541,7 @@ export async function storeMessage(
           messageId: messageRecord.id,
           threadId: thread.id,
           inboxId: inboxIdForChannel,
+          assigneeId: thread.assigneeId ?? null,
         },
         { excludeSocketId: ctx.socketId }
       )

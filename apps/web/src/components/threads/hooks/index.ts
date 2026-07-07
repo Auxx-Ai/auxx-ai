@@ -6,6 +6,7 @@ export { type InboxItem, type InboxRecord, useInbox, useInboxes } from './use-in
 export { useMessage } from './use-message'
 export { useMessageParticipants } from './use-message-participants'
 export { useMessages } from './use-messages'
+export { useMyInboxLenses } from './use-my-inbox-lenses'
 export { useParticipant } from './use-participant'
 export { useParticipants, useParticipantsArray } from './use-participants'
 export { useSelectionReset } from './use-selection-reset'

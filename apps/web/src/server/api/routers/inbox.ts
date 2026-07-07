@@ -1,7 +1,8 @@
 // apps/web/src/server/api/routers/inbox.ts
 
-import { getCachedUserMailVisibility } from '@auxx/lib/cache'
+import { getCachedUserMailVisibility, getOrgCache } from '@auxx/lib/cache'
 import { InboxService } from '@auxx/lib/inboxes'
+import { inboxLensFor, type Lens } from '@auxx/lib/permissions/visibility'
 import { ThreadMutationService } from '@auxx/lib/threads'
 import { recordIdSchema, toRecordId } from '@auxx/types/resource'
 import { TRPCError } from '@trpc/server'
@@ -28,6 +29,27 @@ const integrationSchema = z.object({
 })
 
 export const inboxRouter = createTRPCRouter({
+  /**
+   * The caller's effective lens per inbox (mail-permissions §6.4) — drives
+   * the FE's per-lens realtime channel subscriptions and, later, redacted
+   * rendering. Two org-cache reads, no DB. Inboxes at `none` are omitted.
+   * `isAdmin` additionally authorizes the residual `none` (triage) channel.
+   */
+  myLenses: protectedProcedure.query(async ({ ctx }) => {
+    const { organizationId } = ctx.session
+    const userId = ctx.session.user.id
+    const [viewer, inboxes] = await Promise.all([
+      getCachedUserMailVisibility(userId, organizationId),
+      getOrgCache().get(organizationId, 'inboxes'),
+    ])
+    const lenses: Record<string, Exclude<Lens, 'none'>> = {}
+    for (const inbox of inboxes) {
+      const lens = inboxLensFor(viewer, inbox.id)
+      if (lens !== 'none') lenses[inbox.id] = lens
+    }
+    return { isAdmin: viewer.isAdmin, lenses }
+  }),
+
   /**
    * Get integrations for an inbox
    */

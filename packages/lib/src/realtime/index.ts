@@ -45,7 +45,9 @@ export type {
   ThreadDeletedEvent,
   ThreadMeta,
   ThreadUpdatedEvent,
+  VisibilityChangedEvent,
 } from './events'
+export { shapeMailEventForLens } from './mail-event-shaping'
 export {
   flushMailBatch,
   publishAgentUpdated,
@@ -70,9 +72,12 @@ export {
 export { RealtimeService } from './realtime-service'
 export {
   type AuthorizeCtx,
+  CHANNEL_LENSES,
+  type ChannelLens,
   findRoom,
   findRoomByChannel,
   fromPusherChannel,
+  parseInboxRoomKey,
   type RoomDef,
   type RoomKind,
   roomKindFor,

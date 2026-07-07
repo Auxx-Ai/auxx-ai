@@ -3,9 +3,9 @@
 import { describe, expect, it } from 'vitest'
 import type { ThreadVisibilityInput, UserMailVisibility } from './context'
 import { isSystemViewer, SYSTEM_VISIBILITY } from './context'
-import { effectiveLens, effectiveLensBatch } from './effective-lens'
+import { effectiveLens, effectiveLensBatch, inboxLensFor } from './effective-lens'
 import { maxLens, satisfiesLens } from './lens'
-import { redactMessage, redactThreadMeta, redactThreadPatch } from './redact'
+import { redactMessage, redactMessagePatch, redactThreadMeta, redactThreadPatch } from './redact'
 
 const INBOX = 'inbox_1'
 const PERSONAL = 'inbox_personal'
@@ -235,5 +235,39 @@ describe('redactMessage', () => {
     expect(r.htmlBodyStorageLocationId).toBeNull()
     expect(r.attachments).toEqual([])
     expect(r.isInbound).toBe(true)
+  })
+})
+
+describe('redactMessagePatch (realtime §6.2)', () => {
+  it('full passes through unchanged', () => {
+    const patch = { snippet: 'preview', sendStatus: 'SENT' }
+    expect(redactMessagePatch(patch, 'full')).toBe(patch)
+  })
+
+  it('subject DROPS content keys (never blanks them onto the store)', () => {
+    const r = redactMessagePatch(
+      { snippet: 'preview', attachments: [{ id: 'a1' }], sendStatus: 'SENT' },
+      'subject'
+    )
+    expect(r).toEqual({ sendStatus: 'SENT' })
+    expect('snippet' in r).toBe(false)
+    expect('attachments' in r).toBe(false)
+  })
+})
+
+describe('inboxLensFor', () => {
+  it('admin short-circuits to full on org inboxes', () => {
+    expect(inboxLensFor(vis({ isAdmin: true }), INBOX)).toBe('full')
+  })
+
+  it("admin does NOT short-circuit on another user's personal inbox", () => {
+    const v = vis({ isAdmin: true, personalInboxIds: { [PERSONAL]: true } })
+    expect(inboxLensFor(v, PERSONAL)).toBe('none')
+  })
+
+  it('member reads the composed inbox floor, none when absent', () => {
+    const v = vis({ inboxLens: { [INBOX]: 'subject' } })
+    expect(inboxLensFor(v, INBOX)).toBe('subject')
+    expect(inboxLensFor(v, 'other_inbox')).toBe('none')
   })
 })

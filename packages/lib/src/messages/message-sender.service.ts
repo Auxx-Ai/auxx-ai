@@ -219,7 +219,7 @@ export class MessageSenderService {
       // provider-authoritative columns — accepted duplicate.
       try {
         const [threadRow] = await (this.db ?? db)
-          .select({ inboxId: schema.Thread.inboxId })
+          .select({ inboxId: schema.Thread.inboxId, assigneeId: schema.Thread.assigneeId })
           .from(schema.Thread)
           .where(eq(schema.Thread.id, threadContext.id))
           .limit(1)
@@ -230,6 +230,7 @@ export class MessageSenderService {
             messageId: composed.id,
             threadId: threadContext.id,
             inboxId: threadRow?.inboxId ?? null,
+            assigneeId: threadRow?.assigneeId ?? null,
           },
           { excludeSocketId: this.socketId }
         )
