@@ -59,11 +59,15 @@ export function LensSelect({
     </Badge>
   )
 
+  // Never feed Radix an unknown value — it renders the placeholder fallback and,
+  // via its hidden native <select>, warns on non-scalar values. Guards regressions.
+  const safeValue = LENS_LABELS[value] ? value : 'full'
+
   return (
     <>
-      <Select value={value} onValueChange={handleChange} disabled={disabled}>
+      <Select value={safeValue} onValueChange={handleChange} disabled={disabled}>
         <SelectTrigger size={size} variant={variant} className={className}>
-          <SelectValue placeholder='Access'>{LENS_LABELS[value]?.label}</SelectValue>
+          <SelectValue placeholder='Access'>{LENS_LABELS[safeValue]?.label}</SelectValue>
         </SelectTrigger>
         <SelectContent align='end' className='min-w-56'>
           {LENS_CHOICES.map((lens) => (

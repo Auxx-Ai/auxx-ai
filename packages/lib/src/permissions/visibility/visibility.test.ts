@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest'
 import type { AutomationVisibility, ThreadVisibilityInput, UserMailVisibility } from './context'
 import { isAutomationViewer, isSystemViewer, isUserViewer, SYSTEM_VISIBILITY } from './context'
 import { automationLens, effectiveLens, effectiveLensBatch, inboxLensFor } from './effective-lens'
-import { maxLens, satisfiesLens } from './lens'
+import { maxLens, normalizeLens, satisfiesLens } from './lens'
 import { redactMessage, redactMessagePatch, redactThreadMeta, redactThreadPatch } from './redact'
 
 const INBOX = 'inbox_1'
@@ -41,6 +41,32 @@ describe('lens comparators', () => {
     expect(satisfiesLens('metadata', 'subject')).toBe(false)
     expect(maxLens('metadata', 'subject')).toBe('subject')
     expect(maxLens('full', 'none')).toBe('full')
+  })
+})
+
+describe('normalizeLens', () => {
+  it('passes valid scalar lenses through', () => {
+    expect(normalizeLens('none')).toBe('none')
+    expect(normalizeLens('metadata')).toBe('metadata')
+    expect(normalizeLens('subject')).toBe('subject')
+    expect(normalizeLens('full')).toBe('full')
+  })
+
+  it('unwraps SINGLE_SELECT one-element arrays', () => {
+    // Arrays poison strict comparisons downstream: ['none'] !== 'none' skips
+    // the restricted-inbox drop, ['full'] !== 'full' redacts full viewers.
+    expect(normalizeLens(['subject'])).toBe('subject')
+    expect(normalizeLens(['none'])).toBe('none')
+    expect(normalizeLens(['full'])).toBe('full')
+  })
+
+  it('falls back on garbage', () => {
+    expect(normalizeLens(undefined)).toBe('full')
+    expect(normalizeLens(null)).toBe('full')
+    expect(normalizeLens([])).toBe('full')
+    expect(normalizeLens('FULL')).toBe('full')
+    expect(normalizeLens(['subject', 'full'])).toBe('subject')
+    expect(normalizeLens('bogus', 'none')).toBe('none')
   })
 })
 
@@ -192,6 +218,7 @@ const META: any = {
   latestMessageId: 'm1',
   messageCount: 3,
   tagIds: [],
+  participants: ['from:p1', 'to:p2'],
 }
 
 describe('redactThreadMeta', () => {
@@ -212,6 +239,14 @@ describe('redactThreadMeta', () => {
     expect(r.subject).toBe('')
     expect(r.isUnread).toBe(false)
     expect(r.latestMessageId).toBeNull()
+  })
+
+  it('keeps envelope participants at every lens (§2.2 tier table)', () => {
+    expect(redactThreadMeta(META, 'subject').participants).toEqual(['from:p1', 'to:p2'])
+    expect(redactThreadMeta(META, 'metadata').participants).toEqual(['from:p1', 'to:p2'])
+    expect(redactThreadPatch({ participants: ['from:p1'] } as any, 'metadata')).toEqual({
+      participants: ['from:p1'],
+    })
   })
 })
 

@@ -72,6 +72,14 @@ interface UseInboxesResult {
 }
 
 /**
+ * `useAllRecords` surfaces SINGLE_SELECT field values as one-element arrays
+ * (uniform UI format); unwrap so scalar-typed consumers compare correctly.
+ */
+function scalarValue<T>(value: T | T[] | undefined): T | undefined {
+  return Array.isArray(value) ? value[0] : value
+}
+
+/**
  * Hook to fetch all inboxes using the entity system.
  * Uses useAllRecords internally for data fetching.
  */
@@ -93,8 +101,8 @@ export function useInboxes(): UseInboxesResult {
       name: record.fieldValues?.inbox_name ?? record.displayName ?? 'Untitled',
       description: record.fieldValues?.inbox_description ?? null,
       color: record.fieldValues?.inbox_color ?? null,
-      status: record.fieldValues?.inbox_status,
-      defaultLens: record.fieldValues?.inbox_default_lens ?? 'full',
+      status: scalarValue(record.fieldValues?.inbox_status),
+      defaultLens: scalarValue(record.fieldValues?.inbox_default_lens) ?? 'full',
       myLens: lenses[record.id],
       isPersonal: record.fieldValues?.inbox_is_personal ?? false,
       ownerUserId: record.fieldValues?.inbox_owner_user_id ?? null,

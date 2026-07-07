@@ -98,10 +98,9 @@ function TicketRow({ recordId, createdAt, className, onActionComplete }: Props) 
 
   const { values, isLoading } = useSystemValues(recordId, TICKET_ATTRS, { autoFetch: true })
 
-  const unwrap = (v: unknown): string => {
-    const raw = Array.isArray(v) ? v[0] : v
-    return (raw as string) ?? ''
-  }
+  // useSystemValues collapses SINGLE_SELECT (status/priority/type) to a scalar,
+  // so a plain string coercion is enough.
+  const unwrap = (v: unknown): string => (v as string) ?? ''
 
   const title = unwrap(values.ticket_title)
   const number = unwrap(values.ticket_number)

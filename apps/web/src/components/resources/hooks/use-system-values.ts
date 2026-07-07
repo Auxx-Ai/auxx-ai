@@ -1,6 +1,6 @@
 // apps/web/src/components/resources/hooks/use-system-values.ts
 
-import { formatToRawValue } from '@auxx/lib/field-values/client'
+import { formatToRawValue, isMultiValueFieldType } from '@auxx/lib/field-values/client'
 import type { RecordId } from '@auxx/lib/resources/client'
 import type { ResourceFieldId } from '@auxx/types/field'
 import { useMemo } from 'react'
@@ -25,6 +25,7 @@ interface FieldInfo {
   attr: string
   resourceFieldId: ResourceFieldId
   fieldType: string
+  options?: unknown
 }
 
 /**
@@ -66,7 +67,7 @@ export function useSystemValues<T extends string>(
       if (!resourceFieldId) continue
       const field = fieldMap[resourceFieldId]
       if (!field?.fieldType) continue
-      result.push({ attr, resourceFieldId, fieldType: field.fieldType })
+      result.push({ attr, resourceFieldId, fieldType: field.fieldType, options: field.options })
     }
     return result
   }, [enabled, systemAttributes, systemAttributeMap, fieldMap])
@@ -88,9 +89,17 @@ export function useSystemValues<T extends string>(
   // Format and re-key by system attribute
   const values = useMemo(() => {
     const result = {} as Record<T, unknown>
-    for (const { attr, resourceFieldId, fieldType } of fieldInfos) {
+    for (const { attr, resourceFieldId, fieldType, options } of fieldInfos) {
       const raw = rawValues[resourceFieldId]
-      result[attr as T] = raw !== undefined ? formatToRawValue(raw, fieldType as any) : undefined
+      const formatted = raw !== undefined ? formatToRawValue(raw, fieldType as any) : undefined
+      // SINGLE_SELECT (and single-value ACTOR) come back as single-element arrays
+      // for uniform UI handling with MULTI_SELECT; collapse them to a scalar so
+      // scalar consumers (selects, comparisons) round-trip correctly. Genuinely
+      // multi-value types (MULTI_SELECT/TAGS/FILE/RELATIONSHIP) keep their arrays.
+      result[attr as T] =
+        Array.isArray(formatted) && !isMultiValueFieldType(fieldType as any, options as any)
+          ? formatted[0]
+          : formatted
     }
     return result
   }, [fieldInfos, rawValues])

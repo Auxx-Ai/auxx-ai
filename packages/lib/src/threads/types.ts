@@ -1,5 +1,6 @@
 // packages/lib/src/threads/types.ts
 
+import type { ParticipantId } from '@auxx/types'
 import type { ActorId } from '@auxx/types/actor'
 import type { RecordId } from '@auxx/types/resource'
 import type { ConditionGroup } from '../conditions/types'
@@ -153,6 +154,14 @@ export interface ThreadMeta {
   // Denormalized for performance (avoid extra fetches for list display)
   latestMessageId: string | null
   latestCommentId: string | null
+
+  /**
+   * Role-prefixed ParticipantId[] of the thread's latest message (from /
+   * replyto / to / cc / bcc). Participants are metadata-tier (§2.2 — visible
+   * at every lens), so list rows and headers can render sender identity even
+   * when `latestMessageId` is blanked below `full`.
+   */
+  participants: ParticipantId[]
 
   /** Inbox RecordId (format: "entityDefinitionId:instanceId") or null if unassigned */
   inboxId: RecordId | null

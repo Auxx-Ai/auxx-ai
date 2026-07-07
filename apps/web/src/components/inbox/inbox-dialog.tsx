@@ -2,13 +2,8 @@
 'use client'
 
 import type { RecordId } from '@auxx/lib/resources/client'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from '@auxx/ui/components/dialog'
+import { Dialog, DialogContent } from '@auxx/ui/components/dialog'
+import { DialogNav } from '@auxx/ui/components/dialog-nav'
 import { InboxForm } from './inbox-form'
 
 /** Props for InboxDialog */
@@ -22,31 +17,37 @@ interface InboxDialogProps {
 }
 
 /**
- * Thin modal wrapper around {@link InboxForm}. Supplies the `Dialog` shell and the
- * header; all form logic (pickers, access radio, unsaved-changes guard, delete)
- * lives in the core, which the command palette hosts directly as a page. Public API
- * is unchanged.
+ * Modal wrapper around {@link InboxForm}, a two-page `DialogNav` flow mirroring the
+ * webhook endpoint dialog: `configure` (name/color/access) and `members` (the
+ * "People & groups" drill). The command palette hosts the same form as a single
+ * page (inline grantee list). Public API is unchanged.
  */
 export function InboxDialog({ open, onOpenChange, recordId, onSuccess }: InboxDialogProps) {
   const isEditing = !!recordId
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent size='sm' position='tc'>
+      <DialogContent size='content' position='tc' innerClassName='p-0'>
         <InboxForm
           open={open}
           recordId={recordId}
           onSuccess={onSuccess}
           onClose={() => onOpenChange(false)}
-          header={({ title }) => (
-            <DialogHeader>
-              <DialogTitle>{title}</DialogTitle>
-              <DialogDescription>
-                {isEditing
+          enableMembersPage
+          header={({ title, page, onBack }) => (
+            <DialogNav
+              title={title}
+              description={
+                isEditing
                   ? 'Update inbox settings.'
-                  : 'Create a new inbox to organize your messages.'}
-              </DialogDescription>
-            </DialogHeader>
+                  : 'Create a new inbox to organize your messages.'
+              }
+              onBack={page === 'members' ? onBack : undefined}
+              crumbs={[
+                { label: title, onClick: page !== 'main' ? onBack : undefined },
+                ...(page === 'members' ? [{ label: 'People & groups' }] : []),
+              ]}
+            />
           )}
         />
       </DialogContent>

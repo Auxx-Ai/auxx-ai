@@ -67,7 +67,11 @@ export const CompactThreadItem = memo(function CompactThreadItem({
     messageId: thread?.latestMessageId,
     enabled: !!thread?.latestMessageId,
   })
-  const { from: senderParticipant } = useMessageParticipants(latestMessage?.participants ?? [])
+  // Below `full`, latestMessageId is redacted to null — fall back to the
+  // thread-level envelope participants (metadata tier, present at every lens).
+  const { from: senderParticipant } = useMessageParticipants(
+    latestMessage?.participants ?? thread?.participants ?? []
+  )
   const { isUnread: readStatusUnread, markAsRead } = useThreadReadStatus(threadId)
 
   // Redacted rendering (mail-permissions): below `full` the row never looks

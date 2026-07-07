@@ -19,6 +19,7 @@ export const THREAD_METADATA_FIELDS: readonly (keyof ThreadMeta)[] = [
   'firstMessageAt',
   'messageCount',
   'participantCount',
+  'participants',
   'integrationId',
   'integrationProvider',
   'integrationIsExample',

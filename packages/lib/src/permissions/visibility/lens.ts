@@ -24,3 +24,15 @@ export const satisfiesLens = (have: Lens, need: Lens): boolean => ORDER[have] >=
 
 /** Numeric rank of a lens (for sorting / comparisons). */
 export const lensRank = (lens: Lens): number => ORDER[lens]
+
+/**
+ * Coerce an untrusted value (e.g. a SINGLE_SELECT field-value read, which
+ * surfaces as a one-element array) to a valid scalar {@link Lens}. Arrays
+ * poison every strict lens comparison downstream — `['none'] !== 'none'`
+ * skips the restricted-inbox drop, `['full'] !== 'full'` redacts full
+ * viewers — so every lens read from a field value MUST pass through here.
+ */
+export function normalizeLens(value: unknown, fallback: Lens = 'full'): Lens {
+  const scalar = Array.isArray(value) ? value[0] : value
+  return (ALL_LENSES as readonly unknown[]).includes(scalar) ? (scalar as Lens) : fallback
+}
