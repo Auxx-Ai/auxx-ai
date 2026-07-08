@@ -28,9 +28,11 @@ export function AutomationImpact() {
                   <div>
                     <div className='flex flex-col gap-2 mb-4'>
                       <Bot className='w-6 h-6 fill-indigo-200 dark:fill-indigo-500/30' />
-                      <h3 className='text-2xl font-semibold text-foreground'>Automation Impact</h3>
+                      <h3 className='text-2xl font-semibold text-white dark:text-foreground'>
+                        Automation Impact
+                      </h3>
                     </div>
-                    <p className='text-muted-foreground mb-6'>
+                    <p className='text-white/70 dark:text-muted-foreground mb-6'>
                       See the measurable impact of AI automation on your support operations. These
                       metrics are averaged across all Shopify stores using our platform.
                     </p>

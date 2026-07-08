@@ -15,16 +15,16 @@ export default function TestimonialsSection() {
               <div className='*:ring-foreground/10 @4xl:grid-cols-2 grid gap-6 *:shadow-lg'>
                 <Card className='relative row-span-5 grid grid-rows-subgrid gap-8 overflow-hidden p-8 rounded-2xl'>
                   <RandomGradient colors={[...GRADIENT_PALETTES.aurora]} mode='hero' animated />
-                  <p className='text-muted-foreground relative z-10 text-balance text-xl font-medium'>
+                  <p className='dark:text-muted-foreground relative z-10 text-balance text-xl font-medium text-white/70'>
                     Legacy CivilWorks leveraged Auxx.ai to transform their customer support
                     operations,{' '}
-                    <strong className='text-foreground'>
+                    <strong className='text-white dark:text-foreground'>
                       resulting in an 82% reduction in support tickets and 40% increase in CSAT
                       scores.
                     </strong>
                   </p>
-                  <div className='relative z-10 row-span-2 grid grid-rows-subgrid gap-8 border-t pt-8'>
-                    <p className='text-foreground self-end text-balance before:mr-1 before:content-["\201C"] after:ml-1 after:content-["\201D"]'>
+                  <div className='relative z-10 row-span-2 grid grid-rows-subgrid gap-8 border-t border-white/15 pt-8 dark:border-border'>
+                    <p className='self-end text-balance text-white dark:text-foreground before:mr-1 before:content-["\201C"] after:ml-1 after:content-["\201D"]'>
                       Auxx.ai transformed our support operation. We went from drowning in tickets to
                       proactively delighting customers. Our CSAT scores increased 40% in the first
                       month, and we're handling 15K+ monthly orders effortlessly.
@@ -38,8 +38,10 @@ export default function TestimonialsSection() {
                         />
                       </div>
                       <div className='space-y-px'>
-                        <p className='text-sm font-medium'>Adriana Klooth</p>
-                        <p className='text-muted-foreground text-xs'>
+                        <p className='text-sm font-medium text-white dark:text-foreground'>
+                          Adriana Klooth
+                        </p>
+                        <p className='dark:text-muted-foreground text-xs text-white/60'>
                           Project Manager, Legacy CivilWorks Engineering, Inc
                         </p>
                       </div>
@@ -48,16 +50,16 @@ export default function TestimonialsSection() {
                 </Card>
                 <Card className='relative row-span-5 grid grid-rows-subgrid gap-8 overflow-hidden p-8 rounded-2xl'>
                   <RandomGradient colors={[...GRADIENT_PALETTES.ocean]} mode='hero' animated />
-                  <p className='text-muted-foreground relative z-10 self-end text-balance text-xl font-medium'>
+                  <p className='dark:text-muted-foreground relative z-10 self-end text-balance text-xl font-medium text-white/70'>
                     RMD Kwikform utilized Auxx.ai's Shopify integration to{' '}
-                    <strong className='text-foreground'>
+                    <strong className='text-white dark:text-foreground'>
                       reduce support tickets by 67% while handling 8K+ monthly orders
                     </strong>{' '}
                     with seamless automated responses and upselling capabilities.
                   </p>
 
-                  <div className='relative z-10 row-span-2 grid grid-rows-subgrid gap-8 border-t pt-8'>
-                    <p className='text-foreground text-balance before:mr-1 before:content-["\201C"] after:ml-1 after:content-["\201D"]'>
+                  <div className='relative z-10 row-span-2 grid grid-rows-subgrid gap-8 border-t border-white/15 pt-8 dark:border-border'>
+                    <p className='text-balance text-white dark:text-foreground before:mr-1 before:content-["\201C"] after:ml-1 after:content-["\201D"]'>
                       The Shopify integration was seamless. Within hours, our AI was handling order
                       status inquiries, processing returns, and even upselling complementary
                       products. The system handles our 8K monthly orders without breaking a sweat.
@@ -71,7 +73,7 @@ export default function TestimonialsSection() {
                         />
                       </div>
                       <div className='space-y-px'>
-                        <p className='text-sm font-medium'>Zachery Melton</p>
+                        <p className='text-sm font-medium text-foreground'>Zachery Melton</p>
                         <p className='text-muted-foreground text-xs'>
                           Operations Director, RMD Kwikform
                         </p>
