@@ -154,7 +154,22 @@ export const ModelTypes = {
  */
 export const ModelTypeMeta: Record<
   ModelType,
-  { label: string; plural: string; icon: string; color: string; apiSlug: string; dbTable: string }
+  {
+    label: string
+    plural: string
+    icon: string
+    color: string
+    apiSlug: string
+    dbTable: string
+    /**
+     * Whether this type has a full `/app/<apiSlug>/<id>` detail page (hand-authored
+     * route folder — there is no catch-all). Gates the record drawer's fullscreen
+     * button and the `getRecordLink`/`recordHref` builders via `resourceHasDetailPage`.
+     * Custom entity defs always have a page (generic `custom/[slug]/[id]`) and are
+     * handled in that helper, not here.
+     */
+    hasDetailPage: boolean
+  }
 > = {
   contact: {
     label: 'Contact',
@@ -163,6 +178,7 @@ export const ModelTypeMeta: Record<
     color: 'indigo',
     apiSlug: 'contacts',
     dbTable: 'Contact',
+    hasDetailPage: true,
   },
   ticket: {
     label: 'Ticket',
@@ -171,6 +187,7 @@ export const ModelTypeMeta: Record<
     color: 'blue',
     apiSlug: 'tickets',
     dbTable: 'Ticket',
+    hasDetailPage: true,
   },
   thread: {
     label: 'Thread',
@@ -179,6 +196,7 @@ export const ModelTypeMeta: Record<
     color: 'purple',
     apiSlug: 'threads',
     dbTable: 'Thread',
+    hasDetailPage: false,
   },
   user: {
     label: 'User',
@@ -187,6 +205,7 @@ export const ModelTypeMeta: Record<
     color: 'green',
     apiSlug: 'users',
     dbTable: 'User',
+    hasDetailPage: false,
   },
   inbox: {
     label: 'Inbox',
@@ -195,6 +214,7 @@ export const ModelTypeMeta: Record<
     color: 'indigo',
     apiSlug: 'inboxes',
     dbTable: 'Inbox',
+    hasDetailPage: false,
   },
   message: {
     label: 'Message',
@@ -203,6 +223,7 @@ export const ModelTypeMeta: Record<
     color: 'teal',
     apiSlug: 'messages',
     dbTable: 'Message',
+    hasDetailPage: false,
   },
   participant: {
     label: 'Participant',
@@ -211,6 +232,7 @@ export const ModelTypeMeta: Record<
     color: 'amber',
     apiSlug: 'participants',
     dbTable: 'Participant',
+    hasDetailPage: false,
   },
   dataset: {
     label: 'Dataset',
@@ -219,6 +241,7 @@ export const ModelTypeMeta: Record<
     color: 'purple',
     apiSlug: 'datasets',
     dbTable: 'Dataset',
+    hasDetailPage: true,
   },
   entity: {
     label: 'Entity',
@@ -227,6 +250,7 @@ export const ModelTypeMeta: Record<
     color: 'gray',
     apiSlug: 'entities',
     dbTable: 'EntityInstance',
+    hasDetailPage: false,
   },
   part: {
     label: 'Part',
@@ -235,6 +259,7 @@ export const ModelTypeMeta: Record<
     color: 'orange',
     apiSlug: 'parts',
     dbTable: 'EntityInstance',
+    hasDetailPage: true,
   },
   vendor_part: {
     label: 'Vendor Part',
@@ -243,6 +268,7 @@ export const ModelTypeMeta: Record<
     color: 'orange',
     apiSlug: 'vendor-parts',
     dbTable: 'EntityInstance',
+    hasDetailPage: false,
   },
   subpart: {
     label: 'Subpart',
@@ -251,6 +277,7 @@ export const ModelTypeMeta: Record<
     color: 'orange',
     apiSlug: 'subparts',
     dbTable: 'EntityInstance',
+    hasDetailPage: false,
   },
   stock_movement: {
     label: 'Stock Movement',
@@ -259,6 +286,7 @@ export const ModelTypeMeta: Record<
     color: 'emerald',
     apiSlug: 'stock-movements',
     dbTable: 'EntityInstance',
+    hasDetailPage: false,
   },
   company: {
     label: 'Company',
@@ -267,6 +295,7 @@ export const ModelTypeMeta: Record<
     color: 'blue',
     apiSlug: 'companies',
     dbTable: 'EntityInstance',
+    hasDetailPage: true,
   },
   meeting: {
     label: 'Meeting',
@@ -275,6 +304,7 @@ export const ModelTypeMeta: Record<
     color: 'blue',
     apiSlug: 'meetings',
     dbTable: 'EntityInstance',
+    hasDetailPage: false,
   },
   article: {
     label: 'Article',
@@ -283,6 +313,7 @@ export const ModelTypeMeta: Record<
     color: 'cyan',
     apiSlug: 'articles',
     dbTable: 'Article',
+    hasDetailPage: false,
   },
   kb: {
     label: 'Knowledge Base',
@@ -293,6 +324,7 @@ export const ModelTypeMeta: Record<
     // getRecordLink derives record hrefs as `/app/<apiSlug>/<id>`.
     apiSlug: 'kb',
     dbTable: 'KnowledgeBase',
+    hasDetailPage: true,
   },
 }
 

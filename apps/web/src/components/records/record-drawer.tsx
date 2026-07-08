@@ -37,7 +37,7 @@ import { CommandContext, RecordCommandActions } from '~/components/kbar/contextu
 import { KopilotContext } from '~/components/kopilot/context'
 import { KopilotSuggestion } from '~/components/kopilot/suggestions'
 import { MergeDialog } from '~/components/merge'
-import { useRecord, useResource } from '~/components/resources'
+import { resourceHasDetailPage, useRecord, useResource } from '~/components/resources'
 import { useFieldValue } from '~/components/resources/hooks/use-field-values'
 import { AvatarUploadIcon } from '~/components/resources/ui/avatar-upload-icon'
 import { RecordIcon } from '~/components/resources/ui/record-icon'
@@ -396,12 +396,15 @@ export const RecordDrawer = React.memo(function RecordDrawer({
               </Tooltip>
             )}
 
-            {/* Expand to full page */}
-            <Tooltip content='Open full page'>
-              <Button variant='ghost' size='icon-xs' onClick={handleExpand}>
-                <Expand />
-              </Button>
-            </Tooltip>
+            {/* Expand to full page — only for types that have a detail page
+                (no catch-all route; page-less system types would 404) */}
+            {resource && resourceHasDetailPage(resource) && (
+              <Tooltip content='Open full page'>
+                <Button variant='ghost' size='icon-xs' onClick={handleExpand}>
+                  <Expand />
+                </Button>
+              </Tooltip>
+            )}
           </>
         }
         cardContent={
