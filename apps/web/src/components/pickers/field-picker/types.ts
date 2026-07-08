@@ -91,6 +91,15 @@ export interface FieldPickerContentProps {
    * a relationship field is a binding target, not a path to drill.
    */
   disableDrillDown?: boolean
+
+  /** Additional content rendered at end of CommandList (e.g., Functions group for CALC) */
+  renderAdditionalContent?: (search: string) => React.ReactNode
+
+  /** Content rendered at the top of CommandList, before the fields group (e.g. anchor self rows, a "Count records" shortcut) */
+  renderHeaderContent?: (search: string) => React.ReactNode
+
+  /** Show breadcrumb in standalone mode (default: true) */
+  showBreadcrumb?: boolean
 }
 
 /**
@@ -156,15 +165,6 @@ export interface ExternalNavigation {
 export interface FieldPickerInnerContentProps extends FieldPickerContentProps {
   /** External navigation control (for nested usage) */
   externalNavigation?: ExternalNavigation
-
-  /** Additional content rendered at end of CommandList (e.g., Functions group for CALC) */
-  renderAdditionalContent?: (search: string) => React.ReactNode
-
-  /** Content rendered at the top of CommandList, before the fields group (e.g. anchor self rows) */
-  renderHeaderContent?: (search: string) => React.ReactNode
-
-  /** Show breadcrumb in standalone mode (default: true) */
-  showBreadcrumb?: boolean
 }
 
 /**

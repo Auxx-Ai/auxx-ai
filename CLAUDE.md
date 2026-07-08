@@ -256,6 +256,14 @@ const { markDirty } = useWorkflowStore()
 
 ## UI Components
 
+**Before building a settings page, detail page, dialog, or tree list, read
+`docs/ui-design-guide.md`.** It documents the shared layout/form/dialog/tree
+primitives (`MainPage`, `NavStack`, `SettingsPage`/`SettingsSection`, `ListCard`
+placeholders, `FieldPanel`/`FieldPanelRow`/`FieldInputAdapter`, `DialogNav`/
+`DialogNavPages`, `TreeRow`/`TreeRowButton`) with real usage examples — this is
+what keeps AI-generated UI consistent instead of each screen reinventing its
+own card/dialog/form shape.
+
 - Import shadcn components from `'@auxx/ui/components/<component>'`
 - Every `<SelectItem>` must have a `value` prop
 

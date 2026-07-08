@@ -27,6 +27,7 @@ import { configVariableRouter } from './routers/config-variable'
 import { connectionsRouter } from './routers/connections'
 import { contactRouter } from './routers/contact'
 import { customFieldRouter } from './routers/customField'
+import { dashboardRouter } from './routers/dashboard'
 import { dataConnectorRouter } from './routers/data-connectors'
 import { dataExportRouter } from './routers/data-export'
 import { dataImportRouter } from './routers/data-import'
@@ -184,6 +185,7 @@ export const appRouter = createTRPCRouter({
   dataImport: dataImportRouter,
   dataExport: dataExportRouter,
   dataConnector: dataConnectorRouter,
+  dashboard: dashboardRouter,
   inventoryBridge: inventoryBridgeRouter,
 })
 // inferReactQueryProcedureOptions

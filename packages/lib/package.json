@@ -280,6 +280,24 @@
       "import": "./dist/custom-fields/types.mjs",
       "default": "./src/custom-fields/types.ts"
     },
+    "./dashboards": {
+      "types": "./src/dashboards/index.ts",
+      "source": "./src/dashboards/index.ts",
+      "import": "./dist/dashboards/index.mjs",
+      "default": "./src/dashboards/index.ts"
+    },
+    "./dashboards/client": {
+      "types": "./src/dashboards/client.ts",
+      "source": "./src/dashboards/client.ts",
+      "import": "./dist/dashboards/client.mjs",
+      "default": "./src/dashboards/client.ts"
+    },
+    "./dashboards/config-schemas": {
+      "types": "./src/dashboards/config-schemas.ts",
+      "source": "./src/dashboards/config-schemas.ts",
+      "import": "./dist/dashboards/config-schemas.mjs",
+      "default": "./src/dashboards/config-schemas.ts"
+    },
     "./data-connectors": {
       "types": "./src/data-connectors/index.ts",
       "source": "./src/data-connectors/index.ts",
@@ -838,6 +856,12 @@
       "import": "./dist/resources/index.mjs",
       "default": "./src/resources/index.ts"
     },
+    "./resources/aggregate": {
+      "types": "./src/resources/aggregate/index.ts",
+      "source": "./src/resources/aggregate/index.ts",
+      "import": "./dist/resources/aggregate/index.mjs",
+      "default": "./src/resources/aggregate/index.ts"
+    },
     "./resources/client": {
       "types": "./src/resources/client.ts",
       "source": "./src/resources/client.ts",
@@ -1073,7 +1097,8 @@
     "test:run": "vitest run",
     "test:coverage": "vitest run --coverage",
     "test:watch": "vitest --watch",
-    "test:email-processor": "vitest --config src/email-processor/testing/vitest.config.ts"
+    "test:email-processor": "vitest --config src/email-processor/testing/vitest.config.ts",
+    "test:integration": "vitest run --config vitest.integration.config.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",
@@ -1163,6 +1188,7 @@
     "zod-to-json-schema": "^3.24.0"
   },
   "devDependencies": {
+    "@auxx/test-utils": "workspace:*",
     "@auxx/typescript-config": "workspace:*",
     "@faker-js/faker": "catalog:",
     "@types/addressparser": "^1.0.3",

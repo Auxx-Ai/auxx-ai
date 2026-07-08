@@ -1,0 +1,180 @@
+/* apps/web/src/components/dashboard/ui/dashboard-grid.css
+ *
+ * The react-grid-layout / react-resizable base rules (which ship as separate
+ * css files in the package) restyled with our design tokens. Imported directly
+ * by dashboard-grid.tsx so the grid carries its own styling — no global import.
+ */
+
+.dashboard-grid {
+  position: relative;
+}
+
+.react-grid-layout {
+  position: relative;
+  transition: height 200ms ease;
+}
+
+/* Empty-cell overlay (edit mode only) — a CSS grid mirroring the RGL geometry
+ * (12 cols, `rowHeight` rows, `margin` gap), rendered BEHIND the grid items so
+ * occupied cells are covered by widgets and only the empty holes stay clickable.
+ * Its geometry lines up 1:1 with RGL because containerPadding is [0,0] and the
+ * gap equals the RGL margin. Column/row counts + gap are set inline from
+ * grid-constants so the two never drift. */
+.dashboard-grid-cells {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  display: grid;
+  pointer-events: none;
+}
+
+.dashboard-grid-cell {
+  pointer-events: auto;
+  cursor: pointer;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg, 0.5rem);
+  background: transparent;
+  transition:
+    background 120ms ease,
+    border-color 120ms ease;
+}
+
+.dashboard-grid-cell:hover {
+  border-color: color-mix(in oklch, var(--primary) 45%, transparent);
+  background: color-mix(in oklch, var(--primary) 6%, transparent);
+}
+
+.react-grid-item {
+  box-sizing: border-box;
+  transition: all 200ms ease;
+  transition-property: left, top, width, height;
+}
+
+.react-grid-item.cssTransforms {
+  transition-property: transform, width, height;
+}
+
+.react-grid-item.resizing {
+  z-index: 3;
+  will-change: width, height;
+}
+
+.react-grid-item.react-draggable-dragging {
+  z-index: 3;
+  transition: none;
+  will-change: transform;
+  opacity: 0.85;
+}
+
+/* The drop-location indicator shown while dragging/resizing a widget — RGL
+ * absolutely positions + transforms it to the target cell; we paint it and let
+ * it glide between cells. NOTE: `--primary` is a bare sRGB channel triplet
+ * (Tailwind v4, e.g. `59 130 246`), NOT a full color, so it MUST be wrapped as
+ * `rgb(var(--primary) / α)`. Feeding the raw `var(--primary)` to `color-mix`
+ * produces an invalid value that the parser drops, leaving the indicator
+ * transparent/borderless (the bug this replaced). */
+.react-grid-placeholder {
+  z-index: 2;
+  border-radius: var(--radius-lg, 0.5rem);
+  background: rgb(var(--primary) / 0.12);
+  border: 2px dashed rgb(var(--primary) / 0.5);
+  opacity: 1;
+  transition:
+    transform 120ms ease,
+    width 120ms ease,
+    height 120ms ease;
+  user-select: none;
+  pointer-events: none;
+}
+
+/* In edit mode, suppress text selection so dragging/resizing a widget doesn't
+ * accidentally highlight its content. Editable bodies (the rich-text TipTap
+ * editor) opt back in so inline editing still works. */
+.dashboard-grid--edit .react-grid-item {
+  user-select: none;
+}
+
+.dashboard-grid--edit [contenteditable='true'] {
+  user-select: text;
+}
+
+/* Resize handles — RGL v2 renders the handle DOM regardless of resizeConfig, so
+ * scope visibility to edit mode ourselves (display:none outside it) and reveal
+ * on hover within. We ship 3 of RGL's handles: se (corner), e (right edge),
+ * s (bottom edge). */
+.react-resizable-handle {
+  position: absolute;
+  display: none;
+  opacity: 0;
+  transition: opacity 150ms ease;
+}
+
+.dashboard-grid--edit .react-resizable-handle {
+  display: block;
+}
+
+.dashboard-grid--edit .react-grid-item:hover > .react-resizable-handle {
+  opacity: 1;
+}
+
+.react-resizable-handle::after {
+  content: '';
+  position: absolute;
+  border-color: var(--muted-foreground);
+}
+
+/* South-east corner: the classic diagonal grip. */
+.react-resizable-handle-se {
+  bottom: 2px;
+  right: 2px;
+  width: 16px;
+  height: 16px;
+  cursor: se-resize;
+}
+
+.react-resizable-handle-se::after {
+  right: 4px;
+  bottom: 4px;
+  width: 7px;
+  height: 7px;
+  border-right: 2px solid var(--muted-foreground);
+  border-bottom: 2px solid var(--muted-foreground);
+}
+
+/* East edge: a vertical bar centered on the right side. */
+.react-resizable-handle-e {
+  top: 50%;
+  right: 1px;
+  width: 10px;
+  height: 28px;
+  transform: translateY(-50%);
+  cursor: ew-resize;
+}
+
+.react-resizable-handle-e::after {
+  top: 50%;
+  right: 4px;
+  width: 2px;
+  height: 18px;
+  transform: translateY(-50%);
+  border-right: 2px solid var(--muted-foreground);
+}
+
+/* South edge: a horizontal bar centered on the bottom. */
+.react-resizable-handle-s {
+  left: 50%;
+  bottom: 1px;
+  width: 28px;
+  height: 10px;
+  transform: translateX(-50%);
+  cursor: ns-resize;
+}
+
+.react-resizable-handle-s::after {
+  left: 50%;
+  bottom: 4px;
+  width: 18px;
+  height: 2px;
+  transform: translateX(-50%);
+  border-bottom: 2px solid var(--muted-foreground);
+}

@@ -1863,6 +1863,13 @@
       "when": 1783380395221,
       "tag": "0265_add_lens_to_resource_access",
       "breakpoints": true
+    },
+    {
+      "idx": 266,
+      "version": "7",
+      "when": 1783466596306,
+      "tag": "0266_dashboards",
+      "breakpoints": true
     }
   ]
 }

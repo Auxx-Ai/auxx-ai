@@ -113,6 +113,9 @@ export const PART_FIELDS: Record<string, ResourceField> = {
     systemAttribute: 'part_image',
     systemSortOrder: 'a3a',
     nullable: true,
+    options: {
+      file: { allowMultiple: false, maxFiles: 1, allowedFileTypes: ['image'] },
+    },
     capabilities: {
       filterable: false,
       sortable: false,

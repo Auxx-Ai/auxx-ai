@@ -9,6 +9,7 @@ import { preventTaskPickerEscape } from '~/components/tasks/ui/task-form'
 import { useUnsavedChangesGuard } from '~/hooks/use-unsaved-changes-guard'
 import { CreatePage } from './pages/create'
 import { CreateApiKeyPage } from './pages/create-api-key'
+import { CreateDashboardPage } from './pages/create-dashboard'
 import { CreateDatasetPage } from './pages/create-dataset'
 import { CreateFieldPage } from './pages/create-field'
 import { CreateGroupPage } from './pages/create-group'
@@ -45,6 +46,7 @@ const SIMPLE_CREATE_TITLES: Partial<Record<PalettePage, string>> = {
   'create-meeting': 'Create Meeting',
   'create-group': 'Create Group',
   'create-dataset': 'Create Dataset',
+  'create-dashboard': 'Create Dashboard',
 }
 
 /**
@@ -212,6 +214,9 @@ export function CommandPalette() {
             </DialogNavPage>
             <DialogNavPage value='create-dataset' size='md'>
               <CreateDatasetPage />
+            </DialogNavPage>
+            <DialogNavPage value='create-dashboard' size='md'>
+              <CreateDashboardPage />
             </DialogNavPage>
           </DialogNavPages>
         </DialogContent>

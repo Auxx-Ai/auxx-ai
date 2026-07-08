@@ -1,0 +1,311 @@
+// apps/web/src/components/dashboard/ui/dashboard-detail-view.tsx
+'use client'
+
+// The dashboard detail view — the connector-detail-view analogue. Seeds the
+// draft store from `dashboard.get`, renders the MainPage shell with a view/edit
+// header, the tab strip, and the active tab's widget grid. View mode is static;
+// edit mode enables drag/resize (plan 04), add-widget/add-tab, and Save (publish
+// version N+1, plan 06). A localStorage-restored draft surfaces a restore banner.
+//
+// Deferred (plan 03 / plan 07): global filter bar, drill-down, chart refresh, and
+// the docked widget-config panel — chart widgets show the "Configure" CTA until
+// then. Version-history + settings live in sibling components (wired below).
+
+import type { DashboardWithLayout, WidgetKind } from '@auxx/lib/dashboards/client'
+import { Button } from '@auxx/ui/components/button'
+import {
+  MainPage,
+  MainPageBreadcrumb,
+  MainPageBreadcrumbDropdown,
+  MainPageBreadcrumbItem,
+  MainPageContent,
+  MainPageHeader,
+} from '@auxx/ui/components/main-page'
+import { Lock } from 'lucide-react'
+import { useRouter } from 'next/navigation'
+import { useQueryState } from 'nuqs'
+import { useEffect, useState } from 'react'
+import { useConfirm } from '~/hooks/use-confirm'
+import { useEffectiveDockState } from '~/hooks/use-effective-dock-state'
+import { useDockStore } from '~/stores/dock-store'
+import { useDashboardDraftSync } from '../hooks/use-dashboard-draft-sync'
+import { useDashboardSave } from '../hooks/use-dashboard-save'
+import { useUnsavedChangesGuard } from '../hooks/use-unsaved-changes-guard'
+import {
+  clearStoredDraft,
+  readStoredDraft,
+  selectCurrentTabs,
+  selectIsDirty,
+  useDashboardStore,
+} from '../stores/dashboard-draft-store'
+import { AddWidgetMenu } from './config/add-widget-menu'
+import { WidgetConfigPanel } from './config/widget-config-panel'
+import { DashboardGrid } from './dashboard-grid'
+import { DashboardPublishCluster } from './dashboard-publish-cluster'
+import { DashboardSwitcherList } from './dashboard-switcher-list'
+import { DashboardTabStrip } from './dashboard-tab-strip'
+import { DashboardWidget } from './widget/dashboard-widget'
+
+export function DashboardDetailView({ dashboard }: { dashboard: DashboardWithLayout }) {
+  const router = useRouter()
+  useDashboardDraftSync(dashboard.id)
+  useUnsavedChangesGuard()
+
+  const [confirm, ConfirmDialog] = useConfirm()
+  const [tabParam, setTab] = useQueryState('tab')
+  const [selectedWidgetId, setSelectedWidgetId] = useQueryState('widget')
+
+  const tabs = useDashboardStore(selectCurrentTabs)
+  const isEditMode = useDashboardStore((s) => s.isEditMode)
+  const isDirty = useDashboardStore(selectIsDirty)
+  const hasPersisted = useDashboardStore((s) => s.persisted !== null)
+  const enterEditMode = useDashboardStore((s) => s.enterEditMode)
+  const cancelEdit = useDashboardStore((s) => s.cancelEdit)
+  const restoreDraft = useDashboardStore((s) => s.restoreDraft)
+  const addWidget = useDashboardStore((s) => s.addWidget)
+  const addTab = useDashboardStore((s) => s.addTab)
+  const updateTab = useDashboardStore((s) => s.updateTab)
+  const removeTab = useDashboardStore((s) => s.removeTab)
+  const applyGridLayout = useDashboardStore((s) => s.applyGridLayout)
+  const setDraggingWidgetId = useDashboardStore((s) => s.setDraggingWidgetId)
+  const updateWidgetConfig = useDashboardStore((s) => s.updateWidgetConfig)
+  const removeWidget = useDashboardStore((s) => s.removeWidget)
+  const duplicateWidget = useDashboardStore((s) => s.duplicateWidget)
+  const persistedVersionNumber = useDashboardStore((s) => s.persistedVersionNumber)
+
+  const { commit, isSaving } = useDashboardSave()
+
+  const isDocked = useEffectiveDockState()
+  const dockedWidth = useDockStore((s) => s.dockedWidth)
+  const setDockedWidth = useDockStore((s) => s.setDockedWidth)
+  const dockMinWidth = useDockStore((s) => s.minWidth)
+  const dockMaxWidth = useDockStore((s) => s.maxWidth)
+
+  const activeTabId = tabs.find((t) => t.id === tabParam)?.id ?? tabs[0]?.id ?? ''
+  const activeTab = tabs.find((t) => t.id === activeTabId)
+
+  // The config panel opens on a draft widget while editing (plan 07).
+  const configWidgetId =
+    isEditMode &&
+    selectedWidgetId &&
+    tabs.some((t) => t.widgets.some((w) => w.id === selectedWidgetId))
+      ? selectedWidgetId
+      : null
+  const closeConfig = () => void setSelectedWidgetId(null)
+
+  const handleAddWidget = (kind: WidgetKind, at?: { x: number; y: number }) => {
+    if (!activeTabId) return
+    const id = addWidget(activeTabId, kind, at)
+    if (id) void setSelectedWidgetId(id)
+  }
+
+  // Docked: the panel stays open for the whole edit session so the grid width
+  // doesn't shift when a widget is (de)selected — it shows an empty "select or
+  // add a widget" state when nothing is focused. Overlay/mobile: only on select.
+  const isConfigOpen = isDocked ? isEditMode : !!configWidgetId
+
+  // The DockableDrawer renders as a docked panel (into MainPageContent's dock
+  // slot) or a right-side overlay, mirroring the record drawer. One element,
+  // placed in whichever host matches the current dock mode.
+  const configPanel = (
+    <WidgetConfigPanel
+      widgetId={configWidgetId}
+      open={isConfigOpen}
+      onOpenChange={(o) => !o && closeConfig()}
+      onClose={closeConfig}
+      onSelectWidget={(id) => void setSelectedWidgetId(id)}
+      onAddWidget={handleAddWidget}
+      isDocked={isDocked}
+      dockedWidth={dockedWidth}
+      onWidthChange={setDockedWidth}
+      minWidth={dockMinWidth}
+      maxWidth={dockMaxWidth}
+    />
+  )
+
+  // A localStorage-restored draft from a previous session (plan 06 durability).
+  const [restorableFrom, setRestorableFrom] = useState<number | null>(null)
+  const [restoreDoc, setRestoreDoc] = useState<DashboardWithLayout['layout'] | null>(null)
+  useEffect(() => {
+    const stored = readStoredDraft(dashboard.id)
+    if (stored) {
+      setRestoreDoc(stored.doc)
+      setRestorableFrom(stored.baseVersion)
+    }
+  }, [dashboard.id])
+  const showRestore = restoreDoc && !isEditMode
+
+  const dismissRestore = () => {
+    clearStoredDraft(dashboard.id)
+    setRestoreDoc(null)
+  }
+
+  const handleCancel = async () => {
+    if (isDirty) {
+      const ok = await confirm({
+        title: 'Discard changes?',
+        description: 'Your unsaved changes to this dashboard will be lost.',
+        confirmText: 'Discard',
+        cancelText: 'Keep editing',
+        destructive: true,
+      })
+      if (!ok) return
+    }
+    cancelEdit()
+  }
+
+  return (
+    <MainPage>
+      <ConfirmDialog />
+      <MainPageHeader
+        action={
+          <DashboardPublishCluster
+            dashboard={dashboard}
+            activeVersionNumber={persistedVersionNumber ?? dashboard.versionNumber}
+            isEditMode={isEditMode}
+            isDirty={isDirty}
+            isSaving={isSaving}
+            hasPersisted={hasPersisted}
+            onEnterEdit={enterEditMode}
+            onCancel={() => void handleCancel()}
+            onSave={() => void commit()}
+            onAddWidget={handleAddWidget}
+          />
+        }>
+        <MainPageBreadcrumb>
+          <MainPageBreadcrumbItem title='Dashboards' href='/app/dashboards' />
+          <MainPageBreadcrumbDropdown
+            label={<span className='max-w-[24ch] truncate'>{dashboard.name}</span>}
+            last
+            popover
+            contentClassName='w-64'>
+            <DashboardSwitcherList
+              activeDashboardId={dashboard.id}
+              onSelectDashboard={(id) => router.push(`/app/dashboards/${id}`)}
+              onActiveDashboardDeleted={() => router.push('/app/dashboards')}
+            />
+          </MainPageBreadcrumbDropdown>
+        </MainPageBreadcrumb>
+        {dashboard.visibility === 'private' && (
+          <Lock className='ml-2 size-3.5 text-muted-foreground' aria-label='Private dashboard' />
+        )}
+      </MainPageHeader>
+
+      <MainPageContent
+        dockedPanels={
+          isDocked && isEditMode
+            ? [
+                {
+                  key: 'widget-config',
+                  content: configPanel,
+                  width: dockedWidth,
+                  onWidthChange: setDockedWidth,
+                  minWidth: dockMinWidth,
+                  maxWidth: dockMaxWidth,
+                },
+              ]
+            : []
+        }>
+        <div
+          className={
+            isEditMode
+              ? 'flex min-h-0 flex-1 flex-col rounded-lg bg-muted/20'
+              : 'flex min-h-0 flex-1 flex-col'
+          }>
+          {showRestore && (
+            <div className='flex items-center justify-between gap-3 border-b bg-amber-50 px-3 py-2 text-sm dark:bg-amber-950/30'>
+              <span className='text-muted-foreground'>
+                You have unsaved changes from a previous session
+                {restorableFrom != null ? ` (based on v${restorableFrom})` : ''}.
+              </span>
+              <div className='flex items-center gap-2'>
+                <Button
+                  variant='outline'
+                  size='xs'
+                  onClick={() => {
+                    if (restoreDoc) restoreDraft(restoreDoc)
+                    setRestoreDoc(null)
+                  }}>
+                  Restore
+                </Button>
+                <Button variant='ghost' size='xs' onClick={dismissRestore}>
+                  Discard
+                </Button>
+              </div>
+            </div>
+          )}
+
+          <DashboardTabStrip
+            tabs={tabs}
+            activeTabId={activeTabId}
+            isEditMode={isEditMode}
+            onSelect={(id) => void setTab(id)}
+            onAddTab={() => {
+              const id = addTab()
+              if (id) void setTab(id)
+            }}
+            onRenameTab={(id, title) => updateTab(id, { title })}
+            onRemoveTab={removeTab}
+          />
+
+          <div className='min-h-0 flex-1 overflow-y-auto p-3'>
+            {activeTab && activeTab.widgets.length === 0 ? (
+              <EmptyTab isEditMode={isEditMode} onAdd={handleAddWidget} />
+            ) : (
+              activeTab && (
+                <DashboardGrid
+                  key={activeTab.id}
+                  widgets={activeTab.widgets}
+                  isEditMode={isEditMode}
+                  onLayoutCommit={(changes) => applyGridLayout(activeTab.id, changes)}
+                  onDragStateChange={setDraggingWidgetId}
+                  onAddWidgetAt={(kind, position) => handleAddWidget(kind, position)}
+                  renderWidget={(widget) => (
+                    <DashboardWidget
+                      widget={widget}
+                      isEditMode={isEditMode}
+                      isSelected={selectedWidgetId === widget.id}
+                      onSelect={() => void setSelectedWidgetId(widget.id)}
+                      onEdit={() => void setSelectedWidgetId(widget.id)}
+                      onDuplicate={() => duplicateWidget(widget.id)}
+                      onDelete={async () => {
+                        const ok = await confirm({
+                          title: 'Delete widget?',
+                          description: `"${widget.title}" will be removed.`,
+                          confirmText: 'Delete',
+                          cancelText: 'Cancel',
+                          destructive: true,
+                        })
+                        if (ok) removeWidget(widget.id)
+                      }}
+                      onConfigChange={(config) => updateWidgetConfig(widget.id, config)}
+                    />
+                  )}
+                />
+              )
+            )}
+          </div>
+        </div>
+      </MainPageContent>
+
+      {/* Overlay mode (undocked / mobile) — the DockableDrawer renders its own
+          right-side Vaul drawer; docked mode routes it through dockedPanels above. */}
+      {!isDocked && configPanel}
+    </MainPage>
+  )
+}
+
+function EmptyTab({
+  isEditMode,
+  onAdd,
+}: {
+  isEditMode: boolean
+  onAdd: (kind: WidgetKind) => void
+}) {
+  return (
+    <div className='flex h-full flex-col items-center justify-center gap-3 text-center text-muted-foreground'>
+      <p className='text-sm'>This tab is empty.</p>
+      {isEditMode && <AddWidgetMenu onAdd={onAdd} />}
+    </div>
+  )
+}

@@ -57,6 +57,9 @@ export const SHORTCUTS: Record<string, string[]> = {
   'settings.apps': ['s', 'p'],
   'settings.webhooks': ['s', 'w'],
 
+  // ── Create (palette-owned launchers; entity creates live in global-create) ─
+  'create.dashboard': ['c', 'd'],
+
   // ── Theme ───────────────────────────────────────────────────────────────
   'theme.toggle': ['t', 't'],
   'theme.light': ['t', 'l'],
