@@ -242,6 +242,45 @@ export async function restoreVersion(
 }
 
 /**
+ * Delete a published version. The active version is protected — you cannot
+ * delete the snapshot the dashboard is currently pointing at (mirrors
+ * `workflow-version-service.deleteVersion`). Every other numbered snapshot is
+ * removable; `Dashboard.activeVersionId` is a no-FK pointer and nothing else
+ * references a {@link schema.DashboardVersion} row, so the delete is clean and
+ * an already-restored draft (a copy) is unaffected.
+ */
+export async function deleteVersion(
+  db: Database,
+  orgId: string,
+  userId: string,
+  dashboardId: string,
+  versionNumber: number
+): Promise<Result<{ versionNumber: number }, Error>> {
+  const row = await db.query.Dashboard.findFirst({
+    where: and(eq(schema.Dashboard.id, dashboardId), eq(schema.Dashboard.organizationId, orgId)),
+  })
+  if (!row || row.archivedAt) return err(new NotFoundError('Dashboard not found'))
+  if (!canEditDashboard(row, userId)) return err(new ForbiddenError('Not allowed'))
+
+  const target = await db.query.DashboardVersion.findFirst({
+    where: and(
+      eq(schema.DashboardVersion.dashboardId, dashboardId),
+      eq(schema.DashboardVersion.versionNumber, versionNumber)
+    ),
+    columns: { id: true },
+  })
+  if (!target) return err(new NotFoundError('Dashboard version not found'))
+
+  if (row.activeVersionId === target.id) {
+    return err(new UnprocessableEntityError('Cannot delete the live version'))
+  }
+
+  await db.delete(schema.DashboardVersion).where(eq(schema.DashboardVersion.id, target.id))
+
+  return ok({ versionNumber })
+}
+
+/**
  * Rename a version — the one permitted write to a published row (annotation
  * metadata only, like `agent.renameVersion`).
  */

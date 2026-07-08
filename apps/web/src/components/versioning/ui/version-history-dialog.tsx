@@ -13,7 +13,7 @@ import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { toastError } from '@auxx/ui/components/toast'
 import { cn } from '@auxx/ui/lib/utils'
 import { formatRelativeTime } from '@auxx/utils'
-import { Loader2, Undo2 } from 'lucide-react'
+import { Loader2, Trash2, Undo2 } from 'lucide-react'
 import type React from 'react'
 import { useState } from 'react'
 import { Tooltip } from '~/components/global/tooltip'
@@ -41,6 +41,19 @@ export interface VersionHistoryDialogProps {
   onRestore: (version: VersionRowData) => Promise<boolean>
   /** Presence enables the inline {@link VersionLabelRow} on every row. */
   onRenameLabel?: (versionId: string, label: string | null) => Promise<void>
+  /**
+   * Presence enables a destructive delete action on every non-current row. The
+   * dialog owns the confirm; return without throwing on success. The current
+   * version never shows the control (and the server rejects deleting it anyway).
+   */
+  onDelete?: (version: VersionRowData) => Promise<boolean>
+  /** Override the delete confirmation copy. */
+  deleteConfirm?: (version: VersionRowData) => {
+    title: string
+    description: string
+    confirmText?: string
+    cancelText?: string
+  }
   /** Per-row extra action icons (e.g. article preview link + content diff). */
   renderRowActions?: (version: VersionRowData, ctx: { isCurrent: boolean }) => React.ReactNode
   /**
@@ -72,6 +85,8 @@ export function VersionHistoryDialog({
   currentVersionId,
   onRestore,
   onRenameLabel,
+  onDelete,
+  deleteConfirm,
   renderRowActions,
   restoreConfirm,
   emptyMessage,
@@ -114,6 +129,23 @@ export function VersionHistoryDialog({
     if (!ok) return
     const restored = await onRestore(version)
     if (restored) onOpenChange(false)
+  }
+
+  const handleDelete = async (version: VersionRowData) => {
+    const copy = deleteConfirm?.(version) ?? {
+      title: `Delete v${version.versionNumber}?`,
+      description: 'This permanently removes the snapshot. This action cannot be undone.',
+      confirmText: 'Delete',
+    }
+    const ok = await confirm({
+      title: copy.title,
+      description: copy.description,
+      confirmText: copy.confirmText ?? 'Delete',
+      cancelText: copy.cancelText ?? 'Cancel',
+      destructive: true,
+    })
+    if (!ok) return
+    await onDelete?.(version)
   }
 
   return (
@@ -187,6 +219,17 @@ export function VersionHistoryDialog({
                                 variant='outline'
                                 onClick={() => handleRestore(v)}>
                                 <Undo2 />
+                              </Button>
+                            </Tooltip>
+                          )}
+                          {onDelete && !isCurrent && (
+                            <Tooltip content='Delete version'>
+                              <Button
+                                size='icon-xs'
+                                variant='outline'
+                                className='text-muted-foreground hover:text-destructive'
+                                onClick={() => handleDelete(v)}>
+                                <Trash2 />
                               </Button>
                             </Tooltip>
                           )}

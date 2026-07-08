@@ -4,6 +4,7 @@
 import { ArticleKind } from '@auxx/database/enums'
 import type { ArticleKind as ArticleKindType } from '@auxx/database/types'
 import { getFullSlugPath } from '@auxx/ui/components/kb/utils'
+import { RenameInput } from '@auxx/ui/components/rename-input'
 import { cn } from '@auxx/ui/lib/utils'
 import { deriveTitleFromUrl, isLikelyUrlInput, normalizeUrl } from '@auxx/utils'
 import { FileText, FolderClosed, Heading, Link2 } from 'lucide-react'
@@ -12,7 +13,6 @@ import { useEffect, useRef } from 'react'
 import { useArticleList } from '../../hooks/use-article-list'
 import { useArticleMutations } from '../../hooks/use-article-mutations'
 import { usePendingInsertStore } from '../../store/pending-insert-store'
-import { RenameInput } from './rename-input'
 
 interface PendingArticleRowProps {
   articleKind: ArticleKindType

@@ -6,11 +6,16 @@
 // muted track, with the formatted value centered in the arc. Self-contained
 // (owns its `useKpiData` fetch + states); gauges never carry a trend.
 
-import { type GaugeConfig, isChartConfigured } from '@auxx/lib/dashboards/client'
+import {
+  type GaugeConfig,
+  isChartConfigured,
+  normalizePaletteId,
+} from '@auxx/lib/dashboards/client'
 import { type ChartConfig, ChartContainer } from '@auxx/ui/components/chart'
 import { PolarAngleAxis, RadialBar, RadialBarChart } from 'recharts'
 import { useKpiData } from '../../hooks/use-kpi-data'
 import { useMetricFieldMeta } from '../../hooks/use-metric-field'
+import { seriesColors } from '../../lib/chart-palettes'
 import { formatMetricValue } from '../../lib/format-value'
 import { WidgetError, WidgetSkeleton, WidgetUnconfigured } from './widget-states'
 
@@ -46,7 +51,8 @@ export function GaugeWidget({
   const min = config.rangeMin ?? 0
   const max = config.rangeMax
   const clamped = Math.min(Math.max(data.value, min), max)
-  const fill = config.color && config.color !== 'auto' ? config.color : 'var(--chart-1)'
+  // A gauge is a single arc → the scheme's first color.
+  const fill = seriesColors(normalizePaletteId(config.color), 1)[0]
 
   return (
     <div className='relative flex flex-1 min-h-0 items-end justify-center'>

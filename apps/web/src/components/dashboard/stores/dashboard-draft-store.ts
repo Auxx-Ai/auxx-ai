@@ -95,7 +95,7 @@ interface DashboardDraftState {
   ) => void
 
   // ── tab CRUD ──
-  addTab: () => string | null
+  addTab: (title?: string) => string | null
   updateTab: (tabId: string, patch: { title?: string; icon?: string | null }) => void
   removeTab: (tabId: string) => void
   reorderTabs: (orderedIds: string[]) => void
@@ -374,16 +374,19 @@ export const useDashboardStore = create<DashboardDraftState>()(
         )
       },
 
-      addTab: () => {
+      addTab: (title?: string) => {
         const { draft, isEditMode } = get()
         if (!isEditMode || !draft) return null
         const id = generateId()
-        const title = uniqueTitle(
-          `Tab ${draft.tabs.length + 1}`,
+        const finalTitle = uniqueTitle(
+          title?.trim() || `Tab ${draft.tabs.length + 1}`,
           draft.tabs.map((t) => t.title)
         )
         set({
-          draft: editTabs(draft, (tabs) => [...tabs, { id, title, icon: null, widgets: [] }]),
+          draft: editTabs(draft, (tabs) => [
+            ...tabs,
+            { id, title: finalTitle, icon: null, widgets: [] },
+          ]),
           isDirty: true,
           hasUnpublishedChanges: true,
         })

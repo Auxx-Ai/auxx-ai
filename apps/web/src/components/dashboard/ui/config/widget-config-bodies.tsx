@@ -25,13 +25,10 @@ import type {
   WidgetSource,
 } from '@auxx/lib/dashboards/client'
 import type { SelectOption } from '@auxx/types/custom-field'
-import { Badge } from '@auxx/ui/components/badge'
 import { Section } from '@auxx/ui/components/section'
-import { Database, Palette, X } from 'lucide-react'
+import { Database, Palette } from 'lucide-react'
 import { FieldPanel } from '~/components/global/forms/field-panel'
-import { FieldPicker } from '~/components/pickers/field-picker/field-picker'
-import { useField } from '~/components/resources/hooks/use-field'
-import { PickerTrigger } from '~/components/ui/picker-trigger'
+import { ColumnsRow } from './columns-row'
 import { ConfigFieldRow } from './config-field-row'
 import { DataSourceSection } from './data-source-section'
 import { FieldRefRow } from './field-ref-picker'
@@ -641,56 +638,6 @@ function RecordListBody({
         />
       )}
     </>
-  )
-}
-
-/** Multi-column editor: chips for chosen columns + an "Add column" FieldPicker. */
-function ColumnsRow({
-  source,
-  columns,
-  onChange,
-}: {
-  source: WidgetSource
-  columns: WidgetFieldRef[]
-  onChange: (columns: WidgetFieldRef[]) => void
-}) {
-  return (
-    <div className='flex flex-col gap-2 px-3 py-2'>
-      <span className='text-sm text-muted-foreground'>Columns</span>
-      <div className='flex flex-wrap items-center gap-1.5'>
-        {columns.map((ref, i) => (
-          <ColumnChip
-            key={`${JSON.stringify(ref)}-${i}`}
-            fieldRef={ref}
-            onRemove={() => onChange(columns.filter((_, j) => j !== i))}
-          />
-        ))}
-        <FieldPicker
-          entityDefinitionId={source.kind === 'system' ? source.tableId : source.entityDefinitionId}
-          width={280}
-          onSelect={(ref) => onChange([...columns, ref as WidgetFieldRef])}
-          trigger={
-            <PickerTrigger hasValue={false} placeholder='Add column…' className='h-7 w-auto px-2' />
-          }
-        />
-      </div>
-    </div>
-  )
-}
-
-function ColumnChip({ fieldRef, onRemove }: { fieldRef: WidgetFieldRef; onRemove: () => void }) {
-  const leaf = Array.isArray(fieldRef) ? fieldRef[fieldRef.length - 1] : fieldRef
-  const field = useField(leaf)
-  return (
-    <Badge variant='secondary' className='gap-1'>
-      {field?.label ?? 'Field'}
-      <button
-        type='button'
-        onClick={onRemove}
-        className='text-muted-foreground hover:text-foreground'>
-        <X className='size-3' />
-      </button>
-    </Badge>
   )
 }
 

@@ -28,7 +28,7 @@ export function DashboardVersionsDialog({
   activeVersionNumber: number | null
 }) {
   const versionsQuery = api.dashboard.listVersions.useQuery({ id: dashboardId }, { enabled: open })
-  const { restoreVersion, renameVersion } = useDashboardMutations()
+  const { restoreVersion, deleteVersion, renameVersion } = useDashboardMutations()
   const adoptDraft = useDashboardStore((s) => s.adoptDraft)
 
   const versions: VersionRowData[] | undefined = versionsQuery.data?.map((v) => ({
@@ -60,6 +60,10 @@ export function DashboardVersionsDialog({
         if (!dashboard) return false
         adoptDraft(dashboard.draftLayout ?? dashboard.layout, dashboard.hasUnpublishedChanges)
         return true
+      }}
+      onDelete={async (v) => {
+        if (v.versionNumber == null) return false
+        return deleteVersion(dashboardId, v.versionNumber)
       }}
       onRenameLabel={async (versionId, label) => {
         const v = versionsQuery.data?.find((x) => x.id === versionId)

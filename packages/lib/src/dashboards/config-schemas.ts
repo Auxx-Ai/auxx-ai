@@ -16,6 +16,7 @@ import {
 import { z } from 'zod'
 import { conditionGroupSchema } from '../conditions/client'
 import {
+  CHART_PALETTE_IDS,
   type ChartQueryInput,
   DASHBOARD_GRID_COLUMNS,
   MAX_GROUP_LIMIT,
@@ -66,6 +67,16 @@ const metricSchema = z.object({
 
 /** Category-axis date label style (plan 10); display-only, on the chart config. */
 const dateLabelFormatSchema = z.enum(['short', 'long', 'iso'])
+
+/**
+ * Chart color SCHEME id (plan 12). Display-only. Legacy free-string values
+ * (`'auto'`, `'var(--chart-N)'`) fail the enum and `.catch` folds them to
+ * `'default'`, so an old draft still publishes — no migration needed.
+ */
+const chartPaletteIdSchema = z
+  .enum(CHART_PALETTE_IDS as [string, ...string[]])
+  .catch('default')
+  .optional()
 
 const groupBySchema = z.object({
   fieldRef: widgetFieldRefSchema,
@@ -127,7 +138,7 @@ const barChartConfigSchema = z.object({
   cumulative: z.boolean().optional(),
   showDataLabels: z.boolean().optional(),
   showLegend: z.boolean().optional(),
-  color: z.string().optional(),
+  color: chartPaletteIdSchema,
   rangeMin: z.number().optional(),
   rangeMax: z.number().optional(),
 })
@@ -144,7 +155,7 @@ const lineChartConfigSchema = z.object({
   area: z.boolean().optional(),
   showDataLabels: z.boolean().optional(),
   showLegend: z.boolean().optional(),
-  color: z.string().optional(),
+  color: chartPaletteIdSchema,
   rangeMin: z.number().optional(),
   rangeMax: z.number().optional(),
 })
@@ -159,7 +170,7 @@ const pieChartConfigSchema = z.object({
   showCenterTotal: z.boolean().optional(),
   showDataLabels: z.boolean().optional(),
   showLegend: z.boolean().optional(),
-  color: z.string().optional(),
+  color: chartPaletteIdSchema,
 })
 
 const kpiConfigSchema = z.object({
@@ -182,7 +193,7 @@ const gaugeConfigSchema = z.object({
   metric: metricSchema,
   rangeMin: z.number().optional(),
   rangeMax: z.number(),
-  color: z.string().optional(),
+  color: chartPaletteIdSchema,
   showDataLabels: z.boolean().optional(),
 })
 

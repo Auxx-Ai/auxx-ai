@@ -6,6 +6,7 @@ import {
   archiveDashboard,
   chartQueryInputSchema,
   createDashboard,
+  deleteVersion,
   discardDashboardDraft,
   draftLayoutDocSchema,
   duplicateDashboard,
@@ -218,6 +219,20 @@ export const dashboardRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       return unwrap(
         await restoreVersion(
+          ctx.db,
+          ctx.session.organizationId,
+          ctx.session.userId,
+          input.id,
+          input.versionNumber
+        )
+      )
+    }),
+
+  deleteVersion: protectedProcedure
+    .input(z.object({ id: z.string(), versionNumber: z.number().int().positive() }))
+    .mutation(async ({ ctx, input }) => {
+      return unwrap(
+        await deleteVersion(
           ctx.db,
           ctx.session.organizationId,
           ctx.session.userId,

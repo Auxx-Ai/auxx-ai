@@ -1,4 +1,4 @@
-// apps/web/src/components/kb/ui/sidebar/rename-input.tsx
+// packages/ui/src/components/rename-input.tsx
 'use client'
 
 import { AutosizeInput, type AutosizeInputRef } from '@auxx/ui/components/autosize-input'
@@ -17,9 +17,9 @@ interface RenameInputProps {
 }
 
 /**
- * Inline rename input shared across KB sidebar items, headers, and tab pills.
- * Built on `AutosizeInput` so the field grows to content. Mount focuses + selects;
- * Enter commits, Escape cancels, blur commits-or-cancels.
+ * Inline rename input shared across KB sidebar items, headers, tab pills, and
+ * dashboard tabs. Built on `AutosizeInput` so the field grows to content. Mount
+ * focuses + selects; Enter commits, Escape cancels, blur commits-or-cancels.
  */
 export function RenameInput({
   initialValue,

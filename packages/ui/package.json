@@ -5,6 +5,7 @@
   "type": "module",
   "dependencies": {
     "@auxx/utils": "workspace:*",
+    "@radix-ui/colors": "^3.0.0",
     "minisearch": "catalog:"
   },
   "exports": {
@@ -37,11 +38,11 @@
     "clean": "rm -rf node_modules .turbo *.tsbuildinfo"
   },
   "peerDependencies": {
+    "@base-ui-components/react": "^1.0.0-rc.0",
     "@dnd-kit/core": "catalog:",
     "@dnd-kit/modifiers": "catalog:",
     "@dnd-kit/sortable": "catalog:",
     "@dnd-kit/utilities": "catalog:",
-    "@base-ui-components/react": "^1.0.0-rc.0",
     "@radix-ui/react-accordion": "^1.2.12",
     "@radix-ui/react-avatar": "^1.1.10",
     "@radix-ui/react-context-menu": "^2.2.16",
@@ -115,11 +116,11 @@
   },
   "devDependencies": {
     "@auxx/typescript-config": "workspace:*",
+    "@base-ui-components/react": "1.0.0-rc.0",
     "@dnd-kit/core": "catalog:",
     "@dnd-kit/modifiers": "catalog:",
     "@dnd-kit/sortable": "catalog:",
     "@dnd-kit/utilities": "catalog:",
-    "@base-ui-components/react": "1.0.0-rc.0",
     "@radix-ui/react-accordion": "^1.2.12",
     "@radix-ui/react-avatar": "^1.1.10",
     "@radix-ui/react-context-menu": "^2.2.16",

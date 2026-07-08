@@ -74,6 +74,7 @@ export function DashboardDetailView({ dashboard }: { dashboard: DashboardWithLay
   const addTab = useDashboardStore((s) => s.addTab)
   const updateTab = useDashboardStore((s) => s.updateTab)
   const removeTab = useDashboardStore((s) => s.removeTab)
+  const reorderTabs = useDashboardStore((s) => s.reorderTabs)
   const applyGridLayout = useDashboardStore((s) => s.applyGridLayout)
   const setDraggingWidgetId = useDashboardStore((s) => s.setDraggingWidgetId)
   const updateWidgetConfig = useDashboardStore((s) => s.updateWidgetConfig)
@@ -216,12 +217,13 @@ export function DashboardDetailView({ dashboard }: { dashboard: DashboardWithLay
             activeTabId={activeTabId}
             isEditMode={isEditMode}
             onSelect={(id) => void setTab(id)}
-            onAddTab={() => {
-              const id = addTab()
+            onAdd={(title) => {
+              const id = addTab(title)
               if (id) void setTab(id)
             }}
-            onRenameTab={(id, title) => updateTab(id, { title })}
-            onRemoveTab={removeTab}
+            onRename={(id, title) => updateTab(id, { title })}
+            onReorder={reorderTabs}
+            onRemove={removeTab}
           />
 
           <div className='min-h-0 flex-1 overflow-y-auto p-3'>

@@ -16,6 +16,7 @@ import {
   getKbPreviewHref,
   isArticleActive,
 } from '@auxx/ui/components/kb/utils'
+import { RenameInput } from '@auxx/ui/components/rename-input'
 import { cn } from '@auxx/ui/lib/utils'
 import { useDroppable } from '@dnd-kit/core'
 import { useSortable } from '@dnd-kit/sortable'
@@ -56,7 +57,6 @@ import type { ArticleMeta, ArticleTreeNode } from '../../store/article-store'
 import { usePendingInsertStore } from '../../store/pending-insert-store'
 import { ArticleSettingsDialog } from '../editor/article-settings-dialog'
 import { ArticleInsertLine } from './article-insert-line'
-import { RenameInput } from './rename-input'
 
 function StatusDot({
   isPublished,
