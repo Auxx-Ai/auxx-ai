@@ -48,7 +48,7 @@ export function DataSourceSection({
       const ok = await confirm({
         title: 'Change data source?',
         description:
-          'The metric, group-by, filters and columns depend on the current source and will be cleared.',
+          'The metric, category, series, filters and columns depend on the current source and will be cleared.',
         confirmText: 'Change source',
         cancelText: 'Cancel',
         destructive: true,
@@ -59,7 +59,10 @@ export function DataSourceSection({
   }
 
   return (
-    <FieldPanelRow title='Data source' isRequired>
+    <FieldPanelRow
+      title='Data source'
+      isRequired
+      description='The records this widget charts — an object (Contacts, Tickets, Orders…) or a system table.'>
       <ConfirmDialog />
       <ResourcePicker
         value={source ? [sourceResourceId(source)] : []}

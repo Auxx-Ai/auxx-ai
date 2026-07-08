@@ -11,13 +11,13 @@ import {
   type ChartConfig,
   ChartContainer,
   ChartLegend,
-  ChartLegendContent,
   ChartTooltip,
   ChartTooltipContent,
 } from '@auxx/ui/components/chart'
 import { Cell, Label, Pie, PieChart } from 'recharts'
 import type { ChartAggregateResult } from '../../lib/chart-transform'
 import { toPieRows } from '../../lib/chart-transform'
+import { PaginatedChartLegend } from './paginated-chart-legend'
 
 export function PieChartWidget({
   config,
@@ -86,7 +86,7 @@ export function PieChartWidget({
             />
           )}
         </Pie>
-        {showLegend && <ChartLegend content={<ChartLegendContent nameKey='label' />} />}
+        {showLegend && <ChartLegend content={<PaginatedChartLegend nameKey='label' />} />}
       </PieChart>
     </ChartContainer>
   )

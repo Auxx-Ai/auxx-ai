@@ -12,13 +12,13 @@ import type { BarChartConfig } from '@auxx/lib/dashboards/client'
 import {
   ChartContainer,
   ChartLegend,
-  ChartLegendContent,
   ChartTooltip,
   ChartTooltipContent,
 } from '@auxx/ui/components/chart'
 import { Bar, BarChart, CartesianGrid, LabelList, XAxis, YAxis } from 'recharts'
 import type { ChartRow, SeriesDef } from '../../lib/chart-transform'
 import { toChartConfig } from '../../lib/chart-transform'
+import { PaginatedChartLegend } from './paginated-chart-legend'
 
 export function BarChartWidget({
   config,
@@ -69,7 +69,7 @@ export function BarChartWidget({
         />
 
         <ChartTooltip content={<ChartTooltipContent valueFormatter={valueFormatter} />} />
-        {showLegend && <ChartLegend content={<ChartLegendContent />} />}
+        {showLegend && <ChartLegend content={<PaginatedChartLegend />} />}
         {series.map((def) => (
           <Bar
             key={def.id}

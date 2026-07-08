@@ -43,6 +43,7 @@ export function RangeRows({
     <>
       <ConfigFieldRow
         title='Min'
+        description='The value at the empty end of the gauge — usually 0.'
         fieldType={FieldType.NUMBER}
         value={min}
         onChange={(v) => onChange({ rangeMin: v as number | undefined })}
@@ -50,6 +51,7 @@ export function RangeRows({
       />
       <ConfigFieldRow
         title='Max'
+        description='The target the gauge fills toward (100%).'
         fieldType={FieldType.NUMBER}
         value={max}
         onChange={(v) => onChange({ rangeMax: v as number | undefined })}
@@ -94,6 +96,7 @@ export function DateAxisFormatRow({
   return (
     <ConfigFieldRow
       title='Date label format'
+      description='How date labels read on the axis — e.g. “Jan 2026” vs “2026-01”.'
       fieldType={FieldType.SINGLE_SELECT}
       fieldOptions={{ options: DATE_LABEL_FORMAT_OPTIONS }}
       value={value ?? 'default'}
@@ -121,7 +124,7 @@ export function GlobalDateBindingRow({
   return (
     <FieldPanelRow
       title='Dashboard date range'
-      description='Which date field the dashboard-level range filters'>
+      description="Which date field this widget filters when the dashboard's date range changes — off to ignore it.">
       <FieldPicker
         entityDefinitionId={sourceResourceId(source)}
         width={280}

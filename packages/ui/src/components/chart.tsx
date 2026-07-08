@@ -311,4 +311,8 @@ export {
   ChartLegend,
   ChartLegendContent,
   ChartStyle,
+  // Exposed for custom legend content (e.g. the dashboards' paginated legend)
+  // that needs to resolve labels/colors from the chart config the same way.
+  useChart,
+  getPayloadConfigFromPayload,
 }

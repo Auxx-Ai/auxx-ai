@@ -9,13 +9,13 @@ import type { LineChartConfig } from '@auxx/lib/dashboards/client'
 import {
   ChartContainer,
   ChartLegend,
-  ChartLegendContent,
   ChartTooltip,
   ChartTooltipContent,
 } from '@auxx/ui/components/chart'
 import { Area, AreaChart, CartesianGrid, Line, LineChart, XAxis, YAxis } from 'recharts'
 import type { ChartRow, SeriesDef } from '../../lib/chart-transform'
 import { toChartConfig } from '../../lib/chart-transform'
+import { PaginatedChartLegend } from './paginated-chart-legend'
 
 export function LineChartWidget({
   config,
@@ -52,7 +52,7 @@ export function LineChartWidget({
       key='tooltip'
       content={<ChartTooltipContent valueFormatter={valueFormatter} />}
     />,
-    showLegend ? <ChartLegend key='legend' content={<ChartLegendContent />} /> : null,
+    showLegend ? <ChartLegend key='legend' content={<PaginatedChartLegend />} /> : null,
   ]
 
   if (config.area) {

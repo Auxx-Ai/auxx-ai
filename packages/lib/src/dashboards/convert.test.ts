@@ -136,9 +136,9 @@ describe('droppedFieldsOnConvert', () => {
     expect(droppedFieldsOnConvert(bar, 'lineChart')).toEqual([])
   })
 
-  it('bar → kpi reports the group-by and secondary breakdown', () => {
+  it('bar → kpi reports the category and series', () => {
     expect(droppedFieldsOnConvert(bar, 'kpi')).toEqual(
-      expect.arrayContaining(['Group by', 'Secondary breakdown'])
+      expect.arrayContaining(['Category', 'Series'])
     )
   })
 
