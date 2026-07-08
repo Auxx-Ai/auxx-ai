@@ -70,6 +70,13 @@ export const MAIL_MENU: SidebarProps[] = []
 
 export const SIDEBAR_MENU: SidebarProps[] = [
   {
+    id: 'dashboards',
+    label: 'Dashboards',
+    slug: 'dashboards',
+    icon: <LayoutDashboard />,
+    featureKey: 'dashboards',
+  },
+  {
     id: 'today',
     label: 'Today',
     slug: 'today',
@@ -107,13 +114,7 @@ export const SIDEBAR_MENU: SidebarProps[] = [
   },
   { id: 'tasks', label: 'Tasks', slug: 'tasks', icon: <CheckSquare /> },
   // Member-visible by design (no adminOnly) — dashboards are member-safe.
-  {
-    id: 'dashboards',
-    label: 'Dashboards',
-    slug: 'dashboards',
-    icon: <LayoutDashboard />,
-    featureKey: 'dashboards',
-  },
+
   {
     id: 'resources',
     label: 'Resources',
