@@ -427,6 +427,13 @@ export interface DynamicTableProps<TData = any> {
 
   /** Standalone mode - bypasses view store initialization, useful for preview tables */
   standalone?: boolean
+
+  /**
+   * Disable column drag-reorder. In a widget/preview a reorder would write to
+   * the (session-only) view store and silently reset on reload — a lying
+   * interaction. Off by default (existing tables keep drag-reorder).
+   */
+  disableColumnDnd?: boolean
 }
 
 /**

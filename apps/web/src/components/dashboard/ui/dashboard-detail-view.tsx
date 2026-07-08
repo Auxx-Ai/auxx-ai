@@ -4,14 +4,16 @@
 // The dashboard detail view — the connector-detail-view analogue. Seeds the
 // draft store from `dashboard.get`, renders the MainPage shell with a view/edit
 // header, the tab strip, and the active tab's widget grid. View mode renders the
-// PUBLISHED version (static); edit mode renders the editable draft with drag/
-// resize (plan 04), add-widget/add-tab, and the docked config panel. Edits
+// PUBLISHED version by default; when a draft is parked a header Live/Draft toggle
+// flips the canvas (Done lands on Draft). Edit mode renders the editable draft
+// with drag/resize (plan 04), add-widget/add-tab, and the docked config panel. Edits
 // auto-save to the server draft (`use-dashboard-autosave`); Publish/Discard drive
 // versioning (`use-dashboard-publish`) — the agent versioning model.
 //
 // Deferred (plan 08): global filter bar, drill-down, chart refresh.
 
 import type { DashboardWithLayout, WidgetKind } from '@auxx/lib/dashboards/client'
+import type { RecordId } from '@auxx/types/resource'
 import {
   MainPage,
   MainPageBreadcrumb,
@@ -23,6 +25,8 @@ import {
 import { Lock } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useQueryState } from 'nuqs'
+import { type ReactNode, useState } from 'react'
+import { RecordDrawer } from '~/components/records/record-drawer'
 import { useConfirm } from '~/hooks/use-confirm'
 import { useEffectiveDockState } from '~/hooks/use-effective-dock-state'
 import { useDockStore } from '~/stores/dock-store'
@@ -32,6 +36,7 @@ import { useDashboardPublish } from '../hooks/use-dashboard-publish'
 import {
   selectCurrentTabs,
   selectHasUnpublishedChanges,
+  selectViewLayer,
   useDashboardStore,
 } from '../stores/dashboard-draft-store'
 import { AddWidgetMenu } from './config/add-widget-menu'
@@ -51,9 +56,16 @@ export function DashboardDetailView({ dashboard }: { dashboard: DashboardWithLay
   const [tabParam, setTab] = useQueryState('tab')
   const [selectedWidgetId, setSelectedWidgetId] = useQueryState('widget')
 
+  // Record opened from a recordList widget (view mode). Lifted to the page so
+  // the drawer renders in the docked panel / overlay, not clipped inside the
+  // widget card — mirrors records-view.
+  const [openRecordId, setOpenRecordId] = useState<RecordId | null>(null)
+
   const tabs = useDashboardStore(selectCurrentTabs)
   const isEditMode = useDashboardStore((s) => s.isEditMode)
   const hasUnpublishedChanges = useDashboardStore(selectHasUnpublishedChanges)
+  const viewLayer = useDashboardStore(selectViewLayer)
+  const setViewLayer = useDashboardStore((s) => s.setViewLayer)
   const saveState = useDashboardStore((s) => s.saveState)
   const hasPersisted = useDashboardStore((s) => s.persisted !== null)
   const enterEditMode = useDashboardStore((s) => s.enterEditMode)
@@ -119,6 +131,34 @@ export function DashboardDetailView({ dashboard }: { dashboard: DashboardWithLay
     />
   )
 
+  // Record drawer opened from a recordList widget (view mode only). Same
+  // element in both dock modes — RecordDrawer picks docked vs overlay itself.
+  const recordDrawer = (
+    <RecordDrawer
+      open={!isEditMode && !!openRecordId}
+      onOpenChange={(o) => !o && setOpenRecordId(null)}
+      recordId={openRecordId ?? undefined}
+    />
+  )
+
+  // Docked slot hosts the config panel while editing, or the record drawer in
+  // view mode — they never overlap (records aren't clickable in edit mode).
+  const dockedPanelEntry = (key: string, content: ReactNode) => ({
+    key,
+    content,
+    width: dockedWidth,
+    onWidthChange: setDockedWidth,
+    minWidth: dockMinWidth,
+    maxWidth: dockMaxWidth,
+  })
+  const dockedPanels = !isDocked
+    ? []
+    : isEditMode
+      ? [dockedPanelEntry('widget-config', configPanel)]
+      : openRecordId
+        ? [dockedPanelEntry('record-detail', recordDrawer)]
+        : []
+
   return (
     <MainPage>
       <ConfirmDialog />
@@ -133,7 +173,12 @@ export function DashboardDetailView({ dashboard }: { dashboard: DashboardWithLay
             isDiscarding={isDiscarding}
             saveState={saveState}
             hasPersisted={hasPersisted}
-            onEnterEdit={enterEditMode}
+            viewLayer={viewLayer}
+            onViewLayerChange={setViewLayer}
+            onEnterEdit={() => {
+              setOpenRecordId(null)
+              enterEditMode()
+            }}
             onExitEdit={exitEditMode}
             onPublish={() => void publish()}
             onDiscard={() => void discard()}
@@ -159,21 +204,7 @@ export function DashboardDetailView({ dashboard }: { dashboard: DashboardWithLay
         )}
       </MainPageHeader>
 
-      <MainPageContent
-        dockedPanels={
-          isDocked && isEditMode
-            ? [
-                {
-                  key: 'widget-config',
-                  content: configPanel,
-                  width: dockedWidth,
-                  onWidthChange: setDockedWidth,
-                  minWidth: dockMinWidth,
-                  maxWidth: dockMaxWidth,
-                },
-              ]
-            : []
-        }>
+      <MainPageContent dockedPanels={dockedPanels}>
         <div
           className={
             isEditMode
@@ -224,6 +255,7 @@ export function DashboardDetailView({ dashboard }: { dashboard: DashboardWithLay
                         if (ok) removeWidget(widget.id)
                       }}
                       onConfigChange={(config) => updateWidgetConfig(widget.id, config)}
+                      onOpenRecord={setOpenRecordId}
                     />
                   )}
                 />
@@ -234,8 +266,10 @@ export function DashboardDetailView({ dashboard }: { dashboard: DashboardWithLay
       </MainPageContent>
 
       {/* Overlay mode (undocked / mobile) — the DockableDrawer renders its own
-          right-side Vaul drawer; docked mode routes it through dockedPanels above. */}
+          right-side Vaul drawer; docked mode routes these through dockedPanels
+          above. Config panel while editing, record drawer in view mode. */}
       {!isDocked && configPanel}
+      {!isDocked && recordDrawer}
     </MainPage>
   )
 }

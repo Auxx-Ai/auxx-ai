@@ -30,8 +30,11 @@ interface PrimaryFieldCellProps {
   rowId: string
   /** Click handler for the title */
   onTitleClick: () => void
-  /** Dropdown menu items passed as children */
-  children: ReactNode
+  /**
+   * Dropdown menu items passed as children. When omitted, the hover kebab menu
+   * is not rendered (widget/read-only use).
+   */
+  children?: ReactNode
 }
 
 /**

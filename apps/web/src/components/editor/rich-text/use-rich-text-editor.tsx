@@ -114,6 +114,13 @@ export interface UseRichTextEditorOptions {
    * popover separately via `useActivePicker(editor)` + `InlinePickerPopover`.
    */
   enableReferencePicker?: boolean
+  /**
+   * Mount the `@` mention trigger on the chip node. Defaults to `true`. Set
+   * `false` for a **slash-only** surface (`/` blocks, no `@` references) — the
+   * chip bundle still mounts (so `slash` works) but the `@` trigger is off.
+   * The consumer must also skip mounting the `@` `ReferencePickerContent` popover.
+   */
+  mention?: boolean
   /** Forwarded to the `@` picker chip. */
   onPickerEnter?: () => boolean
   /** Forwarded to the `@` picker chip. */
@@ -183,6 +190,7 @@ export function useRichTextEditor({
   onSlashBackspacePop,
   onSlashArrowRight,
   enableReferencePicker = true,
+  mention = true,
   onPickerEnter,
   onPickerArrowVertical,
   referenceTabs,
@@ -207,6 +215,7 @@ export function useRichTextEditor({
     () =>
       enableReferencePicker
         ? buildReferencePickerExtensions({
+            mention,
             onPickerEnter,
             onPickerArrowVertical,
             referenceTabs,
@@ -219,6 +228,7 @@ export function useRichTextEditor({
         : [],
     [
       enableReferencePicker,
+      mention,
       onPickerEnter,
       onPickerArrowVertical,
       referenceTabs,

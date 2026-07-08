@@ -50,9 +50,19 @@ interface PromptEditorContentProps {
   onFocusChange: (focused: boolean) => void
   /** Called on focus — parent uses this to expand the collapsed card. */
   onUserActivity?: () => void
-  /** Shared across instances so the same picker handle can drive arrow keys. */
-  referencePickerRef: React.RefObject<ReferencePickerHandle | null>
+  /**
+   * Shared across instances so the same picker handle can drive arrow keys.
+   * Optional — omit on slash-only surfaces (`enableMention={false}`), which
+   * never open the `@` picker.
+   */
+  referencePickerRef?: React.RefObject<ReferencePickerHandle | null>
   referenceTabs?: ReferenceTab[]
+  /**
+   * Mount the `@` reference picker (trigger + popover). Defaults to `true`.
+   * Set `false` for a **slash-only** surface (`/` blocks, no `@` references) —
+   * the `/` command menu keeps working; the `@` trigger and its popover are off.
+   */
+  enableMention?: boolean
   /**
    * When `false`, mounts the editor in read-only mode — same TipTap
    * instance, same reference badge rendering, but typing / paste / slash /
@@ -121,6 +131,7 @@ export const PromptEditorContent = memo(function PromptEditorContent({
   onUserActivity,
   referencePickerRef,
   referenceTabs,
+  enableMention = true,
   editable = true,
   placeholderText,
   inlineExtensions,
@@ -135,11 +146,11 @@ export const PromptEditorContent = memo(function PromptEditorContent({
   const slashRef = useRef<SlashContentHandle | null>(null)
 
   const onPickerEnter = useCallback(
-    () => referencePickerRef.current?.confirmHighlighted() ?? false,
+    () => referencePickerRef?.current?.confirmHighlighted() ?? false,
     [referencePickerRef]
   )
   const onPickerArrowVertical = useCallback(
-    (dir: 1 | -1) => referencePickerRef.current?.moveHighlight(dir) ?? false,
+    (dir: 1 | -1) => referencePickerRef?.current?.moveHighlight(dir) ?? false,
     [referencePickerRef]
   )
   const onSlashEnter = useCallback(() => slashRef.current?.confirmHighlighted() ?? false, [])
@@ -159,6 +170,7 @@ export const PromptEditorContent = memo(function PromptEditorContent({
     onSlashBackspacePop,
     onSlashArrowRight,
     enableReferencePicker: true,
+    mention: enableMention,
     onPickerEnter,
     onPickerArrowVertical,
     referenceTabs,
@@ -285,7 +297,7 @@ export const PromptEditorContent = memo(function PromptEditorContent({
     [editor]
   )
 
-  const referenceOpen = !!activePicker && activePicker.trigger === '@'
+  const referenceOpen = enableMention && !!activePicker && activePicker.trigger === '@'
   const slashOpen = slash && !!activePicker && activePicker.trigger === '/'
 
   // Prevent the popover's interact-outside from closing the chip when the
@@ -343,29 +355,31 @@ export const PromptEditorContent = memo(function PromptEditorContent({
           })}
         </InlinePickerPopover>
       )}
-      <InlinePickerPopover
-        state={{
-          isOpen: referenceOpen,
-          query: activePicker?.query ?? '',
-          range: null,
-          clientRect: activePicker?.clientRect ?? null,
-        }}
-        containerRef={containerRef}
-        width={360}
-        side='bottom'
-        align='start'
-        autoFocus={false}
-        onInteractOutside={onChipInteractOutside}
-        onClose={() => editor?.commands.closeReferencePicker({ keepText: true })}>
-        <ReferencePickerContent
-          ref={referencePickerRef}
-          tab={activePicker?.tab ?? 'people'}
-          query={activePicker?.query ?? ''}
-          onSelect={(id) => editor?.commands.confirmReferencePicker(id)}
-          onTabChange={(tab) => editor?.commands.setReferencePickerTab(tab)}
-          tabs={referenceTabs}
-        />
-      </InlinePickerPopover>
+      {enableMention && (
+        <InlinePickerPopover
+          state={{
+            isOpen: referenceOpen,
+            query: activePicker?.query ?? '',
+            range: null,
+            clientRect: activePicker?.clientRect ?? null,
+          }}
+          containerRef={containerRef}
+          width={360}
+          side='bottom'
+          align='start'
+          autoFocus={false}
+          onInteractOutside={onChipInteractOutside}
+          onClose={() => editor?.commands.closeReferencePicker({ keepText: true })}>
+          <ReferencePickerContent
+            ref={referencePickerRef}
+            tab={activePicker?.tab ?? 'people'}
+            query={activePicker?.query ?? ''}
+            onSelect={(id) => editor?.commands.confirmReferencePicker(id)}
+            onTabChange={(tab) => editor?.commands.setReferencePickerTab(tab)}
+            tabs={referenceTabs}
+          />
+        </InlinePickerPopover>
+      )}
       <PromptLinkPopover
         open={linkPopover !== null}
         anchorRect={linkPopover?.rect ?? null}

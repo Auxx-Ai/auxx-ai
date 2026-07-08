@@ -1,19 +1,32 @@
 // apps/web/src/components/dashboard/ui/widget/rich-text-widget.tsx
 'use client'
 
-// Rich-text (note) widget. TipTap over the workflow note-editor's extensions
-// (`getNoteEditorExtensions`) — the meaningful reuse — storing the doc as TipTap
-// JSON in `config.content` (matches `RichTextConfig`). No realtime collab, so
-// none of the seed-once/remount machinery from record notes is needed. Edits
+// Rich-text (note) widget. Runs the shared prompt/KB block editor
+// (`PromptEditorContent` over `useRichTextEditor`) in PLAIN_PROSE mode: the `/`
+// slash menu (text / headings / lists / to-do / quote / divider / code) plus the
+// selection bubble menu, but NO `@` references (`enableMention={false}`). The doc
+// is stored as TipTap block JSON in `config.content` (matches `RichTextConfig`).
+// No realtime collab, so none of the seed-once/remount machinery is needed. Edits
 // debounce (~500ms) before writing back so we don't dirty the draft per keypress.
 
 import type { RichTextConfig } from '@auxx/lib/dashboards/client'
-import { cn } from '@auxx/ui/lib/utils'
-import { EditorContent, useEditor } from '@tiptap/react'
-import { useEffect, useRef } from 'react'
-import { getNoteEditorExtensions } from '~/components/workflow/nodes/core/note/editor/extensions'
+import type { JSONContent } from '@tiptap/core'
+import { useCallback, useEffect, useMemo, useRef } from 'react'
+import { PLAIN_PROSE } from '~/components/editor/blocks/allowed-blocks'
+import { PromptEditorContent } from '~/components/editor/prompt-editor'
 
 const DEBOUNCE_MS = 500
+
+// Stable no-ops — the note widget has no header widgets (char count / copy) and
+// no focus-driven chrome, so it ignores editor-ready / focus events. Module-scope
+// so they don't defeat `PromptEditorContent`'s `memo` on every widget re-render.
+const noop = () => {}
+
+/** Read the stored block array off the saved doc (`{type:'doc', content:[…]}`). */
+function readContent(content: unknown): JSONContent[] | null {
+  const nodes = (content as { content?: unknown } | null)?.content
+  return Array.isArray(nodes) ? (nodes as JSONContent[]) : null
+}
 
 export function RichTextWidget({
   config,
@@ -27,42 +40,18 @@ export function RichTextWidget({
 }) {
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  const editor = useEditor(
-    {
-      immediatelyRender: false,
-      shouldRerenderOnTransaction: false,
-      editable: isEditMode,
-      extensions: getNoteEditorExtensions('Write something…'),
-      // TipTap accepts a JSON doc or HTML string; config.content is the JSON doc.
-      content: (config.content as object | null) ?? undefined,
-      editorProps: {
-        attributes: {
-          class: cn(
-            'prose prose-sm max-w-none focus:outline-none',
-            'prose-p:my-1 prose-ul:my-1 prose-li:my-0 min-h-full'
-          ),
-        },
-      },
-      onUpdate: ({ editor, transaction }) => {
-        if (!onChange) return
-        // Ignore the doc-init/normalization transaction TipTap emits on mount —
-        // only user edits should dirty the draft (else just opening edit mode,
-        // which toggles `editable`, would auto-save an unchanged widget).
-        if (!transaction.docChanged) return
-        if (timer.current) clearTimeout(timer.current)
-        timer.current = setTimeout(() => onChange(editor.getJSON()), DEBOUNCE_MS)
-      },
-    },
-    // Create the editor ONCE — do NOT recreate on `isEditMode` (that fires an
-    // init `onUpdate` that spuriously dirties the draft). Editability is toggled
-    // by the effect below via `setEditable`.
-    []
-  )
+  // Read once — `PromptEditorContent` snapshots `initialContent` on mount and
+  // owns the doc thereafter (edits flow out through `onChange`).
+  const initialContent = useMemo(() => readContent(config.content), [config.content])
 
-  // Keep editability in sync when toggling modes on an already-mounted editor.
-  useEffect(() => {
-    editor?.setEditable(isEditMode)
-  }, [editor, isEditMode])
+  const handleChange = useCallback(
+    ({ json }: { json: JSONContent }) => {
+      if (!onChange) return
+      if (timer.current) clearTimeout(timer.current)
+      timer.current = setTimeout(() => onChange(json), DEBOUNCE_MS)
+    },
+    [onChange]
+  )
 
   // Flush a pending debounce on unmount so the last edit isn't lost.
   useEffect(() => {
@@ -71,5 +60,18 @@ export function RichTextWidget({
     }
   }, [])
 
-  return <EditorContent editor={editor} className='flex-1 min-h-0 overflow-y-auto' />
+  return (
+    <div className='flex-1 min-h-0 overflow-y-auto'>
+      <PromptEditorContent
+        initialContent={initialContent}
+        onChange={handleChange}
+        onEditorReady={noop}
+        onFocusChange={noop}
+        editable={isEditMode}
+        allowedBlocks={PLAIN_PROSE}
+        enableMention={false}
+        placeholderText='Write something…'
+      />
+    </div>
+  )
 }

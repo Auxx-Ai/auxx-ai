@@ -303,6 +303,7 @@ export function DynamicView<TData extends object = object>(props: DynamicTablePr
     onSelectedKanbanCardIdsChange,
     entityDefinitionId,
     standalone = false,
+    disableColumnDnd = false,
     ...tableProps
   } = props
 
@@ -401,6 +402,7 @@ export function DynamicView<TData extends object = object>(props: DynamicTablePr
       showFooter: hasFooter || showFooter,
       hideToolbar,
       standalone,
+      disableColumnDnd,
       bulkActions,
       onRowClick,
       onImport: tableProps.onImport,
@@ -431,6 +433,7 @@ export function DynamicView<TData extends object = object>(props: DynamicTablePr
       showFooter,
       hideToolbar,
       standalone,
+      disableColumnDnd,
       bulkActions,
       onRowClick,
       tableProps.onRefresh,

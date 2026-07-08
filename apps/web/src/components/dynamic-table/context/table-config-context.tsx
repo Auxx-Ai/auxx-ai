@@ -52,6 +52,9 @@ export interface TableConfigContextValue<TData = any> {
   /** Standalone mode - bypasses view store initialization */
   standalone: boolean
 
+  /** Disable column drag-reorder (widget/preview tables) */
+  disableColumnDnd?: boolean
+
   /** Bulk actions configuration */
   bulkActions: BulkAction<TData>[]
 

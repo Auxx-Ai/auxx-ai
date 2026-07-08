@@ -12,6 +12,10 @@
 //   • view mode — the Edit button.
 //   • edit mode — Add widget ▾, then Done (exit edit; the draft stays parked).
 // The chevron menu (Version history / Duplicate / Settings / Archive) is constant.
+// In view mode with a parked draft the status pill doubles as a Live/Draft view
+// toggle (via the shell's `pillOverride`): its label + dot show what the canvas is
+// showing NOW, and clicking flips between the published version and the draft so
+// "what am I looking at" is never ambiguous. Hidden in edit mode (always draft).
 
 import type { DashboardWithLayout, WidgetKind } from '@auxx/lib/dashboards/client'
 import { Button } from '@auxx/ui/components/button'
@@ -23,7 +27,7 @@ import { useState } from 'react'
 import { PublishClusterShell } from '~/components/versioning/ui/publish-cluster-shell'
 import { useConfirm } from '~/hooks/use-confirm'
 import { useDashboardMutations } from '../hooks/use-dashboard-mutations'
-import type { SaveState } from '../stores/dashboard-draft-store'
+import type { SaveState, ViewLayer } from '../stores/dashboard-draft-store'
 import { AddWidgetMenu } from './config/add-widget-menu'
 import { DashboardFormDialog } from './dashboard-form-dialog'
 import { DashboardVersionsDialog } from './dashboard-versions-dialog'
@@ -46,6 +50,9 @@ export interface DashboardPublishClusterProps {
   saveState: SaveState
   /** No persisted version yet — disables Edit. */
   hasPersisted: boolean
+  /** View-mode canvas layer — drives the Live/Draft toggle. */
+  viewLayer: ViewLayer
+  onViewLayerChange: (layer: ViewLayer) => void
   onEnterEdit: () => void
   onExitEdit: () => void
   onPublish: () => void
@@ -62,6 +69,8 @@ export function DashboardPublishCluster({
   isDiscarding,
   saveState,
   hasPersisted,
+  viewLayer,
+  onViewLayerChange,
   onEnterEdit,
   onExitEdit,
   onPublish,
@@ -132,12 +141,32 @@ export function DashboardPublishCluster({
     </>
   )
 
+  // View mode + a parked draft → the status pill doubles as a live/draft view
+  // toggle: its label + dot show what the canvas is showing NOW, clicking flips it.
+  // Hidden while editing (edit is always the draft) and when nothing is parked
+  // (then the pill keeps its default "open menu" behaviour).
+  const viewingDraft = viewLayer === 'draft'
+  const pillOverride =
+    !isEditMode && hasUnpublishedChanges
+      ? {
+          label: viewingDraft ? 'Draft' : 'Live',
+          dotClassName: viewingDraft ? 'bg-amber-500' : 'bg-emerald-500',
+          onClick: () => onViewLayerChange(viewingDraft ? 'live' : 'draft'),
+          tooltip: viewingDraft
+            ? 'Showing your unpublished draft. Click to see the live version.'
+            : 'Showing the live version. Click to preview your unpublished draft.',
+        }
+      : undefined
+
   return (
     <div className='flex items-center gap-2'>
       {isEditMode && <AutosaveIndicator state={saveState} />}
       <PublishClusterShell
         status={{ isPublished: true, hasUnsaved: hasUnpublishedChanges }}
         pillTooltip={PILL_TOOLTIP}
+        pillOverride={pillOverride}
+        // While editing, the autosave indicator conveys status — drop the pill.
+        hidePill={isEditMode}
         extraSegments={isEditMode ? editModeSegments : editSegment}
         publish={{ onClick: onPublish, isPending: isPublishing }}
         discard={{ onClick: () => void handleDiscard(), isPending: isDiscarding }}>

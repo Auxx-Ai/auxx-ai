@@ -35,15 +35,25 @@ export function LineChartWidget({
   const tickFormatter = formatValue ? (v: number) => formatValue(v) : undefined
   const valueFormatter = formatValue ? (v: number | string) => formatValue(Number(v)) : undefined
 
-  const axes = (
-    <>
-      <CartesianGrid vertical={false} />
-      <XAxis dataKey='label' tickLine={false} axisLine={false} tickMargin={8} />
-      <YAxis tickLine={false} axisLine={false} tickMargin={8} tickFormatter={tickFormatter} />
-      <ChartTooltip content={<ChartTooltipContent valueFormatter={valueFormatter} />} />
-      {showLegend && <ChartLegend content={<ChartLegendContent />} />}
-    </>
-  )
+  // Array, NOT a fragment: recharts finds axes/grid/tooltip/legend by scanning
+  // direct children, and fragments aren't flattened under React 19 (react-is@18
+  // doesn't recognize React 19 elements), so a fragment silently drops them all.
+  const axes = [
+    <CartesianGrid key='grid' vertical={false} />,
+    <XAxis key='x' dataKey='label' tickLine={false} axisLine={false} tickMargin={8} />,
+    <YAxis
+      key='y'
+      tickLine={false}
+      axisLine={false}
+      tickMargin={8}
+      tickFormatter={tickFormatter}
+    />,
+    <ChartTooltip
+      key='tooltip'
+      content={<ChartTooltipContent valueFormatter={valueFormatter} />}
+    />,
+    showLegend ? <ChartLegend key='legend' content={<ChartLegendContent />} /> : null,
+  ]
 
   if (config.area) {
     return (
