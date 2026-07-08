@@ -2,10 +2,25 @@
 
 'use client'
 
+import { type ModelType, ModelTypeMeta } from '@auxx/database/enums'
 import type { RecordId, Resource } from '@auxx/lib/resources/client'
 import { getDefinitionId, parseRecordId } from '@auxx/lib/resources/client'
 import { useMemo } from 'react'
 import { useResourceStore } from '../store/resource-store'
+
+/**
+ * Whether a resource has a full `/app/<apiSlug>/<id>` detail page.
+ *
+ * There is no catch-all route — each system type's page is a hand-authored folder,
+ * so most system types (thread, message, article, meeting, …) have none and would
+ * 404. Custom entity defs always have the generic `custom/[slug]/[id]` page. The
+ * flag for system types lives on `ModelTypeMeta.hasDetailPage` (single source of
+ * truth). Gates the record drawer's fullscreen button and the link builders below.
+ */
+export function resourceHasDetailPage(resource: Resource): boolean {
+  if (!resource.entityType) return true // custom → generic custom/[slug]/[id] route
+  return ModelTypeMeta[resource.entityType as ModelType]?.hasDetailPage ?? false
+}
 
 /**
  * Options for generating record links
@@ -66,7 +81,8 @@ export interface GetRecordLinkOptions {
  * @param recordId - RecordId in format "entityDefinitionId:entityInstanceId"
  * @param resource - The resource object (system or custom)
  * @param options - Optional configuration for the link
- * @returns The URL path
+ * @returns The URL path, or `null` when the resource has no detail page
+ *   (see {@link resourceHasDetailPage}) so callers can skip rendering a dead link
  *
  * @example
  * // Basic usage
@@ -93,7 +109,10 @@ export function getRecordLink(
   recordId: RecordId,
   resource: Resource,
   options: GetRecordLinkOptions = {}
-): string {
+): string | null {
+  // No detail page for this type → no link (avoids navigating to a 404).
+  if (!resourceHasDetailPage(resource)) return null
+
   const { entityInstanceId } = parseRecordId(recordId)
 
   // Build base path - system entities (with entityType) use /app/<slug>, custom use /app/custom/<slug>

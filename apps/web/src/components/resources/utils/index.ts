@@ -4,6 +4,8 @@ export type { GetRecordLinkOptions } from './get-record-link'
 export {
   // Pure function (requires resource object)
   getRecordLink,
+  // Predicate: does this resource have a full detail page?
+  resourceHasDetailPage,
   // Hook (auto-fetches resource from provider)
   useRecordLink,
 } from './get-record-link'

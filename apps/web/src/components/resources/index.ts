@@ -47,4 +47,9 @@ export {
 } from './store'
 
 // Utilities
-export { type GetRecordLinkOptions, getRecordLink, useRecordLink } from './utils'
+export {
+  type GetRecordLinkOptions,
+  getRecordLink,
+  resourceHasDetailPage,
+  useRecordLink,
+} from './utils'
