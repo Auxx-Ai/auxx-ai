@@ -13,9 +13,6 @@ import {
   addWeeks,
   addYears,
   format,
-  getISOWeek,
-  getISOWeekYear,
-  getQuarter,
   startOfDay,
   startOfMonth,
   startOfQuarter,
@@ -25,6 +22,12 @@ import {
 import { fromZonedTime, toZonedTime } from 'date-fns-tz'
 import { type SQL, sql } from 'drizzle-orm'
 import type { DateGranularity } from '../../dashboards/client'
+import { parseKeyLocal } from '../../dashboards/date-bucket-labels'
+
+// Re-export the client-safe label helper so existing importers (group-labels.ts)
+// keep their `./date-buckets` import path. The pure logic now lives in
+// `dashboards/date-bucket-labels.ts` so the chart widgets can share it (plan 10).
+export { formatBucketLabel } from '../../dashboards/date-bucket-labels'
 
 const CALENDAR_TRUNC: Partial<Record<DateGranularity, string>> = {
   day: 'day',
@@ -87,13 +90,6 @@ function nextLocal(local: Date, granularity: DateGranularity): Date {
   }
 }
 
-/** Parse a `yyyy-MM-dd` bucket key into a zone-local (naive) date. */
-function parseKeyLocal(key: string): Date | undefined {
-  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(key)
-  if (!m) return undefined
-  return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]))
-}
-
 /**
  * The UTC instant range `[from, to)` a calendar bucket key covers in the given
  * timezone. `undefined` for cyclic granularities (a "Mondays" bucket has no
@@ -141,41 +137,4 @@ export function enumerateBuckets(
     cursor = nextLocal(cursor, granularity)
   }
   return keys
-}
-
-const DOW_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
-const MONTH_LABELS = [
-  'Jan',
-  'Feb',
-  'Mar',
-  'Apr',
-  'May',
-  'Jun',
-  'Jul',
-  'Aug',
-  'Sep',
-  'Oct',
-  'Nov',
-  'Dec',
-]
-
-/** Display label for a bucket key: `2026-07`, `W27 2026`, `Q3 2026`, `Jul`, `Mon`, … */
-export function formatBucketLabel(key: string, granularity: DateGranularity): string {
-  if (granularity === 'dayOfWeek') return DOW_LABELS[Number(key) - 1] ?? key
-  if (granularity === 'monthOfYear') return MONTH_LABELS[Number(key) - 1] ?? key
-
-  const local = parseKeyLocal(key)
-  if (!local) return key
-  switch (granularity) {
-    case 'week':
-      return `W${getISOWeek(local)} ${getISOWeekYear(local)}`
-    case 'month':
-      return format(local, 'yyyy-MM')
-    case 'quarter':
-      return `Q${getQuarter(local)} ${format(local, 'yyyy')}`
-    case 'year':
-      return format(local, 'yyyy')
-    default:
-      return format(local, 'MMM d, yyyy')
-  }
 }

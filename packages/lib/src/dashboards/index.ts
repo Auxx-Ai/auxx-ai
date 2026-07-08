@@ -6,6 +6,7 @@
 export { canEditDashboard, canViewDashboard } from './access'
 export { hashLayoutDoc } from './config-hash'
 export {
+  chartQueryInputSchema,
   dashboardLayoutDocSchema,
   draftLayoutDocSchema,
   globalFiltersSchema,

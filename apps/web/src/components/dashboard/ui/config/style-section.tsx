@@ -8,7 +8,12 @@
 // reused-across-kinds pieces.
 
 import { FieldType } from '@auxx/database/enums'
-import type { WidgetFieldRef, WidgetSource } from '@auxx/lib/dashboards/client'
+import type {
+  DateLabelFormat,
+  GroupBy,
+  WidgetFieldRef,
+  WidgetSource,
+} from '@auxx/lib/dashboards/client'
 import type { SelectOption } from '@auxx/types/custom-field'
 import { isFieldPath, type ResourceFieldId } from '@auxx/types/field'
 import { FieldPanelRow } from '~/components/global/forms/field-panel'
@@ -81,6 +86,44 @@ export function RangeRows({
 
 const leaf = (ref: WidgetFieldRef): ResourceFieldId =>
   isFieldPath(ref) ? ref[ref.length - 1] : ref
+
+const DATE_LABEL_FORMAT_OPTIONS: SelectOption[] = [
+  { value: 'default', label: 'Default' },
+  { value: 'short', label: 'Short' },
+  { value: 'long', label: 'Long' },
+  { value: 'iso', label: 'Numeric' },
+]
+
+/**
+ * Category-axis date label style (plan 10). Shown ONLY when the primary group-by
+ * is a DATE/DATETIME field — the raw bucket key is reformatted client-side, no
+ * re-query. `'default'` ⇒ clears the override (server's default label style).
+ */
+export function DateAxisFormatRow({
+  source,
+  groupBy,
+  value,
+  onChange,
+}: {
+  source: WidgetSource
+  groupBy: GroupBy | undefined
+  value: DateLabelFormat | undefined
+  onChange: (value: DateLabelFormat | undefined) => void
+}) {
+  const field = useField(groupBy?.fieldRef ? leaf(groupBy.fieldRef) : null)
+  const ft = field ? effectiveFieldTypeOf(field) : undefined
+  if (ft !== 'DATE' && ft !== 'DATETIME') return null
+
+  return (
+    <ConfigFieldRow
+      title='Date label format'
+      fieldType={FieldType.SINGLE_SELECT}
+      fieldOptions={{ options: DATE_LABEL_FORMAT_OPTIONS }}
+      value={value ?? 'default'}
+      onChange={(v) => onChange(v === 'default' ? undefined : (v as DateLabelFormat))}
+    />
+  )
+}
 
 /**
  * The DATE/DATETIME field the dashboard-level range filters this widget on.

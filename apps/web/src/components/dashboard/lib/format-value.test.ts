@@ -32,6 +32,21 @@ describe('formatMetricValue', () => {
   it('renders a dash for non-finite values', () => {
     expect(formatMetricValue(Number.NaN, 'sum')).toBe('—')
   })
+
+  it('honors a valueFormat override on a count op (compact / decimals)', () => {
+    // Plain count is a grouped integer; an override routes it through NUMBER.
+    expect(formatMetricValue(1234, 'count')).toBe('1,234')
+    expect(formatMetricValue(1234, 'count', { options: { displayAs: 'compact' } })).toBe('1.2K')
+    expect(formatMetricValue(1234, 'count', { options: { decimals: 1 } })).toBe('1,234.0')
+  })
+
+  it('applies a merged override over a field type (fewer decimals)', () => {
+    // `useMetricFieldMeta` merges the override onto field options; here the
+    // merged result asks for 0 decimals on a NUMBER metric.
+    expect(
+      formatMetricValue(1234.56, 'sum', { fieldType: 'NUMBER', options: { decimals: 0 } })
+    ).toBe('1,235')
+  })
 })
 
 describe('computeTrendDelta', () => {

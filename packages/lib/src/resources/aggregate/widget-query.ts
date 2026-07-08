@@ -18,7 +18,7 @@ import {
 import { fromZonedTime, toZonedTime } from 'date-fns-tz'
 import type { ConditionGroup } from '../../conditions'
 import type {
-  ChartWidgetConfig,
+  ChartQueryInput,
   DateGranularity,
   DateRangePreset,
   SegmentValue,
@@ -38,20 +38,20 @@ export type ResolvedGlobalFilters = {
 }
 
 /** Does a global condition entry target this widget's source? */
-function sourceMatches(cfg: ChartWidgetConfig, entityDefinitionId: string): boolean {
+function sourceMatches(cfg: ChartQueryInput, entityDefinitionId: string): boolean {
   return cfg.source.kind === 'entity'
     ? cfg.source.entityDefinitionId === entityDefinitionId
     : cfg.source.tableId === entityDefinitionId
 }
 
 /**
- * Translate a chart/KPI/gauge widget config into an AggregateQuery. Widget
- * filters and matching dashboard conditions concatenate as AND-ed groups; the
- * viewer's date range becomes `dateWindow` bound to the widget's
- * `globalDateFieldRef` (skipped when null/absent — the widget opted out).
+ * Translate a chart/KPI/gauge widget's {@link ChartQueryInput} into an
+ * AggregateQuery. Widget filters and matching dashboard conditions concatenate
+ * as AND-ed groups; the viewer's date range becomes `dateWindow` bound to the
+ * widget's `globalDateFieldRef` (skipped when null/absent — the widget opted out).
  */
 export function buildAggregateQueryForWidget(
-  cfg: ChartWidgetConfig,
+  cfg: ChartQueryInput,
   global: ResolvedGlobalFilters
 ): AggregateQuery {
   const filters: ConditionGroup[] = [...(cfg.filters ?? [])]
@@ -83,7 +83,7 @@ export function buildAggregateQueryForWidget(
 }
 
 /** The trend spec for a KPI widget; `undefined` when no trend is configured. */
-export function trendSpecForWidget(cfg: ChartWidgetConfig): TrendSpec | undefined {
+export function trendSpecForWidget(cfg: ChartQueryInput): TrendSpec | undefined {
   if (cfg.kind !== 'kpi' || !cfg.trend) return undefined
   return { compare: cfg.trend.compare }
 }

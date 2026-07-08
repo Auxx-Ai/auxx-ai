@@ -38,7 +38,8 @@ import { FieldRefRow } from './field-ref-picker'
 import { FiltersSection } from './filters-section'
 import { GroupBySection } from './group-by-section'
 import { MetricField } from './metric-field'
-import { ColorRow, GlobalDateBindingRow, RangeRows } from './style-section'
+import { ColorRow, DateAxisFormatRow, GlobalDateBindingRow, RangeRows } from './style-section'
+import { ValueFormatRow } from './value-format-dialog'
 
 const RESIZE_ID = 'dashboard-widget-config'
 
@@ -112,12 +113,25 @@ function BarChartBody({
                 metric={config.metric}
                 onChange={(m) => update({ metric: m })}
               />
+              {config.metric && (
+                <ValueFormatRow
+                  metric={config.metric}
+                  value={config.valueFormat}
+                  onChange={(v) => update({ valueFormat: v })}
+                />
+              )}
               <GroupBySection
                 source={source}
                 label='Group by'
                 isRequired
                 groupBy={config.groupBy}
                 onChange={(g) => update({ groupBy: g })}
+              />
+              <DateAxisFormatRow
+                source={source}
+                groupBy={config.groupBy}
+                value={config.labelFormat}
+                onChange={(v) => update({ labelFormat: v })}
               />
               <GroupBySection
                 source={source}
@@ -206,12 +220,25 @@ function LineChartBody({
                 metric={config.metric}
                 onChange={(m) => update({ metric: m })}
               />
+              {config.metric && (
+                <ValueFormatRow
+                  metric={config.metric}
+                  value={config.valueFormat}
+                  onChange={(v) => update({ valueFormat: v })}
+                />
+              )}
               <GroupBySection
                 source={source}
                 label='Group by'
                 isRequired
                 groupBy={config.groupBy}
                 onChange={(g) => update({ groupBy: g })}
+              />
+              <DateAxisFormatRow
+                source={source}
+                groupBy={config.groupBy}
+                value={config.labelFormat}
+                onChange={(v) => update({ labelFormat: v })}
               />
               <GroupBySection
                 source={source}
@@ -289,12 +316,25 @@ function PieChartBody({
                 metric={config.metric}
                 onChange={(m) => update({ metric: m })}
               />
+              {config.metric && (
+                <ValueFormatRow
+                  metric={config.metric}
+                  value={config.valueFormat}
+                  onChange={(v) => update({ valueFormat: v })}
+                />
+              )}
               <GroupBySection
                 source={source}
                 label='Group by'
                 isRequired
                 groupBy={config.groupBy}
                 onChange={(g) => update({ groupBy: g })}
+              />
+              <DateAxisFormatRow
+                source={source}
+                groupBy={config.groupBy}
+                value={config.labelFormat}
+                onChange={(v) => update({ labelFormat: v })}
               />
               <GlobalDateBindingRow
                 source={source}
@@ -367,6 +407,13 @@ function KpiBody({
                 metric={config.metric}
                 onChange={(m) => update({ metric: m })}
               />
+              {config.metric && (
+                <ValueFormatRow
+                  metric={config.metric}
+                  value={config.valueFormat}
+                  onChange={(v) => update({ valueFormat: v })}
+                />
+              )}
               <ConfigFieldRow
                 title='Prefix'
                 fieldType={FieldType.TEXT}
@@ -476,6 +523,13 @@ function GaugeBody({
                 metric={config.metric}
                 onChange={(m) => update({ metric: m })}
               />
+              {config.metric && (
+                <ValueFormatRow
+                  metric={config.metric}
+                  value={config.valueFormat}
+                  onChange={(v) => update({ valueFormat: v })}
+                />
+              )}
               <RangeRows
                 min={config.rangeMin}
                 max={config.rangeMax}

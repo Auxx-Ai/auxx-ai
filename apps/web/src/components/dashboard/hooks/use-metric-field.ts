@@ -6,6 +6,10 @@
 // table / field displays would. Count-family metrics carry no `fieldRef` (→ empty
 // meta), and one-hop `FieldPath` metrics can't be resolved by `useField` (→ empty
 // meta, plain-number fallback) — both are fine, they format dimensionlessly.
+//
+// The optional `valueFormat` override (plan 10) is merged OVER the field's native
+// options, so a widget can diverge from the field's default display (fewer
+// decimals, compact notation…) while still inheriting everything it doesn't set.
 
 import type { Metric } from '@auxx/lib/dashboards/client'
 import type { FieldOptions } from '@auxx/lib/field-values/client'
@@ -14,8 +18,11 @@ import { useMemo } from 'react'
 import { useField } from '~/components/resources/hooks/use-field'
 import type { MetricFieldMeta } from '../lib/format-value'
 
-/** Resolve the metric field's display metadata (empty for count/FieldPath metrics). */
-export function useMetricFieldMeta(metric: Metric): MetricFieldMeta {
+/**
+ * Resolve the metric field's display metadata (empty for count/FieldPath
+ * metrics), with an optional per-widget `valueFormat` override layered on top.
+ */
+export function useMetricFieldMeta(metric: Metric, valueFormat?: FieldOptions): MetricFieldMeta {
   const ref = metric.fieldRef
   const field = useField(ref && !isFieldPath(ref) ? ref : null)
 
@@ -23,8 +30,11 @@ export function useMetricFieldMeta(metric: Metric): MetricFieldMeta {
     () => ({
       // `effectiveFieldType` unwraps CALC → its result type.
       fieldType: field?.effectiveFieldType,
-      options: field?.options as FieldOptions | undefined,
+      options:
+        field?.options || valueFormat
+          ? { ...(field?.options as FieldOptions | undefined), ...valueFormat }
+          : undefined,
     }),
-    [field]
+    [field, valueFormat]
   )
 }
