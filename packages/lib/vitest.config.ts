@@ -45,6 +45,9 @@ export default defineConfig(({ mode }) => {
         'src/test/setup.ts',
         'src/test/utils.ts',
         '**/*.config.*',
+        // DB-backed integration tests — run via vitest.integration.config.ts
+        // (this config mocks @auxx/database, so they can't work here).
+        'src/**/*.int.test.*',
       ],
       testTimeout: 10000,
       hookTimeout: 10000,

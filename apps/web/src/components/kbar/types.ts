@@ -18,6 +18,7 @@ export type PalettePage =
   | 'create-meeting'
   | 'create-group'
   | 'create-dataset'
+  | 'create-dashboard'
 
 /**
  * A single command-palette entry. The whole palette is built from plain arrays

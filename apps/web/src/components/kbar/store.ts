@@ -50,6 +50,7 @@ interface CommandPaletteState {
   openCreateMeeting: () => void
   openCreateGroup: () => void
   openCreateDataset: () => void
+  openCreateDashboard: () => void
   /** `Meta+K`: open when closed; on the search page open the active record's
    *  actions; otherwise toggle closed. */
   metaK: () => void
@@ -73,6 +74,7 @@ const BACK_TARGET: Record<PalettePage, PalettePage> = {
   'create-meeting': 'root',
   'create-group': 'root',
   'create-dataset': 'root',
+  'create-dashboard': 'root',
 }
 
 /**
@@ -118,6 +120,7 @@ export const useCommandPaletteStore = create<CommandPaletteState>((set, get) => 
   openCreateMeeting: () => set({ open: true, page: 'create-meeting' }),
   openCreateGroup: () => set({ open: true, page: 'create-group' }),
   openCreateDataset: () => set({ open: true, page: 'create-dataset' }),
+  openCreateDashboard: () => set({ open: true, page: 'create-dashboard' }),
   metaK: () => {
     const s = get()
     if (!s.open) return set({ open: true, page: 'root' })

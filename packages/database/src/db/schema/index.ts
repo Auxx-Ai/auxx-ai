@@ -40,6 +40,8 @@ export * from './connection-definition'
 export * from './credential'
 export * from './custom-field'
 // CustomFieldValue table dropped — field values now stored in FieldValue
+export * from './dashboard'
+export * from './dashboard-version'
 // Data Connectors — sync external records into the entity system
 export * from './data-connector'
 export * from './data-connector-item'

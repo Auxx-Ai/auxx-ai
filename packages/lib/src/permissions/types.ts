@@ -45,6 +45,7 @@ export enum FeatureKey {
   mcp = 'mcp',
   dataConnectors = 'dataConnectors',
   mailPermissions = 'mailPermissions',
+  dashboards = 'dashboards',
 
   // ── Static limits (count of things, not time-based) ──
   teammates = 'teammates',
@@ -174,6 +175,13 @@ export const FEATURE_REGISTRY: FeatureMetadata[] = [
     label: 'Mail Permissions',
     description: 'Inbox access levels, conversation sharing, and inbox manager delegation.',
     group: 'Security',
+  },
+  {
+    key: FeatureKey.dashboards,
+    type: 'boolean',
+    label: 'Dashboards',
+    description: 'Customizable, versioned dashboards with charts, KPIs, and record lists.',
+    group: 'Analytics',
   },
 
   // ── Static limits ──

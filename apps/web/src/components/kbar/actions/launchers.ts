@@ -102,6 +102,18 @@ export function useLauncherActions(): PaletteAction[] {
       })
     }
 
+    if (hasAccess('dashboards')) {
+      actions.push({
+        id: 'create.dashboard',
+        label: 'Create Dashboard',
+        subtitle: 'New dashboard',
+        icon: 'layout-dashboard',
+        keywords: 'create new dashboard chart widget analytics report',
+        shortcut: ['c', 'd'],
+        perform: () => useCommandPaletteStore.getState().openCreateDashboard(),
+      })
+    }
+
     // Team invite has no shell-free form core — its invite form is a page-coupled
     // Card (requires org context, routes on cancel). Route to the members page.
     if (isAdminOrOwner && hasAccess('teammates')) {

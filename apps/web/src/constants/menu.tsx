@@ -16,6 +16,7 @@ import {
   Import,
   Inbox,
   Layers,
+  LayoutDashboard,
   Map,
   MessagesSquare,
   Palette,
@@ -105,6 +106,14 @@ export const SIDEBAR_MENU: SidebarProps[] = [
     featureKey: 'workflows',
   },
   { id: 'tasks', label: 'Tasks', slug: 'tasks', icon: <CheckSquare /> },
+  // Member-visible by design (no adminOnly) — dashboards are member-safe.
+  {
+    id: 'dashboards',
+    label: 'Dashboards',
+    slug: 'dashboards',
+    icon: <LayoutDashboard />,
+    featureKey: 'dashboards',
+  },
   {
     id: 'resources',
     label: 'Resources',

@@ -329,6 +329,14 @@ export const recordRouter = createTRPCRouter({
             offset: z.number(),
           })
           .optional(),
+        /** Pagination offset — honored in oneshot mode. */
+        offset: z.number().min(0).optional(),
+        /**
+         * Query mode: 'snapshot' (default, Redis-cached id list) or 'oneshot'
+         * (paged SQL + COUNT, no snapshot) for one-shot callers like dashboard
+         * widgets that don't benefit from a stable cursor.
+         */
+        mode: z.enum(['snapshot', 'oneshot']).optional(),
       })
     )
     .query(async ({ ctx, input }) => {
@@ -341,6 +349,8 @@ export const recordRouter = createTRPCRouter({
         sorting: input.sorting,
         limit: input.limit,
         cursor: input.cursor,
+        offset: input.offset,
+        mode: input.mode,
       })
     }),
 

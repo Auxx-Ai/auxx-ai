@@ -43,6 +43,16 @@ export interface VersionHistoryDialogProps {
   onRenameLabel?: (versionId: string, label: string | null) => Promise<void>
   /** Per-row extra action icons (e.g. article preview link + content diff). */
   renderRowActions?: (version: VersionRowData, ctx: { isCurrent: boolean }) => React.ReactNode
+  /**
+   * Override the restore confirmation copy. Defaults to the "restore as draft"
+   * wording; consumers that restore immediately (e.g. dashboards) pass their own.
+   */
+  restoreConfirm?: (version: VersionRowData) => {
+    title: string
+    description: string
+    confirmText?: string
+    cancelText?: string
+  }
   emptyMessage?: string
 }
 
@@ -63,6 +73,7 @@ export function VersionHistoryDialog({
   onRestore,
   onRenameLabel,
   renderRowActions,
+  restoreConfirm,
   emptyMessage,
 }: VersionHistoryDialogProps) {
   const [confirm, ConfirmDialog] = useConfirm()
@@ -88,12 +99,17 @@ export function VersionHistoryDialog({
   }
 
   const handleRestore = async (version: VersionRowData) => {
-    const ok = await confirm({
+    const copy = restoreConfirm?.(version) ?? {
       title: `Restore v${version.versionNumber} as draft?`,
       description:
         "Your current draft will be replaced with this version's content. Publish to make it live.",
       confirmText: 'Restore as draft',
-      cancelText: 'Cancel',
+    }
+    const ok = await confirm({
+      title: copy.title,
+      description: copy.description,
+      confirmText: copy.confirmText ?? 'Restore',
+      cancelText: copy.cancelText ?? 'Cancel',
     })
     if (!ok) return
     const restored = await onRestore(version)
