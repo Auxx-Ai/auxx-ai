@@ -1,5 +1,6 @@
 'use client'
 import {
+  BarChart3,
   BookOpen,
   Cloud,
   Code,
@@ -66,25 +67,25 @@ const platformGroups: PlatformGroup[] = [
       {
         href: '/platform/crm',
         name: 'CRM',
-        description: 'Contacts, companies, and full customer history',
+        description: 'Contacts, companies & history',
         icon: <Users className='stroke-foreground fill-green-500/15' />,
       },
       {
         href: '/platform/ai/kopilot',
         name: 'Kopilot',
-        description: 'Workspace copilot grounded in your data',
+        description: 'AI grounded in your data',
         icon: <Sparkles className='stroke-foreground fill-amber-500/15' />,
       },
       {
         href: '/platform/data-model',
         name: 'Knowledge base',
-        description: 'Self-serve articles and AI grounding',
+        description: 'Self-serve help articles',
         icon: <Library className='stroke-foreground fill-yellow-500/15' />,
       },
       {
         href: '/platform/data-model',
         name: 'Datasets',
-        description: 'Upload PDFs, docs, and pages for AI to use',
+        description: 'Docs & PDFs for AI',
         icon: <Database className='stroke-foreground fill-cyan-500/15' />,
       },
     ],
@@ -95,13 +96,13 @@ const platformGroups: PlatformGroup[] = [
       {
         href: '/platform/workflow',
         name: 'Workflow',
-        description: 'Automate and streamline processes',
+        description: 'Automate your processes',
         icon: <GitBranch className='stroke-foreground fill-purple-500/15' />,
       },
       {
         href: '/platform/integration',
         name: 'Integration',
-        description: 'Connect all your business tools',
+        description: 'Connect your business tools',
         icon: <Plug className='stroke-foreground fill-orange-500/15' />,
       },
     ],
@@ -112,13 +113,13 @@ const platformGroups: PlatformGroup[] = [
       {
         href: '/platform/ticketing',
         name: 'Ticketing',
-        description: 'Route, prioritize, and resolve at volume',
+        description: 'Resolve tickets at volume',
         icon: <Cloud className='stroke-foreground fill-teal-500/15' />,
       },
       {
         href: '/platform/manufacturing',
         name: 'Manufacturing',
-        description: 'Parts, vendors, and production data',
+        description: 'Parts, vendors & production',
         icon: <Shield className='stroke-foreground fill-blue-500/15' />,
       },
     ],
@@ -129,7 +130,7 @@ const platformGroups: PlatformGroup[] = [
       {
         href: '/platform/messaging',
         name: 'Messaging',
-        description: 'Shared inbox with AI-suggested replies',
+        description: 'Shared inbox with AI replies',
         icon: <MessagesSquare className='stroke-foreground fill-blue-500/15' />,
       },
       // {
@@ -140,9 +141,26 @@ const platformGroups: PlatformGroup[] = [
       // },
     ],
   },
+  {
+    name: 'Insights',
+    links: [
+      {
+        href: '/platform/reporting',
+        name: 'Reporting',
+        description: 'Live dashboards & analytics',
+        icon: <BarChart3 className='stroke-foreground fill-sky-500/15' />,
+      },
+    ],
+  },
 ]
 
 const platformLinks: FeatureLink[] = platformGroups.flatMap((group) => group.links)
+
+// Single-item groups (e.g. Communication, Insights) are paired side by side
+// in the mega-menu while keeping their own section titles.
+const singlePlatformGroups: PlatformGroup[] = platformGroups.filter(
+  (group) => group.links.length === 1
+)
 
 const useCases: FeatureLink[] = [
   {
@@ -401,7 +419,7 @@ const NavMenu = ({ docsUrl }: { docsUrl: string }) => {
               <div className='bg-card row-span-2 grid grid-rows-subgrid gap-1 rounded-xl border p-1 pt-3'>
                 <ul className='space-y-1'>
                   {platformGroups
-                    .filter((group) => group.links.length > 0)
+                    .filter((group) => group.links.length > 1)
                     .map((group) => (
                       <li key={group.name}>
                         <span className='text-muted-foreground ml-2 text-xs uppercase tracking-wide'>
@@ -420,6 +438,28 @@ const NavMenu = ({ docsUrl }: { docsUrl: string }) => {
                         </ul>
                       </li>
                     ))}
+                  {singlePlatformGroups.length > 0 && (
+                    <li className='grid grid-cols-2 gap-x-2'>
+                      {singlePlatformGroups.map((group) => (
+                        <div key={group.name}>
+                          <span className='text-muted-foreground ml-2 text-xs uppercase tracking-wide'>
+                            {group.name}
+                          </span>
+                          <ul className='mt-1'>
+                            {group.links.map((feature, index) => (
+                              <ListItem
+                                key={index}
+                                href={feature.href}
+                                title={feature.name}
+                                description={feature.description}>
+                                {feature.icon}
+                              </ListItem>
+                            ))}
+                          </ul>
+                        </div>
+                      ))}
+                    </li>
+                  )}
                 </ul>
               </div>
               <div className='flex flex-col gap-1'>

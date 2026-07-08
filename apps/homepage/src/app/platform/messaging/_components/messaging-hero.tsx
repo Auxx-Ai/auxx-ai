@@ -3,6 +3,7 @@
 import { MessagesSquare } from 'lucide-react'
 import { motion } from 'motion/react'
 import { ShaderGradientBg } from '~/app/_components/shader-gradient-bg'
+import { useTheme } from '~/lib/theme'
 import { ImageIllustration } from './image-illustration'
 
 const AnimatedGroup = ({ children, variants }: { children: React.ReactNode; variants: any }) => {
@@ -14,6 +15,11 @@ const AnimatedGroup = ({ children, variants }: { children: React.ReactNode; vari
 }
 
 export default function MessagingHero() {
+  const { theme } = useTheme()
+  // `midnight` is a dark palette that reads as a heavy blob on the light page,
+  // so use a soft light palette in light mode.
+  const palette = theme === 'dark' ? 'midnight' : 'candy'
+
   return (
     <main role='main' className='overflow-hidden border-b'>
       <section className='bg-muted relative'>
@@ -22,7 +28,7 @@ export default function MessagingHero() {
           animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
           transition={{ duration: 2, ease: 'easeInOut' }}
           className='absolute inset-0'>
-          <ShaderGradientBg preset='hero' palette='midnight' uniforms={{ timeSpeed: 0.7 }} />
+          <ShaderGradientBg preset='hero' palette={palette} uniforms={{ timeSpeed: 0.7 }} />
         </motion.div>
 
         <div className='perspective-dramatic pb-20 pt-24 md:pt-32 lg:py-44'>
