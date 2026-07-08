@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.1.179](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.178...auxx-v0.1.179) (2026-07-08)
+
+
+### Features
+
+* **homepage:** add Data Connectors marketing section ([#1091](https://github.com/Auxx-Ai/auxx-ai/issues/1091)) ([3a5a553](https://github.com/Auxx-Ai/auxx-ai/commit/3a5a5538a40cf2a8e5663b341c1083f2d9b894a0))
+* **homepage:** redesign CRM hero + add dashboards section ([#1089](https://github.com/Auxx-Ai/auxx-ai/issues/1089)) ([7a0912c](https://github.com/Auxx-Ai/auxx-ai/commit/7a0912c8bc7e47321dfcbc7e65dc424bdf06d3a3))
+* **workflow:** per-node trace renderers + shopify-review seed scenario ([#1092](https://github.com/Auxx-Ai/auxx-ai/issues/1092)) ([797f37c](https://github.com/Auxx-Ai/auxx-ai/commit/797f37c422b3b10d65622ce5ab48d41331de290c))
+
 ## [0.1.178](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.177...auxx-v0.1.178) (2026-07-08)
 
 
