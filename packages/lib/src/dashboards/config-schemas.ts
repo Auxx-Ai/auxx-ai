@@ -182,6 +182,63 @@ export const widgetConfigurationSchema = z.discriminatedUnion('kind', [
   iframeConfigSchema,
 ]) as z.ZodType<WidgetConfiguration>
 
+// ── Permissive DRAFT configuration schemas ──────────────────────────────────
+//
+// Auto-save persists a widget the instant it's added — before it has a source or
+// metric — so the draft doc (`Dashboard.draftLayout`) validates STRUCTURE only:
+// the content-bearing fields (`source`, `metric`, `groupBy`, `secondaryGroupBy`,
+// gauge `rangeMax`, recordList `columns`) are optional here. Publish re-validates
+// with the strict `widgetConfigurationSchema` above. richText/iframe are already
+// fully persistable, so they're shared verbatim.
+
+const draftBaseChartSchema = {
+  source: widgetSourceSchema.optional(),
+  filters: conditionGroupsSchema.optional(),
+  globalDateFieldRef: widgetFieldRefSchema.nullable().optional(),
+  description: z.string().optional(),
+}
+
+const draftBarChartConfigSchema = barChartConfigSchema.extend({
+  ...draftBaseChartSchema,
+  metric: metricSchema.optional(),
+  groupBy: groupBySchema.optional(),
+})
+const draftLineChartConfigSchema = lineChartConfigSchema.extend({
+  ...draftBaseChartSchema,
+  metric: metricSchema.optional(),
+  groupBy: groupBySchema.optional(),
+})
+const draftPieChartConfigSchema = pieChartConfigSchema.extend({
+  ...draftBaseChartSchema,
+  metric: metricSchema.optional(),
+  groupBy: groupBySchema.optional(),
+})
+const draftKpiConfigSchema = kpiConfigSchema.extend({
+  ...draftBaseChartSchema,
+  metric: metricSchema.optional(),
+})
+const draftGaugeConfigSchema = gaugeConfigSchema.extend({
+  ...draftBaseChartSchema,
+  metric: metricSchema.optional(),
+  rangeMax: z.number().optional(),
+})
+const draftRecordListConfigSchema = recordListConfigSchema.extend({
+  source: widgetSourceSchema.optional(),
+  columns: z.array(widgetFieldRefSchema).optional(),
+})
+
+/** Permissive union used only for `draftLayout` (auto-save). See note above. */
+export const draftWidgetConfigurationSchema = z.discriminatedUnion('kind', [
+  draftBarChartConfigSchema,
+  draftLineChartConfigSchema,
+  draftPieChartConfigSchema,
+  draftKpiConfigSchema,
+  draftGaugeConfigSchema,
+  draftRecordListConfigSchema,
+  richTextConfigSchema,
+  iframeConfigSchema,
+]) as z.ZodType<WidgetConfiguration>
+
 // ── Grid / widget / tab ─────────────────────────────────────────────────────
 
 const gridPositionSchema = z
@@ -210,30 +267,42 @@ const widgetKindSchema = z.enum([
   'iframe',
 ])
 
-const layoutWidgetSchema = z
-  .object({
+/**
+ * Build the widget schema over a given configuration union — shared by the strict
+ * (publish) and draft (auto-save) docs so the structural checks (`type` matches
+ * `configuration.kind`, grid bounds) live once.
+ */
+function makeLayoutWidgetSchema(configSchema: z.ZodTypeAny) {
+  return z
+    .object({
+      id: z.string().min(1),
+      title: z.string(),
+      type: widgetKindSchema,
+      gridPosition: gridPositionSchema,
+      configuration: configSchema,
+    })
+    .superRefine((w, ctx) => {
+      if (w.type !== (w.configuration as { kind: string }).kind) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `Widget type "${w.type}" does not match configuration kind "${(w.configuration as { kind: string }).kind}"`,
+          path: ['type'],
+        })
+      }
+    })
+}
+
+function makeLayoutTabSchema(widgetSchema: z.ZodTypeAny) {
+  return z.object({
     id: z.string().min(1),
     title: z.string(),
-    type: widgetKindSchema,
-    gridPosition: gridPositionSchema,
-    configuration: widgetConfigurationSchema,
+    icon: z.string().nullable(),
+    widgets: z.array(widgetSchema).max(MAX_WIDGETS_PER_TAB),
   })
-  .superRefine((w, ctx) => {
-    if (w.type !== (w.configuration as { kind: string }).kind) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: `Widget type "${w.type}" does not match configuration kind "${(w.configuration as { kind: string }).kind}"`,
-        path: ['type'],
-      })
-    }
-  })
+}
 
-const layoutTabSchema = z.object({
-  id: z.string().min(1),
-  title: z.string(),
-  icon: z.string().nullable(),
-  widgets: z.array(layoutWidgetSchema).max(MAX_WIDGETS_PER_TAB),
-})
+const layoutWidgetSchema = makeLayoutWidgetSchema(widgetConfigurationSchema)
+const layoutTabSchema = makeLayoutTabSchema(layoutWidgetSchema)
 
 /**
  * Dashboard-level filter state: per-def condition groups + a date-range preset.
@@ -274,47 +343,69 @@ export const dashboardLayoutDocSchema = z
     tabs: z.array(layoutTabSchema).min(1).max(MAX_TABS),
     globalFilters: globalFiltersSchema.optional(),
   })
-  .superRefine((doc, ctx) => {
-    const tabIds = new Set<string>()
-    const widgetIds = new Set<string>()
-    doc.tabs.forEach((tab, ti) => {
-      if (tabIds.has(tab.id)) {
+  .superRefine(layoutDocRefine)
+
+/**
+ * The DRAFT layout document — same structure + unique-id / root-def checks as the
+ * strict doc, but widget configs may be unconfigured shells (permissive union).
+ * This is what `Dashboard.draftLayout` stores and what auto-save (`saveDraft`)
+ * validates. Publish re-validates the same doc against {@link dashboardLayoutDocSchema}.
+ */
+export const draftLayoutDocSchema = z
+  .object({
+    tabs: z
+      .array(makeLayoutTabSchema(makeLayoutWidgetSchema(draftWidgetConfigurationSchema)))
+      .min(1)
+      .max(MAX_TABS),
+    globalFilters: globalFiltersSchema.optional(),
+  })
+  .superRefine(layoutDocRefine)
+
+/** Doc-wide invariants shared by the strict + draft docs: unique ids, root-def match. */
+function layoutDocRefine(
+  doc: { tabs: Array<{ id: string; widgets: Array<{ id: string; configuration: unknown }> }> },
+  ctx: z.RefinementCtx
+): void {
+  const tabIds = new Set<string>()
+  const widgetIds = new Set<string>()
+  doc.tabs.forEach((tab, ti) => {
+    if (tabIds.has(tab.id)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `Duplicate tab id "${tab.id}"`,
+        path: ['tabs', ti, 'id'],
+      })
+    }
+    tabIds.add(tab.id)
+
+    tab.widgets.forEach((widget, wi) => {
+      if (widgetIds.has(widget.id)) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
-          message: `Duplicate tab id "${tab.id}"`,
-          path: ['tabs', ti, 'id'],
+          message: `Duplicate widget id "${widget.id}"`,
+          path: ['tabs', ti, 'widgets', wi, 'id'],
         })
       }
-      tabIds.add(tab.id)
+      widgetIds.add(widget.id)
 
-      tab.widgets.forEach((widget, wi) => {
-        if (widgetIds.has(widget.id)) {
-          ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            message: `Duplicate widget id "${widget.id}"`,
-            path: ['tabs', ti, 'widgets', wi, 'id'],
-          })
-        }
-        widgetIds.add(widget.id)
-
-        const source = (
-          widget.configuration as { source?: { kind: string; entityDefinitionId?: string } }
-        ).source
-        if (source?.kind === 'entity' && source.entityDefinitionId) {
-          for (const ref of collectFieldRefs(widget.configuration)) {
-            const root = fieldRefRootDef(ref)
-            if (root && root !== source.entityDefinitionId) {
-              ctx.addIssue({
-                code: z.ZodIssueCode.custom,
-                message: `Field ref root def "${root}" does not match widget source "${source.entityDefinitionId}"`,
-                path: ['tabs', ti, 'widgets', wi, 'configuration'],
-              })
-            }
+      const source = (
+        widget.configuration as { source?: { kind: string; entityDefinitionId?: string } }
+      ).source
+      if (source?.kind === 'entity' && source.entityDefinitionId) {
+        for (const ref of collectFieldRefs(widget.configuration as WidgetConfiguration)) {
+          const root = fieldRefRootDef(ref)
+          if (root && root !== source.entityDefinitionId) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              message: `Field ref root def "${root}" does not match widget source "${source.entityDefinitionId}"`,
+              path: ['tabs', ti, 'widgets', wi, 'configuration'],
+            })
           }
         }
-      })
+      }
     })
   })
+}
 
 // ── Field-ref helpers (superRefine) ─────────────────────────────────────────
 

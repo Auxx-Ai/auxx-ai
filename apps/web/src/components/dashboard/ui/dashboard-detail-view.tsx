@@ -3,16 +3,15 @@
 
 // The dashboard detail view — the connector-detail-view analogue. Seeds the
 // draft store from `dashboard.get`, renders the MainPage shell with a view/edit
-// header, the tab strip, and the active tab's widget grid. View mode is static;
-// edit mode enables drag/resize (plan 04), add-widget/add-tab, and Save (publish
-// version N+1, plan 06). A localStorage-restored draft surfaces a restore banner.
+// header, the tab strip, and the active tab's widget grid. View mode renders the
+// PUBLISHED version (static); edit mode renders the editable draft with drag/
+// resize (plan 04), add-widget/add-tab, and the docked config panel. Edits
+// auto-save to the server draft (`use-dashboard-autosave`); Publish/Discard drive
+// versioning (`use-dashboard-publish`) — the agent versioning model.
 //
-// Deferred (plan 03 / plan 07): global filter bar, drill-down, chart refresh, and
-// the docked widget-config panel — chart widgets show the "Configure" CTA until
-// then. Version-history + settings live in sibling components (wired below).
+// Deferred (plan 08): global filter bar, drill-down, chart refresh.
 
 import type { DashboardWithLayout, WidgetKind } from '@auxx/lib/dashboards/client'
-import { Button } from '@auxx/ui/components/button'
 import {
   MainPage,
   MainPageBreadcrumb,
@@ -24,18 +23,15 @@ import {
 import { Lock } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useQueryState } from 'nuqs'
-import { useEffect, useState } from 'react'
 import { useConfirm } from '~/hooks/use-confirm'
 import { useEffectiveDockState } from '~/hooks/use-effective-dock-state'
 import { useDockStore } from '~/stores/dock-store'
+import { useDashboardAutosave } from '../hooks/use-dashboard-autosave'
 import { useDashboardDraftSync } from '../hooks/use-dashboard-draft-sync'
-import { useDashboardSave } from '../hooks/use-dashboard-save'
-import { useUnsavedChangesGuard } from '../hooks/use-unsaved-changes-guard'
+import { useDashboardPublish } from '../hooks/use-dashboard-publish'
 import {
-  clearStoredDraft,
-  readStoredDraft,
   selectCurrentTabs,
-  selectIsDirty,
+  selectHasUnpublishedChanges,
   useDashboardStore,
 } from '../stores/dashboard-draft-store'
 import { AddWidgetMenu } from './config/add-widget-menu'
@@ -49,7 +45,7 @@ import { DashboardWidget } from './widget/dashboard-widget'
 export function DashboardDetailView({ dashboard }: { dashboard: DashboardWithLayout }) {
   const router = useRouter()
   useDashboardDraftSync(dashboard.id)
-  useUnsavedChangesGuard()
+  useDashboardAutosave()
 
   const [confirm, ConfirmDialog] = useConfirm()
   const [tabParam, setTab] = useQueryState('tab')
@@ -57,11 +53,11 @@ export function DashboardDetailView({ dashboard }: { dashboard: DashboardWithLay
 
   const tabs = useDashboardStore(selectCurrentTabs)
   const isEditMode = useDashboardStore((s) => s.isEditMode)
-  const isDirty = useDashboardStore(selectIsDirty)
+  const hasUnpublishedChanges = useDashboardStore(selectHasUnpublishedChanges)
+  const saveState = useDashboardStore((s) => s.saveState)
   const hasPersisted = useDashboardStore((s) => s.persisted !== null)
   const enterEditMode = useDashboardStore((s) => s.enterEditMode)
-  const cancelEdit = useDashboardStore((s) => s.cancelEdit)
-  const restoreDraft = useDashboardStore((s) => s.restoreDraft)
+  const exitEditMode = useDashboardStore((s) => s.exitEditMode)
   const addWidget = useDashboardStore((s) => s.addWidget)
   const addTab = useDashboardStore((s) => s.addTab)
   const updateTab = useDashboardStore((s) => s.updateTab)
@@ -73,7 +69,7 @@ export function DashboardDetailView({ dashboard }: { dashboard: DashboardWithLay
   const duplicateWidget = useDashboardStore((s) => s.duplicateWidget)
   const persistedVersionNumber = useDashboardStore((s) => s.persistedVersionNumber)
 
-  const { commit, isSaving } = useDashboardSave()
+  const { publish, discard, isPublishing, isDiscarding } = useDashboardPublish()
 
   const isDocked = useEffectiveDockState()
   const dockedWidth = useDockStore((s) => s.dockedWidth)
@@ -123,37 +119,6 @@ export function DashboardDetailView({ dashboard }: { dashboard: DashboardWithLay
     />
   )
 
-  // A localStorage-restored draft from a previous session (plan 06 durability).
-  const [restorableFrom, setRestorableFrom] = useState<number | null>(null)
-  const [restoreDoc, setRestoreDoc] = useState<DashboardWithLayout['layout'] | null>(null)
-  useEffect(() => {
-    const stored = readStoredDraft(dashboard.id)
-    if (stored) {
-      setRestoreDoc(stored.doc)
-      setRestorableFrom(stored.baseVersion)
-    }
-  }, [dashboard.id])
-  const showRestore = restoreDoc && !isEditMode
-
-  const dismissRestore = () => {
-    clearStoredDraft(dashboard.id)
-    setRestoreDoc(null)
-  }
-
-  const handleCancel = async () => {
-    if (isDirty) {
-      const ok = await confirm({
-        title: 'Discard changes?',
-        description: 'Your unsaved changes to this dashboard will be lost.',
-        confirmText: 'Discard',
-        cancelText: 'Keep editing',
-        destructive: true,
-      })
-      if (!ok) return
-    }
-    cancelEdit()
-  }
-
   return (
     <MainPage>
       <ConfirmDialog />
@@ -163,12 +128,15 @@ export function DashboardDetailView({ dashboard }: { dashboard: DashboardWithLay
             dashboard={dashboard}
             activeVersionNumber={persistedVersionNumber ?? dashboard.versionNumber}
             isEditMode={isEditMode}
-            isDirty={isDirty}
-            isSaving={isSaving}
+            hasUnpublishedChanges={hasUnpublishedChanges}
+            isPublishing={isPublishing}
+            isDiscarding={isDiscarding}
+            saveState={saveState}
             hasPersisted={hasPersisted}
             onEnterEdit={enterEditMode}
-            onCancel={() => void handleCancel()}
-            onSave={() => void commit()}
+            onExitEdit={exitEditMode}
+            onPublish={() => void publish()}
+            onDiscard={() => void discard()}
             onAddWidget={handleAddWidget}
           />
         }>
@@ -212,29 +180,6 @@ export function DashboardDetailView({ dashboard }: { dashboard: DashboardWithLay
               ? 'flex min-h-0 flex-1 flex-col rounded-lg bg-muted/20'
               : 'flex min-h-0 flex-1 flex-col'
           }>
-          {showRestore && (
-            <div className='flex items-center justify-between gap-3 border-b bg-amber-50 px-3 py-2 text-sm dark:bg-amber-950/30'>
-              <span className='text-muted-foreground'>
-                You have unsaved changes from a previous session
-                {restorableFrom != null ? ` (based on v${restorableFrom})` : ''}.
-              </span>
-              <div className='flex items-center gap-2'>
-                <Button
-                  variant='outline'
-                  size='xs'
-                  onClick={() => {
-                    if (restoreDoc) restoreDraft(restoreDoc)
-                    setRestoreDoc(null)
-                  }}>
-                  Restore
-                </Button>
-                <Button variant='ghost' size='xs' onClick={dismissRestore}>
-                  Discard
-                </Button>
-              </div>
-            </div>
-          )}
-
           <DashboardTabStrip
             tabs={tabs}
             activeTabId={activeTabId}

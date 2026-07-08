@@ -21,7 +21,7 @@
 import type { LayoutWidget, WidgetKind } from '@auxx/lib/dashboards/client'
 import { Popover, PopoverAnchor, PopoverContent } from '@auxx/ui/components/popover'
 import { cn } from '@auxx/ui/lib/utils'
-import { type ReactNode, useState } from 'react'
+import { type ReactNode, useRef, useState } from 'react'
 import {
   type Layout,
   type LayoutItem,
@@ -30,9 +30,10 @@ import {
   useContainerWidth,
   verticalCompactor,
 } from 'react-grid-layout'
+import { ComboPicker } from '~/components/pickers/combo-picker'
 import { GRID_BREAKPOINTS, GRID_COLUMNS, GRID_MARGIN, GRID_ROW_HEIGHT } from '../lib/grid-constants'
 import { applyLayoutToWidgets, tabToLayouts } from '../lib/grid-convert'
-import { CHART_KINDS, CONTENT_KINDS, type WidgetKindMeta } from './config/add-widget-menu'
+import { widgetKindOptionGroups } from './config/add-widget-menu'
 import './dashboard-grid.css'
 
 type DashboardGridProps = {
@@ -60,12 +61,6 @@ type DashboardGridProps = {
 /** Empty rows kept clickable below the content so there's always room to add. */
 const EMPTY_ROW_BUFFER = 4
 
-/** Charts + Content, flattened for the cell popover's kind list. */
-const CELL_KIND_GROUPS: Array<{ label: string; kinds: WidgetKindMeta[] }> = [
-  { label: 'Charts', kinds: CHART_KINDS },
-  { label: 'Content', kinds: CONTENT_KINDS },
-]
-
 export function DashboardGrid({
   widgets,
   isEditMode,
@@ -91,12 +86,21 @@ export function DashboardGrid({
 
   const layouts: ResponsiveLayouts = tabToLayouts(widgets)
 
-  // v2's onLayoutChange is (currentBreakpointLayout, allBreakpointLayouts). Only
-  // the desktop breakpoint is persisted — mobile is always derived (plan 08:
-  // edit mode is desktop-only). Ignore events entirely in view mode.
+  // v2's onLayoutChange fires on MOUNT and whenever the compactor normalizes the
+  // layout — including the moment edit mode enables the grid. Committing there
+  // would auto-save a compaction echo as a "change" the user never made (clicking
+  // Edit would dirty the draft). So onLayoutChange only STASHES the latest desktop
+  // layout; the commit happens strictly on a real drag/resize STOP. Only the
+  // desktop breakpoint is persisted (edit mode is desktop-only, plan 08).
+  const latestDesktopRef = useRef<Layout | null>(null)
   const handleLayoutChange = (_current: Layout, all: ResponsiveLayouts) => {
-    if (!isEditMode) return
-    const desktop = all.desktop
+    if (all.desktop) latestDesktopRef.current = all.desktop
+  }
+
+  // Commit the settled desktop layout — only the widgets that actually moved
+  // (grid-convert diffs against stored positions). Called from drag/resize stop.
+  const commitInteraction = () => {
+    const desktop = latestDesktopRef.current
     if (!desktop) return
     const changes = applyLayoutToWidgets(widgets, desktop)
     if (changes.length > 0) onLayoutCommit(changes)
@@ -107,6 +111,11 @@ export function DashboardGrid({
     _oldItem: LayoutItem | null,
     newItem: LayoutItem | null
   ) => onDragStateChange?.(newItem?.i ?? null)
+
+  const handleDragStop = () => {
+    onDragStateChange?.(null)
+    commitInteraction()
+  }
 
   // The empty-cell overlay (edit mode only). Rows = content bottom + a buffer so
   // there's always clickable empty space below the widgets. Cols is the desktop
@@ -188,30 +197,20 @@ export function DashboardGrid({
               />
             </PopoverAnchor>
           )}
-          <PopoverContent align='start' side='bottom' className='w-64 p-1'>
-            {CELL_KIND_GROUPS.map((group, gi) => (
-              <div key={group.label} className={gi > 0 ? 'mt-1 border-t pt-1' : undefined}>
-                <div className='px-2 py-1.5 text-xs font-medium text-muted-foreground'>
-                  {group.label}
-                </div>
-                {group.kinds.map((meta) => {
-                  const Icon = meta.icon
-                  return (
-                    <button
-                      key={meta.kind}
-                      type='button'
-                      className='flex w-full items-start gap-2.5 rounded-sm px-2 py-2 text-left hover:bg-accent'
-                      onClick={() => pickKind(meta.kind)}>
-                      <Icon className='mt-0.5 size-4 shrink-0 text-muted-foreground' />
-                      <div className='flex flex-col'>
-                        <span className='text-sm'>{meta.label}</span>
-                        <span className='text-xs text-muted-foreground'>{meta.description}</span>
-                      </div>
-                    </button>
-                  )
-                })}
-              </div>
-            ))}
+          <PopoverContent align='start' side='bottom' className='w-64 p-0'>
+            <ComboPicker
+              popover={false}
+              groups={widgetKindOptionGroups()}
+              selected={null}
+              multi={false}
+              open
+              onClose={() => setPendingCell(null)}
+              onChange={(opt) => {
+                if (opt && !Array.isArray(opt)) pickKind(opt.value as WidgetKind)
+              }}
+              showSearch
+              searchPlaceholder='Search widgets...'
+            />
           </PopoverContent>
         </Popover>
       )}
@@ -228,7 +227,8 @@ export function DashboardGrid({
           dragConfig={{ enabled: isEditMode, handle: '.widget-drag-handle' }}
           resizeConfig={{ enabled: isEditMode, handles: ['se', 'e', 's'] }}
           onDragStart={handleDragStart}
-          onDragStop={() => onDragStateChange?.(null)}
+          onDragStop={handleDragStop}
+          onResizeStop={commitInteraction}
           onLayoutChange={handleLayoutChange}>
           {widgets.map((widget) => (
             <div key={widget.id}>{renderWidget(widget)}</div>

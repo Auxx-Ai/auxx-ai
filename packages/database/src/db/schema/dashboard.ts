@@ -3,6 +3,7 @@
 import { createId } from '@paralleldrive/cuid2'
 import {
   type AnyPgColumn,
+  boolean,
   doublePrecision,
   index,
   jsonb,
@@ -16,21 +17,22 @@ import { User } from './user'
 
 /**
  * A customizable, multi-tab, versioned dashboard — the identity + access record.
- * Modeled on {@link Agent} (a pointer-to-active-version row), but WITHOUT the
- * row-as-draft: the entire editable layout lives in a client-only draft store
- * (see plans/dashboard/06-state-and-save.md); this row carries no layout at all.
+ * Modeled directly on {@link Agent}: the **row is the draft** ({@link draftLayout}),
+ * `activeVersionId` points at the published {@link DashboardVersion}, and
+ * `hasUnpublishedChanges` flags divergence — there is no `draftVersionId`.
  *
- * **Versioning model:** every save is a publish. The client draft is validated,
- * a new immutable {@link DashboardVersion} (versionNumber N+1) is inserted, and
- * `activeVersionId` is repointed in the same transaction — see
- * plans/dashboard/02-backend-layout-api.md. Viewers always render the active
- * version. A publish whose `configHash` matches the active version is a no-op.
- * Restore is copy-forward (restoring v3 inserts v6 as a copy) — history is
- * linear and append-only.
+ * **Versioning model (agent parity):** edits auto-save to `draftLayout` (no new
+ * version). Viewers render the ACTIVE version; editors render the draft.
+ * **Publish** snapshots `draftLayout` into a new immutable {@link DashboardVersion}
+ * (versionNumber N+1), repoints `activeVersionId`, and clears
+ * `hasUnpublishedChanges` — see plans/dashboard/02-backend-layout-api.md. A publish
+ * whose `configHash` matches the active version is a no-op. **Discard** copies the
+ * active version's layout back onto `draftLayout`. **Restore** loads an older
+ * version onto `draftLayout` (review, then publish) — it does NOT go live directly.
  *
- * **Not stored here:** no layout column (layout lives only in versions) and no
- * globalFilters column — global-filter *defaults* are content, versioned inside
- * the layout doc; the viewer's ephemeral picks are URL state (plan 08).
+ * **Not stored here:** no `globalFilters` column — global-filter *defaults* are
+ * content, versioned inside the layout doc; the viewer's ephemeral picks are URL
+ * state (plan 08).
  *
  * See plans/dashboard/01-database-schema.md.
  */
@@ -58,12 +60,31 @@ export const Dashboard = pgTable(
     icon: jsonb().$type<{ iconId: string; color: string }>(),
 
     /**
-     * Pointer into {@link DashboardVersion} — what viewers render. Set in the
-     * same transaction as every publish (create/save/restore); never null after
-     * create. Plain text (no FK) to avoid the circular reference, same as
-     * `Agent.activeVersionId`; the service layer owns integrity.
+     * Pointer into {@link DashboardVersion} — what viewers render. Set on create
+     * (v1) and repointed on every publish; never null after create. Plain text
+     * (no FK) to avoid the circular reference, same as `Agent.activeVersionId`;
+     * the service layer owns integrity.
      */
     activeVersionId: text(),
+
+    /**
+     * THE live editable draft — the whole layout doc as ONE jsonb blob (same
+     * shape as {@link DashboardVersion.layout}). The Dashboard row IS the draft,
+     * exactly like `Agent`'s behavior fields. Edits auto-save here; publish
+     * snapshots it into a version. Nullable for forward-compat; readers fall back
+     * to the active version's layout when null. Generic jsonb — `@auxx/database`
+     * can't see lib's `DashboardLayoutDoc` type (tier rule); lib validates on
+     * every write (a permissive draft schema that tolerates unconfigured widgets).
+     */
+    draftLayout: jsonb().$type<Record<string, unknown>>(),
+
+    /**
+     * True when `draftLayout` has diverged from the active {@link DashboardVersion}
+     * (hash-compared on every draft write). Drives the "Live · unsaved" pill and
+     * the Publish/Discard controls. Cleared on publish and discard. Mirrors
+     * `Agent.hasUnpublishedChanges`.
+     */
+    hasUnpublishedChanges: boolean().notNull().default(false),
 
     /** Owner. 'set null' — dashboards outlive their creator. */
     createdById: text().references((): AnyPgColumn => User.id, {

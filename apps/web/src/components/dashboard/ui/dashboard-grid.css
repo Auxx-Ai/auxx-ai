@@ -87,10 +87,23 @@
   pointer-events: none;
 }
 
-/* In edit mode, suppress text selection so dragging/resizing a widget doesn't
- * accidentally highlight its content. Editable bodies (the rich-text TipTap
- * editor) opt back in so inline editing still works. */
+/* In edit mode the RGL container is a solid rectangle covering every row that
+ * holds a widget (RGL sets an explicit height on it). Since the empty-cell
+ * overlay sits BEHIND it, that transparent container would otherwise swallow
+ * hover/clicks on the empty cells between and beside widgets — leaving only the
+ * buffer rows below the container interactive. Make the container transparent to
+ * pointers and re-enable them on the items so empty regions fall through to the
+ * overlay while widgets stay draggable/resizable. */
+.dashboard-grid--edit .react-grid-layout {
+  pointer-events: none;
+}
+
+/* Re-enable pointers on the items themselves, and (below) suppress text
+ * selection so dragging/resizing a widget doesn't accidentally highlight its
+ * content. Editable bodies (the rich-text TipTap editor) opt back in so inline
+ * editing still works. */
 .dashboard-grid--edit .react-grid-item {
+  pointer-events: auto;
   user-select: none;
 }
 

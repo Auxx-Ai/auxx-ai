@@ -1,47 +1,55 @@
 // apps/web/src/components/dashboard/ui/dashboard-publish-cluster.tsx
 'use client'
 
-// The dashboard detail-header status cluster — a PublishClusterShell consumer.
-// Dashboards have no draft/live split (Save in edit mode publishes a new version
-// immediately), so the pill is always "Live" and there are no Publish/Discard
-// segments. Instead the shell's `extraSegments` slot carries the mode-specific
-// controls so EVERYTHING lives in one ButtonGroup (like the article cluster):
-//   • view mode — the Edit button, right after the pill.
-//   • edit mode — Add widget ▾, then icon-only Cancel (X) and Save (✓).
-// The chevron menu (Version history / Duplicate / Settings / Archive) stays put
-// in both modes.
+// The dashboard detail-header status cluster — a PublishClusterShell consumer,
+// now on the agent versioning model. The pill is emerald "Live" when the draft
+// matches the active version and amber "Live · unsaved" when it diverges
+// (`hasUnpublishedChanges`). Edits auto-save; the shell's Publish/Discard segments
+// drive versioning:
+//   • Publish (Send)  — shows when there are unpublished changes.
+//   • Discard (Undo)  — shows when there are unpublished changes (confirm first).
+// `extraSegments` carries the mode controls in the same ButtonGroup:
+//   • view mode — the Edit button.
+//   • edit mode — Add widget ▾, then Done (exit edit; the draft stays parked).
+// The chevron menu (Version history / Duplicate / Settings / Archive) is constant.
 
 import type { DashboardWithLayout, WidgetKind } from '@auxx/lib/dashboards/client'
 import { Button } from '@auxx/ui/components/button'
 import { ButtonGroupSeparator } from '@auxx/ui/components/button-group'
 import { DropdownMenuItem, DropdownMenuSeparator } from '@auxx/ui/components/dropdown-menu'
-import { SimpleTooltip } from '@auxx/ui/components/tooltip'
-import { Archive, Check, ChevronDown, Copy, History, Pencil, Plus, Settings, X } from 'lucide-react'
+import { Archive, Check, ChevronDown, Copy, History, Pencil, Plus, Settings } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useState } from 'react'
 import { PublishClusterShell } from '~/components/versioning/ui/publish-cluster-shell'
 import { useConfirm } from '~/hooks/use-confirm'
 import { useDashboardMutations } from '../hooks/use-dashboard-mutations'
+import type { SaveState } from '../stores/dashboard-draft-store'
 import { AddWidgetMenu } from './config/add-widget-menu'
 import { DashboardFormDialog } from './dashboard-form-dialog'
 import { DashboardVersionsDialog } from './dashboard-versions-dialog'
 
-const PILL_TOOLTIP = 'This dashboard is live. Editing and saving publishes a new version.'
+const PILL_TOOLTIP =
+  'This dashboard is live. Edits auto-save to a draft; Publish makes them the live version.'
 
 export interface DashboardPublishClusterProps {
   dashboard: DashboardWithLayout
   activeVersionNumber: number | null
-  /** When true the cluster shows the edit controls (Add widget / Cancel / Save). */
+  /** When true the cluster shows the edit controls (Add widget / Done). */
   isEditMode: boolean
-  /** Dirty draft — gates Save and drives the Cancel confirm. */
-  isDirty: boolean
-  /** Save in flight — spins the ✓ button. */
-  isSaving: boolean
+  /** Draft diverges from the active version — drives the pill + Publish/Discard. */
+  hasUnpublishedChanges: boolean
+  /** Publish in flight. */
+  isPublishing: boolean
+  /** Discard in flight. */
+  isDiscarding: boolean
+  /** Auto-save status — a subtle indicator while editing. */
+  saveState: SaveState
   /** No persisted version yet — disables Edit. */
   hasPersisted: boolean
   onEnterEdit: () => void
-  onCancel: () => void
-  onSave: () => void
+  onExitEdit: () => void
+  onPublish: () => void
+  onDiscard: () => void
   onAddWidget: (kind: WidgetKind) => void
 }
 
@@ -49,12 +57,15 @@ export function DashboardPublishCluster({
   dashboard,
   activeVersionNumber,
   isEditMode,
-  isDirty,
-  isSaving,
+  hasUnpublishedChanges,
+  isPublishing,
+  isDiscarding,
+  saveState,
   hasPersisted,
   onEnterEdit,
-  onCancel,
-  onSave,
+  onExitEdit,
+  onPublish,
+  onDiscard,
   onAddWidget,
 }: DashboardPublishClusterProps) {
   const router = useRouter()
@@ -81,6 +92,18 @@ export function DashboardPublishCluster({
     if (await deleteDashboard(dashboard.id)) router.push('/app/dashboards')
   }
 
+  const handleDiscard = async () => {
+    const ok = await confirm({
+      title: 'Discard changes?',
+      description:
+        'Your unpublished changes will be reverted to the current live version. This cannot be undone.',
+      confirmText: 'Discard',
+      cancelText: 'Keep editing',
+      destructive: true,
+    })
+    if (ok) onDiscard()
+  }
+
   const editSegment = (
     <Button
       size='xs'
@@ -103,39 +126,21 @@ export function DashboardPublishCluster({
         }
       />
       <ButtonGroupSeparator />
-      <SimpleTooltip content='Cancel'>
-        <Button
-          size='xs'
-          variant='outline'
-          className='border-r-0 px-1.5'
-          onClick={onCancel}
-          aria-label='Cancel'>
-          <X />
-        </Button>
-      </SimpleTooltip>
-      <ButtonGroupSeparator />
-      <SimpleTooltip content='Save'>
-        <Button
-          size='xs'
-          variant='outline'
-          className='border-r-0 px-1.5'
-          loading={isSaving}
-          loadingText=''
-          disabled={!isDirty}
-          onClick={onSave}
-          aria-label='Save'>
-          <Check />
-        </Button>
-      </SimpleTooltip>
+      <Button size='xs' variant='outline' className='border-r-0' onClick={onExitEdit}>
+        <Check /> Done
+      </Button>
     </>
   )
 
   return (
-    <>
+    <div className='flex items-center gap-2'>
+      {isEditMode && <AutosaveIndicator state={saveState} />}
       <PublishClusterShell
-        status={{ isPublished: true, hasUnsaved: false }}
+        status={{ isPublished: true, hasUnsaved: hasUnpublishedChanges }}
         pillTooltip={PILL_TOOLTIP}
-        extraSegments={isEditMode ? editModeSegments : editSegment}>
+        extraSegments={isEditMode ? editModeSegments : editSegment}
+        publish={{ onClick: onPublish, isPending: isPublishing }}
+        discard={{ onClick: () => void handleDiscard(), isPending: isDiscarding }}>
         <DropdownMenuItem onClick={() => setVersionsOpen(true)}>
           <History /> Version history
         </DropdownMenuItem>
@@ -163,6 +168,25 @@ export function DashboardPublishCluster({
         onOpenChange={setSettingsOpen}
       />
       <ConfirmDialog />
-    </>
+    </div>
+  )
+}
+
+/** Subtle auto-save status, shown in the header while editing. */
+function AutosaveIndicator({ state }: { state: SaveState }) {
+  const label =
+    state === 'saving'
+      ? 'Saving…'
+      : state === 'saved'
+        ? 'Saved'
+        : state === 'error'
+          ? 'Save failed'
+          : null
+  if (!label) return null
+  return (
+    <span
+      className={state === 'error' ? 'text-xs text-destructive' : 'text-xs text-muted-foreground'}>
+      {label}
+    </span>
   )
 }

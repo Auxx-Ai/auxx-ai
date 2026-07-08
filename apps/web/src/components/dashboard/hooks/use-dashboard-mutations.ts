@@ -5,8 +5,8 @@
 // delete (soft-archive), restore version, rename version. Each wraps the tRPC
 // mutation with the shared error toast and the right cache invalidation, and
 // returns a plain value/boolean so callers own only their confirms + navigation.
-// Layout publishing has its own hook ({@link useDashboardSave}) because it's
-// wired to the draft store; this hook covers everything else.
+// Auto-save + Publish/Discard have their own draft-store-wired hooks
+// (`use-dashboard-autosave`, `use-dashboard-publish`); this hook covers the rest.
 
 import type { DashboardVisibility, DashboardWithLayout } from '@auxx/lib/dashboards/client'
 import { toastError } from '@auxx/ui/components/toast'
@@ -37,7 +37,8 @@ interface UseDashboardMutationsResult {
   duplicateDashboard: (id: string) => Promise<DashboardWithLayout | undefined>
   /** Soft-archive (`dashboard.delete` → `archivedAt`). Callers own the confirm. */
   deleteDashboard: (id: string) => Promise<boolean>
-  restoreVersion: (id: string, versionNumber: number) => Promise<boolean>
+  /** Restore-as-draft: returns the updated dashboard so the caller can adopt the draft. */
+  restoreVersion: (id: string, versionNumber: number) => Promise<DashboardWithLayout | undefined>
   renameVersion: (id: string, versionNumber: number, label: string | null) => Promise<void>
   isCreating: boolean
   isUpdating: boolean
@@ -136,12 +137,12 @@ export function useDashboardMutations(): UseDashboardMutationsResult {
   const restoreVersion = useCallback<UseDashboardMutationsResult['restoreVersion']>(
     async (id, versionNumber) => {
       try {
-        await restoreMutation.mutateAsync({ id, versionNumber })
+        const { dashboard } = await restoreMutation.mutateAsync({ id, versionNumber })
         await invalidateDashboard(id)
-        return true
+        return dashboard
       } catch (error) {
         toastError({ title: 'Failed to restore version', description: errMsg(error) })
-        return false
+        return undefined
       }
     },
     [restoreMutation.mutateAsync, invalidateDashboard]

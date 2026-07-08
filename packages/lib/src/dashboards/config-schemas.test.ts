@@ -10,7 +10,7 @@ import {
   segmentToConditions,
 } from './client'
 import { hashLayoutDoc } from './config-hash'
-import { dashboardLayoutDocSchema } from './config-schemas'
+import { dashboardLayoutDocSchema, draftLayoutDocSchema } from './config-schemas'
 
 const rf = (s: string) => s as ResourceFieldId
 
@@ -103,6 +103,58 @@ describe('dashboardLayoutDocSchema', () => {
       configuration: { kind: 'iframe', url: 'ftp://example.com' },
     })
     expect(dashboardLayoutDocSchema.safeParse(doc([bad])).success).toBe(false)
+  })
+})
+
+describe('draftLayoutDocSchema (permissive)', () => {
+  // The unconfigured shells the store mints on add (widget-config-defaults.ts).
+  const barShell = (): LayoutWidget => ({
+    id: 'w1',
+    title: 'Bar chart',
+    type: 'barChart',
+    gridPosition: { column: 0, row: 0, columnSpan: 6, rowSpan: 4 },
+    configuration: { kind: 'barChart', metric: { op: 'count' } } as LayoutWidget['configuration'],
+  })
+  const recordListShell = (): LayoutWidget => ({
+    id: 'w2',
+    title: 'Record list',
+    type: 'recordList',
+    gridPosition: { column: 0, row: 0, columnSpan: 6, rowSpan: 5 },
+    configuration: { kind: 'recordList', columns: [] } as LayoutWidget['configuration'],
+  })
+
+  it('accepts an unconfigured chart shell (no source / group-by)', () => {
+    expect(draftLayoutDocSchema.safeParse(doc([barShell()])).success).toBe(true)
+  })
+
+  it('accepts an unconfigured record-list shell (no source)', () => {
+    expect(draftLayoutDocSchema.safeParse(doc([recordListShell()])).success).toBe(true)
+  })
+
+  it('accepts a fully configured doc too', () => {
+    expect(draftLayoutDocSchema.safeParse(doc([widget()])).success).toBe(true)
+  })
+
+  it('still rejects structural violations (type ≠ kind)', () => {
+    const bad = { ...barShell(), type: 'lineChart' as const }
+    expect(draftLayoutDocSchema.safeParse(doc([bad])).success).toBe(false)
+  })
+
+  it('still rejects duplicate widget ids', () => {
+    expect(draftLayoutDocSchema.safeParse(doc([barShell(), barShell()])).success).toBe(false)
+  })
+
+  it('still rejects an out-of-grid position', () => {
+    const bad = {
+      ...barShell(),
+      gridPosition: { column: 8, row: 0, columnSpan: 6, rowSpan: 4 },
+    }
+    expect(draftLayoutDocSchema.safeParse(doc([bad])).success).toBe(false)
+  })
+
+  it('the STRICT schema rejects the same shells (publish gate)', () => {
+    expect(dashboardLayoutDocSchema.safeParse(doc([barShell()])).success).toBe(false)
+    expect(dashboardLayoutDocSchema.safeParse(doc([recordListShell()])).success).toBe(false)
   })
 })
 

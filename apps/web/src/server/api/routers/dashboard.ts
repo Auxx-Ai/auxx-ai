@@ -5,16 +5,18 @@ import { getUserCache } from '@auxx/lib/cache'
 import {
   archiveDashboard,
   createDashboard,
-  dashboardLayoutDocSchema,
+  discardDashboardDraft,
+  draftLayoutDocSchema,
   duplicateDashboard,
   getDashboard,
   getVersion,
   globalFiltersSchema,
   listDashboards,
   listVersions,
-  publishLayout,
+  publishDashboard,
   renameVersion,
   restoreVersion,
+  saveDraft,
   updateDashboard,
   widgetConfigurationSchema,
 } from '@auxx/lib/dashboards'
@@ -148,16 +150,46 @@ export const dashboardRouter = createTRPCRouter({
       )
     }),
 
-  save: protectedProcedure
-    .input(z.object({ id: z.string(), doc: dashboardLayoutDocSchema }))
+  // Auto-save: persist the editable draft (permissive schema; no version created).
+  saveDraft: protectedProcedure
+    .input(z.object({ id: z.string(), doc: draftLayoutDocSchema }))
     .mutation(async ({ ctx, input }) => {
       return unwrap(
-        await publishLayout(
+        await saveDraft(
           ctx.db,
           ctx.session.organizationId,
           ctx.session.userId,
           input.id,
           input.doc as DashboardLayoutDoc
+        )
+      )
+    }),
+
+  // Publish: snapshot the row's draft into a new version (strict validation).
+  publish: protectedProcedure
+    .input(z.object({ id: z.string(), label: z.string().max(120).nullable().optional() }))
+    .mutation(async ({ ctx, input }) => {
+      return unwrap(
+        await publishDashboard(
+          ctx.db,
+          ctx.session.organizationId,
+          ctx.session.userId,
+          input.id,
+          input.label ?? null
+        )
+      )
+    }),
+
+  // Discard: revert the draft to the active version.
+  discardDraft: protectedProcedure
+    .input(z.object({ id: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      return unwrap(
+        await discardDashboardDraft(
+          ctx.db,
+          ctx.session.organizationId,
+          ctx.session.userId,
+          input.id
         )
       )
     }),

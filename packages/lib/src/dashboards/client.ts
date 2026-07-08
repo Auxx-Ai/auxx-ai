@@ -270,8 +270,18 @@ export type DashboardWithLayout = {
   position: number
   createdById: string | null
   activeVersionId: string | null
+  /** The published active version's number — what view mode renders. */
   versionNumber: number
+  /** The published active version's layout — what viewers / view mode render. */
   layout: DashboardLayoutDoc
+  /**
+   * The live editable draft (`Dashboard.draftLayout`) — what edit mode renders.
+   * May carry unconfigured widget shells. `null` only for legacy rows with no
+   * draft yet (readers fall back to {@link layout}).
+   */
+  draftLayout: DashboardLayoutDoc | null
+  /** `draftLayout` diverges from the active version — drives the "unsaved" pill. */
+  hasUnpublishedChanges: boolean
   createdAt: string
   updatedAt: string
 }

@@ -1,17 +1,14 @@
 // apps/web/src/components/dashboard/stores/dashboard-draft-store.ts
 'use client'
 
-// The dashboard draft store — client source of truth for an OPEN editor. Holds
-// the active-version snapshot (`persisted`) and, while editing, an editable
-// `draft` (a deep clone). Every save is a publish (plan 02 `dashboard.save`), so
-// there's no server draft and no id reconciliation: widget/tab ids are minted
-// here with `generateId` and are final. Modeled on `connector-draft-store.ts`
-// (create + subscribeWithSelector, deep-clone seed, exported selectors, reset on
-// teardown), simplified by the versioning model.
-//
-// Durability: the draft is mirrored to localStorage (`dash-draft:<id>`) so a
-// reload/crash mid-edit can restore it (plan 06 decision). Cleared on publish
-// and explicit discard — NOT on unmount `reset()`.
+// The dashboard draft store — client mirror of the SERVER-persisted draft. Agent
+// versioning model: the `Dashboard` row holds `draftLayout` (the editable working
+// copy), edits auto-save to it (`use-dashboard-autosave`), and explicit Publish/
+// Discard drive versioning. This store keeps the published `persisted` snapshot
+// (view mode), the editable `draft` (edit mode), a local `isDirty` flag (pending
+// autosave flush), and the server-reconciled `hasUnpublishedChanges` (the pill).
+// Widget/tab ids are minted here with `generateId` and are final — the server
+// never rewrites them. Modeled on `connector-draft-store.ts`.
 
 import {
   convertWidgetConfiguration,
@@ -30,28 +27,46 @@ import { WIDGET_GRID_SIZE } from '../lib/grid-constants'
 import { findNextFreePosition, placeAt } from '../lib/grid-placement'
 import { defaultWidgetConfiguration, defaultWidgetTitle } from '../lib/widget-config-defaults'
 
-export type SaveState = 'idle' | 'saving' | 'error'
+export type SaveState = 'idle' | 'saving' | 'saved' | 'error'
+
+/** Server payload the sync hook seeds from (`api.dashboard.get`). */
+export interface DashboardSeed {
+  published: DashboardLayoutDoc
+  draft: DashboardLayoutDoc | null
+  versionNumber: number
+  hasUnpublishedChanges: boolean
+}
 
 interface DashboardDraftState {
   dashboardId: string | null
-  /** Active-version snapshot — replaced on fetch + successful save. */
+  /** Published active-version snapshot — what VIEW mode renders. */
   persisted: DashboardLayoutDoc | null
   persistedVersionNumber: number | null
-  /** Editable copy; null outside edit mode. */
+  /** Editable copy of the server draft — what EDIT mode renders. */
   draft: DashboardLayoutDoc | null
   isEditMode: boolean
+  /** Local edits not yet flushed to the server draft (drives the autosave debounce). */
   isDirty: boolean
+  /** Server truth: the draft diverges from the active version (drives the pill). */
+  hasUnpublishedChanges: boolean
   draggingWidgetId: string | null
   saveState: SaveState
 
   // ── lifecycle ──
-  seed: (dashboardId: string, doc: DashboardLayoutDoc, versionNumber: number) => void
+  seed: (dashboardId: string, seed: DashboardSeed) => void
   reset: () => void
   enterEditMode: () => void
-  cancelEdit: () => void
-  markSaved: (doc: DashboardLayoutDoc, versionNumber: number) => void
-  /** Adopt a localStorage-restored draft (plan 06 durability) — enters edit mode dirty. */
-  restoreDraft: (doc: DashboardLayoutDoc) => void
+  exitEditMode: () => void
+  /** After a successful publish: adopt the new active version, clear dirty flags. */
+  markPublished: (doc: DashboardLayoutDoc, versionNumber: number) => void
+  /** After a successful discard: adopt the reverted draft, clear dirty flags. */
+  markDiscarded: (doc: DashboardLayoutDoc) => void
+  /**
+   * After a successful restore-as-draft: adopt the restored layout as the draft
+   * and drop into edit mode so the user can review before publishing. `persisted`
+   * (the live version) is untouched — nothing goes live until publish.
+   */
+  adoptDraft: (doc: DashboardLayoutDoc, hasUnpublishedChanges: boolean) => void
 
   // ── widget CRUD (draft-only; no-op unless editing) ──
   /**
@@ -82,42 +97,8 @@ interface DashboardDraftState {
   // ── transient ──
   setDraggingWidgetId: (id: string | null) => void
   setSaveState: (state: SaveState) => void
-}
-
-// ── localStorage draft mirror ────────────────────────────────────────────────
-
-const DRAFT_KEY_PREFIX = 'dash-draft:'
-const draftKey = (id: string) => `${DRAFT_KEY_PREFIX}${id}`
-
-type StoredDraft = { baseVersion: number | null; doc: DashboardLayoutDoc }
-
-/** Read a persisted draft for a dashboard (client only). Malformed → cleared. */
-export function readStoredDraft(dashboardId: string): StoredDraft | null {
-  if (typeof window === 'undefined') return null
-  const raw = window.localStorage.getItem(draftKey(dashboardId))
-  if (!raw) return null
-  try {
-    const parsed = JSON.parse(raw) as StoredDraft
-    if (!parsed?.doc?.tabs) throw new Error('bad shape')
-    return parsed
-  } catch {
-    window.localStorage.removeItem(draftKey(dashboardId))
-    return null
-  }
-}
-
-function writeStoredDraft(dashboardId: string, stored: StoredDraft): void {
-  if (typeof window === 'undefined') return
-  try {
-    window.localStorage.setItem(draftKey(dashboardId), JSON.stringify(stored))
-  } catch {
-    // Quota / disabled storage — durability is best-effort, never block editing.
-  }
-}
-
-export function clearStoredDraft(dashboardId: string): void {
-  if (typeof window === 'undefined') return
-  window.localStorage.removeItem(draftKey(dashboardId))
+  /** Autosave reconciles the pill from the server's saveDraft result. */
+  setHasUnpublishedChanges: (value: boolean) => void
 }
 
 // ── immutable draft helpers ──────────────────────────────────────────────────
@@ -176,33 +157,36 @@ const INITIAL = {
   draft: null,
   isEditMode: false,
   isDirty: false,
+  hasUnpublishedChanges: false,
   draggingWidgetId: null,
   saveState: 'idle' as SaveState,
 }
 
 export const useDashboardStore = create<DashboardDraftState>()(
   subscribeWithSelector((set, get) => {
-    /** Apply a draft transform, mark dirty. No-op unless editing. */
+    /** Apply a draft transform, mark dirty + optimistically unpublished. No-op unless editing. */
     const mutate = (fn: (draft: DashboardLayoutDoc) => DashboardLayoutDoc) => {
       const { draft, isEditMode } = get()
       if (!isEditMode || !draft) return
-      set({ draft: fn(draft), isDirty: true })
+      set({ draft: fn(draft), isDirty: true, hasUnpublishedChanges: true })
     }
 
     return {
       ...INITIAL,
 
-      seed: (dashboardId, doc, versionNumber) =>
+      seed: (dashboardId, seed) =>
         set((s) => {
-          // A refetch during edit of the SAME dashboard must not clobber the draft.
-          const keepDraft = s.dashboardId === dashboardId && s.isEditMode
+          // A refetch during an active edit of the SAME dashboard must not clobber
+          // the local draft (it may hold edits mid-flush).
+          const keep = s.dashboardId === dashboardId && s.isEditMode
           return {
             dashboardId,
-            persisted: doc,
-            persistedVersionNumber: versionNumber,
-            draft: keepDraft ? s.draft : null,
-            isEditMode: keepDraft ? s.isEditMode : false,
-            isDirty: keepDraft ? s.isDirty : false,
+            persisted: seed.published,
+            persistedVersionNumber: seed.versionNumber,
+            draft: keep ? s.draft : (seed.draft ?? cloneDoc(seed.published)),
+            isEditMode: keep ? s.isEditMode : false,
+            isDirty: keep ? s.isDirty : false,
+            hasUnpublishedChanges: keep ? s.hasUnpublishedChanges : seed.hasUnpublishedChanges,
           }
         }),
 
@@ -210,31 +194,42 @@ export const useDashboardStore = create<DashboardDraftState>()(
 
       enterEditMode: () =>
         set((s) => ({
-          draft: s.persisted ? cloneDoc(s.persisted) : null,
           isEditMode: true,
+          draft: s.draft ?? (s.persisted ? cloneDoc(s.persisted) : null),
           isDirty: false,
         })),
 
-      cancelEdit: () => {
-        const { dashboardId } = get()
-        if (dashboardId) clearStoredDraft(dashboardId)
-        set({ draft: null, isEditMode: false, isDirty: false })
-      },
+      // Leave edit mode but KEEP the draft — it's persisted server-side, parked
+      // until the user publishes or discards.
+      exitEditMode: () => set({ isEditMode: false }),
 
-      markSaved: (doc, versionNumber) => {
-        const { dashboardId } = get()
-        if (dashboardId) clearStoredDraft(dashboardId)
+      markPublished: (doc, versionNumber) =>
         set({
           persisted: doc,
           persistedVersionNumber: versionNumber,
-          draft: null,
-          isEditMode: false,
+          draft: cloneDoc(doc),
           isDirty: false,
+          hasUnpublishedChanges: false,
           saveState: 'idle',
-        })
-      },
+        }),
 
-      restoreDraft: (doc) => set({ draft: doc, isEditMode: true, isDirty: true }),
+      markDiscarded: (doc) =>
+        set({
+          persisted: doc,
+          draft: cloneDoc(doc),
+          isDirty: false,
+          hasUnpublishedChanges: false,
+          saveState: 'idle',
+        }),
+
+      adoptDraft: (doc, hasUnpublishedChanges) =>
+        set({
+          draft: cloneDoc(doc),
+          isEditMode: true,
+          isDirty: false,
+          hasUnpublishedChanges,
+          saveState: 'idle',
+        }),
 
       addWidget: (tabId, kind, at) => {
         const { draft, isEditMode } = get()
@@ -265,6 +260,7 @@ export const useDashboardStore = create<DashboardDraftState>()(
             tabs.map((t) => (t.id === tabId ? { ...t, widgets: [...t.widgets, widget] } : t))
           ),
           isDirty: true,
+          hasUnpublishedChanges: true,
         })
         return id
       },
@@ -330,6 +326,7 @@ export const useDashboardStore = create<DashboardDraftState>()(
             })
           ),
           isDirty: true,
+          hasUnpublishedChanges: true,
         })
         return id
       },
@@ -371,6 +368,7 @@ export const useDashboardStore = create<DashboardDraftState>()(
         set({
           draft: editTabs(draft, (tabs) => [...tabs, { id, title, icon: null, widgets: [] }]),
           isDirty: true,
+          hasUnpublishedChanges: true,
         })
         return id
       },
@@ -399,50 +397,38 @@ export const useDashboardStore = create<DashboardDraftState>()(
 
       setDraggingWidgetId: (draggingWidgetId) => set({ draggingWidgetId }),
       setSaveState: (saveState) => set({ saveState }),
+      setHasUnpublishedChanges: (hasUnpublishedChanges) => set({ hasUnpublishedChanges }),
     }
   })
 )
 
 const cloneWidget = (w: LayoutWidget): LayoutWidget => JSON.parse(JSON.stringify(w)) as LayoutWidget
 
-// Mirror the draft to localStorage while editing (client only). Fires on every
-// draft-ref change; writes only a dirty, in-edit draft. Clearing is explicit
-// (markSaved / cancelEdit) so navigating away and back can still restore.
-if (typeof window !== 'undefined') {
-  useDashboardStore.subscribe(
-    (s) => s.draft,
-    (draft) => {
-      const { dashboardId, isEditMode, isDirty, persistedVersionNumber } =
-        useDashboardStore.getState()
-      if (!dashboardId || !isEditMode || !draft || !isDirty) return
-      writeStoredDraft(dashboardId, { baseVersion: persistedVersionNumber, doc: draft })
-    }
-  )
-}
-
-/** Imperative snapshot for the save hook. */
+/** Imperative snapshot for the autosave/publish hooks. */
 export function getDashboardDraftState(): DashboardDraftState {
   return useDashboardStore.getState()
 }
 
 // ── selectors ────────────────────────────────────────────────────────────────
 
-/** The doc components render: the draft while editing, else the persisted snapshot. */
-export const selectCurrentDoc = (s: DashboardDraftState): DashboardLayoutDoc | null =>
-  s.draft ?? s.persisted
+/** The doc that's currently rendered: the draft while editing, else the published snapshot. */
+function currentDoc(s: DashboardDraftState): DashboardLayoutDoc | null {
+  return s.isEditMode ? (s.draft ?? s.persisted) : s.persisted
+}
+
+export const selectCurrentDoc = (s: DashboardDraftState): DashboardLayoutDoc | null => currentDoc(s)
 
 export const selectCurrentTabs = (s: DashboardDraftState): LayoutTab[] =>
-  (s.draft ?? s.persisted)?.tabs ?? EMPTY_TABS
+  currentDoc(s)?.tabs ?? EMPTY_TABS
 
 export const selectWidget =
   (widgetId: string | null) =>
   (s: DashboardDraftState): LayoutWidget | null =>
-    widgetId
-      ? (findWidget((s.draft ?? s.persisted)?.tabs ?? EMPTY_TABS, widgetId)?.widget ?? null)
-      : null
+    widgetId ? (findWidget(currentDoc(s)?.tabs ?? EMPTY_TABS, widgetId)?.widget ?? null) : null
 
 export const selectGlobalFilters = (s: DashboardDraftState): DashboardGlobalFilters | undefined =>
-  (s.draft ?? s.persisted)?.globalFilters
+  currentDoc(s)?.globalFilters
 
-/** Dirty only counts while editing (drives the Save button enabled state). */
-export const selectIsDirty = (s: DashboardDraftState): boolean => s.isEditMode && s.isDirty
+/** The pill / Publish-Discard gate: the draft diverges from the active version. */
+export const selectHasUnpublishedChanges = (s: DashboardDraftState): boolean =>
+  s.hasUnpublishedChanges

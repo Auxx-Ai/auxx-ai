@@ -2,10 +2,11 @@
 'use client'
 
 // Thin adapter over the shared VersionHistoryDialog: maps
-// `dashboard.listVersions` → rows and wires restore + label-rename. Unlike
-// agents, restore is IMMEDIATE (a new active version copied from the old one),
-// so it passes its own confirm copy instead of the shared "restore as draft"
-// wording.
+// `dashboard.listVersions` → rows and wires restore + label-rename. Restore is
+// restore-AS-DRAFT (agent semantics): it loads the version onto the editable
+// draft (pill → "unsaved") and drops into edit mode; nothing goes live until the
+// user Publishes. The restored draft is adopted into the store directly so it
+// takes effect even mid-edit.
 
 import {
   VersionHistoryDialog,
@@ -13,6 +14,7 @@ import {
 } from '~/components/versioning/ui/version-history-dialog'
 import { api } from '~/trpc/react'
 import { useDashboardMutations } from '../hooks/use-dashboard-mutations'
+import { useDashboardStore } from '../stores/dashboard-draft-store'
 
 export function DashboardVersionsDialog({
   open,
@@ -27,6 +29,7 @@ export function DashboardVersionsDialog({
 }) {
   const versionsQuery = api.dashboard.listVersions.useQuery({ id: dashboardId }, { enabled: open })
   const { restoreVersion, renameVersion } = useDashboardMutations()
+  const adoptDraft = useDashboardStore((s) => s.adoptDraft)
 
   const versions: VersionRowData[] | undefined = versionsQuery.data?.map((v) => ({
     id: v.id,
@@ -48,12 +51,15 @@ export function DashboardVersionsDialog({
       restoreConfirm={(v) => ({
         title: `Restore v${v.versionNumber}?`,
         description:
-          'A new version is created as a copy of this one and immediately becomes the live dashboard.',
-        confirmText: 'Restore',
+          'This version is loaded as an editable draft. Review it, then Publish to make it the live dashboard.',
+        confirmText: 'Restore to draft',
       })}
       onRestore={async (v) => {
         if (v.versionNumber == null) return false
-        return restoreVersion(dashboardId, v.versionNumber)
+        const dashboard = await restoreVersion(dashboardId, v.versionNumber)
+        if (!dashboard) return false
+        adoptDraft(dashboard.draftLayout ?? dashboard.layout, dashboard.hasUnpublishedChanges)
+        return true
       }}
       onRenameLabel={async (versionId, label) => {
         const v = versionsQuery.data?.find((x) => x.id === versionId)

@@ -15,12 +15,9 @@
 import type { WidgetKind } from '@auxx/lib/dashboards/client'
 import { Button } from '@auxx/ui/components/button'
 import {
-  DropdownMenu,
-  DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
-  DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
 import {
   BarChart3,
@@ -35,13 +32,17 @@ import {
   Table2,
   Type,
 } from 'lucide-react'
-import { Fragment, type ReactNode } from 'react'
+import { Fragment, type ReactNode, useState } from 'react'
+import { ComboPicker, type OptionGroup } from '~/components/pickers/combo-picker'
 
 export type WidgetKindMeta = {
   kind: WidgetKind
   label: string
   description: string
+  /** Lucide icon — used by the grid cell popover + config-panel header. */
   icon: LucideIcon
+  /** `EntityIcon` id (icon-data catalog) — used by the ComboPicker add menu. */
+  iconId: string
 }
 
 /** Kind → lucide icon, shared with the config-panel header. */
@@ -62,27 +63,60 @@ export const CHART_KINDS: WidgetKindMeta[] = [
     label: 'Bar chart',
     description: 'Compare a metric across categories',
     icon: BarChart3,
+    iconId: 'bar-chart',
   },
-  { kind: 'lineChart', label: 'Line chart', description: 'A metric over time', icon: LineChart },
+  {
+    kind: 'lineChart',
+    label: 'Line chart',
+    description: 'A metric over time',
+    icon: LineChart,
+    iconId: 'line-chart',
+  },
   {
     kind: 'pieChart',
     label: 'Pie chart',
     description: 'Share of a total by category',
     icon: PieChart,
+    iconId: 'pie-chart',
   },
-  { kind: 'kpi', label: 'KPI', description: 'A single headline number with trend', icon: Sigma },
-  { kind: 'gauge', label: 'Gauge', description: 'Progress toward a target', icon: Gauge },
+  {
+    kind: 'kpi',
+    label: 'KPI',
+    description: 'A single headline number with trend',
+    icon: Sigma,
+    iconId: 'sigma',
+  },
+  {
+    kind: 'gauge',
+    label: 'Gauge',
+    description: 'Progress toward a target',
+    icon: Gauge,
+    iconId: 'gauge',
+  },
   {
     kind: 'recordList',
     label: 'Record list',
     description: 'A filtered table of records',
     icon: Table2,
+    iconId: 'table',
   },
 ]
 
 export const CONTENT_KINDS: WidgetKindMeta[] = [
-  { kind: 'richText', label: 'Rich text', description: 'Notes, headings, links', icon: Type },
-  { kind: 'iframe', label: 'Embed', description: 'An external page by URL', icon: Globe },
+  {
+    kind: 'richText',
+    label: 'Rich text',
+    description: 'Notes, headings, links',
+    icon: Type,
+    iconId: 'type',
+  },
+  {
+    kind: 'iframe',
+    label: 'Embed',
+    description: 'An external page by URL',
+    icon: Globe,
+    iconId: 'globe',
+  },
 ]
 
 function KindItem({
@@ -149,6 +183,28 @@ function WidgetKindList({
   )
 }
 
+/** Build the ComboPicker groups from the kind catalog, honoring filter/current. */
+export function widgetKindOptionGroups(
+  filterKind?: (kind: WidgetKind) => boolean,
+  currentKind?: WidgetKind
+): OptionGroup[] {
+  return [
+    { label: 'Charts', kinds: CHART_KINDS },
+    { label: 'Content', kinds: CONTENT_KINDS },
+  ]
+    .map((g) => ({
+      label: g.label,
+      options: (filterKind ? g.kinds.filter((m) => filterKind(m.kind)) : g.kinds).map((m) => ({
+        value: m.kind,
+        label: m.kind === currentKind ? `${m.label} (current)` : m.label,
+        description: m.description,
+        iconId: m.iconId,
+        disabled: m.kind === currentKind,
+      })),
+    }))
+    .filter((g) => g.options.length > 0)
+}
+
 export function AddWidgetMenu({
   onAdd,
   trigger,
@@ -167,24 +223,37 @@ export function AddWidgetMenu({
   /** Rendered disabled with a "(current)" hint — the change-type source kind. */
   currentKind?: WidgetKind
 }) {
-  const list = <WidgetKindList onAdd={onAdd} filterKind={filterKind} currentKind={currentKind} />
+  const [open, setOpen] = useState(false)
 
-  if (variant === 'inline') return list
+  // The inline variant nests inside a parent DropdownMenuSub (the config panel's
+  // "Change type" submenu) — keep it as plain menu items; a Popover-based picker
+  // can't live inside a Radix submenu.
+  if (variant === 'inline') {
+    return <WidgetKindList onAdd={onAdd} filterKind={filterKind} currentKind={currentKind} />
+  }
 
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        {trigger ?? (
-          <Button variant='outline' size='sm'>
-            <Plus />
-            Add widget
-            <ChevronDown />
-          </Button>
-        )}
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align={align} className='w-64'>
-        {list}
-      </DropdownMenuContent>
-    </DropdownMenu>
+    <ComboPicker
+      groups={widgetKindOptionGroups(filterKind, currentKind)}
+      selected={null}
+      multi={false}
+      open={open}
+      onOpen={() => setOpen(true)}
+      onClose={() => setOpen(false)}
+      onChange={(opt) => {
+        if (opt && !Array.isArray(opt)) onAdd(opt.value as WidgetKind)
+        setOpen(false)
+      }}
+      showSearch
+      searchPlaceholder='Search widgets...'
+      align={align}>
+      {trigger ?? (
+        <Button variant='outline' size='sm'>
+          <Plus />
+          Add widget
+          <ChevronDown />
+        </Button>
+      )}
+    </ComboPicker>
   )
 }

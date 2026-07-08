@@ -17,16 +17,16 @@ import { User } from './user'
 
 /**
  * An immutable, numbered snapshot of a {@link Dashboard}'s layout — the whole
- * page as ONE jsonb doc. Closest to {@link AgentVersion} (every row published,
- * `versionNumber NOT NULL`, `activeVersionId` pointer, `configHash`), minus the
- * server-side draft: the dashboard draft is client-only (plan 06), so unlike
- * `ProcedureVersion`/`ArticleRevision` there is no null-numbered draft row.
+ * page as ONE jsonb doc. Modeled on {@link AgentVersion} (every row published,
+ * `versionNumber NOT NULL`, `activeVersionId` pointer, `configHash`). The draft
+ * is NOT a version row here — it lives on `Dashboard.draftLayout` (the row is the
+ * draft, agent-style), so there is no null-numbered draft row.
  *
- * **Save = publish:** each save inserts version N+1 and repoints
+ * **Publish:** snapshots `Dashboard.draftLayout` into version N+1 and repoints
  * `Dashboard.activeVersionId` in one transaction; a publish whose `configHash`
  * matches the active version is a no-op. Rows are append-only, never edited
- * (except `label`) and never deleted in v1. Restore = copy-forward (a new
- * higher-numbered row copying an older layout).
+ * (except `label`) and never deleted in v1. Restore loads an older version onto
+ * `draftLayout` for review (not a direct copy-forward publish).
  *
  * See plans/dashboard/01-database-schema.md.
  */

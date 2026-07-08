@@ -9,6 +9,7 @@ import {
 } from '@auxx/ui/components/command'
 import { EntityIcon } from '@auxx/ui/components/icons'
 import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
+import { TooltipExplanation } from '@auxx/ui/components/tooltip'
 import { cn } from '@auxx/ui/lib/utils'
 import { Check } from 'lucide-react'
 import React, { useCallback, useMemo, useState } from 'react'
@@ -45,7 +46,17 @@ function NonClosingCommandItem({
   return <CommandItem onSelect={handleSelect} {...props} />
 }
 /** Single option for the picker */
-export type Option = { value: string; label: string; color?: string; iconId?: string }
+export type Option = {
+  value: string
+  label: string
+  color?: string
+  /** Entity-icon id (rendered via {@link EntityIcon}). */
+  iconId?: string
+  /** Explanatory text shown in a hover help tooltip next to the label. */
+  description?: string
+  /** Render the option non-interactive. */
+  disabled?: boolean
+}
 
 /** Group of options with a label */
 export type OptionGroup = { label: string; options: Option[] }
@@ -82,6 +93,7 @@ interface ComboPickerProps {
   multi?: boolean // default true
   children: React.ReactNode // trigger element
   popover?: boolean // default true
+  align?: 'start' | 'center' | 'end' // popover alignment, default 'center'
 }
 
 /**
@@ -118,6 +130,7 @@ export function ComboPicker({
   multi = true,
   children,
   popover = true,
+  align,
   ...props
 }: ComboPickerProps) {
   const [searchQuery, setSearchQuery] = useState('')
@@ -202,13 +215,28 @@ export function ComboPicker({
         onSelect={() => {
           toggleOption(opt.value)
         }}
-        className={cn('flex items-center', selected ? 'font-medium' : '')}
-        disabled={disabled}>
+        className={cn('items-center', selected ? 'font-medium' : '')}
+        disabled={disabled || opt.disabled}>
         {opt.iconId ? (
           <EntityIcon iconId={opt.iconId} color={opt.color || 'gray'} size='sm' className='me-1' />
         ) : null}
         <span>{opt.label}</span>
-        <Check className={cn('ml-auto h-4 w-4', selected ? 'opacity-100' : 'opacity-0')} />
+        {opt.description ? (
+          // CommandItem forces `[&_svg]:pointer-events-none` on descendant svgs;
+          // re-enable it so the help icon can receive hover.
+          <TooltipExplanation
+            text={opt.description}
+            side='right'
+            className='pointer-events-auto!'
+          />
+        ) : null}
+        <span
+          className={cn(
+            'ml-auto flex size-4 shrink-0 items-center justify-center rounded-full border border-blue-800 bg-info',
+            selected ? 'opacity-100' : 'opacity-0'
+          )}>
+          <Check className='size-2.5! text-white' strokeWidth={4} />
+        </span>
       </CommandItem>
     )
   }
@@ -255,7 +283,7 @@ export function ComboPicker({
         }
       }}>
       <PopoverTrigger asChild>{children}</PopoverTrigger>
-      <PopoverContent className={cn('min-w-[300px] p-0', className)} {...props}>
+      <PopoverContent align={align} className={cn('min-w-[300px] p-0', className)} {...props}>
         {commandUI}
       </PopoverContent>
     </Popover>

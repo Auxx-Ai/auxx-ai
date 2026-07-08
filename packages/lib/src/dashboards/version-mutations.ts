@@ -8,44 +8,83 @@ import { ForbiddenError, NotFoundError, UnprocessableEntityError } from '../erro
 import { canEditDashboard } from './access'
 import type { DashboardLayoutDoc } from './client'
 import { hashLayoutDoc } from './config-hash'
-import { dashboardLayoutDocSchema } from './config-schemas'
-import { getDashboard, parseLayoutDoc } from './dashboard-queries'
+import { dashboardLayoutDocSchema, draftLayoutDocSchema } from './config-schemas'
+import { getDashboard } from './dashboard-queries'
 import type { PublishResult } from './types'
 
 /**
- * Save-as-publish versioning: each save validates the client draft, inserts an
- * immutable numbered {@link schema.DashboardVersion}, and repoints
- * `Dashboard.activeVersionId` — all in one transaction that takes a
- * `SELECT … FOR UPDATE` lock on the dashboard row first, so concurrent publishes
- * serialize and the version-number race dies at the lock.
- *
- * **Concurrency model:** last save wins, but nothing is lost — a losing writer's
- * work is still a numbered version one restore away. (Strictly better than a
- * diff-save that could silently drop an edit.)
+ * Draft/publish lifecycle for a dashboard — the dashboard analogue of
+ * `agent-version-service.ts` (`publishAgentTx` / `discardAgentDraft` /
+ * `restoreAgentVersion`). The {@link schema.Dashboard} row IS the draft
+ * (`draftLayout`); editing auto-saves there (no version), and **publish**
+ * snapshots it into an immutable numbered {@link schema.DashboardVersion}.
+ * Functional Drizzle, `neverthrow` results.
  *
  * Versions are append-only and never edited, with the single documented
- * exception of `renameVersion` (annotation metadata, like `agent.renameVersion`).
+ * exception of {@link renameVersion} (annotation metadata, like `agent.renameVersion`).
  */
 
 /**
- * THE save path. Validates `doc`, and if its `configHash` differs from the
- * active version's, inserts version N+1 and repoints the pointer. A publish whose
- * hash matches the active version is a no-op (`unchanged: true`).
+ * THE auto-save path. Validates `doc` with the permissive draft schema, writes it
+ * to `Dashboard.draftLayout`, and flags `hasUnpublishedChanges` by comparing the
+ * draft's hash to the active version's `configHash`. No version is inserted. A
+ * plain row update — no lock needed; last write wins, and the previous state is
+ * still one publish/version away.
  */
-export async function publishLayout(
+export async function saveDraft(
   db: Database,
   orgId: string,
   userId: string,
   dashboardId: string,
   doc: DashboardLayoutDoc
-): Promise<Result<PublishResult, Error>> {
-  const parsed = dashboardLayoutDocSchema.safeParse(doc)
+): Promise<Result<{ hasUnpublishedChanges: boolean }, Error>> {
+  const parsed = draftLayoutDocSchema.safeParse(doc)
   if (!parsed.success) {
-    return err(new UnprocessableEntityError(`Invalid dashboard layout: ${parsed.error.message}`))
+    return err(new UnprocessableEntityError(`Invalid dashboard draft: ${parsed.error.message}`))
   }
   const validDoc = parsed.data as DashboardLayoutDoc
-  const configHash = hashLayoutDoc(validDoc)
+  const draftHash = hashLayoutDoc(validDoc)
 
+  const row = await db.query.Dashboard.findFirst({
+    where: and(eq(schema.Dashboard.id, dashboardId), eq(schema.Dashboard.organizationId, orgId)),
+  })
+  if (!row || row.archivedAt) return err(new NotFoundError('Dashboard not found'))
+  if (!canEditDashboard(row, userId)) return err(new ForbiddenError('Not allowed'))
+
+  // Dirty iff the draft differs from the live version (no active version ⇒ dirty).
+  let hasUnpublishedChanges = true
+  if (row.activeVersionId) {
+    const active = await db.query.DashboardVersion.findFirst({
+      where: eq(schema.DashboardVersion.id, row.activeVersionId),
+      columns: { configHash: true },
+    })
+    hasUnpublishedChanges = !active || active.configHash !== draftHash
+  }
+
+  await db
+    .update(schema.Dashboard)
+    .set({ draftLayout: validDoc as unknown as Record<string, unknown>, hasUnpublishedChanges })
+    .where(eq(schema.Dashboard.id, dashboardId))
+
+  return ok({ hasUnpublishedChanges })
+}
+
+/**
+ * THE publish path. Snapshots the row's `draftLayout` into a new numbered version
+ * and repoints `activeVersionId`. Validates the draft against the STRICT schema —
+ * an unconfigured widget is rejected here (readable `UnprocessableEntityError`),
+ * even though auto-save accepted it. A `SELECT … FOR UPDATE` lock serializes
+ * concurrent publishes so the version-number race dies at the lock. A publish
+ * whose `configHash` matches the active version is a no-op (`unchanged: true`)
+ * that just clears the dirty flag.
+ */
+export async function publishDashboard(
+  db: Database,
+  orgId: string,
+  userId: string,
+  dashboardId: string,
+  label?: string | null
+): Promise<Result<PublishResult, Error>> {
   const outcome = await db.transaction(
     async (tx): Promise<Result<{ unchanged: boolean }, Error>> => {
       // Serialize concurrent publishes; the version-number race dies here.
@@ -60,12 +99,31 @@ export async function publishLayout(
       if (!row || row.archivedAt) return err(new NotFoundError('Dashboard not found'))
       if (!canEditDashboard(row, userId)) return err(new ForbiddenError('Not allowed'))
 
+      const parsed = dashboardLayoutDocSchema.safeParse(row.draftLayout)
+      if (!parsed.success) {
+        return err(
+          new UnprocessableEntityError(
+            `Cannot publish an incomplete dashboard: ${parsed.error.message}`
+          )
+        )
+      }
+      const validDoc = parsed.data as DashboardLayoutDoc
+      const configHash = hashLayoutDoc(validDoc)
+
       // No-op republish: active version already carries this exact doc.
       if (row.activeVersionId) {
         const active = await tx.query.DashboardVersion.findFirst({
           where: eq(schema.DashboardVersion.id, row.activeVersionId),
         })
-        if (active && active.configHash === configHash) return ok({ unchanged: true })
+        if (active && active.configHash === configHash) {
+          if (row.hasUnpublishedChanges) {
+            await tx
+              .update(schema.Dashboard)
+              .set({ hasUnpublishedChanges: false })
+              .where(eq(schema.Dashboard.id, dashboardId))
+          }
+          return ok({ unchanged: true })
+        }
       }
 
       const [{ next } = { next: 1 }] = await tx
@@ -81,13 +139,14 @@ export async function publishLayout(
         organizationId: orgId,
         dashboardId,
         versionNumber: Number(next),
+        label: label ?? null,
         layout: validDoc as unknown as Record<string, unknown>,
         configHash,
         editorId: userId,
       })
       await tx
         .update(schema.Dashboard)
-        .set({ activeVersionId: versionId })
+        .set({ activeVersionId: versionId, hasUnpublishedChanges: false })
         .where(eq(schema.Dashboard.id, dashboardId))
 
       return ok({ unchanged: false })
@@ -102,9 +161,44 @@ export async function publishLayout(
 }
 
 /**
- * Restore = copy-forward: republish the target version's doc as a new
- * higher-numbered version. Runs through {@link publishLayout}, so restoring the
- * already-active version is a no-op.
+ * Discard draft edits — copy the active version's layout back onto `draftLayout`
+ * and clear the dirty flag. The dashboard analogue of `discardAgentDraft`.
+ */
+export async function discardDashboardDraft(
+  db: Database,
+  orgId: string,
+  userId: string,
+  dashboardId: string
+): Promise<Result<PublishResult, Error>> {
+  const row = await db.query.Dashboard.findFirst({
+    where: and(eq(schema.Dashboard.id, dashboardId), eq(schema.Dashboard.organizationId, orgId)),
+  })
+  if (!row || row.archivedAt) return err(new NotFoundError('Dashboard not found'))
+  if (!canEditDashboard(row, userId)) return err(new ForbiddenError('Not allowed'))
+  if (!row.activeVersionId) return err(new NotFoundError('Dashboard has no active version'))
+
+  const active = await db.query.DashboardVersion.findFirst({
+    where: eq(schema.DashboardVersion.id, row.activeVersionId),
+    columns: { layout: true },
+  })
+  if (!active) return err(new NotFoundError('Active dashboard version not found'))
+
+  await db
+    .update(schema.Dashboard)
+    .set({ draftLayout: active.layout, hasUnpublishedChanges: false })
+    .where(eq(schema.Dashboard.id, dashboardId))
+
+  const dashboardResult = await getDashboard(db, orgId, userId, dashboardId)
+  if (dashboardResult.isErr()) return err(dashboardResult.error)
+  return ok({ dashboard: dashboardResult.value, unchanged: false })
+}
+
+/**
+ * Restore-as-draft (article/agent semantic): copy a published version's layout
+ * onto `draftLayout` and mark dirty by hash-compare against the ACTIVE version
+ * (restoring the already-active version ≙ discard, not dirty). `activeVersionId`
+ * is NOT touched — nothing goes live until the user Publishes. Mirrors
+ * `restoreAgentVersion`.
  */
 export async function restoreVersion(
   db: Database,
@@ -113,6 +207,12 @@ export async function restoreVersion(
   dashboardId: string,
   versionNumber: number
 ): Promise<Result<PublishResult, Error>> {
+  const row = await db.query.Dashboard.findFirst({
+    where: and(eq(schema.Dashboard.id, dashboardId), eq(schema.Dashboard.organizationId, orgId)),
+  })
+  if (!row || row.archivedAt) return err(new NotFoundError('Dashboard not found'))
+  if (!canEditDashboard(row, userId)) return err(new ForbiddenError('Not allowed'))
+
   const target = await db.query.DashboardVersion.findFirst({
     where: and(
       eq(schema.DashboardVersion.dashboardId, dashboardId),
@@ -121,10 +221,24 @@ export async function restoreVersion(
   })
   if (!target) return err(new NotFoundError('Dashboard version not found'))
 
-  const docResult = parseLayoutDoc(target.layout)
-  if (docResult.isErr()) return err(docResult.error)
+  // Dirty iff the restored layout differs from the live one.
+  let hasUnpublishedChanges = true
+  if (row.activeVersionId) {
+    const active = await db.query.DashboardVersion.findFirst({
+      where: eq(schema.DashboardVersion.id, row.activeVersionId),
+      columns: { configHash: true },
+    })
+    hasUnpublishedChanges = !active || active.configHash !== target.configHash
+  }
 
-  return publishLayout(db, orgId, userId, dashboardId, docResult.value)
+  await db
+    .update(schema.Dashboard)
+    .set({ draftLayout: target.layout, hasUnpublishedChanges })
+    .where(eq(schema.Dashboard.id, dashboardId))
+
+  const dashboardResult = await getDashboard(db, orgId, userId, dashboardId)
+  if (dashboardResult.isErr()) return err(dashboardResult.error)
+  return ok({ dashboard: dashboardResult.value, unchanged: false })
 }
 
 /**

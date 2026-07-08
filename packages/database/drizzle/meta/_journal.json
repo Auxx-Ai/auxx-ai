@@ -1870,6 +1870,13 @@
       "when": 1783466596306,
       "tag": "0266_dashboards",
       "breakpoints": true
+    },
+    {
+      "idx": 267,
+      "version": "7",
+      "when": 1783486935580,
+      "tag": "0267_dashboard_draft_layout",
+      "breakpoints": true
     }
   ]
 }

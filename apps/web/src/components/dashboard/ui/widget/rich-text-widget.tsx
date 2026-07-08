@@ -43,13 +43,20 @@ export function RichTextWidget({
           ),
         },
       },
-      onUpdate: ({ editor }) => {
+      onUpdate: ({ editor, transaction }) => {
         if (!onChange) return
+        // Ignore the doc-init/normalization transaction TipTap emits on mount —
+        // only user edits should dirty the draft (else just opening edit mode,
+        // which toggles `editable`, would auto-save an unchanged widget).
+        if (!transaction.docChanged) return
         if (timer.current) clearTimeout(timer.current)
         timer.current = setTimeout(() => onChange(editor.getJSON()), DEBOUNCE_MS)
       },
     },
-    [isEditMode]
+    // Create the editor ONCE — do NOT recreate on `isEditMode` (that fires an
+    // init `onUpdate` that spuriously dirties the draft). Editability is toggled
+    // by the effect below via `setEditable`.
+    []
   )
 
   // Keep editability in sync when toggling modes on an already-mounted editor.
