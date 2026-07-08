@@ -1,9 +1,10 @@
 // packages/lib/src/resources/aggregate/run-aggregate.int.test.ts
 //
 // DB-backed behavior tests for the aggregate engine (vitest.integration.config.ts
-// → auxx_test database). Field metadata comes from a mocked org cache (the
-// engine's only cache dependency); rows are seeded directly through Drizzle.
-// SQL behavior is asserted through results, never through SQL strings.
+// → auxx_test database). Field metadata comes from a mocked org cache, and the
+// aggregate result cache is a deterministic in-memory stub (no Redis in tests);
+// rows are seeded directly through Drizzle. SQL behavior is asserted through
+// results, never through SQL strings.
 
 import { type Database, schema } from '@auxx/database'
 import { createTestOrganization, createTestUser, getTestDb } from '@auxx/test-utils'
@@ -24,6 +25,7 @@ const h = vi.hoisted(() => ({
   members: [] as unknown[],
   agents: [] as unknown[],
   groups: [] as unknown[],
+  aggCache: new Map<string, { result: unknown; computedAt: number }>(),
 }))
 
 vi.mock('../../cache', async (importOriginal) => {
@@ -35,6 +37,13 @@ vi.mock('../../cache', async (importOriginal) => {
     getCachedMembers: async () => h.members,
     getCachedAgents: async () => h.agents,
     getCachedGroups: async () => h.groups,
+    // Deterministic stand-in for the aggregate result cache (no Redis here).
+    getAggregateCache: () => ({
+      read: async (key: string) => h.aggCache.get(key) ?? null,
+      write: async (key: string, result: unknown) => {
+        h.aggCache.set(key, { result, computedAt: Date.now() })
+      },
+    }),
   }
 })
 
@@ -161,6 +170,7 @@ async function setupPlayground() {
   h.members = []
   h.agents = []
   h.groups = []
+  h.aggCache.clear()
 
   const org = await createTestOrganization()
   const def = await seedDef(org.id)
@@ -775,6 +785,67 @@ describe('runKpi', () => {
       trend: { compare: 'previousPeriod' },
     })
     expect(result._unsafeUnwrap()).toEqual({ value: 1 })
+  })
+})
+
+describe('aggregate result cache', () => {
+  let p: Awaited<ReturnType<typeof setupPlayground>>
+
+  beforeEach(async () => {
+    p = await setupPlayground()
+  })
+
+  async function seedStatusRecord(name: string) {
+    const instance = await seedInstance(p.org.id, p.def.id, name)
+    await seedValue({
+      orgId: p.org.id,
+      defId: p.def.id,
+      entityId: instance.id,
+      fieldId: p.fieldIds.status,
+      optionId: 's1',
+    })
+  }
+
+  it('serves repeat calls from cache; skipCache recomputes and repopulates', async () => {
+    await seedStatusRecord('A')
+    const query = p.baseQuery({ groupBy: { fieldRef: p.ref(p.fieldIds.status) } })
+
+    const first = (await runAggregate(db(), p.org.id, undefined, query))._unsafeUnwrap()
+    expect(first.totalValue).toBe(1)
+    expect(h.aggCache.size).toBe(1)
+
+    // Mutate the data — a cached re-run must NOT see it.
+    await seedStatusRecord('B')
+    const cached = (await runAggregate(db(), p.org.id, undefined, query))._unsafeUnwrap()
+    expect(cached).toEqual(first)
+
+    // skipCache bypasses the read but still writes the fresh result back.
+    const fresh = (
+      await runAggregate(db(), p.org.id, undefined, query, { skipCache: true })
+    )._unsafeUnwrap()
+    expect(fresh.totalValue).toBe(2)
+    const afterRefresh = (await runAggregate(db(), p.org.id, undefined, query))._unsafeUnwrap()
+    expect(afterRefresh).toEqual(fresh)
+  })
+
+  it('never caches errors', async () => {
+    const result = await runAggregate(
+      db(),
+      p.org.id,
+      undefined,
+      p.baseQuery({ metric: { op: 'sum' } })
+    )
+    expect(result.isErr()).toBe(true)
+    expect(h.aggCache.size).toBe(0)
+  })
+
+  it('kpi entries key on the trend compare', async () => {
+    const base = p.baseQuery({})
+    ;(await runKpi(db(), p.org.id, undefined, { base }))._unsafeUnwrap()
+    ;(
+      await runKpi(db(), p.org.id, undefined, { base, trend: { compare: 'previousPeriod' } })
+    )._unsafeUnwrap()
+    expect(h.aggCache.size).toBe(2)
   })
 })
 

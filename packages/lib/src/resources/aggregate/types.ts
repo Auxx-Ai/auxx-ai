@@ -27,6 +27,10 @@ export type AggregateDateWindow = { fieldRef: WidgetFieldRef; from?: Date; to?: 
 /**
  * One aggregate query — what `widget-query.ts` produces from a widget config
  * and what `runAggregate`/`runKpi` consume. Field refs stay branded here.
+ *
+ * ⚠️ This type is the result-cache identity surface: any field added here must
+ * either join the identity object in `cache-key.ts` or be provably
+ * display-irrelevant (display-only config never reaches this type by design).
  */
 export type AggregateQuery = {
   /** Entity def or system table. */

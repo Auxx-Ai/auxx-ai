@@ -1,5 +1,6 @@
 // packages/lib/src/cache/singletons.ts
 
+import { AggregateCacheService } from './aggregate-cache-service'
 import { AppCacheService } from './app-cache-service'
 import { BuildUserCacheService } from './build-user-cache-service'
 import { OrganizationCacheService } from './org-cache-service'
@@ -16,6 +17,7 @@ import { UserCacheService } from './user-cache-service'
  * server bundles within the same Node.js process.
  */
 const globalForCache = globalThis as unknown as {
+  _auxxAggregateCache?: AggregateCacheService
   _auxxAppCache?: AppCacheService
   _auxxBuildUserCache?: BuildUserCacheService
   _auxxOrgCache?: OrganizationCacheService
@@ -78,6 +80,14 @@ export function getOrgCache(): OrganizationCacheService {
   if (!globalForCache._auxxOrgCache) initCaches()
   else ensureProvidersUpToDate()
   return globalForCache._auxxOrgCache!
+}
+
+/** Get the singleton aggregate result cache (short-TTL dashboard chart/KPI data) */
+export function getAggregateCache(): AggregateCacheService {
+  if (!globalForCache._auxxAggregateCache) {
+    globalForCache._auxxAggregateCache = new AggregateCacheService()
+  }
+  return globalForCache._auxxAggregateCache
 }
 
 /** Get the singleton token cache service for short-lived, one-time-use tokens */
