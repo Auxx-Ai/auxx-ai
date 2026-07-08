@@ -29,7 +29,11 @@ export type CreateDashboardInput = {
   visibility?: DashboardVisibility
 }
 
-/** Insert a starter v1 for a fresh dashboard and repoint its active pointer. */
+/**
+ * Insert a starter v1 for a fresh dashboard, repoint its active pointer, and seed
+ * `draftLayout` with the same doc (the row starts already-published: draft ==
+ * active, `hasUnpublishedChanges` defaults false).
+ */
 async function insertInitialVersion(
   tx: Transaction,
   orgId: string,
@@ -38,18 +42,19 @@ async function insertInitialVersion(
   doc: DashboardLayoutDoc
 ): Promise<void> {
   const versionId = generateId()
+  const layout = doc as unknown as Record<string, unknown>
   await tx.insert(schema.DashboardVersion).values({
     id: versionId,
     organizationId: orgId,
     dashboardId,
     versionNumber: 1,
-    layout: doc as unknown as Record<string, unknown>,
+    layout,
     configHash: hashLayoutDoc(doc),
     editorId: userId,
   })
   await tx
     .update(schema.Dashboard)
-    .set({ activeVersionId: versionId })
+    .set({ activeVersionId: versionId, draftLayout: layout })
     .where(eq(schema.Dashboard.id, dashboardId))
 }
 

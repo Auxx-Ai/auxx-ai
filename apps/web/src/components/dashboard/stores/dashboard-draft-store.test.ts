@@ -3,9 +3,8 @@
 import type { DashboardLayoutDoc } from '@auxx/lib/dashboards/client'
 import { beforeEach, describe, expect, it } from 'vitest'
 import {
-  clearStoredDraft,
-  readStoredDraft,
-  selectIsDirty,
+  type DashboardSeed,
+  selectHasUnpublishedChanges,
   useDashboardStore,
 } from './dashboard-draft-store'
 
@@ -18,89 +17,142 @@ function doc(): DashboardLayoutDoc {
 
 const store = () => useDashboardStore.getState()
 
+/** Seed the store the way the sync hook does (published + server draft). */
+function seedStore(opts: Partial<DashboardSeed> & { id?: string } = {}) {
+  store().seed(opts.id ?? DASH, {
+    published: opts.published ?? doc(),
+    draft: opts.draft ?? null,
+    versionNumber: opts.versionNumber ?? 1,
+    hasUnpublishedChanges: opts.hasUnpublishedChanges ?? false,
+  })
+}
+
 beforeEach(() => {
   useDashboardStore.getState().reset()
-  clearStoredDraft(DASH)
 })
 
 describe('lifecycle', () => {
-  it('seed sets the persisted snapshot without entering edit mode', () => {
-    store().seed(DASH, doc(), 3)
+  it('seed sets the published snapshot and a draft mirror without entering edit mode', () => {
+    seedStore({ versionNumber: 3 })
     expect(store().persisted?.tabs).toHaveLength(1)
     expect(store().persistedVersionNumber).toBe(3)
     expect(store().isEditMode).toBe(false)
-    expect(store().draft).toBeNull()
+    // Draft mirrors the published layout (cloned) so entering edit has something to edit.
+    expect(store().draft?.tabs).toHaveLength(1)
+    expect(store().draft).not.toBe(store().persisted)
+    expect(store().hasUnpublishedChanges).toBe(false)
   })
 
-  it('enterEditMode clones persisted into an independent draft', () => {
-    store().seed(DASH, doc(), 1)
+  it('seed adopts a diverged server draft + the unsaved flag', () => {
+    const serverDraft: DashboardLayoutDoc = {
+      tabs: [
+        { id: TAB, title: 'Overview', icon: null, widgets: [] },
+        { id: 't2', title: 'Extra', icon: null, widgets: [] },
+      ],
+    }
+    seedStore({ draft: serverDraft, hasUnpublishedChanges: true })
+    expect(store().draft?.tabs).toHaveLength(2)
+    expect(store().persisted?.tabs).toHaveLength(1)
+    expect(store().hasUnpublishedChanges).toBe(true)
+  })
+
+  it('enterEditMode edits an independent draft (no bleed into persisted)', () => {
+    seedStore()
     store().enterEditMode()
     expect(store().isEditMode).toBe(true)
     expect(store().isDirty).toBe(false)
-    // Mutating the draft must not bleed into persisted (deep clone).
     store().addWidget(TAB, 'kpi')
     expect(store().draft?.tabs[0].widgets).toHaveLength(1)
     expect(store().persisted?.tabs[0].widgets).toHaveLength(0)
   })
 
-  it('markSaved swaps persisted, exits edit mode, and clears the stored draft', () => {
-    store().seed(DASH, doc(), 1)
+  it('markPublished adopts the new active version and clears dirty flags', () => {
+    seedStore()
     store().enterEditMode()
     store().addWidget(TAB, 'kpi')
-    expect(readStoredDraft(DASH)).not.toBeNull()
+    expect(store().hasUnpublishedChanges).toBe(true)
 
-    const saved = store().draft as DashboardLayoutDoc
-    store().markSaved(saved, 2)
-    expect(store().isEditMode).toBe(false)
-    expect(store().draft).toBeNull()
+    const published = store().draft as DashboardLayoutDoc
+    store().markPublished(published, 2)
     expect(store().persistedVersionNumber).toBe(2)
     expect(store().persisted?.tabs[0].widgets).toHaveLength(1)
-    expect(readStoredDraft(DASH)).toBeNull()
+    expect(store().draft?.tabs[0].widgets).toHaveLength(1)
+    expect(store().isDirty).toBe(false)
+    expect(store().hasUnpublishedChanges).toBe(false)
+    // Still editing after publish (pill flips green).
+    expect(store().isEditMode).toBe(true)
   })
 
-  it('cancelEdit drops the draft and clears the stored draft', () => {
-    store().seed(DASH, doc(), 1)
+  it('markDiscarded reverts the draft to the active version and clears flags', () => {
+    seedStore()
     store().enterEditMode()
     store().addWidget(TAB, 'kpi')
-    store().cancelEdit()
-    expect(store().draft).toBeNull()
+    // Discard returns the active (published) layout with no widgets.
+    store().markDiscarded(doc())
+    expect(store().draft?.tabs[0].widgets).toHaveLength(0)
+    expect(store().hasUnpublishedChanges).toBe(false)
+    expect(store().isDirty).toBe(false)
+  })
+
+  it('adoptDraft loads a restored layout into the draft and enters edit mode', () => {
+    seedStore()
+    const restored: DashboardLayoutDoc = {
+      tabs: [
+        { id: TAB, title: 'Overview', icon: null, widgets: [] },
+        { id: 't2', title: 'Old', icon: null, widgets: [] },
+      ],
+    }
+    store().adoptDraft(restored, true)
+    expect(store().isEditMode).toBe(true)
+    expect(store().isDirty).toBe(false)
+    expect(store().hasUnpublishedChanges).toBe(true)
+    expect(store().draft?.tabs).toHaveLength(2)
+    // persisted (live) untouched — nothing goes live until publish.
+    expect(store().persisted?.tabs).toHaveLength(1)
+  })
+
+  it('exitEditMode keeps the draft parked (server-persisted)', () => {
+    seedStore()
+    store().enterEditMode()
+    store().addWidget(TAB, 'kpi')
+    store().exitEditMode()
     expect(store().isEditMode).toBe(false)
-    expect(readStoredDraft(DASH)).toBeNull()
+    expect(store().draft?.tabs[0].widgets).toHaveLength(1)
   })
 
-  it('a refetch during edit of the same dashboard keeps the draft', () => {
-    store().seed(DASH, doc(), 1)
+  it('a refetch during edit of the same dashboard keeps the local draft', () => {
+    seedStore()
     store().enterEditMode()
     store().addWidget(TAB, 'kpi')
-    // Simulated background refetch (same id, still editing).
-    store().seed(DASH, doc(), 1)
+    seedStore() // background refetch, same id, still editing
     expect(store().isEditMode).toBe(true)
     expect(store().draft?.tabs[0].widgets).toHaveLength(1)
   })
 
   it('seeding a different dashboard resets edit state', () => {
-    store().seed(DASH, doc(), 1)
+    seedStore()
     store().enterEditMode()
     store().addWidget(TAB, 'kpi')
-    store().seed('dash-2', doc(), 1)
+    seedStore({ id: 'dash-2' })
     expect(store().isEditMode).toBe(false)
-    expect(store().draft).toBeNull()
+    expect(store().draft?.tabs[0].widgets).toHaveLength(0)
   })
 })
 
 describe('widget CRUD', () => {
   beforeEach(() => {
-    store().seed(DASH, doc(), 1)
+    seedStore()
     store().enterEditMode()
   })
 
-  it('addWidget mints a widget with a default config and marks dirty', () => {
+  it('addWidget mints a widget with a default config, marks dirty + unsaved', () => {
     const id = store().addWidget(TAB, 'richText')
     expect(id).toBeTruthy()
     const w = store().draft?.tabs[0].widgets[0]
     expect(w?.type).toBe('richText')
     expect(w?.configuration).toEqual({ kind: 'richText', content: null })
     expect(store().isDirty).toBe(true)
+    expect(store().hasUnpublishedChanges).toBe(true)
   })
 
   it('addWidget gives duplicate kinds unique titles', () => {
@@ -136,15 +188,14 @@ describe('widget CRUD', () => {
   })
 
   it('CRUD is a no-op outside edit mode', () => {
-    store().cancelEdit()
+    store().exitEditMode()
     expect(store().addWidget(TAB, 'kpi')).toBeNull()
-    expect(store().isDirty).toBe(false)
   })
 })
 
 describe('applyGridLayout', () => {
   beforeEach(() => {
-    store().seed(DASH, doc(), 1)
+    seedStore()
     store().enterEditMode()
   })
 
@@ -163,9 +214,7 @@ describe('applyGridLayout', () => {
 
   it('empty change list is a no-op and does not dirty', () => {
     store().addWidget(TAB, 'kpi')
-    // reset dirty to observe the guard
-    store().markSaved(store().draft as DashboardLayoutDoc, 2)
-    store().enterEditMode()
+    store().markPublished(store().draft as DashboardLayoutDoc, 2)
     store().applyGridLayout(TAB, [])
     expect(store().isDirty).toBe(false)
   })
@@ -173,7 +222,7 @@ describe('applyGridLayout', () => {
 
 describe('tab CRUD', () => {
   beforeEach(() => {
-    store().seed(DASH, doc(), 1)
+    seedStore()
     store().enterEditMode()
   })
 
@@ -200,48 +249,20 @@ describe('tab CRUD', () => {
     const second = store().addTab() as string
     store().reorderTabs([second, TAB])
     expect(store().draft?.tabs.map((t) => t.id)).toEqual([second, TAB])
-    // Partial list is rejected (would drop tabs).
     store().reorderTabs([TAB])
     expect(store().draft?.tabs).toHaveLength(2)
   })
 })
 
-describe('localStorage durability', () => {
-  it('mirrors a dirty draft and restoreDraft re-enters edit mode', () => {
-    store().seed(DASH, doc(), 1)
+describe('selectHasUnpublishedChanges', () => {
+  it('flips true on the first draft mutation, clears on publish', () => {
+    seedStore()
+    expect(selectHasUnpublishedChanges(store())).toBe(false)
     store().enterEditMode()
+    expect(selectHasUnpublishedChanges(store())).toBe(false)
     store().addWidget(TAB, 'kpi')
-
-    const stored = readStoredDraft(DASH)
-    expect(stored?.baseVersion).toBe(1)
-    expect(stored?.doc.tabs[0].widgets).toHaveLength(1)
-
-    // Simulate a fresh load: reset, re-seed, restore from storage.
-    store().reset()
-    store().seed(DASH, doc(), 1)
-    expect(store().isEditMode).toBe(false)
-    store().restoreDraft(stored!.doc)
-    expect(store().isEditMode).toBe(true)
-    expect(store().isDirty).toBe(true)
-    expect(store().draft?.tabs[0].widgets).toHaveLength(1)
-  })
-
-  it('reset does NOT clear the stored draft (survives navigation)', () => {
-    store().seed(DASH, doc(), 1)
-    store().enterEditMode()
-    store().addWidget(TAB, 'kpi')
-    store().reset()
-    expect(readStoredDraft(DASH)).not.toBeNull()
-  })
-})
-
-describe('selectIsDirty', () => {
-  it('is true only while editing AND dirty', () => {
-    store().seed(DASH, doc(), 1)
-    expect(selectIsDirty(store())).toBe(false)
-    store().enterEditMode()
-    expect(selectIsDirty(store())).toBe(false)
-    store().addWidget(TAB, 'kpi')
-    expect(selectIsDirty(store())).toBe(true)
+    expect(selectHasUnpublishedChanges(store())).toBe(true)
+    store().markPublished(store().draft as DashboardLayoutDoc, 2)
+    expect(selectHasUnpublishedChanges(store())).toBe(false)
   })
 })

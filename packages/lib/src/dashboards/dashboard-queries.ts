@@ -12,7 +12,7 @@ import type {
   DashboardVisibility,
   DashboardWithLayout,
 } from './client'
-import { dashboardLayoutDocSchema } from './config-schemas'
+import { dashboardLayoutDocSchema, draftLayoutDocSchema } from './config-schemas'
 
 /**
  * Read paths for dashboards + their versions. Functional Drizzle, `neverthrow`
@@ -40,13 +40,31 @@ function toSummary(row: DashboardEntity, tabCount: number, widgetCount: number):
   }
 }
 
-/** Parse a persisted layout jsonb into a validated doc, or an error. */
+/** Parse a persisted (published) layout jsonb into a validated doc, or an error. */
 export function parseLayoutDoc(
   layout: unknown
 ): Result<DashboardLayoutDoc, UnprocessableEntityError> {
   const parsed = dashboardLayoutDocSchema.safeParse(layout)
   if (!parsed.success) {
     return err(new UnprocessableEntityError(`Invalid dashboard layout: ${parsed.error.message}`))
+  }
+  return ok(parsed.data as DashboardLayoutDoc)
+}
+
+/**
+ * Parse a persisted DRAFT layout jsonb (permissive — tolerates unconfigured
+ * widgets). `null`/absent column → `null` (readers fall back to the published
+ * layout). A malformed draft surfaces as `UnprocessableEntityError`.
+ */
+export function parseDraftLayoutDoc(
+  layout: unknown
+): Result<DashboardLayoutDoc | null, UnprocessableEntityError> {
+  if (layout == null) return ok(null)
+  const parsed = draftLayoutDocSchema.safeParse(layout)
+  if (!parsed.success) {
+    return err(
+      new UnprocessableEntityError(`Invalid dashboard draft layout: ${parsed.error.message}`)
+    )
   }
   return ok(parsed.data as DashboardLayoutDoc)
 }
@@ -129,6 +147,9 @@ export async function getDashboard(
   const docResult = parseLayoutDoc(version.layout)
   if (docResult.isErr()) return err(docResult.error)
 
+  const draftResult = parseDraftLayoutDoc(row.draftLayout)
+  if (draftResult.isErr()) return err(draftResult.error)
+
   return ok({
     id: row.id,
     name: row.name,
@@ -140,6 +161,8 @@ export async function getDashboard(
     activeVersionId: row.activeVersionId,
     versionNumber: version.versionNumber,
     layout: docResult.value,
+    draftLayout: draftResult.value,
+    hasUnpublishedChanges: row.hasUnpublishedChanges,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   })

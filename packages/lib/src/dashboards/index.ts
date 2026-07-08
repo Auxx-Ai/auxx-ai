@@ -7,6 +7,7 @@ export { canEditDashboard, canViewDashboard } from './access'
 export { hashLayoutDoc } from './config-hash'
 export {
   dashboardLayoutDocSchema,
+  draftLayoutDocSchema,
   globalFiltersSchema,
   widgetConfigurationSchema,
   widgetFieldRefSchema,
@@ -25,6 +26,7 @@ export {
   listDashboards,
   listVersions,
   loadDashboardRow,
+  parseDraftLayoutDoc,
   parseLayoutDoc,
 } from './dashboard-queries'
 export type {
@@ -34,4 +36,10 @@ export type {
   DashboardVersionInsert,
   PublishResult,
 } from './types'
-export { publishLayout, renameVersion, restoreVersion } from './version-mutations'
+export {
+  discardDashboardDraft,
+  publishDashboard,
+  renameVersion,
+  restoreVersion,
+  saveDraft,
+} from './version-mutations'
