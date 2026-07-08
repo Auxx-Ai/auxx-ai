@@ -15,6 +15,7 @@ import KopilotAgentsCta from './platform/ai/kopilot/_components/kopilot-agents-c
 import CrmHero from './platform/crm/_components/crm-hero'
 import DataModelWallHero from './platform/data-model/_components/data-model-wall-hero'
 import IngestionFlowSection from './platform/data-model/_components/ingestion-flow-section'
+import BuildDashboardsSection from './platform/reporting/_components/build-dashboards-section'
 import WorkflowContent from './platform/workflow/_components/workflow-content'
 
 export const metadata: Metadata = {
@@ -75,6 +76,7 @@ export default function MainPage() {
       <KopilotHomeSection />
       {/* <ProblemSolutionSection /> */}
       <StatsSection />
+      <BuildDashboardsSection />
       <IntegrationSection />
       <TestimonialsSection />
       <KopilotAgentsCta />

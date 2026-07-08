@@ -7,14 +7,16 @@ import {
   Database,
   FileQuestion,
   FileText,
-  Folder,
   Inbox,
   type Mail,
   MessagesSquare,
+  Package,
+  ShoppingCart,
   Sparkles,
   Ticket,
   Users,
   Workflow,
+  Zap,
 } from 'lucide-react'
 import { cn } from '~/lib/utils'
 
@@ -26,21 +28,24 @@ export type SidebarKey =
   | 'workflows'
   | 'datasets'
   | 'kb'
-  | 'godela'
   | 'contacts'
   | 'tickets'
+  | 'parts'
   | 'companies'
+  | 'orders'
 
 interface MockAppSidebarProps {
   /** Which sidebar item to highlight as active. Default `'kopilot'`. */
-  activeKey?: SidebarKey
+  activeKey?: SidebarKey | (string & {})
+  /** When set, replaces the items of the `Records` group (used by persona demos). */
+  recordItems?: MockSidebarRecordItem[]
   /** Sidebar width — passed through as inline style. */
   width?: number | string
   className?: string
 }
 
 interface SidebarItem {
-  key: SidebarKey
+  key: string
   label: string
   icon: typeof Mail
   badge?: string
@@ -56,6 +61,13 @@ interface SidebarItem {
     | 'amber'
     | 'teal'
     | 'red'
+}
+
+export interface MockSidebarRecordItem {
+  key: string
+  label: string
+  icon: typeof Mail
+  entityColor: NonNullable<SidebarItem['entityColor']>
 }
 
 interface SidebarGroup {
@@ -103,15 +115,13 @@ const SIDEBAR_GROUPS: SidebarGroup[] = [
     ],
   },
   {
-    title: 'Favorites',
-    items: [{ key: 'godela', label: 'Godela', icon: Folder }],
-  },
-  {
     title: 'Records',
     items: [
       { key: 'contacts', label: 'Contacts', icon: Users, entityColor: 'blue' },
       { key: 'tickets', label: 'Tickets', icon: Ticket, entityColor: 'orange' },
+      { key: 'parts', label: 'Parts', icon: Package, entityColor: 'amber' },
       { key: 'companies', label: 'Companies', icon: Building2, entityColor: 'purple' },
+      { key: 'orders', label: 'Orders', icon: ShoppingCart, entityColor: 'green' },
     ],
   },
 ]
@@ -131,9 +141,16 @@ const SIDEBAR_GROUPS: SidebarGroup[] = [
  */
 export function MockAppSidebar({
   activeKey = 'kopilot',
+  recordItems,
   width = 220,
   className,
 }: MockAppSidebarProps) {
+  const groups = recordItems
+    ? SIDEBAR_GROUPS.map((group) =>
+        group.title === 'Records' ? { ...group, items: recordItems } : group
+      )
+    : SIDEBAR_GROUPS
+
   return (
     <aside
       style={{ width }}
@@ -144,11 +161,33 @@ export function MockAppSidebar({
       <NavUserMock />
 
       <div className='flex-1 space-y-2 overflow-hidden px-2 pb-3'>
-        {SIDEBAR_GROUPS.map((group) => (
+        <QuickActionsMock />
+        {groups.map((group) => (
           <SidebarGroupBlock key={group.title} group={group} activeKey={activeKey} />
         ))}
       </div>
     </aside>
+  )
+}
+
+/**
+ * Static facsimile of `apps/web/src/components/global/sidebar/quick-actions-nav.tsx` —
+ * the boxed command-palette trigger that sits directly below the user row.
+ */
+function QuickActionsMock() {
+  return (
+    <div className='flex h-7 items-center gap-2 rounded-md bg-mock-window px-2 text-xs text-mock-sidebar-foreground shadow-[0_0_2px_0_rgba(28,40,64,0.18),0_1px_3px_0_rgba(24,41,75,0.04)] dark:shadow-[inset_0_0_0_1px_#2f3033,0_0_2px_0_#000,0_1px_3px_0_rgba(0,0,0,0.08)]'>
+      <Zap className='size-4 shrink-0' />
+      <span className='flex-1 truncate text-left'>Quick Actions</span>
+      <span className='flex shrink-0 items-center gap-0.5'>
+        <kbd className='flex h-4 min-w-4 items-center justify-center rounded border border-mock-sidebar-border px-1 text-[10px] text-mock-sidebar-muted'>
+          ⌘
+        </kbd>
+        <kbd className='flex h-4 min-w-4 items-center justify-center rounded border border-mock-sidebar-border px-1 text-[10px] text-mock-sidebar-muted'>
+          K
+        </kbd>
+      </span>
+    </div>
   )
 }
 
@@ -169,7 +208,7 @@ function NavUserMock() {
   )
 }
 
-function SidebarGroupBlock({ group, activeKey }: { group: SidebarGroup; activeKey: SidebarKey }) {
+function SidebarGroupBlock({ group, activeKey }: { group: SidebarGroup; activeKey: string }) {
   return (
     <div>
       <div className='flex h-6 items-center rounded-md px-2 text-xs font-medium text-mock-sidebar-muted'>

@@ -1,13 +1,12 @@
 // apps/homepage/src/app/platform/crm/_components/crm-hero.tsx
 
+import { Database } from 'lucide-react'
 import Link from 'next/link'
 import { SectionBottomFade } from '~/app/_components/main/section-bottom-fade'
-import { ShaderGradientBg } from '~/app/_components/shader-gradient-bg'
-import { AutoplayVideo } from '~/components/autoplay-video'
 import { Button } from '~/components/ui/button'
-import { videoUrl } from '~/lib/cdn'
 import { config } from '~/lib/config'
 import { cn } from '~/lib/utils'
+import { CrmBrowserDemo, EntityCanvas, EntityCardsGrid } from '../_mocks'
 
 interface CrmHeroProps {
   as?: 'h1' | 'h2'
@@ -18,77 +17,57 @@ interface CrmHeroProps {
   bottomFadeColor?: string
 }
 
+/**
+ * Attio-data-model-style hero: centered headline flanked by entity cards
+ * connected with dotted SVG relationship lines, flowing down into a mock
+ * app browser showing a contacts records view.
+ */
 export default function CrmHero({ as: Heading = 'h1', bottomFadeColor }: CrmHeroProps) {
   return (
-    <section className={cn('overflow-hidden relative', !bottomFadeColor && 'border-b')}>
-      <ShaderGradientBg preset='hero' palette='dawn' uniforms={{ timeSpeed: 0.7 }} />
+    <section className={cn('relative overflow-hidden', !bottomFadeColor && 'border-b')}>
+      {/* Dot-grid background, faded toward the edges. */}
+      <div
+        aria-hidden
+        className='pointer-events-none absolute inset-0 bg-[radial-gradient(circle,var(--color-foreground)_1px,transparent_1px)] [background-size:24px_24px] opacity-[0.06] [mask-image:radial-gradient(ellipse_at_top,black_45%,transparent_90%)]'
+      />
+      <div
+        aria-hidden
+        className='pointer-events-none absolute inset-x-0 top-0 h-[600px] bg-[radial-gradient(ellipse_at_top,_var(--color-primary)/8,_transparent_60%)]'
+      />
       {bottomFadeColor && <SectionBottomFade toColor={bottomFadeColor} />}
-      <section className='bg-background/40 relative z-10'>
-        <div
-          aria-hidden
-          className='pointer-events-none absolute inset-0 z-10 mx-1 grid max-w-6xl grid-cols-3 border-x [--color-border:var(--color-border-illustration)] sm:grid-cols-4 md:mx-auto'>
-          <div className='h-full border-r border-dashed' />
-          <div className='h-full border-r border-dashed' />
-          <div className='h-full max-sm:hidden' />
-          <div className='h-full border-l border-dashed max-sm:hidden' />
-        </div>
-        <div className='relative pb-32 pt-24 md:pb-40 md:pt-36 lg:pt-40'>
-          <div className='mx-auto w-full px-6 lg:max-w-5xl'>
-            <div className='grid items-center max-lg:gap-12 lg:grid-cols-2 '>
-              <div className='sm:h-[550px]'>
-                <div className='lg:max-w-sm'>
-                  <Heading className='text-balance text-4xl font-semibold md:text-5xl'>
-                    Know Your Customers, Grow Your Business
-                  </Heading>
-                  <p className='text-muted-foreground mb-6 mt-4 text-balance text-lg'>
-                    Complete customer relationship management that scales with your success.
-                  </p>
 
-                  <div className='flex items-center gap-3'>
-                    <Button asChild size='sm'>
-                      <Link href={config.urls.signup}>Start Building</Link>
-                    </Button>
-                    <Button asChild size='sm' variant='outline'>
-                      <Link href={config.urls.demo}>Request demo</Link>
-                    </Button>
-                  </div>
-                </div>
+      <div className='relative mx-auto max-w-6xl px-6 pb-20 pt-24 md:pt-32 lg:pt-36'>
+        <EntityCanvas className='hidden lg:block' />
 
-                <div className='mt-12 grid max-w-sm grid-cols-2'>
-                  <div className='space-y-2 *:block'>
-                    <span className='text-lg font-semibold'>
-                      360 <span className='text-muted-foreground text-lg'>°</span>
-                    </span>
-                    <p className='text-muted-foreground text-balance text-sm'>
-                      <strong className='text-foreground font-medium'>Customer view</strong> with
-                      complete history and insights.
-                    </p>
-                  </div>
+        <div className='relative z-10 mx-auto max-w-2xl text-center'>
+          <div className='mx-auto inline-flex items-center gap-2 rounded-full border border-foreground/10 bg-muted/40 px-3 py-1 text-xs'>
+            <Database className='size-3.5 text-blue-500' />
+            <span className='text-muted-foreground'>CRM · One data model</span>
+          </div>
 
-                  <div className='space-y-2 *:block'>
-                    <span className='text-lg font-semibold'>
-                      10 <span className='text-muted-foreground text-lg'>X</span>
-                    </span>
-                    <p className='text-muted-foreground text-balance text-sm'>
-                      <strong className='text-foreground font-medium'>Faster</strong> customer data
-                      access and management.
-                    </p>
-                  </div>
-                </div>
-              </div>
-              <div className='max-lg:max-w-[calc(100vw-3rem)] lg:-mr-6 h-[550px] z-100'>
-                <AutoplayVideo
-                  autoPlay
-                  loop
-                  muted
-                  className='size-full rounded-xl object-cover shadow-lg'
-                  src={videoUrl('contact-crm.mp4')}
-                />
-              </div>
-            </div>
+          <Heading className='mt-6 text-balance text-4xl font-semibold tracking-tight md:text-5xl lg:text-6xl'>
+            Every customer.
+            <br />
+            One record.
+          </Heading>
+          <p className='mx-auto mt-4 max-w-xl text-balance text-lg text-muted-foreground'>
+            Contacts, tickets, orders, and conversations — connected in one CRM built for support.
+          </p>
+
+          <div className='mt-8 flex flex-wrap items-center justify-center gap-3'>
+            <Button asChild size='sm'>
+              <Link href={config.urls.signup}>Start for free</Link>
+            </Button>
+            <Button asChild size='sm' variant='outline'>
+              <Link href={config.urls.demo}>Talk to sales</Link>
+            </Button>
           </div>
         </div>
-      </section>
+
+        <EntityCardsGrid className='mt-14 lg:hidden' />
+
+        <CrmBrowserDemo className='relative z-10 mt-14 lg:mt-[290px]' />
+      </div>
     </section>
   )
 }

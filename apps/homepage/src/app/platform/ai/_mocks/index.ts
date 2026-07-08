@@ -4,6 +4,7 @@ export {
   ENTITY_COLOR_CLASS,
   type EntityColor,
   MockAppSidebar,
+  type MockSidebarRecordItem,
   type SidebarKey,
 } from './mock-app-sidebar'
 export { MockAssistantSlot } from './mock-assistant-message'
