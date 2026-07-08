@@ -197,11 +197,16 @@ export function SignUpForm() {
     setError('')
 
     // Get callbackUrl from URL params (e.g., from invitation flow)
-    const callbackUrl = new URLSearchParams(window.location.search).get('callbackUrl')
-    // Tag signups that originate from the Shopify App Store claim flow so the
-    // organization seeder skips the auto-created Stripe trial — Shopify-installed
-    // orgs are forced to Shopify Billing per App Store rule 1.2.1.
-    const signupSource = callbackUrl?.startsWith('/shopify/claim') ? 'shopify-claim' : 'web'
+    const searchParams = new URLSearchParams(window.location.search)
+    const callbackUrl = searchParams.get('callbackUrl')
+    // Tag signups so the organization seeder can branch on origin:
+    //  - 'shopify-claim' → skip the auto Stripe trial (Shopify Billing owns it, App Store rule 1.2.1)
+    //  - 'startup' → land on the Growth plan with the startup discount (marketing /startups?ref=startup)
+    const signupSource = callbackUrl?.startsWith('/shopify/claim')
+      ? 'shopify-claim'
+      : searchParams.get('ref') === 'startup'
+        ? 'startup'
+        : 'web'
 
     try {
       const { data: _data, error } = await client.signUp.email({

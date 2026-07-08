@@ -48,8 +48,7 @@ export default function PrivacyPolicyPage() {
                     <h3 className='text-xl font-semibold mt-6'>Who We Are</h3>
                     <ul className='list-disc pl-6'>
                       <li>
-                        <strong>Legal entity:</strong> {config.shortName}{' '}
-                        <em className='text-gray-500'>(legal name to be confirmed)</em>
+                        <strong>Legal entity:</strong> {config.legalName}
                       </li>
                       <li>
                         <strong>Registered address:</strong> {config.address}

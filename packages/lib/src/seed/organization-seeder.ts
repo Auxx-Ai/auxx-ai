@@ -364,6 +364,14 @@ export class OrganizationSeeder {
       return
     }
 
+    // Startup program (marketing /startups → signup?ref=startup): land the org directly on the
+    // Growth plan with Year-1 pricing (90% off) instead of a standard Growth trial. Auto-approve —
+    // eligibility (≤$10M funding, <15 employees, new customer) is stated, not enforced.
+    if (this.signupSource === 'startup') {
+      await this.seedStartupSubscription(organizationId)
+      return
+    }
+
     const enableAutoTrial = configService.get<string>('ENABLE_AUTO_TRIAL') !== 'false'
     if (!enableAutoTrial) {
       logger.info('Auto trial disabled, skipping trial subscription', { organizationId })
@@ -453,6 +461,69 @@ export class OrganizationSeeder {
       logger.info('Successfully created demo subscription', { organizationId })
     } catch (error: any) {
       logger.error('Failed to create demo subscription', {
+        organizationId,
+        error: error.message,
+      })
+      // Don't throw - we don't want to block org creation if subscription fails
+    }
+  }
+
+  /**
+   * Create a Startup-program subscription (no Stripe, no trial): the org is placed on the
+   * Growth plan with per-org custom pricing set to Year-1 (90% off the platform fee), and
+   * `startupDiscountStartedAt` stamped so the discount window can be stepped down manually
+   * (Year 2 → 50%, Year 3 → 25%) by a super-admin. Actual payment collection is handled
+   * out-of-band like Enterprise custom pricing — no Stripe subscription is created here.
+   * @param organizationId The organization ID
+   */
+  private async seedStartupSubscription(organizationId: string): Promise<void> {
+    logger.info('Creating startup subscription for organization', { organizationId })
+
+    try {
+      // The Startup program reuses the Growth plan and discounts it.
+      const [growthPlan] = await this.db
+        .select({
+          id: schema.Plan.id,
+          monthlyPrice: schema.Plan.monthlyPrice,
+          annualPrice: schema.Plan.annualPrice,
+        })
+        .from(schema.Plan)
+        .where(eq(schema.Plan.name, 'Growth'))
+        .limit(1)
+
+      if (!growthPlan) {
+        logger.warn('Growth plan not found, falling back to standard trial for startup signup', {
+          organizationId,
+        })
+        return
+      }
+
+      // Year 1 = 90% off the platform fee (pay 10%). Year 2/3 stepped down manually.
+      const STARTUP_YEAR_1_MULTIPLIER = 0.1
+      const customPricingMonthly = Math.round(growthPlan.monthlyPrice * STARTUP_YEAR_1_MULTIPLIER)
+      const customPricingAnnual = Math.round(growthPlan.annualPrice * STARTUP_YEAR_1_MULTIPLIER)
+
+      await this.db.insert(schema.PlanSubscription).values({
+        organizationId,
+        planId: growthPlan.id,
+        plan: 'Growth',
+        status: 'active',
+        billingCycle: 'MONTHLY',
+        seats: 1,
+        customPricingMonthly,
+        customPricingAnnual,
+        customPricingNotes: 'Startup program — Year 1 (90% off platform fee)',
+        startupDiscountStartedAt: new Date(),
+        updatedAt: new Date(),
+      })
+
+      logger.info('Successfully created startup subscription', {
+        organizationId,
+        customPricingMonthly,
+        customPricingAnnual,
+      })
+    } catch (error: any) {
+      logger.error('Failed to create startup subscription', {
         organizationId,
         error: error.message,
       })

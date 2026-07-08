@@ -77,6 +77,10 @@ export const PlanSubscription = pgTable(
     customPricingMonthly: integer(),
     customPricingAnnual: integer(),
     customPricingNotes: text(),
+    // Startup program: when the org's discount window began. Year 1 (90% off) is granted
+    // automatically; Year 2 (50%) and Year 3 (25%) are stepped down MANUALLY by a super-admin
+    // — this timestamp is what a "startup orgs approaching renewal" review query keys on.
+    startupDiscountStartedAt: timestamp({ precision: 3 }),
   },
   (table) => [
     uniqueIndex('PlanSubscription_organizationId_key').using(

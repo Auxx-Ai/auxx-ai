@@ -11,6 +11,7 @@ export type SiteConfig = typeof config
 export const config = {
   name: 'Auxx AI',
   shortName: 'auxx.Ai',
+  legalName: 'Auxx Ai, LLC',
   description: 'Connect AI with your small business',
   address: '5160 Gabbert Rd, Moorpark, CA 93021',
   emails: {
