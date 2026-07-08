@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.1.178](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.177...auxx-v0.1.178) (2026-07-08)
+
+
+### Features
+
+* **dashboards:** chart color schemes, record-list columns manager, shared TabStrip/RenameInput ([#1082](https://github.com/Auxx-Ai/auxx-ai/issues/1082)) ([72355a9](https://github.com/Auxx-Ai/auxx-ai/commit/72355a911d4818db9c0d1893106b18674b2dbbaa))
+* **dashboards:** config field renames + inline help, paginated legend carousel ([#1083](https://github.com/Auxx-Ai/auxx-ai/issues/1083)) ([e00ed69](https://github.com/Auxx-Ai/auxx-ai/commit/e00ed69c103b0cea031d7cd752921377b04bb933))
+* **dashboards:** dashboards feature with widgets, aggregate engine, and versioning ([#1077](https://github.com/Auxx-Ai/auxx-ai/issues/1077)) ([6deae82](https://github.com/Auxx-Ai/auxx-ai/commit/6deae82542cac28141655fbd077cc36b6c65bfa9))
+* **dashboards:** display formatting — value + date-axis overrides ([#1080](https://github.com/Auxx-Ai/auxx-ai/issues/1080)) ([845374a](https://github.com/Auxx-Ai/auxx-ai/commit/845374ad62561cd52fea29e0338832682db5c257))
+* **dashboards:** gate record drawer fullscreen by detail-page support ([#1087](https://github.com/Auxx-Ai/auxx-ai/issues/1087)) ([3497609](https://github.com/Auxx-Ai/auxx-ai/commit/3497609d29cbb583a7c95dfc63fd7fc2e17953c7))
+* **dashboards:** render record-list widget on DynamicTable (reduced mode) ([#1081](https://github.com/Auxx-Ai/auxx-ai/issues/1081)) ([5cceeab](https://github.com/Auxx-Ai/auxx-ai/commit/5cceeabb76dd794aa2bdcc5434a6808dc4447809))
+* **dashboards:** server-side aggregate result cache (60s TTL) ([#1085](https://github.com/Auxx-Ai/auxx-ai/issues/1085)) ([3360d50](https://github.com/Auxx-Ai/auxx-ai/commit/3360d5052c7fd00ed32472130ee15ef792f3b315))
+* **dashboards:** switch versioning to agent model (row-as-draft) ([#1079](https://github.com/Auxx-Ai/auxx-ai/issues/1079)) ([924550d](https://github.com/Auxx-Ai/auxx-ai/commit/924550dc92d06730f29060073da71d056a83e342))
+* **homepage:** reporting platform page + nav tweaks ([#1088](https://github.com/Auxx-Ai/auxx-ai/issues/1088)) ([9059e5f](https://github.com/Auxx-Ai/auxx-ai/commit/9059e5fed803240249ec00535477ff7dad49e888))
+* **startups:** startup discount program + /startups landing page ([#1086](https://github.com/Auxx-Ai/auxx-ai/issues/1086)) ([f4eb8e6](https://github.com/Auxx-Ai/auxx-ai/commit/f4eb8e6f473bbe863f099350ba88acad138f6a4e))
+
 ## [0.1.177](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.176...auxx-v0.1.177) (2026-07-07)
 
 
