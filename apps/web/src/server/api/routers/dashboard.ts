@@ -4,6 +4,7 @@ import type { Database } from '@auxx/database'
 import { getUserCache } from '@auxx/lib/cache'
 import {
   archiveDashboard,
+  chartQueryInputSchema,
   createDashboard,
   discardDashboardDraft,
   draftLayoutDocSchema,
@@ -18,11 +19,8 @@ import {
   restoreVersion,
   saveDraft,
   updateDashboard,
-  widgetConfigurationSchema,
 } from '@auxx/lib/dashboards'
-import type { DashboardLayoutDoc, WidgetConfiguration } from '@auxx/lib/dashboards/client'
-import { isChartWidget } from '@auxx/lib/dashboards/client'
-import { UnprocessableEntityError } from '@auxx/lib/errors'
+import type { DashboardLayoutDoc } from '@auxx/lib/dashboards/client'
 import {
   buildAggregateQueryForWidget,
   resolveDateRangePreset,
@@ -50,23 +48,26 @@ const iconSchema = z.object({ iconId: z.string(), color: z.string() })
 const visibilitySchema = z.enum(['private', 'org'])
 
 /**
- * Input for chartData/kpiData. Carries the CONFIGURATION (not just a widget
- * id) so the config panel can preview unsaved drafts through the same
- * endpoint; `widgetId` is informational. `globalOverrides` is the viewer's
- * live date-range/condition state from the URL.
+ * Input for chartData/kpiData. Carries the data-determining QUERY PROJECTION
+ * (`ChartQueryInput`) — NOT the full widget configuration — so display-only
+ * edits (color/legend/valueFormat/labelFormat) never reach the query key and
+ * can't trigger a re-fetch. The config panel still previews unsaved drafts:
+ * `toChartQueryInput(draftConfig)` flows through the same endpoint. `widgetId`
+ * is informational; `globalOverrides` is the viewer's live date-range/condition
+ * state from the URL.
  */
 const widgetDataInputSchema = z.object({
   dashboardId: z.string(),
   widgetId: z.string().optional(),
-  configuration: widgetConfigurationSchema,
+  query: chartQueryInputSchema,
   globalOverrides: globalFiltersSchema.optional(),
 })
 
 type WidgetDataInput = z.infer<typeof widgetDataInputSchema>
 
 /**
- * Shared prep for the data procedures: assert the dashboard is viewable, narrow
- * the configuration to a metric-bearing chart widget, and resolve the viewer's
+ * Shared prep for the data procedures: assert the dashboard is viewable and
+ * build the AggregateQuery from the projected input, resolving the viewer's
  * global filters in THEIR timezone (buckets follow the viewer, not the org).
  */
 async function prepareWidgetQuery(
@@ -76,18 +77,14 @@ async function prepareWidgetQuery(
   unwrap(
     await getDashboard(ctx.db, ctx.session.organizationId, ctx.session.userId, input.dashboardId)
   )
-  const cfg = input.configuration as WidgetConfiguration
-  if (!isChartWidget(cfg)) {
-    throw new UnprocessableEntityError('Configuration is not a chart/KPI widget')
-  }
   const profile = await getUserCache().get(ctx.session.userId, 'userProfile')
   const timezone = profile?.preferredTimezone || 'UTC'
-  const query = buildAggregateQueryForWidget(cfg, {
+  const query = buildAggregateQueryForWidget(input.query, {
     conditions: input.globalOverrides?.conditions,
     dateRange: resolveDateRangePreset(input.globalOverrides?.dateRange, timezone),
     timezone,
   })
-  return { cfg, query }
+  return { cfg: input.query, query }
 }
 
 export const dashboardRouter = createTRPCRouter({

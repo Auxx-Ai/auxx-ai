@@ -28,7 +28,7 @@ export function GaugeWidget({
   onConfigure?: () => void
 }) {
   const { data, isLoading, isError, error } = useKpiData(config, widgetId)
-  const meta = useMetricFieldMeta(config.metric)
+  const meta = useMetricFieldMeta(config.metric, config.valueFormat)
 
   // A gauge also needs a target (`rangeMax`) before it can draw its arc.
   if (!isChartConfigured(config) || config.rangeMax == null) {

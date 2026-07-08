@@ -99,6 +99,7 @@ function ChartTooltipContent({
   labelFormatter,
   labelClassName,
   formatter,
+  valueFormatter,
   color,
   nameKey,
   labelKey,
@@ -109,6 +110,12 @@ function ChartTooltipContent({
     indicator?: 'line' | 'dot' | 'dashed'
     nameKey?: string
     labelKey?: string
+    /**
+     * Format the numeric value shown per series row. Unlike `formatter` (which
+     * replaces the ENTIRE row markup), this only swaps the default
+     * `toLocaleString()` — the indicator + label stay intact.
+     */
+    valueFormatter?: (value: number | string) => React.ReactNode
   }) {
   const { config } = useChart()
 
@@ -203,9 +210,9 @@ function ChartTooltipContent({
                         {itemConfig?.label || item.name}
                       </span>
                     </div>
-                    {item.value && (
+                    {item.value != null && (
                       <span className='font-mono font-medium tabular-nums text-foreground'>
-                        {item.value.toLocaleString()}
+                        {valueFormatter ? valueFormatter(item.value) : item.value.toLocaleString()}
                       </span>
                     )}
                   </div>

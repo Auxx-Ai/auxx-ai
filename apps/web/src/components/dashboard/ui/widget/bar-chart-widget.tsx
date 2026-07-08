@@ -37,6 +37,7 @@ export function BarChartWidget({
   const stacked = Boolean(config.secondaryGroupBy) && config.stacked
   const showLegend = config.showLegend !== false && series.length > 1
   const tickFormatter = formatValue ? (v: number) => formatValue(v) : undefined
+  const valueFormatter = formatValue ? (v: number | string) => formatValue(Number(v)) : undefined
 
   return (
     <ChartContainer config={chartConfig} className='h-full w-full'>
@@ -81,7 +82,7 @@ export function BarChartWidget({
             />
           </>
         )}
-        <ChartTooltip content={<ChartTooltipContent />} />
+        <ChartTooltip content={<ChartTooltipContent valueFormatter={valueFormatter} />} />
         {showLegend && <ChartLegend content={<ChartLegendContent />} />}
         {series.map((def) => (
           <Bar

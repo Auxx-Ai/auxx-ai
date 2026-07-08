@@ -3,6 +3,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   type ChartAggregateResult,
+  remapGroupLabels,
   SINGLE_SERIES_KEY,
   toChartConfig,
   toChartRows,
@@ -13,6 +14,37 @@ const result = (groups: ChartAggregateResult['groups']): ChartAggregateResult =>
   groups,
   totalValue: groups.reduce((s, g) => s + g.value, 0),
   hasMoreGroups: false,
+})
+
+describe('remapGroupLabels', () => {
+  it('relabels non-null keys, preserves keys + null-key server label', () => {
+    const remapped = remapGroupLabels(
+      result([
+        { key: '2026-07-01', label: '2026-07', value: 3 },
+        { key: null, label: '(empty)', value: 1 },
+      ]),
+      (key) => `bucket:${key}`
+    )
+    expect(remapped.groups).toEqual([
+      { key: '2026-07-01', label: 'bucket:2026-07-01', value: 3 },
+      { key: null, label: '(empty)', value: 1 },
+    ])
+  })
+
+  it('leaves secondary series untouched', () => {
+    const remapped = remapGroupLabels(
+      result([
+        {
+          key: '2026-07-01',
+          label: '2026-07',
+          value: 3,
+          series: [{ key: 's1', label: 'Series 1', value: 3 }],
+        },
+      ]),
+      () => 'X'
+    )
+    expect(remapped.groups[0].series).toEqual([{ key: 's1', label: 'Series 1', value: 3 }])
+  })
 })
 
 describe('toChartRows — single series', () => {

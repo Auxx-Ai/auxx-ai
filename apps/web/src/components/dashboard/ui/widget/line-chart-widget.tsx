@@ -33,13 +33,14 @@ export function LineChartWidget({
   const showLegend = config.showLegend !== false && series.length > 1
   const stacked = Boolean(config.secondaryGroupBy) && config.stacked
   const tickFormatter = formatValue ? (v: number) => formatValue(v) : undefined
+  const valueFormatter = formatValue ? (v: number | string) => formatValue(Number(v)) : undefined
 
   const axes = (
     <>
       <CartesianGrid vertical={false} />
       <XAxis dataKey='label' tickLine={false} axisLine={false} tickMargin={8} />
       <YAxis tickLine={false} axisLine={false} tickMargin={8} tickFormatter={tickFormatter} />
-      <ChartTooltip content={<ChartTooltipContent />} />
+      <ChartTooltip content={<ChartTooltipContent valueFormatter={valueFormatter} />} />
       {showLegend && <ChartLegend content={<ChartLegendContent />} />}
     </>
   )

@@ -31,6 +31,7 @@ export function PieChartWidget({
 }) {
   const rows = toPieRows(result, config.color)
   const showLegend = config.showLegend !== false
+  const valueFormatter = formatValue ? (v: number | string) => formatValue(Number(v)) : undefined
   // Label lookup keyed by group label so the tooltip/legend read display names.
   const chartConfig: ChartConfig = Object.fromEntries(
     rows.map((r) => [r.label, { label: r.label, color: r.fill }])
@@ -39,7 +40,11 @@ export function PieChartWidget({
   return (
     <ChartContainer config={chartConfig} className='h-full w-full'>
       <PieChart margin={{ top: 8, right: 8, bottom: 8, left: 8 }}>
-        <ChartTooltip content={<ChartTooltipContent nameKey='label' hideLabel />} />
+        <ChartTooltip
+          content={
+            <ChartTooltipContent nameKey='label' hideLabel valueFormatter={valueFormatter} />
+          }
+        />
         <Pie
           data={rows}
           dataKey='value'

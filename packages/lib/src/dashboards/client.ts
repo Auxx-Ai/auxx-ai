@@ -10,7 +10,14 @@
 import type { FieldPath, ResourceFieldId } from '@auxx/types/field'
 import { generateId } from '@auxx/utils'
 import type { ConditionGroup } from '../conditions/client'
+import type { FieldOptions } from '../field-values/client'
 import type { TableId } from '../resources/registry/field-registry'
+import type { DateLabelFormat } from './date-bucket-labels'
+
+export type { DateLabelFormat } from './date-bucket-labels'
+// Client-safe date-bucket label formatting (plan 10) — re-exported here so the
+// chart widgets can format the category axis off the raw bucket key.
+export { formatBucketLabel } from './date-bucket-labels'
 
 // ── Primitives ──────────────────────────────────────────────────────────────
 
@@ -119,12 +126,25 @@ export type BaseChartConfig = {
   /** DATE/DATETIME field the dashboard's global date range binds to; null = opt out. */
   globalDateFieldRef?: WidgetFieldRef | null
   description?: string
+  /**
+   * Per-widget display-format override for the metric VALUE, layered over the
+   * metric field's own `FieldOptions` (decimals, currency display, compact…).
+   * Display-only — excluded from {@link ChartQueryInput}. Produced by the
+   * Number/Currency formatting editors in the config panel.
+   */
+  valueFormat?: FieldOptions
 }
 
 export type BarChartConfig = BaseChartConfig & {
   kind: 'barChart'
   metric: Metric
   groupBy: GroupBy
+  /**
+   * Display style for a DATE group-by's category-axis labels (plan 10). Applied
+   * client-side off the raw bucket key — display-only, never re-queries.
+   * `undefined` = the default label style.
+   */
+  labelFormat?: DateLabelFormat
   /** Stacked/grouped series. */
   secondaryGroupBy?: GroupBy
   /** Default `'vertical'`. */
@@ -145,6 +165,8 @@ export type LineChartConfig = BaseChartConfig & {
   metric: Metric
   /** Usually a date field + granularity. */
   groupBy: GroupBy
+  /** Category-axis date label style (plan 10); display-only. */
+  labelFormat?: DateLabelFormat
   /** Multi-series. */
   secondaryGroupBy?: GroupBy
   stacked?: boolean
@@ -161,6 +183,8 @@ export type PieChartConfig = BaseChartConfig & {
   kind: 'pieChart'
   metric: Metric
   groupBy: GroupBy
+  /** Slice/legend date label style (plan 10); display-only. */
+  labelFormat?: DateLabelFormat
   donut?: boolean
   showCenterTotal?: boolean
   showDataLabels?: boolean
@@ -173,8 +197,6 @@ export type KpiConfig = BaseChartConfig & {
   metric: Metric
   prefix?: string
   suffix?: string
-  /** Number formatting: `'plain' | 'compact' | 'currency' | 'percent'`. */
-  format?: string
   trend?: { dateFieldRef: WidgetFieldRef; compare: TrendCompare }
 }
 
@@ -231,6 +253,29 @@ export type ChartWidgetConfig =
   | PieChartConfig
   | KpiConfig
   | GaugeConfig
+
+/**
+ * The **data-determining** projection of a chart config — exactly the fields the
+ * aggregate query reads (`buildAggregateQueryForWidget` + `trendSpecForWidget`).
+ * Display-only settings (color, ranges, `valueFormat`, `labelFormat`, legend,
+ * prefix/suffix…) are deliberately absent, so a display edit produces an
+ * identical projection and the widget's data query is NOT re-fetched. This is
+ * what the `chartData`/`kpiData` procedures accept as input. See
+ * {@link toChartQueryInput}.
+ */
+export type ChartQueryInput = {
+  kind: ChartWidgetConfig['kind']
+  source: WidgetSource
+  metric: Metric
+  filters?: ConditionGroup[]
+  globalDateFieldRef?: WidgetFieldRef | null
+  /** Only for bar/line/pie. */
+  groupBy?: GroupBy
+  /** Only for bar/line. */
+  secondaryGroupBy?: GroupBy
+  /** Only for kpi — the trend date field + comparison drive the previous-window query. */
+  trend?: { dateFieldRef: WidgetFieldRef; compare: TrendCompare }
+}
 
 // ── Layout doc ──────────────────────────────────────────────────────────────
 
@@ -391,6 +436,32 @@ export function isChartConfigured(config: WidgetConfiguration): boolean {
   return true
 }
 
+/**
+ * Project a chart config down to its {@link ChartQueryInput} — the subset the
+ * aggregate engine actually reads. Display-only fields never cross the wire, so
+ * two configs that differ only in appearance produce an IDENTICAL projection and
+ * share one cache entry (no re-fetch on a format/color/legend edit). Kept in
+ * lockstep with `buildAggregateQueryForWidget` — anything that function reads
+ * off `cfg` must be copied here.
+ */
+export function toChartQueryInput(config: ChartWidgetConfig): ChartQueryInput {
+  const input: ChartQueryInput = {
+    kind: config.kind,
+    source: config.source,
+    metric: config.metric,
+  }
+  if (config.filters !== undefined) input.filters = config.filters
+  if (config.globalDateFieldRef !== undefined) input.globalDateFieldRef = config.globalDateFieldRef
+  if (config.kind === 'barChart' || config.kind === 'lineChart' || config.kind === 'pieChart') {
+    if (config.groupBy !== undefined) input.groupBy = config.groupBy
+    if (config.kind !== 'pieChart' && config.secondaryGroupBy !== undefined) {
+      input.secondaryGroupBy = config.secondaryGroupBy
+    }
+  }
+  if (config.kind === 'kpi' && config.trend !== undefined) input.trend = config.trend
+  return input
+}
+
 // ── Change widget type (plan 09) ────────────────────────────────────────────
 
 /** Chart kinds that carry a `groupBy` dimension. */
@@ -441,6 +512,8 @@ export function convertWidgetConfiguration(
         ...spine,
         ...pickDefined(f, [
           'description',
+          'valueFormat',
+          'labelFormat',
           'secondaryGroupBy',
           'layout',
           'stacked',
@@ -460,6 +533,8 @@ export function convertWidgetConfiguration(
         ...spine,
         ...pickDefined(f, [
           'description',
+          'valueFormat',
+          'labelFormat',
           'secondaryGroupBy',
           'stacked',
           'cumulative',
@@ -479,6 +554,8 @@ export function convertWidgetConfiguration(
         ...spine,
         ...pickDefined(f, [
           'description',
+          'valueFormat',
+          'labelFormat',
           'donut',
           'showCenterTotal',
           'showDataLabels',
@@ -492,14 +569,14 @@ export function convertWidgetConfiguration(
       return {
         kind: 'kpi',
         ...spine,
-        ...pickDefined(f, ['description', 'prefix', 'suffix', 'format', 'trend']),
+        ...pickDefined(f, ['description', 'valueFormat', 'prefix', 'suffix', 'trend']),
         metric,
       } as WidgetConfiguration
     case 'gauge':
       return {
         kind: 'gauge',
         ...spine,
-        ...pickDefined(f, ['description', 'rangeMin', 'color', 'showDataLabels']),
+        ...pickDefined(f, ['description', 'valueFormat', 'rangeMin', 'color', 'showDataLabels']),
         metric,
         rangeMax: f.rangeMax ?? DEFAULT_GAUGE_MAX,
       } as WidgetConfiguration

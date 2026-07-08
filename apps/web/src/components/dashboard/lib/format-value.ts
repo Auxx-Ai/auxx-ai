@@ -52,7 +52,11 @@ export function formatMetricValue(value: number, op: MetricOp, meta?: MetricFiel
     return `${new Intl.NumberFormat(undefined, { maximumFractionDigits: 1 }).format(value)}%`
   }
   if (COUNT_OPS.has(op)) {
-    return new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 }).format(value)
+    // Counts have no underlying field, so they default to a grouped integer —
+    // but honor a per-widget `valueFormat` override (e.g. compact `1.2K`) when set.
+    return meta?.options
+      ? converters.NUMBER.toDisplayValue({ type: 'number', value }, meta.options)
+      : new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 }).format(value)
   }
 
   const { fieldType, options } = meta ?? {}

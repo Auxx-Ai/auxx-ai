@@ -9,13 +9,17 @@
 
 import {
   type BarChartConfig,
+  formatBucketLabel,
   isChartConfigured,
   type LineChartConfig,
   type PieChartConfig,
 } from '@auxx/lib/dashboards/client'
+import { isFieldPath } from '@auxx/types/field'
+import { useField } from '~/components/resources/hooks/use-field'
 import { useChartData } from '../../hooks/use-chart-data'
 import { useMetricFieldMeta } from '../../hooks/use-metric-field'
-import { toChartRows } from '../../lib/chart-transform'
+import { remapGroupLabels, toChartRows } from '../../lib/chart-transform'
+import { effectiveFieldTypeOf } from '../../lib/field-meta'
 import { formatMetricValue } from '../../lib/format-value'
 import { BarChartWidget } from './bar-chart-widget'
 import { LineChartWidget } from './line-chart-widget'
@@ -36,7 +40,19 @@ export function ChartWidget({
   onConfigure?: () => void
 }) {
   const { data, isLoading, isError, error } = useChartData(config, widgetId)
-  const meta = useMetricFieldMeta(config.metric)
+  const meta = useMetricFieldMeta(config.metric, config.valueFormat)
+
+  // Resolve the primary group-by field type to know if the category axis is a
+  // DATE bucket — only then is `labelFormat` meaningful (plan 10).
+  const groupRef = config.groupBy?.fieldRef
+  const groupLeaf = groupRef
+    ? isFieldPath(groupRef)
+      ? groupRef[groupRef.length - 1]
+      : groupRef
+    : null
+  const groupField = useField(groupLeaf)
+  const groupFieldType = groupField ? effectiveFieldTypeOf(groupField) : undefined
+  const isDateDim = groupFieldType === 'DATE' || groupFieldType === 'DATETIME'
 
   if (!isChartConfigured(config)) {
     return (
@@ -51,7 +67,15 @@ export function ChartWidget({
   if (!data || data.groups.length === 0) return <WidgetEmpty />
 
   const cumulative = config.kind !== 'pieChart' ? config.cumulative : undefined
-  const { rows, series } = toChartRows(data, { cumulative })
+  // Restyle date-bucket labels off their raw keys when an override is set — pure
+  // client re-render, no re-query. Default (no `labelFormat`) keeps server labels.
+  const displayData =
+    isDateDim && config.labelFormat
+      ? remapGroupLabels(data, (key) =>
+          formatBucketLabel(key, config.groupBy.dateGranularity ?? 'day', config.labelFormat)
+        )
+      : data
+  const { rows, series } = toChartRows(displayData, { cumulative })
   // Format axis ticks / totals like the metric field displays elsewhere.
   const formatValue = (n: number) => formatMetricValue(n, config.metric.op, meta)
 
@@ -65,7 +89,7 @@ export function ChartWidget({
           <LineChartWidget config={config} rows={rows} series={series} formatValue={formatValue} />
         )}
         {config.kind === 'pieChart' && (
-          <PieChartWidget config={config} result={data} formatValue={formatValue} />
+          <PieChartWidget config={config} result={displayData} formatValue={formatValue} />
         )}
       </div>
       {data.hasMoreGroups && (

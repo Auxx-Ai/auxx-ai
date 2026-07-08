@@ -16,6 +16,7 @@ import {
 import { z } from 'zod'
 import { conditionGroupSchema } from '../conditions/client'
 import {
+  type ChartQueryInput,
   DASHBOARD_GRID_COLUMNS,
   MAX_GROUP_LIMIT,
   MAX_TABS,
@@ -33,6 +34,15 @@ export const widgetFieldRefSchema = z.union([
 ]) as z.ZodType<WidgetFieldRef>
 
 const conditionGroupsSchema = z.array(conditionGroupSchema)
+
+/**
+ * A `FieldOptions` display-override bag (see `@auxx/lib/field-values`). Permissive
+ * by design: the formatting editors emit well-formed per-type options, and this
+ * is display-only (a malformed override just formats oddly, never a data risk),
+ * so validating every FieldType's option shape here would only couple the schema
+ * to field-values for no safety gain.
+ */
+const fieldOptionsOverrideSchema = z.record(z.string(), z.unknown())
 
 // ── Metric / group-by / source ──────────────────────────────────────────────
 
@@ -54,6 +64,9 @@ const metricSchema = z.object({
   fieldRef: widgetFieldRefSchema.optional(),
 })
 
+/** Category-axis date label style (plan 10); display-only, on the chart config. */
+const dateLabelFormatSchema = z.enum(['short', 'long', 'iso'])
+
 const groupBySchema = z.object({
   fieldRef: widgetFieldRefSchema,
   dateGranularity: z
@@ -74,7 +87,31 @@ const baseChartSchema = {
   filters: conditionGroupsSchema.optional(),
   globalDateFieldRef: widgetFieldRefSchema.nullable().optional(),
   description: z.string().optional(),
+  /** Per-widget display-format override, layered over the metric field's own options. */
+  valueFormat: fieldOptionsOverrideSchema.optional(),
 }
+
+/**
+ * The `chartData`/`kpiData` procedure input — the data-determining projection of
+ * a chart config (see {@link ChartQueryInput}). Display-only fields are NOT
+ * accepted, so they can't reach the query key and can't trigger a re-fetch.
+ * Mirrors `toChartQueryInput`.
+ */
+export const chartQueryInputSchema = z.object({
+  kind: z.enum(['barChart', 'lineChart', 'pieChart', 'kpi', 'gauge']),
+  source: widgetSourceSchema,
+  metric: metricSchema,
+  filters: conditionGroupsSchema.optional(),
+  globalDateFieldRef: widgetFieldRefSchema.nullable().optional(),
+  groupBy: groupBySchema.optional(),
+  secondaryGroupBy: groupBySchema.optional(),
+  trend: z
+    .object({
+      dateFieldRef: widgetFieldRefSchema,
+      compare: z.enum(['previousPeriod', 'samePeriodLastYear']),
+    })
+    .optional(),
+}) as z.ZodType<ChartQueryInput>
 
 // ── Per-kind configuration schemas ──────────────────────────────────────────
 
@@ -83,6 +120,7 @@ const barChartConfigSchema = z.object({
   kind: z.literal('barChart'),
   metric: metricSchema,
   groupBy: groupBySchema,
+  labelFormat: dateLabelFormatSchema.optional(),
   secondaryGroupBy: groupBySchema.optional(),
   layout: z.enum(['vertical', 'horizontal']).optional(),
   stacked: z.boolean().optional(),
@@ -99,6 +137,7 @@ const lineChartConfigSchema = z.object({
   kind: z.literal('lineChart'),
   metric: metricSchema,
   groupBy: groupBySchema,
+  labelFormat: dateLabelFormatSchema.optional(),
   secondaryGroupBy: groupBySchema.optional(),
   stacked: z.boolean().optional(),
   cumulative: z.boolean().optional(),
@@ -115,6 +154,7 @@ const pieChartConfigSchema = z.object({
   kind: z.literal('pieChart'),
   metric: metricSchema,
   groupBy: groupBySchema,
+  labelFormat: dateLabelFormatSchema.optional(),
   donut: z.boolean().optional(),
   showCenterTotal: z.boolean().optional(),
   showDataLabels: z.boolean().optional(),
@@ -128,7 +168,6 @@ const kpiConfigSchema = z.object({
   metric: metricSchema,
   prefix: z.string().optional(),
   suffix: z.string().optional(),
-  format: z.string().optional(),
   trend: z
     .object({
       dateFieldRef: widgetFieldRefSchema,

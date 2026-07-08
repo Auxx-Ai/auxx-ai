@@ -3,17 +3,13 @@
 
 // KPI widget: one big formatted value + an optional trend row. No chart lib.
 // Self-contained (owns its `useKpiData` fetch + loading/empty/error states).
-// The value is formatted through the metric field's FieldType/FieldOptions (via
-// `useMetricFieldMeta` → `formatMetricValue`), so it matches the records table;
-// the trend row shows only when the server returns a `previousValue` (needs a
+// The value is formatted through the metric field's FieldType/FieldOptions —
+// with the per-widget `valueFormat` override layered on (plan 10) — via
+// `useMetricFieldMeta` → `formatMetricValue`, so it matches the records table.
+// The trend row shows only when the server returns a `previousValue` (needs a
 // bounded date range). When a trend IS configured but the window is unbounded, a
-// small info tooltip explains the missing row.
-//
-// TODO(plan 07): `prefix`/`suffix` + the vestigial `format` enum should be
-// replaced by a `ColumnFormatting`-style override layered over the field options
-// (reusing `custom-fields/ui/formatting-editors`). Field-typed formatting is the
-// base today; a currency field already renders its own symbol, so a user-set
-// `prefix` can double up until the config panel reconciles the two.
+// small info tooltip explains the missing row. `prefix`/`suffix` remain free-text
+// affixes on top of the formatted value.
 
 import { isChartConfigured, type KpiConfig } from '@auxx/lib/dashboards/client'
 import { SimpleTooltip } from '@auxx/ui/components/tooltip'
@@ -36,7 +32,7 @@ export function KpiWidget({
   onConfigure?: () => void
 }) {
   const { data, isLoading, isError, error } = useKpiData(config, widgetId)
-  const meta = useMetricFieldMeta(config.metric)
+  const meta = useMetricFieldMeta(config.metric, config.valueFormat)
 
   if (!isChartConfigured(config)) {
     return (
