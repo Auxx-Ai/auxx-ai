@@ -223,10 +223,12 @@ export default function IntegrationSection() {
                       />
                       <div className='relative z-10'>
                         <Icon className='w-8 h-8 text-white mb-4' />
-                        <h3 className='text-lg font-semibold text-foreground mb-2'>
+                        <h3 className='text-lg font-semibold text-white dark:text-foreground mb-2'>
                           {feature.title}
                         </h3>
-                        <p className='text-sm text-muted-foreground mb-4'>{feature.description}</p>
+                        <p className='text-sm text-white/70 dark:text-muted-foreground mb-4'>
+                          {feature.description}
+                        </p>
                         <Badge variant='secondary' className='text-xs bg-illustration/50'>
                           {feature.metrics}
                         </Badge>

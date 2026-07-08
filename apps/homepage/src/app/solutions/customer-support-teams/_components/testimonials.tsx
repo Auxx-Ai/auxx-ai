@@ -21,16 +21,16 @@ export default function TestimonialsSection() {
                     driftAmplitude={30}
                   />
                   <div className='pointer-events-none absolute inset-0 bg-black/30' />
-                  <p className='text-muted-foreground relative z-10 text-balance text-xl font-medium'>
+                  <p className='dark:text-muted-foreground relative z-10 text-balance text-xl font-medium text-white/70'>
                     TechCorp's support team leveraged Auxx.ai to transform their customer service
                     operations,{' '}
-                    <strong className='text-foreground'>
+                    <strong className='text-white dark:text-foreground'>
                       resulting in a 60% reduction in escalations and 50% increase in agent
                       productivity.
                     </strong>
                   </p>
-                  <div className='relative z-10 row-span-2 grid grid-rows-subgrid gap-8 border-t pt-8'>
-                    <p className='text-foreground self-end text-balance before:mr-1 before:content-["\201C"] after:ml-1 after:content-["\201D"]'>
+                  <div className='relative z-10 row-span-2 grid grid-rows-subgrid gap-8 border-t border-white/15 pt-8 dark:border-border'>
+                    <p className='self-end text-balance text-white dark:text-foreground before:mr-1 before:content-["\201C"] after:ml-1 after:content-["\201D"]'>
                       Auxx.ai transformed our support workflow. Our agents went from drowning in
                       repetitive tickets to focusing on complex customer issues. Agent satisfaction
                       increased 50% and we're handling 3x more tickets with the same team size.
@@ -44,8 +44,12 @@ export default function TestimonialsSection() {
                         />
                       </div>
                       <div className='space-y-px'>
-                        <p className='text-sm font-medium'>Luis V.</p>
-                        <p className='text-muted-foreground text-xs'>Support Team Lead, TechCorp</p>
+                        <p className='text-sm font-medium text-white dark:text-foreground'>
+                          Luis V.
+                        </p>
+                        <p className='dark:text-muted-foreground text-xs text-white/60'>
+                          Support Team Lead, TechCorp
+                        </p>
                       </div>
                     </div>
                   </div>
@@ -58,16 +62,16 @@ export default function TestimonialsSection() {
                     driftAmplitude={30}
                   />
                   <div className='pointer-events-none absolute inset-0 bg-black/30' />
-                  <p className='text-muted-foreground relative z-10 self-end text-balance text-xl font-medium'>
+                  <p className='dark:text-muted-foreground relative z-10 self-end text-balance text-xl font-medium text-white/70'>
                     Intercept's customer support team utilized Auxx.ai's AI assistance to{' '}
-                    <strong className='text-foreground'>
+                    <strong className='text-white dark:text-foreground'>
                       reduce response time by 80% while handling 10K+ monthly tickets
                     </strong>{' '}
                     with intelligent automation and seamless agent handoffs.
                   </p>
 
-                  <div className='relative z-10 row-span-2 grid grid-rows-subgrid gap-8 border-t pt-8'>
-                    <p className='text-foreground text-balance before:mr-1 before:content-["\201C"] after:ml-1 after:content-["\201D"]'>
+                  <div className='relative z-10 row-span-2 grid grid-rows-subgrid gap-8 border-t border-white/15 pt-8 dark:border-border'>
+                    <p className='text-balance text-white dark:text-foreground before:mr-1 before:content-["\201C"] after:ml-1 after:content-["\201D"]'>
                       The AI integration was seamless. Within hours, our support agents had an AI
                       co-pilot handling routine tasks, suggesting responses, and escalating complex
                       issues. The system empowers our team to handle 10K tickets effortlessly.
@@ -81,8 +85,10 @@ export default function TestimonialsSection() {
                         />
                       </div>
                       <div className='space-y-px'>
-                        <p className='text-sm font-medium'>Calvin Ochoa</p>
-                        <p className='text-muted-foreground text-xs'>
+                        <p className='text-sm font-medium text-white dark:text-foreground'>
+                          Calvin Ochoa
+                        </p>
+                        <p className='dark:text-muted-foreground text-xs text-white/60'>
                           Customer Support Director, Intercept
                         </p>
                       </div>
