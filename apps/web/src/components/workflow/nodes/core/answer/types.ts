@@ -36,6 +36,9 @@ export interface AnswerNodeData extends BaseNodeData {
   attachmentFiles?: string[]
   attachmentFilesModes?: boolean[]
   saveAsDraft?: boolean // When true, creates a draft instead of sending
+  // Per-node send behavior override: default = dry-run during test runs,
+  // live = always send, dry_run = never send, draft = save as thread draft
+  test_behavior?: 'default' | 'live' | 'dry_run' | 'draft'
   fieldModes?: Record<string, boolean> // Track constant/variable mode per field
 }
 

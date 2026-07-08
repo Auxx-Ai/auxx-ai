@@ -23,11 +23,15 @@ import type { SchemaRoot } from '~/components/workflow/ui/json-schema-types'
 import Section from '~/components/workflow/ui/section'
 import { useDemo } from '~/hooks/use-demo'
 import { useRunSingleNode } from '../../hooks'
+import { TraceRenderBoundary } from '../../panels/run/components/trace-render-boundary'
 import { useRunStore } from '../../store/run-store'
+import { unifiedNodeRegistry } from '../unified-registry'
 
 export interface SingleRunResultTabProps {
   /** Node ID */
   nodeId: string
+  /** Node type — fallback when the execution row's nodeType is empty (single-node runs) */
+  nodeType?: string
   /** Handler for running the node */
   onRun?: () => void
   /** Callback to store inferred schema on node data. Parent provides via useNodeCrud. */
@@ -41,6 +45,7 @@ export interface SingleRunResultTabProps {
  */
 export const SingleRunResultTab = memo(function SingleRunResultTab({
   nodeId,
+  nodeType,
   onRun,
   onApplySchema,
   inferredSchema,
@@ -230,6 +235,14 @@ export const SingleRunResultTab = memo(function SingleRunResultTab({
       </div>
     )
   }
+  // Trace preview — single-node runs may persist an empty nodeType, so fall
+  // back to the panel-provided node type
+  const effectiveNodeType = execution.nodeType || nodeType
+  const TraceRenderer = effectiveNodeType
+    ? unifiedNodeRegistry.getTraceRenderer(effectiveNodeType)
+    : null
+  const hasOutputs = !!outputData && Object.keys(outputData).length > 0
+
   // Completed state
   return (
     <>
@@ -258,6 +271,18 @@ export const SingleRunResultTab = memo(function SingleRunResultTab({
           )}
         </div>
       </div>
+
+      {/* Preview */}
+      {TraceRenderer && hasOutputs && (
+        <Section initialOpen title='Preview'>
+          <div className='px-3 pb-3'>
+            {/* The raw Output Data section sits below — render nothing on failure */}
+            <TraceRenderBoundary fallback={null}>
+              <TraceRenderer execution={execution} />
+            </TraceRenderBoundary>
+          </div>
+        </Section>
+      )}
 
       {/* Input data */}
       {inputData && Object.keys(inputData).length > 0 && (

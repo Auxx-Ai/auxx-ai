@@ -35,10 +35,13 @@ import { WaitNode, WaitNodePanel } from '~/components/workflow/nodes/core/wait'
 import { WebhookNode, WebhookPanel } from '~/components/workflow/nodes/core/webhook'
 import { type NodeDefinition, NodeType } from '~/components/workflow/types'
 import { aiDefinition } from './ai'
+import { AiTraceRenderer } from './ai/trace-renderer'
 import { answerDefinition } from './answer'
+import { AnswerTraceRenderer } from './answer/trace-renderer'
 import { ChunkerNode, ChunkerPanel, chunkerDefinition } from './chunker'
 import { codeDefinition } from './code'
 import { CrudNode, CrudPanel, crudDefinition } from './crud'
+import { CrudTraceRenderer } from './crud/trace-renderer'
 import { DatasetNode, DatasetPanel, datasetDefinition } from './dataset'
 import { dateTimeNodeDefinition } from './date-time'
 import {
@@ -47,12 +50,17 @@ import {
   documentExtractorDefinition,
 } from './document-extractor'
 import { endDefinition } from './end'
+import { EndTraceRenderer } from './end/trace-renderer'
 import { FindNode, FindPanel, findDefinition } from './find'
+import { FindTraceRenderer } from './find/trace-renderer'
 import { formatNodeDefinition } from './format'
 import { httpNodeDefinition } from './http'
+import { HttpTraceRenderer } from './http/trace-renderer'
 import { humanConfirmationDefinition } from './human'
+import { HumanConfirmationTraceRenderer } from './human/trace-renderer'
 import { ifElseDefinition } from './if-else'
 import { informationExtractorDefinition } from './information-extractor'
+import { InformationExtractorTraceRenderer } from './information-extractor/trace-renderer'
 import {
   KnowledgeRetrievalNode,
   KnowledgeRetrievalPanel,
@@ -62,6 +70,7 @@ import { listNodeDefinition } from './list'
 import { loopDefinition } from './loop'
 import { ManualNode, ManualPanel, manualDefinition } from './manual'
 import { messageReceivedDefinition } from './message-received'
+import { MessageReceivedTraceRenderer } from './message-received/trace-renderer'
 import { noteDefinition } from './note'
 import {
   ResourceTriggerNode,
@@ -74,6 +83,7 @@ import {
   scheduledTriggerDefinition,
 } from './scheduled'
 import { textClassifierDefinition } from './text-classifier'
+import { TextClassifierTraceRenderer } from './text-classifier/trace-renderer'
 import { varAssignDefinition } from './var-assign'
 import { waitDefinition } from './wait'
 import { webhookDefinition } from './webhook'
@@ -94,10 +104,20 @@ import { INPUT_NODE_DEFINITIONS, INPUT_NODE_TYPES } from '../inputs'
  */
 export const NODE_DEFINITIONS: NodeDefinition[] = [
   // Core workflow nodes
-  { ...answerDefinition, component: AnswerNode, panel: AnswerPanel },
+  {
+    ...answerDefinition,
+    component: AnswerNode,
+    panel: AnswerPanel,
+    traceRenderer: AnswerTraceRenderer,
+  },
   { ...codeDefinition, component: CodeNode, panel: CodePanel },
   { ...ifElseDefinition, component: IfElseNode, panel: IfElsePanel },
-  { ...messageReceivedDefinition, component: MessageReceivedNode, panel: MessageReceivedPanel },
+  {
+    ...messageReceivedDefinition,
+    component: MessageReceivedNode,
+    panel: MessageReceivedPanel,
+    traceRenderer: MessageReceivedTraceRenderer,
+  },
   { ...webhookDefinition, component: WebhookNode, panel: WebhookPanel },
   {
     ...webhookTriggerDefinition,
@@ -107,18 +127,29 @@ export const NODE_DEFINITIONS: NodeDefinition[] = [
   { ...scheduledTriggerDefinition, component: ScheduledTriggerNode, panel: ScheduledTriggerPanel },
   { ...manualDefinition, component: ManualNode, panel: ManualPanel },
   { ...resourceTriggerDefinition, component: ResourceTriggerNode, panel: ResourceTriggerPanel },
-  { ...aiDefinition, component: AiNode, panel: AiPanel },
-  { ...endDefinition, component: EndNode, panel: EndPanel },
+  { ...aiDefinition, component: AiNode, panel: AiPanel, traceRenderer: AiTraceRenderer },
+  { ...endDefinition, component: EndNode, panel: EndPanel, traceRenderer: EndTraceRenderer },
   { ...noteDefinition, component: NoteNode, panel: NotePanel },
-  { ...textClassifierDefinition, component: TextClassifierNode, panel: TextClassifierPanel },
+  {
+    ...textClassifierDefinition,
+    component: TextClassifierNode,
+    panel: TextClassifierPanel,
+    traceRenderer: TextClassifierTraceRenderer,
+  },
   {
     ...informationExtractorDefinition,
     component: InformationExtractorNode,
     panel: InformationExtractorPanel,
+    traceRenderer: InformationExtractorTraceRenderer,
   },
   { ...varAssignDefinition, component: VarAssignNode, panel: VarAssignPanel },
   { ...dateTimeNodeDefinition, component: DateTimeNode, panel: DateTimePanel },
-  { ...httpNodeDefinition, component: HttpNode, panel: HttpNodePanel },
+  {
+    ...httpNodeDefinition,
+    component: HttpNode,
+    panel: HttpNodePanel,
+    traceRenderer: HttpTraceRenderer,
+  },
   { ...waitDefinition, component: WaitNode, panel: WaitNodePanel },
   { ...listNodeDefinition, component: ListNode, panel: ListPanel as any },
   { ...formatNodeDefinition, component: FormatNode, panel: FormatPanel },
@@ -127,9 +158,10 @@ export const NODE_DEFINITIONS: NodeDefinition[] = [
     ...humanConfirmationDefinition,
     component: HumanConfirmationNode,
     panel: HumanConfirmationNodePanel,
+    traceRenderer: HumanConfirmationTraceRenderer,
   },
-  { ...findDefinition, component: FindNode, panel: FindPanel },
-  { ...crudDefinition, component: CrudNode, panel: CrudPanel },
+  { ...findDefinition, component: FindNode, panel: FindPanel, traceRenderer: FindTraceRenderer },
+  { ...crudDefinition, component: CrudNode, panel: CrudPanel, traceRenderer: CrudTraceRenderer },
   {
     ...documentExtractorDefinition,
     component: DocumentExtractorNode,

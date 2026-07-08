@@ -10,6 +10,7 @@ export type SeedingScenarioName =
   | 'demo'
   | 'example'
   | 'superadmin-test'
+  | 'shopify-review'
 
 /** AuthSeederResult captures authentication entities shared with downstream refinements. */
 export interface AuthSeederResult {
@@ -153,6 +154,9 @@ export interface SeedingScenarioDefinition {
   dataQuality: ScenarioDataQuality
   /** isExample marks rows as starter data visible to real users — adds [Example] prefix to user-visible names. */
   isExample?: boolean
+  /** scriptedConversations routes thread/message content through EXAMPLE_CONVERSATIONS
+   * instead of the random generator. `isExample: true` implies this. */
+  scriptedConversations?: boolean
   /** performance optionally stores scenario-specific performance flags. */
   performance?: {
     /** batchSize configures streaming/batch insertion sizing. */

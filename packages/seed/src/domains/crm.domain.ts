@@ -3,6 +3,7 @@
 
 import { createId } from '@paralleldrive/cuid2'
 import { and, eq, sql } from 'drizzle-orm'
+import { personas } from '../generators/example-conversations'
 import type { SeedingContext, SeedingScenario } from '../types'
 
 /** CompanyRoster describes the curated companies seeded for demo/screenshot scenarios. */
@@ -579,7 +580,7 @@ export class CrmDomain {
       const companiesByDomain = await this.seedCompanies(handler)
 
       // Contacts — some emails use company domains so linking has signal.
-      await this.seedContacts(handler, Array.from(companiesByDomain.keys()))
+      await this.seedContacts(db, schema, handler, org.id, Array.from(companiesByDomain.keys()))
 
       // Participants (direct insert, mirrors contact EntityInstances)
       await this.seedParticipants(db, schema, org.id)
@@ -647,18 +648,42 @@ export class CrmDomain {
 
   /**
    * seedContacts generates and creates contact records via UnifiedCrudHandler.
-   * When company domains are available, ~60% of contacts get business-domain emails
-   * distributed round-robin across companies; the rest use personal email domains.
+   * When `scriptedConversations` is on, the first `personas.length` contacts come from
+   * the persona roster (so message signatures match a real contact); any remaining
+   * contacts needed to reach `scales.customers` fall back to the generated names below.
+   * Otherwise, when company domains are available, ~60% of contacts get business-domain
+   * emails distributed round-robin across companies; the rest use personal email domains.
    */
-  private async seedContacts(handler: any, companyDomains: string[]): Promise<void> {
+  private async seedContacts(
+    db: any,
+    schema: any,
+    handler: any,
+    organizationId: string,
+    companyDomains: string[]
+  ): Promise<void> {
     console.log('📇 Generating contacts via UnifiedCrudHandler...')
 
     const contactCount = this.scenario.scales.customers
+    const scriptedPersonas = this.scenario.scriptedConversations ? personas : []
     const businessCount =
       companyDomains.length > 0 ? Math.min(contactCount, Math.ceil(contactCount * 0.6)) : 0
 
     const contactValues = []
     for (let i = 0; i < contactCount; i++) {
+      const persona = scriptedPersonas[i]
+      if (persona) {
+        const [firstName, ...rest] = persona.name.split(' ')
+        contactValues.push({
+          primary_email: persona.email,
+          first_name: firstName,
+          last_name: rest.join(' '),
+          phone: this.generatePhone(i),
+          job_title: this.generateJobTitle(i),
+          contact_status: 'ACTIVE',
+        })
+        continue
+      }
+
       const firstName = this.generateFirstName(i)
       const lastName = this.generateLastName(i)
       const domain =
@@ -674,8 +699,31 @@ export class CrmDomain {
       })
     }
 
-    if (contactValues.length > 0) {
-      const { created, errors } = await handler.bulkCreate('contact', contactValues, {
+    // Re-seeding must not double up contacts: generated emails are deterministic by
+    // index and persona emails are fixed, so skip any whose primary_email already
+    // exists on the org (the historical duplicate-contact source).
+    const existingEmailRows = await db
+      .select({ valueText: schema.FieldValue.valueText })
+      .from(schema.FieldValue)
+      .innerJoin(schema.CustomField, sql`${schema.FieldValue.fieldId} = ${schema.CustomField.id}`)
+      .where(
+        sql`${schema.CustomField.systemAttribute} = 'primary_email' AND ${schema.CustomField.organizationId} = ${organizationId}`
+      )
+    const existingEmails = new Set(
+      existingEmailRows
+        .map((row: any) => row.valueText?.toLowerCase())
+        .filter((email: string | undefined) => !!email)
+    )
+    const newContactValues = contactValues.filter(
+      (value) => !existingEmails.has(value.primary_email.toLowerCase())
+    )
+    const skippedCount = contactValues.length - newContactValues.length
+    if (skippedCount > 0) {
+      console.log(`  ↩️  Skipped ${skippedCount} contacts whose email already exists in the org`)
+    }
+
+    if (newContactValues.length > 0) {
+      const { created, errors } = await handler.bulkCreate('contact', newContactValues, {
         skipEvents: true,
       })
 

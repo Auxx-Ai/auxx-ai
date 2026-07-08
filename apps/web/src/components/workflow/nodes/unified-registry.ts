@@ -1,8 +1,10 @@
 // apps/web/src/components/workflow/nodes/unified-registry.ts
 
 import type React from 'react'
+import type { TraceRendererProps } from '../types'
 import { NodeCategory, type NodeDefinition, type ValidationResult } from '../types'
 import { getIcon } from '../utils/icon-helper'
+import { GenericAppTraceRenderer } from './shared/generic-app-trace-renderer'
 
 /** Whether trigger nodes can be deleted, copied, collapsed, or disabled */
 export const ALLOW_TRIGGER_DELETE = true
@@ -314,6 +316,18 @@ class UnifiedNodeRegistry {
   getPanel(nodeType: string): React.ComponentType<{ nodeId: string }> | undefined {
     const definition = this.getDefinition(nodeType)
     return definition?.panel
+  }
+
+  /**
+   * Get the trace ("Preview") renderer for a node type. App blocks are typed
+   * `appId:blockId` and not in NODE_DEFINITIONS — they fall back to a generic
+   * field-row renderer.
+   */
+  getTraceRenderer(nodeType: string): React.ComponentType<TraceRendererProps> | null {
+    const definition = this.getDefinition(nodeType)
+    if (definition?.traceRenderer) return definition.traceRenderer
+    if (!definition && nodeType.includes(':')) return GenericAppTraceRenderer
+    return null
   }
 
   /**

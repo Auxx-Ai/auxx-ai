@@ -40,7 +40,12 @@ export { getNodeTypeDisplayName, isNodeType, NodeType } from './node-types'
 // Output variable types
 export type { OutputVariable } from './output-variables'
 export { createOutputVariable } from './output-variables'
-export type { NodeDefinition, NodePanelProps, ValidationResult } from './registry'
+export type {
+  NodeDefinition,
+  NodePanelProps,
+  TraceRendererProps,
+  ValidationResult,
+} from './registry'
 // Registry types
 export { NodeCategory } from './registry'
 

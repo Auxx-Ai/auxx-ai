@@ -39,4 +39,5 @@ export const demoScenario: SeedingScenarioDefinition = {
       professionalContent: true,
     },
   },
+  scriptedConversations: true,
 }

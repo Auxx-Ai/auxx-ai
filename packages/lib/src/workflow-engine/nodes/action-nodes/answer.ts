@@ -41,6 +41,14 @@ interface AnswerNodeData {
   attachmentFiles?: string[]
   attachmentFilesModes?: boolean[]
   saveAsDraft?: boolean
+  /**
+   * Per-node send behavior override (mirrors the human-in-the-loop node's Test Mode).
+   * - 'default': send in production, dry-run in builder test runs
+   * - 'live': always really send, even in test runs
+   * - 'dry_run': never send, trace-only
+   * - 'draft': persist as a thread draft instead of sending
+   */
+  test_behavior?: 'default' | 'live' | 'dry_run' | 'draft'
 }
 
 /**
@@ -242,12 +250,29 @@ export class AnswerProcessor extends BaseNodeProcessor {
           }))
         : undefined
 
-    // 5. Check modes
-    const saveAsDraft = config.saveAsDraft ?? false
-    const isDryRun = contextManager.isDebugMode()
+    // 5. Determine effective send mode. test_behavior overrides the global debug flag in both
+    // directions; 'live' does NOT override a configured saveAsDraft (live means "don't
+    // simulate", not "skip the configured draft step").
+    const behavior = config.test_behavior ?? 'default'
+    const isDebug = contextManager.isDebugMode()
+    type SendMode = 'send' | 'dryRun' | 'draft'
+    const mode: SendMode =
+      behavior === 'dry_run'
+        ? 'dryRun'
+        : behavior === 'draft'
+          ? 'draft'
+          : config.saveAsDraft
+            ? 'draft'
+            : behavior === 'live'
+              ? 'send'
+              : isDebug
+                ? 'dryRun'
+                : 'send'
+    // Auditability: stamp the override in metadata when a non-default behavior is set
+    const testBehaviorMetadata = behavior !== 'default' ? { testBehavior: behavior } : {}
 
     // Draft path — runs even in dry-run mode (drafts are safe, non-destructive)
-    if (saveAsDraft) {
+    if (mode === 'draft') {
       try {
         const draftService = new DraftService(context.db, context.organizationId, context.userId)
 
@@ -314,6 +339,13 @@ export class AnswerProcessor extends BaseNodeProcessor {
             isDraft: true,
             draftId: draft.id,
             threadId: threadId || undefined,
+            messageType,
+            integrationId,
+            subject: resolvedSubject || undefined,
+            to: resolvedTo,
+            cc: resolvedCc.length > 0 ? resolvedCc : undefined,
+            bcc: resolvedBcc.length > 0 ? resolvedBcc : undefined,
+            text: resolvedText,
             timestamp: new Date().toISOString(),
             recipientCount: resolvedTo.length + resolvedCc.length + resolvedBcc.length,
           },
@@ -321,6 +353,7 @@ export class AnswerProcessor extends BaseNodeProcessor {
             messageType,
             integrationId,
             saveAsDraft: true,
+            ...testBehaviorMetadata,
           },
           outputHandle: 'source',
         }
@@ -330,7 +363,7 @@ export class AnswerProcessor extends BaseNodeProcessor {
         })
         throw error
       }
-    } else if (isDryRun) {
+    } else if (mode === 'dryRun') {
       // Dry run send path (existing behavior)
       contextManager.log('INFO', node.name, 'DryRun: Skipping message send', {
         messageType,
@@ -369,6 +402,14 @@ export class AnswerProcessor extends BaseNodeProcessor {
           cc: resolvedCc.length > 0 ? resolvedCc : undefined,
           bcc: resolvedBcc.length > 0 ? resolvedBcc : undefined,
           text: resolvedText,
+          timestamp: new Date().toISOString(),
+          recipientCount: resolvedTo.length + resolvedCc.length + resolvedBcc.length,
+        },
+        metadata: {
+          messageType,
+          integrationId,
+          dryRun: true,
+          ...testBehaviorMetadata,
         },
         outputHandle: 'source',
       }
@@ -429,6 +470,13 @@ export class AnswerProcessor extends BaseNodeProcessor {
           sent: true,
           messageId: result.id,
           threadId: result.threadId,
+          messageType,
+          integrationId,
+          subject: resolvedSubject || undefined,
+          to: resolvedTo,
+          cc: resolvedCc.length > 0 ? resolvedCc : undefined,
+          bcc: resolvedBcc.length > 0 ? resolvedBcc : undefined,
+          text: resolvedText,
           timestamp: new Date().toISOString(),
           recipientCount:
             toParticipants.length + (ccParticipants?.length || 0) + (bccParticipants?.length || 0),
@@ -437,6 +485,7 @@ export class AnswerProcessor extends BaseNodeProcessor {
           messageType,
           integrationId,
           dryRun: false,
+          ...testBehaviorMetadata,
         },
         outputHandle: 'source',
       }
