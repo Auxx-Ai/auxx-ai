@@ -2,15 +2,11 @@
 'use client'
 import { createContext, type ReactNode, useContext, useState } from 'react'
 
+// Prices live in the plain ~/lib/pricing module (single source of truth); re-exported here so
+// existing client consumers keep importing them from the billing-period context.
+export { ANNUAL_DISCOUNT, PLAN_PRICES } from './pricing'
+
 export type BillingPeriod = 'monthly' | 'annually'
-
-export const ANNUAL_DISCOUNT = 0.3
-
-export const PLAN_PRICES = {
-  free: { monthly: 0, annually: 0 },
-  starter: { monthly: 20, annually: Math.round(20 * (1 - ANNUAL_DISCOUNT)) },
-  growth: { monthly: 50, annually: Math.round(50 * (1 - ANNUAL_DISCOUNT)) },
-} as const
 
 type BillingPeriodContextValue = {
   billingPeriod: BillingPeriod

@@ -1,0 +1,1 @@
+ALTER TABLE "PlanSubscription" ADD COLUMN "startupDiscountStartedAt" timestamp (3);

@@ -266,6 +266,42 @@ export default function PricingSection() {
                         </div>
                       </div>
                     </div>
+                    <div className='relative mt-6'>
+                      <PlusDecorator className='right-0 -translate-y-[calc(50%-0.5px)] translate-x-[calc(50%+0.5px)]' />
+
+                      <div className='@4xl:grid-cols-3 @max-4xl:divide-y @4xl:divide-x grid border-t *:p-8'>
+                        <div className='space-y-6'>
+                          <div className='self-end'>
+                            <CardTitle className='text-lg font-medium'>Startups</CardTitle>
+                            <div className='text-muted-foreground mt-1 text-balance text-sm'>
+                              Early-stage? Up to 90% off your first year.
+                            </div>
+                          </div>
+                          <Button asChild variant='outline' className='@max-4xl:w-full'>
+                            <Link href='/startups'>Learn more</Link>
+                          </Button>
+                        </div>
+                        <div className='col-span-2'>
+                          <ul
+                            role='list'
+                            className='@4xl:grid-cols-2 grid gap-x-14 gap-y-3 text-sm'>
+                            {[
+                              '90% off the platform fee in year one',
+                              '50% off in year two',
+                              '25% off in year three',
+                              'For teams new to Auxx',
+                              'Up to $10M raised',
+                              'Fewer than 15 employees',
+                            ].map((item, index) => (
+                              <li key={index} className='flex items-center gap-2'>
+                                <Check className='text-muted-foreground size-3' strokeWidth={3.5} />
+                                {item}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
