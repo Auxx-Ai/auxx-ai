@@ -1,5 +1,6 @@
 // packages/lib/src/resources/aggregate/index.ts
 
+export { aggregateCacheKey } from './cache-key'
 export {
   bucketRange,
   enumerateBuckets,
@@ -7,7 +8,7 @@ export {
   isCyclicGranularity,
 } from './date-buckets'
 export { EMPTY_LABEL, resolveGroupLabels } from './group-labels'
-export { OTHER_SERIES_KEY, runAggregate, runKpi } from './run-aggregate'
+export { type AggregateRunOptions, OTHER_SERIES_KEY, runAggregate, runKpi } from './run-aggregate'
 export {
   isSystemAggregateTable,
   SYSTEM_AGGREGATE_TABLE_IDS,

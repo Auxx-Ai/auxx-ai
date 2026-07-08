@@ -46,6 +46,14 @@ export interface CacheEntry<T> {
  * - Graceful error handling
  * - Debug logging in development mode (NODE_ENV=development)
  */
+/**
+ * Max entries in the in-memory mirror before a prune sweep runs. Fixed-key
+ * services never get near this; high-cardinality caches (e.g. aggregate query
+ * hashes) would otherwise grow the map unboundedly — expired entries are only
+ * shed when their key happens to be re-read.
+ */
+const MEMORY_PRUNE_THRESHOLD = 1000
+
 export class BaseCacheService {
   /** In-memory cache as fallback when Redis is unavailable */
   private memoryCache = new Map<string, CacheEntry<any>>()
@@ -263,6 +271,30 @@ export class BaseCacheService {
       })
       // Still store in memory on Redis failure
       this.memoryCache.set(fullKey, entry)
+    }
+    this.pruneMemoryCache()
+  }
+
+  /**
+   * Bound the in-memory mirror: past the threshold, sweep expired entries;
+   * if still over, evict oldest-created first. Amortized behind the threshold
+   * so fixed-key services never pay for it.
+   */
+  private pruneMemoryCache(): void {
+    if (this.memoryCache.size <= MEMORY_PRUNE_THRESHOLD) return
+
+    const now = Date.now()
+    for (const [key, entry] of this.memoryCache) {
+      if (entry.expires <= now) this.memoryCache.delete(key)
+    }
+    if (this.memoryCache.size <= MEMORY_PRUNE_THRESHOLD) return
+
+    // Evict down to a low watermark, not the threshold — otherwise a map that
+    // stays at capacity would re-sort on every subsequent set.
+    const byAge = [...this.memoryCache.entries()].sort((a, b) => a[1].createdAt - b[1].createdAt)
+    const excess = this.memoryCache.size - Math.floor(MEMORY_PRUNE_THRESHOLD * 0.9)
+    for (let i = 0; i < excess; i++) {
+      this.memoryCache.delete(byAge[i]![0])
     }
   }
 

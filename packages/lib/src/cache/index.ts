@@ -9,6 +9,8 @@ export type {
   WorkflowAppsAccessor,
 } from './accessor-map'
 export { ArrayAccessor, NestedRecordAccessor, RecordAccessor, ScalarAccessor } from './accessors'
+export type { CachedAggregate } from './aggregate-cache-service'
+export { AggregateCacheService } from './aggregate-cache-service'
 export { getCachedAppBySlug, getCachedPublishedApps, resolveAppSlug } from './app-cache-helpers'
 // ── App Cache Service ──
 export type {
@@ -96,6 +98,7 @@ export type { MailGrantEntry, MailGrantIndex } from './providers/mail-grant-inde
 export type { CachedPublishedWorkflow, CachedWorkflowApp } from './providers/workflow-apps-provider'
 // ── Singletons ──
 export {
+  getAggregateCache,
   getAppCache,
   getBuildUserCache,
   getOrgCache,

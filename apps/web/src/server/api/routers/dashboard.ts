@@ -55,13 +55,16 @@ const visibilitySchema = z.enum(['private', 'org'])
  * can't trigger a re-fetch. The config panel still previews unsaved drafts:
  * `toChartQueryInput(draftConfig)` flows through the same endpoint. `widgetId`
  * is informational; `globalOverrides` is the viewer's live date-range/condition
- * state from the URL.
+ * state from the URL. `skipCache` bypasses the server-side aggregate cache
+ * READ (still repopulates) — for the refresh button; it must never end up in
+ * the client React Query key (refresh via a one-shot fetch/invalidate).
  */
 const widgetDataInputSchema = z.object({
   dashboardId: z.string(),
   widgetId: z.string().optional(),
   query: chartQueryInputSchema,
   globalOverrides: globalFiltersSchema.optional(),
+  skipCache: z.boolean().optional(),
 })
 
 type WidgetDataInput = z.infer<typeof widgetDataInputSchema>
@@ -265,16 +268,23 @@ export const dashboardRouter = createTRPCRouter({
 
   chartData: protectedProcedure.input(widgetDataInputSchema).query(async ({ ctx, input }) => {
     const { query } = await prepareWidgetQuery(ctx, input)
-    return unwrap(await runAggregate(ctx.db, ctx.session.organizationId, ctx.session.userId, query))
+    return unwrap(
+      await runAggregate(ctx.db, ctx.session.organizationId, ctx.session.userId, query, {
+        skipCache: input.skipCache,
+      })
+    )
   }),
 
   kpiData: protectedProcedure.input(widgetDataInputSchema).query(async ({ ctx, input }) => {
     const { cfg, query } = await prepareWidgetQuery(ctx, input)
     return unwrap(
-      await runKpi(ctx.db, ctx.session.organizationId, ctx.session.userId, {
-        base: query,
-        trend: trendSpecForWidget(cfg),
-      })
+      await runKpi(
+        ctx.db,
+        ctx.session.organizationId,
+        ctx.session.userId,
+        { base: query, trend: trendSpecForWidget(cfg) },
+        { skipCache: input.skipCache }
+      )
     )
   }),
 })

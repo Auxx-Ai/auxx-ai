@@ -19,7 +19,7 @@ import {
 } from '@auxx/types/field'
 import { type SQL, sql } from 'drizzle-orm'
 import { err, ok, type Result } from 'neverthrow'
-import { getCachedResourceFields } from '../../cache'
+import { getAggregateCache, getCachedResourceFields, PromiseMemoizer } from '../../cache'
 import { type ConditionGroup, resolveConditionContext } from '../../conditions'
 import {
   DEFAULT_GROUP_LIMIT,
@@ -37,6 +37,7 @@ import { systemConditionBuilder } from '../../workflow-engine/query-builder/syst
 import { extractRequiredRelatedEntities } from '../crud/unified-handler-queries'
 import { isValidTableId, type TableId } from '../registry/field-registry'
 import { getFieldOutputKey, type ResourceField } from '../registry/field-types'
+import { aggregateCacheKey } from './cache-key'
 import { enumerateBuckets, isCyclicGranularity } from './date-buckets'
 import { type AggregateRow, buildEntityAggregateSql } from './entity-aggregate-builder'
 import { EMPTY_LABEL, resolveGroupLabels } from './group-labels'
@@ -63,6 +64,13 @@ const FETCH_CAP_MATRIX = 5000
 /** Max distinct secondary-series values; overflow buckets into `__other`. */
 const MAX_SERIES = 10
 export const OTHER_SERIES_KEY = '__other'
+
+/** Skip the cache READ (still writes) — plumbed for the widget refresh button. */
+export type AggregateRunOptions = { skipCache?: boolean }
+
+/** In-flight dedup: N concurrent identical queries in one process run 1 compute. */
+const aggregateInflight = new PromiseMemoizer<Result<AggregateResult, Error>>()
+const kpiInflight = new PromiseMemoizer<Result<KpiResult, Error>>()
 
 const NUMERIC_FIELD_TYPES = new Set<FieldType>(['NUMBER', 'CURRENCY'])
 const GRANULARITY_FIELD_TYPES = new Set<FieldType>(['DATE', 'DATETIME'])
@@ -241,7 +249,8 @@ type PreparedAggregate = {
 
 async function prepareAggregate(
   organizationId: string,
-  userId: string | undefined,
+  /** Filters already run through `resolveConditionContext` (also the cache-key input). */
+  resolvedFilters: ConditionGroup[],
   query: AggregateQuery
 ): Promise<Result<PreparedAggregate, Error>> {
   const timezone = query.timezone || 'UTC'
@@ -321,9 +330,7 @@ async function prepareAggregate(
   }
 
   // Filters → WHERE fragment
-  const filters: ConditionGroup[] = resolveConditionContext(query.filters ?? [], {
-    currentUserId: userId,
-  })
+  const filters = resolvedFilters
 
   let conditionsWhere: SQL | undefined
   if (query.source.kind === 'entity') {
@@ -492,166 +499,238 @@ function sortGroups(groups: AggregateGroup[], groupBy: ResolvedGroupBy): Aggrega
  * Run a grouped aggregate query. Group keys stay RAW (drill-down rebuilds
  * segment conditions from them); labels are display-only. Without a `groupBy`
  * the result carries the single value in `totalValue` with no groups.
+ *
+ * Results are cached for a short TTL keyed on the RESOLVED query (viewer
+ * placeholders substituted, timezone included) — safe to share across users
+ * because aggregates carry no row-level permissions. Errors are never cached;
+ * `opts.skipCache` bypasses the read but still writes (refresh = repopulate).
  */
 export async function runAggregate(
   db: Database,
   organizationId: string,
   userId: string | undefined,
-  query: AggregateQuery
+  query: AggregateQuery,
+  opts?: AggregateRunOptions
 ): Promise<Result<AggregateResult, Error>> {
   try {
-    const prepared = await prepareAggregate(organizationId, userId, query)
-    if (prepared.isErr()) return err(prepared.error)
-    const {
-      buildSql,
-      groupBy,
-      secondaryGroupBy,
-      windowField,
-      windowBounds,
-      fetchCap,
-      timezone,
-      limit,
-    } = prepared.value
-
-    const rows = await executeAggregate(db, buildSql(windowBounds))
-
-    if (!groupBy) {
-      const value = toNumber(rows[0]?.value)
-      return ok({ groups: [], totalValue: value, hasMoreGroups: false })
-    }
-
-    const overflow = rows.length > fetchCap
-    const { groups: shaped, seriesTotals } = shapeRows(
-      overflow ? rows.slice(0, fetchCap) : rows,
-      Boolean(secondaryGroupBy)
-    )
-
-    // Zero-fill date buckets: cyclic granularities always fill their key space;
-    // calendar buckets fill only when the window is bounded AND bound to the
-    // same field we group by (otherwise the axis range is unknowable).
-    if (groupBy.dateGranularity) {
-      const sameField =
-        windowField && fieldRefToKey(windowField.ref) === fieldRefToKey(groupBy.field.ref)
-      const bounded = Boolean(windowBounds?.from && windowBounds?.to)
-      let fillKeys: string[] | undefined
-      if (isCyclicGranularity(groupBy.dateGranularity)) {
-        fillKeys = enumerateBuckets(new Date(0), new Date(0), groupBy.dateGranularity, timezone)
-      } else if (sameField && bounded && windowBounds?.from && windowBounds.to) {
-        fillKeys = enumerateBuckets(
-          windowBounds.from,
-          windowBounds.to,
-          groupBy.dateGranularity,
-          timezone
-        )
-      }
-      if (fillKeys) {
-        const present = new Set(shaped.map((g) => g.key))
-        for (const key of fillKeys) {
-          if (!present.has(key)) shaped.push({ key, value: 0 })
-        }
-      }
-    }
-
-    // Labels (batched per dimension)
-    const primaryLabels = await resolveGroupLabels({
-      db,
+    const resolvedFilters = resolveConditionContext(query.filters ?? [], {
+      currentUserId: userId,
+    })
+    const cacheKey = aggregateCacheKey({
+      kind: 'agg',
       organizationId,
-      groupBy,
-      keys: shaped.map((g) => g.key),
-    })
-    let seriesLabels: Map<string | null, string> | undefined
-    let rankedSeriesKeys: Array<string | null> | undefined
-    if (secondaryGroupBy) {
-      // Global series ranking → top N keys keep their identity, the rest fold
-      // into a single `__other` series so stacked charts stay readable.
-      const ranked = [...seriesTotals.entries()].sort((a, b) => b[1] - a[1]).map(([k]) => k)
-      rankedSeriesKeys = ranked.slice(0, MAX_SERIES)
-      seriesLabels = await resolveGroupLabels({
-        db,
-        organizationId,
-        groupBy: secondaryGroupBy,
-        keys: rankedSeriesKeys,
-      })
-    }
-
-    const labeled: AggregateGroup[] = shaped.map((g) => {
-      const group: AggregateGroup = {
-        key: g.key,
-        label: primaryLabels.get(g.key) ?? g.key ?? EMPTY_LABEL,
-        value: g.value,
-      }
-      if (secondaryGroupBy && rankedSeriesKeys && seriesLabels) {
-        const kept = new Map<string | null, number>()
-        let otherTotal = 0
-        for (const [seriesKey, value] of g.series ?? []) {
-          if (rankedSeriesKeys.includes(seriesKey)) {
-            kept.set(seriesKey, value)
-          } else {
-            otherTotal += value
-          }
-        }
-        group.series = rankedSeriesKeys
-          .filter((k) => kept.has(k))
-          .map((k) => ({
-            key: k,
-            label: seriesLabels?.get(k) ?? k ?? EMPTY_LABEL,
-            value: kept.get(k) ?? 0,
-          }))
-        if (otherTotal > 0) {
-          group.series.push({ key: OTHER_SERIES_KEY, label: 'Other', value: otherTotal })
-        }
-      }
-      return group
+      query: { ...query, filters: resolvedFilters },
     })
 
-    const sorted = sortGroups(labeled, groupBy)
-    const totalValue = sorted.reduce((sum, g) => sum + g.value, 0)
-    const hasMoreGroups = overflow || sorted.length > limit
-
-    return ok({ groups: sorted.slice(0, limit), totalValue, hasMoreGroups })
+    return await aggregateInflight.memoize(cacheKey, async () => {
+      if (!opts?.skipCache) {
+        const hit = await getAggregateCache().read<AggregateResult>(cacheKey)
+        if (hit) {
+          logger.debug(`chart aggregate cache hit [${cacheKey}]`)
+          return ok(hit.result)
+        }
+      }
+      const result = await computeAggregate(db, organizationId, resolvedFilters, query)
+      if (result.isOk()) {
+        await getAggregateCache().write(cacheKey, result.value)
+      }
+      return result
+    })
   } catch (error) {
     logger.error(`runAggregate failed: ${error instanceof Error ? error.message : error}`)
     return err(error instanceof Error ? error : new Error(String(error)))
   }
 }
 
+async function computeAggregate(
+  db: Database,
+  organizationId: string,
+  resolvedFilters: ConditionGroup[],
+  query: AggregateQuery
+): Promise<Result<AggregateResult, Error>> {
+  const prepared = await prepareAggregate(organizationId, resolvedFilters, query)
+  if (prepared.isErr()) return err(prepared.error)
+  const {
+    buildSql,
+    groupBy,
+    secondaryGroupBy,
+    windowField,
+    windowBounds,
+    fetchCap,
+    timezone,
+    limit,
+  } = prepared.value
+
+  const rows = await executeAggregate(db, buildSql(windowBounds))
+
+  if (!groupBy) {
+    const value = toNumber(rows[0]?.value)
+    return ok({ groups: [], totalValue: value, hasMoreGroups: false })
+  }
+
+  const overflow = rows.length > fetchCap
+  const { groups: shaped, seriesTotals } = shapeRows(
+    overflow ? rows.slice(0, fetchCap) : rows,
+    Boolean(secondaryGroupBy)
+  )
+
+  // Zero-fill date buckets: cyclic granularities always fill their key space;
+  // calendar buckets fill only when the window is bounded AND bound to the
+  // same field we group by (otherwise the axis range is unknowable).
+  if (groupBy.dateGranularity) {
+    const sameField =
+      windowField && fieldRefToKey(windowField.ref) === fieldRefToKey(groupBy.field.ref)
+    const bounded = Boolean(windowBounds?.from && windowBounds?.to)
+    let fillKeys: string[] | undefined
+    if (isCyclicGranularity(groupBy.dateGranularity)) {
+      fillKeys = enumerateBuckets(new Date(0), new Date(0), groupBy.dateGranularity, timezone)
+    } else if (sameField && bounded && windowBounds?.from && windowBounds.to) {
+      fillKeys = enumerateBuckets(
+        windowBounds.from,
+        windowBounds.to,
+        groupBy.dateGranularity,
+        timezone
+      )
+    }
+    if (fillKeys) {
+      const present = new Set(shaped.map((g) => g.key))
+      for (const key of fillKeys) {
+        if (!present.has(key)) shaped.push({ key, value: 0 })
+      }
+    }
+  }
+
+  // Labels (batched per dimension)
+  const primaryLabels = await resolveGroupLabels({
+    db,
+    organizationId,
+    groupBy,
+    keys: shaped.map((g) => g.key),
+  })
+  let seriesLabels: Map<string | null, string> | undefined
+  let rankedSeriesKeys: Array<string | null> | undefined
+  if (secondaryGroupBy) {
+    // Global series ranking → top N keys keep their identity, the rest fold
+    // into a single `__other` series so stacked charts stay readable.
+    const ranked = [...seriesTotals.entries()].sort((a, b) => b[1] - a[1]).map(([k]) => k)
+    rankedSeriesKeys = ranked.slice(0, MAX_SERIES)
+    seriesLabels = await resolveGroupLabels({
+      db,
+      organizationId,
+      groupBy: secondaryGroupBy,
+      keys: rankedSeriesKeys,
+    })
+  }
+
+  const labeled: AggregateGroup[] = shaped.map((g) => {
+    const group: AggregateGroup = {
+      key: g.key,
+      label: primaryLabels.get(g.key) ?? g.key ?? EMPTY_LABEL,
+      value: g.value,
+    }
+    if (secondaryGroupBy && rankedSeriesKeys && seriesLabels) {
+      const kept = new Map<string | null, number>()
+      let otherTotal = 0
+      for (const [seriesKey, value] of g.series ?? []) {
+        if (rankedSeriesKeys.includes(seriesKey)) {
+          kept.set(seriesKey, value)
+        } else {
+          otherTotal += value
+        }
+      }
+      group.series = rankedSeriesKeys
+        .filter((k) => kept.has(k))
+        .map((k) => ({
+          key: k,
+          label: seriesLabels?.get(k) ?? k ?? EMPTY_LABEL,
+          value: kept.get(k) ?? 0,
+        }))
+      if (otherTotal > 0) {
+        group.series.push({ key: OTHER_SERIES_KEY, label: 'Other', value: otherTotal })
+      }
+    }
+    return group
+  })
+
+  const sorted = sortGroups(labeled, groupBy)
+  const totalValue = sorted.reduce((sum, g) => sum + g.value, 0)
+  const hasMoreGroups = overflow || sorted.length > limit
+
+  return ok({ groups: sorted.slice(0, limit), totalValue, hasMoreGroups })
+}
+
 /**
  * Run a single-value aggregate (KPI/gauge), optionally with a trend comparison.
  * Trend requires a BOUNDED window — when the resolved window is unbounded the
  * previous-window query is skipped and `previousValue` stays undefined (the UI
- * hides the trend). No fallback window is invented.
+ * hides the trend). No fallback window is invented. Cached like `runAggregate`
+ * (trend compare is part of the key).
  */
 export async function runKpi(
   db: Database,
   organizationId: string,
   userId: string | undefined,
-  params: { base: AggregateQuery; trend?: TrendSpec }
+  params: { base: AggregateQuery; trend?: TrendSpec },
+  opts?: AggregateRunOptions
 ): Promise<Result<KpiResult, Error>> {
   try {
     const base: AggregateQuery = { ...params.base, groupBy: undefined, secondaryGroupBy: undefined }
-    const prepared = await prepareAggregate(organizationId, userId, base)
-    if (prepared.isErr()) return err(prepared.error)
-    const { buildSql, windowBounds, timezone } = prepared.value
+    const resolvedFilters = resolveConditionContext(base.filters ?? [], {
+      currentUserId: userId,
+    })
+    const cacheKey = aggregateCacheKey({
+      kind: 'kpi',
+      organizationId,
+      query: { ...base, filters: resolvedFilters },
+      compare: params.trend?.compare ?? null,
+    })
 
-    const trendWindows = params.trend
-      ? deriveTrendWindows(windowBounds ?? {}, params.trend.compare, timezone)
-      : undefined
-
-    if (!trendWindows) {
-      const rows = await executeAggregate(db, buildSql(windowBounds))
-      return ok({ value: toNumber(rows[0]?.value) })
-    }
-
-    const [currentRows, previousRows] = await Promise.all([
-      executeAggregate(db, buildSql(trendWindows.current)),
-      executeAggregate(db, buildSql(trendWindows.previous)),
-    ])
-    return ok({
-      value: toNumber(currentRows[0]?.value),
-      previousValue: toNumber(previousRows[0]?.value),
+    return await kpiInflight.memoize(cacheKey, async () => {
+      if (!opts?.skipCache) {
+        const hit = await getAggregateCache().read<KpiResult>(cacheKey)
+        if (hit) {
+          logger.debug(`kpi aggregate cache hit [${cacheKey}]`)
+          return ok(hit.result)
+        }
+      }
+      const result = await computeKpi(db, organizationId, resolvedFilters, base, params.trend)
+      if (result.isOk()) {
+        await getAggregateCache().write(cacheKey, result.value)
+      }
+      return result
     })
   } catch (error) {
     logger.error(`runKpi failed: ${error instanceof Error ? error.message : error}`)
     return err(error instanceof Error ? error : new Error(String(error)))
   }
+}
+
+async function computeKpi(
+  db: Database,
+  organizationId: string,
+  resolvedFilters: ConditionGroup[],
+  base: AggregateQuery,
+  trend: TrendSpec | undefined
+): Promise<Result<KpiResult, Error>> {
+  const prepared = await prepareAggregate(organizationId, resolvedFilters, base)
+  if (prepared.isErr()) return err(prepared.error)
+  const { buildSql, windowBounds, timezone } = prepared.value
+
+  const trendWindows = trend
+    ? deriveTrendWindows(windowBounds ?? {}, trend.compare, timezone)
+    : undefined
+
+  if (!trendWindows) {
+    const rows = await executeAggregate(db, buildSql(windowBounds))
+    return ok({ value: toNumber(rows[0]?.value) })
+  }
+
+  const [currentRows, previousRows] = await Promise.all([
+    executeAggregate(db, buildSql(trendWindows.current)),
+    executeAggregate(db, buildSql(trendWindows.previous)),
+  ])
+  return ok({
+    value: toNumber(currentRows[0]?.value),
+    previousValue: toNumber(previousRows[0]?.value),
+  })
 }
