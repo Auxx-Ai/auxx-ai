@@ -1,5 +1,6 @@
 // apps/web/src/components/workflow/types/registry.ts
 
+import type { WorkflowNodeExecutionEntity } from '@auxx/database/types'
 import type { WorkflowTriggerType } from '@auxx/lib/workflow-engine/client'
 import type { ComponentType } from 'react'
 import type { UnifiedOutputVariablesFunction } from './output-variables'
@@ -40,6 +41,14 @@ export interface NodePanelProps {
 }
 
 /**
+ * Props for a node type's trace ("Preview") renderer
+ */
+export interface TraceRendererProps {
+  /** The node execution being inspected (outputs, metadata, status, error). */
+  execution: WorkflowNodeExecutionEntity
+}
+
+/**
  * Node definition for the registry (flattened data version)
  */
 export interface NodeDefinition<TData = any> {
@@ -55,6 +64,8 @@ export interface NodeDefinition<TData = any> {
   schema: any // Simplified to avoid Zod typing complexity
   component?: ComponentType<any> // The React component to render this node (for dynamic lookup)
   panel?: ComponentType<NodePanelProps> // Panel component for the node
+  /** Optional pretty renderer for this node type's execution output ("Preview" trace tab). */
+  traceRenderer?: ComponentType<TraceRendererProps>
   validator?: (data: TData) => ValidationResult // Validation function
   triggerType?: WorkflowTriggerType // Only set for trigger nodes
   canConnect?: boolean // Whether this node can connect to other nodes (default: true)

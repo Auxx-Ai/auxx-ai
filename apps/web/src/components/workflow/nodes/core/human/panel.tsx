@@ -365,6 +365,7 @@ export const HumanConfirmationNodePanel = memo<HumanConfirmationNodePanelProps>(
           initialOpen={false}
           open={inputs.test_behavior === 'live'}
           collapsible={inputs.test_behavior === 'live'}
+          className={inputs.test_behavior === 'live' ? undefined : '[&_[data-slot=section]]:pb-0'}
           actions={
             <Select
               value={inputs.test_behavior || 'always_approve'}

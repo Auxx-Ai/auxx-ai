@@ -202,6 +202,8 @@ export default function OrganizationDetailsPage() {
     { value: 'superadmin-test' as const, label: 'Test (10x heavy)' },
     { value: 'development' as const, label: 'Development' },
     { value: 'testing' as const, label: 'Testing (minimal)' },
+    // Not idempotent: re-running additively creates the 8 threads again
+    { value: 'shopify-review' as const, label: 'Shopify review threads (once per org)' },
   ]
 
   /**

@@ -24,7 +24,13 @@ export class OrganizationSeeder {
   static async seedOrganization(
     organizationId: string,
     mode: 'reset' | 'additive',
-    scenario: 'demo' | 'development' | 'testing' | 'superadmin-test' | 'example' = 'demo'
+    scenario:
+      | 'demo'
+      | 'development'
+      | 'testing'
+      | 'superadmin-test'
+      | 'example'
+      | 'shopify-review' = 'demo'
   ): Promise<SeedingResult> {
     const webhookCoordinator = new OrganizationWebhookCoordinator(organizationId)
     let webhookState: Awaited<ReturnType<typeof webhookCoordinator.disconnectAll>> | null = null
@@ -123,7 +129,13 @@ export class OrganizationSeeder {
    */
   static async resetAndSeed(
     organizationId: string,
-    scenario: 'demo' | 'development' | 'testing' | 'superadmin-test' | 'example' = 'demo'
+    scenario:
+      | 'demo'
+      | 'development'
+      | 'testing'
+      | 'superadmin-test'
+      | 'example'
+      | 'shopify-review' = 'demo'
   ): Promise<SeedingResult> {
     return OrganizationSeeder.seedOrganization(organizationId, 'reset', scenario)
   }
@@ -133,7 +145,13 @@ export class OrganizationSeeder {
    */
   static async addSeedData(
     organizationId: string,
-    scenario: 'demo' | 'development' | 'testing' | 'superadmin-test' | 'example' = 'demo'
+    scenario:
+      | 'demo'
+      | 'development'
+      | 'testing'
+      | 'superadmin-test'
+      | 'example'
+      | 'shopify-review' = 'demo'
   ): Promise<SeedingResult> {
     return OrganizationSeeder.seedOrganization(organizationId, 'additive', scenario)
   }
@@ -208,7 +226,13 @@ export class OrganizationSeeder {
   private static async seedOrganizationDirectly(
     organizationId: string,
     ownerId: string,
-    scenarioName: 'demo' | 'development' | 'testing' | 'superadmin-test' | 'example'
+    scenarioName:
+      | 'demo'
+      | 'development'
+      | 'testing'
+      | 'superadmin-test'
+      | 'example'
+      | 'shopify-review'
   ): Promise<void> {
     try {
       logger.info('seedOrganizationDirectly: Starting', { organizationId, ownerId, scenarioName })
@@ -220,6 +244,7 @@ export class OrganizationSeeder {
       const { testingScenario } = await import('../scenarios/testing.scenario')
       const { superadminTestScenario } = await import('../scenarios/superadmin-test.scenario')
       const { exampleScenario } = await import('../scenarios/example.scenario')
+      const { shopifyReviewScenario } = await import('../scenarios/shopify-review.scenario')
       logger.info('seedOrganizationDirectly: Scenarios loaded')
 
       // Select scenario
@@ -229,6 +254,7 @@ export class OrganizationSeeder {
         testing: testingScenario,
         'superadmin-test': superadminTestScenario,
         example: exampleScenario,
+        'shopify-review': shopifyReviewScenario,
       }
       const scenario = scenarioMap[scenarioName]
       logger.info('seedOrganizationDirectly: Scenario selected', { scenarioName })
@@ -377,6 +403,41 @@ export class OrganizationSeeder {
         })
       }
 
+      // shopify-review guards — fail BEFORE any domain runs so an aborted seed
+      // leaves nothing behind (no persona contacts without threads, no duplicates).
+      if (scenarioName === 'shopify-review') {
+        // No mock-integration fallback for this scenario (see above) — a threads-only
+        // seed that silently seeds nothing is a failure, so fail loudly instead.
+        if (context.services.integrations.length === 0 && scenario.scales.threads > 0) {
+          throw new Error(
+            `Cannot seed scenario "shopify-review" for organization ${organizationId}: ` +
+              'the organization has no connected integrations. Connect an inbox first, then re-run the seed.'
+          )
+        }
+
+        // Thread ids are freshly generated per run, so re-running would duplicate the
+        // scripted threads/messages. Abort when the org already has them.
+        const { and, inArray: inArrayOp } = await import('drizzle-orm')
+        const { EXAMPLE_CONVERSATIONS } = await import('../generators/example-conversations')
+        const scriptedSubjects = EXAMPLE_CONVERSATIONS.map((c) => c.subject)
+        const alreadySeeded = await db
+          .select({ id: schema.Thread.id })
+          .from(schema.Thread)
+          .where(
+            and(
+              eq(schema.Thread.organizationId, organizationId),
+              inArrayOp(schema.Thread.subject, scriptedSubjects)
+            )
+          )
+          .limit(1)
+        if (alreadySeeded.length > 0) {
+          throw new Error(
+            `Organization ${organizationId} already contains shopify-review sample threads — ` +
+              're-running would duplicate them. Delete the existing sample threads first if you need a fresh set.'
+          )
+        }
+      }
+
       const domainOptions = { organizationId }
 
       // Seed domains directly
@@ -401,12 +462,15 @@ export class OrganizationSeeder {
       await crm.insertDirectly(db)
       logger.info('seedOrganizationDirectly: CRM domain complete')
 
-      // Organization
-      logger.info('seedOrganizationDirectly: Seeding organization domain')
-      console.log('💾 Inserting organization data...')
-      const organization = new OrganizationDomain(scenarioWithRefinements, context, domainOptions)
-      await organization.insertDirectly(db)
-      logger.info('seedOrganizationDirectly: Organization domain complete')
+      // Organization (skipped for shopify-review — it's an additive injection into an
+      // existing org and shouldn't touch that org's tags/snippets/settings rows)
+      if (scenarioName !== 'shopify-review') {
+        logger.info('seedOrganizationDirectly: Seeding organization domain')
+        console.log('💾 Inserting organization data...')
+        const organization = new OrganizationDomain(scenarioWithRefinements, context, domainOptions)
+        await organization.insertDirectly(db)
+        logger.info('seedOrganizationDirectly: Organization domain complete')
+      }
 
       // Tickets
       if (scenario.scales.tickets > 0) {

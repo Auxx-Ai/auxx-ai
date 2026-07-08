@@ -116,6 +116,7 @@ export class MessageReceivedProcessor extends BaseNodeProcessor {
         messageId: context.message.id,
         subject: context.message.subject,
         triggeredAt: new Date(),
+        threadId: context.message.threadId,
       },
       outputHandle: 'source', // Standard output for trigger nodes
     }

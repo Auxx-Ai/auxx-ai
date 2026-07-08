@@ -407,7 +407,7 @@ export const adminRouter = createTRPCRouter({
         organizationId: z.string(),
         mode: z.enum(['reset', 'additive']),
         scenario: z
-          .enum(['demo', 'development', 'testing', 'superadmin-test'])
+          .enum(['demo', 'development', 'testing', 'superadmin-test', 'shopify-review'])
           .optional()
           .default('demo'),
       })

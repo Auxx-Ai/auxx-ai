@@ -18,6 +18,7 @@ import {
   Clock,
   Coins,
   Copy,
+  Eye,
   FileInput,
   FileOutput,
   FileText,
@@ -25,9 +26,10 @@ import {
   Loader2,
 } from 'lucide-react'
 import type React from 'react'
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { NodeRunningStatus } from '~/components/workflow/types'
 import { unifiedNodeRegistry } from '../../../nodes/unified-registry'
+import { TraceRenderBoundary } from './trace-render-boundary'
 
 interface NodeExecutionCardProps {
   execution: WorkflowNodeExecution
@@ -115,11 +117,22 @@ const getStatusIcon = (status: NodeRunningStatus) => {
  */
 export function NodeExecutionCard({ execution, workflowStatus, children }: NodeExecutionCardProps) {
   const [expanded, setExpanded] = useState(false)
-  const [activeTab, setActiveTab] = useState<'outputs' | 'inputs' | 'process' | 'metadata'>(
-    'outputs'
-  )
+  const TraceRenderer = unifiedNodeRegistry.getTraceRenderer(execution.nodeType)
+  const [activeTab, setActiveTab] = useState<
+    'preview' | 'outputs' | 'inputs' | 'process' | 'metadata'
+  >(TraceRenderer && execution.outputs ? 'preview' : 'outputs')
   const outputsCopy = useCopy({ toastMessage: 'Outputs copied to clipboard' })
   const inputsCopy = useCopy({ toastMessage: 'Inputs copied to clipboard' })
+
+  // Live runs: outputs stream in after mount — re-default to Preview when they
+  // arrive while the card is still collapsed (what the reviewer sees on expand).
+  const hadOutputs = useRef(!!execution.outputs)
+  useEffect(() => {
+    if (!hadOutputs.current && execution.outputs && TraceRenderer && !expanded) {
+      setActiveTab('preview')
+    }
+    hadOutputs.current = !!execution.outputs
+  }, [execution.outputs, TraceRenderer, expanded])
 
   // Get node icon from registry
   const nodeIcon = unifiedNodeRegistry.getNodeIcon(execution.nodeType, 'h-4 w-4')
@@ -133,6 +146,24 @@ export function NodeExecutionCard({ execution, workflowStatus, children }: NodeE
   const displayStatus = computeDisplayStatus(execution.status, workflowStatus, !!execution.error)
 
   const showChildren = expanded && displayStatus !== NodeRunningStatus.Pending
+
+  // Raw outputs JSON — shared between the Outputs tab and the Preview fallback
+  const rawOutputs = execution.outputs && (
+    <div className='relative group'>
+      <Button
+        variant='ghost'
+        size='icon'
+        className='absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-foreground size-7'
+        onClick={() => outputsCopy.copy(JSON.stringify(execution.outputs, null, 2))}
+        aria-label='Copy outputs'>
+        {outputsCopy.copied ? <Check className='h-3.5 w-3.5' /> : <Copy className='h-3.5 w-3.5' />}
+      </Button>
+      <pre className='p-3 bg-muted rounded-md text-xs overflow-auto max-h-[300px] font-mono'>
+        {JSON.stringify(execution.outputs, null, 2)}
+      </pre>
+    </div>
+  )
+
   return (
     <div
       className={cn(
@@ -211,10 +242,21 @@ export function NodeExecutionCard({ execution, workflowStatus, children }: NodeE
         <div className='p-2'>
           <RadioTab
             value={activeTab}
-            onValueChange={(value) => setActiveTab(value as 'outputs' | 'inputs' | 'metadata')}
+            onValueChange={(value) =>
+              setActiveTab(value as 'preview' | 'outputs' | 'inputs' | 'metadata')
+            }
             size='sm'
-            radioGroupClassName='grid w-full grid-cols-3 after:rounded-2xl'
+            radioGroupClassName={cn(
+              'grid w-full after:rounded-2xl',
+              TraceRenderer ? 'grid-cols-4' : 'grid-cols-3'
+            )}
             className='border border-primary-50 h-8 w-full rounded-2xl'>
+            {TraceRenderer && (
+              <RadioTabItem value='preview' size='sm' className='gap-1'>
+                <Eye className='size-3.5!' />
+                Preview
+              </RadioTabItem>
+            )}
             <RadioTabItem value='outputs' size='sm' className='gap-1'>
               <FileOutput className='size-3.5!' />
               Outputs
@@ -229,29 +271,19 @@ export function NodeExecutionCard({ execution, workflowStatus, children }: NodeE
             </RadioTabItem>
           </RadioTab>
 
-          {activeTab === 'outputs' && (
+          {activeTab === 'preview' && TraceRenderer && (
             <div className='mt-3'>
-              {execution.outputs && (
-                <div className='relative group'>
-                  <Button
-                    variant='ghost'
-                    size='icon'
-                    className='absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-foreground size-7'
-                    onClick={() => outputsCopy.copy(JSON.stringify(execution.outputs, null, 2))}
-                    aria-label='Copy outputs'>
-                    {outputsCopy.copied ? (
-                      <Check className='h-3.5 w-3.5' />
-                    ) : (
-                      <Copy className='h-3.5 w-3.5' />
-                    )}
-                  </Button>
-                  <pre className='p-3 bg-muted rounded-md text-xs overflow-auto max-h-[300px] font-mono'>
-                    {JSON.stringify(execution.outputs, null, 2)}
-                  </pre>
-                </div>
+              {execution.outputs ? (
+                <TraceRenderBoundary fallback={rawOutputs}>
+                  <TraceRenderer execution={execution} />
+                </TraceRenderBoundary>
+              ) : (
+                <p className='text-sm text-muted-foreground py-8 text-center'>No output yet</p>
               )}
             </div>
           )}
+
+          {activeTab === 'outputs' && <div className='mt-3'>{rawOutputs}</div>}
 
           {activeTab === 'inputs' && (
             <div className='mt-3'>

@@ -609,6 +609,7 @@ export const BasePanel = memo<BasePanelProps>(
                 <TabsContent value='result' className='flex-1 flex flex-col p-0 mt-0'>
                   <SingleRunResultTab
                     nodeId={nodeId}
+                    nodeType={nodeType}
                     onRun={handleRun}
                     onApplySchema={handleApplySchema}
                     inferredSchema={nodeData?.inferredSchema}

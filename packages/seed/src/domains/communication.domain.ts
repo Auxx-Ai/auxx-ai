@@ -2,11 +2,12 @@
 // Communication domain refinements for support threads and messages with comprehensive seeding
 
 import { createId } from '@paralleldrive/cuid2'
-import { and, eq, sql } from 'drizzle-orm'
+import { and, eq, inArray, sql } from 'drizzle-orm'
 import { ContentEngine } from '../generators/content-engine'
 import {
   EXAMPLE_CONVERSATIONS,
   type ExampleConversation,
+  personas,
 } from '../generators/example-conversations'
 import type {
   SeedingContext,
@@ -172,14 +173,26 @@ export class CommunicationDomain {
     const inboxIds = this.generateThreadInboxIds()
     const metadata = this.generateThreadMetadata()
 
+    // Scripted threads that end on an unanswered customer message should read as an
+    // open, unassigned inbox item with a recent lastMessageAt so they sort to the top.
+    for (let i = 0; i < this.scenario.scales.threads; i++) {
+      if (this.isScriptedThreadEndingOnCustomer(i)) {
+        statuses[i] = 'OPEN'
+        assigneeIds[i] = null
+        lastMessageAt[i] = new Date(Date.now() - i * 60_000)
+      }
+    }
+
     // Store participant assignments for later use in message generation
     this.threadParticipantAssignments.clear()
 
     // Insert threads with REAL participant IDs
     const threadRows = []
     for (let i = 0; i < this.scenario.scales.threads; i++) {
-      // Assign 1 customer + 1 support agent to each thread
-      const customerParticipant = customerParticipants[i % customerParticipants.length]
+      // Assign 1 customer + 1 support agent to each thread. Scripted threads match the
+      // conversation's persona by email (participant SELECT order is unspecified —
+      // see resolveCustomerParticipant); everything else round-robins.
+      const customerParticipant = this.resolveCustomerParticipant(i, customerParticipants)
       const supportParticipant = supportParticipants[i % supportParticipants.length]
 
       const threadId = ids[i]!
@@ -251,14 +264,20 @@ export class CommunicationDomain {
     // Insert ThreadParticipant records
     await this.seedThreadParticipants(db, schema, participantMap)
 
-    // Generate and insert Messages (now with proper participant relationships)
-    await this.seedMessages(db, schema, organizationId)
+    // Generate and insert Messages (now with proper participant relationships). Pass the
+    // just-generated thread ids so seedMessages can scope its query to this batch and map
+    // by id — critical for additive seeding into an org with pre-existing real threads
+    // (e.g. the shopify-review scenario), where a query over ALL of the org's threads
+    // would risk matching scripted conversations onto real, unrelated threads.
+    await this.seedMessages(db, schema, organizationId, ids)
 
-    // Update threads with latestMessageId (required for UI to resolve sender)
-    await this.updateThreadLatestMessageIds(db, schema, organizationId)
+    // Update threads with latestMessageId (required for UI to resolve sender).
+    // Scoped to the just-generated ids — additive seeds must not write to the
+    // org's pre-existing real threads.
+    await this.updateThreadLatestMessageIds(db, schema, organizationId, ids)
 
-    // Generate and insert thread tag associations (via FieldValue)
-    await this.seedThreadTags(db, schema, organizationId)
+    // Generate and insert thread tag associations (via FieldValue), same scoping
+    await this.seedThreadTags(db, schema, organizationId, ids)
   }
 
   /**
@@ -389,17 +408,22 @@ export class CommunicationDomain {
   private async updateThreadLatestMessageIds(
     db: any,
     schema: any,
-    organizationId: string
+    organizationId: string,
+    threadIds: string[]
   ): Promise<void> {
     console.log('🔗 Updating thread latestMessageId...')
 
-    const result = await db.execute(sql`
+    if (threadIds.length === 0) return
+    const threadIdArray = sql.raw(`ARRAY[${threadIds.map((id) => `'${id}'`).join(',')}]`)
+
+    await db.execute(sql`
       UPDATE "Thread" t
       SET "latestMessageId" = sub."latestId"
       FROM (
         SELECT DISTINCT ON ("threadId") "threadId", "id" AS "latestId"
         FROM "Message"
         WHERE "organizationId" = ${organizationId}
+          AND "threadId" = ANY(${threadIdArray})
         ORDER BY "threadId", "sentAt" DESC NULLS LAST, "id" DESC
       ) sub
       WHERE t."id" = sub."threadId"
@@ -416,7 +440,12 @@ export class CommunicationDomain {
    * @param schema - Database schema
    * @param organizationId - Organization ID to filter threads and tags
    */
-  private async seedThreadTags(db: any, schema: any, organizationId: string): Promise<void> {
+  private async seedThreadTags(
+    db: any,
+    schema: any,
+    organizationId: string,
+    threadIds: string[]
+  ): Promise<void> {
     console.log('🏷️  Generating tag-thread associations...')
 
     // Find the thread_tags custom field
@@ -472,11 +501,14 @@ export class CommunicationDomain {
       return
     }
 
-    // Get existing threads
+    // Only tag the threads generated by this run — an org-wide query would stamp
+    // seed tags onto pre-existing real threads during additive seeding
     const threads = await db
       .select({ id: schema.Thread.id })
       .from(schema.Thread)
-      .where(sql`${schema.Thread.organizationId} = ${organizationId}`)
+      .where(
+        and(eq(schema.Thread.organizationId, organizationId), inArray(schema.Thread.id, threadIds))
+      )
 
     if (threads.length === 0) {
       console.log('⚠️  No threads found, skipping tag associations')
@@ -544,13 +576,24 @@ export class CommunicationDomain {
    * @param db - Drizzle database instance
    * @param schema - Database schema
    * @param organizationId - Organization ID to filter threads
+   * @param threadIds - Ids of the threads just generated by insertDirectly, index-aligned
+   *   with the subjects/conversations generated for this run. Scoping the query to these
+   *   ids (rather than every thread in the org) matters for additive seeding into an org
+   *   with pre-existing real threads.
    */
-  private async seedMessages(db: any, schema: any, organizationId: string): Promise<void> {
+  private async seedMessages(
+    db: any,
+    schema: any,
+    organizationId: string,
+    threadIds: string[]
+  ): Promise<void> {
     console.log('✉️  Generating messages for threads...')
 
     const { schema: dbSchema } = await import('@auxx/database')
 
-    // Get existing threads
+    // Get the threads just generated by insertDirectly. DB return order is unspecified, so
+    // map by id → the original generation index (via threadIdToIndex below) rather than
+    // relying on forEach position for scripted conversation matching.
     const threads = await db
       .select({
         id: schema.Thread.id,
@@ -559,12 +602,16 @@ export class CommunicationDomain {
         organizationId: schema.Thread.organizationId,
       })
       .from(schema.Thread)
-      .where(sql`${schema.Thread.organizationId} = ${organizationId}`)
+      .where(
+        and(eq(schema.Thread.organizationId, organizationId), inArray(schema.Thread.id, threadIds))
+      )
 
     if (threads.length === 0) {
       console.log('⚠️  No threads found, skipping message generation')
       return
     }
+
+    const threadIdToIndex = new Map(threadIds.map((id, index) => [id, index]))
 
     // Get all participants with contact info
     const participants = await db
@@ -599,12 +646,11 @@ export class CommunicationDomain {
       `  📊 Distribution: ${threads.length} threads × ~${messagesPerThread} messages = ~${threads.length * messagesPerThread} total`
     )
 
-    threads.forEach((thread: any, threadIndex: number) => {
-      // Example scenario: map each thread to its scripted conversation (by subject) and
-      // use the script's message count/bodies instead of the random content generator.
-      const exampleConversation = this.scenario.isExample
-        ? EXAMPLE_CONVERSATIONS.find((c) => c.subject === thread.subject)
-        : undefined
+    threads.forEach((thread: any, forEachIndex: number) => {
+      // Map each thread back to its original generation index (DB return order is
+      // unspecified) and, for scripted scenarios, to its scripted conversation.
+      const threadIndex = threadIdToIndex.get(thread.id) ?? forEachIndex
+      const exampleConversation = this.getScriptedConversation(threadIndex)
 
       const messageCount = exampleConversation
         ? exampleConversation.messages.length
@@ -834,21 +880,67 @@ export class CommunicationDomain {
 
   // ---- Thread Generator Methods ----
 
-  /** generateThreadSubjects creates realistic support thread subjects. */
+  /** generateThreadSubjects creates thread subjects. Scripted scenarios (`isExample` or
+   * `scriptedConversations`) take EXAMPLE_CONVERSATIONS[i] for thread i (no cycling —
+   * cycling would produce duplicate subjects across a large scenario like demo, which
+   * would break index-based conversation matching in seedMessages); any threads beyond
+   * the script count fall back to the random content generator. The `[Example] ` prefix
+   * is only applied for the `example` scenario. */
   private generateThreadSubjects(): string[] {
-    if (this.scenario.isExample) {
-      return Array.from(
-        { length: this.scenario.scales.threads },
-        (_, i) => EXAMPLE_CONVERSATIONS[i % EXAMPLE_CONVERSATIONS.length]!.subject
-      )
+    const isScripted = Boolean(this.scenario.scriptedConversations || this.scenario.isExample)
+    if (!isScripted) {
+      const emails = this.content.generateRealisticEmails(this.scenario.scales.threads)
+      return emails.map((email) => email.subject)
     }
-    const emails = this.content.generateRealisticEmails(this.scenario.scales.threads)
-    return emails.map((email) => email.subject)
+
+    const prefix = this.scenario.isExample ? '[Example] ' : ''
+    const scriptedCount = Math.min(this.scenario.scales.threads, EXAMPLE_CONVERSATIONS.length)
+    const remainder = this.scenario.scales.threads - scriptedCount
+    const randomSubjects =
+      remainder > 0
+        ? this.content.generateRealisticEmails(remainder).map((email) => email.subject)
+        : []
+
+    return Array.from({ length: this.scenario.scales.threads }, (_, i) =>
+      i < scriptedCount
+        ? `${prefix}${EXAMPLE_CONVERSATIONS[i]!.subject}`
+        : randomSubjects[i - scriptedCount]!
+    )
   }
 
-  /** getExampleConversationForIndex returns the scripted thread content at a given thread index. */
-  private getExampleConversationForIndex(index: number): ExampleConversation {
-    return EXAMPLE_CONVERSATIONS[index % EXAMPLE_CONVERSATIONS.length]!
+  /** getScriptedConversation returns thread `index`'s scripted conversation, when the
+   * scenario has scripted conversations enabled and the index is within script bounds. */
+  private getScriptedConversation(index: number): ExampleConversation | undefined {
+    if (!(this.scenario.scriptedConversations || this.scenario.isExample)) return undefined
+    return EXAMPLE_CONVERSATIONS[index]
+  }
+
+  /** isScriptedThreadEndingOnCustomer returns true when thread `index` is scripted and
+   * its conversation's final message is from the customer (an open, unanswered question
+   * the AI-reply workflow could act on). */
+  private isScriptedThreadEndingOnCustomer(index: number): boolean {
+    const conversation = this.getScriptedConversation(index)
+    if (!conversation) return false
+    return conversation.messages[conversation.messages.length - 1]?.from === 'customer'
+  }
+
+  /**
+   * resolveCustomerParticipant picks the customer participant for thread `index`. Scripted
+   * threads match their conversation's persona by EMAIL — the participant SELECT in
+   * `insertDirectly` has no ORDER BY, so DB return order is unspecified and matching by
+   * index would silently pair the wrong persona/contact with the wrong thread. Falls back
+   * to round-robin for non-scripted threads or if no participant matches the persona email.
+   */
+  private resolveCustomerParticipant(index: number, customerParticipants: any[]): any {
+    const conversation = this.getScriptedConversation(index)
+    if (conversation) {
+      const persona = personas[index]
+      const match = persona
+        ? customerParticipants.find((p) => p.identifier === persona.email)
+        : undefined
+      if (match) return match
+    }
+    return customerParticipants[index % customerParticipants.length]
   }
 
   /** generateIntegrationTypes creates realistic integration types. */

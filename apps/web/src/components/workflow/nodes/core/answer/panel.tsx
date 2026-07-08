@@ -2,6 +2,7 @@
 
 'use client'
 
+import { Alert, AlertDescription, AlertTitle } from '@auxx/ui/components/alert'
 import { Button } from '@auxx/ui/components/button'
 import { Label } from '@auxx/ui/components/label'
 import {
@@ -100,6 +101,18 @@ export const AnswerPanel: React.FC<AnswerPanelProps> = memo(({ nodeId, data }) =
   const handleTextChange = useCallback(
     (value: string) => {
       setNodeData({ ...nodeData, text: value })
+    },
+    [nodeData, setNodeData]
+  )
+
+  const testBehavior = nodeData.test_behavior || 'default'
+
+  const handleTestBehaviorChange = useCallback(
+    (value: string) => {
+      setNodeData({
+        ...nodeData,
+        test_behavior: value as AnswerNodeData['test_behavior'],
+      })
     },
     [nodeData, setNodeData]
   )
@@ -414,6 +427,50 @@ export const AnswerPanel: React.FC<AnswerPanelProps> = memo(({ nodeId, data }) =
             />
           </VarEditorField>
         </Field>
+      </Section>
+
+      {/* Section 3: Test Mode */}
+      <Section
+        title='Test Mode'
+        description='Send behavior during testing and review'
+        initialOpen={false}
+        open={testBehavior !== 'default'}
+        collapsible={testBehavior !== 'default'}
+        className={testBehavior !== 'default' ? undefined : '[&_[data-slot=section]]:pb-0'}
+        actions={
+          <Select
+            value={testBehavior}
+            onValueChange={handleTestBehaviorChange}
+            disabled={isReadOnly}>
+            <SelectTrigger size='sm' variant='transparent'>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value='default'>Default (dry run during test runs)</SelectItem>
+              <SelectItem value='live'>Live</SelectItem>
+              <SelectItem value='dry_run'>Dry run (never send)</SelectItem>
+              <SelectItem value='draft'>Draft</SelectItem>
+            </SelectContent>
+          </Select>
+        }>
+        {testBehavior === 'live' && (
+          <Alert variant='blue'>
+            <AlertTitle>Live Mode</AlertTitle>
+            <AlertDescription>
+              Test runs of this workflow will send real emails from the connected inbox.
+            </AlertDescription>
+          </Alert>
+        )}
+        {(testBehavior === 'dry_run' || testBehavior === 'draft') && (
+          <Alert variant='warning'>
+            <AlertTitle>{testBehavior === 'draft' ? 'Draft Mode' : 'Dry Run Mode'}</AlertTitle>
+            <AlertDescription>
+              {testBehavior === 'draft'
+                ? 'Replies are saved as drafts on the thread instead of being sent (even in live runs) until this is set back to Default.'
+                : 'This node will not send real emails (even in live runs) until this is set back to Default.'}
+            </AlertDescription>
+          </Alert>
+        )}
       </Section>
     </BasePanel>
   )

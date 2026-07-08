@@ -38,6 +38,7 @@ export const answerNodeDataSchema = baseNodeDataSchema.extend({
   attachmentFiles: z.array(z.string()).optional(),
   attachmentFilesModes: z.array(z.boolean()).optional(),
   saveAsDraft: z.boolean().optional(),
+  test_behavior: z.enum(['default', 'live', 'dry_run', 'draft']).optional(),
   fieldModes: z.record(z.string(), z.boolean()).optional(),
 })
 
@@ -64,6 +65,7 @@ export const answerDefaultData: Partial<AnswerNodeData> = {
   attachmentFiles: [],
   attachmentFilesModes: [],
   saveAsDraft: false,
+  test_behavior: 'default',
 }
 
 /**
