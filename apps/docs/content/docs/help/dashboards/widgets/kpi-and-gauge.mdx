@@ -1,0 +1,38 @@
+---
+title: KPI & gauge
+description: KPI and gauge widgets distill a metric down to a single number, one as a headline figure with an optional trend and the other as progress to a target.
+---
+
+KPI and gauge widgets each show one number. A KPI is a headline figure, and a gauge shows how far that figure has moved toward a target. Both are set up in the [Data section](/help/dashboards/data-and-metrics) with a source and a metric, but no category.
+
+## KPI
+
+A KPI reports a single metric as a large number, such as open tickets or total revenue this month.
+
+- Pick a **metric** (a count or a field operation). There is no category, since a KPI is one value.
+- Turn on the **trend** to compare the current value against a previous period. The KPI shows the change as a delta so you can see at a glance whether the number is going up or down.
+- The number respects your [value format](/help/dashboards/formatting), so currency and decimals display correctly.
+
+## Gauge
+
+A gauge shows a metric as progress from a minimum to a maximum, filling toward a target.
+
+- Set **Min**, the value at the empty end of the gauge, usually 0.
+- Set **Max**, the target the gauge fills toward at 100 percent.
+- A gauge needs a max to draw. If it is missing, the panel shows an inline error until you set one.
+- The readout uses your [value format](/help/dashboards/formatting).
+
+<Callout type="info" title="KPI or gauge?">
+Use a KPI when the number stands on its own and you care about its trend. Use a gauge when the number is meaningful relative to a target, such as a monthly goal or a capacity limit.
+</Callout>
+
+## Next steps
+
+<Cards>
+  <Card title="Record list" href="/help/dashboards/widgets/record-list" icon="Table">
+    Show the underlying records as a table.
+  </Card>
+  <Card title="Formatting & appearance" href="/help/dashboards/formatting" icon="Palette">
+    Control how the number reads.
+  </Card>
+</Cards>

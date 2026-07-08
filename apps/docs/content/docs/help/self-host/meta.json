@@ -1,4 +1,5 @@
 {
   "title": "Self-Host",
+  "icon": "Server",
   "pages": ["overview", "docker-compose", "setup", "troubleshooting"]
 }

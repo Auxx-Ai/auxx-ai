@@ -1,0 +1,59 @@
+---
+title: Point a widget at data
+description: Use the config panel to set a widget's data source, metric, category, series, and filters so it reports exactly the numbers you want.
+---
+
+Every data widget (bar, line, pie, KPI, gauge, and record list) is configured the same way. Select a widget in edit mode to open its **config panel**, docked beside the board on desktop and as a sheet on mobile. The **Data** section is where you tell the widget what to measure.
+
+## Data source
+
+Start by choosing a **data source**: the records the widget reads.
+
+- **Entities**: Contacts, Tickets, or any custom entity in your workspace.
+- **System resources**: threads, messages, and articles.
+
+<Callout type="warn" title="Changing the source resets the widget">
+The metric and category depend on the source's fields, so switching the data source clears them. The panel asks you to confirm before it does.
+</Callout>
+
+## Metric
+
+The **metric** is the number the widget reports. Pick it with the two-step picker:
+
+- **Count records** counts how many records match.
+- **A field operation** measures a field: sum, average, minimum, maximum, or percentage.
+
+The operations offered match the field's type. Numeric fields allow sum and average, while text fields do not, so you only ever see valid choices.
+
+## Category
+
+The **category** is the field the widget groups by. It becomes the bars on a bar chart, the points along a line chart, or the slices of a pie chart.
+
+- **Drill down through a relationship.** You can group by a field on a related record, for example Tickets grouped by their Contact's Company.
+- **Granularity** appears for date fields. Bucket dates by day, week, month, quarter, or year, or by day-of-week and month-of-year.
+- **Sort** the categories by value (biggest first) or by name.
+- **Limit** the chart to the top few categories by that sort.
+- **Omit empty** hides the bucket for records that have no value.
+
+## Series
+
+On bar and line charts you can add a **series**: a second field that splits each category into sub-groups. A "Tickets by month" bar chart with a "Status" series shows each month broken into its statuses. Clear the series to collapse back to a single value per category.
+
+## Filters
+
+Add **filters** to narrow which records the widget counts. Filters use the same condition builder found elsewhere in the app, so you can combine conditions like "Status is Open" and "Created this quarter". Filters apply before the metric is calculated.
+
+<Callout type="info" title="Time zones">
+Date buckets and windows use your own preferred time zone. Two people viewing the same dashboard from different time zones may see day boundaries fall slightly differently.
+</Callout>
+
+## Next steps
+
+<Cards>
+  <Card title="Formatting & appearance" href="/help/dashboards/formatting" icon="Palette">
+    Value formats, colors, legends, and per-widget style.
+  </Card>
+  <Card title="Widget catalog" href="/help/dashboards/widgets" icon="LayoutDashboard">
+    See what each widget kind is best at.
+  </Card>
+</Cards>

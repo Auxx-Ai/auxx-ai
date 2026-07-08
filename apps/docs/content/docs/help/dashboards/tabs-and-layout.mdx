@@ -1,0 +1,63 @@
+---
+title: Tabs & layout
+description: Switch into edit mode to add tabs and widgets, arrange them on the drag-and-resize grid, and let your changes auto-save to the draft.
+---
+
+A dashboard has two modes. In **view mode** you read the board and nothing you do changes it. In **edit mode** you add, move, resize, and configure widgets. Click **Edit** in the header to start arranging, and **Done** to go back to viewing.
+
+## Tabs
+
+A dashboard can hold several tabs, each with its own grid. Use tabs to split a board into sections, such as a "Support" tab and a "Sales" tab.
+
+- **Add a tab** from the tab strip to start a fresh grid.
+- **Rename a tab** to label its section.
+
+Switching tabs never loses your work. Each tab keeps its own widgets and layout.
+
+## Add a widget
+
+In edit mode, open the **Add widget** menu. Widgets are grouped so you can find the right one quickly:
+
+- **Charts**: bar chart, line chart, pie chart.
+- **Content**: KPI, gauge, record list, rich text, and embed.
+
+Each entry shows an icon and a one-line description. Pick a kind and it drops onto the grid at a sensible default size, ready to configure.
+
+See the [widget catalog](/help/dashboards/widgets) for what each kind is best at.
+
+## Arrange the grid
+
+The grid is 12 columns wide. In edit mode:
+
+- **Move** a widget by dragging it from its header.
+- **Resize** a widget by pulling the handle at its corner.
+- Widgets **compact upward** automatically to close empty gaps, so the board stays tidy.
+
+Each widget kind has a default size when added and a minimum size it cannot shrink below.
+
+## Auto-save
+
+Your edits save automatically to the draft as you work, with a short debounce. You will see a **Saved** indicator once a change is stored. Nothing you do in edit mode goes live until you publish, so feel free to experiment.
+
+<Callout type="info" title="Live vs. unsaved">
+When the draft differs from the published board, the header shows an amber **Live · unsaved** pill along with **Publish** and **Discard** actions. See [Publishing & versions](/help/dashboards/publishing-versions).
+</Callout>
+
+## Change a widget's type
+
+If you picked the wrong kind, use **Change type** on the widget to convert it. Data widgets (bar, line, pie, KPI, gauge, record list) all convert between each other, carrying over the settings that still apply. A confirmation warns you when a conversion drops settings that do not fit the new kind. Rich text and embed widgets do not convert to data widgets.
+
+## Remove, rename, and duplicate
+
+From a widget's actions menu you can rename it, duplicate it, or remove it from the grid.
+
+## Next steps
+
+<Cards>
+  <Card title="Point a widget at data" href="/help/dashboards/data-and-metrics" icon="Database">
+    Set the source, metric, category, and filters.
+  </Card>
+  <Card title="Publishing & versions" href="/help/dashboards/publishing-versions" icon="GitBranch">
+    Make your draft live and manage versions.
+  </Card>
+</Cards>

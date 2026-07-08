@@ -1,0 +1,47 @@
+---
+title: Formatting & appearance
+description: Control how a widget looks and reads, from value and date-axis formats to color schemes, legends, and per-widget appearance options.
+---
+
+Once a widget reports the right numbers, the config panel's appearance controls decide how it reads. The exact options depend on the widget kind, but they share a common set of formats and styles.
+
+## Value formatting
+
+By default a widget formats its values from the underlying field's type. Currency fields show a currency symbol and the correct decimal places, and numeric fields use their configured precision, so a dashboard matches how the same data looks on records.
+
+You can override the format per widget with the **value format** control. Choose a number or currency format, and it applies everywhere the value appears: the KPI number, the gauge readout, the pie center total, the axis labels, and the tooltip.
+
+## Date-axis labels
+
+When a chart's category is a date field, the **date label format** controls how those labels read on the axis, for example `Jan 2026` versus `2026-01`. Pick the style that fits the granularity you are bucketing by.
+
+## Colors
+
+Choose a **color scheme** for the chart's series. Schemes render as swatches so you can preview them before applying. A scheme sets the colors for every series at once and adapts to light and dark mode automatically, so the board stays legible either way.
+
+## Legend
+
+Toggle the **legend** on or off. When a chart has many series, the legend paginates with a compact `‹ 1 / 2 ›` control instead of overflowing the tile, so you can page through the entries without resizing the widget.
+
+## Per-widget appearance
+
+Each widget kind adds its own appearance options:
+
+| Widget | Options |
+|--------|---------|
+| **Bar chart** | Orientation (vertical or horizontal), stacked series, data labels |
+| **Line chart** | Cumulative running total, data labels |
+| **Pie chart** | Legend and color scheme (single category, no series) |
+| **KPI** | Trend comparison against a previous period |
+| **Gauge** | **Min** and **Max**, where max is the target the gauge fills toward |
+
+## Next steps
+
+<Cards>
+  <Card title="Widget catalog" href="/help/dashboards/widgets" icon="LayoutDashboard">
+    See each widget kind and its options in detail.
+  </Card>
+  <Card title="Publishing & versions" href="/help/dashboards/publishing-versions" icon="GitBranch">
+    Make your formatting live.
+  </Card>
+</Cards>

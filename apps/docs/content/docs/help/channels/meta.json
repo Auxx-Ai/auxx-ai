@@ -1,4 +1,5 @@
 {
   "title": "Channels",
+  "icon": "Inbox",
   "pages": ["gmail", "outlook", "chat-widget", "openphone", "facebook", "instagram"]
 }

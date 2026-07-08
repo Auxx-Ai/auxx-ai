@@ -1,4 +1,5 @@
 {
   "title": "Browse by use case",
+  "icon": "Compass",
   "pages": ["marketing", "hr-people", "personal", "enterprise", "sales", "project-management"]
 }
