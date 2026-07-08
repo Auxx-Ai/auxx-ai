@@ -24,32 +24,9 @@ import { effectiveFieldTypeOf, isRelationshipField } from '../../lib/field-meta'
 import { sourceResourceId } from '../../lib/widget-source'
 import { ConfigFieldRow } from './config-field-row'
 
-const COLOR_OPTIONS: SelectOption[] = [
-  { value: 'auto', label: 'Automatic' },
-  { value: 'var(--chart-1)', label: 'Color 1' },
-  { value: 'var(--chart-2)', label: 'Color 2' },
-  { value: 'var(--chart-3)', label: 'Color 3' },
-  { value: 'var(--chart-4)', label: 'Color 4' },
-  { value: 'var(--chart-5)', label: 'Color 5' },
-]
-
-export function ColorRow({
-  value,
-  onChange,
-}: {
-  value: string | undefined
-  onChange: (value: string) => void
-}) {
-  return (
-    <ConfigFieldRow
-      title='Color'
-      fieldType={FieldType.SINGLE_SELECT}
-      fieldOptions={{ options: COLOR_OPTIONS }}
-      value={value ?? 'auto'}
-      onChange={(v) => onChange(String(v ?? 'auto'))}
-    />
-  )
-}
+// The chart color-SCHEME picker now lives in its own file (plan 12); re-exported
+// here so the config bodies keep importing `ColorRow` from `style-section`.
+export { ColorRow } from './color-scheme-row'
 
 export function RangeRows({
   min,

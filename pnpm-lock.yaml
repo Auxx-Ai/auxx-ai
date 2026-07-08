@@ -2505,6 +2505,9 @@ importers:
       '@auxx/utils':
         specifier: workspace:*
         version: link:../utils
+      '@radix-ui/colors':
+        specifier: ^3.0.0
+        version: 3.0.0
       minisearch:
         specifier: 'catalog:'
         version: 7.2.0

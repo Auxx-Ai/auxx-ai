@@ -140,47 +140,67 @@ describe('toChartRows — secondary series pivot', () => {
 })
 
 describe('toChartConfig', () => {
-  it('cycles the --chart palette across series', () => {
+  it('spreads the default scheme across series (distinct hues)', () => {
     const series = [
       { id: 's0', rawKey: 'a', label: 'A' },
       { id: 's1', rawKey: 'b', label: 'B' },
     ]
     const config = toChartConfig(series)
-    expect(config.s0).toEqual({ label: 'A', color: 'var(--chart-1)' })
-    expect(config.s1).toEqual({ label: 'B', color: 'var(--chart-2)' })
+    // 'default' → one strong hue per series (blue, then amber).
+    expect(config.s0).toEqual({ label: 'A', color: 'var(--blue-9)' })
+    expect(config.s1).toEqual({ label: 'B', color: 'var(--amber-9)' })
   })
 
-  it('honors an explicit color for a single series but ignores it for multi-series', () => {
-    const single = toChartConfig([{ id: 'value', rawKey: null, label: 'V' }], 'var(--chart-4)')
-    expect(single.value.color).toBe('var(--chart-4)')
+  it('derives a mono ramp from a single-hue scheme', () => {
+    // A single series → the scheme's solid shade.
+    const single = toChartConfig([{ id: 'value', rawKey: null, label: 'V' }], 'blue')
+    expect(single.value.color).toBe('var(--blue-9)')
 
+    // Two series → the mono ramp fans out light → dark (steps 4 … 11).
     const multi = toChartConfig(
       [
         { id: 's0', rawKey: 'a', label: 'A' },
         { id: 's1', rawKey: 'b', label: 'B' },
       ],
-      'var(--chart-4)'
+      'blue'
     )
-    expect(multi.s0.color).toBe('var(--chart-1)')
+    expect(multi.s0.color).toBe('var(--blue-4)')
+    expect(multi.s1.color).toBe('var(--blue-11)')
   })
 
-  it("treats 'auto' as no explicit color", () => {
-    const config = toChartConfig([{ id: 'value', rawKey: null, label: 'V' }], 'auto')
-    expect(config.value.color).toBe('var(--chart-1)')
+  it("normalizes legacy 'auto'/'var(--chart-N)' color to the default scheme", () => {
+    expect(toChartConfig([{ id: 'value', rawKey: null, label: 'V' }], 'auto').value.color).toBe(
+      'var(--blue-9)'
+    )
+    expect(
+      toChartConfig([{ id: 'value', rawKey: null, label: 'V' }], 'var(--chart-4)').value.color
+    ).toBe('var(--blue-9)')
   })
 })
 
 describe('toPieRows', () => {
-  it('assigns a cycled fill per slice and keeps raw keys', () => {
+  it('colors slices from the scheme and keeps raw keys', () => {
     const rows = toPieRows(
       result([
         { key: 'a', label: 'A', value: 1 },
         { key: 'b', label: 'B', value: 2 },
       ])
     )
+    // Default scheme → distinct hues per slice.
     expect(rows).toEqual([
-      { groupKey: 'a', label: 'A', value: 1, fill: 'var(--chart-1)' },
-      { groupKey: 'b', label: 'B', value: 2, fill: 'var(--chart-2)' },
+      { groupKey: 'a', label: 'A', value: 1, fill: 'var(--blue-9)' },
+      { groupKey: 'b', label: 'B', value: 2, fill: 'var(--amber-9)' },
     ])
+  })
+
+  it('applies a single-hue scheme as a shade ramp across slices', () => {
+    const rows = toPieRows(
+      result([
+        { key: 'a', label: 'A', value: 1 },
+        { key: 'b', label: 'B', value: 2 },
+      ]),
+      'green'
+    )
+    expect(rows.map((r) => r.fill)).toEqual(['var(--green-4)', 'var(--green-11)'])
   })
 })

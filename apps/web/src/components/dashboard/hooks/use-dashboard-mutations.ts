@@ -39,6 +39,8 @@ interface UseDashboardMutationsResult {
   deleteDashboard: (id: string) => Promise<boolean>
   /** Restore-as-draft: returns the updated dashboard so the caller can adopt the draft. */
   restoreVersion: (id: string, versionNumber: number) => Promise<DashboardWithLayout | undefined>
+  /** Hard-delete a published version (the live version is server-guarded). Callers own the confirm. */
+  deleteVersion: (id: string, versionNumber: number) => Promise<boolean>
   renameVersion: (id: string, versionNumber: number, label: string | null) => Promise<void>
   isCreating: boolean
   isUpdating: boolean
@@ -54,6 +56,7 @@ export function useDashboardMutations(): UseDashboardMutationsResult {
   const duplicateMutation = api.dashboard.duplicate.useMutation()
   const deleteMutation = api.dashboard.delete.useMutation()
   const restoreMutation = api.dashboard.restoreVersion.useMutation()
+  const deleteVersionMutation = api.dashboard.deleteVersion.useMutation()
   const renameMutation = api.dashboard.renameVersion.useMutation()
 
   const invalidateList = useCallback(
@@ -148,6 +151,20 @@ export function useDashboardMutations(): UseDashboardMutationsResult {
     [restoreMutation.mutateAsync, invalidateDashboard]
   )
 
+  const deleteVersion = useCallback<UseDashboardMutationsResult['deleteVersion']>(
+    async (id, versionNumber) => {
+      try {
+        await deleteVersionMutation.mutateAsync({ id, versionNumber })
+        await utils.dashboard.listVersions.invalidate({ id })
+        return true
+      } catch (error) {
+        toastError({ title: 'Failed to delete version', description: errMsg(error) })
+        return false
+      }
+    },
+    [deleteVersionMutation.mutateAsync, utils.dashboard.listVersions]
+  )
+
   const renameVersion = useCallback<UseDashboardMutationsResult['renameVersion']>(
     async (id, versionNumber, label) => {
       try {
@@ -166,6 +183,7 @@ export function useDashboardMutations(): UseDashboardMutationsResult {
     duplicateDashboard,
     deleteDashboard,
     restoreVersion,
+    deleteVersion,
     renameVersion,
     isCreating: createMutation.isPending,
     isUpdating: updateMutation.isPending,

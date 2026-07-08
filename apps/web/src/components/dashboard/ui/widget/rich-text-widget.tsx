@@ -10,6 +10,7 @@
 // debounce (~500ms) before writing back so we don't dirty the draft per keypress.
 
 import type { RichTextConfig } from '@auxx/lib/dashboards/client'
+import { cn } from '@auxx/ui/lib/utils'
 import type { JSONContent } from '@tiptap/core'
 import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { PLAIN_PROSE } from '~/components/editor/blocks/allowed-blocks'
@@ -61,7 +62,9 @@ export function RichTextWidget({
   }, [])
 
   return (
-    <div className='flex-1 min-h-0 overflow-y-auto'>
+    // View mode hides the card header (the note reads as a plain note), which
+    // removes the top gap the header row otherwise gives it — add a little back.
+    <div className={cn('flex-1 min-h-0 overflow-y-auto', !isEditMode && 'pt-2')}>
       <PromptEditorContent
         initialContent={initialContent}
         onChange={handleChange}
@@ -70,7 +73,7 @@ export function RichTextWidget({
         editable={isEditMode}
         allowedBlocks={PLAIN_PROSE}
         enableMention={false}
-        placeholderText='Write something…'
+        placeholderText="Write something, or press '/' for commands"
       />
     </div>
   )

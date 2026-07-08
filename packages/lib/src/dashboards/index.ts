@@ -38,6 +38,7 @@ export type {
   PublishResult,
 } from './types'
 export {
+  deleteVersion,
   discardDashboardDraft,
   publishDashboard,
   renameVersion,

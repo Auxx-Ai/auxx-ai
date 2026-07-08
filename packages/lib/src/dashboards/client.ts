@@ -118,6 +118,85 @@ export type DashboardGlobalFilters = {
   dateRange?: DateRangePreset
 }
 
+// ── Chart color palettes (plan 12) ──────────────────────────────────────────
+
+/**
+ * A chart color SCHEME id (not a single color) — the exact set Twenty exposes: a
+ * multi-hue `'default'` palette plus 25 single-hue schemes. Each single-hue id is
+ * a Radix Colors scale (Twenty renames Radix's `teal` → `turquoise`). The chosen
+ * scheme derives EVERY series color: mono schemes fan out a shade ramp, `'default'`
+ * spreads distinct hues. Stored in the config's `color` field. See
+ * `chart-palettes.ts` for the id → `var(--<scale>-N)` mapping.
+ */
+export type ChartPaletteId =
+  | 'default'
+  | 'red'
+  | 'ruby'
+  | 'crimson'
+  | 'tomato'
+  | 'orange'
+  | 'amber'
+  | 'yellow'
+  | 'lime'
+  | 'grass'
+  | 'green'
+  | 'jade'
+  | 'mint'
+  | 'turquoise'
+  | 'cyan'
+  | 'sky'
+  | 'blue'
+  | 'iris'
+  | 'violet'
+  | 'purple'
+  | 'plum'
+  | 'pink'
+  | 'bronze'
+  | 'gold'
+  | 'brown'
+  | 'gray'
+
+/** Every valid {@link ChartPaletteId}, `'default'` first — the dropdown order. */
+export const CHART_PALETTE_IDS: ChartPaletteId[] = [
+  'default',
+  'red',
+  'ruby',
+  'crimson',
+  'tomato',
+  'orange',
+  'amber',
+  'yellow',
+  'lime',
+  'grass',
+  'green',
+  'jade',
+  'mint',
+  'turquoise',
+  'cyan',
+  'sky',
+  'blue',
+  'iris',
+  'violet',
+  'purple',
+  'plum',
+  'pink',
+  'bronze',
+  'gold',
+  'brown',
+  'gray',
+]
+
+const PALETTE_ID_SET: ReadonlySet<string> = new Set(CHART_PALETTE_IDS)
+
+/**
+ * Coerce a stored `color` value to a valid {@link ChartPaletteId}. Legacy values
+ * (`'auto'`, `'var(--chart-N)'`) and anything unrecognized normalize to
+ * `'default'` — so existing dashboards keep rendering with no DB migration.
+ */
+export function normalizePaletteId(value: string | undefined | null): ChartPaletteId {
+  return value && PALETTE_ID_SET.has(value) ? (value as ChartPaletteId) : 'default'
+}
+
 // ── Widget configurations (discriminated union on `kind`) ───────────────────
 
 export type BaseChartConfig = {
@@ -154,8 +233,8 @@ export type BarChartConfig = BaseChartConfig & {
   cumulative?: boolean
   showDataLabels?: boolean
   showLegend?: boolean
-  /** Chart color key; `'auto'` default. */
-  color?: string
+  /** Chart color scheme id; `'default'` when unset. */
+  color?: ChartPaletteId
   rangeMin?: number
   rangeMax?: number
 }
@@ -174,7 +253,8 @@ export type LineChartConfig = BaseChartConfig & {
   area?: boolean
   showDataLabels?: boolean
   showLegend?: boolean
-  color?: string
+  /** Chart color scheme id; `'default'` when unset. */
+  color?: ChartPaletteId
   rangeMin?: number
   rangeMax?: number
 }
@@ -189,7 +269,8 @@ export type PieChartConfig = BaseChartConfig & {
   showCenterTotal?: boolean
   showDataLabels?: boolean
   showLegend?: boolean
-  color?: string
+  /** Chart color scheme id; `'default'` when unset. */
+  color?: ChartPaletteId
 }
 
 export type KpiConfig = BaseChartConfig & {
@@ -207,7 +288,8 @@ export type GaugeConfig = BaseChartConfig & {
   rangeMin?: number
   /** Required — a gauge needs a target. */
   rangeMax: number
-  color?: string
+  /** Chart color scheme id; `'default'` when unset. */
+  color?: ChartPaletteId
   showDataLabels?: boolean
 }
 

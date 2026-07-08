@@ -84,7 +84,7 @@ function SimpleTooltip({
   side,
   align,
   className,
-  delayDuration,
+  delayDuration = 800,
   allowInteraction = false,
   variant,
 }: SimpleTooltipProps) {

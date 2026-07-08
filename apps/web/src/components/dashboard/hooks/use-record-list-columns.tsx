@@ -12,30 +12,19 @@
 // `CustomFieldCell` (configured columns) both fetch their own values through
 // the app-wide record batch fetcher, so no value stitching is needed here.
 
-import type { RecordListConfig, WidgetFieldRef } from '@auxx/lib/dashboards/client'
+import type { RecordListConfig } from '@auxx/lib/dashboards/client'
 import { toRecordId } from '@auxx/lib/resources/client'
-import type { ResourceFieldId } from '@auxx/types/field'
 import { toFieldId, toResourceFieldId } from '@auxx/types/field'
 import { useMemo } from 'react'
 import type { ExtendedColumnDef } from '~/components/dynamic-table'
 import { CustomFieldCell, getIconForFieldType, PrimaryFieldCell } from '~/components/dynamic-table'
-import { encodeFieldPathColumnId } from '~/components/dynamic-table/utils/column-id'
 import { useResource } from '~/components/resources'
 import { useFields } from '~/components/resources/hooks/use-field'
+import { columnId, terminalFieldId } from '../lib/column-ref'
 
 /** Plain row: an entity-instance id. Cells re-brand with the entity def id. */
 export interface RecordListRow {
   id: string
-}
-
-/** A `WidgetFieldRef` → the `columnId` string `CustomFieldCell` decodes. */
-function columnId(ref: WidgetFieldRef): string {
-  return typeof ref === 'string' ? ref : encodeFieldPathColumnId(ref)
-}
-
-/** The terminal `ResourceFieldId` of a ref, for header-label + icon lookup. */
-function terminalFieldId(ref: WidgetFieldRef): ResourceFieldId {
-  return typeof ref === 'string' ? ref : ref[ref.length - 1]
 }
 
 interface UseRecordListColumnsOptions {
@@ -108,6 +97,9 @@ export function useRecordListColumns({
     cols.forEach((col, i) => {
       const field = fields[i]
       const id = columnId(col)
+      // The primary display field is already the pinned primary column — never
+      // render it twice (legacy configs may still list it among `columns`).
+      if (id === primaryResourceFieldId) return
       columns.push({
         id,
         accessorFn: () => undefined,
