@@ -27,7 +27,12 @@ import {
   isWithinDays,
   parseDate,
 } from '../utils/date-helpers'
-import type { IfElseNodeConfig, NodeCondition } from './if-else-types'
+import type {
+  EvaluatedCase,
+  EvaluatedCondition,
+  IfElseNodeConfig,
+  NodeCondition,
+} from './if-else-types'
 
 /**
  * Condition node that evaluates an if/else condition
@@ -105,30 +110,54 @@ export class IfElseProcessor extends BaseNodeProcessor {
       ),
     })
 
-    // Evaluate each case sequentially (for short-circuit behavior)
+    // Evaluate each case sequentially (for short-circuit behavior). Record what we
+    // evaluate so the trace renderer can display it without re-computing — cases after
+    // the matched one are never reached and therefore never recorded.
+    const evaluatedCases: EvaluatedCase[] = []
     for (let index = 0; index < resolvedCases.length; index++) {
       const { caseItem, resolvedConditions } = resolvedCases[index]
 
       // Evaluate all conditions in this case
-      const results = resolvedConditions.map(({ condition, resolvedValue }: any) =>
-        this.evaluateCondition(condition, resolvedValue, contextManager)
+      const conditions: EvaluatedCondition[] = resolvedConditions.map(
+        ({ condition, resolvedValue }: any) => ({
+          operator: condition.comparison_operator,
+          target: condition.value ?? null,
+          resolvedValue: resolvedValue ?? null,
+          result: this.evaluateCondition(condition, resolvedValue, contextManager),
+        })
       )
 
       // Apply logical operator
       const matched =
-        caseItem.logical_operator === 'and' ? results.every((r) => r) : results.some((r) => r)
+        caseItem.logical_operator === 'and'
+          ? conditions.every((c) => c.result)
+          : conditions.some((c) => c.result)
+
+      evaluatedCases.push({
+        caseId: caseItem.case_id,
+        logicalOperator: caseItem.logical_operator,
+        matched,
+        conditions,
+      })
 
       if (matched) {
         contextManager.log('INFO', node.name, `Case matched: ${caseItem.case_id}`, {
           caseIndex: index,
           logical_operator: caseItem.logical_operator,
         })
-        return this.buildExecutionResult(true, caseItem.case_id, index, node, contextManager)
+        return this.buildExecutionResult(
+          true,
+          caseItem.case_id,
+          index,
+          node,
+          contextManager,
+          evaluatedCases
+        )
       }
     }
 
     contextManager.log('INFO', node.name, 'No cases matched - taking false branch')
-    return this.buildExecutionResult(false, null, -1, node, contextManager)
+    return this.buildExecutionResult(false, null, -1, node, contextManager, evaluatedCases)
   }
 
   /**
@@ -139,7 +168,8 @@ export class IfElseProcessor extends BaseNodeProcessor {
     matchedCaseId: string | null,
     matchedCaseIndex: number,
     node: WorkflowNode,
-    contextManager: ExecutionContextManager
+    contextManager: ExecutionContextManager,
+    evaluatedCases: EvaluatedCase[]
   ): Partial<NodeExecutionResult> {
     // Store output variables to match frontend schema
     contextManager.setNodeVariable(
@@ -168,7 +198,12 @@ export class IfElseProcessor extends BaseNodeProcessor {
 
     return {
       status: NodeRunningStatus.Succeeded,
-      output: { matched: conditionResult, matchedCase: matchedCaseId, caseIndex: matchedCaseIndex },
+      output: {
+        matched: conditionResult,
+        matchedCase: matchedCaseId,
+        caseIndex: matchedCaseIndex,
+        evaluatedCases,
+      },
       outputHandle,
     }
   }

@@ -28,6 +28,14 @@ export interface SectionProps {
   showEnable?: boolean
   onEnableChange?: (checked: boolean) => void
   enabled?: boolean
+  /**
+   * When true, the enable switch renders disabled (e.g. the selected model
+   * doesn't support this feature). The stored `enabled` value is untouched —
+   * the switch just can't be toggled while disabled.
+   */
+  enableDisabled?: boolean
+  /** Muted hint shown next to the disabled enable switch (e.g. "Not supported by DeepSeek Chat"). */
+  enableDisabledHint?: string
   /** Controlled mode: external control of open state */
   open?: boolean
   /** Uncontrolled mode: initial open state (default: true) */
@@ -56,6 +64,8 @@ export function Section({
   actions,
   onEnableChange,
   enabled,
+  enableDisabled = false,
+  enableDisabledHint,
   open,
   initialOpen = true,
   collapsible = true,
@@ -134,11 +144,14 @@ export function Section({
           </div>
           <div className='flex items-center gap-2'>
             {actions || null}
+            {showEnable && enableDisabled && enableDisabledHint && (
+              <span className='text-xs text-muted-foreground'>{enableDisabledHint}</span>
+            )}
             {showEnable && (
               <Switch
                 size='sm'
                 checked={enabled}
-                disabled={isReadOnly}
+                disabled={isReadOnly || enableDisabled}
                 onCheckedChange={onEnableChange}
               />
             )}

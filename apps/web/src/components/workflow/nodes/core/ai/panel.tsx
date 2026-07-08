@@ -11,15 +11,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@auxx/ui/components/select'
-import { Switch } from '@auxx/ui/components/switch'
+import { cn } from '@auxx/ui/lib/utils'
 import { produce } from 'immer'
-import { Pencil, Plus } from 'lucide-react'
+import { Pencil, Plus, TriangleAlert } from 'lucide-react'
 import type React from 'react'
 import { memo, useCallback, useEffect, useState } from 'react'
 import { DEFAULT_TABS } from '~/components/editor/inline-picker'
 import type { ReferenceTab } from '~/components/editor/inline-picker/nodes/reference-picker-node'
 import { SchemaEditorDialog } from '~/components/schema-editor/ui/schema-editor-dialog'
-import { useNodeCrud, useReadOnly } from '~/components/workflow/hooks'
+import { useModelCapabilities, useNodeCrud, useReadOnly } from '~/components/workflow/hooks'
 import { BaseType } from '~/components/workflow/types'
 import { VarEditor, VarEditorField } from '~/components/workflow/ui/input-editor/var-editor'
 import { OutputVariablesDisplay } from '~/components/workflow/ui/output-variables'
@@ -54,6 +54,13 @@ const AiPanelComponent: React.FC<AiPanelProps> = ({ nodeId, data }) => {
 
   // Use CRUD operations for the node data
   const { inputs: nodeData, setInputs: setNodeData } = useNodeCrud<AiNodeData>(nodeId, data)
+
+  // Capability gating — a feature is unsupported ONLY when the flag is
+  // explicitly false (unknown/custom models fail open, same as runtime).
+  const { supports, displayName } = useModelCapabilities(nodeData.model)
+  const structuredUnsupported = supports?.structured === false
+  const filesUnsupported = supports?.fileInput === false && supports?.vision === false
+  const unsupportedHint = `Not supported by ${displayName ?? 'this model'}`
 
   // Initialize schema from data if not already set
   // biome-ignore lint/correctness/useExhaustiveDependencies: schema is intentionally excluded to only set once when not already set
@@ -227,37 +234,17 @@ const AiPanelComponent: React.FC<AiPanelProps> = ({ nodeId, data }) => {
         </div>
       </Section>
       <Section
-        title='Advanced Settings'
-        description='Configure the AI advanced settings.'
-        initialOpen={false}>
-        <div className='space-y-4'>
-          <div className='flex items-center justify-between'>
-            <Label className='text-xs'>Enable Context</Label>
-            <Switch
-              checked={nodeData.context?.enabled || false}
-              size='sm'
-              disabled={isReadOnly}
-              onCheckedChange={(enabled) => {
-                const newData = produce(nodeData, (draft: AiNodeData) => {
-                  if (!draft.context) {
-                    draft.context = { enabled: false, variable_selector: [] }
-                  }
-                  draft.context.enabled = enabled
-                })
-                setNodeData(newData)
-              }}
-            />
-          </div>
-        </div>
-      </Section>
-
-      <Section
         title='Attach Files'
         description='Attach file variables (PDFs, text files) for the AI to analyze'
         showEnable
         onEnableChange={updateFilesEnabled}
         enabled={nodeData.files?.enabled || false}
+        enableDisabled={filesUnsupported}
+        enableDisabledHint={filesUnsupported ? unsupportedHint : undefined}
         initialOpen={nodeData.files?.enabled || false}>
+        {nodeData.files?.enabled && filesUnsupported && (
+          <UnsupportedFeatureNote text="This model can't read file attachments — the setting is kept but will be skipped at run time." />
+        )}
         <VarEditorField>
           <VarEditor
             value={nodeData.files?.input || ''}
@@ -289,18 +276,27 @@ const AiPanelComponent: React.FC<AiPanelProps> = ({ nodeId, data }) => {
           setNodeData(newData)
         }}
         enabled={nodeData.structured_output?.enabled || false}
+        enableDisabled={structuredUnsupported}
+        enableDisabledHint={structuredUnsupported ? unsupportedHint : undefined}
         initialOpen={nodeData.structured_output?.enabled || false}>
         <div className='space-y-2'>
+          {nodeData.structured_output?.enabled && structuredUnsupported && (
+            <UnsupportedFeatureNote text="This model can't produce structured output — the setting is kept but will be skipped at run time." />
+          )}
           {nodeData.structured_output?.enabled && (
             <div className='space-y-2'>
               <div className='flex items-center justify-between'>
                 <div className='flex items-center gap-2'>
-                  <Label className='text-xs mb-0'>Schema Configuration</Label>
-                  {schema && (
+                  <Label className={cn('text-xs mb-0', !schema && 'text-destructive')}>
+                    Schema Configuration
+                  </Label>
+                  {schema ? (
                     <span className='text-xs text-muted-foreground'>
                       ({Object.keys((schema.properties as Record<string, unknown>) || {}).length}{' '}
                       fields)
                     </span>
+                  ) : (
+                    <span className='text-xs text-destructive'>Schema required</span>
                   )}
                 </div>
                 <Button variant='outline' size='xs' onClick={() => setIsOpen(true)}>
@@ -344,6 +340,20 @@ const AiPanelComponent: React.FC<AiPanelProps> = ({ nodeId, data }) => {
 }
 
 export const AiPanel = memo(AiPanelComponent)
+
+/**
+ * Amber inline note shown when a feature is enabled in the stored config but
+ * the selected model explicitly doesn't support it — the setting is kept and
+ * skipped at run time.
+ */
+function UnsupportedFeatureNote({ text }: { text: string }) {
+  return (
+    <div className='mb-2 flex items-start gap-1.5 rounded-md bg-amber-50 p-2 text-xs text-amber-700 dark:bg-amber-950/40 dark:text-amber-400'>
+      <TriangleAlert className='mt-0.5 size-3 shrink-0' />
+      <span>{text}</span>
+    </div>
+  )
+}
 
 function TemplateRoleSelect({
   value,

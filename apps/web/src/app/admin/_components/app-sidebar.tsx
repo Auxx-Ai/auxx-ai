@@ -46,7 +46,7 @@ function AdminVersionFooter() {
 
 export function AdminAppSidebar({ user, ...props }: AdminAppSidebarProps) {
   return (
-    <Sidebar collapsible='icon' {...props}>
+    <Sidebar collapsible='icon' className='p-0' {...props}>
       <SidebarHeader>
         <SidebarMenu>
           <NavUser user={user} />

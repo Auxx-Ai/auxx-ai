@@ -30,6 +30,23 @@ import { ANTHROPIC_MODELS } from './anthropic-defaults'
 const DEFAULT_MAX_OUTPUT_TOKENS = 32000
 
 /**
+ * Name of the synthetic tool used to enforce structured output. Anthropic's
+ * documented reliable pattern for schema-conforming JSON is forced tool use:
+ * define one tool whose `input_schema` is the requested schema and force it
+ * via `tool_choice: { type: 'tool', name }` — the model must then emit a
+ * `tool_use` block whose `input` conforms to the schema.
+ */
+export const STRUCTURED_OUTPUT_TOOL_NAME = 'emit_structured_output'
+
+/**
+ * Internal extension of LLMInvokeParams used to hand the forced-tool schema
+ * from handleResponseFormat to buildAnthropicParams. Never sent to the API.
+ */
+type AnthropicInternalInvokeParams = LLMInvokeParams & {
+  structuredOutputToolSchema?: Record<string, unknown>
+}
+
+/**
  * Anthropic specialized LLM client implementation
  * Supports Claude models with streaming, tool calling, and vision capabilities
  */
@@ -101,7 +118,9 @@ export class AnthropicLLMClient extends LLMClient {
     ProviderRegistry.assertModelNotRetired(params.model)
     this.validateLLMParams(params)
 
-    const processedParams = await this.preprocessParams(params)
+    // Mark as streaming so handleResponseFormat never routes a stream through
+    // the forced-tool structured-output path (streams keep prompt injection).
+    const processedParams = await this.preprocessParams({ ...params, stream: true })
 
     this.logOperationStart('LLM stream invoke', {
       model: params.model,
@@ -320,7 +339,21 @@ export class AnthropicLLMClient extends LLMClient {
         hasJsonSchema: !!processed.json_schema,
       })
 
-      if (supportsStructured) {
+      // Preferred path: enforce json_schema output via a forced synthetic
+      // tool. Only when the request carries no user tools and isn't
+      // streaming — tool-calling and streaming flows keep the legacy
+      // prompt-injection behavior untouched.
+      const forcedToolSchema = supportsStructured
+        ? this.buildStructuredOutputToolSchema(processed)
+        : undefined
+
+      if (forcedToolSchema) {
+        ;(processed as AnthropicInternalInvokeParams).structuredOutputToolSchema = forcedToolSchema
+        this.logger.debug('Using forced tool-use for structured output', {
+          model: params.model,
+          tool: STRUCTURED_OUTPUT_TOOL_NAME,
+        })
+      } else if (supportsStructured) {
         // For models that support structured output, use enhanced instructions
         processed = this.handleStructuredOutputForSupportedModel(processed)
       } else {
@@ -334,6 +367,52 @@ export class AnthropicLLMClient extends LLMClient {
     }
 
     return processed
+  }
+
+  /**
+   * Decide whether a structured-output request qualifies for the forced
+   * tool-use path and, if so, return the sanitized `input_schema` for the
+   * synthetic tool. Returns undefined when the request must fall back to
+   * prompt injection (user tools present, streaming, non-object schema, or
+   * an unparseable schema).
+   */
+  private buildStructuredOutputToolSchema(
+    params: LLMInvokeParams
+  ): Record<string, unknown> | undefined {
+    if (params.response_format !== 'json_schema' || !params.json_schema) return undefined
+    // Tool-calling requests keep their own tools; don't mix in the synthetic
+    // one (forcing it would suppress the user's tools entirely).
+    if (params.tools && params.tools.length > 0) return undefined
+    // Streaming keeps the prompt-injection path — the stream consumer treats
+    // tool_use blocks as real tool calls, not as structured output.
+    if (params.stream === true) return undefined
+
+    const modelConfig = ANTHROPIC_MODELS[params.model]
+    if (modelConfig?.supports?.toolCalling === false) return undefined
+
+    let rawSchema: any
+    try {
+      rawSchema =
+        typeof params.json_schema === 'string' ? JSON.parse(params.json_schema) : params.json_schema
+    } catch {
+      return undefined
+    }
+    if (!rawSchema || typeof rawSchema !== 'object') return undefined
+
+    // Unwrap OpenAI-style `{ name, schema, strict }` wrappers to the inner
+    // JSON Schema (mirrors openai-llm-client.handleResponseFormat).
+    const isWrapped = rawSchema.schema && typeof rawSchema.schema === 'object' && !rawSchema.type
+    const innerSchema = isWrapped ? rawSchema.schema : rawSchema
+
+    // Drop editor-only `x-auxx` metadata before the schema reaches the API.
+    const schema = stripVendorKeywords(innerSchema) as Record<string, unknown>
+
+    // A tool's input_schema must be an object schema at the top level.
+    const isObjectSchema =
+      schema.type === 'object' || (schema.type === undefined && !!schema.properties)
+    if (!isObjectSchema) return undefined
+
+    return { ...schema, type: 'object' }
   }
 
   /**
@@ -543,7 +622,11 @@ export class AnthropicLLMClient extends LLMClient {
 
     const completion = await this.apiClient.messages.create(anthropicParams)
 
-    return this.convertAnthropicResponseToLLMResponse(completion)
+    const structuredToolName = (params as AnthropicInternalInvokeParams).structuredOutputToolSchema
+      ? STRUCTURED_OUTPUT_TOOL_NAME
+      : undefined
+
+    return this.convertAnthropicResponseToLLMResponse(completion, structuredToolName)
   }
 
   /**
@@ -603,6 +686,29 @@ export class AnthropicLLMClient extends LLMClient {
     // Add tools if present
     if (tools && tools.length > 0) {
       anthropicParams.tools = this.convertToolsToAnthropicFormat(tools)
+    }
+
+    // Forced tool-use structured output: register the synthetic tool with the
+    // requested schema as input_schema and force it via tool_choice. Guarded
+    // to non-streaming requests without user tools (both re-checked here so a
+    // stray internal flag can never clobber real tool-calling or streaming).
+    const structuredToolSchema = (params as AnthropicInternalInvokeParams)
+      .structuredOutputToolSchema
+    if (structuredToolSchema && !stream && !anthropicParams.tools) {
+      anthropicParams.tools = [
+        {
+          name: STRUCTURED_OUTPUT_TOOL_NAME,
+          description:
+            'Record the final answer as structured JSON matching the required schema. ' +
+            'Call this tool exactly once with the complete answer.',
+          input_schema: structuredToolSchema,
+        },
+      ]
+      anthropicParams.tool_choice = {
+        type: 'tool',
+        name: STRUCTURED_OUTPUT_TOOL_NAME,
+        disable_parallel_tool_use: true,
+      }
     }
 
     this.logger.debug('Final Anthropic API params', {
@@ -884,25 +990,43 @@ export class AnthropicLLMClient extends LLMClient {
 
   /**
    * Convert Anthropic response to unified LLM response format
+   *
+   * When `structuredToolName` is set (forced tool-use structured output), the
+   * matching tool_use block is NOT surfaced as a tool call — its `input` IS
+   * the structured answer. It's serialized into `content` so downstream
+   * `JSON.parse(response.content)` consumers (orchestrator
+   * parseStructuredOutput, workflow fallbacks) keep working unchanged.
    */
-  private convertAnthropicResponseToLLMResponse(response: any): LLMResponse {
+  private convertAnthropicResponseToLLMResponse(
+    response: any,
+    structuredToolName?: string
+  ): LLMResponse {
     let content = ''
     const toolCalls: ToolCall[] = []
+    let structuredOutput: Record<string, unknown> | undefined
 
     // Extract content and tool calls from response
     for (const contentBlock of response.content || []) {
       if (contentBlock.type === 'text') {
         content += contentBlock.text
       } else if (contentBlock.type === 'tool_use') {
-        toolCalls.push({
-          id: contentBlock.id,
-          type: 'function',
-          function: {
-            name: contentBlock.name,
-            arguments: JSON.stringify(contentBlock.input),
-          },
-        })
+        if (structuredToolName && contentBlock.name === structuredToolName) {
+          structuredOutput = contentBlock.input
+        } else {
+          toolCalls.push({
+            id: contentBlock.id,
+            type: 'function',
+            function: {
+              name: contentBlock.name,
+              arguments: JSON.stringify(contentBlock.input),
+            },
+          })
+        }
       }
+    }
+
+    if (structuredOutput !== undefined) {
+      content = JSON.stringify(structuredOutput)
     }
 
     return {
@@ -914,6 +1038,10 @@ export class AnthropicLLMClient extends LLMClient {
       metadata: {
         stopReason: response.stop_reason,
         stopSequence: response.stop_sequence,
+        ...(structuredOutput !== undefined && {
+          structured_output: structuredOutput,
+          structuredOutputTool: structuredToolName,
+        }),
       },
     }
   }

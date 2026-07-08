@@ -40,10 +40,12 @@ import { answerDefinition } from './answer'
 import { AnswerTraceRenderer } from './answer/trace-renderer'
 import { ChunkerNode, ChunkerPanel, chunkerDefinition } from './chunker'
 import { codeDefinition } from './code'
+import { CodeTraceRenderer } from './code/trace-renderer'
 import { CrudNode, CrudPanel, crudDefinition } from './crud'
 import { CrudTraceRenderer } from './crud/trace-renderer'
 import { DatasetNode, DatasetPanel, datasetDefinition } from './dataset'
 import { dateTimeNodeDefinition } from './date-time'
+import { DateTimeTraceRenderer } from './date-time/trace-renderer'
 import {
   DocumentExtractorNode,
   DocumentExtractorPanel,
@@ -54,11 +56,13 @@ import { EndTraceRenderer } from './end/trace-renderer'
 import { FindNode, FindPanel, findDefinition } from './find'
 import { FindTraceRenderer } from './find/trace-renderer'
 import { formatNodeDefinition } from './format'
+import { FormatTraceRenderer } from './format/trace-renderer'
 import { httpNodeDefinition } from './http'
 import { HttpTraceRenderer } from './http/trace-renderer'
 import { humanConfirmationDefinition } from './human'
 import { HumanConfirmationTraceRenderer } from './human/trace-renderer'
 import { ifElseDefinition } from './if-else'
+import { IfElseTraceRenderer } from './if-else/trace-renderer'
 import { informationExtractorDefinition } from './information-extractor'
 import { InformationExtractorTraceRenderer } from './information-extractor/trace-renderer'
 import {
@@ -67,6 +71,7 @@ import {
   knowledgeRetrievalDefinition,
 } from './knowledge-retrieval'
 import { listNodeDefinition } from './list'
+import { ListTraceRenderer } from './list/trace-renderer'
 import { loopDefinition } from './loop'
 import { ManualNode, ManualPanel, manualDefinition } from './manual'
 import { messageReceivedDefinition } from './message-received'
@@ -85,7 +90,9 @@ import {
 import { textClassifierDefinition } from './text-classifier'
 import { TextClassifierTraceRenderer } from './text-classifier/trace-renderer'
 import { varAssignDefinition } from './var-assign'
+import { VarAssignTraceRenderer } from './var-assign/trace-renderer'
 import { waitDefinition } from './wait'
+import { WaitTraceRenderer } from './wait/trace-renderer'
 import { webhookDefinition } from './webhook'
 import {
   WebhookTriggerNode,
@@ -110,8 +117,13 @@ export const NODE_DEFINITIONS: NodeDefinition[] = [
     panel: AnswerPanel,
     traceRenderer: AnswerTraceRenderer,
   },
-  { ...codeDefinition, component: CodeNode, panel: CodePanel },
-  { ...ifElseDefinition, component: IfElseNode, panel: IfElsePanel },
+  { ...codeDefinition, component: CodeNode, panel: CodePanel, traceRenderer: CodeTraceRenderer },
+  {
+    ...ifElseDefinition,
+    component: IfElseNode,
+    panel: IfElsePanel,
+    traceRenderer: IfElseTraceRenderer,
+  },
   {
     ...messageReceivedDefinition,
     component: MessageReceivedNode,
@@ -142,17 +154,42 @@ export const NODE_DEFINITIONS: NodeDefinition[] = [
     panel: InformationExtractorPanel,
     traceRenderer: InformationExtractorTraceRenderer,
   },
-  { ...varAssignDefinition, component: VarAssignNode, panel: VarAssignPanel },
-  { ...dateTimeNodeDefinition, component: DateTimeNode, panel: DateTimePanel },
+  {
+    ...varAssignDefinition,
+    component: VarAssignNode,
+    panel: VarAssignPanel,
+    traceRenderer: VarAssignTraceRenderer,
+  },
+  {
+    ...dateTimeNodeDefinition,
+    component: DateTimeNode,
+    panel: DateTimePanel,
+    traceRenderer: DateTimeTraceRenderer,
+  },
   {
     ...httpNodeDefinition,
     component: HttpNode,
     panel: HttpNodePanel,
     traceRenderer: HttpTraceRenderer,
   },
-  { ...waitDefinition, component: WaitNode, panel: WaitNodePanel },
-  { ...listNodeDefinition, component: ListNode, panel: ListPanel as any },
-  { ...formatNodeDefinition, component: FormatNode, panel: FormatPanel },
+  {
+    ...waitDefinition,
+    component: WaitNode,
+    panel: WaitNodePanel,
+    traceRenderer: WaitTraceRenderer,
+  },
+  {
+    ...listNodeDefinition,
+    component: ListNode,
+    panel: ListPanel as any,
+    traceRenderer: ListTraceRenderer,
+  },
+  {
+    ...formatNodeDefinition,
+    component: FormatNode,
+    panel: FormatPanel,
+    traceRenderer: FormatTraceRenderer,
+  },
   { ...loopDefinition, component: LoopNode, panel: LoopPanel },
   {
     ...humanConfirmationDefinition,

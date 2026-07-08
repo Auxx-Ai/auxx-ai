@@ -402,11 +402,6 @@ export class AIProcessor extends BaseNodeProcessor {
       })
     }
 
-    // Extract from context if enabled
-    if (data.context?.enabled && data.context.variable_selector) {
-      data.context.variable_selector.forEach((v: string) => variables.add(v))
-    }
-
     return Array.from(variables)
   }
 

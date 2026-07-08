@@ -1,7 +1,8 @@
 // packages/lib/src/ai/providers/google/google-client.ts
 
 import { GoogleGenerativeAI } from '@google/generative-ai'
-import type { BaseSpecializedClient } from '../../clients/base/base-specialized-client'
+import OpenAI from 'openai'
+import { type BaseSpecializedClient, DEFAULT_CLIENT_CONFIG } from '../../clients/base/types'
 import { ProviderClient } from '../base/provider-client'
 import {
   type ConnectionTestResult,
@@ -10,13 +11,25 @@ import {
   type ValidationResult,
 } from '../base/types'
 import { type ModelCapabilities, ModelType } from '../types'
+import { createObservingFetch } from '../utils'
 import { GOOGLE_CAPABILITIES, GOOGLE_MODELS } from './google-defaults'
 import { GoogleTextEmbeddingClient } from './google-embedding-client'
+import { GoogleLLMClient } from './google-llm-client'
 
 /**
- * Google provider client implementation
+ * Gemini's OpenAI-compatible endpoint — chat completions for all Gemini models.
+ * https://ai.google.dev/gemini-api/docs/openai
+ */
+const GOOGLE_OPENAI_COMPAT_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta/openai/'
+
+/**
+ * Google provider client implementation.
+ * LLM traffic goes through Gemini's OpenAI-compatible endpoint via the OpenAI
+ * SDK; embeddings use the native Google Generative AI SDK.
  */
 export class GoogleClient extends ProviderClient {
+  private llmClient?: GoogleLLMClient
+
   constructor(organizationId: string, userId: string, cache?: any) {
     super(GOOGLE_CAPABILITIES, organizationId, userId, cache)
   }
@@ -60,17 +73,15 @@ export class GoogleClient extends ProviderClient {
 
     try {
       const extractedCreds = this.extractCredentials(credentials)
-      const apiKey = extractedCreds.apiKey
-
-      if (!apiKey) {
-        throw new Error('No API key found in credentials')
-      }
-
-      // Simple test - make a basic request to Google AI API
+      const client = this.getOpenAiCompatClient(extractedCreds)
       const testModel = model || 'gemini-2.5-flash'
 
-      // For now, we'll return success if the API key format is valid
-      // In a real implementation, you'd make an actual API call to Google AI
+      await client.chat.completions.create({
+        model: testModel,
+        messages: [{ role: 'user', content: 'hi' }],
+        max_tokens: 1,
+      })
+
       const responseTime = Date.now() - startTime
 
       this.logOperationSuccess('testConnection', {
@@ -81,7 +92,7 @@ export class GoogleClient extends ProviderClient {
       return {
         success: true,
         responseTime,
-        modelsTested: model ? [model] : [],
+        modelsTested: [testModel],
       }
     } catch (error) {
       const responseTime = Date.now() - startTime
@@ -111,25 +122,45 @@ export class GoogleClient extends ProviderClient {
     return new GoogleGenerativeAI(this.requireApiKey(credentials, 'apiKey'))
   }
 
+  /**
+   * OpenAI SDK client pointed at Gemini's OpenAI-compatible endpoint.
+   * The API key rides in the standard `Authorization: Bearer` header.
+   */
+  getOpenAiCompatClient(credentials: ProviderCredentials): OpenAI {
+    return new OpenAI({
+      apiKey: this.requireApiKey(credentials, 'apiKey'),
+      baseURL: GOOGLE_OPENAI_COMPAT_BASE_URL,
+      // Retry policy lives in RetryManager — don't stack the SDK's 2 internal retries.
+      maxRetries: 0,
+      fetch: createObservingFetch('google'),
+    })
+  }
+
   getModels(): Record<string, ModelCapabilities> {
     return GOOGLE_MODELS
   }
 
   getClient(modelType: ModelType, credentials: ProviderCredentials): BaseSpecializedClient {
-    const apiClient = this.getApiClient(credentials)
-
     switch (modelType) {
+      case ModelType.LLM:
+        if (!this.llmClient) {
+          this.llmClient = new GoogleLLMClient(
+            this.getOpenAiCompatClient(credentials),
+            DEFAULT_CLIENT_CONFIG,
+            this.logger
+          )
+        }
+        return this.llmClient
+
       case ModelType.TEXT_EMBEDDING:
         return new GoogleTextEmbeddingClient(
-          apiClient,
+          this.getApiClient(credentials),
           { timeout: 30000, maxRetries: 3 },
           this.logger
         )
 
       default:
-        throw new Error(
-          `Google specialized clients not yet implemented for model type: ${modelType}`
-        )
+        throw new Error(`Google does not support model type: ${modelType}`)
     }
   }
 

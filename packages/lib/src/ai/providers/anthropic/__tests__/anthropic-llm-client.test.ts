@@ -3,7 +3,7 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { describe, expect, it, vi } from 'vitest'
 import { DEFAULT_CLIENT_CONFIG } from '../../../clients/base/types'
-import { AnthropicLLMClient } from '../anthropic-llm-client'
+import { AnthropicLLMClient, STRUCTURED_OUTPUT_TOOL_NAME } from '../anthropic-llm-client'
 
 /**
  * Integration tests for the Anthropic LLM client.
@@ -98,6 +98,31 @@ describe.skipIf(!apiKey)('AnthropicLLMClient integration', () => {
     expect(result).toBeDefined()
     expect(result.content).toBeTruthy()
     expect(result.content).toContain('1')
+  }, 15_000)
+
+  it('enforces json_schema output via forced tool use', async () => {
+    const client = createClient()
+
+    const response = await client.invoke({
+      model: 'claude-haiku-4-5-20251001',
+      messages: [{ role: 'user', content: 'Classify the sentiment of: "I love this product!"' }],
+      parameters: { max_tokens: 256 },
+      response_format: 'json_schema',
+      json_schema: JSON.stringify({
+        type: 'object',
+        properties: {
+          sentiment: { type: 'string', enum: ['positive', 'negative', 'neutral'] },
+          confidence: { type: 'number' },
+        },
+        required: ['sentiment', 'confidence'],
+      }),
+    })
+
+    // The forced tool_use input comes back as JSON-stringified content.
+    const parsed = JSON.parse(response.content)
+    expect(parsed.sentiment).toBe('positive')
+    expect(typeof parsed.confidence).toBe('number')
+    expect(response.tool_calls).toEqual([])
   }, 15_000)
 
   it('generates a session title (same prompt as kopilot-title)', async () => {
@@ -195,5 +220,173 @@ describe('AnthropicLLMClient sampling-parameter stripping', () => {
     const sent = create.mock.calls[0][0]
     expect(sent.temperature).toBe(0.5)
     expect(sent.top_p).toBe(0.9)
+  })
+})
+
+/**
+ * Unit tests for forced tool-use structured output. No API key required —
+ * the Anthropic SDK is mocked so we can inspect the exact request payload
+ * and shape the response.
+ *
+ * When a json_schema response format is requested WITHOUT user tools, the
+ * client must register a synthetic tool whose input_schema is the requested
+ * schema and force it via tool_choice — not just inject prompt instructions.
+ */
+describe('AnthropicLLMClient forced tool-use structured output', () => {
+  const schema = {
+    type: 'object',
+    properties: {
+      sentiment: { type: 'string', enum: ['positive', 'negative'], 'x-auxx': { fieldId: 'f1' } },
+      score: { type: 'number' },
+    },
+    required: ['sentiment', 'score'],
+  }
+
+  function createClientWithSpy(response?: Record<string, unknown>) {
+    const create = vi.fn(async (params: any) => ({
+      id: 'msg_test',
+      model: params.model,
+      content: [{ type: 'text', text: 'ok' }],
+      usage: { input_tokens: 10, output_tokens: 2 },
+      stop_reason: 'end_turn',
+      ...response,
+    }))
+
+    const mockAnthropic = { messages: { create } } as unknown as Anthropic
+    const client = new AnthropicLLMClient(mockAnthropic, {
+      ...DEFAULT_CLIENT_CONFIG,
+      retries: { ...DEFAULT_CLIENT_CONFIG.retries, maxAttempts: 1 },
+    })
+    return { client, create }
+  }
+
+  it('sends the synthetic tool with forced tool_choice for schema requests', async () => {
+    const { client, create } = createClientWithSpy()
+
+    await client.invoke({
+      model: 'claude-sonnet-4-6',
+      messages: [
+        { role: 'system', content: 'Extract the sentiment.' },
+        { role: 'user', content: 'I love this product!' },
+      ],
+      parameters: { max_tokens: 256 },
+      response_format: 'json_schema',
+      json_schema: JSON.stringify(schema),
+    })
+
+    const sent = create.mock.calls[0][0]
+    expect(sent.tools).toHaveLength(1)
+    expect(sent.tools[0].name).toBe(STRUCTURED_OUTPUT_TOOL_NAME)
+    expect(sent.tools[0].input_schema.type).toBe('object')
+    expect(sent.tools[0].input_schema.required).toEqual(['sentiment', 'score'])
+    expect(sent.tool_choice).toEqual({
+      type: 'tool',
+      name: STRUCTURED_OUTPUT_TOOL_NAME,
+      disable_parallel_tool_use: true,
+    })
+
+    // Editor-only x-auxx vendor keywords must be stripped from input_schema.
+    expect(sent.tools[0].input_schema.properties.sentiment['x-auxx']).toBeUndefined()
+    expect(sent.tools[0].input_schema.properties.sentiment.enum).toEqual(['positive', 'negative'])
+
+    // No prompt-injected schema instructions on the forced tool-use path.
+    const systemText = (sent.system ?? []).map((b: any) => b.text).join('\n')
+    expect(systemText).toBe('Extract the sentiment.')
+  })
+
+  it('maps the forced tool_use input to JSON content instead of tool_calls', async () => {
+    const structured = { sentiment: 'positive', score: 0.92 }
+    const { client } = createClientWithSpy({
+      content: [
+        { type: 'tool_use', id: 'toolu_1', name: STRUCTURED_OUTPUT_TOOL_NAME, input: structured },
+      ],
+      stop_reason: 'tool_use',
+    })
+
+    const response = await client.invoke({
+      model: 'claude-sonnet-4-6',
+      messages: [{ role: 'user', content: 'I love this product!' }],
+      parameters: { max_tokens: 256 },
+      response_format: 'json_schema',
+      json_schema: JSON.stringify(schema),
+    })
+
+    // The synthetic tool call is NOT surfaced as a tool call…
+    expect(response.tool_calls).toEqual([])
+    // …its input is the answer: JSON-stringified content keeps downstream
+    // JSON.parse(response.content) consumers working.
+    expect(JSON.parse(response.content)).toEqual(structured)
+    expect(response.metadata?.structured_output).toEqual(structured)
+  })
+
+  it('falls back to prompt injection when the request has user tools', async () => {
+    const { client, create } = createClientWithSpy()
+
+    await client.invoke({
+      model: 'claude-sonnet-4-6',
+      messages: [{ role: 'user', content: 'What is the weather in Paris?' }],
+      tools: [
+        {
+          type: 'function',
+          function: {
+            name: 'get_weather',
+            description: 'Get the weather',
+            parameters: {
+              type: 'object',
+              properties: { location: { type: 'string' } },
+              required: ['location'],
+            },
+          },
+        },
+      ],
+      parameters: { max_tokens: 256 },
+      response_format: 'json_schema',
+      json_schema: JSON.stringify(schema),
+    })
+
+    const sent = create.mock.calls[0][0]
+    // User tools kept as-is; no synthetic tool, no forced tool_choice.
+    expect(sent.tools).toHaveLength(1)
+    expect(sent.tools[0].name).toBe('get_weather')
+    expect(sent.tool_choice).toBeUndefined()
+
+    // Legacy prompt-injection behavior applies instead.
+    const systemText = (sent.system ?? []).map((b: any) => b.text).join('\n')
+    expect(systemText).toContain('IMPORTANT RESPONSE FORMAT REQUIREMENTS')
+  })
+
+  it('falls back to prompt injection for non-object schemas', async () => {
+    const { client, create } = createClientWithSpy()
+
+    await client.invoke({
+      model: 'claude-sonnet-4-6',
+      messages: [{ role: 'user', content: 'Summarize this.' }],
+      parameters: { max_tokens: 256 },
+      response_format: 'json_schema',
+      json_schema: JSON.stringify({ type: 'string' }),
+    })
+
+    const sent = create.mock.calls[0][0]
+    expect(sent.tools).toBeUndefined()
+    expect(sent.tool_choice).toBeUndefined()
+
+    const systemText = (sent.system ?? []).map((b: any) => b.text).join('\n')
+    expect(systemText).toContain('IMPORTANT RESPONSE FORMAT REQUIREMENTS')
+  })
+
+  it('keeps prompt injection for streaming requests (handleResponseFormat)', () => {
+    const { client } = createClientWithSpy()
+
+    const processed = client.handleResponseFormat({
+      model: 'claude-sonnet-4-6',
+      messages: [{ role: 'user', content: 'Summarize this.' }],
+      stream: true,
+      response_format: 'json_schema',
+      json_schema: JSON.stringify(schema),
+    })
+
+    expect((processed as any).structuredOutputToolSchema).toBeUndefined()
+    const systemMessage = processed.messages.find((m) => m.role === 'system')
+    expect(systemMessage?.content).toContain('IMPORTANT RESPONSE FORMAT REQUIREMENTS')
   })
 })

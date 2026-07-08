@@ -52,6 +52,28 @@ export interface IfElseNodeConfig {
 }
 
 /**
+ * A single evaluated condition, emitted in node output for the trace renderer.
+ * Captures exactly what the engine compared — no client-side re-evaluation needed.
+ */
+export interface EvaluatedCondition {
+  operator: Operator
+  target: NodeCondition['value'] | null
+  resolvedValue: any
+  result: boolean
+}
+
+/**
+ * A case the engine actually evaluated (short-circuits at the first match, so cases
+ * after the matched one are never recorded).
+ */
+export interface EvaluatedCase {
+  caseId: string
+  logicalOperator: LogicalOperator
+  matched: boolean
+  conditions: EvaluatedCondition[]
+}
+
+/**
  * Result of condition evaluation
  */
 export interface ConditionEvaluationResult {

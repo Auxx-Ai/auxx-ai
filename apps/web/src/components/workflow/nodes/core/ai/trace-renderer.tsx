@@ -2,10 +2,11 @@
 
 'use client'
 
-import { ChevronRight, Sparkles } from 'lucide-react'
+import { Sparkles, TriangleAlert } from 'lucide-react'
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { BlockCard } from '~/components/kopilot/ui/blocks/block-card'
+import { CollapsedJson, FieldRows } from '~/components/workflow/nodes/shared/trace-primitives'
 import { TraceRawJson } from '~/components/workflow/panels/run/components/trace-render-boundary'
 import type { TraceRendererProps } from '~/components/workflow/types/registry'
 
@@ -13,31 +14,47 @@ interface AiOutputs {
   text?: string
   structured_output?: unknown
   tool_results?: Array<Record<string, unknown>>
+  /** Capability-gate / structured-output-pass warnings surfaced by the engine. */
+  _warnings?: string[]
 }
 
-/** Collapsed JSON details section used for structured output / tool results. */
-function CollapsedJson({ title, value }: { title: string; value: unknown }) {
+/** Amber warning lines for skipped features / failed structured-output pass. */
+function TraceWarnings({ warnings }: { warnings: string[] }) {
   return (
-    <details className='group rounded-xl bg-background ring-1 ring-border'>
-      <summary className='flex cursor-pointer items-center gap-1 px-2 py-1.5 text-xs font-medium text-muted-foreground select-none'>
-        <ChevronRight className='size-3 transition-transform group-open:rotate-90' />
-        {title}
-      </summary>
-      <pre className='max-h-[200px] overflow-auto p-2 pt-0 font-mono text-xs'>
-        {JSON.stringify(value, null, 2)}
-      </pre>
-    </details>
+    <div className='space-y-1'>
+      {warnings.map((warning) => (
+        <div
+          key={warning}
+          className='flex items-start gap-1.5 text-xs text-amber-700 dark:text-amber-400'>
+          <TriangleAlert className='mt-0.5 size-3 shrink-0' />
+          <span>{warning}</span>
+        </div>
+      ))}
+    </div>
   )
 }
 
+/** Render structured output: flat object → field rows, anything else → collapsed JSON. */
+function StructuredOutput({ value }: { value: unknown }) {
+  if (value && typeof value === 'object' && !Array.isArray(value)) {
+    return <FieldRows values={value as Record<string, unknown>} />
+  }
+  return <CollapsedJson title='Structured output' value={value} />
+}
+
 /**
- * Preview for AI node executions — the generated text rendered as markdown,
- * with structured output and tool results as collapsed sections.
+ * Preview for AI node executions. In structured-output mode `outputs.text` is
+ * itself the JSON string of `outputs.structured_output`, so we render the
+ * structured output ONCE (readable field rows) and suppress the duplicate text.
+ * Plain-text runs render `outputs.text` as markdown.
  */
 export function AiTraceRenderer({ execution }: TraceRendererProps) {
   const outputs = (execution.outputs ?? {}) as AiOutputs
+  const warnings = outputs._warnings ?? []
+  const hasStructured =
+    outputs.structured_output !== undefined && outputs.structured_output !== null
 
-  if (!outputs.text && outputs.structured_output === undefined) {
+  if (!outputs.text && !hasStructured && warnings.length === 0) {
     return <TraceRawJson value={execution.outputs} />
   }
 
@@ -45,16 +62,18 @@ export function AiTraceRenderer({ execution }: TraceRendererProps) {
     <BlockCard
       data-slot='ai-trace-renderer'
       indicator={<Sparkles className='size-3 text-muted-foreground' />}
-      primaryText='Generated Text'
+      primaryText={hasStructured ? 'Structured Output' : 'Generated Text'}
       hasFooter={false}>
       <div className='space-y-2 p-1'>
-        {outputs.text && (
-          <div className='prose prose-sm dark:prose-invert max-w-none text-sm'>
-            <Markdown remarkPlugins={[remarkGfm]}>{outputs.text}</Markdown>
-          </div>
-        )}
-        {outputs.structured_output !== undefined && outputs.structured_output !== null && (
-          <CollapsedJson title='Structured output' value={outputs.structured_output} />
+        {warnings.length > 0 && <TraceWarnings warnings={warnings} />}
+        {hasStructured ? (
+          <StructuredOutput value={outputs.structured_output} />
+        ) : (
+          outputs.text && (
+            <div className='prose prose-sm dark:prose-invert max-w-none text-sm'>
+              <Markdown remarkPlugins={[remarkGfm]}>{outputs.text}</Markdown>
+            </div>
+          )
         )}
         {!!outputs.tool_results?.length && (
           <CollapsedJson

@@ -2,3 +2,4 @@
 
 export { GroqClient } from './groq-client'
 export { GROQ_CAPABILITIES, GROQ_MODELS } from './groq-defaults'
+export { GroqLLMClient } from './groq-llm-client'

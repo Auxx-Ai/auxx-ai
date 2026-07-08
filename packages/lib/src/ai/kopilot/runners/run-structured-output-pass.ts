@@ -27,18 +27,28 @@ export interface RunStructuredOutputPassArgs {
 }
 
 /**
+ * Discriminated result of the structured-output second pass. Callers must
+ * check `ok` — a failed pass carries a human-readable `reason` instead of
+ * silently yielding an empty object.
+ */
+export type StructuredOutputPassResult =
+  | { ok: true; value: Record<string, unknown> }
+  | { ok: false; reason: string }
+
+/**
  * Second-pass LLM call that rewrites the tool loop's freeform final message
  * into JSON matching `schema`. Per `agent-tools-reuse-brainstorm.md §Q-7`:
  * we isolate JSON mode from the tool loop because providers don't all combine
  * tool-calling + strict JSON-mode cleanly.
  *
- * Returns the parsed JSON object on success, or `{}` if the orchestrator
- * couldn't produce / parse one. Failure to parse is logged but never throws —
- * the workflow node still emits the freeform `text`.
+ * Returns `{ ok: true, value }` with the parsed JSON object on success, or
+ * `{ ok: false, reason }` when the orchestrator couldn't produce / parse one.
+ * Failures are logged but never throw — the workflow node still emits the
+ * freeform `text`.
  */
 export async function runStructuredOutputPass(
   args: RunStructuredOutputPassArgs
-): Promise<Record<string, unknown>> {
+): Promise<StructuredOutputPassResult> {
   const { organizationId, userId, sessionId, workflowId, nodeId, model, schema, sourceMessage } =
     args
 
@@ -71,14 +81,16 @@ export async function runStructuredOutputPass(
     })
 
     if (response.structured_output && typeof response.structured_output === 'object') {
-      return response.structured_output
+      return { ok: true, value: response.structured_output }
     }
 
     // Fall through: try to parse plain content as JSON.
     if (response.content) {
       try {
         const parsed = JSON.parse(response.content)
-        if (parsed && typeof parsed === 'object') return parsed as Record<string, unknown>
+        if (parsed && typeof parsed === 'object') {
+          return { ok: true, value: parsed as Record<string, unknown> }
+        }
       } catch {
         // ignored — handled below
       }
@@ -88,12 +100,10 @@ export async function runStructuredOutputPass(
       nodeId,
       contentPreview: response.content?.slice(0, 200),
     })
-    return {}
+    return { ok: false, reason: 'model returned no parseable JSON' }
   } catch (error) {
-    logger.error('Structured output pass failed', {
-      nodeId,
-      error: error instanceof Error ? error.message : String(error),
-    })
-    return {}
+    const reason = error instanceof Error ? error.message : String(error)
+    logger.error('Structured output pass failed', { nodeId, error: reason })
+    return { ok: false, reason }
   }
 }

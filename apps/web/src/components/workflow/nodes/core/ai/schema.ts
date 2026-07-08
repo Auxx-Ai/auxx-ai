@@ -70,14 +70,6 @@ const tiptapDocSchema = z
 const promptTemplateSchema = z.object({ role: z.enum(PromptRole), json: tiptapDocSchema })
 
 /**
- * Zod schema for AI context
- */
-const contextSchema = z.object({
-  enabled: z.boolean().default(false),
-  variable_selector: z.array(z.string()).default([]),
-})
-
-/**
  * Zod schema for AI files
  */
 const filesSchema = z.object({
@@ -128,7 +120,6 @@ export const aiNodeDataSchema = z.object({
   // AI-specific fields
   model: modelSchema,
   prompt_template: z.array(promptTemplateSchema).min(1),
-  context: contextSchema,
   files: filesSchema,
   structured_output: structuredOutputSchema,
   // Flat tools shape (Phase 3)
@@ -147,7 +138,6 @@ export const aiSchema = z.object({
   desc: z.string().optional(),
   model: modelSchema,
   prompt_template: z.array(promptTemplateSchema).min(1),
-  context: contextSchema,
   files: filesSchema,
   structured_output: structuredOutputSchema,
   toolsEnabled: z.boolean().optional(),
@@ -172,7 +162,6 @@ export const createAiDefaultData = (): Partial<AiNodeData> => ({
     completion_params: { temperature: AI_NODE_CONSTANTS.TEMPERATURE.default },
   },
   prompt_template: [{ role: PromptRole.SYSTEM, json: EMPTY_PROMPT_DOC }],
-  context: { enabled: false, variable_selector: [] },
   files: { enabled: false, input: '', isConstant: false },
   structured_output: { enabled: false },
   toolsEnabled: false,
@@ -247,6 +236,16 @@ export const validateAiData = (data: Partial<AiNodeData>): ValidationResult => {
       })
     }
   })
+
+  // Validate structured output — enabling it without a schema only fails at
+  // run time otherwise ("Node validation failed"). Surface it in the builder.
+  if (data.structured_output?.enabled && !data.structured_output.schema) {
+    errors.push({
+      field: 'structured_output.schema',
+      message: 'Structured output is enabled but no schema is defined',
+      type: 'error',
+    })
+  }
 
   // Check if there are any errors (not warnings)
   const hasErrors = errors.filter((e) => e.type === 'error').length > 0

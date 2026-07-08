@@ -138,10 +138,16 @@ function AppPanelIcon({
  * Radix's `PopoverTrigger asChild` can forward its `ref`/`onClick` here; the inner
  * `Button` is presentational. A status dot reflects the app's connection state.
  */
-const AppSettingsTrigger = React.forwardRef<
-  HTMLDivElement,
-  React.ComponentPropsWithoutRef<'div'> & { appId: string; connectionId?: string }
->(({ appId, connectionId, ...props }, ref) => {
+function AppSettingsTrigger({
+  appId,
+  connectionId,
+  ref,
+  ...props
+}: React.ComponentPropsWithoutRef<'div'> & {
+  appId: string
+  connectionId?: string
+  ref?: React.Ref<HTMLDivElement>
+}) {
   const { appInstallations } = useAppsContext()
   const bound = useBoundCredential(connectionId)
 
@@ -170,8 +176,7 @@ const AppSettingsTrigger = React.forwardRef<
       )}
     </div>
   )
-})
-AppSettingsTrigger.displayName = 'AppSettingsTrigger'
+}
 
 /**
  * Base panel component that provides common structure for node nodeDatauration panels
