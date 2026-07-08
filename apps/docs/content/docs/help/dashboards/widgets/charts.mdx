@@ -1,0 +1,48 @@
+---
+title: Bar, line & pie charts
+description: The three chart widgets share the same data setup and each add their own appearance options for comparing, trending, and showing shares of data.
+---
+
+Bar, line, and pie charts all read from a data source, report a metric, and group by a category. Set those up in the [Data section](/help/dashboards/data-and-metrics), then use each chart's appearance options below.
+
+## Bar chart
+
+Best for comparing a metric across categories, such as tickets per status or revenue per product.
+
+- **Category** becomes the bars.
+- **Series** breaks each bar into sub-groups, shown stacked or side by side.
+- **Orientation** switches between vertical and horizontal bars.
+- **Stacked** stacks the series within each bar instead of placing them side by side.
+- **Data labels** print the value on each bar.
+
+## Line chart
+
+Best for a metric over time or any trend.
+
+- **Category** is usually a date field, with a granularity of day, week, month, quarter, or year.
+- **Series** draws one line per sub-group so you can compare trends.
+- **Cumulative** turns the line into a running total that only climbs.
+- **Data labels** print the value at each point.
+
+## Pie chart
+
+Best for showing the share of a whole across a small number of categories.
+
+- **Category** becomes the slices. Pie charts do not use a series.
+- The center shows the total across all slices.
+- Keep the number of categories small so the slices stay readable. Use the category **Limit** to cap them.
+
+## Colors and legend
+
+All three charts use a [color scheme and legend](/help/dashboards/formatting). When a chart has many series, the legend paginates so it never overflows the tile.
+
+## Next steps
+
+<Cards>
+  <Card title="Formatting & appearance" href="/help/dashboards/formatting" icon="Palette">
+    Value formats, date-axis labels, colors, and legends.
+  </Card>
+  <Card title="KPI & gauge" href="/help/dashboards/widgets/kpi-and-gauge" icon="Gauge">
+    Distill data down to a single number.
+  </Card>
+</Cards>

@@ -1,4 +1,5 @@
 {
   "title": "Apps & Integrations",
+  "icon": "Puzzle",
   "pages": ["overview", "installing", "managing", "shopify"]
 }

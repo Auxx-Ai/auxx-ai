@@ -1,5 +1,6 @@
 {
   "title": "Workspace",
+  "icon": "Building2",
   "pages": [
     "overview",
     "sidebar",

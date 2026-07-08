@@ -1,4 +1,5 @@
 {
   "title": "Messages",
+  "icon": "Mail",
   "pages": ["sync-messages", "send-messages"]
 }

@@ -1,4 +1,5 @@
 {
   "title": "Troubleshooting",
+  "icon": "LifeBuoy",
   "pages": ["common-issues", "email-sync", "shopify-sync", "contact-support"]
 }

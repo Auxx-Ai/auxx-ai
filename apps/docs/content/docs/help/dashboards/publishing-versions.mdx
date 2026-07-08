@@ -1,0 +1,49 @@
+---
+title: Publishing & versions
+description: Understand the draft model, publish changes to make them live, discard unwanted edits, and restore or delete earlier dashboard versions.
+---
+
+Dashboards use a draft model so you can rearrange a board freely without disturbing the people who view it. The dashboard you edit is a private **draft**. Viewers keep seeing the last **published version** until you publish again.
+
+## The draft model
+
+- Every edit you make in edit mode auto-saves to the draft.
+- The draft is not live. Nothing viewers see changes until you publish.
+- When the draft differs from the live version, the header shows an amber **Live · unsaved** pill next to the **Publish** and **Discard** actions.
+
+## Publish
+
+Click **Publish** to snapshot the current draft into a new numbered version. That version becomes what viewers see.
+
+Publishing requires every widget to be fully configured. If a widget is missing its source or metric, the app tells you which one so you can finish it before publishing.
+
+## Discard
+
+Click **Discard** to throw away unpublished draft changes and revert the draft to the current live version. Use this when an editing session did not work out and you want to start again from what is live.
+
+## Version history
+
+Open the version history to see every published version. Each version is an immutable snapshot of the whole layout, and you can give it a label such as `Q3 board` to make it easy to recognize later.
+
+## Restore a version
+
+Restoring an earlier version brings it back **as a draft** rather than publishing it immediately. This lets you review the restored layout, make any tweaks, and then publish when you are ready. The version you restored from stays intact.
+
+## Delete a version
+
+You can delete an old version you no longer need. You cannot delete the version that is currently live. Restored drafts are independent copies, so deleting the version you restored from does not affect your draft.
+
+<Callout type="info" title="A good rhythm">
+Rearrange in edit mode, watch it auto-save, review the board, then publish. If you are unsure, publish anyway. You can always restore an earlier version.
+</Callout>
+
+## Next steps
+
+<Cards>
+  <Card title="Tabs & layout" href="/help/dashboards/tabs-and-layout" icon="LayoutGrid">
+    Edit mode, tabs, and arranging the grid.
+  </Card>
+  <Card title="Widget catalog" href="/help/dashboards/widgets" icon="LayoutDashboard">
+    The eight widget kinds.
+  </Card>
+</Cards>

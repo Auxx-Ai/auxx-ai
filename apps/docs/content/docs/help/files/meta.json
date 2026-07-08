@@ -1,4 +1,5 @@
 {
   "title": "Files",
+  "icon": "Files",
   "pages": ["overview", "folders", "uploading", "details"]
 }

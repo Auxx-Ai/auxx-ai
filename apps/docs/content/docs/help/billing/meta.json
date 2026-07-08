@@ -1,4 +1,5 @@
 {
   "title": "Plans, Billing & Payment",
+  "icon": "CreditCard",
   "pages": ["overview", "upgrading-downgrading", "payment-methods", "invoices", "cancellation"]
 }

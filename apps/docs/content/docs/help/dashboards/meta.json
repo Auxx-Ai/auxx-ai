@@ -1,0 +1,14 @@
+{
+  "title": "Dashboards",
+  "icon": "LayoutDashboard",
+  "pages": [
+    "index",
+    "concepts",
+    "creating-a-dashboard",
+    "tabs-and-layout",
+    "data-and-metrics",
+    "formatting",
+    "publishing-versions",
+    "widgets"
+  ]
+}

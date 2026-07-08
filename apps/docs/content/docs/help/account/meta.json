@@ -1,4 +1,5 @@
 {
   "title": "Account & Security",
+  "icon": "ShieldCheck",
   "pages": ["settings", "signing-in", "2fa", "api-keys", "webhooks", "import-history"]
 }

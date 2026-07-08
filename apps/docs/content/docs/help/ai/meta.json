@@ -1,5 +1,6 @@
 {
   "title": "AI & Automation",
+  "icon": "Sparkles",
   "pages": [
     "overview",
     "models-providers",

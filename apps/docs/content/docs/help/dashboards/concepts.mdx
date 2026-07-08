@@ -1,0 +1,56 @@
+---
+title: Core concepts
+description: The key terms used across the Dashboards guides, from dashboards and tabs to widgets, metrics, categories, series, and versions.
+---
+
+A quick glossary of the terms used throughout these guides. Later articles link back here.
+
+## Dashboard and tabs
+
+- **Dashboard** is the board you build. It has a name, settings, and one or more tabs.
+- **Tab** is a named page inside a dashboard. Each tab has its own widget grid, so you can split a board into sections like "Support" and "Sales".
+
+## The grid
+
+- **Grid** is the 12-column layout widgets snap to. In edit mode you drag widgets to move them and pull the corner to resize. The grid compacts upward to close gaps.
+- **Widget** is a single tile on the grid: a chart, a KPI, a record list, or a piece of content.
+
+## Data widgets
+
+Charts, KPIs, gauges, and record lists read live data. They share the same building blocks:
+
+- **Data source** is the entity or system resource a widget reads, such as Tickets, Contacts, a custom entity, or threads.
+- **Metric** is what gets measured: **Count records**, or an operation (sum, average, minimum, maximum, or percentage) over a field.
+- **Category** is the field a chart groups by. On a bar chart it is the bars, on a line chart the points along the axis, on a pie chart the slices.
+- **Series** is an optional second field that breaks each category into sub-groups. It applies to bar and line charts.
+- **Filters** are conditions that narrow which records the widget counts.
+
+<Callout type="info" title="Category and Series">
+"Category" and "Series" are the labels you will see in the config panel. If you have used other tools, they map to "group by" and "break down by". Each row has a **?** button with inline help.
+</Callout>
+
+## Content widgets
+
+- **Rich text** is a note tile for headings, lists, and context on the board.
+- **Embed** shows an external page inside the dashboard by URL.
+
+These have no data source or metric, but they still save and version along with the rest of the layout.
+
+## Drafts and versions
+
+- **Draft** is the working copy you edit. Your changes auto-save to the draft but are not live.
+- **Published version** is an immutable, numbered snapshot of the whole layout that viewers see.
+- **Publish** snapshots the current draft into a new version.
+- **Discard** throws away unpublished draft changes and reverts to the live version.
+- **Restore** brings an earlier version back as a draft so you can review it before publishing again.
+
+## Next steps
+
+<Cards>
+  <Card title="Create a dashboard" href="/help/dashboards/creating-a-dashboard" icon="Plus">
+    Create your first dashboard and manage its settings.
+  </Card>
+  <Card title="Tabs & layout" href="/help/dashboards/tabs-and-layout" icon="LayoutGrid">
+    Add widgets and arrange the grid in edit mode.
+  </Card>
+</Cards>
