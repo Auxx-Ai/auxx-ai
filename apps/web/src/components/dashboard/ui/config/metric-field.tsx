@@ -74,7 +74,10 @@ export function MetricField({
   }
 
   return (
-    <FieldPanelRow title='Metric' isRequired>
+    <FieldPanelRow
+      title='Metric'
+      isRequired
+      description="The number to plot and how it's calculated — count records, or sum/average/min/max a field.">
       <Popover
         open={open}
         onOpenChange={(o) => {

@@ -40,6 +40,7 @@ const leaf = (ref: GroupBy['fieldRef']): ResourceFieldId =>
 export function GroupBySection({
   source,
   label,
+  description,
   groupBy,
   onChange,
   isRequired,
@@ -47,6 +48,7 @@ export function GroupBySection({
 }: {
   source: WidgetSource
   label: string
+  description?: string
   groupBy: GroupBy | undefined
   onChange: (groupBy: GroupBy | undefined) => void
   isRequired?: boolean
@@ -65,6 +67,7 @@ export function GroupBySection({
     <>
       <FieldRefRow
         title={label}
+        description={description}
         isRequired={isRequired}
         source={source}
         value={groupBy?.fieldRef}
@@ -78,6 +81,7 @@ export function GroupBySection({
           {showGranularity && (
             <ConfigFieldRow
               title='Granularity'
+              description='Bucket dates by day, week, month, quarter, or year.'
               fieldType={FieldType.SINGLE_SELECT}
               fieldOptions={{ options: GRANULARITY_OPTIONS }}
               value={groupBy.dateGranularity ?? 'day'}
@@ -86,6 +90,7 @@ export function GroupBySection({
           )}
           <ConfigFieldRow
             title='Sort'
+            description='Order the categories — by value (biggest first) or by name.'
             fieldType={FieldType.SINGLE_SELECT}
             fieldOptions={{ options: SORT_OPTIONS }}
             value={groupBy.sort ?? 'valueDesc'}
@@ -93,6 +98,7 @@ export function GroupBySection({
           />
           <ConfigFieldRow
             title='Limit'
+            description='Show at most this many categories (the top ones by sort).'
             fieldType={FieldType.NUMBER}
             value={groupBy.limit}
             onChange={(v) => patch({ limit: v as number | undefined })}
@@ -100,7 +106,7 @@ export function GroupBySection({
           />
           <ConfigFieldRow
             title='Omit empty'
-            description='Hide the no-value group'
+            description='Hide the bar for records with no value (the “(empty)” bucket).'
             fieldType={FieldType.CHECKBOX}
             fieldOptions={{ variant: 'switch' }}
             value={groupBy.omitEmpty ?? false}

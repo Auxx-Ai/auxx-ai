@@ -63,7 +63,9 @@ export function ValueFormatRow({
   if (!kind) return null
 
   return (
-    <FieldPanelRow title='Value format' description='Override how this value displays'>
+    <FieldPanelRow
+      title='Value format'
+      description='How the number is displayed — decimals, currency, percentage, or compact (1.2k).'>
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogTrigger asChild>
           <PickerTrigger hasValue={!!value} placeholder='Default' className='w-full ps-0 pe-1'>

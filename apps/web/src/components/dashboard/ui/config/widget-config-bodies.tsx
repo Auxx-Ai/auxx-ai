@@ -119,7 +119,8 @@ function BarChartBody({
               )}
               <GroupBySection
                 source={source}
-                label='Group by'
+                label='Category'
+                description='The field that splits the data — each distinct value becomes one bar or slice.'
                 isRequired
                 groupBy={config.groupBy}
                 onChange={(g) => update({ groupBy: g })}
@@ -132,7 +133,8 @@ function BarChartBody({
               />
               <GroupBySection
                 source={source}
-                label='Break down by'
+                label='Series'
+                description='Optionally split each bar into colored parts by a second field — one color + legend entry per value.'
                 allowClear
                 groupBy={config.secondaryGroupBy}
                 onChange={(g) => update({ secondaryGroupBy: g })}
@@ -160,6 +162,7 @@ function BarChartBody({
           <Panel>
             <ConfigFieldRow
               title='Orientation'
+              description='Bars run vertically (columns) or horizontally.'
               fieldType={FieldType.SINGLE_SELECT}
               fieldOptions={{ options: BAR_LAYOUT_OPTIONS }}
               value={config.layout ?? 'vertical'}
@@ -168,22 +171,26 @@ function BarChartBody({
             {config.secondaryGroupBy && (
               <SwitchRow
                 title='Stacked'
+                description='Stack the series into one bar instead of side-by-side.'
                 value={config.stacked}
                 onChange={(v) => update({ stacked: v })}
               />
             )}
             <SwitchRow
               title='Cumulative'
+              description='Show a running total that adds up across categories.'
               value={config.cumulative}
               onChange={(v) => update({ cumulative: v })}
             />
             <SwitchRow
               title='Data labels'
+              description='Print each value directly on the bar, point, or slice.'
               value={config.showDataLabels}
               onChange={(v) => update({ showDataLabels: v })}
             />
             <SwitchRow
               title='Legend'
+              description='Show the color key for the series.'
               value={config.showLegend ?? true}
               onChange={(v) => update({ showLegend: v })}
             />
@@ -226,7 +233,8 @@ function LineChartBody({
               )}
               <GroupBySection
                 source={source}
-                label='Group by'
+                label='Category'
+                description='The field that splits the data — each distinct value becomes one point along the axis.'
                 isRequired
                 groupBy={config.groupBy}
                 onChange={(g) => update({ groupBy: g })}
@@ -239,7 +247,8 @@ function LineChartBody({
               />
               <GroupBySection
                 source={source}
-                label='Break down by'
+                label='Series'
+                description='Optionally split into one colored line per value of a second field.'
                 allowClear
                 groupBy={config.secondaryGroupBy}
                 onChange={(g) => update({ secondaryGroupBy: g })}
@@ -265,21 +274,29 @@ function LineChartBody({
       {source && (
         <Section title='Appearance' icon={<Palette className='size-3.5' />} collapsible>
           <Panel>
-            <SwitchRow title='Area' value={config.area} onChange={(v) => update({ area: v })} />
+            <SwitchRow
+              title='Area'
+              description='Fill the space under the line.'
+              value={config.area}
+              onChange={(v) => update({ area: v })}
+            />
             {config.secondaryGroupBy && (
               <SwitchRow
                 title='Stacked'
+                description='Stack the series instead of overlapping them.'
                 value={config.stacked}
                 onChange={(v) => update({ stacked: v })}
               />
             )}
             <SwitchRow
               title='Cumulative'
+              description='Show a running total that adds up across categories.'
               value={config.cumulative}
               onChange={(v) => update({ cumulative: v })}
             />
             <SwitchRow
               title='Legend'
+              description='Show the color key for the series.'
               value={config.showLegend ?? true}
               onChange={(v) => update({ showLegend: v })}
             />
@@ -322,7 +339,8 @@ function PieChartBody({
               )}
               <GroupBySection
                 source={source}
-                label='Group by'
+                label='Category'
+                description='The field that splits the data — each distinct value becomes one slice.'
                 isRequired
                 groupBy={config.groupBy}
                 onChange={(g) => update({ groupBy: g })}
@@ -354,21 +372,29 @@ function PieChartBody({
       {source && (
         <Section title='Appearance' icon={<Palette className='size-3.5' />} collapsible>
           <Panel>
-            <SwitchRow title='Donut' value={config.donut} onChange={(v) => update({ donut: v })} />
+            <SwitchRow
+              title='Donut'
+              description='Show as a donut with a hollow center.'
+              value={config.donut}
+              onChange={(v) => update({ donut: v })}
+            />
             {config.donut && (
               <SwitchRow
                 title='Center total'
+                description='Show the grand total in the middle of the donut.'
                 value={config.showCenterTotal}
                 onChange={(v) => update({ showCenterTotal: v })}
               />
             )}
             <SwitchRow
               title='Data labels'
+              description='Print each value directly on the slice.'
               value={config.showDataLabels}
               onChange={(v) => update({ showDataLabels: v })}
             />
             <SwitchRow
               title='Legend'
+              description='Show the color key for the slices.'
               value={config.showLegend ?? true}
               onChange={(v) => update({ showLegend: v })}
             />
@@ -413,6 +439,7 @@ function KpiBody({
               )}
               <ConfigFieldRow
                 title='Prefix'
+                description='Text shown before the number, like $.'
                 fieldType={FieldType.TEXT}
                 value={config.prefix}
                 onChange={(v) => update({ prefix: (v as string) || undefined })}
@@ -420,6 +447,7 @@ function KpiBody({
               />
               <ConfigFieldRow
                 title='Suffix'
+                description='Text shown after the number, like hrs or %.'
                 fieldType={FieldType.TEXT}
                 value={config.suffix}
                 onChange={(v) => update({ suffix: (v as string) || undefined })}
@@ -455,6 +483,7 @@ function KpiBody({
             <Panel>
               <FieldRefRow
                 title='Date field'
+                description='The date field used to define the current and prior periods.'
                 isRequired
                 source={source}
                 value={config.trend.dateFieldRef || undefined}
@@ -473,6 +502,7 @@ function KpiBody({
               />
               <ConfigFieldRow
                 title='Compare to'
+                description='Compare against the previous period or the same period last year.'
                 fieldType={FieldType.SINGLE_SELECT}
                 fieldOptions={{ options: TREND_COMPARE_OPTIONS }}
                 value={config.trend.compare}
@@ -556,6 +586,7 @@ function GaugeBody({
           <Panel>
             <SwitchRow
               title='Data labels'
+              description='Print the value on the gauge.'
               value={config.showDataLabels}
               onChange={(v) => update({ showDataLabels: v })}
             />
@@ -599,6 +630,7 @@ function RecordListBody({
               />
               <FieldRefRow
                 title='Sort by'
+                description='The field the rows are ordered by.'
                 source={source}
                 value={config.sort?.fieldRef}
                 onChange={(ref) =>
@@ -609,12 +641,14 @@ function RecordListBody({
               {config.sort && (
                 <SwitchRow
                   title='Descending'
+                  description='Largest or newest first.'
                   value={config.sort.desc}
                   onChange={(v) => config.sort && update({ sort: { ...config.sort, desc: v } })}
                 />
               )}
               <ConfigFieldRow
                 title='Rows'
+                description='How many rows to show per page.'
                 fieldType={FieldType.NUMBER}
                 value={config.pageSize}
                 onChange={(v) => update({ pageSize: v as number | undefined })}
@@ -655,6 +689,7 @@ function IframeBody({
       <Panel>
         <ConfigFieldRow
           title='URL'
+          description='The page to embed — it must allow being shown in a frame.'
           fieldType={FieldType.TEXT}
           value={config.url ?? ''}
           onChange={(v) => update({ url: (v as string) || null })}

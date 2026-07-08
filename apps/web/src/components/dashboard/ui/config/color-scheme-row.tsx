@@ -37,7 +37,9 @@ export function ColorRow({
   const current = CHART_PALETTES.find((p) => p.id === selected) ?? CHART_PALETTES[0]
 
   return (
-    <FieldPanelRow title='Color'>
+    <FieldPanelRow
+      title='Color'
+      description='Color scheme — one hue fans out into shades; “Default” uses distinct hues.'>
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild>
           <PickerTrigger open={open} hasValue className='w-full ps-0 pe-1'>

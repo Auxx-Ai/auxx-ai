@@ -115,7 +115,9 @@ export function ColumnsRow({
   const count = managed.length + (primary ? 1 : 0)
 
   return (
-    <FieldPanelRow title='Columns'>
+    <FieldPanelRow
+      title='Columns'
+      description="The fields shown as columns, after the record's name.">
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild>
           <PickerTrigger

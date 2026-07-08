@@ -689,8 +689,8 @@ export function droppedFieldsOnConvert(from: WidgetConfiguration, toKind: Widget
     if (configured && to[key] === undefined) dropped.push(label)
   }
 
-  check('groupBy', 'Group by', Boolean(f.groupBy?.fieldRef))
-  check('secondaryGroupBy', 'Secondary breakdown', Boolean(f.secondaryGroupBy?.fieldRef))
+  check('groupBy', 'Category', Boolean(f.groupBy?.fieldRef))
+  check('secondaryGroupBy', 'Series', Boolean(f.secondaryGroupBy?.fieldRef))
   check('trend', 'Trend', Boolean(f.trend))
   check('prefix', 'Prefix', Boolean(f.prefix))
   check('suffix', 'Suffix', Boolean(f.suffix))
