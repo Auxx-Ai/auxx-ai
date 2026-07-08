@@ -5,6 +5,7 @@ import FooterSection from '../../_components/main/footer-section'
 import Header from '../../_components/main/header'
 import { BreadcrumbJsonLd } from '../../_components/seo/breadcrumb-json-ld'
 import { FinalCtaSection } from '../_components/final-cta-section'
+import DataConnectorsSection from './_components/data-connectors-section'
 import DataModelWallHero from './_components/data-model-wall-hero'
 import DatasetsSection from './_components/datasets-section'
 import HowAiUsesBothSection from './_components/how-ai-uses-both-section'
@@ -34,6 +35,7 @@ export default function DataModelPage() {
         <KbEditorSection />
         <DatasetsSection />
         <IngestionFlowSection />
+        <DataConnectorsSection />
         <HowAiUsesBothSection />
         <FinalCtaSection />
       </main>
