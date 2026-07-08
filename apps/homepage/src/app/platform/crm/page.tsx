@@ -4,6 +4,7 @@ import { config } from '~/lib/config'
 import FooterSection from '../../_components/main/footer-section'
 import Header from '../../_components/main/header'
 import { BreadcrumbJsonLd } from '../../_components/seo/breadcrumb-json-ld'
+import DataConnectorsSection from '../data-model/_components/data-connectors-section'
 import CrmCenterSection from './_components/crm-center-section'
 import CrmHero from './_components/crm-hero'
 import CustomerProfilesSection from './_components/customer-profiles-section'
@@ -29,6 +30,7 @@ export default function CrmPage() {
         <CrmHero bottomFadeColor='color-mix(in oklab, var(--color-muted) 30%, var(--color-background))' />
         <HowItWorksSection />
         <CrmCenterSection />
+        <DataConnectorsSection />
 
         <CustomerProfilesSection />
 

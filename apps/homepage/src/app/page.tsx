@@ -13,6 +13,7 @@ import TestimonialsSection from './_components/sections/testimonials-section'
 import WorkflowAnimationSection from './_components/sections/workflow-animation/workflow-animation-section'
 import KopilotAgentsCta from './platform/ai/kopilot/_components/kopilot-agents-cta'
 import CrmHero from './platform/crm/_components/crm-hero'
+import DataConnectorsSection from './platform/data-model/_components/data-connectors-section'
 import DataModelWallHero from './platform/data-model/_components/data-model-wall-hero'
 import IngestionFlowSection from './platform/data-model/_components/ingestion-flow-section'
 import BuildDashboardsSection from './platform/reporting/_components/build-dashboards-section'
@@ -73,6 +74,7 @@ export default function MainPage() {
       <DataModelWallHero as='h2' />
       <IngestionFlowSection />
       <CrmHero as='h2' />
+      <DataConnectorsSection />
       <KopilotHomeSection />
       {/* <ProblemSolutionSection /> */}
       <StatsSection />
