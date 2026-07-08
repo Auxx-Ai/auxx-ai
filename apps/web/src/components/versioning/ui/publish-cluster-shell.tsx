@@ -18,6 +18,24 @@ export interface PublishClusterShellProps {
   status: { isPublished: boolean; hasUnsaved: boolean; isArchived?: boolean }
   /** Optional tooltip on the status pill (presentation only — e.g. what "Live" means). */
   pillTooltip?: string
+  /**
+   * Repurpose the status pill as an action button (e.g. a live/draft view toggle):
+   * overrides its label, dot colour, click handler, and tooltip. When set, clicking
+   * the pill no longer opens the menu — the chevron still does. Segment visibility
+   * (publish/discard) is unaffected; it stays driven by `status`.
+   */
+  pillOverride?: {
+    label: string
+    dotClassName: string
+    onClick: () => void
+    tooltip?: string
+  }
+  /**
+   * Hide the status pill entirely (e.g. while editing, when a separate autosave
+   * indicator already conveys status). The chevron menu still renders, so the
+   * dropdown stays reachable.
+   */
+  hidePill?: boolean
   publish?: {
     onClick: () => void
     isPending?: boolean
@@ -48,6 +66,8 @@ export interface PublishClusterShellProps {
 export function PublishClusterShell({
   status,
   pillTooltip,
+  pillOverride,
+  hidePill,
   publish,
   discard,
   extraSegments,
@@ -56,25 +76,26 @@ export function PublishClusterShell({
   const [isMenuOpen, setIsMenuOpen] = useState(false)
 
   const { isPublished, hasUnsaved, isArchived } = status
-  const dotClass = isArchived
+  const derivedDotClass = isArchived
     ? 'bg-red-500'
     : isPublished
       ? hasUnsaved
         ? 'bg-amber-500'
         : 'bg-emerald-500'
       : 'bg-slate-400'
-  const pillLabel = isArchived ? 'Archived' : isPublished ? 'Live' : 'Draft'
+  const derivedLabel = isArchived ? 'Archived' : isPublished ? 'Live' : 'Draft'
+
+  const dotClass = pillOverride?.dotClassName ?? derivedDotClass
+  const pillLabel = pillOverride?.label ?? derivedLabel
+  const pillTooltipText = pillOverride?.tooltip ?? pillTooltip
+  const onPillClick = pillOverride?.onClick ?? (() => setIsMenuOpen((prev) => !prev))
 
   const showPublish = !!publish && (!isPublished || hasUnsaved)
   const showDiscard = !!discard && isPublished && hasUnsaved
   const publishLabel = publish?.label ?? 'Publish'
 
   const pillButton = (
-    <Button
-      size='xs'
-      variant='outline'
-      className='gap-2 border-r-0'
-      onClick={() => setIsMenuOpen((prev) => !prev)}>
+    <Button size='xs' variant='outline' className='gap-2 border-r-0' onClick={onPillClick}>
       <span className={cn('inline-block size-2 rounded-full', dotClass)} />
       {pillLabel}
     </Button>
@@ -83,18 +104,20 @@ export function PublishClusterShell({
   return (
     <DropdownMenu open={isMenuOpen} onOpenChange={setIsMenuOpen}>
       <ButtonGroup className='shrink-0'>
-        {pillTooltip ? (
-          <Tooltip>
-            <TooltipTrigger asChild>{pillButton}</TooltipTrigger>
-            <TooltipContent>{pillTooltip}</TooltipContent>
-          </Tooltip>
-        ) : (
-          pillButton
-        )}
+        {!hidePill &&
+          (pillTooltipText ? (
+            <Tooltip>
+              <TooltipTrigger asChild>{pillButton}</TooltipTrigger>
+              <TooltipContent>{pillTooltipText}</TooltipContent>
+            </Tooltip>
+          ) : (
+            pillButton
+          ))}
 
         {extraSegments ? (
           <>
-            <ButtonGroupSeparator />
+            {/* No leading separator when the pill is hidden — extraSegments start the group. */}
+            {!hidePill && <ButtonGroupSeparator />}
             {extraSegments}
           </>
         ) : null}

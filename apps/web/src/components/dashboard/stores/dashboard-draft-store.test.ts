@@ -4,7 +4,9 @@ import type { DashboardLayoutDoc } from '@auxx/lib/dashboards/client'
 import { beforeEach, describe, expect, it } from 'vitest'
 import {
   type DashboardSeed,
+  selectCurrentTabs,
   selectHasUnpublishedChanges,
+  selectViewLayer,
   useDashboardStore,
 } from './dashboard-draft-store'
 
@@ -118,6 +120,54 @@ describe('lifecycle', () => {
     store().exitEditMode()
     expect(store().isEditMode).toBe(false)
     expect(store().draft?.tabs[0].widgets).toHaveLength(1)
+  })
+})
+
+describe('view layer (Live/Draft toggle)', () => {
+  it('cold seed lands on the live layer', () => {
+    seedStore({ draft: doc(), hasUnpublishedChanges: true })
+    expect(selectViewLayer(store())).toBe('live')
+  })
+
+  it('pressing Done drops the canvas to the draft layer', () => {
+    seedStore()
+    store().enterEditMode()
+    store().addWidget(TAB, 'kpi')
+    store().exitEditMode()
+    expect(selectViewLayer(store())).toBe('draft')
+    // The canvas (currentDoc via selectCurrentTabs) now renders the draft.
+    expect(selectCurrentTabs(store())[0].widgets).toHaveLength(1)
+  })
+
+  it('the live layer renders the published snapshot, not the parked draft', () => {
+    seedStore()
+    store().enterEditMode()
+    store().addWidget(TAB, 'kpi')
+    store().exitEditMode() // → draft layer, canvas shows the new widget
+    store().setViewLayer('live')
+    expect(selectCurrentTabs(store())[0].widgets).toHaveLength(0)
+  })
+
+  it('the draft layer only overrides the canvas when there are unpublished changes', () => {
+    seedStore() // no divergence
+    store().setViewLayer('draft')
+    // Nothing unpublished → still renders the published snapshot.
+    expect(selectCurrentTabs(store())[0].widgets).toHaveLength(0)
+  })
+
+  it('publish/discard reset the toggle back to live', () => {
+    seedStore()
+    store().enterEditMode()
+    store().addWidget(TAB, 'kpi')
+    store().exitEditMode()
+    expect(selectViewLayer(store())).toBe('draft')
+
+    store().markPublished(doc(), 2)
+    expect(selectViewLayer(store())).toBe('live')
+
+    store().exitEditMode()
+    store().markDiscarded(doc())
+    expect(selectViewLayer(store())).toBe('live')
   })
 
   it('a refetch during edit of the same dashboard keeps the local draft', () => {

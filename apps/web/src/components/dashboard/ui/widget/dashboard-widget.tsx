@@ -9,6 +9,7 @@
 // plan 03's aggregate procedures.
 
 import type { LayoutWidget, WidgetConfiguration } from '@auxx/lib/dashboards/client'
+import type { RecordId } from '@auxx/types/resource'
 import { ChartWidget } from './chart-widget'
 import { GaugeWidget } from './gauge-widget'
 import { IframeWidget } from './iframe-widget'
@@ -28,6 +29,8 @@ type DashboardWidgetProps = {
   onDelete?: () => void
   /** Persist a config change (e.g. richText inline edits) — plan 08: `updateWidgetConfig`. */
   onConfigChange?: (config: WidgetConfiguration) => void
+  /** Open a record in the dashboard's page-level docked/overlay drawer (recordList). */
+  onOpenRecord?: (recordId: RecordId) => void
 }
 
 export function DashboardWidget({
@@ -39,6 +42,7 @@ export function DashboardWidget({
   onDuplicate,
   onDelete,
   onConfigChange,
+  onOpenRecord,
 }: DashboardWidgetProps) {
   // richText is edited inline in its body — no config drawer, so hide the pencil
   // and let card clicks reach the editor instead of opening a (nonexistent) panel.
@@ -61,6 +65,7 @@ export function DashboardWidget({
           isEditMode={isEditMode}
           onEdit={onEdit}
           onConfigChange={onConfigChange}
+          onOpenRecord={onOpenRecord}
         />
       </WidgetErrorBoundary>
     </WidgetCard>
@@ -72,11 +77,13 @@ function WidgetBody({
   isEditMode,
   onEdit,
   onConfigChange,
+  onOpenRecord,
 }: {
   widget: LayoutWidget
   isEditMode: boolean
   onEdit?: () => void
   onConfigChange?: (config: WidgetConfiguration) => void
+  onOpenRecord?: (recordId: RecordId) => void
 }) {
   const config = widget.configuration
 
@@ -132,6 +139,7 @@ function WidgetBody({
           widgetId={widget.id}
           isEditMode={isEditMode}
           onConfigure={onEdit}
+          onOpenRecord={onOpenRecord}
         />
       )
   }

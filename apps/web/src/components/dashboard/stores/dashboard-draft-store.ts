@@ -29,6 +29,9 @@ import { defaultWidgetConfiguration, defaultWidgetTitle } from '../lib/widget-co
 
 export type SaveState = 'idle' | 'saving' | 'saved' | 'error'
 
+/** In view mode, which layer the canvas renders: the live version or the parked draft. */
+export type ViewLayer = 'live' | 'draft'
+
 /** Server payload the sync hook seeds from (`api.dashboard.get`). */
 export interface DashboardSeed {
   published: DashboardLayoutDoc
@@ -49,6 +52,12 @@ interface DashboardDraftState {
   isDirty: boolean
   /** Server truth: the draft diverges from the active version (drives the pill). */
   hasUnpublishedChanges: boolean
+  /**
+   * View-mode only: which layer the canvas renders when a draft is parked. Cold
+   * loads show `'live'` (the canonical published version); pressing Done drops to
+   * `'draft'` so you keep looking at your work. The header toggle flips it.
+   */
+  viewLayer: ViewLayer
   draggingWidgetId: string | null
   saveState: SaveState
 
@@ -95,6 +104,8 @@ interface DashboardDraftState {
   setGlobalFilters: (filters: DashboardGlobalFilters) => void
 
   // ── transient ──
+  /** Flip the view-mode canvas between the live version and the parked draft. */
+  setViewLayer: (layer: ViewLayer) => void
   setDraggingWidgetId: (id: string | null) => void
   setSaveState: (state: SaveState) => void
   /** Autosave reconciles the pill from the server's saveDraft result. */
@@ -158,6 +169,7 @@ const INITIAL = {
   isEditMode: false,
   isDirty: false,
   hasUnpublishedChanges: false,
+  viewLayer: 'live' as ViewLayer,
   draggingWidgetId: null,
   saveState: 'idle' as SaveState,
 }
@@ -187,6 +199,8 @@ export const useDashboardStore = create<DashboardDraftState>()(
             isEditMode: keep ? s.isEditMode : false,
             isDirty: keep ? s.isDirty : false,
             hasUnpublishedChanges: keep ? s.hasUnpublishedChanges : seed.hasUnpublishedChanges,
+            // Cold loads land on the live version; the toggle/Done opt into the draft.
+            viewLayer: keep ? s.viewLayer : 'live',
           }
         }),
 
@@ -200,8 +214,9 @@ export const useDashboardStore = create<DashboardDraftState>()(
         })),
 
       // Leave edit mode but KEEP the draft — it's persisted server-side, parked
-      // until the user publishes or discards.
-      exitEditMode: () => set({ isEditMode: false }),
+      // until the user publishes or discards. Land on the draft layer so the
+      // canvas keeps showing the work you just did (a toggle flips to live).
+      exitEditMode: () => set({ isEditMode: false, viewLayer: 'draft' }),
 
       markPublished: (doc, versionNumber) =>
         set({
@@ -210,6 +225,7 @@ export const useDashboardStore = create<DashboardDraftState>()(
           draft: cloneDoc(doc),
           isDirty: false,
           hasUnpublishedChanges: false,
+          viewLayer: 'live',
           saveState: 'idle',
         }),
 
@@ -219,6 +235,7 @@ export const useDashboardStore = create<DashboardDraftState>()(
           draft: cloneDoc(doc),
           isDirty: false,
           hasUnpublishedChanges: false,
+          viewLayer: 'live',
           saveState: 'idle',
         }),
 
@@ -395,6 +412,7 @@ export const useDashboardStore = create<DashboardDraftState>()(
 
       setGlobalFilters: (filters) => mutate((draft) => ({ ...draft, globalFilters: filters })),
 
+      setViewLayer: (viewLayer) => set({ viewLayer }),
       setDraggingWidgetId: (draggingWidgetId) => set({ draggingWidgetId }),
       setSaveState: (saveState) => set({ saveState }),
       setHasUnpublishedChanges: (hasUnpublishedChanges) => set({ hasUnpublishedChanges }),
@@ -411,9 +429,15 @@ export function getDashboardDraftState(): DashboardDraftState {
 
 // ── selectors ────────────────────────────────────────────────────────────────
 
-/** The doc that's currently rendered: the draft while editing, else the published snapshot. */
+/**
+ * The doc that's currently rendered: the draft while editing; in view mode the
+ * parked draft when the toggle is on `'draft'` (only meaningful with unpublished
+ * changes), else the published snapshot.
+ */
 function currentDoc(s: DashboardDraftState): DashboardLayoutDoc | null {
-  return s.isEditMode ? (s.draft ?? s.persisted) : s.persisted
+  if (s.isEditMode) return s.draft ?? s.persisted
+  if (s.hasUnpublishedChanges && s.viewLayer === 'draft') return s.draft ?? s.persisted
+  return s.persisted
 }
 
 export const selectCurrentDoc = (s: DashboardDraftState): DashboardLayoutDoc | null => currentDoc(s)
@@ -432,3 +456,6 @@ export const selectGlobalFilters = (s: DashboardDraftState): DashboardGlobalFilt
 /** The pill / Publish-Discard gate: the draft diverges from the active version. */
 export const selectHasUnpublishedChanges = (s: DashboardDraftState): boolean =>
   s.hasUnpublishedChanges
+
+/** Which layer view mode renders (drives the header Live/Draft toggle). */
+export const selectViewLayer = (s: DashboardDraftState): ViewLayer => s.viewLayer

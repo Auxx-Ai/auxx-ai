@@ -46,42 +46,28 @@ export function BarChartWidget({
         layout={isHorizontal ? 'vertical' : 'horizontal'}
         margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
         <CartesianGrid vertical={isHorizontal} horizontal={!isHorizontal} />
-        {isHorizontal ? (
-          <>
-            <XAxis
-              type='number'
-              tickLine={false}
-              axisLine={false}
-              tickMargin={8}
-              tickFormatter={tickFormatter}
-            />
-            <YAxis
-              type='category'
-              dataKey='label'
-              tickLine={false}
-              axisLine={false}
-              tickMargin={8}
-              width={110}
-            />
-          </>
-        ) : (
-          <>
-            <XAxis
-              dataKey='label'
-              type='category'
-              tickLine={false}
-              axisLine={false}
-              tickMargin={8}
-            />
-            <YAxis
-              type='number'
-              tickLine={false}
-              axisLine={false}
-              tickMargin={8}
-              tickFormatter={tickFormatter}
-            />
-          </>
-        )}
+        {/* No fragments here: recharts scans direct children for axes, and
+            fragments aren't flattened under React 19 — axes would be dropped. */}
+        <XAxis
+          type={isHorizontal ? 'number' : 'category'}
+          dataKey={isHorizontal ? undefined : 'label'}
+          tickLine={false}
+          axisLine={false}
+          tickMargin={8}
+          tickFormatter={isHorizontal ? tickFormatter : undefined}
+        />
+        <YAxis
+          type={isHorizontal ? 'category' : 'number'}
+          dataKey={isHorizontal ? 'label' : undefined}
+          tickLine={false}
+          axisLine={false}
+          tickMargin={8}
+          // Explicit default: an `undefined`-valued width key would clobber
+          // recharts' defaultProps in its {...defaultProps, ...props} merge → NaN layout.
+          width={isHorizontal ? 110 : 60}
+          tickFormatter={isHorizontal ? undefined : tickFormatter}
+        />
+
         <ChartTooltip content={<ChartTooltipContent valueFormatter={valueFormatter} />} />
         {showLegend && <ChartLegend content={<ChartLegendContent />} />}
         {series.map((def) => (

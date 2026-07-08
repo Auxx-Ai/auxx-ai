@@ -6,6 +6,7 @@ import { cn } from '@auxx/ui/lib/utils'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import type { Header } from '@tanstack/react-table'
+import { useTableConfig } from '../context/table-config-context'
 import type { ExtendedColumnDef } from '../types'
 import { sanitizeColumnId } from '../utils/sanitize-column-id'
 import { HeaderCell } from './header-cell'
@@ -20,11 +21,12 @@ interface HeaderCellWrapperProps<TData> {
 export function HeaderCellWrapper<TData>({ header }: HeaderCellWrapperProps<TData>) {
   const columnDef = header.column.columnDef as ExtendedColumnDef
   const isCheckboxColumn = header.column.id === '_checkbox'
+  const { disableColumnDnd } = useTableConfig()
 
-  // Drag and drop functionality (disabled for checkbox column)
+  // Drag and drop functionality (disabled for checkbox column / widget tables)
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: header.column.id,
-    disabled: isCheckboxColumn,
+    disabled: isCheckboxColumn || disableColumnDnd,
   })
 
   // Drag transform style (separate from width which uses CSS variables)

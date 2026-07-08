@@ -26,8 +26,11 @@ export interface PrimaryCellProps {
   /** Click handler for the title */
   onTitleClick: () => void
 
-  /** Dropdown menu items passed as children for maximum flexibility */
-  children: React.ReactNode
+  /**
+   * Dropdown menu items passed as children for maximum flexibility. When
+   * omitted, the hover kebab menu is not rendered at all (widget/read-only use).
+   */
+  children?: React.ReactNode
 
   /** Optional inline node rendered right after the title (e.g. a source badge). */
   suffix?: React.ReactNode
@@ -59,7 +62,11 @@ export function PrimaryCell({
 
   return (
     <div className='flex items-center justify-between w-full min-h-9 pl-3 pr-1 text-sm group/primary'>
-      <div className='flex items-center gap-1.5 min-w-0 max-w-[calc(100%-40px)]'>
+      <div
+        className={cn(
+          'flex items-center gap-1.5 min-w-0',
+          children ? 'max-w-[calc(100%-40px)]' : 'max-w-full'
+        )}>
         <button
           className={cn(
             'flex items-center gap-2 text-left underline decoration-muted-foreground/50 hover:decoration-muted-foreground truncate min-w-0',
@@ -76,19 +83,21 @@ export function PrimaryCell({
         {suffix}
       </div>
 
-      <div onClick={(e) => e.stopPropagation()} className='shrink-0'>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              variant='ghost'
-              size='icon-xs'
-              className='rounded-md sm:opacity-0 sm:group-hover/primary:opacity-100 transition-opacity data-[state=open]:opacity-100!'>
-              <MoreVertical />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align='end'>{children}</DropdownMenuContent>
-        </DropdownMenu>
-      </div>
+      {children && (
+        <div onClick={(e) => e.stopPropagation()} className='shrink-0'>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant='ghost'
+                size='icon-xs'
+                className='rounded-md sm:opacity-0 sm:group-hover/primary:opacity-100 transition-opacity data-[state=open]:opacity-100!'>
+                <MoreVertical />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align='end'>{children}</DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      )}
     </div>
   )
 }

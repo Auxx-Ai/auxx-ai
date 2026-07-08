@@ -61,6 +61,8 @@ export function useRecordListData(config: RecordListConfig, _widgetId?: string) 
 
   return {
     entityDefinitionId,
+    /** Raw entity-instance ids (the `{ id }` rows the DynamicTable renders). */
+    ids: query.data?.ids ?? [],
     recordIds,
     total: query.data?.total ?? 0,
     isLoading: query.isLoading,
