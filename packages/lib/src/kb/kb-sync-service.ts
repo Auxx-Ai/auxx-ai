@@ -9,6 +9,7 @@ import { NullDocumentExecutionReporter } from '../datasets/events'
 import { DocumentProcessor } from '../datasets/workers/document-processor'
 import { KBService } from './kb-service'
 import { articleToMarkdown } from './markdown/article-to-markdown'
+import { collectRecordLinks } from './markdown/collect-references'
 import { computeContentHash } from './markdown/hash'
 import type { ArticleNodeJSON } from './markdown/types'
 
@@ -350,7 +351,10 @@ export class KBSyncService {
       articleSlug: homePlacementSlug,
       articleSlugPath: slugPath,
       kbSlug: kb.slug,
-      links: [] as Array<{ recordId: string; recordType?: string }>,
+      // Record links from inline `reference` nodes — stamped onto every
+      // segment so `search_knowledge`'s `recordIds` filter can scope results
+      // to articles about a specific contact/company/etc.
+      links: collectRecordLinks(revision.contentJson as ArticleNodeJSON[] | null),
     }
 
     const documentMetadata = {

@@ -65,7 +65,11 @@ export class VectorSearchService {
         organizationId,
         userId,
         {
-          similarityThreshold: query.similarityThreshold || 0.7,
+          // Low floor by design: it only cuts obvious junk. Relevance ordering
+          // is the ranker's job (RRF in hybrid), and paraphrased queries
+          // routinely score 0.5-0.65 against relevant chunks — a high floor
+          // silently empties results.
+          similarityThreshold: query.similarityThreshold || 0.4,
           maxResults: query.maxResults || query.limit || 20,
           includeMetadata: query.includeMetadata !== false,
           rerank: query.rerank,
@@ -142,22 +146,23 @@ export class VectorSearchService {
     //    query with the wrong model yields a vector that lives in a different
     //    semantic space, and asking the wrong model for a dimension it can't
     //    produce throws (e.g. text-embedding-3-small max 1536 vs requested 3072).
+    //
+    //    Datasets without embedding config are SKIPPED, not fatal: they have no
+    //    vectors to search anyway, and one misconfigured dataset must not kill
+    //    the vector lane for the whole org (hybrid silently degrades to
+    //    text-only otherwise).
     const byModelDim = new Map<
       string,
       { model: string; dimension: number; datasets: DatasetConfig[] }
     >()
     for (const dataset of datasetConfigs) {
-      if (!dataset.embeddingModel) {
-        throw new VectorSearchError(
-          `Dataset ${dataset.id} is missing embeddingModel — cannot run vector search`,
-          { datasetId: dataset.id }
-        )
-      }
-      if (!dataset.vectorDimension) {
-        throw new VectorSearchError(
-          `Dataset ${dataset.id} is missing vectorDimension — cannot run vector search`,
-          { datasetId: dataset.id }
-        )
+      if (!dataset.embeddingModel || !dataset.vectorDimension) {
+        logger.warn('Skipping dataset without embedding config in vector search', {
+          datasetId: dataset.id,
+          embeddingModel: dataset.embeddingModel ?? null,
+          vectorDimension: dataset.vectorDimension ?? null,
+        })
+        continue
       }
       const key = `${dataset.embeddingModel}@${dataset.vectorDimension}`
       const group = byModelDim.get(key)
@@ -170,6 +175,9 @@ export class VectorSearchService {
           datasets: [dataset],
         })
       }
+    }
+    if (byModelDim.size === 0) {
+      return []
     }
 
     // 2. One embedding per (model, dimension) pair, in parallel
@@ -202,7 +210,7 @@ export class VectorSearchService {
     const resultGroups = await Promise.all(searchPromises)
 
     // 4. Convert to SearchResult format and merge results
-    const allResults = resultGroups.flat().map((result, index) => {
+    const allResults = resultGroups.flat().map((result) => {
       const meta = result.metadata || {}
       return {
         segment: {
@@ -229,16 +237,20 @@ export class VectorSearchService {
           },
         },
         score: result.score,
-        rank: index + 1,
+        rank: 0, // assigned after the cross-group sort below
         relevanceScore: result.score,
         searchType: 'vector' as const,
       } as SearchResult
     })
 
-    // 5. Re-sort by score and limit results
+    // 5. Re-sort by score across dimension groups, limit, then assign ranks.
+    // Ranks must reflect the FINAL order — RRF fusion in hybrid-search reads
+    // them, and per-group flatten order is meaningless.
     allResults.sort((a, b) => b.score - a.score)
 
-    return allResults.slice(0, options.maxResults || 20)
+    return allResults
+      .slice(0, options.maxResults || 20)
+      .map((result, index) => ({ ...result, rank: index + 1 }))
   }
 
   /**

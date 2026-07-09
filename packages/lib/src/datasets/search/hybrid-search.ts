@@ -48,15 +48,31 @@ export class HybridSearchService {
       const hybridOptions: HybridSearchOptions = {
         vectorWeight: queryWithWeights.vectorWeight ?? 0.6, // Configurable or default to 0.6
         textWeight: queryWithWeights.textWeight ?? 0.4, // Configurable or default to 0.4
-        combineMethod: queryWithWeights.combineMethod || 'weighted_sum',
+        // RRF by default: weighted_sum averages raw cosine similarity against
+        // raw ts_rank_cd — incomparable scales. RRF only needs each lane's
+        // rank order, which is the one thing both lanes agree on.
+        combineMethod: queryWithWeights.combineMethod || 'rrf',
         rerankingModel: queryWithWeights.rerankingModel || undefined,
+      }
+
+      // Wide-then-narrow: each lane fetches a candidate pool several times the
+      // requested page so fusion has real material to work with — fusing two
+      // `limit`-sized lists barely reorders anything. Fused results are cut
+      // back to `limit` below.
+      const limit = query.limit || 20
+      const fetchLimit = Math.min(Math.max(limit * 4, 20), 100)
+      const laneQuery: SearchQuery = {
+        ...query,
+        limit: fetchLimit,
+        offset: 0,
+        maxResults: fetchLimit,
       }
 
       // Execute both searches in parallel
       // Vector search uses datasetConfigs, full-text search uses datasetIds
       const [vectorResult, textResult] = await Promise.allSettled([
-        VectorSearchService.search(query, datasetConfigs, organizationId, userId),
-        FullTextSearchService.search(query, datasetIds, organizationId, userId),
+        VectorSearchService.search(laneQuery, datasetConfigs, organizationId, userId),
+        FullTextSearchService.search(laneQuery, datasetIds, organizationId, userId),
       ])
 
       // Handle search results and errors
@@ -103,8 +119,7 @@ export class HybridSearchService {
         ? HybridSearchService.applyFilters(combinedResults, query.filters)
         : combinedResults
 
-      // Apply pagination limits
-      const limit = query.limit || 20
+      // Apply pagination limits (the original query's, not the widened lane's)
       const offset = query.offset || 0
       const paginatedResults = filteredResults.slice(offset, offset + limit)
 
@@ -283,7 +298,8 @@ export class HybridSearchService {
     let rrfScore = 0
     let highlights: string[] = []
 
-    // RRF formula: 1 / (k + rank)
+    // RRF formula: 1 / (k + rank). Ranks are 1-based per lane (see
+    // vector-search / full-text-search rank assignment).
     if (vectorResult) {
       rrfScore += 1 / (k + (vectorResult.rank || 1))
     }
@@ -293,12 +309,19 @@ export class HybridSearchService {
       highlights = textResult.highlights || []
     }
 
+    // Normalize to 0-1 so downstream consumers (agent tools round to two
+    // decimals, quality heuristics assume a 0-1 scale) keep a meaningful
+    // score: 1.0 = ranked first in BOTH lanes, ~0.5 = first in one lane.
+    // Raw RRF tops out at 2/(k+1) ≈ 0.033 which rounds to indistinguishable.
+    const maxPossible = 2 / (k + 1)
+    const normalizedScore = rrfScore / maxPossible
+
     return {
       ...baseResult,
-      score: rrfScore,
+      score: normalizedScore,
       highlights,
       searchType: 'hybrid',
-      relevanceScore: rrfScore,
+      relevanceScore: normalizedScore,
     }
   }
 
