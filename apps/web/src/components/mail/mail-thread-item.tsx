@@ -272,7 +272,13 @@ export const MailThreadItem = memo(function MailThreadItem({
   const isMultiSelected = scopedSelectedIds
     ? scopedSelectedIds.includes(threadId)
     : globalIsSelected
-  const isActive = useIsThreadActive(threadId)
+  // `activeThreadId` is a single app-wide value set by the mailbox detail pane.
+  // Embedded mini-lists (ticket/contact tabs) announce themselves via
+  // scopedSelectedIds and drive their own highlight, so they must NOT inherit
+  // the mailbox's open-thread highlight — otherwise a thread open in the mailbox
+  // lights up in every embedded list that happens to render it.
+  const globalIsActive = useIsThreadActive(threadId)
+  const isActive = scopedSelectedIds ? false : globalIsActive
   const isHighlighted = isActive || isMultiSelected
   const isProcessing = useIsRecordProcessing(toRecordId('thread', threadId))
 

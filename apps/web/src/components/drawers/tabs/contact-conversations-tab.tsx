@@ -143,7 +143,7 @@ export function ContactConversationsTab({ entityInstanceId, record }: DrawerTabP
               sortDirection: 'desc',
               filterConditions: filter,
             }}>
-            <div className='space-y-2 p-4 pb-6'>
+            <div className='space-y-2 pb-6'>
               {threadIds.map((threadId) => (
                 <MailThreadItem
                   key={threadId}

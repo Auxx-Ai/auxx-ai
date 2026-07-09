@@ -154,8 +154,8 @@ export function BaseEntityDrawer({
   const tabs = React.useMemo(() => {
     if (!drawerConfig) return []
 
-    const baseTabs = [
-      { value: 'overview', label: 'Overview', icon: HouseIcon },
+    const overviewTab = { value: 'overview', label: 'Overview', icon: HouseIcon }
+    const trailingTabs = [
       { value: 'timeline', label: 'Timeline', icon: Clock },
       { value: 'comments', label: 'Comments', icon: MessagesSquare },
       { value: 'tasks', label: 'Tasks', icon: ListTodo },
@@ -169,7 +169,8 @@ export function BaseEntityDrawer({
         icon: getIconComponent(tab.icon),
       }))
 
-    return [...baseTabs, ...additionalTabs]
+    // Overview first, then entity-specific tabs, then the shared timeline/comments/tasks tabs
+    return [overviewTab, ...additionalTabs, ...trailingTabs]
   }, [drawerConfig, hasAccess])
 
   // Tab order persistence
