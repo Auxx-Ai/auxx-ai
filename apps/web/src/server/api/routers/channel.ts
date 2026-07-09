@@ -591,6 +591,7 @@ export const channelRouter = createTRPCRouter({
           excludeSenders: z.array(z.string().toLowerCase().trim()).optional(),
           excludeRecipients: z.array(z.string().toLowerCase().trim()).optional(),
           onlyProcessRecipients: z.array(z.string().toLowerCase().trim()).optional(),
+          bidirectionalSyncEnabled: z.boolean().optional(),
         }),
       })
     )

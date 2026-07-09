@@ -1,10 +1,12 @@
 // packages/lib/src/channels/list.ts
 
 import { type Database, schema } from '@auxx/database'
+import type { IntegrationProviderType } from '@auxx/database/types'
 import { and, count, eq, inArray, isNull, sql } from 'drizzle-orm'
 import { getCachedUserMailVisibility, getOrgCache } from '../cache'
 import { getImportCacheSize } from '../email/polling-import-cache'
 import { NotFoundError } from '../errors'
+import { getProviderCapabilities } from '../providers/provider-capabilities'
 import { Result, type TypedResult } from '../result'
 import { getIdentifier } from './internal/identifier'
 import type { ChannelCtx } from './types'
@@ -76,6 +78,9 @@ export async function list(ctx: ChannelCtx) {
       email: c.email || (c.metadata as any)?.email || undefined,
       identifier: getIdentifier({ ...c, chatWidget: c.chatWidget }),
       inboxId: c.inboxId,
+      supportsBidirectionalStatusSync: getProviderCapabilities(
+        c.provider as IntegrationProviderType
+      ).supportsBidirectionalStatusSync,
       widgetSettings: c.provider === 'chat' ? c.chatWidget : undefined,
       lastSuccessfulSync: toDate(c.lastSuccessfulSync),
       metadata: c.metadata,

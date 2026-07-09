@@ -51,6 +51,14 @@ export interface ProviderCapabilities {
    */
   supportsPersonalConnection: boolean
 
+  /**
+   * Whether this provider can mirror Auxx thread status/read changes back to
+   * the provider mailbox (bidirectional status sync). Personal inboxes only,
+   * and gated per-channel by `ChannelSettings.bidirectionalSyncEnabled`. Gmail
+   * only for now; other email-likes can opt in by flipping this preset.
+   */
+  supportsBidirectionalStatusSync: boolean
+
   // Send-pipeline shape — drives MessageSenderService.validateInput, usage guard,
   // and post-send sync. Email-likes are all `true`; chat is all `false`. FB/IG
   // are currently `true` for compatibility — see provider-capabilities.ts.

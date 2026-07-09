@@ -5,7 +5,7 @@ import { ThreadStatus } from '@auxx/database/enums'
 import { createScopedLogger } from '@auxx/logger'
 import { and, eq, inArray } from 'drizzle-orm'
 import { getOrgCache } from '../../cache'
-import { getOrgChannelProviderMap } from '../../channels/cache'
+import { getOrgChannelBidirectionalSyncMap, getOrgChannelProviderMap } from '../../channels/cache'
 import type { ChannelProvider } from '../../providers/channel-provider.interface'
 import { MessageStatus } from '../../providers/channel-provider.interface'
 import type { MessageProvider } from '../../providers/message-provider-interface'
@@ -64,9 +64,10 @@ export async function enqueueProviderSyncForEligibleThreads(args: {
   const { organizationId, threads, kind, requireOwnerUserId } = args
   if (threads.length === 0) return
 
-  const [inboxes, providerMap] = await Promise.all([
+  const [inboxes, providerMap, syncMap] = await Promise.all([
     getOrgCache().get(organizationId, 'inboxes'),
     getOrgChannelProviderMap(organizationId, db),
+    getOrgChannelBidirectionalSyncMap(organizationId, db),
   ])
   const inboxById = new Map(inboxes.map((i) => [i.id, i]))
 
@@ -77,6 +78,8 @@ export async function enqueueProviderSyncForEligibleThreads(args: {
     if (!inbox?.isPersonal) continue
     if (requireOwnerUserId && inbox.ownerUserId !== requireOwnerUserId) continue
     if (providerMap.get(t.integrationId) !== ChannelProviderType.google) continue
+    // Per-channel opt-out (absent ⇒ enabled).
+    if (syncMap.get(t.integrationId) === false) continue
     const ids = threadIdsByIntegration.get(t.integrationId) ?? []
     ids.push(t.threadId)
     threadIdsByIntegration.set(t.integrationId, ids)
@@ -168,6 +171,17 @@ export const threadProviderStatusSyncJob = async (
   ctx: JobContext<ThreadProviderStatusSyncJobData>
 ): Promise<{ pushed: number; skipped: number; failed: number }> => {
   const { organizationId, integrationId, threadIds, kind = 'status' } = ctx.job.data
+
+  // Re-check the per-channel opt-out — the toggle may have flipped off between
+  // enqueue and run (absent ⇒ enabled).
+  const syncMap = await getOrgChannelBidirectionalSyncMap(organizationId, db)
+  if (syncMap.get(integrationId) === false) {
+    logger.debug('Bidirectional sync disabled for channel — skipping push', {
+      organizationId,
+      integrationId,
+    })
+    return { pushed: 0, skipped: threadIds.length, failed: 0 }
+  }
 
   const rows = await db
     .select({
