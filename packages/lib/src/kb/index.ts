@@ -89,6 +89,10 @@ export {
   type LearnedCategoryKey,
   type LearnedKb,
 } from './learned/ensure-learned-kb'
+export {
+  appendLearnedProvenance,
+  type LearnedProvenanceEntry,
+} from './learned/provenance'
 export { articleToMarkdown } from './markdown/article-to-markdown'
 export { type KbArticleEvent, kbArticleChannel, publishKbArticleEvent } from './realtime'
 export { type RenderArticleOptions, renderArticleHtml } from './render-article-html'

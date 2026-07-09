@@ -367,6 +367,9 @@ export class ThreadMutationService {
             inboxId: result[0]?.inboxId ?? null,
           },
         ])
+        if (dbUpdates.status === 'ARCHIVED') {
+          await this.maybeEnqueueLearnedExtraction([threadId])
+        }
       }
 
       return {
@@ -481,6 +484,31 @@ export class ThreadMutationService {
         organizationId: this.organizationId,
         newStatus,
         threadCount: changed.length,
+        error: (error as Error).message,
+      })
+    }
+  }
+
+  /**
+   * Enqueue a learned-KB extraction for threads that just resolved
+   * (transitioned to ARCHIVED). All noise gates (feature flag, message count,
+   * `learnedExtractedAt` dedupe, outbound-reply check) live in the job — this
+   * is a cheap fire-and-forget signal. Never throws.
+   */
+  private async maybeEnqueueLearnedExtraction(threadIds: string[]): Promise<void> {
+    if (threadIds.length === 0) return
+    try {
+      // Lazy import: the job module pulls in bullmq via the queue layer.
+      const { enqueueLearnedExtraction } = await import('../jobs/approvals/learned-extraction-job')
+      await Promise.all(
+        threadIds.map((threadId) =>
+          enqueueLearnedExtraction({ organizationId: this.organizationId, threadId })
+        )
+      )
+    } catch (error) {
+      logger.warn('Failed to enqueue learned extraction', {
+        organizationId: this.organizationId,
+        threadCount: threadIds.length,
         error: (error as Error).message,
       })
     }
@@ -675,6 +703,9 @@ export class ThreadMutationService {
             inboxId: updatedInboxById.get(r.id) ?? null,
           }))
         await this.maybeEnqueueProviderStatusSync(dbUpdates.status, changed)
+        if (dbUpdates.status === 'ARCHIVED') {
+          await this.maybeEnqueueLearnedExtraction(changed.map((c) => c.threadId))
+        }
       }
 
       return { count: result.length }

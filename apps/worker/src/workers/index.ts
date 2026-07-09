@@ -21,6 +21,7 @@ import { startEvalRunWorker } from './worker-definitions/eval-run-worker'
 import { startEventHandlersWorker, startEventsWorker } from './worker-definitions/events-worker'
 import { startKBSyncWorker } from './worker-definitions/kb-sync-worker'
 import { startKnowledgeSourceWorker } from './worker-definitions/knowledge-source-worker'
+import { startLearnedExtractionWorker } from './worker-definitions/learned-extraction-worker'
 import { startMaintenanceWorker } from './worker-definitions/maintenance-worker'
 import { startMessageProcessingWorker } from './worker-definitions/message-processing-worker'
 import { startMessageSyncWorker } from './worker-definitions/message-sync-worker'
@@ -100,6 +101,9 @@ export async function startWorkers() {
   // AI autofill worker (per-field AI generation)
   const aiAutofillWorker = startAiAutofillWorker()
 
+  // Learned-KB extraction worker (AI memory from resolved threads)
+  const learnedExtractionWorker = startLearnedExtractionWorker()
+
   // Recording bot lifecycle worker
   const recordingBotWorker = startRecordingBotWorker()
 
@@ -141,6 +145,7 @@ export async function startWorkers() {
     chatAgentWorker,
     evalRunWorker,
     aiAutofillWorker,
+    learnedExtractionWorker,
     recordingBotWorker,
     recordingProcessingWorker,
     kbSyncWorker,

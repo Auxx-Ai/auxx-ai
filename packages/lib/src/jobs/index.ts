@@ -38,8 +38,11 @@ export {
 } from './agent/webhook-endpoint-dispatch-job'
 // AI autofill
 export { type AiAutofillJobData, aiAutofillJob } from './ai-autofill/ai-autofill-job'
-// AI suggestion scanner
+// AI suggestion scanner + learned-KB extraction
 export {
+  enqueueLearnedExtraction,
+  type LearnedExtractionJobData,
+  learnedExtractionJob,
   type NextActionStaleScannerJobData,
   nextActionStaleScannerJob,
 } from './approvals'

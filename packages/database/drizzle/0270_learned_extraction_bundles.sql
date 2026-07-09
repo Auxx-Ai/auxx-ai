@@ -1,0 +1,3 @@
+DROP INDEX "AiSuggestion_org_entity_active_key";--> statement-breakpoint
+CREATE UNIQUE INDEX "AiSuggestion_org_thread_learned_active_key" ON "AiSuggestion" USING btree ("organizationId","threadId") WHERE status = 'FRESH' AND "triggerSource" = 'learned-extraction';--> statement-breakpoint
+CREATE UNIQUE INDEX "AiSuggestion_org_entity_active_key" ON "AiSuggestion" USING btree ("organizationId","entityInstanceId") WHERE status = 'FRESH' AND "triggerSource" <> 'learned-extraction';

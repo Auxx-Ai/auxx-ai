@@ -18,6 +18,8 @@ export {
 } from './bundle-service'
 export type { HeadlessRunDeps } from './headless-runner'
 export { runHeadlessSuggestion } from './headless-runner'
+export type { LearnedExtractionInput } from './learned-extraction-runner'
+export { runLearnedExtraction } from './learned-extraction-runner'
 export { sanitizeEventPayloadForLLM } from './sanitize-event-payload'
 export {
   assertNoUnresolvedTempIds,

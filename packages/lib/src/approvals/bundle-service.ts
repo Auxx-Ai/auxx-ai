@@ -1,7 +1,7 @@
 // packages/lib/src/approvals/bundle-service.ts
 
 import { type AiSuggestionEntity, type Database, schema, type Transaction } from '@auxx/database'
-import { and, desc, eq, inArray, sql } from 'drizzle-orm'
+import { and, desc, eq, inArray, ne, sql } from 'drizzle-orm'
 import { ConflictError, NotFoundError } from '../errors'
 import { Result, type TypedResult } from '../result'
 import type { HeadlessRunResult, StoredBundle } from './types'
@@ -23,7 +23,8 @@ export async function createBundleFromHeadlessRun(
   args: {
     result: HeadlessRunResult
     organizationId: string
-    ownerUserId: string
+    /** Null = unassigned; the Today feed shows unassigned bundles to every member. */
+    ownerUserId: string | null
     entityInstanceId: string
     entityDefinitionId: string
     threadId?: string
@@ -98,6 +99,10 @@ export async function getBundle(
  * Flip every FRESH bundle whose `computedForActivityAt < entity.lastActivityAt`
  * to STALE. Called by the scanner once per tick after candidate processing,
  * not per-entity (the bulk UPDATE is one round-trip vs N).
+ *
+ * Learned-extraction bundles are exempt: they propose memory from an
+ * already-resolved conversation, so later activity on the anchor record does
+ * not invalidate them.
  */
 export async function markStaleBundles(
   db: DbHandle,
@@ -110,6 +115,7 @@ export async function markStaleBundles(
       and(
         eq(schema.AiSuggestion.organizationId, args.organizationId),
         eq(schema.AiSuggestion.status, 'FRESH'),
+        ne(schema.AiSuggestion.triggerSource, 'learned-extraction'),
         sql`${schema.AiSuggestion.computedForActivityAt} < (
           SELECT ${schema.EntityInstance.lastActivityAt}
           FROM ${schema.EntityInstance}
