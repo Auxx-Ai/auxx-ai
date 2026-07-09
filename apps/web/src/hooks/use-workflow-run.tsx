@@ -3,6 +3,7 @@
 import { WorkflowEventType } from '@auxx/lib/workflow-engine/types'
 import { toastError } from '@auxx/ui/components/toast'
 import { useStoreApi } from '@xyflow/react'
+import { useQueryState } from 'nuqs'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRunEvents } from '~/components/workflow/hooks/run-hooks/use-run-events'
 import { type ExecutionEvent, useRunStore } from '~/components/workflow/store/run-store'
@@ -63,6 +64,9 @@ const WORKFLOW_EVENTS = [
 export function useWorkflowRun(): WorkflowRunHookReturn {
   // Get ReactFlow store for accessing nodes and edges
   const reactFlowStore = useStoreApi()
+
+  // Clear any deep-linked historical run when a fresh run starts
+  const [, setRunId] = useQueryState('runId', { history: 'replace' })
 
   // Get run store actions
   const {
@@ -206,10 +210,13 @@ export function useWorkflowRun(): WorkflowRunHookReturn {
       // Reset run store for new execution with current graph
       resetForNewRun(nodes, edges)
 
+      // Drop any historical run deep-link — this is a brand-new run
+      setRunId(null)
+
       // Set parameters which will trigger SSE connection via useMemo
       setWorkflowRunParams({ workflowId, inputs, mode })
     },
-    [resetForNewRun, reactFlowStore]
+    [resetForNewRun, reactFlowStore, setRunId]
   )
 
   /**

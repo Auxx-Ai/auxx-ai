@@ -10,6 +10,7 @@ import { WorkflowCanvas } from '../canvas/workflow-canvas'
 import { WorkflowToolbar } from '../canvas/workflow-toolbar'
 import {
   useEagerAppOutputs,
+  useRunDeepLink,
   useWorkflowBlocks,
   useWorkflowInit,
   useWorkflowShortcuts,
@@ -54,6 +55,9 @@ const WorkflowEditorInner = memo<{
 
   // Eagerly fetch computed outputs for app nodes (e.g., Shopify)
   useEagerAppOutputs()
+
+  // Rehydrate a historical run from the `runId` URL param (survives remounts)
+  useRunDeepLink()
 
   // Initialize test input sync
   useTestInputSync()

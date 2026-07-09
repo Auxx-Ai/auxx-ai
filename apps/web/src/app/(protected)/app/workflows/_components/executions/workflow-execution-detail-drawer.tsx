@@ -3,12 +3,14 @@
 'use client'
 
 import type { WorkflowRunEntity } from '@auxx/database/types'
+import { Button } from '@auxx/ui/components/button'
 import { DockableDrawer } from '@auxx/ui/components/dockable-drawer'
 import { DrawerHeader } from '@auxx/ui/components/drawer'
 import { EntityIcon } from '@auxx/ui/components/icons'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { OverflowTabsList, Tabs, TabsContent } from '@auxx/ui/components/tabs'
-import { ListChecks, Loader2, Medal, Route } from 'lucide-react'
+import { ListChecks, Loader2, Medal, Route, SquarePen } from 'lucide-react'
+import { useQueryState } from 'nuqs'
 import { useEffect, useState } from 'react'
 import { useDockPortal } from '~/components/global/dock-portal-provider'
 import { DockToggleButton } from '~/components/global/dock-toggle-button'
@@ -48,6 +50,18 @@ export function WorkflowExecutionDetailDrawer({
   // Store actions
   const showPrevious = useRunStore((state) => state.showPrevious)
   const clearRun = useRunStore((state) => state.clearRun)
+
+  // Same-page nuqs params: deep-link the run into the editor without navigating
+  const [, setRunId] = useQueryState('runId', { history: 'replace' })
+  const [, setMode] = useQueryState('t')
+
+  // Open this run on the canvas (read-only, per-node results). The editor's
+  // useRunDeepLink hydrates from `runId`; the store already holds the run so it
+  // loads instantly.
+  const handleOpenInEditor = () => {
+    setRunId(run.id)
+    setMode('editor')
+  }
 
   // Fetch complete run data with node executions
   const { data: completeRun, isLoading } = api.workflow.getWorkflowRun.useQuery(
@@ -92,7 +106,15 @@ export function WorkflowExecutionDetailDrawer({
             </div>
           }
           onClose={() => onOpenChange(false)}
-          actions={<DockToggleButton />}
+          actions={
+            <div className='flex items-center gap-1'>
+              <Button variant='outline' size='sm' onClick={handleOpenInEditor}>
+                <SquarePen />
+                Open in editor
+              </Button>
+              <DockToggleButton />
+            </div>
+          }
         />
 
         {/* Loading state */}

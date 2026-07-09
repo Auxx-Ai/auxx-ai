@@ -39,6 +39,7 @@ export {
   useRegistryVersion,
   useTriggerDefinitions,
 } from './use-registry'
+export { useRunDeepLink } from './use-run-deep-link'
 export {
   // type RunNodeResult,
   type LoopExecutionContext,

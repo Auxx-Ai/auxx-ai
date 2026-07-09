@@ -23,6 +23,7 @@ export function TracingTab() {
   const activeRun = useRunStore((state) => state.activeRun)
   const displayExecutions = useRunStore((state) => state.displayExecutions)
   const isRunning = useRunStore((state) => state.isRunning)
+  const runViewMode = useRunStore((state) => state.runViewMode)
   const getLoopIterations = useRunStore((state) => state.getLoopIterations)
   const graphSnapshot = useRunStore((state) => state.graphSnapshot)
   const workflowAppId = useWorkflowStore((state) => state.workflowAppId)
@@ -32,12 +33,20 @@ export function TracingTab() {
   // This ensures loop-child filtering matches the tree that produced the tracing data
   const nodes = (graphSnapshot?.nodes ?? store.getState().nodes) as FlowNode[] | undefined
 
+  // A finished run (historical view or terminal live status) reports branch
+  // status from executed nodes only — pending placeholders mean "never reached".
+  const runFinished =
+    runViewMode === 'previous' ||
+    activeRun?.status === WorkflowRunStatus.SUCCEEDED ||
+    activeRun?.status === WorkflowRunStatus.FAILED ||
+    activeRun?.status === WorkflowRunStatus.STOPPED
+
   // Cache grouped executions to avoid recomputing on every render
   // This is especially important since groupExecutionsByBranch was called twice per render
   // (once in the main map, once for calculating parallelBranchIndex)
   const groupedExecutions = useMemo(
-    () => groupExecutionsByBranch(displayExecutions, nodes),
-    [displayExecutions, nodes]
+    () => groupExecutionsByBranch(displayExecutions, nodes, runFinished),
+    [displayExecutions, nodes, runFinished]
   )
 
   const { stopWorkflow } = useWorkflowRun()

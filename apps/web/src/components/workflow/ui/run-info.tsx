@@ -1,5 +1,6 @@
 import { Badge } from '@auxx/ui/components/badge'
 import { X } from 'lucide-react'
+import { useQueryState } from 'nuqs'
 import { memo, useCallback } from 'react'
 import { formatRelativeDate } from '~/utils/date'
 import { useRunStore } from '../store/run-store'
@@ -11,10 +12,12 @@ import { useRunStore } from '../store/run-store'
  */
 export const RunInfo = memo(function RunInfo() {
   const activeRun = useRunStore((state) => state.activeRun)
+  const [, setRunId] = useQueryState('runId', { history: 'replace' })
 
   const handleClearActiveRun = useCallback(() => {
     useRunStore.getState().clearRun()
-  }, [])
+    setRunId(null)
+  }, [setRunId])
 
   if (!activeRun) {
     return null

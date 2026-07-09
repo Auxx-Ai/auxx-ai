@@ -21,17 +21,25 @@ import type { FlowNode } from '~/components/workflow/types'
 export function ExecutionTracingView() {
   const activeRun = useRunStore((state) => state.activeRun)
   const displayExecutions = useRunStore((state) => state.displayExecutions)
+  const runViewMode = useRunStore((state) => state.runViewMode)
   const getLoopIterations = useRunStore((state) => state.getLoopIterations)
   const graphSnapshot = useRunStore((state) => state.graphSnapshot)
 
   // Use stored graph snapshot for node data
   const nodes = graphSnapshot?.nodes as FlowNode[] | undefined
 
-  console.log('displayExecutions', displayExecutions)
+  // This view only renders completed/historical runs — branch status reflects
+  // executed nodes only (pending placeholders mean "never reached").
+  const runFinished =
+    runViewMode === 'previous' ||
+    activeRun?.status === WorkflowRunStatus.SUCCEEDED ||
+    activeRun?.status === WorkflowRunStatus.FAILED ||
+    activeRun?.status === WorkflowRunStatus.STOPPED
+
   // Cache grouped executions to avoid recomputing on every render
   const groupedExecutions = useMemo(
-    () => groupExecutionsByBranch(displayExecutions, nodes),
-    [displayExecutions, nodes]
+    () => groupExecutionsByBranch(displayExecutions, nodes, runFinished),
+    [displayExecutions, nodes, runFinished]
   )
 
   // Show empty state when no executions but workflow exists
