@@ -1,6 +1,6 @@
 ---
 title: "Your AI Prompts Are Blind"
-description: "Everyone has a doc of 'best ChatGPT prompts for support.' They mostly don't work — not because the prompts are bad, but because the model can't see anything. Here's the fix."
+description: "Everyone has a doc of 'best ChatGPT prompts for support.' They mostly don't work, not because the prompts are bad, but because the model can't see anything. Here's the fix."
 date: "2026-06-10"
 slug: "your-ai-prompts-are-blind"
 image: "/blog/your-ai-prompts-are-blind.jpg"
@@ -26,7 +26,7 @@ Here's the uncomfortable diagnosis: the prompts aren't the problem. They're fine
 
 Think about what a good support reply actually contains. A sentence or two of acknowledgment, and then a pile of specifics: your order shipped Tuesday, here's the tracking, it's held at customs, you qualify for a refund under clause two, here's the timeline. The phrasing is maybe ten percent of the value. The other ninety percent is *facts about this specific customer and this specific order*.
 
-A copy-paste prompt has access to exactly zero percent of those facts. It knows how to write. It doesn't know anything. So you become the model's data layer — the human who fetches the order, looks up the policy, checks the tracking, and pastes it all in. You've automated the easy ten percent and kept the tedious ninety for yourself.
+A copy-paste prompt has access to exactly zero percent of those facts. It knows how to write. It doesn't know anything. So you become the model's data layer, the human who fetches the order, looks up the policy, checks the tracking, and pastes it all in. You've automated the easy ten percent and kept the tedious ninety for yourself.
 
 That's the trade nobody mentions when they hand you a prompt library. The prompt was never starving for better wording. It was starving for context.
 
@@ -42,7 +42,7 @@ Summarize this ticket and tell me what to do next.
 
 Fine words. No eyes. It can only summarize whatever text you remember to paste, and it'll guess at everything you forget.
 
-Now here's how we write the same thing in Auxx, where we call it a **skill** — a reusable prompt wired to the data it needs. This is the actual Summarize Ticket skill we ship:
+Now here's how we write the same thing in Auxx, where we call it a **skill**: a reusable prompt wired to the data it needs. This is the actual Summarize Ticket skill we ship:
 
 ```
 Context
@@ -63,30 +63,30 @@ conflicting signals, prioritize the most recent information. If there's no ticke
 in context, ask which ticket to summarize first.
 ```
 
-Read the Context block. `get_thread_detail`, `list_notes`, `get_entity_history` — those aren't decoration. In the app they're live hooks that go and fetch the real thread, the real internal notes, the real edit history before the model writes a word. The task is the same instruction as the blind version. The difference is the model now has eyes.
+Read the Context block. Those `get_thread_detail`, `list_notes`, and `get_entity_history` lines aren't decoration. In the app they're live hooks that go and fetch the real thread, the real internal notes, the real edit history before the model writes a word. The task is the same instruction as the blind version. The difference is the model now has eyes.
 
 ## The three parts that make a prompt see
 
 Every skill we ship has the same three-part shape, and each part is doing a specific job.
 
-**Context** is where the prompt goes and gets the facts. This is the part a copy-paste prompt structurally cannot have, no matter how well it's worded. It names the live sources — the thread, the notes, the order, the knowledge base — and fetches them. It's the ninety percent.
+**Context** is where the prompt goes and gets the facts. This is the part a copy-paste prompt structurally cannot have, no matter how well it's worded. It names the live sources (the thread, the notes, the order, the knowledge base) and fetches them. It's the ninety percent.
 
 **Task** is the exact shape of the output. Not "summarize this" but "give me the issue, then a timeline of at most five bullets, then the status from this specific list." A fixed shape means every run is comparable, and reps stop getting a paragraph one time and a bulleted list the next.
 
-**Constraints** are the guardrails that make it trustworthy. Write "Unknown" instead of guessing. Prefer the most recent information when signals conflict. Ask first if there's no ticket in context. These lines are what kill the confident-hallucination failure mode — the model saying something wrong in a way that looks right. A blind prompt has no constraints because it has nothing to constrain against.
+**Constraints** are the guardrails that make it trustworthy. Write "Unknown" instead of guessing. Prefer the most recent information when signals conflict. Ask first if there's no ticket in context. These lines are what kill the confident-hallucination failure mode: the model saying something wrong in a way that looks right. A blind prompt has no constraints because it has nothing to constrain against.
 
 ## Why this compounds into a moat
 
 Here's the part that matters if you're building a support operation rather than just clearing today's queue.
 
-A wired skill is reusable *and* connected. Your best rep's judgment — which order to check, what to never promise, how to structure the hard reply — gets written down once, as a skill. It pulls the same facts every time. The whole team runs it. And it gets better as your data gets better: cleaner order records, a sharper knowledge base, better notes all flow straight into every answer the skill produces.
+A wired skill is reusable *and* connected. Your best rep's judgment (which order to check, what to never promise, how to structure the hard reply) gets written down once, as a skill. It pulls the same facts every time. The whole team runs it. And it gets better as your data gets better: cleaner order records, a sharper knowledge base, better notes all flow straight into every answer the skill produces.
 
 A prompt in a browser tab can do none of that. It's frozen the moment you paste it, it fetches nothing, and it improves only when someone remembers to hand-edit the doc. One of these is an asset that appreciates. The other is a snippet that rots.
 
-## The bottom line
+## Stop collecting prompts
 
 Stop collecting prompts. Start wiring them.
 
-The measure of an AI support prompt isn't how clever it reads — anyone can write clever, that's the easy ten percent. The measure is how much of your actual data it can reach before it answers. A blind prompt makes you do the ninety percent by hand. A wired skill does it for you.
+The measure of an AI support prompt isn't how clever it reads. Anyone can write clever; that's the easy ten percent. The measure is how much of your actual data it can reach before it answers. A blind prompt makes you do the ninety percent by hand. A wired skill does it for you.
 
 If you want to see wired skills doing real work, we broke down four of them for Shopify teams in [four AI skills every Shopify support team should steal](/blog/shopify-support-ai-skills). And when you're ready to build your own, [here's how to write one that pulls its weight](/blog/write-your-own-ai-skill).
