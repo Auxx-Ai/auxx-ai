@@ -236,7 +236,9 @@ export const CompactThreadItem = memo(function CompactThreadItem({
                 ) : hasDraft ? (
                   <div className='size-2 rounded-full bg-red-500' />
                 ) : isUnread ? (
-                  <div className='size-2 rounded-full bg-blue-500' />
+                  <Tooltip content='Mark as read' shortcut='U'>
+                    <div className='size-2 rounded-full bg-blue-500' />
+                  </Tooltip>
                 ) : null}
               </div>
             </div>
@@ -276,6 +278,11 @@ export const CompactThreadItem = memo(function CompactThreadItem({
               )}
             </div>
 
+            {/* Assignee avatar - fixed slot to avoid layout shift */}
+            <div className='flex w-5 shrink-0 items-center justify-center ms-1.5'>
+              {thread.assigneeId && <AssigneeChip assigneeId={thread.assigneeId as ActorId} />}
+            </div>
+
             {/* Tags */}
             {hasTags && (
               <div
@@ -302,7 +309,6 @@ export const CompactThreadItem = memo(function CompactThreadItem({
                 )}>
                 {myLens === 'metadata' ? 'No access to subject' : thread.subject || '(no subject)'}
               </span>
-              {thread.assigneeId && <AssigneeChip assigneeId={thread.assigneeId as ActorId} />}
               {thread.hasShares && (
                 <Share2 className='size-3 shrink-0 text-muted-foreground' aria-label='Shared' />
               )}
@@ -322,7 +328,7 @@ export const CompactThreadItem = memo(function CompactThreadItem({
                   isFocused || isMenuOpen ? 'flex opacity-100' : 'opacity-0 pointer-events-none'
                 )}
                 onClick={(e) => e.stopPropagation()}>
-                <Tooltip content='Done' shortcut='D'>
+                <Tooltip content='Done' shortcut='D' delayDuration={300}>
                   <Button
                     variant='ghost'
                     size='icon'
@@ -331,7 +337,7 @@ export const CompactThreadItem = memo(function CompactThreadItem({
                     <Archive className='size-3.5' />
                   </Button>
                 </Tooltip>
-                <Tooltip content='Trash' shortcut='#'>
+                <Tooltip content='Trash' shortcut='#' delayDuration={300}>
                   <Button
                     variant='ghost'
                     size='icon'
@@ -340,7 +346,7 @@ export const CompactThreadItem = memo(function CompactThreadItem({
                     <Trash2 className='size-3.5' />
                   </Button>
                 </Tooltip>
-                <Tooltip content='Spam' shortcut='!'>
+                <Tooltip content='Spam' shortcut='!' delayDuration={300}>
                   <Button
                     variant='ghost'
                     size='icon'
@@ -349,7 +355,7 @@ export const CompactThreadItem = memo(function CompactThreadItem({
                     <ShieldAlert className='size-3.5' />
                   </Button>
                 </Tooltip>
-                <Tooltip content='Assign' shortcut='A'>
+                <Tooltip content='Assign' shortcut='A' delayDuration={300}>
                   <Button
                     variant='ghost'
                     size='icon'
@@ -358,7 +364,7 @@ export const CompactThreadItem = memo(function CompactThreadItem({
                     <UserRound className='size-3.5' />
                   </Button>
                 </Tooltip>
-                <Tooltip content='Tag' shortcut='L'>
+                <Tooltip content='Tag' shortcut='T' delayDuration={300}>
                   <Button
                     variant='ghost'
                     size='icon'

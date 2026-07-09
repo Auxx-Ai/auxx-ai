@@ -1,5 +1,6 @@
 // apps/web/src/components/threads/hooks/use-thread-read-status.ts
 
+import { toRecordId } from '@auxx/types/resource'
 import { toastError } from '@auxx/ui/components/toast'
 import { useCallback, useRef } from 'react'
 import { type ThreadCountContext, useCountUpdates } from '~/components/mail/hooks'
@@ -17,6 +18,10 @@ interface UseThreadReadStatusResult {
  * Hook to get and mutate thread read status.
  * Uses granular selector on ThreadStore for optimal re-renders.
  * Integrates with mail counts store for optimistic count updates.
+ *
+ * Writes go through the unified `thread.update` endpoint (`{ isUnread }`), which
+ * routes read-state to UnreadService on the server — the single write path
+ * shared with bulk/`U`-shortcut read toggles.
  *
  * @example
  * const { isUnread, markAsRead } = useThreadReadStatus('thread123')
@@ -42,10 +47,11 @@ export function useThreadReadStatus(threadId: string | null): UseThreadReadStatu
   // Count update helpers (no views for now - views need to be passed from context)
   const { onMarkAsRead, onMarkAsUnread, rollback } = useCountUpdates()
 
-  // Single mutation with optimistic updates
-  const readStatus = api.thread.readStatus.useMutation({
-    onMutate: ({ isRead }) => {
-      if (!threadId || !thread || !currentUserId) return
+  // Unified update endpoint with optimistic updates. `isUnread` is peeled off
+  // server-side and applied via UnreadService.
+  const readStatus = api.thread.update.useMutation({
+    onMutate: ({ updates }) => {
+      if (!threadId || !thread || !currentUserId || updates.isUnread === undefined) return
 
       // Build context from current thread state
       const context: ThreadCountContext = {
@@ -57,19 +63,19 @@ export function useThreadReadStatus(threadId: string | null): UseThreadReadStatu
       }
 
       // Update ThreadStore (for UI)
-      updateThread(threadId, { isUnread: !isRead })
+      updateThread(threadId, { isUnread: updates.isUnread })
 
       // Update counts (for sidebar badges)
-      if (isRead) {
-        onMarkAsRead([context], currentUserId)
-      } else {
+      if (updates.isUnread) {
         onMarkAsUnread([context], currentUserId)
+      } else {
+        onMarkAsRead([context], currentUserId)
       }
     },
     onError: (error, variables) => {
-      // Rollback ThreadStore
-      if (threadId) {
-        updateThread(threadId, { isUnread: variables.isRead })
+      // Rollback ThreadStore to the pre-toggle state
+      if (threadId && variables.updates.isUnread !== undefined) {
+        updateThread(threadId, { isUnread: !variables.updates.isUnread })
       }
       // Rollback counts
       rollback()
@@ -85,12 +91,15 @@ export function useThreadReadStatus(threadId: string | null): UseThreadReadStatu
     isUnread: isUnread ?? true,
     markAsRead: useCallback(() => {
       if (threadId) {
-        mutateRef.current({ threadId, isRead: true })
+        mutateRef.current({
+          recordId: toRecordId('thread', threadId),
+          updates: { isUnread: false },
+        })
       }
     }, [threadId]),
     markAsUnread: useCallback(() => {
       if (threadId) {
-        mutateRef.current({ threadId, isRead: false })
+        mutateRef.current({ recordId: toRecordId('thread', threadId), updates: { isUnread: true } })
       }
     }, [threadId]),
   }

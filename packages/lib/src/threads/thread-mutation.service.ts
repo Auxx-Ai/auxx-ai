@@ -34,7 +34,6 @@ export interface ThreadUpdates {
   inboxId?: RecordId | null
   /** Ticket RecordId (format: "ticket:instanceId") or null to unlink */
   ticketId?: RecordId | null
-  isUnread?: boolean
   /**
    * Merge routing field. When set to a Thread RecordId, the corresponding
    * `update`/`updateBulk` call routes through {@link ThreadMergeService.merge}
@@ -228,9 +227,6 @@ export class ThreadMutationService {
           dbUpdates.primaryEntityDefinitionId = null
         }
       }
-
-      // isUnread is handled separately via UnreadService, but for now we skip it
-      // The frontend store handles optimistic updates for read status
 
       if (Object.keys(dbUpdates).length === 0) {
         return {

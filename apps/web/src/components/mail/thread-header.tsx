@@ -130,8 +130,8 @@ export function ThreadHeader() {
     conflictBehavior: 'allow',
   })
 
-  // L — Open tag picker (anchored to the header's tag button)
-  useHotkey('L', () => setOpen(true), { enabled: shortcutsEnabled, conflictBehavior: 'allow' })
+  // T — Open tag picker (anchored to the header's tag button)
+  useHotkey('T', () => setOpen(true), { enabled: shortcutsEnabled, conflictBehavior: 'allow' })
 
   // --- Handlers ---
 
@@ -305,7 +305,7 @@ export function ThreadHeader() {
             <ThreadMergeBadge mergeData={thread.mergeData} />
           </div>
           <div data-slot='thread-header-actions' className=' flex items-center '>
-            <Tooltip content={isDone ? 'Unarchive' : 'Archive'} shortcut='D'>
+            <Tooltip content={isDone ? 'Unarchive' : 'Archive'} shortcut='D' delayDuration={300}>
               <Button
                 variant='ghost'
                 size='icon'
@@ -317,7 +317,10 @@ export function ThreadHeader() {
               </Button>
             </Tooltip>
 
-            <Tooltip content={isTrash ? 'Restore from trash' : 'Trash Thread'} shortcut='#'>
+            <Tooltip
+              content={isTrash ? 'Restore from trash' : 'Trash Thread'}
+              shortcut='#'
+              delayDuration={300}>
               <Button
                 variant='ghost'
                 size='icon'
@@ -329,7 +332,10 @@ export function ThreadHeader() {
               </Button>
             </Tooltip>
             {isEmailChannel && (
-              <Tooltip content={isSpam ? 'Not spam' : 'Mark as spam'} shortcut='!'>
+              <Tooltip
+                content={isSpam ? 'Not spam' : 'Mark as spam'}
+                shortcut='!'
+                delayDuration={300}>
                 <Button
                   variant='ghost'
                   size='icon'
@@ -347,7 +353,7 @@ export function ThreadHeader() {
               </Tooltip>
             )}
 
-            <Tooltip content='Apply Tags' shortcut='L'>
+            <Tooltip content='Apply Tags' shortcut='T' delayDuration={300}>
               <Button
                 ref={tagButtonRef}
                 variant='ghost'
@@ -372,7 +378,7 @@ export function ThreadHeader() {
               />
             )}
             <ManualTriggerButton recordId={toRecordId('thread', thread.id)}>
-              <Tooltip content='Run workflow' shortcut='W'>
+              <Tooltip content='Run workflow' shortcut='W' delayDuration={300}>
                 <Button
                   variant='ghost'
                   size='icon'
@@ -396,7 +402,10 @@ export function ThreadHeader() {
               target='user'
               emptyLabel='Assign'>
               <div>
-                <Tooltip content={assignee ? assignee.name || 'Assigned' : 'Assign'} shortcut='A'>
+                <Tooltip
+                  content={assignee ? assignee.name || 'Assigned' : 'Assign'}
+                  shortcut='A'
+                  delayDuration={300}>
                   <Button
                     variant='ghost'
                     size='icon'
@@ -436,7 +445,7 @@ export function ThreadHeader() {
               side='bottom'
               emptyLabel='Merge into thread…'>
               <div>
-                <Tooltip content='Merge into…'>
+                <Tooltip content='Merge into…' delayDuration={300}>
                   <Button
                     variant='ghost'
                     size='icon'
