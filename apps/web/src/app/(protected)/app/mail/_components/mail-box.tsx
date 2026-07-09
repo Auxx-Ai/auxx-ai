@@ -306,7 +306,7 @@ function MailboxInner({
   const activeStatusSlug = deriveActiveStatusSlug(pathname, initialStatusSlug)
 
   // Get display configuration for this mailbox context
-  const displayTabs = getDisplayTabsForContext(contextType)
+  const displayTabs = getDisplayTabsForContext(contextType, activeStatusSlug)
   const breadcrumbTitle = getBreadcrumbTitleForContext(contextType)
 
   // Build the unified filter using condition groups

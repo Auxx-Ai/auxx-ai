@@ -224,9 +224,11 @@ export const MailThreadItem = memo(function MailThreadItem({
   })
   // Below `full`, latestMessageId is redacted to null — fall back to the
   // thread-level envelope participants (metadata tier, present at every lens).
-  const { from: senderParticipant } = useMessageParticipants(
-    latestMessage?.participants ?? thread?.participants ?? []
-  )
+  const {
+    from: senderParticipant,
+    to: toParticipants,
+    cc: ccParticipants,
+  } = useMessageParticipants(latestMessage?.participants ?? thread?.participants ?? [])
   const { isUnread: readStatusUnread, markAsRead } = useThreadReadStatus(threadId)
 
   // Redacted rendering (mail-permissions): below `full` the row never looks
@@ -342,7 +344,18 @@ export const MailThreadItem = memo(function MailThreadItem({
       : ''
   }, [thread?.lastMessageAt])
 
-  const senderName = senderParticipant?.displayName ?? 'Unknown'
+  // Show the counterparty, not the owner: when the latest message's FROM is
+  // internal (owner-sent thread), display the first external recipient instead.
+  // Only the latest message is loaded here — no per-row messages fetch — so we
+  // scan its FROM/TO/CC and keep FROM when the thread is internal-only.
+  const displaySender = useMemo(() => {
+    if (senderParticipant && !senderParticipant.isInternal) return senderParticipant
+    const external = [senderParticipant, ...toParticipants, ...ccParticipants].find(
+      (p) => p && !p.isInternal
+    )
+    return external ?? senderParticipant ?? null
+  }, [senderParticipant, toParticipants, ccParticipants])
+  const senderName = displaySender?.displayName ?? 'Unknown'
 
   const snippet = useMemo(() => {
     if (typeof window !== 'undefined' && latestMessage?.snippet) {

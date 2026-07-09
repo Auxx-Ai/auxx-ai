@@ -16,6 +16,7 @@ import {
 } from '@auxx/database/enums'
 import type { MessageEntity as Message, ThreadEntity as Thread } from '@auxx/database/types'
 import {
+  archiveThreadsByMessageExternalIds,
   batchStoreMessages,
   createContactAfterOutboundMessage,
   createIngestContext,
@@ -26,6 +27,7 @@ import {
   type IngestContext,
   type IntegrationSettings,
   normalizeOwnEmails,
+  reopenThreadsByMessageExternalIds,
   storeMessage,
 } from '../ingest'
 import { getRealtimeService, publishInboxSyncCompleted } from '../realtime'
@@ -165,6 +167,27 @@ export class MessageStorageService {
   async deleteMessagesByExternalIds(integrationId: string, externalIds: string[]): Promise<number> {
     const ctx = await this.resolveCtx(this.defaultOrganizationId)
     return deleteMessagesByExternalIds(ctx, { integrationId, externalIds })
+  }
+
+  /**
+   * Mark threads Done for personal-channel messages whose Gmail INBOX label was
+   * removed (archive as a thread-level action) instead of deleting them.
+   */
+  async archiveThreadsByMessageExternalIds(
+    integrationId: string,
+    externalIds: string[]
+  ): Promise<number> {
+    const ctx = await this.resolveCtx(this.defaultOrganizationId)
+    return archiveThreadsByMessageExternalIds(ctx, { integrationId, externalIds })
+  }
+
+  /** Reopen threads when a personal-channel message's INBOX label is re-added. */
+  async reopenThreadsByMessageExternalIds(
+    integrationId: string,
+    externalIds: string[]
+  ): Promise<number> {
+    const ctx = await this.resolveCtx(this.defaultOrganizationId)
+    return reopenThreadsByMessageExternalIds(ctx, { integrationId, externalIds })
   }
 
   async createContactAfterOutboundMessage(

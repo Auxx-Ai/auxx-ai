@@ -1,14 +1,20 @@
 // packages/lib/src/ingest/participants/display.ts
 
-/** Up-to-2 initials from a name string, uppercased. Letters only. */
+/**
+ * Up-to-2 initials from a name string, uppercased. Letters only.
+ *
+ * Takes the FIRST letter *within* each word (scanning past leading
+ * punctuation), not `charAt(0)` — so a punctuation-led word like
+ * `(Shopify)` still contributes `S`. Words with no letters are skipped.
+ */
 export function calculateInitials(name?: string | null): string | undefined {
   if (!name) return undefined
   return (
     name
       .trim()
       .split(/\s+/)
-      .map((word) => word.charAt(0))
-      .filter((char) => char.match(/[a-zA-Z]/))
+      .map((word) => word.match(/[a-zA-Z]/)?.[0] ?? '')
+      .filter(Boolean)
       .slice(0, 2)
       .join('')
       .toUpperCase() || undefined

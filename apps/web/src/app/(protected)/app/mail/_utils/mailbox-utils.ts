@@ -13,11 +13,17 @@ export interface MailboxDisplayConfig {
 /**
  * Determines which status tabs to display based on the contextType
  * @param contextType - The mailbox context type
+ * @param statusSlug - The active status slug (a `sent` view is tabless, mirroring the global Sent view)
  * @returns Array of StatusSlug values to display as tabs
  */
-export function getDisplayTabsForContext(contextType: string): StatusSlug[] {
-  // Contexts without standard status tabs
+export function getDisplayTabsForContext(
+  contextType: string,
+  statusSlug?: StatusSlug
+): StatusSlug[] {
+  // Contexts without standard status tabs. A personal `/sent` sub-route reuses
+  // the personal_channel context but should render tabless like global Sent.
   if (
+    statusSlug === 'sent' ||
     contextType === InternalFilterContextType.DRAFTS ||
     contextType === InternalFilterContextType.SENT
   ) {
