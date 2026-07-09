@@ -40,6 +40,7 @@ export enum FeatureKey {
   kopilot = 'kopilot',
   callRecordings = 'callRecordings',
   todayInbox = 'todayInbox',
+  learnedMemory = 'learnedMemory',
   agents = 'agents',
   agentProcedures = 'agentProcedures',
   mcp = 'mcp',
@@ -139,6 +140,14 @@ export const FEATURE_REGISTRY: FeatureMetadata[] = [
     type: 'boolean',
     label: 'Today Inbox',
     description: 'AI suggestion bundles for stale records, surfaced in /app/today.',
+    group: 'AI',
+  },
+  {
+    key: FeatureKey.learnedMemory,
+    type: 'boolean',
+    label: 'AI Memory',
+    description:
+      'Learn from resolved threads: extraction proposals into the learned knowledge base.',
     group: 'AI',
   },
   {

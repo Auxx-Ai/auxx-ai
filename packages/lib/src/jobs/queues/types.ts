@@ -55,4 +55,6 @@ export enum Queues {
   knowledgeSourceQueue = 'knowledge-source',
   // Data Connector orchestration (structured-record sync) queue
   dataConnectorQueue = 'data-connector',
+  // Learned-KB extraction (AI memory from resolved threads) queue
+  learnedExtractionQueue = 'learned-extraction',
 }

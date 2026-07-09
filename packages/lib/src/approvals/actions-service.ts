@@ -15,12 +15,14 @@ import {
   createCapabilityRegistry,
   createEntityCapabilities,
   createKnowledgeCapabilities,
+  createLearnedKbCapabilities,
   createMailCapabilities,
   createTaskCapabilities,
   type GetToolDeps,
 } from '../ai/kopilot/capabilities'
 import { createMcpCapabilities } from '../ai/mcp'
 import { ConflictError, NotFoundError } from '../errors'
+import { appendLearnedProvenance } from '../kb/learned/provenance'
 import {
   createScheduledMessage,
   enqueueScheduledMessageJob,
@@ -67,15 +69,20 @@ export async function approveBundle(
   }
 
   // 2. Stale check: did the entity move on between compute time and now?
-  const entity = await db.query.EntityInstance.findFirst({
-    where: eq(schema.EntityInstance.id, bundle.entityInstanceId),
-  })
-  if (entity?.lastActivityAt && entity.lastActivityAt > bundle.computedForActivityAt) {
-    await db
-      .update(schema.AiSuggestion)
-      .set({ status: 'STALE', updatedAt: new Date() })
-      .where(eq(schema.AiSuggestion.id, bundle.id))
-    return Result.error(new ConflictError('Bundle is stale; entity activity advanced'))
+  // Learned-extraction bundles are exempt — a memory proposal is about an
+  // already-resolved conversation; later record activity doesn't invalidate it
+  // (their staleness gate is `Thread.learnedExtractedAt` vs new messages).
+  if (bundle.triggerSource !== 'learned-extraction') {
+    const entity = await db.query.EntityInstance.findFirst({
+      where: eq(schema.EntityInstance.id, bundle.entityInstanceId),
+    })
+    if (entity?.lastActivityAt && entity.lastActivityAt > bundle.computedForActivityAt) {
+      await db
+        .update(schema.AiSuggestion)
+        .set({ status: 'STALE', updatedAt: new Date() })
+        .where(eq(schema.AiSuggestion.id, bundle.id))
+      return Result.error(new ConflictError('Bundle is stale; entity activity advanced'))
+    }
   }
 
   const stored = bundle.bundle as StoredBundle
@@ -195,7 +202,28 @@ export async function approveBundle(
     }
   }
 
-  // 6. Resolve terminal status.
+  // 6. Learned-extraction audit trail: stamp `Article.learnedProvenance` for
+  // every article the approved bundle actually wrote.
+  if (bundle.triggerSource === 'learned-extraction' && bundle.threadId) {
+    for (const outcome of outcomes) {
+      if (outcome.status !== 'success') continue
+      const action = ordered.find((a) => a.localIndex === outcome.localIndex)
+      if (action?.toolName !== 'upsert_learned_article') continue
+      const articleId = outcome.toolOutput?.articleId
+      if (typeof articleId !== 'string') continue
+      await appendLearnedProvenance(db, {
+        organizationId: args.organizationId,
+        articleId,
+        entry: {
+          threadId: bundle.threadId,
+          extractedAt: bundle.createdAt.toISOString(),
+          suggestionId: bundle.id,
+        },
+      })
+    }
+  }
+
+  // 7. Resolve terminal status.
   const successCount = outcomes.filter((o) => o.status === 'success').length
   const terminal: BundleTerminalStatus =
     successCount === outcomes.length
@@ -430,6 +458,9 @@ async function buildKopilotToolMap(ctx: ToolContext): Promise<Map<string, AgentT
   const registry = createCapabilityRegistry()
   registry.register(createEntityCapabilities(getDeps))
   registry.register(createKnowledgeCapabilities(getDeps))
+  // Learned-KB write door — replays approved `upsert_learned_article` actions
+  // from learned-extraction bundles (harmless for other bundle kinds).
+  registry.register(createLearnedKbCapabilities(getDeps))
   registry.register(createMailCapabilities(getDeps))
   registry.register(createActorCapabilities(getDeps))
   registry.register(createTaskCapabilities(getDeps))

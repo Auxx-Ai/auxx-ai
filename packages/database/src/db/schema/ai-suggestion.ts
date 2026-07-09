@@ -107,7 +107,7 @@ export const AiSuggestion = pgTable(
     /** Latest message id at compute time — Phase 3d's debounce reads this. */
     computedForLatestMessageId: text(),
 
-    /** 'event' | 'stale_scan' | 'manual' | 'override' */
+    /** 'event' | 'stale_scan' | 'manual' | 'override' | 'learned-extraction' */
     triggerSource: text().notNull(),
     triggerEventType: text(),
 
@@ -130,11 +130,19 @@ export const AiSuggestion = pgTable(
       .$onUpdate(() => new Date()),
   },
   (table) => [
-    // Single partial unique index — only one active (FRESH) bundle per entity.
+    // Partial unique index — only one active (FRESH) bundle per entity.
     // The scanner relies on this to no-op when a bundle is already in flight.
+    // Learned-extraction bundles are carved out: they anchor to whatever
+    // record the thread links to, and a memory proposal must not collide with
+    // (or block) a stale-scan bundle on the same record.
     uniqueIndex('AiSuggestion_org_entity_active_key')
       .on(table.organizationId, table.entityInstanceId)
-      .where(sql`status = 'FRESH'`),
+      .where(sql`status = 'FRESH' AND "triggerSource" <> 'learned-extraction'`),
+    // Learned-extraction bundles dedupe per thread instead: one active memory
+    // proposal per resolved thread.
+    uniqueIndex('AiSuggestion_org_thread_learned_active_key')
+      .on(table.organizationId, table.threadId)
+      .where(sql`status = 'FRESH' AND "triggerSource" = 'learned-extraction'`),
     // Today-tab list query: filter by org + status, page-by-page.
     index('AiSuggestion_org_status_idx').on(table.organizationId, table.status),
     // Per-entity history (audit log on a record's card).
