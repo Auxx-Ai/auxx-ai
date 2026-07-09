@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.1.181](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.180...auxx-v0.1.181) (2026-07-09)
+
+
+### Features
+
+* **files:** render ICO & SVG logos via canonical image normalization ([#1102](https://github.com/Auxx-Ai/auxx-ai/issues/1102)) ([c6d4442](https://github.com/Auxx-Ai/auxx-ai/commit/c6d44423e9c636e32996def8cc6c11d06d8abd84))
+* **mail:** bidirectional Gmail status & read-state sync for personal inboxes ([#1104](https://github.com/Auxx-Ai/auxx-ai/issues/1104)) ([8c935f9](https://github.com/Auxx-Ai/auxx-ai/commit/8c935f99901684a2e1bd8fb0ec94f1dcea0dbc9a))
+* **mail:** personal-inbox Gmail parity — label status, names, Sent group, thread contact ([#1103](https://github.com/Auxx-Ai/auxx-ai/issues/1103)) ([1e95d6a](https://github.com/Auxx-Ai/auxx-ai/commit/1e95d6a9b1b858d734322323b2562b94d8d3d591))
+* **mail:** regroup personal inboxes under Inbox with isolation rules ([#1100](https://github.com/Auxx-Ai/auxx-ai/issues/1100)) ([3fd3da7](https://github.com/Auxx-Ai/auxx-ai/commit/3fd3da7bd9718f111ed88c16a33d598bebdb22da))
+
+
+### Bug Fixes
+
+* **files:** sniff remote image types + soft-skip unsupported thumbnails; raise Gmail sync limits ([#1098](https://github.com/Auxx-Ai/auxx-ai/issues/1098)) ([0959ed8](https://github.com/Auxx-Ai/auxx-ai/commit/0959ed8b856e781f289758294768b492f9a7829c))
+* **mail:** keyboard shortcuts target the open thread in detail view ([#1101](https://github.com/Auxx-Ai/auxx-ai/issues/1101)) ([a0b904a](https://github.com/Auxx-Ai/auxx-ai/commit/a0b904aa6c8fc36450bd20f38f60ef145bb4ccf7))
+
 ## [0.1.180](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.179...auxx-v0.1.180) (2026-07-09)
 
 
