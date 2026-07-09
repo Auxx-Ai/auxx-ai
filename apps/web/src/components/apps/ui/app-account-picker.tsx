@@ -9,7 +9,7 @@ import {
   CommandList,
   CommandSeparator,
 } from '@auxx/ui/components/command'
-import { Check, Settings2, TriangleAlert, User as UserIcon, Users, X } from 'lucide-react'
+import { Check, Settings2, Trash2, TriangleAlert, User as UserIcon, Users } from 'lucide-react'
 import { useMemo } from 'react'
 import { type AppConnection, useAppsContext } from '~/components/apps/providers/apps-context'
 import { useUser } from '~/hooks/use-user'
@@ -216,11 +216,6 @@ function AccountRow({
       <span className='truncate'>{cred.label ?? cred.appName}</span>
       {needsReconnect && <TriangleAlert className='size-3.5 shrink-0 text-amber-600' />}
       <div className='ml-auto flex items-center gap-1.5'>
-        {selected && (
-          <div className='rounded-full size-4 bg-info flex items-center justify-center border border-blue-800'>
-            <Check className='size-2.5! text-white' strokeWidth={4} />
-          </div>
-        )}
         {needsReconnect && onReconnect && (
           <Button
             type='button'
@@ -237,16 +232,20 @@ function AccountRow({
         {selected && onRemove && (
           <Button
             type='button'
-            variant='ghost'
-            size='sm'
-            className='h-6 px-2 text-destructive hover:text-destructive'
+            className='rounded-full'
+            variant='destructive-hover'
+            size='icon-xs'
             onClick={(e) => {
               e.stopPropagation()
               onRemove()
             }}>
-            <X />
-            Remove
+            <Trash2 />
           </Button>
+        )}
+        {selected && (
+          <div className='rounded-full size-4 bg-info flex items-center justify-center border border-blue-800'>
+            <Check className='size-2.5! text-white' strokeWidth={4} />
+          </div>
         )}
       </div>
     </CommandItem>

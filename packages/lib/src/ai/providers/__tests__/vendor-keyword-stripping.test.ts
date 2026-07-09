@@ -47,15 +47,32 @@ describe('OpenAI handleResponseFormat — schema cleaning', () => {
   })
 })
 
-describe('Anthropic createSchemaBasedInstruction — schema cleaning', () => {
+describe('Anthropic structured output — schema cleaning', () => {
   const client = new AnthropicLLMClient({} as any, DEFAULT_CLIENT_CONFIG)
 
-  it('never injects x-auxx into the system prompt', () => {
+  it('routes eligible requests to forced tool-use with a cleaned schema, no prompt injection', () => {
     const out = client.handleResponseFormat({
       model: 'claude-opus-4-8',
       messages: [{ role: 'user', content: 'hi' }],
       response_format: 'json_schema',
       json_schema: SCHEMA as any,
+    } as any) as any
+
+    const toolSchema = out.structuredOutputToolSchema
+    expect(toolSchema).toBeDefined()
+    expect(JSON.stringify(toolSchema)).not.toContain('x-auxx')
+    expect(toolSchema.properties.status.enum).toEqual(['open', 'closed'])
+    // No schema text reaches the system prompt on the forced tool-use path.
+    expect(out.messages.filter((m: any) => m.role === 'system')).toEqual([])
+  })
+
+  it('never injects x-auxx into the system prompt on the fallback path (user tools present)', () => {
+    const out = client.handleResponseFormat({
+      model: 'claude-opus-4-8',
+      messages: [{ role: 'user', content: 'hi' }],
+      response_format: 'json_schema',
+      json_schema: SCHEMA as any,
+      tools: [{ name: 'lookup', description: 'x', input_schema: { type: 'object' } }],
     } as any)
 
     const systemText = out.messages

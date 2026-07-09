@@ -26,6 +26,7 @@ import {
   type PromptTemplate,
   resolveModelConfig,
 } from '../utils/ai-node-utils'
+import { type CapabilityGates, resolveCapabilityGates } from '../utils/model-capability-gates'
 
 interface AiModelConfig extends BaseAiModelConfig {
   completion_params?: {
@@ -62,7 +63,6 @@ interface AiNodeConfig {
   desc?: string
   model: AiModelConfig
   prompt_template: PromptTemplate[]
-  context?: { enabled: boolean; variable_selector?: string[] }
   files?: {
     enabled: boolean
     input?: string
@@ -309,9 +309,77 @@ export class AIProcessorV2 extends BaseAiNodeProcessor {
   ): Promise<Partial<NodeExecutionResult>> {
     const config = node.data as AiNodeConfig
     if (!config?.toolsEnabled) {
-      return super.executeNode(node, contextManager, preprocessedData)
+      const gates = await this.resolveGates(node, config, contextManager)
+      const result = await super.executeNode(
+        this.applyCapabilityGates(node, config, gates),
+        contextManager,
+        preprocessedData
+      )
+      if (gates.warnings.length > 0) {
+        result.output = { ...result.output, _warnings: gates.warnings }
+      }
+      return result
     }
     return this.executeNodeWithTools(node, config, contextManager)
+  }
+
+  /**
+   * Resolve the effective model and compute capability gates for the
+   * configured features. Fails open (no gates) when the model can't be
+   * resolved yet — the base execution path surfaces that error properly.
+   * Skipped features are logged as run-log warnings here; the caller
+   * surfaces them in `output._warnings` for the trace renderer.
+   */
+  private async resolveGates(
+    node: WorkflowNode,
+    config: AiNodeConfig,
+    contextManager: ExecutionContextManager
+  ): Promise<CapabilityGates> {
+    const input = {
+      structuredOutputEnabled: !!config?.structured_output?.enabled,
+      filesEnabled: !!config?.files?.enabled,
+    }
+    if (!input.structuredOutputEnabled && !input.filesEnabled) {
+      return { skipStructuredOutput: false, skipFiles: false, warnings: [] }
+    }
+    try {
+      const organizationId = (await contextManager.getVariable('sys.organizationId')) as
+        | string
+        | undefined
+      if (!organizationId) {
+        return { skipStructuredOutput: false, skipFiles: false, warnings: [] }
+      }
+      const { model } = await resolveModelConfig(extractModelConfig(config.model), organizationId)
+      const gates = resolveCapabilityGates(model, input)
+      for (const warning of gates.warnings) {
+        contextManager.log('WARN', node.name, warning)
+      }
+      return gates
+    } catch {
+      // Model resolution failed — fail open, base execution reports the error.
+      return { skipStructuredOutput: false, skipFiles: false, warnings: [] }
+    }
+  }
+
+  /**
+   * Apply capability gates as a run-time-only node clone. The stored node
+   * config is NEVER mutated — switching back to a capable model restores
+   * everything as configured.
+   */
+  private applyCapabilityGates(
+    node: WorkflowNode,
+    config: AiNodeConfig,
+    gates: CapabilityGates
+  ): WorkflowNode {
+    if (!gates.skipStructuredOutput && !gates.skipFiles) return node
+    const data = { ...node.data } as WorkflowNode['data'] & AiNodeConfig
+    if (gates.skipStructuredOutput && config.structured_output) {
+      data.structured_output = { ...config.structured_output, enabled: false }
+    }
+    if (gates.skipFiles && config.files) {
+      data.files = { ...config.files, enabled: false }
+    }
+    return { ...node, data }
   }
 
   /**
@@ -359,6 +427,17 @@ export class AIProcessorV2 extends BaseAiNodeProcessor {
     // way the no-tools path does).
     const extracted = extractModelConfig(config.model)
     const { provider, model } = await resolveModelConfig(extracted, organizationId)
+
+    // Capability gating — skip features the resolved model explicitly can't
+    // honor instead of degrading silently. Stored config is never mutated.
+    const gates = resolveCapabilityGates(model, {
+      structuredOutputEnabled: !!config.structured_output?.enabled,
+      filesEnabled: !!config.files?.enabled,
+    })
+    const warnings = [...gates.warnings]
+    for (const warning of gates.warnings) {
+      contextManager.log('WARN', node.name, warning)
+    }
 
     contextManager.log('INFO', node.name, 'AI node executing with tools', {
       provider,
@@ -410,7 +489,13 @@ export class AIProcessorV2 extends BaseAiNodeProcessor {
     }
 
     // Build the prompt messages (same code path as the no-tools branch).
-    const messages = await this.buildMessages(node, config, contextManager)
+    // Capability gates are applied via a run-time-only clone so a skipped
+    // file attachment never mutates the stored node config.
+    const messages = await this.buildMessages(
+      node,
+      this.applyCapabilityGates(node, config, gates).data,
+      contextManager
+    )
 
     // Hand off to the agent framework.
     const turn = await runWorkflowAiTurn({
@@ -428,10 +513,15 @@ export class AIProcessorV2 extends BaseAiNodeProcessor {
       onEvent: (ev) => this.writeAgentEventToWorkflowLog(ev, contextManager, node.nodeId),
     })
 
-    // Structured-output second pass (Q-7).
+    // Structured-output second pass (Q-7). Skipped outright when the model
+    // explicitly doesn't support structured output (capability gate above).
     let structured: Record<string, unknown> | undefined
-    if (config.structured_output?.enabled && config.structured_output.schema) {
-      structured = await runStructuredOutputPass({
+    if (
+      config.structured_output?.enabled &&
+      config.structured_output.schema &&
+      !gates.skipStructuredOutput
+    ) {
+      const passResult = await runStructuredOutputPass({
         organizationId,
         userId,
         sessionId,
@@ -442,6 +532,13 @@ export class AIProcessorV2 extends BaseAiNodeProcessor {
         sourceMessage: turn.finalAssistantMessage,
         parameters: config.model?.completion_params,
       })
+      if (passResult.ok) {
+        structured = passResult.value
+      } else {
+        const warning = `Structured output pass failed: ${passResult.reason}`
+        warnings.push(warning)
+        contextManager.log('WARN', node.name, warning)
+      }
     }
 
     // Standard output variables — match what `BaseAiNodeProcessor.storeAIResponse`
@@ -488,6 +585,7 @@ export class AIProcessorV2 extends BaseAiNodeProcessor {
         model,
         usage: turn.usage,
         ...(structured ?? {}),
+        ...(warnings.length > 0 ? { _warnings: warnings } : {}),
       },
       processData: {
         model: {
@@ -605,10 +703,6 @@ export class AIProcessorV2 extends BaseAiNodeProcessor {
 
     if (config.systemPrompt && typeof config.systemPrompt === 'string') {
       this.extractVariableIds(config.systemPrompt).forEach((v) => variables.add(v))
-    }
-
-    if (config.context?.enabled && config.context.variable_selector) {
-      config.context.variable_selector.forEach((v: string) => variables.add(v))
     }
 
     if (config.files?.enabled && config.files.input && !config.files.isConstant) {

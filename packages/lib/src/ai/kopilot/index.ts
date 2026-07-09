@@ -45,6 +45,7 @@ export {
   type RunWorkflowAiTurnResult,
   runStructuredOutputPass,
   runWorkflowAiTurn,
+  type StructuredOutputPassResult,
   type ToolCallSummary,
 } from './runners'
 export { generateSessionTitle } from './session-title'

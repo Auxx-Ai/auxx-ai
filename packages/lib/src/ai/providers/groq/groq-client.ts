@@ -1,6 +1,7 @@
 // packages/lib/src/ai/providers/groq/groq-client.ts
 
-import type { BaseSpecializedClient } from '../../clients/base/base-specialized-client'
+import OpenAI from 'openai'
+import { type BaseSpecializedClient, DEFAULT_CLIENT_CONFIG } from '../../clients/base/types'
 import { ProviderClient } from '../base/provider-client'
 import {
   type ConnectionTestResult,
@@ -8,13 +9,21 @@ import {
   type ProviderCredentials,
   type ValidationResult,
 } from '../base/types'
-import type { ModelCapabilities, ModelType } from '../types'
+import { type ModelCapabilities, ModelType } from '../types'
+import { createObservingFetch } from '../utils'
 import { GROQ_CAPABILITIES, GROQ_MODELS } from './groq-defaults'
+import { GroqLLMClient } from './groq-llm-client'
+
+/** Groq's OpenAI-compatible endpoint. https://console.groq.com/docs/openai */
+const GROQ_BASE_URL = 'https://api.groq.com/openai/v1'
 
 /**
- * Groq provider client implementation
+ * Groq provider client implementation.
+ * Uses the OpenAI SDK with a custom base URL since Groq's API is OpenAI-compatible.
  */
 export class GroqClient extends ProviderClient {
+  private llmClient?: GroqLLMClient
+
   constructor(organizationId: string, userId: string, cache?: any) {
     super(GROQ_CAPABILITIES, organizationId, userId, cache)
   }
@@ -23,7 +32,6 @@ export class GroqClient extends ProviderClient {
     this.logOperationStart('validateCredentials')
 
     try {
-      // Test the API connection
       const testResult = await this.testConnection(credentials)
 
       if (testResult.success) {
@@ -58,17 +66,15 @@ export class GroqClient extends ProviderClient {
 
     try {
       const extractedCreds = this.extractCredentials(credentials)
-      const apiKey = extractedCreds.apiKey
-
-      if (!apiKey) {
-        throw new Error('No API key found in credentials')
-      }
-
-      // Simple test - make a basic request to Groq API
+      const client = this.getApiClient(extractedCreds)
       const testModel = model || 'llama-3.3-70b-versatile'
 
-      // For now, we'll return success if the API key format is valid
-      // In a real implementation, you'd make an actual API call to Groq
+      await client.chat.completions.create({
+        model: testModel,
+        messages: [{ role: 'user', content: 'hi' }],
+        max_tokens: 1,
+      })
+
       const responseTime = Date.now() - startTime
 
       this.logOperationSuccess('testConnection', {
@@ -79,7 +85,7 @@ export class GroqClient extends ProviderClient {
       return {
         success: true,
         responseTime,
-        modelsTested: model ? [model] : [],
+        modelsTested: [testModel],
       }
     } catch (error) {
       const responseTime = Date.now() - startTime
@@ -105,12 +111,14 @@ export class GroqClient extends ProviderClient {
     }
   }
 
-  getApiClient(credentials: ProviderCredentials): any {
-    // In a real implementation, you would return the Groq SDK client
-    // For now, return a mock client
-    return {
+  getApiClient(credentials: ProviderCredentials): OpenAI {
+    return new OpenAI({
       apiKey: this.requireApiKey(credentials, 'apiKey'),
-    }
+      baseURL: GROQ_BASE_URL,
+      // Retry policy lives in RetryManager — don't stack the SDK's 2 internal retries.
+      maxRetries: 0,
+      fetch: createObservingFetch('groq'),
+    })
   }
 
   getModels(): Record<string, ModelCapabilities> {
@@ -118,7 +126,18 @@ export class GroqClient extends ProviderClient {
   }
 
   getClient(modelType: ModelType, credentials: ProviderCredentials): BaseSpecializedClient {
-    throw new Error(`Groq specialized clients not yet implemented for model type: ${modelType}`)
+    if (modelType === ModelType.LLM) {
+      if (!this.llmClient) {
+        this.llmClient = new GroqLLMClient(
+          this.getApiClient(credentials),
+          DEFAULT_CLIENT_CONFIG,
+          this.logger
+        )
+      }
+      return this.llmClient
+    }
+
+    throw new Error(`Groq does not support model type: ${modelType}`)
   }
 
   /**
@@ -130,7 +149,6 @@ export class GroqClient extends ProviderClient {
     }
 
     if (error?.message) {
-      // Handle common Groq error patterns
       if (error.message.includes('401')) {
         return 'Invalid API key. Please check your Groq API key.'
       }

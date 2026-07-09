@@ -331,7 +331,7 @@ export const GOOGLE_MODELS: Record<string, ModelCapabilities> = {
     features: ['chat', 'multimodal'],
     supports: {
       streaming: true,
-      structured: false,
+      structured: true,
       vision: true,
       toolCalling: true,
       systemMessages: true,
@@ -356,7 +356,7 @@ export const GOOGLE_MODELS: Record<string, ModelCapabilities> = {
     features: ['chat', 'multimodal'],
     supports: {
       streaming: true,
-      structured: false,
+      structured: true,
       vision: true,
       toolCalling: true,
       systemMessages: true,

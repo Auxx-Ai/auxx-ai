@@ -443,6 +443,15 @@ export class OpenAILLMClient extends LLMClient {
     // Filter out unsupported features based on model capabilities
     processedParams = this.filterUnsupportedFeatures(processedParams)
 
+    // Let OpenAI-compatible providers translate/drop parameters their endpoint
+    // rejects (e.g. Gemini's compat layer 400s on unknown fields like top_k).
+    if (processedParams.parameters) {
+      processedParams.parameters = this.normalizeProviderParameters(
+        processedParams.parameters,
+        baseModel
+      )
+    }
+
     // Handle response format (JSON schema, structured output)
     processedParams = this.handleResponseFormat(processedParams)
 
@@ -589,6 +598,18 @@ export class OpenAILLMClient extends LLMClient {
     }
 
     return processed
+  }
+
+  /**
+   * Hook for OpenAI-compatible providers to translate or drop parameters their
+   * endpoint rejects, applied after registry-based filtering and before the
+   * parameters are flattened into the request body. Default: identity.
+   */
+  protected normalizeProviderParameters(
+    parameters: Record<string, any>,
+    _baseModel: string
+  ): Record<string, any> {
+    return parameters
   }
 
   /**

@@ -13,6 +13,11 @@ export { useEdgeValidation } from './use-edge-validation'
 export { useHelpline } from './use-helpline'
 export { useLoopConfig } from './use-loop-config'
 export {
+  type ModelCapabilitiesRef,
+  type ModelCapabilitiesResult,
+  useModelCapabilities,
+} from './use-model-capabilities'
+export {
   type NodeAdditionContext,
   type NodeAdditionError as NodeAdditionErrorType,
   NodeAdditionError,

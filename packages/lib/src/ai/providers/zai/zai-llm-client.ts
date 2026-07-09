@@ -15,6 +15,17 @@ import { OpenAILLMClient } from '../openai/openai-llm-client'
  * (the Kimi behavior), switch this override to simply `return messages`.
  */
 export class ZaiLLMClient extends OpenAILLMClient {
+  /**
+   * Z.AI's API only documents legacy JSON mode
+   * (`response_format: { type: 'json_object' }`), not strict Structured Outputs
+   * (`{ type: 'json_schema' }`). Returning false routes json_schema requests
+   * through the base client's downgrade path, which emits json_object and
+   * injects the schema into the system prompt.
+   */
+  protected override modelSupportsStrictJsonSchema(): boolean {
+    return false
+  }
+
   protected override prepareReasoningContent(messages: Message[]): Message[] {
     const lastAssistantWithReasoningIdx = messages.findLastIndex(
       (m) => m.role === 'assistant' && m.reasoning_content

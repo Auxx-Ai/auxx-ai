@@ -1,8 +1,8 @@
-// packages/lib/src/ai/providers/google/__tests__/google-client.test.ts
+// packages/lib/src/ai/providers/groq/__tests__/groq-client.test.ts
 
 import { describe, expect, it, vi } from 'vitest'
 import { ModelType } from '../../types'
-import { GoogleClient } from '../google-client'
+import { GroqClient } from '../groq-client'
 
 // Constructible override of the global setup mock (which uses a non-constructible arrow fn)
 vi.mock('openai', () => ({
@@ -20,16 +20,18 @@ vi.mock('openai', () => ({
   }),
 }))
 
-describe('GoogleClient', () => {
+describe('GroqClient', () => {
   function createClient() {
-    return new GoogleClient('org-123', 'user-123')
+    return new GroqClient('org-123', 'user-123')
   }
+
+  const validCredentials = { apiKey: `gsk_${'a'.repeat(52)}` }
 
   describe('extractCredentials', () => {
     it('extracts from the canonical apiKey field', () => {
       const client = createClient()
-      const result = client.extractCredentials({ apiKey: 'AIzaTest789' })
-      expect(result.apiKey).toBe('AIzaTest789')
+      const result = client.extractCredentials({ apiKey: 'gsk_test' })
+      expect(result.apiKey).toBe('gsk_test')
     })
 
     it('returns an empty apiKey when none is provided', () => {
@@ -40,61 +42,41 @@ describe('GoogleClient', () => {
   })
 
   describe('getModels', () => {
-    it('returns all Google models', () => {
+    it('returns all Groq models', () => {
       const client = createClient()
       const models = client.getModels()
       expect(Object.keys(models).length).toBeGreaterThan(0)
-      expect(models['gemini-2.5-flash']).toBeDefined()
-    })
-
-    it('includes both LLM and embedding models', () => {
-      const client = createClient()
-      const models = client.getModels()
-      const types = new Set(Object.values(models).map((m) => m.modelType))
-      expect(types).toContain(ModelType.LLM)
-      expect(types).toContain(ModelType.TEXT_EMBEDDING)
+      expect(models['llama-3.3-70b-versatile']).toBeDefined()
     })
   })
 
   describe('getClient', () => {
-    it('returns embedding client for TEXT_EMBEDDING type', () => {
-      const client = createClient()
-      const credentials = { apiKey: 'AIzaTestKey12345678901234567890123' }
-      const embeddingClient = client.getClient(ModelType.TEXT_EMBEDDING, credentials)
-      expect(embeddingClient).toBeDefined()
-    })
-
     it('returns an LLM client for LLM type', () => {
       const client = createClient()
-      const credentials = { apiKey: 'AIzaTestKey12345678901234567890123' }
-      const llmClient = client.getClient(ModelType.LLM, credentials)
+      const llmClient = client.getClient(ModelType.LLM, validCredentials)
       expect(llmClient).toBeDefined()
     })
 
     it('reuses the same LLM client instance', () => {
       const client = createClient()
-      const credentials = { apiKey: 'AIzaTestKey12345678901234567890123' }
-      const first = client.getClient(ModelType.LLM, credentials)
-      const second = client.getClient(ModelType.LLM, credentials)
+      const first = client.getClient(ModelType.LLM, validCredentials)
+      const second = client.getClient(ModelType.LLM, validCredentials)
       expect(second).toBe(first)
     })
 
     it('throws for unsupported model types', () => {
       const client = createClient()
-      const credentials = { apiKey: 'AIzaTestKey12345678901234567890123' }
-      expect(() => client.getClient(ModelType.RERANK, credentials)).toThrow('does not support')
+      expect(() => client.getClient(ModelType.RERANK, validCredentials)).toThrow('does not support')
     })
   })
 
   describe('testConnection', () => {
     it('performs a real chat completion against the default model', async () => {
       const client = createClient()
-      const result = await client.testConnection({
-        apiKey: 'AIzaValidTestKey1234567890123456789',
-      })
+      const result = await client.testConnection(validCredentials)
       // The openai module is globally mocked, so the "API call" resolves.
       expect(result.success).toBe(true)
-      expect(result.modelsTested).toEqual(['gemini-2.5-flash'])
+      expect(result.modelsTested).toEqual(['llama-3.3-70b-versatile'])
       expect(result.responseTime).toBeGreaterThanOrEqual(0)
     })
 

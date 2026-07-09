@@ -69,14 +69,6 @@ export interface PromptTemplate {
 }
 
 /**
- * Context configuration for AI node
- */
-export interface AiContext {
-  enabled: boolean
-  variable_selector: string[]
-}
-
-/**
  * Files configuration for AI node
  */
 export interface AiFiles {
@@ -110,7 +102,6 @@ export type { ToolsetEntry }
 export interface AiNodeData extends BaseNodeData {
   model: AiModel
   prompt_template: PromptTemplate[]
-  context: AiContext
   files: AiFiles
   structured_output: StructuredOutputConfig
 

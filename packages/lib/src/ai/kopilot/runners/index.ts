@@ -3,6 +3,7 @@
 export {
   type RunStructuredOutputPassArgs,
   runStructuredOutputPass,
+  type StructuredOutputPassResult,
 } from './run-structured-output-pass'
 export {
   type RunWorkflowAiTurnArgs,

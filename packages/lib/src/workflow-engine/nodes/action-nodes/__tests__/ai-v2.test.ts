@@ -310,7 +310,7 @@ describe('AIProcessorV2', () => {
       expect(variables).toContain('user.question')
     })
 
-    it('should extract variables from context selector', () => {
+    it('ignores legacy context config (dead setting removed)', () => {
       const node: WorkflowNode = {
         nodeId: 'node_1',
         name: 'AI Node',
@@ -326,8 +326,8 @@ describe('AIProcessorV2', () => {
       }
 
       const variables = (processor as any).extractRequiredVariables(node)
-      expect(variables).toContain('workflow.state')
-      expect(variables).toContain('user.preferences')
+      expect(variables).not.toContain('workflow.state')
+      expect(variables).not.toContain('user.preferences')
     })
 
     it('should return unique variables only', () => {
