@@ -3,6 +3,7 @@
 import type { ResolvedAgentConfig } from '../../../../agents'
 import type { AgentSurface } from '../../../../agents/client'
 import type { IntegrationCatalogEntry } from '../../../../cache/integration-catalog'
+import type { KbCatalogEntry } from '../../../../kb/catalog/kb-catalog'
 import type { AgentToolDefinition } from '../../../agent-framework/types'
 import type { KopilotDomainState } from '../../types'
 import type { CurrentUserInfo, EntityCatalogEntry } from '../shared-types'
@@ -88,6 +89,8 @@ export interface PromptCtx {
   readonly currentUser: CurrentUserInfo | null
   readonly integrations: readonly IntegrationCatalogEntry[]
   readonly entityCatalog: readonly EntityCatalogEntry[]
+  /** Published KB articles ToC — browse-first knowledge retrieval. */
+  readonly kbCatalog?: readonly KbCatalogEntry[]
   readonly domainState: KopilotDomainState
   readonly toolsetPromptAdditions: string
   // Persona inputs (Phase D)

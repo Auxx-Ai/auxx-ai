@@ -27,6 +27,7 @@ import type { CredentialsResponse, ProviderConfiguration } from '../ai/providers
 import type { ConditionGroup } from '../conditions/types'
 import type { DehydratedOrganization } from '../dehydration/types'
 import type { Inbox } from '../inboxes/types'
+import type { KbCatalogEntry } from '../kb/catalog/kb-catalog'
 import type { Overage } from '../permissions/overage-detection-service'
 import type { FeatureMapObject } from '../permissions/types'
 import type { CachedRecordRule } from '../record-rules/types'
@@ -500,6 +501,7 @@ export interface OrgCacheDataMap {
   mcpServers: CachedMcpServer[]
   workflowApps: CachedWorkflowApp[]
   recordRules: CachedRecordRule[]
+  kbCatalog: KbCatalogEntry[] // published AI-enabled article ToC per KB (agent prompt injection)
 
   // AI provider data (15-min TTL, invalidated via ai-provider/model events)
   aiProviderConfigs: Record<string, ProviderConfiguration>
@@ -567,6 +569,8 @@ export const ORG_CACHE_KEY_CONFIG: Record<
   // Read per interactive field write. Rules have side effects, so the peer
   // staleness window stays tight (1 s ≈ 10× fewer steady-state hash GETs).
   recordRules: { prefix: 'org:record-rules', ttlSeconds: ONE_DAY, localTtlMs: 1_000 },
+  // Read once per agent turn at prompt build — stale order/titles are benign.
+  kbCatalog: { prefix: 'org:kb-catalog', ttlSeconds: ONE_DAY, localTtlMs: 5_000 },
 
   // AI provider data (15-min TTL)
   aiProviderConfigs: { prefix: 'org:ai-provider-configs', ttlSeconds: 900 },

@@ -174,12 +174,18 @@ export const INVALIDATION_GRAPH: Record<string, InvalidationMapping> = {
   'favorite.changed': { user: ['userFavorites'] },
   'favorite-folder.changed': { user: ['userFavorites'] },
 
-  // ── KB & article events (affects overages for knowledgeBases / kbPublishedArticles) ──
-  'kb.created': ['overages'],
-  'kb.deleted': ['overages'],
-  'article.published': ['overages'],
-  'article.unpublished': ['overages'],
-  'article.deleted': ['overages'],
+  // ── KB & article events (overages for knowledgeBases / kbPublishedArticles;
+  // kbCatalog is the agent-prompt ToC of published articles) ──
+  'kb.created': ['overages', 'kbCatalog'],
+  'kb.deleted': ['overages', 'kbCatalog'],
+  'kb.updated': ['kbCatalog'], // name / visibility changes
+  'article.published': ['overages', 'kbCatalog'],
+  'article.unpublished': ['overages', 'kbCatalog'],
+  'article.deleted': ['overages', 'kbCatalog'],
+  // Emitted by enqueueKBSync — the choke point every published-content
+  // mutation already flows through (archive, aiEnabled toggle, move/rename
+  // metadata sync, source-sink writes).
+  'article.changed': ['kbCatalog'],
 
   // ── Dataset events (affects overages for datasetsLimit) ──
   'dataset.created': ['overages'],

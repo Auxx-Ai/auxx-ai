@@ -160,6 +160,8 @@ export const knowledgeBaseRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const result = await getKBService(ctx).updateKnowledgeBase(input.id, input.data)
       void fireKBRevalidate(input.id)
+      // Name/visibility feed the agent-prompt KB catalog.
+      await onCacheEvent('kb.updated', { orgId: getUserOrganizationId(ctx.session) })
       return result
     }),
 

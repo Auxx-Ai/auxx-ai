@@ -121,7 +121,7 @@ export function createSearchKnowledgeTool(getDeps: GetToolDeps): AgentToolDefini
     usageNotes:
       'For KB articles, cite individual articles in the final message via `[Title](auxx://doc/<docSlug>)` — `docSlug` is on each result. RAG segments have no citable URL; mention them in prose.',
     description:
-      "Hybrid (keyword + semantic) search across the organization's knowledge — published KB articles and uploaded RAG documents. Returns the best-matching passage per article/document; follow the `articleId`/`docSlug` into get_article for full context. Use for written content (articles, manuals, policies, FAQs). Do NOT use for contacts, customers, products, orders, or other entities — use search_entities for that.",
+      "Hybrid (keyword + semantic) search across the organization's knowledge — published KB articles and uploaded RAG documents. Returns the best-matching passage per article/document; follow the `articleId`/`docSlug` into get_article for full context. If the Knowledge Catalog in your context already lists a clearly relevant article, skip this and read it directly with get_article. Use for written content (articles, manuals, policies, FAQs). Do NOT use for contacts, customers, products, orders, or other entities — use search_entities for that.",
     parameters: {
       type: 'object',
       properties: {

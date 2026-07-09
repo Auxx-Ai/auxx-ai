@@ -1,6 +1,7 @@
 // packages/lib/src/cache/org-cache-helpers.ts
 
 import type { CustomFieldEntity } from '@auxx/database/types'
+import type { KbCatalogEntry } from '../kb/catalog/kb-catalog'
 import type { CachedRecordRule } from '../record-rules/types'
 import type { ResourceField } from '../resources/registry/field-types'
 import type { Resource } from '../resources/registry/types'
@@ -206,6 +207,16 @@ export async function getCachedGroups(orgId: string): Promise<CachedGroup[]> {
 export async function getCachedUserGroupIds(orgId: string, userId: string): Promise<string[]> {
   const groupMembers = await getOrgCache().get(orgId, 'groupMembers')
   return groupMembers[userId] ?? []
+}
+
+// ── KB catalog helpers ──
+
+/**
+ * Get the org's KB catalog — published, AI-enabled articles per knowledge
+ * base, in tree order. Rendered into agent prompts via `renderKbCatalog`.
+ */
+export async function getCachedKbCatalog(orgId: string): Promise<KbCatalogEntry[]> {
+  return getOrgCache().get(orgId, 'kbCatalog')
 }
 
 // ── Agent cache helpers ──
