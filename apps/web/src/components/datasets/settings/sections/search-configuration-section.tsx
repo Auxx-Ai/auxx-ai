@@ -35,11 +35,6 @@ const vectorSearchSchema = z.object({
 })
 const textSearchSchema = z.object({
   searchType: z.literal('text'),
-  fuzzySearch: z.boolean().optional(),
-  phraseSearch: z.boolean().optional(),
-  booleanMode: z.boolean().optional(),
-  rankingMode: z.enum(['bm25', 'tfidf']).optional(),
-  minScore: z.number().min(0).max(1).optional(),
 })
 const hybridSearchSchema = z.object({
   searchType: z.literal('hybrid'),
@@ -50,12 +45,6 @@ const hybridSearchSchema = z.object({
     .object({
       similarityThreshold: z.number().min(0).max(1).optional(),
       maxResults: z.number().min(1).max(100).optional(),
-    })
-    .optional(),
-  textOptions: z
-    .object({
-      fuzzySearch: z.boolean().optional(),
-      rankingMode: z.enum(['bm25', 'tfidf']).optional(),
     })
     .optional(),
 })
@@ -264,85 +253,10 @@ export function SearchConfigurationSection({
         )
       case 'text':
         return (
-          <FieldPanel className='p-0' resizeId='dataset-settings' defaultLabelWidth={200}>
-            <FieldPanelRow
-              title='Fuzzy Search'
-              description='Enable fuzzy matching for typos and variations'
-              type={BaseType.BOOLEAN}
-              showIcon={true}>
-              <FieldInputAdapter
-                fieldType={FieldType.CHECKBOX}
-                value={form.watch('fuzzySearch') ?? false}
-                onChange={(val) => form.setValue('fuzzySearch', val as boolean)}
-                fieldOptions={{ variant: 'switch' }}
-                disabled={readOnly}
-              />
-            </FieldPanelRow>
-
-            <FieldPanelRow
-              title='Phrase Search'
-              description='Enable exact phrase matching with quotes'
-              type={BaseType.BOOLEAN}
-              showIcon={true}>
-              <FieldInputAdapter
-                fieldType={FieldType.CHECKBOX}
-                value={form.watch('phraseSearch') ?? false}
-                onChange={(val) => form.setValue('phraseSearch', val as boolean)}
-                fieldOptions={{ variant: 'switch' }}
-                disabled={readOnly}
-              />
-            </FieldPanelRow>
-
-            <FieldPanelRow
-              title='Boolean Mode'
-              description='Support AND, OR, NOT operators in queries'
-              type={BaseType.BOOLEAN}
-              showIcon={true}>
-              <FieldInputAdapter
-                fieldType={FieldType.CHECKBOX}
-                value={form.watch('booleanMode') ?? false}
-                onChange={(val) => form.setValue('booleanMode', val as boolean)}
-                fieldOptions={{ variant: 'switch' }}
-                disabled={readOnly}
-              />
-            </FieldPanelRow>
-
-            <FieldPanelRow
-              title='Ranking Algorithm'
-              description='Algorithm for scoring and ranking text matches'
-              type={BaseType.ENUM}
-              showIcon={true}>
-              <FieldInputAdapter
-                fieldType={FieldType.SINGLE_SELECT}
-                value={form.watch('rankingMode') ?? ''}
-                onChange={(val) =>
-                  form.setValue('rankingMode', (val as string[])[0] as 'bm25' | 'tfidf')
-                }
-                fieldOptions={{
-                  options: [
-                    { label: 'BM25 (Best Match)', value: 'bm25' },
-                    { label: 'TF-IDF', value: 'tfidf' },
-                  ],
-                }}
-                placeholder='Select ranking algorithm'
-                disabled={readOnly}
-              />
-            </FieldPanelRow>
-
-            <FieldPanelRow
-              title='Minimum Score'
-              description='Minimum relevance score to include results'
-              type={BaseType.NUMBER}
-              showIcon={true}>
-              <FieldInputAdapter
-                fieldType={FieldType.NUMBER}
-                value={form.watch('minScore') ?? ''}
-                onChange={(val) => form.setValue('minScore', val as number)}
-                placeholder='0.1'
-                disabled={readOnly}
-              />
-            </FieldPanelRow>
-          </FieldPanel>
+          <p className='text-sm text-muted-foreground'>
+            Full-text search has no extra settings. Queries support quoted phrases (&quot;exact
+            match&quot;) and exclusions (-word) directly.
+          </p>
         )
       case 'hybrid':
         return (

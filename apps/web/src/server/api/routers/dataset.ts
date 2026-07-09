@@ -404,10 +404,6 @@ export const datasetRouter = createTRPCRouter({
       if (docCount < 100) {
         return {
           searchType: 'text',
-          fuzzySearch: true,
-          phraseSearch: true,
-          rankingMode: 'bm25',
-          minScore: 0.1,
         }
       }
       // Large datasets (> 10k docs) - favor vector search
@@ -429,10 +425,6 @@ export const datasetRouter = createTRPCRouter({
         vectorOptions: {
           similarityThreshold: 0.3,
           maxResults: 15,
-        },
-        textOptions: {
-          fuzzySearch: true,
-          rankingMode: 'bm25',
         },
       }
     }),

@@ -122,11 +122,6 @@ export interface VectorSearchOptions {
  * Full-text search specific options
  */
 export interface FullTextSearchOptions {
-  fuzzySearch?: boolean
-  phraseSearch?: boolean
-  booleanMode?: boolean
-  rankingMode?: 'bm25' | 'tfidf'
-  minScore?: number
   includeInactive?: boolean
 }
 
