@@ -34,6 +34,8 @@ import {
 import { useCallback, useEffect, useState } from 'react'
 import { DockToggleButton } from '~/components/global/dock-toggle-button'
 import { Tooltip } from '~/components/global/tooltip'
+import { CommandAction, CommandContext } from '~/components/kbar/contextual'
+import { useCommandPaletteStore } from '~/components/kbar/store'
 import { useConfirm } from '~/hooks/use-confirm'
 import { useEffectiveDockState } from '~/hooks/use-effective-dock-state'
 import { useDockStore } from '~/stores/dock-store'
@@ -80,6 +82,8 @@ export function FileDetailDrawer({ file, onOpenChange, setSelectedFile }: FileDe
 
   // Store hooks for real-time updates
   const updateItem = useFileSystemStore((state) => state.updateItem)
+  const removeItems = useFileSystemStore((state) => state.removeItems)
+  const deleteFile = api.file.delete.useMutation()
   // Reset editing name when file changes
   useEffect(() => {
     setEditingName(file.name || '')
@@ -234,18 +238,36 @@ export function FileDetailDrawer({ file, onOpenChange, setSelectedFile }: FileDe
       destructive: true,
     })
 
-    if (confirmed) {
-      try {
-        // TODO: Implement actual delete functionality
-        setSelectedFile(null)
-        onOpenChange(false) // Close drawer after deletion
-      } catch (error) {
-        toastError({
-          title: 'Failed to delete file',
-          description: error instanceof Error ? error.message : 'An error occurred',
-        })
+    if (!confirmed) return
+
+    deleteFile.mutate(
+      { fileId: file.id },
+      {
+        onSuccess: () => {
+          removeItems([file.id]) // Drop from the store so the row disappears
+          setSelectedFile(null)
+          onOpenChange(false) // Close drawer after deletion
+        },
+        onError: (error) => {
+          toastError({
+            title: 'Failed to delete file',
+            description: error.message,
+          })
+        },
       }
-    }
+    )
+  }
+
+  // Close the palette before running an action so any resulting dialog/toast
+  // isn't hidden behind the overlay.
+  const closePalette = () => useCommandPaletteStore.getState().close()
+  const copyLink = () => {
+    if (file.url) void navigator.clipboard?.writeText(file.url)
+    closePalette()
+  }
+  const copyId = () => {
+    void navigator.clipboard?.writeText(file.id)
+    closePalette()
   }
 
   if (!file) return null
@@ -253,6 +275,49 @@ export function FileDetailDrawer({ file, onOpenChange, setSelectedFile }: FileDe
   const { iconId, color } = getFileIconId(file.mimeType || undefined, file.ext || undefined)
   return (
     <>
+      {/* Command-palette file scope — surfaces the open file's actions in cmd+k.
+          Priority outranks the Files page scope so this group leads while the
+          drawer is open. */}
+      <CommandContext kind='page' label={file.name || 'File'} priority={10}>
+        <CommandAction
+          label='Download'
+          icon='download'
+          keywords='download save file'
+          priority={10}
+          disabled={file.isUploading || isDownloadLoading}
+          perform={() => {
+            closePalette()
+            void handleDownload()
+          }}
+        />
+        {file.url && (
+          <CommandAction
+            label='Copy link'
+            icon='link-2'
+            keywords='copy link url share'
+            priority={6}
+            perform={copyLink}
+          />
+        )}
+        <CommandAction
+          label='Copy ID'
+          icon='copy'
+          keywords='copy id identifier'
+          priority={5}
+          perform={copyId}
+        />
+        <CommandAction
+          label='Delete'
+          icon='trash'
+          keywords='delete remove'
+          priority={1}
+          disabled={file.isUploading}
+          perform={() => {
+            closePalette()
+            void handleDelete()
+          }}
+        />
+      </CommandContext>
       <DockableDrawer
         open={true}
         onOpenChange={onOpenChange}

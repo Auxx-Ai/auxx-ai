@@ -26,7 +26,10 @@ import { Lock } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useQueryState } from 'nuqs'
 import { type ReactNode, useState } from 'react'
+import { useFavoriteToggle } from '~/components/favorites/hooks/use-favorite-toggle'
 import { FavoriteStarButton } from '~/components/favorites/ui/favorite-star-button'
+import { CommandAction, CommandContext } from '~/components/kbar/contextual'
+import { useCommandPaletteStore } from '~/components/kbar/store'
 import { RecordDrawer } from '~/components/records/record-drawer'
 import { useConfirm } from '~/hooks/use-confirm'
 import { useEffectiveDockState } from '~/hooks/use-effective-dock-state'
@@ -84,6 +87,10 @@ export function DashboardDetailView({ dashboard }: { dashboard: DashboardWithLay
   const persistedVersionNumber = useDashboardStore((s) => s.persistedVersionNumber)
 
   const { publish, discard, isPublishing, isDiscarding } = useDashboardPublish()
+
+  const { toggle: toggleFavorite, isFavorited } = useFavoriteToggle('DASHBOARD', {
+    dashboardId: dashboard.id,
+  })
 
   const isDocked = useEffectiveDockState()
   const dockedWidth = useDockStore((s) => s.dockedWidth)
@@ -163,6 +170,86 @@ export function DashboardDetailView({ dashboard }: { dashboard: DashboardWithLay
 
   return (
     <MainPage>
+      {/* Command-palette scope for the open dashboard. Edit-only actions mirror
+          the header cluster's affordances. */}
+      <CommandContext kind='page' label={dashboard.name}>
+        <CommandAction
+          label={isEditMode ? 'Done editing' : 'Edit dashboard'}
+          icon={isEditMode ? 'check' : 'edit'}
+          keywords='edit done toggle layout arrange'
+          priority={10}
+          perform={() => {
+            useCommandPaletteStore.getState().close()
+            if (isEditMode) {
+              exitEditMode()
+            } else {
+              setOpenRecordId(null)
+              enterEditMode()
+            }
+          }}
+        />
+        <CommandAction
+          label={isFavorited ? 'Remove from favorites' : 'Add to favorites'}
+          icon='star'
+          keywords='favorite star bookmark pin'
+          priority={9}
+          perform={() => {
+            useCommandPaletteStore.getState().close()
+            toggleFavorite()
+          }}
+        />
+        {isEditMode && (
+          <>
+            <CommandAction
+              label='Add widget'
+              icon='plus'
+              keywords='add widget chart kpi card'
+              priority={8}
+              perform={() => {
+                useCommandPaletteStore.getState().close()
+                handleAddWidget('kpi')
+              }}
+            />
+            <CommandAction
+              label='Add tab'
+              icon='plus'
+              keywords='add tab page section'
+              priority={7}
+              perform={() => {
+                useCommandPaletteStore.getState().close()
+                const id = addTab('New tab')
+                if (id) void setTab(id)
+              }}
+            />
+          </>
+        )}
+        {hasUnpublishedChanges && (
+          <>
+            <CommandAction
+              label='Publish changes'
+              icon='send'
+              keywords='publish release live version'
+              priority={6}
+              disabled={isPublishing}
+              perform={() => {
+                useCommandPaletteStore.getState().close()
+                void publish()
+              }}
+            />
+            <CommandAction
+              label='Discard changes'
+              icon='trash'
+              keywords='discard revert reset draft'
+              priority={5}
+              disabled={isDiscarding}
+              perform={() => {
+                useCommandPaletteStore.getState().close()
+                void discard()
+              }}
+            />
+          </>
+        )}
+      </CommandContext>
       <ConfirmDialog />
       <MainPageHeader
         action={

@@ -4,6 +4,7 @@
 
 import { FeatureKey } from '@auxx/lib/permissions/client'
 import { Button } from '@auxx/ui/components/button'
+import { Kbd } from '@auxx/ui/components/kbd'
 import {
   MainPage,
   MainPageBreadcrumb,
@@ -12,10 +13,13 @@ import {
   MainPageContent,
   MainPageHeader,
 } from '@auxx/ui/components/main-page'
+import { useHotkey } from '@tanstack/react-hotkeys'
 import { Lock, Plus } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useCallback, useEffect, useMemo } from 'react'
 import { EmptyState } from '~/components/global/empty-state'
+import { CommandAction, CommandContext } from '~/components/kbar/contextual'
+import { useCommandPaletteStore } from '~/components/kbar/store'
 import { useFeatureFlags } from '~/providers/feature-flag-provider'
 import { useKopilotSessions } from '../hooks/use-kopilot-sessions'
 import { useKopilotStore } from '../stores/kopilot-store'
@@ -71,12 +75,17 @@ export function KopilotPageShell({ sessionId }: KopilotPageShellProps) {
     router.push('/app/kopilot/new')
   }, [startNewSession, router])
 
+  const canUse = hasAccess(FeatureKey.kopilot)
+
+  // Page-local shortcut: N starts a new chat.
+  useHotkey('N', handleNewSession, { enabled: canUse })
+
   const breadcrumbLabel = useMemo(() => {
     if (!activeSessionId) return 'New chat'
     return sessionOptions.find((s) => s.value === activeSessionId)?.label ?? 'Chat'
   }, [activeSessionId, sessionOptions])
 
-  if (!hasAccess(FeatureKey.kopilot)) {
+  if (!canUse) {
     return (
       <MainPage>
         <MainPageHeader>
@@ -98,11 +107,27 @@ export function KopilotPageShell({ sessionId }: KopilotPageShellProps) {
 
   return (
     <MainPage>
+      <CommandContext kind='page' label='Chats'>
+        <CommandAction
+          label='New chat'
+          icon='plus'
+          keywords='new chat session start kopilot conversation'
+          shortcut={['N']}
+          priority={10}
+          perform={() => {
+            useCommandPaletteStore.getState().close()
+            handleNewSession()
+          }}
+        />
+      </CommandContext>
       <MainPageHeader
         action={
           <Button variant='outline' size='sm' onClick={handleNewSession}>
             <Plus />
             New chat
+            <Kbd variant='outline' size='sm'>
+              N
+            </Kbd>
           </Button>
         }>
         <MainPageBreadcrumb>
