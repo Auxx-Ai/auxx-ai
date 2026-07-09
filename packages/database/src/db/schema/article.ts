@@ -9,6 +9,7 @@ import {
   boolean,
   index,
   integer,
+  jsonb,
   pgTable,
   text,
   timestamp,
@@ -86,6 +87,13 @@ export const Article = pgTable(
     sourceContentHash: text(),
     /** true = Locked (source-owned, read-only); flips false on detach. */
     managed: boolean().default(false).notNull(),
+    /**
+     * Learned-KB audit trail: append-only capped list of
+     * `{ threadId, extractedAt, suggestionId }` recording which threads taught
+     * this article. Null for everything outside the learned KB. Audit only —
+     * dedupe lives on `Thread.learnedExtractedAt`.
+     */
+    learnedProvenance: jsonb(),
   },
   (table) => [
     index('Article_articleKind_idx').using('btree', table.articleKind.asc().nullsLast()),

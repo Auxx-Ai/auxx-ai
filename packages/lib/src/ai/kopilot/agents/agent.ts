@@ -6,7 +6,11 @@ import { getOrgToolCatalog, getOrgToolsetCatalog, type ResolvedAgentConfig } fro
 import type { AgentSurface } from '../../../agents/client'
 import { PROCEDURE_STEP_KEY } from '../../../agents/procedures/persist'
 import { getCachedIntegrationCatalog } from '../../../cache/integration-catalog'
-import { getCachedMembersByUserIds, getCachedResources } from '../../../cache/org-cache-helpers'
+import {
+  getCachedKbCatalog,
+  getCachedMembersByUserIds,
+  getCachedResources,
+} from '../../../cache/org-cache-helpers'
 import type {
   AgentDefinition,
   AgentDeps,
@@ -90,15 +94,22 @@ export function createKopilotAgent(
       // Only fetch the chip-resolution catalogs when the run actually has
       // an agent persona to render — master Kopilot doesn't reference chips.
       const hasAgentPersona = Boolean(agentConfig && agentConfig.agentId !== null)
-      const [resources, currentUser, integrations, toolCatalog, toolsetCatalog] = await Promise.all(
-        [
+      const [resources, currentUser, integrations, toolCatalog, toolsetCatalog, kbCatalog] =
+        await Promise.all([
           getCachedResources(deps.organizationId),
           hydrateCurrentUser(deps.organizationId, deps.userId),
           getCachedIntegrationCatalog(deps.organizationId),
           hasAgentPersona ? getOrgToolCatalog(deps.organizationId) : Promise.resolve(undefined),
           hasAgentPersona ? getOrgToolsetCatalog(deps.organizationId) : Promise.resolve(undefined),
-        ]
-      )
+          // Knowledge is optional context — never let a catalog failure kill the turn.
+          getCachedKbCatalog(deps.organizationId).catch((err) => {
+            logger.warn('Failed to load KB catalog for Kopilot prompt', {
+              organizationId: deps.organizationId,
+              error: err instanceof Error ? err.message : String(err),
+            })
+            return []
+          }),
+        ])
 
       const entityCatalog = resources
         .filter((r) => r.isVisible !== false)
@@ -124,6 +135,7 @@ export function createKopilotAgent(
       const systemPrompt = buildKopilotPromptSerialized({
         domainState: state.domainState,
         entityCatalog,
+        kbCatalog,
         capabilities,
         tools: agentTools,
         currentUser,

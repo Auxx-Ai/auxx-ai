@@ -21,6 +21,7 @@ import {
   createAppCapabilities,
   createCapabilityRegistry,
   createEntityCapabilities,
+  createKbReadCapabilities,
   createKnowledgeCapabilities,
   createMailCapabilities,
   createTaskCapabilities,
@@ -28,7 +29,8 @@ import {
 } from '../ai/kopilot/capabilities'
 import { enrichEntitiesWithFieldValues } from '../ai/kopilot/capabilities/entities/enrich-entity-fields'
 import { createMcpCapabilities } from '../ai/mcp'
-import { findCachedResource } from '../cache/org-cache-helpers'
+import { findCachedResource, getCachedKbCatalog } from '../cache/org-cache-helpers'
+import { renderKbCatalog } from '../kb/catalog/render-kb-catalog'
 import { Result, type TypedResult } from '../result'
 import { createTaskService } from '../tasks/task-service'
 import { sanitizeEventPayloadForLLM } from './sanitize-event-payload'
@@ -113,6 +115,9 @@ export async function runHeadlessSuggestion(
   const registry = createCapabilityRegistry()
   registry.register(createEntityCapabilities(getDeps))
   registry.register(createKnowledgeCapabilities(getDeps))
+  // Browse-first knowledge: the prompt injects the KB catalog; these read
+  // tools (get_article / list_articles) let the model follow it.
+  registry.register(createKbReadCapabilities(getDeps))
   registry.register(createMailCapabilities(getDeps))
   registry.register(createActorCapabilities(getDeps))
   registry.register(createTaskCapabilities(getDeps))
@@ -367,6 +372,22 @@ async function buildHeadlessPrompt(params: BuildPromptParams): Promise<string> {
   } catch (err) {
     logger.warn('Failed to load open tasks for headless prompt', {
       entityInstanceId: params.entity.id,
+      error: err instanceof Error ? err.message : String(err),
+    })
+  }
+
+  // Knowledge catalog — browse-first retrieval (headless runs are internal,
+  // so INTERNAL KBs are visible).
+  try {
+    const catalog = await getCachedKbCatalog(params.organizationId)
+    const rendered = renderKbCatalog(catalog, { publicOnly: false })
+    if (rendered) {
+      lines.push('')
+      lines.push(rendered)
+    }
+  } catch (err) {
+    logger.warn('Failed to load KB catalog for headless prompt', {
+      organizationId: params.organizationId,
       error: err instanceof Error ? err.message : String(err),
     })
   }

@@ -13,6 +13,7 @@ import {
   verifyKnowledgeBaseExists,
   verifyParentArticleExists,
 } from '../internal/validate-existence'
+import { invalidateKbCatalog } from '../kb-sync-queue'
 import type { ArticleListItem, KBContext, MoveArticleInput } from '../types'
 
 /**
@@ -93,6 +94,9 @@ export async function moveArticle(
         knowledgeBaseId,
         placement.isPublished
       )
+    } else if (placement.isPublished) {
+      // Same-parent reorder enqueues no sync — refresh the catalog directly.
+      void invalidateKbCatalog(ctx.organizationId)
     }
 
     return await reloadFlat(db, ctx.organizationId, input.id, knowledgeBaseId)

@@ -63,6 +63,7 @@ export {
   getCachedFieldMap,
   getCachedGroups,
   getCachedInstalledApps,
+  getCachedKbCatalog,
   getCachedMembers,
   getCachedMembersByUserIds,
   getCachedOrgHasActiveChat,

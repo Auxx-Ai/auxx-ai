@@ -32,6 +32,7 @@ export function createListArticlesTool(getDeps: GetToolDeps): AgentToolDefinitio
           knowledgeBaseId: 'kb_2Lm8xR',
           slug: 'how-to-track-your-order',
           title: 'How to track your order',
+          description: 'Where to find tracking numbers and what each carrier status means.',
           excerpt: 'Step-by-step guide to finding your order tracking number and status.',
           status: 'PUBLISHED',
           parentId: null,
@@ -46,6 +47,7 @@ export function createListArticlesTool(getDeps: GetToolDeps): AgentToolDefinitio
           knowledgeBaseId: 'kb_2Lm8xR',
           slug: 'refunds-and-returns',
           title: 'Refunds and returns',
+          description: null,
           excerpt: 'How to request a refund or start a return.',
           status: 'DRAFT',
           parentId: null,
@@ -57,7 +59,7 @@ export function createListArticlesTool(getDeps: GetToolDeps): AgentToolDefinitio
       total: 2,
     },
     description:
-      'List KB articles. Always returns id, recordId, slug, title, excerpt, status, parentId, knowledgeBaseId, isPublished, hasUnpublishedChanges. Set `includeContent: true` to also attach a 4K-char `bodyMarkdown` preview per row (capped at limit ≤ 10 when on). Filter by `articleIds`, `knowledgeBaseId` (defaults to active KB; if none, lists across all KBs), substring `query` on title, `parentId`, or `includeUnpublished`. For the full untruncated body of a specific article, use `get_article`.',
+      'List KB articles. Always returns id, recordId, slug, title, description, excerpt, status, parentId, knowledgeBaseId, isPublished, hasUnpublishedChanges. Set `includeContent: true` to also attach a 4K-char `bodyMarkdown` preview per row (capped at limit ≤ 10 when on). Filter by `articleIds`, `knowledgeBaseId` (defaults to active KB; if none, lists across all KBs), substring `query` on title, `parentId`, or `includeUnpublished`. For the full untruncated body of a specific article, use `get_article`.',
     parameters: {
       type: 'object',
       properties: {
@@ -180,6 +182,7 @@ export function createListArticlesTool(getDeps: GetToolDeps): AgentToolDefinitio
               knowledgeBaseId: a.knowledgeBaseId,
               slug: a.slug,
               title: a.title,
+              description: a.description,
               excerpt: a.excerpt,
               status: a.status,
               parentId: a.parentId,

@@ -22,6 +22,7 @@ import { groupMembersProvider } from './providers/group-members-provider'
 import { groupsProvider } from './providers/groups-provider'
 import { inboxesProvider } from './providers/inboxes-provider'
 import { installedAppsProvider } from './providers/installed-apps-provider'
+import { kbCatalogProvider } from './providers/kb-catalog-provider'
 import { mailGrantIndexProvider } from './providers/mail-grant-index-provider'
 import { mcpServersProvider } from './providers/mcp-servers-provider'
 import { memberRoleMapProvider, membersProvider } from './providers/members-provider'
@@ -81,6 +82,7 @@ export function registerAllProviders(
   orgCache.register('mcpServers', mcpServersProvider)
   orgCache.register('workflowApps', workflowAppsProvider)
   orgCache.register('recordRules', recordRulesProvider)
+  orgCache.register('kbCatalog', kbCatalogProvider)
 
   // Org-scoped: AI provider data
   orgCache.register('aiProviderConfigs', aiProviderConfigsProvider)

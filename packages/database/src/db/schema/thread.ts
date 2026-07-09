@@ -55,6 +55,12 @@ export const Thread = pgTable(
     participantCount: integer().default(0).notNull(),
     firstMessageAt: timestamp({ precision: 3 }),
     lastMessageAt: timestamp({ precision: 3 }),
+    /**
+     * When the learned-KB extractor last processed this thread (stamped even on
+     * [noop] outcomes). Skip re-extraction while `>= lastMessageAt`; a thread
+     * that accrues new messages after extraction becomes eligible again.
+     */
+    learnedExtractedAt: timestamp({ precision: 3 }),
     /** Denormalized: ID of the latest non-draft message in the thread */
     latestMessageId: text().references((): AnyPgColumn => Message.id, {
       onUpdate: 'cascade',

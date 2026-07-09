@@ -4,6 +4,7 @@ import { createScopedLogger } from '@auxx/logger'
 import type { ResolvedAgentConfig } from '../../../agents'
 import type { AgentSurface } from '../../../agents/client'
 import type { IntegrationCatalogEntry } from '../../../cache/integration-catalog'
+import type { KbCatalogEntry } from '../../../kb/catalog/kb-catalog'
 import type { AgentToolDefinition } from '../../agent-framework/types'
 import type { KopilotDomainState } from '../types'
 import { SYSTEM_PROMPT_SECTIONS } from './sections/registry'
@@ -25,6 +26,12 @@ import type { TriggerContext } from './trigger-context'
 export interface BuildKopilotPromptArgs {
   domainState: KopilotDomainState
   entityCatalog: EntityCatalogEntry[]
+  /**
+   * Published KB articles ToC (from the `kbCatalog` org cache). Rendered as
+   * the browse-first Knowledge Catalog section; INTERNAL KBs are clamped out
+   * for customer audiences at render time. Omit to skip the section.
+   */
+  kbCatalog?: KbCatalogEntry[]
   capabilities: string[]
   tools: AgentToolDefinition[]
   currentUser: CurrentUserInfo | null
@@ -142,6 +149,7 @@ function buildPromptCtx(args: BuildKopilotPromptArgs): PromptCtx {
     currentUser: args.currentUser,
     integrations: args.integrations,
     entityCatalog: args.entityCatalog,
+    kbCatalog: args.kbCatalog ?? [],
     domainState: args.domainState,
     toolsetPromptAdditions: args.toolsetPromptAdditions,
     agentConfig: args.agentConfig,

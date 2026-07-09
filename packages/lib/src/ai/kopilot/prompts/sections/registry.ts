@@ -13,6 +13,7 @@ import { houseRules } from './house-rules'
 import { instructions } from './instructions'
 import { integrationCatalog } from './integration-catalog'
 import { jobStatement } from './job-statement'
+import { kbCatalog } from './kb-catalog'
 import { masterCapabilities } from './master-capabilities'
 import { masterPersona } from './master-persona'
 import { membersVsContacts } from './members-vs-contacts'
@@ -58,6 +59,7 @@ export const SYSTEM_PROMPT_SECTIONS: readonly PromptSection[] = [
   triggerInstructions,
   triggerActingAs,
   entityCatalog,
+  kbCatalog,
   integrationCatalog,
   toolBlock,
   toolsetAdditions,

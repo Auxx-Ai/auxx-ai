@@ -42,7 +42,9 @@ export const kbVisibility = pgEnum('KBVisibility', ['PUBLIC', 'INTERNAL'])
 // 'standard' = a user-facing KB; 'source' = the hidden container a KnowledgeSource owns.
 // Source-KBs hold a source's synced articles (embed-once) and are filtered out of every
 // KB list, picker, and the public site. See plans/kb/sources/source-owns-kb-REFACTOR.md.
-export const kbKind = pgEnum('KBKind', ['standard', 'source'])
+// 'learned' = the per-org AI-memory KB the learning pipeline writes to (INTERNAL,
+// hidden like source-KBs but human-editable). See plans/memory/learned-kb-plan.md.
+export const kbKind = pgEnum('KBKind', ['standard', 'source', 'learned'])
 // Knowledge Sources — ingest external content into a KB (see plans/kb/sources/).
 // NB: `type` (the connector kind) is a text() column, not a pgEnum — the connector
 // list grows over time and we don't want an enum-alter migration per new connector.

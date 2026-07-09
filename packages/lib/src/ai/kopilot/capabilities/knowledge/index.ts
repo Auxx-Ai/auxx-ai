@@ -15,7 +15,7 @@ export function createKnowledgeCapabilities(getDeps: GetToolDeps): PageCapabilit
     page: '__global__',
     tools: [createSearchDocsTool(getDeps), createSearchKnowledgeTool(getDeps)],
     systemPromptAddition:
-      "You can search the help center documentation (search_docs) and the organization's own knowledge (search_knowledge) — both KB articles and uploaded RAG documents in one query.",
+      "You can search the help center documentation (search_docs) and the organization's own knowledge (search_knowledge) — both KB articles and uploaded RAG documents in one query. When a Knowledge Catalog section is in your context, browse it first: pick the relevant article and read it with get_article; fall back to search_knowledge when the catalog has no obvious match or for uploaded documents.",
     capabilities: ['Search help center documentation, knowledge base articles, and RAG datasets'],
   }
 }

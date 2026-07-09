@@ -273,6 +273,7 @@ export async function updateArticlesBatch(
   const db = resolveDb(ctx)
   try {
     await verifyKnowledgeBaseExists(db, ctx.organizationId, knowledgeBaseId)
+    const needsMetadataSync: { id: string; isPublished: boolean }[] = []
     const updatedIds = await db.transaction(async (tx) => {
       const out: string[] = []
       for (const { id, updates } of articles) {
@@ -299,17 +300,16 @@ export async function updateArticlesBatch(
         const parentChanged =
           nextParentPlacementId !== undefined && nextParentPlacementId !== existing.parentId
         if (slugChanged || parentChanged) {
-          enqueueSubtreeMetadataSync(
-            db,
-            ctx.organizationId,
-            id,
-            knowledgeBaseId,
-            existing.isPublished
-          )
+          needsMetadataSync.push({ id, isPublished: existing.isPublished })
         }
       }
       return out
     })
+    // Post-commit: the sync worker (and the kbCatalog invalidation riding on
+    // enqueueKBSync) must read the committed tree, not pre-commit state.
+    for (const { id, isPublished } of needsMetadataSync) {
+      enqueueSubtreeMetadataSync(db, ctx.organizationId, id, knowledgeBaseId, isPublished)
+    }
     return await Promise.all(
       updatedIds.map((id) => reloadFlat(db, ctx.organizationId, id, knowledgeBaseId))
     )

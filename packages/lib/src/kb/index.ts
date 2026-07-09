@@ -27,6 +27,14 @@ export {
   updateArticlesBatch,
 } from './articles/update-article'
 export {
+  buildKbCatalog,
+  computeKbCatalog,
+  type KbCatalogArticle,
+  type KbCatalogEntry,
+  type KbCatalogSourceRow,
+} from './catalog/kb-catalog'
+export { type RenderKbCatalogOptions, renderKbCatalog } from './catalog/render-kb-catalog'
+export {
   DRAFT_SECTION_FIELDS,
   type DraftSection,
   draftedSections,
@@ -40,7 +48,12 @@ export {
   type ShikiLanguage,
 } from './highlight-code'
 export { KBService } from './kb-service'
-export { enqueueKBSync, type KBSyncJobData, type KBSyncJobType } from './kb-sync-queue'
+export {
+  enqueueKBSync,
+  invalidateKbCatalog,
+  type KBSyncJobData,
+  type KBSyncJobType,
+} from './kb-sync-queue'
 export { KBSyncService } from './kb-sync-service'
 export {
   createKnowledgeBase,
