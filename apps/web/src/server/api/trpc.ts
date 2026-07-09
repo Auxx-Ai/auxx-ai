@@ -68,8 +68,16 @@ const t = initTRPC.context<typeof createTRPCContext>().create({
   errorFormatter({ shape, error }) {
     // By default, `shape` holds { code, message, data }
     // `error` is the original TRPCError with `cause`.
-    // If the cause is a ZodError, we can re-shape things.
 
+    // Unexpected errors (DB failures, etc.) carry internals like raw SQL in
+    // their message — never send those to the client. Full details are logged
+    // server-side by timingMiddleware. Intentional errors (AuxxError, ZodError,
+    // explicit TRPCError) have a specific code and keep their message.
+    if (error.code === 'INTERNAL_SERVER_ERROR') {
+      return { ...shape, message: 'Internal server error' }
+    }
+
+    // If the cause is a ZodError, we can re-shape things.
     if (error.cause instanceof ZodError) {
       const zodError = error.cause as ZodError
 
