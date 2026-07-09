@@ -200,7 +200,12 @@ export const THUMBNAIL_LIMITS = {
 } as const
 
 /**
- * Allowed MIME types for thumbnail generation
+ * Allowed MIME types for thumbnail generation.
+ *
+ * ICO and SVG can't be decoded by sharp directly — the pipeline's
+ * `normalizeImageSource` step decodes/rasterizes them to PNG before resize, so
+ * they're accepted as source types here (and re-admitted at remote-image
+ * ingestion). SVG is detected via a text sniff since it has no magic bytes.
  */
 export const ALLOWED_IMAGE_TYPES = [
   'image/jpeg',
@@ -210,4 +215,6 @@ export const ALLOWED_IMAGE_TYPES = [
   'image/svg+xml',
   'image/tiff',
   'image/bmp',
+  'image/x-icon',
+  'image/vnd.microsoft.icon',
 ] as const

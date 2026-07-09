@@ -7,6 +7,7 @@ import { z } from 'zod'
 import { MediaAssetService } from '../../files/core/media-asset-service'
 import {
   getMimeTypeForFormat,
+  normalizeImageSource,
   processImage,
   UnsupportedImageError,
   validateSource,
@@ -126,11 +127,23 @@ export const generateThumbnailJob = async (ctx: JobContext): Promise<void> => {
     // Download source file
     const sourceBuffer = await storageManager.getContent(sourceVersion.storageLocationId!)
 
+    // Canonical decode/normalize: ICO → PNG, SVG → sanitized PNG, else passthrough.
+    // Runs before validate/resize so the rest of the pipeline only sees formats
+    // sharp can read.
+    const normalized = await normalizeImageSource(sourceBuffer)
+    if (normalized.normalizedFrom) {
+      logger.info('Normalized source image before thumbnailing', {
+        versionId,
+        preset,
+        normalizedFrom: normalized.normalizedFrom,
+      })
+    }
+
     // Validate source
-    await validateSource(sourceBuffer, sourceVersion.asset?.mimeType)
+    await validateSource(normalized.buffer, normalized.mime)
 
     // Process image
-    const processed = await processImage(sourceBuffer, preset as PresetKey, opts)
+    const processed = await processImage(normalized.buffer, preset as PresetKey, opts)
 
     // Upload to storage using the new uploadContent method
     const storageKey = `thumbs/${orgId}/${versionId}/${preset}.${processed.format}`

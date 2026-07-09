@@ -4,6 +4,7 @@
 
 export {
   getMimeTypeForFormat,
+  normalizeImageSource,
   processImage,
   UnsupportedImageError,
   validateSource,

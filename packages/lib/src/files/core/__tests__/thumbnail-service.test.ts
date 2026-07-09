@@ -281,6 +281,9 @@ describe('ThumbnailService', () => {
 
       // Mock thumbnail processor worker
       vi.doMock('../thumbnail-processor.worker', () => ({
+        normalizeImageSource: vi
+          .fn()
+          .mockImplementation(async (buffer: Buffer) => ({ buffer, mime: 'image/png' })),
         processImage: vi.fn().mockResolvedValue({
           buffer: Buffer.from('processed-image'),
           size: 5000,
