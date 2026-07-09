@@ -1,10 +1,12 @@
 // packages/utils/src/browser.ts
 
 /**
- * Inline script to set platform detection in <head>.
- * Run this before React hydration to avoid mismatch.
+ * Inline script to set platform detection in <head>. Runs before first paint so
+ * both the `window.__IS_MAC__` global (read by {@link isMac}) and the `is-mac`
+ * class on `<html>` (used for pure-CSS icon selection, e.g. in `Kbd`) are set
+ * before React hydrates — no mismatch, no visible icon flip.
  */
-export const IS_MAC_SCRIPT = `window.__IS_MAC__=/Mac|iPod|iPhone|iPad/.test(navigator.platform)`
+export const IS_MAC_SCRIPT = `(function(){var m=/Mac|iPod|iPhone|iPad/.test(navigator.platform);window.__IS_MAC__=m;if(m)document.documentElement.classList.add('is-mac')})()`
 
 /**
  * Check if the current platform is macOS/iOS.
