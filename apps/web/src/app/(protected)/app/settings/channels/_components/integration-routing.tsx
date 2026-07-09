@@ -7,6 +7,7 @@ import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
+import { ToggleCard } from '@auxx/ui/components/toggle-card'
 import { useCopy } from '@auxx/ui/hooks/use-copy'
 import {
   AlertCircle,
@@ -167,6 +168,27 @@ export default function IntegrationRouting({
     },
   })
 
+  // Two-way sync — mirror Auxx status/read changes back to the mailbox. Opt-out
+  // (absent flag ⇒ enabled); only shown for providers that support it on a
+  // personal inbox (push-back never applies to shared inboxes).
+  const showBidirectionalToggle = !!integration.supportsBidirectionalStatusSync && isPersonalChannel
+  const [bidirectionalSync, setBidirectionalSync] = useState<boolean>(
+    integration.settings?.bidirectionalSyncEnabled ?? true
+  )
+  const updateSettings = api.channel.updateSettings.useMutation({
+    onSuccess: () => utils.channel.list.invalidate(),
+    onError: (error) => {
+      toastError({ title: 'Error updating settings', description: error.message })
+    },
+  })
+  const handleBidirectionalSyncChange = (next: boolean) => {
+    setBidirectionalSync(next)
+    updateSettings.mutate({
+      integrationId: integration.id,
+      settings: { bidirectionalSyncEnabled: next },
+    })
+  }
+
   const removeIntegration = api.channel.disconnect.useMutation({
     onSuccess: () => {
       setIsRemoving(false)
@@ -251,6 +273,15 @@ export default function IntegrationRouting({
                   {new Date(integration.throttleRetryAfter).toLocaleString()}.
                 </AlertDescription>
               </Alert>
+            )}
+            {showBidirectionalToggle && (
+              <ToggleCard
+                title='Two-way sync'
+                description='When you archive, trash, or read a thread in Auxx, apply the same change in your mailbox. Changes made in your mailbox always sync into Auxx regardless.'
+                checked={bidirectionalSync}
+                onCheckedChange={handleBidirectionalSyncChange}
+                disabled={!canManage || updateSettings.isPending}
+              />
             )}
           </div>
         </SettingsSection>

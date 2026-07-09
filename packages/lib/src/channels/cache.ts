@@ -20,6 +20,23 @@ export async function getOrgChannelProviderMap(
 }
 
 /**
+ * Per-channel bidirectional-status-sync flag, keyed by integration id.
+ *
+ * Opt-out semantics: a channel is enabled unless its settings explicitly set
+ * `bidirectionalSyncEnabled === false`. Reads the `channels` cache (which
+ * carries `settings` and is invalidated by `channel.settings_updated`), so a
+ * toggle flip takes effect without a TTL wait. Absent integrations resolve to
+ * `true` via `map.get(id) ?? true` at the call site.
+ */
+export async function getOrgChannelBidirectionalSyncMap(
+  organizationId: string,
+  _db: Database
+): Promise<Map<string, boolean>> {
+  const channels = await getOrgCache().get(organizationId, 'channels')
+  return new Map(channels.map((c) => [c.id, c.settings?.bidirectionalSyncEnabled !== false]))
+}
+
+/**
  * Invalidate cached provider map for an organization.
  * Call when channels are added or removed.
  * @deprecated Use onCacheEvent('channel.connected', { orgId }) instead

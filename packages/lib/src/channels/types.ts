@@ -23,4 +23,11 @@ export interface ChannelSettings {
   excludeSenders?: string[]
   excludeRecipients?: string[]
   onlyProcessRecipients?: string[]
+  /**
+   * Personal-inbox push-back to the provider mailbox (bidirectional status
+   * sync). Absent ⇒ enabled (opt-out) — only an explicit `false` disables.
+   * Only meaningful on providers whose capabilities set
+   * `supportsBidirectionalStatusSync`.
+   */
+  bidirectionalSyncEnabled?: boolean
 }

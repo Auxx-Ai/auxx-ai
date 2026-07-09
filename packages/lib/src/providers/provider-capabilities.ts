@@ -10,6 +10,7 @@ export type { ProviderCapabilities } from './types'
 export const PROVIDER_CAPABILITIES: Record<IntegrationProviderType, ProviderCapabilities> = {
   [IntegrationProviderType.google]: {
     supportsPersonalConnection: true,
+    supportsBidirectionalStatusSync: true,
     // Gmail capabilities
     canSend: true,
     canReply: true,
@@ -43,6 +44,7 @@ export const PROVIDER_CAPABILITIES: Record<IntegrationProviderType, ProviderCapa
   },
   [IntegrationProviderType.facebook]: {
     supportsPersonalConnection: false,
+    supportsBidirectionalStatusSync: false,
     // Facebook Messenger capabilities
     canSend: true,
     canReply: true,
@@ -83,6 +85,7 @@ export const PROVIDER_CAPABILITIES: Record<IntegrationProviderType, ProviderCapa
   },
   [IntegrationProviderType.instagram]: {
     supportsPersonalConnection: false,
+    supportsBidirectionalStatusSync: false,
     // Instagram Direct Message capabilities
     canSend: true,
     canReply: true,
@@ -122,6 +125,7 @@ export const PROVIDER_CAPABILITIES: Record<IntegrationProviderType, ProviderCapa
   },
   [IntegrationProviderType.openphone]: {
     supportsPersonalConnection: false,
+    supportsBidirectionalStatusSync: false,
     // SMS capabilities (via OpenPhone or similar)
     canSend: true,
     canReply: true,
@@ -158,6 +162,7 @@ export const PROVIDER_CAPABILITIES: Record<IntegrationProviderType, ProviderCapa
   },
   [IntegrationProviderType.mailgun]: {
     supportsPersonalConnection: false,
+    supportsBidirectionalStatusSync: false,
     // Mailgun email service capabilities
     canSend: true,
     canReply: true,
@@ -191,6 +196,7 @@ export const PROVIDER_CAPABILITIES: Record<IntegrationProviderType, ProviderCapa
   },
   [IntegrationProviderType.sms]: {
     supportsPersonalConnection: false,
+    supportsBidirectionalStatusSync: false,
     // Generic SMS capabilities
     canSend: true,
     canReply: true,
@@ -227,6 +233,7 @@ export const PROVIDER_CAPABILITIES: Record<IntegrationProviderType, ProviderCapa
   },
   [IntegrationProviderType.email]: {
     supportsPersonalConnection: true,
+    supportsBidirectionalStatusSync: false,
     // Generic email capabilities
     canSend: true,
     canReply: true,
@@ -260,6 +267,7 @@ export const PROVIDER_CAPABILITIES: Record<IntegrationProviderType, ProviderCapa
   },
   [IntegrationProviderType.whatsapp]: {
     supportsPersonalConnection: false,
+    supportsBidirectionalStatusSync: false,
     // WhatsApp Business API capabilities
     canSend: true,
     canReply: true,
@@ -298,6 +306,7 @@ export const PROVIDER_CAPABILITIES: Record<IntegrationProviderType, ProviderCapa
   },
   [IntegrationProviderType.chat]: {
     supportsPersonalConnection: false,
+    supportsBidirectionalStatusSync: false,
     // Generic chat capabilities (internal chat system)
     canSend: true,
     canReply: true,
@@ -334,6 +343,7 @@ export const PROVIDER_CAPABILITIES: Record<IntegrationProviderType, ProviderCapa
   },
   [IntegrationProviderType.shopify]: {
     supportsPersonalConnection: false,
+    supportsBidirectionalStatusSync: false,
     // Shopify capabilities (not a messaging provider)
     canSend: false,
     canReply: false,
@@ -371,6 +381,7 @@ export const PROVIDER_CAPABILITIES: Record<IntegrationProviderType, ProviderCapa
   },
   [IntegrationProviderType.imap]: {
     supportsPersonalConnection: true,
+    supportsBidirectionalStatusSync: false,
     // IMAP/SMTP capabilities (self-hosted, enterprise)
     canSend: true,
     canReply: true,
@@ -404,6 +415,7 @@ export const PROVIDER_CAPABILITIES: Record<IntegrationProviderType, ProviderCapa
   },
   [IntegrationProviderType.outlook]: {
     supportsPersonalConnection: true,
+    supportsBidirectionalStatusSync: false,
     // Outlook/Office 365 capabilities
     canSend: true,
     canReply: true,
@@ -458,6 +470,7 @@ export function getProviderCapabilities(
     PROVIDER_CAPABILITIES[providerType] || {
       // Default minimal capabilities
       supportsPersonalConnection: false,
+      supportsBidirectionalStatusSync: false,
       canSend: false,
       canReply: false,
       canForward: false,
