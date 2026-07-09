@@ -13,6 +13,7 @@ import { AlertTriangle } from 'lucide-react'
 import { use } from 'react'
 import { ConnectorDetailView } from '~/components/data-connectors/ui/connector-detail-view'
 import { EmptyState } from '~/components/global/empty-state'
+import { LoadingSpinner } from '~/components/global/loading-content'
 import { api } from '~/trpc/react'
 
 interface ConnectorDetailPageProps {
@@ -51,7 +52,7 @@ export default function ConnectorDetailPage({ params }: ConnectorDetailPageProps
 
   if (connector.isLoading || !connector.data) {
     return (
-      <MainPage loading>
+      <MainPage>
         <MainPageHeader>
           <MainPageBreadcrumb>
             <MainPageBreadcrumbItem title='Connectors' href='/app/connectors' />
@@ -59,7 +60,7 @@ export default function ConnectorDetailPage({ params }: ConnectorDetailPageProps
           </MainPageBreadcrumb>
         </MainPageHeader>
         <MainPageContent>
-          <div className='h-full w-full animate-pulse bg-muted/20' />
+          <LoadingSpinner />
         </MainPageContent>
       </MainPage>
     )

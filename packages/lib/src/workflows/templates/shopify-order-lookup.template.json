@@ -1,7 +1,7 @@
 {
   "slug": "shopify-order-lookup",
   "name": "Shopify Order Lookup & Reply",
-  "description": "When a customer emails about an order, this workflow extracts the order number, looks it up in Shopify, and generates a contextual AI reply with real order details (status, tracking, items). If no order is found, it sends a helpful fallback asking for the order number.",
+  "description": "When a customer emails about an order, this workflow extracts the order number, looks it up in Shopify, and generates a contextual AI reply with real order details (status, tracking, items). If the number can't be found it asks the customer to confirm it, if no number was given it asks for one, and if the email isn't order-related it stays silent. No AI-generated signatures.",
   "categories": ["customer-service", "shopify", "ai"],
   "status": "public",
   "popularity": 95,
@@ -26,7 +26,7 @@
         "type": "standard",
         "position": {
           "x": 100,
-          "y": 250
+          "y": 300
         },
         "data": {
           "id": "trigger_1",
@@ -47,8 +47,8 @@
         "id": "extractor_1",
         "type": "standard",
         "position": {
-          "x": 400,
-          "y": 250
+          "x": 450,
+          "y": 300
         },
         "data": {
           "id": "extractor_1",
@@ -101,8 +101,8 @@
         "id": "ifelse_has_order",
         "type": "standard",
         "position": {
-          "x": 750,
-          "y": 250
+          "x": 800,
+          "y": 300
         },
         "data": {
           "id": "ifelse_has_order",
@@ -116,7 +116,7 @@
               "logical_operator": "and",
               "conditions": [
                 {
-                  "id": "cond_1",
+                  "id": "cond_has_order",
                   "variableId": "extractor_1.extracted_data.order_number",
                   "comparison_operator": "not empty",
                   "logical_operator": "and"
@@ -144,8 +144,8 @@
         "id": "shopify_get_order",
         "type": "standard",
         "position": {
-          "x": 1100,
-          "y": 125
+          "x": 1150,
+          "y": 150
         },
         "data": {
           "id": "shopify_get_order",
@@ -168,11 +168,54 @@
         "height": 100
       },
       {
+        "id": "ifelse_order_found",
+        "type": "standard",
+        "position": {
+          "x": 1500,
+          "y": 150
+        },
+        "data": {
+          "id": "ifelse_order_found",
+          "type": "if-else",
+          "title": "Order Found?",
+          "desc": "The extracted number may not match a real order — check Shopify actually returned one",
+          "cases": [
+            {
+              "id": "case_order_found",
+              "case_id": "true",
+              "logical_operator": "and",
+              "conditions": [
+                {
+                  "id": "cond_order_found",
+                  "variableId": "shopify_get_order.name",
+                  "comparison_operator": "not empty",
+                  "logical_operator": "and"
+                }
+              ]
+            }
+          ],
+          "_targetBranches": [
+            {
+              "id": "true",
+              "name": "Found",
+              "type": "default"
+            },
+            {
+              "id": "false",
+              "name": "Not Found",
+              "type": "default"
+            }
+          ]
+        },
+        "width": 244,
+        "height": 100
+      },
+      {
         "id": "ai_order_reply",
         "type": "standard",
         "position": {
-          "x": 1450,
-          "y": 125
+          "x": 1850,
+          "y": 40
         },
         "data": {
           "id": "ai_order_reply",
@@ -389,6 +432,22 @@
                       {
                         "type": "text",
                         "text": "- Keep the reply concise and actionable"
+                      },
+                      {
+                        "type": "hardBreak"
+                      },
+                      {
+                        "type": "text",
+                        "text": "- Never add a signature or sign-off (no \"Best regards\", no name). The email system adds signatures separately."
+                      }
+                    ]
+                  },
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "Output: set respond to true and put the reply in email_message. If the email clearly isn't a genuine customer request (spam, an automated bounce/out-of-office, or nothing to answer), set respond to false and leave email_message empty."
                       }
                     ]
                   }
@@ -445,8 +504,67 @@
             "enabled": false
           },
           "structured_output": {
-            "enabled": false
+            "enabled": true,
+            "schema": {
+              "type": "object",
+              "properties": {
+                "respond": {
+                  "type": "boolean",
+                  "description": "Whether to send a reply at all. Set false only if the email is not a genuine customer request that warrants a response (spam, automated bounce, out-of-office)."
+                },
+                "email_message": {
+                  "type": ["string", "null"],
+                  "description": "The reply body to send. Null when respond is false. Never include a signature or sign-off."
+                }
+              },
+              "required": ["respond", "email_message"]
+            }
           }
+        },
+        "width": 244,
+        "height": 100
+      },
+      {
+        "id": "ifelse_reply_order",
+        "type": "standard",
+        "position": {
+          "x": 2200,
+          "y": 40
+        },
+        "data": {
+          "id": "ifelse_reply_order",
+          "type": "if-else",
+          "title": "Should Reply?",
+          "desc": "Only send if the AI decided a reply is warranted",
+          "cases": [
+            {
+              "id": "case_reply_order",
+              "case_id": "true",
+              "logical_operator": "and",
+              "conditions": [
+                {
+                  "id": "cond_reply_order",
+                  "variableId": "ai_order_reply.respond",
+                  "comparison_operator": "is",
+                  "value": true,
+                  "isConstant": true,
+                  "logical_operator": "and"
+                }
+              ]
+            }
+          ],
+          "_targetBranches": [
+            {
+              "id": "true",
+              "name": "Yes",
+              "type": "default"
+            },
+            {
+              "id": "false",
+              "name": "No",
+              "type": "default"
+            }
+          ]
         },
         "width": 244,
         "height": 100
@@ -455,8 +573,8 @@
         "id": "answer_order",
         "type": "standard",
         "position": {
-          "x": 1800,
-          "y": 125
+          "x": 2550,
+          "y": 40
         },
         "data": {
           "id": "answer_order",
@@ -465,7 +583,288 @@
           "desc": "Reply with order-specific information",
           "messageType": "reply",
           "recordId": "trigger_1.thread",
-          "text": "{{ai_order_reply.text}}",
+          "text": "{{ai_order_reply.email_message}}",
+          "to": [],
+          "toModes": [],
+          "cc": [],
+          "ccModes": [],
+          "bcc": [],
+          "bccModes": [],
+          "subject": "",
+          "attachments": [],
+          "attachmentFiles": [],
+          "attachmentFilesModes": []
+        },
+        "width": 244,
+        "height": 100
+      },
+      {
+        "id": "ai_order_not_found",
+        "type": "standard",
+        "position": {
+          "x": 1850,
+          "y": 300
+        },
+        "data": {
+          "id": "ai_order_not_found",
+          "type": "ai",
+          "title": "AI: Order Not Found",
+          "desc": "The number didn't match an order — ask the customer to confirm it",
+          "model": {
+            "useDefault": true,
+            "provider": "",
+            "name": "",
+            "mode": "chat",
+            "completion_params": {
+              "temperature": 0.7
+            }
+          },
+          "prompt_template": [
+            {
+              "role": "system",
+              "json": {
+                "type": "doc",
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "You are a friendly, professional customer support agent for a Shopify store. The customer referenced order number "
+                      },
+                      {
+                        "type": "variable-node",
+                        "attrs": {
+                          "variableId": "extractor_1.extracted_data.order_number"
+                        }
+                      },
+                      {
+                        "type": "text",
+                        "text": ", but no matching order was found in the store. It may be a typo, a different store, or a number that isn't an order (e.g. a tracking or invoice number)."
+                      }
+                    ]
+                  },
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "Customer intent: "
+                      },
+                      {
+                        "type": "variable-node",
+                        "attrs": {
+                          "variableId": "extractor_1.extracted_data.intent"
+                        }
+                      },
+                      {
+                        "type": "hardBreak"
+                      },
+                      {
+                        "type": "text",
+                        "text": "Urgency: "
+                      },
+                      {
+                        "type": "variable-node",
+                        "attrs": {
+                          "variableId": "extractor_1.extracted_data.urgency"
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "Guidelines:"
+                      },
+                      {
+                        "type": "hardBreak"
+                      },
+                      {
+                        "type": "text",
+                        "text": "- Acknowledge their inquiry warmly"
+                      },
+                      {
+                        "type": "hardBreak"
+                      },
+                      {
+                        "type": "text",
+                        "text": "- Explain you couldn't locate that order number and ask them to double-check it (confirmation email, account page) or share the email address used at checkout"
+                      },
+                      {
+                        "type": "hardBreak"
+                      },
+                      {
+                        "type": "text",
+                        "text": "- If their intent is clear (e.g., return request), briefly outline what you'll need once the order is located"
+                      },
+                      {
+                        "type": "hardBreak"
+                      },
+                      {
+                        "type": "text",
+                        "text": "- If urgency is high, reassure them you'll prioritize once the order is confirmed"
+                      },
+                      {
+                        "type": "hardBreak"
+                      },
+                      {
+                        "type": "text",
+                        "text": "- Keep it concise — don't over-explain"
+                      },
+                      {
+                        "type": "hardBreak"
+                      },
+                      {
+                        "type": "text",
+                        "text": "- Never add a signature or sign-off (no \"Best regards\", no name). The email system adds signatures separately."
+                      }
+                    ]
+                  },
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "Output: set respond to true and put the reply in email_message. If the email clearly isn't a genuine customer request (spam, an automated bounce/out-of-office, or nothing to answer), set respond to false and leave email_message empty."
+                      }
+                    ]
+                  }
+                ]
+              }
+            },
+            {
+              "role": "user",
+              "json": {
+                "type": "doc",
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "Customer email:"
+                      },
+                      {
+                        "type": "hardBreak"
+                      },
+                      {
+                        "type": "text",
+                        "text": "Subject: "
+                      },
+                      {
+                        "type": "variable-node",
+                        "attrs": {
+                          "variableId": "trigger_1.message.subject"
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "variable-node",
+                        "attrs": {
+                          "variableId": "trigger_1.message.body"
+                        }
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          ],
+          "context": {
+            "enabled": false,
+            "variable_selector": []
+          },
+          "vision": {
+            "enabled": false
+          },
+          "structured_output": {
+            "enabled": true,
+            "schema": {
+              "type": "object",
+              "properties": {
+                "respond": {
+                  "type": "boolean",
+                  "description": "Whether to send a reply at all. Set false only if the email is not a genuine customer request that warrants a response (spam, automated bounce, out-of-office)."
+                },
+                "email_message": {
+                  "type": ["string", "null"],
+                  "description": "The reply body to send. Null when respond is false. Never include a signature or sign-off."
+                }
+              },
+              "required": ["respond", "email_message"]
+            }
+          }
+        },
+        "width": 244,
+        "height": 100
+      },
+      {
+        "id": "ifelse_reply_not_found",
+        "type": "standard",
+        "position": {
+          "x": 2200,
+          "y": 300
+        },
+        "data": {
+          "id": "ifelse_reply_not_found",
+          "type": "if-else",
+          "title": "Should Reply?",
+          "desc": "Only send if the AI decided a reply is warranted",
+          "cases": [
+            {
+              "id": "case_reply_not_found",
+              "case_id": "true",
+              "logical_operator": "and",
+              "conditions": [
+                {
+                  "id": "cond_reply_not_found",
+                  "variableId": "ai_order_not_found.respond",
+                  "comparison_operator": "is",
+                  "value": true,
+                  "isConstant": true,
+                  "logical_operator": "and"
+                }
+              ]
+            }
+          ],
+          "_targetBranches": [
+            {
+              "id": "true",
+              "name": "Yes",
+              "type": "default"
+            },
+            {
+              "id": "false",
+              "name": "No",
+              "type": "default"
+            }
+          ]
+        },
+        "width": 244,
+        "height": 100
+      },
+      {
+        "id": "answer_not_found",
+        "type": "standard",
+        "position": {
+          "x": 2550,
+          "y": 300
+        },
+        "data": {
+          "id": "answer_not_found",
+          "type": "answer",
+          "title": "Send \"Confirm Order #\" Reply",
+          "desc": "Ask the customer to confirm their order number",
+          "messageType": "reply",
+          "recordId": "trigger_1.thread",
+          "text": "{{ai_order_not_found.email_message}}",
           "to": [],
           "toModes": [],
           "cc": [],
@@ -484,8 +883,8 @@
         "id": "ai_no_order_reply",
         "type": "standard",
         "position": {
-          "x": 1100,
-          "y": 375
+          "x": 1150,
+          "y": 560
         },
         "data": {
           "id": "ai_no_order_reply",
@@ -585,6 +984,22 @@
                       {
                         "type": "text",
                         "text": "- Keep it concise — don't over-explain"
+                      },
+                      {
+                        "type": "hardBreak"
+                      },
+                      {
+                        "type": "text",
+                        "text": "- Never add a signature or sign-off (no \"Best regards\", no name). The email system adds signatures separately."
+                      }
+                    ]
+                  },
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "Output: set respond to true and put the reply in email_message. If the email isn't order-related or clearly doesn't warrant a response (spam, an automated bounce/out-of-office, general chatter with nothing to answer), set respond to false and leave email_message empty."
                       }
                     ]
                   }
@@ -641,8 +1056,67 @@
             "enabled": false
           },
           "structured_output": {
-            "enabled": false
+            "enabled": true,
+            "schema": {
+              "type": "object",
+              "properties": {
+                "respond": {
+                  "type": "boolean",
+                  "description": "Whether to send a reply at all. Set false if the email is not order-related or otherwise doesn't warrant a response (spam, automated bounce, out-of-office, general chatter)."
+                },
+                "email_message": {
+                  "type": ["string", "null"],
+                  "description": "The reply body to send. Null when respond is false. Never include a signature or sign-off."
+                }
+              },
+              "required": ["respond", "email_message"]
+            }
           }
+        },
+        "width": 244,
+        "height": 100
+      },
+      {
+        "id": "ifelse_reply_no_order",
+        "type": "standard",
+        "position": {
+          "x": 1500,
+          "y": 560
+        },
+        "data": {
+          "id": "ifelse_reply_no_order",
+          "type": "if-else",
+          "title": "Should Reply?",
+          "desc": "Skip unrelated emails — only send when the AI marked respond true",
+          "cases": [
+            {
+              "id": "case_reply_no_order",
+              "case_id": "true",
+              "logical_operator": "and",
+              "conditions": [
+                {
+                  "id": "cond_reply_no_order",
+                  "variableId": "ai_no_order_reply.respond",
+                  "comparison_operator": "is",
+                  "value": true,
+                  "isConstant": true,
+                  "logical_operator": "and"
+                }
+              ]
+            }
+          ],
+          "_targetBranches": [
+            {
+              "id": "true",
+              "name": "Yes",
+              "type": "default"
+            },
+            {
+              "id": "false",
+              "name": "No",
+              "type": "default"
+            }
+          ]
         },
         "width": 244,
         "height": 100
@@ -651,8 +1125,8 @@
         "id": "answer_no_order",
         "type": "standard",
         "position": {
-          "x": 1450,
-          "y": 375
+          "x": 1850,
+          "y": 560
         },
         "data": {
           "id": "answer_no_order",
@@ -661,7 +1135,7 @@
           "desc": "Ask customer for their order number",
           "messageType": "reply",
           "recordId": "trigger_1.thread",
-          "text": "{{ai_no_order_reply.text}}",
+          "text": "{{ai_no_order_reply.email_message}}",
           "to": [],
           "toModes": [],
           "cc": [],
@@ -700,17 +1174,52 @@
         "targetHandle": "target"
       },
       {
-        "id": "e_shopify_ai",
+        "id": "e_shopify_order_found",
         "source": "shopify_get_order",
-        "target": "ai_order_reply",
+        "target": "ifelse_order_found",
         "sourceHandle": "source",
         "targetHandle": "target"
       },
       {
-        "id": "e_ai_answer_order",
+        "id": "e_order_found_ai",
+        "source": "ifelse_order_found",
+        "target": "ai_order_reply",
+        "sourceHandle": "true",
+        "targetHandle": "target"
+      },
+      {
+        "id": "e_ai_reply_gate_order",
         "source": "ai_order_reply",
-        "target": "answer_order",
+        "target": "ifelse_reply_order",
         "sourceHandle": "source",
+        "targetHandle": "target"
+      },
+      {
+        "id": "e_gate_answer_order",
+        "source": "ifelse_reply_order",
+        "target": "answer_order",
+        "sourceHandle": "true",
+        "targetHandle": "target"
+      },
+      {
+        "id": "e_order_not_found_ai",
+        "source": "ifelse_order_found",
+        "target": "ai_order_not_found",
+        "sourceHandle": "false",
+        "targetHandle": "target"
+      },
+      {
+        "id": "e_ai_gate_not_found",
+        "source": "ai_order_not_found",
+        "target": "ifelse_reply_not_found",
+        "sourceHandle": "source",
+        "targetHandle": "target"
+      },
+      {
+        "id": "e_gate_answer_not_found",
+        "source": "ifelse_reply_not_found",
+        "target": "answer_not_found",
+        "sourceHandle": "true",
         "targetHandle": "target"
       },
       {
@@ -721,17 +1230,24 @@
         "targetHandle": "target"
       },
       {
-        "id": "e_ai_answer_no_order",
+        "id": "e_ai_gate_no_order",
         "source": "ai_no_order_reply",
-        "target": "answer_no_order",
+        "target": "ifelse_reply_no_order",
         "sourceHandle": "source",
+        "targetHandle": "target"
+      },
+      {
+        "id": "e_gate_answer_no_order",
+        "source": "ifelse_reply_no_order",
+        "target": "answer_no_order",
+        "sourceHandle": "true",
         "targetHandle": "target"
       }
     ],
     "viewport": {
       "x": 0,
       "y": 0,
-      "zoom": 0.7
+      "zoom": 0.6
     }
   }
 }
