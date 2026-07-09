@@ -80,6 +80,15 @@ export {
   type KopilotPreTurnSnapshot,
   readKopilotSnapshot,
 } from './kopilot-snapshot'
+export {
+  ensureLearnedKb,
+  LEARNED_CATEGORIES,
+  LEARNED_CATEGORY_KEYS,
+  LEARNED_KB_NAME,
+  LEARNED_KB_SLUG,
+  type LearnedCategoryKey,
+  type LearnedKb,
+} from './learned/ensure-learned-kb'
 export { articleToMarkdown } from './markdown/article-to-markdown'
 export { type KbArticleEvent, kbArticleChannel, publishKbArticleEvent } from './realtime'
 export { type RenderArticleOptions, renderArticleHtml } from './render-article-html'
