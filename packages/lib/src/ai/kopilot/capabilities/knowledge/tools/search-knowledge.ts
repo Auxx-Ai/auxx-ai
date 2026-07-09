@@ -121,7 +121,7 @@ export function createSearchKnowledgeTool(getDeps: GetToolDeps): AgentToolDefini
     usageNotes:
       'For KB articles, cite individual articles in the final message via `[Title](auxx://doc/<docSlug>)` — `docSlug` is on each result. RAG segments have no citable URL; mention them in prose.',
     description:
-      "Hybrid (BM25 + vector) search across the organization's knowledge — published KB articles and uploaded RAG documents. Use for written content (articles, manuals, policies, FAQs). Do NOT use for contacts, customers, products, orders, or other entities — use search_entities for that.",
+      "Hybrid (keyword + semantic) search across the organization's knowledge — published KB articles and uploaded RAG documents. Returns the best-matching passage per article/document; follow the `articleId`/`docSlug` into get_article for full context. Use for written content (articles, manuals, policies, FAQs). Do NOT use for contacts, customers, products, orders, or other entities — use search_entities for that.",
     parameters: {
       type: 'object',
       properties: {
@@ -198,11 +198,14 @@ export function createSearchKnowledgeTool(getDeps: GetToolDeps): AgentToolDefini
           }
         }
 
+        // Over-fetch: results below are deduped to one segment per article
+        // (and optionally post-filtered by recordIds), so the raw segment list
+        // must be several times the requested page to survive the cuts.
         const response = await SearchService.search(
           {
             query,
             datasetIds,
-            limit: recordIds && recordIds.length > 0 ? Math.max(limit * 3, MAX_RESULTS) : limit,
+            limit: Math.min(Math.max(limit * 3, 15), 50),
             searchType: 'hybrid',
             includeMetadata: true,
           },
@@ -221,7 +224,20 @@ export function createSearchKnowledgeTool(getDeps: GetToolDeps): AgentToolDefini
               })
             : response.results
 
-        const trimmed = filtered.slice(0, limit)
+        // One result per article (KB) / document (RAG): results arrive score-
+        // sorted, so the first segment seen for a source is its best passage.
+        // Without this, one long article can occupy every slot and crowd out
+        // other relevant sources.
+        const seenSources = new Set<string>()
+        const grouped = filtered.filter((r) => {
+          const meta = (r.segment.metadata as any) ?? {}
+          const key = (meta.articleId as string | undefined) ?? r.segment.documentId ?? r.segment.id
+          if (seenSources.has(key)) return false
+          seenSources.add(key)
+          return true
+        })
+
+        const trimmed = grouped.slice(0, limit)
 
         // Hybrid runs vector + text in parallel via Promise.allSettled. If one
         // side throws (e.g. embedding-model mismatch), results may be missing

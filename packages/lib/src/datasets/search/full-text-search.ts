@@ -43,11 +43,6 @@ export class FullTextSearchService {
         datasetIds,
         organizationId,
         {
-          fuzzySearch: true,
-          phraseSearch: false,
-          booleanMode: false,
-          rankingMode: 'bm25',
-          minScore: 0.1,
           includeInactive: query.includeInactive,
           filters: query.filters, // Pass filters to SQL query
         }
@@ -126,6 +121,14 @@ export class FullTextSearchService {
       // Execute optimized full-text search using stored searchVector generated column
       // searchVector is auto-computed from content by PostgreSQL
       // Reduced column selection for better performance
+      //
+      // Query parsing: `websearch_to_tsquery` (stemming, stopwords, quoted
+      // phrases), then bare `&`s are rewritten to `|` so a natural-language
+      // query matches segments containing ANY meaningful term instead of
+      // requiring ALL of them — `ts_rank_cd` still ranks segments matching
+      // more terms higher. Phrase operators (`<->`) survive untouched;
+      // `-negations` lose their AND-binding under the rewrite, which is an
+      // accepted trade-off (recall over strictness for agent queries).
       const datasetIdsArray = `{${datasetIds.join(',')}}`
       const searchResults = (
         await db.execute(sql`
@@ -136,6 +139,7 @@ export class FullTextSearchService {
           ds."tokenCount",
           ds."documentId",
           ds."organizationId",
+          ds.metadata as "segmentMetadata",
           d.id as "docId",
           d.title as "documentTitle",
           d.filename as "documentFilename",
@@ -147,16 +151,21 @@ export class FullTextSearchService {
           d."createdAt" as "documentCreatedAt",
           dt.id as "datasetId",
           dt.name as "datasetName",
-          ts_rank_cd(ds."searchVector", plainto_tsquery('english', ${searchQuery})) as rank_score
+          ts_rank_cd(ds."searchVector", tsq.q) as rank_score
         FROM "DocumentSegment" ds
         JOIN "Document" d ON ds."documentId" = d.id
         JOIN "Dataset" dt ON d."datasetId" = dt.id
+        CROSS JOIN (
+          SELECT replace(
+            websearch_to_tsquery('english', ${searchQuery})::text, ' & ', ' | '
+          )::tsquery AS q
+        ) tsq
         WHERE dt.id = ANY(${datasetIdsArray}::text[])
           AND dt."organizationId" = ${organizationId}
           AND ds.enabled = true
           AND d.enabled = true
           ${options.includeInactive ? sql`` : sql`AND dt.status = 'ACTIVE'`}
-          AND ds."searchVector" @@ plainto_tsquery('english', ${searchQuery})
+          AND ds."searchVector" @@ tsq.q
           ${filterConditions}
         ORDER BY rank_score DESC, ds."createdAt" DESC
         LIMIT 100;
@@ -243,6 +252,13 @@ export class FullTextSearchService {
             position: row.position,
             tokenCount: row.tokenCount,
             organizationId: row.organizationId,
+            // Without this, text-only hits reach consumers with no metadata:
+            // search_knowledge then mislabels KB articles as 'rag' (no
+            // docSlug/citation) and the recordIds links[] filter drops them.
+            // The vector lane returns "searchMetadata" — same content, written
+            // at embed time; ds.metadata is authored at segment creation and
+            // exists even when embedding never ran.
+            metadata: row.segmentMetadata ?? {},
             document: {
               id: row.docId,
               title: row.documentTitle,
@@ -262,7 +278,9 @@ export class FullTextSearchService {
             },
           },
           score: parseFloat(row.rank_score) || 0,
-          rank: index,
+          // 1-based, in score order — RRF fusion in hybrid-search depends on
+          // ranks being 1-based and consistent across lanes.
+          rank: index + 1,
           relevanceScore: parseFloat(row.rank_score) || 0,
           searchType: 'text',
         }) as SearchResult
@@ -334,6 +352,7 @@ export class FullTextSearchService {
           ds."tokenCount",
           ds."documentId",
           ds."organizationId",
+          ds.metadata as "segmentMetadata",
           d.id as "docId",
           d.title as "documentTitle",
           d.filename as "documentFilename",
@@ -345,14 +364,14 @@ export class FullTextSearchService {
           d."createdAt" as "documentCreatedAt",
           dt.id as "datasetId",
           dt.name as "datasetName",
-          ts_rank_cd(ds."searchVector", plainto_tsquery('english', ${searchQuery})) as rank_score
+          ts_rank_cd(ds."searchVector", websearch_to_tsquery('english', ${searchQuery})) as rank_score
         FROM "DocumentSegment" ds
         JOIN "Document" d ON ds."documentId" = d.id
         JOIN "Dataset" dt ON d."datasetId" = dt.id
         WHERE d.id = ${documentId}
           AND dt."organizationId" = ${organizationId}
           AND ds.enabled = true
-          AND ds."searchVector" @@ plainto_tsquery('english', ${searchQuery})
+          AND ds."searchVector" @@ websearch_to_tsquery('english', ${searchQuery})
         ORDER BY ds.position ASC, rank_score DESC
         LIMIT ${limit};
       `)
