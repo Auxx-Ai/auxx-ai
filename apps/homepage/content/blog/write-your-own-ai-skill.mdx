@@ -1,0 +1,108 @@
+---
+title: "How to Write an AI Skill That Pulls Its Weight"
+description: "The built-in skills are a starting point. The real leverage is turning your team's best judgment into reusable, data-wired skills. Here's the pattern we use for every one."
+date: "2026-07-28"
+slug: "write-your-own-ai-skill"
+image: "/blog/write-your-own-ai-skill.jpg"
+category:
+  slug: "guides"
+  title: "Guides"
+authors:
+  - name: "Markus Klooth"
+    image: "/images/avatars/markus.jpg"
+tags: ["ai-skills", "kopilot", "ai", "how-to", "customer-support"]
+published: true
+---
+
+## The routine that lives in one person's head
+
+The fastest rep on your team has a routine. For a shipping complaint they check the fulfillment record first, then the carrier status, then they look for whether this customer has complained before, and they never promise a delivery date they can't see. It's a good routine. It's also invisible, undocumented, and it walks out the door the day that person quits.
+
+A skill is how you get that routine out of one skull and into everyone's hands. Our [built-in skills](/blog/shopify-support-ai-skills) cover the common cases, but the real payoff comes from writing your own — the ones specific to your store, your policy, your product. This is the pattern we use to write every skill we ship, so you can write yours the same way.
+
+There are two things that separate a skill that pulls its weight from a prompt that just sounds good: a **three-part structure**, and **wiring to your live data**. Here's both.
+
+## The three parts of a skill that works
+
+Every skill we write has the same shape: Context, Task, Constraints. Each part does a specific job, and skipping any of them is where home-grown prompts go wrong.
+
+**Context — tell it what to fetch before it thinks.** This is the part a copy-paste prompt can't have and the reason most home-grown prompts are [blind](/blog/your-ai-prompts-are-blind). Name the live sources the answer depends on: the thread, the internal notes, the order, the knowledge base. If the answer needs a fact, the Context has to go get it.
+
+**Task — specify the exact shape of the output.** Not "help with this ticket" but "give me the issue in one sentence, then a timeline of at most five bullets, then the status from this specific list." Vague task, vague answer. A fixed shape also means every run is comparable — reps get the same structure every time instead of a paragraph one day and a list the next.
+
+**Constraints — the guardrails that make it trustworthy.** This is where you write things like "if information is missing, write Unknown," "prefer the most recent information when signals conflict," and "if there's no ticket in context, ask which one first." These lines are what stop the model from confidently making something up. A prompt with no constraints is a prompt that will guess and sound sure about it.
+
+Here's the built-in Order Status Lookup skill with each part labeled, so you can see the pattern in something real:
+
+```
+--- Context (what to fetch) ---
+You are a support agent looking up a customer's order. Use search_entities to
+find the order by number or by the linked contact, and get_entity to fetch the
+order's fields — details, fulfillment status, tracking, and payment status.
+
+--- Task (the exact output) ---
+Produce an order status update: order number and date, items and quantities,
+payment status, fulfillment status, tracking (carrier, number, last known
+status), and estimated delivery date.
+
+--- Constraints (the guardrails) ---
+Be concise and factual — this is a status report, not a customer-facing message.
+If information is missing, write "Unknown." If multiple orders exist, summarize
+the most recent and note how many others exist.
+```
+
+Write your own the same way. Start with the Task — what do you actually want back? Then work backwards to the Context — what does the model need to fetch to produce that? Then add Constraints for every way it could go wrong.
+
+## Wiring it to your data: tools and entities
+
+The Context block is only powerful because of what it can reach. In the skill editor, you don't just write the *words* "fetch the order" — you drop in an `@`-mention chip that actually fetches it. There are two kinds.
+
+**Tool chips** are actions the assistant runs to go get data. The ones you'll reach for most:
+
+- `get_thread_detail` — the full ticket conversation
+- `list_notes` — internal notes on the record
+- `get_entity` — the fields of a specific record (an order, a deal)
+- `get_entity_history` — the timeline of changes
+- `search_entities` — find a record by number, name, or link
+- `search_knowledge` — your knowledge base (policies, product docs)
+- `get_transcript` — a call or meeting transcript
+
+**Entity chips** are the record types a skill is about: `ticket`, `contact`, `order`, `deal`, `company`, `meeting`. They tell the skill what kind of thing it's working on and let it resolve the one linked to the ticket in front of the rep.
+
+Here's the before and after. A blind prompt:
+
+```
+Look at this order and tell the customer where it is.
+```
+
+The same instruction, wired:
+
+```
+Use @search_entities to find the customer's @order, and @get_entity to pull its
+fulfillment and tracking. Then draft a status update for the customer.
+```
+
+The words barely changed. What changed is that at run time the second version goes and fetches the real order — the real tracking number, the real fulfillment status — instead of asking the rep to paste it in. Two chips, and the skill went from blind to seeing.
+
+A note on entities: `order` and `deal` only exist once you've installed the matching setup for your store or sales motion, so those chips light up after your data's connected. `ticket`, `contact`, and the rest are there from the start.
+
+## From your head to the whole team
+
+Once a skill is written, the lifecycle is short. You save it, and it's available to run from the composer with a slash command — the rep types `/`, picks the skill, and it runs against whatever ticket or record they're looking at. Skills you build are shared across your team, so one person's routine becomes everyone's default.
+
+The lowest-effort way to start isn't a blank page. Install one of the built-in skills, run it a few times, and then edit it — tighten the Task to match how your store actually talks, add a Constraint for the mistake your team keeps making, point the Context at your knowledge base. You'll have a skill that's yours in about ten minutes, and you'll have learned the pattern by editing something that already works.
+
+## A checklist for a skill worth keeping
+
+Before you save a skill, run it against these four questions:
+
+1. Does the **Context** fetch every source the answer depends on? If it needs a fact it can't reach, it'll guess.
+2. Is the **Task** a fixed, labeled shape — not just "help with this"?
+3. Do the **Constraints** forbid guessing and handle the empty case (no ticket, no order, no policy)?
+4. Would your newest hire produce your best rep's answer by running it? If not, the routine in your best rep's head isn't fully written down yet.
+
+## The bottom line
+
+A skill that pulls its weight is one thing: your best rep's judgment, wired to your live data, that anyone on the team can run. The three-part structure makes it reliable. The tool and entity chips make it see. And because it's reusable, it turns a routine that used to live in one person into an asset the whole team owns — one that gets better as your data does.
+
+The built-ins get you started. Writing your own is where the compounding is. If you want to see the pattern in finished skills, we broke down [four for Shopify support](/blog/shopify-support-ai-skills), [a chain of four for long threads](/blog/ai-skills-long-support-threads), and [three for sales prep](/blog/crm-ai-skills-pre-call).

@@ -1,0 +1,137 @@
+---
+title: "From a 40-Message Thread to a 30-Second Brief"
+description: "The tickets that hurt are the 40-message monsters you inherit halfway through. Four AI skills, run in sequence, turn 'read all this and figure it out' into a 30-second oriented start."
+date: "2026-06-24"
+slug: "ai-skills-long-support-threads"
+image: "/blog/ai-skills-long-support-threads.jpg"
+category:
+  slug: "guides"
+  title: "Guides"
+authors:
+  - name: "Markus Klooth"
+    image: "/images/avatars/markus.jpg"
+tags: ["customer-support", "ai-skills", "summarization", "productivity", "ai"]
+published: true
+---
+
+## The 40-message thread you didn't start
+
+Every support team has a version of this ticket. A customer emails about a broken product. Someone replies with a troubleshooting step. Three days later the customer replies, but that rep is out, so a colleague picks it up and tries a different fix. The customer is now annoyed and copies their business partner. It escalates. The thread is forty messages deep, has three attachments and two competing theories about the root cause, and you are the fourth person to open it.
+
+You have two bad options. Read the whole thing — ten minutes you don't have — or skim the last three messages and hope you caught up. Most people skim. That's where context goes to die and "I already explained this to the last agent" gets said for the fifth time.
+
+We've written before about *whether* to use AI on long threads in [using AI to summarize long support threads](/blog/ai-summarize-support-threads). This post is the *how*: the exact skills to run, in what order, so an inherited monster thread becomes a 30-second oriented start instead of a ten-minute reading assignment.
+
+The trick isn't one big skill that does everything. It's four narrow skills, each wired to the same live thread, run as a chain where each one builds on the last: **orient, gauge, list the asks, draft.**
+
+## Step 1: Orient — Summarize Ticket
+
+Start by finding out what you're actually looking at. Summarize Ticket pulls the full thread, the internal notes, and the edit history, and hands back a structured picture.
+
+```
+Context
+You are a support operations analyst reviewing a ticket. Use get_thread_detail
+for the conversation, list_notes for internal notes, and get_entity_history for
+the timeline of edits.
+
+Task
+Summarize the ticket: the issue in 1-2 sentences, a timeline of key events (max 5
+bullets), actions taken so far, current status (resolved, waiting on customer,
+waiting on internal team, or unresolved), and the single most important next step.
+
+Constraints
+Be concise and actionable. If information is missing, write "Unknown." On
+conflicting signals, prioritize the most recent information.
+```
+
+Thirty seconds later you know the issue, what's been tried, where it stands, and what's blocking it — off the real thread, not a guess.
+
+> **Why it matters.** You start oriented instead of reconstructing the story from forty messages. The "current status" line alone tells you whether the ball is in your court or the customer's.
+
+> **Pro-tip.** Trust the "Unknown." The skill writes it instead of inventing detail, so when you see it, that's a real gap in the record — treat it as information, not a bug.
+
+## Step 2: Gauge — Sentiment Analysis
+
+Now you know the facts. Before you write anything, find out what the customer is feeling, because the same facts need a very different delivery for someone furious than for someone patient.
+
+```
+Context
+You are a customer experience analyst reviewing a support conversation. Use
+get_thread_detail to read the ticket — sentiment is a function of the customer's
+words, not metadata.
+
+Task
+Produce a sentiment analysis: current sentiment (frustrated, dissatisfied,
+neutral, satisfied, or positive) with a one-sentence reason, the trajectory
+(improving, stable, or deteriorating), the specific moments that shifted it, and
+the recommended tone for the next reply with an example phrase.
+
+Constraints
+Base the assessment only on what the customer actually said — don't infer emotions
+the text doesn't support. If the conversation is too short to judge trajectory,
+say so.
+```
+
+> **Why it matters.** Trajectory is the useful part. A customer who's frustrated but trending up needs a different reply than one who started calm and is now deteriorating — and you can't see that trend by skimming the last message.
+
+> **Pro-tip.** Run it on the latest message, not the whole thread. Mood is a moving target, and the tone you need to match is the one they're in right now, not the one they were in on day one.
+
+## Step 3: List the asks — Extract Action Items
+
+Long threads bury the actual requests under history. Before you draft, surface exactly what you still owe the customer.
+
+```
+Context
+You are reviewing a conversation to identify all outstanding action items. Use
+get_thread_detail for the message history and list_notes for internal notes.
+
+Task
+Extract every action item: what needs to be done, who's responsible, and any
+deadline or urgency. Group by owner, flag anything time-sensitive, and note items
+where the owner is unclear.
+
+Constraints
+Format as a numbered checklist. Be specific — "follow up with customer" is too
+vague; "send tracking for order #1234" is actionable. Only extract items that are
+explicitly stated or clearly implied — don't invent tasks.
+```
+
+> **Why it matters.** In a forty-message thread it's genuinely easy to answer four of the customer's five questions and miss the fifth. This makes the miss impossible.
+
+> **Pro-tip.** Paste the checklist straight into the ticket's notes. Now the next person who inherits the thread — including future you — starts with the open items already listed, and nothing falls between shifts.
+
+## Step 4: Draft — Draft Reply
+
+Now the assistant has everything: the summary, the tone to hit, and the open items. Drafting the reply is the easy last step.
+
+```
+Context
+You are drafting a reply to a customer. Use get_thread_detail to review the
+conversation, including prior agent replies for tone matching, get_entity for the
+linked contact, and search_knowledge for relevant policy or product articles.
+
+Task
+Draft a reply: acknowledge the concern, give a clear answer or update, state any
+actions taken or planned, and offer a concrete next step.
+
+Constraints
+Be professional, empathetic, and concise — skip filler like "I understand your
+frustration." Match the tone of previous agent replies. If you're missing
+information, say what's needed and who has to provide it.
+```
+
+> **Why it matters.** Because the three earlier skills did the reading, this draft lands close to sendable. You're editing a well-informed first pass, not staring at a blank reply box.
+
+> **Pro-tip.** It's a draft, not an autosend. The chain did the reading and the scaffolding; you keep the judgment and the send button. That's the point — human where it matters, machine on the tedium.
+
+## Why the chain works
+
+Each step feeds the next. Orienting sets the context, gauging sets the tone, listing sets the scope, and drafting assembles all three into a reply. And because every skill reads the *same live thread*, they stay consistent with each other. The copy-paste equivalent would mean pasting that forty-message thread into a chat window four separate times and hoping you pasted the same thing each time.
+
+It also degrades gracefully. On a short, calm ticket you might only run Summarize Ticket and Draft Reply. On the inherited monster, you run all four. Same tools, scaled to the mess in front of you.
+
+## The bottom line
+
+Four slash commands, and a forty-message thread you didn't start becomes a summarized, tone-matched, scoped, drafted reply in the time it used to take just to read it.
+
+These four skills ship in the box. When you want to build a chain for a workflow that's specific to your team, [here's how to write your own skill](/blog/write-your-own-ai-skill) — and if you run a Shopify store, [these four skills](/blog/shopify-support-ai-skills) handle the highest-volume tickets before they ever become forty-message threads.

@@ -1,0 +1,107 @@
+---
+title: "The Founder's Guide to Evaluating AI in Your Support Inbox"
+description: "Every helpdesk says 'AI' now. The word means three completely different things, and buying the wrong one is a mistake that compounds. Here's how to tell them apart in a demo."
+date: "2026-05-13"
+slug: "evaluating-ai-support-inbox"
+image: "/blog/evaluating-ai-support-inbox.jpg"
+category:
+  slug: "insights"
+  title: "Insights"
+authors:
+  - name: "Markus Klooth"
+    image: "/images/avatars/markus.jpg"
+tags: ["ai", "customer-support", "helpdesk", "buying-guide", "evaluation"]
+published: true
+---
+
+## Everything is "AI-powered" now, and that's the problem
+
+The support tooling market looks like the CRM market did eighteen months ago. Every product says "AI." Every demo looks magical. Every landing page promises to deflect tickets, draft replies, and give your reps their afternoons back. And it's nearly impossible to tell what's real.
+
+For a founder, this isn't a tooling decision you make once and forget. You build workflows on top of the tool. You train a team on it. You wire it into your Shopify store, your knowledge base, your macros. If the AI underneath is shallower than the demo suggested, you don't find out for three months — and by then you've built a house on it.
+
+So this is a guide to the one thing that actually matters when you evaluate an AI helpdesk: **can the AI see your data, or is it guessing?** Everything else is a detail.
+
+## The three generations of "support AI"
+
+The word "AI" on a helpdesk landing page could mean any of three things. They are not the same product with different amounts of polish. They are architecturally different, and they fail differently.
+
+### Generation 1: Rules and macros
+
+Canned replies. Keyword routing. If the subject contains "refund," apply macro #4. This is the autoresponder era, and it predates the current AI wave by a decade. It's not AI in any meaningful sense — it's a lookup table.
+
+It works right up until a ticket is slightly off-script, which is most tickets. The customer says "I want my money back" instead of "refund," or asks two questions in one email, and the rule misses. Useful as scaffolding. Not intelligence.
+
+### Generation 2: Autocomplete copilots
+
+This is where most of the market lives today, and it's genuinely useful. A real language model reads the message in front of it and suggests a reply, or summarizes a thread, or drafts a response you can edit.
+
+But notice the boundary: it reasons over **the text on the screen**. It doesn't know the order shipped yesterday. It doesn't know your refund policy. It doesn't know this customer emailed twice last month about the same problem. Ask it "when will this arrive?" and it writes a fluent, confident paragraph with `[tracking number]` where the tracking number should be — because it never had one.
+
+Generation 2 is a very good writer with no access to the facts. In a demo, that's invisible. In production, your reps become the model's research department, pasting in context by hand.
+
+### Generation 3: Skills wired to your data
+
+The third generation connects the prompt to your systems. Before the model writes anything, it pulls the live ticket thread, the real order and its fulfillment and tracking, the customer's history, and the relevant knowledge base article. Then it answers over reality instead of over vibes.
+
+In Auxx we call these **skills** — reusable, installable prompts that a rep runs with a slash command, each one wired to the tools and records it needs. A skill isn't a block of clever text. It's a block of clever text *plus* the plumbing to go get the facts first. That plumbing is the entire difference.
+
+The trap in the market is that generation-2 tools demo like generation-3 tools. The only way to tell them apart is to test the plumbing directly.
+
+## The five questions that separate a demo from a system
+
+Run these in a live demo, on real data, not on the vendor's staged example. Each one is a question, what a real answer looks like, and the failure mode to watch for.
+
+**1. Can it see the order?**
+Ask it, out loud, in the demo: "When will this customer's order arrive?"
+*What to look for:* it fetches the actual order, fulfillment status, and tracking, and tells you.
+*Failure mode:* a beautifully written paragraph with placeholders, or a confident date it could not possibly know.
+
+**2. Can it read the whole history, not just the last message?**
+Give it a long, messy thread and ask for a summary.
+*What to look for:* the summary references something from message three of forty.
+*Failure mode:* it summarizes only what's currently on screen and misses the actual root cause buried up top.
+
+**3. Can it ground an answer in *your* policy?**
+Ask it to answer a refund question the way your store handles refunds.
+*What to look for:* it cites your specific policy from your knowledge base.
+*Failure mode:* it invents a reasonable-sounding policy that isn't yours. This is the dangerous one, because it's wrong in a way that looks right.
+
+**4. Can it act, or only talk?**
+*What to look for:* it can draft the reply, assess whether to escalate, tag, and route — not just describe what should happen.
+*Failure mode:* it produces advice about your ticket instead of doing anything to your ticket.
+
+**5. Can your team build their own without engineering?**
+*What to look for:* a senior rep can turn their best habit into a reusable skill the whole team runs, in an afternoon, with no code.
+*Failure mode:* "let's set up a call to scope a custom workflow" — which means billable services and a roadmap you don't control.
+
+## The question everyone skips: number five
+
+Founders over-index on the built-in features and under-index on question five, and it's backwards. The highest-leverage AI capability in a support tool isn't a clever summarizer that ships in the box. It's whether your best rep can capture what makes them your best rep and hand it to everyone else.
+
+Your senior person has a routine in their head — which order to check, what to never promise, how to phrase the hard "no." Today that lives in one skull and walks out the door when they quit. A tool that lets them encode that routine as a skill, wired to your live data, turns one person's judgment into the whole team's default. That compounds. A slightly better autocomplete does not.
+
+## What AI in the inbox still doesn't fix
+
+Be honest with yourself in the demo about what none of this solves.
+
+It doesn't fix a messy taxonomy. If your categories overlap and nobody trusts them, the AI will reproduce the mess faster. Clean that up first.
+
+It doesn't fix undecided ownership. If no human has decided who owns refunds on international orders, no model will decide it for you. It routes to the rules you define; ambiguous rules, ambiguous routing.
+
+It doesn't fix understaffing. Sorting a hundred tickets faster doesn't make them ninety. If the queue is underwater, better AI gives you a very well-organized flood.
+
+## The bottom line
+
+When you evaluate an AI helpdesk, ignore the adjectives and test one thing: does it reach your data before it answers, or does it guess and hope you don't notice?
+
+Four questions, screenshot them, take them into the demo:
+
+1. Did it pull my real order and customer data, or fake it?
+2. Did it read the whole history?
+3. Did it use my policy and knowledge base?
+4. Can my team build their own?
+
+If a tool fails the first question, everything after it is theater — a very articulate guess dressed up as an answer. Evaluate accordingly.
+
+If you want to see what a data-wired skill actually looks like in practice, we pulled apart four of them for Shopify teams in [four AI skills every Shopify support team should steal](/blog/shopify-support-ai-skills), and made the case for why a copy-paste prompt library can never get there in [your AI prompts are blind](/blog/your-ai-prompts-are-blind).
