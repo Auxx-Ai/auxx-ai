@@ -1,0 +1,116 @@
+---
+title: "Three AI Skills That Do Your Pre-Call Homework"
+description: "Support isn't the only inbox that runs on repetitive prep. Three AI skills that research the account, brief the deal, and coach the call — off your CRM, not a blank page."
+date: "2026-07-10"
+slug: "crm-ai-skills-pre-call"
+image: "/blog/crm-ai-skills-pre-call.jpg"
+category:
+  slug: "guides"
+  title: "Guides"
+authors:
+  - name: "Markus Klooth"
+    image: "/images/avatars/markus.jpg"
+tags: ["crm", "sales", "ai-skills", "ai", "productivity"]
+published: true
+---
+
+## The reps who close are the ones who prepped
+
+The salespeople who consistently close aren't smarter than the ones who don't. They're prepared. They walk into the call knowing what the company does, where the deal actually stands, and what the next step should be — and they walk out knowing what they'd do differently next time.
+
+That preparation is real work, and it's the first thing that gets skipped when the calendar fills up. Researching the account takes twenty minutes nobody has. Reconstructing the deal state means clicking through six CRM tabs. Reviewing your own call afterward means listening back to an hour of yourself, which nobody does. So the prep quietly doesn't happen, and reps show up cold.
+
+Most of what we write about lives in the support inbox, but Auxx is a CRM as much as it's a helpdesk — [the two aren't separate products](/blog/what-is-support-crm). The same skill machinery that answers a WISMO ticket also does sales prep, because it's the same idea: a reusable prompt wired to your live records. Here are three skills that turn CRM data you already have into preparation you usually skip — one for before the call, one for during prep, one for after.
+
+## 1. Before the call: Account Research
+
+Walking into a call cold burns the first ten minutes on context you could have had going in. Account Research produces a company brief from public sources, so you arrive knowing who you're talking to.
+
+```
+Context
+You are researching a company using public web sources. Start with
+search_knowledge for any internal notes the org has already captured on the
+account, then fall back to public sources — the company's official site,
+reputable business sites, recent news.
+
+Task
+Produce a research brief: a one-to-two-sentence snapshot of what the company does,
+firmographics (industry, HQ, size, funding status), GTM motion (PLG, sales-led,
+or enterprise), recent news (max 4-5 bullets from the last 90 days — launches,
+funding, acquisitions, leadership changes), key figureheads, and a line on their
+competitive landscape.
+
+Constraints
+Be concise. If information is missing, write "Unknown." On conflicting signals,
+prioritize the most recent. If the company name is ambiguous, list the top 3
+likely matches.
+```
+
+Notice it checks `search_knowledge` first — your team's existing notes on the account before it reaches for the open web, so you're not re-researching something a colleague already learned.
+
+> **Why it matters.** The "recent news in the last 90 days" section is the part that earns the call. Mentioning a funding round or a product launch from last week is the difference between a rep who did their homework and one who's clearly reading off a template.
+
+> **Pro-tip.** Run it the morning of the call, not the week before. Freshness is the whole value — news from ten days ago is stale by the time you dial.
+
+## 2. During prep: Deal Brief
+
+Once you know the company, you need to know the deal. Deal Brief stitches the scattered CRM fields, notes, and stage history into one read, so you see where things stand without spelunking through tabs.
+
+```
+Context
+You are preparing a report for an AE about a specific deal. Use get_entity to pull
+the deal record and its associated company, list_notes for sales notes, and
+get_entity_history for stage history. Only use what the data supports and call out
+any gaps.
+
+Task
+Create a deal report: a company overview (what they do plus relevant
+firmographics), and a deal summary — current stage, value, expected close date,
+blockers (feature gaps, stakeholder alignment, security or legal, pricing,
+competition), and next steps.
+
+Constraints
+Be concise and actionable. If information is missing, write "Unknown." On
+conflicting signals, prioritize the most recent information.
+```
+
+> **Why it matters.** Deal state is normally spread across a dozen fields and a scroll of notes. Seeing stage, value, close date, and blockers in one place means you prep for the actual objection instead of getting surprised by it on the call.
+
+> **Pro-tip.** The brief is only as good as your field hygiene — it reads what's in the CRM. If Deal Brief keeps saying "Unknown" for the close date, that's not the skill failing, that's a nudge to keep the record current.
+
+## 3. After the call: Sales Coach
+
+The prep that never happens most reliably is the review. Sales Coach reads the call transcript and hands back a coaching summary, so self-coaching becomes a default habit instead of a thing you mean to do.
+
+```
+Context
+You are coaching an AE based on a specific call they ran. Use get_transcript for
+the transcript and get_thread_detail for any linked email threads. Only use what
+the data supports and call out gaps.
+
+Task
+Create a post-call coaching summary: a call overview (what it was about, the
+objective, the outcome), what the AE did well (discovery, positioning, objection
+handling, next steps, rapport), and 3-5 things to improve, prioritized by impact
+on the deal — for each, what happened, why it matters, and what to do differently.
+
+Constraints
+Be concise and actionable. If information is missing, write "Unknown." On
+conflicting signals, prioritize the most recent information.
+```
+
+> **Why it matters.** Call coaching almost never happens at small teams because listening back doesn't scale. This makes it a two-minute habit, and the "prioritized by deal impact" ordering means you fix the thing that actually costs you deals first.
+
+> **Pro-tip.** It only claims what the transcript supports and flags the gaps. If it can't assess your discovery because there's no transcript, treat that as the reminder to record the next one — the coaching compounds once you do.
+
+## What these skills don't do
+
+They don't close the deal, and they don't replace judgment. Account Research gives you a briefing, not a strategy. Deal Brief surfaces the blockers, it doesn't clear them. Sales Coach tells you what to work on, it can't run the next call for you. Each one removes the tedious prep so the rep can spend their attention on the part only a human does — the actual conversation.
+
+And they depend on real data. Sales Coach needs a transcript to exist. Deal Brief needs a CRM someone actually updates. The skills make the prep effortless; they don't make the underlying data appear.
+
+## The bottom line
+
+Research before, brief during, coach after — three slash commands that turn CRM data you already have into the preparation that separates the reps who close from the reps who wing it.
+
+The same pattern that runs your support inbox runs your sales motion, because it's one capability pointed at different records. When you're ready to build skills for your own workflow, [here's how to write one](/blog/write-your-own-ai-skill). And if you're weighing Auxx as a CRM, start with [what a support CRM actually is](/blog/what-is-support-crm).
