@@ -1,5 +1,6 @@
 // apps/web/src/components/workflow/nodes/shared/single-run-result-tab.tsx
 
+import { WorkflowRunStatus } from '@auxx/database/enums'
 import type { WorkflowNodeExecutionEntity as WorkflowNodeExecution } from '@auxx/database/types'
 import { inferJsonSchema } from '@auxx/lib/json-schema/client'
 import { Alert, AlertDescription, AlertTitle } from '@auxx/ui/components/alert'
@@ -11,6 +12,7 @@ import {
   AlertTriangle,
   CheckCircle2,
   Clock,
+  MinusCircle,
   Play,
   Workflow,
   XCircle,
@@ -22,7 +24,7 @@ import CodeEditor, { CodeLanguage } from '~/components/workflow/ui/code-editor'
 import type { SchemaRoot } from '~/components/workflow/ui/json-schema-types'
 import Section from '~/components/workflow/ui/section'
 import { useDemo } from '~/hooks/use-demo'
-import { useRunSingleNode } from '../../hooks'
+import { useReadOnly, useRunSingleNode } from '../../hooks'
 import { TraceRenderBoundary } from '../../panels/run/components/trace-render-boundary'
 import { useRunStore } from '../../store/run-store'
 import { unifiedNodeRegistry } from '../unified-registry'
@@ -56,6 +58,9 @@ export const SingleRunResultTab = memo(function SingleRunResultTab({
   // Get data from hooks inside the component
   const { result: runResult, isRunning } = useRunSingleNode(nodeId)
   const nodeExecution = useRunStore((state) => state.getNodeExecution(nodeId))
+  const runViewMode = useRunStore((state) => state.runViewMode)
+  const activeRun = useRunStore((state) => state.activeRun)
+  const { isReadOnly } = useReadOnly()
 
   // Use single data source - prefer nodeExecution from workflow runs, fallback to runResult from single runs
   const execution: WorkflowNodeExecution | undefined = nodeExecution || runResult || undefined
@@ -159,26 +164,48 @@ export const SingleRunResultTab = memo(function SingleRunResultTab({
   }
   // No result yet
   if (!execution) {
+    // Viewing a historical run: this node wasn't part of the executed path.
+    // Show a dedicated "not executed" state instead of the runnable empty state.
+    if (runViewMode === 'previous' && activeRun) {
+      const failedBeforeReaching = activeRun.status === WorkflowRunStatus.FAILED
+      return (
+        <div className='relative flex flex-1 w-full items-center justify-center'>
+          <div className='flex flex-col items-center justify-center text-center p-8 pt-0'>
+            <MinusCircle className='mb-2 size-8 text-muted-foreground' />
+            <h3 className='text-medium mb-0'>Not executed in Run #{activeRun.sequenceNumber}</h3>
+            <div className='max-w-xs text-sm text-muted-foreground'>
+              {failedBeforeReaching
+                ? 'The run failed before reaching this node.'
+                : "This node was skipped — its branch wasn't taken, or the run stopped before reaching it."}
+            </div>
+          </div>
+        </div>
+      )
+    }
+
     return (
       <div className='relative flex flex-1 w-full items-center justify-center'>
         <div className='flex flex-col items-center justify-center text-center p-8 pt-0'>
           <AlertCircle className='mb-2 size-8 text-muted-foreground' />
           <h3 className='text-medium mb-0'>No execution results yet.</h3>
           <div className='text-sm text-muted-foreground mb-2'>Run the node to see output.</div>
-          <Button
-            variant='outline'
-            size='sm'
-            onClick={() => {
-              if (isDemo) {
-                setLimitDialogOpen(true)
-                return
-              }
-              onRun?.()
-            }}
-            disabled={isRunning || !onRun}>
-            <Play />
-            Run this node
-          </Button>
+          {/* Hide the Run button when the editor is read-only — running is impossible there */}
+          {!isReadOnly && (
+            <Button
+              variant='outline'
+              size='sm'
+              onClick={() => {
+                if (isDemo) {
+                  setLimitDialogOpen(true)
+                  return
+                }
+                onRun?.()
+              }}
+              disabled={isRunning || !onRun}>
+              <Play />
+              Run this node
+            </Button>
+          )}
           <LimitReachedDialog
             open={limitDialogOpen}
             onOpenChange={setLimitDialogOpen}

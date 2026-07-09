@@ -6,6 +6,7 @@ import InfiniteScroll from '@auxx/ui/components/infinite-scroll'
 import { PopoverContent } from '@auxx/ui/components/popover'
 import { cn } from '@auxx/ui/lib/utils'
 import { Activity, CheckCircle2, Loader2, StopCircle, XCircle } from 'lucide-react'
+import { useQueryState } from 'nuqs'
 import { memo, useCallback, useEffect, useState } from 'react'
 import { useWorkflowStore } from '~/components/workflow/store'
 import { useRunStore } from '~/components/workflow/store/run-store'
@@ -42,6 +43,9 @@ StatusIcon.displayName = 'StatusIcon'
 export const RunHistory = memo<RunHistoryProps>(({ className, onRunSelect }) => {
   const [loadingRunId, setLoadingRunId] = useState<string | null>(null)
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null)
+
+  // Mirror the selected run into the URL so it survives editor remounts
+  const [, setRunId] = useQueryState('runId', { history: 'replace' })
 
   // Get workflowAppId from workflow store
   const workflowAppId = useWorkflowStore((state) => state.workflowAppId)
@@ -103,9 +107,10 @@ export const RunHistory = memo<RunHistoryProps>(({ className, onRunSelect }) => 
   const handleRunClick = useCallback(
     (runId: string) => {
       setSelectedRunId(runId)
+      setRunId(runId)
       onRunSelect?.(runId)
     },
-    [onRunSelect]
+    [onRunSelect, setRunId]
   )
 
   return (

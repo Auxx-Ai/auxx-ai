@@ -86,8 +86,13 @@ export interface AppFieldRefParts {
 /**
  * Is this a late-bound app-field ref (`${defSegment}:@app:${appSlug}:${appFieldKey}`)?
  * The `@app:` marker lives in the fieldId segment (everything after the first `:`).
+ *
+ * Plain FieldIds (no colon — e.g. a table column key like `status`) can never be an
+ * app-field ref, so short-circuit rather than routing them through parseResourceFieldId,
+ * which would log a spurious "malformed ResourceFieldId" error.
  */
 export function isAppFieldRef(ref: string): boolean {
+  if (!isResourceFieldId(ref)) return false
   return getFieldId(ref as ResourceFieldId).startsWith(APP_SEGMENT)
 }
 

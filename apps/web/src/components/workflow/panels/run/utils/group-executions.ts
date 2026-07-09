@@ -29,10 +29,35 @@ export interface BranchExecutionGroup {
 export type ExecutionGroup = SingleExecutionGroup | BranchExecutionGroup
 
 /**
- * Determine the overall status of a branch based on its executions
+ * Determine the overall status of a branch based on its executions.
+ *
+ * @param executions - Node executions belonging to the branch
+ * @param runFinished - True when the run has completed (historical view or a
+ *   terminal live status). Pending placeholders then mean "never reached", not
+ *   "still coming", so branch status is derived from executed nodes only.
  */
-function getBranchStatus(executions: WorkflowNodeExecution[]): NodeRunningStatus {
-  if (executions.length === 0) return NodeRunningStatus.Pending
+function getBranchStatus(
+  executions: WorkflowNodeExecution[],
+  runFinished = false
+): NodeRunningStatus {
+  if (executions.length === 0) {
+    return runFinished ? NodeRunningStatus.Skipped : NodeRunningStatus.Pending
+  }
+
+  if (runFinished) {
+    // Pending placeholders are nodes the run never reached — ignore them and
+    // judge the branch by the nodes that actually executed.
+    const executed = executions.filter((e) => e.status !== NodeRunningStatus.Pending)
+    if (executed.length === 0) return NodeRunningStatus.Skipped
+    if (
+      executed.some(
+        (e) => e.status === NodeRunningStatus.Failed || e.status === NodeRunningStatus.Exception
+      )
+    ) {
+      return NodeRunningStatus.Failed
+    }
+    return NodeRunningStatus.Succeeded
+  }
 
   // If any failed/exception, branch is failed
   if (
@@ -76,11 +101,14 @@ function getBranchStatus(executions: WorkflowNodeExecution[]): NodeRunningStatus
  *
  * @param executions - Ordered list of node executions
  * @param nodes - Workflow graph nodes (optional, for loop child filtering)
+ * @param runFinished - True when the run has completed; makes branch status
+ *   reflect only executed nodes (see getBranchStatus)
  * @returns Array of execution groups (single or branch)
  */
 export function groupExecutionsByBranch(
   executions: WorkflowNodeExecution[],
-  nodes?: FlowNode[]
+  nodes?: FlowNode[],
+  runFinished = false
 ): ExecutionGroup[] {
   // Filter out loop children - they should only render inside LoopExecutionCard
   const topLevelExecutions = executions.filter((execution) => {
@@ -194,7 +222,7 @@ export function groupExecutionsByBranch(
         branchId: branchId || 'source',
         executions: branchExecutions,
         depth,
-        status: getBranchStatus(branchExecutions),
+        status: getBranchStatus(branchExecutions, runFinished),
       }
       groups.push(group)
       i = j

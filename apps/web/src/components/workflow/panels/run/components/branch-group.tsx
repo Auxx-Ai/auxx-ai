@@ -66,10 +66,19 @@ function getStatusVariant(
       return 'warning'
     case NodeRunningStatus.Pending:
     case NodeRunningStatus.Waiting:
+    case NodeRunningStatus.Skipped:
       return 'secondary'
     default:
       return 'default'
   }
+}
+
+/**
+ * Human-readable label for a branch status badge
+ */
+function getStatusLabel(status: NodeRunningStatus): string {
+  if (status === NodeRunningStatus.Skipped) return 'Skipped'
+  return status
 }
 
 /**
@@ -87,6 +96,8 @@ function getBorderColor(status?: NodeRunningStatus): string {
     case NodeRunningStatus.Pending:
     case NodeRunningStatus.Waiting:
       return 'border-gray-500/20'
+    case NodeRunningStatus.Skipped:
+      return 'border-muted/30'
     default:
       return 'border-border/50'
   }
@@ -135,7 +146,7 @@ export function BranchGroup({
         <span className='text-muted-foreground'>{displayLabel}</span>
         {status && (
           <Badge variant={statusVariant} className='text-xs px-1.5 py-0'>
-            {status}
+            {getStatusLabel(status)}
           </Badge>
         )}
       </button>
