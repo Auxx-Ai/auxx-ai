@@ -76,9 +76,12 @@ export const ENHANCED_PROVIDER_LIMITS: Partial<
 
     // Context-specific limits for different operations
     contexts: {
-      // Message sync operations
+      // Message sync operations (messages.list pagination, threads.get,
+      // interactive modify/trash). Kept well under Gmail's real 15k units/min
+      // per-user ceiling to avoid 429s. Governs the ID-listing phase throughput:
+      // 1000 units/min ÷ 5 (messages.list cost) = ~200 pages/min.
       sync: {
-        maxRequests: 100,
+        maxRequests: 1000,
         perInterval: 60000, // per minute
         maxConcurrent: 10,
       },

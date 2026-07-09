@@ -8,6 +8,7 @@ import { MediaAssetService } from '../../files/core/media-asset-service'
 import {
   getMimeTypeForFormat,
   processImage,
+  UnsupportedImageError,
   validateSource,
 } from '../../files/core/thumbnail-processor.worker'
 import type {
@@ -250,18 +251,30 @@ export const generateThumbnailJob = async (ctx: JobContext): Promise<void> => {
       await publishAvatarResolved({ orgId, ...avatarResolved })
     }
   } catch (error) {
+    // Clear processing cache regardless of outcome
+    const redis = await getRedisClient()
+    if (redis) {
+      await redis.del(`processing:thumb-${key}`)
+    }
+
+    // Unsupported / undetectable source types (e.g. `.ico` favicons captured
+    // during company enrichment) can never succeed — treat as a soft skip so
+    // BullMQ doesn't burn its retry budget on a deterministic failure.
+    if (error instanceof UnsupportedImageError) {
+      logger.warn('Skipping thumbnail — unsupported source image type', {
+        versionId,
+        preset,
+        error: error.message,
+      })
+      return
+    }
+
     logger.error('Failed to generate thumbnail', {
       versionId,
       preset,
       error: error instanceof Error ? error.message : 'Unknown error',
       stack: error instanceof Error ? error.stack : undefined,
     })
-
-    // Clear processing cache on error
-    const redis = await getRedisClient()
-    if (redis) {
-      await redis.del(`processing:thumb-${key}`)
-    }
 
     throw error
   }

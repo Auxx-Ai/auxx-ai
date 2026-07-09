@@ -528,7 +528,7 @@ export function InboxForm({
         {canManageAccess &&
           (isPersonalInbox ? (
             <FieldPanelRow title='Access' showIcon icon={<Shield />} className='@md:flex-col!'>
-              <div className='space-y-2 rounded-md border p-3'>
+              <div className='space-y-2 rounded-[13px] border p-3 mb-1 me-1 -ms-1'>
                 {ownerActorId && (
                   <div className='flex items-center justify-between'>
                     <ActorBadge actorId={ownerActorId} />
@@ -536,8 +536,8 @@ export function InboxForm({
                   </div>
                 )}
                 <p className='text-muted-foreground text-xs'>
-                  Personal account — mail here is private to its owner. Admins can see activity
-                  only; assignment and shares grant access per thread.
+                  Personal account: mail here is private to its owner. Admins can see activity only;
+                  assignment and shares grant access per thread.
                 </p>
               </div>
             </FieldPanelRow>
