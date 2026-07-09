@@ -19,6 +19,189 @@ export class UnsupportedImageError extends Error {
   }
 }
 
+/** Bounded max dimension for the rasterized SVG (covers avatar-256, crisp). */
+const MAX_SVG_RENDER_DIM = 512
+
+/**
+ * Cheap textual sniff for SVG. `file-type` can't detect SVG (it's text, not
+ * binary), so we look for an `<svg` root in the first ~1 KB, tolerating a BOM,
+ * an XML declaration, comments, and a doctype ahead of it.
+ */
+export function isSvg(buffer: Buffer): boolean {
+  const head = buffer.subarray(0, 1024).toString('utf8').replace(/^﻿/, '')
+  const stripped = head
+    .replace(/<\?xml[\s\S]*?\?>/i, '')
+    .replace(/<!--[\s\S]*?-->/g, '')
+    .replace(/<!DOCTYPE[^>]*>/i, '')
+    .trimStart()
+  return /^<svg[\s>]/i.test(stripped)
+}
+
+/**
+ * Detect an image's MIME type from its bytes. Magic-byte detection via
+ * `file-type` first, falling back to the SVG text sniff. Shared by
+ * `validateSource` and the remote-image ingestion allowlist so both agree.
+ */
+export async function detectImageType(buffer: Buffer): Promise<string | undefined> {
+  const fileType = await fileTypeFromBuffer(buffer)
+  if (fileType) return fileType.mime
+  return isSvg(buffer) ? 'image/svg+xml' : undefined
+}
+
+/** Result of {@link normalizeImageSource}. */
+export interface NormalizedImageSource {
+  /** A sharp-readable raster buffer (PNG for ICO/SVG, original bytes otherwise). */
+  buffer: Buffer
+  /** MIME type of {@link buffer} (`image/png` for the normalized cases). */
+  mime: string
+  /** Set when the source was decoded/rasterized from a non-sharp format. */
+  normalizedFrom?: 'ico' | 'svg'
+}
+
+/**
+ * Canonical decode/normalize step. Maps any accepted source buffer into a
+ * sharp-readable raster **before** validation/resize:
+ *
+ * - ICO (`image/x-icon`) → decode → best frame → PNG (sharp can't decode ICO)
+ * - SVG (`image/svg+xml`) → sanitize → rasterize → PNG (fetch-free renderer)
+ * - anything else → passthrough
+ *
+ * Run this in front of {@link validateSource}/{@link processImage} so the rest
+ * of the pipeline only ever sees formats sharp can read.
+ */
+export async function normalizeImageSource(buffer: Buffer): Promise<NormalizedImageSource> {
+  const mime = await detectImageType(buffer)
+  if (!mime) {
+    throw new UnsupportedImageError('Unable to determine file type from content')
+  }
+
+  if (mime === 'image/svg+xml') {
+    return { buffer: await rasterizeSvgToPng(buffer), mime: 'image/png', normalizedFrom: 'svg' }
+  }
+
+  if (mime === 'image/x-icon' || mime === 'image/vnd.microsoft.icon') {
+    return { buffer: await decodeIcoToPng(buffer), mime: 'image/png', normalizedFrom: 'ico' }
+  }
+
+  return { buffer, mime }
+}
+
+/** Lazily-created headless DOMPurify instance (server-side, no DOM). */
+// biome-ignore lint/suspicious/noExplicitAny: DOMPurify's headless instance type is awkward to name.
+let domPurify: any = null
+
+async function getDomPurify() {
+  if (!domPurify) {
+    const { JSDOM } = await import('jsdom')
+    const createDOMPurify = (await import('dompurify')).default
+    domPurify = createDOMPurify(new JSDOM('').window as unknown as Window)
+  }
+  return domPurify
+}
+
+/**
+ * Harden an untrusted SVG before rasterization. XSS is a browser threat; OUR
+ * risk is SSRF / local-file read via external references (enrichment rasterizes
+ * SVGs fetched from arbitrary company websites), so we go beyond the default
+ * SVG profile and forbid resource-loading tags/attrs.
+ */
+async function sanitizeSvg(svg: string): Promise<string> {
+  const DOMPurify = await getDomPurify()
+  return DOMPurify.sanitize(svg, {
+    USE_PROFILES: { svg: true, svgFilters: true },
+    FORBID_TAGS: ['script', 'foreignObject', 'image', 'use'],
+    FORBID_ATTR: ['href', 'xlink:href'], // no external/self resource refs
+  })
+}
+
+/**
+ * Sanitize + rasterize an SVG to PNG using `@resvg/resvg-js` — a static
+ * renderer with no script execution and no remote fetch, so even a sanitizer
+ * miss can't reach the network/filesystem. Bounds the larger side to
+ * {@link MAX_SVG_RENDER_DIM} to cap output pixels.
+ */
+async function rasterizeSvgToPng(buffer: Buffer): Promise<Buffer> {
+  const sanitized = await sanitizeSvg(buffer.toString('utf8'))
+  if (!/<svg[\s>]/i.test(sanitized)) {
+    throw new UnsupportedImageError('SVG had no renderable content after sanitization')
+  }
+
+  const { Resvg } = await import('@resvg/resvg-js')
+
+  // Probe intrinsic size so we can constrain the larger side (keeps aspect
+  // ratio and prevents an extreme viewBox from blowing up the raster).
+  const probe = new Resvg(sanitized)
+  const mode: 'width' | 'height' = probe.width >= probe.height ? 'width' : 'height'
+
+  const resvg = new Resvg(sanitized, { fitTo: { mode, value: MAX_SVG_RENDER_DIM } })
+  return Buffer.from(resvg.render().asPng())
+}
+
+/**
+ * Decode an ICO container and re-encode its best frame as PNG (sharp/libvips
+ * can't decode ICO). Picks the largest-area frame and guards against
+ * empty/corrupt/oversized inputs.
+ */
+async function decodeIcoToPng(buffer: Buffer): Promise<Buffer> {
+  const decodeIco = (await import('decode-ico')).default
+
+  // decode-ico frames are one of two kinds: `png` frames carry the raw PNG file
+  // bytes in `data`; `bmp` frames carry decoded RGBA pixels. `bpp` is the source
+  // bit depth (used only as a tie-break).
+  type IcoFrame = {
+    width: number
+    height: number
+    type: 'png' | 'bmp'
+    bpp?: number
+    data: Uint8ClampedArray
+  }
+
+  let frames: IcoFrame[]
+  try {
+    frames = decodeIco(buffer) as IcoFrame[]
+  } catch (error) {
+    throw new UnsupportedImageError(
+      `Failed to decode ICO: ${error instanceof Error ? error.message : 'unknown error'}`
+    )
+  }
+
+  if (!frames || frames.length === 0) {
+    throw new UnsupportedImageError('ICO contains no frames')
+  }
+
+  // Largest area wins (favours the highest-resolution icon variant), tie-broken
+  // on higher bit depth.
+  const best = frames.reduce((a, b) => {
+    const areaA = a.width * a.height
+    const areaB = b.width * b.height
+    if (areaB !== areaA) return areaB > areaA ? b : a
+    return (b.bpp ?? 0) > (a.bpp ?? 0) ? b : a
+  })
+
+  const pixels = best.width * best.height
+  if (!pixels) {
+    throw new UnsupportedImageError('ICO frame has zero dimensions')
+  }
+  if (pixels > THUMBNAIL_LIMITS.maxInputPixels) {
+    throw new UnsupportedImageError(`ICO frame too large: ${pixels} pixels`)
+  }
+
+  const bytes = Buffer.from(best.data.buffer, best.data.byteOffset, best.data.byteLength)
+  const sharp = (await import('sharp')).default
+
+  // `png` frames are already an encoded image sharp can read directly; `bmp`
+  // frames are raw RGBA and need the dimensions passed in.
+  const pipeline =
+    best.type === 'png'
+      ? sharp(bytes, { limitInputPixels: THUMBNAIL_LIMITS.maxInputPixels })
+      : sharp(bytes, {
+          raw: { width: best.width, height: best.height, channels: 4 },
+          limitInputPixels: THUMBNAIL_LIMITS.maxInputPixels,
+        })
+
+  return pipeline.png().toBuffer()
+}
+
 /**
  * Validate source image buffer
  */
@@ -33,23 +216,23 @@ export async function validateSource(
     )
   }
 
-  // Detect actual file type from magic bytes
-  const fileType = await fileTypeFromBuffer(buffer)
-  if (!fileType) {
+  // Detect actual file type (magic bytes, with SVG text-sniff fallback)
+  const detectedMime = await detectImageType(buffer)
+  if (!detectedMime) {
     throw new UnsupportedImageError('Unable to determine file type from content')
   }
 
   // Log mismatch but don't fail
-  if (declaredMimeType && fileType.mime !== declaredMimeType) {
+  if (declaredMimeType && detectedMime !== declaredMimeType) {
     logger.warn('MIME type mismatch detected', {
       declared: declaredMimeType,
-      detected: fileType.mime,
+      detected: detectedMime,
     })
   }
 
   // Check if image type is supported
-  if (!ALLOWED_IMAGE_TYPES.includes(fileType.mime as any)) {
-    throw new UnsupportedImageError(`Unsupported image type: ${fileType.mime}`)
+  if (!ALLOWED_IMAGE_TYPES.includes(detectedMime as any)) {
+    throw new UnsupportedImageError(`Unsupported image type: ${detectedMime}`)
   }
 
   // Get image metadata to check pixel limits

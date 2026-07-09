@@ -1,7 +1,7 @@
 // packages/lib/src/files/fetch-remote-image.ts
 
 import { createScopedLogger } from '@auxx/logger'
-import { fileTypeFromBuffer } from 'file-type'
+import { detectImageType } from './core/image-processing'
 import { createMediaAssetService } from './core/media-asset-service'
 import { ALLOWED_IMAGE_TYPES } from './core/thumbnail-types'
 import { createStorageManager } from './storage/storage-manager'
@@ -78,14 +78,13 @@ export async function fetchAndStoreRemoteImage(
     throw new Error(`Response too large: ${buf.byteLength} > ${maxBytes}`)
   }
 
-  // Determine the real image type from magic bytes rather than trusting the
+  // Determine the real image type from the bytes rather than trusting the
   // Content-Type header — many `/favicon.ico` URLs serve PNG bytes labelled
-  // `image/x-icon` (and vice versa). Only accept types the thumbnail pipeline
-  // can actually render (validateSource enforces the same allowlist); otherwise
-  // we'd store a logo asset that deterministically fails avatar-thumbnail
-  // generation downstream (e.g. genuine `.ico` favicons).
-  const detected = await fileTypeFromBuffer(buf)
-  const mimeType = detected?.mime
+  // `image/x-icon` (and vice versa). Uses magic bytes with an SVG text-sniff
+  // fallback (SVG has none). Only accept types the thumbnail pipeline can
+  // render — its `normalizeImageSource` step decodes ICO and rasterizes SVG to
+  // PNG, so both are in the allowlist even though sharp can't read them raw.
+  const mimeType = await detectImageType(buf)
   if (
     !mimeType ||
     !ALLOWED_IMAGE_TYPES.includes(mimeType as (typeof ALLOWED_IMAGE_TYPES)[number])

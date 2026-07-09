@@ -491,8 +491,15 @@ export class ThumbnailService {
       // Step 3: Download and process image (outside transaction)
       const buffer = await this.storageManager.getContent(sourceVersion.storageLocation.id)
 
-      const { processImage } = await import('./thumbnail-processor.worker')
-      const processed = await processImage(buffer, params.preset as PresetKey, params.opts)
+      const { normalizeImageSource, processImage } = await import('./thumbnail-processor.worker')
+      // Canonical decode/normalize (ICO → PNG, SVG → sanitized PNG, else
+      // passthrough) so sharp only ever sees a readable raster.
+      const normalized = await normalizeImageSource(buffer)
+      const processed = await processImage(
+        normalized.buffer,
+        params.preset as PresetKey,
+        params.opts
+      )
 
       // Step 4: Upload to storage (outside transaction)
       // Generate proper storage key following new architecture
