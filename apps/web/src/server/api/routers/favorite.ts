@@ -34,6 +34,7 @@ const targetIdsByType: {
   DOCUMENT: z.object({ documentId: z.string(), datasetId: z.string() }),
   ARTICLE: z.object({ articleId: z.string(), knowledgeBaseId: z.string() }),
   KNOWLEDGE_BASE: z.object({ knowledgeBaseId: z.string() }),
+  DASHBOARD: z.object({ dashboardId: z.string() }),
 }
 
 const addInput = z.discriminatedUnion('targetType', [
@@ -53,6 +54,7 @@ const addInput = z.discriminatedUnion('targetType', [
     targetType: z.literal('KNOWLEDGE_BASE'),
     targetIds: targetIdsByType.KNOWLEDGE_BASE,
   }),
+  z.object({ targetType: z.literal('DASHBOARD'), targetIds: targetIdsByType.DASHBOARD }),
 ])
 
 const reorderInput = z.object({

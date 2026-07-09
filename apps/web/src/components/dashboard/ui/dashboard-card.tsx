@@ -13,6 +13,7 @@ import { pluralize } from '@auxx/utils/strings'
 import { Copy, Layers, LayoutDashboard, Lock, Settings, SquareStack, Trash } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useState } from 'react'
+import { FavoriteToggleMenuItem } from '~/components/favorites/ui/favorite-toggle-menu-item'
 import {
   useBulkMode,
   useIsPending,
@@ -95,6 +96,10 @@ export function DashboardCard({ dashboard }: { dashboard: DashboardSummary }) {
               <LayoutDashboard />
               Open
             </DropdownMenuItem>
+            <FavoriteToggleMenuItem
+              targetType='DASHBOARD'
+              targetIds={{ dashboardId: dashboard.id }}
+            />
             <DropdownMenuItem onClick={() => void handleDuplicate()}>
               <Copy />
               Duplicate

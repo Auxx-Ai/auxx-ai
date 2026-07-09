@@ -13,6 +13,7 @@ export const FAVORITE_TARGET_TYPES = [
   'DOCUMENT',
   'ARTICLE',
   'KNOWLEDGE_BASE',
+  'DASHBOARD',
 ] as const
 
 export type FavoriteTargetType = (typeof FAVORITE_TARGET_TYPES)[number]
@@ -31,6 +32,7 @@ export interface FavoriteTargetIdsMap {
   DOCUMENT: { documentId: string; datasetId: string }
   ARTICLE: { articleId: string; knowledgeBaseId: string }
   KNOWLEDGE_BASE: { knowledgeBaseId: string }
+  DASHBOARD: { dashboardId: string }
 }
 
 export type FavoriteTargetIds<T extends FavoriteTargetType = FavoriteTargetType> =

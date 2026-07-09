@@ -26,6 +26,7 @@ import { Lock } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useQueryState } from 'nuqs'
 import { type ReactNode, useState } from 'react'
+import { FavoriteStarButton } from '~/components/favorites/ui/favorite-star-button'
 import { RecordDrawer } from '~/components/records/record-drawer'
 import { useConfirm } from '~/hooks/use-confirm'
 import { useEffectiveDockState } from '~/hooks/use-effective-dock-state'
@@ -165,26 +166,33 @@ export function DashboardDetailView({ dashboard }: { dashboard: DashboardWithLay
       <ConfirmDialog />
       <MainPageHeader
         action={
-          <DashboardPublishCluster
-            dashboard={dashboard}
-            activeVersionNumber={persistedVersionNumber ?? dashboard.versionNumber}
-            isEditMode={isEditMode}
-            hasUnpublishedChanges={hasUnpublishedChanges}
-            isPublishing={isPublishing}
-            isDiscarding={isDiscarding}
-            saveState={saveState}
-            hasPersisted={hasPersisted}
-            viewLayer={viewLayer}
-            onViewLayerChange={setViewLayer}
-            onEnterEdit={() => {
-              setOpenRecordId(null)
-              enterEditMode()
-            }}
-            onExitEdit={exitEditMode}
-            onPublish={() => void publish()}
-            onDiscard={() => void discard()}
-            onAddWidget={handleAddWidget}
-          />
+          <div className='flex flex-row items-center gap-2'>
+            <FavoriteStarButton
+              targetType='DASHBOARD'
+              targetIds={{ dashboardId: dashboard.id }}
+              size='icon-xs'
+            />
+            <DashboardPublishCluster
+              dashboard={dashboard}
+              activeVersionNumber={persistedVersionNumber ?? dashboard.versionNumber}
+              isEditMode={isEditMode}
+              hasUnpublishedChanges={hasUnpublishedChanges}
+              isPublishing={isPublishing}
+              isDiscarding={isDiscarding}
+              saveState={saveState}
+              hasPersisted={hasPersisted}
+              viewLayer={viewLayer}
+              onViewLayerChange={setViewLayer}
+              onEnterEdit={() => {
+                setOpenRecordId(null)
+                enterEditMode()
+              }}
+              onExitEdit={exitEditMode}
+              onPublish={() => void publish()}
+              onDiscard={() => void discard()}
+              onAddWidget={handleAddWidget}
+            />
+          </div>
         }>
         <MainPageBreadcrumb>
           <MainPageBreadcrumbItem title='Dashboards' href='/app/dashboards' />

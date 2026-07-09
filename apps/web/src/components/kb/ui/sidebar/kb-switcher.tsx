@@ -12,7 +12,7 @@ import {
 import { Book, Check, Plus, Trash2 } from 'lucide-react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useMemo, useState } from 'react'
-import { KBFavoriteStarButton } from '~/components/favorites/ui/kb-favorite-star-button'
+import { FavoriteStarButton } from '~/components/favorites/ui/favorite-star-button'
 import { useConfirm } from '~/hooks/use-confirm'
 import { useFeatureFlags } from '~/providers/feature-flag-provider'
 import { useActiveKnowledgeBaseId } from '../../hooks/use-knowledge-base'
@@ -148,7 +148,11 @@ export function KBSwitcherDropdownContent() {
                   <span className='truncate'>{merged.name}</span>
                 </div>
                 <div className='flex items-center gap-1 shrink-0'>
-                  <KBFavoriteStarButton knowledgeBaseId={kb.id} />
+                  <FavoriteStarButton
+                    targetType='KNOWLEDGE_BASE'
+                    targetIds={{ knowledgeBaseId: kb.id }}
+                    revealOnHoverClassName='group-hover/kb-item:flex'
+                  />
                   <button
                     type='button'
                     aria-label={`Delete ${merged.name}`}
