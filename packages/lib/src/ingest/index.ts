@@ -2,7 +2,10 @@
 
 export {
   archiveThreadsByMessageExternalIds,
+  markThreadsSpamByMessageExternalIds,
   reopenThreadsByMessageExternalIds,
+  setThreadReadStateByMessageExternalIds,
+  trashThreadsByMessageExternalIds,
 } from './archive-messages'
 // Orchestrators
 export { type BatchStoreOptions, batchStoreMessages } from './batch-store-messages'

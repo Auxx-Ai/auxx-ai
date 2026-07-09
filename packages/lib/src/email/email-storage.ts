@@ -26,9 +26,12 @@ import {
   getThreadMessages,
   type IngestContext,
   type IntegrationSettings,
+  markThreadsSpamByMessageExternalIds,
   normalizeOwnEmails,
   reopenThreadsByMessageExternalIds,
+  setThreadReadStateByMessageExternalIds,
   storeMessage,
+  trashThreadsByMessageExternalIds,
 } from '../ingest'
 import { getRealtimeService, publishInboxSyncCompleted } from '../realtime'
 import { markMailCountsStaleForOrgMembers } from '../threads/mail-counts'
@@ -188,6 +191,40 @@ export class MessageStorageService {
   ): Promise<number> {
     const ctx = await this.resolveCtx(this.defaultOrganizationId)
     return reopenThreadsByMessageExternalIds(ctx, { integrationId, externalIds })
+  }
+
+  /** Mark threads TRASH when a personal-channel message's TRASH label is added. */
+  async trashThreadsByMessageExternalIds(
+    integrationId: string,
+    externalIds: string[]
+  ): Promise<number> {
+    const ctx = await this.resolveCtx(this.defaultOrganizationId)
+    return trashThreadsByMessageExternalIds(ctx, { integrationId, externalIds })
+  }
+
+  /** Mark threads SPAM when a personal-channel message's SPAM label is added. */
+  async markThreadsSpamByMessageExternalIds(
+    integrationId: string,
+    externalIds: string[]
+  ): Promise<number> {
+    const ctx = await this.resolveCtx(this.defaultOrganizationId)
+    return markThreadsSpamByMessageExternalIds(ctx, { integrationId, externalIds })
+  }
+
+  /** Mirror Gmail UNREAD label events onto the mailbox owner's read state. */
+  async setThreadReadStateByMessageExternalIds(
+    integrationId: string,
+    externalIds: string[],
+    isRead: boolean,
+    ownerUserId: string
+  ): Promise<number> {
+    const ctx = await this.resolveCtx(this.defaultOrganizationId)
+    return setThreadReadStateByMessageExternalIds(ctx, {
+      integrationId,
+      externalIds,
+      isRead,
+      ownerUserId,
+    })
   }
 
   async createContactAfterOutboundMessage(

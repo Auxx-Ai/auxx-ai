@@ -43,8 +43,8 @@ import { GmailInboundContentIngestor } from './messages/gmail-inbound-content-in
 import { convertMessagesToMessageData } from './messages/parse-message'
 import { sendGmailMessage } from './messages/send-message'
 import { syncGmailMessages } from './messages/sync-messages'
-import { archive, markAsSpam, restore, trash } from './operations'
-import { executeWithThrottle } from './shared/utils'
+import { archive, markAsSpam, restore, trash, unarchive } from './operations'
+import { executeWithThrottle, modifyWithThrottling } from './shared/utils'
 import { getThread, moveThread, updateThreadStatus } from './threads'
 import { removeWebhook, setupWebhook } from './webhooks'
 
@@ -554,6 +554,42 @@ export class GoogleProvider
   async restore(externalId: string, type: 'message' | 'thread'): Promise<boolean> {
     await this.ensureInitialized()
     return restore(this.gmail!, externalId, type, this.integrationId!, this.throttler!)
+  }
+
+  /**
+   * Thread-level archive (remove INBOX) for the status-sync push. Unlike the
+   * legacy boolean ops above, THROWS on failure so the caller can classify
+   * 404 / auth / rate-limit errors.
+   */
+  async archiveThread(externalThreadId: string): Promise<void> {
+    await this.ensureInitialized()
+    await modifyWithThrottling(
+      this.gmail!,
+      'thread',
+      externalThreadId,
+      { removeLabelIds: ['INBOX'] },
+      this.integrationId!,
+      this.throttler!
+    )
+  }
+
+  /** Thread-level unarchive (add INBOX, clear SPAM/TRASH). THROWS on failure. */
+  async unarchiveThread(externalThreadId: string): Promise<void> {
+    await this.ensureInitialized()
+    await unarchive(this.gmail!, externalThreadId, 'thread', this.integrationId!, this.throttler!)
+  }
+
+  /** Thread-level spam (add SPAM, remove INBOX). THROWS on failure. */
+  async markThreadAsSpam(externalThreadId: string): Promise<void> {
+    await this.ensureInitialized()
+    await modifyWithThrottling(
+      this.gmail!,
+      'thread',
+      externalThreadId,
+      { addLabelIds: ['SPAM'], removeLabelIds: ['INBOX'] },
+      this.integrationId!,
+      this.throttler!
+    )
   }
   // --- Drafts ---
   async createDraft(options: SendMessageOptions): Promise<{

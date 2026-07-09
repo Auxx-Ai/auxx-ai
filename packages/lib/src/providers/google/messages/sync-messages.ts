@@ -16,22 +16,27 @@ import { convertMessagesToMessageData } from './parse-message'
 const logger = createScopedLogger('google-sync-messages')
 
 /**
- * Whether an inbox is a personal account (org `inboxes` cache — no DB hit).
- * Personal Gmail channels treat archive as a thread-level Done and reopen on
- * INBOX re-add; shared inboxes keep the legacy archive-deletes behavior.
+ * Personal-channel meta for an inbox (org `inboxes` cache — no DB hit).
+ * Personal Gmail channels treat archive as a thread-level Done, reopen on
+ * INBOX re-add, and mirror the owner's read state; shared inboxes keep the
+ * legacy archive-deletes behavior.
  */
-async function isPersonalChannel(organizationId: string, inboxId: string): Promise<boolean> {
+async function getPersonalChannelMeta(
+  organizationId: string,
+  inboxId: string
+): Promise<{ isPersonal: boolean; ownerUserId: string | null }> {
   try {
     const { getOrgCache } = await import('../../../cache')
     const inboxes = await getOrgCache().get(organizationId, 'inboxes')
-    return inboxes.find((i) => i.id === inboxId)?.isPersonal ?? false
+    const inbox = inboxes.find((i) => i.id === inboxId)
+    return { isPersonal: inbox?.isPersonal ?? false, ownerUserId: inbox?.ownerUserId ?? null }
   } catch (error) {
     logger.warn('Failed to resolve personal-channel flag; treating as shared', {
       organizationId,
       inboxId,
       error: (error as Error).message,
     })
-    return false
+    return { isPersonal: false, ownerUserId: null }
   }
 }
 
@@ -233,7 +238,7 @@ async function syncViaHistory(
   let totalDeleted = 0
   let hasRetriableFailures = false
 
-  const isPersonal = await isPersonalChannel(organizationId, inboxId)
+  const { isPersonal, ownerUserId } = await getPersonalChannelMeta(organizationId, inboxId)
 
   logger.info('Starting history-based sync', {
     integrationId,
@@ -271,6 +276,10 @@ async function syncViaHistory(
     const deletedIds = new Set<string>()
     const inboxRemovedIds = new Set<string>()
     const inboxAddedIds = new Set<string>()
+    const trashAddedIds = new Set<string>()
+    const spamAddedIds = new Set<string>()
+    const unreadAddedIds = new Set<string>()
+    const unreadRemovedIds = new Set<string>()
 
     for (const record of historyRecords) {
       if (record.messagesAdded) {
@@ -287,20 +296,26 @@ async function syncViaHistory(
           }
         }
       }
-      // INBOX label removal = archive in Gmail.
+      // Label removals: INBOX = archive in Gmail; UNREAD = marked read.
       if (record.labelsRemoved) {
         for (const labelChange of record.labelsRemoved) {
-          if (labelChange.labelIds?.includes('INBOX') && labelChange.message?.id) {
-            inboxRemovedIds.add(labelChange.message.id)
-          }
+          const messageId = labelChange.message?.id
+          if (!messageId) continue
+          if (labelChange.labelIds?.includes('INBOX')) inboxRemovedIds.add(messageId)
+          if (labelChange.labelIds?.includes('UNREAD')) unreadRemovedIds.add(messageId)
         }
       }
-      // INBOX label add = unarchive / moved (back) into the inbox.
+      // Label adds: INBOX = unarchive / moved (back) into the inbox;
+      // TRASH / SPAM = trashed or marked spam; UNREAD = marked unread
+      // (personal channels).
       if (record.labelsAdded) {
         for (const labelChange of record.labelsAdded) {
-          if (labelChange.labelIds?.includes('INBOX') && labelChange.message?.id) {
-            inboxAddedIds.add(labelChange.message.id)
-          }
+          const messageId = labelChange.message?.id
+          if (!messageId) continue
+          if (labelChange.labelIds?.includes('INBOX')) inboxAddedIds.add(messageId)
+          if (labelChange.labelIds?.includes('TRASH')) trashAddedIds.add(messageId)
+          if (labelChange.labelIds?.includes('SPAM')) spamAddedIds.add(messageId)
+          if (labelChange.labelIds?.includes('UNREAD')) unreadAddedIds.add(messageId)
         }
       }
 
@@ -343,19 +358,67 @@ async function syncViaHistory(
       })
     }
 
-    // Personal-channel archive / reopen — thread-level status changes that keep
-    // the underlying messages intact. Reopen wins over archive when both fire
-    // for the same message in one page.
-    if (isPersonal && inboxRemovedIds.size > 0) {
-      const archiveIds = [...inboxRemovedIds].filter(
-        (id) => !deletedIds.has(id) && !inboxAddedIds.has(id)
+    // Personal-channel label-derived status changes — thread-level, messages
+    // kept intact. Precedence when one page carries multiple label events for
+    // the same message: deleted > trash > spam > reopen (INBOX add) > archive
+    // (INBOX remove). Gmail-side trash/spam also remove INBOX, so those ids
+    // must not fall through to the archive bucket.
+    if (isPersonal) {
+      const trashIds = [...trashAddedIds].filter((id) => !deletedIds.has(id))
+      const spamIds = [...spamAddedIds].filter(
+        (id) => !deletedIds.has(id) && !trashAddedIds.has(id)
       )
+      const reopenIds = [...inboxAddedIds].filter(
+        (id) => !deletedIds.has(id) && !trashAddedIds.has(id) && !spamAddedIds.has(id)
+      )
+      const archiveIds = [...inboxRemovedIds].filter(
+        (id) =>
+          !deletedIds.has(id) &&
+          !trashAddedIds.has(id) &&
+          !spamAddedIds.has(id) &&
+          !inboxAddedIds.has(id)
+      )
+      if (trashIds.length > 0) {
+        await storageService.trashThreadsByMessageExternalIds(integrationId, trashIds)
+      }
+      if (spamIds.length > 0) {
+        await storageService.markThreadsSpamByMessageExternalIds(integrationId, spamIds)
+      }
+      if (reopenIds.length > 0) {
+        await storageService.reopenThreadsByMessageExternalIds(integrationId, reopenIds)
+      }
       if (archiveIds.length > 0) {
         await storageService.archiveThreadsByMessageExternalIds(integrationId, archiveIds)
       }
-    }
-    if (isPersonal && inboxAddedIds.size > 0) {
-      await storageService.reopenThreadsByMessageExternalIds(integrationId, [...inboxAddedIds])
+
+      // Read-state from UNREAD label events — mailbox owner only. Messages
+      // added this page are excluded: their unread state is set at ingest.
+      // Unread wins over read when both appear for one message in a page
+      // (safer to re-surface a thread than to silently mark it read).
+      if (ownerUserId) {
+        const markUnreadIds = [...unreadAddedIds].filter(
+          (id) => !deletedIds.has(id) && !addedIds.has(id)
+        )
+        const markReadIds = [...unreadRemovedIds].filter(
+          (id) => !deletedIds.has(id) && !addedIds.has(id) && !unreadAddedIds.has(id)
+        )
+        if (markUnreadIds.length > 0) {
+          await storageService.setThreadReadStateByMessageExternalIds(
+            integrationId,
+            markUnreadIds,
+            false,
+            ownerUserId
+          )
+        }
+        if (markReadIds.length > 0) {
+          await storageService.setThreadReadStateByMessageExternalIds(
+            integrationId,
+            markReadIds,
+            true,
+            ownerUserId
+          )
+        }
+      }
     }
 
     // Fetch and store added messages

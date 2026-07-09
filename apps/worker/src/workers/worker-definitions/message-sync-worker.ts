@@ -2,6 +2,7 @@ import {
   monitorMessageSyncJob,
   startMessageSyncJob,
   syncSingleChannelMessagesJob,
+  threadProviderStatusSyncJob,
 } from '@auxx/lib/jobs'
 import { Queues } from '@auxx/lib/jobs/queues'
 import { createScopedLogger } from '@auxx/logger'
@@ -13,6 +14,7 @@ const messageSyncJobMappings = {
   startMessageSyncJob,
   syncSingleIntegrationMessagesJob: syncSingleChannelMessagesJob,
   monitorMessageSyncJob,
+  threadProviderStatusSyncJob,
 }
 
 /**
