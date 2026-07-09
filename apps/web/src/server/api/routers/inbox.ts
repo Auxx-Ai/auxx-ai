@@ -184,6 +184,23 @@ export const inboxRouter = createTRPCRouter({
 
     await requireInboxManageAccess(inboxService, input.recordId, userId)
 
+    // Personal channels are permanently bound to their personal inbox (§11):
+    // the only sanctioned exits are admin claim or delete, and nothing routes
+    // INTO a personal inbox via this endpoint (provisioning links internally).
+    const [targetInbox, currentInbox] = await Promise.all([
+      inboxService.getInbox(input.recordId),
+      inboxService.getIntegrationInbox(input.integrationId),
+    ])
+    if (currentInbox?.isPersonal) {
+      throw new TRPCError({ code: 'BAD_REQUEST', message: 'Personal channels cannot be re-routed' })
+    }
+    if (targetInbox?.isPersonal) {
+      throw new TRPCError({
+        code: 'BAD_REQUEST',
+        message: 'Channels cannot be routed into a personal inbox',
+      })
+    }
+
     const result = await inboxService.addIntegration(
       input.recordId,
       input.integrationId,
@@ -246,6 +263,18 @@ export const inboxRouter = createTRPCRouter({
       const inboxService = new InboxService(ctx.db, organizationId, userId)
       await requireInboxManageAccess(inboxService, input.fromInboxRecordId, userId)
       await requireInboxManageAccess(inboxService, input.toInboxRecordId, userId)
+
+      // Threads may not be moved into or out of a personal inbox (§11 isolation).
+      const [fromInbox, toInbox] = await Promise.all([
+        inboxService.getInbox(input.fromInboxRecordId),
+        inboxService.getInbox(input.toInboxRecordId),
+      ])
+      if (fromInbox?.isPersonal || toInbox?.isPersonal) {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: 'Conversations cannot be moved into or out of a personal inbox',
+        })
+      }
 
       const viewer = await getCachedUserMailVisibility(userId, organizationId)
       const threadMutation = new ThreadMutationService(

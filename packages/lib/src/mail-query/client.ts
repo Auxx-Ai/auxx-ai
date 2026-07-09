@@ -12,6 +12,7 @@ import { getInstanceId, isRecordId, type RecordId } from '@auxx/types/resource'
 // Context to conditions converter
 export {
   buildConditionGroups,
+  buildContextConditionGroups,
   buildContextConditions,
   type ContextConditionParams,
 } from './context-to-conditions'

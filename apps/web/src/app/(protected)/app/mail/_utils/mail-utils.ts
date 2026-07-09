@@ -83,6 +83,10 @@ export function parseMailboxContext(pathname: string): MailboxContext {
         contextId = pathSegments[4] // Inbox ID from path
       }
       break
+    case 'personal':
+      contextType = 'personal_channel'
+      contextId = pathSegments[4] // Personal inbox ID from path
+      break
     default:
       // Fallback for unknown context types
       contextType = 'personal_inbox'

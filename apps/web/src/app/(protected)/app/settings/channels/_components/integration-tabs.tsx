@@ -146,7 +146,11 @@ export default function IntegrationTabs() {
           )}
 
           <TabsContent value='routing' className='space-y-4'>
-            <IntegrationRouting integration={integration} canManage={canManage} />
+            <IntegrationRouting
+              integration={integration}
+              canManage={canManage}
+              isPersonalChannel={!!linkedInbox?.isPersonal}
+            />
           </TabsContent>
 
           <TabsContent value='settings' className='space-y-4'>

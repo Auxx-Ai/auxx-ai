@@ -53,9 +53,10 @@ export function InboxPicker({
   const isOpen = controlledOpen !== undefined ? controlledOpen : internalOpen
   const setIsOpen = controlledOnOpenChange || setInternalOpen
 
-  // Fetch inboxes if not provided
+  // Fetch inboxes if not provided. Personal inboxes are never valid
+  // routing/move targets (mail-permissions §11) — exclude them everywhere.
   const { inboxes: fetchedInboxes } = useInboxes()
-  const inboxes = externalInboxes || fetchedInboxes || []
+  const inboxes = (externalInboxes || fetchedInboxes || []).filter((inbox) => !inbox.isPersonal)
 
   // Dialog state for creating new inbox
   const [dialogOpen, setDialogOpen] = useState(false)

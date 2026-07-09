@@ -1,7 +1,7 @@
 // ~/components/global/sidebar/personal-mail-group.tsx
 'use client'
 
-import { SidebarMenuItem } from '@auxx/ui/components/sidebar'
+import { SidebarMenuItem, SidebarMenuSubItem } from '@auxx/ui/components/sidebar'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import {
   closestCenter,
@@ -19,10 +19,12 @@ import {
   sortableKeyboardCoordinates,
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable'
-import { FileEdit, Inbox as InboxIcon, Send } from 'lucide-react'
+import { FileEdit, Inbox as InboxIcon, Send, UserCheck, UserRound } from 'lucide-react'
 import { usePathname } from 'next/navigation'
 import { useCallback, useEffect, useState } from 'react'
+import { CollapsibleSidebarSection } from '~/components/global/sidebar/collapsible-sidebar-section'
 import { EditableSidebarItem } from '~/components/global/sidebar/editable-sidebar-item'
+import type { Inbox } from '~/components/global/sidebar/shared-inbox-group'
 import { SidebarItem } from '~/components/global/sidebar/sidebar-item'
 import { useMailCountsStore } from '~/components/mail/store'
 
@@ -41,6 +43,8 @@ interface PersonalMailItemsProps {
   settings?: PersonalMenuItem[]
   onUpdateSettings: (items: PersonalMenuItem[]) => void
   settingsLoading: boolean
+  /** The current user's personal-channel inboxes (§11) — rendered under Inbox. */
+  personalInboxes?: Inbox[]
 }
 
 const DEFAULT_PERSONAL_ITEMS: PersonalMenuItem[] = [
@@ -76,13 +80,23 @@ export function PersonalMailItems({
   settings,
   onUpdateSettings,
   settingsLoading,
+  personalInboxes = [],
 }: PersonalMailItemsProps) {
   const pathname = usePathname()
   const [items, setItems] = useState<PersonalMenuItem[]>(DEFAULT_PERSONAL_ITEMS)
 
   const inboxCount = useMailCountsStore((s) => s.counts.inbox)
   const draftsCount = useMailCountsStore((s) => s.counts.drafts)
+  const sharedInboxCounts = useMailCountsStore((s) => s.counts.sharedInboxes)
   const isInitialLoading = useMailCountsStore((s) => s.isInitialLoading)
+
+  // Personal inbox unread arrives under the same `si:{inboxId}` fields as
+  // shared inboxes; the Inbox header badge rolls up assigned-to-me + personal.
+  const personalUnread = personalInboxes.reduce(
+    (sum, inbox) => sum + (sharedInboxCounts[inbox.id] ?? 0),
+    0
+  )
+  const combinedInboxCount = inboxCount + personalUnread
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -217,6 +231,51 @@ export function PersonalMailItems({
       {visibleItems
         .sort((a, b) => a.order - b.order)
         .map((item) => {
+          // With personal-channel inboxes, Inbox becomes an expandable group:
+          // "Assigned to me" + one row per owned personal inbox. The header
+          // opens the combined stream.
+          if (item.id === 'inbox' && personalInboxes.length > 0) {
+            return (
+              <CollapsibleSidebarSection
+                key={item.id}
+                title={item.name}
+                icon={item.icon}
+                href='/app/mail/inbox/open'
+                isEditMode={false}
+                defaultOpen
+                sectionId='mail.inbox'
+                count={combinedInboxCount}
+                isActive={!!pathname?.startsWith('/app/mail/inbox/')}>
+                <SidebarMenuSubItem>
+                  <SidebarItem
+                    id='assigned'
+                    name='Assigned to me'
+                    href='/app/mail/assigned/open'
+                    icon={<UserCheck className='text-muted-foreground' />}
+                    count={inboxCount}
+                    isSubmenu
+                    isActive={!!pathname?.startsWith('/app/mail/assigned')}
+                    onToggleEditMode={onToggleEditMode}
+                  />
+                </SidebarMenuSubItem>
+                {personalInboxes.map((inbox) => (
+                  <SidebarMenuSubItem key={inbox.id}>
+                    <SidebarItem
+                      id={inbox.id}
+                      name={inbox.name}
+                      href={`/app/mail/personal/${inbox.id}/open`}
+                      icon={<UserRound className='text-muted-foreground' />}
+                      count={sharedInboxCounts[inbox.id] ?? 0}
+                      isSubmenu
+                      isActive={!!pathname?.startsWith(`/app/mail/personal/${inbox.id}`)}
+                      onToggleEditMode={onToggleEditMode}
+                    />
+                  </SidebarMenuSubItem>
+                ))}
+              </CollapsibleSidebarSection>
+            )
+          }
+
           const itemHref = getItemHref(item)
           const isActive =
             pathname === itemHref || pathname?.startsWith(itemHref.replace(/\/open$/, '/'))

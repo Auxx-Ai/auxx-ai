@@ -19,6 +19,7 @@ export const contextTypes = [
   'specific_inbox',
   'personal_inbox',
   'personal_assigned',
+  'personal_channel',
   'tag',
   'view',
   'drafts',

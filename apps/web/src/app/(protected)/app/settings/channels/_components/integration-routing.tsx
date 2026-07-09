@@ -22,6 +22,7 @@ import {
   Plus,
   RefreshCw,
   Shield,
+  UserRound,
 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useMemo, useState } from 'react'
@@ -41,13 +42,22 @@ interface IntegrationRoutingProps {
   integration: any // Replace with stronger typing when available
   /** Admin, or owner of this personal channel — mutating controls disable otherwise. */
   canManage: boolean
+  /**
+   * Linked inbox is personal (§11): routing is locked — the channel is
+   * permanently bound to its personal inbox (exits: admin claim or delete).
+   */
+  isPersonalChannel?: boolean
 }
 
 /**
  * IntegrationRouting component
  * Manages routing settings for an integration to inbox mapping
  */
-export default function IntegrationRouting({ integration, canManage }: IntegrationRoutingProps) {
+export default function IntegrationRouting({
+  integration,
+  canManage,
+  isPersonalChannel = false,
+}: IntegrationRoutingProps) {
   const router = useRouter()
   const { hasAccess } = useFeatureFlags()
   const [isRemoving, setIsRemoving] = useState(false)
@@ -270,7 +280,11 @@ export default function IntegrationRouting({ integration, canManage }: Integrati
               <div className='group flex items-center justify-between rounded-2xl border py-2 px-3 hover:bg-muted transition-colors duration-200'>
                 <div className='flex items-center gap-3'>
                   <div className='size-8 border bg-muted rounded-lg flex items-center justify-center group-hover:bg-secondary transition-colors overflow-hidden shrink-0'>
-                    <InboxIcon className='size-4' />
+                    {isPersonalChannel ? (
+                      <UserRound className='size-4' />
+                    ) : (
+                      <InboxIcon className='size-4' />
+                    )}
                   </div>
                   <div className='flex flex-col'>
                     {isLoadingConnectedInbox ? (
@@ -279,13 +293,15 @@ export default function IntegrationRouting({ integration, canManage }: Integrati
                       <span className='text-sm font-medium'>{connectedInbox?.displayName}</span>
                     )}
                     <span className='text-xs text-muted-foreground'>
-                      Messages will be routed to this inbox
+                      {isPersonalChannel
+                        ? 'Personal channel — messages always route to this personal inbox'
+                        : 'Messages will be routed to this inbox'}
                     </span>
                   </div>
                 </div>
                 {isLoadingConnectedInbox ? (
                   <Skeleton className='h-7 w-32' />
-                ) : canManage ? (
+                ) : isPersonalChannel ? null : canManage ? (
                   <InboxPicker
                     selected={connectedInboxRecordId ? [connectedInboxRecordId] : []}
                     onChange={handleSelectInbox}
@@ -319,7 +335,8 @@ export default function IntegrationRouting({ integration, canManage }: Integrati
                 </AlertDescription>
               </Alert>
 
-              {canManage ? (
+              {/* A personal channel is always connected — never offer the picker. */}
+              {isPersonalChannel ? null : canManage ? (
                 <InboxPicker selected={[]} onChange={handleSelectInbox}>
                   <Button variant='default' loading={addIntegration.isPending}>
                     Connect to inbox

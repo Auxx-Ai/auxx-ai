@@ -11,6 +11,7 @@ export {
 // Context to conditions converter (frontend-safe)
 export {
   buildConditionGroups,
+  buildContextConditionGroups,
   buildContextConditions,
   type ContextConditionParams,
 } from './context-to-conditions'
