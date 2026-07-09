@@ -1,11 +1,9 @@
 // ~/components/global/sidebar/shared-inbox-group.tsx
 'use client'
 
-import { toActorId } from '@auxx/types/actor'
 import { DropdownMenuItem } from '@auxx/ui/components/dropdown-menu'
 import { SidebarMenu, SidebarMenuSubItem } from '@auxx/ui/components/sidebar'
 import { Skeleton } from '@auxx/ui/components/skeleton'
-import { Tooltip, TooltipContent, TooltipTrigger } from '@auxx/ui/components/tooltip'
 import { cn } from '@auxx/ui/lib/utils'
 import {
   closestCenter,
@@ -24,17 +22,16 @@ import {
   sortableKeyboardCoordinates,
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable'
-import { Inbox as InboxIcon, Mail, UserRound } from 'lucide-react'
+import { Inbox as InboxIcon, Mail } from 'lucide-react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { useCallback, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { useDndState } from '~/app/context/dnd-state-context'
 import { CollapsibleSidebarSection } from '~/components/global/sidebar/collapsible-sidebar-section'
 import { EditableSidebarItem } from '~/components/global/sidebar/editable-sidebar-item'
 import { SidebarItem } from '~/components/global/sidebar/sidebar-item'
 import { InboxDialog } from '~/components/inbox/inbox-dialog'
-import { selectSharedInboxesTotal, useMailCountsStore } from '~/components/mail/store'
-import { useActor } from '~/components/resources/hooks/use-actor'
+import { useMailCountsStore } from '~/components/mail/store'
 
 export interface Inbox {
   id: string
@@ -45,24 +42,6 @@ export interface Inbox {
   /** Personal-account inbox (mail-permissions §11) — renders the owner affordance. */
   isPersonal?: boolean
   ownerUserId?: string | null
-}
-
-/**
- * Sidebar affordance for a personal inbox (§11): a user icon in place of the
- * color dot, with a "Personal — {owner}" tooltip.
- */
-function PersonalInboxIcon({ ownerUserId }: { ownerUserId?: string | null }) {
-  const { actor } = useActor({
-    actorId: ownerUserId ? toActorId('user', ownerUserId) : null,
-  })
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <UserRound className='text-muted-foreground' />
-      </TooltipTrigger>
-      <TooltipContent side='right'>Personal{actor?.name ? ` — ${actor.name}` : ''}</TooltipContent>
-    </Tooltip>
-  )
 }
 
 interface SharedInboxesSectionProps {
@@ -127,7 +106,6 @@ const DroppableInboxSidebarItem = ({
         href={itemHref}
         count={count}
         color={inbox.color || 'indigo'}
-        icon={inbox.isPersonal ? <PersonalInboxIcon ownerUserId={inbox.ownerUserId} /> : undefined}
         isSubmenu={true}
         isActive={isActive}
         editItems={editItems}
@@ -151,7 +129,12 @@ export function SharedInboxesSection({
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
 
   const sharedInboxCounts = useMailCountsStore((s) => s.counts.sharedInboxes)
-  const totalSharedCount = useMailCountsStore(selectSharedInboxesTotal)
+  // Sum over the rendered (shared-only) inboxes — `si:` counts also carry
+  // personal inbox unread, which must not inflate the Shared Inboxes badge.
+  const totalSharedCount = useMemo(
+    () => inboxes.reduce((sum, inbox) => sum + (sharedInboxCounts[inbox.id] ?? 0), 0),
+    [inboxes, sharedInboxCounts]
+  )
 
   const sensors = useSensors(
     useSensor(PointerSensor, {

@@ -14,6 +14,7 @@ export function MailSidebar() {
   const {
     isEditMode,
     inboxes,
+    myPersonalInboxes,
     mailViews,
     personalItems,
     inboxesLoading,
@@ -72,6 +73,7 @@ export function MailSidebar() {
               settings={personalItems}
               onUpdateSettings={updatePersonalItems}
               settingsLoading={settingsLoading}
+              personalInboxes={myPersonalInboxes}
             />
             <ViewsSection
               views={mailViews}

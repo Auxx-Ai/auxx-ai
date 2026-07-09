@@ -223,14 +223,6 @@ export const useMailCountsStore = create<MailCountsState>()(
 // ═══════════════════════════════════════════════════════════════════════════
 
 /**
- * Get total count for all shared inboxes combined.
- * Use this for the "Shared Inboxes" header badge.
- */
-export const selectSharedInboxesTotal = (state: MailCountsState): number => {
-  return Object.values(state.counts.sharedInboxes).reduce((sum, count) => sum + count, 0)
-}
-
-/**
  * Get count for a specific shared inbox.
  */
 export const selectSharedInboxCount = (state: MailCountsState, inboxId: string): number => {

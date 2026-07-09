@@ -27,7 +27,8 @@ export function getDisplayTabsForContext(contextType: string): StatusSlug[] {
   // Personal contexts
   if (
     contextType === InternalFilterContextType.PERSONAL_ASSIGNED ||
-    contextType === InternalFilterContextType.PERSONAL_INBOX
+    contextType === InternalFilterContextType.PERSONAL_INBOX ||
+    contextType === InternalFilterContextType.PERSONAL_CHANNEL
   ) {
     return ['open', 'done', 'trash', 'spam']
   }
@@ -60,6 +61,8 @@ export function getBreadcrumbTitleForContext(contextType: string): string {
     case InternalFilterContextType.PERSONAL_ASSIGNED:
     case InternalFilterContextType.PERSONAL_INBOX:
       return 'Inbox'
+    case InternalFilterContextType.PERSONAL_CHANNEL:
+      return 'Personal'
     case InternalFilterContextType.ALL_INBOXES:
     case InternalFilterContextType.SPECIFIC_INBOX:
     case InternalFilterContextType.TAG:
@@ -136,6 +139,7 @@ export function isPersonalContext(contextType: string): boolean {
   return (
     contextType === InternalFilterContextType.PERSONAL_ASSIGNED ||
     contextType === InternalFilterContextType.PERSONAL_INBOX ||
+    contextType === InternalFilterContextType.PERSONAL_CHANNEL ||
     contextType === InternalFilterContextType.DRAFTS ||
     contextType === InternalFilterContextType.SENT
   )

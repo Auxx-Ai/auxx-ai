@@ -257,6 +257,17 @@ export class InboxService {
   // ═══════════════════════════════════════════════════════════════════════════
 
   /**
+   * The inbox an integration currently routes to, if any.
+   */
+  async getIntegrationInbox(integrationId: string): Promise<Inbox | null> {
+    const link = await this.db.query.InboxIntegration.findFirst({
+      where: eq(schema.InboxIntegration.integrationId, integrationId),
+    })
+    if (!link) return null
+    return this.getInboxById(link.inboxId)
+  }
+
+  /**
    * Add an integration to an inbox
    */
   async addIntegration(

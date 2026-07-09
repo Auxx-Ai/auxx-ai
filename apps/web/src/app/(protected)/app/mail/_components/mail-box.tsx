@@ -67,6 +67,7 @@ import {
   useThreadSelectionStore,
   useViewMode,
 } from '~/components/threads'
+import { useInboxes } from '~/components/threads/hooks'
 import { useCompose } from '~/hooks/use-compose'
 import { useEffectiveDockState } from '~/hooks/use-effective-dock-state'
 import { useUser } from '~/hooks/use-user'
@@ -223,6 +224,17 @@ function MailboxInner({
   // Get search conditions from store for condition-based filtering
   const searchConditions = useSearchConditions()
 
+  // My personal inbox ids — widen the Inbox context to the combined stream
+  // (assigned to me OR in one of my personal inboxes).
+  const { inboxes } = useInboxes()
+  const personalInboxIds = useMemo(() => {
+    if (contextType !== InternalFilterContextType.PERSONAL_INBOX || !userId) return undefined
+    const ids = inboxes
+      .filter((inbox) => inbox.isPersonal && inbox.ownerUserId === userId)
+      .map((inbox) => inbox.id)
+    return ids.length > 0 ? ids : undefined
+  }, [contextType, inboxes, userId])
+
   // For view contexts, fetch the view's saved filter conditions
   const { data: mailViewData } = api.mailView.getById.useQuery(
     { id: contextId! },
@@ -307,6 +319,7 @@ function MailboxInner({
         contextId,
         statusSlug: activeStatusSlug === 'all' ? undefined : activeStatusSlug,
         userId,
+        personalInboxIds,
       },
       searchConditions
     )
@@ -320,7 +333,15 @@ function MailboxInner({
     }
 
     return groups
-  }, [contextType, contextId, activeStatusSlug, userId, searchConditions, mailViewData])
+  }, [
+    contextType,
+    contextId,
+    activeStatusSlug,
+    userId,
+    personalInboxIds,
+    searchConditions,
+    mailViewData,
+  ])
 
   getMailboxContextType(pathname)
   const mailFilterContextValue = useMemo(

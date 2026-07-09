@@ -11,6 +11,7 @@ export enum InternalFilterContextType {
   VIEW = 'view', // Context: /mail/views/[viewId]/* - Uses ConditionGroup[] definition
   ALL_INBOXES = 'all_inboxes', // Context: /mail/inboxes/all/* - Org-wide view (respects user access if needed later)
   SPECIFIC_INBOX = 'specific_inbox', // Context: /mail/inboxes/[inboxId]/* - Shared inbox view
+  PERSONAL_CHANNEL = 'personal_channel', // Context: /mail/personal/[inboxId]/* - Owner's personal inbox (§11), personal tabs
   DRAFTS = 'drafts', // Standalone view: /mail/drafts - User's drafts (needs specific logic)
   SENT = 'sent', // Standalone view: /mail/sent - User's sent items (needs specific logic)
   ALL = 'all', // Standalone view: /mail/all - All messages

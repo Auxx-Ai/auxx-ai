@@ -7,7 +7,6 @@ export {
 export {
   type CountUpdates,
   selectSharedInboxCount,
-  selectSharedInboxesTotal,
   selectViewCount,
   useMailCountsStore,
 } from './mail-counts-store'

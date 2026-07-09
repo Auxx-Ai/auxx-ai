@@ -4,6 +4,7 @@ import type { PersonalMenuItem } from '~/components/global/sidebar/personal-mail
 import type { Inbox } from '~/components/global/sidebar/shared-inbox-group'
 import { useInboxes } from '~/components/threads/hooks'
 import { useSettings } from '~/hooks/use-settings'
+import { useUser } from '~/hooks/use-user'
 import { api } from '~/trpc/react'
 
 export interface UseMailSidebarOptions {
@@ -37,6 +38,8 @@ export function useMailSidebar({ scope = 'SIDEBAR' }: UseMailSidebarOptions = {}
   // Fetch inboxes data using useInboxes hook (reactive to Zustand store updates)
   const { inboxes: rawInboxes, isLoading: inboxesLoading, refresh: refetchInboxes } = useInboxes()
 
+  const { userId } = useUser()
+
   const {
     data: mailViews,
     isLoading: mailViewsLoading,
@@ -46,9 +49,26 @@ export function useMailSidebar({ scope = 'SIDEBAR' }: UseMailSidebarOptions = {}
     refetchOnWindowFocus: !isEditMode,
   })
 
-  // Process inboxes: apply saved order and visibility
+  // My personal-channel inboxes (§11) — rendered under the Inbox group, never
+  // in Shared Inboxes. Other users' personal inboxes appear in nobody's sidebar.
+  const myPersonalInboxes = useMemo(
+    (): Inbox[] =>
+      (rawInboxes ?? [])
+        .filter((inbox) => inbox.isPersonal && inbox.ownerUserId === userId)
+        .map((inbox) => ({
+          id: inbox.id,
+          name: inbox.name,
+          color: inbox.color ?? 'indigo',
+          isPersonal: true,
+          ownerUserId: inbox.ownerUserId,
+        })),
+    [rawInboxes, userId]
+  )
+
+  // Process shared inboxes: apply saved order and visibility
   const processedInboxes = useMemo((): Inbox[] => {
-    if (!rawInboxes || rawInboxes.length === 0) return []
+    const sharedRawInboxes = (rawInboxes ?? []).filter((inbox) => !inbox.isPersonal)
+    if (sharedRawInboxes.length === 0) return []
 
     // 1. Get saved order and visibility settings
     const inboxOrder = (getSetting(INBOX_ORDER_SETTING_KEY) as string[]) || []
@@ -56,7 +76,7 @@ export function useMailSidebar({ scope = 'SIDEBAR' }: UseMailSidebarOptions = {}
       (getSetting(INBOX_VISIBILITY_SETTING_KEY) as Record<string, boolean>) || {}
 
     // 2. Create a map for quick lookup
-    const inboxMap = new Map(rawInboxes.map((inbox) => [inbox.id, inbox]))
+    const inboxMap = new Map(sharedRawInboxes.map((inbox) => [inbox.id, inbox]))
 
     // 3. Create the sorted list based on saved order
     const sortedInboxes: Inbox[] = []
@@ -78,7 +98,7 @@ export function useMailSidebar({ scope = 'SIDEBAR' }: UseMailSidebarOptions = {}
     })
 
     // 4. Append any inboxes not present in the saved order
-    rawInboxes.forEach((inbox) => {
+    sharedRawInboxes.forEach((inbox) => {
       if (!processedIds.has(inbox.id)) {
         sortedInboxes.push({
           id: inbox.id,
@@ -234,6 +254,7 @@ export function useMailSidebar({ scope = 'SIDEBAR' }: UseMailSidebarOptions = {}
   return {
     isEditMode,
     inboxes: processedInboxes,
+    myPersonalInboxes,
     personalItems,
     inboxesLoading,
     settingsLoading,

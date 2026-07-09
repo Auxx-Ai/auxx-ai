@@ -11,6 +11,12 @@ export interface ContextConditionParams {
   contextId?: string
   statusSlug?: string
   userId?: string
+  /**
+   * The caller's own personal inbox ids (mail-permissions §11). When set for
+   * `personal_inbox`, the context becomes the combined stream: threads
+   * assigned to me OR in one of my personal inboxes.
+   */
+  personalInboxIds?: string[]
 }
 
 /**
@@ -55,7 +61,10 @@ export function buildContextConditions(params: ContextConditionParams): Conditio
       break
 
     case 'specific_inbox':
-      // Specific inbox filters by inbox ID
+    case 'personal_channel':
+      // Specific/personal inbox filters by inbox ID. The personal semantics
+      // (owner-only threads, personal tabs) come from visibility-scope and
+      // the route's tab set, not from extra conditions.
       if (params.contextId) {
         conditions.push({
           id: 'ctx-inbox',
@@ -205,6 +214,43 @@ export function buildContextConditions(params: ContextConditionParams): Conditio
 }
 
 /**
+ * Build all context groups for the given params.
+ *
+ * Normally a single AND group (identical to {@link buildContextConditions}).
+ * For `personal_inbox` with `personalInboxIds`, the identity filter moves into
+ * its own OR group — "assigned to me OR in one of my personal inboxes" —
+ * while status conditions stay in the AND group; the query builder ANDs the
+ * groups together.
+ */
+export function buildContextConditionGroups(params: ContextConditionParams): ConditionGroup[] {
+  const contextGroup = buildContextConditions(params)
+
+  const { contextType, userId, personalInboxIds } = params
+  if (contextType === 'personal_inbox' && userId && personalInboxIds?.length) {
+    // The assignee condition becomes one arm of the identity OR group.
+    contextGroup.conditions = contextGroup.conditions.filter((c) => c.id !== 'ctx-assignee')
+    return [
+      {
+        id: 'context-identity',
+        logicalOperator: 'OR',
+        conditions: [
+          { id: 'ctx-assignee', fieldId: 'assignee', operator: 'is', value: userId },
+          {
+            id: 'ctx-personal-inbox',
+            fieldId: 'inbox',
+            operator: 'in',
+            value: personalInboxIds,
+          },
+        ],
+      },
+      contextGroup,
+    ]
+  }
+
+  return [contextGroup]
+}
+
+/**
  * Build condition groups from context + search conditions.
  *
  * Combines context conditions (from URL routing) with search conditions (from searchbar)
@@ -252,17 +298,23 @@ export function buildConditionGroups(
       ],
     })
   } else {
-    // Build context group, but remove conditions whose fieldId
+    // Build context groups, but remove conditions whose fieldId
     // is overridden by a search condition
-    const contextGroup = buildContextConditions(contextParams)
-    if (realSearchConditions?.length) {
-      const searchFieldIds = new Set(realSearchConditions.map((c) => c.fieldId))
-      contextGroup.conditions = contextGroup.conditions.filter(
-        (c) => !searchFieldIds.has(c.fieldId)
-      )
-    }
-    if (contextGroup.conditions.length > 0) {
-      groups.push(contextGroup)
+    const contextGroups = buildContextConditionGroups(contextParams)
+    const searchFieldIds = new Set(realSearchConditions?.map((c) => c.fieldId) ?? [])
+    for (const group of contextGroups) {
+      if (group.id === 'context-identity') {
+        // The identity OR group is all-or-nothing: removing one arm would
+        // widen results, so a search on either identity field drops it whole.
+        if (searchFieldIds.has('assignee') || searchFieldIds.has('inbox')) {
+          group.conditions = []
+        }
+      } else if (searchFieldIds.size > 0) {
+        group.conditions = group.conditions.filter((c) => !searchFieldIds.has(c.fieldId))
+      }
+      if (group.conditions.length > 0) {
+        groups.push(group)
+      }
     }
   }
 
