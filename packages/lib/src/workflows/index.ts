@@ -1,5 +1,10 @@
 // packages/lib/src/workflows/index.ts
 
+export {
+  buildTemplateWorkflowData,
+  type TemplateForCreate,
+  type TemplateWorkflowData,
+} from './create-from-template'
 export { normalizeTemplateGraph } from './normalize-template-graph'
 export type { WorkflowGraph } from './template-graph-transformer'
 export { TemplateGraphTransformer } from './template-graph-transformer'
@@ -35,6 +40,6 @@ export {
 } from './workflow-execution-events'
 export { WorkflowExecutionService } from './workflow-execution-service'
 // Export all services
-export { WorkflowService } from './workflow-service'
+export { toWorkflowAppResponse, WorkflowService } from './workflow-service'
 export { WorkflowStatsService } from './workflow-stats-service'
 export { WorkflowVersionService } from './workflow-version-service'

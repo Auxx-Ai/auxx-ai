@@ -20,7 +20,8 @@ import {
   SelectValue,
 } from '@auxx/ui/components/select'
 import { toastError } from '@auxx/ui/components/toast'
-import { Play } from 'lucide-react'
+import { Play, Plus } from 'lucide-react'
+import { useRouter } from 'next/navigation'
 import { useState } from 'react'
 import { invalidateBatchResources } from '~/components/workflow/utils/invalidate-resource'
 import { useWorkflowRunStatusStore } from '~/stores/workflow-run-status-store'
@@ -50,6 +51,7 @@ export function MassWorkflowTriggerDialog({
   recordIds,
   onSuccess,
 }: MassWorkflowTriggerDialogProps) {
+  const router = useRouter()
   const [selectedWorkflowId, setSelectedWorkflowId] = useState<string>('')
 
   // Parse first RecordId to get entityDefinitionId for querying workflows
@@ -119,6 +121,20 @@ export function MassWorkflowTriggerDialog({
     },
   })
 
+  // Create a new manual-trigger workflow pre-wired to this resource, then
+  // send the user straight into the builder to finish it.
+  const createForResource = api.workflow.createForResource.useMutation({
+    onSuccess: (created) => {
+      onOpenChange(false)
+      if (created?.id) {
+        router.push(`/app/workflows/${created.id}`)
+      }
+    },
+    onError: (error) => {
+      toastError({ title: 'Failed to create workflow', description: error.message })
+    },
+  })
+
   /** Handle workflow trigger */
   const handleTrigger = () => {
     if (!selectedWorkflowId) {
@@ -135,7 +151,7 @@ export function MassWorkflowTriggerDialog({
     })
   }
 
-  const isLoading = workflowsLoading || triggerBulk.isPending
+  const isLoading = workflowsLoading || triggerBulk.isPending || createForResource.isPending
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -175,6 +191,17 @@ export function MassWorkflowTriggerDialog({
           <Button
             variant='ghost'
             size='sm'
+            className='sm:mr-auto'
+            onClick={() => createForResource.mutate({ entityDefinitionId })}
+            disabled={isLoading || entityDefinitionId.length === 0}
+            loading={createForResource.isPending}
+            loadingText='Creating...'>
+            <Plus />
+            Create Workflow
+          </Button>
+          <Button
+            variant='ghost'
+            size='sm'
             onClick={() => onOpenChange(false)}
             disabled={isLoading}>
             Cancel
@@ -182,7 +209,7 @@ export function MassWorkflowTriggerDialog({
           <Button
             onClick={handleTrigger}
             disabled={!selectedWorkflowId || isLoading}
-            loading={isLoading}
+            loading={triggerBulk.isPending}
             size='sm'
             variant='outline'
             loadingText='Triggering...'>

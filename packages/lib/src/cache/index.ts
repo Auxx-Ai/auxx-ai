@@ -116,6 +116,7 @@ export type {
 export { UserCacheService } from './user-cache-service'
 export {
   getCachedWorkflowApp,
+  getCachedWorkflowAppCount,
   getCachedWorkflowAppsByAppTrigger,
   getCachedWorkflowAppsByTrigger,
 } from './workflow-app-queries'
