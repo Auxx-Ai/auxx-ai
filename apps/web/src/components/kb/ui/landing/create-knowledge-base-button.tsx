@@ -3,9 +3,13 @@
 
 import { FeatureKey } from '@auxx/lib/permissions/client'
 import { Button } from '@auxx/ui/components/button'
+import { Kbd } from '@auxx/ui/components/kbd'
+import { useHotkey } from '@tanstack/react-hotkeys'
 import { Book, Plus } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useCallback, useState } from 'react'
+import { CommandAction, CommandContext } from '~/components/kbar/contextual'
+import { useCommandPaletteStore } from '~/components/kbar/store'
 import { LimitReachedDialog } from '~/components/subscriptions/limit-reached-dialog'
 import { useFeatureFlags } from '~/providers/feature-flag-provider'
 import { api } from '~/trpc/react'
@@ -21,7 +25,16 @@ import {
  * the Connect Source button). Encapsulates the create dialog, the plan-limit gate,
  * and the post-create redirect into the new KB's editor.
  */
-export function CreateKnowledgeBaseButton() {
+/**
+ * @param registerShortcut - When true, binds the page-local `N` shortcut, shows
+ *   the `<Kbd>` hint, and contributes the cmd+k action. Set only on the shell's
+ *   header instance so empty-state copies don't double-register.
+ */
+export function CreateKnowledgeBaseButton({
+  registerShortcut = false,
+}: {
+  registerShortcut?: boolean
+} = {}) {
   const router = useRouter()
   const [isCreateKBOpen, setIsCreateKBOpen] = useState(false)
   const [limitDialogOpen, setLimitDialogOpen] = useState(false)
@@ -44,6 +57,9 @@ export function CreateKnowledgeBaseButton() {
     }
   }, [atLimit])
 
+  // Page-local shortcut: N opens the create-KB dialog (or the limit prompt).
+  useHotkey('N', handleCreateClick, { enabled: registerShortcut })
+
   const handleCreateKB = useCallback(
     async (values: KnowledgeBaseFormValues) => {
       const created = await createKnowledgeBase({ name: values.name, slug: values.slug })
@@ -57,9 +73,29 @@ export function CreateKnowledgeBaseButton() {
 
   return (
     <>
+      {registerShortcut && (
+        <CommandContext kind='page' label='Knowledge Bases'>
+          <CommandAction
+            label='Create knowledge base'
+            icon='book-open'
+            keywords='create knowledge base kb new'
+            shortcut={['N']}
+            priority={10}
+            perform={() => {
+              useCommandPaletteStore.getState().close()
+              handleCreateClick()
+            }}
+          />
+        </CommandContext>
+      )}
       <Button size='sm' className='h-7 rounded-lg' onClick={handleCreateClick}>
         <Plus />
         Create Knowledge Base
+        {registerShortcut && (
+          <Kbd variant='default' size='sm'>
+            N
+          </Kbd>
+        )}
       </Button>
       <KnowledgeBaseDialog
         open={isCreateKBOpen}

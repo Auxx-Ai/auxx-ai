@@ -29,7 +29,7 @@ import { DashboardsProvider } from './dashboards-provider'
 function DashboardsPageContent() {
   return (
     <MainPage>
-      <MainPageHeader action={<CreateDashboardButton />}>
+      <MainPageHeader action={<CreateDashboardButton registerShortcut />}>
         <MainPageBreadcrumb>
           <MainPageBreadcrumbItem title='Dashboards' href='/app/dashboards' last />
         </MainPageBreadcrumb>

@@ -12,6 +12,8 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@auxx/ui/components/tabs'
 import { Book, Globe, Library } from 'lucide-react'
 import { useQueryState } from 'nuqs'
+import { CommandAction, CommandContext } from '~/components/kbar/contextual'
+import { useCommandPaletteStore } from '~/components/kbar/store'
 import { ArticlesView } from '../articles/articles-view'
 import { KnowledgeBasesTab } from '../knowledge-bases/knowledge-bases-tab'
 import { KBSwitcherDropdownContent } from '../sidebar/kb-switcher'
@@ -32,8 +34,46 @@ export function KBLandingShell() {
 
   return (
     <MainPage>
+      <CommandContext kind='page' label='Knowledge Bases'>
+        <CommandAction
+          label='Go to Articles'
+          icon='file-text'
+          keywords='articles tab view knowledge'
+          priority={3}
+          perform={() => {
+            useCommandPaletteStore.getState().close()
+            void setTab('articles')
+          }}
+        />
+        <CommandAction
+          label='Go to Knowledge Bases'
+          icon='book-open'
+          keywords='knowledge bases tab view kb'
+          priority={2}
+          perform={() => {
+            useCommandPaletteStore.getState().close()
+            void setTab('knowledge-bases')
+          }}
+        />
+        <CommandAction
+          label='Go to Sources'
+          icon='globe'
+          keywords='sources tab view crawl'
+          priority={1}
+          perform={() => {
+            useCommandPaletteStore.getState().close()
+            void setTab('sources')
+          }}
+        />
+      </CommandContext>
       <MainPageHeader
-        action={tab === 'sources' ? <ConnectSourceButton /> : <CreateKnowledgeBaseButton />}>
+        action={
+          tab === 'sources' ? (
+            <ConnectSourceButton registerShortcut />
+          ) : (
+            <CreateKnowledgeBaseButton registerShortcut />
+          )
+        }>
         <MainPageBreadcrumb>
           <MainPageBreadcrumbItem
             title='Knowledge Bases'

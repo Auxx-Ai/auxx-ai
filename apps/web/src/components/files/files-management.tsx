@@ -3,6 +3,7 @@
 'use client'
 
 import { Button } from '@auxx/ui/components/button'
+import { Kbd } from '@auxx/ui/components/kbd'
 import { toastSuccess } from '@auxx/ui/components/toast'
 import { cn } from '@auxx/ui/lib/utils'
 import {
@@ -14,10 +15,13 @@ import {
   useSensor,
   useSensors,
 } from '@dnd-kit/core'
+import { useHotkey } from '@tanstack/react-hotkeys'
 import { FolderPlus, Trash2, Upload } from 'lucide-react'
 import { useCallback, useMemo, useState } from 'react'
 import { type DragDropConfig, DynamicTable } from '~/components/dynamic-table'
 import { EmptyState } from '~/components/global/empty-state'
+import { CommandAction, CommandContext } from '~/components/kbar/contextual'
+import { useCommandPaletteStore } from '~/components/kbar/store'
 import MailThreadItemDragOverlay from '~/components/mail/mail-thread-item-drag-overlay'
 import { useConfirm } from '~/hooks/use-confirm'
 import { CreateFolderDialog } from './create-folder-dialog'
@@ -156,6 +160,12 @@ export function FilesManagement({
   const [itemToRename, setItemToRename] = useState<FileItem | null>(null)
 
   const [confirm, ConfirmDialog] = useConfirm()
+
+  // Page-local shortcuts (management mode only): N = new folder, U = upload.
+  // Bound only while the upload controls are shown so file-picker dialogs that
+  // reuse this component in selection mode never grab these keys.
+  useHotkey('N', () => setCreateFolderDialogOpen(true), { enabled: shouldShowUploadControls })
+  useHotkey('U', () => setUploadDialogOpen(true), { enabled: shouldShowUploadControls })
 
   // DnD state management
   const [draggingItems, setDraggingItems] = useState<FileItem[] | null>(null)
@@ -556,6 +566,34 @@ export function FilesManagement({
         currentFolderName={currentFolderName}
         disabled={isLoading}>
         <div className={cn('min-h-0 flex flex-col flex-1', className)}>
+          {/* Command-palette scope for the Files page (management mode only). */}
+          {shouldShowUploadControls && (
+            <CommandContext kind='page' label='Files'>
+              <CommandAction
+                label='New folder'
+                icon='folder'
+                keywords='new folder create directory'
+                shortcut={['N']}
+                priority={10}
+                perform={() => {
+                  useCommandPaletteStore.getState().close()
+                  setCreateFolderDialogOpen(true)
+                }}
+              />
+              <CommandAction
+                label='Upload files'
+                icon='upload'
+                keywords='upload files add attachment'
+                shortcut={['U']}
+                priority={9}
+                perform={() => {
+                  useCommandPaletteStore.getState().close()
+                  setUploadDialogOpen(true)
+                }}
+              />
+            </CommandContext>
+          )}
+
           {/* Header with breadcrumbs and actions - conditional */}
           {shouldShowHeader && (
             <div className='flex items-center justify-between bg-primary-200 h-9 px-2 shrink-0'>
@@ -573,10 +611,16 @@ export function FilesManagement({
                       onClick={() => setCreateFolderDialogOpen(true)}>
                       <FolderPlus />
                       New Folder
+                      <Kbd variant='outline' size='sm'>
+                        N
+                      </Kbd>
                     </Button>
                     <Button size='xs' onClick={() => setUploadDialogOpen(true)}>
                       <Upload />
                       Upload Files
+                      <Kbd variant='default' size='sm'>
+                        U
+                      </Kbd>
                     </Button>
                   </>
                 )}
