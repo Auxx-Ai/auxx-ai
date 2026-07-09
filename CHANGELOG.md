@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.1.180](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.179...auxx-v0.1.180) (2026-07-09)
+
+
+### Features
+
+* **workflow:** gate AI-node options on model capabilities + per-node trace renderers ([#1095](https://github.com/Auxx-Ai/auxx-ai/issues/1095)) ([cf1da6d](https://github.com/Auxx-Ai/auxx-ai/commit/cf1da6d7aecc4872896afb86ed00ef357e7b803b))
+* **workflow:** historical-run node Results, run deep-linking, truthful branch status ([#1096](https://github.com/Auxx-Ai/auxx-ai/issues/1096)) ([90c67f8](https://github.com/Auxx-Ai/auxx-ai/commit/90c67f88aabed3be74b8e8a80bd267264eae2ce8))
+* **workflow:** shopify-order-lookup order-not-found branch + reply gating ([#1097](https://github.com/Auxx-Ai/auxx-ai/issues/1097)) ([f4b9701](https://github.com/Auxx-Ai/auxx-ai/commit/f4b9701d5e2e4efddd4f87ad3b04bb5fe1add8ff))
+
+
+### Bug Fixes
+
+* **homepage:** readable text over gradient cards in light mode ([#1093](https://github.com/Auxx-Ai/auxx-ai/issues/1093)) ([e4c507e](https://github.com/Auxx-Ai/auxx-ai/commit/e4c507e472d29af1ac878aefbc756d786451e2e3))
+
 ## [0.1.179](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.178...auxx-v0.1.179) (2026-07-08)
 
 
