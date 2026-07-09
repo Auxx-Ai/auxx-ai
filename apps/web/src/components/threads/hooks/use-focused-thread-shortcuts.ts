@@ -7,9 +7,11 @@ import {
   useActiveThreadId,
   useFocusedThreadId,
   useHasMultipleSelected,
+  useIsDetailOpen,
   useThreadSelectionStore,
   useViewMode,
 } from '../store/thread-selection-store'
+import { getThreadStoreState } from '../store/thread-store'
 import { useThreadMutation } from './use-thread-mutation'
 
 /**
@@ -21,9 +23,9 @@ import { useThreadMutation } from './use-thread-mutation'
 export function useFocusedThreadShortcuts() {
   const focusedThreadId = useFocusedThreadId()
   const activeThreadId = useActiveThreadId()
-  const targetThreadId = focusedThreadId ?? activeThreadId
   const hasMultipleSelected = useHasMultipleSelected()
   const viewMode = useViewMode()
+  const isDetailOpen = useIsDetailOpen()
   const { update, isUpdating } = useThreadMutation()
 
   const isFocusLocked = useThreadSelectionStore((s) => s.isFocusLocked)
@@ -32,13 +34,25 @@ export function useFocusedThreadShortcuts() {
   const [workflowDialogOpen, setWorkflowDialogOpen] = useState(false)
   const [workflowThreadId, setWorkflowThreadId] = useState<string | null>(null)
 
-  const enabled = !!targetThreadId && !hasMultipleSelected && viewMode !== 'edit'
-  const actionsEnabled = enabled && !isFocusLocked
+  // When a thread detail is open, act on the OPEN thread (activeThreadId) and
+  // ignore the list hover cursor (focusedThreadId) — the cursor is a list-only
+  // concept and is often stale in split/detail view, which would otherwise make
+  // shortcuts hit the wrong thread. When browsing the list, prefer the cursor.
+  const targetThreadId = isDetailOpen ? activeThreadId : (focusedThreadId ?? activeThreadId)
 
-  // Advance to the next thread after a destructive action.
-  // In list/compact view (focusedThreadId set), move the focus cursor.
-  // In split view (only activeThreadId set), move the active thread so the
-  // next one auto-opens via the URL sync.
+  const enabled = !!targetThreadId && !hasMultipleSelected && viewMode !== 'edit'
+  // isFocusLocked freezes the list hover cursor while a row-anchored popover is
+  // open. It's a list-only concern — never gate the detail path on it (a stuck
+  // lock must not disable the open thread's shortcuts).
+  const actionsEnabled = enabled && (isDetailOpen || !isFocusLocked)
+  // A/L open anchored popovers tied to the list row. When a thread detail is
+  // open, its header owns these shortcuts instead so the popover anchors to a
+  // visible header button rather than the hidden/absent list row.
+  const anchoredActionsEnabled = actionsEnabled && !isDetailOpen
+
+  // Advance the list cursor to the next thread after a destructive action.
+  // Only used when browsing the list — in the detail view we stay on the thread
+  // so the same key can reverse the action.
   const advanceFocus = useCallback(() => {
     const store = useThreadSelectionStore.getState()
     const { listThreadIds, focusedThreadId: currentFocused, activeThreadId: currentActive } = store
@@ -53,41 +67,36 @@ export function useFocusedThreadShortcuts() {
     }
   }, [])
 
-  // D — Archive
-  useHotkey(
-    'D',
-    () => {
-      if (targetThreadId && !isUpdating) {
-        update(targetThreadId, { status: 'ARCHIVED' })
-        advanceFocus()
-      }
+  // Toggle a status: pressing the key on a thread already in that state restores
+  // it to OPEN (so `!` un-spams, `D` un-archives, etc). In the detail view we
+  // stay on the thread; when browsing the list we advance the cursor for triage.
+  const toggleStatus = useCallback(
+    (status: 'ARCHIVED' | 'TRASH' | 'SPAM') => {
+      if (!targetThreadId || isUpdating) return
+      const current = getThreadStoreState().getThread(targetThreadId)?.status
+      update(targetThreadId, { status: current === status ? 'OPEN' : status })
+      if (!isDetailOpen) advanceFocus()
     },
-    { enabled: actionsEnabled, conflictBehavior: 'allow' }
+    [targetThreadId, isUpdating, update, advanceFocus, isDetailOpen]
   )
 
-  // Shift+3 (#) — Trash
-  useHotkey(
-    'Shift+3',
-    () => {
-      if (targetThreadId && !isUpdating) {
-        update(targetThreadId, { status: 'TRASH' })
-        advanceFocus()
-      }
-    },
-    { enabled: actionsEnabled, conflictBehavior: 'allow' }
-  )
+  // D — Archive / unarchive
+  useHotkey('D', () => toggleStatus('ARCHIVED'), {
+    enabled: actionsEnabled,
+    conflictBehavior: 'allow',
+  })
 
-  // Shift+1 (!) — Spam
-  useHotkey(
-    'Shift+1',
-    () => {
-      if (targetThreadId && !isUpdating) {
-        update(targetThreadId, { status: 'SPAM' })
-        advanceFocus()
-      }
-    },
-    { enabled: actionsEnabled, conflictBehavior: 'allow' }
-  )
+  // Shift+3 (#) — Trash / restore
+  useHotkey('Shift+3', () => toggleStatus('TRASH'), {
+    enabled: actionsEnabled,
+    conflictBehavior: 'allow',
+  })
+
+  // Shift+1 (!) — Spam / not spam
+  useHotkey('Shift+1', () => toggleStatus('SPAM'), {
+    enabled: actionsEnabled,
+    conflictBehavior: 'allow',
+  })
 
   // W — Open workflow dialog
   useHotkey(
@@ -123,7 +132,7 @@ export function useFocusedThreadShortcuts() {
         setFocusLocked(true)
       }
     },
-    { enabled: actionsEnabled, conflictBehavior: 'allow' }
+    { enabled: anchoredActionsEnabled, conflictBehavior: 'allow' }
   )
 
   const handleAssignPickerOpenChange = useCallback(
@@ -157,7 +166,7 @@ export function useFocusedThreadShortcuts() {
         setFocusLocked(true)
       }
     },
-    { enabled: actionsEnabled, conflictBehavior: 'allow' }
+    { enabled: anchoredActionsEnabled, conflictBehavior: 'allow' }
   )
 
   const handleTagPickerOpenChange = useCallback(

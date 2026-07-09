@@ -14,6 +14,8 @@ import {
   DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
+import { cn } from '@auxx/ui/lib/utils'
+import { useHotkey } from '@tanstack/react-hotkeys'
 import {
   Archive,
   ArchiveRestore,
@@ -29,12 +31,17 @@ import {
   Zap,
 } from 'lucide-react'
 import Link from 'next/link'
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useChannel } from '~/components/channels/hooks/use-channels'
 import { RecordPicker } from '~/components/pickers/record-picker'
 import { useActor, useResource } from '~/components/resources/hooks'
 import { useThreadTags } from '~/components/tags/hooks/use-thread-tags'
 import { useInbox, useThread, useThreadMutation } from '~/components/threads/hooks'
+import {
+  useHasMultipleSelected,
+  useThreadSelectionStore,
+  useViewMode,
+} from '~/components/threads/store/thread-selection-store'
 import { ManualTriggerButton } from '~/components/workflow/manual-trigger-button'
 import { useConfirm } from '~/hooks/use-confirm'
 import { EditableText } from '../editor/editable-text'
@@ -98,6 +105,33 @@ export function ThreadHeader() {
   // Local state for tag popover
   const [open, setOpen] = useState(false)
   const tagButtonRef = useRef<HTMLButtonElement>(null)
+
+  // Local state for assign popover (controlled so the A hotkey can open it,
+  // anchored to the header's assign button instead of a hidden list row).
+  const [assignOpen, setAssignOpen] = useState(false)
+
+  // --- Detail-view action shortcuts (A/L) ---
+  // While this header is mounted it owns the anchored A/L shortcuts; the list
+  // hook yields (see useFocusedThreadShortcuts) so their popovers anchor here.
+  const hasMultipleSelected = useHasMultipleSelected()
+  const viewMode = useViewMode()
+  const setDetailHeaderThreadId = useThreadSelectionStore((s) => s.setDetailHeaderThreadId)
+
+  useEffect(() => {
+    setDetailHeaderThreadId(threadId)
+    return () => setDetailHeaderThreadId(null)
+  }, [threadId, setDetailHeaderThreadId])
+
+  const shortcutsEnabled = !!thread && !hasMultipleSelected && viewMode !== 'edit'
+
+  // A — Open assign picker (anchored to the header's assign button)
+  useHotkey('A', () => setAssignOpen(true), {
+    enabled: shortcutsEnabled,
+    conflictBehavior: 'allow',
+  })
+
+  // L — Open tag picker (anchored to the header's tag button)
+  useHotkey('L', () => setOpen(true), { enabled: shortcutsEnabled, conflictBehavior: 'allow' })
 
   // --- Handlers ---
 
@@ -301,7 +335,12 @@ export function ThreadHeader() {
                   size='icon'
                   disabled={!thread}
                   onClick={isSpam ? handleRestore : handleMarkSpam}
-                  className='rounded-full hover:bg-foreground/10'>
+                  className={cn(
+                    'rounded-full',
+                    isSpam
+                      ? 'bg-destructive text-white hover:bg-destructive/90 hover:text-white'
+                      : 'hover:bg-foreground/10'
+                  )}>
                   {isSpam ? <MailCheck /> : <MailWarning />}
                   <span className='sr-only'>{isSpam ? 'Not spam' : 'Mark as spam'}</span>
                 </Button>
@@ -349,6 +388,8 @@ export function ThreadHeader() {
 
             <ActorPicker
               key={`assignee-${thread.id}`}
+              open={assignOpen}
+              onOpenChange={setAssignOpen}
               value={assigneeValue}
               onChange={handleAssigneeChange}
               multi={false}

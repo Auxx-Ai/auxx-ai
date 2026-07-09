@@ -21,12 +21,19 @@ interface ThreadSelectionState {
   focusedThreadId: string | null
   /** When true, setFocusedThread calls are no-ops (used while popovers are anchored to a row) */
   isFocusLocked: boolean
+  /**
+   * Thread ID whose detail header is currently mounted. When set, the detail
+   * header owns the anchored action shortcuts (A/L) so their popovers anchor to
+   * the header's visible buttons instead of the (hidden/absent) list row.
+   */
+  detailHeaderThreadId: string | null
   viewMode: ViewMode
 
   setActiveThread: (id: string | null) => void
   setSelectionAnchor: (id: string | null) => void
   setFocusedThread: (id: string | null) => void
   setFocusLocked: (locked: boolean) => void
+  setDetailHeaderThreadId: (id: string | null) => void
   setSelectedThreads: (ids: string[]) => void
   addToSelection: (id: string) => void
   removeFromSelection: (id: string) => void
@@ -48,6 +55,7 @@ const initialState = {
   listThreadIds: [] as string[],
   focusedThreadId: null as string | null,
   isFocusLocked: false,
+  detailHeaderThreadId: null as string | null,
   viewMode: 'view' as ViewMode,
 }
 
@@ -70,6 +78,8 @@ export const useThreadSelectionStore = create<ThreadSelectionState>((set, get) =
   },
 
   setFocusLocked: (locked) => set({ isFocusLocked: locked }),
+
+  setDetailHeaderThreadId: (id) => set({ detailHeaderThreadId: id }),
 
   setSelectedThreads: (ids) => set({ selectedThreadIds: ids }),
 
@@ -178,6 +188,12 @@ export const useListThreadIds = () => useThreadSelectionStore((s) => s.listThrea
  * Returns the focused thread ID (keyboard cursor in compact view).
  */
 export const useFocusedThreadId = () => useThreadSelectionStore((s) => s.focusedThreadId)
+
+/**
+ * Returns whether a thread detail header is currently mounted (detail view open).
+ * When true, the detail header owns the anchored action shortcuts (A/L).
+ */
+export const useIsDetailOpen = () => useThreadSelectionStore((s) => s.detailHeaderThreadId !== null)
 
 /**
  * Returns the selected thread IDs array.
