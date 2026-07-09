@@ -3,6 +3,7 @@
 
 import type { FavoriteEntity } from '@auxx/lib/favorites/client'
 import { ArticleItem } from './items/article-item'
+import { DashboardItem } from './items/dashboard-item'
 import { DatasetItem } from './items/dataset-item'
 import { DocumentItem } from './items/document-item'
 import { EntityInstanceItem } from './items/entity-instance-item'
@@ -40,6 +41,8 @@ export function FavoriteItemDispatch({ favorite }: { favorite: FavoriteEntity })
       return <ArticleItem favorite={favorite as FavoriteEntity<'ARTICLE'>} />
     case 'KNOWLEDGE_BASE':
       return <KnowledgeBaseItem favorite={favorite as FavoriteEntity<'KNOWLEDGE_BASE'>} />
+    case 'DASHBOARD':
+      return <DashboardItem favorite={favorite as FavoriteEntity<'DASHBOARD'>} />
     default:
       return null
   }
