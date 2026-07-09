@@ -49,6 +49,8 @@ const badgeVariants = cva(
           'bg-purple-500/15 text-purple-700 hover:bg-purple-500/25 dark:text-purple-400 dark:hover:bg-purple-500/20',
         fuchsia:
           'bg-fuchsia-400/15 text-fuchsia-700 hover:bg-fuchsia-400/25 dark:bg-fuchsia-400/10 dark:text-fuchsia-400 dark:hover:bg-fuchsia-400/20',
+        magenta:
+          'bg-fuchsia-500/15 text-fuchsia-700 hover:bg-fuchsia-500/25 dark:bg-fuchsia-500/10 dark:text-fuchsia-400 dark:hover:bg-fuchsia-500/20',
         pink: 'bg-pink-400/15 text-pink-700 hover:bg-pink-400/25 dark:bg-pink-400/10 dark:text-pink-400 dark:hover:bg-pink-400/20',
         rose: 'bg-rose-400/15 text-rose-700 hover:bg-rose-400/25 dark:bg-rose-400/10 dark:text-rose-400 dark:hover:bg-rose-400/20',
         zinc: 'bg-zinc-600/10 text-zinc-700 hover:bg-zinc-600/20 dark:bg-white/5 dark:text-zinc-400 dark:hover:bg-white/10',

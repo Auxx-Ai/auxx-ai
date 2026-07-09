@@ -1,6 +1,7 @@
 // packages/ui/src/components/list-card.tsx
 'use client'
 
+import { Badge, type Variant as BadgeVariant } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { Checkbox } from '@auxx/ui/components/checkbox'
 import {
@@ -51,6 +52,10 @@ export interface ListCardMenuItem {
 export interface ListCardBadgeChip {
   label?: string
   icon?: React.ReactNode
+  /** Badge colour variant. Defaults to `gray`. */
+  variant?: BadgeVariant
+  /** Tooltip content on hover — omit for a bare chip (no tooltip). */
+  description?: React.ReactNode
 }
 
 type ListCardSlotName = 'root' | 'title' | 'subtitle' | 'description' | 'icon' | 'footer' | 'badges'
@@ -129,19 +134,35 @@ export interface ListCardProps {
   classNames?: Partial<Record<ListCardSlotName, string>>
 }
 
-/** Renders a `{ label?, icon? }[]` chip row — handy for `badges`/`headerEnd`. */
-export function renderBadgeChips(chips: ListCardBadgeChip[]): React.ReactNode {
+/**
+ * Renders a `{ label?, icon?, variant?, description? }[]` chip row — handy for
+ * `badges`/`headerEnd`. Pass `options.gap` (a Tailwind gap class) to override the
+ * default tight `gap-0.5`, e.g. when mixing icon-only and label chips.
+ */
+export function renderBadgeChips(
+  chips: ListCardBadgeChip[],
+  options?: { gap?: string }
+): React.ReactNode {
   if (chips.length === 0) return null
   return (
-    <div className='flex flex-row items-center gap-0.5'>
-      {chips.map((chip, i) => (
-        <div
-          key={`chip-${i}`}
-          className='flex h-5 shrink-0 items-center justify-center gap-1 rounded-lg border bg-primary-100 px-1'>
-          {chip.icon}
-          {chip.label && <span className='text-xs'>{chip.label}</span>}
-        </div>
-      ))}
+    <div className={cn('flex flex-row items-center shrink-0', options?.gap ?? 'gap-0.5')}>
+      {chips.map((chip, i) => {
+        const badge = (
+          <Badge key={`chip-${i}`} size='xs' variant={chip.variant ?? 'gray'}>
+            {chip.icon}
+            {chip.label}
+          </Badge>
+        )
+        if (chip.description == null) return badge
+        return (
+          <Tooltip
+            key={`chip-${i}`}
+            content={typeof chip.description === 'string' ? chip.description : undefined}
+            contentComponent={typeof chip.description === 'string' ? undefined : chip.description}>
+            {badge}
+          </Tooltip>
+        )
+      })}
     </div>
   )
 }

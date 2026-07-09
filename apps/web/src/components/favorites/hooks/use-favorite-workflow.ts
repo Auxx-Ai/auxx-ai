@@ -11,6 +11,6 @@ export function useFavoriteWorkflow(workflowId: string | null | undefined) {
     { enabled: !!workflowId, staleTime: STALE_TIME, refetchOnWindowFocus: false }
   )
   const code = error?.data?.code
-  const isNotFound = code === 'NOT_FOUND' || code === 'FORBIDDEN'
+  const isNotFound = code === 'NOT_FOUND' || code === 'FORBIDDEN' || (!isLoading && !data)
   return { workflow: data, isLoading, isNotFound }
 }

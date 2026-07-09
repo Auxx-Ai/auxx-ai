@@ -11,6 +11,6 @@ export function useFavoriteSnippet(snippetId: string | null | undefined) {
     { enabled: !!snippetId, staleTime: STALE_TIME, refetchOnWindowFocus: false }
   )
   const code = error?.data?.code
-  const isNotFound = code === 'NOT_FOUND' || code === 'FORBIDDEN'
+  const isNotFound = code === 'NOT_FOUND' || code === 'FORBIDDEN' || (!isLoading && !data)
   return { snippet: data, isLoading, isNotFound }
 }

@@ -13,7 +13,7 @@ export function DocumentItem({ favorite }: { favorite: FavoriteEntity<'DOCUMENT'
   const { document, isLoading, isNotFound } = useFavoriteDocument(ids?.documentId)
 
   if (isNotFound) return <PrivateItem favoriteId={favorite.id} />
-  if (isLoading || !document) return <FavoriteItemSkeleton />
+  if (isLoading || !document) return <FavoriteItemSkeleton favoriteId={favorite.id} />
 
   const datasetId = ids?.datasetId
   const href = datasetId

@@ -92,7 +92,8 @@ export function ChannelCard({ channel, inboxes }: { channel: Channel; inboxes: I
 
   const chips: ListCardBadgeChip[] = []
   if (linkedInbox) chips.push({ label: linkedInbox.name })
-  if (linkedInbox?.isPersonal) chips.push({ label: 'Personal' })
+  if (linkedInbox?.isPersonal)
+    chips.push({ label: 'P', description: 'Personal', variant: 'magenta' })
 
   const handleDisconnect = async () => {
     const confirmed = await confirm({

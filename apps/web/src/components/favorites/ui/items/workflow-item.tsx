@@ -13,7 +13,7 @@ export function WorkflowItem({ favorite }: { favorite: FavoriteEntity<'WORKFLOW'
   const { workflow, isLoading, isNotFound } = useFavoriteWorkflow(ids?.workflowId)
 
   if (isNotFound) return <PrivateItem favoriteId={favorite.id} />
-  if (isLoading || !workflow) return <FavoriteItemSkeleton />
+  if (isLoading || !workflow) return <FavoriteItemSkeleton favoriteId={favorite.id} />
 
   return (
     <FavoriteItemRow

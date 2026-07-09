@@ -13,7 +13,7 @@ export function KnowledgeBaseItem({ favorite }: { favorite: FavoriteEntity<'KNOW
   const { knowledgeBase, isLoading, isNotFound } = useFavoriteKnowledgeBase(ids?.knowledgeBaseId)
 
   if (isNotFound) return <PrivateItem favoriteId={favorite.id} />
-  if (isLoading || !knowledgeBase || !ids) return <FavoriteItemSkeleton />
+  if (isLoading || !knowledgeBase || !ids) return <FavoriteItemSkeleton favoriteId={favorite.id} />
 
   return (
     <FavoriteItemRow

@@ -13,7 +13,7 @@ export function DashboardItem({ favorite }: { favorite: FavoriteEntity<'DASHBOAR
   const { dashboard, isLoading, isNotFound } = useFavoriteDashboard(ids?.dashboardId)
 
   if (isNotFound) return <PrivateItem favoriteId={favorite.id} />
-  if (isLoading || !dashboard || !ids) return <FavoriteItemSkeleton />
+  if (isLoading || !dashboard || !ids) return <FavoriteItemSkeleton favoriteId={favorite.id} />
 
   return (
     <FavoriteItemRow

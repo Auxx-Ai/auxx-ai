@@ -2,27 +2,20 @@
 'use client'
 
 import { DropdownMenuItem } from '@auxx/ui/components/dropdown-menu'
-import { Lock, Star } from 'lucide-react'
+import { BookmarkX, Lock } from 'lucide-react'
 import { SidebarItem } from '~/components/global/sidebar/sidebar-item'
-import { api } from '~/trpc/react'
-import { useFavoritesStore } from '../store/favorites-store'
+import { useRemoveFavorite } from '../hooks/use-remove-favorite'
 
-/** Rendered when a favorite's target is not accessible (404 / 403). */
+/**
+ * Rendered when a favorite's target can't be resolved — it was deleted, is no
+ * longer accessible (404 / 403), or never finished loading. Always removable.
+ */
 export function PrivateItem({ favoriteId }: { favoriteId: string }) {
-  const removeById = useFavoritesStore((s) => s.removeById)
-  const utils = api.useUtils()
-  const removeMutation = api.favorite.remove.useMutation({
-    onSuccess: () => void utils.favorite.list.invalidate(),
-  })
-
-  const handleRemove = () => {
-    removeById(favoriteId)
-    removeMutation.mutate({ favoriteId })
-  }
+  const handleRemove = useRemoveFavorite(favoriteId)
 
   const editItems = (
     <DropdownMenuItem onClick={handleRemove}>
-      <Star />
+      <BookmarkX />
       Remove from favorites
     </DropdownMenuItem>
   )
@@ -30,7 +23,7 @@ export function PrivateItem({ favoriteId }: { favoriteId: string }) {
   return (
     <SidebarItem
       id={favoriteId}
-      name='Private item'
+      name='Unavailable'
       href='#'
       icon={<Lock />}
       isSubmenu

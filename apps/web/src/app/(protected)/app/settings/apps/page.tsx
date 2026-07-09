@@ -276,10 +276,13 @@ export default function IntegrationList() {
                       }
                       subtitle={`By ${app.developerAccount.title}`}
                       verified={app.verified}
-                      headerEnd={renderBadgeChips([
-                        ...(app.isDevelopment ? [{ icon: <Code className='size-3' /> }] : []),
-                        ...(app.isInstalled ? [{ label: 'Installed' }] : []),
-                      ])}
+                      headerEnd={renderBadgeChips(
+                        [
+                          ...(app.isDevelopment ? [{ icon: <Code className='size-3' /> }] : []),
+                          ...(app.isInstalled ? [{ label: 'Installed' }] : []),
+                        ],
+                        { gap: 'gap-1' }
+                      )}
                       menuItems={[
                         {
                           label: 'Uninstall',
@@ -399,12 +402,15 @@ export default function IntegrationList() {
                                   }
                                   subtitle={`By ${app.developerAccount.title}`}
                                   verified={app.verified}
-                                  headerEnd={renderBadgeChips([
-                                    ...(app.isDevelopment
-                                      ? [{ icon: <Code className='size-3' /> }]
-                                      : []),
-                                    ...(app.isInstalled ? [{ label: 'Installed' }] : []),
-                                  ])}
+                                  headerEnd={renderBadgeChips(
+                                    [
+                                      ...(app.isDevelopment
+                                        ? [{ icon: <Code className='size-3' /> }]
+                                        : []),
+                                      ...(app.isInstalled ? [{ label: 'Installed' }] : []),
+                                    ],
+                                    { gap: 'gap-1' }
+                                  )}
                                   menuItems={
                                     app.isInstalled
                                       ? [
