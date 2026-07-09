@@ -11,6 +11,6 @@ export function useFavoriteDataset(datasetId: string | null | undefined) {
     { enabled: !!datasetId, staleTime: STALE_TIME, refetchOnWindowFocus: false }
   )
   const code = error?.data?.code
-  const isNotFound = code === 'NOT_FOUND' || code === 'FORBIDDEN'
+  const isNotFound = code === 'NOT_FOUND' || code === 'FORBIDDEN' || (!isLoading && !data)
   return { dataset: data, isLoading, isNotFound }
 }

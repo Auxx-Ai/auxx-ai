@@ -29,7 +29,8 @@ export function EntityInstanceItem({ favorite }: { favorite: FavoriteEntity<'ENT
 
   if (!recordId) return null
   if (isNotFound) return <PrivateItem favoriteId={favorite.id} />
-  if (isLoading || !record || !resource || !href) return <FavoriteItemSkeleton />
+  if (isLoading || !record || !resource || !href)
+    return <FavoriteItemSkeleton favoriteId={favorite.id} />
 
   return (
     <FavoriteItemRow

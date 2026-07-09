@@ -96,10 +96,13 @@ export default function AppsInstalledListPage() {
                 icon={app.avatarUrl ? <AppIcon iconId={app.avatarUrl} size='sm' /> : undefined}
                 subtitle={`By ${app.developerAccount.title}`}
                 verified={app.verified}
-                headerEnd={renderBadgeChips([
-                  ...(app.isDevelopment ? [{ icon: <Code className='size-3' /> }] : []),
-                  ...(app.isInstalled ? [{ label: 'Installed' }] : []),
-                ])}
+                headerEnd={renderBadgeChips(
+                  [
+                    ...(app.isDevelopment ? [{ icon: <Code className='size-3' /> }] : []),
+                    ...(app.isInstalled ? [{ label: 'Installed' }] : []),
+                  ],
+                  { gap: 'gap-1' }
+                )}
                 menuItems={[
                   {
                     label: 'Uninstall',

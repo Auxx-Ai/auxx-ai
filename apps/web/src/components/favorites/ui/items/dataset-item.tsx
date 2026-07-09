@@ -13,7 +13,7 @@ export function DatasetItem({ favorite }: { favorite: FavoriteEntity<'DATASET'> 
   const { dataset, isLoading, isNotFound } = useFavoriteDataset(ids?.datasetId)
 
   if (isNotFound) return <PrivateItem favoriteId={favorite.id} />
-  if (isLoading || !dataset) return <FavoriteItemSkeleton />
+  if (isLoading || !dataset) return <FavoriteItemSkeleton favoriteId={favorite.id} />
 
   return (
     <FavoriteItemRow

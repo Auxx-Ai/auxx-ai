@@ -18,10 +18,10 @@ export function TableViewItem({ favorite }: { favorite: FavoriteEntity<'TABLE_VI
     { enabled: !!tableViewId, staleTime: STALE_TIME, refetchOnWindowFocus: false }
   )
   const code = error?.data?.code
-  if (code === 'NOT_FOUND' || code === 'FORBIDDEN') {
+  if (code === 'NOT_FOUND' || code === 'FORBIDDEN' || (!isLoading && !data)) {
     return <PrivateItem favoriteId={favorite.id} />
   }
-  if (isLoading || !data) return <FavoriteItemSkeleton />
+  if (isLoading) return <FavoriteItemSkeleton favoriteId={favorite.id} />
 
   // Most table views live under /app/<apiSlug>?view=<id>; we don't have apiSlug
   // here, so we route through tableId which is a system table or entityDefinitionId.

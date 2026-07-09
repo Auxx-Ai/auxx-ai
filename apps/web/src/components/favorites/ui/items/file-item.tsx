@@ -13,7 +13,7 @@ export function FileItem({ favorite }: { favorite: FavoriteEntity<'FILE'> }) {
   const { file, isLoading, isNotFound } = useFavoriteFile(ids?.folderFileId)
 
   if (isNotFound) return <PrivateItem favoriteId={favorite.id} />
-  if (isLoading || !file) return <FavoriteItemSkeleton />
+  if (isLoading || !file) return <FavoriteItemSkeleton favoriteId={favorite.id} />
 
   // Use the file's live parentId so the link still works if the file moved
   // since being favorited. Falls back to the stored folderId.

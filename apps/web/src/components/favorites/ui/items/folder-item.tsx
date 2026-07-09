@@ -13,7 +13,7 @@ export function FolderItem({ favorite }: { favorite: FavoriteEntity<'FOLDER'> })
   const { folder, isLoading, isNotFound } = useFavoriteFolder(ids?.folderId)
 
   if (isNotFound) return <PrivateItem favoriteId={favorite.id} />
-  if (isLoading || !folder) return <FavoriteItemSkeleton />
+  if (isLoading || !folder) return <FavoriteItemSkeleton favoriteId={favorite.id} />
 
   return (
     <FavoriteItemRow

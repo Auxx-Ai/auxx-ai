@@ -11,6 +11,9 @@ export function useFavoriteDocument(documentId: string | null | undefined) {
     { enabled: !!documentId, staleTime: STALE_TIME, refetchOnWindowFocus: false }
   )
   const code = error?.data?.code
-  const isNotFound = code === 'NOT_FOUND' || code === 'FORBIDDEN'
+  // `document.getById` returns null (not an error) for a deleted/inaccessible
+  // document, so treat settled-but-empty as not-found too — otherwise the
+  // favorite would spin on a skeleton forever.
+  const isNotFound = code === 'NOT_FOUND' || code === 'FORBIDDEN' || (!isLoading && !data)
   return { document: data, isLoading, isNotFound }
 }

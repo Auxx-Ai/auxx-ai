@@ -78,7 +78,7 @@ export function IdentitySection({ knowledgeBaseId, knowledgeBase }: IdentitySect
     <Section title='Identity' description='URL and access for this knowledge base.'>
       <Form {...form}>
         <form onSubmit={form.handleSubmit(onSubmit)}>
-          <FieldPanel orientation='vertical' className='p-0' resizeId='kb-settings'>
+          <FieldPanel orientation='responsive' className='p-0' resizeId='kb-settings'>
             <FormField
               control={form.control}
               name='slug'
@@ -118,7 +118,7 @@ export function IdentitySection({ knowledgeBaseId, knowledgeBase }: IdentitySect
                     onChange={(v) => field.onChange((v as string[])[0] ?? 'PUBLIC')}
                     placeholder='Public'
                     disabled={isUpdating}
-                    triggerProps={{ className: 'w-full' }}
+                    triggerProps={{ className: 'ps-0 pe-1 w-full' }}
                   />
                 </FieldPanelRow>
               )}

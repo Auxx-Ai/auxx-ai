@@ -13,7 +13,7 @@ export function SnippetItem({ favorite }: { favorite: FavoriteEntity<'SNIPPET'> 
   const { snippet, isLoading, isNotFound } = useFavoriteSnippet(ids?.snippetId)
 
   if (isNotFound) return <PrivateItem favoriteId={favorite.id} />
-  if (isLoading || !snippet) return <FavoriteItemSkeleton />
+  if (isLoading || !snippet) return <FavoriteItemSkeleton favoriteId={favorite.id} />
 
   return (
     <FavoriteItemRow

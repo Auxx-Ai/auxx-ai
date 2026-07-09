@@ -17,7 +17,7 @@ export function ArticleItem({ favorite }: { favorite: FavoriteEntity<'ARTICLE'> 
   )
 
   if (isNotFound) return <PrivateItem favoriteId={favorite.id} />
-  if (isLoading || !article || !ids) return <FavoriteItemSkeleton />
+  if (isLoading || !article || !ids) return <FavoriteItemSkeleton favoriteId={favorite.id} />
 
   const hasCustomIcon = !!article.emoji && !!getIcon(article.emoji)
   const isCategory = article.articleKind === 'category'
