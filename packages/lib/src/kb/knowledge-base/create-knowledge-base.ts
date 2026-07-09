@@ -30,10 +30,11 @@ export async function createKnowledgeBase(
       return kb
     })
     // Best-effort: provision the managed dataset that holds article embeddings.
-    // First article publish will retry if this fails. Skipped for kind='source' KBs —
-    // createSource provisions theirs synchronously, and a fire-and-forget here would
-    // race that awaited call (duplicate `__kb:<id>` dataset insert).
-    if (knowledgeBase.kind !== 'source') {
+    // First article publish will retry if this fails. Skipped for kind='source'
+    // and kind='learned' KBs — createSource / ensureLearnedKb provision theirs
+    // synchronously, and a fire-and-forget here would race that awaited call
+    // (duplicate `__kb:<id>` dataset insert).
+    if (knowledgeBase.kind === 'standard') {
       ensureManagedDataset(ctx, knowledgeBase, createdById).catch((error) => {
         logger.warn('Failed to provision managed dataset for new KB', {
           knowledgeBaseId: knowledgeBase.id,
