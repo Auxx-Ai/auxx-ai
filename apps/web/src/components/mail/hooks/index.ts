@@ -6,3 +6,4 @@ export {
   type ViewDefinition,
 } from './use-count-updates'
 export { useHtmlBody } from './use-html-body'
+export { type ThreadCounterparty, useThreadCounterparty } from './use-thread-counterparty'

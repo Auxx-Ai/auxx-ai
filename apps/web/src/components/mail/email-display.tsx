@@ -47,6 +47,7 @@ import type { MessageType } from './email-editor/types'
 import { useHtmlBody } from './hooks/use-html-body'
 import { ParticipantList, type ParticipantListEntry } from './participant-display'
 import { SendStatusIndicator } from './send-status-indicator'
+import { initialsFor } from './utils/participant-initials'
 import { resolveInlineEmailHtml } from './utils/resolve-inline-email-html'
 import { SandboxedEmailHtml } from './utils/sandboxed-email-html'
 import { toEditorMessage } from './utils/to-editor-message'
@@ -222,7 +223,7 @@ const EmailDisplay = ({ messageId, messageActions, isOpen, isLastMessage }: Emai
   }
 
   const isMe = !message.isInbound
-  const senderInitials = from?.displayName?.charAt(0)?.toUpperCase() ?? '?'
+  const senderInitials = initialsFor(from)
 
   // Read-only seam: a populated `messageActions` always carries `onReply`. When
   // it's empty (e.g. the palette's ReadOnlyThreadProvider) hide every action

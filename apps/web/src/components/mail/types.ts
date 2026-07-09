@@ -11,6 +11,7 @@ export const VALID_STATUS_SLUGS = [
   'assigned',
   'unassigned',
   'all',
+  'sent', // Outbound-only view (e.g. /app/mail/personal/{id}/sent)
   'resolved', // Alias for 'done'
 ] as const
 export type StatusSlug = (typeof VALID_STATUS_SLUGS)[number] | string

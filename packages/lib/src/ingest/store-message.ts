@@ -6,17 +6,35 @@ import type { ParticipantEntity as Participant, ParticipantRole } from '@auxx/da
 import { toRecordId } from '@auxx/types/resource'
 import { and, eq, isNull, sql } from 'drizzle-orm'
 import { touchActivityForThreadLinks } from '../entity-instances/activity'
-import { getRealtimeService, publishMessageCreated, publishThreadCreated } from '../realtime'
+import {
+  getRealtimeService,
+  publishMessageCreated,
+  publishThreadCreated,
+  publishThreadUpdated,
+} from '../realtime'
 import { applyMailCountDeltas } from '../threads/mail-counts'
 import type { IngestContext } from './context'
 import { shouldIgnoreMessage } from './filtering/should-ignore'
 import { storeIgnoredMessage } from './filtering/store-ignored'
+import { isPersonalInbox } from './inbox-meta'
 import { findOrCreateParticipantRecord } from './participants/find-or-create'
 import { determineIdentifierType, normalizeIdentifier } from './participants/normalize'
 import { extractInternetMessageId } from './reconciliation/extract-internet-message-id'
 import { reconcileMessage } from './reconciliation/reconcile-message'
 import { updateThreadMetadataEfficient } from './threads/update-metadata'
 import type { IntegrationSettings, MessageData, ParticipantInputData } from './types'
+
+/**
+ * Map Gmail labels to a thread status for personal channels (Gmail parity).
+ * `INBOX` → OPEN; sent-only / archived / label-only mail → ARCHIVED (our "Done"
+ * state); TRASH/SPAM map straight through. Shared inboxes never call this — they
+ * keep everything-open helpdesk semantics.
+ */
+function deriveThreadStatusFromLabels(labelIds: string[]): ThreadStatus {
+  if (labelIds.includes('TRASH')) return ThreadStatus.TRASH
+  if (labelIds.includes('SPAM')) return ThreadStatus.SPAM
+  return labelIds.includes('INBOX') ? ThreadStatus.OPEN : ThreadStatus.ARCHIVED
+}
 
 /**
  * Store a single inbound/outbound message with full ingest pipeline:
@@ -207,6 +225,17 @@ export async function storeMessage(
       }
     }
 
+    // Personal-channel label-derived status (Gmail parity). Shared inboxes keep
+    // everything-open helpdesk semantics — byte-for-byte today's behavior. The
+    // `labelIds` ride in memory on `messageData` and are never persisted; we
+    // only consult them here at decision time.
+    const personalInbox = await isPersonalInbox(ctx, resolvedInboxId)
+    const labelIds = messageData.labelIds ?? []
+    const hasInboxLabel = labelIds.includes('INBOX')
+    const newThreadStatus = personalInbox
+      ? deriveThreadStatusFromLabels(labelIds)
+      : ThreadStatus.OPEN
+
     // Resolved (role, participantId) pairs for MessageParticipant links,
     // captured while processing so the link insert doesn't re-derive
     // identifier types.
@@ -307,7 +336,7 @@ export async function storeMessage(
           organizationId: messageData.organizationId,
           inboxId: resolvedInboxId,
           subject: messageData.subject ?? 'No Subject',
-          status: ThreadStatus.OPEN,
+          status: newThreadStatus,
           firstMessageAt: messageData.sentAt,
           lastMessageAt: messageData.sentAt,
           messageCount: 1,
@@ -335,6 +364,21 @@ export async function storeMessage(
       const isNewThread =
         (thread.messageCount ?? 0) === 1 &&
         thread.firstMessageAt?.getTime() === messageData.sentAt.getTime()
+
+      // Gmail parity: a thread with any INBOX message belongs in the inbox.
+      // Reopen an ARCHIVED personal-channel thread when this message carries
+      // INBOX. Never flip OPEN→ARCHIVED from a message insert (order-independent
+      // during backfill), and never reopen TRASH/SPAM. `thread.status` stays the
+      // pre-reopen value in memory so the count/realtime gates below can tell a
+      // reopen from a steady-state insert.
+      const didReopen =
+        personalInbox && !isNewThread && hasInboxLabel && thread.status === ThreadStatus.ARCHIVED
+      if (didReopen) {
+        await tx
+          .update(schema.Thread)
+          .set({ status: ThreadStatus.OPEN })
+          .where(eq(schema.Thread.id, thread.id))
+      }
 
       // An inbound reply makes the thread unread again for everyone who had
       // read it. One bounded UPDATE (rows exist only for users who read it);
@@ -457,9 +501,9 @@ export async function storeMessage(
           })
       }
 
-      return { thread, isNewThread, messageRecord, flippedUserIds }
+      return { thread, isNewThread, messageRecord, flippedUserIds, didReopen }
     })
-    const { thread, isNewThread, messageRecord, flippedUserIds } = txResult
+    const { thread, isNewThread, messageRecord, flippedUserIds, didReopen } = txResult
 
     ctx.logger.debug(
       `Created/Skipped ${resolvedParticipantLinks.length} MessageParticipant links for message ${messageRecord.id}`
@@ -497,18 +541,21 @@ export async function storeMessage(
       // reconcile queries). During sync batches this is skipped entirely —
       // the orchestrator marks counts stale once at the end.
       if (
-        (messageData.isInbound || isNewThread) &&
-        thread.status === ThreadStatus.OPEN &&
+        (didReopen || messageData.isInbound || isNewThread) &&
+        (didReopen || thread.status === ThreadStatus.OPEN) &&
         inboxIdForChannel
       ) {
-        // New-thread audience = members who see this inbox at `full` (§10.1) —
-        // sub-full viewers have no unread state, so no badge movement. Flipped
-        // users on existing threads had read rows, i.e. full access already.
-        const userIds = isNewThread
-          ? await import('../permissions/visibility/audience').then((m) =>
-              m.getFullLensAudienceForInbox(messageData.organizationId, inboxIdForChannel)
-            )
-          : flippedUserIds
+        // A reopened archived thread re-enters the inbox for the full-lens
+        // audience — same deltas as a brand-new OPEN thread. New-thread audience
+        // = members who see this inbox at `full` (§10.1) — sub-full viewers have
+        // no unread state, so no badge movement. Flipped users on existing
+        // threads had read rows, i.e. full access already.
+        const userIds =
+          isNewThread || didReopen
+            ? await import('../permissions/visibility/audience').then((m) =>
+                m.getFullLensAudienceForInbox(messageData.organizationId, inboxIdForChannel)
+              )
+            : flippedUserIds
         await applyMailCountDeltas(
           messageData.organizationId,
           userIds.map((userId) => ({
@@ -530,6 +577,18 @@ export async function storeMessage(
             inboxId: inboxIdForChannel,
             inboxRecordId,
             assigneeId: thread.assigneeId ?? null,
+          },
+          { excludeSocketId: ctx.socketId }
+        )
+      } else if (didReopen) {
+        await publishThreadUpdated(
+          realtime,
+          messageData.organizationId,
+          {
+            threadId: thread.id,
+            inboxId: inboxIdForChannel,
+            assigneeId: thread.assigneeId ?? null,
+            patch: { status: ThreadStatus.OPEN },
           },
           { excludeSocketId: ctx.socketId }
         )

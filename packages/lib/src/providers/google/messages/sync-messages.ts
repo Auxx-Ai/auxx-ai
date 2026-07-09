@@ -16,6 +16,26 @@ import { convertMessagesToMessageData } from './parse-message'
 const logger = createScopedLogger('google-sync-messages')
 
 /**
+ * Whether an inbox is a personal account (org `inboxes` cache — no DB hit).
+ * Personal Gmail channels treat archive as a thread-level Done and reopen on
+ * INBOX re-add; shared inboxes keep the legacy archive-deletes behavior.
+ */
+async function isPersonalChannel(organizationId: string, inboxId: string): Promise<boolean> {
+  try {
+    const { getOrgCache } = await import('../../../cache')
+    const inboxes = await getOrgCache().get(organizationId, 'inboxes')
+    return inboxes.find((i) => i.id === inboxId)?.isPersonal ?? false
+  } catch (error) {
+    logger.warn('Failed to resolve personal-channel flag; treating as shared', {
+      organizationId,
+      inboxId,
+      error: (error as Error).message,
+    })
+    return false
+  }
+}
+
+/**
  * Input parameters for Gmail message synchronization
  */
 export interface SyncGmailMessagesInput {
@@ -213,9 +233,12 @@ async function syncViaHistory(
   let totalDeleted = 0
   let hasRetriableFailures = false
 
+  const isPersonal = await isPersonalChannel(organizationId, inboxId)
+
   logger.info('Starting history-based sync', {
     integrationId,
     startHistoryId,
+    isPersonal,
   })
 
   do {
@@ -232,7 +255,7 @@ async function syncViaHistory(
           userId: 'me',
           startHistoryId: highestHistoryId.toString(),
           pageToken: nextPageToken ?? undefined,
-          historyTypes: ['messageAdded', 'messageDeleted', 'labelRemoved'],
+          historyTypes: ['messageAdded', 'messageDeleted', 'labelRemoved', 'labelAdded'],
         }),
       {
         userId: integrationId,
@@ -246,6 +269,8 @@ async function syncViaHistory(
     const historyRecords = historyResponse.data.history || []
     const addedIds = new Set<string>()
     const deletedIds = new Set<string>()
+    const inboxRemovedIds = new Set<string>()
+    const inboxAddedIds = new Set<string>()
 
     for (const record of historyRecords) {
       if (record.messagesAdded) {
@@ -262,11 +287,19 @@ async function syncViaHistory(
           }
         }
       }
-      // Treat INBOX label removal as deletion (archived messages)
+      // INBOX label removal = archive in Gmail.
       if (record.labelsRemoved) {
         for (const labelChange of record.labelsRemoved) {
           if (labelChange.labelIds?.includes('INBOX') && labelChange.message?.id) {
-            deletedIds.add(labelChange.message.id)
+            inboxRemovedIds.add(labelChange.message.id)
+          }
+        }
+      }
+      // INBOX label add = unarchive / moved (back) into the inbox.
+      if (record.labelsAdded) {
+        for (const labelChange of record.labelsAdded) {
+          if (labelChange.labelIds?.includes('INBOX') && labelChange.message?.id) {
+            inboxAddedIds.add(labelChange.message.id)
           }
         }
       }
@@ -286,6 +319,13 @@ async function syncViaHistory(
       }
     }
 
+    // Shared channels keep the legacy behavior: archiving in Gmail deletes
+    // locally. Personal channels treat archive as a thread-level Done (handled
+    // separately below), so their INBOX-label removals are NOT deletions.
+    if (!isPersonal) {
+      for (const id of inboxRemovedIds) deletedIds.add(id)
+    }
+
     // Deduplicate: messages in both added and deleted → net result is deleted
     const finalAddedIds = [...addedIds].filter((id) => !deletedIds.has(id))
 
@@ -301,6 +341,21 @@ async function syncViaHistory(
         deletedCount: deleted,
         rawDeletedIds: deletedIds.size,
       })
+    }
+
+    // Personal-channel archive / reopen — thread-level status changes that keep
+    // the underlying messages intact. Reopen wins over archive when both fire
+    // for the same message in one page.
+    if (isPersonal && inboxRemovedIds.size > 0) {
+      const archiveIds = [...inboxRemovedIds].filter(
+        (id) => !deletedIds.has(id) && !inboxAddedIds.has(id)
+      )
+      if (archiveIds.length > 0) {
+        await storageService.archiveThreadsByMessageExternalIds(integrationId, archiveIds)
+      }
+    }
+    if (isPersonal && inboxAddedIds.size > 0) {
+      await storageService.reopenThreadsByMessageExternalIds(integrationId, [...inboxAddedIds])
     }
 
     // Fetch and store added messages

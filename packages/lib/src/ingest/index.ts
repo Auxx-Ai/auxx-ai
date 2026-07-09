@@ -1,5 +1,9 @@
 // packages/lib/src/ingest/index.ts
 
+export {
+  archiveThreadsByMessageExternalIds,
+  reopenThreadsByMessageExternalIds,
+} from './archive-messages'
 // Orchestrators
 export { type BatchStoreOptions, batchStoreMessages } from './batch-store-messages'
 // Companies / Domains (already existed)

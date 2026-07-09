@@ -38,6 +38,7 @@ import { Tooltip } from '../global/tooltip'
 import type { EmailActions } from './email-actions'
 import { useHtmlBody } from './hooks/use-html-body'
 import { SendStatusIndicator } from './send-status-indicator'
+import { initialsFor } from './utils/participant-initials'
 import { resolveInlineEmailHtml } from './utils/resolve-inline-email-html'
 import { SandboxedEmailHtml } from './utils/sandboxed-email-html'
 
@@ -137,7 +138,7 @@ const MessageDisplay = ({ messageId, messageActions, isOpen }: MessageDisplayPro
 
   const isInbound = message.isInbound
   const senderName = sender?.displayName ?? 'Unknown'
-  const senderInitials = sender?.initials ?? senderName.charAt(0).toUpperCase()
+  const senderInitials = initialsFor(sender)
   const contactId = sender?.entityInstanceId
 
   return (

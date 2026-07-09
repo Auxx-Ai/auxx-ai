@@ -22,6 +22,7 @@ import { AttachmentDisplay } from '../files/utils/attachment-display'
 import { Tooltip } from '../global/tooltip'
 import type { EmailActions } from './email-actions'
 import { SendStatusIndicator } from './send-status-indicator'
+import { initialsFor } from './utils/participant-initials'
 
 export type ChatGroupPosition = 'solo' | 'first' | 'middle' | 'last'
 
@@ -74,7 +75,7 @@ const ChatMessageDisplay = ({
 
   const isInbound = message.isInbound
   const senderName = sender?.displayName ?? 'Unknown'
-  const senderInitials = sender?.initials ?? senderName.charAt(0).toUpperCase()
+  const senderInitials = initialsFor(sender)
   const content = message.textPlain ?? message.snippet ?? ''
 
   // Read-only seam: an empty `messageActions` (e.g. the palette's

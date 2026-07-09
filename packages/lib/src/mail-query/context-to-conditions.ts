@@ -110,6 +110,23 @@ export function buildContextConditions(params: ContextConditionParams): Conditio
     // all_inboxes, all, view - no additional context conditions needed
   }
 
+  // A `sent` status slug (e.g. /app/mail/personal/{id}/sent) layers the outbound
+  // filter on top of the context (inbox) condition — same predicate as the
+  // `sent` contextType — so `personal_channel` + `sent` = inbox is X AND sent.
+  // Guarded so the global `sent` context (which already added ctx-sent) doesn't
+  // duplicate the condition.
+  if (
+    params.statusSlug?.toLowerCase() === 'sent' &&
+    !conditions.some((c) => c.fieldId === 'sent')
+  ) {
+    conditions.push({
+      id: 'ctx-sent-status',
+      fieldId: 'sent',
+      operator: 'is',
+      value: true,
+    })
+  }
+
   // Status slug conditions - map slugs to actual status values and additional conditions
   if (params.statusSlug && !['all', 'drafts', 'sent'].includes(params.statusSlug)) {
     switch (params.statusSlug.toLowerCase()) {

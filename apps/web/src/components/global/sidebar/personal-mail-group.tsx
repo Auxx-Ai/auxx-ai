@@ -267,7 +267,45 @@ export function PersonalMailItems({
                       icon={<UserRound className='text-muted-foreground' />}
                       count={sharedInboxCounts[inbox.id] ?? 0}
                       isSubmenu
-                      isActive={!!pathname?.startsWith(`/app/mail/personal/${inbox.id}`)}
+                      isActive={
+                        !!pathname?.startsWith(`/app/mail/personal/${inbox.id}`) &&
+                        !pathname?.startsWith(`/app/mail/personal/${inbox.id}/sent`)
+                      }
+                      onToggleEditMode={onToggleEditMode}
+                    />
+                  </SidebarMenuSubItem>
+                ))}
+              </CollapsibleSidebarSection>
+            )
+          }
+
+          // Sent mirrors the Inbox group: header opens the combined sent stream,
+          // children are one row per owned personal inbox → that address's sent
+          // mail. Sent has no unread badge, so no counts. Flat when the user
+          // owns no personal inboxes (falls through to the default item below).
+          if (item.id === 'sent' && personalInboxes.length > 0) {
+            return (
+              <CollapsibleSidebarSection
+                key={item.id}
+                title={item.name}
+                icon={item.icon}
+                href='/app/mail/sent'
+                isEditMode={false}
+                sectionId='mail.sent'
+                isActive={
+                  pathname === '/app/mail/sent' ||
+                  (!!pathname?.startsWith('/app/mail/sent') &&
+                    !pathname?.startsWith('/app/mail/personal/'))
+                }>
+                {personalInboxes.map((inbox) => (
+                  <SidebarMenuSubItem key={inbox.id}>
+                    <SidebarItem
+                      id={`${inbox.id}-sent`}
+                      name={inbox.name}
+                      href={`/app/mail/personal/${inbox.id}/sent`}
+                      icon={<UserRound className='text-muted-foreground' />}
+                      isSubmenu
+                      isActive={!!pathname?.startsWith(`/app/mail/personal/${inbox.id}/sent`)}
                       onToggleEditMode={onToggleEditMode}
                     />
                   </SidebarMenuSubItem>

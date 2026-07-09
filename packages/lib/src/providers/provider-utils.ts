@@ -14,6 +14,23 @@ export interface ParticipantInputData {
 }
 
 /**
+ * Strip single/double quotes that sit at a word boundary (string start/end or
+ * adjacent to whitespace), preserving in-word apostrophes.
+ *
+ * `addressparser` strips *wrapping* double quotes but not single quotes, and
+ * real-world From headers are often only partially quoted — e.g.
+ * `'Auxx-Lift Store (Shopify)' via Orders`. A naive "trim wrapping quotes"
+ * never fires there (the string doesn't end with `'`). This cleans both
+ * boundary quotes while keeping names like `O'Brien` intact.
+ */
+export function stripBoundaryQuotes(name: string): string {
+  return name
+    .replace(/(^|\s)['"]+/g, '$1')
+    .replace(/['"]+(\s|$)/g, '$1')
+    .trim()
+}
+
+/**
  * Parses a single participant string (commonly an email format like "Name <addr>" or just "addr").
  * @param participantStr The raw string from the message header (e.g., From, To, Cc).
  * @returns ParticipantInputData object or null if parsing fails.
@@ -29,7 +46,8 @@ export function parseParticipantString(participantStr: string): ParticipantInput
       const { address, name } = parsed[0]
 
       if (address) {
-        return { identifier: address, name: name || undefined, raw: trimmedStr }
+        const cleanName = name ? stripBoundaryQuotes(name) || undefined : undefined
+        return { identifier: address, name: cleanName, raw: trimmedStr }
       }
     }
   } catch (e) {
@@ -71,9 +89,10 @@ export function parseMultipleParticipants(participantsStr: string): ParticipantI
           return null
         }
 
+        const cleanName = name ? stripBoundaryQuotes(name) || undefined : undefined
         return {
           identifier: address,
-          name: name || undefined,
+          name: cleanName,
           raw: name ? `${name} <${address}>` : address,
         }
       })
@@ -96,14 +115,16 @@ export function parseMultipleParticipants(participantsStr: string): ParticipantI
  */
 export function calculateInitials(name?: string | null): string | undefined {
   if (!name) return undefined
-  return name
-    .trim()
-    .split(/\s+/) // Split by whitespace
-    .map((word) => word.charAt(0))
-    .filter((char) => char.match(/[a-zA-Z]/)) // Keep only letters
-    .slice(0, 2) // Max 2 initials
-    .join('')
-    .toUpperCase()
+  return (
+    name
+      .trim()
+      .split(/\s+/) // Split by whitespace
+      .map((word) => word.match(/[a-zA-Z]/)?.[0] ?? '') // First letter within each word
+      .filter(Boolean)
+      .slice(0, 2) // Max 2 initials
+      .join('')
+      .toUpperCase() || undefined
+  )
 }
 
 /**
