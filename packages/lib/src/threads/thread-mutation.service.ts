@@ -85,18 +85,27 @@ export class ThreadMutationService {
    */
   private readonly viewer: MailViewer
 
+  /**
+   * Loop guard for bidirectional provider sync: mutations that originate FROM
+   * a provider event (Gmail archive → mark Done) set `'provider-sync'` so we
+   * never push the same change straight back to the provider.
+   */
+  private readonly origin?: 'provider-sync'
+
   constructor(
     organizationId: string,
     db: Database,
     socketId: string | undefined,
     actorUserId: string | undefined,
-    viewer: MailViewer
+    viewer: MailViewer,
+    options?: { origin?: 'provider-sync' }
   ) {
     this.organizationId = organizationId
     this.db = db
     this.socketId = socketId
     this.actorUserId = actorUserId
     this.viewer = viewer
+    this.origin = options?.origin
   }
 
   /**
@@ -241,6 +250,7 @@ export class ThreadMutationService {
           inboxId: schema.Thread.inboxId,
           status: schema.Thread.status,
           assigneeId: schema.Thread.assigneeId,
+          integrationId: schema.Thread.integrationId,
           metadata: schema.Thread.metadata,
         })
         .from(schema.Thread)
@@ -353,6 +363,16 @@ export class ThreadMutationService {
         )
       }
 
+      if ('status' in dbUpdates && previous && previous.status !== dbUpdates.status) {
+        await this.maybeEnqueueProviderStatusSync(dbUpdates.status, [
+          {
+            threadId,
+            integrationId: previous.integrationId ?? null,
+            inboxId: result[0]?.inboxId ?? null,
+          },
+        ])
+      }
+
       return {
         id: threadId,
         success: true,
@@ -431,6 +451,40 @@ export class ThreadMutationService {
     } catch (error) {
       logger.warn('Failed to apply thread count deltas', {
         threadId,
+        error: (error as Error).message,
+      })
+    }
+  }
+
+  /**
+   * Enqueue a Gmail push for threads whose status actually changed — personal
+   * gmail channels only (Front/Missive-style bidirectional sync; shared
+   * inboxes keep helpdesk semantics). Skipped entirely when this mutation
+   * originated from provider sync (loop guard) and for IGNORED (an Auxx-only
+   * concept, never pushed). Fire-and-forget: enqueue failure logs, never
+   * throws — Gmail is eventually consistent with Auxx, not transactionally
+   * coupled. Chunked at 100 threads/job so bulk sweeps fan out retry-sized.
+   */
+  private async maybeEnqueueProviderStatusSync(
+    newStatus: string,
+    changed: { threadId: string; integrationId: string | null; inboxId: string | null }[]
+  ): Promise<void> {
+    if (this.origin === 'provider-sync' || newStatus === 'IGNORED' || changed.length === 0) return
+    try {
+      // Lazy import: the job module pulls in bullmq via the queue layer.
+      const { enqueueProviderSyncForEligibleThreads } = await import(
+        '../jobs/messages/thread-provider-status-sync-job'
+      )
+      await enqueueProviderSyncForEligibleThreads({
+        organizationId: this.organizationId,
+        threads: changed,
+        kind: 'status',
+      })
+    } catch (error) {
+      logger.error('Failed to enqueue provider status sync', {
+        organizationId: this.organizationId,
+        newStatus,
+        threadCount: changed.length,
         error: (error as Error).message,
       })
     }
@@ -543,10 +597,16 @@ export class ThreadMutationService {
         return { count: threadIds.length }
       }
 
-      // Capture pre-update inboxIds so we can fan out per-thread updates
-      // onto both old and new channels (only matters when inboxId changes).
+      // Capture pre-update state: inboxIds for realtime fan-out onto both old
+      // and new channels, status + integrationId for the provider status push
+      // (enqueue only threads whose status actually changed).
       const previousRows = await this.db
-        .select({ id: schema.Thread.id, inboxId: schema.Thread.inboxId })
+        .select({
+          id: schema.Thread.id,
+          inboxId: schema.Thread.inboxId,
+          status: schema.Thread.status,
+          integrationId: schema.Thread.integrationId,
+        })
         .from(schema.Thread)
         .where(
           and(
@@ -607,6 +667,18 @@ export class ThreadMutationService {
 
       if ('status' in dbUpdates || 'assigneeId' in dbUpdates || 'inboxId' in dbUpdates) {
         await this.markCountsStale()
+      }
+
+      if ('status' in dbUpdates) {
+        const updatedInboxById = new Map(result.map((r) => [r.id, r.inboxId ?? null]))
+        const changed = previousRows
+          .filter((r) => updatedInboxById.has(r.id) && r.status !== dbUpdates.status)
+          .map((r) => ({
+            threadId: r.id,
+            integrationId: r.integrationId ?? null,
+            inboxId: updatedInboxById.get(r.id) ?? null,
+          }))
+        await this.maybeEnqueueProviderStatusSync(dbUpdates.status, changed)
       }
 
       return { count: result.length }

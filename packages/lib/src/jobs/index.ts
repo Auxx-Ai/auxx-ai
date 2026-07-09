@@ -204,6 +204,11 @@ export {
   type SyncSingleChannelMessagesJobData,
   syncSingleChannelMessagesJob,
 } from './messages/sync-single-channel-messages-job'
+export {
+  enqueueThreadProviderStatusSync,
+  type ThreadProviderStatusSyncJobData,
+  threadProviderStatusSyncJob,
+} from './messages/thread-provider-status-sync-job'
 // OAuth2
 export { oauth2TokenRefreshJob } from './oauth2-refresh'
 // Polling

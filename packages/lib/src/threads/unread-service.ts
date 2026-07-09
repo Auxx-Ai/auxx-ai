@@ -23,12 +23,25 @@ export class UnreadService {
   private viewer: MailViewer
   /** Originating socket id for self-echo suppression on realtime publishes. */
   private socketId?: string
+  /**
+   * Loop guard for bidirectional provider sync: read-state changes that
+   * originate FROM a provider event (Gmail UNREAD label) set `'provider-sync'`
+   * so we never push the same change straight back to the provider.
+   */
+  private readonly origin?: 'provider-sync'
 
-  constructor(organizationId: string, userId: string, viewer: MailViewer, socketId?: string) {
+  constructor(
+    organizationId: string,
+    userId: string,
+    viewer: MailViewer,
+    socketId?: string,
+    options?: { origin?: 'provider-sync' }
+  ) {
     this.organizationId = organizationId
     this.userId = userId
     this.viewer = viewer
     this.socketId = socketId
+    this.origin = options?.origin
   }
 
   /**
@@ -87,13 +100,15 @@ export class UnreadService {
       }
     }
 
-    // Fetch threads with the fields count deltas need (inbox, status, assignee)
+    // Fetch threads with the fields count deltas need (inbox, status,
+    // assignee) plus integrationId for the provider read-state push.
     const threads = await db
       .select({
         id: schema.Thread.id,
         inboxId: schema.Thread.inboxId,
         status: schema.Thread.status,
         assigneeId: schema.Thread.assigneeId,
+        integrationId: schema.Thread.integrationId,
       })
       .from(schema.Thread)
       .where(
@@ -215,6 +230,34 @@ export class UnreadService {
         )
       )
     )
+
+    // Mirror the read state to Gmail for personal channels — only the mailbox
+    // owner's read state pushes (it's their mailbox; requireOwnerUserId filters
+    // to inboxes they own), and never when this change came FROM provider sync
+    // (loop guard). Fire-and-forget: enqueue failure logs, never throws.
+    if (this.origin !== 'provider-sync') {
+      try {
+        const { enqueueProviderSyncForEligibleThreads } = await import(
+          '../jobs/messages/thread-provider-status-sync-job'
+        )
+        await enqueueProviderSyncForEligibleThreads({
+          organizationId: this.organizationId,
+          threads: threads.map((t) => ({
+            threadId: t.id,
+            integrationId: t.integrationId ?? null,
+            inboxId: t.inboxId ?? null,
+          })),
+          kind: 'read',
+          requireOwnerUserId: targetUserId,
+        })
+      } catch (error) {
+        logger.warn('Failed to enqueue provider read-state sync', {
+          organizationId: this.organizationId,
+          threadCount: threads.length,
+          error: (error as Error).message,
+        })
+      }
+    }
   }
 
   // ============================================================================
