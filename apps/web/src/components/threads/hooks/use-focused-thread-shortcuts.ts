@@ -15,7 +15,7 @@ import { getThreadStoreState } from '../store/thread-store'
 import { useThreadMutation } from './use-thread-mutation'
 
 /**
- * Registers action shortcuts (D, #, !, W, L, A) for the focused thread (compact/list view)
+ * Registers action shortcuts (D, #, !, U, W, T, A) for the focused thread (compact/list view)
  * or the active thread (split view) when no focus cursor is set.
  * Disabled when bulk mode is active so bulk shortcuts take priority.
  * Returns UI state (workflow dialog, tag picker) for rendering by the parent component.
@@ -98,6 +98,20 @@ export function useFocusedThreadShortcuts() {
     conflictBehavior: 'allow',
   })
 
+  // U — Mark read / unread (toggle). Not an anchored popover, so it works in
+  // both list and detail view (gated on actionsEnabled, like D/#/!).
+  useHotkey(
+    'U',
+    () => {
+      if (!targetThreadId || isUpdating) return
+      const isUnread = getThreadStoreState().getThread(targetThreadId)?.isUnread
+      // Stay put (no advanceFocus) — read-state toggle isn't triage; a second U
+      // reverses it on the same thread.
+      update(targetThreadId, { isUnread: !isUnread })
+    },
+    { enabled: actionsEnabled, conflictBehavior: 'allow' }
+  )
+
   // W — Open workflow dialog
   useHotkey(
     'W',
@@ -153,12 +167,12 @@ export function useFocusedThreadShortcuts() {
     [setFocusLocked]
   )
 
-  // L — Open tag picker
+  // T — Open tag picker
   const [tagPickerOpen, setTagPickerOpen] = useState(false)
   const [tagPickerThreadId, setTagPickerThreadId] = useState<string | null>(null)
 
   useHotkey(
-    'L',
+    'T',
     () => {
       if (targetThreadId) {
         setTagPickerThreadId(targetThreadId)

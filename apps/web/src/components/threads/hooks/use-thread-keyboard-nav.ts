@@ -152,12 +152,17 @@ export function useThreadKeyboardNav({
     conflictBehavior: 'allow',
   })
 
-  // Escape - clear selection. Defer to open Radix popovers/dropdowns so they
-  // can dismiss themselves first (Dialog/Drawer stop propagation on their own).
+  // Escape - clear selection (and close the open thread). Radix popovers,
+  // dropdowns, dialogs and drawers dismiss on Escape via a capture-phase
+  // listener that calls preventDefault() before their content unmounts. That
+  // teardown is synchronous under React 19's discrete-event flushing, so a
+  // DOM-presence check here always runs too late (the layer is already gone).
+  // Guard on event.defaultPrevented instead: if a Radix layer already consumed
+  // the Escape, skip clearing so the first Escape only closes that layer.
   useHotkey(
     'Escape',
-    () => {
-      if (document.querySelector('[data-radix-popper-content-wrapper]')) return
+    (event) => {
+      if (event.defaultPrevented) return
       useThreadSelectionStore.getState().clearSelection()
     },
     { enabled, conflictBehavior: 'allow' }
@@ -170,7 +175,6 @@ export function useThreadKeyboardNav({
       const store = useThreadSelectionStore.getState()
       const currentMode = store.viewMode
       store.toggleViewMode()
-      toast.info(currentMode === 'view' ? 'Edit mode enabled' : 'View mode enabled')
     },
     { enabled, conflictBehavior: 'allow' }
   )

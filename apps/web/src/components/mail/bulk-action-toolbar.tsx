@@ -6,7 +6,18 @@ import { getInstanceId, type RecordId } from '@auxx/types/resource'
 import { ActionBar, type ActionBarAction } from '@auxx/ui/components/action-bar'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 import { useHotkey } from '@tanstack/react-hotkeys'
-import { Archive, Ban, Merge, Play, Tags, Trash, Trash2, UserPlus } from 'lucide-react'
+import {
+  Archive,
+  Ban,
+  Mail,
+  MailOpen,
+  Merge,
+  Play,
+  Tags,
+  Trash,
+  Trash2,
+  UserPlus,
+} from 'lucide-react'
 import { useCallback, useMemo, useState } from 'react'
 import { useShallow } from 'zustand/shallow'
 import { ActorPicker } from '~/components/pickers/actor-picker'
@@ -64,6 +75,12 @@ export default function BulkActionToolbar() {
   const tagEntityDefId = tagResource?.entityDefinitionId ?? undefined
   const { resource: threadResource } = useResource('thread')
   const threadEntityDefId = threadResource?.entityDefinitionId ?? undefined
+
+  // Aggregate read state: true if ANY selected thread is unread. Drives the
+  // toggle direction (any unread → mark all read; else mark all unread).
+  const anySelectedUnread = useThreadStore(
+    useShallow((s) => selectedThreadIds.some((id) => s.threads.get(id)?.isUnread))
+  )
 
   // Subscribe to tagIds of all selected threads — recomputes on any optimistic update.
   const selectedThreadsTagIds = useThreadStore(
@@ -126,11 +143,28 @@ export default function BulkActionToolbar() {
     [updateBulk, selectedThreadIds, selectionCount, clearSelection]
   )
 
+  const handleToggleRead = useCallback(() => {
+    // Any unread → mark all read; otherwise mark all unread.
+    updateBulk(selectedThreadIds, { isUnread: !anySelectedUnread })
+    toastSuccess({
+      title: `${selectionCount} threads marked as ${anySelectedUnread ? 'read' : 'unread'}`,
+    })
+    clearSelection()
+  }, [updateBulk, selectedThreadIds, selectionCount, anySelectedUnread, clearSelection])
+
   // --- Keyboard shortcuts ---
   useHotkey(
     'D',
     () => {
       if (selectionCount > 0 && !isBulkUpdating) handleArchive()
+    },
+    { enabled: open, conflictBehavior: 'allow' }
+  )
+
+  useHotkey(
+    'U',
+    () => {
+      if (selectionCount > 0 && !isBulkUpdating) handleToggleRead()
     },
     { enabled: open, conflictBehavior: 'allow' }
   )
@@ -152,7 +186,7 @@ export default function BulkActionToolbar() {
   )
 
   useHotkey(
-    'L',
+    'T',
     () => {
       if (selectionCount > 0) {
         const btn = document.querySelector<HTMLButtonElement>('[data-action-id="tags"] button')
@@ -316,11 +350,20 @@ export default function BulkActionToolbar() {
         tooltip: 'Mark selected as spam',
       },
       {
+        id: 'read',
+        label: anySelectedUnread ? 'Mark read' : 'Mark unread',
+        icon: anySelectedUnread ? MailOpen : Mail,
+        onClick: handleToggleRead,
+        disabled: isBulkUpdating || disabled,
+        shortcut: 'U',
+        tooltip: anySelectedUnread ? 'Mark selected as read' : 'Mark selected as unread',
+      },
+      {
         id: 'tags',
         label: 'Tags',
         icon: Tags,
         disabled: tagBulk.isPending || disabled,
-        shortcut: 'L',
+        shortcut: 'T',
         tooltip: 'Apply tags',
         picker: {
           component: TagPicker,
@@ -395,6 +438,8 @@ export default function BulkActionToolbar() {
       handleArchive,
       handleTrash,
       handleSpam,
+      handleToggleRead,
+      anySelectedUnread,
       handleAssign,
       handleTagChange,
       handlePermanentlyDelete,

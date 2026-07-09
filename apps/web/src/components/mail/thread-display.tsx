@@ -13,7 +13,6 @@ import { useActiveThreadId, useHasMultipleSelected } from '~/components/threads/
 import { useCompose } from '~/hooks/use-compose'
 import { useUser } from '~/hooks/use-user'
 import { EmptyState } from '../global/empty-state'
-import BulkActionToolbar from './bulk-action-toolbar'
 import { useMailFilter } from './mail-filter-context'
 import ThreadDetails from './thread-details'
 import { ThreadProvider } from './thread-provider'
@@ -84,7 +83,6 @@ export function ThreadDisplay({ centered, expectedThreadId }: ThreadDisplayProps
           )}
         </>
       )}
-      <BulkActionToolbar />
       {thread && viewMode !== 'edit' ? (
         <ThreadProvider threadId={thread.id}>
           <ThreadDetails centered={centered} />

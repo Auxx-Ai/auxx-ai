@@ -32,13 +32,35 @@ import {
   UnreadService,
 } from '@auxx/lib/threads'
 import { createScopedLogger } from '@auxx/logger'
-import { recordIdSchema } from '@auxx/types/resource'
+import { getInstanceId, recordIdSchema } from '@auxx/types/resource'
 import { TRPCError } from '@trpc/server'
 import { and, asc, eq, inArray, sql } from 'drizzle-orm'
 import { z } from 'zod'
 import { createTRPCRouter, notDemo, protectedProcedure } from '~/server/api/trpc'
 
 const logger = createScopedLogger('thread-router')
+
+/**
+ * Route an `isUnread` field peeled off a unified thread update to the
+ * UnreadService, which owns read-state storage, sidebar count deltas, and
+ * realtime fan-out (with socket-id echo-suppression). `isUnread` is the inverse
+ * of the service's `isRead`. This keeps read/unread on the single
+ * `update`/`updateBulk` write path while the actual work stays in one service.
+ */
+async function setThreadsReadFromUpdates(
+  ctx: {
+    session: { userId: string; organizationId: string }
+    headers?: { get?: (key: string) => string | null }
+  },
+  threadIds: string[],
+  isUnread: boolean
+): Promise<void> {
+  const { userId, organizationId } = ctx.session
+  const socketId = ctx.headers?.get?.('x-realtime-socket-id') ?? undefined
+  const viewer = await getCachedUserMailVisibility(userId, organizationId)
+  const unreadService = new UnreadService(organizationId, userId, viewer, socketId)
+  await unreadService.setReadStatus(threadIds, !isUnread)
+}
 
 // Participant Input Schema (reusable)
 const ParticipantInputSchema = z.object({
@@ -606,6 +628,9 @@ export const threadRouter = createTRPCRouter({
     )
     .mutation(async ({ ctx, input }) => {
       const { threadMutation, organizationId, userId } = await getServiceDependencies(ctx)
+      // Read/unread is stored & fanned out by UnreadService — peel it off the
+      // unified payload and forward any remaining field updates to the service.
+      const { isUnread, ...rest } = input.updates
       try {
         logger.info('API: Unified thread update', {
           recordId: input.recordId,
@@ -613,7 +638,18 @@ export const threadRouter = createTRPCRouter({
           userId,
           organizationId,
         })
-        return await threadMutation.update(input.recordId, input.updates as any)
+        if (isUnread !== undefined) {
+          await setThreadsReadFromUpdates(ctx, [getInstanceId(input.recordId)], isUnread)
+        }
+        if (Object.keys(rest).length > 0) {
+          return await threadMutation.update(input.recordId, rest as any)
+        }
+        return {
+          id: getInstanceId(input.recordId),
+          success: true,
+          updatedFields: input.updates,
+          timestamp: new Date(),
+        }
       } catch (error: unknown) {
         if (error instanceof TRPCError) throw error
         handleServiceError(error, 'threadMutation.update', {
@@ -639,12 +675,15 @@ export const threadRouter = createTRPCRouter({
           assigneeId: z.string().nullable().optional(),
           inboxId: recordIdSchema.nullable().optional(),
           ticketId: recordIdSchema.nullable().optional(),
+          isUnread: z.boolean().optional(),
           mergedIntoThreadId: recordIdSchema.nullable().optional(),
         }),
       })
     )
     .mutation(async ({ ctx, input }) => {
       const { threadMutation, organizationId, userId } = await getServiceDependencies(ctx)
+      // Read/unread routes through UnreadService; forward the rest (if any).
+      const { isUnread, ...rest } = input.updates
       try {
         logger.info('API: Unified bulk thread update', {
           count: input.recordIds.length,
@@ -652,7 +691,14 @@ export const threadRouter = createTRPCRouter({
           userId,
           organizationId,
         })
-        return await threadMutation.updateBulk(input.recordIds, input.updates as any)
+        if (isUnread !== undefined) {
+          const threadIds = input.recordIds.map((recordId) => getInstanceId(recordId))
+          await setThreadsReadFromUpdates(ctx, threadIds, isUnread)
+        }
+        if (Object.keys(rest).length > 0) {
+          return await threadMutation.updateBulk(input.recordIds, rest as any)
+        }
+        return { count: input.recordIds.length }
       } catch (error: unknown) {
         if (error instanceof TRPCError) throw error
         handleServiceError(error, 'threadMutation.updateBulk', {
@@ -759,20 +805,6 @@ export const threadRouter = createTRPCRouter({
     const { userId, organizationId } = ctx.session
     return await getMailCounts(organizationId, userId)
   }),
-  readStatus: protectedProcedure
-    .input(
-      z.object({
-        threadId: z.union([z.string(), z.array(z.string())]),
-        isRead: z.boolean(),
-      })
-    )
-    .mutation(async ({ ctx, input }) => {
-      const { userId, organizationId } = ctx.session
-      const socketId = ctx.headers?.get?.('x-realtime-socket-id') ?? undefined
-      const viewer = await getCachedUserMailVisibility(userId, organizationId)
-      const unreadService = new UnreadService(organizationId, userId, viewer, socketId)
-      await unreadService.setReadStatus(input.threadId, input.isRead)
-    }),
   /**
    * Retry sending a failed message
    * Delegates to MessageSenderService for proper retry handling

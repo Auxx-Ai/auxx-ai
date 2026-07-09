@@ -1,6 +1,7 @@
 // apps/web/src/components/mail/mail-thread-list.tsx
 'use client'
 
+import type { ActorId } from '@auxx/types/actor'
 import { parseRecordId, toRecordId } from '@auxx/types/resource'
 import { Button } from '@auxx/ui/components/button'
 import { Checkbox } from '@auxx/ui/components/checkbox'
@@ -31,6 +32,7 @@ import { TagPicker } from '~/components/tags/ui/tag-picker'
 import {
   useFocusedThreadShortcuts,
   useSelectionReset,
+  useThread,
   useThreadKeyboardNav,
   useThreadList,
   useThreadMutation,
@@ -44,7 +46,6 @@ import {
 } from '~/components/threads/store'
 import { MassWorkflowTriggerDialog } from '~/components/workflow/mass-workflow-trigger-dialog'
 import { api } from '~/trpc/react'
-import BulkActionToolbar from './bulk-action-toolbar'
 import { CompactDraftItem } from './compact-draft-item'
 import { CompactThreadItem, CompactThreadItemSkeleton } from './compact-thread-item'
 import { type SortOption, useMailFilter } from './mail-filter-context'
@@ -162,12 +163,21 @@ export const ThreadList = memo(function ThreadList({
   const { update: updateThread } = useThreadMutation()
   const handleFocusedAssign = useCallback(
     (actorIds: string[]) => {
-      if (assignPickerThreadId && actorIds.length > 0) {
-        updateThread(assignPickerThreadId, { assigneeId: actorIds[0] })
-      }
+      if (!assignPickerThreadId) return
+      // Empty selection (re-clicking the assignee) unassigns — mirror the header.
+      updateThread(assignPickerThreadId, { assigneeId: actorIds[0] ?? null })
     },
     [assignPickerThreadId, updateThread]
   )
+
+  // Current assignee of the focused thread, so the picker pre-selects it on open
+  const { thread: assignPickerThread } = useThread({
+    threadId: assignPickerThreadId ?? '',
+    enabled: !!assignPickerThreadId,
+  })
+  const assignPickerValue = assignPickerThread?.assigneeId
+    ? [assignPickerThread.assigneeId as ActorId]
+    : []
 
   // Reset selection when filter changes
   useSelectionReset(filter.filter)
@@ -270,7 +280,6 @@ export const ThreadList = memo(function ThreadList({
   return (
     <div className={cn('relative flex h-full w-full flex-col', isEmpty && 'flex-1')}>
       <ThreadListMenu threadIds={threadIds} />
-      <BulkActionToolbar />
       {workflowThreadId && (
         <MassWorkflowTriggerDialog
           open={workflowDialogOpen}
@@ -299,7 +308,10 @@ export const ThreadList = memo(function ThreadList({
           open={assignPickerOpen}
           onOpenChange={handleAssignPickerOpenChange}
           anchorRef={assignAnchorRef}
+          value={assignPickerValue}
           onChange={handleFocusedAssign}
+          multi={false}
+          target='user'
           emptyLabel='Assign'
           align='end'
           side='bottom'

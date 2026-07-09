@@ -44,12 +44,13 @@ import { DrawerContextProvider } from '~/components/drawers/drawer-context'
 import { EmptyState } from '~/components/global/empty-state'
 import { KopilotContext } from '~/components/kopilot/context'
 import { KopilotSuggestion } from '~/components/kopilot/suggestions'
+// import SearchBar from '~/components/mail/mail-searchbar'
+import BulkActionToolbar from '~/components/mail/bulk-action-toolbar'
 import {
   MailFilterProvider,
   type SortDirection,
   type SortOption,
 } from '~/components/mail/mail-filter-context'
-// import SearchBar from '~/components/mail/mail-searchbar'
 import { ThreadList } from '~/components/mail/mail-thread-list'
 // import { ProposedActionsView } from './proposed-actions-view'
 import { MailSearchBar } from '~/components/mail/searchbar'
@@ -670,6 +671,9 @@ function MailboxInner({
                 'flex flex-row h-full flex-1 overflow-hidden bg-secondary',
                 'max-sm:dark:bg-primary-100 sm:dark:bg-muted-50'
               )}>
+              {/* Bulk action toolbar — mounted once here (portal-rendered, store-driven)
+                so split view doesn't stack two instances and double-fire hotkeys. */}
+              <BulkActionToolbar />
               {/* ThreadList panel */}
               <div
                 style={layoutMode === 'split' ? { width: threadListWidth } : undefined}

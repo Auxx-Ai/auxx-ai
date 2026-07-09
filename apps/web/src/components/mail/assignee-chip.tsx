@@ -3,6 +3,7 @@
 
 import { type ActorId, parseActorId, toActorId } from '@auxx/types/actor'
 import { Avatar, AvatarFallback, AvatarImage } from '@auxx/ui/components/avatar'
+import { SimpleTooltip } from '@auxx/ui/components/tooltip'
 import { cn } from '@auxx/ui/lib/utils'
 import { useActor } from '~/components/resources/hooks'
 
@@ -42,9 +43,11 @@ export function AssigneeChip({ assigneeId, className }: AssigneeChipProps) {
       .substring(0, 2) || '?'
 
   return (
-    <Avatar className={cn('size-4 shrink-0', className)} title={name}>
-      <AvatarImage src={assignee?.image || undefined} alt={name} />
-      <AvatarFallback className='text-[8px] text-muted-foreground'>{initials}</AvatarFallback>
-    </Avatar>
+    <SimpleTooltip content={name} side='right' delayDuration={300}>
+      <Avatar className={cn('size-4 shrink-0', className)}>
+        <AvatarImage src={assignee?.avatarUrl || undefined} alt={name} />
+        <AvatarFallback className='text-[8px] text-muted-foreground'>{initials}</AvatarFallback>
+      </Avatar>
+    </SimpleTooltip>
   )
 }
