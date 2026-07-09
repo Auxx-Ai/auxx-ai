@@ -2,4 +2,9 @@
 // Worker-only processing entrypoint for thumbnail generation.
 // This module imports image-processing primitives that may transitively load sharp.
 
-export { getMimeTypeForFormat, processImage, validateSource } from './image-processing'
+export {
+  getMimeTypeForFormat,
+  processImage,
+  UnsupportedImageError,
+  validateSource,
+} from './image-processing'

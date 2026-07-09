@@ -1,7 +1,9 @@
 // packages/lib/src/files/fetch-remote-image.ts
 
 import { createScopedLogger } from '@auxx/logger'
+import { fileTypeFromBuffer } from 'file-type'
 import { createMediaAssetService } from './core/media-asset-service'
+import { ALLOWED_IMAGE_TYPES } from './core/thumbnail-types'
 import { createStorageManager } from './storage/storage-manager'
 
 /**
@@ -11,9 +13,10 @@ import { createStorageManager } from './storage/storage-manager'
  * and by the extension's avatar upload endpoint (LinkedIn profile / company
  * avatar URLs captured during Save to Auxx).
  *
- * Flow: SSRF-guard the URL → fetch with timeout → validate content-type + size
- * → upload bytes to S3 → create StorageLocation → create MediaAsset+Version →
- * return `asset:<id>` ref consumable by FILE fields.
+ * Flow: SSRF-guard the URL → fetch with timeout → sniff the real image type
+ * from magic bytes and enforce the thumbnailable allowlist → upload bytes to S3
+ * → create StorageLocation → create MediaAsset+Version → return `asset:<id>`
+ * ref consumable by FILE fields.
  */
 
 const logger = createScopedLogger('files:fetch-remote-image')
@@ -67,11 +70,6 @@ export async function fetchAndStoreRemoteImage(
     throw new Error(`Fetch failed: HTTP ${res.status}`)
   }
 
-  const contentType = (res.headers.get('content-type') || 'image/x-icon').split(';')[0]!.trim()
-  if (!contentType.startsWith('image/')) {
-    throw new Error(`Unsupported content-type: ${contentType}`)
-  }
-
   const buf = Buffer.from(await res.arrayBuffer())
   if (buf.byteLength === 0) {
     throw new Error('Empty response body')
@@ -80,14 +78,29 @@ export async function fetchAndStoreRemoteImage(
     throw new Error(`Response too large: ${buf.byteLength} > ${maxBytes}`)
   }
 
+  // Determine the real image type from magic bytes rather than trusting the
+  // Content-Type header — many `/favicon.ico` URLs serve PNG bytes labelled
+  // `image/x-icon` (and vice versa). Only accept types the thumbnail pipeline
+  // can actually render (validateSource enforces the same allowlist); otherwise
+  // we'd store a logo asset that deterministically fails avatar-thumbnail
+  // generation downstream (e.g. genuine `.ico` favicons).
+  const detected = await fileTypeFromBuffer(buf)
+  const mimeType = detected?.mime
+  if (
+    !mimeType ||
+    !ALLOWED_IMAGE_TYPES.includes(mimeType as (typeof ALLOWED_IMAGE_TYPES)[number])
+  ) {
+    throw new Error(`Unsupported image type: ${mimeType ?? 'undetected'}`)
+  }
+
   const storageManager = createStorageManager(organizationId)
-  const key = `${organizationId}/${pathPrefix}/${Date.now()}-${cryptoRandomHex()}${extensionFor(contentType)}`
+  const key = `${organizationId}/${pathPrefix}/${Date.now()}-${cryptoRandomHex()}${extensionFor(mimeType)}`
 
   const storageLocation = await storageManager.uploadContent({
     provider: 'S3',
     key,
     content: buf,
-    mimeType: contentType,
+    mimeType,
     size: buf.byteLength,
     visibility: 'PUBLIC',
     organizationId,
@@ -99,7 +112,7 @@ export async function fetchAndStoreRemoteImage(
       kind: 'SYSTEM_BLOB',
       purpose,
       name,
-      mimeType: contentType,
+      mimeType,
       size: BigInt(buf.byteLength),
       isPrivate: false,
       organizationId,
@@ -112,14 +125,14 @@ export async function fetchAndStoreRemoteImage(
     organizationId,
     purpose,
     assetId: asset.id,
-    mimeType: contentType,
+    mimeType,
     size: buf.byteLength,
   })
 
   return {
     assetId: asset.id,
     ref: `asset:${asset.id}`,
-    mimeType: contentType,
+    mimeType,
     size: buf.byteLength,
   }
 }

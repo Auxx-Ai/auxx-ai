@@ -854,6 +854,7 @@ export class GoogleProvider
       const query = since ? `after:${Math.floor(since.getTime() / 1000)}` : ''
       let nextPageToken: string | undefined | null
       let highestHistoryId = BigInt(0)
+      let pageCount = 0
 
       do {
         const listResponse = await executeWithThrottle(
@@ -881,6 +882,14 @@ export class GoogleProvider
         for (const msg of messages) {
           if (msg.id) addedMessageIds.push(msg.id)
         }
+
+        pageCount++
+        logger.info('Fetched message list page', {
+          integrationId: this.integrationId,
+          page: pageCount,
+          pageSize: messages.length,
+          totalIds: addedMessageIds.length,
+        })
 
         // We need to get historyId from the first batch of actual messages
         const firstMsg = messages[0]

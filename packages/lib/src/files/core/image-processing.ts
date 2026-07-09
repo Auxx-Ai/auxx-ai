@@ -8,6 +8,18 @@ import { ALLOWED_IMAGE_TYPES, THUMBNAIL_LIMITS, THUMBNAIL_PRESETS } from './thum
 const logger = createScopedLogger('image-processing')
 
 /**
+ * Thrown when source bytes are not a thumbnailable image type (unknown or
+ * unsupported format). Deterministic — callers should treat it as a soft skip
+ * rather than a retryable failure.
+ */
+export class UnsupportedImageError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'UnsupportedImageError'
+  }
+}
+
+/**
  * Validate source image buffer
  */
 export async function validateSource(
@@ -24,7 +36,7 @@ export async function validateSource(
   // Detect actual file type from magic bytes
   const fileType = await fileTypeFromBuffer(buffer)
   if (!fileType) {
-    throw new Error('Unable to determine file type from content')
+    throw new UnsupportedImageError('Unable to determine file type from content')
   }
 
   // Log mismatch but don't fail
@@ -37,7 +49,7 @@ export async function validateSource(
 
   // Check if image type is supported
   if (!ALLOWED_IMAGE_TYPES.includes(fileType.mime as any)) {
-    throw new Error(`Unsupported image type: ${fileType.mime}`)
+    throw new UnsupportedImageError(`Unsupported image type: ${fileType.mime}`)
   }
 
   // Get image metadata to check pixel limits
