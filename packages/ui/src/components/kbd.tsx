@@ -1,7 +1,6 @@
 // packages/ui/src/components/kbd.tsx
 
 import { cn } from '@auxx/ui/lib/utils'
-import { isMac } from '@auxx/utils'
 import { cva, type VariantProps } from 'class-variance-authority'
 import { ChevronUp, Command, CornerDownLeft, Option } from 'lucide-react'
 import * as React from 'react'
@@ -17,7 +16,9 @@ const SHORTCUT_MAP = {
   option: Option,
   /**
    * Platform-adaptive primary modifier: renders `cmd` on Mac and `ctrl`
-   * elsewhere. Resolved at render time via {@link isMac}.
+   * elsewhere. Both icons are rendered and toggled purely by CSS via the
+   * `is-mac` class the `IS_MAC_SCRIPT` stamps on `<html>` before first paint —
+   * so the correct icon is in the very first frame with no hydration/JS flip.
    */
   meta: Command,
 } as const
@@ -77,9 +78,17 @@ interface KbdProps extends Omit<React.ComponentProps<'span'>, 'children'>, KbdGr
 
 /** Renders a shortcut as icon or text */
 function renderShortcut(key: ShortcutKey): React.ReactNode {
-  // `meta` adapts to the platform: Cmd on Mac, Ctrl elsewhere.
-  const resolvedKey = key === 'meta' ? (isMac() ? 'cmd' : 'ctrl') : key
-  const value = SHORTCUT_MAP[resolvedKey]
+  if (key === 'meta') {
+    // Platform-adaptive without SSR guesswork: render both, let the `is-mac`
+    // class (set by IS_MAC_SCRIPT in <head>, before paint) pick via CSS.
+    return (
+      <>
+        <ChevronUp className='[.is-mac_&]:hidden' />
+        <Command className='hidden [.is-mac_&]:block' />
+      </>
+    )
+  }
+  const value = SHORTCUT_MAP[key]
   if (typeof value === 'string') {
     return value
   }
