@@ -46,6 +46,15 @@ export async function getCachedWorkflowAppsByAppTrigger(params: {
 }
 
 /**
+ * Get the total number of workflow apps for an organization from cache.
+ * Counts every app (enabled and disabled) — used for the create-time limit check.
+ */
+export async function getCachedWorkflowAppCount(organizationId: string): Promise<number> {
+  const { total } = await getOrgCache().from(organizationId, 'workflowApps').list()
+  return total
+}
+
+/**
  * Get workflow apps list with filtering and pagination from cache.
  * Used by the workflow list view — pure cache read, zero DB queries.
  */

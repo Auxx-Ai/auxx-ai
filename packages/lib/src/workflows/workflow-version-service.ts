@@ -4,11 +4,108 @@ import { type Database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { and, eq } from 'drizzle-orm'
 import { onCacheEvent } from '../cache/invalidate'
+import { BadRequestError, NotFoundError } from '../errors'
+import {
+  type Workflow as EngineWorkflow,
+  type WorkflowNode as EngineWorkflowNode,
+  WorkflowNodeType,
+} from '../workflow-engine/core/types'
+import { WorkflowEngine } from '../workflow-engine/core/workflow-engine'
 import { PollingTriggerService } from './polling-trigger-service'
 import { ScheduledTriggerService } from './scheduled-trigger-service'
 import { WorkflowTriggerType, type WorkflowVersion } from './types'
 
 const logger = createScopedLogger('workflow-version-service')
+
+/** Legacy resource trigger node types that map to the unified resource-trigger. */
+const LEGACY_RESOURCE_TRIGGER_TYPES = new Set([
+  'contact-created-trigger',
+  'contact-updated-trigger',
+  'contact-deleted-trigger',
+  'ticket-created-trigger',
+  'ticket-updated-trigger',
+  'ticket-deleted-trigger',
+])
+
+/**
+ * Convert a stored workflow (DB row) into the workflow-engine format used for
+ * publish-time validation.
+ */
+function toEngineFormat(dbWorkflow: any): EngineWorkflow {
+  const nodes: EngineWorkflowNode[] = (dbWorkflow.graph?.nodes || []).map((node: any) => {
+    let engineType = node.data?.type as WorkflowNodeType
+
+    // Normalize app trigger nodes: the UI stores "appId:triggerId" but the
+    // engine expects "app-trigger"/"app-polling-trigger" to treat it as an entry point.
+    if (
+      node.data?.triggerId &&
+      node.data?.appId &&
+      typeof engineType === 'string' &&
+      engineType.includes(':')
+    ) {
+      engineType = node.data?.config?.polling
+        ? WorkflowNodeType.APP_POLLING_TRIGGER
+        : WorkflowNodeType.APP_TRIGGER
+    }
+
+    // Normalize legacy resource trigger types to the unified resource-trigger.
+    if (typeof engineType === 'string' && LEGACY_RESOURCE_TRIGGER_TYPES.has(engineType)) {
+      engineType = WorkflowNodeType.RESOURCE_TRIGGER
+    }
+
+    return {
+      id: node.id,
+      workflowId: dbWorkflow.id,
+      nodeId: node.id,
+      type: engineType,
+      name: node.data?.title || node.data?.name || 'Untitled Node',
+      description: node.data?.description || node.data?.desc,
+      data: node.data || {},
+      metadata: {
+        position: node.position,
+        color: node.data?.color,
+        icon: node.data?.icon,
+      },
+    }
+  })
+  return {
+    id: dbWorkflow.id,
+    workflowId: dbWorkflow.id,
+    workflowAppId: dbWorkflow.workflowAppId,
+    organizationId: dbWorkflow.organizationId || '',
+    name: dbWorkflow.name || 'Untitled Workflow',
+    description: dbWorkflow.description,
+    enabled: dbWorkflow.enabled || false,
+    version: dbWorkflow.version || 1,
+    triggerType: dbWorkflow.triggerType,
+    entityDefinitionId: dbWorkflow.entityDefinitionId,
+    nodes,
+    graph: dbWorkflow.graph,
+    envVars: dbWorkflow.envVars,
+    variables: dbWorkflow.variables,
+    createdAt: dbWorkflow.createdAt || new Date(),
+    updatedAt: dbWorkflow.updatedAt || new Date(),
+    createdById: dbWorkflow.createdById,
+  }
+}
+
+/**
+ * Validate a draft workflow for publishing. Throws {@link BadRequestError} with
+ * the collected validation errors when the workflow is not publishable.
+ */
+async function assertDraftIsPublishable(draftWorkflow: any): Promise<void> {
+  const engine = new WorkflowEngine()
+  await engine.getNodeRegistry().initializeWithDefaults()
+  const result = await engine.validateWorkflowForPublish(toEngineFormat(draftWorkflow))
+  if (!result.valid) {
+    logger.error('Workflow validation failed for publish', {
+      workflowId: draftWorkflow?.id,
+      errors: result.errors,
+      warnings: result.warnings,
+    })
+    throw new BadRequestError(`Workflow validation failed: ${result.errors.join('; ')}`)
+  }
+}
 
 export class WorkflowVersionService {
   private scheduledTriggerService = new ScheduledTriggerService()
@@ -41,12 +138,15 @@ export class WorkflowVersionService {
       })
 
       if (!workflowApp) {
-        throw new Error('Workflow not found')
+        throw new NotFoundError('Workflow not found')
       }
 
       if (!workflowApp.draftWorkflow) {
-        throw new Error('No draft workflow to publish')
+        throw new BadRequestError('No draft workflow to publish')
       }
+
+      // Validate the draft before creating a published version
+      await assertDraftIsPublishable(workflowApp.draftWorkflow)
 
       // Get the next version number
       const latestVersion = workflowApp.workflows[0]?.version || 0

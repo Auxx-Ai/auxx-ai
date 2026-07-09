@@ -2,9 +2,12 @@
 
 import { type Database, schema, type Transaction } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
+import { generateId } from '@auxx/utils/generateId'
 import { and, desc, eq, inArray } from 'drizzle-orm'
 import { onCacheEvent } from '../cache/invalidate'
+import { getCachedResources } from '../cache/org-cache-helpers'
 import { getCachedWorkflowAppsList } from '../cache/workflow-app-queries'
+import { NotFoundError } from '../errors'
 import { getQueue, Queues } from '../jobs/queues'
 import { WorkflowEngine } from '../workflow-engine/core/workflow-engine'
 import { assertMailTriggerNotPersonal } from './mail-trigger-guard'
@@ -22,6 +25,49 @@ import {
 } from './types'
 
 const logger = createScopedLogger('workflow-service')
+
+/**
+ * Flatten a workflow app + its editable (draft, falling back to published) version
+ * into the shape the web UI consumes. Draft is preferred so the builder edits the
+ * in-progress version.
+ */
+export function toWorkflowAppResponse(workflowApp: WorkflowWithDetails) {
+  const workflowData = workflowApp.draftWorkflow || workflowApp.publishedWorkflow
+  return {
+    id: workflowApp.id,
+    name: workflowApp.name,
+    description: workflowApp.description,
+    enabled: workflowApp.enabled,
+    triggerType: workflowData?.triggerType,
+    entityDefinitionId: workflowData?.entityDefinitionId,
+    version: workflowData?.version || 1,
+    graph: workflowData?.graph,
+    variables: workflowData?.variables || [],
+    envVars: workflowData?.envVars,
+    organizationId: workflowApp.organizationId,
+    createdById: workflowApp.createdById,
+    createdAt: workflowApp.createdAt,
+    updatedAt: workflowApp.updatedAt,
+    createdBy: workflowApp.createdBy,
+    // WorkflowApp-specific fields
+    isPublic: workflowApp.isPublic,
+    isUniversal: workflowApp.isUniversal,
+    workflowId: workflowApp.draftWorkflowId, // draft workflow ID for editing
+    workflows: workflowApp.workflows, // all versions
+    workflowAppId: workflowApp.id,
+    // Access settings
+    shareToken: workflowApp.shareToken,
+    webEnabled: workflowApp.webEnabled,
+    apiEnabled: workflowApp.apiEnabled,
+    accessMode: workflowApp.accessMode,
+    icon: workflowApp.icon,
+    config: workflowApp.config,
+    rateLimit: workflowApp.rateLimit,
+    totalRuns: workflowApp.totalRuns,
+    lastRunAt: workflowApp.lastRunAt,
+    hasPublishedVersion: !!workflowApp.workflowId,
+  }
+}
 
 export class WorkflowService {
   private scheduledTriggerService = new ScheduledTriggerService()
@@ -246,6 +292,68 @@ export class WorkflowService {
       logger.error('Failed to create workflow app', { error, organizationId })
       throw error
     }
+  }
+
+  /**
+   * Create a manual-trigger workflow pre-wired to a resource.
+   *
+   * Seeds the graph with a single resource-trigger node (operation: 'manual')
+   * bound to the given entity definition, so the new workflow already targets
+   * the right resource. Throws {@link NotFoundError} if the resource is unknown.
+   */
+  async createForResource(
+    organizationId: string,
+    userId: string,
+    entityDefinitionId: string
+  ): Promise<any> {
+    const resources = await getCachedResources(organizationId)
+    const resource = resources.find((r) => r.entityDefinitionId === entityDefinitionId)
+    if (!resource) {
+      throw new NotFoundError('Resource not found')
+    }
+
+    // Seed a single manual resource-trigger node bound to this resource.
+    // Shape mirrors the builder's resource-trigger default data; the builder
+    // re-enriches connection metadata on load.
+    const nodeId = generateId()
+    const label = resource.label
+    const graph = {
+      nodes: [
+        {
+          id: nodeId,
+          type: 'standard',
+          position: { x: 0, y: 0 },
+          data: {
+            id: nodeId,
+            type: 'resource-trigger',
+            selected: false,
+            resourceType: resource.id,
+            entityDefinitionId,
+            operation: 'manual',
+            title: `${label} Manual`,
+            desc: `Triggered manually on a ${label.toLowerCase()}`,
+            description: `Triggered manually on a ${label.toLowerCase()}`,
+            icon: 'Play',
+            variables: [],
+            isValid: true,
+            errors: [],
+            disabled: false,
+            outputVariables: [],
+          },
+        },
+      ],
+      edges: [],
+      viewport: { x: 0, y: 0, zoom: 1 },
+    }
+
+    return this.create(organizationId, userId, {
+      name: `${label} Trigger`,
+      enabled: false,
+      icon: { iconId: resource.icon, color: resource.color },
+      triggerType: WorkflowTriggerType.MANUAL,
+      entityDefinitionId,
+      graph,
+    })
   }
 
   /**

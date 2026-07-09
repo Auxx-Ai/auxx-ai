@@ -2,21 +2,17 @@
 
 import { schema } from '@auxx/database'
 import { WorkflowRunStatus } from '@auxx/database/enums'
+import { getCachedWorkflowAppCount } from '@auxx/lib/cache'
 import { FeatureKey, FeaturePermissionService } from '@auxx/lib/permissions'
 import {
   triggerManualResourceWorkflow,
   triggerManualResourceWorkflowBulk,
-  type Workflow,
-  WorkflowEngine,
-  type WorkflowNode,
-  WorkflowNodeType,
 } from '@auxx/lib/workflow-engine'
 import {
-  checkEntityReadiness,
-  type RequiredEntity,
-  resolveAllAppSlugs,
-  resolveEntityRefsInGraph,
-  TemplateGraphTransformer,
+  buildTemplateWorkflowData,
+  type TemplateForCreate,
+  type TemplateWorkflowData,
+  toWorkflowAppResponse,
   WORKFLOW_TRIGGER_TYPE_VALUES,
   type WorkflowExecutionError,
   WorkflowExecutionService,
@@ -28,85 +24,13 @@ import { getWorkflowAppsByTrigger } from '@auxx/services/workflows'
 import { type RecordId, recordIdSchema } from '@auxx/types/resource'
 import { generateId } from '@auxx/utils/generateId'
 import { TRPCError } from '@trpc/server'
-import { and, count, eq } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 import { z } from 'zod'
 import { recordAuditFromCtx } from '~/server/api/audit-context'
 import { createTRPCRouter, notDemo, protectedProcedure } from '~/server/api/trpc'
 import { resolveTemplateById } from '~/server/api/workflow-template-resolver'
 import { workflowTemplatesRouter } from './workflow-templates'
 
-/**
- * Convert database workflow format to workflow-engine format for validation
- */
-// Legacy resource trigger types that should map to unified resource-trigger
-const LEGACY_RESOURCE_TRIGGER_TYPES = new Set([
-  'contact-created-trigger',
-  'contact-updated-trigger',
-  'contact-deleted-trigger',
-  'ticket-created-trigger',
-  'ticket-updated-trigger',
-  'ticket-deleted-trigger',
-])
-
-function convertToEngineFormat(dbWorkflow: any): Workflow {
-  // Convert graph nodes to WorkflowNode format
-  const nodes: WorkflowNode[] = (dbWorkflow.graph?.nodes || []).map((node: any) => {
-    // Determine engine node type
-    let engineType = node.data?.type as WorkflowNodeType
-
-    // Normalize app trigger nodes: frontend stores "appId:triggerId" but
-    // the engine expects "app-trigger" or "app-polling-trigger" to recognize it as an entry point
-    if (
-      node.data?.triggerId &&
-      node.data?.appId &&
-      typeof engineType === 'string' &&
-      engineType.includes(':')
-    ) {
-      engineType = node.data?.config?.polling
-        ? WorkflowNodeType.APP_POLLING_TRIGGER
-        : WorkflowNodeType.APP_TRIGGER
-    }
-
-    // Normalize legacy resource trigger types to unified resource-trigger
-    if (typeof engineType === 'string' && LEGACY_RESOURCE_TRIGGER_TYPES.has(engineType)) {
-      engineType = WorkflowNodeType.RESOURCE_TRIGGER
-    }
-
-    return {
-      id: node.id,
-      workflowId: dbWorkflow.id,
-      nodeId: node.id,
-      type: engineType,
-      name: node.data?.title || node.data?.name || 'Untitled Node',
-      description: node.data?.description || node.data?.desc,
-      data: node.data || {},
-      metadata: {
-        position: node.position,
-        color: node.data?.color,
-        icon: node.data?.icon,
-      },
-    }
-  })
-  return {
-    id: dbWorkflow.id,
-    workflowId: dbWorkflow.id,
-    workflowAppId: dbWorkflow.workflowAppId,
-    organizationId: dbWorkflow.organizationId || '',
-    name: dbWorkflow.name || 'Untitled Workflow',
-    description: dbWorkflow.description,
-    enabled: dbWorkflow.enabled || false,
-    version: dbWorkflow.version || 1,
-    triggerType: dbWorkflow.triggerType,
-    entityDefinitionId: dbWorkflow.entityDefinitionId,
-    nodes,
-    graph: dbWorkflow.graph,
-    envVars: dbWorkflow.envVars,
-    variables: dbWorkflow.variables,
-    createdAt: dbWorkflow.createdAt || new Date(),
-    updatedAt: dbWorkflow.updatedAt || new Date(),
-    createdById: dbWorkflow.createdById,
-  }
-}
 // Create TRPC error handler for WorkflowExecutionService
 const createTRPCErrorHandler = (error: WorkflowExecutionError): never => {
   throw new TRPCError({
@@ -120,7 +44,18 @@ const createTRPCErrorHandler = (error: WorkflowExecutionError): never => {
             : 'INTERNAL_SERVER_ERROR',
     message: error.message,
   })
-} // Create workflow schema
+}
+
+/**
+ * Enforce the org's workflow limit before creating a new one.
+ * Reads the current count from the org cache (no DB query).
+ */
+async function assertWorkflowLimitNotReached(organizationId: string): Promise<void> {
+  await new FeaturePermissionService().requireLimit(organizationId, FeatureKey.workflowsLimit, () =>
+    getCachedWorkflowAppCount(organizationId)
+  )
+}
+// Create workflow schema
 const createWorkflowSchema = z.object({
   name: z.string().min(1, 'Workflow name is required'),
   description: z.string().optional(),
@@ -272,44 +207,7 @@ export const workflowRouter = createTRPCRouter({
     const workflowService = new WorkflowService(ctx.db)
     try {
       const workflowApp = await workflowService.getById(input.id, ctx.session.organizationId)
-      // Transform to maintain backward compatibility with existing UI
-      // Use draft workflow for editing
-      const workflowData = workflowApp.draftWorkflow || workflowApp.publishedWorkflow
-      const result = {
-        id: workflowApp.id,
-        name: workflowApp.name,
-        description: workflowApp.description,
-        enabled: workflowApp.enabled,
-        triggerType: workflowData?.triggerType,
-        entityDefinitionId: workflowData?.entityDefinitionId,
-        version: workflowData?.version || 1,
-        graph: workflowData?.graph,
-        variables: workflowData?.variables || [],
-        envVars: workflowData?.envVars,
-        organizationId: workflowApp.organizationId,
-        createdById: workflowApp.createdById,
-        createdAt: workflowApp.createdAt,
-        updatedAt: workflowApp.updatedAt,
-        createdBy: workflowApp.createdBy,
-        // Add WorkflowApp specific fields
-        isPublic: workflowApp.isPublic,
-        isUniversal: workflowApp.isUniversal,
-        workflowId: workflowApp.draftWorkflowId, // Return draft workflow ID for editing
-        workflows: workflowApp.workflows, // All versions
-        workflowAppId: workflowApp.id, // Include workflowAppId for frontend use
-        // Access settings
-        shareToken: workflowApp.shareToken,
-        webEnabled: workflowApp.webEnabled,
-        apiEnabled: workflowApp.apiEnabled,
-        accessMode: workflowApp.accessMode,
-        icon: workflowApp.icon,
-        config: workflowApp.config,
-        rateLimit: workflowApp.rateLimit,
-        totalRuns: workflowApp.totalRuns,
-        lastRunAt: workflowApp.lastRunAt,
-        hasPublishedVersion: !!workflowApp.workflowId,
-      }
-      return result
+      return toWorkflowAppResponse(workflowApp)
     } catch (error) {
       if (error instanceof Error && error.message === 'Workflow not found') {
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Workflow not found' })
@@ -322,103 +220,66 @@ export const workflowRouter = createTRPCRouter({
    * Optionally from a template
    */
   create: protectedProcedure.input(createWorkflowSchema).mutation(async ({ ctx, input }) => {
-    // Check workflow limit
-    const featureService = new FeaturePermissionService()
-    await featureService.requireLimit(
+    await assertWorkflowLimitNotReached(ctx.session.organizationId)
+
+    // Build template data (graph, trigger, resolved app/entity refs) when creating
+    // from a template. Resolution stays here since it merges file + admin sources.
+    let templateData: TemplateWorkflowData | undefined
+    if (input.templateId) {
+      const template = await resolveTemplateById(input.templateId)
+      if (!template) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Template not found' })
+      }
+      templateData = await buildTemplateWorkflowData(
+        ctx.session.organizationId,
+        ctx.session.userId,
+        template as TemplateForCreate,
+        !!input.icon
+      )
+    }
+
+    const created = await new WorkflowService(ctx.db).create(
       ctx.session.organizationId,
-      FeatureKey.workflowsLimit,
-      async () => {
-        const [{ value }] = await ctx.db
-          .select({ value: count() })
-          .from(schema.WorkflowApp)
-          .where(eq(schema.WorkflowApp.organizationId, ctx.session.organizationId))
-        return value
-      }
+      ctx.session.userId,
+      { ...input, ...templateData }
     )
+    await recordAuditFromCtx(ctx, {
+      category: 'apps',
+      action: 'workflow.created',
+      targetType: 'WorkflowApp',
+      targetId: (created as { id?: string } | null)?.id ?? null,
+      metadata: { name: input.name, templateId: input.templateId ?? null },
+    })
+    return created
+  }),
 
-    const workflowService = new WorkflowService(ctx.db)
+  /**
+   * Create a manual-trigger workflow pre-wired to a resource.
+   *
+   * Seeds the graph with a single resource-trigger node (operation: 'manual')
+   * bound to the given entity definition, so the new workflow already targets
+   * the right resource and shows up in the "Run Workflow" dialog once the user
+   * builds it out and publishes it. Returns the created workflow app.
+   */
+  createForResource: protectedProcedure
+    .input(z.object({ entityDefinitionId: z.string().min(1) }))
+    .mutation(async ({ ctx, input }) => {
+      await assertWorkflowLimitNotReached(ctx.session.organizationId)
 
-    try {
-      // If templateId is provided, fetch the template and transform it
-      let templateData: any
-
-      if (input.templateId) {
-        const template = await resolveTemplateById(input.templateId)
-
-        if (!template) {
-          throw new TRPCError({ code: 'NOT_FOUND', message: 'Template not found' })
-        }
-
-        // Transform the template graph and data
-        const transformer = new TemplateGraphTransformer()
-        const transformed = transformer.transformTemplate(
-          {
-            graph: template.graph as any,
-            triggerType: template.triggerType ?? undefined,
-            entityDefinitionId: (template as any).entityDefinitionId ?? undefined,
-            envVars: template.envVars ?? undefined,
-            variables: template.variables ?? undefined,
-          },
-          { userId: ctx.session.userId }
-        )
-
-        // Resolve app slugs (@slug:blockId → realAppId:blockId) using caches
-        const requiredApps = (template as any).requiredApps as
-          | Array<{ appSlug: string }>
-          | undefined
-        if (requiredApps?.length) {
-          const appSlugs = requiredApps.map((a) => a.appSlug)
-          const resolvedApps = await resolveAllAppSlugs(ctx.session.organizationId, appSlugs)
-          transformer.resolveAppNodes(transformed.graph, resolvedApps)
-        }
-
-        // Resolve entity refs (@entity:slug, @field:X) using org caches
-        const requiredEntities = (template as any).requiredEntities as RequiredEntity[] | undefined
-        if (requiredEntities?.length) {
-          const readiness = await checkEntityReadiness(ctx.session.organizationId, requiredEntities)
-          // Only resolve what's available — unresolved refs stay as-is for user to fix
-          resolveEntityRefsInGraph(
-            transformed.graph,
-            requiredEntities,
-            readiness.entityIdMap,
-            readiness.fieldIdMap
-          )
-        }
-
-        templateData = {
-          graph: transformed.graph,
-          triggerType: transformed.triggerType,
-          entityDefinitionId: transformed.entityDefinitionId,
-          envVars: transformed.envVars,
-          variables: transformed.variables,
-        }
-
-        // Use template icon as fallback if user didn't pick one
-        if (!input.icon && (template as any).icon) {
-          templateData.icon = (template as any).icon
-        }
-      }
-
-      // Create the workflow with optional template data
-      const created = await workflowService.create(ctx.session.organizationId, ctx.session.userId, {
-        ...input,
-        ...templateData, // Spread template data if it exists
-      })
+      const created = await new WorkflowService(ctx.db).createForResource(
+        ctx.session.organizationId,
+        ctx.session.userId,
+        input.entityDefinitionId
+      )
       await recordAuditFromCtx(ctx, {
         category: 'apps',
         action: 'workflow.created',
         targetType: 'WorkflowApp',
         targetId: (created as { id?: string } | null)?.id ?? null,
-        metadata: { name: input.name, templateId: input.templateId ?? null },
+        metadata: { entityDefinitionId: input.entityDefinitionId },
       })
       return created
-    } catch (error) {
-      if (error instanceof TRPCError) {
-        throw error
-      }
-      throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to create workflow' })
-    }
-  }),
+    }),
   /**
    * Update an existing workflow app (updates active workflow)
    */
@@ -564,94 +425,21 @@ export const workflowRouter = createTRPCRouter({
     .input(z.object({ workflowId: z.string(), versionTitle: z.string().optional() }))
     .use(notDemo('publish workflows'))
     .mutation(async ({ ctx, input }) => {
-      const versionService = new WorkflowVersionService(ctx.db)
-      try {
-        // Get the workflow app with draft workflow for validation
-        const [appResult] = await ctx.db
-          .select({ app: schema.WorkflowApp, draft: schema.Workflow })
-          .from(schema.WorkflowApp)
-          .leftJoin(schema.Workflow, eq(schema.Workflow.id, schema.WorkflowApp.draftWorkflowId))
-          .where(
-            and(
-              eq(schema.WorkflowApp.id, input.workflowId),
-              eq(schema.WorkflowApp.organizationId, ctx.session.organizationId)
-            )
-          )
-          .limit(1)
-        const workflowApp = appResult?.app
-          ? { ...appResult.app, draftWorkflow: appResult.draft ?? null }
-          : null
-        if (!workflowApp) {
-          throw new TRPCError({ code: 'NOT_FOUND', message: 'Workflow not found' })
-        }
-        if (!workflowApp.draftWorkflow) {
-          throw new TRPCError({ code: 'BAD_REQUEST', message: 'No draft workflow to publish' })
-        }
-
-        // Convert to workflow-engine format and validate
-        const engineWorkflow = convertToEngineFormat(workflowApp.draftWorkflow)
-        const workflowEngine = new WorkflowEngine()
-        await workflowEngine.getNodeRegistry().initializeWithDefaults()
-        const validationResult = await workflowEngine.validateWorkflowForPublish(engineWorkflow)
-        if (!validationResult.valid) {
-          console.error(
-            '[workflow.publish] Validation failed:',
-            JSON.stringify(
-              {
-                workflowId: input.workflowId,
-                errors: validationResult.errors,
-                warnings: validationResult.warnings,
-                nodeTypes: engineWorkflow.nodes.map((n) => ({
-                  id: n.nodeId,
-                  type: n.type,
-                  name: n.name,
-                })),
-              },
-              null,
-              2
-            )
-          )
-          throw new TRPCError({
-            code: 'BAD_REQUEST',
-            message: `Workflow validation failed: ${validationResult.errors.join('; ')}`,
-            cause: {
-              errors: validationResult.errors,
-              warnings: validationResult.warnings,
-            },
-          })
-        }
-        // If validation passes, proceed with publishing
-        const published = await versionService.publish(
-          input.workflowId,
-          ctx.session.organizationId,
-          input.versionTitle
-        )
-        await recordAuditFromCtx(ctx, {
-          category: 'apps',
-          action: 'workflow.published',
-          targetType: 'WorkflowApp',
-          targetId: input.workflowId,
-          metadata: { versionTitle: input.versionTitle ?? null },
-        })
-        return published
-      } catch (error) {
-        // Re-throw TRPCError instances
-        if (error instanceof TRPCError) {
-          throw error
-        }
-        if (error instanceof Error) {
-          if (error.message === 'Workflow not found') {
-            throw new TRPCError({ code: 'NOT_FOUND', message: 'Workflow not found' })
-          }
-          if (error.message === 'No active workflow to publish') {
-            throw new TRPCError({ code: 'BAD_REQUEST', message: 'No active workflow to publish' })
-          }
-        }
-        throw new TRPCError({
-          code: 'INTERNAL_SERVER_ERROR',
-          message: 'Failed to publish workflow version',
-        })
-      }
+      // The version service validates the draft and throws domain errors
+      // (NotFoundError / BadRequestError) that the tRPC layer maps to codes.
+      const published = await new WorkflowVersionService(ctx.db).publish(
+        input.workflowId,
+        ctx.session.organizationId,
+        input.versionTitle
+      )
+      await recordAuditFromCtx(ctx, {
+        category: 'apps',
+        action: 'workflow.published',
+        targetType: 'WorkflowApp',
+        targetId: input.workflowId,
+        metadata: { versionTitle: input.versionTitle ?? null },
+      })
+      return published
     }),
   /**
    * Get all versions of a workflow
