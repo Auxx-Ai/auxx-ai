@@ -1,6 +1,6 @@
 ---
 title: "Four AI Skills Every Shopify Support Team Should Steal"
-description: "The Shopify inbox is 80% the same four questions. Here are four reusable AI skills that handle them — and pull your live order and policy data instead of guessing."
+description: "The Shopify inbox is 80% the same four questions. Here are four reusable AI skills that handle them, and pull your live order and policy data instead of guessing."
 date: "2026-05-27"
 slug: "shopify-support-ai-skills"
 image: "/blog/shopify-support-ai-skills.jpg"
@@ -16,23 +16,23 @@ published: true
 
 ## The Shopify inbox is the same four questions on repeat
 
-Open any Shopify store's support inbox on a normal Tuesday and you'll find the same four tickets, over and over. Where's my order. Can I get a refund. When will it ship / why is it late. And the handful that actually need a human. The volume is relentless and the work is low-skill, which is exactly the combination AI should own.
+Open any Shopify store's support inbox on a normal Tuesday and you'll find the same four tickets, over and over. Where's my order. Can I get a refund. When will it ship or why is it late. And the handful that actually need a human. The volume is relentless and the work is low-skill, which is exactly the combination AI should own.
 
-The catch is that most "AI support" can't answer any of them properly, because answering them requires *facts* — the real order, the real tracking, your actual refund policy — and a copy-paste ChatGPT prompt has access to none of that. (We made that whole argument in [your AI prompts are blind](/blog/your-ai-prompts-are-blind).)
+The catch is that most "AI support" can't answer any of them properly, because answering them requires *facts* (the real order, the real tracking, your actual refund policy) and a copy-paste ChatGPT prompt has access to none of that. We made that whole argument in [your AI prompts are blind](/blog/your-ai-prompts-are-blind).
 
 So this post is about skills instead. In Auxx, a **skill** is a reusable prompt your team runs with a slash command, wired to the tools and records it needs so it pulls live data before it answers. Here are four we ship in the box, what each one does, and how to get the most out of it. Steal them.
 
 Each skill below is written the same way: a bit of context that tells the assistant which live sources to pull, the exact task, and the constraints that keep it honest. You can install any of them as-is and edit them to match your store.
 
-## 1. Order Status Lookup — the WISMO killer
+## 1. Order Status Lookup: the WISMO killer
 
-"Where is my order" (WISMO) is the single biggest ticket category for most stores. It's also the most automatable, because the answer is sitting in the order record — the rep is just a very expensive lookup.
+"Where is my order" (WISMO) is the single biggest ticket category for most stores. It's also the most automatable, because the answer is sitting in the order record; the rep is just a very expensive lookup.
 
 ```
 Context
 You are a support agent looking up a customer's order. Use search_entities to
 find the order by number or by the linked contact, and get_entity to fetch the
-order's fields — order details, fulfillment status, tracking, and payment status.
+order's fields: order details, fulfillment status, tracking, and payment status.
 
 Task
 Produce an order status update: order number and date, items and quantities,
@@ -40,18 +40,18 @@ payment status, fulfillment status, tracking (carrier, number, last known
 status), and estimated delivery date.
 
 Constraints
-Be concise and factual — this is a status report, not a customer-facing message.
+Be concise and factual. This is a status report, not a customer-facing message.
 If information is missing, write "Unknown." If multiple orders exist, summarize
 the most recent and note how many others exist.
 ```
 
-Those `search_entities` and `get_entity` lines are the whole point — in the app they're live-data hooks that go fetch the real order, not instructions the model pretends to follow. It comes back with an actual tracking number, not a placeholder.
+Those `search_entities` and `get_entity` lines are the whole point: in the app they're live-data hooks that go fetch the real order, not instructions the model pretends to follow. It comes back with an actual tracking number, not a placeholder.
 
 > **Why it matters.** WISMO is high volume, emotionally low stakes, and factual. Turning it into a one-command, data-backed status report is the highest-ROI skill you can install. Reps stop tab-hopping between the helpdesk and Shopify admin.
 
-> **Pro-tip.** Pair it with Draft Reply. Run Order Status Lookup to get the facts, then Draft Reply to turn those facts into a sendable message — two slash commands from question to answer. (More on chaining skills in [turning a 40-message thread into a 30-second brief](/blog/ai-skills-long-support-threads).)
+> **Pro-tip.** Pair it with Draft Reply. Run Order Status Lookup to get the facts, then Draft Reply to turn those facts into a sendable message: two slash commands from question to answer. (More on chaining skills in [turning a 40-message thread into a 30-second brief](/blog/ai-skills-long-support-threads).)
 
-## 2. Refund Policy Response — consistency you can trust
+## 2. Refund Policy Response: consistency you can trust
 
 Refund replies are where reps improvise, and improvisation is where policy inconsistency and chargeback risk are born. One rep offers store credit, another offers a full refund, a third quotes a return window that doesn't exist. Multiply that across a team and you've trained your customers to shop for the most generous agent.
 
@@ -63,23 +63,23 @@ the refund or return policy.
 
 Task
 Draft a customer-facing response: whether the customer qualifies based on the
-policy and order details, the specific policy criteria that apply, and — if
-eligible — the process, timeline, and method. If not eligible, a clear reason
+policy and order details, the specific policy criteria that apply, and if
+eligible, the process, timeline, and method. If not eligible, a clear reason
 plus alternatives (store credit, exchange, partial refund).
 
 Constraints
-Be empathetic but direct — don't over-apologize. Cite the specific policy reason,
+Be empathetic but direct; don't over-apologize. Cite the specific policy reason,
 not just "per our policy." If no policy is available, say so and ask the customer
 for time to review.
 ```
 
 The `search_knowledge` hook is what makes this trustworthy: it reads *your* refund policy out of your knowledge base and grounds the answer in it, rather than inventing a plausible one.
 
-> **Why it matters.** It makes every rep answer refunds like your most consistent one. Same policy, same criteria, cited every time — which is exactly what keeps you out of chargeback disputes.
+> **Why it matters.** It makes every rep answer refunds like your most consistent one. Same policy, same criteria, cited every time. That's exactly what keeps you out of chargeback disputes.
 
 > **Pro-tip.** The skill is only as consistent as the policy it can read. Keep your refund and return policy in the knowledge base and keep it current. A vague policy produces vague answers; that's not the model's fault.
 
-## 3. Shipping Inquiry — lead with the status
+## 3. Shipping Inquiry: lead with the status
 
 "Did it ship?" "Why is it late?" "Can I change the address?" Shipping questions are time-sensitive and often already a little tense, because the customer is worried. A fast, accurate, data-backed answer is what stops a worried customer from becoming an angry one.
 
@@ -91,7 +91,7 @@ tracking data.
 
 Task
 Draft a customer-facing response: current fulfillment and tracking status, carrier
-and tracking number, expected delivery timeline, and — if there's a delay — an
+and tracking number, expected delivery timeline, and if there's a delay, an
 acknowledgment plus a concrete next step (reshipment, refund, investigation).
 
 Constraints
@@ -100,13 +100,13 @@ says otherwise, recommend specific next steps (check with neighbors, wait 24-48
 hours, file a carrier claim).
 ```
 
-> **Why it matters.** Shipping tickets are where a delay quietly turns into a refund request and then a bad review. Getting a precise, sourced answer out fast — including the awkward "it says delivered" case — heads off the escalation before it starts.
+> **Why it matters.** Shipping tickets are where a delay quietly turns into a refund request and then a bad review. Getting a precise, sourced answer out fast, including the awkward "it says delivered" case, heads off the escalation before it starts.
 
 > **Pro-tip.** When the message reads hot, run Sentiment Analysis first. It'll tell you whether to lead with reassurance or just get straight to the facts, and the drafted tone will match the customer's mood instead of steamrolling it.
 
-## 4. Escalation Assessment — a rubric instead of a coin flip
+## 4. Escalation Assessment: a rubric instead of a coin flip
 
-The other three skills clear the repetitive 90%. This one handles the last 10% correctly: deciding what actually needs a senior agent. Juniors get this wrong in both directions — over-escalating (and burning senior time) or under-escalating (and losing the customer). A consistent rubric fixes both.
+The other three skills clear the repetitive 90%. This one handles the last 10% correctly: deciding what actually needs a senior agent. Juniors get this wrong in both directions: over-escalating (and burning senior time) or under-escalating (and losing the customer). A consistent rubric fixes both.
 
 ```
 Context
@@ -118,7 +118,7 @@ Task
 Produce an escalation assessment: a 1-2 sentence summary, the severity signals
 (sentiment, complexity, time since first contact, repeat contacts, revenue
 impact, failed resolution attempts), a recommendation with reasoning, and a
-suggested next step — who should handle it and what they need to know.
+suggested next step (who should handle it and what they need to know).
 
 Constraints
 Be concise and actionable. If information is missing, write "Unknown." On
@@ -127,16 +127,16 @@ conflicting signals, prioritize the most recent information.
 
 > **Why it matters.** It turns escalation from a gut call that varies by rep and by mood into a repeatable judgment backed by the ticket's actual history. Senior time goes to the tickets that genuinely need it.
 
-> **Pro-tip.** On a high-volume day, run this first as a triage gate. Work the "no escalation needed" pile with the other three skills, and hand the flagged ones up with the assessment already attached — the senior agent starts oriented instead of cold.
+> **Pro-tip.** On a high-volume day, run this first as a triage gate. Work the "no escalation needed" pile with the other three skills, and hand the flagged ones up with the assessment already attached, so the senior agent starts oriented instead of cold.
 
 ## What these skills don't do
 
-They don't replace the rep. Every one of them produces a draft or an assessment a human reviews and sends. That's deliberate — the skill does the reading and the fetching, you keep the judgment and the send button.
+They don't replace the rep. Every one of them produces a draft or an assessment a human reviews and sends. That's deliberate: the skill does the reading and the fetching, you keep the judgment and the send button.
 
 And they're only as good as the data behind them. Order Status Lookup needs your store connected so the order records exist. Refund Policy Response needs the policy in your knowledge base. The skills are the easy part; keeping your data clean is the work that makes them sing.
 
-## The bottom line
+## Steal these four
 
-Four skills, a couple minutes to install, and the repetitive 90% of the Shopify inbox becomes two-slash-command work — with answers built on the real order and your real policy, not a confident guess.
+Four skills, a couple minutes to install, and the repetitive 90% of the Shopify inbox becomes two-slash-command work, with answers built on the real order and your real policy, not a guess.
 
-These four ship in the box. The bigger unlock is writing your own for the tickets that are specific to *your* store — which is exactly what we walk through in [how to write an AI skill that pulls its weight](/blog/write-your-own-ai-skill). And if you're still deciding whether AI belongs in your inbox at all, start with [the founder's guide to evaluating AI in your support inbox](/blog/evaluating-ai-support-inbox).
+These four ship in the box. The bigger unlock is writing your own for the tickets that are specific to *your* store, which is exactly what we walk through in [how to write an AI skill that pulls its weight](/blog/write-your-own-ai-skill). And if you're still deciding whether AI belongs in your inbox at all, start with [the founder's guide to evaluating AI in your support inbox](/blog/evaluating-ai-support-inbox).
