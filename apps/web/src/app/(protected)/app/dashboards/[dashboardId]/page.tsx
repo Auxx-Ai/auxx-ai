@@ -13,6 +13,7 @@ import { AlertTriangle } from 'lucide-react'
 import { use } from 'react'
 import { DashboardDetailView } from '~/components/dashboard/ui/dashboard-detail-view'
 import { EmptyState } from '~/components/global/empty-state'
+import { LoadingSpinner } from '~/components/global/loading-content'
 import { api } from '~/trpc/react'
 
 interface DashboardDetailPageProps {
@@ -47,7 +48,7 @@ export default function DashboardDetailPage({ params }: DashboardDetailPageProps
 
   if (dashboard.isLoading || !dashboard.data) {
     return (
-      <MainPage loading>
+      <MainPage>
         <MainPageHeader>
           <MainPageBreadcrumb>
             <MainPageBreadcrumbItem title='Dashboards' href='/app/dashboards' />
@@ -55,7 +56,7 @@ export default function DashboardDetailPage({ params }: DashboardDetailPageProps
           </MainPageBreadcrumb>
         </MainPageHeader>
         <MainPageContent>
-          <div className='h-full w-full animate-pulse bg-muted/20' />
+          <LoadingSpinner />
         </MainPageContent>
       </MainPage>
     )
