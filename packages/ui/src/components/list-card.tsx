@@ -13,6 +13,7 @@ import { Skeleton } from '@auxx/ui/components/skeleton'
 import { SimpleTooltip as Tooltip } from '@auxx/ui/components/tooltip'
 import { cn } from '@auxx/ui/lib/utils'
 import { BadgeCheck, Loader2, MoreVertical } from 'lucide-react'
+import Link from 'next/link'
 import { Slot as SlotPrimitive } from 'radix-ui'
 import type * as React from 'react'
 
@@ -252,7 +253,11 @@ export function ListCard({
   ) : link ? (
     <SlotPrimitive.Slot className={cn(OVERLAY_CLASS, 'cursor-default')}>{link}</SlotPrimitive.Slot>
   ) : href ? (
-    <a className={cn(OVERLAY_CLASS, 'cursor-default')} href={href} aria-label={resolvedAriaLabel} />
+    <Link
+      className={cn(OVERLAY_CLASS, 'cursor-default')}
+      href={href}
+      aria-label={resolvedAriaLabel}
+    />
   ) : (
     <button
       type='button'
