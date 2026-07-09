@@ -10,9 +10,10 @@ import {
   MainPageHeader,
 } from '@auxx/ui/components/main-page'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@auxx/ui/components/tabs'
-import { Book, Globe } from 'lucide-react'
+import { Book, Globe, Library } from 'lucide-react'
 import { useQueryState } from 'nuqs'
 import { ArticlesView } from '../articles/articles-view'
+import { KnowledgeBasesTab } from '../knowledge-bases/knowledge-bases-tab'
 import { KBSwitcherDropdownContent } from '../sidebar/kb-switcher'
 import { ConnectSourceButton } from '../sources/connect-source-button'
 import { SourcesProvider } from '../sources/sources-provider'
@@ -20,9 +21,10 @@ import { SourcesTab } from '../sources/sources-tab'
 import { CreateKnowledgeBaseButton } from './create-knowledge-base-button'
 
 /**
- * Landing chrome for `/app/kb`: breadcrumb + KB switcher, an `Articles | Sources`
- * tab strip (mirrors `/app/workflows`), and a header action that swaps with the tab —
- * Create Knowledge Base on Articles, Connect Source on Sources. The tab is persisted
+ * Landing chrome for `/app/kb`: breadcrumb + KB switcher, an
+ * `Articles | Knowledge Bases | Sources` tab strip (mirrors `/app/workflows`),
+ * and a header action that swaps with the tab — Create Knowledge Base on
+ * Articles/Knowledge Bases, Connect Source on Sources. The tab is persisted
  * in the `t` query param so deep links / refreshes land on the right tab.
  */
 export function KBLandingShell() {
@@ -55,6 +57,10 @@ export function KBLandingShell() {
               <Book />
               Articles
             </TabsTrigger>
+            <TabsTrigger value='knowledge-bases' variant='outline'>
+              <Library />
+              Knowledge Bases
+            </TabsTrigger>
             <TabsTrigger value='sources' variant='outline'>
               <Globe />
               Sources
@@ -63,6 +69,10 @@ export function KBLandingShell() {
 
           <TabsContent value='articles' className='flex flex-col flex-1 min-h-0'>
             <ArticlesView />
+          </TabsContent>
+
+          <TabsContent value='knowledge-bases' className='flex flex-col flex-1 min-h-0'>
+            <KnowledgeBasesTab />
           </TabsContent>
 
           <TabsContent value='sources' className='flex flex-col flex-1 min-h-0'>
