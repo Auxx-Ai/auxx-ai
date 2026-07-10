@@ -347,7 +347,10 @@ export const ModelTypeMeta: Record<
     color: 'amber',
     apiSlug: 'work-orders',
     dbTable: 'EntityInstance',
-    hasDetailPage: false,
+    // Flipped for the job view (dispatch M2 build spec §F.2) — the drawer grows
+    // its fullscreen button and `getRecordLink` starts returning
+    // `/app/work-orders/[id]` URLs. `service_request` stays drawer-only.
+    hasDetailPage: true,
   },
   service_request: {
     label: 'Service Request',

@@ -131,6 +131,20 @@ export const DRAWER_TAB_CARD_COMPONENTS: Record<
     import('../money/ui/invoice/invoice-payments-card').then((m) => ({
       default: m.InvoicePaymentsCard,
     })),
+
+  // ─────────────────────────────────────────────────────────────────
+  // WORK ORDER (job view) SIDEBAR CARDS — dispatch M2 build spec §F.2, shared
+  // with the job view's DetailView sidebar (DetailViewSidebar reads from this
+  // same registry, see detail-view-sidebar.tsx).
+  // ─────────────────────────────────────────────────────────────────
+  'work_order:customer-site': () =>
+    import('./cards/work-order-customer-site-card').then((m) => ({
+      default: m.WorkOrderCustomerSiteCard,
+    })),
+  'work_order:origin': () =>
+    import('./cards/work-order-origin-card').then((m) => ({
+      default: m.WorkOrderOriginCard,
+    })),
 }
 
 /**

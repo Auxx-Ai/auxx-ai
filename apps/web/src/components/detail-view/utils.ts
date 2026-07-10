@@ -2,6 +2,7 @@
 
 import {
   Box,
+  Calendar,
   Clock,
   HouseIcon,
   Layers,
@@ -32,6 +33,8 @@ const ICON_MAP: Record<string, LucideIcon> = {
   truck: Truck,
   box: Box,
   'receipt-text': ReceiptText,
+  // work_order Schedule section anchor (dispatch M2 build spec §F.2).
+  calendar: Calendar,
 }
 
 /**

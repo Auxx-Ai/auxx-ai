@@ -98,7 +98,7 @@ export function ResourceDayView<T extends EventCalendarItem = EventCalendarItem>
   const gridColsStyle = { gridTemplateColumns: `repeat(${resources.length}, minmax(0, 1fr))` }
 
   return (
-    <div data-slot='resource-day-view' className='flex h-full flex-col'>
+    <div data-slot='resource-day-view' className='flex flex-col'>
       <div className='bg-background/80 border-border/70 sticky top-0 z-30 flex border-b backdrop-blur-md'>
         <div className='w-12 shrink-0 sm:w-14' />
         <div className='grid flex-1' style={gridColsStyle}>
@@ -136,7 +136,7 @@ export function ResourceDayView<T extends EventCalendarItem = EventCalendarItem>
         </div>
       )}
 
-      <div className='flex flex-1 overflow-hidden'>
+      <div className='flex flex-1'>
         <HourGutter
           hours={hours}
           nowIndicator={

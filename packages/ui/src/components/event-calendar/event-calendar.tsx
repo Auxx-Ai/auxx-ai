@@ -189,7 +189,7 @@ function EventCalendarInner<T extends EventCalendarItem = EventCalendarItem>({
   const body = (
     <>
       {!hideToolbar && (
-        <div className={cn('flex items-center justify-between p-2 sm:p-4', className)}>
+        <div className='flex items-center justify-between p-2 sm:p-4'>
           <div className='flex items-center gap-1 sm:gap-4'>
             <button
               type='button'
@@ -246,7 +246,7 @@ function EventCalendarInner<T extends EventCalendarItem = EventCalendarItem>({
         </div>
       )}
 
-      <div className='flex flex-1 flex-col'>
+      <div className='flex min-h-0 flex-1 flex-col overflow-y-auto'>
         {view === 'month' && (
           <MonthView
             currentDate={date}
@@ -307,7 +307,7 @@ function EventCalendarInner<T extends EventCalendarItem = EventCalendarItem>({
 
   return (
     <div
-      className='flex flex-col rounded-lg border has-data-[slot=month-view]:flex-1'
+      className={cn('flex min-w-0 flex-col rounded-lg border', className)}
       style={
         {
           '--event-height': `${EventHeight}px`,

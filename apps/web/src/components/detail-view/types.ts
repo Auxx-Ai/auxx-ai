@@ -18,6 +18,17 @@ export interface DetailViewTabProps {
   recordId: RecordId
   /** Record data (from useRecord) */
   record?: Record<string, unknown>
+  /**
+   * Rendering context (dispatch M2 build spec §F.1):
+   * - `'tab'` (default): the component owns a full-height flex column and its own
+   *   scroll (`TabsContent` gives it `flex-1 h-full`) — existing behavior, unchanged.
+   * - `'section'`: the component renders inside a `DetailViewSections` `<Section>` on
+   *   ONE outer-owned scroll column — it must render at intrinsic height (no own
+   *   full-height `ScrollArea`) or, if its content is inherently tall/virtualized
+   *   (e.g. a line-items table), cap itself with an internal `max-height` +
+   *   `overflow-auto` region instead of fighting the outer scroll for wheel events.
+   */
+  variant?: 'tab' | 'section'
 }
 
 /**

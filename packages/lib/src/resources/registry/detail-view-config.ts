@@ -91,6 +91,13 @@ export const DETAIL_VIEW_CONFIG_REGISTRY: DetailViewConfigRegistry = {
 
   quote: {
     entityType: 'quote',
+    // Flipped to sections (dispatch M2 build spec §G — "flips to sections via
+    // config when M2 lands", money 01-ui #3/STATUS): tabs unchanged (Line items ·
+    // Timeline · Tasks). QuoteLineItemsTab already renders its status-driven header
+    // action strip as a normal in-flow row inside its `variant='section'` body — see
+    // quote-line-items-tab.tsx — so the strip stays visible/functional since
+    // DetailViewSections' <Section> wrapper is always non-collapsible.
+    layout: 'sections',
     mainTabs: [
       { value: 'line-items', label: 'Line items', icon: 'receipt-text' },
       { value: 'timeline', label: 'Timeline', icon: 'clock' },
@@ -106,6 +113,27 @@ export const DETAIL_VIEW_CONFIG_REGISTRY: DetailViewConfigRegistry = {
     defaultSidebarTab: 'overview',
     sidebarCards: [
       { value: 'customer', label: 'Customer' },
+      { value: 'origin', label: 'Origin' },
+    ],
+  },
+
+  work_order: {
+    entityType: 'work_order',
+    // Sections mode (dispatch M2 build spec §F.1/§F.2, 04-ui.md §6): the job view
+    // is a scroll-spy page, not content-swapping tabs.
+    layout: 'sections',
+    mainTabs: [
+      { value: 'schedule', label: 'Schedule', icon: 'calendar' },
+      { value: 'line-items', label: 'Line items', icon: 'receipt-text' },
+      { value: 'timeline', label: 'Timeline', icon: 'clock' },
+      { value: 'tasks', label: 'Tasks', icon: 'list-todo' },
+    ],
+    sidebarTabs: DEFAULT_SIDEBAR_TABS,
+    actions: {},
+    defaultTab: 'schedule',
+    defaultSidebarTab: 'overview',
+    sidebarCards: [
+      { value: 'customer-site', label: 'Customer & site' },
       { value: 'origin', label: 'Origin' },
     ],
   },

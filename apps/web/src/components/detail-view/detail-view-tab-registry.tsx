@@ -53,6 +53,18 @@ export const DETAIL_VIEW_TAB_COMPONENTS: Record<
     import('../money/ui/quote/quote-line-items-tab').then((m) => ({
       default: m.QuoteLineItemsTab,
     })),
+
+  // ─────────────────────────────────────────────────────────────────
+  // WORK ORDER (job view) TABS — dispatch M2 build spec §F.2
+  // ─────────────────────────────────────────────────────────────────
+  'work_order:schedule': () =>
+    import('../dispatch/ui/job-schedule/job-schedule-section').then((m) => ({
+      default: m.JobScheduleSection,
+    })),
+  'work_order:line-items': () =>
+    import('../dispatch/ui/job-schedule/work-order-line-items-tab').then((m) => ({
+      default: m.WorkOrderLineItemsTab,
+    })),
 }
 
 /**

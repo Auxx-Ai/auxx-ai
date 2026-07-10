@@ -24,6 +24,7 @@ import { useBoardRealtime } from './hooks/use-board-realtime'
 import type { DispatchVisitEvent } from './types'
 import { UNASSIGNED_RESOURCE_ID } from './types'
 import { computeOverlappingVisitIds, scalarSetting } from './utils'
+import { VisitChipContent } from './visit-chip-content'
 
 /**
  * The dispatch board (07-m2-build.md §D.2) — the `/app/dispatch` module home. Day view is
@@ -135,6 +136,12 @@ export function DispatchBoard() {
     [mutations.scheduleVisit]
   )
 
+  // The drag-overlay ghost — same chip content as the board's `renderEvent`, minus the popover.
+  const renderDragGhost = useCallback(
+    (event: DispatchVisitEvent) => <VisitChipContent event={event} />,
+    []
+  )
+
   if (!hasAccess(FeatureKey.dispatch)) {
     return (
       <EmptyState
@@ -161,7 +168,8 @@ export function DispatchBoard() {
       />
       <CalendarDndProvider<DispatchVisitEvent>
         onEventDrop={canEdit ? handleEventDrop : undefined}
-        onDragEnd={canEdit ? handleForeignDragEnd : undefined}>
+        onDragEnd={canEdit ? handleForeignDragEnd : undefined}
+        renderEvent={renderDragGhost}>
         <div className='flex flex-1 overflow-hidden'>
           {data.showBacklog && <BacklogRail items={data.backlogEvents} canEdit={canEdit} />}
           <BoardCalendarGrid
