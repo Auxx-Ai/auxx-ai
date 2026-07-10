@@ -26,6 +26,7 @@ export const emailTypeSchema = z.enum([
   'subscription-cancelled',
   'payment-failed',
   'developer-invite',
+  'visit-dispatched',
 ])
 
 export type EmailType = z.infer<typeof emailTypeSchema>
@@ -140,6 +141,15 @@ export type EmailPayloadByType = {
     accountName: string
     acceptLink: string
     role: string
+  }>
+  /** Dispatch (notify) action — 07-m2-build.md §B.5. Separate rail from the in-app notification. */
+  'visit-dispatched': WithRecipient<{
+    workOrderNumber: string
+    workOrderTitle: string
+    startTime: string
+    endTime: string
+    timezone: string
+    workOrderUrl: string
   }>
 }
 

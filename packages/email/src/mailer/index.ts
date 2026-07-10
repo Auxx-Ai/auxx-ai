@@ -46,6 +46,8 @@ import {
   TrialStartedText,
   VerificationEmail,
   VerificationText,
+  VisitDispatchedEmail,
+  VisitDispatchedText,
   WelcomeEmail,
   WelcomeText,
 } from '../templates'
@@ -345,6 +347,62 @@ export const sendDeveloperInviteEmail = async ({
     })
   } catch (error) {
     logger.error(error, 'Error in sendDeveloperInviteEmail')
+    throw error
+  }
+}
+
+/** Dispatch (notify) action email — 07-m2-build.md §B.5, the `sendBillingEmail` shape. */
+export const sendVisitDispatchedEmail = async ({
+  email,
+  name,
+  workOrderNumber,
+  workOrderTitle,
+  startTime,
+  endTime,
+  timezone,
+  workOrderUrl,
+}: {
+  email: UserEmail
+  name: string
+  workOrderNumber: string
+  workOrderTitle: string
+  startTime: string
+  endTime: string
+  timezone: string
+  workOrderUrl: string
+}): Promise<boolean> => {
+  try {
+    const html = await render(
+      await VisitDispatchedEmail({
+        name,
+        workOrderNumber,
+        workOrderTitle,
+        startTime,
+        endTime,
+        timezone,
+        workOrderUrl,
+      })
+    )
+    const text = VisitDispatchedText({
+      name,
+      workOrderNumber,
+      workOrderTitle,
+      startTime,
+      endTime,
+      timezone,
+      workOrderUrl,
+    })
+
+    return await sendEmail({
+      to: email,
+      subject: formatSubject(
+        `You've been dispatched${workOrderNumber ? ` — ${workOrderNumber}` : ''}`
+      ),
+      html,
+      text,
+    })
+  } catch (error) {
+    logger.error(error, 'Error in sendVisitDispatchedEmail')
     throw error
   }
 }

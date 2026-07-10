@@ -1,10 +1,13 @@
 // apps/web/src/app/(protected)/app/dispatch/page.tsx
 
-import { redirect } from 'next/navigation'
+import { MainPageContent } from '@auxx/ui/components/main-page'
+import { DispatchBoard } from '~/components/dispatch/ui/board/dispatch-board'
 
-/** Module home is the M2 dispatch board — until it lands, land on settings. */
-function DispatchHome() {
-  redirect('/app/dispatch/settings')
+/** Module home — the M2a dispatch board (07-m2-build.md §D.2). */
+export default function DispatchHome() {
+  return (
+    <MainPageContent>
+      <DispatchBoard />
+    </MainPageContent>
+  )
 }
-
-export default DispatchHome

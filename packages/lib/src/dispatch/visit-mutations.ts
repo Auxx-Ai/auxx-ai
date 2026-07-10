@@ -1,7 +1,24 @@
 // packages/lib/src/dispatch/visit-mutations.ts
+//
+// The single visit writer (01 §7, 07 §B.1). Every mutation: (1) write the row, (2) mirror
+// onto the work order (§B.3), (3) apply the baked-in status roll-up (§B.2), (4) broadcast
+// (§B.4) — steps 2–4 are the shared `afterVisitWrite` helper so the M2c engine's rolling-
+// window materializer can reuse them after a bulk write. All mutations are org-scoped.
 
 import { database, schema } from '@auxx/database'
 import { and, eq } from 'drizzle-orm'
+import { NotFoundError } from '../errors'
+import { publishVisitChanged } from './broadcast'
+import { type LifecycleTrigger, rollUpWorkOrderStatus } from './lifecycle'
+import { mirrorVisitOntoWorkOrder } from './mirror'
+import type {
+  AssignVisitInput,
+  ScheduleVisitInput,
+  SetVisitStatusInput,
+  UnscheduleVisitInput,
+} from './types'
+
+type WorkOrderVisitRow = typeof schema.WorkOrderVisit.$inferSelect
 
 /**
  * Ensure exactly one `WorkOrderVisit` row exists for a work order. Idempotent by
@@ -31,4 +48,132 @@ export async function ensureVisitForWorkOrder(
     timezone: 'UTC',
     updatedAt: new Date(),
   })
+}
+
+/**
+ * Steps 2–4 shared by every visit mutation (07 §B.1): mirror the visit onto the work
+ * order's read-only fields, apply the baked-in one_off status roll-up (skipped when
+ * `trigger` is omitted — e.g. `assignVisit`, which has no roll-up rule of its own), then
+ * broadcast the change. Exported standalone so the M2c engine's rolling-window
+ * materializer can reuse it after a bulk visit write.
+ */
+export async function afterVisitWrite(
+  visit: WorkOrderVisitRow,
+  opts: { userId: string; trigger?: LifecycleTrigger; excludeSocketId?: string }
+): Promise<void> {
+  await mirrorVisitOntoWorkOrder(visit.organizationId, opts.userId, visit.workOrderId)
+  if (opts.trigger) {
+    await rollUpWorkOrderStatus(visit.organizationId, opts.userId, visit.workOrderId, opts.trigger)
+  }
+  await publishVisitChanged(
+    visit.organizationId,
+    { visitId: visit.id, workOrderId: visit.workOrderId },
+    { excludeSocketId: opts.excludeSocketId }
+  )
+}
+
+/**
+ * Schedule (or reschedule) a visit — the single time/assignee writer. Rolls the work order
+ * up to `scheduled`; the forward-only guard in `lifecycle.ts` makes rescheduling an
+ * already-scheduled-or-later work order a no-op there, so this is safe to call on every
+ * drag/drop and popover save alike.
+ */
+export async function scheduleVisit(input: ScheduleVisitInput): Promise<WorkOrderVisitRow> {
+  const { organizationId, userId, visitId, startTime, endTime, timezone, excludeSocketId } = input
+
+  const set: Partial<typeof schema.WorkOrderVisit.$inferInsert> = {
+    startTime,
+    endTime,
+    updatedAt: new Date(),
+  }
+  if (input.assigneeUserId !== undefined) set.assigneeUserId = input.assigneeUserId
+  if (timezone !== undefined) set.timezone = timezone
+
+  // M2c (06 §4.3): when this row carries a `recurrenceRuleId`, set `isDetached: true` here
+  // — the column lands with the recurring-engine migration, not before.
+
+  const [updated] = await database
+    .update(schema.WorkOrderVisit)
+    .set(set)
+    .where(
+      and(
+        eq(schema.WorkOrderVisit.id, visitId),
+        eq(schema.WorkOrderVisit.organizationId, organizationId)
+      )
+    )
+    .returning()
+  if (!updated) throw new NotFoundError('Visit not found')
+
+  await afterVisitWrite(updated, { userId, trigger: 'scheduled', excludeSocketId })
+  return updated
+}
+
+/**
+ * Reassign a visit's worker without touching its schedule. No status roll-up rule of its
+ * own (01 §5 lists no assign-specific transition) — mirror + broadcast only.
+ */
+export async function assignVisit(input: AssignVisitInput): Promise<WorkOrderVisitRow> {
+  const { organizationId, userId, visitId, assigneeUserId, excludeSocketId } = input
+
+  const [updated] = await database
+    .update(schema.WorkOrderVisit)
+    .set({ assigneeUserId, updatedAt: new Date() })
+    .where(
+      and(
+        eq(schema.WorkOrderVisit.id, visitId),
+        eq(schema.WorkOrderVisit.organizationId, organizationId)
+      )
+    )
+    .returning()
+  if (!updated) throw new NotFoundError('Visit not found')
+
+  await afterVisitWrite(updated, { userId, excludeSocketId })
+  return updated
+}
+
+/**
+ * Clear a visit's schedule — back to the unassigned/unscheduled backlog rail
+ * (`startTime`/`endTime` → null). Resets the work order to `new`.
+ */
+export async function unscheduleVisit(input: UnscheduleVisitInput): Promise<WorkOrderVisitRow> {
+  const { organizationId, userId, visitId, excludeSocketId } = input
+
+  const [updated] = await database
+    .update(schema.WorkOrderVisit)
+    .set({ startTime: null, endTime: null, updatedAt: new Date() })
+    .where(
+      and(
+        eq(schema.WorkOrderVisit.id, visitId),
+        eq(schema.WorkOrderVisit.organizationId, organizationId)
+      )
+    )
+    .returning()
+  if (!updated) throw new NotFoundError('Visit not found')
+
+  await afterVisitWrite(updated, { userId, trigger: 'unscheduled', excludeSocketId })
+  return updated
+}
+
+/**
+ * Advance (or reset) a visit's own operational status
+ * (`scheduled`/`en_route`/`on_site`/`done`/`canceled`); rolls up to the matching work order
+ * status.
+ */
+export async function setVisitStatus(input: SetVisitStatusInput): Promise<WorkOrderVisitRow> {
+  const { organizationId, userId, visitId, status, excludeSocketId } = input
+
+  const [updated] = await database
+    .update(schema.WorkOrderVisit)
+    .set({ status, updatedAt: new Date() })
+    .where(
+      and(
+        eq(schema.WorkOrderVisit.id, visitId),
+        eq(schema.WorkOrderVisit.organizationId, organizationId)
+      )
+    )
+    .returning()
+  if (!updated) throw new NotFoundError('Visit not found')
+
+  await afterVisitWrite(updated, { userId, trigger: status, excludeSocketId })
+  return updated
 }
