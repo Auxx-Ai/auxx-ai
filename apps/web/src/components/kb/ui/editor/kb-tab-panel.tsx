@@ -4,7 +4,7 @@
 import { DrawerHeader } from '@auxx/ui/components/drawer'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { cn } from '@auxx/ui/lib/utils'
-import { Loader2 } from 'lucide-react'
+import { Loader2, Sparkles } from 'lucide-react'
 import { parseAsStringLiteral, useQueryState } from 'nuqs'
 import { LAYOUT_TAB_ENABLED } from '../../constant'
 import type { KnowledgeBase } from '../../store/knowledge-base-store'
@@ -34,10 +34,14 @@ interface KBTabPanelProps {
  * persistence per section, so this component owns no save state of its own.
  */
 export function KBTabPanel({ knowledgeBaseId, knowledgeBase }: KBTabPanelProps) {
-  const [activePanel] = useQueryState(
+  const [panelParam] = useQueryState(
     'panel',
     parseAsStringLiteral(PANEL_VALUES).withDefault('general')
   )
+  // The learned KB ("AI Memory") has no settings tabs — the panel is always
+  // the article tree, retitled "Memory".
+  const isLearned = knowledgeBase.kind === 'learned'
+  const activePanel = isLearned ? 'articles' : panelParam
 
   const isSaving = useKnowledgeBaseStore((s) => Boolean(s.pendingDraftPatches[knowledgeBaseId]))
 
@@ -48,12 +52,18 @@ export function KBTabPanel({ knowledgeBaseId, knowledgeBase }: KBTabPanelProps) 
       <SavingIndicator isSaving={isSaving} />
     )
 
+  const title = isLearned ? (
+    <span className='flex items-center gap-1.5 text-sm font-medium'>
+      <Sparkles className='size-3.5 text-primary' />
+      Memory
+    </span>
+  ) : (
+    <span className='text-sm font-medium'>{PANEL_TITLES[activePanel]}</span>
+  )
+
   return (
     <div className='flex flex-1 flex-col overflow-hidden'>
-      <DrawerHeader
-        title={<span className='text-sm font-medium'>{PANEL_TITLES[activePanel]}</span>}
-        actions={headerActions}
-      />
+      <DrawerHeader title={title} actions={headerActions} />
 
       <ScrollArea className='flex min-h-0 flex-1 flex-col'>
         {activePanel === 'general' && (

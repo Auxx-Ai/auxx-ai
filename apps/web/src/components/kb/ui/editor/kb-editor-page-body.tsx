@@ -33,7 +33,8 @@ export function KBEditorPageBody({ knowledgeBaseId, slug }: KBEditorPageBodyProp
 
   if (!knowledgeBase) return null
 
-  if (activePanel !== 'articles') {
+  // The learned KB ("AI Memory") has no site preview — always the editor.
+  if (activePanel !== 'articles' && knowledgeBase.kind !== 'learned') {
     return <KBPreview knowledgeBase={knowledgeBase} activeSlugPath={slug} />
   }
 

@@ -4,7 +4,7 @@ import { schema } from '@auxx/database'
 import { ArticleStatus } from '@auxx/database/enums'
 import { onCacheEvent } from '@auxx/lib/cache'
 import { getUserOrganizationId } from '@auxx/lib/email'
-import { articleToMarkdown, KBService, linkArticlesIntoKb } from '@auxx/lib/kb'
+import { articleToMarkdown, ensureLearnedKb, KBService, linkArticlesIntoKb } from '@auxx/lib/kb'
 import { FeatureKey, FeaturePermissionService } from '@auxx/lib/permissions'
 import { TRPCError } from '@trpc/server'
 import { and, count, eq } from 'drizzle-orm'
@@ -131,6 +131,23 @@ export const knowledgeBaseRouter = createTRPCRouter({
 
   list: protectedProcedure.query(async ({ ctx }) => {
     return await getKBService(ctx).listKnowledgeBases()
+  }),
+
+  /**
+   * Idempotently provision the org's AI Memory KB (kind 'learned') and return
+   * its id — the entry point for the "AI Memory" card on the KB landing page.
+   */
+  ensureLearnedMemory: protectedProcedure.mutation(async ({ ctx }) => {
+    const organizationId = getUserOrganizationId(ctx.session)
+    if (!organizationId) {
+      throw new TRPCError({ code: 'UNAUTHORIZED', message: 'User organization context not found' })
+    }
+    await new FeaturePermissionService(ctx.db).requireAccess(
+      organizationId,
+      FeatureKey.learnedMemory
+    )
+    const { kb } = await ensureLearnedKb({ db: ctx.db, organizationId })
+    return { id: kb.id }
   }),
 
   create: protectedProcedure.input(kbCreateSchema).mutation(async ({ ctx, input }) => {

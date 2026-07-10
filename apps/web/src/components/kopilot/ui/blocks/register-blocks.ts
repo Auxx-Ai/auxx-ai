@@ -10,6 +10,7 @@ import { EntityCreateApprovalCard } from './entity-create-approval-card'
 import { EntityDefinitionBlock } from './entity-definition-block'
 import { EntityListBlock } from './entity-list-block'
 import { EntityUpdateApprovalCard } from './entity-update-approval-card'
+import { LearnedArticleApprovalCard } from './learned-article-approval-card'
 import { PlanStepsBlock } from './plan-steps-block'
 import { TableBlock } from './table-block'
 import { TaskCreateApprovalCard } from './task-create-approval-card'
@@ -31,3 +32,4 @@ registerApprovalCard('update_entity', EntityUpdateApprovalCard)
 registerApprovalCard('bulk_update_entity', BulkUpdateApprovalCard)
 registerApprovalCard('create_entity', EntityCreateApprovalCard)
 registerApprovalCard('create_task', TaskCreateApprovalCard)
+registerApprovalCard('upsert_learned_article', LearnedArticleApprovalCard)
