@@ -2,15 +2,28 @@
 
 'use client'
 
-import { MainPage } from '@auxx/ui/components/main-page'
+import {
+  MainPage,
+  MainPageBreadcrumb,
+  MainPageBreadcrumbItem,
+  MainPageHeader,
+} from '@auxx/ui/components/main-page'
 
 /**
- * Minimal module shell for `/app/dispatch/*` — MQ1 only ships the settings
- * scaffold (§H.5), so this just provides the `MainPage` chrome that
- * `dispatch/settings/layout.tsx` (and its `MainPageContent`) expect from an
- * ancestor, mirroring `tickets/layout.tsx`. M2's dispatch board replaces this
- * with the real module header (tab switcher, create action, etc.).
+ * Module shell for `/app/dispatch/*` — `MainPage` chrome + header, mirroring
+ * `tickets/layout.tsx`. Until the M2 board lands the module home redirects to
+ * settings, so the header is breadcrumb-only; M2 adds the Board·Settings
+ * RadioTab switcher and board actions here.
  */
 export default function DispatchLayout({ children }: { children: React.ReactNode }) {
-  return <MainPage>{children}</MainPage>
+  return (
+    <MainPage>
+      <MainPageHeader className='justify-start'>
+        <MainPageBreadcrumb>
+          <MainPageBreadcrumbItem title='Dispatch' href='/app/dispatch' last />
+        </MainPageBreadcrumb>
+      </MainPageHeader>
+      {children}
+    </MainPage>
+  )
 }

@@ -72,8 +72,10 @@ export function NavMain({ menu, itemActions }: Props) {
         return subItem
       })
 
-      // Handle parent URL - keep URL for consistency, preventNavigation will handle the behavior
-      item.url = item.items[0].url // Always set URL to first child for consistency
+      // Handle parent URL — an explicit `url` on the menu entry wins (navigable group
+      // homes like /app/dispatch); otherwise fall back to the first child for consistency.
+      // preventNavigation still decides whether clicking the row navigates at all.
+      item.url = item.url ?? item.items[0].url
     } else {
       item.url = getUrl(menu.route, item.slug)
     }
@@ -85,7 +87,8 @@ export function NavMain({ menu, itemActions }: Props) {
       const isActive = item.items.some(
         (subItem) => pathname.startsWith(subItem.url!) || pathname === subItem.url
       )
-      return isActive
+      // Groups with their own home route (explicit url) are also active on it
+      return isActive || (!!item.url && pathname.startsWith(item.url))
     }
     // Match against the base path (without trailing segments like /new)
     // so e.g. /app/kopilot/new matches /app/kopilot/<sessionId> too
