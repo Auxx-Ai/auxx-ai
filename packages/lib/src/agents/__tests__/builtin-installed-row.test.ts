@@ -1,6 +1,7 @@
 // packages/lib/src/agents/__tests__/builtin-installed-row.test.ts
 
 import { describe, expect, it } from 'vitest'
+import { BUILTIN_TOOLSETS } from '../builtin-app'
 import { getBuiltinAuxxInstalledRow } from '../builtin-installed-row'
 
 describe('getBuiltinAuxxInstalledRow — enriched tool projection', () => {
@@ -31,6 +32,13 @@ describe('getBuiltinAuxxInstalledRow — enriched tool projection', () => {
       // The serializer strips the meta keys the LLM/editor never needs.
       expect(tool.outputsJsonSchema.$schema).toBeUndefined()
       expect(tool.outputsJsonSchema.id).toBeUndefined()
+    }
+  })
+
+  it('every projected tool references a declared toolset (filterToolsByToolsets drops unknown slugs)', () => {
+    const knownSlugs = new Set(BUILTIN_TOOLSETS.map((ts) => ts.slug))
+    for (const tool of tools) {
+      expect(knownSlugs, `toolset for ${tool.registeredName}`).toContain(tool.toolsetSlug)
     }
   })
 
