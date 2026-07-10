@@ -28,7 +28,7 @@ import {
   reorderLines,
 } from '@auxx/lib/money'
 import { UnifiedCrudHandler } from '@auxx/lib/resources'
-import { SettingsService } from '@auxx/lib/settings'
+import { getOrganizationSetting } from '@auxx/lib/settings'
 
 /** Build a RecordId string without pulling in `@auxx/types` (not a worker dependency). */
 function toRecordId(entityDefinitionId: string, entityInstanceId: string) {
@@ -92,7 +92,6 @@ async function main() {
   console.log(`Org ${organizationId}, user ${userId}`)
 
   const handler = new UnifiedCrudHandler(organizationId, userId)
-  const settings = new SettingsService()
 
   const createdQuoteIds: string[] = [] // instance ids
   const createdLineIds: string[] = []
@@ -748,13 +747,13 @@ async function main() {
 
     // ── 11: Settings keys ────────────────────────────────────────────────────
     console.log('11: settings keys')
-    const currency = await settings.getOrganizationSetting({
+    const currency = await getOrganizationSetting({
       organizationId,
       key: 'organization.currency',
     })
     check("organization.currency defaults to 'USD'", currency === 'USD', currency)
 
-    const taxRates = await settings.getOrganizationSetting({
+    const taxRates = await getOrganizationSetting({
       organizationId,
       key: 'documents.taxRates',
     })

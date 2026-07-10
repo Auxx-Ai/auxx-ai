@@ -1749,7 +1749,13 @@ export async function setValueWithBuiltIn(
     })
   }
 
-  const { recordId, fieldId, value, publishEvents = true, skipInverseSync = false } = params
+  const {
+    recordId,
+    fieldId: rawFieldId,
+    value,
+    publishEvents = true,
+    skipInverseSync = false,
+  } = params
 
   // Parse RecordId to get both parts
   const { entityDefinitionId, entityInstanceId } = parseRecordId(recordId)
@@ -1758,23 +1764,23 @@ export async function setValueWithBuiltIn(
   const modelType = getModelType(entityDefinitionId)
 
   // 1. Check if built-in field
-  if (isBuiltInField(fieldId, modelType)) {
-    const handler = getBuiltInFieldHandler(fieldId, modelType)
+  if (isBuiltInField(rawFieldId, modelType)) {
+    const handler = getBuiltInFieldHandler(rawFieldId, modelType)
     if (!handler) {
-      throw new Error(`Built-in field ${fieldId} has no handler`)
+      throw new Error(`Built-in field ${rawFieldId} has no handler`)
     }
     await handler(ctx.db, entityInstanceId, value, ctx.organizationId)
 
     // Create synthetic TypedFieldValue for frontend store
-    const builtInFieldType = getBuiltInFieldType(fieldId, modelType)
+    const builtInFieldType = getBuiltInFieldType(rawFieldId, modelType)
     const performedAt = new Date().toISOString()
     if (value !== null && value !== undefined && builtInFieldType) {
       const typedInput = formatToTypedInput(value, builtInFieldType)
       if (typedInput) {
         const syntheticValue = {
-          id: `builtin-${fieldId}-${entityInstanceId}`,
+          id: `builtin-${rawFieldId}-${entityInstanceId}`,
           entityId: entityInstanceId,
-          fieldId,
+          fieldId: rawFieldId,
           sortKey: '',
           createdAt: performedAt,
           updatedAt: performedAt,
@@ -1787,7 +1793,14 @@ export async function setValueWithBuiltIn(
     return { state: 'complete', performedAt, values: [] }
   }
 
-  // 2. Get field definition (cached)
+  // 2. Normalize systemAttribute / ResourceFieldId forms to a real FieldId —
+  // parity with the bulk paths (setValuesForEntity/applyBulk run resolveFieldIds),
+  // so single-field writes accept the same identifiers as setBulk.
+  const [{ fieldId }] = await resolveFieldIds(ctx.organizationId, [
+    { fieldId: rawFieldId, value: null },
+  ])
+
+  // Get field definition (cached)
   const field = await getField(ctx, fieldId)
 
   // Resolve entity metadata once — shared by pre-hook, oldValue gate, and

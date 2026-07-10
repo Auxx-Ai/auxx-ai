@@ -15,13 +15,17 @@ export interface NewLineInput {
   catalogItemRecordId?: RecordId
 }
 
-/** Format an amount in the org currency; em dash for unpriced values. */
+/**
+ * Format an amount in the org currency; em dash for unpriced values.
+ * `value` is INTEGER CENTS — the FieldType.CURRENCY storage convention
+ * (same contract as the platform DisplayCurrency renderer).
+ */
 export function formatCurrency(value: number | null | undefined, currencyCode: string): string {
   if (value === null || value === undefined) return '—'
   return new Intl.NumberFormat(undefined, {
     style: 'currency',
     currency: currencyCode,
-  }).format(value)
+  }).format(value / 100)
 }
 
 /** Capitalize a category value for chip display ('service' → 'Service'). */

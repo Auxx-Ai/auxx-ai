@@ -199,13 +199,32 @@ export function TotalsFooter({
     ])
   }
 
+  // Amount discounts are stored as integer cents (CURRENCY convention); percent
+  // discounts as plain percentages. The input always shows/accepts the display
+  // unit (dollars or percent).
+  const discountDisplayValue =
+    discountValue === null
+      ? ''
+      : String(discountType === 'amount' ? discountValue / 100 : discountValue)
+
   const commitDiscountValue = () => {
     if (discountDraft === null) return
     const trimmed = discountDraft.trim()
     setDiscountDraft(null)
     const parsed = trimmed === '' ? null : Number(trimmed)
     if (parsed !== null && Number.isNaN(parsed)) return
-    writeDiscount(parsed === null ? null : (discountType ?? 'percent'), parsed)
+    const type = parsed === null ? null : (discountType ?? 'percent')
+    writeDiscount(type, parsed !== null && type === 'amount' ? Math.round(parsed * 100) : parsed)
+  }
+
+  // Type toggle keeps the number the user SEES stable: 10% becomes $10 (1000¢).
+  const toggleDiscountType = (type: DiscountType) => {
+    if (discountValue === null) {
+      writeDiscount(type, null)
+      return
+    }
+    const displayed = discountType === 'amount' ? discountValue / 100 : discountValue
+    writeDiscount(type, type === 'amount' ? Math.round(displayed * 100) : displayed)
   }
 
   return (
@@ -254,7 +273,7 @@ export function TotalsFooter({
                       <button
                         key={type}
                         type='button'
-                        onClick={() => writeDiscount(type, discountValue)}
+                        onClick={() => toggleDiscountType(type)}
                         className={cn(
                           'px-1.5 py-0.5 text-[10px] leading-none',
                           (discountType ?? 'percent') === type
@@ -277,7 +296,7 @@ export function TotalsFooter({
                 ) : (
                   <>
                     <input
-                      value={discountDraft ?? (discountValue !== null ? String(discountValue) : '')}
+                      value={discountDraft ?? discountDisplayValue}
                       onChange={(e) => setDiscountDraft(e.target.value)}
                       onBlur={commitDiscountValue}
                       onKeyDown={(e) => {

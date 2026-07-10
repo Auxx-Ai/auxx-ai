@@ -146,6 +146,7 @@ export const SERVICE_REQUEST_FIELDS: Record<string, ResourceField> = {
       configurable: false,
     },
     placeholder: 'Select property type',
+    defaultValue: 'residential',
   },
 
   preferredDate: {
@@ -207,6 +208,7 @@ export const SERVICE_REQUEST_FIELDS: Record<string, ResourceField> = {
       configurable: false,
     },
     placeholder: 'Select arrival window',
+    defaultValue: 'anytime',
   },
 
   contact: {
@@ -273,6 +275,7 @@ export const SERVICE_REQUEST_FIELDS: Record<string, ResourceField> = {
     systemAttribute: 'service_request_ticket',
     systemSortOrder: 'aA',
     nullable: true,
+    showInDialogs: false,
     capabilities: {
       filterable: true,
       sortable: false,
@@ -377,6 +380,7 @@ export const SERVICE_REQUEST_FIELDS: Record<string, ResourceField> = {
     isSystem: true,
     systemAttribute: 'created_at',
     systemSortOrder: 'aE',
+    dbColumn: 'createdAt',
     nullable: false,
     capabilities: {
       filterable: true,
@@ -397,6 +401,7 @@ export const SERVICE_REQUEST_FIELDS: Record<string, ResourceField> = {
     isSystem: true,
     systemAttribute: 'updated_at',
     systemSortOrder: 'aF',
+    dbColumn: 'updatedAt',
     nullable: false,
     capabilities: {
       filterable: true,

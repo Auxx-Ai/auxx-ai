@@ -1,26 +1,31 @@
 // packages/lib/src/money/totals.test.ts
 
 import { describe, expect, it } from 'vitest'
-import { computeDocumentTotals, computeLineTotal, round2 } from './totals'
+import { computeDocumentTotals, computeLineTotal, roundCents } from './totals'
 import type { LineForTotals } from './types'
 
-describe('round2', () => {
+// All amounts are integer cents (the FieldType.CURRENCY storage convention) —
+// e.g. 10_000 = $100.00. Percent inputs (percent discounts, taxRate) are plain
+// percentages.
+
+describe('roundCents', () => {
   it('rounds half up, correcting for float representation error', () => {
-    expect(round2(1.005)).toBe(1.01)
-    expect(round2(2.675)).toBe(2.68)
-    expect(round2(10.005)).toBe(10.01)
+    expect(roundCents(100.5)).toBe(101)
+    expect(roundCents(267.5)).toBe(268)
+    expect(roundCents(1000.4999999999999)).toBe(1000)
   })
 
-  it('leaves already-precise values untouched', () => {
-    expect(round2(10)).toBe(10)
-    expect(round2(9.99)).toBe(9.99)
+  it('leaves whole cents untouched', () => {
+    expect(roundCents(1000)).toBe(1000)
+    expect(roundCents(999)).toBe(999)
   })
 })
 
 describe('computeLineTotal', () => {
-  it('multiplies qty * unitPrice and rounds', () => {
-    expect(computeLineTotal(3, 10)).toBe(30)
-    expect(computeLineTotal(2, 5.005)).toBe(10.01)
+  it('multiplies qty * unitPrice and rounds to a whole cent', () => {
+    expect(computeLineTotal(3, 1000)).toBe(3000)
+    // fractional qty producing a fractional cent: 1.5 * 333 = 499.5 → 500
+    expect(computeLineTotal(1.5, 333)).toBe(500)
   })
 
   it('returns null when unitPrice is null (line not yet priced)', () => {
@@ -31,24 +36,24 @@ describe('computeLineTotal', () => {
 describe('computeDocumentTotals', () => {
   it('sums line totals with no billing inputs', () => {
     const lines: LineForTotals[] = [
-      { lineTotal: 10, taxable: true },
-      { lineTotal: 20, taxable: true },
+      { lineTotal: 1000, taxable: true },
+      { lineTotal: 2000, taxable: true },
     ]
     expect(computeDocumentTotals(lines, {})).toEqual({
-      subtotal: 30,
+      subtotal: 3000,
       discountAmount: 0,
       taxTotal: 0,
-      total: 30,
+      total: 3000,
     })
   })
 
   it('excludes null lineTotals (unpriced lines) from the sum', () => {
     const lines: LineForTotals[] = [
-      { lineTotal: 10, taxable: true },
+      { lineTotal: 1000, taxable: true },
       { lineTotal: null, taxable: true },
-      { lineTotal: 5, taxable: true },
+      { lineTotal: 500, taxable: true },
     ]
-    expect(computeDocumentTotals(lines, {}).subtotal).toBe(15)
+    expect(computeDocumentTotals(lines, {}).subtotal).toBe(1500)
   })
 
   it('returns all-zero totals for an empty line set', () => {
@@ -61,73 +66,81 @@ describe('computeDocumentTotals', () => {
   })
 
   it('applies a percent discount off the subtotal', () => {
-    const lines: LineForTotals[] = [{ lineTotal: 100, taxable: true }]
+    const lines: LineForTotals[] = [{ lineTotal: 10_000, taxable: true }]
     const result = computeDocumentTotals(lines, { discountType: 'percent', discountValue: 10 })
-    expect(result.discountAmount).toBe(10)
-    expect(result.total).toBe(90)
+    expect(result.discountAmount).toBe(1000)
+    expect(result.total).toBe(9000)
   })
 
-  it('applies a flat-amount discount', () => {
-    const lines: LineForTotals[] = [{ lineTotal: 100, taxable: true }]
-    const result = computeDocumentTotals(lines, { discountType: 'amount', discountValue: 15 })
-    expect(result.discountAmount).toBe(15)
-    expect(result.total).toBe(85)
+  it('applies a flat-amount discount (cents)', () => {
+    const lines: LineForTotals[] = [{ lineTotal: 10_000, taxable: true }]
+    const result = computeDocumentTotals(lines, { discountType: 'amount', discountValue: 1500 })
+    expect(result.discountAmount).toBe(1500)
+    expect(result.total).toBe(8500)
   })
 
   it('clamps a flat-amount discount to the subtotal (cannot go negative)', () => {
-    const lines: LineForTotals[] = [{ lineTotal: 100, taxable: true }]
-    const result = computeDocumentTotals(lines, { discountType: 'amount', discountValue: 250 })
-    expect(result.discountAmount).toBe(100)
+    const lines: LineForTotals[] = [{ lineTotal: 10_000, taxable: true }]
+    const result = computeDocumentTotals(lines, { discountType: 'amount', discountValue: 25_000 })
+    expect(result.discountAmount).toBe(10_000)
     expect(result.total).toBe(0)
   })
 
   it('clamps a percent discount over 100% to the subtotal', () => {
-    const lines: LineForTotals[] = [{ lineTotal: 100, taxable: true }]
+    const lines: LineForTotals[] = [{ lineTotal: 10_000, taxable: true }]
     const result = computeDocumentTotals(lines, { discountType: 'percent', discountValue: 150 })
-    expect(result.discountAmount).toBe(100)
+    expect(result.discountAmount).toBe(10_000)
     expect(result.total).toBe(0)
   })
 
   it('applies flat tax when all lines are taxable and there is no discount', () => {
-    const lines: LineForTotals[] = [{ lineTotal: 100, taxable: true }]
+    const lines: LineForTotals[] = [{ lineTotal: 10_000, taxable: true }]
     const result = computeDocumentTotals(lines, { taxRate: 10 })
-    expect(result.taxTotal).toBe(10)
-    expect(result.total).toBe(110)
+    expect(result.taxTotal).toBe(1000)
+    expect(result.total).toBe(11_000)
   })
 
   it('excludes non-taxable lines from the tax base', () => {
     const lines: LineForTotals[] = [
-      { lineTotal: 100, taxable: true },
-      { lineTotal: 100, taxable: false },
+      { lineTotal: 10_000, taxable: true },
+      { lineTotal: 10_000, taxable: false },
     ]
     const result = computeDocumentTotals(lines, { taxRate: 10 })
-    // subtotal 200, taxable subtotal 100, no discount -> taxBase = 100
-    expect(result.taxTotal).toBe(10)
-    expect(result.total).toBe(210)
+    // subtotal 20000, taxable subtotal 10000, no discount -> taxBase = 10000
+    expect(result.taxTotal).toBe(1000)
+    expect(result.total).toBe(21_000)
   })
 
   it('pro-rates the discount across taxable and non-taxable lines before taxing', () => {
-    // subtotal 200 (100 taxable + 100 non-taxable), 50% discount -> discountAmount 100
-    // taxBase = taxableSubtotal * (1 - discountAmount/subtotal) = 100 * (1 - 100/200) = 50
-    // taxTotal = 50 * 10% = 5; total = 200 - 100 + 5 = 105
+    // subtotal 20000 (10000 taxable + 10000 non-taxable), 50% discount -> discountAmount 10000
+    // taxBase = taxableSubtotal * (1 - discountAmount/subtotal) = 10000 * (1 - 10000/20000) = 5000
+    // taxTotal = 5000 * 10% = 500; total = 20000 - 10000 + 500 = 10500
     const lines: LineForTotals[] = [
-      { lineTotal: 100, taxable: true },
-      { lineTotal: 100, taxable: false },
+      { lineTotal: 10_000, taxable: true },
+      { lineTotal: 10_000, taxable: false },
     ]
     const result = computeDocumentTotals(lines, {
       discountType: 'percent',
       discountValue: 50,
       taxRate: 10,
     })
-    expect(result.subtotal).toBe(200)
-    expect(result.discountAmount).toBe(100)
-    expect(result.taxTotal).toBe(5)
-    expect(result.total).toBe(105)
+    expect(result.subtotal).toBe(20_000)
+    expect(result.discountAmount).toBe(10_000)
+    expect(result.taxTotal).toBe(500)
+    expect(result.total).toBe(10_500)
+  })
+
+  it('rounds a fractional-cent tax to a whole cent', () => {
+    // 3333 cents * 7.25% = 241.6425 -> 242
+    const lines: LineForTotals[] = [{ lineTotal: 3333, taxable: true }]
+    const result = computeDocumentTotals(lines, { taxRate: 7.25 })
+    expect(result.taxTotal).toBe(242)
+    expect(result.total).toBe(3575)
   })
 
   it('treats a missing discountType as no discount even if discountValue is set', () => {
-    const lines: LineForTotals[] = [{ lineTotal: 100, taxable: true }]
-    const result = computeDocumentTotals(lines, { discountValue: 10 })
+    const lines: LineForTotals[] = [{ lineTotal: 10_000, taxable: true }]
+    const result = computeDocumentTotals(lines, { discountValue: 1000 })
     expect(result.discountAmount).toBe(0)
   })
 })

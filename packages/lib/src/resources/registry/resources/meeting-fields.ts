@@ -344,6 +344,7 @@ export const MEETING_FIELDS: Record<string, ResourceField> = {
     isSystem: true,
     systemAttribute: 'created_at',
     systemSortOrder: 'aE',
+    dbColumn: 'createdAt',
     nullable: false,
     capabilities: {
       filterable: true,
@@ -364,6 +365,7 @@ export const MEETING_FIELDS: Record<string, ResourceField> = {
     isSystem: true,
     systemAttribute: 'updated_at',
     systemSortOrder: 'aF',
+    dbColumn: 'updatedAt',
     nullable: false,
     capabilities: {
       filterable: true,
