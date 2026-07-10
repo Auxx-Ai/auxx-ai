@@ -1,0 +1,196 @@
+// packages/lib/src/money/invoice-lifecycle.ts
+
+import type { RecordId, TypedFieldValue } from '@auxx/types'
+import { extractValue } from '@auxx/types'
+import { toRecordId } from '@auxx/types/resource'
+import { getOrgCache } from '../cache'
+import { BadRequestError } from '../errors'
+import { FieldValueService } from '../field-values/field-value-service'
+import { UnifiedCrudHandler } from '../resources/crud'
+import { hasSucceededCharges } from './payments/ledger'
+import type { InvoiceLifecycleInput } from './types'
+
+/** Unwrap a `getFieldValues()` map entry — takes the first value if array-returned. */
+function firstTyped(
+  entry: TypedFieldValue | TypedFieldValue[] | undefined
+): TypedFieldValue | undefined {
+  if (!entry) return undefined
+  return Array.isArray(entry) ? entry[0] : entry
+}
+
+/** Read an invoice's current `invoice_status`. */
+async function getInvoiceStatus(
+  handler: UnifiedCrudHandler,
+  organizationId: string,
+  invoiceRecordId: RecordId
+): Promise<string | undefined> {
+  const cache = getOrgCache()
+  const cf = await cache
+    .from(organizationId, 'customFields')
+    .bySystemAttributes(['invoice_status'] as const)
+  if (!cf.invoice_status) return undefined
+  const values = await handler.getFieldValues(invoiceRecordId, [cf.invoice_status.id])
+  const typed = firstTyped(values.get(cf.invoice_status.id))
+  return typed ? (extractValue(typed) as string) : undefined
+}
+
+/**
+ * Clear `line_item_invoice` on every SOURCE line for an invoice — lines where
+ * `invoice = X AND workOrder is not empty` (the §B.3 invariant). The invoice's own copies
+ * (`workOrder` empty) are never touched here. Shared by `voidInvoice` (decision 5) and
+ * `deleteInvoice` (§G.5).
+ */
+async function unstampSourceLines(
+  organizationId: string,
+  userId: string,
+  invoiceRecordId: RecordId
+): Promise<void> {
+  const handler = new UnifiedCrudHandler(organizationId, userId)
+  const { ids } = await handler.listFiltered({
+    entityDefinitionId: 'line_item',
+    filters: [
+      {
+        id: 'invoice-source-lines',
+        logicalOperator: 'AND',
+        conditions: [
+          {
+            id: 'invoice-source-lines-invoice',
+            fieldId: 'line_item:invoice',
+            operator: 'is',
+            value: invoiceRecordId,
+          },
+          {
+            id: 'invoice-source-lines-workorder',
+            fieldId: 'line_item:workOrder',
+            operator: 'not empty',
+            value: null,
+          },
+        ],
+      },
+    ],
+    limit: 1000,
+    mode: 'oneshot',
+  })
+  if (ids.length === 0) return
+
+  const fieldValueService = new FieldValueService(organizationId, userId)
+  await fieldValueService.setBulkValues({
+    recordIds: ids.map((id) => toRecordId('line_item', id)),
+    values: [{ fieldId: 'line_item_invoice', value: null }],
+  })
+}
+
+/**
+ * Mark a draft invoice as sent (money MI1 build spec §G.2) — send is issuance, so
+ * `invoice_issued_at` is stamped to today if it's still empty. No `markPaid` mutation exists
+ * on purpose: "Mark as paid" in the UI records a full-balance payment through
+ * `recordManualPayment` (decision 4, one code path). Writes go through `FieldValueService` —
+ * the sanctioned-writer path the `rejectManualLifecycleStatus` system pre-hook
+ * (resources/hooks/invoice-hooks.ts) is built to let through.
+ */
+export async function markInvoiceSent(input: InvoiceLifecycleInput): Promise<void> {
+  const { organizationId, userId, invoiceInstanceId } = input
+  const handler = new UnifiedCrudHandler(organizationId, userId)
+  const invoiceRecordId = toRecordId('invoice', invoiceInstanceId)
+
+  const status = await getInvoiceStatus(handler, organizationId, invoiceRecordId)
+  if (status !== 'draft') {
+    throw new BadRequestError(
+      `Cannot mark as sent — invoice must be 'draft' (currently '${status ?? 'unknown'}')`
+    )
+  }
+
+  const writes: Array<{ fieldId: string; value: unknown }> = [
+    { fieldId: 'invoice_status', value: 'sent' },
+  ]
+
+  const cache = getOrgCache()
+  const cf = await cache
+    .from(organizationId, 'customFields')
+    .bySystemAttributes(['invoice_issued_at'] as const)
+  if (cf.invoice_issued_at) {
+    const values = await handler.getFieldValues(invoiceRecordId, [cf.invoice_issued_at.id])
+    const issuedTyped = firstTyped(values.get(cf.invoice_issued_at.id))
+    const issuedAt = issuedTyped ? extractValue(issuedTyped) : undefined
+    if (!issuedAt) {
+      writes.push({ fieldId: 'invoice_issued_at', value: new Date().toISOString().split('T')[0] })
+    }
+  }
+
+  const fieldValueService = new FieldValueService(organizationId, userId)
+  await fieldValueService.setValuesForEntity({ recordId: invoiceRecordId, values: writes })
+}
+
+/**
+ * Void an invoice (money MI1 build spec §G.4). Blocked while any succeeded payment exists
+ * (decision 6 — delete manual payments first; MP1 extends the message to refunds). Unstamps
+ * every source line so the job can be re-gathered later (decision 5) — the invoice's own
+ * copies stay, so the void document remains readable history. Un-void is the manual `draft`
+ * write escape hatch, deliberately unguarded (`rejectManualLifecycleStatus` only blocks the
+ * ledger-derived/send statuses).
+ */
+export async function voidInvoice(input: InvoiceLifecycleInput): Promise<void> {
+  const { organizationId, userId, invoiceInstanceId } = input
+  const invoiceRecordId = toRecordId('invoice', invoiceInstanceId)
+
+  if (await hasSucceededCharges(organizationId, invoiceInstanceId)) {
+    throw new BadRequestError('Remove recorded payments before voiding this invoice')
+  }
+
+  const fieldValueService = new FieldValueService(organizationId, userId)
+  await fieldValueService.setValuesForEntity({
+    recordId: invoiceRecordId,
+    values: [{ fieldId: 'invoice_status', value: 'void' }],
+  })
+
+  await unstampSourceLines(organizationId, userId, invoiceRecordId)
+}
+
+/**
+ * Delete an invoice (money MI1 build spec §G.5). Same payments guard as `voidInvoice` — the
+ * DB's `restrict` FK on `PaymentTransaction.invoiceInstanceId` backstops it. Unstamps every
+ * source line, hard-deletes the invoice's own line copies (`invoice = X AND workOrder is
+ * empty`, the §B.3 invariant), then deletes the invoice instance itself.
+ */
+export async function deleteInvoice(input: InvoiceLifecycleInput): Promise<void> {
+  const { organizationId, userId, invoiceInstanceId } = input
+  const handler = new UnifiedCrudHandler(organizationId, userId)
+  const invoiceRecordId = toRecordId('invoice', invoiceInstanceId)
+
+  if (await hasSucceededCharges(organizationId, invoiceInstanceId)) {
+    throw new BadRequestError('Remove recorded payments before deleting this invoice')
+  }
+
+  await unstampSourceLines(organizationId, userId, invoiceRecordId)
+
+  const { ids: ownLineIds } = await handler.listFiltered({
+    entityDefinitionId: 'line_item',
+    filters: [
+      {
+        id: 'invoice-own-lines',
+        logicalOperator: 'AND',
+        conditions: [
+          {
+            id: 'invoice-own-lines-invoice',
+            fieldId: 'line_item:invoice',
+            operator: 'is',
+            value: invoiceRecordId,
+          },
+          {
+            id: 'invoice-own-lines-workorder',
+            fieldId: 'line_item:workOrder',
+            operator: 'empty',
+            value: null,
+          },
+        ],
+      },
+    ],
+    limit: 1000,
+    mode: 'oneshot',
+  })
+  for (const lineInstanceId of ownLineIds) {
+    await handler.delete(toRecordId('line_item', lineInstanceId))
+  }
+
+  await handler.delete(invoiceRecordId)
+}

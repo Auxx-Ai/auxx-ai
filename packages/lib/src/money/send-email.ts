@@ -3,8 +3,10 @@
 import { database as db } from '@auxx/database'
 import type { RecordId, TypedFieldValue } from '@auxx/types'
 import { extractValue } from '@auxx/types'
+import { parseRecordId } from '@auxx/types/resource'
 import { getOrgCache } from '../cache'
-import { ensureQuotePdf, ensureQuotePdfViaQueue } from '../documents'
+import type { DocumentType } from '../documents'
+import { ensureDocumentPdf, ensureDocumentPdfViaQueue } from '../documents'
 import { BadRequestError } from '../errors'
 import type { PlaceholderResolutionContext } from '../placeholders'
 import { resolvePlaceholdersInHtml } from '../placeholders'
@@ -19,9 +21,22 @@ function firstTyped(
   return Array.isArray(entry) ? entry[0] : entry
 }
 
+/**
+ * Resolve a quote/invoice RecordId's document type. Both `toRecordId('quote', ...)` and
+ * `toRecordId('invoice', ...)` use the literal system entityType string as the RecordId's
+ * def component (the quote-lifecycle.ts/gather.ts convention), so this is a plain string
+ * check — no entityDefs cache lookup needed (money MI1 build spec §H.2/§H.3).
+ */
+function documentTypeOf(recordId: RecordId): DocumentType {
+  return parseRecordId(recordId).entityDefinitionId === 'invoice' ? 'invoice' : 'quote'
+}
+
 export interface EnsureQuoteDocumentPdfInput {
   organizationId: string
   actorId: string
+  /** A quote OR invoice RecordId (money MI1 §H.2) — the field name predates invoices and is
+   * kept for the existing MQ2 call sites; `documentTypeOf` derives the branch from the
+   * value itself, not from this name. */
   quoteRecordId: RecordId
 }
 
@@ -31,11 +46,12 @@ export interface EnsureQuoteDocumentPdfResult {
 }
 
 /**
- * Render-or-reuse the quote PDF, preferring the queue-backed path
- * (`ensureQuotePdfViaQueue` — keeps the CPU-bound yoga layout work off the
+ * Render-or-reuse the quote/invoice PDF, preferring the queue-backed path
+ * (`ensureDocumentPdfViaQueue` — keeps the CPU-bound yoga layout work off the
  * API request where possible) with a same-request inline fallback
- * (`ensureQuotePdf`) if the queue await fails for any reason (worker down,
- * BullMQ hiccup, timeout, ...) — money MQ2 build spec §C.3/§E.1 step 4.
+ * (`ensureDocumentPdf`) if the queue await fails for any reason (worker down,
+ * BullMQ hiccup, timeout, ...) — money MQ2 build spec §C.3/§E.1 step 4; MI1
+ * §H.1 generalizes the underlying engine to `documentType`.
  * Shared by `prepareDocumentEmail` (below) and the `money.ensureDocumentPdf`
  * router mutation (the Download PDF button).
  */
@@ -43,16 +59,29 @@ export async function ensureQuoteDocumentPdf(
   input: EnsureQuoteDocumentPdfInput
 ): Promise<EnsureQuoteDocumentPdfResult> {
   const { organizationId, actorId, quoteRecordId } = input
+  const documentType = documentTypeOf(quoteRecordId)
   try {
-    return await ensureQuotePdfViaQueue({ organizationId, quoteRecordId, actorId })
+    return await ensureDocumentPdfViaQueue({
+      documentType,
+      organizationId,
+      recordId: quoteRecordId,
+      actorId,
+    })
   } catch {
-    return await ensureQuotePdf({ organizationId, quoteRecordId, actorId })
+    return await ensureDocumentPdf({
+      documentType,
+      organizationId,
+      recordId: quoteRecordId,
+      actorId,
+    })
   }
 }
 
 export interface PrepareDocumentEmailInput {
   organizationId: string
   userId: string
+  /** A quote OR invoice RecordId (money MI1 §H.2) — legacy field name, see
+   * {@link EnsureQuoteDocumentPdfInput.quoteRecordId}. */
   quoteRecordId: RecordId
 }
 
@@ -64,12 +93,13 @@ export interface PrepareDocumentEmailResult {
 }
 
 /**
- * Build the prefilled send-email payload for a quote (money MQ2 build spec
- * §E.1). Resolves the org's seeded `quote_email` system snippet's
- * placeholder spans against the quote + its contact at PREFILL time (not
- * send time) — for a brand-new outbound thread the primary-entity link is
- * only applied AFTER send (`thread.ts`'s `linkTicketId` block), so send-time
- * resolution would have no record to resolve `quote:*`/`contact:*` tokens
+ * Build the prefilled send-email payload for a quote OR invoice (money MQ2
+ * build spec §E.1; MI1 §H.2 adds the invoice branch). Resolves the org's
+ * seeded `quote_email`/`invoice_email` system snippet's placeholder spans
+ * against the document + its contact at PREFILL time (not send time) — for
+ * a brand-new outbound thread the primary-entity link is only applied AFTER
+ * send (`thread.ts`'s `linkTicketId` block), so send-time resolution would
+ * have no record to resolve `quote:*`/`invoice:*`/`contact:*` tokens
  * against. Resolving now means the user sees (and can edit) the final text
  * before it goes out, and the composer's own placeholder-resolution path
  * stays untouched.
@@ -77,23 +107,34 @@ export interface PrepareDocumentEmailResult {
 export async function prepareDocumentEmail(
   input: PrepareDocumentEmailInput
 ): Promise<PrepareDocumentEmailResult> {
-  const { organizationId, userId, quoteRecordId } = input
+  const { organizationId, userId, quoteRecordId: documentRecordId } = input
+  const documentType = documentTypeOf(documentRecordId)
   const handler = new UnifiedCrudHandler(organizationId, userId)
   const cache = getOrgCache()
 
-  // ─── Step 1: the quote's contact (email required to send) ──────────────
+  const noContactMessage =
+    documentType === 'invoice'
+      ? 'This invoice has no contact — add one before sending'
+      : 'This quote has no contact — add one before sending'
+  const noEmailMessage =
+    documentType === 'invoice'
+      ? 'This invoice contact has no email address — add one before sending'
+      : 'This quote contact has no email address — add one before sending'
+
+  // ─── Step 1: the document's contact (email required to send) ───────────
   const cf = await cache
     .from(organizationId, 'customFields')
-    .bySystemAttributes(['quote_contact'] as const)
-  const contactFieldId = cf.quote_contact?.id
-  const quoteValues = contactFieldId
-    ? await handler.getFieldValues(quoteRecordId, [contactFieldId])
+    .bySystemAttributes(['quote_contact', 'invoice_contact'] as const)
+  const contactField = documentType === 'invoice' ? cf.invoice_contact : cf.quote_contact
+  const contactFieldId = contactField?.id
+  const documentValues = contactFieldId
+    ? await handler.getFieldValues(documentRecordId, [contactFieldId])
     : new Map<string, TypedFieldValue | TypedFieldValue[]>()
-  const contactTyped = contactFieldId ? firstTyped(quoteValues.get(contactFieldId)) : undefined
+  const contactTyped = contactFieldId ? firstTyped(documentValues.get(contactFieldId)) : undefined
   const contactRecordId = contactTyped?.type === 'relationship' ? contactTyped.recordId : undefined
 
   if (!contactRecordId) {
-    throw new BadRequestError('This quote has no contact — add one before sending')
+    throw new BadRequestError(noContactMessage)
   }
 
   const contactCf = await cache
@@ -114,19 +155,24 @@ export async function prepareDocumentEmail(
   const contactEmail = emailTyped ? (extractValue(emailTyped) as string) : undefined
 
   if (!contactEmail) {
-    throw new BadRequestError('This quote contact has no email address — add one before sending')
+    throw new BadRequestError(noEmailMessage)
   }
 
-  // ─── Step 2: the seeded quote_email system snippet ──────────────────────
-  const snippet = await getSystemSnippet(db, organizationId, 'quote_email')
+  // ─── Step 2: the seeded quote_email/invoice_email system snippet ────────
+  const snippet = await getSystemSnippet(
+    db,
+    organizationId,
+    documentType === 'invoice' ? 'invoice_email' : 'quote_email'
+  )
 
   // ─── Step 3: resolve the snippet's placeholder spans ────────────────────
   // recordIdsByRoot keys off `EntityDefinition.id` cuids (the field-token
   // root — see system-snippets.ts's `fieldToken`), NOT the RecordId's own
   // (possibly literal-type-string) def component.
   const entityDefs = await cache.get(organizationId, 'entityDefs')
+  const documentDefId = documentType === 'invoice' ? entityDefs.invoice : entityDefs.quote
   const recordIdsByRoot = new Map<string, RecordId>()
-  if (entityDefs.quote) recordIdsByRoot.set(entityDefs.quote, quoteRecordId)
+  if (documentDefId) recordIdsByRoot.set(documentDefId, documentRecordId)
   if (entityDefs.contact) recordIdsByRoot.set(entityDefs.contact, contactRecordId)
 
   const placeholderCtx: PlaceholderResolutionContext = {
@@ -141,7 +187,7 @@ export async function prepareDocumentEmail(
   const { assetId, fileName } = await ensureQuoteDocumentPdf({
     organizationId,
     actorId: userId,
-    quoteRecordId,
+    quoteRecordId: documentRecordId,
   })
 
   return {

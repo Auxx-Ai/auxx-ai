@@ -34,7 +34,7 @@ const DEFAULT_SYSTEM_MODELS: Array<{
   { modelType: ModelType.SPEECH2TEXT, provider: 'openai', model: 'whisper-1' },
 ]
 
-// Default record sequence settings — one row per scope (ticket / work_order / service_request / quote)
+// Default record sequence settings — one row per scope (ticket / work_order / service_request / quote / invoice)
 const defaultRecordSequences = [
   {
     scope: 'ticket',
@@ -72,6 +72,17 @@ const defaultRecordSequences = [
   {
     scope: 'quote',
     prefix: 'QUO',
+    currentNumber: 0,
+    paddingLength: 4,
+    usePrefix: true,
+    useDateInPrefix: false,
+    dateFormat: 'YYMM',
+    separator: '-',
+    useSuffix: false,
+  },
+  {
+    scope: 'invoice',
+    prefix: 'INV',
     currentNumber: 0,
     paddingLength: 4,
     usePrefix: true,
@@ -244,13 +255,14 @@ export class OrganizationSeeder {
     logger.info(`Email templates seeded for organization: ${organizationId}`)
   }
   /**
-   * Seed the system snippets (`quote_email` / `invoice_email` — money MQ2) for a
-   * new organization, keyed to its just-seeded `EntityDefinition` cuids. Runs
-   * after `seedEntities` so the quote/contact defs already exist. `invoice_email`
-   * is skipped until the invoice EntityDefinition ships (MI1) —
-   * `buildSystemSnippetTemplates` naturally omits it while `entityDefs.invoice`
-   * is absent. NOT the only path that creates these rows — `getSystemSnippet`
-   * lazily materializes them for pre-existing orgs on first read.
+   * Seed the system snippets (`quote_email` — money MQ2; `invoice_email` — MI1) for a
+   * new organization, keyed to its just-seeded `EntityDefinition` cuids. Runs after
+   * `seedEntities` so the quote/invoice/contact defs already exist —
+   * `buildSystemSnippetTemplates` returns both templates once `entityDefs.quote`/
+   * `entityDefs.invoice` + `entityDefs.contact` are all present, and simply omits
+   * whichever def is still missing (e.g. an org seeded before MI1 shipped, until its
+   * entity migration runs). NOT the only path that creates these rows —
+   * `getSystemSnippet` lazily materializes them for pre-existing orgs on first read.
    */
   private async seedSystemSnippets(organizationId: string): Promise<void> {
     logger.info(`Seeding system snippets for organization: ${organizationId}`)

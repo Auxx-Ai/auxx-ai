@@ -5,11 +5,12 @@ import { Queues } from '@auxx/lib/jobs/queues'
 import { createWorker } from '../utils/createWorker'
 
 const jobMappings = {
-  renderQuotePdf: renderDocumentPdfJob,
+  renderDocumentPdf: renderDocumentPdfJob,
 }
 
 /**
- * Quote/invoice PDF render worker (money MQ2 build spec §C.3). Concurrency capped at 2 —
+ * Quote/invoice PDF render worker (money MQ2 build spec §C.3; MI1 §H.1 generalizes the job
+ * name/payload to `documentType`). Concurrency capped at 2 —
  * react-pdf's yoga-WASM layout pass is CPU-bound (README risk note), unlike the mostly
  * I/O-bound thumbnail worker.
  */

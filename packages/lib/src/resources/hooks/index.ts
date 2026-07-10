@@ -2,6 +2,8 @@
 
 export { autoSetCreatedBy, COMMON_HOOKS } from './common-hooks'
 export { CONTACT_HOOKS } from './contact-hooks'
+export { INVOICE_HOOKS } from './invoice-hooks'
+export { PAYMENT_HOOKS } from './payment-hooks'
 export { QUOTE_HOOKS } from './quote-hooks'
 export { SERVICE_REQUEST_HOOKS } from './service-request-hooks'
 export {

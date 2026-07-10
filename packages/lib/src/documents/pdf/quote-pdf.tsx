@@ -32,7 +32,7 @@ export function QuotePdf(props: { payload: QuotePdfPayload; logoBytes?: Buffer |
           documentLabel='Quote'
           number={payload.number}
           issuedAt={payload.issuedAt}
-          validUntil={payload.validUntil}
+          secondaryDate={payload.validUntil}
           dateFormat={settings.branding.dateFormat}
           logoBytes={logoBytes}
         />

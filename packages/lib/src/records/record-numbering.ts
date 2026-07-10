@@ -4,13 +4,14 @@ import { database, schema } from '@auxx/database'
 import { and, eq, sql } from 'drizzle-orm'
 
 /** Which record kind a `RecordSequence` row counts. */
-export type SequenceScope = 'ticket' | 'work_order' | 'service_request' | 'quote'
+export type SequenceScope = 'ticket' | 'work_order' | 'service_request' | 'quote' | 'invoice'
 
 const SCOPE_DEFAULTS: Record<SequenceScope, { prefix: string }> = {
   ticket: { prefix: 'TKT' },
   work_order: { prefix: 'WO' },
   service_request: { prefix: 'REQ' },
   quote: { prefix: 'QUO' },
+  invoice: { prefix: 'INV' },
 }
 
 /** Format a record number from a sequence record */

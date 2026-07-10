@@ -17,7 +17,7 @@ import {
   updateScheduledMessageStatus,
 } from '@auxx/lib/mail-schedule'
 import { MessageSenderService } from '@auxx/lib/messages'
-import { markQuoteSent } from '@auxx/lib/money'
+import { markInvoiceSent, markQuoteSent } from '@auxx/lib/money'
 import type { UserMailVisibility } from '@auxx/lib/permissions/visibility'
 import { buildPlaceholderContextForThread, resolvePlaceholdersInHtml } from '@auxx/lib/placeholders'
 import { ProviderRegistryService } from '@auxx/lib/providers'
@@ -411,9 +411,9 @@ export const threadRouter = createTRPCRouter({
               ticketId: input.linkTicketId,
             })
 
-            // Confirmed-send status flip (money MQ2 build spec §E.3) — only reached
-            // once the primary link above has actually succeeded (no
-            // flip-without-timeline-evidence). Quote-only for now (MI1 adds invoice).
+            // Confirmed-send status flip (money MQ2 build spec §E.3; MI1 §H.3 adds the
+            // invoice branch) — only reached once the primary link above has actually
+            // succeeded (no flip-without-timeline-evidence).
             try {
               const linkedInstance = await ctx.db.query.EntityInstance.findFirst({
                 columns: { entityDefinitionId: true },
@@ -438,8 +438,28 @@ export const threadRouter = createTRPCRouter({
                   if (!(flipError instanceof BadRequestError)) throw flipError
                 }
               }
+
+              const invoiceDefId = await getCachedEntityDefId(organizationId, 'invoice')
+              if (
+                linkedInstance &&
+                invoiceDefId &&
+                linkedInstance.entityDefinitionId === invoiceDefId
+              ) {
+                try {
+                  await markInvoiceSent({
+                    organizationId,
+                    userId,
+                    invoiceInstanceId: input.linkTicketId,
+                  })
+                } catch (flipError) {
+                  // markInvoiceSent asserts status === 'draft' — a BadRequestError here
+                  // means the invoice was already sent (resend) or otherwise not a
+                  // draft; that's the expected idempotent no-op, not a failure.
+                  if (!(flipError instanceof BadRequestError)) throw flipError
+                }
+              }
             } catch (statusFlipError) {
-              logger.error('Failed to flip quote status to sent after send', {
+              logger.error('Failed to flip quote/invoice status to sent after send', {
                 threadId: sentMessage.threadId,
                 ticketId: input.linkTicketId,
                 error:

@@ -18,7 +18,7 @@ const ENTITY_FOLDER_ITEMS_SETTING_KEY = 'sidebar.entities.folderItems'
  * Sidebar-only exclusion — the defs stay `isVisible: true` so kbar create/search
  * and Kopilot entity tools keep seeing them.
  */
-const DISPATCH_SIDEBAR_ENTITY_TYPES = new Set(['work_order', 'service_request', 'quote'])
+const DISPATCH_SIDEBAR_ENTITY_TYPES = new Set(['work_order', 'service_request', 'quote', 'invoice'])
 
 /** Processed entity with visibility metadata */
 export interface ProcessedEntity {
