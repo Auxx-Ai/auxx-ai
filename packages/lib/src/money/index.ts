@@ -13,7 +13,7 @@ export {
   markQuoteSent,
 } from './quote-lifecycle'
 export { reorderLines } from './reorder'
-export { computeDocumentTotals, computeLineTotal, round2 } from './totals'
+export { computeDocumentTotals, computeLineTotal, roundCents } from './totals'
 export {
   recomputeOnLineChange,
   recomputeOnQuoteBillingChange,

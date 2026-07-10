@@ -12,6 +12,7 @@ import { migration031BackfillThreadInboxId } from './migrations/031-backfill-thr
 import { migration032BackfillThreadParticipants } from './migrations/032-backfill-thread-participants'
 import { migration033InboxVisibilityToDefaultLens } from './migrations/033-inbox-visibility-to-default-lens'
 import { migration034RetireInboxVisibility } from './migrations/034-retire-inbox-visibility'
+import { migration035UserSettingRekeyBackfill } from './migrations/035-usersetting-rekey-backfill'
 import { assertUniqueMigrationIds } from './plan'
 import type { DataMigrationDef } from './types'
 import { wrapEntityMigration } from './wrap-entity-migration'
@@ -40,6 +41,7 @@ function buildRegistry(): DataMigrationDef[] {
     migration032BackfillThreadParticipants,
     migration033InboxVisibilityToDefaultLens,
     migration034RetireInboxVisibility,
+    migration035UserSettingRekeyBackfill,
   ]
 
   all.sort((a, b) => a.id.localeCompare(b.id))

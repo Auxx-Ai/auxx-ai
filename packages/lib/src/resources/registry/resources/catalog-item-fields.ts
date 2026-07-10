@@ -240,6 +240,7 @@ export const CATALOG_ITEM_FIELDS: Record<string, ResourceField> = {
     isSystem: true,
     systemAttribute: 'created_at',
     systemSortOrder: 'b0',
+    dbColumn: 'createdAt',
     nullable: false,
     capabilities: {
       filterable: true,
@@ -260,6 +261,7 @@ export const CATALOG_ITEM_FIELDS: Record<string, ResourceField> = {
     isSystem: true,
     systemAttribute: 'updated_at',
     systemSortOrder: 'b1',
+    dbColumn: 'updatedAt',
     nullable: false,
     capabilities: {
       filterable: true,

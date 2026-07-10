@@ -260,7 +260,7 @@ export const QUOTE_FIELDS: Record<string, ResourceField> = {
       configurable: false,
     },
     placeholder: 'Select invoice timing',
-    defaultValue: 'on_completion',
+    defaultValue: 'per_visit_completed',
     description: 'When invoice drafts are generated — copied onto the work order at convert time',
   },
 
@@ -524,6 +524,7 @@ export const QUOTE_FIELDS: Record<string, ResourceField> = {
     isSystem: true,
     systemAttribute: 'created_at',
     systemSortOrder: 'b0',
+    dbColumn: 'createdAt',
     nullable: false,
     capabilities: {
       filterable: true,
@@ -544,6 +545,7 @@ export const QUOTE_FIELDS: Record<string, ResourceField> = {
     isSystem: true,
     systemAttribute: 'updated_at',
     systemSortOrder: 'b1',
+    dbColumn: 'updatedAt',
     nullable: false,
     capabilities: {
       filterable: true,

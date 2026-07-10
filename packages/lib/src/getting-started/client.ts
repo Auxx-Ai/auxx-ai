@@ -4,7 +4,7 @@
 // lives in the web component, this only owns the canonical key set.
 
 /** The setting key under which getting-started state is persisted (per-org). */
-export const GETTING_STARTED_SETTING_KEY = 'onboarding.gettingStarted'
+export const GETTING_STARTED_SETTING_KEY = 'onboarding.gettingStarted' as const
 
 /** Canonical, ordered list of onboarding goal keys. Order is display order. */
 export const GOAL_KEYS = [

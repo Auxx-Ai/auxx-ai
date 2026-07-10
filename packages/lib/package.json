@@ -916,11 +916,11 @@
       "import": "./dist/settings/index.mjs",
       "default": "./src/settings/index.ts"
     },
-    "./settings/types": {
-      "types": "./src/settings/types.ts",
-      "source": "./src/settings/types.ts",
-      "import": "./dist/settings/types.mjs",
-      "default": "./src/settings/types.ts"
+    "./settings/client": {
+      "types": "./src/settings/client.ts",
+      "source": "./src/settings/client.ts",
+      "import": "./dist/settings/client.mjs",
+      "default": "./src/settings/client.ts"
     },
     "./shopify": {
       "types": "./src/shopify/index.ts",

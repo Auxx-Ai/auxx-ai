@@ -1,6 +1,6 @@
 // packages/lib/src/cache/providers/user-settings-provider.ts
 
-import { SettingsService } from '../../settings'
+import { getAllUserSettings } from '../../settings'
 import type { SettingValue } from '../../settings/types'
 import type { CacheProvider } from '../org-cache-provider'
 
@@ -12,7 +12,6 @@ export const userSettingsProvider: CacheProvider<Record<string, SettingValue>> =
       throw new Error(`Invalid composite ID for userSettings: ${compositeId}`)
     }
 
-    const settingsService = new SettingsService(db)
-    return settingsService.getAllUserSettings({ userId, organizationId })
+    return getAllUserSettings({ userId, organizationId, db })
   },
 }

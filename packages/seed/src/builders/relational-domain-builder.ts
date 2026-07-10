@@ -92,9 +92,6 @@ export class RelationalDomainBuilder {
             }),
             key: helpers.valuesFromArray({ values: this.generateSettingKeys() }),
             value: helpers.valuesFromArray({ values: this.generateSettingValues() }),
-            allowUserOverride: helpers.valuesFromArray({
-              values: this.generateUserOverrideFlags(),
-            }),
             scope: helpers.valuesFromArray({ values: this.generateSettingScopes() }),
           },
         },
@@ -520,15 +517,6 @@ export class RelationalDomainBuilder {
       values.push({ enabled: true, value: 'default_setting' })
     }
     return values
-  }
-
-  private generateUserOverrideFlags(): boolean[] {
-    const flags: boolean[] = []
-    const count = this.calculateSettingsCount()
-    for (let i = 0; i < count; i++) {
-      flags.push(i % 5 !== 0) // 80% allow override
-    }
-    return flags
   }
 
   private generateSettingScopes(): string[] {

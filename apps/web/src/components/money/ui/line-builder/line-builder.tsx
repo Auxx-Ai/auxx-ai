@@ -249,8 +249,11 @@ function InlineNumberCell({
     if (parsed !== null && Number.isNaN(parsed)) return
     // Qty is non-nullable — an emptied qty keeps its previous value.
     if (attr === 'line_item_qty' && parsed === null) return
-    if (parsed === (raw ?? null)) return
-    saveFieldValue(recordId, attr, parsed, fieldType)
+    // Prices are typed in dollars but stored as integer cents (CURRENCY convention).
+    const next =
+      parsed !== null && attr === 'line_item_unit_price' ? Math.round(parsed * 100) : parsed
+    if (next === (raw ?? null)) return
+    saveFieldValue(recordId, attr, next, fieldType)
   }
 
   if (readOnly) {
@@ -269,7 +272,13 @@ function InlineNumberCell({
     <input
       value={draft ?? display}
       onChange={(e) => setDraft(e.target.value)}
-      onFocus={() => setDraft(raw !== null && raw !== undefined ? String(raw) : '')}
+      onFocus={() =>
+        setDraft(
+          raw !== null && raw !== undefined
+            ? String(attr === 'line_item_unit_price' ? raw / 100 : raw)
+            : ''
+        )
+      }
       onBlur={commit}
       onKeyDown={(e) => {
         if (e.key === 'Enter') e.currentTarget.blur()

@@ -13,7 +13,6 @@ import { DEFAULT_QUOTA_LIMITS, ModelType, ProviderQuotaType } from '../ai/provid
 import { InboxService } from '../inboxes'
 import { KBService } from '../kb'
 import { UnifiedCrudHandler } from '../resources/crud'
-import { SettingsInitializer } from '../settings/settings-initializer'
 import { EntitySeeder } from './entity-seeder'
 import { SYSTEM_ENTITIES } from './entity-seeder/constants'
 
@@ -171,8 +170,8 @@ export class OrganizationSeeder {
     const isDemo = options?.isDemo ?? false
     logger.info('Starting seeding process for new organization', { organizationId, isDemo })
     try {
-      // Initialize settings first as other components may depend on them
-      await this.seedSettings(organizationId)
+      // Settings v2: no eager row creation — catalog defaults merge at read time
+      // and rows are created lazily on first write (see settings/settings-service.ts).
       // Seed system entities first as other components may reference them
       await this.seedEntities(organizationId)
       // Seed all other components in parallel for better performance
@@ -343,17 +342,6 @@ export class OrganizationSeeder {
     )
   }
   // Create ticket sequence for the organization
-  /**
-   * Initialize default settings for a new organization
-   * @param organizationId The organization ID
-   */
-  private async seedSettings(organizationId: string): Promise<void> {
-    logger.info('Initializing settings for organization', { organizationId })
-    const settingsInitializer = new SettingsInitializer(this.db)
-    await settingsInitializer.initializeOrganizationSettings(organizationId)
-    logger.info('Successfully initialized settings for organization', { organizationId })
-  }
-
   /**
    * Seed system entities (Contact, Ticket, Part) with their custom fields
    * @param organizationId The organization ID
@@ -579,9 +567,8 @@ export class OrganizationSeeder {
   async updateExistingOrganization(organizationId: string): Promise<void> {
     logger.info('Updating existing organization with new defaults', { organizationId })
     try {
-      // Update with any new settings
-      const settingsInitializer = new SettingsInitializer(this.db)
-      await settingsInitializer.updateOrganizationWithNewSettings(organizationId)
+      // Settings v2: no backfill needed — new catalog keys merge in as defaults
+      // at read time for every org automatically.
       // Check if organization has the required inboxes, create if missing
       await this.ensureDefaultInboxes(organizationId)
       // Check if organization has system entities, create if missing

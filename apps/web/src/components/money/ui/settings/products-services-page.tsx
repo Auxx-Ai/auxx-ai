@@ -70,7 +70,7 @@ export function ProductsServicesPage() {
   }
 
   function commitTaxRates(next: TaxRate[]) {
-    updateOrganizationSetting('documents.taxRates', next, false)
+    updateOrganizationSetting('documents.taxRates', next)
   }
 
   function handleAddTaxRate() {

@@ -10,7 +10,7 @@ export type DiscountType = 'percent' | 'amount'
  * `computeDocumentTotals` needs (money MQ1 build spec §F.1).
  */
 export interface LineForTotals {
-  /** `qty * unitPrice`, already computed (round2). `null` when `unitPrice` is null. */
+  /** `qty * unitPrice` in integer cents, already computed (roundCents). `null` when `unitPrice` is null. */
   lineTotal: number | null
   taxable: boolean
 }

@@ -314,8 +314,8 @@ export class ServiceIntegrator {
    * @param organizationId - Organization identifier for user settings.
    */
   private async seedUserSettings(userId: string, organizationId: string): Promise<void> {
-    // TODO: Implement initializeUserSettings method in SettingsInitializer
-    // For now, this is a placeholder - user settings will be created on first login
+    // Settings v2: no eager row creation — user-setting rows are created lazily
+    // on first write (updateUserSetting), so there's nothing to seed here.
   }
 
   // ---- Multi-Phase Execution Methods ----

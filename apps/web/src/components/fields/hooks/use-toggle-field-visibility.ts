@@ -31,6 +31,8 @@ export function useToggleFieldVisibility({
   const view = useOrgFieldView(entityDefinitionId, contextType)
   const toggleFieldVisibility = useDynamicTableStore((s) => s.toggleFieldVisibility)
   const addView = useDynamicTableStore((s) => s.addView)
+  const setInitialized = useDynamicTableStore((s) => s.setInitialized)
+  const utils = api.useUtils()
 
   // Mutation for updating existing view
   const updateView = api.tableView.update.useMutation({
@@ -73,10 +75,16 @@ export function useToggleFieldVisibility({
       // Add the newly created view to the store
       addView(newView)
     },
-    onError: (error) => {
+    onError: async (error) => {
+      // Most common cause: a default view already exists server-side but this
+      // tab's store is stale (e.g. views seeded by a migration after the store
+      // hydrated) — the insert then trips the one-default-per-context unique
+      // index. Rehydrate so the next toggle finds the view and updates it.
+      await utils.tableView.listAll.invalidate()
+      setInitialized(false)
       toastError({
-        title: 'Failed to create field view',
-        description: error.message,
+        title: 'Failed to save field view',
+        description: `${error.message}. Views have been refreshed — please try again.`,
       })
     },
   })

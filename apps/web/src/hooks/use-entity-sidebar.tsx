@@ -98,7 +98,7 @@ export function useEntitySidebar({ scope = 'SIDEBAR' }: UseEntitySidebarOptions 
 
   /** Persist an org-scoped layout setting (admin only, enforced server-side). */
   const setOrg = useCallback(
-    (key: string, value: unknown) => updateOrganizationSetting(key, value as never, false),
+    (key: string, value: unknown) => updateOrganizationSetting(key, value as never),
     [updateOrganizationSetting]
   )
 

@@ -3,7 +3,7 @@
 import { createScopedLogger } from '@auxx/logger'
 import { generateId } from '@auxx/utils'
 import { ok, type Result } from 'neverthrow'
-import { SettingsService } from '../../settings/settings-service'
+import { getAllOrganizationSettings } from '../../settings/settings-service'
 import {
   createCallRecording,
   findOrgsWithRecordingEnabled,
@@ -13,7 +13,6 @@ import {
 import { scheduleBotForRecording } from './bot-manager'
 
 const logger = createScopedLogger('recording:scheduler')
-const settingsService = new SettingsService()
 
 /**
  * Scan for upcoming meetings and auto-schedule recording bots.
@@ -40,7 +39,7 @@ export async function scheduleBotsForUpcomingMeetings(): Promise<
     const organizationId = orgSetting.organizationId
 
     // Get all recording settings for this org in a single query
-    const recordingSettings = await settingsService.getAllOrganizationSettings({
+    const recordingSettings = await getAllOrganizationSettings({
       organizationId,
       scope: 'RECORDING',
     })

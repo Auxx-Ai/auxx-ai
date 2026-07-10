@@ -146,6 +146,8 @@ export function EntityInstanceForm({
 
   // Store action for adding newly created views
   const addView = useDynamicTableStore((s) => s.addView)
+  const setViewStoreInitialized = useDynamicTableStore((s) => s.setInitialized)
+  const apiUtils = api.useUtils()
 
   // Mutations for persisting view config on "Save View"
   const updateViewMutation = api.tableView.update.useMutation({
@@ -157,8 +159,17 @@ export function EntityInstanceForm({
     onSuccess: (newView) => {
       addView(newView)
     },
-    onError: (error) => {
-      toastError({ title: 'Failed to create view', description: error.message })
+    onError: async (error) => {
+      // A default view for this context usually already exists server-side but
+      // this tab's store is stale (e.g. views seeded by a migration after the
+      // store hydrated) — the insert trips the one-default-per-context unique
+      // index. Rehydrate so the next save finds the view and updates it.
+      await apiUtils.tableView.listAll.invalidate()
+      setViewStoreInitialized(false)
+      toastError({
+        title: 'Failed to create view',
+        description: `${error.message}. Views have been refreshed — please try again.`,
+      })
     },
   })
 

@@ -1,6 +1,7 @@
 // packages/lib/src/getting-started/mutations.ts
+import type { Database, Transaction } from '@auxx/database'
 import { onCacheEvent } from '../cache'
-import { SettingsService } from '../settings'
+import { getOrganizationSetting, updateOrganizationSetting } from '../settings'
 import {
   DEFAULT_GETTING_STARTED_STATE,
   GETTING_STARTED_SETTING_KEY,
@@ -11,25 +12,26 @@ import {
 import type { GettingStartedContext } from './types'
 
 /** Read the current persisted state directly (not via cache — write path). */
-async function readState(service: SettingsService, organizationId: string) {
-  const value = await service.getOrganizationSetting({
+async function readState(db: Database | Transaction | undefined, organizationId: string) {
+  const value = await getOrganizationSetting({
     organizationId,
     key: GETTING_STARTED_SETTING_KEY,
+    db,
   })
   return (value as GettingStartedState | null) ?? DEFAULT_GETTING_STARTED_STATE
 }
 
 /** Persist new state + invalidate the org-settings cache. */
 async function writeState(
-  service: SettingsService,
+  db: Database | Transaction | undefined,
   organizationId: string,
   state: GettingStartedState
 ) {
-  await service.updateOrganizationSetting({
+  await updateOrganizationSetting({
     organizationId,
     key: GETTING_STARTED_SETTING_KEY,
     value: state,
-    allowUserOverride: false,
+    db,
   })
   await onCacheEvent('org.settings.changed', { orgId: organizationId })
 }
@@ -39,10 +41,9 @@ async function writeState(
  * into `manualCompletions` — never clobbers, so concurrent writers are safe.
  */
 export async function markGoalComplete(ctx: GettingStartedContext, key: GoalKey): Promise<void> {
-  const service = new SettingsService(ctx.db)
-  const state = await readState(service, ctx.organizationId)
+  const state = await readState(ctx.db, ctx.organizationId)
   if (state.manualCompletions.includes(key)) return
-  await writeState(service, ctx.organizationId, {
+  await writeState(ctx.db, ctx.organizationId, {
     ...state,
     manualCompletions: [...state.manualCompletions, key],
   })
@@ -56,13 +57,12 @@ export async function completeAllGoals(
   ctx: GettingStartedContext,
   keys: readonly string[]
 ): Promise<void> {
-  const service = new SettingsService(ctx.db)
-  const state = await readState(service, ctx.organizationId)
+  const state = await readState(ctx.db, ctx.organizationId)
   const union = new Set(state.manualCompletions)
   for (const key of keys) {
     if (isGoalKey(key)) union.add(key)
   }
-  await writeState(service, ctx.organizationId, {
+  await writeState(ctx.db, ctx.organizationId, {
     ...state,
     manualCompletions: [...union],
   })
@@ -70,9 +70,8 @@ export async function completeAllGoals(
 
 /** Dismiss (stamp `dismissedAt`) or un-dismiss (clear it) the widget. */
 export async function setDismissed(ctx: GettingStartedContext, dismissed: boolean): Promise<void> {
-  const service = new SettingsService(ctx.db)
-  const state = await readState(service, ctx.organizationId)
-  await writeState(service, ctx.organizationId, {
+  const state = await readState(ctx.db, ctx.organizationId)
+  await writeState(ctx.db, ctx.organizationId, {
     ...state,
     dismissedAt: dismissed ? new Date().toISOString() : null,
   })

@@ -27,7 +27,7 @@ export function useMasterKopilotToolsets(catalog: CatalogNode[]) {
   const effective = useMemo(() => expandWildcards(stored, allSlugs), [stored, allSlugs])
 
   const writeToolsets = (next: ToolsetEntry[]) =>
-    updateOrganizationSetting('kopilot.toolsets', next, false)
+    updateOrganizationSetting('kopilot.toolsets', next)
 
   return {
     /** Wildcard-expanded entry list — feed this into `stateBySlug`. */
@@ -45,11 +45,10 @@ export function useMasterKopilotToolsets(catalog: CatalogNode[]) {
       await writeToolsets(next)
     },
     bindAppAccount: async (appId: string, credId: string) => {
-      await updateOrganizationSetting(
-        'kopilot.appAccounts',
-        { ...appAccounts, [appId]: { credId } },
-        false
-      )
+      await updateOrganizationSetting('kopilot.appAccounts', {
+        ...appAccounts,
+        [appId]: { credId },
+      })
     },
   }
 }

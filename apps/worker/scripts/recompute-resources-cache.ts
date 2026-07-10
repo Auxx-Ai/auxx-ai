@@ -15,8 +15,8 @@ import { getOrgCache } from '@auxx/lib/cache'
 async function main() {
   const orgs = await database.select({ id: schema.Organization.id }).from(schema.Organization)
   for (const org of orgs) {
-    await getOrgCache().invalidateAndRecompute(org.id, ['resources'])
-    console.log(`recomputed resources cache: ${org.id}`)
+    await getOrgCache().invalidateAndRecompute(org.id, ['resources', 'customFields'])
+    console.log(`recomputed resources + customFields cache: ${org.id}`)
   }
   process.exit(0)
 }

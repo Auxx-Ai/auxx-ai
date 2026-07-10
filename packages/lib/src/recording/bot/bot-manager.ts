@@ -5,14 +5,13 @@ import { createScopedLogger } from '@auxx/logger'
 import { err, ok, type Result } from 'neverthrow'
 import { NotFoundError } from '../../errors'
 import { getQueue, Queues } from '../../jobs/queues'
-import { SettingsService } from '../../settings/settings-service'
+import { getOrganizationSetting } from '../../settings/settings-service'
 import { findRecording, updateRecording } from '../recording-queries'
 import { getProvider } from './providers'
 import type { BotProviderId, BotStatus } from './types'
 import { STATUS_ORDINAL, TERMINAL_STATUSES } from './types'
 
 const logger = createScopedLogger('recording:bot-manager')
-const settingsService = new SettingsService()
 
 /**
  * Schedule a bot to join a meeting and start recording.
@@ -39,7 +38,7 @@ export async function scheduleBotForRecording(params: {
     joinAt,
   } = params
 
-  const botProvider = (await settingsService.getOrganizationSetting({
+  const botProvider = (await getOrganizationSetting({
     organizationId,
     key: 'recording.botProvider',
   })) as string
@@ -116,7 +115,7 @@ export async function cancelBot(params: {
   }
 
   if (recording.externalBotId) {
-    const botProvider = (await settingsService.getOrganizationSetting({
+    const botProvider = (await getOrganizationSetting({
       organizationId,
       key: 'recording.botProvider',
     })) as string

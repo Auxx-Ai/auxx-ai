@@ -64,10 +64,11 @@ function firstOf<T>(value: T | T[] | null | undefined): T | null {
   return (value ?? null) as T | null
 }
 
+/** `price` is integer cents (FieldType.CURRENCY storage convention). */
 function formatPrice(price: number | null, currencyCode: string): string {
   if (price === null) return 'No price'
   return new Intl.NumberFormat(undefined, { style: 'currency', currency: currencyCode }).format(
-    price
+    price / 100
   )
 }
 

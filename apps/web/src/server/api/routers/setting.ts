@@ -1,8 +1,17 @@
 // apps/web/src/server/api/routers/setting.ts
 
 import { getOrgCache, getUserCache, onCacheEvent } from '@auxx/lib/cache'
+import { BadRequestError } from '@auxx/lib/errors'
 import { isAdminOrOwner } from '@auxx/lib/members'
-import { SETTINGS_CATALOG, SettingsService } from '@auxx/lib/settings'
+import {
+  batchUpdateOrganizationSettings,
+  isSettingKey,
+  resetUserSetting,
+  SETTINGS_CATALOG,
+  type SettingKey,
+  updateOrganizationSetting,
+  updateUserSetting,
+} from '@auxx/lib/settings'
 import { createScopedLogger } from '@auxx/logger'
 import { z } from 'zod'
 import { recordAuditFromCtx } from '~/server/api/audit-context'
@@ -19,7 +28,6 @@ const getUserSettingSchema = z.object({
 const updateOrgSettingSchema = z.object({
   key: z.string(),
   value: z.any(),
-  allowUserOverride: z.boolean(),
 })
 
 // Input validation schema for updating a user setting
@@ -40,7 +48,7 @@ const getScopeSettingsSchema = z.object({
 
 // Input validation schema for batch updating organization settings
 const batchUpdateOrgSettingsSchema = z.object({
-  settings: z.array(z.object({ key: z.string(), value: z.any(), allowUserOverride: z.boolean() })),
+  settings: z.array(z.object({ key: z.string(), value: z.any() })),
 })
 
 export const settingsRouter = createTRPCRouter({
@@ -55,7 +63,7 @@ export const settingsRouter = createTRPCRouter({
     const { organizationId, userId } = ctx.session
 
     // Preserve existing contract: unknown keys return null
-    if (!SETTINGS_CATALOG[key]) {
+    if (!isSettingKey(key)) {
       logger.warn(`Unknown setting requested: ${key}`)
       return null
     }
@@ -76,7 +84,7 @@ export const settingsRouter = createTRPCRouter({
       // Filter by scope using the catalog
       const result: Record<string, unknown> = {}
       for (const [key, value] of Object.entries(allSettings)) {
-        if (SETTINGS_CATALOG[key]?.scope === input.scope) {
+        if (isSettingKey(key) && SETTINGS_CATALOG[key].scope === input.scope) {
           result[key] = value
         }
       }
@@ -89,19 +97,16 @@ export const settingsRouter = createTRPCRouter({
     .use(notDemo('change organization settings'))
     .mutation(async ({ ctx, input }) => {
       const { organizationId, userId } = ctx.session
-      const { key, value, allowUserOverride } = input
+      const { key, value } = input
+      if (!isSettingKey(key)) {
+        throw new BadRequestError(`Unknown setting: ${key}`)
+      }
       // Check permission: only owners and admins can update org settings
       if (!(await isAdminOrOwner(organizationId, userId))) {
         throw new Error('You do not have permission to update organization settings')
       }
 
-      const settingsService = new SettingsService(ctx.db)
-      await settingsService.updateOrganizationSetting({
-        organizationId,
-        key,
-        value,
-        allowUserOverride,
-      })
+      await updateOrganizationSetting({ organizationId, key, value, db: ctx.db })
 
       await onCacheEvent('org.settings.changed', { orgId: organizationId, broadcastUserKeys: true })
 
@@ -110,7 +115,7 @@ export const settingsRouter = createTRPCRouter({
         action: 'setting.changed',
         targetType: 'OrganizationSetting',
         targetId: key,
-        newState: { value, allowUserOverride },
+        newState: { value },
       })
 
       return { success: true }
@@ -122,9 +127,11 @@ export const settingsRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const { organizationId, userId } = ctx.session
       const { key, value } = input
+      if (!isSettingKey(key)) {
+        throw new BadRequestError(`Unknown setting: ${key}`)
+      }
 
-      const settingsService = new SettingsService(ctx.db)
-      await settingsService.updateUserSetting({ userId, organizationId, key, value })
+      await updateUserSetting({ userId, organizationId, key, value, db: ctx.db })
 
       await onCacheEvent('user.settings.changed', { orgId: organizationId, userId })
 
@@ -137,8 +144,10 @@ export const settingsRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const { organizationId, userId } = ctx.session
       const { key } = input
-      const settingsService = new SettingsService(ctx.db)
-      await settingsService.resetUserSetting({ userId, organizationId, key })
+      if (!isSettingKey(key)) {
+        throw new BadRequestError(`Unknown setting: ${key}`)
+      }
+      await resetUserSetting({ userId, organizationId, key, db: ctx.db })
 
       await onCacheEvent('user.settings.changed', { orgId: organizationId, userId })
 
@@ -159,7 +168,7 @@ export const settingsRouter = createTRPCRouter({
         .map(([key, metadata]) => ({
           key,
           value: orgSettings[key] ?? metadata.defaultValue,
-          allowUserOverride: !metadata.organizationOnly,
+          access: metadata.access,
           metadata,
         }))
     }),
@@ -176,8 +185,16 @@ export const settingsRouter = createTRPCRouter({
         throw new Error('You do not have permission to update organization settings')
       }
 
-      const settingsService = new SettingsService(ctx.db)
-      await settingsService.batchUpdateOrganizationSettings({ organizationId, settings })
+      const unknownKey = settings.find((s) => !isSettingKey(s.key))
+      if (unknownKey) {
+        throw new BadRequestError(`Unknown setting: ${unknownKey.key}`)
+      }
+
+      await batchUpdateOrganizationSettings({
+        organizationId,
+        settings: settings as Array<{ key: SettingKey; value: any }>,
+        db: ctx.db,
+      })
 
       await onCacheEvent('org.settings.changed', { orgId: organizationId, broadcastUserKeys: true })
 
