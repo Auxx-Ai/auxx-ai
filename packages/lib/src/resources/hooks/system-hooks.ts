@@ -2,6 +2,7 @@
 
 import { COMMON_HOOKS } from './common-hooks'
 import { CONTACT_HOOKS } from './contact-hooks'
+import { QUOTE_HOOKS } from './quote-hooks'
 import { SERVICE_REQUEST_HOOKS } from './service-request-hooks'
 import { TICKET_HOOKS } from './ticket-hooks'
 import type { SystemHook, SystemHookRegistry } from './types'
@@ -21,6 +22,7 @@ const HOOKS_BY_ENTITY_TYPE: Record<string, SystemHookRegistry> = {
   ticket: TICKET_HOOKS,
   work_order: WORK_ORDER_HOOKS,
   service_request: SERVICE_REQUEST_HOOKS,
+  quote: QUOTE_HOOKS,
 }
 
 /**

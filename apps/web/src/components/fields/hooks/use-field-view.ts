@@ -37,6 +37,25 @@ interface UseFieldViewReturn {
 }
 
 /**
+ * Default visibility for a field a stored view has never seen. In dialog
+ * contexts, noisy-by-default fields are hidden: inverse relationships (the
+ * reverse side of a relationship pair, e.g. contact → Work Orders), fields
+ * opted out via the registry's `showInDialogs: false`, and connector-declared
+ * external-id fields (`CustomField.isIdentity`). Explicit `fieldVisibility`
+ * entries in a stored view always win — this only governs the fallback.
+ */
+export function isFieldDefaultHiddenInDialogs(
+  field: ResourceField,
+  contextType: ViewContextType
+): boolean {
+  if (contextType !== 'dialog_create' && contextType !== 'dialog_edit') return false
+  if (field.relationship?.isInverse) return true
+  if (field.showInDialogs === false) return true
+  if (field.isIdentity === true) return true
+  return false
+}
+
+/**
  * Hook for consuming org-wide field view configuration from the store.
  * Returns default config if no org view exists.
  */
@@ -67,6 +86,14 @@ export function useFieldView({
   // Whether we're using a stored org view or the generated default
   const hasOrgView = !!view
 
+  // Fields with no explicit `fieldVisibility` entry fall back to the dialog
+  // default-hidden rule (see isFieldDefaultHiddenInDialogs) — table/kanban/panel
+  // contexts are unaffected.
+  const defaultHiddenInDialogs = useCallback(
+    (field: ResourceField): boolean => isFieldDefaultHiddenInDialogs(field, contextType),
+    [contextType]
+  )
+
   // Get visible fields in configured order.
   // Fields with `capabilities.hidden` are excluded unconditionally — they are
   // system-internal and users must not see them in any view or configuration.
@@ -87,6 +114,9 @@ export function useFieldView({
       // When no org view exists, also respect showInPanel from field definitions
       if (fieldVisibility[fieldId] === false) continue
       if (!hasOrgView && field.showInPanel === false) continue
+      // No explicit visibility entry for this field — fall back to the
+      // dialog default-hidden rule (explicit entries above already won).
+      if (fieldVisibility[fieldId] === undefined && defaultHiddenInDialogs(field)) continue
       orderedFields.push(field)
       fieldMap.delete(fieldId)
     }
@@ -96,11 +126,12 @@ export function useFieldView({
       if (field.capabilities.hidden) continue
       if (fieldVisibility[fieldId] === false) continue
       if (!hasOrgView && field.showInPanel === false) continue
+      if (fieldVisibility[fieldId] === undefined && defaultHiddenInDialogs(field)) continue
       orderedFields.push(field)
     }
 
     return orderedFields
-  }, [config, fields, hasOrgView])
+  }, [config, fields, hasOrgView, defaultHiddenInDialogs])
 
   // Get all fields in configured order (for edit mode — includes fields the
   // user has toggled off but NOT registry-hidden fields).

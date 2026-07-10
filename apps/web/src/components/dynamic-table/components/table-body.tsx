@@ -34,7 +34,7 @@ export function TableBody<TData extends object>({
   scrollContainerRef,
 }: TableBodyProps) {
   // Get config from focused contexts
-  const { isLoading, entityDefinitionId, dragDropConfig, emptyState, standalone } =
+  const { isLoading, entityDefinitionId, dragDropConfig, emptyState, standalone, hideHeader } =
     useTableConfig<TData>()
   const { table } = useTableInstance<TData>()
   const { cellSelectionConfig } = useCellSelection()
@@ -80,65 +80,71 @@ export function TableBody<TData extends object>({
           style={{
             width: `${table.getTotalSize() + (entityDefinitionId ? 150 : 0)}px`,
           }}>
-          {/* Table Header with Column DndContext */}
-          <ColumnDndProvider table={table} visibleColumns={visibleColumns}>
-            <div
-              className={cn(
-                'sticky z-21 min-w-full from-white to-white/50 bg-gradient-to-b dark:from-[#2c313a] dark:to-[#2c313a] backdrop-blur border-b border-primary-200/50 dark:border-[#1e2227]',
-                hideToolbar ? 'top-0' : 'top-11'
-              )}>
-              {table.getHeaderGroups().map((headerGroup) => (
-                <div key={headerGroup.id} className='flex min-w-full items-stretch'>
-                  {/* Render left pinned columns */}
-                  {headerGroup.headers
-                    .filter((header) => header.column.getIsPinned() === 'left')
-                    .map((header) => {
-                      const isCheckboxColumn = header.column.id === '_checkbox'
+          {/* Table Header with Column DndContext — skipped entirely when hideHeader
+              (embedded fixed-column tables, e.g. the money line builder, money MQ1
+              build spec §H.1: the column set is small/self-evident, no header-driven
+              sort/filter/reorder to expose). Independent of showFooter/the footer
+              slot, which renders separately at the bottom of the scroll area. */}
+          {!hideHeader && (
+            <ColumnDndProvider table={table} visibleColumns={visibleColumns}>
+              <div
+                className={cn(
+                  'sticky z-21 min-w-full from-white to-white/50 bg-gradient-to-b dark:from-[#2c313a] dark:to-[#2c313a] backdrop-blur border-b border-primary-200/50 dark:border-[#1e2227]',
+                  hideToolbar ? 'top-0' : 'top-11'
+                )}>
+                {table.getHeaderGroups().map((headerGroup) => (
+                  <div key={headerGroup.id} className='flex min-w-full items-stretch'>
+                    {/* Render left pinned columns */}
+                    {headerGroup.headers
+                      .filter((header) => header.column.getIsPinned() === 'left')
+                      .map((header) => {
+                        const isCheckboxColumn = header.column.id === '_checkbox'
 
-                      if (isCheckboxColumn) {
-                        return <CheckboxHeaderCell key={header.id} header={header} />
-                      }
+                        if (isCheckboxColumn) {
+                          return <CheckboxHeaderCell key={header.id} header={header} />
+                        }
 
-                      return (
-                        <div
-                          key={header.id}
-                          className='sm:sticky shrink-0 sm:z-30 sm:backdrop-blur sm:bg-background/40 dark:bg-transparent'
-                          style={{ left: header.column.getStart('left') }}>
-                          <HeaderCellWrapper header={header} />
-                        </div>
-                      )
-                    })}
+                        return (
+                          <div
+                            key={header.id}
+                            className='sm:sticky shrink-0 sm:z-30 sm:backdrop-blur sm:bg-background/40 dark:bg-transparent'
+                            style={{ left: header.column.getStart('left') }}>
+                            <HeaderCellWrapper header={header} />
+                          </div>
+                        )
+                      })}
 
-                  {/* Render center (non-pinned) columns */}
-                  {headerGroup.headers
-                    .filter((header) => !header.column.getIsPinned())
-                    .map((header) => {
-                      const isCheckboxColumn = header.column.id === '_checkbox'
+                    {/* Render center (non-pinned) columns */}
+                    {headerGroup.headers
+                      .filter((header) => !header.column.getIsPinned())
+                      .map((header) => {
+                        const isCheckboxColumn = header.column.id === '_checkbox'
 
-                      if (isCheckboxColumn) {
-                        return <CheckboxHeaderCell key={header.id} header={header} />
-                      }
+                        if (isCheckboxColumn) {
+                          return <CheckboxHeaderCell key={header.id} header={header} />
+                        }
 
-                      return <HeaderCellWrapper key={header.id} header={header} />
-                    })}
+                        return <HeaderCellWrapper key={header.id} header={header} />
+                      })}
 
-                  {/* Add Column button - sticky right so it stays visible on scroll.
+                    {/* Add Column button - sticky right so it stays visible on scroll.
                       `shrink-0` keeps flex from squishing it to 0 when column widths
                       already sum to the container's fixed width (totalSize). Solid
                       header-matched backdrop (no gradient) so data rows beneath paint
                       their own bg unmasked to the viewport edge. */}
-                  {entityDefinitionId && (
-                    <>
-                      <div className='sticky border-l border-primary-200/50 dark:border-[#1e2227] right-0 z-20 shrink-0 flex items-center px-1 backdrop-blur bg-white/80 dark:bg-[#2c313a]/80'>
-                        <AddColumnButton />
-                      </div>
-                      <div className='shrink-0 ' style={{ width: 110 }} />
-                    </>
-                  )}
-                </div>
-              ))}
-            </div>
-          </ColumnDndProvider>
+                    {entityDefinitionId && (
+                      <>
+                        <div className='sticky border-l border-primary-200/50 dark:border-[#1e2227] right-0 z-20 shrink-0 flex items-center px-1 backdrop-blur bg-white/80 dark:bg-[#2c313a]/80'>
+                          <AddColumnButton />
+                        </div>
+                        <div className='shrink-0 ' style={{ width: 110 }} />
+                      </>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </ColumnDndProvider>
+          )}
 
           {/* Table Body with Row DndContext */}
           <RowDndProvider>

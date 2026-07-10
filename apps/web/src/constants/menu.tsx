@@ -6,9 +6,11 @@ import {
   Cable,
   CheckSquare,
   CircleAlert,
+  ClipboardList,
   ComponentIcon,
   Database,
   Feather,
+  FileText,
   FileUp,
   Folder,
   Forward,
@@ -28,12 +30,14 @@ import {
   Sun,
   Tag,
   Trash2,
+  Truck,
   UserCog,
   Users,
   UsersRound,
   Video,
   Waypoints,
   Webhook,
+  Wrench,
   Zap,
 } from 'lucide-react'
 
@@ -113,6 +117,35 @@ export const SIDEBAR_MENU: SidebarProps[] = [
     featureKey: 'workflows',
   },
   { id: 'tasks', label: 'Tasks', slug: 'tasks', icon: <CheckSquare /> },
+  {
+    id: 'dispatch',
+    label: 'Dispatch',
+    slug: 'dispatch',
+    icon: <Truck />,
+    featureKey: 'dispatch',
+    skipParentSlug: true,
+    preventNavigation: true,
+    items: [
+      {
+        id: 'dispatch-requests',
+        label: 'Requests',
+        slug: 'service-requests',
+        icon: <ClipboardList />,
+      },
+      {
+        id: 'dispatch-quotes',
+        label: 'Quotes',
+        slug: 'quotes',
+        icon: <FileText />,
+      },
+      {
+        id: 'dispatch-work-orders',
+        label: 'Work Orders',
+        slug: 'work-orders',
+        icon: <Wrench />,
+      },
+    ],
+  },
   // Member-visible by design (no adminOnly) — dashboards are member-safe.
 
   {

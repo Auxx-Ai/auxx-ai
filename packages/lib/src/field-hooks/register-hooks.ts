@@ -2,6 +2,7 @@
 
 import { registerInventoryDeductionRule } from '../data-connectors/inventory-bridge-rule-action'
 import { ensureVisitOnWorkOrderCreate } from '../dispatch/visit-hooks'
+import { recomputeOnLineChange, recomputeOnQuoteBillingChange } from '../money/totals-hooks'
 import { handleRecordRulesOnFieldChange } from '../record-rules/hook-handler'
 import { invalidateInboxCacheOnFieldChange } from './post/inbox-cache-invalidation'
 import { publishFieldChangeEvent } from './post/publish-field-change-event'
@@ -67,6 +68,14 @@ export function registerAllHooks(): void {
   // instant a work order is created, on every create path. Keyed off the first write of
   // work_order_number (§F.4a's hook is the only writer, fires exactly once per create).
   registerEntityFieldChangeHooks('work-orders', [ensureVisitOnWorkOrderCreate])
+
+  // Money totals engine (money MQ1 build spec §F.2): recompute the mirrored
+  // quote_subtotal/tax_total/total whenever a line's qty/unitPrice/taxable/discount
+  // or its quote/work_order rel changes, or whenever the quote's own billing fields
+  // (discount type/value, tax rate) change. Keyed by apiSlug — line_item's is
+  // 'line-items', quote's is 'quotes'.
+  registerEntityFieldChangeHooks('line-items', [recomputeOnLineChange])
+  registerEntityFieldChangeHooks('quotes', [recomputeOnQuoteBillingChange])
 
   // ---------------------------------------------------------------------------
   // PRE-WRITE HOOKS

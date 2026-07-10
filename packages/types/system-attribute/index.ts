@@ -119,6 +119,7 @@ export const SYSTEM_ATTRIBUTES = [
   'part_vendor_parts',
   'part_subparts',
   'part_used_in_assemblies',
+  'part_catalog_items', // inverse of catalog_item_part
 
   // ─── Vendor Part fields ────────────────────────────────────────
   'vendor_part_part',
@@ -162,6 +163,7 @@ export const SYSTEM_ATTRIBUTES = [
   'contact_meetings',
   'contact_work_orders',
   'contact_service_requests',
+  'contact_quotes',
 
   // ─── Company fields ────────────────────────────────────────────
   'company_name',
@@ -215,6 +217,8 @@ export const SYSTEM_ATTRIBUTES = [
   'work_order_completion_notes',
   'work_order_pricing_model',
   'work_order_invoice_timing',
+  'work_order_quote', // owning — belongs_to quote (converted-from)
+  'work_order_line_items', // inverse of line_item_work_order
 
   // ─── Service Request fields ────────────────────────────────────
   'service_request_number',
@@ -229,6 +233,53 @@ export const SYSTEM_ATTRIBUTES = [
   'service_request_ticket',
   'service_request_status',
   'service_request_work_orders', // inverse of work_order_request — lives ON service_request
+  'service_request_quotes', // inverse of quote_request
+
+  // ─── Quote fields ─────────────────────────────────────────────
+  'quote_number',
+  'quote_title',
+  'quote_status',
+  'quote_contact',
+  'quote_request',
+  'quote_valid_until',
+  'quote_pricing_model',
+  'quote_invoice_timing',
+  'quote_discount_type',
+  'quote_discount_value',
+  'quote_tax_name',
+  'quote_tax_rate',
+  'quote_subtotal',
+  'quote_tax_total',
+  'quote_total',
+  'quote_notes',
+  'quote_terms',
+  'quote_line_items', // inverse of line_item_quote
+  'quote_work_orders', // inverse of work_order_quote
+
+  // ─── Line Item fields ──────────────────────────────────────────
+  'line_item_name',
+  'line_item_description',
+  'line_item_qty',
+  'line_item_unit_price',
+  'line_item_line_total',
+  'line_item_taxable',
+  'line_item_category',
+  'line_item_discount',
+  'line_item_sort_order',
+  'line_item_visit_id',
+  'line_item_catalog_item',
+  'line_item_quote',
+  'line_item_work_order',
+
+  // ─── Catalog Item fields ────────────────────────────────────────
+  'catalog_item_name',
+  'catalog_item_description',
+  'catalog_item_category',
+  'catalog_item_default_unit_price',
+  'catalog_item_taxable',
+  'catalog_item_active',
+  'catalog_item_part',
+  'catalog_item_line_items', // inverse of line_item_catalog_item
 
   // ─── Inbox fields ───────────────────────────────────────────────
   'inbox_name',

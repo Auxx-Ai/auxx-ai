@@ -291,6 +291,29 @@ export const SETTINGS_CATALOG: Record<string, SettingConfig> = {
     description: 'Per-app explicit workspace cred for master Kopilot. Missing = off.',
     organizationOnly: true,
   },
+
+  // ── MONEY (quoting, money MQ1 build spec §G.1) ──────────────────
+  // Shipped under GENERAL rather than a dedicated DOCUMENTS scope (orchestrator decision —
+  // no DDL for MQ1). The settings refactor ([02-document-settings.md]) moves these + adds
+  // validation/shape work when the Documents settings page lands.
+  'organization.currency': {
+    key: 'organization.currency',
+    scope: 'GENERAL',
+    defaultValue: 'USD',
+    type: 'string',
+    description: 'Organization-wide currency code — consumed by CURRENCY display + totals docs',
+    organizationOnly: true,
+  },
+  'documents.taxRates': {
+    key: 'documents.taxRates',
+    scope: 'GENERAL',
+    // Array<{ id: string; name: string; rate: number; isDefault?: boolean }> — documents
+    // SNAPSHOT name+rate at pick time; editing a rate never rewrites existing documents.
+    defaultValue: [],
+    type: 'object',
+    description: 'Org tax rate presets for the quote/invoice line builder tax picker',
+    organizationOnly: true,
+  },
 }
 
 export class SettingsService {

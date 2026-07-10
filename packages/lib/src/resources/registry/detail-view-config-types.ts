@@ -64,7 +64,7 @@ export interface DetailViewConfig {
 }
 
 /** Entity types that have specific detail view configurations */
-export type DetailViewEntityType = 'contact' | 'ticket' | 'part' | 'entity'
+export type DetailViewEntityType = 'contact' | 'ticket' | 'part' | 'entity' | 'quote'
 
 /** Registry type mapping entity types to their configurations */
 export type DetailViewConfigRegistry = Record<DetailViewEntityType, DetailViewConfig>

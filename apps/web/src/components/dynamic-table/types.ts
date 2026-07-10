@@ -353,6 +353,14 @@ export interface DynamicTableProps<TData = any> {
   showFooter?: boolean
   /** Hide toolbar (default: false) */
   hideToolbar?: boolean
+  /**
+   * Hide the column header row entirely (default: false). For embedded/fixed-column
+   * tables (e.g. the money line builder, money MQ1 build spec §H.1) where the column
+   * set is small and self-evident — no sort/filter/reorder affordances to expose via
+   * a header. Independent of `hideToolbar` (a separate, non-sticky element above the
+   * header) and orthogonal to `showFooter`/the footer slot (bottom of the table).
+   */
+  hideHeader?: boolean
 
   // Import/Export
   /** Import handler (legacy - triggers file picker) */

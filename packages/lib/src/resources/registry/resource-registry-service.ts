@@ -97,6 +97,8 @@ type CustomFieldRecord = {
   appFieldKey: string | null
   // Data-connector ownership (owned-mode provisioned field)
   dataConnectorId: string | null
+  // Connector-declared external-id field (e.g. Shopify customerId)
+  isIdentity: boolean
 }
 
 /** EntityDefinition with display field relations and customFields loaded */
@@ -900,6 +902,7 @@ export class ResourceRegistryService {
           dynamicOptionsKey: staticField.dynamicOptionsKey,
           operatorOverrides: staticField.operatorOverrides,
           showInPanel: staticField.showInPanel,
+          showInDialogs: staticField.showInDialogs,
           placeholder: staticField.placeholder,
           nullable: staticField.nullable,
           defaultValue: staticField.defaultValue,
@@ -1057,6 +1060,10 @@ export class ResourceRegistryService {
         // System field properties - determined by field's systemAttribute
         isSystem: isSystemField,
         showInPanel: true, // All fields shown in panel
+        // Template/app-provisioned fields can opt out of the default create/update
+        // dialogs via `options.showInDialogs` (set at field-creation time). Undefined
+        // when never set — see use-field-view.ts for the default-hidden fallback.
+        showInDialogs: (field.options as { showInDialogs?: boolean } | null)?.showInDialogs,
         systemAttribute: field.systemAttribute ?? undefined,
 
         // App ownership — surfaced so consumers can reason about ownership
@@ -1068,6 +1075,10 @@ export class ResourceRegistryService {
         // Data-connector ownership (owned-mode provisioned field) — drives the
         // "Managed by <connector>" lock badge. Distinct from app/system ownership.
         dataConnectorId: field.dataConnectorId ?? undefined,
+
+        // Connector-declared external-id field (e.g. Shopify customerId) — noisy
+        // in default create/update dialogs, see use-field-view.ts.
+        isIdentity: field.isIdentity,
 
         // Convenience properties (avoid needing transforms)
         name: field.name,

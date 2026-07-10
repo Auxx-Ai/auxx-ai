@@ -481,6 +481,63 @@ export const WORK_ORDER_FIELDS: Record<string, ResourceField> = {
     description: 'When invoice drafts are generated (invoicing module, later)',
   },
 
+  quote: {
+    id: toFieldId('quote'),
+    key: 'quote',
+    label: 'Quote',
+    type: BaseType.RELATION,
+    fieldType: FieldType.RELATIONSHIP,
+    isSystem: true,
+    systemAttribute: 'work_order_quote',
+    systemSortOrder: 'aI',
+    nullable: true,
+    capabilities: {
+      filterable: true,
+      sortable: false,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    relationship: {
+      inverseResourceFieldId: 'quote:workOrders' as ResourceFieldId,
+      relationshipType: 'belongs_to',
+      isInverse: false,
+    },
+    relationshipConfig: {
+      relatedEntityType: 'quote',
+      relationshipType: 'belongs_to',
+      inverseName: 'Work Orders',
+      inverseSystemAttribute: 'quote_work_orders',
+    },
+    description: 'Quote this job was converted from',
+  },
+
+  // Reverse relationship: lineItems (from line_item.workOrder)
+  lineItems: {
+    id: toFieldId('lineItems'),
+    key: 'lineItems',
+    label: 'Line Items',
+    type: BaseType.RELATION,
+    fieldType: FieldType.RELATIONSHIP,
+    isSystem: true,
+    systemAttribute: 'work_order_line_items',
+    systemSortOrder: 'aJ',
+    showInPanel: false,
+    capabilities: {
+      filterable: true,
+      sortable: false,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    relationship: {
+      inverseResourceFieldId: 'line_item:workOrder' as ResourceFieldId,
+      relationshipType: 'has_many',
+      isInverse: true,
+    },
+    description: 'Line items copied onto this job at convert time',
+  },
+
   createdAt: {
     id: toFieldId('createdAt'),
     key: 'createdAt',

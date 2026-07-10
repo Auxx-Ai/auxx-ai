@@ -49,6 +49,9 @@ export interface TableConfigContextValue<TData = any> {
   /** Hide toolbar */
   hideToolbar: boolean
 
+  /** Hide the column header row entirely */
+  hideHeader?: boolean
+
   /** Standalone mode - bypasses view store initialization */
   standalone: boolean
 

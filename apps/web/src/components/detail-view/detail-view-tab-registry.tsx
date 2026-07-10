@@ -45,6 +45,14 @@ export const DETAIL_VIEW_TAB_COMPONENTS: Record<
     import('../drawers/tabs/part-vendors-tab').then((m) => ({ default: m.PartVendorsTab })),
   'part:inventory': () =>
     import('../drawers/tabs/part-inventory-tab').then((m) => ({ default: m.PartInventoryTab })),
+
+  // ─────────────────────────────────────────────────────────────────
+  // QUOTE TABS
+  // ─────────────────────────────────────────────────────────────────
+  'quote:line-items': () =>
+    import('../money/ui/quote/quote-line-items-tab').then((m) => ({
+      default: m.QuoteLineItemsTab,
+    })),
 }
 
 /**

@@ -103,6 +103,7 @@
       "templateFieldId": "documents",
       "name": "Documents",
       "type": "FILE",
+      "showInDialogs": false,
       "options": {
         "file": { "multiple": true }
       }

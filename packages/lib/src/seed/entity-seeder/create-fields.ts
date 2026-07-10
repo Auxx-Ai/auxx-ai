@@ -5,11 +5,14 @@ import { createScopedLogger } from '@auxx/logger'
 import type { FieldOptions } from '../../custom-fields'
 import type { ResourceField } from '../../resources/registry/field-types'
 import { ARTICLE_FIELDS } from '../../resources/registry/resources/article-fields'
+import { CATALOG_ITEM_FIELDS } from '../../resources/registry/resources/catalog-item-fields'
 import { COMPANY_FIELDS } from '../../resources/registry/resources/company-fields'
 import { CONTACT_FIELDS } from '../../resources/registry/resources/contact-fields'
 import { INBOX_FIELDS } from '../../resources/registry/resources/inbox-fields'
+import { LINE_ITEM_FIELDS } from '../../resources/registry/resources/line-item-fields'
 import { MEETING_FIELDS } from '../../resources/registry/resources/meeting-fields'
 import { PART_FIELDS } from '../../resources/registry/resources/part-fields'
+import { QUOTE_FIELDS } from '../../resources/registry/resources/quote-fields'
 import { SERVICE_REQUEST_FIELDS } from '../../resources/registry/resources/service-request-fields'
 import { SIGNATURE_FIELDS } from '../../resources/registry/resources/signature-fields'
 import { STOCK_MOVEMENT_FIELDS } from '../../resources/registry/resources/stock-movement-fields'
@@ -44,6 +47,9 @@ const FIELD_REGISTRY: Record<string, Record<string, ResourceField>> = {
   article: ARTICLE_FIELDS,
   work_order: WORK_ORDER_FIELDS,
   service_request: SERVICE_REQUEST_FIELDS,
+  quote: QUOTE_FIELDS,
+  line_item: LINE_ITEM_FIELDS,
+  catalog_item: CATALOG_ITEM_FIELDS,
 }
 
 /**

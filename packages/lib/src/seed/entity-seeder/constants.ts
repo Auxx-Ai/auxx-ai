@@ -146,6 +146,33 @@ export const SYSTEM_ENTITIES: SystemEntityConfig[] = [
     color: 'cyan',
     isVisible: true,
   },
+  {
+    entityType: 'catalog_item',
+    apiSlug: 'catalog-items',
+    singular: 'Product / Service',
+    plural: 'Products & Services',
+    icon: 'tags',
+    color: 'teal',
+    isVisible: false, // Internal entity, managed from dispatch settings (vendor_part recipe)
+  },
+  {
+    entityType: 'quote',
+    apiSlug: 'quotes',
+    singular: 'Quote',
+    plural: 'Quotes',
+    icon: 'file-text',
+    color: 'violet',
+    isVisible: true,
+  },
+  {
+    entityType: 'line_item',
+    apiSlug: 'line-items',
+    singular: 'Line Item',
+    plural: 'Line Items',
+    icon: 'list',
+    color: 'gray',
+    isVisible: false, // Internal entity, rendered only by the line-builder UIs
+  },
 ]
 
 /**
@@ -216,6 +243,18 @@ export const DISPLAY_FIELD_CONFIG: Record<string, DisplayFieldConfig> = {
   service_request: {
     primaryDisplayField: 'title',
     secondaryDisplayField: 'number',
+  },
+  quote: {
+    primaryDisplayField: 'title',
+    secondaryDisplayField: 'number',
+  },
+  line_item: {
+    primaryDisplayField: 'name',
+    secondaryDisplayField: undefined,
+  },
+  catalog_item: {
+    primaryDisplayField: 'name',
+    secondaryDisplayField: undefined,
   },
 }
 

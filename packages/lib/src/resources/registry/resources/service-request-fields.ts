@@ -342,6 +342,32 @@ export const SERVICE_REQUEST_FIELDS: Record<string, ResourceField> = {
     description: 'Work orders converted from this service request',
   },
 
+  // Reverse relationship: quotes (from quote.request)
+  quotes: {
+    id: toFieldId('quotes'),
+    key: 'quotes',
+    label: 'Quotes',
+    type: BaseType.RELATION,
+    fieldType: FieldType.RELATIONSHIP,
+    isSystem: true,
+    systemAttribute: 'service_request_quotes',
+    systemSortOrder: 'aD',
+    showInPanel: false,
+    capabilities: {
+      filterable: true,
+      sortable: false,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    relationship: {
+      inverseResourceFieldId: 'quote:request' as ResourceFieldId,
+      relationshipType: 'has_many',
+      isInverse: true,
+    },
+    description: 'Quotes created from this service request',
+  },
+
   createdAt: {
     id: toFieldId('createdAt'),
     key: 'createdAt',

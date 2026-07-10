@@ -101,6 +101,7 @@
       "templateFieldId": "documents",
       "name": "Documents",
       "type": "FILE",
+      "showInDialogs": false,
       "options": { "file": { "multiple": true } }
     },
     { "templateFieldId": "notes", "name": "Notes", "type": "RICH_TEXT" }
