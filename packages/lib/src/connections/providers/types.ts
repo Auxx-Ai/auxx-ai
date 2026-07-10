@@ -36,8 +36,15 @@ export type ProviderUiMetadata = {
 export type PlatformProviderDef = {
   /** Stable lookup key; equals the old ICredentialType.name and Credential.type. */
   providerKey: string
-  /** 'oauth2-code' | 'secret' | 'none'. */
-  connectionType: 'oauth2-code' | 'secret' | 'none'
+  /** 'oauth2-code' | 'secret' | 'none' | 'hosted-provision'. */
+  connectionType: 'oauth2-code' | 'secret' | 'none' | 'hosted-provision'
+  /**
+   * hosted-provision only: names the `HostedProvisionHandler` the connect routes resolve
+   * via `resolveHostedProvisionHandler` (lazy import — no static consumer dependency).
+   * Code-native (not a ConnectionDefinition column): routes look the def up in
+   * `PLATFORM_PROVIDER_DEFS` by `providerKey` (`getProviderByKey`).
+   */
+  hostedProvisionKey?: string
   label: string
   description?: string
   /** true = org-wide credential, false = per-user. Default false. */

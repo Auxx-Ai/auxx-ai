@@ -451,7 +451,13 @@ export interface CachedMcpServer {
   endpoint: string
   isCustom: boolean // organizationId != null
   toolsetSlug: string // `mcp:<serverId>`
-  connectionType: 'oauth2-code' | 'client-credentials' | 'secret' | 'none' | null // null = no definition yet
+  connectionType:
+    | 'oauth2-code'
+    | 'client-credentials'
+    | 'secret'
+    | 'hosted-provision'
+    | 'none'
+    | null // null = no definition yet
   connectionPresent: boolean
   connectionExpiresAt: string | null
   /** Circuit breaker tripped (consecutiveRefreshFailures >= 5) — surfaces a reconnect pill. */

@@ -61,6 +61,8 @@ export const WorkOrderVisit = pgTable(
     latitude: doublePrecision(),
     longitude: doublePrecision(),
     geocodedAt: timestamp({ precision: 3, withTimezone: true }),
+    /** Stamped by `dispatchVisit` (M2 §B.5) — separate explicit action from scheduling. */
+    dispatchedAt: timestamp({ precision: 3, withTimezone: true }),
     createdAt: timestamp({ precision: 3 }).defaultNow().notNull(),
     updatedAt: timestamp({ precision: 3 })
       .notNull()

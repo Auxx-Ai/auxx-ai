@@ -22,10 +22,12 @@ export const BEARER_AUTH: AuthApply = {
  * `client-credentials` token — is always a bearer token, so app authors needn't
  * restate it (platform defs set it explicitly; app-authored defs often omit it).
  * Secret connections have no universal default — they must declare how their
- * secret is applied.
+ * secret is applied. `hosted-provision` never carries a token to apply to a
+ * request (its durable handle is a provider-side account id, not a bearer
+ * credential), so it always resolves to `null` — same as `secret`.
  */
 export function defaultAuthApply(
-  connectionType: 'oauth2-code' | 'client-credentials' | 'secret'
+  connectionType: 'oauth2-code' | 'client-credentials' | 'secret' | 'hosted-provision'
 ): AuthApply | null {
   return connectionType === 'oauth2-code' || connectionType === 'client-credentials'
     ? BEARER_AUTH

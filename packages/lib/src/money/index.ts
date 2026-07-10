@@ -10,12 +10,41 @@ export { convertQuoteToWorkOrder } from './convert-quote'
 export { createInvoiceFromWorkOrder, deleteInvoiceLine, listUninvoicedLines } from './gather'
 export { deleteInvoice, markInvoiceSent, voidInvoice } from './invoice-lifecycle'
 export {
+  disconnectPaymentAccount,
+  getPaymentAccount,
+  syncAccountState,
+  type UpsertPaymentAccountInput,
+  upsertPaymentAccount,
+} from './payments/account-state'
+export {
+  type PaymentAccountFeeInput,
+  resolveApplicationFee,
+} from './payments/fees'
+export {
   deleteManualPayment,
   hasSucceededCharges,
   recordManualPayment,
   syncInvoicePaymentState,
   syncTransaction,
 } from './payments/ledger'
+export {
+  applyStripeEvent,
+  type CreateStripeCheckoutInput,
+  type CreateStripeCheckoutResult,
+  createStripeCheckout,
+  type RefundTransactionInput,
+  type RefundTransactionResult,
+  refundTransaction,
+} from './payments/stripe-rail'
+export {
+  buildPayUrl,
+  cancelAbandonedCheckout,
+  ensureInvoicePublicToken,
+  getPublicInvoicePayload,
+  type PublicInvoiceLine,
+  type PublicInvoicePayload,
+  resolveInvoiceByPublicToken,
+} from './public-token'
 export {
   approveQuote,
   createQuoteFromRequest,

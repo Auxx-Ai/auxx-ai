@@ -524,6 +524,31 @@ export const INVOICE_FIELDS: Record<string, ResourceField> = {
     description: 'Payment mirror records for this invoice (ledger-backed, §E)',
   },
 
+  publicToken: {
+    id: toFieldId('publicToken'),
+    key: 'publicToken',
+    label: 'Public Token',
+    type: BaseType.STRING,
+    fieldType: FieldType.TEXT,
+    isSystem: true,
+    systemAttribute: 'invoice_public_token',
+    systemSortOrder: 'aL',
+    showInPanel: false,
+    nullable: true,
+    capabilities: {
+      filterable: false,
+      sortable: false,
+      creatable: false,
+      updatable: false,
+      configurable: false,
+      hidden: true,
+    },
+    description:
+      'Unguessable capability token for the public /pay/{token} page (money MP1 build spec ' +
+      '§H) — lazily minted by ensureInvoicePublicToken on first send/PDF-render, never ' +
+      'user-editable. Mirrors the invoice_pdf_asset recipe (FieldValueService-only writer).',
+  },
+
   createdAt: {
     id: toFieldId('createdAt'),
     key: 'createdAt',

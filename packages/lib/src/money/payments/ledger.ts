@@ -5,7 +5,7 @@ import { database, schema } from '@auxx/database'
 import type { TypedFieldValue } from '@auxx/types'
 import { extractValue } from '@auxx/types'
 import { toRecordId } from '@auxx/types/resource'
-import { and, eq } from 'drizzle-orm'
+import { and, eq, inArray } from 'drizzle-orm'
 import { getOrgCache } from '../../cache'
 import { BadRequestError, ForbiddenError, NotFoundError } from '../../errors'
 import { FieldValueService } from '../../field-values/field-value-service'
@@ -20,9 +20,9 @@ import type {
 /**
  * The `PaymentTransaction` ledger service (money MI1 build spec §E.2–§E.4). Functional
  * module (no model class, repo rule) — the ONLY write paths to the ledger table and to the
- * `payment` entity mirror. MP1 adds `createStripeCheckout`/`applyStripeEvent`/
- * `refundTransaction` alongside these, converging on the same `syncTransaction` +
- * `syncInvoicePaymentState` machinery (§E.3 seam) — keep this file free of any `stripe` import.
+ * `payment` entity mirror. `stripe-rail.ts` (money MP1 §E) adds `createStripeCheckout`/
+ * `applyStripeEvent`/`refundTransaction` as a sibling, converging on the same `syncTransaction` +
+ * `syncInvoicePaymentState` machinery (§E.3 seam) — keep THIS file free of any `stripe` import.
  */
 
 /** Unwrap a `getFieldValues()` map entry — takes the first value if array-returned. */
@@ -33,7 +33,12 @@ function firstTyped(
   return Array.isArray(entry) ? entry[0] : entry
 }
 
-/** Sum succeeded charges minus succeeded refunds for an invoice, in integer cents. */
+/**
+ * Sum succeeded charges minus succeeded refunds for an invoice, in integer cents. `disputed`
+ * charge rows count alongside `succeeded` ones (money MP1 build spec §E, `charge.dispute.created`
+ * bullet) — a dispute flags the row for admin attention but does NOT reduce `amountPaid` until
+ * it resolves into an actual refund.
+ */
 async function computeAmountPaid(
   organizationId: string,
   invoiceInstanceId: string
@@ -42,7 +47,7 @@ async function computeAmountPaid(
     where: and(
       eq(schema.PaymentTransaction.organizationId, organizationId),
       eq(schema.PaymentTransaction.invoiceInstanceId, invoiceInstanceId),
-      eq(schema.PaymentTransaction.status, 'succeeded')
+      inArray(schema.PaymentTransaction.status, ['succeeded', 'disputed'])
     ),
     columns: { amount: true, kind: true },
   })
@@ -50,9 +55,9 @@ async function computeAmountPaid(
 }
 
 /**
- * Whether any `succeeded` `charge` row exists for an invoice — the void/delete guard
- * (money MI1 build spec §G.4/§G.5, decision 6). Exported so `invoice-lifecycle.ts` can reuse
- * the identical check for both actions.
+ * Whether any `succeeded` (or `disputed` — still money-in-flight, MP1) `charge` row exists for
+ * an invoice — the void/delete guard (money MI1 build spec §G.4/§G.5, decision 6). Exported so
+ * `invoice-lifecycle.ts` can reuse the identical check for both actions.
  */
 export async function hasSucceededCharges(
   organizationId: string,
@@ -63,7 +68,7 @@ export async function hasSucceededCharges(
       eq(schema.PaymentTransaction.organizationId, organizationId),
       eq(schema.PaymentTransaction.invoiceInstanceId, invoiceInstanceId),
       eq(schema.PaymentTransaction.kind, 'charge'),
-      eq(schema.PaymentTransaction.status, 'succeeded')
+      inArray(schema.PaymentTransaction.status, ['succeeded', 'disputed'])
     ),
     columns: { id: true },
   })

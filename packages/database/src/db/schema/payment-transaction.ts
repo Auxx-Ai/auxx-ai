@@ -17,6 +17,7 @@ import {
 } from './_shared'
 import { EntityInstance } from './entity-instance'
 import { Organization } from './organization'
+import { PaymentAccount } from './payment-account'
 import { User } from './user'
 
 /**
@@ -35,8 +36,10 @@ export const PaymentTransaction = pgTable(
     organizationId: text()
       .notNull()
       .references((): AnyPgColumn => Organization.id, { onUpdate: 'cascade', onDelete: 'cascade' }),
-    /** plain text until MP1 creates PaymentAccount + adds the FK */
-    paymentAccountId: text(),
+    /** The connected Stripe account this row moved money through (MP1 — money MI1 §E.1 deferred this FK). */
+    paymentAccountId: text().references((): AnyPgColumn => PaymentAccount.id, {
+      onDelete: 'set null',
+    }),
     /** 'manual' | 'stripe' */
     provider: text().$type<PaymentProvider>().notNull(),
     /** 'charge' | 'refund' */

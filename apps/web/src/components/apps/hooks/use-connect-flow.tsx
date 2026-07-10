@@ -271,6 +271,22 @@ export function useConnectFlow(options: UseConnectFlowOptions = {}): UseConnectF
     [mode, openPopup, utils, onConnected, invalidateForOwner]
   )
 
+  // `hosted-provision` (platform providers only — Account-Links-style onboarding): no dialog, no
+  // popup, always a full-page navigate into the provider's hosted flow. `start` is create-or-reuse
+  // server-side, so a re-click (e.g. resuming an incomplete onboarding) never mints a duplicate
+  // provider resource.
+  const kickHostedProvision = useCallback((a: ConnectFlowArgs) => {
+    const owner = a.target.owner
+    if (owner.kind !== 'platform') {
+      setError(new Error('This connection cannot be connected'))
+      return
+    }
+    const params = new URLSearchParams()
+    if (a.connectionId) params.set('connectionId', a.connectionId)
+    if (a.returnTo) params.set('returnTo', a.returnTo)
+    window.location.href = `/api/connections/${owner.connectionDefinitionId}/hosted-provision/start?${params}`
+  }, [])
+
   // Reconnect path: try a silent refresh-token exchange before the full OAuth popup.
   // When the refresh token is still valid (e.g. the access token merely lapsed while the
   // dev server was down) this renews the connection — and resets the expiry circuit
@@ -330,9 +346,13 @@ export function useConnectFlow(options: UseConnectFlowOptions = {}): UseConnectF
         }
         return
       }
+      if (def.connectionType === 'hosted-provision') {
+        kickHostedProvision(next)
+        return
+      }
       setError(new Error('This connection cannot be connected'))
     },
-    [kickOauth, attemptRefreshThenOAuth]
+    [kickOauth, attemptRefreshThenOAuth, kickHostedProvision]
   )
 
   const activeDef = useMemo(() => {

@@ -7,6 +7,8 @@ import { parseRecordId, type RecordId, toRecordId } from '@auxx/types/resource'
 import { stableHash } from '@auxx/utils/hash'
 import { getOrgCache } from '../cache'
 import type { ConditionGroup } from '../conditions'
+import { getPaymentAccount } from '../money/payments/account-state'
+import { buildPayUrl, ensureInvoicePublicToken, isPaymentsConnected } from '../money/public-token'
 import { computeDocumentTotals } from '../money/totals'
 import type { DiscountType } from '../money/types'
 import { UnifiedCrudHandler } from '../resources/crud'
@@ -122,6 +124,11 @@ export interface InvoicePdfPayload {
   /** Integer cents — the `invoice_balance` mirror. */
   balance: number
   payments: InvoicePdfPaymentRow[]
+  /** Absolute `/pay/{token}` URL, or `null` when the org has no connected, chargesEnabled
+   * `PaymentAccount` (money MP1 build spec §J) — printed as a "Pay online" line on the PDF.
+   * Part of the payload object that gets content-hashed, so a newly-connected account
+   * naturally busts the cached render. */
+  payLink: string | null
   settings: ResolvedDocumentSettings
 }
 
@@ -540,6 +547,18 @@ export async function buildInvoicePdfPayload(params: {
 
   const settings = await resolveDocumentSettings(organizationId)
 
+  // ─── Pay-online link (money MP1 build spec §J) — only when payments are connected +
+  // chargesEnabled + not disconnected; otherwise the PDF never shows a dead link. Minting
+  // here (rather than only at send time) makes this the "pay-link builder" §H refers to —
+  // any render (preview/download/send) is a valid first-mint moment, and re-renders are a
+  // cheap idempotent read after the first write. ──────────────────────────────────────────
+  const account = await getPaymentAccount(organizationId)
+  let payLink: string | null = null
+  if (isPaymentsConnected(account)) {
+    const token = await ensureInvoicePublicToken(organizationId, invoiceInstanceId)
+    payLink = token ? buildPayUrl(token) : null
+  }
+
   const payload: InvoicePdfPayload = {
     documentType: 'invoice',
     organizationId,
@@ -561,6 +580,7 @@ export async function buildInvoicePdfPayload(params: {
     amountPaid,
     balance,
     payments,
+    payLink,
     settings,
   }
 

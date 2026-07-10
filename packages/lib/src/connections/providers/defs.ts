@@ -1087,4 +1087,21 @@ export const PLATFORM_PROVIDER_DEFS: PlatformProviderDef[] = [
     ],
     uiMetadata: { icon: 'brand:cohere', category: 'ai', brandColor: '#39594D' },
   },
+
+  // ────────────────────────────────────────────────────────────────────────
+  // Hosted-provision providers (provider mints a resource + hosted redirect)
+  // ────────────────────────────────────────────────────────────────────────
+  {
+    // Stripe Connect (Account Links) — money MP1's payment onboarding. Charges run on the
+    // platform key + `Stripe-Account` header, so there is no stored token and no OAuth
+    // client: the Credential only anchors the connected `acct_…` (connection variables).
+    providerKey: 'stripeConnect',
+    connectionType: 'hosted-provision',
+    hostedProvisionKey: 'stripeConnect',
+    label: 'Stripe',
+    description: 'Accept card payments on invoices. Payouts run on your Stripe schedule.',
+    global: true,
+    authApply: null,
+    uiMetadata: { icon: 'brand:stripe', category: 'other', brandColor: '#635bff' },
+  },
 ]

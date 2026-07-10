@@ -577,6 +577,7 @@ export const NotificationTypeValues = [
   'WORKFLOW_APPROVAL_REQUIRED',
   'WORKFLOW_APPROVAL_REMINDER',
   'WORKFLOW_APPROVAL_COMPLETED',
+  'WORK_ORDER_DISPATCHED',
 ] as const
 
 export const ORDER_ADDRESS_TYPEValues = ['SHIPPING', 'BILLING'] as const
@@ -897,6 +898,13 @@ export const PaymentTransactionStatusValues = [
   'disputed',
 ] as const
 export type PaymentTransactionStatus = (typeof PaymentTransactionStatusValues)[number]
+
+/**
+ * `PaymentAccount.accountType` (money MP1 — 07-mp1-build.md §A.1). `express` is reserved for
+ * a later markup-pricing milestone (MP2) — v1 only ever provisions `standard`.
+ */
+export const PaymentAccountTypeValues = ['standard', 'express'] as const
+export type PaymentAccountType = (typeof PaymentAccountTypeValues)[number]
 
 // ============================================================================
 // ENUM OBJECTS - Can be used both as types and values on client-side
@@ -1271,6 +1279,7 @@ export const NotificationType = {
   WORKFLOW_APPROVAL_REQUIRED: 'WORKFLOW_APPROVAL_REQUIRED',
   WORKFLOW_APPROVAL_REMINDER: 'WORKFLOW_APPROVAL_REMINDER',
   WORKFLOW_APPROVAL_COMPLETED: 'WORKFLOW_APPROVAL_COMPLETED',
+  WORK_ORDER_DISPATCHED: 'WORK_ORDER_DISPATCHED',
 } as const
 
 export const ORDER_ADDRESS_TYPE = {

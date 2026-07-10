@@ -55,9 +55,10 @@ function PaymentHistoryBlock(props: {
  * The invoice PDF document template (money MI1 build spec §H.1). Composes the same
  * document-agnostic `parts.tsx` building blocks as `quote-pdf.tsx`, plus invoice-only
  * pieces: Amount paid / Balance due rows in the totals block, a payment-history table
- * (rendered when `settings.invoice.showPaymentHistory` and payments exist), and
- * payment-instructions text (`settings.invoice.paymentInstructions`, when non-empty). No
- * pay-link line — that's MP1 (the Stripe rail), an explicit MI1 non-goal.
+ * (rendered when `settings.invoice.showPaymentHistory` and payments exist), a "Pay online"
+ * line (`payload.payLink`, money MP1 build spec §J — plain URL v1, only present when the
+ * org's Stripe account is connected + chargesEnabled), and payment-instructions text
+ * (`settings.invoice.paymentInstructions`, when non-empty).
  */
 export function InvoicePdf(props: { payload: InvoicePdfPayload; logoBytes?: Buffer | null }) {
   const { payload, logoBytes } = props
@@ -112,6 +113,13 @@ export function InvoicePdf(props: { payload: InvoicePdfPayload; logoBytes?: Buff
             dateFormat={settings.branding.dateFormat}
             currencyCode={currencyCode}
           />
+        ) : null}
+
+        {payload.payLink ? (
+          <View style={styles.terms}>
+            <Text style={styles.label}>Pay online</Text>
+            <Text style={styles.value}>{payload.payLink}</Text>
+          </View>
         ) : null}
 
         {settings.invoice.paymentInstructions ? (

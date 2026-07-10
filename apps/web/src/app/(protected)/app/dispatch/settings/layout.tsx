@@ -3,16 +3,12 @@
 'use client'
 
 import { MainPageContent } from '@auxx/ui/components/main-page'
-import { Clock, FileText, Tags } from 'lucide-react'
+import { Clock, CreditCard, FileText, Hash, Tags, Users } from 'lucide-react'
 import { usePathname } from 'next/navigation'
 import SidebarSecondary from '~/components/global/sidebar-secondary'
 import type { SidebarProps } from '~/constants/menu'
 
-/**
- * Settings navigation items. Products & Services and Availability ship in
- * this slice — Workers and Number Formats arrive with the M2 dispatch board
- * build.
- */
+/** Settings navigation items (04-ui.md §9). */
 const DISPATCH_SETTINGS: SidebarProps[] = [
   {
     id: 'dispatch-settings',
@@ -20,10 +16,22 @@ const DISPATCH_SETTINGS: SidebarProps[] = [
     type: 'header',
     items: [
       {
+        id: 'dispatch-settings-workers',
+        label: 'Workers',
+        slug: 'workers',
+        icon: <Users />,
+      },
+      {
         id: 'dispatch-settings-products',
         label: 'Products & Services',
         slug: 'products',
         icon: <Tags />,
+      },
+      {
+        id: 'dispatch-settings-number-formats',
+        label: 'Number Formats',
+        slug: 'number-formats',
+        icon: <Hash />,
       },
       {
         id: 'dispatch-settings-availability',
@@ -36,6 +44,12 @@ const DISPATCH_SETTINGS: SidebarProps[] = [
         label: 'Documents',
         slug: 'documents',
         icon: <FileText />,
+      },
+      {
+        id: 'dispatch-settings-payments',
+        label: 'Payments',
+        slug: 'payments',
+        icon: <CreditCard />,
       },
     ],
   },
