@@ -506,5 +506,31 @@ export const COMPANY_FIELDS: Record<string, ResourceField> = {
     description: 'Automatically updated when company is modified',
   },
 
+  // Reverse relationship: workOrders (from work_order.company)
+  workOrders: {
+    id: toFieldId('workOrders'),
+    key: 'workOrders',
+    label: 'Work Orders',
+    type: BaseType.RELATION,
+    fieldType: FieldType.RELATIONSHIP,
+    isSystem: true,
+    systemAttribute: 'company_work_orders',
+    showInPanel: false,
+    systemSortOrder: 'aF',
+    capabilities: {
+      filterable: true,
+      sortable: false,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    relationship: {
+      inverseResourceFieldId: 'work_order:company' as ResourceFieldId,
+      relationshipType: 'has_many',
+      isInverse: true,
+    },
+    description: 'Work orders for this company',
+  },
+
   createdBy: CREATED_BY_FIELD,
 }

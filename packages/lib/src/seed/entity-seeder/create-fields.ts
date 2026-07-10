@@ -10,6 +10,7 @@ import { CONTACT_FIELDS } from '../../resources/registry/resources/contact-field
 import { INBOX_FIELDS } from '../../resources/registry/resources/inbox-fields'
 import { MEETING_FIELDS } from '../../resources/registry/resources/meeting-fields'
 import { PART_FIELDS } from '../../resources/registry/resources/part-fields'
+import { SERVICE_REQUEST_FIELDS } from '../../resources/registry/resources/service-request-fields'
 import { SIGNATURE_FIELDS } from '../../resources/registry/resources/signature-fields'
 import { STOCK_MOVEMENT_FIELDS } from '../../resources/registry/resources/stock-movement-fields'
 import { SUBPART_FIELDS } from '../../resources/registry/resources/subpart-fields'
@@ -17,6 +18,7 @@ import { TAG_FIELDS } from '../../resources/registry/resources/tag-fields'
 import { THREAD_FIELDS } from '../../resources/registry/resources/thread-fields'
 import { TICKET_FIELDS } from '../../resources/registry/resources/ticket-fields'
 import { VENDOR_PART_FIELDS } from '../../resources/registry/resources/vendor-part-fields'
+import { WORK_ORDER_FIELDS } from '../../resources/registry/resources/work-order-fields'
 import { ENTITY_INSTANCE_COLUMNS } from './constants'
 import type { EntityDefMap, FieldMap, FieldRecord } from './types'
 import { buildFieldOptions, mapCapabilities, shouldCreateField } from './utils'
@@ -40,6 +42,8 @@ const FIELD_REGISTRY: Record<string, Record<string, ResourceField>> = {
   company: COMPANY_FIELDS,
   meeting: MEETING_FIELDS,
   article: ARTICLE_FIELDS,
+  work_order: WORK_ORDER_FIELDS,
+  service_request: SERVICE_REQUEST_FIELDS,
 }
 
 /**

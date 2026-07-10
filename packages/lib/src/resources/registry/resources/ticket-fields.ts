@@ -357,5 +357,57 @@ export const TICKET_FIELDS: Record<string, ResourceField> = {
     description: 'Automatically updated when ticket is modified',
   },
 
+  // Reverse relationship: workOrders (from work_order.ticket)
+  workOrders: {
+    id: toFieldId('workOrders'),
+    key: 'workOrders',
+    label: 'Work Orders',
+    type: BaseType.RELATION,
+    fieldType: FieldType.RELATIONSHIP,
+    isSystem: true,
+    systemAttribute: 'ticket_work_orders',
+    showInPanel: false,
+    systemSortOrder: 'aE',
+    capabilities: {
+      filterable: true,
+      sortable: false,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    relationship: {
+      inverseResourceFieldId: 'work_order:ticket' as ResourceFieldId,
+      relationshipType: 'has_many',
+      isInverse: true,
+    },
+    description: 'Work orders created from this ticket',
+  },
+
+  // Reverse relationship: serviceRequests (from service_request.ticket)
+  serviceRequests: {
+    id: toFieldId('serviceRequests'),
+    key: 'serviceRequests',
+    label: 'Service Requests',
+    type: BaseType.RELATION,
+    fieldType: FieldType.RELATIONSHIP,
+    isSystem: true,
+    systemAttribute: 'ticket_service_requests',
+    showInPanel: false,
+    systemSortOrder: 'aF',
+    capabilities: {
+      filterable: true,
+      sortable: false,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    relationship: {
+      inverseResourceFieldId: 'service_request:ticket' as ResourceFieldId,
+      relationshipType: 'has_many',
+      isInverse: true,
+    },
+    description: 'Service requests created from this ticket',
+  },
+
   createdBy: CREATED_BY_FIELD,
 }

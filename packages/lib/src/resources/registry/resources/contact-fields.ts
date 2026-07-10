@@ -505,5 +505,57 @@ export const CONTACT_FIELDS: Record<string, ResourceField> = {
     description: 'Meetings associated with this contact',
   },
 
+  // Reverse relationship: workOrders (from work_order.contact)
+  workOrders: {
+    id: toFieldId('workOrders'),
+    key: 'workOrders',
+    label: 'Work Orders',
+    type: BaseType.RELATION,
+    fieldType: FieldType.RELATIONSHIP,
+    isSystem: true,
+    systemAttribute: 'contact_work_orders',
+    showInPanel: false,
+    systemSortOrder: 'aA',
+    capabilities: {
+      filterable: true,
+      sortable: false,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    relationship: {
+      inverseResourceFieldId: 'work_order:contact' as ResourceFieldId,
+      relationshipType: 'has_many',
+      isInverse: true,
+    },
+    description: 'Work orders for this contact',
+  },
+
+  // Reverse relationship: serviceRequests (from service_request.contact)
+  serviceRequests: {
+    id: toFieldId('serviceRequests'),
+    key: 'serviceRequests',
+    label: 'Service Requests',
+    type: BaseType.RELATION,
+    fieldType: FieldType.RELATIONSHIP,
+    isSystem: true,
+    systemAttribute: 'contact_service_requests',
+    showInPanel: false,
+    systemSortOrder: 'aB',
+    capabilities: {
+      filterable: true,
+      sortable: false,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    relationship: {
+      inverseResourceFieldId: 'service_request:contact' as ResourceFieldId,
+      relationshipType: 'has_many',
+      isInverse: true,
+    },
+    description: 'Service requests for this contact',
+  },
+
   createdBy: CREATED_BY_FIELD,
 }

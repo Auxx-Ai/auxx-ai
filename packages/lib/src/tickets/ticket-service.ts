@@ -10,7 +10,6 @@ import { TRPCError } from '@trpc/server'
 import { publisher } from '../events/publisher'
 import { UnifiedCrudHandler } from '../resources/crud/unified-handler'
 import { toRecordId } from '../resources/resource-id'
-import { ticketNumbering } from './ticket-numbering'
 
 /**
  * Interface for creating a new ticket

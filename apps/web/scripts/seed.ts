@@ -32,7 +32,7 @@ async function cleanDatabase() {
   await db.delete(schema.session)
   await db.delete(schema.Integration)
   await db.delete(schema.OrganizationMember)
-  // Delete TicketSequence records before Organization records
+  // Delete RecordSequence records before Organization records
   await db.delete(schema.Organization)
   await db.delete(schema.User)
 }

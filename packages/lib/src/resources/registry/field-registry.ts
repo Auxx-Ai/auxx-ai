@@ -14,6 +14,7 @@ import { MEETING_FIELDS } from './resources/meeting-fields'
 import { MESSAGE_FIELDS } from './resources/message-fields'
 import { PART_FIELDS } from './resources/part-fields'
 import { PARTICIPANT_FIELDS } from './resources/participant-fields'
+import { SERVICE_REQUEST_FIELDS } from './resources/service-request-fields'
 import { SIGNATURE_FIELDS } from './resources/signature-fields'
 import { STOCK_MOVEMENT_FIELDS } from './resources/stock-movement-fields'
 import { SUBPART_FIELDS } from './resources/subpart-fields'
@@ -21,6 +22,7 @@ import { THREAD_FIELDS } from './resources/thread-fields'
 import { TICKET_FIELDS } from './resources/ticket-fields'
 import { USER_FIELDS } from './resources/user-fields'
 import { VENDOR_PART_FIELDS } from './resources/vendor-part-fields'
+import { WORK_ORDER_FIELDS } from './resources/work-order-fields'
 
 /** Types excluded from RESOURCE_TABLE_REGISTRY: 'entity' (generic marker) + all EntityDefinition types */
 const excludedTypes = new Set<string>(['entity', ...ENTITY_DEFINITION_TYPES])
@@ -108,6 +110,8 @@ export const RESOURCE_FIELD_REGISTRY: ResourceFieldRegistry = {
   meeting: MEETING_FIELDS,
   article: ARTICLE_FIELDS,
   kb: KB_FIELDS,
+  work_order: WORK_ORDER_FIELDS,
+  service_request: SERVICE_REQUEST_FIELDS,
 }
 
 /**

@@ -116,6 +116,8 @@ export const ModelTypeValues = [
   'meeting',
   'article',
   'kb',
+  'work_order',
+  'service_request',
 ] as const
 
 /**
@@ -147,6 +149,8 @@ export const ModelTypes = {
   MEETING: 'meeting',
   ARTICLE: 'article',
   KB: 'kb',
+  WORK_ORDER: 'work_order',
+  SERVICE_REQUEST: 'service_request',
 } as const
 
 /**
@@ -325,6 +329,24 @@ export const ModelTypeMeta: Record<
     apiSlug: 'kb',
     dbTable: 'KnowledgeBase',
     hasDetailPage: true,
+  },
+  work_order: {
+    label: 'Work Order',
+    plural: 'Work Orders',
+    icon: 'wrench',
+    color: 'amber',
+    apiSlug: 'work-orders',
+    dbTable: 'EntityInstance',
+    hasDetailPage: false,
+  },
+  service_request: {
+    label: 'Service Request',
+    plural: 'Service Requests',
+    icon: 'clipboard-list',
+    color: 'cyan',
+    apiSlug: 'service-requests',
+    dbTable: 'EntityInstance',
+    hasDetailPage: false,
   },
 }
 
@@ -767,6 +789,7 @@ export const EntityTypeValues = [
   'inbox',
   'meeting',
   'part',
+  'service_request',
   'signature',
   'stock_movement',
   'subpart',
@@ -775,6 +798,7 @@ export const EntityTypeValues = [
   'ticket',
   'user',
   'vendor_part',
+  'work_order',
 ] as const
 
 export const StandardTypeValues = ['task', 'deal', 'custom'] as const
@@ -1498,6 +1522,7 @@ export const EntityType = {
   INBOX: 'inbox',
   MEETING: 'meeting',
   PART: 'part',
+  SERVICE_REQUEST: 'service_request',
   SIGNATURE: 'signature',
   STOCK_MOVEMENT: 'stock_movement',
   SUBPART: 'subpart',
@@ -1506,6 +1531,7 @@ export const EntityType = {
   TICKET: 'ticket',
   USER: 'user',
   VENDOR_PART: 'vendor_part',
+  WORK_ORDER: 'work_order',
 } as const
 
 export const StandardType = {

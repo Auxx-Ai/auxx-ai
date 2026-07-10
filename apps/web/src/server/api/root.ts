@@ -32,6 +32,7 @@ import { dataConnectorRouter } from './routers/data-connectors'
 import { dataExportRouter } from './routers/data-export'
 import { dataImportRouter } from './routers/data-import'
 import { datasetRouter } from './routers/dataset'
+import { dispatchRouter } from './routers/dispatch'
 import { documentRouter } from './routers/document'
 import { draftRouter } from './routers/draft'
 import { emailTemplateRouter } from './routers/emailTemplate'
@@ -186,6 +187,7 @@ export const appRouter = createTRPCRouter({
   dataExport: dataExportRouter,
   dataConnector: dataConnectorRouter,
   dashboard: dashboardRouter,
+  dispatch: dispatchRouter,
   inventoryBridge: inventoryBridgeRouter,
 })
 // inferReactQueryProcedureOptions

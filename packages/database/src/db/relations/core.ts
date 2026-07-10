@@ -62,6 +62,7 @@ import {
   PromptTemplate,
   ProviderConfiguration,
   ProviderPreference,
+  RecordSequence,
   SearchHistory,
   SignatureIntegrationShare,
   Snippet,
@@ -74,7 +75,6 @@ import {
   // TagsOnThread, // DEPRECATED: Tags now use FieldValue via RELATIONSHIP field
   Thread,
   ThreadReadStatus,
-  TicketSequence,
   TwoFactor,
   UploadSession,
   User,
@@ -202,7 +202,7 @@ export const organizationRelations = relations(Organization, ({ one, many }) => 
   webhooks: many(Webhook),
   apiKeys: many(ApiKey),
   articleRevisions: many(ArticleRevision),
-  ticketSequences: many(TicketSequence),
+  recordSequences: many(RecordSequence),
   knowledgeBases: many(KnowledgeBase),
   mailDomains: many(MailDomain),
   emailTemplates: many(EmailTemplate),
@@ -336,9 +336,9 @@ export const apiKeyRelations = relations(ApiKey, ({ one }) => ({
   }),
 }))
 
-export const ticketSequenceRelations = relations(TicketSequence, ({ one }) => ({
+export const recordSequenceRelations = relations(RecordSequence, ({ one }) => ({
   organization: one(Organization, {
-    fields: [TicketSequence.organizationId],
+    fields: [RecordSequence.organizationId],
     references: [Organization.id],
   }),
 }))

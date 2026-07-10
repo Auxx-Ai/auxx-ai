@@ -2,8 +2,10 @@
 
 import { COMMON_HOOKS } from './common-hooks'
 import { CONTACT_HOOKS } from './contact-hooks'
+import { SERVICE_REQUEST_HOOKS } from './service-request-hooks'
 import { TICKET_HOOKS } from './ticket-hooks'
 import type { SystemHook, SystemHookRegistry } from './types'
+import { WORK_ORDER_HOOKS } from './work-order-hooks'
 
 /**
  * Central registry of system hooks for all entity types.
@@ -17,6 +19,8 @@ import type { SystemHook, SystemHookRegistry } from './types'
 const HOOKS_BY_ENTITY_TYPE: Record<string, SystemHookRegistry> = {
   contact: CONTACT_HOOKS,
   ticket: TICKET_HOOKS,
+  work_order: WORK_ORDER_HOOKS,
+  service_request: SERVICE_REQUEST_HOOKS,
 }
 
 /**

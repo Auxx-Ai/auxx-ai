@@ -33,17 +33,42 @@ const DEFAULT_SYSTEM_MODELS: Array<{
   { modelType: ModelType.SPEECH2TEXT, provider: 'openai', model: 'whisper-1' },
 ]
 
-// Default ticket sequence settings
-const defaultTicketSequence = {
-  currentNumber: 0,
-  prefix: 'TKT',
-  paddingLength: 4,
-  usePrefix: true,
-  useDateInPrefix: false,
-  dateFormat: 'YYMM',
-  separator: '-',
-  useSuffix: false,
-}
+// Default record sequence settings — one row per scope (ticket / work_order / service_request)
+const defaultRecordSequences = [
+  {
+    scope: 'ticket',
+    prefix: 'TKT',
+    currentNumber: 0,
+    paddingLength: 4,
+    usePrefix: true,
+    useDateInPrefix: false,
+    dateFormat: 'YYMM',
+    separator: '-',
+    useSuffix: false,
+  },
+  {
+    scope: 'work_order',
+    prefix: 'WO',
+    currentNumber: 0,
+    paddingLength: 4,
+    usePrefix: true,
+    useDateInPrefix: false,
+    dateFormat: 'YYMM',
+    separator: '-',
+    useSuffix: false,
+  },
+  {
+    scope: 'service_request',
+    prefix: 'REQ',
+    currentNumber: 0,
+    paddingLength: 4,
+    usePrefix: true,
+    useDateInPrefix: false,
+    dateFormat: 'YYMM',
+    separator: '-',
+    useSuffix: false,
+  },
+]
 // Default email templates for the organization
 const defaultEmailTemplates = [
   {
@@ -206,10 +231,14 @@ export class OrganizationSeeder {
     logger.info(`Email templates seeded for organization: ${organizationId}`)
   }
   private async seedTicketSequence(organizationId: string) {
-    logger.info(`Seeding ticket sequence for organization: ${organizationId}`)
-    await this.db
-      .insert(schema.TicketSequence)
-      .values({ ...defaultTicketSequence, organizationId, updatedAt: new Date() })
+    logger.info(`Seeding record sequences for organization: ${organizationId}`)
+    await this.db.insert(schema.RecordSequence).values(
+      defaultRecordSequences.map((seq) => ({
+        ...seq,
+        organizationId,
+        updatedAt: new Date(),
+      }))
+    )
   }
   /**
    * Seeds the article categories for the given organization.

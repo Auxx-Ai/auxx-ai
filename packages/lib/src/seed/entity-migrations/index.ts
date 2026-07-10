@@ -31,6 +31,8 @@ import { migration025InboxDefaultLens } from './migrations/025-inbox-default-len
 import { migration026InboxPersonalFields } from './migrations/026-inbox-personal-fields'
 import { migration027PartsV2 } from './migrations/027-parts-v2'
 import { migration028PartImageAvatar } from './migrations/028-part-image-avatar'
+import { migration029WorkOrder } from './migrations/029-work-order'
+import { migration030ServiceRequest } from './migrations/030-service-request'
 import type { EntityMigration, MigrationRunResult } from './types'
 
 const logger = createScopedLogger('entity-migrations')
@@ -67,6 +69,8 @@ const ALL_MIGRATIONS: EntityMigration[] = [
   migration026InboxPersonalFields,
   migration027PartsV2,
   migration028PartImageAvatar,
+  migration029WorkOrder,
+  migration030ServiceRequest,
 ]
 
 /**

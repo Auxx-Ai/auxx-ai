@@ -2,6 +2,7 @@
 
 export { autoSetCreatedBy, COMMON_HOOKS } from './common-hooks'
 export { CONTACT_HOOKS } from './contact-hooks'
+export { SERVICE_REQUEST_HOOKS } from './service-request-hooks'
 export {
   getCommonHooks,
   getHooksForAttribute,
@@ -10,3 +11,4 @@ export {
 } from './system-hooks'
 export { TICKET_HOOKS } from './ticket-hooks'
 export type { SystemHook, SystemHookContext, SystemHookRegistry } from './types'
+export { WORK_ORDER_HOOKS } from './work-order-hooks'

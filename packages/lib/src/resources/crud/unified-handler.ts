@@ -1229,8 +1229,15 @@ export class UnifiedCrudHandler {
       if (!field) continue
 
       // For create operations, always run hooks (allows auto-generation like ticket_number)
-      // For update operations, only run hooks if the field is being updated
-      if (operation === 'update' && !(field.id in processedValues)) continue
+      // For update operations, only run hooks if the field is being updated. Values may be
+      // keyed by fieldId OR systemAttribute (setFieldValues resolves both) — check both, or a
+      // systemAttribute-keyed update would silently bypass update hooks (e.g. status guards).
+      if (
+        operation === 'update' &&
+        !(field.id in processedValues) &&
+        !(systemAttribute in processedValues)
+      )
+        continue
 
       for (const hook of hookFns) {
         processedValues = await hook({

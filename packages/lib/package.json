@@ -340,6 +340,12 @@
       "import": "./dist/demo/index.mjs",
       "default": "./src/demo/index.ts"
     },
+    "./dispatch": {
+      "types": "./src/dispatch/index.ts",
+      "source": "./src/dispatch/index.ts",
+      "import": "./dist/dispatch/index.mjs",
+      "default": "./src/dispatch/index.ts"
+    },
     "./drafts": {
       "types": "./src/drafts/index.ts",
       "source": "./src/drafts/index.ts",
@@ -843,6 +849,12 @@
       "source": "./src/recording/client/index.ts",
       "import": "./dist/recording/client/index.mjs",
       "default": "./src/recording/client/index.ts"
+    },
+    "./records": {
+      "types": "./src/records/index.ts",
+      "source": "./src/records/index.ts",
+      "import": "./dist/records/index.mjs",
+      "default": "./src/records/index.ts"
     },
     "./resource-access": {
       "types": "./src/resource-access/index.ts",

@@ -1,7 +1,7 @@
 // packages/lib/src/resources/hooks/ticket-hooks.ts
 
 import { publisher } from '../../events/publisher'
-import { ticketNumbering } from '../../tickets/ticket-numbering'
+import { recordNumbering } from '../../records/record-numbering'
 import type { SystemHook, SystemHookRegistry } from './types'
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -24,9 +24,9 @@ function getFieldBySystemAttribute(
 
 /**
  * Auto-generate ticket number on create operation.
- * Uses TicketSequence model for organization-specific formatting.
+ * Uses RecordSequence model (scope: 'ticket') for organization-specific formatting.
  *
- * Format configured per-organization via TicketSequence:
+ * Format configured per-organization via RecordSequence:
  * - prefix, useDateInPrefix, dateFormat, paddingLength, separator
  * - Example output: "2501-0042" (date prefix + padded number)
  *
@@ -44,12 +44,12 @@ const autoGenerateTicketNumber: SystemHook = async ({
     return values
   }
 
-  // Generate ticket number using existing numbering service
-  const { ticketNumber } = await ticketNumbering.create(organizationId)
+  // Generate ticket number using the shared record-numbering service
+  const { recordNumber } = await recordNumbering.create(organizationId, 'ticket')
 
   return {
     ...values,
-    [field.id]: ticketNumber,
+    [field.id]: recordNumber,
   }
 }
 
