@@ -28,6 +28,7 @@ import type { DetailViewTabProps } from '~/components/detail-view'
 import { Tooltip } from '~/components/global/tooltip'
 import { LineBuilder } from '~/components/money/ui/line-builder/line-builder'
 import { useSaveSystemValues, useSystemValues } from '~/components/resources/hooks'
+import { useDefaultSignature } from '~/components/signatures/hooks'
 import { useCompose } from '~/hooks/use-compose'
 import { useConfirm } from '~/hooks/use-confirm'
 import { api } from '~/trpc/react'
@@ -46,6 +47,9 @@ export function QuoteLineItemsTab({ recordId }: DetailViewTabProps) {
 
   const { values } = useSystemValues(recordId, [...QUOTE_STATUS_ATTRS], { autoFetch: true })
   const { save: saveSystemValues } = useSaveSystemValues(recordId)
+  // The snippet body carries no sign-off — pre-select the org default signature
+  // so the composer appends it (the composer does NOT auto-apply a default).
+  const { signature: defaultSignature } = useDefaultSignature()
 
   const status = (values.quote_status as string | undefined) ?? 'draft'
   const validUntil = values.quote_valid_until as string | null | undefined
@@ -116,6 +120,7 @@ export function QuoteLineItemsTab({ recordId }: DetailViewTabProps) {
           contentHtml: prepared.contentHtml,
           attachments: [prepared.attachment],
           integrationId: defaultChannelId,
+          signatureId: defaultSignature?.id ?? null,
           linkTicketId: parseRecordId(recordId).entityInstanceId,
         },
       })

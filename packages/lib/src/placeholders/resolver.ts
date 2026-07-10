@@ -1,11 +1,15 @@
 // packages/lib/src/placeholders/resolver.ts
 
 import type { Database } from '@auxx/database'
+import type { FieldType } from '@auxx/database/types'
 import type { TypedFieldValue } from '@auxx/types'
 import { type FieldReference, fieldRefToKey } from '@auxx/types/field'
 import type { RecordId } from '@auxx/types/resource'
+import { formatCurrency } from '@auxx/utils/currency'
 import { getOrgCache, getUserCache } from '../cache'
+import type { FieldOptions } from '../custom-fields/field-options'
 import { FieldValueService } from '../field-values/field-value-service'
+import { formatToDisplayValue } from '../field-values/formatter'
 import { decodeFallback, renderFallbackPayload } from './fallback-codec'
 import {
   type OrgSlug,
@@ -245,17 +249,25 @@ async function resolveFieldTokens(
       fieldReferences: fieldRefs,
     })
 
-    // Index batch results by fieldRefKey for lookup.
-    const byKey = new Map<string, TypedFieldValue | TypedFieldValue[] | null>()
+    // Index batch results by fieldRefKey for lookup. Carry `fieldType` /
+    // `fieldOptions` alongside the value so we can format currency, dates,
+    // options, etc. the same way the UI does (not a raw `String()`).
+    const byKey = new Map<string, (typeof batch.values)[number]>()
     for (const v of batch.values) {
-      byKey.set(fieldRefToKey(v.fieldRef), v.value)
+      byKey.set(fieldRefToKey(v.fieldRef), v)
     }
 
     for (const { id, fieldRef } of entries) {
       const key = fieldRefToKey(fieldRef)
-      const raw = byKey.get(key)
+      const entry = byKey.get(key)
+      const raw = entry?.value
       // Null/undefined → let Pass 2 apply the fallback (or hard-fail).
-      result.set(id, raw === undefined || raw === null ? null : typedValueToString(raw))
+      result.set(
+        id,
+        raw === undefined || raw === null
+          ? null
+          : formatFieldValueForText(raw, entry!.fieldType, entry!.fieldOptions)
+      )
     }
   }
 
@@ -281,38 +293,53 @@ function formatDateOnly(d: Date): string {
 }
 
 /**
- * Minimal stringifier for a `TypedFieldValue`. Phase 2 will replace this with
- * `formatToDisplayValue(...)` from `../field-values/formatter` + formatter
- * pipeline. For phase 1 we use the primitive the converter already stored.
+ * Format a `TypedFieldValue` for plain-text/HTML email placeholders using the
+ * same type-aware formatter the UI uses (`formatToDisplayValue`), so a
+ * `CURRENCY` total renders `$250.00` rather than the raw `25000`, dates render
+ * `Jan 15, 2024`, options render their label, etc.
+ *
+ * Two deliberate deviations from `formatToDisplayValue`:
+ * - `CURRENCY` is stored as integer **cents** by the money engine (`totals.ts`
+ *   — `DisplayCurrency` renders `value / 100`), whereas the shared
+ *   `currencyConverter` assumes dollars (`value * 100`). We format cents
+ *   directly via `@auxx/utils/currency`'s `formatCurrency`.
+ * - `RELATIONSHIP` / `ACTOR` resolve to a human display name (the shared
+ *   converter returns the raw id/object for frontend hydration, which is
+ *   useless in an email).
  */
-function typedValueToString(value: TypedFieldValue | TypedFieldValue[]): string {
+function formatFieldValueForText(
+  value: TypedFieldValue | TypedFieldValue[],
+  fieldType: FieldType,
+  options?: FieldOptions
+): string {
   if (Array.isArray(value)) {
-    return value.map(typedSingleToString).join(', ')
+    return value.map((v) => formatSingleForText(v, fieldType, options)).join(', ')
   }
-  return typedSingleToString(value)
+  return formatSingleForText(value, fieldType, options)
 }
 
-function typedSingleToString(v: TypedFieldValue): string {
-  switch (v.type) {
-    case 'text':
-      return v.value
-    case 'number':
-      return String(v.value)
-    case 'boolean':
-      return v.value ? 'true' : 'false'
-    case 'date':
-      return v.value
-    case 'option':
-      return v.label ?? v.optionId
-    case 'relationship':
-      return v.displayName ?? v.recordId
-    case 'actor':
-      return v.displayName ?? v.actorId
-    case 'json':
-      return JSON.stringify(v.value)
-    default:
-      return ''
+function formatSingleForText(
+  v: TypedFieldValue,
+  fieldType: FieldType,
+  options?: FieldOptions
+): string {
+  // Human-readable name for links/people — never the raw id.
+  if (v.type === 'relationship') return v.displayName ?? v.recordId
+  if (v.type === 'actor') return v.displayName ?? v.actorId
+
+  // Money is integer cents (money-engine convention); the shared converter
+  // would multiply by 100 and be off by 100×.
+  if (fieldType === 'CURRENCY' && v.type === 'number') {
+    return formatCurrency(v.value, {
+      currencyCode: options?.currencyCode,
+      decimals: options?.decimals,
+      useGrouping: options?.useGrouping,
+      currencyDisplay: options?.currencyDisplay,
+    })
   }
+
+  const display = formatToDisplayValue(v, fieldType, options)
+  return display === null || display === undefined ? '' : String(display)
 }
 
 const HTML_ESCAPE_LOOKUP: Record<string, string> = {
