@@ -9,7 +9,6 @@ import {
 import { MediaAssetService } from '@auxx/lib/files'
 import { isAdminOrOwner } from '@auxx/lib/members'
 import { FeaturePermissionService } from '@auxx/lib/permissions'
-import { UserSettingsService } from '@auxx/lib/settings'
 import { TRPCError } from '@trpc/server'
 import { eq } from 'drizzle-orm'
 import { z } from 'zod'
@@ -147,32 +146,6 @@ export const userRouter = createTRPCRouter({
       email: m.user?.email ?? null,
     }))
   }),
-
-  settings: protectedProcedure.query(async ({ ctx }) => {
-    // return ctx.db.user.findUnique({
-    //   where: { id: ctx.session.user.id },
-    //   select: { settings: true },
-    // })
-    const userId = ctx.session.user.id
-    const settings = await UserSettingsService.get(userId)
-
-    return settings
-  }),
-  updateSettings: protectedProcedure
-    .input(z.object({ settings: z.record(z.string(), z.any()) }))
-    .mutation(async ({ ctx, input }) => {
-      const userId = ctx.session.user.id
-      const result = await UserSettingsService.update(userId, input.settings)
-      return result
-    }),
-
-  updateSetting: protectedProcedure
-    .input(z.object({ path: z.string(), value: z.any() }))
-    .mutation(async ({ ctx, input }) => {
-      const { userId } = ctx.session
-
-      await UserSettingsService.set(userId, input.path, input.value)
-    }),
 
   removeAvatar: protectedProcedure
     .input(

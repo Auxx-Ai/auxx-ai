@@ -6,6 +6,7 @@ import { createScopedLogger } from '@auxx/logger'
 import { toFieldId, toResourceFieldId } from '@auxx/types/field'
 import type { SystemAttribute } from '@auxx/types/system-attribute'
 import { and, eq } from 'drizzle-orm'
+import { onCacheEvent } from '../../cache/invalidate'
 import {
   createDefaultFieldViewConfig,
   type ViewContextType,
@@ -500,6 +501,11 @@ export async function ensureDefaultTableViews(
 
     logger.debug(`Created default table view "${viewDef.name}" for ${entityType}`)
   }
+
+  // Every org member holds a `userTableViews` cache entry (serves tableView.listAll,
+  // 1-day TTL) — without this broadcast the seeded views stay invisible in the UI
+  // until each member's entry expires.
+  await onCacheEvent('table-view.created', { orgId: organizationId, broadcastUserKeys: true })
 }
 
 function findFieldBySystemAttr(

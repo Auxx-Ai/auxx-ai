@@ -225,7 +225,6 @@ export const SETTINGS_MENU: SidebarProps[] = [
         slug: 'organization',
         icon: <Building2 />,
       },
-      // { id: 'settings-appearance', label: 'Appearance', slug: 'appearance', icon: <SunMoon /> },
       { id: 'settings-snippets', label: 'Snippets', slug: 'snippets', icon: <Tag /> },
       { id: 'settings-signatures', label: 'Signatures', slug: 'signatures', icon: <Feather /> },
 

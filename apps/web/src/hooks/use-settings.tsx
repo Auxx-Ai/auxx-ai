@@ -1,3 +1,4 @@
+import type { SettingKey } from '@auxx/lib/settings/client'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
@@ -10,6 +11,13 @@ import { api } from '~/trpc/react'
 
 // Type for setting values
 type SettingValue = string | number | boolean | object | null
+
+/**
+ * A known catalog key (autocomplete + typo-catching) while still accepting
+ * any string — feature hooks with their own key constants (mail/entity
+ * sidebar) aren't forced to adopt `SettingKey` in Phase 1.
+ */
+type SettingKeyInput = SettingKey | (string & {})
 
 interface UseSettingsOptions {
   // organizationId: string
@@ -158,7 +166,7 @@ export function useSettings({ scope }: UseSettingsOptions) {
 
   // Helper function to get a specific setting
   const getSetting = useCallback(
-    (key: string): SettingValue => {
+    (key: SettingKeyInput): SettingValue => {
       if (settings && settings[key] !== undefined) {
         return settings[key]
       }
@@ -198,8 +206,8 @@ export function useSettings({ scope }: UseSettingsOptions) {
 
   // Helper function to update an organization setting (admin only)
   const updateOrganizationSetting = useCallback(
-    (key: string, value: SettingValue, allowUserOverride: boolean) => {
-      updateOrgSettingMutation.mutate({ key, value, allowUserOverride })
+    (key: string, value: SettingValue) => {
+      updateOrgSettingMutation.mutate({ key, value })
 
       // Optimistically update local + dehydrated state so consumers re-render
       // immediately — `useDehydratedSettings` is the source of truth for
@@ -212,13 +220,7 @@ export function useSettings({ scope }: UseSettingsOptions) {
 
   // Helper function to batch update organization settings (admin only)
   const batchUpdateOrganizationSettings = useCallback(
-    (
-      settings: Array<{
-        key: string
-        value: SettingValue
-        allowUserOverride: boolean
-      }>
-    ) => {
+    (settings: Array<{ key: string; value: SettingValue }>) => {
       batchUpdateOrgSettingsMutation.mutate({ settings })
 
       const patch = Object.fromEntries(settings.map((s) => [s.key, s.value]))

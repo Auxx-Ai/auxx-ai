@@ -4,7 +4,6 @@
 import { createId } from '@paralleldrive/cuid2'
 import {
   type AnyPgColumn,
-  boolean,
   index,
   jsonb,
   pgTable,
@@ -29,7 +28,9 @@ export const OrganizationSetting = pgTable(
       .references((): AnyPgColumn => Organization.id, { onUpdate: 'cascade', onDelete: 'cascade' }),
     key: text().notNull(),
     value: jsonb(),
-    allowUserOverride: boolean().default(false).notNull(),
+    // `allowUserOverride` dropped — settings v2 makes overridability catalog-declared
+    // (`SettingConfig.access`) instead of a per-org runtime flag. See
+    // plans/settings/v2/README.md decision #4.
     scope: settingScope().default('GENERAL').notNull(),
     createdAt: timestamp({ precision: 3 }).defaultNow().notNull(),
     updatedAt: timestamp({ precision: 3 }).notNull(),

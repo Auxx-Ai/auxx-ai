@@ -1,7 +1,6 @@
 // packages/lib/src/seed/user-seeder.ts
-import { type Database, database as defaultDb, schema } from '@auxx/database'
+import { type Database, database as defaultDb } from '@auxx/database'
 import type { UserEntity as User } from '@auxx/database/types'
-import { and, eq, inArray } from 'drizzle-orm'
 import { createScopedLogger } from '../logger'
 import { UserAvatarService } from '../users/user-avatar-service'
 
@@ -70,11 +69,9 @@ export class UserSeeder {
     }
     // Wait for all operations to complete
     await Promise.all(promises)
-    // 3. Future: User preferences initialization
-    // await this.initializeUserPreferences()
-    // 4. Future: Default notification settings
+    // 3. Future: Default notification settings
     // await this.setupDefaultNotifications()
-    // 5. Future: Welcome flow triggers
+    // 4. Future: Welcome flow triggers
     // await this.triggerWelcomeFlow()
     logger.info('User seeding completed', {
       userId: this.user.id,
@@ -170,83 +167,6 @@ export class UserSeeder {
     }
   }
   // Future methods can be added here:
-  /**
-   * Initialize default user preferences (placeholder for future implementation)
-   */
-  private async initializeUserPreferences(): Promise<void> {
-    try {
-      const overridableSettings = await this.db
-        .select({
-          id: schema.OrganizationSetting.id,
-          value: schema.OrganizationSetting.value,
-        })
-        .from(schema.OrganizationSetting)
-        .where(
-          and(
-            eq(schema.OrganizationSetting.organizationId, this.organizationId),
-            eq(schema.OrganizationSetting.allowUserOverride, true)
-          )
-        )
-
-      if (overridableSettings.length === 0) {
-        logger.debug('No user preferences to initialize', {
-          userId: this.user.id,
-          organizationId: this.organizationId,
-        })
-        return
-      }
-
-      const settingIds = overridableSettings.map((setting) => setting.id)
-      const existing = await this.db
-        .select({ organizationSettingId: schema.UserSetting.organizationSettingId })
-        .from(schema.UserSetting)
-        .where(
-          and(
-            eq(schema.UserSetting.userId, this.user.id),
-            inArray(schema.UserSetting.organizationSettingId, settingIds)
-          )
-        )
-
-      const existingIds = new Set(existing.map((row) => row.organizationSettingId))
-      const now = new Date()
-      const toInsert = overridableSettings
-        .filter((setting) => !existingIds.has(setting.id))
-        .map((setting) => ({
-          userId: this.user.id,
-          organizationSettingId: setting.id,
-          value: setting.value,
-          updatedAt: now,
-        }))
-
-      if (toInsert.length === 0) {
-        logger.debug('User preferences already initialized', {
-          userId: this.user.id,
-          organizationId: this.organizationId,
-        })
-        return
-      }
-
-      await this.db
-        .insert(schema.UserSetting)
-        .values(toInsert)
-        .onConflictDoNothing({
-          target: [schema.UserSetting.userId, schema.UserSetting.organizationSettingId],
-        })
-
-      logger.info('Initialized user preferences', {
-        userId: this.user.id,
-        organizationId: this.organizationId,
-        createdCount: toInsert.length,
-      })
-    } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : String(error)
-      logger.error('Failed to initialize user preferences', {
-        userId: this.user.id,
-        organizationId: this.organizationId,
-        error: errorMsg,
-      })
-    }
-  }
   /**
    * Setup default notification settings (placeholder for future implementation)
    */

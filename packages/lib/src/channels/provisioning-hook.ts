@@ -262,12 +262,11 @@ async function applyCalendarGrant(integrationId: string, organizationId: string)
     })
     .where(eq(schema.Integration.id, integrationId))
 
-  const { SettingsService } = await import('../settings/settings-service')
-  await new SettingsService().updateOrganizationSetting({
+  const { updateOrganizationSetting } = await import('../settings/settings-service')
+  await updateOrganizationSetting({
     organizationId,
     key: 'recording.enabled',
     value: true,
-    allowUserOverride: false,
   })
 }
 

@@ -1,419 +1,35 @@
-// settings-service.ts
-import { database as db, schema } from '@auxx/database'
-import { createScopedLogger } from '@auxx/logger'
-import { and, eq, inArray } from 'drizzle-orm'
-import type { SettingConfig, SettingValue } from './types'
+// packages/lib/src/settings/settings-service.ts
+// Functional org/user settings module (v2). Replaces the old `SettingsService`
+// class — same cache + invalidation behavior, no class. See
+// plans/settings/v2/README.md §Service refactor.
 
-// Define a type for setting values
+import { type Database, database as defaultDb, schema } from '@auxx/database'
+import { createScopedLogger } from '@auxx/logger'
+import { and, eq } from 'drizzle-orm'
+import { SETTINGS_CATALOG, type SettingConfig, type SettingKey } from './catalog'
+import { normalizeSettingValue } from './normalize-setting-value'
+import type { SettingScope, SettingValue } from './types'
+
 const logger = createScopedLogger('settings-service')
 
-export const sidebarSettings = {
-  'sidebar.inboxes': {
-    key: 'sidebar.inboxes',
-    scope: 'SIDEBAR',
-    defaultValue: {}, // Record of inbox IDs to visibility settings
-    type: 'object',
-    description: 'Visibility settings for shared inboxes',
-  },
-  'sidebar.inboxOrder': {
-    key: 'sidebar.inboxOrder',
-    scope: 'SIDEBAR',
-    defaultValue: [], // Array of inbox IDs in order
-    type: 'object',
-    description: 'Order of shared inboxes in sidebar',
-  },
-  'sidebar.personalItems': {
-    key: 'sidebar.personalItems',
-    scope: 'SIDEBAR',
-    defaultValue: [
-      { id: 'inbox', name: 'Inbox', visible: true, order: 0 },
-      { id: 'drafts', name: 'Drafts', visible: true, order: 1 },
-      { id: 'sent', name: 'Sent', visible: true, order: 2 },
-    ],
-    type: 'object',
-    description: 'Personal sidebar items visibility and order',
-  },
-  'sidebar.views': {
-    key: 'sidebar.views',
-    scope: 'SIDEBAR',
-    defaultValue: {}, // Record of view IDs to visibility settings
-    type: 'object',
-    description: 'Visibility settings for mail views',
-  },
-  'sidebar.viewsOrder': {
-    key: 'sidebar.viewsOrder',
-    scope: 'SIDEBAR',
-    defaultValue: [], // Array of view IDs in order
-    type: 'object',
-    description: 'Order of mail views in sidebar',
-  },
-  'sidebar.groupVisibility': {
-    key: 'sidebar.groupVisibility',
-    scope: 'SIDEBAR',
-    defaultValue: { personal: true, views: true, shared: true },
-    type: 'object',
-    description: 'Visibility settings for sidebar groups (Me, Views, Shared)',
-  },
-  // Records sidebar layout is org-wide (shared by everyone, admin-editable).
-  'sidebar.entities.order': {
-    key: 'sidebar.entities.order',
-    scope: 'SIDEBAR',
-    defaultValue: [],
-    type: 'object',
-    organizationOnly: true,
-    description: 'Order of root-level Records sidebar nodes (interleaved folder + entity IDs)',
-  },
-  'sidebar.entities.visibility': {
-    key: 'sidebar.entities.visibility',
-    scope: 'SIDEBAR',
-    defaultValue: {},
-    type: 'object',
-    organizationOnly: true,
-    description: 'Visibility settings for entity definitions in the Records sidebar',
-  },
-  'sidebar.entities.groupVisible': {
-    key: 'sidebar.entities.groupVisible',
-    scope: 'SIDEBAR',
-    defaultValue: true,
-    type: 'boolean',
-    organizationOnly: true,
-    description: 'Visibility of the Records group in sidebar',
-  },
-  'sidebar.entities.folders': {
-    key: 'sidebar.entities.folders',
-    scope: 'SIDEBAR',
-    defaultValue: [], // Array<{ id: string; title: string }>
-    type: 'object',
-    organizationOnly: true,
-    description: 'Folder definitions for the Records sidebar',
-  },
-  'sidebar.entities.folderItems': {
-    key: 'sidebar.entities.folderItems',
-    scope: 'SIDEBAR',
-    defaultValue: {}, // Record<folderId, entityId[]>
-    type: 'object',
-    organizationOnly: true,
-    description: 'Ordered entity IDs within each Records sidebar folder (membership + order)',
-  },
-}
+/**
+ * Get an organization setting, ignoring user overrides.
+ */
+export async function getOrganizationSetting(params: {
+  organizationId: string
+  key: SettingKey
+  db?: Database
+}): Promise<SettingValue> {
+  const { organizationId, key, db = defaultDb } = params
 
-// Define a catalog of available settings with their metadata
-export const SETTINGS_CATALOG: Record<string, SettingConfig> = {
-  'onboarding.gettingStarted': {
-    key: 'onboarding.gettingStarted',
-    scope: 'ONBOARDING',
-    // GettingStartedState — { dismissedAt: string | null; manualCompletions: string[] }
-    defaultValue: { dismissedAt: null, manualCompletions: [] },
-    type: 'object',
-    organizationOnly: true,
-    description: 'Getting-started checklist state (dismissal + manual completions)',
-  },
-  'appearance.logo': {
-    key: 'appearance.logo',
-    scope: 'APPEARANCE',
-    defaultValue: '',
-    type: 'image',
-    description: 'Organization logo',
-  },
-  'appearance.primaryColor': {
-    key: 'appearance.primaryColor',
-    scope: 'APPEARANCE',
-    defaultValue: '#4f46e5',
-    type: 'color',
-    description: 'Primary theme color',
-  },
-  'appearance.secondaryColor': {
-    key: 'appearance.secondaryColor',
-    scope: 'APPEARANCE',
-    defaultValue: '#0ea5e9',
-    type: 'color',
-    description: 'Secondary theme color',
-  },
-  'appearance.font': {
-    key: 'appearance.font',
-    scope: 'APPEARANCE',
-    defaultValue: 'Inter',
-    type: 'font',
-    description: 'Primary font family',
-    options: [
-      { label: 'Inter', value: 'Inter' },
-      { label: 'Roboto', value: 'Roboto' },
-      { label: 'Open Sans', value: 'Open Sans' },
-      { label: 'Montserrat', value: 'Montserrat' },
-    ],
-  },
-  'notification.emailDigest': {
-    key: 'notification.emailDigest',
-    scope: 'NOTIFICATION',
-    defaultValue: true,
-    type: 'boolean',
-    description: 'Receive daily email digest',
-  },
-  'notification.sound.newMessage': {
-    key: 'notification.sound.newMessage',
-    scope: 'NOTIFICATION',
-    defaultValue: true,
-    type: 'boolean',
-    description: 'Play a sound when a new message arrives (email + chat)',
-  },
-  'notification.sound.bell': {
-    key: 'notification.sound.bell',
-    scope: 'NOTIFICATION',
-    defaultValue: true,
-    type: 'boolean',
-    description: 'Play a sound for notification-bell alerts (mentions, approvals)',
-  },
-  'dashboard.defaultView': {
-    key: 'dashboard.defaultView',
-    scope: 'DASHBOARD',
-    defaultValue: 'kanban',
-    type: 'string',
-    description: 'Default dashboard view',
-    options: [
-      { label: 'Kanban', value: 'kanban' },
-      { label: 'List', value: 'list' },
-      { label: 'Calendar', value: 'calendar' },
-    ],
-  },
-  // New email domain settings (organization-only)
-  'email.internalDomains': {
-    key: 'email.internalDomains',
-    scope: 'COMMUNICATION',
-    defaultValue: [],
-    type: 'object',
-    description: 'List of domains considered internal to the organization',
-    organizationOnly: true,
-  },
-  'email.partnerDomains': {
-    key: 'email.partnerDomains',
-    scope: 'COMMUNICATION',
-    defaultValue: [],
-    type: 'object',
-    description: 'List of domains considered as partner domains',
-    organizationOnly: true,
-  },
-  'company.autoCreate': {
-    key: 'company.autoCreate',
-    scope: 'COMMUNICATION',
-    defaultValue: true,
-    type: 'boolean',
-    description: 'Automatically create and link companies from inbound/outbound message domains',
-    organizationOnly: true,
-  },
-  'compose.defaultIntegrationId': {
-    key: 'compose.defaultIntegrationId',
-    scope: 'COMMUNICATION',
-    defaultValue: null,
-    type: 'string',
-    description: 'Default sending channel for new compose drafts',
-  },
-  ...sidebarSettings,
-
-  // ── RECORDING ──────────────────────────────────────────────
-  'recording.enabled': {
-    key: 'recording.enabled',
-    scope: 'RECORDING',
-    defaultValue: false,
-    type: 'boolean',
-    description: 'Enable meeting recording feature',
-    organizationOnly: true,
-  },
-  'recording.botProvider': {
-    key: 'recording.botProvider',
-    scope: 'RECORDING',
-    defaultValue: 'recall',
-    type: 'string',
-    description: 'Bot provider for meeting recordings',
-    organizationOnly: true,
-    options: [{ label: 'Recall.ai', value: 'recall' }],
-  },
-  'recording.defaultBotName': {
-    key: 'recording.defaultBotName',
-    scope: 'RECORDING',
-    defaultValue: 'Auxx Recorder',
-    type: 'string',
-    description: 'Bot display name shown in meetings',
-    organizationOnly: true,
-  },
-  'recording.defaultConsentMessage': {
-    key: 'recording.defaultConsentMessage',
-    scope: 'RECORDING',
-    defaultValue: 'This meeting is being recorded by Auxx.',
-    type: 'string',
-    description: 'Chat message sent when bot joins a meeting',
-    organizationOnly: true,
-  },
-  'recording.captureVideo': {
-    key: 'recording.captureVideo',
-    scope: 'RECORDING',
-    defaultValue: true,
-    type: 'boolean',
-    description: 'Record video in addition to audio',
-    organizationOnly: true,
-  },
-  'recording.autoRecord': {
-    key: 'recording.autoRecord',
-    scope: 'RECORDING',
-    defaultValue: 'none',
-    type: 'string',
-    description: 'Auto-record preference for meetings',
-    options: [
-      { label: 'All meetings', value: 'all' },
-      { label: 'External only', value: 'external' },
-      { label: 'None', value: 'none' },
-    ],
-  },
-
-  // ── KOPILOT ────────────────────────────────────────────────
-  'kopilot.modelId': {
-    key: 'kopilot.modelId',
-    scope: 'KOPILOT',
-    defaultValue: null,
-    type: 'string',
-    description:
-      'Default model for master Kopilot in provider:model format (e.g. anthropic:claude-opus-4-7). null = system default.',
-    organizationOnly: true,
-  },
-  'kopilot.toolsets': {
-    key: 'kopilot.toolsets',
-    scope: 'KOPILOT',
-    defaultValue: [{ slug: 'auxx:*', enabled: true, source: 'auto_default' }],
-    type: 'object',
-    description:
-      'Per-toolset enable/disable + per-tool overrides for master Kopilot (native auxxai toolsets only). Supports glob slugs (e.g. auxx:*).',
-    organizationOnly: true,
-  },
-  'kopilot.appAccounts': {
-    key: 'kopilot.appAccounts',
-    scope: 'KOPILOT',
-    defaultValue: {},
-    type: 'object',
-    description: 'Per-app explicit workspace cred for master Kopilot. Missing = off.',
-    organizationOnly: true,
-  },
-
-  // ── MONEY (quoting, money MQ1 build spec §G.1) ──────────────────
-  // Shipped under GENERAL rather than a dedicated DOCUMENTS scope (orchestrator decision —
-  // no DDL for MQ1). The settings refactor ([02-document-settings.md]) moves these + adds
-  // validation/shape work when the Documents settings page lands.
-  'organization.currency': {
-    key: 'organization.currency',
-    scope: 'GENERAL',
-    defaultValue: 'USD',
-    type: 'string',
-    description: 'Organization-wide currency code — consumed by CURRENCY display + totals docs',
-    organizationOnly: true,
-  },
-  'documents.taxRates': {
-    key: 'documents.taxRates',
-    scope: 'GENERAL',
-    // Array<{ id: string; name: string; rate: number; isDefault?: boolean }> — documents
-    // SNAPSHOT name+rate at pick time; editing a rate never rewrites existing documents.
-    defaultValue: [],
-    type: 'object',
-    description: 'Org tax rate presets for the quote/invoice line builder tax picker',
-    organizationOnly: true,
-  },
-}
-
-export class SettingsService {
-  constructor(private database = db) {}
-
-  /**
-   * Get an organization setting, ignoring user overrides
-   */
-  async getOrganizationSetting(params: {
-    organizationId: string
-    key: string
-  }): Promise<SettingValue> {
-    const { organizationId, key } = params
-
-    // Check if the setting exists in the catalog
-    const settingConfig = SETTINGS_CATALOG[key]
-    if (!settingConfig) {
-      throw new Error(`Unknown setting: ${key}`)
-    }
-
-    // Injected database (e.g. transaction) → read directly for write-after-read consistency
-    if (this.database !== db) {
-      const [orgSetting] = await this.database
-        .select()
-        .from(schema.OrganizationSetting)
-        .where(
-          and(
-            eq(schema.OrganizationSetting.organizationId, organizationId),
-            eq(schema.OrganizationSetting.key, key)
-          )
-        )
-        .limit(1)
-      return orgSetting ? (orgSetting.value as SettingValue) : settingConfig.defaultValue
-    }
-
-    // Org cache map already merges catalog defaults with persisted org rows
-    const { getOrgCache } = await import('../cache')
-    const settings = await getOrgCache().get(organizationId, 'orgSettings')
-    return key in settings ? settings[key]! : settingConfig.defaultValue
+  const settingConfig = SETTINGS_CATALOG[key]
+  if (!settingConfig) {
+    throw new Error(`Unknown setting: ${key}`)
   }
 
-  /**
-   * Get all organization settings, ignoring user overrides
-   */
-  async getAllOrganizationSettings(params: {
-    organizationId: string
-    scope?: string
-  }): Promise<Record<string, SettingValue>> {
-    const { organizationId, scope } = params
-
-    // Get all organization settings
-    const orgSettings = await this.database
-      .select()
-      .from(schema.OrganizationSetting)
-      .where(
-        and(
-          eq(schema.OrganizationSetting.organizationId, organizationId),
-          ...(scope ? [eq(schema.OrganizationSetting.scope, scope as any)] : [])
-        )
-      )
-
-    // Build the result object
-    const result: Record<string, SettingValue> = {}
-
-    // First, add all default values from the catalog
-    Object.entries(SETTINGS_CATALOG).forEach(([key, config]) => {
-      if (!scope || config.scope === scope) {
-        result[key] = config.defaultValue
-      }
-    })
-
-    // Then override with organization settings
-    orgSettings.forEach((orgSetting) => {
-      const key = orgSetting.key
-      result[key] = orgSetting.value as SettingValue
-    })
-
-    return result
-  }
-
-  /**
-   * Get a setting for a user, considering organization defaults and user overrides
-   */
-  async getUserSetting(params: {
-    userId: string
-    organizationId: string
-    key: string
-  }): Promise<SettingValue> {
-    const { userId, organizationId, key } = params
-
-    // First, check if the setting exists in the catalog
-    const settingConfig = SETTINGS_CATALOG[key]
-    if (!settingConfig) {
-      // Return null for unknown settings instead of throwing
-      logger.warn(`Unknown setting requested: ${key}`)
-      return null
-    }
-
-    // Get organization setting
-    const [orgSetting] = await this.database
+  // Injected database (e.g. transaction) → read directly for write-after-read consistency
+  if (db !== defaultDb) {
+    const [orgSetting] = await db
       .select()
       .from(schema.OrganizationSetting)
       .where(
@@ -423,421 +39,356 @@ export class SettingsService {
         )
       )
       .limit(1)
-
-    // If no organization setting, return the default from catalog
-    if (!orgSetting) {
-      return settingConfig.defaultValue
-    }
-
-    // If this is an organization-only setting, ignore user overrides
-    if (settingConfig.organizationOnly) {
-      return orgSetting.value as SettingValue
-    }
-
-    // If user override exists and is allowed, return that
-    if (orgSetting.allowUserOverride) {
-      const [userSetting] = await this.database
-        .select()
-        .from(schema.UserSetting)
-        .where(
-          and(
-            eq(schema.UserSetting.userId, userId),
-            eq(schema.UserSetting.organizationSettingId, orgSetting.id)
-          )
-        )
-        .limit(1)
-      if (userSetting) return userSetting.value as SettingValue
-    }
-
-    // Otherwise return the organization setting
-    return orgSetting.value as SettingValue
+    return orgSetting ? (orgSetting.value as SettingValue) : settingConfig.defaultValue
   }
 
-  /**
-   * Get all settings for a user, considering organization defaults and user overrides
-   */
-  async getAllUserSettings(params: {
-    userId: string
-    organizationId: string
-    scope?: string
-  }): Promise<Record<string, SettingValue>> {
-    const { userId, organizationId, scope } = params
+  // Org cache map already merges catalog defaults with persisted org rows
+  const { getOrgCache } = await import('../cache')
+  const settings = await getOrgCache().get(organizationId, 'orgSettings')
+  return key in settings ? settings[key]! : settingConfig.defaultValue
+}
 
-    // Get all organization settings
-    const orgSettings = await this.database
+/**
+ * Get all organization settings, ignoring user overrides.
+ */
+export async function getAllOrganizationSettings(params: {
+  organizationId: string
+  scope?: SettingScope
+  db?: Database
+}): Promise<Record<string, SettingValue>> {
+  const { organizationId, scope, db = defaultDb } = params
+
+  const orgSettings = await db
+    .select()
+    .from(schema.OrganizationSetting)
+    .where(
+      and(
+        eq(schema.OrganizationSetting.organizationId, organizationId),
+        ...(scope ? [eq(schema.OrganizationSetting.scope, scope as any)] : [])
+      )
+    )
+
+  const result: Record<string, SettingValue> = {}
+
+  // First, add all default values from the catalog
+  for (const [key, config] of Object.entries(SETTINGS_CATALOG)) {
+    if (!scope || config.scope === scope) {
+      result[key] = config.defaultValue
+    }
+  }
+
+  // Then override with organization settings
+  for (const orgSetting of orgSettings) {
+    result[orgSetting.key] = orgSetting.value as SettingValue
+  }
+
+  return result
+}
+
+/**
+ * Get a setting for a user, considering organization defaults and user overrides.
+ * A user override only applies when the catalog entry declares `access: 'user'`
+ * — the per-org `allowUserOverride` DB column is no longer consulted. Reads
+ * directly by `(userId, organizationId, key)` — no join through
+ * `OrganizationSetting.id` (settings v2 re-key).
+ */
+export async function getUserSetting(params: {
+  userId: string
+  organizationId: string
+  key: string
+  db?: Database
+}): Promise<SettingValue> {
+  const { userId, organizationId, key, db = defaultDb } = params
+
+  const settingConfig = SETTINGS_CATALOG[key as SettingKey]
+  if (!settingConfig) {
+    // Return null for unknown settings instead of throwing
+    logger.warn(`Unknown setting requested: ${key}`)
+    return null
+  }
+
+  // Org-only setting → ignore any user override, read the org row directly.
+  if (settingConfig.access !== 'user') {
+    const [orgSetting] = await db
       .select()
       .from(schema.OrganizationSetting)
       .where(
         and(
           eq(schema.OrganizationSetting.organizationId, organizationId),
-          ...(scope ? [eq(schema.OrganizationSetting.scope, scope as any)] : [])
+          eq(schema.OrganizationSetting.key, key)
         )
       )
+      .limit(1)
+    return orgSetting ? (orgSetting.value as SettingValue) : settingConfig.defaultValue
+  }
 
-    const orgSettingIds = orgSettings.map((os) => os.id)
-    const userSettings = orgSettingIds.length
-      ? await this.database
-          .select()
-          .from(schema.UserSetting)
-          .where(
-            and(
-              eq(schema.UserSetting.userId, userId),
-              inArray(schema.UserSetting.organizationSettingId, orgSettingIds)
-            )
-          )
-      : []
-    const userMap = new Map<string, any>()
-    for (const us of userSettings) userMap.set(us.organizationSettingId, us)
+  const [userSetting] = await db
+    .select()
+    .from(schema.UserSetting)
+    .where(
+      and(
+        eq(schema.UserSetting.userId, userId),
+        eq(schema.UserSetting.organizationId, organizationId),
+        eq(schema.UserSetting.key, key)
+      )
+    )
+    .limit(1)
 
-    // Build the result object
-    const result: Record<string, SettingValue> = {}
+  if (userSetting) {
+    return userSetting.value as SettingValue
+  }
 
-    // First, add all default values from the catalog
-    Object.entries(SETTINGS_CATALOG).forEach(([key, config]) => {
-      if (!scope || config.scope === scope) {
-        result[key] = config.defaultValue
-      }
+  const [orgSetting] = await db
+    .select()
+    .from(schema.OrganizationSetting)
+    .where(
+      and(
+        eq(schema.OrganizationSetting.organizationId, organizationId),
+        eq(schema.OrganizationSetting.key, key)
+      )
+    )
+    .limit(1)
+
+  return orgSetting ? (orgSetting.value as SettingValue) : settingConfig.defaultValue
+}
+
+/**
+ * Get all settings for a user, considering organization defaults and user overrides.
+ * `UserSetting` rows are looked up directly by `(userId, organizationId)` — no
+ * join through `OrganizationSetting.id` (settings v2 re-key).
+ */
+export async function getAllUserSettings(params: {
+  userId: string
+  organizationId: string
+  scope?: SettingScope
+  db?: Database
+}): Promise<Record<string, SettingValue>> {
+  const { userId, organizationId, scope, db = defaultDb } = params
+
+  const orgSettings = await db
+    .select()
+    .from(schema.OrganizationSetting)
+    .where(
+      and(
+        eq(schema.OrganizationSetting.organizationId, organizationId),
+        ...(scope ? [eq(schema.OrganizationSetting.scope, scope as any)] : [])
+      )
+    )
+
+  const userSettings = await db
+    .select()
+    .from(schema.UserSetting)
+    .where(
+      and(
+        eq(schema.UserSetting.userId, userId),
+        eq(schema.UserSetting.organizationId, organizationId)
+      )
+    )
+  const userMap = new Map(userSettings.map((us) => [us.key, us]))
+
+  const result: Record<string, SettingValue> = {}
+
+  // First, add all default values from the catalog
+  for (const [key, config] of Object.entries(SETTINGS_CATALOG)) {
+    if (!scope || config.scope === scope) {
+      result[key] = config.defaultValue
+    }
+  }
+
+  // Then override with organization settings and user settings where allowed
+  for (const orgSetting of orgSettings) {
+    const settingConfig = SETTINGS_CATALOG[orgSetting.key as SettingKey] as
+      | SettingConfig
+      | undefined
+
+    if (settingConfig?.access === 'user') {
+      const us = userMap.get(orgSetting.key)
+      result[orgSetting.key] = us ? (us.value as SettingValue) : (orgSetting.value as SettingValue)
+    } else {
+      result[orgSetting.key] = orgSetting.value as SettingValue
+    }
+  }
+
+  return result
+}
+
+/**
+ * Update an organization setting. Validates the value against the catalog's
+ * `fieldType` via {@link normalizeSettingValue} and upserts.
+ */
+export async function updateOrganizationSetting(params: {
+  organizationId: string
+  key: SettingKey
+  value: SettingValue
+  db?: Database
+}): Promise<void> {
+  const { organizationId, key, value, db = defaultDb } = params
+
+  const settingConfig = SETTINGS_CATALOG[key]
+  if (!settingConfig) {
+    throw new Error(`Unknown setting: ${key}`)
+  }
+
+  const normalizedValue = normalizeSettingValue(key, settingConfig, value)
+
+  await db
+    .insert(schema.OrganizationSetting)
+    .values({
+      organizationId,
+      key,
+      value: normalizedValue,
+      scope: settingConfig.scope,
+      updatedAt: new Date(),
     })
+    .onConflictDoUpdate({
+      target: [schema.OrganizationSetting.organizationId, schema.OrganizationSetting.key],
+      set: { value: normalizedValue, updatedAt: new Date() },
+    })
+}
 
-    // Then override with organization settings and user settings where allowed
-    orgSettings.forEach((orgSetting) => {
-      const key = orgSetting.key
+/**
+ * Update a user setting. Rejects keys the catalog declares `access: 'org'`.
+ * Upserts directly on `(userId, organizationId, key)` — no more auto-created
+ * `OrganizationSetting` row (settings v2 re-key drops the `organizationSettingId`
+ * FK dance).
+ */
+export async function updateUserSetting(params: {
+  userId: string
+  organizationId: string
+  key: SettingKey
+  value: SettingValue
+  db?: Database
+}): Promise<void> {
+  const { userId, organizationId, key, value, db = defaultDb } = params
+
+  const settingConfig = SETTINGS_CATALOG[key]
+  if (!settingConfig) {
+    throw new Error(`Unknown setting: ${key}`)
+  }
+
+  if (settingConfig.access !== 'user') {
+    throw new Error(`Setting ${key} is organization-only and cannot be overridden by users`)
+  }
+
+  const normalizedValue = normalizeSettingValue(key, settingConfig, value)
+
+  await db
+    .insert(schema.UserSetting)
+    .values({
+      userId,
+      organizationId,
+      key,
+      value: normalizedValue,
+      updatedAt: new Date(),
+    })
+    .onConflictDoUpdate({
+      target: [
+        schema.UserSetting.userId,
+        schema.UserSetting.organizationId,
+        schema.UserSetting.key,
+      ],
+      set: { value: normalizedValue, updatedAt: new Date() },
+    })
+}
+
+/**
+ * Reset a user setting to the organization default (deletes the `UserSetting` row).
+ */
+export async function resetUserSetting(params: {
+  userId: string
+  organizationId: string
+  key: SettingKey
+  db?: Database
+}): Promise<void> {
+  const { userId, organizationId, key, db = defaultDb } = params
+
+  await db
+    .delete(schema.UserSetting)
+    .where(
+      and(
+        eq(schema.UserSetting.userId, userId),
+        eq(schema.UserSetting.organizationId, organizationId),
+        eq(schema.UserSetting.key, key)
+      )
+    )
+}
+
+/**
+ * Batch update organization settings in a single transaction.
+ */
+export async function batchUpdateOrganizationSettings(params: {
+  organizationId: string
+  settings: Array<{ key: SettingKey; value: SettingValue }>
+  db?: Database
+}): Promise<void> {
+  const { organizationId, settings, db = defaultDb } = params
+
+  await db.transaction(async (tx) => {
+    for (const setting of settings) {
+      const { key, value } = setting
+
       const settingConfig = SETTINGS_CATALOG[key]
-
-      // If organization-only setting, or no user override allowed, use org value
-      if (settingConfig?.organizationOnly || !orgSetting.allowUserOverride) {
-        result[key] = orgSetting.value as SettingValue
+      if (!settingConfig) {
+        throw new Error(`Unknown setting: ${key}`)
       }
-      // Otherwise, use user setting if it exists
-      else {
-        const us = userMap.get(orgSetting.id)
-        if (us) result[key] = us.value as SettingValue
-        else result[key] = orgSetting.value as SettingValue
-      }
-    })
 
-    return result
-  }
+      const normalizedValue = normalizeSettingValue(key, settingConfig, value)
 
-  /**
-   * Update an organization setting
-   */
-  async updateOrganizationSetting(params: {
-    organizationId: string
-    key: string
-    value: SettingValue
-    allowUserOverride: boolean
-  }): Promise<void> {
-    const { organizationId, key, value, allowUserOverride } = params
-
-    // Check if the setting exists in the catalog
-    const settingConfig = SETTINGS_CATALOG[key]
-    if (!settingConfig) {
-      throw new Error(`Unknown setting: ${key}`)
-    }
-
-    // If this is an organization-only setting, force allowUserOverride to false
-    let effectiveAllowUserOverride = allowUserOverride
-    if (settingConfig.organizationOnly && allowUserOverride) {
-      logger.warn(`Setting ${key} is organization-only; ignoring allowUserOverride=true`)
-      effectiveAllowUserOverride = false
-    }
-
-    // Validate the value type against the expected type
-    this.validateSettingValue(value, settingConfig)
-
-    // Upsert the organization setting
-    await this.database
-      .insert(schema.OrganizationSetting)
-      .values({
-        organizationId,
-        key,
-        value: value,
-        allowUserOverride: effectiveAllowUserOverride,
-        scope: settingConfig.scope,
-        updatedAt: new Date(),
-      })
-      .onConflictDoUpdate({
-        target: [schema.OrganizationSetting.organizationId, schema.OrganizationSetting.key],
-        set: {
-          value: value,
-          allowUserOverride: effectiveAllowUserOverride,
-          updatedAt: new Date(),
-        },
-      })
-  }
-
-  /**
-   * Update a user setting (only if allowed by the organization)
-   * Auto-creates the organization setting if it doesn't exist
-   */
-  async updateUserSetting(params: {
-    userId: string
-    organizationId: string
-    key: string
-    value: SettingValue
-  }): Promise<void> {
-    const { userId, organizationId, key, value } = params
-
-    // Check if the setting exists in the catalog
-    const settingConfig = SETTINGS_CATALOG[key]
-    if (!settingConfig) {
-      throw new Error(`Unknown setting: ${key}`)
-    }
-
-    // Check if this is an organization-only setting
-    if (settingConfig.organizationOnly) {
-      throw new Error(`Setting ${key} is organization-only and cannot be overridden by users`)
-    }
-
-    // Validate the value type against the expected type
-    this.validateSettingValue(value, settingConfig)
-
-    // Get the organization setting to check if user override is allowed
-    let [orgSetting] = await this.database
-      .select()
-      .from(schema.OrganizationSetting)
-      .where(
-        and(
-          eq(schema.OrganizationSetting.organizationId, organizationId),
-          eq(schema.OrganizationSetting.key, key)
-        )
-      )
-      .limit(1)
-
-    // Auto-create the organization setting if it doesn't exist
-    if (!orgSetting) {
-      logger.info(`Auto-creating organization setting: ${key}`)
-      const [newOrgSetting] = await this.database
+      await tx
         .insert(schema.OrganizationSetting)
         .values({
           organizationId,
           key,
-          value: settingConfig.defaultValue,
-          allowUserOverride: true,
+          value: normalizedValue,
           scope: settingConfig.scope,
           updatedAt: new Date(),
         })
-        .returning()
-      orgSetting = newOrgSetting
+        .onConflictDoUpdate({
+          target: [schema.OrganizationSetting.organizationId, schema.OrganizationSetting.key],
+          set: { value: normalizedValue, updatedAt: new Date() },
+        })
     }
+  })
+}
 
-    if (!orgSetting.allowUserOverride) {
-      throw new Error(`User override not allowed for setting ${key}`)
-    }
+/** One organization setting merged with its catalog metadata. */
+export interface OrganizationSettingWithMetadata {
+  key: SettingKey
+  value: SettingValue
+  /** Catalog-declared overridability — replaces the old `allowUserOverride` column read. */
+  access: 'org' | 'user'
+  metadata: SettingConfig
+}
 
-    // Upsert the user setting
-    await this.database
-      .insert(schema.UserSetting)
-      .values({
-        userId,
-        organizationSettingId: orgSetting.id,
-        value: value,
-        updatedAt: new Date(),
-      })
-      .onConflictDoUpdate({
-        target: [schema.UserSetting.userId, schema.UserSetting.organizationSettingId],
-        set: { value: value, updatedAt: new Date() },
-      })
-  }
+/**
+ * Get all settings for an organization with their catalog metadata.
+ */
+export async function getOrganizationSettingsWithMetadata(params: {
+  organizationId: string
+  scope?: SettingScope
+  db?: Database
+}): Promise<OrganizationSettingWithMetadata[]> {
+  const { organizationId, scope, db = defaultDb } = params
 
-  /**
-   * Reset a user setting to the organization default
-   */
-  async resetUserSetting(params: {
-    userId: string
-    organizationId: string
-    key: string
-  }): Promise<void> {
-    const { userId, organizationId, key } = params
-
-    // Get the organization setting
-    const [orgSetting] = await this.database
-      .select()
-      .from(schema.OrganizationSetting)
-      .where(
-        and(
-          eq(schema.OrganizationSetting.organizationId, organizationId),
-          eq(schema.OrganizationSetting.key, key)
-        )
+  const orgSettings = await db
+    .select()
+    .from(schema.OrganizationSetting)
+    .where(
+      and(
+        eq(schema.OrganizationSetting.organizationId, organizationId),
+        ...(scope ? [eq(schema.OrganizationSetting.scope, scope as any)] : [])
       )
-      .limit(1)
+    )
 
-    if (!orgSetting) {
-      return // Nothing to reset
-    }
-
-    // Delete the user setting if it exists
-    await this.database
-      .delete(schema.UserSetting)
-      .where(
-        and(
-          eq(schema.UserSetting.userId, userId),
-          eq(schema.UserSetting.organizationSettingId, orgSetting.id)
-        )
-      )
-  }
-
-  /**
-   * Batch update organization settings
-   */
-  async batchUpdateOrganizationSettings(params: {
-    organizationId: string
-    settings: Array<{ key: string; value: SettingValue; allowUserOverride: boolean }>
-  }): Promise<void> {
-    const { organizationId, settings } = params
-
-    // Use a transaction to ensure all updates succeed or fail together
-    await this.database.transaction(async (tx) => {
-      for (const setting of settings) {
-        const { key, value, allowUserOverride } = setting
-
-        // Check if the setting exists in the catalog
-        const settingConfig = SETTINGS_CATALOG[key]
-        if (!settingConfig) {
-          throw new Error(`Unknown setting: ${key}`)
-        }
-
-        // If this is an organization-only setting, force allowUserOverride to false
-        let effectiveAllowUserOverride = allowUserOverride
-        if (settingConfig.organizationOnly && allowUserOverride) {
-          logger.warn(`Setting ${key} is organization-only; ignoring allowUserOverride=true`)
-          effectiveAllowUserOverride = false
-        }
-
-        // Validate the value type against the expected type
-        this.validateSettingValue(value, settingConfig)
-
-        // Upsert the organization setting
-        await tx
-          .insert(schema.OrganizationSetting)
-          .values({
-            organizationId,
-            key,
-            value: value,
-            allowUserOverride: effectiveAllowUserOverride,
-            scope: settingConfig.scope,
-            updatedAt: new Date(),
-          })
-          .onConflictDoUpdate({
-            target: [schema.OrganizationSetting.organizationId, schema.OrganizationSetting.key],
-            set: {
-              value: value,
-              allowUserOverride: effectiveAllowUserOverride,
-              updatedAt: new Date(),
-            },
-          })
+  return Object.entries(SETTINGS_CATALOG)
+    .filter(([, config]) => !scope || config.scope === scope)
+    .map(([key, metadata]) => {
+      const orgSetting = orgSettings.find((s) => s.key === key)
+      return {
+        key: key as SettingKey,
+        value: orgSetting ? (orgSetting.value as SettingValue) : metadata.defaultValue,
+        access: metadata.access,
+        metadata,
       }
     })
-  }
-
-  /**
-   * Get all settings for an organization with their metadata
-   */
-  async getOrganizationSettingsWithMetadata(params: {
-    organizationId: string
-    scope?: string
-  }): Promise<
-    Array<{ key: string; value: SettingValue; allowUserOverride: boolean; metadata: SettingConfig }>
-  > {
-    const { organizationId, scope } = params
-
-    // Get all organization settings
-    const orgSettings = await this.database
-      .select()
-      .from(schema.OrganizationSetting)
-      .where(
-        and(
-          eq(schema.OrganizationSetting.organizationId, organizationId),
-          ...(scope ? [eq(schema.OrganizationSetting.scope, scope as any)] : [])
-        )
-      )
-
-    // Build result with metadata
-    const results = Object.entries(SETTINGS_CATALOG)
-      .filter(([_, config]) => !scope || config.scope === scope)
-      .map(([key, metadata]) => {
-        const orgSetting = orgSettings.find((s) => s.key === key)
-
-        return {
-          key,
-          value: orgSetting ? (orgSetting.value as SettingValue) : metadata.defaultValue,
-          allowUserOverride: orgSetting ? orgSetting.allowUserOverride : !metadata.organizationOnly,
-          metadata,
-        }
-      })
-
-    return results
-  }
-
-  /**
-   * Validate a setting value against its expected type
-   */
-  private validateSettingValue(value: SettingValue, config: SettingConfig): void {
-    // For image type, allow empty string as valid (means no image set)
-    if (config.type === 'image' && value === '' && config.defaultValue === '') {
-      return
-    }
-
-    if (value === null && config.defaultValue === null) {
-      return
-    }
-
-    switch (config.type) {
-      case 'string':
-      case 'font':
-        if (typeof value !== 'string') {
-          throw new Error(`Setting ${config.key} expects a string value`)
-        }
-
-        // If options are provided, validate against them
-        if (config.options && !config.options.some((opt) => opt.value === value)) {
-          throw new Error(
-            `Setting ${config.key} expects one of: ${config.options.map((o) => o.value).join(', ')}`
-          )
-        }
-        break
-
-      case 'number':
-        if (typeof value !== 'number') {
-          throw new Error(`Setting ${config.key} expects a number value`)
-        }
-
-        // If options are provided, validate against them
-        if (config.options && !config.options.some((opt) => opt.value === value)) {
-          throw new Error(
-            `Setting ${config.key} expects one of: ${config.options.map((o) => o.value).join(', ')}`
-          )
-        }
-        break
-
-      case 'boolean':
-        if (typeof value !== 'boolean') {
-          throw new Error(`Setting ${config.key} expects a boolean value`)
-        }
-        break
-
-      case 'color':
-        if (typeof value !== 'string' || !/^#[0-9A-Fa-f]{6}$/.test(value)) {
-          throw new Error(`Setting ${config.key} expects a hex color value (e.g., #FF0000)`)
-        }
-        break
-
-      case 'image':
-        // For images, we expect a string URL or empty string (empty string means no image)
-        if (typeof value !== 'string') {
-          throw new Error(`Setting ${config.key} expects a string URL`)
-        }
-        break
-
-      case 'object':
-        if (value === null || typeof value !== 'object') {
-          throw new Error(`Setting ${config.key} expects an object value`)
-        }
-        break
-
-      default:
-        throw new Error(`Unknown setting type: ${config.type}`)
-    }
-  }
 }

@@ -5,7 +5,6 @@ import { createId } from '@paralleldrive/cuid2'
 import {
   type AnyPgColumn,
   boolean,
-  jsonb,
   pgTable,
   text,
   timestamp,
@@ -36,7 +35,9 @@ export const User = pgTable(
     about: text(),
     isSuperAdmin: boolean().default(false).notNull(),
     defaultOrganizationId: text(),
-    settings: jsonb().default({}).notNull(),
+    // `settings` (legacy jsonb blob) dropped — settings v2 deletes the
+    // `UserSettingsService`/`User.settings` store entirely. See
+    // plans/settings/v2/README.md §Deletions.
     webhookSecret: text(),
     createdAt: timestamp({ precision: 3 }).defaultNow().notNull(),
     phoneNumber: text(),

@@ -274,22 +274,24 @@ export const organizationInvitationRelations = relations(OrganizationInvitation,
   }),
 }))
 
-export const organizationSettingRelations = relations(OrganizationSetting, ({ one, many }) => ({
+export const organizationSettingRelations = relations(OrganizationSetting, ({ one }) => ({
   organization: one(Organization, {
     fields: [OrganizationSetting.organizationId],
     references: [Organization.id],
   }),
-  userSettings: many(UserSetting),
 }))
 
+// Settings v2 re-key: UserSetting is keyed by (userId, organizationId, key)
+// directly — no more FK to OrganizationSetting. See
+// plans/settings/v2/README.md §Service refactor.
 export const userSettingRelations = relations(UserSetting, ({ one }) => ({
-  organizationSetting: one(OrganizationSetting, {
-    fields: [UserSetting.organizationSettingId],
-    references: [OrganizationSetting.id],
-  }),
   user: one(User, {
     fields: [UserSetting.userId],
     references: [User.id],
+  }),
+  organization: one(Organization, {
+    fields: [UserSetting.organizationId],
+    references: [Organization.id],
   }),
 }))
 

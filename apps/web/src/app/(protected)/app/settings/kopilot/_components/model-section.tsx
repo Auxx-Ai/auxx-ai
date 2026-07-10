@@ -28,9 +28,7 @@ export function ModelSection() {
       <div className='flex items-center gap-2'>
         <AiModelPicker
           value={modelId}
-          onChange={(model) =>
-            updateOrganizationSetting('kopilot.modelId', model?.id ?? null, false)
-          }
+          onChange={(model) => updateOrganizationSetting('kopilot.modelId', model?.id ?? null)}
           modelTypes={[ModelType.LLM]}
           isUpdating={isUpdatingOrgSetting}
           triggerClassName='max-w-sm'
@@ -40,7 +38,7 @@ export function ModelSection() {
           <Button
             variant='ghost'
             size='sm'
-            onClick={() => updateOrganizationSetting('kopilot.modelId', null, false)}
+            onClick={() => updateOrganizationSetting('kopilot.modelId', null)}
             disabled={isUpdatingOrgSetting}
             aria-label='Reset to system default'>
             <X />

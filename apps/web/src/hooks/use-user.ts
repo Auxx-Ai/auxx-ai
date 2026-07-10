@@ -1,7 +1,7 @@
 // hooks/use-user.ts
 
 import type { OrganizationRole } from '@auxx/database/types'
-import type { Settings } from '@auxx/lib/settings/types'
+import type { SettingValue } from '@auxx/lib/settings/client'
 import type { FeatureMapObject } from '@auxx/lib/types'
 import { usePathname, useRouter } from 'next/navigation'
 import { useEffect, useMemo } from 'react'
@@ -75,7 +75,7 @@ interface UseUserResult {
   features: FeatureMapObject | null
   hasIntegrations: boolean | null
   hasOnlyForwardingChannel: boolean | null
-  settings: Settings | null
+  settings: Record<string, SettingValue> | null
 }
 /**
  * Hook to get the current user data, organization, and role

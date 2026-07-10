@@ -1905,6 +1905,20 @@
       "when": 1783662522367,
       "tag": "0271_dispatch_m1_visits_sequences",
       "breakpoints": true
+    },
+    {
+      "idx": 272,
+      "version": "7",
+      "when": 1783706137914,
+      "tag": "0272_settings_v2_rekey_add_columns",
+      "breakpoints": true
+    },
+    {
+      "idx": 273,
+      "version": "7",
+      "when": 1783706572704,
+      "tag": "0273_settings_v2_rekey_drop_legacy_fk",
+      "breakpoints": true
     }
   ]
 }

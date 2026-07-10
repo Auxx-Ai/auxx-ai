@@ -10,7 +10,7 @@ import {
   listCalendarEventParticipants,
   listCalendarEvents,
 } from '@auxx/lib/recording/calendar'
-import { SettingsService } from '@auxx/lib/settings'
+import { updateOrganizationSetting } from '@auxx/lib/settings'
 import { TRPCError } from '@trpc/server'
 import { and, count, eq } from 'drizzle-orm'
 import { z } from 'zod'
@@ -151,12 +151,11 @@ export const calendarRouter = createTRPCRouter({
       })
 
       if (!anyStillEnabled) {
-        const settingsService = new SettingsService()
-        await settingsService.updateOrganizationSetting({
+        await updateOrganizationSetting({
           organizationId: ctx.session.organizationId,
           key: 'recording.enabled',
           value: false,
-          allowUserOverride: false,
+          db: ctx.db,
         })
       }
 

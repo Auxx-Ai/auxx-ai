@@ -11,7 +11,7 @@ import { err, ok, type Result } from 'neverthrow'
 import { NotFoundError } from '../errors'
 import { createMediaAssetService } from '../files/core/media-asset-service'
 import { createGoogleMeetEvent } from '../providers/google/calendar/create-event'
-import { SettingsService } from '../settings/settings-service'
+import { getAllOrganizationSettings } from '../settings/settings-service'
 import { scheduleBotForRecording } from './bot/bot-manager'
 import { upsertCalendarEvent } from './calendar/calendar-event-service'
 import { createMeetingDirect } from './calendar/create-meeting-direct'
@@ -24,8 +24,6 @@ import {
   upsertMeetingParticipants,
 } from './calendar/participant-resolver'
 import { findRecording } from './recording-queries'
-
-const settingsService = new SettingsService()
 
 // ---------------------------------------------------------------------------
 // scheduleRecording
@@ -67,7 +65,7 @@ export async function scheduleRecording(
   }
 
   // Get org recording settings
-  const recordingSettings = await settingsService.getAllOrganizationSettings({
+  const recordingSettings = await getAllOrganizationSettings({
     organizationId,
     scope: 'RECORDING',
   })
