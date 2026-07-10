@@ -10,6 +10,14 @@ import type { EntityDefMap, FieldMap } from './types'
 const logger = createScopedLogger('entity-seeder:create-default-views')
 
 /**
+ * The minimal field shape `resolveViewConfig`/`buildFieldIdMap` need. Both the entity-seeder's
+ * `FieldMap` (fresh-org path) and `entity-migrations/helpers.ts`'s field maps (existing-org
+ * migration path) satisfy this — same `${entityType}:${field.id}` key convention, just with
+ * different extra properties — so `resolveViewConfig` is shared by both rather than ported.
+ */
+type ResolvableFieldMap = Map<string, { id: string; systemAttribute: string }>
+
+/**
  * Pass 5: Create Default TableViews
  * Create the seeded table views (default + filtered shared views) per resource
  * with all `field_*` symbolic references rewritten to real ResourceFieldIds.
@@ -75,8 +83,14 @@ export async function createDefaultViews(
  * Fail loudly when a seed author marks zero or multiple views as default for a
  * single entity. Postgres enforces this via a partial unique index, but the DB
  * error is opaque — this catches the bug at the source with a clear message.
+ *
+ * Exported so `entity-migrations/helpers.ts`'s `ensureDefaultTableViews` (which seeds the
+ * same `DEFAULT_VIEW_CONFIGS` for existing orgs) can reuse this check instead of duplicating it.
  */
-function assertSingleDefault(entityType: string, viewDefs: readonly DefaultViewDefinition[]): void {
+export function assertSingleDefault(
+  entityType: string,
+  viewDefs: readonly DefaultViewDefinition[]
+): void {
   const defaults = viewDefs.filter((v) => v.isDefault)
   if (defaults.length !== 1) {
     const names = defaults.map((v) => v.name).join(', ') || '<none>'
@@ -89,20 +103,14 @@ function assertSingleDefault(entityType: string, viewDefs: readonly DefaultViewD
 /**
  * Build field mapping from systemAttribute to CustomField
  */
-function buildFieldIdMap(
-  entityType: string,
-  fieldMap: FieldMap
-): Map<string, { id: string; entityDefinitionId: string }> {
-  const map = new Map<string, { id: string; entityDefinitionId: string }>()
+function buildFieldIdMap(entityType: string, fieldMap: ResolvableFieldMap): Map<string, string> {
+  const map = new Map<string, string>()
 
   for (const [key, field] of fieldMap.entries()) {
     if (key.startsWith(`${entityType}:`)) {
       // Key format in default-view-configs is `field_${systemAttribute}`
       const configKey = `field_${field.systemAttribute}`
-      map.set(configKey, {
-        id: field.id,
-        entityDefinitionId: field.entityDefinitionId,
-      })
+      map.set(configKey, field.id)
     }
   }
 
@@ -110,21 +118,24 @@ function buildFieldIdMap(
 }
 
 /**
- * Resolve view config field references to actual ResourceFieldIds
+ * Resolve view config field references (the `field_${systemAttribute}` symbolic form) to actual
+ * ResourceFieldIds. Shared by `createDefaultViews` (fresh-org seeding) and
+ * `entity-migrations/helpers.ts`'s `ensureDefaultTableViews` (existing-org migration path) —
+ * see {@link ResolvableFieldMap}.
  */
-function resolveViewConfig(
+export function resolveViewConfig(
   config: DefaultViewDefinition['config'],
   entityType: string,
   entityDefId: string,
-  fieldMap: FieldMap
+  fieldMap: ResolvableFieldMap
 ): Record<string, unknown> {
   const fieldIdMap = buildFieldIdMap(entityType, fieldMap)
 
   // Resolve field_* to ResourceFieldId
   const resolve = (fieldKey: string): string | null => {
-    const field = fieldIdMap.get(fieldKey)
-    if (!field) return null
-    return toResourceFieldId(entityDefId, toFieldId(field.id))
+    const fieldId = fieldIdMap.get(fieldKey)
+    if (!fieldId) return null
+    return toResourceFieldId(entityDefId, toFieldId(fieldId))
   }
 
   // Transform columnVisibility (keys are field_* values)
@@ -169,6 +180,23 @@ function resolveViewConfig(
     .map((group) => resolveFilterGroup(group, resolve, entityType))
     .filter((g): g is ConditionGroup => g !== null)
 
+  // Resolve kanban.groupByFieldId / primaryFieldId / cardFields (symbolic field_* ids).
+  // kanban.columnOrder / collapsedColumns / columnSettings are keyed by the groupBy
+  // field's OPTION VALUES, not field ids (kanbanConfigSchema, view-config.ts:69-75) —
+  // left untouched.
+  const kanban = config.kanban
+    ? {
+        ...config.kanban,
+        groupByFieldId: resolve(config.kanban.groupByFieldId) ?? config.kanban.groupByFieldId,
+        primaryFieldId: config.kanban.primaryFieldId
+          ? (resolve(config.kanban.primaryFieldId) ?? config.kanban.primaryFieldId)
+          : undefined,
+        cardFields: config.kanban.cardFields
+          ?.map((fieldKey) => resolve(fieldKey))
+          .filter((v): v is string => v !== null),
+      }
+    : undefined
+
   return {
     ...config,
     columnVisibility,
@@ -176,6 +204,7 @@ function resolveViewConfig(
     columnPinning,
     sorting,
     filters,
+    ...(kanban ? { kanban } : {}),
   }
 }
 

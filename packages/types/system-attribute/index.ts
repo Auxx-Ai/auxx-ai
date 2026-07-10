@@ -42,6 +42,8 @@ export const SYSTEM_ATTRIBUTES = [
   'ticket_contact',
   'parent_ticket_id',
   'ticket_child_tickets',
+  'ticket_work_orders',
+  'ticket_service_requests',
 
   // ─── Thread fields ──────────────────────────────────────────────
   'subject',
@@ -158,6 +160,8 @@ export const SYSTEM_ATTRIBUTES = [
   'contact_company',
   'contact_employer',
   'contact_meetings',
+  'contact_work_orders',
+  'contact_service_requests',
 
   // ─── Company fields ────────────────────────────────────────────
   'company_name',
@@ -174,6 +178,7 @@ export const SYSTEM_ATTRIBUTES = [
   'company_employees',
   'company_vendor_parts',
   'company_meetings',
+  'company_work_orders',
   'company_enriched_at',
   'company_enrichment_status',
 
@@ -191,6 +196,39 @@ export const SYSTEM_ATTRIBUTES = [
   'meeting_recording_url',
   'meeting_company',
   'meeting_contact',
+
+  // ─── Work Order fields ─────────────────────────────────────────
+  'work_order_number',
+  'work_order_title',
+  'work_order_description',
+  'work_order_status',
+  'work_order_priority',
+  'work_order_job_type',
+  'work_order_contact',
+  'work_order_company',
+  'work_order_address',
+  'work_order_ticket',
+  'work_order_request',
+  'work_order_scheduled_start',
+  'work_order_scheduled_end',
+  'work_order_assignee',
+  'work_order_completion_notes',
+  'work_order_pricing_model',
+  'work_order_invoice_timing',
+
+  // ─── Service Request fields ────────────────────────────────────
+  'service_request_number',
+  'service_request_title',
+  'service_request_description',
+  'service_request_property_type',
+  'service_request_preferred_date',
+  'service_request_alternate_date',
+  'service_request_arrival_window',
+  'service_request_contact',
+  'service_request_address',
+  'service_request_ticket',
+  'service_request_status',
+  'service_request_work_orders', // inverse of work_order_request — lives ON service_request
 
   // ─── Inbox fields ───────────────────────────────────────────────
   'inbox_name',

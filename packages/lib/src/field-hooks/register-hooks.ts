@@ -1,6 +1,7 @@
 // packages/lib/src/field-hooks/register-hooks.ts
 
 import { registerInventoryDeductionRule } from '../data-connectors/inventory-bridge-rule-action'
+import { ensureVisitOnWorkOrderCreate } from '../dispatch/visit-hooks'
 import { handleRecordRulesOnFieldChange } from '../record-rules/hook-handler'
 import { invalidateInboxCacheOnFieldChange } from './post/inbox-cache-invalidation'
 import { publishFieldChangeEvent } from './post/publish-field-change-event'
@@ -61,6 +62,11 @@ export function registerAllHooks(): void {
   // and emitted no cache events — any inbox field write now busts
   // `org:inboxes`, and lens changes recompute every member's visibility.
   registerEntityFieldChangeHooks('inboxes', [invalidateInboxCacheOnFieldChange])
+
+  // Dispatch (plans/dispatch §H.1): auto-create the unscheduled WorkOrderVisit row the
+  // instant a work order is created, on every create path. Keyed off the first write of
+  // work_order_number (§F.4a's hook is the only writer, fires exactly once per create).
+  registerEntityFieldChangeHooks('work-orders', [ensureVisitOnWorkOrderCreate])
 
   // ---------------------------------------------------------------------------
   // PRE-WRITE HOOKS

@@ -268,6 +268,90 @@ const FIELD_VIEW_CONFIGS: FieldViewSeedConfig[] = [
       'meeting_url',
     ],
   },
+
+  // ============================================================================
+  // WORK ORDER FIELD VIEWS
+  // ============================================================================
+  {
+    entityType: 'work_order',
+    contextType: 'panel',
+    name: 'Default Panel View',
+    excludeFields: [
+      'id',
+      'created_at',
+      'updated_at',
+      'created_by_id',
+      'work_order_pricing_model', // hidden billing structure (§B) — no UI until invoicing
+      'work_order_invoice_timing',
+    ],
+  },
+  {
+    entityType: 'work_order',
+    contextType: 'table',
+    name: 'Default Table View',
+    excludeFields: [
+      'id',
+      'created_at',
+      'updated_at',
+      'created_by_id',
+      'work_order_description',
+      'work_order_completion_notes',
+      'work_order_pricing_model', // hidden billing structure (§B) — no UI until invoicing
+      'work_order_invoice_timing',
+    ],
+  },
+  {
+    entityType: 'work_order',
+    contextType: 'dialog_create',
+    name: 'Default Create Dialog',
+    includeFields: [
+      'work_order_title',
+      'work_order_status',
+      'work_order_priority',
+      'work_order_job_type',
+      'work_order_contact',
+      'work_order_company',
+      'work_order_address',
+      'work_order_description',
+    ],
+  },
+
+  // ============================================================================
+  // SERVICE REQUEST FIELD VIEWS
+  // ============================================================================
+  {
+    entityType: 'service_request',
+    contextType: 'panel',
+    name: 'Default Panel View',
+    excludeFields: ['id', 'created_at', 'updated_at', 'created_by_id'],
+  },
+  {
+    entityType: 'service_request',
+    contextType: 'table',
+    name: 'Default Table View',
+    excludeFields: [
+      'id',
+      'created_at',
+      'updated_at',
+      'created_by_id',
+      'service_request_description',
+    ],
+  },
+  {
+    entityType: 'service_request',
+    contextType: 'dialog_create',
+    name: 'Default Create Dialog',
+    includeFields: [
+      'service_request_title',
+      'service_request_description',
+      'service_request_property_type',
+      'service_request_preferred_date',
+      'service_request_alternate_date',
+      'service_request_arrival_window',
+      'service_request_contact',
+      'service_request_address',
+    ],
+  },
 ]
 
 /**

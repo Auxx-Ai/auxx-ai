@@ -12,7 +12,9 @@ import {
 } from '../../conditions/field-view-config'
 import type { FieldOptions } from '../../custom-fields'
 import type { ResourceField } from '../../resources/registry/field-types'
+import type { DefaultViewDefinition } from '../default-view-configs'
 import { DISPLAY_FIELD_CONFIG, ENTITY_INSTANCE_COLUMNS } from '../entity-seeder/constants'
+import { assertSingleDefault, resolveViewConfig } from '../entity-seeder/create-default-views'
 import type { SystemEntityConfig } from '../entity-seeder/types'
 import { buildFieldOptions, mapCapabilities, shouldCreateField } from '../entity-seeder/utils'
 
@@ -435,6 +437,68 @@ export async function ensureFieldViews(
     })
 
     logger.debug(`Created field view for ${entityType} ${contextType}`)
+  }
+}
+
+// ─── Ensure Default Table Views ──────────────────────────────────────
+
+/**
+ * Seed the `DEFAULT_VIEW_CONFIGS` saved table view(s) for one entity, for an existing org.
+ *
+ * Idempotent: skips entirely if a TableView already exists at `tableId: entity-${entityDefId}`
+ * for this org (mirrors `ensureFieldViews`' per-context existence check, but at the per-entity
+ * level since these saved views aren't keyed by contextType).
+ *
+ * Shares its symbolic-id resolution (`resolveViewConfig`/`assertSingleDefault`, including the
+ * `kanban.groupByFieldId`/`primaryFieldId`/`cardFields` resolution —
+ * `kanban.columnOrder`/`collapsedColumns`/`columnSettings` are option values, not field ids, and
+ * stay untouched) with `entity-seeder/create-default-views.ts`'s `createDefaultViews`, which
+ * seeds the same configs for fresh orgs — see that module for the single implementation.
+ */
+export async function ensureDefaultTableViews(
+  db: Database,
+  organizationId: string,
+  userId: string,
+  entityType: string,
+  entityDefId: string,
+  viewDefs: readonly DefaultViewDefinition[],
+  allFieldMaps: Map<
+    string,
+    { id: string; systemAttribute: string; options: FieldOptions; _fieldDef: ResourceField }
+  >
+): Promise<void> {
+  const tableId = `entity-${entityDefId}`
+
+  const existingView = await db
+    .select({ id: schema.TableView.id })
+    .from(schema.TableView)
+    .where(
+      and(
+        eq(schema.TableView.organizationId, organizationId),
+        eq(schema.TableView.tableId, tableId)
+      )
+    )
+    .limit(1)
+  if (existingView.length > 0) return // already seeded — idempotent
+
+  assertSingleDefault(entityType, viewDefs)
+
+  const now = new Date()
+  for (const viewDef of viewDefs) {
+    const resolvedConfig = resolveViewConfig(viewDef.config, entityType, entityDefId, allFieldMaps)
+
+    await db.insert(schema.TableView).values({
+      organizationId,
+      userId,
+      tableId,
+      name: viewDef.name,
+      isDefault: viewDef.isDefault ?? false,
+      isShared: true,
+      config: resolvedConfig,
+      updatedAt: now,
+    })
+
+    logger.debug(`Created default table view "${viewDef.name}" for ${entityType}`)
   }
 }
 

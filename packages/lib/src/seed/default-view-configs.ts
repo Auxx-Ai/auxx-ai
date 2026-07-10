@@ -671,4 +671,128 @@ export const DEFAULT_VIEW_CONFIGS = {
       } satisfies ViewConfig,
     },
   ],
+
+  work_order: [
+    {
+      name: 'All Work Orders',
+      description: 'Default view for work orders',
+      isDefault: true,
+      config: {
+        viewType: 'table' as const,
+        columnVisibility: {
+          field_work_order_number: true,
+          field_work_order_title: true,
+          field_work_order_status: true,
+          field_work_order_priority: true,
+          field_work_order_job_type: true,
+          field_work_order_contact: true,
+          field_work_order_scheduled_start: true,
+          field_work_order_assignee: true,
+        },
+        columnOrder: [
+          'field_work_order_number',
+          'field_work_order_title',
+          'field_work_order_status',
+          'field_work_order_priority',
+          'field_work_order_job_type',
+          'field_work_order_contact',
+          'field_work_order_scheduled_start',
+          'field_work_order_assignee',
+        ],
+        columnPinning: { left: ['_checkbox', 'field_work_order_number'] },
+        sorting: [{ id: 'field_created_at', desc: true }],
+        filters: [],
+        columnSizing: {},
+        columnLabels: {},
+        columnFormatting: {},
+      } satisfies ViewConfig,
+    },
+  ],
+
+  service_request: [
+    {
+      // Kanban-by-status default (coordinator decision, 2026-07-09) — the request pipeline
+      // reads naturally as a board (new → contacted → quoted → approved → converted, +
+      // lost/canceled), and the M1 status set is small/stable enough to seed columns for.
+      name: 'Request Pipeline',
+      description: 'Default view for service requests, grouped by status',
+      isDefault: true,
+      config: {
+        viewType: 'kanban' as const,
+        kanban: {
+          groupByFieldId: 'field_service_request_status',
+          primaryFieldId: 'field_service_request_title',
+          cardFields: [
+            'field_service_request_number',
+            'field_service_request_contact',
+            'field_service_request_property_type',
+            'field_service_request_preferred_date',
+            'field_service_request_arrival_window',
+          ],
+          // ⚠️ VERIFY AT BUILD: kanbanConfigSchema.columnOrder is keyed by the groupBy field's
+          // OPTION VALUES, not field ids (unlike every other columnOrder in this file) —
+          // confirm against packages/lib/src/conditions/view-config.ts:69-75 and the kanban
+          // board component before shipping. If confirmed, these are the
+          // SERVICE_REQUEST_STATUS_OPTIONS values in pipeline order:
+          columnOrder: ['new', 'contacted', 'quoted', 'approved', 'converted', 'lost', 'canceled'],
+        },
+        // Standard table-shape fields ship alongside `kanban` so the view still works when a
+        // user flips it to table mode (same ViewConfig object serves both view types).
+        columnVisibility: {
+          field_service_request_number: true,
+          field_service_request_title: true,
+          field_service_request_status: true,
+          field_service_request_contact: true,
+          field_service_request_preferred_date: true,
+          field_service_request_arrival_window: true,
+        },
+        columnOrder: [
+          'field_service_request_number',
+          'field_service_request_title',
+          'field_service_request_status',
+          'field_service_request_contact',
+          'field_service_request_preferred_date',
+          'field_service_request_arrival_window',
+        ],
+        columnPinning: { left: ['_checkbox', 'field_service_request_number'] },
+        sorting: [{ id: 'field_created_at', desc: true }],
+        filters: [],
+        columnSizing: {},
+        columnLabels: {},
+        columnFormatting: {},
+      } satisfies ViewConfig,
+    },
+    {
+      name: 'All Requests',
+      description: 'Table view of all service requests',
+      isDefault: false,
+      config: {
+        viewType: 'table' as const,
+        columnVisibility: {
+          field_service_request_number: true,
+          field_service_request_title: true,
+          field_service_request_status: true,
+          field_service_request_property_type: true,
+          field_service_request_contact: true,
+          field_service_request_preferred_date: true,
+          field_service_request_arrival_window: true,
+        },
+        columnOrder: [
+          'field_service_request_number',
+          'field_service_request_title',
+          'field_service_request_status',
+          'field_service_request_property_type',
+          'field_service_request_contact',
+          'field_service_request_preferred_date',
+          'field_service_request_arrival_window',
+        ],
+        columnPinning: { left: ['_checkbox', 'field_service_request_number'] },
+        sorting: [{ id: 'field_created_at', desc: true }],
+        filters: [],
+        columnSizing: {},
+        columnLabels: {},
+        columnFormatting: {},
+      } satisfies ViewConfig,
+    },
+  ],
 } as const satisfies Record<string, DefaultViewDefinition[]>

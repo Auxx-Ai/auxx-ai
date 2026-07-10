@@ -128,6 +128,24 @@ export const SYSTEM_ENTITIES: SystemEntityConfig[] = [
     color: 'cyan',
     isVisible: false, // Backed by Article table; managed via the KB editor, not entity sidebar
   },
+  {
+    entityType: 'work_order',
+    apiSlug: 'work-orders',
+    singular: 'Work Order',
+    plural: 'Work Orders',
+    icon: 'wrench',
+    color: 'amber',
+    isVisible: true,
+  },
+  {
+    entityType: 'service_request',
+    apiSlug: 'service-requests',
+    singular: 'Service Request',
+    plural: 'Service Requests',
+    icon: 'clipboard-list',
+    color: 'cyan',
+    isVisible: true,
+  },
 ]
 
 /**
@@ -190,6 +208,14 @@ export const DISPLAY_FIELD_CONFIG: Record<string, DisplayFieldConfig> = {
   article: {
     primaryDisplayField: 'title',
     secondaryDisplayField: undefined,
+  },
+  work_order: {
+    primaryDisplayField: 'title',
+    secondaryDisplayField: 'number',
+  },
+  service_request: {
+    primaryDisplayField: 'title',
+    secondaryDisplayField: 'number',
   },
 }
 

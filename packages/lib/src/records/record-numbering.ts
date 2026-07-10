@@ -1,0 +1,102 @@
+// packages/lib/src/records/record-numbering.ts
+
+import { database, schema } from '@auxx/database'
+import { and, eq, sql } from 'drizzle-orm'
+
+/** Which record kind a `RecordSequence` row counts. */
+export type SequenceScope = 'ticket' | 'work_order' | 'service_request'
+
+const SCOPE_DEFAULTS: Record<SequenceScope, { prefix: string }> = {
+  ticket: { prefix: 'TKT' },
+  work_order: { prefix: 'WO' },
+  service_request: { prefix: 'REQ' },
+}
+
+/** Format a record number from a sequence record */
+function formatRecordNumber(seq: typeof schema.RecordSequence.$inferSelect): string {
+  const numericPart = String(seq.currentNumber).padStart(seq.paddingLength ?? 4, '0')
+  const parts: string[] = []
+
+  if (seq.usePrefix) {
+    let prefixPart = seq.prefix || ''
+    if (seq.useDateInPrefix) {
+      const now = new Date()
+      const dateFormat = seq.dateFormat || 'YYMM'
+      let datePart = ''
+      switch (dateFormat) {
+        case 'YYMM':
+          datePart = `${now.getFullYear().toString().slice(2)}${(now.getMonth() + 1).toString().padStart(2, '0')}`
+          break
+        case 'YYYYMM':
+          datePart = `${now.getFullYear()}${(now.getMonth() + 1).toString().padStart(2, '0')}`
+          break
+        case 'MMYY':
+          datePart = `${(now.getMonth() + 1).toString().padStart(2, '0')}${now.getFullYear().toString().slice(2)}`
+          break
+        case 'YY':
+          datePart = now.getFullYear().toString().slice(2)
+          break
+        case 'MM':
+          datePart = (now.getMonth() + 1).toString().padStart(2, '0')
+          break
+        default:
+          datePart = `${now.getFullYear().toString().slice(2)}${(now.getMonth() + 1).toString().padStart(2, '0')}`
+      }
+      prefixPart = prefixPart ? `${prefixPart}${datePart}` : datePart
+    }
+    if (prefixPart) parts.push(prefixPart)
+  }
+
+  parts.push(numericPart)
+
+  if (seq.useSuffix && seq.suffix) parts.push(seq.suffix)
+
+  const separator = seq.separator || ''
+  return parts.join(separator)
+}
+
+/**
+ * Service for generating sequential record numbers (tickets, work orders, service requests —
+ * one `RecordSequence` counter per org+scope).
+ */
+export const recordNumbering = {
+  /** Generate the next number for an org+scope. Atomic — safe under concurrent creates. */
+  async create(
+    organizationId: string,
+    scope: SequenceScope
+  ): Promise<{ recordNumber: string; sequenceNumber: number }> {
+    // First use: seed the row. onConflictDoNothing keys on the (organizationId, scope) unique.
+    await database
+      .insert(schema.RecordSequence)
+      .values({
+        organizationId,
+        scope,
+        currentNumber: 0,
+        prefix: SCOPE_DEFAULTS[scope].prefix,
+        paddingLength: 4,
+        usePrefix: true,
+        updatedAt: new Date(),
+      })
+      .onConflictDoNothing({
+        target: [schema.RecordSequence.organizationId, schema.RecordSequence.scope],
+      })
+
+    // THE RACE FIX: atomic increment + read-back in one statement. The old code
+    // SELECTed, computed currentNumber+1 in JS, then UPDATEd — concurrent creates collided.
+    const [updated] = await database
+      .update(schema.RecordSequence)
+      .set({
+        currentNumber: sql`${schema.RecordSequence.currentNumber} + 1`,
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(schema.RecordSequence.organizationId, organizationId),
+          eq(schema.RecordSequence.scope, scope)
+        )
+      )
+      .returning()
+
+    return { recordNumber: formatRecordNumber(updated), sequenceNumber: updated.currentNumber }
+  },
+}

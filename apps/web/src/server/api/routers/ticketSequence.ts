@@ -1,27 +1,38 @@
 // src/server/api/routers/ticketSequence.ts
 
 import { schema } from '@auxx/database'
-import { ticketNumbering } from '@auxx/lib/tickets'
-import { eq } from 'drizzle-orm'
+import { recordNumbering } from '@auxx/lib/records'
+import { and, eq } from 'drizzle-orm'
 import { z } from 'zod'
 import { createTRPCRouter, protectedProcedure } from '~/server/api/trpc'
 
-export const ticketSequenceRouter = createTRPCRouter({
-  // Get the ticket sequence settings for an organization
-  get: protectedProcedure.query(async ({ ctx }) => {
-    const { organizationId } = ctx.session
-    const [ticketSequence] = await ctx.db
-      .select()
-      .from(schema.TicketSequence)
-      .where(eq(schema.TicketSequence.organizationId, organizationId))
-      .limit(1)
-    return ticketSequence ?? null
-  }),
+const scopeSchema = z.enum(['ticket', 'work_order', 'service_request']).default('ticket')
 
-  // Update ticket sequence settings
+export const ticketSequenceRouter = createTRPCRouter({
+  // Get the record sequence settings for an organization+scope
+  get: protectedProcedure
+    .input(z.object({ scope: scopeSchema }).optional())
+    .query(async ({ ctx, input }) => {
+      const { organizationId } = ctx.session
+      const scope = input?.scope ?? 'ticket'
+      const [recordSequence] = await ctx.db
+        .select()
+        .from(schema.RecordSequence)
+        .where(
+          and(
+            eq(schema.RecordSequence.organizationId, organizationId),
+            eq(schema.RecordSequence.scope, scope)
+          )
+        )
+        .limit(1)
+      return recordSequence ?? null
+    }),
+
+  // Update record sequence settings
   update: protectedProcedure
     .input(
       z.object({
+        scope: scopeSchema,
         prefix: z.string().optional(),
         paddingLength: z.number().min(1).max(10).optional(),
         usePrefix: z.boolean().optional(),
@@ -34,6 +45,7 @@ export const ticketSequenceRouter = createTRPCRouter({
     )
     .mutation(async ({ ctx, input }) => {
       const { organizationId } = ctx.session
+      const { scope } = input
 
       const setData: Record<string, unknown> = { updatedAt: new Date() }
       if (input.prefix !== undefined) setData.prefix = input.prefix
@@ -47,23 +59,29 @@ export const ticketSequenceRouter = createTRPCRouter({
 
       const [existing] = await ctx.db
         .select()
-        .from(schema.TicketSequence)
-        .where(eq(schema.TicketSequence.organizationId, organizationId))
+        .from(schema.RecordSequence)
+        .where(
+          and(
+            eq(schema.RecordSequence.organizationId, organizationId),
+            eq(schema.RecordSequence.scope, scope)
+          )
+        )
         .limit(1)
 
       if (existing) {
         const [updated] = await ctx.db
-          .update(schema.TicketSequence)
+          .update(schema.RecordSequence)
           .set(setData)
-          .where(eq(schema.TicketSequence.id, existing.id))
+          .where(eq(schema.RecordSequence.id, existing.id))
           .returning()
         return updated
       }
 
       const [created] = await ctx.db
-        .insert(schema.TicketSequence)
+        .insert(schema.RecordSequence)
         .values({
           organizationId,
+          scope,
           currentNumber: 0,
           ...setData,
         })
@@ -71,32 +89,38 @@ export const ticketSequenceRouter = createTRPCRouter({
       return created
     }),
 
-  // Reset the ticket counter
+  // Reset the record counter
   resetCounter: protectedProcedure
-    .input(z.object({ resetTo: z.number().min(0).default(0) }))
+    .input(z.object({ scope: scopeSchema, resetTo: z.number().min(0).default(0) }))
     .mutation(async ({ ctx, input }) => {
-      const { resetTo } = input
+      const { resetTo, scope } = input
       const { organizationId } = ctx.session
 
       const [existing] = await ctx.db
         .select()
-        .from(schema.TicketSequence)
-        .where(eq(schema.TicketSequence.organizationId, organizationId))
+        .from(schema.RecordSequence)
+        .where(
+          and(
+            eq(schema.RecordSequence.organizationId, organizationId),
+            eq(schema.RecordSequence.scope, scope)
+          )
+        )
         .limit(1)
 
       if (existing) {
         const [updated] = await ctx.db
-          .update(schema.TicketSequence)
+          .update(schema.RecordSequence)
           .set({ currentNumber: resetTo, updatedAt: new Date() })
-          .where(eq(schema.TicketSequence.id, existing.id))
+          .where(eq(schema.RecordSequence.id, existing.id))
           .returning()
         return updated
       }
 
       const [created] = await ctx.db
-        .insert(schema.TicketSequence)
+        .insert(schema.RecordSequence)
         .values({
           organizationId,
+          scope,
           currentNumber: resetTo,
           updatedAt: new Date(),
         })
@@ -104,9 +128,11 @@ export const ticketSequenceRouter = createTRPCRouter({
       return created
     }),
 
-  // Generate a new ticket number
-  generateTicketNumber: protectedProcedure.mutation(async ({ ctx }) => {
-    const { organizationId } = ctx.session
-    return await ticketNumbering.create(organizationId)
-  }),
+  // Generate a new record number
+  generateTicketNumber: protectedProcedure
+    .input(z.object({ scope: scopeSchema }))
+    .mutation(async ({ ctx, input }) => {
+      const { organizationId } = ctx.session
+      return await recordNumbering.create(organizationId, input.scope)
+    }),
 })

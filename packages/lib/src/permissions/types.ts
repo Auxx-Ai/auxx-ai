@@ -47,6 +47,7 @@ export enum FeatureKey {
   dataConnectors = 'dataConnectors',
   mailPermissions = 'mailPermissions',
   dashboards = 'dashboards',
+  dispatch = 'dispatch',
 
   // ── Static limits (count of things, not time-based) ──
   teammates = 'teammates',
@@ -191,6 +192,13 @@ export const FEATURE_REGISTRY: FeatureMetadata[] = [
     label: 'Dashboards',
     description: 'Customizable, versioned dashboards with charts, KPIs, and record lists.',
     group: 'Analytics',
+  },
+  {
+    key: FeatureKey.dispatch,
+    type: 'boolean',
+    label: 'Dispatch',
+    description: 'Field-service work orders, scheduling, and dispatching.',
+    group: 'Dispatch',
   },
 
   // ── Static limits ──

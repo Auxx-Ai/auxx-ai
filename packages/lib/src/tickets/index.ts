@@ -14,7 +14,6 @@ export {
   updateMultiplePriority,
   updateMultipleStatus,
 } from './ticket-mutations'
-export { ticketNumbering } from './ticket-numbering'
 export type { AddRelationInput, RemoveRelationInput } from './ticket-relations'
 export { addRelation, removeRelation } from './ticket-relations'
 export * from './ticket-service'

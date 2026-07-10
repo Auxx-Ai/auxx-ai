@@ -43,6 +43,13 @@ export const migration013ContactCompanyExternalIdFix: EntityMigration = {
   async up(db: Database, organizationId: string): Promise<EntityMigrationResult> {
     const state = { entityDefsCreated: 0, fieldsCreated: 0, relationshipsLinked: 0 }
 
+    // externalId was retired from the field registries when the RecordIdentity index replaced
+    // single-source identifier columns (#1028) — the field-creation this migration repaired no
+    // longer exists. Kept as a no-op so ALL_MIGRATIONS ordering stays stable.
+    if (!CONTACT_FIELDS.externalId || !COMPANY_FIELDS.externalId) {
+      return { ...state, alreadyUpToDate: true }
+    }
+
     const entityDefs = await db
       .select({
         id: schema.EntityDefinition.id,
