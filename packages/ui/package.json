@@ -22,6 +22,7 @@
     "./components/kb/theme": "./src/components/kb/theme/index.ts",
     "./components/kb/utils": "./src/components/kb/utils/index.ts",
     "./components/menu-styles": "./src/components/menu-styles.ts",
+    "./components/event-calendar": "./src/components/event-calendar/index.ts",
     "./components/*": "./src/components/*.tsx",
     "./components/emojis": "./src/components/emojis.ts",
     "./components/icon-data": "./src/components/icon-data.ts",

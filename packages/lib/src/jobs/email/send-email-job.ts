@@ -23,6 +23,7 @@ import {
   sendTrialExpiredEmail,
   sendTrialStartedEmail,
   sendVerificationEmail,
+  sendVisitDispatchedEmail,
   sendWelcomeEmail,
 } from '@auxx/email'
 import { createScopedLogger } from '@auxx/logger'
@@ -220,6 +221,17 @@ const handlers: {
       accountName: p.accountName,
       acceptLink: p.acceptLink,
       role: p.role,
+    }),
+  'visit-dispatched': (p) =>
+    sendVisitDispatchedEmail({
+      email: p.recipient.email,
+      name: p.recipient.name || 'there',
+      workOrderNumber: p.workOrderNumber,
+      workOrderTitle: p.workOrderTitle,
+      startTime: p.startTime,
+      endTime: p.endTime,
+      timezone: p.timezone,
+      workOrderUrl: p.workOrderUrl,
     }),
 }
 

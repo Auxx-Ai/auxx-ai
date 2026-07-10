@@ -46,6 +46,7 @@ const NOTIFICATION_ICON_MAP: Record<NotificationType, { iconId: string; color: s
   WORKFLOW_APPROVAL_REQUIRED: { iconId: 'check-circle', color: 'orange' },
   WORKFLOW_APPROVAL_REMINDER: { iconId: 'bell-ring', color: 'orange' },
   WORKFLOW_APPROVAL_COMPLETED: { iconId: 'check-circle', color: 'green' },
+  WORK_ORDER_DISPATCHED: { iconId: 'truck', color: 'blue' },
 }
 
 /** Default icon config for unmapped notification types */
@@ -67,6 +68,8 @@ const getNotificationLink = (entityType: string, entityId: string) => {
       return `/app/tickets/${entityId}`
     case 'Thread':
       return `/app/threads/${entityId}`
+    case 'work_order':
+      return `/app/work-orders/${entityId}`
     case 'approval_request':
       return null // Handle via dialog instead
     default:

@@ -26,7 +26,7 @@ function TicketSequenceSettings({}: Props) {
         </div>
       }>
       <div className='p-0 sm:p-8'>
-        <TicketNumberingSettings />
+        <TicketNumberingSettings scope='ticket' />
       </div>
       {/* <InviteForm organizationId={defaultOrganizationId} /> */}
     </SettingsPage>

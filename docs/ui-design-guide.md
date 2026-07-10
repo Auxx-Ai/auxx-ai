@@ -462,6 +462,35 @@ The nested-border "frosted panel" container that underlies both `MainPageContent
 - `flex` makes the frame grow to fill its flex container (the main content area sets this); `width` fixes a panel's width (docked side panels set this instead).
 - If you're building a new docked-panel-like surface that isn't going through `MainPageContent.dockedPanels` or `DockableDrawer`, wrap it in `PanelFrame` rather than a plain bordered `div` so it reads as part of the same panel system.
 
+## 19. Calendar / scheduling grids: `EventCalendar`
+
+Month/week/day/agenda calendar UI — vendored (MIT) from `origin-space/event-calendar` and reworked into `@auxx/ui/components/event-calendar`. First consumer is the dispatch board; the meetings calendar and a worker mobile day list are known future consumers. Fully controlled and **never mutates** — it owns no date/view state and issues no writes; every interaction is a callback prop and the consumer decides what (if anything) to persist.
+
+```tsx
+import { EventCalendar, CalendarDndProvider } from '@auxx/ui/components/event-calendar'
+
+<EventCalendar
+  date={date}
+  view={view}
+  onDateChange={setDate}
+  onViewChange={setView}
+  onRangeChange={(from, to) => refetch({ from, to })}
+  events={visits}
+  weekStartsOn={1}
+  renderEvent={(visit, ctx) => <VisitChip visit={visit} view={ctx.view} />}
+  onEventClick={openVisitPopover}
+  onSlotClick={(start) => openScheduleControl({ start })}
+  onEventDrop={(visit, newStart, newEnd) => scheduleVisit.mutate({ visitId: visit.id, startTime: newStart, endTime: newEnd })}
+  onEventResize={(visit, newEnd) => scheduleVisit.mutate({ visitId: visit.id, endTime: newEnd })}
+/>
+```
+
+- **Render-prop, not a fixed palette**: pass `renderEvent?: (event, ctx: { view, isFirstDay, isLastDay, isDragging }) => ReactNode` to fully own chip content/color — it's threaded through every chip call site (month/week/day/agenda/resource grids and the drag ghost). Without it, a default tinted chip renders off `event.color` (any CSS color value, not a fixed enum).
+- **`resources` day mode**: pass `view='resource'` + `resources={[{ id, label, header? }, ...]}` for a per-worker/per-vehicle column day view — the dispatch board's primary view (`Unassigned` as a synthetic first resource, one column per active `DispatchWorker`). Events opt in via `event.resourceId`.
+- **`backgroundEvents`**: non-interactive shading (off-hours, time-off, overlap hints) — an absolutely positioned layer below the event chips, day/week/resource views only.
+- Move AND resize both go through callbacks only (`onEventDrop`, `onEventResize`, 15-minute snap, 15-minute minimum duration) — there is no internal event-CRUD dialog; build your own (a popover, a drawer, `Schedule` control §…) and call your own mutation.
+- To mount external draggables (e.g. an unscheduled-visits backlog rail) inside the same drag context as the calendar, wrap both in `CalendarDndProvider` yourself — `EventCalendar` detects the ambient provider and skips creating its own.
+
 ## When none of these fit
 
 If a screen genuinely doesn't match any pattern above (a canvas/graph editor, a chat surface, a highly custom visualization), that's fine — these primitives cover list/detail/settings/form/dialog/tree shapes, not everything. But default to reaching for one of these first, and if you build something structurally new that recurs a second time, add it to this doc rather than letting three different reinventions drift apart.

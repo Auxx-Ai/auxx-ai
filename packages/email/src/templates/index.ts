@@ -25,6 +25,7 @@ export { TrialExpiredEmail, TrialExpiredText } from './billing/trial-expired-ema
 export { TrialStartedEmail, TrialStartedText } from './billing/trial-started-email'
 export { BillingEmail, BillingText } from './general/billing-email'
 export { SystemEmail, SystemText } from './general/system-email'
+export { VisitDispatchedEmail, VisitDispatchedText } from './general/visit-dispatched-email'
 // General templates
 export { WelcomeEmail, WelcomeText } from './general/welcome-email'
 // Organization templates

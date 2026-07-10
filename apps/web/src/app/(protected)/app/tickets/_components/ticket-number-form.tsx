@@ -3,6 +3,7 @@
 'use client'
 
 import { FieldType } from '@auxx/database/enums'
+import type { SequenceScope } from '@auxx/lib/records'
 import { BaseType } from '@auxx/lib/workflow-engine/types'
 import { Button } from '@auxx/ui/components/button'
 import { Form } from '@auxx/ui/components/form'
@@ -100,9 +101,22 @@ const DATE_FORMAT_OPTIONS = [
   { value: 'MM', label: 'Month only (MM)' },
 ]
 
-export default function TicketNumberingSettings() {
-  // Get current ticket sequence settings
-  const { data: ticketSequence, refetch } = api.ticketSequence.get.useQuery()
+export interface TicketNumberingSettingsProps {
+  /** Which `RecordSequence` scope this instance edits. Defaults to `'ticket'` (unchanged
+   *  behavior at the original tickets/settings/format call site). */
+  scope?: SequenceScope
+  /** Section title — lets dispatch's Number Formats page render "Work Orders"/"Requests". */
+  title?: string
+  description?: string
+}
+
+export default function TicketNumberingSettings({
+  scope = 'ticket',
+  title = 'Ticket Numbering',
+  description = 'Configure how ticket numbers are generated.',
+}: TicketNumberingSettingsProps = {}) {
+  // Get current record sequence settings for this scope
+  const { data: ticketSequence, refetch } = api.ticketSequence.get.useQuery({ scope })
 
   // Current sequence number display
   const currentNumber = ticketSequence ? ticketSequence.currentNumber : 0
@@ -159,6 +173,7 @@ export default function TicketNumberingSettings() {
   /** Handle form submission */
   const onSubmit = (values: FormValues) => {
     updateSequence.mutate({
+      scope,
       prefix: values.prefix,
       paddingLength: values.paddingLength,
       usePrefix: values.usePrefix,
@@ -172,11 +187,7 @@ export default function TicketNumberingSettings() {
 
   return (
     <div className='container mx-auto max-w-2xl overflow-y-auto pb-10 pt-4'>
-      <SettingsSection
-        className='mb-6'
-        icon={Hash}
-        title='Ticket Numbering'
-        description='Configure how ticket numbers are generated.'>
+      <SettingsSection className='mb-6' icon={Hash} title={title} description={description}>
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)}>
             <FieldPanel className='p-0 [&_[data-slot=field-row-label]]:w-60'>
