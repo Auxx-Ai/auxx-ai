@@ -20,19 +20,29 @@ const logger = createScopedLogger('job:learned-extraction')
 export interface LearnedExtractionJobData {
   organizationId: string
   threadId: string
+  /**
+   * Human-triggered ("Remember this thread"): skips the noise gates and the
+   * `learnedExtractedAt` dedupe — an explicit ask always runs.
+   */
+  force?: boolean
 }
 
 /**
  * Enqueue a learned-KB extraction for a thread that just resolved. The stable
  * jobId collapses a rapid archive→reopen→archive burst into one pending job;
  * once a run completes, the `learnedExtractedAt` gate (not the jobId) is what
- * prevents pointless re-extraction.
+ * prevents pointless re-extraction. Forced runs get a unique jobId (a stale
+ * completed job under the stable id would otherwise swallow the re-enqueue)
+ * and no delay.
  */
 export async function enqueueLearnedExtraction(data: LearnedExtractionJobData): Promise<void> {
   const queue = getQueue(Queues.learnedExtractionQueue)
+  const jobId = data.force
+    ? `learned-extraction:force:${data.organizationId}:${data.threadId}:${Date.now()}`
+    : `learned-extraction:${data.organizationId}:${data.threadId}`
   await queue.add('learnedExtractionJob', data, {
-    jobId: `learned-extraction:${data.organizationId}:${data.threadId}`,
-    delay: 5_000,
+    jobId,
+    delay: data.force ? 0 : 5_000,
     attempts: 2,
     backoff: { type: 'exponential', delay: 60_000 },
   })
@@ -51,7 +61,7 @@ export async function enqueueLearnedExtraction(data: LearnedExtractionJobData): 
  * failed run does NOT stamp, so BullMQ's retry gets a clean slate.
  */
 export async function learnedExtractionJob(ctx: JobContext<LearnedExtractionJobData>) {
-  const { organizationId, threadId } = ctx.job.data
+  const { organizationId, threadId, force } = ctx.job.data
 
   const features = new FeaturePermissionService()
   const enabled = await features.hasAccess(organizationId, FeatureKey.learnedMemory)
@@ -62,22 +72,25 @@ export async function learnedExtractionJob(ctx: JobContext<LearnedExtractionJobD
   })
   if (!thread) return { skipped: 'thread_not_found' }
 
-  // Noise gates — all row-local; no LLM call unless they pass.
-  const skipReason = learnedExtractionSkipReason(thread)
-  if (skipReason) return { skipped: skipReason }
+  // Noise gates — all row-local; no LLM call unless they pass. A forced run
+  // (explicit "remember this thread") bypasses them: the human is the gate.
+  if (!force) {
+    const skipReason = learnedExtractionSkipReason(thread)
+    if (skipReason) return { skipped: skipReason }
 
-  // Require at least one outbound reply — a thread nobody answered teaches
-  // nothing about how we answer. (Human vs AI authorship isn't recorded on
-  // Message rows, so outbound presence is the v1 proxy.)
-  const outbound = await database.query.Message.findFirst({
-    where: and(
-      eq(schema.Message.threadId, threadId),
-      eq(schema.Message.organizationId, organizationId),
-      eq(schema.Message.isInbound, false)
-    ),
-    columns: { id: true },
-  })
-  if (!outbound) return { skipped: 'no_outbound_reply' }
+    // Require at least one outbound reply — a thread nobody answered teaches
+    // nothing about how we answer. (Human vs AI authorship isn't recorded on
+    // Message rows, so outbound presence is the v1 proxy.)
+    const outbound = await database.query.Message.findFirst({
+      where: and(
+        eq(schema.Message.threadId, threadId),
+        eq(schema.Message.organizationId, organizationId),
+        eq(schema.Message.isInbound, false)
+      ),
+      columns: { id: true },
+    })
+    if (!outbound) return { skipped: 'no_outbound_reply' }
+  }
 
   const modelDefault = await getCachedDefaultModel(organizationId, ModelType.LLM)
   if (!modelDefault) return { skipped: 'no_default_model' }

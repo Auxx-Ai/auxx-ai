@@ -6,6 +6,7 @@ import type { ProposedAction, StoredBundle } from '@auxx/lib/approvals'
 import { Button } from '@auxx/ui/components/button'
 import { Card } from '@auxx/ui/components/card'
 import { toastError } from '@auxx/ui/components/toast'
+import { LearnedArticlePreview } from '~/components/learned/ui/learned-article-preview'
 import { api } from '~/trpc/react'
 
 export interface BundleCardData {
@@ -96,6 +97,15 @@ export function BundleCard({ bundle }: { bundle: BundleCardData }) {
 }
 
 function ActionRow({ action }: { action: ProposedAction }) {
+  // Memory proposals get the shared light preview (title + category +
+  // description + rendered markdown) instead of the bare summary line.
+  if (action.toolName === 'upsert_learned_article') {
+    return (
+      <li className='list-none -ml-4'>
+        <LearnedArticlePreview args={action.args} className='bg-muted/40' />
+      </li>
+    )
+  }
   return (
     <li className='text-foreground'>
       <span className='font-mono text-xs text-muted-foreground mr-2'>{action.toolName}</span>

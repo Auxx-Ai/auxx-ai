@@ -2,6 +2,7 @@
 'use client'
 
 import { PLATFORM_CAPABILITIES } from '@auxx/lib/channels/client'
+import { FeatureKey } from '@auxx/lib/permissions/client'
 import type { ActorId } from '@auxx/types/actor'
 import { getInstanceId, type RecordId, toRecordId } from '@auxx/types/resource'
 import { Alert } from '@auxx/ui/components/alert'
@@ -24,6 +25,7 @@ import {
   Merge,
   MoreHorizontal,
   PackageOpen,
+  Sparkles,
   Tags,
   Trash,
   Undo2,
@@ -44,6 +46,8 @@ import {
 } from '~/components/threads/store/thread-selection-store'
 import { ManualTriggerButton } from '~/components/workflow/manual-trigger-button'
 import { useConfirm } from '~/hooks/use-confirm'
+import { useFeatureFlags } from '~/providers/feature-flag-provider'
+import { api } from '~/trpc/react'
 import { EditableText } from '../editor/editable-text'
 import { Tooltip } from '../global/tooltip'
 import { LensBadge } from '../mail-permissions/ui/lens-badge'
@@ -255,6 +259,29 @@ export function ThreadHeader() {
     if (!thread) return
     unmerge(thread.id)
   }, [unmerge, thread])
+
+  /**
+   * Force-enqueue a learned-KB extraction for this thread ("Remember this
+   * thread") — skips the resolve-trigger noise gates; the memory proposal
+   * lands in Today for approval.
+   */
+  const { hasAccess } = useFeatureFlags()
+  const rememberThread = api.thread.rememberThread.useMutation({
+    onSuccess: () => {
+      toastSuccess({
+        title: 'Learning from this thread',
+        description: 'A memory proposal will appear in Today shortly.',
+      })
+    },
+    onError: (error) => {
+      toastError({ title: 'Failed to remember thread', description: error.message })
+    },
+  })
+
+  const handleRememberThread = useCallback(() => {
+    if (!thread) return
+    rememberThread.mutate({ recordId: toRecordId('thread', thread.id) })
+  }, [thread, rememberThread])
 
   /**
    * Handle permanent deletion with confirmation
@@ -471,6 +498,12 @@ export function ThreadHeader() {
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align='end'>
+                {hasAccess(FeatureKey.learnedMemory) && (
+                  <DropdownMenuItem onClick={handleRememberThread}>
+                    <Sparkles />
+                    Remember this thread
+                  </DropdownMenuItem>
+                )}
                 <DropdownMenuItem onClick={handlePermanentlyDelete} variant='destructive'>
                   <Trash />
                   Permanently delete

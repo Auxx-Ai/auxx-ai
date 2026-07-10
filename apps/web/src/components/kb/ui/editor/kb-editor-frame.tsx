@@ -27,10 +27,12 @@ interface KBEditorFrameProps {
  */
 export function KBEditorFrame({ knowledgeBaseId, children }: KBEditorFrameProps) {
   const { knowledgeBase, isLoading } = useKnowledgeBase(knowledgeBaseId)
-  const [activePanel] = useQueryState(
+  const [panelParam] = useQueryState(
     'panel',
     parseAsStringLiteral(PANEL_VALUES).withDefault('general')
   )
+  // The learned KB ("AI Memory") is always on the article tree.
+  const activePanel = knowledgeBase?.kind === 'learned' ? 'articles' : panelParam
 
   const leftPanels = useMemo(() => {
     if (!knowledgeBase) return []

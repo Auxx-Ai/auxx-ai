@@ -663,6 +663,37 @@ export const threadRouter = createTRPCRouter({
     }),
 
   /**
+   * Explicit "Remember this thread" — force-enqueues a learned-KB extraction
+   * for the thread, bypassing the resolve-trigger noise gates and the
+   * `learnedExtractedAt` dedupe. The proposal lands in Today as usual.
+   */
+  rememberThread: protectedProcedure
+    .input(z.object({ recordId: recordIdSchema }))
+    .mutation(async ({ ctx, input }) => {
+      const { threadQuery, organizationId, userId } = await getServiceDependencies(ctx)
+      const { FeaturePermissionService, FeatureKey } = await import('@auxx/lib/permissions')
+      await new FeaturePermissionService(ctx.db).requireAccess(
+        organizationId,
+        FeatureKey.learnedMemory
+      )
+      const threadId = getInstanceId(input.recordId)
+      try {
+        // Visibility check — the viewer must be able to see the thread.
+        const [meta] = await threadQuery.getThreadMetaBatch([threadId], userId)
+        if (!meta) {
+          throw new TRPCError({ code: 'NOT_FOUND', message: 'Thread not found.' })
+        }
+        const { enqueueLearnedExtraction } = await import('@auxx/lib/jobs')
+        await enqueueLearnedExtraction({ organizationId, threadId, force: true })
+        return { success: true }
+      } catch (error: unknown) {
+        if (error instanceof TRPCError) throw error
+        handleServiceError(error, 'rememberThread', { organizationId, userId, threadId })
+        throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to enqueue.' })
+      }
+    }),
+
+  /**
    * Unified bulk update endpoint for multiple threads.
    * Accepts RecordIds and partial ThreadUpdates.
    */
