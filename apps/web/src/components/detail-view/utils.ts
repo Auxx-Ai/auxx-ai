@@ -10,6 +10,7 @@ import {
   Mail,
   MessagesSquare,
   Package,
+  ReceiptText,
   ShoppingBag,
   Ticket,
   Truck,
@@ -30,6 +31,7 @@ const ICON_MAP: Record<string, LucideIcon> = {
   layers: Layers,
   truck: Truck,
   box: Box,
+  'receipt-text': ReceiptText,
 }
 
 /**

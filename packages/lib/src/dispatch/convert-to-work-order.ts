@@ -5,6 +5,7 @@ import { extractValue } from '@auxx/types'
 import { toRecordId } from '@auxx/types/resource'
 import { getOrgCache } from '../cache'
 import { FieldValueService } from '../field-values/field-value-service'
+import { convertQuoteToWorkOrder } from '../money/convert-quote'
 import { UnifiedCrudHandler } from '../resources/crud'
 import type { ConvertRequestToWorkOrderInput } from './types'
 
@@ -25,7 +26,7 @@ function firstTyped(
  * The request is NEVER deleted or archived (README/01 §9) — it stays the historical record.
  * The status write goes through `FieldValueService` directly (the `writeThreadVisitFields`
  * mirror-service precedent, `chat/visit-fields.ts`) — NOT `handler.update()` — because the
- * §F.4b `rejectManualConvertedStatus` system pre-hook rejects manual `converted` writes on the
+ * §F.4b `rejectManualMirroredStatus` system pre-hook rejects manual `converted` writes on the
  * `UnifiedCrudHandler` path. This mutation is the one sanctioned writer. Events stay on
  * (`setValuesForEntity` defaults `publishEvents: true`) so timeline/realtime/record rules still
  * see the transition.
@@ -39,6 +40,44 @@ export async function convertRequestToWorkOrder(input: ConvertRequestToWorkOrder
   const cache = getOrgCache()
 
   const requestRecordId = toRecordId('service_request', requestInstanceId)
+
+  // Money MQ1 (01-ui #5): if an approved quote already exists for this request, convert
+  // THROUGH the quote instead — same request status flip, but lines come along too.
+  // Delegates to `convertQuoteToWorkOrder`, which does its own approved-status assertion
+  // and request→'converted' mirror, so we return early rather than falling through to the
+  // plain (line-less) path below.
+  const approvedQuotes = await handler.listFiltered({
+    entityDefinitionId: 'quote',
+    filters: [
+      {
+        id: 'approved-quote-for-request',
+        logicalOperator: 'AND',
+        conditions: [
+          {
+            id: 'approved-quote-for-request-c1',
+            fieldId: 'quote:request',
+            operator: 'is',
+            value: requestRecordId,
+          },
+          {
+            id: 'approved-quote-for-request-c2',
+            fieldId: 'quote:status',
+            operator: 'is',
+            value: 'approved',
+          },
+        ],
+      },
+    ],
+    limit: 1,
+    mode: 'oneshot',
+  })
+  if (approvedQuotes.ids.length > 0) {
+    return convertQuoteToWorkOrder({
+      organizationId,
+      userId,
+      quoteInstanceId: approvedQuotes.ids[0]!,
+    })
+  }
 
   const cf = await cache
     .from(organizationId, 'customFields')

@@ -6,7 +6,7 @@ import { and, eq } from 'drizzle-orm'
 import { z } from 'zod'
 import { createTRPCRouter, protectedProcedure } from '~/server/api/trpc'
 
-const scopeSchema = z.enum(['ticket', 'work_order', 'service_request']).default('ticket')
+const scopeSchema = z.enum(['ticket', 'work_order', 'service_request', 'quote']).default('ticket')
 
 export const ticketSequenceRouter = createTRPCRouter({
   // Get the record sequence settings for an organization+scope

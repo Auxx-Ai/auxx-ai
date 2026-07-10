@@ -706,6 +706,18 @@
       "import": "./dist/messages/index.mjs",
       "default": "./src/messages/index.ts"
     },
+    "./money": {
+      "types": "./src/money/index.ts",
+      "source": "./src/money/index.ts",
+      "import": "./dist/money/index.mjs",
+      "default": "./src/money/index.ts"
+    },
+    "./money/client": {
+      "types": "./src/money/client.ts",
+      "source": "./src/money/client.ts",
+      "import": "./dist/money/client.mjs",
+      "default": "./src/money/client.ts"
+    },
     "./notifications": {
       "types": "./src/notifications/index.ts",
       "source": "./src/notifications/index.ts",

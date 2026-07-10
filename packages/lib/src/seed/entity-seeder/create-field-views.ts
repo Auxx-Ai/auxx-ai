@@ -352,6 +352,87 @@ const FIELD_VIEW_CONFIGS: FieldViewSeedConfig[] = [
       'service_request_address',
     ],
   },
+
+  // ============================================================================
+  // QUOTE FIELD VIEWS
+  // ============================================================================
+  {
+    entityType: 'quote',
+    contextType: 'panel',
+    name: 'Default Panel View',
+    excludeFields: [
+      'id',
+      'created_at',
+      'updated_at',
+      'created_by_id',
+      'quote_line_items',
+      'quote_work_orders',
+    ],
+  },
+  {
+    entityType: 'quote',
+    contextType: 'table',
+    name: 'Default Table View',
+    excludeFields: [
+      'id',
+      'created_at',
+      'updated_at',
+      'created_by_id',
+      'quote_line_items',
+      'quote_work_orders',
+      'quote_notes',
+      'quote_terms',
+      'quote_discount_type',
+      'quote_discount_value',
+      'quote_tax_name',
+    ],
+  },
+  {
+    entityType: 'quote',
+    contextType: 'dialog_create',
+    name: 'Default Create Dialog',
+    includeFields: ['quote_title', 'quote_contact', 'quote_request'],
+  },
+
+  // ============================================================================
+  // LINE ITEM FIELD VIEWS (no dialog_create — never created via generic dialog)
+  // ============================================================================
+  {
+    entityType: 'line_item',
+    contextType: 'panel',
+    name: 'Default Panel View',
+    excludeFields: ['id', 'created_at', 'updated_at', 'created_by_id'],
+  },
+  {
+    entityType: 'line_item',
+    contextType: 'table',
+    name: 'Default Table View',
+    excludeFields: [
+      'id',
+      'created_at',
+      'updated_at',
+      'created_by_id',
+      'line_item_discount',
+      'line_item_sort_order',
+      'line_item_visit_id',
+    ],
+  },
+
+  // ============================================================================
+  // CATALOG ITEM FIELD VIEWS (no dialog_create — never created via generic dialog)
+  // ============================================================================
+  {
+    entityType: 'catalog_item',
+    contextType: 'panel',
+    name: 'Default Panel View',
+    excludeFields: ['id', 'created_at', 'updated_at', 'created_by_id'],
+  },
+  {
+    entityType: 'catalog_item',
+    contextType: 'table',
+    name: 'Default Table View',
+    excludeFields: ['id', 'created_at', 'updated_at', 'created_by_id', 'catalog_item_line_items'],
+  },
 ]
 
 /**

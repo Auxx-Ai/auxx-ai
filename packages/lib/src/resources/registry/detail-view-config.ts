@@ -89,6 +89,27 @@ export const DETAIL_VIEW_CONFIG_REGISTRY: DetailViewConfigRegistry = {
     defaultSidebarTab: 'overview',
   },
 
+  quote: {
+    entityType: 'quote',
+    mainTabs: [
+      { value: 'line-items', label: 'Line items', icon: 'receipt-text' },
+      { value: 'timeline', label: 'Timeline', icon: 'clock' },
+      { value: 'tasks', label: 'Tasks', icon: 'list-todo' },
+    ],
+    sidebarTabs: DEFAULT_SIDEBAR_TABS,
+    // Header actions are status-driven (draft/sent/approved) and live in the
+    // line-items tab's own header strip — see quote-line-items-tab.tsx (money
+    // MQ1 build spec §H.3: DetailViewActions only exposes generic capability
+    // flags, no per-entity extension point exists yet).
+    actions: {},
+    defaultTab: 'line-items',
+    defaultSidebarTab: 'overview',
+    sidebarCards: [
+      { value: 'customer', label: 'Customer' },
+      { value: 'origin', label: 'Origin' },
+    ],
+  },
+
   /** Generic entities (custom entityDefinitions with entityType='entity') */
   entity: {
     entityType: 'entity',

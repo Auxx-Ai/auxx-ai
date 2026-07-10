@@ -37,8 +37,10 @@ export interface LearnedExtractionJobData {
  */
 export async function enqueueLearnedExtraction(data: LearnedExtractionJobData): Promise<void> {
   const queue = getQueue(Queues.learnedExtractionQueue)
+  // BullMQ rejects a custom jobId containing ':' unless it splits into exactly
+  // 3 segments (legacy repeatable-job compat) — keep the forced variant to 3.
   const jobId = data.force
-    ? `learned-extraction:force:${data.organizationId}:${data.threadId}:${Date.now()}`
+    ? `learned-extraction:${data.organizationId}:${data.threadId}-force-${Date.now()}`
     : `learned-extraction:${data.organizationId}:${data.threadId}`
   await queue.add('learnedExtractionJob', data, {
     jobId,

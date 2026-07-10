@@ -203,6 +203,7 @@ export const CONTACT_FIELDS: Record<string, ResourceField> = {
     systemAttribute: 'city',
     systemSortOrder: 'a3b',
     nullable: true,
+    showInDialogs: false,
     capabilities: {
       filterable: true,
       sortable: true,
@@ -223,6 +224,7 @@ export const CONTACT_FIELDS: Record<string, ResourceField> = {
     systemAttribute: 'region',
     systemSortOrder: 'a3c',
     nullable: true,
+    showInDialogs: false,
     capabilities: {
       filterable: true,
       sortable: true,
@@ -243,6 +245,7 @@ export const CONTACT_FIELDS: Record<string, ResourceField> = {
     systemAttribute: 'country',
     systemSortOrder: 'a3d',
     nullable: true,
+    showInDialogs: false,
     capabilities: {
       filterable: true,
       sortable: true,
@@ -263,6 +266,7 @@ export const CONTACT_FIELDS: Record<string, ResourceField> = {
     systemAttribute: 'timezone',
     systemSortOrder: 'a3e',
     nullable: true,
+    showInDialogs: false,
     capabilities: {
       filterable: true,
       sortable: true,
@@ -555,6 +559,32 @@ export const CONTACT_FIELDS: Record<string, ResourceField> = {
       isInverse: true,
     },
     description: 'Service requests for this contact',
+  },
+
+  // Reverse relationship: quotes (from quote.contact)
+  quotes: {
+    id: toFieldId('quotes'),
+    key: 'quotes',
+    label: 'Quotes',
+    type: BaseType.RELATION,
+    fieldType: FieldType.RELATIONSHIP,
+    isSystem: true,
+    systemAttribute: 'contact_quotes',
+    showInPanel: false,
+    systemSortOrder: 'aC',
+    capabilities: {
+      filterable: true,
+      sortable: false,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    relationship: {
+      inverseResourceFieldId: 'quote:contact' as ResourceFieldId,
+      relationshipType: 'has_many',
+      isInverse: true,
+    },
+    description: 'Quotes for this contact',
   },
 
   createdBy: CREATED_BY_FIELD,

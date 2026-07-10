@@ -34,7 +34,10 @@ import { Pencil, X } from 'lucide-react'
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useDynamicTableStore } from '~/components/dynamic-table/stores/dynamic-table-store'
 import { useOrgFieldView } from '~/components/dynamic-table/stores/store-selectors'
-import { useFieldView } from '~/components/fields/hooks/use-field-view'
+import {
+  isFieldDefaultHiddenInDialogs,
+  useFieldView,
+} from '~/components/fields/hooks/use-field-view'
 import { FieldPanel } from '~/components/global/forms/field-panel'
 import { useResource } from '~/components/resources'
 import { useFieldValueSyncer } from '~/components/resources/hooks/use-field-value-syncer'
@@ -176,7 +179,13 @@ export function EntityInstanceForm({
       const storedConfig = view?.config as FieldViewConfig | undefined
       const baseConfig = storedConfig ?? createDefaultFieldViewConfig(fieldIds)
 
-      // Ensure all current field IDs are represented (handles newly added fields)
+      // Ensure all current field IDs are represented (handles newly added fields).
+      // Backfill visibility from the computed default for the context — blanket
+      // `true` would resurrect fields the dialog default-hidden rule suppresses
+      // (inverses, showInDialogs:false, identity fields) on every view save.
+      const fieldById = new Map(
+        allEditableFields.map((f) => [String(f.resourceFieldId ?? f.id ?? f.key), f])
+      )
       const existingOrderSet = new Set(baseConfig.fieldOrder)
       const missingFields = fieldIds.filter((id) => !existingOrderSet.has(id))
 
@@ -185,11 +194,16 @@ export function EntityInstanceForm({
         fieldOrder: [...baseConfig.fieldOrder, ...missingFields],
         fieldVisibility: {
           ...baseConfig.fieldVisibility,
-          ...Object.fromEntries(missingFields.map((id) => [id, true])),
+          ...Object.fromEntries(
+            missingFields.map((id) => {
+              const field = fieldById.get(String(id))
+              return [id, field ? !isFieldDefaultHiddenInDialogs(field, ct) : true]
+            })
+          ),
         },
       }
     },
-    [entityDefinitionId, fieldIds]
+    [entityDefinitionId, fieldIds, allEditableFields]
   )
 
   /** Enter config mode: snapshot current config into draft */

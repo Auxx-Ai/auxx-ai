@@ -258,6 +258,21 @@ export interface ResourceField {
   showInPanel?: boolean
 
   /**
+   * When false, the field is hidden from the default create/update dialogs
+   * unless an org view explicitly enables it. Defaults to true.
+   */
+  showInDialogs?: boolean
+
+  /**
+   * Declared `identity: true` in a connector's `defineFields` — an
+   * external-system id (e.g. Shopify `customerId`), not a plain attribute.
+   * Mirrors `CustomField.isIdentity`. Like `showInDialogs === false`, this
+   * defaults the field to hidden in create/update dialogs (see
+   * use-field-view.ts) unless an org view explicitly enables it.
+   */
+  isIdentity?: boolean
+
+  /**
    * System attribute identifier
    * - If set: System field (cannot delete/edit, special rendering)
    * - If null/undefined: Custom field (can delete/edit, generic rendering)

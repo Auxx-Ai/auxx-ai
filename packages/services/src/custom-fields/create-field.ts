@@ -96,6 +96,10 @@ export interface CreateCustomFieldInput {
   isFilterable?: boolean
   /** Hidden from every user-facing surface; system/app code still reads it. Default false. */
   isHidden?: boolean
+  /** When false, hidden from the default create/update dialogs unless an org view
+   *  explicitly enables it. Persisted at the top level of `options`. Default undefined
+   *  (shown). See `ResourceField.showInDialogs`. */
+  showInDialogs?: boolean
 
   // --- App ownership (app-registered custom fields) ---
   /** Owning app installation. Set => app-owned: user-read-only, removed on uninstall. */
@@ -237,6 +241,7 @@ export async function createCustomField(input: CreateCustomFieldInput, tx?: Tran
     dataConnectorId,
     isIdentity,
     appSlug,
+    showInDialogs,
   } = input
 
   // Use provided transaction or default to global database
@@ -409,6 +414,7 @@ export async function createCustomField(input: CreateCustomFieldInput, tx?: Tran
   const fieldOptions: Record<string, any> = {
     icon,
     isCustom,
+    ...(showInDialogs !== undefined && { showInDialogs }),
   }
 
   if (

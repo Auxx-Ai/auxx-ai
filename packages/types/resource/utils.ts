@@ -140,6 +140,9 @@ export const ENTITY_DEFINITION_TYPES = [
   'meeting',
   'work_order',
   'service_request',
+  'quote',
+  'line_item',
+  'catalog_item',
 ] as const
 
 /** Type for system entity types stored in EntityDefinition */

@@ -13,6 +13,13 @@ const ENTITY_GROUP_VISIBILITY_SETTING_KEY = 'sidebar.entities.groupVisible'
 const ENTITY_FOLDERS_SETTING_KEY = 'sidebar.entities.folders'
 const ENTITY_FOLDER_ITEMS_SETTING_KEY = 'sidebar.entities.folderItems'
 
+/**
+ * Entity types surfaced under the Dispatch workspace menu instead of Records.
+ * Sidebar-only exclusion — the defs stay `isVisible: true` so kbar create/search
+ * and Kopilot entity tools keep seeing them.
+ */
+const DISPATCH_SIDEBAR_ENTITY_TYPES = new Set(['work_order', 'service_request', 'quote'])
+
 /** Processed entity with visibility metadata */
 export interface ProcessedEntity {
   id: string
@@ -104,6 +111,7 @@ export function useEntitySidebar({ scope = 'SIDEBAR' }: UseEntitySidebarOptions 
 
     const baseEntities: ProcessedEntity[] = (customResources || [])
       .filter((resource) => resource.isVisible !== false)
+      .filter((resource) => !DISPATCH_SIDEBAR_ENTITY_TYPES.has(resource.entityType ?? ''))
       .map((resource) => ({
         id: resource.id,
         apiSlug: resource.apiSlug,

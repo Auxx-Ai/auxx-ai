@@ -77,6 +77,7 @@
       "templateFieldId": "documents",
       "name": "Documents",
       "type": "FILE",
+      "showInDialogs": false,
       "options": { "file": { "multiple": true } }
     },
     { "templateFieldId": "tags", "name": "Tags", "type": "TAGS" }

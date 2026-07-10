@@ -795,4 +795,82 @@ export const DEFAULT_VIEW_CONFIGS = {
       } satisfies ViewConfig,
     },
   ],
+
+  quote: [
+    {
+      name: 'Quote Pipeline',
+      description: 'Default view for quotes, grouped by status',
+      isDefault: true,
+      config: {
+        viewType: 'kanban' as const,
+        kanban: {
+          groupByFieldId: 'field_quote_status',
+          primaryFieldId: 'field_quote_title',
+          cardFields: [
+            'field_quote_number',
+            'field_quote_contact',
+            'field_quote_total',
+            'field_quote_valid_until',
+          ],
+          // Keyed by QUOTE_STATUS_OPTIONS values, not field ids (the M1 kanban gotcha —
+          // see service_request's Request Pipeline view above).
+          columnOrder: ['draft', 'sent', 'approved', 'declined', 'canceled'],
+        },
+        // Standard table-shape fields ship alongside `kanban` so the view still works when a
+        // user flips it to table mode (same ViewConfig object serves both view types).
+        columnVisibility: {
+          field_quote_number: true,
+          field_quote_title: true,
+          field_quote_status: true,
+          field_quote_contact: true,
+          field_quote_total: true,
+          field_quote_valid_until: true,
+        },
+        columnOrder: [
+          'field_quote_number',
+          'field_quote_title',
+          'field_quote_status',
+          'field_quote_contact',
+          'field_quote_total',
+          'field_quote_valid_until',
+        ],
+        columnPinning: { left: ['_checkbox', 'field_quote_number'] },
+        sorting: [{ id: 'field_created_at', desc: true }],
+        filters: [],
+        columnSizing: {},
+        columnLabels: {},
+        columnFormatting: {},
+      } satisfies ViewConfig,
+    },
+    {
+      name: 'All Quotes',
+      description: 'Table view of all quotes',
+      isDefault: false,
+      config: {
+        viewType: 'table' as const,
+        columnVisibility: {
+          field_quote_number: true,
+          field_quote_title: true,
+          field_quote_status: true,
+          field_quote_contact: true,
+          field_quote_total: true,
+          field_quote_valid_until: true,
+        },
+        columnOrder: [
+          'field_quote_number',
+          'field_quote_title',
+          'field_quote_status',
+          'field_quote_contact',
+          'field_quote_total',
+          'field_quote_valid_until',
+        ],
+        columnPinning: { left: ['_checkbox', 'field_quote_number'] },
+        sorting: [{ id: 'field_created_at', desc: true }],
+        filters: [],
+        columnSizing: {},
+        columnLabels: {},
+        columnFormatting: {},
+      } satisfies ViewConfig,
+    },
+  ],
 } as const satisfies Record<string, DefaultViewDefinition[]>

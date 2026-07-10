@@ -99,6 +99,15 @@ export const DRAWER_TAB_CARD_COMPONENTS: Record<
   // ─────────────────────────────────────────────────────────────────
   'part:inventory': () =>
     import('./cards/part-inventory-tab').then((m) => ({ default: m.PartInventoryTab })),
+
+  // ─────────────────────────────────────────────────────────────────
+  // QUOTE OVERVIEW CARDS (shared with the quote detail-view sidebar —
+  // DetailViewSidebar reads from this same registry, see detail-view-sidebar.tsx)
+  // ─────────────────────────────────────────────────────────────────
+  'quote:customer': () =>
+    import('./cards/quote-customer-card').then((m) => ({ default: m.QuoteCustomerCard })),
+  'quote:origin': () =>
+    import('./cards/quote-origin-card').then((m) => ({ default: m.QuoteOriginCard })),
 }
 
 /**
