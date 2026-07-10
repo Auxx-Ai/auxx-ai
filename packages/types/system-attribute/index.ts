@@ -304,6 +304,7 @@ export const SYSTEM_ATTRIBUTES = [
   'invoice_notes',
   'invoice_terms',
   'invoice_pdf_asset',
+  'invoice_public_token',
   'invoice_line_items', // inverse of line_item_invoice
   'invoice_payments', // inverse of payment_invoice
 

@@ -1,0 +1,1 @@
+ALTER TYPE "public"."NotificationType" ADD VALUE 'WORK_ORDER_DISPATCHED';

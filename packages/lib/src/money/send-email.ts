@@ -12,6 +12,8 @@ import type { PlaceholderResolutionContext } from '../placeholders'
 import { resolvePlaceholdersInHtml } from '../placeholders'
 import { UnifiedCrudHandler } from '../resources/crud'
 import { getSystemSnippet } from '../snippets'
+import { getPaymentAccount } from './payments/account-state'
+import { buildPayUrl, ensureInvoicePublicToken, isPaymentsConnected } from './public-token'
 
 /** Unwrap a `getFieldValues()` map entry — takes the first value if array-returned. */
 function firstTyped(
@@ -181,7 +183,26 @@ export async function prepareDocumentEmail(
     senderUserId: userId,
     recordIdsByRoot,
   }
-  const contentHtml = await resolvePlaceholdersInHtml(snippet.contentHtml, placeholderCtx)
+  let contentHtml = await resolvePlaceholdersInHtml(snippet.contentHtml, placeholderCtx)
+
+  // ─── Step 3b: append the pay-online link (money MP1 build spec §J, invoice only) ───────
+  // Appended at prepare time rather than a snippet placeholder — the generic field-token
+  // placeholder resolver (`resolvePlaceholdersInHtml`) resolves raw field VALUES, not a
+  // conditionally-gated, freshly-minted absolute URL; appending here keeps that resolver
+  // untouched and lets this stay a single well-documented call site. Only invoices get a
+  // pay link (quotes have no balance to collect), and only when the org's Stripe account is
+  // connected + chargesEnabled — otherwise the email would carry a dead link.
+  if (documentType === 'invoice') {
+    const { entityInstanceId: invoiceInstanceId } = parseRecordId(documentRecordId)
+    const account = await getPaymentAccount(organizationId)
+    if (isPaymentsConnected(account)) {
+      const token = await ensureInvoicePublicToken(organizationId, invoiceInstanceId)
+      if (token) {
+        const payUrl = buildPayUrl(token)
+        contentHtml += `<p><a href="${payUrl}" target="_blank" rel="noopener noreferrer">Pay online</a></p>`
+      }
+    }
+  }
 
   // ─── Step 4: ensure the PDF is ready to attach ───────────────────────────
   const { assetId, fileName } = await ensureQuoteDocumentPdf({

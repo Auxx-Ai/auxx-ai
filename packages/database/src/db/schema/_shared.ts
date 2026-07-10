@@ -328,6 +328,8 @@ export const notificationType = pgEnum('NotificationType', [
   'WORKFLOW_APPROVAL_REMINDER',
   'WORKFLOW_APPROVAL_COMPLETED',
   'TASK_DEADLINE',
+  // Dispatch (07-m2-build.md §B.5) — needs `pnpm db:generate` to ALTER TYPE ADD VALUE.
+  'WORK_ORDER_DISPATCHED',
 ])
 export const orderAddressType = pgEnum('ORDER_ADDRESS_TYPE', ['SHIPPING', 'BILLING'])
 export const orderCancelReason = pgEnum('ORDER_CANCEL_REASON', [
@@ -728,6 +730,7 @@ export {
   index,
   integer,
   jsonb,
+  numeric,
   pgEnum,
   pgTable,
   primaryKey,

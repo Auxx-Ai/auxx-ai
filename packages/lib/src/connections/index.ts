@@ -10,6 +10,13 @@ export {
   type RuntimeConnectionAuthData,
 } from './auth-apply'
 export {
+  type HostedProvisionCompleteCtx,
+  type HostedProvisionCompleteResult,
+  type HostedProvisionHandler,
+  type HostedProvisionStartCtx,
+  resolveHostedProvisionHandler,
+} from './hosted-provision'
+export {
   makeClientCredentialsRequest,
   mintClientCredentialToken,
   type RefreshTokensResult,

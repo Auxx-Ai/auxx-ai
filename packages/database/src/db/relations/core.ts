@@ -21,6 +21,7 @@ import {
   CustomField,
   Dataset,
   DatasetSearchQuery,
+  DispatchWorker,
   Document,
   DocumentSegment,
   EmailEmbedding,
@@ -606,6 +607,17 @@ export const aiMessageFeedbackRelations = relations(AiMessageFeedback, ({ one })
   }),
   user: one(User, {
     fields: [AiMessageFeedback.userId],
+    references: [User.id],
+  }),
+}))
+
+export const dispatchWorkerRelations = relations(DispatchWorker, ({ one }) => ({
+  organization: one(Organization, {
+    fields: [DispatchWorker.organizationId],
+    references: [Organization.id],
+  }),
+  user: one(User, {
+    fields: [DispatchWorker.userId],
     references: [User.id],
   }),
 }))

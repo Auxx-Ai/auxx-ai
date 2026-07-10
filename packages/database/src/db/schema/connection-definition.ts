@@ -169,9 +169,13 @@ export const ConnectionDefinition = pgTable(
     key: text(),
     major: integer().notNull(), // Version major
 
-    // Connection type: oauth2-code, client-credentials, secret, none.
+    // Connection type: oauth2-code, client-credentials, secret, hosted-provision, none.
     // `client-credentials` is the server-minted M2M OAuth2 grant — same minting columns as
     // oauth2-code (sans the browser-redirect fields), downstream an ordinary bearer connection.
+    // `hosted-provision` (platform-provider-only): the platform calls the provider's API to
+    // create/find a resource, sends the user through the provider's HOSTED onboarding flow, and
+    // persists the returned identifier — no OAuth code exchange, no secret-field dialog. See
+    // packages/lib/src/connections/hosted-provision/types.ts.
     connectionType: text().notNull(),
     label: text().notNull(),
     description: text(),

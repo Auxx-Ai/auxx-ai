@@ -821,6 +821,28 @@ export const CONFIG_VARIABLES = {
     isSensitive: true,
     isEnvOnly: false,
   },
+  // ── Money MP1 (Stripe Connect payment collection) ─────────
+  // Separate from the STRIPE_* keys above (the @auxx/billing subscription singleton) — MP1
+  // owns its own lazy Connect client and its own webhook endpoint/secret (never routed through
+  // @auxx/billing). Reuses STRIPE_SECRET_KEY as the platform key (same Stripe account).
+  STRIPE_CONNECT_WEBHOOK_SECRET: {
+    key: 'STRIPE_CONNECT_WEBHOOK_SECRET',
+    description:
+      'Stripe Connect webhook signing secret (money MP1 — separate from STRIPE_WEBHOOK_SECRET)',
+    type: ConfigVariableType.STRING,
+    group: ConfigVariableGroup.BILLING,
+    isSensitive: true,
+    isEnvOnly: false,
+  },
+  PAYMENTS_APPLICATION_FEE_PERCENT: {
+    key: 'PAYMENTS_APPLICATION_FEE_PERCENT',
+    description: 'Default application fee percent charged on Stripe Connect payments (money MP1)',
+    type: ConfigVariableType.STRING,
+    group: ConfigVariableGroup.BILLING,
+    defaultValue: '2',
+    isSensitive: false,
+    isEnvOnly: false,
+  },
   ENABLE_AUTO_TRIAL: {
     key: 'ENABLE_AUTO_TRIAL',
     description: 'Enable automatic trial subscription creation',

@@ -179,6 +179,11 @@ function ConnectionSection({
 }: ConnectionSectionProps) {
   const isOAuth = definition.connectionType === 'oauth2-code'
   const isSecret = definition.connectionType === 'secret'
+  // `hosted-provision` is platform-provider-only (see hosted-provision-connection-type.md
+  // non-goals) — an app-owned definition never carries this type today. Derived alongside the
+  // others for parity so this gate doesn't silently exclude it if that ever changes; `flow.start`
+  // already dispatches hosted-provision to a full-page navigate with no dialog.
+  const isHostedProvision = definition.connectionType === 'hosted-provision'
 
   const flow = useConnectFlow({
     onConnected: onConnectionCreated
@@ -192,7 +197,7 @@ function ConnectionSection({
     onSuccess: () => void utils.apps.listConnections.invalidate(),
   })
 
-  const showAddButton = canEdit && (isOAuth || isSecret)
+  const showAddButton = canEdit && (isOAuth || isSecret || isHostedProvision)
   // The primary pointer only matters when an org has >1 connection in the workspace scope (§4a).
   const showPrimary = scope === 'organization' && rows.length > 1
 
@@ -277,7 +282,7 @@ function ConnectionSection({
                         </DropdownMenuItem>
                         {(conn.connectionStatus === 'expired' ||
                           conn.connectionStatus === 'connected') &&
-                          (isOAuth || isSecret) && (
+                          (isOAuth || isSecret || isHostedProvision) && (
                             <DropdownMenuItem
                               onClick={() =>
                                 flow.start({

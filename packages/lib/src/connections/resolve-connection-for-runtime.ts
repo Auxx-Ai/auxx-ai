@@ -27,9 +27,11 @@ const logger = createScopedLogger('resolve-connection-for-runtime')
 /**
  * The runtime connection types. `client-credentials` is a server-minted bearer (no user, no
  * browser) — downstream it behaves exactly like `oauth2-code`; only the token-production path
- * (mint vs refresh) differs.
+ * (mint vs refresh) differs. `hosted-provision` never mints/refreshes a token here — it resolves
+ * with `authApply: null` (see `defaultAuthApply`) and no token semantics; its durable handle
+ * (`providerAccountId`) lives on `metadata`, not `value`.
  */
-type ConnectionType = 'oauth2-code' | 'client-credentials' | 'secret'
+type ConnectionType = 'oauth2-code' | 'client-credentials' | 'secret' | 'hosted-provision'
 
 /** Secrets no longer carry expiry/metadata — those come from the record columns. */
 type ConnectionSecrets = Pick<

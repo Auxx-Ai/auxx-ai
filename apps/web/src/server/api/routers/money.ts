@@ -2,6 +2,7 @@
 
 import { database, schema } from '@auxx/database'
 import { renderPreviewQuotePdf } from '@auxx/lib/documents'
+import { NotFoundError } from '@auxx/lib/errors'
 import {
   approveQuote,
   convertQuoteToWorkOrder,
@@ -11,14 +12,18 @@ import {
   deleteInvoice,
   deleteInvoiceLine,
   deleteManualPayment,
+  disconnectPaymentAccount,
   ensureQuoteDocumentPdf,
+  getPaymentAccount,
   listUninvoicedLines,
   markInvoiceSent,
   markQuoteSent,
   prepareDocumentEmail,
   recomputeTotals,
   recordManualPayment,
+  refundTransaction,
   reorderLines,
+  syncAccountState,
   voidInvoice,
 } from '@auxx/lib/money'
 import { FeaturePermissionService } from '@auxx/lib/permissions'
@@ -39,9 +44,10 @@ const moneyProcedure = protectedProcedure.use(async ({ ctx, next }) => {
 })
 
 /**
- * adminProcedure + the same `dispatch` feature gate as {@link moneyProcedure} — for the one
- * money mutation that's a destructive correction, not desk work (money MI1 build spec §I.1,
- * decision 8): `deletePayment`.
+ * adminProcedure + the same `dispatch` feature gate as {@link moneyProcedure} — for the money
+ * mutations that are destructive corrections or account-level writes, not desk work: manual
+ * `deletePayment` (money MI1 build spec §I.1, decision 8), and the Stripe Connect
+ * `refundTransaction`/`syncAccountState`/`disconnectPayments` (money MP1 build spec §L).
  */
 const moneyAdminProcedure = adminProcedure.use(async ({ ctx, next }) => {
   await new FeaturePermissionService().requireAccess(
@@ -264,6 +270,44 @@ export const moneyRouter = createTRPCRouter({
       })
     }),
 
+  refundTransaction: moneyAdminProcedure
+    .input(z.object({ transactionId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      return refundTransaction({
+        organizationId: ctx.session.organizationId,
+        userId: ctx.session.user.id,
+        transactionId: input.transactionId,
+      })
+    }),
+
+  // ─── Stripe Connect payment collection (money MP1 build spec §L) ───────
+
+  getPaymentAccount: moneyProcedure.query(async ({ ctx }) => {
+    const account = await getPaymentAccount(ctx.session.organizationId)
+    if (!account) return null
+    return {
+      stripeAccountId: account.stripeAccountId,
+      credentialId: account.credentialId,
+      chargesEnabled: account.chargesEnabled,
+      detailsSubmitted: account.detailsSubmitted,
+      defaultCurrency: account.defaultCurrency,
+      applicationFeePercent: account.applicationFeePercent,
+      disconnectedAt: account.disconnectedAt,
+    }
+  }),
+
+  syncAccountState: moneyAdminProcedure.mutation(async ({ ctx }) => {
+    const account = await getPaymentAccount(ctx.session.organizationId)
+    if (!account?.stripeAccountId) {
+      throw new NotFoundError('No Stripe account connected for this organization')
+    }
+    return syncAccountState(ctx.session.organizationId, account.stripeAccountId)
+  }),
+
+  disconnectPayments: moneyAdminProcedure.mutation(async ({ ctx }) => {
+    return disconnectPaymentAccount(ctx.session.organizationId)
+  }),
+
   listPayments: moneyProcedure
     .input(z.object({ invoiceRecordId: recordIdSchema }))
     .query(async ({ ctx, input }) => {
@@ -287,6 +331,8 @@ export const moneyRouter = createTRPCRouter({
         note: row.note,
         provider: row.provider,
         createdByUserId: row.createdByUserId,
+        stripeRefundId: row.stripeRefundId,
+        refundedTransactionId: row.refundedTransactionId,
       }))
     }),
 
