@@ -181,18 +181,24 @@ export function resolveViewConfig(
     .filter((g): g is ConditionGroup => g !== null)
 
   // Resolve kanban.groupByFieldId / primaryFieldId / cardFields (symbolic field_* ids).
+  // Kanban keys use BARE field ids (NOT composite `<defId>:<fieldId>` ResourceFieldIds like the
+  // table keys above): every client writer stores `ResourceField.id` and every reader compares
+  // against it (dynamic-view.tsx / kanban-view-body.tsx `selectFields.find(f => f.id === ...)`),
+  // converting to a composite ref only at render. A composite here silently fails that lookup
+  // and the view falls back to a table.
   // kanban.columnOrder / collapsedColumns / columnSettings are keyed by the groupBy
   // field's OPTION VALUES, not field ids (kanbanConfigSchema, view-config.ts:69-75) —
   // left untouched.
+  const resolveBare = (fieldKey: string): string | null => fieldIdMap.get(fieldKey) ?? null
   const kanban = config.kanban
     ? {
         ...config.kanban,
-        groupByFieldId: resolve(config.kanban.groupByFieldId) ?? config.kanban.groupByFieldId,
+        groupByFieldId: resolveBare(config.kanban.groupByFieldId) ?? config.kanban.groupByFieldId,
         primaryFieldId: config.kanban.primaryFieldId
-          ? (resolve(config.kanban.primaryFieldId) ?? config.kanban.primaryFieldId)
+          ? (resolveBare(config.kanban.primaryFieldId) ?? config.kanban.primaryFieldId)
           : undefined,
         cardFields: config.kanban.cardFields
-          ?.map((fieldKey) => resolve(fieldKey))
+          ?.map((fieldKey) => resolveBare(fieldKey))
           .filter((v): v is string => v !== null),
       }
     : undefined
