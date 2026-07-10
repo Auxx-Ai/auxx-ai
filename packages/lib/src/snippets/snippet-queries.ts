@@ -3,7 +3,7 @@
 import { type Database, schema } from '@auxx/database'
 import { BuiltInEntityType, SnippetSharingType } from '@auxx/database/enums'
 import { parseRecordId, toRecordId } from '@auxx/types/resource'
-import { and, asc, count, desc, eq, ilike, inArray, or, type SQL, sql } from 'drizzle-orm'
+import { and, asc, count, desc, eq, ilike, inArray, isNull, or, type SQL, sql } from 'drizzle-orm'
 import { NotFoundError } from '../errors'
 import { getInstanceAccess, getUserAccessibleInstances } from '../resource-access'
 import { guard } from './guard'
@@ -31,6 +31,10 @@ export async function listSnippetsForUser(
     const where: SQL[] = [
       eq(schema.Snippet.organizationId, organizationId),
       eq(schema.Snippet.isDeleted, false),
+      // System-seeded snippets (quote_email/invoice_email) are read-only and
+      // fetched only via `getSystemSnippet` — never surfaced in the library
+      // list or the composer `/`-menu (both backed by this query).
+      isNull(schema.Snippet.systemType),
     ]
 
     if (folderId) {
@@ -140,6 +144,8 @@ export async function getSnippetWithAccess(
           eq(schema.Snippet.id, snippetId),
           eq(schema.Snippet.organizationId, organizationId),
           eq(schema.Snippet.isDeleted, false),
+          // System snippets are fetched only by `getSystemSnippet`, never by id from the UI.
+          isNull(schema.Snippet.systemType),
           or(
             eq(schema.Snippet.createdById, userId),
             eq(schema.Snippet.sharingType, SnippetSharingType.ORGANIZATION),

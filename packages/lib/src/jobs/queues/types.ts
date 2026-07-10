@@ -10,6 +10,8 @@ export enum Queues {
   webhooksQueue = 'webhooks',
   // documentsQueue = 'documentsQueue',
   // documentSuggestionsQueue = 'documentSuggestionsQueue',
+  // Quote/invoice PDF rendering queue (money MQ2 build spec §C.3)
+  documentPdfQueue = 'document-pdf',
   embeddingQueue = 'embedding',
   uploadQueue = 'upload',
   messageSyncQueue = 'messageSync',

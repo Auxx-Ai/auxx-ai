@@ -13,6 +13,14 @@ export {
   markQuoteSent,
 } from './quote-lifecycle'
 export { reorderLines } from './reorder'
+export {
+  type EnsureQuoteDocumentPdfInput,
+  type EnsureQuoteDocumentPdfResult,
+  ensureQuoteDocumentPdf,
+  type PrepareDocumentEmailInput,
+  type PrepareDocumentEmailResult,
+  prepareDocumentEmail,
+} from './send-email'
 export { computeDocumentTotals, computeLineTotal, roundCents } from './totals'
 export {
   recomputeOnLineChange,

@@ -99,7 +99,7 @@ export async function listChatWidgets(
     where: (i, { inArray }) => inArray(i.id, channelIds),
     orderBy: (i) => [desc(i.createdAt)],
     with: {
-      chatWidget: { with: { operatingHours: true } },
+      chatWidget: true,
       inboxIntegration: { columns: { inboxId: true } },
     },
   })
@@ -265,7 +265,7 @@ async function loadChatWidget(db: Database, channelId: string) {
   return db.query.Integration.findFirst({
     where: (i, { eq }) => eq(i.id, channelId),
     with: {
-      chatWidget: { with: { operatingHours: true } },
+      chatWidget: true,
       inboxIntegration: { columns: { inboxId: true } },
     },
   })

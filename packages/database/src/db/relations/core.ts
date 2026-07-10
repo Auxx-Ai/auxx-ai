@@ -371,9 +371,17 @@ export const mailViewRelations = relations(MailView, ({ one }) => ({
 }))
 
 export const operatingHoursRelations = relations(OperatingHours, ({ one }) => ({
+  organization: one(Organization, {
+    fields: [OperatingHours.organizationId],
+    references: [Organization.id],
+  }),
   chatWidget: one(ChatWidget, {
     fields: [OperatingHours.widgetId],
     references: [ChatWidget.id],
+  }),
+  user: one(User, {
+    fields: [OperatingHours.userId],
+    references: [User.id],
   }),
 }))
 

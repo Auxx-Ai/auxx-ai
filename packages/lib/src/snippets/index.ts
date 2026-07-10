@@ -23,3 +23,8 @@ export {
   listSnippetFoldersWithCounts,
   listSnippetsForUser,
 } from './snippet-queries'
+export {
+  buildSystemSnippetTemplates,
+  getSystemSnippet,
+  type SystemSnippetTemplate,
+} from './system-snippets'

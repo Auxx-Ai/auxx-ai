@@ -15,6 +15,7 @@ import { startDataExportWorker } from './worker-definitions/data-export-worker'
 import { startDataImportWorker } from './worker-definitions/data-import-worker'
 import { startDatasetEmbeddingWorker } from './worker-definitions/dataset-embedding-worker'
 import { startDatasetMaintenanceWorker } from './worker-definitions/dataset-maintenance-worker'
+import { startDocumentPdfWorker } from './worker-definitions/document-pdf-worker'
 import { startDocumentProcessingWorker } from './worker-definitions/document-processing-worker'
 import { startEmailWorker } from './worker-definitions/email-worker'
 import { startEvalRunWorker } from './worker-definitions/eval-run-worker'
@@ -119,6 +120,9 @@ export async function startWorkers() {
   // Data Connector structured-record sync orchestration worker
   const dataConnectorWorker = startDataConnectorWorker()
 
+  // Quote/invoice PDF render worker (money MQ2)
+  const documentPdfWorker = startDocumentPdfWorker()
+
   const workers = [
     // defaultWorker,
     eventsWorker,
@@ -151,6 +155,7 @@ export async function startWorkers() {
     kbSyncWorker,
     knowledgeSourceWorker,
     dataConnectorWorker,
+    documentPdfWorker,
   ]
 
   return Promise.all(workers)

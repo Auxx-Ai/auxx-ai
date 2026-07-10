@@ -36,6 +36,7 @@ import { migration030ServiceRequest } from './migrations/030-service-request'
 import { migration031DocumentsFieldHiddenInDialogs } from './migrations/031-documents-field-hidden-in-dialogs'
 import { migration032MoneyQuoting } from './migrations/032-money-quoting'
 import { migration033ExternalIdFieldHiddenInDialogs } from './migrations/033-external-id-field-hidden-in-dialogs'
+import { migration034QuotePdfAssetField } from './migrations/034-quote-pdf-asset-field'
 import type { EntityMigration, MigrationRunResult } from './types'
 
 const logger = createScopedLogger('entity-migrations')
@@ -77,6 +78,7 @@ const ALL_MIGRATIONS: EntityMigration[] = [
   migration031DocumentsFieldHiddenInDialogs,
   migration032MoneyQuoting,
   migration033ExternalIdFieldHiddenInDialogs,
+  migration034QuotePdfAssetField,
 ]
 
 /**

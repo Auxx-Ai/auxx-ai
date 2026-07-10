@@ -43,9 +43,16 @@ export function ProductsServicesPage() {
   const [selectedProductId, setSelectedProductId] = useState<string | null>(null)
   const [selectedTaxRateId, setSelectedTaxRateId] = useState<string | null>(null)
 
-  const { getSetting, updateOrganizationSetting } = useSettings({ scope: 'GENERAL' })
-  const currency = (getSetting('organization.currency') as string) || 'USD'
-  const taxRates = (getSetting('documents.taxRates') as TaxRate[] | null) ?? []
+  // `useSettings({ scope })` FILTERS reads to that scope (use-settings.tsx:44-54) — currency
+  // stayed GENERAL while taxRates moved to DOCUMENTS (money MQ2 §A.3), so two hook instances
+  // are needed; each scope's `updateOrganizationSetting` still writes any key correctly
+  // (the mutation isn't scope-gated), so either is fine to use for tax-rate writes.
+  const { getSetting: getGeneralSetting } = useSettings({ scope: 'GENERAL' })
+  const { getSetting: getDocumentsSetting, updateOrganizationSetting } = useSettings({
+    scope: 'DOCUMENTS',
+  })
+  const currency = (getGeneralSetting('organization.currency') as string) || 'USD'
+  const taxRates = (getDocumentsSetting('documents.taxRates') as TaxRate[] | null) ?? []
 
   const isDesktop = useMedia('(min-width: 1024px)')
 

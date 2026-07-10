@@ -4,15 +4,17 @@ import { SubscriptionService } from '@auxx/billing'
 import { WEBAPP_URL } from '@auxx/config/server'
 import { configService } from '@auxx/credentials'
 import { type Database, schema } from '@auxx/database'
-import { EmailTemplateType } from '@auxx/database/enums'
+import { EmailTemplateType, SnippetSharingType } from '@auxx/database/enums'
 import { isSelfHosted } from '@auxx/deployment'
 import { createScopedLogger } from '@auxx/logger'
-import { eq } from 'drizzle-orm'
+import { eq, sql } from 'drizzle-orm'
 import { SystemModelService } from '../ai/providers/system-model-service'
 import { DEFAULT_QUOTA_LIMITS, ModelType, ProviderQuotaType } from '../ai/providers/types'
 import { InboxService } from '../inboxes'
 import { KBService } from '../kb'
 import { UnifiedCrudHandler } from '../resources/crud'
+import { buildSystemSnippetTemplates } from '../snippets'
+import { SystemUserService } from '../users/system-user-service'
 import { EntitySeeder } from './entity-seeder'
 import { SYSTEM_ENTITIES } from './entity-seeder/constants'
 
@@ -179,6 +181,7 @@ export class OrganizationSeeder {
         this.seedInboxes(organizationId),
         this.seedTags(organizationId),
         this.seedEmailTemplates(organizationId),
+        this.seedSystemSnippets(organizationId),
         this.seedTicketSequence(organizationId),
         this.seedKnowledgeBase(organizationId),
         isDemo
@@ -239,6 +242,59 @@ export class OrganizationSeeder {
       )
     )
     logger.info(`Email templates seeded for organization: ${organizationId}`)
+  }
+  /**
+   * Seed the system snippets (`quote_email` / `invoice_email` — money MQ2) for a
+   * new organization, keyed to its just-seeded `EntityDefinition` cuids. Runs
+   * after `seedEntities` so the quote/contact defs already exist. `invoice_email`
+   * is skipped until the invoice EntityDefinition ships (MI1) —
+   * `buildSystemSnippetTemplates` naturally omits it while `entityDefs.invoice`
+   * is absent. NOT the only path that creates these rows — `getSystemSnippet`
+   * lazily materializes them for pre-existing orgs on first read.
+   */
+  private async seedSystemSnippets(organizationId: string): Promise<void> {
+    logger.info(`Seeding system snippets for organization: ${organizationId}`)
+
+    const defs = await this.db
+      .select({ entityType: schema.EntityDefinition.entityType, id: schema.EntityDefinition.id })
+      .from(schema.EntityDefinition)
+      .where(eq(schema.EntityDefinition.organizationId, organizationId))
+
+    const entityDefs: Record<string, string> = {}
+    for (const def of defs) {
+      if (def.entityType) entityDefs[def.entityType] = def.id
+    }
+
+    const templates = buildSystemSnippetTemplates(entityDefs)
+    if (templates.length === 0) {
+      logger.warn('No system snippet templates available yet (quote/contact defs missing)', {
+        organizationId,
+      })
+      return
+    }
+
+    const systemUserId = await SystemUserService.getSystemUserForActions(organizationId)
+
+    await this.db
+      .insert(schema.Snippet)
+      .values(
+        templates.map((template) => ({
+          title: template.title,
+          content: template.content,
+          contentHtml: template.contentHtml,
+          systemType: template.systemType,
+          sharingType: SnippetSharingType.PRIVATE,
+          organizationId,
+          createdById: systemUserId,
+          updatedAt: new Date(),
+        }))
+      )
+      .onConflictDoNothing({
+        target: [schema.Snippet.systemType, schema.Snippet.organizationId],
+        where: sql`${schema.Snippet.systemType} IS NOT NULL AND ${schema.Snippet.isDeleted} = false`,
+      })
+
+    logger.info(`System snippets seeded for organization: ${organizationId}`)
   }
   private async seedTicketSequence(organizationId: string) {
     logger.info(`Seeding record sequences for organization: ${organizationId}`)

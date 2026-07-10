@@ -2,10 +2,11 @@
 
 import { schema } from '@auxx/database'
 import { IdentifierType } from '@auxx/database/enums'
-import { getCachedUserMailVisibility } from '@auxx/lib/cache'
+import { getCachedEntityDefId, getCachedUserMailVisibility } from '@auxx/lib/cache'
 import { conditionGroupsSchema } from '@auxx/lib/conditions'
 import { DraftService } from '@auxx/lib/drafts'
 import { getUserOrganizationId } from '@auxx/lib/email' // Adjust import path if needed
+import { BadRequestError } from '@auxx/lib/errors'
 import {
   cancelScheduledMessage,
   createScheduledMessage,
@@ -16,6 +17,7 @@ import {
   updateScheduledMessageStatus,
 } from '@auxx/lib/mail-schedule'
 import { MessageSenderService } from '@auxx/lib/messages'
+import { markQuoteSent } from '@auxx/lib/money'
 import type { UserMailVisibility } from '@auxx/lib/permissions/visibility'
 import { buildPlaceholderContextForThread, resolvePlaceholdersInHtml } from '@auxx/lib/placeholders'
 import { ProviderRegistryService } from '@auxx/lib/providers'
@@ -408,9 +410,49 @@ export const threadRouter = createTRPCRouter({
               threadId: sentMessage.threadId,
               ticketId: input.linkTicketId,
             })
+
+            // Confirmed-send status flip (money MQ2 build spec §E.3) — only reached
+            // once the primary link above has actually succeeded (no
+            // flip-without-timeline-evidence). Quote-only for now (MI1 adds invoice).
+            try {
+              const linkedInstance = await ctx.db.query.EntityInstance.findFirst({
+                columns: { entityDefinitionId: true },
+                where: (t, { eq: eqCol }) => eqCol(t.id, input.linkTicketId as string),
+              })
+              const quoteDefId = await getCachedEntityDefId(organizationId, 'quote')
+              if (
+                linkedInstance &&
+                quoteDefId &&
+                linkedInstance.entityDefinitionId === quoteDefId
+              ) {
+                try {
+                  await markQuoteSent({
+                    organizationId,
+                    userId,
+                    quoteInstanceId: input.linkTicketId,
+                  })
+                } catch (flipError) {
+                  // markQuoteSent asserts status === 'draft' — a BadRequestError here
+                  // means the quote was already sent (resend) or otherwise not a
+                  // draft; that's the expected idempotent no-op, not a failure.
+                  if (!(flipError instanceof BadRequestError)) throw flipError
+                }
+              }
+            } catch (statusFlipError) {
+              logger.error('Failed to flip quote status to sent after send', {
+                threadId: sentMessage.threadId,
+                ticketId: input.linkTicketId,
+                error:
+                  statusFlipError instanceof Error
+                    ? statusFlipError.message
+                    : String(statusFlipError),
+              })
+            }
           } catch (linkError) {
-            // Non-fatal: message was sent, link failure is acceptable
-            logger.warn('Failed to auto-link thread to ticket', {
+            // Non-fatal: message was sent, link failure is acceptable. Logged at
+            // error level (money MQ2 §E.3) — for document sends the status flip
+            // depends on this link succeeding, so this is no longer a routine miss.
+            logger.error('Failed to auto-link thread to ticket', {
               threadId: sentMessage.threadId,
               ticketId: input.linkTicketId,
               error: linkError instanceof Error ? linkError.message : String(linkError),

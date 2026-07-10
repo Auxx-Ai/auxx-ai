@@ -124,7 +124,9 @@ export const SIDEBAR_MENU: SidebarProps[] = [
     icon: <Truck />,
     featureKey: 'dispatch',
     skipParentSlug: true,
-    preventNavigation: true,
+    // Navigable group: clicking the row opens the module home (settings until the
+    // M2 board lands); the chevron toggles the sub-items independently.
+    url: '/app/dispatch',
     items: [
       {
         id: 'dispatch-requests',

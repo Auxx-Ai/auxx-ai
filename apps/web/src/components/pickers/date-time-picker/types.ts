@@ -140,11 +140,16 @@ export interface TimeViewProps {
   selectedTime: Date | undefined
   /** Filter function for minutes */
   minuteFilter?: (minutes: string[]) => string[]
-  /** Handler for hour selection */
+  /**
+   * Render in 24-hour mode: hours column lists '00'..'23' and the AM/PM period column is hidden.
+   * Defaults to false (today's 12-hour behavior, unchanged).
+   */
+  use24HourTime?: boolean
+  /** Handler for hour selection ('01'..'12' in 12-hour mode, '00'..'23' in 24-hour mode) */
   onSelectHour: (hour: string) => void
   /** Handler for minute selection */
   onSelectMinute: (minute: string) => void
-  /** Handler for period selection */
+  /** Handler for period selection (not called in 24-hour mode) */
   onSelectPeriod: (period: Period) => void
 }
 

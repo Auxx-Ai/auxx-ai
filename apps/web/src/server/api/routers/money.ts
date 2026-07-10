@@ -1,11 +1,14 @@
 // apps/web/src/server/api/routers/money.ts
 
+import { renderPreviewQuotePdf } from '@auxx/lib/documents'
 import {
   approveQuote,
   convertQuoteToWorkOrder,
   createQuoteFromRequest,
   declineQuote,
+  ensureQuoteDocumentPdf,
   markQuoteSent,
+  prepareDocumentEmail,
   recomputeTotals,
   reorderLines,
 } from '@auxx/lib/money'
@@ -108,4 +111,33 @@ export const moneyRouter = createTRPCRouter({
         quoteInstanceId: entityInstanceId,
       })
     }),
+
+  // ─── Send flow (money MQ2 build spec §E.5) ──────────────────────────────
+
+  prepareDocumentEmail: moneyProcedure
+    .input(z.object({ recordId: recordIdSchema }))
+    .mutation(async ({ ctx, input }) => {
+      return prepareDocumentEmail({
+        organizationId: ctx.session.organizationId,
+        userId: ctx.session.user.id,
+        quoteRecordId: input.recordId,
+      })
+    }),
+
+  ensureDocumentPdf: moneyProcedure
+    .input(z.object({ quoteRecordId: recordIdSchema }))
+    .mutation(async ({ ctx, input }) => {
+      return ensureQuoteDocumentPdf({
+        organizationId: ctx.session.organizationId,
+        actorId: ctx.session.user.id,
+        quoteRecordId: input.quoteRecordId,
+      })
+    }),
+
+  previewDocumentPdf: moneyProcedure.mutation(async ({ ctx }) => {
+    return renderPreviewQuotePdf({
+      organizationId: ctx.session.organizationId,
+      actorId: ctx.session.user.id,
+    })
+  }),
 })

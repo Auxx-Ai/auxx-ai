@@ -199,11 +199,25 @@ export async function createQuoteFromRequest(input: CreateQuoteFromRequestInput)
   const title = titleTyped ? (extractValue(titleTyped) as string) : undefined
   const contactRecordId = contactTyped?.type === 'relationship' ? contactTyped.recordId : undefined
 
+  // Prefill validUntil/terms from the org's Documents settings (money MQ2 build spec
+  // §F.5) — always unset at this point (this is the only quote-create path today), so
+  // "only prefill when empty" is trivially satisfied by setting them unconditionally here.
+  const { getOrganizationSetting } = await import('../settings/settings-service')
+  const [validDays, defaultTerms] = await Promise.all([
+    getOrganizationSetting({ organizationId, key: 'documents.quote.validDays' }),
+    getOrganizationSetting({ organizationId, key: 'documents.quote.defaultTerms' }),
+  ])
+  const validUntil = new Date(Date.now() + Number(validDays ?? 30) * 24 * 60 * 60 * 1000)
+    .toISOString()
+    .split('T')[0]
+
   const values: Record<string, unknown> = {
     quote_title: title || `Quote for ${requestInstanceId}`,
     quote_request: requestRecordId,
+    quote_valid_until: validUntil,
   }
   if (contactRecordId) values.quote_contact = contactRecordId
+  if (defaultTerms) values.quote_terms = defaultTerms
 
   // Events ON (user-triggered): the §E.2 auto-number pre-hook fires like any create.
   return handler.create('quote', values)
