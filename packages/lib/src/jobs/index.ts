@@ -101,6 +101,11 @@ export {
   cleanupOrphanedDataJob,
   reindexDatasetJob,
 } from './datasets/maintenance-jobs'
+// Documents (money MQ2 PDF render pipeline)
+export {
+  type RenderDocumentPdfJobData,
+  renderDocumentPdfJob,
+} from './documents/render-document-pdf-job'
 // Email
 export { createEmailEnqueuer, enqueueEmailJob } from './email/enqueue-email-job'
 export { sendEmailJob } from './email/send-email-job'

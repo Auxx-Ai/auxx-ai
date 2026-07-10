@@ -106,6 +106,10 @@ export async function updateSnippet(
         throw new NotFoundError('Snippet not found')
       }
 
+      if (existing.systemType != null) {
+        throw new ForbiddenError('System snippets cannot be modified')
+      }
+
       let canEdit = existing.createdById === userId
       if (!canEdit) {
         const shares = await getInstanceAccess(
@@ -170,6 +174,10 @@ export async function deleteSnippet(
         throw new NotFoundError('Snippet not found')
       }
 
+      if (existing.systemType != null) {
+        throw new ForbiddenError('System snippets cannot be modified')
+      }
+
       const membership = await db.query.OrganizationMember.findFirst({
         where: and(
           eq(schema.OrganizationMember.userId, userId),
@@ -227,6 +235,10 @@ export async function setSnippetSharing(
 
       if (!snippet) {
         throw new NotFoundError('Snippet not found or you do not have permission to share it')
+      }
+
+      if (snippet.systemType != null) {
+        throw new ForbiddenError('System snippets cannot be modified')
       }
 
       await db.transaction(async (tx) => {

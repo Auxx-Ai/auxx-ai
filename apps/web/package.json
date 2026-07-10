@@ -63,6 +63,7 @@
     "@radix-ui/react-context-menu": "^2.2.16",
     "@radix-ui/react-navigation-menu": "^1.2.14",
     "@radix-ui/react-slot": "^1.2.3",
+    "@react-pdf/renderer": "^4.5.1",
     "@shopify/admin-api-client": "catalog:",
     "@shopify/shopify-api": "catalog:",
     "@stripe/react-stripe-js": "catalog:",

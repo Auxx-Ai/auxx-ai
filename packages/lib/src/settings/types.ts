@@ -21,3 +21,4 @@ export type SettingScope =
   | 'KOPILOT'
   | 'ONBOARDING'
   | 'INVENTORY_BRIDGE'
+  | 'DOCUMENTS'

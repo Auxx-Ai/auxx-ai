@@ -839,6 +839,19 @@ export const EntityTypeValues = [
 
 export const StandardTypeValues = ['task', 'deal', 'custom'] as const
 
+/**
+ * System-seeded snippet markers (money MQ2 — `Snippet.systemType`). Stored as
+ * plain text, not a pgEnum — the `EntityDefinition.entityType` precedent.
+ * NULL for user-created snippets.
+ */
+export const SnippetSystemTypeValues = ['quote_email', 'invoice_email'] as const
+export type SnippetSystemType = (typeof SnippetSystemTypeValues)[number]
+
+export const SnippetSystemType = {
+  quote_email: 'quote_email',
+  invoice_email: 'invoice_email',
+} as const
+
 // ============================================================================
 // ENUM OBJECTS - Can be used both as types and values on client-side
 // ============================================================================

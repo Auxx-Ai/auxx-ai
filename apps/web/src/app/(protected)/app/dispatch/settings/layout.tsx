@@ -31,6 +31,12 @@ const DISPATCH_SETTINGS: SidebarProps[] = [
         slug: 'availability',
         icon: <Clock />,
       },
+      {
+        id: 'dispatch-settings-documents',
+        label: 'Documents',
+        slug: 'documents',
+        icon: <FileText />,
+      },
     ],
   },
 ]

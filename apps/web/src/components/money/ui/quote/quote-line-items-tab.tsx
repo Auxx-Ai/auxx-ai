@@ -2,23 +2,33 @@
 'use client'
 
 // Custom detail-view tab registered as "quote:line-items" (money MQ1 build spec
-// §H.3). Renders the status-driven header strip (Expired badge + lifecycle
-// actions) + the edit-sent guard banner + the shared line builder (§H.1).
+// §H.3). Renders the status-driven header strip (Expired badge + send/download
+// + lifecycle actions, money MQ2 build spec §E.2/§E.4/§G) + the edit-sent guard
+// banner + the shared line builder (§H.1).
 //
 // Header actions are NOT wired through `DetailViewActions` — that component
 // only exposes generic capability flags (enableArchive/enableMerge/…, see
 // `detail-view-config-types.ts`) with no per-entity extension point, so the
 // sanctioned fallback (per the build spec) is this tab's own header strip.
+// This is also the ONLY surface for quote lifecycle/send actions — `quote`
+// has `hasDetailPage: true` (ModelTypeMeta), so records-view navigation goes
+// straight to this detail page and never opens a quote drawer.
 
 import { parseRecordId } from '@auxx/lib/resources/client'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { toastError } from '@auxx/ui/components/toast'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useMemo } from 'react'
+import { useChannelsLoading } from '~/components/channels/hooks/use-channels'
+import { useDefaultChannelId } from '~/components/channels/hooks/use-default-channel'
+import { useEmailChannels } from '~/components/channels/store/channel-store'
 import type { DetailViewTabProps } from '~/components/detail-view'
+import { Tooltip } from '~/components/global/tooltip'
 import { LineBuilder } from '~/components/money/ui/line-builder/line-builder'
 import { useSaveSystemValues, useSystemValues } from '~/components/resources/hooks'
+import { useCompose } from '~/hooks/use-compose'
 import { useConfirm } from '~/hooks/use-confirm'
 import { api } from '~/trpc/react'
 
@@ -26,10 +36,13 @@ const QUOTE_STATUS_ATTRS = ['quote_status', 'quote_valid_until'] as const
 
 /** Statuses where the quote can still expire — approved/declined/canceled are terminal. */
 const EXPIRABLE_STATUSES = new Set(['draft', 'sent'])
+/** Statuses where a quote can still be (re)sent (money MQ2 build spec §E.2). */
+const SENDABLE_STATUSES = new Set(['draft', 'sent'])
 
 export function QuoteLineItemsTab({ recordId }: DetailViewTabProps) {
   const router = useRouter()
   const [confirm, ConfirmDialog] = useConfirm()
+  const { openCompose } = useCompose()
 
   const { values } = useSystemValues(recordId, [...QUOTE_STATUS_ATTRS], { autoFetch: true })
   const { save: saveSystemValues } = useSaveSystemValues(recordId)
@@ -60,6 +73,22 @@ export function QuoteLineItemsTab({ recordId }: DetailViewTabProps) {
       toastError({ title: 'Error converting to job', description: error.message }),
   })
 
+  // ─── Send flow (money MQ2 build spec §E.2/§E.4) ─────────────────────────
+  const channelsLoading = useChannelsLoading()
+  const emailChannels = useEmailChannels()
+  const defaultChannelId = useDefaultChannelId()
+  // Treat "still loading" as "assume available" — avoids a flash of the
+  // no-channel state before the channel list has actually loaded.
+  const hasEmailChannel = channelsLoading || emailChannels.length > 0
+
+  const prepareDocumentEmail = api.money.prepareDocumentEmail.useMutation({
+    onError: (error) =>
+      toastError({ title: 'Error preparing quote email', description: error.message }),
+  })
+  const ensureDocumentPdf = api.money.ensureDocumentPdf.useMutation({
+    onError: (error) => toastError({ title: 'Error generating PDF', description: error.message }),
+  })
+
   const handleConvert = async () => {
     try {
       const result = await convertToWorkOrder.mutateAsync({ quoteRecordId: recordId })
@@ -67,6 +96,38 @@ export function QuoteLineItemsTab({ recordId }: DetailViewTabProps) {
       // the drawer open via the `?id=` convention (records-view.tsx).
       const { entityInstanceId } = parseRecordId(result.recordId)
       router.push(`/app/work-orders?id=${entityInstanceId}`)
+    } catch {
+      // onError above already surfaced the toast.
+    }
+  }
+
+  const handleSend = async () => {
+    try {
+      const prepared = await prepareDocumentEmail.mutateAsync({ recordId })
+      openCompose({
+        presetValues: {
+          to: prepared.to.map((recipient) => ({
+            id: recipient.email,
+            identifier: recipient.email,
+            identifierType: 'EMAIL',
+            name: recipient.name,
+          })),
+          subject: prepared.subject,
+          contentHtml: prepared.contentHtml,
+          attachments: [prepared.attachment],
+          integrationId: defaultChannelId,
+          linkTicketId: parseRecordId(recordId).entityInstanceId,
+        },
+      })
+    } catch {
+      // onError above already surfaced the toast.
+    }
+  }
+
+  const handleDownload = async () => {
+    try {
+      const { assetId } = await ensureDocumentPdf.mutateAsync({ quoteRecordId: recordId })
+      window.open(`/api/files/download/asset:${assetId}`, '_blank', 'noopener,noreferrer')
     } catch {
       // onError above already surfaced the toast.
     }
@@ -101,6 +162,44 @@ export function QuoteLineItemsTab({ recordId }: DetailViewTabProps) {
         </div>
 
         <div className='flex items-center gap-2'>
+          {SENDABLE_STATUSES.has(status) &&
+            (hasEmailChannel ? (
+              <Button
+                variant='outline'
+                size='sm'
+                loading={prepareDocumentEmail.isPending}
+                loadingText='Preparing...'
+                onClick={handleSend}>
+                {status === 'sent' ? 'Resend' : 'Send'}
+              </Button>
+            ) : (
+              <Tooltip
+                allowInteraction
+                contentComponent={
+                  <div className='flex flex-col gap-1 text-xs'>
+                    <span>Connect an email channel to send quotes.</span>
+                    <Link href='/app/settings/channels' className='underline'>
+                      Go to channel settings
+                    </Link>
+                  </div>
+                }>
+                <span>
+                  <Button variant='outline' size='sm' disabled>
+                    Send
+                  </Button>
+                </span>
+              </Tooltip>
+            ))}
+
+          <Button
+            variant='outline'
+            size='sm'
+            loading={ensureDocumentPdf.isPending}
+            loadingText='Preparing...'
+            onClick={handleDownload}>
+            Download PDF
+          </Button>
+
           {status === 'draft' && (
             <Button
               variant='outline'

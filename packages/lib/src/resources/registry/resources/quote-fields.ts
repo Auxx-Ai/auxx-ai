@@ -465,6 +465,30 @@ export const QUOTE_FIELDS: Record<string, ResourceField> = {
     description: 'Customer-facing terms (plain text, PDF-friendly)',
   },
 
+  pdfAsset: {
+    id: toFieldId('pdfAsset'),
+    key: 'pdfAsset',
+    label: 'PDF Asset',
+    type: BaseType.STRING,
+    fieldType: FieldType.TEXT,
+    isSystem: true,
+    systemAttribute: 'quote_pdf_asset',
+    systemSortOrder: 'aK',
+    showInPanel: false,
+    nullable: true,
+    capabilities: {
+      filterable: false,
+      sortable: false,
+      creatable: false,
+      updatable: true,
+      configurable: false,
+      hidden: true,
+    },
+    description:
+      'MediaAsset id of the last-rendered quote PDF (money MQ2 build spec §C.1) — written ' +
+      'only by ensureQuotePdf via FieldValueService, never user-editable',
+  },
+
   lineItems: {
     id: toFieldId('lineItems'),
     key: 'lineItems',

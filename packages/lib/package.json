@@ -358,6 +358,12 @@
       "import": "./dist/dispatch/index.mjs",
       "default": "./src/dispatch/index.ts"
     },
+    "./documents": {
+      "types": "./src/documents/index.ts",
+      "source": "./src/documents/index.ts",
+      "import": "./dist/documents/index.mjs",
+      "default": "./src/documents/index.ts"
+    },
     "./drafts": {
       "types": "./src/drafts/index.ts",
       "source": "./src/drafts/index.ts",
@@ -1158,6 +1164,7 @@
     "@langchain/openai": "^0.5.1",
     "@microsoft/microsoft-graph-client": "^3.0.7",
     "@modelcontextprotocol/sdk": "1.29.0",
+    "@react-pdf/renderer": "^4.5.1",
     "@resvg/resvg-js": "^2.6.2",
     "@shopify/admin-api-client": "catalog:",
     "@shopify/shopify-api": "catalog:",
@@ -1212,6 +1219,7 @@
     "posthog-node": "catalog:",
     "pusher": "catalog:",
     "pusher-js": "catalog:",
+    "react": "catalog:",
     "remark-directive": "^3.0.0",
     "remark-gfm": "^4.0.0",
     "remark-parse": "^11.0.0",

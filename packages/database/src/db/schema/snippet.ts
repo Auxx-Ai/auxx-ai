@@ -9,8 +9,10 @@ import {
   integer,
   pgTable,
   snippetSharingType,
+  sql,
   text,
   timestamp,
+  uniqueIndex,
 } from './_shared'
 import { Organization } from './organization'
 import { SnippetFolder } from './snippet-folder'
@@ -41,11 +43,22 @@ export const Snippet = pgTable(
     sharingType: snippetSharingType().default('PRIVATE').notNull(),
     isFavorite: boolean().default(false).notNull(),
     usageCount: integer().default(0).notNull(),
+    /** System-seeded snippet marker (e.g. 'quote_email' | 'invoice_email' —
+     *  `SnippetSystemType` in `@auxx/database/enums`). NULL for user-created
+     *  snippets. Read-only in v1 — see snippet-mutations.ts guards. */
+    systemType: text(),
   },
   (table) => [
     index('Snippet_createdById_idx').using('btree', table.createdById.asc().nullsLast()),
     index('Snippet_folderId_idx').using('btree', table.folderId.asc().nullsLast()),
     index('Snippet_organizationId_idx').using('btree', table.organizationId.asc().nullsLast()),
     index('Snippet_sharingType_idx').using('btree', table.sharingType.asc().nullsLast()),
+    index('Snippet_systemType_idx').using('btree', table.systemType.asc().nullsLast()),
+    // One system snippet per (systemType, organizationId) — partial + NULL-safe so
+    // regular user snippets (systemType NULL) are unconstrained. Mirrors
+    // EntityDefinition_source_key (entity-definition.ts:106-116).
+    uniqueIndex('Snippet_systemType_organizationId_key')
+      .using('btree', table.systemType.asc().nullsLast(), table.organizationId.asc().nullsLast())
+      .where(sql`${table.systemType} IS NOT NULL AND ${table.isDeleted} = false`),
   ]
 )
