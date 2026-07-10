@@ -165,6 +165,15 @@ export const SYSTEM_ENTITIES: SystemEntityConfig[] = [
     isVisible: true,
   },
   {
+    entityType: 'invoice',
+    apiSlug: 'invoices',
+    singular: 'Invoice',
+    plural: 'Invoices',
+    icon: 'receipt',
+    color: 'green',
+    isVisible: true,
+  },
+  {
     entityType: 'line_item',
     apiSlug: 'line-items',
     singular: 'Line Item',
@@ -172,6 +181,15 @@ export const SYSTEM_ENTITIES: SystemEntityConfig[] = [
     icon: 'list',
     color: 'gray',
     isVisible: false, // Internal entity, rendered only by the line-builder UIs
+  },
+  {
+    entityType: 'payment',
+    apiSlug: 'payments',
+    singular: 'Payment',
+    plural: 'Payments',
+    icon: 'banknote',
+    color: 'emerald',
+    isVisible: false, // Ledger mirror records, rendered only by the invoice drawer
   },
 ]
 
@@ -254,6 +272,14 @@ export const DISPLAY_FIELD_CONFIG: Record<string, DisplayFieldConfig> = {
   },
   catalog_item: {
     primaryDisplayField: 'name',
+    secondaryDisplayField: undefined,
+  },
+  invoice: {
+    primaryDisplayField: 'number',
+    secondaryDisplayField: undefined,
+  },
+  payment: {
+    primaryDisplayField: 'amount',
     secondaryDisplayField: undefined,
   },
 }

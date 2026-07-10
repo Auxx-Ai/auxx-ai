@@ -433,6 +433,66 @@ const FIELD_VIEW_CONFIGS: FieldViewSeedConfig[] = [
     name: 'Default Table View',
     excludeFields: ['id', 'created_at', 'updated_at', 'created_by_id', 'catalog_item_line_items'],
   },
+
+  // ============================================================================
+  // INVOICE FIELD VIEWS
+  // ============================================================================
+  {
+    entityType: 'invoice',
+    contextType: 'panel',
+    name: 'Default Panel View',
+    excludeFields: [
+      'id',
+      'created_at',
+      'updated_at',
+      'created_by_id',
+      'invoice_line_items',
+      'invoice_payments',
+      'invoice_pdf_asset',
+    ],
+  },
+  {
+    entityType: 'invoice',
+    contextType: 'table',
+    name: 'Default Table View',
+    excludeFields: [
+      'id',
+      'created_at',
+      'updated_at',
+      'created_by_id',
+      'invoice_line_items',
+      'invoice_payments',
+      'invoice_pdf_asset',
+      'invoice_notes',
+      'invoice_terms',
+      'invoice_discount_type',
+      'invoice_discount_value',
+      'invoice_tax_name',
+    ],
+  },
+  {
+    entityType: 'invoice',
+    contextType: 'dialog_create',
+    name: 'Default Create Dialog',
+    includeFields: ['invoice_contact', 'invoice_work_order', 'invoice_due_date'],
+  },
+
+  // ============================================================================
+  // PAYMENT FIELD VIEWS (no dialog_create — the requireLedgerProvenance guard blocks
+  // generic creates; the ledger's recordManualPayment is the only writer, §F.3)
+  // ============================================================================
+  {
+    entityType: 'payment',
+    contextType: 'panel',
+    name: 'Default Panel View',
+    excludeFields: ['id', 'created_at', 'updated_at', 'created_by_id'],
+  },
+  {
+    entityType: 'payment',
+    contextType: 'table',
+    name: 'Default Table View',
+    excludeFields: ['id', 'created_at', 'updated_at', 'created_by_id'],
+  },
 ]
 
 /**

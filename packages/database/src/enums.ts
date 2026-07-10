@@ -121,6 +121,8 @@ export const ModelTypeValues = [
   'quote',
   'line_item',
   'catalog_item',
+  'invoice',
+  'payment',
 ] as const
 
 /**
@@ -157,6 +159,8 @@ export const ModelTypes = {
   QUOTE: 'quote',
   LINE_ITEM: 'line_item',
   CATALOG_ITEM: 'catalog_item',
+  INVOICE: 'invoice',
+  PAYMENT: 'payment',
 } as const
 
 /**
@@ -378,6 +382,24 @@ export const ModelTypeMeta: Record<
     icon: 'tags',
     color: 'teal',
     apiSlug: 'catalog-items',
+    dbTable: 'EntityInstance',
+    hasDetailPage: false,
+  },
+  invoice: {
+    label: 'Invoice',
+    plural: 'Invoices',
+    icon: 'receipt',
+    color: 'green',
+    apiSlug: 'invoices',
+    dbTable: 'EntityInstance',
+    hasDetailPage: false,
+  },
+  payment: {
+    label: 'Payment',
+    plural: 'Payments',
+    icon: 'banknote',
+    color: 'emerald',
+    apiSlug: 'payments',
     dbTable: 'EntityInstance',
     hasDetailPage: false,
   },
@@ -821,9 +843,11 @@ export const EntityTypeValues = [
   'contact',
   'entity_group',
   'inbox',
+  'invoice',
   'line_item',
   'meeting',
   'part',
+  'payment',
   'quote',
   'service_request',
   'signature',
@@ -851,6 +875,28 @@ export const SnippetSystemType = {
   quote_email: 'quote_email',
   invoice_email: 'invoice_email',
 } as const
+
+/**
+ * `PaymentTransaction` ledger unions (money MI1 — 04-payments.md). Stored as plain text
+ * columns, not pgEnums — the `EntityDefinition.entityType` precedent. Manual writers only
+ * in MI1; the Stripe values ship dormant for MP1.
+ */
+export const PaymentProviderValues = ['manual', 'stripe'] as const
+export type PaymentProvider = (typeof PaymentProviderValues)[number]
+
+export const PaymentTransactionKindValues = ['charge', 'refund'] as const
+export type PaymentTransactionKind = (typeof PaymentTransactionKindValues)[number]
+
+export const PaymentTransactionStatusValues = [
+  'pending',
+  'processing',
+  'succeeded',
+  'failed',
+  'canceled',
+  'refunded',
+  'disputed',
+] as const
+export type PaymentTransactionStatus = (typeof PaymentTransactionStatusValues)[number]
 
 // ============================================================================
 // ENUM OBJECTS - Can be used both as types and values on client-side
@@ -1570,9 +1616,11 @@ export const EntityType = {
   CONTACT: 'contact',
   ENTITY_GROUP: 'entity_group',
   INBOX: 'inbox',
+  INVOICE: 'invoice',
   LINE_ITEM: 'line_item',
   MEETING: 'meeting',
   PART: 'part',
+  PAYMENT: 'payment',
   QUOTE: 'quote',
   SERVICE_REQUEST: 'service_request',
   SIGNATURE: 'signature',

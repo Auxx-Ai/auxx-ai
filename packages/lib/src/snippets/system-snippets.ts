@@ -63,22 +63,57 @@ function buildQuoteEmailTemplate(entityDefs: Record<string, string>): SystemSnip
   const numberSpan = placeholderSpan(number)
   const totalSpan = placeholderSpan(total)
   const validUntilSpan = placeholderSpan(validUntil, { v: 1, t: 'TEXT', d: 'no expiration date' })
-  const userNameSpan = placeholderSpan('user:name')
 
-  const contentHtml = `<p>Hi ${firstNameSpan},</p><p>Your quote ${numberSpan} is ready — total ${totalSpan}, valid until ${validUntilSpan}. Please see the attached PDF for the full details.</p><p>Let us know if you have any questions.</p><p>Best,<br>${userNameSpan}</p>`
+  // No hard-coded sign-off — the composer appends the sender's (default or
+  // selected) email signature on send, so a `Best, {{user:name}}` here would
+  // duplicate it.
+  const contentHtml = `<p>Hi ${firstNameSpan},</p><p>Your quote ${numberSpan} is ready. Total ${totalSpan}, valid until ${validUntilSpan}. Please see the attached PDF for the full details.</p><p>Let us know if you have any questions.</p>`
 
   const content = `Hi {{${firstName}}},
 
-Your quote {{${number}}} is ready — total {{${total}}}, valid until {{${validUntil}}}. Please see the attached PDF for the full details.
+Your quote {{${number}}} is ready. Total {{${total}}}, valid until {{${validUntil}}}. Please see the attached PDF for the full details.
 
-Let us know if you have any questions.
-
-Best,
-{{user:name}}`
+Let us know if you have any questions.`
 
   return {
     systemType: 'quote_email',
     title: 'Your quote is ready',
+    content,
+    contentHtml,
+  }
+}
+
+function buildInvoiceEmailTemplate(
+  entityDefs: Record<string, string>
+): SystemSnippetTemplate | null {
+  const invoiceDefId = entityDefs.invoice
+  const contactDefId = entityDefs.contact
+  if (!invoiceDefId || !contactDefId) return null
+
+  const firstName = fieldToken(contactDefId, 'firstName')
+  const number = fieldToken(invoiceDefId, 'number')
+  const total = fieldToken(invoiceDefId, 'total')
+  const dueDate = fieldToken(invoiceDefId, 'dueDate')
+
+  const firstNameSpan = placeholderSpan(firstName, { v: 1, t: 'TEXT', d: 'there' })
+  const numberSpan = placeholderSpan(number)
+  const totalSpan = placeholderSpan(total)
+  const dueDateSpan = placeholderSpan(dueDate, { v: 1, t: 'TEXT', d: 'on receipt' })
+
+  // No hard-coded sign-off — the composer appends the sender's (default or
+  // selected) email signature on send, so a `Best, {{user:name}}` here would
+  // duplicate it (mirrors the quote_email template above).
+  const contentHtml = `<p>Hi ${firstNameSpan},</p><p>Your invoice ${numberSpan} is ready. Total ${totalSpan}, due ${dueDateSpan}. Please see the attached PDF for the full details.</p><p>Let us know if you have any questions.</p>`
+
+  const content = `Hi {{${firstName}}},
+
+Your invoice {{${number}}} is ready. Total {{${total}}}, due {{${dueDate}}}. Please see the attached PDF for the full details.
+
+Let us know if you have any questions.`
+
+  return {
+    systemType: 'invoice_email',
+    title: 'Your invoice is ready',
     content,
     contentHtml,
   }
@@ -90,10 +125,13 @@ Best,
  * embed the org's real def cuids, so this is a function of that map, not a
  * static constant.
  *
- * `invoice_email` ships with MI1 once the invoice `EntityDefinition` (+
- * number/total/dueDate fields) exists — until then `entityDefs.invoice` is
- * always absent, so only `quote_email` is returned. `getSystemSnippet`
- * surfaces a clear `NotFoundError` if `invoice_email` is requested early.
+ * `invoice_email` (money MI1) mirrors `quote_email`'s shape/mechanics —
+ * greeting, number/total tokens, plus a due-date token in place of
+ * valid-until. Both templates guard on their def id being present in
+ * `entityDefs` (`entityDefs.quote`/`entityDefs.invoice` + `entityDefs.contact`),
+ * so an org mid-migration simply gets fewer templates rather than a broken
+ * one — `getSystemSnippet` surfaces a clear `NotFoundError` if a template is
+ * requested before its def exists.
  */
 export function buildSystemSnippetTemplates(
   entityDefs: Record<string, string>
@@ -102,6 +140,9 @@ export function buildSystemSnippetTemplates(
 
   const quoteEmail = buildQuoteEmailTemplate(entityDefs)
   if (quoteEmail) templates.push(quoteEmail)
+
+  const invoiceEmail = buildInvoiceEmailTemplate(entityDefs)
+  if (invoiceEmail) templates.push(invoiceEmail)
 
   return templates
 }

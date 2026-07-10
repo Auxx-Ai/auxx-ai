@@ -8,12 +8,9 @@ import type { ResourceField } from '../field-types'
 import { CATALOG_CATEGORY_OPTIONS } from './catalog-item-fields'
 
 /**
- * Field definitions for the Line Item resource — quote/work-order line rows
+ * Field definitions for the Line Item resource — quote/work-order/invoice line rows
  * (money module, README). Hidden system entity — rendered only by the embedded
  * line-builder UIs (§H.1), never shown in the entity sidebar or generic dialogs.
- *
- * No `invoice` relationship field here — the `invoice` def doesn't exist until MI1.
- * MI1 adds it to this registry AND its migration in the same PR.
  */
 export const LINE_ITEM_FIELDS: Record<string, ResourceField> = {
   id: {
@@ -348,6 +345,64 @@ export const LINE_ITEM_FIELDS: Record<string, ResourceField> = {
       inverseSystemAttribute: 'work_order_line_items',
     },
     description: 'Work order this line belongs to (copied from a converted quote)',
+  },
+
+  invoice: {
+    id: toFieldId('invoice'),
+    key: 'invoice',
+    label: 'Invoice',
+    type: BaseType.RELATION,
+    fieldType: FieldType.RELATIONSHIP,
+    isSystem: true,
+    systemAttribute: 'line_item_invoice',
+    systemSortOrder: 'aE',
+    nullable: true,
+    capabilities: {
+      filterable: true,
+      sortable: false,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    relationship: {
+      inverseResourceFieldId: 'invoice:lineItems' as ResourceFieldId,
+      relationshipType: 'belongs_to',
+      isInverse: false,
+    },
+    relationshipConfig: {
+      relatedEntityType: 'invoice',
+      relationshipType: 'belongs_to',
+      inverseName: 'Line Items',
+      inverseSystemAttribute: 'invoice_line_items',
+    },
+    description:
+      'Double duty (money MI1 build spec §B.3): on an invoice’s OWN lines this is the ' +
+      'parent rel; on WORK-ORDER source lines it is the "invoiced by" stamp (null = ' +
+      'unbilled). Invoice-owned copies always have workOrder NULL — every "invoice’s ' +
+      'lines" read filters invoice = X AND workOrder is empty.',
+  },
+
+  sourceLineId: {
+    id: toFieldId('sourceLineId'),
+    key: 'sourceLineId',
+    label: 'Source Line ID',
+    type: BaseType.STRING,
+    fieldType: FieldType.TEXT,
+    isSystem: true,
+    systemAttribute: 'line_item_source_line_id',
+    systemSortOrder: 'aF',
+    showInPanel: false,
+    nullable: true,
+    capabilities: {
+      filterable: true,
+      sortable: false,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    description:
+      'On gather copies, the source (work-order) line’s EntityInstance id (the visitId ' +
+      'plain-text recipe) — what per-line unstamp resolves through (money MI1 decision 5)',
   },
 
   createdAt: {

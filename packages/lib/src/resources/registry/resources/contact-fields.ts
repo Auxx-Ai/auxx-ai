@@ -587,5 +587,31 @@ export const CONTACT_FIELDS: Record<string, ResourceField> = {
     description: 'Quotes for this contact',
   },
 
+  // Reverse relationship: invoices (from invoice.contact)
+  invoices: {
+    id: toFieldId('invoices'),
+    key: 'invoices',
+    label: 'Invoices',
+    type: BaseType.RELATION,
+    fieldType: FieldType.RELATIONSHIP,
+    isSystem: true,
+    systemAttribute: 'contact_invoices',
+    showInPanel: false,
+    systemSortOrder: 'aD',
+    capabilities: {
+      filterable: true,
+      sortable: false,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    relationship: {
+      inverseResourceFieldId: 'invoice:contact' as ResourceFieldId,
+      relationshipType: 'has_many',
+      isInverse: true,
+    },
+    description: 'Invoices for this contact',
+  },
+
   createdBy: CREATED_BY_FIELD,
 }

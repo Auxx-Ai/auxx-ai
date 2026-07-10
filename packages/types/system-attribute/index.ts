@@ -164,6 +164,7 @@ export const SYSTEM_ATTRIBUTES = [
   'contact_work_orders',
   'contact_service_requests',
   'contact_quotes',
+  'contact_invoices', // inverse of invoice_contact
 
   // ─── Company fields ────────────────────────────────────────────
   'company_name',
@@ -219,6 +220,7 @@ export const SYSTEM_ATTRIBUTES = [
   'work_order_invoice_timing',
   'work_order_quote', // owning — belongs_to quote (converted-from)
   'work_order_line_items', // inverse of line_item_work_order
+  'work_order_invoices', // inverse of invoice_work_order
 
   // ─── Service Request fields ────────────────────────────────────
   'service_request_number',
@@ -270,6 +272,8 @@ export const SYSTEM_ATTRIBUTES = [
   'line_item_catalog_item',
   'line_item_quote',
   'line_item_work_order',
+  'line_item_invoice',
+  'line_item_source_line_id',
 
   // ─── Catalog Item fields ────────────────────────────────────────
   'catalog_item_name',
@@ -280,6 +284,37 @@ export const SYSTEM_ATTRIBUTES = [
   'catalog_item_active',
   'catalog_item_part',
   'catalog_item_line_items', // inverse of line_item_catalog_item
+
+  // ─── Invoice fields ─────────────────────────────────────────────
+  'invoice_number',
+  'invoice_status',
+  'invoice_contact',
+  'invoice_work_order',
+  'invoice_issued_at',
+  'invoice_due_date',
+  'invoice_discount_type',
+  'invoice_discount_value',
+  'invoice_tax_name',
+  'invoice_tax_rate',
+  'invoice_subtotal',
+  'invoice_tax_total',
+  'invoice_total',
+  'invoice_amount_paid',
+  'invoice_balance',
+  'invoice_notes',
+  'invoice_terms',
+  'invoice_pdf_asset',
+  'invoice_line_items', // inverse of line_item_invoice
+  'invoice_payments', // inverse of payment_invoice
+
+  // ─── Payment fields ─────────────────────────────────────────────
+  'payment_amount',
+  'payment_date',
+  'payment_method',
+  'payment_reference',
+  'payment_note',
+  'payment_invoice',
+  'payment_transaction_id',
 
   // ─── Inbox fields ───────────────────────────────────────────────
   'inbox_name',

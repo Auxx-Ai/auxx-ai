@@ -538,6 +538,32 @@ export const WORK_ORDER_FIELDS: Record<string, ResourceField> = {
     description: 'Line items copied onto this job at convert time',
   },
 
+  // Reverse relationship: invoices (from invoice.workOrder)
+  invoices: {
+    id: toFieldId('invoices'),
+    key: 'invoices',
+    label: 'Invoices',
+    type: BaseType.RELATION,
+    fieldType: FieldType.RELATIONSHIP,
+    isSystem: true,
+    systemAttribute: 'work_order_invoices',
+    systemSortOrder: 'aK',
+    showInPanel: false,
+    capabilities: {
+      filterable: true,
+      sortable: false,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    relationship: {
+      inverseResourceFieldId: 'invoice:workOrder' as ResourceFieldId,
+      relationshipType: 'has_many',
+      isInverse: true,
+    },
+    description: 'Invoices gathered from this job',
+  },
+
   createdAt: {
     id: toFieldId('createdAt'),
     key: 'createdAt',

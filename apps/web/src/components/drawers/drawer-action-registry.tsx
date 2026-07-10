@@ -4,6 +4,7 @@
 import type { Resource } from '@auxx/lib/resources/client'
 import type { RecordId } from '@auxx/types/resource'
 import type { ComponentType } from 'react'
+import { CreateInvoiceAction } from '~/components/money/ui/invoice/create-invoice-action'
 import { ContactComposeAction } from './actions/contact-compose-action'
 import { CreateNoteAction } from './actions/create-note-action'
 import { CreateQuoteAction } from './actions/create-quote-action'
@@ -32,6 +33,7 @@ const DRAWER_HEADER_ACTIONS: Record<string, ComponentType<DrawerActionProps>[]> 
   ticket: [TicketReplyAction, CreateNoteAction],
   part: [LinkInventorySourceAction, CreateNoteAction],
   service_request: [CreateQuoteAction, CreateNoteAction],
+  work_order: [CreateInvoiceAction, CreateNoteAction],
 }
 
 export function getHeaderActions(entityType: string): ComponentType<DrawerActionProps>[] {

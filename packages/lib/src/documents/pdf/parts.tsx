@@ -20,17 +20,32 @@ export function formatDocDate(iso: string | null, dateFormat: string): string {
 
 type Styles = ReturnType<typeof createDocumentStyles>
 
-/** Top header block — logo, document label ("Quote"/"Invoice"), number, dates. */
+/**
+ * Top header block — logo, document label ("Quote"/"Invoice"), number, dates. The second
+ * date is generic (`secondaryDate`/`secondaryDateLabel`) so quote's "Valid until" and MI1's
+ * invoice "Due" date share one component (money MI1 build spec §H.1).
+ */
 export function DocumentHeader(props: {
   styles: Styles
   documentLabel: string
   number: string
   issuedAt: string
-  validUntil?: string | null
+  secondaryDate?: string | null
+  /** @default 'Valid until' */
+  secondaryDateLabel?: string
   dateFormat: string
   logoBytes?: Buffer | null
 }) {
-  const { styles, documentLabel, number, issuedAt, validUntil, dateFormat, logoBytes } = props
+  const {
+    styles,
+    documentLabel,
+    number,
+    issuedAt,
+    secondaryDate,
+    secondaryDateLabel = 'Valid until',
+    dateFormat,
+    logoBytes,
+  } = props
   return (
     <View style={styles.headerRow}>
       <View>
@@ -43,10 +58,10 @@ export function DocumentHeader(props: {
           <Text style={styles.label}>Issued</Text>
           <Text style={styles.value}>{formatDocDate(issuedAt, dateFormat)}</Text>
         </View>
-        {validUntil ? (
+        {secondaryDate ? (
           <View style={{ marginTop: 4 }}>
-            <Text style={styles.label}>Valid until</Text>
-            <Text style={styles.value}>{formatDocDate(validUntil, dateFormat)}</Text>
+            <Text style={styles.label}>{secondaryDateLabel}</Text>
+            <Text style={styles.value}>{formatDocDate(secondaryDate, dateFormat)}</Text>
           </View>
         ) : null}
       </View>
@@ -161,7 +176,11 @@ export function LineItemsTable(props: {
   )
 }
 
-/** Subtotal / discount / tax / total block, right-aligned under the line table. */
+/**
+ * Subtotal / discount / tax / total block, right-aligned under the line table. `amountPaid`/
+ * `balance` are invoice-only (money MI1 build spec §H.1) — passing them renders two extra
+ * rows under Total; omitting them (the quote path) renders exactly as before.
+ */
 export function TotalsBlock(props: {
   styles: Styles
   currencyCode: string
@@ -173,9 +192,13 @@ export function TotalsBlock(props: {
   taxRate?: number | null
   taxTotal: number
   total: number
+  /** Integer cents — invoice-only. */
+  amountPaid?: number
+  /** Integer cents — invoice-only. */
+  balance?: number
 }) {
   const { styles, currencyCode, subtotal, discountType, discountValue, discountAmount } = props
-  const { taxName, taxRate, taxTotal, total } = props
+  const { taxName, taxRate, taxTotal, total, amountPaid, balance } = props
   const fmt = (cents: number) => formatCurrency(cents, { currencyCode })
 
   return (
@@ -205,6 +228,18 @@ export function TotalsBlock(props: {
         <Text style={[styles.value, styles.bold, styles.accentText]}>Total</Text>
         <Text style={[styles.value, styles.bold, styles.accentText]}>{fmt(total)}</Text>
       </View>
+      {amountPaid !== undefined ? (
+        <View style={styles.totalsRow}>
+          <Text style={styles.value}>Amount paid</Text>
+          <Text style={styles.value}>{fmt(amountPaid)}</Text>
+        </View>
+      ) : null}
+      {balance !== undefined ? (
+        <View style={styles.totalsRow}>
+          <Text style={[styles.value, styles.bold]}>Balance due</Text>
+          <Text style={[styles.value, styles.bold]}>{fmt(balance)}</Text>
+        </View>
+      ) : null}
     </View>
   )
 }

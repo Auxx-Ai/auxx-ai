@@ -58,6 +58,17 @@ const QUOTE_BILLING_ATTRS = [
   'quote_tax_rate',
 ]
 
+// Invoice mode also reads the ledger-sync mirrors (`invoice_amount_paid`/`invoice_balance`,
+// money MI1 build spec §J.2) — appended to the same billing fetch, one document.
+const INVOICE_BILLING_ATTRS = [
+  'invoice_discount_type',
+  'invoice_discount_value',
+  'invoice_tax_name',
+  'invoice_tax_rate',
+  'invoice_amount_paid',
+  'invoice_balance',
+]
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Totals data — all lines' qty/unitPrice/taxable, reactively from the store
 // ─────────────────────────────────────────────────────────────────────────────
@@ -146,34 +157,48 @@ export function TotalsFooter({
   onAddLine,
 }: {
   documentRecordId: RecordId
-  documentType: 'quote' | 'work_order'
+  documentType: 'quote' | 'work_order' | 'invoice'
   readOnly: boolean
   currencyCode: string
   lineRecordIds: RecordId[]
   onAddLine: (input: NewLineInput) => void
 }) {
   const isQuote = documentType === 'quote'
+  const isInvoice = documentType === 'invoice'
+  // Both quote and invoice mirror the same billing shape (discount/tax) onto their own
+  // systemAttribute prefix (money MI1 build spec §J.2) — work_order (M2 job view) has none.
+  const hasBilling = isQuote || isInvoice
+  const prefix = isInvoice ? 'invoice' : 'quote'
   const lines = useLinesForTotals(lineRecordIds)
   const { saveMultipleAsync } = useSaveFieldValue()
   const { getSetting } = useSettings({})
   const [pickerOpen, setPickerOpen] = useState(false)
   const [discountDraft, setDiscountDraft] = useState<string | null>(null)
 
-  // Quote billing inputs — the quote's own mirrored fields, read through the
-  // same optimistic store the discount/tax editors write to, so the footer
-  // recomputes instantly while the roundtrip (and the §F.2 hook) settles.
-  const { values: billingValues } = useSystemValues(documentRecordId, QUOTE_BILLING_ATTRS, {
-    autoFetch: isQuote,
-    enabled: isQuote,
-  })
+  // Billing inputs — the document's own mirrored fields, read through the same optimistic
+  // store the discount/tax editors write to, so the footer recomputes instantly while the
+  // roundtrip (and the §F.2/§G.1 hook) settles.
+  const { values: billingValues } = useSystemValues(
+    documentRecordId,
+    isInvoice ? INVOICE_BILLING_ATTRS : QUOTE_BILLING_ATTRS,
+    { autoFetch: hasBilling, enabled: hasBilling }
+  )
 
   const discountType =
-    (billingValues.quote_discount_type as DiscountType | null | undefined) ?? null
-  const discountValue = (billingValues.quote_discount_value as number | null | undefined) ?? null
-  const taxName = (billingValues.quote_tax_name as string | null | undefined) ?? null
-  const taxRate = (billingValues.quote_tax_rate as number | null | undefined) ?? null
+    (billingValues[`${prefix}_discount_type`] as DiscountType | null | undefined) ?? null
+  const discountValue =
+    (billingValues[`${prefix}_discount_value`] as number | null | undefined) ?? null
+  const taxName = (billingValues[`${prefix}_tax_name`] as string | null | undefined) ?? null
+  const taxRate = (billingValues[`${prefix}_tax_rate`] as number | null | undefined) ?? null
+  // Invoice-only: the ledger-sync mirrors (§E.4) — never written from here, read-only.
+  const amountPaid = isInvoice
+    ? ((billingValues.invoice_amount_paid as number | null | undefined) ?? 0)
+    : null
+  const balance = isInvoice
+    ? ((billingValues.invoice_balance as number | null | undefined) ?? null)
+    : null
 
-  const billing: DocumentBillingInputs = isQuote ? { discountType, discountValue, taxRate } : {}
+  const billing: DocumentBillingInputs = hasBilling ? { discountType, discountValue, taxRate } : {}
   const totals = computeDocumentTotals(lines, billing)
 
   const taxRates = ((getSetting('documents.taxRates') as TaxRatePreset[] | null) ?? []).filter(
@@ -186,16 +211,16 @@ export function TotalsFooter({
 
   const writeDiscount = (type: DiscountType | null, value: number | null) => {
     void saveMultipleAsync(documentRecordId, [
-      { fieldId: 'quote_discount_type', value: type, fieldType: FieldType.SINGLE_SELECT },
-      { fieldId: 'quote_discount_value', value, fieldType: FieldType.NUMBER },
+      { fieldId: `${prefix}_discount_type`, value: type, fieldType: FieldType.SINGLE_SELECT },
+      { fieldId: `${prefix}_discount_value`, value, fieldType: FieldType.NUMBER },
     ])
   }
 
   const writeTax = (preset: TaxRatePreset | null) => {
     // Snapshot name+rate at pick — editing a preset later never rewrites documents.
     void saveMultipleAsync(documentRecordId, [
-      { fieldId: 'quote_tax_name', value: preset?.name ?? null, fieldType: FieldType.TEXT },
-      { fieldId: 'quote_tax_rate', value: preset?.rate ?? null, fieldType: FieldType.NUMBER },
+      { fieldId: `${prefix}_tax_name`, value: preset?.name ?? null, fieldType: FieldType.TEXT },
+      { fieldId: `${prefix}_tax_rate`, value: preset?.rate ?? null, fieldType: FieldType.NUMBER },
     ])
   }
 
@@ -263,7 +288,7 @@ export function TotalsFooter({
             <span className='tabular-nums'>{formatCurrency(totals.subtotal, currencyCode)}</span>
           </div>
 
-          {isQuote && (
+          {hasBilling && (
             <div className='flex items-center justify-between gap-2'>
               <div className='flex items-center gap-1'>
                 <span className='text-muted-foreground'>Discount</span>
@@ -318,7 +343,7 @@ export function TotalsFooter({
             </div>
           )}
 
-          {isQuote && (
+          {hasBilling && (
             <div className='flex items-center justify-between gap-2'>
               <div className='flex min-w-0 items-center gap-1'>
                 <span className='text-muted-foreground'>Tax</span>
@@ -365,6 +390,21 @@ export function TotalsFooter({
             <span>Total</span>
             <span className='tabular-nums'>{formatCurrency(totals.total, currencyCode)}</span>
           </div>
+
+          {/* Invoice-only: the ledger-sync mirrors (money MI1 build spec §J.2) — read-only,
+              never written from the footer (recording/deleting a payment is the only writer). */}
+          {isInvoice && (
+            <>
+              <div className='flex items-center justify-between'>
+                <span className='text-muted-foreground'>Amount paid</span>
+                <span className='tabular-nums'>{formatCurrency(amountPaid, currencyCode)}</span>
+              </div>
+              <div className='flex items-center justify-between font-medium'>
+                <span>Balance</span>
+                <span className='tabular-nums'>{formatCurrency(balance, currencyCode)}</span>
+              </div>
+            </>
+          )}
         </div>
       </div>
     </div>

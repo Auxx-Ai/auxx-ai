@@ -873,4 +873,82 @@ export const DEFAULT_VIEW_CONFIGS = {
       } satisfies ViewConfig,
     },
   ],
+
+  // Invoices are a ledger, not a pipeline (01-ui #9) — table default, no kanban.
+  invoice: [
+    {
+      name: 'All Invoices',
+      description: 'Default view for invoices',
+      isDefault: true,
+      config: {
+        viewType: 'table' as const,
+        columnVisibility: {
+          field_invoice_number: true,
+          field_invoice_contact: true,
+          field_invoice_status: true,
+          field_invoice_total: true,
+          field_invoice_balance: true,
+          field_invoice_due_date: true,
+        },
+        columnOrder: [
+          'field_invoice_number',
+          'field_invoice_contact',
+          'field_invoice_status',
+          'field_invoice_total',
+          'field_invoice_balance',
+          'field_invoice_due_date',
+        ],
+        columnPinning: { left: ['_checkbox', 'field_invoice_number'] },
+        sorting: [{ id: 'field_created_at', desc: true }],
+        filters: [],
+        columnSizing: {},
+        columnLabels: {},
+        columnFormatting: {},
+      } satisfies ViewConfig,
+    },
+    {
+      name: 'Outstanding',
+      description: 'Sent and partially paid invoices awaiting the rest of their balance',
+      isDefault: false,
+      config: {
+        viewType: 'table' as const,
+        columnVisibility: {
+          field_invoice_number: true,
+          field_invoice_contact: true,
+          field_invoice_status: true,
+          field_invoice_total: true,
+          field_invoice_balance: true,
+          field_invoice_due_date: true,
+        },
+        columnOrder: [
+          'field_invoice_number',
+          'field_invoice_contact',
+          'field_invoice_status',
+          'field_invoice_total',
+          'field_invoice_balance',
+          'field_invoice_due_date',
+        ],
+        columnPinning: { left: ['_checkbox', 'field_invoice_number'] },
+        sorting: [{ id: 'field_created_at', desc: true }],
+        filters: [
+          {
+            id: 'outstanding-invoices-group',
+            logicalOperator: 'AND',
+            conditions: [
+              {
+                id: 'outstanding-invoices-status',
+                fieldId: 'field_invoice_status',
+                operator: 'in',
+                value: ['sent', 'partially_paid'],
+                isConstant: true,
+              },
+            ],
+          },
+        ],
+        columnSizing: {},
+        columnLabels: {},
+        columnFormatting: {},
+      } satisfies ViewConfig,
+    },
+  ],
 } as const satisfies Record<string, DefaultViewDefinition[]>

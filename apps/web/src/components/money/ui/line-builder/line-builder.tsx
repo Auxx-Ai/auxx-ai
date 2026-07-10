@@ -62,7 +62,7 @@ import { TotalsFooter } from './totals-footer'
 
 export interface LineBuilderProps {
   documentRecordId: string
-  documentType: 'quote' | 'work_order'
+  documentType: 'quote' | 'work_order' | 'invoice'
   readOnly?: boolean
 }
 
@@ -377,9 +377,33 @@ export function LineBuilder({
 
   // Baseline filter: lines belonging to this document, via the belongs_to rel
   // (`contact-tickets-tab.tsx` precedent — `operator: 'is'` + the RecordId;
-  // the server strips the def prefix).
-  const filters = useMemo<ConditionGroup[]>(
-    () => [
+  // the server strips the def prefix). Invoice mode ALSO excludes work-order source
+  // lines stamped with `line_item_invoice` (the gather "invoiced by" pointer, money
+  // MI1 build spec §B.3/§J.2) — only the invoice's own copies (workOrder empty) show.
+  const filters = useMemo<ConditionGroup[]>(() => {
+    if (documentType === 'invoice') {
+      return [
+        {
+          id: 'line-builder-baseline',
+          logicalOperator: 'AND',
+          conditions: [
+            {
+              id: 'line-builder-document',
+              fieldId: 'line_item:invoice',
+              operator: 'is',
+              value: documentRecordId,
+            },
+            {
+              id: 'line-builder-invoice-workorder',
+              fieldId: 'line_item:workOrder',
+              operator: 'empty',
+              value: null,
+            },
+          ],
+        },
+      ]
+    }
+    return [
       {
         id: 'line-builder-baseline',
         logicalOperator: 'AND',
@@ -392,9 +416,8 @@ export function LineBuilder({
           },
         ],
       },
-    ],
-    [documentType, documentRecordId]
-  )
+    ]
+  }, [documentType, documentRecordId])
 
   const {
     records,
@@ -437,19 +460,29 @@ export function LineBuilder({
   const reorderLines = api.money.reorderLines.useMutation()
   const recomputeTotals = api.money.recomputeTotals.useMutation()
   const deleteRecord = api.record.delete.useMutation()
+  const deleteInvoiceLine = api.money.deleteInvoiceLine.useMutation()
   const createRecord = api.record.create.useMutation()
   const { mutate: reorderMutate } = reorderLines
   const { mutate: recomputeMutate } = recomputeTotals
   const { mutateAsync: deleteMutateAsync } = deleteRecord
+  const { mutateAsync: deleteInvoiceLineMutateAsync } = deleteInvoiceLine
   const { mutateAsync: createMutateAsync } = createRecord
 
   const deleteLine = useCallback(
     async (lineId: string) => {
       if (!entityDefinitionId) return
       try {
-        await deleteMutateAsync({ recordId: toRecordId(entityDefinitionId, lineId) })
-        // Deletes don't fire field-change hooks — recompute explicitly (§F.2).
-        if (documentType === 'quote') recomputeMutate({ quoteRecordId: docRecordId })
+        if (documentType === 'invoice') {
+          // Unstamps the gathered source line + recomputes totals server-side
+          // (money MI1 build spec §G.3) — NOT the quote's record.delete + recompute pair.
+          await deleteInvoiceLineMutateAsync({
+            lineRecordId: toRecordId(entityDefinitionId, lineId),
+          })
+        } else {
+          await deleteMutateAsync({ recordId: toRecordId(entityDefinitionId, lineId) })
+          // Deletes don't fire field-change hooks — recompute explicitly (§F.2).
+          if (documentType === 'quote') recomputeMutate({ quoteRecordId: docRecordId })
+        }
         refresh()
       } catch (error) {
         toastError({
@@ -458,12 +491,25 @@ export function LineBuilder({
         })
       }
     },
-    [entityDefinitionId, documentType, docRecordId, deleteMutateAsync, recomputeMutate, refresh]
+    [
+      entityDefinitionId,
+      documentType,
+      docRecordId,
+      deleteMutateAsync,
+      deleteInvoiceLineMutateAsync,
+      recomputeMutate,
+      refresh,
+    ]
   )
 
   const addLine = useCallback(
     async (input: NewLineInput) => {
-      const relKey = documentType === 'quote' ? 'line_item_quote' : 'line_item_work_order'
+      const relKey =
+        documentType === 'quote'
+          ? 'line_item_quote'
+          : documentType === 'invoice'
+            ? 'line_item_invoice'
+            : 'line_item_work_order'
       const values: Record<string, unknown> = {
         line_item_name: input.name,
         line_item_qty: 1,

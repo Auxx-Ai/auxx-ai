@@ -1933,6 +1933,13 @@
       "when": 1783710937877,
       "tag": "0275_documents_scope_system_snippets",
       "breakpoints": true
+    },
+    {
+      "idx": 276,
+      "version": "7",
+      "when": 1783715520913,
+      "tag": "0276_payment_transaction_ledger",
+      "breakpoints": true
     }
   ]
 }

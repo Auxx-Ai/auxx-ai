@@ -5,17 +5,19 @@ import { renderToBuffer } from '@react-pdf/renderer'
 import type { ReactElement } from 'react'
 import { createElement } from 'react'
 import { MediaAssetService } from '../files/core/media-asset-service'
-import type { QuotePdfPayload } from './payload'
+import type { DocumentPdfPayload } from './payload'
+import { InvoicePdf } from './pdf/invoice-pdf'
 import { QuotePdf } from './pdf/quote-pdf'
 
 /**
- * Render a quote payload to a PDF buffer (money MQ2 build spec §B.2/§C.3). Loads the org's
- * logo bytes server-side via `MediaAssetService.getContent` — react-pdf's `<Image>` always
- * receives a Buffer, never a URL (02-document-settings.md renderer contract: signed-URL/
- * public-bucket headaches inside the worker). A missing/deleted logo asset renders the
- * document without a logo rather than failing the whole PDF.
+ * Render a quote/invoice payload to a PDF buffer (money MQ2 build spec §B.2/§C.3; MI1 §H.1
+ * adds the invoice branch). Loads the org's logo bytes server-side via
+ * `MediaAssetService.getContent` — react-pdf's `<Image>` always receives a Buffer, never a
+ * URL (02-document-settings.md renderer contract: signed-URL/public-bucket headaches inside
+ * the worker). A missing/deleted logo asset renders the document without a logo rather than
+ * failing the whole PDF.
  */
-export async function renderDocumentPdf(payload: QuotePdfPayload): Promise<Buffer> {
+export async function renderDocumentPdf(payload: DocumentPdfPayload): Promise<Buffer> {
   const logoAssetId = payload.settings.branding.logo?.assetId
   let logoBytes: Buffer | null = null
 
@@ -29,8 +31,11 @@ export async function renderDocumentPdf(payload: QuotePdfPayload): Promise<Buffe
   }
 
   // `renderToBuffer` types its argument as `ReactElement<DocumentProps>` (the root
-  // `<Document>`) — `QuotePdf` is a component that RETURNS one, which react-pdf's
+  // `<Document>`) — `QuotePdf`/`InvoicePdf` are components that RETURN one, which react-pdf's
   // reconciler resolves like any host tree, but the surface types don't model that.
-  const element = createElement(QuotePdf, { payload, logoBytes })
+  const element =
+    payload.documentType === 'invoice'
+      ? createElement(InvoicePdf, { payload, logoBytes })
+      : createElement(QuotePdf, { payload, logoBytes })
   return renderToBuffer(element as unknown as ReactElement<DocumentProps>)
 }

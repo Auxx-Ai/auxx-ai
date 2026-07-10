@@ -9,9 +9,11 @@ import { CATALOG_ITEM_FIELDS } from '../../resources/registry/resources/catalog-
 import { COMPANY_FIELDS } from '../../resources/registry/resources/company-fields'
 import { CONTACT_FIELDS } from '../../resources/registry/resources/contact-fields'
 import { INBOX_FIELDS } from '../../resources/registry/resources/inbox-fields'
+import { INVOICE_FIELDS } from '../../resources/registry/resources/invoice-fields'
 import { LINE_ITEM_FIELDS } from '../../resources/registry/resources/line-item-fields'
 import { MEETING_FIELDS } from '../../resources/registry/resources/meeting-fields'
 import { PART_FIELDS } from '../../resources/registry/resources/part-fields'
+import { PAYMENT_FIELDS } from '../../resources/registry/resources/payment-fields'
 import { QUOTE_FIELDS } from '../../resources/registry/resources/quote-fields'
 import { SERVICE_REQUEST_FIELDS } from '../../resources/registry/resources/service-request-fields'
 import { SIGNATURE_FIELDS } from '../../resources/registry/resources/signature-fields'
@@ -50,6 +52,8 @@ const FIELD_REGISTRY: Record<string, Record<string, ResourceField>> = {
   quote: QUOTE_FIELDS,
   line_item: LINE_ITEM_FIELDS,
   catalog_item: CATALOG_ITEM_FIELDS,
+  invoice: INVOICE_FIELDS,
+  payment: PAYMENT_FIELDS,
 }
 
 /**

@@ -143,6 +143,8 @@ export const ENTITY_DEFINITION_TYPES = [
   'quote',
   'line_item',
   'catalog_item',
+  'invoice',
+  'payment',
 ] as const
 
 /** Type for system entity types stored in EntityDefinition */
