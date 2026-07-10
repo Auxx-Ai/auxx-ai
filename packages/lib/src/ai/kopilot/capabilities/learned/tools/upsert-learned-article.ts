@@ -47,7 +47,10 @@ export function createUpsertLearnedArticleTool(getDeps: GetToolDeps): AgentToolD
   return {
     name: 'upsert_learned_article',
     displayName: 'Save learned article',
-    toolsetSlug: 'auxx:learned:write',
+    // Always-on (no toolsetSlug): availability is controlled by where the
+    // capability is registered (learnedMemory-flagged interactive registry +
+    // the headless extraction runner), not by per-org/agent toolset config.
+    // Safe because every write is approval-gated.
     requiresApproval: true,
     outputSchema: UpsertLearnedArticleOutput,
     exampleOutput: {

@@ -38,6 +38,17 @@ const ALWAYS_ON_TOOLS = new Set<string>([
   // Global chip-rendering tool (page `__global__`), reusable across every
   // Kopilot surface — not gated by an org toolset.
   'suggest_replies',
+  // Learned-KB (AI memory) write door — registered only by the flag-gated
+  // interactive registry and the headless extraction runner; approval-gated,
+  // so not org-toolset-gated.
+  'upsert_learned_article',
+  // Records-page view tools — mounted by page context (record-view capability),
+  // not gated by an org toolset.
+  'create_table_view',
+  'list_table_views',
+  'preview_table_view',
+  'set_default_table_view',
+  'update_table_view',
 ])
 
 const CAPABILITIES_DIR = join(__dirname, '..', 'capabilities')

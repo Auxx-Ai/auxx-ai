@@ -35,7 +35,10 @@ import {
   LAST_PAGE_KEY,
   resolveContinuationSurface,
 } from '@auxx/lib/ai/kopilot'
-import { createToolDepsFactory } from '@auxx/lib/ai/kopilot/capabilities'
+import {
+  createLearnedKbCapabilities,
+  createToolDepsFactory,
+} from '@auxx/lib/ai/kopilot/capabilities'
 import { createMcpCapabilities } from '@auxx/lib/ai/mcp'
 import { getCachedAgentById } from '@auxx/lib/cache'
 import { ForbiddenError } from '@auxx/lib/errors'
@@ -581,6 +584,11 @@ async function runInProcessPath(params: {
   registry.register(createSuggestRepliesGlobalCapability(getToolDeps))
   if (page === 'agents.builder') {
     registry.register(await createAgentsBuilderCapabilities(getToolDeps, organizationId))
+  }
+  // Explicit "remember this" door into the AI memory (learned KB). The tool is
+  // approval-gated in-chat; the flag keeps the whole AI-memory feature per-org.
+  if (await new FeaturePermissionService().hasAccess(organizationId, FeatureKey.learnedMemory)) {
+    registry.register(createLearnedKbCapabilities(getToolDeps))
   }
   // App-backed AI tools (plans/kopilot/apps/README.md §7).
   // Async — bridge pulls the org-cache `installedApps` row and runs
