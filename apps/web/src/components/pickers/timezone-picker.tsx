@@ -3,7 +3,6 @@
 
 import { IANA_TIME_ZONES } from '@auxx/config/client'
 import { Badge } from '@auxx/ui/components/badge'
-import { Button } from '@auxx/ui/components/button'
 import {
   Command,
   CommandEmpty,
@@ -18,6 +17,7 @@ import { enUS } from 'date-fns/locale'
 import { formatInTimeZone } from 'date-fns-tz'
 import { Check } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
+import { PickerTrigger, type PickerTriggerOptions } from '~/components/ui/picker-trigger'
 
 /**
  * Format timezone label with GMT offset and location
@@ -59,30 +59,46 @@ interface ProcessedTimezone {
 }
 
 interface TimeZonePickerProps {
-  open: boolean
-  // onOpenChange: (open: boolean) => void
+  /** Controlled open state. Omit for uncontrolled. */
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
   selected?: string
   onChange: (selected: string) => void
+  disabled?: boolean
+  /** Trigger placeholder when nothing is selected. */
+  placeholder?: string
+  /** Extra className for the popover content. */
   className?: string
   align?: 'start' | 'center' | 'end'
   side?: 'top' | 'right' | 'bottom' | 'left'
   sideOffset?: number
   style?: React.CSSProperties
+  /** Styling for the default `PickerTrigger` (ignored when `children` is set). */
+  triggerProps?: PickerTriggerOptions
   children?: React.ReactNode // Custom trigger
 }
 
 export function TimeZonePicker({
-  // open,
-  // onOpenChange,
+  open: controlledOpen,
+  onOpenChange,
   selected,
   onChange,
+  disabled = false,
+  placeholder = 'Select timezone…',
   className,
   align = 'start',
+  triggerProps,
   children,
   ...props
 }: TimeZonePickerProps) {
   const [search, setSearch] = useState('')
-  const [open, onOpenChange] = useState(false)
+  const [internalOpen, setInternalOpen] = useState(false)
+  const open = controlledOpen ?? internalOpen
+
+  const setOpen = (next: boolean) => {
+    if (controlledOpen === undefined) setInternalOpen(next)
+    onOpenChange?.(next)
+  }
   // Process and group timezones
   const processedTimezones = useMemo(() => {
     const processed: ProcessedTimezone[] = IANA_TIME_ZONES.map((tz) => {
@@ -128,7 +144,7 @@ export function TimeZonePicker({
   // Handle selection
   const handleSelect = (value: string) => {
     onChange(value)
-    onOpenChange(false)
+    setOpen(false)
     setSearch('')
   }
 
@@ -140,18 +156,28 @@ export function TimeZonePicker({
   }, [open])
 
   return (
-    <Popover open={open} onOpenChange={onOpenChange}>
+    <Popover open={open} onOpenChange={disabled ? undefined : setOpen}>
       <PopoverTrigger asChild>
         {children || (
-          <Button variant='outline'>
-            {selected ? (
-              <div className='flex items-center gap-2 truncate'>
-                <span className='truncate'>{selected}</span>
-              </div>
-            ) : (
-              <span className='text-muted-foreground'>Pick...</span>
-            )}
-          </Button>
+          <PickerTrigger
+            open={open}
+            disabled={disabled}
+            variant={triggerProps?.variant ?? 'outline'}
+            size={triggerProps?.size}
+            hasValue={!!selected}
+            placeholder={placeholder}
+            showClear={triggerProps?.showClear ?? false}
+            onClear={(e) => {
+              e.stopPropagation()
+              onChange('')
+            }}
+            icon={triggerProps?.icon}
+            iconPosition={triggerProps?.iconPosition}
+            hideIcon={triggerProps?.hideIcon}
+            asCombobox
+            className={triggerProps?.className}>
+            <span className='truncate'>{selected}</span>
+          </PickerTrigger>
         )}
       </PopoverTrigger>
       <PopoverContent className={cn('w-[400px] p-0', className)} align={align} {...props}>

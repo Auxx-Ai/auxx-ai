@@ -296,6 +296,29 @@ export const SETTINGS_CATALOG = {
     defaultValue: 'USD',
     description: 'Organization-wide currency code — consumed by CURRENCY display + totals docs',
   },
+  'organization.weekStart': {
+    scope: 'GENERAL',
+    access: 'org',
+    fieldType: 'SINGLE_SELECT',
+    defaultValue: 'monday',
+    description:
+      'First day of the business week — consumed by the availability editor and dispatch calendar',
+    options: {
+      options: [
+        { value: 'monday', label: 'Monday' },
+        { value: 'sunday', label: 'Sunday' },
+        { value: 'saturday', label: 'Saturday' },
+      ],
+    },
+  },
+  'organization.use24HourTime': {
+    scope: 'GENERAL',
+    access: 'org',
+    fieldType: 'CHECKBOX',
+    options: { variant: 'switch' },
+    defaultValue: false,
+    description: 'Display times in 24-hour format instead of AM/PM',
+  },
   'documents.taxRates': {
     scope: 'GENERAL',
     access: 'org',

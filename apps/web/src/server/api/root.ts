@@ -16,6 +16,7 @@ import { appsRouter } from './routers/apps'
 import { attachmentRouter } from './routers/attachment'
 import { auditLogRouter } from './routers/audit-log'
 import { authRouter } from './routers/auth'
+import { availabilityRouter } from './routers/availability'
 import { billingRouter } from './routers/billing'
 import { calendarRouter } from './routers/calendar'
 import { channelRouter } from './routers/channel'
@@ -115,6 +116,7 @@ export const appRouter = createTRPCRouter({
   attachment: attachmentRouter,
   auditLog: auditLogRouter,
   auth: authRouter,
+  availability: availabilityRouter,
   billing: billingRouter,
   calendar: calendarRouter,
   chat: chatRouter,

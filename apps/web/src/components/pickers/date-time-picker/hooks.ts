@@ -15,6 +15,12 @@ export function useTimeOptions() {
     []
   )
 
+  /** 24-hour variant of hourOptions ('00'..'23'), used when use24HourTime is set */
+  const hourOptions24 = useMemo(
+    () => Array.from({ length: 24 }, (_, i) => i.toString().padStart(2, '0')),
+    []
+  )
+
   const minuteOptions = useMemo(
     () => Array.from({ length: 60 }, (_, i) => i.toString().padStart(2, '0')),
     []
@@ -22,7 +28,7 @@ export function useTimeOptions() {
 
   const periodOptions = useMemo(() => [Period.AM, Period.PM], [])
 
-  return { hourOptions, minuteOptions, periodOptions }
+  return { hourOptions, hourOptions24, minuteOptions, periodOptions }
 }
 
 /**

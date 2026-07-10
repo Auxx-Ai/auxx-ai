@@ -3,14 +3,15 @@
 'use client'
 
 import { MainPageContent } from '@auxx/ui/components/main-page'
-import { Tags } from 'lucide-react'
+import { Clock, FileText, Tags } from 'lucide-react'
 import { usePathname } from 'next/navigation'
 import SidebarSecondary from '~/components/global/sidebar-secondary'
 import type { SidebarProps } from '~/constants/menu'
 
 /**
- * Settings navigation items. Only Products & Services ships in MQ1 — Workers,
- * Number Formats, and Availability arrive with the M2 dispatch board build.
+ * Settings navigation items. Products & Services and Availability ship in
+ * this slice — Workers and Number Formats arrive with the M2 dispatch board
+ * build.
  */
 const DISPATCH_SETTINGS: SidebarProps[] = [
   {
@@ -23,6 +24,12 @@ const DISPATCH_SETTINGS: SidebarProps[] = [
         label: 'Products & Services',
         slug: 'products',
         icon: <Tags />,
+      },
+      {
+        id: 'dispatch-settings-availability',
+        label: 'Availability',
+        slug: 'availability',
+        icon: <Clock />,
       },
     ],
   },

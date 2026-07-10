@@ -1919,6 +1919,13 @@
       "when": 1783706572704,
       "tag": "0273_settings_v2_rekey_drop_legacy_fk",
       "breakpoints": true
+    },
+    {
+      "idx": 274,
+      "version": "7",
+      "when": 1783710522656,
+      "tag": "0274_operating_hours_reshape",
+      "breakpoints": true
     }
   ]
 }

@@ -164,9 +164,9 @@ const ScheduledTriggerPanelComponent: React.FC<ScheduledTriggerPanelProps> = ({ 
           {/* Timezone Selection */}
           <Field title='Timezone' description='Select the timezone for the schedule'>
             <TimeZonePicker
-              open={false}
               selected={previewConfig.timezone}
               onChange={handleTimezoneChange}
+              disabled={isReadOnly}
             />
           </Field>
         </div>
