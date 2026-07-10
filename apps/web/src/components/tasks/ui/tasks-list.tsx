@@ -38,6 +38,17 @@ interface TasksListProps {
   /** Show entity reference badges on task items (useful in global mode) */
   showEntityReferences?: boolean
   className?: string
+  /**
+   * Cap the fetched page size (default: the `useTasks` default of 50). Used by the
+   * `DetailViewSections` `variant='section'` treatment (recent-N + "Show more").
+   */
+  limit?: number
+  /**
+   * When provided, the "Load more" button calls this instead of `useTasks`'
+   * `fetchNextPage` (currently a no-op placeholder, see `use-tasks.ts`) — the
+   * section-variant caller bumps its own `limit` state instead.
+   */
+  onShowMore?: () => void
 }
 
 /** Default sort config */
@@ -59,6 +70,8 @@ export function TasksList({
   onCreateClick,
   showEntityReferences = false,
   className,
+  limit,
+  onShowMore,
 }: TasksListProps) {
   // Convert Condition[] to individual filter props
   const filterProps = useMemo(() => convertConditionsToFilterProps(filters ?? []), [filters])
@@ -70,6 +83,7 @@ export function TasksList({
     priority: filterProps.priority,
     search: filterProps.search,
     includeCompleted: filterProps.includeCompleted ?? includeCompleted,
+    limit,
   })
 
   // Track collapsed state for each group
@@ -196,12 +210,12 @@ export function TasksList({
         {hasNextPage && (
           <div className='flex justify-center py-4'>
             <Button
-              onClick={fetchNextPage}
+              onClick={onShowMore ?? fetchNextPage}
               variant='ghost'
               size='sm'
               loading={isFetchingNextPage}
               loadingText='Loading...'>
-              Load more
+              {onShowMore ? 'Show more' : 'Load more'}
             </Button>
           </div>
         )}

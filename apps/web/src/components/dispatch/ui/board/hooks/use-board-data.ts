@@ -5,8 +5,14 @@
 import { endOfDay, startOfDay } from 'date-fns'
 import { useCallback, useMemo, useState } from 'react'
 import { api } from '~/trpc/react'
-import type { BoardResourceInput, BoardViewMode, BoardWorker, DispatchVisitEvent } from '../types'
-import { splitVisits, UNASSIGNED_COLOR, UNASSIGNED_RESOURCE_ID, visitToEvent } from '../utils'
+import {
+  type BoardResourceInput,
+  type BoardViewMode,
+  type BoardWorker,
+  type DispatchVisitEvent,
+  UNASSIGNED_RESOURCE_ID,
+} from '../types'
+import { splitVisits, UNASSIGNED_COLOR, visitToEvent } from '../utils'
 
 export interface DateRange {
   from: Date

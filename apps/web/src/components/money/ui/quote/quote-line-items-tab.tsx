@@ -18,6 +18,7 @@ import { parseRecordId } from '@auxx/lib/resources/client'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { toastError } from '@auxx/ui/components/toast'
+import { cn } from '@auxx/ui/lib/utils'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useMemo } from 'react'
@@ -40,7 +41,7 @@ const EXPIRABLE_STATUSES = new Set(['draft', 'sent'])
 /** Statuses where a quote can still be (re)sent (money MQ2 build spec §E.2). */
 const SENDABLE_STATUSES = new Set(['draft', 'sent'])
 
-export function QuoteLineItemsTab({ recordId }: DetailViewTabProps) {
+export function QuoteLineItemsTab({ recordId, variant = 'tab' }: DetailViewTabProps) {
   const router = useRouter()
   const [confirm, ConfirmDialog] = useConfirm()
   const { openCompose } = useCompose()
@@ -96,10 +97,10 @@ export function QuoteLineItemsTab({ recordId }: DetailViewTabProps) {
   const handleConvert = async () => {
     try {
       const result = await convertToWorkOrder.mutateAsync({ quoteRecordId: recordId })
-      // work_order has no detail page yet (M2) — land on the records list with
-      // the drawer open via the `?id=` convention (records-view.tsx).
+      // work_order now has a detail page (dispatch M2 build spec §F.2) — land on
+      // the job view directly instead of the records-list `?id=` drawer convention.
       const { entityInstanceId } = parseRecordId(result.recordId)
-      router.push(`/app/work-orders?id=${entityInstanceId}`)
+      router.push(`/app/work-orders/${entityInstanceId}`)
     } catch {
       // onError above already surfaced the toast.
     }
@@ -155,8 +156,17 @@ export function QuoteLineItemsTab({ recordId }: DetailViewTabProps) {
     }
   }
 
+  // `variant='section'` (dispatch M2 §F.1/§G): rendered inside a DetailViewSections
+  // <Section> on an outer-owned scroll column instead of a `TabsContent` that grants
+  // `h-full`. The header action strip below (Expired badge + send/download/lifecycle
+  // buttons) stays a normal in-flow row either way — always visible/functional, since
+  // the wrapping <Section> is non-collapsible in sections mode. Only the LineBuilder
+  // (a virtualized, scroll-owning table) needs the max-height + internal-scroll
+  // treatment so it doesn't fight the outer page for wheel events.
+  const isSection = variant === 'section'
+
   return (
-    <div className='flex h-full min-h-0 flex-col'>
+    <div className={cn('flex flex-col', isSection ? '' : 'h-full min-h-0')}>
       <div className='flex items-center justify-between gap-2 px-4 py-3'>
         <div className='flex items-center gap-2'>
           {isExpired && (
@@ -261,7 +271,11 @@ export function QuoteLineItemsTab({ recordId }: DetailViewTabProps) {
         </div>
       )}
 
-      <div className='min-h-0 flex-1 px-4 pb-4'>
+      <div
+        className={cn(
+          'flex flex-col px-4 pb-4',
+          isSection ? 'max-h-[60vh] overflow-auto' : 'min-h-0 flex-1'
+        )}>
         <LineBuilder documentRecordId={recordId} documentType='quote' readOnly={readOnly} />
       </div>
 

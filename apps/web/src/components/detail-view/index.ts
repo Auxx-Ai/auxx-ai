@@ -7,6 +7,13 @@ export { DetailViewCardHeader } from './components/detail-view-card-header'
 export { DetailView } from './detail-view'
 export { DetailViewMainTabs } from './detail-view-main-tabs'
 export { DetailViewNotFound } from './detail-view-not-found'
+export type {
+  DetailViewSectionsDrillContext,
+  DetailViewSectionsDrillPanel,
+  DetailViewSectionsProps,
+} from './detail-view-sections'
+// layout: 'sections' main area (dispatch M2 §F.1)
+export { DetailViewSections } from './detail-view-sections'
 // Sub-components
 export { DetailViewSidebar } from './detail-view-sidebar'
 export { DetailViewSkeleton } from './detail-view-skeleton'

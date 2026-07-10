@@ -123,7 +123,7 @@ export function VisitActionsPopoverContent({
       )}
 
       <Button asChild size='sm' variant='ghost' className='w-full justify-start'>
-        <Link href='/app/work-orders'>
+        <Link href={`/app/work-orders/${event.workOrderId}`}>
           <ExternalLink /> Open record
         </Link>
       </Button>

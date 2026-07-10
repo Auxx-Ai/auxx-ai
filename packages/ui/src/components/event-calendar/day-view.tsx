@@ -102,7 +102,7 @@ export function DayView<T extends EventCalendarItem = EventCalendarItem>({
   )
 
   return (
-    <div data-slot='day-view' className='flex h-full flex-col'>
+    <div data-slot='day-view' className='flex flex-col'>
       {showAllDaySection && (
         <div className='border-border/70 bg-muted/50 border-t'>
           <div className='grid grid-cols-[3rem_1fr] sm:grid-cols-[3.5rem_1fr]'>
@@ -134,7 +134,7 @@ export function DayView<T extends EventCalendarItem = EventCalendarItem>({
         </div>
       )}
 
-      <div className='grid flex-1 grid-cols-[3rem_1fr] overflow-hidden border-t border-border/70 sm:grid-cols-[3.5rem_1fr]'>
+      <div className='grid flex-1 grid-cols-[3rem_1fr] border-t border-border/70 sm:grid-cols-[3.5rem_1fr]'>
         <HourGutter
           hours={hours}
           nowIndicator={

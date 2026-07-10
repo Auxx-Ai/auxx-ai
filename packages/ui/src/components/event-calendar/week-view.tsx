@@ -116,8 +116,8 @@ export function WeekView<T extends EventCalendarItem = EventCalendarItem>({
   )
 
   return (
-    <div data-slot='week-view' className='flex h-full flex-col'>
-      <div className='bg-background/80 border-border/70 sticky top-0 z-30 grid grid-cols-8 border-b backdrop-blur-md'>
+    <div data-slot='week-view' className='flex flex-col'>
+      <div className='bg-background/80 border-border/70 sticky top-0 z-30 grid grid-cols-[3rem_repeat(7,minmax(0,1fr))] border-b backdrop-blur-md sm:grid-cols-[3.5rem_repeat(7,minmax(0,1fr))]'>
         <div className='text-muted-foreground/70 py-2 text-center text-sm'>
           <span className='max-[479px]:sr-only'>{format(new Date(), 'O')}</span>
         </div>
@@ -136,7 +136,7 @@ export function WeekView<T extends EventCalendarItem = EventCalendarItem>({
 
       {showAllDaySection && (
         <div className='border-border/70 bg-muted/50 border-b'>
-          <div className='grid grid-cols-8'>
+          <div className='grid grid-cols-[3rem_repeat(7,minmax(0,1fr))] sm:grid-cols-[3.5rem_repeat(7,minmax(0,1fr))]'>
             <div className='border-border/70 relative'>
               <span className='text-muted-foreground/70 absolute bottom-0 left-0 h-6 w-full max-w-full pe-2 text-right text-[10px] sm:pe-4 sm:text-xs'>
                 All day
@@ -192,7 +192,7 @@ export function WeekView<T extends EventCalendarItem = EventCalendarItem>({
         </div>
       )}
 
-      <div className='grid flex-1 grid-cols-8 overflow-hidden'>
+      <div className='grid flex-1 grid-cols-[3rem_repeat(7,minmax(0,1fr))] sm:grid-cols-[3.5rem_repeat(7,minmax(0,1fr))]'>
         <HourGutter
           hours={hours}
           nowIndicator={

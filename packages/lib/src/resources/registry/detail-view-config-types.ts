@@ -61,10 +61,19 @@ export interface DetailViewConfig {
   defaultSidebarTab?: string
   /** Cards rendered in the sidebar (reuses DrawerTabCardDefinition for shared card component registry) */
   sidebarCards?: DrawerTabCardDefinition[]
+  /**
+   * Main-area layout mode (dispatch M2 build spec §F.1):
+   * - `'tabs'` (default): content-swapping `TabsContent` panels — unchanged ticket/contact/
+   *   part/quote behavior, rendered by `DetailViewMainTabs`.
+   * - `'sections'`: a single scroll-spy page (agent-detail pattern) — the mainTabs render as
+   *   stacked `<Section>` anchors on ONE scrolling column instead of swapped panels, rendered
+   *   by `DetailViewSections`.
+   */
+  layout?: 'tabs' | 'sections'
 }
 
 /** Entity types that have specific detail view configurations */
-export type DetailViewEntityType = 'contact' | 'ticket' | 'part' | 'entity' | 'quote'
+export type DetailViewEntityType = 'contact' | 'ticket' | 'part' | 'entity' | 'quote' | 'work_order'
 
 /** Registry type mapping entity types to their configurations */
 export type DetailViewConfigRegistry = Record<DetailViewEntityType, DetailViewConfig>
