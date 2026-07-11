@@ -2,7 +2,8 @@
 
 import { checkUniqueValue } from '@auxx/services/custom-fields'
 import { ModelTypes } from '@auxx/types/custom-field'
-import { isValidEmail, normalizeEmail as normalizeEmailUtil } from '@auxx/utils/email'
+import { formatEmail, isValidEmail } from '@auxx/utils/email'
+import { BadRequestError, ConflictError } from '../../errors'
 import type { SystemHook, SystemHookRegistry } from './types'
 
 /**
@@ -13,7 +14,7 @@ const validateEmailFormat: SystemHook = async ({ field, values }) => {
 
   if (email && typeof email === 'string') {
     if (!isValidEmail(email)) {
-      throw new Error('Invalid email format')
+      throw new BadRequestError('Invalid email format')
     }
   }
 
@@ -21,7 +22,9 @@ const validateEmailFormat: SystemHook = async ({ field, values }) => {
 }
 
 /**
- * Normalize email to lowercase and trim
+ * Normalize email to lowercase and trim. Deliberately NOT normalizeEmail — that
+ * canonicalizes Gmail plus-aliases/dots for comparison and must not rewrite the
+ * stored address (a+x@gmail.com is the address the customer actually uses).
  */
 const normalizeEmailValue: SystemHook = async ({ field, values }) => {
   const email = values[field.id]
@@ -29,7 +32,7 @@ const normalizeEmailValue: SystemHook = async ({ field, values }) => {
   if (email && typeof email === 'string') {
     return {
       ...values,
-      [field.id]: normalizeEmailUtil(email),
+      [field.id]: formatEmail(email),
     }
   }
 
@@ -65,7 +68,7 @@ const checkEmailUniqueness: SystemHook = async ({
   })
 
   if (result.isErr()) {
-    throw new Error(`Email address already exists: ${email}`)
+    throw new ConflictError(`Email address already exists: ${email}`)
   }
 
   return values
