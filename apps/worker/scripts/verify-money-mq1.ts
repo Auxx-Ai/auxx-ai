@@ -355,12 +355,14 @@ async function main() {
       ],
       { discountType: 'percent', discountValue: 10, taxRate: 7.5 }
     )
+    // Whole-cent rounding convention (roundCents, packages/lib/src/money/totals.ts, PR #1128):
+    // raw tax 6.75 / total 186.75 round to 7 / 187.
     check(
-      'computeDocumentTotals sanity: subtotal 200, discount 20, tax 6.75, total 186.75',
+      'computeDocumentTotals sanity: subtotal 200, discount 20, tax 7, total 187',
       expected.subtotal === 200 &&
         expected.discountAmount === 20 &&
-        expected.taxTotal === 6.75 &&
-        expected.total === 186.75,
+        expected.taxTotal === 7 &&
+        expected.total === 187,
       expected
     )
 
@@ -388,13 +390,13 @@ async function main() {
       quoteSubtotal?.valueNumber
     )
     check(
-      'quote_tax_total = 6.75 after billing change',
-      quoteTaxTotal?.valueNumber === 6.75,
+      'quote_tax_total = 7 after billing change (whole-cent rounding, PR #1128)',
+      quoteTaxTotal?.valueNumber === 7,
       quoteTaxTotal?.valueNumber
     )
     check(
-      'quote_total = 186.75 after billing change',
-      quoteTotal?.valueNumber === 186.75,
+      'quote_total = 187 after billing change (whole-cent rounding, PR #1128)',
+      quoteTotal?.valueNumber === 187,
       quoteTotal?.valueNumber
     )
 
@@ -442,15 +444,16 @@ async function main() {
       'quote_total'
     )
     // Only line A (taxable, 100) remains: subtotal 100, discount 10% = 10,
-    // taxBase = 100 * (1 - 10/100) = 90, tax = 90 * 0.075 = 6.75, total = 100 - 10 + 6.75 = 96.75
+    // taxBase = 100 * (1 - 10/100) = 90, tax = 90 * 0.075 = 6.75, total = 100 - 10 + 6.75 = 96.75,
+    // which whole-cent rounding (roundCents, PR #1128) rounds to 97.
     check(
       'quote_subtotal drops to 100 after delete',
       subtotalAfterDelete?.valueNumber === 100,
       subtotalAfterDelete?.valueNumber
     )
     check(
-      'quote_total drops to 96.75 after delete',
-      totalAfterDelete?.valueNumber === 96.75,
+      'quote_total drops to 97 after delete (whole-cent rounding, PR #1128)',
+      totalAfterDelete?.valueNumber === 97,
       totalAfterDelete?.valueNumber
     )
 
@@ -603,9 +606,12 @@ async function main() {
       woPricingModel?.optionId === 'per_visit',
       woPricingModel?.optionId
     )
+    // quote_invoice_timing's default moved 'on_completion' -> 'per_visit_completed' in
+    // PR #1128 (same PR as the whole-cent rounding change); the never-overridden quote
+    // in this scenario carries that default through the copy onto the work order.
     check(
-      'work_order invoice_timing copied (on_completion)',
-      woInvoiceTiming?.optionId === 'on_completion',
+      'work_order invoice_timing copied (per_visit_completed)',
+      woInvoiceTiming?.optionId === 'per_visit_completed',
       woInvoiceTiming?.optionId
     )
 
