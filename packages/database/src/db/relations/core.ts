@@ -64,6 +64,7 @@ import {
   ProviderConfiguration,
   ProviderPreference,
   RecordSequence,
+  RecurrenceRule,
   SearchHistory,
   SignatureIntegrationShare,
   Snippet,
@@ -618,6 +619,21 @@ export const dispatchWorkerRelations = relations(DispatchWorker, ({ one }) => ({
   }),
   user: one(User, {
     fields: [DispatchWorker.userId],
+    references: [User.id],
+  }),
+}))
+
+export const recurrenceRuleRelations = relations(RecurrenceRule, ({ one }) => ({
+  organization: one(Organization, {
+    fields: [RecurrenceRule.organizationId],
+    references: [Organization.id],
+  }),
+  subject: one(EntityInstance, {
+    fields: [RecurrenceRule.subjectId],
+    references: [EntityInstance.id],
+  }),
+  defaultAssignee: one(User, {
+    fields: [RecurrenceRule.defaultAssigneeUserId],
     references: [User.id],
   }),
 }))

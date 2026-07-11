@@ -15,6 +15,11 @@ const WORK_ORDER_STATUS_OPTIONS = [
   { label: 'On Site', value: 'on_site', color: 'teal' },
   { label: 'Completed', value: 'completed', color: 'green' },
   { label: 'Canceled', value: 'canceled', color: 'red' },
+  // Recurring engagement statuses (dispatch M2c, 06-recurring-engine.md §3.3/§4.1) —
+  // superset on the same field; jobType decides the valid subset, hook-guarded.
+  { label: 'Active', value: 'active', color: 'green' },
+  { label: 'Paused', value: 'paused', color: 'amber' },
+  { label: 'Ended', value: 'ended', color: 'gray' },
 ] as const
 
 const WORK_ORDER_PRIORITY_OPTIONS = [

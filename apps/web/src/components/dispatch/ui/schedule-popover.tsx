@@ -2,10 +2,18 @@
 
 'use client'
 
+import { detectTimezone } from '@auxx/config/client'
+import { weekStartToIndex } from '@auxx/lib/availability/client'
+import {
+  describeRecurrence,
+  type RecurrencePattern,
+  recurrencePatternSchema,
+} from '@auxx/lib/recurrence/client'
 import { getActorRawId, toActorId } from '@auxx/types/actor'
 import { Avatar, AvatarFallback, AvatarImage } from '@auxx/ui/components/avatar'
 import { Button } from '@auxx/ui/components/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
+import { RadioGroup, RadioGroupItem } from '@auxx/ui/components/radio-group'
 import {
   Select,
   SelectContent,
@@ -17,13 +25,23 @@ import { toastError } from '@auxx/ui/components/toast'
 import { cn } from '@auxx/ui/lib/utils'
 import { addMinutes, differenceInMinutes, format } from 'date-fns'
 import { AlertTriangle, ArrowLeft, Calendar, User } from 'lucide-react'
-import { type ReactNode, useMemo, useState } from 'react'
+import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react'
 import { getInitials } from '~/components/groups/utils/group-utils'
 import { ActorPickerContent } from '~/components/pickers/actor-picker/actor-picker-content'
 import { DateTimePickerContent } from '~/components/pickers/date-time-picker'
 import { cloneTimeToDate } from '~/components/pickers/date-time-picker/utils'
+import type { RecordId } from '~/components/resources'
 import { useActors, useAvailableActors } from '~/components/resources/hooks/use-actor'
+import { useSettings } from '~/hooks/use-settings'
 import { api } from '~/trpc/react'
+import { RecurrencePatternFields } from './recurrence/recurrence-pattern-fields'
+import {
+  buildPresetPattern,
+  classifyRecurrencePreset as classifyPreset,
+  defaultCustomPattern,
+  type RecurrencePreset,
+  scalarSetting,
+} from './recurrence/recurrence-utils'
 
 const DURATION_OPTIONS = [
   { value: '30', label: '30 min', minutes: 30 },
@@ -55,6 +73,19 @@ export interface SchedulePopoverContentProps {
   onScheduled?: () => void
   onUnscheduled?: () => void
   className?: string
+  /**
+   * The work order this visit belongs to (06-recurring-engine.md §6) — presence enables the
+   * Repeats row (`dispatch.getRecurrence`/`setRecurrence`). Board chip popovers omit this
+   * (Board stays unchanged, §6 "no new chrome") so they never render Repeats.
+   */
+  workOrderRecordId?: RecordId
+  /**
+   * The target visit's own `recurrenceRuleId` (from `dispatch.listVisits`/`getBoard`) — when
+   * set, and the Repeats selection hasn't been touched this session, a This visit / This and
+   * following / All visits chooser gates time/duration/assignee edits (§4.3/§6). Cadence edits
+   * (Repeats) never go through the chooser — they always anchor at the picked start date.
+   */
+  recurrenceRuleId?: string | null
 }
 
 /**
@@ -73,6 +104,8 @@ export function SchedulePopoverContent({
   onScheduled,
   onUnscheduled,
   className,
+  workOrderRecordId,
+  recurrenceRuleId,
 }: SchedulePopoverContentProps) {
   const [section, setSection] = useState<'main' | 'assignee' | 'datetime'>('main')
   const [assigneeUserId, setAssigneeUserId] = useState<string | null>(initialAssigneeUserId ?? null)
@@ -83,6 +116,80 @@ export function SchedulePopoverContent({
     DURATION_OPTIONS.find((o) => o.minutes === initialMinutes)?.value ?? 'custom'
   const [duration, setDuration] = useState<DurationValue>(initialDurationOption)
   const [customEndTime, setCustomEndTime] = useState<Date | undefined>(initialEndTime ?? undefined)
+
+  // ── Repeats (06-recurring-engine.md §6) ──────────────────────────────────────────────
+  const utils = api.useUtils()
+  const { getSetting } = useSettings({ scope: 'GENERAL' })
+  const weekStart = (scalarSetting(getSetting('organization.weekStart')) ?? 'monday') as
+    | 'monday'
+    | 'sunday'
+    | 'saturday'
+  const weekStartIndex = weekStartToIndex(weekStart)
+
+  const recurrenceQuery = api.dispatch.getRecurrence.useQuery(
+    { workOrderRecordId: workOrderRecordId as RecordId },
+    { enabled: Boolean(workOrderRecordId) }
+  )
+  const hasExistingRule = Boolean(recurrenceQuery.data)
+
+  const [repeatMode, setRepeatMode] = useState<RecurrencePreset>('none')
+  const [customPattern, setCustomPattern] = useState<RecurrencePattern>(
+    defaultCustomPattern(initialStartTime ?? undefined)
+  )
+  const [repeatsTouched, setRepeatsTouched] = useState(false)
+  const [chooserScope, setChooserScope] = useState<'this' | 'following' | 'all'>('this')
+  const initializedFromRuleRef = useRef(false)
+
+  // Initialize Repeats state from the existing rule ONCE — later realtime refetches of
+  // `getRecurrence` (another tab editing the same series) must not clobber an in-progress edit.
+  useEffect(() => {
+    if (initializedFromRuleRef.current) return
+    if (recurrenceQuery.isLoading) return
+    initializedFromRuleRef.current = true
+    if (!recurrenceQuery.data) return
+    const pattern = recurrenceQuery.data.pattern as unknown as RecurrencePattern
+    const preset = classifyPreset(pattern)
+    setRepeatMode(preset)
+    if (preset === 'custom') setCustomPattern(pattern)
+  }, [recurrenceQuery.data, recurrenceQuery.isLoading])
+
+  const effectivePattern = useMemo((): RecurrencePattern | null => {
+    if (repeatMode === 'none') return null
+    if (repeatMode === 'custom') return customPattern
+    if (!startTime) return null
+    return buildPresetPattern(repeatMode, startTime)
+  }, [repeatMode, customPattern, startTime])
+
+  const recurrenceSummary = useMemo(() => {
+    if (!effectivePattern) return null
+    return describeRecurrence(effectivePattern, { weekStart })
+  }, [effectivePattern, weekStart])
+
+  const handleRepeatModeChange = (nextMode: RecurrencePreset) => {
+    setRepeatsTouched(true)
+    if (nextMode === 'custom' && repeatMode !== 'custom') {
+      // Expand from whatever pattern is currently in effect so switching to Custom doesn't
+      // reset the user's picks (the existing rule's pattern if it was already custom-shaped,
+      // else the preset-derived pattern, else a sane default).
+      const seed =
+        recurrenceQuery.data &&
+        classifyPreset(recurrenceQuery.data.pattern as unknown as RecurrencePattern) === 'custom'
+          ? (recurrenceQuery.data.pattern as unknown as RecurrencePattern)
+          : repeatMode !== 'none' && startTime
+            ? buildPresetPattern(repeatMode, startTime)
+            : defaultCustomPattern(startTime)
+      setCustomPattern(seed)
+    }
+    setRepeatMode(nextMode)
+  }
+
+  // Only an intentional Repeats edit this session writes the rule — an incidental
+  // time/duration/assignee edit must never silently rewrite the series cadence.
+  const wantsRecurrenceWrite = repeatsTouched && repeatMode !== 'none'
+  const patternValid =
+    !wantsRecurrenceWrite ||
+    (effectivePattern != null && recurrencePatternSchema.safeParse(effectivePattern).success)
+  const showChooser = Boolean(recurrenceRuleId) && !wantsRecurrenceWrite
 
   const endTime = useMemo(() => {
     if (!startTime) return undefined
@@ -155,11 +262,60 @@ export function SchedulePopoverContent({
       toastError({ title: 'Error unscheduling visit', description: error.message }),
     onSuccess: () => onUnscheduled?.(),
   })
+  const invalidateRecurrence = () => {
+    if (workOrderRecordId) void utils.dispatch.getRecurrence.invalidate({ workOrderRecordId })
+  }
+  const setRecurrence = api.dispatch.setRecurrence.useMutation({
+    onError: (error) =>
+      toastError({ title: 'Error saving recurrence', description: error.message }),
+    onSuccess: () => {
+      invalidateRecurrence()
+      onScheduled?.()
+    },
+  })
+  const applyToSeries = api.dispatch.applyToSeries.useMutation({
+    onError: (error) => toastError({ title: 'Error updating series', description: error.message }),
+    onSuccess: () => {
+      invalidateRecurrence()
+      onScheduled?.()
+    },
+  })
 
-  const canSave = Boolean(startTime && endTime)
+  const canSave = Boolean(startTime && endTime) && patternValid
+  const isSaving = scheduleVisit.isPending || setRecurrence.isPending || applyToSeries.isPending
 
   const handleSave = () => {
     if (!startTime || !endTime) return
+
+    if (wantsRecurrenceWrite) {
+      if (!effectivePattern || !workOrderRecordId) return
+      setRecurrence.mutate({
+        workOrderRecordId,
+        pattern: effectivePattern,
+        template: {
+          startMinute: startTime.getHours() * 60 + startTime.getMinutes(),
+          durationMinutes: differenceInMinutes(endTime, startTime),
+          defaultAssigneeUserId: assigneeUserId,
+        },
+        timezone: detectTimezone(),
+        effectiveFrom: format(startTime, 'yyyy-MM-dd'),
+      })
+      return
+    }
+
+    if (showChooser && chooserScope !== 'this') {
+      applyToSeries.mutate({
+        visitId,
+        scope: chooserScope,
+        changes: {
+          startMinute: startTime.getHours() * 60 + startTime.getMinutes(),
+          durationMinutes: differenceInMinutes(endTime, startTime),
+          assigneeUserId,
+        },
+      })
+      return
+    }
+
     scheduleVisit.mutate({ visitId, startTime, endTime, assigneeUserId })
   }
 
@@ -260,9 +416,64 @@ export function SchedulePopoverContent({
         />
       )}
 
-      {/* M2c adds a "Repeats" row here (None / Weekly / Every 2 weeks / Monthly / Custom) —
-          06-recurring-engine.md §6. Picking a repeat flips jobType and opens the recurrence
-          editor per the jobType-convergence rule (04-ui #7). */}
+      {workOrderRecordId && (
+        <div className='space-y-2'>
+          <Select
+            value={repeatMode}
+            onValueChange={(v) => handleRepeatModeChange(v as RecurrencePreset)}>
+            <SelectTrigger size='sm' className='w-full'>
+              <SelectValue placeholder='Repeats' />
+            </SelectTrigger>
+            <SelectContent>
+              {/* Selecting None on an existing rule is out of scope for v1 (06 §6) — ending a
+                  series happens via the Pause/End engagement actions, not this control. */}
+              {!hasExistingRule && <SelectItem value='none'>Does not repeat</SelectItem>}
+              <SelectItem value='weekly'>Weekly</SelectItem>
+              <SelectItem value='biweekly'>Every 2 weeks</SelectItem>
+              <SelectItem value='monthly'>Monthly</SelectItem>
+              <SelectItem value='custom'>Custom...</SelectItem>
+            </SelectContent>
+          </Select>
+
+          {recurrenceSummary && (
+            <p className='px-0.5 text-xs text-muted-foreground'>{recurrenceSummary}</p>
+          )}
+
+          {repeatMode === 'custom' && (
+            <RecurrencePatternFields
+              value={customPattern}
+              onChange={setCustomPattern}
+              weekStartIndex={weekStartIndex}
+            />
+          )}
+
+          {wantsRecurrenceWrite && !patternValid && (
+            <p className='px-0.5 text-xs text-destructive'>
+              Pick at least one weekday, or fix the end condition, to save this pattern.
+            </p>
+          )}
+        </div>
+      )}
+
+      {showChooser && (
+        <div className='space-y-1.5 rounded-md border p-2'>
+          <div className='text-xs font-medium text-muted-foreground'>Apply to</div>
+          <RadioGroup
+            value={chooserScope}
+            onValueChange={(v) => setChooserScope(v as 'this' | 'following' | 'all')}
+            className='gap-1.5'>
+            <label className='flex items-center gap-2 text-sm'>
+              <RadioGroupItem value='this' size='sm' /> This visit
+            </label>
+            <label className='flex items-center gap-2 text-sm'>
+              <RadioGroupItem value='following' size='sm' /> This and following
+            </label>
+            <label className='flex items-center gap-2 text-sm'>
+              <RadioGroupItem value='all' size='sm' /> All visits
+            </label>
+          </RadioGroup>
+        </div>
+      )}
 
       {hints.length > 0 && (
         <div className='space-y-1 rounded-md border border-amber-500/30 bg-amber-500/10 p-2 text-xs text-amber-700 dark:text-amber-400'>
@@ -284,11 +495,7 @@ export function SchedulePopoverContent({
           disabled={!initialStartTime}>
           Unschedule
         </Button>
-        <Button
-          size='sm'
-          onClick={handleSave}
-          loading={scheduleVisit.isPending}
-          disabled={!canSave}>
+        <Button size='sm' onClick={handleSave} loading={isSaving} disabled={!canSave}>
           Save
         </Button>
       </div>

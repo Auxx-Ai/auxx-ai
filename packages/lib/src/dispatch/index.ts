@@ -13,6 +13,16 @@ export type { LifecycleTrigger } from './lifecycle'
 export { rollUpWorkOrderStatus } from './lifecycle'
 export { mirrorVisitOntoWorkOrder } from './mirror'
 export { dispatchVisit } from './notify'
+export type { EngagementActionInput, RecurrenceTemplate, SetRecurrenceRuleInput } from './recurring'
+export {
+  endEngagement,
+  getWorkOrderStatus,
+  materializeVisits,
+  pauseEngagement,
+  resumeEngagement,
+  setRecurrenceRule,
+  sweepRecurringVisits,
+} from './recurring'
 export type {
   AssignVisitInput,
   ConvertRequestToWorkOrderInput,

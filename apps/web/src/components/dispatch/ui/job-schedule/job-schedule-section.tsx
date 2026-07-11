@@ -4,8 +4,10 @@
 import { Button } from '@auxx/ui/components/button'
 import { useQueryState } from 'nuqs'
 import type { DetailViewTabProps } from '~/components/detail-view'
+import { useSystemValues } from '~/components/resources/hooks/use-system-values'
 import type { ExistingVisitForOverlap } from '../schedule-popover'
 import { splitJobVisits } from './job-schedule-utils'
+import { RecurringEngagementCard } from './recurring-engagement-card'
 import { type JobVisit, type UseJobVisitsResult, useJobVisits } from './use-job-visits'
 import { VisitCard } from './visit-card'
 import { VisitTreeRow } from './visit-tree-row'
@@ -26,11 +28,15 @@ export function JobScheduleSection({ recordId }: DetailViewTabProps) {
   const { visits, isLoading, canEdit, mutations, existingVisits, refresh } = useJobVisits(recordId)
   const [, setPanel] = useQueryState('panel')
   const [, setItem] = useQueryState('item')
+  const { values } = useSystemValues(recordId, ['work_order_job_type', 'work_order_status'], {
+    autoFetch: true,
+  })
+  const jobType = (values.work_order_job_type as string | undefined) ?? 'one_off'
+  const status = (values.work_order_status as string | undefined) ?? 'new'
 
   const { upcoming, history } = splitJobVisits(visits)
-  // The primary card's target visit — v1 is one-off (exactly one visit per job);
-  // the recurring next-upcoming rule (06 §M2c) reduces to the same row until the
-  // engine lands, so this stays jobType-agnostic.
+  // The primary card's target visit — also the recurring engine's "next-upcoming visit"
+  // (06-recurring-engine.md §6): one-off has exactly one, so this stays jobType-agnostic.
   const primaryVisit = upcoming[0] ?? visits[0]
 
   const openList = () => void setPanel('visits')
@@ -51,11 +57,19 @@ export function JobScheduleSection({ recordId }: DetailViewTabProps) {
         mutations={mutations}
         existingVisits={existingVisits}
         onRefresh={refresh}
+        workOrderRecordId={recordId}
       />
 
-      {/* Recurring engine (M2c, 06-recurring-engine.md) fills the recurrence
-          summary/editor here; every job renders its visits jobType-agnostically
-          today (one-off has exactly one). */}
+      {jobType === 'recurring' && (
+        <RecurringEngagementCard
+          recordId={recordId}
+          status={status}
+          canEdit={canEdit}
+          primaryVisit={primaryVisit}
+          existingVisits={existingVisits}
+          onRefresh={refresh}
+        />
+      )}
 
       <VisitPreviewBlock
         title='Upcoming visits'
@@ -65,6 +79,7 @@ export function JobScheduleSection({ recordId }: DetailViewTabProps) {
         canEdit={canEdit}
         mutations={mutations}
         existingVisits={existingVisits}
+        workOrderRecordId={recordId}
         onRefresh={refresh}
         onMore={openList}
         onOpenItem={openItem}
@@ -78,6 +93,7 @@ export function JobScheduleSection({ recordId }: DetailViewTabProps) {
         canEdit={canEdit}
         mutations={mutations}
         existingVisits={existingVisits}
+        workOrderRecordId={recordId}
         onRefresh={refresh}
         onMore={openList}
         onOpenItem={openItem}
@@ -94,6 +110,7 @@ interface VisitPreviewBlockProps {
   canEdit: boolean
   mutations: UseJobVisitsResult['mutations']
   existingVisits: ExistingVisitForOverlap[]
+  workOrderRecordId: DetailViewTabProps['recordId']
   onRefresh: () => void
   onMore: () => void
   onOpenItem: (visitId: string) => void
@@ -107,6 +124,7 @@ function VisitPreviewBlock({
   canEdit,
   mutations,
   existingVisits,
+  workOrderRecordId,
   onRefresh,
   onMore,
   onOpenItem,
@@ -134,6 +152,7 @@ function VisitPreviewBlock({
               canEdit={canEdit}
               mutations={mutations}
               existingVisits={existingVisits}
+              workOrderRecordId={workOrderRecordId}
               onRefresh={onRefresh}
               onOpen={() => onOpenItem(visit.id)}
             />

@@ -1961,6 +1961,13 @@
       "when": 1783722171752,
       "tag": "0279_work_order_dispatched_notification",
       "breakpoints": true
+    },
+    {
+      "idx": 280,
+      "version": "7",
+      "when": 1783726673294,
+      "tag": "0280_recurrence_rule",
+      "breakpoints": true
     }
   ]
 }

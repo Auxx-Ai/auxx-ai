@@ -4,15 +4,20 @@
 import { createId } from '@paralleldrive/cuid2'
 import {
   type AnyPgColumn,
+  boolean,
+  date,
   doublePrecision,
   index,
   integer,
   pgTable,
+  sql,
   text,
   timestamp,
+  uniqueIndex,
 } from './_shared'
 import { EntityInstance } from './entity-instance'
 import { Organization } from './organization'
+import { RecurrenceRule } from './recurrence-rule'
 import { User } from './user'
 
 /**
@@ -63,6 +68,19 @@ export const WorkOrderVisit = pgTable(
     geocodedAt: timestamp({ precision: 3, withTimezone: true }),
     /** Stamped by `dispatchVisit` (M2 §B.5) — separate explicit action from scheduling. */
     dispatchedAt: timestamp({ precision: 3, withTimezone: true }),
+    /** null = not part of a recurring engagement (one-off visit) */
+    recurrenceRuleId: text().references((): AnyPgColumn => RecurrenceRule.id, {
+      onUpdate: 'cascade',
+      onDelete: 'set null',
+    }),
+    /**
+     * Slot identity: the local date the pattern produced this occurrence for (06 §3.2/§4.3).
+     * IMMUTABLE — a rescheduled (detached) visit keeps its slot even when `startTime` moves to
+     * a different day. Null for non-recurring visits.
+     */
+    occurrenceDate: date(),
+    /** Per-visit edit happened (this-visit-only scope, 06 §4.3) — regeneration never touches it */
+    isDetached: boolean().default(false).notNull(),
     createdAt: timestamp({ precision: 3 }).defaultNow().notNull(),
     updatedAt: timestamp({ precision: 3 })
       .notNull()
@@ -84,6 +102,14 @@ export const WorkOrderVisit = pgTable(
     ),
     // Record drawer lookup
     index('WorkOrderVisit_workOrderId_idx').using('btree', table.workOrderId.asc().nullsLast()),
+    // Materialization idempotency: one row per rule per occurrence date
+    uniqueIndex('WorkOrderVisit_recurrenceRuleId_occurrenceDate_key')
+      .using(
+        'btree',
+        table.recurrenceRuleId.asc().nullsLast(),
+        table.occurrenceDate.asc().nullsLast()
+      )
+      .where(sql`${table.recurrenceRuleId} IS NOT NULL`),
   ]
 )
 

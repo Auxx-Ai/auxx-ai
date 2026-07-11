@@ -7,6 +7,7 @@ import { Badge } from '@auxx/ui/components/badge'
 import { TreeRow, TreeRowButton } from '@auxx/ui/components/tree-row'
 import { Calendar, CalendarClock, XCircle } from 'lucide-react'
 import { getInitials } from '~/components/groups/utils/group-utils'
+import type { RecordId } from '~/components/resources'
 import { useActors } from '~/components/resources/hooks/use-actor'
 import { useConfirm } from '~/hooks/use-confirm'
 import { VISIT_STATUS_LABELS, type VisitStatus } from '../board/types'
@@ -24,6 +25,8 @@ export interface VisitTreeRowProps {
   /** Drill into the visit-detail panel (`setItemId(visit.id)`). */
   onOpen: () => void
   depth?: number
+  /** Threaded into `SchedulePopover` so it can offer the Repeats row (06 §6). */
+  workOrderRecordId: RecordId
 }
 
 /**
@@ -41,6 +44,7 @@ export function VisitTreeRow({
   onRefresh,
   onOpen,
   depth,
+  workOrderRecordId,
 }: VisitTreeRowProps) {
   const [confirm, ConfirmDialog] = useConfirm()
   const assigneeActorId = visit.assigneeUserId ? toActorId('user', visit.assigneeUserId) : null
@@ -103,6 +107,8 @@ export function VisitTreeRow({
                 initialEndTime={visit.endTime ? new Date(visit.endTime) : undefined}
                 initialAssigneeUserId={visit.assigneeUserId}
                 existingVisits={existingVisits}
+                workOrderRecordId={workOrderRecordId}
+                recurrenceRuleId={visit.recurrenceRuleId}
                 onScheduled={onRefresh}
                 onUnscheduled={onRefresh}
               />

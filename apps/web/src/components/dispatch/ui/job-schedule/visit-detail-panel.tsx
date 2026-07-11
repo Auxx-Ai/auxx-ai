@@ -100,6 +100,8 @@ export function VisitDetailPanel({ recordId, itemId }: DetailViewSectionsDrillCo
               initialEndTime={visit.endTime ? new Date(visit.endTime) : undefined}
               initialAssigneeUserId={visit.assigneeUserId}
               existingVisits={existingVisits}
+              workOrderRecordId={recordId}
+              recurrenceRuleId={visit.recurrenceRuleId}
               onScheduled={refresh}
               onUnscheduled={refresh}
             />

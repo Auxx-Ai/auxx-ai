@@ -315,6 +315,24 @@ export async function setupSchedules() {
     }
   )
 
+  // Dispatch recurring engine daily sweep — every day at 03:00 UTC
+  // (plans/dispatch/06-recurring-engine.md §4.4/§5.3). Extends the materialization horizon
+  // for active recurring engagements that have fallen behind, and auto-ends engagements
+  // whose pattern (until/count) has run its course.
+  await maintenanceQueue.upsertJobScheduler(
+    'recurringVisitsJob',
+    { pattern: '0 3 * * *', tz: 'UTC' },
+    {
+      opts: {
+        attempts: 2,
+        backoff: { type: 'exponential', delay: 60000 },
+        priority: 8,
+        removeOnComplete: { count: 14 },
+        removeOnFail: { count: 30 },
+      },
+    }
+  )
+
   // Every day at 8 AM
   await maintenanceQueue.upsertJobScheduler(
     'requestDocumentSuggestionsJob',
