@@ -2,21 +2,46 @@
 
 import { getAllOrganizationSettings, getOrganizationSetting } from '../settings/settings-service'
 
+/** Canonical structured address (`AddressStructFields`) — `street1/street2/city/state/zipCode/country`. */
+export interface DocumentBusinessAddress {
+  street1: string
+  street2?: string
+  city: string
+  state?: string
+  zipCode: string
+  country: string
+}
+
 /** `documents.business` JSON blob — printed on quote/invoice PDFs (money MQ2 build spec §A.2). */
 export interface DocumentBusinessSettings {
   companyName?: string
-  address?: {
-    line1: string
-    line2?: string
-    city: string
-    zip: string
-    region?: string
-    country: string
-  }
+  address?: DocumentBusinessAddress
   phone?: string
   email?: string
   website?: string
   taxId?: { label: string; value: string }
+}
+
+/**
+ * Map a stored business blob's address to the canonical `AddressStruct` keys, tolerating the
+ * legacy `{line1,line2,region,zip}` shape saved before 10-settings-forms-unification.md. Few users,
+ * so this read-time shim (no ledgered DataMigration) is enough — a legacy blob self-heals on its
+ * next save from the Documents page, which now writes the new keys.
+ */
+function normalizeBusinessAddress(business: DocumentBusinessSettings): DocumentBusinessSettings {
+  const raw = business.address as Record<string, string> | undefined
+  if (!raw) return business
+  return {
+    ...business,
+    address: {
+      street1: raw.street1 ?? raw.line1 ?? '',
+      street2: raw.street2 ?? raw.line2 ?? '',
+      city: raw.city ?? '',
+      state: raw.state ?? raw.region ?? '',
+      zipCode: raw.zipCode ?? raw.zip ?? '',
+      country: raw.country ?? '',
+    },
+  }
 }
 
 /** Logo ref stored in `documents.logo` — `assetId` is what the renderer loads bytes from. */
@@ -82,7 +107,9 @@ export async function resolveDocumentSettings(
     getOrganizationSetting({ organizationId, key: 'organization.currency' }),
   ])
 
-  const business = (settings['documents.business'] as DocumentBusinessSettings | null) ?? {}
+  const business = normalizeBusinessAddress(
+    (settings['documents.business'] as DocumentBusinessSettings | null) ?? {}
+  )
   const logo = (settings['documents.logo'] as DocumentLogo | null) ?? null
 
   return {

@@ -60,7 +60,7 @@ function ProductEditorForm({ item }: { item: CatalogItem }) {
   return (
     <div className='p-3'>
       <FieldPanel
-        orientation='responsive'
+        orientation='horizontal'
         breakpoint='md'
         resizeId='catalog-item-form'
         defaultLabelWidth={160}
@@ -95,6 +95,7 @@ function ProductEditorForm({ item }: { item: CatalogItem }) {
             fieldType={FieldType.SINGLE_SELECT}
             fieldOptions={categoryField?.options}
             value={item.category}
+            triggerProps={{ className: 'w-full ps-0 pe-1' }}
             onChange={(value) =>
               saveFieldValue(item.recordId, 'catalog_item_category', value, FieldType.SINGLE_SELECT)
             }
@@ -121,6 +122,7 @@ function ProductEditorForm({ item }: { item: CatalogItem }) {
         <FieldPanelRow title='Taxable' type={BaseType.BOOLEAN} showIcon>
           <FieldInputAdapter
             fieldType={FieldType.CHECKBOX}
+            fieldOptions={{ variant: 'switch' }}
             value={item.taxable}
             onChange={(value) =>
               saveFieldValue(item.recordId, 'catalog_item_taxable', value, FieldType.CHECKBOX)

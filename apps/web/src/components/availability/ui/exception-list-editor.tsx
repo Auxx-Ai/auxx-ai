@@ -3,22 +3,19 @@
 
 import type { TimeRange } from '@auxx/lib/availability/client'
 import { validateRanges } from '@auxx/lib/availability/client'
+import { AutosizeInput } from '@auxx/ui/components/autosize-input'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
-import { Input } from '@auxx/ui/components/input'
-import { SegmentedControl } from '@auxx/ui/components/segmented-control'
+import { EmptySection, Section } from '@auxx/ui/components/section'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { toastError } from '@auxx/ui/components/toast'
+import { TreeRow, TreeRowButton } from '@auxx/ui/components/tree-row'
 import { cn } from '@auxx/ui/lib/utils'
 import { format, parseISO } from 'date-fns'
-import { Plus, Trash2 } from 'lucide-react'
+import { Ban, CalendarClock, CalendarOff, Clock, Plus, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 import { DateTimePicker } from '~/components/pickers/date-time-picker'
-import {
-  minutesToLabel,
-  TimeRangeInput,
-  type TimeRangeValue,
-} from '~/components/pickers/time-range-input'
+import { TimeRangeInput, type TimeRangeValue } from '~/components/pickers/time-range-input'
 import { api } from '~/trpc/react'
 
 /**
@@ -39,6 +36,16 @@ export interface ExceptionListEditorProps {
   className?: string
 }
 
+/** One exception group as it lives in the editor's list. */
+interface ExceptionGroup {
+  ids: string[]
+  dateFrom: string
+  dateTo: string
+  label: string | null
+  isAvailable: boolean
+  ranges: TimeRange[]
+}
+
 /** 'Dec 25, 2026' for a single date, 'Dec 25 – 26, 2026' for a contiguous range. */
 function formatExceptionDateRange(dateFrom: string, dateTo: string): string {
   const from = parseISO(dateFrom)
@@ -50,6 +57,9 @@ function formatExceptionDateRange(dateFrom: string, dateTo: string): string {
   if (sameYear) return `${format(from, 'MMM d')} – ${format(to, 'MMM d, yyyy')}`
   return `${format(from, 'MMM d, yyyy')} – ${format(to, 'MMM d, yyyy')}`
 }
+
+/** Stable per-group key — the underlying row ids identify a regrouped run. */
+const groupKey = (group: ExceptionGroup) => group.ids.join(',')
 
 /** Pill-level invalid flag — same idiom as `WeeklyHoursEditor`'s `isRangePillInvalid`. */
 function isExceptionRangeInvalid(
@@ -68,69 +78,14 @@ function isExceptionRangeInvalid(
   })
 }
 
-/** One exception group row: date(-range), label, badge, range pills, delete. */
-function ExceptionRow({
-  group,
-  use24HourTime,
-  onDelete,
-  deleting,
-}: {
-  group: {
-    ids: string[]
-    dateFrom: string
-    dateTo: string
-    label: string | null
-    isAvailable: boolean
-    ranges: TimeRange[]
-  }
-  use24HourTime: boolean
-  onDelete: () => void
-  deleting: boolean
-}) {
-  return (
-    <div className='flex items-center gap-3 rounded-lg border px-3 py-2'>
-      <div className='min-w-0 flex-1'>
-        <div className='flex flex-wrap items-center gap-2'>
-          <span className='text-sm font-medium'>
-            {formatExceptionDateRange(group.dateFrom, group.dateTo)}
-          </span>
-          <Badge variant={group.isAvailable ? 'default' : 'destructive'} size='sm'>
-            {group.isAvailable ? 'Special hours' : 'Closed'}
-          </Badge>
-          {group.label && (
-            <span className='truncate text-sm text-muted-foreground'>{group.label}</span>
-          )}
-        </div>
-        {group.isAvailable && group.ranges.length > 0 && (
-          <div className='mt-1 flex flex-wrap gap-x-2 gap-y-0.5'>
-            {group.ranges.map((range) => (
-              <span key={`${range.start}-${range.end}`} className='text-xs text-muted-foreground'>
-                {minutesToLabel(range.start, use24HourTime)} –{' '}
-                {minutesToLabel(range.end, use24HourTime)}
-              </span>
-            ))}
-          </div>
-        )}
-      </div>
-      <Button
-        type='button'
-        variant='ghost'
-        size='icon-sm'
-        aria-label='Delete exception'
-        loading={deleting}
-        onClick={onDelete}>
-        <Trash2 className='size-3.5 text-muted-foreground' />
-      </Button>
-    </div>
-  )
-}
-
 /**
  * ExceptionListEditor
  *
  * Self-fetching per subject (05-availability.md §D — webhook-endpoints idiom: immediate
- * per-row mutations, no page-level dirty state). Lists the subject's regrouped exception
- * rows and adds new ones via an inline dashed editor card.
+ * per-row mutations, no page-level dirty state). A `Section` lists the subject's regrouped
+ * exception rows as `TreeRow`s (inline-editable name, status badge, delete); clicking a row —
+ * or "Add exception" — opens a second `Section` below holding the detail editor, whose
+ * Cancel/Apply persist a single `addException`/`updateException` mutation.
  */
 export function ExceptionListEditor({
   subject,
@@ -140,34 +95,67 @@ export function ExceptionListEditor({
   const utils = api.useUtils()
   const { data: groups, isLoading } = api.availability.listExceptions.useQuery({ subject })
 
+  const invalidate = () => utils.availability.listExceptions.invalidate({ subject })
+
   const deleteException = api.availability.deleteException.useMutation({
-    onSuccess: () => utils.availability.listExceptions.invalidate({ subject }),
+    onSuccess: invalidate,
     onError: (error) =>
       toastError({ title: 'Error deleting exception', description: error.message }),
   })
 
   const addException = api.availability.addException.useMutation({
     onSuccess: () => {
-      utils.availability.listExceptions.invalidate({ subject })
-      resetForm()
-      setAdding(false)
+      invalidate()
+      closeEditor()
     },
     onError: (error) => toastError({ title: 'Error adding exception', description: error.message }),
   })
 
-  const [adding, setAdding] = useState(false)
+  const updateException = api.availability.updateException.useMutation({
+    onSuccess: () => {
+      invalidate()
+      closeEditor()
+    },
+    onError: (error) =>
+      toastError({ title: 'Error updating exception', description: error.message }),
+  })
+
+  // Editor target: `creating` for a new exception, `editingKey` for an existing group. Both
+  // false/null → the detail Section is hidden.
+  const [creating, setCreating] = useState(false)
+  const [editingKey, setEditingKey] = useState<string | null>(null)
+
+  // Detail-editor buffer — nothing persists until Apply.
   const [dateFrom, setDateFrom] = useState<Date | undefined>(undefined)
   const [dateTo, setDateTo] = useState<Date | undefined>(undefined)
   const [label, setLabel] = useState('')
   const [isAvailable, setIsAvailable] = useState(false)
   const [ranges, setRanges] = useState<TimeRangeValue[]>([])
 
-  function resetForm() {
-    setDateFrom(undefined)
-    setDateTo(undefined)
-    setLabel('')
-    setIsAvailable(false)
-    setRanges([])
+  function seed(group: ExceptionGroup | null) {
+    setDateFrom(group ? parseISO(group.dateFrom) : undefined)
+    setDateTo(group && group.dateTo !== group.dateFrom ? parseISO(group.dateTo) : undefined)
+    setLabel(group?.label ?? '')
+    setIsAvailable(group?.isAvailable ?? false)
+    setRanges(group ? group.ranges.map((r) => ({ start: r.start, end: r.end })) : [])
+  }
+
+  function openCreate() {
+    seed(null)
+    setEditingKey(null)
+    setCreating(true)
+  }
+
+  function openEdit(group: ExceptionGroup) {
+    seed(group)
+    setCreating(false)
+    setEditingKey(groupKey(group))
+  }
+
+  function closeEditor() {
+    setCreating(false)
+    setEditingKey(null)
+    seed(null)
   }
 
   function handleModeChange(nextIsAvailable: boolean) {
@@ -189,20 +177,19 @@ export function ExceptionListEditor({
     setRanges((prev) => prev.filter((_, i) => i !== index))
   }
 
-  function handleCancel() {
-    resetForm()
-    setAdding(false)
-  }
-
   const rangesComplete = ranges.length > 0 && ranges.every((r) => r.start != null && r.end != null)
   const rangeErrors = rangesComplete ? validateRanges(ranges as TimeRange[]) : []
   const dateOrderValid = !dateFrom || !dateTo || dateTo >= dateFrom
-  const canAdd =
+  const canApply =
     !!dateFrom && dateOrderValid && (!isAvailable || (rangesComplete && rangeErrors.length === 0))
 
-  function handleAdd() {
-    if (!dateFrom || !canAdd) return
-    addException.mutate({
+  const editingGroup = editingKey ? (groups?.find((g) => groupKey(g) === editingKey) ?? null) : null
+  const editorOpen = creating || !!editingKey
+  const applying = addException.isPending || updateException.isPending
+
+  function handleApply() {
+    if (!dateFrom || !canApply) return
+    const payload = {
       subject,
       dateFrom: format(dateFrom, 'yyyy-MM-dd'),
       dateTo: dateTo ? format(dateTo, 'yyyy-MM-dd') : undefined,
@@ -211,123 +198,192 @@ export function ExceptionListEditor({
       ranges: isAvailable
         ? (ranges.filter((r) => r.start != null && r.end != null) as TimeRange[])
         : undefined,
-    })
+    }
+    if (editingGroup) {
+      updateException.mutate({ ...payload, ids: editingGroup.ids })
+    } else {
+      addException.mutate(payload)
+    }
   }
 
-  const empty = !isLoading && !adding && (groups?.length ?? 0) === 0
+  const empty = !isLoading && !creating && (groups?.length ?? 0) === 0
 
   return (
-    <div className={cn('flex flex-col gap-3', className)}>
-      <div className='flex items-center justify-end'>
-        {!adding && (
-          <Button type='button' variant='outline' size='sm' onClick={() => setAdding(true)}>
-            <Plus /> Add exception
-          </Button>
-        )}
-      </div>
-
-      {adding && (
-        <div className='flex flex-col gap-3 rounded-lg border border-dashed p-3'>
-          <div className='flex flex-wrap items-center gap-2'>
-            <DateTimePicker
-              mode='date'
-              noConfirm
-              value={dateFrom}
-              onChange={setDateFrom}
-              placeholder='From date'
-              triggerProps={{ className: 'w-[160px]' }}
-            />
-            <span className='text-sm text-muted-foreground'>to</span>
-            <DateTimePicker
-              mode='date'
-              noConfirm
-              value={dateTo}
-              onChange={setDateTo}
-              onClear={() => setDateTo(undefined)}
-              placeholder='To date (optional)'
-              triggerProps={{ className: 'w-[160px]' }}
-            />
+    <div className={cn('flex flex-col', className)}>
+      {/* Exception list */}
+      <Section
+        title='Exceptions'
+        icon={<CalendarOff className='size-4' />}
+        collapsible={false}
+        actions={
+          !creating && (
+            <Button variant='ghost' size='xs' onClick={openCreate}>
+              <Plus />
+              Add exception
+            </Button>
+          )
+        }>
+        {isLoading ? (
+          <div className='flex flex-col gap-2'>
+            <Skeleton className='h-8 w-full rounded-md' />
+            <Skeleton className='h-8 w-full rounded-md' />
           </div>
-          {!dateOrderValid && (
-            <p className='text-xs text-destructive'>End date must be on or after the start date.</p>
-          )}
-          <Input
-            value={label}
-            onChange={(e) => setLabel(e.target.value)}
-            placeholder='e.g. Public holiday'
+        ) : empty ? (
+          <EmptySection
+            icon={<CalendarOff className='size-5' />}
+            title='No exceptions yet'
+            description='Add a holiday or one-off change to the schedule.'
           />
-          <SegmentedControl
-            mode='toggle'
-            toggleMode='single'
-            isPill
-            value={[isAvailable ? 1 : 0]}
-            onChange={(indices) => handleModeChange(indices[0] === 1)}
-            className='w-fit'>
-            <Button type='button' variant='outline' size='sm'>
-              Closed all day
-            </Button>
-            <Button type='button' variant='outline' size='sm'>
-              Special hours
-            </Button>
-          </SegmentedControl>
-          {isAvailable && (
-            <div className='flex flex-wrap items-center gap-1.5'>
-              {ranges.map((range, index) => (
-                <TimeRangeInput
-                  key={index}
-                  value={range}
-                  onChange={(next) => handleRangeChange(index, next)}
-                  onRemove={() => handleRemoveRange(index)}
-                  use24HourTime={use24HourTime}
-                  invalid={isExceptionRangeInvalid(range, index, ranges)}
+        ) : (
+          <div className='flex flex-col gap-0.5'>
+            {groups?.map((group) => {
+              const key = groupKey(group)
+              const selected = editingKey === key
+              const titleValue = selected ? label : (group.label ?? '')
+              return (
+                <TreeRow
+                  key={key}
+                  icon={
+                    group.isAvailable ? <Clock className='size-4' /> : <Ban className='size-4' />
+                  }
+                  isOpen={selected}
+                  onToggleOpen={() => (selected ? closeEditor() : openEdit(group))}
+                  rowClassName={
+                    selected
+                      ? 'bg-primary-100 hover:bg-primary-150'
+                      : 'bg-primary-50 hover:bg-primary-100'
+                  }
+                  title={
+                    <AutosizeInput
+                      value={titleValue}
+                      onChange={(e) => {
+                        if (!selected) openEdit(group)
+                        setLabel(e.target.value)
+                      }}
+                      onFocus={() => {
+                        if (!selected) openEdit(group)
+                      }}
+                      onClick={(e) => e.stopPropagation()}
+                      placeholder='Add a name'
+                      inputClassName='bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground'
+                      minWidth={60}
+                    />
+                  }
+                  secondaryFill
+                  secondary={
+                    <span className='inline-flex items-center gap-2 text-muted-foreground'>
+                      <span className='truncate'>
+                        {formatExceptionDateRange(group.dateFrom, group.dateTo)}
+                      </span>
+                      <Badge variant={group.isAvailable ? 'outline' : 'destructive'} size='xs'>
+                        {group.isAvailable ? 'Special hours' : 'Closed'}
+                      </Badge>
+                    </span>
+                  }
+                  actions={
+                    <TreeRowButton
+                      variant='destructive'
+                      tooltipText='Delete exception'
+                      disabled={
+                        deleteException.isPending && deleteException.variables?.ids === group.ids
+                      }
+                      onClick={() => deleteException.mutate({ subject, ids: group.ids })}>
+                      <Trash2 />
+                    </TreeRowButton>
+                  }
                 />
-              ))}
+              )
+            })}
+          </div>
+        )}
+      </Section>
+
+      {/* Detail editor — the selected (or new) exception */}
+      {editorOpen && (
+        <Section
+          title={
+            editingGroup
+              ? `Exception · ${formatExceptionDateRange(editingGroup.dateFrom, editingGroup.dateTo)}`
+              : 'New exception'
+          }
+          icon={<CalendarClock className='size-4' />}
+          collapsible={false}
+          actions={
+            <div className='flex items-center gap-1'>
+              <Button variant='ghost' size='xs' onClick={closeEditor}>
+                Cancel
+              </Button>
               <Button
-                type='button'
-                variant='ghost'
-                size='icon-sm'
-                className='rounded-lg border border-dashed hover:border-primary-300 hover:bg-primary-100'
-                aria-label='Add time range'
-                onClick={handleAddRange}>
-                <Plus className='size-3.5 text-muted-foreground' />
+                variant='outline'
+                size='xs'
+                disabled={!canApply}
+                loading={applying}
+                onClick={handleApply}>
+                Apply
               </Button>
             </div>
-          )}
-          <div className='flex items-center justify-end gap-2 pt-1'>
-            <Button type='button' variant='outline' size='sm' onClick={handleCancel}>
-              Cancel
-            </Button>
-            <Button
-              type='button'
-              size='sm'
-              disabled={!canAdd}
-              loading={addException.isPending}
-              onClick={handleAdd}>
-              Add
-            </Button>
-          </div>
-        </div>
-      )}
+          }>
+          <div className='flex flex-col gap-3'>
+            <div className='flex flex-wrap items-center gap-2'>
+              <DateTimePicker
+                mode='date'
+                noConfirm
+                value={dateFrom}
+                onChange={setDateFrom}
+                placeholder='From date'
+                triggerProps={{ className: 'w-[160px]' }}
+              />
+              <span className='text-sm text-muted-foreground'>to</span>
+              <DateTimePicker
+                mode='date'
+                noConfirm
+                value={dateTo}
+                onChange={setDateTo}
+                onClear={() => setDateTo(undefined)}
+                placeholder='To date (optional)'
+                triggerProps={{ className: 'w-[160px]' }}
+              />
+            </div>
+            {!dateOrderValid && (
+              <p className='text-xs text-destructive'>
+                End date must be on or after the start date.
+              </p>
+            )}
 
-      {isLoading ? (
-        <div className='flex flex-col gap-2'>
-          <Skeleton className='h-12 w-full rounded-lg' />
-          <Skeleton className='h-12 w-full rounded-lg' />
-        </div>
-      ) : empty ? (
-        <p className='text-sm text-muted-foreground'>No exceptions yet.</p>
-      ) : (
-        <div className='flex flex-col gap-2'>
-          {groups?.map((group) => (
-            <ExceptionRow
-              key={group.ids.join(',')}
-              group={group}
-              use24HourTime={use24HourTime}
-              deleting={deleteException.isPending && deleteException.variables?.ids === group.ids}
-              onDelete={() => deleteException.mutate({ subject, ids: group.ids })}
-            />
-          ))}
-        </div>
+            <button type='button' className='w-fit' onClick={() => handleModeChange(!isAvailable)}>
+              <Badge
+                variant={isAvailable ? 'default' : 'destructive'}
+                size='sm'
+                className='cursor-pointer'>
+                {isAvailable ? 'Special hours' : 'Closed all day'}
+              </Badge>
+            </button>
+
+            {isAvailable && (
+              <div className='flex flex-wrap items-center gap-1.5'>
+                {ranges.map((range, index) => (
+                  <TimeRangeInput
+                    key={index}
+                    value={range}
+                    onChange={(next) => handleRangeChange(index, next)}
+                    onRemove={() => handleRemoveRange(index)}
+                    use24HourTime={use24HourTime}
+                    invalid={isExceptionRangeInvalid(range, index, ranges)}
+                  />
+                ))}
+                <Button
+                  type='button'
+                  variant='ghost'
+                  size='icon-sm'
+                  className='rounded-lg border border-dashed hover:border-primary-300 hover:bg-primary-100'
+                  aria-label='Add time range'
+                  onClick={handleAddRange}>
+                  <Plus className='size-3.5 text-muted-foreground' />
+                </Button>
+              </div>
+            )}
+          </div>
+        </Section>
       )}
     </div>
   )

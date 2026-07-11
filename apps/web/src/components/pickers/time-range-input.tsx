@@ -41,6 +41,9 @@ export interface TimeRangeInputProps {
 
 type Segment = 'from' | 'to'
 
+/** Segment → `TimeRangeValue` key. The UI names segments `from`/`to`; the value speaks `start`/`end`. */
+const SEGMENT_KEY: Record<Segment, 'start' | 'end'> = { from: 'start', to: 'end' }
+
 /** Convert minutes-since-midnight to a Date usable by TimeView (date portion is arbitrary) */
 function dateFromMinutes(minutes: number | null | undefined): Date | undefined {
   if (minutes == null) return undefined
@@ -107,7 +110,7 @@ export function TimeRangeInput({
       const hour24 = resolveHour24(hourStr, use24HourTime, currentDate)
       const minute = currentDate?.getMinutes() ?? 0
       const newDate = createDateWithTime(currentDate, hour24, minute)
-      onChange({ ...value, [segment]: dateToMinutes(newDate) })
+      onChange({ ...value, [SEGMENT_KEY[segment]]: dateToMinutes(newDate) })
     },
     [value, onChange, use24HourTime]
   )
@@ -117,7 +120,7 @@ export function TimeRangeInput({
       const currentDate = dateFromMinutes(segment === 'from' ? value.start : value.end)
       const hour = currentDate?.getHours() ?? 0
       const newDate = createDateWithTime(currentDate, hour, parseInt(minuteStr, 10))
-      const next = { ...value, [segment]: dateToMinutes(newDate) }
+      const next = { ...value, [SEGMENT_KEY[segment]]: dateToMinutes(newDate) }
       onChange(next)
 
       // Focus cascade: minute selection completes the segment — close it, and if this was
@@ -132,12 +135,15 @@ export function TimeRangeInput({
       const currentDate = dateFromMinutes(segment === 'from' ? value.start : value.end)
       if (!currentDate) {
         const hour24 = period === Period.PM ? 12 : 0
-        onChange({ ...value, [segment]: dateToMinutes(createDateWithTime(undefined, hour24, 0)) })
+        onChange({
+          ...value,
+          [SEGMENT_KEY[segment]]: dateToMinutes(createDateWithTime(undefined, hour24, 0)),
+        })
         return
       }
       const hour24 = to24Hour(getHourIn12HourFormat(currentDate), period)
       const newDate = createDateWithTime(currentDate, hour24, currentDate.getMinutes())
-      onChange({ ...value, [segment]: dateToMinutes(newDate) })
+      onChange({ ...value, [SEGMENT_KEY[segment]]: dateToMinutes(newDate) })
     },
     [value, onChange]
   )

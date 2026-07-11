@@ -2,11 +2,15 @@
 'use client'
 
 import { FeatureKey } from '@auxx/lib/permissions/client'
+import type { SettingValue } from '@auxx/lib/settings/client'
 import { Lock, Receipt } from 'lucide-react'
 import { EmptyState } from '~/components/global/empty-state'
 import { FieldPanel } from '~/components/global/forms/field-panel'
+import { FormSaveBar } from '~/components/global/forms/form-save-bar'
+import { useDirtyDraft } from '~/components/global/forms/use-dirty-draft'
 import SettingsPage, { SettingsSection } from '~/components/global/settings-page'
 import { SettingsFieldRow } from '~/components/settings/settings-field-row'
+import { useSettings } from '~/hooks/use-settings'
 import { useUser } from '~/hooks/use-user'
 import { useFeatureFlags } from '~/providers/feature-flag-provider'
 
@@ -42,6 +46,43 @@ export function InvoicingSettingsPage() {
     )
   }
 
+  return <InvoicingSettingsBody breadcrumbs={breadcrumbs} />
+}
+
+/** Scalar catalog keys the Invoicing draft owns. */
+const DRAFT_KEYS = [
+  'documents.invoice.autoEnabled',
+  'documents.invoice.defaultTiming',
+  'documents.invoice.dateBasis',
+] as const
+
+function InvoicingSettingsBody({ breadcrumbs }: { breadcrumbs: { title: string }[] }) {
+  const { getSetting, batchUpdateOrganizationSettings, isBatchUpdatingOrgSettings } = useSettings({
+    scope: 'DOCUMENTS',
+  })
+
+  // Rebuilt each render; `useDirtyDraft` compares by value so a fresh identity never reseeds.
+  const server: Record<string, SettingValue> = {}
+  for (const key of DRAFT_KEYS) server[key] = getSetting(key)
+
+  const { draft, patch, dirty, save, discard } = useDirtyDraft(server, {
+    isSaving: isBatchUpdatingOrgSettings,
+    onSave: (next) => {
+      // `defaultTiming` write-throughs onto the two `*_invoice_timing` CustomField.defaultValue rows
+      // via the batch path — send only changed keys so an untouched save doesn't re-fire it.
+      const changed = DRAFT_KEYS.filter((key) => next[key] !== server[key]).map((key) => ({
+        key,
+        value: next[key],
+      }))
+      if (changed.length > 0) batchUpdateOrganizationSettings(changed)
+    },
+  })
+
+  const controlled = (key: (typeof DRAFT_KEYS)[number]) => ({
+    value: draft[key],
+    onChange: (value: unknown) => patch({ [key]: value as SettingValue }),
+  })
+
   return (
     <SettingsPage
       title='Invoicing'
@@ -57,19 +98,29 @@ export function InvoicingSettingsPage() {
               settingKey='documents.invoice.autoEnabled'
               title='Automatic invoicing'
               description='Generate invoice drafts automatically. Turning this off only stops automation — manual gather still works.'
+              {...controlled('documents.invoice.autoEnabled')}
             />
             <SettingsFieldRow
               settingKey='documents.invoice.defaultTiming'
               title='Default invoice timing'
               description='What new quotes and jobs start as. A per-job timing setting always overrides this default.'
+              {...controlled('documents.invoice.defaultTiming')}
             />
             <SettingsFieldRow
               settingKey='documents.invoice.dateBasis'
               title='Invoice date basis'
               description='Whether auto-generated invoices are dated to the visit or the day they were generated.'
+              {...controlled('documents.invoice.dateBasis')}
             />
           </FieldPanel>
         </SettingsSection>
+
+        <FormSaveBar
+          dirty={dirty}
+          isSaving={isBatchUpdatingOrgSettings}
+          onSave={save}
+          onDiscard={discard}
+        />
       </div>
     </SettingsPage>
   )

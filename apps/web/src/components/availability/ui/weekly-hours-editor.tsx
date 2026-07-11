@@ -5,6 +5,7 @@ import { Button } from '@auxx/ui/components/button'
 import { Checkbox } from '@auxx/ui/components/checkbox'
 import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
 import { Switch } from '@auxx/ui/components/switch'
+import { TreeRow } from '@auxx/ui/components/tree-row'
 import { cn } from '@auxx/ui/lib/utils'
 import { Copy, Plus } from 'lucide-react'
 import { useCallback, useState } from 'react'
@@ -35,7 +36,6 @@ export interface WeeklyHoursEditorProps {
 }
 
 const DAY_LABELS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
-const DAY_LABELS_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
 const DEFAULT_RANGE_START = 9 * 60 // 9:00 AM
 const DEFAULT_RANGE_END = 17 * 60 // 5:00 PM
@@ -235,16 +235,17 @@ function WeeklyDayRow({
 
   const hint = getDayHint(day)
 
+  // Single-line row (streams-section idiom): day label as the title, range pills inline in the
+  // `secondary` slot, and the enable switch + copy in `trailing`. The validation hint sits just
+  // below the row, indented under the pills.
   return (
-    <div className='flex flex-col gap-1 py-2'>
-      <div className='flex items-center gap-3'>
-        <Switch checked={day.enabled} onCheckedChange={handleToggle} disabled={readOnly} />
-        <span className='w-10 shrink-0 text-sm'>{DAY_LABELS_SHORT[day.dayOfWeek]}</span>
-        <div className='flex flex-1 flex-wrap items-center gap-1.5'>
-          {!day.enabled ? (
-            <span className='text-sm text-muted-foreground'>Closed</span>
-          ) : (
-            <>
+    <div>
+      <TreeRow
+        title={<span className='text-sm text-foreground'>{DAY_LABELS[day.dayOfWeek]}</span>}
+        secondaryFill
+        secondary={
+          day.enabled ? (
+            <span className='flex flex-wrap items-center gap-1.5'>
               {day.ranges.map((range, index) => (
                 <TimeRangeInput
                   key={index}
@@ -267,14 +268,26 @@ function WeeklyDayRow({
                   <Plus className='size-3.5 text-muted-foreground' />
                 </Button>
               )}
-            </>
-          )}
-        </div>
-        {!readOnly && (
-          <CopyHoursPopover sourceDay={day} weekStartsOn={weekStartsOn} onApply={onCopyTo} />
-        )}
-      </div>
-      {hint && <p className='pl-[52px] text-xs text-destructive'>{hint}</p>}
+            </span>
+          ) : (
+            <span className='text-muted-foreground text-sm'>Closed</span>
+          )
+        }
+        trailing={
+          <div className='flex items-center gap-1'>
+            {!readOnly && day.enabled && (
+              <CopyHoursPopover sourceDay={day} weekStartsOn={weekStartsOn} onApply={onCopyTo} />
+            )}
+            <Switch
+              size='xs'
+              checked={day.enabled}
+              onCheckedChange={handleToggle}
+              disabled={readOnly}
+            />
+          </div>
+        }
+      />
+      {hint && <p className='ps-2 pt-0.5 text-xs text-destructive'>{hint}</p>}
     </div>
   )
 }
@@ -324,7 +337,7 @@ export function WeeklyHoursEditor({
 
   return (
     <div className={cn('flex flex-col gap-3', className)}>
-      <div className={cn('flex flex-col divide-y', readOnly && 'pointer-events-none opacity-60')}>
+      <div className={cn('flex flex-col gap-0.5', readOnly && 'pointer-events-none opacity-60')}>
         {orderedIndices.map((dayOfWeek) => {
           const day = value.days.find((d) => d.dayOfWeek === dayOfWeek)
           if (!day) return null

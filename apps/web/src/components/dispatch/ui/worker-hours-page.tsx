@@ -4,15 +4,17 @@
 import { detectTimezone } from '@auxx/config/client'
 import type { WeeklyHours } from '@auxx/lib/availability/client'
 import { Button } from '@auxx/ui/components/button'
+import { DialogFooter } from '@auxx/ui/components/dialog'
+import { KbdSubmit } from '@auxx/ui/components/kbd'
 import { Skeleton } from '@auxx/ui/components/skeleton'
-import { Switch } from '@auxx/ui/components/switch'
 import { toastError } from '@auxx/ui/components/toast'
-import { useEffect, useState } from 'react'
+import { ToggleCard } from '@auxx/ui/components/toggle-card'
 import {
   validateWeeklyDraft,
   type WeeklyHoursDraft,
   WeeklyHoursEditor,
 } from '~/components/availability/ui/weekly-hours-editor'
+import { useDirtyDraft } from '~/components/global/forms/use-dirty-draft'
 import { useConfirm } from '~/hooks/use-confirm'
 import { api } from '~/trpc/react'
 
@@ -37,6 +39,28 @@ function buildDraftFromResponse(
   }
 }
 
+/** Collapse an editor draft to the persisted `WeeklyHours` shape (drop disabled days / empty ranges). */
+function toWeeklyHours(draft: WeeklyHoursDraft): WeeklyHours {
+  return {
+    timezone: draft.timezone,
+    days: draft.days
+      .filter((d) => d.enabled)
+      .map((d) => ({
+        dayOfWeek: d.dayOfWeek,
+        ranges: d.ranges.filter(
+          (r): r is { start: number; end: number } => r.start != null && r.end != null
+        ),
+      }))
+      .filter((d) => d.ranges.length > 0),
+  }
+}
+
+/** Page draft: the "inherit org default" switch plus (when overriding) the worker's weekly copy. */
+interface WorkerHoursState {
+  useOrgDefault: boolean
+  weekly: WeeklyHoursDraft | null
+}
+
 interface WorkerHoursPageProps {
   userId: string
   weekStartsOn: 0 | 1 | 6
@@ -48,7 +72,8 @@ interface WorkerHoursPageProps {
  * switch. ON = no worker weekly rows exist — the org's schedule renders read-only. Flipping OFF
  * seeds an editable copy of the org's current schedule (client-side; persisted on Save).
  * Flipping back ON discards the override via `useConfirm`; Save then replaces the worker's rows
- * with an empty set (deletes them), returning to inherited.
+ * with an empty set (deletes them), returning to inherited. Draft/save run on the shared
+ * {@link useDirtyDraft} + a dialog footer (10-settings-forms-unification.md).
  */
 export function WorkerHoursPage({ userId, weekStartsOn, use24HourTime }: WorkerHoursPageProps) {
   const utils = api.useUtils()
@@ -58,31 +83,39 @@ export function WorkerHoursPage({ userId, weekStartsOn, use24HourTime }: WorkerH
   const workerQuery = api.availability.getWeeklyHours.useQuery({ subject })
   const orgQuery = api.availability.getWeeklyHours.useQuery({ subject: { type: 'organization' } })
 
-  const [useOrgDefault, setUseOrgDefault] = useState(true)
-  const [draft, setDraft] = useState<WeeklyHoursDraft | null>(null)
-  const [dirty, setDirty] = useState(false)
-
-  useEffect(() => {
-    if (!workerQuery.isSuccess) return
-    if (dirty) return
-    const hasWorkerRows = workerQuery.data !== null
-    setUseOrgDefault(!hasWorkerRows)
-    setDraft(hasWorkerRows ? buildDraftFromResponse(workerQuery.data, detectTimezone()) : null)
-  }, [workerQuery.isSuccess, workerQuery.data, dirty])
-
-  const saveWeeklyHours = api.availability.saveWeeklyHours.useMutation({
-    onSuccess: () => {
-      setDirty(false)
-      utils.availability.getWeeklyHours.invalidate({ subject })
-    },
-    onError: (error) => toastError({ title: 'Error saving hours', description: error.message }),
-  })
-
   const orgDraft = buildDraftFromResponse(orgQuery.data ?? null, detectTimezone())
   const loading = !workerQuery.isSuccess || !orgQuery.isSuccess
 
-  async function handleToggleUseOrgDefault(next: boolean) {
-    if (next) {
+  const saveWeeklyHours = api.availability.saveWeeklyHours.useMutation({
+    onSuccess: () => utils.availability.getWeeklyHours.invalidate({ subject }),
+    onError: (error) => toastError({ title: 'Error saving hours', description: error.message }),
+  })
+
+  // A worker with no rows inherits the org default; present rows → an editable override.
+  const hasWorkerRows = workerQuery.data != null
+  const server: WorkerHoursState = {
+    useOrgDefault: !hasWorkerRows,
+    weekly: hasWorkerRows ? buildDraftFromResponse(workerQuery.data, detectTimezone()) : null,
+  }
+
+  const { draft, patch, dirty, save, discard } = useDirtyDraft(server, {
+    isSaving: saveWeeklyHours.isPending,
+    onSave: (next) => {
+      if (next.useOrgDefault) {
+        // Replace-all with zero rows == delete the worker's override.
+        saveWeeklyHours.mutate({
+          subject,
+          weekly: { timezone: next.weekly?.timezone ?? orgDraft.timezone, days: [] },
+        })
+        return
+      }
+      if (!next.weekly) return
+      saveWeeklyHours.mutate({ subject, weekly: toWeeklyHours(next.weekly) })
+    },
+  })
+
+  async function handleToggleUseOrgDefault(nextOn: boolean) {
+    if (nextOn) {
       const confirmed = await confirm({
         title: 'Discard custom hours?',
         description:
@@ -92,96 +125,60 @@ export function WorkerHoursPage({ userId, weekStartsOn, use24HourTime }: WorkerH
         destructive: true,
       })
       if (!confirmed) return
-      setUseOrgDefault(true)
-      setDirty(true)
+      patch({ useOrgDefault: true })
       return
     }
-    setDraft((prev) => prev ?? orgDraft)
-    setUseOrgDefault(false)
-    setDirty(true)
+    patch({ useOrgDefault: false, weekly: draft.weekly ?? orgDraft })
   }
 
-  function handleDiscard() {
-    const hasWorkerRows = workerQuery.data !== null
-    setUseOrgDefault(!hasWorkerRows)
-    setDraft(
-      hasWorkerRows ? buildDraftFromResponse(workerQuery.data ?? null, detectTimezone()) : null
-    )
-    setDirty(false)
-  }
-
-  function handleSave() {
-    if (useOrgDefault) {
-      // Replace-all with zero rows == delete the worker's override.
-      saveWeeklyHours.mutate({
-        subject,
-        weekly: { timezone: draft?.timezone ?? orgDraft.timezone, days: [] },
-      })
-      return
-    }
-    if (!draft) return
-    const weekly: WeeklyHours = {
-      timezone: draft.timezone,
-      days: draft.days
-        .filter((d) => d.enabled)
-        .map((d) => ({
-          dayOfWeek: d.dayOfWeek,
-          ranges: d.ranges.filter(
-            (r): r is { start: number; end: number } => r.start != null && r.end != null
-          ),
-        }))
-        .filter((d) => d.ranges.length > 0),
-    }
-    saveWeeklyHours.mutate({ subject, weekly })
-  }
+  const editorValue = draft.useOrgDefault ? orgDraft : (draft.weekly ?? orgDraft)
+  const saveDisabled =
+    !draft.useOrgDefault && draft.weekly != null && !validateWeeklyDraft(draft.weekly)
 
   return (
     <div className='flex flex-col gap-4 p-4'>
-      <div className='flex items-center justify-between rounded-lg border px-3 py-2.5'>
-        <div>
-          <p className='text-sm font-medium'>Use organization default</p>
-          <p className='text-xs text-muted-foreground'>
-            Follow the org's weekly hours, or set custom hours for this worker.
-          </p>
-        </div>
-        <Switch
-          checked={useOrgDefault}
-          onCheckedChange={handleToggleUseOrgDefault}
-          disabled={loading}
-        />
-      </div>
+      <ToggleCard
+        title='Use organization default'
+        description="Follow the org's weekly hours, or set custom hours for this worker."
+        checked={draft.useOrgDefault}
+        onCheckedChange={handleToggleUseOrgDefault}
+        switchSize='default'
+        disabled={loading}
+      />
 
       {loading ? (
         <Skeleton className='h-48 w-full rounded-xl' />
       ) : (
         <WeeklyHoursEditor
-          value={useOrgDefault ? orgDraft : (draft ?? orgDraft)}
-          onChange={(next) => {
-            setDraft(next)
-            setDirty(true)
-          }}
+          value={editorValue}
+          onChange={(weekly) => patch({ weekly })}
           weekStartsOn={weekStartsOn}
           use24HourTime={use24HourTime}
-          readOnly={useOrgDefault}
+          readOnly={draft.useOrgDefault}
         />
       )}
 
-      {dirty && (
-        <div className='flex items-center justify-end gap-3 border-t pt-3'>
-          <span className='mr-auto text-xs text-muted-foreground'>Unsaved changes</span>
-          <Button type='button' variant='outline' size='sm' onClick={handleDiscard}>
-            Discard
-          </Button>
-          <Button
-            type='button'
-            size='sm'
-            disabled={!useOrgDefault && draft != null && !validateWeeklyDraft(draft)}
-            loading={saveWeeklyHours.isPending}
-            onClick={handleSave}>
-            Save
-          </Button>
-        </div>
-      )}
+      <DialogFooter className='border-t pt-3'>
+        <Button
+          type='button'
+          variant='ghost'
+          size='sm'
+          onClick={discard}
+          disabled={!dirty || saveWeeklyHours.isPending}>
+          Discard
+        </Button>
+        <Button
+          type='button'
+          variant='outline'
+          size='sm'
+          onClick={save}
+          loading={saveWeeklyHours.isPending}
+          loadingText='Saving...'
+          disabled={!dirty || saveDisabled}
+          data-dialog-submit>
+          Save <KbdSubmit variant='outline' size='sm' />
+        </Button>
+      </DialogFooter>
 
       <ConfirmDialog />
     </div>

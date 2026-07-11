@@ -4,7 +4,7 @@
 // weekly-hours + exceptions + resolution (plans/dispatch/05-availability.md §A.2).
 // Functional + Drizzle, no model classes (money/dispatch are the direct siblings).
 
-export { addException, deleteException, listExceptions } from './exceptions'
+export { addException, deleteException, listExceptions, updateException } from './exceptions'
 export { resolveAvailability } from './resolve'
 export type {
   AddExceptionInput,

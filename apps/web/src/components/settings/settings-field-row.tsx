@@ -119,6 +119,7 @@ export function SettingsFieldRow({
     <FieldInputAdapter
       fieldType={entry.fieldType}
       fieldOptions={entry.options}
+      triggerProps={{ className: 'w-full ps-0 pe-1' }}
       value={adapterValue}
       onChange={handleAdapterChange}
       placeholder={placeholder}
