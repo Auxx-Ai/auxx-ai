@@ -37,6 +37,8 @@ export interface DrawerTabCardDefinition {
   value: string
   /** Display label shown as section header */
   label: string
+  /** Optional icon name shown next to the section header (resolved in the frontend). */
+  icon?: string
   /** Position relative to default tab content */
   position?: 'before' | 'after'
   /**

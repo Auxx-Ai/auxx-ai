@@ -206,6 +206,7 @@ export const INVOICE_FIELDS: Record<string, ResourceField> = {
     isSystem: true,
     systemAttribute: 'invoice_discount_type',
     systemSortOrder: 'a7',
+    showInPanel: false, // shown in the line-items overview card below
     nullable: true,
     options: { options: [...INVOICE_DISCOUNT_TYPE_OPTIONS] },
     capabilities: {
@@ -228,6 +229,7 @@ export const INVOICE_FIELDS: Record<string, ResourceField> = {
     isSystem: true,
     systemAttribute: 'invoice_discount_value',
     systemSortOrder: 'a8',
+    showInPanel: false, // shown in the line-items overview card below
     nullable: true,
     capabilities: {
       filterable: true,
@@ -267,6 +269,7 @@ export const INVOICE_FIELDS: Record<string, ResourceField> = {
     isSystem: true,
     systemAttribute: 'invoice_tax_rate',
     systemSortOrder: 'aA',
+    showInPanel: false, // shown in the line-items overview card below
     nullable: true,
     capabilities: {
       filterable: true,
@@ -287,6 +290,7 @@ export const INVOICE_FIELDS: Record<string, ResourceField> = {
     isSystem: true,
     systemAttribute: 'invoice_subtotal',
     systemSortOrder: 'aB',
+    showInPanel: false, // shown in the line-items overview card below
     nullable: true,
     options: {
       currencyCode: 'USD',
@@ -313,6 +317,7 @@ export const INVOICE_FIELDS: Record<string, ResourceField> = {
     isSystem: true,
     systemAttribute: 'invoice_tax_total',
     systemSortOrder: 'aC',
+    showInPanel: false, // shown in the line-items overview card below
     nullable: true,
     options: {
       currencyCode: 'USD',
@@ -339,6 +344,7 @@ export const INVOICE_FIELDS: Record<string, ResourceField> = {
     isSystem: true,
     systemAttribute: 'invoice_total',
     systemSortOrder: 'aD',
+    showInPanel: false, // shown in the line-items overview card below
     nullable: true,
     options: {
       currencyCode: 'USD',

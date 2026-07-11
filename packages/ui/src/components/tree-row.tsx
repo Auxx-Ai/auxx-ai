@@ -255,6 +255,7 @@ export function TreeRow({
           )}
           {secondary && (
             <span
+              data-slot='tree-row-secondary'
               className={cn(
                 'ml-1 truncate text-primary-400 text-sm',
                 secondaryFill && 'min-w-0 flex-1'

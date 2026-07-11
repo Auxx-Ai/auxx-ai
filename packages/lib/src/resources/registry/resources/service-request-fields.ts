@@ -115,7 +115,7 @@ export const SERVICE_REQUEST_FIELDS: Record<string, ResourceField> = {
     fieldType: FieldType.RICH_TEXT,
     isSystem: true,
     systemAttribute: 'service_request_description',
-    systemSortOrder: 'a3',
+    systemSortOrder: 'a5',
     nullable: true,
     capabilities: {
       filterable: false,
@@ -135,7 +135,7 @@ export const SERVICE_REQUEST_FIELDS: Record<string, ResourceField> = {
     fieldType: FieldType.SINGLE_SELECT,
     isSystem: true,
     systemAttribute: 'service_request_property_type',
-    systemSortOrder: 'a4',
+    systemSortOrder: 'a6',
     nullable: true,
     options: { options: [...SERVICE_REQUEST_PROPERTY_TYPE_OPTIONS] },
     capabilities: {
@@ -157,7 +157,7 @@ export const SERVICE_REQUEST_FIELDS: Record<string, ResourceField> = {
     fieldType: FieldType.DATE,
     isSystem: true,
     systemAttribute: 'service_request_preferred_date',
-    systemSortOrder: 'a5',
+    systemSortOrder: 'a7',
     nullable: true,
     capabilities: {
       filterable: true,
@@ -177,7 +177,7 @@ export const SERVICE_REQUEST_FIELDS: Record<string, ResourceField> = {
     fieldType: FieldType.DATE,
     isSystem: true,
     systemAttribute: 'service_request_alternate_date',
-    systemSortOrder: 'a6',
+    systemSortOrder: 'a8',
     nullable: true,
     capabilities: {
       filterable: true,
@@ -197,7 +197,7 @@ export const SERVICE_REQUEST_FIELDS: Record<string, ResourceField> = {
     fieldType: FieldType.SINGLE_SELECT,
     isSystem: true,
     systemAttribute: 'service_request_arrival_window',
-    systemSortOrder: 'a7',
+    systemSortOrder: 'a9',
     nullable: true,
     options: { options: [...SERVICE_REQUEST_ARRIVAL_WINDOW_OPTIONS] },
     capabilities: {
@@ -219,7 +219,7 @@ export const SERVICE_REQUEST_FIELDS: Record<string, ResourceField> = {
     fieldType: FieldType.RELATIONSHIP,
     isSystem: true,
     systemAttribute: 'service_request_contact',
-    systemSortOrder: 'a8',
+    systemSortOrder: 'a3',
     nullable: false,
     required: true,
     capabilities: {
@@ -251,7 +251,7 @@ export const SERVICE_REQUEST_FIELDS: Record<string, ResourceField> = {
     fieldType: FieldType.ADDRESS_STRUCT,
     isSystem: true,
     systemAttribute: 'service_request_address',
-    systemSortOrder: 'a9',
+    systemSortOrder: 'aA',
     nullable: true,
     options: { addressComponents: ['street', 'city', 'state', 'country'] },
     capabilities: {
@@ -273,7 +273,7 @@ export const SERVICE_REQUEST_FIELDS: Record<string, ResourceField> = {
     fieldType: FieldType.RELATIONSHIP,
     isSystem: true,
     systemAttribute: 'service_request_ticket',
-    systemSortOrder: 'aA',
+    systemSortOrder: 'aB',
     nullable: true,
     showInDialogs: false,
     capabilities: {
@@ -305,7 +305,7 @@ export const SERVICE_REQUEST_FIELDS: Record<string, ResourceField> = {
     fieldType: FieldType.SINGLE_SELECT,
     isSystem: true,
     systemAttribute: 'service_request_status',
-    systemSortOrder: 'aB',
+    systemSortOrder: 'a4',
     nullable: false,
     options: { options: [...SERVICE_REQUEST_STATUS_OPTIONS] },
     capabilities: {
@@ -401,6 +401,7 @@ export const SERVICE_REQUEST_FIELDS: Record<string, ResourceField> = {
     isSystem: true,
     systemAttribute: 'updated_at',
     systemSortOrder: 'aF',
+    showInPanel: false,
     dbColumn: 'updatedAt',
     nullable: false,
     capabilities: {
