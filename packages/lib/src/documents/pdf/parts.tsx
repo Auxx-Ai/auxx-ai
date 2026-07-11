@@ -83,7 +83,11 @@ export function BillingPartyBlock(props: {
   }
 }) {
   const { styles, business, contact } = props
-  const businessCityLine = [business.address?.city, business.address?.region, business.address?.zip]
+  const businessCityLine = [
+    business.address?.city,
+    business.address?.state,
+    business.address?.zipCode,
+  ]
     .filter(Boolean)
     .join(', ')
   const contactCityLine = [contact.city, contact.region].filter(Boolean).join(', ')
@@ -93,11 +97,11 @@ export function BillingPartyBlock(props: {
       <View style={styles.partyBlock}>
         <Text style={styles.label}>From</Text>
         <Text style={[styles.value, styles.bold]}>{business.companyName || ' '}</Text>
-        {business.address?.line1 ? (
-          <Text style={styles.value}>{business.address.line1}</Text>
+        {business.address?.street1 ? (
+          <Text style={styles.value}>{business.address.street1}</Text>
         ) : null}
-        {business.address?.line2 ? (
-          <Text style={styles.value}>{business.address.line2}</Text>
+        {business.address?.street2 ? (
+          <Text style={styles.value}>{business.address.street2}</Text>
         ) : null}
         {businessCityLine ? <Text style={styles.value}>{businessCityLine}</Text> : null}
         {business.address?.country ? (

@@ -7,6 +7,7 @@ import {
   listExceptions,
   resolveAvailability,
   saveWeeklyHours,
+  updateException,
 } from '@auxx/lib/availability'
 import { z } from 'zod'
 import { adminProcedure, createTRPCRouter, protectedProcedure } from '../trpc'
@@ -90,6 +91,29 @@ export const availabilityRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const subject = buildSubject(ctx.session.organizationId, input.subject)
       return addException(subject, {
+        dateFrom: input.dateFrom,
+        dateTo: input.dateTo,
+        label: input.label,
+        isAvailable: input.isAvailable,
+        ranges: input.ranges,
+      })
+    }),
+
+  updateException: adminProcedure
+    .input(
+      z.object({
+        subject: subjectInputSchema,
+        ids: z.array(z.string()).min(1),
+        dateFrom: isoDate,
+        dateTo: isoDate.optional(),
+        label: z.string().optional(),
+        isAvailable: z.boolean(),
+        ranges: z.array(timeRangeSchema).optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const subject = buildSubject(ctx.session.organizationId, input.subject)
+      return updateException(subject, input.ids, {
         dateFrom: input.dateFrom,
         dateTo: input.dateTo,
         label: input.label,

@@ -3,15 +3,17 @@
 
 import type { SelectOptionColor } from '@auxx/lib/custom-fields/client'
 import { Button } from '@auxx/ui/components/button'
+import { DialogFooter } from '@auxx/ui/components/dialog'
+import { KbdSubmit } from '@auxx/ui/components/kbd'
 import { Switch } from '@auxx/ui/components/switch'
 import { toastError } from '@auxx/ui/components/toast'
 import { Trash2 } from 'lucide-react'
-import { useEffect, useState } from 'react'
 import {
   type AddressStruct,
   AddressStructFields,
 } from '~/components/fields/inputs/address-struct-input-field'
 import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
+import { useDirtyDraft } from '~/components/global/forms/use-dirty-draft'
 import { ColorTagPicker } from '~/components/tags/ui/color-tag-picker'
 import { BaseType } from '~/components/workflow/types'
 import { useConfirm } from '~/hooks/use-confirm'
@@ -33,6 +35,12 @@ function normalizeAddress(value: DispatchWorkerRow['homeBase']): AddressStruct {
   return { ...value, street2: value.street2 ?? '' }
 }
 
+interface WorkerProfileDraft {
+  color: SelectOptionColor
+  homeBase: AddressStruct
+  isActive: boolean
+}
+
 interface WorkerProfilePageProps {
   worker: DispatchWorkerRow
   onRemoved: () => void
@@ -40,25 +48,13 @@ interface WorkerProfilePageProps {
 
 /**
  * Profile page (07-m2-build.md §E.1): board color, home-base address, active toggle, remove
- * action. Every field autosaves on change/blur — `upsertDispatchWorker` only writes the fields
- * present in its input, so per-page saves here never clobber the Hours/Time-off pages' state.
+ * action. Edits collect into one page-level {@link useDirtyDraft} + a dialog footer instead of
+ * autosaving per field (10-settings-forms-unification.md). Save fans out to `upsertWorker` (color +
+ * home base) and `setWorkerActive` (only when the toggle changed).
  */
 export function WorkerProfilePage({ worker, onRemoved }: WorkerProfilePageProps) {
   const utils = api.useUtils()
   const [confirm, ConfirmDialog] = useConfirm()
-
-  const [color, setColor] = useState<SelectOptionColor>(
-    (worker.color as SelectOptionColor) ?? 'gray'
-  )
-  const [homeBase, setHomeBase] = useState<AddressStruct>(normalizeAddress(worker.homeBase))
-  const [isActive, setIsActive] = useState(worker.isActive)
-
-  // Resync local state when a different worker is opened.
-  useEffect(() => {
-    setColor((worker.color as SelectOptionColor) ?? 'gray')
-    setHomeBase(normalizeAddress(worker.homeBase))
-    setIsActive(worker.isActive)
-  }, [worker])
 
   const invalidate = () => utils.dispatch.listWorkers.invalidate()
 
@@ -80,19 +76,28 @@ export function WorkerProfilePage({ worker, onRemoved }: WorkerProfilePageProps)
     onError: (error) => toastError({ title: 'Error removing worker', description: error.message }),
   })
 
-  function handleColorChange(next: SelectOptionColor) {
-    setColor(next)
-    upsertWorker.mutate({ userId: worker.userId, color: next })
+  const isSaving = upsertWorker.isPending || setWorkerActive.isPending
+
+  // Rebuilt each render from the worker prop; `useDirtyDraft` reseeds by value, so opening a
+  // different worker swaps the draft while a background `listWorkers` refetch never clobbers edits.
+  const server: WorkerProfileDraft = {
+    color: (worker.color as SelectOptionColor) ?? 'gray',
+    homeBase: normalizeAddress(worker.homeBase),
+    isActive: worker.isActive,
   }
 
-  function handleAddressBlur() {
-    upsertWorker.mutate({ userId: worker.userId, homeBase })
-  }
-
-  function handleActiveChange(next: boolean) {
-    setIsActive(next)
-    setWorkerActive.mutate({ workerId: worker.id, isActive: next })
-  }
+  const { draft, patch, dirty, save, discard } = useDirtyDraft(server, {
+    isSaving,
+    onSave: (next) => {
+      const addressChanged = JSON.stringify(next.homeBase) !== JSON.stringify(server.homeBase)
+      if (next.color !== server.color || addressChanged) {
+        upsertWorker.mutate({ userId: worker.userId, color: next.color, homeBase: next.homeBase })
+      }
+      if (next.isActive !== server.isActive) {
+        setWorkerActive.mutate({ workerId: worker.id, isActive: next.isActive })
+      }
+    },
+  })
 
   async function handleRemove() {
     const confirmed = await confirm({
@@ -116,9 +121,9 @@ export function WorkerProfilePage({ worker, onRemoved }: WorkerProfilePageProps)
         <FieldPanelRow title='Board color' type={BaseType.ENUM} showIcon>
           <div className='py-2'>
             <ColorTagPicker
-              value={color}
-              onChange={handleColorChange}
-              disabled={upsertWorker.isPending}
+              value={draft.color}
+              onChange={(color) => patch({ color })}
+              disabled={isSaving}
             />
           </div>
         </FieldPanelRow>
@@ -128,12 +133,12 @@ export function WorkerProfilePage({ worker, onRemoved }: WorkerProfilePageProps)
           type={BaseType.STRING}
           showIcon
           description='Used for routing on the live map (M3).'>
-          <div className='py-2' onBlur={handleAddressBlur}>
+          <div className='py-2'>
             <AddressStructFields
-              value={homeBase}
-              onChange={setHomeBase}
+              value={draft.homeBase}
+              onChange={(homeBase) => patch({ homeBase })}
               className='flex flex-col gap-2'
-              disabled={upsertWorker.isPending}
+              disabled={isSaving}
             />
           </div>
         </FieldPanelRow>
@@ -144,14 +149,14 @@ export function WorkerProfilePage({ worker, onRemoved }: WorkerProfilePageProps)
           showIcon
           description='Inactive workers are hidden from the board.'>
           <Switch
-            checked={isActive}
-            onCheckedChange={handleActiveChange}
-            disabled={setWorkerActive.isPending}
+            checked={draft.isActive}
+            onCheckedChange={(isActive) => patch({ isActive })}
+            disabled={isSaving}
           />
         </FieldPanelRow>
       </FieldPanel>
 
-      <div className='flex justify-end border-t pt-3'>
+      <DialogFooter className='border-t pt-3 sm:justify-between'>
         <Button
           type='button'
           variant='ghost'
@@ -161,7 +166,28 @@ export function WorkerProfilePage({ worker, onRemoved }: WorkerProfilePageProps)
           className='text-destructive hover:text-destructive'>
           <Trash2 /> Remove worker
         </Button>
-      </div>
+        <div className='flex items-center gap-2'>
+          <Button
+            type='button'
+            variant='ghost'
+            size='sm'
+            onClick={discard}
+            disabled={!dirty || isSaving}>
+            Discard
+          </Button>
+          <Button
+            type='button'
+            variant='outline'
+            size='sm'
+            onClick={save}
+            loading={isSaving}
+            loadingText='Saving...'
+            disabled={!dirty}
+            data-dialog-submit>
+            Save <KbdSubmit variant='outline' size='sm' />
+          </Button>
+        </div>
+      </DialogFooter>
 
       <ConfirmDialog />
     </div>

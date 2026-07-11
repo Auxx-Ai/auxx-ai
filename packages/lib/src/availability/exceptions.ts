@@ -118,13 +118,14 @@ export async function listExceptions(
 }
 
 /**
- * Materialize a date-range exception into per-date rows (one row per date, or one row per
- * date-per-range for special hours) in a single transaction.
+ * Validate + materialize an exception input into the per-date `OperatingHours` insert rows
+ * (one row per date, or one row per date-per-range for special hours). Shared by
+ * {@link addException} and {@link updateException}.
  */
-export async function addException(
+async function materializeExceptionRows(
   subject: AvailabilitySubject,
   input: AddExceptionInput
-): Promise<void> {
+): Promise<Array<typeof schema.OperatingHours.$inferInsert>> {
   const dateFrom = input.dateFrom
   const dateTo = input.dateTo ?? input.dateFrom
   const dates = enumerateDates(dateFrom, dateTo)
@@ -146,7 +147,7 @@ export async function addException(
   const columns = subjectColumns(subject)
   const label = input.label ?? null
 
-  const rows = dates.flatMap((date) =>
+  return dates.flatMap((date) =>
     input.isAvailable
       ? ranges.map((range) => ({
           ...columns,
@@ -173,8 +174,47 @@ export async function addException(
           },
         ]
   )
+}
+
+/**
+ * Materialize a date-range exception into per-date rows (one row per date, or one row per
+ * date-per-range for special hours) in a single transaction.
+ */
+export async function addException(
+  subject: AvailabilitySubject,
+  input: AddExceptionInput
+): Promise<void> {
+  const rows = await materializeExceptionRows(subject, input)
+  await database.transaction(async (tx) => {
+    await tx.insert(schema.OperatingHours).values(rows)
+  })
+}
+
+/**
+ * Replace an existing exception group with a fresh materialization. The old group's rows
+ * (`ids`, always re-scoped to subject + org + `kind = 'exception'` — ids alone are never
+ * trusted) are deleted and the new per-date rows inserted in one transaction, so an edit that
+ * changes the date span, mode, or ranges never leaves stale rows behind.
+ */
+export async function updateException(
+  subject: AvailabilitySubject,
+  ids: string[],
+  input: AddExceptionInput
+): Promise<void> {
+  const rows = await materializeExceptionRows(subject, input)
 
   await database.transaction(async (tx) => {
+    if (ids.length > 0) {
+      await tx
+        .delete(schema.OperatingHours)
+        .where(
+          and(
+            subjectConditions(subject),
+            eq(schema.OperatingHours.kind, 'exception'),
+            inArray(schema.OperatingHours.id, ids)
+          )
+        )
+    }
     await tx.insert(schema.OperatingHours).values(rows)
   })
 }

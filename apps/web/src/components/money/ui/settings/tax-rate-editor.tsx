@@ -2,7 +2,6 @@
 'use client'
 
 import { FieldType } from '@auxx/database/enums'
-import { Switch } from '@auxx/ui/components/switch'
 import { useState } from 'react'
 import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
 import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
@@ -53,7 +52,7 @@ function TaxRateEditorForm({ taxRate, onUpdate, onSetDefault }: TaxRateEditorFor
   return (
     <div className='p-3'>
       <FieldPanel
-        orientation='responsive'
+        orientation='horizontal'
         breakpoint='md'
         resizeId='tax-rate-form'
         defaultLabelWidth={140}
@@ -93,9 +92,14 @@ function TaxRateEditorForm({ taxRate, onUpdate, onSetDefault }: TaxRateEditorFor
           description='Preselected on new quotes and invoices'
           type={BaseType.BOOLEAN}
           showIcon>
-          <Switch
-            checked={!!taxRate.isDefault}
-            onCheckedChange={onSetDefault}
+          <FieldInputAdapter
+            fieldType={FieldType.CHECKBOX}
+            fieldOptions={{ variant: 'switch' }}
+            value={!!taxRate.isDefault}
+            onChange={(value) => {
+              // Set-only toggle: turning it on makes this the default; it can't be unset here.
+              if (value) onSetDefault()
+            }}
             disabled={taxRate.isDefault}
           />
         </FieldPanelRow>
