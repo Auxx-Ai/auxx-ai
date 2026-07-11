@@ -1,6 +1,7 @@
 // packages/lib/src/money/types.ts
 
 import type { RecordId } from '@auxx/types/resource'
+import type { RecurrencePattern } from '../recurrence'
 
 /** Percent-of-subtotal vs flat-amount discount (mirrors `QUOTE_DISCOUNT_TYPE_OPTIONS`). */
 export type DiscountType = 'percent' | 'amount'
@@ -149,4 +150,48 @@ export interface CreateInvoiceFromWorkOrderResult {
 export interface DeleteInvoiceLineInput extends MoneyMutationInput {
   /** EntityInstance id of the line item (not the RecordId). */
   lineInstanceId: string
+}
+
+/** The three automated invoice-draft triggers (money MI2 build spec §C). */
+export type InvoiceDraftTrigger = 'per_visit' | 'on_completion' | 'custom_schedule'
+
+/** Input for `generateInvoiceDraft` (§C) — one function all three triggers call. */
+export interface GenerateInvoiceDraftInput {
+  organizationId: string
+  /** EntityInstance id of the work order (not the RecordId). */
+  workOrderInstanceId: string
+  trigger: InvoiceDraftTrigger
+  /** `per_visit` only — the dedup key (`invoice_visit_id`) + extras filter. */
+  visitId?: string
+  /** `custom_schedule` only — the occurrence's scheduled local date, used for dedup/logging
+   * context and (Q9b, `visit_date` date basis) the backdated `issuedAt`. */
+  occurrenceDate?: string
+  /** `per_visit` only — the visit's own local date (`WorkOrderVisit.occurrenceDate` else the
+   * date part of `startTime`), used for the Q9b backdated `issuedAt`. */
+  visitDate?: string
+}
+
+/** Result of `generateInvoiceDraft` — a skip carries a `reason` for logging/telemetry. */
+export type GenerateInvoiceDraftResult =
+  | {
+      created: false
+      reason: 'disabled' | 'not_found' | 'timing_mismatch' | 'no_contact' | 'duplicate' | 'empty'
+    }
+  | { created: true; recordId: RecordId; instanceId: string }
+
+/** Input for `setInvoiceSchedule` (§F.1). */
+export interface SetInvoiceScheduleInput {
+  organizationId: string
+  userId: string
+  /** EntityInstance id of the work order (not the RecordId). */
+  workOrderInstanceId: string
+  pattern: RecurrencePattern
+  timezone: string
+}
+
+/** Input shared by `clearInvoiceSchedule` / `getInvoiceSchedule` (§F.1/§J). */
+export interface InvoiceScheduleQueryInput {
+  organizationId: string
+  /** EntityInstance id of the work order (not the RecordId). */
+  workOrderInstanceId: string
 }

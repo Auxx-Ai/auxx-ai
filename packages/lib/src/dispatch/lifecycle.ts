@@ -8,7 +8,7 @@
 
 import { extractValue } from '@auxx/types'
 import { toRecordId } from '@auxx/types/resource'
-import { getOrgCache } from '../cache'
+import { getEntityDefIdResolver, getOrgCache } from '../cache'
 import { FieldValueService } from '../field-values/field-value-service'
 import type { VisitStatus } from './types'
 
@@ -63,7 +63,16 @@ export async function rollUpWorkOrderStatus(
   const statusField = cf.work_order_status
   if (!statusField) return
 
-  const recordId = toRecordId('work_order', workOrderId)
+  // Resolve the type-slug to the real `entityDefinitionId` UUID — the field-change hook
+  // dispatch inside `setValuesForEntity` looks up the resource by `entityDefinitionId` via
+  // `getCachedResource` (exact-match only, no type-slug fallback), so an unresolved
+  // `work_order:<id>` RecordId silently resolves to no resource → `entitySlug: ''` → every
+  // field-change hook (including MI2's `generateDraftOnCompletion`, and the generic `'*'`
+  // hooks) silently no-ops. `UnifiedCrudHandler.update` avoids this by rebuilding the
+  // RecordId with the resolved UUID before writing (unified-handler-mutations.ts:452);
+  // mirror that here since this writer bypasses the handler on purpose.
+  const resolveDefId = await getEntityDefIdResolver(organizationId)
+  const recordId = toRecordId(resolveDefId('work_order'), workOrderId)
   const fieldValueService = new FieldValueService(organizationId, userId)
 
   // Recurring engagement status (active/paused/ended) is engagement-level, never

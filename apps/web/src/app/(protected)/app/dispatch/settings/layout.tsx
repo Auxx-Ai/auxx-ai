@@ -3,7 +3,7 @@
 'use client'
 
 import { MainPageContent } from '@auxx/ui/components/main-page'
-import { Clock, CreditCard, FileText, Hash, Tags, Users } from 'lucide-react'
+import { Clock, CreditCard, FileText, Hash, Receipt, Tags, Users } from 'lucide-react'
 import { usePathname } from 'next/navigation'
 import SidebarSecondary from '~/components/global/sidebar-secondary'
 import type { SidebarProps } from '~/constants/menu'
@@ -44,6 +44,12 @@ const DISPATCH_SETTINGS: SidebarProps[] = [
         label: 'Documents',
         slug: 'documents',
         icon: <FileText />,
+      },
+      {
+        id: 'dispatch-settings-invoicing',
+        label: 'Invoicing',
+        slug: 'invoicing',
+        icon: <Receipt />,
       },
       {
         id: 'dispatch-settings-payments',

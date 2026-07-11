@@ -333,6 +333,23 @@ export async function setupSchedules() {
     }
   )
 
+  // Money MI2 invoice-draft daily sweep — every day at 03:30 UTC (08-mi2-build.md §G), 30
+  // minutes after the dispatch recurring engine's visit sweep so a same-day visit
+  // materialization can't race the billing pass.
+  await maintenanceQueue.upsertJobScheduler(
+    'invoiceDraftsJob',
+    { pattern: '30 3 * * *', tz: 'UTC' },
+    {
+      opts: {
+        attempts: 2,
+        backoff: { type: 'exponential', delay: 60000 },
+        priority: 8,
+        removeOnComplete: { count: 14 },
+        removeOnFail: { count: 30 },
+      },
+    }
+  )
+
   // Every day at 8 AM
   await maintenanceQueue.upsertJobScheduler(
     'requestDocumentSuggestionsJob',

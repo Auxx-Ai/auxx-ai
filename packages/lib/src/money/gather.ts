@@ -1,8 +1,10 @@
 // packages/lib/src/money/gather.ts
 
 import { database, schema } from '@auxx/database'
+import type { CustomFieldEntity } from '@auxx/database/types'
 import type { TypedFieldValue } from '@auxx/types'
 import { extractValue } from '@auxx/types'
+import type { RecordId } from '@auxx/types/resource'
 import { parseRecordId, toRecordId } from '@auxx/types/resource'
 import { inArray } from 'drizzle-orm'
 import { getOrgCache } from '../cache'
@@ -39,7 +41,12 @@ const LINE_ROW_ATTRS = [
   'line_item_invoice',
 ] as const
 
-const LINE_COPY_ATTRS = [
+/**
+ * Exported so the MI2 auto-draft builder (`money/auto-invoice.ts`) can read the same field
+ * set via `cache.from(...).bySystemAttributes(LINE_COPY_ATTRS)` and pass the identically-typed
+ * result into {@link copyLineOntoInvoice} without redeclaring the attribute list.
+ */
+export const LINE_COPY_ATTRS = [
   'line_item_name',
   'line_item_description',
   'line_item_qty',
@@ -173,19 +180,37 @@ export async function listUninvoicedLines(
 }
 
 /**
- * Gather selected work-order lines onto a new invoice (money MI1 build spec §G.3). Whole-line
- * only (decision 7) — checked lines are copied verbatim, never split. Billing (discount/tax)
- * is inherited from the work order's linked quote snapshot when present, else the org's
- * default tax rate (`documents.taxRates`, the `isDefault` entry) with no discount. Source
- * lines are stamped with `line_item_invoice` (the "invoiced by" pointer, §B.3) — they are
- * NOT moved or duplicated onto the work order's own line set, which stays as-is.
+ * Create the invoice "shell" — contact + linked-quote read, billing inheritance (quote
+ * snapshot else org default tax rate), and the invoice record itself with due-date prefills
+ * (money MI1 build spec §G.3 steps 1–3). Extracted so both the manual gather flow
+ * (`createInvoiceFromWorkOrder`, below) and the MI2 auto-draft builder
+ * (`generateInvoiceDraft` in `money/auto-invoice.ts`) share one implementation instead of
+ * duplicating it.
  *
- * @returns `{ recordId, instanceId }` — the client opens `/app/invoices?id=<instanceId>`.
+ * `issuedAt`, when passed, overrides the default "today" for `invoice_issued_at` — the
+ * auto-draft builder backdates it to the visit/occurrence date (money MI2 build spec §C step
+ * 4 / Q9b). `dueDate` is ALWAYS computed from today (generation day) + org
+ * `documents.invoice.dueDays`, never from a backdated `issuedAt` — a late-generated draft
+ * must never arrive already overdue.
+ *
+ * `extraValues`, when passed, are merged into the invoice create values — the auto-draft
+ * builder uses this to stamp the hidden `invoice_visit_id` dedup field (money MI2 build spec
+ * §B, Q6a) without this function needing to know about it.
+ *
+ * The manual gather flow needs the no-contact guard to surface as a user-facing error, so it
+ * stays a throw here; the automated caller pre-checks the contact itself (money MI2 build
+ * spec Q5 — an automated job can't throw at 3 AM) and never reaches this branch.
+ *
+ * @throws {BadRequestError} when the work order has no contact.
  */
-export async function createInvoiceFromWorkOrder(
-  input: CreateInvoiceFromWorkOrderInput
-): Promise<CreateInvoiceFromWorkOrderResult> {
-  const { organizationId, userId, workOrderInstanceId, lineInstanceIds } = input
+export async function createInvoiceShell(input: {
+  organizationId: string
+  userId: string
+  workOrderInstanceId: string
+  issuedAt?: string
+  extraValues?: Record<string, unknown>
+}) {
+  const { organizationId, userId, workOrderInstanceId, issuedAt, extraValues } = input
   const handler = new UnifiedCrudHandler(organizationId, userId)
   const cache = getOrgCache()
   const workOrderRecordId = toRecordId('work_order', workOrderInstanceId)
@@ -267,8 +292,9 @@ export async function createInvoiceFromWorkOrder(
   const invoiceValues: Record<string, unknown> = {
     invoice_contact: contactRecordId,
     invoice_work_order: workOrderRecordId,
-    invoice_issued_at: today.toISOString().split('T')[0],
+    invoice_issued_at: issuedAt ?? today.toISOString().split('T')[0],
     invoice_due_date: dueDate.toISOString().split('T')[0],
+    ...extraValues,
   }
   if (discountType) invoiceValues.invoice_discount_type = discountType
   if (discountValue !== null) invoiceValues.invoice_discount_value = discountValue
@@ -276,8 +302,118 @@ export async function createInvoiceFromWorkOrder(
   if (taxRate !== null) invoiceValues.invoice_tax_rate = taxRate
 
   const createdInvoice = await handler.create('invoice', invoiceValues)
-  const invoiceRecordId = createdInvoice.recordId
-  const invoiceInstanceId = createdInvoice.instance.id
+
+  return {
+    handler,
+    cache,
+    workOrderRecordId,
+    contactRecordId,
+    quoteRecordId,
+    recordId: createdInvoice.recordId,
+    instanceId: createdInvoice.instance.id,
+  }
+}
+
+/**
+ * Copy one source line onto a draft invoice (money MI1 build spec §G.3 steps 5–6). Consumed
+ * by both `createInvoiceFromWorkOrder`'s gather loop (`stampSource: true` — the source line
+ * is marked "invoiced by" this invoice so it drops out of `listUninvoicedLines`) and the MI2
+ * auto-draft builder's template-copy branch (`stampSource: false` — Q2/Q4's per-visit/
+ * recurring "job-set lines are a template" semantics: the copy carries no `sourceLineId` and
+ * the source is never stamped, so re-triggering the same source produces fresh copies each
+ * time; `deleteInvoiceLine`'s null-`sourceLineId` branch already treats such copies as
+ * non-refunding deletes).
+ *
+ * `extraValues`, when passed, are merged into the copy's values — the auto-draft builder uses
+ * this to stamp `line_item_visit_id` on template copies.
+ */
+export async function copyLineOntoInvoice(input: {
+  handler: UnifiedCrudHandler
+  fieldValueService: FieldValueService
+  lineCf: Record<(typeof LINE_COPY_ATTRS)[number], CustomFieldEntity | null>
+  lineFieldIds: string[]
+  lineInstanceId: string
+  invoiceRecordId: RecordId
+  stampSource: boolean
+  extraValues?: Record<string, unknown>
+}): Promise<void> {
+  const {
+    handler,
+    fieldValueService,
+    lineCf,
+    lineFieldIds,
+    lineInstanceId,
+    invoiceRecordId,
+    stampSource,
+    extraValues,
+  } = input
+  const lineRecordId = toRecordId('line_item', lineInstanceId)
+  const values = await handler.getFieldValues(lineRecordId, lineFieldIds)
+  const get = (f?: { id: string }) => (f ? firstTyped(values.get(f.id)) : undefined)
+
+  const nameTyped = get(lineCf.line_item_name)
+  const descriptionTyped = get(lineCf.line_item_description)
+  const qtyTyped = get(lineCf.line_item_qty)
+  const unitPriceTyped = get(lineCf.line_item_unit_price)
+  const lineTotalTyped = get(lineCf.line_item_line_total)
+  const taxableTyped = get(lineCf.line_item_taxable)
+  const categoryTyped = get(lineCf.line_item_category)
+  const discountTyped = get(lineCf.line_item_discount)
+  const sortOrderTyped = get(lineCf.line_item_sort_order)
+  const catalogItemTyped = get(lineCf.line_item_catalog_item)
+
+  // No `line_item_work_order`, no `line_item_quote` on copies (§B.3 invariant).
+  const copyValues: Record<string, unknown> = {
+    line_item_name: nameTyped ? extractValue(nameTyped) : undefined,
+    line_item_description: descriptionTyped ? extractValue(descriptionTyped) : undefined,
+    line_item_qty: qtyTyped ? extractValue(qtyTyped) : 1,
+    line_item_unit_price: unitPriceTyped ? extractValue(unitPriceTyped) : undefined,
+    line_item_line_total: lineTotalTyped ? extractValue(lineTotalTyped) : undefined,
+    line_item_taxable: taxableTyped ? extractValue(taxableTyped) : true,
+    line_item_category: categoryTyped ? extractValue(categoryTyped) : undefined,
+    line_item_discount: discountTyped ? extractValue(discountTyped) : undefined,
+    line_item_sort_order: sortOrderTyped ? extractValue(sortOrderTyped) : undefined,
+    line_item_invoice: invoiceRecordId,
+    ...extraValues,
+  }
+  if (stampSource) {
+    copyValues.line_item_source_line_id = lineInstanceId
+  }
+  if (catalogItemTyped?.type === 'relationship') {
+    copyValues.line_item_catalog_item = catalogItemTyped.recordId
+  }
+
+  await handler.create('line_item', copyValues)
+
+  if (stampSource) {
+    // Stamp the source ("invoiced by" pointer) — publishEvents ON so visit chips/job view
+    // update live; the §G.1 guard keeps this from recomputing invoice totals (source lines
+    // still carry `line_item_work_order`).
+    await fieldValueService.setValuesForEntity({
+      recordId: lineRecordId,
+      values: [{ fieldId: 'line_item_invoice', value: invoiceRecordId }],
+    })
+  }
+}
+
+/**
+ * Gather selected work-order lines onto a new invoice (money MI1 build spec §G.3). Whole-line
+ * only (decision 7) — checked lines are copied verbatim, never split. Billing (discount/tax)
+ * is inherited from the work order's linked quote snapshot when present, else the org's
+ * default tax rate (`documents.taxRates`, the `isDefault` entry) with no discount. Source
+ * lines are stamped with `line_item_invoice` (the "invoiced by" pointer, §B.3) — they are
+ * NOT moved or duplicated onto the work order's own line set, which stays as-is.
+ *
+ * @returns `{ recordId, instanceId }` — the client opens `/app/invoices?id=<instanceId>`.
+ */
+export async function createInvoiceFromWorkOrder(
+  input: CreateInvoiceFromWorkOrderInput
+): Promise<CreateInvoiceFromWorkOrderResult> {
+  const { organizationId, userId, workOrderInstanceId, lineInstanceIds } = input
+
+  // ─── Steps 1–3: contact + quote read, billing inheritance, invoice create ──
+  const shell = await createInvoiceShell({ organizationId, userId, workOrderInstanceId })
+  const { handler, cache, recordId: invoiceRecordId, instanceId: invoiceInstanceId } = shell
 
   // ─── Step 4: re-validate requested lines (concurrency guard) ───────────────
   const lineCf = await cache
@@ -313,47 +449,14 @@ export async function createInvoiceFromWorkOrder(
   // ─── Steps 5–6: copy each source line, then stamp it as gathered ───────────
   const fieldValueService = new FieldValueService(organizationId, userId)
   for (const lineInstanceId of validLineInstanceIds) {
-    const lineRecordId = toRecordId('line_item', lineInstanceId)
-    const values = await handler.getFieldValues(lineRecordId, lineFieldIds)
-    const get = (f?: { id: string }) => (f ? firstTyped(values.get(f.id)) : undefined)
-
-    const nameTyped = get(lineCf.line_item_name)
-    const descriptionTyped = get(lineCf.line_item_description)
-    const qtyTyped = get(lineCf.line_item_qty)
-    const unitPriceTyped = get(lineCf.line_item_unit_price)
-    const lineTotalTyped = get(lineCf.line_item_line_total)
-    const taxableTyped = get(lineCf.line_item_taxable)
-    const categoryTyped = get(lineCf.line_item_category)
-    const discountTyped = get(lineCf.line_item_discount)
-    const sortOrderTyped = get(lineCf.line_item_sort_order)
-    const catalogItemTyped = get(lineCf.line_item_catalog_item)
-
-    // No `line_item_work_order`, no `line_item_quote` on copies (§B.3 invariant).
-    const copyValues: Record<string, unknown> = {
-      line_item_name: nameTyped ? extractValue(nameTyped) : undefined,
-      line_item_description: descriptionTyped ? extractValue(descriptionTyped) : undefined,
-      line_item_qty: qtyTyped ? extractValue(qtyTyped) : 1,
-      line_item_unit_price: unitPriceTyped ? extractValue(unitPriceTyped) : undefined,
-      line_item_line_total: lineTotalTyped ? extractValue(lineTotalTyped) : undefined,
-      line_item_taxable: taxableTyped ? extractValue(taxableTyped) : true,
-      line_item_category: categoryTyped ? extractValue(categoryTyped) : undefined,
-      line_item_discount: discountTyped ? extractValue(discountTyped) : undefined,
-      line_item_sort_order: sortOrderTyped ? extractValue(sortOrderTyped) : undefined,
-      line_item_invoice: invoiceRecordId,
-      line_item_source_line_id: lineInstanceId,
-    }
-    if (catalogItemTyped?.type === 'relationship') {
-      copyValues.line_item_catalog_item = catalogItemTyped.recordId
-    }
-
-    await handler.create('line_item', copyValues)
-
-    // Stamp the source ("invoiced by" pointer) — publishEvents ON so visit chips/job view
-    // update live; the §G.1 guard keeps this from recomputing invoice totals (source lines
-    // still carry `line_item_work_order`).
-    await fieldValueService.setValuesForEntity({
-      recordId: lineRecordId,
-      values: [{ fieldId: 'line_item_invoice', value: invoiceRecordId }],
+    await copyLineOntoInvoice({
+      handler,
+      fieldValueService,
+      lineCf,
+      lineFieldIds,
+      lineInstanceId,
+      invoiceRecordId,
+      stampSource: true,
     })
   }
 

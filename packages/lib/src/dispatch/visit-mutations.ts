@@ -8,6 +8,7 @@
 import { database, schema } from '@auxx/database'
 import { and, eq } from 'drizzle-orm'
 import { NotFoundError } from '../errors'
+import { maybeGenerateVisitInvoiceDraft } from '../money/auto-invoice'
 import { publishVisitChanged } from './broadcast'
 import { type LifecycleTrigger, rollUpWorkOrderStatus } from './lifecycle'
 import { mirrorVisitOntoWorkOrder } from './mirror'
@@ -201,5 +202,10 @@ export async function setVisitStatus(input: SetVisitStatusInput): Promise<WorkOr
   if (!updated) throw new NotFoundError('Visit not found')
 
   await afterVisitWrite(updated, { userId, trigger: status, excludeSocketId })
+
+  // money MI2 build spec §D (Q1a) — per_visit_completed drafts generate synchronously here;
+  // never let a billing failure fail the field tech's status tap.
+  if (status === 'done') await maybeGenerateVisitInvoiceDraft(updated)
+
   return updated
 }

@@ -40,6 +40,7 @@ import { migration034QuotePdfAssetField } from './migrations/034-quote-pdf-asset
 import { migration035MoneyInvoicing } from './migrations/035-money-invoicing'
 import { migration036InvoicePublicToken } from './migrations/036-invoice-public-token'
 import { migration037WorkOrderEngagementStatuses } from './migrations/037-work-order-engagement-statuses'
+import { migration038InvoiceAutomation } from './migrations/038-invoice-automation'
 import type { EntityMigration, MigrationRunResult } from './types'
 
 const logger = createScopedLogger('entity-migrations')
@@ -85,6 +86,7 @@ const ALL_MIGRATIONS: EntityMigration[] = [
   migration035MoneyInvoicing,
   migration036InvoicePublicToken,
   migration037WorkOrderEngagementStatuses,
+  migration038InvoiceAutomation,
 ]
 
 /**

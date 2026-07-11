@@ -5,6 +5,7 @@ import { renderPreviewQuotePdf } from '@auxx/lib/documents'
 import { NotFoundError } from '@auxx/lib/errors'
 import {
   approveQuote,
+  clearInvoiceSchedule,
   convertQuoteToWorkOrder,
   createInvoiceFromWorkOrder,
   createQuoteFromRequest,
@@ -14,6 +15,7 @@ import {
   deleteManualPayment,
   disconnectPaymentAccount,
   ensureQuoteDocumentPdf,
+  getInvoiceSchedule,
   getPaymentAccount,
   listUninvoicedLines,
   markInvoiceSent,
@@ -23,11 +25,18 @@ import {
   recordManualPayment,
   refundTransaction,
   reorderLines,
+  setInvoiceSchedule,
   syncAccountState,
   voidInvoice,
 } from '@auxx/lib/money'
 import { FeaturePermissionService } from '@auxx/lib/permissions'
 import { FeatureKey } from '@auxx/lib/permissions/client'
+import {
+  describeRecurrence,
+  type RecurrencePattern,
+  recurrencePatternSchema,
+} from '@auxx/lib/recurrence'
+import { getOrganizationSetting } from '@auxx/lib/settings'
 import type { RecordId } from '@auxx/types/resource'
 import { parseRecordId, recordIdSchema } from '@auxx/types/resource'
 import { and, asc, eq } from 'drizzle-orm'
@@ -231,6 +240,65 @@ export const moneyRouter = createTRPCRouter({
         userId: ctx.session.user.id,
         lineInstanceId: entityInstanceId,
       })
+    }),
+
+  // ─── Invoice automation — billing schedule (money MI2 build spec §J) ────
+  // Deliberately member-level (`moneyProcedure`), NOT admin-gated like M2c's dispatch
+  // recurrence procedures — configuring a job's billing cadence is desk work, same tier as
+  // recording a payment (MI1 decision 8's spirit), not an account-level/destructive action.
+
+  setInvoiceSchedule: moneyProcedure
+    .input(
+      z.object({
+        workOrderRecordId: recordIdSchema,
+        pattern: recurrencePatternSchema,
+        timezone: z.string(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const { entityInstanceId: workOrderInstanceId } = parseRecordId(input.workOrderRecordId)
+      return setInvoiceSchedule({
+        organizationId: ctx.session.organizationId,
+        userId: ctx.session.user.id,
+        workOrderInstanceId,
+        pattern: input.pattern,
+        timezone: input.timezone,
+      })
+    }),
+
+  clearInvoiceSchedule: moneyProcedure
+    .input(z.object({ workOrderRecordId: recordIdSchema }))
+    .mutation(async ({ ctx, input }) => {
+      const { entityInstanceId: workOrderInstanceId } = parseRecordId(input.workOrderRecordId)
+      return clearInvoiceSchedule({
+        organizationId: ctx.session.organizationId,
+        workOrderInstanceId,
+      })
+    }),
+
+  getInvoiceSchedule: moneyProcedure
+    .input(z.object({ workOrderRecordId: recordIdSchema }))
+    .query(async ({ ctx, input }) => {
+      const { entityInstanceId: workOrderInstanceId } = parseRecordId(input.workOrderRecordId)
+      const rule = await getInvoiceSchedule({
+        organizationId: ctx.session.organizationId,
+        workOrderInstanceId,
+      })
+      if (!rule) return null
+
+      const weekStart = (await getOrganizationSetting({
+        organizationId: ctx.session.organizationId,
+        key: 'organization.weekStart',
+      })) as 'monday' | 'sunday' | 'saturday'
+
+      return {
+        pattern: rule.pattern,
+        timezone: rule.timezone,
+        materializedUntil: rule.materializedUntil,
+        summary: describeRecurrence(rule.pattern as unknown as RecurrencePattern, {
+          weekStart: weekStart ?? 'monday',
+        }),
+      }
     }),
 
   recordPayment: moneyProcedure

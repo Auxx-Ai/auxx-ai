@@ -7,7 +7,7 @@
 import { database, schema } from '@auxx/database'
 import { toRecordId } from '@auxx/types/resource'
 import { and, eq, gte, or } from 'drizzle-orm'
-import { getOrgCache } from '../../cache'
+import { getEntityDefIdResolver, getOrgCache } from '../../cache'
 import { NotFoundError } from '../../errors'
 import { FieldValueService } from '../../field-values/field-value-service'
 import { publishVisitChanged } from '../broadcast'
@@ -79,9 +79,17 @@ async function writeEngagementStatus(
     .bySystemAttributes(['work_order_status'] as const)
   if (!cf.work_order_status) return
 
+  // Resolve the type-slug to the real `entityDefinitionId` UUID before writing — an
+  // unresolved `work_order:<id>` RecordId makes the field-change hook dispatch inside
+  // `setValuesForEntity` resolve to no cached resource (`getCachedResource` is an exact
+  // `id` match, no type-slug fallback), so `entitySlug` comes back `''` and every
+  // field-change hook (MI2's `generateDraftOnCompletion` included) silently no-ops even
+  // though the write itself succeeds. Mirrors `UnifiedCrudHandler.update`'s own
+  // recordId-resolution step (unified-handler-mutations.ts:452).
+  const resolveDefId = await getEntityDefIdResolver(rule.organizationId)
   const fieldValueService = new FieldValueService(rule.organizationId, userId)
   await fieldValueService.setValuesForEntity({
-    recordId: toRecordId('work_order', rule.subjectId),
+    recordId: toRecordId(resolveDefId('work_order'), rule.subjectId),
     values: [{ fieldId: cf.work_order_status.id, value: status }],
   })
 }

@@ -5,12 +5,84 @@
 
 import { type Database, database as defaultDb, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import { and, eq } from 'drizzle-orm'
+import { and, eq, inArray } from 'drizzle-orm'
 import { SETTINGS_CATALOG, type SettingConfig, type SettingKey } from './catalog'
 import { normalizeSettingValue } from './normalize-setting-value'
 import type { SettingScope, SettingValue } from './types'
 
 const logger = createScopedLogger('settings-service')
+
+/**
+ * The two per-org `CustomField.defaultValue` rows kept in sync with
+ * `documents.invoice.defaultTiming` (money MI2 §O.2) — quote-fields.ts:263 and
+ * work-order-fields.ts:485 materialize these per org at seed time.
+ */
+const INVOICE_TIMING_SYSTEM_ATTRIBUTES = ['quote_invoice_timing', 'work_order_invoice_timing']
+
+/**
+ * DB half of the `documents.invoice.defaultTiming` write-through (money MI2
+ * §O.2, recommended variant): updates the two org `CustomField.defaultValue`
+ * rows so every create door (dialog, Kopilot, API, quote→WO convert copy)
+ * inherits the new default through the existing field-default machinery — no
+ * create-path edits needed. Safe to run inside a transaction; call
+ * {@link bustInvoiceDefaultTimingCache} after commit if this returns `true`.
+ *
+ * Writes `CustomField` directly rather than going through
+ * `CustomFieldService.updateField()`/`updateCustomField` — both target fields
+ * are `systemAttribute`-marked, and `updateCustomField`'s `isProtectedField`
+ * guard (`packages/services/src/custom-fields/ownership.ts`) unconditionally
+ * rejects user edits to system fields; there's no `defaultValue`-only escape
+ * hatch (only `deleteField` has one, via `allowProtectedDeletion`). This
+ * mirrors the entity-migration pattern (`seed/entity-migrations/helpers.ts`),
+ * which also writes `CustomField` columns directly for system fields.
+ */
+async function writeInvoiceDefaultTimingCustomFields(params: {
+  organizationId: string
+  value: SettingValue
+  db: Database
+}): Promise<boolean> {
+  const { organizationId, value, db } = params
+  if (typeof value !== 'string') return false
+
+  const updated = await db
+    .update(schema.CustomField)
+    .set({ defaultValue: value, updatedAt: new Date() })
+    .where(
+      and(
+        eq(schema.CustomField.organizationId, organizationId),
+        inArray(schema.CustomField.systemAttribute, INVOICE_TIMING_SYSTEM_ATTRIBUTES)
+      )
+    )
+    .returning({ id: schema.CustomField.id })
+
+  return updated.length > 0
+}
+
+/**
+ * Cache half of the write-through — bust the org `customFields`/`resources`
+ * caches. Call once, after the DB transaction that wrote the rows commits
+ * (`onCacheEvent` contract).
+ */
+async function bustInvoiceDefaultTimingCache(organizationId: string): Promise<void> {
+  // Dynamic import — `../cache` transitively pulls in the org-settings cache
+  // provider, which imports this module (see `getOrganizationSetting` above
+  // for the same pattern), so a static import here would cycle.
+  const { onCacheEvent } = await import('../cache/invalidate')
+  await onCacheEvent('custom-field.updated', { orgId: organizationId })
+}
+
+/**
+ * Single-write convenience wrapper (DB write + cache bust) for the
+ * non-transactional {@link updateOrganizationSetting} path.
+ */
+async function applyInvoiceDefaultTimingWriteThrough(params: {
+  organizationId: string
+  value: SettingValue
+  db: Database
+}): Promise<void> {
+  const wrote = await writeInvoiceDefaultTimingCustomFields(params)
+  if (wrote) await bustInvoiceDefaultTimingCache(params.organizationId)
+}
 
 /**
  * Get an organization setting, ignoring user overrides.
@@ -244,6 +316,10 @@ export async function updateOrganizationSetting(params: {
       target: [schema.OrganizationSetting.organizationId, schema.OrganizationSetting.key],
       set: { value: normalizedValue, updatedAt: new Date() },
     })
+
+  if (key === 'documents.invoice.defaultTiming') {
+    await applyInvoiceDefaultTimingWriteThrough({ organizationId, value: normalizedValue, db })
+  }
 }
 
 /**
@@ -322,6 +398,7 @@ export async function batchUpdateOrganizationSettings(params: {
   db?: Database
 }): Promise<void> {
   const { organizationId, settings, db = defaultDb } = params
+  let touchedInvoiceDefaultTiming = false
 
   await db.transaction(async (tx) => {
     for (const setting of settings) {
@@ -347,8 +424,19 @@ export async function batchUpdateOrganizationSettings(params: {
           target: [schema.OrganizationSetting.organizationId, schema.OrganizationSetting.key],
           set: { value: normalizedValue, updatedAt: new Date() },
         })
+
+      if (key === 'documents.invoice.defaultTiming') {
+        const wrote = await writeInvoiceDefaultTimingCustomFields({
+          organizationId,
+          value: normalizedValue,
+          db: tx,
+        })
+        if (wrote) touchedInvoiceDefaultTiming = true
+      }
     }
   })
+
+  if (touchedInvoiceDefaultTiming) await bustInvoiceDefaultTimingCache(organizationId)
 }
 
 /** One organization setting merged with its catalog metadata. */
