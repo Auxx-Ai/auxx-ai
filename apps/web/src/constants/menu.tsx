@@ -4,6 +4,7 @@ import {
   Bot,
   Building2,
   Cable,
+  CalendarClock,
   CheckSquare,
   CircleAlert,
   ClipboardList,
@@ -118,6 +119,7 @@ export const SIDEBAR_MENU: SidebarProps[] = [
     featureKey: 'workflows',
   },
   { id: 'tasks', label: 'Tasks', slug: 'tasks', icon: <CheckSquare /> },
+  { id: 'schedule', label: 'Schedule', slug: 'schedule', icon: <CalendarClock /> },
   {
     id: 'dispatch',
     label: 'Dispatch',

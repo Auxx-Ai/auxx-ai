@@ -1,12 +1,16 @@
 // packages/lib/src/recording/calendar/calendar-event-service.ts
 
 import { type CalendarEventInsert, database as db, schema } from '@auxx/database'
-import { and, asc, desc, eq, gt, gte, lt, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, gt, gte, inArray, lt, sql } from 'drizzle-orm'
 import { err, ok } from 'neverthrow'
 import type {
   CalendarEventListFilters,
   CalendarEventListResult,
   CalendarEventWithParticipants,
+  GetMyMeetingInput,
+  ListMyMeetingsInput,
+  MyMeetingDetail,
+  MyMeetingListItem,
   RecordingResult,
   UpcomingMeetingSummary,
 } from './types'
@@ -281,6 +285,150 @@ export async function listCalendarEventParticipants(
     })
 
     return ok(participants)
+  } catch (error) {
+    return err(toError(error))
+  }
+}
+
+type CalendarEventRow = typeof schema.CalendarEvent.$inferSelect
+
+/**
+ * List the signed-in user's meetings in `[from, to)` (08-worker-surface.md §2/§6) — the
+ * Schedule page's meeting source. UNION of events the user owns (`CalendarEvent.userId`) and
+ * events they're a participant on (`MeetingParticipant.userId`, joined via
+ * `calendarEventId`), deduped by event id, sorted oldest first. Two bounded queries merged in
+ * JS rather than one OR/EXISTS query — reads more directly as "owned ∪ participant" and both
+ * legs use their own indexes (`CalendarEvent_userId_idx`, the new
+ * `MeetingParticipant_userId_idx`).
+ */
+export async function listMyMeetings(
+  input: ListMyMeetingsInput
+): RecordingResult<MyMeetingListItem[]> {
+  try {
+    const { organizationId, userId, from, to } = input
+    const timeConditions = []
+    if (from) timeConditions.push(gte(schema.CalendarEvent.startTime, from))
+    if (to) timeConditions.push(lt(schema.CalendarEvent.startTime, to))
+
+    const ownedRows = await db
+      .select()
+      .from(schema.CalendarEvent)
+      .where(
+        and(
+          eq(schema.CalendarEvent.organizationId, organizationId),
+          eq(schema.CalendarEvent.userId, userId),
+          ...timeConditions
+        )
+      )
+
+    const participantLinks = await db
+      .selectDistinct({ calendarEventId: schema.MeetingParticipant.calendarEventId })
+      .from(schema.MeetingParticipant)
+      .where(
+        and(
+          eq(schema.MeetingParticipant.organizationId, organizationId),
+          eq(schema.MeetingParticipant.userId, userId)
+        )
+      )
+    const participantEventIds = participantLinks
+      .map((row) => row.calendarEventId)
+      .filter((id): id is string => Boolean(id))
+
+    const participantRows =
+      participantEventIds.length > 0
+        ? await db
+            .select()
+            .from(schema.CalendarEvent)
+            .where(
+              and(
+                eq(schema.CalendarEvent.organizationId, organizationId),
+                inArray(schema.CalendarEvent.id, participantEventIds),
+                ...timeConditions
+              )
+            )
+        : []
+
+    const byId = new Map<string, CalendarEventRow>()
+    for (const row of [...ownedRows, ...participantRows]) {
+      byId.set(row.id, row)
+    }
+
+    const items = Array.from(byId.values())
+      .sort((a, b) => a.startTime.getTime() - b.startTime.getTime())
+      .map((event) => ({
+        id: event.id,
+        title: event.title,
+        startTime: event.startTime,
+        endTime: event.endTime,
+        timezone: event.timezone,
+        meetingUrl: event.meetingUrl,
+      }))
+
+    return ok(items)
+  } catch (error) {
+    return err(toError(error))
+  }
+}
+
+/**
+ * Fetch one meeting for the read-only meeting sheet (08 §4) — owner-or-participant guarded:
+ * returns `null` (not an error) when the event doesn't exist OR the user is neither the owner
+ * nor a participant, so the sheet renders a not-found state instead of leaking other members'
+ * meetings.
+ */
+export async function getMyMeeting(
+  input: GetMyMeetingInput
+): RecordingResult<MyMeetingDetail | null> {
+  try {
+    const { organizationId, userId, meetingId } = input
+
+    const event = await db.query.CalendarEvent.findFirst({
+      where: (events, { and, eq }) =>
+        and(eq(events.id, meetingId), eq(events.organizationId, organizationId)),
+    })
+    if (!event) return ok(null)
+
+    let isParticipant = event.userId === userId
+    if (!isParticipant) {
+      const participant = await db.query.MeetingParticipant.findFirst({
+        where: (participants, { and, eq }) =>
+          and(
+            eq(participants.calendarEventId, meetingId),
+            eq(participants.organizationId, organizationId),
+            eq(participants.userId, userId)
+          ),
+      })
+      isParticipant = Boolean(participant)
+    }
+    if (!isParticipant) return ok(null)
+
+    const attendees = await db.query.MeetingParticipant.findMany({
+      where: (participants, { and, eq }) =>
+        and(
+          eq(participants.calendarEventId, meetingId),
+          eq(participants.organizationId, organizationId)
+        ),
+      orderBy: (participants, { desc, asc }) => [
+        desc(participants.isOrganizer),
+        asc(participants.name),
+      ],
+    })
+
+    return ok({
+      id: event.id,
+      title: event.title,
+      startTime: event.startTime,
+      endTime: event.endTime,
+      timezone: event.timezone,
+      meetingUrl: event.meetingUrl,
+      linkedRecordId: event.entityInstanceId,
+      attendees: attendees.map((participant) => ({
+        name: participant.name,
+        email: participant.email,
+        rsvpStatus: participant.rsvpStatus,
+        isOrganizer: participant.isOrganizer,
+      })),
+    })
   } catch (error) {
     return err(toError(error))
   }

@@ -3,13 +3,17 @@
 import { schema } from '@auxx/database'
 import { isOrgMember } from '@auxx/lib/cache'
 import {
+  advanceMyVisit,
   assignVisit,
+  closeMyVisit,
   convertRequestToWorkOrder,
   createWorkOrderFromTicket,
   dispatchVisit,
   endEngagement,
   getBoard,
+  getMyVisitDetail,
   listDispatchWorkers,
+  listMyVisits,
   listVisitsForWorkOrder,
   pauseEngagement,
   removeDispatchWorker,
@@ -213,6 +217,49 @@ export const dispatchRouter = createTRPCRouter({
     .query(async ({ ctx, input }) => {
       const { entityInstanceId } = parseRecordId(input.workOrderRecordId)
       return listVisitsForWorkOrder(ctx.session.organizationId, entityInstanceId)
+    }),
+
+  // 08-worker-surface.md §6 — the worker-scoped path. Member-level (not admin-gated): the
+  // row-level assignee guard lives in the lib layer (`loadOwnVisit`), so orgId + userId always
+  // come from the session, never input — a worker touches only their own visits.
+  myVisits: dispatchProcedure
+    .input(z.object({ from: z.date(), to: z.date() }))
+    .query(async ({ ctx, input }) => {
+      return listMyVisits({
+        organizationId: ctx.session.organizationId,
+        userId: ctx.session.user.id,
+        from: input.from,
+        to: input.to,
+      })
+    }),
+  getMyVisit: dispatchProcedure
+    .input(z.object({ visitId: z.string() }))
+    .query(async ({ ctx, input }) => {
+      return getMyVisitDetail({
+        organizationId: ctx.session.organizationId,
+        userId: ctx.session.user.id,
+        visitId: input.visitId,
+      })
+    }),
+  advanceMyVisit: dispatchProcedure
+    .input(z.object({ visitId: z.string(), to: z.enum(['scheduled', 'en_route', 'on_site']) }))
+    .mutation(async ({ ctx, input }) => {
+      return advanceMyVisit({
+        organizationId: ctx.session.organizationId,
+        userId: ctx.session.user.id,
+        visitId: input.visitId,
+        to: input.to,
+      })
+    }),
+  closeMyVisit: dispatchProcedure
+    .input(z.object({ visitId: z.string(), invoice: z.enum(['now', 'later', 'leave_open']) }))
+    .mutation(async ({ ctx, input }) => {
+      return closeMyVisit({
+        organizationId: ctx.session.organizationId,
+        userId: ctx.session.user.id,
+        visitId: input.visitId,
+        invoice: input.invoice,
+      })
     }),
 
   // §5.4 — the M2c recurring engine. Admin-gated like the rest of visit machinery.

@@ -12,6 +12,18 @@ export { createWorkOrderFromTicket } from './create-from-ticket'
 export type { LifecycleTrigger } from './lifecycle'
 export { rollUpWorkOrderStatus } from './lifecycle'
 export { mirrorVisitOntoWorkOrder } from './mirror'
+export type {
+  AdvanceMyVisitInput,
+  CloseMyVisitInput,
+  CloseMyVisitResult,
+  GetMyVisitDetailInput,
+  ListMyVisitsInput,
+  MyVisitDetail,
+  MyVisitDetailLine,
+  MyVisitDetailWorkOrder,
+  MyVisitListItem,
+} from './my-schedule'
+export { advanceMyVisit, closeMyVisit, getMyVisitDetail, listMyVisits } from './my-schedule'
 export { dispatchVisit } from './notify'
 export type { EngagementActionInput, RecurrenceTemplate, SetRecurrenceRuleInput } from './recurring'
 export {

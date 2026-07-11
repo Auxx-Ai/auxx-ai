@@ -64,6 +64,9 @@ export interface SetVisitStatusInput {
   userId: string
   visitId: string
   status: VisitStatus
+  /** Skip the work-order status roll-up (worker "leave job open" close path, 08 §6). The
+   * MI2 invoice-draft check still runs — org billing policy is independent of roll-up. */
+  suppressRollUp?: boolean
   excludeSocketId?: string
 }
 

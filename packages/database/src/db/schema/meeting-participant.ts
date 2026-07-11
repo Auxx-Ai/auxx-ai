@@ -90,6 +90,7 @@ export const MeetingParticipant = pgTable(
       'btree',
       table.calendarEventId.asc().nullsLast()
     ),
+    index('MeetingParticipant_userId_idx').using('btree', table.userId.asc().nullsLast()),
     index('MeetingParticipant_email_idx').using('btree', table.email.asc().nullsLast()),
     index('MeetingParticipant_emailDomain_idx').using('btree', table.emailDomain.asc().nullsLast()),
     index('MeetingParticipant_contactEntityInstanceId_idx').using(
