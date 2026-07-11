@@ -10,9 +10,10 @@
 // only exposes generic capability flags (enableArchive/enableMerge/…, see
 // `detail-view-config-types.ts`) with no per-entity extension point, so the
 // sanctioned fallback (per the build spec) is this tab's own header strip.
-// This is also the ONLY surface for quote lifecycle/send actions — `quote`
-// has `hasDetailPage: true` (ModelTypeMeta), so records-view navigation goes
-// straight to this detail page and never opens a quote drawer.
+// Two surfaces render this component: the detail page's Line-items section
+// (DETAIL_VIEW_TAB_COMPONENTS, sections layout) and the quote drawer's
+// Overview card (QuoteLinesOverviewCard below — records-view/dashboards open
+// quotes in a drawer regardless of `hasDetailPage`).
 
 import { parseRecordId } from '@auxx/lib/resources/client'
 import { Badge } from '@auxx/ui/components/badge'
@@ -26,6 +27,7 @@ import { useChannelsLoading } from '~/components/channels/hooks/use-channels'
 import { useDefaultChannelId } from '~/components/channels/hooks/use-default-channel'
 import { useEmailChannels } from '~/components/channels/store/channel-store'
 import type { DetailViewTabProps } from '~/components/detail-view'
+import type { DrawerTabProps } from '~/components/drawers/drawer-tab-registry'
 import { Tooltip } from '~/components/global/tooltip'
 import { LineBuilder } from '~/components/money/ui/line-builder/line-builder'
 import { useSaveSystemValues, useSystemValues } from '~/components/resources/hooks'
@@ -273,7 +275,7 @@ export function QuoteLineItemsTab({ recordId, variant = 'tab' }: DetailViewTabPr
 
       <div
         className={cn(
-          'flex flex-col px-4 pb-4',
+          'flex flex-col pb-4',
           isSection ? 'max-h-[60vh] overflow-auto' : 'min-h-0 flex-1'
         )}>
         <LineBuilder documentRecordId={recordId} documentType='quote' readOnly={readOnly} />
@@ -282,4 +284,16 @@ export function QuoteLineItemsTab({ recordId, variant = 'tab' }: DetailViewTabPr
       <ConfirmDialog />
     </div>
   )
+}
+
+/**
+ * Drawer Overview card variant — registered as `quote:lines` in
+ * `DRAWER_TAB_CARD_COMPONENTS` (the `invoice:lines` pattern: the drawer's
+ * Section wrapper renders the "Line items" title). Forces `variant='section'`
+ * so the builder is height-capped inside the Overview scroll column. The full
+ * detail page is untouched — it renders {@link QuoteLineItemsTab} through its
+ * own `DETAIL_VIEW_TAB_COMPONENTS` registry and sections layout.
+ */
+export function QuoteLinesOverviewCard(props: DrawerTabProps) {
+  return <QuoteLineItemsTab {...props} variant='section' />
 }

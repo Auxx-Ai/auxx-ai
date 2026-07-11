@@ -59,16 +59,6 @@ export const DRAWER_TAB_COMPONENTS: Record<
     import('./tabs/part-subparts-tab').then((m) => ({ default: m.PartSubpartsTab })),
   'part:vendors': () =>
     import('./tabs/part-vendors-tab').then((m) => ({ default: m.PartVendorsTab })),
-
-  // ─────────────────────────────────────────────────────────────────
-  // QUOTE TABS (shared with the quote detail-view main tab — the
-  // component takes DetailViewTabProps, which is prop-compatible with
-  // DrawerTabProps: both are { entityInstanceId, recordId, record? })
-  // ─────────────────────────────────────────────────────────────────
-  'quote:line-items': () =>
-    import('../money/ui/quote/quote-line-items-tab').then((m) => ({
-      default: m.QuoteLineItemsTab,
-    })),
 }
 
 /**
@@ -118,6 +108,12 @@ export const DRAWER_TAB_CARD_COMPONENTS: Record<
     import('./cards/quote-customer-card').then((m) => ({ default: m.QuoteCustomerCard })),
   'quote:origin': () =>
     import('./cards/quote-origin-card').then((m) => ({ default: m.QuoteOriginCard })),
+  // Drawer-only line-items block (the invoice:lines pattern) — the detail page
+  // renders its own Line-items section via DETAIL_VIEW_TAB_COMPONENTS instead.
+  'quote:lines': () =>
+    import('../money/ui/quote/quote-line-items-tab').then((m) => ({
+      default: m.QuoteLinesOverviewCard,
+    })),
 
   // ─────────────────────────────────────────────────────────────────
   // INVOICE OVERVIEW CARDS (money MI1 build spec §J.1 — drawer-only entity,
