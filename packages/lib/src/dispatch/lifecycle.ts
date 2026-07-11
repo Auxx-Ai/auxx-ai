@@ -59,12 +59,25 @@ export async function rollUpWorkOrderStatus(
   const targetStatus = TRIGGER_TARGET_STATUS[trigger]
   const cf = await getOrgCache()
     .from(organizationId, 'customFields')
-    .bySystemAttributes(['work_order_status'] as const)
+    .bySystemAttributes(['work_order_status', 'work_order_job_type'] as const)
   const statusField = cf.work_order_status
   if (!statusField) return
 
   const recordId = toRecordId('work_order', workOrderId)
   const fieldValueService = new FieldValueService(organizationId, userId)
+
+  // Recurring engagement status (active/paused/ended) is engagement-level, never
+  // visit-mirrored (06-recurring-engine.md §4.2) — a visit transition on a recurring job must
+  // not clobber it back toward the one_off ladder.
+  if (cf.work_order_job_type) {
+    const jobTypeTyped = await fieldValueService.getValue({
+      recordId,
+      fieldId: cf.work_order_job_type.id,
+    })
+    const jobTypeFirst = Array.isArray(jobTypeTyped) ? jobTypeTyped[0] : jobTypeTyped
+    const jobType = jobTypeFirst ? (extractValue(jobTypeFirst) as string) : undefined
+    if (jobType === 'recurring') return
+  }
 
   if (!RESET_TRIGGERS.has(trigger)) {
     const currentTyped = await fieldValueService.getValue({ recordId, fieldId: statusField.id })

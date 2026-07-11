@@ -886,6 +886,18 @@
       "import": "./dist/records/index.mjs",
       "default": "./src/records/index.ts"
     },
+    "./recurrence": {
+      "types": "./src/recurrence/index.ts",
+      "source": "./src/recurrence/index.ts",
+      "import": "./dist/recurrence/index.mjs",
+      "default": "./src/recurrence/index.ts"
+    },
+    "./recurrence/client": {
+      "types": "./src/recurrence/client.ts",
+      "source": "./src/recurrence/client.ts",
+      "import": "./dist/recurrence/client.mjs",
+      "default": "./src/recurrence/client.ts"
+    },
     "./resource-access": {
       "types": "./src/resource-access/index.ts",
       "source": "./src/resource-access/index.ts",

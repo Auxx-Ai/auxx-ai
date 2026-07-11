@@ -81,6 +81,18 @@ export async function afterVisitWrite(
 export async function scheduleVisit(input: ScheduleVisitInput): Promise<WorkOrderVisitRow> {
   const { organizationId, userId, visitId, startTime, endTime, timezone, excludeSocketId } = input
 
+  // M2c (06 §4.3): load the row first so we know whether it's part of a series — a schedule
+  // edit on a series visit is a "this visit" override (detach it; regeneration never touches
+  // it again). `occurrenceDate` (slot identity) is never changed here.
+  const existing = await database.query.WorkOrderVisit.findFirst({
+    where: and(
+      eq(schema.WorkOrderVisit.id, visitId),
+      eq(schema.WorkOrderVisit.organizationId, organizationId)
+    ),
+    columns: { recurrenceRuleId: true },
+  })
+  if (!existing) throw new NotFoundError('Visit not found')
+
   const set: Partial<typeof schema.WorkOrderVisit.$inferInsert> = {
     startTime,
     endTime,
@@ -88,9 +100,7 @@ export async function scheduleVisit(input: ScheduleVisitInput): Promise<WorkOrde
   }
   if (input.assigneeUserId !== undefined) set.assigneeUserId = input.assigneeUserId
   if (timezone !== undefined) set.timezone = timezone
-
-  // M2c (06 §4.3): when this row carries a `recurrenceRuleId`, set `isDetached: true` here
-  // — the column lands with the recurring-engine migration, not before.
+  if (existing.recurrenceRuleId) set.isDetached = true
 
   const [updated] = await database
     .update(schema.WorkOrderVisit)
@@ -115,9 +125,25 @@ export async function scheduleVisit(input: ScheduleVisitInput): Promise<WorkOrde
 export async function assignVisit(input: AssignVisitInput): Promise<WorkOrderVisitRow> {
   const { organizationId, userId, visitId, assigneeUserId, excludeSocketId } = input
 
+  // M2c (06 §4.3): an assignee change on a series visit is also a "this visit" edit.
+  const existing = await database.query.WorkOrderVisit.findFirst({
+    where: and(
+      eq(schema.WorkOrderVisit.id, visitId),
+      eq(schema.WorkOrderVisit.organizationId, organizationId)
+    ),
+    columns: { recurrenceRuleId: true },
+  })
+  if (!existing) throw new NotFoundError('Visit not found')
+
+  const set: Partial<typeof schema.WorkOrderVisit.$inferInsert> = {
+    assigneeUserId,
+    updatedAt: new Date(),
+  }
+  if (existing.recurrenceRuleId) set.isDetached = true
+
   const [updated] = await database
     .update(schema.WorkOrderVisit)
-    .set({ assigneeUserId, updatedAt: new Date() })
+    .set(set)
     .where(
       and(
         eq(schema.WorkOrderVisit.id, visitId),

@@ -170,6 +170,8 @@ export {
   type ReconcileRecordIdentitiesStats,
   reconcileRecordIdentitiesJob,
 } from './maintenance/reconcile-record-identities-job'
+// Dispatch recurring engine daily sweep (M2c)
+export { recurringVisitsJob } from './maintenance/recurring-visits-job'
 export {
   type StalePendingMessageSweeperStats,
   stalePendingMessageSweeperJob,

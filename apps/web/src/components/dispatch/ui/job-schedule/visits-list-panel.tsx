@@ -39,6 +39,7 @@ export function VisitsListPanel({ recordId, setItemId }: DetailViewSectionsDrill
                   canEdit={canEdit}
                   mutations={mutations}
                   existingVisits={existingVisits}
+                  workOrderRecordId={recordId}
                   onRefresh={refresh}
                   onOpen={() => setItemId(visit.id)}
                 />
@@ -60,6 +61,7 @@ export function VisitsListPanel({ recordId, setItemId }: DetailViewSectionsDrill
                   canEdit={canEdit}
                   mutations={mutations}
                   existingVisits={existingVisits}
+                  workOrderRecordId={recordId}
                   onRefresh={refresh}
                   onOpen={() => setItemId(visit.id)}
                 />

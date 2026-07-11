@@ -1,27 +1,34 @@
 // apps/web/src/server/api/routers/dispatch.ts
 
+import { schema } from '@auxx/database'
 import { isOrgMember } from '@auxx/lib/cache'
 import {
   assignVisit,
   convertRequestToWorkOrder,
   createWorkOrderFromTicket,
   dispatchVisit,
+  endEngagement,
   getBoard,
   listDispatchWorkers,
   listVisitsForWorkOrder,
+  pauseEngagement,
   removeDispatchWorker,
+  resumeEngagement,
   scheduleVisit,
+  setRecurrenceRule,
   setVisitStatus,
   setWorkerActive,
   unscheduleVisit,
   upsertDispatchWorker,
   VISIT_STATUS_VALUES,
 } from '@auxx/lib/dispatch'
-import { BadRequestError, ForbiddenError } from '@auxx/lib/errors'
+import { BadRequestError, ForbiddenError, NotFoundError } from '@auxx/lib/errors'
 import { isAdminOrOwner } from '@auxx/lib/members'
 import { FeaturePermissionService } from '@auxx/lib/permissions'
 import { FeatureKey } from '@auxx/lib/permissions/client'
+import { recurrencePatternSchema } from '@auxx/lib/recurrence'
 import { parseRecordId, recordIdSchema } from '@auxx/types/resource'
+import { and, eq } from 'drizzle-orm'
 import { z } from 'zod'
 import { createTRPCRouter, protectedProcedure } from '../trpc'
 
@@ -55,6 +62,13 @@ const addressStructSchema = z.object({
   state: z.string(),
   zipCode: z.string(),
   country: z.string(),
+})
+
+/** The visit template carried by a `RecurrenceRule` (06-recurring-engine.md §3.1). */
+const recurrenceTemplateSchema = z.object({
+  startMinute: z.number().int().min(0).max(1439),
+  durationMinutes: z.number().int().min(1),
+  defaultAssigneeUserId: z.string().nullable().optional(),
 })
 
 export const dispatchRouter = createTRPCRouter({
@@ -199,5 +213,133 @@ export const dispatchRouter = createTRPCRouter({
     .query(async ({ ctx, input }) => {
       const { entityInstanceId } = parseRecordId(input.workOrderRecordId)
       return listVisitsForWorkOrder(ctx.session.organizationId, entityInstanceId)
+    }),
+
+  // §5.4 — the M2c recurring engine. Admin-gated like the rest of visit machinery.
+  getRecurrence: dispatchProcedure
+    .input(z.object({ workOrderRecordId: recordIdSchema }))
+    .query(async ({ ctx, input }) => {
+      const { entityInstanceId } = parseRecordId(input.workOrderRecordId)
+      const rule = await ctx.db.query.RecurrenceRule.findFirst({
+        where: and(
+          eq(schema.RecurrenceRule.organizationId, ctx.session.organizationId),
+          eq(schema.RecurrenceRule.subjectType, 'work_order_visits'),
+          eq(schema.RecurrenceRule.subjectId, entityInstanceId)
+        ),
+      })
+      return rule ?? null
+    }),
+  setRecurrence: dispatchAdminProcedure
+    .input(
+      z.object({
+        workOrderRecordId: recordIdSchema,
+        pattern: recurrencePatternSchema,
+        template: recurrenceTemplateSchema,
+        timezone: z.string(),
+        effectiveFrom: z.string(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const { entityInstanceId } = parseRecordId(input.workOrderRecordId)
+      return setRecurrenceRule({
+        organizationId: ctx.session.organizationId,
+        userId: ctx.session.user.id,
+        workOrderInstanceId: entityInstanceId,
+        pattern: input.pattern,
+        template: input.template,
+        timezone: input.timezone,
+        effectiveFrom: input.effectiveFrom,
+        excludeSocketId: excludeSocketId(ctx),
+      })
+    }),
+  pauseEngagement: dispatchAdminProcedure
+    .input(z.object({ workOrderRecordId: recordIdSchema }))
+    .mutation(async ({ ctx, input }) => {
+      const { entityInstanceId } = parseRecordId(input.workOrderRecordId)
+      await pauseEngagement({
+        organizationId: ctx.session.organizationId,
+        userId: ctx.session.user.id,
+        workOrderInstanceId: entityInstanceId,
+        excludeSocketId: excludeSocketId(ctx),
+      })
+      return { success: true }
+    }),
+  resumeEngagement: dispatchAdminProcedure
+    .input(z.object({ workOrderRecordId: recordIdSchema }))
+    .mutation(async ({ ctx, input }) => {
+      const { entityInstanceId } = parseRecordId(input.workOrderRecordId)
+      await resumeEngagement({
+        organizationId: ctx.session.organizationId,
+        userId: ctx.session.user.id,
+        workOrderInstanceId: entityInstanceId,
+        excludeSocketId: excludeSocketId(ctx),
+      })
+      return { success: true }
+    }),
+  endEngagement: dispatchAdminProcedure
+    .input(z.object({ workOrderRecordId: recordIdSchema }))
+    .mutation(async ({ ctx, input }) => {
+      const { entityInstanceId } = parseRecordId(input.workOrderRecordId)
+      await endEngagement({
+        organizationId: ctx.session.organizationId,
+        userId: ctx.session.user.id,
+        workOrderInstanceId: entityInstanceId,
+        excludeSocketId: excludeSocketId(ctx),
+      })
+      return { success: true }
+    }),
+  // Three-way "this and following" / "all visits" edit (06 §4.3): loads the target visit's
+  // rule, keeps the pattern unchanged, merges the template edit, and re-anchors
+  // `effectiveFrom` at the visit's occurrenceDate (following) or the rule's anchor (all).
+  applyToSeries: dispatchAdminProcedure
+    .input(
+      z.object({
+        visitId: z.string(),
+        scope: z.enum(['following', 'all']),
+        changes: z.object({
+          startMinute: z.number().int().min(0).max(1439).optional(),
+          durationMinutes: z.number().int().min(1).optional(),
+          assigneeUserId: z.string().nullable().optional(),
+        }),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const visit = await ctx.db.query.WorkOrderVisit.findFirst({
+        where: and(
+          eq(schema.WorkOrderVisit.id, input.visitId),
+          eq(schema.WorkOrderVisit.organizationId, ctx.session.organizationId)
+        ),
+      })
+      if (!visit?.recurrenceRuleId) {
+        throw new NotFoundError('Visit is not part of a recurring series')
+      }
+      const rule = await ctx.db.query.RecurrenceRule.findFirst({
+        where: and(
+          eq(schema.RecurrenceRule.id, visit.recurrenceRuleId),
+          eq(schema.RecurrenceRule.organizationId, ctx.session.organizationId)
+        ),
+      })
+      if (!rule) throw new NotFoundError('Recurrence rule not found')
+
+      const effectiveFrom =
+        input.scope === 'following' ? (visit.occurrenceDate ?? rule.anchor) : rule.anchor
+
+      return setRecurrenceRule({
+        organizationId: ctx.session.organizationId,
+        userId: ctx.session.user.id,
+        workOrderInstanceId: rule.subjectId,
+        pattern: rule.pattern as unknown as z.infer<typeof recurrencePatternSchema>,
+        template: {
+          startMinute: input.changes.startMinute ?? rule.startMinute ?? 0,
+          durationMinutes: input.changes.durationMinutes ?? rule.durationMinutes ?? 60,
+          defaultAssigneeUserId:
+            input.changes.assigneeUserId !== undefined
+              ? input.changes.assigneeUserId
+              : rule.defaultAssigneeUserId,
+        },
+        timezone: rule.timezone,
+        effectiveFrom,
+        excludeSocketId: excludeSocketId(ctx),
+      })
     }),
 })
