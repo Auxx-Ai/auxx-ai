@@ -133,7 +133,7 @@ export const WORK_ORDER_FIELDS: Record<string, ResourceField> = {
     fieldType: FieldType.RICH_TEXT,
     isSystem: true,
     systemAttribute: 'work_order_description',
-    systemSortOrder: 'a3',
+    systemSortOrder: 'a4',
     nullable: true,
     capabilities: {
       filterable: false,
@@ -153,8 +153,9 @@ export const WORK_ORDER_FIELDS: Record<string, ResourceField> = {
     fieldType: FieldType.SINGLE_SELECT,
     isSystem: true,
     systemAttribute: 'work_order_status',
-    systemSortOrder: 'a4',
+    systemSortOrder: 'a5',
     nullable: false,
+    showInDialogs: false, // new-job dialog starts every work order at the default status
     options: { options: [...WORK_ORDER_STATUS_OPTIONS] },
     capabilities: {
       filterable: true,
@@ -175,7 +176,7 @@ export const WORK_ORDER_FIELDS: Record<string, ResourceField> = {
     fieldType: FieldType.SINGLE_SELECT,
     isSystem: true,
     systemAttribute: 'work_order_priority',
-    systemSortOrder: 'a5',
+    systemSortOrder: 'a6',
     nullable: false,
     options: { options: [...WORK_ORDER_PRIORITY_OPTIONS] },
     capabilities: {
@@ -197,7 +198,7 @@ export const WORK_ORDER_FIELDS: Record<string, ResourceField> = {
     fieldType: FieldType.SINGLE_SELECT,
     isSystem: true,
     systemAttribute: 'work_order_job_type',
-    systemSortOrder: 'a6',
+    systemSortOrder: 'a7',
     nullable: false,
     options: { options: [...WORK_ORDER_JOB_TYPE_OPTIONS] },
     capabilities: {
@@ -220,7 +221,7 @@ export const WORK_ORDER_FIELDS: Record<string, ResourceField> = {
     fieldType: FieldType.RELATIONSHIP,
     isSystem: true,
     systemAttribute: 'work_order_contact',
-    systemSortOrder: 'a7',
+    systemSortOrder: 'a3',
     nullable: true,
     capabilities: {
       filterable: true,
@@ -336,6 +337,7 @@ export const WORK_ORDER_FIELDS: Record<string, ResourceField> = {
     systemAttribute: 'work_order_request',
     systemSortOrder: 'aB',
     nullable: true,
+    showInDialogs: false, // set by the convert flow, not picked in the new-job dialog
     capabilities: {
       filterable: true,
       sortable: false,
@@ -496,6 +498,8 @@ export const WORK_ORDER_FIELDS: Record<string, ResourceField> = {
     systemAttribute: 'work_order_quote',
     systemSortOrder: 'aI',
     nullable: true,
+    showInPanel: false, // drawer surfaces the quote via the Origin card, not a field row
+    showInDialogs: false, // set by the convert flow, not picked in the new-job dialog
     capabilities: {
       filterable: true,
       sortable: false,

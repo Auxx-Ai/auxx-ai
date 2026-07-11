@@ -28,7 +28,7 @@ interface FieldViewSeedConfig {
  * Default field view configs for core entities.
  * Uses systemAttribute (from field definitions) for reliable field identification.
  */
-const FIELD_VIEW_CONFIGS: FieldViewSeedConfig[] = [
+export const FIELD_VIEW_CONFIGS: FieldViewSeedConfig[] = [
   // ============================================================================
   // CONTACT FIELD VIEWS
   // ============================================================================
@@ -283,6 +283,10 @@ const FIELD_VIEW_CONFIGS: FieldViewSeedConfig[] = [
       'created_by_id',
       'work_order_pricing_model', // hidden billing structure (§B) — no UI until invoicing
       'work_order_invoice_timing',
+      // surfaced via the job view's Origin card + line-items/invoice UI, not field rows
+      'work_order_quote',
+      'work_order_line_items',
+      'work_order_invoices',
     ],
   },
   {
@@ -306,10 +310,9 @@ const FIELD_VIEW_CONFIGS: FieldViewSeedConfig[] = [
     name: 'Default Create Dialog',
     includeFields: [
       'work_order_title',
-      'work_order_status',
+      'work_order_contact',
       'work_order_priority',
       'work_order_job_type',
-      'work_order_contact',
       'work_order_company',
       'work_order_address',
       'work_order_description',
@@ -323,7 +326,15 @@ const FIELD_VIEW_CONFIGS: FieldViewSeedConfig[] = [
     entityType: 'service_request',
     contextType: 'panel',
     name: 'Default Panel View',
-    excludeFields: ['id', 'created_at', 'updated_at', 'created_by_id'],
+    // work_orders + quotes render as dedicated overview blocks, not field rows
+    excludeFields: [
+      'id',
+      'created_at',
+      'updated_at',
+      'created_by_id',
+      'service_request_work_orders',
+      'service_request_quotes',
+    ],
   },
   {
     entityType: 'service_request',
@@ -343,12 +354,12 @@ const FIELD_VIEW_CONFIGS: FieldViewSeedConfig[] = [
     name: 'Default Create Dialog',
     includeFields: [
       'service_request_title',
+      'service_request_contact',
       'service_request_description',
       'service_request_property_type',
       'service_request_preferred_date',
       'service_request_alternate_date',
       'service_request_arrival_window',
-      'service_request_contact',
       'service_request_address',
     ],
   },
@@ -360,6 +371,7 @@ const FIELD_VIEW_CONFIGS: FieldViewSeedConfig[] = [
     entityType: 'quote',
     contextType: 'panel',
     name: 'Default Panel View',
+    // money totals (discount/tax/subtotal/total) live in the line-items card below
     excludeFields: [
       'id',
       'created_at',
@@ -367,6 +379,12 @@ const FIELD_VIEW_CONFIGS: FieldViewSeedConfig[] = [
       'created_by_id',
       'quote_line_items',
       'quote_work_orders',
+      'quote_discount_type',
+      'quote_discount_value',
+      'quote_tax_rate',
+      'quote_subtotal',
+      'quote_tax_total',
+      'quote_total',
     ],
   },
   {
@@ -441,6 +459,7 @@ const FIELD_VIEW_CONFIGS: FieldViewSeedConfig[] = [
     entityType: 'invoice',
     contextType: 'panel',
     name: 'Default Panel View',
+    // money totals (discount/tax/subtotal/total) live in the line-items card below
     excludeFields: [
       'id',
       'created_at',
@@ -449,6 +468,12 @@ const FIELD_VIEW_CONFIGS: FieldViewSeedConfig[] = [
       'invoice_line_items',
       'invoice_payments',
       'invoice_pdf_asset',
+      'invoice_discount_type',
+      'invoice_discount_value',
+      'invoice_tax_rate',
+      'invoice_subtotal',
+      'invoice_tax_total',
+      'invoice_total',
     ],
   },
   {
@@ -609,14 +634,21 @@ function buildFieldIdList(
     return result
   }
 
-  // Otherwise, collect all fields for this entity (excluding specified ones)
+  // Otherwise, collect all fields for this entity (excluding specified ones),
+  // ordered by the registry's systemSortOrder so the panel/table default order
+  // tracks the field registry rather than object-declaration order.
+  const collected: { resourceFieldId: string; sortOrder: string }[] = []
   for (const [key, field] of fieldMap.entries()) {
     if (!key.startsWith(`${entityType}:`)) continue
     if (excludeSet.has(field.systemAttribute)) continue
 
-    const resourceFieldId = toResourceFieldId(entityDefId, toFieldId(field.id))
-    result.push(resourceFieldId)
+    collected.push({
+      resourceFieldId: toResourceFieldId(entityDefId, toFieldId(field.id)),
+      sortOrder: field._fieldDef.systemSortOrder ?? 'zz',
+    })
   }
+  collected.sort((a, b) => a.sortOrder.localeCompare(b.sortOrder))
+  result.push(...collected.map((c) => c.resourceFieldId))
 
   return result
 }

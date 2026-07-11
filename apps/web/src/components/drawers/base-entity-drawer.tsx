@@ -12,6 +12,7 @@ import { Section } from '@auxx/ui/components/section'
 import { OverflowTabsList, type TabDefinition, Tabs, TabsContent } from '@auxx/ui/components/tabs'
 import {
   Clock,
+  FileText,
   HouseIcon,
   Layers,
   ListTodo,
@@ -21,6 +22,7 @@ import {
   ShoppingBag,
   Ticket,
   Truck,
+  Wrench,
 } from 'lucide-react'
 import { useQueryState } from 'nuqs'
 import * as React from 'react'
@@ -425,6 +427,11 @@ function TabCards({
         <Section
           key={card.value}
           title={card.label}
+          icon={
+            card.icon ? (
+              <>{React.createElement(getIconComponent(card.icon), { className: 'size-4' })}</>
+            ) : undefined
+          }
           initialOpen
           collapsible={false}
           className={
@@ -497,6 +504,8 @@ function getIconComponent(iconName: string) {
     layers: Layers,
     truck: Truck,
     'list-todo': ListTodo,
+    wrench: Wrench,
+    'file-text': FileText,
     // Add more as needed
   }
   return icons[iconName] ?? HouseIcon

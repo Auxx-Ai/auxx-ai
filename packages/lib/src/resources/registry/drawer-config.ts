@@ -70,6 +70,24 @@ export const DRAWER_CONFIG_REGISTRY: DrawerConfigRegistry = {
     },
   },
 
+  service_request: {
+    entityType: 'service_request',
+    additionalTabs: [],
+    actions: {
+      enableArchive: true,
+      enableDelete: true,
+    },
+    // Related work orders + quotes rendered as uniform overview blocks (styled like
+    // the ticket customer block). The `workOrders`/`quotes` inverse fields are hidden
+    // from the Details field panel (showInPanel:false) so they only appear here.
+    tabCards: {
+      overview: [
+        { value: 'work-orders', label: 'Work orders', icon: 'wrench' },
+        { value: 'quotes', label: 'Quotes', icon: 'file-text' },
+      ],
+    },
+  },
+
   quote: {
     entityType: 'quote',
     // No additionalTabs — the drawer shows line items as an Overview card

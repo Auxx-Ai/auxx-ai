@@ -116,6 +116,20 @@ export const DRAWER_TAB_CARD_COMPONENTS: Record<
     })),
 
   // ─────────────────────────────────────────────────────────────────
+  // SERVICE REQUEST OVERVIEW CARDS — uniform related-record blocks (work
+  // orders + quotes) styled like the ticket customer block; the quotes block
+  // carries header-parity "Create quote" (create-quote-action.tsx).
+  // ─────────────────────────────────────────────────────────────────
+  'service_request:work-orders': () =>
+    import('./cards/service-request-related-cards').then((m) => ({
+      default: m.ServiceRequestWorkOrdersCard,
+    })),
+  'service_request:quotes': () =>
+    import('./cards/service-request-related-cards').then((m) => ({
+      default: m.ServiceRequestQuotesCard,
+    })),
+
+  // ─────────────────────────────────────────────────────────────────
   // INVOICE OVERVIEW CARDS (money MI1 build spec §J.1 — drawer-only entity,
   // hasDetailPage: false, so these are the invoice's ONLY UI surface)
   // ─────────────────────────────────────────────────────────────────

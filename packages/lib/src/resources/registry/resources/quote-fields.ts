@@ -273,6 +273,7 @@ export const QUOTE_FIELDS: Record<string, ResourceField> = {
     isSystem: true,
     systemAttribute: 'quote_discount_type',
     systemSortOrder: 'a9',
+    showInPanel: false, // shown in the line-items overview card below
     nullable: true,
     options: { options: [...QUOTE_DISCOUNT_TYPE_OPTIONS] },
     capabilities: {
@@ -295,6 +296,7 @@ export const QUOTE_FIELDS: Record<string, ResourceField> = {
     isSystem: true,
     systemAttribute: 'quote_discount_value',
     systemSortOrder: 'aA',
+    showInPanel: false, // shown in the line-items overview card below
     nullable: true,
     capabilities: {
       filterable: true,
@@ -334,6 +336,7 @@ export const QUOTE_FIELDS: Record<string, ResourceField> = {
     isSystem: true,
     systemAttribute: 'quote_tax_rate',
     systemSortOrder: 'aC',
+    showInPanel: false, // shown in the line-items overview card below
     nullable: true,
     capabilities: {
       filterable: true,
@@ -354,6 +357,7 @@ export const QUOTE_FIELDS: Record<string, ResourceField> = {
     isSystem: true,
     systemAttribute: 'quote_subtotal',
     systemSortOrder: 'aD',
+    showInPanel: false, // shown in the line-items overview card below
     nullable: true,
     options: {
       currencyCode: 'USD',
@@ -380,6 +384,7 @@ export const QUOTE_FIELDS: Record<string, ResourceField> = {
     isSystem: true,
     systemAttribute: 'quote_tax_total',
     systemSortOrder: 'aE',
+    showInPanel: false, // shown in the line-items overview card below
     nullable: true,
     options: {
       currencyCode: 'USD',
@@ -406,6 +411,7 @@ export const QUOTE_FIELDS: Record<string, ResourceField> = {
     isSystem: true,
     systemAttribute: 'quote_total',
     systemSortOrder: 'aF',
+    showInPanel: false, // shown in the line-items overview card below
     nullable: true,
     options: {
       currencyCode: 'USD',
