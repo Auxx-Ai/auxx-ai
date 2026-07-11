@@ -177,6 +177,8 @@ export function EventItem<T extends EventCalendarItem = EventCalendarItem>({
     )
   }
 
+  // Month chips are Apple-style: neutral background, a color dot for identity,
+  // title left, time right — the tinted-fill treatment is week/day-only.
   if (view === 'month') {
     return (
       <EventWrapper
@@ -186,8 +188,7 @@ export function EventItem<T extends EventCalendarItem = EventCalendarItem>({
         isDragging={isDragging}
         onClick={onClick}
         className={cn(
-          'mt-[var(--event-gap)] h-[var(--event-height)] items-center rounded-md px-1 text-[10px] sm:px-1.5 sm:text-xs',
-          eventTintBgClass,
+          'hover:bg-muted/60 mt-[var(--event-gap)] h-[var(--event-height)] items-center gap-1.5 rounded-md px-1 text-[10px] sm:px-1.5 sm:text-xs',
           className
         )}
         dndListeners={dndListeners}
@@ -195,14 +196,15 @@ export function EventItem<T extends EventCalendarItem = EventCalendarItem>({
         onMouseDown={onMouseDown}
         onTouchStart={onTouchStart}>
         {resolveContent(
-          <span className={cn('truncate', eventTintTextClass)}>
+          <>
+            <span className={cn('size-2 shrink-0 rounded-full', eventSolidBgClass)} />
+            <span className='min-w-0 flex-1 truncate'>{event.title}</span>
             {!event.allDay && (
-              <span className='truncate font-normal opacity-70 sm:text-[11px]'>
-                {formatTimeWithOptionalMinutes(displayStart)}{' '}
+              <span className='shrink-0 font-normal opacity-60'>
+                {formatTimeWithOptionalMinutes(displayStart)}
               </span>
             )}
-            {event.title}
-          </span>
+          </>
         )}
       </EventWrapper>
     )

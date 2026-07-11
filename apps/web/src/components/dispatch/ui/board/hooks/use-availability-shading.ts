@@ -4,7 +4,7 @@
 
 import type { BackgroundEvent } from '@auxx/ui/components/event-calendar'
 import { format } from 'date-fns'
-import { useMemo } from 'react'
+import { useCallback, useMemo } from 'react'
 import { api } from '~/trpc/react'
 import type { BoardViewMode } from '../types'
 import { offHoursBackgroundEvents } from '../utils'
@@ -15,8 +15,9 @@ import type { DateRange } from './use-board-data'
  * time-off, rendered via the calendar's `backgroundEvents` layer. Day (resource) mode shades
  * each worker column from its own resolved schedule (which already falls back to org hours
  * per the precedence rule — 05 §resolve.ts); week mode shades every day org-wide (no
- * per-resource columns to differentiate); month is display-only and never receives shading.
- * Hints only — never gates a drop.
+ * per-resource columns to differentiate); month tints fully-closed days via
+ * `isNonWorkingDay` (the stream has no intra-day axis to shade). Hints only — never
+ * gates a drop.
  */
 export function useAvailabilityShading({
   view,
@@ -26,7 +27,7 @@ export function useAvailabilityShading({
   view: BoardViewMode
   range: DateRange
   workerUserIds: string[]
-}): BackgroundEvent[] {
+}): { backgroundEvents: BackgroundEvent[]; isNonWorkingDay: (date: Date) => boolean } {
   const fromIso = format(range.from, 'yyyy-MM-dd')
   const toIso = format(range.to, 'yyyy-MM-dd')
 
@@ -40,10 +41,10 @@ export function useAvailabilityShading({
 
   const orgResult = api.availability.resolve.useQuery(
     { subject: { type: 'organization' }, from: fromIso, to: toIso },
-    { enabled: view === 'week' }
+    { enabled: view === 'week' || view === 'month' }
   )
 
-  return useMemo(() => {
+  const backgroundEvents = useMemo(() => {
     if (view === 'day') {
       return workerUserIds.flatMap((userId, index) => {
         const resolvedDays = dayResults[index]?.data ?? []
@@ -61,4 +62,20 @@ export function useAvailabilityShading({
     return []
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [view, workerUserIds, dayResults, orgResult.data])
+
+  // Org-wide fully-closed dates (no available ranges at all) — the month stream's gray days.
+  const closedDates = useMemo(() => {
+    const closed = new Set<string>()
+    for (const day of orgResult.data ?? []) {
+      if (day.ranges.length === 0) closed.add(day.date)
+    }
+    return closed
+  }, [orgResult.data])
+
+  const isNonWorkingDay = useCallback(
+    (date: Date) => closedDates.has(format(date, 'yyyy-MM-dd')),
+    [closedDates]
+  )
+
+  return { backgroundEvents, isNonWorkingDay }
 }

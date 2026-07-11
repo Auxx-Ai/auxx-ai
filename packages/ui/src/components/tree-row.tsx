@@ -8,6 +8,14 @@ import { ChevronRight } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import React from 'react'
 
+/**
+ * Wrapper class that stops TreeRow's `secondary` slot from clipping a Badge —
+ * the slot truncates (overflow-hidden) by default, which cuts off pill shapes.
+ * Apply to the container around the rows.
+ */
+export const TREE_SECONDARY_NOTRUNCATE =
+  '[&_[data-slot=tree-row-secondary]]:shrink-0 [&_[data-slot=tree-row-secondary]]:overflow-visible [&_[data-slot=tree-row-secondary]]:whitespace-nowrap'
+
 export interface TreeRowProps {
   /** Leading slot — icon, checkbox, etc. */
   icon?: React.ReactNode

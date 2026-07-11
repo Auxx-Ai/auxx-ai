@@ -65,6 +65,8 @@ export interface EventCalendarProps<T extends EventCalendarItem = EventCalendarI
   onEventResize?: (event: T, newEnd: Date) => void
   /** Hide the built-in date-nav/view-switcher header when the consumer brings their own toolbar chrome. */
   hideToolbar?: boolean
+  /** Month view only — cells where this returns true get a muted background (closed days). */
+  isNonWorkingDay?: (date: Date) => boolean
   className?: string
 }
 
@@ -91,6 +93,7 @@ function EventCalendarInner<T extends EventCalendarItem = EventCalendarItem>({
   onEventDrop,
   onEventResize,
   hideToolbar,
+  isNonWorkingDay,
   className,
 }: EventCalendarProps<T>) {
   useEffect(() => {
@@ -111,15 +114,21 @@ function EventCalendarInner<T extends EventCalendarItem = EventCalendarItem>({
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [onViewChange])
 
+  // Month view is a continuous week stream (see MonthView): the "viewed month" is the month
+  // of the anchor date's week END, and month nav lands on the target month's top-left cell.
+  const viewedMonthStart = startOfMonth(endOfWeek(date, { weekStartsOn }))
+
   const handlePrevious = () => {
-    if (view === 'month') onDateChange(subMonths(date, 1))
+    if (view === 'month')
+      onDateChange(startOfWeek(subMonths(viewedMonthStart, 1), { weekStartsOn }))
     else if (view === 'week') onDateChange(subWeeks(date, 1))
     else if (view === 'day' || view === 'resource') onDateChange(addDays(date, -1))
     else if (view === 'agenda') onDateChange(addDays(date, -AgendaDaysToShow))
   }
 
   const handleNext = () => {
-    if (view === 'month') onDateChange(addMonths(date, 1))
+    if (view === 'month')
+      onDateChange(startOfWeek(addMonths(viewedMonthStart, 1), { weekStartsOn }))
     else if (view === 'week') onDateChange(addWeeks(date, 1))
     else if (view === 'day' || view === 'resource') onDateChange(addDays(date, 1))
     else if (view === 'agenda') onDateChange(addDays(date, AgendaDaysToShow))
@@ -141,9 +150,12 @@ function EventCalendarInner<T extends EventCalendarItem = EventCalendarItem>({
 
   const [rangeFrom, rangeTo] = useMemo<[Date, Date]>(() => {
     if (view === 'month') {
-      const monthStart = startOfMonth(date)
-      const monthEnd = endOfMonth(monthStart)
-      return [startOfWeek(monthStart, { weekStartsOn }), endOfWeek(monthEnd, { weekStartsOn })]
+      // Placeholder — the month stream reports its own visible range (skipped below).
+      const monthStart = startOfMonth(endOfWeek(date, { weekStartsOn }))
+      return [
+        startOfWeek(monthStart, { weekStartsOn }),
+        endOfWeek(endOfMonth(monthStart), { weekStartsOn }),
+      ]
     }
     if (view === 'week') {
       return [startOfWeek(date, { weekStartsOn }), endOfWeek(date, { weekStartsOn })]
@@ -156,12 +168,13 @@ function EventCalendarInner<T extends EventCalendarItem = EventCalendarItem>({
   }, [date, view, weekStartsOn])
 
   useEffect(() => {
+    if (view === 'month') return // the month stream drives its own range
     onRangeChange?.(rangeFrom, rangeTo)
-  }, [rangeFrom, rangeTo, onRangeChange])
+  }, [view, rangeFrom, rangeTo, onRangeChange])
 
   const viewTitle: ReactNode = useMemo(() => {
     if (view === 'month') {
-      return format(date, 'MMMM yyyy')
+      return format(startOfMonth(endOfWeek(date, { weekStartsOn })), 'MMMM yyyy')
     }
     if (view === 'week') {
       const start = startOfWeek(date, { weekStartsOn })
@@ -246,7 +259,12 @@ function EventCalendarInner<T extends EventCalendarItem = EventCalendarItem>({
         </div>
       )}
 
-      <div className='flex min-h-0 flex-1 flex-col overflow-y-auto'>
+      <div
+        className={cn(
+          'flex min-h-0 flex-1 flex-col',
+          // The month stream owns its own (snap) scroll container.
+          view === 'month' ? 'overflow-hidden' : 'overflow-y-auto'
+        )}>
         {view === 'month' && (
           <MonthView
             currentDate={date}
@@ -255,6 +273,9 @@ function EventCalendarInner<T extends EventCalendarItem = EventCalendarItem>({
             onEventSelect={handleEventSelect}
             onSlotClick={handleSlotClick}
             renderEvent={renderEvent}
+            onDateChange={onDateChange}
+            onVisibleRangeChange={onRangeChange}
+            isNonWorkingDay={isNonWorkingDay}
           />
         )}
         {view === 'week' && (

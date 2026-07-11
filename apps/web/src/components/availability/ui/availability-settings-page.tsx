@@ -134,7 +134,7 @@ export function AvailabilitySettingsPage() {
       title='Availability'
       description='Set business hours and holiday exceptions used across dispatch scheduling.'
       breadcrumbs={breadcrumbs}>
-      <div className='flex flex-col gap-8 p-3 sm:p-6'>
+      <div className='grid grid-cols-1 items-start gap-8 p-3 sm:p-6 lg:grid-cols-2'>
         <SettingsSection
           icon={Clock}
           title='Weekly hours'

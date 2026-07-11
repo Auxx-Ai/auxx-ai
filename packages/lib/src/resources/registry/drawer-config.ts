@@ -88,6 +88,24 @@ export const DRAWER_CONFIG_REGISTRY: DrawerConfigRegistry = {
     },
   },
 
+  work_order: {
+    entityType: 'work_order',
+    additionalTabs: [],
+    actions: {
+      enableArchive: true,
+      enableDelete: true,
+    },
+    // Schedule (visits + schedule popover) and Invoices (list + gather dialog) as
+    // uniform overview blocks — the quote/line-items relationship fields are hidden
+    // from the Details panel (showInPanel:false) so they only surface here.
+    tabCards: {
+      overview: [
+        { value: 'schedule', label: 'Schedule', icon: 'calendar-clock' },
+        { value: 'invoices', label: 'Invoices', icon: 'receipt' },
+      ],
+    },
+  },
+
   quote: {
     entityType: 'quote',
     // No additionalTabs — the drawer shows line items as an Overview card

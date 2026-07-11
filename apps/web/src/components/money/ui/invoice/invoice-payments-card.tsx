@@ -10,14 +10,14 @@
 
 import { Badge, type Variant as BadgeVariant } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
-import { Skeleton } from '@auxx/ui/components/skeleton'
+import { EmptySection } from '@auxx/ui/components/section'
 import { toastError } from '@auxx/ui/components/toast'
 import { format } from 'date-fns'
-import { RotateCcw, Trash2 } from 'lucide-react'
+import { CreditCard, Plus, RotateCcw, Trash2 } from 'lucide-react'
 import { useState } from 'react'
+import { DrawerCardActions } from '~/components/drawers/drawer-card-actions'
 import type { DrawerTabProps } from '~/components/drawers/drawer-tab-registry'
 import { useAdminGate } from '~/components/global/admin-gate'
-import { EmptyState } from '~/components/global/empty-state'
 import { formatCurrency } from '~/components/money/ui/line-builder/shared'
 import { useSystemValues } from '~/components/resources/hooks'
 import { useConfirm } from '~/hooks/use-confirm'
@@ -127,13 +127,23 @@ export function InvoicePaymentsCard({ recordId }: DrawerTabProps) {
 
   return (
     <div className='flex flex-col gap-2'>
+      {canRecordPayment && (
+        <DrawerCardActions>
+          <Button variant='ghost' size='xs' onClick={() => setDialogOpen(true)}>
+            <Plus />
+            Record payment
+          </Button>
+        </DrawerCardActions>
+      )}
+
       {isLoading ? (
-        <div className='space-y-1.5'>
-          <Skeleton className='h-8 w-full' />
-          <Skeleton className='h-8 w-full' />
-        </div>
+        <EmptySection loading />
       ) : !payments?.length ? (
-        <EmptyState title='No payments recorded' description='Record a payment to get started.' />
+        <EmptySection
+          icon={<CreditCard className='size-5' />}
+          title='No payments recorded'
+          description='Record a payment to get started.'
+        />
       ) : (
         <div className='flex flex-col divide-y divide-primary-200/50 dark:divide-[#1e2227]'>
           {payments.map((payment) => (
@@ -185,16 +195,6 @@ export function InvoicePaymentsCard({ recordId }: DrawerTabProps) {
             </div>
           ))}
         </div>
-      )}
-
-      {canRecordPayment && (
-        <Button
-          variant='outline'
-          size='sm'
-          className='self-start'
-          onClick={() => setDialogOpen(true)}>
-          Record payment
-        </Button>
       )}
 
       <RecordPaymentDialog

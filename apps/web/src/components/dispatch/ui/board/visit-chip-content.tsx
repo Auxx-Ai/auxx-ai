@@ -3,6 +3,7 @@
 'use client'
 
 import { cn } from '@auxx/ui/lib/utils'
+import { format, getMinutes } from 'date-fns'
 import { Send } from 'lucide-react'
 import type { DispatchVisitEvent } from './types'
 
@@ -45,6 +46,35 @@ export function VisitChipContent({ event, isOverlapping }: VisitChipContentProps
         </div>
         {contact && <div className='truncate text-[10px] opacity-70'>{contact}</div>}
       </div>
+    </div>
+  )
+}
+
+/**
+ * Month-view chip content: a single dense line (worker-color dot + WO title + start time)
+ * matching the calendar's Apple-style neutral month chips. The rich two-line
+ * `VisitChipContent` doesn't fit the fixed 24px month chip height.
+ */
+export function VisitChipMonthContent({ event }: { event: DispatchVisitEvent }) {
+  const canceled = event.status === 'canceled'
+  return (
+    <div className='flex h-full w-full min-w-0 items-center gap-1.5'>
+      <span
+        className='size-2 shrink-0 rounded-full'
+        style={{ backgroundColor: event.color }}
+        aria-hidden
+      />
+      <span
+        className={cn(
+          'min-w-0 flex-1 truncate font-medium',
+          canceled && 'text-muted-foreground line-through'
+        )}>
+        {event.title}
+      </span>
+      {event.dispatchedAt && <Send className='size-3 shrink-0 opacity-70' />}
+      <span className='shrink-0 font-normal opacity-60'>
+        {format(event.start, getMinutes(event.start) === 0 ? 'ha' : 'h:mma').toLowerCase()}
+      </span>
     </div>
   )
 }

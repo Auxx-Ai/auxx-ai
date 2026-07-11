@@ -2,8 +2,8 @@
 
 'use client'
 
-import { endOfDay, startOfDay } from 'date-fns'
-import { useCallback, useMemo, useState } from 'react'
+import { endOfDay, endOfMonth, startOfDay, startOfMonth } from 'date-fns'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { api } from '~/trpc/react'
 import {
   type BoardResourceInput,
@@ -37,13 +37,32 @@ export function useBoardData() {
   const [selectedWorkerIds, setSelectedWorkerIds] = useState<Set<string> | null>(null) // null = all
   const [showBacklog, setShowBacklog] = useState(true)
 
-  const handleRangeChange = useCallback((from: Date, to: Date) => {
-    setRange((prev) =>
-      prev.from.getTime() === from.getTime() && prev.to.getTime() === to.getTime()
-        ? prev
-        : { from, to }
-    )
-  }, [])
+  const rangeDebounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  useEffect(() => () => clearTimeout(rangeDebounceRef.current), [])
+
+  const handleRangeChange = useCallback(
+    (from: Date, to: Date) => {
+      // The month stream reports a sliding week window on every scroll — quantize it to
+      // whole covering months so the `getBoard` query key only changes when a new month
+      // scrolls into view, and debounce so a fast fling doesn't fetch every month crossed.
+      const quantizedFrom = view === 'month' ? startOfMonth(from) : from
+      const quantizedTo = view === 'month' ? endOfMonth(to) : to
+      const apply = () =>
+        setRange((prev) =>
+          prev.from.getTime() === quantizedFrom.getTime() &&
+          prev.to.getTime() === quantizedTo.getTime()
+            ? prev
+            : { from: quantizedFrom, to: quantizedTo }
+        )
+      clearTimeout(rangeDebounceRef.current)
+      if (view === 'month') {
+        rangeDebounceRef.current = setTimeout(apply, 250)
+      } else {
+        apply()
+      }
+    },
+    [view]
+  )
 
   const boardQuery = api.dispatch.getBoard.useQuery(
     { from: range.from, to: range.to },

@@ -23,11 +23,12 @@ export interface ScheduleListHandle {
 interface ScheduleListProps {
   groups: ScheduleDayGroupData[]
   todayIndex: number
+  onVisitClick: (visitId: string) => void
   onMeetingClick: (meetingId: string) => void
 }
 
 export const ScheduleList = forwardRef<ScheduleListHandle, ScheduleListProps>(function ScheduleList(
-  { groups, todayIndex, onMeetingClick },
+  { groups, todayIndex, onVisitClick, onMeetingClick },
   ref
 ) {
   const viewportRef = useRef<HTMLDivElement>(null)
@@ -77,7 +78,11 @@ export const ScheduleList = forwardRef<ScheduleListHandle, ScheduleListProps>(fu
               if (el) dayNodes.current.set(group.dayKey, el)
               else dayNodes.current.delete(group.dayKey)
             }}>
-            <ScheduleDayGroup group={group} onMeetingClick={onMeetingClick} />
+            <ScheduleDayGroup
+              group={group}
+              onVisitClick={onVisitClick}
+              onMeetingClick={onMeetingClick}
+            />
           </div>
         ))}
       </div>

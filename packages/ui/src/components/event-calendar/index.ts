@@ -31,7 +31,6 @@ export {
   useCurrentTimeIndicator,
 } from './hooks/use-current-time-indicator'
 export { type UseEventResizeResult, useEventResize } from './hooks/use-event-resize'
-export { useEventVisibility } from './hooks/use-event-visibility'
 export { HourGutter } from './hour-gutter'
 export { MonthView } from './month-view'
 // Positioning util (day/week/resource share this — see position-events.ts)

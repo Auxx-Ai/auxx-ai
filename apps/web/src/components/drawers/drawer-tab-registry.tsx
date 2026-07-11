@@ -130,6 +130,19 @@ export const DRAWER_TAB_CARD_COMPONENTS: Record<
     })),
 
   // ─────────────────────────────────────────────────────────────────
+  // WORK ORDER OVERVIEW CARDS — Schedule (visits + schedule popover) + Invoices
+  // (list + gather dialog), the service_request blocks applied to a job.
+  // ─────────────────────────────────────────────────────────────────
+  'work_order:schedule': () =>
+    import('./cards/work-order-related-cards').then((m) => ({
+      default: m.WorkOrderScheduleCard,
+    })),
+  'work_order:invoices': () =>
+    import('./cards/work-order-related-cards').then((m) => ({
+      default: m.WorkOrderInvoicesCard,
+    })),
+
+  // ─────────────────────────────────────────────────────────────────
   // INVOICE OVERVIEW CARDS (money MI1 build spec §J.1 — drawer-only entity,
   // hasDetailPage: false, so these are the invoice's ONLY UI surface)
   // ─────────────────────────────────────────────────────────────────

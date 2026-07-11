@@ -108,12 +108,16 @@ export interface TicketNumberingSettingsProps {
   /** Section title — lets dispatch's Number Formats page render "Work Orders"/"Requests". */
   title?: string
   description?: string
+  /** Root wrapper classes. Defaults to the centered single-column layout used by the tickets
+   *  settings page; the dispatch grid overrides this to let each form fill its grid cell. */
+  className?: string
 }
 
 export default function TicketNumberingSettings({
   scope = 'ticket',
   title = 'Ticket Numbering',
   description = 'Configure how ticket numbers are generated.',
+  className = 'container mx-auto max-w-2xl overflow-y-auto pb-10 pt-4',
 }: TicketNumberingSettingsProps = {}) {
   // Get current record sequence settings for this scope
   const { data: ticketSequence, refetch } = api.ticketSequence.get.useQuery({ scope })
@@ -186,7 +190,7 @@ export default function TicketNumberingSettings({
   }
 
   return (
-    <div className='container mx-auto max-w-2xl overflow-y-auto pb-10 pt-4'>
+    <div className={className}>
       <SettingsSection className='mb-6' icon={Hash} title={title} description={description}>
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)}>

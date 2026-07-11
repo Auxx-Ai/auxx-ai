@@ -2,6 +2,7 @@
 'use client'
 
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
+import { TREE_SECONDARY_NOTRUNCATE } from '@auxx/ui/components/tree-row'
 import type { DetailViewSectionsDrillContext } from '~/components/detail-view/detail-view-sections'
 import { splitJobVisits } from './job-schedule-utils'
 import { useJobVisits } from './use-job-visits'
@@ -31,7 +32,7 @@ export function VisitsListPanel({ recordId, setItemId }: DetailViewSectionsDrill
             <div className='px-1 pb-1 text-xs font-medium uppercase text-muted-foreground'>
               Upcoming
             </div>
-            <div className='rounded-lg border'>
+            <div className={`space-y-0.5 ${TREE_SECONDARY_NOTRUNCATE}`}>
               {upcoming.map((visit) => (
                 <VisitTreeRow
                   key={visit.id}
@@ -53,7 +54,7 @@ export function VisitsListPanel({ recordId, setItemId }: DetailViewSectionsDrill
             <div className='px-1 pb-1 text-xs font-medium uppercase text-muted-foreground'>
               History
             </div>
-            <div className='rounded-lg border'>
+            <div className={`space-y-0.5 ${TREE_SECONDARY_NOTRUNCATE}`}>
               {history.map((visit) => (
                 <VisitTreeRow
                   key={visit.id}

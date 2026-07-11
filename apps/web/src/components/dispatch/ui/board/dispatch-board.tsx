@@ -49,7 +49,7 @@ export function DispatchBoard() {
   const weekStartsOn = weekStartToIndex(weekStart)
 
   const workerUserIds = useMemo(() => data.workers.map((w) => w.userId), [data.workers])
-  const backgroundEvents = useAvailabilityShading({
+  const { backgroundEvents, isNonWorkingDay } = useAvailabilityShading({
     view: data.view,
     range: data.range,
     workerUserIds,
@@ -160,6 +160,7 @@ export function DispatchBoard() {
         onDateChange={data.setDate}
         view={data.view}
         onViewChange={data.setView}
+        weekStartsOn={weekStartsOn}
         workers={data.allWorkers}
         selectedWorkerIds={data.selectedWorkerIds}
         onSelectedWorkerIdsChange={data.setSelectedWorkerIds}
@@ -188,6 +189,7 @@ export function DispatchBoard() {
             onActiveVisitChange={setActiveVisitId}
             onRangeChange={data.handleRangeChange}
             onEventResize={handleEventResize}
+            isNonWorkingDay={isNonWorkingDay}
           />
         </div>
       </CalendarDndProvider>
