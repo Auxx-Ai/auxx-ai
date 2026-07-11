@@ -7,6 +7,7 @@ import { Section } from '@auxx/ui/components/section'
 import { Tabs, TabsList, TabsTrigger } from '@auxx/ui/components/tabs'
 import { useQueryState } from 'nuqs'
 import * as React from 'react'
+import { createPortal } from 'react-dom'
 import { parseRecordId, type RecordId } from '~/components/resources'
 import { useScrollSpy } from '~/hooks/use-scroll-spy'
 import { getDetailViewTabComponent } from './detail-view-tab-registry'
@@ -51,6 +52,37 @@ export interface DetailViewSectionsDrillPanel {
   render: (ctx: DetailViewSectionsDrillContext) => React.ReactNode
   /** Optional item-level body — the third stack level, keyed `${value}:item`. */
   renderItem?: (ctx: DetailViewSectionsDrillContext) => React.ReactNode
+}
+
+interface SectionChromeSlots {
+  titleSlot: HTMLElement | null
+  actionsSlot: HTMLElement | null
+}
+
+// Slot elements inside the wrapping <Section> header, provided per section so a
+// registered tab component can contribute chrome without owning the header.
+// Default nulls make the portal components no-ops under DetailViewMainTabs.
+const SectionChromeContext = React.createContext<SectionChromeSlots>({
+  titleSlot: null,
+  actionsSlot: null,
+})
+
+/**
+ * Portals `children` next to the wrapping `<Section>` title (e.g. a status badge).
+ * Only renders under `layout: 'sections'` — a no-op inside DetailViewMainTabs.
+ */
+export function DetailSectionTitleExtra({ children }: { children: React.ReactNode }) {
+  const { titleSlot } = React.useContext(SectionChromeContext)
+  return titleSlot ? createPortal(children, titleSlot) : null
+}
+
+/**
+ * Portals `children` into the wrapping `<Section>`'s right-aligned header actions.
+ * Only renders under `layout: 'sections'` — a no-op inside DetailViewMainTabs.
+ */
+export function DetailSectionActions({ children }: { children: React.ReactNode }) {
+  const { actionsSlot } = React.useContext(SectionChromeContext)
+  return actionsSlot ? createPortal(children, actionsSlot) : null
 }
 
 export interface DetailViewSectionsProps extends DetailViewMainTabsProps {
@@ -183,18 +215,7 @@ export function DetailViewSections({
               const Icon = getIconComponent(tab.icon)
               return (
                 <div key={tab.value} ref={assignRef(tab.value)}>
-                  <Section
-                    title={tab.label}
-                    icon={<Icon className='size-4' />}
-                    // Sections stay simultaneously visible (scroll-spy over a single
-                    // page, not an accordion) — same choice as agent-detail-tabs.tsx,
-                    // which passes collapsible={false} on every one of its sections.
-                    // It also sidesteps the one genuinely fiddly bit here: a
-                    // collapsed Section would hide QuoteLineItemsTab's own header
-                    // action strip (send/download/lifecycle buttons, §G) along with
-                    // its body.
-                    collapsible={false}
-                    initialOpen>
+                  <ChromedSection label={tab.label} icon={<Icon className='size-4' />}>
                     <LazySectionTabComponent
                       entityType={entityType}
                       tabValue={tab.value}
@@ -202,7 +223,7 @@ export function DetailViewSections({
                       recordId={recordId}
                       record={record}
                     />
-                  </Section>
+                  </ChromedSection>
                 </div>
               )
             })}
@@ -235,6 +256,52 @@ export function DetailViewSections({
           ))}
       </NavStackPanels>
     </NavStack>
+  )
+}
+
+/**
+ * A `<Section>` whose header carries two portal slots — one after the title, one
+ * in the actions area — exposed to the section's body via `SectionChromeContext`
+ * so tab components can inject a badge / header actions through
+ * `DetailSectionTitleExtra` / `DetailSectionActions`.
+ *
+ * Sections stay simultaneously visible (scroll-spy over a single page, not an
+ * accordion) — same choice as agent-detail-tabs.tsx, which passes
+ * collapsible={false} on every one of its sections. It also sidesteps the one
+ * genuinely fiddly bit here: a collapsed Section would hide QuoteLineItemsTab's
+ * own header action strip (send/download/lifecycle buttons, §G) along with its
+ * body.
+ */
+function ChromedSection({
+  label,
+  icon,
+  children,
+}: {
+  label: string
+  icon: React.ReactNode
+  children: React.ReactNode
+}) {
+  const [titleSlot, setTitleSlot] = React.useState<HTMLElement | null>(null)
+  const [actionsSlot, setActionsSlot] = React.useState<HTMLElement | null>(null)
+  const slots = React.useMemo(() => ({ titleSlot, actionsSlot }), [titleSlot, actionsSlot])
+
+  return (
+    <SectionChromeContext.Provider value={slots}>
+      <Section
+        title={
+          <span className='inline-flex items-center gap-1.5'>
+            {label}
+            {/* normal-case: the section-title wrapper uppercases text */}
+            <span ref={setTitleSlot} className='inline-flex items-center gap-1.5 normal-case' />
+          </span>
+        }
+        icon={icon}
+        actions={<span ref={setActionsSlot} className='flex items-center gap-1.5 empty:hidden' />}
+        collapsible={false}
+        initialOpen>
+        {children}
+      </Section>
+    </SectionChromeContext.Provider>
   )
 }
 

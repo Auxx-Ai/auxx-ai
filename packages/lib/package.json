@@ -520,6 +520,12 @@
       "import": "./dist/geo/index.mjs",
       "default": "./src/geo/index.ts"
     },
+    "./geocoding": {
+      "types": "./src/geocoding/index.ts",
+      "source": "./src/geocoding/index.ts",
+      "import": "./dist/geocoding/index.mjs",
+      "default": "./src/geocoding/index.ts"
+    },
     "./getting-started": {
       "types": "./src/getting-started/index.ts",
       "source": "./src/getting-started/index.ts",
@@ -939,6 +945,12 @@
       "source": "./src/seed/entity-migrations/index.ts",
       "import": "./dist/seed/entity-migrations/index.mjs",
       "default": "./src/seed/entity-migrations/index.ts"
+    },
+    "./seed/entity-migrations/migrations/039-work-order-tags": {
+      "types": "./src/seed/entity-migrations/migrations/039-work-order-tags.ts",
+      "source": "./src/seed/entity-migrations/migrations/039-work-order-tags.ts",
+      "import": "./dist/seed/entity-migrations/migrations/039-work-order-tags.mjs",
+      "default": "./src/seed/entity-migrations/migrations/039-work-order-tags.ts"
     },
     "./settings": {
       "types": "./src/settings/index.ts",

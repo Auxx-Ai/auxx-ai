@@ -3,7 +3,16 @@
 'use client'
 
 import { MainPageContent } from '@auxx/ui/components/main-page'
-import { Clock, CreditCard, FileText, Hash, Receipt, Tags, Users } from 'lucide-react'
+import {
+  ClipboardCheck,
+  Clock,
+  CreditCard,
+  FileText,
+  Hash,
+  Receipt,
+  Tags,
+  Users,
+} from 'lucide-react'
 import { usePathname } from 'next/navigation'
 import SidebarSecondary from '~/components/global/sidebar-secondary'
 import type { SidebarProps } from '~/constants/menu'
@@ -38,6 +47,12 @@ const DISPATCH_SETTINGS: SidebarProps[] = [
         label: 'Availability',
         slug: 'availability',
         icon: <Clock />,
+      },
+      {
+        id: 'dispatch-settings-quality-checks',
+        label: 'Quality checks',
+        slug: 'quality-checks',
+        icon: <ClipboardCheck />,
       },
       {
         id: 'dispatch-settings-documents',

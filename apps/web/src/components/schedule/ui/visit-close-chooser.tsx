@@ -3,8 +3,8 @@
 // The "Complete…" bottom sheet (08-worker-surface.md §1/§3): three close options — invoice now,
 // invoice later, leave open — a confirmation-only "Invoice drafted ✓" state (the worker never
 // sees amounts, `closeMyVisit` never returns them), and a soft no-contact notice for the
-// defensive race where "now" somehow fires with no contact. No QC/required-checks warning line
-// in WS1 — Notes is a placeholder until WS2.
+// defensive race where "now" somehow fires with no contact. WS2 adds a soft required-checks
+// warning line (08-worker-surface.md §5) — it WARNS ONLY and never disables an option.
 
 'use client'
 
@@ -17,7 +17,7 @@ import {
   DrawerTitle,
 } from '@auxx/ui/components/drawer'
 import { toastError } from '@auxx/ui/components/toast'
-import { CheckCircle2 } from 'lucide-react'
+import { CheckCircle2, TriangleAlert } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useState } from 'react'
 import { api } from '~/trpc/react'
@@ -52,6 +52,11 @@ export function VisitCloseChooser({
 }: VisitCloseChooserProps) {
   const router = useRouter()
   const [result, setResult] = useState<CloseResult | null>(null)
+
+  // Same list the Notes tab reads — only fetched while the sheet is open (08 §5).
+  const { data: qcData } = api.dispatch.listMyVisitQcItems.useQuery({ visitId }, { enabled: open })
+  const requiredOpen =
+    qcData?.items.filter((item) => item.isRequired && !item.checkedAt).length ?? 0
 
   const closeVisit = api.dispatch.closeMyVisit.useMutation({
     onError: (error) => toastError({ title: 'Error closing visit', description: error.message }),
@@ -115,6 +120,14 @@ export function VisitCloseChooser({
           <>
             <DrawerTitle className='px-4 pt-4'>Complete this visit</DrawerTitle>
             <DrawerDescription className='px-4'>Choose how to close this job.</DrawerDescription>
+            {requiredOpen > 0 && (
+              <div className='mx-4 flex items-center gap-2 rounded-md bg-amber-400/10 px-3 py-2 text-sm text-amber-700 dark:text-amber-400'>
+                <TriangleAlert className='size-4 shrink-0' />
+                <span>
+                  {requiredOpen} required {requiredOpen === 1 ? 'check' : 'checks'} open
+                </span>
+              </div>
+            )}
             <div className='flex flex-col gap-2 p-4'>
               <Button
                 variant='outline'

@@ -43,12 +43,13 @@ function formatAddress(value: Record<string, unknown>): string | null {
 /**
  * Load a visit and enforce the assignee guard (08 §6) — a worker touches only their own
  * visits. Shared by every worker-scoped mutation/read below except `listMyVisits`, which
- * filters by `assigneeUserId` in the query itself.
+ * filters by `assigneeUserId` in the query itself. Also reused by `qc.ts` for the worker-scoped
+ * QC checklist fns (08 §5).
  *
  * @throws {NotFoundError} when the visit doesn't exist in this org.
  * @throws {ForbiddenError} when the visit isn't assigned to `userId`.
  */
-async function loadOwnVisit(
+export async function loadOwnVisit(
   organizationId: string,
   userId: string,
   visitId: string

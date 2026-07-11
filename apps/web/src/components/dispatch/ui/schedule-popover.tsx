@@ -12,6 +12,11 @@ import {
 import { getActorRawId, toActorId } from '@auxx/types/actor'
 import { Avatar, AvatarFallback, AvatarImage } from '@auxx/ui/components/avatar'
 import { Button } from '@auxx/ui/components/button'
+import {
+  CommandBreadcrumb,
+  CommandNavigation,
+  useCommandNavigation,
+} from '@auxx/ui/components/command'
 import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
 import { RadioGroup, RadioGroupItem } from '@auxx/ui/components/radio-group'
 import {
@@ -24,7 +29,7 @@ import {
 import { toastError } from '@auxx/ui/components/toast'
 import { cn } from '@auxx/ui/lib/utils'
 import { addMinutes, differenceInMinutes, format } from 'date-fns'
-import { AlertTriangle, ArrowLeft, Calendar, User } from 'lucide-react'
+import { AlertTriangle, Calendar, Clock, User } from 'lucide-react'
 import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react'
 import { getInitials } from '~/components/groups/utils/group-utils'
 import { ActorPickerContent } from '~/components/pickers/actor-picker/actor-picker-content'
@@ -88,14 +93,26 @@ export interface SchedulePopoverContentProps {
   recurrenceRuleId?: string | null
 }
 
+/** Drill pages pushed onto the popover's CommandNavigation stack. */
+type ScheduleNavItem = { id: 'assignee' | 'datetime' | 'endtime'; label: string }
+
 /**
  * The M2 schedule/assign control (07 §D.4, 04-ui #7): the single non-board surface that
  * writes `dispatch.scheduleVisit`. Composes `ActorPickerContent`/`DateTimePickerContent`
  * INSIDE this one popover (the `task-form.tsx` mention-picker precedent) — never nests a
- * second full picker popover; picking an assignee or a date/time swaps this popover's own
- * content via local `section` state instead.
+ * second full picker popover; picking an assignee, date/time, or custom end time pushes
+ * a drill page onto the shared `CommandNavigation` stack (breadcrumb header, like the
+ * tag/file pickers) instead of nesting another popover.
  */
-export function SchedulePopoverContent({
+export function SchedulePopoverContent(props: SchedulePopoverContentProps) {
+  return (
+    <CommandNavigation<ScheduleNavItem>>
+      <ScheduleContent {...props} />
+    </CommandNavigation>
+  )
+}
+
+function ScheduleContent({
   visitId,
   initialStartTime,
   initialEndTime,
@@ -107,7 +124,7 @@ export function SchedulePopoverContent({
   workOrderRecordId,
   recurrenceRuleId,
 }: SchedulePopoverContentProps) {
-  const [section, setSection] = useState<'main' | 'assignee' | 'datetime'>('main')
+  const { current, push, pop } = useCommandNavigation<ScheduleNavItem>()
   const [assigneeUserId, setAssigneeUserId] = useState<string | null>(initialAssigneeUserId ?? null)
   const [startTime, setStartTime] = useState<Date | undefined>(initialStartTime ?? undefined)
   const initialMinutes =
@@ -323,10 +340,10 @@ export function SchedulePopoverContent({
     unscheduleVisit.mutate({ visitId })
   }
 
-  if (section === 'assignee') {
+  if (current?.id === 'assignee') {
     return (
       <div className={cn('w-72', className)}>
-        <SectionHeader label='Assignee' onBack={() => setSection('main')} />
+        <CommandBreadcrumb rootLabel='Schedule' />
         <ActorPickerContent
           value={assigneeActorId ? [assigneeActorId] : []}
           onChange={() => {}}
@@ -335,7 +352,7 @@ export function SchedulePopoverContent({
           excludeIds={excludeIds}
           onSelectSingle={(actorId) => {
             setAssigneeUserId(getActorRawId(actorId))
-            setSection('main')
+            pop()
           }}
           placeholder='Search workers...'
         />
@@ -343,17 +360,34 @@ export function SchedulePopoverContent({
     )
   }
 
-  if (section === 'datetime') {
+  if (current?.id === 'datetime') {
     return (
       <div className={cn('w-auto', className)}>
-        <SectionHeader label='Date & time' onBack={() => setSection('main')} />
+        <CommandBreadcrumb rootLabel='Schedule' />
         <DateTimePickerContent
           value={startTime}
           onChange={(value) => {
             setStartTime(value)
-            setSection('main')
+            pop()
           }}
           mode='datetime'
+        />
+      </div>
+    )
+  }
+
+  if (current?.id === 'endtime') {
+    return (
+      <div className={cn('w-auto', className)}>
+        <CommandBreadcrumb rootLabel='Schedule' />
+        <DateTimePickerContent
+          value={customEndTime ?? endTime}
+          onChange={(value) => {
+            setDuration('custom')
+            setCustomEndTime(value && startTime ? cloneTimeToDate(startTime, value) : value)
+            pop()
+          }}
+          mode='time'
         />
       </div>
     )
@@ -365,7 +399,7 @@ export function SchedulePopoverContent({
         variant='outline'
         size='sm'
         className='w-full justify-start'
-        onClick={() => setSection('assignee')}>
+        onClick={() => push({ id: 'assignee', label: 'Assignee' })}>
         {assigneeActor ? (
           <>
             <Avatar className='size-4'>
@@ -387,34 +421,44 @@ export function SchedulePopoverContent({
         variant='outline'
         size='sm'
         className='w-full justify-start'
-        onClick={() => setSection('datetime')}>
+        onClick={() => push({ id: 'datetime', label: 'Date & time' })}>
         <Calendar />
         {startTime ? format(startTime, 'PPP p') : 'Select date & time'}
       </Button>
 
-      <Select value={duration} onValueChange={(v) => setDuration(v as DurationValue)}>
-        <SelectTrigger size='sm' className='w-full'>
-          <SelectValue placeholder='Duration' />
-        </SelectTrigger>
-        <SelectContent>
-          {DURATION_OPTIONS.map((option) => (
-            <SelectItem key={option.value} value={option.value}>
-              {option.label}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+      <div className='flex gap-2'>
+        <Select
+          value={duration}
+          onValueChange={(v) => {
+            // Custom drills into the end-time page — the duration only flips to
+            // 'custom' once a time is actually picked there.
+            if (v === 'custom') {
+              push({ id: 'endtime', label: 'End time' })
+              return
+            }
+            setDuration(v as DurationValue)
+          }}>
+          <SelectTrigger size='sm' className='flex-1 min-w-0'>
+            <SelectValue placeholder='Duration' />
+          </SelectTrigger>
+          <SelectContent>
+            {DURATION_OPTIONS.map((option) => (
+              <SelectItem key={option.value} value={option.value}>
+                {option.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
 
-      {duration === 'custom' && (
-        <DateTimePickerContent
-          value={customEndTime}
-          onChange={(value) =>
-            setCustomEndTime(value && startTime ? cloneTimeToDate(startTime, value) : value)
-          }
-          mode='time'
-          className='w-full'
-        />
-      )}
+        <Button
+          variant='outline'
+          size='sm'
+          className='flex-1 min-w-0 justify-start'
+          onClick={() => push({ id: 'endtime', label: 'End time' })}>
+          <Clock />
+          {endTime ? format(endTime, 'p') : 'End time'}
+        </Button>
+      </div>
 
       {workOrderRecordId && (
         <div className='space-y-2'>
@@ -499,17 +543,6 @@ export function SchedulePopoverContent({
           Save
         </Button>
       </div>
-    </div>
-  )
-}
-
-function SectionHeader({ label, onBack }: { label: string; onBack: () => void }) {
-  return (
-    <div className='flex items-center gap-1 border-b p-2'>
-      <Button variant='ghost' size='icon' className='size-6' onClick={onBack}>
-        <ArrowLeft />
-      </Button>
-      <span className='text-sm font-medium'>{label}</span>
     </div>
   )
 }

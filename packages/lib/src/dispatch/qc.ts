@@ -1,0 +1,435 @@
+// packages/lib/src/dispatch/qc.ts
+//
+// The quality-checklist feature (08-worker-surface.md §5) — an admin-managed template catalog
+// (deactivate-not-delete) lazily materialized once per visit into worker-editable snapshot rows.
+// `title`/`isRequired` on `VisitQcItem` are SNAPSHOT columns: once copied from a template they
+// never change, even if the source template is edited or deactivated afterward — only visits
+// materialized after the edit see the new values. Every worker-scoped fn below guards through
+// `loadOwnVisit` (my-schedule.ts) — a worker only ever touches checklist rows on their own visit.
+// No realtime v1 (a worker edits only their own visit, so broadcasts are skipped).
+
+import { database, schema } from '@auxx/database'
+import { and, asc, eq, inArray, max } from 'drizzle-orm'
+import { ForbiddenError, NotFoundError } from '../errors'
+import { AttachmentService } from '../files/core/attachment-service'
+import { loadOwnVisit } from './my-schedule'
+
+type QcItemTemplateRow = typeof schema.QcItemTemplate.$inferSelect
+type VisitQcItemRow = typeof schema.VisitQcItem.$inferSelect
+
+// ════════════════════════════════════════════════════════════════════════════
+// Templates (admin; org-scoped — no assignee guard) — 08 §5's settings page.
+// ════════════════════════════════════════════════════════════════════════════
+
+/** List every template in the org (active + inactive), ordered for the settings page's list. */
+export async function listQcItemTemplates(organizationId: string): Promise<QcItemTemplateRow[]> {
+  return database
+    .select()
+    .from(schema.QcItemTemplate)
+    .where(eq(schema.QcItemTemplate.organizationId, organizationId))
+    .orderBy(asc(schema.QcItemTemplate.sortOrder), asc(schema.QcItemTemplate.createdAt))
+}
+
+/** Input for {@link createQcItemTemplate}. */
+export interface CreateQcItemTemplateInput {
+  title: string
+  description?: string | null
+  isRequired?: boolean
+}
+
+/** Create a new template at the end of the org's list (`sortOrder` = current max + 1). */
+export async function createQcItemTemplate(
+  organizationId: string,
+  input: CreateQcItemTemplateInput
+): Promise<QcItemTemplateRow> {
+  const [{ maxSortOrder }] = await database
+    .select({ maxSortOrder: max(schema.QcItemTemplate.sortOrder) })
+    .from(schema.QcItemTemplate)
+    .where(eq(schema.QcItemTemplate.organizationId, organizationId))
+
+  const [created] = await database
+    .insert(schema.QcItemTemplate)
+    .values({
+      organizationId,
+      title: input.title,
+      description: input.description ?? null,
+      isRequired: input.isRequired ?? false,
+      sortOrder: (maxSortOrder ?? -1) + 1,
+    })
+    .returning()
+  if (!created) throw new Error('Failed to create quality check template')
+  return created
+}
+
+/** Input for {@link updateQcItemTemplate}. */
+export interface UpdateQcItemTemplateInput {
+  templateId: string
+  title?: string
+  description?: string | null
+  isRequired?: boolean
+  isActive?: boolean
+}
+
+/**
+ * Update a template's fields — includes deactivate/reactivate via `isActive` (deactivate-not-
+ * delete; v1 has no delete fn). Never rewrites already-materialized `VisitQcItem` snapshots.
+ *
+ * @throws {NotFoundError} when the template doesn't exist in this org.
+ */
+export async function updateQcItemTemplate(
+  organizationId: string,
+  input: UpdateQcItemTemplateInput
+): Promise<QcItemTemplateRow> {
+  const { templateId, ...changes } = input
+  const [updated] = await database
+    .update(schema.QcItemTemplate)
+    .set(changes)
+    .where(
+      and(
+        eq(schema.QcItemTemplate.id, templateId),
+        eq(schema.QcItemTemplate.organizationId, organizationId)
+      )
+    )
+    .returning()
+  if (!updated) throw new NotFoundError('Quality check template not found')
+  return updated
+}
+
+/** One row's new position for {@link reorderQcItemTemplates}. */
+export interface ReorderQcItemTemplateUpdate {
+  id: string
+  sortOrder: number
+}
+
+/**
+ * Persist a drag-reordered template list in one batch (favorites-service.ts's ownership-check-
+ * then-transaction recipe, integer `sortOrder` instead of favorites' fractional text index).
+ *
+ * @throws {ForbiddenError} when any id doesn't belong to this org.
+ */
+export async function reorderQcItemTemplates(
+  organizationId: string,
+  updates: ReorderQcItemTemplateUpdate[]
+): Promise<void> {
+  if (updates.length === 0) return
+
+  const ids = updates.map((update) => update.id)
+  const owned = await database
+    .select({ id: schema.QcItemTemplate.id })
+    .from(schema.QcItemTemplate)
+    .where(
+      and(
+        inArray(schema.QcItemTemplate.id, ids),
+        eq(schema.QcItemTemplate.organizationId, organizationId)
+      )
+    )
+  if (owned.length !== ids.length) {
+    throw new ForbiddenError('Some quality check templates do not belong to this organization')
+  }
+
+  await database.transaction(async (tx) => {
+    for (const update of updates) {
+      await tx
+        .update(schema.QcItemTemplate)
+        .set({ sortOrder: update.sortOrder })
+        .where(eq(schema.QcItemTemplate.id, update.id))
+    }
+  })
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// Worker items (assignee-guarded) — the visit-detail Notes tab's checklist.
+// ════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Load a `VisitQcItem` scoped to the org, then guard its parent visit via `loadOwnVisit` — every
+ * item-id worker fn below uses this so a worker can only touch checklist rows on their own visit.
+ *
+ * @throws {NotFoundError} when the item doesn't exist in this org.
+ * @throws {ForbiddenError} when the item's visit isn't assigned to `userId`.
+ */
+async function loadOwnQcItem(
+  organizationId: string,
+  userId: string,
+  itemId: string
+): Promise<VisitQcItemRow> {
+  const item = await database.query.VisitQcItem.findFirst({
+    where: and(
+      eq(schema.VisitQcItem.id, itemId),
+      eq(schema.VisitQcItem.organizationId, organizationId)
+    ),
+  })
+  if (!item) throw new NotFoundError('Quality check item not found')
+  await loadOwnVisit(organizationId, userId, item.visitId)
+  return item
+}
+
+/** One photo attached to a `VisitQcItem`, projected for the worker UI. */
+export interface MyVisitQcItemPhoto {
+  attachmentId: string
+  assetId: string | null
+}
+
+/** One row of `listMyVisitQcItems`'s materialized checklist. */
+export interface MyVisitQcItem {
+  id: string
+  templateId: string | null
+  title: string
+  isRequired: boolean
+  note: string | null
+  checkedAt: Date | null
+  sortOrder: number
+  photos: MyVisitQcItemPhoto[]
+}
+
+/** `listMyVisitQcItems` result — the Notes tab's full checklist payload. */
+export interface ListMyVisitQcItemsResult {
+  items: MyVisitQcItem[]
+}
+
+/** Look up every photo attached to the given `VisitQcItem` ids, grouped by item id. */
+async function getPhotosByItemId(
+  organizationId: string,
+  itemIds: string[]
+): Promise<Map<string, MyVisitQcItemPhoto[]>> {
+  const result = new Map<string, MyVisitQcItemPhoto[]>()
+  if (itemIds.length === 0) return result
+
+  const rows = await database
+    .select({
+      attachmentId: schema.Attachment.id,
+      entityId: schema.Attachment.entityId,
+      assetId: schema.Attachment.assetId,
+    })
+    .from(schema.Attachment)
+    .where(
+      and(
+        eq(schema.Attachment.organizationId, organizationId),
+        eq(schema.Attachment.entityType, 'visit_qc_item'),
+        inArray(schema.Attachment.entityId, itemIds)
+      )
+    )
+
+  for (const row of rows) {
+    const photos = result.get(row.entityId) ?? []
+    photos.push({ attachmentId: row.attachmentId, assetId: row.assetId })
+    result.set(row.entityId, photos)
+  }
+  return result
+}
+
+/**
+ * List the signed-in worker's checklist for one visit, materializing it on first read (08 §5):
+ * if the visit has zero `VisitQcItem` rows yet, copy the org's ACTIVE templates (ordered
+ * `sortOrder`) into snapshot rows inside a transaction. A second call is a no-op — it just reads
+ * back the (possibly empty, if the org has no active templates) existing rows.
+ */
+export async function listMyVisitQcItems(
+  organizationId: string,
+  userId: string,
+  visitId: string
+): Promise<ListMyVisitQcItemsResult> {
+  await loadOwnVisit(organizationId, userId, visitId)
+
+  await database.transaction(async (tx) => {
+    const existing = await tx
+      .select({ id: schema.VisitQcItem.id })
+      .from(schema.VisitQcItem)
+      .where(eq(schema.VisitQcItem.visitId, visitId))
+      .limit(1)
+    if (existing.length > 0) return
+
+    const templates = await tx
+      .select()
+      .from(schema.QcItemTemplate)
+      .where(
+        and(
+          eq(schema.QcItemTemplate.organizationId, organizationId),
+          eq(schema.QcItemTemplate.isActive, true)
+        )
+      )
+      .orderBy(asc(schema.QcItemTemplate.sortOrder), asc(schema.QcItemTemplate.createdAt))
+    if (templates.length === 0) return
+
+    await tx.insert(schema.VisitQcItem).values(
+      templates.map((template, index) => ({
+        organizationId,
+        visitId,
+        templateId: template.id,
+        title: template.title,
+        isRequired: template.isRequired,
+        sortOrder: index,
+      }))
+    )
+  })
+
+  const items = await database
+    .select()
+    .from(schema.VisitQcItem)
+    .where(
+      and(
+        eq(schema.VisitQcItem.visitId, visitId),
+        eq(schema.VisitQcItem.organizationId, organizationId)
+      )
+    )
+    .orderBy(asc(schema.VisitQcItem.sortOrder), asc(schema.VisitQcItem.createdAt))
+
+  const photosByItemId = await getPhotosByItemId(
+    organizationId,
+    items.map((item) => item.id)
+  )
+
+  return {
+    items: items.map((item) => ({
+      id: item.id,
+      templateId: item.templateId,
+      title: item.title,
+      isRequired: item.isRequired,
+      note: item.note,
+      checkedAt: item.checkedAt,
+      sortOrder: item.sortOrder,
+      photos: photosByItemId.get(item.id) ?? [],
+    })),
+  }
+}
+
+/** Input for {@link setMyQcItemChecked}. */
+export interface SetMyQcItemCheckedInput {
+  itemId: string
+  checked: boolean
+}
+
+/** Check/uncheck one item — stamps (or clears) `checkedAt`/`checkedByUserId`. */
+export async function setMyQcItemChecked(
+  organizationId: string,
+  userId: string,
+  input: SetMyQcItemCheckedInput
+): Promise<VisitQcItemRow> {
+  await loadOwnQcItem(organizationId, userId, input.itemId)
+
+  const [updated] = await database
+    .update(schema.VisitQcItem)
+    .set({
+      checkedAt: input.checked ? new Date() : null,
+      checkedByUserId: input.checked ? userId : null,
+    })
+    .where(eq(schema.VisitQcItem.id, input.itemId))
+    .returning()
+  if (!updated) throw new NotFoundError('Quality check item not found')
+  return updated
+}
+
+/** Input for {@link setMyQcItemNote}. */
+export interface SetMyQcItemNoteInput {
+  itemId: string
+  note: string | null
+}
+
+/** Set (or clear, `note: null`) one item's free-text note. */
+export async function setMyQcItemNote(
+  organizationId: string,
+  userId: string,
+  input: SetMyQcItemNoteInput
+): Promise<VisitQcItemRow> {
+  await loadOwnQcItem(organizationId, userId, input.itemId)
+
+  const [updated] = await database
+    .update(schema.VisitQcItem)
+    .set({ note: input.note })
+    .where(eq(schema.VisitQcItem.id, input.itemId))
+    .returning()
+  if (!updated) throw new NotFoundError('Quality check item not found')
+  return updated
+}
+
+/** Input for {@link addMyAdhocQcItem}. */
+export interface AddMyAdhocQcItemInput {
+  visitId: string
+  title: string
+}
+
+/** Add a worker-authored row with no source template, appended to the end of the visit's list. */
+export async function addMyAdhocQcItem(
+  organizationId: string,
+  userId: string,
+  input: AddMyAdhocQcItemInput
+): Promise<VisitQcItemRow> {
+  await loadOwnVisit(organizationId, userId, input.visitId)
+
+  const [{ maxSortOrder }] = await database
+    .select({ maxSortOrder: max(schema.VisitQcItem.sortOrder) })
+    .from(schema.VisitQcItem)
+    .where(eq(schema.VisitQcItem.visitId, input.visitId))
+
+  const [created] = await database
+    .insert(schema.VisitQcItem)
+    .values({
+      organizationId,
+      visitId: input.visitId,
+      templateId: null,
+      title: input.title,
+      isRequired: false,
+      sortOrder: (maxSortOrder ?? -1) + 1,
+    })
+    .returning()
+  if (!created) throw new Error('Failed to create quality check item')
+  return created
+}
+
+/** Input for {@link addMyQcItemPhoto}. */
+export interface AddMyQcItemPhotoInput {
+  itemId: string
+  assetId: string
+}
+
+/** Attach an already-uploaded `MediaAsset` (see `useFileUpload`) to a checklist item. */
+export async function addMyQcItemPhoto(
+  organizationId: string,
+  userId: string,
+  input: AddMyQcItemPhotoInput
+): Promise<MyVisitQcItemPhoto> {
+  await loadOwnQcItem(organizationId, userId, input.itemId)
+
+  const attachment = await new AttachmentService(organizationId, userId).create({
+    entityType: 'visit_qc_item',
+    entityId: input.itemId,
+    assetId: input.assetId,
+  })
+
+  return { attachmentId: attachment.id, assetId: attachment.assetId }
+}
+
+/** Input for {@link removeMyQcItemPhoto}. */
+export interface RemoveMyQcItemPhotoInput {
+  itemId: string
+  attachmentId: string
+}
+
+/**
+ * Detach a photo from a checklist item.
+ *
+ * @throws {NotFoundError} when the attachment doesn't exist, or belongs to a different item/org.
+ */
+export async function removeMyQcItemPhoto(
+  organizationId: string,
+  userId: string,
+  input: RemoveMyQcItemPhotoInput
+): Promise<void> {
+  await loadOwnQcItem(organizationId, userId, input.itemId)
+
+  const attachment = await database.query.Attachment.findFirst({
+    where: and(
+      eq(schema.Attachment.id, input.attachmentId),
+      eq(schema.Attachment.organizationId, organizationId)
+    ),
+  })
+  if (
+    !attachment ||
+    attachment.entityType !== 'visit_qc_item' ||
+    attachment.entityId !== input.itemId
+  ) {
+    throw new NotFoundError('Photo not found on this quality check item')
+  }
+
+  await new AttachmentService(organizationId, userId).delete(input.attachmentId)
+}

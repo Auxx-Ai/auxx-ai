@@ -1,7 +1,7 @@
 // packages/lib/src/field-hooks/register-hooks.ts
 
 import { registerInventoryDeductionRule } from '../data-connectors/inventory-bridge-rule-action'
-import { ensureVisitOnWorkOrderCreate } from '../dispatch/visit-hooks'
+import { ensureVisitOnWorkOrderCreate, geocodeOnAddressChange } from '../dispatch/visit-hooks'
 import { generateDraftOnCompletion } from '../money/auto-invoice'
 import {
   recomputeOnInvoiceBillingChange,
@@ -76,12 +76,18 @@ export function registerAllHooks(): void {
   // Money MI2 build spec §E (Q3a+Q3i): generate an `on_completion` draft invoice the instant
   // `work_order_status` lands on `completed`/`ended` — catches the visit roll-up, M2c's
   // `endEngagement`, kanban drags, and manual drawer edits, all through this one hook.
+  //
+  // Route planner build contract item 8 (09-route-planner.md §B): geocode the work order's
+  // address the instant it's set (create AND update), writing straight onto its visit row(s) —
+  // unscheduled backlog jobs need pins too, not just scheduled ones.
+  //
   // `registerEntityFieldChangeHooks` appends per-call (registry.ts:137-144), so this could
-  // also be a second call — combined into one array here since both handlers share the
-  // 'work-orders' slug and read more naturally listed together.
+  // also be a second/third call — combined into one array here since all three handlers share
+  // the 'work-orders' slug and read more naturally listed together.
   registerEntityFieldChangeHooks('work-orders', [
     ensureVisitOnWorkOrderCreate,
     generateDraftOnCompletion,
+    geocodeOnAddressChange,
   ])
 
   // Money totals engine (money MQ1 build spec §F.2, generalized to invoices in MI1 build

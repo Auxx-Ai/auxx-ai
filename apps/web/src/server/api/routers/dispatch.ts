@@ -3,26 +3,40 @@
 import { schema } from '@auxx/database'
 import { isOrgMember } from '@auxx/lib/cache'
 import {
+  addMyAdhocQcItem,
+  addMyQcItemPhoto,
   advanceMyVisit,
+  applyRouteTimes,
   assignVisit,
   closeMyVisit,
   convertRequestToWorkOrder,
+  createQcItemTemplate,
   createWorkOrderFromTicket,
   dispatchVisit,
   endEngagement,
   getBoard,
   getMyVisitDetail,
+  getRouteGeometryForWorker,
+  getRoutePlannerBoard,
   listDispatchWorkers,
+  listMyVisitQcItems,
   listMyVisits,
+  listQcItemTemplates,
   listVisitsForWorkOrder,
   pauseEngagement,
   removeDispatchWorker,
+  removeMyQcItemPhoto,
+  reorderQcItemTemplates,
   resumeEngagement,
   scheduleVisit,
+  setMyQcItemChecked,
+  setMyQcItemNote,
   setRecurrenceRule,
+  setRouteOrder,
   setVisitStatus,
   setWorkerActive,
   unscheduleVisit,
+  updateQcItemTemplate,
   upsertDispatchWorker,
   VISIT_STATUS_VALUES,
 } from '@auxx/lib/dispatch'
@@ -211,6 +225,85 @@ export const dispatchRouter = createTRPCRouter({
       return getBoard(ctx.session.organizationId, { from: input.from, to: input.to })
     }),
 
+  // Route planner (M3, 09-route-planner.md §F) — the planner's single read. Members read it
+  // (read-only map interactions, same gating precedent as getBoard); `workerIds` narrows the
+  // returned `workers` array only. Day windows are CLIENT-computed (the getBoard/listMyVisits
+  // convention — the server is timezone-naive): `from`/`to` = local day bounds, `dateKey` =
+  // its `yyyy-MM-dd` label (availability lookups + the Directions cache key).
+  getRoutePlannerBoard: dispatchProcedure
+    .input(
+      z.object({
+        from: z.date(),
+        to: z.date(),
+        dateKey: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+        workerIds: z.array(z.string()).optional(),
+      })
+    )
+    .query(async ({ ctx, input }) => {
+      const { workerIds, ...window } = input
+      return getRoutePlannerBoard(ctx.session.organizationId, window, workerIds)
+    }),
+  // Resolves depot + that worker's ordered geocoded stops server-side — draws the map's
+  // polylines + per-stop ETAs. Read-only (member-gated), Redis content-addressed cache inside.
+  getRouteGeometry: dispatchProcedure
+    .input(
+      z.object({
+        from: z.date(),
+        to: z.date(),
+        dateKey: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+        assigneeUserId: z.string(),
+      })
+    )
+    .query(async ({ ctx, input }) => {
+      const { assigneeUserId, ...window } = input
+      return getRouteGeometryForWorker(ctx.session.organizationId, assigneeUserId, window)
+    }),
+  // Bulk `routeOrder` write (drag-reorder / suggest-route / backlog slot-in follow-up) —
+  // admin-gated like the rest of visit machinery (§B).
+  setRouteOrder: dispatchAdminProcedure
+    .input(
+      z.object({
+        assigneeUserId: z.string(),
+        from: z.date(),
+        to: z.date(),
+        visitIds: z.array(z.string()),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      await setRouteOrder({
+        organizationId: ctx.session.organizationId,
+        userId: ctx.session.user.id,
+        assigneeUserId: input.assigneeUserId,
+        window: { from: input.from, to: input.to },
+        visitIds: input.visitIds,
+        excludeSocketId: excludeSocketId(ctx),
+      })
+      return { success: true }
+    }),
+  // "Apply times to schedule" (design doc §E/§F, decision #1) — the only planner path that
+  // writes `startTime`/`endTime`; admin-gated like the rest of visit machinery.
+  applyRouteTimes: dispatchAdminProcedure
+    .input(
+      z.object({
+        assigneeUserId: z.string(),
+        dateKey: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+        firstDeparture: z.date(),
+        stops: z.array(z.object({ visitId: z.string(), durationMinutes: z.number().int().min(1) })),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      await applyRouteTimes({
+        organizationId: ctx.session.organizationId,
+        userId: ctx.session.user.id,
+        assigneeUserId: input.assigneeUserId,
+        dateKey: input.dateKey,
+        firstDeparture: input.firstDeparture,
+        stops: input.stops,
+        excludeSocketId: excludeSocketId(ctx),
+      })
+      return { success: true }
+    }),
+
   // §F.3 (M2b job view) — visits for one work order, oldest-scheduled-first.
   listVisits: dispatchProcedure
     .input(z.object({ workOrderRecordId: recordIdSchema }))
@@ -260,6 +353,77 @@ export const dispatchRouter = createTRPCRouter({
         visitId: input.visitId,
         invoice: input.invoice,
       })
+    }),
+
+  // 08-worker-surface.md §5 — the quality-checklist template catalog. Admin-managed
+  // (deactivate-not-delete, no delete procedure); org-scoped only, no assignee guard.
+  listQcTemplates: dispatchAdminProcedure.query(async ({ ctx }) => {
+    return listQcItemTemplates(ctx.session.organizationId)
+  }),
+  createQcTemplate: dispatchAdminProcedure
+    .input(
+      z.object({
+        title: z.string().min(1),
+        description: z.string().nullable().optional(),
+        isRequired: z.boolean().optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      return createQcItemTemplate(ctx.session.organizationId, input)
+    }),
+  updateQcTemplate: dispatchAdminProcedure
+    .input(
+      z.object({
+        templateId: z.string(),
+        title: z.string().optional(),
+        description: z.string().nullable().optional(),
+        isRequired: z.boolean().optional(),
+        isActive: z.boolean().optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      return updateQcItemTemplate(ctx.session.organizationId, input)
+    }),
+  reorderQcTemplates: dispatchAdminProcedure
+    .input(z.array(z.object({ id: z.string(), sortOrder: z.number().int() })))
+    .mutation(async ({ ctx, input }) => {
+      await reorderQcItemTemplates(ctx.session.organizationId, input)
+      return { success: true }
+    }),
+
+  // 08-worker-surface.md §5 — the worker-scoped checklist path. Member-level (not admin-gated):
+  // the row-level assignee guard lives in the lib layer (`loadOwnVisit`/`loadOwnQcItem`), so
+  // orgId + userId always come from the session, never input.
+  listMyVisitQcItems: dispatchProcedure
+    .input(z.object({ visitId: z.string() }))
+    .query(async ({ ctx, input }) => {
+      return listMyVisitQcItems(ctx.session.organizationId, ctx.session.user.id, input.visitId)
+    }),
+  setMyQcItemChecked: dispatchProcedure
+    .input(z.object({ itemId: z.string(), checked: z.boolean() }))
+    .mutation(async ({ ctx, input }) => {
+      return setMyQcItemChecked(ctx.session.organizationId, ctx.session.user.id, input)
+    }),
+  setMyQcItemNote: dispatchProcedure
+    .input(z.object({ itemId: z.string(), note: z.string().nullable() }))
+    .mutation(async ({ ctx, input }) => {
+      return setMyQcItemNote(ctx.session.organizationId, ctx.session.user.id, input)
+    }),
+  addMyAdhocQcItem: dispatchProcedure
+    .input(z.object({ visitId: z.string(), title: z.string().min(1) }))
+    .mutation(async ({ ctx, input }) => {
+      return addMyAdhocQcItem(ctx.session.organizationId, ctx.session.user.id, input)
+    }),
+  addMyQcItemPhoto: dispatchProcedure
+    .input(z.object({ itemId: z.string(), assetId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      return addMyQcItemPhoto(ctx.session.organizationId, ctx.session.user.id, input)
+    }),
+  removeMyQcItemPhoto: dispatchProcedure
+    .input(z.object({ itemId: z.string(), attachmentId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      await removeMyQcItemPhoto(ctx.session.organizationId, ctx.session.user.id, input)
+      return { success: true }
     }),
 
   // §5.4 — the M2c recurring engine. Admin-gated like the rest of visit machinery.

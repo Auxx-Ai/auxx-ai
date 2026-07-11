@@ -221,6 +221,7 @@ export const SYSTEM_ATTRIBUTES = [
   'work_order_quote', // owning — belongs_to quote (converted-from)
   'work_order_line_items', // inverse of line_item_work_order
   'work_order_invoices', // inverse of invoice_work_order
+  'work_order_tags', // free-form TAGS — route planner regions (plans/dispatch/09-route-planner.md)
 
   // ─── Service Request fields ────────────────────────────────────
   'service_request_number',

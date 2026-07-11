@@ -1,12 +1,14 @@
 // apps/web/src/components/dispatch/ui/job-schedule/recurring-engagement-card.tsx
 'use client'
 
-import { describeRecurrence, type RecurrencePattern } from '@auxx/lib/recurrence/client'
+import { describeRecurrenceParts, type RecurrencePattern } from '@auxx/lib/recurrence/client'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { toastError } from '@auxx/ui/components/toast'
-import { Pause, Play, XCircle } from 'lucide-react'
+import { TREE_SECONDARY_NOTRUNCATE, TreeRow, TreeRowButton } from '@auxx/ui/components/tree-row'
+import { Pause, Pencil, Play, Repeat, XCircle } from 'lucide-react'
 import { useMemo } from 'react'
+import { DetailSectionActions, DetailSectionTitleExtra } from '~/components/detail-view'
 import type { RecordId } from '~/components/resources'
 import { useConfirm } from '~/hooks/use-confirm'
 import { useSettings } from '~/hooks/use-settings'
@@ -35,9 +37,11 @@ export interface RecurringEngagementCardProps {
 
 /**
  * The Job view's recurring Schedule section variant (dispatch M2 build spec §F.3,
- * 06-recurring-engine.md §6): recurrence summary (`describeRecurrence`) + Edit (reopens the
- * same #7 `SchedulePopover`, scoped to the next-upcoming visit, which already carries the
- * Repeats row) + Pause/Resume/End actions gated on the engagement's `work_order_status`.
+ * 04 mock): a borderless TreeRow with the recurrence frequency as title and the
+ * end condition ("until Aug 29" / "12 visits") as secondary, rendered ABOVE the
+ * primary visit card. The engagement badge and the Pause/Resume + Edit actions
+ * are portaled into the surrounding Section header via `DetailSectionTitleExtra`
+ * / `DetailSectionActions`; End stays a destructive hover action on the row.
  * Renders nothing pre-rule ("recurring, not yet scheduled" — `VisitCard`'s own Schedule
  * button/Repeats row is where that gets configured, 04-ui.md §7 jobType convergence).
  */
@@ -61,7 +65,7 @@ export function RecurringEngagementCard({
 
   const summary = useMemo(() => {
     if (!ruleQuery.data) return null
-    return describeRecurrence(ruleQuery.data.pattern as unknown as RecurrencePattern, {
+    return describeRecurrenceParts(ruleQuery.data.pattern as unknown as RecurrencePattern, {
       weekStart,
     })
   }, [ruleQuery.data, weekStart])
@@ -118,59 +122,78 @@ export function RecurringEngagementCard({
   }
 
   return (
-    <div className='space-y-3 rounded-lg border p-4'>
-      <div className='flex items-center justify-between gap-2'>
-        <div className='flex items-center gap-2'>
-          <span className='text-sm font-medium'>{summary}</span>
-          <Badge variant={badge.variant} size='sm'>
-            {badge.label}
-          </Badge>
-        </div>
-
-        {canEdit && status !== 'ended' && primaryVisit && (
-          <SchedulePopover
-            trigger={
-              <Button variant='outline' size='sm'>
-                Edit
-              </Button>
-            }
-            visitId={primaryVisit.id}
-            initialStartTime={primaryVisit.startTime ? new Date(primaryVisit.startTime) : undefined}
-            initialEndTime={primaryVisit.endTime ? new Date(primaryVisit.endTime) : undefined}
-            initialAssigneeUserId={primaryVisit.assigneeUserId}
-            existingVisits={existingVisits}
-            workOrderRecordId={recordId}
-            recurrenceRuleId={primaryVisit.recurrenceRuleId}
-            onScheduled={invalidate}
-            onUnscheduled={invalidate}
-          />
-        )}
-      </div>
+    <div className={TREE_SECONDARY_NOTRUNCATE}>
+      <DetailSectionTitleExtra>
+        <Badge variant={badge.variant} size='xs'>
+          {badge.label}
+        </Badge>
+      </DetailSectionTitleExtra>
 
       {canEdit && status !== 'ended' && (
-        <div className='flex items-center gap-2'>
+        <DetailSectionActions>
           {status === 'paused' ? (
             <Button
               variant='outline'
-              size='sm'
-              onClick={() => resumeEngagement.mutate({ workOrderRecordId: recordId })}
-              loading={resumeEngagement.isPending}>
-              <Play /> Resume
+              size='xs'
+              disabled={resumeEngagement.isPending}
+              onClick={() => resumeEngagement.mutate({ workOrderRecordId: recordId })}>
+              <Play />
+              Resume
             </Button>
           ) : (
             <Button
               variant='outline'
-              size='sm'
-              onClick={handlePause}
-              loading={pauseEngagement.isPending}>
-              <Pause /> Pause
+              size='xs'
+              disabled={pauseEngagement.isPending}
+              onClick={handlePause}>
+              <Pause />
+              Pause
             </Button>
           )}
-          <Button variant='ghost' size='sm' onClick={handleEnd} loading={endEngagement.isPending}>
-            <XCircle /> End
-          </Button>
-        </div>
+          {primaryVisit && (
+            <SchedulePopover
+              trigger={
+                <Button variant='outline' size='xs'>
+                  <Pencil />
+                  Edit
+                </Button>
+              }
+              visitId={primaryVisit.id}
+              initialStartTime={
+                primaryVisit.startTime ? new Date(primaryVisit.startTime) : undefined
+              }
+              initialEndTime={primaryVisit.endTime ? new Date(primaryVisit.endTime) : undefined}
+              initialAssigneeUserId={primaryVisit.assigneeUserId}
+              existingVisits={existingVisits}
+              workOrderRecordId={recordId}
+              recurrenceRuleId={primaryVisit.recurrenceRuleId}
+              onScheduled={invalidate}
+              onUnscheduled={invalidate}
+            />
+          )}
+        </DetailSectionActions>
       )}
+
+      <TreeRow
+        icon={<Repeat className='size-4' />}
+        title={<span className='text-sm'>{summary?.frequency}</span>}
+        secondary={
+          summary?.ends ? (
+            <span className='text-xs text-muted-foreground'>{summary.ends}</span>
+          ) : undefined
+        }
+        actions={
+          canEdit && status !== 'ended' ? (
+            <TreeRowButton
+              variant='destructive'
+              tooltipText='End engagement'
+              disabled={endEngagement.isPending}
+              onClick={handleEnd}>
+              <XCircle />
+            </TreeRowButton>
+          ) : undefined
+        }
+      />
 
       <ConfirmDialog />
     </div>

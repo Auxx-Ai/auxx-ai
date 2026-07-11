@@ -13,7 +13,11 @@ export type {
   DetailViewSectionsProps,
 } from './detail-view-sections'
 // layout: 'sections' main area (dispatch M2 §F.1)
-export { DetailViewSections } from './detail-view-sections'
+export {
+  DetailSectionActions,
+  DetailSectionTitleExtra,
+  DetailViewSections,
+} from './detail-view-sections'
 // Sub-components
 export { DetailViewSidebar } from './detail-view-sidebar'
 export { DetailViewSkeleton } from './detail-view-skeleton'

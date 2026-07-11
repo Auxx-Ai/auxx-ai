@@ -79,6 +79,30 @@ function describeFrequency(
   }
 }
 
+export interface RecurrenceDescriptionParts {
+  /** e.g. "Every 2 weeks on Tue, Thu" or "Monthly on the 2nd Tuesday". */
+  frequency: string
+  /** e.g. "until Dec 12" or "12 visits" — absent for a never-ending pattern. */
+  ends?: string
+}
+
+/**
+ * Structured variant of `describeRecurrence` for UIs that place the frequency and the
+ * end condition in separate slots (e.g. the Job view Schedule section's recurrence row).
+ */
+export function describeRecurrenceParts(
+  pattern: RecurrencePattern,
+  options: DescribeRecurrenceOptions
+): RecurrenceDescriptionParts {
+  const frequency = describeFrequency(pattern, options.weekStart)
+
+  if (pattern.until) return { frequency, ends: `until ${formatUntil(pattern.until)}` }
+  if (pattern.count) {
+    return { frequency, ends: `${pattern.count} visit${pattern.count === 1 ? '' : 's'}` }
+  }
+  return { frequency }
+}
+
 /**
  * Human-readable summary of a `RecurrencePattern`, e.g. "Every 2 weeks on Tue, Thu · until
  * Dec 12" or "Monthly on the 2nd Tuesday · 12 visits" — used by the Job view Schedule section
@@ -88,13 +112,6 @@ export function describeRecurrence(
   pattern: RecurrencePattern,
   options: DescribeRecurrenceOptions
 ): string {
-  const parts = [describeFrequency(pattern, options.weekStart)]
-
-  if (pattern.until) {
-    parts.push(`until ${formatUntil(pattern.until)}`)
-  } else if (pattern.count) {
-    parts.push(`${pattern.count} visit${pattern.count === 1 ? '' : 's'}`)
-  }
-
-  return parts.join(' · ')
+  const { frequency, ends } = describeRecurrenceParts(pattern, options)
+  return ends ? `${frequency} · ${ends}` : frequency
 }

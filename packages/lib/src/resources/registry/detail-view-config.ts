@@ -123,8 +123,9 @@ export const DETAIL_VIEW_CONFIG_REGISTRY: DetailViewConfigRegistry = {
     // is a scroll-spy page, not content-swapping tabs.
     layout: 'sections',
     mainTabs: [
+      // Schedule carries the recurrence row, primary visit card AND the upcoming
+      // visit previews (04 mock) — no standalone upcoming-visits section.
       { value: 'schedule', label: 'Schedule', icon: 'calendar' },
-      { value: 'upcoming-visits', label: 'Upcoming visits', icon: 'calendar-clock' },
       { value: 'history', label: 'History', icon: 'history' },
       { value: 'line-items', label: 'Line items', icon: 'receipt-text' },
       { value: 'timeline', label: 'Timeline', icon: 'clock' },
