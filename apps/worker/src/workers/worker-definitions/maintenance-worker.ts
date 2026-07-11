@@ -17,6 +17,7 @@ import {
   demoCleanupJob,
   expiredTrialAccountCleanupJob,
   flushUsageEventsJob,
+  invoiceDraftsJob,
   type JobHandler,
   mailCountsReconcileJob,
   mcpToolsResyncJob,
@@ -193,6 +194,10 @@ const jobMappings = {
   // Dispatch recurring engine daily sweep (M2c, 06-recurring-engine.md §4.4/§5.3):
   // extends materialization horizons for active engagements + auto-ends exhausted ones.
   recurringVisitsJob,
+
+  // Money MI2 invoice-draft daily sweep (08-mi2-build.md §G): materializes `custom_schedule`
+  // invoice-draft recurrence rules whose horizon has fallen behind.
+  invoiceDraftsJob,
 
   // Global data-connector stale-run sweep (every 5 min; fails cold runs + releases
   // their connector claim so a crashed continuation chain can't strand a connector)

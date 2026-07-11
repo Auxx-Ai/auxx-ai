@@ -2,6 +2,7 @@
 
 import { registerInventoryDeductionRule } from '../data-connectors/inventory-bridge-rule-action'
 import { ensureVisitOnWorkOrderCreate } from '../dispatch/visit-hooks'
+import { generateDraftOnCompletion } from '../money/auto-invoice'
 import {
   recomputeOnInvoiceBillingChange,
   recomputeOnLineChange,
@@ -71,7 +72,17 @@ export function registerAllHooks(): void {
   // Dispatch (plans/dispatch §H.1): auto-create the unscheduled WorkOrderVisit row the
   // instant a work order is created, on every create path. Keyed off the first write of
   // work_order_number (§F.4a's hook is the only writer, fires exactly once per create).
-  registerEntityFieldChangeHooks('work-orders', [ensureVisitOnWorkOrderCreate])
+  //
+  // Money MI2 build spec §E (Q3a+Q3i): generate an `on_completion` draft invoice the instant
+  // `work_order_status` lands on `completed`/`ended` — catches the visit roll-up, M2c's
+  // `endEngagement`, kanban drags, and manual drawer edits, all through this one hook.
+  // `registerEntityFieldChangeHooks` appends per-call (registry.ts:137-144), so this could
+  // also be a second call — combined into one array here since both handlers share the
+  // 'work-orders' slug and read more naturally listed together.
+  registerEntityFieldChangeHooks('work-orders', [
+    ensureVisitOnWorkOrderCreate,
+    generateDraftOnCompletion,
+  ])
 
   // Money totals engine (money MQ1 build spec §F.2, generalized to invoices in MI1 build
   // spec §G.1): recompute the mirrored subtotal/tax_total/total whenever a line's

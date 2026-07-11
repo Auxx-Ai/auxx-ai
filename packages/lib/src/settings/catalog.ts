@@ -435,6 +435,45 @@ export const SETTINGS_CATALOG = {
     defaultValue: 30,
     description: 'Default number of days an invoice is due after issue (MI1 consumes)',
   },
+  'documents.invoice.autoEnabled': {
+    scope: 'DOCUMENTS',
+    access: 'org',
+    fieldType: 'CHECKBOX',
+    options: { variant: 'switch' },
+    defaultValue: true,
+    description:
+      'Master switch for automated invoice drafts (MI2) — off, every trigger no-ops; ' +
+      'manual gather is unaffected',
+  },
+  'documents.invoice.defaultTiming': {
+    scope: 'DOCUMENTS',
+    access: 'org',
+    fieldType: 'SINGLE_SELECT',
+    defaultValue: 'per_visit_completed',
+    description: 'What NEW quotes/jobs start as for invoice timing (MI2)',
+    options: {
+      options: [
+        { value: 'per_visit_completed', label: 'Per visit completed' },
+        { value: 'on_completion', label: 'On job completion' },
+        { value: 'as_needed', label: 'As needed' },
+      ],
+    },
+  },
+  'documents.invoice.dateBasis': {
+    scope: 'DOCUMENTS',
+    access: 'org',
+    fieldType: 'SINGLE_SELECT',
+    defaultValue: 'visit_date',
+    description:
+      'issuedAt policy for auto-drafts (MI2): visit/occurrence date vs generation date — ' +
+      'dueDate always counts from generation day',
+    options: {
+      options: [
+        { value: 'visit_date', label: 'Visit / occurrence date' },
+        { value: 'creation_date', label: 'Generation date' },
+      ],
+    },
+  },
   'documents.invoice.paymentInstructions': {
     scope: 'DOCUMENTS',
     access: 'org',

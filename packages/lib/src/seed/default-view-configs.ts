@@ -950,5 +950,49 @@ export const DEFAULT_VIEW_CONFIGS = {
         columnFormatting: {},
       } satisfies ViewConfig,
     },
+    {
+      name: 'Drafts',
+      description: 'Draft invoices awaiting review before they are sent (money MI2)',
+      isDefault: false,
+      config: {
+        viewType: 'table' as const,
+        columnVisibility: {
+          field_invoice_number: true,
+          field_invoice_contact: true,
+          field_invoice_status: true,
+          field_invoice_total: true,
+          field_invoice_balance: true,
+          field_invoice_due_date: true,
+        },
+        columnOrder: [
+          'field_invoice_number',
+          'field_invoice_contact',
+          'field_invoice_status',
+          'field_invoice_total',
+          'field_invoice_balance',
+          'field_invoice_due_date',
+        ],
+        columnPinning: { left: ['_checkbox', 'field_invoice_number'] },
+        sorting: [{ id: 'field_created_at', desc: true }],
+        filters: [
+          {
+            id: 'draft-invoices-group',
+            logicalOperator: 'AND',
+            conditions: [
+              {
+                id: 'draft-invoices-status',
+                fieldId: 'field_invoice_status',
+                operator: 'in',
+                value: ['draft'],
+                isConstant: true,
+              },
+            ],
+          },
+        ],
+        columnSizing: {},
+        columnLabels: {},
+        columnFormatting: {},
+      } satisfies ViewConfig,
+    },
   ],
 } as const satisfies Record<string, DefaultViewDefinition[]>

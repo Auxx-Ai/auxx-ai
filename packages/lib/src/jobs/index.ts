@@ -149,6 +149,8 @@ export {
   type GettingStartedStats,
   sendGettingStartedEmailsJob,
 } from './maintenance/getting-started-job'
+// Money MI2 invoice-draft daily sweep
+export { invoiceDraftsJob } from './maintenance/invoice-drafts-job'
 // Mail counts reconcile (on-demand, jobId-deduped)
 export {
   type MailCountsReconcileJobData,

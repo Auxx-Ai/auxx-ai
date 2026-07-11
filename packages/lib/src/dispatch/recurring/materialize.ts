@@ -14,7 +14,7 @@ import { toRecordId } from '@auxx/types/resource'
 import { format } from 'date-fns'
 import { fromZonedTime, toZonedTime } from 'date-fns-tz'
 import { and, count, eq, gte } from 'drizzle-orm'
-import { getOrgCache } from '../../cache'
+import { getEntityDefIdResolver, getOrgCache } from '../../cache'
 import { FieldValueService } from '../../field-values/field-value-service'
 import {
   expandOccurrences,
@@ -207,9 +207,18 @@ async function maybeEndExhaustedEngagement(rule: RecurrenceRuleRow): Promise<voi
   if (!cf.work_order_status) return
 
   const userId = await systemActorUserId(rule.organizationId)
+  // Resolve the type-slug to the real `entityDefinitionId` UUID before writing — an
+  // unresolved `work_order:<id>` RecordId makes `setValuesForEntity`'s field-change hook
+  // dispatch resolve to no cached resource (`getCachedResource` is an exact `id` match, no
+  // type-slug fallback), so `entitySlug` comes back `''` and every field-change hook
+  // (including MI2's on_completion `generateDraftOnCompletion`, which money MI2 build spec
+  // §H documents as consuming exactly this auto-end write "for free") silently no-ops.
+  // Mirrors `UnifiedCrudHandler.update`'s own recordId-resolution step
+  // (unified-handler-mutations.ts:452).
+  const resolveDefId = await getEntityDefIdResolver(rule.organizationId)
   const fieldValueService = new FieldValueService(rule.organizationId, userId)
   await fieldValueService.setValuesForEntity({
-    recordId: toRecordId('work_order', rule.subjectId),
+    recordId: toRecordId(resolveDefId('work_order'), rule.subjectId),
     values: [{ fieldId: cf.work_order_status.id, value: 'ended' }],
   })
   await mirrorVisitOntoWorkOrder(rule.organizationId, userId, rule.subjectId)

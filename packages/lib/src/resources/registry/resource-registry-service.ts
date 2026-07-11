@@ -99,6 +99,10 @@ type CustomFieldRecord = {
   dataConnectorId: string | null
   // Connector-declared external-id field (e.g. Shopify customerId)
   isIdentity: boolean
+  // New-record default (money MI2 §O.2's `documents.invoice.defaultTiming` write-through
+  // is the first consumer that depends on this actually reaching `applyDefaults` —
+  // previously dropped entirely, see `mapCustomFieldsToResourceFields` below)
+  defaultValue: string | null
 }
 
 /** EntityDefinition with display field relations and customFields loaded */
@@ -905,7 +909,11 @@ export class ResourceRegistryService {
           showInDialogs: staticField.showInDialogs,
           placeholder: staticField.placeholder,
           nullable: staticField.nullable,
-          defaultValue: staticField.defaultValue,
+          // DB CustomField.defaultValue takes priority per this function's own contract
+          // (doc comment above) — falls back to the static registry default only when the
+          // org never overrode it (fresh-org seed sets the DB row to the static default too,
+          // so this is a true override, not a silent divergence).
+          defaultValue: dbField.defaultValue ?? staticField.defaultValue,
           // Hidden is a static-only capability — not persisted in CustomField,
           // but the static registry owns the UI visibility decision for system fields.
           capabilities: {
@@ -1086,6 +1094,14 @@ export class ResourceRegistryService {
         active: true,
         isUnique: field.isUnique,
         required: field.required,
+
+        // New-record default (`createEntity`'s `applyDefaults`, unified-handler-mutations.ts:318)
+        // — was never copied from the DB row here, so `CustomField.defaultValue` writes (e.g.
+        // the settings-service.ts `documents.invoice.defaultTiming` write-through) were silently
+        // inert for every field. `mergeSystemAndCustomFields` still prefers this over
+        // `staticField.defaultValue` when set (its "DB CustomField versions take priority"
+        // contract, previously violated for this one property).
+        defaultValue: field.defaultValue ?? undefined,
 
         // Capabilities - use database values
         capabilities: {

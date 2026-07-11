@@ -472,7 +472,7 @@ export const WORK_ORDER_FIELDS: Record<string, ResourceField> = {
     isSystem: true,
     systemAttribute: 'work_order_invoice_timing',
     systemSortOrder: 'aH',
-    showInPanel: false, // structure-only until the invoicing module (04-ui.md invoicing model)
+    showInPanel: true, // MI2: office can see/edit invoice timing in the drawer panel
     nullable: false,
     options: { options: [...WORK_ORDER_INVOICE_TIMING_OPTIONS] },
     capabilities: {
@@ -483,7 +483,7 @@ export const WORK_ORDER_FIELDS: Record<string, ResourceField> = {
       configurable: false,
     },
     defaultValue: 'per_visit_completed',
-    description: 'When invoice drafts are generated (invoicing module, later)',
+    description: 'When invoice drafts are generated (money MI2 build spec)',
   },
 
   quote: {

@@ -6,6 +6,16 @@
 // neverthrow-style, no model classes (dashboards module is the layout precedent, dispatch is
 // the direct sibling for this feature).
 
+export {
+  clearInvoiceSchedule,
+  generateDraftOnCompletion,
+  generateInvoiceDraft,
+  getInvoiceSchedule,
+  materializeInvoiceDrafts,
+  maybeGenerateVisitInvoiceDraft,
+  setInvoiceSchedule,
+  sweepInvoiceDrafts,
+} from './auto-invoice'
 export { convertQuoteToWorkOrder } from './convert-quote'
 export { createInvoiceFromWorkOrder, deleteInvoiceLine, listUninvoicedLines } from './gather'
 export { deleteInvoice, markInvoiceSent, voidInvoice } from './invoice-lifecycle'
@@ -77,7 +87,11 @@ export type {
   DiscountType,
   DocumentBillingInputs,
   DocumentTotals,
+  GenerateInvoiceDraftInput,
+  GenerateInvoiceDraftResult,
+  InvoiceDraftTrigger,
   InvoiceLifecycleInput,
+  InvoiceScheduleQueryInput,
   LineForTotals,
   ListUninvoicedLinesInput,
   MoneyMutationInput,
@@ -86,6 +100,7 @@ export type {
   RecomputeTotalsInput,
   RecordManualPaymentInput,
   ReorderLinesInput,
+  SetInvoiceScheduleInput,
   SyncInvoicePaymentStateInput,
   UninvoicedLine,
 } from './types'

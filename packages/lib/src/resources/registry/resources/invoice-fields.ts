@@ -549,6 +549,31 @@ export const INVOICE_FIELDS: Record<string, ResourceField> = {
       'user-editable. Mirrors the invoice_pdf_asset recipe (FieldValueService-only writer).',
   },
 
+  visitId: {
+    id: toFieldId('visitId'),
+    key: 'visitId',
+    label: 'Visit ID',
+    type: BaseType.STRING,
+    fieldType: FieldType.TEXT,
+    isSystem: true,
+    systemAttribute: 'invoice_visit_id',
+    systemSortOrder: 'aM',
+    showInPanel: false,
+    nullable: true,
+    capabilities: {
+      filterable: false,
+      sortable: false,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+      hidden: true,
+    },
+    description:
+      'Plain text bridge to WorkOrderVisit — visits are not entities (dispatch lock, same ' +
+      'description style as line_item_visit_id) — per-visit auto-draft dedup key + ' +
+      'visit→invoice backlink (money MI2 build spec §I)',
+  },
+
   createdAt: {
     id: toFieldId('createdAt'),
     key: 'createdAt',
