@@ -2,14 +2,13 @@
 //
 // One agenda row (08-worker-surface.md §2, user-specified anatomy): rounded card, a colored
 // left accent bar (visit = status color; meeting = its own hue), a medium title, and a muted
-// line-clamped time range. Visits push to the visit detail route; meetings call back to the
-// page so it can open 1C's `MeetingSheet`.
+// line-clamped time range. Both kinds call back to the page, which routes visits (mobile) or
+// opens `VisitDrawer` (desktop) / `MeetingSheet`.
 
 'use client'
 
 import { cn } from '@auxx/ui/lib/utils'
 import { format } from 'date-fns'
-import { useRouter } from 'next/navigation'
 import type { ScheduleItem } from '../hooks/use-my-schedule'
 
 /** Left-bar accent per visit status — a status-color mirror of `VISIT_STATUS_BADGE_VARIANT`. */
@@ -26,12 +25,11 @@ const MEETING_ACCENT = 'bg-violet-500'
 
 interface ScheduleCardProps {
   item: ScheduleItem
+  onVisitClick: (visitId: string) => void
   onMeetingClick: (meetingId: string) => void
 }
 
-export function ScheduleCard({ item, onMeetingClick }: ScheduleCardProps) {
-  const router = useRouter()
-
+export function ScheduleCard({ item, onVisitClick, onMeetingClick }: ScheduleCardProps) {
   const accent =
     item.kind === 'visit'
       ? (VISIT_STATUS_ACCENT[item.status] ?? VISIT_STATUS_ACCENT.scheduled)
@@ -40,7 +38,7 @@ export function ScheduleCard({ item, onMeetingClick }: ScheduleCardProps) {
 
   const handleClick = () => {
     if (item.kind === 'visit') {
-      router.push(`/app/schedule/visit/${item.id}`)
+      onVisitClick(item.id)
     } else {
       onMeetingClick(item.id)
     }

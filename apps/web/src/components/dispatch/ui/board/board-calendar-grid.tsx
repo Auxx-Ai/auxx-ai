@@ -6,6 +6,7 @@ import {
   type BackgroundEvent,
   type CalendarResource,
   EventCalendar,
+  type RenderEventContext,
 } from '@auxx/ui/components/event-calendar'
 import { Popover, PopoverAnchor, PopoverContent } from '@auxx/ui/components/popover'
 import { useCallback, useMemo } from 'react'
@@ -13,7 +14,7 @@ import type { ExistingVisitForOverlap } from '../schedule-popover'
 import type { useBoardMutations } from './hooks/use-board-mutations'
 import type { BoardResourceInput, BoardViewMode, DispatchVisitEvent } from './types'
 import { VisitActionsPopoverContent } from './visit-actions-popover'
-import { VisitChipContent } from './visit-chip-content'
+import { VisitChipContent, VisitChipMonthContent } from './visit-chip-content'
 import { WorkerColumnHeader } from './worker-column-header'
 
 interface BoardCalendarGridProps {
@@ -32,6 +33,7 @@ interface BoardCalendarGridProps {
   onActiveVisitChange: (visitId: string | null) => void
   onRangeChange: (from: Date, to: Date) => void
   onEventResize: (event: DispatchVisitEvent, newEnd: Date) => void
+  isNonWorkingDay?: (date: Date) => boolean
 }
 
 /**
@@ -57,15 +59,20 @@ export function BoardCalendarGrid({
   onActiveVisitChange,
   onRangeChange,
   onEventResize,
+  isNonWorkingDay,
 }: BoardCalendarGridProps) {
   const renderEvent = useCallback(
-    (event: DispatchVisitEvent) => {
+    (event: DispatchVisitEvent, ctx: RenderEventContext) => {
       const isOpen = activeVisitId === event.id
       return (
         <Popover open={isOpen} onOpenChange={(open) => onActiveVisitChange(open ? event.id : null)}>
           <PopoverAnchor asChild>
             <div className='h-full w-full'>
-              <VisitChipContent event={event} isOverlapping={overlappingIds.has(event.id)} />
+              {ctx.view === 'month' ? (
+                <VisitChipMonthContent event={event} />
+              ) : (
+                <VisitChipContent event={event} isOverlapping={overlappingIds.has(event.id)} />
+              )}
             </div>
           </PopoverAnchor>
           <PopoverContent
@@ -123,6 +130,7 @@ export function BoardCalendarGrid({
       onEventClick={handleEventClick}
       onEventResize={canEdit && view !== 'month' ? onEventResize : undefined}
       hideToolbar
+      isNonWorkingDay={isNonWorkingDay}
       className='flex-1'
     />
   )

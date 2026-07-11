@@ -192,111 +192,116 @@ function DocumentsSettingsBody({ breadcrumbs }: { breadcrumbs: { title: string }
         </Button>
       }>
       <div className='flex flex-col gap-8 p-3 sm:p-6'>
-        <BusinessInfoSection
-          business={business}
-          onPatchBusiness={patchBusiness}
-          currency={controlled('organization.currency')}
-        />
+        <div className='grid grid-cols-1 items-start gap-8 lg:grid-cols-2'>
+          <BusinessInfoSection
+            business={business}
+            onPatchBusiness={patchBusiness}
+            currency={controlled('organization.currency')}
+          />
 
-        <SettingsSection
-          icon={Palette}
-          title='Branding'
-          description='Logo and visual styling applied to quote/invoice PDFs.'>
-          <div className='flex flex-col gap-4'>
-            <DocumentsLogoCell
-              value={storedLogo}
-              onChange={(next) => updateOrganizationSetting('documents.logo', next)}
-            />
+          <SettingsSection
+            icon={Palette}
+            title='Branding'
+            description='Logo and visual styling applied to quote/invoice PDFs.'>
+            <div className='flex flex-col gap-4'>
+              <DocumentsLogoCell
+                value={storedLogo}
+                onChange={(next) => updateOrganizationSetting('documents.logo', next)}
+              />
+              <FieldPanel
+                className='mt-1 p-0'
+                resizeId='documents-settings'
+                defaultLabelWidth={200}>
+                <SettingsFieldRow
+                  settingKey='documents.accentColor'
+                  title='Accent color'
+                  {...controlled('documents.accentColor')}
+                />
+                <SettingsFieldRow
+                  settingKey='documents.paperSize'
+                  title='Paper size'
+                  {...controlled('documents.paperSize')}
+                />
+                <SettingsFieldRow
+                  settingKey='documents.dateFormat'
+                  title='Date format'
+                  {...controlled('documents.dateFormat')}
+                />
+              </FieldPanel>
+            </div>
+          </SettingsSection>
+
+          <SettingsSection
+            icon={FileText}
+            title='Quotes'
+            description='Defaults applied to new quotes and their PDFs.'>
             <FieldPanel className='mt-1 p-0' resizeId='documents-settings' defaultLabelWidth={200}>
               <SettingsFieldRow
-                settingKey='documents.accentColor'
-                title='Accent color'
-                {...controlled('documents.accentColor')}
+                settingKey='documents.quote.defaultTerms'
+                title='Default terms'
+                {...controlled('documents.quote.defaultTerms')}
               />
               <SettingsFieldRow
-                settingKey='documents.paperSize'
-                title='Paper size'
-                {...controlled('documents.paperSize')}
+                settingKey='documents.quote.validDays'
+                title='Valid for (days)'
+                {...controlled('documents.quote.validDays')}
               />
               <SettingsFieldRow
-                settingKey='documents.dateFormat'
-                title='Date format'
-                {...controlled('documents.dateFormat')}
+                settingKey='documents.quote.footerText'
+                title='Footer text'
+                {...controlled('documents.quote.footerText')}
+              />
+              <SettingsFieldRow
+                settingKey='documents.quote.lineDisplay'
+                title='Line item display'
+                {...controlled('documents.quote.lineDisplay')}
+              />
+              <SettingsFieldRow
+                settingKey='documents.quote.showDescriptions'
+                title='Show descriptions'
+                {...controlled('documents.quote.showDescriptions')}
               />
             </FieldPanel>
-          </div>
-        </SettingsSection>
+          </SettingsSection>
 
-        <SettingsSection
-          icon={FileText}
-          title='Quotes'
-          description='Defaults applied to new quotes and their PDFs.'>
-          <FieldPanel className='mt-1 p-0' resizeId='documents-settings' defaultLabelWidth={200}>
-            <SettingsFieldRow
-              settingKey='documents.quote.defaultTerms'
-              title='Default terms'
-              {...controlled('documents.quote.defaultTerms')}
-            />
-            <SettingsFieldRow
-              settingKey='documents.quote.validDays'
-              title='Valid for (days)'
-              {...controlled('documents.quote.validDays')}
-            />
-            <SettingsFieldRow
-              settingKey='documents.quote.footerText'
-              title='Footer text'
-              {...controlled('documents.quote.footerText')}
-            />
-            <SettingsFieldRow
-              settingKey='documents.quote.lineDisplay'
-              title='Line item display'
-              {...controlled('documents.quote.lineDisplay')}
-            />
-            <SettingsFieldRow
-              settingKey='documents.quote.showDescriptions'
-              title='Show descriptions'
-              {...controlled('documents.quote.showDescriptions')}
-            />
-          </FieldPanel>
-        </SettingsSection>
-
-        <SettingsSection
-          icon={Receipt}
-          title='Invoices'
-          description='Defaults for invoice PDFs — these apply once invoicing ships (MI1); the settings save now so they are ready.'>
-          <FieldPanel className='mt-1 p-0' resizeId='documents-settings' defaultLabelWidth={200}>
-            <SettingsFieldRow
-              settingKey='documents.invoice.dueDays'
-              title='Due (days)'
-              {...controlled('documents.invoice.dueDays')}
-            />
-            <SettingsFieldRow
-              settingKey='documents.invoice.paymentInstructions'
-              title='Payment instructions'
-              {...controlled('documents.invoice.paymentInstructions')}
-            />
-            <SettingsFieldRow
-              settingKey='documents.invoice.footerText'
-              title='Footer text'
-              {...controlled('documents.invoice.footerText')}
-            />
-            <SettingsFieldRow
-              settingKey='documents.invoice.lineDisplay'
-              title='Line item display'
-              {...controlled('documents.invoice.lineDisplay')}
-            />
-            <SettingsFieldRow
-              settingKey='documents.invoice.showDescriptions'
-              title='Show descriptions'
-              {...controlled('documents.invoice.showDescriptions')}
-            />
-            <SettingsFieldRow
-              settingKey='documents.invoice.showPaymentHistory'
-              title='Show payment history'
-              {...controlled('documents.invoice.showPaymentHistory')}
-            />
-          </FieldPanel>
-        </SettingsSection>
+          <SettingsSection
+            icon={Receipt}
+            title='Invoices'
+            description='Defaults for invoice PDFs — these apply once invoicing ships (MI1); the settings save now so they are ready.'>
+            <FieldPanel className='mt-1 p-0' resizeId='documents-settings' defaultLabelWidth={200}>
+              <SettingsFieldRow
+                settingKey='documents.invoice.dueDays'
+                title='Due (days)'
+                {...controlled('documents.invoice.dueDays')}
+              />
+              <SettingsFieldRow
+                settingKey='documents.invoice.paymentInstructions'
+                title='Payment instructions'
+                {...controlled('documents.invoice.paymentInstructions')}
+              />
+              <SettingsFieldRow
+                settingKey='documents.invoice.footerText'
+                title='Footer text'
+                {...controlled('documents.invoice.footerText')}
+              />
+              <SettingsFieldRow
+                settingKey='documents.invoice.lineDisplay'
+                title='Line item display'
+                {...controlled('documents.invoice.lineDisplay')}
+              />
+              <SettingsFieldRow
+                settingKey='documents.invoice.showDescriptions'
+                title='Show descriptions'
+                {...controlled('documents.invoice.showDescriptions')}
+              />
+              <SettingsFieldRow
+                settingKey='documents.invoice.showPaymentHistory'
+                title='Show payment history'
+                {...controlled('documents.invoice.showPaymentHistory')}
+              />
+            </FieldPanel>
+          </SettingsSection>
+        </div>
 
         <FormSaveBar
           dirty={dirty}

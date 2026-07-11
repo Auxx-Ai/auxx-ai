@@ -42,16 +42,18 @@ export function NumberFormatsPage() {
       title='Number Formats'
       description='Configure how work order and request numbers are generated.'
       breadcrumbs={BREADCRUMBS}>
-      <div className='p-0 sm:p-8'>
+      <div className='grid grid-cols-1 items-start gap-8 p-3 sm:p-6 lg:grid-cols-2'>
         <TicketNumberingSettings
           scope='work_order'
           title='Work Orders'
           description='Configure how work order numbers are generated.'
+          className=''
         />
         <TicketNumberingSettings
           scope='service_request'
           title='Requests'
           description='Configure how service request numbers are generated.'
+          className=''
         />
       </div>
     </SettingsPage>

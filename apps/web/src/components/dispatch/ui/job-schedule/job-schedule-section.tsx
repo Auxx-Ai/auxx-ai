@@ -1,49 +1,39 @@
 // apps/web/src/components/dispatch/ui/job-schedule/job-schedule-section.tsx
 'use client'
 
-import { Button } from '@auxx/ui/components/button'
+import { TREE_SECONDARY_NOTRUNCATE, TreeRow } from '@auxx/ui/components/tree-row'
+import { MoreHorizontal } from 'lucide-react'
 import { useQueryState } from 'nuqs'
 import type { DetailViewTabProps } from '~/components/detail-view'
 import { useSystemValues } from '~/components/resources/hooks/use-system-values'
-import type { ExistingVisitForOverlap } from '../schedule-popover'
 import { splitJobVisits } from './job-schedule-utils'
 import { RecurringEngagementCard } from './recurring-engagement-card'
-import { type JobVisit, type UseJobVisitsResult, useJobVisits } from './use-job-visits'
+import { useJobVisits } from './use-job-visits'
 import { VisitCard } from './visit-card'
 import { VisitTreeRow } from './visit-tree-row'
 
-/** Preview-row cap for the Upcoming/History blocks (04-ui.md §6: "1–2 TreeRow previews"). */
+/** Preview-row cap for the Upcoming/History sections (04-ui.md §6: "1–2 TreeRow previews"). */
 const PREVIEW_LIMIT = 2
 
 /**
  * JobScheduleSection — registered as `work_order:schedule` (dispatch M2 build
  * spec §F.2/§F.3). Rendered inside DetailViewSections' own "Schedule"
- * `<Section>` anchor, so this contributes the primary visit card + the
- * Upcoming visits / History preview blocks (04-ui.md §6) without a redundant
- * outer heading. "More" and row clicks push the `?panel=visits`/`?item=<id>`
- * drill (the shared nuqs params `DetailViewSections` reads — any component
- * inside the sectioned page can drive them, not just the root).
+ * `<Section>` anchor, so this contributes the primary visit card (+ the
+ * recurring engagement card). The Upcoming visits / History previews are their
+ * own sections — see `UpcomingVisitsSection` / `VisitHistorySection` below.
  */
 export function JobScheduleSection({ recordId }: DetailViewTabProps) {
   const { visits, isLoading, canEdit, mutations, existingVisits, refresh } = useJobVisits(recordId)
-  const [, setPanel] = useQueryState('panel')
-  const [, setItem] = useQueryState('item')
   const { values } = useSystemValues(recordId, ['work_order_job_type', 'work_order_status'], {
     autoFetch: true,
   })
   const jobType = (values.work_order_job_type as string | undefined) ?? 'one_off'
   const status = (values.work_order_status as string | undefined) ?? 'new'
 
-  const { upcoming, history } = splitJobVisits(visits)
+  const { upcoming } = splitJobVisits(visits)
   // The primary card's target visit — also the recurring engine's "next-upcoming visit"
   // (06-recurring-engine.md §6): one-off has exactly one, so this stays jobType-agnostic.
   const primaryVisit = upcoming[0] ?? visits[0]
-
-  const openList = () => void setPanel('visits')
-  const openItem = (visitId: string) => {
-    void setPanel('visits')
-    void setItem(visitId)
-  }
 
   if (isLoading && visits.length === 0) {
     return <div className='p-4 text-sm text-muted-foreground'>Loading schedule...</div>
@@ -70,94 +60,73 @@ export function JobScheduleSection({ recordId }: DetailViewTabProps) {
           onRefresh={refresh}
         />
       )}
-
-      <VisitPreviewBlock
-        title='Upcoming visits'
-        visits={upcoming.slice(0, PREVIEW_LIMIT)}
-        hasMore={upcoming.length > PREVIEW_LIMIT || history.length > 0}
-        emptyLabel='No upcoming visits.'
-        canEdit={canEdit}
-        mutations={mutations}
-        existingVisits={existingVisits}
-        workOrderRecordId={recordId}
-        onRefresh={refresh}
-        onMore={openList}
-        onOpenItem={openItem}
-      />
-
-      <VisitPreviewBlock
-        title='History'
-        visits={history.slice(0, PREVIEW_LIMIT)}
-        hasMore={history.length > PREVIEW_LIMIT}
-        emptyLabel='No past visits yet.'
-        canEdit={canEdit}
-        mutations={mutations}
-        existingVisits={existingVisits}
-        workOrderRecordId={recordId}
-        onRefresh={refresh}
-        onMore={openList}
-        onOpenItem={openItem}
-      />
     </div>
   )
 }
 
-interface VisitPreviewBlockProps {
-  title: string
-  visits: JobVisit[]
-  hasMore: boolean
-  emptyLabel: string
-  canEdit: boolean
-  mutations: UseJobVisitsResult['mutations']
-  existingVisits: ExistingVisitForOverlap[]
-  workOrderRecordId: DetailViewTabProps['recordId']
-  onRefresh: () => void
-  onMore: () => void
-  onOpenItem: (visitId: string) => void
+/** Registered as `work_order:upcoming-visits` — standalone Upcoming visits section. */
+export function UpcomingVisitsSection(props: DetailViewTabProps) {
+  return <VisitPreviewSection {...props} kind='upcoming' />
 }
 
-function VisitPreviewBlock({
-  title,
-  visits,
-  hasMore,
-  emptyLabel,
-  canEdit,
-  mutations,
-  existingVisits,
-  workOrderRecordId,
-  onRefresh,
-  onMore,
-  onOpenItem,
-}: VisitPreviewBlockProps) {
+/** Registered as `work_order:history` — standalone visit History section. */
+export function VisitHistorySection(props: DetailViewTabProps) {
+  return <VisitPreviewSection {...props} kind='history' />
+}
+
+/**
+ * Shared body of the Upcoming/History sections: borderless VisitTreeRows capped
+ * at PREVIEW_LIMIT, plus a "More" TreeRow that pushes the `?panel=visits` drill
+ * (the shared nuqs params `DetailViewSections` reads). The section heading comes
+ * from the surrounding `<Section>` — no block header here.
+ */
+function VisitPreviewSection({
+  recordId,
+  kind,
+}: DetailViewTabProps & { kind: 'upcoming' | 'history' }) {
+  const { visits, isLoading, canEdit, mutations, existingVisits, refresh } = useJobVisits(recordId)
+  const [, setPanel] = useQueryState('panel')
+  const [, setItem] = useQueryState('item')
+
+  const { upcoming, history } = splitJobVisits(visits)
+  const list = kind === 'upcoming' ? upcoming : history
+  const emptyLabel = kind === 'upcoming' ? 'No upcoming visits' : 'No past visits yet'
+
+  const openList = () => void setPanel('visits')
+  const openItem = (visitId: string) => {
+    void setPanel('visits')
+    void setItem(visitId)
+  }
+
+  if (isLoading && visits.length === 0) {
+    return <div className='p-4 text-sm text-muted-foreground'>Loading visits...</div>
+  }
+
+  if (list.length === 0) {
+    return <div className='p-4 pt-2 text-sm text-muted-foreground'>{emptyLabel}</div>
+  }
+
   return (
-    <div>
-      <div className='flex items-center justify-between px-1 pb-1'>
-        <span className='text-xs font-medium uppercase text-muted-foreground'>{title}</span>
-        {hasMore && (
-          <Button variant='ghost' size='xs' onClick={onMore}>
-            More
-          </Button>
-        )}
-      </div>
-      {visits.length === 0 ? (
-        <div className='rounded-lg border border-dashed p-3 text-center text-xs text-muted-foreground'>
-          {emptyLabel}
-        </div>
-      ) : (
-        <div className='rounded-lg border'>
-          {visits.map((visit) => (
-            <VisitTreeRow
-              key={visit.id}
-              visit={visit}
-              canEdit={canEdit}
-              mutations={mutations}
-              existingVisits={existingVisits}
-              workOrderRecordId={workOrderRecordId}
-              onRefresh={onRefresh}
-              onOpen={() => onOpenItem(visit.id)}
-            />
-          ))}
-        </div>
+    <div className={`p-4 pt-2 space-y-0.5 ${TREE_SECONDARY_NOTRUNCATE}`}>
+      {list.slice(0, PREVIEW_LIMIT).map((visit) => (
+        <VisitTreeRow
+          key={visit.id}
+          visit={visit}
+          canEdit={canEdit}
+          mutations={mutations}
+          existingVisits={existingVisits}
+          workOrderRecordId={recordId}
+          onRefresh={refresh}
+          onOpen={() => openItem(visit.id)}
+        />
+      ))}
+
+      {list.length > PREVIEW_LIMIT && (
+        <TreeRow
+          icon={<MoreHorizontal className='size-4' />}
+          title={<span className='text-sm text-muted-foreground'>More</span>}
+          onToggleOpen={openList}
+        />
       )}
     </div>
   )

@@ -1,7 +1,17 @@
 // apps/web/src/components/dispatch/ui/board/utils.ts
 
 import type { BackgroundEvent } from '@auxx/ui/components/event-calendar'
-import { addDays, addMonths, addWeeks, subDays, subMonths, subWeeks } from 'date-fns'
+import {
+  addDays,
+  addMonths,
+  addWeeks,
+  endOfWeek,
+  startOfMonth,
+  startOfWeek,
+  subDays,
+  subMonths,
+  subWeeks,
+} from 'date-fns'
 import type {
   BoardViewMode,
   BoardVisit,
@@ -33,16 +43,31 @@ export function scalarSetting(value: unknown): string | null {
   return (value as string) ?? null
 }
 
-export function goToPreviousDate(view: BoardViewMode, date: Date): Date {
-  if (view === 'day') return subDays(date, 1)
-  if (view === 'week') return subWeeks(date, 1)
-  return subMonths(date, 1)
+export type WeekStartIndex = 0 | 1 | 2 | 3 | 4 | 5 | 6
+
+/**
+ * The month the stream-style month view is "viewing" for an anchor date: the month of the
+ * date's week END — a month's first grid row usually starts with the previous month's
+ * trailing days, and the month view anchors `date` to that row's top-left cell.
+ */
+export function viewedMonthStart(date: Date, weekStartsOn: WeekStartIndex): Date {
+  return startOfMonth(endOfWeek(date, { weekStartsOn }))
 }
 
-export function goToNextDate(view: BoardViewMode, date: Date): Date {
+export function goToPreviousDate(
+  view: BoardViewMode,
+  date: Date,
+  weekStartsOn: WeekStartIndex
+): Date {
+  if (view === 'day') return subDays(date, 1)
+  if (view === 'week') return subWeeks(date, 1)
+  return startOfWeek(subMonths(viewedMonthStart(date, weekStartsOn), 1), { weekStartsOn })
+}
+
+export function goToNextDate(view: BoardViewMode, date: Date, weekStartsOn: WeekStartIndex): Date {
   if (view === 'day') return addDays(date, 1)
   if (view === 'week') return addWeeks(date, 1)
-  return addMonths(date, 1)
+  return startOfWeek(addMonths(viewedMonthStart(date, weekStartsOn), 1), { weekStartsOn })
 }
 
 /** Only visits with both `startTime`/`endTime` render on the grid. */

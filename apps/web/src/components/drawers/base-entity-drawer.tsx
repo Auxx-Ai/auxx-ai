@@ -11,6 +11,7 @@ import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { Section } from '@auxx/ui/components/section'
 import { OverflowTabsList, type TabDefinition, Tabs, TabsContent } from '@auxx/ui/components/tabs'
 import {
+  CalendarClock,
   Clock,
   FileText,
   HouseIcon,
@@ -19,6 +20,7 @@ import {
   Mail,
   MessagesSquare,
   Package,
+  Receipt,
   ShoppingBag,
   Ticket,
   Truck,
@@ -40,6 +42,7 @@ import {
 } from '~/providers/dehydrated-state-provider'
 import { useFeatureFlags } from '~/providers/feature-flag-provider'
 import { ThreadVisitCard } from './cards/thread-visit-card'
+import { DrawerCardActionsProvider } from './drawer-card-actions'
 import { getTabCardComponent, getTabComponent } from './drawer-tab-registry'
 
 interface BaseEntityDrawerProps {
@@ -424,31 +427,65 @@ function TabCards({
   return (
     <>
       {cards.map((card) => (
-        <Section
+        <TabCardSection
           key={card.value}
-          title={card.label}
-          icon={
-            card.icon ? (
-              <>{React.createElement(getIconComponent(card.icon), { className: 'size-4' })}</>
-            ) : undefined
-          }
-          initialOpen
-          collapsible={false}
-          className={
-            card.fullBleed
-              ? '[&>[data-slot=section]>[data-slot=section-content]]:-mx-3 [&>[data-slot=section]>[data-slot=section-content]]:-mb-4'
-              : undefined
-          }>
-          <LazyTabCard
-            entityType={entityType}
-            cardValue={card.value}
-            entityInstanceId={entityInstanceId}
-            recordId={recordId}
-            record={record}
-          />
-        </Section>
+          card={card}
+          entityType={entityType}
+          entityInstanceId={entityInstanceId}
+          recordId={recordId}
+          record={record}
+        />
       ))}
     </>
+  )
+}
+
+/**
+ * A single tab card wrapped in its Section. Owns the Section header's actions-slot
+ * element and exposes it to the lazily-loaded card via `DrawerCardActionsProvider`,
+ * so the card can portal buttons into the header (see `DrawerCardActions`).
+ */
+function TabCardSection({
+  card,
+  entityType,
+  entityInstanceId,
+  recordId,
+  record,
+}: {
+  card: DrawerTabCardDefinition
+  entityType: string
+  entityInstanceId: string
+  recordId: RecordId
+  record?: Record<string, unknown>
+}) {
+  const [actionsEl, setActionsEl] = React.useState<HTMLElement | null>(null)
+
+  return (
+    <Section
+      title={card.label}
+      icon={
+        card.icon ? (
+          <>{React.createElement(getIconComponent(card.icon), { className: 'size-4' })}</>
+        ) : undefined
+      }
+      initialOpen
+      collapsible={false}
+      actions={<span ref={setActionsEl} className='contents' />}
+      className={
+        card.fullBleed
+          ? '[&>[data-slot=section]>[data-slot=section-content]]:-mx-3 [&>[data-slot=section]>[data-slot=section-content]]:-mb-4'
+          : undefined
+      }>
+      <DrawerCardActionsProvider value={actionsEl}>
+        <LazyTabCard
+          entityType={entityType}
+          cardValue={card.value}
+          entityInstanceId={entityInstanceId}
+          recordId={recordId}
+          record={record}
+        />
+      </DrawerCardActionsProvider>
+    </Section>
   )
 }
 
@@ -506,6 +543,8 @@ function getIconComponent(iconName: string) {
     'list-todo': ListTodo,
     wrench: Wrench,
     'file-text': FileText,
+    'calendar-clock': CalendarClock,
+    receipt: Receipt,
     // Add more as needed
   }
   return icons[iconName] ?? HouseIcon

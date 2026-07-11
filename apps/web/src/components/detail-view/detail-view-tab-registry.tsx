@@ -61,6 +61,14 @@ export const DETAIL_VIEW_TAB_COMPONENTS: Record<
     import('../dispatch/ui/job-schedule/job-schedule-section').then((m) => ({
       default: m.JobScheduleSection,
     })),
+  'work_order:upcoming-visits': () =>
+    import('../dispatch/ui/job-schedule/job-schedule-section').then((m) => ({
+      default: m.UpcomingVisitsSection,
+    })),
+  'work_order:history': () =>
+    import('../dispatch/ui/job-schedule/job-schedule-section').then((m) => ({
+      default: m.VisitHistorySection,
+    })),
   'work_order:line-items': () =>
     import('../dispatch/ui/job-schedule/work-order-line-items-tab').then((m) => ({
       default: m.WorkOrderLineItemsTab,

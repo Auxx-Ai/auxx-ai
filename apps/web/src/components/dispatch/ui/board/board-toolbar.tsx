@@ -4,11 +4,11 @@
 
 import { Button } from '@auxx/ui/components/button'
 import { RadioTab, RadioTabItem } from '@auxx/ui/components/radio-tab'
-import { format } from 'date-fns'
+import { endOfWeek, format, startOfWeek } from 'date-fns'
 import { CalendarDays, CalendarRange, ChevronLeft, ChevronRight, PanelLeft } from 'lucide-react'
 import { DateTimePicker } from '~/components/pickers/date-time-picker'
 import type { BoardViewMode, BoardWorker } from './types'
-import { goToNextDate, goToPreviousDate } from './utils'
+import { goToNextDate, goToPreviousDate, viewedMonthStart, type WeekStartIndex } from './utils'
 import { WorkerFilterPopover } from './worker-filter-popover'
 
 interface BoardToolbarProps {
@@ -16,11 +16,27 @@ interface BoardToolbarProps {
   onDateChange: (date: Date) => void
   view: BoardViewMode
   onViewChange: (view: BoardViewMode) => void
+  weekStartsOn: WeekStartIndex
   workers: BoardWorker[]
   selectedWorkerIds: Set<string> | null
   onSelectedWorkerIdsChange: (ids: Set<string> | null) => void
   showBacklog: boolean
   onShowBacklogChange: (show: boolean) => void
+}
+
+/** View-shaped date label: month → "August 2026", week → short from–to, day → full date. */
+function dateLabel(view: BoardViewMode, date: Date, weekStartsOn: WeekStartIndex): string {
+  if (view === 'month') return format(viewedMonthStart(date, weekStartsOn), 'MMMM yyyy')
+  if (view === 'week') {
+    const start = startOfWeek(date, { weekStartsOn })
+    const end = endOfWeek(date, { weekStartsOn })
+    if (start.getFullYear() !== end.getFullYear())
+      return `${format(start, 'MMM d, yyyy')} – ${format(end, 'MMM d, yyyy')}`
+    if (start.getMonth() !== end.getMonth())
+      return `${format(start, 'MMM d')} – ${format(end, 'MMM d, yyyy')}`
+    return `${format(start, 'MMM d')} – ${format(end, 'd, yyyy')}`
+  }
+  return format(date, 'PPP')
 }
 
 /**
@@ -32,6 +48,7 @@ export function BoardToolbar({
   onDateChange,
   view,
   onViewChange,
+  weekStartsOn,
   workers,
   selectedWorkerIds,
   onSelectedWorkerIdsChange,
@@ -51,14 +68,14 @@ export function BoardToolbar({
         <Button
           variant='ghost'
           size='icon'
-          onClick={() => onDateChange(goToPreviousDate(view, date))}
+          onClick={() => onDateChange(goToPreviousDate(view, date, weekStartsOn))}
           aria-label='Previous'>
           <ChevronLeft />
         </Button>
         <Button
           variant='ghost'
           size='icon'
-          onClick={() => onDateChange(goToNextDate(view, date))}
+          onClick={() => onDateChange(goToNextDate(view, date, weekStartsOn))}
           aria-label='Next'>
           <ChevronRight />
         </Button>
@@ -68,7 +85,7 @@ export function BoardToolbar({
           mode='date'
           notClearable>
           <Button variant='ghost' size='sm'>
-            {format(date, 'PPP')}
+            {dateLabel(view, date, weekStartsOn)}
           </Button>
         </DateTimePicker>
       </div>

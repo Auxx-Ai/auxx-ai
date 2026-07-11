@@ -3,7 +3,9 @@
 import {
   Box,
   Calendar,
+  CalendarClock,
   Clock,
+  History,
   HouseIcon,
   Layers,
   ListTodo,
@@ -33,8 +35,10 @@ const ICON_MAP: Record<string, LucideIcon> = {
   truck: Truck,
   box: Box,
   'receipt-text': ReceiptText,
-  // work_order Schedule section anchor (dispatch M2 build spec §F.2).
+  // work_order Schedule / Upcoming visits / History section anchors (dispatch M2 build spec §F.2).
   calendar: Calendar,
+  'calendar-clock': CalendarClock,
+  history: History,
 }
 
 /**

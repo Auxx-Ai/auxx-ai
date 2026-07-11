@@ -11,10 +11,11 @@ import { ScheduleCard } from './schedule-card'
 
 interface ScheduleDayGroupProps {
   group: ScheduleDayGroupData
+  onVisitClick: (visitId: string) => void
   onMeetingClick: (meetingId: string) => void
 }
 
-export function ScheduleDayGroup({ group, onMeetingClick }: ScheduleDayGroupProps) {
+export function ScheduleDayGroup({ group, onVisitClick, onMeetingClick }: ScheduleDayGroupProps) {
   return (
     <div>
       <div className='sticky top-0 z-10 flex items-center gap-2 bg-secondary px-1 py-3 mask-b-from-80% mask-b-to-100% dark:bg-background sm:dark:bg-muted-50'>
@@ -30,6 +31,7 @@ export function ScheduleDayGroup({ group, onMeetingClick }: ScheduleDayGroupProp
           <ScheduleCard
             key={`${item.kind}-${item.id}`}
             item={item}
+            onVisitClick={onVisitClick}
             onMeetingClick={onMeetingClick}
           />
         ))}

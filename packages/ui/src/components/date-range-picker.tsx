@@ -42,11 +42,23 @@ type TimeFrameOption =
  * DateRangePicker component props
  */
 interface DateRangePickerProps {
-  value: DateRange
+  /** Selected range. When undefined the trigger shows `placeholder` and no calendar selection. */
+  value?: DateRange
   onChange: (value: DateRange) => void
   triggerClassName?: string
   triggerVariant?: 'default' | 'outline' | 'ghost'
   showShortLabel?: boolean
+  /** Hide the left-hand preset sidebar (Today / Last 7 days / …). Defaults to shown. */
+  showPresets?: boolean
+  /** Trigger label shown when `value` is undefined. */
+  placeholder?: string
+  /**
+   * Custom trigger renderer. Receives the popover open state, the computed label, and whether a
+   * range is set. Return element is wrapped in `PopoverTrigger asChild`. When omitted, a default
+   * outline `Button` is rendered. Lets app-layer callers pass their own trigger (e.g. `PickerTrigger`)
+   * without `packages/ui` depending on `apps/web`.
+   */
+  trigger?: (state: { open: boolean; label: string; hasValue: boolean }) => React.ReactNode
   // Rest of Calendar props
   [key: string]: any
 }
@@ -174,6 +186,9 @@ export function DateRangePicker({
   triggerClassName,
   triggerVariant = 'outline',
   showShortLabel = false,
+  showPresets = true,
+  placeholder = 'Select dates',
+  trigger,
   ...calendarProps
 }: DateRangePickerProps) {
   const [open, setOpen] = useState(false)
@@ -197,42 +212,48 @@ export function DateRangePicker({
     }
   }
 
-  const displayLabel = calculateDisplayLabel(value, showShortLabel)
-  const activeTimeFrame = detectTimeFrameFromDateRange(value)
+  const displayLabel = value ? calculateDisplayLabel(value, showShortLabel) : placeholder
+  const activeTimeFrame = value ? detectTimeFrameFromDateRange(value) : null
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <Button
-          variant={triggerVariant}
-          size='sm'
-          className={cn('justify-start text-left font-normal', triggerClassName)}>
-          <CalendarIcon className='mr-2 h-4 w-4' />
-          {displayLabel}
-        </Button>
+        {trigger ? (
+          trigger({ open, label: displayLabel, hasValue: !!value })
+        ) : (
+          <Button
+            variant={triggerVariant}
+            size='sm'
+            className={cn('justify-start text-left font-normal', triggerClassName)}>
+            <CalendarIcon className='mr-2 h-4 w-4' />
+            {displayLabel}
+          </Button>
+        )}
       </PopoverTrigger>
       <PopoverContent className='w-auto p-0' align='start'>
         <div className='flex items-start flex-row'>
-          <div className='border-r border-border min-w-[140px] h-full'>
-            <div className='p-2 space-y-1 flex flex-col overflow-y-auto'>
-              {timeFrameOptions.map((option) => {
-                const isSelected = activeTimeFrame === option.value
-                return (
-                  <Button
-                    key={option.value}
-                    variant={isSelected ? 'secondary' : 'ghost'}
-                    size='sm'
-                    className={cn(
-                      'justify-start',
-                      isSelected && 'bg-secondary text-secondary-foreground'
-                    )}
-                    onClick={() => handleTimeFrameSelect(option.value)}>
-                    {option.label}
-                  </Button>
-                )
-              })}
+          {showPresets && (
+            <div className='border-r border-border min-w-[140px] h-full'>
+              <div className='p-2 space-y-1 flex flex-col overflow-y-auto'>
+                {timeFrameOptions.map((option) => {
+                  const isSelected = activeTimeFrame === option.value
+                  return (
+                    <Button
+                      key={option.value}
+                      variant={isSelected ? 'secondary' : 'ghost'}
+                      size='sm'
+                      className={cn(
+                        'justify-start',
+                        isSelected && 'bg-secondary text-secondary-foreground'
+                      )}
+                      onClick={() => handleTimeFrameSelect(option.value)}>
+                      {option.label}
+                    </Button>
+                  )
+                })}
+              </div>
             </div>
-          </div>
+          )}
           <Calendar
             mode='range'
             className='relative'
