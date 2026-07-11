@@ -5,10 +5,12 @@ import { requireAdminAccess } from '@auxx/lib/email'
 import { getQueue, Queues } from '@auxx/lib/jobs/queues'
 import {
   getCalendarEventById,
+  getMyMeeting,
   getUpcomingMeetings,
   linkCalendarEventToMeeting,
   listCalendarEventParticipants,
   listCalendarEvents,
+  listMyMeetings,
 } from '@auxx/lib/recording/calendar'
 import { updateOrganizationSetting } from '@auxx/lib/settings'
 import { TRPCError } from '@trpc/server'
@@ -58,6 +60,37 @@ export const calendarRouter = createTRPCRouter({
     const result = await getCalendarEventById(input.id, ctx.session.organizationId)
     return unwrap(result, 'Failed to load calendar event')
   }),
+
+  /**
+   * List the signed-in user's meetings (owned or participant-on) in a time range —
+   * 08-worker-surface.md §2/§6, the Schedule page's meeting source.
+   */
+  myMeetings: protectedProcedure
+    .input(z.object({ from: z.date().optional(), to: z.date().optional() }))
+    .query(async ({ ctx, input }) => {
+      const result = await listMyMeetings({
+        organizationId: ctx.session.organizationId,
+        userId: ctx.session.user.id,
+        from: input.from,
+        to: input.to,
+      })
+      return unwrap(result, 'Failed to list my meetings')
+    }),
+
+  /**
+   * Fetch one meeting for the read-only meeting sheet (08 §4) — owner-or-participant guarded,
+   * returns `null` when the signed-in user has no access.
+   */
+  getMyMeeting: protectedProcedure
+    .input(z.object({ meetingId: z.string() }))
+    .query(async ({ ctx, input }) => {
+      const result = await getMyMeeting({
+        organizationId: ctx.session.organizationId,
+        userId: ctx.session.user.id,
+        meetingId: input.meetingId,
+      })
+      return unwrap(result, 'Failed to load meeting')
+    }),
 
   /**
    * Fetch participant rows for a synced calendar event.

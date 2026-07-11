@@ -1,0 +1,1 @@
+CREATE INDEX "MeetingParticipant_userId_idx" ON "MeetingParticipant" USING btree ("userId");

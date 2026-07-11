@@ -187,7 +187,7 @@ export async function unscheduleVisit(input: UnscheduleVisitInput): Promise<Work
  * status.
  */
 export async function setVisitStatus(input: SetVisitStatusInput): Promise<WorkOrderVisitRow> {
-  const { organizationId, userId, visitId, status, excludeSocketId } = input
+  const { organizationId, userId, visitId, status, suppressRollUp, excludeSocketId } = input
 
   const [updated] = await database
     .update(schema.WorkOrderVisit)
@@ -201,7 +201,13 @@ export async function setVisitStatus(input: SetVisitStatusInput): Promise<WorkOr
     .returning()
   if (!updated) throw new NotFoundError('Visit not found')
 
-  await afterVisitWrite(updated, { userId, trigger: status, excludeSocketId })
+  // 08 §6 "leave job open" close path: suppress the roll-up (omit `trigger`, the
+  // `assignVisit` precedent) while still mirroring + broadcasting the visit write.
+  await afterVisitWrite(updated, {
+    userId,
+    trigger: suppressRollUp ? undefined : status,
+    excludeSocketId,
+  })
 
   // money MI2 build spec §D (Q1a) — per_visit_completed drafts generate synchronously here;
   // never let a billing failure fail the field tech's status tap.

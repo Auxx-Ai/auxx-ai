@@ -105,3 +105,49 @@ export interface CalendarSyncResult {
  * Common Result alias used by recording/calendar services.
  */
 export type RecordingResult<T> = Promise<Result<T, Error>>
+
+/** Input for {@link listMyMeetings} (08-worker-surface.md §2/§6). */
+export interface ListMyMeetingsInput {
+  organizationId: string
+  userId: string
+  from?: Date
+  to?: Date
+}
+
+/** One row of the Schedule page's meeting list — read-only, no attendee detail. */
+export interface MyMeetingListItem {
+  id: string
+  title: string
+  startTime: Date
+  endTime: Date
+  timezone: string
+  meetingUrl: string | null
+}
+
+/** Input for {@link getMyMeeting}. */
+export interface GetMyMeetingInput {
+  organizationId: string
+  userId: string
+  /** `CalendarEvent.id` — matches the `id` returned by {@link listMyMeetings}. */
+  meetingId: string
+}
+
+/** A resolved attendee row for the read-only meeting sheet (08 §4). */
+export interface MyMeetingAttendee {
+  name: string
+  email: string
+  rsvpStatus: MeetingParticipantEntity['rsvpStatus']
+  isOrganizer: boolean
+}
+
+/** `getMyMeeting` result — the read-only meeting sheet's full payload. */
+export interface MyMeetingDetail {
+  id: string
+  title: string
+  startTime: Date
+  endTime: Date
+  timezone: string
+  meetingUrl: string | null
+  linkedRecordId: string | null
+  attendees: MyMeetingAttendee[]
+}
