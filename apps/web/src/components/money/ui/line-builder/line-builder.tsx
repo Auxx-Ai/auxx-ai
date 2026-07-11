@@ -3,13 +3,11 @@
 'use client'
 
 // The document-agnostic line-items builder (money MQ1 build spec §H.1, 01-ui.md #1).
-// Renders a quote's (or work order's) lines on the records dynamic table in its
-// reduced mode — `DynamicView` called directly with `standalone + hideToolbar +
-// hideHeader + disableColumnDnd` and a hand-built fixed `ExtendedColumnDef[]`
-// (the `record-list-widget.tsx` precedent; `DynamicResourceView` cannot run
-// headerless/standalone, so the builder replicates its fetch layer via
-// `useResource` + `useRecordList` with a baseline ConditionGroup on the
-// `line_item:quote` / `line_item:workOrder` relationship).
+// Lines render as `GridTreeRow`s under a plain grid header (Description / Qty /
+// Unit cost / Total / actions) — the data-connectors mapping-editor idiom
+// (mapping-row.tsx): one shared `grid-template-columns` keeps the number columns
+// aligned across the header and every row. Line counts are small, so plain rows
+// replace the virtualized `DynamicView` embed this used to be.
 //
 // Data flow:
 // - Line cell reads: `useSystemValues` (field-value store, autoFetch).
@@ -20,26 +18,37 @@
 //   `computeLineTotal` from `@auxx/lib/money/client` over store values — the
 //   same function the server hook uses, so the optimistic footer and the
 //   stored mirrors can never disagree.
-// - Reorder: row DnD (`DragDropConfig.onDrop`) → `api.money.reorderLines`.
+// - Add: creates an EMPTY line record; clicking the Description cell opens the
+//   catalog picker (§H.2) which fills it in (or renames via free text).
+// - Reorder: dnd-kit sortable rows (grip handle) → `api.money.reorderLines`.
 // - Delete: `api.record.delete` + `api.money.recomputeTotals` (delete path
 //   doesn't fire field-change hooks, §F.2).
-//
-// NOTE on the ghost add-row (01-ui #1): the virtualized body has no non-record
-// row primitive (rows are hard `ROW_HEIGHT`-sized virtual items), so the
-// sanctioned fallback is used — an "Add line" row rendered in the footer slot,
-// visually attached to the bottom of the table.
 
 import { FieldType } from '@auxx/database/enums'
 import type { ConditionGroup } from '@auxx/lib/conditions/client'
 import { computeLineTotal } from '@auxx/lib/money/client'
 import { Button } from '@auxx/ui/components/button'
 import { toastError } from '@auxx/ui/components/toast'
-import { SimpleTooltip } from '@auxx/ui/components/tooltip'
+import { GridTreeRow, TreeRowButton } from '@auxx/ui/components/tree-row'
 import { cn } from '@auxx/ui/lib/utils'
-import { AlignLeft, Percent, ReceiptText, Trash2 } from 'lucide-react'
-import { createContext, useCallback, useContext, useMemo, useRef, useState } from 'react'
-import type { DragDropConfig, ExtendedColumnDef } from '~/components/dynamic-table'
-import { DynamicTableFooter, DynamicView } from '~/components/dynamic-table'
+import {
+  closestCenter,
+  DndContext,
+  type DragEndEvent,
+  PointerSensor,
+  useSensor,
+  useSensors,
+} from '@dnd-kit/core'
+import { restrictToVerticalAxis } from '@dnd-kit/modifiers'
+import {
+  arrayMove,
+  SortableContext,
+  useSortable,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
+import { AlignLeft, GripVertical, Percent, Plus, ReceiptText, Trash2 } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { EmptyState } from '~/components/global/empty-state'
 import {
   type RecordId,
@@ -53,7 +62,7 @@ import { useSystemValues } from '~/components/resources/hooks/use-system-values'
 import { useSettings } from '~/hooks/use-settings'
 import { api } from '~/trpc/react'
 import { type CatalogItemPick, CatalogPicker } from './catalog-picker'
-import { formatCurrency, type NewLineInput, titleCase } from './shared'
+import { formatCurrency, titleCase } from './shared'
 import { TotalsFooter } from './totals-footer'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -71,6 +80,14 @@ const PAGE_SIZE = 100
 /** Stable sort ref — `useRecordList` keys its cache off this object. */
 const LINE_SORT = [{ id: 'sortOrder', desc: false }]
 
+/**
+ * Shared `grid-template-columns` for the header row and every line row (the
+ * mapping-columns.ts idiom) — one template is what keeps the qty / unit cost /
+ * total columns aligned. Columns: description (fills) │ qty │ unit cost │
+ * total │ actions.
+ */
+const LINE_COLS = 'minmax(10rem, 1fr) 4rem 6.5rem 6.5rem 5.5rem'
+
 // Module-level (stable-reference) attribute lists — `useSystemValues` memoizes
 // on the array identity, so these must never be inline literals.
 const NAME_ATTRS = ['line_item_name', 'line_item_description', 'line_item_category']
@@ -80,40 +97,29 @@ const TOTAL_ATTRS = ['line_item_qty', 'line_item_unit_price']
 const TAXABLE_ATTRS = ['line_item_taxable']
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Context — keeps the column defs static while cells reach the builder's state
-// ─────────────────────────────────────────────────────────────────────────────
-
-interface LineBuilderContextValue {
-  entityDefinitionId: string
-  readOnly: boolean
-  currencyCode: string
-  openDescriptionIds: Set<string>
-  toggleDescription: (lineId: string) => void
-  closeDescription: (lineId: string) => void
-  deleteLine: (lineId: string) => void
-}
-
-const LineBuilderContext = createContext<LineBuilderContextValue | null>(null)
-
-function useLineBuilder(): LineBuilderContextValue {
-  const ctx = useContext(LineBuilderContext)
-  if (!ctx) throw new Error('useLineBuilder must be used within LineBuilder')
-  return ctx
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
 // Cells
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * Name cell — the catalog combobox (§H.2) doubling as free-text rename. Shows
- * the category chip and the description as a second muted line when set
- * (both lines fit the fixed 38px row; see the row-height note in the report).
+ * Description cell — a transparent full-width button (the formula-row picker
+ * idiom) that opens the catalog combobox (§H.2), doubling as free-text rename.
+ * Shows the category chip inline and the description as a second muted line.
  */
-function LineNameCell({ rowId }: { rowId: string }) {
-  const { entityDefinitionId, readOnly, currencyCode, openDescriptionIds, closeDescription } =
-    useLineBuilder()
-  const recordId = toRecordId(entityDefinitionId, rowId)
+function LineNameCell({
+  recordId,
+  rowId,
+  readOnly,
+  currencyCode,
+  descriptionOpen,
+  closeDescription,
+}: {
+  recordId: RecordId
+  rowId: string
+  readOnly: boolean
+  currencyCode: string
+  descriptionOpen: boolean
+  closeDescription: (lineId: string) => void
+}) {
   const { values } = useSystemValues(recordId, NAME_ATTRS, { autoFetch: true })
   const { saveFieldValue, saveMultipleAsync } = useSaveFieldValue()
   const [pickerOpen, setPickerOpen] = useState(false)
@@ -122,7 +128,7 @@ function LineNameCell({ rowId }: { rowId: string }) {
   const name = (values.line_item_name as string | undefined) ?? ''
   const description = (values.line_item_description as string | null | undefined) ?? null
   const category = (values.line_item_category as string | null | undefined) ?? null
-  const descriptionVisible = !!description || openDescriptionIds.has(rowId)
+  const descriptionVisible = !!description || descriptionOpen
 
   const handlePick = (pick: CatalogItemPick) => {
     // COPY the catalog defaults onto the line (snapshot — catalog price changes
@@ -150,29 +156,10 @@ function LineNameCell({ rowId }: { rowId: string }) {
   }
 
   return (
-    <div className='flex h-full w-full min-w-0 flex-col justify-center px-2'>
-      <CatalogPicker
-        open={pickerOpen}
-        onOpenChange={setPickerOpen}
-        initialQuery={name}
-        currencyCode={currencyCode}
-        onSelectCatalogItem={handlePick}
-        onFreeText={(text) => saveFieldValue(recordId, 'line_item_name', text, FieldType.TEXT)}>
-        <button
-          type='button'
-          disabled={readOnly}
-          // Row drag listeners live on the row wrapper — keep pointer-downs on
-          // editors from starting a drag.
-          onPointerDown={(e) => e.stopPropagation()}
-          className={cn(
-            'flex min-w-0 items-center gap-1.5 rounded-sm text-left',
-            !readOnly && 'hover:bg-primary-100/60 dark:hover:bg-primary-100/40'
-          )}>
-          <span
-            className={cn(
-              'truncate text-sm leading-tight',
-              !name && 'text-muted-foreground italic'
-            )}>
+    <div className='flex min-w-0 flex-1 flex-col justify-center py-1'>
+      {readOnly ? (
+        <span className='flex min-w-0 items-center gap-1.5 px-1'>
+          <span className={cn('truncate text-sm', !name && 'text-muted-foreground italic')}>
             {name || 'Untitled line'}
           </span>
           {category && (
@@ -180,14 +167,34 @@ function LineNameCell({ rowId }: { rowId: string }) {
               {titleCase(category)}
             </span>
           )}
-        </button>
-      </CatalogPicker>
+        </span>
+      ) : (
+        <CatalogPicker
+          open={pickerOpen}
+          onOpenChange={setPickerOpen}
+          initialQuery={name}
+          currencyCode={currencyCode}
+          onSelectCatalogItem={handlePick}
+          onFreeText={(text) => saveFieldValue(recordId, 'line_item_name', text, FieldType.TEXT)}>
+          <Button
+            variant='transparent'
+            className={cn(
+              'h-7 min-w-0 justify-start gap-1.5 rounded-sm px-1 text-sm hover:bg-primary/5',
+              !name && 'text-muted-foreground'
+            )}>
+            <span className='truncate'>{name || 'Add item…'}</span>
+            {category && (
+              <span className='shrink-0 rounded-full bg-primary-100 px-1.5 py-px text-[10px] text-muted-foreground leading-tight dark:bg-primary-100/50'>
+                {titleCase(category)}
+              </span>
+            )}
+          </Button>
+        </CatalogPicker>
+      )}
 
       {descriptionVisible &&
         (readOnly ? (
-          <span className='truncate text-[10px] text-muted-foreground leading-tight'>
-            {description}
-          </span>
+          <span className='truncate px-1 text-muted-foreground text-xs'>{description}</span>
         ) : (
           <input
             value={descriptionDraft ?? description ?? ''}
@@ -202,9 +209,8 @@ function LineNameCell({ rowId }: { rowId: string }) {
               }
             }}
             autoFocus={!description}
-            onPointerDown={(e) => e.stopPropagation()}
             placeholder='Description'
-            className='w-full truncate border-none bg-transparent text-[10px] text-muted-foreground leading-tight outline-none placeholder:text-muted-foreground/60'
+            className='w-full truncate border-none bg-transparent px-1 text-muted-foreground text-xs outline-none placeholder:text-muted-foreground/60'
           />
         ))}
     </div>
@@ -216,18 +222,18 @@ function LineNameCell({ rowId }: { rowId: string }) {
  * cell-treatment lock in 01-ui #1). Commits on blur/Enter.
  */
 function InlineNumberCell({
-  rowId,
+  recordId,
   attr,
   fieldType,
-  align = 'right',
+  readOnly,
+  currencyCode,
 }: {
-  rowId: string
+  recordId: RecordId
   attr: 'line_item_qty' | 'line_item_unit_price'
   fieldType: FieldType
-  align?: 'left' | 'right'
+  readOnly: boolean
+  currencyCode: string
 }) {
-  const { entityDefinitionId, readOnly, currencyCode } = useLineBuilder()
-  const recordId = toRecordId(entityDefinitionId, rowId)
   const attrs = attr === 'line_item_qty' ? QTY_ATTRS : PRICE_ATTRS
   const { values } = useSystemValues(recordId, attrs, { autoFetch: true })
   const { saveFieldValue } = useSaveFieldValue()
@@ -257,15 +263,7 @@ function InlineNumberCell({
   }
 
   if (readOnly) {
-    return (
-      <div
-        className={cn(
-          'w-full px-2 text-sm tabular-nums',
-          align === 'right' ? 'text-right' : 'text-left'
-        )}>
-        {display}
-      </div>
-    )
+    return <div className='w-full px-2 text-right text-sm tabular-nums'>{display}</div>
   }
 
   return (
@@ -285,20 +283,16 @@ function InlineNumberCell({
         if (e.key === 'Escape') setDraft(null)
       }}
       inputMode='decimal'
-      onPointerDown={(e) => e.stopPropagation()}
       className={cn(
-        'h-full w-full border-none bg-transparent px-2 text-sm tabular-nums outline-none',
-        'hover:bg-primary-100/60 focus:bg-primary-100/80 dark:hover:bg-primary-100/40 dark:focus:bg-primary-100/60',
-        align === 'right' ? 'text-right' : 'text-left'
+        'h-full w-full rounded-sm border-none bg-transparent px-2 text-right text-sm tabular-nums outline-none',
+        'hover:bg-primary/5 focus:bg-primary/10'
       )}
     />
   )
 }
 
 /** Read-only computed line total — `computeLineTotal` live over store values. */
-function LineTotalCell({ rowId }: { rowId: string }) {
-  const { entityDefinitionId, currencyCode } = useLineBuilder()
-  const recordId = toRecordId(entityDefinitionId, rowId)
+function LineTotalCell({ recordId, currencyCode }: { recordId: RecordId; currencyCode: string }) {
   const { values } = useSystemValues(recordId, TOTAL_ATTRS, { autoFetch: true })
 
   const qty = (values.line_item_qty as number | null | undefined) ?? 1
@@ -313,41 +307,131 @@ function LineTotalCell({ rowId }: { rowId: string }) {
 }
 
 /** Trailing hover actions: description toggle · taxable toggle · delete (no confirm). */
-function LineActionsCell({ rowId }: { rowId: string }) {
-  const { entityDefinitionId, toggleDescription, deleteLine } = useLineBuilder()
-  const recordId = toRecordId(entityDefinitionId, rowId)
+function LineActionsCell({
+  recordId,
+  rowId,
+  toggleDescription,
+  deleteLine,
+}: {
+  recordId: RecordId
+  rowId: string
+  toggleDescription: (lineId: string) => void
+  deleteLine: (lineId: string) => void
+}) {
   const { values } = useSystemValues(recordId, TAXABLE_ATTRS, { autoFetch: true })
   const { saveFieldValue } = useSaveFieldValue()
 
   const taxable = (values.line_item_taxable as boolean | undefined) !== false
 
   return (
-    <div className='flex w-full items-center justify-end gap-0.5 px-1 opacity-0 transition-opacity group-hover/tablerow:opacity-100'>
-      <SimpleTooltip content='Description'>
-        <Button variant='ghost' size='icon-sm' onClick={() => toggleDescription(rowId)}>
-          <AlignLeft />
-        </Button>
-      </SimpleTooltip>
-      <SimpleTooltip content={taxable ? 'Taxable — click to exempt' : 'Tax exempt — click to tax'}>
-        <Button
-          variant='ghost'
-          size='icon-sm'
-          className={cn(!taxable && 'text-muted-foreground/40')}
-          onClick={() =>
-            saveFieldValue(recordId, 'line_item_taxable', !taxable, FieldType.CHECKBOX)
-          }>
-          <Percent />
-        </Button>
-      </SimpleTooltip>
-      <SimpleTooltip content='Delete line'>
-        <Button
-          variant='ghost'
-          size='icon-sm'
-          className='text-destructive/70 hover:text-destructive'
-          onClick={() => deleteLine(rowId)}>
-          <Trash2 />
-        </Button>
-      </SimpleTooltip>
+    <div className='flex w-full items-center justify-end gap-1 pr-1'>
+      <TreeRowButton tooltipText='Description' onClick={() => toggleDescription(rowId)}>
+        <AlignLeft />
+      </TreeRowButton>
+      <TreeRowButton
+        tooltipText={taxable ? 'Taxable — click to exempt' : 'Tax exempt — click to tax'}
+        className={cn(!taxable && 'text-muted-foreground/40')}
+        onClick={() => saveFieldValue(recordId, 'line_item_taxable', !taxable, FieldType.CHECKBOX)}>
+        <Percent />
+      </TreeRowButton>
+      <TreeRowButton
+        variant='destructive'
+        tooltipText='Delete line'
+        onClick={() => deleteLine(rowId)}>
+        <Trash2 />
+      </TreeRowButton>
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Row
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** One sortable line row — a GridTreeRow whose leading icon is the drag grip. */
+function LineRow({
+  record,
+  entityDefinitionId,
+  readOnly,
+  currencyCode,
+  descriptionOpen,
+  toggleDescription,
+  closeDescription,
+  deleteLine,
+}: {
+  record: RecordMeta
+  entityDefinitionId: string
+  readOnly: boolean
+  currencyCode: string
+  descriptionOpen: boolean
+  toggleDescription: (lineId: string) => void
+  closeDescription: (lineId: string) => void
+  deleteLine: (lineId: string) => void
+}) {
+  const recordId = toRecordId(entityDefinitionId, record.id)
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: record.id,
+    disabled: readOnly,
+  })
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={{ transform: CSS.Transform.toString(transform), transition }}
+      className={cn(isDragging && 'relative z-10 opacity-80')}>
+      <GridTreeRow
+        columns={LINE_COLS}
+        icon={
+          readOnly ? undefined : (
+            <span
+              {...attributes}
+              {...listeners}
+              className='flex cursor-grab items-center justify-center opacity-0 transition-opacity group-hover/tree-row:opacity-100'>
+              <GripVertical className='size-3.5' />
+            </span>
+          )
+        }
+        title={
+          <LineNameCell
+            recordId={recordId}
+            rowId={record.id}
+            readOnly={readOnly}
+            currencyCode={currencyCode}
+            descriptionOpen={descriptionOpen}
+            closeDescription={closeDescription}
+          />
+        }
+        cells={[
+          <InlineNumberCell
+            key='qty'
+            recordId={recordId}
+            attr='line_item_qty'
+            fieldType={FieldType.NUMBER}
+            readOnly={readOnly}
+            currencyCode={currencyCode}
+          />,
+          <InlineNumberCell
+            key='price'
+            recordId={recordId}
+            attr='line_item_unit_price'
+            fieldType={FieldType.CURRENCY}
+            readOnly={readOnly}
+            currencyCode={currencyCode}
+          />,
+          <LineTotalCell key='total' recordId={recordId} currencyCode={currencyCode} />,
+          readOnly ? (
+            <span key='actions' />
+          ) : (
+            <LineActionsCell
+              key='actions'
+              recordId={recordId}
+              rowId={record.id}
+              toggleDescription={toggleDescription}
+              deleteLine={deleteLine}
+            />
+          ),
+        ]}
+      />
     </div>
   )
 }
@@ -435,6 +519,11 @@ export function LineBuilder({
     enabled: !!entityDefinitionId,
   })
 
+  // No virtualized scroll anymore — load every page eagerly (line counts are small).
+  useEffect(() => {
+    if (hasNextPage && !isFetchingNextPage && !isLoading) fetchNextPage()
+  }, [hasNextPage, isFetchingNextPage, isLoading, fetchNextPage])
+
   // Optimistic display order while a reorder mutation settles. Ids missing from
   // the override (freshly added lines) append in server order.
   const displayRecords = useMemo(() => {
@@ -502,40 +591,33 @@ export function LineBuilder({
     ]
   )
 
-  const addLine = useCallback(
-    async (input: NewLineInput) => {
-      const relKey =
-        documentType === 'quote'
-          ? 'line_item_quote'
-          : documentType === 'invoice'
-            ? 'line_item_invoice'
-            : 'line_item_work_order'
-      const values: Record<string, unknown> = {
-        line_item_name: input.name,
-        line_item_qty: 1,
-        line_item_taxable: input.taxable ?? true,
-        line_item_sort_order: displayIdsRef.current.length,
-        [relKey]: documentRecordId,
-      }
-      if (input.description) values.line_item_description = input.description
-      if (input.category) values.line_item_category = input.category
-      if (input.unitPrice !== null && input.unitPrice !== undefined) {
-        values.line_item_unit_price = input.unitPrice
-      }
-      if (input.catalogItemRecordId) values.line_item_catalog_item = input.catalogItemRecordId
-
-      try {
-        await createMutateAsync({ entityDefinitionId: 'line_item', values })
-        refresh()
-      } catch (error) {
-        toastError({
-          title: 'Error adding line',
-          description: error instanceof Error ? error.message : 'Could not add the line',
-        })
-      }
-    },
-    [documentType, documentRecordId, createMutateAsync, refresh]
-  )
+  /** Add an empty line — the Description cell's picker fills it in afterwards. */
+  const addLine = useCallback(async () => {
+    const relKey =
+      documentType === 'quote'
+        ? 'line_item_quote'
+        : documentType === 'invoice'
+          ? 'line_item_invoice'
+          : 'line_item_work_order'
+    try {
+      await createMutateAsync({
+        entityDefinitionId: 'line_item',
+        values: {
+          line_item_name: '',
+          line_item_qty: 1,
+          line_item_taxable: true,
+          line_item_sort_order: displayIdsRef.current.length,
+          [relKey]: documentRecordId,
+        },
+      })
+      refresh()
+    } catch (error) {
+      toastError({
+        title: 'Error adding line',
+        description: error instanceof Error ? error.message : 'Could not add the line',
+      })
+    }
+  }, [documentType, documentRecordId, createMutateAsync, refresh])
 
   const toggleDescription = useCallback((lineId: string) => {
     setOpenDescriptionIds((prev) => {
@@ -555,195 +637,104 @@ export function LineBuilder({
     })
   }, [])
 
-  const contextValue = useMemo<LineBuilderContextValue | null>(
-    () =>
-      entityDefinitionId
-        ? {
-            entityDefinitionId,
-            readOnly,
-            currencyCode,
-            openDescriptionIds,
-            toggleDescription,
-            closeDescription,
-            deleteLine,
-          }
-        : null,
-    [
-      entityDefinitionId,
-      readOnly,
-      currencyCode,
-      openDescriptionIds,
-      toggleDescription,
-      closeDescription,
-      deleteLine,
-    ]
-  )
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }))
 
-  // Fixed columns — static defs, cells reach builder state through context.
-  const columns = useMemo<ExtendedColumnDef<RecordMeta>[]>(() => {
-    const interactionOff = {
-      enableSorting: false,
-      enableFiltering: false,
-      enableHiding: false,
-      enableResizing: false,
-      enableResize: false,
-      enableReorder: false,
-    } as const
+  const handleDragEnd = useCallback(
+    (event: DragEndEvent) => {
+      const { active, over } = event
+      if (!entityDefinitionId || !over || active.id === over.id) return
+      const current = displayIdsRef.current
+      const oldIndex = current.indexOf(String(active.id))
+      const newIndex = current.indexOf(String(over.id))
+      if (oldIndex === -1 || newIndex === -1) return
 
-    const defs: ExtendedColumnDef<RecordMeta>[] = [
-      {
-        id: 'line-name',
-        accessorFn: () => undefined,
-        header: 'Item',
-        ...interactionOff,
-        minSize: 220,
-        size: 340,
-        cell: ({ row }) => <LineNameCell rowId={row.original.id} />,
-      },
-      {
-        id: 'line-qty',
-        accessorFn: () => undefined,
-        header: 'Qty',
-        ...interactionOff,
-        minSize: 60,
-        size: 70,
-        cell: ({ row }) => (
-          <InlineNumberCell
-            rowId={row.original.id}
-            attr='line_item_qty'
-            fieldType={FieldType.NUMBER}
-          />
-        ),
-      },
-      {
-        id: 'line-unit-price',
-        accessorFn: () => undefined,
-        header: 'Unit price',
-        ...interactionOff,
-        minSize: 90,
-        size: 120,
-        cell: ({ row }) => (
-          <InlineNumberCell
-            rowId={row.original.id}
-            attr='line_item_unit_price'
-            fieldType={FieldType.CURRENCY}
-          />
-        ),
-      },
-      {
-        id: 'line-total',
-        accessorFn: () => undefined,
-        header: 'Total',
-        ...interactionOff,
-        minSize: 90,
-        size: 120,
-        cell: ({ row }) => <LineTotalCell rowId={row.original.id} />,
-      },
-    ]
-
-    if (!readOnly) {
-      defs.push({
-        id: 'line-actions',
-        accessorFn: () => undefined,
-        header: '',
-        ...interactionOff,
-        minSize: 100,
-        size: 110,
-        cell: ({ row }) => <LineActionsCell rowId={row.original.id} />,
-      })
-    }
-
-    return defs
-  }, [readOnly])
-
-  // Row drag-reorder. The table's drop handler always reports 'inside' (no
-  // before/after edge detection exists) — the new index is derived from the
-  // dragged row's position relative to the target: moving down lands after
-  // the target, moving up lands before it.
-  const dragDrop = useMemo<DragDropConfig<RecordMeta>>(
-    () => ({
-      enabled: !readOnly,
-      canDrag: () => !readOnly,
-      canDrop: (draggedItems, targetRow) => !draggedItems.some((d) => d.id === targetRow.id),
-      onDrop: (draggedItems, targetRow) => {
-        if (!entityDefinitionId) return
-        const draggedIds = draggedItems.map((d) => d.id)
-        const current = displayIdsRef.current
-        const fromIndex = current.indexOf(draggedIds[0] ?? '')
-        const targetIndex = current.indexOf(targetRow.id)
-        if (fromIndex === -1 || targetIndex === -1) return
-
-        const without = current.filter((id) => !draggedIds.includes(id))
-        let insertAt = without.indexOf(targetRow.id)
-        if (insertAt === -1) return
-        if (fromIndex < targetIndex) insertAt += 1
-        const nextOrder = [...without]
-        nextOrder.splice(insertAt, 0, ...draggedIds)
-
-        setOrderOverride(nextOrder)
-        reorderMutate(
-          {
-            documentRecordId: docRecordId,
-            orderedLineRecordIds: nextOrder.map((id) => toRecordId(entityDefinitionId, id)),
+      const nextOrder = arrayMove(current, oldIndex, newIndex)
+      setOrderOverride(nextOrder)
+      reorderMutate(
+        {
+          documentRecordId: docRecordId,
+          orderedLineRecordIds: nextOrder.map((id) => toRecordId(entityDefinitionId, id)),
+        },
+        {
+          onError: (error) => {
+            setOrderOverride(null)
+            refresh()
+            toastError({ title: 'Error reordering lines', description: error.message })
           },
-          {
-            onError: (error) => {
-              setOrderOverride(null)
-              refresh()
-              toastError({ title: 'Error reordering lines', description: error.message })
-            },
-          }
-        )
-      },
-    }),
-    [readOnly, entityDefinitionId, docRecordId, reorderMutate, refresh]
+        }
+      )
+    },
+    [entityDefinitionId, docRecordId, reorderMutate, refresh]
   )
 
-  const handleScrollToBottom = useCallback(() => {
-    if (hasNextPage && !isFetchingNextPage && !isLoading) fetchNextPage()
-  }, [hasNextPage, isFetchingNextPage, isLoading, fetchNextPage])
+  if (!entityDefinitionId) return null
 
-  if (!contextValue) return null
+  const isEmpty = !isLoading && !isLoadingRecords && displayRecords.length === 0
 
   return (
-    <LineBuilderContext.Provider value={contextValue}>
-      <div className='flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg bg-primary-50 dark:bg-background'>
-        <DynamicView<RecordMeta>
-          data={displayRecords}
-          columns={columns}
-          tableId={`line-builder-${documentRecordId}`}
-          standalone
-          hideToolbar
-          hideHeader
-          disableColumnDnd
-          enableSearch={false}
-          enableFiltering={false}
-          enableSorting={false}
-          showRowNumbers={false}
-          isLoading={isLoading || isLoadingRecords}
-          getRowId={(row) => row.id}
-          onScrollToBottom={handleScrollToBottom}
-          dragDrop={dragDrop}
-          className='h-full flex-1'
-          emptyState={
-            <EmptyState
-              icon={ReceiptText}
-              title='No line items yet'
-              description='Add from the catalog or type a custom line.'
-            />
-          }>
-          <DynamicTableFooter>
-            <TotalsFooter
-              documentRecordId={docRecordId}
-              documentType={documentType}
-              readOnly={readOnly}
-              currencyCode={currencyCode}
-              lineRecordIds={lineRecordIds}
-              onAddLine={addLine}
-            />
-          </DynamicTableFooter>
-        </DynamicView>
+    <div className='flex min-h-0 flex-1 flex-col overflow-y-auto rounded-lg bg-primary-50 p-1 dark:bg-background'>
+      {/* Header — same grid template as the rows, so the labels sit over their columns.
+          The Description label offsets past the row px-1 + grip slot + title/button padding. */}
+      <div
+        className='sticky top-0 z-10 grid border-primary-200/50 border-b bg-primary-50 px-1 pb-1 text-muted-foreground text-xs dark:border-[#1e2227] dark:bg-background'
+        style={{ gridTemplateColumns: LINE_COLS }}>
+        <div className={readOnly ? 'pl-2' : 'pl-9'}>Description</div>
+        <div className='px-2 text-right'>Qty</div>
+        <div className='px-2 text-right'>Unit cost</div>
+        <div className='px-2 text-right'>Total</div>
+        <div />
       </div>
-    </LineBuilderContext.Provider>
+
+      {isEmpty && readOnly ? (
+        <EmptyState icon={ReceiptText} title='No line items' />
+      ) : (
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCenter}
+          onDragEnd={handleDragEnd}
+          modifiers={[restrictToVerticalAxis]}>
+          <SortableContext
+            items={displayIdsRef.current}
+            strategy={verticalListSortingStrategy}
+            disabled={readOnly}>
+            {displayRecords.map((record) => (
+              <LineRow
+                key={record.id}
+                record={record}
+                entityDefinitionId={entityDefinitionId}
+                readOnly={readOnly}
+                currencyCode={currencyCode}
+                descriptionOpen={openDescriptionIds.has(record.id)}
+                toggleDescription={toggleDescription}
+                closeDescription={closeDescription}
+                deleteLine={deleteLine}
+              />
+            ))}
+          </SortableContext>
+        </DndContext>
+      )}
+
+      {!readOnly && (
+        <div className='border-primary-200/50 border-b px-1 py-0.5 dark:border-[#1e2227]'>
+          <Button
+            variant='ghost'
+            size='sm'
+            className='text-muted-foreground'
+            loading={createRecord.isPending}
+            onClick={addLine}>
+            <Plus />
+            Add line item
+          </Button>
+        </div>
+      )}
+
+      <TotalsFooter
+        documentRecordId={docRecordId}
+        documentType={documentType}
+        readOnly={readOnly}
+        currencyCode={currencyCode}
+        lineRecordIds={lineRecordIds}
+      />
+    </div>
   )
 }

@@ -72,18 +72,19 @@ export const DRAWER_CONFIG_REGISTRY: DrawerConfigRegistry = {
 
   quote: {
     entityType: 'quote',
-    // Same Line-items tab as the quote detail view (money MQ1). The tab's own
-    // header strip carries the status-driven Send/Download/Convert actions —
-    // see quote-line-items-tab.tsx.
-    additionalTabs: [{ value: 'line-items', label: 'Line items', icon: 'receipt-text' }],
+    // No additionalTabs — the drawer shows line items as an Overview card
+    // (the invoice pattern below); the FULL detail page keeps its sections
+    // layout via the separate DETAIL_VIEW_CONFIG_REGISTRY. Drawer overview
+    // cards and detail-page sidebarCards are independent lists, so this
+    // never leaks onto the detail page.
+    additionalTabs: [],
     actions: {
       enableArchive: true,
       enableDelete: true,
     },
-    // Cards mirror the detail-view sidebar (quote:customer / quote:origin are
-    // registered in drawer-tab-registry.tsx's DRAWER_TAB_CARD_COMPONENTS).
     tabCards: {
       overview: [
+        { value: 'lines', label: 'Line items', fullBleed: true },
         { value: 'customer', label: 'Customer' },
         { value: 'origin', label: 'Origin' },
       ],

@@ -1803,6 +1803,16 @@ export async function setValueWithBuiltIn(
   // Get field definition (cached)
   const field = await getField(ctx, fieldId)
 
+  // Client store keys are always cuid-form (`<defId>:<inst>:<defId>:<fieldId>`),
+  // but server-side callers (money totals hooks, lifecycle paths) pass alias-form
+  // record ids ('quote:<inst>') — published verbatim, those frames land in the
+  // store as orphan keys no cell subscribes to. Publish under the field's real
+  // EntityDefinition id; table-backed system resources (no entityDefinitionId on
+  // the CustomField row) keep the caller's recordId.
+  const publishRecordId = field.entityDefinitionId
+    ? toRecordId(field.entityDefinitionId, entityInstanceId)
+    : recordId
+
   // Resolve entity metadata once — shared by pre-hook, oldValue gate, and
   // post-hook so we hit the resource cache a single time per write.
   const resource = await getCachedResource(ctx.organizationId, entityDefinitionId)
@@ -1879,7 +1889,7 @@ export async function setValueWithBuiltIn(
     await deleteValue(ctx, { recordId, fieldId })
     await maybeUpdateDisplayValue(ctx, recordId, field, null)
     if (publishEvents) {
-      const key = buildFieldValueKey(recordId, fieldId as FieldId)
+      const key = buildFieldValueKey(publishRecordId, fieldId as FieldId)
       publishFieldValueUpdates(getRealtimeService(), ctx.organizationId, [{ key, value: null }], {
         excludeSocketId: ctx.socketId,
       }).catch(() => {})
@@ -1941,7 +1951,7 @@ export async function setValueWithBuiltIn(
   // directly to the store without guessing. Single-value fields publish the
   // single value.
   if (publishEvents && result.length > 0) {
-    const key = buildFieldValueKey(recordId, fieldId as FieldId)
+    const key = buildFieldValueKey(publishRecordId, fieldId as FieldId)
     const storeValue = isArrayReturn ? result : result[0]
     // When this write is an AI stage-2 commit, piggyback the `result`
     // marker onto the same realtime so clients see value + AI state in
@@ -2304,8 +2314,15 @@ export async function setBulkValues(
     const recordId = recordIds[i]!
     for (const fieldResult of result.value) {
       if (fieldResult.state !== 'complete') continue
-      const key = buildFieldValueKey(recordId, fieldResult.fieldId as FieldId)
       const cachedField = ctx.fieldCache.get(fieldResult.fieldId)
+      // Same alias-form guard as setValueWithBuiltIn's publishRecordId — bulk
+      // server-side callers (e.g. money invoice-lifecycle unstamp) pass
+      // 'line_item:<inst>' ids; publish under the field's real EntityDefinition
+      // id so the keys match client store subscriptions.
+      const publishRecordId = cachedField?.entityDefinitionId
+        ? toRecordId(cachedField.entityDefinitionId, entityInstanceIds[i]!)
+        : recordId
+      const key = buildFieldValueKey(publishRecordId, fieldResult.fieldId as FieldId)
       const fieldType = cachedField?.type as FieldType | undefined
       const fieldOptions = cachedField?.options as
         | { actor?: { multiple?: boolean }; multi?: boolean }

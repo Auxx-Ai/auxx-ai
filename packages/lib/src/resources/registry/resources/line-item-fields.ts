@@ -46,13 +46,14 @@ export const LINE_ITEM_FIELDS: Record<string, ResourceField> = {
     isSystem: true,
     systemAttribute: 'line_item_name',
     systemSortOrder: 'a1',
-    nullable: false,
+    // Optional — the line builder creates EMPTY lines that the catalog picker
+    // fills in afterwards.
+    nullable: true,
     capabilities: {
       filterable: true,
       sortable: true,
       creatable: true,
       updatable: true,
-      required: true,
       configurable: false,
     },
     placeholder: 'Enter line name',

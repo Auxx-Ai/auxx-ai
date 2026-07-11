@@ -2,8 +2,8 @@
 
 'use client'
 
-// Totals footer for the line builder (money MQ1 build spec §H.1): the add-line
-// row (the sanctioned ghost-row fallback) + subtotal → discount → tax → total.
+// Totals footer for the line builder (money MQ1 build spec §H.1): subtotal →
+// discount → tax → total (the add-line row lives in the builder itself).
 // All amounts are computed client-side with `computeDocumentTotals` from
 // `@auxx/lib/money/client` — the exact function the server-side recompute hook
 // uses — over the same optimistic field-value store the editors write to.
@@ -17,7 +17,6 @@ import {
   type DocumentBillingInputs,
   type LineForTotals,
 } from '@auxx/lib/money/client'
-import { Button } from '@auxx/ui/components/button'
 import {
   Select,
   SelectContent,
@@ -26,7 +25,6 @@ import {
   SelectValue,
 } from '@auxx/ui/components/select'
 import { cn } from '@auxx/ui/lib/utils'
-import { Plus } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import type { RecordId } from '~/components/resources'
@@ -40,8 +38,7 @@ import {
 } from '~/components/resources/store/field-value-store'
 import { useResourceStore } from '~/components/resources/store/resource-store'
 import { useSettings } from '~/hooks/use-settings'
-import { CatalogPicker } from './catalog-picker'
-import { formatCurrency, type NewLineInput } from './shared'
+import { formatCurrency } from './shared'
 
 /** Org tax rate preset (`documents.taxRates` setting, §G.1). */
 interface TaxRatePreset {
@@ -154,14 +151,12 @@ export function TotalsFooter({
   readOnly,
   currencyCode,
   lineRecordIds,
-  onAddLine,
 }: {
   documentRecordId: RecordId
   documentType: 'quote' | 'work_order' | 'invoice'
   readOnly: boolean
   currencyCode: string
   lineRecordIds: RecordId[]
-  onAddLine: (input: NewLineInput) => void
 }) {
   const isQuote = documentType === 'quote'
   const isInvoice = documentType === 'invoice'
@@ -172,7 +167,6 @@ export function TotalsFooter({
   const lines = useLinesForTotals(lineRecordIds)
   const { saveMultipleAsync } = useSaveFieldValue()
   const { getSetting } = useSettings({})
-  const [pickerOpen, setPickerOpen] = useState(false)
   const [discountDraft, setDiscountDraft] = useState<string | null>(null)
 
   // Billing inputs — the document's own mirrored fields, read through the same optimistic
@@ -254,32 +248,6 @@ export function TotalsFooter({
 
   return (
     <div className='flex flex-col'>
-      {/* Add-line row — the sanctioned fallback for the ghost add-row (§H.1). */}
-      {!readOnly && (
-        <div className='border-primary-200/50 border-b px-1 py-0.5 dark:border-[#1e2227]'>
-          <CatalogPicker
-            open={pickerOpen}
-            onOpenChange={setPickerOpen}
-            currencyCode={currencyCode}
-            onSelectCatalogItem={(pick) =>
-              onAddLine({
-                name: pick.name,
-                description: pick.description,
-                category: pick.category,
-                taxable: pick.taxable,
-                unitPrice: pick.unitPrice,
-                catalogItemRecordId: pick.recordId,
-              })
-            }
-            onFreeText={(text) => onAddLine({ name: text })}>
-            <Button variant='ghost' size='sm' className='text-muted-foreground'>
-              <Plus />
-              Add line
-            </Button>
-          </CatalogPicker>
-        </div>
-      )}
-
       {/* Totals block */}
       <div className='flex justify-end px-4 py-2'>
         <div className='w-full max-w-xs space-y-1 text-sm'>
