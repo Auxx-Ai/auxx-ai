@@ -6,8 +6,8 @@
 // Same barrel is re-exported by `./client` since the whole module is already client-safe.
 
 export { RECURRENCE_HORIZON_DAYS } from './constants'
-export type { DescribeRecurrenceOptions } from './describe'
-export { describeRecurrence } from './describe'
+export type { DescribeRecurrenceOptions, RecurrenceDescriptionParts } from './describe'
+export { describeRecurrence, describeRecurrenceParts } from './describe'
 export type { ExpandOccurrencesOptions, RecurrenceOccurrence } from './expand'
 export { expandOccurrences } from './expand'
 export type { NthWeekdayOrdinal, RecurrencePattern, Weekday } from './types'

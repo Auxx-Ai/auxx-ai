@@ -13,6 +13,29 @@ export const VISIT_STATUS_BADGE_VARIANT: Record<string, Variant> = {
   canceled: 'red',
 }
 
+/** Plain-text tone per visit status — the 04 mock's right-aligned status column. */
+export const VISIT_STATUS_TEXT_CLASS: Record<string, string> = {
+  scheduled: 'text-blue-600 dark:text-blue-400',
+  en_route: 'text-amber-600 dark:text-amber-400',
+  on_site: 'text-teal-600 dark:text-teal-400',
+  done: 'text-green-600 dark:text-green-400',
+  canceled: 'text-red-600 dark:text-red-400',
+}
+
+/** `EEE, MMM d` (or "Not scheduled") — the grid row's date column. */
+export function formatVisitDate(visit: Pick<JobVisit, 'startTime'>): string {
+  if (!visit.startTime) return 'Not scheduled'
+  return format(new Date(visit.startTime), 'EEE, MMM d')
+}
+
+/** `p – p` (or empty when unscheduled) — the grid row's time column. */
+export function formatVisitTime(visit: Pick<JobVisit, 'startTime' | 'endTime'>): string {
+  if (!visit.startTime) return ''
+  const startLabel = format(new Date(visit.startTime), 'p')
+  if (!visit.endTime) return startLabel
+  return `${startLabel} – ${format(new Date(visit.endTime), 'p')}`
+}
+
 /** `EEE, MMM d · p – p` (or "Not scheduled" for a backlog row) — the visit row title. */
 export function formatVisitWindow(visit: Pick<JobVisit, 'startTime' | 'endTime'>): string {
   if (!visit.startTime) return 'Not scheduled'

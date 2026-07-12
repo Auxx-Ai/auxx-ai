@@ -342,6 +342,16 @@ export const SETTINGS_CATALOG = {
     defaultValue: {},
     description: 'Business identity block printed on quote/invoice PDFs',
   },
+  'documents.businessGeocode': {
+    scope: 'DOCUMENTS',
+    access: 'org',
+    fieldType: 'JSON',
+    // { lat, lng, geocodedAt, addressHash } — `addressHash` = sha1 of sorted-key JSON of the
+    // business address; `resolveRouteStart` (route-planner/depot.ts) re-geocodes lazily when
+    // the stored hash differs from the current address (route-planner build contract item 3).
+    defaultValue: {},
+    description: 'Cached geocode of the business address — route planner depot (org fallback)',
+  },
   'documents.logo': {
     scope: 'DOCUMENTS',
     access: 'org',

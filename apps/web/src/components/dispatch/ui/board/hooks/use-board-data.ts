@@ -36,6 +36,10 @@ export function useBoardData() {
   }))
   const [selectedWorkerIds, setSelectedWorkerIds] = useState<Set<string> | null>(null) // null = all
   const [showBacklog, setShowBacklog] = useState(true)
+  // Board↔Map toggle (09-route-planner.md §A, contract item 7) — sibling state to `showBacklog`,
+  // deliberately NOT a `BoardViewMode` so the month-view debounce and `view === 'day'` gates stay
+  // untouched. Entering map mode doesn't change `view`; the map always renders `date`'s single day.
+  const [boardMode, setBoardMode] = useState<'calendar' | 'map'>('calendar')
 
   const rangeDebounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   useEffect(() => () => clearTimeout(rangeDebounceRef.current), [])
@@ -141,6 +145,8 @@ export function useBoardData() {
     setSelectedWorkerIds,
     showBacklog,
     setShowBacklog,
+    boardMode,
+    setBoardMode,
     resources,
     colorByUserId,
     workOrderById,

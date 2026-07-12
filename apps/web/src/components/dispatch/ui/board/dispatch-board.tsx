@@ -13,6 +13,8 @@ import { EmptyState } from '~/components/global/empty-state'
 import { useSettings } from '~/hooks/use-settings'
 import { useUser } from '~/hooks/use-user'
 import { useFeatureFlags } from '~/providers/feature-flag-provider'
+import { useRoutePlannerData } from '../route-planner/hooks/use-route-planner-data'
+import { RoutePlannerView } from '../route-planner/route-planner-view'
 import type { ExistingVisitForOverlap } from '../schedule-popover'
 import { BacklogRail } from './backlog-rail'
 import { BoardCalendarGrid } from './board-calendar-grid'
@@ -31,6 +33,10 @@ import { VisitChipContent } from './visit-chip-content'
  * `resources` mode (workers + a first "Unassigned" column); week shows every worker
  * color-coded; month is display-only. All writes funnel through `dispatch.scheduleVisit`
  * (drag/resize/rail-drop) or the chip popover's status/dispatch mutations.
+ *
+ * `boardMode === 'map'` (09-route-planner.md §A) swaps the calendar grid for `RoutePlannerView`
+ * inside the same flex row — `CalendarDndProvider` stays mounted either way (the planner mounts
+ * its OWN nested `DndContext`, so its draggables never reach the calendar's drop handlers).
  */
 export function DispatchBoard() {
   const { hasAccess } = useFeatureFlags()
@@ -40,6 +46,20 @@ export function DispatchBoard() {
   const data = useBoardData()
   const mutations = useBoardMutations(data.range)
   useBoardRealtime(data.range)
+
+  // Route planner data (09-route-planner.md §A) lives here, not inside `RoutePlannerView`
+  // itself — the toolbar's tag filter needs the same distinct-tags list and selection the map
+  // uses, and the toolbar is `BoardToolbar`'s sibling, not `RoutePlannerView`'s child.
+  const planner = useRoutePlannerData({
+    date: data.date,
+    selectedWorkerIds: data.selectedWorkerIds,
+    enabled: data.boardMode === 'map',
+  })
+  const plannerTags = useMemo(() => {
+    const set = new Set<string>()
+    for (const wo of planner.board.workOrders) for (const tag of wo.tags) set.add(tag)
+    return Array.from(set).sort()
+  }, [planner.board.workOrders])
 
   const { getSetting } = useSettings({ scope: 'GENERAL' })
   const weekStart = (scalarSetting(getSetting('organization.weekStart')) ?? 'monday') as
@@ -166,31 +186,48 @@ export function DispatchBoard() {
         onSelectedWorkerIdsChange={data.setSelectedWorkerIds}
         showBacklog={data.showBacklog}
         onShowBacklogChange={data.setShowBacklog}
+        boardMode={data.boardMode}
+        onBoardModeChange={data.setBoardMode}
+        tags={plannerTags}
+        selectedTags={planner.filters.tags}
+        onSelectedTagsChange={(tags) => planner.setFilters({ ...planner.filters, tags })}
       />
       <CalendarDndProvider<DispatchVisitEvent>
         onEventDrop={canEdit ? handleEventDrop : undefined}
         onDragEnd={canEdit ? handleForeignDragEnd : undefined}
         renderEvent={renderDragGhost}>
         <div className='flex flex-1 overflow-hidden'>
-          {data.showBacklog && <BacklogRail items={data.backlogEvents} canEdit={canEdit} />}
-          <BoardCalendarGrid
-            date={data.date}
-            onDateChange={data.setDate}
-            view={data.view}
-            weekStartsOn={weekStartsOn}
-            resources={data.resources}
-            backgroundEvents={backgroundEvents}
-            events={data.events}
-            overlappingIds={overlappingIds}
-            canEdit={canEdit}
-            mutations={mutations}
-            existingVisits={existingVisits}
-            activeVisitId={activeVisitId}
-            onActiveVisitChange={setActiveVisitId}
-            onRangeChange={data.handleRangeChange}
-            onEventResize={handleEventResize}
-            isNonWorkingDay={isNonWorkingDay}
-          />
+          {data.boardMode === 'map' ? (
+            <RoutePlannerView
+              board={planner.board}
+              window={planner.window}
+              geometryByWorker={planner.geometryByWorker}
+              filters={planner.filters}
+              isLoading={planner.isLoading}
+            />
+          ) : (
+            <>
+              {data.showBacklog && <BacklogRail items={data.backlogEvents} canEdit={canEdit} />}
+              <BoardCalendarGrid
+                date={data.date}
+                onDateChange={data.setDate}
+                view={data.view}
+                weekStartsOn={weekStartsOn}
+                resources={data.resources}
+                backgroundEvents={backgroundEvents}
+                events={data.events}
+                overlappingIds={overlappingIds}
+                canEdit={canEdit}
+                mutations={mutations}
+                existingVisits={existingVisits}
+                activeVisitId={activeVisitId}
+                onActiveVisitChange={setActiveVisitId}
+                onRangeChange={data.handleRangeChange}
+                onEventResize={handleEventResize}
+                isNonWorkingDay={isNonWorkingDay}
+              />
+            </>
+          )}
         </div>
       </CalendarDndProvider>
     </div>

@@ -3,7 +3,7 @@
 // The Visit tab + Notes tab body (08-worker-surface.md §3), shared by the full-page route
 // (mobile) and the desktop `VisitDrawer`. Reads `api.dispatch.getMyVisit` — money-hidden by
 // construction: the server payload never includes price fields, this component never re-adds
-// them.
+// them. The Notes tab is the quality checklist (08-worker-surface.md §5, `qc/qc-checklist.tsx`).
 
 'use client'
 
@@ -15,6 +15,7 @@ import { useQueryState } from 'nuqs'
 import { EmptyState } from '~/components/global/empty-state'
 import { LoadingSpinner } from '~/components/global/loading-content'
 import { api } from '~/trpc/react'
+import { QcChecklist } from './qc/qc-checklist'
 import { VisitStatusButton } from './visit-status-button'
 
 interface VisitDetailContentProps {
@@ -136,11 +137,9 @@ export function VisitDetailContent({ visitId }: VisitDetailContentProps) {
       </TabsContent>
 
       <TabsContent value='notes' className='flex-1 min-h-0'>
-        <EmptyState
-          icon={ClipboardList}
-          title='Quality checklist coming soon'
-          description='Completion checks and photos will live here.'
-        />
+        <ScrollArea className='h-full' scrollbarClassName='w-1.5 z-20' noFade>
+          <QcChecklist visitId={visitId} />
+        </ScrollArea>
       </TabsContent>
     </Tabs>
   )

@@ -28,6 +28,8 @@ export type EntityType =
   | 'KNOWLEDGE_BASE'
   | 'CHAT_WIDGET'
   | 'USER_PROFILE'
+  /** A `VisitQcItem` row's photo attachments (08-worker-surface.md §5). */
+  | 'visit_qc_item'
 /**
  * Attachment roles defining how files are used
  */

@@ -102,12 +102,22 @@ export async function materializeVisits(
   const to = new Date(Date.now() + RECURRENCE_HORIZON_DAYS * 24 * 60 * 60 * 1000)
 
   const existingRows = await database
-    .select({ occurrenceDate: schema.WorkOrderVisit.occurrenceDate })
+    .select({
+      occurrenceDate: schema.WorkOrderVisit.occurrenceDate,
+      latitude: schema.WorkOrderVisit.latitude,
+      longitude: schema.WorkOrderVisit.longitude,
+      geocodedAt: schema.WorkOrderVisit.geocodedAt,
+    })
     .from(schema.WorkOrderVisit)
     .where(eq(schema.WorkOrderVisit.recurrenceRuleId, rule.id))
   const existingDates = new Set(
     existingRows.map((r) => r.occurrenceDate).filter((d): d is string => Boolean(d))
   )
+  // Coord inheritance (route planner build contract item 9, plans/dispatch/09-route-planner.md
+  // §B): a newly materialized visit copies latitude/longitude/geocodedAt from any already-
+  // geocoded sibling visit of this same recurring series — never re-geocoded here, the
+  // address-set-time hook (`geocodeOnAddressChange`) is the only geocoder writer.
+  const geocodedSibling = existingRows.find((r) => r.latitude !== null && r.longitude !== null)
   // §4.4: consumed = existing rows (any status, detached included — a skip consumes its
   // occurrence), derived from rows, not a counter column. Only rows STRICTLY BEFORE the
   // expansion boundary count here — that's `expandOccurrences`' documented `countConsumed`
@@ -145,6 +155,9 @@ export async function materializeVisits(
           assigneeUserId: rule.defaultAssigneeUserId,
           timezone: rule.timezone,
           status: 'scheduled',
+          latitude: geocodedSibling?.latitude ?? null,
+          longitude: geocodedSibling?.longitude ?? null,
+          geocodedAt: geocodedSibling?.geocodedAt ?? null,
           updatedAt: new Date(),
         }))
       )

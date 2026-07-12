@@ -21,6 +21,8 @@ export const ENTITY_TYPES = {
   KNOWLEDGE_BASE: 'KNOWLEDGE_BASE',
   CHAT_WIDGET: 'CHAT_WIDGET',
   CUSTOM_FIELD: 'CUSTOM_FIELD',
+  /** A `VisitQcItem` row's photo attachments (08-worker-surface.md §5) */
+  VISIT_QC_ITEM: 'visit_qc_item',
 } as const
 
 export type EntityType = (typeof ENTITY_TYPES)[keyof typeof ENTITY_TYPES]
@@ -653,6 +655,34 @@ export const ENTITY_CONFIGS: Record<EntityType, EntityUploadConfig> = {
     defaultVisibility: 'public',
     maxConcurrentUploads: 1,
     enableBatchUpload: false,
+    supportedFeatures: { progress: true, preview: true, retry: true, pause: false, resume: false },
+  },
+
+  [ENTITY_TYPES.VISIT_QC_ITEM]: {
+    entityType: ENTITY_TYPES.VISIT_QC_ITEM,
+    displayName: 'Quality Check Photo',
+    description: 'Attach photos to a visit quality-check item',
+    stages: [
+      { name: 'validation', displayName: 'Validation', weight: 40, estimatedDuration: 1 },
+      {
+        name: 'attachment-creation',
+        displayName: 'Attachment Creation',
+        weight: 60,
+        estimatedDuration: 2,
+      },
+    ],
+    validation: {
+      maxFileSize: 10 * 1024 * 1024, // 10MB
+      // SVG excluded — XSS vector when served from our origin.
+      allowedMimeTypes: ['image/jpeg', 'image/png', 'image/webp', 'image/gif'],
+      allowedExtensions: ['.jpg', '.jpeg', '.png', '.webp', '.gif'],
+      scanForViruses: true,
+      requireExtension: true,
+      blockExecutables: true,
+    },
+    defaultVisibility: 'private',
+    maxConcurrentUploads: 3,
+    enableBatchUpload: true,
     supportedFeatures: { progress: true, preview: true, retry: true, pause: false, resume: false },
   },
 } as const

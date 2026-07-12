@@ -573,6 +573,32 @@ export const WORK_ORDER_FIELDS: Record<string, ResourceField> = {
     description: 'Invoices gathered from this job',
   },
 
+  // Inline TAGS field (option-backed, free-form multi-value — NOT the global Tag entity),
+  // copying the `part.category` shape verbatim-adapted (parts v2 §C.1 recipe, route-planner
+  // build contract item 10). Values live in `FieldValue.optionId`; options grow dynamically.
+  // Narrows the route planner's map/backlog list by region (design doc decision #5).
+  tags: {
+    id: toFieldId('tags'),
+    key: 'tags',
+    label: 'Tags',
+    type: BaseType.TAGS,
+    fieldType: FieldType.TAGS,
+    isSystem: true,
+    systemAttribute: 'work_order_tags',
+    systemSortOrder: 'aL',
+    nullable: true,
+    options: { options: [] },
+    capabilities: {
+      filterable: true,
+      sortable: false,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    placeholder: 'Add tags',
+    description: 'Free-form tags (e.g. region) — narrows the route planner map and backlog list',
+  },
+
   createdAt: {
     id: toFieldId('createdAt'),
     key: 'createdAt',
