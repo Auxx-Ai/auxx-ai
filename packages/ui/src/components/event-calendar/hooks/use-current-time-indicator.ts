@@ -12,7 +12,7 @@ export interface UseCurrentTimeIndicatorResult {
   currentTimePosition: number
   /** Whether "now" falls within `currentDate`'s day. */
   currentTimeVisible: boolean
-  /** Pre-formatted "HH:mm" label for the gutter pill. */
+  /** Pre-formatted 12-hour "h:mm a" label for the gutter pill (e.g. "9:44 AM"). */
   currentTimeLabel: string
 }
 
@@ -50,7 +50,7 @@ export function useCurrentTimeIndicator(
       setResult({
         currentTimePosition: position,
         currentTimeVisible: isSameDay(now, currentDate),
-        currentTimeLabel: format(now, 'HH:mm'),
+        currentTimeLabel: format(now, 'h:mm a'),
       })
     }
 

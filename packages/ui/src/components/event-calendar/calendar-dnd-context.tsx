@@ -33,6 +33,8 @@ interface CalendarDndContextValue<T extends EventCalendarItem = EventCalendarIte
   activeId: UniqueIdentifier | null
   activeView: DraggableView | null
   currentTime: Date | null
+  /** Resource id of the hovered cell (resource view) — lets the drop outline pick its column. */
+  currentResourceId: string | null
   eventHeight: number | null
 }
 
@@ -43,6 +45,7 @@ const CalendarDndContext = createContext<CalendarDndContextValue>({
   activeId: null,
   activeView: null,
   currentTime: null,
+  currentResourceId: null,
   eventHeight: null,
 })
 
@@ -79,6 +82,7 @@ export function CalendarDndProvider<T extends EventCalendarItem = EventCalendarI
   const [activeId, setActiveId] = useState<UniqueIdentifier | null>(null)
   const [activeView, setActiveView] = useState<DraggableView | null>(null)
   const [currentTime, setCurrentTime] = useState<Date | null>(null)
+  const [currentResourceId, setCurrentResourceId] = useState<string | null>(null)
   const [eventHeight, setEventHeight] = useState<number | null>(null)
 
   const sensors = useSensors(
@@ -116,12 +120,18 @@ export function CalendarDndProvider<T extends EventCalendarItem = EventCalendarI
     const { over } = event
     if (!over || !activeEvent || !over.data.current) return
 
-    const { date, time } = over.data.current as { date?: Date; time?: number }
+    const { date, time, resourceId } = over.data.current as {
+      date?: Date
+      time?: number
+      resourceId?: string
+    }
     // A foreign droppable (e.g. the module sidebar's Backlog group, `{type: 'sidebar-backlog'}`)
     // has no `date` — nothing to snap the drag-ghost time to. `onDragEnd`'s own `overData.date`
     // check already keeps `onEventDrop` from firing on it; this just stops an `Invalid Date`
     // (`new Date(undefined)`) from being written into `currentTime` while hovering over it.
     if (!date) return
+
+    setCurrentResourceId(resourceId ?? null)
 
     if (time !== undefined && activeView !== 'month') {
       const newTime = new Date(date)
@@ -148,6 +158,7 @@ export function CalendarDndProvider<T extends EventCalendarItem = EventCalendarI
     setActiveId(null)
     setActiveView(null)
     setCurrentTime(null)
+    setCurrentResourceId(null)
     setEventHeight(null)
   }
 
@@ -205,13 +216,19 @@ export function CalendarDndProvider<T extends EventCalendarItem = EventCalendarI
           activeId,
           activeView,
           currentTime,
+          currentResourceId,
           eventHeight,
         }}>
         {children}
 
+        {/* The floating copy that follows the pointer — kept translucent (origin stays solid
+            in place) and darkened so it reads as "the thing being moved", with the drop
+            outline showing through underneath. */}
         <DragOverlay adjustScale={false} dropAnimation={null}>
           {activeEvent && activeView && (
-            <div style={{ width: '100%', height: eventHeight ? `${eventHeight}px` : 'auto' }}>
+            <div
+              className='opacity-80'
+              style={{ width: '100%', height: eventHeight ? `${eventHeight}px` : 'auto' }}>
               <EventItem
                 event={activeEvent}
                 view={activeView as CalendarView}

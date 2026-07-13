@@ -23,10 +23,20 @@ export function eventColorVar(color?: string): CSSProperties {
 // Tint tuned to a Notion-Calendar level (was 6%/18% — nearly invisible in light mode).
 export const eventTintBgClass =
   'bg-[color-mix(in_oklch,var(--ec-color)_14%,transparent)] dark:bg-[color-mix(in_oklch,var(--ec-color)_28%,transparent)]'
+// Emphasized fill for the dragged/selected chip — a much stronger color-mix so it
+// reads as visibly "darker" than a resting chip (a brightness filter can't do this
+// on an ~86%-transparent tint). Used INSTEAD of `eventTintBgClass`, never alongside
+// it, so there's no competing `background-color` utility.
+export const eventTintBgStrongClass =
+  'bg-[color-mix(in_oklch,var(--ec-color)_36%,transparent)] dark:bg-[color-mix(in_oklch,var(--ec-color)_52%,transparent)]'
 export const eventTintTextClass =
   'text-[color-mix(in_oklch,var(--ec-color)_70%,black)] dark:text-[color-mix(in_oklch,var(--ec-color)_55%,white)]'
 export const eventSolidBgClass = 'bg-[var(--ec-color)]'
 export const eventBorderAccentClass = 'border-[var(--ec-color)]'
+// Active-selection affordance: an inset ring in the event's own color (no layout shift,
+// follows the chip's radius). Distinct from the dragged chip's darker FILL so "selected"
+// and "dragging" read differently.
+export const eventSelectedRingClass = 'ring-2 ring-inset ring-[var(--ec-color)]'
 
 /**
  * Get CSS classes for border radius based on event position in multi-day events

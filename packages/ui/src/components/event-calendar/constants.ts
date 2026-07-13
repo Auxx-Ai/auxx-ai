@@ -13,8 +13,31 @@ export const EventHeight = 24
 /** Vertical gap (px) between stacked month-view event chips. */
 export const EventGap = 4
 
-/** Height (px) of one hour row in week/day/resource views. */
-export const WeekCellsHeight = 72
+/**
+ * Notion-style tick grid: the vertical hour grid is derived from a 5-minute
+ * tick of a fixed pixel height, so a single knob (`GridTickHeight`) rescales
+ * the whole timed grid. These mirror Notion Calendar's `--grid-tick-*` vars.
+ */
+export const GridTickHeight = 4
+export const GridTickMinutes = 5
+
+/** Minutes in an hour — the tick→hour multiplier (`60 / GridTickMinutes` ticks per hour). */
+const MinutesPerHour = 60
+
+/**
+ * Height (px) of one hour row in week/day/resource views — the single source
+ * both the JS position math and the `--week-cells-height` CSS `calc()` read.
+ * Derived from the tick grid: 4px × (60 / 5) = 48px (Notion parity).
+ */
+export const WeekCellsHeight = GridTickHeight * (MinutesPerHour / GridTickMinutes)
+
+/** Height (px) of the sticky day-header row (weekday + date). Mirrors Notion's `--grid-header-height`. */
+export const GridHeaderHeight = 53
+
+/** All-day lane chip metrics (px) — Notion's `--grid-all-day-chip-*`. */
+export const GridAllDayChipHeight = 19
+export const GridAllDayChipSpacing = 2
+export const GridAllDayPaddingTop = 3
 
 /** Number of days shown in agenda view. */
 export const AgendaDaysToShow = 30

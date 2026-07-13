@@ -10,6 +10,7 @@ import { BackgroundEventsLayer } from './background-events'
 import { EndHour, StartHour, WeekCellsHeight } from './constants'
 import { CurrentTimeLine } from './current-time-line'
 import { DraggableEvent } from './draggable-event'
+import { DropPreview } from './drop-preview'
 import { DroppableCell } from './droppable-cell'
 import { EventItem } from './event-item'
 import { useCurrentTimeIndicator } from './hooks/use-current-time-indicator'
@@ -27,6 +28,8 @@ interface ResourceDayViewProps<T extends EventCalendarItem = EventCalendarItem> 
   onSlotClick?: (startTime: Date, resourceId: string) => void
   onEventResize?: (event: T, newEnd: Date) => void
   renderEvent?: RenderEvent<T>
+  /** Id of the actively-selected event (detail/popover open) — draws the in-color ring. */
+  selectedEventId?: string | null
 }
 
 /**
@@ -43,6 +46,7 @@ export function ResourceDayView<T extends EventCalendarItem = EventCalendarItem>
   onSlotClick,
   onEventResize,
   renderEvent,
+  selectedEventId,
 }: ResourceDayViewProps<T>) {
   const hours = useMemo(() => {
     const dayStart = startOfDay(currentDate)
@@ -126,6 +130,7 @@ export function ResourceDayView<T extends EventCalendarItem = EventCalendarItem>
                     event={event}
                     view='resource'
                     allDayLane
+                    isSelected={event.id === selectedEventId}
                     renderEvent={renderEvent}>
                     <div>{event.title}</div>
                   </EventItem>
@@ -176,10 +181,13 @@ export function ResourceDayView<T extends EventCalendarItem = EventCalendarItem>
                       height={positioned.height}
                       onResize={onEventResize}
                       renderEvent={renderEvent}
+                      isSelected={positioned.event.id === selectedEventId}
                     />
                   </div>
                 </div>
               ))}
+
+              <DropPreview day={currentDate} resourceId={resource.id} />
 
               {currentTimeVisible && <CurrentTimeLine position={currentTimePosition} />}
 

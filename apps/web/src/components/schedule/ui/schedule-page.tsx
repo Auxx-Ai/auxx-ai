@@ -236,6 +236,7 @@ export function SchedulePage() {
             onVisitClick={handleVisitClick}
             onMeetingClick={setOpenMeetingId}
             onTaskClick={setOpenTask}
+            selectedEventId={openVisitId ?? openMeetingId ?? openTask?.id ?? null}
           />
         )}
       </MainPageContent>

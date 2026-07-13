@@ -21,6 +21,7 @@ import {
   EndHour,
   EventGap,
   EventHeight,
+  GridHeaderHeight,
   StartHour,
   StreamEndYear,
   StreamStartYear,
@@ -33,8 +34,8 @@ import type { BackgroundEvent, EventCalendarItem, RenderEvent } from './types'
 import { getAllEventsForDay, isMultiDayEvent } from './utils'
 import { WeekDayColumn } from './week-day-column'
 
-/** Height (px) of the sticky day-of-week / date label row. */
-const HeaderLabelHeight = 36
+/** Height (px) of the sticky day-of-week / date label row — Notion's `--grid-header-height`. */
+const HeaderLabelHeight = GridHeaderHeight
 
 /** Minimum height (px) of the always-visible all-day lane, even with zero events — no pop-in. */
 const AllDayLaneMinHeight = 32
@@ -55,6 +56,8 @@ interface WeekViewProps<T extends EventCalendarItem = EventCalendarItem> {
   onSlotClick?: (startTime: Date) => void
   onEventResize?: (event: T, newEnd: Date) => void
   renderEvent?: RenderEvent<T>
+  /** Id of the actively-selected event (detail/popover open) — draws the in-color ring. */
+  selectedEventId?: string | null
   /** Fires when a user scroll settles on a new leftmost day. */
   onDateChange?: (date: Date) => void
   /** Fires with the rendered (visible + overscan) day window — consumers fetch this. */
@@ -86,6 +89,7 @@ export function WeekView<T extends EventCalendarItem = EventCalendarItem>({
   onSlotClick,
   onEventResize,
   renderEvent,
+  selectedEventId,
   onDateChange,
   onVisibleRangeChange,
 }: WeekViewProps<T>) {
@@ -284,34 +288,49 @@ export function WeekView<T extends EventCalendarItem = EventCalendarItem>({
                 style={{ height: HeaderLabelHeight }}>
                 <span className='max-[479px]:sr-only'>{format(new Date(), 'O')}</span>
               </div>
-              <div
-                className='bg-muted/50 border-border/70 relative border-t'
-                style={{ height: laneHeight }}>
-                <span className='text-muted-foreground/70 absolute inset-x-0 bottom-1 px-2 text-right text-[10px] sm:px-4 sm:text-xs'>
+              <div className='bg-muted/50 relative' style={{ height: laneHeight }}>
+                <span className='text-muted-foreground/70 absolute inset-0 flex items-center justify-end px-2 text-[10px] sm:px-3'>
                   All day
                 </span>
               </div>
             </div>
 
+            {/* Full-width hairline between the date-label row and the all-day lane — runs
+                continuously across the gutter corner and every day column. */}
+            <div
+              className='bg-border/70 absolute inset-x-0 h-px'
+              style={{ top: HeaderLabelHeight }}
+            />
+
             {virtualItems.map((v) => {
               const day = dayAt(v.index)
               const x = gutterWidth + v.start
+              const today = isToday(day)
               return (
                 <div
                   key={`label-${v.key}`}
-                  className='data-today:text-foreground text-muted-foreground/70 absolute flex items-center justify-center text-sm data-today:font-medium'
+                  className='text-muted-foreground/80 absolute flex items-center justify-center gap-1.5 text-sm'
                   style={{
                     top: 0,
                     left: 0,
                     width: dayWidth,
                     height: HeaderLabelHeight,
                     transform: `translateX(${x}px)`,
-                  }}
-                  data-today={isToday(day) || undefined}>
-                  <span className='sm:hidden' aria-hidden='true'>
-                    {format(day, 'E')[0]} {format(day, 'd')}
+                  }}>
+                  <span className='uppercase max-sm:hidden'>{format(day, 'EEE')}</span>
+                  <span className='uppercase sm:hidden' aria-hidden='true'>
+                    {format(day, 'E')[0]}
                   </span>
-                  <span className='max-sm:hidden'>{format(day, 'EEE dd')}</span>
+                  {/* Today's date sits in a filled badge (Notion look); other days stay plain. */}
+                  <span
+                    className={cn(
+                      'flex h-6 min-w-6 items-center justify-center rounded-full px-1 tabular-nums',
+                      today
+                        ? 'bg-primary text-primary-foreground font-semibold'
+                        : 'text-foreground font-medium'
+                    )}>
+                    {format(day, 'd')}
+                  </span>
                 </div>
               )
             })}
@@ -350,6 +369,7 @@ export function WeekView<T extends EventCalendarItem = EventCalendarItem>({
                         allDayLane
                         isFirstDay={isFirstDay}
                         isLastDay={isLastDay}
+                        isSelected={event.id === selectedEventId}
                         renderEvent={renderEvent}>
                         <div
                           className={cn('truncate', !isFirstDay && 'invisible')}
@@ -393,6 +413,7 @@ export function WeekView<T extends EventCalendarItem = EventCalendarItem>({
               onSlotClick={onSlotClick}
               onEventResize={onEventResize}
               renderEvent={renderEvent}
+              selectedEventId={selectedEventId}
               currentTimePosition={currentTimePosition}
             />
           ))}

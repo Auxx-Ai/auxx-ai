@@ -22,6 +22,8 @@ interface DraggableEventProps<T extends EventCalendarItem = EventCalendarItem> {
   height?: number
   isFirstDay?: boolean
   isLastDay?: boolean
+  /** Active selection — the event whose detail/popover is open. Draws the in-color ring. */
+  isSelected?: boolean
   renderEvent?: RenderEvent<T>
   /** Enables the bottom-edge resize handle — only meaningful in week/day/resource. */
   onResize?: (event: T, newEnd: Date) => void
@@ -35,6 +37,7 @@ export function DraggableEvent<T extends EventCalendarItem = EventCalendarItem>(
   height,
   isFirstDay = true,
   isLastDay = true,
+  isSelected,
   renderEvent,
   onResize,
 }: DraggableEventProps<T>) {
@@ -86,16 +89,17 @@ export function DraggableEvent<T extends EventCalendarItem = EventCalendarItem>(
     }
   }
 
-  // Don't render if this event is being dragged (the DragOverlay ghost stands in for it).
-  if (isDragging || activeId === `${event.id}-${view}`) {
-    return <div ref={setNodeRef} className='opacity-0' style={{ height: height || 'auto' }} />
-  }
+  // While this event is the drag source, the origin stays put and solid — the translucent
+  // DragOverlay copy is the "moving" one — so we neither hide the origin nor apply the
+  // pointer `transform` to it (that would make the origin chase the cursor as a second ghost).
+  const isDragSource = isDragging || activeId === `${event.id}-${view}`
 
   const effectiveHeight = isResizing && previewHeight !== null ? previewHeight : height
 
-  const style = transform
-    ? { transform: CSS.Translate.toString(transform), height: effectiveHeight || 'auto' }
-    : { height: effectiveHeight || 'auto' }
+  const style =
+    transform && !isDragSource
+      ? { transform: CSS.Translate.toString(transform), height: effectiveHeight || 'auto' }
+      : { height: effectiveHeight || 'auto' }
 
   return (
     <div
@@ -111,7 +115,7 @@ export function DraggableEvent<T extends EventCalendarItem = EventCalendarItem>(
         showTime={showTime}
         isFirstDay={isFirstDay}
         isLastDay={isLastDay}
-        isDragging={isDragging}
+        isSelected={isSelected}
         onClick={onClick}
         onMouseDown={handleMouseDown}
         onTouchStart={handleTouchStart}
