@@ -76,6 +76,24 @@ export const kanbanConfigSchema = z.object({
 })
 
 // ============================================================================
+// CALENDAR SCHEMAS
+// ============================================================================
+
+/** Calendar view config schema */
+export const calendarConfigSchema = z.object({
+  /** Required axis — a DATE or DATETIME CustomField id. */
+  dateFieldId: z.string(),
+  /** Optional end — chips span [date, end]; absent → point-in-time chip. */
+  endDateFieldId: z.string().optional(),
+  /** Optional SINGLE_SELECT field whose option color tints the chip. */
+  colorFieldId: z.string().optional(),
+  /** Chip title field; falls back to the entity's identity/primary field. */
+  primaryFieldId: z.string().optional(),
+  /** Extra fields for tooltip/expanded chip (kanban cardFields vocabulary). */
+  cardFields: z.array(z.string()).optional().default([]),
+})
+
+// ============================================================================
 // VIEW CONFIG SCHEMA (SINGLE SOURCE OF TRUTH)
 // ============================================================================
 
@@ -95,8 +113,9 @@ export const viewConfigSchema = z.object({
   columnLabels: z.record(z.string(), z.string()).optional(),
   columnFormatting: z.record(z.string(), columnFormattingSchema).optional(),
   rowHeight: z.enum(['compact', 'normal', 'spacious']).optional(),
-  viewType: z.enum(['table', 'kanban']).optional().default('table'),
+  viewType: z.enum(['table', 'kanban', 'calendar']).optional().default('table'),
   kanban: kanbanConfigSchema.optional(),
+  calendar: calendarConfigSchema.optional(),
 })
 
 // ============================================================================
@@ -111,6 +130,7 @@ export type CheckboxColumnFormatting = z.infer<typeof checkboxFormattingSchema>
 export type ColumnFormatting = z.infer<typeof columnFormattingSchema>
 export type KanbanColumnSettings = z.infer<typeof kanbanColumnSettingsSchema>
 export type KanbanViewConfig = z.infer<typeof kanbanConfigSchema>
+export type CalendarViewConfig = z.infer<typeof calendarConfigSchema>
 export type ViewConfig = z.infer<typeof viewConfigSchema>
 export type ViewType = ViewConfig['viewType']
 

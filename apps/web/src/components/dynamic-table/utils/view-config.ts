@@ -9,7 +9,13 @@ import type {
   SortingState,
   VisibilityState,
 } from '@tanstack/react-table'
-import type { ColumnFormatting, ExtendedColumnDef, KanbanViewConfig, ViewConfig } from '../types'
+import type {
+  CalendarViewConfig,
+  ColumnFormatting,
+  ExtendedColumnDef,
+  KanbanViewConfig,
+  ViewConfig,
+} from '../types'
 
 /**
  * Snapshot of the table state that can be persisted as a view configuration.
@@ -160,6 +166,8 @@ export function normalizeViewConfig(config?: Partial<ViewConfig> | null): ViewCo
     viewType: config?.viewType ?? 'table',
     // Preserve kanban configuration if present
     kanban: config?.kanban ? cloneKanbanConfig(config.kanban) : undefined,
+    // Preserve calendar configuration if present
+    calendar: config?.calendar ? cloneCalendarConfig(config.calendar) : undefined,
   }
 }
 
@@ -176,6 +184,19 @@ function cloneKanbanConfig(kanban: KanbanViewConfig): KanbanViewConfig {
     columnSettings: kanban.columnSettings
       ? Object.fromEntries(Object.entries(kanban.columnSettings).map(([k, v]) => [k, { ...v }]))
       : undefined,
+  }
+}
+
+/**
+ * Clone a calendar configuration to avoid accidental mutations.
+ */
+function cloneCalendarConfig(calendar: CalendarViewConfig): CalendarViewConfig {
+  return {
+    dateFieldId: calendar.dateFieldId,
+    endDateFieldId: calendar.endDateFieldId,
+    colorFieldId: calendar.colorFieldId,
+    primaryFieldId: calendar.primaryFieldId,
+    cardFields: calendar.cardFields ? [...calendar.cardFields] : undefined,
   }
 }
 

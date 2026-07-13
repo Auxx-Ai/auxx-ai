@@ -35,6 +35,7 @@ export type {
   ConditionValueSource,
 } from './types'
 export type {
+  CalendarViewConfig,
   CheckboxColumnFormatting,
   ColumnFormatting,
   CurrencyColumnFormatting,
@@ -51,6 +52,7 @@ export type {
 // View config schemas and types
 // Field view config exports
 export {
+  calendarConfigSchema,
   checkboxFormattingSchema,
   columnFormattingSchema,
   createDefaultFieldViewConfig,

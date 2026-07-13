@@ -1,6 +1,6 @@
 // apps/web/src/components/dynamic-table/stores/ui-slice.ts
 
-import type { KanbanViewConfig } from '../types'
+import type { CalendarViewConfig, KanbanViewConfig } from '../types'
 import type { SliceCreator, UISlice } from './store-types'
 import { DEFAULT_UI_CONFIG } from './store-types'
 
@@ -38,6 +38,16 @@ export const createUISlice: SliceCreator<UISlice> = (set, get) => ({
 
     get().updateViewConfig(viewId, {
       kanban: { ...currentKanban, ...changes } as KanbanViewConfig,
+    })
+  },
+
+  updateCalendarConfig: (viewId, changes) => {
+    const saved = get().viewConfigs[viewId]
+    const pending = get().pendingConfigs[viewId]
+    const currentCalendar = pending?.calendar ?? saved?.calendar ?? {}
+
+    get().updateViewConfig(viewId, {
+      calendar: { ...currentCalendar, ...changes } as CalendarViewConfig,
     })
   },
 

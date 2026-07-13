@@ -30,7 +30,7 @@ import type {
   SortingState,
   VisibilityState,
 } from '@tanstack/react-table'
-import { LayoutGrid, Table2 } from 'lucide-react'
+import { Calendar, LayoutGrid, Table2 } from 'lucide-react'
 import { useState } from 'react'
 import { useViewMutations } from '../../hooks/use-view-mutations'
 import type { TableView, ViewConfig } from '../../types'
@@ -42,6 +42,12 @@ interface SelectField {
   options?: { options?: Array<{ id: string; label: string; color?: string }> }
 }
 
+/** DATE/DATETIME field for the calendar view's date axis */
+interface DateField {
+  id: string
+  name: string
+}
+
 export interface CreateViewDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -49,6 +55,8 @@ export interface CreateViewDialogProps {
   views: TableView[]
   /** SINGLE_SELECT fields available for kanban grouping */
   selectFields?: SelectField[]
+  /** DATE/DATETIME fields available for the calendar view's date axis */
+  dateFields?: DateField[]
   /** Entity definition ID for field creation */
   entityDefinitionId?: string
   /** Current filters to pre-populate when creating a new view */
@@ -74,27 +82,37 @@ export function CreateViewDialog({
   tableId,
   views,
   selectFields,
+  dateFields,
   entityDefinitionId,
   currentFilters,
   onViewCreated,
   currentTableState,
 }: CreateViewDialogProps) {
   const [newViewName, setNewViewName] = useState('')
-  const [viewType, setViewType] = useState<'table' | 'kanban'>('table')
+  const [viewType, setViewType] = useState<'table' | 'kanban' | 'calendar'>('table')
   const [selectedFieldId, setSelectedFieldId] = useState<string>('')
   const [isCreatingField, setIsCreatingField] = useState(false)
   const [newFieldName, setNewFieldName] = useState('')
+  const [selectedDateFieldId, setSelectedDateFieldId] = useState<string>('')
 
   const { createView } = useViewMutations(tableId)
+  const hasDateFields = (dateFields ?? []).length > 0
 
   /** Handle view creation */
   const handleCreateView = async () => {
     // For kanban, need either a selected field or a new field name
     if (viewType === 'kanban' && !selectedFieldId && !newFieldName.trim()) return
+    // For calendar, a date field is required
+    if (viewType === 'calendar' && !selectedDateFieldId) return
 
     // Generate name if not provided
     const existingNames = new Set(views.map((v) => v.name))
-    const baseTitle = viewType === 'kanban' ? 'Kanban View' : 'Table View'
+    const baseTitle =
+      viewType === 'kanban'
+        ? 'Kanban View'
+        : viewType === 'calendar'
+          ? 'Calendar View'
+          : 'Table View'
     const viewName = newViewName.trim() || incrementTitle(baseTitle, existingNames)
 
     const config: ViewConfig = {
@@ -109,6 +127,11 @@ export function CreateViewDialog({
         kanban: {
           // Use empty string if creating new field - backend will populate
           groupByFieldId: selectedFieldId || '',
+        },
+      }),
+      ...(viewType === 'calendar' && {
+        calendar: {
+          dateFieldId: selectedDateFieldId,
         },
       }),
     }
@@ -144,6 +167,7 @@ export function CreateViewDialog({
     setSelectedFieldId('')
     setNewFieldName('')
     setIsCreatingField(false)
+    setSelectedDateFieldId('')
   }
 
   /** Handle dialog close */
@@ -186,7 +210,7 @@ export function CreateViewDialog({
             <Label>View Type</Label>
             <RadioGroup
               value={viewType}
-              onValueChange={(v) => setViewType(v as 'table' | 'kanban')}>
+              onValueChange={(v) => setViewType(v as 'table' | 'kanban' | 'calendar')}>
               <RadioGroupItemCard
                 label='Table'
                 value='table'
@@ -199,8 +223,33 @@ export function CreateViewDialog({
                 icon={<LayoutGrid />}
                 description='Organize records on a pipeline'
               />
+              <RadioGroupItemCard
+                label='Calendar'
+                value='calendar'
+                icon={<Calendar />}
+                disabled={!hasDateFields}
+                description={
+                  hasDateFields
+                    ? 'Organize records on a date-based month grid'
+                    : 'Requires a DATE or DATETIME field on this entity'
+                }
+              />
             </RadioGroup>
           </div>
+
+          {/* Date field selector for calendar */}
+          {viewType === 'calendar' && (
+            <div className='space-y-2 flex flex-col'>
+              <Label>Date field</Label>
+              <Combobox
+                options={(dateFields ?? []).map((f) => ({ value: f.id, label: f.name }))}
+                placeholder='Select a date field...'
+                emptyText='No date fields found'
+                value={selectedDateFieldId}
+                onChangeValue={setSelectedDateFieldId}
+              />
+            </div>
+          )}
 
           {/* Field selector for kanban */}
           {viewType === 'kanban' && (
@@ -280,7 +329,8 @@ export function CreateViewDialog({
             loadingText='Creating...'
             disabled={
               createView.isPending ||
-              (viewType === 'kanban' && !selectedFieldId && !newFieldName.trim())
+              (viewType === 'kanban' && !selectedFieldId && !newFieldName.trim()) ||
+              (viewType === 'calendar' && !selectedDateFieldId)
             }>
             Create View <KbdSubmit variant='outline' size='sm' />
           </Button>

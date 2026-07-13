@@ -30,6 +30,7 @@ import type {
   VisibilityState,
 } from '@tanstack/react-table'
 import {
+  Calendar,
   Check,
   ChevronDown,
   Copy,
@@ -60,6 +61,12 @@ interface SelectField {
   options?: { options?: Array<{ id: string; label: string; color?: string }> }
 }
 
+/** DATE/DATETIME field for the calendar view's date axis */
+interface DateField {
+  id: string
+  name: string
+}
+
 interface ViewSelectorProps {
   views: TableView[]
   activeView: TableView | null
@@ -71,6 +78,8 @@ interface ViewSelectorProps {
   onReset?: () => void
   /** SINGLE_SELECT fields available for kanban grouping */
   selectFields?: SelectField[]
+  /** DATE/DATETIME fields available for the calendar view's date axis */
+  dateFields?: DateField[]
   /** Entity definition ID for field creation */
   entityDefinitionId?: string
   /** Current filters to pre-populate when creating a new view */
@@ -96,6 +105,7 @@ export function ViewSelector({
   onSave,
   onReset,
   selectFields,
+  dateFields,
   entityDefinitionId,
   currentFilters,
   openCreateDialog,
@@ -274,6 +284,8 @@ export function ViewSelector({
                           {/* View type icon */}
                           {view.config.viewType === 'kanban' ? (
                             <LayoutGrid className='size-3.5 text-muted-foreground' />
+                          ) : view.config.viewType === 'calendar' ? (
+                            <Calendar className='size-3.5 text-muted-foreground' />
                           ) : (
                             <Table2 className='size-3.5 text-muted-foreground' />
                           )}
@@ -382,6 +394,7 @@ export function ViewSelector({
         tableId={tableId}
         views={views}
         selectFields={selectFields}
+        dateFields={dateFields}
         entityDefinitionId={entityDefinitionId}
         currentFilters={currentFilters}
         onViewCreated={onViewSelect}

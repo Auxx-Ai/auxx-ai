@@ -20,11 +20,16 @@ export interface ViewMetadataContextValue<TData = any> {
   /** Custom fields (for kanban cards) */
   customFields: CustomField[]
 
+  /** DATE/DATETIME fields (for the calendar view's date-axis pickers) */
+  dateFields: Array<{ id: string; name: string }>
+
   /** Entity label for "New X" buttons */
   entityLabel?: string
 
-  /** Callback when "New" button is clicked */
-  onAddNew?: () => void
+  /** Callback when "New" button is clicked. Optional `presetValues`
+   *  (`{ fieldId: value }`) lets the calendar view's click-empty-day-to-create
+   *  prefill the create dialog. */
+  onAddNew?: (presetValues?: Record<string, unknown>) => void
 
   /** Callback when kanban card is clicked */
   onCardClick?: (card: TData) => void

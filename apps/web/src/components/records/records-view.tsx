@@ -20,6 +20,7 @@ import {
   MainPageContent,
   MainPageHeader,
 } from '@auxx/ui/components/main-page'
+import { useQueryClient } from '@tanstack/react-query'
 import { Archive, Combine, Database, FileText, Play, Plus, SquarePen, Trash2 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { parseAsBoolean, parseAsString, useQueryState } from 'nuqs'
@@ -138,6 +139,13 @@ export function RecordsView({
   const [editingInstance, setEditingInstance] = useState<EntityRow | null>(null)
   const [selectedRowIds, setSelectedRowIds] = useState<Set<string>>(new Set())
 
+  // Preset field values for the create dialog — set by the calendar view's
+  // click-empty-day-to-create (plan §3.3, `onAddNew(presetValues)`).
+  const [createPresetValues, setCreatePresetValues] = useState<Record<string, unknown> | undefined>(
+    undefined
+  )
+  const queryClient = useQueryClient()
+
   // Drawer state - synced to URL via ?id= param
   const [selectedInstanceId, setSelectedInstanceId] = useQueryState(
     'id',
@@ -206,6 +214,7 @@ export function RecordsView({
       } else {
         setEditingInstance(row)
       }
+      setCreatePresetValues(undefined)
       setIsCreateDialogOpen(true)
     },
     [setIsCreateDialogOpen, onEditRecord, entityDefinitionId]
@@ -224,14 +233,23 @@ export function RecordsView({
 
   const handleDialogSaved = useCallback(() => {
     setEditingInstance(null)
+    setCreatePresetValues(undefined)
     refresh()
-  }, [refresh])
+    // The calendar view's id list is a standalone `useQuery` keyed
+    // `['calendar-record-ids', ...]` (not a tRPC `record.listFiltered` query),
+    // so it's outside the generic `record:created` realtime handler's
+    // `utils.record.listFiltered.invalidate` reach — invalidate it explicitly
+    // so a record created via the click-empty-day-to-create dialog shows up on
+    // the calendar without waiting out the query's 30s staleTime.
+    queryClient.invalidateQueries({ queryKey: ['calendar-record-ids'] })
+  }, [refresh, queryClient])
 
   const handleDialogOpenChange = useCallback(
     (open: boolean) => {
       setIsCreateDialogOpen(open)
       if (!open) {
         setEditingInstance(null)
+        setCreatePresetValues(undefined)
       }
     },
     [setIsCreateDialogOpen]
@@ -753,7 +771,10 @@ export function RecordsView({
       emptyState={emptyStateElement}
       dockedPanels={dockedPanels}
       onRowSelectionChange={handleRowSelectionChange}
-      onAddNew={() => setIsCreateDialogOpen(true)}
+      onAddNew={(presetValues) => {
+        setCreatePresetValues(presetValues)
+        setIsCreateDialogOpen(true)
+      }}
       entityLabel={resource.label}
       onCardClick={handleOpenDrawer}
       onAddCard={() => setIsCreateDialogOpen(true)}
@@ -897,6 +918,7 @@ export function RecordsView({
             editingInstance ? toRecordId(entityDefinitionId, editingInstance.id) : undefined
           }
           onSaved={handleDialogSaved}
+          presetValues={createPresetValues}
         />
       )}
 

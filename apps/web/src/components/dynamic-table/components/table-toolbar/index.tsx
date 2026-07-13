@@ -46,6 +46,7 @@ import {
   useTableViews,
 } from '../../stores/store-selectors'
 import type { ViewConfig, ViewType } from '../../types'
+import { CalendarViewSettings } from './calendar-view-settings'
 import { ColumnManager } from './column-manager'
 import { KanbanViewSettings } from './kanban-view-settings'
 import { RecordsGuideDialog } from './records-guide-dialog'
@@ -97,7 +98,7 @@ export function TableToolbar<TData = any>({
   } = useTableConfig()
 
   const { table } = useTableInstance<TData>()
-  const { selectFields } = useViewMetadata()
+  const { selectFields, dateFields } = useViewMetadata()
 
   // View state from stores
   const views = useTableViews(tableId)
@@ -112,6 +113,7 @@ export function TableToolbar<TData = any>({
   // Determine view type
   const viewType: ViewType = (currentView?.config as ViewConfig)?.viewType ?? 'table'
   const isKanbanView = viewType === 'kanban'
+  const isCalendarView = viewType === 'calendar'
 
   // Check if current filters differ from the active view's saved filters
   const hasUnsavedFilters = useMemo(() => {
@@ -207,6 +209,7 @@ export function TableToolbar<TData = any>({
           onSave={saveCurrentView}
           onReset={resetViewChanges}
           selectFields={selectFields}
+          dateFields={dateFields}
           entityDefinitionId={entityDefinitionId}
           currentFilters={filters}
           openCreateDialog={isCreateDialogOpen}
@@ -239,9 +242,15 @@ export function TableToolbar<TData = any>({
         </Button>
       )}
 
-      {/* Columns/Settings Button - different component for kanban vs table */}
+      {/* Columns/Settings Button - different component for kanban/calendar vs table */}
       <div className='group-data-[search-expanded]/toolbar:hidden'>
-        {isKanbanView ? <KanbanViewSettings /> : <ColumnManager />}
+        {isKanbanView ? (
+          <KanbanViewSettings />
+        ) : isCalendarView ? (
+          <CalendarViewSettings />
+        ) : (
+          <ColumnManager />
+        )}
       </div>
 
       {/* Import / Export Dropdown */}

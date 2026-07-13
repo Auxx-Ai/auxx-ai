@@ -16,6 +16,7 @@ export type { TargetTimeInStatus }
 
 // Re-export types from schema (inferred from Zod = always in sync with validation)
 export type {
+  CalendarViewConfig,
   CheckboxColumnFormatting,
   ColumnFormatting,
   CurrencyColumnFormatting,
@@ -415,8 +416,10 @@ export interface DynamicTableProps<TData = any> {
   /** Entity label for "New X" buttons in kanban */
   entityLabel?: string
 
-  /** Callback when "New" button is clicked in primary column header */
-  onAddNew?: () => void
+  /** Callback when "New" button is clicked in primary column header. Optional
+   *  `presetValues` (`{ fieldId: value }`) lets a caller (e.g. the calendar
+   *  view's click-empty-day-to-create) prefill the create dialog. */
+  onAddNew?: (presetValues?: Record<string, unknown>) => void
 
   /** Callback when kanban card is clicked */
   onCardClick?: (card: TData) => void
