@@ -2,8 +2,10 @@
 
 'use client'
 
+import { getOptionColorHex } from '@auxx/lib/custom-fields/client'
 import { endOfDay, endOfMonth, startOfDay, startOfMonth } from 'date-fns'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useDispatchSidebarStore } from '~/stores/dispatch-sidebar-store'
 import { api } from '~/trpc/react'
 import {
   type BoardResourceInput,
@@ -12,7 +14,13 @@ import {
   type DispatchVisitEvent,
   UNASSIGNED_RESOURCE_ID,
 } from '../types'
-import { splitVisits, UNASSIGNED_COLOR, visitToEvent } from '../utils'
+import {
+  isWorkerHidden,
+  selectedWorkerIdsFromHidden,
+  splitVisits,
+  UNASSIGNED_COLOR,
+  visitToEvent,
+} from '../utils'
 
 export interface DateRange {
   from: Date
@@ -23,6 +31,11 @@ export interface DateRange {
  * Board date/view/range/filter state + the `dispatch.getBoard` query (D.3). `range` is fed
  * by `EventCalendar`'s `onRangeChange` — stored by timestamp so identical ranges (same
  * day/view recomputed) don't churn the query key.
+ *
+ * `selectedWorkerIds`/Unassigned-column visibility (v3 sidebar plan §1.1/§1.3) derive from the
+ * persisted `dispatch-sidebar` store's `hiddenWorkerIds` — the sidebar is the only writer, this
+ * hook only reads it (via the `selectedWorkerIdsFromHidden`/`isWorkerHidden` adapters) so the
+ * board/map/planner consumers below keep their pre-v3 `Set<string> | null` contract untouched.
  */
 export function useBoardData() {
   const [date, setDate] = useState(() => new Date())
@@ -34,16 +47,13 @@ export function useBoardData() {
     from: startOfDay(new Date()),
     to: endOfDay(new Date()),
   }))
-  const [selectedWorkerIds, setSelectedWorkerIds] = useState<Set<string> | null>(null) // null = all
-  const [showBacklog, setShowBacklog] = useState(true)
-  // Board↔Map toggle (09-route-planner.md §A, contract item 7) — sibling state to `showBacklog`,
-  // deliberately NOT a `BoardViewMode` so the month-view debounce and `view === 'day'` gates stay
-  // untouched. Entering map mode doesn't change `view`; the map always renders `date`'s single day.
+  // Board↔Map toggle (09-route-planner.md §A, contract item 7) — sibling state to the sidebar's
+  // `open`, deliberately NOT a `BoardViewMode` so the month-view debounce and `view === 'day'`
+  // gates stay untouched. Entering map mode doesn't change `view`; the map always renders
+  // `date`'s single day.
   const [boardMode, setBoardMode] = useState<'calendar' | 'map'>('calendar')
-  // Map-mode panel visibility — lifted here (not `RoutePlannerView` local state) so the one
-  // board toolbar owns both toggles; the planner renders no header of its own.
-  const [plannerShowBacklog, setPlannerShowBacklog] = useState(true)
-  const [plannerShowStops, setPlannerShowStops] = useState(true)
+
+  const hiddenWorkerIds = useDispatchSidebarStore((s) => s.hiddenWorkerIds)
 
   const rangeDebounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   useEffect(() => () => clearTimeout(rangeDebounceRef.current), [])
@@ -78,16 +88,26 @@ export function useBoardData() {
   )
 
   const allWorkers: BoardWorker[] = boardQuery.data?.workers ?? []
+
+  const selectedWorkerIds = useMemo(
+    () => selectedWorkerIdsFromHidden(hiddenWorkerIds, allWorkers),
+    [hiddenWorkerIds, allWorkers]
+  )
+  const showUnassigned = useMemo(() => !isWorkerHidden(hiddenWorkerIds, null), [hiddenWorkerIds])
+
   const workers = useMemo(
     () =>
       selectedWorkerIds ? allWorkers.filter((w) => selectedWorkerIds.has(w.userId)) : allWorkers,
     [allWorkers, selectedWorkerIds]
   )
 
+  // Resolve the stored `SelectOptionColor` id (e.g. 'amber', 'forest') to a real hex — the
+  // calendar feeds this straight into `--ec-color`/`color-mix`, where several ids aren't valid
+  // CSS color names and would render as no color at all.
   const colorByUserId = useMemo(() => {
     const map = new Map<string, string>()
     for (const w of allWorkers) {
-      if (w.color) map.set(w.userId, w.color)
+      if (w.color) map.set(w.userId, getOptionColorHex(w.color))
     }
     return map
   }, [allWorkers])
@@ -107,16 +127,18 @@ export function useBoardData() {
     [scheduled, workOrderById, colorByUserId]
   )
 
-  // Day (resource) view only shows the filtered worker set's + unassigned's visits — the
-  // other columns don't exist on the grid. Week/month show everything regardless of filter
-  // (no columns to hide behind), so the filter is a day-view-only lens.
+  // Day (resource) view only shows the filtered worker set's + (if visible) Unassigned's
+  // visits — the other columns don't exist on the grid. Week/month show everything regardless
+  // of filter (no columns to hide behind), so the filter is a day-view-only lens.
   const visibleWorkerUserIds = useMemo(() => new Set(workers.map((w) => w.userId)), [workers])
   const events = useMemo(() => {
     if (view !== 'day') return allEvents
     return allEvents.filter(
-      (e) => e.resourceId === UNASSIGNED_RESOURCE_ID || visibleWorkerUserIds.has(e.resourceId!)
+      (e) =>
+        (showUnassigned && e.resourceId === UNASSIGNED_RESOURCE_ID) ||
+        visibleWorkerUserIds.has(e.resourceId!)
     )
-  }, [allEvents, view, visibleWorkerUserIds])
+  }, [allEvents, view, visibleWorkerUserIds, showUnassigned])
 
   const backlogEvents = useMemo(
     () => backlog.map((v) => ({ visit: v, workOrder: workOrderById.get(v.workOrderId) })),
@@ -125,7 +147,9 @@ export function useBoardData() {
 
   const resources: BoardResourceInput[] = useMemo(
     () => [
-      { id: UNASSIGNED_RESOURCE_ID, label: 'Unassigned', color: UNASSIGNED_COLOR },
+      ...(showUnassigned
+        ? [{ id: UNASSIGNED_RESOURCE_ID, label: 'Unassigned', color: UNASSIGNED_COLOR }]
+        : []),
       ...workers.map((w) => ({
         id: w.userId,
         label: w.user?.name ?? w.user?.email ?? 'Worker',
@@ -133,7 +157,7 @@ export function useBoardData() {
         worker: w,
       })),
     ],
-    [workers]
+    [workers, showUnassigned]
   )
 
   return {
@@ -146,15 +170,8 @@ export function useBoardData() {
     allWorkers,
     workers,
     selectedWorkerIds,
-    setSelectedWorkerIds,
-    showBacklog,
-    setShowBacklog,
     boardMode,
     setBoardMode,
-    plannerShowBacklog,
-    setPlannerShowBacklog,
-    plannerShowStops,
-    setPlannerShowStops,
     resources,
     colorByUserId,
     workOrderById,

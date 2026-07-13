@@ -112,7 +112,12 @@ export function CalendarDndProvider<T extends EventCalendarItem = EventCalendarI
     const { over } = event
     if (!over || !activeEvent || !over.data.current) return
 
-    const { date, time } = over.data.current as { date: Date; time?: number }
+    const { date, time } = over.data.current as { date?: Date; time?: number }
+    // A foreign droppable (e.g. the module sidebar's Backlog group, `{type: 'sidebar-backlog'}`)
+    // has no `date` — nothing to snap the drag-ghost time to. `onDragEnd`'s own `overData.date`
+    // check already keeps `onEventDrop` from firing on it; this just stops an `Invalid Date`
+    // (`new Date(undefined)`) from being written into `currentTime` while hovering over it.
+    if (!date) return
 
     if (time !== undefined && activeView !== 'month') {
       const newTime = new Date(date)

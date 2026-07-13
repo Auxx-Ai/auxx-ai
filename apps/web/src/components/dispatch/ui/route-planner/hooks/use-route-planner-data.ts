@@ -13,7 +13,8 @@ const EMPTY_BOARD: PlannerBoard = { workers: [], visits: [], backlog: [], workOr
 interface UseRoutePlannerDataParams {
   /** The board's viewed day (map mode always shows a single day — 09-route-planner.md §A). */
   date: Date
-  /** The board's shared worker filter (`WorkerFilterPopover`, always shown in map mode). */
+  /** The board's shared worker filter (the sidebar's Workers toggles via
+   * `selectedWorkerIdsFromHidden`). */
   selectedWorkerIds: Set<string> | null
   /** Skip fetching while the map surface isn't mounted/visible (board mode is 'calendar'). */
   enabled?: boolean

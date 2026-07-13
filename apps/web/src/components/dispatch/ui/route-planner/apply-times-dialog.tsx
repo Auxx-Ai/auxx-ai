@@ -24,7 +24,7 @@ export interface ApplyTimesDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   worker: PlannerWorker
-  /** The worker's ordered day stops — caller (`stop-list-panel.tsx`) has already excluded
+  /** The worker's ordered day stops — caller (the sidebar's `routes-group.tsx`) has already excluded
    * `'done'`/`'canceled'` visits (they never get a new time from the planner). */
   stops: PlannerVisit[]
   geometry: RouteGeometry | undefined

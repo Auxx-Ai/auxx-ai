@@ -1,33 +1,28 @@
-// apps/web/src/components/dispatch/ui/route-planner/stop-list-panel.tsx
+// apps/web/src/components/dispatch/ui/sidebar/routes-group.tsx
 
 'use client'
 
 import { Avatar, AvatarFallback, AvatarImage } from '@auxx/ui/components/avatar'
-import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
-import {
-  Collapsible,
-  CollapsibleChevron,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from '@auxx/ui/components/collapsible'
+import { CollapsibleChevron } from '@auxx/ui/components/collapsible'
+import { SidebarGroup, SidebarGroupCollapse } from '@auxx/ui/components/sidebar'
 import { toastError } from '@auxx/ui/components/toast'
 import { cn } from '@auxx/ui/lib/utils'
 import { useDroppable } from '@dnd-kit/core'
 import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { format } from 'date-fns'
-import { GripVertical, Route, Timer } from 'lucide-react'
+import { GripVertical, Route as RouteIcon, Timer } from 'lucide-react'
 import { useState } from 'react'
 import { getInitials } from '~/components/groups/utils/group-utils'
-import { ApplyTimesDialog } from './apply-times-dialog'
+import { ApplyTimesDialog } from '../route-planner/apply-times-dialog'
 import {
   dayStartAnchor,
   estimateArrivalForVisit,
   stopsForWorker,
   useRoutePlannerMutations,
-} from './hooks/use-route-planner-mutations'
-import { suggestRouteOrder } from './suggest-order'
+} from '../route-planner/hooks/use-route-planner-mutations'
+import { suggestRouteOrder } from '../route-planner/suggest-order'
 import type {
   PlannerBoard,
   PlannerDayWindow,
@@ -35,28 +30,43 @@ import type {
   PlannerVisit,
   PlannerWorker,
   RouteGeometry,
-} from './types'
+} from '../route-planner/types'
+import { SidebarGroupHeader } from './sidebar-group-header'
 
 type PlannerWorkOrder = PlannerBoard['workOrders'][number]
 
-interface StopListPanelProps {
+interface RoutesGroupProps {
   board: PlannerBoard
   filters: PlannerFilters
   geometryByWorker: Record<string, RouteGeometry | undefined>
   date: PlannerDayWindow
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  /** Per-worker sub-section open state, keyed `routes:<userId>` in the same store map as the
+   * group itself (`groupOpen`) — persisted so a dispatcher's per-worker collapse choices stick. */
+  groupOpen: Record<string, boolean>
+  onWorkerOpenChange: (userId: string, open: boolean) => void
 }
 
 /**
- * Route planner stop lists (design doc §E, seam contract's `StopListPanel`) — hosted in
- * `route-planner-view.tsx`'s right Drawer: one collapsible
- * section per visible worker, each a `@dnd-kit/sortable` `SortableContext` over that worker's
- * day stops (`routeOrder` asc, nulls last). Drag-reorder within a section writes `setRouteOrder`
- * optimistically; dragging a row (or a backlog-pane row) between sections is handled by
- * `useRoutePlannerDragEnd` (`hooks/use-route-planner-mutations.ts`) — this component only
- * registers the draggable/droppable ids that hook reads, it never calls the mutations directly
- * for cross-list moves.
+ * Sidebar Routes group (v3 sidebar plan §1.2, map mode only) — ported nearly verbatim from the
+ * deleted `route-planner/stop-list-panel.tsx`'s `WorkerStopSection`/`StopRow`: same
+ * `useDroppable`/`SortableContext` wiring (`useRoutePlannerDragEnd` still owns cross-list
+ * drops), same Suggest (`suggestRouteOrder` → `setRouteOrder`) and Apply-times
+ * (`ApplyTimesDialog`) actions — only the visual shell changes (sidebar one-line rows instead of
+ * a drawer's cards) and per-worker collapse now persists via the sidebar store instead of local
+ * `useState`.
  */
-export function StopListPanel({ board, filters, geometryByWorker, date }: StopListPanelProps) {
+export function RoutesGroup({
+  board,
+  filters,
+  geometryByWorker,
+  date,
+  open,
+  onOpenChange,
+  groupOpen,
+  onWorkerOpenChange,
+}: RoutesGroupProps) {
   const visibleWorkers =
     filters.workerIds === null
       ? board.workers
@@ -65,18 +75,25 @@ export function StopListPanel({ board, filters, geometryByWorker, date }: StopLi
   const workOrderById = new Map(board.workOrders.map((w) => [w.id, w]))
 
   return (
-    <div className='flex min-h-0 w-full flex-1 flex-col gap-2 overflow-y-auto p-2'>
-      {visibleWorkers.map((worker) => (
-        <WorkerStopSection
-          key={worker.id}
-          worker={worker}
-          board={board}
-          date={date}
-          geometry={geometryByWorker[worker.userId]}
-          workOrderById={workOrderById}
-        />
-      ))}
-    </div>
+    <SidebarGroup>
+      <SidebarGroupHeader title='Routes' open={open} onOpenChange={onOpenChange} />
+      <SidebarGroupCollapse open={open}>
+        <div className='flex flex-col gap-1.5 px-0.5'>
+          {visibleWorkers.map((worker) => (
+            <WorkerStopSection
+              key={worker.id}
+              worker={worker}
+              board={board}
+              date={date}
+              geometry={geometryByWorker[worker.userId]}
+              workOrderById={workOrderById}
+              open={groupOpen[`routes:${worker.userId}`] ?? true}
+              onOpenChange={(o) => onWorkerOpenChange(worker.userId, o)}
+            />
+          ))}
+        </div>
+      </SidebarGroupCollapse>
+    </SidebarGroup>
   )
 }
 
@@ -86,6 +103,8 @@ interface WorkerStopSectionProps {
   date: PlannerDayWindow
   geometry: RouteGeometry | undefined
   workOrderById: Map<string, PlannerWorkOrder>
+  open: boolean
+  onOpenChange: (open: boolean) => void
 }
 
 function WorkerStopSection({
@@ -94,8 +113,9 @@ function WorkerStopSection({
   date,
   geometry,
   workOrderById,
+  open,
+  onOpenChange,
 }: WorkerStopSectionProps) {
-  const [open, setOpen] = useState(true)
   const [applyOpen, setApplyOpen] = useState(false)
   const { setRouteOrder } = useRoutePlannerMutations(date)
   const { setNodeRef: setDroppableRef } = useDroppable({
@@ -131,33 +151,38 @@ function WorkerStopSection({
   }
 
   return (
-    <Collapsible open={open} onOpenChange={setOpen} className='rounded-md border'>
-      <div className='flex items-center gap-2 p-2'>
-        <CollapsibleTrigger asChild>
-          <button type='button' className='flex flex-1 items-center gap-2 text-left'>
-            <CollapsibleChevron open={open} />
-            <Avatar className='size-5'>
-              <AvatarImage src={worker.image ?? undefined} />
-              <AvatarFallback className='text-[9px]'>
-                {getInitials(worker.name ?? worker.email ?? 'Worker')}
-              </AvatarFallback>
-            </Avatar>
-            <span className='truncate text-sm font-medium'>{worker.name ?? worker.email}</span>
-            <span className='text-muted-foreground text-xs'>({stops.length})</span>
-          </button>
-        </CollapsibleTrigger>
+    <div className='rounded-md border'>
+      <div className='flex items-center gap-1 p-1.5'>
+        <button
+          type='button'
+          className='flex flex-1 items-center gap-1.5 text-left'
+          onClick={() => onOpenChange(!open)}>
+          <CollapsibleChevron open={open} />
+          <Avatar className='size-5'>
+            <AvatarImage src={worker.image ?? undefined} />
+            <AvatarFallback className='text-[9px]'>
+              {getInitials(worker.name ?? worker.email ?? 'Worker')}
+            </AvatarFallback>
+          </Avatar>
+          <span className='truncate text-xs font-medium'>{worker.name ?? worker.email}</span>
+          <span className='text-muted-foreground text-xs'>({stops.length})</span>
+        </button>
         <Button variant='ghost' size='icon-xs' title='Suggest route' onClick={handleSuggest}>
-          <Route />
+          <RouteIcon />
         </Button>
-        <Button variant='outline' size='sm' onClick={() => setApplyOpen(true)}>
-          <Timer /> Apply times
+        <Button
+          variant='ghost'
+          size='icon-xs'
+          title='Apply times'
+          onClick={() => setApplyOpen(true)}>
+          <Timer />
         </Button>
       </div>
 
-      <CollapsibleContent>
-        <div ref={setDroppableRef} className='space-y-1 border-t p-2'>
+      <SidebarGroupCollapse open={open}>
+        <div ref={setDroppableRef} className='space-y-1 border-t p-1.5'>
           {stops.length === 0 ? (
-            <div className='text-muted-foreground px-1 py-2 text-xs'>No stops today.</div>
+            <div className='text-muted-foreground px-1 py-1 text-xs'>No stops today.</div>
           ) : (
             <SortableContext items={stops.map((v) => v.id)} strategy={verticalListSortingStrategy}>
               {stops.map((visit, index) => (
@@ -173,7 +198,7 @@ function WorkerStopSection({
             </SortableContext>
           )}
         </div>
-      </CollapsibleContent>
+      </SidebarGroupCollapse>
 
       <ApplyTimesDialog
         open={applyOpen}
@@ -183,7 +208,7 @@ function WorkerStopSection({
         geometry={geometry}
         date={date}
       />
-    </Collapsible>
+    </div>
   )
 }
 
@@ -210,7 +235,7 @@ function StopRow({ visit, index, assigneeUserId, workOrder, eta }: StopRowProps)
       ref={setNodeRef}
       style={style}
       className={cn(
-        'flex items-center gap-2 rounded-md border bg-card p-2 text-xs',
+        'hover:bg-sidebar-accent flex items-center gap-1.5 rounded-md px-1.5 py-1 text-xs',
         isDone && 'opacity-50',
         isDragging && 'opacity-40'
       )}>
@@ -222,16 +247,9 @@ function StopRow({ visit, index, assigneeUserId, workOrder, eta }: StopRowProps)
           <GripVertical className='text-muted-foreground size-3' />
         </div>
       )}
-      <Badge variant='secondary' className='shrink-0'>
-        {index + 1}
-      </Badge>
-      <div className='min-w-0 flex-1'>
-        <div className='truncate font-medium'>
-          {workOrder?.number ? `${workOrder.number} · ` : ''}
-          {workOrder?.displayName ?? 'Work order'}
-        </div>
-      </div>
-      {eta && <span className='text-muted-foreground shrink-0'>~{format(eta, 'p')}</span>}
+      <span className='text-muted-foreground shrink-0 tabular-nums'>{index + 1}.</span>
+      <span className='min-w-0 flex-1 truncate'>{workOrder?.number ?? 'Work order'}</span>
+      {eta && <span className='text-muted-foreground shrink-0'>· {format(eta, 'p')}</span>}
     </div>
   )
 }

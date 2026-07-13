@@ -145,7 +145,7 @@ export function QualityChecksPage() {
       title='Quality Checks'
       description='Manage the quality-check checklist workers complete on every visit.'
       breadcrumbs={BREADCRUMBS}>
-      <div className='flex flex-col gap-8 p-3 sm:p-6'>
+      <div className='flex flex-col'>
         <Section
           title='Checks'
           icon={<ClipboardCheck className='size-4' />}

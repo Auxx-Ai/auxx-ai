@@ -56,6 +56,9 @@ function SidebarProvider({
   className,
   style,
   width,
+  persistKey = SIDEBAR_COOKIE_NAME,
+  keyboardShortcut = SIDEBAR_KEYBOARD_SHORTCUT,
+  nested = false,
   children,
   ...props
 }: React.ComponentProps<'div'> & {
@@ -63,6 +66,26 @@ function SidebarProvider({
   open?: boolean
   onOpenChange?: (open: boolean) => void
   width?: string
+  /**
+   * Cookie name used to persist the open state on every `setOpen` call. Pass `false` to skip
+   * the cookie write entirely (e.g. a nested module sidebar that persists state elsewhere).
+   * Defaults to `'sidebar_state'` — the historical single cookie name, so existing consumers
+   * see zero behavior change.
+   */
+  persistKey?: string | false
+  /**
+   * Key that toggles the sidebar when held with Cmd/Ctrl. Pass `false` to skip registering
+   * the `window` keydown listener (e.g. a nested module sidebar shouldn't fight the app-shell
+   * sidebar for the same shortcut). Defaults to `'b'`.
+   */
+  keyboardShortcut?: string | false
+  /**
+   * Renders the wrapper as a `flex h-full min-h-0` participant instead of the full-height
+   * (`min-h-svh`) page shell, so it can be nested inside a flex row under a toolbar (e.g. a
+   * module sidebar nested under the app-shell `SidebarProvider`). CSS vars and `TooltipProvider`
+   * are unaffected.
+   */
+  nested?: boolean
 }) {
   // const isMobile = false
   const isMobile = useIsMobile()
@@ -82,9 +105,11 @@ function SidebarProvider({
       }
 
       // This sets the cookie to keep the sidebar state.
-      document.cookie = `${SIDEBAR_COOKIE_NAME}=${openState}; path=/; max-age=${SIDEBAR_COOKIE_MAX_AGE}`
+      if (persistKey) {
+        document.cookie = `${persistKey}=${openState}; path=/; max-age=${SIDEBAR_COOKIE_MAX_AGE}`
+      }
     },
-    [setOpenProp, open]
+    [setOpenProp, open, persistKey]
   )
 
   // Helper to toggle the sidebar.
@@ -94,8 +119,10 @@ function SidebarProvider({
 
   // Adds a keyboard shortcut to toggle the sidebar.
   React.useEffect(() => {
+    if (!keyboardShortcut) return
+
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === SIDEBAR_KEYBOARD_SHORTCUT && (event.metaKey || event.ctrlKey)) {
+      if (event.key === keyboardShortcut && (event.metaKey || event.ctrlKey)) {
         event.preventDefault()
         toggleSidebar()
       }
@@ -103,7 +130,7 @@ function SidebarProvider({
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [toggleSidebar])
+  }, [toggleSidebar, keyboardShortcut])
 
   // We add a state so that we can do data-state="expanded" or "collapsed".
   // This makes it easier to style the sidebar with Tailwind classes.
@@ -126,7 +153,8 @@ function SidebarProvider({
             } as React.CSSProperties
           }
           className={cn(
-            'group/sidebar-wrapper flex min-h-svh has-data-[variant=inset]:bg-sidebar',
+            'group/sidebar-wrapper flex has-data-[variant=inset]:bg-sidebar',
+            nested ? 'h-full min-h-0' : 'min-h-svh',
             className
           )}
           {...props}>
@@ -227,11 +255,14 @@ function Sidebar({
       </div>
     )
   } else {
-    // Non-fixed sidebar implementation
+    // Non-fixed sidebar implementation — a normal flex sibling (e.g. a module sidebar nested
+    // under a toolbar). Collapses to width 0 (own `data-collapsible` attribute, not a `group`
+    // ancestor's — this element carries both) instead of the fixed variant's off-screen slide.
     return (
       <div
         className={cn(
-          'group hidden text-sidebar-foreground md:block',
+          'hidden shrink-0 overflow-hidden text-sidebar-foreground transition-[width] duration-200 ease-linear md:block',
+          'w-(--sidebar-width) data-[collapsible=offcanvas]:w-0',
           side === 'left' ? 'border-r' : 'border-l',
           className
         )}
@@ -243,8 +274,7 @@ function Sidebar({
         <div
           data-sidebar='sidebar'
           className={cn(
-            'flex h-screen w-(--sidebar-width) flex-col bg-sidebar transition-[width] duration-200 ease-linear select-none',
-            // collapsible === 'icon' && 'w-(--sidebar-width-icon)',
+            'flex h-full w-(--sidebar-width) flex-col bg-sidebar select-none',
             variant === 'floating' && 'rounded-lg border border-sidebar-border shadow-sm',
             variant === 'inset' && 'rounded-lg border border-sidebar-border'
           )}>

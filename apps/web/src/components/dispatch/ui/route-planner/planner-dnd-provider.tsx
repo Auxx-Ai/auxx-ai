@@ -22,12 +22,11 @@ interface PlannerDndProviderProps {
 }
 
 /**
- * The route planner's `DndContext` (backlog rows, stop-list sortables, worker-list droppables).
- * Lives ABOVE `MainPageContent` in `dispatch-board.tsx` — NOT inside `RoutePlannerView` — so the
- * Routes panel keeps its drag context in BOTH homes: the overlay `RoutesDrawer` (portaled, React
- * context flows through portals) and the docked `MainPageContent` panel (a sibling of the board,
- * unreachable from any provider mounted inside it). Calendar mode mounts `CalendarDndProvider`
- * INSIDE this one, so calendar draggables still bind to their own nearest context.
+ * The route planner's `DndContext` (sidebar Backlog rows, sidebar Routes stop-list sortables,
+ * worker-list droppables). Wraps the map mode's row in `dispatch-board.tsx`
+ * (`DispatchSidebar` + `RoutePlannerView`, v3 sidebar plan §1.3) so both share one drag context —
+ * calendar mode never mounts this provider at all, it mounts its own `CalendarDndProvider`
+ * around the calendar branch's row instead (the two are mode-exclusive, never nested).
  */
 export function PlannerDndProvider({
   board,

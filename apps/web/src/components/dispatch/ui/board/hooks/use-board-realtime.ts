@@ -21,6 +21,8 @@ export function useBoardRealtime(range: DateRange) {
     (event: string) => {
       if (event !== 'dispatch:visit-changed') return
       void utils.dispatch.getBoard.invalidate(range)
+      // v3 sidebar plan §1.4 — the mini-calendar's day-marker dots follow the same broadcast.
+      void utils.dispatch.getVisitDayMarkers.invalidate()
     },
     [range, utils]
   )

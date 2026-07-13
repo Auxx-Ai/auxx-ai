@@ -42,6 +42,8 @@ export function useBoardMutations(range: DateRange) {
 
   const settle = useCallback(() => {
     void utils.dispatch.getBoard.invalidate(range)
+    // v3 sidebar plan §1.4 — keep the mini-calendar's day-marker dots fresh alongside the board.
+    void utils.dispatch.getVisitDayMarkers.invalidate()
   }, [range, utils])
 
   const scheduleVisit = api.dispatch.scheduleVisit.useMutation({

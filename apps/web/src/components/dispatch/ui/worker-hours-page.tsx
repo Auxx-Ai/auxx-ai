@@ -16,6 +16,10 @@ import {
 } from '~/components/availability/ui/weekly-hours-editor'
 import { useDirtyDraft } from '~/components/global/forms/use-dirty-draft'
 import { useConfirm } from '~/hooks/use-confirm'
+import {
+  availabilitySubjectKey,
+  useAvailabilityCacheStore,
+} from '~/stores/availability-cache-store'
 import { api } from '~/trpc/react'
 
 const ALL_DAYS = [0, 1, 2, 3, 4, 5, 6] as const
@@ -87,7 +91,11 @@ export function WorkerHoursPage({ userId, weekStartsOn, use24HourTime }: WorkerH
   const loading = !workerQuery.isSuccess || !orgQuery.isSuccess
 
   const saveWeeklyHours = api.availability.saveWeeklyHours.useMutation({
-    onSuccess: () => utils.availability.getWeeklyHours.invalidate({ subject }),
+    onSuccess: () => {
+      utils.availability.getWeeklyHours.invalidate({ subject })
+      // Drop the board's cached shading for this worker so it re-fetches the new hours.
+      useAvailabilityCacheStore.getState().invalidate(availabilitySubjectKey(subject))
+    },
     onError: (error) => toastError({ title: 'Error saving hours', description: error.message }),
   })
 

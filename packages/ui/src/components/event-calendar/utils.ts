@@ -20,8 +20,9 @@ export function eventColorVar(color?: string): CSSProperties {
 // set via `eventColorVar`, which is how a single class works for any color
 // value AND both themes (color-mix against `transparent` is naturally
 // theme-safe; the dark: variant just boosts opacity for legibility).
+// Tint tuned to a Notion-Calendar level (was 6%/18% — nearly invisible in light mode).
 export const eventTintBgClass =
-  'bg-[color-mix(in_oklch,var(--ec-color)_6%,transparent)] dark:bg-[color-mix(in_oklch,var(--ec-color)_18%,transparent)]'
+  'bg-[color-mix(in_oklch,var(--ec-color)_14%,transparent)] dark:bg-[color-mix(in_oklch,var(--ec-color)_28%,transparent)]'
 export const eventTintTextClass =
   'text-[color-mix(in_oklch,var(--ec-color)_70%,black)] dark:text-[color-mix(in_oklch,var(--ec-color)_55%,white)]'
 export const eventSolidBgClass = 'bg-[var(--ec-color)]'
