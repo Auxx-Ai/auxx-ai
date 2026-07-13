@@ -1,6 +1,7 @@
 // apps/web/src/components/money/ui/settings/products-list.tsx
 'use client'
 
+import { FieldType } from '@auxx/database/enums'
 import { getOptionColor, type SelectOptionColor } from '@auxx/lib/custom-fields/client'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
@@ -12,15 +13,21 @@ import { cn } from '@auxx/ui/lib/utils'
 import { Package, Plus, Trash2, Wrench } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useResourceFields } from '~/components/resources'
+import { useSaveFieldValue } from '~/components/resources/hooks/use-save-field-value'
 import { useConfirm } from '~/hooks/use-confirm'
 import { api } from '~/trpc/react'
 import { type CatalogItem, useCatalogItems } from '../../hooks/use-catalog-items'
+import type { CatalogDraftHandle } from './catalog-draft-types'
 import { formatMoney } from './format-money'
 
 interface ProductsListProps {
   selectedId: string | null
-  onSelect: (id: string) => void
+  onSelect: (id: string | null) => void
   currency: string
+  /** Phantom draft, owned by `products-services-page.tsx`. */
+  draft: CatalogDraftHandle | null
+  /** "Add item" — creates a fresh draft, or re-selects the existing one. */
+  onAddDraft: () => void
 }
 
 /** Category → row icon. Falls back to the generic `service` icon for org-added options. */
@@ -36,9 +43,16 @@ function CategoryIcon({ category }: { category: string }) {
  * Left column of the Products & Services tab: search + "Add item" above a
  * flat `TreeRow` list (mcp-server-tools-tab master–detail recipe). Rows show
  * category icon · name · price + category badge · a trailing active `Switch`.
+ * A phantom draft (if any) renders as a final, action-less row.
  */
-export function ProductsList({ selectedId, onSelect, currency }: ProductsListProps) {
-  const { items, entityDefinitionId, isLoading, refresh, appendRecord } = useCatalogItems()
+export function ProductsList({
+  selectedId,
+  onSelect,
+  currency,
+  draft,
+  onAddDraft,
+}: ProductsListProps) {
+  const { items, entityDefinitionId, isLoading, removeRecord } = useCatalogItems()
   const { fields: catalogFields } = useResourceFields('catalog-items')
   const categoryOptions = useMemo(
     () => catalogFields.find((f) => f.key === 'category')?.options?.options ?? [],
@@ -47,12 +61,8 @@ export function ProductsList({ selectedId, onSelect, currency }: ProductsListPro
   const [search, setSearch] = useState('')
   const [confirm, ConfirmDialog] = useConfirm()
 
-  const updateRecord = api.record.update.useMutation()
-  const createRecord = api.record.create.useMutation({
-    onError: (error) => toastError({ title: 'Error creating item', description: error.message }),
-  })
+  const { saveFieldValue } = useSaveFieldValue({})
   const deleteRecord = api.record.delete.useMutation({
-    onSuccess: () => refresh(),
     onError: (error) => toastError({ title: 'Error deleting item', description: error.message }),
   })
 
@@ -63,14 +73,17 @@ export function ProductsList({ selectedId, onSelect, currency }: ProductsListPro
       confirmText: 'Delete',
       destructive: true,
     })
-    if (confirmed) deleteRecord.mutate({ recordId: item.recordId })
+    if (!confirmed) return
+    deleteRecord.mutate(
+      { recordId: item.recordId },
+      {
+        onSuccess: () => {
+          removeRecord(item.id)
+          if (selectedId === item.id) onSelect(null)
+        },
+      }
+    )
   }
-
-  // Optimistic overlay for the active toggle — `record.update` bypasses the
-  // granular field-value store, so reflect the flip locally and invalidate
-  // `listAll` in the background rather than waiting on a full refetch.
-  const [activeOverride, setActiveOverride] = useState<Record<string, boolean>>({})
-  const effectiveActive = (item: CatalogItem) => activeOverride[item.id] ?? item.active
 
   function categoryBadge(category: string) {
     const option = categoryOptions.find((o) => o.value === category)
@@ -83,32 +96,7 @@ export function ProductsList({ selectedId, onSelect, currency }: ProductsListPro
   }
 
   function handleToggleActive(item: CatalogItem) {
-    const next = !effectiveActive(item)
-    setActiveOverride((prev) => ({ ...prev, [item.id]: next }))
-    updateRecord.mutate(
-      { recordId: item.recordId, values: { catalog_item_active: next } },
-      {
-        onSuccess: () => refresh(),
-        onError: (error) => {
-          setActiveOverride((prev) => ({ ...prev, [item.id]: !next }))
-          toastError({ title: 'Error updating item', description: error.message })
-        },
-      }
-    )
-  }
-
-  async function handleAdd() {
-    if (!entityDefinitionId) return
-    const result = await createRecord.mutateAsync({
-      entityDefinitionId,
-      values: { catalog_item_name: 'New item' },
-    })
-    appendRecord({
-      ...result.instance,
-      recordId: result.recordId,
-      fieldValues: { catalog_item_name: 'New item', ...result.values },
-    })
-    onSelect(result.instance.id)
+    saveFieldValue(item.recordId, 'catalog_item_active', !item.active, FieldType.CHECKBOX)
   }
 
   const filtered = search
@@ -123,13 +111,7 @@ export function ProductsList({ selectedId, onSelect, currency }: ProductsListPro
           onChange={(e) => setSearch(e.target.value)}
           placeholder='Search products & services...'
         />
-        <Button
-          variant='outline'
-          size='sm'
-          onClick={handleAdd}
-          loading={createRecord.isPending}
-          loadingText='Adding...'
-          disabled={!entityDefinitionId}>
+        <Button variant='outline' size='sm' onClick={onAddDraft} disabled={!entityDefinitionId}>
           <Plus />
           Add item
         </Button>
@@ -137,7 +119,7 @@ export function ProductsList({ selectedId, onSelect, currency }: ProductsListPro
 
       {isLoading ? (
         <div className='p-4 text-center text-sm text-muted-foreground'>Loading…</div>
-      ) : filtered.length === 0 ? (
+      ) : filtered.length === 0 && !draft ? (
         <div className='p-4 text-center text-sm text-muted-foreground'>
           {search ? 'No matches' : 'No products or services yet — add your first item.'}
         </div>
@@ -152,7 +134,7 @@ export function ProductsList({ selectedId, onSelect, currency }: ProductsListPro
               rowClassName={cn(
                 'bg-primary-100/50 hover:bg-primary-100',
                 selectedId === item.id && 'bg-primary-100 ring-1 ring-primary-200',
-                !effectiveActive(item) && 'opacity-60'
+                !item.active && 'opacity-60'
               )}
               secondary={
                 <span className='flex items-center gap-1.5 text-xs text-muted-foreground'>
@@ -170,14 +152,29 @@ export function ProductsList({ selectedId, onSelect, currency }: ProductsListPro
                   </TreeRowButton>
                   <Switch
                     size='xs'
-                    checked={effectiveActive(item)}
+                    checked={item.active}
                     onCheckedChange={() => handleToggleActive(item)}
-                    disabled={updateRecord.isPending}
                   />
                 </div>
               }
             />
           ))}
+          {draft && !draft.recordId && (
+            <TreeRow
+              key={draft.draftId}
+              icon={<CategoryIcon category='service' />}
+              title={
+                <span className={cn('text-sm', !draft.name && 'text-muted-foreground italic')}>
+                  {draft.name || 'Untitled item'}
+                </span>
+              }
+              onToggleOpen={() => onSelect(draft.draftId)}
+              rowClassName={cn(
+                'bg-primary-100/50 hover:bg-primary-100',
+                selectedId === draft.draftId && 'bg-primary-100 ring-1 ring-primary-200'
+              )}
+            />
+          )}
         </div>
       )}
       <ConfirmDialog />

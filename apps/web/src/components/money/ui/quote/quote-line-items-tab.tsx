@@ -40,6 +40,8 @@ const QUOTE_STATUS_ATTRS = ['quote_status', 'quote_valid_until'] as const
 const EXPIRABLE_STATUSES = new Set(['draft', 'sent'])
 /** Statuses where a quote can still be (re)sent (money MQ2 build spec §E.2). */
 const SENDABLE_STATUSES = new Set(['draft', 'sent'])
+/** Post-draft statuses that can be returned to draft for editing (mirrors invoice SENT_STATUSES). */
+const REVERTIBLE_STATUSES = new Set(['sent', 'approved', 'declined', 'canceled'])
 
 export function QuoteLineItemsTab({ recordId, variant = 'tab' }: DetailViewTabProps) {
   const router = useRouter()
@@ -92,10 +94,13 @@ export function QuoteLineItemsTab({ recordId, variant = 'tab' }: DetailViewTabPr
     }
   }
 
-  const handleEditSent = async () => {
+  const handleReturnToDraft = async () => {
     const confirmed = await confirm({
       title: 'Edit this quote?',
-      description: 'This quote was sent — editing returns it to draft.',
+      description:
+        status === 'sent'
+          ? 'This quote was sent — editing returns it to draft.'
+          : `This quote is ${status} — editing returns it to draft.`,
       confirmText: 'Edit',
       cancelText: 'Cancel',
     })
@@ -172,10 +177,10 @@ export function QuoteLineItemsTab({ recordId, variant = 'tab' }: DetailViewTabPr
             </DropdownMenuItem>
           )}
 
-          {status === 'sent' && (
+          {REVERTIBLE_STATUSES.has(status) && (
             <>
               <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={handleEditSent}>
+              <DropdownMenuItem onClick={handleReturnToDraft}>
                 <Undo2 /> Return to draft
               </DropdownMenuItem>
             </>
@@ -183,10 +188,12 @@ export function QuoteLineItemsTab({ recordId, variant = 'tab' }: DetailViewTabPr
         </DocumentActionsCluster>
       </DocumentSectionActions>
 
-      {status === 'sent' && (
+      {REVERTIBLE_STATUSES.has(status) && (
         <div className='mx-4 mt-3 flex items-center gap-3 rounded-lg border border-amber-400/30 bg-amber-400/10 px-3 py-2 text-sm'>
           <span className='text-amber-700 dark:text-amber-400'>
-            This quote was sent — use “Return to draft” to edit it.
+            {status === 'sent'
+              ? 'This quote was sent — use “Return to draft” to edit it.'
+              : `This quote is ${status} — use “Return to draft” to edit it.`}
           </span>
         </div>
       )}

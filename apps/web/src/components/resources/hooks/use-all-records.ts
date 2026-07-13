@@ -68,6 +68,12 @@ interface UseAllRecordsResult<T = RecordMeta> {
    * hasn't been populated yet (falls back to the next natural fetch).
    */
   appendRecord: (item: AllRecordsItem) => void
+  /**
+   * Remove a deleted item from the `listAll` cache, the record store, and its
+   * field-value store keys — the delete counterpart of `appendRecord`. Skips
+   * the `refresh()` round-trip so the row disappears instantly.
+   */
+  removeRecord: (id: string) => void
 }
 
 /**
@@ -139,6 +145,24 @@ export function useAllRecords<T extends RecordMeta = RecordMeta>(
 
   const resolvedEntityDefId = data?.entityDefinitionId ?? null
 
+  // Remove a deleted item from the listAll cache directly instead of
+  // refetching — the delete counterpart of appendRecord above. Also drops the
+  // row from the record store and clears its field-value store keys so a
+  // stale row can't reappear via the compose step.
+  const removeRecord = useCallback(
+    (id: string) => {
+      utils.record.listAll.setData(
+        { entityDefinitionId, apiSlug, fieldIds, includeArchived },
+        (old) => (old ? { ...old, items: old.items.filter((item) => item.id !== id) } : old)
+      )
+      if (resolvedEntityDefId) {
+        useRecordStore.getState().removeRecord(resolvedEntityDefId, id)
+        useFieldValueStore.getState().invalidateResource(toRecordId(resolvedEntityDefId, id))
+      }
+    },
+    [utils, entityDefinitionId, apiSlug, fieldIds, includeArchived, resolvedEntityDefId]
+  )
+
   // Resolve fieldKey → fieldId (UUID) using data.fields from API response
   // System fields use systemAttribute as key (e.g., 'inbox_name') but save uses UUID
   // Custom fields already use UUID as key, so resolution is a no-op for them
@@ -149,19 +173,27 @@ export function useAllRecords<T extends RecordMeta = RecordMeta>(
     [data?.fields]
   )
 
-  // Build field value keys for all records (stable reference)
+  // Build field value keys for all records (stable reference). Union the
+  // payload's own keys with the entity's known field keys (`data.fields`) —
+  // a freshly created record has no payload entry for fields that only got
+  // a value via a later store write (createEntity only writes fields it was
+  // given or that have a configured defaultValue), so subscribing to payload
+  // keys alone means the compose step below never re-runs when that field
+  // gets its first store value.
   const fieldValueKeys = useMemo(() => {
     if (!data?.items || !resolvedEntityDefId) return []
+    const knownFieldKeys = data.fields ? Object.keys(data.fields) : []
     const keys: FieldValueKey[] = []
     for (const item of data.items) {
       const recordId = toRecordId(resolvedEntityDefId, item.id)
-      for (const fieldKey of Object.keys(item.fieldValues)) {
+      const unionKeys = new Set([...Object.keys(item.fieldValues), ...knownFieldKeys])
+      for (const fieldKey of unionKeys) {
         const resolvedFieldId = resolveFieldId(fieldKey)
         keys.push(buildFieldValueKey(recordId, resolvedFieldId))
       }
     }
     return keys
-  }, [data?.items, resolvedEntityDefId, resolveFieldId])
+  }, [data?.items, data?.fields, resolvedEntityDefId, resolveFieldId])
 
   // Stable string key for selector memoization
   const keysKey = fieldValueKeys.join(',')
@@ -210,7 +242,12 @@ export function useAllRecords<T extends RecordMeta = RecordMeta>(
     )
   )
 
-  // Populate both stores when data arrives
+  // Populate both stores when data arrives. The field-value store is
+  // authoritative once a key exists — this effect only fills GAPS (first
+  // load, a newly appended record) rather than re-seeding every key on every
+  // `data` identity change, which would stomp a since-confirmed optimistic
+  // edit that this stale payload doesn't know about yet. `refresh()` below is
+  // the explicit reconcile path that clears keys before refetching.
   useEffect(() => {
     if (!data?.items || !data.entityDefinitionId) return
 
@@ -221,8 +258,10 @@ export function useAllRecords<T extends RecordMeta = RecordMeta>(
     // since requestRecord checks: records[entityDefId]?.has(id)
     setRecords(entityDefId, data.items)
 
-    // Populate field value store (expects Array<{ key, value }> format)
-    // Use resolveFieldId to ensure keys match what save operations use
+    // Populate field value store (expects Array<{ key, value }> format).
+    // Use resolveFieldId to ensure keys match what save operations use, and
+    // skip any key the store already has a value for (store wins).
+    const currentValues = useFieldValueStore.getState().values
     const fieldValueEntries: Array<{ key: FieldValueKey; value: StoredFieldValue }> = []
 
     for (const item of data.items) {
@@ -232,6 +271,7 @@ export function useAllRecords<T extends RecordMeta = RecordMeta>(
         // Resolve systemAttribute → UUID (custom fields already use UUID, so no-op)
         const resolvedFieldId = resolveFieldId(fieldKey)
         const key = buildFieldValueKey(recordId, resolvedFieldId)
+        if (key in currentValues) continue
         fieldValueEntries.push({ key, value: value as StoredFieldValue })
       }
     }
@@ -241,17 +281,38 @@ export function useAllRecords<T extends RecordMeta = RecordMeta>(
     }
   }, [data, setRecords, setFieldValues, resolveFieldId])
 
+  // Explicit reconcile path: invalidate the field-value store for the
+  // currently-listed records BEFORE refetching, so the populate effect above
+  // (which only fills gaps) re-seeds those keys fresh once the new `data`
+  // lands. Realtime keeps mounted rows fresh in between; this is for callers
+  // that need a hard resync (e.g. after a raw `record.update` that bypasses
+  // the field-value store).
+  const refresh = useCallback(() => {
+    if (resolvedEntityDefId && data?.items) {
+      const currentRecordIds = data.items.map((item) => toRecordId(resolvedEntityDefId, item.id))
+      useFieldValueStore.getState().invalidateResources(currentRecordIds)
+    }
+    return refetch()
+  }, [resolvedEntityDefId, data?.items, refetch])
+
   // Compose records from base data + store field values (reactive to optimistic updates)
   const records = useMemo(() => {
     if (!data?.items || !resolvedEntityDefId) return []
+
+    const knownFieldKeys = data.fields ? Object.keys(data.fields) : []
 
     return data.items.map((item) => {
       const recordId = toRecordId(resolvedEntityDefId, item.id)
       const storeMeta = storeMetas[item.id]
 
-      // Build field values by reading from store (includes optimistic updates)
+      // Build field values from the union of the payload's keys and the
+      // entity's known field keys — a fresh record has no payload entry for
+      // a field it only got a value for via a later store write (see
+      // fieldValueKeys above for why). Keys absent from both store and
+      // payload compose to `undefined`; consumers already `?? null` those.
       const composedFieldValues: Record<string, unknown> = {}
-      for (const fieldKey of Object.keys(item.fieldValues)) {
+      const unionKeys = new Set([...Object.keys(item.fieldValues), ...knownFieldKeys])
+      for (const fieldKey of unionKeys) {
         const resolvedFieldId = resolveFieldId(fieldKey)
         const storeKey = buildFieldValueKey(recordId, resolvedFieldId)
         // Prefer store value (may have optimistic update), fallback to API data
@@ -292,7 +353,8 @@ export function useAllRecords<T extends RecordMeta = RecordMeta>(
     fields: data?.fields ?? {},
     isLoading: shouldFetch && isLoading,
     error: error ?? null,
-    refresh: refetch,
+    refresh,
     appendRecord,
+    removeRecord,
   }
 }

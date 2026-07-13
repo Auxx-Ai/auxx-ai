@@ -1,6 +1,7 @@
 // apps/web/src/components/money/ui/settings/groups-list.tsx
 'use client'
 
+import { FieldType } from '@auxx/database/enums'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { InputSearch } from '@auxx/ui/components/input-search'
@@ -10,40 +11,43 @@ import { TreeRow, TreeRowButton } from '@auxx/ui/components/tree-row'
 import { cn } from '@auxx/ui/lib/utils'
 import { Boxes, Plus, Trash2 } from 'lucide-react'
 import { useState } from 'react'
+import { useSaveFieldValue } from '~/components/resources/hooks/use-save-field-value'
 import { useConfirm } from '~/hooks/use-confirm'
 import { useSettings } from '~/hooks/use-settings'
 import { api } from '~/trpc/react'
 import { type CatalogGroup, useCatalogGroups } from '../../hooks/use-catalog-groups'
 import { useCatalogItems } from '../../hooks/use-catalog-items'
+import type { CatalogDraftHandle } from './catalog-draft-types'
 import { formatMoney } from './format-money'
 import type { TaxRate } from './tax-rate-types'
 
 interface GroupsListProps {
   selectedId: string | null
-  onSelect: (id: string) => void
+  onSelect: (id: string | null) => void
   currency: string
+  /** Phantom draft, owned by `products-services-page.tsx`. */
+  draft: CatalogDraftHandle | null
+  /** "Add group" — creates a fresh draft, or re-selects the existing one. */
+  onAddDraft: () => void
 }
 
 /**
  * Left column of the Product groups tab: search + "Add group" above a flat
  * `TreeRow` list (products-list.tsx master–detail recipe). Rows show a Boxes
  * icon · name · "N items · computed total" + discount/tax badges when set ·
- * a trailing active `Switch`.
+ * a trailing active `Switch`. A phantom draft (if any) renders as a final,
+ * action-less row.
  */
-export function GroupsList({ selectedId, onSelect, currency }: GroupsListProps) {
-  const { groups, entityDefinitionId, isLoading, refresh, appendRecord } = useCatalogGroups()
+export function GroupsList({ selectedId, onSelect, currency, draft, onAddDraft }: GroupsListProps) {
+  const { groups, entityDefinitionId, isLoading, removeRecord } = useCatalogGroups()
   const { itemMap } = useCatalogItems()
   const { getSetting } = useSettings({ scope: 'DOCUMENTS' })
   const taxRates = (getSetting('documents.taxRates') as TaxRate[] | null) ?? []
   const [search, setSearch] = useState('')
   const [confirm, ConfirmDialog] = useConfirm()
 
-  const updateRecord = api.record.update.useMutation()
-  const createRecord = api.record.create.useMutation({
-    onError: (error) => toastError({ title: 'Error creating group', description: error.message }),
-  })
+  const { saveFieldValue } = useSaveFieldValue({})
   const deleteRecord = api.record.delete.useMutation({
-    onSuccess: () => refresh(),
     onError: (error) => toastError({ title: 'Error deleting group', description: error.message }),
   })
 
@@ -54,14 +58,17 @@ export function GroupsList({ selectedId, onSelect, currency }: GroupsListProps) 
       confirmText: 'Delete',
       destructive: true,
     })
-    if (confirmed) deleteRecord.mutate({ recordId: group.recordId })
+    if (!confirmed) return
+    deleteRecord.mutate(
+      { recordId: group.recordId },
+      {
+        onSuccess: () => {
+          removeRecord(group.id)
+          if (selectedId === group.id) onSelect(null)
+        },
+      }
+    )
   }
-
-  // Optimistic overlay for the active toggle — `record.update` bypasses the
-  // granular field-value store, so reflect the flip locally and invalidate
-  // `listAll` in the background rather than waiting on a full refetch.
-  const [activeOverride, setActiveOverride] = useState<Record<string, boolean>>({})
-  const effectiveActive = (group: CatalogGroup) => activeOverride[group.id] ?? group.active
 
   function computeTotal(group: CatalogGroup): number | null {
     let total = 0
@@ -100,32 +107,7 @@ export function GroupsList({ selectedId, onSelect, currency }: GroupsListProps) 
   }
 
   function handleToggleActive(group: CatalogGroup) {
-    const next = !effectiveActive(group)
-    setActiveOverride((prev) => ({ ...prev, [group.id]: next }))
-    updateRecord.mutate(
-      { recordId: group.recordId, values: { catalog_group_active: next } },
-      {
-        onSuccess: () => refresh(),
-        onError: (error) => {
-          setActiveOverride((prev) => ({ ...prev, [group.id]: !next }))
-          toastError({ title: 'Error updating group', description: error.message })
-        },
-      }
-    )
-  }
-
-  async function handleAdd() {
-    if (!entityDefinitionId) return
-    const result = await createRecord.mutateAsync({
-      entityDefinitionId,
-      values: { catalog_group_name: 'New group' },
-    })
-    appendRecord({
-      ...result.instance,
-      recordId: result.recordId,
-      fieldValues: { catalog_group_name: 'New group', ...result.values },
-    })
-    onSelect(result.instance.id)
+    saveFieldValue(group.recordId, 'catalog_group_active', !group.active, FieldType.CHECKBOX)
   }
 
   const filtered = search
@@ -140,13 +122,7 @@ export function GroupsList({ selectedId, onSelect, currency }: GroupsListProps) 
           onChange={(e) => setSearch(e.target.value)}
           placeholder='Search product groups...'
         />
-        <Button
-          variant='outline'
-          size='sm'
-          onClick={handleAdd}
-          loading={createRecord.isPending}
-          loadingText='Adding...'
-          disabled={!entityDefinitionId}>
+        <Button variant='outline' size='sm' onClick={onAddDraft} disabled={!entityDefinitionId}>
           <Plus />
           Add group
         </Button>
@@ -154,7 +130,7 @@ export function GroupsList({ selectedId, onSelect, currency }: GroupsListProps) 
 
       {isLoading ? (
         <div className='p-4 text-center text-sm text-muted-foreground'>Loading…</div>
-      ) : filtered.length === 0 ? (
+      ) : filtered.length === 0 && !draft ? (
         <div className='p-4 text-center text-sm text-muted-foreground'>
           {search ? 'No matches' : 'No product groups yet — add your first one.'}
         </div>
@@ -171,7 +147,7 @@ export function GroupsList({ selectedId, onSelect, currency }: GroupsListProps) 
                 rowClassName={cn(
                   'bg-primary-100/50 hover:bg-primary-100',
                   selectedId === group.id && 'bg-primary-100 ring-1 ring-primary-200',
-                  !effectiveActive(group) && 'opacity-60'
+                  !group.active && 'opacity-60'
                 )}
                 secondary={
                   <span className='flex items-center gap-1.5 text-xs text-muted-foreground'>
@@ -191,15 +167,30 @@ export function GroupsList({ selectedId, onSelect, currency }: GroupsListProps) 
                     </TreeRowButton>
                     <Switch
                       size='xs'
-                      checked={effectiveActive(group)}
+                      checked={group.active}
                       onCheckedChange={() => handleToggleActive(group)}
-                      disabled={updateRecord.isPending}
                     />
                   </div>
                 }
               />
             )
           })}
+          {draft && !draft.recordId && (
+            <TreeRow
+              key={draft.draftId}
+              icon={<Boxes className='size-4 text-muted-foreground' />}
+              title={
+                <span className={cn('text-sm', !draft.name && 'text-muted-foreground italic')}>
+                  {draft.name || 'Untitled group'}
+                </span>
+              }
+              onToggleOpen={() => onSelect(draft.draftId)}
+              rowClassName={cn(
+                'bg-primary-100/50 hover:bg-primary-100',
+                selectedId === draft.draftId && 'bg-primary-100 ring-1 ring-primary-200'
+              )}
+            />
+          )}
         </div>
       )}
       <ConfirmDialog />
