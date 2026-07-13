@@ -36,6 +36,10 @@ interface BacklogGroupProps {
   droppable: boolean
   open: boolean
   onOpenChange: (open: boolean) => void
+  /** Row click (v4 Phase 4) — reports the clicked row's work-order instance id so the board
+   * shell can open a `RecordDrawer`. dnd-kit's 8px pointer activation distance already
+   * separates a plain click from a drag, so this coexists with the row's drag listeners. */
+  onSelectWorkOrder?: (workOrderId: string) => void
 }
 
 /**
@@ -54,6 +58,7 @@ export function BacklogGroup({
   droppable,
   open,
   onOpenChange,
+  onSelectWorkOrder,
 }: BacklogGroupProps) {
   const count = sections.reduce((sum, s) => sum + s.items.length, 0)
   const isEmpty = count === 0
@@ -104,6 +109,7 @@ export function BacklogGroup({
                       item={item}
                       dragType={dragType}
                       canEdit={canEdit}
+                      onSelectWorkOrder={onSelectWorkOrder}
                     />
                   ))}
                 </div>
@@ -120,9 +126,10 @@ interface BacklogRowProps {
   item: BacklogItem
   dragType: BacklogGroupProps['dragType']
   canEdit: boolean
+  onSelectWorkOrder?: (workOrderId: string) => void
 }
 
-function BacklogRow({ item, dragType, canEdit }: BacklogRowProps) {
+function BacklogRow({ item, dragType, canEdit, onSelectWorkOrder }: BacklogRowProps) {
   const { visit, workOrder } = item
   // `item` rides along in the draggable's data (not just `visitId`) so the shared
   // `AppDragOverlay`/`renderAppDragGhost` (apps/web/src/components/global/app-drag-overlay.tsx)
@@ -143,6 +150,7 @@ function BacklogRow({ item, dragType, canEdit }: BacklogRowProps) {
         {...(canEdit ? { ...attributes, ...listeners } : {})}
         id={`sidebar-backlog-${visit.id}`}
         name={backlogRowLabel(item)}
+        onClick={onSelectWorkOrder ? () => onSelectWorkOrder(visit.workOrderId) : undefined}
         className={cn(
           canEdit && 'cursor-grab touch-none active:cursor-grabbing',
           isDragging && 'opacity-40'

@@ -8,7 +8,13 @@ import { useOrgChannel } from '~/realtime/hooks'
 import { api } from '~/trpc/react'
 import type { PlannerBoard, PlannerDayWindow, PlannerFilters, RouteGeometry } from '../types'
 
-const EMPTY_BOARD: PlannerBoard = { workers: [], visits: [], backlog: [], workOrders: [] }
+const EMPTY_BOARD: PlannerBoard = {
+  workers: [],
+  visits: [],
+  backlog: [],
+  workOrders: [],
+  depot: null,
+}
 
 interface UseRoutePlannerDataParams {
   /** The board's viewed day (map mode always shows a single day — 09-route-planner.md §A). */

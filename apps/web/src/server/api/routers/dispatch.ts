@@ -126,6 +126,8 @@ export const dispatchRouter = createTRPCRouter({
         isActive: z.boolean().optional(),
         color: z.string().nullable().optional(),
         homeBase: addressStructSchema.nullable().optional(),
+        routeStartAtHome: z.boolean().optional(),
+        routeEndAtHome: z.boolean().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -138,6 +140,8 @@ export const dispatchRouter = createTRPCRouter({
         isActive: input.isActive,
         color: input.color,
         homeBase: input.homeBase,
+        routeStartAtHome: input.routeStartAtHome,
+        routeEndAtHome: input.routeEndAtHome,
       })
     }),
   removeWorker: dispatchAdminProcedure

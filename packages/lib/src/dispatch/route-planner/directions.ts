@@ -15,7 +15,14 @@ import { NotFoundError } from '../../errors'
 import { listDispatchWorkers } from '../workers'
 import { resolveRouteStart } from './depot'
 import { haversineMeters } from './suggest'
-import type { LatLng, PlannerDayWindow, RouteGeometry, RouteLeg, RouteStop } from './types'
+import type {
+  LatLng,
+  PlannerDayWindow,
+  ReturnLeg,
+  RouteGeometry,
+  RouteLeg,
+  RouteStop,
+} from './types'
 
 const logger = createScopedLogger('dispatch:route-planner:directions')
 
@@ -40,17 +47,29 @@ function sortKeysDeep(value: unknown): unknown {
   return value
 }
 
-function hashRouteInput(depot: LatLng | null, stops: RouteStop[]): string {
-  const input = { depot, stops: stops.map((s) => ({ visitId: s.visitId, lat: s.lat, lng: s.lng })) }
+function hashRouteInput(
+  depotStart: LatLng | null,
+  depotEnd: LatLng | null,
+  stops: RouteStop[]
+): string {
+  const input = {
+    depotStart,
+    depotEnd,
+    stops: stops.map((s) => ({ visitId: s.visitId, lat: s.lat, lng: s.lng })),
+  }
   return createHash('sha1')
     .update(JSON.stringify(sortKeysDeep(input)))
     .digest('hex')
 }
 
 /** Straight-line fallback legs (contract item 1): two-point geometry, haversine ETA @ 40km/h. */
-function fallbackLegs(depot: LatLng | null, orderedStops: RouteStop[]): RouteLeg[] {
+function fallbackLegs(
+  depotStart: LatLng | null,
+  depotEnd: LatLng | null,
+  orderedStops: RouteStop[]
+): { legs: RouteLeg[]; returnLeg: ReturnLeg | null } {
   const legs: RouteLeg[] = []
-  let prev: LatLng | null = depot
+  let prev: LatLng | null = depotStart
   for (const stop of orderedStops) {
     // No depot → the route starts AT the first stop: zero-second leg, matching the Mapbox
     // path where the first stop has no leg at all.
@@ -72,7 +91,23 @@ function fallbackLegs(depot: LatLng | null, orderedStops: RouteStop[]): RouteLeg
     })
     prev = stop
   }
-  return legs
+
+  let returnLeg: ReturnLeg | null = null
+  if (depotEnd && orderedStops.length > 0) {
+    const last = orderedStops[orderedStops.length - 1]!
+    returnLeg = {
+      seconds: Math.max(
+        FALLBACK_MIN_LEG_SECONDS,
+        Math.round(haversineMeters(last, depotEnd) / FALLBACK_SPEED_METERS_PER_SECOND)
+      ),
+      geometry: [
+        [last.lng, last.lat],
+        [depotEnd.lng, depotEnd.lat],
+      ],
+    }
+  }
+
+  return { legs, returnLeg }
 }
 
 interface MapboxDirectionsResponse {
@@ -82,18 +117,41 @@ interface MapboxDirectionsResponse {
   }[]
 }
 
-/** Mapbox `driving-traffic` legs, or `null` on any failure/missing token (never throws). */
-async function fetchMapboxLegs(
-  depot: LatLng | null,
+/** One Mapbox Directions waypoint tagged with what it represents, so response legs (one per
+ * consecutive waypoint pair) can be routed back to a `RouteLeg`/`ReturnLeg`/depot-start skip. */
+type TaggedWaypoint =
+  | { point: LatLng; kind: 'depotStart' }
+  | { point: LatLng; kind: 'stop'; visitId: string }
+  | { point: LatLng; kind: 'depotEnd' }
+
+function buildWaypoints(
+  depotStart: LatLng | null,
+  depotEnd: LatLng | null,
   orderedStops: RouteStop[]
-): Promise<RouteLeg[] | null> {
+): TaggedWaypoint[] {
+  const waypoints: TaggedWaypoint[] = []
+  if (depotStart) waypoints.push({ point: depotStart, kind: 'depotStart' })
+  for (const stop of orderedStops) {
+    waypoints.push({ point: { lat: stop.lat, lng: stop.lng }, kind: 'stop', visitId: stop.visitId })
+  }
+  if (depotEnd) waypoints.push({ point: depotEnd, kind: 'depotEnd' })
+  return waypoints
+}
+
+/** Mapbox `driving-traffic` legs + optional return leg, or `null` on any failure/missing token
+ * (never throws). */
+async function fetchMapboxLegs(
+  depotStart: LatLng | null,
+  depotEnd: LatLng | null,
+  orderedStops: RouteStop[]
+): Promise<{ legs: RouteLeg[]; returnLeg: ReturnLeg | null } | null> {
   const token = process.env.MAPBOX_ACCESS_TOKEN
   if (!token) return null
 
-  const waypoints: LatLng[] = depot ? [depot, ...orderedStops] : orderedStops
+  const waypoints = buildWaypoints(depotStart, depotEnd, orderedStops)
   if (waypoints.length < 2) return null
 
-  const coords = waypoints.map((w) => `${w.lng},${w.lat}`).join(';')
+  const coords = waypoints.map((w) => `${w.point.lng},${w.point.lat}`).join(';')
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
   try {
@@ -107,16 +165,21 @@ async function fetchMapboxLegs(
 
     // Mapbox returns one leg per consecutive waypoint pair (no per-leg geometry split) — the
     // full route polyline is attached to the first leg so the map draws one continuous line
-    // per worker; subsequent legs carry an empty geometry array.
+    // per worker (return leg included); subsequent legs carry an empty geometry array.
     const fullGeometry = route.geometry?.coordinates ?? []
-    return route.legs.map((leg, i) => {
-      const targetStop = depot ? orderedStops[i] : orderedStops[i + 1]
-      return {
-        toVisitId: targetStop!.visitId,
-        seconds: Math.round(leg.duration),
-        geometry: i === 0 ? fullGeometry : [],
+    const legs: RouteLeg[] = []
+    let returnLeg: ReturnLeg | null = null
+    route.legs.forEach((leg, i) => {
+      const end = waypoints[i + 1]!
+      const seconds = Math.round(leg.duration)
+      const geometry = i === 0 ? fullGeometry : []
+      if (end.kind === 'depotEnd') {
+        returnLeg = { seconds, geometry }
+      } else if (end.kind === 'stop') {
+        legs.push({ toVisitId: end.visitId, seconds, geometry })
       }
     })
+    return { legs, returnLeg }
   } catch (error) {
     logger.warn('Mapbox Directions request failed', { error })
     return null
@@ -131,17 +194,19 @@ async function fetchMapboxLegs(
  * fallback (contract item 1) — never throws, always returns a usable `RouteGeometry`.
  * Content-addressed Redis cache (contract item 2): key =
  * `dispatch:route:{orgId}:{assigneeUserId}:{dateKey}:{hash}` where `hash` is a sha1 of the
- * sorted-key JSON of `{ depot, stops }`. 24h TTL, no invalidation — any reorder/reassign
- * changes the hash, so the key itself rotates and stale keys just expire unread.
+ * sorted-key JSON of `{ depotStart, depotEnd, stops }` — flipping either worker route-home
+ * switch changes `depotStart`/`depotEnd`, which rotates the hash and thus the cache key. 24h
+ * TTL, no invalidation — the key itself rotates and stale keys just expire unread.
  */
 export async function getRouteLegs(
   organizationId: string,
   assigneeUserId: string,
   dateKey: string,
-  depot: LatLng | null,
+  depotStart: LatLng | null,
+  depotEnd: LatLng | null,
   orderedStops: RouteStop[]
 ): Promise<RouteGeometry> {
-  const hash = hashRouteInput(depot, orderedStops)
+  const hash = hashRouteInput(depotStart, depotEnd, orderedStops)
   const cacheKey = `dispatch:route:${organizationId}:${assigneeUserId}:${dateKey}:${hash}`
 
   const cached = (await getRedisData(cacheKey)) as RouteGeometry | null
@@ -149,12 +214,25 @@ export async function getRouteLegs(
 
   let result: RouteGeometry
   if (orderedStops.length === 0) {
-    result = { legs: [], source: 'fallback', depot }
+    result = { legs: [], source: 'fallback', depot: depotStart, returnLeg: null }
   } else {
-    const mapboxLegs = await fetchMapboxLegs(depot, orderedStops)
-    result = mapboxLegs
-      ? { legs: mapboxLegs, source: 'mapbox', depot }
-      : { legs: fallbackLegs(depot, orderedStops), source: 'fallback', depot }
+    const mapboxResult = await fetchMapboxLegs(depotStart, depotEnd, orderedStops)
+    if (mapboxResult) {
+      result = {
+        legs: mapboxResult.legs,
+        source: 'mapbox',
+        depot: depotStart,
+        returnLeg: mapboxResult.returnLeg,
+      }
+    } else {
+      const fallback = fallbackLegs(depotStart, depotEnd, orderedStops)
+      result = {
+        legs: fallback.legs,
+        source: 'fallback',
+        depot: depotStart,
+        returnLeg: fallback.returnLeg,
+      }
+    }
   }
 
   await setRedisData(cacheKey, result, CACHE_TTL_SECONDS)
@@ -165,7 +243,10 @@ export async function getRouteLegs(
  * Router-facing resolution for `dispatch.getRouteGeometry`: resolves the worker, its route
  * depot, and its day's stops ordered by `routeOrder` (nulls last) from the DB, then delegates
  * to {@link getRouteLegs}. Ungeocoded stops (`latitude`/`longitude` null) are dropped from the
- * waypoint list — no leg can be drawn to/from a point with no coordinates.
+ * waypoint list — no leg can be drawn to/from a point with no coordinates. The depot start/end
+ * waypoints are the SAME resolved home point, gated independently by the worker's
+ * `routeStartAtHome`/`routeEndAtHome` switches (`worker.homeBase` stays the documented future
+ * per-worker seam, unread here — decision #6).
  */
 export async function getRouteGeometryForWorker(
   organizationId: string,
@@ -177,7 +258,9 @@ export async function getRouteGeometryForWorker(
   )
   if (!worker) throw new NotFoundError('Dispatch worker not found')
 
-  const depot = await resolveRouteStart(organizationId, worker)
+  const homePoint = await resolveRouteStart(organizationId, worker)
+  const depotStart = worker.routeStartAtHome ? homePoint : null
+  const depotEnd = worker.routeEndAtHome ? homePoint : null
   const { from, to, dateKey } = window
 
   const rows = await database
@@ -197,5 +280,5 @@ export async function getRouteGeometryForWorker(
     .filter((r) => r.latitude !== null && r.longitude !== null)
     .map((r) => ({ visitId: r.id, lat: r.latitude as number, lng: r.longitude as number }))
 
-  return getRouteLegs(organizationId, assigneeUserId, dateKey, depot, orderedStops)
+  return getRouteLegs(organizationId, assigneeUserId, dateKey, depotStart, depotEnd, orderedStops)
 }

@@ -78,7 +78,9 @@ export async function applyRouteTimes(input: ApplyRouteTimesInput): Promise<void
     )
   const coordsByVisitId = new Map(visitRows.map((r) => [r.id, r]))
 
-  const depot = await resolveRouteStart(organizationId, worker)
+  const homePoint = await resolveRouteStart(organizationId, worker)
+  const depotStart = worker.routeStartAtHome ? homePoint : null
+  const depotEnd = worker.routeEndAtHome ? homePoint : null
 
   // Preserve the given (dispatcher-confirmed) order; drop ungeocoded stops from the waypoint
   // list fed to Directions — no leg can be drawn to/from a point with no coordinates. Those
@@ -91,7 +93,14 @@ export async function applyRouteTimes(input: ApplyRouteTimesInput): Promise<void
     }
   }
 
-  const geometry = await getRouteLegs(organizationId, assigneeUserId, dateKey, depot, geoStops)
+  const geometry = await getRouteLegs(
+    organizationId,
+    assigneeUserId,
+    dateKey,
+    depotStart,
+    depotEnd,
+    geoStops
+  )
   const legSecondsByVisitId = new Map(geometry.legs.map((leg) => [leg.toVisitId, leg.seconds]))
 
   let departure = firstDeparture

@@ -39,6 +39,8 @@ interface WorkerProfileDraft {
   color: SelectOptionColor
   homeBase: AddressStruct
   isActive: boolean
+  routeStartAtHome: boolean
+  routeEndAtHome: boolean
 }
 
 interface WorkerProfilePageProps {
@@ -47,10 +49,11 @@ interface WorkerProfilePageProps {
 }
 
 /**
- * Profile page (07-m2-build.md §E.1): board color, home-base address, active toggle, remove
- * action. Edits collect into one page-level {@link useDirtyDraft} + a dialog footer instead of
- * autosaving per field (10-settings-forms-unification.md). Save fans out to `upsertWorker` (color +
- * home base) and `setWorkerActive` (only when the toggle changed).
+ * Profile page (07-m2-build.md §E.1): board color, home-base address, active toggle,
+ * start/end-at-home route switches (v4/01-planner-polish.md Phase 3), remove action. Edits
+ * collect into one page-level {@link useDirtyDraft} + a dialog footer instead of autosaving per
+ * field (10-settings-forms-unification.md). Save fans out to `upsertWorker` (color + home base +
+ * route flags) and `setWorkerActive` (only when the toggle changed).
  */
 export function WorkerProfilePage({ worker, onRemoved }: WorkerProfilePageProps) {
   const utils = api.useUtils()
@@ -84,14 +87,25 @@ export function WorkerProfilePage({ worker, onRemoved }: WorkerProfilePageProps)
     color: (worker.color as SelectOptionColor) ?? 'gray',
     homeBase: normalizeAddress(worker.homeBase),
     isActive: worker.isActive,
+    routeStartAtHome: worker.routeStartAtHome,
+    routeEndAtHome: worker.routeEndAtHome,
   }
 
   const { draft, patch, dirty, save, discard } = useDirtyDraft(server, {
     isSaving,
     onSave: (next) => {
       const addressChanged = JSON.stringify(next.homeBase) !== JSON.stringify(server.homeBase)
-      if (next.color !== server.color || addressChanged) {
-        upsertWorker.mutate({ userId: worker.userId, color: next.color, homeBase: next.homeBase })
+      const routeFlagsChanged =
+        next.routeStartAtHome !== server.routeStartAtHome ||
+        next.routeEndAtHome !== server.routeEndAtHome
+      if (next.color !== server.color || addressChanged || routeFlagsChanged) {
+        upsertWorker.mutate({
+          userId: worker.userId,
+          color: next.color,
+          homeBase: next.homeBase,
+          routeStartAtHome: next.routeStartAtHome,
+          routeEndAtHome: next.routeEndAtHome,
+        })
       }
       if (next.isActive !== server.isActive) {
         setWorkerActive.mutate({ workerId: worker.id, isActive: next.isActive })
@@ -151,6 +165,30 @@ export function WorkerProfilePage({ worker, onRemoved }: WorkerProfilePageProps)
           <Switch
             checked={draft.isActive}
             onCheckedChange={(isActive) => patch({ isActive })}
+            disabled={isSaving}
+          />
+        </FieldPanelRow>
+
+        <FieldPanelRow
+          title='Start at home'
+          type={BaseType.BOOLEAN}
+          showIcon
+          description='Route begins at the business address.'>
+          <Switch
+            checked={draft.routeStartAtHome}
+            onCheckedChange={(routeStartAtHome) => patch({ routeStartAtHome })}
+            disabled={isSaving}
+          />
+        </FieldPanelRow>
+
+        <FieldPanelRow
+          title='End at home'
+          type={BaseType.BOOLEAN}
+          showIcon
+          description='Route ends at the business address.'>
+          <Switch
+            checked={draft.routeEndAtHome}
+            onCheckedChange={(routeEndAtHome) => patch({ routeEndAtHome })}
             disabled={isSaving}
           />
         </FieldPanelRow>

@@ -43,13 +43,28 @@ export interface RouteLeg {
   geometry: [number, number][]
 }
 
+/** The last stop → depot leg, drawn only when the worker's `routeEndAtHome` switch is on. Kept
+ * out of `legs` (no `toVisitId`) so ETA math keyed by `toVisitId` (`estimateArrivalForVisit`)
+ * never sees it. */
+export interface ReturnLeg {
+  /** Travel time for the home-return leg, in seconds. */
+  seconds: number
+  /** `[lng, lat]` pairs — same geometry conventions as `RouteLeg.geometry`. */
+  geometry: [number, number][]
+}
+
 /** Directions result for one worker's ordered stop list (contract items 1/2). */
 export interface RouteGeometry {
   legs: RouteLeg[]
   /** `'mapbox'` = real driving-traffic geometry/ETA; `'fallback'` = straight-line + haversine
    * ETA (no `MAPBOX_ACCESS_TOKEN`) — the UI styles fallback legs dashed. */
   source: 'mapbox' | 'fallback'
+  /** Route-start depot point, or `null` when `routeStartAtHome` is off (or the org has no
+   * business address). */
   depot: LatLng | null
+  /** Route-end (return) leg, or `null` when `routeEndAtHome` is off, there's no depot, or the
+   * route has no stops. */
+  returnLeg: ReturnLeg | null
 }
 
 /** Slim work-order projection for the planner's visible visit set — `board.ts`'s
@@ -86,4 +101,8 @@ export interface PlannerBoardResult {
   /** Unscheduled backlog (`startTime IS NULL AND status = 'scheduled'`) — never day-filtered. */
   backlog: WorkOrderVisitRow[]
   workOrders: PlannerWorkOrder[]
+  /** Org depot (business address geocode), resolved once per call — `null` with no business
+   * address. Map default-center + home-marker source; independent of the per-worker route
+   * start/end switches. */
+  depot: LatLng | null
 }

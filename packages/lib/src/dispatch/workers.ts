@@ -20,6 +20,10 @@ export interface DispatchWorkerWithUser {
   isActive: boolean
   color: string | null
   homeBase: AddressStruct | null
+  /** Route starts at the depot (org business address in v1) — worker Profile switch. */
+  routeStartAtHome: boolean
+  /** Route ends back at the depot (org business address in v1) — worker Profile switch. */
+  routeEndAtHome: boolean
   createdAt: Date
   updatedAt: Date
   user: { id: string; name: string | null; email: string | null; image: string | null } | null
@@ -32,6 +36,8 @@ export interface UpsertDispatchWorkerInput {
   isActive?: boolean
   color?: string | null
   homeBase?: AddressStruct | null
+  routeStartAtHome?: boolean
+  routeEndAtHome?: boolean
 }
 
 const workerColumns = {
@@ -41,6 +47,8 @@ const workerColumns = {
   isActive: schema.DispatchWorker.isActive,
   color: schema.DispatchWorker.color,
   homeBase: schema.DispatchWorker.homeBase,
+  routeStartAtHome: schema.DispatchWorker.routeStartAtHome,
+  routeEndAtHome: schema.DispatchWorker.routeEndAtHome,
   createdAt: schema.DispatchWorker.createdAt,
   updatedAt: schema.DispatchWorker.updatedAt,
   user: {
@@ -77,6 +85,8 @@ export async function upsertDispatchWorker(
   if (input.isActive !== undefined) set.isActive = input.isActive
   if (input.color !== undefined) set.color = input.color
   if (input.homeBase !== undefined) set.homeBase = input.homeBase
+  if (input.routeStartAtHome !== undefined) set.routeStartAtHome = input.routeStartAtHome
+  if (input.routeEndAtHome !== undefined) set.routeEndAtHome = input.routeEndAtHome
 
   const [row] = await database
     .insert(schema.DispatchWorker)
@@ -86,6 +96,8 @@ export async function upsertDispatchWorker(
       isActive: input.isActive,
       color: input.color,
       homeBase: input.homeBase,
+      routeStartAtHome: input.routeStartAtHome,
+      routeEndAtHome: input.routeEndAtHome,
       updatedAt: new Date(),
     })
     .onConflictDoUpdate({
