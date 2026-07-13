@@ -72,6 +72,7 @@ import {
   DraftLineRow,
   freshDraft,
   LINE_COLS,
+  LINE_COLS_READONLY,
   LineRow,
   relKeyForDocumentType,
 } from './line-rows'
@@ -683,12 +684,12 @@ export function LineBuilder({
           The Description label offsets past the row px-1 + grip slot + title/button padding. */}
       <div
         className='sticky top-0 z-10 grid border-primary-200/50 border-b bg-primary-50 px-1 pb-1 text-muted-foreground text-xs dark:border-[#1e2227] dark:bg-background'
-        style={{ gridTemplateColumns: LINE_COLS }}>
+        style={{ gridTemplateColumns: readOnly ? LINE_COLS_READONLY : LINE_COLS }}>
         <div className={readOnly ? 'pl-2' : 'pl-9'}>Description</div>
         <div className='px-2 text-right'>Qty</div>
         <div className='px-2 text-right'>Unit cost</div>
         <div className='px-2 text-right'>Total</div>
-        <div />
+        {!readOnly && <div />}
       </div>
 
       {isEmpty && readOnly ? (

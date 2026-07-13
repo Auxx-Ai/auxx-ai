@@ -93,7 +93,7 @@ export function RecordPaymentDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className='sm:max-w-[440px]' position='tc'>
+      <DialogContent position='tc'>
         <DialogHeader>
           <DialogTitle>Record payment</DialogTitle>
           <DialogDescription>Log a cash, check, card, or bank payment.</DialogDescription>

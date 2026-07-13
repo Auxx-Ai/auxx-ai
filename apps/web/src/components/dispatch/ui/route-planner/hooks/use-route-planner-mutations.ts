@@ -22,8 +22,10 @@ import type {
 // ── Drag data shapes (this module's seam contribution — 2A's route-planner-view.tsx only
 // mounts a DndContext and forwards `onDragEnd`; it never builds these payloads) ──────────────
 //
-// - Backlog row draggable (backlog-pane.tsx): `useDraggable({ id: \`planner-backlog-${visitId}\`,
-//   data: { type: 'planner-backlog', visitId } })`.
+// - Backlog row draggable (backlog-group.tsx): `useDraggable({ id: \`sidebar-backlog-${visitId}\`,
+//   data: { type: 'planner-backlog', visitId, item } })` — `item` (the full `BacklogItem`) rides
+//   along only for the shared drag-ghost overlay (`AppDragOverlay`/`renderAppDragGhost`) to read;
+//   this handler still only needs `visitId`.
 // - Stop row draggable (stop-list-panel.tsx), inside a worker's `SortableContext`:
 //   `useSortable({ id: visitId })` combined with `data: { type: 'planner-stop', visitId,
 //   assigneeUserId } }` passed to the same `useSortable` call (dnd-kit merges `data` from

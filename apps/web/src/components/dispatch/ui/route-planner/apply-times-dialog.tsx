@@ -2,6 +2,7 @@
 
 'use client'
 
+import { FieldType } from '@auxx/database/enums'
 import { Button } from '@auxx/ui/components/button'
 import {
   Dialog,
@@ -11,10 +12,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@auxx/ui/components/dialog'
-import { Input } from '@auxx/ui/components/input'
+import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import { toastError } from '@auxx/ui/components/toast'
 import { format } from 'date-fns'
 import { useEffect, useMemo, useState } from 'react'
+import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
 import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
 import { createDateWithTime } from '~/components/pickers/date-time-picker/utils'
 import { useRoutePlannerMutations, visitDurationMinutes } from './hooks/use-route-planner-mutations'
@@ -76,6 +78,14 @@ function parseClockValue(clock: string): [number, number] {
   return [Number.isFinite(h) ? (h as number) : 8, Number.isFinite(m) ? (m as number) : 0]
 }
 
+/** Default first-departure: the worker's availability start (`HH:MM`, falling back to 08:00),
+ * stamped onto the planner day. `FieldType.TIME` stores a full Date (ISO string), so the day
+ * portion has to come from `date.from`. */
+function seedFirstDeparture(dayFrom: Date, availabilityStart: string | null | undefined): Date {
+  const [hours, minutes] = parseClockValue(availabilityStart ?? '08:00')
+  return createDateWithTime(dayFrom, hours, minutes)
+}
+
 /**
  * "Apply times to schedule" (design doc §E/§F, decision #1/#9; seam contract's
  * `ApplyTimesDialog`) — the only planner surface that writes `startTime`/`endTime`. Single-page
@@ -90,25 +100,20 @@ export function ApplyTimesDialog({
   date,
 }: ApplyTimesDialogProps) {
   const { applyRouteTimes } = useRoutePlannerMutations(date)
-  const [firstDepartureClock, setFirstDepartureClock] = useState(
-    worker.availabilityStart ?? '08:00'
+  const [firstDeparture, setFirstDeparture] = useState(() =>
+    seedFirstDeparture(date.from, worker.availabilityStart)
   )
 
   // Re-seed the default first-departure every time the dialog opens (worker availability may
   // have changed since the last open).
   useEffect(() => {
-    if (open) setFirstDepartureClock(worker.availabilityStart ?? '08:00')
-  }, [open, worker.availabilityStart])
+    if (open) setFirstDeparture(seedFirstDeparture(date.from, worker.availabilityStart))
+  }, [open, worker.availabilityStart, date.from])
 
   const activeStops = useMemo(
     () => stops.filter((v) => v.status !== 'done' && v.status !== 'canceled'),
     [stops]
   )
-
-  const firstDeparture = useMemo(() => {
-    const [hours, minutes] = parseClockValue(firstDepartureClock)
-    return createDateWithTime(date.from, hours, minutes)
-  }, [firstDepartureClock, date.from])
 
   const preview = useMemo(
     () => buildPreview(firstDeparture, activeStops, geometry),
@@ -137,7 +142,7 @@ export function ApplyTimesDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className='sm:max-w-[480px]' position='tc'>
+      <DialogContent position='tc'>
         <DialogHeader>
           <DialogTitle>Apply times to schedule</DialogTitle>
           <DialogDescription>
@@ -146,45 +151,58 @@ export function ApplyTimesDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <FieldPanel className='p-0' breakpoint='md'>
-          <FieldPanelRow title='First departure' description='Defaults to worker availability'>
-            <Input
-              type='time'
-              value={firstDepartureClock}
-              onChange={(e) => setFirstDepartureClock(e.target.value)}
-              className='w-32'
-            />
-          </FieldPanelRow>
-        </FieldPanel>
+        <div className='space-y-4'>
+          <FieldPanel className='p-0' breakpoint='md'>
+            <FieldPanelRow title='First departure' description='Defaults to worker availability'>
+              <FieldInputAdapter
+                fieldType={FieldType.TIME}
+                value={firstDeparture.toISOString()}
+                onChange={(val) => {
+                  if (val) setFirstDeparture(new Date(val as string))
+                }}
+                disabled={applyRouteTimes.isPending}
+              />
+            </FieldPanelRow>
+          </FieldPanel>
 
-        <div className='max-h-72 space-y-1 overflow-y-auto rounded-md border p-2'>
-          {preview.length === 0 ? (
-            <p className='text-muted-foreground px-1 py-2 text-xs'>No active stops to apply.</p>
-          ) : (
-            preview.map((row, index) => (
-              <div key={row.visit.id} className='flex items-center gap-2 text-xs'>
-                <span className='text-muted-foreground w-5 shrink-0'>{index + 1}.</span>
-                <span className='min-w-0 flex-1 truncate'>Stop {index + 1}</span>
-                <span className='shrink-0'>
-                  {format(row.startTime, 'p')}–{format(row.endTime, 'p')}
-                </span>
-                {row.isDefaultDuration && (
-                  <span className='text-muted-foreground shrink-0'>(1h default)</span>
-                )}
-              </div>
-            ))
-          )}
+          <div className='max-h-72 space-y-2 overflow-y-auto rounded-2xl border py-2 px-3'>
+            {preview.length === 0 ? (
+              <p className='text-muted-foreground px-1 py-2 text-xs'>No active stops to apply.</p>
+            ) : (
+              preview.map((row, index) => (
+                <div key={row.visit.id} className='flex items-center gap-2 text-xs'>
+                  <span className='text-muted-foreground w-5 shrink-0'>{index + 1}.</span>
+                  <span className='min-w-0 flex-1 truncate'>Stop {index + 1}</span>
+                  <span className='shrink-0'>
+                    {format(row.startTime, 'p')}–{format(row.endTime, 'p')}
+                  </span>
+                  {row.isDefaultDuration && (
+                    <span className='text-muted-foreground shrink-0'>(1h default)</span>
+                  )}
+                </div>
+              ))
+            )}
+          </div>
         </div>
 
         <DialogFooter>
-          <Button variant='ghost' onClick={() => onOpenChange(false)}>
-            Cancel
+          <Button
+            type='button'
+            variant='ghost'
+            size='sm'
+            onClick={() => onOpenChange(false)}
+            disabled={applyRouteTimes.isPending}>
+            Cancel <Kbd shortcut='esc' variant='ghost' size='sm' />
           </Button>
           <Button
             onClick={handleConfirm}
+            variant='outline'
+            size='sm'
             loading={applyRouteTimes.isPending}
-            disabled={activeStops.length === 0}>
-            Confirm
+            loadingText='Applying...'
+            disabled={activeStops.length === 0}
+            data-dialog-submit>
+            Confirm <KbdSubmit variant='outline' size='sm' />
           </Button>
         </DialogFooter>
       </DialogContent>

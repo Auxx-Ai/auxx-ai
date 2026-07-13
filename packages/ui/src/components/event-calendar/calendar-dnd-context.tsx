@@ -3,18 +3,19 @@
 'use client'
 
 import {
+  type Active,
   DndContext,
   type DragEndEvent,
   type DragOverEvent,
   DragOverlay,
   type DragStartEvent,
-  MouseSensor,
   PointerSensor,
   TouchSensor,
   type UniqueIdentifier,
   useSensor,
   useSensors,
 } from '@dnd-kit/core'
+import { snapCenterToCursor } from '@dnd-kit/modifiers'
 import { addMinutes, differenceInMinutes } from 'date-fns'
 import { createContext, type ReactNode, useContext, useId, useState } from 'react'
 
@@ -70,6 +71,13 @@ interface CalendarDndProviderProps<T extends EventCalendarItem = EventCalendarIt
    */
   onDragEnd?: (event: DragEndEvent) => void
   renderEvent?: RenderEvent<T>
+  /**
+   * Overlay slot for a dragged item that isn't a calendar event (dispatch's sidebar Backlog
+   * rows, composed in via `onDragEnd`'s escape hatch) — rendered inside this provider's own
+   * `DragOverlay` when the active drag has no `data.current.event`. `null`/omitted keeps today's
+   * behavior (no ghost for foreign items).
+   */
+  renderForeignOverlay?: (active: Active) => ReactNode
 }
 
 export function CalendarDndProvider<T extends EventCalendarItem = EventCalendarItem>({
@@ -77,6 +85,7 @@ export function CalendarDndProvider<T extends EventCalendarItem = EventCalendarI
   onEventDrop,
   onDragEnd,
   renderEvent,
+  renderForeignOverlay,
 }: CalendarDndProviderProps<T>) {
   const [activeEvent, setActiveEvent] = useState<T | null>(null)
   const [activeId, setActiveId] = useState<UniqueIdentifier | null>(null)
@@ -84,11 +93,11 @@ export function CalendarDndProvider<T extends EventCalendarItem = EventCalendarI
   const [currentTime, setCurrentTime] = useState<Date | null>(null)
   const [currentResourceId, setCurrentResourceId] = useState<string | null>(null)
   const [eventHeight, setEventHeight] = useState<number | null>(null)
+  const [foreignActive, setForeignActive] = useState<Active | null>(null)
 
   const sensors = useSensors(
-    useSensor(MouseSensor, { activationConstraint: { distance: 5 } }),
-    useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 5 } }),
-    useSensor(PointerSensor, { activationConstraint: { distance: 5 } })
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 5 } })
   )
 
   const dndContextId = useId()
@@ -107,8 +116,12 @@ export function CalendarDndProvider<T extends EventCalendarItem = EventCalendarI
     const data = active.data.current as
       | { event?: T; view?: DraggableView; height?: number }
       | undefined
-    if (!data?.event) return
+    if (!data?.event) {
+      setForeignActive(active)
+      return
+    }
 
+    setForeignActive(null)
     setActiveEvent(data.event)
     setActiveId(active.id)
     setActiveView(data.view ?? null)
@@ -160,6 +173,7 @@ export function CalendarDndProvider<T extends EventCalendarItem = EventCalendarI
     setCurrentTime(null)
     setCurrentResourceId(null)
     setEventHeight(null)
+    setForeignActive(null)
   }
 
   const handleDragEnd = (event: DragEndEvent) => {
@@ -223,9 +237,14 @@ export function CalendarDndProvider<T extends EventCalendarItem = EventCalendarI
 
         {/* The floating copy that follows the pointer — kept translucent (origin stays solid
             in place) and darkened so it reads as "the thing being moved", with the drop
-            outline showing through underneath. */}
-        <DragOverlay adjustScale={false} dropAnimation={null}>
-          {activeEvent && activeView && (
+            outline showing through underneath. A foreign item (no `data.current.event` — e.g.
+            dispatch's sidebar Backlog rows) has no fixed size/position to preserve, so its ghost
+            gets `snapCenterToCursor`; the calendar-event ghost keeps its own positioning. */}
+        <DragOverlay
+          adjustScale={false}
+          dropAnimation={null}
+          modifiers={foreignActive ? [snapCenterToCursor] : []}>
+          {activeEvent && activeView ? (
             <div
               className='opacity-80'
               style={{ width: '100%', height: eventHeight ? `${eventHeight}px` : 'auto' }}>
@@ -238,6 +257,8 @@ export function CalendarDndProvider<T extends EventCalendarItem = EventCalendarI
                 renderEvent={renderEvent}
               />
             </div>
+          ) : (
+            foreignActive && renderForeignOverlay?.(foreignActive)
           )}
         </DragOverlay>
       </CalendarDndContext.Provider>
