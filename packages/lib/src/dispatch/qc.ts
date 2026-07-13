@@ -1,7 +1,7 @@
 // packages/lib/src/dispatch/qc.ts
 //
 // The quality-checklist feature (08-worker-surface.md §5) — an admin-managed template catalog
-// (deactivate-not-delete) lazily materialized once per visit into worker-editable snapshot rows.
+// lazily materialized once per visit into worker-editable snapshot rows.
 // `title`/`isRequired` on `VisitQcItem` are SNAPSHOT columns: once copied from a template they
 // never change, even if the source template is edited or deactivated afterward — only visits
 // materialized after the edit see the new values. Every worker-scoped fn below guards through
@@ -71,8 +71,8 @@ export interface UpdateQcItemTemplateInput {
 }
 
 /**
- * Update a template's fields — includes deactivate/reactivate via `isActive` (deactivate-not-
- * delete; v1 has no delete fn). Never rewrites already-materialized `VisitQcItem` snapshots.
+ * Update a template's fields — includes deactivate/reactivate via `isActive`. Never rewrites
+ * already-materialized `VisitQcItem` snapshots.
  *
  * @throws {NotFoundError} when the template doesn't exist in this org.
  */
@@ -93,6 +93,30 @@ export async function updateQcItemTemplate(
     .returning()
   if (!updated) throw new NotFoundError('Quality check template not found')
   return updated
+}
+
+/**
+ * Hard-delete a template from the catalog. Already-materialized `VisitQcItem` snapshots survive
+ * — their `templateId` FK is `onDelete: 'set null'`, turning them into template-less rows (the
+ * same shape as a worker's ad-hoc items), and `title`/`isRequired` were copied at
+ * materialization time anyway.
+ *
+ * @throws {NotFoundError} when the template doesn't exist in this org.
+ */
+export async function deleteQcItemTemplate(
+  organizationId: string,
+  templateId: string
+): Promise<void> {
+  const [deleted] = await database
+    .delete(schema.QcItemTemplate)
+    .where(
+      and(
+        eq(schema.QcItemTemplate.id, templateId),
+        eq(schema.QcItemTemplate.organizationId, organizationId)
+      )
+    )
+    .returning({ id: schema.QcItemTemplate.id })
+  if (!deleted) throw new NotFoundError('Quality check template not found')
 }
 
 /** One row's new position for {@link reorderQcItemTemplates}. */

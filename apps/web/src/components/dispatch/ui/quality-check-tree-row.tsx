@@ -4,11 +4,11 @@
 
 import { Badge } from '@auxx/ui/components/badge'
 import { Switch } from '@auxx/ui/components/switch'
-import { TreeRow } from '@auxx/ui/components/tree-row'
+import { TreeRow, TreeRowButton } from '@auxx/ui/components/tree-row'
 import { cn } from '@auxx/ui/lib/utils'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { GripVertical } from 'lucide-react'
+import { GripVertical, Trash2 } from 'lucide-react'
 import type { RouterOutputs } from '~/trpc/react'
 
 export type QcItemTemplateRow = RouterOutputs['dispatch']['listQcTemplates'][number]
@@ -18,20 +18,23 @@ interface QualityCheckTreeRowProps {
   isSelected: boolean
   onSelect: () => void
   onToggleActive: () => void
+  onDelete: () => void
   isPending: boolean
 }
 
 /**
  * One QC template row in the settings tree list (08-worker-surface.md §5), styled to match the
  * Products & Services lists — draggable via dnd-kit `useSortable` (the drag handle doubles as the
- * row's leading icon); selecting it opens the FieldPanel editor. Active/inactive is a trailing
- * `Switch` (templates are deactivate-not-delete, so there is no destructive action).
+ * row's leading icon); selecting it opens the FieldPanel editor. Trailing actions mirror
+ * products-list.tsx: a destructive delete button (already-materialized visit checklists keep
+ * their snapshot rows) and the active/inactive `Switch`.
  */
 export function QualityCheckTreeRow({
   template,
   isSelected,
   onSelect,
   onToggleActive,
+  onDelete,
   isPending,
 }: QualityCheckTreeRowProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
@@ -71,12 +74,17 @@ export function QualityCheckTreeRow({
           ) : undefined
         }
         actions={
-          <Switch
-            size='xs'
-            checked={template.isActive}
-            onCheckedChange={onToggleActive}
-            disabled={isPending}
-          />
+          <div className='flex items-center gap-1'>
+            <TreeRowButton tooltipText='Delete check' variant='destructive' onClick={onDelete}>
+              <Trash2 />
+            </TreeRowButton>
+            <Switch
+              size='xs'
+              checked={template.isActive}
+              onCheckedChange={onToggleActive}
+              disabled={isPending}
+            />
+          </div>
         }
       />
     </div>
