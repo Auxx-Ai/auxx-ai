@@ -540,7 +540,7 @@ export default function TicketFormDialog({
                           selected={field.value}
                           onSelect={field.onChange}
                           disabled={(date) => date < new Date(new Date().setHours(0, 0, 0, 0))}
-                          initialFocus
+                          autoFocus
                         />
                       </PopoverContent>
                     </Popover>

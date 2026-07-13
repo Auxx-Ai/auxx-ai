@@ -2,6 +2,10 @@
 'use client'
 
 import { Button } from '@auxx/ui/components/button'
+import type {
+  CalendarBaseProps,
+  DateRange as CalendarDateRange,
+} from '@auxx/ui/components/calendar'
 import { Calendar } from '@auxx/ui/components/calendar'
 import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
 import { cn } from '@auxx/ui/lib/utils'
@@ -59,9 +63,14 @@ interface DateRangePickerProps {
    * without `packages/ui` depending on `apps/web`.
    */
   trigger?: (state: { open: boolean; label: string; hasValue: boolean }) => React.ReactNode
-  // Rest of Calendar props
-  [key: string]: any
 }
+
+/**
+ * Extra Calendar passthrough props. `mode`/`selected`/`onSelect` are owned by this component;
+ * everything else on `CalendarBaseProps` (month, disabled, minDate, className, etc.) is
+ * forwarded as-is.
+ */
+type DateRangePickerCalendarProps = Partial<CalendarBaseProps>
 
 /**
  * Predefined time frame options configuration
@@ -190,7 +199,7 @@ export function DateRangePicker({
   placeholder = 'Select dates',
   trigger,
   ...calendarProps
-}: DateRangePickerProps) {
+}: DateRangePickerProps & DateRangePickerCalendarProps) {
   const [open, setOpen] = useState(false)
 
   /**
@@ -205,9 +214,9 @@ export function DateRangePicker({
   /**
    * Handle calendar date range selection
    */
-  const handleCalendarSelect = (range: any) => {
-    if (range?.from && range.to) {
-      onChange(range as DateRange)
+  const handleCalendarSelect = (range: CalendarDateRange) => {
+    if (range.from && range.to) {
+      onChange({ from: range.from, to: range.to })
       // setOpen(false)
     }
   }
@@ -258,7 +267,6 @@ export function DateRangePicker({
             mode='range'
             className='relative'
             selected={value}
-            showOutsideDays={false}
             onSelect={handleCalendarSelect}
             numberOfMonths={2}
             {...calendarProps}

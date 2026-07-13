@@ -17,7 +17,7 @@ import {
 } from 'lucide-react'
 import { Tooltip } from '~/components/global/tooltip'
 import { DateTimePicker } from '~/components/pickers/date-time-picker'
-import { useDispatchSidebarStore } from '~/stores/dispatch-sidebar-store'
+import { useDispatchSidebarStore } from '../../stores/dispatch-sidebar-store'
 import type { BoardViewMode } from './types'
 import { goToNextDate, goToPreviousDate, viewedMonthStart, type WeekStartIndex } from './utils'
 

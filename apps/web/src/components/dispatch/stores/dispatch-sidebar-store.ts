@@ -1,4 +1,4 @@
-// apps/web/src/stores/dispatch-sidebar-store.ts
+// apps/web/src/components/dispatch/stores/dispatch-sidebar-store.ts
 
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'

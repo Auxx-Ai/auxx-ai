@@ -10,10 +10,8 @@ export enum Period {
 
 /** View type for internal navigation */
 export enum ViewType {
-  /** Calendar date selection */
+  /** Calendar date selection (the Calendar component owns its own year/month swap) */
   Calendar = 'calendar',
-  /** Year and month selection */
-  YearMonth = 'yearMonth',
   /** Time selection */
   Time = 'time',
 }
@@ -108,8 +106,10 @@ export interface DateTimePickerProps {
 
 /** Calendar view props */
 export interface CalendarViewProps {
-  /** Currently displayed month */
+  /** Currently displayed month (controlled) */
   currentMonth: Date
+  /** Fires on nav clicks and on picks in the Calendar's built-in year-month view */
+  onMonthChange: (month: Date) => void
   /** Selected date */
   selectedDate: Date | undefined
   /** Handler for date selection */
@@ -120,18 +120,6 @@ export interface CalendarViewProps {
   maxDate?: Date
   /** Function to disable specific dates */
   disabledDates?: (date: Date) => boolean
-}
-
-/** Year/Month view props */
-export interface YearMonthViewProps {
-  /** Selected month (0-11) */
-  selectedMonth: number
-  /** Selected year */
-  selectedYear: number
-  /** Handler for month selection */
-  onMonthSelect: (month: number) => void
-  /** Handler for year selection */
-  onYearSelect: (year: number) => void
 }
 
 /** Time view props (extends from time-picker) */
@@ -153,28 +141,6 @@ export interface TimeViewProps {
   onSelectPeriod: (period: Period) => void
 }
 
-/** Picker header props */
-export interface PickerHeaderProps {
-  /** Current view type */
-  view: ViewType
-  /** Picker mode */
-  mode: PickerMode
-  /** Current month being displayed */
-  currentMonth: Date
-  /** Selected year (for year/month view) */
-  selectedYear: number
-  /** Selected month (for year/month view) */
-  selectedMonth: number
-  /** Handler to open year/month picker */
-  onOpenYearMonthPicker: () => void
-  /** Handler to close year/month picker */
-  onCloseYearMonthPicker: () => void
-  /** Handler for next month navigation */
-  onNextMonth: () => void
-  /** Handler for previous month navigation */
-  onPrevMonth: () => void
-}
-
 /** Picker footer props */
 export interface PickerFooterProps {
   /** Current view type */
@@ -191,10 +157,6 @@ export interface PickerFooterProps {
   onSelectNow: () => void
   /** Handler for confirm button */
   onConfirm: () => void
-  /** Handler for year/month cancel */
-  onYearMonthCancel: () => void
-  /** Handler for year/month confirm */
-  onYearMonthConfirm: () => void
   /** Hide the now button */
   hideNowButton?: boolean
 }

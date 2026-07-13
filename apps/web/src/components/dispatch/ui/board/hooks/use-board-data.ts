@@ -5,8 +5,8 @@
 import { getOptionColorHex } from '@auxx/lib/custom-fields/client'
 import { endOfDay, endOfMonth, startOfDay, startOfMonth } from 'date-fns'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useDispatchSidebarStore } from '~/stores/dispatch-sidebar-store'
 import { api } from '~/trpc/react'
+import { useDispatchSidebarStore } from '../../../stores/dispatch-sidebar-store'
 import {
   type BoardResourceInput,
   type BoardViewMode,

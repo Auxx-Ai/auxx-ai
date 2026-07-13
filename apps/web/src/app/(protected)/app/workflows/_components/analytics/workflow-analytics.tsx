@@ -1,4 +1,5 @@
 import { Button } from '@auxx/ui/components/button'
+import type { DateRange as CalendarDateRange } from '@auxx/ui/components/calendar'
 import { Calendar } from '@auxx/ui/components/calendar'
 import {
   type ChartConfig,
@@ -258,7 +259,11 @@ function WorkflowAnalyticsOptions() {
               <Calendar
                 mode='range'
                 selected={dateRange}
-                onSelect={(range) => range && setDateRange(range as DateRange)}
+                onSelect={(range: CalendarDateRange) => {
+                  if (range.from && range.to) {
+                    setDateRange({ from: range.from, to: range.to })
+                  }
+                }}
                 numberOfMonths={2}
               />
             </PopoverContent>

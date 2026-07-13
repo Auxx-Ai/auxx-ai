@@ -14,6 +14,7 @@ import {
   type WeeklyHoursDraft,
   WeeklyHoursEditor,
 } from '~/components/availability/ui/weekly-hours-editor'
+import { useAvailabilityCacheStore } from '~/components/dispatch/stores/availability-cache-store'
 import { EmptyState } from '~/components/global/empty-state'
 import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
 import { FormSaveBar } from '~/components/global/forms/form-save-bar'
@@ -24,7 +25,6 @@ import { SettingsFieldRow } from '~/components/settings/settings-field-row'
 import { useSettings } from '~/hooks/use-settings'
 import { useUser } from '~/hooks/use-user'
 import { useFeatureFlags } from '~/providers/feature-flag-provider'
-import { useAvailabilityCacheStore } from '~/stores/availability-cache-store'
 import { api } from '~/trpc/react'
 
 const ALL_DAYS = [0, 1, 2, 3, 4, 5, 6] as const

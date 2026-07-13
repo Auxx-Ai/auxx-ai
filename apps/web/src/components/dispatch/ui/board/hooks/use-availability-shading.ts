@@ -13,13 +13,13 @@ import {
   subWeeks,
 } from 'date-fns'
 import { useCallback, useEffect, useMemo, useRef } from 'react'
+import { api } from '~/trpc/react'
 import {
   type AvailabilitySubject,
   availabilitySubjectKey,
   useAvailabilityCacheStore,
-} from '~/stores/availability-cache-store'
-import { chunkRange, type DateRange as IsoRange, subtractRanges } from '~/stores/date-ranges'
-import { api } from '~/trpc/react'
+} from '../../../stores/availability-cache-store'
+import { chunkRange, type DateRange as IsoRange, subtractRanges } from '../../../utils/date-ranges'
 import type { BoardViewMode } from '../types'
 import { UNASSIGNED_RESOURCE_ID } from '../types'
 import { offHoursBackgroundEvents } from '../utils'

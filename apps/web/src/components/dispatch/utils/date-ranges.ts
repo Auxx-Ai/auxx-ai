@@ -1,4 +1,4 @@
-// apps/web/src/stores/date-ranges.ts
+// apps/web/src/components/dispatch/utils/date-ranges.ts
 //
 // Day-granular `YYYY-MM-DD` interval algebra for the availability cache (12-availability-cache.md
 // §A). ISO date strings compare lexicographically = chronologically, so ordering is plain string

@@ -139,7 +139,6 @@
     "radix-ui": "^1.4.2",
     "react": "catalog:",
     "react-avatar": "^5.0.3",
-    "react-day-picker": "^9.8.1",
     "react-dom": "catalog:",
     "react-dropzone": "^14.3.8",
     "react-grid-layout": "^2.2.3",

@@ -2,12 +2,10 @@
 
 'use client'
 
-import { buttonVariants } from '@auxx/ui/components/button'
+import { Calendar } from '@auxx/ui/components/calendar'
 import { cn } from '@auxx/ui/lib/utils'
-import { format, isSameMonth } from 'date-fns'
-import { ChevronLeft, ChevronRight } from 'lucide-react'
+import { format, isAfter, isBefore, isSameMonth, startOfDay } from 'date-fns'
 import * as React from 'react'
-import { type DayButtonProps, DayPicker, DayButton as RdpDayButton } from 'react-day-picker'
 
 interface MiniMonthCalendarProps {
   /** The selected/anchor date (e.g. the board date). */
@@ -28,9 +26,8 @@ interface MiniMonthCalendarProps {
 
 /**
  * Compact month calendar for the module sidebar (Notion-Calendar style): free month
- * navigation, a visible-range highlight, and per-day density dots. Wraps `react-day-picker`
- * v9 using the same `classNames` styling approach as `calendar.tsx`, sized down to fit a
- * 16rem sidebar.
+ * navigation, a visible-range highlight, and per-day density dots. Built on the custom
+ * `@auxx/ui/components/calendar` primitive, sized down to fit a 16rem sidebar.
  *
  * The displayed month follows `selected` (resyncs whenever `selected` moves to a different
  * month, e.g. the board date jumps via the toolbar) but the user can freely page prev/next
@@ -69,81 +66,48 @@ function MiniMonthCalendar({
     [onMonthChange]
   )
 
-  const DensityDayButton = React.useCallback(
-    (props: DayButtonProps) => {
-      const key = format(props.day.date, 'yyyy-MM-dd')
+  const renderDay = React.useCallback(
+    ({ date }: { date: Date; outside: boolean }) => {
+      const key = format(date, 'yyyy-MM-dd')
       const count = density?.[key] ?? 0
+      if (count <= 0) return null
 
       return (
-        <RdpDayButton {...props}>
-          <span>{props.day.date.getDate()}</span>
-          {count > 0 && (
-            <span
-              aria-hidden
-              className={cn(
-                'pointer-events-none absolute bottom-0.5 left-1/2 size-1 -translate-x-1/2 rounded-full bg-current',
-                count >= 4 ? 'opacity-90' : 'opacity-40'
-              )}
-            />
+        <span
+          aria-hidden
+          className={cn(
+            'pointer-events-none absolute bottom-0.5 left-1/2 size-1 -translate-x-1/2 rounded-full bg-current',
+            count >= 4 ? 'opacity-90' : 'opacity-40'
           )}
-        </RdpDayButton>
+        />
       )
     },
     [density]
   )
 
+  const modifiers = React.useMemo(() => {
+    if (!visibleRange) return undefined
+    const from = startOfDay(visibleRange.from)
+    const to = startOfDay(visibleRange.to)
+    return {
+      visibleRange: (date: Date) => {
+        const day = startOfDay(date)
+        return !isBefore(day, from) && !isAfter(day, to)
+      },
+    }
+  }, [visibleRange])
+
   return (
-    <DayPicker
-      mode='single'
-      required
+    <Calendar
       selected={selected}
       onSelect={onSelect}
       month={month}
       onMonthChange={handleMonthChange}
       weekStartsOn={weekStartsOn}
       showOutsideDays
-      modifiers={visibleRange ? { inVisibleRange: visibleRange } : undefined}
-      modifiersClassNames={{ inVisibleRange: 'bg-accent/50' }}
-      className={cn('p-2', className)}
-      classNames={{
-        months: 'flex flex-col',
-        month: 'flex flex-col gap-1.5',
-        month_caption: 'flex justify-center relative items-center w-full',
-        caption_label: 'text-xs font-medium h-6 flex items-center',
-        nav: 'flex items-center gap-1',
-        button_previous: cn(
-          buttonVariants({ variant: 'outline' }),
-          'size-6 top-0.5 bg-transparent p-0 opacity-50 hover:opacity-100 absolute left-1 z-10'
-        ),
-        button_next: cn(
-          buttonVariants({ variant: 'outline' }),
-          'size-6 top-0.5 bg-transparent p-0 opacity-50 hover:opacity-100 absolute right-1 z-10'
-        ),
-        month_grid: 'w-full border-collapse',
-        weekdays: 'flex',
-        weekday: 'text-muted-foreground rounded-md w-7 font-normal text-[0.65rem]',
-        week: 'flex w-full mt-0.5',
-        day: 'relative size-7 p-0 text-center',
-        day_button: cn(
-          buttonVariants({ variant: 'ghost' }),
-          'relative size-7 p-0 text-xs font-normal aria-selected:opacity-100'
-        ),
-        selected:
-          'bg-info text-white hover:bg-info! hover:text-primary-foreground focus:bg-info focus:text-primary-foreground',
-        today: 'rounded-lg bg-accent-100 font-semibold text-info hover:bg-accent-200',
-        outside: 'outside text-primary-300 aria-selected:text-muted-foreground',
-        disabled: 'text-muted-foreground opacity-50',
-        hidden: 'invisible',
-      }}
-      components={{
-        DayButton: DensityDayButton,
-        Chevron: ({ orientation, className: chevronClassName }) =>
-          orientation === 'left' ? (
-            <ChevronLeft className={cn('size-3.5', chevronClassName)} />
-          ) : (
-            <ChevronRight className={cn('size-3.5', chevronClassName)} />
-          ),
-      }}
+      renderDay={renderDay}
+      modifiers={modifiers}
+      className={cn('p-2 [&_[data-slot=day][data-visible-range]]:bg-accent/50', className)}
     />
   )
 }

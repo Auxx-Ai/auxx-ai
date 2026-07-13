@@ -3,10 +3,8 @@
 
 import { Button } from '@auxx/ui/components/button'
 import { cn } from '@auxx/ui/lib/utils'
-import { addMonths, setMonth, setYear, subMonths } from 'date-fns'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import PickerFooter from './components/picker-footer'
-import PickerHeader from './components/picker-header'
 import { DEFAULT_DATE_PRESETS } from './presets'
 import { type DateTimePickerContentProps, Period, ViewType } from './types'
 import {
@@ -20,7 +18,14 @@ import {
 } from './utils'
 import CalendarView from './views/calendar-view'
 import TimeView from './views/time-view'
-import YearMonthView from './views/year-month-view'
+
+/**
+ * Min-height for the calendar view's wrapper. The Calendar component's own `h-10` dropdown
+ * caption plus a 6-week month's day grid (the tallest case — months render 4-6 weeks) needs
+ * ~291px; holding the shell at that height stops the popover/footer from jumping as the user
+ * pages between shorter and longer months.
+ */
+const CALENDAR_VIEW_MIN_HEIGHT = 'min-h-[291px]'
 
 /**
  * DateTimePickerContent
@@ -53,67 +58,19 @@ export function DateTimePickerContent({
 
   // Internal state for pending selection
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(value)
+  // Displayed (anchor) month for the calendar view — controlled on the Calendar component.
+  // Updated on date selection, external `value` changes, and via the Calendar's own
+  // onMonthChange (prev/next nav + picks in its built-in year-month view).
   const [currentMonth, setCurrentMonth] = useState<Date>(value || new Date())
-
-  // Year/month picker state
-  const [selectedMonth, setSelectedMonth] = useState<number>((value || new Date()).getMonth())
-  const [selectedYear, setSelectedYear] = useState<number>((value || new Date()).getFullYear())
 
   // Sync internal state when value changes externally
   useEffect(() => {
     setSelectedDate(value)
-    if (value) {
-      setCurrentMonth(value)
-      setSelectedMonth(value.getMonth())
-      setSelectedYear(value.getFullYear())
-    }
+    if (value) setCurrentMonth(value)
   }, [value])
 
   // Determine if time picker toggle should be shown
   const showTimeToggle = mode === 'datetime' && !hideTimePicker
-
-  /** Navigate to next month */
-  const handleNextMonth = useCallback(() => {
-    setCurrentMonth((prev) => addMonths(prev, 1))
-  }, [])
-
-  /** Navigate to previous month */
-  const handlePrevMonth = useCallback(() => {
-    setCurrentMonth((prev) => subMonths(prev, 1))
-  }, [])
-
-  /** Open year/month picker */
-  const handleOpenYearMonthPicker = useCallback(() => {
-    setSelectedMonth(currentMonth.getMonth())
-    setSelectedYear(currentMonth.getFullYear())
-    setView(ViewType.YearMonth)
-  }, [currentMonth])
-
-  /** Close year/month picker */
-  const handleCloseYearMonthPicker = useCallback(() => {
-    setView(ViewType.Calendar)
-  }, [])
-
-  /** Handle month selection in year/month picker */
-  const handleMonthSelect = useCallback((month: number) => {
-    setSelectedMonth(month)
-  }, [])
-
-  /** Handle year selection in year/month picker */
-  const handleYearSelect = useCallback((year: number) => {
-    setSelectedYear(year)
-  }, [])
-
-  /** Cancel year/month selection */
-  const handleYearMonthCancel = useCallback(() => {
-    setView(ViewType.Calendar)
-  }, [])
-
-  /** Confirm year/month selection */
-  const handleYearMonthConfirm = useCallback(() => {
-    setCurrentMonth((prev) => setYear(setMonth(prev, selectedMonth), selectedYear))
-    setView(ViewType.Calendar)
-  }, [selectedMonth, selectedYear])
 
   /** Toggle between calendar and time view */
   const handleToggleTimePicker = useCallback(() => {
@@ -218,38 +175,28 @@ export function DateTimePickerContent({
         </div>
       )}
 
-      {/* Header */}
-      <PickerHeader
-        view={view}
-        mode={mode}
-        currentMonth={currentMonth}
-        selectedYear={selectedYear}
-        selectedMonth={selectedMonth}
-        onOpenYearMonthPicker={handleOpenYearMonthPicker}
-        onCloseYearMonthPicker={handleCloseYearMonthPicker}
-        onNextMonth={handleNextMonth}
-        onPrevMonth={handlePrevMonth}
-      />
+      {/* Header (time view only — the calendar view renders its own dropdown caption) */}
+      {view === ViewType.Time && (
+        <div className='border-b px-1 p-2 h-10 flex items-center'>
+          <div className='flex items-center gap-x-0.5 rounded-xl px-2 py-1.5 text-sm font-semibold text-primary-900 hover:bg-primary-100 cursor-default'>
+            <span>Select Time</span>
+          </div>
+        </div>
+      )}
 
       {/* Content based on view */}
       {view === ViewType.Calendar && (
-        <CalendarView
-          currentMonth={currentMonth}
-          selectedDate={selectedDate}
-          onDateSelect={handleDateSelect}
-          minDate={minDate}
-          maxDate={maxDate}
-          disabledDates={disabledDates}
-        />
-      )}
-
-      {view === ViewType.YearMonth && (
-        <YearMonthView
-          selectedMonth={selectedMonth}
-          selectedYear={selectedYear}
-          onMonthSelect={handleMonthSelect}
-          onYearSelect={handleYearSelect}
-        />
+        <div className={CALENDAR_VIEW_MIN_HEIGHT}>
+          <CalendarView
+            currentMonth={currentMonth}
+            onMonthChange={setCurrentMonth}
+            selectedDate={selectedDate}
+            onDateSelect={handleDateSelect}
+            minDate={minDate}
+            maxDate={maxDate}
+            disabledDates={disabledDates}
+          />
+        </div>
       )}
 
       {view === ViewType.Time && (
@@ -272,8 +219,6 @@ export function DateTimePickerContent({
           onToggleTimePicker={handleToggleTimePicker}
           onSelectNow={handleSelectNow}
           onConfirm={handleConfirm}
-          onYearMonthCancel={handleYearMonthCancel}
-          onYearMonthConfirm={handleYearMonthConfirm}
           hideNowButton={hideNowButton}
         />
       )}
