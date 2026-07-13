@@ -17,12 +17,12 @@ export function scalarSetting(value: unknown): string | null {
 
 /**
  * Classify an existing `RecurrencePattern` back into a Repeats preset, or `'custom'` when it
- * doesn't match one of the three canned shapes (multi-weekday, nth-weekday, daily, or any end
- * condition all fall through to Custom).
+ * doesn't match one of the three canned shapes (multi-weekday, nth-weekday, or daily all fall
+ * through to Custom). End conditions (`until`/`count`) no longer force Custom — the schedule
+ * popover edits Ends independently of the preset via `RecurrenceEndFields`.
  */
 export function classifyRecurrencePreset(pattern: RecurrencePattern | null): RecurrencePreset {
   if (!pattern) return 'none'
-  if (pattern.until || pattern.count) return 'custom'
   if (pattern.frequency === 'weekly' && (pattern.weekdays?.length ?? 0) === 1) {
     if (pattern.interval === 1) return 'weekly'
     if (pattern.interval === 2) return 'biweekly'

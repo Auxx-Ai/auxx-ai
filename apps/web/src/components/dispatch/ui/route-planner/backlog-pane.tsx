@@ -30,7 +30,8 @@ function matchesTagFilter(
 }
 
 /**
- * Route planner left pane (design doc §E, seam contract's `BacklogPane`): two labeled groups —
+ * Route planner backlog (design doc §E, seam contract's `BacklogPane`) — floats over the map's
+ * left edge in `route-planner-view.tsx`'s translucent overlay wrapper: two labeled groups —
  * unscheduled work (`board.backlog`, `startTime: null`) and today's unassigned visits
  * (`board.visits` with `assigneeUserId: null`, matching the board's own "Unassigned" column
  * semantics). Both tag-filtered. Rows are `useDraggable` sources for the planner's own
@@ -60,7 +61,7 @@ export function BacklogPane({ board, filters, onFocusVisit }: BacklogPaneProps) 
   )
 
   return (
-    <div className='flex w-72 shrink-0 flex-col gap-3 overflow-y-auto border-r p-2'>
+    <div className='flex h-full w-72 flex-col gap-3 overflow-y-auto p-2'>
       <BacklogGroup
         title='Unscheduled'
         visits={unscheduled}

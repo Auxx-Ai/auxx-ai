@@ -1,6 +1,7 @@
 // packages/lib/src/dispatch/visit-hooks.ts
 
 import { database, schema } from '@auxx/database'
+import { extractValue, type TypedFieldValue } from '@auxx/types'
 import { parseRecordId } from '@auxx/types/resource'
 import { and, eq } from 'drizzle-orm'
 import type { EntityFieldChangeHandler } from '../field-hooks/types'
@@ -50,8 +51,10 @@ function formatAddressForGeocode(value: Record<string, unknown>): string {
 export const geocodeOnAddressChange: EntityFieldChangeHandler = async (event) => {
   if (event.field.systemAttribute !== 'work_order_address') return
 
-  const addressValue = event.newValue as Record<string, unknown> | null
-  if (!addressValue) return
+  const typed = event.newValue as TypedFieldValue | TypedFieldValue[] | null
+  const first = Array.isArray(typed) ? typed[0] : typed
+  const addressValue = first ? (extractValue(first) as Record<string, unknown> | null) : null
+  if (!addressValue || typeof addressValue !== 'object') return
 
   const line = formatAddressForGeocode(addressValue)
   const result = await geocode(line)

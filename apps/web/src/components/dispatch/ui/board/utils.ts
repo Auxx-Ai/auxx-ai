@@ -6,6 +6,7 @@ import {
   addMonths,
   addWeeks,
   endOfWeek,
+  startOfDay,
   startOfMonth,
   startOfWeek,
   subDays,
@@ -26,6 +27,30 @@ export function nextVisitStatus(current: VisitStatus): VisitStatus | null {
   const index = VISIT_STATUS_FORWARD_ORDER.indexOf(current)
   if (index === -1 || index === VISIT_STATUS_FORWARD_ORDER.length - 1) return null
   return VISIT_STATUS_FORWARD_ORDER[index + 1]!
+}
+
+/**
+ * Where a visit's scheduled day sits relative to the viewer's local today. Execution
+ * actions (advance to en route / on site / complete) are day-of actions — they render
+ * only for 'today' and 'past' ('past' additionally gets an overdue hint). Day boundaries
+ * are always client-local, matching the board's client-computed day-window convention.
+ */
+export type VisitDayContext = 'unscheduled' | 'past' | 'today' | 'future'
+
+export function getVisitDayContext(
+  startTime: Date | null | undefined,
+  endTime?: Date | null
+): VisitDayContext {
+  if (!startTime) return 'unscheduled'
+  const todayStart = startOfDay(new Date())
+  if (startOfDay(startTime) > todayStart) return 'future'
+  if (startOfDay(endTime ?? startTime) < todayStart) return 'past'
+  return 'today'
+}
+
+/** Execution (status-advance) actions only make sense once the visit's day has arrived. */
+export function isExecutionReady(context: VisitDayContext): boolean {
+  return context === 'today' || context === 'past'
 }
 
 /** Fallback chip color when a worker has none set. */

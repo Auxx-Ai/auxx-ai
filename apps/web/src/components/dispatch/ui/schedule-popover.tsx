@@ -19,6 +19,7 @@ import {
 } from '@auxx/ui/components/command'
 import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
 import { RadioGroup, RadioGroupItem } from '@auxx/ui/components/radio-group'
+import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import {
   Select,
   SelectContent,
@@ -39,7 +40,10 @@ import type { RecordId } from '~/components/resources'
 import { useActors, useAvailableActors } from '~/components/resources/hooks/use-actor'
 import { useSettings } from '~/hooks/use-settings'
 import { api } from '~/trpc/react'
-import { RecurrencePatternFields } from './recurrence/recurrence-pattern-fields'
+import {
+  RecurrenceEndFields,
+  RecurrencePatternFields,
+} from './recurrence/recurrence-pattern-fields'
 import {
   buildPresetPattern,
   classifyRecurrencePreset as classifyPreset,
@@ -153,6 +157,9 @@ function ScheduleContent({
   const [customPattern, setCustomPattern] = useState<RecurrencePattern>(
     defaultCustomPattern(initialStartTime ?? undefined)
   )
+  // Ends (until/count) live independently of the preset/custom pattern now — the schedule
+  // popover edits them via one `RecurrenceEndFields` regardless of Repeats mode.
+  const [ends, setEnds] = useState<{ until?: string; count?: number }>({})
   const [repeatsTouched, setRepeatsTouched] = useState(false)
   const [chooserScope, setChooserScope] = useState<'this' | 'following' | 'all'>('this')
   const initializedFromRuleRef = useRef(false)
@@ -167,15 +174,16 @@ function ScheduleContent({
     const pattern = recurrenceQuery.data.pattern as unknown as RecurrencePattern
     const preset = classifyPreset(pattern)
     setRepeatMode(preset)
-    if (preset === 'custom') setCustomPattern(pattern)
+    setEnds({ until: pattern.until, count: pattern.count })
+    if (preset === 'custom') setCustomPattern({ ...pattern, until: undefined, count: undefined })
   }, [recurrenceQuery.data, recurrenceQuery.isLoading])
 
   const effectivePattern = useMemo((): RecurrencePattern | null => {
     if (repeatMode === 'none') return null
-    if (repeatMode === 'custom') return customPattern
+    if (repeatMode === 'custom') return { ...customPattern, until: ends.until, count: ends.count }
     if (!startTime) return null
-    return buildPresetPattern(repeatMode, startTime)
-  }, [repeatMode, customPattern, startTime])
+    return { ...buildPresetPattern(repeatMode, startTime), until: ends.until, count: ends.count }
+  }, [repeatMode, customPattern, startTime, ends])
 
   const recurrenceSummary = useMemo(() => {
     if (!effectivePattern) return null
@@ -195,7 +203,9 @@ function ScheduleContent({
           : repeatMode !== 'none' && startTime
             ? buildPresetPattern(repeatMode, startTime)
             : defaultCustomPattern(startTime)
-      setCustomPattern(seed)
+      // Ends live in the separate `ends` state now — strip them from the seed so they aren't
+      // duplicated inside `customPattern`.
+      setCustomPattern({ ...seed, until: undefined, count: undefined })
     }
     setRepeatMode(nextMode)
   }
@@ -342,7 +352,7 @@ function ScheduleContent({
 
   if (current?.id === 'assignee') {
     return (
-      <div className={cn('w-72', className)}>
+      <div className={cn('w-80', className)}>
         <CommandBreadcrumb rootLabel='Schedule' />
         <ActorPickerContent
           value={assigneeActorId ? [assigneeActorId] : []}
@@ -362,7 +372,7 @@ function ScheduleContent({
 
   if (current?.id === 'datetime') {
     return (
-      <div className={cn('w-auto', className)}>
+      <div className={cn('w-80', className)}>
         <CommandBreadcrumb rootLabel='Schedule' />
         <DateTimePickerContent
           value={startTime}
@@ -371,6 +381,7 @@ function ScheduleContent({
             pop()
           }}
           mode='datetime'
+          className='w-full min-w-0'
         />
       </div>
     )
@@ -378,7 +389,7 @@ function ScheduleContent({
 
   if (current?.id === 'endtime') {
     return (
-      <div className={cn('w-auto', className)}>
+      <div className={cn('w-80', className)}>
         <CommandBreadcrumb rootLabel='Schedule' />
         <DateTimePickerContent
           value={customEndTime ?? endTime}
@@ -388,160 +399,181 @@ function ScheduleContent({
             pop()
           }}
           mode='time'
+          className='w-full min-w-0'
         />
       </div>
     )
   }
 
   return (
-    <div className={cn('w-72 space-y-3 p-3', className)}>
-      <Button
-        variant='outline'
-        size='sm'
-        className='w-full justify-start'
-        onClick={() => push({ id: 'assignee', label: 'Assignee' })}>
-        {assigneeActor ? (
-          <>
-            <Avatar className='size-4'>
-              <AvatarImage src={assigneeActor.avatarUrl ?? undefined} />
-              <AvatarFallback className='text-[9px]'>
-                {getInitials(assigneeActor.name)}
-              </AvatarFallback>
-            </Avatar>
-            {assigneeActor.name}
-          </>
-        ) : (
-          <>
-            <User /> Unassigned
-          </>
-        )}
-      </Button>
+    <div className={cn('flex min-h-0 w-80 flex-col', className)}>
+      <ScrollArea className='min-h-0 flex-1'>
+        <div className='space-y-3 p-3'>
+          <Button
+            variant='outline'
+            size='sm'
+            className='w-full justify-start'
+            onClick={() => push({ id: 'assignee', label: 'Assignee' })}>
+            {assigneeActor ? (
+              <>
+                <Avatar className='size-4'>
+                  <AvatarImage src={assigneeActor.avatarUrl ?? undefined} />
+                  <AvatarFallback className='text-[9px]'>
+                    {getInitials(assigneeActor.name)}
+                  </AvatarFallback>
+                </Avatar>
+                {assigneeActor.name}
+              </>
+            ) : (
+              <>
+                <User /> Unassigned
+              </>
+            )}
+          </Button>
 
-      <Button
-        variant='outline'
-        size='sm'
-        className='w-full justify-start'
-        onClick={() => push({ id: 'datetime', label: 'Date & time' })}>
-        <Calendar />
-        {startTime ? format(startTime, 'PPP p') : 'Select date & time'}
-      </Button>
+          <Button
+            variant='outline'
+            size='sm'
+            className='w-full justify-start'
+            onClick={() => push({ id: 'datetime', label: 'Date & time' })}>
+            <Calendar />
+            {startTime ? format(startTime, 'PPP p') : 'Select date & time'}
+          </Button>
 
-      <div className='flex gap-2'>
-        <Select
-          value={duration}
-          onValueChange={(v) => {
-            // Custom drills into the end-time page — the duration only flips to
-            // 'custom' once a time is actually picked there.
-            if (v === 'custom') {
-              push({ id: 'endtime', label: 'End time' })
-              return
-            }
-            setDuration(v as DurationValue)
-          }}>
-          <SelectTrigger size='sm' className='flex-1 min-w-0'>
-            <SelectValue placeholder='Duration' />
-          </SelectTrigger>
-          <SelectContent>
-            {DURATION_OPTIONS.map((option) => (
-              <SelectItem key={option.value} value={option.value}>
-                {option.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+          <div className='flex gap-2'>
+            <Select
+              value={duration}
+              onValueChange={(v) => {
+                // Custom drills into the end-time page — the duration only flips to
+                // 'custom' once a time is actually picked there.
+                if (v === 'custom') {
+                  push({ id: 'endtime', label: 'End time' })
+                  return
+                }
+                setDuration(v as DurationValue)
+              }}>
+              <SelectTrigger size='sm' className='flex-1 min-w-0'>
+                <SelectValue placeholder='Duration' />
+              </SelectTrigger>
+              <SelectContent>
+                {DURATION_OPTIONS.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
 
-        <Button
-          variant='outline'
-          size='sm'
-          className='flex-1 min-w-0 justify-start'
-          onClick={() => push({ id: 'endtime', label: 'End time' })}>
-          <Clock />
-          {endTime ? format(endTime, 'p') : 'End time'}
-        </Button>
-      </div>
+            <Button
+              variant='outline'
+              size='sm'
+              className='flex-1 min-w-0 justify-start'
+              onClick={() => push({ id: 'endtime', label: 'End time' })}>
+              <Clock />
+              {endTime ? format(endTime, 'p') : 'End time'}
+            </Button>
+          </div>
 
-      {workOrderRecordId && (
-        <div className='space-y-2'>
-          <Select
-            value={repeatMode}
-            onValueChange={(v) => handleRepeatModeChange(v as RecurrencePreset)}>
-            <SelectTrigger size='sm' className='w-full'>
-              <SelectValue placeholder='Repeats' />
-            </SelectTrigger>
-            <SelectContent>
-              {/* Selecting None on an existing rule is out of scope for v1 (06 §6) — ending a
-                  series happens via the Pause/End engagement actions, not this control. */}
-              {!hasExistingRule && <SelectItem value='none'>Does not repeat</SelectItem>}
-              <SelectItem value='weekly'>Weekly</SelectItem>
-              <SelectItem value='biweekly'>Every 2 weeks</SelectItem>
-              <SelectItem value='monthly'>Monthly</SelectItem>
-              <SelectItem value='custom'>Custom...</SelectItem>
-            </SelectContent>
-          </Select>
+          {workOrderRecordId && (
+            <div className='space-y-2'>
+              <Select
+                value={repeatMode}
+                onValueChange={(v) => handleRepeatModeChange(v as RecurrencePreset)}>
+                <SelectTrigger size='sm' className='w-full'>
+                  <SelectValue placeholder='Repeats' />
+                </SelectTrigger>
+                <SelectContent>
+                  {/* Selecting None on an existing rule is out of scope for v1 (06 §6) — ending
+                      a series happens via the Pause/End engagement actions, not this control. */}
+                  {!hasExistingRule && <SelectItem value='none'>Does not repeat</SelectItem>}
+                  <SelectItem value='weekly'>Weekly</SelectItem>
+                  <SelectItem value='biweekly'>Every 2 weeks</SelectItem>
+                  <SelectItem value='monthly'>Monthly</SelectItem>
+                  <SelectItem value='custom'>Custom...</SelectItem>
+                </SelectContent>
+              </Select>
 
-          {recurrenceSummary && (
-            <p className='px-0.5 text-xs text-muted-foreground'>{recurrenceSummary}</p>
-          )}
+              {repeatMode === 'custom' && (
+                <RecurrencePatternFields
+                  value={customPattern}
+                  onChange={setCustomPattern}
+                  weekStartIndex={weekStartIndex}
+                  hideEndCondition
+                />
+              )}
 
-          {repeatMode === 'custom' && (
-            <RecurrencePatternFields
-              value={customPattern}
-              onChange={setCustomPattern}
-              weekStartIndex={weekStartIndex}
-            />
-          )}
-
-          {wantsRecurrenceWrite && !patternValid && (
-            <p className='px-0.5 text-xs text-destructive'>
-              Pick at least one weekday, or fix the end condition, to save this pattern.
-            </p>
-          )}
-        </div>
-      )}
-
-      {showChooser && (
-        <div className='space-y-1.5 rounded-md border p-2'>
-          <div className='text-xs font-medium text-muted-foreground'>Apply to</div>
-          <RadioGroup
-            value={chooserScope}
-            onValueChange={(v) => setChooserScope(v as 'this' | 'following' | 'all')}
-            className='gap-1.5'>
-            <label className='flex items-center gap-2 text-sm'>
-              <RadioGroupItem value='this' size='sm' /> This visit
-            </label>
-            <label className='flex items-center gap-2 text-sm'>
-              <RadioGroupItem value='following' size='sm' /> This and following
-            </label>
-            <label className='flex items-center gap-2 text-sm'>
-              <RadioGroupItem value='all' size='sm' /> All visits
-            </label>
-          </RadioGroup>
-        </div>
-      )}
-
-      {hints.length > 0 && (
-        <div className='space-y-1 rounded-md border border-amber-500/30 bg-amber-500/10 p-2 text-xs text-amber-700 dark:text-amber-400'>
-          {hints.map((hint) => (
-            <div key={hint} className='flex items-center gap-1.5'>
-              <AlertTriangle className='size-3 shrink-0' />
-              {hint}
+              {repeatMode !== 'none' && (
+                <div className='rounded-md border p-2'>
+                  <RecurrenceEndFields
+                    value={ends}
+                    onChange={(next) => {
+                      setRepeatsTouched(true)
+                      setEnds(next)
+                    }}
+                    className='flex flex-col gap-2'
+                  />
+                </div>
+              )}
             </div>
-          ))}
-        </div>
-      )}
+          )}
 
-      <div className='flex items-center justify-between gap-2 pt-1'>
-        <Button
-          variant='ghost'
-          size='sm'
-          onClick={handleUnschedule}
-          loading={unscheduleVisit.isPending}
-          disabled={!initialStartTime}>
-          Unschedule
-        </Button>
-        <Button size='sm' onClick={handleSave} loading={isSaving} disabled={!canSave}>
-          Save
-        </Button>
+          {showChooser && (
+            <div className='space-y-1.5 rounded-md border p-2'>
+              <div className='text-xs font-medium text-muted-foreground'>Apply to</div>
+              <RadioGroup
+                value={chooserScope}
+                onValueChange={(v) => setChooserScope(v as 'this' | 'following' | 'all')}
+                className='gap-1.5'>
+                <label className='flex items-center gap-2 text-sm'>
+                  <RadioGroupItem value='this' size='sm' /> This visit
+                </label>
+                <label className='flex items-center gap-2 text-sm'>
+                  <RadioGroupItem value='following' size='sm' /> This and following
+                </label>
+                <label className='flex items-center gap-2 text-sm'>
+                  <RadioGroupItem value='all' size='sm' /> All visits
+                </label>
+              </RadioGroup>
+            </div>
+          )}
+
+          {hints.length > 0 && (
+            <div className='space-y-1 rounded-md border border-amber-500/30 bg-amber-500/10 p-2 text-xs text-amber-700 dark:text-amber-400'>
+              {hints.map((hint) => (
+                <div key={hint} className='flex items-center gap-1.5'>
+                  <AlertTriangle className='size-3 shrink-0' />
+                  {hint}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </ScrollArea>
+
+      <div className='space-y-2 border-t p-3'>
+        {recurrenceSummary && (
+          <p className='px-0.5 text-xs text-muted-foreground'>{recurrenceSummary}</p>
+        )}
+
+        {wantsRecurrenceWrite && !patternValid && (
+          <p className='px-0.5 text-xs text-destructive'>
+            Pick at least one weekday, or fix the end condition, to save this pattern.
+          </p>
+        )}
+
+        <div className='flex items-center justify-between gap-2'>
+          <Button
+            variant='ghost'
+            size='sm'
+            onClick={handleUnschedule}
+            loading={unscheduleVisit.isPending}
+            disabled={!initialStartTime}>
+            Unschedule
+          </Button>
+          <Button size='sm' onClick={handleSave} loading={isSaving} disabled={!canSave}>
+            Save
+          </Button>
+        </div>
       </div>
     </div>
   )
@@ -567,7 +599,7 @@ export function SchedulePopover({
   return (
     <Popover open={open} onOpenChange={onOpenChange}>
       <PopoverTrigger asChild>{trigger}</PopoverTrigger>
-      <PopoverContent className='p-0' align='start'>
+      <PopoverContent className='w-80 p-0' align='start'>
         <SchedulePopoverContent {...contentProps} />
       </PopoverContent>
     </Popover>

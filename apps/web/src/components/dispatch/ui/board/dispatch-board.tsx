@@ -5,16 +5,21 @@
 import { weekStartToIndex } from '@auxx/lib/availability/client'
 import { FeatureKey } from '@auxx/lib/permissions/client'
 import { CalendarDndProvider } from '@auxx/ui/components/event-calendar'
+import { type DockedPanelConfig, MainPageContent } from '@auxx/ui/components/main-page'
 import type { DragEndEvent } from '@dnd-kit/core'
 import { addMinutes } from 'date-fns'
 import { Lock } from 'lucide-react'
 import { useCallback, useMemo, useState } from 'react'
 import { EmptyState } from '~/components/global/empty-state'
+import { useEffectiveDockState } from '~/hooks/use-effective-dock-state'
 import { useSettings } from '~/hooks/use-settings'
 import { useUser } from '~/hooks/use-user'
 import { useFeatureFlags } from '~/providers/feature-flag-provider'
+import { useDockStore } from '~/stores/dock-store'
 import { useRoutePlannerData } from '../route-planner/hooks/use-route-planner-data'
+import { PlannerDndProvider } from '../route-planner/planner-dnd-provider'
 import { RoutePlannerView } from '../route-planner/route-planner-view'
+import { RoutesDrawer } from '../route-planner/routes-drawer'
 import type { ExistingVisitForOverlap } from '../schedule-popover'
 import { BacklogRail } from './backlog-rail'
 import { BoardCalendarGrid } from './board-calendar-grid'
@@ -34,9 +39,13 @@ import { VisitChipContent } from './visit-chip-content'
  * color-coded; month is display-only. All writes funnel through `dispatch.scheduleVisit`
  * (drag/resize/rail-drop) or the chip popover's status/dispatch mutations.
  *
- * `boardMode === 'map'` (09-route-planner.md §A) swaps the calendar grid for `RoutePlannerView`
- * inside the same flex row — `CalendarDndProvider` stays mounted either way (the planner mounts
- * its OWN nested `DndContext`, so its draggables never reach the calendar's drop handlers).
+ * `boardMode === 'map'` (09-route-planner.md §A) swaps the calendar grid for `RoutePlannerView`.
+ * The two drag contexts are mode-exclusive: `PlannerDndProvider` mounts ABOVE `MainPageContent`
+ * (this component owns it, not the page — the docked Routes panel renders in `MainPageContent`'s
+ * frame and must stay inside the planner's `DndContext`), while `CalendarDndProvider` wraps only
+ * the calendar branch so its draggables bind to their own nearest context. The Routes stop lists
+ * follow the standard dock wiring (`schedule-page.tsx` pattern): docked → `dockedPanels` entry,
+ * not docked → overlay `RoutesDrawer`.
  */
 export function DispatchBoard() {
   const { hasAccess } = useFeatureFlags()
@@ -162,74 +171,137 @@ export function DispatchBoard() {
     []
   )
 
+  const isMap = data.boardMode === 'map'
+  const isDocked = useEffectiveDockState()
+  const dockedWidth = useDockStore((state) => state.dockedWidth)
+  const setDockedWidth = useDockStore((state) => state.setDockedWidth)
+
+  // Standard docked-panel wiring (`schedule-page.tsx` pattern): when docked, the Routes drawer
+  // renders inside MainPageContent's panel frame; when not, it mounts below as the overlay.
+  const dockedPanels = useMemo<DockedPanelConfig[]>(() => {
+    if (!isMap || !isDocked || !data.plannerShowStops) return []
+    return [
+      {
+        key: 'planner-routes',
+        content: (
+          <RoutesDrawer
+            board={planner.board}
+            filters={planner.filters}
+            geometryByWorker={planner.geometryByWorker}
+            date={planner.window}
+            open
+            onOpenChange={data.setPlannerShowStops}
+          />
+        ),
+        width: dockedWidth,
+        onWidthChange: setDockedWidth,
+        minWidth: 320,
+        maxWidth: 800,
+      },
+    ]
+  }, [
+    isMap,
+    isDocked,
+    data.plannerShowStops,
+    data.setPlannerShowStops,
+    planner.board,
+    planner.filters,
+    planner.geometryByWorker,
+    planner.window,
+    dockedWidth,
+    setDockedWidth,
+  ])
+
   if (!hasAccess(FeatureKey.dispatch)) {
     return (
-      <EmptyState
-        icon={Lock}
-        title='Dispatch Not Available'
-        description='Upgrade your plan to use quoting and dispatch.'
-        button={<div className='h-12' />}
-      />
+      <MainPageContent>
+        <EmptyState
+          icon={Lock}
+          title='Dispatch Not Available'
+          description='Upgrade your plan to use quoting and dispatch.'
+          button={<div className='h-12' />}
+        />
+      </MainPageContent>
     )
   }
 
   return (
-    <div className='flex h-full flex-col overflow-hidden'>
-      <BoardToolbar
-        date={data.date}
-        onDateChange={data.setDate}
-        view={data.view}
-        onViewChange={data.setView}
-        weekStartsOn={weekStartsOn}
-        workers={data.allWorkers}
-        selectedWorkerIds={data.selectedWorkerIds}
-        onSelectedWorkerIdsChange={data.setSelectedWorkerIds}
-        showBacklog={data.showBacklog}
-        onShowBacklogChange={data.setShowBacklog}
-        boardMode={data.boardMode}
-        onBoardModeChange={data.setBoardMode}
-        tags={plannerTags}
-        selectedTags={planner.filters.tags}
-        onSelectedTagsChange={(tags) => planner.setFilters({ ...planner.filters, tags })}
-      />
-      <CalendarDndProvider<DispatchVisitEvent>
-        onEventDrop={canEdit ? handleEventDrop : undefined}
-        onDragEnd={canEdit ? handleForeignDragEnd : undefined}
-        renderEvent={renderDragGhost}>
-        <div className='flex flex-1 overflow-hidden'>
-          {data.boardMode === 'map' ? (
+    <PlannerDndProvider
+      board={planner.board}
+      window={planner.window}
+      geometryByWorker={planner.geometryByWorker}>
+      <MainPageContent dockedPanels={dockedPanels}>
+        <div className='flex h-full flex-col overflow-hidden'>
+          <BoardToolbar
+            date={data.date}
+            onDateChange={data.setDate}
+            view={data.view}
+            onViewChange={data.setView}
+            weekStartsOn={weekStartsOn}
+            workers={data.allWorkers}
+            selectedWorkerIds={data.selectedWorkerIds}
+            onSelectedWorkerIdsChange={data.setSelectedWorkerIds}
+            showBacklog={data.showBacklog}
+            onShowBacklogChange={data.setShowBacklog}
+            boardMode={data.boardMode}
+            onBoardModeChange={data.setBoardMode}
+            plannerShowBacklog={data.plannerShowBacklog}
+            onPlannerShowBacklogChange={data.setPlannerShowBacklog}
+            plannerShowStops={data.plannerShowStops}
+            onPlannerShowStopsChange={data.setPlannerShowStops}
+            tags={plannerTags}
+            selectedTags={planner.filters.tags}
+            onSelectedTagsChange={(tags) => planner.setFilters({ ...planner.filters, tags })}
+          />
+          {isMap ? (
             <RoutePlannerView
               board={planner.board}
               window={planner.window}
               geometryByWorker={planner.geometryByWorker}
               filters={planner.filters}
               isLoading={planner.isLoading}
+              showBacklog={data.plannerShowBacklog}
             />
           ) : (
-            <>
-              {data.showBacklog && <BacklogRail items={data.backlogEvents} canEdit={canEdit} />}
-              <BoardCalendarGrid
-                date={data.date}
-                onDateChange={data.setDate}
-                view={data.view}
-                weekStartsOn={weekStartsOn}
-                resources={data.resources}
-                backgroundEvents={backgroundEvents}
-                events={data.events}
-                overlappingIds={overlappingIds}
-                canEdit={canEdit}
-                mutations={mutations}
-                existingVisits={existingVisits}
-                activeVisitId={activeVisitId}
-                onActiveVisitChange={setActiveVisitId}
-                onRangeChange={data.handleRangeChange}
-                onEventResize={handleEventResize}
-                isNonWorkingDay={isNonWorkingDay}
-              />
-            </>
+            <CalendarDndProvider<DispatchVisitEvent>
+              onEventDrop={canEdit ? handleEventDrop : undefined}
+              onDragEnd={canEdit ? handleForeignDragEnd : undefined}
+              renderEvent={renderDragGhost}>
+              <div className='flex flex-1 overflow-hidden'>
+                {data.showBacklog && <BacklogRail items={data.backlogEvents} canEdit={canEdit} />}
+                <BoardCalendarGrid
+                  date={data.date}
+                  onDateChange={data.setDate}
+                  view={data.view}
+                  weekStartsOn={weekStartsOn}
+                  resources={data.resources}
+                  backgroundEvents={backgroundEvents}
+                  events={data.events}
+                  overlappingIds={overlappingIds}
+                  canEdit={canEdit}
+                  mutations={mutations}
+                  existingVisits={existingVisits}
+                  activeVisitId={activeVisitId}
+                  onActiveVisitChange={setActiveVisitId}
+                  onRangeChange={data.handleRangeChange}
+                  onEventResize={handleEventResize}
+                  isNonWorkingDay={isNonWorkingDay}
+                />
+              </div>
+            </CalendarDndProvider>
           )}
         </div>
-      </CalendarDndProvider>
-    </div>
+        {isMap && !isDocked && (
+          <RoutesDrawer
+            board={planner.board}
+            filters={planner.filters}
+            geometryByWorker={planner.geometryByWorker}
+            date={planner.window}
+            open={data.plannerShowStops}
+            onOpenChange={data.setPlannerShowStops}
+          />
+        )}
+      </MainPageContent>
+    </PlannerDndProvider>
   )
 }

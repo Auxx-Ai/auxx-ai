@@ -22,10 +22,14 @@
  * directly, since those aren't exposed by any lib mutation) go through
  * `database.$client.query('UPDATE ...', [...])` (the WS1 raw-delete precedent).
  *
- * MAPBOX_ACCESS_TOKEN / MAPTILER_API_KEY are asserted unset in the test env (confirmed against
- * `.env`) so the fallback/no-key paths are exercised for real, not simulated; `geocoder.ts`'s
- * `setGeocodeFetcherForTesting` test seam stubs the MapTiler response for the geocode-hook
- * sub-tests, restored to `undefined` in a `finally`.
+ * MAPBOX_ACCESS_TOKEN / MAPTILER_API_KEY are force-deleted from `process.env` at the top of this
+ * file, before any lib call reads them, so the fallback/no-key paths are exercised for real, not
+ * simulated — both `geocoder.ts`'s `geocode()` and `directions.ts`'s `fetchMapboxLegs()` read
+ * their key/token at CALL time (no top-level `process.env` caching), so a delete at any point
+ * before the first call takes effect. This is necessary because a MapTiler *test* key has since
+ * been added to the root `.env` for other features; `geocoder.ts`'s `setGeocodeFetcherForTesting`
+ * test seam stubs the MapTiler response for the geocode-hook sub-tests, restored to `undefined`
+ * in a `finally`.
  *
  * BUG FOUND + FIXED (documented in the verify report): `autoGenerateWorkOrderNumber`
  * (packages/lib/src/resources/hooks/work-order-hooks.ts) appended `work_order_number` to the
@@ -64,6 +68,12 @@ import { setGeocodeFetcherForTesting } from '@auxx/lib/geocoding'
 import { UnifiedCrudHandler } from '@auxx/lib/resources'
 import { migration039WorkOrderTags } from '@auxx/lib/seed/entity-migrations/migrations/039-work-order-tags'
 import { getRedisData } from '@auxx/redis'
+
+// Force-unset before any lib import/call reads them (both are read at call time — see file
+// header) — a MapTiler TEST key has since been added to the root `.env` for other features, but
+// this script needs the real no-key/fallback paths, not the keyed path.
+delete process.env.MAPTILER_API_KEY
+delete process.env.MAPBOX_ACCESS_TOKEN
 
 let pass = 0
 let fail = 0

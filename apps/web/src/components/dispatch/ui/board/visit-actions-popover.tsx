@@ -3,7 +3,7 @@
 'use client'
 
 import { Button } from '@auxx/ui/components/button'
-import { ArrowLeft, CalendarClock, ExternalLink, Send } from 'lucide-react'
+import { ArrowLeft, CalendarClock, ExternalLink, Send, TriangleAlert } from 'lucide-react'
 import Link from 'next/link'
 import { useState } from 'react'
 import { useConfirm } from '~/hooks/use-confirm'
@@ -12,7 +12,7 @@ import { SchedulePopoverContent } from '../schedule-popover'
 import type { useBoardMutations } from './hooks/use-board-mutations'
 import type { DispatchVisitEvent } from './types'
 import { VISIT_STATUS_LABELS } from './types'
-import { nextVisitStatus } from './utils'
+import { getVisitDayContext, isExecutionReady, nextVisitStatus } from './utils'
 
 interface VisitActionsPopoverContentProps {
   event: DispatchVisitEvent
@@ -39,7 +39,7 @@ export function VisitActionsPopoverContent({
 
   if (mode === 'reschedule') {
     return (
-      <div className='w-72'>
+      <div className='w-80'>
         <div className='flex items-center gap-1 border-b p-2'>
           <Button variant='ghost' size='icon' className='size-6' onClick={() => setMode('actions')}>
             <ArrowLeft />
@@ -61,6 +61,8 @@ export function VisitActionsPopoverContent({
 
   const next = nextVisitStatus(event.status)
   const canCancel = event.status !== 'canceled' && event.status !== 'done'
+  const dayContext = getVisitDayContext(event.start, event.end)
+  const isOverdue = dayContext === 'past' && event.status !== 'done' && event.status !== 'canceled'
 
   const handleDispatch = async () => {
     if (event.dispatchedAt) {
@@ -84,11 +86,16 @@ export function VisitActionsPopoverContent({
           </div>
         )}
         <div className='text-muted-foreground text-xs'>{VISIT_STATUS_LABELS[event.status]}</div>
+        {isOverdue && (
+          <div className='flex items-center gap-1 text-xs text-amber-600 dark:text-amber-500'>
+            <TriangleAlert className='size-3' /> Overdue — not completed
+          </div>
+        )}
       </div>
 
       {canEdit && (
         <div className='flex flex-col gap-1.5 pt-1'>
-          {next && (
+          {next && isExecutionReady(dayContext) && (
             <Button
               size='sm'
               variant='outline'

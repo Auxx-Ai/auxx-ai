@@ -2,7 +2,9 @@
 'use client'
 
 import type { NthWeekdayOrdinal, RecurrencePattern, Weekday } from '@auxx/lib/recurrence/client'
+import { Button } from '@auxx/ui/components/button'
 import { Input } from '@auxx/ui/components/input'
+import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
 import { RadioGroup, RadioGroupItem } from '@auxx/ui/components/radio-group'
 import {
   Select,
@@ -12,6 +14,9 @@ import {
   SelectValue,
 } from '@auxx/ui/components/select'
 import { ToggleGroup, ToggleGroupItem } from '@auxx/ui/components/toggle-group'
+import { format, parseISO } from 'date-fns'
+import { useState } from 'react'
+import { DateTimePickerContent } from '~/components/pickers/date-time-picker'
 import { orderedWeekdays } from './recurrence-utils'
 
 const WEEKDAY_ABBREVIATIONS = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa']
@@ -26,10 +31,88 @@ const NTH_OPTIONS: { value: string; label: string; nth: NthWeekdayOrdinal }[] = 
 
 type EndCondition = 'never' | 'until' | 'count'
 
-function endConditionOf(pattern: RecurrencePattern): EndCondition {
-  if (pattern.until) return 'until'
-  if (pattern.count) return 'count'
+function endConditionOf(value: Pick<RecurrencePattern, 'until' | 'count'>): EndCondition {
+  if (value.until) return 'until'
+  if (value.count) return 'count'
   return 'never'
+}
+
+export interface RecurrenceEndFieldsProps {
+  value: Pick<RecurrencePattern, 'until' | 'count'>
+  onChange: (next: { until?: string; count?: number }) => void
+  className?: string
+}
+
+/**
+ * The "Ends" radio group (never / on date / after N visits) — extracted so the schedule
+ * popover can render it once per Repeats selection (custom AND preset alike) rather than
+ * only inside the Custom editor. Mutual exclusivity (`until`/`count`) is enforced here.
+ */
+export function RecurrenceEndFields({ value, onChange, className }: RecurrenceEndFieldsProps) {
+  const endCondition = endConditionOf(value)
+  const [datePickerOpen, setDatePickerOpen] = useState(false)
+
+  const setEndCondition = (next: EndCondition) => {
+    if (next === 'never') onChange({ until: undefined, count: undefined })
+    else if (next === 'until')
+      onChange({ until: value.until ?? new Date().toISOString().slice(0, 10), count: undefined })
+    else onChange({ count: value.count ?? 1, until: undefined })
+  }
+
+  return (
+    <div className={className}>
+      <span className='text-xs text-muted-foreground'>Ends</span>
+      <RadioGroup
+        value={endCondition}
+        onValueChange={(v) => setEndCondition(v as EndCondition)}
+        className='gap-1.5'>
+        <label className='flex items-center gap-2 text-sm'>
+          <RadioGroupItem value='never' size='sm' /> Never
+        </label>
+        <div className='flex items-center gap-2 text-sm'>
+          <label className='flex items-center gap-2'>
+            <RadioGroupItem value='until' size='sm' /> On date
+          </label>
+          <Popover open={datePickerOpen} onOpenChange={setDatePickerOpen}>
+            <PopoverTrigger asChild>
+              <Button
+                variant='outline'
+                size='sm'
+                disabled={endCondition !== 'until'}
+                className='h-7 w-36 justify-start font-normal'>
+                {value.until ? format(parseISO(value.until), 'PP') : 'Pick date'}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className='w-auto p-0' align='start'>
+              <DateTimePickerContent
+                mode='date'
+                noConfirm
+                value={value.until ? parseISO(value.until) : undefined}
+                onChange={(d) => {
+                  onChange({ until: d ? format(d, 'yyyy-MM-dd') : undefined, count: undefined })
+                  setDatePickerOpen(false)
+                }}
+              />
+            </PopoverContent>
+          </Popover>
+        </div>
+        <label className='flex items-center gap-2 text-sm'>
+          <RadioGroupItem value='count' size='sm' /> After
+          <Input
+            type='number'
+            min={1}
+            disabled={endCondition !== 'count'}
+            value={value.count ?? 1}
+            onChange={(e) =>
+              onChange({ count: Number.parseInt(e.target.value, 10) || 1, until: undefined })
+            }
+            className='h-7 w-16'
+          />
+          visits
+        </label>
+      </RadioGroup>
+    </div>
+  )
 }
 
 export interface RecurrencePatternFieldsProps {
@@ -37,6 +120,12 @@ export interface RecurrencePatternFieldsProps {
   onChange: (next: RecurrencePattern) => void
   /** Org `weekStart` setting, as a date-fns index — controls weekday chip order. */
   weekStartIndex: 0 | 1 | 6
+  /**
+   * Omit the embedded "Ends" section — the schedule popover renders `RecurrenceEndFields`
+   * itself (shared across all Repeats modes, not just Custom). The billing schedule editor
+   * leaves this unset since it has no separate Ends control of its own.
+   */
+  hideEndCondition?: boolean
   className?: string
 }
 
@@ -51,10 +140,10 @@ export function RecurrencePatternFields({
   value,
   onChange,
   weekStartIndex,
+  hideEndCondition,
   className,
 }: RecurrencePatternFieldsProps) {
   const weekdayOrder = orderedWeekdays(weekStartIndex)
-  const endCondition = endConditionOf(value)
 
   const setFrequency = (frequency: RecurrencePattern['frequency']) => {
     if (frequency === value.frequency) return
@@ -93,17 +182,6 @@ export function RecurrencePatternFields({
         nthWeekday: value.nthWeekday ?? { nth: 1, weekday: 1 },
       })
     }
-  }
-
-  const setEndCondition = (next: EndCondition) => {
-    if (next === 'never') onChange({ ...value, until: undefined, count: undefined })
-    else if (next === 'until')
-      onChange({
-        ...value,
-        until: value.until ?? new Date().toISOString().slice(0, 10),
-        count: undefined,
-      })
-    else onChange({ ...value, count: value.count ?? 1, until: undefined })
   }
 
   return (
@@ -229,45 +307,15 @@ export function RecurrencePatternFields({
           </div>
         )}
 
-        <div className='flex flex-col gap-2 border-t pt-2'>
-          <span className='text-xs text-muted-foreground'>Ends</span>
-          <RadioGroup
-            value={endCondition}
-            onValueChange={(v) => setEndCondition(v as EndCondition)}
-            className='gap-1.5'>
-            <label className='flex items-center gap-2 text-sm'>
-              <RadioGroupItem value='never' size='sm' /> Never
-            </label>
-            <label className='flex items-center gap-2 text-sm'>
-              <RadioGroupItem value='until' size='sm' /> On date
-              <Input
-                type='date'
-                disabled={endCondition !== 'until'}
-                value={value.until ?? ''}
-                onChange={(e) => onChange({ ...value, until: e.target.value, count: undefined })}
-                className='h-7 w-36'
-              />
-            </label>
-            <label className='flex items-center gap-2 text-sm'>
-              <RadioGroupItem value='count' size='sm' /> After
-              <Input
-                type='number'
-                min={1}
-                disabled={endCondition !== 'count'}
-                value={value.count ?? 1}
-                onChange={(e) =>
-                  onChange({
-                    ...value,
-                    count: Number.parseInt(e.target.value, 10) || 1,
-                    until: undefined,
-                  })
-                }
-                className='h-7 w-16'
-              />
-              visits
-            </label>
-          </RadioGroup>
-        </div>
+        {!hideEndCondition && (
+          <div className='border-t pt-2'>
+            <RecurrenceEndFields
+              value={value}
+              onChange={(ends) => onChange({ ...value, until: ends.until, count: ends.count })}
+              className='flex flex-col gap-2'
+            />
+          </div>
+        )}
       </div>
     </div>
   )

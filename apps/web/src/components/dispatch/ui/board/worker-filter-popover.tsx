@@ -42,7 +42,7 @@ export function WorkerFilterPopover({
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <Button variant='outline' size='sm'>
+        <Button variant='ghost' size='sm'>
           <Users /> {label}
         </Button>
       </PopoverTrigger>

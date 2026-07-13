@@ -101,6 +101,8 @@ export function VisitDetailContent({ visitId }: VisitDetailContentProps) {
                   visitId={visit.id}
                   status={visit.status}
                   hasContact={!!visit.workOrder.contactDisplayName}
+                  startTime={visit.startTime}
+                  endTime={visit.endTime}
                 />
               </div>
             </Section>

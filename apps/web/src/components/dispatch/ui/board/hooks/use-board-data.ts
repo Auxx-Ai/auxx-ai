@@ -40,6 +40,10 @@ export function useBoardData() {
   // deliberately NOT a `BoardViewMode` so the month-view debounce and `view === 'day'` gates stay
   // untouched. Entering map mode doesn't change `view`; the map always renders `date`'s single day.
   const [boardMode, setBoardMode] = useState<'calendar' | 'map'>('calendar')
+  // Map-mode panel visibility — lifted here (not `RoutePlannerView` local state) so the one
+  // board toolbar owns both toggles; the planner renders no header of its own.
+  const [plannerShowBacklog, setPlannerShowBacklog] = useState(true)
+  const [plannerShowStops, setPlannerShowStops] = useState(true)
 
   const rangeDebounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   useEffect(() => () => clearTimeout(rangeDebounceRef.current), [])
@@ -147,6 +151,10 @@ export function useBoardData() {
     setShowBacklog,
     boardMode,
     setBoardMode,
+    plannerShowBacklog,
+    setPlannerShowBacklog,
+    plannerShowStops,
+    setPlannerShowStops,
     resources,
     colorByUserId,
     workOrderById,
