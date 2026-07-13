@@ -34,6 +34,23 @@ export function classifyRecurrencePreset(pattern: RecurrencePattern | null): Rec
   return 'custom'
 }
 
+/** Short cadence label for the collapsed Repeat row's pill — the long human-readable example
+ * (`describeRecurrence`) renders below the row instead of stretching the trigger. */
+export function recurrencePresetLabel(preset: RecurrencePreset): string {
+  switch (preset) {
+    case 'none':
+      return 'Does not repeat'
+    case 'weekly':
+      return 'Weekly'
+    case 'biweekly':
+      return 'Every 2 weeks'
+    case 'monthly':
+      return 'Monthly'
+    case 'custom':
+      return 'Custom'
+  }
+}
+
 /** Preset → pattern, derived from the currently picked start date (06 §6 preset semantics). */
 export function buildPresetPattern(
   preset: 'weekly' | 'biweekly' | 'monthly',
