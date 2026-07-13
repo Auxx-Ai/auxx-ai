@@ -9,8 +9,10 @@ import { useMemo } from 'react'
 import type { CalendarView, EventCalendarItem, RenderEvent } from './types'
 import {
   eventColorVar,
+  eventSelectedRingClass,
   eventSolidBgClass,
   eventTintBgClass,
+  eventTintBgStrongClass,
   eventTintTextClass,
   getBorderRadiusClasses,
 } from './utils'
@@ -24,6 +26,7 @@ interface EventWrapperProps {
   isFirstDay?: boolean
   isLastDay?: boolean
   isDragging?: boolean
+  isSelected?: boolean
   onClick?: (e: React.MouseEvent) => void
   className?: string
   children: React.ReactNode
@@ -33,12 +36,13 @@ interface EventWrapperProps {
   onTouchStart?: (e: React.TouchEvent) => void
 }
 
-// Shared interactive wrapper — dnd listeners/attributes, focus ring, drag state.
+// Shared interactive wrapper — dnd listeners/attributes, focus ring, drag/selected state.
 function EventWrapper({
   event,
   isFirstDay = true,
   isLastDay = true,
   isDragging,
+  isSelected,
   onClick,
   className,
   children,
@@ -53,10 +57,14 @@ function EventWrapper({
       className={cn(
         'focus-visible:border-ring focus-visible:ring-ring/50 flex h-full w-full overflow-hidden text-left font-medium transition outline-none select-none focus-visible:ring-[3px] data-dragging:cursor-grabbing data-dragging:shadow-lg',
         getBorderRadiusClasses(isFirstDay, isLastDay),
+        // Selected ring last so it wins over the resting look (but focus-visible:ring-[3px]
+        // still layers on top when the chip is keyboard-focused).
+        isSelected && eventSelectedRingClass,
         className
       )}
       style={eventColorVar(event.color)}
       data-dragging={isDragging || undefined}
+      data-selected={isSelected || undefined}
       onClick={onClick}
       onMouseDown={onMouseDown}
       onTouchStart={onTouchStart}
@@ -73,6 +81,8 @@ interface EventItemProps<T extends EventCalendarItem = EventCalendarItem> {
   /** Renders the rounded-full all-day-lane pill styling regardless of `view`. */
   allDayLane?: boolean
   isDragging?: boolean
+  /** Active selection — the event whose detail/popover is open. Draws the in-color ring. */
+  isSelected?: boolean
   onClick?: (e: React.MouseEvent) => void
   showTime?: boolean
   /** Overrides the displayed start/end while dragging (see calendar-dnd-context). */
@@ -93,6 +103,7 @@ export function EventItem<T extends EventCalendarItem = EventCalendarItem>({
   view,
   allDayLane,
   isDragging,
+  isSelected,
   onClick,
   showTime,
   currentTime,
@@ -125,6 +136,11 @@ export function EventItem<T extends EventCalendarItem = EventCalendarItem>({
     [displayStart, displayEnd]
   )
 
+  // Dragged chips get an emphasized fill so they read as visibly "darker" than the
+  // solid origin left behind. Swapped in for `eventTintBgClass` (never both) to avoid
+  // two competing `background-color` utilities.
+  const tintBg = isDragging ? eventTintBgStrongClass : eventTintBgClass
+
   const getEventTime = () => {
     if (event.allDay) return 'All day'
     if (durationMinutes < 45) return formatTimeWithOptionalMinutes(displayStart)
@@ -150,10 +166,11 @@ export function EventItem<T extends EventCalendarItem = EventCalendarItem>({
         isFirstDay={isFirstDay}
         isLastDay={isLastDay}
         isDragging={isDragging}
+        isSelected={isSelected}
         onClick={onClick}
         className={cn(
           'items-center gap-1.5 rounded-full px-2 py-1 text-[10px] sm:text-xs',
-          eventTintBgClass,
+          tintBg,
           className
         )}
         dndListeners={dndListeners}
@@ -187,10 +204,11 @@ export function EventItem<T extends EventCalendarItem = EventCalendarItem>({
         isFirstDay={isFirstDay}
         isLastDay={isLastDay}
         isDragging={isDragging}
+        isSelected={isSelected}
         onClick={onClick}
         className={cn(
           'mt-[var(--event-gap)] h-[var(--event-height)] items-center gap-1.5 rounded-md px-1 text-[10px] sm:px-1.5 sm:text-xs',
-          eventTintBgClass,
+          tintBg,
           eventTintTextClass,
           'hover:brightness-105 dark:hover:brightness-110',
           className
@@ -221,12 +239,13 @@ export function EventItem<T extends EventCalendarItem = EventCalendarItem>({
         isFirstDay={isFirstDay}
         isLastDay={isLastDay}
         isDragging={isDragging}
+        isSelected={isSelected}
         onClick={onClick}
         className={cn(
           'px-1.5 py-1 sm:px-2',
           durationMinutes < 45 ? 'items-center' : 'flex-col',
           view === 'resource' || view === 'week' ? 'text-[10px] sm:text-xs' : 'text-xs',
-          eventTintBgClass,
+          tintBg,
           className
         )}
         dndListeners={dndListeners}
@@ -266,9 +285,11 @@ export function EventItem<T extends EventCalendarItem = EventCalendarItem>({
       className={cn(
         'focus-visible:border-ring focus-visible:ring-ring/50 flex w-full flex-col gap-1 rounded-xl p-2 text-left transition outline-none focus-visible:ring-[3px]',
         eventTintBgClass,
+        isSelected && eventSelectedRingClass,
         className
       )}
       style={eventColorVar(event.color)}
+      data-selected={isSelected || undefined}
       onClick={onClick}
       onMouseDown={onMouseDown}
       onTouchStart={onTouchStart}

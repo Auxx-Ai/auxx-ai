@@ -16,6 +16,8 @@ interface AgendaViewProps<T extends EventCalendarItem = EventCalendarItem> {
   events: T[]
   onEventSelect: (event: T) => void
   renderEvent?: RenderEvent<T>
+  /** Id of the actively-selected event (detail/popover open) — draws the in-color ring. */
+  selectedEventId?: string | null
 }
 
 export function AgendaView<T extends EventCalendarItem = EventCalendarItem>({
@@ -23,6 +25,7 @@ export function AgendaView<T extends EventCalendarItem = EventCalendarItem>({
   events,
   onEventSelect,
   renderEvent,
+  selectedEventId,
 }: AgendaViewProps<T>) {
   const days = useMemo(() => {
     return Array.from({ length: AgendaDaysToShow }, (_, i) => addDays(new Date(currentDate), i))
@@ -65,6 +68,7 @@ export function AgendaView<T extends EventCalendarItem = EventCalendarItem>({
                     event={event}
                     view='agenda'
                     onClick={(e) => handleEventClick(event, e)}
+                    isSelected={event.id === selectedEventId}
                     renderEvent={renderEvent}
                   />
                 ))}

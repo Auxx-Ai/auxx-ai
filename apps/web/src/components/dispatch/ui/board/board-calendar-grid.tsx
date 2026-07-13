@@ -127,6 +127,7 @@ export function BoardCalendarGrid({
       backgroundEvents={backgroundEvents}
       events={events}
       renderEvent={renderEvent}
+      selectedEventId={activeVisitId}
       onEventClick={handleEventClick}
       onEventResize={canEdit && view !== 'month' ? onEventResize : undefined}
       hideToolbar

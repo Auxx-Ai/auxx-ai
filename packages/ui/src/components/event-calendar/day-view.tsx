@@ -10,6 +10,7 @@ import { BackgroundEventsLayer } from './background-events'
 import { EndHour, StartHour, WeekCellsHeight } from './constants'
 import { CurrentTimeLine } from './current-time-line'
 import { DraggableEvent } from './draggable-event'
+import { DropPreview } from './drop-preview'
 import { DroppableCell } from './droppable-cell'
 import { EventItem } from './event-item'
 import { useCurrentTimeIndicator } from './hooks/use-current-time-indicator'
@@ -26,6 +27,8 @@ interface DayViewProps<T extends EventCalendarItem = EventCalendarItem> {
   onSlotClick?: (startTime: Date) => void
   onEventResize?: (event: T, newEnd: Date) => void
   renderEvent?: RenderEvent<T>
+  /** Id of the actively-selected event (detail/popover open) — draws the in-color ring. */
+  selectedEventId?: string | null
 }
 
 /** Big date header — day + month bold, year regular, weekday name below. */
@@ -49,6 +52,7 @@ export function DayView<T extends EventCalendarItem = EventCalendarItem>({
   onSlotClick,
   onEventResize,
   renderEvent,
+  selectedEventId,
 }: DayViewProps<T>) {
   const hours = useMemo(() => {
     const dayStart = startOfDay(currentDate)
@@ -124,6 +128,7 @@ export function DayView<T extends EventCalendarItem = EventCalendarItem>({
                     allDayLane
                     isFirstDay={isFirstDay}
                     isLastDay={isLastDay}
+                    isSelected={event.id === selectedEventId}
                     renderEvent={renderEvent}>
                     <div>{event.title}</div>
                   </EventItem>
@@ -172,10 +177,13 @@ export function DayView<T extends EventCalendarItem = EventCalendarItem>({
                   height={positioned.height}
                   onResize={onEventResize}
                   renderEvent={renderEvent}
+                  isSelected={positioned.event.id === selectedEventId}
                 />
               </div>
             </div>
           ))}
+
+          <DropPreview day={currentDate} />
 
           {currentTimeVisible && <CurrentTimeLine position={currentTimePosition} />}
 

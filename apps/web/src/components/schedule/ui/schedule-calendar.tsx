@@ -70,6 +70,8 @@ interface ScheduleCalendarProps {
   onVisitClick: (visitId: string) => void
   onMeetingClick: (meetingId: string) => void
   onTaskClick: (task: TaskEvent['task']) => void
+  /** Event id whose detail drawer/sheet is open — draws the in-color selection ring. */
+  selectedEventId?: string | null
 }
 
 /**
@@ -86,6 +88,7 @@ export function ScheduleCalendar({
   onVisitClick,
   onMeetingClick,
   onTaskClick,
+  selectedEventId,
 }: ScheduleCalendarProps) {
   const open = useScheduleSidebarStore((s) => s.open)
   const setOpen = useScheduleSidebarStore((s) => s.setOpen)
@@ -170,6 +173,7 @@ export function ScheduleCalendar({
         events={events}
         renderEvent={renderEvent}
         onEventClick={handleEventClick}
+        selectedEventId={selectedEventId}
         weekStartsOn={weekStartsOn}
         hideToolbar
         className='flex-1'

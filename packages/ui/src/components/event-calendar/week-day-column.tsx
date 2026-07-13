@@ -10,6 +10,7 @@ import { BackgroundEventsLayer } from './background-events'
 import { StartHour, WeekCellsHeight } from './constants'
 import { CurrentTimeLine } from './current-time-line'
 import { DraggableEvent } from './draggable-event'
+import { DropPreview } from './drop-preview'
 import { DroppableCell } from './droppable-cell'
 import { positionEventsForDay } from './position-events'
 import type { BackgroundEvent, EventCalendarItem, RenderEvent } from './types'
@@ -33,6 +34,8 @@ interface WeekDayColumnProps<T extends EventCalendarItem = EventCalendarItem> {
   onSlotClick?: (startTime: Date) => void
   onEventResize?: (event: T, newEnd: Date) => void
   renderEvent?: RenderEvent<T>
+  /** Id of the actively-selected event (detail/popover open) — draws the in-color ring. */
+  selectedEventId?: string | null
   /** Current-time line position (% of the hour grid) — shared math, rendered only when `isToday(day)`. */
   currentTimePosition: number
 }
@@ -63,6 +66,7 @@ function WeekDayColumnInner<T extends EventCalendarItem = EventCalendarItem>({
   onSlotClick,
   onEventResize,
   renderEvent,
+  selectedEventId,
   currentTimePosition,
 }: WeekDayColumnProps<T>) {
   const day = dayAt(index)
@@ -123,10 +127,13 @@ function WeekDayColumnInner<T extends EventCalendarItem = EventCalendarItem>({
               height={p.height}
               onResize={onEventResize}
               renderEvent={renderEvent}
+              isSelected={p.event.id === selectedEventId}
             />
           </div>
         </div>
       ))}
+
+      <DropPreview day={day} />
 
       {isToday(day) && <CurrentTimeLine position={currentTimePosition} />}
 

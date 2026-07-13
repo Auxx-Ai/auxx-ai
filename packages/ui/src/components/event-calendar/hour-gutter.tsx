@@ -16,9 +16,9 @@ interface HourGutterProps {
 
 /**
  * Fixed-width hour-label column shared by day/week/resource grids — labels
- * render "00:00"-style (24h), centered, with a hairline rule under each hour
- * row. No vertical border against the grid — the gutter reads as a clean
- * label rail rather than a boxed cell.
+ * render "9 AM"-style (12h, matching the app's en-US convention), small and
+ * muted, straddling each hour rule (Notion-calendar look). No vertical border
+ * against the grid — the gutter reads as a clean label rail, not a boxed cell.
  */
 export function HourGutter({ hours, nowIndicator, className }: HourGutterProps) {
   return (
@@ -28,8 +28,8 @@ export function HourGutter({ hours, nowIndicator, className }: HourGutterProps) 
           key={hour.toISOString()}
           className='relative flex h-[var(--week-cells-height)] items-start justify-center border-b border-border/70 last:border-b-0'>
           {index > 0 && (
-            <span className='text-foreground/50 -translate-y-1/2 text-sm font-medium'>
-              {format(hour, 'HH:mm')}
+            <span className='text-muted-foreground/70 -translate-y-1/2 text-[10px] font-medium'>
+              {format(hour, 'h a')}
             </span>
           )}
         </div>

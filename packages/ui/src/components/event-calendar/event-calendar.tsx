@@ -30,7 +30,17 @@ import { type CSSProperties, type ReactNode, useEffect, useMemo } from 'react'
 
 import { AgendaView } from './agenda-view'
 import { CalendarDndProvider, useCalendarDnd } from './calendar-dnd-context'
-import { AgendaDaysToShow, EventGap, EventHeight, WeekCellsHeight } from './constants'
+import {
+  AgendaDaysToShow,
+  EventGap,
+  EventHeight,
+  GridAllDayChipHeight,
+  GridAllDayChipSpacing,
+  GridAllDayPaddingTop,
+  GridHeaderHeight,
+  GridTickHeight,
+  GridTickMinutes,
+} from './constants'
 import { DayView, DayViewHeader } from './day-view'
 import { MonthView } from './month-view'
 import { ResourceDayView } from './resource-day-view'
@@ -58,6 +68,8 @@ export interface EventCalendarProps<T extends EventCalendarItem = EventCalendarI
   resources?: CalendarResource[]
   backgroundEvents?: BackgroundEvent[]
   renderEvent?: RenderEvent<T>
+  /** Id of the actively-selected event (its detail/popover open) — draws the in-color ring. */
+  selectedEventId?: string | null
   onEventClick?: (event: T) => void
   onSlotClick?: (startTime: Date, resourceId?: string) => void
   /** The calendar never mutates — every write (move or resize) round-trips through these. */
@@ -88,6 +100,7 @@ function EventCalendarInner<T extends EventCalendarItem = EventCalendarItem>({
   resources,
   backgroundEvents,
   renderEvent,
+  selectedEventId,
   onEventClick,
   onSlotClick,
   onEventDrop,
@@ -277,6 +290,7 @@ function EventCalendarInner<T extends EventCalendarItem = EventCalendarItem>({
             onEventSelect={handleEventSelect}
             onSlotClick={handleSlotClick}
             renderEvent={renderEvent}
+            selectedEventId={selectedEventId}
             onDateChange={onDateChange}
             onVisibleRangeChange={onRangeChange}
             isNonWorkingDay={isNonWorkingDay}
@@ -292,6 +306,7 @@ function EventCalendarInner<T extends EventCalendarItem = EventCalendarItem>({
             onSlotClick={handleSlotClick}
             onEventResize={onEventResize}
             renderEvent={renderEvent}
+            selectedEventId={selectedEventId}
             onDateChange={onDateChange}
             onVisibleRangeChange={onRangeChange}
           />
@@ -305,6 +320,7 @@ function EventCalendarInner<T extends EventCalendarItem = EventCalendarItem>({
             onSlotClick={handleSlotClick}
             onEventResize={onEventResize}
             renderEvent={renderEvent}
+            selectedEventId={selectedEventId}
           />
         )}
         {view === 'resource' &&
@@ -318,6 +334,7 @@ function EventCalendarInner<T extends EventCalendarItem = EventCalendarItem>({
               onSlotClick={handleSlotClick}
               onEventResize={onEventResize}
               renderEvent={renderEvent}
+              selectedEventId={selectedEventId}
             />
           ) : null)}
         {view === 'agenda' && (
@@ -326,6 +343,7 @@ function EventCalendarInner<T extends EventCalendarItem = EventCalendarItem>({
             events={events}
             onEventSelect={handleEventSelect}
             renderEvent={renderEvent}
+            selectedEventId={selectedEventId}
           />
         )}
       </div>
@@ -339,7 +357,15 @@ function EventCalendarInner<T extends EventCalendarItem = EventCalendarItem>({
         {
           '--event-height': `${EventHeight}px`,
           '--event-gap': `${EventGap}px`,
-          '--week-cells-height': `${WeekCellsHeight}px`,
+          // Notion-style tick grid: the hour-row height derives from the 5-minute
+          // tick, so every timed cell/position scales off one knob.
+          '--grid-tick-height': `${GridTickHeight}px`,
+          '--grid-tick-minutes': `${GridTickMinutes}`,
+          '--week-cells-height': `calc(var(--grid-tick-height) * 60 / var(--grid-tick-minutes))`,
+          '--grid-header-height': `${GridHeaderHeight}px`,
+          '--grid-all-day-chip-height': `${GridAllDayChipHeight}px`,
+          '--grid-all-day-chip-spacing': `${GridAllDayChipSpacing}px`,
+          '--grid-all-day-padding-top': `${GridAllDayPaddingTop}px`,
         } as CSSProperties
       }>
       {withinAmbientProvider ? (
