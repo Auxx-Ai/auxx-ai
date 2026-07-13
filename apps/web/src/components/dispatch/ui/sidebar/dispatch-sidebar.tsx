@@ -29,6 +29,8 @@ interface DispatchSidebarProps {
   date: Date
   onDateChange: (date: Date) => void
   visibleRange: { from: Date; to: Date }
+  /** Board view — week narrows the mini-calendar band to the visible week (calendar mode). */
+  view?: 'day' | 'week' | 'month'
   weekStartsOn: WeekStartIndex
   allWorkers: BoardWorker[]
   colorByUserId: Map<string, string>
@@ -55,6 +57,7 @@ export function DispatchSidebar({
   date,
   onDateChange,
   visibleRange,
+  view,
   weekStartsOn,
   allWorkers,
   colorByUserId,
@@ -124,6 +127,7 @@ export function DispatchSidebar({
         visibleRange={visibleRange}
         weekStartsOn={weekStartsOn}
         hiddenWorkerIds={hiddenWorkerIds}
+        view={view}
       />
       <WorkersGroup
         workers={allWorkers}

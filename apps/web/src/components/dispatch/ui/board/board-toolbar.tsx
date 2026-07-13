@@ -5,7 +5,7 @@
 import { Button } from '@auxx/ui/components/button'
 import { RadioTab, RadioTabItem } from '@auxx/ui/components/radio-tab'
 import { Separator } from '@auxx/ui/components/separator'
-import { endOfWeek, format, startOfWeek } from 'date-fns'
+import { addDays, format, startOfWeek } from 'date-fns'
 import {
   CalendarDays,
   CalendarRange,
@@ -42,8 +42,11 @@ interface BoardToolbarProps {
 function dateLabel(view: BoardViewMode, date: Date, weekStartsOn: WeekStartIndex): string {
   if (view === 'month') return format(viewedMonthStart(date, weekStartsOn), 'MMMM yyyy')
   if (view === 'week') {
-    const start = startOfWeek(date, { weekStartsOn })
-    const end = endOfWeek(date, { weekStartsOn })
+    // Anchor model (13-week-view-horizontal-stream.md): `date` is the leftmost visible day of
+    // the stream, not necessarily a `weekStartsOn`-aligned week start — the displayed "week" is
+    // just the 7 days from the anchor.
+    const start = date
+    const end = addDays(date, 6)
     if (start.getFullYear() !== end.getFullYear())
       return `${format(start, 'MMM d, yyyy')} – ${format(end, 'MMM d, yyyy')}`
     if (start.getMonth() !== end.getMonth())
@@ -110,7 +113,14 @@ export function BoardToolbar({
       <Separator orientation='vertical' className='h-6' />
 
       <div className='flex items-center gap-1'>
-        <Button variant='ghost' size='sm' onClick={() => onDateChange(new Date())}>
+        <Button
+          variant='ghost'
+          size='sm'
+          onClick={() =>
+            onDateChange(
+              effectiveView === 'week' ? startOfWeek(new Date(), { weekStartsOn }) : new Date()
+            )
+          }>
           Today
         </Button>
         <Button

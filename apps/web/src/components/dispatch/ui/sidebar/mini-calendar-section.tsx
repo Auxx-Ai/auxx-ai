@@ -12,10 +12,14 @@ interface MiniCalendarSectionProps {
   onDateChange: (date: Date) => void
   /** The board's current visible range — already end-inclusive (`endOfDay`/`endOfWeek`/
    * `endOfMonth`, the `use-board-data.ts` convention), so it's passed straight through to
-   * `MiniMonthCalendar`'s `visibleRange` without adjustment. */
+   * `MiniMonthCalendar`'s `visibleRange` without adjustment (except for `view === 'week'`, see
+   * `view` below). */
   visibleRange: { from: Date; to: Date }
   weekStartsOn: WeekStartIndex
   hiddenWorkerIds: string[]
+  /** Week view narrows the band to the visible week (13-week-view-horizontal-stream.md §2.4);
+   * unset (map mode) falls back to `visibleRange`. */
+  view?: 'day' | 'week' | 'month'
 }
 
 /**
@@ -30,6 +34,7 @@ export function MiniCalendarSection({
   visibleRange,
   weekStartsOn,
   hiddenWorkerIds,
+  view,
 }: MiniCalendarSectionProps) {
   const [displayMonth, setDisplayMonth] = useState(date)
   const { density } = useMiniCalendarDensity(displayMonth, weekStartsOn, hiddenWorkerIds)
@@ -42,6 +47,7 @@ export function MiniCalendarSection({
       weekStartsOn={weekStartsOn}
       density={density}
       onMonthChange={setDisplayMonth}
+      view={view}
     />
   )
 }

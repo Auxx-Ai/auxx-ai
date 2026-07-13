@@ -2,7 +2,7 @@
 
 'use client'
 
-import { endOfWeek, format, isSameDay, isWithinInterval, startOfWeek } from 'date-fns'
+import { format, isSameDay } from 'date-fns'
 import { useEffect, useState } from 'react'
 
 import { EndHour, StartHour } from '../constants'
@@ -10,16 +10,25 @@ import { EndHour, StartHour } from '../constants'
 export interface UseCurrentTimeIndicatorResult {
   /** Top offset, as a percentage of the day's rendered hour range. */
   currentTimePosition: number
-  /** Whether "now" falls within the visible day/week. */
+  /** Whether "now" falls within `currentDate`'s day. */
   currentTimeVisible: boolean
   /** Pre-formatted "HH:mm" label for the gutter pill. */
   currentTimeLabel: string
 }
 
+/**
+ * Day/resource grids: "now" is visible whenever `currentDate` is today.
+ *
+ * Week view no longer calls this for visibility — its rendered day stream can
+ * span many days at once, so it computes visibility locally against the
+ * rendered window (see `week-view.tsx`) while still reusing this hook's
+ * position/label math via a stable anchor date. `view` is accepted only to
+ * keep the day/resource call sites' signature — the math no longer branches
+ * on it.
+ */
 export function useCurrentTimeIndicator(
   currentDate: Date,
-  view: 'day' | 'week' | 'resource',
-  weekStartsOn: 0 | 1 | 2 | 3 | 4 | 5 | 6 = 1
+  view: 'day' | 'resource'
 ): UseCurrentTimeIndicatorResult {
   const [result, setResult] = useState<UseCurrentTimeIndicatorResult>({
     currentTimePosition: 0,
@@ -38,19 +47,9 @@ export function useCurrentTimeIndicator(
 
       const position = ((totalMinutes - dayStartMinutes) / (dayEndMinutes - dayStartMinutes)) * 100
 
-      let isCurrentTimeVisible = false
-
-      if (view === 'day' || view === 'resource') {
-        isCurrentTimeVisible = isSameDay(now, currentDate)
-      } else if (view === 'week') {
-        const startOfWeekDate = startOfWeek(currentDate, { weekStartsOn })
-        const endOfWeekDate = endOfWeek(currentDate, { weekStartsOn })
-        isCurrentTimeVisible = isWithinInterval(now, { start: startOfWeekDate, end: endOfWeekDate })
-      }
-
       setResult({
         currentTimePosition: position,
-        currentTimeVisible: isCurrentTimeVisible,
+        currentTimeVisible: isSameDay(now, currentDate),
         currentTimeLabel: format(now, 'HH:mm'),
       })
     }
@@ -58,7 +57,7 @@ export function useCurrentTimeIndicator(
     calculateTimePosition()
     const interval = setInterval(calculateTimePosition, 60000)
     return () => clearInterval(interval)
-  }, [currentDate, view, weekStartsOn])
+  }, [currentDate])
 
   return result
 }

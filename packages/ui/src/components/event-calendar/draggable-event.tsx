@@ -38,7 +38,7 @@ export function DraggableEvent<T extends EventCalendarItem = EventCalendarItem>(
   renderEvent,
   onResize,
 }: DraggableEventProps<T>) {
-  const { activeId } = useCalendarDnd()
+  const { activeId, hasDropHandler } = useCalendarDnd()
   const elementRef = useRef<HTMLDivElement>(null)
   const [dragHandlePosition, setDragHandlePosition] = useState<{ x: number; y: number } | null>(
     null
@@ -115,8 +115,10 @@ export function DraggableEvent<T extends EventCalendarItem = EventCalendarItem>(
         onClick={onClick}
         onMouseDown={handleMouseDown}
         onTouchStart={handleTouchStart}
-        dndListeners={listeners}
-        dndAttributes={attributes}
+        // No drop handler anywhere (read-only grid) → don't offer a pick-up that could only
+        // ever snap back; click stays wired.
+        dndListeners={hasDropHandler ? listeners : undefined}
+        dndAttributes={hasDropHandler ? attributes : undefined}
         renderEvent={renderEvent}
       />
       {canResize && (

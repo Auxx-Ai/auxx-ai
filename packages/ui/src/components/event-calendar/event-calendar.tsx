@@ -134,7 +134,10 @@ function EventCalendarInner<T extends EventCalendarItem = EventCalendarItem>({
     else if (view === 'agenda') onDateChange(addDays(date, AgendaDaysToShow))
   }
 
-  const handleToday = () => onDateChange(new Date())
+  const handleToday = () => {
+    if (view === 'week') onDateChange(startOfWeek(new Date(), { weekStartsOn }))
+    else onDateChange(new Date())
+  }
 
   const handleEventSelect = (event: T) => onEventClick?.(event)
 
@@ -158,7 +161,8 @@ function EventCalendarInner<T extends EventCalendarItem = EventCalendarItem>({
       ]
     }
     if (view === 'week') {
-      return [startOfWeek(date, { weekStartsOn }), endOfWeek(date, { weekStartsOn })]
+      // Placeholder — the week stream reports its own visible range (skipped below).
+      return [date, addDays(date, 6)]
     }
     if (view === 'day' || view === 'resource') {
       return [startOfDay(date), endOfDay(date)]
@@ -168,7 +172,7 @@ function EventCalendarInner<T extends EventCalendarItem = EventCalendarItem>({
   }, [date, view, weekStartsOn])
 
   useEffect(() => {
-    if (view === 'month') return // the month stream drives its own range
+    if (view === 'month' || view === 'week') return // the month/week streams drive their own range
     onRangeChange?.(rangeFrom, rangeTo)
   }, [view, rangeFrom, rangeTo, onRangeChange])
 
@@ -177,8 +181,8 @@ function EventCalendarInner<T extends EventCalendarItem = EventCalendarItem>({
       return format(startOfMonth(endOfWeek(date, { weekStartsOn })), 'MMMM yyyy')
     }
     if (view === 'week') {
-      const start = startOfWeek(date, { weekStartsOn })
-      const end = endOfWeek(date, { weekStartsOn })
+      const start = date
+      const end = addDays(date, 6)
       return isSameMonth(start, end)
         ? format(start, 'MMMM yyyy')
         : `${format(start, 'MMM')} - ${format(end, 'MMM yyyy')}`
@@ -262,8 +266,8 @@ function EventCalendarInner<T extends EventCalendarItem = EventCalendarItem>({
       <div
         className={cn(
           'flex min-h-0 flex-1 flex-col',
-          // The month stream owns its own (snap) scroll container.
-          view === 'month' ? 'overflow-hidden' : 'overflow-y-auto'
+          // The month/week streams own their own (snap) scroll containers.
+          view === 'month' || view === 'week' ? 'overflow-hidden' : 'overflow-y-auto'
         )}>
         {view === 'month' && (
           <MonthView
@@ -288,6 +292,8 @@ function EventCalendarInner<T extends EventCalendarItem = EventCalendarItem>({
             onSlotClick={handleSlotClick}
             onEventResize={onEventResize}
             renderEvent={renderEvent}
+            onDateChange={onDateChange}
+            onVisibleRangeChange={onRangeChange}
           />
         )}
         {view === 'day' && (

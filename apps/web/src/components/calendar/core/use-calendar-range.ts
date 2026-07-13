@@ -2,7 +2,7 @@
 
 'use client'
 
-import { endOfDay, endOfMonth, startOfDay, startOfMonth } from 'date-fns'
+import { endOfDay, endOfMonth, endOfWeek, startOfDay, startOfMonth, startOfWeek } from 'date-fns'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 /** The calendar shell's three grid modes — shared by dispatch's `BoardViewMode`. */
@@ -19,7 +19,16 @@ export interface DateRange {
  * `EventCalendar`'s `onRangeChange` — stored by timestamp so identical ranges (same
  * day/view recomputed) don't churn a consumer's query key.
  */
-export function useCalendarRange(initialView: CalendarRangeView = 'day') {
+export function useCalendarRange(
+  initialView: CalendarRangeView = 'day',
+  /** `date-fns` week-start index — no caller currently threads the org's `organization.weekStart`
+   * setting through this hook (both call sites compute it a level away, for their own toolbar
+   * needs), so this defaults to Monday like the rest of the app's fallback chain. Only used to
+   * quantize the week stream's fetch window (below) to whole weeks; a mismatched boundary still
+   * over-covers the true visible range, it just doesn't align the padding to the org's actual
+   * week start. */
+  weekStartsOn: 0 | 1 | 2 | 3 | 4 | 5 | 6 = 1
+) {
   const [date, setDate] = useState(() => new Date())
   const [view, setView] = useState<CalendarRangeView>(initialView)
   // Matches the calendar's own day-view range calc (`startOfDay`/`endOfDay`) so the first
@@ -35,12 +44,18 @@ export function useCalendarRange(initialView: CalendarRangeView = 'day') {
 
   const handleRangeChange = useCallback(
     (from: Date, to: Date) => {
-      // The month stream reports a sliding week window on every scroll — quantize it to
-      // whole covering months so a consumer's range-scoped query key only changes when a new
-      // month scrolls into view, and debounce so a fast fling doesn't fetch every month
-      // crossed.
-      const quantizedFrom = view === 'month' ? startOfMonth(from) : from
-      const quantizedTo = view === 'month' ? endOfMonth(to) : to
+      // The month and week streams both report a sliding rendered-window range on every
+      // scroll frame — quantize to whole covering months/weeks so a consumer's range-scoped
+      // query key only changes when a new month/week scrolls into view, and debounce so a
+      // fast fling doesn't fetch every one crossed.
+      const quantizedFrom =
+        view === 'month'
+          ? startOfMonth(from)
+          : view === 'week'
+            ? startOfWeek(from, { weekStartsOn })
+            : from
+      const quantizedTo =
+        view === 'month' ? endOfMonth(to) : view === 'week' ? endOfWeek(to, { weekStartsOn }) : to
       const apply = () =>
         setRange((prev) =>
           prev.from.getTime() === quantizedFrom.getTime() &&
@@ -49,13 +64,13 @@ export function useCalendarRange(initialView: CalendarRangeView = 'day') {
             : { from: quantizedFrom, to: quantizedTo }
         )
       clearTimeout(rangeDebounceRef.current)
-      if (view === 'month') {
+      if (view === 'month' || view === 'week') {
         rangeDebounceRef.current = setTimeout(apply, 250)
       } else {
         apply()
       }
     },
-    [view]
+    [view, weekStartsOn]
   )
 
   return { date, setDate, view, setView, range, handleRangeChange }
