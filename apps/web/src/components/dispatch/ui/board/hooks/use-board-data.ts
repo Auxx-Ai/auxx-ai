@@ -3,13 +3,12 @@
 'use client'
 
 import { getOptionColorHex } from '@auxx/lib/custom-fields/client'
-import { endOfDay, endOfMonth, startOfDay, startOfMonth } from 'date-fns'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useMemo, useState } from 'react'
+import { useCalendarRange } from '~/components/calendar/core/use-calendar-range'
 import { api } from '~/trpc/react'
-import { useDispatchSidebarStore } from '../../../stores/dispatch-sidebar-store'
+import { useHiddenWorkerIds } from '../../../stores/dispatch-sidebar-store'
 import {
   type BoardResourceInput,
-  type BoardViewMode,
   type BoardWorker,
   type DispatchVisitEvent,
   UNASSIGNED_RESOURCE_ID,
@@ -22,65 +21,32 @@ import {
   visitToEvent,
 } from '../utils'
 
-export interface DateRange {
-  from: Date
-  to: Date
-}
+/** Re-export of the shared shell's range type — kept here so existing importers of this hook's
+ * `DateRange` don't need to repoint (`use-board-mutations.ts`, `use-board-realtime.ts`,
+ * `use-availability-shading.ts`). */
+export type { DateRange } from '~/components/calendar/core/use-calendar-range'
 
 /**
- * Board date/view/range/filter state + the `dispatch.getBoard` query (D.3). `range` is fed
- * by `EventCalendar`'s `onRangeChange` — stored by timestamp so identical ranges (same
- * day/view recomputed) don't churn the query key.
+ * Board date/view/range/filter state + the `dispatch.getBoard` query (D.3). Date/view/range
+ * state itself is the shared `useCalendarRange()` (plan §3.2, extracted verbatim from this
+ * hook) — `range` is fed by `EventCalendar`'s `onRangeChange` — stored by timestamp so
+ * identical ranges (same day/view recomputed) don't churn the query key.
  *
  * `selectedWorkerIds`/Unassigned-column visibility (v3 sidebar plan §1.1/§1.3) derive from the
- * persisted `dispatch-sidebar` store's `hiddenWorkerIds` — the sidebar is the only writer, this
- * hook only reads it (via the `selectedWorkerIdsFromHidden`/`isWorkerHidden` adapters) so the
- * board/map/planner consumers below keep their pre-v3 `Set<string> | null` contract untouched.
+ * persisted `dispatch-sidebar` store's Workers group hidden set (`useHiddenWorkerIds`) — the
+ * sidebar is the only writer, this hook only reads it (via the
+ * `selectedWorkerIdsFromHidden`/`isWorkerHidden` adapters) so the board/map/planner consumers
+ * below keep their pre-v3 `Set<string> | null` contract untouched.
  */
 export function useBoardData() {
-  const [date, setDate] = useState(() => new Date())
-  const [view, setView] = useState<BoardViewMode>('day')
-  // Matches the calendar's own day-view range calc (`startOfDay`/`endOfDay`) so the first
-  // `onRangeChange` firing (in the calendar's mount effect) is a no-op query-key match
-  // instead of a second fetch.
-  const [range, setRange] = useState<DateRange>(() => ({
-    from: startOfDay(new Date()),
-    to: endOfDay(new Date()),
-  }))
+  const { date, setDate, view, setView, range, handleRangeChange } = useCalendarRange()
   // Board↔Map toggle (09-route-planner.md §A, contract item 7) — sibling state to the sidebar's
   // `open`, deliberately NOT a `BoardViewMode` so the month-view debounce and `view === 'day'`
   // gates stay untouched. Entering map mode doesn't change `view`; the map always renders
   // `date`'s single day.
   const [boardMode, setBoardMode] = useState<'calendar' | 'map'>('calendar')
 
-  const hiddenWorkerIds = useDispatchSidebarStore((s) => s.hiddenWorkerIds)
-
-  const rangeDebounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
-  useEffect(() => () => clearTimeout(rangeDebounceRef.current), [])
-
-  const handleRangeChange = useCallback(
-    (from: Date, to: Date) => {
-      // The month stream reports a sliding week window on every scroll — quantize it to
-      // whole covering months so the `getBoard` query key only changes when a new month
-      // scrolls into view, and debounce so a fast fling doesn't fetch every month crossed.
-      const quantizedFrom = view === 'month' ? startOfMonth(from) : from
-      const quantizedTo = view === 'month' ? endOfMonth(to) : to
-      const apply = () =>
-        setRange((prev) =>
-          prev.from.getTime() === quantizedFrom.getTime() &&
-          prev.to.getTime() === quantizedTo.getTime()
-            ? prev
-            : { from: quantizedFrom, to: quantizedTo }
-        )
-      clearTimeout(rangeDebounceRef.current)
-      if (view === 'month') {
-        rangeDebounceRef.current = setTimeout(apply, 250)
-      } else {
-        apply()
-      }
-    },
-    [view]
-  )
+  const hiddenWorkerIds = useHiddenWorkerIds()
 
   const boardQuery = api.dispatch.getBoard.useQuery(
     { from: range.from, to: range.to },
