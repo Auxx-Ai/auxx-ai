@@ -209,7 +209,10 @@ export function VisitPopoverContent({
       />
 
       <EventRepeatSection
-        summary={editor.recurrenceSummary ?? undefined}
+        label={editor.repeatLabel}
+        detail={
+          editor.repeatMode === 'custom' ? (editor.recurrenceSummary ?? undefined) : undefined
+        }
         disabled={!canEdit || !workOrderRecordId}
         renderEditor={() => <RepeatEditor editor={editor} />}
         onOpenChange={(open) => {

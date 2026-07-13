@@ -205,7 +205,10 @@ export function SchedulePopoverContent({
       <AssigneeRow value={assigneeUserId} onChange={handleAssigneeChange} />
       {workOrderRecordId && (
         <EventRepeatSection
-          summary={editor.recurrenceSummary ?? undefined}
+          label={editor.repeatLabel}
+          detail={
+            editor.repeatMode === 'custom' ? (editor.recurrenceSummary ?? undefined) : undefined
+          }
           renderEditor={() => <RepeatEditor editor={editor} />}
           onOpenChange={(open) => {
             if (!open && !isDraft) commitRecurrence()

@@ -17,6 +17,7 @@ import {
   classifyRecurrencePreset as classifyPreset,
   defaultCustomPattern,
   type RecurrencePreset,
+  recurrencePresetLabel,
   scalarSetting,
 } from '../recurrence/recurrence-utils'
 
@@ -169,6 +170,9 @@ export function useRecurrenceEditor({
   return {
     hasExistingRule,
     repeatMode,
+    // Short label for the collapsed Repeat row's pill ("Weekly", "Custom", …); the full
+    // `recurrenceSummary` renders below the row so a long custom cadence never stretches the pill.
+    repeatLabel: recurrencePresetLabel(repeatMode),
     customPattern,
     setCustomPattern,
     ends,

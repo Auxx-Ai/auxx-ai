@@ -354,7 +354,12 @@ function TimeDrillPage({ start, end, commitTime, use24Hour }: TimeDrillPageProps
 // ---------------------------------------------------------------------------
 
 interface EventRepeatSectionProps {
-  summary?: string
+  /** Short cadence label shown in the trailing pill (e.g. "Weekly", "Custom") — kept concise so
+   * the pill never stretches the row. Full detail goes in `detail`. */
+  label?: string
+  /** The concrete cadence example (e.g. "Every 2 weeks on Mon, Wed until Dec 31"), rendered below
+   * the row rather than in the pill so a long custom summary doesn't blow out the trigger. */
+  detail?: string
   /** Content for the drill page; `close` pops back to the previous level (repeat edits bypass
    * the scope chooser by design — decision #3). */
   renderEditor: (close: () => void) => React.ReactNode
@@ -366,10 +371,12 @@ interface EventRepeatSectionProps {
   placeholder?: string
 }
 
-/** Single-row `PanelCard`: Repeat row, trailing `PanelRowValue` with the current summary, drills
- * into a consumer-injected recurrence editor page. */
+/** Single-row `PanelCard`: Repeat row, trailing `PanelRowValue` with the short cadence label,
+ * drills into a consumer-injected recurrence editor page. The full cadence example (`detail`)
+ * renders below the row so a long custom summary stays out of the pill. */
 export function EventRepeatSection({
-  summary,
+  label,
+  detail,
   renderEditor,
   onOpenChange,
   disabled,
@@ -387,20 +394,21 @@ export function EventRepeatSection({
   }, [isOpen, onOpenChange])
 
   return (
-    <PanelCard>
+    <PanelCard className={detail ? 'space-y-2' : undefined}>
       <PanelCardRow
         icon={<RefreshCcw />}
         title='Repeat'
         trailing={
           disabled ? (
-            <span className='text-muted-foreground text-sm'>{summary ?? placeholder}</span>
+            <span className='text-muted-foreground text-sm'>{label ?? placeholder}</span>
           ) : (
             <PanelRowValue onClick={() => push({ id: 'repeat', label: 'Repeat' })}>
-              {summary ?? placeholder}
+              {label ?? placeholder}
             </PanelRowValue>
           )
         }
       />
+      {detail && <p className='pl-7.5 text-muted-foreground text-xs'>{detail}</p>}
       {/* Portalled from HERE (the consumer's live subtree) so the editor re-renders with fresh
           consumer state on every edit — a frame-captured `render()` closure would freeze it. */}
       <EventDrillPage id='repeat'>{renderEditor(pop)}</EventDrillPage>
