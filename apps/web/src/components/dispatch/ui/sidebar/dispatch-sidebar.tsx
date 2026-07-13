@@ -43,9 +43,9 @@ interface DispatchSidebarProps {
   plannerGeometryByWorker?: Record<string, RouteGeometry | undefined>
   /** Distinct `work_order.tags` across the planner's visible day (map mode only). */
   tags?: string[]
-  /** Backlog row click (v4 Phase 4) — reports the clicked row's work-order instance id so the
-   * board shell can open a `RecordDrawer`. Sidebar rows only; the map pin popover and board
-   * visit popover keep navigating to the job page. */
+  /** Backlog/routes row click (v4 Phase 4) — reports the clicked row's work-order instance id
+   * so the board shell can open a `RecordDrawer`. Sidebar rows only; the map pin popover and
+   * board visit popover keep navigating to the job page. */
   onSelectWorkOrder?: (workOrderId: string) => void
 }
 
@@ -144,6 +144,7 @@ export function DispatchSidebar({
         onToggleWorker={toggleWorkerHidden}
         open={isGroupOpen('workers')}
         onOpenChange={(o) => setGroupOpen('workers', o)}
+        mode={mode}
       />
       {mode === 'map' && (
         <TagsGroup
@@ -169,10 +170,12 @@ export function DispatchSidebar({
           filters={plannerFilters}
           geometryByWorker={plannerGeometryByWorker ?? {}}
           date={plannerWindow}
+          canEdit={canEdit}
           open={isGroupOpen('routes')}
           onOpenChange={(o) => setGroupOpen('routes', o)}
           groupOpen={groupOpen}
           onWorkerOpenChange={(userId, o) => setGroupOpen(`routes:${userId}`, o)}
+          onSelectWorkOrder={onSelectWorkOrder}
         />
       )}
     </ModuleSidebar>

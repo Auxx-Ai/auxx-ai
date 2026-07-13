@@ -6,7 +6,7 @@ import { weekStartToIndex } from '@auxx/lib/availability/client'
 import { FeatureKey } from '@auxx/lib/permissions/client'
 import { isRecordId } from '@auxx/lib/resources/client'
 import { CalendarDndProvider } from '@auxx/ui/components/event-calendar'
-import { MainPageContent } from '@auxx/ui/components/main-page'
+import { type DockedPanelConfig, MainPageContent } from '@auxx/ui/components/main-page'
 import type { DragEndEvent } from '@dnd-kit/core'
 import { addMinutes } from 'date-fns'
 import { Lock } from 'lucide-react'
@@ -16,9 +16,11 @@ import { renderAppDragGhost } from '~/components/global/app-drag-overlay'
 import { EmptyState } from '~/components/global/empty-state'
 import { RecordDrawer } from '~/components/records/record-drawer'
 import { toRecordId, useResource } from '~/components/resources'
+import { useEffectiveDockState } from '~/hooks/use-effective-dock-state'
 import { useSettings } from '~/hooks/use-settings'
 import { useUser } from '~/hooks/use-user'
 import { useFeatureFlags } from '~/providers/feature-flag-provider'
+import { useDockStore } from '~/stores/dock-store'
 import { useDispatchSidebarStore } from '../../stores/dispatch-sidebar-store'
 import { useRoutePlannerData } from '../route-planner/hooks/use-route-planner-data'
 import { PlannerDndProvider } from '../route-planner/planner-dnd-provider'
@@ -120,6 +122,44 @@ export function DispatchBoard() {
     },
     [workOrderResource, setRecordParam]
   )
+  const handleDrawerOpenChange = useCallback(
+    (nextOpen: boolean) => {
+      if (!nextOpen) setRecordParam(null)
+    },
+    [setRecordParam]
+  )
+
+  // Dock-aware drawer placement (records-view.tsx's recipe): user's dock preference on →
+  // the drawer renders as a resizable `MainPageContent` docked panel; off (or mobile) →
+  // the overlay `RecordDrawer` at the bottom of this component.
+  const isDocked = useEffectiveDockState()
+  const dockedWidth = useDockStore((state) => state.dockedWidth)
+  const setDockedWidth = useDockStore((state) => state.setDockedWidth)
+  const dockMinWidth = useDockStore((state) => state.minWidth)
+  const dockMaxWidth = useDockStore((state) => state.maxWidth)
+  const dockedPanels = useMemo<DockedPanelConfig[]>(() => {
+    if (!isDocked || !drawerRecordId) return []
+    return [
+      {
+        key: 'record-detail',
+        content: (
+          <RecordDrawer open onOpenChange={handleDrawerOpenChange} recordId={drawerRecordId} />
+        ),
+        width: dockedWidth,
+        onWidthChange: setDockedWidth,
+        minWidth: dockMinWidth,
+        maxWidth: dockMaxWidth,
+      },
+    ]
+  }, [
+    isDocked,
+    drawerRecordId,
+    handleDrawerOpenChange,
+    dockedWidth,
+    setDockedWidth,
+    dockMinWidth,
+    dockMaxWidth,
+  ])
 
   const existingVisits: ExistingVisitForOverlap[] = useMemo(
     () =>
@@ -227,7 +267,7 @@ export function DispatchBoard() {
   }
 
   return (
-    <MainPageContent>
+    <MainPageContent dockedPanels={dockedPanels}>
       <div className='flex h-full flex-col overflow-hidden'>
         <BoardToolbar
           date={data.date}
@@ -312,13 +352,13 @@ export function DispatchBoard() {
           </CalendarDndProvider>
         )}
       </div>
-      <RecordDrawer
-        open={!!drawerRecordId}
-        onOpenChange={(nextOpen) => {
-          if (!nextOpen) setRecordParam(null)
-        }}
-        recordId={drawerRecordId ?? undefined}
-      />
+      {!isDocked && (
+        <RecordDrawer
+          open={!!drawerRecordId}
+          onOpenChange={handleDrawerOpenChange}
+          recordId={drawerRecordId ?? undefined}
+        />
+      )}
     </MainPageContent>
   )
 }

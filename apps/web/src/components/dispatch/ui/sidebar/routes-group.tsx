@@ -2,20 +2,34 @@
 
 'use client'
 
-import { Avatar, AvatarFallback, AvatarImage } from '@auxx/ui/components/avatar'
+import { getOptionColor, type SelectOptionColor } from '@auxx/lib/custom-fields/client'
 import { Button } from '@auxx/ui/components/button'
 import { CollapsibleChevron } from '@auxx/ui/components/collapsible'
-import { SidebarGroup, SidebarGroupCollapse } from '@auxx/ui/components/sidebar'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@auxx/ui/components/dropdown-menu'
+import {
+  SidebarGroup,
+  SidebarGroupCollapse,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  SidebarMenuSub,
+  SidebarMenuSubButton,
+  SidebarMenuSubItem,
+} from '@auxx/ui/components/sidebar'
 import { toastError } from '@auxx/ui/components/toast'
 import { cn } from '@auxx/ui/lib/utils'
-import { useDroppable } from '@dnd-kit/core'
+import { useDndContext, useDroppable } from '@dnd-kit/core'
 import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { format } from 'date-fns'
-import { GripVertical, Route as RouteIcon, Timer } from 'lucide-react'
+import { MoreVertical, Route as RouteIcon, Timer, X } from 'lucide-react'
 import { useState } from 'react'
 import { SidebarGroupHeader } from '~/components/global/sidebar/sidebar-group-header'
-import { getInitials } from '~/components/groups/utils/group-utils'
 import { ApplyTimesDialog } from '../route-planner/apply-times-dialog'
 import {
   dayStartAnchor,
@@ -40,32 +54,37 @@ interface RoutesGroupProps {
   filters: PlannerFilters
   geometryByWorker: Record<string, RouteGeometry | undefined>
   date: PlannerDayWindow
+  canEdit: boolean
   open: boolean
   onOpenChange: (open: boolean) => void
   /** Per-worker sub-section open state, keyed `routes:<userId>` in the same store map as the
    * group itself (`groupOpen`) — persisted so a dispatcher's per-worker collapse choices stick. */
   groupOpen: Record<string, boolean>
   onWorkerOpenChange: (userId: string, open: boolean) => void
+  /** Stop row click — reports the row's work-order instance id so the board shell can open a
+   * `RecordDrawer` (same wiring as the Backlog group's rows). */
+  onSelectWorkOrder?: (workOrderId: string) => void
 }
 
 /**
- * Sidebar Routes group (v3 sidebar plan §1.2, map mode only) — ported nearly verbatim from the
- * deleted `route-planner/stop-list-panel.tsx`'s `WorkerStopSection`/`StopRow`: same
- * `useDroppable`/`SortableContext` wiring (`useRoutePlannerDragEnd` still owns cross-list
- * drops), same Suggest (`suggestRouteOrder` → `setRouteOrder`) and Apply-times
- * (`ApplyTimesDialog`) actions — only the visual shell changes (sidebar one-line rows instead of
- * a drawer's cards) and per-worker collapse now persists via the sidebar store instead of local
- * `useState`.
+ * Sidebar Routes group (v3 sidebar plan §1.2, map mode only) — one folder-style row per worker
+ * (color dot + name + stop count + hover 3-dot menu with Suggest route / Apply times, patterned
+ * on `entity-folder.tsx`) collapsing into `SidebarMenuSub` stop rows. Stop rows are whole-row
+ * draggable `useSortable`s (`useRoutePlannerDragEnd` still owns reorders and cross-list drops;
+ * the shared `AppDragOverlay` renders the cursor ghost), click through to the record drawer via
+ * `onSelectWorkOrder`, and carry a hover X that unassigns the visit back to the backlog.
  */
 export function RoutesGroup({
   board,
   filters,
   geometryByWorker,
   date,
+  canEdit,
   open,
   onOpenChange,
   groupOpen,
   onWorkerOpenChange,
+  onSelectWorkOrder,
 }: RoutesGroupProps) {
   const visibleWorkers =
     filters.workerIds === null
@@ -85,7 +104,7 @@ export function RoutesGroup({
         hideEditOption
       />
       <SidebarGroupCollapse open={open}>
-        <div className='flex flex-col gap-1.5 px-0.5'>
+        <SidebarMenu>
           {visibleWorkers.map((worker) => (
             <WorkerStopSection
               key={worker.id}
@@ -94,11 +113,13 @@ export function RoutesGroup({
               date={date}
               geometry={geometryByWorker[worker.userId]}
               workOrderById={workOrderById}
+              canEdit={canEdit}
               open={groupOpen[`routes:${worker.userId}`] ?? true}
               onOpenChange={(o) => onWorkerOpenChange(worker.userId, o)}
+              onSelectWorkOrder={onSelectWorkOrder}
             />
           ))}
-        </div>
+        </SidebarMenu>
       </SidebarGroupCollapse>
     </SidebarGroup>
   )
@@ -110,8 +131,10 @@ interface WorkerStopSectionProps {
   date: PlannerDayWindow
   geometry: RouteGeometry | undefined
   workOrderById: Map<string, PlannerWorkOrder>
+  canEdit: boolean
   open: boolean
   onOpenChange: (open: boolean) => void
+  onSelectWorkOrder?: (workOrderId: string) => void
 }
 
 function WorkerStopSection({
@@ -120,12 +143,19 @@ function WorkerStopSection({
   date,
   geometry,
   workOrderById,
+  canEdit,
   open,
   onOpenChange,
+  onSelectWorkOrder,
 }: WorkerStopSectionProps) {
   const [applyOpen, setApplyOpen] = useState(false)
-  const { setRouteOrder } = useRoutePlannerMutations(date)
-  const { setNodeRef: setDroppableRef } = useDroppable({
+  const [menuOpen, setMenuOpen] = useState(false)
+  const { setRouteOrder, assignVisit } = useRoutePlannerMutations(date)
+  const { active } = useDndContext()
+  const isCompatibleDrag =
+    active?.data.current?.type === 'planner-backlog' ||
+    active?.data.current?.type === 'planner-stop'
+  const { setNodeRef: setDroppableRef, isOver } = useDroppable({
     id: `planner-worker-list-${worker.userId}`,
     data: { type: 'planner-worker-list', assigneeUserId: worker.userId },
   })
@@ -133,6 +163,7 @@ function WorkerStopSection({
   const stops = stopsForWorker(board, worker.userId)
   const activeStops = stops.filter((v) => v.status !== 'done')
   const dayStart = dayStartAnchor(date, worker, '08:00')
+  const workerName = worker.name ?? worker.email ?? 'Worker'
 
   const handleSuggest = () => {
     const movable = stops.filter((v) => v.status !== 'done')
@@ -158,38 +189,94 @@ function WorkerStopSection({
   }
 
   return (
-    <div className='rounded-md border'>
-      <div className='flex items-center gap-1 p-1.5'>
-        <button
-          type='button'
-          className='flex flex-1 items-center gap-1.5 text-left'
+    // The whole section (header row + stop list) is ONE drop target — a drag can land on the
+    // worker even while their stop list is collapsed. Inset ring/outline (entity-folder.tsx's
+    // recipe): the sidebar clips overflow, so non-inset variants get cut off at the edges.
+    <SidebarMenuItem
+      ref={setDroppableRef}
+      className={cn(
+        'rounded-md transition-colors duration-150 ease-in-out',
+        isCompatibleDrag && 'outline-dashed outline-1 outline-primary/30 [outline-offset:-1px]',
+        isCompatibleDrag &&
+          isOver &&
+          'bg-primary/20 outline-primary/80 ring-2 ring-inset ring-primary/60'
+      )}>
+      <SidebarMenuButton asChild className='h-7 py-0 pe-[3px]' tooltip={workerName}>
+        <div
+          className='group/item relative flex h-7 w-full cursor-pointer items-center justify-between'
           onClick={() => onOpenChange(!open)}>
-          <CollapsibleChevron open={open} />
-          <Avatar className='size-5'>
-            <AvatarImage src={worker.image ?? undefined} />
-            <AvatarFallback className='text-[9px]'>
-              {getInitials(worker.name ?? worker.email ?? 'Worker')}
-            </AvatarFallback>
-          </Avatar>
-          <span className='truncate text-xs font-medium'>{worker.name ?? worker.email}</span>
-          <span className='text-muted-foreground text-xs'>({stops.length})</span>
-        </button>
-        <Button variant='ghost' size='icon-xs' title='Suggest route' onClick={handleSuggest}>
-          <RouteIcon />
-        </Button>
-        <Button
-          variant='ghost'
-          size='icon-xs'
-          title='Apply times'
-          onClick={() => setApplyOpen(true)}>
-          <Timer />
-        </Button>
-      </div>
+          <div className='flex min-w-0 grow items-center'>
+            <div
+              className={cn(
+                'mr-2 size-2 shrink-0 rounded-full',
+                getOptionColor((worker.color ?? 'gray') as SelectOptionColor).swatch
+              )}
+            />
+            <span className='truncate group-data-[collapsible=icon]:hidden'>{workerName}</span>
+            <span className='ml-1 inline-flex shrink-0 items-center text-muted-foreground group-data-[collapsible=icon]:hidden'>
+              <CollapsibleChevron open={open} />
+            </span>
+          </div>
+
+          <div className='flex shrink-0 items-center group-data-[collapsible=icon]:hidden'>
+            {!menuOpen && (
+              <>
+                <span className='pointer-events-none text-xs text-muted-foreground sm:hidden'>
+                  {stops.length}
+                </span>
+                <div className='pointer-events-none absolute right-[11px] top-1/2 hidden -translate-y-1/2 text-right text-xs sm:flex sm:group-hover/item:opacity-0'>
+                  {stops.length}
+                </div>
+              </>
+            )}
+            {canEdit && (
+              <div
+                onClick={(e) => {
+                  e.stopPropagation()
+                  e.preventDefault()
+                }}>
+                <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant='ghost'
+                      size='icon'
+                      className={cn(
+                        'size-6 shrink-0 rounded-md opacity-100 sm:opacity-0 hover:bg-primary/10 hover:text-foreground/50 focus-visible:ring-primary/10 hover:bg-primary-200/50',
+                        {
+                          'bg-primary-200 opacity-100': menuOpen,
+                          'sm:group-hover/item:opacity-100': !menuOpen,
+                        }
+                      )}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        e.preventDefault()
+                        setMenuOpen(!menuOpen)
+                      }}>
+                      <MoreVertical className='size-3.5' />
+                      <span className='sr-only'>Route options</span>
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent className='w-50' align='start'>
+                    <DropdownMenuItem onClick={handleSuggest}>
+                      <RouteIcon />
+                      Suggest route
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => setApplyOpen(true)}>
+                      <Timer />
+                      Apply times
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
+            )}
+          </div>
+        </div>
+      </SidebarMenuButton>
 
       <SidebarGroupCollapse open={open}>
-        <div ref={setDroppableRef} className='space-y-1 border-t p-1.5'>
+        <SidebarMenuSub className='me-0 pe-0'>
           {stops.length === 0 ? (
-            <div className='text-muted-foreground px-1 py-1 text-xs'>No stops today.</div>
+            <li className='px-1 py-1 text-xs text-muted-foreground'>No stops today.</li>
           ) : (
             <SortableContext items={stops.map((v) => v.id)} strategy={verticalListSortingStrategy}>
               {stops.map((visit, index) => (
@@ -200,11 +287,14 @@ function WorkerStopSection({
                   assigneeUserId={worker.userId}
                   workOrder={workOrderById.get(visit.workOrderId)}
                   eta={estimateArrivalForVisit(dayStart, geometry, visit.id)}
+                  canEdit={canEdit}
+                  onSelectWorkOrder={onSelectWorkOrder}
+                  onRemove={() => assignVisit.mutate({ visitId: visit.id, assigneeUserId: null })}
                 />
               ))}
             </SortableContext>
           )}
-        </div>
+        </SidebarMenuSub>
       </SidebarGroupCollapse>
 
       <ApplyTimesDialog
@@ -215,7 +305,7 @@ function WorkerStopSection({
         geometry={geometry}
         date={date}
       />
-    </div>
+    </SidebarMenuItem>
   )
 }
 
@@ -225,38 +315,102 @@ interface StopRowProps {
   assigneeUserId: string
   workOrder: PlannerWorkOrder | undefined
   eta: Date | null
+  canEdit: boolean
+  onSelectWorkOrder?: (workOrderId: string) => void
+  onRemove: () => void
 }
 
-function StopRow({ visit, index, assigneeUserId, workOrder, eta }: StopRowProps) {
+function StopRow({
+  visit,
+  index,
+  assigneeUserId,
+  workOrder,
+  eta,
+  canEdit,
+  onSelectWorkOrder,
+  onRemove,
+}: StopRowProps) {
   const isDone = visit.status === 'done'
+  const draggable = canEdit && !isDone
+  // `item` rides along in the sortable's data (BacklogRow's exact recipe) so the shared
+  // `AppDragOverlay`/`renderAppDragGhost` can render the cursor ghost without a cross-context
+  // store lookup — the drag-end handler itself only reads `visitId`/`assigneeUserId`.
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: visit.id,
-    data: { type: 'planner-stop', visitId: visit.id, assigneeUserId },
-    disabled: isDone,
+    data: {
+      type: 'planner-stop',
+      visitId: visit.id,
+      assigneeUserId,
+      item: {
+        visit,
+        workOrder: workOrder
+          ? { number: workOrder.number, displayName: workOrder.displayName }
+          : undefined,
+      },
+    },
+    disabled: !draggable,
   })
 
-  const style = { transform: CSS.Transform.toString(transform), transition }
-
   return (
-    <div
-      ref={setNodeRef}
-      style={style}
-      className={cn(
-        'hover:bg-sidebar-accent flex items-center gap-1.5 rounded-md px-1.5 py-1 text-xs',
-        isDone && 'opacity-50',
-        isDragging && 'opacity-40'
-      )}>
-      {!isDone && (
+    <SidebarMenuSubItem>
+      {/* `asChild` + div root (entity-folder.tsx's recipe): the row hosts a nested remove
+          <Button>, so its own root must not be a <button>. */}
+      <SidebarMenuSubButton asChild className='h-7 py-0 pe-[3px]'>
         <div
-          {...attributes}
-          {...listeners}
-          className='cursor-grab touch-none active:cursor-grabbing'>
-          <GripVertical className='text-muted-foreground size-3' />
+          ref={setNodeRef}
+          {...(draggable ? { ...attributes, ...listeners } : {})}
+          style={{ transform: CSS.Transform.toString(transform), transition }}
+          onClick={onSelectWorkOrder ? () => onSelectWorkOrder(visit.workOrderId) : undefined}
+          className={cn(
+            'group/item relative flex h-7 w-full items-center justify-between',
+            onSelectWorkOrder && 'cursor-pointer',
+            draggable && 'cursor-grab touch-none active:cursor-grabbing',
+            isDone && 'opacity-50',
+            isDragging && 'opacity-40'
+          )}>
+          <div className='flex min-w-0 grow items-center'>
+            <span className='mr-2 shrink-0 text-xs text-muted-foreground tabular-nums'>
+              {index + 1}.
+            </span>
+            <span className='truncate group-data-[collapsible=icon]:hidden'>
+              {workOrder?.number ?? 'Work order'}
+            </span>
+          </div>
+
+          <div className='flex shrink-0 items-center group-data-[collapsible=icon]:hidden'>
+            {eta && (
+              <>
+                <span className='pointer-events-none text-xs text-muted-foreground sm:hidden'>
+                  {format(eta, 'p')}
+                </span>
+                <span
+                  className={cn(
+                    'pointer-events-none absolute right-[11px] top-1/2 hidden -translate-y-1/2 text-xs text-muted-foreground sm:flex',
+                    draggable && 'sm:group-hover/item:opacity-0'
+                  )}>
+                  {format(eta, 'p')}
+                </span>
+              </>
+            )}
+            {draggable && (
+              <Button
+                variant='ghost'
+                size='icon'
+                title='Remove from route'
+                className='size-6 shrink-0 rounded-md opacity-100 sm:opacity-0 sm:group-hover/item:opacity-100 hover:bg-primary/10 hover:text-foreground/50 focus-visible:ring-primary/10 hover:bg-primary-200/50'
+                onClick={(e) => {
+                  e.stopPropagation()
+                  e.preventDefault()
+                  onRemove()
+                }}
+                onPointerDown={(e) => e.stopPropagation()}>
+                <X className='size-3.5' />
+                <span className='sr-only'>Remove from route</span>
+              </Button>
+            )}
+          </div>
         </div>
-      )}
-      <span className='text-muted-foreground shrink-0 tabular-nums'>{index + 1}.</span>
-      <span className='min-w-0 flex-1 truncate'>{workOrder?.number ?? 'Work order'}</span>
-      {eta && <span className='text-muted-foreground shrink-0'>· {format(eta, 'p')}</span>}
-    </div>
+      </SidebarMenuSubButton>
+    </SidebarMenuSubItem>
   )
 }

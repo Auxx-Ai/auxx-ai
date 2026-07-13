@@ -36,6 +36,7 @@ export function renderAppDragGhost(active: Active): ReactNode {
       return data.favoriteId ? <FavoriteDragOverlay favoriteId={data.favoriteId} /> : null
     case 'backlog-visit':
     case 'planner-backlog':
+    case 'planner-stop':
       return data.item ? <BacklogRowGhost item={data.item} /> : null
     default:
       return null
