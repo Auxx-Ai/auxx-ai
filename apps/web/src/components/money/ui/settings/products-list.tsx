@@ -37,7 +37,7 @@ function CategoryIcon({ category }: { category: string }) {
  * category icon · name · price + category badge · a trailing active `Switch`.
  */
 export function ProductsList({ selectedId, onSelect, currency }: ProductsListProps) {
-  const { items, entityDefinitionId, isLoading, refresh } = useCatalogItems()
+  const { items, entityDefinitionId, isLoading, refresh, appendRecord } = useCatalogItems()
   const { fields: catalogFields } = useResourceFields('catalog-items')
   const categoryOptions = useMemo(
     () => catalogFields.find((f) => f.key === 'category')?.options?.options ?? [],
@@ -87,7 +87,11 @@ export function ProductsList({ selectedId, onSelect, currency }: ProductsListPro
       entityDefinitionId,
       values: { catalog_item_name: 'New item' },
     })
-    refresh()
+    appendRecord({
+      ...result.instance,
+      recordId: result.recordId,
+      fieldValues: { catalog_item_name: 'New item', ...result.values },
+    })
     onSelect(result.instance.id)
   }
 

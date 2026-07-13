@@ -6,7 +6,11 @@ import {
   type CatalogGroupEntry,
   parseCatalogGroupEntries,
 } from '~/components/money/catalog-group-types'
-import { type FieldInfo, useAllRecords } from '~/components/resources/hooks/use-all-records'
+import {
+  type AllRecordsItem,
+  type FieldInfo,
+  useAllRecords,
+} from '~/components/resources/hooks/use-all-records'
 import type { RecordMeta } from '~/components/resources/store/record-store'
 
 /** Catalog group record shape from `useAllRecords` (systemAttribute-keyed field values). */
@@ -76,6 +80,8 @@ interface UseCatalogGroupsResult {
   fields: Record<string, FieldInfo>
   isLoading: boolean
   refresh: () => void
+  /** Append a freshly created group into the `listAll` cache — skips a refetch. */
+  appendRecord: (item: AllRecordsItem) => void
 }
 
 /**
@@ -84,7 +90,7 @@ interface UseCatalogGroupsResult {
  * system. Same "small dataset, no pagination" shape as `useCatalogItems`.
  */
 export function useCatalogGroups(): UseCatalogGroupsResult {
-  const { records, entityDefinitionId, fields, isLoading, refresh } =
+  const { records, entityDefinitionId, fields, isLoading, refresh, appendRecord } =
     useAllRecords<CatalogGroupRecord>({
       apiSlug: 'catalog-groups',
       includeArchived: false,
@@ -95,5 +101,5 @@ export function useCatalogGroups(): UseCatalogGroupsResult {
     return { groups: list, groupMap: new Map(list.map((group) => [group.id, group])) }
   }, [records])
 
-  return { groups, groupMap, entityDefinitionId, fields, isLoading, refresh }
+  return { groups, groupMap, entityDefinitionId, fields, isLoading, refresh, appendRecord }
 }

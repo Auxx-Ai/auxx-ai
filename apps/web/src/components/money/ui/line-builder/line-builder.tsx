@@ -7,7 +7,8 @@
 // Unit cost / Total / actions) — the data-connectors mapping-editor idiom
 // (mapping-row.tsx): one shared `grid-template-columns` keeps the number columns
 // aligned across the header and every row. Line counts are small, so plain rows
-// replace the virtualized `DynamicView` embed this used to be.
+// replace the virtualized `DynamicView` embed this used to be. Row/cell markup
+// lives in `line-rows.tsx` — this file owns state, data fetching, and mutations.
 //
 // Data flow:
 // - Line cell reads: `useSystemValues` (field-value store, autoFetch).
@@ -18,19 +19,28 @@
 //   `computeLineTotal` from `@auxx/lib/money/client` over store values — the
 //   same function the server hook uses, so the optimistic footer and the
 //   stored mirrors can never disagree.
-// - Add: creates an EMPTY line record; clicking the Description cell opens the
-//   catalog picker (§H.2) which fills it in (or renames via free text).
+// - Add: pushes a purely-local "phantom draft" row (`DraftLine`, line-rows.tsx)
+//   — no mutation, no round-trip — with the catalog picker already open. The
+//   record is only created on the draft's first real commit (catalog pick,
+//   free-text name, description, qty/price blur, taxable toggle, or a
+//   catalog-group pick), carrying every value accumulated on the draft in one
+//   `record.create` call. The create result seeds the record + field-value
+//   caches directly (`useSeedCreatedRecord`) — no `refresh()` — and the draft
+//   is swapped for the now-real row. Edits that land while the create is in
+//   flight keep mutating local draft state; once it resolves, anything that
+//   changed since the snapshot was sent is flushed via `saveMultipleAsync`
+//   against the real record. An untouched draft simply vanishes on unmount.
 // - Reorder: dnd-kit sortable rows (grip handle) → `api.money.reorderLines`.
-// - Delete: `api.record.delete` + `api.money.recomputeTotals` (delete path
-//   doesn't fire field-change hooks, §F.2).
+//   Draft rows aren't part of the sortable set — they pin after the real rows.
+// - Delete: real rows → `api.record.delete` + `api.money.recomputeTotals`
+//   (delete path doesn't fire field-change hooks, §F.2). Draft rows → local
+//   splice, no network.
 
 import { FieldType } from '@auxx/database/enums'
 import type { ConditionGroup } from '@auxx/lib/conditions/client'
-import { computeLineTotal } from '@auxx/lib/money/client'
 import { Button } from '@auxx/ui/components/button'
 import { toastError } from '@auxx/ui/components/toast'
-import { GridTreeRow, TreeRowButton } from '@auxx/ui/components/tree-row'
-import { cn } from '@auxx/ui/lib/utils'
+import { generateId } from '@auxx/utils'
 import {
   closestCenter,
   DndContext,
@@ -40,14 +50,8 @@ import {
   useSensors,
 } from '@dnd-kit/core'
 import { restrictToVerticalAxis } from '@dnd-kit/modifiers'
-import {
-  arrayMove,
-  SortableContext,
-  useSortable,
-  verticalListSortingStrategy,
-} from '@dnd-kit/sortable'
-import { CSS } from '@dnd-kit/utilities'
-import { AlignLeft, GripVertical, Percent, Plus, ReceiptText, Trash2 } from 'lucide-react'
+import { arrayMove, SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
+import { Plus, ReceiptText } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { EmptyState } from '~/components/global/empty-state'
 import {
@@ -58,11 +62,19 @@ import {
   useResource,
 } from '~/components/resources'
 import { useSaveFieldValue } from '~/components/resources/hooks/use-save-field-value'
+import { useSeedCreatedRecord } from '~/components/resources/hooks/use-seed-created-record'
 import { useSystemValues } from '~/components/resources/hooks/use-system-values'
 import { useSettings } from '~/hooks/use-settings'
 import { api } from '~/trpc/react'
-import { type CatalogGroupPick, type CatalogItemPick, CatalogPicker } from './catalog-picker'
-import { formatCurrency, titleCase } from './shared'
+import type { CatalogGroupPick, CatalogGroupPickLine } from './catalog-picker'
+import {
+  type DraftLine,
+  DraftLineRow,
+  freshDraft,
+  LINE_COLS,
+  LineRow,
+  relKeyForDocumentType,
+} from './line-rows'
 import { TotalsFooter } from './totals-footer'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -80,21 +92,6 @@ const PAGE_SIZE = 100
 /** Stable sort ref — `useRecordList` keys its cache off this object. */
 const LINE_SORT = [{ id: 'sortOrder', desc: false }]
 
-/**
- * Shared `grid-template-columns` for the header row and every line row (the
- * mapping-columns.ts idiom) — one template is what keeps the qty / unit cost /
- * total columns aligned. Columns: description (fills) │ qty │ unit cost │
- * total │ actions.
- */
-const LINE_COLS = 'minmax(10rem, 1fr) 4rem 6.5rem 6.5rem 5.5rem'
-
-// Module-level (stable-reference) attribute lists — `useSystemValues` memoizes
-// on the array identity, so these must never be inline literals.
-const NAME_ATTRS = ['line_item_name', 'line_item_description', 'line_item_category']
-const QTY_ATTRS = ['line_item_qty']
-const PRICE_ATTRS = ['line_item_unit_price']
-const TOTAL_ATTRS = ['line_item_qty', 'line_item_unit_price']
-const TAXABLE_ATTRS = ['line_item_taxable']
 // Document billing mirrors read for the group-explode set-if-unset checks (steps 4–5,
 // money 09-product-groups.md "Line-builder consumption") — the same attrs `TotalsFooter`
 // reads, minus the invoice-only ledger-sync mirrors this doesn't need.
@@ -117,352 +114,6 @@ interface TaxRatePreset {
   name: string
   rate: number
   isDefault?: boolean
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Cells
-// ─────────────────────────────────────────────────────────────────────────────
-
-/**
- * Description cell — a transparent full-width button (the formula-row picker
- * idiom) that opens the catalog combobox (§H.2), doubling as free-text rename.
- * Shows the category chip inline and the description as a second muted line.
- */
-function LineNameCell({
-  recordId,
-  rowId,
-  readOnly,
-  currencyCode,
-  descriptionOpen,
-  closeDescription,
-  onSelectGroup,
-}: {
-  recordId: RecordId
-  rowId: string
-  readOnly: boolean
-  currencyCode: string
-  descriptionOpen: boolean
-  closeDescription: (lineId: string) => void
-  onSelectGroup: (pick: CatalogGroupPick) => void
-}) {
-  const { values } = useSystemValues(recordId, NAME_ATTRS, { autoFetch: true })
-  const { saveFieldValue, saveMultipleAsync } = useSaveFieldValue()
-  const [pickerOpen, setPickerOpen] = useState(false)
-  const [descriptionDraft, setDescriptionDraft] = useState<string | null>(null)
-
-  const name = (values.line_item_name as string | undefined) ?? ''
-  const description = (values.line_item_description as string | null | undefined) ?? null
-  const category = (values.line_item_category as string | null | undefined) ?? null
-  const descriptionVisible = !!description || descriptionOpen
-
-  const handlePick = (pick: CatalogItemPick) => {
-    // COPY the catalog defaults onto the line (snapshot — catalog price changes
-    // never rewrite documents) + keep the provenance relationship.
-    void saveMultipleAsync(recordId, [
-      { fieldId: 'line_item_name', value: pick.name, fieldType: FieldType.TEXT },
-      { fieldId: 'line_item_description', value: pick.description, fieldType: FieldType.TEXT },
-      { fieldId: 'line_item_category', value: pick.category, fieldType: FieldType.SINGLE_SELECT },
-      { fieldId: 'line_item_taxable', value: pick.taxable, fieldType: FieldType.CHECKBOX },
-      { fieldId: 'line_item_unit_price', value: pick.unitPrice, fieldType: FieldType.CURRENCY },
-      {
-        fieldId: 'line_item_catalog_item',
-        value: pick.recordId,
-        fieldType: FieldType.RELATIONSHIP,
-      },
-    ])
-  }
-
-  const commitDescription = () => {
-    if (descriptionDraft === null) return
-    const next = descriptionDraft.trim()
-    saveFieldValue(recordId, 'line_item_description', next || null, FieldType.TEXT)
-    setDescriptionDraft(null)
-    if (!next) closeDescription(rowId)
-  }
-
-  return (
-    <div className='flex min-w-0 flex-1 flex-col justify-center py-1'>
-      {readOnly ? (
-        <span className='flex min-w-0 items-center gap-1.5 px-1'>
-          <span className={cn('truncate text-sm', !name && 'text-muted-foreground italic')}>
-            {name || 'Untitled line'}
-          </span>
-          {category && (
-            <span className='shrink-0 rounded-full bg-primary-100 px-1.5 py-px text-[10px] text-muted-foreground leading-tight dark:bg-primary-100/50'>
-              {titleCase(category)}
-            </span>
-          )}
-        </span>
-      ) : (
-        <CatalogPicker
-          open={pickerOpen}
-          onOpenChange={setPickerOpen}
-          initialQuery={name}
-          currencyCode={currencyCode}
-          onSelectCatalogItem={handlePick}
-          onSelectGroup={onSelectGroup}
-          onFreeText={(text) => saveFieldValue(recordId, 'line_item_name', text, FieldType.TEXT)}>
-          <Button
-            variant='transparent'
-            className={cn(
-              'h-7 min-w-0 justify-start gap-1.5 rounded-sm px-1 text-sm hover:bg-primary/5',
-              !name && 'text-muted-foreground'
-            )}>
-            <span className='truncate'>{name || 'Add item…'}</span>
-            {category && (
-              <span className='shrink-0 rounded-full bg-primary-100 px-1.5 py-px text-[10px] text-muted-foreground leading-tight dark:bg-primary-100/50'>
-                {titleCase(category)}
-              </span>
-            )}
-          </Button>
-        </CatalogPicker>
-      )}
-
-      {descriptionVisible &&
-        (readOnly ? (
-          <span className='truncate px-1 text-muted-foreground text-xs'>{description}</span>
-        ) : (
-          <input
-            value={descriptionDraft ?? description ?? ''}
-            onChange={(e) => setDescriptionDraft(e.target.value)}
-            onFocus={() => setDescriptionDraft(description ?? '')}
-            onBlur={commitDescription}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') e.currentTarget.blur()
-              if (e.key === 'Escape') {
-                setDescriptionDraft(null)
-                if (!description) closeDescription(rowId)
-              }
-            }}
-            autoFocus={!description}
-            placeholder='Description'
-            className='w-full truncate border-none bg-transparent px-1 text-muted-foreground text-xs outline-none placeholder:text-muted-foreground/60'
-          />
-        ))}
-    </div>
-  )
-}
-
-/**
- * Chromeless inline number editor — quiet at rest, editable on click (the
- * cell-treatment lock in 01-ui #1). Commits on blur/Enter.
- */
-function InlineNumberCell({
-  recordId,
-  attr,
-  fieldType,
-  readOnly,
-  currencyCode,
-}: {
-  recordId: RecordId
-  attr: 'line_item_qty' | 'line_item_unit_price'
-  fieldType: FieldType
-  readOnly: boolean
-  currencyCode: string
-}) {
-  const attrs = attr === 'line_item_qty' ? QTY_ATTRS : PRICE_ATTRS
-  const { values } = useSystemValues(recordId, attrs, { autoFetch: true })
-  const { saveFieldValue } = useSaveFieldValue()
-  const [draft, setDraft] = useState<string | null>(null)
-
-  const raw = values[attr] as number | null | undefined
-  const display =
-    attr === 'line_item_unit_price'
-      ? formatCurrency(raw ?? null, currencyCode)
-      : raw !== null && raw !== undefined
-        ? String(raw)
-        : ''
-
-  const commit = () => {
-    if (draft === null) return
-    const trimmed = draft.trim()
-    const parsed = trimmed === '' ? null : Number(trimmed)
-    setDraft(null)
-    if (parsed !== null && Number.isNaN(parsed)) return
-    // Qty is non-nullable — an emptied qty keeps its previous value.
-    if (attr === 'line_item_qty' && parsed === null) return
-    // Prices are typed in dollars but stored as integer cents (CURRENCY convention).
-    const next =
-      parsed !== null && attr === 'line_item_unit_price' ? Math.round(parsed * 100) : parsed
-    if (next === (raw ?? null)) return
-    saveFieldValue(recordId, attr, next, fieldType)
-  }
-
-  if (readOnly) {
-    return <div className='w-full px-2 text-right text-sm tabular-nums'>{display}</div>
-  }
-
-  return (
-    <input
-      value={draft ?? display}
-      onChange={(e) => setDraft(e.target.value)}
-      onFocus={() =>
-        setDraft(
-          raw !== null && raw !== undefined
-            ? String(attr === 'line_item_unit_price' ? raw / 100 : raw)
-            : ''
-        )
-      }
-      onBlur={commit}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter') e.currentTarget.blur()
-        if (e.key === 'Escape') setDraft(null)
-      }}
-      inputMode='decimal'
-      className={cn(
-        'h-full w-full rounded-sm border-none bg-transparent px-2 text-right text-sm tabular-nums outline-none',
-        'hover:bg-primary/5 focus:bg-primary/10'
-      )}
-    />
-  )
-}
-
-/** Read-only computed line total — `computeLineTotal` live over store values. */
-function LineTotalCell({ recordId, currencyCode }: { recordId: RecordId; currencyCode: string }) {
-  const { values } = useSystemValues(recordId, TOTAL_ATTRS, { autoFetch: true })
-
-  const qty = (values.line_item_qty as number | null | undefined) ?? 1
-  const unitPrice = (values.line_item_unit_price as number | null | undefined) ?? null
-  const lineTotal = computeLineTotal(qty, unitPrice)
-
-  return (
-    <div className='w-full px-2 text-right text-muted-foreground text-sm tabular-nums'>
-      {formatCurrency(lineTotal, currencyCode)}
-    </div>
-  )
-}
-
-/** Trailing hover actions: description toggle · taxable toggle · delete (no confirm). */
-function LineActionsCell({
-  recordId,
-  rowId,
-  toggleDescription,
-  deleteLine,
-}: {
-  recordId: RecordId
-  rowId: string
-  toggleDescription: (lineId: string) => void
-  deleteLine: (lineId: string) => void
-}) {
-  const { values } = useSystemValues(recordId, TAXABLE_ATTRS, { autoFetch: true })
-  const { saveFieldValue } = useSaveFieldValue()
-
-  const taxable = (values.line_item_taxable as boolean | undefined) !== false
-
-  return (
-    <div className='flex w-full items-center justify-end gap-1 pr-1'>
-      <TreeRowButton tooltipText='Description' onClick={() => toggleDescription(rowId)}>
-        <AlignLeft />
-      </TreeRowButton>
-      <TreeRowButton
-        tooltipText={taxable ? 'Taxable — click to exempt' : 'Tax exempt — click to tax'}
-        className={cn(!taxable && 'text-muted-foreground/40')}
-        onClick={() => saveFieldValue(recordId, 'line_item_taxable', !taxable, FieldType.CHECKBOX)}>
-        <Percent />
-      </TreeRowButton>
-      <TreeRowButton
-        variant='destructive'
-        tooltipText='Delete line'
-        onClick={() => deleteLine(rowId)}>
-        <Trash2 />
-      </TreeRowButton>
-    </div>
-  )
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Row
-// ─────────────────────────────────────────────────────────────────────────────
-
-/** One sortable line row — a GridTreeRow whose leading icon is the drag grip. */
-function LineRow({
-  record,
-  entityDefinitionId,
-  readOnly,
-  currencyCode,
-  descriptionOpen,
-  toggleDescription,
-  closeDescription,
-  deleteLine,
-  onSelectGroup,
-}: {
-  record: RecordMeta
-  entityDefinitionId: string
-  readOnly: boolean
-  currencyCode: string
-  descriptionOpen: boolean
-  toggleDescription: (lineId: string) => void
-  closeDescription: (lineId: string) => void
-  deleteLine: (lineId: string) => void
-  onSelectGroup: (recordId: RecordId, pick: CatalogGroupPick) => void
-}) {
-  const recordId = toRecordId(entityDefinitionId, record.id)
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
-    id: record.id,
-    disabled: readOnly,
-  })
-
-  return (
-    <div
-      ref={setNodeRef}
-      style={{ transform: CSS.Transform.toString(transform), transition }}
-      className={cn(isDragging && 'relative z-10 opacity-80')}>
-      <GridTreeRow
-        columns={LINE_COLS}
-        icon={
-          readOnly ? undefined : (
-            <span
-              {...attributes}
-              {...listeners}
-              className='flex cursor-grab items-center justify-center opacity-0 transition-opacity group-hover/tree-row:opacity-100'>
-              <GripVertical className='size-3.5' />
-            </span>
-          )
-        }
-        title={
-          <LineNameCell
-            recordId={recordId}
-            rowId={record.id}
-            readOnly={readOnly}
-            currencyCode={currencyCode}
-            descriptionOpen={descriptionOpen}
-            closeDescription={closeDescription}
-            onSelectGroup={(pick) => onSelectGroup(recordId, pick)}
-          />
-        }
-        cells={[
-          <InlineNumberCell
-            key='qty'
-            recordId={recordId}
-            attr='line_item_qty'
-            fieldType={FieldType.NUMBER}
-            readOnly={readOnly}
-            currencyCode={currencyCode}
-          />,
-          <InlineNumberCell
-            key='price'
-            recordId={recordId}
-            attr='line_item_unit_price'
-            fieldType={FieldType.CURRENCY}
-            readOnly={readOnly}
-            currencyCode={currencyCode}
-          />,
-          <LineTotalCell key='total' recordId={recordId} currencyCode={currencyCode} />,
-          readOnly ? (
-            <span key='actions' />
-          ) : (
-            <LineActionsCell
-              key='actions'
-              recordId={recordId}
-              rowId={record.id}
-              toggleDescription={toggleDescription}
-              deleteLine={deleteLine}
-            />
-          ),
-        ]}
-      />
-    </div>
-  )
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -500,6 +151,12 @@ export function LineBuilder({
 
   const [openDescriptionIds, setOpenDescriptionIds] = useState<Set<string>>(new Set())
   const [orderOverride, setOrderOverride] = useState<string[] | null>(null)
+  const [drafts, setDrafts] = useState<DraftLine[]>([])
+  const draftsRef = useRef<DraftLine[]>([])
+  draftsRef.current = drafts
+  // Ref-guarded (not state-derived) so a synchronous double-commit can never
+  // race two `record.create` calls for the same draft before React re-renders.
+  const creatingDraftIdsRef = useRef<Set<string>>(new Set())
 
   // Baseline filter: lines belonging to this document, via the belongs_to rel
   // (`contact-tickets-tab.tsx` precedent — `operator: 'is'` + the RecordId;
@@ -553,6 +210,7 @@ export function LineBuilder({
     isFetchingNextPage,
     fetchNextPage,
     refresh,
+    listKey,
   } = useRecordList<RecordMeta>({
     entityDefinitionId: entityDefinitionId ?? '',
     filters,
@@ -599,6 +257,9 @@ export function LineBuilder({
   const { mutateAsync: deleteInvoiceLineMutateAsync } = deleteInvoiceLine
   const { mutateAsync: createMutateAsync } = createRecord
 
+  const { saveMultipleAsync } = useSaveFieldValue()
+  const { seedCreatedRecord } = useSeedCreatedRecord()
+
   const deleteLine = useCallback(
     async (lineId: string) => {
       if (!entityDefinitionId) return
@@ -633,82 +294,182 @@ export function LineBuilder({
     ]
   )
 
-  /** Add an empty line — the Description cell's picker fills it in afterwards. */
-  const addLine = useCallback(async () => {
-    const relKey =
-      documentType === 'quote'
-        ? 'line_item_quote'
-        : documentType === 'invoice'
-          ? 'line_item_invoice'
-          : 'line_item_work_order'
-    try {
-      await createMutateAsync({
-        entityDefinitionId: 'line_item',
-        values: {
-          line_item_name: '',
-          line_item_qty: 1,
-          line_item_taxable: true,
-          line_item_sort_order: displayIdsRef.current.length,
-          [relKey]: documentRecordId,
-        },
-      })
-      refresh()
-    } catch (error) {
-      toastError({
-        title: 'Error adding line',
-        description: error instanceof Error ? error.message : 'Could not add the line',
-      })
-    }
-  }, [documentType, documentRecordId, createMutateAsync, refresh])
+  /** Draft delete (trash icon) — local splice, no network. */
+  const deleteDraft = useCallback((draftId: string) => {
+    creatingDraftIdsRef.current.delete(draftId)
+    setDrafts((prev) => prev.filter((d) => d.draftId !== draftId))
+  }, [])
 
-  const { saveMultipleAsync } = useSaveFieldValue()
+  /** "+ Add line item" — pushes a purely-local phantom draft. No mutation. */
+  const addLine = useCallback(() => {
+    setDrafts((prev) => [...prev, freshDraft(generateId())])
+  }, [])
 
   /**
-   * Explode a picked catalog group onto the document (money 09-product-groups.md
-   * "Line-builder consumption"): entry #1 fills the line whose picker was open,
-   * entries 2…N append as new lines, then the document discount/tax are
-   * set-if-unset from the group (never overwriting an existing value).
+   * Fire the draft's first `record.create`, carrying every accumulated draft
+   * value (merged with `overrides`, the field that just committed). Guarded
+   * against double-create: once a draft is already creating, subsequent
+   * commits just keep mutating local state — the in-flight create's
+   * completion handler diffs + flushes them once it resolves.
    */
-  const handleGroupPick = useCallback(
-    async (recordId: RecordId, pick: CatalogGroupPick) => {
-      if (pick.skippedCount > 0) {
-        console.warn(`Catalog group "${pick.name}" skipped ${pick.skippedCount} dangling item(s).`)
+  const createDraft = useCallback(
+    async (draftId: string, overrides: Partial<DraftLine> = {}) => {
+      if (creatingDraftIdsRef.current.has(draftId)) {
+        setDrafts((prev) => prev.map((d) => (d.draftId === draftId ? { ...d, ...overrides } : d)))
+        return
       }
-      if (pick.lines.length === 0) return
 
-      const [first, ...rest] = pick.lines
+      const draftIndex = draftsRef.current.findIndex((d) => d.draftId === draftId)
+      if (draftIndex === -1 || !entityDefinitionId) return
+      const snapshot: DraftLine = {
+        ...draftsRef.current[draftIndex],
+        ...overrides,
+        creating: true,
+      }
 
-      // Step 1: entry #1 fills the CURRENT line — the handlePick shape (catalog-picker.tsx)
-      // plus qty, which the single-item pick leaves untouched.
-      void saveMultipleAsync(recordId, [
-        { fieldId: 'line_item_name', value: first.name, fieldType: FieldType.TEXT },
-        { fieldId: 'line_item_description', value: first.description, fieldType: FieldType.TEXT },
-        {
-          fieldId: 'line_item_category',
-          value: first.category,
-          fieldType: FieldType.SINGLE_SELECT,
-        },
-        { fieldId: 'line_item_taxable', value: first.taxable, fieldType: FieldType.CHECKBOX },
-        { fieldId: 'line_item_unit_price', value: first.unitPrice, fieldType: FieldType.CURRENCY },
-        { fieldId: 'line_item_qty', value: first.qty, fieldType: FieldType.NUMBER },
-        {
-          fieldId: 'line_item_catalog_item',
-          value: toRecordId('catalog_item', first.catalogItemId),
-          fieldType: FieldType.RELATIONSHIP,
-        },
-      ])
+      creatingDraftIdsRef.current.add(draftId)
+      setDrafts((prev) => prev.map((d) => (d.draftId === draftId ? snapshot : d)))
 
-      // Step 2: entries 2…N append at the end — sequential creates (not Promise.all) so
-      // sort order + the server-side totals-recompute hooks stay deterministic; N is small.
-      // Known v1 edge: picking on a middle line still appends these at the list end.
+      const relKey = relKeyForDocumentType(documentType)
+      const values: Record<string, unknown> = {
+        line_item_qty: snapshot.qty,
+        line_item_taxable: snapshot.taxable,
+        line_item_sort_order: displayIdsRef.current.length + draftIndex,
+        [relKey]: documentRecordId,
+      }
+      if (snapshot.name) values.line_item_name = snapshot.name
+      if (snapshot.description) values.line_item_description = snapshot.description
+      if (snapshot.category) values.line_item_category = snapshot.category
+      if (snapshot.unitPriceCents !== null) values.line_item_unit_price = snapshot.unitPriceCents
+      if (snapshot.catalogItemRecordId) {
+        values.line_item_catalog_item = snapshot.catalogItemRecordId
+      }
+
+      try {
+        const result = await createMutateAsync({ entityDefinitionId: 'line_item', values })
+
+        seedCreatedRecord({
+          entityDefinitionId,
+          recordId: result.recordId,
+          listKey,
+          instance: result.instance,
+          values: [
+            { fieldId: 'line_item_name', value: snapshot.name, fieldType: FieldType.TEXT },
+            {
+              fieldId: 'line_item_description',
+              value: snapshot.description,
+              fieldType: FieldType.TEXT,
+            },
+            {
+              fieldId: 'line_item_category',
+              value: snapshot.category,
+              fieldType: FieldType.SINGLE_SELECT,
+            },
+            { fieldId: 'line_item_qty', value: snapshot.qty, fieldType: FieldType.NUMBER },
+            {
+              fieldId: 'line_item_unit_price',
+              value: snapshot.unitPriceCents,
+              fieldType: FieldType.CURRENCY,
+            },
+            {
+              fieldId: 'line_item_taxable',
+              value: snapshot.taxable,
+              fieldType: FieldType.CHECKBOX,
+            },
+          ],
+        })
+
+        // Diff whatever landed locally while the create was in flight, and
+        // flush just the changed fields against the now-real record.
+        const latest = draftsRef.current.find((d) => d.draftId === draftId) ?? snapshot
+        const changed: Array<{ fieldId: string; value: unknown; fieldType: FieldType }> = []
+        if (latest.name !== snapshot.name) {
+          changed.push({
+            fieldId: 'line_item_name',
+            value: latest.name,
+            fieldType: FieldType.TEXT,
+          })
+        }
+        if (latest.description !== snapshot.description) {
+          changed.push({
+            fieldId: 'line_item_description',
+            value: latest.description,
+            fieldType: FieldType.TEXT,
+          })
+        }
+        if (latest.category !== snapshot.category) {
+          changed.push({
+            fieldId: 'line_item_category',
+            value: latest.category,
+            fieldType: FieldType.SINGLE_SELECT,
+          })
+        }
+        if (latest.taxable !== snapshot.taxable) {
+          changed.push({
+            fieldId: 'line_item_taxable',
+            value: latest.taxable,
+            fieldType: FieldType.CHECKBOX,
+          })
+        }
+        if (latest.qty !== snapshot.qty) {
+          changed.push({
+            fieldId: 'line_item_qty',
+            value: latest.qty,
+            fieldType: FieldType.NUMBER,
+          })
+        }
+        if (latest.unitPriceCents !== snapshot.unitPriceCents) {
+          changed.push({
+            fieldId: 'line_item_unit_price',
+            value: latest.unitPriceCents,
+            fieldType: FieldType.CURRENCY,
+          })
+        }
+        if (latest.catalogItemRecordId !== snapshot.catalogItemRecordId) {
+          changed.push({
+            fieldId: 'line_item_catalog_item',
+            value: latest.catalogItemRecordId,
+            fieldType: FieldType.RELATIONSHIP,
+          })
+        }
+        if (changed.length > 0) {
+          await saveMultipleAsync(result.recordId, changed)
+        }
+
+        creatingDraftIdsRef.current.delete(draftId)
+        setDrafts((prev) => prev.filter((d) => d.draftId !== draftId))
+      } catch (error) {
+        creatingDraftIdsRef.current.delete(draftId)
+        setDrafts((prev) =>
+          prev.map((d) => (d.draftId === draftId ? { ...d, creating: false } : d))
+        )
+        toastError({
+          title: 'Error adding line',
+          description: error instanceof Error ? error.message : 'Could not add the line',
+        })
+      }
+    },
+    [
+      entityDefinitionId,
+      documentType,
+      documentRecordId,
+      createMutateAsync,
+      saveMultipleAsync,
+      seedCreatedRecord,
+      listKey,
+    ]
+  )
+
+  /**
+   * Steps 2 (append entries 2…N) + 4–5 (document discount/tax set-if-unset)
+   * of a catalog-group explode (money 09-product-groups.md "Line-builder
+   * consumption") — shared by the real-row and draft-row group-pick paths.
+   * `baseOrder` is the sort order the first of `rest` should land at.
+   */
+  const applyGroupPickRestAndBilling = useCallback(
+    async (pick: CatalogGroupPick, rest: CatalogGroupPickLine[], baseOrder: number) => {
       if (rest.length > 0) {
-        const relKey =
-          documentType === 'quote'
-            ? 'line_item_quote'
-            : documentType === 'invoice'
-              ? 'line_item_invoice'
-              : 'line_item_work_order'
-        const baseOrder = displayIdsRef.current.length
+        const relKey = relKeyForDocumentType(documentType)
         try {
           for (const [index, line] of rest.entries()) {
             await createMutateAsync({
@@ -795,6 +556,74 @@ export function LineBuilder({
     ]
   )
 
+  /**
+   * Explode a picked catalog group onto a REAL line (money 09-product-groups.md
+   * "Line-builder consumption"): entry #1 fills the line whose picker was open,
+   * entries 2…N append as new lines via {@link applyGroupPickRestAndBilling}.
+   */
+  const handleGroupPick = useCallback(
+    async (recordId: RecordId, pick: CatalogGroupPick) => {
+      if (pick.skippedCount > 0) {
+        console.warn(`Catalog group "${pick.name}" skipped ${pick.skippedCount} dangling item(s).`)
+      }
+      if (pick.lines.length === 0) return
+
+      const [first, ...rest] = pick.lines
+
+      // Step 1: entry #1 fills the CURRENT line — the handlePick shape (catalog-picker.tsx)
+      // plus qty, which the single-item pick leaves untouched.
+      void saveMultipleAsync(recordId, [
+        { fieldId: 'line_item_name', value: first.name, fieldType: FieldType.TEXT },
+        { fieldId: 'line_item_description', value: first.description, fieldType: FieldType.TEXT },
+        {
+          fieldId: 'line_item_category',
+          value: first.category,
+          fieldType: FieldType.SINGLE_SELECT,
+        },
+        { fieldId: 'line_item_taxable', value: first.taxable, fieldType: FieldType.CHECKBOX },
+        { fieldId: 'line_item_unit_price', value: first.unitPrice, fieldType: FieldType.CURRENCY },
+        { fieldId: 'line_item_qty', value: first.qty, fieldType: FieldType.NUMBER },
+        {
+          fieldId: 'line_item_catalog_item',
+          value: toRecordId('catalog_item', first.catalogItemId),
+          fieldType: FieldType.RELATIONSHIP,
+        },
+      ])
+
+      // Known v1 edge: picking on a middle line still appends `rest` at the list end.
+      await applyGroupPickRestAndBilling(pick, rest, displayIdsRef.current.length)
+    },
+    [saveMultipleAsync, applyGroupPickRestAndBilling]
+  )
+
+  /** Same explode intent as {@link handleGroupPick}, targeting a phantom draft. */
+  const handleGroupPickDraft = useCallback(
+    async (draftId: string, pick: CatalogGroupPick) => {
+      if (pick.skippedCount > 0) {
+        console.warn(`Catalog group "${pick.name}" skipped ${pick.skippedCount} dangling item(s).`)
+      }
+      if (pick.lines.length === 0) return
+
+      const [first, ...rest] = pick.lines
+
+      // Step 1: entry #1's values become THIS draft's create.
+      void createDraft(draftId, {
+        name: first.name,
+        description: first.description,
+        category: first.category,
+        taxable: first.taxable,
+        unitPriceCents: first.unitPrice,
+        qty: first.qty,
+        catalogItemRecordId: toRecordId('catalog_item', first.catalogItemId),
+      })
+
+      // Real records + every current draft occupy a sort-order slot ahead of `rest`.
+      const baseOrder = displayIdsRef.current.length + draftsRef.current.length
+      await applyGroupPickRestAndBilling(pick, rest, baseOrder)
+    },
+    [createDraft, applyGroupPickRestAndBilling]
+  )
+
   const toggleDescription = useCallback((lineId: string) => {
     setOpenDescriptionIds((prev) => {
       const next = new Set(prev)
@@ -845,10 +674,11 @@ export function LineBuilder({
 
   if (!entityDefinitionId) return null
 
-  const isEmpty = !isLoading && !isLoadingRecords && displayRecords.length === 0
+  const isEmpty =
+    !isLoading && !isLoadingRecords && displayRecords.length === 0 && drafts.length === 0
 
   return (
-    <div className='flex min-h-0 flex-1 flex-col overflow-y-auto rounded-lg bg-primary-50 p-1 dark:bg-background'>
+    <div className='flex min-h-0 flex-1 flex-col overflow-y-auto rounded-lg'>
       {/* Header — same grid template as the rows, so the labels sit over their columns.
           The Description label offsets past the row px-1 + grip slot + title/button padding. */}
       <div
@@ -891,14 +721,25 @@ export function LineBuilder({
         </DndContext>
       )}
 
+      {/* Phantom draft rows — pinned after the real rows, never drag-sortable. */}
+      {!readOnly &&
+        drafts.map((draft) => (
+          <DraftLineRow
+            key={draft.draftId}
+            draft={draft}
+            currencyCode={currencyCode}
+            descriptionOpen={openDescriptionIds.has(draft.draftId)}
+            toggleDescription={toggleDescription}
+            closeDescription={closeDescription}
+            deleteDraft={deleteDraft}
+            createDraft={createDraft}
+            onSelectGroup={handleGroupPickDraft}
+          />
+        ))}
+
       {!readOnly && (
         <div className='border-primary-200/50 border-b px-1 py-0.5 dark:border-[#1e2227]'>
-          <Button
-            variant='ghost'
-            size='sm'
-            className='text-muted-foreground'
-            loading={createRecord.isPending}
-            onClick={addLine}>
+          <Button variant='ghost' size='sm' className='text-muted-foreground' onClick={addLine}>
             <Plus />
             Add line item
           </Button>

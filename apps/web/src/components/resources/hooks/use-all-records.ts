@@ -41,6 +41,11 @@ export interface FieldInfo {
   type: string
 }
 
+/** Element shape of `api.record.listAll`'s `data.items` — what `appendRecord` expects. */
+export type AllRecordsItem = NonNullable<
+  ReturnType<typeof api.record.listAll.useQuery>['data']
+>['items'][number]
+
 /**
  * Result from useAllRecords hook
  */
@@ -57,6 +62,12 @@ interface UseAllRecordsResult<T = RecordMeta> {
   error: Error | null
   /** Refetch data */
   refresh: () => void
+  /**
+   * Append a freshly created item straight into the `listAll` cache — skips
+   * the `refresh()` round-trip so it appears instantly. No-op if the cache
+   * hasn't been populated yet (falls back to the next natural fetch).
+   */
+  appendRecord: (item: AllRecordsItem) => void
 }
 
 /**
@@ -109,6 +120,22 @@ export function useAllRecords<T extends RecordMeta = RecordMeta>(
   // Store actions - use proper zustand selectors
   const setRecords = useRecordStore((s) => s.setRecords)
   const setFieldValues = useFieldValueStore((s) => s.setValues)
+
+  const utils = api.useUtils()
+
+  // Append a new item directly into the listAll cache (same query input as
+  // above) instead of refetching the whole list. The populate-effect below
+  // re-runs off this cache write, so the record/field-value stores get
+  // seeded for free.
+  const appendRecord = useCallback(
+    (item: AllRecordsItem) => {
+      utils.record.listAll.setData(
+        { entityDefinitionId, apiSlug, fieldIds, includeArchived },
+        (old) => (old ? { ...old, items: [...old.items, item] } : old)
+      )
+    },
+    [utils, entityDefinitionId, apiSlug, fieldIds, includeArchived]
+  )
 
   const resolvedEntityDefId = data?.entityDefinitionId ?? null
 
@@ -266,5 +293,6 @@ export function useAllRecords<T extends RecordMeta = RecordMeta>(
     isLoading: shouldFetch && isLoading,
     error: error ?? null,
     refresh: refetch,
+    appendRecord,
   }
 }

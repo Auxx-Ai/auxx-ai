@@ -2,37 +2,35 @@
 'use client'
 
 // Custom detail-view tab registered as "quote:line-items" (money MQ1 build spec
-// §H.3). Renders the status-driven header strip (Expired badge + send/download
-// + lifecycle actions, money MQ2 build spec §E.2/§E.4/§G) + the edit-sent guard
-// banner + the shared line builder (§H.1).
+// §H.3). Renders the shared document actions cluster (Send + lifecycle dropdown,
+// §E.2/§E.4/§G) into the wrapping <Section> header, the edit-sent guard banner,
+// and the shared line builder (§H.1).
 //
-// Header actions are NOT wired through `DetailViewActions` — that component
-// only exposes generic capability flags (enableArchive/enableMerge/…, see
-// `detail-view-config-types.ts`) with no per-entity extension point, so the
-// sanctioned fallback (per the build spec) is this tab's own header strip.
+// Header actions are teleported into the <Section> header via `DocumentSectionActions`
+// (detail-page sections layout → title/actions slots; drawer card → actions slot).
 // Two surfaces render this component: the detail page's Line-items section
-// (DETAIL_VIEW_TAB_COMPONENTS, sections layout) and the quote drawer's
-// Overview card (QuoteLinesOverviewCard below — records-view/dashboards open
-// quotes in a drawer regardless of `hasDetailPage`).
+// (DETAIL_VIEW_TAB_COMPONENTS, sections layout) and the quote drawer's Overview card
+// (QuoteLinesOverviewCard below — records-view/dashboards open quotes in a drawer
+// regardless of `hasDetailPage`).
 
 import { parseRecordId } from '@auxx/lib/resources/client'
 import { Badge } from '@auxx/ui/components/badge'
-import { Button } from '@auxx/ui/components/button'
+import { DropdownMenuItem, DropdownMenuSeparator } from '@auxx/ui/components/dropdown-menu'
 import { toastError } from '@auxx/ui/components/toast'
 import { cn } from '@auxx/ui/lib/utils'
+import { Check, Download, Send, SquareArrowOutUpRight, Undo2, X } from 'lucide-react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useMemo } from 'react'
-import { useChannelsLoading } from '~/components/channels/hooks/use-channels'
-import { useDefaultChannelId } from '~/components/channels/hooks/use-default-channel'
-import { useEmailChannels } from '~/components/channels/store/channel-store'
 import type { DetailViewTabProps } from '~/components/detail-view'
 import type { DrawerTabProps } from '~/components/drawers/drawer-tab-registry'
-import { Tooltip } from '~/components/global/tooltip'
+import {
+  DocumentActionsCluster,
+  DocumentSectionActions,
+} from '~/components/money/ui/document-actions-cluster'
 import { LineBuilder } from '~/components/money/ui/line-builder/line-builder'
+import { useDocumentSendActions } from '~/components/money/ui/use-document-send-actions'
 import { useSaveSystemValues, useSystemValues } from '~/components/resources/hooks'
-import { useDefaultSignature } from '~/components/signatures/hooks'
-import { useCompose } from '~/hooks/use-compose'
 import { useConfirm } from '~/hooks/use-confirm'
 import { api } from '~/trpc/react'
 
@@ -46,13 +44,9 @@ const SENDABLE_STATUSES = new Set(['draft', 'sent'])
 export function QuoteLineItemsTab({ recordId, variant = 'tab' }: DetailViewTabProps) {
   const router = useRouter()
   const [confirm, ConfirmDialog] = useConfirm()
-  const { openCompose } = useCompose()
 
   const { values } = useSystemValues(recordId, [...QUOTE_STATUS_ATTRS], { autoFetch: true })
   const { save: saveSystemValues } = useSaveSystemValues(recordId)
-  // The snippet body carries no sign-off — pre-select the org default signature
-  // so the composer appends it (the composer does NOT auto-apply a default).
-  const { signature: defaultSignature } = useDefaultSignature()
 
   const status = (values.quote_status as string | undefined) ?? 'draft'
   const validUntil = values.quote_valid_until as string | null | undefined
@@ -64,6 +58,12 @@ export function QuoteLineItemsTab({ recordId, variant = 'tab' }: DetailViewTabPr
 
   // draft is the only editable state — sent/approved/declined/canceled are all read-only.
   const readOnly = status !== 'draft'
+
+  // Shared send/download flow (compose + PDF + no-channel guard).
+  const { hasEmailChannel, handleSend, handleDownload, isSending } = useDocumentSendActions(
+    recordId,
+    'quote'
+  )
 
   const markSent = api.money.markQuoteSent.useMutation({
     onError: (error) =>
@@ -80,22 +80,6 @@ export function QuoteLineItemsTab({ recordId, variant = 'tab' }: DetailViewTabPr
       toastError({ title: 'Error converting to job', description: error.message }),
   })
 
-  // ─── Send flow (money MQ2 build spec §E.2/§E.4) ─────────────────────────
-  const channelsLoading = useChannelsLoading()
-  const emailChannels = useEmailChannels()
-  const defaultChannelId = useDefaultChannelId()
-  // Treat "still loading" as "assume available" — avoids a flash of the
-  // no-channel state before the channel list has actually loaded.
-  const hasEmailChannel = channelsLoading || emailChannels.length > 0
-
-  const prepareDocumentEmail = api.money.prepareDocumentEmail.useMutation({
-    onError: (error) =>
-      toastError({ title: 'Error preparing quote email', description: error.message }),
-  })
-  const ensureDocumentPdf = api.money.ensureDocumentPdf.useMutation({
-    onError: (error) => toastError({ title: 'Error generating PDF', description: error.message }),
-  })
-
   const handleConvert = async () => {
     try {
       const result = await convertToWorkOrder.mutateAsync({ quoteRecordId: recordId })
@@ -103,39 +87,6 @@ export function QuoteLineItemsTab({ recordId, variant = 'tab' }: DetailViewTabPr
       // the job view directly instead of the records-list `?id=` drawer convention.
       const { entityInstanceId } = parseRecordId(result.recordId)
       router.push(`/app/work-orders/${entityInstanceId}`)
-    } catch {
-      // onError above already surfaced the toast.
-    }
-  }
-
-  const handleSend = async () => {
-    try {
-      const prepared = await prepareDocumentEmail.mutateAsync({ recordId })
-      openCompose({
-        presetValues: {
-          to: prepared.to.map((recipient) => ({
-            id: recipient.email,
-            identifier: recipient.email,
-            identifierType: 'EMAIL',
-            name: recipient.name,
-          })),
-          subject: prepared.subject,
-          contentHtml: prepared.contentHtml,
-          attachments: [prepared.attachment],
-          integrationId: defaultChannelId,
-          signatureId: defaultSignature?.id ?? null,
-          linkTicketId: parseRecordId(recordId).entityInstanceId,
-        },
-      })
-    } catch {
-      // onError above already surfaced the toast.
-    }
-  }
-
-  const handleDownload = async () => {
-    try {
-      const { assetId } = await ensureDocumentPdf.mutateAsync({ quoteRecordId: recordId })
-      window.open(`/api/files/download/asset:${assetId}`, '_blank', 'noopener,noreferrer')
     } catch {
       // onError above already surfaced the toast.
     }
@@ -160,122 +111,89 @@ export function QuoteLineItemsTab({ recordId, variant = 'tab' }: DetailViewTabPr
 
   // `variant='section'` (dispatch M2 §F.1/§G): rendered inside a DetailViewSections
   // <Section> on an outer-owned scroll column instead of a `TabsContent` that grants
-  // `h-full`. The header action strip below (Expired badge + send/download/lifecycle
-  // buttons) stays a normal in-flow row either way — always visible/functional, since
-  // the wrapping <Section> is non-collapsible in sections mode. Only the LineBuilder
-  // (a virtualized, scroll-owning table) needs the max-height + internal-scroll
-  // treatment so it doesn't fight the outer page for wheel events.
+  // `h-full`. The action cluster is teleported into that <Section>'s header (always
+  // visible), so only the LineBuilder — a virtualized, scroll-owning table — needs
+  // the max-height + internal-scroll treatment to avoid fighting the outer page.
   const isSection = variant === 'section'
+
+  const sendSlot = SENDABLE_STATUSES.has(status)
+    ? {
+        label: status === 'sent' ? 'Resend' : 'Send',
+        onClick: handleSend,
+        isPending: isSending,
+        disabledReason: hasEmailChannel ? undefined : (
+          <div className='flex flex-col gap-1 text-xs'>
+            <span>Connect an email channel to send quotes.</span>
+            <Link href='/app/settings/channels' className='underline'>
+              Go to channel settings
+            </Link>
+          </div>
+        ),
+      }
+    : undefined
 
   return (
     <div className={cn('flex flex-col', isSection ? '' : 'h-full min-h-0')}>
-      <div className='flex items-center justify-between gap-2 px-4 py-3'>
-        <div className='flex items-center gap-2'>
-          {isExpired && (
+      <DocumentSectionActions
+        badge={
+          isExpired ? (
             <Badge variant='amber' size='sm'>
               Expired
             </Badge>
-          )}
-        </div>
-
-        <div className='flex items-center gap-2'>
-          {SENDABLE_STATUSES.has(status) &&
-            (hasEmailChannel ? (
-              <Button
-                variant='outline'
-                size='sm'
-                loading={prepareDocumentEmail.isPending}
-                loadingText='Preparing...'
-                onClick={handleSend}>
-                {status === 'sent' ? 'Resend' : 'Send'}
-              </Button>
-            ) : (
-              <Tooltip
-                allowInteraction
-                contentComponent={
-                  <div className='flex flex-col gap-1 text-xs'>
-                    <span>Connect an email channel to send quotes.</span>
-                    <Link href='/app/settings/channels' className='underline'>
-                      Go to channel settings
-                    </Link>
-                  </div>
-                }>
-                <span>
-                  <Button variant='outline' size='sm' disabled>
-                    Send
-                  </Button>
-                </span>
-              </Tooltip>
-            ))}
-
-          <Button
-            variant='outline'
-            size='sm'
-            loading={ensureDocumentPdf.isPending}
-            loadingText='Preparing...'
-            onClick={handleDownload}>
-            Download PDF
-          </Button>
+          ) : undefined
+        }>
+        <DocumentActionsCluster send={sendSlot} menuLabel='Quote actions'>
+          <DropdownMenuItem onClick={handleDownload}>
+            <Download /> Download PDF
+          </DropdownMenuItem>
 
           {status === 'draft' && (
-            <Button
-              variant='outline'
-              size='sm'
-              loading={markSent.isPending}
-              loadingText='Sending...'
-              onClick={() => markSent.mutate({ quoteRecordId: recordId })}>
-              Mark as sent
-            </Button>
+            <DropdownMenuItem onClick={() => markSent.mutate({ quoteRecordId: recordId })}>
+              <Send /> Mark as sent
+            </DropdownMenuItem>
           )}
 
           {status === 'sent' && (
             <>
-              <Button
-                variant='outline'
-                size='sm'
-                loading={approveQuote.isPending}
-                loadingText='Approving...'
-                onClick={() => approveQuote.mutate({ quoteRecordId: recordId })}>
-                Mark approved
-              </Button>
-              <Button
+              <DropdownMenuItem onClick={() => approveQuote.mutate({ quoteRecordId: recordId })}>
+                <Check /> Mark approved
+              </DropdownMenuItem>
+              <DropdownMenuItem
                 variant='destructive'
-                size='sm'
-                loading={declineQuote.isPending}
-                loadingText='Declining...'
                 onClick={() => declineQuote.mutate({ quoteRecordId: recordId })}>
-                Mark declined
-              </Button>
+                <X /> Mark declined
+              </DropdownMenuItem>
             </>
           )}
 
           {status === 'approved' && (
-            <Button
-              variant='outline'
-              size='sm'
-              loading={convertToWorkOrder.isPending}
-              loadingText='Converting...'
-              onClick={handleConvert}>
-              Convert to job
-            </Button>
+            <DropdownMenuItem onClick={handleConvert}>
+              <SquareArrowOutUpRight /> Convert to job
+            </DropdownMenuItem>
           )}
-        </div>
-      </div>
+
+          {status === 'sent' && (
+            <>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={handleEditSent}>
+                <Undo2 /> Return to draft
+              </DropdownMenuItem>
+            </>
+          )}
+        </DocumentActionsCluster>
+      </DocumentSectionActions>
 
       {status === 'sent' && (
-        <div className='mx-4 mb-3 flex items-center justify-between gap-3 rounded-lg border border-amber-400/30 bg-amber-400/10 px-3 py-2 text-sm'>
+        <div className='mx-4 mt-3 flex items-center gap-3 rounded-lg border border-amber-400/30 bg-amber-400/10 px-3 py-2 text-sm'>
           <span className='text-amber-700 dark:text-amber-400'>
-            This quote was sent — editing returns it to draft.
+            This quote was sent — use “Return to draft” to edit it.
           </span>
-          <Button variant='outline' size='sm' onClick={handleEditSent}>
-            Edit
-          </Button>
         </div>
       )}
 
       <div
         className={cn(
-          'flex flex-col pb-4',
+          'flex flex-col pb-4 pt-3',
           isSection ? 'max-h-[60vh] overflow-auto' : 'min-h-0 flex-1'
         )}>
         <LineBuilder documentRecordId={recordId} documentType='quote' readOnly={readOnly} />
