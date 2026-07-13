@@ -31,7 +31,6 @@ const CalendarView: React.FC<CalendarViewProps> = ({
       maxDate={maxDate}
       showOutsideDays={true}
       captionLayout='dropdown'
-      className='p-2'
     />
   )
 }

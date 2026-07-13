@@ -44,7 +44,7 @@ export function MonthGrid({
       role='grid'
       aria-label={format(month, 'MMMM yyyy')}
       onKeyDown={onKeyDown}
-      className='w-full outline-none'>
+      className='w-full px-2 outline-none'>
       <div data-slot='weekdays' role='row' className='grid grid-cols-7'>
         {weekdays.map((day) => (
           <div
