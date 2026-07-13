@@ -16,6 +16,7 @@ import {
 import type {
   BoardViewMode,
   BoardVisit,
+  BoardWorker,
   BoardWorkOrder,
   DispatchVisitEvent,
   VisitStatus,
@@ -60,6 +61,32 @@ export const UNASSIGNED_COLOR = '#94a3b8'
 
 export function isVisitStatus(value: string): value is VisitStatus {
   return (VISIT_STATUS_VALUES as readonly string[]).includes(value)
+}
+
+/**
+ * Adapter (v3 sidebar plan §1.1): the module sidebar persists a *hidden*-worker id set
+ * (inverse of visibility, may include the synthetic `UNASSIGNED_RESOURCE_ID` sentinel for the
+ * Unassigned row) instead of a selected set. Board/map/planner consumers keep their pre-v3
+ * `selectedWorkerIds: Set<string> | null` contract untouched (`null` = every worker visible) —
+ * this strips the sentinel (not a real worker id) and inverts hidden → selected, collapsing back
+ * to `null` when nothing real is hidden (mirrors `WorkerFilterPopover`'s old
+ * `next.size === workers.length ? null : next` collapse).
+ */
+export function selectedWorkerIdsFromHidden(
+  hiddenWorkerIds: string[],
+  allWorkers: BoardWorker[]
+): Set<string> | null {
+  const hiddenReal = hiddenWorkerIds.filter((id) => id !== UNASSIGNED_RESOURCE_ID)
+  if (hiddenReal.length === 0) return null
+  const hidden = new Set(hiddenReal)
+  return new Set(allWorkers.filter((w) => !hidden.has(w.userId)).map((w) => w.userId))
+}
+
+/** Whether a visit's assignee (or `null` for Unassigned) is hidden per the sidebar's Workers
+ * group toggles — used both by `use-board-data.ts` (the Unassigned column/events) and the
+ * mini-calendar density hook. */
+export function isWorkerHidden(hiddenWorkerIds: string[], assigneeUserId: string | null): boolean {
+  return hiddenWorkerIds.includes(assigneeUserId ?? UNASSIGNED_RESOURCE_ID)
 }
 
 /** A `SettingValue` read via `getSetting` may be a scalar or (defensively) a 1-item array. */

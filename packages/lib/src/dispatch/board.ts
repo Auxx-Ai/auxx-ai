@@ -5,7 +5,7 @@
 // (UnifiedCrudHandler), which fans out over every field/view config for a query this narrow.
 
 import { database, schema } from '@auxx/database'
-import { and, eq, gte, inArray, isNull, lte, sql } from 'drizzle-orm'
+import { and, eq, gte, inArray, isNull, lt, lte, sql } from 'drizzle-orm'
 import { getOrgCache } from '../cache'
 import { extractFieldValueScalar } from '../field-values'
 import { type DispatchWorkerWithUser, listDispatchWorkers } from './workers'
@@ -32,6 +32,14 @@ export interface BoardResult {
   workers: DispatchWorkerWithUser[]
   visits: WorkOrderVisitRow[]
   workOrders: BoardWorkOrder[]
+}
+
+/** Minimal per-visit projection for the mini-calendar's day-marker dots (v3 sidebar §1.4) —
+ * no work-order enrichment, just enough to bucket by local day and filter by worker client-side. */
+export interface VisitDayMarker {
+  visitId: string
+  startTime: Date
+  assigneeUserId: string | null
 }
 
 /**
@@ -164,6 +172,43 @@ export async function getBoard(organizationId: string, range: GetBoardRange): Pr
     workOrderIds.length > 0 ? await getSlimWorkOrderProjections(organizationId, workOrderIds) : []
 
   return { workers, visits, workOrders }
+}
+
+/**
+ * Minimal rows for scheduled visits starting in the half-open window `[range.from, range.to)` —
+ * the mini-calendar's day-marker dots (dispatch v3 sidebar plan §1.4). Day-bucketing is CLIENT-
+ * computed (the `getBoard`/`listMyVisits` convention — the server stays timezone-naive), so this
+ * intentionally returns un-bucketed rows rather than a `Record<dateKey, number>`. "Scheduled"
+ * means `startTime` is set — the `gte`/`lt` filter on `startTime` excludes backlog rows without
+ * needing an explicit `isNull` check. No status exclusion, matching `getBoard`'s range visit
+ * query above (`rangeVisits`, line 139) which also doesn't filter by `status` — canceled visits
+ * still show a marker, same as they still show on the board grid. `dispatch.getVisitDayMarkers`
+ * (member read-only, same gating as `getBoard`) is the only tRPC caller.
+ */
+export async function getVisitDayMarkers(
+  organizationId: string,
+  range: GetBoardRange
+): Promise<VisitDayMarker[]> {
+  const rows = await database
+    .select({
+      visitId: schema.WorkOrderVisit.id,
+      startTime: schema.WorkOrderVisit.startTime,
+      assigneeUserId: schema.WorkOrderVisit.assigneeUserId,
+    })
+    .from(schema.WorkOrderVisit)
+    .where(
+      and(
+        eq(schema.WorkOrderVisit.organizationId, organizationId),
+        gte(schema.WorkOrderVisit.startTime, range.from),
+        lt(schema.WorkOrderVisit.startTime, range.to)
+      )
+    )
+
+  return rows.map((row) => ({
+    visitId: row.visitId,
+    startTime: row.startTime as Date,
+    assigneeUserId: row.assigneeUserId,
+  }))
 }
 
 /**

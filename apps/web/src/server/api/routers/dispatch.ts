@@ -18,6 +18,7 @@ import {
   getMyVisitDetail,
   getRouteGeometryForWorker,
   getRoutePlannerBoard,
+  getVisitDayMarkers,
   listDispatchWorkers,
   listMyVisitQcItems,
   listMyVisits,
@@ -223,6 +224,16 @@ export const dispatchRouter = createTRPCRouter({
     .input(z.object({ from: z.coerce.date(), to: z.coerce.date() }))
     .query(async ({ ctx, input }) => {
       return getBoard(ctx.session.organizationId, { from: input.from, to: input.to })
+    }),
+
+  // v3 sidebar plan §1.4 — mini-calendar day-marker dots. Minimal-rows read (no server-side day
+  // bucketing: day windows are always CLIENT-computed, same convention as `getBoard`); the client
+  // groups these by local day and filters by visible worker itself, so there's no worker param.
+  // Member read-only, same gating as `getBoard`.
+  getVisitDayMarkers: dispatchProcedure
+    .input(z.object({ from: z.date(), to: z.date() }))
+    .query(async ({ ctx, input }) => {
+      return getVisitDayMarkers(ctx.session.organizationId, { from: input.from, to: input.to })
     }),
 
   // Route planner (M3, 09-route-planner.md §F) — the planner's single read. Members read it

@@ -16,6 +16,10 @@ import { format, parseISO } from 'date-fns'
 import { Ban, CalendarOff, Clock, Plus, Trash2 } from 'lucide-react'
 import { type MouseEvent, useState } from 'react'
 import { TimeRangeInput, type TimeRangeValue } from '~/components/pickers/time-range-input'
+import {
+  availabilitySubjectKey,
+  useAvailabilityCacheStore,
+} from '~/stores/availability-cache-store'
 import { api } from '~/trpc/react'
 
 /**
@@ -271,7 +275,14 @@ export function ExceptionListEditor({
   const utils = api.useUtils()
   const { data: groups, isLoading } = api.availability.listExceptions.useQuery({ subject })
 
-  const invalidate = () => utils.availability.listExceptions.invalidate({ subject })
+  const invalidate = () => {
+    utils.availability.listExceptions.invalidate({ subject })
+    // Exceptions (holidays/closures) refine the board's off-hours shading — drop the cache so the
+    // affected subject re-fetches. Org exceptions cascade to workers (inherited), so clear all.
+    if (subject.type === 'organization') useAvailabilityCacheStore.getState().invalidateAll()
+    else if (subject.type === 'worker')
+      useAvailabilityCacheStore.getState().invalidate(availabilitySubjectKey(subject))
+  }
 
   const addException = api.availability.addException.useMutation({
     onSuccess: invalidate,

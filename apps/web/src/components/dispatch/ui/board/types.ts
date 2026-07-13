@@ -53,3 +53,17 @@ export interface BoardResourceInput {
   color?: string
   worker?: BoardWorker
 }
+
+/**
+ * Sidebar Backlog-group row data (v3 sidebar plan §1.2, ported from the deleted
+ * `backlog-rail.tsx`). Kept structurally minimal (duck-typed) on purpose — the sidebar's
+ * Backlog group renders both calendar mode's `BoardVisit`/`BoardWorkOrder` (`getBoard`) and map
+ * mode's `PlannerVisit`/`PlannerBacklogVisit`/planner work orders (`getRoutePlannerBoard`); the
+ * two tRPC outputs are structurally compatible for the fields actually rendered here, so this
+ * type stays free of a `route-planner/types` import (board/types.ts has no reason to depend on
+ * the planner).
+ */
+export interface BacklogItem {
+  visit: { id: string; workOrderId: string; status: string }
+  workOrder: { number: string | null; displayName: string | null } | undefined
+}

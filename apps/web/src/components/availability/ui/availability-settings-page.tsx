@@ -24,6 +24,7 @@ import { SettingsFieldRow } from '~/components/settings/settings-field-row'
 import { useSettings } from '~/hooks/use-settings'
 import { useUser } from '~/hooks/use-user'
 import { useFeatureFlags } from '~/providers/feature-flag-provider'
+import { useAvailabilityCacheStore } from '~/stores/availability-cache-store'
 import { api } from '~/trpc/react'
 
 const ALL_DAYS = [0, 1, 2, 3, 4, 5, 6] as const
@@ -90,8 +91,11 @@ export function AvailabilitySettingsPage() {
   })
 
   const saveWeeklyHours = api.availability.saveWeeklyHours.useMutation({
-    onSuccess: () =>
-      utils.availability.getWeeklyHours.invalidate({ subject: { type: 'organization' } }),
+    onSuccess: () => {
+      utils.availability.getWeeklyHours.invalidate({ subject: { type: 'organization' } })
+      // Org hours drive every column (workers inherit the org default) — drop the whole board cache.
+      useAvailabilityCacheStore.getState().invalidateAll()
+    },
     onError: (error) =>
       toastError({ title: 'Error saving weekly hours', description: error.message }),
   })

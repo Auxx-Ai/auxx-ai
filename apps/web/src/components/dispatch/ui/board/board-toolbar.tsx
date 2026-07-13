@@ -14,14 +14,12 @@ import {
   LayoutGrid,
   Map as MapIcon,
   PanelLeft,
-  PanelRight,
 } from 'lucide-react'
 import { Tooltip } from '~/components/global/tooltip'
 import { DateTimePicker } from '~/components/pickers/date-time-picker'
-import { TagFilterPopover } from '../route-planner/tag-filter-popover'
-import type { BoardViewMode, BoardWorker } from './types'
+import { useDispatchSidebarStore } from '~/stores/dispatch-sidebar-store'
+import type { BoardViewMode } from './types'
 import { goToNextDate, goToPreviousDate, viewedMonthStart, type WeekStartIndex } from './utils'
-import { WorkerFilterPopover } from './worker-filter-popover'
 
 export type BoardMode = 'calendar' | 'map'
 
@@ -36,22 +34,8 @@ interface BoardToolbarProps {
   view: BoardViewMode
   onViewChange: (view: BoardViewMode) => void
   weekStartsOn: WeekStartIndex
-  workers: BoardWorker[]
-  selectedWorkerIds: Set<string> | null
-  onSelectedWorkerIdsChange: (ids: Set<string> | null) => void
-  showBacklog: boolean
-  onShowBacklogChange: (show: boolean) => void
   boardMode: BoardMode
   onBoardModeChange: (mode: BoardMode) => void
-  /** Map-mode planner panels (route-planner restyle): the toolbar owns both toggles. */
-  plannerShowBacklog: boolean
-  onPlannerShowBacklogChange: (show: boolean) => void
-  plannerShowStops: boolean
-  onPlannerShowStopsChange: (show: boolean) => void
-  /** Distinct `work_order.tags` across the route planner's visible day (map mode only). */
-  tags: string[]
-  selectedTags: Set<string> | null
-  onSelectedTagsChange: (tags: Set<string> | null) => void
 }
 
 /** View-shaped date label: month → "August 2026", week → short from–to, day → full date. */
@@ -70,13 +54,14 @@ function dateLabel(view: BoardViewMode, date: Date, weekStartsOn: WeekStartIndex
 }
 
 /**
- * Board toolbar (07 §D.2, extended by 09-route-planner.md §A) on the workflow-toolbar design
- * scale (`gap-1 p-1`, ghost h-7 buttons, `Separator` group dividers, tooltips). Ordered to avoid
- * layout shifts when toggling Board↔Map: the stable prefix (left-panel toggle, Board/Map switch,
- * date nav with a fixed-width label) never moves; mode-conditional controls (Day/Week/Month vs
- * tag filter) swap in the region after it, and the map-only right-panel toggle is anchored at
- * the far right past the spacer. The left-panel toggle is mode-appropriate: calendar backlog
- * rail vs planner backlog overlay.
+ * Board toolbar (07 §D.2, restyled by the v3 module-sidebar plan) on the workflow-toolbar
+ * design scale (`gap-1 p-1`, ghost h-7 buttons, `Separator` group dividers, tooltips). Ordered
+ * to avoid layout shifts when toggling Board↔Map: the stable prefix (sidebar toggle, Board/Map
+ * switch, date nav with a fixed-width label) never moves; mode-conditional controls
+ * (Day/Week/Month) swap in the region after it. Worker/tag filtering and the Routes panel moved
+ * into the one `DispatchSidebar` (`dispatch/ui/sidebar/`) — this toolbar owns a single
+ * `PanelLeft` toggle bound to the dispatch-sidebar store's `open`, replacing the old mode-aware
+ * left-panel toggle AND the map-only right-panel (stops) toggle.
  */
 export function BoardToolbar({
   date,
@@ -84,37 +69,25 @@ export function BoardToolbar({
   view,
   onViewChange,
   weekStartsOn,
-  workers,
-  selectedWorkerIds,
-  onSelectedWorkerIdsChange,
-  showBacklog,
-  onShowBacklogChange,
   boardMode,
   onBoardModeChange,
-  plannerShowBacklog,
-  onPlannerShowBacklogChange,
-  plannerShowStops,
-  onPlannerShowStopsChange,
-  tags,
-  selectedTags,
-  onSelectedTagsChange,
 }: BoardToolbarProps) {
   // Map mode is always a single day (route planning is inherently day-scoped, contract item 7)
   // regardless of whatever Day/Week/Month `view` the calendar was last left on — date nav and
   // the label both step/format as a day while map mode is active.
   const effectiveView: BoardViewMode = boardMode === 'map' ? 'day' : view
   const isMap = boardMode === 'map'
-  const leftPanelOpen = isMap ? plannerShowBacklog : showBacklog
-  const toggleLeftPanel = () =>
-    isMap ? onPlannerShowBacklogChange(!plannerShowBacklog) : onShowBacklogChange(!showBacklog)
+
+  const sidebarOpen = useDispatchSidebarStore((s) => s.open)
+  const setSidebarOpen = useDispatchSidebarStore((s) => s.setOpen)
 
   return (
     <div className='flex flex-wrap items-center gap-1 border-b p-1'>
-      <Tooltip content={isMap ? 'Toggle backlog panel' : 'Toggle backlog rail'}>
+      <Tooltip content='Toggle sidebar'>
         <Button
-          variant={leftPanelOpen ? 'secondary' : 'ghost'}
+          variant={sidebarOpen ? 'secondary' : 'ghost'}
           size='icon-sm'
-          onClick={toggleLeftPanel}>
+          onClick={() => setSidebarOpen(!sidebarOpen)}>
           <PanelLeft />
         </Button>
       </Tooltip>
@@ -189,30 +162,7 @@ export function BoardToolbar({
         </RadioTab>
       )}
 
-      {(view === 'day' || isMap) && (
-        <WorkerFilterPopover
-          workers={workers}
-          selectedWorkerIds={selectedWorkerIds}
-          onChange={onSelectedWorkerIdsChange}
-        />
-      )}
-
-      {isMap && (
-        <TagFilterPopover tags={tags} selectedTags={selectedTags} onChange={onSelectedTagsChange} />
-      )}
-
       <div className='flex-1' />
-
-      {isMap && (
-        <Tooltip content='Toggle routes panel'>
-          <Button
-            variant={plannerShowStops ? 'secondary' : 'ghost'}
-            size='icon-sm'
-            onClick={() => onPlannerShowStopsChange(!plannerShowStops)}>
-            <PanelRight />
-          </Button>
-        </Tooltip>
-      )}
     </div>
   )
 }
