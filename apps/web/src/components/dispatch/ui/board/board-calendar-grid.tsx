@@ -6,15 +6,15 @@ import {
   type BackgroundEvent,
   type CalendarResource,
   EventCalendar,
+  EventPopover,
   type RenderEventContext,
 } from '@auxx/ui/components/event-calendar'
-import { Popover, PopoverAnchor, PopoverContent } from '@auxx/ui/components/popover'
 import { useCallback, useMemo } from 'react'
 import type { ExistingVisitForOverlap } from '../schedule-popover'
 import type { useBoardMutations } from './hooks/use-board-mutations'
 import type { BoardResourceInput, BoardViewMode, DispatchVisitEvent } from './types'
-import { VisitActionsPopoverContent } from './visit-actions-popover'
 import { VisitChipContent, VisitChipMonthContent } from './visit-chip-content'
+import { VisitPopoverContent } from './visit-popover'
 import { WorkerColumnHeader } from './worker-column-header'
 
 interface BoardCalendarGridProps {
@@ -65,8 +65,14 @@ export function BoardCalendarGrid({
     (event: DispatchVisitEvent, ctx: RenderEventContext) => {
       const isOpen = activeVisitId === event.id
       return (
-        <Popover open={isOpen} onOpenChange={(open) => onActiveVisitChange(open ? event.id : null)}>
-          <PopoverAnchor asChild>
+        <EventPopover
+          open={isOpen}
+          onOpenChange={(open) => onActiveVisitChange(open ? event.id : null)}
+          series={{
+            isMember: Boolean(event.recurrenceRuleId),
+            labels: { this: 'This visit', following: 'This and following', all: 'All visits' },
+          }}
+          anchor={
             <div className='h-full w-full'>
               {ctx.view === 'month' ? (
                 <VisitChipMonthContent event={event} />
@@ -74,21 +80,15 @@ export function BoardCalendarGrid({
                 <VisitChipContent event={event} isOverlapping={overlappingIds.has(event.id)} />
               )}
             </div>
-          </PopoverAnchor>
-          <PopoverContent
-            side='right'
-            align='start'
-            className='w-auto p-0'
-            onOpenAutoFocus={(e) => e.preventDefault()}>
-            <VisitActionsPopoverContent
-              event={event}
-              canEdit={canEdit}
-              mutations={mutations}
-              existingVisits={existingVisits}
-              onClose={() => onActiveVisitChange(null)}
-            />
-          </PopoverContent>
-        </Popover>
+          }>
+          <VisitPopoverContent
+            event={event}
+            canEdit={canEdit}
+            mutations={mutations}
+            existingVisits={existingVisits}
+            onClose={() => onActiveVisitChange(null)}
+          />
+        </EventPopover>
       )
     },
     [activeVisitId, onActiveVisitChange, overlappingIds, canEdit, mutations, existingVisits]

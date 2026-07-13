@@ -41,6 +41,7 @@ export interface DispatchVisitEvent extends EventCalendarItem {
   assigneeUserId: string | null
   status: VisitStatus
   dispatchedAt: string | null
+  recurrenceRuleId: string | null
   workOrder: BoardWorkOrder | undefined
 }
 

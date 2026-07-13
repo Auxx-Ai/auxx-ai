@@ -25,6 +25,20 @@ export { DroppableCell } from './droppable-cell'
 export { EventCalendar, type EventCalendarProps } from './event-calendar'
 // Chip + interaction primitives
 export { EventItem } from './event-item'
+// Event popover (base + shared sections)
+export { EventDrillPage, EventPopover, EventPopoverBody } from './event-popover/event-popover'
+export {
+  EventDateTimeSection,
+  EventPeopleSection,
+  EventPopoverFooter,
+  EventPopoverHints,
+  EventRepeatSection,
+  EventTitleSection,
+} from './event-popover/event-popover-sections'
+export { formatTimeOfDay, parseTimeInput } from './event-popover/parse-time'
+export { useSeriesScope } from './event-popover/series-scope-chooser'
+export { TimeInput } from './event-popover/time-input'
+export type { EventSeriesConfig, SeriesScope } from './event-popover/types'
 // Hooks
 export {
   type UseCurrentTimeIndicatorResult,

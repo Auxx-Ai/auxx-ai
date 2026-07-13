@@ -96,10 +96,21 @@ export function useBoardMutations(range: DateRange) {
     onSettled: settle,
   })
 
+  // Series-wide edits ('following'/'all' scope) touch rows beyond this visit — no optimistic
+  // patch (there's nothing local to patch against a whole series); the settle invalidate
+  // repaints every affected chip once the write lands.
+  const applyToSeries = api.dispatch.applyToSeries.useMutation({
+    onError: (error) => {
+      toastError({ title: 'Error updating series', description: error.message })
+    },
+    onSettled: settle,
+  })
+
   return {
     scheduleVisit,
     unscheduleVisit,
     setVisitStatus,
     dispatchVisit,
+    applyToSeries,
   }
 }
