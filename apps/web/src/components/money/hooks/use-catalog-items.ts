@@ -73,6 +73,8 @@ interface UseCatalogItemsResult {
   refresh: () => void
   /** Append a freshly created item into the `listAll` cache — skips a refetch. */
   appendRecord: (item: AllRecordsItem) => void
+  /** Remove a deleted item from the `listAll` cache — skips a refetch. */
+  removeRecord: (id: string) => void
 }
 
 /**
@@ -82,7 +84,7 @@ interface UseCatalogItemsResult {
  * only consumer, so this lives under `money/hooks` rather than `resources`.
  */
 export function useCatalogItems(): UseCatalogItemsResult {
-  const { records, entityDefinitionId, fields, isLoading, refresh, appendRecord } =
+  const { records, entityDefinitionId, fields, isLoading, refresh, appendRecord, removeRecord } =
     useAllRecords<CatalogItemRecord>({
       apiSlug: 'catalog-items',
       includeArchived: false,
@@ -93,5 +95,14 @@ export function useCatalogItems(): UseCatalogItemsResult {
     return { items: list, itemMap: new Map(list.map((item) => [item.id, item])) }
   }, [records])
 
-  return { items, itemMap, entityDefinitionId, fields, isLoading, refresh, appendRecord }
+  return {
+    items,
+    itemMap,
+    entityDefinitionId,
+    fields,
+    isLoading,
+    refresh,
+    appendRecord,
+    removeRecord,
+  }
 }

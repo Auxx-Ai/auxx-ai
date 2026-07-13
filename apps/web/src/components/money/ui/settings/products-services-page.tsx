@@ -14,6 +14,7 @@ import { useMedia } from '~/hooks/use-media'
 import { useSettings } from '~/hooks/use-settings'
 import { useUser } from '~/hooks/use-user'
 import { useFeatureFlags } from '~/providers/feature-flag-provider'
+import type { CatalogDraftHandle } from './catalog-draft-types'
 import { GroupEditor } from './group-editor'
 import { GroupsList } from './groups-list'
 import { ProductEditor } from './product-editor'
@@ -48,6 +49,74 @@ export function ProductsServicesPage() {
   const [selectedProductId, setSelectedProductId] = useState<string | null>(null)
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null)
   const [selectedTaxRateId, setSelectedTaxRateId] = useState<string | null>(null)
+
+  // Phantom drafts (money 15-settings-phantom-editors.md phase 2) — one per
+  // tab. The full draft field set lives inside the editor component instance
+  // (keyed by `draftId`); this page only tracks enough to render the list's
+  // phantom row and to know whether the current selection is a draft. An
+  // untouched draft is dropped silently on: selecting another row, adding a
+  // new draft, or switching tabs — never on a mere re-render.
+  const [productDraft, setProductDraft] = useState<CatalogDraftHandle | null>(null)
+  const [groupDraft, setGroupDraft] = useState<CatalogDraftHandle | null>(null)
+
+  function handleSelectProduct(id: string | null) {
+    // Selecting anything other than the draft itself (or its committed record,
+    // which keeps the draft form mounted — see CatalogDraftHandle.recordId)
+    // drops the draft.
+    if (productDraft && id !== productDraft.draftId && id !== productDraft.recordId) {
+      setProductDraft(null)
+    }
+    setSelectedProductId(id)
+  }
+  function handleSelectGroup(id: string | null) {
+    if (groupDraft && id !== groupDraft.draftId && id !== groupDraft.recordId) {
+      setGroupDraft(null)
+    }
+    setSelectedGroupId(id)
+  }
+  function handleAddProductDraft() {
+    if (productDraft && !productDraft.recordId) {
+      setSelectedProductId(productDraft.draftId) // uncommitted one exists — just re-select it
+      return
+    }
+    const draftId = generateId('draft')
+    setProductDraft({ draftId, name: '' })
+    setSelectedProductId(draftId)
+  }
+  function handleAddGroupDraft() {
+    if (groupDraft && !groupDraft.recordId) {
+      setSelectedGroupId(groupDraft.draftId)
+      return
+    }
+    const draftId = generateId('draft')
+    setGroupDraft({ draftId, name: '' })
+    setSelectedGroupId(draftId)
+  }
+  function handleProductDraftNameChange(name: string) {
+    setProductDraft((prev) => (prev ? { ...prev, name } : prev))
+  }
+  function handleGroupDraftNameChange(name: string) {
+    setGroupDraft((prev) => (prev ? { ...prev, name } : prev))
+  }
+  // First create resolved: swap selection to the real id but KEEP the draft —
+  // the draft editor form must stay mounted so mid-typing text and the pending
+  // debounced name commit survive (a remount would replace the input's text
+  // with the create snapshot and cancel the debounce timer).
+  function handleProductDraftCommitted(recordId: string) {
+    setProductDraft((prev) => (prev ? { ...prev, recordId } : prev))
+    setSelectedProductId(recordId)
+  }
+  function handleGroupDraftCommitted(recordId: string) {
+    setGroupDraft((prev) => (prev ? { ...prev, recordId } : prev))
+    setSelectedGroupId(recordId)
+  }
+  function handleTabChange(next: string) {
+    setTab(next)
+    // Untouched drafts don't survive a tab switch — the other tab's list no
+    // longer renders the phantom row, so hanging onto it would be confusing.
+    if (productDraft) setProductDraft(null)
+    if (groupDraft) setGroupDraft(null)
+  }
 
   // `useSettings({ scope })` FILTERS reads to that scope (use-settings.tsx:44-54) — currency
   // stayed GENERAL while taxRates moved to DOCUMENTS (money MQ2 §A.3), so two hook instances
@@ -126,9 +195,20 @@ export function ProductsServicesPage() {
 
   const editorContent =
     activeTab === 'products' ? (
-      <ProductEditor selectedId={selectedProductId} />
+      <ProductEditor
+        selectedId={selectedProductId}
+        draft={productDraft}
+        onDraftNameChange={handleProductDraftNameChange}
+        onDraftCommitted={handleProductDraftCommitted}
+      />
     ) : activeTab === 'groups' ? (
-      <GroupEditor selectedId={selectedGroupId} currency={currency} />
+      <GroupEditor
+        selectedId={selectedGroupId}
+        currency={currency}
+        draft={groupDraft}
+        onDraftNameChange={handleGroupDraftNameChange}
+        onDraftCommitted={handleGroupDraftCommitted}
+      />
     ) : (
       <TaxRateEditor
         taxRate={selectedTaxRate}
@@ -142,26 +222,25 @@ export function ProductsServicesPage() {
       description='Manage the catalog and tax rates used on quotes and invoices.'
       breadcrumbs={breadcrumbs}
       subHeader={
-        <ResponsiveTabs
-          value={activeTab}
-          onValueChange={(value) => setTab(value)}
-          size='sm'
-          items={TABS}
-        />
+        <ResponsiveTabs value={activeTab} onValueChange={handleTabChange} size='sm' items={TABS} />
       }>
       <div className='grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_420px]'>
         <div className='min-w-0'>
           {activeTab === 'products' ? (
             <ProductsList
               selectedId={selectedProductId}
-              onSelect={setSelectedProductId}
+              onSelect={handleSelectProduct}
               currency={currency}
+              draft={productDraft}
+              onAddDraft={handleAddProductDraft}
             />
           ) : activeTab === 'groups' ? (
             <GroupsList
               selectedId={selectedGroupId}
-              onSelect={setSelectedGroupId}
+              onSelect={handleSelectGroup}
               currency={currency}
+              draft={groupDraft}
+              onAddDraft={handleAddGroupDraft}
             />
           ) : (
             <TaxRatesList
@@ -184,6 +263,8 @@ export function ProductsServicesPage() {
             setSelectedProductId(null)
             setSelectedGroupId(null)
             setSelectedTaxRateId(null)
+            setProductDraft(null)
+            setGroupDraft(null)
           }
         }}
         isDocked={false}

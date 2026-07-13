@@ -82,6 +82,8 @@ interface UseCatalogGroupsResult {
   refresh: () => void
   /** Append a freshly created group into the `listAll` cache — skips a refetch. */
   appendRecord: (item: AllRecordsItem) => void
+  /** Remove a deleted group from the `listAll` cache — skips a refetch. */
+  removeRecord: (id: string) => void
 }
 
 /**
@@ -90,7 +92,7 @@ interface UseCatalogGroupsResult {
  * system. Same "small dataset, no pagination" shape as `useCatalogItems`.
  */
 export function useCatalogGroups(): UseCatalogGroupsResult {
-  const { records, entityDefinitionId, fields, isLoading, refresh, appendRecord } =
+  const { records, entityDefinitionId, fields, isLoading, refresh, appendRecord, removeRecord } =
     useAllRecords<CatalogGroupRecord>({
       apiSlug: 'catalog-groups',
       includeArchived: false,
@@ -101,5 +103,14 @@ export function useCatalogGroups(): UseCatalogGroupsResult {
     return { groups: list, groupMap: new Map(list.map((group) => [group.id, group])) }
   }, [records])
 
-  return { groups, groupMap, entityDefinitionId, fields, isLoading, refresh, appendRecord }
+  return {
+    groups,
+    groupMap,
+    entityDefinitionId,
+    fields,
+    isLoading,
+    refresh,
+    appendRecord,
+    removeRecord,
+  }
 }

@@ -17,8 +17,9 @@ import { Tooltip } from '~/components/global/tooltip'
 
 export interface DocumentActionsClusterProps {
   /**
-   * Primary inline segment — the Send/Resend button. Omit to render only the
-   * chevron menu (e.g. a terminal status where the document can no longer be sent).
+   * Primary inline segment — the Send/Resend button. Omit to render the menu as a
+   * standalone labeled "Actions" button (e.g. a terminal status where the document
+   * can no longer be sent).
    */
   send?: {
     label: string
@@ -58,14 +59,14 @@ export function DocumentActionsCluster({
           (send.disabledReason ? (
             <Tooltip allowInteraction contentComponent={send.disabledReason}>
               <span className='inline-flex'>
-                <Button size='sm' variant='outline' className='border-r-0' disabled>
+                <Button size='xs' variant='outline' className='border-r-0' disabled>
                   {send.label}
                 </Button>
               </span>
             </Tooltip>
           ) : (
             <Button
-              size='sm'
+              size='xs'
               variant='outline'
               className='border-r-0'
               loading={send.isPending}
@@ -78,7 +79,12 @@ export function DocumentActionsCluster({
         {send && <ButtonGroupSeparator />}
 
         <DropdownMenuTrigger asChild>
-          <Button size='sm' variant='outline' className='px-1.5' aria-label={menuLabel}>
+          <Button
+            size='xs'
+            variant='outline'
+            className={send ? 'px-1.5' : undefined}
+            aria-label={menuLabel}>
+            {!send && 'Actions'}
             <ChevronDown />
           </Button>
         </DropdownMenuTrigger>
