@@ -13,6 +13,13 @@ export interface MainTabDefinition {
   label: string
   /** Icon name (e.g., 'ticket', 'clock') */
   icon: string
+  /**
+   * Cancel the wrapping `<Section>`'s horizontal inset so the content (e.g. a
+   * line-items table) spans edge-to-edge — the `sections` layout twin of the
+   * drawer card's `fullBleed` (drawer-config-types.ts). Applies `-mx-3` to the
+   * section body via `ChromedSection`.
+   */
+  fullBleed?: boolean
 }
 
 /**

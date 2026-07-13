@@ -3,11 +3,12 @@
 'use client'
 
 import { Badge } from '@auxx/ui/components/badge'
-import { TreeRow, TreeRowButton } from '@auxx/ui/components/tree-row'
+import { Switch } from '@auxx/ui/components/switch'
+import { TreeRow } from '@auxx/ui/components/tree-row'
 import { cn } from '@auxx/ui/lib/utils'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { GripVertical, Power, PowerOff } from 'lucide-react'
+import { GripVertical } from 'lucide-react'
 import type { RouterOutputs } from '~/trpc/react'
 
 export type QcItemTemplateRow = RouterOutputs['dispatch']['listQcTemplates'][number]
@@ -21,10 +22,10 @@ interface QualityCheckTreeRowProps {
 }
 
 /**
- * One QC template row in the settings tree list (08-worker-surface.md §5) — draggable via
- * dnd-kit `useSortable` (the drag handle doubles as the row's leading icon); selecting it opens
- * the FieldPanel editor. The only row-level action is deactivate/reactivate — templates are
- * never deleted, so there is no destructive `TreeRowButton` here.
+ * One QC template row in the settings tree list (08-worker-surface.md §5), styled to match the
+ * Products & Services lists — draggable via dnd-kit `useSortable` (the drag handle doubles as the
+ * row's leading icon); selecting it opens the FieldPanel editor. Active/inactive is a trailing
+ * `Switch` (templates are deactivate-not-delete, so there is no destructive action).
  */
 export function QualityCheckTreeRow({
   template,
@@ -55,29 +56,27 @@ export function QualityCheckTreeRow({
         isOpen={isSelected}
         onToggleOpen={onSelect}
         rowClassName={cn(
-          isSelected ? 'bg-primary-100 hover:bg-primary-150' : 'bg-primary-50 hover:bg-primary-100',
+          'bg-primary-100/50 hover:bg-primary-100',
+          isSelected && 'bg-primary-100 ring-1 ring-primary-200',
           !template.isActive && 'opacity-60'
         )}
         title={<span className='text-sm'>{template.title}</span>}
-        actions={
-          <div className='flex items-center gap-1.5'>
-            {template.isRequired && (
-              <Badge variant='secondary' size='sm'>
+        secondary={
+          template.isRequired ? (
+            <span className='flex items-center gap-1.5 text-xs text-muted-foreground'>
+              <Badge variant='secondary' size='xs'>
                 Required
               </Badge>
-            )}
-            {!template.isActive && (
-              <Badge variant='outline' size='sm'>
-                Inactive
-              </Badge>
-            )}
-            <TreeRowButton
-              tooltipText={template.isActive ? 'Deactivate' : 'Reactivate'}
-              disabled={isPending}
-              onClick={onToggleActive}>
-              {template.isActive ? <PowerOff /> : <Power />}
-            </TreeRowButton>
-          </div>
+            </span>
+          ) : undefined
+        }
+        actions={
+          <Switch
+            size='xs'
+            checked={template.isActive}
+            onCheckedChange={onToggleActive}
+            disabled={isPending}
+          />
         }
       />
     </div>

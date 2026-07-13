@@ -7,11 +7,12 @@ import { Button } from '@auxx/ui/components/button'
 import { InputSearch } from '@auxx/ui/components/input-search'
 import { Switch } from '@auxx/ui/components/switch'
 import { toastError } from '@auxx/ui/components/toast'
-import { TreeRow } from '@auxx/ui/components/tree-row'
+import { TreeRow, TreeRowButton } from '@auxx/ui/components/tree-row'
 import { cn } from '@auxx/ui/lib/utils'
-import { Package, Plus, Wrench } from 'lucide-react'
+import { Package, Plus, Trash2, Wrench } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useResourceFields } from '~/components/resources'
+import { useConfirm } from '~/hooks/use-confirm'
 import { api } from '~/trpc/react'
 import { type CatalogItem, useCatalogItems } from '../../hooks/use-catalog-items'
 import { formatMoney } from './format-money'
@@ -44,11 +45,26 @@ export function ProductsList({ selectedId, onSelect, currency }: ProductsListPro
     [catalogFields]
   )
   const [search, setSearch] = useState('')
+  const [confirm, ConfirmDialog] = useConfirm()
 
   const updateRecord = api.record.update.useMutation()
   const createRecord = api.record.create.useMutation({
     onError: (error) => toastError({ title: 'Error creating item', description: error.message }),
   })
+  const deleteRecord = api.record.delete.useMutation({
+    onSuccess: () => refresh(),
+    onError: (error) => toastError({ title: 'Error deleting item', description: error.message }),
+  })
+
+  async function handleDelete(item: CatalogItem) {
+    const confirmed = await confirm({
+      title: 'Delete item?',
+      description: `“${item.name}” will be removed from the catalog. Existing document lines are unaffected.`,
+      confirmText: 'Delete',
+      destructive: true,
+    })
+    if (confirmed) deleteRecord.mutate({ recordId: item.recordId })
+  }
 
   // Optimistic overlay for the active toggle — `record.update` bypasses the
   // granular field-value store, so reflect the flip locally and invalidate
@@ -145,17 +161,26 @@ export function ProductsList({ selectedId, onSelect, currency }: ProductsListPro
                 </span>
               }
               actions={
-                <Switch
-                  size='xs'
-                  checked={effectiveActive(item)}
-                  onCheckedChange={() => handleToggleActive(item)}
-                  disabled={updateRecord.isPending}
-                />
+                <div className='flex items-center gap-1'>
+                  <TreeRowButton
+                    tooltipText='Delete item'
+                    variant='destructive'
+                    onClick={() => handleDelete(item)}>
+                    <Trash2 />
+                  </TreeRowButton>
+                  <Switch
+                    size='xs'
+                    checked={effectiveActive(item)}
+                    onCheckedChange={() => handleToggleActive(item)}
+                    disabled={updateRecord.isPending}
+                  />
+                </div>
               }
             />
           ))}
         </div>
       )}
+      <ConfirmDialog />
     </div>
   )
 }

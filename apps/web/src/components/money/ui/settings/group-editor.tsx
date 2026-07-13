@@ -12,13 +12,6 @@ import {
   CommandList,
 } from '@auxx/ui/components/command'
 import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@auxx/ui/components/select'
 import { TreeRow, TreeRowButton } from '@auxx/ui/components/tree-row'
 import { cn } from '@auxx/ui/lib/utils'
 import {
@@ -83,6 +76,10 @@ function GroupEditorForm({ group, currency }: { group: CatalogGroup; currency: s
   const { itemMap, items } = useCatalogItems()
   const { getSetting } = useSettings({ scope: 'DOCUMENTS' })
   const taxRates = (getSetting('documents.taxRates') as TaxRate[] | null) ?? []
+  const taxOptions = useMemo(
+    () => taxRates.map((rate) => ({ label: `${rate.name} (${rate.rate}%)`, value: rate.id })),
+    [taxRates]
+  )
 
   const { saveFieldValue, saveMultipleAsync } = useSaveFieldValue({})
 
@@ -144,8 +141,6 @@ function GroupEditorForm({ group, currency }: { group: CatalogGroup; currency: s
     writeDiscount(type, type === 'amount' ? Math.round(displayed * 100) : displayed)
   }
 
-  const selectedTaxId = group.taxRateId ?? '__none__'
-
   return (
     <div className='flex flex-col gap-3 p-3'>
       <FieldPanel
@@ -179,29 +174,22 @@ function GroupEditorForm({ group, currency }: { group: CatalogGroup; currency: s
           />
         </FieldPanelRow>
 
-        <FieldPanelRow title='Tax rate' type={BaseType.STRING} showIcon>
-          <Select
-            value={selectedTaxId}
-            onValueChange={(id) =>
+        <FieldPanelRow title='Tax rate' type={BaseType.ENUM} showIcon>
+          <FieldInputAdapter
+            fieldType={FieldType.SINGLE_SELECT}
+            fieldOptions={{ options: taxOptions }}
+            value={group.taxRateId ? [group.taxRateId] : []}
+            triggerProps={{ showClear: true, className: 'w-full' }}
+            onChange={(value) =>
               saveFieldValue(
                 group.recordId,
                 'catalog_group_tax_rate_id',
-                id === '__none__' ? null : id,
+                (value as string[])[0] ?? null,
                 FieldType.TEXT
               )
-            }>
-            <SelectTrigger className='w-full'>
-              <SelectValue placeholder='No tax' />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value='__none__'>No tax</SelectItem>
-              {taxRates.map((rate) => (
-                <SelectItem key={rate.id} value={rate.id}>
-                  {rate.name} ({rate.rate}%)
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+            }
+            placeholder='No tax'
+          />
         </FieldPanelRow>
 
         <FieldPanelRow title='Discount' type={BaseType.NUMBER} showIcon>
