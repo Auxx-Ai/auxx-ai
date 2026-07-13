@@ -11,7 +11,11 @@ import { toastError } from '@auxx/ui/components/toast'
 import { Lock, Users, Waypoints } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useMemo, useState } from 'react'
-import { useConnectFlow } from '~/components/apps/hooks/use-connect-flow'
+import {
+  type ConnectFlowArgs,
+  type ConnectFlowDefinition,
+  useConnectFlow,
+} from '~/components/apps/hooks/use-connect-flow'
 import { platformScope, platformTarget } from '~/components/connections/ui/connection-targets'
 import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
 import { useAdminGate } from '~/components/global/admin-gate'
@@ -74,7 +78,6 @@ export function ChannelGalleryDialog({
   const [clientId, setClientId] = useState('')
   const [clientSecret, setClientSecret] = useState('')
   const [chatName, setChatName] = useState('')
-  const [redirecting, setRedirecting] = useState(false)
 
   const isOAuth = selected?.kind === 'oauth-email' || selected?.kind === 'social'
   const personalEligible = selected?.kind === 'oauth-email'
@@ -99,7 +102,7 @@ export function ChannelGalleryDialog({
 
   const createChatChannel = api.channel.createChatChannel.useMutation()
 
-  const detailBusy = redirecting || createChatChannel.isPending || inbox.creating || flow.pending
+  const detailBusy = createChatChannel.isPending || inbox.creating || flow.pending
 
   function resetDetail() {
     inbox.reset()
@@ -107,7 +110,6 @@ export function ChannelGalleryDialog({
     setClientId('')
     setClientSecret('')
     setChatName('')
-    setRedirecting(false)
   }
 
   const needsOwnClient = !!prep.data?.requiresOwnClient
@@ -115,24 +117,44 @@ export function ChannelGalleryDialog({
 
   // ── Connect actions ────────────────────────────────────────────────────────
 
-  async function connectOAuth() {
+  /** Build the connect-flow target for an OAuth email/social provider from `channel.prepareConnect`. */
+  function oauthTarget(
+    data: NonNullable<typeof prep.data>,
+    item: ChannelCatalogItem
+  ): ConnectFlowArgs['target'] {
+    const def: ConnectFlowDefinition = { connectionType: 'oauth2-code' }
+    return {
+      owner: {
+        kind: 'platform',
+        connectionDefinitionId: data.connectionDefinitionId,
+        providerKey: data.providerKey,
+      },
+      title: item.name,
+      connectionDefinitions: isPersonal ? { user: def } : { organization: def },
+    }
+  }
+
+  async function connectOAuth(item: ChannelCatalogItem) {
     if (!prep.data) return
     try {
-      setRedirecting(true)
-      const url = new URL(prep.data.authorizeUrl, window.location.origin)
-      url.searchParams.set('returnTo', RETURN_TO)
-      if (isPersonal) {
-        url.searchParams.set('personal', '1')
-      } else {
-        url.searchParams.set('pc_inboxId', await inbox.resolve())
-      }
-      if (prep.data.requiresOwnClient) {
-        url.searchParams.set('var_clientId', clientId.trim())
-        url.searchParams.set('var_clientSecret', clientSecret.trim())
-      }
-      window.location.href = url.toString()
+      const postConnect = isPersonal ? undefined : { inboxId: await inbox.resolve() }
+      // BYO-client id/secret are collected inline (renderOwnClientFields) — `connectWith` skips
+      // the hook's own variable dialog and submits these values straight into the OAuth kickoff.
+      flow.connectWith(
+        {
+          target: oauthTarget(prep.data, item),
+          scope: isPersonal ? 'user' : 'organization',
+          personal: isPersonal,
+          postConnect,
+          returnTo: RETURN_TO,
+        },
+        {
+          values: prep.data.requiresOwnClient
+            ? { clientId: clientId.trim(), clientSecret: clientSecret.trim() }
+            : undefined,
+        }
+      )
     } catch (error) {
-      setRedirecting(false)
       toastError({
         title: 'Could not start connect',
         description: error instanceof Error ? error.message : 'Unknown error',
@@ -195,7 +217,7 @@ export function ChannelGalleryDialog({
               value={clientId}
               onChange={(v) => setClientId((v as string) ?? '')}
               placeholder='Your OAuth client id'
-              disabled={redirecting}
+              disabled={flow.pending}
             />
           </FieldPanelRow>
           <FieldPanelRow title='Client Secret' type={BaseType.STRING} showIcon isRequired>
@@ -205,7 +227,7 @@ export function ChannelGalleryDialog({
               value={clientSecret}
               onChange={(v) => setClientSecret((v as string) ?? '')}
               placeholder='Your OAuth client secret'
-              disabled={redirecting}
+              disabled={flow.pending}
             />
           </FieldPanelRow>
         </FieldPanel>
@@ -261,7 +283,7 @@ export function ChannelGalleryDialog({
               </p>
             ) : (
               <FieldPanel orientation='responsive' resizeId={RESIZE_ID} className='p-0'>
-                <InboxDestinationField controller={inbox} disabled={redirecting} />
+                <InboxDestinationField controller={inbox} disabled={flow.pending} />
               </FieldPanel>
             )}
 
@@ -340,7 +362,7 @@ export function ChannelGalleryDialog({
     switch (item.kind) {
       case 'oauth-email':
       case 'social':
-        void connectOAuth()
+        void connectOAuth(item)
         break
       case 'chat':
         void connectChat()

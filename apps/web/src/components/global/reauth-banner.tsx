@@ -3,14 +3,12 @@
 
 import { Alert, AlertDescription } from '@auxx/ui/components/alert'
 import { Button } from '@auxx/ui/components/button'
-import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 import { cn } from '@auxx/ui/lib/utils'
 import { AlertTriangle, ChevronDown, ChevronRight, ExternalLink } from 'lucide-react'
-import { useRouter } from 'next/navigation'
 import { useState } from 'react'
+import { useChannelReconnect } from '~/components/channels/hooks/use-channel-reconnect'
 import { useConfirm } from '~/hooks/use-confirm'
 import { useIsSmallScreen } from '~/hooks/use-small-screen'
-import { api } from '~/trpc/react'
 
 interface ReauthBannerProps {
   integration: {
@@ -49,29 +47,9 @@ function isRaptFailure(integration: ReauthBannerProps['integration']): boolean {
  */
 export function ReauthBanner({ integration, onDismiss, className }: ReauthBannerProps) {
   const [isExpanded, setIsExpanded] = useState(false)
-  const [isReauthenticating, setIsReauthenticating] = useState(false)
-  const router = useRouter()
   const isSmallScreen = useIsSmallScreen()
   const [confirm, ConfirmDialog] = useConfirm()
-
-  // Mutation to trigger re-authentication
-  const reauthMutation = api.channelReauth.initiateReauth.useMutation({
-    onSuccess: (data) => {
-      if (data.authUrl) {
-        // Redirect to OAuth provider
-        window.location.href = data.authUrl
-      } else {
-        toastSuccess({
-          title: 'Re-authentication initiated',
-          description: 'Please complete the authentication process',
-        })
-      }
-    },
-    onError: (error) => {
-      toastError({ title: 'Failed to start re-authentication', description: error.message })
-      setIsReauthenticating(false)
-    },
-  })
+  const { reconnect, pending: isReauthenticating, Dialogs } = useChannelReconnect()
 
   const handleReauthenticate = async () => {
     const confirmed = await confirm({
@@ -81,10 +59,7 @@ export function ReauthBanner({ integration, onDismiss, className }: ReauthBanner
       cancelText: 'Cancel',
     })
 
-    if (confirmed) {
-      setIsReauthenticating(true)
-      reauthMutation.mutate({ integrationId: integration.id })
-    }
+    if (confirmed) void reconnect(integration.id)
   }
 
   const formatErrorTime = (date?: Date) => {
@@ -179,7 +154,7 @@ export function ReauthBanner({ integration, onDismiss, className }: ReauthBanner
                 <Button
                   variant='outline'
                   onClick={handleReauthenticate}
-                  disabled={isReauthenticating || reauthMutation.isPending}
+                  disabled={isReauthenticating}
                   loading={isReauthenticating}
                   size='sm'>
                   <ExternalLink />
@@ -220,6 +195,7 @@ export function ReauthBanner({ integration, onDismiss, className }: ReauthBanner
       </Alert>
 
       <ConfirmDialog />
+      {Dialogs}
     </>
   )
 }

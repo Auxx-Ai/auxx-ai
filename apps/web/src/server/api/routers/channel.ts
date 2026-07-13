@@ -123,7 +123,12 @@ export const channelRouter = createTRPCRouter({
       await checkChannelLimit(ctx.db, organizationId)
       const def = await ctx.db.query.ConnectionDefinition.findFirst({
         where: (cd, { eq }) => eq(cd.providerKey, providerKey),
-        columns: { oauth2ClientId: true, oauth2ClientSecret: true, platformClientApproved: true },
+        columns: {
+          id: true,
+          oauth2ClientId: true,
+          oauth2ClientSecret: true,
+          platformClientApproved: true,
+        },
       })
       if (!def) {
         throw new TRPCError({
@@ -135,6 +140,7 @@ export const channelRouter = createTRPCRouter({
       const gate = resolveOwnClientRequirement(def)
       return {
         providerKey,
+        connectionDefinitionId: def.id,
         authorizeUrl: `/api/connections/${providerKey}/oauth2/authorize`,
         requiresOwnClient: gate.requiresOwnClient,
         ownClientReason: gate.reason,

@@ -16,6 +16,7 @@ import { useAdminGate } from '~/components/global/admin-gate'
 import type { InboxItem } from '~/components/threads/hooks'
 import { useConfirm } from '~/hooks/use-confirm'
 import { api } from '~/trpc/react'
+import { useChannelReconnect } from '../hooks/use-channel-reconnect'
 import type { Channel } from '../store/channel-store'
 import { getChannelProviderName, getIntegrationProviderIcon } from './channel-icon'
 
@@ -75,14 +76,7 @@ export function ChannelCard({ channel, inboxes }: { channel: Channel; inboxes: I
     },
   })
 
-  const reauth = api.channelReauth.initiateReauth.useMutation({
-    onSuccess: (data) => {
-      if (data.authUrl) window.location.href = data.authUrl
-    },
-    onError: (error) => {
-      toastError({ title: 'Failed to start reconnect', description: error.message })
-    },
-  })
+  const { reconnect, pending: reconnectPending, Dialogs: reconnectDialogs } = useChannelReconnect()
 
   const displayName =
     channel.name ||
@@ -129,8 +123,8 @@ export function ChannelCard({ channel, inboxes }: { channel: Channel; inboxes: I
           {
             label: 'Reconnect',
             icon: <Plug />,
-            disabled: !canManage,
-            onClick: () => reauth.mutate({ integrationId: channel.id }),
+            disabled: !canManage || reconnectPending,
+            onClick: () => reconnect(channel.id),
           },
         ]
       : []),
@@ -163,6 +157,7 @@ export function ChannelCard({ channel, inboxes }: { channel: Channel; inboxes: I
         descriptionLines={0}
       />
       <ConfirmDialog />
+      {reconnectDialogs}
     </>
   )
 }
