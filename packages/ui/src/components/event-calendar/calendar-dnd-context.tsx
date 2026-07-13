@@ -26,6 +26,9 @@ type DraggableView = 'month' | 'week' | 'day' | 'resource'
 interface CalendarDndContextValue<T extends EventCalendarItem = EventCalendarItem> {
   /** True only when rendered by an actual `CalendarDndProvider` — lets `EventCalendar` detect an ambient/composed provider and skip mounting its own. */
   isCalendarDndContext: boolean
+  /** False when the provider has no drop handler at all (read-only grid) — chips render inert
+   * instead of offering a pick-up that could only ever snap back. */
+  hasDropHandler: boolean
   activeEvent: T | null
   activeId: UniqueIdentifier | null
   activeView: DraggableView | null
@@ -35,6 +38,7 @@ interface CalendarDndContextValue<T extends EventCalendarItem = EventCalendarIte
 
 const CalendarDndContext = createContext<CalendarDndContextValue>({
   isCalendarDndContext: false,
+  hasDropHandler: false,
   activeEvent: null,
   activeId: null,
   activeView: null,
@@ -196,6 +200,7 @@ export function CalendarDndProvider<T extends EventCalendarItem = EventCalendarI
       <CalendarDndContext.Provider
         value={{
           isCalendarDndContext: true,
+          hasDropHandler: Boolean(onEventDrop || onDragEnd),
           activeEvent,
           activeId,
           activeView,

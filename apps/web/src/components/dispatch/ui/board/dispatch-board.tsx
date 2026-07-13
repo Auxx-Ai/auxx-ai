@@ -258,6 +258,7 @@ export function DispatchBoard() {
                 date={data.date}
                 onDateChange={data.setDate}
                 visibleRange={data.range}
+                view={data.view}
                 weekStartsOn={weekStartsOn}
                 allWorkers={data.allWorkers}
                 colorByUserId={data.colorByUserId}

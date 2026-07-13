@@ -11,6 +11,7 @@
 
 import { addWeeks, format, startOfDay } from 'date-fns'
 import { useCallback, useMemo } from 'react'
+import { visitTitle } from '~/components/calendar/sources/visits-source'
 import { useOrgChannel } from '~/realtime/hooks'
 import { api, type RouterOutputs } from '~/trpc/react'
 
@@ -43,11 +44,6 @@ export interface ScheduleDayGroup {
   dayKey: string
   date: Date
   items: ScheduleItem[]
-}
-
-function visitTitle(visit: MyVisit): string {
-  const { number, displayName } = visit.workOrder
-  return number ? `${number} · ${displayName ?? 'Work order'}` : (displayName ?? 'Work order')
 }
 
 /**

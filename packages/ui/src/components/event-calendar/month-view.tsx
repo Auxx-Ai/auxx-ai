@@ -19,16 +19,18 @@ import {
 } from 'date-fns'
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 
-import { DefaultStartHour, EventGap, EventHeight } from './constants'
+import {
+  DefaultStartHour,
+  EventGap,
+  EventHeight,
+  StreamEndYear,
+  StreamStartYear,
+} from './constants'
 import { DraggableEvent } from './draggable-event'
 import { DroppableCell } from './droppable-cell'
 import { EventItem } from './event-item'
 import type { EventCalendarItem, RenderEvent } from './types'
 import { getAllEventsForDay, getEventsForDay, getSpanningEventsForDay, sortEvents } from './utils'
-
-/** The week stream spans these years — index 0 is the first week of the start year. */
-const StreamStartYear = 2020
-const StreamEndYear = 2045
 
 /** Vertical px a day cell spends on its date label before event chips start. */
 const CellHeaderHeight = 32

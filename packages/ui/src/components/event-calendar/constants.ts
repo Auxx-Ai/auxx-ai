@@ -1,5 +1,12 @@
 // packages/ui/src/components/event-calendar/constants.ts
 
+/**
+ * The month/week continuous streams span these years — index 0 is the first
+ * day (week view) or first week (month view) of the start year.
+ */
+export const StreamStartYear = 2020
+export const StreamEndYear = 2045
+
 /** Height (px) of a month-view event chip — drives the "+N more" overflow math. */
 export const EventHeight = 24
 
