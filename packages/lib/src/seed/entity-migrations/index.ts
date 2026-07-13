@@ -42,6 +42,7 @@ import { migration036InvoicePublicToken } from './migrations/036-invoice-public-
 import { migration037WorkOrderEngagementStatuses } from './migrations/037-work-order-engagement-statuses'
 import { migration038InvoiceAutomation } from './migrations/038-invoice-automation'
 import { migration039WorkOrderTags } from './migrations/039-work-order-tags'
+import { migration040CatalogGroup } from './migrations/040-catalog-group'
 import type { EntityMigration, MigrationRunResult } from './types'
 
 const logger = createScopedLogger('entity-migrations')
@@ -89,6 +90,7 @@ const ALL_MIGRATIONS: EntityMigration[] = [
   migration037WorkOrderEngagementStatuses,
   migration038InvoiceAutomation,
   migration039WorkOrderTags,
+  migration040CatalogGroup,
 ]
 
 /**

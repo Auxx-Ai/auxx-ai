@@ -5,6 +5,7 @@ import type { FieldId } from '@auxx/types/field'
 import { ENTITY_DEFINITION_TYPES } from '@auxx/types/resource'
 import type { ResourceField, ResourceFieldRegistry, ResourceTableDefinition } from './field-types'
 import { ARTICLE_FIELDS } from './resources/article-fields'
+import { CATALOG_GROUP_FIELDS } from './resources/catalog-group-fields'
 import { CATALOG_ITEM_FIELDS } from './resources/catalog-item-fields'
 import { COMPANY_FIELDS } from './resources/company-fields'
 import { CONTACT_FIELDS } from './resources/contact-fields'
@@ -120,6 +121,7 @@ export const RESOURCE_FIELD_REGISTRY: ResourceFieldRegistry = {
   quote: QUOTE_FIELDS,
   line_item: LINE_ITEM_FIELDS,
   catalog_item: CATALOG_ITEM_FIELDS,
+  catalog_group: CATALOG_GROUP_FIELDS,
   invoice: INVOICE_FIELDS,
   payment: PAYMENT_FIELDS,
 }

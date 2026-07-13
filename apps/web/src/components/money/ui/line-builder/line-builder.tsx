@@ -61,7 +61,7 @@ import { useSaveFieldValue } from '~/components/resources/hooks/use-save-field-v
 import { useSystemValues } from '~/components/resources/hooks/use-system-values'
 import { useSettings } from '~/hooks/use-settings'
 import { api } from '~/trpc/react'
-import { type CatalogItemPick, CatalogPicker } from './catalog-picker'
+import { type CatalogGroupPick, type CatalogItemPick, CatalogPicker } from './catalog-picker'
 import { formatCurrency, titleCase } from './shared'
 import { TotalsFooter } from './totals-footer'
 
@@ -95,6 +95,29 @@ const QTY_ATTRS = ['line_item_qty']
 const PRICE_ATTRS = ['line_item_unit_price']
 const TOTAL_ATTRS = ['line_item_qty', 'line_item_unit_price']
 const TAXABLE_ATTRS = ['line_item_taxable']
+// Document billing mirrors read for the group-explode set-if-unset checks (steps 4–5,
+// money 09-product-groups.md "Line-builder consumption") — the same attrs `TotalsFooter`
+// reads, minus the invoice-only ledger-sync mirrors this doesn't need.
+const QUOTE_BILLING_ATTRS = [
+  'quote_discount_type',
+  'quote_discount_value',
+  'quote_tax_name',
+  'quote_tax_rate',
+]
+const INVOICE_BILLING_ATTRS = [
+  'invoice_discount_type',
+  'invoice_discount_value',
+  'invoice_tax_name',
+  'invoice_tax_rate',
+]
+
+/** Org tax rate preset (`documents.taxRates` setting, money MQ1 build spec §G.1). */
+interface TaxRatePreset {
+  id: string
+  name: string
+  rate: number
+  isDefault?: boolean
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Cells
@@ -112,6 +135,7 @@ function LineNameCell({
   currencyCode,
   descriptionOpen,
   closeDescription,
+  onSelectGroup,
 }: {
   recordId: RecordId
   rowId: string
@@ -119,6 +143,7 @@ function LineNameCell({
   currencyCode: string
   descriptionOpen: boolean
   closeDescription: (lineId: string) => void
+  onSelectGroup: (pick: CatalogGroupPick) => void
 }) {
   const { values } = useSystemValues(recordId, NAME_ATTRS, { autoFetch: true })
   const { saveFieldValue, saveMultipleAsync } = useSaveFieldValue()
@@ -175,6 +200,7 @@ function LineNameCell({
           initialQuery={name}
           currencyCode={currencyCode}
           onSelectCatalogItem={handlePick}
+          onSelectGroup={onSelectGroup}
           onFreeText={(text) => saveFieldValue(recordId, 'line_item_name', text, FieldType.TEXT)}>
           <Button
             variant='transparent'
@@ -358,6 +384,7 @@ function LineRow({
   toggleDescription,
   closeDescription,
   deleteLine,
+  onSelectGroup,
 }: {
   record: RecordMeta
   entityDefinitionId: string
@@ -367,6 +394,7 @@ function LineRow({
   toggleDescription: (lineId: string) => void
   closeDescription: (lineId: string) => void
   deleteLine: (lineId: string) => void
+  onSelectGroup: (recordId: RecordId, pick: CatalogGroupPick) => void
 }) {
   const recordId = toRecordId(entityDefinitionId, record.id)
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
@@ -399,6 +427,7 @@ function LineRow({
             currencyCode={currencyCode}
             descriptionOpen={descriptionOpen}
             closeDescription={closeDescription}
+            onSelectGroup={(pick) => onSelectGroup(recordId, pick)}
           />
         }
         cells={[
@@ -455,6 +484,19 @@ export function LineBuilder({
   const entityDefinitionId = resource?.id
   const { getSetting } = useSettings({})
   const currencyCode = (getSetting('organization.currency') as string | null) ?? 'USD'
+
+  // work_order (M2 job view) has no billing fields (money MI1 build spec §J.2 precedent,
+  // mirrored from TotalsFooter) — group discount/tax set-if-unset skips entirely there.
+  const hasBilling = documentType === 'quote' || documentType === 'invoice'
+  const billingPrefix = documentType === 'invoice' ? 'invoice' : 'quote'
+  const { values: billingValues } = useSystemValues(
+    docRecordId,
+    documentType === 'invoice' ? INVOICE_BILLING_ATTRS : QUOTE_BILLING_ATTRS,
+    { autoFetch: hasBilling, enabled: hasBilling }
+  )
+  const taxRates = ((getSetting('documents.taxRates') as TaxRatePreset[] | null) ?? []).filter(
+    (r) => r && typeof r.rate === 'number'
+  )
 
   const [openDescriptionIds, setOpenDescriptionIds] = useState<Set<string>>(new Set())
   const [orderOverride, setOrderOverride] = useState<string[] | null>(null)
@@ -619,6 +661,140 @@ export function LineBuilder({
     }
   }, [documentType, documentRecordId, createMutateAsync, refresh])
 
+  const { saveMultipleAsync } = useSaveFieldValue()
+
+  /**
+   * Explode a picked catalog group onto the document (money 09-product-groups.md
+   * "Line-builder consumption"): entry #1 fills the line whose picker was open,
+   * entries 2…N append as new lines, then the document discount/tax are
+   * set-if-unset from the group (never overwriting an existing value).
+   */
+  const handleGroupPick = useCallback(
+    async (recordId: RecordId, pick: CatalogGroupPick) => {
+      if (pick.skippedCount > 0) {
+        console.warn(`Catalog group "${pick.name}" skipped ${pick.skippedCount} dangling item(s).`)
+      }
+      if (pick.lines.length === 0) return
+
+      const [first, ...rest] = pick.lines
+
+      // Step 1: entry #1 fills the CURRENT line — the handlePick shape (catalog-picker.tsx)
+      // plus qty, which the single-item pick leaves untouched.
+      void saveMultipleAsync(recordId, [
+        { fieldId: 'line_item_name', value: first.name, fieldType: FieldType.TEXT },
+        { fieldId: 'line_item_description', value: first.description, fieldType: FieldType.TEXT },
+        {
+          fieldId: 'line_item_category',
+          value: first.category,
+          fieldType: FieldType.SINGLE_SELECT,
+        },
+        { fieldId: 'line_item_taxable', value: first.taxable, fieldType: FieldType.CHECKBOX },
+        { fieldId: 'line_item_unit_price', value: first.unitPrice, fieldType: FieldType.CURRENCY },
+        { fieldId: 'line_item_qty', value: first.qty, fieldType: FieldType.NUMBER },
+        {
+          fieldId: 'line_item_catalog_item',
+          value: toRecordId('catalog_item', first.catalogItemId),
+          fieldType: FieldType.RELATIONSHIP,
+        },
+      ])
+
+      // Step 2: entries 2…N append at the end — sequential creates (not Promise.all) so
+      // sort order + the server-side totals-recompute hooks stay deterministic; N is small.
+      // Known v1 edge: picking on a middle line still appends these at the list end.
+      if (rest.length > 0) {
+        const relKey =
+          documentType === 'quote'
+            ? 'line_item_quote'
+            : documentType === 'invoice'
+              ? 'line_item_invoice'
+              : 'line_item_work_order'
+        const baseOrder = displayIdsRef.current.length
+        try {
+          for (const [index, line] of rest.entries()) {
+            await createMutateAsync({
+              entityDefinitionId: 'line_item',
+              values: {
+                line_item_name: line.name,
+                line_item_description: line.description,
+                line_item_category: line.category,
+                line_item_taxable: line.taxable,
+                line_item_unit_price: line.unitPrice,
+                line_item_qty: line.qty,
+                line_item_catalog_item: toRecordId('catalog_item', line.catalogItemId),
+                line_item_sort_order: baseOrder + index,
+                [relKey]: documentRecordId,
+              },
+            })
+          }
+        } catch (error) {
+          toastError({
+            title: 'Error adding group lines',
+            description: error instanceof Error ? error.message : 'Could not add all group lines',
+          })
+        }
+        refresh()
+      }
+
+      // Steps 4–5: document discount/tax set-if-unset — quote/invoice only, never
+      // overwriting a value the document already has.
+      if (hasBilling) {
+        const currentDiscountValue = billingValues[`${billingPrefix}_discount_value`] as
+          | number
+          | null
+          | undefined
+        if (pick.discountType && pick.discountValue !== null && currentDiscountValue == null) {
+          void saveMultipleAsync(docRecordId, [
+            {
+              fieldId: `${billingPrefix}_discount_type`,
+              value: pick.discountType,
+              fieldType: FieldType.SINGLE_SELECT,
+            },
+            {
+              fieldId: `${billingPrefix}_discount_value`,
+              value: pick.discountValue,
+              fieldType: FieldType.NUMBER,
+            },
+          ])
+        }
+
+        const currentTaxRate = billingValues[`${billingPrefix}_tax_rate`] as
+          | number
+          | null
+          | undefined
+        if (pick.taxRateId && currentTaxRate == null) {
+          // A deleted preset id silently no-ops — no tax write.
+          const preset = taxRates.find((r) => r.id === pick.taxRateId)
+          if (preset) {
+            void saveMultipleAsync(docRecordId, [
+              {
+                fieldId: `${billingPrefix}_tax_name`,
+                value: preset.name,
+                fieldType: FieldType.TEXT,
+              },
+              {
+                fieldId: `${billingPrefix}_tax_rate`,
+                value: preset.rate,
+                fieldType: FieldType.NUMBER,
+              },
+            ])
+          }
+        }
+      }
+    },
+    [
+      documentType,
+      documentRecordId,
+      docRecordId,
+      hasBilling,
+      billingPrefix,
+      billingValues,
+      taxRates,
+      saveMultipleAsync,
+      createMutateAsync,
+      refresh,
+    ]
+  )
+
   const toggleDescription = useCallback((lineId: string) => {
     setOpenDescriptionIds((prev) => {
       const next = new Set(prev)
@@ -708,6 +884,7 @@ export function LineBuilder({
                 toggleDescription={toggleDescription}
                 closeDescription={closeDescription}
                 deleteLine={deleteLine}
+                onSelectGroup={handleGroupPick}
               />
             ))}
           </SortableContext>

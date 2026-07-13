@@ -5,7 +5,7 @@ import { FeatureKey } from '@auxx/lib/permissions/client'
 import { DockableDrawer } from '@auxx/ui/components/dockable-drawer'
 import { ResponsiveTabs } from '@auxx/ui/components/responsive-tabs'
 import { generateId } from '@auxx/utils'
-import { Lock, Package, Percent } from 'lucide-react'
+import { Boxes, Lock, Package, Percent } from 'lucide-react'
 import { useQueryState } from 'nuqs'
 import { useState } from 'react'
 import { EmptyState } from '~/components/global/empty-state'
@@ -14,16 +14,19 @@ import { useMedia } from '~/hooks/use-media'
 import { useSettings } from '~/hooks/use-settings'
 import { useUser } from '~/hooks/use-user'
 import { useFeatureFlags } from '~/providers/feature-flag-provider'
+import { GroupEditor } from './group-editor'
+import { GroupsList } from './groups-list'
 import { ProductEditor } from './product-editor'
 import { ProductsList } from './products-list'
 import { TaxRateEditor } from './tax-rate-editor'
 import type { TaxRate } from './tax-rate-types'
 import { TaxRatesList } from './tax-rates-list'
 
-type SettingsTab = 'products' | 'tax-rates'
+type SettingsTab = 'products' | 'groups' | 'tax-rates'
 
 const TABS: { value: SettingsTab; label: string; icon: typeof Package }[] = [
   { value: 'products', label: 'Products & Services', icon: Package },
+  { value: 'groups', label: 'Product groups', icon: Boxes },
   { value: 'tax-rates', label: 'Tax rates', icon: Percent },
 ]
 
@@ -38,9 +41,12 @@ export function ProductsServicesPage() {
   const { hasAccess } = useFeatureFlags()
 
   const [tab, setTab] = useQueryState('s', { defaultValue: 'products' as string })
-  const activeTab = (tab === 'tax-rates' ? 'tax-rates' : 'products') as SettingsTab
+  const activeTab = (
+    tab === 'tax-rates' ? 'tax-rates' : tab === 'groups' ? 'groups' : 'products'
+  ) as SettingsTab
 
   const [selectedProductId, setSelectedProductId] = useState<string | null>(null)
+  const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null)
   const [selectedTaxRateId, setSelectedTaxRateId] = useState<string | null>(null)
 
   // `useSettings({ scope })` FILTERS reads to that scope (use-settings.tsx:44-54) — currency
@@ -99,12 +105,19 @@ export function ProductsServicesPage() {
   }
 
   const selectedTaxRate = taxRates.find((r) => r.id === selectedTaxRateId) ?? null
-  const selectedId = activeTab === 'products' ? selectedProductId : selectedTaxRateId
+  const selectedId =
+    activeTab === 'products'
+      ? selectedProductId
+      : activeTab === 'groups'
+        ? selectedGroupId
+        : selectedTaxRateId
   const mobileDrawerOpen = !isDesktop && !!selectedId
 
   const editorContent =
     activeTab === 'products' ? (
       <ProductEditor selectedId={selectedProductId} />
+    ) : activeTab === 'groups' ? (
+      <GroupEditor selectedId={selectedGroupId} currency={currency} />
     ) : (
       <TaxRateEditor
         taxRate={selectedTaxRate}
@@ -134,6 +147,12 @@ export function ProductsServicesPage() {
               onSelect={setSelectedProductId}
               currency={currency}
             />
+          ) : activeTab === 'groups' ? (
+            <GroupsList
+              selectedId={selectedGroupId}
+              onSelect={setSelectedGroupId}
+              currency={currency}
+            />
           ) : (
             <TaxRatesList
               taxRates={taxRates}
@@ -151,6 +170,7 @@ export function ProductsServicesPage() {
         onOpenChange={(open) => {
           if (!open) {
             setSelectedProductId(null)
+            setSelectedGroupId(null)
             setSelectedTaxRateId(null)
           }
         }}
@@ -159,7 +179,13 @@ export function ProductsServicesPage() {
         onWidthChange={() => {}}
         minWidth={320}
         maxWidth={480}
-        title={activeTab === 'products' ? 'Edit item' : 'Edit tax rate'}>
+        title={
+          activeTab === 'products'
+            ? 'Edit item'
+            : activeTab === 'groups'
+              ? 'Edit group'
+              : 'Edit tax rate'
+        }>
         {editorContent}
       </DockableDrawer>
     </SettingsPage>

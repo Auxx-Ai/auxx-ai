@@ -453,6 +453,22 @@ export const FIELD_VIEW_CONFIGS: FieldViewSeedConfig[] = [
   },
 
   // ============================================================================
+  // CATALOG GROUP FIELD VIEWS (no dialog_create — never created via generic dialog)
+  // ============================================================================
+  {
+    entityType: 'catalog_group',
+    contextType: 'panel',
+    name: 'Default Panel View',
+    excludeFields: ['id', 'created_at', 'updated_at', 'created_by_id'],
+  },
+  {
+    entityType: 'catalog_group',
+    contextType: 'table',
+    name: 'Default Table View',
+    excludeFields: ['id', 'created_at', 'updated_at', 'created_by_id', 'catalog_group_entries'],
+  },
+
+  // ============================================================================
   // INVOICE FIELD VIEWS
   // ============================================================================
   {
