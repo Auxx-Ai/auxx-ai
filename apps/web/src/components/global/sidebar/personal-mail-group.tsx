@@ -25,7 +25,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { CollapsibleSidebarSection } from '~/components/global/sidebar/collapsible-sidebar-section'
 import { EditableSidebarItem } from '~/components/global/sidebar/editable-sidebar-item'
 import type { Inbox } from '~/components/global/sidebar/shared-inbox-group'
-import { SidebarItem } from '~/components/global/sidebar/sidebar-item'
+import { SidebarNavItem } from '~/components/global/sidebar/sidebar-nav-item'
 import { useMailCountsStore } from '~/components/mail/store'
 
 export interface PersonalMenuItem {
@@ -247,7 +247,7 @@ export function PersonalMailItems({
                 count={combinedInboxCount}
                 isActive={!!pathname?.startsWith('/app/mail/inbox/')}>
                 <SidebarMenuSubItem>
-                  <SidebarItem
+                  <SidebarNavItem
                     id='assigned'
                     name='Assigned to me'
                     href='/app/mail/assigned/open'
@@ -260,7 +260,7 @@ export function PersonalMailItems({
                 </SidebarMenuSubItem>
                 {personalInboxes.map((inbox) => (
                   <SidebarMenuSubItem key={inbox.id}>
-                    <SidebarItem
+                    <SidebarNavItem
                       id={inbox.id}
                       name={inbox.name}
                       href={`/app/mail/personal/${inbox.id}/open`}
@@ -299,7 +299,7 @@ export function PersonalMailItems({
                 }>
                 {personalInboxes.map((inbox) => (
                   <SidebarMenuSubItem key={inbox.id}>
-                    <SidebarItem
+                    <SidebarNavItem
                       id={`${inbox.id}-sent`}
                       name={inbox.name}
                       href={`/app/mail/personal/${inbox.id}/sent`}
@@ -320,7 +320,7 @@ export function PersonalMailItems({
 
           return (
             <SidebarMenuItem key={item.id}>
-              <SidebarItem
+              <SidebarNavItem
                 id={item.id}
                 name={item.name}
                 href={itemHref}

@@ -7,7 +7,7 @@ import { toastError } from '@auxx/ui/components/toast'
 import { FolderPlus } from 'lucide-react'
 import { useCallback, useState } from 'react'
 import { FavoritesTree } from '~/components/favorites/ui/favorites-tree'
-import { SidebarItem } from '~/components/global/sidebar/sidebar-item'
+import { SidebarNavItem } from '~/components/global/sidebar/sidebar-nav-item'
 import { api } from '~/trpc/react'
 import { SidebarGroupHeader } from './sidebar-group-header'
 import { useSidebarStateContext } from './sidebar-state-context'
@@ -71,7 +71,7 @@ export function FavoritesSidebar() {
       <SidebarGroupCollapse open={isFavoritesOpen}>
         <SidebarMenu className='gap-0'>
           {creatingFolder && (
-            <SidebarItem
+            <SidebarNavItem
               id='__new_folder__'
               name=''
               href='#'

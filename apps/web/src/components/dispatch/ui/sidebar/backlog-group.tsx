@@ -11,10 +11,11 @@ import {
 import { cn } from '@auxx/ui/lib/utils'
 import { useDraggable, useDroppable } from '@dnd-kit/core'
 import { GripVertical } from 'lucide-react'
+import { SidebarGroupHeader } from '~/components/global/sidebar/sidebar-group-header'
+import { SidebarItem } from '~/components/global/sidebar/sidebar-item'
 import type { BacklogItem } from '../board/types'
 import { isVisitStatus } from '../board/utils'
 import { STATUS_ACCENT_CLASS } from '../board/visit-chip-content'
-import { SidebarGroupHeader } from './sidebar-group-header'
 
 export interface BacklogSection {
   /** Sub-header, e.g. map mode's "Unscheduled"/"Unassigned today" split. Omit for a flat list
@@ -38,11 +39,13 @@ interface BacklogGroupProps {
 }
 
 /**
- * Sidebar Backlog group (v3 sidebar plan §1.2) — one-line rows (status dot + WO number +
- * truncated title, grip on hover), ported from the deleted `backlog-rail.tsx`/`backlog-pane.tsx`.
- * Serves both modes: calendar mode gets a flat list (`data.backlogEvents`), map mode gets the
- * two-bucket split `BacklogPane` used to compute (`DispatchSidebar` builds `sections`, this
- * component only renders them).
+ * Sidebar Backlog group (v3 sidebar plan §1.2, refactored onto the global `SidebarGroupHeader`/
+ * `SidebarItem` primitives per plans/dispatch/v3/02-sidebar-primitives-refactor.md Phase 3) —
+ * one-line rows (status dot + WO number + truncated title, grip on hover), ported from the
+ * deleted `backlog-rail.tsx`/`backlog-pane.tsx`. Serves both modes: calendar mode gets a flat
+ * list (`data.backlogEvents`), map mode gets the two-bucket split `BacklogPane` used to compute
+ * (`DispatchSidebar` builds `sections`, this component only renders them). The group count moves
+ * to the header's `end` slot.
  */
 export function BacklogGroup({
   sections,
@@ -62,7 +65,19 @@ export function BacklogGroup({
 
   return (
     <SidebarGroup>
-      <SidebarGroupHeader title='Backlog' open={open} onOpenChange={onOpenChange} count={count} />
+      <SidebarGroupHeader
+        title='Backlog'
+        isOpen={open}
+        toggleOpen={() => onOpenChange(!open)}
+        isEditMode={false}
+        onToggleEditMode={() => {}}
+        hideEditOption
+        end={
+          count > 0 ? (
+            <span className='text-muted-foreground/70 text-xs tabular-nums'>{count}</span>
+          ) : undefined
+        }
+      />
       <SidebarGroupCollapse open={open}>
         <div
           ref={droppable ? setNodeRef : undefined}
@@ -118,26 +133,27 @@ function BacklogRow({ item, dragType, canEdit }: BacklogRowProps) {
 
   return (
     <SidebarMenuItem>
-      <div
+      <SidebarItem
         ref={setNodeRef}
         {...(canEdit ? { ...attributes, ...listeners } : {})}
+        id={`sidebar-backlog-${visit.id}`}
+        name={`${workOrder?.number ? `${workOrder.number} · ` : ''}${workOrder?.displayName ?? 'Work order'}`}
         className={cn(
-          'group/backlog-row hover:bg-sidebar-accent flex items-center gap-1.5 rounded-md px-2 py-1 text-xs',
           canEdit && 'cursor-grab touch-none active:cursor-grabbing',
           isDragging && 'opacity-40'
-        )}>
-        <span
-          className={cn('size-1.5 shrink-0 rounded-full', STATUS_ACCENT_CLASS[status])}
-          aria-hidden
-        />
-        <span className='min-w-0 flex-1 truncate'>
-          {workOrder?.number ? `${workOrder.number} · ` : ''}
-          {workOrder?.displayName ?? 'Work order'}
-        </span>
-        {canEdit && (
-          <GripVertical className='text-muted-foreground size-3 shrink-0 opacity-0 group-hover/backlog-row:opacity-100' />
         )}
-      </div>
+        icon={
+          <span
+            className={cn('size-1.5 shrink-0 rounded-full', STATUS_ACCENT_CLASS[status])}
+            aria-hidden
+          />
+        }
+        end={
+          canEdit ? (
+            <GripVertical className='text-muted-foreground size-3 shrink-0 opacity-0 group-hover/item:opacity-100' />
+          ) : undefined
+        }
+      />
     </SidebarMenuItem>
   )
 }

@@ -29,7 +29,7 @@ import { useCallback, useState } from 'react'
 import { useDndState } from '~/app/context/dnd-state-context'
 import { CollapsibleSidebarSection } from '~/components/global/sidebar/collapsible-sidebar-section'
 import { EditableSidebarItem } from '~/components/global/sidebar/editable-sidebar-item'
-import { SidebarItem } from '~/components/global/sidebar/sidebar-item'
+import { SidebarNavItem } from '~/components/global/sidebar/sidebar-nav-item'
 import { useMailCountsStore } from '~/components/mail/store'
 import { MailViewDialog } from '~/components/mail-views/mail-view-dialog'
 import { useConfirm } from '~/hooks/use-confirm'
@@ -55,7 +55,7 @@ interface ViewsSectionProps {
 }
 
 /**
- * Wrapper component to make a SidebarItem representing a mail view droppable.
+ * Wrapper component to make a SidebarNavItem representing a mail view droppable.
  */
 const DroppableViewSidebarItem = ({
   view,
@@ -144,7 +144,7 @@ const DroppableViewSidebarItem = ({
           isOpen={isDialogOpen}
           onClose={() => setIsDialogOpen(false)}
         />
-        <SidebarItem
+        <SidebarNavItem
           id={view.id}
           name={view.name}
           href={itemHref}

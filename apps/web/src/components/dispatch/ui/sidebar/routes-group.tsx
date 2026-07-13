@@ -14,6 +14,7 @@ import { CSS } from '@dnd-kit/utilities'
 import { format } from 'date-fns'
 import { GripVertical, Route as RouteIcon, Timer } from 'lucide-react'
 import { useState } from 'react'
+import { SidebarGroupHeader } from '~/components/global/sidebar/sidebar-group-header'
 import { getInitials } from '~/components/groups/utils/group-utils'
 import { ApplyTimesDialog } from '../route-planner/apply-times-dialog'
 import {
@@ -31,7 +32,6 @@ import type {
   PlannerWorker,
   RouteGeometry,
 } from '../route-planner/types'
-import { SidebarGroupHeader } from './sidebar-group-header'
 
 type PlannerWorkOrder = PlannerBoard['workOrders'][number]
 
@@ -76,7 +76,14 @@ export function RoutesGroup({
 
   return (
     <SidebarGroup>
-      <SidebarGroupHeader title='Routes' open={open} onOpenChange={onOpenChange} />
+      <SidebarGroupHeader
+        title='Routes'
+        isOpen={open}
+        toggleOpen={() => onOpenChange(!open)}
+        isEditMode={false}
+        onToggleEditMode={() => {}}
+        hideEditOption
+      />
       <SidebarGroupCollapse open={open}>
         <div className='flex flex-col gap-1.5 px-0.5'>
           {visibleWorkers.map((worker) => (

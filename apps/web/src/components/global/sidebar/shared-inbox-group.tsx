@@ -29,7 +29,7 @@ import { useCallback, useMemo, useState } from 'react'
 import { useDndState } from '~/app/context/dnd-state-context'
 import { CollapsibleSidebarSection } from '~/components/global/sidebar/collapsible-sidebar-section'
 import { EditableSidebarItem } from '~/components/global/sidebar/editable-sidebar-item'
-import { SidebarItem } from '~/components/global/sidebar/sidebar-item'
+import { SidebarNavItem } from '~/components/global/sidebar/sidebar-nav-item'
 import { InboxDialog } from '~/components/inbox/inbox-dialog'
 import { useMailCountsStore } from '~/components/mail/store'
 
@@ -56,7 +56,7 @@ interface SharedInboxesSectionProps {
 }
 
 /**
- * Wrapper component to make a SidebarItem representing a shared inbox droppable.
+ * Wrapper component to make a SidebarNavItem representing a shared inbox droppable.
  */
 const DroppableInboxSidebarItem = ({
   inbox,
@@ -100,7 +100,7 @@ const DroppableInboxSidebarItem = ({
         isDraggingThread && 'outline-dashed outline-1 outline-primary/30',
         isDraggingThread && isOver && 'bg-primary/20 outline-primary/80 ring-2 ring-primary/60'
       )}>
-      <SidebarItem
+      <SidebarNavItem
         id={inbox.id}
         name={inbox.name}
         href={itemHref}
