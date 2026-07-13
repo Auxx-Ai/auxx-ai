@@ -61,6 +61,7 @@ export function Calendar(props: CalendarProps) {
     minDate,
     maxDate,
     showOutsideDays: showOutsideDaysProp,
+    fixedWeeks = false,
     hideNavigation = false,
     captionLayout = 'label',
     autoFocus,
@@ -181,6 +182,13 @@ export function Calendar(props: CalendarProps) {
       <div
         ref={containerRef}
         data-slot='calendar'
+        // Reserve a definite width so the calendar renders correctly inside width-fitting
+        // containers (e.g. `w-auto` popovers), where the fluid `w-full`/`aspect-square` day
+        // cells would otherwise collapse to zero. Each month claims ≥13rem plus gaps/padding;
+        // `min-width` still lets the grid grow to fill wider fixed-width containers.
+        style={{
+          minWidth: `calc(${numberOfMonths} * 13rem + ${numberOfMonths - 1} * 1rem + 1.5rem)`,
+        }}
         className={cn('@container relative select-none p-3', className)}>
         {!hideNavigation && captionLayout === 'label' && (
           <div
@@ -238,6 +246,7 @@ export function Calendar(props: CalendarProps) {
                   <MonthGrid
                     month={m}
                     showOutsideDays={showOutsideDays}
+                    fixedWeeks={fixedWeeks}
                     onKeyDown={onGridKeyDown}
                   />
                 )}

@@ -11,14 +11,24 @@ import { getMonthWeeks, toDayKey } from './utils'
 export interface MonthGridProps {
   month: Date
   showOutsideDays: boolean
+  /** Always render 6 week rows so the grid height stays constant across months. */
+  fixedWeeks?: boolean
   onKeyDown: (event: React.KeyboardEvent<HTMLDivElement>) => void
 }
 
 /** Weekday header row + week rows + day cells for a single month, honoring `weekStartsOn`. */
-export function MonthGrid({ month, showOutsideDays, onKeyDown }: MonthGridProps) {
+export function MonthGrid({
+  month,
+  showOutsideDays,
+  fixedWeeks = false,
+  onKeyDown,
+}: MonthGridProps) {
   const { weekStartsOn } = useCalendarContext()
 
-  const weeks = React.useMemo(() => getMonthWeeks(month, weekStartsOn), [month, weekStartsOn])
+  const weeks = React.useMemo(
+    () => getMonthWeeks(month, weekStartsOn, fixedWeeks),
+    [month, weekStartsOn, fixedWeeks]
+  )
 
   const weekdays = React.useMemo(() => {
     const start = startOfWeek(month, { weekStartsOn })

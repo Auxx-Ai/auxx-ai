@@ -1,6 +1,8 @@
 // packages/ui/src/components/calendar/utils.ts
 
 import {
+  addDays,
+  differenceInCalendarDays,
   eachDayOfInterval,
   endOfDay,
   endOfMonth,
@@ -18,10 +20,19 @@ import type { DateRange, DisabledResolverOptions } from './types'
 /**
  * Full weeks (7-day rows) covering `month`, respecting `weekStartsOn` — includes the
  * leading/trailing days from adjacent months needed to complete the first and last row.
+ *
+ * When `fixedWeeks` is set, short months (4–5 rows) are padded with trailing days to always
+ * render 6 rows, so the calendar's height stays constant across months (no layout shift).
  */
-export function getMonthWeeks(month: Date, weekStartsOn: 0 | 1 | 2 | 3 | 4 | 5 | 6 = 0): Date[][] {
+export function getMonthWeeks(
+  month: Date,
+  weekStartsOn: 0 | 1 | 2 | 3 | 4 | 5 | 6 = 0,
+  fixedWeeks = false
+): Date[][] {
   const start = startOfWeek(startOfMonth(month), { weekStartsOn })
-  const end = endOfWeek(endOfMonth(month), { weekStartsOn })
+  const naturalEnd = endOfWeek(endOfMonth(month), { weekStartsOn })
+  const weekCount = (differenceInCalendarDays(naturalEnd, start) + 1) / 7
+  const end = fixedWeeks && weekCount < 6 ? addDays(naturalEnd, (6 - weekCount) * 7) : naturalEnd
   const days = eachDayOfInterval({ start, end })
 
   const weeks: Date[][] = []
