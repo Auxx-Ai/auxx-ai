@@ -314,7 +314,7 @@ export default function TicketNumberingSettings({
             </FieldPanel>
 
             {/* Preview Section */}
-            <div className='mt-6 rounded-xl border bg-primary-100/30 p-4'>
+            <div className='mt-6 rounded-2xl border bg-primary-100/30 p-4'>
               <div className='mb-2 text-sm font-medium'>Preview</div>
               <div className='grid grid-cols-2 gap-4'>
                 <div>

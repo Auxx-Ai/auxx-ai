@@ -1,51 +1,45 @@
 // apps/web/src/components/dispatch/stores/dispatch-sidebar-store.ts
 
-import { create } from 'zustand'
-import { persist } from 'zustand/middleware'
+import { createCalendarSidebarStore } from '~/components/calendar/core/sidebar-store'
+import { hiddenIdsForGroup } from '~/components/calendar/core/source-visibility'
 
-interface DispatchSidebarState {
-  /** Whole module sidebar, open/closed. Default open. */
-  open: boolean
-  /** Per-group collapse state, keyed by group id (`'workers' | 'tags' | 'backlog' | 'routes' |
-   * 'routes:<userId>'`). Missing key = open (all groups default expanded). */
-  groupOpen: Record<string, boolean>
-  /** Inverse of worker visibility — `[]` = every worker (and Unassigned) visible, the default.
-   * Persisting the hidden set (not the selected set) means a newly added worker defaults to
-   * visible without needing a migration. May contain the `UNASSIGNED_RESOURCE_ID` sentinel
-   * (`board/types.ts`) for the Unassigned row. */
-  hiddenWorkerIds: string[]
+/** Sidebar group id for the Workers toggle rows — the shared store's `hidden` map keys the
+ * worker inverse-visibility set under this group, may include the `UNASSIGNED_RESOURCE_ID`
+ * sentinel (`board/types.ts`) for the synthetic Unassigned row. */
+export const WORKERS_GROUP = 'workers'
+
+interface DispatchSidebarExtra {
   /** `null` = every tag visible (map mode only). */
   selectedTags: string[] | null
-  setOpen: (open: boolean) => void
-  setGroupOpen: (key: string, open: boolean) => void
-  toggleWorkerHidden: (workerId: string) => void
   setSelectedTags: (tags: string[] | null) => void
 }
 
 /**
- * Dispatch module sidebar persistence (v3 sidebar plan §1.1) — localStorage, following
- * `dock-store.ts`'s shape. Consumers must use selectors (`useDispatchSidebarStore((s) => s.x)`),
- * never destructure the whole store, per the project's Zustand convention.
+ * Dispatch module sidebar persistence (v3 sidebar plan §1.1), rebuilt on the shared
+ * `createCalendarSidebarStore` factory (plan §3.3) — localStorage `open`/`groupOpen`/`hidden`
+ * plus dispatch's own `selectedTags` composed in as the extra slice. Consumers must use
+ * selectors (`useDispatchSidebarStore((s) => s.x)`), never destructure the whole store, per
+ * the project's Zustand convention.
+ *
+ * The old flat `hiddenWorkerIds`/`toggleWorkerHidden` are gone — workers now live under
+ * `hidden.workers` (`WORKERS_GROUP`), read/written via `toggleHidden(WORKERS_GROUP, id)` or the
+ * `useHiddenWorkerIds()` convenience hook below. Persisting the hidden set (not the selected
+ * set) means a newly added worker defaults to visible without needing a migration.
+ *
+ * The factory's persist `version` is fixed at 1 with no `migrate` — per the project's
+ * few-users rule, this shape change (flat `hiddenWorkerIds` → `hidden.workers`) intentionally
+ * drops old persisted sidebar prefs once rather than writing migration code.
  */
-export const useDispatchSidebarStore = create<DispatchSidebarState>()(
-  persist(
-    (set) => ({
-      open: true,
-      groupOpen: {},
-      hiddenWorkerIds: [],
-      selectedTags: null,
-      setOpen: (open) => set({ open }),
-      setGroupOpen: (key, open) =>
-        set((state) => ({ groupOpen: { ...state.groupOpen, [key]: open } })),
-      toggleWorkerHidden: (workerId) =>
-        set((state) => {
-          const hidden = new Set(state.hiddenWorkerIds)
-          if (hidden.has(workerId)) hidden.delete(workerId)
-          else hidden.add(workerId)
-          return { hiddenWorkerIds: Array.from(hidden) }
-        }),
-      setSelectedTags: (tags) => set({ selectedTags: tags }),
-    }),
-    { name: 'dispatch-sidebar' }
-  )
+export const useDispatchSidebarStore = createCalendarSidebarStore<DispatchSidebarExtra>(
+  'dispatch-sidebar',
+  (set) => ({
+    selectedTags: null,
+    setSelectedTags: (tags) => set({ selectedTags: tags }),
+  })
 )
+
+/** Selector-stable read of the Workers group's hidden set (may include UNASSIGNED_RESOURCE_ID). */
+export function useHiddenWorkerIds(): string[] {
+  const hidden = useDispatchSidebarStore((s) => s.hidden)
+  return hiddenIdsForGroup(hidden, WORKERS_GROUP)
+}

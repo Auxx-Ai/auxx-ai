@@ -2,8 +2,8 @@
 
 'use client'
 
-import { MiniMonthCalendar } from '@auxx/ui/components/mini-month-calendar'
 import { useState } from 'react'
+import { MiniCalendarSection as GenericMiniCalendarSection } from '~/components/calendar/ui/mini-calendar-section'
 import type { WeekStartIndex } from '../board/utils'
 import { useMiniCalendarDensity } from './hooks/use-mini-calendar-density'
 
@@ -18,8 +18,12 @@ interface MiniCalendarSectionProps {
   hiddenWorkerIds: string[]
 }
 
-/** Mini month calendar header (v3 sidebar plan §1.2/§1.4) — owns the density query's displayed
- * month (via `MiniMonthCalendar`'s `onMonthChange`), independent of the board's own `date`. */
+/**
+ * Dispatch's mini month calendar header (v3 sidebar plan §1.2/§1.4, thinned onto the shared
+ * shell per plan §3.4) — owns the density query's displayed month + the
+ * `useMiniCalendarDensity` call (dispatch-shaped: filtered by worker visibility), then renders
+ * the generic `MiniCalendarSection` from `~/components/calendar/ui/` fully controlled.
+ */
 export function MiniCalendarSection({
   date,
   onDateChange,
@@ -31,15 +35,13 @@ export function MiniCalendarSection({
   const { density } = useMiniCalendarDensity(displayMonth, weekStartsOn, hiddenWorkerIds)
 
   return (
-    <div className='border-sidebar-border border-b'>
-      <MiniMonthCalendar
-        selected={date}
-        onSelect={onDateChange}
-        visibleRange={visibleRange}
-        density={density}
-        weekStartsOn={weekStartsOn}
-        onMonthChange={setDisplayMonth}
-      />
-    </div>
+    <GenericMiniCalendarSection
+      date={date}
+      onDateChange={onDateChange}
+      visibleRange={visibleRange}
+      weekStartsOn={weekStartsOn}
+      density={density}
+      onMonthChange={setDisplayMonth}
+    />
   )
 }

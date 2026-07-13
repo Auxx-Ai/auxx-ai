@@ -3,17 +3,11 @@
 'use client'
 
 import { DropdownMenuItem } from '@auxx/ui/components/dropdown-menu'
-import {
-  SidebarGroup,
-  SidebarGroupCollapse,
-  SidebarMenu,
-  SidebarMenuItem,
-} from '@auxx/ui/components/sidebar'
-import { cn } from '@auxx/ui/lib/utils'
-import { Eye, EyeOff, UserPlus } from 'lucide-react'
+import { SidebarGroup, SidebarGroupCollapse, SidebarMenu } from '@auxx/ui/components/sidebar'
+import { UserPlus } from 'lucide-react'
 import { useMemo, useState } from 'react'
+import { SourceToggleRow } from '~/components/calendar/ui/source-toggle-group'
 import { SidebarGroupHeader } from '~/components/global/sidebar/sidebar-group-header'
-import { SidebarItem } from '~/components/global/sidebar/sidebar-item'
 import { AddWorkerDialog } from '../add-worker-dialog'
 import { type BoardWorker, UNASSIGNED_RESOURCE_ID } from '../board/types'
 import { DEFAULT_WORKER_COLOR, UNASSIGNED_COLOR } from '../board/utils'
@@ -75,18 +69,18 @@ export function WorkersGroup({
       <SidebarGroupCollapse open={open}>
         <SidebarMenu>
           {workers.map((worker) => (
-            <WorkerRow
+            <SourceToggleRow
               key={worker.id}
               id={worker.id}
-              name={worker.user?.name ?? worker.user?.email ?? 'Worker'}
+              label={worker.user?.name ?? worker.user?.email ?? 'Worker'}
               color={colorByUserId.get(worker.userId) ?? DEFAULT_WORKER_COLOR}
               visible={!hidden.has(worker.userId)}
               onToggle={() => onToggleWorker(worker.userId)}
             />
           ))}
-          <WorkerRow
+          <SourceToggleRow
             id={UNASSIGNED_RESOURCE_ID}
-            name='Unassigned'
+            label='Unassigned'
             color={UNASSIGNED_COLOR}
             visible={!hidden.has(UNASSIGNED_RESOURCE_ID)}
             onToggle={() => onToggleWorker(UNASSIGNED_RESOURCE_ID)}
@@ -100,36 +94,5 @@ export function WorkersGroup({
         onAdded={() => {}}
       />
     </SidebarGroup>
-  )
-}
-
-interface WorkerRowProps {
-  id: string
-  name: string
-  color: string
-  visible: boolean
-  onToggle: () => void
-}
-
-/** One worker/unassigned row — color dot + name (dimmed when hidden) + hover-revealed eye toggle,
- * ported from the deleted `ModuleSidebarToggleItem`'s visual treatment. */
-function WorkerRow({ id, name, color, visible, onToggle }: WorkerRowProps) {
-  return (
-    <SidebarMenuItem>
-      <SidebarItem
-        id={id}
-        name={name}
-        onClick={onToggle}
-        className={cn(!visible && 'text-muted-foreground/70')}
-        icon={<span className='size-2 shrink-0 rounded-full' style={{ backgroundColor: color }} />}
-        end={
-          visible ? (
-            <EyeOff className='hidden size-3.5 text-muted-foreground group-hover/menu-item:block' />
-          ) : (
-            <Eye className='size-3.5 text-muted-foreground opacity-60' />
-          )
-        }
-      />
-    </SidebarMenuItem>
   )
 }

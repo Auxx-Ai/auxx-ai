@@ -4,7 +4,11 @@
 
 import { ModuleSidebar } from '@auxx/ui/components/module-sidebar'
 import { useMemo } from 'react'
-import { useDispatchSidebarStore } from '../../stores/dispatch-sidebar-store'
+import {
+  useDispatchSidebarStore,
+  useHiddenWorkerIds,
+  WORKERS_GROUP,
+} from '../../stores/dispatch-sidebar-store'
 import type { BacklogItem, BoardWorker } from '../board/types'
 import type { WeekStartIndex } from '../board/utils'
 import type {
@@ -65,8 +69,9 @@ export function DispatchSidebar({
   const setOpen = useDispatchSidebarStore((s) => s.setOpen)
   const groupOpen = useDispatchSidebarStore((s) => s.groupOpen)
   const setGroupOpen = useDispatchSidebarStore((s) => s.setGroupOpen)
-  const hiddenWorkerIds = useDispatchSidebarStore((s) => s.hiddenWorkerIds)
-  const toggleWorkerHidden = useDispatchSidebarStore((s) => s.toggleWorkerHidden)
+  const hiddenWorkerIds = useHiddenWorkerIds()
+  const toggleHidden = useDispatchSidebarStore((s) => s.toggleHidden)
+  const toggleWorkerHidden = (workerId: string) => toggleHidden(WORKERS_GROUP, workerId)
   const selectedTags = useDispatchSidebarStore((s) => s.selectedTags)
   const setSelectedTags = useDispatchSidebarStore((s) => s.setSelectedTags)
 
