@@ -16,7 +16,7 @@ const autoGenerateWorkOrderNumber: SystemHook = async ({
 }) => {
   if (operation !== 'create') return values
   const { recordNumber } = await recordNumbering.create(organizationId, 'work_order')
-  return { ...values, [field.id]: recordNumber }
+  return { [field.id]: recordNumber, ...values, [field.id]: recordNumber }
 }
 
 /**

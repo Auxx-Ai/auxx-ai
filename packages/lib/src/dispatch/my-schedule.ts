@@ -350,12 +350,25 @@ const ADVANCE_TRANSITIONS: Record<string, VisitStatus[]> = {
   on_site: ['en_route'],
 }
 
+/**
+ * The subset of `ADVANCE_TRANSITIONS` that move a visit FORWARD (vs. the "Undo last" pair,
+ * `en_route→scheduled`/`on_site→en_route`) — only forward advances are day-gated below.
+ */
+const FORWARD_TRANSITIONS = new Set<string>(['scheduled->en_route', 'en_route->on_site'])
+
 /** Input for {@link advanceMyVisit}. */
 export interface AdvanceMyVisitInput {
   organizationId: string
   userId: string
   visitId: string
   to: VisitStatus
+  /**
+   * The worker's client-local end-of-today (day boundaries are always client-computed in this
+   * repo — never server `startOfDay`, a prod-TZ bug). Gates FORWARD advances only: a visit
+   * scheduled after this instant is a future day, so "Start travel"/"Arrived" are rejected.
+   * Undo transitions are exempt — they must keep working regardless of date.
+   */
+  clientDayEnd: Date
 }
 
 /**
@@ -364,15 +377,22 @@ export interface AdvanceMyVisitInput {
  * `on_site→en_route`. Delegates to `setVisitStatus` so mirror/roll-up/broadcast/record-rules
  * fire identically to the board's admin path.
  *
- * @throws {BadRequestError} for any transition outside the allowed set.
+ * @throws {BadRequestError} for any transition outside the allowed set, or for a FORWARD
+ *   advance on a visit scheduled after `clientDayEnd` (a future day — day-of actions only).
  */
 export async function advanceMyVisit(input: AdvanceMyVisitInput): Promise<WorkOrderVisitRow> {
-  const { organizationId, userId, visitId, to } = input
+  const { organizationId, userId, visitId, to, clientDayEnd } = input
   const visit = await loadOwnVisit(organizationId, userId, visitId)
 
   const allowed = ADVANCE_TRANSITIONS[visit.status] ?? []
   if (!allowed.includes(to)) {
     throw new BadRequestError(`Cannot advance visit from '${visit.status}' to '${to}'`)
+  }
+
+  if (FORWARD_TRANSITIONS.has(`${visit.status}->${to}`) && visit.startTime) {
+    if (visit.startTime > clientDayEnd) {
+      throw new BadRequestError('Visit is scheduled for a future day')
+    }
   }
 
   return setVisitStatus({ organizationId, userId, visitId, status: to })

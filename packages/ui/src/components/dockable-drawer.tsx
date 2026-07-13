@@ -60,6 +60,12 @@ interface DockableDrawerProps {
   children: React.ReactNode
   /** Accessible title for the drawer (required for screen readers) */
   title?: string
+  /**
+   * Render the (transparent) overlay in undocked mode. The overlay swallows every pointer
+   * event outside the drawer — pass `false` when the page behind must stay interactive
+   * (e.g. the dispatch route planner's map).
+   */
+  overlay?: boolean
   /** Optional portal target ref for docked mode - content will be portaled here when docked */
   portalTarget?: React.RefObject<HTMLElement | null>
   /** Identifies which panel this is (for filtering in tabbed/side-by-side mode) */
@@ -83,6 +89,7 @@ export function DockableDrawer({
   maxWidth = 800,
   children,
   title = 'Details',
+  overlay = true,
   portalTarget,
   panelType,
 }: DockableDrawerProps) {
@@ -132,7 +139,7 @@ export function DockableDrawer({
         minWidth={minWidth}
         maxWidth={maxWidth}
         onWidthChange={onWidthChange}>
-        <DrawerOverlay className='bg-transparent' />
+        {overlay && <DrawerOverlay className='bg-transparent' />}
         <DrawerContent>
           <DrawerHandle />
           <DrawerTitle className='sr-only'>{title}</DrawerTitle>

@@ -335,13 +335,20 @@ export const dispatchRouter = createTRPCRouter({
       })
     }),
   advanceMyVisit: dispatchProcedure
-    .input(z.object({ visitId: z.string(), to: z.enum(['scheduled', 'en_route', 'on_site']) }))
+    .input(
+      z.object({
+        visitId: z.string(),
+        to: z.enum(['scheduled', 'en_route', 'on_site']),
+        clientDayEnd: z.date(),
+      })
+    )
     .mutation(async ({ ctx, input }) => {
       return advanceMyVisit({
         organizationId: ctx.session.organizationId,
         userId: ctx.session.user.id,
         visitId: input.visitId,
         to: input.to,
+        clientDayEnd: input.clientDayEnd,
       })
     }),
   closeMyVisit: dispatchProcedure

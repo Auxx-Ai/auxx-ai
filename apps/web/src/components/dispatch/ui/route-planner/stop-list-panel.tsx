@@ -47,7 +47,8 @@ interface StopListPanelProps {
 }
 
 /**
- * Route planner right pane (design doc §E, seam contract's `StopListPanel`): one collapsible
+ * Route planner stop lists (design doc §E, seam contract's `StopListPanel`) — hosted in
+ * `route-planner-view.tsx`'s right Drawer: one collapsible
  * section per visible worker, each a `@dnd-kit/sortable` `SortableContext` over that worker's
  * day stops (`routeOrder` asc, nulls last). Drag-reorder within a section writes `setRouteOrder`
  * optimistically; dragging a row (or a backlog-pane row) between sections is handled by
@@ -64,7 +65,7 @@ export function StopListPanel({ board, filters, geometryByWorker, date }: StopLi
   const workOrderById = new Map(board.workOrders.map((w) => [w.id, w]))
 
   return (
-    <div className='flex w-80 shrink-0 flex-col gap-2 overflow-y-auto border-l p-2'>
+    <div className='flex min-h-0 w-full flex-1 flex-col gap-2 overflow-y-auto p-2'>
       {visibleWorkers.map((worker) => (
         <WorkerStopSection
           key={worker.id}

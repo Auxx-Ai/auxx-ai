@@ -4,6 +4,7 @@
 
 import { Button } from '@auxx/ui/components/button'
 import { RadioTab, RadioTabItem } from '@auxx/ui/components/radio-tab'
+import { Separator } from '@auxx/ui/components/separator'
 import { endOfWeek, format, startOfWeek } from 'date-fns'
 import {
   CalendarDays,
@@ -13,7 +14,9 @@ import {
   LayoutGrid,
   Map as MapIcon,
   PanelLeft,
+  PanelRight,
 } from 'lucide-react'
+import { Tooltip } from '~/components/global/tooltip'
 import { DateTimePicker } from '~/components/pickers/date-time-picker'
 import { TagFilterPopover } from '../route-planner/tag-filter-popover'
 import type { BoardViewMode, BoardWorker } from './types'
@@ -21,6 +24,11 @@ import { goToNextDate, goToPreviousDate, viewedMonthStart, type WeekStartIndex }
 import { WorkerFilterPopover } from './worker-filter-popover'
 
 export type BoardMode = 'calendar' | 'map'
+
+/** `RadioTab size='sm'` is h-8 — one notch above the toolbar's h-7 button scale, so both
+ * segmented controls take a height + item-padding override to sit flush with `icon-sm`. */
+const RADIO_TAB_CLASS = 'h-7'
+const RADIO_TAB_ITEM_CLASS = 'px-2'
 
 interface BoardToolbarProps {
   date: Date
@@ -35,6 +43,11 @@ interface BoardToolbarProps {
   onShowBacklogChange: (show: boolean) => void
   boardMode: BoardMode
   onBoardModeChange: (mode: BoardMode) => void
+  /** Map-mode planner panels (route-planner restyle): the toolbar owns both toggles. */
+  plannerShowBacklog: boolean
+  onPlannerShowBacklogChange: (show: boolean) => void
+  plannerShowStops: boolean
+  onPlannerShowStopsChange: (show: boolean) => void
   /** Distinct `work_order.tags` across the route planner's visible day (map mode only). */
   tags: string[]
   selectedTags: Set<string> | null
@@ -57,10 +70,13 @@ function dateLabel(view: BoardViewMode, date: Date, weekStartsOn: WeekStartIndex
 }
 
 /**
- * Board toolbar (07 §D.2, extended by 09-route-planner.md §A): date nav, Day/Week/Month
- * `RadioTab`, the day-view worker filter, the backlog-rail toggle, and the Board↔Map segmented
- * control. Map mode hides the Day/Week/Month switch (route planning is single-day), always
- * shows the worker filter, and adds the tag/region filter next to it.
+ * Board toolbar (07 §D.2, extended by 09-route-planner.md §A) on the workflow-toolbar design
+ * scale (`gap-1 p-1`, ghost h-7 buttons, `Separator` group dividers, tooltips). Ordered to avoid
+ * layout shifts when toggling Board↔Map: the stable prefix (left-panel toggle, Board/Map switch,
+ * date nav with a fixed-width label) never moves; mode-conditional controls (Day/Week/Month vs
+ * tag filter) swap in the region after it, and the map-only right-panel toggle is anchored at
+ * the far right past the spacer. The left-panel toggle is mode-appropriate: calendar backlog
+ * rail vs planner backlog overlay.
  */
 export function BoardToolbar({
   date,
@@ -75,6 +91,10 @@ export function BoardToolbar({
   onShowBacklogChange,
   boardMode,
   onBoardModeChange,
+  plannerShowBacklog,
+  onPlannerShowBacklogChange,
+  plannerShowStops,
+  onPlannerShowStopsChange,
   tags,
   selectedTags,
   onSelectedTagsChange,
@@ -83,27 +103,53 @@ export function BoardToolbar({
   // regardless of whatever Day/Week/Month `view` the calendar was last left on — date nav and
   // the label both step/format as a day while map mode is active.
   const effectiveView: BoardViewMode = boardMode === 'map' ? 'day' : view
+  const isMap = boardMode === 'map'
+  const leftPanelOpen = isMap ? plannerShowBacklog : showBacklog
+  const toggleLeftPanel = () =>
+    isMap ? onPlannerShowBacklogChange(!plannerShowBacklog) : onShowBacklogChange(!showBacklog)
 
   return (
-    <div className='flex flex-wrap items-center gap-2 border-b p-2'>
-      <Button variant='outline' size='sm' onClick={() => onShowBacklogChange(!showBacklog)}>
-        <PanelLeft />
-      </Button>
+    <div className='flex flex-wrap items-center gap-1 border-b p-1'>
+      <Tooltip content={isMap ? 'Toggle backlog panel' : 'Toggle backlog rail'}>
+        <Button
+          variant={leftPanelOpen ? 'secondary' : 'ghost'}
+          size='icon-sm'
+          onClick={toggleLeftPanel}>
+          <PanelLeft />
+        </Button>
+      </Tooltip>
+
+      <RadioTab
+        value={boardMode}
+        onValueChange={(v) => onBoardModeChange(v as BoardMode)}
+        size='sm'
+        className={RADIO_TAB_CLASS}>
+        <RadioTabItem value='calendar' tooltip='Board' className={RADIO_TAB_ITEM_CLASS}>
+          <LayoutGrid />
+          <span className='hidden sm:inline'>Board</span>
+        </RadioTabItem>
+        <RadioTabItem value='map' tooltip='Map' className={RADIO_TAB_ITEM_CLASS}>
+          <MapIcon />
+          <span className='hidden sm:inline'>Map</span>
+        </RadioTabItem>
+      </RadioTab>
+
+      <Separator orientation='vertical' className='h-6' />
 
       <div className='flex items-center gap-1'>
-        <Button variant='outline' size='sm' onClick={() => onDateChange(new Date())}>
+        <Button variant='ghost' size='sm' onClick={() => onDateChange(new Date())}>
           Today
         </Button>
         <Button
           variant='ghost'
-          size='icon'
+          size='icon-sm'
           onClick={() => onDateChange(goToPreviousDate(effectiveView, date, weekStartsOn))}
           aria-label='Previous'>
           <ChevronLeft />
         </Button>
         <Button
           variant='ghost'
-          size='icon'
+          size='icon-sm'
           onClick={() => onDateChange(goToNextDate(effectiveView, date, weekStartsOn))}
           aria-label='Next'>
           <ChevronRight />
@@ -113,30 +159,37 @@ export function BoardToolbar({
           onChange={(value) => value && onDateChange(value)}
           mode='date'
           notClearable>
-          <Button variant='ghost' size='sm'>
+          {/* Fixed width — the label re-formats per view/day and must not shift its neighbors. */}
+          <Button variant='ghost' size='sm' className='w-44 justify-center truncate'>
             {dateLabel(effectiveView, date, weekStartsOn)}
           </Button>
         </DateTimePicker>
       </div>
 
-      {boardMode !== 'map' && (
-        <RadioTab value={view} onValueChange={(v) => onViewChange(v as BoardViewMode)} size='sm'>
-          <RadioTabItem value='day' size='sm' tooltip='Day'>
+      <Separator orientation='vertical' className='h-6' />
+
+      {!isMap && (
+        <RadioTab
+          value={view}
+          onValueChange={(v) => onViewChange(v as BoardViewMode)}
+          size='sm'
+          className={RADIO_TAB_CLASS}>
+          <RadioTabItem value='day' tooltip='Day' className={RADIO_TAB_ITEM_CLASS}>
             <CalendarDays />
             <span className='hidden sm:inline'>Day</span>
           </RadioTabItem>
-          <RadioTabItem value='week' size='sm' tooltip='Week'>
+          <RadioTabItem value='week' tooltip='Week' className={RADIO_TAB_ITEM_CLASS}>
             <CalendarRange />
             <span className='hidden sm:inline'>Week</span>
           </RadioTabItem>
-          <RadioTabItem value='month' size='sm' tooltip='Month'>
+          <RadioTabItem value='month' tooltip='Month' className={RADIO_TAB_ITEM_CLASS}>
             <CalendarDays />
             <span className='hidden sm:inline'>Month</span>
           </RadioTabItem>
         </RadioTab>
       )}
 
-      {(view === 'day' || boardMode === 'map') && (
+      {(view === 'day' || isMap) && (
         <WorkerFilterPopover
           workers={workers}
           selectedWorkerIds={selectedWorkerIds}
@@ -144,25 +197,22 @@ export function BoardToolbar({
         />
       )}
 
-      {boardMode === 'map' && (
+      {isMap && (
         <TagFilterPopover tags={tags} selectedTags={selectedTags} onChange={onSelectedTagsChange} />
       )}
 
-      <RadioTab
-        value={boardMode}
-        onValueChange={(v) => onBoardModeChange(v as BoardMode)}
-        size='sm'>
-        <RadioTabItem value='calendar' size='sm' tooltip='Board'>
-          <LayoutGrid />
-          <span className='hidden sm:inline'>Board</span>
-        </RadioTabItem>
-        <RadioTabItem value='map' size='sm' tooltip='Map'>
-          <MapIcon />
-          <span className='hidden sm:inline'>Map</span>
-        </RadioTabItem>
-      </RadioTab>
-
       <div className='flex-1' />
+
+      {isMap && (
+        <Tooltip content='Toggle routes panel'>
+          <Button
+            variant={plannerShowStops ? 'secondary' : 'ghost'}
+            size='icon-sm'
+            onClick={() => onPlannerShowStopsChange(!plannerShowStops)}>
+            <PanelRight />
+          </Button>
+        </Tooltip>
+      )}
     </div>
   )
 }

@@ -42,7 +42,7 @@ export function TagFilterPopover({ tags, selectedTags, onChange }: TagFilterPopo
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <Button variant='outline' size='sm'>
+        <Button variant='ghost' size='sm'>
           <Tag /> {label}
         </Button>
       </PopoverTrigger>

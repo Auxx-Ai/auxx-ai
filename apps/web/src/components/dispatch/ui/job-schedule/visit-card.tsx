@@ -9,12 +9,13 @@ import { RadioTab, RadioTabItem } from '@auxx/ui/components/radio-tab'
 import { EmptySection } from '@auxx/ui/components/section'
 import { TreeRowButton } from '@auxx/ui/components/tree-row'
 import { format } from 'date-fns'
-import { CalendarClock, Send, User, XCircle } from 'lucide-react'
+import { CalendarClock, Send, TriangleAlert, User, XCircle } from 'lucide-react'
 import { getInitials } from '~/components/groups/utils/group-utils'
 import type { RecordId } from '~/components/resources'
 import { useActors } from '~/components/resources/hooks/use-actor'
 import { useConfirm } from '~/hooks/use-confirm'
 import { VISIT_STATUS_FORWARD_ORDER, VISIT_STATUS_LABELS, type VisitStatus } from '../board/types'
+import { getVisitDayContext, isExecutionReady } from '../board/utils'
 import { type ExistingVisitForOverlap, SchedulePopover } from '../schedule-popover'
 import type { JobVisit, UseJobVisitsResult } from './use-job-visits'
 
@@ -61,9 +62,16 @@ export function VisitCard({
   const canCancel = status !== 'canceled' && status !== 'done'
   const canDispatch = canEdit && Boolean(visit.assigneeUserId) && isScheduled
 
+  const start = visit.startTime ? new Date(visit.startTime) : null
+  const end = visit.endTime ? new Date(visit.endTime) : null
+  const dayContext = getVisitDayContext(start, end)
+  const isOverdue = dayContext === 'past' && status !== 'done' && status !== 'canceled'
+
   const handleStatusChange = (next: string) => {
     // Forward-only, mirroring the server transition rules — RadioTab fires for
-    // any item, so ignore clicks on the current/past steps.
+    // any item, so ignore clicks on the current/past steps. Future-dated visits
+    // are read-only (execution actions are day-of only).
+    if (!isExecutionReady(dayContext)) return
     if (VISIT_STATUS_FORWARD_ORDER.indexOf(next as VisitStatus) <= currentIndex) return
     mutations.setVisitStatus.mutate({ visitId: visit.id, status: next as VisitStatus })
   }
@@ -91,9 +99,6 @@ export function VisitCard({
     if (!confirmed) return
     mutations.setVisitStatus.mutate({ visitId: visit.id, status: 'canceled' })
   }
-
-  const start = visit.startTime ? new Date(visit.startTime) : null
-  const end = visit.endTime ? new Date(visit.endTime) : null
 
   return (
     <div className='group/tree-row space-y-2.5 rounded-2xl border bg-primary-100/50 py-2.5 px-3'>
@@ -186,22 +191,34 @@ export function VisitCard({
       </div>
 
       {status !== 'canceled' && (
-        <RadioTab
-          value={status}
-          onValueChange={handleStatusChange}
-          size='sm'
-          radioGroupClassName='grid w-full grid-cols-4'
-          className='border border-primary-200 flex w-full'>
-          {VISIT_STATUS_FORWARD_ORDER.map((step, index) => (
-            <RadioTabItem
-              key={step}
-              value={step}
-              size='sm'
-              disabled={!canEdit || index < currentIndex || mutations.setVisitStatus.isPending}>
-              {VISIT_STATUS_LABELS[step]}
-            </RadioTabItem>
-          ))}
-        </RadioTab>
+        <>
+          {isOverdue && (
+            <div className='flex items-center gap-1 text-xs text-amber-600 dark:text-amber-500'>
+              <TriangleAlert className='size-3' /> Overdue — not completed
+            </div>
+          )}
+          <RadioTab
+            value={status}
+            onValueChange={handleStatusChange}
+            size='sm'
+            radioGroupClassName='grid w-full grid-cols-4'
+            className='border border-primary-200 flex w-full'>
+            {VISIT_STATUS_FORWARD_ORDER.map((step, index) => (
+              <RadioTabItem
+                key={step}
+                value={step}
+                size='sm'
+                disabled={
+                  !isExecutionReady(dayContext) ||
+                  !canEdit ||
+                  index < currentIndex ||
+                  mutations.setVisitStatus.isPending
+                }>
+                {VISIT_STATUS_LABELS[step]}
+              </RadioTabItem>
+            ))}
+          </RadioTab>
+        </>
       )}
 
       <ConfirmDialog />

@@ -31,6 +31,14 @@
  * precedent) — reads use the `database.query.*` relational API (operators arrive as callback
  * args, no import needed) and the two raw-table deletes use `database.$client.query(...)`.
  *
+ * `advanceMyVisit` now requires `clientDayEnd` (the day-gate guard added alongside the visit
+ * detail page's future-dated "Starts …" chip — forward advances on a visit scheduled after
+ * `clientDayEnd` are rejected; undo is exempt). Every pre-existing `advanceMyVisit` call below
+ * passes `FAR_FUTURE` so none of them are affected by the new guard — the visits those calls
+ * exercise are either unscheduled (`startTime` null, guard is a no-op regardless of
+ * `clientDayEnd`) or not testing the date gate. Section 8 below is the dedicated coverage for
+ * the guard itself, using a real `endOfToday()` boundary.
+ *
  * Run (from repo root) under the worker runtime:
  *   cd apps/worker && npx dotenv -e ../../.env -- node --conditions source --import tsx/esm \
  *     scripts/verify-dispatch-ws1.ts
@@ -50,6 +58,18 @@ import {
 import { BadRequestError, ForbiddenError, NotFoundError } from '@auxx/lib/errors'
 import { getMyMeeting, listMyMeetings } from '@auxx/lib/recording/calendar'
 import { UnifiedCrudHandler } from '@auxx/lib/resources'
+
+/** `clientDayEnd` for `advanceMyVisit` calls that aren't exercising the day-gate guard (section
+ * 8) — a date far enough out that it never itself trips the "scheduled for a future day" check. */
+const FAR_FUTURE = new Date('2099-01-01T00:00:00Z')
+
+/** The worker's client-local end-of-today — the real boundary the day-gate guard compares
+ * `visit.startTime` against (section 8). */
+function endOfToday(): Date {
+  const d = new Date()
+  d.setHours(23, 59, 59, 999)
+  return d
+}
 
 let pass = 0
 let fail = 0
@@ -231,7 +251,13 @@ async function main() {
     )
 
     const advanceForbidden = await expectThrow(() =>
-      advanceMyVisit({ organizationId, userId: otherUserId, visitId: v1.id, to: 'en_route' })
+      advanceMyVisit({
+        organizationId,
+        userId: otherUserId,
+        visitId: v1.id,
+        to: 'en_route',
+        clientDayEnd: FAR_FUTURE,
+      })
     )
     check(
       'advanceMyVisit throws ForbiddenError for a visit assigned to a different user',
@@ -262,6 +288,7 @@ async function main() {
         userId,
         visitId: 'nonexistent-visit-id-000000',
         to: 'en_route',
+        clientDayEnd: FAR_FUTURE,
       })
     )
     check(
@@ -290,6 +317,7 @@ async function main() {
       userId,
       visitId: v1.id,
       to: 'en_route',
+      clientDayEnd: FAR_FUTURE,
     })
     check(
       'advanceMyVisit succeeds for the owner (scheduled->en_route)',
@@ -500,15 +528,33 @@ async function main() {
     await assignVisit({ organizationId, userId, visitId: v4.id, assigneeUserId: userId })
 
     const rejectOnSite = await expectThrow(() =>
-      advanceMyVisit({ organizationId, userId, visitId: v4.id, to: 'on_site' })
+      advanceMyVisit({
+        organizationId,
+        userId,
+        visitId: v4.id,
+        to: 'on_site',
+        clientDayEnd: FAR_FUTURE,
+      })
     )
     check('reject: scheduled->on_site', rejectOnSite instanceof BadRequestError, rejectOnSite)
     const rejectDone = await expectThrow(() =>
-      advanceMyVisit({ organizationId, userId, visitId: v4.id, to: 'done' })
+      advanceMyVisit({
+        organizationId,
+        userId,
+        visitId: v4.id,
+        to: 'done',
+        clientDayEnd: FAR_FUTURE,
+      })
     )
     check('reject: scheduled->done', rejectDone instanceof BadRequestError, rejectDone)
 
-    const step1 = await advanceMyVisit({ organizationId, userId, visitId: v4.id, to: 'en_route' })
+    const step1 = await advanceMyVisit({
+      organizationId,
+      userId,
+      visitId: v4.id,
+      to: 'en_route',
+      clientDayEnd: FAR_FUTURE,
+    })
     check('allow: scheduled->en_route', step1.status === 'en_route', step1.status)
     check(
       'allow: scheduled->en_route delegates to setVisitStatus (WO rolls up to en_route)',
@@ -516,29 +562,59 @@ async function main() {
     )
 
     const rejectEnRouteDone = await expectThrow(() =>
-      advanceMyVisit({ organizationId, userId, visitId: v4.id, to: 'done' })
+      advanceMyVisit({
+        organizationId,
+        userId,
+        visitId: v4.id,
+        to: 'done',
+        clientDayEnd: FAR_FUTURE,
+      })
     )
     check('reject: en_route->done', rejectEnRouteDone instanceof BadRequestError, rejectEnRouteDone)
 
-    const step2 = await advanceMyVisit({ organizationId, userId, visitId: v4.id, to: 'on_site' })
+    const step2 = await advanceMyVisit({
+      organizationId,
+      userId,
+      visitId: v4.id,
+      to: 'on_site',
+      clientDayEnd: FAR_FUTURE,
+    })
     check('allow: en_route->on_site', step2.status === 'on_site', step2.status)
     check(
       'allow: en_route->on_site delegates to setVisitStatus (WO rolls up to on_site)',
       (await woStatus(organizationId, wo4.instance.id)) === 'on_site'
     )
 
-    const undo1 = await advanceMyVisit({ organizationId, userId, visitId: v4.id, to: 'en_route' })
+    const undo1 = await advanceMyVisit({
+      organizationId,
+      userId,
+      visitId: v4.id,
+      to: 'en_route',
+      clientDayEnd: FAR_FUTURE,
+    })
     check('allow (undo): on_site->en_route', undo1.status === 'en_route', undo1.status)
     check(
       'undo does not roll the WO status backward (forward-only guard, stays on_site)',
       (await woStatus(organizationId, wo4.instance.id)) === 'on_site'
     )
 
-    const undo2 = await advanceMyVisit({ organizationId, userId, visitId: v4.id, to: 'scheduled' })
+    const undo2 = await advanceMyVisit({
+      organizationId,
+      userId,
+      visitId: v4.id,
+      to: 'scheduled',
+      clientDayEnd: FAR_FUTURE,
+    })
     check('allow (undo): en_route->scheduled', undo2.status === 'scheduled', undo2.status)
 
     const rejectScheduledScheduled = await expectThrow(() =>
-      advanceMyVisit({ organizationId, userId, visitId: v4.id, to: 'scheduled' })
+      advanceMyVisit({
+        organizationId,
+        userId,
+        visitId: v4.id,
+        to: 'scheduled',
+        clientDayEnd: FAR_FUTURE,
+      })
     )
     check(
       'reject: scheduled->scheduled (not a listed transition)',
@@ -553,9 +629,95 @@ async function main() {
     await assignVisit({ organizationId, userId, visitId: v4b.id, assigneeUserId: userId })
     await setVisitStatus({ organizationId, userId, visitId: v4b.id, status: 'done' })
     const rejectDoneEnRoute = await expectThrow(() =>
-      advanceMyVisit({ organizationId, userId, visitId: v4b.id, to: 'en_route' })
+      advanceMyVisit({
+        organizationId,
+        userId,
+        visitId: v4b.id,
+        to: 'en_route',
+        clientDayEnd: FAR_FUTURE,
+      })
     )
     check('reject: done->en_route', rejectDoneEnRoute instanceof BadRequestError, rejectDoneEnRoute)
+
+    // ══════════════════════════════════════════════════════════════════════
+    // 4b. advanceMyVisit day-gate guard (`clientDayEnd`) — forward-only, undo exempt
+    // ══════════════════════════════════════════════════════════════════════
+    console.log('4b: advanceMyVisit day-gate guard')
+    const tomorrowStart = new Date(now.getTime() + 1 * 24 * 60 * 60 * 1000)
+    const wo4c = await createWO('day-gate future forward-reject')
+    const v4c = await firstVisit(wo4c.instance.id)
+    await assignVisit({ organizationId, userId, visitId: v4c.id, assigneeUserId: userId })
+    await scheduleVisit({
+      organizationId,
+      userId,
+      visitId: v4c.id,
+      startTime: tomorrowStart,
+      endTime: new Date(tomorrowStart.getTime() + 60 * 60 * 1000),
+    })
+    const rejectFutureForward = await expectThrow(() =>
+      advanceMyVisit({
+        organizationId,
+        userId,
+        visitId: v4c.id,
+        to: 'en_route',
+        clientDayEnd: endOfToday(),
+      })
+    )
+    check(
+      'reject: forward advance on a tomorrow-scheduled visit with clientDayEnd=today',
+      rejectFutureForward instanceof BadRequestError,
+      rejectFutureForward
+    )
+
+    const wo4d = await createWO('day-gate future undo-exempt')
+    const v4d = await firstVisit(wo4d.instance.id)
+    await assignVisit({ organizationId, userId, visitId: v4d.id, assigneeUserId: userId })
+    await scheduleVisit({
+      organizationId,
+      userId,
+      visitId: v4d.id,
+      startTime: tomorrowStart,
+      endTime: new Date(tomorrowStart.getTime() + 60 * 60 * 1000),
+    })
+    // Force en_route via the admin `setVisitStatus` path directly — `advanceMyVisit` itself
+    // can't reach en_route on a future visit (that's exactly the forward-reject case above).
+    await setVisitStatus({ organizationId, userId, visitId: v4d.id, status: 'en_route' })
+    const undoFuture = await advanceMyVisit({
+      organizationId,
+      userId,
+      visitId: v4d.id,
+      to: 'scheduled',
+      clientDayEnd: endOfToday(),
+    })
+    check(
+      'allow: undo on a future-dated visit succeeds regardless of clientDayEnd (guard is forward-only)',
+      undoFuture.status === 'scheduled',
+      undoFuture.status
+    )
+
+    const yesterdayStart = new Date(now.getTime() - 1 * 24 * 60 * 60 * 1000)
+    const wo4e = await createWO('day-gate past forward-allowed')
+    const v4e = await firstVisit(wo4e.instance.id)
+    await assignVisit({ organizationId, userId, visitId: v4e.id, assigneeUserId: userId })
+    await scheduleVisit({
+      organizationId,
+      userId,
+      visitId: v4e.id,
+      startTime: yesterdayStart,
+      endTime: new Date(yesterdayStart.getTime() + 60 * 60 * 1000),
+    })
+    const pastForward = await advanceMyVisit({
+      organizationId,
+      userId,
+      visitId: v4e.id,
+      to: 'en_route',
+      clientDayEnd: endOfToday(),
+    })
+    check(
+      'allow: forward advance on a past-dated visit still succeeds (guard only blocks the future)',
+      pastForward.status === 'en_route',
+      pastForward.status
+    )
 
     // ══════════════════════════════════════════════════════════════════════
     // 5. closeMyVisit matrix — the MI2 collision resolution

@@ -17,8 +17,10 @@ import {
   DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
 import { toastError } from '@auxx/ui/components/toast'
-import { MoreVertical } from 'lucide-react'
+import { endOfDay, format } from 'date-fns'
+import { Clock, MoreVertical } from 'lucide-react'
 import { useState } from 'react'
+import { getVisitDayContext } from '~/components/dispatch/ui/board/utils'
 import { api } from '~/trpc/react'
 import { VisitCloseChooser } from './visit-close-chooser'
 
@@ -59,14 +61,28 @@ interface VisitStatusButtonProps {
   /** Whether the work order has a customer attached — threaded to the close chooser's
    * "Close job & invoice" disabled state (08 §3). */
   hasContact: boolean
+  /** Scheduled window — used to gate day-of advance actions (`getVisitDayContext`). A
+   * future-dated visit shows a muted "Starts <date>" chip instead of the advance button. */
+  startTime: Date | null
+  endTime?: Date | null
 }
 
 /**
  * Advancing status button + overflow ("Undo last") + the close chooser it opens on
  * "Complete…". Manages the chooser's open state internally so callers only need the visit's
  * `id`/`status` (+ `hasContact`, threaded through to the chooser).
+ *
+ * "Start travel"/"Arrived" are day-of actions: for a visit scheduled on a future day, the
+ * advance button (and the undo dropdown) are replaced by a muted, non-interactive "Starts …"
+ * chip — the server enforces the same rule via `advanceMyVisit`'s `clientDayEnd` guard.
  */
-export function VisitStatusButton({ visitId, status, hasContact }: VisitStatusButtonProps) {
+export function VisitStatusButton({
+  visitId,
+  status,
+  hasContact,
+  startTime,
+  endTime,
+}: VisitStatusButtonProps) {
   const [chooserOpen, setChooserOpen] = useState(false)
   const utils = api.useUtils()
 
@@ -86,15 +102,30 @@ export function VisitStatusButton({ visitId, status, hasContact }: VisitStatusBu
     )
   }
 
+  const dayContext = getVisitDayContext(startTime, endTime)
   const step = ADVANCE_STEP[status]
   const undoTo = UNDO_STEP[status]
+
+  if (dayContext === 'future') {
+    return (
+      <div className='flex items-center gap-2'>
+        <Badge variant='zinc' size='sm'>
+          <Clock />
+          Starts {format(startTime as Date, 'EEE, MMM d')}
+        </Badge>
+        {/* M3 "location sharing active" indicator lands here (02-tracking-pipeline.md §1). */}
+      </div>
+    )
+  }
 
   return (
     <div className='flex items-center gap-2'>
       {step ? (
         <Button
           className='flex-1'
-          onClick={() => advance.mutate({ visitId, to: step.to })}
+          onClick={() =>
+            advance.mutate({ visitId, to: step.to, clientDayEnd: endOfDay(new Date()) })
+          }
           loading={advance.isPending}
           loadingText='Updating…'>
           {step.label}
@@ -116,7 +147,9 @@ export function VisitStatusButton({ visitId, status, hasContact }: VisitStatusBu
           </DropdownMenuTrigger>
           <DropdownMenuContent align='end'>
             <DropdownMenuItem
-              onClick={() => advance.mutate({ visitId, to: undoTo })}
+              onClick={() =>
+                advance.mutate({ visitId, to: undoTo, clientDayEnd: endOfDay(new Date()) })
+              }
               disabled={advance.isPending}>
               Undo last
             </DropdownMenuItem>
