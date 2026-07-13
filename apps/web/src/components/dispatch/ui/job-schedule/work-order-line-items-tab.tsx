@@ -32,7 +32,7 @@ export function WorkOrderLineItemsTab({ recordId, variant = 'tab' }: DetailViewT
       )}
       <div
         className={cn(
-          'flex flex-col px-4 pb-4',
+          'flex flex-col',
           isSection ? 'max-h-[60vh] overflow-auto' : 'min-h-0 flex-1'
         )}>
         <LineBuilder documentRecordId={recordId} documentType='work_order' />

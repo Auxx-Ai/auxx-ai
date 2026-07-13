@@ -11,6 +11,7 @@ import { differenceInMinutes } from 'date-fns'
 import { useCallback } from 'react'
 import { createDateWithTime } from '~/components/pickers/date-time-picker/utils'
 import { api } from '~/trpc/react'
+import type { BacklogItem } from '../../board/types'
 import type {
   PlannerBoard,
   PlannerDayWindow,
@@ -26,11 +27,12 @@ import type {
 //   data: { type: 'planner-backlog', visitId, item } })` — `item` (the full `BacklogItem`) rides
 //   along only for the shared drag-ghost overlay (`AppDragOverlay`/`renderAppDragGhost`) to read;
 //   this handler still only needs `visitId`.
-// - Stop row draggable (stop-list-panel.tsx), inside a worker's `SortableContext`:
+// - Stop row draggable (sidebar routes-group.tsx), inside a worker's `SortableContext`:
 //   `useSortable({ id: visitId })` combined with `data: { type: 'planner-stop', visitId,
-//   assigneeUserId } }` passed to the same `useSortable` call (dnd-kit merges `data` from
-//   `useSortable`'s options onto the draggable/droppable it registers).
-// - Worker section droppable (stop-list-panel.tsx) — catches drops on the section body itself
+//   assigneeUserId, item } }` passed to the same `useSortable` call (dnd-kit merges `data` from
+//   `useSortable`'s options onto the draggable/droppable it registers). Like the backlog row,
+//   `item` exists only for the shared drag-ghost overlay.
+// - Worker section droppable (routes-group.tsx) — catches drops on the section body itself
 //   (an empty list, or past the last row), not just a specific stop row:
 //   `useDroppable({ id: \`planner-worker-list-${assigneeUserId}\`, data: { type:
 //   'planner-worker-list', assigneeUserId } })`.
@@ -43,10 +45,13 @@ export interface PlannerStopDragData {
   type: 'planner-stop'
   visitId: string
   assigneeUserId: string
+  /** Ghost payload for `renderAppDragGhost` only — never read by the drag-end handler. */
+  item?: BacklogItem
 }
 export interface PlannerWorkerListDropData {
   type: 'planner-worker-list'
-  assigneeUserId: string
+  /** `null` = the sidebar Workers group's synthetic "Unassigned" row (workers-group.tsx). */
+  assigneeUserId: string | null
 }
 export type PlannerDragData = PlannerBacklogDragData | PlannerStopDragData
 export type PlannerDropData = PlannerStopDragData | PlannerWorkerListDropData
@@ -329,6 +334,15 @@ export function useRoutePlannerDragEnd({
       if (!activeData || !overData) return
 
       const targetAssigneeUserId = overData.assigneeUserId
+      if (targetAssigneeUserId === null) {
+        // The Workers group's "Unassigned" row: a stop drops back to unassigned (no
+        // `setRouteOrder` follow-up — the router input requires a real assignee); a backlog
+        // item is already unassigned, so there's nothing to do.
+        if (activeData.type === 'planner-stop') {
+          mutations.assignVisit.mutate({ visitId: activeData.visitId, assigneeUserId: null })
+        }
+        return
+      }
       const targetStops = stopsForWorker(board, targetAssigneeUserId)
       const targetIds = targetStops.map((v) => v.id)
       let dropIndex =

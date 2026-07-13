@@ -3,10 +3,10 @@
 'use client'
 
 import {
-  closestCenter,
   DndContext,
   KeyboardSensor,
   PointerSensor,
+  pointerWithin,
   TouchSensor,
   useSensor,
   useSensors,
@@ -44,7 +44,10 @@ export function PlannerDndProvider({
   const handleDragEnd = useRoutePlannerDragEnd({ board, window, geometryByWorker })
 
   return (
-    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+    // `pointerWithin` (files-management.tsx / dashboard.tsx's choice) over `closestCenter`:
+    // the sidebar nests row droppables inside section droppables, and center-distance picks
+    // the section only in narrow bands — pointer containment resolves innermost-first.
+    <DndContext sensors={sensors} collisionDetection={pointerWithin} onDragEnd={handleDragEnd}>
       {children}
       <AppDragOverlay />
     </DndContext>
