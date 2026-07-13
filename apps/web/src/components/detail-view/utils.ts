@@ -5,6 +5,7 @@ import {
   Calendar,
   CalendarClock,
   Clock,
+  CreditCard,
   History,
   HouseIcon,
   Layers,
@@ -39,6 +40,8 @@ const ICON_MAP: Record<string, LucideIcon> = {
   calendar: Calendar,
   'calendar-clock': CalendarClock,
   history: History,
+  // work_order Billing section anchor (money plan 10 §E).
+  'credit-card': CreditCard,
 }
 
 /**

@@ -106,6 +106,13 @@ export interface DeleteManualPaymentInput extends MoneyMutationInput {
   transactionId: string
 }
 
+/** Input for `listWorkOrderPayments` — the job page's cross-invoice payments read (money
+ * work-order billing tab build spec §A). */
+export interface ListWorkOrderPaymentsInput extends MoneyMutationInput {
+  /** EntityInstance id of the work order (not the RecordId). */
+  workOrderInstanceId: string
+}
+
 /** Input for `syncInvoicePaymentState` — the ledger → invoice mirror projection (§E.4). */
 export interface SyncInvoicePaymentStateInput extends MoneyMutationInput {
   /** EntityInstance id of the invoice (not the RecordId). */

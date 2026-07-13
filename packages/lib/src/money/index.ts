@@ -33,6 +33,7 @@ export {
 export {
   deleteManualPayment,
   hasSucceededCharges,
+  listWorkOrderPayments,
   recordManualPayment,
   syncInvoicePaymentState,
   syncTransaction,
@@ -94,6 +95,7 @@ export type {
   InvoiceScheduleQueryInput,
   LineForTotals,
   ListUninvoicedLinesInput,
+  ListWorkOrderPaymentsInput,
   MoneyMutationInput,
   PaymentMethod,
   QuoteLifecycleInput,

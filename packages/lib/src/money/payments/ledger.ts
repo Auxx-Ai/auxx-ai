@@ -4,15 +4,17 @@ import type { PaymentTransactionEntity } from '@auxx/database'
 import { database, schema } from '@auxx/database'
 import type { TypedFieldValue } from '@auxx/types'
 import { extractValue } from '@auxx/types'
-import { toRecordId } from '@auxx/types/resource'
-import { and, eq, inArray } from 'drizzle-orm'
+import { parseRecordId, toRecordId } from '@auxx/types/resource'
+import { and, asc, eq, inArray } from 'drizzle-orm'
 import { getOrgCache } from '../../cache'
 import { BadRequestError, ForbiddenError, NotFoundError } from '../../errors'
 import { FieldValueService } from '../../field-values/field-value-service'
+import { extractRelationshipRecordIds } from '../../field-values/relationship-field'
 import { UnifiedCrudHandler } from '../../resources/crud'
 import { getOrganizationSetting } from '../../settings/settings-service'
 import type {
   DeleteManualPaymentInput,
+  ListWorkOrderPaymentsInput,
   RecordManualPaymentInput,
   SyncInvoicePaymentStateInput,
 } from '../types'
@@ -73,6 +75,45 @@ export async function hasSucceededCharges(
     columns: { id: true },
   })
   return !!row
+}
+
+/**
+ * List every ledger row across ALL invoices linked to a work order, ordered `createdAt` asc
+ * (money §A build spec, plans/dispatch/money/10-work-order-billing-tab.md §A) — the
+ * cross-invoice read backing the job page's billing section (`listPayments` stays
+ * per-invoice, invoice-drawer-only, and is left untouched). Resolves the WO's invoices via the
+ * `work_order_invoices` inverse relationship — the same `getFieldValues` +
+ * `extractRelationshipRecordIds` mechanism the client's `WorkOrderInvoicesCard` reads
+ * (`work-order-related-cards.tsx`), not a new FieldValue query shape. Returns `[]` without
+ * touching the ledger table when the work order has no invoices yet.
+ */
+export async function listWorkOrderPayments(
+  input: ListWorkOrderPaymentsInput
+): Promise<PaymentTransactionEntity[]> {
+  const { organizationId, userId, workOrderInstanceId } = input
+  const handler = new UnifiedCrudHandler(organizationId, userId)
+  const workOrderRecordId = toRecordId('work_order', workOrderInstanceId)
+
+  const woCf = await getOrgCache()
+    .from(organizationId, 'customFields')
+    .bySystemAttributes(['work_order_invoices'] as const)
+  if (!woCf.work_order_invoices) return []
+
+  const values = await handler.getFieldValues(workOrderRecordId, [woCf.work_order_invoices.id])
+  const invoiceRecordIds = extractRelationshipRecordIds(values.get(woCf.work_order_invoices.id))
+  if (invoiceRecordIds.length === 0) return []
+
+  const invoiceInstanceIds = invoiceRecordIds.map(
+    (recordId) => parseRecordId(recordId).entityInstanceId
+  )
+
+  return database.query.PaymentTransaction.findMany({
+    where: and(
+      eq(schema.PaymentTransaction.organizationId, organizationId),
+      inArray(schema.PaymentTransaction.invoiceInstanceId, invoiceInstanceIds)
+    ),
+    orderBy: asc(schema.PaymentTransaction.createdAt),
+  })
 }
 
 /**

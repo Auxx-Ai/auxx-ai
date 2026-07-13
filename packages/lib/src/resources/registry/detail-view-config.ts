@@ -130,6 +130,7 @@ export const DETAIL_VIEW_CONFIG_REGISTRY: DetailViewConfigRegistry = {
       { value: 'schedule', label: 'Schedule', icon: 'calendar' },
       { value: 'history', label: 'History', icon: 'history' },
       { value: 'line-items', label: 'Line items', icon: 'receipt-text' },
+      { value: 'billing', label: 'Billing', icon: 'credit-card' },
       { value: 'timeline', label: 'Timeline', icon: 'clock' },
       { value: 'tasks', label: 'Tasks', icon: 'list-todo' },
     ],
