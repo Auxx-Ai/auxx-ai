@@ -2,12 +2,21 @@
 
 'use client'
 
-import { ModuleSidebarToggleItem } from '@auxx/ui/components/module-sidebar'
-import { SidebarGroup, SidebarGroupCollapse, SidebarMenu } from '@auxx/ui/components/sidebar'
-import { useMemo } from 'react'
+import { DropdownMenuItem } from '@auxx/ui/components/dropdown-menu'
+import {
+  SidebarGroup,
+  SidebarGroupCollapse,
+  SidebarMenu,
+  SidebarMenuItem,
+} from '@auxx/ui/components/sidebar'
+import { cn } from '@auxx/ui/lib/utils'
+import { Eye, EyeOff, UserPlus } from 'lucide-react'
+import { useMemo, useState } from 'react'
+import { SidebarGroupHeader } from '~/components/global/sidebar/sidebar-group-header'
+import { SidebarItem } from '~/components/global/sidebar/sidebar-item'
+import { AddWorkerDialog } from '../add-worker-dialog'
 import { type BoardWorker, UNASSIGNED_RESOURCE_ID } from '../board/types'
 import { DEFAULT_WORKER_COLOR, UNASSIGNED_COLOR } from '../board/utils'
-import { SidebarGroupHeader } from './sidebar-group-header'
 
 interface WorkersGroupProps {
   workers: BoardWorker[]
@@ -22,11 +31,13 @@ interface WorkersGroupProps {
 }
 
 /**
- * Sidebar Workers group (v3 sidebar plan §1.2) — a color-dot + visibility-toggle row per worker
- * plus a synthetic "Unassigned" row (`UNASSIGNED_RESOURCE_ID`), mirroring the deleted
- * `WorkerFilterPopover`'s exact selection semantics: toggling writes the store's
- * `hiddenWorkerIds` (inverse set — see `board/utils.ts`'s `selectedWorkerIdsFromHidden`
- * adapter for how consumers read it back as `Set<string> | null`).
+ * Sidebar Workers group (v3 sidebar plan §1.2, refactored onto the global `SidebarGroupHeader`/
+ * `SidebarItem` primitives per plans/dispatch/v3/02-sidebar-primitives-refactor.md Phase 3) — a
+ * color-dot + visibility-toggle row per worker plus a synthetic "Unassigned" row
+ * (`UNASSIGNED_RESOURCE_ID`), mirroring the deleted `WorkerFilterPopover`'s exact selection
+ * semantics: toggling writes the store's `hiddenWorkerIds` (inverse set — see `board/utils.ts`'s
+ * `selectedWorkerIdsFromHidden` adapter for how consumers read it back as `Set<string> | null`).
+ * The header's `additionalOptions` opens `AddWorkerDialog` ("New worker").
  */
 export function WorkersGroup({
   workers,
@@ -37,31 +48,88 @@ export function WorkersGroup({
   onOpenChange,
 }: WorkersGroupProps) {
   const hidden = useMemo(() => new Set(hiddenWorkerIds), [hiddenWorkerIds])
+  const [addOpen, setAddOpen] = useState(false)
+
+  const additionalOptions = (
+    <DropdownMenuItem
+      onClick={(e) => {
+        e.stopPropagation()
+        setAddOpen(true)
+      }}>
+      <UserPlus />
+      New worker
+    </DropdownMenuItem>
+  )
 
   return (
     <SidebarGroup>
-      <SidebarGroupHeader title='Workers' open={open} onOpenChange={onOpenChange} />
+      <SidebarGroupHeader
+        title='Workers'
+        isOpen={open}
+        toggleOpen={() => onOpenChange(!open)}
+        isEditMode={false}
+        onToggleEditMode={() => {}}
+        hideEditOption
+        additionalOptions={additionalOptions}
+      />
       <SidebarGroupCollapse open={open}>
         <SidebarMenu>
           {workers.map((worker) => (
-            <ModuleSidebarToggleItem
+            <WorkerRow
               key={worker.id}
-              label={worker.user?.name ?? worker.user?.email ?? 'Worker'}
-              dotStyle={{
-                backgroundColor: colorByUserId.get(worker.userId) ?? DEFAULT_WORKER_COLOR,
-              }}
-              checked={!hidden.has(worker.userId)}
-              onCheckedChange={() => onToggleWorker(worker.userId)}
+              id={worker.id}
+              name={worker.user?.name ?? worker.user?.email ?? 'Worker'}
+              color={colorByUserId.get(worker.userId) ?? DEFAULT_WORKER_COLOR}
+              visible={!hidden.has(worker.userId)}
+              onToggle={() => onToggleWorker(worker.userId)}
             />
           ))}
-          <ModuleSidebarToggleItem
-            label='Unassigned'
-            dotStyle={{ backgroundColor: UNASSIGNED_COLOR }}
-            checked={!hidden.has(UNASSIGNED_RESOURCE_ID)}
-            onCheckedChange={() => onToggleWorker(UNASSIGNED_RESOURCE_ID)}
+          <WorkerRow
+            id={UNASSIGNED_RESOURCE_ID}
+            name='Unassigned'
+            color={UNASSIGNED_COLOR}
+            visible={!hidden.has(UNASSIGNED_RESOURCE_ID)}
+            onToggle={() => onToggleWorker(UNASSIGNED_RESOURCE_ID)}
           />
         </SidebarMenu>
       </SidebarGroupCollapse>
+      <AddWorkerDialog
+        open={addOpen}
+        onOpenChange={setAddOpen}
+        excludeUserIds={workers.map((w) => w.userId)}
+        onAdded={() => {}}
+      />
     </SidebarGroup>
+  )
+}
+
+interface WorkerRowProps {
+  id: string
+  name: string
+  color: string
+  visible: boolean
+  onToggle: () => void
+}
+
+/** One worker/unassigned row — color dot + name (dimmed when hidden) + hover-revealed eye toggle,
+ * ported from the deleted `ModuleSidebarToggleItem`'s visual treatment. */
+function WorkerRow({ id, name, color, visible, onToggle }: WorkerRowProps) {
+  return (
+    <SidebarMenuItem>
+      <SidebarItem
+        id={id}
+        name={name}
+        onClick={onToggle}
+        className={cn(!visible && 'text-muted-foreground/70')}
+        icon={<span className='size-2 shrink-0 rounded-full' style={{ backgroundColor: color }} />}
+        end={
+          visible ? (
+            <EyeOff className='hidden size-3.5 text-muted-foreground group-hover/menu-item:block' />
+          ) : (
+            <Eye className='size-3.5 text-muted-foreground opacity-60' />
+          )
+        }
+      />
+    </SidebarMenuItem>
   )
 }

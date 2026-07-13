@@ -2,16 +2,7 @@
 
 'use client'
 
-import {
-  Sidebar,
-  SidebarContent,
-  SidebarMenuButton,
-  SidebarMenuItem,
-  SidebarProvider,
-  useSidebar,
-} from '@auxx/ui/components/sidebar'
-import { cn } from '@auxx/ui/lib/utils'
-import { Eye, EyeOff } from 'lucide-react'
+import { Sidebar, SidebarContent, SidebarProvider, useSidebar } from '@auxx/ui/components/sidebar'
 import * as React from 'react'
 
 interface ModuleSidebarProps {
@@ -94,67 +85,4 @@ function ModuleSidebarMobileSync({ open }: { open: boolean }) {
 /** Alias of `useSidebar` scoped to the nested module sidebar's own context. */
 const useModuleSidebar = useSidebar
 
-interface ModuleSidebarToggleItemProps {
-  label: string
-  /** Tailwind background class for the leading color dot, e.g. `'bg-blue-500'`. Keep
-   * `@auxx/ui` lib-free — callers resolve their own swatch classes (or hex via `dotStyle`). */
-  dotClassName?: string
-  /** Inline style escape hatch for colors that aren't Tailwind utilities (e.g. a per-record
-   * hex color). Merged onto the dot's `style`, in addition to `dotClassName`. */
-  dotStyle?: React.CSSProperties
-  checked: boolean
-  onCheckedChange: (checked: boolean) => void
-  /** Optional trailing count (hidden on hover in favor of the visibility toggle). */
-  count?: number
-  className?: string
-}
-
-/**
- * Notion-style one-line toggle row: color dot + truncated label + trailing visibility toggle
- * (an eye icon; count, if given, hides on hover to make room for it). Used for the Workers /
- * Tags groups now, calendar-label groups later. Built on `SidebarMenuItem`/`SidebarMenuButton`
- * so it inherits the sidebar's row sizing, hover, and focus styles.
- */
-function ModuleSidebarToggleItem({
-  label,
-  dotClassName,
-  dotStyle,
-  checked,
-  onCheckedChange,
-  count,
-  className,
-}: ModuleSidebarToggleItemProps) {
-  return (
-    <SidebarMenuItem className={className}>
-      <SidebarMenuButton
-        type='button'
-        size='sm'
-        aria-pressed={checked}
-        onClick={() => onCheckedChange(!checked)}
-        className='justify-between'>
-        <span className='flex min-w-0 items-center gap-2'>
-          <span
-            aria-hidden
-            className={cn('size-2 shrink-0 rounded-full', dotClassName ?? 'bg-muted-foreground')}
-            style={dotStyle}
-          />
-          <span className={cn('truncate', !checked && 'text-muted-foreground/70')}>{label}</span>
-        </span>
-        <span className='flex shrink-0 items-center text-muted-foreground'>
-          {typeof count === 'number' && (
-            <span className={cn('text-xs tabular-nums', checked && 'group-hover/menu-item:hidden')}>
-              {count}
-            </span>
-          )}
-          {checked ? (
-            <EyeOff className='hidden size-3.5 group-hover/menu-item:block' />
-          ) : (
-            <Eye className='size-3.5 opacity-60' />
-          )}
-        </span>
-      </SidebarMenuButton>
-    </SidebarMenuItem>
-  )
-}
-
-export { ModuleSidebar, ModuleSidebarToggleItem, useModuleSidebar }
+export { ModuleSidebar, useModuleSidebar }

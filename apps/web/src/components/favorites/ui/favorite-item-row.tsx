@@ -2,7 +2,7 @@
 'use client'
 
 import type { ReactNode } from 'react'
-import { SidebarItem } from '~/components/global/sidebar/sidebar-item'
+import { SidebarNavItem } from '~/components/global/sidebar/sidebar-nav-item'
 import { FavoriteRemoveButton } from './favorite-remove-button'
 
 interface FavoriteItemRowProps {
@@ -14,10 +14,10 @@ interface FavoriteItemRowProps {
   isActive?: boolean
 }
 
-/** Thin wrapper around SidebarItem that adds a "Remove from favorites" action. */
+/** Thin wrapper around SidebarNavItem that adds a "Remove from favorites" action. */
 export function FavoriteItemRow({ favoriteId, href, icon, title, isActive }: FavoriteItemRowProps) {
   return (
-    <SidebarItem
+    <SidebarNavItem
       id={favoriteId}
       name={title}
       href={href}

@@ -21,7 +21,7 @@ import {
   Workflow,
 } from 'lucide-react'
 import { usePathname } from 'next/navigation'
-import { SidebarItem } from '~/components/global/sidebar/sidebar-item'
+import { SidebarNavItem } from '~/components/global/sidebar/sidebar-nav-item'
 
 /**
  * Navigation item interface
@@ -156,7 +156,7 @@ export function AdminNavMain() {
               const url = `/admin/${item.slug}`
               return (
                 <SidebarMenuItem key={item.id}>
-                  <SidebarItem
+                  <SidebarNavItem
                     id={item.id}
                     name={item.label}
                     href={url}

@@ -59,7 +59,7 @@ import { useUser } from '~/hooks/use-user'
 import { useFeatureFlags } from '~/providers/feature-flag-provider'
 import { EditableSidebarItem } from './editable-sidebar-item'
 import { EntityFolder, entityDndId, folderDndId } from './entity-folder'
-import { SidebarItem } from './sidebar-item'
+import { SidebarNavItem } from './sidebar-nav-item'
 import { useSidebarStateContext } from './sidebar-state-context'
 
 /** dnd-kit drag payload for Records nodes. */
@@ -319,7 +319,7 @@ export function EntitySidebarNav() {
   function renderEntityRowNormal(entity: ProcessedEntity, parentFolderId: string | null) {
     return (
       <SidebarMenuItem key={entity.id}>
-        <SidebarItem
+        <SidebarNavItem
           id={entity.id}
           name={entity.plural}
           href={entity.href}
@@ -369,7 +369,7 @@ export function EntitySidebarNav() {
   }
 
   const folderDraftRow = creatingFolder ? (
-    <SidebarItem
+    <SidebarNavItem
       id='__new_entity_folder__'
       name=''
       href='#'

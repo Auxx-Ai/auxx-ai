@@ -27,6 +27,8 @@ interface SidebarGroupHeaderProps {
   onToggleGroupVisibility?: () => void
   /** Hide the "Edit Sidebar" option in dropdown menu */
   hideEditOption?: boolean
+  /** Generic trailing slot rendered before the 3-dot dropdown (e.g. a count). */
+  end?: React.ReactNode
 }
 
 export function SidebarGroupHeader({
@@ -39,6 +41,7 @@ export function SidebarGroupHeader({
   isGroupVisible = true,
   onToggleGroupVisibility,
   hideEditOption = false,
+  end,
 }: SidebarGroupHeaderProps) {
   const [popoverOpen, setPopoverOpen] = React.useState(false)
 
@@ -75,47 +78,52 @@ export function SidebarGroupHeader({
           <CollapsibleChevron open={isOpen} />
         </SidebarGroupLabel>
       )}
-      {!isEditMode && (additionalOptions || !hideEditOption) && (
-        <DropdownMenu open={popoverOpen} onOpenChange={setPopoverOpen}>
-          <DropdownMenuTrigger asChild>
-            <Button
-              variant='ghost'
-              size='icon'
-              className={cn(
-                'size-6 me-0.75 rounded-md opacity-100 sm:opacity-0 transition-opacity hover:bg-sidebar-accent focus-visible:ring-primary/10 sm:group-hover:opacity-100 hover:bg-primary-200/50',
-                {
-                  'bg-primary-200 opacity-100': popoverOpen,
-                  'group-hover/item:opacity-100': !popoverOpen,
-                }
-              )}
-              onClick={(e) => {
-                e.stopPropagation()
-                e.preventDefault()
-                setPopoverOpen(!popoverOpen)
-              }}>
-              <MoreVertical className='size-3.5' />
-              <span className='sr-only'>Options</span>
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent
-            className='w-50'
-            align='start'
-            onCloseAutoFocus={(e) => e.preventDefault()}>
-            <DropdownMenuGroup>
-              {additionalOptions}
-              {!hideEditOption && (
-                <DropdownMenuItem
+      {(end || (!isEditMode && (additionalOptions || !hideEditOption))) && (
+        <div className='flex items-center gap-1'>
+          {end}
+          {!isEditMode && (additionalOptions || !hideEditOption) && (
+            <DropdownMenu open={popoverOpen} onOpenChange={setPopoverOpen}>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant='ghost'
+                  size='icon'
+                  className={cn(
+                    'size-6 me-0.75 rounded-md opacity-100 sm:opacity-0 transition-opacity hover:bg-sidebar-accent focus-visible:ring-primary/10 sm:group-hover:opacity-100 hover:bg-primary-200/50',
+                    {
+                      'bg-primary-200 opacity-100': popoverOpen,
+                      'group-hover/item:opacity-100': !popoverOpen,
+                    }
+                  )}
                   onClick={(e) => {
                     e.stopPropagation()
-                    onToggleEditMode()
+                    e.preventDefault()
+                    setPopoverOpen(!popoverOpen)
                   }}>
-                  {isEditMode ? <Check /> : <Pencil />}
-                  {isEditMode ? 'Done Editing' : 'Edit Sidebar'}
-                </DropdownMenuItem>
-              )}
-            </DropdownMenuGroup>
-          </DropdownMenuContent>
-        </DropdownMenu>
+                  <MoreVertical className='size-3.5' />
+                  <span className='sr-only'>Options</span>
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent
+                className='w-50'
+                align='start'
+                onCloseAutoFocus={(e) => e.preventDefault()}>
+                <DropdownMenuGroup>
+                  {additionalOptions}
+                  {!hideEditOption && (
+                    <DropdownMenuItem
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        onToggleEditMode()
+                      }}>
+                      {isEditMode ? <Check /> : <Pencil />}
+                      {isEditMode ? 'Done Editing' : 'Edit Sidebar'}
+                    </DropdownMenuItem>
+                  )}
+                </DropdownMenuGroup>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
+        </div>
       )}
     </div>
   )

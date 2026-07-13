@@ -3,7 +3,7 @@
 
 import { DropdownMenuItem } from '@auxx/ui/components/dropdown-menu'
 import { BookmarkX, Lock } from 'lucide-react'
-import { SidebarItem } from '~/components/global/sidebar/sidebar-item'
+import { SidebarNavItem } from '~/components/global/sidebar/sidebar-nav-item'
 import { useRemoveFavorite } from '../hooks/use-remove-favorite'
 
 /**
@@ -21,7 +21,7 @@ export function PrivateItem({ favoriteId }: { favoriteId: string }) {
   )
 
   return (
-    <SidebarItem
+    <SidebarNavItem
       id={favoriteId}
       name='Unavailable'
       href='#'

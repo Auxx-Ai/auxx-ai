@@ -15,7 +15,7 @@ import { useUser } from '~/hooks/use-user'
 import { useFeatureFlags } from '~/providers/feature-flag-provider'
 import { CollapsibleSidebarSection } from './collapsible-sidebar-section'
 import { SidebarGroupHeader } from './sidebar-group-header'
-import { SidebarItem } from './sidebar-item'
+import { SidebarNavItem } from './sidebar-nav-item'
 import { useSidebarStateContext } from './sidebar-state-context'
 
 type Menu = { title: string; route: string; items: SidebarProps[] }
@@ -123,7 +123,7 @@ export function NavMain({ menu, itemActions }: Props) {
                   sectionId={item.id}>
                   {item.items.map((subItem) => (
                     <SidebarMenuSubItem key={subItem.id}>
-                      <SidebarItem
+                      <SidebarNavItem
                         id={subItem.id}
                         name={subItem.label}
                         href={subItem.url!}
@@ -136,7 +136,7 @@ export function NavMain({ menu, itemActions }: Props) {
                 </CollapsibleSidebarSection>
               ) : (
                 <SidebarMenuItem>
-                  <SidebarItem
+                  <SidebarNavItem
                     id={item.id}
                     name={item.label}
                     href={item.url!}
