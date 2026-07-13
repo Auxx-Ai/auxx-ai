@@ -4,14 +4,18 @@
 
 import { weekStartToIndex } from '@auxx/lib/availability/client'
 import { FeatureKey } from '@auxx/lib/permissions/client'
+import { isRecordId } from '@auxx/lib/resources/client'
 import { CalendarDndProvider } from '@auxx/ui/components/event-calendar'
 import { MainPageContent } from '@auxx/ui/components/main-page'
 import type { DragEndEvent } from '@dnd-kit/core'
 import { addMinutes } from 'date-fns'
 import { Lock } from 'lucide-react'
+import { parseAsString, useQueryState } from 'nuqs'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { renderAppDragGhost } from '~/components/global/app-drag-overlay'
 import { EmptyState } from '~/components/global/empty-state'
+import { RecordDrawer } from '~/components/records/record-drawer'
+import { toRecordId, useResource } from '~/components/resources'
 import { useSettings } from '~/hooks/use-settings'
 import { useUser } from '~/hooks/use-user'
 import { useFeatureFlags } from '~/providers/feature-flag-provider'
@@ -98,6 +102,24 @@ export function DispatchBoard() {
   const overlappingIds = useMemo(() => computeOverlappingVisitIds(data.events), [data.events])
 
   const [activeVisitId, setActiveVisitId] = useState<string | null>(null)
+
+  // Record-peek drawer (v4 Phase 4, decision #8): `?record=<defId>:<instanceId>` — a full
+  // RecordId in the URL (nuqs-synced, records-view's `?id=` precedent) so the drawer is
+  // deep-linkable and def-qualified: ANY record type (work order, invoice, quote, …) can be
+  // peeked from the board by setting the param. Sidebar backlog rows only carry the
+  // work-order instance id; resolve the entityDefinitionId once here (same recipe as
+  // `board/visit-popover.tsx`) so the sidebar itself stays def-id-agnostic. The map pin
+  // popover and board visit popover keep navigating to the job page.
+  const { resource: workOrderResource } = useResource('work-orders')
+  const [recordParam, setRecordParam] = useQueryState('record', parseAsString)
+  const drawerRecordId = recordParam && isRecordId(recordParam) ? recordParam : null
+  const handleSelectWorkOrder = useCallback(
+    (workOrderId: string) => {
+      if (!workOrderResource) return
+      setRecordParam(toRecordId(workOrderResource.id, workOrderId))
+    },
+    [workOrderResource, setRecordParam]
+  )
 
   const existingVisits: ExistingVisitForOverlap[] = useMemo(
     () =>
@@ -237,6 +259,7 @@ export function DispatchBoard() {
                 plannerWindow={planner.window}
                 plannerGeometryByWorker={planner.geometryByWorker}
                 tags={plannerTags}
+                onSelectWorkOrder={handleSelectWorkOrder}
               />
               <RoutePlannerView
                 board={planner.board}
@@ -265,6 +288,7 @@ export function DispatchBoard() {
                 allWorkers={data.allWorkers}
                 colorByUserId={data.colorByUserId}
                 backlogEvents={data.backlogEvents}
+                onSelectWorkOrder={handleSelectWorkOrder}
               />
               <BoardCalendarGrid
                 date={data.date}
@@ -288,6 +312,13 @@ export function DispatchBoard() {
           </CalendarDndProvider>
         )}
       </div>
+      <RecordDrawer
+        open={!!drawerRecordId}
+        onOpenChange={(nextOpen) => {
+          if (!nextOpen) setRecordParam(null)
+        }}
+        recordId={drawerRecordId ?? undefined}
+      />
     </MainPageContent>
   )
 }

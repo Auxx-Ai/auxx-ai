@@ -1,0 +1,2 @@
+ALTER TABLE "DispatchWorker" ADD COLUMN "routeStartAtHome" boolean DEFAULT true NOT NULL;--> statement-breakpoint
+ALTER TABLE "DispatchWorker" ADD COLUMN "routeEndAtHome" boolean DEFAULT true NOT NULL;

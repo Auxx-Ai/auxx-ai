@@ -2,6 +2,7 @@
 
 'use client'
 
+import { LoadingSpinner } from '~/components/global/loading-content'
 import { PlannerMap } from './planner-map'
 import type { PlannerBoard, PlannerDayWindow, PlannerFilters, RouteGeometry } from './types'
 
@@ -35,13 +36,10 @@ export function RoutePlannerView({
         filters={filters}
         geometryByWorker={geometryByWorker}
         window={window}
+        isLoading={isLoading}
       />
 
-      {isLoading && (
-        <div className='bg-background/80 text-muted-foreground absolute top-2 left-1/2 z-20 -translate-x-1/2 rounded-md px-2 py-1 text-xs backdrop-blur-sm'>
-          Loading…
-        </div>
-      )}
+      {isLoading && <LoadingSpinner />}
     </div>
   )
 }

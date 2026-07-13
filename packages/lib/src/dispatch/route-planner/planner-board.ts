@@ -13,6 +13,7 @@ import { resolveAvailability } from '../../availability'
 import { getOrgCache } from '../../cache'
 import { extractFieldValueScalar } from '../../field-values'
 import { listDispatchWorkers } from '../workers'
+import { resolveOrgDepot } from './depot'
 import type { PlannerBoardResult, PlannerDayWindow, PlannerWorker, PlannerWorkOrder } from './types'
 
 type FieldValueRow = typeof schema.FieldValue.$inferSelect
@@ -173,7 +174,7 @@ export async function getRoutePlannerBoard(
       ? allWorkers.filter((w) => workerIds.includes(w.userId))
       : allWorkers
 
-  const [dayVisits, backlogVisits, availabilityDays] = await Promise.all([
+  const [dayVisits, backlogVisits, availabilityDays, depot] = await Promise.all([
     database
       .select()
       .from(schema.WorkOrderVisit)
@@ -202,6 +203,7 @@ export async function getRoutePlannerBoard(
         )
       )
     ),
+    resolveOrgDepot(organizationId),
   ])
 
   const workers: PlannerWorker[] = filteredWorkers.map((w, i) => ({
@@ -221,5 +223,5 @@ export async function getRoutePlannerBoard(
       ? await getPlannerWorkOrderProjections(organizationId, workOrderIds)
       : []
 
-  return { workers, visits: dayVisits, backlog: backlogVisits, workOrders }
+  return { workers, visits: dayVisits, backlog: backlogVisits, workOrders, depot }
 }

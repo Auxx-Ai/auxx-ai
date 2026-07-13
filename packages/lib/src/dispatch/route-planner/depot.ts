@@ -54,20 +54,13 @@ interface BusinessGeocodeCache {
 }
 
 /**
- * Resolve the depot (route-start point) for a worker's route (contract item 5, design doc
- * decision #6): `worker.homeBase` (future per-worker depot seam, not read in v1) → the org's
- * business address (`resolveDocumentSettings`), geocoded once and cached in the
- * `documents.businessGeocode` setting, re-geocoded lazily when the address hash changes → `null`
- * (route starts cold at the first stop, no depot leg drawn).
+ * Resolve the org's depot point (contract item 5, design doc decision #6): the org's business
+ * address (`resolveDocumentSettings`), geocoded once and cached in the `documents.businessGeocode`
+ * setting, re-geocoded lazily when the address hash changes → `null` when the org has no business
+ * address. Org-level (no worker param) — this is the single depot both the planner board payload
+ * (`planner-board.ts`) and per-worker route resolution (`resolveRouteStart`) resolve from.
  */
-export async function resolveRouteStart(
-  organizationId: string,
-  worker: DispatchWorkerWithUser
-): Promise<LatLng | null> {
-  // Seam: `worker.homeBase` (ADDRESS_STRUCT, DispatchWorker schema) is the future per-worker
-  // depot. v1 does not read it — org address only (decision #6).
-  void worker.homeBase
-
+export async function resolveOrgDepot(organizationId: string): Promise<LatLng | null> {
   const { business } = await resolveDocumentSettings(organizationId)
   if (!business.address) return null
 
@@ -94,4 +87,21 @@ export async function resolveRouteStart(
   await updateOrganizationSetting({ organizationId, key: 'documents.businessGeocode', value })
 
   return result
+}
+
+/**
+ * Resolve the depot (route-start/end point) for a worker's route (contract item 5, design doc
+ * decision #6): `worker.homeBase` (future per-worker depot seam, not read in v1) → delegates to
+ * {@link resolveOrgDepot} — the worker param stays for that documented future seam and for
+ * callers that already resolve a worker (`directions.ts`).
+ */
+export async function resolveRouteStart(
+  organizationId: string,
+  worker: DispatchWorkerWithUser
+): Promise<LatLng | null> {
+  // Seam: `worker.homeBase` (ADDRESS_STRUCT, DispatchWorker schema) is the future per-worker
+  // depot. v1 does not read it — org address only (decision #6).
+  void worker.homeBase
+
+  return resolveOrgDepot(organizationId)
 }

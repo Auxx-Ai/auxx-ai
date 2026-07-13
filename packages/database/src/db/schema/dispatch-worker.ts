@@ -28,6 +28,10 @@ export const DispatchWorker = pgTable(
     color: text(),
     /** ADDRESS_STRUCT-shaped — see the type note above. */
     homeBase: jsonb(),
+    /** Route starts at the depot (org business address in v1) — worker Profile switch. */
+    routeStartAtHome: boolean().notNull().default(true),
+    /** Route ends back at the depot (org business address in v1) — worker Profile switch. */
+    routeEndAtHome: boolean().notNull().default(true),
     createdAt: timestamp({ precision: 3 }).defaultNow().notNull(),
     updatedAt: timestamp({ precision: 3 })
       .notNull()

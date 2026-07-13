@@ -43,6 +43,10 @@ interface DispatchSidebarProps {
   plannerGeometryByWorker?: Record<string, RouteGeometry | undefined>
   /** Distinct `work_order.tags` across the planner's visible day (map mode only). */
   tags?: string[]
+  /** Backlog row click (v4 Phase 4) — reports the clicked row's work-order instance id so the
+   * board shell can open a `RecordDrawer`. Sidebar rows only; the map pin popover and board
+   * visit popover keep navigating to the job page. */
+  onSelectWorkOrder?: (workOrderId: string) => void
 }
 
 /**
@@ -67,6 +71,7 @@ export function DispatchSidebar({
   plannerWindow,
   plannerGeometryByWorker,
   tags = [],
+  onSelectWorkOrder,
 }: DispatchSidebarProps) {
   const open = useDispatchSidebarStore((s) => s.open)
   const setOpen = useDispatchSidebarStore((s) => s.setOpen)
@@ -120,7 +125,10 @@ export function DispatchSidebar({
   }, [mode, backlogEvents, plannerBoard, selectedTags])
 
   return (
-    <ModuleSidebar open={open} onOpenChange={setOpen}>
+    <ModuleSidebar
+      open={open}
+      onOpenChange={setOpen}
+      className='py-0 [&_[data-sidebar=content]]:pt-0!'>
       <MiniCalendarSection
         date={date}
         onDateChange={onDateChange}
@@ -153,6 +161,7 @@ export function DispatchSidebar({
         droppable={mode === 'calendar'}
         open={isGroupOpen('backlog')}
         onOpenChange={(o) => setGroupOpen('backlog', o)}
+        onSelectWorkOrder={onSelectWorkOrder}
       />
       {mode === 'map' && plannerBoard && plannerFilters && plannerWindow && (
         <RoutesGroup

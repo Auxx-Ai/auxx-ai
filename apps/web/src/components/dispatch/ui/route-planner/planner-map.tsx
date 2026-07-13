@@ -7,8 +7,8 @@ import 'maplibre-gl/dist/maplibre-gl.css'
 import { Popover, PopoverAnchor, PopoverContent } from '@auxx/ui/components/popover'
 import { format } from 'date-fns'
 import maplibregl from 'maplibre-gl'
-import { useEffect, useMemo, useRef, useState } from 'react'
-import { DEFAULT_WORKER_COLOR, UNASSIGNED_COLOR } from '../board/utils'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { DEFAULT_WORKER_COLOR } from '../board/utils'
 import { dayStartAnchor, estimateArrivalForVisit } from './hooks/use-route-planner-mutations'
 import { PinPopoverContent } from './pin-popover'
 import type {
@@ -25,11 +25,50 @@ type PlannerWorkOrder = PlannerBoard['workOrders'][number]
 
 const MAP_STYLE = 'https://tiles.openfreemap.org/styles/liberty'
 
+/** Teardrop pin path (§2.2): 28×38, head circle radius 14 centered at (14,14), tip at (14,38). */
+const TEARDROP_PATH_D =
+  'M14 0C6.268 0 0 6.268 0 14c0 10.5 14 24 14 24s14-13.5 14-24C28 6.268 21.732 0 14 0z'
+/** Distinctly darker neutral for unassigned/backlog map pins — the board's lighter chip
+ * `UNASSIGNED_COLOR` (slate-400) doesn't read well on the light Liberty basemap tiles. */
+const MAP_UNASSIGNED_PIN_COLOR = '#475569'
+/** Home-base marker color — deliberately never a worker color (decision record #5/#9). */
+const HOME_MARKER_COLOR = '#1e293b'
+const PIN_OUTLINE_COLOR = 'rgba(0,0,0,0.45)'
+const SELECTED_RING_COLOR = '#2563eb'
+
+/** Worker colors are stored as `SelectOptionColor` IDS (e.g. `'amber'`, `'forest'`) — not valid
+ * CSS colors; MapLibre *validates* paint values and rejects them outright (`line-color: color
+ * expected, "amber" found`), and an SVG `fill` silently falls back to black. Resolve ids to
+ * full-saturation hex here; real CSS colors pass through so this stays compatible with the
+ * app-wide color-resolution fix (11-calendar-event-colors.md) once that lands. */
+const WORKER_COLOR_HEX: Record<string, string> = {
+  gray: '#71717a',
+  red: '#ef4444',
+  orange: '#f97316',
+  amber: '#f59e0b',
+  green: '#22c55e',
+  forest: '#15803d',
+  teal: '#14b8a6',
+  blue: '#3b82f6',
+  indigo: '#6366f1',
+  purple: '#a855f7',
+  pink: '#ec4899',
+}
+
+function resolveWorkerColor(color: string | null): string | null {
+  if (!color) return null
+  return WORKER_COLOR_HEX[color] ?? color
+}
+
 interface PlannerMapProps {
   board: PlannerBoard
   filters: PlannerFilters
   geometryByWorker: Record<string, RouteGeometry | undefined>
   window: PlannerDayWindow
+  /** True only until the board's first-ever load resolves (`use-route-planner-data.ts`'s
+   * `boardQuery.isLoading`) — gates the map's construction so it never paints a world view that
+   * then jumps to the depot once resolved (§2.1). */
+  isLoading: boolean
 }
 
 interface VisiblePin {
@@ -50,18 +89,23 @@ function matchesTagFilter(
 }
 
 /**
- * The full route line for one worker: `legs[0].geometry` already covers the whole route when
- * `source === 'mapbox'` (Phase 1 addendum). The `'fallback'` source's legs are each an
- * independent 2-point segment — concatenate them into one polyline (first leg's both points,
- * then every subsequent leg's endpoint).
+ * The full route line for one worker (§2.3): concatenates every `legs[].geometry` plus
+ * `returnLeg?.geometry ?? []`, deduping shared endpoints between consecutive segments. This is
+ * source-agnostic by construction — mapbox mode stows the *entire* polyline (return leg
+ * included) on `legs[0]` with every other segment `[]` (including `returnLeg` in the common
+ * case), so the concat is just that one segment; the one edge case where `routeStartAtHome` is
+ * off with exactly one stop lands the full polyline on `returnLeg.geometry` with `legs` empty —
+ * the concat picks it up there instead. Fallback mode's legs/returnLeg are each independent
+ * 2-point segments that genuinely need concatenating into one polyline.
  */
 function routeLineCoordinates(geometry: RouteGeometry): [number, number][] {
-  if (geometry.legs.length === 0) return []
-  if (geometry.source === 'mapbox') return geometry.legs[0]!.geometry
-  const coords: [number, number][] = [...geometry.legs[0]!.geometry]
-  for (let i = 1; i < geometry.legs.length; i++) {
-    const leg = geometry.legs[i]!
-    if (leg.geometry.length > 0) coords.push(leg.geometry[leg.geometry.length - 1]!)
+  const segments = [...geometry.legs.map((leg) => leg.geometry), geometry.returnLeg?.geometry ?? []]
+  const coords: [number, number][] = []
+  for (const segment of segments) {
+    for (const point of segment) {
+      const last = coords[coords.length - 1]
+      if (!last || last[0] !== point[0] || last[1] !== point[1]) coords.push(point)
+    }
   }
   return coords
 }
@@ -73,28 +117,111 @@ function removeWorkerRoute(map: maplibregl.Map, userId: string) {
 }
 
 /**
- * The route planner's MapLibre surface (09-route-planner.md §C): numbered pins per worker
- * route (unassigned/backlog pins are unnumbered, neutral-colored), one polyline per visible
- * worker (dashed when the directions source fell back to haversine), and a read-only "arrives
- * ~" ETA on each pin's tooltip. A thin custom wrapper — no react-map-gl — per the build
- * contract. Clicking a pin opens 2B's `PinPopoverContent` anchored at the pin's projected point.
+ * One teardrop pin marker (§2.2). The OUTER element is what MapLibre positions — `Marker._update`
+ * writes its own `style.transform` on that exact element for every map move/anchor, so nothing
+ * here may touch it. The visual (scale on hover/select) instead lives on an INNER wrapper with
+ * `transform-origin: bottom center`, keeping the tip pinned to the coordinate while it scales.
  */
-export function PlannerMap({ board, filters, geometryByWorker, window }: PlannerMapProps) {
+function createPinElement(fill: string, order: number | null): HTMLDivElement {
+  const el = document.createElement('div')
+  el.className = 'cursor-pointer select-none'
+
+  const inner = document.createElement('div')
+  inner.className = 'planner-pin-inner'
+  inner.style.position = 'relative'
+  inner.style.width = '28px'
+  inner.style.height = '38px'
+  inner.style.transformOrigin = 'bottom center'
+  inner.style.transition = 'transform 120ms ease'
+  inner.innerHTML = `
+    <svg width="28" height="38" viewBox="0 0 28 38" style="display:block;filter:drop-shadow(0 1px 2px rgba(0,0,0,0.35));">
+      <circle class="pin-ring" cx="14" cy="14" r="16" fill="none" stroke="${SELECTED_RING_COLOR}" stroke-width="3" opacity="0"></circle>
+      <path d="${TEARDROP_PATH_D}" fill="${fill}" stroke="${PIN_OUTLINE_COLOR}" stroke-width="1.5"></path>
+    </svg>
+    <div style="position:absolute;top:0;left:0;width:28px;height:28px;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:800;color:#fff;pointer-events:none;">${
+      order != null ? order : ''
+    }</div>
+  `
+  el.appendChild(inner)
+  return el
+}
+
+/** Scale/ring state for one pin marker's inner wrapper (never the outer, MapLibre-owned element). */
+function applyPinVisualState(el: HTMLElement, opts: { selected: boolean; hovered: boolean }) {
+  const inner = el.querySelector<HTMLElement>('.planner-pin-inner')
+  if (!inner) return
+  const ring = inner.querySelector<SVGCircleElement>('.pin-ring')
+  ring?.setAttribute('opacity', opts.selected ? '1' : '0')
+  inner.style.transform = opts.selected ? 'scale(1.18)' : opts.hovered ? 'scale(1.08)' : 'scale(1)'
+  el.style.zIndex = opts.selected ? '2' : opts.hovered ? '1' : '0'
+}
+
+/** Home-base marker (§2.2): distinct house-icon badge at `board.depot`, neutral dark (never a
+ * worker color), anchored `center` since the badge (unlike a teardrop) has no natural tip. */
+function createHomeMarkerElement(): HTMLDivElement {
+  const el = document.createElement('div')
+  el.title = 'Home base'
+  Object.assign(el.style, {
+    width: '32px',
+    height: '32px',
+    borderRadius: '9999px',
+    background: HOME_MARKER_COLOR,
+    border: '2px solid white',
+    boxShadow: '0 1px 3px rgba(0,0,0,0.4)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+  })
+  el.innerHTML = `
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8"></path>
+      <path d="M3 10a2 2 0 0 1 .709-1.528l7-5.999a2 2 0 0 1 2.582 0l7 5.999A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
+    </svg>
+  `
+  return el
+}
+
+/**
+ * The route planner's MapLibre surface (09-route-planner.md §C, polished per plans/dispatch/v4/
+ * 01-planner-polish.md §2): numbered teardrop pins per worker route (unassigned/backlog pins
+ * unnumbered, neutral-colored), one polyline per visible worker (dashed when the directions
+ * source fell back to haversine), a home-base marker at the org depot, and a read-only "arrives
+ * ~" ETA on each pin's tooltip. A thin custom wrapper — no react-map-gl — per the build contract.
+ * Clicking a pin opens 2B's `PinPopoverContent` anchored at the pin's projected point (the tip).
+ */
+export function PlannerMap({
+  board,
+  filters,
+  geometryByWorker,
+  window,
+  isLoading,
+}: PlannerMapProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<maplibregl.Map | null>(null)
   const markersRef = useRef<Map<string, maplibregl.Marker>>(new Map())
-  const hasFitRef = useRef(false)
+  const depotMarkerRef = useRef<maplibregl.Marker | null>(null)
   const [mapReady, setMapReady] = useState(false)
   const [selectedVisitId, setSelectedVisitId] = useState<string | null>(null)
+  const selectedVisitIdRef = useRef(selectedVisitId)
+  selectedVisitIdRef.current = selectedVisitId
   const [anchorPoint, setAnchorPoint] = useState<{ x: number; y: number } | null>(null)
 
+  // §2.1: never construct on the world view then jump — wait for the board's first-ever load
+  // (`isLoading` false) so `board.depot` already reflects its real resolved value (a real point,
+  // or `null` only when the org truly has no business address) before the map exists at all.
+  const boardRef = useRef(board)
+  boardRef.current = board
+  const constructedWithDepotRef = useRef(false)
+
   useEffect(() => {
-    if (!containerRef.current) return
+    if (mapRef.current || !containerRef.current || isLoading) return
+    const depot = boardRef.current.depot
+    constructedWithDepotRef.current = Boolean(depot)
     const map = new maplibregl.Map({
       container: containerRef.current,
       style: MAP_STYLE,
-      center: [0, 0],
-      zoom: 2,
+      center: depot ? [depot.lng, depot.lat] : [0, 0],
+      zoom: depot ? 11 : 2,
     })
     map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right')
     map.on('load', () => setMapReady(true))
@@ -103,13 +230,17 @@ export function PlannerMap({ board, filters, geometryByWorker, window }: Planner
       map.remove()
       mapRef.current = null
     }
-  }, [])
+  }, [isLoading])
 
-  // A day-nav to a new date is a fresh "first load" for fit-bounds purposes.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: dateKey is the reset trigger, not read in the body.
+  // Defensive fallback for the rare race where the map had to construct before the depot was
+  // known (e.g. `isLoading` flipped false on a render where `board` itself hadn't updated yet):
+  // an instant `jumpTo` (never an animated `flyTo`) the first time a real depot shows up.
   useEffect(() => {
-    hasFitRef.current = false
-  }, [window.dateKey])
+    const map = mapRef.current
+    if (!map || !board.depot || constructedWithDepotRef.current) return
+    map.jumpTo({ center: [board.depot.lng, board.depot.lat], zoom: 11 })
+    constructedWithDepotRef.current = true
+  }, [board.depot])
 
   const workOrderById = useMemo(
     () => new Map(board.workOrders.map((wo) => [wo.id, wo])),
@@ -123,7 +254,10 @@ export function PlannerMap({ board, filters, geometryByWorker, window }: Planner
 
   const colorByUserId = useMemo(() => {
     const map = new Map<string, string>()
-    for (const w of board.workers) if (w.color) map.set(w.userId, w.color)
+    for (const w of board.workers) {
+      const color = resolveWorkerColor(w.color)
+      if (color) map.set(w.userId, color)
+    }
     return map
   }, [board.workers])
 
@@ -140,8 +274,8 @@ export function PlannerMap({ board, filters, geometryByWorker, window }: Planner
       if (visit.assigneeUserId && !visibleWorkerIds.has(visit.assigneeUserId)) continue
 
       const color = visit.assigneeUserId
-        ? (colorByUserId.get(visit.assigneeUserId) ?? UNASSIGNED_COLOR)
-        : UNASSIGNED_COLOR
+        ? (colorByUserId.get(visit.assigneeUserId) ?? MAP_UNASSIGNED_PIN_COLOR)
+        : MAP_UNASSIGNED_PIN_COLOR
       const order = visit.assigneeUserId && visit.routeOrder != null ? visit.routeOrder + 1 : null
       result.push({ visit, color, order })
     }
@@ -175,13 +309,12 @@ export function PlannerMap({ board, filters, geometryByWorker, window }: Planner
     markersRef.current.clear()
 
     for (const pin of pins) {
-      const el = document.createElement('div')
-      el.className =
-        'flex items-center justify-center rounded-full border-2 border-white text-[10px] font-semibold text-white shadow-md cursor-pointer select-none'
-      el.style.width = '22px'
-      el.style.height = '22px'
-      el.style.backgroundColor = pin.color
-      el.textContent = pin.order != null ? String(pin.order) : ''
+      const el = createPinElement(pin.color, pin.order)
+      // Rebuilds happen while a popover can be open (ETAs/geometry arriving re-key the effect)
+      // — re-apply the current selection so the selected pin's ring/scale survives the rebuild.
+      const selected = pin.visit.id === selectedVisitIdRef.current
+      el.dataset.selected = String(selected)
+      if (selected) applyPinVisualState(el, { selected: true, hovered: false })
 
       const workOrder = workOrderById.get(pin.visit.workOrderId)
       const eta = etaByVisitId.get(pin.visit.id)
@@ -195,13 +328,54 @@ export function PlannerMap({ board, filters, geometryByWorker, window }: Planner
         const point = map.project([pin.visit.longitude!, pin.visit.latitude!])
         setAnchorPoint({ x: point.x, y: point.y })
       })
+      el.addEventListener('pointerenter', () => {
+        if (el.dataset.selected === 'true') return
+        applyPinVisualState(el, { selected: false, hovered: true })
+      })
+      el.addEventListener('pointerleave', () => {
+        if (el.dataset.selected === 'true') return
+        applyPinVisualState(el, { selected: false, hovered: false })
+      })
 
-      const marker = new maplibregl.Marker({ element: el })
+      const marker = new maplibregl.Marker({ element: el, anchor: 'bottom' })
         .setLngLat([pin.visit.longitude!, pin.visit.latitude!])
         .addTo(map)
       markersRef.current.set(pin.visit.id, marker)
     }
   }, [pins, mapReady, etaByVisitId, workOrderById])
+
+  // Selected-pin visual state: kept as its own effect (not folded into the rebuild above) since
+  // selection changes far more often than the marker set itself.
+  useEffect(() => {
+    markersRef.current.forEach((marker, visitId) => {
+      const el = marker.getElement()
+      const selected = visitId === selectedVisitId
+      el.dataset.selected = String(selected)
+      applyPinVisualState(el, { selected, hovered: false })
+    })
+  }, [selectedVisitId])
+
+  // Home-base marker: always shown when the org has a resolved depot, independent of per-worker
+  // route-home switches (decision record #9 / plan §2.2).
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !mapReady) return
+    if (!board.depot) {
+      depotMarkerRef.current?.remove()
+      depotMarkerRef.current = null
+      return
+    }
+    if (!depotMarkerRef.current) {
+      depotMarkerRef.current = new maplibregl.Marker({
+        element: createHomeMarkerElement(),
+        anchor: 'center',
+      })
+        .setLngLat([board.depot.lng, board.depot.lat])
+        .addTo(map)
+    } else {
+      depotMarkerRef.current.setLngLat([board.depot.lng, board.depot.lat])
+    }
+  }, [board.depot, mapReady])
 
   // Polylines: one GeoJSON source + line layer per visible worker with a route.
   useEffect(() => {
@@ -237,7 +411,7 @@ export function PlannerMap({ board, filters, geometryByWorker, window }: Planner
           source: layerId,
           layout: { 'line-join': 'round', 'line-cap': 'round' },
           paint: {
-            'line-color': worker.color ?? DEFAULT_WORKER_COLOR,
+            'line-color': resolveWorkerColor(worker.color) ?? DEFAULT_WORKER_COLOR,
             'line-width': 3,
             ...(geometry?.source === 'fallback' ? { 'line-dasharray': [2, 2] } : {}),
           },
@@ -246,15 +420,81 @@ export function PlannerMap({ board, filters, geometryByWorker, window }: Planner
     }
   }, [board.workers, geometryByWorker, visibleWorkerIds, mapReady])
 
-  // Fit bounds once per day-load, not on every background refetch.
+  // §2.4 fit-bounds: refit on day change or a pin-set change (sorted visit-id signature, backlog
+  // included), including the depot marker in bounds; never mid-interaction (guarded by
+  // `map.isMoving()` + a pointerdown-tracked flag below), re-armed on the next signature change.
+  const fitSignature = useMemo(
+    () =>
+      `${window.dateKey}|${pins
+        .map((p) => p.visit.id)
+        .sort()
+        .join(',')}`,
+    [window.dateKey, pins]
+  )
+  const fitSignatureRef = useRef(fitSignature)
+  fitSignatureRef.current = fitSignature
+  const pinsRef = useRef(pins)
+  pinsRef.current = pins
+  const depotRef = useRef(board.depot)
+  depotRef.current = board.depot
+  const lastFitSignatureRef = useRef<string | null>(null)
+  const pendingFitRef = useRef(false)
+  const userInteractingRef = useRef(false)
+
+  const attemptFit = useCallback((signature: string) => {
+    const map = mapRef.current
+    if (!map) return
+    if (map.isMoving() || userInteractingRef.current) {
+      pendingFitRef.current = true
+      return
+    }
+    const currentPins = pinsRef.current
+    if (currentPins.length === 0) return
+    const bounds = new maplibregl.LngLatBounds()
+    for (const pin of currentPins) bounds.extend([pin.visit.longitude!, pin.visit.latitude!])
+    const depot = depotRef.current
+    if (depot) bounds.extend([depot.lng, depot.lat])
+    const isFirstFit = lastFitSignatureRef.current === null
+    map.fitBounds(bounds, { padding: 64, maxZoom: 14, duration: isFirstFit ? 0 : 500 })
+    lastFitSignatureRef.current = signature
+    pendingFitRef.current = false
+  }, [])
+
+  useEffect(() => {
+    if (!mapReady) return
+    attemptFit(fitSignature)
+  }, [fitSignature, mapReady, attemptFit])
+
+  // Interaction tracking + re-arm: a pointerdown on the map marks "interacting" (blocking any
+  // fit attempted while it's true); once the pointer lifts and the camera settles, retry a fit
+  // that was deferred while the signature had already changed underneath the user. NB: the
+  // pointerup listener goes on `document` — `window` in this component is the day-window PROP,
+  // shadowing the global.
   useEffect(() => {
     const map = mapRef.current
-    if (!map || !mapReady || hasFitRef.current || pins.length === 0) return
-    const bounds = new maplibregl.LngLatBounds()
-    for (const pin of pins) bounds.extend([pin.visit.longitude!, pin.visit.latitude!])
-    map.fitBounds(bounds, { padding: 64, maxZoom: 14, duration: 0 })
-    hasFitRef.current = true
-  }, [pins, mapReady])
+    if (!map || !mapReady) return
+    const container = map.getContainer()
+    const onPointerDown = () => {
+      userInteractingRef.current = true
+    }
+    const onPointerUp = () => {
+      userInteractingRef.current = false
+      if (pendingFitRef.current) attemptFit(fitSignatureRef.current)
+    }
+    const onMoveEnd = () => {
+      if (pendingFitRef.current && !map.isMoving() && !userInteractingRef.current) {
+        attemptFit(fitSignatureRef.current)
+      }
+    }
+    container.addEventListener('pointerdown', onPointerDown)
+    document.addEventListener('pointerup', onPointerUp)
+    map.on('moveend', onMoveEnd)
+    return () => {
+      container.removeEventListener('pointerdown', onPointerDown)
+      document.removeEventListener('pointerup', onPointerUp)
+      map.off('moveend', onMoveEnd)
+    }
+  }, [mapReady, attemptFit])
 
   const selectedVisit = useMemo(
     () =>

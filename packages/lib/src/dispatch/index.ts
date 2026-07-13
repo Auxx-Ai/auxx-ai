@@ -71,7 +71,7 @@ export type { ApplyRouteTimesInput, ApplyRouteTimesStop } from './route-planner/
 export { applyRouteTimes } from './route-planner/apply-times'
 export type { BackfillGeocodeResult } from './route-planner/backfill'
 export { backfillGeocodeVisits } from './route-planner/backfill'
-export { resolveRouteStart } from './route-planner/depot'
+export { resolveOrgDepot, resolveRouteStart } from './route-planner/depot'
 export { getRouteGeometryForWorker, getRouteLegs } from './route-planner/directions'
 export { getRoutePlannerBoard } from './route-planner/planner-board'
 export type { SetRouteOrderInput } from './route-planner/route-order'
@@ -84,6 +84,7 @@ export type {
   PlannerDayWindow,
   PlannerWorker,
   PlannerWorkOrder,
+  ReturnLeg,
   RouteGeometry,
   RouteLeg,
   RouteStop,

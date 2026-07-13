@@ -139,7 +139,8 @@ function makeGeocodeStub(coords: LatLng): typeof fetch {
 }
 
 // ── directions.ts's private hash — duplicated here to compute the EXPECTED Redis cache key
-// independently (contract item 2: sha1 of sorted-key JSON of `{ depot, stops }`). ──
+// independently (contract item 2: sha1 of sorted-key JSON of `{ depotStart, depotEnd, stops }`,
+// extended in v4 plan §1.2 to rotate the key when the worker's route-home switches flip). ──
 
 function sortKeysDeep(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(sortKeysDeep)
@@ -157,10 +158,15 @@ function expectedCacheKey(
   organizationId: string,
   assigneeUserId: string,
   dateKey: string,
-  depot: LatLng | null,
+  depotStart: LatLng | null,
+  depotEnd: LatLng | null,
   stops: RouteStop[]
 ): string {
-  const input = { depot, stops: stops.map((s) => ({ visitId: s.visitId, lat: s.lat, lng: s.lng })) }
+  const input = {
+    depotStart,
+    depotEnd,
+    stops: stops.map((s) => ({ visitId: s.visitId, lat: s.lat, lng: s.lng })),
+  }
   const hash = createHash('sha1')
     .update(JSON.stringify(sortKeysDeep(input)))
     .digest('hex')
@@ -891,7 +897,7 @@ async function main() {
         { visitId: 'rp-verify-s6-c', lat: 41.9, lng: -87.6 },
       ]
 
-      const result1 = await getRouteLegs(organizationId, userId, dateKey6, null, stopsV1)
+      const result1 = await getRouteLegs(organizationId, userId, dateKey6, null, null, stopsV1)
       check('fallback: source = fallback (no Mapbox token)', result1.source === 'fallback')
       check('fallback: one leg per stop', result1.legs.length === stopsV1.length)
       check(
@@ -915,7 +921,7 @@ async function main() {
         result1.legs[1]?.geometry.length === 2
       )
 
-      const key1 = expectedCacheKey(organizationId, userId, dateKey6, null, stopsV1)
+      const key1 = expectedCacheKey(organizationId, userId, dateKey6, null, null, stopsV1)
       const cached1 = await getRedisData(key1)
       check(
         'redis cache key exists after the first call',
@@ -927,16 +933,16 @@ async function main() {
         JSON.stringify(cached1) === JSON.stringify(result1)
       )
 
-      const result2 = await getRouteLegs(organizationId, userId, dateKey6, null, stopsV1)
+      const result2 = await getRouteLegs(organizationId, userId, dateKey6, null, null, stopsV1)
       check(
         'second call with identical input returns a deep-equal result (cache hit)',
         JSON.stringify(result2) === JSON.stringify(result1)
       )
 
       const stopsReordered = [stopsV1[1]!, stopsV1[0]!, stopsV1[2]!]
-      const key2 = expectedCacheKey(organizationId, userId, dateKey6, null, stopsReordered)
+      const key2 = expectedCacheKey(organizationId, userId, dateKey6, null, null, stopsReordered)
       check('reordering stops changes the cache key', key2 !== key1, { key1, key2 })
-      await getRouteLegs(organizationId, userId, dateKey6, null, stopsReordered)
+      await getRouteLegs(organizationId, userId, dateKey6, null, null, stopsReordered)
       const cached2 = await getRedisData(key2)
       check(
         'the new key is cached after the reordered call',
