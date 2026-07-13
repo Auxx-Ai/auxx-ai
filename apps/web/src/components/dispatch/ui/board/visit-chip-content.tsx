@@ -38,8 +38,8 @@ export function VisitChipContent({ event, isOverlapping }: VisitChipContentProps
       className={cn(
         'relative flex h-full w-full items-stretch gap-1.5 overflow-hidden rounded-[inherit]',
         done && 'opacity-60',
-        canceled && 'opacity-50',
-        isOverlapping && 'ring-2 ring-inset ring-amber-500'
+        canceled && 'opacity-50'
+        // isOverlapping && 'ring-2 ring-inset ring-amber-500'
       )}>
       <span
         className={cn('w-1 shrink-0 rounded-full', STATUS_ACCENT_CLASS[event.status])}
