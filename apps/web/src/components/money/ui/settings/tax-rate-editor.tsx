@@ -12,37 +12,29 @@ import type { TaxRate } from './tax-rate-types'
 interface TaxRateEditorProps {
   taxRate: TaxRate | null
   onUpdate: (patch: Partial<TaxRate>) => void
-  onSetDefault: () => void
 }
 
 /**
- * Right column of the Tax rates tab: name / rate / is-default for the
- * selected rate. Every edit rewrites the whole `documents.taxRates` array
- * atomically (see `products-services-page.tsx`) — text fields are debounced
- * locally so typing doesn't fire a setting write per keystroke.
+ * Right column of the Tax rates tab: name / rate for the selected rate. Every
+ * edit rewrites the whole `documents.taxRates` array atomically (see
+ * `products-services-page.tsx`) — text fields are debounced locally so typing
+ * doesn't fire a setting write per keystroke. The default rate is toggled from
+ * the list row, not here.
  */
-export function TaxRateEditor({ taxRate, onUpdate, onSetDefault }: TaxRateEditorProps) {
+export function TaxRateEditor({ taxRate, onUpdate }: TaxRateEditorProps) {
   if (!taxRate) {
     return <div className='p-4 text-sm text-muted-foreground'>Select a tax rate to edit.</div>
   }
 
-  return (
-    <TaxRateEditorForm
-      key={taxRate.id}
-      taxRate={taxRate}
-      onUpdate={onUpdate}
-      onSetDefault={onSetDefault}
-    />
-  )
+  return <TaxRateEditorForm key={taxRate.id} taxRate={taxRate} onUpdate={onUpdate} />
 }
 
 interface TaxRateEditorFormProps {
   taxRate: TaxRate
   onUpdate: (patch: Partial<TaxRate>) => void
-  onSetDefault: () => void
 }
 
-function TaxRateEditorForm({ taxRate, onUpdate, onSetDefault }: TaxRateEditorFormProps) {
+function TaxRateEditorForm({ taxRate, onUpdate }: TaxRateEditorFormProps) {
   const [name, setName] = useState(taxRate.name)
   const [rate, setRate] = useState(taxRate.rate)
 
@@ -84,23 +76,6 @@ function TaxRateEditorForm({ taxRate, onUpdate, onSetDefault }: TaxRateEditorFor
               commitRate(next)
             }}
             placeholder='0'
-          />
-        </FieldPanelRow>
-
-        <FieldPanelRow
-          title='Default'
-          description='Preselected on new quotes and invoices'
-          type={BaseType.BOOLEAN}
-          showIcon>
-          <FieldInputAdapter
-            fieldType={FieldType.CHECKBOX}
-            fieldOptions={{ variant: 'switch' }}
-            value={!!taxRate.isDefault}
-            onChange={(value) => {
-              // Set-only toggle: turning it on makes this the default; it can't be unset here.
-              if (value) onSetDefault()
-            }}
-            disabled={taxRate.isDefault}
           />
         </FieldPanelRow>
       </FieldPanel>

@@ -6,10 +6,11 @@ import { Button } from '@auxx/ui/components/button'
 import { InputSearch } from '@auxx/ui/components/input-search'
 import { Switch } from '@auxx/ui/components/switch'
 import { toastError } from '@auxx/ui/components/toast'
-import { TreeRow } from '@auxx/ui/components/tree-row'
+import { TreeRow, TreeRowButton } from '@auxx/ui/components/tree-row'
 import { cn } from '@auxx/ui/lib/utils'
-import { Boxes, Plus } from 'lucide-react'
+import { Boxes, Plus, Trash2 } from 'lucide-react'
 import { useState } from 'react'
+import { useConfirm } from '~/hooks/use-confirm'
 import { useSettings } from '~/hooks/use-settings'
 import { api } from '~/trpc/react'
 import { type CatalogGroup, useCatalogGroups } from '../../hooks/use-catalog-groups'
@@ -35,11 +36,26 @@ export function GroupsList({ selectedId, onSelect, currency }: GroupsListProps) 
   const { getSetting } = useSettings({ scope: 'DOCUMENTS' })
   const taxRates = (getSetting('documents.taxRates') as TaxRate[] | null) ?? []
   const [search, setSearch] = useState('')
+  const [confirm, ConfirmDialog] = useConfirm()
 
   const updateRecord = api.record.update.useMutation()
   const createRecord = api.record.create.useMutation({
     onError: (error) => toastError({ title: 'Error creating group', description: error.message }),
   })
+  const deleteRecord = api.record.delete.useMutation({
+    onSuccess: () => refresh(),
+    onError: (error) => toastError({ title: 'Error deleting group', description: error.message }),
+  })
+
+  async function handleDelete(group: CatalogGroup) {
+    const confirmed = await confirm({
+      title: 'Delete group?',
+      description: `“${group.name}” will be removed. Its items stay in the catalog.`,
+      confirmText: 'Delete',
+      destructive: true,
+    })
+    if (confirmed) deleteRecord.mutate({ recordId: group.recordId })
+  }
 
   // Optimistic overlay for the active toggle — `record.update` bypasses the
   // granular field-value store, so reflect the flip locally and invalidate
@@ -166,18 +182,27 @@ export function GroupsList({ selectedId, onSelect, currency }: GroupsListProps) 
                   </span>
                 }
                 actions={
-                  <Switch
-                    size='xs'
-                    checked={effectiveActive(group)}
-                    onCheckedChange={() => handleToggleActive(group)}
-                    disabled={updateRecord.isPending}
-                  />
+                  <div className='flex items-center gap-1'>
+                    <TreeRowButton
+                      tooltipText='Delete group'
+                      variant='destructive'
+                      onClick={() => handleDelete(group)}>
+                      <Trash2 />
+                    </TreeRowButton>
+                    <Switch
+                      size='xs'
+                      checked={effectiveActive(group)}
+                      onCheckedChange={() => handleToggleActive(group)}
+                      disabled={updateRecord.isPending}
+                    />
+                  </div>
                 }
               />
             )
           })}
         </div>
       )}
+      <ConfirmDialog />
     </div>
   )
 }

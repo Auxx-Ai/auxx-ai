@@ -104,6 +104,17 @@ export function ProductsServicesPage() {
     commitTaxRates(taxRates.map((r) => ({ ...r, isDefault: r.id === id })))
   }
 
+  function handleDeleteTaxRate(id: string) {
+    const removed = taxRates.find((r) => r.id === id)
+    const next = taxRates.filter((r) => r.id !== id)
+    // Deleting the default promotes the first remaining rate — one is always default.
+    if (removed?.isDefault && next.length > 0 && !next.some((r) => r.isDefault)) {
+      next[0] = { ...next[0], isDefault: true }
+    }
+    commitTaxRates(next)
+    if (selectedTaxRateId === id) setSelectedTaxRateId(null)
+  }
+
   const selectedTaxRate = taxRates.find((r) => r.id === selectedTaxRateId) ?? null
   const selectedId =
     activeTab === 'products'
@@ -122,7 +133,6 @@ export function ProductsServicesPage() {
       <TaxRateEditor
         taxRate={selectedTaxRate}
         onUpdate={(patch) => selectedTaxRate && handleUpdateTaxRate(selectedTaxRate.id, patch)}
-        onSetDefault={() => selectedTaxRate && handleSetDefaultTaxRate(selectedTaxRate.id)}
       />
     )
 
@@ -159,6 +169,8 @@ export function ProductsServicesPage() {
               selectedId={selectedTaxRateId}
               onSelect={setSelectedTaxRateId}
               onAdd={handleAddTaxRate}
+              onSetDefault={handleSetDefaultTaxRate}
+              onDelete={handleDeleteTaxRate}
             />
           )}
         </div>

@@ -2,14 +2,11 @@
 'use client'
 
 import { FieldType } from '@auxx/database/enums'
-import type { RecordId } from '@auxx/lib/resources/client'
 import { useState } from 'react'
 import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
 import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
-import { RecordPicker } from '~/components/pickers/record-picker'
-import { useRecord, useResourceFields, useResourceProperty } from '~/components/resources'
+import { useResourceFields } from '~/components/resources'
 import { useSaveFieldValue } from '~/components/resources/hooks/use-save-field-value'
-import { PickerTrigger } from '~/components/ui/picker-trigger'
 import { BaseType } from '~/components/workflow/types'
 import { useDebouncedCallback } from '~/hooks/use-debounced-value'
 import { type CatalogItem, useCatalogItems } from '../../hooks/use-catalog-items'
@@ -39,11 +36,7 @@ export function ProductEditor({ selectedId }: ProductEditorProps) {
 function ProductEditorForm({ item }: { item: CatalogItem }) {
   const { fields } = useResourceFields('catalog-items')
   const categoryField = fields.find((f) => f.key === 'category')
-  const partDefId = useResourceProperty('part', 'id')
-  const { record: partRecord } = useRecord({
-    recordId: item.partRecordId ?? undefined,
-    enabled: !!item.partRecordId,
-  })
+  const partField = fields.find((f) => f.key === 'part')
 
   const { saveFieldValue } = useSaveFieldValue({})
 
@@ -130,20 +123,20 @@ function ProductEditorForm({ item }: { item: CatalogItem }) {
           />
         </FieldPanelRow>
 
-        {item.category === 'material' && (
+        {item.category === 'material' && partField && (
           <FieldPanelRow title='Part' type={BaseType.RELATION} showIcon>
-            <RecordPicker
-              entityDefinitionId={partDefId ?? undefined}
+            <FieldInputAdapter
+              fieldType={FieldType.RELATIONSHIP}
+              triggerProps={{ className: 'w-full ps-0 pe-1' }}
+              fieldOptions={{
+                relationship: partField.relationship ?? partField.options?.relationship,
+              }}
               value={item.partRecordId ? [item.partRecordId] : []}
-              onChange={(ids: RecordId[]) =>
-                saveFieldValue(item.recordId, 'catalog_item_part', ids, FieldType.RELATIONSHIP)
+              onChange={(value) =>
+                saveFieldValue(item.recordId, 'catalog_item_part', value, FieldType.RELATIONSHIP)
               }
-              multi={false}
-              emptyLabel='Link a part'>
-              <PickerTrigger hasValue={!!item.partRecordId} placeholder='Link a part'>
-                {partRecord?.displayName ?? 'Select a part'}
-              </PickerTrigger>
-            </RecordPicker>
+              placeholder='Link a part'
+            />
           </FieldPanelRow>
         )}
       </FieldPanel>

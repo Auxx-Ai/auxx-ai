@@ -215,7 +215,10 @@ export function DetailViewSections({
               const Icon = getIconComponent(tab.icon)
               return (
                 <div key={tab.value} ref={assignRef(tab.value)}>
-                  <ChromedSection label={tab.label} icon={<Icon className='size-4' />}>
+                  <ChromedSection
+                    label={tab.label}
+                    icon={<Icon className='size-4' />}
+                    fullBleed={tab.fullBleed}>
                     <LazySectionTabComponent
                       entityType={entityType}
                       tabValue={tab.value}
@@ -275,10 +278,13 @@ export function DetailViewSections({
 function ChromedSection({
   label,
   icon,
+  fullBleed = false,
   children,
 }: {
   label: string
   icon: React.ReactNode
+  /** Cancel the Section's horizontal inset so the body spans edge-to-edge (e.g. a line-items table). */
+  fullBleed?: boolean
   children: React.ReactNode
 }) {
   const [titleSlot, setTitleSlot] = React.useState<HTMLElement | null>(null)
@@ -298,7 +304,10 @@ function ChromedSection({
         icon={icon}
         actions={<span ref={setActionsSlot} className='flex items-center gap-1.5 empty:hidden' />}
         collapsible={false}
-        initialOpen>
+        initialOpen
+        className={
+          fullBleed ? '[&>[data-slot=section]>[data-slot=section-content]]:-mx-3' : undefined
+        }>
         {children}
       </Section>
     </SectionChromeContext.Provider>
