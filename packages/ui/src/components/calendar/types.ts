@@ -29,6 +29,11 @@ export type CalendarBaseProps = {
   /** Show leading/trailing days from adjacent months. Default true; forced false when
    * `numberOfMonths > 1`. */
   showOutsideDays?: boolean
+  /**
+   * Always render 6 week rows, padding short months with trailing days so the calendar's
+   * height never changes when paging between months. Default false.
+   */
+  fixedWeeks?: boolean
   hideNavigation?: boolean
   /**
    * `'label'` = static centered caption (default). `'dropdown'` = the date-time-picker
