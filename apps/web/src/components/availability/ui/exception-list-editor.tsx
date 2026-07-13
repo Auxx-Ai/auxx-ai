@@ -15,11 +15,11 @@ import { cn } from '@auxx/ui/lib/utils'
 import { format, parseISO } from 'date-fns'
 import { Ban, CalendarOff, Clock, Plus, Trash2 } from 'lucide-react'
 import { type MouseEvent, useState } from 'react'
-import { TimeRangeInput, type TimeRangeValue } from '~/components/pickers/time-range-input'
 import {
   availabilitySubjectKey,
   useAvailabilityCacheStore,
-} from '~/stores/availability-cache-store'
+} from '~/components/dispatch/stores/availability-cache-store'
+import { TimeRangeInput, type TimeRangeValue } from '~/components/pickers/time-range-input'
 import { api } from '~/trpc/react'
 
 /**

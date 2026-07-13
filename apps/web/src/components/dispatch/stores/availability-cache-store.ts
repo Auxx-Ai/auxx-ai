@@ -1,8 +1,8 @@
-// apps/web/src/stores/availability-cache-store.ts
+// apps/web/src/components/dispatch/stores/availability-cache-store.ts
 
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import { coalesce, type DateRange } from './date-ranges'
+import { coalesce, type DateRange } from '../utils/date-ranges'
 
 /** Subject discriminant for availability reads (mirrors the `availability.resolve` input). */
 export type AvailabilitySubject = { type: 'organization' } | { type: 'worker'; userId: string }

@@ -18,24 +18,8 @@ const PickerFooter: React.FC<PickerFooterProps> = ({
   onToggleTimePicker,
   onSelectNow,
   onConfirm,
-  onYearMonthCancel,
-  onYearMonthConfirm,
   hideNowButton,
 }) => {
-  // Year/Month picker view: Cancel + Confirm buttons
-  if (view === ViewType.YearMonth) {
-    return (
-      <div className='grid grid-cols-2 gap-x-1 border-t p-2'>
-        <Button variant='outline' size='sm' onClick={onYearMonthCancel}>
-          Cancel
-        </Button>
-        <Button size='sm' onClick={onYearMonthConfirm}>
-          OK
-        </Button>
-      </div>
-    )
-  }
-
   // Time-only mode: simple footer
   if (mode === 'time') {
     return (

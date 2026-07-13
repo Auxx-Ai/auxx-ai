@@ -23,6 +23,7 @@
     "./components/kb/utils": "./src/components/kb/utils/index.ts",
     "./components/menu-styles": "./src/components/menu-styles.ts",
     "./components/event-calendar": "./src/components/event-calendar/index.ts",
+    "./components/calendar": "./src/components/calendar/index.ts",
     "./components/*": "./src/components/*.tsx",
     "./components/emojis": "./src/components/emojis.ts",
     "./components/icon-data": "./src/components/icon-data.ts",
@@ -88,9 +89,6 @@
     "vaul": {
       "optional": true
     },
-    "react-day-picker": {
-      "optional": true
-    },
     "react-phone-number-input": {
       "optional": true
     },
@@ -154,7 +152,6 @@
     "ogl": "catalog:",
     "radix-ui": "^1.4.2",
     "react": "catalog:",
-    "react-day-picker": "^9.8.1",
     "react-dom": "catalog:",
     "react-hook-form": "^7.54.2",
     "react-phone-number-input": "^3.4.14",

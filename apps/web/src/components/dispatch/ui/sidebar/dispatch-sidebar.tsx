@@ -4,7 +4,7 @@
 
 import { ModuleSidebar } from '@auxx/ui/components/module-sidebar'
 import { useMemo } from 'react'
-import { useDispatchSidebarStore } from '~/stores/dispatch-sidebar-store'
+import { useDispatchSidebarStore } from '../../stores/dispatch-sidebar-store'
 import type { BacklogItem, BoardWorker } from '../board/types'
 import type { WeekStartIndex } from '../board/utils'
 import type {

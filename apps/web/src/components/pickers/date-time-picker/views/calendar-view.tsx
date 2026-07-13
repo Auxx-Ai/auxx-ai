@@ -6,37 +6,32 @@ import React from 'react'
 import type { CalendarViewProps } from '../types'
 
 /**
- * Calendar view using react-day-picker via our Calendar component
+ * Calendar view — thin wrapper around the shared Calendar component. `captionLayout='dropdown'`
+ * gives it the picker-header look (month/year label + chevrons) and its own built-in
+ * year-month swap, so this view no longer needs a separate header or year/month state.
  */
 const CalendarView: React.FC<CalendarViewProps> = ({
   currentMonth,
+  onMonthChange,
   selectedDate,
   onDateSelect,
   minDate,
   maxDate,
   disabledDates,
 }) => {
-  /** Combined disabled function */
-  const isDateDisabled = (date: Date): boolean => {
-    if (minDate && date < minDate) return true
-    if (maxDate && date > maxDate) return true
-    if (disabledDates?.(date)) return true
-    return false
-  }
-
   return (
     <Calendar
       mode='single'
       month={currentMonth}
+      onMonthChange={onMonthChange}
       selected={selectedDate}
-      onSelect={(date) => date && onDateSelect(date)}
-      disabled={isDateDisabled}
+      onSelect={onDateSelect}
+      disabled={disabledDates}
+      minDate={minDate}
+      maxDate={maxDate}
       showOutsideDays={true}
-      className='p-2 min-h-[251px]'
-      hideNavigation
-      classNames={{
-        month_caption: 'hidden',
-      }}
+      captionLayout='dropdown'
+      className='p-2'
     />
   )
 }

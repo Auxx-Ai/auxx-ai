@@ -58,7 +58,7 @@ export function BillingForm({ form }: BillingFormProps) {
                     selected={field.value}
                     onSelect={field.onChange}
                     disabled={(date) => date > new Date(new Date().setHours(23, 59, 59, 999))}
-                    initialFocus
+                    autoFocus
                   />
                 </PopoverContent>
               </Popover>

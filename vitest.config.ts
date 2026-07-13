@@ -15,6 +15,7 @@ export default defineConfig({
       './packages/credentials/vitest.config.ts',
       './packages/utils/vitest.config.ts',
       './packages/test-utils/vitest.config.ts',
+      './packages/ui/vitest.config.ts',
     ],
   },
 })

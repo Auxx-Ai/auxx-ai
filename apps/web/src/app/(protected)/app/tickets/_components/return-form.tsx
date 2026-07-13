@@ -84,7 +84,7 @@ export function ReturnForm({ form, data, setData }: ReturnFormProps) {
                 selected={data.orderDate}
                 onSelect={(date) => setData({ ...data, orderDate: date })}
                 disabled={(date) => date > new Date(new Date().setHours(23, 59, 59, 999))}
-                initialFocus
+                autoFocus
               />
             </PopoverContent>
           </Popover>

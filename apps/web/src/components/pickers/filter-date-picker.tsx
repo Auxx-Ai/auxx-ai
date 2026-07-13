@@ -174,8 +174,8 @@ export function FilterDatePicker({
           mode='single'
           selected={selectedCalendarDate}
           onSelect={handleDateSelect} // Calendar's onSelect provides Date | undefined
-          disabled={disabled}
-          initialFocus // Focus the calendar when popover opens
+          disabled={disabled ? () => true : undefined}
+          autoFocus // Focus the calendar when popover opens
           // You might want to add month/year navigation controls if needed
           // showOutsideDays={false} // Optionally hide days from other months
         />

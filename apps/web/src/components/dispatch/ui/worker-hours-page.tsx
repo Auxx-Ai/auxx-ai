@@ -16,11 +16,11 @@ import {
 } from '~/components/availability/ui/weekly-hours-editor'
 import { useDirtyDraft } from '~/components/global/forms/use-dirty-draft'
 import { useConfirm } from '~/hooks/use-confirm'
+import { api } from '~/trpc/react'
 import {
   availabilitySubjectKey,
   useAvailabilityCacheStore,
-} from '~/stores/availability-cache-store'
-import { api } from '~/trpc/react'
+} from '../stores/availability-cache-store'
 
 const ALL_DAYS = [0, 1, 2, 3, 4, 5, 6] as const
 
