@@ -34,6 +34,13 @@ import { formatCurrency, titleCase } from './shared'
  */
 export const LINE_COLS = 'minmax(10rem, 1fr) 4rem 6.5rem 6.5rem 5.5rem'
 
+/**
+ * Read-only column template — the trailing actions column is dropped (no
+ * hover actions when read-only), so `Total` lands flush right and the freed
+ * width is absorbed by the `1fr` description column.
+ */
+export const LINE_COLS_READONLY = 'minmax(10rem, 1fr) 4rem 6.5rem 6.5rem'
+
 // Module-level (stable-reference) attribute lists — `useSystemValues` memoizes
 // on the array identity, so these must never be inline literals.
 const NAME_ATTRS = ['line_item_name', 'line_item_description', 'line_item_category']
@@ -494,7 +501,7 @@ export function LineRow({
       style={{ transform: CSS.Transform.toString(transform), transition }}
       className={cn(isDragging && 'relative z-10 opacity-80')}>
       <GridTreeRow
-        columns={LINE_COLS}
+        columns={readOnly ? LINE_COLS_READONLY : LINE_COLS}
         icon={
           readOnly ? undefined : (
             <span
@@ -534,17 +541,19 @@ export function LineRow({
             currencyCode={currencyCode}
           />,
           <LineTotalCell key='total' recordId={recordId} currencyCode={currencyCode} />,
-          readOnly ? (
-            <span key='actions' />
-          ) : (
-            <LineActionsCell
-              key='actions'
-              recordId={recordId}
-              rowId={record.id}
-              toggleDescription={toggleDescription}
-              deleteLine={deleteLine}
-            />
-          ),
+          // Read-only rows drop the actions column entirely (LINE_COLS_READONLY),
+          // so `Total` sits flush right and description absorbs the freed width.
+          ...(readOnly
+            ? []
+            : [
+                <LineActionsCell
+                  key='actions'
+                  recordId={recordId}
+                  rowId={record.id}
+                  toggleDescription={toggleDescription}
+                  deleteLine={deleteLine}
+                />,
+              ]),
         ]}
       />
     </div>

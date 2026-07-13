@@ -10,6 +10,7 @@ import type { DragEndEvent } from '@dnd-kit/core'
 import { addMinutes } from 'date-fns'
 import { Lock } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { renderAppDragGhost } from '~/components/global/app-drag-overlay'
 import { EmptyState } from '~/components/global/empty-state'
 import { useSettings } from '~/hooks/use-settings'
 import { useUser } from '~/hooks/use-user'
@@ -250,7 +251,8 @@ export function DispatchBoard() {
           <CalendarDndProvider<DispatchVisitEvent>
             onEventDrop={canEdit ? handleEventDrop : undefined}
             onDragEnd={canEdit ? handleForeignDragEnd : undefined}
-            renderEvent={renderDragGhost}>
+            renderEvent={renderDragGhost}
+            renderForeignOverlay={renderAppDragGhost}>
             <div className='flex flex-1 overflow-hidden'>
               <DispatchSidebar
                 mode='calendar'

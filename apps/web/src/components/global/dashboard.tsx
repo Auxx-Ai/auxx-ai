@@ -7,7 +7,6 @@ import {
   type Active,
   DndContext,
   type DragEndEvent,
-  DragOverlay,
   type DragStartEvent,
   PointerSensor,
   pointerWithin,
@@ -15,19 +14,16 @@ import {
   useSensor,
   useSensors,
 } from '@dnd-kit/core'
-import { snapCenterToCursor } from '@dnd-kit/modifiers'
 import { usePathname, useRouter } from 'next/navigation'
 import React, { useCallback, useState } from 'react'
-import { createPortal } from 'react-dom'
 import { DndStateProvider } from '~/app/context/dnd-state-context'
 import { OverageBanner } from '~/components/banner/overage-banner'
 import { DemoBanner } from '~/components/demo/demo-banner'
 import { useFavoriteDragEnd } from '~/components/favorites/hooks/use-favorite-drag-end'
-import { FavoriteDragOverlay } from '~/components/favorites/ui/favorite-drag-overlay'
+import { AppDragOverlay } from '~/components/global/app-drag-overlay'
 import AppSidebar from '~/components/global/sidebar'
 import { KopilotDock } from '~/components/kopilot/ui/kopilot-dock'
 import { KopilotRuntime } from '~/components/kopilot/ui/kopilot-runtime'
-import MailThreadItemDragOverlay from '~/components/mail/mail-thread-item-drag-overlay'
 import { useThreadMutation } from '~/components/threads/hooks'
 import { useOverages } from '~/hooks/use-overages'
 import {
@@ -52,13 +48,7 @@ export const Dashboard = ({
   const overages = useOverages(organizationId)
 
   const [activeDragId, setActiveDragId] = useState<string | null>(null)
-  const [activeDragData, setActiveDragData] = useState<Record<string, any> | null>(null)
   const [activeDndItem, setActiveDndItem] = useState<Active | null>(null)
-  const [portalContainer, setPortalContainer] = useState<HTMLElement | null>(null)
-
-  React.useEffect(() => {
-    setPortalContainer(document.body)
-  }, [])
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
@@ -67,7 +57,6 @@ export const Dashboard = ({
 
   const handleDragStart = useCallback((event: DragStartEvent) => {
     setActiveDragId(event.active.id as string)
-    setActiveDragData(event.active.data.current ?? {})
     setActiveDndItem(event.active)
   }, [])
 
@@ -92,7 +81,6 @@ export const Dashboard = ({
     (event: DragEndEvent) => {
       const { active, over } = event
       setActiveDragId(null)
-      setActiveDragData(null)
       setActiveDndItem(null)
 
       if (!over || active.id === over.id) return
@@ -145,25 +133,7 @@ export const Dashboard = ({
             <KopilotRuntime />
           </div>
         </DndStateProvider>
-        {portalContainer &&
-          createPortal(
-            <DragOverlay
-              dropAnimation={null}
-              adjustScale={false}
-              modifiers={[snapCenterToCursor]}
-              style={{ width: 'auto' }}
-              className='w-auto'>
-              {activeDndItem?.data.current?.type === 'thread' ? (
-                <MailThreadItemDragOverlay
-                  items={activeDragData?.draggedThreadIds ?? []}
-                  isDragging
-                />
-              ) : activeDndItem?.data.current?.type === 'favorite' ? (
-                <FavoriteDragOverlay favoriteId={activeDndItem.data.current.favoriteId} />
-              ) : null}
-            </DragOverlay>,
-            portalContainer
-          )}
+        <AppDragOverlay />
       </DndContext>
     </SidebarProvider>
   )

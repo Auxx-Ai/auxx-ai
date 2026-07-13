@@ -124,9 +124,14 @@ interface BacklogRowProps {
 
 function BacklogRow({ item, dragType, canEdit }: BacklogRowProps) {
   const { visit, workOrder } = item
+  // `item` rides along in the draggable's data (not just `visitId`) so the shared
+  // `AppDragOverlay`/`renderAppDragGhost` (apps/web/src/components/global/app-drag-overlay.tsx)
+  // can render `BacklogRowGhost` without a cross-context store lookup — the ghost is rendered by
+  // a different `DndContext`'s overlay (dispatch calendar/map mode), so it can't reach back into
+  // whatever board-data hook produced this row.
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: `sidebar-backlog-${visit.id}`,
-    data: { type: dragType, visitId: visit.id },
+    data: { type: dragType, visitId: visit.id, item },
     disabled: !canEdit,
   })
   const status = isVisitStatus(visit.status) ? visit.status : 'scheduled'
@@ -137,7 +142,7 @@ function BacklogRow({ item, dragType, canEdit }: BacklogRowProps) {
         ref={setNodeRef}
         {...(canEdit ? { ...attributes, ...listeners } : {})}
         id={`sidebar-backlog-${visit.id}`}
-        name={`${workOrder?.number ? `${workOrder.number} · ` : ''}${workOrder?.displayName ?? 'Work order'}`}
+        name={backlogRowLabel(item)}
         className={cn(
           canEdit && 'cursor-grab touch-none active:cursor-grabbing',
           isDragging && 'opacity-40'
@@ -155,5 +160,33 @@ function BacklogRow({ item, dragType, canEdit }: BacklogRowProps) {
         }
       />
     </SidebarMenuItem>
+  )
+}
+
+/** WO number + title, shared by the live row and its drag ghost. */
+function backlogRowLabel(item: BacklogItem): string {
+  const { workOrder } = item
+  return `${workOrder?.number ? `${workOrder.number} · ` : ''}${workOrder?.displayName ?? 'Work order'}`
+}
+
+/**
+ * Presentational copy of the backlog row (status dot + WO number + title), rendered as the
+ * cursor-following drag ghost by `renderAppDragGhost`/`AppDragOverlay`
+ * (apps/web/src/components/global/app-drag-overlay.tsx) — a floating box rather than a
+ * `SidebarItem`, since the ghost is portaled outside any `Sidebar`/`SidebarProvider` tree
+ * (plans/dispatch/16-dnd-unification.md Phase 2). The live row keeps its `opacity-40`
+ * `isDragging` treatment and never applies a transform — this is the only thing that moves.
+ */
+export function BacklogRowGhost({ item }: { item: BacklogItem }) {
+  const status = isVisitStatus(item.visit.status) ? item.visit.status : 'scheduled'
+
+  return (
+    <div className='inline-flex max-w-xs items-center gap-2 rounded-md border bg-popover px-2 py-1 text-sm shadow-md'>
+      <span
+        className={cn('size-1.5 shrink-0 rounded-full', STATUS_ACCENT_CLASS[status])}
+        aria-hidden
+      />
+      <span className='truncate'>{backlogRowLabel(item)}</span>
+    </div>
   )
 }

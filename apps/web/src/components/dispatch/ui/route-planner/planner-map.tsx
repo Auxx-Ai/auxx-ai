@@ -296,7 +296,7 @@ export function PlannerMap({ board, filters, geometryByWorker, window }: Planner
               style={{ left: anchorPoint.x, top: anchorPoint.y }}
             />
           </PopoverAnchor>
-          <PopoverContent side='top' align='center' className='w-72'>
+          <PopoverContent side='top' align='center' className='w-72 p-0'>
             <PinPopoverContent visit={selectedVisit} board={board} onClose={closePopover} />
           </PopoverContent>
         </Popover>

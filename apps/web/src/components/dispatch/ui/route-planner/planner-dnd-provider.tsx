@@ -11,6 +11,7 @@ import {
   useSensor,
   useSensors,
 } from '@dnd-kit/core'
+import { AppDragOverlay } from '~/components/global/app-drag-overlay'
 import { useRoutePlannerDragEnd } from './hooks/use-route-planner-mutations'
 import type { PlannerBoard, PlannerDayWindow, RouteGeometry } from './types'
 
@@ -35,7 +36,7 @@ export function PlannerDndProvider({
   children,
 }: PlannerDndProviderProps) {
   const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
     useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 5 } }),
     useSensor(KeyboardSensor)
   )
@@ -45,6 +46,7 @@ export function PlannerDndProvider({
   return (
     <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
       {children}
+      <AppDragOverlay />
     </DndContext>
   )
 }
