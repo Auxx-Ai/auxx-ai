@@ -6,6 +6,7 @@ import { Switch } from '@auxx/ui/components/switch'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 import { CalendarDays, RefreshCw } from 'lucide-react'
 import { SettingsSection } from '~/components/global/settings-page'
+import { useOAuthPopup } from '~/hooks/use-oauth-popup'
 import { api } from '~/trpc/react'
 
 interface CalendarSyncToggleProps {
@@ -52,6 +53,13 @@ export function CalendarSyncToggle({ integrationId, disabled }: CalendarSyncTogg
     },
   })
 
+  // Incremental calendar-scope grant — new scopes always need consent, so this skips the
+  // silent-refresh attempt `useChannelReconnect` tries and goes straight to a popup with the
+  // authorize URL `calendar.enableSync` already builds (with the extra `scope_add` param). The
+  // generic `useConnectFlow` target doesn't have a seam for that extra scope param today, so this
+  // stays a thin bespoke popup call instead — see plans/channels/v3/README.md Open questions.
+  const { open: openCalendarPopup, pending: calendarPopupPending } = useOAuthPopup()
+
   const integrationStatus = data?.integrations.find(
     (integration) => integration.id === integrationId
   )
@@ -61,7 +69,20 @@ export function CalendarSyncToggle({ integrationId, disabled }: CalendarSyncTogg
     if (checked) {
       const result = await enableSync.mutateAsync({ integrationId })
       if (result.authUrl) {
-        window.location.href = result.authUrl
+        openCalendarPopup({
+          popupUrl: `${result.authUrl}&mode=popup`,
+          fallbackUrl: result.authUrl,
+          channelName: 'oauth-app-connect',
+          verify: async () => {
+            const status = await utils.calendar.getSyncStatus.fetch(undefined, { staleTime: 0 })
+            const integration = status.integrations.find((i) => i.id === integrationId)
+            return integration?.calendarSyncEnabled ? true : null
+          },
+          onDone: (ok) => {
+            void utils.calendar.getSyncStatus.invalidate()
+            if (ok) void utils.channel.list.invalidate()
+          },
+        })
       }
       return
     }
@@ -114,7 +135,9 @@ export function CalendarSyncToggle({ integrationId, disabled }: CalendarSyncTogg
         <Switch
           checked={isEnabled}
           onCheckedChange={handleCheckedChange}
-          disabled={disabled || enableSync.isPending || disableSync.isPending}
+          disabled={
+            disabled || enableSync.isPending || disableSync.isPending || calendarPopupPending
+          }
         />
       </div>
     </SettingsSection>

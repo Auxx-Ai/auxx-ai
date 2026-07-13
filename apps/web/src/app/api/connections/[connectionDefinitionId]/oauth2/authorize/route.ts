@@ -22,16 +22,6 @@ const OAUTH_REDIRECT_BASE = process.env.NGROK_URL || WEBAPP_URL
 const logger = createScopedLogger('connection-oauth-authorize')
 
 /**
- * Google requires access_type=offline as a URL parameter (not a scope) to issue refresh tokens.
- * Every other provider configures its scopes directly on the ConnectionDefinition.
- */
-function getGoogleOfflineParams(authUrl: string): Record<string, string> | undefined {
-  if (authUrl.includes('accounts.google.com')) {
-    return { access_type: 'offline', prompt: 'consent' }
-  }
-}
-
-/**
  * Generalized OAuth Authorize Route — any owner (app / mcp / platform built-in).
  * GET /api/connections/:connectionDefinitionId/oauth2/authorize
  *
@@ -209,7 +199,6 @@ export async function GET(
 
     const callbackBase = features.callbackBaseUrl || OAUTH_REDIRECT_BASE
     const scopes = [...new Set([...(connDef.oauth2Scopes || []), ...scopeAdd])]
-    const googleParams = getGoogleOfflineParams(resolved.authorizeUrl)
 
     const authUrl = new URL(resolved.authorizeUrl)
     authUrl.searchParams.set('client_id', clientId)
@@ -220,12 +209,6 @@ export async function GET(
     authUrl.searchParams.set('scope', scopes.join(features.scopeSeparator || ' '))
     authUrl.searchParams.set('state', state)
     authUrl.searchParams.set('response_type', 'code')
-
-    if (googleParams) {
-      for (const [key, value] of Object.entries(googleParams)) {
-        authUrl.searchParams.set(key, value)
-      }
-    }
 
     if (features.additionalAuthorizeParams) {
       for (const [key, value] of Object.entries(features.additionalAuthorizeParams)) {

@@ -3,12 +3,11 @@
 'use client'
 
 import { Button } from '@auxx/ui/components/button'
-import { toastError } from '@auxx/ui/components/toast'
 import { AlertTriangle, ChevronDown, ChevronUp, Loader2, Mail, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { toast as sonnerToast } from 'sonner'
 import { formatSyncStage } from '~/components/global/integration-status-utils'
-import { api } from '~/trpc/react'
+import { useChannelReconnect } from '../hooks/use-channel-reconnect'
 import { useAuthErrorChannels, useSyncingChannels } from '../hooks/use-channels'
 import type { Channel } from '../store/channel-store'
 
@@ -156,14 +155,7 @@ function SyncChannelItem({ channel }: { channel: Channel }) {
 
 /** Individual channel auth-error item in the expanded view */
 function ReauthChannelItem({ channel }: { channel: Channel }) {
-  const reauthMutation = api.channelReauth.initiateReauth.useMutation({
-    onSuccess: (data) => {
-      if (data.authUrl) window.location.href = data.authUrl
-    },
-    onError: (error) => {
-      toastError({ title: 'Failed to re-authenticate', description: error.message })
-    },
-  })
+  const { reconnect, pending, Dialogs } = useChannelReconnect()
 
   return (
     <div className='flex items-center gap-2 px-3 py-2 border-b last:border-b-0'>
@@ -177,11 +169,12 @@ function ReauthChannelItem({ channel }: { channel: Channel }) {
       <Button
         variant='outline'
         size='xs'
-        onClick={() => reauthMutation.mutate({ integrationId: channel.id })}
-        loading={reauthMutation.isPending}
+        onClick={() => reconnect(channel.id)}
+        loading={pending}
         loadingText='...'>
         Reconnect
       </Button>
+      {Dialogs}
     </div>
   )
 }

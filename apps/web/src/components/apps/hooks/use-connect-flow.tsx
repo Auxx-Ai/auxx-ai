@@ -80,6 +80,14 @@ export interface ConnectFlowArgs {
    * through `connections.save`. Channels v2 uses this to carry `{ inboxId }` for inbox-first connects.
    */
   postConnect?: Record<string, string>
+  /**
+   * Personal channel connect (mail-permissions §11.1): mints a USER-scoped credential even on a
+   * global (`organization`) definition, feeding a dedicated personal inbox. Deliberately separate
+   * from `scope` — an app's `scope: 'user'` connection is just a per-user credential, not a
+   * "personal channel"; only the channel gallery sets this. Rides the OAuth authorize URL as
+   * `personal=1`, read by the authorize route's `supportsPersonalChannelConnection` gate.
+   */
+  personal?: boolean
 }
 
 export interface UseConnectFlow {
@@ -216,6 +224,7 @@ export function useConnectFlow(options: UseConnectFlowOptions = {}): UseConnectF
       const params = new URLSearchParams()
       if (a.connectionId) params.set('connectionId', a.connectionId)
       if (a.returnTo) params.set('returnTo', a.returnTo)
+      if (a.personal) params.set('personal', '1')
       for (const [key, value] of Object.entries(vars)) {
         if (value) params.set(`var_${key}`, value)
       }
@@ -235,7 +244,10 @@ export function useConnectFlow(options: UseConnectFlowOptions = {}): UseConnectF
       } else {
         // Platform providers have no installation; scope is fixed by the definition's `global`.
         params.set('name', a.target.title)
-        baseUrl = `/api/connections/${owner.connectionDefinitionId}/oauth2/authorize`
+        // Address by providerKey, not row id: the authorize route mirrors this path segment into
+        // the OAuth redirect_uri, and providers (Google) only have the stable providerKey form
+        // registered — the row id differs per environment.
+        baseUrl = `/api/connections/${owner.providerKey || owner.connectionDefinitionId}/oauth2/authorize`
       }
 
       const fallbackUrl = `${baseUrl}?${params}`
