@@ -2,7 +2,11 @@
 
 import type { RecordId } from '@auxx/lib/resources/client'
 import { useMemo } from 'react'
-import { type FieldInfo, useAllRecords } from '~/components/resources/hooks/use-all-records'
+import {
+  type AllRecordsItem,
+  type FieldInfo,
+  useAllRecords,
+} from '~/components/resources/hooks/use-all-records'
 import type { RecordMeta } from '~/components/resources/store/record-store'
 
 /** Catalog item record shape from `useAllRecords` (systemAttribute-keyed field values). */
@@ -67,6 +71,8 @@ interface UseCatalogItemsResult {
   fields: Record<string, FieldInfo>
   isLoading: boolean
   refresh: () => void
+  /** Append a freshly created item into the `listAll` cache — skips a refetch. */
+  appendRecord: (item: AllRecordsItem) => void
 }
 
 /**
@@ -76,7 +82,7 @@ interface UseCatalogItemsResult {
  * only consumer, so this lives under `money/hooks` rather than `resources`.
  */
 export function useCatalogItems(): UseCatalogItemsResult {
-  const { records, entityDefinitionId, fields, isLoading, refresh } =
+  const { records, entityDefinitionId, fields, isLoading, refresh, appendRecord } =
     useAllRecords<CatalogItemRecord>({
       apiSlug: 'catalog-items',
       includeArchived: false,
@@ -87,5 +93,5 @@ export function useCatalogItems(): UseCatalogItemsResult {
     return { items: list, itemMap: new Map(list.map((item) => [item.id, item])) }
   }, [records])
 
-  return { items, itemMap, entityDefinitionId, fields, isLoading, refresh }
+  return { items, itemMap, entityDefinitionId, fields, isLoading, refresh, appendRecord }
 }

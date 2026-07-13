@@ -30,7 +30,7 @@ interface GroupsListProps {
  * a trailing active `Switch`.
  */
 export function GroupsList({ selectedId, onSelect, currency }: GroupsListProps) {
-  const { groups, entityDefinitionId, isLoading, refresh } = useCatalogGroups()
+  const { groups, entityDefinitionId, isLoading, refresh, appendRecord } = useCatalogGroups()
   const { itemMap } = useCatalogItems()
   const { getSetting } = useSettings({ scope: 'DOCUMENTS' })
   const taxRates = (getSetting('documents.taxRates') as TaxRate[] | null) ?? []
@@ -104,7 +104,11 @@ export function GroupsList({ selectedId, onSelect, currency }: GroupsListProps) 
       entityDefinitionId,
       values: { catalog_group_name: 'New group' },
     })
-    refresh()
+    appendRecord({
+      ...result.instance,
+      recordId: result.recordId,
+      fieldValues: { catalog_group_name: 'New group', ...result.values },
+    })
     onSelect(result.instance.id)
   }
 

@@ -104,6 +104,14 @@ export interface RecordStoreState {
   /** Append IDs to list (for infinite scroll) */
   appendToList: (key: string, ids: string[], nextCursor: string | null) => void
 
+  /**
+   * Append a single freshly-created record's id to a cached list (the phantom
+   * draft "no refresh()" path) — bumps `total`, leaves `nextCursor` untouched.
+   * No-ops if the list isn't cached yet (a subsequent fetch will include it
+   * naturally) or the id is already present.
+   */
+  appendCreatedRecord: (key: string, id: string) => void
+
   // ─────────────────────────────────────────────────────────────────
   // BATCHED RECORD FETCHING (unified across resource types)
   // ─────────────────────────────────────────────────────────────────
@@ -271,6 +279,15 @@ export const useRecordStore = create<RecordStoreState>()(
             cache.ids.push(...ids)
             cache.nextCursor = nextCursor
           }
+        })
+      },
+
+      appendCreatedRecord: (key, id) => {
+        set((state) => {
+          const cache = state.lists[key]
+          if (!cache || cache.ids.includes(id)) return
+          cache.ids.push(id)
+          cache.total += 1
         })
       },
 
