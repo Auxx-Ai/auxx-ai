@@ -143,6 +143,7 @@ export const ENTITY_DEFINITION_TYPES = [
   'quote',
   'line_item',
   'catalog_item',
+  'catalog_group',
   'invoice',
   'payment',
 ] as const

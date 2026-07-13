@@ -286,6 +286,15 @@ export const SYSTEM_ATTRIBUTES = [
   'catalog_item_part',
   'catalog_item_line_items', // inverse of line_item_catalog_item
 
+  // ─── Catalog Group fields ───────────────────────────────────────
+  'catalog_group_name',
+  'catalog_group_description',
+  'catalog_group_entries',
+  'catalog_group_tax_rate_id',
+  'catalog_group_discount_type',
+  'catalog_group_discount_value',
+  'catalog_group_active',
+
   // ─── Invoice fields ─────────────────────────────────────────────
   'invoice_number',
   'invoice_status',

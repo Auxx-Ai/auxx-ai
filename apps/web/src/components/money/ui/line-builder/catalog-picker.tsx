@@ -27,9 +27,10 @@ import {
 } from '@auxx/ui/components/command'
 import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
 import { cn } from '@auxx/ui/lib/utils'
-import { Package, Plus, Settings2 } from 'lucide-react'
+import { Boxes, Package, Plus, Settings2 } from 'lucide-react'
 import Link from 'next/link'
 import { type ReactNode, useMemo, useState } from 'react'
+import { parseCatalogGroupEntries } from '~/components/money/catalog-group-types'
 import type { RecordMeta } from '~/components/resources'
 import { useAllRecords } from '~/components/resources/hooks/use-all-records'
 import { useUser } from '~/hooks/use-user'
@@ -44,6 +45,33 @@ export interface CatalogItemPick {
   unitPrice: number | null
 }
 
+/** One resolved line payload inside a picked group's explode (plans/dispatch/money/09-product-groups.md). */
+export interface CatalogGroupPickLine {
+  name: string
+  description: string | null
+  category: string | null
+  taxable: boolean
+  unitPrice: number | null
+  qty: number
+  /** EntityInstance id of the `catalog_item` (NOT the branded RecordId). */
+  catalogItemId: string
+}
+
+/**
+ * Value handed to the line builder when a group is picked — resolution
+ * (entry → catalog item lookup, dangling-id skip) happens here in the picker,
+ * where both datasets are already loaded; the builder just writes.
+ */
+export interface CatalogGroupPick {
+  name: string
+  taxRateId: string | null
+  discountType: 'percent' | 'amount' | null
+  discountValue: number | null
+  lines: CatalogGroupPickLine[]
+  /** Count of entries whose `catalogItemId` no longer resolves to a catalog item. */
+  skippedCount: number
+}
+
 interface CatalogItemFieldValues {
   catalog_item_name?: string
   catalog_item_description?: string | null
@@ -56,6 +84,20 @@ interface CatalogItemFieldValues {
 
 interface CatalogItemRow extends RecordMeta {
   fieldValues: CatalogItemFieldValues
+}
+
+interface CatalogGroupFieldValues {
+  catalog_group_name?: string
+  catalog_group_description?: string | null
+  catalog_group_entries?: unknown
+  catalog_group_tax_rate_id?: string | null
+  catalog_group_discount_type?: unknown
+  catalog_group_discount_value?: number | null
+  catalog_group_active?: boolean
+}
+
+interface CatalogGroupRow extends RecordMeta {
+  fieldValues: CatalogGroupFieldValues
 }
 
 /** SINGLE_SELECT values come back as arrays — normalize to the first value. */
@@ -76,6 +118,56 @@ function titleCase(value: string): string {
   return value.length ? value[0].toUpperCase() + value.slice(1) : value
 }
 
+/**
+ * Resolve a `catalog_group` row's entries against the already-loaded catalog
+ * item records — the explode payload's shape (money 09-product-groups.md
+ * "Line-builder consumption" §1). Dangling `catalogItemId`s are skipped and
+ * counted (logged by the caller); inactive items still resolve (deliberate
+ * group membership).
+ */
+function resolveGroup(
+  group: CatalogGroupRow,
+  itemsById: Map<string, CatalogItemRow>
+): CatalogGroupPick {
+  const entries = parseCatalogGroupEntries(group.fieldValues.catalog_group_entries)
+  const lines: CatalogGroupPickLine[] = []
+  let skippedCount = 0
+
+  for (const entry of entries) {
+    const item = itemsById.get(entry.catalogItemId)
+    if (!item) {
+      skippedCount++
+      console.warn(
+        `Catalog group "${group.fieldValues.catalog_group_name ?? group.id}" references a deleted catalog item (${entry.catalogItemId}) — entry skipped.`
+      )
+      continue
+    }
+    lines.push({
+      name: item.fieldValues.catalog_item_name ?? '',
+      description: entry.description ?? item.fieldValues.catalog_item_description ?? null,
+      category: firstOf<string>(item.fieldValues.catalog_item_category),
+      taxable: entry.taxable ?? item.fieldValues.catalog_item_taxable !== false,
+      unitPrice: item.fieldValues.catalog_item_default_unit_price ?? null,
+      qty: entry.qty,
+      catalogItemId: entry.catalogItemId,
+    })
+  }
+
+  return {
+    name: group.fieldValues.catalog_group_name ?? '',
+    taxRateId: group.fieldValues.catalog_group_tax_rate_id ?? null,
+    discountType: firstOf<'percent' | 'amount'>(group.fieldValues.catalog_group_discount_type),
+    discountValue: group.fieldValues.catalog_group_discount_value ?? null,
+    lines,
+    skippedCount,
+  }
+}
+
+/** Σ resolvable-line `unitPrice × qty` — the picker's group total display. */
+function groupTotal(pick: CatalogGroupPick): number {
+  return pick.lines.reduce((sum, line) => sum + (line.unitPrice ?? 0) * line.qty, 0)
+}
+
 export interface CatalogPickerProps {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -84,6 +176,8 @@ export interface CatalogPickerProps {
   /** Org currency code (from `organization.currency`) for price display. */
   currencyCode?: string
   onSelectCatalogItem: (item: CatalogItemPick) => void
+  /** Picking a group explodes its resolved entries into plain line items. */
+  onSelectGroup: (group: CatalogGroupPick) => void
   /** User typed text with no catalog match — add as an ad-hoc line, no catalog rel. */
   onFreeText: (text: string) => void
   children: ReactNode
@@ -102,16 +196,35 @@ export function CatalogPicker({
   initialQuery = '',
   currencyCode = 'USD',
   onSelectCatalogItem,
+  onSelectGroup,
   onFreeText,
   children,
 }: CatalogPickerProps) {
   const [query, setQuery] = useState(initialQuery)
   const { isAdminOrOwner } = useUser()
 
-  const { records, isLoading } = useAllRecords<CatalogItemRow>({
+  const { records, isLoading: itemsLoading } = useAllRecords<CatalogItemRow>({
     apiSlug: 'catalog-items',
     enabled: open,
   })
+
+  const { records: groupRecords, isLoading: groupsLoading } = useAllRecords<CatalogGroupRow>({
+    apiSlug: 'catalog-groups',
+    enabled: open,
+  })
+
+  const groupPicks = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    const itemsById = new Map(records.map((r) => [r.id, r]))
+    const active = groupRecords.filter((g) => g.fieldValues.catalog_group_active !== false)
+    const filtered = q
+      ? active.filter((g) => (g.fieldValues.catalog_group_name ?? '').toLowerCase().includes(q))
+      : active
+
+    return filtered
+      .map((row) => ({ id: row.id, pick: resolveGroup(row, itemsById) }))
+      .sort((a, b) => a.pick.name.localeCompare(b.pick.name))
+  }, [groupRecords, records, query])
 
   const groups = useMemo(() => {
     const q = query.trim().toLowerCase()
@@ -141,7 +254,7 @@ export function CatalogPicker({
       }))
   }, [records, query])
 
-  const hasAnyMatch = groups.some((g) => g.rows.length > 0)
+  const hasAnyMatch = groups.some((g) => g.rows.length > 0) || groupPicks.length > 0
 
   const handlePick = (row: CatalogItemRow) => {
     onSelectCatalogItem({
@@ -152,6 +265,11 @@ export function CatalogPicker({
       taxable: row.fieldValues.catalog_item_taxable !== false,
       unitPrice: row.fieldValues.catalog_item_default_unit_price ?? null,
     })
+    onOpenChange(false)
+  }
+
+  const handlePickGroup = (pick: CatalogGroupPick) => {
+    onSelectGroup(pick)
     onOpenChange(false)
   }
 
@@ -177,7 +295,7 @@ export function CatalogPicker({
             placeholder='Search products & services…'
           />
           <CommandList>
-            {!isLoading && !hasAnyMatch && (
+            {!(itemsLoading || groupsLoading) && !hasAnyMatch && (
               <CommandEmpty>
                 <button
                   type='button'
@@ -190,6 +308,32 @@ export function CatalogPicker({
                   </span>
                 </button>
               </CommandEmpty>
+            )}
+
+            {groupPicks.length > 0 && (
+              <CommandGroup heading='Groups'>
+                {groupPicks.map(({ id, pick }) => (
+                  <CommandItem
+                    key={id}
+                    value={`group-${id}`}
+                    onSelect={() => handlePickGroup(pick)}
+                    className='flex items-center justify-between gap-2'>
+                    <div className='flex min-w-0 items-center gap-2'>
+                      <Boxes className='size-4 shrink-0 text-muted-foreground' />
+                      <div className='flex min-w-0 flex-col'>
+                        <span className='truncate'>{pick.name}</span>
+                        <span className='truncate text-muted-foreground text-xs'>
+                          {pick.lines.length + pick.skippedCount} item
+                          {pick.lines.length + pick.skippedCount === 1 ? '' : 's'}
+                        </span>
+                      </div>
+                    </div>
+                    <span className='shrink-0 text-muted-foreground text-xs'>
+                      {formatPrice(groupTotal(pick), currencyCode)}
+                    </span>
+                  </CommandItem>
+                ))}
+              </CommandGroup>
             )}
 
             {groups.map(

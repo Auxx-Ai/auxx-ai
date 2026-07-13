@@ -121,6 +121,7 @@ export const ModelTypeValues = [
   'quote',
   'line_item',
   'catalog_item',
+  'catalog_group',
   'invoice',
   'payment',
 ] as const
@@ -159,6 +160,7 @@ export const ModelTypes = {
   QUOTE: 'quote',
   LINE_ITEM: 'line_item',
   CATALOG_ITEM: 'catalog_item',
+  CATALOG_GROUP: 'catalog_group',
   INVOICE: 'invoice',
   PAYMENT: 'payment',
 } as const
@@ -385,6 +387,15 @@ export const ModelTypeMeta: Record<
     icon: 'tags',
     color: 'teal',
     apiSlug: 'catalog-items',
+    dbTable: 'EntityInstance',
+    hasDetailPage: false,
+  },
+  catalog_group: {
+    label: 'Product Group',
+    plural: 'Product Groups',
+    icon: 'boxes',
+    color: 'teal',
+    apiSlug: 'catalog-groups',
     dbTable: 'EntityInstance',
     hasDetailPage: false,
   },
@@ -842,6 +853,7 @@ export const WorkflowShareAccessModeValues = ['public', 'organization'] as const
 export const EntityTypeValues = [
   'standard',
   'article',
+  'catalog_group',
   'catalog_item',
   'company',
   'contact',
@@ -1623,6 +1635,7 @@ export const WorkflowShareAccessMode = {
 export const EntityType = {
   STANDARD: 'standard',
   ARTICLE: 'article',
+  CATALOG_GROUP: 'catalog_group',
   CATALOG_ITEM: 'catalog_item',
   COMPANY: 'company',
   CONTACT: 'contact',
