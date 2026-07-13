@@ -160,6 +160,7 @@ export function visitToEvent(
     assigneeUserId: visit.assigneeUserId,
     status: isVisitStatus(visit.status) ? visit.status : 'scheduled',
     dispatchedAt: visit.dispatchedAt ? new Date(visit.dispatchedAt).toISOString() : null,
+    recurrenceRuleId: visit.recurrenceRuleId ?? null,
     workOrder,
   }
 }

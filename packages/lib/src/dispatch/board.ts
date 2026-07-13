@@ -5,6 +5,7 @@
 // (UnifiedCrudHandler), which fans out over every field/view config for a query this narrow.
 
 import { database, schema } from '@auxx/database'
+import { type RecordId, toRecordId } from '@auxx/types/resource'
 import { and, eq, gte, inArray, isNull, lt, lte, sql } from 'drizzle-orm'
 import { getOrgCache } from '../cache'
 import { extractFieldValueScalar } from '../field-values'
@@ -24,6 +25,8 @@ export interface BoardWorkOrder {
   displayName: string | null
   number: string | null
   status: string | null
+  /** Full `RecordId` (contact def + instance) so clients can hydrate via `useRecord`. */
+  contactId: RecordId | null
   contactDisplayName: string | null
 }
 
@@ -109,11 +112,15 @@ async function getSlimWorkOrderProjections(
   const contacts =
     contactIds.length > 0
       ? await database
-          .select({ id: schema.EntityInstance.id, displayName: schema.EntityInstance.displayName })
+          .select({
+            id: schema.EntityInstance.id,
+            displayName: schema.EntityInstance.displayName,
+            entityDefinitionId: schema.EntityInstance.entityDefinitionId,
+          })
           .from(schema.EntityInstance)
           .where(inArray(schema.EntityInstance.id, contactIds))
       : []
-  const contactNameById = new Map(contacts.map((c) => [c.id, c.displayName]))
+  const contactById = new Map(contacts.map((c) => [c.id, c]))
 
   return instances.map((instance) => {
     const rows = valuesByWorkOrder.get(instance.id) ?? []
@@ -124,14 +131,17 @@ async function getSlimWorkOrderProjections(
       ? rows.find((r) => r.fieldId === cf.work_order_status!.id)
       : undefined
     const contactRow = contactFieldId ? rows.find((r) => r.fieldId === contactFieldId) : undefined
-    const contactRelatedId = contactRow?.relatedEntityId ?? null
+    const contact = contactRow?.relatedEntityId
+      ? contactById.get(contactRow.relatedEntityId)
+      : undefined
 
     return {
       id: instance.id,
       displayName: instance.displayName,
       number: numberRow ? (extractFieldValueScalar(numberRow) as string | null) : null,
       status: statusRow ? (extractFieldValueScalar(statusRow) as string | null) : null,
-      contactDisplayName: contactRelatedId ? (contactNameById.get(contactRelatedId) ?? null) : null,
+      contactId: contact ? toRecordId(contact.entityDefinitionId, contact.id) : null,
+      contactDisplayName: contact?.displayName ?? null,
     }
   })
 }

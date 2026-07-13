@@ -2,7 +2,12 @@
 'use client'
 
 import { Button } from '@auxx/ui/components/button'
-import { Checkbox } from '@auxx/ui/components/checkbox'
+import {
+  Command,
+  CommandCheckboxItem,
+  CommandGroup,
+  CommandSeparator,
+} from '@auxx/ui/components/command'
 import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
 import { Switch } from '@auxx/ui/components/switch'
 import { TreeRow } from '@auxx/ui/components/tree-row'
@@ -164,29 +169,33 @@ function CopyHoursPopover({
           <Copy className='size-3.5 text-muted-foreground' />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className='w-56 p-3' align='end'>
-        <p className='mb-2 text-xs font-medium text-muted-foreground'>
-          Copy {DAY_LABELS[sourceDay.dayOfWeek]} hours to:
-        </p>
-        <div className='flex flex-col gap-1.5'>
-          {otherDays.map((dayOfWeek) => (
-            <label key={dayOfWeek} className='flex cursor-pointer items-center gap-2 text-sm'>
-              <Checkbox
+      <PopoverContent className='w-56 p-0' align='end'>
+        <Command>
+          <CommandGroup heading={`Copy ${DAY_LABELS[sourceDay.dayOfWeek]} hours to`}>
+            {otherDays.map((dayOfWeek) => (
+              <CommandCheckboxItem
+                key={dayOfWeek}
+                variant='switch'
+                value={DAY_LABELS[dayOfWeek]}
                 checked={checked.has(dayOfWeek)}
-                onCheckedChange={() => toggleDay(dayOfWeek)}
-              />
-              {DAY_LABELS[dayOfWeek]}
-            </label>
-          ))}
-        </div>
-        <Button
-          type='button'
-          size='sm'
-          className='mt-3 w-full'
-          disabled={checked.size === 0}
-          onClick={handleApply}>
-          Apply
-        </Button>
+                onCheckedChange={() => toggleDay(dayOfWeek)}>
+                {DAY_LABELS[dayOfWeek]}
+              </CommandCheckboxItem>
+            ))}
+          </CommandGroup>
+          <CommandSeparator />
+          <CommandGroup>
+            <Button
+              type='button'
+              variant='outline'
+              size='sm'
+              className='w-full rounded-b-xl'
+              disabled={checked.size === 0}
+              onClick={handleApply}>
+              Apply
+            </Button>
+          </CommandGroup>
+        </Command>
       </PopoverContent>
     </Popover>
   )
