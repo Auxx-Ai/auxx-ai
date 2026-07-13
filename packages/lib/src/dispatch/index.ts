@@ -48,6 +48,7 @@ export {
   addMyAdhocQcItem,
   addMyQcItemPhoto,
   createQcItemTemplate,
+  deleteQcItemTemplate,
   listMyVisitQcItems,
   listQcItemTemplates,
   removeMyQcItemPhoto,

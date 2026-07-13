@@ -12,6 +12,7 @@ import {
   convertRequestToWorkOrder,
   createQcItemTemplate,
   createWorkOrderFromTicket,
+  deleteQcItemTemplate,
   dispatchVisit,
   endEngagement,
   getBoard,
@@ -373,8 +374,9 @@ export const dispatchRouter = createTRPCRouter({
       })
     }),
 
-  // 08-worker-surface.md §5 — the quality-checklist template catalog. Admin-managed
-  // (deactivate-not-delete, no delete procedure); org-scoped only, no assignee guard.
+  // 08-worker-surface.md §5 — the quality-checklist template catalog. Admin-managed;
+  // org-scoped only, no assignee guard. Deleting a template never touches already-materialized
+  // visit snapshots (their templateId FK is set-null on delete).
   listQcTemplates: dispatchAdminProcedure.query(async ({ ctx }) => {
     return listQcItemTemplates(ctx.session.organizationId)
   }),
@@ -401,6 +403,12 @@ export const dispatchRouter = createTRPCRouter({
     )
     .mutation(async ({ ctx, input }) => {
       return updateQcItemTemplate(ctx.session.organizationId, input)
+    }),
+  deleteQcTemplate: dispatchAdminProcedure
+    .input(z.object({ templateId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      await deleteQcItemTemplate(ctx.session.organizationId, input.templateId)
+      return { success: true }
     }),
   reorderQcTemplates: dispatchAdminProcedure
     .input(z.array(z.object({ id: z.string(), sortOrder: z.number().int() })))
