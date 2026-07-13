@@ -69,6 +69,10 @@ export const DETAIL_VIEW_TAB_COMPONENTS: Record<
     import('../dispatch/ui/job-schedule/work-order-line-items-tab').then((m) => ({
       default: m.WorkOrderLineItemsTab,
     })),
+  'work_order:billing': () =>
+    import('../dispatch/ui/job-schedule/work-order-billing-tab').then((m) => ({
+      default: m.WorkOrderBillingTab,
+    })),
 }
 
 /**

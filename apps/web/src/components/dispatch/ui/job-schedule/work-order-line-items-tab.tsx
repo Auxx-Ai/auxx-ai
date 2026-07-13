@@ -5,7 +5,6 @@ import { cn } from '@auxx/ui/lib/utils'
 import type { DetailViewTabProps } from '~/components/detail-view'
 import { LineBuilder } from '~/components/money/ui/line-builder/line-builder'
 import { useSystemValues } from '~/components/resources/hooks/use-system-values'
-import { BillingScheduleRow } from './billing-schedule-row'
 
 /**
  * WorkOrderLineItemsTab — registered as `work_order:line-items` (dispatch M2
@@ -15,23 +14,17 @@ import { BillingScheduleRow } from './billing-schedule-row'
  * `hasBilling` is quote/invoice-only) — this is the job's per-cycle line set
  * ("what every visit bills", 04-ui.md §6 Line items section / money 01-ui
  * #13): the header reads "Billed each visit" when the job is recurring
- * (`work_order_job_type`). The Billing row (money MI2 build spec §K.1) sits
- * above it — the reserved slot for how/when invoice drafts get generated.
+ * (`work_order_job_type`). The billing schedule row (money MI2 build spec
+ * §K.1) moved to the `billing` section — see `work-order-billing-tab.tsx`
+ * (money plan 10 §D block 3).
  */
 export function WorkOrderLineItemsTab({ recordId, variant = 'tab' }: DetailViewTabProps) {
-  const { values } = useSystemValues(
-    recordId,
-    ['work_order_job_type', 'work_order_invoice_timing'],
-    { autoFetch: true }
-  )
+  const { values } = useSystemValues(recordId, ['work_order_job_type'], { autoFetch: true })
   const jobType = (values.work_order_job_type as string | undefined) ?? 'one_off'
-  const invoiceTiming =
-    (values.work_order_invoice_timing as string | undefined) ?? 'per_visit_completed'
   const isSection = variant === 'section'
 
   return (
     <div className={cn('flex flex-col', isSection ? '' : 'h-full min-h-0')}>
-      <BillingScheduleRow workOrderRecordId={recordId} invoiceTiming={invoiceTiming} />
       {jobType === 'recurring' && (
         <div className='px-4 pt-1 pb-1 text-xs font-medium text-muted-foreground'>
           Billed each visit

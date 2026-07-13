@@ -1,5 +1,6 @@
 // apps/web/src/server/api/routers/money.ts
 
+import type { PaymentTransactionEntity } from '@auxx/database'
 import { database, schema } from '@auxx/database'
 import { renderPreviewQuotePdf } from '@auxx/lib/documents'
 import { NotFoundError } from '@auxx/lib/errors'
@@ -18,6 +19,7 @@ import {
   getInvoiceSchedule,
   getPaymentAccount,
   listUninvoicedLines,
+  listWorkOrderPayments,
   markInvoiceSent,
   markQuoteSent,
   prepareDocumentEmail,
@@ -38,7 +40,7 @@ import {
 } from '@auxx/lib/recurrence'
 import { getOrganizationSetting } from '@auxx/lib/settings'
 import type { RecordId } from '@auxx/types/resource'
-import { parseRecordId, recordIdSchema } from '@auxx/types/resource'
+import { parseRecordId, recordIdSchema, toRecordId } from '@auxx/types/resource'
 import { and, asc, eq } from 'drizzle-orm'
 import { z } from 'zod'
 import { adminProcedure, createTRPCRouter, protectedProcedure } from '../trpc'
@@ -65,6 +67,29 @@ const moneyAdminProcedure = adminProcedure.use(async ({ ctx, next }) => {
   )
   return next()
 })
+
+/**
+ * Shape a `PaymentTransaction` ledger row for the payments list UI (money MI1 build spec
+ * §E.2 row shape) — shared by `listPayments` (per-invoice, invoice-drawer) and
+ * `listPaymentsForWorkOrder` (cross-invoice, job page) so the row shape can't drift between
+ * the two call sites.
+ */
+function mapPaymentRow(row: PaymentTransactionEntity) {
+  return {
+    id: row.id,
+    amount: row.amount,
+    kind: row.kind,
+    status: row.status,
+    date: (row.metadata as { date?: string } | null)?.date ?? row.createdAt.toISOString(),
+    method: row.method,
+    reference: row.reference,
+    note: row.note,
+    provider: row.provider,
+    createdByUserId: row.createdByUserId,
+    stripeRefundId: row.stripeRefundId,
+    refundedTransactionId: row.refundedTransactionId,
+  }
+}
 
 export const moneyRouter = createTRPCRouter({
   createQuoteFromRequest: moneyProcedure
@@ -388,19 +413,29 @@ export const moneyRouter = createTRPCRouter({
         orderBy: asc(schema.PaymentTransaction.createdAt),
       })
 
+      return rows.map(mapPaymentRow)
+    }),
+
+  /**
+   * Cross-invoice payments read for the job page's billing section (money work-order billing
+   * tab build spec §A) — every ledger row across ALL of a work order's invoices, `createdAt`
+   * asc. Row shape = `listPayments`'s exact mapper plus `invoiceRecordId` so the client can
+   * label rows by invoice and invalidate that invoice's `listPayments` query on record/delete/
+   * refund. `listPayments` itself is untouched — the invoice drawer keeps its exact query key.
+   */
+  listPaymentsForWorkOrder: moneyProcedure
+    .input(z.object({ workOrderRecordId: recordIdSchema }))
+    .query(async ({ ctx, input }) => {
+      const { entityInstanceId: workOrderInstanceId } = parseRecordId(input.workOrderRecordId)
+      const rows = await listWorkOrderPayments({
+        organizationId: ctx.session.organizationId,
+        userId: ctx.session.user.id,
+        workOrderInstanceId,
+      })
+
       return rows.map((row) => ({
-        id: row.id,
-        amount: row.amount,
-        kind: row.kind,
-        status: row.status,
-        date: (row.metadata as { date?: string } | null)?.date ?? row.createdAt.toISOString(),
-        method: row.method,
-        reference: row.reference,
-        note: row.note,
-        provider: row.provider,
-        createdByUserId: row.createdByUserId,
-        stripeRefundId: row.stripeRefundId,
-        refundedTransactionId: row.refundedTransactionId,
+        ...mapPaymentRow(row),
+        invoiceRecordId: toRecordId('invoice', row.invoiceInstanceId),
       }))
     }),
 
