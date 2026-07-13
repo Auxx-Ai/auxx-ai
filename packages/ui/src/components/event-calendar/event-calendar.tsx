@@ -352,7 +352,7 @@ function EventCalendarInner<T extends EventCalendarItem = EventCalendarItem>({
 
   return (
     <div
-      className={cn('flex min-w-0 flex-col rounded-lg border', className)}
+      className={cn('flex min-w-0 flex-col', className)}
       style={
         {
           '--event-height': `${EventHeight}px`,

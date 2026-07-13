@@ -105,12 +105,13 @@ function MiniMonthCalendar({
       onMonthChange={handleMonthChange}
       weekStartsOn={weekStartsOn}
       showOutsideDays
+      captionLayout='dropdown'
       // Always render 6 rows so paging between 5- and 6-week months doesn't shift the
       // sidebar's height (and the board content below it).
       fixedWeeks
       renderDay={renderDay}
       modifiers={modifiers}
-      className={cn('p-2 [&_[data-slot=day][data-visible-range]]:bg-accent/50', className)}
+      className={cn('[&_[data-slot=day][data-visible-range]]:bg-accent/50', className)}
     />
   )
 }

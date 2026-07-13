@@ -1,17 +1,15 @@
 // apps/web/src/components/dispatch/ui/worker-profile-page.tsx
 'use client'
 
+import { FieldType } from '@auxx/database/enums'
 import type { SelectOptionColor } from '@auxx/lib/custom-fields/client'
 import { Button } from '@auxx/ui/components/button'
 import { DialogFooter } from '@auxx/ui/components/dialog'
 import { KbdSubmit } from '@auxx/ui/components/kbd'
-import { Switch } from '@auxx/ui/components/switch'
 import { toastError } from '@auxx/ui/components/toast'
 import { Trash2 } from 'lucide-react'
-import {
-  type AddressStruct,
-  AddressStructFields,
-} from '~/components/fields/inputs/address-struct-input-field'
+import type { AddressStruct } from '~/components/fields/inputs/address-struct-input-field'
+import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
 import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
 import { useDirtyDraft } from '~/components/global/forms/use-dirty-draft'
 import { ColorTagPicker } from '~/components/tags/ui/color-tag-picker'
@@ -148,10 +146,10 @@ export function WorkerProfilePage({ worker, onRemoved }: WorkerProfilePageProps)
           showIcon
           description='Used for routing on the live map (M3).'>
           <div className='py-2'>
-            <AddressStructFields
+            <FieldInputAdapter
+              fieldType={FieldType.ADDRESS_STRUCT}
               value={draft.homeBase}
-              onChange={(homeBase) => patch({ homeBase })}
-              className='flex flex-col gap-2'
+              onChange={(homeBase) => patch({ homeBase: homeBase as AddressStruct })}
               disabled={isSaving}
             />
           </div>
@@ -162,9 +160,11 @@ export function WorkerProfilePage({ worker, onRemoved }: WorkerProfilePageProps)
           type={BaseType.BOOLEAN}
           showIcon
           description='Inactive workers are hidden from the board.'>
-          <Switch
-            checked={draft.isActive}
-            onCheckedChange={(isActive) => patch({ isActive })}
+          <FieldInputAdapter
+            fieldType={FieldType.CHECKBOX}
+            fieldOptions={{ variant: 'switch' }}
+            value={draft.isActive}
+            onChange={(isActive) => patch({ isActive: isActive as boolean })}
             disabled={isSaving}
           />
         </FieldPanelRow>
@@ -174,9 +174,13 @@ export function WorkerProfilePage({ worker, onRemoved }: WorkerProfilePageProps)
           type={BaseType.BOOLEAN}
           showIcon
           description='Route begins at the business address.'>
-          <Switch
-            checked={draft.routeStartAtHome}
-            onCheckedChange={(routeStartAtHome) => patch({ routeStartAtHome })}
+          <FieldInputAdapter
+            fieldType={FieldType.CHECKBOX}
+            fieldOptions={{ variant: 'switch' }}
+            value={draft.routeStartAtHome}
+            onChange={(routeStartAtHome) =>
+              patch({ routeStartAtHome: routeStartAtHome as boolean })
+            }
             disabled={isSaving}
           />
         </FieldPanelRow>
@@ -186,9 +190,11 @@ export function WorkerProfilePage({ worker, onRemoved }: WorkerProfilePageProps)
           type={BaseType.BOOLEAN}
           showIcon
           description='Route ends at the business address.'>
-          <Switch
-            checked={draft.routeEndAtHome}
-            onCheckedChange={(routeEndAtHome) => patch({ routeEndAtHome })}
+          <FieldInputAdapter
+            fieldType={FieldType.CHECKBOX}
+            fieldOptions={{ variant: 'switch' }}
+            value={draft.routeEndAtHome}
+            onChange={(routeEndAtHome) => patch({ routeEndAtHome: routeEndAtHome as boolean })}
             disabled={isSaving}
           />
         </FieldPanelRow>

@@ -5,7 +5,7 @@
 import { Button } from '@auxx/ui/components/button'
 import { RadioTab, RadioTabItem } from '@auxx/ui/components/radio-tab'
 import { Separator } from '@auxx/ui/components/separator'
-import { addDays, format, startOfWeek } from 'date-fns'
+import { startOfWeek } from 'date-fns'
 import {
   CalendarDays,
   CalendarRange,
@@ -16,10 +16,9 @@ import {
   PanelLeft,
 } from 'lucide-react'
 import { Tooltip } from '~/components/global/tooltip'
-import { DateTimePicker } from '~/components/pickers/date-time-picker'
 import { useDispatchSidebarStore } from '../../stores/dispatch-sidebar-store'
 import type { BoardViewMode } from './types'
-import { goToNextDate, goToPreviousDate, viewedMonthStart, type WeekStartIndex } from './utils'
+import { goToNextDate, goToPreviousDate, type WeekStartIndex } from './utils'
 
 export type BoardMode = 'calendar' | 'map'
 
@@ -36,24 +35,6 @@ interface BoardToolbarProps {
   weekStartsOn: WeekStartIndex
   boardMode: BoardMode
   onBoardModeChange: (mode: BoardMode) => void
-}
-
-/** View-shaped date label: month → "August 2026", week → short from–to, day → full date. */
-function dateLabel(view: BoardViewMode, date: Date, weekStartsOn: WeekStartIndex): string {
-  if (view === 'month') return format(viewedMonthStart(date, weekStartsOn), 'MMMM yyyy')
-  if (view === 'week') {
-    // Anchor model (13-week-view-horizontal-stream.md): `date` is the leftmost visible day of
-    // the stream, not necessarily a `weekStartsOn`-aligned week start — the displayed "week" is
-    // just the 7 days from the anchor.
-    const start = date
-    const end = addDays(date, 6)
-    if (start.getFullYear() !== end.getFullYear())
-      return `${format(start, 'MMM d, yyyy')} – ${format(end, 'MMM d, yyyy')}`
-    if (start.getMonth() !== end.getMonth())
-      return `${format(start, 'MMM d')} – ${format(end, 'MMM d, yyyy')}`
-    return `${format(start, 'MMM d')} – ${format(end, 'd, yyyy')}`
-  }
-  return format(date, 'PPP')
 }
 
 /**
@@ -137,16 +118,6 @@ export function BoardToolbar({
           aria-label='Next'>
           <ChevronRight />
         </Button>
-        <DateTimePicker
-          value={date}
-          onChange={(value) => value && onDateChange(value)}
-          mode='date'
-          notClearable>
-          {/* Fixed width — the label re-formats per view/day and must not shift its neighbors. */}
-          <Button variant='ghost' size='sm' className='w-44 justify-center truncate'>
-            {dateLabel(effectiveView, date, weekStartsOn)}
-          </Button>
-        </DateTimePicker>
       </div>
 
       <Separator orientation='vertical' className='h-6' />

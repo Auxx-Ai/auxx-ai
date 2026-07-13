@@ -184,12 +184,13 @@ export function Calendar(props: CalendarProps) {
         data-slot='calendar'
         // Reserve a definite width so the calendar renders correctly inside width-fitting
         // containers (e.g. `w-auto` popovers), where the fluid `w-full`/`aspect-square` day
-        // cells would otherwise collapse to zero. Each month claims ≥13rem plus gaps/padding;
-        // `min-width` still lets the grid grow to fill wider fixed-width containers.
+        // cells would otherwise collapse to zero. Each month claims ≥14rem (grid + its own
+        // `px-2`) plus inter-month gaps; `min-width` still lets the grid grow to fill wider
+        // fixed-width containers.
         style={{
-          minWidth: `calc(${numberOfMonths} * 13rem + ${numberOfMonths - 1} * 1rem + 1.5rem)`,
+          minWidth: `calc(${numberOfMonths} * 14rem + ${numberOfMonths - 1} * 1rem)`,
         }}
-        className={cn('@container relative select-none p-3', className)}>
+        className={cn('@container relative select-none', className)}>
         {!hideNavigation && captionLayout === 'label' && (
           <div
             data-slot='nav'

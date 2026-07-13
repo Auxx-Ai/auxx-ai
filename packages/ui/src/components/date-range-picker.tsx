@@ -234,7 +234,7 @@ export function DateRangePicker({
             variant={triggerVariant}
             size='sm'
             className={cn('justify-start text-left font-normal', triggerClassName)}>
-            <CalendarIcon className='mr-2 h-4 w-4' />
+            <CalendarIcon />
             {displayLabel}
           </Button>
         )}
