@@ -4,6 +4,7 @@
 import { cn } from '@auxx/ui/lib/utils'
 import { Children, isValidElement, useCallback, useMemo, useRef, useState } from 'react'
 import { useResourceFields } from '~/components/resources/hooks'
+import { CalendarViewBody } from './components/calendar/calendar-view-body'
 import { FloatingBulkActionBar } from './components/floating-bulk-action-bar'
 import { KanbanViewBody } from './components/kanban-view-body'
 import { TableBody } from './components/table-body'
@@ -32,6 +33,7 @@ import { useReconciledColumns } from './hooks/use-reconciled-columns'
 import { useDynamicTableStore } from './stores/dynamic-table-store'
 import { useColumnOrder } from './stores/store-selectors'
 import type {
+  CalendarViewConfig,
   CustomField,
   DynamicTableProps,
   KanbanViewConfig,
@@ -141,6 +143,8 @@ function DynamicViewInner<TData extends object>({
   // Determine view type
   const viewType: ViewType = (currentView?.config as ViewConfig)?.viewType ?? 'table'
   const kanbanConfig: KanbanViewConfig | undefined = (currentView?.config as ViewConfig)?.kanban
+  const calendarConfig: CalendarViewConfig | undefined = (currentView?.config as ViewConfig)
+    ?.calendar
 
   // Get groupBy field for kanban validation
   const groupByField = useMemo(() => {
@@ -150,6 +154,9 @@ function DynamicViewInner<TData extends object>({
 
   // Check if kanban view is valid
   const isKanbanView = viewType === 'kanban' && !!groupByField
+
+  // Check if calendar view is valid (needs a configured date axis)
+  const isCalendarView = viewType === 'calendar' && !!calendarConfig?.dateFieldId
 
   // Table-selected rows (for table view)
   const tableState = table.getState()
@@ -246,6 +253,21 @@ function DynamicViewInner<TData extends object>({
     )
   }
 
+  // Calendar view manages its own scroll (EventCalendar month grid) — no wrapper needed
+  if (isCalendarView) {
+    return (
+      <div className='flex flex-col relative h-full flex-1'>
+        {toolbar}
+        {isInitialLoading ? (
+          <TableContentSkeleton rowCount={12} showCheckbox={enableCheckbox} columnCount={5} />
+        ) : (
+          <CalendarViewBody />
+        )}
+        {overlays}
+      </div>
+    )
+  }
+
   // Table view — toolbar outside, table body inside TableScrollArea
   return (
     <div className='flex flex-col relative h-full flex-1'>
@@ -331,6 +353,17 @@ export function DynamicView<TData extends object = object>(props: DynamicTablePr
   const customFields = useMemo(() => {
     if (!fields) return []
     return fields.filter((f): f is CustomField => !!f.id)
+  }, [fields])
+
+  // DATE/DATETIME fields for the calendar view's date-axis pickers (TIME excluded)
+  const dateFields = useMemo(() => {
+    if (!fields) return []
+    return fields
+      .filter(
+        (f): f is ResourceField & { id: string } =>
+          !!f.id && (f.fieldType === 'DATE' || f.fieldType === 'DATETIME') && f.active !== false
+      )
+      .map((f) => ({ id: f.id, name: f.name ?? f.label }))
   }, [fields])
 
   // Read columnOrder from store for reconciliation
@@ -466,6 +499,7 @@ export function DynamicView<TData extends object = object>(props: DynamicTablePr
     () => ({
       selectFields,
       customFields,
+      dateFields,
       entityLabel,
       onAddNew,
       onCardClick,
@@ -478,6 +512,7 @@ export function DynamicView<TData extends object = object>(props: DynamicTablePr
     [
       selectFields,
       customFields,
+      dateFields,
       entityLabel,
       onAddNew,
       onCardClick,

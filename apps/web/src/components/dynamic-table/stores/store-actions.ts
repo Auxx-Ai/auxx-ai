@@ -9,7 +9,7 @@ import type {
   VisibilityState,
 } from '@tanstack/react-table'
 import { useCallback } from 'react'
-import type { ColumnFormatting, KanbanViewConfig } from '../types'
+import type { CalendarViewConfig, ColumnFormatting, KanbanViewConfig } from '../types'
 import { useDynamicTableStore } from './dynamic-table-store'
 
 // ─── Filter Actions ───────────────────────────────────────────────────────────
@@ -184,6 +184,25 @@ export function useUpdateKanbanConfig(tableId: string) {
       } else {
         const current = s.sessionConfigs[tableId]?.kanban ?? {}
         s.updateSessionConfig(tableId, { kanban: { ...current, ...changes } as KanbanViewConfig })
+      }
+    },
+    [tableId]
+  )
+}
+
+/** Get action to update calendar config */
+export function useUpdateCalendarConfig(tableId: string) {
+  return useCallback(
+    (changes: Partial<CalendarViewConfig>) => {
+      const s = useDynamicTableStore.getState()
+      const viewId = s.activeViewIds[tableId]
+      if (viewId) {
+        s.updateCalendarConfig(viewId, changes)
+      } else {
+        const current = s.sessionConfigs[tableId]?.calendar ?? {}
+        s.updateSessionConfig(tableId, {
+          calendar: { ...current, ...changes } as CalendarViewConfig,
+        })
       }
     },
     [tableId]

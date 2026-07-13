@@ -9,7 +9,13 @@ import type {
   VisibilityState,
 } from '@tanstack/react-table'
 import { useShallow } from 'zustand/react/shallow'
-import type { ColumnFormatting, KanbanViewConfig, TableView, ViewConfig } from '../types'
+import type {
+  CalendarViewConfig,
+  ColumnFormatting,
+  KanbanViewConfig,
+  TableView,
+  ViewConfig,
+} from '../types'
 import {
   EMPTY_COLUMN_FORMATTING,
   EMPTY_COLUMN_LABELS,
@@ -198,7 +204,7 @@ export function useColumnFormatting(tableId: string): Record<string, ColumnForma
 }
 
 /** Get view type for current table/view */
-export function useViewType(tableId: string): 'table' | 'kanban' {
+export function useViewType(tableId: string): 'table' | 'kanban' | 'calendar' {
   const viewId = useDynamicTableStore((s) => s.activeViewIds[tableId])
   return useDynamicTableStore((s) => {
     if (!viewId) return s.sessionConfigs[tableId]?.viewType ?? 'table'
@@ -213,6 +219,17 @@ export function useKanbanConfig(tableId: string): KanbanViewConfig | undefined {
     useShallow((s) => {
       if (!viewId) return s.sessionConfigs[tableId]?.kanban
       return s.pendingConfigs[viewId]?.kanban ?? s.viewConfigs[viewId]?.kanban
+    })
+  )
+}
+
+/** Get calendar config for current table/view */
+export function useCalendarConfig(tableId: string): CalendarViewConfig | undefined {
+  const viewId = useDynamicTableStore((s) => s.activeViewIds[tableId])
+  return useDynamicTableStore(
+    useShallow((s) => {
+      if (!viewId) return s.sessionConfigs[tableId]?.calendar
+      return s.pendingConfigs[viewId]?.calendar ?? s.viewConfigs[viewId]?.calendar
     })
   )
 }

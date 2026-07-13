@@ -9,7 +9,13 @@ import type {
   VisibilityState,
 } from '@tanstack/react-table'
 import type { StateCreator } from 'zustand'
-import type { ColumnFormatting, KanbanViewConfig, TableView, ViewConfig } from '../types'
+import type {
+  CalendarViewConfig,
+  ColumnFormatting,
+  KanbanViewConfig,
+  TableView,
+  ViewConfig,
+} from '../types'
 
 // ============================================================================
 // UI CONFIG TYPE (everything except filters)
@@ -25,8 +31,9 @@ export interface TableUIConfig {
   columnLabels?: Record<string, string>
   columnFormatting?: Record<string, ColumnFormatting>
   rowHeight?: 'compact' | 'normal' | 'spacious'
-  viewType?: 'table' | 'kanban'
+  viewType?: 'table' | 'kanban' | 'calendar'
   kanban?: KanbanViewConfig
+  calendar?: CalendarViewConfig
 }
 
 /** Default UI config */
@@ -89,6 +96,7 @@ export interface UISlice {
   updateViewConfig: (viewId: string, changes: Partial<TableUIConfig>) => void
   updateSessionConfig: (tableId: string, changes: Partial<TableUIConfig>) => void
   updateKanbanConfig: (viewId: string, changes: Partial<KanbanViewConfig>) => void
+  updateCalendarConfig: (viewId: string, changes: Partial<CalendarViewConfig>) => void
   resetToSaved: (viewId: string) => void
   getSessionConfig: (tableId: string) => TableUIConfig
 }

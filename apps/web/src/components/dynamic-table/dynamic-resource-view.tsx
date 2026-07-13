@@ -85,8 +85,10 @@ export interface DynamicResourceViewProps<TRow extends RecordMeta = RecordMeta> 
   embedded?: boolean
   /** Selection change callback (passthrough from DynamicView). */
   onRowSelectionChange?: (rows: Set<string>) => void
-  /** Add-new button handler (primary column "+ New" / empty-state CTA). */
-  onAddNew?: () => void
+  /** Add-new button handler (primary column "+ New" / empty-state CTA). Optional
+   *  `presetValues` lets the calendar view's click-empty-day-to-create prefill
+   *  the create dialog. */
+  onAddNew?: (presetValues?: Record<string, unknown>) => void
   /** Optional override for the kanban "New X" label (defaults to resource.label). */
   entityLabel?: string
   /** Kanban card click handler. */

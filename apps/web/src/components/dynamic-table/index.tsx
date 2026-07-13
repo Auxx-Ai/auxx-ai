@@ -8,6 +8,7 @@ export { viewConfigSchema } from '@auxx/lib/conditions/client'
 export { PrimaryCell, type PrimaryCellProps } from './cells/primary-cell'
 export { PrimaryFieldCell } from './cells/primary-field-cell'
 export { BulkActionBar } from './components/bulk-action-bar'
+export { CalendarViewBody } from './components/calendar/calendar-view-body'
 export { CopyableLinkCell } from './components/copyable-link-cell'
 export { CustomFieldCell } from './components/custom-field-cell'
 export { DragPreview } from './components/drag-preview'
@@ -45,6 +46,7 @@ export { useDynamicTable } from './hooks/use-dynamic-table'
 export type {
   BulkAction,
   BulkWriteResult,
+  CalendarViewConfig,
   CellAction,
   CellAddress,
   CellRange,

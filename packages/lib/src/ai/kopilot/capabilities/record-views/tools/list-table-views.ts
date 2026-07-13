@@ -13,7 +13,7 @@ interface ViewSummary {
   name: string
   isDefault: boolean
   isShared: boolean
-  viewType: 'table' | 'kanban'
+  viewType: 'table' | 'kanban' | 'calendar'
   filterCount: number
   sort?: { field: string; direction: 'asc' | 'desc' }
 }
@@ -27,7 +27,7 @@ function summarizeView(
   const config = (view.config ?? {}) as {
     filters?: Array<{ conditions?: unknown[] }>
     sorting?: Array<{ id: string; desc: boolean }>
-    viewType?: 'table' | 'kanban'
+    viewType?: 'table' | 'kanban' | 'calendar'
   }
 
   const filterCount = (config.filters ?? []).reduce(
