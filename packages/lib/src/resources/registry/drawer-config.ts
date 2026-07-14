@@ -140,7 +140,7 @@ export const DRAWER_CONFIG_REGISTRY: DrawerConfigRegistry = {
     },
     tabCards: {
       overview: [
-        { value: 'lines', label: 'Line items', fullBleed: true },
+        { value: 'lines', label: 'Line items', fullBleed: false },
         { value: 'payments', label: 'Payments' },
       ],
     },

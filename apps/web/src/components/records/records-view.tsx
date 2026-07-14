@@ -21,7 +21,17 @@ import {
   MainPageHeader,
 } from '@auxx/ui/components/main-page'
 import { useQueryClient } from '@tanstack/react-query'
-import { Archive, Combine, Database, FileText, Play, Plus, SquarePen, Trash2 } from 'lucide-react'
+import {
+  Archive,
+  Combine,
+  Database,
+  Expand,
+  FileText,
+  Play,
+  Plus,
+  SquarePen,
+  Trash2,
+} from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { parseAsBoolean, parseAsString, useQueryState } from 'nuqs'
 import { useCallback, useMemo, useRef, useState } from 'react'
@@ -42,7 +52,13 @@ import { useCommandPaletteStore } from '~/components/kbar/store'
 import { KopilotContext } from '~/components/kopilot/context'
 import { MergeDialog } from '~/components/merge'
 import { RecordEditorDialog } from '~/components/records/record-editor-dialog'
-import { type RecordMeta, toRecordId, useResource } from '~/components/resources'
+import {
+  getRecordLink,
+  type RecordMeta,
+  resourceHasDetailPage,
+  toRecordId,
+  useResource,
+} from '~/components/resources'
 import { useRunAiBulkGenerate } from '~/components/resources/hooks/run-ai-bulk-generate'
 import { useSaveFieldValue } from '~/components/resources/hooks/use-save-field-value'
 import { useActorStore } from '~/components/resources/store/actor-store'
@@ -253,6 +269,16 @@ export function RecordsView({ slug, basePath, embedded }: RecordsViewProps) {
             <SquarePen />
             Edit
           </DropdownMenuItem>
+          {resource && resourceHasDetailPage(resource) && (
+            <DropdownMenuItem
+              onClick={() => {
+                const href = getRecordLink(toRecordId(entityDefinitionId, row.id), resource)
+                if (href) router.push(href)
+              }}>
+              <Expand />
+              Open full page
+            </DropdownMenuItem>
+          )}
           <FavoriteToggleMenuItem
             targetType='ENTITY_INSTANCE'
             targetIds={{
@@ -275,6 +301,8 @@ export function RecordsView({ slug, basePath, embedded }: RecordsViewProps) {
     [
       entityDefinitionId,
       primaryResourceFieldId,
+      resource,
+      router,
       handleOpenDrawer,
       handleOpenEditDialog,
       handleArchive,

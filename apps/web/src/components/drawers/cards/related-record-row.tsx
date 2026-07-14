@@ -27,6 +27,7 @@ export function RelatedRecordRow({
   recordId,
   statusAttr,
   href: hrefOverride,
+  rowClassName,
 }: {
   recordId: RecordId
   statusAttr: string
@@ -36,6 +37,8 @@ export function RelatedRecordRow({
    * records-view drawer convention.
    */
   href?: string
+  /** Extra classes for the row (passed through to `TreeRow`), e.g. a hover tint. */
+  rowClassName?: string
 }) {
   const router = useRouter()
   const { record } = useRecord({ recordId, enabled: true })
@@ -60,6 +63,7 @@ export function RelatedRecordRow({
 
   return (
     <TreeRow
+      rowClassName={rowClassName}
       onDrill={handleOpen}
       icon={
         <RecordIcon

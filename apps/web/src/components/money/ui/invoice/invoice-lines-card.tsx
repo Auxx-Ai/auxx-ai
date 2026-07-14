@@ -154,15 +154,7 @@ export function InvoiceLinesCard({ recordId }: DrawerTabProps) {
         </DocumentActionsCluster>
       </DocumentSectionActions>
 
-      {SENT_STATUSES.has(status) && (
-        <div className='mx-3 mt-2 mb-3 flex items-center gap-3 rounded-lg border border-amber-400/30 bg-amber-400/10 px-3 py-2 text-sm'>
-          <span className='text-amber-700 dark:text-amber-400'>
-            This invoice was sent — use “Return to draft” to edit it.
-          </span>
-        </div>
-      )}
-
-      <div className='min-h-0 flex-1'>
+      <div className='min-h-0 flex-1 pe-3'>
         <LineBuilder documentRecordId={recordId} documentType='invoice' readOnly={readOnly} />
       </div>
 

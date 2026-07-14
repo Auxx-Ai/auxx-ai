@@ -101,7 +101,7 @@ export const DETAIL_VIEW_CONFIG_REGISTRY: DetailViewConfigRegistry = {
     mainTabs: [
       // fullBleed: the line-items table spans edge-to-edge (cancels the Section's
       // px-3), matching the quote drawer/sidebar cards' `fullBleed` treatment.
-      { value: 'line-items', label: 'Line items', icon: 'receipt-text', fullBleed: true },
+      { value: 'line-items', label: 'Line items', icon: 'receipt-text', fullBleed: false },
       { value: 'timeline', label: 'Timeline', icon: 'clock' },
       { value: 'tasks', label: 'Tasks', icon: 'list-todo' },
     ],

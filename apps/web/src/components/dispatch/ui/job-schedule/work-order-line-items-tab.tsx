@@ -4,6 +4,7 @@
 import { cn } from '@auxx/ui/lib/utils'
 import type { DetailViewTabProps } from '~/components/detail-view'
 import { LineBuilder } from '~/components/money/ui/line-builder/line-builder'
+import { TuckedLabel } from '~/components/money/ui/tucked-label'
 import { useSystemValues } from '~/components/resources/hooks/use-system-values'
 
 /**
@@ -24,12 +25,8 @@ export function WorkOrderLineItemsTab({ recordId, variant = 'tab' }: DetailViewT
   const isSection = variant === 'section'
 
   return (
-    <div className={cn('flex flex-col', isSection ? '' : 'h-full min-h-0')}>
-      {jobType === 'recurring' && (
-        <div className='px-4 pt-1 pb-1 text-xs font-medium text-muted-foreground'>
-          Billed each visit
-        </div>
-      )}
+    <div className={cn('flex flex-col ', isSection ? ' pe-3' : 'h-full min-h-0')}>
+      {jobType === 'recurring' && <TuckedLabel className='ms-4'>Billed each visit</TuckedLabel>}
       <div
         className={cn(
           'flex flex-col',

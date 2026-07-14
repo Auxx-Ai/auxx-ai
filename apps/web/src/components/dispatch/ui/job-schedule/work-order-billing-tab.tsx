@@ -17,6 +17,7 @@ import type { DetailViewTabProps } from '~/components/detail-view'
 import type { InvoiceBillingValues } from '~/components/money/hooks/use-work-order-invoices'
 import { useWorkOrderInvoices } from '~/components/money/hooks/use-work-order-invoices'
 import { formatCurrency } from '~/components/money/ui/line-builder/shared'
+import { TuckedLabel } from '~/components/money/ui/tucked-label'
 import { useSystemValues } from '~/components/resources/hooks/use-system-values'
 import { useSettings } from '~/hooks/use-settings'
 import { api } from '~/trpc/react'
@@ -28,9 +29,9 @@ import { WorkOrderBillingPaymentsBlock } from './work-order-billing-payments-blo
 /** Timings whose invoice drafts are generated automatically (vs `as_needed`, manual). */
 const AUTOMATED_TIMINGS = new Set(['per_visit_completed', 'on_completion', 'custom_schedule'])
 
-/** Quiet sub-block label — same style as the line-items tab's "Billed each visit" row. */
+/** Quiet sub-block header — the Attio-style tucked label the block below stacks into. */
 function BlockLabel({ children }: { children: React.ReactNode }) {
-  return <div className='px-4 pt-3 pb-1 text-xs font-medium text-muted-foreground'>{children}</div>
+  return <TuckedLabel className=' mt-2'>{children}</TuckedLabel>
 }
 
 export function WorkOrderBillingTab({ recordId, variant = 'tab' }: DetailViewTabProps) {
@@ -106,7 +107,7 @@ export function WorkOrderBillingTab({ recordId, variant = 'tab' }: DetailViewTab
           isSection ? 'max-h-[70vh] overflow-auto' : 'min-h-0 flex-1'
         )}>
         {/* Block a — summary strip */}
-        <div className='flex items-stretch gap-6 px-4 pt-2 pb-3'>
+        <div className='flex items-stretch gap-6  pt-2 pb-3'>
           <SummaryCell label='Invoiced' value={formatCurrency(invoicedTotal, currencyCode)} />
           <SummaryCell label='Paid' value={formatCurrency(paidTotal, currencyCode)} />
           <SummaryCell label='Balance due' value={formatCurrency(balanceTotal, currencyCode)} />
@@ -124,31 +125,32 @@ export function WorkOrderBillingTab({ recordId, variant = 'tab' }: DetailViewTab
         {/* Block c — invoicing schedule */}
         <BillingScheduleRow workOrderRecordId={recordId} invoiceTiming={invoiceTiming} />
         {showOrgDisabledWarning && (
-          <div className='flex items-center gap-1.5 px-4 pt-1 pb-2 text-xs text-amber-700 dark:text-amber-400'>
+          <div className='flex items-center gap-1.5  pt-1 pb-2 text-xs text-amber-700 dark:text-amber-400'>
             <CalendarClock className='size-3.5 shrink-0' />
             Automatic invoicing is turned off for your organization.
           </div>
         )}
+        <div className='me-4'>
+          {/* Block d — invoices */}
+          <BlockLabel>Invoices</BlockLabel>
+          <div className='bg-primary-100 border rounded-xl mb-4'>
+            <WorkOrderBillingInvoicesBlock
+              workOrderRecordId={recordId}
+              invoiceRecordIds={invoiceRecordIds}
+              isLoading={invoicesLoading}
+              currencyCode={currencyCode}
+              onInvoiceValues={handleInvoiceValues}
+            />
+          </div>
 
-        {/* Block d — invoices */}
-        <BlockLabel>Invoices</BlockLabel>
-        <div className='px-2'>
-          <WorkOrderBillingInvoicesBlock
+          {/* Block e — payments */}
+          <WorkOrderBillingPaymentsBlock
             workOrderRecordId={recordId}
-            invoiceRecordIds={invoiceRecordIds}
-            isLoading={invoicesLoading}
+            hasInvoices={invoiceRecordIds.length > 0}
+            candidates={candidates}
             currencyCode={currencyCode}
-            onInvoiceValues={handleInvoiceValues}
           />
         </div>
-
-        {/* Block e — payments */}
-        <WorkOrderBillingPaymentsBlock
-          workOrderRecordId={recordId}
-          hasInvoices={invoiceRecordIds.length > 0}
-          candidates={candidates}
-          currencyCode={currencyCode}
-        />
       </div>
     </div>
   )
