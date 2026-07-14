@@ -19,11 +19,14 @@ interface PublicDocumentShellProps {
 
 export function PublicDocumentShell({ children }: PublicDocumentShellProps) {
   return (
+    // Own scroll viewport (`h-screen overflow-y-auto`) — the root layout pins `<body>` to
+    // `overflow-hidden` for the app shell, so a public document taller than the viewport would
+    // otherwise clip below the fold with no way to scroll. Same pattern as `EmbedShell`.
     // Solid deep-navy base behind ColorfulBg: its mountains-night image mask fades out toward
     // the bottom, and unlike the one-viewport login page a document can grow taller than the
     // image — without this the below-the-fold area falls through to the white body background
     // and the translucent white/NN text becomes unreadable.
-    <div className='relative overflow-hidden bg-[#050e24]'>
+    <div className='relative h-screen overflow-y-auto overflow-x-hidden bg-[#050e24]'>
       <ColorfulBg>
         <div className='absolute pointer-events-none inset-0 bg-gradient-to-br from-primary/20 to-secondary/20 blur-lg opacity-50' />
         <div className='flex min-h-screen flex-col'>

@@ -89,6 +89,12 @@ export function FieldInput({ children }: FieldInputProps) {
         sideOffset={-28}
         alignOffset={-5}
         onPointerDownOutside={handleOutsideEvent}
+        // Close (and save) when focus leaves for a layer outside this popover's
+        // Radix branch — e.g. the root-level record editor opened from a related
+        // record's hover card. Nested layers (inline-create dialog, a select /
+        // date sub-popover) register as branches, so Radix skips them here and
+        // the field stays open behind them.
+        onFocusOutside={handleOutsideEvent}
         onEscapeKeyDown={handleEscapeKey}
         onKeyDown={handleKeyDown}>
         <div className='flex flex-col'>{InputComponent}</div>

@@ -36,7 +36,9 @@ export const stripeConnectHandler: HostedProvisionHandler = {
           stripe_dashboard: { type: 'full' },
           requirement_collection: 'stripe',
         },
-        capabilities: { card_payments: { requested: true } },
+        // Stripe requires `transfers` alongside `card_payments` — accounts can't request one
+        // without the other.
+        capabilities: { card_payments: { requested: true }, transfers: { requested: true } },
         metadata: { organizationId: ctx.organizationId },
       })
       stripeAccountId = account.id

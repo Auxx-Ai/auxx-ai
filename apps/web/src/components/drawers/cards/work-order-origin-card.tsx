@@ -31,22 +31,33 @@ const REQUEST_ATTRS = [
  * spec §F.2, 04-ui.md §6: "source request incl. preferred/alternate dates +
  * arrival window — the dispatcher's scheduling hint, always visible next to the
  * sections; plus source ticket link"). Uniform TreeRow blocks (see
- * related-record-row.tsx); resolved via `work_order_request`.
+ * related-record-row.tsx); resolved via `work_order_request` +
+ * `work_order_quote` (the quote-convert origin, money MQ1 §F.4).
  */
 export function WorkOrderOriginCard({ recordId }: DrawerTabProps) {
   const { values: workOrderValues, isLoading: workOrderLoading } = useSystemValues(
     recordId,
-    ['work_order_request'],
+    ['work_order_request', 'work_order_quote'],
     { autoFetch: true }
   )
 
-  const requestRecordIds = extractRelationshipRecordIds(workOrderValues.work_order_request)
-  const requestRecordId = requestRecordIds[0]
+  const requestRecordId = extractRelationshipRecordIds(workOrderValues.work_order_request)[0]
+  const quoteRecordId = extractRelationshipRecordIds(workOrderValues.work_order_quote)[0]
 
   if (workOrderLoading) return <RowSkeleton />
-  if (!requestRecordId) return <EmptyRow label='Not converted from a service request' />
+  if (!requestRecordId && !quoteRecordId)
+    return <EmptyRow label='Not converted from a service request or quote' />
 
-  return <RequestDetails requestRecordId={requestRecordId} />
+  return (
+    <div className='space-y-0.5'>
+      {requestRecordId && <RequestDetails requestRecordId={requestRecordId} />}
+      {quoteRecordId && (
+        <div className={TREE_SECONDARY_NOTRUNCATE}>
+          <RelatedRecordRow recordId={quoteRecordId} statusAttr='quote_status' />
+        </div>
+      )}
+    </div>
+  )
 }
 
 /** Inner component — only rendered when requestRecordId is resolved. */

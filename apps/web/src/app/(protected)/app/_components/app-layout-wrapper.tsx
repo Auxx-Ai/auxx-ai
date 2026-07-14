@@ -13,6 +13,7 @@ import { GlobalCreateRoot } from '~/components/global-create/global-create-root'
 import { CommandPalette } from '~/components/kbar'
 import { SimpleLayout } from '~/components/layouts/simple-layout'
 import { FloatingComposeRoot } from '~/components/mail/email-editor/floating-compose-root'
+import { GlobalRecordEditorRoot } from '~/components/records/global-record-editor-root'
 import { SignatureDialogRoot } from '~/components/signatures/ui/signature-dialog-root'
 import { SnippetDialogRoot } from '~/components/snippets/snippet-dialog-root'
 import { SubscriptionEnded } from '~/components/subscriptions/subscription-ended'
@@ -88,6 +89,7 @@ export function AppLayoutWrapper({ children, user }: AppLayoutWrapperProps) {
               <FloatingComposeRoot />
               <FloatingTaskRoot />
               <GlobalCreateRoot />
+              <GlobalRecordEditorRoot />
               <SignatureDialogRoot />
               <SnippetDialogRoot />
               <CommandPalette />

@@ -27,19 +27,23 @@ export function QuoteAcceptForm({
       action={`/quote/${token}/accept`}
       onSubmit={() => setIsPending(true)}
       className='space-y-3'>
-      <label
-        htmlFor='quote-accept-name'
-        className='block text-white/50 text-xs uppercase tracking-wide'>
-        Type your full name to accept
-      </label>
-      <Input
-        id='quote-accept-name'
-        name='name'
-        variant='translucent'
-        size='lg'
-        placeholder='Full name'
-        required={requireSignature}
-      />
+      {requireSignature ? (
+        <>
+          <label
+            htmlFor='quote-accept-name'
+            className='block text-white/50 text-xs uppercase tracking-wide'>
+            Type your full name to accept
+          </label>
+          <Input
+            id='quote-accept-name'
+            name='name'
+            variant='translucent'
+            size='lg'
+            placeholder='Full name'
+            required
+          />
+        </>
+      ) : null}
       <Button
         type='submit'
         variant='translucent'
