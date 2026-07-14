@@ -12,6 +12,7 @@ import type {
 } from '../../core/types'
 import { NodeRunningStatus, WorkflowNodeType } from '../../core/types'
 import { BaseNodeProcessor } from '../base-node'
+import { snapToDeliveryWindow } from './delivery-window'
 import { DurationUnit, type WaitNodeConfig, WaitType } from './types'
 
 /**
@@ -52,7 +53,13 @@ export class WaitNodeProcessor extends BaseNodeProcessor {
         waitDuration = this.convertToMilliseconds(Number(amount), unit)
       }
 
-      if (waitDuration <= 0 || waitDuration > WAIT_CONSTANTS.EXECUTION.MAX_WAIT_DURATION_MS) {
+      // Zero-duration waits are valid when a delivery window is configured (compiled
+      // sequence step-1 waits carry duration 0 + window; the snap supplies the delay).
+      const minWaitMs = config.deliveryWindow ? 0 : 1
+      if (
+        waitDuration < minWaitMs ||
+        waitDuration > WAIT_CONSTANTS.EXECUTION.MAX_WAIT_DURATION_MS
+      ) {
         throw new Error('Wait duration must be between 1ms and maximum allowed duration')
       }
 
@@ -209,6 +216,20 @@ export class WaitNodeProcessor extends BaseNodeProcessor {
         }
       } else {
         throw new Error('Invalid wait configuration')
+      }
+
+      // Sequences plan §3.3: snap the computed resumeAt forward into the configured
+      // delivery window (business hours/days), before the dry-run cap so test runs
+      // stay fast regardless of the window.
+      if (config.deliveryWindow) {
+        resumeAt = snapToDeliveryWindow(resumeAt, config.deliveryWindow)
+        waitDurationMs = resumeAt.getTime() - Date.now()
+        // A zero-duration wait already inside the window snaps to "now"; clamp to the
+        // 1s minimum so validateResumeTime passes and the short-delay path fires.
+        if (waitDurationMs < 1000) {
+          waitDurationMs = 1000
+          resumeAt = new Date(Date.now() + waitDurationMs)
+        }
       }
 
       // In dry run mode, cap wait time at 1 second
@@ -479,6 +500,15 @@ export class WaitNodeProcessor extends BaseNodeProcessor {
         waitDurationMs = inputs.timestampConfig.duration
       } else {
         throw new Error('Invalid preprocessed wait configuration')
+      }
+
+      // Sequences plan §3.3: snap resumeAt into the configured delivery window.
+      // `preprocessNode`'s `inputs` don't carry `deliveryWindow` through, so read it
+      // straight off the node config (same source `executeNode`'s legacy path uses).
+      const deliveryWindow = (node.data as unknown as WaitNodeConfig | undefined)?.deliveryWindow
+      if (deliveryWindow) {
+        resumeAt = snapToDeliveryWindow(resumeAt, deliveryWindow)
+        waitDurationMs = resumeAt.getTime() - Date.now()
       }
 
       // In dry run mode, cap wait time at 1 second

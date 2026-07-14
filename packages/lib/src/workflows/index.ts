@@ -6,6 +6,7 @@ export {
   type TemplateWorkflowData,
 } from './create-from-template'
 export { normalizeTemplateGraph } from './normalize-template-graph'
+export { type SystemWorkflowRun, startSystemWorkflowRun } from './system-workflow-run'
 export type { WorkflowGraph } from './template-graph-transformer'
 export { TemplateGraphTransformer } from './template-graph-transformer'
 export {
@@ -31,6 +32,12 @@ export {
 } from './templates'
 // Export all types
 export * from './types'
+export {
+  assertWorkflowAppNotSystemOwned,
+  assertWorkflowRunNotSystemOwned,
+  assertWorkflowVersionNotSystemOwned,
+  type WorkflowAppAccessOptions,
+} from './workflow-app-access-guard'
 export {
   getWorkflowExecutionEvents,
   type SSEResponse,

@@ -15,6 +15,21 @@ export enum DurationUnit {
   HOURS = 'hours',
   DAYS = 'days',
 }
+/**
+ * Sequences plan §3.3 — an optional delivery window applied to the computed
+ * `resumeAt`, snapping it forward into business hours/days. See
+ * `./delivery-window.ts` for the pure snapping math.
+ */
+export interface WaitDeliveryWindowConfig {
+  /** `HH:MM`, 24h, local to `timezone`. */
+  startTime: string
+  /** `HH:MM`, 24h, local to `timezone`. */
+  endTime: string
+  /** IANA timezone, e.g. `America/New_York`. */
+  timezone: string
+  businessDaysOnly: boolean
+}
+
 export interface WaitNodeConfig {
   waitType: WaitType
   durationAmount?: number | string | { id: string; nodeId?: string; path: string }
@@ -24,4 +39,6 @@ export interface WaitNodeConfig {
   isTimeConstant?: boolean
   timezone?: string
   duration?: number // Legacy field for backward compatibility
+  /** Sequences plan §3.3 — snap the computed `resumeAt` into this window. */
+  deliveryWindow?: WaitDeliveryWindowConfig
 }

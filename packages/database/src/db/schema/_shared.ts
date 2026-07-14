@@ -392,6 +392,27 @@ export const returnStatus = pgEnum('RETURN_STATUS', [
   'REQUESTED',
 ])
 export const recipientRole = pgEnum('RecipientRole', ['FROM', 'TO', 'CC', 'BCC'])
+// Sequences — outbound email cadences (see plans/sequences/plan.md §3.4).
+// Small, stable closed sets — pgEnum is fine (unlike connector `type`/`kind`
+// columns which stay text() because they grow with new integrations).
+export const sequenceStatus = pgEnum('SequenceStatus', ['draft', 'enabled', 'disabled'])
+export const sequenceRunStatus = pgEnum('SequenceRunStatus', [
+  'active',
+  'completed',
+  'exited',
+  'failed',
+])
+export const sequenceExitReason = pgEnum('SequenceExitReason', [
+  'reply',
+  'bounce',
+  'unsubscribe',
+  'manual',
+])
+export const sequenceSuppressionReason = pgEnum('SequenceSuppressionReason', [
+  'unsubscribe',
+  'manual',
+])
+
 export const scheduledMessageStatus = pgEnum('ScheduledMessageStatus', [
   'PENDING',
   'PROCESSING',

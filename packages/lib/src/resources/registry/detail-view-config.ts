@@ -36,6 +36,7 @@ export const DETAIL_VIEW_CONFIG_REGISTRY: DetailViewConfigRegistry = {
       enableGroups: true,
       enableMerge: true,
       enableSpam: true,
+      enableAddToSequence: true,
     },
     defaultTab: 'tickets',
     defaultSidebarTab: 'overview',

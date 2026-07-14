@@ -3,7 +3,7 @@
 import { database as db } from '@auxx/database'
 import { RedisWorkflowExecutionReporter, WorkflowEventType } from '@auxx/lib/workflow-engine'
 import { safeJsonStringify } from '@auxx/lib/workflow-engine/utils/serialization'
-import { WorkflowExecutionService } from '@auxx/lib/workflows'
+import { assertWorkflowVersionNotSystemOwned, WorkflowExecutionService } from '@auxx/lib/workflows'
 import { createScopedLogger } from '@auxx/logger'
 import { RedisEventRouter } from '@auxx/redis'
 import { headers } from 'next/headers'
@@ -104,6 +104,17 @@ export async function POST(
   const userId = session.user.id
   const userEmail = session.user.email || undefined
   const userName = session.user.name || undefined
+
+  // System-owned workflows (Sequences plan §3.4) aren't runnable directly by org users.
+  try {
+    await assertWorkflowVersionNotSystemOwned(db, {
+      workflowId,
+      organizationId,
+      isSuperAdmin: (session.user as any).isSuperAdmin,
+    })
+  } catch (_error) {
+    return new Response('Forbidden', { status: 403 })
+  }
 
   const stream = new ReadableStream({
     async start(controller) {

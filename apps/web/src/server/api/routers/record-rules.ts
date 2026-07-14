@@ -3,6 +3,7 @@
 // conditions → actions"). Thin validated edge over @auxx/lib/record-rules; rule CRUD is
 // admin-gated. Mutations bust the `recordRules` org cache via `record-rule.changed`.
 
+import type { Database } from '@auxx/database'
 import { getCachedCustomFields, onCacheEvent } from '@auxx/lib/cache'
 import { ForbiddenError } from '@auxx/lib/errors'
 import {
@@ -17,6 +18,7 @@ import {
   resolveFieldRefToId,
   updateRecordRule,
 } from '@auxx/lib/record-rules'
+import { assertWorkflowAppNotSystemOwned } from '@auxx/lib/workflows'
 import { z } from 'zod'
 import { adminProcedure, createTRPCRouter, protectedProcedure } from '~/server/api/trpc'
 
@@ -65,6 +67,26 @@ const ruleInputSchema = z.object({
   enabled: z.boolean().default(true),
 })
 
+/**
+ * `enqueue-workflow` actions reference a `workflowAppId` picked from a
+ * (filtered) dropdown, but the id is still user-supplied input — reject any
+ * that resolve to a system-owned app (Sequences plan §3.4) as defense in depth.
+ */
+async function assertActionsWorkflowsAccessible(
+  db: Database,
+  organizationId: string,
+  actions: readonly { type: string; workflowAppId?: string }[]
+): Promise<void> {
+  for (const action of actions) {
+    if (action.type === 'enqueue-workflow' && action.workflowAppId) {
+      await assertWorkflowAppNotSystemOwned(db, {
+        workflowAppId: action.workflowAppId,
+        organizationId,
+      })
+    }
+  }
+}
+
 async function normalizeFieldRef(
   organizationId: string,
   input: { entityDefinitionId: string; fieldRef: string | null; on: RecordRuleOn }
@@ -106,6 +128,7 @@ export const recordRulesRouter = createTRPCRouter({
 
   create: adminProcedure.input(ruleInputSchema).mutation(async ({ ctx, input }) => {
     const organizationId = ctx.session.organizationId
+    await assertActionsWorkflowsAccessible(ctx.db, organizationId, input.actions)
     const fieldId = await normalizeFieldRef(organizationId, input)
     const rule = await createRecordRule(
       ctx.db,
@@ -131,6 +154,9 @@ export const recordRulesRouter = createTRPCRouter({
       const organizationId = ctx.session.organizationId
       const { ruleId, fieldRef, ...rest } = input
       await assertNotManaged(ctx.db, organizationId, ruleId)
+      if (rest.actions) {
+        await assertActionsWorkflowsAccessible(ctx.db, organizationId, rest.actions)
+      }
       const fieldId =
         fieldRef !== undefined && rest.entityDefinitionId && rest.on
           ? await normalizeFieldRef(organizationId, {

@@ -952,6 +952,18 @@
       "import": "./dist/seed/entity-migrations/migrations/039-work-order-tags.mjs",
       "default": "./src/seed/entity-migrations/migrations/039-work-order-tags.ts"
     },
+    "./sequences": {
+      "types": "./src/sequences/index.ts",
+      "source": "./src/sequences/index.ts",
+      "import": "./dist/sequences/index.mjs",
+      "default": "./src/sequences/index.ts"
+    },
+    "./sequences/client": {
+      "types": "./src/sequences/client.ts",
+      "source": "./src/sequences/client.ts",
+      "import": "./dist/sequences/client.mjs",
+      "default": "./src/sequences/client.ts"
+    },
     "./settings": {
       "types": "./src/settings/index.ts",
       "source": "./src/settings/index.ts",

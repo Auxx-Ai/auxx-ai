@@ -22,6 +22,7 @@ import { KnowledgeRetrievalProcessor } from '../nodes/dataset/knowledge-retrieva
 import { EndProcessor } from '../nodes/flow-nodes/end'
 import { LoopProcessor } from '../nodes/flow-nodes/loop'
 import { FormInputNodeProcessor } from '../nodes/form-input'
+import { SequenceSendEmailProcessor } from '../nodes/sequence-send-email'
 import { DateTimeProcessor } from '../nodes/transform-nodes/date-time-processor'
 import { FormatProcessor } from '../nodes/transform-nodes/format-processor'
 import { InformationExtractorProcessor } from '../nodes/transform-nodes/information-extractor'
@@ -201,6 +202,7 @@ export class NodeProcessorRegistry {
         new ListProcessor(),
         new FormatProcessor(),
         new WaitNodeProcessor(),
+        new SequenceSendEmailProcessor(), // Sequences: server-registered only, not in the UI palette
         new LoopProcessor(),
         new DocumentExtractorProcessor(),
         new ChunkerProcessor(),

@@ -7,7 +7,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/pop
 import { cn } from '@auxx/ui/lib/utils'
 import { ChevronsUpDown, Star } from 'lucide-react'
 import { useRouter } from 'next/navigation'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useDefaultChannelId } from '~/components/channels/hooks/use-default-channel'
 import { useEmailChannels } from '~/components/channels/store/channel-store'
 import { Tooltip } from '~/components/global/tooltip'
@@ -36,9 +36,14 @@ export function ChannelPicker({ value, onChange, disabled, className }: ChannelP
   const [open, setOpen] = useState(false)
 
   // Fallback: if the editor opened before channels hydrated, fill in the
-  // resolved default once it's available.
+  // resolved default once it's available. Fires at most once per mount — some
+  // consumers persist onChange asynchronously (value stays empty until the
+  // save lands), and re-firing per render would loop the mutation.
+  const autoFilledDefault = useRef(false)
   useEffect(() => {
+    if (autoFilledDefault.current) return
     if (!value && resolvedDefault) {
+      autoFilledDefault.current = true
       onChange(resolvedDefault)
     }
   }, [value, resolvedDefault, onChange])

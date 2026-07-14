@@ -35,6 +35,7 @@ const KNOWN_ROUTE_PREFIXES = new Set([
   'accept-invitation',
   'pay',
   'quote',
+  'sequences',
   'shopify',
   'workflows',
   // Top-level routes
