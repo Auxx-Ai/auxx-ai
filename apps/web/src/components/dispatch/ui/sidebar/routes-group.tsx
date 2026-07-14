@@ -31,6 +31,7 @@ import { MoreVertical, Route as RouteIcon, Timer, X } from 'lucide-react'
 import { useState } from 'react'
 import { SidebarGroupHeader } from '~/components/global/sidebar/sidebar-group-header'
 import { Tooltip } from '~/components/global/tooltip'
+import { useSettings } from '~/hooks/use-settings'
 import { ApplyTimesDialog } from '../route-planner/apply-times-dialog'
 import {
   dayStartAnchor,
@@ -96,6 +97,11 @@ export function RoutesGroup({
 
   const workOrderById = new Map(board.workOrders.map((w) => [w.id, w]))
 
+  // Read once here (not per-worker) — plan 20 §5's tooltip copy for the drift badge depends on
+  // whether auto-sync is on org-wide; every `WorkerStopSection` shares the same read.
+  const { getSetting } = useSettings({ scope: 'GENERAL' })
+  const autoApplyTimes = !!getSetting('dispatch.routes.autoApplyTimes')
+
   return (
     <SidebarGroup>
       <SidebarGroupHeader
@@ -117,6 +123,7 @@ export function RoutesGroup({
               geometry={geometryByWorker[worker.userId]}
               workOrderById={workOrderById}
               canEdit={canEdit}
+              autoApplyTimes={autoApplyTimes}
               open={groupOpen[`routes:${worker.userId}`] ?? true}
               onOpenChange={(o) => onWorkerOpenChange(worker.userId, o)}
               onSelectVisit={onSelectVisit}
@@ -135,6 +142,10 @@ interface WorkerStopSectionProps {
   geometry: RouteGeometry | undefined
   workOrderById: Map<string, PlannerWorkOrder>
   canEdit: boolean
+  /** `dispatch.routes.autoApplyTimes` org setting (plan 20 §5) — changes the drift badge's
+   * tooltip copy when 'drifted': with auto-sync on, drift only ever means a confirmed-stop
+   * conflict, not a stale unapplied reorder. */
+  autoApplyTimes: boolean
   open: boolean
   onOpenChange: (open: boolean) => void
   onSelectVisit?: (sel: { workOrderId: string; visitId: string }) => void
@@ -147,6 +158,7 @@ function WorkerStopSection({
   geometry,
   workOrderById,
   canEdit,
+  autoApplyTimes,
   open,
   onOpenChange,
   onSelectVisit,
@@ -237,7 +249,9 @@ function WorkerStopSection({
                 <Tooltip
                   content={
                     drift === 'drifted'
-                      ? "Times don't match route order — reapply"
+                      ? autoApplyTimes
+                        ? 'Order conflicts with confirmed times — auto-sync keeps promised times fixed; reapply to override'
+                        : "Times don't match route order — reapply"
                       : 'Times not applied yet'
                   }>
                   <span

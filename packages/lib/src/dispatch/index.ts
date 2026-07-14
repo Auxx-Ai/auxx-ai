@@ -68,8 +68,11 @@ export {
   setRecurrenceRule,
   sweepRecurringVisits,
 } from './recurring'
-export type { ApplyRouteTimesInput } from './route-planner/apply-times'
-export { applyRouteTimes } from './route-planner/apply-times'
+export type {
+  ApplyRouteTimesInput,
+  AutoApplyRouteTimesInput,
+} from './route-planner/apply-times'
+export { applyRouteTimes, autoApplyRouteTimes } from './route-planner/apply-times'
 export type { BackfillGeocodeResult } from './route-planner/backfill'
 export { backfillGeocodeVisits } from './route-planner/backfill'
 export { resolveOrgDepot, resolveRouteStart } from './route-planner/depot'

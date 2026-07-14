@@ -5,9 +5,13 @@
 // ordering (design doc §B: a worker's day rarely exceeds ~15-20 stops).
 
 import { database, schema } from '@auxx/database'
+import { createScopedLogger } from '@auxx/logger'
 import { and, eq, gte, isNotNull, lte, notInArray } from 'drizzle-orm'
 import { afterVisitWrite } from '../visit-mutations'
+import { autoApplyRouteTimes } from './apply-times'
 import type { PlannerDayWindow } from './types'
+
+const logger = createScopedLogger('dispatch:route-planner:route-order')
 
 /** Input for {@link setRouteOrder}. */
 export interface SetRouteOrderInput {
@@ -16,6 +20,9 @@ export interface SetRouteOrderInput {
   assigneeUserId: string
   /** The planned day, client-resolved ({@link PlannerDayWindow}). */
   window: Pick<PlannerDayWindow, 'from' | 'to'>
+  /** `yyyy-MM-dd` label of the planned day, client-resolved — the Directions cache-key day
+   * (same as `ApplyRouteTimesInput.dateKey`). */
+  dateKey: string
   /** Ordered visit ids — index in the array becomes the new `routeOrder`. */
   visitIds: string[]
   excludeSocketId?: string
@@ -30,7 +37,8 @@ export interface SetRouteOrderInput {
  * since it isn't a mirrored field — `afterVisitWrite` is called without a `trigger`).
  */
 export async function setRouteOrder(input: SetRouteOrderInput): Promise<void> {
-  const { organizationId, userId, assigneeUserId, window, visitIds, excludeSocketId } = input
+  const { organizationId, userId, assigneeUserId, window, dateKey, visitIds, excludeSocketId } =
+    input
   const { from, to } = window
 
   const nullOutConditions = [
@@ -67,5 +75,37 @@ export async function setRouteOrder(input: SetRouteOrderInput): Promise<void> {
 
   for (const row of [...nulledRows, ...reorderedRows]) {
     await afterVisitWrite(row, { userId, excludeSocketId })
+  }
+
+  // Auto-sync (plan 20 §5): with `dispatch.routes.autoApplyTimes` on, re-chain the route's
+  // provisional times in the same request. The `routeOrder` writes above are already committed
+  // — a failure here (settings read included) must never fail the reorder, so the whole block
+  // is caught-and-logged.
+  if (visitIds.length > 0) {
+    try {
+      const { getOrganizationSetting } = await import('../../settings/settings-service')
+      const autoApplyTimes = await getOrganizationSetting({
+        organizationId,
+        key: 'dispatch.routes.autoApplyTimes',
+      })
+      if (autoApplyTimes) {
+        await autoApplyRouteTimes({
+          organizationId,
+          userId,
+          assigneeUserId,
+          dateKey,
+          window,
+          visitIds,
+          excludeSocketId,
+        })
+      }
+    } catch (error) {
+      logger.error('Auto-apply route times failed after reorder', {
+        organizationId,
+        assigneeUserId,
+        dateKey,
+        error: error instanceof Error ? error.message : String(error),
+      })
+    }
   }
 }

@@ -273,7 +273,7 @@ export function useRoutePlannerMutations(window: PlannerDayWindow) {
     void queryClient.invalidateQueries({ queryKey: geometryQueryKeyPrefix })
   }
 
-  const setRouteOrder = api.dispatch.setRouteOrder.useMutation({
+  const setRouteOrderMutation = api.dispatch.setRouteOrder.useMutation({
     onMutate: async (vars) => {
       await utils.dispatch.getRoutePlannerBoard.cancel(boardKey)
       return {
@@ -286,6 +286,18 @@ export function useRoutePlannerMutations(window: PlannerDayWindow) {
     },
     onSettled: settle,
   })
+  // `dateKey` (plan 20 §5 — server needs it to scope the auto-sync anchored chain to the right
+  // planned day) always equals this hook's own `window.dateKey` — every caller already
+  // constructs its `setRouteOrder.mutate` vars from a `PlannerDayWindow` in scope, so it's
+  // threaded here once instead of at each of the ~6 call sites (drag-end, pin-popover, Suggest
+  // route). Same source `applyRouteTimes` already uses (`date.dateKey` in apply-times-dialog.tsx).
+  type SetRouteOrderVars = Parameters<typeof setRouteOrderMutation.mutate>[0]
+  type SetRouteOrderOptions = Parameters<typeof setRouteOrderMutation.mutate>[1]
+  const setRouteOrder = {
+    ...setRouteOrderMutation,
+    mutate: (vars: Omit<SetRouteOrderVars, 'dateKey'>, options?: SetRouteOrderOptions) =>
+      setRouteOrderMutation.mutate({ ...vars, dateKey: window.dateKey }, options),
+  }
 
   const applyRouteTimes = api.dispatch.applyRouteTimes.useMutation({
     onMutate: async () => {

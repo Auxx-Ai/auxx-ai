@@ -20,8 +20,8 @@ import { ArrowLeftRight, PanelRightOpen } from 'lucide-react'
  */
 export function EventDockGuide() {
   return (
-    <div className='p-6'>
-      <GuideColumns cols={2}>
+    <div className='p-4'>
+      <GuideColumns cols={1}>
         <GuideColumn title='Shortcuts'>
           <GuideShortcuts>
             <GuideShortcut keys={['click']} label='Open event details' />

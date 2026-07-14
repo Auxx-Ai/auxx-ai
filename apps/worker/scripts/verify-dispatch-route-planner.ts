@@ -61,6 +61,7 @@ import {
   type SuggestStopInput,
   scheduleVisit,
   setRouteOrder,
+  setVisitDuration,
   suggestRouteOrder,
   upsertDispatchWorker,
 } from '@auxx/lib/dispatch'
@@ -507,6 +508,7 @@ async function main() {
       userId,
       assigneeUserId: userId,
       window: { from: win2.from, to: win2.to },
+      dateKey: win2.dateKey,
       visitIds: [vC.id, vA.id, vB.id],
     })
 
@@ -568,11 +570,12 @@ async function main() {
       await setVisitCoords(vI.id, I.lat, I.lng)
 
       const firstDeparture = atHour(win3.from, 8)
-      const stops = [
-        { visitId: vG.id, durationMinutes: 20 },
-        { visitId: vH.id, durationMinutes: 15 },
-        { visitId: vI.id, durationMinutes: 25 },
-      ]
+      // plan 20 §4.1a: `applyRouteTimes` reads durations server-side from the visit's own
+      // `durationMinutes` column (not client input) — seed them explicitly here so the
+      // independent oracle below can compute exact expected spans.
+      await setVisitDuration({ organizationId, userId, visitId: vG.id, durationMinutes: 20 })
+      await setVisitDuration({ organizationId, userId, visitId: vH.id, durationMinutes: 15 })
+      await setVisitDuration({ organizationId, userId, visitId: vI.id, durationMinutes: 25 })
 
       await applyRouteTimes({
         organizationId,
@@ -580,7 +583,7 @@ async function main() {
         assigneeUserId: userId,
         dateKey: win3.dateKey,
         firstDeparture,
-        stops,
+        visitIds: [vG.id, vH.id, vI.id],
       })
 
       // Independent oracle (contract item 12): depot is null for this org (no

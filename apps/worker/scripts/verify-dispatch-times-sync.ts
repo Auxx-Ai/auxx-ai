@@ -1,14 +1,19 @@
 // apps/worker/scripts/verify-dispatch-times-sync.ts
 /**
- * Dispatch plan 20 "Route Times ↔ Route Order Sync" Phase 2 backend verification
- * (plans/dispatch/20-route-times-sync.md §4.5). Exercises the REAL write paths added this
- * slice: `resolveVisitDurationMinutes` (`@auxx/lib/dispatch`, pure), `scheduleVisit`'s
+ * Dispatch plan 20 "Route Times ↔ Route Order Sync" Phase 2 + Phase 3 backend verification
+ * (plans/dispatch/20-route-times-sync.md §4.5, §5). Exercises the REAL write paths added these
+ * slices: `resolveVisitDurationMinutes` (`@auxx/lib/dispatch`, pure), `scheduleVisit`'s
  * `timeWriteKind` classification (`packages/lib/src/dispatch/visit-mutations.ts`),
  * `unscheduleVisit` (clears `timeConfirmedAt`, keeps `durationMinutes`), the new
  * `setVisitDuration` mutation, `applyRouteTimes`' anchored-chain rework
  * (`packages/lib/src/dispatch/route-planner/apply-times.ts` — confirmed stops are fixed
- * anchors, provisional stops chain around them), and the recurring materializer persisting
- * `durationMinutes` while leaving `timeConfirmedAt` null.
+ * anchors, provisional stops chain around them), the recurring materializer persisting
+ * `durationMinutes` while leaving `timeConfirmedAt` null, and (§5, section 7) `setRouteOrder`'s
+ * (`packages/lib/src/dispatch/route-planner/route-order.ts`) auto-sync call into
+ * `autoApplyRouteTimes` gated on the `dispatch.routes.autoApplyTimes` org setting (GENERAL
+ * scope, default off) — flipped via `updateOrganizationSetting` + `onCacheEvent`
+ * (`'org.settings.changed'`, the only way `getOrganizationSetting`'s org-cache read sees a
+ * same-process write) and always restored in `finally`.
  *
  * Work orders are created via `UnifiedCrudHandler.create` (the M1 number + visit auto-create
  * hooks), prefixed "[TS-verify]", and deleted at the end — `WorkOrderVisit.workOrderId`
@@ -39,6 +44,8 @@
  */
 
 import { database } from '@auxx/database'
+import { resolveAvailability } from '@auxx/lib/availability'
+import { onCacheEvent } from '@auxx/lib/cache'
 import {
   applyRouteTimes,
   assignVisit,
@@ -47,12 +54,18 @@ import {
   resolveVisitDurationMinutes,
   scheduleVisit,
   setRecurrenceRule,
+  setRouteOrder,
   setVisitDuration,
   unscheduleVisit,
   upsertDispatchWorker,
 } from '@auxx/lib/dispatch'
 import { NotFoundError } from '@auxx/lib/errors'
 import { UnifiedCrudHandler } from '@auxx/lib/resources'
+import {
+  getOrganizationSetting,
+  type SettingValue,
+  updateOrganizationSetting,
+} from '@auxx/lib/settings'
 
 // Force-unset before any lib import/call reads them (both read at call time — see file header)
 // — a MapTiler TEST key has since been added to the root `.env` for other features, but section
@@ -74,14 +87,16 @@ function check(name: string, ok: boolean, detail?: unknown) {
 
 // ── Date/window helpers (verify-dispatch-route-planner.ts precedent) ──
 
-function dayWindow(daysFromNow: number): { from: Date; dateKey: string } {
+function dayWindow(daysFromNow: number): { from: Date; to: Date; dateKey: string } {
   const base = new Date()
   base.setUTCDate(base.getUTCDate() + daysFromNow)
   base.setUTCHours(0, 0, 0, 0)
+  const from = new Date(base)
+  const to = new Date(base.getTime() + 24 * 60 * 60 * 1000 - 1)
   const y = base.getUTCFullYear()
   const m = String(base.getUTCMonth() + 1).padStart(2, '0')
   const d = String(base.getUTCDate()).padStart(2, '0')
-  return { from: base, dateKey: `${y}-${m}-${d}` }
+  return { from, to, dateKey: `${y}-${m}-${d}` }
 }
 function atHour(day: Date, hour: number, minute = 0): Date {
   return new Date(day.getTime() + hour * 60 * 60 * 1000 + minute * 60 * 1000)
@@ -138,6 +153,16 @@ async function setVisitCoords(visitId: string, lat: number, lng: number): Promis
   )
 }
 
+/** Raw status fixture write (section 7d) — bypasses `setVisitStatus`'s roll-up/invoice-draft
+ * side effects, same rationale as `setVisitRouteOrder`/`setVisitCoords` above. Exact literals
+ * per `VISIT_STATUS_VALUES` (`packages/lib/src/dispatch/types.ts`): `'done'` / `'canceled'`. */
+async function setVisitStatusRaw(visitId: string, status: 'done' | 'canceled'): Promise<void> {
+  await database.$client.query('UPDATE "WorkOrderVisit" SET "status" = $1 WHERE id = $2', [
+    status,
+    visitId,
+  ])
+}
+
 async function residueCount(): Promise<number> {
   const res = await database.$client.query(
     `SELECT count(*)::int AS n FROM "FieldValue" fv WHERE fv."valueText" ILIKE '%[TS-verify]%'`
@@ -161,6 +186,11 @@ async function main() {
   const handler = new UnifiedCrudHandler(organizationId, userId)
   const createdRecordIds: string[] = []
   const workerIds: string[] = []
+
+  // Section 7 (auto-sync) flips `dispatch.routes.autoApplyTimes` — declared outside the `try`
+  // so the `finally` cleanup below can always restore it, even if a check throws mid-section.
+  let originalAutoApplyTimes: SettingValue = false
+  let autoApplyTimesChanged = false
 
   try {
     // ══════════════════════════════════════════════════════════════════════
@@ -598,6 +628,352 @@ async function main() {
       '6: every materialized row leaves timeConfirmedAt null (nobody promised it)',
       materialized.every((r) => r.timeConfirmedAt === null)
     )
+
+    // ══════════════════════════════════════════════════════════════════════
+    // 7. Auto-sync (plan 20 §5) — setRouteOrder -> autoApplyRouteTimes, gated on the
+    //    `dispatch.routes.autoApplyTimes` org setting (GENERAL scope, default off)
+    // ══════════════════════════════════════════════════════════════════════
+    console.log('7: auto-sync (setRouteOrder -> autoApplyRouteTimes)')
+
+    originalAutoApplyTimes = await getOrganizationSetting({
+      organizationId,
+      key: 'dispatch.routes.autoApplyTimes',
+    })
+
+    async function setAutoApplyTimes(value: boolean): Promise<void> {
+      await updateOrganizationSetting({
+        organizationId,
+        key: 'dispatch.routes.autoApplyTimes',
+        value,
+      })
+      await onCacheEvent('org.settings.changed', {
+        orgId: organizationId,
+        broadcastUserKeys: true,
+      })
+    }
+
+    // ── Shared 4-stop fixture for 7a (OFF)/7b (ON rechain+duration+seed)/7c (mid-route anchor).
+    const win7 = dayWindow(260)
+    const coords7: Array<[number, number]> = [
+      [40.0, -105.0],
+      [40.05, -104.9],
+      [40.1, -104.8],
+      [40.15, -104.7],
+    ]
+    const visits7: string[] = []
+    for (let i = 0; i < 4; i++) {
+      const wo = await handler.create('work_order', {
+        work_order_title: `[TS-verify] auto-sync stop ${i}`,
+      })
+      createdRecordIds.push(wo.recordId)
+      const v = await getVisit(wo.instance.id)
+      await assignVisit({ organizationId, userId, visitId: v.id, assigneeUserId: userId })
+      await setVisitCoords(v.id, coords7[i]![0], coords7[i]![1])
+      await setVisitRouteOrder(v.id, i)
+      // Baseline provisional times, as if a previous apply already ran — 1hr spacing from 09:00.
+      await scheduleVisit({
+        organizationId,
+        userId,
+        visitId: v.id,
+        startTime: atHour(win7.from, 9 + i),
+        endTime: atHour(win7.from, 9 + i, 45),
+        timeWriteKind: 'provisional',
+      })
+      visits7.push(v.id)
+    }
+    const [w0, w1, w2, w3] = visits7 as [string, string, string, string]
+
+    // ── 7a: setting OFF (default) — setRouteOrder writes routeOrder ONLY; every stop's
+    // startTime/endTime/timeConfirmedAt stays byte-unchanged.
+    await setAutoApplyTimes(false)
+    autoApplyTimesChanged = true
+    const before7a = await Promise.all(visits7.map((id) => getVisitById(id)))
+    await setRouteOrder({
+      organizationId,
+      userId,
+      assigneeUserId: userId,
+      window: { from: win7.from, to: win7.to },
+      dateKey: win7.dateKey,
+      visitIds: [w3, w1, w0, w2],
+    })
+    const after7a = await Promise.all(visits7.map((id) => getVisitById(id)))
+    check(
+      '7a OFF: routeOrder updated to the new order (w3=0, w1=1, w0=2, w2=3)',
+      after7a[3]!.routeOrder === 0 &&
+        after7a[1]!.routeOrder === 1 &&
+        after7a[0]!.routeOrder === 2 &&
+        after7a[2]!.routeOrder === 3,
+      after7a.map((r) => r.routeOrder)
+    )
+    check(
+      "7a OFF: every stop's startTime/endTime/timeConfirmedAt byte-unchanged",
+      before7a.every((b, i) => {
+        const a = after7a[i]!
+        return (
+          a.startTime?.getTime() === b.startTime?.getTime() &&
+          a.endTime?.getTime() === b.endTime?.getTime() &&
+          a.timeConfirmedAt?.getTime() === b.timeConfirmedAt?.getTime()
+        )
+      }),
+      { before: before7a, after: after7a }
+    )
+
+    // ── 7b: setting ON — provisional stops re-chained in the NEW order; explicit duration
+    // respected; re-chained stops STAY provisional; day-start SEED preserved from the previous
+    // min(startTime) (the new first stop's leg is the documented depot-less zero-second leg —
+    // no business address configured in dev, see file header / section 5 precedent).
+    await setAutoApplyTimes(true)
+    await setVisitDuration({ organizationId, userId, visitId: w1, durationMinutes: 90 })
+    const minStartBefore7b = Math.min(
+      ...(await Promise.all(visits7.map((id) => getVisitById(id)))).map((r) =>
+        (r.startTime as Date).getTime()
+      )
+    )
+    await setRouteOrder({
+      organizationId,
+      userId,
+      assigneeUserId: userId,
+      window: { from: win7.from, to: win7.to },
+      dateKey: win7.dateKey,
+      visitIds: [w2, w0, w3, w1],
+    })
+    const [rb2, rb0, rb3, rb1] = await Promise.all([w2, w0, w3, w1].map((id) => getVisitById(id)))
+    check(
+      '7b ON: chain is monotonic in the NEW order (start_i >= end_{i-1})',
+      rb0.startTime! >= rb2.endTime! &&
+        rb3.startTime! >= rb0.endTime! &&
+        rb1.startTime! >= rb3.endTime!,
+      { rb2, rb0, rb3, rb1 }
+    )
+    check(
+      '7b ON: re-chained stops STAY provisional (timeConfirmedAt still null)',
+      [rb2, rb0, rb3, rb1].every((r) => r.timeConfirmedAt === null)
+    )
+    check(
+      '7b ON: explicit durationMinutes (90) respected on the re-chained stop',
+      spanMinutes(rb1) === 90,
+      spanMinutes(rb1)
+    )
+    check(
+      '7b ON seed: earliest re-chained stop (new first, w2) starts at the previously chosen ' +
+        'day start (min(startTime) before reorder, zero-second first leg in dev)',
+      rb2.startTime?.getTime() === minStartBefore7b,
+      { expected: new Date(minStartBefore7b), actual: rb2.startTime }
+    )
+
+    // ── 7c: confirmed anchor MID-ROUTE — held byte-exact; the stop immediately after it in the
+    // new order departs from the anchor's endTime; its neighbors stay provisional.
+    await scheduleVisit({
+      organizationId,
+      userId,
+      visitId: w0,
+      startTime: atHour(win7.from, 13),
+      endTime: atHour(win7.from, 14),
+    }) // default kind = confirmed (anchor)
+    const anchor7c = await getVisitById(w0)
+    await setRouteOrder({
+      organizationId,
+      userId,
+      assigneeUserId: userId,
+      window: { from: win7.from, to: win7.to },
+      dateKey: win7.dateKey,
+      visitIds: [w2, w0, w1, w3],
+    })
+    const [rc2, rc0, rc1, rc3] = await Promise.all([w2, w0, w1, w3].map((id) => getVisitById(id)))
+    check(
+      '7c: confirmed anchor (w0) mid-route held byte-exact by the auto-sync reorder',
+      rc0.startTime?.getTime() === anchor7c.startTime?.getTime() &&
+        rc0.endTime?.getTime() === anchor7c.endTime?.getTime() &&
+        rc0.timeConfirmedAt?.getTime() === anchor7c.timeConfirmedAt?.getTime(),
+      { before: anchor7c, after: rc0 }
+    )
+    check(
+      "7c: following stop (w1) departs at/after the anchor's endTime",
+      rc1.startTime! >= rc0.endTime!,
+      { anchorEnd: rc0.endTime, followingStart: rc1.startTime }
+    )
+    check(
+      "7c: the anchor's neighbors stay provisional",
+      rc2.timeConfirmedAt === null && rc1.timeConfirmedAt === null && rc3.timeConfirmedAt === null
+    )
+    check(
+      '7c: chain continues monotonically past the anchor (w3 after w1)',
+      rc3.startTime! >= rc1.endTime!
+    )
+
+    // ── 7d: done/canceled stops in the route are EXCLUDED from auto-sync — routeOrder still
+    // moves for them (setRouteOrder itself doesn't filter by status), but their times are
+    // untouched by the ON reorder; the remaining ACTIVE stops re-chain normally.
+    const win7d = dayWindow(261)
+    const coords7d: Array<[number, number]> = [
+      [41.0, -106.0],
+      [41.05, -105.9],
+      [41.1, -105.8],
+    ]
+    const visits7d: string[] = []
+    for (let i = 0; i < 3; i++) {
+      const wo = await handler.create('work_order', {
+        work_order_title: `[TS-verify] auto-sync done/canceled ${i}`,
+      })
+      createdRecordIds.push(wo.recordId)
+      const v = await getVisit(wo.instance.id)
+      await assignVisit({ organizationId, userId, visitId: v.id, assigneeUserId: userId })
+      await setVisitCoords(v.id, coords7d[i]![0], coords7d[i]![1])
+      await setVisitRouteOrder(v.id, i)
+      await scheduleVisit({
+        organizationId,
+        userId,
+        visitId: v.id,
+        startTime: atHour(win7d.from, 9 + i),
+        endTime: atHour(win7d.from, 9 + i, 45),
+        timeWriteKind: 'provisional',
+      })
+      visits7d.push(v.id)
+    }
+    const [wd0, wd1, wd2] = visits7d as [string, string, string]
+    await setVisitStatusRaw(wd1, 'done')
+    const before7dDone = await getVisitById(wd1)
+
+    await setRouteOrder({
+      organizationId,
+      userId,
+      assigneeUserId: userId,
+      window: { from: win7d.from, to: win7d.to },
+      dateKey: win7d.dateKey,
+      visitIds: [wd2, wd1, wd0],
+    })
+    const [rd2, rd1, rd0] = await Promise.all([wd2, wd1, wd0].map((id) => getVisitById(id)))
+    check(
+      '7d: done stop (wd1) STILL gets its routeOrder written (index 1 in the new order)',
+      rd1.routeOrder === 1,
+      rd1.routeOrder
+    )
+    check(
+      '7d: done stop (wd1) times untouched by the ON auto-sync (excluded as inactive)',
+      rd1.startTime?.getTime() === before7dDone.startTime?.getTime() &&
+        rd1.endTime?.getTime() === before7dDone.endTime?.getTime(),
+      { before: before7dDone, after: rd1 }
+    )
+    check(
+      '7d: the two ACTIVE stops (wd2 then wd0) re-chain normally (monotonic, skipping wd1)',
+      rd0.startTime! >= rd2.endTime!,
+      { rd2, rd0 }
+    )
+
+    // ── 7e: ALL active stops confirmed (anchors) -> autoApplyRouteTimes no-ops entirely (no
+    // time writes at all); only routeOrder moves.
+    const win7e = dayWindow(262)
+    const coords7e: Array<[number, number]> = [
+      [42.0, -107.0],
+      [42.05, -106.9],
+    ]
+    const visits7e: string[] = []
+    for (let i = 0; i < 2; i++) {
+      const wo = await handler.create('work_order', {
+        work_order_title: `[TS-verify] auto-sync all-confirmed ${i}`,
+      })
+      createdRecordIds.push(wo.recordId)
+      const v = await getVisit(wo.instance.id)
+      await assignVisit({ organizationId, userId, visitId: v.id, assigneeUserId: userId })
+      await setVisitCoords(v.id, coords7e[i]![0], coords7e[i]![1])
+      await setVisitRouteOrder(v.id, i)
+      await scheduleVisit({
+        organizationId,
+        userId,
+        visitId: v.id,
+        startTime: atHour(win7e.from, 9 + i),
+        endTime: atHour(win7e.from, 10 + i),
+      }) // default kind = confirmed (anchor)
+      visits7e.push(v.id)
+    }
+    const [we0, we1] = visits7e as [string, string]
+    const before7e = await Promise.all(visits7e.map((id) => getVisitById(id)))
+    const before7eById = new Map(before7e.map((r) => [r.id, r]))
+
+    await setRouteOrder({
+      organizationId,
+      userId,
+      assigneeUserId: userId,
+      window: { from: win7e.from, to: win7e.to },
+      dateKey: win7e.dateKey,
+      visitIds: [we1, we0],
+    })
+    const after7e = await Promise.all([we1, we0].map((id) => getVisitById(id)))
+    check(
+      '7e: routeOrder swapped (we1=0, we0=1)',
+      after7e[0]!.routeOrder === 0 && after7e[1]!.routeOrder === 1,
+      after7e.map((r) => r.routeOrder)
+    )
+    check(
+      '7e: all-confirmed route -> NO time writes at all (byte-unchanged for both stops)',
+      after7e.every((a) => {
+        const b = before7eById.get(a.id)!
+        return (
+          a.startTime?.getTime() === b.startTime?.getTime() &&
+          a.endTime?.getTime() === b.endTime?.getTime() &&
+          a.timeConfirmedAt?.getTime() === b.timeConfirmedAt?.getTime()
+        )
+      }),
+      { before: before7e, after: after7e }
+    )
+
+    // ── 7g: fresh route (no times at all) — chain starts at the availability day-start seed,
+    // the same `resolveAvailability` computation `autoApplyRouteTimes` uses internally.
+    const win7g = dayWindow(263)
+    const coords7g: Array<[number, number]> = [
+      [43.0, -108.0],
+      [43.05, -107.9],
+      [43.1, -107.8],
+    ]
+    const visits7g: string[] = []
+    for (let i = 0; i < 3; i++) {
+      const wo = await handler.create('work_order', {
+        work_order_title: `[TS-verify] auto-sync fresh-route seed ${i}`,
+      })
+      createdRecordIds.push(wo.recordId)
+      const v = await getVisit(wo.instance.id)
+      await assignVisit({ organizationId, userId, visitId: v.id, assigneeUserId: userId })
+      await setVisitCoords(v.id, coords7g[i]![0], coords7g[i]![1])
+      await setVisitRouteOrder(v.id, i)
+      visits7g.push(v.id) // no scheduleVisit — times stay null (fresh, unapplied route)
+    }
+    const [wg0, wg1, wg2] = visits7g as [string, string, string]
+
+    const availDays7g = await resolveAvailability(
+      { type: 'worker', organizationId, userId },
+      { from: win7g.dateKey, to: win7g.dateKey }
+    )
+    const startMinutes7g = availDays7g[0]?.ranges[0]?.start ?? 8 * 60
+    const expectedSeed7g = new Date(win7g.from.getTime() + startMinutes7g * 60_000)
+
+    await setRouteOrder({
+      organizationId,
+      userId,
+      assigneeUserId: userId,
+      window: { from: win7g.from, to: win7g.to },
+      dateKey: win7g.dateKey,
+      visitIds: [wg2, wg0, wg1],
+    })
+    const [rg2, rg0, rg1] = await Promise.all([wg2, wg0, wg1].map((id) => getVisitById(id)))
+    check(
+      '7g: fresh route seed — first stop (wg2) starts at the availability day-start seed',
+      rg2.startTime?.getTime() === expectedSeed7g.getTime(),
+      { expected: expectedSeed7g, actual: rg2.startTime }
+    )
+    check(
+      '7g: fresh route -> written stops stay provisional',
+      rg2.timeConfirmedAt === null && rg0.timeConfirmedAt === null && rg1.timeConfirmedAt === null
+    )
+    check(
+      '7g: fresh route chain is monotonic',
+      rg0.startTime! >= rg2.endTime! && rg1.startTime! >= rg0.endTime!
+    )
+
+    // ── 7h: setting is org-scoped — restore it now that every ON-dependent case is done; a
+    // subsequent reorder on the same org must go back to routeOrder-only (7a already proved
+    // this at OFF; the `finally` block below is the safety-net restore if anything above threw).
+    await setAutoApplyTimes(originalAutoApplyTimes as boolean)
+    autoApplyTimesChanged = false
   } finally {
     // ── Cleanup ──
     console.log(`Cleanup: deleting ${createdRecordIds.length} verify work orders`)
@@ -614,6 +990,27 @@ async function main() {
       } catch (err) {
         console.log(
           `  cleanup failed for worker ${workerId}:`,
+          err instanceof Error ? err.message : err
+        )
+      }
+    }
+    // Safety-net restore for section 7's `dispatch.routes.autoApplyTimes` flip — 7h already
+    // restores it inline on the happy path; this only fires if something threw before reaching
+    // 7h (or 7h's own restore threw).
+    if (autoApplyTimesChanged) {
+      try {
+        await updateOrganizationSetting({
+          organizationId,
+          key: 'dispatch.routes.autoApplyTimes',
+          value: originalAutoApplyTimes,
+        })
+        await onCacheEvent('org.settings.changed', {
+          orgId: organizationId,
+          broadcastUserKeys: true,
+        })
+      } catch (err) {
+        console.log(
+          '  cleanup failed restoring dispatch.routes.autoApplyTimes:',
           err instanceof Error ? err.message : err
         )
       }

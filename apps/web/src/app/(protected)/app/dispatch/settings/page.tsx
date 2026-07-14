@@ -2,9 +2,10 @@
 
 import { redirect } from 'next/navigation'
 
-/** No dedicated overview yet — Products & Services is the only settings page in MQ1. */
+/** `SidebarSecondary` always links to `${baseUrl}/${slug}` (no empty-slug support), so the
+ * index route just redirects to the General settings page. */
 function DispatchSettings() {
-  redirect('/app/dispatch/settings/products')
+  redirect('/app/dispatch/settings/general')
 }
 
 export default DispatchSettings

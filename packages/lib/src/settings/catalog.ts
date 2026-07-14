@@ -318,6 +318,18 @@ export const SETTINGS_CATALOG = {
     defaultValue: false,
     description: 'Display times in 24-hour format instead of AM/PM',
   },
+  // Dispatch auto-sync (plans/dispatch/20-route-times-sync.md §5) — GENERAL like the other
+  // org-wide operational switches; Phase 3 is schema-free, no new scope.
+  'dispatch.routes.autoApplyTimes': {
+    scope: 'GENERAL',
+    access: 'org',
+    fieldType: 'CHECKBOX',
+    options: { variant: 'switch' },
+    defaultValue: false,
+    description:
+      'When on, reordering a route automatically re-chains scheduled times for provisional ' +
+      'stops (confirmed times hold as anchors)',
+  },
 
   // ── DOCUMENTS (quote/invoice PDF + email settings, money MQ2 build spec §A) ──────────────
   // `documents.taxRates` moved here from GENERAL (money MQ1 §G.1 shipped it under GENERAL —

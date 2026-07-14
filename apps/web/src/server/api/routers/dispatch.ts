@@ -286,6 +286,7 @@ export const dispatchRouter = createTRPCRouter({
         assigneeUserId: z.string(),
         from: z.date(),
         to: z.date(),
+        dateKey: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
         visitIds: z.array(z.string()),
       })
     )
@@ -295,6 +296,7 @@ export const dispatchRouter = createTRPCRouter({
         userId: ctx.session.user.id,
         assigneeUserId: input.assigneeUserId,
         window: { from: input.from, to: input.to },
+        dateKey: input.dateKey,
         visitIds: input.visitIds,
         excludeSocketId: excludeSocketId(ctx),
       })
