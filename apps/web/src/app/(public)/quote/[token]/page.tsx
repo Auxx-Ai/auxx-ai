@@ -1,6 +1,6 @@
 // apps/web/src/app/(public)/quote/[token]/page.tsx
 
-import { getPublicQuotePayload } from '@auxx/lib/money'
+import { cancelAbandonedDepositCheckout, getPublicQuotePayload } from '@auxx/lib/money'
 import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 import { PublicQuoteDocument } from '~/components/money/ui/public-quote/public-quote-document'
@@ -12,7 +12,7 @@ export const metadata: Metadata = {
 
 interface PublicQuotePageProps {
   params: Promise<{ token: string }>
-  searchParams: Promise<{ state?: string; message?: string }>
+  searchParams: Promise<{ state?: string; message?: string; checkout?: string; tx?: string }>
 }
 
 /**
@@ -25,6 +25,13 @@ interface PublicQuotePageProps {
  */
 export default async function PublicQuotePage({ params, searchParams }: PublicQuotePageProps) {
   const [{ token }, sp] = await Promise.all([params, searchParams])
+
+  // Landing back via Stripe's cancel_url — release the pending deposit ledger row this
+  // Checkout minted so the page immediately offers Pay again (guarded server-side by the
+  // token; the invoice pay page's `cancelAbandonedCheckout` recipe).
+  if (sp.checkout === 'cancel' && sp.tx) {
+    await cancelAbandonedDepositCheckout(token, sp.tx)
+  }
 
   const payload = await getPublicQuotePayload(token)
   if (!payload || !payload.acceptancePageEnabled) notFound()

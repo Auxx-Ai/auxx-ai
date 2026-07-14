@@ -22,11 +22,45 @@ import {
 import { TRPCError } from '@trpc/server'
 import { and, eq } from 'drizzle-orm'
 import { z } from 'zod'
-import { createTRPCRouter, protectedProcedure } from '../trpc'
+import { createTRPCRouter, isAuxxError, protectedProcedure } from '../trpc'
 
 /** Extract socket ID from tRPC context headers for realtime self-event exclusion. */
 function getSocketId(ctx: { headers: Headers }): string | undefined {
   return ctx.headers.get('x-realtime-socket-id') ?? undefined
+}
+
+/**
+ * Postgres FK constraint blocking an invoice's instance delete while ledger rows still
+ * reference it (`PaymentTransaction.invoiceInstanceId` is the only RESTRICT FK in the schema).
+ */
+const INVOICE_PAYMENT_FK_CONSTRAINT = 'PaymentTransaction_invoiceInstanceId_EntityInstance_id_fk'
+
+/**
+ * Defense-in-depth mapping for `record.delete`/`bulkDelete`: the invoice pre-delete hook
+ * (plans/dispatch/money/12-delete-safety.md §A) purges non-succeeded ledger rows and rejects
+ * succeeded/disputed ones before the instance delete runs, so this FK should be unreachable in
+ * practice. If it's ever hit anyway (a future RESTRICT FK the hook doesn't know about yet, or a
+ * race), rethrow as a friendly `BadRequestError` instead of the raw Postgres violation.
+ *
+ * Walks the error's `.cause` chain (the CRUD handler wraps DB errors — see `unwrapResult` in
+ * `packages/lib/src/resources/crud/unified-handler-mutations.ts`) looking for Postgres error
+ * code `23503` on this specific constraint. Any other error — including other FK violations —
+ * is left untouched.
+ */
+function rethrowIfInvoicePaymentFkViolation(error: unknown): void {
+  let current: unknown = error
+  while (current && typeof current === 'object') {
+    const code = (current as { code?: unknown }).code
+    const constraint = (current as { constraint?: unknown }).constraint
+    const message = (current as { message?: unknown }).message
+    const matchesConstraint =
+      constraint === INVOICE_PAYMENT_FK_CONSTRAINT ||
+      (typeof message === 'string' && message.includes(INVOICE_PAYMENT_FK_CONSTRAINT))
+    if (code === '23503' && matchesConstraint) {
+      throw new BadRequestError('Remove recorded payments before deleting this invoice')
+    }
+    current = (current as { cause?: unknown }).cause
+  }
 }
 
 /**
@@ -501,6 +535,11 @@ export const recordRouter = createTRPCRouter({
         await handler.delete(input.recordId)
         return { success: true }
       } catch (error: any) {
+        // Rethrow pre-delete-hook rejections (BadRequestError, ForbiddenError, …) so
+        // auxxErrorMiddleware maps them to their proper codes — duck-typed, since
+        // `instanceof` fails across the `@auxx/lib` transpile boundary (see trpc.ts).
+        if (isAuxxError(error)) throw error
+        rethrowIfInvoicePaymentFkViolation(error)
         if (error.message?.includes('not found')) {
           throw new TRPCError({
             code: 'NOT_FOUND',
@@ -543,6 +582,20 @@ export const recordRouter = createTRPCRouter({
 
       try {
         const handler = new UnifiedCrudHandler(organizationId, user.id, ctx.db, getSocketId(ctx))
+        // NOTE on friendly messages here: the invoice pre-delete hook's admin-gate /
+        // succeeded-charges guard throws `BadRequestError` with an already-friendly message
+        // (e.g. "Remove recorded payments before deleting this invoice") — `bulkDeleteEntities`
+        // (packages/lib/src/resources/crud/unified-handler-mutations.ts) catches that per-record
+        // and stores `error.message` verbatim in `result.errors`, so it reads well here with no
+        // extra mapping needed.
+        // The raw-FK defense-in-depth mapping (`rethrowIfInvoicePaymentFkViolation`, used in the
+        // `delete` mutation above) does NOT apply here: `bulkDeleteEntities` flattens each per-record
+        // failure to a plain `{ recordId, message }` string before it ever reaches this router
+        // (the original error/cause chain, including the pg error code + constraint, is
+        // discarded in the lib loop) — so this router has nothing left to pattern-match on for
+        // that edge case in bulk mode. This should be unreachable post-§A anyway (the hook purges
+        // non-succeeded ledger rows before the instance delete runs); worth revisiting only if a
+        // per-record error surface is added to the lib handler.
         const result = await handler.bulkDelete(input.recordIds)
 
         if (result.errors.length > 0 && result.count === 0) {

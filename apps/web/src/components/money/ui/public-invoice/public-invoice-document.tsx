@@ -20,6 +20,7 @@ import {
 import { PublicDocumentLineItems } from '~/components/money/ui/public-document/public-document-line-items'
 import { PublicDocumentShell } from '~/components/money/ui/public-document/public-document-shell'
 import { PublicDocumentTotals } from '~/components/money/ui/public-document/public-document-totals'
+import { PartialPaymentForm } from './partial-payment-form'
 import { ProcessingPoller } from './processing-poller'
 
 interface PublicInvoiceDocumentProps {
@@ -55,6 +56,8 @@ export function PublicInvoiceDocument({
     branding,
     paymentsEnabled,
     processingPayment,
+    allowPartialPayments,
+    minPaymentAmount,
   } = payload
 
   const isPaid = status === 'paid' || balance <= 0
@@ -116,11 +119,20 @@ export function PublicInvoiceDocument({
           ) : isPaid ? (
             <p className='font-medium text-sm text-success'>Paid in full — thank you.</p>
           ) : canPay ? (
-            <form method='post' action={`/pay/${token}/checkout`}>
-              <Button type='submit' variant='translucent' size='lg'>
-                Pay {formatCurrency(balance, currency)}
-              </Button>
-            </form>
+            allowPartialPayments ? (
+              <PartialPaymentForm
+                token={token}
+                balance={balance}
+                minPaymentAmount={minPaymentAmount}
+                currency={currency}
+              />
+            ) : (
+              <form method='post' action={`/pay/${token}/checkout`}>
+                <Button type='submit' variant='translucent' size='lg'>
+                  Pay {formatCurrency(balance, currency)}
+                </Button>
+              </form>
+            )
           ) : null}
         </div>
       </Card>

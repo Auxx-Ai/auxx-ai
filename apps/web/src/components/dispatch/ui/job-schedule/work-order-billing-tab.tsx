@@ -10,15 +10,19 @@
 // `<Section>` (`DetailViewSections`) owns the "Billing" heading — this component renders content
 // only.
 
+import { Button } from '@auxx/ui/components/button'
+import { toastError } from '@auxx/ui/components/toast'
 import { cn } from '@auxx/ui/lib/utils'
-import { CalendarClock, TriangleAlert } from 'lucide-react'
+import { CalendarClock, RotateCcw, TriangleAlert } from 'lucide-react'
 import { useCallback, useMemo, useState } from 'react'
 import type { DetailViewTabProps } from '~/components/detail-view'
+import { useAdminGate } from '~/components/global/admin-gate'
 import type { InvoiceBillingValues } from '~/components/money/hooks/use-work-order-invoices'
 import { useWorkOrderInvoices } from '~/components/money/hooks/use-work-order-invoices'
 import { formatCurrency } from '~/components/money/ui/line-builder/shared'
 import { TuckedLabel } from '~/components/money/ui/tucked-label'
 import { useSystemValues } from '~/components/resources/hooks/use-system-values'
+import { useConfirm } from '~/hooks/use-confirm'
 import { useSettings } from '~/hooks/use-settings'
 import { api } from '~/trpc/react'
 import { BillingScheduleRow } from './billing-schedule-row'
@@ -36,6 +40,8 @@ function BlockLabel({ children }: { children: React.ReactNode }) {
 
 export function WorkOrderBillingTab({ recordId, variant = 'tab' }: DetailViewTabProps) {
   const isSection = variant === 'section'
+  const { allowed: isAdmin } = useAdminGate()
+  const [confirm, ConfirmDialog] = useConfirm()
   const { getSetting } = useSettings({})
   const currencyCode = (getSetting('organization.currency') as string | null) ?? 'USD'
   const autoEnabled = (getSetting('documents.invoice.autoEnabled') as boolean | null) ?? true
@@ -43,11 +49,52 @@ export function WorkOrderBillingTab({ recordId, variant = 'tab' }: DetailViewTab
   // Same fallback the line-items tab used — `per_visit_completed` is the field's static
   // default, and defaulting to `as_needed` here would flash the ready-to-invoice callout on
   // automated jobs while the value loads.
-  const { values } = useSystemValues(recordId, ['work_order_invoice_timing'], { autoFetch: true })
+  const { values } = useSystemValues(recordId, ['work_order_invoice_timing', 'work_order_status'], {
+    autoFetch: true,
+  })
   const invoiceTiming =
     (values.work_order_invoice_timing as string | undefined) ?? 'per_visit_completed'
+  const workOrderStatus = values.work_order_status as string | undefined
 
   const { invoiceRecordIds, isLoading: invoicesLoading } = useWorkOrderInvoices(recordId)
+
+  // §B.9/§B.10 — held (invoice-less, succeeded) deposit rows, straight off the ledger. Same
+  // query the payments block below already fires with the same input, so React Query dedupes
+  // this into one network call.
+  const utils = api.useUtils()
+  const { data: payments } = api.money.listPaymentsForWorkOrder.useQuery({
+    workOrderRecordId: recordId,
+  })
+  const heldDepositRows = useMemo(
+    () =>
+      (payments ?? []).filter(
+        (p) => p.kind === 'charge' && p.status === 'succeeded' && p.invoiceInstanceId == null
+      ),
+    [payments]
+  )
+  const heldDepositTotal = heldDepositRows.reduce((sum, p) => sum + p.amount, 0)
+  const hasHeldDeposit = heldDepositRows.length > 0
+
+  const refundTransaction = api.money.refundTransaction.useMutation({
+    onSuccess: () =>
+      void utils.money.listPaymentsForWorkOrder.invalidate({ workOrderRecordId: recordId }),
+    onError: (error) =>
+      toastError({ title: 'Error refunding payment', description: error.message }),
+  })
+
+  const handleRefundDeposit = async () => {
+    const deposit = heldDepositRows[0]
+    if (!deposit) return
+    const confirmed = await confirm({
+      title: 'Refund the held deposit?',
+      description: 'The platform fee is refunded too. This cannot be undone.',
+      confirmText: 'Refund',
+      cancelText: 'Cancel',
+      destructive: true,
+    })
+    if (!confirmed) return
+    refundTransaction.mutate({ transactionId: deposit.id })
+  }
 
   const { data: uninvoicedLines } = api.money.listUninvoicedLines.useQuery({
     workOrderRecordId: recordId,
@@ -112,7 +159,34 @@ export function WorkOrderBillingTab({ recordId, variant = 'tab' }: DetailViewTab
           <SummaryCell label='Paid' value={formatCurrency(paidTotal, currencyCode)} />
           <SummaryCell label='Balance due' value={formatCurrency(balanceTotal, currencyCode)} />
           <SummaryCell label='Uninvoiced' value={formatCurrency(uninvoicedTotal, currencyCode)} />
+          {hasHeldDeposit && (
+            <SummaryCell
+              label='Deposit held'
+              value={formatCurrency(heldDepositTotal, currencyCode)}
+            />
+          )}
         </div>
+
+        {/* §B.10 — cancel-with-held-deposit refund action */}
+        {hasHeldDeposit && workOrderStatus === 'canceled' && (
+          <div className='mx-4 mb-2 flex items-center justify-between gap-2 rounded-md bg-amber-500/10 px-3 py-2 text-amber-700 text-xs dark:text-amber-400'>
+            <span>
+              This job was canceled with a held deposit of{' '}
+              {formatCurrency(heldDepositTotal, currencyCode)}.
+            </span>
+            {isAdmin && (
+              <Button
+                variant='outline'
+                size='xs'
+                loading={refundTransaction.isPending}
+                loadingText='Refunding…'
+                onClick={handleRefundDeposit}>
+                <RotateCcw />
+                Refund deposit
+              </Button>
+            )}
+          </div>
+        )}
 
         {/* Block b — ready-to-invoice callout (locked decision 4) */}
         {showReadyToInvoiceCallout && (
@@ -152,6 +226,7 @@ export function WorkOrderBillingTab({ recordId, variant = 'tab' }: DetailViewTab
           />
         </div>
       </div>
+      <ConfirmDialog />
     </div>
   )
 }

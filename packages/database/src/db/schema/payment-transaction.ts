@@ -50,12 +50,25 @@ export const PaymentTransaction = pgTable(
     amount: integer().notNull(),
     currency: text().notNull(),
     applicationFeeAmount: integer(),
-    invoiceInstanceId: text()
-      .notNull()
-      .references((): AnyPgColumn => EntityInstance.id, {
-        onUpdate: 'cascade',
-        onDelete: 'restrict',
-      }),
+    /** Nullable from MP2 — a deposit charge (§B.6) starts invoice-less; stamped once the
+     * job's first real invoice is created (`applyHeldDepositToInvoice`, ledger.ts). */
+    invoiceInstanceId: text().references((): AnyPgColumn => EntityInstance.id, {
+      onUpdate: 'cascade',
+      onDelete: 'restrict',
+    }),
+    /** MP2 — set when this row is a quote deposit (`createStripeDepositCheckout`), null for
+     * ordinary invoice charges/refunds. `restrict` mirrors `invoiceInstanceId`'s posture. */
+    quoteInstanceId: text().references((): AnyPgColumn => EntityInstance.id, {
+      onUpdate: 'cascade',
+      onDelete: 'restrict',
+    }),
+    /** MP2 — the work order a held deposit is against, stamped at checkout time (or by
+     * `convertQuoteToWorkOrder` if the deposit was paid before auto-convert ran). Backs the
+     * WO billing tab's "Deposit held" lookup (`listWorkOrderPayments`). */
+    workOrderInstanceId: text().references((): AnyPgColumn => EntityInstance.id, {
+      onUpdate: 'cascade',
+      onDelete: 'restrict',
+    }),
     paymentInstanceId: text().references((): AnyPgColumn => EntityInstance.id, {
       onUpdate: 'cascade',
       onDelete: 'set null',
@@ -89,6 +102,12 @@ export const PaymentTransaction = pgTable(
       'btree',
       table.organizationId.asc().nullsLast(),
       table.invoiceInstanceId.asc().nullsLast()
+    ),
+    // MP2 — the WO billing tab's held-deposit lookup (§B.9) filters on this.
+    index('PaymentTransaction_organizationId_workOrderInstanceId_idx').using(
+      'btree',
+      table.organizationId.asc().nullsLast(),
+      table.workOrderInstanceId.asc().nullsLast()
     ),
     // PG: multiple NULLs allowed — only enforces uniqueness among rows that carry a value
     uniqueIndex('PaymentTransaction_stripePaymentIntentId_key').using(

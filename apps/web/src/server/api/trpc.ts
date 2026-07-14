@@ -213,8 +213,12 @@ const AUXX_ERROR_NAMES = new Set<string>(Object.values(AuxxErrorCodes))
  * `INTERNAL_SERVER_ERROR` and get its message masked. Matching on the `name` +
  * numeric `statusCode` shape keeps the correct code and message regardless of which
  * copy produced the error.
+ *
+ * Exported for routers whose own try/catch would otherwise flatten an AuxxError
+ * into a generic 500 before `auxxErrorMiddleware` can map it (e.g. `record.delete`
+ * rethrowing pre-delete-hook rejections).
  */
-const isAuxxError = (error: unknown): error is AuxxError =>
+export const isAuxxError = (error: unknown): error is AuxxError =>
   error instanceof AuxxError ||
   (error instanceof Error &&
     typeof (error as AuxxError).statusCode === 'number' &&

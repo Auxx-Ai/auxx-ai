@@ -72,7 +72,9 @@ const moneyAdminProcedure = adminProcedure.use(async ({ ctx, next }) => {
  * Shape a `PaymentTransaction` ledger row for the payments list UI (money MI1 build spec
  * §E.2 row shape) — shared by `listPayments` (per-invoice, invoice-drawer) and
  * `listPaymentsForWorkOrder` (cross-invoice, job page) so the row shape can't drift between
- * the two call sites.
+ * the two call sites. `invoiceInstanceId`/`quoteInstanceId`/`workOrderInstanceId` (money MP2
+ * §B.9) let the client tell a "held" deposit (`invoiceInstanceId === null`) apart from an
+ * "applied" one — today's row shape had no way to.
  */
 function mapPaymentRow(row: PaymentTransactionEntity) {
   return {
@@ -88,6 +90,9 @@ function mapPaymentRow(row: PaymentTransactionEntity) {
     createdByUserId: row.createdByUserId,
     stripeRefundId: row.stripeRefundId,
     refundedTransactionId: row.refundedTransactionId,
+    invoiceInstanceId: row.invoiceInstanceId,
+    quoteInstanceId: row.quoteInstanceId,
+    workOrderInstanceId: row.workOrderInstanceId,
   }
 }
 
@@ -435,7 +440,10 @@ export const moneyRouter = createTRPCRouter({
 
       return rows.map((row) => ({
         ...mapPaymentRow(row),
-        invoiceRecordId: toRecordId('invoice', row.invoiceInstanceId),
+        // Held deposits (money MP2 §B.6/§B.9) have no invoice until settle — null, not a crash.
+        invoiceRecordId: row.invoiceInstanceId
+          ? toRecordId('invoice', row.invoiceInstanceId)
+          : null,
       }))
     }),
 

@@ -194,7 +194,6 @@ export function RecordsView({ slug, basePath, embedded }: RecordsViewProps) {
     ConfirmArchiveDialog,
   } = useEntityInstanceOperations({
     entityDefinitionId,
-    entityType: resource?.entityType,
     resourceLabel: resource?.label,
     resourcePlural: resource?.plural,
     onDrawerClose: handleOperationsDrawerClose,

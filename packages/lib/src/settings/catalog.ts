@@ -472,12 +472,53 @@ export const SETTINGS_CATALOG = {
     defaultValue: true,
     description: 'Automatically convert an accepted quote into a work order',
   },
+  'documents.quote.depositType': {
+    scope: 'DOCUMENTS',
+    access: 'org',
+    fieldType: 'SINGLE_SELECT',
+    defaultValue: 'none',
+    description:
+      "Org default deposit type — prefills new quotes' deposit fields (quote_deposit_type)",
+    options: {
+      options: [
+        { value: 'none', label: 'None' },
+        { value: 'percent', label: 'Percent' },
+        { value: 'fixed', label: 'Fixed amount' },
+      ],
+    },
+  },
+  'documents.quote.depositValue': {
+    scope: 'DOCUMENTS',
+    access: 'org',
+    fieldType: 'NUMBER',
+    defaultValue: 0,
+    description:
+      'Org default deposit value — percent (0-100) or a currency amount (50 = $50.00) ' +
+      'depending on depositType; prefills new quotes',
+  },
   'documents.invoice.dueDays': {
     scope: 'DOCUMENTS',
     access: 'org',
     fieldType: 'NUMBER',
     defaultValue: 30,
     description: 'Default number of days an invoice is due after issue (MI1 consumes)',
+  },
+  'documents.invoice.allowPartialPayments': {
+    scope: 'DOCUMENTS',
+    access: 'org',
+    fieldType: 'CHECKBOX',
+    options: { variant: 'switch' },
+    defaultValue: false,
+    description:
+      'Let customers pay a custom amount (not just the full balance) on the public pay page',
+  },
+  'documents.invoice.partialPaymentMinPercent': {
+    scope: 'DOCUMENTS',
+    access: 'org',
+    fieldType: 'NUMBER',
+    defaultValue: 10,
+    description:
+      'Minimum payment as a percent of the current balance, when partial payments are allowed',
   },
   'documents.invoice.autoEnabled': {
     scope: 'DOCUMENTS',

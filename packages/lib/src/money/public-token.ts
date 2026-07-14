@@ -17,7 +17,9 @@ import type {
 } from '../documents/payload'
 import { FieldValueService } from '../field-values/field-value-service'
 import { UnifiedCrudHandler } from '../resources/crud'
+import { getOrganizationSetting } from '../settings/settings-service'
 import { getPaymentAccount } from './payments/account-state'
+import { resolvePartialPaymentBounds } from './payments/partial'
 
 /**
  * The public `/pay/{token}` capability-token machinery (money MP1 build spec §H/§I). Kept
@@ -190,6 +192,12 @@ export interface PublicInvoicePayload {
   paymentsEnabled: boolean
   /** A pending Stripe charge ledger row exists for this invoice — never render "Paid" while true. */
   processingPayment: boolean
+  /** `documents.invoice.allowPartialPayments` — lets the pay page accept a custom amount. */
+  allowPartialPayments: boolean
+  /** Integer cents — the smallest amount the pay page will submit, per
+   * `documents.invoice.partialPaymentMinPercent` (money MP2 §C). Pre-computed here via
+   * `resolvePartialPaymentBounds` so the client never re-derives the percent math. */
+  minPaymentAmount: number
 }
 
 /**
@@ -209,28 +217,35 @@ export async function getPublicInvoicePayload(token: string): Promise<PublicInvo
   const systemUserId = await getOrgCache().get(organizationId, 'systemUser')
   const invoiceRecordId = toRecordId('invoice', invoiceInstanceId)
 
-  const [{ payload }, account, pendingCharge] = await Promise.all([
-    buildInvoicePdfPayload({ organizationId, userId: systemUserId, invoiceRecordId }),
-    getPaymentAccount(organizationId),
-    database.query.PaymentTransaction.findFirst({
-      // Time-bounded: a `pending` row is minted at Checkout CREATION, so its bare existence
-      // only means a session was opened, not that money moved. Rows the shopper explicitly
-      // canceled out of get flipped by `cancelAbandonedCheckout`; silently-abandoned tabs
-      // age out of this window instead of wedging the page in "processing" forever. The
-      // webhook remains the truth — a stale session paid after the window still settles.
-      where: and(
-        eq(schema.PaymentTransaction.organizationId, organizationId),
-        eq(schema.PaymentTransaction.invoiceInstanceId, invoiceInstanceId),
-        eq(schema.PaymentTransaction.provider, 'stripe'),
-        eq(schema.PaymentTransaction.kind, 'charge'),
-        eq(schema.PaymentTransaction.status, 'pending'),
-        gt(schema.PaymentTransaction.updatedAt, new Date(Date.now() - PROCESSING_WINDOW_MS))
-      ),
-      columns: { id: true },
-    }),
-  ])
+  const [{ payload }, account, pendingCharge, allowPartialPayments, partialPaymentMinPercent] =
+    await Promise.all([
+      buildInvoicePdfPayload({ organizationId, userId: systemUserId, invoiceRecordId }),
+      getPaymentAccount(organizationId),
+      database.query.PaymentTransaction.findFirst({
+        // Time-bounded: a `pending` row is minted at Checkout CREATION, so its bare existence
+        // only means a session was opened, not that money moved. Rows the shopper explicitly
+        // canceled out of get flipped by `cancelAbandonedCheckout`; silently-abandoned tabs
+        // age out of this window instead of wedging the page in "processing" forever. The
+        // webhook remains the truth — a stale session paid after the window still settles.
+        where: and(
+          eq(schema.PaymentTransaction.organizationId, organizationId),
+          eq(schema.PaymentTransaction.invoiceInstanceId, invoiceInstanceId),
+          eq(schema.PaymentTransaction.provider, 'stripe'),
+          eq(schema.PaymentTransaction.kind, 'charge'),
+          eq(schema.PaymentTransaction.status, 'pending'),
+          gt(schema.PaymentTransaction.updatedAt, new Date(Date.now() - PROCESSING_WINDOW_MS))
+        ),
+        columns: { id: true },
+      }),
+      getOrganizationSetting({ organizationId, key: 'documents.invoice.allowPartialPayments' }),
+      getOrganizationSetting({ organizationId, key: 'documents.invoice.partialPaymentMinPercent' }),
+    ])
 
   const paymentsEnabled = isPaymentsConnected(account)
+  const minPaymentAmount = resolvePartialPaymentBounds(
+    payload.balance,
+    Number(partialPaymentMinPercent ?? 10)
+  ).min
 
   return {
     number: payload.number,
@@ -255,5 +270,7 @@ export async function getPublicInvoicePayload(token: string): Promise<PublicInvo
     branding: payload.settings.branding,
     paymentsEnabled,
     processingPayment: !!pendingCharge,
+    allowPartialPayments: !!allowPartialPayments,
+    minPaymentAmount,
   }
 }

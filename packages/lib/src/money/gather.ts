@@ -12,6 +12,7 @@ import { BadRequestError } from '../errors'
 import { FieldValueService } from '../field-values/field-value-service'
 import { UnifiedCrudHandler } from '../resources/crud'
 import { getOrganizationSetting } from '../settings/settings-service'
+import { applyHeldDepositToInvoice } from './payments/ledger'
 import { recomputeTotals } from './totals-hooks'
 import type {
   CreateInvoiceFromWorkOrderInput,
@@ -302,6 +303,20 @@ export async function createInvoiceShell(input: {
   if (taxRate !== null) invoiceValues.invoice_tax_rate = taxRate
 
   const createdInvoice = await handler.create('invoice', invoiceValues)
+
+  // MP2 (§B.6 settle): stamp any held (invoice-less) deposit for this work order onto the
+  // invoice that's just been created — a no-op when there's no held deposit. `createInvoiceShell`
+  // is the SOLE `handler.create('invoice', ...)` call site (both the manual gather flow and the
+  // automated `generateInvoiceDraft` funnel through it), so this is the one true settle point.
+  // Left unguarded, matching every other post-create step in this function (`copyLineOntoInvoice`,
+  // `recomputeTotals`) — this file's convention is "let it throw" at the builder level; best-effort
+  // wrapping belongs at the automated caller's orchestration boundary (`auto-invoice.ts`), not here.
+  await applyHeldDepositToInvoice({
+    organizationId,
+    userId,
+    workOrderInstanceId,
+    invoiceInstanceId: createdInvoice.instance.id,
+  })
 
   return {
     handler,

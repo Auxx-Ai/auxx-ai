@@ -44,6 +44,7 @@ import { migration038InvoiceAutomation } from './migrations/038-invoice-automati
 import { migration039WorkOrderTags } from './migrations/039-work-order-tags'
 import { migration040CatalogGroup } from './migrations/040-catalog-group'
 import { migration041QuoteAcceptanceFields } from './migrations/041-quote-acceptance-fields'
+import { migration042QuoteDepositFields } from './migrations/042-quote-deposit-fields'
 import type { EntityMigration, MigrationRunResult } from './types'
 
 const logger = createScopedLogger('entity-migrations')
@@ -93,6 +94,7 @@ const ALL_MIGRATIONS: EntityMigration[] = [
   migration039WorkOrderTags,
   migration040CatalogGroup,
   migration041QuoteAcceptanceFields,
+  migration042QuoteDepositFields,
 ]
 
 /**

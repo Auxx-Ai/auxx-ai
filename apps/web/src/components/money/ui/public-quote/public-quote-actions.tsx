@@ -112,6 +112,30 @@ export function QuoteDeclineForm({ token }: { token: string }) {
   )
 }
 
+/** Deposit Pay form (money MP2 build spec §B.8) — always the full configured deposit, no
+ * partial-amount input (§J.6). POSTs to `/quote/{token}/deposit-checkout`, a route handler that
+ * redirects to Stripe Checkout, so a click needs zero client JavaScript beyond the pending
+ * state. */
+export function QuoteDepositForm({ token, amountLabel }: { token: string; amountLabel: string }) {
+  const [isPending, setIsPending] = useState(false)
+
+  return (
+    <form
+      method='post'
+      action={`/quote/${token}/deposit-checkout`}
+      onSubmit={() => setIsPending(true)}>
+      <Button
+        type='submit'
+        variant='translucent'
+        size='lg'
+        loading={isPending}
+        loadingText='Redirecting...'>
+        Pay deposit {amountLabel}
+      </Button>
+    </form>
+  )
+}
+
 /** Expired-quote CTA — POSTs to `/quote/{token}/request-update`. */
 export function QuoteRequestUpdateForm({ token }: { token: string }) {
   const [isPending, setIsPending] = useState(false)

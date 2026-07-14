@@ -1,8 +1,10 @@
 // packages/lib/src/money/convert-quote.ts
 
+import { database, schema } from '@auxx/database'
 import type { TypedFieldValue } from '@auxx/types'
 import { extractValue } from '@auxx/types'
 import { toRecordId } from '@auxx/types/resource'
+import { and, eq, isNull } from 'drizzle-orm'
 import { getOrgCache } from '../cache'
 import { BadRequestError } from '../errors'
 import { FieldValueService } from '../field-values/field-value-service'
@@ -145,6 +147,26 @@ export async function convertQuoteToWorkOrder(input: ConvertQuoteToWorkOrderInpu
   // create (dispatch §H.1/§F.4a precedent).
   const createdWorkOrder = await handler.create('work_order', workOrderValues)
   const workOrderRecordId = createdWorkOrder.recordId
+
+  // MP2 (§B.6): stamp any pre-paid deposit for this quote onto the newly created work order —
+  // covers a deposit paid before `documents.quote.autoConvertOnAccept` ran (or the setting is
+  // off), where the checkout-time write (`createStripeDepositCheckout`) couldn't resolve a work
+  // order yet. `isNull(workOrderInstanceId)` makes this idempotent against a second manual
+  // convert attempt. A direct write, not routed through `ledger.ts` — the plan sanctions this as
+  // the one exception to that file being the sole PaymentTransaction writer, since it's stamping
+  // linkage, not settling money.
+  await database
+    .update(schema.PaymentTransaction)
+    .set({ workOrderInstanceId: createdWorkOrder.instance.id })
+    .where(
+      and(
+        eq(schema.PaymentTransaction.organizationId, organizationId),
+        eq(schema.PaymentTransaction.quoteInstanceId, quoteInstanceId),
+        eq(schema.PaymentTransaction.kind, 'charge'),
+        eq(schema.PaymentTransaction.status, 'succeeded'),
+        isNull(schema.PaymentTransaction.workOrderInstanceId)
+      )
+    )
 
   // ─── Step 4: copy lines, ordered by sortOrder ───────────────────────────────
   // No `line_item_quote` on the copies — the quote keeps its own lines untouched;
