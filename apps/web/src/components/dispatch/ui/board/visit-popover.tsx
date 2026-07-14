@@ -12,8 +12,10 @@ import {
 } from '@auxx/ui/components/event-calendar'
 import { PanelCard, PanelCardRow } from '@auxx/ui/components/panel-card'
 import { toastError } from '@auxx/ui/components/toast'
+import { useIsMobile } from '@auxx/ui/hooks/use-mobile'
 import { differenceInMinutes } from 'date-fns'
-import { ArrowUpRight, CircleDot, Contact, Send, TriangleAlert } from 'lucide-react'
+import { ArrowUpRight, CircleDot, Contact, PanelRight, Send, TriangleAlert } from 'lucide-react'
+import { Tooltip } from '~/components/global/tooltip'
 import { useResource } from '~/components/resources'
 import { useConfirm } from '~/hooks/use-confirm'
 import { api } from '~/trpc/react'
@@ -36,6 +38,11 @@ interface VisitPopoverContentProps {
   /** Opens a record in the board's docked/overlay `RecordDrawer` (nuqs `?record=`). An optional
    * `drill` lands the drawer pre-drilled onto a panel item (e.g. the clicked visit). */
   onOpenRecord: (recordId: RecordId, drill?: { panel?: string; item?: string }) => void
+  /** Renders the dock-panel toggle (plan 21) in the floating-popover-only usage. Pass this ONLY
+   * from `board-calendar-grid.tsx`'s floating `EventPopover` call site — the docked panel's own
+   * `event-dock-panel.tsx` renders this same content without it, so the button never shows up
+   * inside the dock (it would be redundant there). */
+  onDock?: () => void
 }
 
 /**
@@ -53,9 +60,11 @@ export function VisitPopoverContent({
   existingVisits,
   onClose,
   onOpenRecord,
+  onDock,
 }: VisitPopoverContentProps) {
   const utils = api.useUtils()
   const [confirm, ConfirmDialog] = useConfirm()
+  const isMobile = useIsMobile()
 
   const dayContext = getVisitDayContext(event.start, event.end)
   const isOverdue = dayContext === 'past' && event.status !== 'done' && event.status !== 'canceled'
@@ -128,6 +137,17 @@ export function VisitPopoverContent({
 
   return (
     <>
+      {/* Desktop-only (plan 21 decision #5) — the docked column doesn't exist on mobile. */}
+      {onDock && !isMobile && (
+        <div className='flex justify-end'>
+          <Tooltip content='Dock panel'>
+            <Button variant='ghost' size='icon-xs' aria-label='Dock panel' onClick={onDock}>
+              <PanelRight />
+            </Button>
+          </Tooltip>
+        </div>
+      )}
+
       <EventTitleSection
         title={event.title}
         editable={false}

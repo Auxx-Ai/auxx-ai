@@ -24,11 +24,15 @@ interface EventPopoverBodyProps {
   header?: EventPopoverHeaderConfig
   children: React.ReactNode
   className?: string
+  /** Stretch to fill a height-bounded flex-column parent (e.g. `DockPanel`) instead of
+   * sizing to content under the floating popover's `max-h-[min(85vh,40rem)]` cap. */
+  fill?: boolean
 }
 
 interface EventPopoverBodyChromeProps {
   header?: EventPopoverHeaderConfig
   className?: string
+  fill?: boolean
   children: React.ReactNode
 }
 
@@ -65,12 +69,18 @@ export function EventDrillPage({ id, children }: { id: string; children: React.R
  * Tailwind's `space-y-*` selectors already exclude `[hidden]` elements, so this doesn't add a
  * phantom gap above the drilled page.
  */
-function EventPopoverBodyChrome({ header, className, children }: EventPopoverBodyChromeProps) {
+function EventPopoverBodyChrome({
+  header,
+  className,
+  fill,
+  children,
+}: EventPopoverBodyChromeProps) {
   const { current, isAtRoot, pop } = useCommandNavigation<EventDrillItem>()
   const [drillOutlet, setDrillOutlet] = React.useState<HTMLElement | null>(null)
 
   return (
     <div
+      className={fill ? 'flex min-h-0 flex-1 flex-col' : undefined}
       onKeyDown={(e) => {
         if (e.key === 'Escape' && !isAtRoot) {
           e.preventDefault()
@@ -111,7 +121,9 @@ function EventPopoverBodyChrome({ header, className, children }: EventPopoverBod
       ) : (
         <CommandBreadcrumb rootLabel={header?.label ?? 'Back'} />
       )}
-      <ScrollArea viewportClassName='max-h-[min(85vh,40rem)]'>
+      <ScrollArea
+        className={fill ? 'min-h-0 flex-1' : undefined}
+        viewportClassName={fill ? 'h-full' : 'max-h-[min(85vh,40rem)]'}>
         <PanelShell className={className}>
           <DrillOutletContext.Provider value={drillOutlet}>
             <div hidden={!isAtRoot}>{children}</div>
@@ -133,11 +145,17 @@ function EventPopoverBodyChrome({ header, className, children }: EventPopoverBod
  * `CommandNavigation` stack so sections drill in place (date/time/repeat/people pickers) instead
  * of nesting their own popovers.
  */
-export function EventPopoverBody({ series, header, children, className }: EventPopoverBodyProps) {
+export function EventPopoverBody({
+  series,
+  header,
+  children,
+  className,
+  fill,
+}: EventPopoverBodyProps) {
   return (
     <SeriesScopeProvider series={series}>
       <CommandNavigation<EventDrillItem>>
-        <EventPopoverBodyChrome header={header} className={className}>
+        <EventPopoverBodyChrome header={header} className={className} fill={fill}>
           {children}
         </EventPopoverBodyChrome>
       </CommandNavigation>

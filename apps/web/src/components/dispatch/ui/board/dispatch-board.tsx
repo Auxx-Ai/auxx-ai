@@ -29,6 +29,7 @@ import type { ExistingVisitForOverlap } from '../schedule-popover'
 import { DispatchSidebar } from '../sidebar/dispatch-sidebar'
 import { BoardCalendarGrid } from './board-calendar-grid'
 import { BoardToolbar } from './board-toolbar'
+import { EventDockPanel } from './event-dock-panel'
 import { useAvailabilityShading } from './hooks/use-availability-shading'
 import { useBoardData } from './hooks/use-board-data'
 import { useBoardMutations } from './hooks/use-board-mutations'
@@ -104,6 +105,16 @@ export function DispatchBoard() {
   const overlappingIds = useMemo(() => computeOverlappingVisitIds(data.events), [data.events])
 
   const [activeVisitId, setActiveVisitId] = useState<string | null>(null)
+
+  // Dockable event panel (plan 21) — a board-scoped push column, separate from the page-level
+  // `useDockStore`/`DockedPanelConfig` dock further below that drives the record drawer; this
+  // one only ever knows about the calendar's selected event. `isEventDockOpen` alone (not the
+  // side) is all `BoardCalendarGrid` needs to suppress the floating popover.
+  const isEventDockOpen = useDispatchSidebarStore((s) => s.eventDock.open)
+  const selectedEvent = useMemo(
+    () => data.events.find((e) => e.id === activeVisitId) ?? null,
+    [data.events, activeVisitId]
+  )
 
   // Record-peek drawer (v4 Phase 4, decision #8; deep-drill wiring per v4/02 Phase 3):
   // `?record=<defId>:<instanceId>&panel=visits&item=<visitId>` — a full RecordId in the URL
@@ -350,6 +361,17 @@ export function DispatchBoard() {
                 backlogEvents={data.backlogEvents}
                 onSelectVisit={handleSelectVisit}
               />
+              {/* Sits between sidebar and grid in DOM so a left dock reads as a second left
+               * column next to the grid (plan 21); `DockPanel` orders itself after the grid
+               * when `side='right'`. */}
+              <EventDockPanel
+                event={selectedEvent}
+                onActiveVisitChange={setActiveVisitId}
+                canEdit={canEdit}
+                mutations={mutations}
+                existingVisits={existingVisits}
+                onOpenRecord={handleOpenRecord}
+              />
               <BoardCalendarGrid
                 date={data.date}
                 onDateChange={data.setDate}
@@ -368,6 +390,7 @@ export function DispatchBoard() {
                 onEventResize={handleEventResize}
                 onOpenRecord={handleOpenRecord}
                 isNonWorkingDay={isNonWorkingDay}
+                isDockOpen={isEventDockOpen}
               />
             </div>
           </CalendarDndProvider>

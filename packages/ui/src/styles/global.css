@@ -90,6 +90,16 @@
   }
 }
 
+/*
+  Dock panel primitive (`@auxx/ui/components/dock-panel`) — shared easing token for the
+  width tween (open/close/flip) and the content-swap frame animation below. Values lifted
+  from `packages/chat` (`--auxx-chat-shell-ease`) per plans/dispatch/21-dockable-event-panel.md
+  — replicated here, not imported, since chat is a separate Preact bundle.
+*/
+:root {
+  --auxx-dock-ease: cubic-bezier(0.32, 0.72, 0, 1);
+}
+
 /* 1) Define keyframes */
 @keyframes accordion-down {
   from {
@@ -168,6 +178,85 @@
   }
   40% {
     opacity: 1;
+  }
+}
+
+/*
+  Dock panel content-swap frame (`DockPanelFrame` in dock-panel.tsx). Two layers stack
+  absolutely; `overflow: hidden` only applies while a swap is in flight so a portaled
+  popover/menu inside the panel body isn't clipped at rest. iOS-style parallax: the entering
+  layer slides in the full width while the exiting layer drifts 30% off with a fade. Values
+  and structure ported from `packages/chat`'s `auxx-chat-frame-*` transition (Preact) — see
+  plans/dispatch/21-dockable-event-panel.md "Animation specs".
+*/
+.auxx-dock-frame-transition {
+  position: relative;
+  flex: 1 1 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: visible;
+}
+.auxx-dock-frame-transition--animating {
+  overflow: hidden;
+}
+.auxx-dock-frame-layer {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1 1 0;
+}
+.auxx-dock-frame-transition--animating .auxx-dock-frame-layer {
+  position: absolute;
+  inset: 0;
+  flex: none;
+}
+.auxx-dock-frame--entering {
+  animation: auxx-dock-frame-slide-in-right 280ms var(--auxx-dock-ease) both;
+}
+.auxx-dock-frame--exiting {
+  animation: auxx-dock-frame-slide-out-left 280ms var(--auxx-dock-ease) both;
+}
+@keyframes auxx-dock-frame-slide-in-right {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+@keyframes auxx-dock-frame-slide-out-left {
+  from {
+    transform: translateX(0);
+    opacity: 1;
+  }
+  to {
+    transform: translateX(-30%);
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .auxx-dock-frame--entering {
+    animation: auxx-dock-frame-fade-in 120ms ease-out both;
+  }
+  .auxx-dock-frame--exiting {
+    animation: auxx-dock-frame-fade-out 120ms ease-out both;
+  }
+}
+@keyframes auxx-dock-frame-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes auxx-dock-frame-fade-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
   }
 }
 

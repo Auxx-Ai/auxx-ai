@@ -11,6 +11,7 @@ import {
   type RenderEventContext,
 } from '@auxx/ui/components/event-calendar'
 import { useCallback, useMemo } from 'react'
+import { useDispatchSidebarStore } from '../../stores/dispatch-sidebar-store'
 import type { ExistingVisitForOverlap } from '../schedule-popover'
 import type { useBoardMutations } from './hooks/use-board-mutations'
 import type { BoardResourceInput, BoardViewMode, DispatchVisitEvent } from './types'
@@ -36,6 +37,10 @@ interface BoardCalendarGridProps {
   onEventResize: (event: DispatchVisitEvent, newEnd: Date) => void
   onOpenRecord: (recordId: RecordId, drill?: { panel?: string; item?: string }) => void
   isNonWorkingDay?: (date: Date) => boolean
+  /** Plan 21 (dockable event panel) — sticky mode: while the event dock is open, every event
+   * click routes to the panel instead of opening the floating `EventPopover`, so this suppresses
+   * that popover entirely and renders a plain click target for the chip. */
+  isDockOpen?: boolean
 }
 
 /**
@@ -63,9 +68,29 @@ export function BoardCalendarGrid({
   onEventResize,
   onOpenRecord,
   isNonWorkingDay,
+  isDockOpen,
 }: BoardCalendarGridProps) {
+  const setEventDockOpen = useDispatchSidebarStore((s) => s.setEventDockOpen)
+
   const renderEvent = useCallback(
     (event: DispatchVisitEvent, ctx: RenderEventContext) => {
+      const chip =
+        ctx.view === 'month' ? (
+          <VisitChipMonthContent event={event} />
+        ) : (
+          <VisitChipContent event={event} isOverlapping={overlappingIds.has(event.id)} />
+        )
+
+      // Sticky mode (plan 21 decision #3): docked, so route the click straight into the
+      // panel — no floating popover, and no per-event popover state to manage here.
+      if (isDockOpen) {
+        return (
+          <div className='h-full w-full' onClick={() => onActiveVisitChange(event.id)}>
+            {chip}
+          </div>
+        )
+      }
+
       const isOpen = activeVisitId === event.id
       return (
         <EventPopover
@@ -75,15 +100,7 @@ export function BoardCalendarGrid({
             isMember: Boolean(event.recurrenceRuleId),
             labels: { this: 'This visit', following: 'This and following', all: 'All visits' },
           }}
-          anchor={
-            <div className='h-full w-full'>
-              {ctx.view === 'month' ? (
-                <VisitChipMonthContent event={event} />
-              ) : (
-                <VisitChipContent event={event} isOverlapping={overlappingIds.has(event.id)} />
-              )}
-            </div>
-          }>
+          anchor={<div className='h-full w-full'>{chip}</div>}>
           <VisitPopoverContent
             event={event}
             canEdit={canEdit}
@@ -91,6 +108,7 @@ export function BoardCalendarGrid({
             existingVisits={existingVisits}
             onClose={() => onActiveVisitChange(null)}
             onOpenRecord={onOpenRecord}
+            onDock={() => setEventDockOpen(true)}
           />
         </EventPopover>
       )
@@ -103,6 +121,8 @@ export function BoardCalendarGrid({
       mutations,
       existingVisits,
       onOpenRecord,
+      isDockOpen,
+      setEventDockOpen,
     ]
   )
 
