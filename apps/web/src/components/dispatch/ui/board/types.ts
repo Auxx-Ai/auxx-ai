@@ -45,7 +45,7 @@ export interface DispatchVisitEvent extends EventCalendarItem {
   workOrder: BoardWorkOrder | undefined
 }
 
-export type BoardViewMode = 'day' | 'week' | 'month'
+export type BoardViewMode = 'day' | 'week' | 'month' | 'timeline'
 
 /** Raw (JSX-free) resource-column data — `board-calendar-grid.tsx` builds the `header` node. */
 export interface BoardResourceInput {

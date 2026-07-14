@@ -43,7 +43,7 @@ import {
 } from './constants'
 import { DayView, DayViewHeader } from './day-view'
 import { MonthView } from './month-view'
-import { ResourceDayView } from './resource-day-view'
+import { ResourceTimelineView } from './resource-timeline-view'
 import type {
   BackgroundEvent,
   CalendarResource,
@@ -64,8 +64,10 @@ export interface EventCalendarProps<T extends EventCalendarItem = EventCalendarI
   onRangeChange?: (from: Date, to: Date) => void
   /** Default Monday (1) — pass 0 for Sunday-start weeks. */
   weekStartsOn?: 0 | 1 | 2 | 3 | 4 | 5 | 6
-  /** Set (with `view='resource'`) to render resource-columns day mode. */
+  /** Set (with `view='resource'`) to render the resource timeline (worker sub-columns per day). */
   resources?: CalendarResource[]
+  /** Resource timeline only — how many days to aim for across the viewport (Day=1, Timeline=3). */
+  resourceDaysVisible?: number
   backgroundEvents?: BackgroundEvent[]
   renderEvent?: RenderEvent<T>
   /** Id of the actively-selected event (its detail/popover open) — draws the in-color ring. */
@@ -98,6 +100,7 @@ function EventCalendarInner<T extends EventCalendarItem = EventCalendarItem>({
   onRangeChange,
   weekStartsOn = 1,
   resources,
+  resourceDaysVisible = 1,
   backgroundEvents,
   renderEvent,
   selectedEventId,
@@ -185,7 +188,8 @@ function EventCalendarInner<T extends EventCalendarItem = EventCalendarItem>({
   }, [date, view, weekStartsOn])
 
   useEffect(() => {
-    if (view === 'month' || view === 'week') return // the month/week streams drive their own range
+    // The month/week/resource streams drive their own range via onVisibleRangeChange.
+    if (view === 'month' || view === 'week' || view === 'resource') return
     onRangeChange?.(rangeFrom, rangeTo)
   }, [view, rangeFrom, rangeTo, onRangeChange])
 
@@ -279,8 +283,10 @@ function EventCalendarInner<T extends EventCalendarItem = EventCalendarItem>({
       <div
         className={cn(
           'flex min-h-0 flex-1 flex-col',
-          // The month/week streams own their own (snap) scroll containers.
-          view === 'month' || view === 'week' ? 'overflow-hidden' : 'overflow-y-auto'
+          // The month/week/resource streams own their own (snap) scroll containers.
+          view === 'month' || view === 'week' || view === 'resource'
+            ? 'overflow-hidden'
+            : 'overflow-y-auto'
         )}>
         {view === 'month' && (
           <MonthView
@@ -325,16 +331,20 @@ function EventCalendarInner<T extends EventCalendarItem = EventCalendarItem>({
         )}
         {view === 'resource' &&
           (resources ? (
-            <ResourceDayView
+            <ResourceTimelineView
               currentDate={date}
               events={events}
               resources={resources}
+              weekStartsOn={weekStartsOn}
+              desiredDays={resourceDaysVisible}
               backgroundEvents={backgroundEvents}
               onEventSelect={handleEventSelect}
               onSlotClick={handleSlotClick}
               onEventResize={onEventResize}
               renderEvent={renderEvent}
               selectedEventId={selectedEventId}
+              onDateChange={onDateChange}
+              onVisibleRangeChange={onRangeChange}
             />
           ) : null)}
         {view === 'agenda' && (

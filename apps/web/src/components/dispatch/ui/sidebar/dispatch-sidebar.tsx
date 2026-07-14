@@ -30,7 +30,7 @@ interface DispatchSidebarProps {
   onDateChange: (date: Date) => void
   visibleRange: { from: Date; to: Date }
   /** Board view — week narrows the mini-calendar band to the visible week (calendar mode). */
-  view?: 'day' | 'week' | 'month'
+  view?: 'day' | 'week' | 'month' | 'timeline'
   weekStartsOn: WeekStartIndex
   allWorkers: BoardWorker[]
   colorByUserId: Map<string, string>

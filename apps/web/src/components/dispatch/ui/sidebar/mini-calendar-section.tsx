@@ -18,8 +18,8 @@ interface MiniCalendarSectionProps {
   weekStartsOn: WeekStartIndex
   hiddenWorkerIds: string[]
   /** Week view narrows the band to the visible week (13-week-view-horizontal-stream.md §2.4);
-   * unset (map mode) falls back to `visibleRange`. */
-  view?: 'day' | 'week' | 'month'
+   * unset (map mode) falls back to `visibleRange`. `timeline` (plan 18) uses `visibleRange`. */
+  view?: 'day' | 'week' | 'month' | 'timeline'
 }
 
 /**

@@ -111,13 +111,14 @@ export function goToPreviousDate(
   date: Date,
   weekStartsOn: WeekStartIndex
 ): Date {
-  if (view === 'day') return subDays(date, 1)
+  // `timeline` (plan 18) is the resource day-stream — it steps a single day, exactly like `day`.
+  if (view === 'day' || view === 'timeline') return subDays(date, 1)
   if (view === 'week') return subWeeks(date, 1)
   return startOfWeek(subMonths(viewedMonthStart(date, weekStartsOn), 1), { weekStartsOn })
 }
 
 export function goToNextDate(view: BoardViewMode, date: Date, weekStartsOn: WeekStartIndex): Date {
-  if (view === 'day') return addDays(date, 1)
+  if (view === 'day' || view === 'timeline') return addDays(date, 1)
   if (view === 'week') return addWeeks(date, 1)
   return startOfWeek(addMonths(viewedMonthStart(date, weekStartsOn), 1), { weekStartsOn })
 }

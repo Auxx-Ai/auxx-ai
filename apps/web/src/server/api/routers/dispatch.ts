@@ -24,6 +24,7 @@ import {
   listMyVisitQcItems,
   listMyVisits,
   listQcItemTemplates,
+  listVisitQcItems,
   listVisitsForWorkOrder,
   pauseEngagement,
   removeDispatchWorker,
@@ -419,6 +420,13 @@ export const dispatchRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       await reorderQcItemTemplates(ctx.session.organizationId, input)
       return { success: true }
+    }),
+  // Plan 17 Part A — the dispatcher's read-only view of a worker's captured checklist. Org-scoped
+  // (no assignee guard) and NON-materializing: an untouched visit shows an honest empty state.
+  listVisitQcItems: dispatchAdminProcedure
+    .input(z.object({ visitId: z.string() }))
+    .query(async ({ ctx, input }) => {
+      return listVisitQcItems(ctx.session.organizationId, input.visitId)
     }),
 
   // 08-worker-surface.md §5 — the worker-scoped checklist path. Member-level (not admin-gated):

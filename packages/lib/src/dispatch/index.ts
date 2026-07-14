@@ -51,6 +51,7 @@ export {
   deleteQcItemTemplate,
   listMyVisitQcItems,
   listQcItemTemplates,
+  listVisitQcItems,
   removeMyQcItemPhoto,
   reorderQcItemTemplates,
   setMyQcItemChecked,
