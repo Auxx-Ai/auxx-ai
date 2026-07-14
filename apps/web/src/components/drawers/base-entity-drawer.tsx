@@ -1,11 +1,13 @@
 // apps/web/src/components/drawers/base-entity-drawer.tsx
 'use client'
 
-import type { DrawerTabCardDefinition } from '@auxx/lib/resources/client'
+import type { DrawerTabCardDefinition, Resource } from '@auxx/lib/resources/client'
 import { getEntityDrawerConfig, parseRecordId } from '@auxx/lib/resources/client'
 import type { RecordId } from '@auxx/types/resource'
+import { Button } from '@auxx/ui/components/button'
 import { DockableDrawer } from '@auxx/ui/components/dockable-drawer'
 import { DrawerHeader } from '@auxx/ui/components/drawer'
+import { EntityIcon } from '@auxx/ui/components/icons'
 import Loader from '@auxx/ui/components/loader'
 import { NavStack, NavStackBar, NavStackPanel, NavStackPanels } from '@auxx/ui/components/nav-stack'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
@@ -14,6 +16,7 @@ import { OverflowTabsList, type TabDefinition, Tabs, TabsContent } from '@auxx/u
 import {
   CalendarClock,
   Clock,
+  ExternalLink,
   FileText,
   HouseIcon,
   Layers,
@@ -27,18 +30,23 @@ import {
   Truck,
   Wrench,
 } from 'lucide-react'
+import { useRouter } from 'next/navigation'
 import { useQueryState } from 'nuqs'
 import * as React from 'react'
 import { AppRecordActions } from '~/components/detail-view/components/app-record-actions'
 import EntityFields from '~/components/fields/entity-fields'
 import DrawerComments from '~/components/global/comments/drawer-comments'
 import { DockToggleButton } from '~/components/global/dock-toggle-button'
+import { Tooltip } from '~/components/global/tooltip'
 import {
   getRecordDrillPanels,
   type RecordDrillContext,
+  RecordStackProvider,
   useRecordDrillStack,
+  useRecordPeekStack,
 } from '~/components/records/record-drill-panels'
 import { useRecord, useResource } from '~/components/resources'
+import { useRecordLink } from '~/components/resources/utils/get-record-link'
 import { TasksSection } from '~/components/tasks/ui/tasks-section'
 import { TimelineTab } from '~/components/timeline'
 import { safeLocalStorage } from '~/lib/safe-localstorage'
@@ -107,35 +115,60 @@ function applyTabOrder(tabs: TabDefinition[], savedOrder: string[]): TabDefiniti
 }
 
 /**
- * Base entity drawer that uses registry-based configuration
- * Supports both system entities (contact, part) and custom entities
+ * entityType derivation shared by the outer header (derives from the TOP
+ * frame) and each `DrawerRecordFrame` (derives from its own frame) — override
+ * wins, else the resource's own `entityType`, else the system resource id,
+ * else 'custom'. Pulled out so the two call sites don't duplicate the same
+ * three-way fallback (dispatch v4/04 §1.2, decision #9).
  */
-export function BaseEntityDrawer({
+function deriveEntityType(
+  resource: Resource | undefined,
+  entityTypeOverride: string | undefined
+): string | null {
+  if (entityTypeOverride) return entityTypeOverride
+  if (!resource) return null
+  // Check for entityType property first, fallback to id for system resources
+  if (resource.entityType) return resource.entityType
+  return resource.type === 'system' ? resource.id : 'custom'
+}
+
+interface DrawerRecordFrameProps {
+  /** This frame's own record — never the null "closed" state (the outer
+   * component bails before any frame mounts). */
+  recordId: RecordId
+  /** True for `frames[0]` — gates the host-passed `cardContent`/`entityTypeOverride`
+   * (dispatch v4/04 decision #9): a peeked frame always derives from its own resource. */
+  isBase: boolean
+  /** Host override — applied only when `isBase`. */
+  entityTypeOverride?: string
+  /** Host card content (person card, entity card, etc.) — rendered only when `isBase`. */
+  cardContent?: React.ReactNode
+  focusComposerTrigger?: number
+}
+
+/**
+ * One frame of the record peek stack (dispatch v4/04 §1.2) — a full drawer
+ * body for a single record: resource/record data, entityType, drill panels,
+ * the `useRecordDrillStack` two-level drill, drawer config, tabs (+ tab-order
+ * persistence), and the tabbed overview body. Everything here used to live
+ * directly in `BaseEntityDrawer`, computed from its single `recordId` prop;
+ * now it's per-frame so a peeked record (quote, work order, …) gets its own
+ * independent copy of all of it, including its own `panel`/`item` drill.
+ */
+function DrawerRecordFrame({
   recordId,
-  open,
-  onOpenChange,
-  entityType: entityTypeOverride,
-  headerActions,
+  isBase,
+  entityTypeOverride,
   cardContent,
-  headerIcon,
-  headerTitle,
-  onClose,
   focusComposerTrigger = 0,
-  isDocked,
-  dockedWidth,
-  onWidthChange,
-  minWidth = 400,
-  maxWidth = 800,
-}: BaseEntityDrawerProps) {
+}: DrawerRecordFrameProps) {
   const [activeTab, setActiveTab] = useQueryState('tab', { defaultValue: 'overview' })
   const { hasAccess } = useFeatureFlags()
   const organizationId = useDehydratedOrganizationId()
   const user = useDehydratedUser()
 
   // Parse recordId
-  const { entityDefinitionId, entityInstanceId } = recordId
-    ? parseRecordId(recordId)
-    : { entityDefinitionId: null, entityInstanceId: null }
+  const { entityDefinitionId, entityInstanceId } = parseRecordId(recordId)
 
   // Get resource metadata
   const { resource } = useResource(entityDefinitionId)
@@ -143,17 +176,14 @@ export function BaseEntityDrawer({
   // Get record data
   const { record } = useRecord({
     recordId,
-    enabled: !!open && !!recordId,
+    enabled: true,
   })
 
-  // Determine entity type (use override if provided, otherwise infer from resource)
-  const entityType = React.useMemo(() => {
-    if (entityTypeOverride) return entityTypeOverride
-    if (!resource) return null
-    // Check for entityType property first, fallback to id for system resources
-    if (resource.entityType) return resource.entityType
-    return resource.type === 'system' ? resource.id : 'custom'
-  }, [entityTypeOverride, resource])
+  // Determine entity type (override applies to the base frame only — decision #9)
+  const entityType = React.useMemo(
+    () => deriveEntityType(resource, isBase ? entityTypeOverride : undefined),
+    [resource, isBase, entityTypeOverride]
+  )
 
   // Drill panels registered for this entityType (dispatch v4/02) — a plain,
   // safe-to-call-statically lookup. `[]` for every entityType without one
@@ -166,13 +196,15 @@ export function BaseEntityDrawer({
 
   // Shared two-level record drill (dispatch v4/02) — same `panel`/`item` nuqs
   // params as DetailViewSections, stack derivation (incl. the skip-the-list
-  // direct-entry rule) shared via `useRecordDrillStack`.
+  // direct-entry rule) shared via `useRecordDrillStack`. Naturally per-frame:
+  // `useRecordPeekStack` clears `panel`/`item` on every push/pop, so a fresh
+  // frame always starts at its own drill root.
   const drill = useRecordDrillStack(drillPanels)
 
   const drillCtx = React.useCallback(
     (): RecordDrillContext => ({
-      recordId: recordId as RecordId,
-      entityInstanceId: entityInstanceId!,
+      recordId,
+      entityInstanceId,
       record,
       itemId: drill.item,
       setItemId: drill.setItem,
@@ -180,19 +212,6 @@ export function BaseEntityDrawer({
     }),
     [recordId, entityInstanceId, record, drill.item, drill.setItem, drill.clear]
   )
-
-  // Clear a stale drill when the drawer's target record changes while open
-  // (e.g. clicking a different sidebar row without closing the drawer first)
-  // — but NOT on initial mount, so a cold-load deep link
-  // (?record=…&panel=visits&item=…) survives.
-  const prevRecordIdRef = React.useRef(recordId)
-  React.useEffect(() => {
-    const prevRecordId = prevRecordIdRef.current
-    if (prevRecordId && recordId && prevRecordId !== recordId) {
-      drill.clear()
-    }
-    prevRecordIdRef.current = recordId
-  }, [recordId, drill.clear])
 
   // Get drawer config from registry
   const drawerConfig = React.useMemo(() => {
@@ -273,28 +292,7 @@ export function BaseEntityDrawer({
     }
   }, [tabOrderStorageKey])
 
-  /** Handle close — also clears the drill params so a re-open lands on root. */
-  const handleClose = React.useCallback(() => {
-    drill.clear()
-    if (onClose) {
-      onClose()
-    } else {
-      onOpenChange(false)
-    }
-  }, [onClose, onOpenChange, drill.clear])
-
-  // DockableDrawer's own close paths (outside click, swipe, Escape in
-  // undocked mode) call `onOpenChange` directly, bypassing `handleClose` —
-  // clear the drill there too.
-  const handleOpenChange = React.useCallback(
-    (nextOpen: boolean) => {
-      if (!nextOpen) drill.clear()
-      onOpenChange(nextOpen)
-    },
-    [onOpenChange, drill.clear]
-  )
-
-  if (!open || !recordId || !drawerConfig || !entityType) return null
+  if (!drawerConfig || !entityType) return null
 
   // The existing tabbed overview body — rendered verbatim whether or not this
   // entityType has drill panels, so it becomes the root NavStackPanel's
@@ -313,8 +311,8 @@ export function BaseEntityDrawer({
             onResetOrder={handleResetTabOrder}
           />
 
-          {/* Card content (person card, entity card, etc.) */}
-          {cardContent}
+          {/* Card content (person card, entity card, etc.) — base frame only (decision #9) */}
+          {isBase && cardContent}
 
           <div className='flex flex-1 overflow-hidden'>
             {/* Base tabs - static */}
@@ -325,7 +323,7 @@ export function BaseEntityDrawer({
                   position='before'
                   entityType={entityType}
                   drawerConfig={drawerConfig}
-                  entityInstanceId={entityInstanceId!}
+                  entityInstanceId={entityInstanceId}
                   recordId={recordId}
                   record={record}
                 />
@@ -339,16 +337,14 @@ export function BaseEntityDrawer({
                 </Section>
                 {/* Context card: visit facts when opened over a chat thread */}
                 <ThreadVisitCard
-                  contactInstanceId={
-                    entityType === 'contact' ? (entityInstanceId ?? undefined) : undefined
-                  }
+                  contactInstanceId={entityType === 'contact' ? entityInstanceId : undefined}
                 />
                 <TabCards
                   tab='overview'
                   position='after'
                   entityType={entityType}
                   drawerConfig={drawerConfig}
-                  entityInstanceId={entityInstanceId!}
+                  entityInstanceId={entityInstanceId}
                   recordId={recordId}
                   record={record}
                 />
@@ -381,7 +377,7 @@ export function BaseEntityDrawer({
                   <LazyTabComponent
                     entityType={entityType}
                     tabValue={tab.value}
-                    entityInstanceId={entityInstanceId!}
+                    entityInstanceId={entityInstanceId}
                     recordId={recordId}
                     record={record}
                   />
@@ -393,6 +389,162 @@ export function BaseEntityDrawer({
     </Tabs>
   )
 
+  return drillPanels.length === 0 ? (
+    <div className='flex-1 overflow-y-auto'>{tabsBlock}</div>
+  ) : (
+    <NavStack
+      stack={drill.stack}
+      onStackChange={drill.onStackChange}
+      className='flex flex-col flex-1 min-h-0'>
+      {/* Root has no bar (its OverflowTabsList lives in tabsBlock, not a
+          bar slot) — only mount NavStackBar once a drill panel is on top,
+          so root stays a byte-identical empty strip-free render. */}
+      {drill.stack.length > 1 && <NavStackBar className='shrink-0 border-b' />}
+      <NavStackPanels className='flex-1 min-h-0'>
+        <NavStackPanel value='root' className='h-full overflow-y-auto'>
+          {tabsBlock}
+        </NavStackPanel>
+
+        {drillPanels.map((dp) => (
+          <NavStackPanel
+            key={dp.value}
+            value={dp.value}
+            className='h-full flex flex-col bg-neutral-100 dark:bg-background'
+            bar={typeof dp.bar === 'function' ? dp.bar(drillCtx()) : dp.bar}>
+            {dp.render(drillCtx())}
+          </NavStackPanel>
+        ))}
+
+        {drillPanels
+          .filter((dp) => dp.renderItem)
+          .map((dp) => (
+            <NavStackPanel
+              key={`${dp.value}:item`}
+              value={`${dp.value}:item`}
+              className='h-full flex flex-col bg-neutral-100 dark:bg-background'
+              bar={typeof dp.bar === 'function' ? dp.bar(drillCtx()) : dp.bar}>
+              {dp.renderItem?.(drillCtx())}
+            </NavStackPanel>
+          ))}
+      </NavStackPanels>
+    </NavStack>
+  )
+}
+
+/**
+ * Base entity drawer that uses registry-based configuration
+ * Supports both system entities (contact, part) and custom entities
+ *
+ * Owns `DockableDrawer`/`DrawerHeader` (stable across pushes — no drawer
+ * close/reopen flicker) and the cross-record peek stack (dispatch v4/04):
+ * `frames = [recordId, ...peek]`, each rendered by its own `DrawerRecordFrame`
+ * inside an outer `NavStack` that slides between them. The header derives
+ * from the TOP frame — it replaces instantly, no slide (decision #4) — while
+ * the body animates via the existing NavStack push/pop parallax.
+ */
+export function BaseEntityDrawer({
+  recordId,
+  open,
+  onOpenChange,
+  entityType: entityTypeOverride,
+  headerActions,
+  cardContent,
+  headerIcon,
+  headerTitle,
+  onClose,
+  focusComposerTrigger = 0,
+  isDocked,
+  dockedWidth,
+  onWidthChange,
+  minWidth = 400,
+  maxWidth = 800,
+}: BaseEntityDrawerProps) {
+  // Cross-record peek stack — `frames = [recordId, ...peek]`. Called
+  // unconditionally (recordId may be null while the drawer is closed).
+  const peek = useRecordPeekStack(recordId)
+  const { frames, top, depth } = peek
+  const isBaseTop = depth <= 1
+  const router = useRouter()
+
+  // Header derives from the TOP frame (decision #4/#9) — its own resource
+  // lookup, independent of whichever frame is deeper in the stack.
+  const topParsed = top ? parseRecordId(top) : null
+  const { resource: topResource } = useResource(topParsed?.entityDefinitionId ?? null)
+  const topEntityType = React.useMemo(
+    () => deriveEntityType(topResource, isBaseTop ? entityTypeOverride : undefined),
+    [topResource, isBaseTop, entityTypeOverride]
+  )
+
+  // Expand-to-full-page affordance for peeked frames (decision #7, Phase 2) —
+  // `useRecordLink` must be called unconditionally (hooks rule); the button
+  // itself only renders when peeked AND the link is non-null (service_request,
+  // invoice have no detail page).
+  const topRecordLink = useRecordLink(top)
+
+  /** Handle close — also clears the peek stack (which clears `tab`/`panel`/`item` too) so a re-open lands on a fresh single-frame stack. */
+  const handleClose = React.useCallback(() => {
+    peek.clear()
+    if (onClose) {
+      onClose()
+    } else {
+      onOpenChange(false)
+    }
+  }, [onClose, onOpenChange, peek.clear])
+
+  // DockableDrawer's own close paths (outside click, swipe, Escape in
+  // undocked mode) call `onOpenChange` directly, bypassing `handleClose` —
+  // clear the peek stack there too.
+  const handleOpenChange = React.useCallback(
+    (nextOpen: boolean) => {
+      if (!nextOpen) peek.clear()
+      onOpenChange(nextOpen)
+    },
+    [onOpenChange, peek.clear]
+  )
+
+  // Clear a stale peek stack when the drawer's BASE record changes while open
+  // (e.g. clicking a different sidebar row without closing the drawer first)
+  // — but NOT on initial mount, so a cold-load deep link (?record=…&peek=…)
+  // survives. `peek.clear()` resets `tab`/`panel`/`item` too, so a new base
+  // record always lands on a fresh single-frame stack.
+  const prevRecordIdRef = React.useRef(recordId)
+  React.useEffect(() => {
+    const prevRecordId = prevRecordIdRef.current
+    if (prevRecordId && recordId && prevRecordId !== recordId) {
+      peek.clear()
+    }
+    prevRecordIdRef.current = recordId
+  }, [recordId, peek.clear])
+
+  // Nothing drives the outer NavStack's own push/pop directly in Phase 1
+  // (Phase 2's header back-chevron will, via `peek.pop`) — this only guards
+  // against the stack shrinking out from under the URL state, keeping `peek`
+  // truncated to match.
+  const handleFrameStackChange = React.useCallback(
+    (next: string[]) => {
+      if (next.length < frames.length) peek.pop()
+    },
+    [frames.length, peek.pop]
+  )
+
+  const stackCtx = React.useMemo(() => ({ push: peek.push, depth }), [peek.push, depth])
+
+  if (!open || !recordId || !top || !topEntityType) return null
+
+  const displayHeaderTitle = isBaseTop
+    ? (headerTitle ?? topResource?.label ?? 'Record')
+    : (topResource?.label ?? 'Record')
+  // `resource.icon` is an icon ID string — always render it through EntityIcon
+  // (the host `headerIcon` prop is already a rendered element).
+  const resourceHeaderIcon = (
+    <EntityIcon
+      iconId={topResource?.icon || 'circle'}
+      color={topResource?.color || 'gray'}
+      className='size-6'
+    />
+  )
+  const displayHeaderIcon = isBaseTop ? (headerIcon ?? resourceHeaderIcon) : resourceHeaderIcon
+
   return (
     <DockableDrawer
       open={open}
@@ -402,60 +554,62 @@ export function BaseEntityDrawer({
       onWidthChange={onWidthChange}
       minWidth={minWidth}
       maxWidth={maxWidth}
-      title={headerTitle ?? resource?.label ?? 'Record'}>
+      title={displayHeaderTitle}>
       <DrawerHeader
-        icon={headerIcon ?? resource?.icon}
-        title={headerTitle ?? resource?.label ?? 'Record'}
+        icon={displayHeaderIcon}
+        title={displayHeaderTitle}
         onClose={handleClose}
+        onBack={isBaseTop ? undefined : peek.pop}
         actions={
           <>
-            {headerActions}
-            <AppRecordActions recordId={recordId} recordType={entityType} compact />
+            {isBaseTop && headerActions}
+            <AppRecordActions recordId={top} recordType={topEntityType} compact />
+            {!isBaseTop && topRecordLink && (
+              <Tooltip content='Open full page'>
+                <Button variant='ghost' size='icon-xs' onClick={() => router.push(topRecordLink)}>
+                  <ExternalLink />
+                </Button>
+              </Tooltip>
+            )}
             <DockToggleButton />
           </>
         }
       />
 
-      {drillPanels.length === 0 ? (
-        <div className='flex-1 overflow-y-auto'>{tabsBlock}</div>
-      ) : (
+      {/* Frame stack — index-qualified keys (`0:<recordId>`) so pushing an
+          already-visited record (truncate, dispatch v4/04 decision #6) can't
+          collide with a stale key from deeper in the stack. Mounted
+          unconditionally (not gated on `depth > 1`): `NavStackPanels`'
+          `AnimatePresence` uses `initial={false}`, so gating the NavStack's
+          own mount on depth would skip the very first push's animation. */}
+      <RecordStackProvider value={stackCtx}>
         <NavStack
-          stack={drill.stack}
-          onStackChange={drill.onStackChange}
+          stack={frames.map((id, i) => `${i}:${id}`)}
+          onStackChange={handleFrameStackChange}
           className='flex flex-col flex-1 min-h-0'>
-          {/* Root has no bar (its OverflowTabsList lives in tabsBlock, not a
-              bar slot) — only mount NavStackBar once a drill panel is on top,
-              so root stays a byte-identical empty strip-free render. */}
-          {drill.stack.length > 1 && <NavStackBar className='shrink-0 border-b' />}
           <NavStackPanels className='flex-1 min-h-0'>
-            <NavStackPanel value='root' className='h-full overflow-y-auto'>
-              {tabsBlock}
-            </NavStackPanel>
-
-            {drillPanels.map((dp) => (
+            {/* Panels are `flex flex-col`, NOT `overflow-y-auto`: the frame
+                bodies were built as direct DockableDrawer flex-column children
+                (`flex-1 overflow-y-auto` root / inner drill NavStack) and manage
+                their own scroll — a scrolling panel here would collapse that
+                height chain and let the drill back-bar scroll away. */}
+            {frames.map((id, i) => (
               <NavStackPanel
-                key={dp.value}
-                value={dp.value}
-                className='h-full flex flex-col bg-neutral-100 dark:bg-background'
-                bar={typeof dp.bar === 'function' ? dp.bar(drillCtx()) : dp.bar}>
-                {dp.render(drillCtx())}
+                key={`${i}:${id}`}
+                value={`${i}:${id}`}
+                className='h-full flex flex-col'>
+                <DrawerRecordFrame
+                  recordId={id}
+                  isBase={i === 0}
+                  entityTypeOverride={entityTypeOverride}
+                  cardContent={cardContent}
+                  focusComposerTrigger={focusComposerTrigger}
+                />
               </NavStackPanel>
             ))}
-
-            {drillPanels
-              .filter((dp) => dp.renderItem)
-              .map((dp) => (
-                <NavStackPanel
-                  key={`${dp.value}:item`}
-                  value={`${dp.value}:item`}
-                  className='h-full flex flex-col bg-neutral-100 dark:bg-background'
-                  bar={typeof dp.bar === 'function' ? dp.bar(drillCtx()) : dp.bar}>
-                  {dp.renderItem?.(drillCtx())}
-                </NavStackPanel>
-              ))}
           </NavStackPanels>
         </NavStack>
-      )}
+      </RecordStackProvider>
     </DockableDrawer>
   )
 }

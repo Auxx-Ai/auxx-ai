@@ -9,6 +9,7 @@ import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { format } from 'date-fns'
 import { CalendarClock, Send, User, XCircle } from 'lucide-react'
 import { getInitials } from '~/components/groups/utils/group-utils'
+import { LineBuilder } from '~/components/money/ui/line-builder/line-builder'
 import type { RecordDrillContext } from '~/components/records/record-drill-panels'
 import { useActors } from '~/components/resources/hooks/use-actor'
 import { useConfirm } from '~/hooks/use-confirm'
@@ -19,9 +20,10 @@ import { useJobVisits } from './use-job-visits'
 
 /**
  * VisitDetailPanel — the third stack level (`visits:item`), dispatch M2 build
- * spec §F.3: full visit info, the per-visit proof-of-work placeholder (worker
- * mobile surface plan fills it in), the visit line items placeholder (money
- * 01-ui #13, `visitId`-scoped — not built in this slice), and the row actions.
+ * spec §F.3: full visit info, the per-visit proof-of-work block (worker-captured
+ * QC checklist notes/photos, read-only — see plan 17 Part A, still owed), the
+ * visit line items block (occurrence extras — money 01-ui #13, `visitId`-scoped
+ * `LineBuilder`, plan 17 Part B), and the row actions.
  */
 export function VisitDetailPanel({ recordId, itemId }: RecordDrillContext) {
   const { visits, isLoading, canEdit, mutations, existingVisits, refresh } = useJobVisits(recordId)
@@ -127,10 +129,19 @@ export function VisitDetailPanel({ recordId, itemId }: RecordDrillContext) {
           Proof of work (completion notes, photos) lands with the worker mobile surface.
         </div>
 
-        {/* Visit line items (occurrence extras) — money 01-ui #13, `visitId`-scoped.
-            Not built in this slice. */}
-        <div className='rounded-lg border border-dashed p-4 text-sm text-muted-foreground'>
-          Visit line items (occurrence extras) land with money 01-ui #13.
+        {/* Visit line items (occurrence extras) — money 01-ui #13: the shared LineBuilder
+            scoped to this visit via `visitId` (stamps/filters `line_item_visit_id`, the
+            plain-text bridge — visits aren't entities). Canceled visits are read-only. */}
+        <div className='rounded-lg border'>
+          <div className='px-4 pt-2 pb-1 text-xs font-medium text-muted-foreground'>
+            This visit's extras
+          </div>
+          <LineBuilder
+            documentRecordId={recordId}
+            documentType='work_order'
+            visitId={visit.id}
+            readOnly={!canEdit || visit.status === 'canceled'}
+          />
         </div>
 
         <ConfirmDialog />

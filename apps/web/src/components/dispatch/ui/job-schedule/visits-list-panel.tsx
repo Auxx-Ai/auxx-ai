@@ -5,8 +5,8 @@ import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { TREE_SECONDARY_NOTRUNCATE } from '@auxx/ui/components/tree-row'
 import type { RecordDrillContext } from '~/components/records/record-drill-panels'
 import { splitJobVisits } from './job-schedule-utils'
+import { ScheduleVisitRow } from './schedule-visit-row'
 import { useJobVisits } from './use-job-visits'
-import { VisitTreeRow } from './visit-tree-row'
 
 /**
  * VisitsListPanel — the `visits` drill panel's list level (dispatch M2 build
@@ -34,7 +34,7 @@ export function VisitsListPanel({ recordId, setItemId }: RecordDrillContext) {
             </div>
             <div className={`space-y-0.5 ${TREE_SECONDARY_NOTRUNCATE}`}>
               {upcoming.map((visit) => (
-                <VisitTreeRow
+                <ScheduleVisitRow
                   key={visit.id}
                   visit={visit}
                   canEdit={canEdit}
@@ -56,7 +56,7 @@ export function VisitsListPanel({ recordId, setItemId }: RecordDrillContext) {
             </div>
             <div className={`space-y-0.5 ${TREE_SECONDARY_NOTRUNCATE}`}>
               {history.map((visit) => (
-                <VisitTreeRow
+                <ScheduleVisitRow
                   key={visit.id}
                   visit={visit}
                   canEdit={canEdit}

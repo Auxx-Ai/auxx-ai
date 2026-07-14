@@ -86,6 +86,12 @@ export interface LineBuilderProps {
   documentRecordId: string
   documentType: 'quote' | 'work_order' | 'invoice'
   readOnly?: boolean
+  /**
+   * Scope the builder to a single visit's occurrence extras (work_order only, money 01-ui #13):
+   * set → shows/creates lines stamped `line_item_visit_id = visitId`; unset → the job's per-cycle
+   * set (`visitId` empty). The two sets never overlap — that split is enforced in `filters` below.
+   */
+  visitId?: string
 }
 
 const LINE_ITEM_SLUG = 'line-items'
@@ -130,6 +136,7 @@ export function LineBuilder({
   documentRecordId,
   documentType,
   readOnly = false,
+  visitId,
 }: LineBuilderProps) {
   const docRecordId = documentRecordId as RecordId
   const { resource } = useResource(LINE_ITEM_SLUG)
@@ -150,7 +157,6 @@ export function LineBuilder({
     (r) => r && typeof r.rate === 'number'
   )
 
-  const [openDescriptionIds, setOpenDescriptionIds] = useState<Set<string>>(new Set())
   const [orderOverride, setOrderOverride] = useState<string[] | null>(null)
   const [drafts, setDrafts] = useState<DraftLine[]>([])
   const draftsRef = useRef<DraftLine[]>([])
@@ -164,6 +170,9 @@ export function LineBuilder({
   // the server strips the def prefix). Invoice mode ALSO excludes work-order source
   // lines stamped with `line_item_invoice` (the gather "invoiced by" pointer, money
   // MI1 build spec §B.3/§J.2) — only the invoice's own copies (workOrder empty) show.
+  // work_order mode ALSO splits on `line_item_visitId` (plain-text bridge, dispatch lock):
+  // a `visitId` prop → only that visit's occurrence extras; no prop → only the job's
+  // per-cycle set (visitId empty), so extras never leak into the job Line-items tab.
   const filters = useMemo<ConditionGroup[]>(() => {
     if (documentType === 'invoice') {
       return [
@@ -187,21 +196,33 @@ export function LineBuilder({
         },
       ]
     }
-    return [
+    const conditions: ConditionGroup['conditions'] = [
       {
-        id: 'line-builder-baseline',
-        logicalOperator: 'AND',
-        conditions: [
-          {
-            id: 'line-builder-document',
-            fieldId: documentType === 'quote' ? 'line_item:quote' : 'line_item:workOrder',
-            operator: 'is',
-            value: documentRecordId,
-          },
-        ],
+        id: 'line-builder-document',
+        fieldId: documentType === 'quote' ? 'line_item:quote' : 'line_item:workOrder',
+        operator: 'is',
+        value: documentRecordId,
       },
     ]
-  }, [documentType, documentRecordId])
+    if (documentType === 'work_order') {
+      conditions.push(
+        visitId
+          ? {
+              id: 'line-builder-visit',
+              fieldId: 'line_item:visitId',
+              operator: 'is',
+              value: visitId,
+            }
+          : {
+              id: 'line-builder-visit',
+              fieldId: 'line_item:visitId',
+              operator: 'empty',
+              value: null,
+            }
+      )
+    }
+    return [{ id: 'line-builder-baseline', logicalOperator: 'AND', conditions }]
+  }, [documentType, documentRecordId, visitId])
 
   const {
     records,
@@ -338,6 +359,7 @@ export function LineBuilder({
         line_item_sort_order: displayIdsRef.current.length + draftIndex,
         [relKey]: documentRecordId,
       }
+      if (visitId) values.line_item_visit_id = visitId
       if (snapshot.name) values.line_item_name = snapshot.name
       if (snapshot.description) values.line_item_description = snapshot.description
       if (snapshot.category) values.line_item_category = snapshot.category
@@ -454,6 +476,7 @@ export function LineBuilder({
       entityDefinitionId,
       documentType,
       documentRecordId,
+      visitId,
       createMutateAsync,
       saveMultipleAsync,
       seedCreatedRecord,
@@ -485,6 +508,7 @@ export function LineBuilder({
                 line_item_catalog_item: toRecordId('catalog_item', line.catalogItemId),
                 line_item_sort_order: baseOrder + index,
                 [relKey]: documentRecordId,
+                ...(visitId ? { line_item_visit_id: visitId } : {}),
               },
             })
           }
@@ -547,6 +571,7 @@ export function LineBuilder({
       documentType,
       documentRecordId,
       docRecordId,
+      visitId,
       hasBilling,
       billingPrefix,
       billingValues,
@@ -625,24 +650,6 @@ export function LineBuilder({
     [createDraft, applyGroupPickRestAndBilling]
   )
 
-  const toggleDescription = useCallback((lineId: string) => {
-    setOpenDescriptionIds((prev) => {
-      const next = new Set(prev)
-      if (next.has(lineId)) next.delete(lineId)
-      else next.add(lineId)
-      return next
-    })
-  }, [])
-
-  const closeDescription = useCallback((lineId: string) => {
-    setOpenDescriptionIds((prev) => {
-      if (!prev.has(lineId)) return prev
-      const next = new Set(prev)
-      next.delete(lineId)
-      return next
-    })
-  }, [])
-
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }))
 
   const handleDragEnd = useCallback(
@@ -711,9 +718,6 @@ export function LineBuilder({
                 entityDefinitionId={entityDefinitionId}
                 readOnly={readOnly}
                 currencyCode={currencyCode}
-                descriptionOpen={openDescriptionIds.has(record.id)}
-                toggleDescription={toggleDescription}
-                closeDescription={closeDescription}
                 deleteLine={deleteLine}
                 onSelectGroup={handleGroupPick}
               />
@@ -729,9 +733,6 @@ export function LineBuilder({
             key={draft.draftId}
             draft={draft}
             currencyCode={currencyCode}
-            descriptionOpen={openDescriptionIds.has(draft.draftId)}
-            toggleDescription={toggleDescription}
-            closeDescription={closeDescription}
             deleteDraft={deleteDraft}
             createDraft={createDraft}
             onSelectGroup={handleGroupPickDraft}

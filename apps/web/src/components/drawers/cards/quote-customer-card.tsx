@@ -10,6 +10,7 @@ import { Skeleton } from '@auxx/ui/components/skeleton'
 import { getFullName, getInitials } from '@auxx/utils'
 import { ExternalLink, Mail, Phone } from 'lucide-react'
 import { useRouter } from 'next/navigation'
+import { useOpenRecord } from '~/components/records/record-drill-panels'
 import { useSystemValues } from '~/components/resources/hooks/use-system-values'
 import type { DrawerTabProps } from '../drawer-tab-registry'
 
@@ -53,6 +54,7 @@ export function QuoteCustomerCard({ recordId }: DrawerTabProps) {
 /** Inner component — only rendered when contactRecordId is resolved. */
 function ContactDetails({ contactRecordId }: { contactRecordId: RecordId }) {
   const router = useRouter()
+  const openRecord = useOpenRecord()
   const { values, isLoading } = useSystemValues(contactRecordId, [...CONTACT_ATTRS], {
     autoFetch: true,
   })
@@ -113,7 +115,11 @@ function ContactDetails({ contactRecordId }: { contactRecordId: RecordId }) {
       <Button
         variant='ghost'
         size='icon-sm'
-        onClick={() => router.push(`/app/contacts/${contactInstanceId}`)}>
+        onClick={() =>
+          openRecord
+            ? openRecord(contactRecordId)
+            : router.push(`/app/contacts/${contactInstanceId}`)
+        }>
         <ExternalLink />
       </Button>
     </div>

@@ -2,15 +2,16 @@
 'use client'
 
 import { EmptySection } from '@auxx/ui/components/section'
+import { TREE_SECONDARY_NOTRUNCATE } from '@auxx/ui/components/tree-row'
 import { ArrowRight, History } from 'lucide-react'
 import { useQueryState } from 'nuqs'
 import type { DetailViewTabProps } from '~/components/detail-view'
 import { useSystemValues } from '~/components/resources/hooks/use-system-values'
 import { splitJobVisits } from './job-schedule-utils'
 import { RecurringEngagementCard } from './recurring-engagement-card'
+import { ScheduleVisitRow } from './schedule-visit-row'
 import { useJobVisits } from './use-job-visits'
 import { VisitCard } from './visit-card'
-import { VisitGridRow } from './visit-grid-row'
 
 /** Preview-row cap for the upcoming rows under the visit card and the History section. */
 const PREVIEW_LIMIT = 3
@@ -20,8 +21,8 @@ const PREVIEW_LIMIT = 3
  * spec §F.2/§F.3, 04 mock layout). One Schedule section carrying, top to bottom:
  * the recurrence row (recurring jobs — `RecurringEngagementCard`, which also
  * portals the engagement badge + Pause/Edit into the Section header), the
- * "Next visit" card, and the remaining upcoming visits as aligned
- * `VisitGridRow`s with a "View all →" drill. History stays its own section
+ * "Next visit" card, and the remaining upcoming visits as `ScheduleVisitRow`s
+ * with a "View all →" drill. History stays its own section
  * (`VisitHistorySection`).
  */
 export function JobScheduleSection({ recordId }: DetailViewTabProps) {
@@ -75,9 +76,9 @@ export function JobScheduleSection({ recordId }: DetailViewTabProps) {
 
       {laterUpcoming.length > 0 && (
         <div>
-          <div className='divide-y divide-border/50'>
+          <div className={`space-y-0.5 ${TREE_SECONDARY_NOTRUNCATE}`}>
             {laterUpcoming.slice(0, PREVIEW_LIMIT).map((visit) => (
-              <VisitGridRow
+              <ScheduleVisitRow
                 key={visit.id}
                 visit={visit}
                 canEdit={canEdit}
@@ -101,7 +102,7 @@ export function JobScheduleSection({ recordId }: DetailViewTabProps) {
 
 /**
  * Registered as `work_order:history` — standalone visit History section: the
- * same aligned `VisitGridRow`s capped at PREVIEW_LIMIT, plus a "View all →"
+ * same `ScheduleVisitRow`s capped at PREVIEW_LIMIT, plus a "View all →"
  * link that pushes the `?panel=visits` drill (the shared nuqs params
  * `DetailViewSections` reads). The section heading comes from the surrounding
  * `<Section>` — no block header here.
@@ -133,9 +134,9 @@ export function VisitHistorySection({ recordId }: DetailViewTabProps) {
 
   return (
     <div>
-      <div className='divide-y divide-border/50'>
+      <div className={`space-y-0.5 ${TREE_SECONDARY_NOTRUNCATE}`}>
         {history.slice(0, PREVIEW_LIMIT).map((visit) => (
-          <VisitGridRow
+          <ScheduleVisitRow
             key={visit.id}
             visit={visit}
             canEdit={canEdit}

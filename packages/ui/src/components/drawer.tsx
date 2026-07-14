@@ -1,7 +1,7 @@
 'use client'
 
 import { cn } from '@auxx/ui/lib/utils'
-import { X } from 'lucide-react'
+import { ChevronLeft, X } from 'lucide-react'
 import * as React from 'react'
 import { Drawer as DrawerPrimitive } from 'vaul'
 import { Button } from './button'
@@ -191,6 +191,9 @@ interface DrawerHeaderProps extends React.HTMLAttributes<HTMLDivElement> {
   actions?: React.ReactNode
   /** Callback when close button is clicked */
   onClose?: () => void
+  /** Callback when the back chevron is clicked. Rendered before `icon` when provided
+   * (dispatch v4/04 §Phase 2 — record peek stack back navigation). */
+  onBack?: () => void
 }
 
 /**
@@ -203,6 +206,7 @@ const DrawerHeader = ({
   title,
   actions,
   onClose,
+  onBack,
   children,
   ...props
 }: DrawerHeaderProps) => (
@@ -213,6 +217,18 @@ const DrawerHeader = ({
     )}
     {...props}>
     <div className='flex items-center ps-2 pe-1 pt-1.5 pb-1 relative z-10'>
+      {/* Back chevron (record peek stack — dispatch v4/04) */}
+      {onBack && (
+        <Button
+          variant='ghost'
+          size='icon-xs'
+          className='rounded-md mr-1 shrink-0'
+          onClick={onBack}
+          tabIndex={-1}>
+          <ChevronLeft />
+        </Button>
+      )}
+
       {/* Icon */}
       {icon && <div className='mr-1 shrink-0'>{icon}</div>}
 
