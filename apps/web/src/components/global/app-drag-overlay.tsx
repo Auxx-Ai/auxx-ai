@@ -63,6 +63,14 @@ export function AppDragOverlay() {
     setPortalContainer(document.body)
   }, [])
 
+  // While a drag is in flight, flag the body so the global `body.dnd-dragging` rule pins the
+  // cursor to a plain arrow (no text I-beam / per-element grab cursor bleeding through).
+  useEffect(() => {
+    if (!active) return
+    document.body.classList.add('dnd-dragging')
+    return () => document.body.classList.remove('dnd-dragging')
+  }, [active])
+
   if (!portalContainer) return null
 
   return createPortal(

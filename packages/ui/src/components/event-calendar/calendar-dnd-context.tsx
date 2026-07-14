@@ -17,7 +17,7 @@ import {
 } from '@dnd-kit/core'
 import { snapCenterToCursor } from '@dnd-kit/modifiers'
 import { addMinutes, differenceInMinutes } from 'date-fns'
-import { createContext, type ReactNode, useContext, useId, useState } from 'react'
+import { createContext, type ReactNode, useContext, useEffect, useId, useState } from 'react'
 
 import { EventItem } from './event-item'
 import type { CalendarView, EventCalendarItem, RenderEvent } from './types'
@@ -101,6 +101,15 @@ export function CalendarDndProvider<T extends EventCalendarItem = EventCalendarI
   )
 
   const dndContextId = useId()
+
+  // Mirror AppDragOverlay: pin the cursor to a plain arrow document-wide while a calendar (or
+  // composed foreign) drag is active, via the global `body.dnd-dragging` rule.
+  const isDragging = Boolean(activeEvent || foreignActive)
+  useEffect(() => {
+    if (!isDragging) return
+    document.body.classList.add('dnd-dragging')
+    return () => document.body.classList.remove('dnd-dragging')
+  }, [isDragging])
 
   /** Snaps a fractional-hour drop position (e.g. 9.4) to the nearest 15-minute mark. */
   const snapToQuarterHourMinutes = (time: number) => {

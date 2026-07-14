@@ -3,9 +3,9 @@
 
 import {
   Command,
+  CommandDetailItem,
   CommandEmpty,
   CommandGroup,
-  CommandIconItem,
   CommandInput,
   CommandList,
 } from '@auxx/ui/components/command'
@@ -77,12 +77,12 @@ export function ToolSelect({
             <CommandEmpty>No tools found.</CommandEmpty>
             <CommandGroup>
               {options.map((o) => (
-                <CommandIconItem
+                <CommandDetailItem
                   key={o.value}
                   // Search matches on both the human label and the tool name.
                   value={`${o.label} ${o.value}`}
                   icon={<OptionIcon icon={o.icon} iconColor={o.iconColor} />}
-                  label={o.label}
+                  title={o.label}
                   onSelect={() => {
                     onChange(o.value)
                     setOpen(false)

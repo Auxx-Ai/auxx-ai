@@ -4,10 +4,9 @@
 import { Button } from '@auxx/ui/components/button'
 import {
   Command,
+  CommandDetailItem,
   CommandGroup,
   CommandGroupLabel,
-  CommandIconItem,
-  CommandItem,
   CommandList,
   CommandPlaceholder,
   CommandSeparator,
@@ -113,15 +112,15 @@ export function ProcedureBlocksPopover() {
               <CommandSeparator />
 
               <CommandGroup aria-label='Create'>
-                <CommandIconItem
+                <CommandDetailItem
                   icon={<Plus className='size-4' />}
-                  label='Create sub-procedure'
+                  title='Create sub-procedure'
                   value='__create-subprocedure'
                   onSelect={() => go(`sub:${createSubProcedure('')}`)}
                 />
-                <CommandIconItem
+                <CommandDetailItem
                   icon={<Plus className='size-4' />}
-                  label='Create code block'
+                  title='Create code block'
                   value='__create-code'
                   onSelect={() => go(`code:${createCodeBlock('')}`)}
                 />
@@ -156,29 +155,35 @@ function BlockRow({
   onDelete: () => void
 }) {
   return (
-    <CommandItem value={value} onSelect={onSelect} className='group flex items-center gap-2'>
-      <span className='text-muted-foreground'>{icon}</span>
-      <span className='flex-1 truncate text-sm'>{label}</span>
-      <span
-        className='shrink-0 text-xs tabular-nums text-muted-foreground'
-        title={`${count} ${count === 1 ? 'reference' : 'references'}`}>
-        {count} {count === 1 ? 'ref' : 'refs'}
-      </span>
-      <button
-        type='button'
-        aria-label={`Delete ${label}`}
-        onMouseDown={(e) => {
-          e.preventDefault()
-          e.stopPropagation()
-        }}
-        onClick={(e) => {
-          e.preventDefault()
-          e.stopPropagation()
-          onDelete()
-        }}
-        className='inline-flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground opacity-0 hover:bg-bad-100 hover:text-bad-500 focus:opacity-100 group-hover:opacity-100'>
-        <Trash2 className='size-3.5' />
-      </button>
-    </CommandItem>
+    <CommandDetailItem
+      value={value}
+      onSelect={onSelect}
+      icon={icon}
+      title={label}
+      trailing={
+        <span
+          className='text-xs tabular-nums text-muted-foreground'
+          title={`${count} ${count === 1 ? 'reference' : 'references'}`}>
+          {count} {count === 1 ? 'ref' : 'refs'}
+        </span>
+      }
+      actions={
+        <button
+          type='button'
+          aria-label={`Delete ${label}`}
+          onMouseDown={(e) => {
+            e.preventDefault()
+            e.stopPropagation()
+          }}
+          onClick={(e) => {
+            e.preventDefault()
+            e.stopPropagation()
+            onDelete()
+          }}
+          className='inline-flex size-6 items-center justify-center rounded-md text-muted-foreground hover:bg-bad-100 hover:text-bad-500'>
+          <Trash2 className='size-3.5' />
+        </button>
+      }
+    />
   )
 }

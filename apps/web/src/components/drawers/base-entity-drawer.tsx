@@ -7,6 +7,7 @@ import type { RecordId } from '@auxx/types/resource'
 import { DockableDrawer } from '@auxx/ui/components/dockable-drawer'
 import { DrawerHeader } from '@auxx/ui/components/drawer'
 import Loader from '@auxx/ui/components/loader'
+import { NavStack, NavStackBar, NavStackPanel, NavStackPanels } from '@auxx/ui/components/nav-stack'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { Section } from '@auxx/ui/components/section'
 import { OverflowTabsList, type TabDefinition, Tabs, TabsContent } from '@auxx/ui/components/tabs'
@@ -32,6 +33,11 @@ import { AppRecordActions } from '~/components/detail-view/components/app-record
 import EntityFields from '~/components/fields/entity-fields'
 import DrawerComments from '~/components/global/comments/drawer-comments'
 import { DockToggleButton } from '~/components/global/dock-toggle-button'
+import {
+  getRecordDrillPanels,
+  type RecordDrillContext,
+  useRecordDrillStack,
+} from '~/components/records/record-drill-panels'
 import { useRecord, useResource } from '~/components/resources'
 import { TasksSection } from '~/components/tasks/ui/tasks-section'
 import { TimelineTab } from '~/components/timeline'
@@ -149,6 +155,45 @@ export function BaseEntityDrawer({
     return resource.type === 'system' ? resource.id : 'custom'
   }, [entityTypeOverride, resource])
 
+  // Drill panels registered for this entityType (dispatch v4/02) — a plain,
+  // safe-to-call-statically lookup. `[]` for every entityType without one
+  // (contacts, invoices, …), which keeps the render tree below byte-identical
+  // to before this feature existed.
+  const drillPanels = React.useMemo(
+    () => (entityType ? getRecordDrillPanels(entityType) : []),
+    [entityType]
+  )
+
+  // Shared two-level record drill (dispatch v4/02) — same `panel`/`item` nuqs
+  // params as DetailViewSections, stack derivation (incl. the skip-the-list
+  // direct-entry rule) shared via `useRecordDrillStack`.
+  const drill = useRecordDrillStack(drillPanels)
+
+  const drillCtx = React.useCallback(
+    (): RecordDrillContext => ({
+      recordId: recordId as RecordId,
+      entityInstanceId: entityInstanceId!,
+      record,
+      itemId: drill.item,
+      setItemId: drill.setItem,
+      close: drill.clear,
+    }),
+    [recordId, entityInstanceId, record, drill.item, drill.setItem, drill.clear]
+  )
+
+  // Clear a stale drill when the drawer's target record changes while open
+  // (e.g. clicking a different sidebar row without closing the drawer first)
+  // — but NOT on initial mount, so a cold-load deep link
+  // (?record=…&panel=visits&item=…) survives.
+  const prevRecordIdRef = React.useRef(recordId)
+  React.useEffect(() => {
+    const prevRecordId = prevRecordIdRef.current
+    if (prevRecordId && recordId && prevRecordId !== recordId) {
+      drill.clear()
+    }
+    prevRecordIdRef.current = recordId
+  }, [recordId, drill.clear])
+
   // Get drawer config from registry
   const drawerConfig = React.useMemo(() => {
     if (!entityType) return null
@@ -228,21 +273,130 @@ export function BaseEntityDrawer({
     }
   }, [tabOrderStorageKey])
 
-  /** Handle close */
+  /** Handle close — also clears the drill params so a re-open lands on root. */
   const handleClose = React.useCallback(() => {
+    drill.clear()
     if (onClose) {
       onClose()
     } else {
       onOpenChange(false)
     }
-  }, [onClose, onOpenChange])
+  }, [onClose, onOpenChange, drill.clear])
+
+  // DockableDrawer's own close paths (outside click, swipe, Escape in
+  // undocked mode) call `onOpenChange` directly, bypassing `handleClose` —
+  // clear the drill there too.
+  const handleOpenChange = React.useCallback(
+    (nextOpen: boolean) => {
+      if (!nextOpen) drill.clear()
+      onOpenChange(nextOpen)
+    },
+    [onOpenChange, drill.clear]
+  )
 
   if (!open || !recordId || !drawerConfig || !entityType) return null
+
+  // The existing tabbed overview body — rendered verbatim whether or not this
+  // entityType has drill panels, so it becomes the root NavStackPanel's
+  // content when it does (byte-identical render otherwise).
+  const tabsBlock = (
+    <Tabs value={activeTab} onValueChange={setActiveTab} className='w-full h-full'>
+      <div className='w-full h-full flex gap-0'>
+        <div className='w-full h-full flex flex-col overflow-auto justify-start'>
+          <OverflowTabsList
+            tabs={orderedTabs}
+            value={activeTab}
+            onValueChange={setActiveTab}
+            variant='outline'
+            canReorder={!!tabOrderStorageKey}
+            onReorder={handleTabReorder}
+            onResetOrder={handleResetTabOrder}
+          />
+
+          {/* Card content (person card, entity card, etc.) */}
+          {cardContent}
+
+          <div className='flex flex-1 overflow-hidden'>
+            {/* Base tabs - static */}
+            <TabsContent value='overview' className='w-full'>
+              <ScrollArea className='flex-1' scrollbarClassName='w-1!'>
+                <TabCards
+                  tab='overview'
+                  position='before'
+                  entityType={entityType}
+                  drawerConfig={drawerConfig}
+                  entityInstanceId={entityInstanceId!}
+                  recordId={recordId}
+                  record={record}
+                />
+                <Section
+                  title='Details'
+                  className='[&>[data-slot=section]>[data-slot=section-content]]:pe-4'
+                  initialOpen
+                  collapsible={false}
+                  icon={<HouseIcon className='size-4' />}>
+                  <EntityFields recordId={recordId} />
+                </Section>
+                {/* Context card: visit facts when opened over a chat thread */}
+                <ThreadVisitCard
+                  contactInstanceId={
+                    entityType === 'contact' ? (entityInstanceId ?? undefined) : undefined
+                  }
+                />
+                <TabCards
+                  tab='overview'
+                  position='after'
+                  entityType={entityType}
+                  drawerConfig={drawerConfig}
+                  entityInstanceId={entityInstanceId!}
+                  recordId={recordId}
+                  record={record}
+                />
+              </ScrollArea>
+            </TabsContent>
+
+            <TabsContent value='timeline' className='w-full h-full mt-0'>
+              <ScrollArea className='flex-1' scrollbarClassName='w-1!'>
+                <div className='p-3 flex-1 flex-col flex'>
+                  <TimelineTab recordId={recordId} />
+                </div>
+              </ScrollArea>
+            </TabsContent>
+
+            <TabsContent value='comments' className='w-full h-full mt-0'>
+              <ScrollArea className='flex-1' scrollbarClassName='w-1!'>
+                <DrawerComments recordId={recordId} focusComposerTrigger={focusComposerTrigger} />
+              </ScrollArea>
+            </TabsContent>
+
+            <TabsContent value='tasks' className='w-full h-full mt-0'>
+              <TasksSection recordId={recordId} />
+            </TabsContent>
+
+            {/* Dynamic tabs from registry */}
+            {drawerConfig.additionalTabs
+              .filter((tab) => !tab.featureGate || hasAccess(tab.featureGate))
+              .map((tab) => (
+                <TabsContent key={tab.value} value={tab.value} className='w-full'>
+                  <LazyTabComponent
+                    entityType={entityType}
+                    tabValue={tab.value}
+                    entityInstanceId={entityInstanceId!}
+                    recordId={recordId}
+                    record={record}
+                  />
+                </TabsContent>
+              ))}
+          </div>
+        </div>
+      </div>
+    </Tabs>
+  )
 
   return (
     <DockableDrawer
       open={open}
-      onOpenChange={onOpenChange}
+      onOpenChange={handleOpenChange}
       isDocked={isDocked}
       width={dockedWidth}
       onWidthChange={onWidthChange}
@@ -262,102 +416,46 @@ export function BaseEntityDrawer({
         }
       />
 
-      <div className='flex-1 overflow-y-auto'>
-        <Tabs value={activeTab} onValueChange={setActiveTab} className='w-full h-full'>
-          <div className='w-full h-full flex gap-0'>
-            <div className='w-full h-full flex flex-col overflow-auto justify-start'>
-              <OverflowTabsList
-                tabs={orderedTabs}
-                value={activeTab}
-                onValueChange={setActiveTab}
-                variant='outline'
-                canReorder={!!tabOrderStorageKey}
-                onReorder={handleTabReorder}
-                onResetOrder={handleResetTabOrder}
-              />
+      {drillPanels.length === 0 ? (
+        <div className='flex-1 overflow-y-auto'>{tabsBlock}</div>
+      ) : (
+        <NavStack
+          stack={drill.stack}
+          onStackChange={drill.onStackChange}
+          className='flex flex-col flex-1 min-h-0'>
+          {/* Root has no bar (its OverflowTabsList lives in tabsBlock, not a
+              bar slot) — only mount NavStackBar once a drill panel is on top,
+              so root stays a byte-identical empty strip-free render. */}
+          {drill.stack.length > 1 && <NavStackBar className='shrink-0 border-b' />}
+          <NavStackPanels className='flex-1 min-h-0'>
+            <NavStackPanel value='root' className='h-full overflow-y-auto'>
+              {tabsBlock}
+            </NavStackPanel>
 
-              {/* Card content (person card, entity card, etc.) */}
-              {cardContent}
+            {drillPanels.map((dp) => (
+              <NavStackPanel
+                key={dp.value}
+                value={dp.value}
+                className='h-full flex flex-col bg-neutral-100 dark:bg-background'
+                bar={typeof dp.bar === 'function' ? dp.bar(drillCtx()) : dp.bar}>
+                {dp.render(drillCtx())}
+              </NavStackPanel>
+            ))}
 
-              <div className='flex flex-1 overflow-hidden'>
-                {/* Base tabs - static */}
-                <TabsContent value='overview' className='w-full'>
-                  <ScrollArea className='flex-1' scrollbarClassName='w-1!'>
-                    <TabCards
-                      tab='overview'
-                      position='before'
-                      entityType={entityType}
-                      drawerConfig={drawerConfig}
-                      entityInstanceId={entityInstanceId!}
-                      recordId={recordId}
-                      record={record}
-                    />
-                    <Section
-                      title='Details'
-                      className='[&>[data-slot=section]>[data-slot=section-content]]:pe-4'
-                      initialOpen
-                      collapsible={false}
-                      icon={<HouseIcon className='size-4' />}>
-                      <EntityFields recordId={recordId} />
-                    </Section>
-                    {/* Context card: visit facts when opened over a chat thread */}
-                    <ThreadVisitCard
-                      contactInstanceId={
-                        entityType === 'contact' ? (entityInstanceId ?? undefined) : undefined
-                      }
-                    />
-                    <TabCards
-                      tab='overview'
-                      position='after'
-                      entityType={entityType}
-                      drawerConfig={drawerConfig}
-                      entityInstanceId={entityInstanceId!}
-                      recordId={recordId}
-                      record={record}
-                    />
-                  </ScrollArea>
-                </TabsContent>
-
-                <TabsContent value='timeline' className='w-full h-full mt-0'>
-                  <ScrollArea className='flex-1' scrollbarClassName='w-1!'>
-                    <div className='p-3 flex-1 flex-col flex'>
-                      <TimelineTab recordId={recordId} />
-                    </div>
-                  </ScrollArea>
-                </TabsContent>
-
-                <TabsContent value='comments' className='w-full h-full mt-0'>
-                  <ScrollArea className='flex-1' scrollbarClassName='w-1!'>
-                    <DrawerComments
-                      recordId={recordId}
-                      focusComposerTrigger={focusComposerTrigger}
-                    />
-                  </ScrollArea>
-                </TabsContent>
-
-                <TabsContent value='tasks' className='w-full h-full mt-0'>
-                  <TasksSection recordId={recordId} />
-                </TabsContent>
-
-                {/* Dynamic tabs from registry */}
-                {drawerConfig.additionalTabs
-                  .filter((tab) => !tab.featureGate || hasAccess(tab.featureGate))
-                  .map((tab) => (
-                    <TabsContent key={tab.value} value={tab.value} className='w-full'>
-                      <LazyTabComponent
-                        entityType={entityType}
-                        tabValue={tab.value}
-                        entityInstanceId={entityInstanceId!}
-                        recordId={recordId}
-                        record={record}
-                      />
-                    </TabsContent>
-                  ))}
-              </div>
-            </div>
-          </div>
-        </Tabs>
-      </div>
+            {drillPanels
+              .filter((dp) => dp.renderItem)
+              .map((dp) => (
+                <NavStackPanel
+                  key={`${dp.value}:item`}
+                  value={`${dp.value}:item`}
+                  className='h-full flex flex-col bg-neutral-100 dark:bg-background'
+                  bar={typeof dp.bar === 'function' ? dp.bar(drillCtx()) : dp.bar}>
+                  {dp.renderItem?.(drillCtx())}
+                </NavStackPanel>
+              ))}
+          </NavStackPanels>
+        </NavStack>
+      )}
     </DockableDrawer>
   )
 }

@@ -10,8 +10,10 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@auxx/ui/components/dialog'
+import { EntityIcon } from '@auxx/ui/components/icons'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { Switch } from '@auxx/ui/components/switch'
+import { TooltipExplanation } from '@auxx/ui/components/tooltip'
 import { cn } from '@auxx/ui/lib/utils'
 import { ScrollArea as BaseScrollArea } from '@base-ui-components/react/scroll-area'
 import {
@@ -622,31 +624,80 @@ function CommandItem({ className, ...props }: React.ComponentProps<typeof Comman
 }
 
 /**
- * A {@link CommandItem} with a leading muted icon and a single truncating label —
- * the common "icon + text" row used across pickers (procedure step pickers, the
- * building-blocks popover). `value` feeds cmdk selection/filtering; `onSelect`
- * fires on click / Enter.
+ * Props for {@link CommandDetailItem}.
  */
-function CommandIconItem({
+interface CommandDetailItemProps {
+  /** EntityIcon id — rendered as the leading icon unless `icon` is provided. */
+  iconId?: string
+  /** EntityIcon color id (e.g. `'blue'`). Ignored when `icon` is set. */
+  color?: string
+  /**
+   * Leading visual that overrides the EntityIcon — use for `AppIcon` avatars
+   * (URLs, emoji) or any custom node the `iconId`/`color` pair can't express.
+   */
+  icon?: React.ReactNode
+  /** Primary label (truncates when the row is tight). */
+  title: string
+  /** Surfaced through a `TooltipExplanation` help icon next to the title. */
+  description?: string
+  /** Inline slot after the title — typically a `<Badge>`. */
+  secondary?: React.ReactNode
+  /** Right-aligned slot — e.g. a price. Style it yourself. */
+  trailing?: React.ReactNode
+  /** Right-aligned slot revealed on hover/focus — e.g. icon buttons. */
+  actions?: React.ReactNode
+  /** Feeds cmdk selection/filtering. */
+  value: string
+  /** Fires on click / Enter. */
+  onSelect?: () => void
+  disabled?: boolean
+  className?: string
+}
+
+/**
+ * A richer {@link CommandItem} for pickers that need more than an icon and a
+ * label: a leading `EntityIcon` (from `iconId`/`color`, or an `icon` override),
+ * a primary `title`, an optional `description` shown via a `TooltipExplanation`
+ * help icon, an inline `secondary` slot (e.g. a Badge), a right-aligned
+ * `trailing` slot (e.g. a price), and `actions` revealed on hover/focus.
+ */
+function CommandDetailItem({
+  iconId,
+  color,
   icon,
-  label,
+  title,
+  description,
+  secondary,
+  trailing,
+  actions,
   value,
   onSelect,
+  disabled,
   className,
-}: {
-  icon: React.ReactNode
-  label: string
-  value: string
-  onSelect: () => void
-  className?: string
-}) {
+}: CommandDetailItemProps) {
+  const leading = icon ?? (iconId ? <EntityIcon iconId={iconId} color={color} size='sm' /> : null)
   return (
     <CommandItem
       value={value}
       onSelect={onSelect}
-      className={cn('flex items-center gap-2', className)}>
-      <span className='text-muted-foreground'>{icon}</span>
-      <span className='truncate text-sm'>{label}</span>
+      disabled={disabled}
+      className={cn('group flex items-center gap-2', className)}>
+      {leading && <span className='shrink-0 text-muted-foreground'>{leading}</span>}
+      <div className='flex min-w-0 flex-1 items-center gap-1.5'>
+        <span className='min-w-0 truncate text-sm'>{title}</span>
+        {description && <TooltipExplanation text={description} className='shrink-0' />}
+        {secondary && <span className='min-w-0 shrink truncate'>{secondary}</span>}
+      </div>
+      {(trailing || actions) && (
+        <div className='flex shrink-0 items-center gap-1'>
+          {trailing}
+          {actions && (
+            <span className='flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100'>
+              {actions}
+            </span>
+          )}
+        </div>
+      )}
     </CommandItem>
   )
 }
@@ -1067,7 +1118,7 @@ export {
   CommandGroup,
   CommandGroupLabel,
   CommandItem,
-  CommandIconItem,
+  CommandDetailItem,
   CommandShortcut,
   CommandSeparator,
   CommandDescription,

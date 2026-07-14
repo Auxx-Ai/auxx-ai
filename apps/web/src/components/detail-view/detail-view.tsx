@@ -14,6 +14,7 @@ import {
 import { PanelRight } from 'lucide-react'
 import { useQueryState } from 'nuqs'
 import { useState } from 'react'
+import { getRecordDrillPanels } from '~/components/records/record-drill-panels'
 import { toRecordId, useRecord, useResourceProperty } from '~/components/resources'
 import { useIsMobile } from '~/hooks/use-mobile'
 import { useDockStore } from '~/stores/dock-store'
@@ -21,7 +22,6 @@ import { DetailViewActions } from './components/detail-view-actions'
 import { DetailViewMainTabs } from './detail-view-main-tabs'
 import { DetailViewNotFound } from './detail-view-not-found'
 import { DetailViewSections } from './detail-view-sections'
-import { getDetailViewSectionsDrillPanels } from './detail-view-sections-drill-panels-registry'
 import { DetailViewSidebar } from './detail-view-sidebar'
 import { DetailViewSkeleton } from './detail-view-skeleton'
 import type { DetailViewProps } from './types'
@@ -159,7 +159,7 @@ export function DetailView({ apiSlug, instanceId, backUrl: backUrlOverride }: De
             activeTab={mainTab ?? config.defaultTab ?? 'overview'}
             onTabChange={setMainTab}
             record={record}
-            drillPanels={getDetailViewSectionsDrillPanels(entityType)}
+            drillPanels={getRecordDrillPanels(entityType)}
           />
         ) : (
           <DetailViewMainTabs

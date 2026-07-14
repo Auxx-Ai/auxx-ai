@@ -58,6 +58,13 @@ export interface TreeRowProps {
   onTitleClick?: () => void
 
   /**
+   * Marks the row as drilling into a sub-surface: renders a trailing ChevronRight
+   * affordance and makes the whole row clickable (→ `onDrill`). When both this and
+   * `onToggleOpen` are set, a row click toggles children while the chevron drills.
+   */
+  onDrill?: () => void
+
+  /**
    * Rendered below the row when `isOpen` is true. If `isOpen` is undefined
    * and `expandable` is false, children always render.
    */
@@ -210,14 +217,17 @@ export function TreeRow({
   isOpen,
   onToggleOpen,
   onTitleClick,
+  onDrill,
   children,
   className,
   rowClassName,
 }: TreeRowProps) {
   const paddingLeftRem = depth * INDENT_REM
-  // The whole row is clickable whenever a toggle handler is supplied — `expandable`
-  // only controls the chevron, not whether clicking the row does something.
-  const rowClickable = onToggleOpen !== undefined
+  // The whole row is clickable whenever a toggle/drill handler is supplied —
+  // `expandable` only controls the chevron, not whether clicking does something.
+  // A toggle (expand children) wins the row click; the drill chevron owns `onDrill`.
+  const rowClick = onToggleOpen ?? onDrill
+  const rowClickable = rowClick !== undefined
 
   const titleNode = (
     <span
@@ -247,7 +257,7 @@ export function TreeRow({
           rowClickable && 'cursor-pointer',
           rowClassName
         )}
-        onClick={rowClickable ? onToggleOpen : undefined}>
+        onClick={rowClickable ? rowClick : undefined}>
         <div className='flex items-center flex-1 min-w-0'>
           <LeadingIcon
             icon={icon}
@@ -292,14 +302,30 @@ export function TreeRow({
           )}
         </div>
 
-        {trailing ? (
-          <div onClick={stopPropagation}>{trailing}</div>
-        ) : (
-          actions && (
-            <div className='flex items-center' onClick={stopPropagation}>
-              {actions}
-            </div>
-          )
+        {(trailing || actions || onDrill) && (
+          <div className='flex items-center'>
+            {trailing ? (
+              <div onClick={stopPropagation}>{trailing}</div>
+            ) : (
+              actions && (
+                <div className='flex items-center' onClick={stopPropagation}>
+                  {actions}
+                </div>
+              )
+            )}
+            {onDrill && (
+              <button
+                type='button'
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onDrill()
+                }}
+                aria-label='Open'
+                className='ml-1 shrink-0 rounded-md p-1 text-muted-foreground hover:bg-primary/5'>
+                <ChevronRight className='size-4' />
+              </button>
+            )}
+          </div>
         )}
       </div>
     </div>
@@ -344,6 +370,8 @@ export interface GridTreeRowProps {
   chevronOnHover?: boolean
   isOpen?: boolean
   onToggleOpen?: () => void
+  /** Trailing drill affordance (ChevronRight) + row click → drill. See {@link TreeRowProps.onDrill}. */
+  onDrill?: () => void
 
   children?: React.ReactNode
   className?: string
@@ -369,17 +397,24 @@ export function GridTreeRow({
   chevronOnHover = false,
   isOpen,
   onToggleOpen,
+  onDrill,
   children,
   className,
   rowClassName,
 }: GridTreeRowProps) {
   const indentRem = depth * INDENT_REM
-  const rowClickable = onToggleOpen !== undefined
+  // A toggle (expand children) wins the row click; the drill chevron owns `onDrill`.
+  const rowClick = onToggleOpen ?? onDrill
+  const rowClickable = rowClick !== undefined
+  // Cells swallow clicks by default (interactive pickers — mapping editor, line
+  // builder). A drill row instead lets clicks fall through to the row → drill;
+  // its own TreeRowButtons stop propagation, so buttons stay excluded.
+  const cellsClickThrough = onDrill !== undefined
 
   const line = (
     <div
       className={cn('group/tree-row relative text-sm', rowClickable && 'cursor-pointer')}
-      onClick={rowClickable ? onToggleOpen : undefined}>
+      onClick={rowClickable ? rowClick : undefined}>
       {/* Hover background — a standalone layer, independent of the grid columns,
           inset to the indent so the highlight lines up with the content (matching
           TreeRow's indented hover rather than spanning the gutter). */}
@@ -388,53 +423,71 @@ export function GridTreeRow({
         style={{ left: `${indentRem}rem` }}
       />
 
-      <div
-        className={cn(
-          'relative grid min-h-9 items-stretch px-1 text-muted-foreground',
-          rowClassName
-        )}
-        style={{ gridTemplateColumns: columns }}>
-        {/* First cell — indent + icon + source label (truncates) + chevron. The
-            cell stretches to the row height, so a full-height picker handed in as
-            `title` blends into the row. */}
-        <div className='flex min-w-0 items-center' style={{ paddingLeft: `${indentRem}rem` }}>
-          <LeadingIcon
-            icon={icon}
-            expandable={expandable}
-            isOpen={isOpen}
-            chevronOnHover={chevronOnHover}
-            onToggleOpen={onToggleOpen}
-          />
-          <div className='flex-1 truncate px-1 text-foreground'>{title}</div>
-          {/* Trailing chevron — omitted when the icon doubles as the hover chevron. */}
-          {expandable && !chevronOnHover && (
-            <button
-              type='button'
-              onClick={(e) => {
-                e.stopPropagation()
-                onToggleOpen?.()
-              }}
-              className='rounded-md p-1 hover:bg-primary/5 shrink-0'
-              aria-label={isOpen ? 'Collapse' : 'Expand'}>
-              <ChevronRight
-                className={cn(
-                  'size-3.5 text-muted-foreground transition-transform',
-                  isOpen && 'rotate-90'
-                )}
-              />
-            </button>
+      {/* The grid keeps every row's columns aligned; the optional drill chevron
+          rides alongside it as a fixed trailing element (outside the columns). */}
+      <div className='relative flex items-stretch'>
+        <div
+          className={cn(
+            'grid min-h-9 min-w-0 flex-1 items-stretch px-1 text-muted-foreground',
+            rowClassName
           )}
+          style={{ gridTemplateColumns: columns }}>
+          {/* First cell — indent + icon + source label (truncates) + chevron. The
+              cell stretches to the row height, so a full-height picker handed in as
+              `title` blends into the row. */}
+          <div className='flex min-w-0 items-center' style={{ paddingLeft: `${indentRem}rem` }}>
+            <LeadingIcon
+              icon={icon}
+              expandable={expandable}
+              isOpen={isOpen}
+              chevronOnHover={chevronOnHover}
+              onToggleOpen={onToggleOpen}
+            />
+            <div className='flex-1 truncate px-1 text-foreground'>{title}</div>
+            {/* Trailing chevron — omitted when the icon doubles as the hover chevron. */}
+            {expandable && !chevronOnHover && (
+              <button
+                type='button'
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onToggleOpen?.()
+                }}
+                className='rounded-md p-1 hover:bg-primary/5 shrink-0'
+                aria-label={isOpen ? 'Collapse' : 'Expand'}>
+                <ChevronRight
+                  className={cn(
+                    'size-3.5 text-muted-foreground transition-transform',
+                    isOpen && 'rotate-90'
+                  )}
+                />
+              </button>
+            )}
+          </div>
+
+          {/* Remaining cells — swallow clicks (interactive pickers) unless this is
+              a drill row, where clicks fall through to drill the whole row. */}
+          {cells.map((cell, i) => (
+            <div
+              key={i}
+              onClick={cellsClickThrough ? undefined : stopPropagation}
+              className={cn('flex min-w-0 items-center', divided && 'border-l border-border/60')}>
+              {cell}
+            </div>
+          ))}
         </div>
 
-        {/* Remaining cells — clicks here never toggle the row. */}
-        {cells.map((cell, i) => (
-          <div
-            key={i}
-            onClick={stopPropagation}
-            className={cn('flex min-w-0 items-center', divided && 'border-l border-border/60')}>
-            {cell}
-          </div>
-        ))}
+        {onDrill && (
+          <button
+            type='button'
+            onClick={(e) => {
+              e.stopPropagation()
+              onDrill()
+            }}
+            aria-label='Open'
+            className='relative flex shrink-0 items-center rounded-md px-1 text-muted-foreground hover:bg-primary/5'>
+            <ChevronRight className='size-4' />
+          </button>
+        )}
       </div>
     </div>
   )
@@ -495,12 +548,19 @@ export function TreeRowButton({
   className,
   tooltipText,
   type = 'button',
+  onClick,
   ...props
 }: TreeRowButtonProps) {
   const button = (
     <button
       type={type}
       className={cn(treeRowButtonVariants({ variant, persistent }), className)}
+      // An action button never triggers the row's click (drill/toggle). Stops the
+      // bubble so a click-through row (see GridTreeRow `onDrill`) stays safe.
+      onClick={(e) => {
+        e.stopPropagation()
+        onClick?.(e)
+      }}
       {...props}
     />
   )

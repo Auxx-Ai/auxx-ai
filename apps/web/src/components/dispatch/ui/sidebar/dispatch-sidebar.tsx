@@ -43,10 +43,11 @@ interface DispatchSidebarProps {
   plannerGeometryByWorker?: Record<string, RouteGeometry | undefined>
   /** Distinct `work_order.tags` across the planner's visible day (map mode only). */
   tags?: string[]
-  /** Backlog/routes row click (v4 Phase 4) — reports the clicked row's work-order instance id
-   * so the board shell can open a `RecordDrawer`. Sidebar rows only; the map pin popover and
-   * board visit popover keep navigating to the job page. */
-  onSelectWorkOrder?: (workOrderId: string) => void
+  /** Backlog/routes row click (v4/02 Phase 3) — reports the clicked row's work-order instance
+   * id AND visit id so the board shell can open a `RecordDrawer` pre-drilled to the visit.
+   * Sidebar rows only; the map pin popover and board visit popover keep navigating to the job
+   * page. */
+  onSelectVisit?: (sel: { workOrderId: string; visitId: string }) => void
 }
 
 /**
@@ -71,7 +72,7 @@ export function DispatchSidebar({
   plannerWindow,
   plannerGeometryByWorker,
   tags = [],
-  onSelectWorkOrder,
+  onSelectVisit,
 }: DispatchSidebarProps) {
   const open = useDispatchSidebarStore((s) => s.open)
   const setOpen = useDispatchSidebarStore((s) => s.setOpen)
@@ -162,7 +163,7 @@ export function DispatchSidebar({
         droppable={mode === 'calendar'}
         open={isGroupOpen('backlog')}
         onOpenChange={(o) => setGroupOpen('backlog', o)}
-        onSelectWorkOrder={onSelectWorkOrder}
+        onSelectVisit={onSelectVisit}
       />
       {mode === 'map' && plannerBoard && plannerFilters && plannerWindow && (
         <RoutesGroup
@@ -175,7 +176,7 @@ export function DispatchSidebar({
           onOpenChange={(o) => setGroupOpen('routes', o)}
           groupOpen={groupOpen}
           onWorkerOpenChange={(userId, o) => setGroupOpen(`routes:${userId}`, o)}
-          onSelectWorkOrder={onSelectWorkOrder}
+          onSelectVisit={onSelectVisit}
         />
       )}
     </ModuleSidebar>

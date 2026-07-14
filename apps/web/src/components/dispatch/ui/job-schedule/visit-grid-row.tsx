@@ -72,7 +72,7 @@ export function VisitGridRow({
       <GridTreeRow
         title={<span className='text-sm font-normal'>{formatVisitDate(visit)}</span>}
         columns={VISIT_GRID_COLUMNS}
-        onToggleOpen={onOpen}
+        onDrill={onOpen}
         cells={[
           <span key='time' className='truncate text-sm'>
             {formatVisitTime(visit)}

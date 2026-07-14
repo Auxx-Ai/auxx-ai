@@ -5,9 +5,13 @@ import { NavStack, NavStackBar, NavStackPanel, NavStackPanels } from '@auxx/ui/c
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { Section } from '@auxx/ui/components/section'
 import { Tabs, TabsList, TabsTrigger } from '@auxx/ui/components/tabs'
-import { useQueryState } from 'nuqs'
 import * as React from 'react'
 import { createPortal } from 'react-dom'
+import {
+  type RecordDrillContext,
+  type RecordDrillPanel,
+  useRecordDrillStack,
+} from '~/components/records/record-drill-panels'
 import { parseRecordId, type RecordId } from '~/components/resources'
 import { useScrollSpy } from '~/hooks/use-scroll-spy'
 import { getDetailViewTabComponent } from './detail-view-tab-registry'
@@ -21,38 +25,6 @@ import { getIconComponent } from './utils'
 const SCROLL_BUFFER = 0
 // Activate a tab once its section crosses just past the top edge.
 const SPY_BUFFER = 8
-
-/**
- * Context handed to a `DetailViewSectionsDrillPanel`'s `bar`/`render`/`renderItem`.
- */
-export interface DetailViewSectionsDrillContext {
-  recordId: RecordId
-  entityInstanceId: string
-  record?: Record<string, unknown>
-  /** The drilled item id — the `item` nuqs query param — once this panel is on top. */
-  itemId: string | null
-  /** Push (id) / pop (null) the third stack level (`${panel.value}:item`). */
-  setItemId: (id: string | null) => void
-  /** Pop all the way back to the root sections panel. */
-  close: () => void
-}
-
-/**
- * One additional `NavStackPanel` pushed over the sectioned root page, keyed by the
- * `panel` nuqs query param (dispatch M2 build spec §F.1 — e.g. work_order's "visits"
- * list). `renderItem` is optional: when provided, calling `setItemId` from within
- * `render` pushes a third stack level (mirrors agent-detail's procedure → drill).
- */
-export interface DetailViewSectionsDrillPanel {
-  /** Panel key. Activated when the `panel` query param equals this value. */
-  value: string
-  /** `NavStackBar` content while this panel (or its item level) is on top. */
-  bar?: React.ReactNode | ((ctx: DetailViewSectionsDrillContext) => React.ReactNode)
-  /** List-level (or single) panel body. */
-  render: (ctx: DetailViewSectionsDrillContext) => React.ReactNode
-  /** Optional item-level body — the third stack level, keyed `${value}:item`. */
-  renderItem?: (ctx: DetailViewSectionsDrillContext) => React.ReactNode
-}
 
 interface SectionChromeSlots {
   titleSlot: HTMLElement | null
@@ -92,7 +64,7 @@ export interface DetailViewSectionsProps extends DetailViewMainTabsProps {
    * same drill mechanism as `agent-detail-tabs.tsx`'s `procedure`/`drill` params,
    * generalized so this file stays entity-agnostic.
    */
-  drillPanels?: DetailViewSectionsDrillPanel[]
+  drillPanels?: RecordDrillPanel[]
 }
 
 /**
@@ -116,17 +88,12 @@ export function DetailViewSections({
   const { entityInstanceId } = parseRecordId(recordId)
 
   // Generic two-level drill protocol shared across every `layout: 'sections'`
-  // consumer: `panel` selects a DetailViewSectionsDrillPanel, `item` (optional)
-  // drills one level further inside it.
-  const [panel, setPanel] = useQueryState('panel')
-  const [item, setItem] = useQueryState('item')
+  // consumer: `panel` selects a RecordDrillPanel, `item` (optional) drills one
+  // level further inside it. Stack derivation (incl. the skip-the-list
+  // direct-entry rule) lives in `useRecordDrillStack`, shared with the drawer.
+  const drill = useRecordDrillStack(drillPanels)
 
   const sectionKeys = React.useMemo(() => config.mainTabs.map((t) => t.value), [config.mainTabs])
-
-  const activeDrillPanel = React.useMemo(
-    () => drillPanels.find((p) => p.value === panel) ?? null,
-    [drillPanels, panel]
-  )
 
   // Re-bind the scroll listener after the root ScrollArea remounts (NavStackPanels
   // only mounts the top panel — returning from a drill recreates the viewport node).
@@ -134,7 +101,7 @@ export function DetailViewSections({
     sections: sectionKeys,
     active: activeTab,
     onActiveChange: onTabChange,
-    remountKey: `${panel}:${item}`,
+    remountKey: `${drill.panel}:${drill.item}`,
     spyBuffer: SPY_BUFFER,
     scrollBuffer: SCROLL_BUFFER,
   })
@@ -143,46 +110,29 @@ export function DetailViewSections({
     (value: string) => {
       // The tab strip is only the root panel's bar, so this fires at root — clearing
       // the drill params is defensive. Scroll the chosen section into view.
-      void setPanel(null)
-      void setItem(null)
+      drill.clear()
       onTabChange(value)
       scrollToSection(value)
     },
-    [onTabChange, setPanel, setItem, scrollToSection]
+    [onTabChange, drill.clear, scrollToSection]
   )
 
-  const stack = !panel
-    ? ['root']
-    : !item || !activeDrillPanel?.renderItem
-      ? ['root', panel]
-      : ['root', panel, `${panel}:item`]
-
   const drillCtx = React.useCallback(
-    (): DetailViewSectionsDrillContext => ({
+    (): RecordDrillContext => ({
       recordId,
       entityInstanceId,
       record,
-      itemId: item,
-      setItemId: (id) => void setItem(id),
-      close: () => {
-        void setPanel(null)
-        void setItem(null)
-      },
+      itemId: drill.item,
+      setItemId: drill.setItem,
+      close: drill.clear,
     }),
-    [recordId, entityInstanceId, record, item, setItem, setPanel]
+    [recordId, entityInstanceId, record, drill.item, drill.setItem, drill.clear]
   )
 
   return (
     <NavStack
-      stack={stack}
-      onStackChange={(next) => {
-        if (next.length <= 1) {
-          void setPanel(null)
-          void setItem(null)
-        } else if (next.length === 2) {
-          void setItem(null)
-        }
-      }}
+      stack={drill.stack}
+      onStackChange={drill.onStackChange}
       className='flex flex-col flex-1 min-h-0 h-full'>
       <NavStackBar className='shrink-0 border-b bg-primary-150' />
       <NavStackPanels className='flex-1 min-h-0'>

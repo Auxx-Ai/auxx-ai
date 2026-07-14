@@ -3,7 +3,7 @@
 
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { TREE_SECONDARY_NOTRUNCATE } from '@auxx/ui/components/tree-row'
-import type { DetailViewSectionsDrillContext } from '~/components/detail-view/detail-view-sections'
+import type { RecordDrillContext } from '~/components/records/record-drill-panels'
 import { splitJobVisits } from './job-schedule-utils'
 import { useJobVisits } from './use-job-visits'
 import { VisitTreeRow } from './visit-tree-row'
@@ -13,7 +13,7 @@ import { VisitTreeRow } from './visit-tree-row'
  * spec §F.3): every visit on this work order, `TreeRow` rows, same actions as
  * the Schedule section's previews. Written jobType-agnostic.
  */
-export function VisitsListPanel({ recordId, setItemId }: DetailViewSectionsDrillContext) {
+export function VisitsListPanel({ recordId, setItemId }: RecordDrillContext) {
   const { visits, isLoading, canEdit, mutations, existingVisits, refresh } = useJobVisits(recordId)
   const { upcoming, history } = splitJobVisits(visits)
 

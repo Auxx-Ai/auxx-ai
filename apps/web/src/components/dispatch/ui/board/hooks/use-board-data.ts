@@ -3,7 +3,8 @@
 'use client'
 
 import { getOptionColorHex } from '@auxx/lib/custom-fields/client'
-import { useMemo, useState } from 'react'
+import { parseAsStringLiteral, useQueryState } from 'nuqs'
+import { useMemo } from 'react'
 import { useCalendarRange } from '~/components/calendar/core/use-calendar-range'
 import { api } from '~/trpc/react'
 import { useHiddenWorkerIds } from '../../../stores/dispatch-sidebar-store'
@@ -43,8 +44,12 @@ export function useBoardData() {
   // Board↔Map toggle (09-route-planner.md §A, contract item 7) — sibling state to the sidebar's
   // `open`, deliberately NOT a `BoardViewMode` so the month-view debounce and `view === 'day'`
   // gates stay untouched. Entering map mode doesn't change `view`; the map always renders
-  // `date`'s single day.
-  const [boardMode, setBoardMode] = useState<'calendar' | 'map'>('calendar')
+  // `date`'s single day. Persisted in the URL (`?mode=`, nuqs) so a reload/deep-link keeps the
+  // active tab, matching the board's other query-synced state (`?record=`).
+  const [boardMode, setBoardMode] = useQueryState(
+    'mode',
+    parseAsStringLiteral(['calendar', 'map'] as const).withDefault('calendar')
+  )
 
   const hiddenWorkerIds = useHiddenWorkerIds()
 
