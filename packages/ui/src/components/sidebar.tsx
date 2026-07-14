@@ -654,12 +654,21 @@ function SidebarMenuSkeleton({
   )
 }
 
-function SidebarMenuSub({ className, ...props }: React.ComponentProps<'ul'>) {
+function SidebarMenuSub({
+  className,
+  inset = true,
+  ...props
+}: React.ComponentProps<'ul'> & {
+  /** When false, drop the indent + guide line so sub-rows sit flush under their parent
+   * (used where the parent row already conveys grouping, e.g. dispatch route stop lists). */
+  inset?: boolean
+}) {
   return (
     <ul
       data-sidebar='menu-sub'
       className={cn(
-        'mx-3.5 flex min-w-0 translate-x-px flex-col gap-0.5 border-l border-sidebar-border px-2.5 py-0.5',
+        'flex min-w-0 flex-col gap-0.5 py-0.5',
+        inset && 'mx-3.5 translate-x-px border-l border-sidebar-border px-2.5',
         'group-data-[collapsible=icon]:hidden ',
         className
       )}

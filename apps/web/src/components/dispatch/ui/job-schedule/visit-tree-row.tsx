@@ -92,7 +92,7 @@ export function VisitTreeRow({
             </Badge>
           </span>
         }
-        onToggleOpen={onOpen}
+        onDrill={onOpen}
         actions={
           canEdit ? (
             <>

@@ -18,10 +18,10 @@ import { toRecordId } from '@auxx/lib/resources/client'
 import type { RecordId } from '@auxx/types/resource'
 import {
   Command,
+  CommandDetailItem,
   CommandEmpty,
   CommandGroup,
   CommandInput,
-  CommandItem,
   CommandList,
   CommandSeparator,
 } from '@auxx/ui/components/command'
@@ -295,44 +295,34 @@ export function CatalogPicker({
             placeholder='Search products & services…'
           />
           <CommandList>
-            {!(itemsLoading || groupsLoading) && !hasAnyMatch && (
-              <CommandEmpty>
-                <button
-                  type='button'
-                  onClick={handleFreeText}
-                  className='flex w-full items-center gap-2 px-2 py-1.5 text-left text-sm hover:text-foreground'>
-                  <Plus className='size-4 shrink-0 text-muted-foreground' />
-                  <span className='truncate'>
-                    Add <span className='font-medium'>&ldquo;{query.trim()}&rdquo;</span> as one-off
-                    line
-                  </span>
-                </button>
-              </CommandEmpty>
+            {!(itemsLoading || groupsLoading) && !hasAnyMatch && !query.trim() && (
+              <CommandEmpty>No products or services yet</CommandEmpty>
             )}
 
             {groupPicks.length > 0 && (
               <CommandGroup heading='Groups'>
-                {groupPicks.map(({ id, pick }) => (
-                  <CommandItem
-                    key={id}
-                    value={`group-${id}`}
-                    onSelect={() => handlePickGroup(pick)}
-                    className='flex items-center justify-between gap-2'>
-                    <div className='flex min-w-0 items-center gap-2'>
-                      <Boxes className='size-4 shrink-0 text-muted-foreground' />
-                      <div className='flex min-w-0 flex-col'>
-                        <span className='truncate'>{pick.name}</span>
-                        <span className='truncate text-muted-foreground text-xs'>
-                          {pick.lines.length + pick.skippedCount} item
-                          {pick.lines.length + pick.skippedCount === 1 ? '' : 's'}
+                {groupPicks.map(({ id, pick }) => {
+                  const count = pick.lines.length + pick.skippedCount
+                  return (
+                    <CommandDetailItem
+                      key={id}
+                      value={`group-${id}`}
+                      onSelect={() => handlePickGroup(pick)}
+                      icon={<Boxes className='size-4' />}
+                      title={pick.name}
+                      secondary={
+                        <span className='text-muted-foreground text-xs'>
+                          {count} item{count === 1 ? '' : 's'}
                         </span>
-                      </div>
-                    </div>
-                    <span className='shrink-0 text-muted-foreground text-xs'>
-                      {formatPrice(groupTotal(pick), currencyCode)}
-                    </span>
-                  </CommandItem>
-                ))}
+                      }
+                      trailing={
+                        <span className='text-muted-foreground text-xs'>
+                          {formatPrice(groupTotal(pick), currencyCode)}
+                        </span>
+                      }
+                    />
+                  )
+                })}
               </CommandGroup>
             )}
 
@@ -341,37 +331,38 @@ export function CatalogPicker({
                 group.rows.length > 0 && (
                   <CommandGroup key={group.category} heading={group.label}>
                     {group.rows.map((row) => (
-                      <CommandItem
+                      <CommandDetailItem
                         key={row.id}
                         value={row.id}
                         onSelect={() => handlePick(row)}
-                        className='flex items-center justify-between gap-2'>
-                        <div className='flex min-w-0 flex-col'>
-                          <span className='truncate'>{row.fieldValues.catalog_item_name}</span>
-                          {row.fieldValues.catalog_item_part != null && (
-                            <span className='truncate text-muted-foreground text-xs'>
-                              Linked part
-                            </span>
-                          )}
-                        </div>
-                        <span className='shrink-0 text-muted-foreground text-xs'>
-                          {formatPrice(
-                            row.fieldValues.catalog_item_default_unit_price ?? null,
-                            currencyCode
-                          )}
-                        </span>
-                      </CommandItem>
+                        title={row.fieldValues.catalog_item_name ?? ''}
+                        secondary={
+                          row.fieldValues.catalog_item_part != null ? (
+                            <span className='text-muted-foreground text-xs'>Linked part</span>
+                          ) : undefined
+                        }
+                        trailing={
+                          <span className='text-muted-foreground text-xs'>
+                            {formatPrice(
+                              row.fieldValues.catalog_item_default_unit_price ?? null,
+                              currencyCode
+                            )}
+                          </span>
+                        }
+                      />
                     ))}
                   </CommandGroup>
                 )
             )}
 
-            {hasAnyMatch && query.trim() && (
+            {query.trim() && (
               <CommandGroup>
-                <CommandItem value={`__one-off__${query}`} onSelect={handleFreeText}>
-                  <Plus className='size-4 text-muted-foreground' />
-                  Add &ldquo;{query.trim()}&rdquo; as one-off line
-                </CommandItem>
+                <CommandDetailItem
+                  value={`__one-off__${query}`}
+                  onSelect={handleFreeText}
+                  icon={<Plus className='size-4' />}
+                  title={`Add “${query.trim()}” as one-off line`}
+                />
               </CommandGroup>
             )}
           </CommandList>

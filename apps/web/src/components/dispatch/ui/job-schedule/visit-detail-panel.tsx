@@ -8,8 +8,8 @@ import { Button } from '@auxx/ui/components/button'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { format } from 'date-fns'
 import { CalendarClock, Send, User, XCircle } from 'lucide-react'
-import type { DetailViewSectionsDrillContext } from '~/components/detail-view/detail-view-sections'
 import { getInitials } from '~/components/groups/utils/group-utils'
+import type { RecordDrillContext } from '~/components/records/record-drill-panels'
 import { useActors } from '~/components/resources/hooks/use-actor'
 import { useConfirm } from '~/hooks/use-confirm'
 import { VISIT_STATUS_LABELS, type VisitStatus } from '../board/types'
@@ -23,7 +23,7 @@ import { useJobVisits } from './use-job-visits'
  * mobile surface plan fills it in), the visit line items placeholder (money
  * 01-ui #13, `visitId`-scoped — not built in this slice), and the row actions.
  */
-export function VisitDetailPanel({ recordId, itemId }: DetailViewSectionsDrillContext) {
+export function VisitDetailPanel({ recordId, itemId }: RecordDrillContext) {
   const { visits, isLoading, canEdit, mutations, existingVisits, refresh } = useJobVisits(recordId)
   const visit = visits.find((v) => v.id === itemId)
   const [confirm, ConfirmDialog] = useConfirm()

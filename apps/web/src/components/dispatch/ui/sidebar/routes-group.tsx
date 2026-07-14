@@ -61,9 +61,10 @@ interface RoutesGroupProps {
    * group itself (`groupOpen`) — persisted so a dispatcher's per-worker collapse choices stick. */
   groupOpen: Record<string, boolean>
   onWorkerOpenChange: (userId: string, open: boolean) => void
-  /** Stop row click — reports the row's work-order instance id so the board shell can open a
-   * `RecordDrawer` (same wiring as the Backlog group's rows). */
-  onSelectWorkOrder?: (workOrderId: string) => void
+  /** Stop row click (v4/02 Phase 3) — reports the row's work-order instance id AND visit id so
+   * the board shell can open a `RecordDrawer` pre-drilled to the visit (same wiring as the
+   * Backlog group's rows). */
+  onSelectVisit?: (sel: { workOrderId: string; visitId: string }) => void
 }
 
 /**
@@ -72,7 +73,7 @@ interface RoutesGroupProps {
  * on `entity-folder.tsx`) collapsing into `SidebarMenuSub` stop rows. Stop rows are whole-row
  * draggable `useSortable`s (`useRoutePlannerDragEnd` still owns reorders and cross-list drops;
  * the shared `AppDragOverlay` renders the cursor ghost), click through to the record drawer via
- * `onSelectWorkOrder`, and carry a hover X that unassigns the visit back to the backlog.
+ * `onSelectVisit`, and carry a hover X that unassigns the visit back to the backlog.
  */
 export function RoutesGroup({
   board,
@@ -84,7 +85,7 @@ export function RoutesGroup({
   onOpenChange,
   groupOpen,
   onWorkerOpenChange,
-  onSelectWorkOrder,
+  onSelectVisit,
 }: RoutesGroupProps) {
   const visibleWorkers =
     filters.workerIds === null
@@ -116,7 +117,7 @@ export function RoutesGroup({
               canEdit={canEdit}
               open={groupOpen[`routes:${worker.userId}`] ?? true}
               onOpenChange={(o) => onWorkerOpenChange(worker.userId, o)}
-              onSelectWorkOrder={onSelectWorkOrder}
+              onSelectVisit={onSelectVisit}
             />
           ))}
         </SidebarMenu>
@@ -134,7 +135,7 @@ interface WorkerStopSectionProps {
   canEdit: boolean
   open: boolean
   onOpenChange: (open: boolean) => void
-  onSelectWorkOrder?: (workOrderId: string) => void
+  onSelectVisit?: (sel: { workOrderId: string; visitId: string }) => void
 }
 
 function WorkerStopSection({
@@ -146,7 +147,7 @@ function WorkerStopSection({
   canEdit,
   open,
   onOpenChange,
-  onSelectWorkOrder,
+  onSelectVisit,
 }: WorkerStopSectionProps) {
   const [applyOpen, setApplyOpen] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
@@ -274,7 +275,9 @@ function WorkerStopSection({
       </SidebarMenuButton>
 
       <SidebarGroupCollapse open={open}>
-        <SidebarMenuSub className='me-0 pe-0'>
+        {/* Flush stop list (`inset={false}`): the worker header row already conveys grouping, so
+            stops align directly under it with no extra indent or guide line. */}
+        <SidebarMenuSub inset={false} className='me-0 pe-0'>
           {stops.length === 0 ? (
             <li className='px-1 py-1 text-xs text-muted-foreground'>No stops today.</li>
           ) : (
@@ -288,7 +291,7 @@ function WorkerStopSection({
                   workOrder={workOrderById.get(visit.workOrderId)}
                   eta={estimateArrivalForVisit(dayStart, geometry, visit.id)}
                   canEdit={canEdit}
-                  onSelectWorkOrder={onSelectWorkOrder}
+                  onSelectVisit={onSelectVisit}
                   onRemove={() => assignVisit.mutate({ visitId: visit.id, assigneeUserId: null })}
                 />
               ))}
@@ -316,7 +319,7 @@ interface StopRowProps {
   workOrder: PlannerWorkOrder | undefined
   eta: Date | null
   canEdit: boolean
-  onSelectWorkOrder?: (workOrderId: string) => void
+  onSelectVisit?: (sel: { workOrderId: string; visitId: string }) => void
   onRemove: () => void
 }
 
@@ -327,7 +330,7 @@ function StopRow({
   workOrder,
   eta,
   canEdit,
-  onSelectWorkOrder,
+  onSelectVisit,
   onRemove,
 }: StopRowProps) {
   const isDone = visit.status === 'done'
@@ -360,10 +363,14 @@ function StopRow({
           ref={setNodeRef}
           {...(draggable ? { ...attributes, ...listeners } : {})}
           style={{ transform: CSS.Transform.toString(transform), transition }}
-          onClick={onSelectWorkOrder ? () => onSelectWorkOrder(visit.workOrderId) : undefined}
+          onClick={
+            onSelectVisit
+              ? () => onSelectVisit({ workOrderId: visit.workOrderId, visitId: visit.id })
+              : undefined
+          }
           className={cn(
             'group/item relative flex h-7 w-full items-center justify-between',
-            onSelectWorkOrder && 'cursor-pointer',
+            onSelectVisit && 'cursor-pointer',
             draggable && 'cursor-grab touch-none active:cursor-grabbing',
             isDone && 'opacity-50',
             isDragging && 'opacity-40'

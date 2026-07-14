@@ -818,6 +818,15 @@
   right: 3px;
 }
 
+/* dnd-kit drag in progress: force a plain arrow cursor document-wide (class toggled by
+   AppDragOverlay / CalendarDndProvider) so the pointer never flips to the text I-beam or a
+   per-element grab cursor while an item is being dragged. */
+body.dnd-dragging,
+body.dnd-dragging * {
+  cursor: default !important;
+  user-select: none !important;
+}
+
 .resizer.rtl {
   left: 3px;
 }

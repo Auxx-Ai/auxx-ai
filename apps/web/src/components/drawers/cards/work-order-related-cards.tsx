@@ -17,6 +17,7 @@ import { CalendarClock, Plus, Receipt } from 'lucide-react'
 import { useState } from 'react'
 import { SchedulePopover } from '~/components/dispatch/ui/schedule-popover'
 import { GatherInvoiceDialog } from '~/components/money/ui/invoice/gather-invoice-dialog'
+import { useRecordDrill } from '~/components/records/record-drill-panels'
 import { useSystemValues } from '~/components/resources/hooks/use-system-values'
 import { useUser } from '~/hooks/use-user'
 import { api } from '~/trpc/react'
@@ -43,6 +44,7 @@ const VISIT_STATUS: Record<string, { label: string; variant: Variant }> = {
 export function WorkOrderScheduleCard({ recordId }: DrawerTabProps) {
   const { isAdminOrOwner } = useUser()
   const utils = api.useUtils()
+  const drill = useRecordDrill()
   const { data: visits, isLoading } = api.dispatch.listVisits.useQuery({
     workOrderRecordId: recordId,
   })
@@ -75,6 +77,7 @@ export function WorkOrderScheduleCard({ recordId }: DrawerTabProps) {
                 </Badge>
               ) : undefined
             }
+            onDrill={() => drill.open('visits', visit.id)}
             actions={
               isAdminOrOwner && !isTerminal ? (
                 <SchedulePopover
