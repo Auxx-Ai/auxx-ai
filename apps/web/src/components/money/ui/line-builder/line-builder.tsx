@@ -761,10 +761,10 @@ export function LineBuilder({
   return (
     <div
       className={cn(
-        'flex min-h-0 flex-1 flex-col overflow-y-auto rounded-lg',
+        'flex min-h-0 flex-1 flex-col  rounded-lg',
         // Left gutter so the drag grip can sit outside the framed box (grips
         // absolutely position into this space at `-left-4`).
-        !readOnly && 'pl-4',
+        // !readOnly && 'pl-4',
         className
       )}>
       {/* Header + rows share one bordered box, so the grid reads as a single

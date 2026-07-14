@@ -169,9 +169,9 @@ function LineGridRow({
 }
 
 /**
- * Drag grip pinned into the left gutter (the `-left-4` offset lands it outside
- * the bordered frame, mirroring the KB table row handle). Revealed only on row
- * hover; draft rows render no grip at all (they aren't sortable).
+ * Drag grip pinned into the left gutter — a small bordered box centered on the
+ * frame's left edge (the `-left-2.5` offset straddles the border). Revealed only
+ * on row hover; draft rows render no grip at all (they aren't sortable).
  */
 function GripSlot({
   attributes,
@@ -184,7 +184,7 @@ function GripSlot({
     <span
       {...attributes}
       {...listeners}
-      className='-left-4 absolute top-0 bottom-0 flex w-4 cursor-grab items-center justify-center text-muted-foreground opacity-0 transition-opacity group-hover/tree-row:opacity-100'>
+      className='-left-2.5 -translate-y-1/2 absolute top-1/2 flex h-5 w-5 cursor-grab items-center justify-center rounded-md border bg-background text-muted-foreground opacity-0 shadow-sm transition-opacity group-hover/tree-row:opacity-100'>
       <GripVertical className='size-3.5' />
     </span>
   )

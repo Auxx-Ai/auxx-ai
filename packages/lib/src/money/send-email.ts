@@ -26,13 +26,21 @@ function firstTyped(
 }
 
 /**
- * Resolve a quote/invoice RecordId's document type. Both `toRecordId('quote', ...)` and
- * `toRecordId('invoice', ...)` use the literal system entityType string as the RecordId's
- * def component (the quote-lifecycle.ts/gather.ts convention), so this is a plain string
- * check — no entityDefs cache lookup needed (money MI1 build spec §H.2/§H.3).
+ * Resolve a quote/invoice RecordId's document type. The def component arrives in TWO
+ * conventions: the internal builders (`quote-lifecycle.ts`/`gather.ts`/`money.ts`) use the
+ * literal system entityType string (`toRecordId('invoice', ...)`), while the records view /
+ * drawer keys off the EntityDefinition CUID (`toRecordId(entityDefinitionId, ...)` in
+ * records-view.tsx). The drawer's "Send" button uses the CUID form, so a plain
+ * `=== 'invoice'` string check misclassifies every drawer-sent invoice as a quote (money MI1
+ * build spec §H.2/§H.3). Match the literal first, then fall back to the org's `entityDefs`
+ * cache so both conventions resolve correctly.
  */
-function documentTypeOf(recordId: RecordId): DocumentType {
-  return parseRecordId(recordId).entityDefinitionId === 'invoice' ? 'invoice' : 'quote'
+async function documentTypeOf(organizationId: string, recordId: RecordId): Promise<DocumentType> {
+  const { entityDefinitionId } = parseRecordId(recordId)
+  if (entityDefinitionId === 'invoice') return 'invoice'
+  if (entityDefinitionId === 'quote') return 'quote'
+  const entityDefs = await getOrgCache().get(organizationId, 'entityDefs')
+  return entityDefinitionId === entityDefs.invoice ? 'invoice' : 'quote'
 }
 
 export interface EnsureQuoteDocumentPdfInput {
@@ -63,7 +71,7 @@ export async function ensureQuoteDocumentPdf(
   input: EnsureQuoteDocumentPdfInput
 ): Promise<EnsureQuoteDocumentPdfResult> {
   const { organizationId, actorId, quoteRecordId } = input
-  const documentType = documentTypeOf(quoteRecordId)
+  const documentType = await documentTypeOf(organizationId, quoteRecordId)
   try {
     return await ensureDocumentPdfViaQueue({
       documentType,
@@ -112,7 +120,7 @@ export async function prepareDocumentEmail(
   input: PrepareDocumentEmailInput
 ): Promise<PrepareDocumentEmailResult> {
   const { organizationId, userId, quoteRecordId: documentRecordId } = input
-  const documentType = documentTypeOf(documentRecordId)
+  const documentType = await documentTypeOf(organizationId, documentRecordId)
   const handler = new UnifiedCrudHandler(organizationId, userId)
   const cache = getOrgCache()
 

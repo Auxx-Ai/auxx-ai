@@ -36,6 +36,7 @@ import {
   setMyQcItemNote,
   setRecurrenceRule,
   setRouteOrder,
+  setVisitDuration,
   setVisitStatus,
   setWorkerActive,
   unscheduleVisit,
@@ -168,6 +169,7 @@ export const dispatchRouter = createTRPCRouter({
         endTime: z.coerce.date(),
         assigneeUserId: z.string().nullable().optional(),
         timezone: z.string().optional(),
+        timeWriteKind: z.enum(['provisional', 'confirmed']).optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -179,6 +181,7 @@ export const dispatchRouter = createTRPCRouter({
         endTime: input.endTime,
         assigneeUserId: input.assigneeUserId,
         timezone: input.timezone,
+        timeWriteKind: input.timeWriteKind,
         excludeSocketId: excludeSocketId(ctx),
       })
     }),
@@ -305,7 +308,7 @@ export const dispatchRouter = createTRPCRouter({
         assigneeUserId: z.string(),
         dateKey: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
         firstDeparture: z.date(),
-        stops: z.array(z.object({ visitId: z.string(), durationMinutes: z.number().int().min(1) })),
+        visitIds: z.array(z.string()).min(1),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -315,7 +318,30 @@ export const dispatchRouter = createTRPCRouter({
         assigneeUserId: input.assigneeUserId,
         dateKey: input.dateKey,
         firstDeparture: input.firstDeparture,
-        stops: input.stops,
+        visitIds: input.visitIds,
+        excludeSocketId: excludeSocketId(ctx),
+      })
+      return { success: true }
+    }),
+  // Plan 20 §4.1a — standalone duration write (visit detail panel). Never touches the schedule.
+  setVisitDuration: dispatchAdminProcedure
+    .input(
+      z.object({
+        visitId: z.string(),
+        durationMinutes: z
+          .number()
+          .int()
+          .min(1)
+          .max(24 * 60)
+          .nullable(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      await setVisitDuration({
+        organizationId: ctx.session.organizationId,
+        userId: ctx.session.user.id,
+        visitId: input.visitId,
+        durationMinutes: input.durationMinutes,
         excludeSocketId: excludeSocketId(ctx),
       })
       return { success: true }

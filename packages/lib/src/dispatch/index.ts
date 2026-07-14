@@ -68,7 +68,7 @@ export {
   setRecurrenceRule,
   sweepRecurringVisits,
 } from './recurring'
-export type { ApplyRouteTimesInput, ApplyRouteTimesStop } from './route-planner/apply-times'
+export type { ApplyRouteTimesInput } from './route-planner/apply-times'
 export { applyRouteTimes } from './route-planner/apply-times'
 export type { BackfillGeocodeResult } from './route-planner/backfill'
 export { backfillGeocodeVisits } from './route-planner/backfill'
@@ -96,17 +96,19 @@ export type {
   CreateFromTicketInput,
   DispatchVisitInput,
   ScheduleVisitInput,
+  SetVisitDurationInput,
   SetVisitStatusInput,
   UnscheduleVisitInput,
   VisitStatus,
 } from './types'
-export { VISIT_STATUS_VALUES } from './types'
+export { resolveVisitDurationMinutes, VISIT_STATUS_VALUES } from './types'
 export { ensureVisitOnWorkOrderCreate } from './visit-hooks'
 export {
   afterVisitWrite,
   assignVisit,
   ensureVisitForWorkOrder,
   scheduleVisit,
+  setVisitDuration,
   setVisitStatus,
   unscheduleVisit,
 } from './visit-mutations'
