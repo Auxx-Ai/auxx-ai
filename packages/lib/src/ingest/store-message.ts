@@ -505,6 +505,40 @@ export async function storeMessage(
     })
     const { thread, isNewThread, messageRecord, flippedUserIds, didReopen } = txResult
 
+    // Reply-detection hook (Sequences plan §3.3/Phase 2) — an inbound message on a
+    // thread with an active SequenceRun exits that run (reason 'reply'). One
+    // indexed lookup on the hot path, no-op on a miss (the vast majority of inbound
+    // mail has no sequence attached). Dynamic import to keep this module free of
+    // any static dependency on the sequences module; best-effort — never let a
+    // sequence-exit hiccup fail message ingestion.
+    if (messageData.isInbound) {
+      try {
+        const activeRun = await ctx.db.query.SequenceRun.findFirst({
+          where: (t, { eq: eqOp, and: andOp }) =>
+            andOp(
+              eqOp(t.threadId, thread.id),
+              eqOp(t.organizationId, messageData.organizationId),
+              eqOp(t.status, 'active')
+            ),
+          columns: { id: true },
+        })
+        if (activeRun) {
+          const { exitSequenceRun } = await import('../sequences/runtime')
+          await exitSequenceRun(ctx.db, {
+            sequenceRunId: activeRun.id,
+            organizationId: messageData.organizationId,
+            reason: 'reply',
+            metadata: { messageId: messageRecord.id },
+          })
+        }
+      } catch (error) {
+        ctx.logger.error('Sequence reply-detection hook failed (non-fatal)', {
+          threadId: thread.id,
+          error: error instanceof Error ? error.message : String(error),
+        })
+      }
+    }
+
     ctx.logger.debug(
       `Created/Skipped ${resolvedParticipantLinks.length} MessageParticipant links for message ${messageRecord.id}`
     )

@@ -75,6 +75,7 @@ import { resourceRouter } from './routers/resource'
 import { resourceAccessRouter } from './routers/resourceAccess'
 import { searchRouter } from './routers/search'
 import { segmentRouter } from './routers/segment'
+import { sequenceRouter } from './routers/sequence'
 import { settingsRouter } from './routers/setting'
 import { shopifyRouter } from './routers/shopify'
 import { signatureRouter } from './routers/signature'
@@ -169,6 +170,7 @@ export const appRouter = createTRPCRouter({
   resource: resourceRouter,
   resourceAccess: resourceAccessRouter,
   search: searchRouter,
+  sequence: sequenceRouter,
   setting: settingsRouter,
   shopify: shopifyRouter,
   signature: signatureRouter,

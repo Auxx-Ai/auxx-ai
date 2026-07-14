@@ -29,6 +29,7 @@ import {
   FileText,
   Play,
   Plus,
+  Send,
   SquarePen,
   Trash2,
 } from 'lucide-react'
@@ -64,6 +65,7 @@ import { useSaveFieldValue } from '~/components/resources/hooks/use-save-field-v
 import { useActorStore } from '~/components/resources/store/actor-store'
 import { useRelationshipStore } from '~/components/resources/store/relationship-store'
 import { useResourceStore } from '~/components/resources/store/resource-store'
+import { AddToSequenceDialog } from '~/components/sequences/ui/add-to-sequence-dialog'
 import { MassWorkflowTriggerDialog } from '~/components/workflow/mass-workflow-trigger-dialog'
 import { useEffectiveDockState } from '~/hooks/use-effective-dock-state'
 import { useEntityInstanceOperations } from '~/hooks/use-entity-instance-operations'
@@ -159,6 +161,7 @@ export function RecordsView({ slug, basePath, embedded }: RecordsViewProps) {
   const [isBulkUpdateDialogOpen, setIsBulkUpdateDialogOpen] = useState(false)
   const [isWorkflowDialogOpen, setIsWorkflowDialogOpen] = useState(false)
   const [isMergeDialogOpen, setIsMergeDialogOpen] = useState(false)
+  const [isAddToSequenceDialogOpen, setIsAddToSequenceDialogOpen] = useState(false)
 
   // Search bar conditions are records-specific (one global store).
   // DynamicResourceView can't import this store; we feed it the merged
@@ -310,6 +313,11 @@ export function RecordsView({ slug, basePath, embedded }: RecordsViewProps) {
     ]
   )
 
+  // Contact-only bulk action gate — no other bulk action is entity-gated yet,
+  // so this mirrors the established `resource?.entityType === '<type>'`
+  // convention (record-editor-dialog custom editors, detail-view back-URLs).
+  const isContactResource = resource?.entityType === 'contact'
+
   const bulkActions = useMemo(
     () => [
       {
@@ -330,6 +338,20 @@ export function RecordsView({ slug, basePath, embedded }: RecordsViewProps) {
           setIsMergeDialogOpen(true)
         },
       },
+      // Sequences plan §17 — contacts are the only enrollable recipient type.
+      ...(isContactResource
+        ? [
+            {
+              label: 'Add to sequence',
+              icon: Send,
+              variant: 'outline' as const,
+              action: (rows: EntityRow[]) => {
+                setSelectedRowIds(new Set(rows.map((r) => r.id)))
+                setIsAddToSequenceDialogOpen(true)
+              },
+            },
+          ]
+        : []),
       {
         label: 'Edit',
         icon: SquarePen,
@@ -352,7 +374,7 @@ export function RecordsView({ slug, basePath, embedded }: RecordsViewProps) {
         action: (rows: EntityRow[]) => handleBulkDelete(rows),
       },
     ],
-    [handleBulkArchive, handleBulkDelete]
+    [handleBulkArchive, handleBulkDelete, isContactResource]
   )
 
   const { saveBulkMultipleFields } = useSaveFieldValue()
@@ -965,6 +987,15 @@ export function RecordsView({ slug, basePath, embedded }: RecordsViewProps) {
             setSelectedRowIds(new Set())
             refresh()
           }}
+        />
+      )}
+
+      {/* Add to Sequence Dialog (contact views only; dialog enforces the 50-recipient cap) */}
+      {isAddToSequenceDialogOpen && (
+        <AddToSequenceDialog
+          open={isAddToSequenceDialogOpen}
+          onOpenChange={setIsAddToSequenceDialogOpen}
+          recipientEntityInstanceIds={Array.from(selectedRowIds)}
         />
       )}
 

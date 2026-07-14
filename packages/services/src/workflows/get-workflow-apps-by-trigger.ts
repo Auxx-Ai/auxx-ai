@@ -50,6 +50,9 @@ export async function getWorkflowAppsByTrigger(params: {
   // Filter apps by published workflow trigger criteria
   const filteredApps = workflowApps
     .filter((app) => {
+      // System-owned apps (Sequences plan §3.4) are hidden from every org-facing
+      // surface — this feeds the manual-trigger dropdown, so exclude them here too.
+      if (app.ownerType) return false
       if (!app.publishedWorkflow) return false
       if (app.publishedWorkflow.triggerType !== triggerType) return false
       if (entityDefinitionId && app.publishedWorkflow.entityDefinitionId !== entityDefinitionId)

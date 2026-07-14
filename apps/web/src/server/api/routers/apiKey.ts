@@ -108,6 +108,13 @@ export const apiKeyRouter = createTRPCRouter({
             message: 'Workflow not found',
           })
         }
+        // System-owned apps (Sequences plan §3.4) aren't addressable by org users.
+        if (workflowApp.ownerType) {
+          throw new TRPCError({
+            code: 'FORBIDDEN',
+            message: 'This workflow is managed by the system and cannot be accessed directly.',
+          })
+        }
       }
 
       // Chat keys are channel-scoped and admin-gated

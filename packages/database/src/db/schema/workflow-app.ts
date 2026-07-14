@@ -9,6 +9,7 @@ import {
   integer,
   jsonb,
   pgTable,
+  sql,
   text,
   timestamp,
   uniqueIndex,
@@ -113,12 +114,33 @@ export const WorkflowApp = pgTable(
     totalRuns: integer().default(0).notNull(),
     /** Last run timestamp via public share */
     lastRunAt: timestamp({ precision: 3 }),
+
+    /**
+     * System-workflow marker (Sequences plan §3.4/§21.4). NULL for normal
+     * user-authored workflows. `'sequence'` (future: `'sla'`, …) for hidden
+     * workflows a feature owns and compiles on its behalf — `ownerId` is that
+     * feature row's id (e.g. `Sequence.id`). Every org-facing list/get/mutate
+     * surface must filter/forbid on `ownerType IS NOT NULL`; see
+     * `packages/lib/src/workflows/workflow-app-access-guard.ts`.
+     */
+    ownerType: text(),
+    /** Id of the owning row in the `ownerType` domain (no FK — polymorphic). */
+    ownerId: text(),
   },
   (table) => [
     uniqueIndex('WorkflowApp_draftWorkflowId_key').using(
       'btree',
       table.draftWorkflowId.asc().nullsLast()
     ),
+    // Lockdown filter hot path — partial since ownerType is NULL for the vast
+    // majority (user-authored) rows.
+    index('WorkflowApp_organizationId_ownerType_idx')
+      .using('btree', table.organizationId.asc().nullsLast(), table.ownerType.asc().nullsLast())
+      .where(sql`"ownerType" IS NOT NULL`),
+    // One WorkflowApp per owning row (e.g. one hidden app per Sequence).
+    uniqueIndex('WorkflowApp_ownerType_ownerId_key')
+      .using('btree', table.ownerType.asc().nullsLast(), table.ownerId.asc().nullsLast())
+      .where(sql`"ownerType" IS NOT NULL`),
     index('WorkflowApp_organizationId_enabled_idx').using(
       'btree',
       table.organizationId.asc().nullsLast(),

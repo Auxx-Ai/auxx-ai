@@ -23,6 +23,14 @@ export interface CachedWorkflowApp {
   draftTriggerType: string | null
 
   publishedWorkflow: CachedPublishedWorkflow | null
+
+  /**
+   * System-workflow marker (Sequences plan §3.4/§21.4). `null` for normal
+   * user-authored workflows; set (e.g. `'sequence'`) for hidden workflows a
+   * feature owns. `list()` below filters these out — every org-facing
+   * surface must stay blind to system-owned apps.
+   */
+  ownerType: string | null
 }
 
 /** Cached published workflow — execution-critical fields only */
@@ -61,6 +69,7 @@ function dehydrateWorkflowApp(app: {
   createdAt: Date
   isPublic: boolean
   isUniversal: boolean
+  ownerType: string | null
   publishedWorkflow: {
     id: string
     version: number
@@ -93,6 +102,7 @@ function dehydrateWorkflowApp(app: {
     createdAt: app.createdAt.toISOString(),
     isPublic: app.isPublic,
     isUniversal: app.isUniversal,
+    ownerType: app.ownerType,
     draftTriggerType: app.draftWorkflow?.triggerType ?? null,
     publishedWorkflow: app.publishedWorkflow
       ? {
@@ -148,10 +158,10 @@ export const workflowAppsProvider: CacheProvider<CachedWorkflowApp[]> = {
         )
       },
 
-      /** Find enabled app by ID */
+      /** Find enabled app by ID — excludes system-owned apps (Sequences plan §3.4). */
       async byAppId(workflowAppId: string): Promise<CachedWorkflowApp | null> {
         const data = await dataFn()
-        return data.find((app) => app.id === workflowAppId && app.enabled) ?? null
+        return data.find((app) => app.id === workflowAppId && app.enabled && !app.ownerType) ?? null
       },
 
       /** Find enabled apps matching app trigger fields */
@@ -188,7 +198,11 @@ export const workflowAppsProvider: CacheProvider<CachedWorkflowApp[]> = {
         )
       },
 
-      /** List workflow apps with filtering, sorting, and pagination for the list view */
+      /**
+       * List workflow apps with filtering, sorting, and pagination for the list view.
+       * Always excludes system-owned apps (Sequences plan §3.4) — the list surface is
+       * only for org-authored workflows.
+       */
       async list(filters?: {
         search?: string
         triggerType?: string
@@ -196,7 +210,7 @@ export const workflowAppsProvider: CacheProvider<CachedWorkflowApp[]> = {
         limit?: number
         offset?: number
       }): Promise<{ workflows: CachedWorkflowApp[]; total: number; hasMore: boolean }> {
-        let data = await dataFn()
+        let data = (await dataFn()).filter((app) => !app.ownerType)
 
         if (filters?.enabled !== undefined) {
           data = data.filter((app) => app.enabled === filters.enabled)
