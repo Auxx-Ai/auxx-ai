@@ -108,6 +108,7 @@ export const DRAWER_TAB_CARD_COMPONENTS: Record<
     import('./cards/quote-customer-card').then((m) => ({ default: m.QuoteCustomerCard })),
   'quote:origin': () =>
     import('./cards/quote-origin-card').then((m) => ({ default: m.QuoteOriginCard })),
+  'quote:jobs': () => import('./cards/quote-jobs-card').then((m) => ({ default: m.QuoteJobsCard })),
   // Drawer-only line-items block (the invoice:lines pattern) — the detail page
   // renders its own Line-items section via DETAIL_VIEW_TAB_COMPONENTS instead.
   'quote:lines': () =>

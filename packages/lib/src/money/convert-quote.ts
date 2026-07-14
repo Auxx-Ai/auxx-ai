@@ -65,6 +65,40 @@ export async function convertQuoteToWorkOrder(input: ConvertQuoteToWorkOrderInpu
     )
   }
 
+  // One-job-per-quote guard: the quote stays `approved` after conversion (there is
+  // no `converted` quote status), so without this a second convert — e.g. the admin
+  // clicking "Convert to job" after the public accept page already auto-converted —
+  // would silently duplicate the job. Canceled jobs don't count: a canceled
+  // conversion can be redone.
+  const existingJobs = await handler.listFiltered({
+    entityDefinitionId: 'work_order',
+    filters: [
+      {
+        id: 'converted-job-guard',
+        logicalOperator: 'AND',
+        conditions: [
+          {
+            id: 'converted-job-guard-quote',
+            fieldId: 'work_order:quote',
+            operator: 'is',
+            value: quoteRecordId,
+          },
+          {
+            id: 'converted-job-guard-status',
+            fieldId: 'work_order:status',
+            operator: 'not in',
+            value: ['canceled'],
+          },
+        ],
+      },
+    ],
+    limit: 1,
+    mode: 'oneshot',
+  })
+  if (existingJobs.ids.length > 0) {
+    throw new BadRequestError('This quote has already been converted to a job')
+  }
+
   // ─── Step 2: read quote fields + the request's serviceAddress when linked ──
   const titleTyped = cf.quote_title ? firstTyped(quoteValues.get(cf.quote_title.id)) : undefined
   const contactTyped = cf.quote_contact

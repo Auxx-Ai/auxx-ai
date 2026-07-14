@@ -117,6 +117,7 @@ export const DETAIL_VIEW_CONFIG_REGISTRY: DetailViewConfigRegistry = {
     sidebarCards: [
       { value: 'customer', label: 'Customer' },
       { value: 'origin', label: 'Origin' },
+      { value: 'jobs', label: 'Jobs' },
     ],
   },
 

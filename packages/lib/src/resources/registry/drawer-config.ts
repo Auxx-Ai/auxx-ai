@@ -123,6 +123,7 @@ export const DRAWER_CONFIG_REGISTRY: DrawerConfigRegistry = {
         { value: 'lines', label: 'Line items', fullBleed: true },
         { value: 'customer', label: 'Customer' },
         { value: 'origin', label: 'Origin' },
+        { value: 'jobs', label: 'Jobs' },
       ],
     },
   },

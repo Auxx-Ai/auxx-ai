@@ -16,7 +16,7 @@ import { Maximize2, PanelRight, Pencil, Star } from 'lucide-react'
 import Link from 'next/link'
 import { useMemo, useState } from 'react'
 import { useFavoriteToggle } from '~/components/favorites/hooks/use-favorite-toggle'
-import { RecordEditorDialog } from '~/components/records/record-editor-dialog'
+import { useRecordEditorStore } from '~/components/records/record-editor-store'
 import { useRecord } from '~/components/resources/hooks/use-record'
 import { useResource } from '~/components/resources/hooks/use-resource'
 import { useResourceStore } from '~/components/resources/store/resource-store'
@@ -64,51 +64,60 @@ export function RecordHoverCard({
   className,
   onOpenInDrawer,
 }: RecordHoverCardProps) {
-  // Edit-dialog state lives here (not in the body) so the dialog survives the
-  // hover card closing — `HoverCardContent` unmounts on mouse-leave, which would
-  // otherwise tear down a dialog rendered inside it the moment it opens.
-  const [isEditOpen, setIsEditOpen] = useState(false)
+  // The hover card is controlled so we can force it shut the instant an overlay
+  // (edit dialog / drawer) opens from inside it. Otherwise the modal disables
+  // outside pointer events, the card never gets its pointer-leave, and it stays
+  // mounted — visible through the dialog's transparent (blur-only) overlay.
+  const [isHoverOpen, setIsHoverOpen] = useState(false)
+
+  // The edit dialog is opened at the app root (`GlobalRecordEditorRoot`), NOT
+  // rendered here — see `useRecordEditorStore`. Rendering it inline makes it a
+  // Radix "branch" of any enclosing picker, so the picker can't dismiss and sits
+  // open behind the dialog. Rooted, the modal grabs focus from outside the
+  // picker's branch and the picker's own `onFocusOutside` closes it.
+  const openEditor = useRecordEditorStore((s) => s.openEditor)
+
+  // Opening an overlay from the hover card: close the card first (Radix hover
+  // cards don't self-dismiss on outside focus), then open the overlay.
+  const openOverlay = (open: () => void) => {
+    setIsHoverOpen(false)
+    open()
+  }
 
   if (!recordId) return <>{children}</>
 
   const entityDefinitionId = getDefinitionId(recordId)
 
   return (
-    <>
-      <HoverCard openDelay={openDelay} closeDelay={closeDelay}>
-        {/* Wrap in a stable inline-flex span so the trigger's pointer listeners
-            attach to a host element we own — avoids asChild merging into a
-            re-rendering Link/anchor inside a virtualized cell, which can drop
-            pointerenter events. */}
-        <HoverCardTrigger asChild>
-          <span data-slot='record-hover-trigger' className='inline-flex max-w-full'>
-            {children}
-          </span>
-        </HoverCardTrigger>
-        <HoverCardContent
-          side={side}
-          align={align}
-          sideOffset={sideOffset}
-          collisionPadding={8}
-          className={cn('w-80 p-3', className)}
-          onClick={(e) => e.stopPropagation()}>
-          <RecordHoverCardBody
-            recordId={recordId}
-            fields={fields}
-            onOpenInDrawer={onOpenInDrawer}
-            onEdit={() => setIsEditOpen(true)}
-          />
-        </HoverCardContent>
-      </HoverCard>
-      {isEditOpen && (
-        <RecordEditorDialog
-          open={isEditOpen}
-          onOpenChange={setIsEditOpen}
-          entityDefinitionId={entityDefinitionId}
+    <HoverCard
+      open={isHoverOpen}
+      onOpenChange={setIsHoverOpen}
+      openDelay={openDelay}
+      closeDelay={closeDelay}>
+      {/* Wrap in a stable inline-flex span so the trigger's pointer listeners
+          attach to a host element we own — avoids asChild merging into a
+          re-rendering Link/anchor inside a virtualized cell, which can drop
+          pointerenter events. */}
+      <HoverCardTrigger asChild>
+        <span data-slot='record-hover-trigger' className='inline-flex max-w-full'>
+          {children}
+        </span>
+      </HoverCardTrigger>
+      <HoverCardContent
+        side={side}
+        align={align}
+        sideOffset={sideOffset}
+        collisionPadding={8}
+        className={cn('w-80 p-3', className)}
+        onClick={(e) => e.stopPropagation()}>
+        <RecordHoverCardBody
           recordId={recordId}
+          fields={fields}
+          onOpenInDrawer={onOpenInDrawer && ((id) => openOverlay(() => onOpenInDrawer(id)))}
+          onEdit={() => openOverlay(() => openEditor({ entityDefinitionId, recordId }))}
         />
-      )}
-    </>
+      </HoverCardContent>
+    </HoverCard>
   )
 }
 

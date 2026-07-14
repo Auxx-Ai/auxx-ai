@@ -13,6 +13,7 @@
 // (QuoteLinesOverviewCard below — records-view/dashboards open quotes in a drawer
 // regardless of `hasDetailPage`).
 
+import { extractRelationshipRecordIds } from '@auxx/lib/field-values/client'
 import { parseRecordId } from '@auxx/lib/resources/client'
 import { Badge } from '@auxx/ui/components/badge'
 import { DropdownMenuItem, DropdownMenuSeparator } from '@auxx/ui/components/dropdown-menu'
@@ -34,7 +35,7 @@ import { useSaveSystemValues, useSystemValues } from '~/components/resources/hoo
 import { useConfirm } from '~/hooks/use-confirm'
 import { api } from '~/trpc/react'
 
-const QUOTE_STATUS_ATTRS = ['quote_status', 'quote_valid_until'] as const
+const QUOTE_STATUS_ATTRS = ['quote_status', 'quote_valid_until', 'quote_work_orders'] as const
 
 /** Statuses where the quote can still expire — approved/declined/canceled are terminal. */
 const EXPIRABLE_STATUSES = new Set(['draft', 'sent'])
@@ -52,6 +53,9 @@ export function QuoteLineItemsTab({ recordId, variant = 'tab' }: DetailViewTabPr
 
   const status = (values.quote_status as string | undefined) ?? 'draft'
   const validUntil = values.quote_valid_until as string | null | undefined
+  // Job this quote was already converted into (the public accept page
+  // auto-converts) — swaps "Convert to job" for "View job" below.
+  const convertedWorkOrderRecordId = extractRelationshipRecordIds(values.quote_work_orders)[0]
 
   const isExpired = useMemo(() => {
     if (!validUntil || !EXPIRABLE_STATUSES.has(status)) return false
@@ -171,9 +175,20 @@ export function QuoteLineItemsTab({ recordId, variant = 'tab' }: DetailViewTabPr
             </>
           )}
 
-          {status === 'approved' && (
+          {status === 'approved' && !convertedWorkOrderRecordId && (
             <DropdownMenuItem onClick={handleConvert}>
               <SquareArrowOutUpRight /> Convert to job
+            </DropdownMenuItem>
+          )}
+
+          {convertedWorkOrderRecordId && (
+            <DropdownMenuItem
+              onClick={() =>
+                router.push(
+                  `/app/work-orders/${parseRecordId(convertedWorkOrderRecordId).entityInstanceId}`
+                )
+              }>
+              <SquareArrowOutUpRight /> View job
             </DropdownMenuItem>
           )}
 
@@ -187,7 +202,7 @@ export function QuoteLineItemsTab({ recordId, variant = 'tab' }: DetailViewTabPr
           )}
         </DocumentActionsCluster>
       </DocumentSectionActions>
-
+      {/* 
       {REVERTIBLE_STATUSES.has(status) && (
         <div className='mx-4 mt-3 flex items-center gap-3 rounded-lg border border-amber-400/30 bg-amber-400/10 px-3 py-2 text-sm'>
           <span className='text-amber-700 dark:text-amber-400'>
@@ -196,9 +211,9 @@ export function QuoteLineItemsTab({ recordId, variant = 'tab' }: DetailViewTabPr
               : `This quote is ${status} — use “Return to draft” to edit it.`}
           </span>
         </div>
-      )}
+      )} */}
 
-      <div className={cn(isSection ? 'max-h-[60vh] overflow-auto pe-3' : 'min-h-0 flex-1')}>
+      <div className={cn(isSection ? 'max-h-[60vh] overflow-auto ps-3 pe-3' : 'min-h-0 flex-1')}>
         <LineBuilder documentRecordId={recordId} documentType='quote' readOnly={readOnly} />
       </div>
 
