@@ -218,12 +218,14 @@ export function WorkOrderBillingTab({ recordId, variant = 'tab' }: DetailViewTab
           </div>
 
           {/* Block e — payments */}
-          <WorkOrderBillingPaymentsBlock
-            workOrderRecordId={recordId}
-            hasInvoices={invoiceRecordIds.length > 0}
-            candidates={candidates}
-            currencyCode={currencyCode}
-          />
+          <BlockLabel>Payments</BlockLabel>
+          <div className='bg-primary-100 border rounded-xl'>
+            <WorkOrderBillingPaymentsBlock
+              workOrderRecordId={recordId}
+              candidates={candidates}
+              currencyCode={currencyCode}
+            />
+          </div>
         </div>
       </div>
       <ConfirmDialog />

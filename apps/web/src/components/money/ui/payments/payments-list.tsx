@@ -8,8 +8,8 @@
 // rows) behavior is unchanged; callers own their own queries/mutations.
 
 import { Badge, type Variant as BadgeVariant } from '@auxx/ui/components/badge'
-import { Button } from '@auxx/ui/components/button'
 import { EmptySection } from '@auxx/ui/components/section'
+import { TreeRow, TreeRowButton } from '@auxx/ui/components/tree-row'
 import { format } from 'date-fns'
 import { CreditCard, RotateCcw, Trash2 } from 'lucide-react'
 import type { ReactNode } from 'react'
@@ -101,44 +101,29 @@ export function PaymentsList({
   }
 
   return (
-    <div className='flex flex-col divide-y divide-primary-200/50 dark:divide-[#1e2227]'>
-      {payments.map((payment) => (
-        <div key={payment.id} className='group flex items-center gap-2 py-1.5 text-sm'>
-          <span className='w-24 shrink-0 tabular-nums text-muted-foreground'>
-            {format(new Date(payment.date), 'MMM d, yyyy')}
-          </span>
-          <span className='w-28 shrink-0 truncate text-muted-foreground'>
-            {paymentMethodLabel(payment.method ?? 'other')}
-          </span>
-          <span className='min-w-0 flex-1 truncate text-muted-foreground text-xs'>
-            {payment.reference ?? ''}
-          </span>
-          <span className='shrink-0 tabular-nums'>
-            {formatCurrency(payment.amount, currencyCode)}
-          </span>
-          {payment.provider === 'manual'
+    <div className='flex flex-col'>
+      {payments.map((payment) => {
+        const action =
+          payment.provider === 'manual'
             ? isAdmin && (
-                <Button
-                  variant='ghost'
-                  size='icon-sm'
-                  className='shrink-0 text-destructive/70 opacity-0 transition-opacity hover:text-destructive group-hover:opacity-100'
-                  loading={deletePending}
+                <TreeRowButton
+                  variant='destructive'
+                  tooltipText='Delete payment'
+                  disabled={deletePending}
                   onClick={() => onDelete(payment.id)}>
                   <Trash2 />
-                </Button>
+                </TreeRowButton>
               )
             : payment.kind === 'charge' &&
                 payment.status === 'succeeded' &&
                 !refundStatusByCharge.has(payment.id)
               ? isAdmin && (
-                  <Button
-                    variant='ghost'
-                    size='icon-sm'
-                    className='shrink-0 text-muted-foreground opacity-0 transition-opacity hover:text-foreground group-hover:opacity-100'
-                    loading={refundPending}
+                  <TreeRowButton
+                    tooltipText='Refund payment'
+                    disabled={refundPending}
                     onClick={() => onRefund(payment.id)}>
                     <RotateCcw />
-                  </Button>
+                  </TreeRowButton>
                 )
               : (() => {
                   const chip = stripeStatusChip(payment, refundStatusByCharge.get(payment.id))
@@ -147,10 +132,35 @@ export function PaymentsList({
                       {chip.label}
                     </Badge>
                   )
-                })()}
-          {renderRowSuffix?.(payment)}
-        </div>
-      ))}
+                })()
+
+        return (
+          <TreeRow
+            key={payment.id}
+            icon={<CreditCard className='size-4' />}
+            title={
+              <span className='truncate text-sm'>
+                {paymentMethodLabel(payment.method ?? 'other')}
+              </span>
+            }
+            secondary={
+              <span className='tabular-nums'>{format(new Date(payment.date), 'MMM d, yyyy')}</span>
+            }
+            actions={
+              <div className='flex items-center gap-3 text-xs text-muted-foreground'>
+                {payment.reference && (
+                  <span className='max-w-32 truncate'>{payment.reference}</span>
+                )}
+                <span className='shrink-0 text-foreground text-sm tabular-nums'>
+                  {formatCurrency(payment.amount, currencyCode)}
+                </span>
+                {renderRowSuffix?.(payment)}
+                {action}
+              </div>
+            }
+          />
+        )
+      })}
     </div>
   )
 }
