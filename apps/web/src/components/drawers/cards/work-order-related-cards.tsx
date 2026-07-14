@@ -79,11 +79,17 @@ export function WorkOrderInvoicesCard({ recordId }: DrawerTabProps) {
   return (
     <div className={`space-y-0.5 ${TREE_SECONDARY_NOTRUNCATE}`}>
       {invoiceRecordIds.map((id) => (
-        <RelatedRecordRow key={id} recordId={id} statusAttr='invoice_status' />
+        <RelatedRecordRow
+          key={id}
+          recordId={id}
+          statusAttr='invoice_status'
+          rowClassName='hover:bg-primary-100'
+        />
       ))}
 
       {/* Always available — the gather dialog owns the "no uninvoiced lines" empty state. */}
       <TreeRow
+        rowClassName='hover:bg-primary-100'
         icon={
           invoiceRecordIds.length > 0 ? <Plus className='size-4' /> : <Receipt className='size-4' />
         }

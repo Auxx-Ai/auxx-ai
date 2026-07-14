@@ -100,6 +100,8 @@ export interface LineBuilderProps {
    * set (`visitId` empty). The two sets never overlap — that split is enforced in `filters` below.
    */
   visitId?: string
+  /** Extra classes merged onto the builder's scroll-container root. */
+  className?: string
 }
 
 const LINE_ITEM_SLUG = 'line-items'
@@ -145,6 +147,7 @@ export function LineBuilder({
   documentType,
   readOnly = false,
   visitId,
+  className,
 }: LineBuilderProps) {
   const docRecordId = documentRecordId as RecordId
   const { resource } = useResource(LINE_ITEM_SLUG)
@@ -761,7 +764,8 @@ export function LineBuilder({
         'flex min-h-0 flex-1 flex-col overflow-y-auto rounded-lg',
         // Left gutter so the drag grip can sit outside the framed box (grips
         // absolutely position into this space at `-left-4`).
-        !readOnly && 'pl-4'
+        !readOnly && 'pl-4',
+        className
       )}>
       {/* Header + rows share one bordered box, so the grid reads as a single
           framed table. Totals sit outside the frame, below. */}

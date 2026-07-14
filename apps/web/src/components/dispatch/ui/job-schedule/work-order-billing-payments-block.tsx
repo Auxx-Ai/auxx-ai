@@ -8,17 +8,20 @@
 // affected invoice's own `listPayments` so an open invoice drawer stays fresh. `renderRowSuffix`
 // adds a small invoice chip per row (§B slot) so a mixed-invoice ledger stays legible.
 //
+// Layout mirrors the invoices block (block 4): a plain `TuckedLabel` header with no action, a
+// `px-2` list, and the "record" affordance as a `TreeRow` at the bottom (matching "Create
+// invoice") rather than a header button.
+//
 // §C: candidates = invoices with `invoice_status !== 'void'` and `invoice_balance > 0`, handed
 // down by the billing tab (it already aggregates per-invoice values for the summary strip).
-// Exactly one → the dialog opens directly against it; multiple → a small `DropdownMenu`
-// chooser lists each ("<number> — <balance> due"); zero → no action, and — when there are no
-// invoices at all — a custom `EmptySection` explaining that, instead of `PaymentsList`'s own
+// Exactly one → the Record-payment row opens the dialog against it; multiple → that row becomes
+// a `DropdownMenu` chooser ("<number> — <balance> due"); zero → the row is hidden. When there
+// are no invoices at all, a custom `EmptySection` explains that, instead of `PaymentsList`'s own
 // "no payments recorded" copy (which reads wrong when there's nothing to attach a payment to).
 
 import type { RecordId } from '@auxx/types/resource'
 import { getInstanceId } from '@auxx/types/resource'
 import { Badge } from '@auxx/ui/components/badge'
-import { Button } from '@auxx/ui/components/button'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -27,6 +30,7 @@ import {
 } from '@auxx/ui/components/dropdown-menu'
 import { EmptySection } from '@auxx/ui/components/section'
 import { toastError } from '@auxx/ui/components/toast'
+import { TREE_SECONDARY_NOTRUNCATE, TreeRow } from '@auxx/ui/components/tree-row'
 import { CreditCard, Plus } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useMemo, useState } from 'react'
@@ -34,6 +38,7 @@ import { useAdminGate } from '~/components/global/admin-gate'
 import { RecordPaymentDialog } from '~/components/money/ui/invoice/record-payment-dialog'
 import { formatCurrency } from '~/components/money/ui/line-builder/shared'
 import { PaymentsList } from '~/components/money/ui/payments/payments-list'
+import { TuckedLabel } from '~/components/money/ui/tucked-label'
 import { useRecord } from '~/components/resources'
 import { useConfirm } from '~/hooks/use-confirm'
 import { api } from '~/trpc/react'
@@ -123,57 +128,90 @@ export function WorkOrderBillingPaymentsBlock({
 
   const openDirect = (candidate: PaymentCandidate) => setTarget(candidate)
 
+  const hasPayments = (payments?.length ?? 0) > 0
+
   return (
-    <div className='flex flex-col gap-1'>
-      <div className='flex items-center justify-between px-4 pt-1 pb-1'>
-        <span className='text-xs font-medium text-muted-foreground'>Payments</span>
-        {candidates.length === 1 && (
-          <Button variant='ghost' size='xs' onClick={() => openDirect(candidates[0]!)}>
-            <Plus />
-            Record payment
-          </Button>
-        )}
-        {candidates.length > 1 && (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant='ghost' size='xs'>
-                <Plus />
-                Record payment
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align='end'>
-              {candidates.map((candidate) => (
-                <DropdownMenuItem key={candidate.recordId} onClick={() => openDirect(candidate)}>
-                  {candidate.displayName} — {formatCurrency(candidate.balance, currencyCode)} due
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
+    <div className='flex flex-col'>
+      {/* Header + content mirror the invoices block: a plain tucked label (no action) and a
+          `px-2` list whose "create" affordance is a TreeRow at the bottom (§B / block 4 parity). */}
+      <TuckedLabel className='mx-4 mt-2'>Payments</TuckedLabel>
+
+      <div className={`px-2 ${TREE_SECONDARY_NOTRUNCATE}`}>
+        {!hasInvoices ? (
+          <EmptySection
+            icon={<CreditCard className='size-5' />}
+            title='No invoices yet'
+            description='Create an invoice above before recording a payment.'
+          />
+        ) : (
+          <>
+            {(hasPayments || isLoading) && (
+              <PaymentsList
+                payments={payments}
+                isLoading={isLoading}
+                currencyCode={currencyCode}
+                isAdmin={isAdmin}
+                onDelete={handleDelete}
+                onRefund={handleRefund}
+                deletePending={deletePayment.isPending}
+                refundPending={refundTransaction.isPending}
+                renderRowSuffix={(payment) => {
+                  const invoiceRecordId = invoiceByTransactionId.get(payment.id)
+                  return invoiceRecordId ? (
+                    <PaymentInvoiceChip invoiceRecordId={invoiceRecordId} />
+                  ) : null
+                }}
+              />
+            )}
+
+            {candidates.length === 1 && (
+              <TreeRow
+                icon={hasPayments ? <Plus className='size-4' /> : <CreditCard className='size-4' />}
+                title={<span className='text-muted-foreground text-sm'>Record payment</span>}
+                onToggleOpen={() => openDirect(candidates[0]!)}
+              />
+            )}
+
+            {candidates.length > 1 && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <div>
+                    <TreeRow
+                      rowClassName='cursor-pointer'
+                      icon={
+                        hasPayments ? (
+                          <Plus className='size-4' />
+                        ) : (
+                          <CreditCard className='size-4' />
+                        )
+                      }
+                      title={<span className='text-muted-foreground text-sm'>Record payment</span>}
+                    />
+                  </div>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align='start'>
+                  {candidates.map((candidate) => (
+                    <DropdownMenuItem
+                      key={candidate.recordId}
+                      onClick={() => openDirect(candidate)}>
+                      {candidate.displayName} — {formatCurrency(candidate.balance, currencyCode)}{' '}
+                      due
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
+
+            {!isLoading && !hasPayments && candidates.length === 0 && (
+              <EmptySection
+                icon={<CreditCard className='size-5' />}
+                title='No payments recorded'
+                description='Payments appear here once an invoice has a balance due.'
+              />
+            )}
+          </>
         )}
       </div>
-
-      {!hasInvoices ? (
-        <EmptySection
-          icon={<CreditCard className='size-5' />}
-          title='No invoices yet'
-          description='Create an invoice above before recording a payment.'
-        />
-      ) : (
-        <PaymentsList
-          payments={payments}
-          isLoading={isLoading}
-          currencyCode={currencyCode}
-          isAdmin={isAdmin}
-          onDelete={handleDelete}
-          onRefund={handleRefund}
-          deletePending={deletePayment.isPending}
-          refundPending={refundTransaction.isPending}
-          renderRowSuffix={(payment) => {
-            const invoiceRecordId = invoiceByTransactionId.get(payment.id)
-            return invoiceRecordId ? <PaymentInvoiceChip invoiceRecordId={invoiceRecordId} /> : null
-          }}
-        />
-      )}
 
       {target && (
         <RecordPaymentDialog

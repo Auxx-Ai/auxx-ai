@@ -198,11 +198,7 @@ export function QuoteLineItemsTab({ recordId, variant = 'tab' }: DetailViewTabPr
         </div>
       )}
 
-      <div
-        className={cn(
-          'flex flex-col pb-4 pt-3',
-          isSection ? 'max-h-[60vh] overflow-auto' : 'min-h-0 flex-1'
-        )}>
+      <div className={cn(isSection ? 'max-h-[60vh] overflow-auto pe-3' : 'min-h-0 flex-1')}>
         <LineBuilder documentRecordId={recordId} documentType='quote' readOnly={readOnly} />
       </div>
 
