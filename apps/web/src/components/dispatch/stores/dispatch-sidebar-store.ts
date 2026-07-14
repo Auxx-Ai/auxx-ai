@@ -12,6 +12,11 @@ interface DispatchSidebarExtra {
   /** `null` = every tag visible (map mode only). */
   selectedTags: string[] | null
   setSelectedTags: (tags: string[] | null) => void
+  /** Dockable event panel (plan 21) — on/off + which side of the calendar it's pinned to.
+   * Default off, right (opposite the always-left `DispatchSidebar`). */
+  eventDock: { open: boolean; side: 'left' | 'right' }
+  setEventDockOpen: (open: boolean) => void
+  setEventDockSide: (side: 'left' | 'right') => void
 }
 
 /**
@@ -35,6 +40,9 @@ export const useDispatchSidebarStore = createCalendarSidebarStore<DispatchSideba
   (set) => ({
     selectedTags: null,
     setSelectedTags: (tags) => set({ selectedTags: tags }),
+    eventDock: { open: false, side: 'right' },
+    setEventDockOpen: (open) => set((state) => ({ eventDock: { ...state.eventDock, open } })),
+    setEventDockSide: (side) => set((state) => ({ eventDock: { ...state.eventDock, side } })),
   })
 )
 
