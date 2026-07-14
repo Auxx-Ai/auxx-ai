@@ -13,6 +13,7 @@ import { toastError } from '@auxx/ui/components/toast'
 import { TreeRow } from '@auxx/ui/components/tree-row'
 import { Plus } from 'lucide-react'
 import { useRouter } from 'next/navigation'
+import { useOpenRecord } from '~/components/records/record-drill-panels'
 import { useSystemValues } from '~/components/resources/hooks/use-system-values'
 import { api } from '~/trpc/react'
 import type { DrawerTabProps } from '../drawer-tab-registry'
@@ -55,6 +56,7 @@ export function ServiceRequestWorkOrdersCard({ recordId }: DrawerTabProps) {
 
 export function ServiceRequestQuotesCard({ recordId }: DrawerTabProps) {
   const router = useRouter()
+  const openRecord = useOpenRecord()
 
   const { values, isLoading } = useSystemValues(recordId, ['service_request_quotes'], {
     autoFetch: true,
@@ -94,7 +96,16 @@ export function ServiceRequestQuotesCard({ recordId }: DrawerTabProps) {
 
   const createQuote = api.money.createQuoteFromRequest.useMutation({
     onSuccess: (result) => {
-      router.push(`/app/quotes/${getInstanceId(result.recordId)}`)
+      // In a stack host (drawer) → push the new quote in place; outside one →
+      // fall back to the full-page navigation (decisions #7/#8). Refetch the
+      // active-quote guard since the SR frame stays mounted beneath the push
+      // (before, navigating away made the stale row invisible).
+      if (openRecord) {
+        void refetch()
+        openRecord(result.recordId)
+      } else {
+        router.push(`/app/quotes/${getInstanceId(result.recordId)}`)
+      }
     },
     onError: (error) => {
       toastError({ title: 'Error creating quote', description: error.message })

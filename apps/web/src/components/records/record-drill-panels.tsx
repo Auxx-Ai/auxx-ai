@@ -12,7 +12,7 @@ import { Button } from '@auxx/ui/components/button'
 import { useNavStack } from '@auxx/ui/components/nav-stack'
 import { ChevronLeft } from 'lucide-react'
 import dynamic from 'next/dynamic'
-import { useQueryState } from 'nuqs'
+import { parseAsArrayOf, parseAsString, useQueryState, useQueryStates } from 'nuqs'
 import * as React from 'react'
 import type { RecordId } from '~/components/resources'
 
@@ -174,4 +174,116 @@ export function useRecordDrillStack(drillPanels: RecordDrillPanel[]) {
   )
 
   return { panel, item, setItem, clear, activeDrillPanel, stack, onStackChange }
+}
+
+/** `useRecordPeekStack`'s return shape. */
+export interface RecordPeekStack {
+  /** `[base, ...peek]` — the full stack of frames, base first, top last. */
+  frames: RecordId[]
+  /** `frames[frames.length - 1]` — the frame currently on top. */
+  top: RecordId | null
+  /** `frames.length`. */
+  depth: number
+  /** Push a record onto the stack. Already-present (incl. the base) → truncate back to it. */
+  push: (recordId: RecordId) => void
+  /** Drop the top peek frame. No-op at depth 1 (base only). */
+  pop: () => void
+  /** Empty the peek stack entirely. */
+  clear: () => void
+}
+
+/**
+ * Cross-record "peek" stack over a record surface's `?peek=` nuqs array param
+ * (dispatch v4/04 §1.1) — the layer ABOVE `useRecordDrillStack`: each frame in
+ * the stack is a full drawer body for one record (its own header, tabs,
+ * overview cards) and owns its own `panel`/`item` drill independently. The
+ * base record stays the host's own param (`?record=`/`?id=`); this hook only
+ * owns `peek`, so a host needs zero changes to adopt it.
+ *
+ * Push/pop/clear all write `peek` AND clear `tab`/`panel`/`item` in the SAME
+ * `useQueryStates` batch — one history entry, no intermediate render with a
+ * new top frame but a stale drill/tab from the frame it replaced.
+ */
+export function useRecordPeekStack(baseRecordId: RecordId | null): RecordPeekStack {
+  const [{ peek }, setState] = useQueryStates({
+    peek: parseAsArrayOf(parseAsString),
+    tab: parseAsString,
+    panel: parseAsString,
+    item: parseAsString,
+  })
+
+  const frames = React.useMemo<RecordId[]>(() => {
+    if (!baseRecordId) return []
+    return [baseRecordId, ...((peek ?? []) as RecordId[])]
+  }, [baseRecordId, peek])
+
+  const depth = frames.length
+  const top = frames[depth - 1] ?? null
+
+  const push = React.useCallback(
+    (recordId: RecordId) => {
+      const existingIndex = frames.indexOf(recordId)
+      // Already on the stack (including the base, index 0) — truncate back to
+      // it instead of appending a duplicate (decision #6, kills SR→QT→SR cycles).
+      const nextPeek =
+        existingIndex >= 0 ? frames.slice(1, existingIndex + 1) : [...frames.slice(1), recordId]
+      void setState({
+        peek: nextPeek.length > 0 ? nextPeek : null,
+        tab: null,
+        panel: null,
+        item: null,
+      })
+    },
+    [frames, setState]
+  )
+
+  const pop = React.useCallback(() => {
+    if (depth <= 1) return
+    const nextPeek = frames.slice(1, -1)
+    void setState({
+      peek: nextPeek.length > 0 ? nextPeek : null,
+      tab: null,
+      panel: null,
+      item: null,
+    })
+  }, [depth, frames, setState])
+
+  const clear = React.useCallback(() => {
+    void setState({ peek: null, tab: null, panel: null, item: null })
+  }, [setState])
+
+  return { frames, top, depth, push, pop, clear }
+}
+
+/** Context handed down by `RecordStackProvider` — `push`+`depth` from the
+ * enclosing `useRecordPeekStack`, so any nested card/row can push a related
+ * record onto the stack without prop-threading. */
+interface RecordStackContextValue {
+  push: (recordId: RecordId) => void
+  depth: number
+}
+
+const RecordStackContext = React.createContext<RecordStackContextValue | null>(null)
+
+/** Provided by `BaseEntityDrawer` around its frame stack. */
+export function RecordStackProvider({
+  value,
+  children,
+}: {
+  value: RecordStackContextValue
+  children: React.ReactNode
+}) {
+  return <RecordStackContext.Provider value={value}>{children}</RecordStackContext.Provider>
+}
+
+/**
+ * Context-aware "open this related record" hook (decision #8) — one call-site
+ * convention for every related-record affordance. Inside a `RecordStackProvider`
+ * (a drawer's frame stack) → returns `push`, so clicking a related-record row
+ * drills into it in place. Outside one → `null`, so the caller falls back to
+ * its existing href/`router.push` navigation.
+ */
+export function useOpenRecord(): ((recordId: RecordId) => void) | null {
+  const ctx = React.useContext(RecordStackContext)
+  return ctx?.push ?? null
 }

@@ -13,12 +13,15 @@
 
 import { FieldType } from '@auxx/database/enums'
 import { computeLineTotal } from '@auxx/lib/money/client'
+import { AutosizeTextarea } from '@auxx/ui/components/autosize-textarea'
+import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
+import { SimpleTooltip, TooltipExplanation } from '@auxx/ui/components/tooltip'
 import { GridTreeRow, TreeRowButton } from '@auxx/ui/components/tree-row'
 import { cn } from '@auxx/ui/lib/utils'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { AlignLeft, GripVertical, Percent, Trash2 } from 'lucide-react'
+import { AlignLeft, Check, CircleCheck, CircleX, GripVertical, Trash2, X } from 'lucide-react'
 import { useState } from 'react'
 import { type RecordId, type RecordMeta, toRecordId } from '~/components/resources'
 import { useSaveFieldValue } from '~/components/resources/hooks/use-save-field-value'
@@ -32,14 +35,14 @@ import { formatCurrency, titleCase } from './shared'
  * total columns aligned. Columns: description (fills) │ qty │ unit cost │
  * total │ actions.
  */
-export const LINE_COLS = 'minmax(10rem, 1fr) 4rem 6.5rem 6.5rem 5.5rem'
+export const LINE_COLS = 'minmax(10rem, 1fr) 3rem 5.5rem 6.5rem 3.75rem'
 
 /**
  * Read-only column template — the trailing actions column is dropped (no
  * hover actions when read-only), so `Total` lands flush right and the freed
  * width is absorbed by the `1fr` description column.
  */
-export const LINE_COLS_READONLY = 'minmax(10rem, 1fr) 4rem 6.5rem 6.5rem'
+export const LINE_COLS_READONLY = 'minmax(10rem, 1fr) 3rem 5.5rem 6.5rem'
 
 // Module-level (stable-reference) attribute lists — `useSystemValues` memoizes
 // on the array identity, so these must never be inline literals.
@@ -94,12 +97,42 @@ export function relKeyForDocumentType(documentType: 'quote' | 'work_order' | 'in
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * Description cell view — a transparent full-width button (the formula-row
- * picker idiom) that opens the catalog combobox (§H.2), doubling as free-text
- * rename. Shows the category chip inline and the description as a second
- * muted line. Purely presentational: values + commit callbacks are props, so
- * both the store-bound real cell and the local-state draft cell render the
- * exact same markup/behavior.
+ * Compact category badge — a single-letter pill (S/M) colored per category
+ * (service → blue, material → orange), with the full category label revealed
+ * on hover. Unknown/org-added categories fall back to a neutral badge showing
+ * the title-cased value. Renders nothing when there is no category.
+ */
+function CategoryBadge({ category }: { category: string | null }) {
+  if (!category) return null
+
+  const known: Record<string, { letter: string; variant: 'blue' | 'orange' }> = {
+    service: { letter: 'S', variant: 'blue' },
+    material: { letter: 'M', variant: 'orange' },
+  }
+  const match = known[category]
+  const label = titleCase(category)
+
+  return (
+    <SimpleTooltip content={label}>
+      <Badge
+        size='xs'
+        variant={match?.variant ?? 'gray'}
+        className='shrink-0 font-medium leading-tight'>
+        {match?.letter ?? label}
+      </Badge>
+    </SimpleTooltip>
+  )
+}
+
+/**
+ * Primary line cell — a single-line row that owns everything about the item:
+ * the catalog picker (transparent full-width button, doubling as free-text
+ * rename), the category badge, a description help-tooltip (when set), and the
+ * trailing description-edit affordance. Editing the description swaps the picker
+ * in place for an autosize textarea with confirm/cancel — the line never grows a
+ * permanent second row. Purely presentational: values + commit callbacks are
+ * props, so both the store-bound real cell and the local-state draft cell render
+ * the exact same markup.
  */
 function LineNameCellView({
   name,
@@ -107,9 +140,6 @@ function LineNameCellView({
   category,
   readOnly,
   currencyCode,
-  rowId,
-  descriptionOpen,
-  closeDescription,
   initialPickerOpen = false,
   onPickCatalogItem,
   onSelectGroup,
@@ -121,9 +151,6 @@ function LineNameCellView({
   category: string | null
   readOnly: boolean
   currencyCode: string
-  rowId: string
-  descriptionOpen: boolean
-  closeDescription: (lineId: string) => void
   /** Fresh drafts mount with the catalog picker already open. */
   initialPickerOpen?: boolean
   onPickCatalogItem: (pick: CatalogItemPick) => void
@@ -132,30 +159,64 @@ function LineNameCellView({
   onCommitDescription: (value: string | null) => void
 }) {
   const [pickerOpen, setPickerOpen] = useState(initialPickerOpen)
+  // `null` = not editing; any string (incl. '') = the in-progress description.
   const [descriptionDraft, setDescriptionDraft] = useState<string | null>(null)
-  const descriptionVisible = !!description || descriptionOpen
+  const editing = descriptionDraft !== null
 
-  const commitDescription = () => {
+  const confirmDescription = () => {
     if (descriptionDraft === null) return
-    const next = descriptionDraft.trim()
-    onCommitDescription(next || null)
+    onCommitDescription(descriptionDraft.trim() || null)
     setDescriptionDraft(null)
-    if (!next) closeDescription(rowId)
+  }
+
+  // Description edit mode — replaces the picker with an autosize textarea in the
+  // same slot (single line at rest, grows while typing) + confirm/cancel.
+  if (editing) {
+    return (
+      <div className='flex min-w-0 flex-1 items-center gap-1 py-1'>
+        <AutosizeTextarea
+          value={descriptionDraft ?? ''}
+          onChange={(e) => setDescriptionDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+              e.preventDefault()
+              confirmDescription()
+            }
+            if (e.key === 'Escape') setDescriptionDraft(null)
+          }}
+          autoFocus
+          minHeight={28}
+          maxHeight={160}
+          placeholder='Description'
+          className='min-w-0 flex-1 resize-none rounded-sm border-primary-200/60 bg-transparent px-2 py-1 text-muted-foreground text-xs'
+        />
+        <TreeRowButton persistent tooltipText='Save description' onClick={confirmDescription}>
+          <Check />
+        </TreeRowButton>
+        <TreeRowButton
+          persistent
+          variant='destructive'
+          tooltipText='Cancel'
+          onClick={() => setDescriptionDraft(null)}>
+          <X />
+        </TreeRowButton>
+      </div>
+    )
   }
 
   return (
-    <div className='flex min-w-0 flex-1 flex-col justify-center py-1'>
+    <div className='flex min-w-0 flex-1 items-center gap-1.5 py-1'>
       {readOnly ? (
-        <span className='flex min-w-0 items-center gap-1.5 px-1'>
-          <span className={cn('truncate text-sm', !name && 'text-muted-foreground italic')}>
+        <>
+          <span
+            className={cn(
+              'min-w-0 truncate px-1 text-sm',
+              !name && 'text-muted-foreground italic'
+            )}>
             {name || 'Untitled line'}
           </span>
-          {category && (
-            <span className='shrink-0 rounded-full bg-primary-100 px-1.5 py-px text-[10px] text-muted-foreground leading-tight dark:bg-primary-100/50'>
-              {titleCase(category)}
-            </span>
-          )}
-        </span>
+          <CategoryBadge category={category} />
+        </>
       ) : (
         <CatalogPicker
           open={pickerOpen}
@@ -168,40 +229,28 @@ function LineNameCellView({
           <Button
             variant='transparent'
             className={cn(
-              'h-7 min-w-0 justify-start gap-1.5 rounded-sm px-1 text-sm hover:bg-primary/5',
+              'h-7 min-w-0 flex-1 justify-start gap-1.5 rounded-sm px-1 text-sm hover:bg-primary/5',
               !name && 'text-muted-foreground'
             )}>
             <span className='truncate'>{name || 'Add item…'}</span>
-            {category && (
-              <span className='shrink-0 rounded-full bg-primary-100 px-1.5 py-px text-[10px] text-muted-foreground leading-tight dark:bg-primary-100/50'>
-                {titleCase(category)}
-              </span>
-            )}
+            <CategoryBadge category={category} />
           </Button>
         </CatalogPicker>
       )}
 
-      {descriptionVisible &&
-        (readOnly ? (
-          <span className='truncate px-1 text-muted-foreground text-xs'>{description}</span>
-        ) : (
-          <input
-            value={descriptionDraft ?? description ?? ''}
-            onChange={(e) => setDescriptionDraft(e.target.value)}
-            onFocus={() => setDescriptionDraft(description ?? '')}
-            onBlur={commitDescription}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') e.currentTarget.blur()
-              if (e.key === 'Escape') {
-                setDescriptionDraft(null)
-                if (!description) closeDescription(rowId)
-              }
-            }}
-            autoFocus={!description}
-            placeholder='Description'
-            className='w-full truncate border-none bg-transparent px-1 text-muted-foreground text-xs outline-none placeholder:text-muted-foreground/60'
-          />
-        ))}
+      {/* Read-only rows surface the description via the help-tooltip; editable rows
+          drop it — the description-edit button below carries the text as its own
+          tooltip instead. */}
+      {readOnly && description && <TooltipExplanation text={description} />}
+
+      {!readOnly && (
+        <TreeRowButton
+          className='ml-auto'
+          tooltipText={description || 'Add description'}
+          onClick={() => setDescriptionDraft(description ?? '')}>
+          <AlignLeft />
+        </TreeRowButton>
+      )}
     </div>
   )
 }
@@ -209,19 +258,13 @@ function LineNameCellView({
 /** Store-bound wrapper around {@link LineNameCellView} for real (persisted) line rows. */
 function LineNameCell({
   recordId,
-  rowId,
   readOnly,
   currencyCode,
-  descriptionOpen,
-  closeDescription,
   onSelectGroup,
 }: {
   recordId: RecordId
-  rowId: string
   readOnly: boolean
   currencyCode: string
-  descriptionOpen: boolean
-  closeDescription: (lineId: string) => void
   onSelectGroup: (pick: CatalogGroupPick) => void
 }) {
   const { values } = useSystemValues(recordId, NAME_ATTRS, { autoFetch: true })
@@ -255,9 +298,6 @@ function LineNameCell({
       category={category}
       readOnly={readOnly}
       currencyCode={currencyCode}
-      rowId={rowId}
-      descriptionOpen={descriptionOpen}
-      closeDescription={closeDescription}
       onPickCatalogItem={handlePick}
       onSelectGroup={onSelectGroup}
       onFreeText={(text) => saveFieldValue(recordId, 'line_item_name', text, FieldType.TEXT)}
@@ -398,30 +438,31 @@ function LineTotalCell({ recordId, currencyCode }: { recordId: RecordId; currenc
   return <LineTotalCellView qty={qty} unitPrice={unitPrice} currencyCode={currencyCode} />
 }
 
-/** Trailing hover actions view: description toggle · taxable toggle · delete (no confirm). */
+/**
+ * Trailing actions cell — taxable toggle (persistent when exempt, so the
+ * exemption reads at rest) then delete. Description editing lives in the primary
+ * cell ({@link LineNameCellView}); this column holds the two remaining actions
+ * for both real rows and drafts.
+ */
 function LineActionsCellView({
   taxable,
   rowId,
-  toggleDescription,
   onToggleTaxable,
   deleteLine,
 }: {
   taxable: boolean
   rowId: string
-  toggleDescription: (lineId: string) => void
   onToggleTaxable: (next: boolean) => void
   deleteLine: (lineId: string) => void
 }) {
   return (
-    <div className='flex w-full items-center justify-end gap-1 pr-1'>
-      <TreeRowButton tooltipText='Description' onClick={() => toggleDescription(rowId)}>
-        <AlignLeft />
-      </TreeRowButton>
+    <div className='flex w-full items-center justify-end gap-0.5 pr-1'>
       <TreeRowButton
+        persistent={!taxable}
         tooltipText={taxable ? 'Taxable — click to exempt' : 'Tax exempt — click to tax'}
-        className={cn(!taxable && 'text-muted-foreground/40')}
+        className={cn(!taxable && 'text-muted-foreground/50')}
         onClick={() => onToggleTaxable(!taxable)}>
-        <Percent />
+        {taxable ? <CircleCheck /> : <CircleX />}
       </TreeRowButton>
       <TreeRowButton
         variant='destructive'
@@ -437,12 +478,10 @@ function LineActionsCellView({
 function LineActionsCell({
   recordId,
   rowId,
-  toggleDescription,
   deleteLine,
 }: {
   recordId: RecordId
   rowId: string
-  toggleDescription: (lineId: string) => void
   deleteLine: (lineId: string) => void
 }) {
   const { values } = useSystemValues(recordId, TAXABLE_ATTRS, { autoFetch: true })
@@ -454,7 +493,6 @@ function LineActionsCell({
     <LineActionsCellView
       taxable={taxable}
       rowId={rowId}
-      toggleDescription={toggleDescription}
       onToggleTaxable={(next) =>
         saveFieldValue(recordId, 'line_item_taxable', next, FieldType.CHECKBOX)
       }
@@ -473,9 +511,6 @@ export function LineRow({
   entityDefinitionId,
   readOnly,
   currencyCode,
-  descriptionOpen,
-  toggleDescription,
-  closeDescription,
   deleteLine,
   onSelectGroup,
 }: {
@@ -483,9 +518,6 @@ export function LineRow({
   entityDefinitionId: string
   readOnly: boolean
   currencyCode: string
-  descriptionOpen: boolean
-  toggleDescription: (lineId: string) => void
-  closeDescription: (lineId: string) => void
   deleteLine: (lineId: string) => void
   onSelectGroup: (recordId: RecordId, pick: CatalogGroupPick) => void
 }) {
@@ -515,11 +547,8 @@ export function LineRow({
         title={
           <LineNameCell
             recordId={recordId}
-            rowId={record.id}
             readOnly={readOnly}
             currencyCode={currencyCode}
-            descriptionOpen={descriptionOpen}
-            closeDescription={closeDescription}
             onSelectGroup={(pick) => onSelectGroup(recordId, pick)}
           />
         }
@@ -550,7 +579,6 @@ export function LineRow({
                   key='actions'
                   recordId={recordId}
                   rowId={record.id}
-                  toggleDescription={toggleDescription}
                   deleteLine={deleteLine}
                 />,
               ]),
@@ -570,18 +598,12 @@ export function LineRow({
 export function DraftLineRow({
   draft,
   currencyCode,
-  descriptionOpen,
-  toggleDescription,
-  closeDescription,
   deleteDraft,
   createDraft,
   onSelectGroup,
 }: {
   draft: DraftLine
   currencyCode: string
-  descriptionOpen: boolean
-  toggleDescription: (lineId: string) => void
-  closeDescription: (lineId: string) => void
   deleteDraft: (draftId: string) => void
   createDraft: (draftId: string, overrides?: Partial<DraftLine>) => Promise<void>
   onSelectGroup: (draftId: string, pick: CatalogGroupPick) => void
@@ -601,9 +623,6 @@ export function DraftLineRow({
           category={draft.category}
           readOnly={false}
           currencyCode={currencyCode}
-          rowId={draft.draftId}
-          descriptionOpen={descriptionOpen}
-          closeDescription={closeDescription}
           initialPickerOpen
           onPickCatalogItem={(pick) =>
             void createDraft(draft.draftId, {
@@ -650,7 +669,6 @@ export function DraftLineRow({
           key='actions'
           taxable={draft.taxable}
           rowId={draft.draftId}
-          toggleDescription={toggleDescription}
           onToggleTaxable={(next) => void createDraft(draft.draftId, { taxable: next })}
           deleteLine={deleteDraft}
         />,

@@ -1,11 +1,11 @@
-// apps/web/src/components/dispatch/ui/job-schedule/visit-tree-row.tsx
+// apps/web/src/components/dispatch/ui/job-schedule/schedule-visit-row.tsx
 'use client'
 
 import { toActorId } from '@auxx/types/actor'
 import { Avatar, AvatarFallback, AvatarImage } from '@auxx/ui/components/avatar'
 import { Badge } from '@auxx/ui/components/badge'
 import { TreeRow, TreeRowButton } from '@auxx/ui/components/tree-row'
-import { Calendar, CalendarClock, XCircle } from 'lucide-react'
+import { CalendarClock, XCircle } from 'lucide-react'
 import { getInitials } from '~/components/groups/utils/group-utils'
 import type { RecordId } from '~/components/resources'
 import { useActors } from '~/components/resources/hooks/use-actor'
@@ -15,7 +15,7 @@ import { type ExistingVisitForOverlap, SchedulePopover } from '../schedule-popov
 import { formatVisitWindow, VISIT_STATUS_BADGE_VARIANT } from './job-schedule-utils'
 import type { JobVisit, UseJobVisitsResult } from './use-job-visits'
 
-export interface VisitTreeRowProps {
+export interface ScheduleVisitRowProps {
   visit: JobVisit
   canEdit: boolean
   mutations: UseJobVisitsResult['mutations']
@@ -24,28 +24,30 @@ export interface VisitTreeRowProps {
   onRefresh: () => void
   /** Drill into the visit-detail panel (`setItemId(visit.id)`). */
   onOpen: () => void
-  depth?: number
   /** Threaded into `SchedulePopover` so it can offer the Repeats row (06 §6). */
   workOrderRecordId: RecordId
+  depth?: number
 }
 
 /**
- * One visit row — shared by the Schedule section's Upcoming/History previews AND
- * the drilled "visits" list panel (dispatch M2 build spec §F.3, written
- * jobType-agnostic: "render this job's visits"). `TreeRow` everywhere per
- * 04-ui.md §6: icon + date/window as title, assignee + status badge as
- * `secondary`, hover actions as `TreeRowButton`s, whole row clickable to drill.
+ * ScheduleVisitRow — THE single visit row across every surface that lists a
+ * work order's visits: the drawer's Schedule block, the job detail view's
+ * Schedule/History sections, and the drilled "visits" list panel. The
+ * work-order drawer card's `TreeRow` anatomy: `CalendarClock` icon + date/window
+ * title, assignee (avatar + name) + colored status badge as `secondary`, and on
+ * hover (canEdit) Reschedule (`SchedulePopover`) + Cancel actions. Whole row
+ * clicks through to the visit drill.
  */
-export function VisitTreeRow({
+export function ScheduleVisitRow({
   visit,
   canEdit,
   mutations,
   existingVisits,
   onRefresh,
   onOpen,
-  depth,
   workOrderRecordId,
-}: VisitTreeRowProps) {
+  depth,
+}: ScheduleVisitRowProps) {
   const [confirm, ConfirmDialog] = useConfirm()
   const assigneeActorId = visit.assigneeUserId ? toActorId('user', visit.assigneeUserId) : null
   const hydratedAssignee = useActors(assigneeActorId ? [assigneeActorId] : [])
@@ -70,8 +72,8 @@ export function VisitTreeRow({
     <>
       <TreeRow
         depth={depth}
-        icon={<Calendar className='size-3.5' />}
-        title={formatVisitWindow(visit)}
+        icon={<CalendarClock className='size-4' />}
+        title={<span className='truncate text-sm'>{formatVisitWindow(visit)}</span>}
         secondary={
           <span className='inline-flex items-center gap-1.5'>
             {assignee ? (

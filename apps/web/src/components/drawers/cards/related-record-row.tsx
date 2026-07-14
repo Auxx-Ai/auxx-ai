@@ -12,6 +12,7 @@ import { Skeleton } from '@auxx/ui/components/skeleton'
 import { TREE_SECONDARY_NOTRUNCATE, TreeRow, TreeRowButton } from '@auxx/ui/components/tree-row'
 import { ExternalLink } from 'lucide-react'
 import { useRouter } from 'next/navigation'
+import { useOpenRecord } from '~/components/records/record-drill-panels'
 import { useRecord, useResource } from '~/components/resources'
 import { useSystemField } from '~/components/resources/hooks/use-field'
 import { useSystemValues } from '~/components/resources/hooks/use-system-values'
@@ -43,13 +44,23 @@ export function RelatedRecordRow({
   const statusField = useSystemField(statusAttr)
   const recordHref = useRecordLink(recordId)
   const href = hrefOverride ?? recordHref
+  const openRecord = useOpenRecord()
 
   const status = unwrap(values[statusAttr]) as string | undefined
   const statusOption = statusField?.options?.options?.find((o) => o.value === status)
   const displayName = record?.displayName ?? 'Untitled'
 
+  // In a stack host (drawer) → push the related record in place (decisions #7/#8).
+  // Outside one → fall back to the existing href navigation; no href → row stays inert.
+  const handleOpen = openRecord
+    ? () => openRecord(recordId)
+    : href
+      ? () => router.push(href)
+      : undefined
+
   return (
     <TreeRow
+      onDrill={handleOpen}
       icon={
         <RecordIcon
           avatarUrl={record?.avatarUrl}
