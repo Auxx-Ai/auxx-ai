@@ -26,7 +26,6 @@ import { useRouter } from 'next/navigation'
 import { parseAsBoolean, parseAsString, useQueryState } from 'nuqs'
 import { useCallback, useMemo, useRef, useState } from 'react'
 import { BulkUpdateEntityInstanceDialog } from '~/components/custom-fields/ui/bulk-update-entity-instance-dialog'
-import { EntityInstanceDialog } from '~/components/custom-fields/ui/entity-instance-dialog'
 import type { CellSelectionConfig } from '~/components/dynamic-table'
 import { PrimaryFieldCell } from '~/components/dynamic-table'
 import {
@@ -42,6 +41,7 @@ import { CommandAction, CommandContext } from '~/components/kbar/contextual'
 import { useCommandPaletteStore } from '~/components/kbar/store'
 import { KopilotContext } from '~/components/kopilot/context'
 import { MergeDialog } from '~/components/merge'
+import { RecordEditorDialog } from '~/components/records/record-editor-dialog'
 import { type RecordMeta, toRecordId, useResource } from '~/components/resources'
 import { useRunAiBulkGenerate } from '~/components/resources/hooks/run-ai-bulk-generate'
 import { useSaveFieldValue } from '~/components/resources/hooks/use-save-field-value'
@@ -74,12 +74,6 @@ interface RecordsViewProps {
   basePath?: string
   /** When true, RecordsView renders without its own MainPage wrapper (parent provides it) */
   embedded?: boolean
-  /** When false, suppresses the built-in EntityInstanceDialog. Default: true.
-   *  Use this when the parent renders its own create/edit dialog listening to ?create=true. */
-  renderCreateDialog?: boolean
-  /** Called when the user triggers an edit on a record (e.g. primary field edit button).
-   *  Only relevant when renderCreateDialog is false — lets the parent open its own edit dialog. */
-  onEditRecord?: (recordId: RecordId) => void
 }
 
 /**
@@ -87,13 +81,7 @@ interface RecordsViewProps {
  * Composes DynamicResourceView with the records-specific primary cell,
  * bulk-action set, paste/fill/AI cell selection config, and dialogs.
  */
-export function RecordsView({
-  slug,
-  basePath,
-  embedded,
-  renderCreateDialog,
-  onEditRecord,
-}: RecordsViewProps) {
+export function RecordsView({ slug, basePath, embedded }: RecordsViewProps) {
   const resolvedBasePath = basePath ?? `/app/custom/${slug}`
   const router = useRouter()
 
@@ -124,15 +112,10 @@ export function RecordsView({
   const isCreateDialogOpen = isCreateDialogOpenInternal || createParam
   const setIsCreateDialogOpen = useCallback(
     (open: boolean) => {
-      if (renderCreateDialog === false) {
-        // Parent handles the dialog — communicate via URL param only
-        setCreateParam(open || null)
-      } else {
-        setIsCreateDialogOpenInternal(open)
-        if (!open && createParam) setCreateParam(null)
-      }
+      setIsCreateDialogOpenInternal(open)
+      if (!open && createParam) setCreateParam(null)
     },
-    [createParam, setCreateParam, renderCreateDialog]
+    [createParam, setCreateParam]
   )
 
   // Local state
@@ -209,15 +192,11 @@ export function RecordsView({
 
   const handleOpenEditDialog = useCallback(
     (row: EntityRow) => {
-      if (onEditRecord && entityDefinitionId) {
-        onEditRecord(toRecordId(entityDefinitionId, row.id))
-      } else {
-        setEditingInstance(row)
-      }
+      setEditingInstance(row)
       setCreatePresetValues(undefined)
       setIsCreateDialogOpen(true)
     },
-    [setIsCreateDialogOpen, onEditRecord, entityDefinitionId]
+    [setIsCreateDialogOpen]
   )
 
   const handleDrawerOpenChange = useCallback(
@@ -908,9 +887,9 @@ export function RecordsView({
         </MainPage>
       )}
 
-      {/* Create/Edit Dialog */}
-      {renderCreateDialog !== false && entityDefinitionId && isCreateDialogOpen && (
-        <EntityInstanceDialog
+      {/* Create/Edit Dialog — resolves the custom editor per entity type (e.g. Parts). */}
+      {entityDefinitionId && isCreateDialogOpen && (
+        <RecordEditorDialog
           open={isCreateDialogOpen}
           onOpenChange={handleDialogOpenChange}
           entityDefinitionId={entityDefinitionId}

@@ -12,10 +12,11 @@ import { Button } from '@auxx/ui/components/button'
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@auxx/ui/components/hover-card'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { cn } from '@auxx/ui/lib/utils'
-import { Maximize2, PanelRight, Star } from 'lucide-react'
+import { Maximize2, PanelRight, Pencil, Star } from 'lucide-react'
 import Link from 'next/link'
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { useFavoriteToggle } from '~/components/favorites/hooks/use-favorite-toggle'
+import { RecordEditorDialog } from '~/components/records/record-editor-dialog'
 import { useRecord } from '~/components/resources/hooks/use-record'
 import { useResource } from '~/components/resources/hooks/use-resource'
 import { useResourceStore } from '~/components/resources/store/resource-store'
@@ -63,29 +64,51 @@ export function RecordHoverCard({
   className,
   onOpenInDrawer,
 }: RecordHoverCardProps) {
+  // Edit-dialog state lives here (not in the body) so the dialog survives the
+  // hover card closing — `HoverCardContent` unmounts on mouse-leave, which would
+  // otherwise tear down a dialog rendered inside it the moment it opens.
+  const [isEditOpen, setIsEditOpen] = useState(false)
+
   if (!recordId) return <>{children}</>
 
+  const entityDefinitionId = getDefinitionId(recordId)
+
   return (
-    <HoverCard openDelay={openDelay} closeDelay={closeDelay}>
-      {/* Wrap in a stable inline-flex span so the trigger's pointer listeners
-          attach to a host element we own — avoids asChild merging into a
-          re-rendering Link/anchor inside a virtualized cell, which can drop
-          pointerenter events. */}
-      <HoverCardTrigger asChild>
-        <span data-slot='record-hover-trigger' className='inline-flex max-w-full'>
-          {children}
-        </span>
-      </HoverCardTrigger>
-      <HoverCardContent
-        side={side}
-        align={align}
-        sideOffset={sideOffset}
-        collisionPadding={8}
-        className={cn('w-80 p-3', className)}
-        onClick={(e) => e.stopPropagation()}>
-        <RecordHoverCardBody recordId={recordId} fields={fields} onOpenInDrawer={onOpenInDrawer} />
-      </HoverCardContent>
-    </HoverCard>
+    <>
+      <HoverCard openDelay={openDelay} closeDelay={closeDelay}>
+        {/* Wrap in a stable inline-flex span so the trigger's pointer listeners
+            attach to a host element we own — avoids asChild merging into a
+            re-rendering Link/anchor inside a virtualized cell, which can drop
+            pointerenter events. */}
+        <HoverCardTrigger asChild>
+          <span data-slot='record-hover-trigger' className='inline-flex max-w-full'>
+            {children}
+          </span>
+        </HoverCardTrigger>
+        <HoverCardContent
+          side={side}
+          align={align}
+          sideOffset={sideOffset}
+          collisionPadding={8}
+          className={cn('w-80 p-3', className)}
+          onClick={(e) => e.stopPropagation()}>
+          <RecordHoverCardBody
+            recordId={recordId}
+            fields={fields}
+            onOpenInDrawer={onOpenInDrawer}
+            onEdit={() => setIsEditOpen(true)}
+          />
+        </HoverCardContent>
+      </HoverCard>
+      {isEditOpen && (
+        <RecordEditorDialog
+          open={isEditOpen}
+          onOpenChange={setIsEditOpen}
+          entityDefinitionId={entityDefinitionId}
+          recordId={recordId}
+        />
+      )}
+    </>
   )
 }
 
@@ -93,9 +116,11 @@ interface BodyProps {
   recordId: RecordId
   fields?: FieldReference[]
   onOpenInDrawer?: (recordId: RecordId) => void
+  /** Opens the record's edit dialog (owned by the parent so it outlives the card). */
+  onEdit?: () => void
 }
 
-function RecordHoverCardBody({ recordId, fields, onOpenInDrawer }: BodyProps) {
+function RecordHoverCardBody({ recordId, fields, onOpenInDrawer, onEdit }: BodyProps) {
   const entityDefinitionId = getDefinitionId(recordId)
   const { record, isLoading: isLoadingRecord, isNotFound } = useRecord({ recordId })
   const { resource, isLoading: isLoadingResource } = useResource(entityDefinitionId)
@@ -145,7 +170,7 @@ function RecordHoverCardBody({ recordId, fields, onOpenInDrawer }: BodyProps) {
 
   const displayName = (record?.displayName as string | undefined) ?? 'Untitled'
 
-  const hasFooter = !!onOpenInDrawer || !!href
+  const hasFooter = !!onOpenInDrawer
   const showDivider = resolvedFields.length > 0 || hasFooter
 
   return (
@@ -160,9 +185,37 @@ function RecordHoverCardBody({ recordId, fields, onOpenInDrawer }: BodyProps) {
           inverse
         />
         <div className='min-w-0 flex-1'>
-          <div className='flex items-center gap-1.5'>
-            <h4 className=' truncate text-sm font-semibold leading-snug'>{displayName}</h4>
+          <div className='flex items-center gap-0.5'>
+            <h4 className='min-w-0 flex-1 truncate text-sm font-semibold leading-snug'>
+              {displayName}
+            </h4>
             <FavoriteStarButton recordId={recordId} />
+            {onEdit && (
+              <Button
+                variant='ghost'
+                size='icon-xs'
+                className='shrink-0'
+                title='Edit'
+                onClick={(e) => {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  onEdit()
+                }}>
+                <Pencil />
+              </Button>
+            )}
+            {href && (
+              <Button
+                asChild
+                variant='ghost'
+                size='icon-xs'
+                className='shrink-0'
+                title='Open full page'>
+                <Link href={href} onClick={(e) => e.stopPropagation()}>
+                  <Maximize2 />
+                </Link>
+              </Button>
+            )}
           </div>
           {secondaryDisplay && (
             <p className='truncate text-xs text-muted-foreground'>{secondaryDisplay}</p>
@@ -180,33 +233,24 @@ function RecordHoverCardBody({ recordId, fields, onOpenInDrawer }: BodyProps) {
       )}
 
       {/* Footer */}
-      {hasFooter && (
+      {hasFooter && onOpenInDrawer && (
         <div
           className={cn(
             'flex items-center justify-end gap-1',
             // Only render the divider once — fields section already has its own.
             !resolvedFields.length && showDivider && 'border-t'
           )}>
-          {onOpenInDrawer && (
-            <Button
-              variant='ghost'
-              size='icon-xs'
-              title='Open in drawer'
-              onClick={(e) => {
-                e.preventDefault()
-                e.stopPropagation()
-                onOpenInDrawer(recordId)
-              }}>
-              <PanelRight />
-            </Button>
-          )}
-          {href && (
-            <Button asChild variant='ghost' size='icon-xs' title='Open full page'>
-              <Link href={href} onClick={(e) => e.stopPropagation()}>
-                <Maximize2 />
-              </Link>
-            </Button>
-          )}
+          <Button
+            variant='ghost'
+            size='icon-xs'
+            title='Open in drawer'
+            onClick={(e) => {
+              e.preventDefault()
+              e.stopPropagation()
+              onOpenInDrawer(recordId)
+            }}>
+            <PanelRight />
+          </Button>
         </div>
       )}
     </>

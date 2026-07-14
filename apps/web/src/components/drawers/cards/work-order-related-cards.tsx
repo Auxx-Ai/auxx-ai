@@ -10,6 +10,7 @@
 
 import { extractRelationshipRecordIds } from '@auxx/lib/field-values/client'
 import { TreeRow } from '@auxx/ui/components/tree-row'
+import { TreeRowList } from '@auxx/ui/components/tree-row-list'
 import { Plus, Receipt } from 'lucide-react'
 import { useState } from 'react'
 import { ScheduleVisitRow } from '~/components/dispatch/ui/job-schedule/schedule-visit-row'
@@ -29,18 +30,25 @@ import {
 // Schedule block (visits + per-visit Reschedule/Cancel)
 // ─────────────────────────────────────────────────────────────────────────────
 
+/** How many visits render before the inline "Show more" row collapses the rest. */
+const VISIT_PREVIEW_LIMIT = 5
+
 export function WorkOrderScheduleCard({ recordId }: DrawerTabProps) {
   const drill = useRecordDrill()
   const { visits, isLoading, canEdit, mutations, existingVisits, refresh } = useJobVisits(recordId)
 
-  if (isLoading && visits.length === 0) return <RowSkeleton />
-  if (!visits.length) return <EmptyRow label='No visits yet' />
+  const loading = isLoading && visits.length === 0
+  if (!loading && !visits.length) return <EmptyRow label='No visits yet' />
 
   return (
-    <div className={`space-y-0.5 ${TREE_SECONDARY_NOTRUNCATE}`}>
-      {visits.map((visit) => (
+    <TreeRowList
+      items={visits}
+      loading={loading}
+      getKey={(visit) => visit.id}
+      visibleLimit={VISIT_PREVIEW_LIMIT}
+      className={`space-y-0.5 ${TREE_SECONDARY_NOTRUNCATE}`}
+      renderRow={(visit) => (
         <ScheduleVisitRow
-          key={visit.id}
           visit={visit}
           canEdit={canEdit}
           mutations={mutations}
@@ -49,8 +57,8 @@ export function WorkOrderScheduleCard({ recordId }: DrawerTabProps) {
           onRefresh={refresh}
           onOpen={() => drill.open('visits', visit.id)}
         />
-      ))}
-    </div>
+      )}
+    />
   )
 }
 

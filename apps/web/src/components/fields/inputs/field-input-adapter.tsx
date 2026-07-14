@@ -13,9 +13,9 @@ import {
   type SelectOption,
 } from '@auxx/types/custom-field'
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { EntityInstanceDialog } from '~/components/custom-fields/ui/entity-instance-dialog'
 import { ActorPicker } from '~/components/pickers/actor-picker/actor-picker'
 import { ParticipantPicker } from '~/components/pickers/participant-picker'
+import { RecordEditorDialog } from '~/components/records/record-editor-dialog'
 import { MultiRelationInput } from '~/components/shared/multi-relation-input'
 import type { PickerTriggerOptions } from '~/components/ui/picker-trigger'
 import {
@@ -258,7 +258,7 @@ export function FieldInputAdapter({
             shouldPreventDismiss={shouldPreventDismiss}
           />
           {createDialogOpen && createEntityDefinitionId && (
-            <EntityInstanceDialog
+            <RecordEditorDialog
               open={createDialogOpen}
               onOpenChange={setCreateDialogOpen}
               entityDefinitionId={createEntityDefinitionId}

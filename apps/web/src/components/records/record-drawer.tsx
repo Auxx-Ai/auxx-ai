@@ -27,7 +27,6 @@ import {
 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import * as React from 'react'
-import { EntityInstanceDialog } from '~/components/custom-fields/ui/entity-instance-dialog'
 import { BaseEntityDrawer } from '~/components/drawers/base-entity-drawer'
 import { getHeaderActions } from '~/components/drawers/drawer-action-registry'
 import { FavoriteToggleMenuItem } from '~/components/favorites/ui/favorite-toggle-menu-item'
@@ -37,6 +36,7 @@ import { CommandContext, RecordCommandActions } from '~/components/kbar/contextu
 import { KopilotContext } from '~/components/kopilot/context'
 import { KopilotSuggestion } from '~/components/kopilot/suggestions'
 import { MergeDialog } from '~/components/merge'
+import { RecordEditorDialog } from '~/components/records/record-editor-dialog'
 import { resourceHasDetailPage, useRecord, useResource } from '~/components/resources'
 import { useFieldValue } from '~/components/resources/hooks/use-field-values'
 import { AvatarUploadIcon } from '~/components/resources/ui/avatar-upload-icon'
@@ -458,9 +458,9 @@ export const RecordDrawer = React.memo(function RecordDrawer({
         }
       />
 
-      {/* Edit Dialog */}
+      {/* Edit Dialog — resolves the custom editor per entity type (e.g. Parts). */}
       {editDialogOpen && entityDefinitionId && (
-        <EntityInstanceDialog
+        <RecordEditorDialog
           open={editDialogOpen}
           onOpenChange={setEditDialogOpen}
           entityDefinitionId={entityDefinitionId}

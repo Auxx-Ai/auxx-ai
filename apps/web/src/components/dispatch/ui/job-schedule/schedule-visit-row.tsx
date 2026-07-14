@@ -72,6 +72,7 @@ export function ScheduleVisitRow({
     <>
       <TreeRow
         depth={depth}
+        rowClassName='hover:bg-primary-100'
         icon={<CalendarClock className='size-4' />}
         title={<span className='truncate text-sm'>{formatVisitWindow(visit)}</span>}
         secondary={
