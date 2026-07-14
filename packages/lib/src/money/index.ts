@@ -27,6 +27,12 @@ export {
   upsertPaymentAccount,
 } from './payments/account-state'
 export {
+  computeDepositAmount,
+  type QuoteDepositType,
+  type ResolvedQuoteDeposit,
+  resolveQuoteDeposit,
+} from './payments/deposit'
+export {
   type PaymentAccountFeeInput,
   resolveApplicationFee,
 } from './payments/fees'
@@ -39,10 +45,16 @@ export {
   syncTransaction,
 } from './payments/ledger'
 export {
+  type PartialPaymentBounds,
+  resolvePartialPaymentBounds,
+} from './payments/partial'
+export {
   applyStripeEvent,
   type CreateStripeCheckoutInput,
   type CreateStripeCheckoutResult,
+  type CreateStripeDepositCheckoutInput,
   createStripeCheckout,
+  createStripeDepositCheckout,
   type RefundTransactionInput,
   type RefundTransactionResult,
   refundTransaction,
@@ -73,6 +85,7 @@ export {
 } from './quote-lifecycle'
 export {
   buildQuoteViewUrl,
+  cancelAbandonedDepositCheckout,
   ensureQuotePublicToken,
   getPublicQuotePayload,
   getQuotePdfByToken,

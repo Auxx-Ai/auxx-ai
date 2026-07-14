@@ -15,13 +15,6 @@ import { api } from '~/trpc/react'
 interface UseEntityInstanceOperationsOptions {
   /** Entity definition ID for building RecordIds */
   entityDefinitionId: string | undefined
-  /**
-   * System entity type (e.g. 'invoice') — lets the hook special-case entities whose delete
-   * needs to run through a bespoke lifecycle mutation instead of the generic `record.delete`
-   * (money MI1 build spec §G.5 — `deleteInvoice` unstamps gathered source lines + blocks while
-   * payments exist; the generic delete would bypass that).
-   */
-  entityType?: string
   /** Singular resource label for dialog messages */
   resourceLabel?: string
   /** Plural resource label for dialog messages */
@@ -38,12 +31,16 @@ interface UseEntityInstanceOperationsOptions {
  * Hook that handles entity instance mutation operations and confirmations.
  * Data fetching is handled separately via useRecordList in the parent component.
  *
- * Uses api.record.* endpoints with RecordId format.
+ * Uses api.record.* endpoints with RecordId format. Every entity type — including
+ * invoices, work orders, and quotes — goes through the generic `record.delete` /
+ * `record.bulkDelete` mutations here; entity-specific delete safety (payments guard,
+ * source-line unstamp, admin gate, converted-quote guard, etc.) lives server-side in the
+ * `deleteEntity` pre-delete hooks (see `plans/dispatch/money/12-delete-safety.md` §A/§C/§F),
+ * so this hook no longer needs to special-case any entity type on the client.
  */
 export function useEntityInstanceOperations(options: UseEntityInstanceOperationsOptions) {
   const {
     entityDefinitionId,
-    entityType,
     resourceLabel,
     resourcePlural,
     onDrawerClose,
@@ -111,21 +108,6 @@ export function useEntityInstanceOperations(options: UseEntityInstanceOperations
     },
   })
 
-  // ⚠️ Money MI1 build spec §G.5: the generic drawer delete (`record.delete`) would bypass
-  // `deleteInvoice`'s payments guard + source-line unstamp. Minimal override — no new
-  // registry machinery — branch on `entityType` in `handleDrawerDelete` below.
-  const deleteInvoiceInstance = api.money.deleteInvoice.useMutation({
-    onSuccess: (_data, variables) => {
-      const { entityInstanceId } = parseRecordId(variables.invoiceRecordId)
-      if (entityDefinitionId)
-        useRecordStore.getState().removeRecord(entityDefinitionId, entityInstanceId)
-      onRefetch?.()
-    },
-    onError: (error) => {
-      toastError({ title: 'Failed to delete invoice', description: error.message })
-    },
-  })
-
   // react-query's useMutation returns a NEW wrapper object every render, but the
   // bound .mutate / .mutateAsync fns are stable for the observer's lifetime.
   // Depend on these (never the wrapper) in the handlers below so the handlers —
@@ -134,7 +116,6 @@ export function useEntityInstanceOperations(options: UseEntityInstanceOperations
   // re-renders. See use-save-field-value.ts for the same pattern.
   const { mutate: archiveMutate } = archiveInstance
   const { mutate: deleteMutate } = deleteInstance
-  const { mutate: deleteInvoiceMutate } = deleteInvoiceInstance
   const { mutateAsync: bulkDeleteMutateAsync } = bulkDeleteInstances
   const { mutateAsync: bulkArchiveMutateAsync } = bulkArchiveInstances
 
@@ -254,25 +235,11 @@ export function useEntityInstanceOperations(options: UseEntityInstanceOperations
       })
       if (confirmed) {
         const recordId = buildRecordId(instanceId)
-        // Money MI1 §G.5: invoices have their own lifecycle delete (payments guard +
-        // source-line unstamp) — the generic `record.delete` would bypass both.
-        if (entityType === 'invoice') {
-          deleteInvoiceMutate({ invoiceRecordId: recordId })
-        } else {
-          deleteMutate({ recordId })
-        }
+        deleteMutate({ recordId })
         onDrawerClose?.()
       }
     },
-    [
-      confirmDelete,
-      resourceLabel,
-      onDrawerClose,
-      buildRecordId,
-      deleteMutate,
-      deleteInvoiceMutate,
-      entityType,
-    ]
+    [confirmDelete, resourceLabel, onDrawerClose, buildRecordId, deleteMutate]
   )
 
   return {

@@ -9,16 +9,19 @@ import type { PaymentTransactionEntity } from '@auxx/database'
 import { database, schema } from '@auxx/database'
 import type { TypedFieldValue } from '@auxx/types'
 import { extractValue } from '@auxx/types'
-import { toRecordId } from '@auxx/types/resource'
+import { parseRecordId, toRecordId } from '@auxx/types/resource'
 import { and, eq, inArray } from 'drizzle-orm'
 import type Stripe from 'stripe'
 import { getOrgCache } from '../../cache'
 import { BadRequestError, NotFoundError } from '../../errors'
+import { extractRelationshipRecordIds } from '../../field-values/relationship-field'
 import { UnifiedCrudHandler } from '../../resources/crud'
 import { getOrganizationSetting } from '../../settings/settings-service'
 import { buildPayUrl, ensureInvoicePublicToken } from '../public-token'
+import { buildQuoteViewUrl, ensureQuotePublicToken } from '../quote-public-token'
 import { getPaymentAccount, syncAccountState, upsertPaymentAccount } from './account-state'
 import { getStripeConnectClient } from './connect-client'
+import { resolveQuoteDeposit } from './deposit'
 import { resolveApplicationFee } from './fees'
 import { syncInvoicePaymentState, syncTransaction } from './ledger'
 
@@ -30,11 +33,44 @@ function firstTyped(
   return Array.isArray(entry) ? entry[0] : entry
 }
 
+/**
+ * Resolve a document's linked contact's email for `receipt_email` (money MP2 build spec §D) —
+ * reads the RELATIONSHIP field's already-fetched typed value, then the target record's
+ * `primary_email`. Mirrors `loadPdfContact`'s billing-party lookup (`documents/payload.ts`)
+ * without pulling in that module's full contact shape (name/phone/city/etc — a receipt only
+ * needs the address). Returns `undefined` when the document has no contact or the contact has
+ * no email — Stripe simply omits the receipt send in that case, no error.
+ */
+async function resolveContactEmail(
+  handler: UnifiedCrudHandler,
+  cache: ReturnType<typeof getOrgCache>,
+  organizationId: string,
+  contactFieldValue: TypedFieldValue | TypedFieldValue[] | undefined
+): Promise<string | undefined> {
+  const contactTyped = firstTyped(contactFieldValue)
+  const contactRecordId = contactTyped?.type === 'relationship' ? contactTyped.recordId : undefined
+  if (!contactRecordId) return undefined
+
+  const emailCf = await cache
+    .from(organizationId, 'customFields')
+    .bySystemAttributes(['primary_email'] as const)
+  if (!emailCf.primary_email) return undefined
+
+  const emailValues = await handler.getFieldValues(contactRecordId, [emailCf.primary_email.id])
+  const emailTyped = firstTyped(emailValues.get(emailCf.primary_email.id))
+  return emailTyped ? (extractValue(emailTyped) as string) : undefined
+}
+
 /** Input for `createStripeCheckout`. */
 export interface CreateStripeCheckoutInput {
   organizationId: string
   /** EntityInstance id of the invoice (not the RecordId). */
   invoiceInstanceId: string
+  /** Integer cents — optional custom/partial amount (money MP2 build spec §C). Absent = full
+   * current balance, behavior byte-identical to pre-MP2. When present, server-validated
+   * against `documents.invoice.allowPartialPayments`/`partialPaymentMinPercent` — never trusts
+   * a client-supplied amount past that range. */
+  amount?: number
 }
 
 /** Result of `createStripeCheckout` — the pay page redirects here. */
@@ -62,8 +98,13 @@ export async function createStripeCheckout(
 
   const cf = await cache
     .from(organizationId, 'customFields')
-    .bySystemAttributes(['invoice_status', 'invoice_number', 'invoice_balance'] as const)
-  const fieldIds = [cf.invoice_status, cf.invoice_number, cf.invoice_balance]
+    .bySystemAttributes([
+      'invoice_status',
+      'invoice_number',
+      'invoice_balance',
+      'invoice_contact',
+    ] as const)
+  const fieldIds = [cf.invoice_status, cf.invoice_number, cf.invoice_balance, cf.invoice_contact]
     .filter(Boolean)
     .map((f) => f!.id)
   const values = await handler.getFieldValues(invoiceRecordId, fieldIds)
@@ -84,6 +125,31 @@ export async function createStripeCheckout(
     throw new BadRequestError('This invoice has no outstanding balance')
   }
 
+  // §C — optional custom/partial amount. Absent = full balance, byte-identical to pre-MP2
+  // behavior (every existing caller). Server-validated against the org's partial-payment
+  // settings — never trusts a client-supplied amount past this range.
+  let chargeAmount = balance
+  if (input.amount !== undefined) {
+    const allowPartialPayments = await getOrganizationSetting({
+      organizationId,
+      key: 'documents.invoice.allowPartialPayments',
+    })
+    if (!allowPartialPayments) {
+      throw new BadRequestError('Partial payments are not enabled for this invoice')
+    }
+    const minPercent = Number(
+      (await getOrganizationSetting({
+        organizationId,
+        key: 'documents.invoice.partialPaymentMinPercent',
+      })) ?? 10
+    )
+    const minAmount = Math.ceil((balance * minPercent) / 100)
+    if (input.amount < minAmount || input.amount > balance) {
+      throw new BadRequestError(`Payment amount must be between ${minAmount} and ${balance} cents`)
+    }
+    chargeAmount = input.amount
+  }
+
   const numberTyped = cf.invoice_number ? firstTyped(values.get(cf.invoice_number.id)) : undefined
   const invoiceNumber = numberTyped ? (extractValue(numberTyped) as string) : invoiceInstanceId
 
@@ -96,7 +162,13 @@ export async function createStripeCheckout(
     organizationId,
     key: 'organization.currency',
   })) as string
-  const applicationFeeAmount = resolveApplicationFee(account, balance)
+  const applicationFeeAmount = resolveApplicationFee(account, chargeAmount)
+  const contactEmail = await resolveContactEmail(
+    handler,
+    cache,
+    organizationId,
+    cf.invoice_contact ? values.get(cf.invoice_contact.id) : undefined
+  )
 
   const [transaction] = await database
     .insert(schema.PaymentTransaction)
@@ -106,7 +178,7 @@ export async function createStripeCheckout(
       provider: 'stripe',
       kind: 'charge',
       status: 'pending',
-      amount: balance,
+      amount: chargeAmount,
       currency,
       applicationFeeAmount,
       invoiceInstanceId,
@@ -125,7 +197,7 @@ export async function createStripeCheckout(
         {
           price_data: {
             currency,
-            unit_amount: balance,
+            unit_amount: chargeAmount,
             product_data: { name: `Invoice ${invoiceNumber}` },
           },
           quantity: 1,
@@ -133,6 +205,9 @@ export async function createStripeCheckout(
       ],
       payment_intent_data: {
         application_fee_amount: applicationFeeAmount,
+        // Stripe's standard receipt (money MP2 §D) — free once set, falls through silently
+        // when the invoice has no resolvable contact email.
+        receipt_email: contactEmail ?? undefined,
         // Session metadata is NOT copied onto the PaymentIntent — stamp it there too so
         // `payment_intent.succeeded` can resolve the row even if it arrives before
         // `checkout.session.completed` (webhook ordering is not guaranteed).
@@ -144,6 +219,181 @@ export async function createStripeCheckout(
       // Checkout never wedges the page in "processing" (see `cancelAbandonedCheckout`).
       success_url: `${payUrl}?checkout=success`,
       cancel_url: `${payUrl}?checkout=cancel&tx=${transaction!.id}`,
+    },
+    { stripeAccount: account.stripeAccountId, idempotencyKey: transaction!.id }
+  )
+
+  const paymentIntentId =
+    typeof session.payment_intent === 'string' ? session.payment_intent : session.payment_intent?.id
+  await database
+    .update(schema.PaymentTransaction)
+    .set({
+      stripeCheckoutSessionId: session.id,
+      stripePaymentIntentId: paymentIntentId ?? null,
+    })
+    .where(eq(schema.PaymentTransaction.id, transaction!.id))
+
+  if (!session.url) {
+    throw new BadRequestError('Stripe did not return a checkout URL')
+  }
+  return { checkoutUrl: session.url }
+}
+
+/** Input for `createStripeDepositCheckout`. */
+export interface CreateStripeDepositCheckoutInput {
+  organizationId: string
+  /** EntityInstance id of the quote (not the RecordId). */
+  quoteInstanceId: string
+}
+
+/**
+ * Start a Stripe Checkout session for a quote's configured deposit (money MP2 build spec
+ * §B.6) — the pre-payment-held-against-the-quote/job rail. Structurally a clone of
+ * `createStripeCheckout`: pending-row-first, the newly-inserted row's id as the idempotency
+ * key, same `pending`-until-webhook posture. Deltas: `quote_status === 'approved'` gate (a
+ * quote must be accepted before its deposit can be paid) instead of the invoice's
+ * sent/partially_paid check; the amount comes from `resolveQuoteDeposit`, not an invoice
+ * balance; and a re-query guard against double-charging an already-succeeded deposit — a
+ * quote has no self-correcting `balance` the way an invoice does, so this function must check
+ * for an existing succeeded charge itself before inserting a second pending row.
+ */
+export async function createStripeDepositCheckout(
+  input: CreateStripeDepositCheckoutInput
+): Promise<CreateStripeCheckoutResult> {
+  const { organizationId, quoteInstanceId } = input
+  const systemUserId = await getOrgCache().get(organizationId, 'systemUser')
+  const quoteRecordId = toRecordId('quote', quoteInstanceId)
+  const handler = new UnifiedCrudHandler(organizationId, systemUserId)
+  const cache = getOrgCache()
+
+  const cf = await cache
+    .from(organizationId, 'customFields')
+    .bySystemAttributes([
+      'quote_status',
+      'quote_number',
+      'quote_total',
+      'quote_work_orders',
+      'quote_contact',
+    ] as const)
+  const fieldIds = [
+    cf.quote_status,
+    cf.quote_number,
+    cf.quote_total,
+    cf.quote_work_orders,
+    cf.quote_contact,
+  ]
+    .filter(Boolean)
+    .map((f) => f!.id)
+  const values = await handler.getFieldValues(quoteRecordId, fieldIds)
+
+  const statusTyped = cf.quote_status ? firstTyped(values.get(cf.quote_status.id)) : undefined
+  const status = statusTyped ? (extractValue(statusTyped) as string) : undefined
+  if (status !== 'approved') {
+    throw new BadRequestError(
+      `Cannot start a deposit payment — quote must be approved (currently '${status ?? 'unknown'}')`
+    )
+  }
+
+  const totalTyped = cf.quote_total ? firstTyped(values.get(cf.quote_total.id)) : undefined
+  const total = totalTyped ? (extractValue(totalTyped) as number) : 0
+  const { depositAmount } = await resolveQuoteDeposit(organizationId, quoteInstanceId, total)
+  if (depositAmount <= 0) {
+    throw new BadRequestError('No deposit is configured for this quote')
+  }
+
+  // A quote's deposit balance never self-corrects the way an invoice's does — re-query for an
+  // already-succeeded charge before inserting a second pending row (the invoice flow doesn't
+  // need this check; `balance <= 0` already covers a fully-paid invoice).
+  const existingSucceeded = await database.query.PaymentTransaction.findFirst({
+    where: and(
+      eq(schema.PaymentTransaction.organizationId, organizationId),
+      eq(schema.PaymentTransaction.quoteInstanceId, quoteInstanceId),
+      eq(schema.PaymentTransaction.kind, 'charge'),
+      eq(schema.PaymentTransaction.status, 'succeeded')
+    ),
+    columns: { id: true },
+  })
+  if (existingSucceeded) {
+    throw new BadRequestError("This quote's deposit has already been paid")
+  }
+
+  const numberTyped = cf.quote_number ? firstTyped(values.get(cf.quote_number.id)) : undefined
+  const quoteNumber = numberTyped ? (extractValue(numberTyped) as string) : quoteInstanceId
+
+  const account = await getPaymentAccount(organizationId)
+  if (!account?.stripeAccountId || !account.chargesEnabled || account.disconnectedAt) {
+    throw new BadRequestError('Online payment is not available for this quote')
+  }
+
+  const currency = (await getOrganizationSetting({
+    organizationId,
+    key: 'organization.currency',
+  })) as string
+  const applicationFeeAmount = resolveApplicationFee(account, depositAmount)
+  const contactEmail = await resolveContactEmail(
+    handler,
+    cache,
+    organizationId,
+    cf.quote_contact ? values.get(cf.quote_contact.id) : undefined
+  )
+
+  // Auto-convert (if `documents.quote.autoConvertOnAccept` is on) runs synchronously on
+  // accept, so a work order may already exist by the time the customer reaches this deposit
+  // step — stamp it now if so; otherwise `convertQuoteToWorkOrder`'s manual-convert path
+  // back-fills `workOrderInstanceId` later (money MP2 build spec §B.6 point 3).
+  const workOrderRecordId = cf.quote_work_orders
+    ? extractRelationshipRecordIds(values.get(cf.quote_work_orders.id))[0]
+    : undefined
+  const workOrderInstanceId = workOrderRecordId
+    ? parseRecordId(workOrderRecordId).entityInstanceId
+    : null
+
+  const [transaction] = await database
+    .insert(schema.PaymentTransaction)
+    .values({
+      organizationId,
+      paymentAccountId: account.id,
+      provider: 'stripe',
+      kind: 'charge',
+      status: 'pending',
+      amount: depositAmount,
+      currency,
+      applicationFeeAmount,
+      invoiceInstanceId: null,
+      quoteInstanceId,
+      workOrderInstanceId,
+      updatedAt: new Date(),
+    })
+    .returning()
+
+  const quoteToken = await ensureQuotePublicToken(organizationId, quoteInstanceId)
+  const quoteUrl = buildQuoteViewUrl(quoteToken)
+
+  const stripe = getStripeConnectClient()
+  const session = await stripe.checkout.sessions.create(
+    {
+      mode: 'payment',
+      line_items: [
+        {
+          price_data: {
+            currency,
+            unit_amount: depositAmount,
+            product_data: { name: `Deposit — Quote ${quoteNumber}` },
+          },
+          quantity: 1,
+        },
+      ],
+      payment_intent_data: {
+        application_fee_amount: applicationFeeAmount,
+        receipt_email: contactEmail ?? undefined,
+        // Session metadata is NOT copied onto the PaymentIntent — stamp it there too so
+        // `payment_intent.succeeded` can resolve the row even if it arrives before
+        // `checkout.session.completed` (webhook ordering is not guaranteed).
+        metadata: { transactionId: transaction!.id, organizationId, quoteInstanceId },
+      },
+      metadata: { transactionId: transaction!.id, organizationId, quoteInstanceId },
+      success_url: quoteUrl,
+      cancel_url: `${quoteUrl}?checkout=cancel&tx=${transaction!.id}`,
     },
     { stripeAccount: account.stripeAccountId, idempotencyKey: transaction!.id }
   )
@@ -341,12 +591,17 @@ export async function applyStripeEvent(event: Stripe.Event): Promise<void> {
         .set({ status: 'disputed' })
         .where(eq(schema.PaymentTransaction.id, transaction.id))
 
-      const systemUserId = await getOrgCache().get(transaction.organizationId, 'systemUser')
-      await syncInvoicePaymentState({
-        organizationId: transaction.organizationId,
-        userId: systemUserId,
-        invoiceInstanceId: transaction.invoiceInstanceId,
-      })
+      // A disputed held deposit (money MP2 §B.6) has no invoice to reproject yet — the status
+      // flip above is the whole effect until settle (and `applyHeldDepositToInvoice` only picks
+      // up `succeeded` rows, so a disputed deposit never silently settles).
+      if (transaction.invoiceInstanceId) {
+        const systemUserId = await getOrgCache().get(transaction.organizationId, 'systemUser')
+        await syncInvoicePaymentState({
+          organizationId: transaction.organizationId,
+          userId: systemUserId,
+          invoiceInstanceId: transaction.invoiceInstanceId,
+        })
+      }
       return
     }
 
@@ -453,6 +708,10 @@ export async function refundTransaction(
       amount: charge.amount,
       currency: charge.currency,
       invoiceInstanceId: charge.invoiceInstanceId,
+      // MP2 §B.10 — carry a deposit's quote/work-order linkage onto its refund row too, so a
+      // refunded deposit stays queryable by the same `listWorkOrderPayments` extension.
+      quoteInstanceId: charge.quoteInstanceId,
+      workOrderInstanceId: charge.workOrderInstanceId,
       refundedTransactionId: charge.id,
       createdByUserId: userId,
       updatedAt: new Date(),

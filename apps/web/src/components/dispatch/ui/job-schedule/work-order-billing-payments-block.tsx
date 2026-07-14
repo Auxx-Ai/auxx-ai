@@ -71,16 +71,17 @@ export function WorkOrderBillingPaymentsBlock({
     workOrderRecordId,
   })
 
-  const invalidateBoth = (invoiceRecordId: RecordId) => {
+  const invalidateBoth = (invoiceRecordId: RecordId | null) => {
     void utils.money.listPaymentsForWorkOrder.invalidate({ workOrderRecordId })
-    void utils.money.listPayments.invalidate({ invoiceRecordId })
+    // Held deposits (money MP2) carry no invoice link until settle — nothing to invalidate.
+    if (invoiceRecordId) void utils.money.listPayments.invalidate({ invoiceRecordId })
   }
 
   // `PaymentsList`'s `renderRowSuffix` callback is typed against the bare `listPayments` row
   // shape (no `invoiceRecordId`) — look the invoice up by transaction id from our own
   // `listPaymentsForWorkOrder` data instead of widening that shared type.
   const invoiceByTransactionId = useMemo(() => {
-    const map = new Map<string, RecordId>()
+    const map = new Map<string, RecordId | null>()
     for (const payment of payments ?? []) map.set(payment.id, payment.invoiceRecordId)
     return map
   }, [payments])

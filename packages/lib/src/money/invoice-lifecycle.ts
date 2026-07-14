@@ -37,10 +37,11 @@ async function getInvoiceStatus(
 /**
  * Clear `line_item_invoice` on every SOURCE line for an invoice — lines where
  * `invoice = X AND workOrder is not empty` (the §B.3 invariant). The invoice's own copies
- * (`workOrder` empty) are never touched here. Shared by `voidInvoice` (decision 5) and
- * `deleteInvoice` (§G.5).
+ * (`workOrder` empty) are never touched here. Shared by `voidInvoice` (decision 5) and the
+ * `guardInvoiceDelete` pre-delete hook (`field-hooks/pre/invoice-delete-guard.ts`,
+ * plans/dispatch/money/12-delete-safety.md §A).
  */
-async function unstampSourceLines(
+export async function unstampSourceLines(
   organizationId: string,
   userId: string,
   invoiceRecordId: RecordId
@@ -147,50 +148,16 @@ export async function voidInvoice(input: InvoiceLifecycleInput): Promise<void> {
 }
 
 /**
- * Delete an invoice (money MI1 build spec §G.5). Same payments guard as `voidInvoice` — the
- * DB's `restrict` FK on `PaymentTransaction.invoiceInstanceId` backstops it. Unstamps every
- * source line, hard-deletes the invoice's own line copies (`invoice = X AND workOrder is
- * empty`, the §B.3 invariant), then deletes the invoice instance itself.
+ * Delete an invoice (money MI1 build spec §G.5). The actual guard + cleanup work — admin gate,
+ * succeeded-charges guard, ledger purge, source-line unstamp, own-line cleanup — now lives in
+ * the `guardInvoiceDelete` pre-delete hook (`field-hooks/pre/invoice-delete-guard.ts`,
+ * plans/dispatch/money/12-delete-safety.md §A), which fires for every delete path (generic
+ * `record.delete`, bulk delete, this endpoint). This stays a thin wrapper so the
+ * `money.deleteInvoice` endpoint keeps its shape.
  */
 export async function deleteInvoice(input: InvoiceLifecycleInput): Promise<void> {
   const { organizationId, userId, invoiceInstanceId } = input
   const handler = new UnifiedCrudHandler(organizationId, userId)
   const invoiceRecordId = toRecordId('invoice', invoiceInstanceId)
-
-  if (await hasSucceededCharges(organizationId, invoiceInstanceId)) {
-    throw new BadRequestError('Remove recorded payments before deleting this invoice')
-  }
-
-  await unstampSourceLines(organizationId, userId, invoiceRecordId)
-
-  const { ids: ownLineIds } = await handler.listFiltered({
-    entityDefinitionId: 'line_item',
-    filters: [
-      {
-        id: 'invoice-own-lines',
-        logicalOperator: 'AND',
-        conditions: [
-          {
-            id: 'invoice-own-lines-invoice',
-            fieldId: 'line_item:invoice',
-            operator: 'is',
-            value: invoiceRecordId,
-          },
-          {
-            id: 'invoice-own-lines-workorder',
-            fieldId: 'line_item:workOrder',
-            operator: 'empty',
-            value: null,
-          },
-        ],
-      },
-    ],
-    limit: 1000,
-    mode: 'oneshot',
-  })
-  for (const lineInstanceId of ownLineIds) {
-    await handler.delete(toRecordId('line_item', lineInstanceId))
-  }
-
   await handler.delete(invoiceRecordId)
 }

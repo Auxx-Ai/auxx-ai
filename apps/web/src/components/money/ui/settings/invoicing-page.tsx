@@ -4,7 +4,7 @@
 import { FeatureKey } from '@auxx/lib/permissions/client'
 import type { SettingValue } from '@auxx/lib/settings/client'
 import { cn } from '@auxx/ui/lib/utils'
-import { FileCheck2, Lock, Receipt } from 'lucide-react'
+import { CreditCard, FileCheck2, Lock, Receipt } from 'lucide-react'
 import { EmptyState } from '~/components/global/empty-state'
 import { FieldPanel } from '~/components/global/forms/field-panel'
 import { FormSaveBar } from '~/components/global/forms/form-save-bar'
@@ -55,10 +55,14 @@ const DRAFT_KEYS = [
   'documents.invoice.autoEnabled',
   'documents.invoice.defaultTiming',
   'documents.invoice.dateBasis',
+  'documents.invoice.allowPartialPayments',
+  'documents.invoice.partialPaymentMinPercent',
   'documents.quote.acceptancePageEnabled',
   'documents.quote.allowDecline',
   'documents.quote.requireSignature',
   'documents.quote.autoConvertOnAccept',
+  'documents.quote.depositType',
+  'documents.quote.depositValue',
 ] as const
 
 function InvoicingSettingsBody({ breadcrumbs }: { breadcrumbs: { title: string }[] }) {
@@ -89,6 +93,7 @@ function InvoicingSettingsBody({ breadcrumbs }: { breadcrumbs: { title: string }
   })
 
   const acceptancePageEnabled = !!draft['documents.quote.acceptancePageEnabled']
+  const allowPartialPayments = !!draft['documents.invoice.allowPartialPayments']
 
   return (
     <SettingsPage
@@ -119,6 +124,35 @@ function InvoicingSettingsBody({ breadcrumbs }: { breadcrumbs: { title: string }
               description='Whether auto-generated invoices are dated to the visit or the day they were generated.'
               {...controlled('documents.invoice.dateBasis')}
             />
+          </FieldPanel>
+        </SettingsSection>
+
+        <SettingsSection
+          icon={CreditCard}
+          title='Partial payments'
+          description='Let customers pay a custom amount on the public pay page instead of only the full balance.'>
+          <FieldPanel
+            className='mt-1 p-0'
+            resizeId='partial-payments-settings'
+            defaultLabelWidth={220}>
+            <SettingsFieldRow
+              settingKey='documents.invoice.allowPartialPayments'
+              title='Allow partial payments'
+              description='Applies to invoice payments; deposits are always paid in full.'
+              {...controlled('documents.invoice.allowPartialPayments')}
+            />
+            <div
+              className={cn(
+                'flex flex-col',
+                !allowPartialPayments && 'pointer-events-none opacity-50'
+              )}>
+              <SettingsFieldRow
+                settingKey='documents.invoice.partialPaymentMinPercent'
+                title='Minimum payment percent'
+                description='Smallest payment a customer can submit, as a percent of the current balance.'
+                {...controlled('documents.invoice.partialPaymentMinPercent')}
+              />
+            </div>
           </FieldPanel>
         </SettingsSection>
 
@@ -158,6 +192,18 @@ function InvoicingSettingsBody({ breadcrumbs }: { breadcrumbs: { title: string }
                 title='Convert to job on acceptance'
                 description='Automatically convert the quote to a work order when the customer accepts.'
                 {...controlled('documents.quote.autoConvertOnAccept')}
+              />
+              <SettingsFieldRow
+                settingKey='documents.quote.depositType'
+                title='Deposit type'
+                description="Org default deposit required to accept a quote — a quote's own deposit fields override this. None = no deposit requested."
+                {...controlled('documents.quote.depositType')}
+              />
+              <SettingsFieldRow
+                settingKey='documents.quote.depositValue'
+                title='Deposit value'
+                description='Percent (0-100) or a fixed currency amount (50 = $50.00), depending on deposit type.'
+                {...controlled('documents.quote.depositValue')}
               />
             </div>
           </FieldPanel>

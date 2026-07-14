@@ -199,13 +199,16 @@ export async function createQuoteFromRequest(input: CreateQuoteFromRequestInput)
   const title = titleTyped ? (extractValue(titleTyped) as string) : undefined
   const contactRecordId = contactTyped?.type === 'relationship' ? contactTyped.recordId : undefined
 
-  // Prefill validUntil/terms from the org's Documents settings (money MQ2 build spec
-  // §F.5) — always unset at this point (this is the only quote-create path today), so
-  // "only prefill when empty" is trivially satisfied by setting them unconditionally here.
+  // Prefill validUntil/terms/deposit from the org's Documents settings (money MQ2 build spec
+  // §F.5, deposit fields added by money MP2 §B.3) — always unset at this point (this is the
+  // only quote-create path today), so "only prefill when empty" is trivially satisfied by
+  // setting them unconditionally here.
   const { getOrganizationSetting } = await import('../settings/settings-service')
-  const [validDays, defaultTerms] = await Promise.all([
+  const [validDays, defaultTerms, depositType, depositValue] = await Promise.all([
     getOrganizationSetting({ organizationId, key: 'documents.quote.validDays' }),
     getOrganizationSetting({ organizationId, key: 'documents.quote.defaultTerms' }),
+    getOrganizationSetting({ organizationId, key: 'documents.quote.depositType' }),
+    getOrganizationSetting({ organizationId, key: 'documents.quote.depositValue' }),
   ])
   const validUntil = new Date(Date.now() + Number(validDays ?? 30) * 24 * 60 * 60 * 1000)
     .toISOString()
@@ -215,6 +218,8 @@ export async function createQuoteFromRequest(input: CreateQuoteFromRequestInput)
     quote_title: title || `Quote for ${requestInstanceId}`,
     quote_request: requestRecordId,
     quote_valid_until: validUntil,
+    quote_deposit_type: depositType ?? 'none',
+    quote_deposit_value: Number(depositValue ?? 0),
   }
   if (contactRecordId) values.quote_contact = contactRecordId
   if (defaultTerms) values.quote_terms = defaultTerms

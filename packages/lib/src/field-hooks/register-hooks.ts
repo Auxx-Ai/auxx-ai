@@ -14,11 +14,15 @@ import { publishFieldChangeEvent } from './post/publish-field-change-event'
 import { touchActivityOnFieldChange } from './post/touch-activity-on-field-change'
 import { guardInboxDefaultLens } from './pre/inbox-lens-guard'
 import { guardInboxPersonalFields } from './pre/inbox-personal-guard'
+import { guardInvoiceDelete } from './pre/invoice-delete-guard'
+import { guardQuoteConvertedDelete } from './pre/quote-delete-guard'
+import { guardQuoteDraftReturnWithPaidDeposit } from './pre/quote-deposit-guard'
 import {
   dropUnauthorizedSystemFlag,
   rejectDeleteIfSystemTag,
   rejectIfSystemTag,
 } from './pre/tag-system-guard'
+import { guardWorkOrderDelete } from './pre/work-order-delete-guard'
 import {
   registerEntityFieldChangeHooks,
   registerEntityPreDeleteHooks,
@@ -119,6 +123,13 @@ export function registerAllHooks(): void {
   registerFieldPreHooks('inboxes', 'inbox_is_personal', [guardInboxPersonalFields])
   registerFieldPreHooks('inboxes', 'inbox_owner_user_id', [guardInboxPersonalFields])
 
+  // Return-to-draft wall (money MP2 §B.10) — `rejectManualLifecycleStatus`
+  // (`resources/hooks/quote-hooks.ts`) is dead for real client writes to
+  // `quote_status` (the generic records path never runs the system-hook
+  // chain), so the deposit guard lives here instead, on the field-pre-hook
+  // chain that actually runs.
+  registerFieldPreHooks('quotes', 'quote_status', [guardQuoteDraftReturnWithPaidDeposit])
+
   registerFieldPreHooks('tags', 'is_system_tag', [dropUnauthorizedSystemFlag])
   registerFieldPreHooks('tags', 'title', [rejectIfSystemTag])
   registerFieldPreHooks('tags', 'tag_description', [rejectIfSystemTag])
@@ -126,4 +137,12 @@ export function registerAllHooks(): void {
   registerFieldPreHooks('tags', 'tag_color', [rejectIfSystemTag])
   registerFieldPreHooks('tags', 'tag_parent', [rejectIfSystemTag])
   registerEntityPreDeleteHooks('tags', [rejectDeleteIfSystemTag])
+
+  // Money delete-safety (plans/dispatch/money/12-delete-safety.md §A/§C/§F) — moves the
+  // invoice/work-order guard+cleanup logic out of the client-only drawer branch and into the
+  // sanctioned hook point, so generic `record.delete`/`bulkDelete`, the drawer, and any future
+  // Kopilot/API caller all get the same safety net.
+  registerEntityPreDeleteHooks('invoices', [guardInvoiceDelete])
+  registerEntityPreDeleteHooks('work-orders', [guardWorkOrderDelete])
+  registerEntityPreDeleteHooks('quotes', [guardQuoteConvertedDelete])
 }

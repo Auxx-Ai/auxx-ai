@@ -5,7 +5,7 @@ import { database, schema } from '@auxx/database'
 import type { TypedFieldValue } from '@auxx/types'
 import { extractValue } from '@auxx/types'
 import { parseRecordId, toRecordId } from '@auxx/types/resource'
-import { and, asc, eq, inArray } from 'drizzle-orm'
+import { and, asc, eq, inArray, isNull, or } from 'drizzle-orm'
 import { getOrgCache } from '../../cache'
 import { BadRequestError, ForbiddenError, NotFoundError } from '../../errors'
 import { FieldValueService } from '../../field-values/field-value-service'
@@ -84,8 +84,13 @@ export async function hasSucceededCharges(
  * per-invoice, invoice-drawer-only, and is left untouched). Resolves the WO's invoices via the
  * `work_order_invoices` inverse relationship — the same `getFieldValues` +
  * `extractRelationshipRecordIds` mechanism the client's `WorkOrderInvoicesCard` reads
- * (`work-order-related-cards.tsx`), not a new FieldValue query shape. Returns `[]` without
- * touching the ledger table when the work order has no invoices yet.
+ * (`work-order-related-cards.tsx`), not a new FieldValue query shape.
+ *
+ * MP2 (§B.9): also matches rows stamped with `workOrderInstanceId` directly — a held deposit
+ * charge has no `invoiceInstanceId` yet (it settles onto the job's first invoice, §B.6), so a
+ * still-invoice-less job must still surface it here. The invoice-linked branch is only skipped
+ * (not the whole query) when the work order has no invoices yet — `inArray` with an empty array
+ * is invalid SQL.
  */
 export async function listWorkOrderPayments(
   input: ListWorkOrderPaymentsInput
@@ -97,20 +102,25 @@ export async function listWorkOrderPayments(
   const woCf = await getOrgCache()
     .from(organizationId, 'customFields')
     .bySystemAttributes(['work_order_invoices'] as const)
-  if (!woCf.work_order_invoices) return []
 
-  const values = await handler.getFieldValues(workOrderRecordId, [woCf.work_order_invoices.id])
-  const invoiceRecordIds = extractRelationshipRecordIds(values.get(woCf.work_order_invoices.id))
-  if (invoiceRecordIds.length === 0) return []
-
-  const invoiceInstanceIds = invoiceRecordIds.map(
-    (recordId) => parseRecordId(recordId).entityInstanceId
-  )
+  let invoiceInstanceIds: string[] = []
+  if (woCf.work_order_invoices) {
+    const values = await handler.getFieldValues(workOrderRecordId, [woCf.work_order_invoices.id])
+    const invoiceRecordIds = extractRelationshipRecordIds(values.get(woCf.work_order_invoices.id))
+    invoiceInstanceIds = invoiceRecordIds.map(
+      (recordId) => parseRecordId(recordId).entityInstanceId
+    )
+  }
 
   return database.query.PaymentTransaction.findMany({
     where: and(
       eq(schema.PaymentTransaction.organizationId, organizationId),
-      inArray(schema.PaymentTransaction.invoiceInstanceId, invoiceInstanceIds)
+      invoiceInstanceIds.length > 0
+        ? or(
+            inArray(schema.PaymentTransaction.invoiceInstanceId, invoiceInstanceIds),
+            eq(schema.PaymentTransaction.workOrderInstanceId, workOrderInstanceId)
+          )
+        : eq(schema.PaymentTransaction.workOrderInstanceId, workOrderInstanceId)
     ),
     orderBy: asc(schema.PaymentTransaction.createdAt),
   })
@@ -194,6 +204,11 @@ export async function syncInvoicePaymentState(input: SyncInvoicePaymentStateInpu
  * `requireLedgerProvenance` system hook (it always passes `payment_transaction_id`) — and
  * stamps `paymentInstanceId` back onto the row. Always ends with `syncInvoicePaymentState`.
  * MP1's webhook transitions call this unchanged — the one converging writer (04-payments).
+ *
+ * MP2 (§B.7): a held deposit charge (`succeeded`, `invoiceInstanceId: null`) is a clean no-op
+ * here — the mirror needs an invoice (`payment_invoice` is `nullable: false`) and
+ * `syncInvoicePaymentState` needs one to project onto, so both are skipped until
+ * `applyHeldDepositToInvoice` stamps the row at settle time and re-calls this function.
  */
 export async function syncTransaction(params: {
   organizationId: string
@@ -205,7 +220,8 @@ export async function syncTransaction(params: {
   if (
     transaction.status === 'succeeded' &&
     transaction.kind === 'charge' &&
-    !transaction.paymentInstanceId
+    !transaction.paymentInstanceId &&
+    transaction.invoiceInstanceId
   ) {
     const handler = new UnifiedCrudHandler(organizationId, userId)
     const invoiceRecordId = toRecordId('invoice', transaction.invoiceInstanceId)
@@ -230,11 +246,49 @@ export async function syncTransaction(params: {
       .where(eq(schema.PaymentTransaction.id, transaction.id))
   }
 
-  await syncInvoicePaymentState({
-    organizationId,
-    userId,
-    invoiceInstanceId: transaction.invoiceInstanceId,
+  if (transaction.invoiceInstanceId) {
+    await syncInvoicePaymentState({
+      organizationId,
+      userId,
+      invoiceInstanceId: transaction.invoiceInstanceId,
+    })
+  }
+}
+
+/**
+ * Stamp a held (invoice-less) deposit charge onto the job's first real invoice — the one
+ * "apply deposit" operation (money MP2 build spec §B.6). Finds the org's succeeded, still
+ * invoice-less `charge` row for this work order, sets its `invoiceInstanceId`, then re-runs
+ * `syncTransaction` — which now has both the invoice link AND `succeeded` status, so it takes
+ * its normal `payment` mirror + `syncInvoicePaymentState` path. No new settle math.
+ *
+ * Self-limiting without extra state: once a deposit's `invoiceInstanceId` is stamped, the
+ * `isNull(invoiceInstanceId)` filter excludes it from ever being picked up again on the same
+ * job's second invoice. A no-op when the work order has no held deposit.
+ */
+export async function applyHeldDepositToInvoice(params: {
+  organizationId: string
+  userId: string
+  workOrderInstanceId: string
+  invoiceInstanceId: string
+}): Promise<void> {
+  const { organizationId, userId, workOrderInstanceId, invoiceInstanceId } = params
+  const deposit = await database.query.PaymentTransaction.findFirst({
+    where: and(
+      eq(schema.PaymentTransaction.organizationId, organizationId),
+      eq(schema.PaymentTransaction.workOrderInstanceId, workOrderInstanceId),
+      eq(schema.PaymentTransaction.kind, 'charge'),
+      eq(schema.PaymentTransaction.status, 'succeeded'),
+      isNull(schema.PaymentTransaction.invoiceInstanceId)
+    ),
   })
+  if (!deposit) return
+  const [updated] = await database
+    .update(schema.PaymentTransaction)
+    .set({ invoiceInstanceId })
+    .where(eq(schema.PaymentTransaction.id, deposit.id))
+    .returning()
+  await syncTransaction({ organizationId, userId, transaction: updated! })
 }
 
 /**

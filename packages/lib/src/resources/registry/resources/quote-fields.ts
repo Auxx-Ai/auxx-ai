@@ -42,6 +42,13 @@ const QUOTE_DISCOUNT_TYPE_OPTIONS = [
   { label: 'Amount', value: 'amount', color: 'purple' },
 ] as const
 
+/** Per-quote deposit override — money MP2 §B.2. `none` = no deposit required to accept. */
+const QUOTE_DEPOSIT_TYPE_OPTIONS = [
+  { label: 'None', value: 'none', color: 'gray' },
+  { label: 'Percent', value: 'percent', color: 'blue' },
+  { label: 'Fixed amount', value: 'fixed', color: 'purple' },
+] as const
+
 /**
  * Field definitions for the Quote resource (money MQ1, README).
  * The first pure-EntityInstance system def with `hasDetailPage: true`.
@@ -637,6 +644,50 @@ export const QUOTE_FIELDS: Record<string, ResourceField> = {
     description:
       'Reason the customer gave when declining on the public quote page (v5 build spec 01) — ' +
       'written only by declineQuoteByToken via FieldValueService.',
+  },
+
+  depositType: {
+    id: toFieldId('depositType'),
+    key: 'depositType',
+    label: 'Deposit',
+    type: BaseType.ENUM,
+    fieldType: FieldType.SINGLE_SELECT,
+    isSystem: true,
+    systemAttribute: 'quote_deposit_type',
+    systemSortOrder: 'aP',
+    nullable: true,
+    options: { options: [...QUOTE_DEPOSIT_TYPE_OPTIONS] },
+    capabilities: {
+      filterable: true,
+      sortable: false,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    description:
+      'Deposit required to accept this quote. Unset = use the org default ' +
+      '(documents.quote.depositType).',
+  },
+
+  depositValue: {
+    id: toFieldId('depositValue'),
+    key: 'depositValue',
+    label: 'Deposit value',
+    type: BaseType.NUMBER,
+    fieldType: FieldType.NUMBER,
+    isSystem: true,
+    systemAttribute: 'quote_deposit_value',
+    systemSortOrder: 'aQ',
+    nullable: true,
+    capabilities: {
+      filterable: true,
+      sortable: false,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    description:
+      'Percent (0-100) when depositType is percent, a currency amount (50 = $50.00) when fixed.',
   },
 
   createdAt: {
