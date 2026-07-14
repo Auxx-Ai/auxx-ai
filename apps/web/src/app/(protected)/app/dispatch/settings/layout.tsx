@@ -10,6 +10,7 @@ import {
   FileText,
   Hash,
   Receipt,
+  SlidersHorizontal,
   Tags,
   Users,
 } from 'lucide-react'
@@ -24,6 +25,12 @@ const DISPATCH_SETTINGS: SidebarProps[] = [
     label: 'Settings',
     type: 'header',
     items: [
+      {
+        id: 'dispatch-settings-general',
+        label: 'General',
+        slug: 'general',
+        icon: <SlidersHorizontal />,
+      },
       {
         id: 'dispatch-settings-workers',
         label: 'Workers',
