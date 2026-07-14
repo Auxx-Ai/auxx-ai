@@ -5,13 +5,13 @@ import { Alert } from '@auxx/ui/components/alert'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { ButtonGroup, ButtonGroupSeparator } from '@auxx/ui/components/button-group'
-import { AnimatedCollapsibleContent } from '@auxx/ui/components/collapsible'
 import { DrawerHeader } from '@auxx/ui/components/drawer'
 import { EntityIcon } from '@auxx/ui/components/icons'
 import { LastUpdated } from '@auxx/ui/components/last-updated'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { EmptySection, Section } from '@auxx/ui/components/section'
 import { TreeRow } from '@auxx/ui/components/tree-row'
+import { TreeRowList } from '@auxx/ui/components/tree-row-list'
 import { cn } from '@auxx/ui/lib/utils'
 import { pluralize } from '@auxx/utils/strings'
 import { ArchiveX, History, Plus, RefreshCw, SkipForward, Trash2, XCircle } from 'lucide-react'
@@ -398,43 +398,6 @@ function buildMockData(scenario: Exclude<typeof MOCK_SCENARIO, 'off'>): {
 const VISIBLE_RUN_LIMIT = 7
 
 /**
- * The run history list: the latest {@link VISIBLE_RUN_LIMIT} runs, then a
- * "Show more" tree row that reveals the remainder in an animated collapse. The
- * extra runs are siblings of the toggle row (not its children) so they keep the
- * flat-list indentation.
- */
-function RunHistoryList({ rows, sourceLabel }: { rows: ConnectorRun[]; sourceLabel: string }) {
-  const [showAll, setShowAll] = useState(false)
-  const visible = rows.slice(0, VISIBLE_RUN_LIMIT)
-  const hidden = rows.slice(VISIBLE_RUN_LIMIT)
-
-  return (
-    <div className='@container/runs flex flex-col ps-2 pe-4'>
-      {visible.map((run) => (
-        <RunRow key={run.id} run={run} sourceLabel={sourceLabel} />
-      ))}
-      {hidden.length > 0 && (
-        <>
-          <AnimatedCollapsibleContent open={showAll} className='flex flex-col'>
-            {hidden.map((run) => (
-              <RunRow key={run.id} run={run} sourceLabel={sourceLabel} />
-            ))}
-          </AnimatedCollapsibleContent>
-          <TreeRow
-            icon={<History className='size-4' />}
-            title={showAll ? 'Show less' : `Show ${hidden.length} more`}
-            rowClassName='hover:bg-primary-100'
-            expandable
-            isOpen={showAll}
-            onToggleOpen={() => setShowAll((v) => !v)}
-          />
-        </>
-      )}
-    </div>
-  )
-}
-
-/**
  * Docked Runs panel: live sync status (polls `getStatus` every 4s while syncing,
  * matching the Knowledge-Sources cadence) + the `DataConnectorRun` history with
  * per-run created/updated/skipped/archived/deleted/failed counts, relationship
@@ -558,7 +521,14 @@ export function ConnectorRunsPanel({
               />
             </div>
           ) : (
-            <RunHistoryList rows={rows} sourceLabel={sourceLabel} />
+            <TreeRowList
+              items={rows}
+              getKey={(run) => run.id}
+              visibleLimit={VISIBLE_RUN_LIMIT}
+              showMoreIcon={<History className='size-4' />}
+              className='@container/runs ps-2 pe-4'
+              renderRow={(run) => <RunRow run={run} sourceLabel={sourceLabel} />}
+            />
           )}
         </Section>
       </ScrollArea>

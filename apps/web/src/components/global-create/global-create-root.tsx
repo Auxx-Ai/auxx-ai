@@ -3,7 +3,7 @@
 'use client'
 
 import { useHotkeySequence } from '@tanstack/react-hotkeys'
-import { EntityInstanceDialog } from '~/components/custom-fields/ui/entity-instance-dialog'
+import { RecordEditorDialog } from '~/components/records/record-editor-dialog'
 import { useResources } from '~/components/resources/hooks/use-resources'
 import { useRecordStore } from '~/components/resources/store/record-store'
 import { api } from '~/trpc/react'
@@ -21,7 +21,8 @@ const upper = (combo: [string, string]): [string, string] => [
  * Mount once at the app layout level so entities can be created from anywhere.
  *
  * Handles four fixed system-entity shortcuts (contacts, tickets, parts, companies)
- * and hosts a single EntityInstanceDialog driven by useCreateEntityStore.
+ * and hosts a single RecordEditorDialog driven by useCreateEntityStore, which
+ * resolves the right editor per entity type (e.g. the custom Parts dialog).
  */
 export function GlobalCreateRoot() {
   const open = useCreateEntityStore((s) => s.open)
@@ -52,7 +53,7 @@ export function GlobalCreateRoot() {
   if (!open || !entityDefinitionId) return null
 
   return (
-    <EntityInstanceDialog
+    <RecordEditorDialog
       open={open}
       onOpenChange={(isOpen) => {
         if (!isOpen) closeDialog()

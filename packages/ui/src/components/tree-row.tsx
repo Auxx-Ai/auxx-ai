@@ -1,6 +1,7 @@
 // packages/ui/src/components/tree-row.tsx
 'use client'
 
+import { Skeleton } from '@auxx/ui/components/skeleton'
 import { SimpleTooltip, TooltipExplanation } from '@auxx/ui/components/tooltip'
 import { cn } from '@auxx/ui/lib/utils'
 import { cva, type VariantProps } from 'class-variance-authority'
@@ -340,6 +341,22 @@ export function TreeRow({
       line={line}>
       {children}
     </BaseTreeRow>
+  )
+}
+
+/**
+ * Placeholder row matching {@link TreeRow}'s height and indent — a skeleton icon
+ * box plus a text-line skeleton. Used by {@link TreeRowList} while its data loads
+ * so the list reserves the same vertical rhythm as the real rows.
+ */
+export function TreeRowSkeleton({ depth = 0 }: { depth?: number }) {
+  return (
+    <div style={{ paddingLeft: `${depth * INDENT_REM}rem` }}>
+      <div className='flex items-center gap-2 px-1 py-1.5'>
+        <Skeleton className='size-4 shrink-0 rounded' />
+        <Skeleton className='h-4 w-40 max-w-full' />
+      </div>
+    </div>
   )
 }
 

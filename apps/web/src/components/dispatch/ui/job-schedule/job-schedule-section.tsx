@@ -3,7 +3,8 @@
 
 import { EmptySection } from '@auxx/ui/components/section'
 import { TREE_SECONDARY_NOTRUNCATE } from '@auxx/ui/components/tree-row'
-import { ArrowRight, History } from 'lucide-react'
+import { TreeRowList } from '@auxx/ui/components/tree-row-list'
+import { History } from 'lucide-react'
 import { useQueryState } from 'nuqs'
 import type { DetailViewTabProps } from '~/components/detail-view'
 import { useSystemValues } from '~/components/resources/hooks/use-system-values'
@@ -22,7 +23,7 @@ const PREVIEW_LIMIT = 3
  * the recurrence row (recurring jobs — `RecurringEngagementCard`, which also
  * portals the engagement badge + Pause/Edit into the Section header), the
  * "Next visit" card, and the remaining upcoming visits as `ScheduleVisitRow`s
- * with a "View all →" drill. History stays its own section
+ * with an inline "Show more" expand. History stays its own section
  * (`VisitHistorySection`).
  */
 export function JobScheduleSection({ recordId }: DetailViewTabProps) {
@@ -42,7 +43,6 @@ export function JobScheduleSection({ recordId }: DetailViewTabProps) {
   // The primary visit already renders as the card — preview only the visits after it.
   const laterUpcoming = upcoming.slice(1)
 
-  const openList = () => void setPanel('visits')
   const openItem = (visitId: string) => {
     void setPanel('visits')
     void setItem(visitId)
@@ -75,26 +75,23 @@ export function JobScheduleSection({ recordId }: DetailViewTabProps) {
       />
 
       {laterUpcoming.length > 0 && (
-        <div>
-          <div className={`space-y-0.5 ${TREE_SECONDARY_NOTRUNCATE}`}>
-            {laterUpcoming.slice(0, PREVIEW_LIMIT).map((visit) => (
-              <ScheduleVisitRow
-                key={visit.id}
-                visit={visit}
-                canEdit={canEdit}
-                mutations={mutations}
-                existingVisits={existingVisits}
-                workOrderRecordId={recordId}
-                onRefresh={refresh}
-                onOpen={() => openItem(visit.id)}
-              />
-            ))}
-          </div>
-
-          {laterUpcoming.length > PREVIEW_LIMIT && (
-            <ViewAllRow label={`View all ${upcoming.length} upcoming visits`} onClick={openList} />
+        <TreeRowList
+          items={laterUpcoming}
+          getKey={(visit) => visit.id}
+          visibleLimit={PREVIEW_LIMIT}
+          className={`space-y-0.5 ${TREE_SECONDARY_NOTRUNCATE}`}
+          renderRow={(visit) => (
+            <ScheduleVisitRow
+              visit={visit}
+              canEdit={canEdit}
+              mutations={mutations}
+              existingVisits={existingVisits}
+              workOrderRecordId={recordId}
+              onRefresh={refresh}
+              onOpen={() => openItem(visit.id)}
+            />
           )}
-        </div>
+        />
       )}
     </div>
   )
@@ -102,9 +99,8 @@ export function JobScheduleSection({ recordId }: DetailViewTabProps) {
 
 /**
  * Registered as `work_order:history` — standalone visit History section: the
- * same `ScheduleVisitRow`s capped at PREVIEW_LIMIT, plus a "View all →"
- * link that pushes the `?panel=visits` drill (the shared nuqs params
- * `DetailViewSections` reads). The section heading comes from the surrounding
+ * same `ScheduleVisitRow`s capped at PREVIEW_LIMIT, with the rest revealed by an
+ * inline "Show more" expand. The section heading comes from the surrounding
  * `<Section>` — no block header here.
  */
 export function VisitHistorySection({ recordId }: DetailViewTabProps) {
@@ -114,7 +110,6 @@ export function VisitHistorySection({ recordId }: DetailViewTabProps) {
 
   const { history } = splitJobVisits(visits)
 
-  const openList = () => void setPanel('visits')
   const openItem = (visitId: string) => {
     void setPanel('visits')
     void setItem(visitId)
@@ -133,39 +128,23 @@ export function VisitHistorySection({ recordId }: DetailViewTabProps) {
   }
 
   return (
-    <div>
-      <div className={`space-y-0.5 ${TREE_SECONDARY_NOTRUNCATE}`}>
-        {history.slice(0, PREVIEW_LIMIT).map((visit) => (
-          <ScheduleVisitRow
-            key={visit.id}
-            visit={visit}
-            canEdit={canEdit}
-            mutations={mutations}
-            existingVisits={existingVisits}
-            workOrderRecordId={recordId}
-            onRefresh={refresh}
-            onOpen={() => openItem(visit.id)}
-          />
-        ))}
-      </div>
-
-      {history.length > PREVIEW_LIMIT && (
-        <ViewAllRow label={`View all ${history.length} past visits`} onClick={openList} />
+    <TreeRowList
+      items={history}
+      getKey={(visit) => visit.id}
+      visibleLimit={PREVIEW_LIMIT}
+      className={`space-y-0.5 ${TREE_SECONDARY_NOTRUNCATE}`}
+      renderRow={(visit) => (
+        <ScheduleVisitRow
+          visit={visit}
+          canEdit={canEdit}
+          mutations={mutations}
+          existingVisits={existingVisits}
+          workOrderRecordId={recordId}
+          onRefresh={refresh}
+          onOpen={() => openItem(visit.id)}
+        />
       )}
-    </div>
-  )
-}
-
-/** The 04 mock's "View all N … →" text link under the visit rows. */
-function ViewAllRow({ label, onClick }: { label: string; onClick: () => void }) {
-  return (
-    <button
-      type='button'
-      onClick={onClick}
-      className='mt-1 flex items-center gap-1 px-1 py-1 text-sm text-muted-foreground transition-colors hover:text-foreground'>
-      {label}
-      <ArrowRight className='size-3.5' />
-    </button>
+    />
   )
 }
 

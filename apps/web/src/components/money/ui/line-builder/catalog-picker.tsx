@@ -25,7 +25,7 @@ import {
   CommandList,
   CommandSeparator,
 } from '@auxx/ui/components/command'
-import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
+import { Popover, PopoverAnchor, PopoverContent } from '@auxx/ui/components/popover'
 import { cn } from '@auxx/ui/lib/utils'
 import { Boxes, Package, Plus, Settings2 } from 'lucide-react'
 import Link from 'next/link'
@@ -180,6 +180,9 @@ export interface CatalogPickerProps {
   onSelectGroup: (group: CatalogGroupPick) => void
   /** User typed text with no catalog match — add as an ad-hoc line, no catalog rel. */
   onFreeText: (text: string) => void
+  /** Return focus to the name input once the picker closes (pick / Escape / outside). */
+  onCloseFocus?: () => void
+  /** The name cell — used as the popover anchor, so it stays fully typable. */
   children: ReactNode
 }
 
@@ -198,6 +201,7 @@ export function CatalogPicker({
   onSelectCatalogItem,
   onSelectGroup,
   onFreeText,
+  onCloseFocus,
   children,
 }: CatalogPickerProps) {
   const [query, setQuery] = useState(initialQuery)
@@ -286,8 +290,16 @@ export function CatalogPicker({
         onOpenChange(next)
         if (next) setQuery(initialQuery)
       }}>
-      <PopoverTrigger asChild>{children}</PopoverTrigger>
-      <PopoverContent align='start' className='w-[320px] p-0'>
+      <PopoverAnchor asChild>{children}</PopoverAnchor>
+      <PopoverContent
+        align='start'
+        className='w-[320px] p-0'
+        onCloseAutoFocus={(e) => {
+          // Radix would refocus the anchor's first focusable; we manage focus
+          // ourselves so it lands back on the name input the caret came from.
+          e.preventDefault()
+          onCloseFocus?.()
+        }}>
         <Command shouldFilter={false}>
           <CommandInput
             value={query}

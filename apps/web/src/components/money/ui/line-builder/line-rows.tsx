@@ -10,19 +10,36 @@
 // draft lines — see line-builder.tsx's file-header comment for the draft
 // lifecycle). `LineBuilder` itself (state, mutations, data fetching) stays in
 // line-builder.tsx.
+//
+// Keyboard model (use-line-nav.ts): rows are a plain `group/tree-row grid`
+// (not the tree `GridTreeRow` — we only kept its `TreeRowButton` hover-action
+// primitive). Each navigable cell carries `data-line-row`/`data-line-col` so a
+// single container-level keydown listener can move focus spreadsheet-style
+// across name → qty → unit cost, adding a fresh draft when nav lands past the
+// last row. The name cell is a free-text `<input>`: type any product name, or
+// press `/` on an empty cell (or click the trailing pick icon) to open the
+// catalog picker and drop in a pre-existing product.
 
 import { FieldType } from '@auxx/database/enums'
 import { computeLineTotal } from '@auxx/lib/money/client'
 import { AutosizeTextarea } from '@auxx/ui/components/autosize-textarea'
 import { Badge } from '@auxx/ui/components/badge'
-import { Button } from '@auxx/ui/components/button'
 import { SimpleTooltip, TooltipExplanation } from '@auxx/ui/components/tooltip'
-import { GridTreeRow, TreeRowButton } from '@auxx/ui/components/tree-row'
+import { TreeRowButton } from '@auxx/ui/components/tree-row'
 import { cn } from '@auxx/ui/lib/utils'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { AlignLeft, Check, CircleCheck, CircleX, GripVertical, Trash2, X } from 'lucide-react'
-import { useState } from 'react'
+import {
+  AlignLeft,
+  Check,
+  CircleCheck,
+  CircleX,
+  GripVertical,
+  PackageSearch,
+  Trash2,
+  X,
+} from 'lucide-react'
+import { type ReactNode, useRef, useState } from 'react'
 import { type RecordId, type RecordMeta, toRecordId } from '~/components/resources'
 import { useSaveFieldValue } from '~/components/resources/hooks/use-save-field-value'
 import { useSystemValues } from '~/components/resources/hooks/use-system-values'
@@ -93,6 +110,87 @@ export function relKeyForDocumentType(documentType: 'quote' | 'work_order' | 'in
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// The plain grid row shell (replaces GridTreeRow)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * One line's grid row — a `group/tree-row` so the hover-revealed
+ * `TreeRowButton`s (grip, pick, description, taxable, delete) still fade in on
+ * row hover. Owns the shared column template + the `data-line-row`/`col` tags
+ * that {@link useLineNav} focus-hops between. Name/qty/price are the three
+ * navigable cells (cols 0–2); total + actions ride outside the nav order.
+ */
+function LineGridRow({
+  rowIndex,
+  readOnly,
+  grip,
+  name,
+  qty,
+  price,
+  total,
+  actions,
+}: {
+  rowIndex: number
+  readOnly: boolean
+  grip: ReactNode
+  name: ReactNode
+  qty: ReactNode
+  price: ReactNode
+  total: ReactNode
+  actions?: ReactNode
+}) {
+  return (
+    <div className='group/tree-row relative text-sm'>
+      {/* Drag grip — lives in the left gutter, OUTSIDE the framed grid. */}
+      {grip}
+
+      {/* Hover background — a standalone layer behind the grid columns. */}
+      <div className='absolute inset-0 rounded-md transition-colors group-hover/tree-row:bg-background' />
+
+      <div
+        className='relative grid min-h-9 items-stretch px-1 text-muted-foreground'
+        style={{ gridTemplateColumns: readOnly ? LINE_COLS_READONLY : LINE_COLS }}>
+        {/* Col 0 — name input (the grip sits in the gutter, not this column). */}
+        <div data-line-row={rowIndex} data-line-col={0} className='flex min-w-0 items-center'>
+          {name}
+        </div>
+
+        <div data-line-row={rowIndex} data-line-col={1} className='flex items-center'>
+          {qty}
+        </div>
+        <div data-line-row={rowIndex} data-line-col={2} className='flex items-center'>
+          {price}
+        </div>
+        <div className='flex items-center'>{total}</div>
+        {!readOnly && <div className='flex items-center justify-end'>{actions}</div>}
+      </div>
+    </div>
+  )
+}
+
+/**
+ * Drag grip pinned into the left gutter (the `-left-4` offset lands it outside
+ * the bordered frame, mirroring the KB table row handle). Revealed only on row
+ * hover; draft rows render no grip at all (they aren't sortable).
+ */
+function GripSlot({
+  attributes,
+  listeners,
+}: {
+  attributes?: Record<string, unknown>
+  listeners?: Record<string, unknown>
+}) {
+  return (
+    <span
+      {...attributes}
+      {...listeners}
+      className='-left-4 absolute top-0 bottom-0 flex w-4 cursor-grab items-center justify-center text-muted-foreground opacity-0 transition-opacity group-hover/tree-row:opacity-100'>
+      <GripVertical className='size-3.5' />
+    </span>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Presentational cells — shared by real (store-bound) rows and draft rows
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -125,14 +223,15 @@ function CategoryBadge({ category }: { category: string | null }) {
 }
 
 /**
- * Primary line cell — a single-line row that owns everything about the item:
- * the catalog picker (transparent full-width button, doubling as free-text
- * rename), the category badge, a description help-tooltip (when set), and the
- * trailing description-edit affordance. Editing the description swaps the picker
- * in place for an autosize textarea with confirm/cancel — the line never grows a
- * permanent second row. Purely presentational: values + commit callbacks are
- * props, so both the store-bound real cell and the local-state draft cell render
- * the exact same markup.
+ * Primary line cell — a free-text name `<input>` that owns everything about the
+ * item. Type any product name (an ad-hoc line, no catalog rel); press `/` on an
+ * empty cell (or click the trailing pick icon) to open the catalog picker and
+ * drop in a pre-existing product, which overwrites name/price/category/taxable
+ * and keeps the catalog relationship. The category badge sits inline; a trailing
+ * description-edit affordance swaps the input for an autosize textarea in place —
+ * the line never grows a permanent second row. Purely presentational: values +
+ * commit callbacks are props, so both the store-bound real cell and the
+ * local-state draft cell render the exact same markup.
  */
 function LineNameCellView({
   name,
@@ -140,7 +239,7 @@ function LineNameCellView({
   category,
   readOnly,
   currencyCode,
-  initialPickerOpen = false,
+  autoFocus = false,
   onPickCatalogItem,
   onSelectGroup,
   onFreeText,
@@ -151,17 +250,33 @@ function LineNameCellView({
   category: string | null
   readOnly: boolean
   currencyCode: string
-  /** Fresh drafts mount with the catalog picker already open. */
-  initialPickerOpen?: boolean
+  /** Focus the name input on mount — set for a freshly added draft row. */
+  autoFocus?: boolean
   onPickCatalogItem: (pick: CatalogItemPick) => void
   onSelectGroup: (pick: CatalogGroupPick) => void
   onFreeText: (text: string) => void
   onCommitDescription: (value: string | null) => void
 }) {
-  const [pickerOpen, setPickerOpen] = useState(initialPickerOpen)
-  // `null` = not editing; any string (incl. '') = the in-progress description.
+  const inputRef = useRef<HTMLInputElement>(null)
+  const [pickerOpen, setPickerOpen] = useState(false)
+  // `null` = not typing; any string (incl. '') = the in-progress name edit.
+  const [nameDraft, setNameDraft] = useState<string | null>(null)
+  // `null` = not editing description; any string (incl. '') = in-progress text.
   const [descriptionDraft, setDescriptionDraft] = useState<string | null>(null)
   const editing = descriptionDraft !== null
+  // At rest the name is a plain text label (+ category badge); on focus it swaps
+  // to the free-text input and reveals the pick/description actions. A freshly
+  // added draft (`autoFocus`) opens straight into the input.
+  const [focused, setFocused] = useState(autoFocus)
+
+  const commitName = () => {
+    if (nameDraft === null) return
+    const trimmed = nameDraft.trim()
+    setNameDraft(null)
+    // Only commit a non-empty change: an emptied cell keeps its previous name
+    // (mirrors the qty cell) and never spawns an empty-named draft record.
+    if (trimmed && trimmed !== name) onFreeText(trimmed)
+  }
 
   const confirmDescription = () => {
     if (descriptionDraft === null) return
@@ -169,8 +284,9 @@ function LineNameCellView({
     setDescriptionDraft(null)
   }
 
-  // Description edit mode — replaces the picker with an autosize textarea in the
-  // same slot (single line at rest, grows while typing) + confirm/cancel.
+  // Description edit mode — replaces the input with an autosize textarea in the
+  // same slot (single line at rest, grows while typing) + confirm/cancel. The
+  // grid nav hook leaves textareas fully native, so Enter confirms here.
   if (editing) {
     return (
       <div className='flex min-w-0 flex-1 items-center gap-1 py-1'>
@@ -204,52 +320,97 @@ function LineNameCellView({
     )
   }
 
+  if (readOnly) {
+    return (
+      <div className='flex min-w-0 flex-1 items-center gap-1.5 py-1'>
+        <span
+          className={cn('min-w-0 truncate px-1 text-sm', !name && 'text-muted-foreground italic')}>
+          {name || 'Untitled line'}
+        </span>
+        <CategoryBadge category={category} />
+        {description && <TooltipExplanation text={description} />}
+      </div>
+    )
+  }
+
+  const value = nameDraft ?? name
+
   return (
     <div className='flex min-w-0 flex-1 items-center gap-1.5 py-1'>
-      {readOnly ? (
+      {/* CatalogPicker stays mounted across the text↔input swap so its popover
+          anchor never detaches; only its inner trigger changes shape. */}
+      <CatalogPicker
+        open={pickerOpen}
+        onOpenChange={setPickerOpen}
+        initialQuery={value}
+        currencyCode={currencyCode}
+        onSelectCatalogItem={onPickCatalogItem}
+        onSelectGroup={onSelectGroup}
+        onFreeText={onFreeText}
+        onCloseFocus={() => inputRef.current?.focus()}>
+        <div className='flex min-w-0 flex-1 items-center gap-1.5'>
+          {focused ? (
+            <input
+              ref={inputRef}
+              data-cell-focusable
+              autoFocus
+              value={value}
+              onChange={(e) => setNameDraft(e.target.value)}
+              onFocus={() => setNameDraft(name)}
+              onBlur={() => {
+                commitName()
+                // Collapse back to text, unless the picker took focus (its own
+                // input blurs us) — then stay in edit mode behind the popover.
+                if (!pickerOpen) setFocused(false)
+              }}
+              onKeyDown={(e) => {
+                // `/` on an empty cell opens the picker; typed anywhere else it's a
+                // literal slash (e.g. "1/2 inch pipe").
+                if (e.key === '/' && value === '') {
+                  e.preventDefault()
+                  setPickerOpen(true)
+                }
+              }}
+              placeholder='Add item or press /'
+              className='h-7 min-w-0 flex-1 rounded-sm border-none bg-transparent px-1 text-sm outline-none placeholder:text-muted-foreground/50'
+            />
+          ) : (
+            <button
+              type='button'
+              data-cell-focusable
+              onFocus={() => setFocused(true)}
+              onClick={() => setFocused(true)}
+              className='flex h-7 min-w-0 items-center rounded-sm px-1 text-left text-sm outline-none'>
+              <span className={cn('min-w-0 truncate', !name && 'text-muted-foreground/50')}>
+                {name || 'Add item'}
+              </span>
+            </button>
+          )}
+          {/* Category badge sits next to the label; hidden while editing the name. */}
+          {!focused && <CategoryBadge category={category} />}
+        </div>
+      </CatalogPicker>
+
+      {/* Actions only while focused. `onMouseDown` preventDefault keeps the input
+          from blur-collapsing before the click handler runs. */}
+      {focused && (
         <>
-          <span
-            className={cn(
-              'min-w-0 truncate px-1 text-sm',
-              !name && 'text-muted-foreground italic'
-            )}>
-            {name || 'Untitled line'}
-          </span>
-          <CategoryBadge category={category} />
+          <TreeRowButton
+            persistent
+            className='ml-auto'
+            tooltipText='Pick product'
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => setPickerOpen(true)}>
+            <PackageSearch />
+          </TreeRowButton>
+          <TreeRowButton
+            persistent
+            tooltipText={description || 'Add description'}
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => setDescriptionDraft(description ?? '')}>
+            <AlignLeft />
+          </TreeRowButton>
         </>
-      ) : (
-        <CatalogPicker
-          open={pickerOpen}
-          onOpenChange={setPickerOpen}
-          initialQuery={name}
-          currencyCode={currencyCode}
-          onSelectCatalogItem={onPickCatalogItem}
-          onSelectGroup={onSelectGroup}
-          onFreeText={onFreeText}>
-          <Button
-            variant='transparent'
-            className={cn(
-              'h-7 min-w-0 flex-1 justify-start gap-1.5 rounded-sm px-1 text-sm hover:bg-primary/5',
-              !name && 'text-muted-foreground'
-            )}>
-            <span className='truncate'>{name || 'Add item…'}</span>
-            <CategoryBadge category={category} />
-          </Button>
-        </CatalogPicker>
-      )}
-
-      {/* Read-only rows surface the description via the help-tooltip; editable rows
-          drop it — the description-edit button below carries the text as its own
-          tooltip instead. */}
-      {readOnly && description && <TooltipExplanation text={description} />}
-
-      {!readOnly && (
-        <TreeRowButton
-          className='ml-auto'
-          tooltipText={description || 'Add description'}
-          onClick={() => setDescriptionDraft(description ?? '')}>
-          <AlignLeft />
-        </TreeRowButton>
       )}
     </div>
   )
@@ -367,14 +528,10 @@ function InlineNumberCellView({
       }
       onBlur={commit}
       onKeyDown={(e) => {
-        if (e.key === 'Enter') e.currentTarget.blur()
         if (e.key === 'Escape') setDraft(null)
       }}
       inputMode='decimal'
-      className={cn(
-        'h-full w-full rounded-sm border-none bg-transparent px-2 text-right text-sm tabular-nums outline-none',
-        'hover:bg-primary/5 focus:bg-primary/10'
-      )}
+      className='h-full w-full rounded-sm border-none bg-transparent px-2 text-right text-sm tabular-nums outline-none'
     />
   )
 }
@@ -505,9 +662,10 @@ function LineActionsCell({
 // Rows
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** One sortable line row — a GridTreeRow whose leading icon is the drag grip. */
+/** One sortable line row — a grid row whose leading slot is the drag grip. */
 export function LineRow({
   record,
+  rowIndex,
   entityDefinitionId,
   readOnly,
   currencyCode,
@@ -515,6 +673,7 @@ export function LineRow({
   onSelectGroup,
 }: {
   record: RecordMeta
+  rowIndex: number
   entityDefinitionId: string
   readOnly: boolean
   currencyCode: string
@@ -532,19 +691,11 @@ export function LineRow({
       ref={setNodeRef}
       style={{ transform: CSS.Transform.toString(transform), transition }}
       className={cn(isDragging && 'relative z-10 opacity-80')}>
-      <GridTreeRow
-        columns={readOnly ? LINE_COLS_READONLY : LINE_COLS}
-        icon={
-          readOnly ? undefined : (
-            <span
-              {...attributes}
-              {...listeners}
-              className='flex cursor-grab items-center justify-center opacity-0 transition-opacity group-hover/tree-row:opacity-100'>
-              <GripVertical className='size-3.5' />
-            </span>
-          )
-        }
-        title={
+      <LineGridRow
+        rowIndex={rowIndex}
+        readOnly={readOnly}
+        grip={readOnly ? null : <GripSlot attributes={attributes} listeners={listeners} />}
+        name={
           <LineNameCell
             recordId={recordId}
             readOnly={readOnly}
@@ -552,78 +703,73 @@ export function LineRow({
             onSelectGroup={(pick) => onSelectGroup(recordId, pick)}
           />
         }
-        cells={[
+        qty={
           <InlineNumberCell
-            key='qty'
             recordId={recordId}
             attr='line_item_qty'
             fieldType={FieldType.NUMBER}
             readOnly={readOnly}
             currencyCode={currencyCode}
-          />,
+          />
+        }
+        price={
           <InlineNumberCell
-            key='price'
             recordId={recordId}
             attr='line_item_unit_price'
             fieldType={FieldType.CURRENCY}
             readOnly={readOnly}
             currencyCode={currencyCode}
-          />,
-          <LineTotalCell key='total' recordId={recordId} currencyCode={currencyCode} />,
-          // Read-only rows drop the actions column entirely (LINE_COLS_READONLY),
-          // so `Total` sits flush right and description absorbs the freed width.
-          ...(readOnly
-            ? []
-            : [
-                <LineActionsCell
-                  key='actions'
-                  recordId={recordId}
-                  rowId={record.id}
-                  deleteLine={deleteLine}
-                />,
-              ]),
-        ]}
+          />
+        }
+        total={<LineTotalCell recordId={recordId} currencyCode={currencyCode} />}
+        actions={
+          readOnly ? undefined : (
+            <LineActionsCell recordId={recordId} rowId={record.id} deleteLine={deleteLine} />
+          )
+        }
       />
     </div>
   )
 }
 
 /**
- * A phantom draft line row — same `GridTreeRow` layout as {@link LineRow}, wired
- * to local draft state instead of the field-value store. Not drag-sortable
- * (empty, disabled icon slot in place of the grip, so columns stay aligned).
- * Every commit callback routes through `createDraft`, which fires the record's
- * first `record.create` on the draft's first real edit.
+ * A phantom draft line row — same grid layout as {@link LineRow}, wired to local
+ * draft state instead of the field-value store. Not drag-sortable (empty,
+ * disabled grip slot in place of the handle, so columns stay aligned). Every
+ * commit callback routes through `createDraft`, which fires the record's first
+ * `record.create` on the draft's first real edit.
  */
 export function DraftLineRow({
   draft,
+  rowIndex,
+  autoFocus,
   currencyCode,
   deleteDraft,
   createDraft,
   onSelectGroup,
 }: {
   draft: DraftLine
+  rowIndex: number
+  /** Focus the name input on mount — set for the just-added draft. */
+  autoFocus: boolean
   currencyCode: string
   deleteDraft: (draftId: string) => void
   createDraft: (draftId: string, overrides?: Partial<DraftLine>) => Promise<void>
   onSelectGroup: (draftId: string, pick: CatalogGroupPick) => void
 }) {
   return (
-    <GridTreeRow
-      columns={LINE_COLS}
-      icon={
-        <span className='flex items-center justify-center opacity-0'>
-          <GripVertical className='size-3.5' />
-        </span>
-      }
-      title={
+    <LineGridRow
+      rowIndex={rowIndex}
+      readOnly={false}
+      grip={null}
+      name={
         <LineNameCellView
           name={draft.name}
           description={draft.description}
           category={draft.category}
           readOnly={false}
           currencyCode={currencyCode}
-          initialPickerOpen
+          autoFocus={autoFocus}
           onPickCatalogItem={(pick) =>
             void createDraft(draft.draftId, {
               name: pick.name,
@@ -639,9 +785,8 @@ export function DraftLineRow({
           onCommitDescription={(value) => void createDraft(draft.draftId, { description: value })}
         />
       }
-      cells={[
+      qty={
         <InlineNumberCellView
-          key='qty'
           value={draft.qty}
           attr='line_item_qty'
           readOnly={false}
@@ -650,29 +795,32 @@ export function DraftLineRow({
             if (next === null) return
             void createDraft(draft.draftId, { qty: next })
           }}
-        />,
+        />
+      }
+      price={
         <InlineNumberCellView
-          key='price'
           value={draft.unitPriceCents}
           attr='line_item_unit_price'
           readOnly={false}
           currencyCode={currencyCode}
           onCommit={(next) => void createDraft(draft.draftId, { unitPriceCents: next })}
-        />,
+        />
+      }
+      total={
         <LineTotalCellView
-          key='total'
           qty={draft.qty}
           unitPrice={draft.unitPriceCents}
           currencyCode={currencyCode}
-        />,
+        />
+      }
+      actions={
         <LineActionsCellView
-          key='actions'
           taxable={draft.taxable}
           rowId={draft.draftId}
           onToggleTaxable={(next) => void createDraft(draft.draftId, { taxable: next })}
           deleteLine={deleteDraft}
-        />,
-      ]}
+        />
+      }
     />
   )
 }

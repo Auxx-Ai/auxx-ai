@@ -15,8 +15,8 @@ import {
 import { toResourceFieldId } from '@auxx/types/field'
 import { isSingleRelationship } from '@auxx/utils'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { EntityInstanceDialog } from '~/components/custom-fields/ui/entity-instance-dialog'
 import { RecordPickerContent } from '~/components/pickers/record-picker'
+import { RecordEditorDialog } from '~/components/records/record-editor-dialog'
 import { getRelationshipStoreState, toRecordId, useResource } from '~/components/resources'
 import { api } from '~/trpc/react'
 import { useFieldNavigationOptional } from '../field-navigation-context'
@@ -244,9 +244,9 @@ export function RelationshipInputField() {
         pinnedSelectedIds={createdRecordIds}
       />
 
-      {/* Inline Create Dialog */}
+      {/* Inline Create Dialog — resolves the custom editor per entity type (e.g. Parts). */}
       {canInlineCreate && relatedResource && (
-        <EntityInstanceDialog
+        <RecordEditorDialog
           open={isCreateDialogOpen}
           onOpenChange={setIsCreateDialogOpen}
           entityDefinitionId={relatedEntityDefinitionId!}

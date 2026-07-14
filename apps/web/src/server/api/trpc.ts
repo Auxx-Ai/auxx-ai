@@ -9,7 +9,7 @@
 
 import { database as db } from '@auxx/database'
 import { getOrgCache } from '@auxx/lib/cache'
-import { AuxxError } from '@auxx/lib/errors'
+import { AuxxError, AuxxErrorCodes } from '@auxx/lib/errors'
 import { isAdminOrOwner } from '@auxx/lib/members'
 import { FeatureKey } from '@auxx/lib/permissions'
 import { RedisRateLimiter } from '@auxx/lib/utils/rate-limiter/redis-rate-limiter'
@@ -201,6 +201,25 @@ const HTTP_TO_TRPC: Record<number, TRPC_ERROR_CODE_KEY> = {
   429: 'TOO_MANY_REQUESTS',
 }
 
+const AUXX_ERROR_NAMES = new Set<string>(Object.values(AuxxErrorCodes))
+
+/**
+ * Detects AuxxError instances by duck-typing rather than `instanceof` alone.
+ *
+ * `@auxx/lib` is transpiled by Next (see `transpilePackages`), so the `AuxxError`
+ * class bound here and the copy inside `@auxx/lib/dist/*.mjs` — which service code
+ * actually throws — are different module instances. `instanceof` fails across that
+ * boundary, so a thrown `BadRequestError` would otherwise fall through as an
+ * `INTERNAL_SERVER_ERROR` and get its message masked. Matching on the `name` +
+ * numeric `statusCode` shape keeps the correct code and message regardless of which
+ * copy produced the error.
+ */
+const isAuxxError = (error: unknown): error is AuxxError =>
+  error instanceof AuxxError ||
+  (error instanceof Error &&
+    typeof (error as AuxxError).statusCode === 'number' &&
+    AUXX_ERROR_NAMES.has(error.name))
+
 /**
  * Middleware that catches AuxxError instances thrown by service-layer code
  * and re-throws them as proper TRPCErrors with the correct error code.
@@ -209,7 +228,7 @@ const auxxErrorMiddleware = t.middleware(async ({ next }) => {
   try {
     return await next()
   } catch (error) {
-    if (error instanceof AuxxError) {
+    if (isAuxxError(error)) {
       throw new TRPCError({
         code: HTTP_TO_TRPC[error.statusCode] ?? 'INTERNAL_SERVER_ERROR',
         message: error.message,

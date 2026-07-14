@@ -3,9 +3,11 @@
 
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { TREE_SECONDARY_NOTRUNCATE } from '@auxx/ui/components/tree-row'
+import { TreeRowList } from '@auxx/ui/components/tree-row-list'
 import type { RecordDrillContext } from '~/components/records/record-drill-panels'
 import { splitJobVisits } from './job-schedule-utils'
 import { ScheduleVisitRow } from './schedule-visit-row'
+import type { JobVisit } from './use-job-visits'
 import { useJobVisits } from './use-job-visits'
 
 /**
@@ -16,14 +18,34 @@ import { useJobVisits } from './use-job-visits'
 export function VisitsListPanel({ recordId, setItemId }: RecordDrillContext) {
   const { visits, isLoading, canEdit, mutations, existingVisits, refresh } = useJobVisits(recordId)
   const { upcoming, history } = splitJobVisits(visits)
+  const loading = isLoading && visits.length === 0
+
+  const renderRow = (visit: JobVisit) => (
+    <ScheduleVisitRow
+      visit={visit}
+      canEdit={canEdit}
+      mutations={mutations}
+      existingVisits={existingVisits}
+      workOrderRecordId={recordId}
+      onRefresh={refresh}
+      onOpen={() => setItemId(visit.id)}
+    />
+  )
 
   return (
     <ScrollArea className='h-full' scrollbarClassName='w-1.5 z-20' noFade>
       <div className='flex flex-col gap-4 p-3'>
-        {isLoading && visits.length === 0 && (
-          <div className='p-6 text-sm text-muted-foreground'>Loading visits...</div>
+        {loading && (
+          <TreeRowList
+            items={[]}
+            loading
+            skeletonCount={5}
+            getKey={(v) => v.id}
+            renderRow={renderRow}
+            className={`space-y-0.5 ${TREE_SECONDARY_NOTRUNCATE}`}
+          />
         )}
-        {!isLoading && visits.length === 0 && (
+        {!loading && visits.length === 0 && (
           <div className='p-6 text-center text-sm text-muted-foreground'>No visits yet.</div>
         )}
 
@@ -32,20 +54,12 @@ export function VisitsListPanel({ recordId, setItemId }: RecordDrillContext) {
             <div className='px-1 pb-1 text-xs font-medium uppercase text-muted-foreground'>
               Upcoming
             </div>
-            <div className={`space-y-0.5 ${TREE_SECONDARY_NOTRUNCATE}`}>
-              {upcoming.map((visit) => (
-                <ScheduleVisitRow
-                  key={visit.id}
-                  visit={visit}
-                  canEdit={canEdit}
-                  mutations={mutations}
-                  existingVisits={existingVisits}
-                  workOrderRecordId={recordId}
-                  onRefresh={refresh}
-                  onOpen={() => setItemId(visit.id)}
-                />
-              ))}
-            </div>
+            <TreeRowList
+              items={upcoming}
+              getKey={(v) => v.id}
+              renderRow={renderRow}
+              className={`space-y-0.5 ${TREE_SECONDARY_NOTRUNCATE}`}
+            />
           </div>
         )}
 
@@ -54,20 +68,12 @@ export function VisitsListPanel({ recordId, setItemId }: RecordDrillContext) {
             <div className='px-1 pb-1 text-xs font-medium uppercase text-muted-foreground'>
               History
             </div>
-            <div className={`space-y-0.5 ${TREE_SECONDARY_NOTRUNCATE}`}>
-              {history.map((visit) => (
-                <ScheduleVisitRow
-                  key={visit.id}
-                  visit={visit}
-                  canEdit={canEdit}
-                  mutations={mutations}
-                  existingVisits={existingVisits}
-                  workOrderRecordId={recordId}
-                  onRefresh={refresh}
-                  onOpen={() => setItemId(visit.id)}
-                />
-              ))}
-            </div>
+            <TreeRowList
+              items={history}
+              getKey={(v) => v.id}
+              renderRow={renderRow}
+              className={`space-y-0.5 ${TREE_SECONDARY_NOTRUNCATE}`}
+            />
           </div>
         )}
       </div>
