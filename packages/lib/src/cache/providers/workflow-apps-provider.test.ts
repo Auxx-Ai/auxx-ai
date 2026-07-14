@@ -24,6 +24,7 @@ function app(
     createdAt: '2026-06-24T00:00:00.000Z',
     isPublic: false,
     isUniversal: false,
+    ownerType: null,
     draftTriggerType: null,
     publishedWorkflow: published
       ? {

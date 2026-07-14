@@ -1,10 +1,12 @@
 // apps/web/src/components/detail-view/components/detail-view-actions.tsx
 'use client'
 
+import { parseRecordId } from '@auxx/types/resource'
 import { Button } from '@auxx/ui/components/button'
-import { Archive, Ban, Merge, Trash2, Users, Zap } from 'lucide-react'
+import { Archive, Ban, Merge, Send, Trash2, Users, Zap } from 'lucide-react'
 import { useState } from 'react'
 import { MergeDialog } from '~/components/merge'
+import { AddToSequenceDialog } from '~/components/sequences/ui/add-to-sequence-dialog'
 import { useConfirm } from '~/hooks/use-confirm'
 import type { DetailViewActionsProps } from '../types'
 import { AppRecordActions } from './app-record-actions'
@@ -22,6 +24,7 @@ export function DetailViewActions({
   const [confirm, ConfirmDialog] = useConfirm()
   const [isGroupDialogOpen, setIsGroupDialogOpen] = useState(false)
   const [mergeDialogOpen, setMergeDialogOpen] = useState(false)
+  const [addToSequenceDialogOpen, setAddToSequenceDialogOpen] = useState(false)
 
   const { actions } = config
 
@@ -100,6 +103,12 @@ export function DetailViewActions({
           </Button>
         )}
 
+        {actions.enableAddToSequence && (
+          <Button variant='outline' size='sm' onClick={() => setAddToSequenceDialogOpen(true)}>
+            <Send /> Add to sequence
+          </Button>
+        )}
+
         {actions.enableArchive && !isArchived && (
           <Button variant='outline' size='sm' onClick={handleArchive}>
             <Archive /> Archive
@@ -129,6 +138,14 @@ export function DetailViewActions({
           onOpenChange={setMergeDialogOpen}
           baseRecordIds={[recordId]}
           onMergeComplete={() => setMergeDialogOpen(false)}
+        />
+      )}
+
+      {addToSequenceDialogOpen && recordId && (
+        <AddToSequenceDialog
+          open={addToSequenceDialogOpen}
+          onOpenChange={setAddToSequenceDialogOpen}
+          recipientEntityInstanceIds={[parseRecordId(recordId).entityInstanceId]}
         />
       )}
     </>

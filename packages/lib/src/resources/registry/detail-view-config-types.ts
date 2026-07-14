@@ -45,6 +45,8 @@ export interface DetailViewActions {
   enableArchive?: boolean
   enableDelete?: boolean
   enableWorkflowTrigger?: boolean
+  /** Sequences plan §17 — "Add to sequence" opens `AddToSequenceDialog` for this record. */
+  enableAddToSequence?: boolean
 }
 
 /**

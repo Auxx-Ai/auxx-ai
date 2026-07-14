@@ -1,0 +1,1 @@
+ALTER TABLE "Sequence" ALTER COLUMN "integrationId" DROP NOT NULL;

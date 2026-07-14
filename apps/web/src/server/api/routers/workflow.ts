@@ -9,6 +9,8 @@ import {
   triggerManualResourceWorkflowBulk,
 } from '@auxx/lib/workflow-engine'
 import {
+  assertWorkflowAppNotSystemOwned,
+  assertWorkflowRunNotSystemOwned,
   buildTemplateWorkflowData,
   type TemplateForCreate,
   type TemplateWorkflowData,
@@ -204,6 +206,12 @@ export const workflowRouter = createTRPCRouter({
    * Get a specific workflow app by ID
    */
   getById: protectedProcedure.input(z.object({ id: z.string() })).query(async ({ ctx, input }) => {
+    await assertWorkflowAppNotSystemOwned(ctx.db, {
+      workflowAppId: input.id,
+      organizationId: ctx.session.organizationId,
+      isSuperAdmin: ctx.session.isSuperAdmin,
+      allowSuperAdminRead: true,
+    })
     const workflowService = new WorkflowService(ctx.db)
     try {
       const workflowApp = await workflowService.getById(input.id, ctx.session.organizationId)
@@ -284,6 +292,12 @@ export const workflowRouter = createTRPCRouter({
    * Update an existing workflow app (updates active workflow)
    */
   update: protectedProcedure.input(updateWorkflowSchema).mutation(async ({ ctx, input }) => {
+    await assertWorkflowAppNotSystemOwned(ctx.db, {
+      workflowAppId: input.id,
+      organizationId: ctx.session.organizationId,
+      isSuperAdmin: ctx.session.isSuperAdmin,
+    })
+
     // Block demo users from enabling workflows
     if (input.enabled) {
       const { DemoGuard } = await import('@auxx/lib/demo')
@@ -311,6 +325,11 @@ export const workflowRouter = createTRPCRouter({
   delete: protectedProcedure
     .input(z.object({ id: z.string() }))
     .mutation(async ({ ctx, input }) => {
+      await assertWorkflowAppNotSystemOwned(ctx.db, {
+        workflowAppId: input.id,
+        organizationId: ctx.session.organizationId,
+        isSuperAdmin: ctx.session.isSuperAdmin,
+      })
       const workflowService = new WorkflowService(ctx.db)
       try {
         const result = await workflowService.delete(input.id, ctx.session.organizationId)
@@ -340,6 +359,11 @@ export const workflowRouter = createTRPCRouter({
       })
     )
     .mutation(async ({ ctx, input }) => {
+      await assertWorkflowAppNotSystemOwned(ctx.db, {
+        workflowAppId: input.id,
+        organizationId: ctx.session.organizationId,
+        isSuperAdmin: ctx.session.isSuperAdmin,
+      })
       const workflowService = new WorkflowService(ctx.db)
       try {
         return await workflowService.duplicate(
@@ -362,6 +386,12 @@ export const workflowRouter = createTRPCRouter({
    * Test workflow execution
    */
   test: protectedProcedure.input(testWorkflowSchema).mutation(async ({ ctx, input }) => {
+    await assertWorkflowAppNotSystemOwned(ctx.db, {
+      workflowAppId: input.workflowId,
+      organizationId: ctx.session.organizationId,
+      isSuperAdmin: ctx.session.isSuperAdmin,
+      allowSuperAdminRead: true,
+    })
     const workflowService = new WorkflowService(ctx.db)
     try {
       return await workflowService.test(input.workflowId, ctx.session.organizationId, input)
@@ -376,6 +406,12 @@ export const workflowRouter = createTRPCRouter({
    * Get workflow execution statistics
    */
   getStats: protectedProcedure.input(workflowStatsSchema).query(async ({ ctx, input }) => {
+    await assertWorkflowAppNotSystemOwned(ctx.db, {
+      workflowAppId: input.workflowId,
+      organizationId: ctx.session.organizationId,
+      isSuperAdmin: ctx.session.isSuperAdmin,
+      allowSuperAdminRead: true,
+    })
     const statsService = new WorkflowStatsService(ctx.db)
     try {
       return await statsService.getStats(
@@ -399,6 +435,12 @@ export const workflowRouter = createTRPCRouter({
   getDetailedStats: protectedProcedure
     .input(workflowDetailedStatsSchema)
     .query(async ({ ctx, input }) => {
+      await assertWorkflowAppNotSystemOwned(ctx.db, {
+        workflowAppId: input.workflowId,
+        organizationId: ctx.session.organizationId,
+        isSuperAdmin: ctx.session.isSuperAdmin,
+        allowSuperAdminRead: true,
+      })
       const statsService = new WorkflowStatsService(ctx.db)
       try {
         return await statsService.getDetailedStats(
@@ -425,6 +467,11 @@ export const workflowRouter = createTRPCRouter({
     .input(z.object({ workflowId: z.string(), versionTitle: z.string().optional() }))
     .use(notDemo('publish workflows'))
     .mutation(async ({ ctx, input }) => {
+      await assertWorkflowAppNotSystemOwned(ctx.db, {
+        workflowAppId: input.workflowId,
+        organizationId: ctx.session.organizationId,
+        isSuperAdmin: ctx.session.isSuperAdmin,
+      })
       // The version service validates the draft and throws domain errors
       // (NotFoundError / BadRequestError) that the tRPC layer maps to codes.
       const published = await new WorkflowVersionService(ctx.db).publish(
@@ -447,6 +494,12 @@ export const workflowRouter = createTRPCRouter({
   getVersions: protectedProcedure
     .input(z.object({ workflowId: z.string() }))
     .query(async ({ ctx, input }) => {
+      await assertWorkflowAppNotSystemOwned(ctx.db, {
+        workflowAppId: input.workflowId,
+        organizationId: ctx.session.organizationId,
+        isSuperAdmin: ctx.session.isSuperAdmin,
+        allowSuperAdminRead: true,
+      })
       const versionService = new WorkflowVersionService(ctx.db)
       try {
         return await versionService.getVersions(input.workflowId, ctx.session.organizationId)
@@ -466,6 +519,12 @@ export const workflowRouter = createTRPCRouter({
   getVersionById: protectedProcedure
     .input(z.object({ workflowId: z.string(), versionId: z.string() }))
     .query(async ({ ctx, input }) => {
+      await assertWorkflowAppNotSystemOwned(ctx.db, {
+        workflowAppId: input.workflowId,
+        organizationId: ctx.session.organizationId,
+        isSuperAdmin: ctx.session.isSuperAdmin,
+        allowSuperAdminRead: true,
+      })
       const versionService = new WorkflowVersionService(ctx.db)
       try {
         return await versionService.getVersionById(
@@ -489,6 +548,11 @@ export const workflowRouter = createTRPCRouter({
   deleteVersion: protectedProcedure
     .input(z.object({ workflowId: z.string(), versionId: z.string() }))
     .mutation(async ({ ctx, input }) => {
+      await assertWorkflowAppNotSystemOwned(ctx.db, {
+        workflowAppId: input.workflowId,
+        organizationId: ctx.session.organizationId,
+        isSuperAdmin: ctx.session.isSuperAdmin,
+      })
       const versionService = new WorkflowVersionService(ctx.db)
       try {
         return await versionService.deleteVersion(
@@ -526,6 +590,11 @@ export const workflowRouter = createTRPCRouter({
       })
     )
     .mutation(async ({ ctx, input }) => {
+      await assertWorkflowAppNotSystemOwned(ctx.db, {
+        workflowAppId: input.workflowId,
+        organizationId: ctx.session.organizationId,
+        isSuperAdmin: ctx.session.isSuperAdmin,
+      })
       const versionService = new WorkflowVersionService(ctx.db)
       try {
         return await versionService.renameVersion(
@@ -550,6 +619,11 @@ export const workflowRouter = createTRPCRouter({
   stopWorkflowRun: protectedProcedure
     .input(z.object({ runId: z.string() }))
     .mutation(async ({ ctx, input }) => {
+      await assertWorkflowRunNotSystemOwned(ctx.db, {
+        runId: input.runId,
+        organizationId: ctx.session.organizationId,
+        isSuperAdmin: ctx.session.isSuperAdmin,
+      })
       const executionService = new WorkflowExecutionService(ctx.db, {
         errorHandler: createTRPCErrorHandler,
       })
@@ -588,6 +662,11 @@ export const workflowRouter = createTRPCRouter({
     )
     .use(notDemo('run workflow nodes'))
     .mutation(async ({ ctx, input }) => {
+      await assertWorkflowAppNotSystemOwned(ctx.db, {
+        workflowAppId: input.workflowAppId,
+        organizationId: ctx.session.organizationId,
+        isSuperAdmin: ctx.session.isSuperAdmin,
+      })
       const executionService = new WorkflowExecutionService(ctx.db, {
         errorHandler: createTRPCErrorHandler,
       })
@@ -609,6 +688,12 @@ export const workflowRouter = createTRPCRouter({
   getWorkflowRun: protectedProcedure
     .input(z.object({ runId: z.string() }))
     .query(async ({ ctx, input }) => {
+      await assertWorkflowRunNotSystemOwned(ctx.db, {
+        runId: input.runId,
+        organizationId: ctx.session.organizationId,
+        isSuperAdmin: ctx.session.isSuperAdmin,
+        allowSuperAdminRead: true,
+      })
       const executionService = new WorkflowExecutionService(ctx.db, {
         errorHandler: createTRPCErrorHandler,
       })
@@ -639,6 +724,12 @@ export const workflowRouter = createTRPCRouter({
       })
     )
     .query(async ({ ctx, input }) => {
+      await assertWorkflowAppNotSystemOwned(ctx.db, {
+        workflowAppId: input.workflowAppId,
+        organizationId: ctx.session.organizationId,
+        isSuperAdmin: ctx.session.isSuperAdmin,
+        allowSuperAdminRead: true,
+      })
       const executionService = new WorkflowExecutionService(ctx.db, {
         errorHandler: createTRPCErrorHandler,
       })
@@ -808,6 +899,12 @@ export const workflowRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const { id } = input
 
+      await assertWorkflowAppNotSystemOwned(ctx.db, {
+        workflowAppId: id,
+        organizationId: ctx.session.organizationId,
+        isSuperAdmin: ctx.session.isSuperAdmin,
+      })
+
       // Verify ownership
       const workflow = await ctx.db.query.WorkflowApp.findFirst({
         where: and(
@@ -846,6 +943,12 @@ export const workflowRouter = createTRPCRouter({
     .input(z.object({ id: z.string() }))
     .mutation(async ({ ctx, input }) => {
       const { id } = input
+
+      await assertWorkflowAppNotSystemOwned(ctx.db, {
+        workflowAppId: id,
+        organizationId: ctx.session.organizationId,
+        isSuperAdmin: ctx.session.isSuperAdmin,
+      })
 
       // Verify ownership
       const workflow = await ctx.db.query.WorkflowApp.findFirst({
