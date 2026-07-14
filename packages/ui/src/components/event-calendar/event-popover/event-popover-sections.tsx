@@ -64,20 +64,38 @@ interface EventTitleLink {
   onClick?: () => void
 }
 
+interface EventTitleAction {
+  icon: React.ReactNode
+  /** Accessible label for the icon button (e.g. "Open work order"). */
+  label: string
+  href?: string
+  onClick?: () => void
+}
+
 interface EventTitleSectionProps {
   title: string
   editable?: boolean
   onCommit?: (title: string) => void
+  /** When set (and not `editable`), the title renders as a link. Plain click runs `onTitleClick`;
+   * modified clicks fall back to `titleHref`'s native anchor behavior (new tab). */
+  onTitleClick?: () => void
+  titleHref?: string
+  /** Trailing icon button in the title row's top-right — the "open record" affordance. */
+  action?: EventTitleAction
   subtitle?: React.ReactNode
   links?: EventTitleLink[]
 }
 
 /** Top `PanelCard`: borderless autosize title (Notion autosave — commits on blur/Enter),
- * optional subtitle node, optional bordered-top linked-record rows (decision #6). */
+ * optional subtitle node, optional bordered-top linked-record rows (decision #6). The title can
+ * double as a record link (`onTitleClick`/`titleHref`) with a trailing `action` icon button. */
 export function EventTitleSection({
   title,
   editable = false,
   onCommit,
+  onTitleClick,
+  titleHref,
+  action,
   subtitle,
   links,
 }: EventTitleSectionProps) {
@@ -99,30 +117,68 @@ export function EventTitleSection({
     else setDraft(title)
   }
 
+  const titleNode = editable ? (
+    <AutosizeTextarea
+      rows={1}
+      minHeight={0}
+      value={draft}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault()
+          e.currentTarget.blur()
+        } else if (e.key === 'Escape') {
+          skipCommitRef.current = true
+          setDraft(title)
+          e.currentTarget.blur()
+        }
+      }}
+      className='min-w-0 flex-1 resize-none rounded-none border-none bg-transparent p-0 text-xl font-semibold focus:border-none focus-visible:ring-0 focus:ring-0 dark:bg-transparent'
+    />
+  ) : onTitleClick || titleHref ? (
+    titleHref ? (
+      <a
+        href={titleHref}
+        onClick={(e) => handleAnchorClick(e, onTitleClick)}
+        className='min-w-0 flex-1 truncate text-xl font-semibold hover:underline'>
+        {title}
+      </a>
+    ) : (
+      <button
+        type='button'
+        onClick={onTitleClick}
+        className='min-w-0 flex-1 truncate text-left text-xl font-semibold hover:underline'>
+        {title}
+      </button>
+    )
+  ) : (
+    <div className='min-w-0 flex-1 text-xl font-semibold'>{title}</div>
+  )
+
   return (
     <PanelCard className={links?.length ? 'space-y-3' : undefined}>
-      {editable ? (
-        <AutosizeTextarea
-          rows={1}
-          minHeight={0}
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onBlur={commit}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') {
-              e.preventDefault()
-              e.currentTarget.blur()
-            } else if (e.key === 'Escape') {
-              skipCommitRef.current = true
-              setDraft(title)
-              e.currentTarget.blur()
-            }
-          }}
-          className='resize-none rounded-none border-none bg-transparent p-0 text-xl font-semibold focus:border-none focus-visible:ring-0 focus:ring-0 dark:bg-transparent'
-        />
-      ) : (
-        <div className='text-xl font-semibold'>{title}</div>
-      )}
+      <div className='flex items-start justify-between gap-2'>
+        {titleNode}
+        {action &&
+          (action.href ? (
+            <a
+              href={action.href}
+              onClick={(e) => handleAnchorClick(e, action.onClick)}
+              aria-label={action.label}
+              className='shrink-0 rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-foreground [&_svg]:size-4'>
+              {action.icon}
+            </a>
+          ) : (
+            <button
+              type='button'
+              onClick={action.onClick}
+              aria-label={action.label}
+              className='shrink-0 rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-foreground [&_svg]:size-4'>
+              {action.icon}
+            </button>
+          ))}
+      </div>
       {subtitle && <div className='text-muted-foreground text-sm'>{subtitle}</div>}
       {links?.map((link) => {
         const content = (

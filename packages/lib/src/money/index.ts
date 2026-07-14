@@ -57,11 +57,30 @@ export {
   resolveInvoiceByPublicToken,
 } from './public-token'
 export {
+  type AcceptQuoteByTokenInput,
+  type AcceptQuoteByTokenResult,
+  acceptQuoteByToken,
+  type DeclineQuoteByTokenInput,
+  type DeclineQuoteByTokenResult,
+  declineQuoteByToken,
+  requestQuoteUpdateByToken,
+} from './quote-acceptance'
+export {
   approveQuote,
   createQuoteFromRequest,
   declineQuote,
   markQuoteSent,
 } from './quote-lifecycle'
+export {
+  buildQuoteViewUrl,
+  ensureQuotePublicToken,
+  getPublicQuotePayload,
+  getQuotePdfByToken,
+  type PublicQuoteLine,
+  type PublicQuotePayload,
+  type PublicQuotePdfResult,
+  resolveQuoteByPublicToken,
+} from './quote-public-token'
 export { reorderLines } from './reorder'
 export {
   type EnsureQuoteDocumentPdfInput,

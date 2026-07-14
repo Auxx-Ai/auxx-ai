@@ -2,6 +2,7 @@
 
 'use client'
 
+import type { RecordId } from '@auxx/lib/resources/client'
 import {
   type BackgroundEvent,
   type CalendarResource,
@@ -33,6 +34,7 @@ interface BoardCalendarGridProps {
   onActiveVisitChange: (visitId: string | null) => void
   onRangeChange: (from: Date, to: Date) => void
   onEventResize: (event: DispatchVisitEvent, newEnd: Date) => void
+  onOpenRecord: (recordId: RecordId, drill?: { panel?: string; item?: string }) => void
   isNonWorkingDay?: (date: Date) => boolean
 }
 
@@ -59,6 +61,7 @@ export function BoardCalendarGrid({
   onActiveVisitChange,
   onRangeChange,
   onEventResize,
+  onOpenRecord,
   isNonWorkingDay,
 }: BoardCalendarGridProps) {
   const renderEvent = useCallback(
@@ -87,11 +90,20 @@ export function BoardCalendarGrid({
             mutations={mutations}
             existingVisits={existingVisits}
             onClose={() => onActiveVisitChange(null)}
+            onOpenRecord={onOpenRecord}
           />
         </EventPopover>
       )
     },
-    [activeVisitId, onActiveVisitChange, overlappingIds, canEdit, mutations, existingVisits]
+    [
+      activeVisitId,
+      onActiveVisitChange,
+      overlappingIds,
+      canEdit,
+      mutations,
+      existingVisits,
+      onOpenRecord,
+    ]
   )
 
   const handleEventClick = useCallback(

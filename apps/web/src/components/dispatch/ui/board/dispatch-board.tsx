@@ -140,6 +140,14 @@ export function DispatchBoard() {
     },
     [setDrawerParams]
   )
+  // Generic drawer-open used by the chip popover: any record (work order → pre-drilled to the
+  // clicked visit, or its contact) opens in the same `?record=` drawer as the sidebar rows.
+  const handleOpenRecord = useCallback(
+    (recordId: string, drill?: { panel?: string; item?: string }) => {
+      setDrawerParams({ record: recordId, panel: drill?.panel ?? null, item: drill?.item ?? null })
+    },
+    [setDrawerParams]
+  )
 
   // Dock-aware drawer placement (records-view.tsx's recipe): user's dock preference on →
   // the drawer renders as a resizable `MainPageContent` docked panel; off (or mobile) →
@@ -358,6 +366,7 @@ export function DispatchBoard() {
                 onActiveVisitChange={setActiveVisitId}
                 onRangeChange={data.handleRangeChange}
                 onEventResize={handleEventResize}
+                onOpenRecord={handleOpenRecord}
                 isNonWorkingDay={isNonWorkingDay}
               />
             </div>

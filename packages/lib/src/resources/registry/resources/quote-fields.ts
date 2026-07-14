@@ -545,6 +545,100 @@ export const QUOTE_FIELDS: Record<string, ResourceField> = {
     description: 'Work orders converted from this quote',
   },
 
+  publicToken: {
+    id: toFieldId('publicToken'),
+    key: 'publicToken',
+    label: 'Public Token',
+    type: BaseType.STRING,
+    fieldType: FieldType.TEXT,
+    isSystem: true,
+    systemAttribute: 'quote_public_token',
+    systemSortOrder: 'aL',
+    showInPanel: false,
+    nullable: true,
+    capabilities: {
+      filterable: false,
+      sortable: false,
+      creatable: false,
+      updatable: false,
+      configurable: false,
+      hidden: true,
+    },
+    description:
+      'Unguessable capability token for the public /quote/{token} acceptance page (v5 build ' +
+      'spec 01) — lazily minted by ensureQuotePublicToken on first send, never user-editable. ' +
+      'Mirrors the invoice_public_token recipe (FieldValueService-only writer).',
+  },
+
+  acceptedByName: {
+    id: toFieldId('acceptedByName'),
+    key: 'acceptedByName',
+    label: 'Accepted By',
+    type: BaseType.STRING,
+    fieldType: FieldType.TEXT,
+    isSystem: true,
+    systemAttribute: 'quote_accepted_by_name',
+    systemSortOrder: 'aM',
+    showInPanel: false,
+    nullable: true,
+    capabilities: {
+      filterable: true,
+      sortable: false,
+      creatable: false,
+      updatable: false,
+      configurable: false,
+    },
+    description:
+      'Typed-signature name the customer entered when accepting on the public quote page ' +
+      '(v5 build spec 01) — written only by acceptQuoteByToken via FieldValueService.',
+  },
+
+  acceptedAt: {
+    id: toFieldId('acceptedAt'),
+    key: 'acceptedAt',
+    label: 'Accepted At',
+    type: BaseType.DATETIME,
+    fieldType: FieldType.DATETIME,
+    isSystem: true,
+    systemAttribute: 'quote_accepted_at',
+    systemSortOrder: 'aN',
+    showInPanel: false,
+    nullable: true,
+    capabilities: {
+      filterable: true,
+      sortable: true,
+      creatable: false,
+      updatable: false,
+      configurable: false,
+    },
+    description:
+      'Timestamp the customer accepted on the public quote page (v5 build spec 01) — written ' +
+      'only by acceptQuoteByToken via FieldValueService.',
+  },
+
+  declineReason: {
+    id: toFieldId('declineReason'),
+    key: 'declineReason',
+    label: 'Decline Reason',
+    type: BaseType.STRING,
+    fieldType: FieldType.TEXT,
+    isSystem: true,
+    systemAttribute: 'quote_decline_reason',
+    systemSortOrder: 'aO',
+    showInPanel: false,
+    nullable: true,
+    capabilities: {
+      filterable: true,
+      sortable: false,
+      creatable: false,
+      updatable: false,
+      configurable: false,
+    },
+    description:
+      'Reason the customer gave when declining on the public quote page (v5 build spec 01) — ' +
+      'written only by declineQuoteByToken via FieldValueService.',
+  },
+
   createdAt: {
     id: toFieldId('createdAt'),
     key: 'createdAt',
