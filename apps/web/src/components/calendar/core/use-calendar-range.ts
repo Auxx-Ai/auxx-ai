@@ -5,8 +5,9 @@
 import { endOfDay, endOfMonth, endOfWeek, startOfDay, startOfMonth, startOfWeek } from 'date-fns'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
-/** The calendar shell's three grid modes — shared by dispatch's `BoardViewMode`. */
-export type CalendarRangeView = 'day' | 'week' | 'month'
+/** The calendar shell's grid modes — shared by dispatch's `BoardViewMode`. `timeline` is the
+ * dispatch resource-stream mode (plan 18); it behaves like `day` for range quantization. */
+export type CalendarRangeView = 'day' | 'week' | 'month' | 'timeline'
 
 export interface DateRange {
   from: Date
@@ -44,18 +45,22 @@ export function useCalendarRange(
 
   const handleRangeChange = useCallback(
     (from: Date, to: Date) => {
-      // The month and week streams both report a sliding rendered-window range on every
-      // scroll frame — quantize to whole covering months/weeks so a consumer's range-scoped
-      // query key only changes when a new month/week scrolls into view, and debounce so a
-      // fast fling doesn't fetch every one crossed.
+      // Every mode now reports a sliding rendered-window range on each scroll frame — month/week
+      // stream whole months/weeks, and `day`/`timeline` are rolling day-streams (plan 18). Quantize
+      // to the whole covering unit so a consumer's range-scoped query key only changes when a new
+      // month/week/day scrolls into view, and debounce so a fast fling doesn't fetch every one crossed.
       const quantizedFrom =
         view === 'month'
           ? startOfMonth(from)
           : view === 'week'
             ? startOfWeek(from, { weekStartsOn })
-            : from
+            : startOfDay(from)
       const quantizedTo =
-        view === 'month' ? endOfMonth(to) : view === 'week' ? endOfWeek(to, { weekStartsOn }) : to
+        view === 'month'
+          ? endOfMonth(to)
+          : view === 'week'
+            ? endOfWeek(to, { weekStartsOn })
+            : endOfDay(to)
       const apply = () =>
         setRange((prev) =>
           prev.from.getTime() === quantizedFrom.getTime() &&
@@ -64,11 +69,7 @@ export function useCalendarRange(
             : { from: quantizedFrom, to: quantizedTo }
         )
       clearTimeout(rangeDebounceRef.current)
-      if (view === 'month' || view === 'week') {
-        rangeDebounceRef.current = setTimeout(apply, 250)
-      } else {
-        apply()
-      }
+      rangeDebounceRef.current = setTimeout(apply, 250)
     },
     [view, weekStartsOn]
   )

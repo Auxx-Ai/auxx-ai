@@ -7,9 +7,10 @@ import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { format } from 'date-fns'
-import { CalendarClock, Send, User, XCircle } from 'lucide-react'
+import { CalendarClock, ReceiptText, Send, User, XCircle } from 'lucide-react'
 import { getInitials } from '~/components/groups/utils/group-utils'
 import { LineBuilder } from '~/components/money/ui/line-builder/line-builder'
+import { TuckedLabel } from '~/components/money/ui/tucked-label'
 import type { RecordDrillContext } from '~/components/records/record-drill-panels'
 import { useActors } from '~/components/resources/hooks/use-actor'
 import { useConfirm } from '~/hooks/use-confirm'
@@ -17,11 +18,12 @@ import { VISIT_STATUS_LABELS, type VisitStatus } from '../board/types'
 import { SchedulePopover } from '../schedule-popover'
 import { formatVisitWindow, VISIT_STATUS_BADGE_VARIANT } from './job-schedule-utils'
 import { useJobVisits } from './use-job-visits'
+import { VisitProofOfWork } from './visit-proof-of-work'
 
 /**
  * VisitDetailPanel — the third stack level (`visits:item`), dispatch M2 build
  * spec §F.3: full visit info, the per-visit proof-of-work block (worker-captured
- * QC checklist notes/photos, read-only — see plan 17 Part A, still owed), the
+ * QC checklist notes/photos, read-only — plan 17 Part A, `VisitProofOfWork`), the
  * visit line items block (occurrence extras — money 01-ui #13, `visitId`-scoped
  * `LineBuilder`, plan 17 Part B), and the row actions.
  */
@@ -123,25 +125,24 @@ export function VisitDetailPanel({ recordId, itemId }: RecordDrillContext) {
           </div>
         )}
 
-        {/* Per-visit proof of work — worker mobile surface plan fills this in
-            (completion notes + photos, dispatch M2 build spec §F.3). */}
-        <div className='rounded-lg border border-dashed p-4 text-sm text-muted-foreground'>
-          Proof of work (completion notes, photos) lands with the worker mobile surface.
-        </div>
+        {/* Per-visit proof of work — the worker's captured QC checklist (notes + photos),
+            read-only dispatcher-side. Authoring stays on the worker surface's Notes tab. */}
+        <VisitProofOfWork visitId={visit.id} />
 
         {/* Visit line items (occurrence extras) — money 01-ui #13: the shared LineBuilder
             scoped to this visit via `visitId` (stamps/filters `line_item_visit_id`, the
-            plain-text bridge — visits aren't entities). Canceled visits are read-only. */}
-        <div className='rounded-lg border'>
-          <div className='px-4 pt-2 pb-1 text-xs font-medium text-muted-foreground'>
-            This visit's extras
+            plain-text bridge — visits aren't entities). Canceled visits are read-only.
+            TuckedLabel + card, matching the proof-of-work block above. */}
+        <div className='flex flex-col'>
+          <TuckedLabel icon={<ReceiptText />}>This visit's extras</TuckedLabel>
+          <div className='rounded-lg border bg-primary-50'>
+            <LineBuilder
+              documentRecordId={recordId}
+              documentType='work_order'
+              visitId={visit.id}
+              readOnly={!canEdit || visit.status === 'canceled'}
+            />
           </div>
-          <LineBuilder
-            documentRecordId={recordId}
-            documentType='work_order'
-            visitId={visit.id}
-            readOnly={!canEdit || visit.status === 'canceled'}
-          />
         </div>
 
         <ConfirmDialog />

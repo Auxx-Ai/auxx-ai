@@ -49,7 +49,7 @@ export { HourGutter } from './hour-gutter'
 export { MonthView } from './month-view'
 // Positioning util (day/week/resource share this — see position-events.ts)
 export { type PositionedEvent, positionEventsForDay } from './position-events'
-export { ResourceDayView } from './resource-day-view'
+export { ResourceTimelineView } from './resource-timeline-view'
 // Types
 export type {
   BackgroundEvent,

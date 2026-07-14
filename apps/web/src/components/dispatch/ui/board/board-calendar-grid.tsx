@@ -111,7 +111,9 @@ export function BoardCalendarGrid({
     [onActiveVisitChange]
   )
 
-  const calendarView = view === 'day' ? 'resource' : view
+  // Both `day` and `timeline` render the same resource day-stream (plan 18); they differ only by
+  // `resourceDaysVisible` (1 vs 3), passed to `EventCalendar` below.
+  const calendarView = view === 'day' || view === 'timeline' ? 'resource' : view
 
   const calendarResources: CalendarResource[] = useMemo(
     () =>
@@ -135,7 +137,8 @@ export function BoardCalendarGrid({
       onViewChange={() => {}}
       onRangeChange={onRangeChange}
       weekStartsOn={weekStartsOn}
-      resources={view === 'day' ? calendarResources : undefined}
+      resources={view === 'day' || view === 'timeline' ? calendarResources : undefined}
+      resourceDaysVisible={view === 'timeline' ? 3 : 1}
       backgroundEvents={backgroundEvents}
       events={events}
       renderEvent={renderEvent}

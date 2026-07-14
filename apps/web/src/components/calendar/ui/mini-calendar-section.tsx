@@ -25,8 +25,8 @@ interface MiniCalendarSectionProps {
    * provided and `'week'`, the highlighted band narrows to the true visible week
    * (`date .. date+6`) instead of `visibleRange`, which is now the week stream's wider
    * rendered window (~17 days incl. overscan). Leave unset to keep current (month/day)
-   * behavior. */
-  view?: 'day' | 'week' | 'month'
+   * behavior. `timeline` (plan 18) falls through to `visibleRange` like `day`/`month`. */
+  view?: 'day' | 'week' | 'month' | 'timeline'
 }
 
 /**

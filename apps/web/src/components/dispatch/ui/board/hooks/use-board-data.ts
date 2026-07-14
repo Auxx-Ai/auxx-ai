@@ -98,12 +98,12 @@ export function useBoardData() {
     [scheduled, workOrderById, colorByUserId]
   )
 
-  // Day (resource) view only shows the filtered worker set's + (if visible) Unassigned's
-  // visits — the other columns don't exist on the grid. Week/month show everything regardless
-  // of filter (no columns to hide behind), so the filter is a day-view-only lens.
+  // The resource views (`day`/`timeline`, plan 18) only show the filtered worker set's + (if
+  // visible) Unassigned's visits — the other columns don't exist on the grid. Week/month show
+  // everything regardless of filter (no columns to hide behind), so this is a resource-view lens.
   const visibleWorkerUserIds = useMemo(() => new Set(workers.map((w) => w.userId)), [workers])
   const events = useMemo(() => {
-    if (view !== 'day') return allEvents
+    if (view !== 'day' && view !== 'timeline') return allEvents
     return allEvents.filter(
       (e) =>
         (showUnassigned && e.resourceId === UNASSIGNED_RESOURCE_ID) ||

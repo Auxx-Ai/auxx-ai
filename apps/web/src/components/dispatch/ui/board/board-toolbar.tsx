@@ -11,6 +11,7 @@ import {
   CalendarRange,
   ChevronLeft,
   ChevronRight,
+  GalleryHorizontal,
   LayoutGrid,
   Map as MapIcon,
   PanelLeft,
@@ -131,6 +132,10 @@ export function BoardToolbar({
           <RadioTabItem value='day' tooltip='Day' className={RADIO_TAB_ITEM_CLASS}>
             <CalendarDays />
             <span className='hidden sm:inline'>Day</span>
+          </RadioTabItem>
+          <RadioTabItem value='timeline' tooltip='Timeline' className={RADIO_TAB_ITEM_CLASS}>
+            <GalleryHorizontal />
+            <span className='hidden sm:inline'>Timeline</span>
           </RadioTabItem>
           <RadioTabItem value='week' tooltip='Week' className={RADIO_TAB_ITEM_CLASS}>
             <CalendarRange />

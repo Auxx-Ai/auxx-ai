@@ -242,6 +242,41 @@ async function getPhotosByItemId(
   return result
 }
 
+/** Read + photo-hydrate a visit's existing checklist rows — no guards, no materialization. */
+async function readVisitQcItems(
+  organizationId: string,
+  visitId: string
+): Promise<ListMyVisitQcItemsResult> {
+  const items = await database
+    .select()
+    .from(schema.VisitQcItem)
+    .where(
+      and(
+        eq(schema.VisitQcItem.visitId, visitId),
+        eq(schema.VisitQcItem.organizationId, organizationId)
+      )
+    )
+    .orderBy(asc(schema.VisitQcItem.sortOrder), asc(schema.VisitQcItem.createdAt))
+
+  const photosByItemId = await getPhotosByItemId(
+    organizationId,
+    items.map((item) => item.id)
+  )
+
+  return {
+    items: items.map((item) => ({
+      id: item.id,
+      templateId: item.templateId,
+      title: item.title,
+      isRequired: item.isRequired,
+      note: item.note,
+      checkedAt: item.checkedAt,
+      sortOrder: item.sortOrder,
+      photos: photosByItemId.get(item.id) ?? [],
+    })),
+  }
+}
+
 /**
  * List the signed-in worker's checklist for one visit, materializing it on first read (08 §5):
  * if the visit has zero `VisitQcItem` rows yet, copy the org's ACTIVE templates (ordered
@@ -287,34 +322,20 @@ export async function listMyVisitQcItems(
     )
   })
 
-  const items = await database
-    .select()
-    .from(schema.VisitQcItem)
-    .where(
-      and(
-        eq(schema.VisitQcItem.visitId, visitId),
-        eq(schema.VisitQcItem.organizationId, organizationId)
-      )
-    )
-    .orderBy(asc(schema.VisitQcItem.sortOrder), asc(schema.VisitQcItem.createdAt))
+  return readVisitQcItems(organizationId, visitId)
+}
 
-  const photosByItemId = await getPhotosByItemId(
-    organizationId,
-    items.map((item) => item.id)
-  )
-
-  return {
-    items: items.map((item) => ({
-      id: item.id,
-      templateId: item.templateId,
-      title: item.title,
-      isRequired: item.isRequired,
-      note: item.note,
-      checkedAt: item.checkedAt,
-      sortOrder: item.sortOrder,
-      photos: photosByItemId.get(item.id) ?? [],
-    })),
-  }
+/**
+ * Dispatcher/admin read of a visit's checklist — org-scoped, NO assignee guard and NO
+ * materialization (viewing must never author checklist rows; that stays a worker-first action
+ * in `listMyVisitQcItems`). An untouched visit reads back an honest empty list, not a
+ * freshly-created shell. Same `MyVisitQcItem[]` shape as the worker read.
+ */
+export async function listVisitQcItems(
+  organizationId: string,
+  visitId: string
+): Promise<ListMyVisitQcItemsResult> {
+  return readVisitQcItems(organizationId, visitId)
 }
 
 /** Input for {@link setMyQcItemChecked}. */

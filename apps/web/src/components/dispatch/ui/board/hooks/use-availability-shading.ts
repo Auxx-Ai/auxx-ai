@@ -77,7 +77,7 @@ export function useAvailabilityShading({
     const list: Array<{ key: string; subject: AvailabilitySubject }> = [
       { key: ORG_KEY, subject: { type: 'organization' } },
     ]
-    if (view === 'day') {
+    if (view === 'day' || view === 'timeline') {
       for (const userId of workerUserIds) {
         list.push({ key: workerKey(userId), subject: { type: 'worker', userId } })
       }
@@ -117,7 +117,7 @@ export function useAvailabilityShading({
   )
 
   const backgroundEvents = useMemo(() => {
-    if (view === 'day') {
+    if (view === 'day' || view === 'timeline') {
       const events = workerUserIds.flatMap((userId) =>
         visibleDays(workerKey(userId)).flatMap((day) =>
           offHoursBackgroundEvents(new Date(`${day.date}T00:00:00`), day.ranges, userId)
