@@ -33,6 +33,8 @@ const KNOWN_ROUTE_PREFIXES = new Set([
   'two-factor',
   // (public) routes
   'accept-invitation',
+  'pay',
+  'quote',
   'sequences',
   'shopify',
   'workflows',

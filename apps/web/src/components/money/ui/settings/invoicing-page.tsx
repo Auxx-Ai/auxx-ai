@@ -3,7 +3,8 @@
 
 import { FeatureKey } from '@auxx/lib/permissions/client'
 import type { SettingValue } from '@auxx/lib/settings/client'
-import { Lock, Receipt } from 'lucide-react'
+import { cn } from '@auxx/ui/lib/utils'
+import { FileCheck2, Lock, Receipt } from 'lucide-react'
 import { EmptyState } from '~/components/global/empty-state'
 import { FieldPanel } from '~/components/global/forms/field-panel'
 import { FormSaveBar } from '~/components/global/forms/form-save-bar'
@@ -28,12 +29,12 @@ export function InvoicingSettingsPage() {
   useUser({ requireRoles: ['ADMIN', 'OWNER'] })
   const { hasAccess } = useFeatureFlags()
 
-  const breadcrumbs = [{ title: 'Dispatch Settings' }, { title: 'Invoicing' }]
+  const breadcrumbs = [{ title: 'Dispatch Settings' }, { title: 'Invoicing & Quoting' }]
 
   if (!hasAccess(FeatureKey.dispatch)) {
     return (
       <SettingsPage
-        title='Invoicing'
+        title='Invoicing & Quoting'
         description='Configure automated invoice drafts for completed jobs and visits.'
         breadcrumbs={breadcrumbs}>
         <EmptyState
@@ -49,11 +50,15 @@ export function InvoicingSettingsPage() {
   return <InvoicingSettingsBody breadcrumbs={breadcrumbs} />
 }
 
-/** Scalar catalog keys the Invoicing draft owns. */
+/** Scalar catalog keys the Invoicing & Quoting draft owns. */
 const DRAFT_KEYS = [
   'documents.invoice.autoEnabled',
   'documents.invoice.defaultTiming',
   'documents.invoice.dateBasis',
+  'documents.quote.acceptancePageEnabled',
+  'documents.quote.allowDecline',
+  'documents.quote.requireSignature',
+  'documents.quote.autoConvertOnAccept',
 ] as const
 
 function InvoicingSettingsBody({ breadcrumbs }: { breadcrumbs: { title: string }[] }) {
@@ -83,9 +88,11 @@ function InvoicingSettingsBody({ breadcrumbs }: { breadcrumbs: { title: string }
     onChange: (value: unknown) => patch({ [key]: value as SettingValue }),
   })
 
+  const acceptancePageEnabled = !!draft['documents.quote.acceptancePageEnabled']
+
   return (
     <SettingsPage
-      title='Invoicing'
+      title='Invoicing & Quoting'
       description='Configure automated invoice drafts for completed jobs and visits.'
       breadcrumbs={breadcrumbs}>
       <div className='flex flex-col gap-8 p-3 sm:p-6'>
@@ -112,6 +119,47 @@ function InvoicingSettingsBody({ breadcrumbs }: { breadcrumbs: { title: string }
               description='Whether auto-generated invoices are dated to the visit or the day they were generated.'
               {...controlled('documents.invoice.dateBasis')}
             />
+          </FieldPanel>
+        </SettingsSection>
+
+        <SettingsSection
+          icon={FileCheck2}
+          title='Quote acceptance'
+          description='Configure the customer-facing quote acceptance page and what happens when a customer accepts.'>
+          <FieldPanel
+            className='mt-1 p-0'
+            resizeId='quote-acceptance-settings'
+            defaultLabelWidth={220}>
+            <SettingsFieldRow
+              settingKey='documents.quote.acceptancePageEnabled'
+              title='Online quote acceptance page'
+              description='Let customers view and accept or decline quotes from a public link included in the quote email.'
+              {...controlled('documents.quote.acceptancePageEnabled')}
+            />
+            <div
+              className={cn(
+                'flex flex-col',
+                !acceptancePageEnabled && 'pointer-events-none opacity-50'
+              )}>
+              <SettingsFieldRow
+                settingKey='documents.quote.allowDecline'
+                title='Allow customers to decline'
+                description='Show a Decline option on the quote acceptance page.'
+                {...controlled('documents.quote.allowDecline')}
+              />
+              <SettingsFieldRow
+                settingKey='documents.quote.requireSignature'
+                title='Require typed signature to accept'
+                description='Require the customer to type their name to confirm acceptance.'
+                {...controlled('documents.quote.requireSignature')}
+              />
+              <SettingsFieldRow
+                settingKey='documents.quote.autoConvertOnAccept'
+                title='Convert to job on acceptance'
+                description='Automatically convert the quote to a work order when the customer accepts.'
+                {...controlled('documents.quote.autoConvertOnAccept')}
+              />
+            </div>
           </FieldPanel>
         </SettingsSection>
 

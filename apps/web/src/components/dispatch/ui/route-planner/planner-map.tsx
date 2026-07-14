@@ -7,6 +7,7 @@ import 'maplibre-gl/dist/maplibre-gl.css'
 import { Popover, PopoverAnchor, PopoverContent } from '@auxx/ui/components/popover'
 import { format } from 'date-fns'
 import maplibregl from 'maplibre-gl'
+import { useTheme } from 'next-themes'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { DEFAULT_WORKER_COLOR } from '../board/utils'
 import { dayStartAnchor, estimateArrivalForVisit } from './hooks/use-route-planner-mutations'
@@ -23,16 +24,24 @@ import type {
 // derived via indexed access, same precedent `backlog-pane.tsx` uses.
 type PlannerWorkOrder = PlannerBoard['workOrders'][number]
 
-const MAP_STYLE = 'https://tiles.openfreemap.org/styles/liberty'
+/** OpenFreeMap basemaps — same tile source, one light + one dark variant, no extra provider/key.
+ * Picked per the app theme (`next-themes` `resolvedTheme`); a toggle rebuilds the map (see the
+ * construction effect) so the light-tuned pin colors below swap with it. */
+const MAP_STYLE_LIGHT = 'https://tiles.openfreemap.org/styles/liberty'
+const MAP_STYLE_DARK = 'https://tiles.openfreemap.org/styles/dark'
 
 /** Teardrop pin path (§2.2): 28×38, head circle radius 14 centered at (14,14), tip at (14,38). */
 const TEARDROP_PATH_D =
   'M14 0C6.268 0 0 6.268 0 14c0 10.5 14 24 14 24s14-13.5 14-24C28 6.268 21.732 0 14 0z'
-/** Distinctly darker neutral for unassigned/backlog map pins — the board's lighter chip
- * `UNASSIGNED_COLOR` (slate-400) doesn't read well on the light Liberty basemap tiles. */
-const MAP_UNASSIGNED_PIN_COLOR = '#475569'
-/** Home-base marker color — deliberately never a worker color (decision record #5/#9). */
-const HOME_MARKER_COLOR = '#1e293b'
+/** Distinctly neutral for unassigned/backlog map pins — the board's chip `UNASSIGNED_COLOR`
+ * (slate-400) doesn't read well on either basemap, so we darken it on the light Liberty tiles
+ * (slate-600) and lighten it on the dark tiles (slate-400) instead. */
+const MAP_UNASSIGNED_PIN_COLOR_LIGHT = '#475569'
+const MAP_UNASSIGNED_PIN_COLOR_DARK = '#94a3b8'
+/** Home-base marker fill — deliberately never a worker color (decision record #5/#9); a dark
+ * slate badge on light tiles, a light slate badge (with a dark icon/border) on dark tiles. */
+const HOME_MARKER_COLOR_LIGHT = '#1e293b'
+const HOME_MARKER_COLOR_DARK = '#e2e8f0'
 const PIN_OUTLINE_COLOR = 'rgba(0,0,0,0.45)'
 const SELECTED_RING_COLOR = '#2563eb'
 
@@ -156,24 +165,27 @@ function applyPinVisualState(el: HTMLElement, opts: { selected: boolean; hovered
   el.style.zIndex = opts.selected ? '2' : opts.hovered ? '1' : '0'
 }
 
-/** Home-base marker (§2.2): distinct house-icon badge at `board.depot`, neutral dark (never a
- * worker color), anchored `center` since the badge (unlike a teardrop) has no natural tip. */
-function createHomeMarkerElement(): HTMLDivElement {
+/** Home-base marker (§2.2): distinct house-icon badge at `board.depot`, neutral (never a worker
+ * color), anchored `center` since the badge (unlike a teardrop) has no natural tip. The badge
+ * inverts with the theme so it stays legible on either basemap: dark fill + white icon/ring on
+ * light tiles, light fill + dark icon/ring on dark tiles. */
+function createHomeMarkerElement(isDark: boolean): HTMLDivElement {
+  const contrast = isDark ? '#1e293b' : 'white'
   const el = document.createElement('div')
   el.title = 'Home base'
   Object.assign(el.style, {
     width: '32px',
     height: '32px',
     borderRadius: '9999px',
-    background: HOME_MARKER_COLOR,
-    border: '2px solid white',
+    background: isDark ? HOME_MARKER_COLOR_DARK : HOME_MARKER_COLOR_LIGHT,
+    border: `2px solid ${contrast}`,
     boxShadow: '0 1px 3px rgba(0,0,0,0.4)',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
   })
   el.innerHTML = `
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="${contrast}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
       <path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8"></path>
       <path d="M3 10a2 2 0 0 1 .709-1.528l7-5.999a2 2 0 0 1 2.582 0l7 5.999A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
     </svg>
@@ -196,6 +208,8 @@ export function PlannerMap({
   window,
   isLoading,
 }: PlannerMapProps) {
+  const { resolvedTheme } = useTheme()
+  const isDark = resolvedTheme === 'dark'
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<maplibregl.Map | null>(null)
   const markersRef = useRef<Map<string, maplibregl.Marker>>(new Map())
@@ -213,13 +227,17 @@ export function PlannerMap({
   boardRef.current = board
   const constructedWithDepotRef = useRef(false)
 
+  // Depends on `isDark` too: the basemap style is fixed at construction, so a theme toggle tears
+  // the map down and rebuilds it with the other style. Cheap here (rare toggle) and it lets every
+  // downstream effect re-add its markers/routes/home for the new style without a `setStyle` re-add
+  // dance — mapReady flips false→true, re-arming them all.
   useEffect(() => {
     if (mapRef.current || !containerRef.current || isLoading) return
     const depot = boardRef.current.depot
     constructedWithDepotRef.current = Boolean(depot)
     const map = new maplibregl.Map({
       container: containerRef.current,
-      style: MAP_STYLE,
+      style: isDark ? MAP_STYLE_DARK : MAP_STYLE_LIGHT,
       center: depot ? [depot.lng, depot.lat] : [0, 0],
       zoom: depot ? 11 : 2,
     })
@@ -229,8 +247,12 @@ export function PlannerMap({
     return () => {
       map.remove()
       mapRef.current = null
+      // `map.remove()` drops every marker; clear the refs so the rebuilt map re-adds fresh ones
+      // (the pins effect already self-clears `markersRef`, but the depot marker is created once).
+      depotMarkerRef.current = null
+      setMapReady(false)
     }
-  }, [isLoading])
+  }, [isLoading, isDark])
 
   // Defensive fallback for the rare race where the map had to construct before the depot was
   // known (e.g. `isLoading` flipped false on a render where `board` itself hadn't updated yet):
@@ -273,14 +295,25 @@ export function PlannerMap({
       if (!matchesTagFilter(workOrderById.get(visit.workOrderId), filters.tags)) continue
       if (visit.assigneeUserId && !visibleWorkerIds.has(visit.assigneeUserId)) continue
 
+      const unassignedColor = isDark
+        ? MAP_UNASSIGNED_PIN_COLOR_DARK
+        : MAP_UNASSIGNED_PIN_COLOR_LIGHT
       const color = visit.assigneeUserId
-        ? (colorByUserId.get(visit.assigneeUserId) ?? MAP_UNASSIGNED_PIN_COLOR)
-        : MAP_UNASSIGNED_PIN_COLOR
+        ? (colorByUserId.get(visit.assigneeUserId) ?? unassignedColor)
+        : unassignedColor
       const order = visit.assigneeUserId && visit.routeOrder != null ? visit.routeOrder + 1 : null
       result.push({ visit, color, order })
     }
     return result
-  }, [board.visits, board.backlog, workOrderById, filters.tags, visibleWorkerIds, colorByUserId])
+  }, [
+    board.visits,
+    board.backlog,
+    workOrderById,
+    filters.tags,
+    visibleWorkerIds,
+    colorByUserId,
+    isDark,
+  ])
 
   // Cumulative travel-only arrival per visit, reusing the same (robust, `toVisitId`-matched)
   // math the stop-list/apply-times preview uses (`estimateArrivalForVisit`/`dayStartAnchor`,
@@ -367,7 +400,7 @@ export function PlannerMap({
     }
     if (!depotMarkerRef.current) {
       depotMarkerRef.current = new maplibregl.Marker({
-        element: createHomeMarkerElement(),
+        element: createHomeMarkerElement(isDark),
         anchor: 'center',
       })
         .setLngLat([board.depot.lng, board.depot.lat])
@@ -375,7 +408,7 @@ export function PlannerMap({
     } else {
       depotMarkerRef.current.setLngLat([board.depot.lng, board.depot.lat])
     }
-  }, [board.depot, mapReady])
+  }, [board.depot, mapReady, isDark])
 
   // Polylines: one GeoJSON source + line layer per visible worker with a route.
   useEffect(() => {

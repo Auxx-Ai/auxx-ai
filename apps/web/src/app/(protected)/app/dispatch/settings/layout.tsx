@@ -62,7 +62,7 @@ const DISPATCH_SETTINGS: SidebarProps[] = [
       },
       {
         id: 'dispatch-settings-invoicing',
-        label: 'Invoicing',
+        label: 'Invoicing & Quoting',
         slug: 'invoicing',
         icon: <Receipt />,
       },

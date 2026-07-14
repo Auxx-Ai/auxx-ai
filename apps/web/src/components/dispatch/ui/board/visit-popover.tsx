@@ -2,11 +2,10 @@
 
 'use client'
 
-import { getInstanceId, toRecordId } from '@auxx/lib/resources/client'
+import { getInstanceId, type RecordId, toRecordId } from '@auxx/lib/resources/client'
 import { Button } from '@auxx/ui/components/button'
 import {
   EventDateTimeSection,
-  EventPopoverFooter,
   EventPopoverHints,
   EventRepeatSection,
   EventTitleSection,
@@ -14,8 +13,7 @@ import {
 import { PanelCard, PanelCardRow } from '@auxx/ui/components/panel-card'
 import { toastError } from '@auxx/ui/components/toast'
 import { differenceInMinutes } from 'date-fns'
-import { CircleDot, Contact, ExternalLink, Send, TriangleAlert } from 'lucide-react'
-import { useRouter } from 'next/navigation'
+import { ArrowUpRight, CircleDot, Contact, Send, TriangleAlert } from 'lucide-react'
 import { useResource } from '~/components/resources'
 import { useConfirm } from '~/hooks/use-confirm'
 import { api } from '~/trpc/react'
@@ -35,6 +33,9 @@ interface VisitPopoverContentProps {
   mutations: ReturnType<typeof useBoardMutations>
   existingVisits: ExistingVisitForOverlap[]
   onClose: () => void
+  /** Opens a record in the board's docked/overlay `RecordDrawer` (nuqs `?record=`). An optional
+   * `drill` lands the drawer pre-drilled onto a panel item (e.g. the clicked visit). */
+  onOpenRecord: (recordId: RecordId, drill?: { panel?: string; item?: string }) => void
 }
 
 /**
@@ -51,8 +52,8 @@ export function VisitPopoverContent({
   mutations,
   existingVisits,
   onClose,
+  onOpenRecord,
 }: VisitPopoverContentProps) {
-  const router = useRouter()
   const utils = api.useUtils()
   const [confirm, ConfirmDialog] = useConfirm()
 
@@ -113,9 +114,16 @@ export function VisitPopoverContent({
     mutations.dispatchVisit.mutate({ visitId: event.id })
   }
 
-  const openRecord = (href: string) => {
+  /** Both the title link and the ↗ button open the work-order drawer pre-drilled onto this
+   * visit (decision #8 — records stay in the board's docked/overlay drawer, not a full-page nav). */
+  const openWorkOrder = () => {
     onClose()
-    router.push(href)
+    if (workOrderRecordId) onOpenRecord(workOrderRecordId, { panel: 'visits', item: event.id })
+  }
+
+  const openContact = () => {
+    onClose()
+    if (contactId) onOpenRecord(contactId, {})
   }
 
   return (
@@ -123,6 +131,14 @@ export function VisitPopoverContent({
       <EventTitleSection
         title={event.title}
         editable={false}
+        onTitleClick={openWorkOrder}
+        titleHref={`/app/work-orders/${event.workOrderId}`}
+        action={{
+          icon: <ArrowUpRight />,
+          label: 'Open work order',
+          onClick: openWorkOrder,
+          href: `/app/work-orders/${event.workOrderId}`,
+        }}
         subtitle={
           <>
             <div>{VISIT_STATUS_LABELS[event.status]}</div>
@@ -140,9 +156,7 @@ export function VisitPopoverContent({
                   icon: <Contact />,
                   label: contactDisplayName,
                   href: contactId ? `/app/contacts/${getInstanceId(contactId)}` : undefined,
-                  onClick: contactId
-                    ? () => openRecord(`/app/contacts/${getInstanceId(contactId)}`)
-                    : undefined,
+                  onClick: contactId ? openContact : undefined,
                 },
               ]
             : undefined
@@ -270,15 +284,6 @@ export function VisitPopoverContent({
           />
         </PanelCard>
       )}
-
-      <EventPopoverFooter
-        action={{
-          icon: <ExternalLink />,
-          label: 'Open record',
-          href: `/app/work-orders/${event.workOrderId}`,
-          onClick: () => openRecord(`/app/work-orders/${event.workOrderId}`),
-        }}
-      />
 
       <ConfirmDialog />
     </>

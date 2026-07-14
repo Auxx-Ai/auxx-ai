@@ -438,6 +438,40 @@ export const SETTINGS_CATALOG = {
     defaultValue: true,
     description: 'Show line item descriptions on quote PDFs',
   },
+  'documents.quote.acceptancePageEnabled': {
+    scope: 'DOCUMENTS',
+    access: 'org',
+    fieldType: 'CHECKBOX',
+    options: { variant: 'switch' },
+    defaultValue: true,
+    description:
+      'Master switch for the public quote acceptance page (v5 build spec 01) — off, the ' +
+      'public page 404s and the quote email keeps PDF-only behavior',
+  },
+  'documents.quote.allowDecline': {
+    scope: 'DOCUMENTS',
+    access: 'org',
+    fieldType: 'CHECKBOX',
+    options: { variant: 'switch' },
+    defaultValue: true,
+    description: 'Show the Decline action on the public quote acceptance page',
+  },
+  'documents.quote.requireSignature': {
+    scope: 'DOCUMENTS',
+    access: 'org',
+    fieldType: 'CHECKBOX',
+    options: { variant: 'switch' },
+    defaultValue: false,
+    description: 'Require the customer to type their full name to accept a quote',
+  },
+  'documents.quote.autoConvertOnAccept': {
+    scope: 'DOCUMENTS',
+    access: 'org',
+    fieldType: 'CHECKBOX',
+    options: { variant: 'switch' },
+    defaultValue: true,
+    description: 'Automatically convert an accepted quote into a work order',
+  },
   'documents.invoice.dueDays': {
     scope: 'DOCUMENTS',
     access: 'org',

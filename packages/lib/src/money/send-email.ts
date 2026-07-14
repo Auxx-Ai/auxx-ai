@@ -11,9 +11,11 @@ import { BadRequestError } from '../errors'
 import type { PlaceholderResolutionContext } from '../placeholders'
 import { resolvePlaceholdersInHtml } from '../placeholders'
 import { UnifiedCrudHandler } from '../resources/crud'
+import { getOrganizationSetting } from '../settings/settings-service'
 import { getSystemSnippet } from '../snippets'
 import { getPaymentAccount } from './payments/account-state'
 import { buildPayUrl, ensureInvoicePublicToken, isPaymentsConnected } from './public-token'
+import { buildQuoteViewUrl, ensureQuotePublicToken } from './quote-public-token'
 
 /** Unwrap a `getFieldValues()` map entry — takes the first value if array-returned. */
 function firstTyped(
@@ -200,6 +202,26 @@ export async function prepareDocumentEmail(
       if (token) {
         const payUrl = buildPayUrl(token)
         contentHtml += `<p><a href="${payUrl}" target="_blank" rel="noopener noreferrer">Pay online</a></p>`
+      }
+    }
+  }
+
+  // ─── Step 3c: append the view/accept-online link (v5 build spec 01 §"Quote email",
+  // quote only) ──────────────────────────────────────────────────────────────────
+  // Same rationale as the invoice pay-link above — appended here rather than a snippet
+  // placeholder. Gated on `documents.quote.acceptancePageEnabled` only; when off, the email
+  // is left exactly as resolved by the snippet (PDF-only behavior, unchanged).
+  if (documentType === 'quote') {
+    const { entityInstanceId: quoteInstanceId } = parseRecordId(documentRecordId)
+    const acceptancePageEnabled = await getOrganizationSetting({
+      organizationId,
+      key: 'documents.quote.acceptancePageEnabled',
+    })
+    if (acceptancePageEnabled) {
+      const token = await ensureQuotePublicToken(organizationId, quoteInstanceId)
+      if (token) {
+        const viewUrl = buildQuoteViewUrl(token)
+        contentHtml += `<p><a href="${viewUrl}" target="_blank" rel="noopener noreferrer">View & accept this quote online</a></p>`
       }
     }
   }
