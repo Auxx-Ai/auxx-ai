@@ -152,6 +152,10 @@ export async function materializeVisits(
           occurrenceDate: o.occurrenceDate,
           startTime: o.start,
           endTime: new Date(o.start.getTime() + durationMinutes * 60_000),
+          // Plan 20 §4.1a: persist the template duration onto the row itself (not just baked
+          // into endTime) so it survives an unschedule/reschedule round-trip; `timeConfirmedAt`
+          // stays null — pattern-generated, nobody promised this time to a human (§4.2).
+          durationMinutes,
           assigneeUserId: rule.defaultAssigneeUserId,
           timezone: rule.timezone,
           status: 'scheduled',

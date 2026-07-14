@@ -5,18 +5,26 @@ import { toActorId } from '@auxx/types/actor'
 import { Avatar, AvatarFallback, AvatarImage } from '@auxx/ui/components/avatar'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
+import { Input } from '@auxx/ui/components/input'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
+import { toastError } from '@auxx/ui/components/toast'
 import { format } from 'date-fns'
 import { CalendarClock, ReceiptText, Send, User, XCircle } from 'lucide-react'
+import { useState } from 'react'
 import { getInitials } from '~/components/groups/utils/group-utils'
 import { LineBuilder } from '~/components/money/ui/line-builder/line-builder'
 import { TuckedLabel } from '~/components/money/ui/tucked-label'
 import type { RecordDrillContext } from '~/components/records/record-drill-panels'
 import { useActors } from '~/components/resources/hooks/use-actor'
 import { useConfirm } from '~/hooks/use-confirm'
+import { api } from '~/trpc/react'
 import { VISIT_STATUS_LABELS, type VisitStatus } from '../board/types'
 import { SchedulePopover } from '../schedule-popover'
-import { formatVisitWindow, VISIT_STATUS_BADGE_VARIANT } from './job-schedule-utils'
+import {
+  formatVisitWindow,
+  resolveVisitDurationMinutes,
+  VISIT_STATUS_BADGE_VARIANT,
+} from './job-schedule-utils'
 import { useJobVisits } from './use-job-visits'
 import { VisitProofOfWork } from './visit-proof-of-work'
 
@@ -31,6 +39,13 @@ export function VisitDetailPanel({ recordId, itemId }: RecordDrillContext) {
   const { visits, isLoading, canEdit, mutations, existingVisits, refresh } = useJobVisits(recordId)
   const visit = visits.find((v) => v.id === itemId)
   const [confirm, ConfirmDialog] = useConfirm()
+  // Plan 20 §4.1a — explicit duration write. Never touches the schedule; draft state so a
+  // blur/Enter commits and an Escape reverts without re-render churn on every keystroke.
+  const [durationDraft, setDurationDraft] = useState<string | null>(null)
+  const setVisitDuration = api.dispatch.setVisitDuration.useMutation({
+    onError: (error) => toastError({ title: 'Error saving duration', description: error.message }),
+    onSuccess: refresh,
+  })
 
   const assigneeActorId = visit?.assigneeUserId ? toActorId('user', visit.assigneeUserId) : null
   const hydratedAssignee = useActors(assigneeActorId ? [assigneeActorId] : [])
@@ -44,6 +59,17 @@ export function VisitDetailPanel({ recordId, itemId }: RecordDrillContext) {
   }
 
   const canCancel = visit.status !== 'canceled' && visit.status !== 'done'
+  const resolvedDurationMinutes = resolveVisitDurationMinutes(visit)
+
+  const commitDuration = () => {
+    if (durationDraft === null) return
+    const trimmed = durationDraft.trim()
+    setDurationDraft(null)
+    const nextValue = trimmed === '' ? null : Number.parseInt(trimmed, 10)
+    if (nextValue !== null && (Number.isNaN(nextValue) || nextValue < 1 || nextValue > 1440)) return
+    if (nextValue === (visit.durationMinutes ?? null)) return
+    setVisitDuration.mutate({ visitId: visit.id, durationMinutes: nextValue })
+  }
 
   const handleCancel = async () => {
     const confirmed = await confirm({
@@ -125,6 +151,32 @@ export function VisitDetailPanel({ recordId, itemId }: RecordDrillContext) {
           </div>
         )}
 
+        {/* Intended on-site duration (plan 20 §4.1a) — explicit value when set, else an empty
+            input showing the resolved fallback (span, then 60) as a placeholder. Never touches
+            the schedule; planner writes (apply-times, slot-in) only ever consume this. */}
+        <div className='flex items-center justify-between gap-2 text-sm'>
+          <span className='text-muted-foreground'>Duration</span>
+          <div className='flex items-center gap-1.5'>
+            <Input
+              type='number'
+              min={1}
+              max={1440}
+              inputMode='numeric'
+              placeholder={`${resolvedDurationMinutes} (default)`}
+              value={durationDraft ?? (visit.durationMinutes != null ? visit.durationMinutes : '')}
+              onChange={(e) => setDurationDraft(e.target.value)}
+              onBlur={commitDuration}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') e.currentTarget.blur()
+                if (e.key === 'Escape') setDurationDraft(null)
+              }}
+              disabled={!canEdit || setVisitDuration.isPending}
+              className='h-7 w-20 text-right'
+            />
+            <span className='text-xs text-muted-foreground'>min</span>
+          </div>
+        </div>
+
         {/* Per-visit proof of work — the worker's captured QC checklist (notes + photos),
             read-only dispatcher-side. Authoring stays on the worker surface's Notes tab. */}
         <VisitProofOfWork visitId={visit.id} />
@@ -135,14 +187,12 @@ export function VisitDetailPanel({ recordId, itemId }: RecordDrillContext) {
             TuckedLabel + card, matching the proof-of-work block above. */}
         <div className='flex flex-col'>
           <TuckedLabel icon={<ReceiptText />}>This visit's extras</TuckedLabel>
-          <div className='rounded-lg border bg-primary-50'>
-            <LineBuilder
-              documentRecordId={recordId}
-              documentType='work_order'
-              visitId={visit.id}
-              readOnly={!canEdit || visit.status === 'canceled'}
-            />
-          </div>
+          <LineBuilder
+            documentRecordId={recordId}
+            documentType='work_order'
+            visitId={visit.id}
+            readOnly={!canEdit || visit.status === 'canceled'}
+          />
         </div>
 
         <ConfirmDialog />

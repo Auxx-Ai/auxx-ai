@@ -57,12 +57,18 @@ export type PlannerDragData = PlannerBacklogDragData | PlannerStopDragData
 export type PlannerDropData = PlannerStopDragData | PlannerWorkerListDropData
 
 /**
- * A visit's on-site duration for ETA math. `WorkOrderVisit` has no `durationMinutes` column —
- * only `applyRouteTimes`'s per-stop input does (the dispatcher-confirmed on-site time) — so this
- * derives a display estimate from the visit's own scheduled span when it has one, else the
- * planner-wide "1h default" fallback (apply-times-dialog.tsx, stop-list-panel.tsx).
+ * A visit's on-site duration for ETA math (plan 20 §4.1a read order): explicit
+ * `WorkOrderVisit.durationMinutes` (dispatcher/customer-confirmed intent) → the visit's own
+ * scheduled span when it has one → the planner-wide "1h default" fallback
+ * (apply-times-dialog.tsx, stop-list-panel.tsx). Planner writes (apply-times, slot-in) only
+ * ever consume this — they never set `durationMinutes` themselves.
  */
-export function visitDurationMinutes(visit: Pick<PlannerVisit, 'startTime' | 'endTime'>): number {
+export function visitDurationMinutes(
+  visit: Pick<PlannerVisit, 'startTime' | 'endTime' | 'durationMinutes'>
+): number {
+  if (visit.durationMinutes !== null && visit.durationMinutes !== undefined) {
+    return visit.durationMinutes
+  }
   if (visit.startTime && visit.endTime) {
     const minutes = differenceInMinutes(new Date(visit.endTime), new Date(visit.startTime))
     if (minutes > 0) return minutes
@@ -80,6 +86,40 @@ export function stopsForWorker(board: PlannerBoard, assigneeUserId: string): Pla
       if (b.routeOrder === null) return -1
       return a.routeOrder - b.routeOrder
     })
+}
+
+export type RouteTimesDriftState = 'in-sync' | 'drifted' | 'unapplied'
+
+/**
+ * Whether a worker's route order and scheduled start times agree (plan 20 §3.1 — order
+ * monotonicity, not time-magnitude, is the drift signal: geometry-free and immune to Directions
+ * re-estimate flapping). Only stops still "in the plan" count: `routeOrder !== null` and status
+ * not `done`/`canceled`; sorted by `routeOrder` defensively (callers usually already pass
+ * `stopsForWorker`'s order, but this must not assume it).
+ *
+ * - `'unapplied'` — none of the ordered stops has a `startTime` yet (a fresh plan that was never
+ *   applied).
+ * - `'drifted'` — either the mixed case (some ordered stops have a `startTime`, some don't — a
+ *   slot-in whose time write failed, or a manually cleared time), or every ordered stop has a
+ *   time but the `startTime` sequence (in `routeOrder` order) isn't non-decreasing (a reorder
+ *   that hasn't been re-applied yet).
+ * - `'in-sync'` — otherwise, including fewer than two timed stops (nothing to invert).
+ */
+export function routeTimesDrift(stops: PlannerVisit[]): RouteTimesDriftState {
+  const ordered = stops
+    .filter((v) => v.routeOrder !== null && v.status !== 'done' && v.status !== 'canceled')
+    .sort((a, b) => a.routeOrder! - b.routeOrder!)
+
+  const timed = ordered.filter((v) => v.startTime !== null)
+  if (timed.length === 0) return 'unapplied'
+  if (timed.length !== ordered.length) return 'drifted'
+
+  for (let i = 1; i < timed.length; i++) {
+    const prev = new Date(timed[i - 1]!.startTime as unknown as string | Date)
+    const curr = new Date(timed[i]!.startTime as unknown as string | Date)
+    if (curr.getTime() < prev.getTime()) return 'drifted'
+  }
+  return 'in-sync'
 }
 
 function parseClock(clock: string | null | undefined, fallback: string): [number, number] {
@@ -363,7 +403,15 @@ export function useRoutePlannerDragEnd({
         const endTime = new Date(startTime.getTime() + visitDurationMinutes(visit) * 60_000)
 
         mutations.scheduleVisit.mutate(
-          { visitId: visit.id, startTime, endTime, assigneeUserId: targetAssigneeUserId },
+          {
+            visitId: visit.id,
+            startTime,
+            endTime,
+            assigneeUserId: targetAssigneeUserId,
+            // The human chose worker + drop position, not the time itself — this is
+            // travel-only ETA math (plan 20 §4.2), not a promise to the customer.
+            timeWriteKind: 'provisional',
+          },
           {
             onSuccess: () => {
               const nextIds = [...targetIds]

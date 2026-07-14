@@ -43,6 +43,13 @@ export interface DispatchVisitEvent extends EventCalendarItem {
   dispatchedAt: string | null
   recurrenceRuleId: string | null
   workOrder: BoardWorkOrder | undefined
+  /** Null = the event's `start`/`end` are provisional (planner math, never promised to a
+   * human) — plan 20 §4.2/§4.3. Non-null = a deliberate human time-write or a customer-facing
+   * send confirmed it. */
+  timeConfirmedAt: string | null
+  /** Intended on-site duration in minutes; null = no explicit intent (read-order falls back to
+   * the scheduled span, then 60 — plan 20 §4.1a). */
+  durationMinutes: number | null
 }
 
 export type BoardViewMode = 'day' | 'week' | 'month' | 'timeline'

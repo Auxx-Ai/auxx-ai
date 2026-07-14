@@ -15,6 +15,7 @@ import { mirrorVisitOntoWorkOrder } from './mirror'
 import type {
   AssignVisitInput,
   ScheduleVisitInput,
+  SetVisitDurationInput,
   SetVisitStatusInput,
   UnscheduleVisitInput,
 } from './types'
@@ -78,6 +79,11 @@ export async function afterVisitWrite(
  * up to `scheduled`; the forward-only guard in `lifecycle.ts` makes rescheduling an
  * already-scheduled-or-later work order a no-op there, so this is safe to call on every
  * drag/drop and popover save alike.
+ *
+ * `timeWriteKind` (plan 20 §4.2, default `'confirmed'` — fails toward protecting times):
+ * `'confirmed'` stamps `timeConfirmedAt` and, when the span is positive, syncs
+ * `durationMinutes` from it; `'provisional'` (planner math — apply-times, slot-in) nulls
+ * `timeConfirmedAt` and never touches `durationMinutes`.
  */
 export async function scheduleVisit(input: ScheduleVisitInput): Promise<WorkOrderVisitRow> {
   const { organizationId, userId, visitId, startTime, endTime, timezone, excludeSocketId } = input
@@ -102,6 +108,15 @@ export async function scheduleVisit(input: ScheduleVisitInput): Promise<WorkOrde
   if (input.assigneeUserId !== undefined) set.assigneeUserId = input.assigneeUserId
   if (timezone !== undefined) set.timezone = timezone
   if (existing.recurrenceRuleId) set.isDetached = true
+
+  const kind = input.timeWriteKind ?? 'confirmed'
+  if (kind === 'confirmed') {
+    set.timeConfirmedAt = new Date()
+    const spanMinutes = Math.round((endTime.getTime() - startTime.getTime()) / 60_000)
+    if (spanMinutes > 0) set.durationMinutes = spanMinutes
+  } else {
+    set.timeConfirmedAt = null
+  }
 
   const [updated] = await database
     .update(schema.WorkOrderVisit)
@@ -167,7 +182,10 @@ export async function unscheduleVisit(input: UnscheduleVisitInput): Promise<Work
 
   const [updated] = await database
     .update(schema.WorkOrderVisit)
-    .set({ startTime: null, endTime: null, updatedAt: new Date() })
+    // `durationMinutes` deliberately survives unscheduling (plan 20 §4.1a) — a backlog visit
+    // keeps its duration intent for the next slot-in/apply; only the promise (`timeConfirmedAt`)
+    // and the times themselves clear.
+    .set({ startTime: null, endTime: null, timeConfirmedAt: null, updatedAt: new Date() })
     .where(
       and(
         eq(schema.WorkOrderVisit.id, visitId),
@@ -178,6 +196,48 @@ export async function unscheduleVisit(input: UnscheduleVisitInput): Promise<Work
   if (!updated) throw new NotFoundError('Visit not found')
 
   await afterVisitWrite(updated, { userId, trigger: 'unscheduled', excludeSocketId })
+  return updated
+}
+
+/**
+ * Set a visit's `durationMinutes` directly (plan 20 §4.1a) — the visit detail panel's explicit
+ * duration field. Never touches `startTime`/`endTime`/`timeConfirmedAt`. No status roll-up rule
+ * of its own (the `assignVisit` precedent) — mirror + broadcast only.
+ */
+export async function setVisitDuration(input: SetVisitDurationInput): Promise<WorkOrderVisitRow> {
+  const { organizationId, userId, visitId, durationMinutes, excludeSocketId } = input
+
+  // M2c (06 §4.3): a duration edit on a series visit is a "this visit" override too — without
+  // the detach, the next rule regeneration deletes/recreates the row and the explicit duration
+  // silently reverts to the template's.
+  const existing = await database.query.WorkOrderVisit.findFirst({
+    where: and(
+      eq(schema.WorkOrderVisit.id, visitId),
+      eq(schema.WorkOrderVisit.organizationId, organizationId)
+    ),
+    columns: { recurrenceRuleId: true },
+  })
+  if (!existing) throw new NotFoundError('Visit not found')
+
+  const set: Partial<typeof schema.WorkOrderVisit.$inferInsert> = {
+    durationMinutes,
+    updatedAt: new Date(),
+  }
+  if (existing.recurrenceRuleId) set.isDetached = true
+
+  const [updated] = await database
+    .update(schema.WorkOrderVisit)
+    .set(set)
+    .where(
+      and(
+        eq(schema.WorkOrderVisit.id, visitId),
+        eq(schema.WorkOrderVisit.organizationId, organizationId)
+      )
+    )
+    .returning()
+  if (!updated) throw new NotFoundError('Visit not found')
+
+  await afterVisitWrite(updated, { userId, excludeSocketId })
   return updated
 }
 

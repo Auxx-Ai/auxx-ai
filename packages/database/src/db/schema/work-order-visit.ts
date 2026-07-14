@@ -68,6 +68,14 @@ export const WorkOrderVisit = pgTable(
     geocodedAt: timestamp({ precision: 3, withTimezone: true }),
     /** Stamped by `dispatchVisit` (M2 §B.5) — separate explicit action from scheduling. */
     dispatchedAt: timestamp({ precision: 3, withTimezone: true }),
+    /** Null = the current startTime/endTime are provisional (planner math, never promised to a
+     * human). Stamped by deliberate human time-writes (scheduleVisit timeWriteKind 'confirmed');
+     * cleared on unschedule. Plan 20 §4. */
+    timeConfirmedAt: timestamp({ precision: 3, withTimezone: true }),
+    /** Intended on-site duration. Null = no explicit intent (readers fall back to scheduled
+     * span, then 60 min). Stamped from span on confirmed schedule writes; survives
+     * unscheduling. */
+    durationMinutes: integer(),
     /** null = not part of a recurring engagement (one-off visit) */
     recurrenceRuleId: text().references((): AnyPgColumn => RecurrenceRule.id, {
       onUpdate: 'cascade',

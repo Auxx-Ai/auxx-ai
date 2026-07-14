@@ -30,10 +30,12 @@ import { format } from 'date-fns'
 import { MoreVertical, Route as RouteIcon, Timer, X } from 'lucide-react'
 import { useState } from 'react'
 import { SidebarGroupHeader } from '~/components/global/sidebar/sidebar-group-header'
+import { Tooltip } from '~/components/global/tooltip'
 import { ApplyTimesDialog } from '../route-planner/apply-times-dialog'
 import {
   dayStartAnchor,
   estimateArrivalForVisit,
+  routeTimesDrift,
   stopsForWorker,
   useRoutePlannerMutations,
 } from '../route-planner/hooks/use-route-planner-mutations'
@@ -166,11 +168,19 @@ function WorkerStopSection({
   const dayStart = dayStartAnchor(date, worker, '08:00')
   const workerName = worker.name ?? worker.email ?? 'Worker'
 
+  // Drift badge (plan 20 §3.2): 'unapplied' with zero stops is a no-op empty section, not
+  // something worth flagging.
+  const drift = routeTimesDrift(stops)
+  const showDriftDot = drift === 'drifted' || (drift === 'unapplied' && stops.length > 0)
+
   const handleSuggest = () => {
     const movable = stops.filter((v) => v.status !== 'done')
     const done = stops.filter((v) => v.status === 'done')
+    // `board.depot` (the org's own business-address geocode) is always present when the board
+    // query loaded at all; `geometry.depot` is a per-worker route-start point gated by
+    // `routeStartAtHome` and only exists once geometry has loaded (plan 20 §6 wart).
     const suggested = suggestRouteOrder(
-      geometry?.depot ?? null,
+      board.depot ?? null,
       movable.map((v) => ({ visitId: v.id, lat: v.latitude, lng: v.longitude }))
     )
     // Done stops already happened — keep them out of the heuristic and append them so their
@@ -214,6 +224,32 @@ function WorkerStopSection({
               )}
             />
             <span className='truncate group-data-[collapsible=icon]:hidden'>{workerName}</span>
+            {showDriftDot && (
+              // Own click target (3-dot menu's exact stopPropagation/preventDefault recipe) so
+              // clicking the dot opens Apply-times without also toggling the section collapse.
+              <div
+                onClick={(e) => {
+                  e.stopPropagation()
+                  e.preventDefault()
+                  if (canEdit) setApplyOpen(true)
+                }}
+                className='ml-1 flex shrink-0 items-center group-data-[collapsible=icon]:hidden'>
+                <Tooltip
+                  content={
+                    drift === 'drifted'
+                      ? "Times don't match route order — reapply"
+                      : 'Times not applied yet'
+                  }>
+                  <span
+                    className={cn(
+                      'size-1.5 rounded-full',
+                      drift === 'drifted' ? 'bg-amber-500' : 'bg-muted-foreground/40',
+                      canEdit && 'cursor-pointer'
+                    )}
+                  />
+                </Tooltip>
+              </div>
+            )}
             <span className='ml-1 inline-flex shrink-0 items-center text-muted-foreground group-data-[collapsible=icon]:hidden'>
               <CollapsibleChevron open={open} />
             </span>

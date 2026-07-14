@@ -8,6 +8,7 @@ import { Button } from '@auxx/ui/components/button'
 import { RadioTab, RadioTabItem } from '@auxx/ui/components/radio-tab'
 import { EmptySection } from '@auxx/ui/components/section'
 import { TreeRowButton } from '@auxx/ui/components/tree-row'
+import { cn } from '@auxx/ui/lib/utils'
 import { format } from 'date-fns'
 import { CalendarClock, Send, TriangleAlert, User, XCircle } from 'lucide-react'
 import { getInitials } from '~/components/groups/utils/group-utils'
@@ -66,6 +67,8 @@ export function VisitCard({
   const end = visit.endTime ? new Date(visit.endTime) : null
   const dayContext = getVisitDayContext(start, end)
   const isOverdue = dayContext === 'past' && status !== 'done' && status !== 'canceled'
+  // Provisional = planner math, never promised to a human (plan 20 §4.2/§4.3).
+  const isProvisionalTime = Boolean(start) && visit.timeConfirmedAt == null
 
   const handleStatusChange = (next: string) => {
     // Forward-only, mirroring the server transition rules — RadioTab fires for
@@ -130,7 +133,10 @@ export function VisitCard({
           </div>
           <div className='flex items-center gap-2 text-sm text-muted-foreground'>
             {start && (
-              <span>
+              <span
+                className={cn(isProvisionalTime && 'text-muted-foreground')}
+                title={isProvisionalTime ? 'Estimated from route plan — not confirmed' : undefined}>
+                {isProvisionalTime && '~'}
                 {end ? `${format(start, 'p')} – ${format(end, 'p')}` : format(start, 'p')}
               </span>
             )}

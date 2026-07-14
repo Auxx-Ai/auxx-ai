@@ -163,6 +163,10 @@ export function visitToEvent(
     dispatchedAt: visit.dispatchedAt ? new Date(visit.dispatchedAt).toISOString() : null,
     recurrenceRuleId: visit.recurrenceRuleId ?? null,
     workOrder,
+    // Plan 20 §4.1/§4.3 — threaded straight through (whole-row select); the flag consumers need
+    // is just null-vs-not, so this only needs a wire-safe (string) shape, not a parsed Date.
+    timeConfirmedAt: visit.timeConfirmedAt ? new Date(visit.timeConfirmedAt).toISOString() : null,
+    durationMinutes: visit.durationMinutes ?? null,
   }
 }
 

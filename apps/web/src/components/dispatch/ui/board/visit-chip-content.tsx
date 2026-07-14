@@ -69,6 +69,10 @@ export function VisitChipContent({ event, isOverlapping }: VisitChipContentProps
 export function VisitChipMonthContent({ event }: { event: DispatchVisitEvent }) {
   const canceled = event.status === 'canceled'
   const done = event.status === 'done'
+  // Provisional = planner math, never promised to a human (plan 20 §4.2/§4.3) — a tilde prefix
+  // is enough treatment for the compact month chip; the surrounding opacity already mutes it,
+  // and chips already open a popover so no title tooltip here.
+  const provisional = event.timeConfirmedAt == null
   return (
     <div
       className={cn(
@@ -85,6 +89,7 @@ export function VisitChipMonthContent({ event }: { event: DispatchVisitEvent }) 
       </span>
       {event.dispatchedAt && <Send className='size-3 shrink-0 opacity-70' />}
       <span className='shrink-0 font-normal opacity-70'>
+        {provisional && '~'}
         {format(event.start, getMinutes(event.start) === 0 ? 'ha' : 'h:mma').toLowerCase()}
       </span>
     </div>
