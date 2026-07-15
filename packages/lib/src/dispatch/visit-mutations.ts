@@ -6,9 +6,17 @@
 // window materializer can reuse them after a bulk write. All mutations are org-scoped.
 
 import { database, schema } from '@auxx/database'
+import { createScopedLogger } from '@auxx/logger'
 import { and, eq } from 'drizzle-orm'
 import { NotFoundError } from '../errors'
 import { maybeGenerateVisitInvoiceDraft } from '../money/auto-invoice'
+import {
+  enrollVisitEnRouteSequences,
+  enrollVisitScheduledSequences,
+  exitVisitSequenceRuns,
+  onVisitCompleted,
+} from '../sequences/hooks'
+import { reanchorSequenceRuns } from '../sequences/reanchor'
 import { publishVisitChanged } from './broadcast'
 import { type LifecycleTrigger, rollUpWorkOrderStatus } from './lifecycle'
 import { mirrorVisitOntoWorkOrder } from './mirror'
@@ -19,8 +27,15 @@ import type {
   SetVisitStatusInput,
   UnscheduleVisitInput,
 } from './types'
+import {
+  notifyVisitCanceled,
+  notifyVisitReassigned,
+  notifyVisitRescheduled,
+} from './worker-notifications'
 
 type WorkOrderVisitRow = typeof schema.WorkOrderVisit.$inferSelect
+
+const logger = createScopedLogger('dispatch:visit-mutations')
 
 /**
  * Ensure exactly one `WorkOrderVisit` row exists for a work order. Idempotent by
@@ -91,12 +106,14 @@ export async function scheduleVisit(input: ScheduleVisitInput): Promise<WorkOrde
   // M2c (06 §4.3): load the row first so we know whether it's part of a series — a schedule
   // edit on a series visit is a "this visit" override (detach it; regeneration never touches
   // it again). `occurrenceDate` (slot identity) is never changed here.
+  // Also carries startTime/endTime/dispatchedAt (plan 19 §4.9) — the only way to tell a
+  // reschedule (already-scheduled visit, time actually changing) from first-time scheduling.
   const existing = await database.query.WorkOrderVisit.findFirst({
     where: and(
       eq(schema.WorkOrderVisit.id, visitId),
       eq(schema.WorkOrderVisit.organizationId, organizationId)
     ),
-    columns: { recurrenceRuleId: true },
+    columns: { recurrenceRuleId: true, startTime: true, endTime: true, dispatchedAt: true },
   })
   if (!existing) throw new NotFoundError('Visit not found')
 
@@ -131,6 +148,47 @@ export async function scheduleVisit(input: ScheduleVisitInput): Promise<WorkOrde
   if (!updated) throw new NotFoundError('Visit not found')
 
   await afterVisitWrite(updated, { userId, trigger: 'scheduled', excludeSocketId })
+
+  // Worker-facing reschedule notice (plan 19 §4.9): only when a visit that was ALREADY
+  // scheduled AND has been dispatched before has its time actually change — never on
+  // first-time scheduling. Notification failures must never fail this mutation.
+  if (
+    existing.dispatchedAt &&
+    existing.startTime &&
+    existing.endTime &&
+    (existing.startTime.getTime() !== startTime.getTime() ||
+      existing.endTime.getTime() !== endTime.getTime())
+  ) {
+    try {
+      await notifyVisitRescheduled({
+        organizationId,
+        userId,
+        visit: updated,
+        oldStartTime: existing.startTime,
+        oldEndTime: existing.endTime,
+      })
+    } catch (error) {
+      logger.error('Failed to notify visit rescheduled', { error, visitId })
+    }
+  }
+
+  // Client-notification hooks (plan 19 §4.3/§4.2): enrollment is one-off only — recurring-born
+  // visits are the hourly sweep's job (never through this function). Re-anchor fires on ANY
+  // startTime change, one-off or a detached recurring occurrence, both routed through here.
+  if (!existing.recurrenceRuleId && !existing.startTime) {
+    try {
+      await enrollVisitScheduledSequences(organizationId, visitId)
+    } catch (error) {
+      logger.error('Failed to enroll visit:scheduled sequences', { error, visitId })
+    }
+  } else if (existing.startTime && existing.startTime.getTime() !== startTime.getTime()) {
+    try {
+      await reanchorSequenceRuns(organizationId, 'visit', visitId, startTime)
+    } catch (error) {
+      logger.error('Failed to re-anchor sequence runs on reschedule', { error, visitId })
+    }
+  }
+
   return updated
 }
 
@@ -142,12 +200,13 @@ export async function assignVisit(input: AssignVisitInput): Promise<WorkOrderVis
   const { organizationId, userId, visitId, assigneeUserId, excludeSocketId } = input
 
   // M2c (06 §4.3): an assignee change on a series visit is also a "this visit" edit.
+  // Also carries assigneeUserId/dispatchedAt (plan 19 §4.9) to detect a reassignment.
   const existing = await database.query.WorkOrderVisit.findFirst({
     where: and(
       eq(schema.WorkOrderVisit.id, visitId),
       eq(schema.WorkOrderVisit.organizationId, organizationId)
     ),
-    columns: { recurrenceRuleId: true },
+    columns: { recurrenceRuleId: true, assigneeUserId: true, dispatchedAt: true },
   })
   if (!existing) throw new NotFoundError('Visit not found')
 
@@ -170,6 +229,23 @@ export async function assignVisit(input: AssignVisitInput): Promise<WorkOrderVis
   if (!updated) throw new NotFoundError('Visit not found')
 
   await afterVisitWrite(updated, { userId, excludeSocketId })
+
+  // Worker-facing reassignment notices (plan 19 §4.9): "removed" to the old assignee (if any)
+  // + "assigned" to the new one (if any) — gated on the visit having ever been dispatched.
+  // Notification failures must never fail this mutation.
+  if (existing.dispatchedAt && existing.assigneeUserId !== assigneeUserId) {
+    try {
+      await notifyVisitReassigned({
+        organizationId,
+        userId,
+        visit: updated,
+        oldAssigneeUserId: existing.assigneeUserId,
+      })
+    } catch (error) {
+      logger.error('Failed to notify visit reassigned', { error, visitId })
+    }
+  }
+
   return updated
 }
 
@@ -179,6 +255,16 @@ export async function assignVisit(input: AssignVisitInput): Promise<WorkOrderVis
  */
 export async function unscheduleVisit(input: UnscheduleVisitInput): Promise<WorkOrderVisitRow> {
   const { organizationId, userId, visitId, excludeSocketId } = input
+
+  // Full pre-write row (plan 19 §4.9) — the "you don't need to go anymore" notice needs the
+  // OLD startTime/endTime/assignee, which the update below nulls out.
+  const existing = await database.query.WorkOrderVisit.findFirst({
+    where: and(
+      eq(schema.WorkOrderVisit.id, visitId),
+      eq(schema.WorkOrderVisit.organizationId, organizationId)
+    ),
+  })
+  if (!existing) throw new NotFoundError('Visit not found')
 
   const [updated] = await database
     .update(schema.WorkOrderVisit)
@@ -196,6 +282,23 @@ export async function unscheduleVisit(input: UnscheduleVisitInput): Promise<Work
   if (!updated) throw new NotFoundError('Visit not found')
 
   await afterVisitWrite(updated, { userId, trigger: 'unscheduled', excludeSocketId })
+
+  // Worker-facing cancel notice (plan 19 §4.9) — gated on `dispatchedAt` inside
+  // `notifyVisitCanceled` itself. Notification failures must never fail this mutation.
+  try {
+    await notifyVisitCanceled({ organizationId, userId, visit: existing })
+  } catch (error) {
+    logger.error('Failed to notify visit unscheduled', { error, visitId })
+  }
+
+  // Client-notification exit (plan 19 §4.2/§4.10): an unscheduled visit's own sequence runs
+  // (reminders/en-route/follow-up) have nothing left to do.
+  try {
+    await exitVisitSequenceRuns(organizationId, visitId, 'canceled')
+  } catch (error) {
+    logger.error('Failed to exit sequence runs on visit unschedule', { error, visitId })
+  }
+
   return updated
 }
 
@@ -268,6 +371,40 @@ export async function setVisitStatus(input: SetVisitStatusInput): Promise<WorkOr
     trigger: suppressRollUp ? undefined : status,
     excludeSocketId,
   })
+
+  // Worker-facing cancel notice (plan 19 §4.9) — gated on `dispatchedAt` inside
+  // `notifyVisitCanceled` itself. Notification failures must never fail this mutation.
+  if (status === 'canceled') {
+    try {
+      await notifyVisitCanceled({ organizationId, userId, visit: updated })
+    } catch (error) {
+      logger.error('Failed to notify visit canceled', { error, visitId })
+    }
+
+    // Client-notification exit (plan 19 §4.2/§4.10): a canceled visit's own sequence runs have
+    // nothing left to do.
+    try {
+      await exitVisitSequenceRuns(organizationId, visitId, 'canceled')
+    } catch (error) {
+      logger.error('Failed to exit sequence runs on visit cancellation', { error, visitId })
+    }
+  }
+
+  // Client-notification enrollment (plan 19 §4.3): 'en_route'/'done' status transitions.
+  if (status === 'en_route') {
+    try {
+      await enrollVisitEnRouteSequences(organizationId, visitId)
+    } catch (error) {
+      logger.error('Failed to enroll visit:en_route sequences', { error, visitId })
+    }
+  }
+  if (status === 'done') {
+    try {
+      await onVisitCompleted(organizationId, visitId)
+    } catch (error) {
+      logger.error('Failed to enroll/exit sequences on visit completion', { error, visitId })
+    }
+  }
 
   // money MI2 build spec §D (Q1a) — per_visit_completed drafts generate synchronously here;
   // never let a billing failure fail the field tech's status tap.

@@ -3,6 +3,7 @@
 import {
   approvalReminderJob,
   approvalTimeoutJob,
+  executeMessageTrigger,
   executeResourceTrigger,
   resumeWorkflowJob,
 } from '@auxx/lib/jobs'
@@ -14,6 +15,7 @@ const jobMappings = {
   approvalTimeoutJob,
   approvalReminderJob,
   executeResourceTrigger,
+  executeMessageTrigger,
 }
 
 /**

@@ -30,7 +30,7 @@ export {
   listMyVisits,
   loadOwnVisit,
 } from './my-schedule'
-export { dispatchVisit } from './notify'
+export { dispatchVisit, getWorkOrderLabel } from './notify'
 export type {
   AddMyAdhocQcItemInput,
   AddMyQcItemPhotoInput,
@@ -115,6 +115,16 @@ export {
   setVisitStatus,
   unscheduleVisit,
 } from './visit-mutations'
+export type {
+  NotifyVisitCanceledInput,
+  NotifyVisitReassignedInput,
+  NotifyVisitRescheduledInput,
+} from './worker-notifications'
+export {
+  notifyVisitCanceled,
+  notifyVisitReassigned,
+  notifyVisitRescheduled,
+} from './worker-notifications'
 export type { DispatchWorkerWithUser, UpsertDispatchWorkerInput } from './workers'
 export {
   listDispatchWorkers,

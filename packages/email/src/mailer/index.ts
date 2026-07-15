@@ -46,8 +46,18 @@ import {
   TrialStartedText,
   VerificationEmail,
   VerificationText,
+  VisitCanceledEmail,
+  VisitCanceledText,
+  VisitDailyDigestEmail,
+  type VisitDailyDigestItem,
+  VisitDailyDigestText,
   VisitDispatchedEmail,
   VisitDispatchedText,
+  VisitReassignedEmail,
+  VisitReassignedText,
+  type VisitReassignedVariant,
+  VisitRescheduledEmail,
+  VisitRescheduledText,
   WelcomeEmail,
   WelcomeText,
 } from '../templates'
@@ -403,6 +413,220 @@ export const sendVisitDispatchedEmail = async ({
     })
   } catch (error) {
     logger.error(error, 'Error in sendVisitDispatchedEmail')
+    throw error
+  }
+}
+
+/** Worker-facing reschedule notice (plans/dispatch/19-client-notifications.md §4.9) — the
+ * `sendVisitDispatchedEmail` shape, old→new time. */
+export const sendVisitRescheduledEmail = async ({
+  email,
+  name,
+  workOrderNumber,
+  workOrderTitle,
+  oldStartTime,
+  oldEndTime,
+  newStartTime,
+  newEndTime,
+  timezone,
+  workOrderUrl,
+  address,
+}: {
+  email: UserEmail
+  name: string
+  workOrderNumber: string
+  workOrderTitle: string
+  oldStartTime: string
+  oldEndTime: string
+  newStartTime: string
+  newEndTime: string
+  timezone: string
+  workOrderUrl: string
+  address?: string
+}): Promise<boolean> => {
+  try {
+    const html = await render(
+      await VisitRescheduledEmail({
+        name,
+        workOrderNumber,
+        workOrderTitle,
+        oldStartTime,
+        oldEndTime,
+        newStartTime,
+        newEndTime,
+        timezone,
+        workOrderUrl,
+        address,
+      })
+    )
+    const text = VisitRescheduledText({
+      name,
+      workOrderNumber,
+      workOrderTitle,
+      oldStartTime,
+      oldEndTime,
+      newStartTime,
+      newEndTime,
+      timezone,
+      workOrderUrl,
+      address,
+    })
+
+    return await sendEmail({
+      to: email,
+      subject: formatSubject(
+        `Your visit was rescheduled${workOrderNumber ? ` — ${workOrderNumber}` : ''}`
+      ),
+      html,
+      text,
+    })
+  } catch (error) {
+    logger.error(error, 'Error in sendVisitRescheduledEmail')
+    throw error
+  }
+}
+
+/** Worker-facing cancel notice (plans/dispatch/19-client-notifications.md §4.9). */
+export const sendVisitCanceledEmail = async ({
+  email,
+  name,
+  workOrderNumber,
+  workOrderTitle,
+  startTime,
+  endTime,
+  timezone,
+}: {
+  email: UserEmail
+  name: string
+  workOrderNumber: string
+  workOrderTitle: string
+  startTime: string
+  endTime: string
+  timezone: string
+}): Promise<boolean> => {
+  try {
+    const html = await render(
+      await VisitCanceledEmail({
+        name,
+        workOrderNumber,
+        workOrderTitle,
+        startTime,
+        endTime,
+        timezone,
+      })
+    )
+    const text = VisitCanceledText({
+      name,
+      workOrderNumber,
+      workOrderTitle,
+      startTime,
+      endTime,
+      timezone,
+    })
+
+    return await sendEmail({
+      to: email,
+      subject: formatSubject(
+        `Your visit was canceled${workOrderNumber ? ` — ${workOrderNumber}` : ''}`
+      ),
+      html,
+      text,
+    })
+  } catch (error) {
+    logger.error(error, 'Error in sendVisitCanceledEmail')
+    throw error
+  }
+}
+
+/** Worker-facing reassignment notice (plans/dispatch/19-client-notifications.md §4.9) — one
+ * template, two variants: 'removed' to the old assignee, 'assigned' to the new one. */
+export const sendVisitReassignedEmail = async ({
+  email,
+  name,
+  variant,
+  workOrderNumber,
+  workOrderTitle,
+  startTime,
+  endTime,
+  timezone,
+  workOrderUrl,
+}: {
+  email: UserEmail
+  name: string
+  variant: VisitReassignedVariant
+  workOrderNumber: string
+  workOrderTitle: string
+  startTime: string
+  endTime: string
+  timezone: string
+  workOrderUrl: string
+}): Promise<boolean> => {
+  try {
+    const html = await render(
+      await VisitReassignedEmail({
+        name,
+        variant,
+        workOrderNumber,
+        workOrderTitle,
+        startTime,
+        endTime,
+        timezone,
+        workOrderUrl,
+      })
+    )
+    const text = VisitReassignedText({
+      name,
+      variant,
+      workOrderNumber,
+      workOrderTitle,
+      startTime,
+      endTime,
+      timezone,
+      workOrderUrl,
+    })
+
+    const subject =
+      variant === 'removed'
+        ? `You've been removed from a visit${workOrderNumber ? ` — ${workOrderNumber}` : ''}`
+        : `You've been assigned a visit${workOrderNumber ? ` — ${workOrderNumber}` : ''}`
+
+    return await sendEmail({ to: email, subject: formatSubject(subject), html, text })
+  } catch (error) {
+    logger.error(error, 'Error in sendVisitReassignedEmail')
+    throw error
+  }
+}
+
+/** Opt-in daily schedule digest (plans/dispatch/19-client-notifications.md §4.9). */
+export const sendVisitDailyDigestEmail = async ({
+  email,
+  name,
+  dateLabel,
+  timezone,
+  visits,
+  scheduleUrl,
+}: {
+  email: UserEmail
+  name: string
+  dateLabel: string
+  timezone: string
+  visits: VisitDailyDigestItem[]
+  scheduleUrl: string
+}): Promise<boolean> => {
+  try {
+    const html = await render(
+      await VisitDailyDigestEmail({ name, dateLabel, timezone, visits, scheduleUrl })
+    )
+    const text = VisitDailyDigestText({ name, dateLabel, timezone, visits, scheduleUrl })
+
+    return await sendEmail({
+      to: email,
+      subject: formatSubject(`Your schedule for ${dateLabel}`),
+      html,
+      text,
+    })
+  } catch (error) {
+    logger.error(error, 'Error in sendVisitDailyDigestEmail')
     throw error
   }
 }

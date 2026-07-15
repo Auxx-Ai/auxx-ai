@@ -1,6 +1,7 @@
 // apps/web/src/components/sequences/ui/detail/sequence-detail-view.tsx
 'use client'
 
+import { SEQUENCE_TRIGGER_LABELS, type SequenceTriggerType } from '@auxx/lib/sequences/client'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import {
@@ -98,6 +99,13 @@ export function SequenceDetailView({ sequenceId }: SequenceDetailViewProps) {
       <MainPageHeader
         action={
           <div className='flex items-center gap-2'>
+            {sequence.triggerType !== 'manual' && (
+              <Badge variant='outline' size='sm'>
+                {SEQUENCE_TRIGGER_LABELS[sequence.triggerType as SequenceTriggerType] ??
+                  sequence.triggerType}
+              </Badge>
+            )}
+
             {isDraft ? (
               <Badge variant='gray' size='sm'>
                 Draft
@@ -114,12 +122,15 @@ export function SequenceDetailView({ sequenceId }: SequenceDetailViewProps) {
                 content={
                   isEnabled
                     ? 'Pause — in-flight runs finish; new enrollments blocked'
-                    : 'Enable enrollments'
+                    : !sequence.integrationId
+                      ? 'Choose a sending mailbox in Settings before enabling'
+                      : 'Enable enrollments'
                 }>
                 <Button
                   variant='ghost'
                   size='sm'
                   loading={update.isPending}
+                  disabled={!isEnabled && !sequence.integrationId}
                   onClick={() =>
                     update.mutate({
                       id: sequence.id,
@@ -173,7 +184,11 @@ export function SequenceDetailView({ sequenceId }: SequenceDetailViewProps) {
 
             <TabsContent value='editor' className='flex flex-1 flex-col min-h-0'>
               <ScrollArea className='h-full' scrollbarClassName='w-1.5' noFade>
-                <SequenceStepEditor sequenceId={sequenceId} steps={steps} />
+                <SequenceStepEditor
+                  sequenceId={sequenceId}
+                  steps={steps}
+                  subjectKind={sequence.subjectKind as 'visit' | 'work_order' | 'invoice' | null}
+                />
               </ScrollArea>
             </TabsContent>
 

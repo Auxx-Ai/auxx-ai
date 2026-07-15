@@ -4,6 +4,7 @@
 
 import { MainPageContent } from '@auxx/ui/components/main-page'
 import {
+  Bell,
   ClipboardCheck,
   Clock,
   CreditCard,
@@ -78,6 +79,12 @@ const DISPATCH_SETTINGS: SidebarProps[] = [
         label: 'Payments',
         slug: 'payments',
         icon: <CreditCard />,
+      },
+      {
+        id: 'dispatch-settings-client-notifications',
+        label: 'Client notifications',
+        slug: 'client-notifications',
+        icon: <Bell />,
       },
     ],
   },

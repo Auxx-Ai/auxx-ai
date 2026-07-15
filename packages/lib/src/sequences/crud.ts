@@ -8,12 +8,16 @@
 // published `workflowId` slot is ever used.
 
 import { type Database, schema } from '@auxx/database'
+import { createScopedLogger } from '@auxx/logger'
 import { generateId } from '@auxx/utils'
 import { and, count, eq } from 'drizzle-orm'
 import { err, ok, type Result } from 'neverthrow'
 import { ConflictError, NotFoundError } from '../errors'
 import { grantSequenceCreatorAccess } from './access'
+import { exitActiveRunsForSequence } from './runtime'
 import type { CreateSequenceInput, SequenceEntity, UpdateSequenceFields } from './types'
+
+const logger = createScopedLogger('sequences-crud')
 
 /**
  * Create a draft sequence. Provisions its hidden `WorkflowApp`
@@ -35,6 +39,13 @@ export async function createSequence(
     deliveryTimezone,
     deliveryBusinessDaysOnly,
     createdById,
+    triggerType,
+    subjectKind,
+    exitOnReply,
+    respectSuppression,
+    includeUnsubscribeFooter,
+    templateKey,
+    enrollmentFilter,
   } = input
 
   // Pre-generated so the WorkflowApp row can carry `ownerId` (Sequence.id)
@@ -93,6 +104,13 @@ export async function createSequence(
         deliveryTimezone: deliveryTimezone ?? null,
         deliveryBusinessDaysOnly: deliveryBusinessDaysOnly ?? false,
         createdById,
+        ...(triggerType !== undefined ? { triggerType } : {}),
+        subjectKind: subjectKind ?? null,
+        ...(exitOnReply !== undefined ? { exitOnReply } : {}),
+        ...(respectSuppression !== undefined ? { respectSuppression } : {}),
+        ...(includeUnsubscribeFooter !== undefined ? { includeUnsubscribeFooter } : {}),
+        templateKey: templateKey ?? null,
+        enrollmentFilter: enrollmentFilter ?? null,
       })
       .returning()
 
@@ -140,6 +158,25 @@ export async function updateSequence(
     })
     .where(eq(schema.Sequence.id, sequenceId))
     .returning()
+
+  // Disable-exits-runs (client-notifications plan §4.1 decision #11): disabling an
+  // EVENT-triggered sequence bulk-exits its in-flight runs — a canceled reminder run has
+  // nothing left to send. Manual outreach sequences keep drain semantics (existing runs finish
+  // on their own schedule; disabling just stops NEW enrollment).
+  if (
+    status === 'disabled' &&
+    existing.status !== 'disabled' &&
+    existing.triggerType !== 'manual'
+  ) {
+    const exitResult = await exitActiveRunsForSequence(organizationId, sequenceId, 'disabled')
+    if (exitResult.isErr()) {
+      logger.error('Failed to bulk-exit runs on sequence disable', {
+        sequenceId,
+        organizationId,
+        error: exitResult.error.message,
+      })
+    }
+  }
 
   return ok(updated!)
 }

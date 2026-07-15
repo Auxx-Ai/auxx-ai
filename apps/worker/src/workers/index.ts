@@ -350,6 +350,42 @@ export async function setupSchedules() {
     }
   )
 
+  // Dispatch worker-facing daily schedule digest — every hour on the hour
+  // (plans/dispatch/19-client-notifications.md §4.9, opt-in). The job itself only actually
+  // sends for orgs whose local time is currently at the digest hour (default 06:00); the
+  // per-org/day Redis marker inside `runDispatchDigestSweep` guards against double-sending.
+  await maintenanceQueue.upsertJobScheduler(
+    'dispatchDigestJob',
+    { pattern: '0 * * * *' },
+    {
+      opts: {
+        attempts: 2,
+        backoff: { type: 'exponential', delay: 60000 },
+        priority: 8,
+        removeOnComplete: { count: 24 },
+        removeOnFail: { count: 48 },
+      },
+    }
+  )
+
+  // Client-notifications sequence enrollment sweep — hourly, offset to :30 so it doesn't pile
+  // onto the :00 tick alongside dispatchDigestJob/orphanedFileCleanupJob/
+  // cleanupExpiredMediaAssetsJob (plans/dispatch/19-client-notifications.md §4.3, decision
+  // #13). Any-run-ever dedup inside `enrollSubjectInSequence` makes re-running a no-op.
+  await maintenanceQueue.upsertJobScheduler(
+    'sequenceEnrollmentSweepJob',
+    { pattern: '30 * * * *' },
+    {
+      opts: {
+        attempts: 2,
+        backoff: { type: 'exponential', delay: 60000 },
+        priority: 8,
+        removeOnComplete: { count: 24 },
+        removeOnFail: { count: 48 },
+      },
+    }
+  )
+
   // Every day at 8 AM
   await maintenanceQueue.upsertJobScheduler(
     'requestDocumentSuggestionsJob',

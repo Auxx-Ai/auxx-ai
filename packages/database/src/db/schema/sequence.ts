@@ -30,6 +30,21 @@ import { WorkflowApp } from './workflow-app'
 import { WorkflowRun } from './workflow-run'
 
 /**
+ * Auto-enrollment trigger for a sequence. Colon `noun:verb` form is the canonical
+ * event-catalog naming (plans/events/00-event-catalog-review.md §5); these five are the seed
+ * of that future catalog (plans/dispatch/19-client-notifications.md §4.3). Deliberately a
+ * plain string union over `text()`, not a pgEnum — new triggers must be addable without a
+ * migration (locked decision, plans/dispatch/19-client-notifications.md §4.1).
+ */
+export type SequenceTriggerType =
+  | 'manual'
+  | 'visit:scheduled'
+  | 'visit:en_route'
+  | 'visit:completed'
+  | 'work_order:completed'
+  | 'invoice:sent'
+
+/**
  * A draft or published outbound email cadence. Compiles to a hidden,
  * system-owned `WorkflowApp` (marked via `ownerType`/`ownerId`, see
  * `workflow-app.ts`) that the workflow engine executes per-enrollment.
@@ -74,6 +89,27 @@ export const Sequence = pgTable(
     publishedAt: timestamp({ precision: 3 }),
     /** Set on any draft edit after publish; cleared on republish. */
     hasUnpublishedChanges: boolean().default(false).notNull(),
+    /**
+     * Auto-enrollment trigger (plans/dispatch/19-client-notifications.md §4.1/§4.3).
+     * `'manual'` = Recipients-tab/contact-detail/bulk enrollment only (today's only mode).
+     */
+    triggerType: text().$type<SequenceTriggerType>().default('manual').notNull(),
+    /** Derived from `triggerType`, stored for the enroll/exit code paths. */
+    subjectKind: text(),
+    /** Reply-detection hook exits the run only when this is true (per-sequence toggle). */
+    exitOnReply: boolean().default(true).notNull(),
+    /** Org-wide unsubscribe suppression check; seeded transactional sequences set false. */
+    respectSuppression: boolean().default(true).notNull(),
+    /** Unsubscribe footer on every send; seeded transactional sequences set false. */
+    includeUnsubscribeFooter: boolean().default(true).notNull(),
+    /** Seed idempotency + code lookup key, e.g. `visit_reminders`. Unique per org. */
+    templateKey: text(),
+    /**
+     * `ConditionGroup[]` (`@auxx/lib/conditions` — `conditionGroupsSchema`), evaluated at
+     * enroll only. Null = enroll everything. Typed `unknown[]` at the schema layer (packages
+     * lower than `lib` can't import its types) — the lib layer casts.
+     */
+    enrollmentFilter: jsonb().$type<unknown[]>(),
     createdById: text().references((): AnyPgColumn => User.id, {
       onUpdate: 'cascade',
       onDelete: 'set null',
@@ -91,7 +127,17 @@ export const Sequence = pgTable(
       table.organizationId.asc().nullsLast(),
       table.status.asc().nullsLast()
     ),
+    // Trigger-lookup path (§4.3): find enabled event-sequences for a given org+trigger.
+    index('Sequence_organizationId_triggerType_idx').using(
+      'btree',
+      table.organizationId.asc().nullsLast(),
+      table.triggerType.asc().nullsLast()
+    ),
     uniqueIndex('Sequence_workflowAppId_key').using('btree', table.workflowAppId.asc().nullsLast()),
+    // Seed idempotency + code lookup (§4.1).
+    uniqueIndex('Sequence_organizationId_templateKey_key')
+      .using('btree', table.organizationId.asc().nullsLast(), table.templateKey.asc().nullsLast())
+      .where(sql`${table.templateKey} IS NOT NULL`),
   ]
 )
 
@@ -118,6 +164,17 @@ export const SequenceStep = pgTable(
     /** Wait BEFORE this step; step 1 is always 0/0. */
     delayDays: integer().default(0).notNull(),
     delayHours: integer().default(0).notNull(),
+    /**
+     * `'relative'` = existing delayDays/delayHours-from-enrollment semantics.
+     * `'anchor'` = signed offset from the subject's anchor date (§4.2), e.g. `startTime - 2d`.
+     */
+    timingMode: text().default('relative').notNull(),
+    /** Signed day offset from the subject anchor date; only read when `timingMode='anchor'`. */
+    anchorOffsetDays: integer().default(0).notNull(),
+    /** `'HH:MM'` in the sequence's `deliveryTimezone`; only read when `timingMode='anchor'`. */
+    anchorTimeOfDay: text(),
+    /** Send channel for this step. Email-only in v1; reserved for SMS. */
+    channel: text().default('email').notNull(),
     /** Used when this step opens the thread (step 1). */
     subject: text(),
     /** TipTap document JSON — carries the `{{token}}` placeholder spans. */
@@ -169,6 +226,10 @@ export const SequenceRun = pgTable(
     }),
     /** Frozen at enrollment (§3) — survives contact email edits/merges. */
     recipientEmail: text().notNull(),
+    /** `'visit' | 'work_order' | 'invoice'` — null for manual (contact-only) enrollments. */
+    subjectKind: text(),
+    /** `WorkOrderVisit.id` or `EntityInstance.id`, per `subjectKind`. Null for manual runs. */
+    subjectId: text(),
     /** Set once step 1 sends; steps 2..N reply into this thread. */
     threadId: text().references((): AnyPgColumn => Thread.id, {
       onUpdate: 'cascade',
@@ -212,14 +273,27 @@ export const SequenceRun = pgTable(
       'btree',
       table.unsubscribeToken.asc().nullsLast()
     ),
-    // One active run per (sequence, recipient) — re-enrollment allowed after exit/completion.
+    // One active manual (subject-less) run per (sequence, recipient) — re-enrollment allowed
+    // after exit/completion. Re-scoped (client-notifications §4.1) to exclude subject-scoped
+    // runs, which get their own unique below — a contact can otherwise have at most one active
+    // manual run AND one active subject run per sequence simultaneously.
     uniqueIndex('SequenceRun_sequenceId_recipient_active_key')
       .using(
         'btree',
         table.sequenceId.asc().nullsLast(),
         table.recipientEntityInstanceId.asc().nullsLast()
       )
-      .where(sql`${table.status} = 'active'`),
+      .where(sql`${table.status} = 'active' AND ${table.subjectId} IS NULL`),
+    // One active run per (sequence, subject) — event-triggered enrollments.
+    uniqueIndex('SequenceRun_sequenceId_subject_active_key')
+      .using('btree', table.sequenceId.asc().nullsLast(), table.subjectId.asc().nullsLast())
+      .where(sql`${table.status} = 'active' AND ${table.subjectId} IS NOT NULL`),
+    // Any-run-ever dedup lookup for the enrollment sweep (§4.3) — not status-scoped.
+    index('SequenceRun_sequenceId_subjectId_idx').using(
+      'btree',
+      table.sequenceId.asc().nullsLast(),
+      table.subjectId.asc().nullsLast()
+    ),
   ]
 )
 

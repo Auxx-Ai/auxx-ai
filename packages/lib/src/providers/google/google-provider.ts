@@ -985,6 +985,13 @@ export class GoogleProvider
   async importMessages(externalIds: string[]): Promise<{ imported: number; failed: number }> {
     await this.ensureInitialized()
 
+    // On-demand import (not a backfill) — the `message:received` workflow
+    // trigger should fire for these. Explicit reset in case a prior
+    // `syncGmailMessages` call on this provider instance left the shared
+    // `storageService`'s flag set (its own `finally` already resets it, but
+    // this stays correct even if that invariant changes later).
+    this.storageService.setInitialSyncMode(false)
+
     const accessToken = await this.getAccessToken()
 
     const { parsed, raw, failedMessageIds } = await getMessagesBatch({

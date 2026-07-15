@@ -11,15 +11,17 @@
 import { database, schema } from '@auxx/database'
 import type { TypedFieldValue } from '@auxx/types'
 import { extractValue } from '@auxx/types'
+import { parseResourceFieldId, toResourceFieldId } from '@auxx/types/field'
 import { parseRecordId, toRecordId } from '@auxx/types/resource'
 import { and, asc, eq, gte, inArray, lt } from 'drizzle-orm'
 import { getOrgCache } from '../cache'
 import { BadRequestError, ForbiddenError, NotFoundError } from '../errors'
-import { extractFieldValueScalar } from '../field-values'
 import { createInvoiceFromWorkOrder, listUninvoicedLines } from '../money/gather'
 import { UnifiedCrudHandler } from '../resources/crud'
+import { formatAddress } from './address'
 import type { VisitStatus } from './types'
 import { setVisitStatus } from './visit-mutations'
+import { getWorkOrderProjections } from './work-order-fields'
 
 type WorkOrderVisitRow = typeof schema.WorkOrderVisit.$inferSelect
 
@@ -29,15 +31,6 @@ function firstTyped(
 ): TypedFieldValue | undefined {
   if (!entry) return undefined
   return Array.isArray(entry) ? entry[0] : entry
-}
-
-/** Single-line rendering of an `AddressStruct` JSON value — null when every part is empty. */
-function formatAddress(value: Record<string, unknown>): string | null {
-  const part = (key: string) => (typeof value[key] === 'string' ? (value[key] as string) : '')
-  const line1 = [part('street1'), part('street2')].filter(Boolean).join(' ')
-  const line2 = [part('city'), part('state'), part('zipCode')].filter(Boolean).join(', ')
-  const parts = [line1, line2, part('country')].filter(Boolean)
-  return parts.length > 0 ? parts.join(', ') : null
 }
 
 /**
@@ -75,18 +68,18 @@ interface WorkOrderTitle {
 }
 
 /**
- * Resolve display name + number for a bounded set of work orders — one narrow `FieldValue`
- * query filtered to that set (the `board.ts` `getSlimWorkOrderProjections` pattern, trimmed to
- * the single field this list needs).
+ * Resolve display name + number for a bounded set of work orders — `displayName` from
+ * `EntityInstance`, `number` via the shared {@link getWorkOrderProjections} batch read.
  */
 async function getWorkOrderTitles(
   organizationId: string,
+  userId: string,
   workOrderIds: string[]
 ): Promise<Map<string, WorkOrderTitle>> {
   const result = new Map<string, WorkOrderTitle>()
   if (workOrderIds.length === 0) return result
 
-  const [instances, cf] = await Promise.all([
+  const [instances, projections] = await Promise.all([
     database
       .select({ id: schema.EntityInstance.id, displayName: schema.EntityInstance.displayName })
       .from(schema.EntityInstance)
@@ -96,32 +89,14 @@ async function getWorkOrderTitles(
           inArray(schema.EntityInstance.id, workOrderIds)
         )
       ),
-    getOrgCache()
-      .from(organizationId, 'customFields')
-      .bySystemAttributes(['work_order_number'] as const),
+    getWorkOrderProjections(organizationId, userId, workOrderIds, ['number']),
   ])
-
-  const numberByWorkOrder = new Map<string, string | null>()
-  if (cf.work_order_number) {
-    const values = await database
-      .select()
-      .from(schema.FieldValue)
-      .where(
-        and(
-          inArray(schema.FieldValue.entityId, workOrderIds),
-          eq(schema.FieldValue.fieldId, cf.work_order_number.id)
-        )
-      )
-    for (const value of values) {
-      numberByWorkOrder.set(value.entityId, extractFieldValueScalar(value) as string | null)
-    }
-  }
 
   for (const instance of instances) {
     result.set(instance.id, {
       id: instance.id,
       displayName: instance.displayName,
-      number: numberByWorkOrder.get(instance.id) ?? null,
+      number: projections.get(instance.id)?.number ?? null,
     })
   }
   return result
@@ -166,7 +141,7 @@ export async function listMyVisits(input: ListMyVisitsInput): Promise<MyVisitLis
     .orderBy(asc(schema.WorkOrderVisit.startTime))
 
   const workOrderIds = Array.from(new Set(visits.map((v) => v.workOrderId)))
-  const titles = await getWorkOrderTitles(organizationId, workOrderIds)
+  const titles = await getWorkOrderTitles(organizationId, userId, workOrderIds)
 
   return visits.map((visit) => ({
     id: visit.id,
@@ -306,24 +281,41 @@ export async function getMyVisitDetail(input: GetMyVisitDetailInput): Promise<My
     mode: 'oneshot',
   })
 
-  const lines: MyVisitDetailLine[] = []
-  for (const lineInstanceId of lineInstanceIds) {
-    const lineRecordId = toRecordId('line_item', lineInstanceId)
-    const lineValues = await handler.getFieldValues(lineRecordId, lineFieldIds)
-    const lget = (f?: { id: string }) => (f ? firstTyped(lineValues.get(f.id)) : undefined)
+  // One batched read for every line item (was N+1: one getFieldValues per line). Group the
+  // typed results by line instance id, then project each line in its listFiltered sort order.
+  const lineValuesByInstance = new Map<string, Map<string, TypedFieldValue>>()
+  if (lineInstanceIds.length > 0 && lineFieldIds.length > 0) {
+    const { values } = await handler.fieldValueService.batchGetValues({
+      recordIds: lineInstanceIds.map((id) => toRecordId('line_item', id)),
+      fieldReferences: lineFieldIds.map((id) => toResourceFieldId('line_item', id)),
+    })
+    for (const row of values) {
+      const { entityInstanceId } = parseRecordId(row.recordId)
+      const fieldId =
+        typeof row.fieldRef === 'string' ? parseResourceFieldId(row.fieldRef).fieldId : undefined
+      const typed = firstTyped(row.value ?? undefined)
+      if (!fieldId || !typed) continue
+      const fields = lineValuesByInstance.get(entityInstanceId) ?? new Map()
+      fields.set(fieldId, typed)
+      lineValuesByInstance.set(entityInstanceId, fields)
+    }
+  }
 
+  const lines: MyVisitDetailLine[] = lineInstanceIds.map((lineInstanceId) => {
+    const fields = lineValuesByInstance.get(lineInstanceId)
+    const lget = (f?: { id: string }) => (f ? fields?.get(f.id) : undefined)
     const nameTyped = lget(lineCf.line_item_name)
     const lineDescriptionTyped = lget(lineCf.line_item_description)
     const qtyTyped = lget(lineCf.line_item_qty)
 
-    lines.push({
+    return {
       name: nameTyped ? (extractValue(nameTyped) as string) : '',
       quantity: qtyTyped ? (extractValue(qtyTyped) as number) : 1,
       description: lineDescriptionTyped
         ? (extractValue(lineDescriptionTyped) as string)
         : undefined,
-    })
-  }
+    }
+  })
 
   return {
     id: visit.id,

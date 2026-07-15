@@ -17,7 +17,7 @@ import {
   updateScheduledMessageStatus,
 } from '@auxx/lib/mail-schedule'
 import { MessageSenderService } from '@auxx/lib/messages'
-import { markInvoiceSent, markQuoteSent } from '@auxx/lib/money'
+import { markInvoiceSent, markQuoteSent, recordDocumentSendSignal } from '@auxx/lib/money'
 import type { UserMailVisibility } from '@auxx/lib/permissions/visibility'
 import { buildPlaceholderContextForThread, resolvePlaceholdersInHtml } from '@auxx/lib/placeholders'
 import { ProviderRegistryService } from '@auxx/lib/providers'
@@ -437,6 +437,21 @@ export const threadRouter = createTRPCRouter({
                   // draft; that's the expected idempotent no-op, not a failure.
                   if (!(flipError instanceof BadRequestError)) throw flipError
                 }
+
+                // Communications-view signal (client-notifications plan §4.8/Phase 4) — a
+                // CONFIRMED send (incl. a resend) writes one row per message, regardless of
+                // whether the status flip above was a no-op. Never throws.
+                if (sentMessage.sendStatus === 'SENT') {
+                  await recordDocumentSendSignal({
+                    organizationId,
+                    userId,
+                    documentType: 'quote',
+                    documentInstanceId: input.linkTicketId,
+                    messageId: sentMessage.id,
+                    threadId: sentMessage.threadId,
+                    subject: input.subject ?? 'Quote sent',
+                  })
+                }
               }
 
               const invoiceDefId = await getCachedEntityDefId(organizationId, 'invoice')
@@ -456,6 +471,19 @@ export const threadRouter = createTRPCRouter({
                   // means the invoice was already sent (resend) or otherwise not a
                   // draft; that's the expected idempotent no-op, not a failure.
                   if (!(flipError instanceof BadRequestError)) throw flipError
+                }
+
+                // Communications-view signal — see the quote branch above for rationale.
+                if (sentMessage.sendStatus === 'SENT') {
+                  await recordDocumentSendSignal({
+                    organizationId,
+                    userId,
+                    documentType: 'invoice',
+                    documentInstanceId: input.linkTicketId,
+                    messageId: sentMessage.id,
+                    threadId: sentMessage.threadId,
+                    subject: input.subject ?? 'Invoice sent',
+                  })
                 }
               }
             } catch (statusFlipError) {

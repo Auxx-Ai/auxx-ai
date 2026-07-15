@@ -5,6 +5,10 @@
 // only adds the request/response shapes the CRUD/enroll/publish/stats
 // functions in this module speak.
 
+import type { SequenceTriggerType } from '@auxx/database'
+import type { ConditionGroup } from '../conditions/types'
+import type { SequenceExitReason } from './client'
+
 export type {
   CreateSequenceInput as SequenceInsert,
   CreateSequenceRunInput as SequenceRunInsert,
@@ -14,6 +18,7 @@ export type {
   SequenceRunEntity,
   SequenceStepEntity,
   SequenceSuppressionEntity,
+  SequenceTriggerType,
   UpdateSequenceInput as SequenceUpdate,
   UpdateSequenceRunInput as SequenceRunUpdate,
   UpdateSequenceStepInput as SequenceStepUpdate,
@@ -45,6 +50,18 @@ export interface CreateSequenceInput {
   deliveryTimezone?: string | null
   deliveryBusinessDaysOnly?: boolean
   createdById: string
+  /** Event trigger (client-notifications plan §4.1) — defaults to `'manual'` at the schema
+   * level when omitted. */
+  triggerType?: SequenceTriggerType
+  /** Derived from `triggerType` by the caller — null for manual/contact-only sequences. */
+  subjectKind?: 'visit' | 'work_order' | 'invoice' | null
+  exitOnReply?: boolean
+  respectSuppression?: boolean
+  includeUnsubscribeFooter?: boolean
+  /** Seed idempotency + code lookup key — unique per org. Null for user-created sequences. */
+  templateKey?: string | null
+  /** `ConditionGroup[]` evaluated at enroll only (decision #17); null = enroll everything. */
+  enrollmentFilter?: ConditionGroup[] | null
 }
 
 /** Patchable fields for {@link import('./crud').updateSequence}. Any field set here
@@ -58,8 +75,16 @@ export interface UpdateSequenceFields {
   deliveryEndTime?: string | null
   deliveryTimezone?: string | null
   deliveryBusinessDaysOnly?: boolean
-  /** Explicit status change (e.g. pause/resume) — bypasses the dirty-flag logic. */
+  /** Explicit status change (e.g. pause/resume) — bypasses the dirty-flag logic. Disabling an
+   * event-triggered (non-`'manual'`) sequence also bulk-exits its in-flight runs (decision #11). */
   status?: 'draft' | 'enabled' | 'disabled'
+  triggerType?: SequenceTriggerType
+  subjectKind?: 'visit' | 'work_order' | 'invoice' | null
+  exitOnReply?: boolean
+  respectSuppression?: boolean
+  includeUnsubscribeFooter?: boolean
+  templateKey?: string | null
+  enrollmentFilter?: ConditionGroup[] | null
 }
 
 /** Input shape for {@link import('./steps').createStep}. Appends at the end of the list. */
@@ -72,6 +97,17 @@ export interface CreateStepInput {
   bodyJson?: Record<string, unknown> | null
   bodyHtml?: string | null
   attachmentIds?: string[]
+  /** `'relative'` = existing delayDays/delayHours semantics; `'anchor'` = signed offset from
+   * the sequence's subject date. Defaults to `'relative'` at the schema level. */
+  timingMode?: 'relative' | 'anchor'
+  /** Signed day offset from the subject's anchor date — negative = before. Only read when
+   * `timingMode: 'anchor'`. */
+  anchorOffsetDays?: number
+  /** `'HH:MM'` local to the sequence's `deliveryTimezone`. Null falls back to the anchor
+   * date's own wall-clock time. */
+  anchorTimeOfDay?: string | null
+  /** Reserved for SMS — always `'email'` in v1. */
+  channel?: string
 }
 
 /** Patchable fields for {@link import('./steps').updateStep}. */
@@ -82,6 +118,10 @@ export interface UpdateStepFields {
   bodyJson?: Record<string, unknown> | null
   bodyHtml?: string | null
   attachmentIds?: string[]
+  timingMode?: 'relative' | 'anchor'
+  anchorOffsetDays?: number
+  anchorTimeOfDay?: string | null
+  channel?: string
 }
 
 /** Input for {@link import('./steps').reorderStep} — the step lands between
@@ -121,7 +161,7 @@ export interface SequenceRunListItem {
   recipientEmail: string
   threadId: string | null
   status: 'active' | 'completed' | 'exited' | 'failed'
-  exitReason: 'reply' | 'bounce' | 'unsubscribe' | 'manual' | null
+  exitReason: SequenceExitReason | null
   exitMetadata: Record<string, unknown> | null
   lastCompletedStep: number
   lastSentAt: Date | null

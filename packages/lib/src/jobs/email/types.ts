@@ -27,6 +27,10 @@ export const emailTypeSchema = z.enum([
   'payment-failed',
   'developer-invite',
   'visit-dispatched',
+  'visit-rescheduled',
+  'visit-canceled',
+  'visit-reassigned',
+  'visit-daily-digest',
 ])
 
 export type EmailType = z.infer<typeof emailTypeSchema>
@@ -150,6 +154,51 @@ export type EmailPayloadByType = {
     endTime: string
     timezone: string
     workOrderUrl: string
+  }>
+  /** Worker-facing reschedule notice (plans/dispatch/19-client-notifications.md §4.9) — system
+   * SES rail, internal only (never customer mail). */
+  'visit-rescheduled': WithRecipient<{
+    workOrderNumber: string
+    workOrderTitle: string
+    oldStartTime: string
+    oldEndTime: string
+    newStartTime: string
+    newEndTime: string
+    timezone: string
+    workOrderUrl: string
+    address?: string
+  }>
+  /** Worker-facing cancel notice (plans/dispatch/19-client-notifications.md §4.9). */
+  'visit-canceled': WithRecipient<{
+    workOrderNumber: string
+    workOrderTitle: string
+    startTime: string
+    endTime: string
+    timezone: string
+  }>
+  /** Worker-facing reassignment notice (plans/dispatch/19-client-notifications.md §4.9) — one
+   * job type, `variant` picks 'removed' (old assignee) vs 'assigned' (new assignee). */
+  'visit-reassigned': WithRecipient<{
+    variant: 'removed' | 'assigned'
+    workOrderNumber: string
+    workOrderTitle: string
+    startTime: string
+    endTime: string
+    timezone: string
+    workOrderUrl: string
+  }>
+  /** Opt-in daily schedule digest (plans/dispatch/19-client-notifications.md §4.9). */
+  'visit-daily-digest': WithRecipient<{
+    dateLabel: string
+    timezone: string
+    visits: Array<{
+      workOrderNumber: string
+      workOrderTitle: string
+      startTime: string
+      endTime: string
+      address?: string
+    }>
+    scheduleUrl: string
   }>
 }
 

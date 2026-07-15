@@ -100,6 +100,11 @@ export async function syncGmailMessages(
     if (lastHistoryId && !since) {
       // Use History API — fall back to full list sync if history ID is expired (404)
       try {
+        // Incremental (has a history cursor, no explicit `since`) — the
+        // `message:received` workflow-trigger gate reads `ctx.isInitialSync`
+        // to distinguish live/incremental inbound from a first-connect
+        // backfill; a backfill must not fire thousands of workflow runs.
+        storageService.setInitialSyncMode(false)
         const result = await syncViaHistory(
           gmail,
           integrationId,
@@ -121,6 +126,9 @@ export async function syncGmailMessages(
             integrationId,
             expiredHistoryId: lastHistoryId,
           })
+          // Expired cursor forces a full re-list — treat as a backfill for
+          // the `message:received` gate (see comment above).
+          storageService.setInitialSyncMode(true)
           const result = await syncViaMessageList(
             gmail,
             integrationId,
@@ -139,6 +147,9 @@ export async function syncGmailMessages(
         }
       }
     } else {
+      // No history cursor (first-ever sync) or an explicit `since` re-list —
+      // both are the message-list backfill path; see comment above.
+      storageService.setInitialSyncMode(true)
       // Use Message List API
       const result = await syncViaMessageList(
         gmail,
@@ -204,6 +215,10 @@ export async function syncGmailMessages(
       )
 
     throw await handleGmailError(error, 'syncMessages', integrationId)
+  } finally {
+    // Never let the flag leak into later calls on this provider instance
+    // (e.g. a subsequent `importMessages` call reusing the same `storageService`).
+    storageService.setInitialSyncMode(false)
   }
 }
 

@@ -1,11 +1,26 @@
 // apps/web/src/components/sequences/ui/detail/sequence-settings-drawer.tsx
 'use client'
 
+import type { ConditionGroup } from '@auxx/lib/conditions/client'
+import { getFieldOperators } from '@auxx/lib/resources/client'
+import {
+  SEQUENCE_TRIGGER_LABELS,
+  SEQUENCE_TRIGGER_TYPES,
+  type SequenceTriggerType,
+} from '@auxx/lib/sequences/client'
+import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { Drawer, DrawerContent, DrawerHeader } from '@auxx/ui/components/drawer'
 import { Input } from '@auxx/ui/components/input'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { Section } from '@auxx/ui/components/section'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@auxx/ui/components/select'
 import { Switch } from '@auxx/ui/components/switch'
 import { toastError } from '@auxx/ui/components/toast'
 import { TreeRow } from '@auxx/ui/components/tree-row'
@@ -13,21 +28,38 @@ import {
   Building2,
   CalendarClock,
   Clock,
+  Filter,
   Globe,
+  ListFilter,
   Mail,
+  MailX,
   PenLine,
+  Plus,
   Power,
+  Reply,
   Send,
   Settings,
   Trash2,
   TriangleAlert,
+  Zap,
 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
+import { useMemo, useState } from 'react'
+import {
+  type Condition,
+  ConditionContainer,
+  ConditionProvider,
+  type ConditionSystemConfig,
+  useConditionActions,
+} from '~/components/conditions'
 import { ChannelPicker } from '~/components/pickers/channel-picker'
 import { TimeZonePicker } from '~/components/pickers/timezone-picker'
+import { useResourceFields } from '~/components/resources/hooks/use-resource-fields'
+import { useResourceStore } from '~/components/resources/store/resource-store'
 import { useSignature } from '~/components/signatures/hooks/use-signature'
 import { SignaturePicker } from '~/components/signatures/ui/signature-picker'
 import { useConfirm } from '~/hooks/use-confirm'
+import { useDebouncedCallback } from '~/hooks/use-debounced-value'
 import { api, type RouterOutputs } from '~/trpc/react'
 
 type Sequence = RouterOutputs['sequence']['get']['sequence']
@@ -42,6 +74,15 @@ interface SequenceSettingsDrawerProps {
 type UpdateFields = Parameters<
   ReturnType<typeof api.sequence.update.useMutation>['mutate']
 >[0]['fields']
+
+/** Filterable subject entity per §4.3 — visit-subject sequences filter on the linked work
+ * order (visit plain-table fields aren't filterable in v1); work_order subjects filter
+ * directly; invoice subjects filter on the invoice. */
+function filterEntityTypeForSubject(subjectKind: string | null): 'work_order' | 'invoice' | null {
+  if (subjectKind === 'visit' || subjectKind === 'work_order') return 'work_order'
+  if (subjectKind === 'invoice') return 'invoice'
+  return null
+}
 
 /**
  * Right-side settings drawer: Sending (mailbox + signature), Delivery window
@@ -105,7 +146,63 @@ export function SequenceSettingsDrawer({
   const { signature } = useSignature(sequence.signatureEntityInstanceId)
 
   const isEnabled = sequence.status === 'enabled'
-  const canEnable = !!sequence.publishedAt
+  const canEnable = !!sequence.publishedAt && !!sequence.integrationId
+  const isSeededTrigger = !!sequence.templateKey
+  const isEventTriggered = sequence.triggerType !== 'manual'
+
+  // Enrollment-filter condition builder (§4.7/§4.3) — shown only on event-triggered sequences.
+  // Local buffer + 750ms debounced save mirrors the step autosave pattern: instant UI feedback,
+  // no mutation storm while a condition's value input is mid-edit.
+  const filterEntityType = filterEntityTypeForSubject(sequence.subjectKind)
+  const { fields: subjectFields } = useResourceFields(isEventTriggered ? filterEntityType : null)
+  const subjectEntityDefinitionId = useResourceStore((s) =>
+    filterEntityType ? s.resourceMap.get(filterEntityType)?.entityDefinitionId : undefined
+  )
+
+  const [filterGroups, setFilterGroups] = useState<ConditionGroup[]>(() =>
+    Array.isArray(sequence.enrollmentFilter) ? (sequence.enrollmentFilter as ConditionGroup[]) : []
+  )
+  const saveEnrollmentFilter = useDebouncedCallback((groups: ConditionGroup[]) => {
+    save({ enrollmentFilter: groups.length > 0 ? groups : null })
+  }, 750)
+  const handleFilterGroupsChange = (groups: ConditionGroup[]) => {
+    setFilterGroups(groups)
+    saveEnrollmentFilter(groups)
+  }
+
+  const filterFieldDefinitions = useMemo(
+    () =>
+      subjectFields.map((field) => ({
+        id: field.resourceFieldId ?? String(field.id),
+        label: field.label,
+        type: field.type,
+        fieldType: field.fieldType,
+        fieldKey: field.key,
+        operators: field.operatorOverrides || getFieldOperators(field),
+        options: field.options,
+      })),
+    [subjectFields]
+  )
+
+  const filterConditionConfig: ConditionSystemConfig = useMemo(
+    () => ({
+      mode: 'resource',
+      entityDefinitionId: subjectEntityDefinitionId,
+      fields: filterFieldDefinitions,
+      allowNesting: false,
+      allowReordering: true,
+      showLogicalOperators: true,
+      showGrouping: true,
+      allowGroupNaming: false,
+      allowGroupCollapse: false,
+      allowGroupReordering: true,
+      showGroupSubtext: false,
+      allowVarEditor: false,
+      allowConstantToggle: false,
+      allowCurrentUserPlaceholder: false,
+    }),
+    [subjectEntityDefinitionId, filterFieldDefinitions]
+  )
 
   return (
     <Drawer direction='right' open={open} onOpenChange={onOpenChange} defaultWidth={440}>
@@ -118,6 +215,46 @@ export function SequenceSettingsDrawer({
         />
 
         <ScrollArea className='flex-1' scrollbarClassName='w-1.5'>
+          <Section
+            title='Trigger'
+            icon={<Zap className='size-4' />}
+            description='When this sequence automatically enrolls a subject. Manual sequences only enroll from the Recipients tab.'
+            initialOpen
+            collapsible={false}>
+            <TreeRow
+              icon={<Zap className='size-4 text-muted-foreground' />}
+              title='Event'
+              secondary={
+                isSeededTrigger ? (
+                  <Badge variant='outline' size='sm'>
+                    {SEQUENCE_TRIGGER_LABELS[sequence.triggerType as SequenceTriggerType] ??
+                      sequence.triggerType}
+                  </Badge>
+                ) : (
+                  <Select
+                    value={sequence.triggerType}
+                    onValueChange={(v) => save({ triggerType: v as SequenceTriggerType })}>
+                    <SelectTrigger size='xs' className='w-44'>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {SEQUENCE_TRIGGER_TYPES.map((t) => (
+                        <SelectItem key={t} value={t}>
+                          {SEQUENCE_TRIGGER_LABELS[t]}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )
+              }
+            />
+            {isSeededTrigger && (
+              <div className='ps-9 pb-1 text-xs text-muted-foreground'>
+                Built-in template — the trigger can't be changed.
+              </div>
+            )}
+          </Section>
+
           <Section
             title='Sending'
             icon={<Send className='size-4' />}
@@ -216,6 +353,70 @@ export function SequenceSettingsDrawer({
           </Section>
 
           <Section
+            title='Behavior'
+            icon={<Reply className='size-4' />}
+            initialOpen
+            collapsible={false}>
+            <div className='flex flex-col'>
+              <TreeRow
+                icon={<Reply className='size-4 text-muted-foreground' />}
+                title='Exit when the recipient replies'
+                secondary={
+                  <Switch
+                    checked={sequence.exitOnReply}
+                    onCheckedChange={(checked) => save({ exitOnReply: checked })}
+                  />
+                }
+              />
+              <TreeRow
+                icon={<MailX className='size-4 text-muted-foreground' />}
+                title='Respect unsubscribe / suppression list'
+                secondary={
+                  <Switch
+                    checked={sequence.respectSuppression}
+                    onCheckedChange={(checked) => save({ respectSuppression: checked })}
+                  />
+                }
+              />
+              <TreeRow
+                icon={<Filter className='size-4 text-muted-foreground' />}
+                title='Include unsubscribe footer'
+                secondary={
+                  <Switch
+                    checked={sequence.includeUnsubscribeFooter}
+                    onCheckedChange={(checked) => save({ includeUnsubscribeFooter: checked })}
+                  />
+                }
+              />
+            </div>
+          </Section>
+
+          {isEventTriggered && (
+            <ConditionProvider
+              conditions={EMPTY_CONDITIONS}
+              groups={filterGroups}
+              config={filterConditionConfig}
+              onConditionsChange={() => {}}
+              onGroupsChange={handleFilterGroupsChange}
+              getAvailableFields={() => filterFieldDefinitions}
+              getFieldDefinition={(id) => filterFieldDefinitions.find((f) => f.id === id)}>
+              <Section
+                title='Enrollment filter'
+                icon={<ListFilter className='size-4' />}
+                description='Only enroll subjects that match these conditions. Evaluated once, at enrollment — leave empty to enroll everything.'
+                initialOpen
+                collapsible={false}
+                actions={<AddFilterGroupButton />}>
+                <ConditionContainer
+                  emptyStateText='No conditions — every match enrolls'
+                  showAddButton={false}
+                  showGrouping
+                />
+              </Section>
+            </ConditionProvider>
+          )}
+
+          <Section
             title='Status'
             icon={<Power className='size-4' />}
             initialOpen
@@ -234,7 +435,9 @@ export function SequenceSettingsDrawer({
             />
             {!canEnable && (
               <div className='ps-9 text-xs text-muted-foreground'>
-                Publish the sequence before enabling it.
+                {!sequence.publishedAt
+                  ? 'Publish the sequence before enabling it.'
+                  : 'Choose a sending mailbox before enabling it.'}
               </div>
             )}
           </Section>
@@ -265,5 +468,21 @@ export function SequenceSettingsDrawer({
         </ScrollArea>
       </DrawerContent>
     </Drawer>
+  )
+}
+
+/** Stable empty array — this drawer only uses grouped conditions (`ConditionGroup[]`). */
+const EMPTY_CONDITIONS: Condition[] = []
+
+/** "Add group" trigger for the enrollment-filter section header — must live inside the
+ * `ConditionProvider` to reach `useConditionActions`. */
+function AddFilterGroupButton() {
+  const { addGroup } = useConditionActions()
+  if (!addGroup) return null
+  return (
+    <Button variant='ghost' size='xs' type='button' onClick={() => addGroup()}>
+      <Plus />
+      Add group
+    </Button>
   )
 }

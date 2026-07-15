@@ -5,14 +5,18 @@
 // `NotFoundError` when missing. v1 has no un-end (create a new job instead, §8 Out of scope).
 
 import { database, schema } from '@auxx/database'
+import { createScopedLogger } from '@auxx/logger'
 import { toRecordId } from '@auxx/types/resource'
 import { and, eq, gte, or } from 'drizzle-orm'
 import { getEntityDefIdResolver, getOrgCache } from '../../cache'
 import { NotFoundError } from '../../errors'
 import { FieldValueService } from '../../field-values/field-value-service'
+import { exitRunsForDeadVisitSubjects } from '../../sequences/hooks'
 import { publishVisitChanged } from '../broadcast'
 import { mirrorVisitOntoWorkOrder } from '../mirror'
 import { materializeVisits, todayLocalDate } from './materialize'
+
+const logger = createScopedLogger('dispatch:recurring:engagement-actions')
 
 type RecurrenceRuleRow = typeof schema.RecurrenceRule.$inferSelect
 
@@ -51,9 +55,9 @@ async function loadRule(
  * not survive a pause as a stray scheduled visit on the board (the pause confirm already
  * warns that manual reschedules on future visits are lost).
  */
-async function deleteFutureScheduledRows(rule: RecurrenceRuleRow): Promise<void> {
+async function deleteFutureScheduledRows(rule: RecurrenceRuleRow): Promise<string[]> {
   const todayIso = todayLocalDate(rule.timezone)
-  await database
+  const deleted = await database
     .delete(schema.WorkOrderVisit)
     .where(
       and(
@@ -65,6 +69,24 @@ async function deleteFutureScheduledRows(rule: RecurrenceRuleRow): Promise<void>
         )
       )
     )
+    .returning({ id: schema.WorkOrderVisit.id })
+  return deleted.map((row) => row.id)
+}
+
+/** Client-notification churn exit (plan 19 §4.10) — a paused/ended engagement's deleted future
+ * visits have nothing left to do; a later resume/rule-edit re-inserts fresh ids that enroll
+ * fresh on the next sweep pass. Failures are logged, never thrown (never block pause/end). */
+async function exitRunsForDeletedRows(
+  organizationId: string,
+  ruleId: string,
+  deletedVisitIds: string[]
+): Promise<void> {
+  if (deletedVisitIds.length === 0) return
+  try {
+    await exitRunsForDeadVisitSubjects(organizationId, deletedVisitIds, 'canceled')
+  } catch (error) {
+    logger.error('Failed to exit sequence runs for engagement-deleted visits', { error, ruleId })
+  }
 }
 
 /** Write `work_order_status` via plain `FieldValueService` — this IS the sanctioned writer
@@ -117,9 +139,10 @@ async function mirrorAndBroadcast(
  */
 export async function pauseEngagement(input: EngagementActionInput): Promise<void> {
   const rule = await loadRule(input.organizationId, input.workOrderInstanceId)
-  await deleteFutureScheduledRows(rule)
+  const deletedVisitIds = await deleteFutureScheduledRows(rule)
   await writeEngagementStatus(rule, input.userId, 'paused')
   await mirrorAndBroadcast(rule, input.userId, input.excludeSocketId)
+  await exitRunsForDeletedRows(rule.organizationId, rule.id, deletedVisitIds)
 }
 
 /**
@@ -139,7 +162,8 @@ export async function resumeEngagement(input: EngagementActionInput): Promise<vo
  */
 export async function endEngagement(input: EngagementActionInput): Promise<void> {
   const rule = await loadRule(input.organizationId, input.workOrderInstanceId)
-  await deleteFutureScheduledRows(rule)
+  const deletedVisitIds = await deleteFutureScheduledRows(rule)
   await writeEngagementStatus(rule, input.userId, 'ended')
   await mirrorAndBroadcast(rule, input.userId, input.excludeSocketId)
+  await exitRunsForDeletedRows(rule.organizationId, rule.id, deletedVisitIds)
 }

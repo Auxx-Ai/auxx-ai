@@ -12,6 +12,7 @@ import { handleSyncRecordRules } from './handle-sync-record-rules'
 import { publishThreadEventToRealtime } from './publish-thread-event-to-realtime'
 import { sendInvitationUserJob } from './send-invitation-user-job'
 import { triggerAgents } from './trigger-agents'
+import { triggerMessageWorkflows } from './trigger-message-workflows'
 import { triggerResourceDispatch } from './trigger-resource-dispatch'
 import { updateWebhookLastTriggeredAt } from './update-webhook-last-triggered'
 
@@ -31,8 +32,8 @@ export const EventHandlers: IEventsHandlers = {
   'ticket:assignee:removed': [triggerAgents],
   'ticket:reply:created': [triggerAgents],
 
-  // message events → CREATE TIMELINE
-  'message:received': [createTimelineEvent],
+  // message events → CREATE TIMELINE + TRIGGER WORKFLOWS
+  'message:received': [createTimelineEvent, triggerMessageWorkflows],
   'message:sent': [createTimelineEvent],
   'message:failed': [],
   'message:comment:created': [],

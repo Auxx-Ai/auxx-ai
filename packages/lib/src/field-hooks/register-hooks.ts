@@ -9,6 +9,11 @@ import {
   recomputeOnQuoteBillingChange,
 } from '../money/totals-hooks'
 import { handleRecordRulesOnFieldChange } from '../record-rules/hook-handler'
+import {
+  enrollInvoiceReminderOnSent,
+  enrollJobFollowUpOnCompletion,
+  reanchorInvoiceOnDueDateChange,
+} from '../sequences/field-change-hooks'
 import { invalidateInboxCacheOnFieldChange } from './post/inbox-cache-invalidation'
 import { publishFieldChangeEvent } from './post/publish-field-change-event'
 import { touchActivityOnFieldChange } from './post/touch-activity-on-field-change'
@@ -88,10 +93,15 @@ export function registerAllHooks(): void {
   // `registerEntityFieldChangeHooks` appends per-call (registry.ts:137-144), so this could
   // also be a second/third call — combined into one array here since all three handlers share
   // the 'work-orders' slug and read more naturally listed together.
+  //
+  // Client-notifications plan §4.3: enroll the seeded `job_follow_up` sequence on the same
+  // completion door (`enrollJobFollowUpOnCompletion` — independent handler, no recursion risk,
+  // never writes `work_order_status` itself).
   registerEntityFieldChangeHooks('work-orders', [
     ensureVisitOnWorkOrderCreate,
     generateDraftOnCompletion,
     geocodeOnAddressChange,
+    enrollJobFollowUpOnCompletion,
   ])
 
   // Money totals engine (money MQ1 build spec §F.2, generalized to invoices in MI1 build
@@ -102,7 +112,17 @@ export function registerAllHooks(): void {
   // 'invoices'.
   registerEntityFieldChangeHooks('line-items', [recomputeOnLineChange])
   registerEntityFieldChangeHooks('quotes', [recomputeOnQuoteBillingChange])
-  registerEntityFieldChangeHooks('invoices', [recomputeOnInvoiceBillingChange])
+  //
+  // Client-notifications plan §4.3: enroll the seeded `invoice_reminders` sequence on the
+  // draft→sent transition (`enrollInvoiceReminderOnSent` checks the PREVIOUS value so a
+  // payment-deletion paid→sent reversal does NOT re-enroll, decision #12), and re-anchor any
+  // parked reminder wait when `invoice_due_date` changes (`reanchorInvoiceOnDueDateChange` —
+  // required, not just an accelerator: it's the only path that can move an already-parked wait).
+  registerEntityFieldChangeHooks('invoices', [
+    recomputeOnInvoiceBillingChange,
+    enrollInvoiceReminderOnSent,
+    reanchorInvoiceOnDueDateChange,
+  ])
 
   // ---------------------------------------------------------------------------
   // PRE-WRITE HOOKS

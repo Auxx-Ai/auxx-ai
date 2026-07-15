@@ -330,6 +330,10 @@ export const notificationType = pgEnum('NotificationType', [
   'TASK_DEADLINE',
   // Dispatch (07-m2-build.md §B.5) — needs `pnpm db:generate` to ALTER TYPE ADD VALUE.
   'WORK_ORDER_DISPATCHED',
+  // Worker-facing dispatch notices (plans/dispatch/19-client-notifications.md §4.9).
+  'VISIT_RESCHEDULED',
+  'VISIT_CANCELED',
+  'VISIT_REASSIGNED',
 ])
 export const orderAddressType = pgEnum('ORDER_ADDRESS_TYPE', ['SHIPPING', 'BILLING'])
 export const orderCancelReason = pgEnum('ORDER_CANCEL_REASON', [
@@ -407,11 +411,18 @@ export const sequenceExitReason = pgEnum('SequenceExitReason', [
   'bounce',
   'unsubscribe',
   'manual',
+  // Client notifications (plans/dispatch/19-client-notifications.md §4.1):
+  'canceled',
+  'completed_subject',
+  'paid',
+  'disabled',
 ])
 export const sequenceSuppressionReason = pgEnum('SequenceSuppressionReason', [
   'unsubscribe',
   'manual',
 ])
+// Sequence.triggerType is deliberately text(), not pgEnum — new event triggers must be
+// addable without a migration. See `SequenceTriggerType` in `./sequence.ts`.
 
 export const scheduledMessageStatus = pgEnum('ScheduledMessageStatus', [
   'PENDING',

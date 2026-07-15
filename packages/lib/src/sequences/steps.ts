@@ -57,6 +57,10 @@ export async function createStep(
       bodyJson: fields.bodyJson ?? null,
       bodyHtml: fields.bodyHtml ?? null,
       attachmentIds: fields.attachmentIds ?? [],
+      timingMode: fields.timingMode ?? 'relative',
+      anchorOffsetDays: fields.anchorOffsetDays ?? 0,
+      anchorTimeOfDay: fields.anchorTimeOfDay ?? null,
+      channel: fields.channel ?? 'email',
     })
     .returning()
 

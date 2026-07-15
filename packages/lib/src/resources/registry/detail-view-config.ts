@@ -28,6 +28,9 @@ export const DETAIL_VIEW_CONFIG_REGISTRY: DetailViewConfigRegistry = {
     entityType: 'contact',
     mainTabs: [
       { value: 'tickets', label: 'Tickets', icon: 'ticket' },
+      // Client-notifications plan §4.8/Phase 4 — same communications timeline as the job
+      // detail page, over `contact:<id>`.
+      { value: 'communications', label: 'Communications', icon: 'mail' },
       { value: 'timeline', label: 'Timeline', icon: 'clock' },
       { value: 'tasks', label: 'Tasks', icon: 'list-todo' },
     ],
@@ -133,6 +136,9 @@ export const DETAIL_VIEW_CONFIG_REGISTRY: DetailViewConfigRegistry = {
       { value: 'history', label: 'History', icon: 'history' },
       { value: 'line-items', label: 'Line items', icon: 'receipt-text' },
       { value: 'billing', label: 'Billing', icon: 'credit-card' },
+      // Client-notifications plan §4.8/Phase 4 — outbound-message timeline (sequences +
+      // manual quote/invoice sends).
+      { value: 'communications', label: 'Communications', icon: 'mail' },
       { value: 'timeline', label: 'Timeline', icon: 'clock' },
       { value: 'tasks', label: 'Tasks', icon: 'list-todo' },
     ],

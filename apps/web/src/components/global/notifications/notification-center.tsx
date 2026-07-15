@@ -47,6 +47,9 @@ const NOTIFICATION_ICON_MAP: Record<NotificationType, { iconId: string; color: s
   WORKFLOW_APPROVAL_REMINDER: { iconId: 'bell-ring', color: 'orange' },
   WORKFLOW_APPROVAL_COMPLETED: { iconId: 'check-circle', color: 'green' },
   WORK_ORDER_DISPATCHED: { iconId: 'truck', color: 'blue' },
+  VISIT_RESCHEDULED: { iconId: 'calendar-clock', color: 'orange' },
+  VISIT_CANCELED: { iconId: 'ban', color: 'red' },
+  VISIT_REASSIGNED: { iconId: 'truck', color: 'indigo' },
 }
 
 /** Default icon config for unmapped notification types */

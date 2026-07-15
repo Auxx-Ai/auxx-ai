@@ -156,6 +156,23 @@ export const SETTINGS_CATALOG = {
     defaultValue: true,
     description: 'Play a sound for notification-bell alerts (mentions, approvals)',
   },
+  'notification.dispatch.email': {
+    scope: 'NOTIFICATION',
+    access: 'user',
+    fieldType: 'CHECKBOX',
+    options: { variant: 'switch' },
+    defaultValue: true,
+    description:
+      'Email me when a visit I was dispatched to is rescheduled, canceled, or reassigned (in-app alerts always fire)',
+  },
+  'notification.dispatch.dailyDigest': {
+    scope: 'NOTIFICATION',
+    access: 'user',
+    fieldType: 'CHECKBOX',
+    options: { variant: 'switch' },
+    defaultValue: false,
+    description: 'Email me a daily digest of my scheduled visits',
+  },
 
   'dashboard.defaultView': {
     scope: 'DASHBOARD',

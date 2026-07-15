@@ -72,10 +72,25 @@ export function buildSequenceGraph(
     const waitId = `wait-${step.id}`
     const sendId = `send-${step.id}`
 
+    // Client-notifications plan §4.2 — an anchor step resolves its wait target from the
+    // subject's LIVE anchor date at execution time, not a fixed enrollment-relative delay.
+    // `subjectRef` mirrors `Sequence.subjectKind`; a manual sequence (subjectKind null) can't
+    // compile an anchor step meaningfully, so it's treated as relative even if mis-set.
+    const anchorConfig =
+      step.timingMode === 'anchor' && sequence.subjectKind
+        ? {
+            subjectRef: sequence.subjectKind,
+            offsetDays: step.anchorOffsetDays,
+            timeOfDay: step.anchorTimeOfDay,
+            timezone: sequence.deliveryTimezone ?? 'UTC',
+          }
+        : undefined
+
     // A zero-delay wait exists only to carry the delivery window (step 1 snaps an
     // off-hours enrollment forward). Without a window it would fail the engine's
-    // min-duration validation — skip it and send immediately.
-    const needsWait = delaySeconds > 0 || deliveryWindow !== undefined
+    // min-duration validation — skip it and send immediately. An anchor step always needs
+    // a wait node (it resolves + sleeps to the anchor target), regardless of delaySeconds.
+    const needsWait = anchorConfig !== undefined || delaySeconds > 0 || deliveryWindow !== undefined
     if (needsWait) {
       pushNode(waitId, 'wait', {
         waitType: 'duration',
@@ -83,6 +98,7 @@ export function buildSequenceGraph(
         isDurationConstant: true,
         durationUnit: 'seconds',
         ...(deliveryWindow ? { deliveryWindow } : {}),
+        ...(anchorConfig ? { anchor: anchorConfig } : {}),
         title: `Wait before step ${stepIndex}`,
       })
       connect(prevNodeId, waitId)

@@ -1,21 +1,26 @@
 // packages/lib/src/money/send-email.ts
 
 import { database as db } from '@auxx/database'
+import { createScopedLogger } from '@auxx/logger'
 import type { RecordId, TypedFieldValue } from '@auxx/types'
 import { extractValue } from '@auxx/types'
-import { parseRecordId } from '@auxx/types/resource'
+import { parseRecordId, toRecordId } from '@auxx/types/resource'
 import { getOrgCache } from '../cache'
 import type { DocumentType } from '../documents'
 import { ensureDocumentPdf, ensureDocumentPdfViaQueue } from '../documents'
 import { BadRequestError } from '../errors'
+import { extractRelationshipRecordIds } from '../field-values/relationship-field'
 import type { PlaceholderResolutionContext } from '../placeholders'
 import { resolvePlaceholdersInHtml } from '../placeholders'
 import { UnifiedCrudHandler } from '../resources/crud'
 import { getOrganizationSetting } from '../settings/settings-service'
+import { recordSignal, toSignalRecordKey } from '../signals'
 import { getSystemSnippet } from '../snippets'
 import { getPaymentAccount } from './payments/account-state'
 import { buildPayUrl, ensureInvoicePublicToken, isPaymentsConnected } from './public-token'
 import { buildQuoteViewUrl, ensureQuotePublicToken } from './quote-public-token'
+
+const logger = createScopedLogger('money-send-email')
 
 /** Unwrap a `getFieldValues()` map entry — takes the first value if array-returned. */
 function firstTyped(
@@ -246,5 +251,108 @@ export async function prepareDocumentEmail(
     subject: snippet.title,
     contentHtml,
     attachment: { id: assetId, name: fileName, type: 'asset' },
+  }
+}
+
+export interface RecordDocumentSendSignalInput {
+  organizationId: string
+  userId: string
+  documentType: DocumentType
+  documentInstanceId: string
+  /** `MessageSenderService.sendMessage`'s returned message id — the signal's `dedupeKey`. */
+  messageId: string
+  threadId: string
+  /** The sent email's subject line — the timeline row's title. */
+  subject: string
+}
+
+/**
+ * Manual document-send signal writer (client-notifications plan §4.8/Phase 4) — called from
+ * `thread.ts`'s `sendMessage` procedure right after a CONFIRMED successful send flips the
+ * quote/invoice to `sent`. Resolves the recipient contact and the linked work order (if any)
+ * so the job/contact communications view is honest about manual sends, not just sequence
+ * sends. Never throws — a signal-write failure must not fail (or retroactively look like it
+ * failed) an email that already went out.
+ */
+export async function recordDocumentSendSignal(
+  input: RecordDocumentSendSignalInput
+): Promise<void> {
+  const { organizationId, userId, documentType, documentInstanceId, messageId, threadId, subject } =
+    input
+  try {
+    const documentRecordId = toRecordId(documentType, documentInstanceId)
+    const handler = new UnifiedCrudHandler(organizationId, userId)
+    const cache = getOrgCache()
+
+    // ─── Recipient contact ──────────────────────────────────────────────────
+    const contactCf = await cache
+      .from(organizationId, 'customFields')
+      .bySystemAttributes(['quote_contact', 'invoice_contact', 'primary_email'] as const)
+    const contactField =
+      documentType === 'invoice' ? contactCf.invoice_contact : contactCf.quote_contact
+
+    let contactEntityInstanceId: string | undefined
+    let recipientEmail: string | undefined
+    if (contactField) {
+      const values = await handler.getFieldValues(documentRecordId, [contactField.id])
+      const typed = firstTyped(values.get(contactField.id))
+      const contactRecordId = typed?.type === 'relationship' ? typed.recordId : undefined
+      if (contactRecordId) {
+        contactEntityInstanceId = parseRecordId(contactRecordId).entityInstanceId
+        if (contactCf.primary_email) {
+          const contactValues = await handler.getFieldValues(contactRecordId, [
+            contactCf.primary_email.id,
+          ])
+          const emailTyped = firstTyped(contactValues.get(contactCf.primary_email.id))
+          recipientEmail = emailTyped ? (extractValue(emailTyped) as string) : undefined
+        }
+      }
+    }
+
+    // ─── Linked work order (invoice: singular `invoice_work_order`; quote: array
+    // `quote_work_orders`, first entry — a quote can spawn more than one job) ──────────
+    const woCf = await cache
+      .from(organizationId, 'customFields')
+      .bySystemAttributes(['invoice_work_order', 'quote_work_orders'] as const)
+
+    let workOrderInstanceId: string | undefined
+    if (documentType === 'invoice' && woCf.invoice_work_order) {
+      const values = await handler.getFieldValues(documentRecordId, [woCf.invoice_work_order.id])
+      const typed = firstTyped(values.get(woCf.invoice_work_order.id))
+      const workOrderRecordId = typed?.type === 'relationship' ? typed.recordId : undefined
+      if (workOrderRecordId) workOrderInstanceId = parseRecordId(workOrderRecordId).entityInstanceId
+    } else if (documentType === 'quote' && woCf.quote_work_orders) {
+      const values = await handler.getFieldValues(documentRecordId, [woCf.quote_work_orders.id])
+      const workOrderRecordIds = extractRelationshipRecordIds(values.get(woCf.quote_work_orders.id))
+      if (workOrderRecordIds[0]) {
+        workOrderInstanceId = parseRecordId(workOrderRecordIds[0]).entityInstanceId
+      }
+    }
+
+    const links = [toSignalRecordKey(documentType, documentInstanceId)]
+    if (contactEntityInstanceId) links.push(toSignalRecordKey('contact', contactEntityInstanceId))
+    if (workOrderInstanceId) links.push(toSignalRecordKey('work_order', workOrderInstanceId))
+
+    await recordSignal({
+      organizationId,
+      kind: 'message:sent',
+      subtype: 'document_send',
+      occurredAt: new Date(),
+      dedupeKey: `doc:${messageId}`,
+      contactEntityInstanceId,
+      messageId,
+      threadId,
+      title: subject,
+      metadata: { documentType, documentInstanceId, recipientEmail },
+      links,
+    })
+  } catch (error) {
+    // Never fail the send over a signal-write problem — the email already went out.
+    logger.error('recordDocumentSendSignal failed', {
+      organizationId,
+      documentType,
+      documentInstanceId,
+      error: error instanceof Error ? error.message : String(error),
+    })
   }
 }

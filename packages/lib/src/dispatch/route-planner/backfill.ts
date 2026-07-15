@@ -12,23 +12,9 @@ import { database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { and, eq, inArray, isNull } from 'drizzle-orm'
 import { geocode } from '../../geocoding'
+import { formatAddressForGeocode } from '../address'
 
 const logger = createScopedLogger('dispatch:route-planner:backfill')
-
-/** Mirrors the hook's `formatAddressForGeocode` (visit-hooks.ts) — same joined string in. */
-function formatAddressForGeocode(value: Record<string, unknown>): string {
-  const part = (key: string) => (typeof value[key] === 'string' ? (value[key] as string) : '')
-  return [
-    part('street1'),
-    part('street2'),
-    part('city'),
-    part('state'),
-    part('zipCode'),
-    part('country'),
-  ]
-    .filter(Boolean)
-    .join(', ')
-}
 
 export interface BackfillGeocodeResult {
   ungeocodedVisits: number

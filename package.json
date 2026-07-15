@@ -94,5 +94,13 @@
     "ignoredBuiltDependencies": [
       "@postman/node-keytar"
     ]
+  },
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "source": "./src/index.ts",
+      "import": "./dist/index.mjs",
+      "default": "./src/index.ts"
+    }
   }
 }

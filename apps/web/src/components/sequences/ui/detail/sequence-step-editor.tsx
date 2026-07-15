@@ -16,6 +16,9 @@ type SequenceSteps = RouterOutputs['sequence']['get']['steps']
 interface SequenceStepEditorProps {
   sequenceId: string
   steps: SequenceSteps
+  /** Null for manual (contact-only) sequences — gates the anchored-timing editor and the
+   * subject-aware placeholder roots (client-notifications plan §4.7). */
+  subjectKind: 'visit' | 'work_order' | 'invoice' | null
 }
 
 /**
@@ -23,7 +26,7 @@ interface SequenceStepEditorProps {
  * separated by delay-pill connectors, with up/down reorder (no dnd) and an
  * "Add step" row at the bottom.
  */
-export function SequenceStepEditor({ sequenceId, steps }: SequenceStepEditorProps) {
+export function SequenceStepEditor({ sequenceId, steps, subjectKind }: SequenceStepEditorProps) {
   const utils = api.useUtils()
   const [confirm, ConfirmDialog] = useConfirm()
 
@@ -101,6 +104,10 @@ export function SequenceStepEditor({ sequenceId, steps }: SequenceStepEditorProp
               stepId={step.id}
               delayDays={step.delayDays}
               delayHours={step.delayHours}
+              timingMode={step.timingMode as 'relative' | 'anchor'}
+              anchorOffsetDays={step.anchorOffsetDays}
+              anchorTimeOfDay={step.anchorTimeOfDay}
+              subjectKind={subjectKind}
             />
           )}
           <SequenceStepCard
@@ -109,6 +116,7 @@ export function SequenceStepEditor({ sequenceId, steps }: SequenceStepEditorProp
             index={index}
             totalSteps={steps.length}
             step1Subject={step1Subject}
+            subjectKind={subjectKind}
             onMoveUp={index > 0 ? () => move(index, -1) : undefined}
             onMoveDown={index < steps.length - 1 ? () => move(index, 1) : undefined}
             onDelete={() => void handleDelete(step.id, index)}

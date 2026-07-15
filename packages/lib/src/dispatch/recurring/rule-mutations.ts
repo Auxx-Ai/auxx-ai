@@ -8,13 +8,17 @@
 // regeneration boundary to today (§4.3).
 
 import { database, schema } from '@auxx/database'
+import { createScopedLogger } from '@auxx/logger'
 import { extractValue } from '@auxx/types'
 import { toRecordId } from '@auxx/types/resource'
 import { and, eq, gte, inArray, isNull } from 'drizzle-orm'
 import { getOrgCache } from '../../cache'
 import { FieldValueService } from '../../field-values/field-value-service'
 import type { RecurrencePattern } from '../../recurrence'
+import { exitRunsForDeadVisitSubjects } from '../../sequences/hooks'
 import { getWorkOrderStatus, materializeVisits, todayLocalDate } from './materialize'
+
+const logger = createScopedLogger('dispatch:recurring:rule-mutations')
 
 type RecurrenceRuleRow = typeof schema.RecurrenceRule.$inferSelect
 
@@ -131,11 +135,12 @@ export async function setRecurrenceRule(input: SetRecurrenceRuleInput): Promise<
   const todayIso = todayLocalDate(timezone)
   const boundaryIso = todayIso > effectiveFrom ? todayIso : effectiveFrom
 
+  let deletedVisitIds: string[]
   if (patternChanged) {
     // Cadence change invalidates old slots outright — including detached rows (their date no
     // longer means what it used to under the new pattern) and canceled rows (skips referred
     // to the old pattern).
-    await database
+    const deleted = await database
       .delete(schema.WorkOrderVisit)
       .where(
         and(
@@ -144,10 +149,12 @@ export async function setRecurrenceRule(input: SetRecurrenceRuleInput): Promise<
           inArray(schema.WorkOrderVisit.status, ['scheduled', 'canceled'])
         )
       )
+      .returning({ id: schema.WorkOrderVisit.id })
+    deletedVisitIds = deleted.map((row) => row.id)
   } else {
     // Template-only edit (time/duration/assignee): preserve detached rows as explicit
     // per-visit overrides and leave canceled rows (skips) alone.
-    await database
+    const deleted = await database
       .delete(schema.WorkOrderVisit)
       .where(
         and(
@@ -157,6 +164,22 @@ export async function setRecurrenceRule(input: SetRecurrenceRuleInput): Promise<
           eq(schema.WorkOrderVisit.isDetached, false)
         )
       )
+      .returning({ id: schema.WorkOrderVisit.id })
+    deletedVisitIds = deleted.map((row) => row.id)
+  }
+
+  // Client-notification churn exit (plan 19 §4.10): a rule-edit-deleted visit's sequence runs
+  // have nothing left to do — the re-inserted replacement (below, via `materializeVisits`) is a
+  // fresh id that enrolls fresh on the next sweep pass.
+  if (deletedVisitIds.length > 0) {
+    try {
+      await exitRunsForDeadVisitSubjects(organizationId, deletedVisitIds, 'canceled')
+    } catch (error) {
+      logger.error('Failed to exit sequence runs for deleted recurring visits', {
+        error,
+        ruleId: rule.id,
+      })
+    }
   }
 
   // A work order created as one_off carries M1 `ensureVisit`'s single UNSCHEDULED placeholder

@@ -1,10 +1,67 @@
 // packages/lib/src/workflow-engine/nodes/trigger-nodes/message-received.ts
 
+import { type Database, database as defaultDb, schema } from '@auxx/database'
+import { ParticipantRole } from '@auxx/database/enums'
 import { toRecordId } from '@auxx/types/resource'
+import { and, eq } from 'drizzle-orm'
 import type { ExecutionContextManager } from '../../core/execution-context'
 import type { NodeExecutionResult, ValidationResult, WorkflowNode } from '../../core/types'
 import { NodeRunningStatus, TEST_RECORD_ID, WorkflowNodeType } from '../../core/types'
 import { BaseNodeProcessor } from '../base-node'
+
+/** Output shape for the `message.attachments` node variable. */
+interface MessageAttachmentOutput {
+  name: string
+  size: number
+  type: string | null
+  url: string | null
+}
+
+/**
+ * Lazily resolve attachments for `message.attachments` — only queried when
+ * `hasAttachments` is true. One row-listing query plus one `getDownloadInfo`
+ * call per attachment (bounded by the message's own attachment count).
+ * `getDownloadInfo` never throws on an unresolvable URL — it just returns
+ * `url: undefined` — so a signing failure degrades to a null URL rather than
+ * failing the trigger node.
+ */
+async function loadMessageAttachments(
+  messageId: string,
+  organizationId: string,
+  userId: string | undefined,
+  db: Database
+): Promise<MessageAttachmentOutput[]> {
+  const rows = await db
+    .select({ id: schema.Attachment.id })
+    .from(schema.Attachment)
+    .where(
+      and(
+        eq(schema.Attachment.entityType, 'MESSAGE'),
+        eq(schema.Attachment.entityId, messageId),
+        eq(schema.Attachment.organizationId, organizationId)
+      )
+    )
+    .orderBy(schema.Attachment.sort)
+
+  if (rows.length === 0) return []
+
+  // Dynamic import — keeps this trigger node's static import graph free of
+  // the storage-service dependency chain, matching `file-context-service.ts`'s
+  // `refreshAttachmentUrl` precedent.
+  const { AttachmentService } = await import('../../../files/core/attachment-service')
+  const attachmentService = new AttachmentService(organizationId, userId, db)
+  return Promise.all(
+    rows.map(async (row) => {
+      const info = await attachmentService.getDownloadInfo(row.id).catch(() => null)
+      return {
+        name: info?.filename ?? 'attachment',
+        size: info?.size !== undefined ? Number(info.size) : 0,
+        type: info?.mimeType ?? null,
+        url: info?.url ?? null,
+      }
+    })
+  )
+}
 
 /**
  * Trigger node that activates when a message is received
@@ -84,6 +141,30 @@ export class MessageReceivedProcessor extends BaseNodeProcessor {
         context.message.from.name || ''
       )
     }
+
+    // `message.to` — derive from the hydrated MessageParticipant join rows
+    // (populated by `loadProcessedMessage` for real triggers; empty for the
+    // stale test-runner mock, which is fine — an empty recipients list).
+    const toRecipients = (context.message.participants || [])
+      .filter((p) => p.role === ParticipantRole.TO && p.participant)
+      .map((p) => ({
+        email: p.participant?.identifier || '',
+        name: p.participant?.name || '',
+      }))
+    contextManager.setNodeVariable(node.nodeId, 'message.to', toRecipients)
+
+    // `message.attachments` — lazy, only queried when the message actually
+    // has attachments (see `loadMessageAttachments` above for the URL-
+    // resolution fallback behavior).
+    const attachments = context.message.hasAttachments
+      ? await loadMessageAttachments(
+          context.message.id,
+          context.organizationId,
+          context.userId,
+          context.db ?? defaultDb
+        )
+      : []
+    contextManager.setNodeVariable(node.nodeId, 'message.attachments', attachments)
 
     // Set thread-related variables — use TEST_RECORD_ID as fallback for test/manual mode
     const threadId = context.message.threadId || TEST_RECORD_ID

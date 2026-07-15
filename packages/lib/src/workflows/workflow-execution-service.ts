@@ -22,6 +22,7 @@ import {
 import { WorkflowEngine } from '../workflow-engine/core/workflow-engine'
 import { WorkflowGraphBuilder } from '../workflow-engine/core/workflow-graph-builder'
 import { RedisWorkflowExecutionReporter } from '../workflow-engine/execution-reporter'
+import { buildWorkflowResumeJobId } from '../workflow-engine/nodes/wait/resume-job-id'
 import { ApprovalQueryService } from '../workflow-engine/services/approval-query-service'
 import { WorkflowEventType } from '../workflow-engine/shared/types'
 import {
@@ -319,20 +320,25 @@ export class WorkflowExecutionService {
       const createdAt = new Date(workflowRun.createdAt)
 
       // Update workflow run with results
+      const terminalStatus =
+        result.status === WorkflowExecutionStatus.COMPLETED
+          ? WorkflowRunStatus.SUCCEEDED
+          : WorkflowRunStatus.FAILED
       await this.db
         .update(schema.WorkflowRun)
         .set({
           outputs: result.context?.variables || {},
-          status:
-            result.status === WorkflowExecutionStatus.COMPLETED
-              ? WorkflowRunStatus.SUCCEEDED
-              : WorkflowRunStatus.FAILED,
+          status: terminalStatus,
           error: result.error,
           elapsedTime: (Date.now() - createdAt.getTime()) / 1000,
           finishedAt: new Date(),
           totalTokens: calculateTotalTokens(result.nodeResults),
         })
         .where(eq(schema.WorkflowRun.id, workflowRun.id))
+      await this.completeSequenceRunIfActive(
+        workflowRun.id,
+        terminalStatus === WorkflowRunStatus.SUCCEEDED ? 'completed' : 'failed'
+      )
     } catch (error) {
       if (error instanceof WorkflowPausedException) {
         // Handle workflow pause correctly - this is expected behavior, not an error
@@ -366,6 +372,7 @@ export class WorkflowExecutionService {
           finishedAt: new Date(),
         })
         .where(eq(schema.WorkflowRun.id, workflowRun.id))
+      await this.completeSequenceRunIfActive(workflowRun.id, 'failed')
       throw error
     }
   }
@@ -816,6 +823,9 @@ export class WorkflowExecutionService {
 
       // Resume execution using the workflow engine
       const result = await this.workflowEngine.resumeExecution(executionState, resumeOptions)
+      const isTerminal =
+        result.status === WorkflowExecutionStatus.COMPLETED ||
+        result.status === WorkflowExecutionStatus.FAILED
 
       // Handle successful resume - update database with final results
       await this.db
@@ -828,29 +838,30 @@ export class WorkflowExecutionService {
               : result.status === WorkflowExecutionStatus.FAILED
                 ? WorkflowRunStatus.FAILED
                 : WorkflowRunStatus.RUNNING,
-          finishedAt:
-            result.status === WorkflowExecutionStatus.COMPLETED ||
-            result.status === WorkflowExecutionStatus.FAILED
-              ? new Date()
-              : null,
+          finishedAt: isTerminal ? new Date() : null,
           error: result.error,
           elapsedTime: (Date.now() - new Date(workflowRun.createdAt).getTime()) / 1000,
           totalTokens: calculateTotalTokens(result.nodeResults),
           // Clear serialized state if workflow completed
-          serializedState:
-            result.status === WorkflowExecutionStatus.COMPLETED ||
-            result.status === WorkflowExecutionStatus.FAILED
-              ? null
-              : this.serializeExecutionState({
-                  ...executionState,
-                  status: result.status,
-                  context: {
-                    ...executionState.context,
-                    variables: result.context?.variables || {},
-                  },
-                }),
+          serializedState: isTerminal
+            ? null
+            : this.serializeExecutionState({
+                ...executionState,
+                status: result.status,
+                context: {
+                  ...executionState.context,
+                  variables: result.context?.variables || {},
+                },
+              }),
         })
         .where(eq(schema.WorkflowRun.id, workflowRunId))
+
+      if (isTerminal) {
+        await this.completeSequenceRunIfActive(
+          workflowRunId,
+          result.status === WorkflowExecutionStatus.COMPLETED ? 'completed' : 'failed'
+        )
+      }
 
       logger.info('Workflow resume completed successfully', {
         workflowRunId,
@@ -898,8 +909,43 @@ export class WorkflowExecutionService {
           finishedAt: new Date(),
         })
         .where(eq(schema.WorkflowRun.id, workflowRunId))
+      await this.completeSequenceRunIfActive(workflowRunId, 'failed')
 
       throw error
+    }
+  }
+
+  /**
+   * Client-notifications plan §4.1/§7 Q5 — run-completion fix. Nothing previously moved a
+   * `SequenceRun` off `'active'` once its compiled workflow finished, which silently broke
+   * per-sequence stats AND blocked re-enrollment (the active-run unique index never frees
+   * up). Hooked at every place a `WorkflowRun` reaches a terminal status (SUCCEEDED/FAILED)
+   * rather than gating on `WorkflowApp.ownerType==='sequence'` — `SequenceRun.workflowRunId`
+   * is already unique, so a miss (the overwhelming majority of workflow runs are NOT
+   * sequences) is one indexed lookup. Idempotent: only touches a run that's still `'active'`,
+   * so it can't clobber a run that already exited via reply/bounce/unsubscribe/manual/etc.
+   */
+  private async completeSequenceRunIfActive(
+    workflowRunId: string,
+    outcome: 'completed' | 'failed'
+  ): Promise<void> {
+    try {
+      const sequenceRun = await this.db.query.SequenceRun.findFirst({
+        where: eq(schema.SequenceRun.workflowRunId, workflowRunId),
+        columns: { id: true, status: true },
+      })
+      if (!sequenceRun || sequenceRun.status !== 'active') return
+
+      await this.db
+        .update(schema.SequenceRun)
+        .set({ status: outcome })
+        .where(eq(schema.SequenceRun.id, sequenceRun.id))
+    } catch (error) {
+      logger.error('Failed to transition SequenceRun on workflow completion', {
+        workflowRunId,
+        outcome,
+        error: error instanceof Error ? error.message : String(error),
+      })
     }
   }
 
@@ -1117,19 +1163,30 @@ export class WorkflowExecutionService {
       const workflowDelayQueue = getQueue(Queues.workflowDelayQueue)
       const cancelledJobs: string[] = []
 
-      // Cancel resume job if workflow is scheduled to resume
-      if (workflowRun?.resumeAt) {
-        const resumeJobs = await workflowDelayQueue.getJobs(['delayed', 'waiting'], 0, 50)
-        const targetResumeJobs = resumeJobs.filter(
-          (job) =>
-            job.name === 'resumeWorkflowJob' &&
-            job.data.workflowRunId === runId &&
-            job.data.resumeFromNodeId === workflowRun.pausedNodeId
-        )
-
-        for (const job of targetResumeJobs) {
+      // Cancel resume job if workflow is scheduled to resume. Deterministic jobId
+      // (client-notifications plan §3/§7 — verified gap: `scheduleResume` set no jobId and
+      // nothing persisted one, so this used to scan the first 50 delayed jobs every time)
+      // gives O(1) removal; the scan survives only as a fallback for a legacy run paused
+      // before this jobId scheme existed (no persisted `pausedNodeId`+jobId match).
+      if (workflowRun?.pausedNodeId) {
+        const jobId = buildWorkflowResumeJobId(runId, workflowRun.pausedNodeId)
+        const job = await workflowDelayQueue.getJob(jobId)
+        if (job) {
           await job.remove()
-          cancelledJobs.push(`resumeWorkflowJob:${job.id}`)
+          cancelledJobs.push(`resumeWorkflowJob:${jobId}`)
+        } else if (workflowRun.resumeAt) {
+          const resumeJobs = await workflowDelayQueue.getJobs(['delayed', 'waiting'], 0, 50)
+          const targetResumeJobs = resumeJobs.filter(
+            (legacyJob) =>
+              legacyJob.name === 'resumeWorkflowJob' &&
+              legacyJob.data.workflowRunId === runId &&
+              legacyJob.data.resumeFromNodeId === workflowRun.pausedNodeId
+          )
+
+          for (const legacyJob of targetResumeJobs) {
+            await legacyJob.remove()
+            cancelledJobs.push(`resumeWorkflowJob:${legacyJob.id}`)
+          }
         }
       }
 

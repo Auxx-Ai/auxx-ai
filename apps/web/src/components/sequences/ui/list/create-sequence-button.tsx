@@ -1,6 +1,11 @@
 // apps/web/src/components/sequences/ui/list/create-sequence-button.tsx
 'use client'
 
+import {
+  SEQUENCE_TRIGGER_LABELS,
+  SEQUENCE_TRIGGER_TYPES,
+  type SequenceTriggerType,
+} from '@auxx/lib/sequences/client'
 import { Button } from '@auxx/ui/components/button'
 import {
   Dialog,
@@ -13,6 +18,13 @@ import {
 import { Input } from '@auxx/ui/components/input'
 import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import { Label } from '@auxx/ui/components/label'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@auxx/ui/components/select'
 import { toastError } from '@auxx/ui/components/toast'
 import { Plus } from 'lucide-react'
 import { useRouter } from 'next/navigation'
@@ -21,7 +33,8 @@ import { api } from '~/trpc/react'
 
 /**
  * Header action for the Sequences tab: "New sequence" button + a minimal
- * create dialog (name only — everything else is set on the detail page).
+ * create dialog (name + trigger — everything else is set on the detail
+ * page). `triggerType` derives `subjectKind` server-side (plan §4.7).
  * Navigates to the sequence detail route on success.
  */
 export function CreateSequenceButton() {
@@ -29,12 +42,14 @@ export function CreateSequenceButton() {
   const utils = api.useUtils()
   const [open, setOpen] = useState(false)
   const [name, setName] = useState('')
+  const [triggerType, setTriggerType] = useState<SequenceTriggerType>('manual')
   const nameInputRef = useRef<HTMLInputElement>(null)
 
   const createSequence = api.sequence.create.useMutation({
     onSuccess: (created) => {
       setOpen(false)
       setName('')
+      setTriggerType('manual')
       void utils.sequence.list.invalidate()
       if (created?.id) router.push(`/app/workflows/sequences/${created.id}`)
     },
@@ -45,7 +60,10 @@ export function CreateSequenceButton() {
 
   const handleOpenChange = (next: boolean) => {
     setOpen(next)
-    if (!next) setName('')
+    if (!next) {
+      setName('')
+      setTriggerType('manual')
+    }
   }
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -55,7 +73,7 @@ export function CreateSequenceButton() {
       toastError({ title: 'Name required', description: 'Please enter a sequence name' })
       return
     }
-    createSequence.mutate({ name: trimmed })
+    createSequence.mutate({ name: trimmed, triggerType })
   }
 
   return (
@@ -92,6 +110,25 @@ export function CreateSequenceButton() {
                 placeholder='e.g. New lead follow-up'
                 disabled={createSequence.isPending}
               />
+            </div>
+
+            <div className='mt-3 grid gap-2'>
+              <Label htmlFor='sequence-trigger'>Trigger</Label>
+              <Select
+                value={triggerType}
+                onValueChange={(v) => setTriggerType(v as SequenceTriggerType)}
+                disabled={createSequence.isPending}>
+                <SelectTrigger id='sequence-trigger' className='w-full'>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {SEQUENCE_TRIGGER_TYPES.map((t) => (
+                    <SelectItem key={t} value={t}>
+                      {SEQUENCE_TRIGGER_LABELS[t]}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
 
             <DialogFooter>

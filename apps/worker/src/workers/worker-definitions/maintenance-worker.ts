@@ -15,6 +15,7 @@ import {
   type DemoSeedJobData,
   dataMigrationsJob,
   demoCleanupJob,
+  dispatchDigestJob,
   expiredTrialAccountCleanupJob,
   flushUsageEventsJob,
   invoiceDraftsJob,
@@ -32,6 +33,7 @@ import {
   sendGettingStartedEmailsJob,
   sendMidTrialEmailsJob,
   sendTrialConversionEmailsJob,
+  sequenceEnrollmentSweepJob,
   shopifyBillingSyncJob,
   shopifySeatUsageJob,
   stalePendingMessageSweeperJob,
@@ -198,6 +200,16 @@ const jobMappings = {
   // Money MI2 invoice-draft daily sweep (08-mi2-build.md §G): materializes `custom_schedule`
   // invoice-draft recurrence rules whose horizon has fallen behind.
   invoiceDraftsJob,
+
+  // Dispatch worker-facing daily schedule digest sweep (plans/dispatch/19-client-notifications.md
+  // §4.9, opt-in): hourly tick, per-org local-hour + Redis dedupe guard inside the job itself.
+  dispatchDigestJob,
+
+  // Client-notifications sequence enrollment hourly sweep (plans/dispatch/
+  // 19-client-notifications.md §4.3, decision #13): enrolls scheduled visits (one-off AND
+  // recurring) into enabled `visit:scheduled` sequences within each sequence's computed
+  // lookahead window; any-run-ever dedup makes re-running this job a no-op.
+  sequenceEnrollmentSweepJob,
 
   // Global data-connector stale-run sweep (every 5 min; fails cold runs + releases
   // their connector claim so a crashed continuation chain can't strand a connector)

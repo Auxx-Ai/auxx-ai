@@ -22,6 +22,8 @@ interface SequenceStepCardProps {
   totalSteps: number
   /** Step 1's subject — steps 2+ thread under it ("Re: …"). */
   step1Subject: string | null
+  /** Null for manual sequences — gates the visit-token placeholder root (§4.5/§4.7). */
+  subjectKind: 'visit' | 'work_order' | 'invoice' | null
   onMoveUp?: () => void
   onMoveDown?: () => void
   onDelete: () => void
@@ -39,6 +41,7 @@ export function SequenceStepCard({
   index,
   totalSteps,
   step1Subject,
+  subjectKind,
   onMoveUp,
   onMoveDown,
   onDelete,
@@ -108,6 +111,7 @@ export function SequenceStepCard({
         <SequenceBodyEditor
           bodyJson={step.bodyJson as Record<string, unknown> | null}
           bodyHtml={step.bodyHtml}
+          subjectKind={subjectKind}
           onChange={(bodyJson, bodyHtml) =>
             autosave.schedule({ bodyJson: bodyJson as Record<string, unknown>, bodyHtml })
           }
