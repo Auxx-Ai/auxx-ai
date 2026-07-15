@@ -4,6 +4,7 @@
 
 import { endOfMonth, endOfWeek, format, startOfMonth, startOfWeek } from 'date-fns'
 import { useMemo } from 'react'
+import { ORG_STATIC_STALE_TIME } from '~/trpc/query-client'
 import { api } from '~/trpc/react'
 import type { WeekStartIndex } from '../../board/utils'
 import { isWorkerHidden } from '../../board/utils'
@@ -30,7 +31,10 @@ export function useMiniCalendarDensity(
     return new Date(inclusiveEnd.getTime() + 24 * 60 * 60 * 1000) // exclusive end for the query
   }, [displayMonth, weekStartsOn])
 
-  const query = api.dispatch.getVisitDayMarkers.useQuery({ from, to })
+  const query = api.dispatch.getVisitDayMarkers.useQuery(
+    { from, to },
+    { staleTime: ORG_STATIC_STALE_TIME }
+  )
 
   const density = useMemo(() => {
     const map: Record<string, number> = {}

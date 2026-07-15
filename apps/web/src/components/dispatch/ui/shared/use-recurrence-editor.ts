@@ -11,6 +11,7 @@ import { differenceInMinutes, format } from 'date-fns'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { RecordId } from '~/components/resources'
 import { useSettings } from '~/hooks/use-settings'
+import { ORG_STATIC_STALE_TIME } from '~/trpc/query-client'
 import { api } from '~/trpc/react'
 import {
   buildPresetPattern,
@@ -62,7 +63,7 @@ export function useRecurrenceEditor({
 
   const recurrenceQuery = api.dispatch.getRecurrence.useQuery(
     { workOrderRecordId: workOrderRecordId as RecordId },
-    { enabled: Boolean(workOrderRecordId) }
+    { enabled: Boolean(workOrderRecordId), staleTime: ORG_STATIC_STALE_TIME }
   )
   const hasExistingRule = Boolean(recurrenceQuery.data)
 

@@ -16,6 +16,7 @@ import {
 } from '~/components/availability/ui/weekly-hours-editor'
 import { useDirtyDraft } from '~/components/global/forms/use-dirty-draft'
 import { useConfirm } from '~/hooks/use-confirm'
+import { ORG_STATIC_STALE_TIME } from '~/trpc/query-client'
 import { api } from '~/trpc/react'
 import {
   availabilitySubjectKey,
@@ -84,8 +85,14 @@ export function WorkerHoursPage({ userId, weekStartsOn, use24HourTime }: WorkerH
   const [confirm, ConfirmDialog] = useConfirm()
 
   const subject = { type: 'worker' as const, userId }
-  const workerQuery = api.availability.getWeeklyHours.useQuery({ subject })
-  const orgQuery = api.availability.getWeeklyHours.useQuery({ subject: { type: 'organization' } })
+  const workerQuery = api.availability.getWeeklyHours.useQuery(
+    { subject },
+    { staleTime: ORG_STATIC_STALE_TIME }
+  )
+  const orgQuery = api.availability.getWeeklyHours.useQuery(
+    { subject: { type: 'organization' } },
+    { staleTime: ORG_STATIC_STALE_TIME }
+  )
 
   const orgDraft = buildDraftFromResponse(orgQuery.data ?? null, detectTimezone())
   const loading = !workerQuery.isSuccess || !orgQuery.isSuccess
@@ -113,7 +120,10 @@ export function WorkerHoursPage({ userId, weekStartsOn, use24HourTime }: WorkerH
         // Replace-all with zero rows == delete the worker's override.
         saveWeeklyHours.mutate({
           subject,
-          weekly: { timezone: next.weekly?.timezone ?? orgDraft.timezone, days: [] },
+          weekly: {
+            timezone: next.weekly?.timezone ?? orgDraft.timezone,
+            days: [],
+          },
         })
         return
       }

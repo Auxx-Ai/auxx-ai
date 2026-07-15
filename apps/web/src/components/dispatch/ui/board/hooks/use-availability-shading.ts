@@ -12,14 +12,16 @@ import {
   subMonths,
   subWeeks,
 } from 'date-fns'
-import { useCallback, useEffect, useMemo, useRef } from 'react'
+import { useCallback, useEffect, useMemo } from 'react'
+import { ORG_STATIC_STALE_TIME } from '~/trpc/query-client'
 import { api } from '~/trpc/react'
 import {
   type AvailabilitySubject,
   availabilitySubjectKey,
   useAvailabilityCacheStore,
 } from '../../../stores/availability-cache-store'
-import { chunkRange, type DateRange as IsoRange, subtractRanges } from '../../../utils/date-ranges'
+import { useResolvedDaysForSubjects } from '../../../stores/use-resolved-days'
+import type { DateRange as IsoRange } from '../../../utils/date-ranges'
 import type { BoardViewMode } from '../types'
 import { UNASSIGNED_RESOURCE_ID } from '../types'
 import { offHoursBackgroundEvents } from '../utils'
@@ -27,9 +29,6 @@ import type { DateRange } from './use-board-data'
 
 const ORG_KEY = availabilitySubjectKey({ type: 'organization' })
 const workerKey = (userId: string) => availabilitySubjectKey({ type: 'worker', userId })
-/** `availability.resolve` hard-caps at 366 days; chunk well under it. */
-const MAX_FETCH_DAYS = 180
-
 /**
  * Availability shading (07 §D.2 · 12-availability-cache.md), redesigned onto a client cache: instead
  * of re-querying `availability.resolve` for each visible window, we over-fetch a 3-month window,
@@ -47,15 +46,19 @@ export function useAvailabilityShading({
   view: BoardViewMode
   range: DateRange
   workerUserIds: string[]
-}): { backgroundEvents: BackgroundEvent[]; isNonWorkingDay: (date: Date) => boolean } {
-  const utils = api.useUtils()
+}): {
+  backgroundEvents: BackgroundEvent[]
+  isNonWorkingDay: (date: Date) => boolean
+} {
   const subjects = useAvailabilityCacheStore((s) => s.subjects)
-  const ingestResolved = useAvailabilityCacheStore((s) => s.ingestResolved)
   const setWeeklyWorkingDays = useAvailabilityCacheStore((s) => s.setWeeklyWorkingDays)
 
   // Instant baseline — the org's weekly working-days (persisted; drives `isNonWorkingDay` before any
   // resolve returns). Cached by React Query; we mirror it into the store on every result.
-  const orgWeekly = api.availability.getWeeklyHours.useQuery({ subject: { type: 'organization' } })
+  const orgWeekly = api.availability.getWeeklyHours.useQuery(
+    { subject: { type: 'organization' } },
+    { staleTime: ORG_STATIC_STALE_TIME }
+  )
   useEffect(() => {
     if (orgWeekly.data === undefined) return
     setWeeklyWorkingDays(
@@ -79,30 +82,20 @@ export function useAvailabilityShading({
     ]
     if (view === 'day' || view === 'timeline') {
       for (const userId of workerUserIds) {
-        list.push({ key: workerKey(userId), subject: { type: 'worker', userId } })
+        list.push({
+          key: workerKey(userId),
+          subject: { type: 'worker', userId },
+        })
       }
     }
     return list
   }, [view, workerUserIds])
 
-  // Gap-only fetch: for each subject, resolve only the parts of `fetchWindow` not already loaded.
-  const inFlight = useRef(new Set<string>())
-  useEffect(() => {
-    for (const { key, subject } of subjectList) {
-      const loaded = subjects[key]?.loadedRanges ?? []
-      const gaps = subtractRanges(fetchWindow, loaded).flatMap((g) => chunkRange(g, MAX_FETCH_DAYS))
-      for (const gap of gaps) {
-        const tag = `${key}:${gap.from}:${gap.to}`
-        if (inFlight.current.has(tag)) continue
-        inFlight.current.add(tag)
-        utils.availability.resolve
-          .fetch({ subject, from: gap.from, to: gap.to })
-          .then((days) => ingestResolved(key, gap, days))
-          .catch(() => {})
-          .finally(() => inFlight.current.delete(tag))
-      }
-    }
-  }, [subjectList, fetchWindow, subjects, utils, ingestResolved])
+  useResolvedDaysForSubjects(
+    subjectList.map(({ subject }) => subject),
+    fetchWindow.from,
+    fetchWindow.to
+  )
 
   // Shading reads from the cache for the VISIBLE range (the calendar filters bands per day anyway).
   const fromIso = format(range.from, 'yyyy-MM-dd')

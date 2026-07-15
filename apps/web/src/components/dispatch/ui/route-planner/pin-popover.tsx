@@ -19,6 +19,7 @@ import { useMemo, useState } from 'react'
 import { getInitials } from '~/components/groups/utils/group-utils'
 import { ActorPickerContent } from '~/components/pickers/actor-picker/actor-picker-content'
 import { useActors, useAvailableActors } from '~/components/resources/hooks/use-actor'
+import { ORG_STATIC_STALE_TIME } from '~/trpc/query-client'
 import { api } from '~/trpc/react'
 import { stopsForWorker, useRoutePlannerMutations } from './hooks/use-route-planner-mutations'
 import type { PlannerBoard, PlannerDayWindow, PlannerVisit } from './types'
@@ -47,7 +48,11 @@ export function PinPopoverContent({ visit, board, onClose }: PinPopoverContentPr
 
   const dayWindow = useMemo((): PlannerDayWindow => {
     const anchor = visit.startTime ? new Date(visit.startTime) : new Date()
-    return { from: startOfDay(anchor), to: endOfDay(anchor), dateKey: format(anchor, 'yyyy-MM-dd') }
+    return {
+      from: startOfDay(anchor),
+      to: endOfDay(anchor),
+      dateKey: format(anchor, 'yyyy-MM-dd'),
+    }
   }, [visit.startTime])
 
   const { setRouteOrder, assignVisit } = useRoutePlannerMutations(dayWindow)
@@ -57,7 +62,9 @@ export function PinPopoverContent({ visit, board, onClose }: PinPopoverContentPr
   const stops = assigneeUserId ? stopsForWorker(board, assigneeUserId) : []
   const currentIndex = stops.findIndex((v) => v.id === visit.id)
 
-  const workersQuery = api.dispatch.listWorkers.useQuery()
+  const workersQuery = api.dispatch.listWorkers.useQuery(undefined, {
+    staleTime: ORG_STATIC_STALE_TIME,
+  })
   const activeWorkers = useMemo(
     () => (workersQuery.data ?? []).filter((w) => w.isActive),
     [workersQuery.data]
@@ -84,7 +91,11 @@ export function PinPopoverContent({ visit, board, onClose }: PinPopoverContentPr
       { assigneeUserId, from: dayWindow.from, to: dayWindow.to, visitIds },
       {
         onSuccess: onClose,
-        onError: (error) => toastError({ title: 'Error moving stop', description: error.message }),
+        onError: (error) =>
+          toastError({
+            title: 'Error moving stop',
+            description: error.message,
+          }),
       }
     )
   }
@@ -97,7 +108,10 @@ export function PinPopoverContent({ visit, board, onClose }: PinPopoverContentPr
       {
         onSuccess: onClose,
         onError: (error) =>
-          toastError({ title: 'Error removing stop from route', description: error.message }),
+          toastError({
+            title: 'Error removing stop from route',
+            description: error.message,
+          }),
       }
     )
   }
@@ -121,7 +135,10 @@ export function PinPopoverContent({ visit, board, onClose }: PinPopoverContentPr
           onClose()
         },
         onError: (error) =>
-          toastError({ title: 'Error reassigning visit', description: error.message }),
+          toastError({
+            title: 'Error reassigning visit',
+            description: error.message,
+          }),
       }
     )
   }

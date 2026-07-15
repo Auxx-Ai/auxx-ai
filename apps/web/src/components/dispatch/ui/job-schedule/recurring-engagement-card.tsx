@@ -12,6 +12,7 @@ import { DetailSectionActions, DetailSectionTitleExtra } from '~/components/deta
 import type { RecordId } from '~/components/resources'
 import { useConfirm } from '~/hooks/use-confirm'
 import { useSettings } from '~/hooks/use-settings'
+import { ORG_STATIC_STALE_TIME } from '~/trpc/query-client'
 import { api } from '~/trpc/react'
 import { scalarSetting } from '../recurrence/recurrence-utils'
 import { type ExistingVisitForOverlap, SchedulePopover } from '../schedule-popover'
@@ -61,7 +62,10 @@ export function RecurringEngagementCard({
     | 'sunday'
     | 'saturday'
 
-  const ruleQuery = api.dispatch.getRecurrence.useQuery({ workOrderRecordId: recordId })
+  const ruleQuery = api.dispatch.getRecurrence.useQuery(
+    { workOrderRecordId: recordId },
+    { staleTime: ORG_STATIC_STALE_TIME }
+  )
 
   const summary = useMemo(() => {
     if (!ruleQuery.data) return null
@@ -71,23 +75,34 @@ export function RecurringEngagementCard({
   }, [ruleQuery.data, weekStart])
 
   const invalidate = () => {
-    void utils.dispatch.getRecurrence.invalidate({ workOrderRecordId: recordId })
+    void utils.dispatch.getRecurrence.invalidate({
+      workOrderRecordId: recordId,
+    })
     onRefresh()
   }
 
   const pauseEngagement = api.dispatch.pauseEngagement.useMutation({
     onError: (error) =>
-      toastError({ title: 'Error pausing engagement', description: error.message }),
+      toastError({
+        title: 'Error pausing engagement',
+        description: error.message,
+      }),
     onSuccess: invalidate,
   })
   const resumeEngagement = api.dispatch.resumeEngagement.useMutation({
     onError: (error) =>
-      toastError({ title: 'Error resuming engagement', description: error.message }),
+      toastError({
+        title: 'Error resuming engagement',
+        description: error.message,
+      }),
     onSuccess: invalidate,
   })
   const endEngagement = api.dispatch.endEngagement.useMutation({
     onError: (error) =>
-      toastError({ title: 'Error ending engagement', description: error.message }),
+      toastError({
+        title: 'Error ending engagement',
+        description: error.message,
+      }),
     onSuccess: invalidate,
   })
 
