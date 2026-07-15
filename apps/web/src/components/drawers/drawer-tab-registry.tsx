@@ -142,6 +142,10 @@ export const DRAWER_TAB_CARD_COMPONENTS: Record<
     import('./cards/work-order-related-cards').then((m) => ({
       default: m.WorkOrderInvoicesCard,
     })),
+  'work_order:communications': () =>
+    import('../signals/ui/work-order-communications-card').then((m) => ({
+      default: m.WorkOrderCommunicationsCard,
+    })),
 
   // ─────────────────────────────────────────────────────────────────
   // INVOICE OVERVIEW CARDS (money MI1 build spec §J.1 — drawer-only entity,

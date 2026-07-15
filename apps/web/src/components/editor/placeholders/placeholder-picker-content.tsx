@@ -2,6 +2,7 @@
 
 'use client'
 
+import { SEQUENCE_VISIT_PLACEHOLDER_TOKENS } from '@auxx/lib/sequences/client'
 import type { FieldReference } from '@auxx/types/field'
 import { fieldRefToKey } from '@auxx/types/field'
 import { Button } from '@auxx/ui/components/button'
@@ -32,9 +33,9 @@ import {
 import { useState } from 'react'
 import { FieldPickerContent } from '~/components/pickers/field-picker'
 
-type RootId = 'contact' | 'ticket' | 'thread' | 'user' | 'organization' | 'date'
+export type RootId = 'contact' | 'ticket' | 'thread' | 'user' | 'organization' | 'date' | 'visit'
 
-interface RootChoice {
+export interface RootChoice {
   id: RootId
   label: string
   icon: React.ComponentType<{ className?: string }>
@@ -95,6 +96,12 @@ interface PlaceholderPickerContentProps {
    * inline-picker hook's `closePicker`.
    */
   onClose?: () => void
+  /**
+   * Extra roots appended after the standard list — opt-in only, so every other consumer (mail
+   * composer, tickets, snippets) keeps today's fixed root list. The sequence step editor passes
+   * a `visit` root on visit-subject sequences (client-notifications plan §4.5/§4.7).
+   */
+  extraRoots?: RootChoice[]
 }
 
 /**
@@ -127,6 +134,7 @@ function PlaceholderPickerBody({
   onBack,
   onClose,
   backLabel = 'Back',
+  extraRoots,
 }: PlaceholderPickerContentProps) {
   const { current } = useCommandNavigation<PlaceholderNavItem>()
   const rootId = current?.id ?? null
@@ -139,32 +147,47 @@ function PlaceholderPickerBody({
     return <OrganizationListContent onSelect={onSelect} />
   }
 
+  if (rootId === 'visit') {
+    return <VisitTokenListContent onSelect={onSelect} />
+  }
+
   if (rootId !== null) {
+    const allRoots = extraRoots && extraRoots.length > 0 ? [...ROOTS, ...extraRoots] : ROOTS
     return (
       <FieldPickerForRoot
         entityDefinitionId={rootId}
-        rootLabel={ROOTS.find((r) => r.id === rootId)?.label ?? rootId}
+        rootLabel={allRoots.find((r) => r.id === rootId)?.label ?? rootId}
         onSelect={(fieldRef) => onSelect(fieldRefToKey(fieldRef))}
       />
     )
   }
 
-  return <RootListContent onBack={onBack} backLabel={backLabel} onClose={onClose} />
+  return (
+    <RootListContent
+      onBack={onBack}
+      backLabel={backLabel}
+      onClose={onClose}
+      extraRoots={extraRoots}
+    />
+  )
 }
 
 function RootListContent({
   onBack,
   backLabel,
   onClose,
+  extraRoots,
 }: {
   onBack?: () => void
   backLabel: string
   onClose?: () => void
+  extraRoots?: RootChoice[]
 }) {
   const { push } = useCommandNavigation<PlaceholderNavItem>()
   const [search, setSearch] = useState('')
   const q = search.toLowerCase().trim()
-  const filtered = q ? ROOTS.filter((r) => r.label.toLowerCase().includes(q)) : ROOTS
+  const allRoots = extraRoots && extraRoots.length > 0 ? [...ROOTS, ...extraRoots] : ROOTS
+  const filtered = q ? allRoots.filter((r) => r.label.toLowerCase().includes(q)) : allRoots
 
   // onBack wins (embedded use: go back one picker level).
   // onClose is the fallback (top-level use: close entire popover).
@@ -192,7 +215,7 @@ function RootListContent({
           )
           const value = selected?.getAttribute('data-value')?.toLowerCase()
           if (!value) return
-          const rootChoice = ROOTS.find((r) => r.label.toLowerCase() === value)
+          const rootChoice = allRoots.find((r) => r.label.toLowerCase() === value)
           if (rootChoice) {
             e.preventDefault()
             push({ id: rootChoice.id, label: rootChoice.label })
@@ -303,6 +326,54 @@ function OrganizationListContent({ onSelect }: { onSelect: (id: string) => void 
             <CommandItem key={o.slug} value={o.label} onSelect={() => onSelect(`org:${o.slug}`)}>
               <Braces className='size-4 text-muted-foreground' />
               <span>{o.label}</span>
+            </CommandItem>
+          ))}
+        </CommandGroup>
+      </CommandList>
+    </Command>
+  )
+}
+
+/**
+ * Visit tokens (client-notifications plan §4.5) — pre-resolved by plain code in the send node
+ * (`WorkOrderVisit` isn't an `EntityInstance`, so these can't ride `FieldPickerContent`'s
+ * entity-backed field picker). Inserted as literal `{{visit:*}}` text, not a placeholder chip —
+ * see `SequenceBodyEditor`'s `onSelect`.
+ */
+function VisitTokenListContent({ onSelect }: { onSelect: (id: string) => void }) {
+  const { pop } = useCommandNavigation<PlaceholderNavItem>()
+  const [search, setSearch] = useState('')
+  const q = search.toLowerCase().trim()
+  const filtered = q
+    ? SEQUENCE_VISIT_PLACEHOLDER_TOKENS.filter((t) => t.label.toLowerCase().includes(q))
+    : SEQUENCE_VISIT_PLACEHOLDER_TOKENS
+
+  return (
+    <Command
+      shouldFilter={false}
+      onKeyDown={(e) => {
+        if (e.key === 'Escape') {
+          e.stopPropagation()
+          pop()
+        } else if ((e.key === 'Backspace' || e.key === 'ArrowLeft') && !search) {
+          e.preventDefault()
+          pop()
+        }
+      }}>
+      <CommandBreadcrumb rootLabel='Placeholder' />
+      <CommandInput
+        placeholder='Search visit fields...'
+        value={search}
+        onValueChange={setSearch}
+        autoFocus
+      />
+      <CommandList>
+        <CommandEmpty>No fields found.</CommandEmpty>
+        <CommandGroup heading='Visit'>
+          {filtered.map((t) => (
+            <CommandItem key={t.id} value={t.label} onSelect={() => onSelect(t.id)}>
+              <Braces className='size-4 text-muted-foreground' />
+              <span>{t.label}</span>
             </CommandItem>
           ))}
         </CommandGroup>

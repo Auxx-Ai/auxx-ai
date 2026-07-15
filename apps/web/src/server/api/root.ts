@@ -78,6 +78,7 @@ import { segmentRouter } from './routers/segment'
 import { sequenceRouter } from './routers/sequence'
 import { settingsRouter } from './routers/setting'
 import { shopifyRouter } from './routers/shopify'
+import { signalRouter } from './routers/signal'
 import { signatureRouter } from './routers/signature'
 import { snippetsRouter } from './routers/snippet'
 import { syncHistoryRouter } from './routers/sync-history'
@@ -173,6 +174,7 @@ export const appRouter = createTRPCRouter({
   sequence: sequenceRouter,
   setting: settingsRouter,
   shopify: shopifyRouter,
+  signal: signalRouter,
   signature: signatureRouter,
   snippet: snippetsRouter,
   syncHistory: syncHistoryRouter,

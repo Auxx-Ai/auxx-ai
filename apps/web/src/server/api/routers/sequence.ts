@@ -9,6 +9,7 @@
 import { type Database, schema } from '@auxx/database'
 import { ResourcePermission } from '@auxx/database/enums'
 import { getOrgCache } from '@auxx/lib/cache'
+import { conditionGroupsSchema } from '@auxx/lib/conditions'
 import { AuxxError } from '@auxx/lib/errors'
 import {
   checkSequenceAccess,
@@ -16,6 +17,7 @@ import {
   createStep,
   deleteSequence,
   deleteStep,
+  deriveSubjectKindFromTrigger,
   enrollRecipients,
   getSequence,
   getSequenceStats,
@@ -25,6 +27,8 @@ import {
   publishSequence,
   reorderStep,
   SEQUENCE_ENROLL_MAX_RECIPIENTS,
+  SEQUENCE_SEED_TEMPLATES,
+  SEQUENCE_TRIGGER_TYPES,
   type SequenceEntity,
   updateSequence,
   updateStep,
@@ -40,6 +44,8 @@ import { createTRPCRouter, protectedProcedure } from '~/server/api/trpc'
 /** `HH:MM` 24h delivery-window bound. */
 const timeOfDaySchema = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Expected HH:MM')
 
+const triggerTypeSchema = z.enum(SEQUENCE_TRIGGER_TYPES)
+
 const updateSequenceFieldsSchema = z.object({
   name: z.string().min(1).optional(),
   description: z.string().nullable().optional(),
@@ -50,6 +56,14 @@ const updateSequenceFieldsSchema = z.object({
   deliveryTimezone: z.string().nullable().optional(),
   deliveryBusinessDaysOnly: z.boolean().optional(),
   status: z.enum(['enabled', 'disabled']).optional(),
+  // Client-notifications plan §4.7 — `subjectKind` is intentionally NOT accepted here; the
+  // router re-derives it from `triggerType` (see `update` below) so the two columns can never
+  // desync from a client-supplied mismatch.
+  triggerType: triggerTypeSchema.optional(),
+  exitOnReply: z.boolean().optional(),
+  respectSuppression: z.boolean().optional(),
+  includeUnsubscribeFooter: z.boolean().optional(),
+  enrollmentFilter: conditionGroupsSchema.nullable().optional(),
 })
 
 const updateStepFieldsSchema = z.object({
@@ -59,9 +73,17 @@ const updateStepFieldsSchema = z.object({
   delayDays: z.number().int().min(0).optional(),
   delayHours: z.number().int().min(0).optional(),
   attachmentIds: z.array(z.string()).optional(),
+  timingMode: z.enum(['relative', 'anchor']).optional(),
+  // Signed day offset from the subject's anchor date — negative = before (§4.2). No min/max.
+  anchorOffsetDays: z.number().int().optional(),
+  anchorTimeOfDay: timeOfDaySchema.nullable().optional(),
 })
 
 const runStatusSchema = z.enum(['active', 'completed', 'exited', 'failed'])
+
+/** Canonical row order for the seeded templates (§4.6) — drives `listTemplates`'s sort so the
+ * "Client notifications" settings page always lists them in the plan's documented order. */
+const SEEDED_TEMPLATE_ORDER = SEQUENCE_SEED_TEMPLATES.map((t) => t.templateKey)
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -214,9 +236,11 @@ export const sequenceRouter = createTRPCRouter({
    * grants the creator admin ResourceAccess. `Sequence.integrationId` is NOT
    * NULL, so creation defaults to the org's first usable mailbox integration
    * (the Settings tab lets the user change it before publish).
+   * `triggerType` (plan §4.7 — defaults to `'manual'` at the schema level when
+   * omitted) drives `subjectKind`, derived here so the two columns never desync.
    */
   create: protectedProcedure
-    .input(z.object({ name: z.string().min(1) }))
+    .input(z.object({ name: z.string().min(1), triggerType: triggerTypeSchema.optional() }))
     .mutation(async ({ ctx, input }) => {
       // integrationId stays null while drafting — the settings drawer sets the
       // mailbox and publish refuses to compile without one.
@@ -225,38 +249,70 @@ export const sequenceRouter = createTRPCRouter({
           organizationId: ctx.session.organizationId,
           name: input.name,
           createdById: ctx.session.userId,
+          triggerType: input.triggerType,
+          subjectKind: input.triggerType ? deriveSubjectKindFromTrigger(input.triggerType) : null,
         })
       )
     }),
 
-  /** Patch draft/settings fields. `status: 'enabled'` requires a prior publish. */
+  /**
+   * Patch draft/settings fields. `status: 'enabled'` requires a prior publish AND a pinned
+   * sending mailbox (plan §4.7/decision #3 — enabling with no mailbox would silently never
+   * send). `triggerType` re-derives `subjectKind` server-side (never trusts a client-supplied
+   * value) and is locked once a sequence carries a `templateKey` — a seeded sequence's trigger
+   * identity must stay stable (plan §4.7).
+   */
   update: protectedProcedure
     .input(z.object({ id: z.string(), fields: updateSequenceFieldsSchema }))
     .mutation(async ({ ctx, input }) => {
       await requireSequenceAccess(ctx, input.id, ResourcePermission.edit)
 
-      // updateSequence doesn't validate the enabled↔publishedAt invariant (its
-      // status path is a raw column write) — enforce it here at the edge.
+      const needsSequenceRead = input.fields.status === 'enabled' || input.fields.triggerType
+      const existing = needsSequenceRead
+        ? unwrap(
+            await getSequence(ctx.db, {
+              sequenceId: input.id,
+              organizationId: ctx.session.organizationId,
+            })
+          )
+        : null
+
+      // updateSequence doesn't validate the enabled↔publishedAt/mailbox invariant (its status
+      // path is a raw column write) — enforce it here at the edge.
       if (input.fields.status === 'enabled') {
-        const sequence = unwrap(
-          await getSequence(ctx.db, {
-            sequenceId: input.id,
-            organizationId: ctx.session.organizationId,
-          })
-        )
-        if (!sequence.publishedAt) {
+        if (!existing!.publishedAt) {
           throw new TRPCError({
             code: 'BAD_REQUEST',
             message: 'Publish the sequence before enabling it',
           })
         }
+        if (!existing!.integrationId) {
+          throw new TRPCError({
+            code: 'BAD_REQUEST',
+            message: 'Choose a sending mailbox before enabling it',
+          })
+        }
+      }
+
+      if (input.fields.triggerType && existing!.templateKey) {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: 'The trigger for a built-in template cannot be changed',
+        })
+      }
+
+      const fields = {
+        ...input.fields,
+        ...(input.fields.triggerType
+          ? { subjectKind: deriveSubjectKindFromTrigger(input.fields.triggerType) }
+          : {}),
       }
 
       return unwrap(
         await updateSequence(ctx.db, {
           sequenceId: input.id,
           organizationId: ctx.session.organizationId,
-          fields: input.fields,
+          fields,
         })
       )
     }),
@@ -460,4 +516,47 @@ export const sequenceRouter = createTRPCRouter({
         })
       )
     }),
+
+  /**
+   * The 5 seeded client-notification sequences (`templateKey` non-null) + their ordered steps,
+   * for the "Client notifications" settings page (plan §4.7) — one query instead of a
+   * `sequence.get` per row. Org-wide admin view, same visibility as `list` (no per-sequence
+   * ResourceAccess check — every member with dispatch settings access already sees the whole
+   * template set). Ordered per §4.6's documented table, not `createdAt`.
+   */
+  listTemplates: protectedProcedure.query(async ({ ctx }) => {
+    const all = unwrap(await listSequences(ctx.db, { organizationId: ctx.session.organizationId }))
+    const templated = all.filter((s): s is SequenceEntity & { templateKey: string } =>
+      Boolean(s.templateKey)
+    )
+    if (templated.length === 0) return []
+
+    const stepRows = await ctx.db.query.SequenceStep.findMany({
+      where: and(
+        inArray(
+          schema.SequenceStep.sequenceId,
+          templated.map((s) => s.id)
+        ),
+        eq(schema.SequenceStep.organizationId, ctx.session.organizationId)
+      ),
+      orderBy: asc(schema.SequenceStep.sortOrder),
+    })
+
+    const stepsBySequence = new Map<string, typeof stepRows>()
+    for (const step of stepRows) {
+      const list = stepsBySequence.get(step.sequenceId)
+      if (list) list.push(step)
+      else stepsBySequence.set(step.sequenceId, [step])
+    }
+
+    const sorted = [...templated].sort(
+      (a, b) =>
+        SEEDED_TEMPLATE_ORDER.indexOf(a.templateKey) - SEEDED_TEMPLATE_ORDER.indexOf(b.templateKey)
+    )
+
+    return sorted.map((sequence) => ({
+      sequence,
+      steps: stepsBySequence.get(sequence.id) ?? [],
+    }))
+  }),
 })

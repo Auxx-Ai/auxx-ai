@@ -73,6 +73,18 @@ export const DETAIL_VIEW_TAB_COMPONENTS: Record<
     import('../dispatch/ui/job-schedule/work-order-billing-tab').then((m) => ({
       default: m.WorkOrderBillingTab,
     })),
+  'work_order:communications': () =>
+    import('../dispatch/ui/job-schedule/work-order-communications-tab').then((m) => ({
+      default: m.WorkOrderCommunicationsTab,
+    })),
+
+  // ─────────────────────────────────────────────────────────────────
+  // CONTACT TABS (continued) — client-notifications plan §4.8/Phase 4
+  // ─────────────────────────────────────────────────────────────────
+  'contact:communications': () =>
+    import('../signals/ui/contact-communications-tab').then((m) => ({
+      default: m.ContactCommunicationsTab,
+    })),
 }
 
 /**

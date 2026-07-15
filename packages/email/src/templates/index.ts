@@ -25,7 +25,19 @@ export { TrialExpiredEmail, TrialExpiredText } from './billing/trial-expired-ema
 export { TrialStartedEmail, TrialStartedText } from './billing/trial-started-email'
 export { BillingEmail, BillingText } from './general/billing-email'
 export { SystemEmail, SystemText } from './general/system-email'
+export { VisitCanceledEmail, VisitCanceledText } from './general/visit-canceled-email'
+export {
+  VisitDailyDigestEmail,
+  type VisitDailyDigestItem,
+  VisitDailyDigestText,
+} from './general/visit-daily-digest-email'
 export { VisitDispatchedEmail, VisitDispatchedText } from './general/visit-dispatched-email'
+export {
+  VisitReassignedEmail,
+  VisitReassignedText,
+  type VisitReassignedVariant,
+} from './general/visit-reassigned-email'
+export { VisitRescheduledEmail, VisitRescheduledText } from './general/visit-rescheduled-email'
 // General templates
 export { WelcomeEmail, WelcomeText } from './general/welcome-email'
 // Organization templates

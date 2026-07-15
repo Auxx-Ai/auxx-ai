@@ -982,6 +982,12 @@
       "import": "./dist/shopify/index.mjs",
       "default": "./src/shopify/index.ts"
     },
+    "./signals": {
+      "types": "./src/signals/index.ts",
+      "source": "./src/signals/index.ts",
+      "import": "./dist/signals/index.mjs",
+      "default": "./src/signals/index.ts"
+    },
     "./signatures": {
       "types": "./src/signatures/index.ts",
       "source": "./src/signatures/index.ts",

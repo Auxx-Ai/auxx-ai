@@ -2017,6 +2017,20 @@
       "when": 1784065219168,
       "tag": "0287_visit_time_confirmed_duration",
       "breakpoints": true
+    },
+    {
+      "idx": 288,
+      "version": "7",
+      "when": 1784070375852,
+      "tag": "0288_client_notifications",
+      "breakpoints": true
+    },
+    {
+      "idx": 289,
+      "version": "7",
+      "when": 1784070792609,
+      "tag": "0289_fix_sequence_trigger_type_text",
+      "breakpoints": true
     }
   ]
 }

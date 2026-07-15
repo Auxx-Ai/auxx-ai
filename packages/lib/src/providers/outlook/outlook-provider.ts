@@ -598,10 +598,14 @@ export class OutlookProvider
       const selectFields =
         'id,conversationId,subject,from,toRecipients,ccRecipients,bccRecipients,replyTo,receivedDateTime,sentDateTime,body,internetMessageId,parentFolderId,isRead,hasAttachments,categories,internetMessageHeaders,inferenceClassification'
 
+      // The `message:received` workflow-trigger gate reads `ctx.isInitialSync`
+      // to distinguish live/incremental inbound from a first-connect
+      // backfill; a backfill must not fire thousands of workflow runs.
       let url: string
       if (storedDeltaLink && !since) {
         logger.info('Resuming sync using stored deltaLink.', { integrationId: this.integrationId })
         url = storedDeltaLink
+        this.storageService.setInitialSyncMode(false)
       } else {
         const dateFilter = since ? `&$filter=receivedDateTime ge ${since.toISOString()}` : ''
         url = `/me/mailFolders/inbox/messages/delta?$select=${selectFields}${dateFilter}`
@@ -609,6 +613,7 @@ export class OutlookProvider
           `Starting initial delta sync.${since ? ' Filtering since ' + since.toISOString() : ''}`,
           { integrationId: this.integrationId }
         )
+        this.storageService.setInitialSyncMode(true)
       }
 
       let response: PageCollection
@@ -625,6 +630,9 @@ export class OutlookProvider
           })
           const dateFilter = since ? `&$filter=receivedDateTime ge ${since.toISOString()}` : ''
           url = `/me/mailFolders/inbox/messages/delta?$select=${selectFields}${dateFilter}`
+          // A resumed-sync cursor expiring degrades this attempt into a full
+          // re-fetch — now backfill-shaped regardless of the original branch.
+          this.storageService.setInitialSyncMode(true)
           response = await this.client!.api(url)
             .version('beta')
             .headers({ Prefer: IMMUTABLE_ID_PREFER })
@@ -720,6 +728,10 @@ export class OutlookProvider
         if (this.integration) this.integration.lastSyncedAt = new Date()
       }
       throw new Error(`Failed to sync Outlook messages: ${error.message}`)
+    } finally {
+      // Never let the flag leak into later calls on this provider instance
+      // (e.g. a subsequent `importMessages` call reusing the same `storageService`).
+      this.storageService.setInitialSyncMode(false)
     }
   }
   /** Converts Outlook Graph message objects to the application's MessageData format */
@@ -1478,6 +1490,13 @@ export class OutlookProvider
 
   async importMessages(externalIds: string[]): Promise<{ imported: number; failed: number }> {
     await this.ensureInitialized()
+
+    // On-demand import (not a backfill) — the `message:received` workflow
+    // trigger should fire for these. Explicit reset in case a prior
+    // `syncMessages` call on this provider instance left the shared
+    // `storageService`'s flag set (its own `finally` already resets it, but
+    // this stays correct even if that invariant changes later).
+    this.storageService.setInitialSyncMode(false)
 
     const allMessages: GraphMessage[] = []
     let failedCount = 0

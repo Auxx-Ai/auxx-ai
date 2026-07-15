@@ -2,6 +2,7 @@
 'use client'
 
 import { useImperativeHandle, useRef } from 'react'
+import type { RootChoice } from '~/components/editor/placeholders/placeholder-picker-content'
 import { PlaceholderPickerContent } from '~/components/editor/placeholders/placeholder-picker-content'
 import { useCmdkRemote } from '~/components/pickers/use-cmdk-remote'
 import type { SlashContentHandle } from './slash-list'
@@ -21,6 +22,8 @@ export interface PlaceholderSlashContentProps {
   onBack?: () => void
   /** Label for the back header shown when `onBack` is set. */
   backLabel?: string
+  /** Extra placeholder-picker roots — see `PlaceholderPickerContent`'s `extraRoots`. */
+  extraRoots?: RootChoice[]
 }
 
 /**
@@ -39,6 +42,7 @@ export function PlaceholderSlashContent({
   onClose,
   onBack,
   backLabel,
+  extraRoots,
 }: PlaceholderSlashContentProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const remote = useCmdkRemote(containerRef, 'placeholder')
@@ -63,6 +67,7 @@ export function PlaceholderSlashContent({
         backLabel={backLabel}
         onClose={onClose}
         onSelect={onSelect}
+        extraRoots={extraRoots}
       />
     </div>
   )

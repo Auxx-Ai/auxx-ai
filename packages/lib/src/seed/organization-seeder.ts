@@ -13,6 +13,7 @@ import { DEFAULT_QUOTA_LIMITS, ModelType, ProviderQuotaType } from '../ai/provid
 import { InboxService } from '../inboxes'
 import { KBService } from '../kb'
 import { UnifiedCrudHandler } from '../resources/crud'
+import { seedClientNotificationSequences } from '../sequences'
 import { buildSystemSnippetTemplates } from '../snippets'
 import { SystemUserService } from '../users/system-user-service'
 import { EntitySeeder } from './entity-seeder'
@@ -195,6 +196,7 @@ export class OrganizationSeeder {
         this.seedSystemSnippets(organizationId),
         this.seedTicketSequence(organizationId),
         this.seedKnowledgeBase(organizationId),
+        this.seedClientNotificationSequences(organizationId),
         isDemo
           ? this.seedDemoSubscription(organizationId)
           : this.seedTrialSubscription(organizationId),
@@ -307,6 +309,18 @@ export class OrganizationSeeder {
       })
 
     logger.info(`System snippets seeded for organization: ${organizationId}`)
+  }
+  /**
+   * Seed the 5 client-notification sequences (plans/dispatch/19-client-notifications.md §4.6)
+   * — visit reminders, en-route, job follow-up, invoice reminders, and the opt-in visit
+   * follow-up. All seeded `status='disabled'`; idempotent on `(organizationId, templateKey)`.
+   * Thin wrapper around the domain function so the existing-org backfill script
+   * (`scripts/backfill-client-notification-sequences.ts`) can call the exact same logic.
+   */
+  private async seedClientNotificationSequences(organizationId: string): Promise<void> {
+    logger.info(`Seeding client-notification sequences for organization: ${organizationId}`)
+    await seedClientNotificationSequences(this.db, organizationId)
+    logger.info(`Client-notification sequences seeded for organization: ${organizationId}`)
   }
   private async seedTicketSequence(organizationId: string) {
     logger.info(`Seeding record sequences for organization: ${organizationId}`)

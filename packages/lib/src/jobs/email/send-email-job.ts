@@ -23,7 +23,11 @@ import {
   sendTrialExpiredEmail,
   sendTrialStartedEmail,
   sendVerificationEmail,
+  sendVisitCanceledEmail,
+  sendVisitDailyDigestEmail,
   sendVisitDispatchedEmail,
+  sendVisitReassignedEmail,
+  sendVisitRescheduledEmail,
   sendWelcomeEmail,
 } from '@auxx/email'
 import { createScopedLogger } from '@auxx/logger'
@@ -232,6 +236,51 @@ const handlers: {
       endTime: p.endTime,
       timezone: p.timezone,
       workOrderUrl: p.workOrderUrl,
+    }),
+  'visit-rescheduled': (p) =>
+    sendVisitRescheduledEmail({
+      email: p.recipient.email,
+      name: p.recipient.name || 'there',
+      workOrderNumber: p.workOrderNumber,
+      workOrderTitle: p.workOrderTitle,
+      oldStartTime: p.oldStartTime,
+      oldEndTime: p.oldEndTime,
+      newStartTime: p.newStartTime,
+      newEndTime: p.newEndTime,
+      timezone: p.timezone,
+      workOrderUrl: p.workOrderUrl,
+      address: p.address,
+    }),
+  'visit-canceled': (p) =>
+    sendVisitCanceledEmail({
+      email: p.recipient.email,
+      name: p.recipient.name || 'there',
+      workOrderNumber: p.workOrderNumber,
+      workOrderTitle: p.workOrderTitle,
+      startTime: p.startTime,
+      endTime: p.endTime,
+      timezone: p.timezone,
+    }),
+  'visit-reassigned': (p) =>
+    sendVisitReassignedEmail({
+      email: p.recipient.email,
+      name: p.recipient.name || 'there',
+      variant: p.variant,
+      workOrderNumber: p.workOrderNumber,
+      workOrderTitle: p.workOrderTitle,
+      startTime: p.startTime,
+      endTime: p.endTime,
+      timezone: p.timezone,
+      workOrderUrl: p.workOrderUrl,
+    }),
+  'visit-daily-digest': (p) =>
+    sendVisitDailyDigestEmail({
+      email: p.recipient.email,
+      name: p.recipient.name || 'there',
+      dateLabel: p.dateLabel,
+      timezone: p.timezone,
+      visits: p.visits,
+      scheduleUrl: p.scheduleUrl,
     }),
 }
 

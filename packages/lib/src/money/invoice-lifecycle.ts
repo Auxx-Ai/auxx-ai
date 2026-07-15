@@ -3,7 +3,7 @@
 import type { RecordId, TypedFieldValue } from '@auxx/types'
 import { extractValue } from '@auxx/types'
 import { toRecordId } from '@auxx/types/resource'
-import { getOrgCache } from '../cache'
+import { getEntityDefIdResolver, getOrgCache } from '../cache'
 import { BadRequestError } from '../errors'
 import { FieldValueService } from '../field-values/field-value-service'
 import { UnifiedCrudHandler } from '../resources/crud'
@@ -118,8 +118,20 @@ export async function markInvoiceSent(input: InvoiceLifecycleInput): Promise<voi
     }
   }
 
+  // Resolve the type-slug to the real `entityDefinitionId` UUID before writing — an
+  // unresolved `invoice:<id>` RecordId makes `setValuesForEntity`'s field-change hook dispatch
+  // resolve to no cached resource (`getCachedResource` is an exact `id` match, no type-slug
+  // fallback), so `entitySlug` comes back `''` and every field-change hook (including this
+  // plan's `enrollInvoiceReminderOnSent`/`reanchorInvoiceOnDueDateChange`) silently no-ops even
+  // though the write itself succeeds — the `recurring/materialize.ts`/`engagement-actions.ts`
+  // precedent for the identical gap. Mirrors `UnifiedCrudHandler.update`'s own
+  // recordId-resolution step (unified-handler-mutations.ts:452).
+  const resolveDefId = await getEntityDefIdResolver(organizationId)
   const fieldValueService = new FieldValueService(organizationId, userId)
-  await fieldValueService.setValuesForEntity({ recordId: invoiceRecordId, values: writes })
+  await fieldValueService.setValuesForEntity({
+    recordId: toRecordId(resolveDefId('invoice'), invoiceInstanceId),
+    values: writes,
+  })
 }
 
 /**
@@ -138,9 +150,13 @@ export async function voidInvoice(input: InvoiceLifecycleInput): Promise<void> {
     throw new BadRequestError('Remove recorded payments before voiding this invoice')
   }
 
+  // Resolve the type-slug to the real `entityDefinitionId` UUID before writing — see the
+  // identical note in `markInvoiceSent` above (unresolved `invoice:<id>` RecordId silently
+  // no-ops every field-change hook, including this plan's invoice-reminders subject guard).
+  const resolveDefId = await getEntityDefIdResolver(organizationId)
   const fieldValueService = new FieldValueService(organizationId, userId)
   await fieldValueService.setValuesForEntity({
-    recordId: invoiceRecordId,
+    recordId: toRecordId(resolveDefId('invoice'), invoiceInstanceId),
     values: [{ fieldId: 'invoice_status', value: 'void' }],
   })
 

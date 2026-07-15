@@ -139,6 +139,8 @@ export {
 } from './maintenance/data-migrations-job'
 export { type DemoCleanupStats, demoCleanupJob } from './maintenance/demo-cleanup-job'
 export { type DemoSeedJobData, demoSeedJob } from './maintenance/demo-seed-job'
+// Dispatch worker-facing daily schedule digest sweep (plan 19 §4.9, opt-in)
+export { dispatchDigestJob } from './maintenance/dispatch-digest-job'
 export {
   type CleanupStats,
   expiredTrialAccountCleanupJob,
@@ -174,6 +176,8 @@ export {
 } from './maintenance/reconcile-record-identities-job'
 // Dispatch recurring engine daily sweep (M2c)
 export { recurringVisitsJob } from './maintenance/recurring-visits-job'
+// Client-notifications sequence enrollment hourly sweep (plan 19 §4.3, decision #13)
+export { sequenceEnrollmentSweepJob } from './maintenance/sequence-enrollment-sweep-job'
 export {
   type StalePendingMessageSweeperStats,
   stalePendingMessageSweeperJob,
@@ -272,6 +276,10 @@ export {
 } from './workflow/app-trigger-dispatch-job'
 export { approvalReminderJob } from './workflow/approval-reminder-job'
 export { approvalTimeoutJob } from './workflow/approval-timeout-job'
+export {
+  executeMessageTrigger,
+  type MessageTriggerJobData,
+} from './workflow/message-trigger-job'
 export {
   executePollingTrigger,
   type PollingTriggerJobData,

@@ -9,11 +9,20 @@ import type {
 } from '@auxx/database/types'
 
 /**
+ * A `MessageParticipant` join row hydrated with its `Participant` (identifier,
+ * name, ...) — lets trigger-node processors derive `message.to`/`cc`/`bcc`
+ * output variables without a second query.
+ */
+export interface ProcessedMessageParticipant extends MessageParticipant {
+  participant?: Participant
+}
+
+/**
  * ProcessedMessage extends Message with all necessary relations
  * for workflow execution context
  */
 export interface ProcessedMessage extends Message {
-  participants: MessageParticipant[]
+  participants: ProcessedMessageParticipant[]
   thread?: Thread
   from: Participant
   replyTo?: Participant | null

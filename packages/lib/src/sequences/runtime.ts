@@ -6,20 +6,21 @@
 // (mirrors `money/public-token.ts`'s `buildPayUrl`).
 
 import { WEBAPP_URL } from '@auxx/config/urls'
-import { type Database, schema } from '@auxx/database'
+import { type Database, database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import { eq } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 import { err, ok, type Result } from 'neverthrow'
 import { NotFoundError } from '../errors'
 import { SystemUserService } from '../users/system-user-service'
 import { WorkflowExecutionService } from '../workflows/workflow-execution-service'
+import type { SequenceExitReason } from './client'
 
 const logger = createScopedLogger('sequences-runtime')
 
 export interface ExitSequenceRunParams {
   sequenceRunId: string
   organizationId: string
-  reason: 'reply' | 'bounce' | 'unsubscribe' | 'manual'
+  reason: SequenceExitReason
   metadata?: Record<string, unknown>
   /** Also stop the underlying `WorkflowRun`. Defaults to true. */
   stopWorkflow?: boolean
@@ -93,4 +94,50 @@ export async function exitSequenceRun(
 /** Absolute public unsubscribe URL for a sequence run's stored capability token. */
 export function buildSequenceUnsubscribeUrl(unsubscribeToken: string): string {
   return `${WEBAPP_URL}/sequences/unsubscribe/${unsubscribeToken}`
+}
+
+export interface ExitActiveRunsResult {
+  /** Number of active runs that were exited. */
+  exited: number
+}
+
+/**
+ * Bulk-exit every active run of a sequence (client-notifications plan §4.3/§4.7 decision #11
+ * — turning off an event-triggered sequence exits its in-flight runs with reason `'disabled'`;
+ * a later phase's "disable sequence" settings action is the sole caller). Thin loop over the
+ * existing `exitSequenceRun` choke point — no bulk SQL shortcut, so each run still stops its
+ * own `WorkflowRun` and gets the same idempotency guarantee as every other exit trigger.
+ */
+export async function exitActiveRunsForSequence(
+  organizationId: string,
+  sequenceId: string,
+  reason: SequenceExitReason
+): Promise<Result<ExitActiveRunsResult, Error>> {
+  const runs = await database.query.SequenceRun.findMany({
+    where: and(
+      eq(schema.SequenceRun.organizationId, organizationId),
+      eq(schema.SequenceRun.sequenceId, sequenceId),
+      eq(schema.SequenceRun.status, 'active')
+    ),
+    columns: { id: true },
+  })
+
+  let exited = 0
+  for (const run of runs) {
+    const result = await exitSequenceRun(database, {
+      sequenceRunId: run.id,
+      organizationId,
+      reason,
+    })
+    if (result.isOk()) exited++
+    else {
+      logger.error('Failed to exit run during bulk sequence exit', {
+        sequenceId,
+        sequenceRunId: run.id,
+        error: result.error.message,
+      })
+    }
+  }
+
+  return ok({ exited })
 }

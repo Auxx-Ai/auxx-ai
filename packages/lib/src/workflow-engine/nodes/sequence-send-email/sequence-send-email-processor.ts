@@ -1,14 +1,17 @@
 // packages/lib/src/workflow-engine/nodes/sequence-send-email/sequence-send-email-processor.ts
 // Server-registered node processor for a compiled sequence's per-step send
-// (Sequences plan §3.2/§3.3) — wraps `MessageSenderService`. NOT added to the
-// user node palette; only `publishSequence` (Phase 2) ever writes a node with
-// this `type`.
+// (Sequences plan §3.2/§3.3; client-notifications plan §4.4 adds the subject guards, visit
+// tokens, conditional footer, and `EntitySignal` write below) — wraps `MessageSenderService`.
+// NOT added to the user node palette; only `publishSequence` ever writes a node with this
+// `type`.
 
 import { type Database, database as defaultDb, schema } from '@auxx/database'
 import { IdentifierType, SendStatus } from '@auxx/database/enums'
 import type { RecordId } from '@auxx/types/resource'
-import { toRecordId } from '@auxx/types/resource'
-import { eq } from 'drizzle-orm'
+import { parseRecordId, toRecordId } from '@auxx/types/resource'
+import { format } from 'date-fns'
+import { toZonedTime } from 'date-fns-tz'
+import { and, eq, isNull } from 'drizzle-orm'
 import { getOrgCache } from '../../../cache'
 import { MessageSenderService } from '../../../messages/message-sender.service'
 import type { SendMessageInput } from '../../../messages/types/message-sending.types'
@@ -16,6 +19,13 @@ import type { PlaceholderResolutionContext } from '../../../placeholders'
 import { resolvePlaceholdersInHtml } from '../../../placeholders'
 import { ProviderRegistryService } from '../../../providers/provider-registry-service'
 import { buildSequenceUnsubscribeUrl, exitSequenceRun } from '../../../sequences/runtime'
+import {
+  evaluateSubjectGuards,
+  resolveSubjectContext,
+  resolveSubjectRecipientEmail,
+  type SubjectContext,
+} from '../../../sequences/subject'
+import { recordSignal, toSignalRecordKey } from '../../../signals'
 import { SystemUserService } from '../../../users/system-user-service'
 import type { ExecutionContextManager } from '../../core/execution-context'
 import type { NodeExecutionResult, ValidationResult, WorkflowNode } from '../../core/types'
@@ -30,11 +40,19 @@ import type { SequenceSendEmailNodeConfig, SequenceTriggerData } from './types'
  * see `providers/error-normalization.ts`). The normalized `EmailErrorCode` /
  * `retryable` flag are computed internally but not threaded through the
  * return value, so terminal-vs-retryable classification here matches on the
- * (enum-driven, stable) user-message text for the four codes explicitly
- * marked `retryable: false` there. Anything else — rate limits, network
- * errors, or an unrecognized message — is treated as retryable so the
- * engine's normal retry/backoff handles it instead of prematurely bouncing a
- * run that might succeed on retry.
+ * (enum-driven, stable) user-message text.
+ *
+ * Taxonomy (client-notifications plan §4.4/§7 Q6, audited against
+ * `error-normalization.ts`'s `getUserMessage`):
+ *  - TERMINAL (bounce-exit the run, reason `'bounce'`) — genuinely unrecoverable
+ *    recipient/content problems: `SIZE_LIMIT_EXCEEDED`, `FROM_ALIAS_INVALID`,
+ *    `INVALID_RECIPIENTS`.
+ *  - RETRYABLE (fail the node, run stays in-progress for the engine's own retry
+ *    handling; exhausted retries surface as the run's `'failed'` status via the
+ *    workflow-completion hook, not a bounce) — `AUTH_FAILED` (a mailbox needing
+ *    reconnect must not silently kill in-flight transactional reminders — this
+ *    was the verified bug), `RATE_LIMIT`, `NETWORK_ERROR`, `SERVICE_UNAVAILABLE`,
+ *    `QUOTA_EXCEEDED`, and anything unrecognized (`UNKNOWN`/default).
  */
 function isTerminalSendFailure(errorMessage: string | null | undefined): boolean {
   if (!errorMessage) return false
@@ -45,13 +63,43 @@ function isTerminalSendFailure(errorMessage: string | null | undefined): boolean
   ) {
     return true // FROM_ALIAS_INVALID
   }
-  if (errorMessage === 'Email authentication failed. Please reconnect your email account.') {
-    return true // AUTH_FAILED
-  }
   if (errorMessage === 'One or more recipient email addresses are invalid.') {
     return true // INVALID_RECIPIENTS
   }
   return false
+}
+
+/** Visit tokens (§4.5) — pre-resolved by plain code before the entity placeholder pass, since
+ * `WorkOrderVisit` is a plain table (not an `EntityInstance`) and can't ride
+ * `resolvePlaceholdersInHtml`. An unscheduled visit (`startTime` null — shouldn't reach here,
+ * the subject guard already exits on that) degrades every time token to `''`, never
+ * "undefined". */
+function buildVisitTokenMap(
+  visit: { startTime: Date | null; endTime: Date | null },
+  timezone: string,
+  assigneeFirstName: string
+): Record<string, string> {
+  if (!visit.startTime) {
+    return {
+      '{{visit:date}}': '',
+      '{{visit:startTime}}': '',
+      '{{visit:endTime}}': '',
+      '{{visit:timeWindow}}': '',
+      '{{visit:assigneeFirstName}}': assigneeFirstName,
+    }
+  }
+  const zonedStart = toZonedTime(visit.startTime, timezone)
+  const dateStr = format(zonedStart, 'MMMM d, yyyy')
+  const startStr = format(zonedStart, 'h:mm a')
+  const endStr = visit.endTime ? format(toZonedTime(visit.endTime, timezone), 'h:mm a') : ''
+  const timeWindow = endStr ? `${startStr} – ${endStr}` : startStr
+  return {
+    '{{visit:date}}': dateStr,
+    '{{visit:startTime}}': startStr,
+    '{{visit:endTime}}': endStr,
+    '{{visit:timeWindow}}': timeWindow,
+    '{{visit:assigneeFirstName}}': assigneeFirstName,
+  }
 }
 
 export class SequenceSendEmailProcessor extends BaseNodeProcessor {
@@ -96,8 +144,8 @@ export class SequenceSendEmailProcessor extends BaseNodeProcessor {
     }
 
     const run = await database.query.SequenceRun.findFirst({
-      where: (t, { eq: eqOp, and }) =>
-        and(eqOp(t.id, triggerData.sequenceRunId), eqOp(t.organizationId, organizationId)),
+      where: (t, { eq: eqOp, and: andOp }) =>
+        andOp(eqOp(t.id, triggerData.sequenceRunId), eqOp(t.organizationId, organizationId)),
     })
 
     if (!run) {
@@ -107,10 +155,10 @@ export class SequenceSendEmailProcessor extends BaseNodeProcessor {
     }
 
     if (run.status !== 'active') {
-      // Safety net — the normal exit paths (reply/bounce/unsubscribe/manual)
-      // already stop the workflow, so this node shouldn't run again after an
-      // exit. Guards against a race (e.g. a reply landing right as this node
-      // was dequeued) without failing the run.
+      // Safety net — the normal exit paths (reply/bounce/unsubscribe/manual/subject guards)
+      // already stop the workflow, so this node shouldn't run again after an exit. Guards
+      // against a race (e.g. a reply landing right as this node was dequeued) without
+      // failing the run.
       contextManager.log('INFO', node.name, 'Skipping send — run is not active', {
         sequenceRunId: run.id,
         status: run.status,
@@ -122,32 +170,163 @@ export class SequenceSendEmailProcessor extends BaseNodeProcessor {
       }
     }
 
+    const sequence = await database.query.Sequence.findFirst({
+      where: eq(schema.Sequence.id, config.sequenceId),
+      columns: {
+        subjectKind: true,
+        triggerType: true,
+        deliveryTimezone: true,
+        includeUnsubscribeFooter: true,
+        templateKey: true,
+      },
+    })
+    if (!sequence) {
+      throw this.createExecutionError(`Sequence ${config.sequenceId} not found`, node, {
+        sequenceId: config.sequenceId,
+      })
+    }
+    const subjectKind = sequence.subjectKind as 'visit' | 'work_order' | 'invoice' | null
+
+    const step = await database.query.SequenceStep.findFirst({
+      where: eq(schema.SequenceStep.id, config.stepId),
+      columns: { timingMode: true, anchorOffsetDays: true, anchorTimeOfDay: true },
+    })
+
+    // ── (1)+(2) subject-state + live-anchor recompute guards (§4.4) ─────────
+    const guard = await evaluateSubjectGuards(
+      database,
+      organizationId,
+      { subjectKind, subjectId: run.subjectId },
+      sequence.triggerType,
+      step ?? undefined,
+      sequence.deliveryTimezone
+    )
+    if (guard.action === 'exit') {
+      await exitSequenceRun(database, {
+        sequenceRunId: run.id,
+        organizationId,
+        reason: guard.reason,
+        stopWorkflow: false,
+      })
+      contextManager.log('INFO', node.name, `Exiting run — subject guard: ${guard.reason}`, {
+        sequenceRunId: run.id,
+      })
+      return {
+        status: NodeRunningStatus.Succeeded,
+        output: { skipped: true, reason: `subject-exit:${guard.reason}` },
+        outputHandle: 'source',
+      }
+    }
+    if (guard.action === 'skip') {
+      contextManager.log('INFO', node.name, `Skipping step — ${guard.reason}`, {
+        sequenceRunId: run.id,
+        stepIndex: config.stepIndex,
+      })
+      return {
+        status: NodeRunningStatus.Succeeded,
+        output: { skipped: true, reason: guard.reason },
+        outputHandle: 'source',
+      }
+    }
+
+    const systemUserId = await SystemUserService.getSystemUserForActions(organizationId)
+
+    // ── (3) recipient re-resolution (decision #15) ──────────────────────────
+    let recipientEmail = run.recipientEmail
+    let contactRecordId: RecordId | undefined = run.recipientEntityInstanceId
+      ? toRecordId('contact', run.recipientEntityInstanceId)
+      : undefined
+    let workOrderInstanceId: string | undefined
+    let visitRow: SubjectContext['visit']
+
+    if (subjectKind && run.subjectId) {
+      const subjectContext = await resolveSubjectContext(
+        database,
+        organizationId,
+        systemUserId,
+        subjectKind,
+        run.subjectId
+      )
+      workOrderInstanceId = subjectContext.workOrderInstanceId
+      visitRow = subjectContext.visit
+
+      const resolvedRecipient = await resolveSubjectRecipientEmail(
+        database,
+        organizationId,
+        systemUserId,
+        subjectKind,
+        run.subjectId
+      )
+      if (!resolvedRecipient) {
+        contextManager.log(
+          'INFO',
+          node.name,
+          'No recipient resolved at send time — skipping step',
+          {
+            sequenceRunId: run.id,
+            stepIndex: config.stepIndex,
+          }
+        )
+        return {
+          status: NodeRunningStatus.Succeeded,
+          output: { skipped: true, reason: 'no-recipient' },
+          outputHandle: 'source',
+        }
+      }
+      recipientEmail = resolvedRecipient.email
+      contactRecordId = resolvedRecipient.contactRecordId
+    }
+
     try {
-      // ── Resolve placeholders against the frozen recipient ──────────────────
+      // ── (4) visit-token pre-resolution (§4.5), THEN entity placeholder pass ──
+      let bodyHtml = config.bodyHtml
+      let timeBearingTokenSubstituted = false
+      if (subjectKind === 'visit' && visitRow) {
+        let assigneeFirstName = ''
+        if (visitRow.assigneeUserId) {
+          const assignee = await database.query.User.findFirst({
+            where: eq(schema.User.id, visitRow.assigneeUserId),
+            columns: { firstName: true, name: true },
+          })
+          assigneeFirstName = assignee?.firstName || assignee?.name?.split(' ')[0] || ''
+        }
+        const timezone = sequence.deliveryTimezone ?? 'UTC'
+        const hasTimeToken = /\{\{visit:(date|startTime|timeWindow)\}\}/.test(bodyHtml)
+        const tokens = buildVisitTokenMap(visitRow, timezone, assigneeFirstName)
+        for (const [token, value] of Object.entries(tokens)) {
+          bodyHtml = bodyHtml.split(token).join(value)
+        }
+        timeBearingTokenSubstituted = hasTimeToken && visitRow.startTime !== null
+      }
+
       const entityDefs = await getOrgCache().get(organizationId, 'entityDefs')
       const recordIdsByRoot = new Map<string, RecordId>()
-      if (entityDefs.contact && run.recipientEntityInstanceId) {
-        recordIdsByRoot.set(
-          entityDefs.contact,
-          toRecordId('contact', run.recipientEntityInstanceId)
-        )
+      if (entityDefs.contact && contactRecordId) {
+        recordIdsByRoot.set(entityDefs.contact, contactRecordId)
+      }
+      if (subjectKind === 'invoice' && run.subjectId && entityDefs.invoice) {
+        recordIdsByRoot.set(entityDefs.invoice, toRecordId('invoice', run.subjectId))
+      }
+      if (workOrderInstanceId && entityDefs.work_order) {
+        recordIdsByRoot.set(entityDefs.work_order, toRecordId('work_order', workOrderInstanceId))
       }
       const placeholderCtx: PlaceholderResolutionContext = {
         db: database,
         organizationId,
         recordIdsByRoot,
       }
-      let resolvedHtml = await resolvePlaceholdersInHtml(config.bodyHtml, placeholderCtx)
+      let resolvedHtml = await resolvePlaceholdersInHtml(bodyHtml, placeholderCtx)
 
-      // ── Unsubscribe footer ───────────────────────────────────────────────────
-      const unsubscribeUrl = buildSequenceUnsubscribeUrl(run.unsubscribeToken)
-      resolvedHtml += `<p style="color:#8a8a8a;font-size:12px;margin-top:24px;"><a href="${unsubscribeUrl}" target="_blank" rel="noopener noreferrer" style="color:#8a8a8a;">Unsubscribe</a></p>`
+      // ── (5) unsubscribe footer — only when the sequence wants one ─────────
+      if (sequence.includeUnsubscribeFooter) {
+        const unsubscribeUrl = buildSequenceUnsubscribeUrl(run.unsubscribeToken)
+        resolvedHtml += `<p style="color:#8a8a8a;font-size:12px;margin-top:24px;"><a href="${unsubscribeUrl}" target="_blank" rel="noopener noreferrer" style="color:#8a8a8a;">Unsubscribe</a></p>`
+      }
 
       // ── Subject: step 1 opens the thread; steps 2..N reply into it ─────────
       const subject = await this.resolveSubject(config, run, database)
 
       // ── Send ─────────────────────────────────────────────────────────────────
-      const systemUserId = await SystemUserService.getSystemUserForActions(organizationId)
       const providerRegistry = new ProviderRegistryService(organizationId)
       const messageSender = new MessageSenderService(organizationId, providerRegistry, database)
 
@@ -159,7 +338,7 @@ export class SequenceSendEmailProcessor extends BaseNodeProcessor {
         subject,
         textHtml: resolvedHtml,
         signatureId: config.signatureId ?? undefined,
-        to: [{ identifier: run.recipientEmail, identifierType: IdentifierType.EMAIL }],
+        to: [{ identifier: recipientEmail, identifierType: IdentifierType.EMAIL }],
         attachmentIds: config.attachmentIds,
       }
 
@@ -211,6 +390,54 @@ export class SequenceSendEmailProcessor extends BaseNodeProcessor {
           lastSentAt: new Date(),
         })
         .where(eq(schema.SequenceRun.id, run.id))
+
+      // ── (6) EntitySignal write (dedupe-keyed so an engine retry can't double-write) ──
+      const links: string[] = []
+      if (contactRecordId) {
+        links.push(toSignalRecordKey('contact', parseRecordId(contactRecordId).entityInstanceId))
+      }
+      if (workOrderInstanceId) links.push(toSignalRecordKey('work_order', workOrderInstanceId))
+      if (subjectKind === 'visit' && run.subjectId)
+        links.push(toSignalRecordKey('visit', run.subjectId))
+      if (subjectKind === 'invoice' && run.subjectId)
+        links.push(toSignalRecordKey('invoice', run.subjectId))
+
+      await recordSignal({
+        organizationId,
+        kind: 'message:sent',
+        subtype: 'sequence_step',
+        dedupeKey: `seq:${run.id}:${config.stepIndex}`,
+        contactEntityInstanceId: contactRecordId
+          ? parseRecordId(contactRecordId).entityInstanceId
+          : undefined,
+        messageId: sent.id,
+        threadId: sent.threadId,
+        title: subject,
+        metadata: {
+          sequenceId: config.sequenceId,
+          stepIndex: config.stepIndex,
+          templateKey: sequence.templateKey ?? undefined,
+          recipientEmail,
+          // §4.10 — stamped so a future `(recurrenceRuleId, occurrenceDate)` signal lookup can
+          // dedup the rule-edit re-send edge without a schema change.
+          recurrenceRuleId: visitRow?.recurrenceRuleId ?? undefined,
+          occurrenceDate: visitRow?.occurrenceDate ?? undefined,
+        },
+        links,
+      })
+
+      // ── (7) the sent reminder IS the promise — stamp timeConfirmedAt if unset ───
+      if (subjectKind === 'visit' && run.subjectId && timeBearingTokenSubstituted) {
+        await database
+          .update(schema.WorkOrderVisit)
+          .set({ timeConfirmedAt: new Date() })
+          .where(
+            and(
+              eq(schema.WorkOrderVisit.id, run.subjectId),
+              isNull(schema.WorkOrderVisit.timeConfirmedAt)
+            )
+          )
+      }
 
       return {
         status: NodeRunningStatus.Succeeded,

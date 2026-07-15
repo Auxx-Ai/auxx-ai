@@ -9,47 +9,32 @@
 import { WEBAPP_URL } from '@auxx/config/urls'
 import { database, schema } from '@auxx/database'
 import type { NotificationType } from '@auxx/database/types'
-import { extractValue } from '@auxx/types'
-import { toRecordId } from '@auxx/types/resource'
 import { and, eq } from 'drizzle-orm'
-import { getOrgCache } from '../cache'
 import { BadRequestError, NotFoundError } from '../errors'
-import { FieldValueService } from '../field-values/field-value-service'
 import { enqueueEmailJob } from '../jobs/email/enqueue-email-job'
 import { NotificationService } from '../notifications/notification-service'
+import { getUserSetting } from '../settings'
 import type { DispatchVisitInput } from './types'
 import { afterVisitWrite } from './visit-mutations'
+import { getWorkOrderProjections } from './work-order-fields'
 
 type WorkOrderVisitRow = typeof schema.WorkOrderVisit.$inferSelect
 
-/** Resolve the work order's number/title for the notification/email content — one narrow read. */
-async function getWorkOrderLabel(
+/** Resolve the work order's number/title/address for the notification/email content — one
+ * narrow read. Exported for reuse by `worker-notifications.ts` (reschedule/cancel/reassign). */
+export async function getWorkOrderLabel(
   organizationId: string,
   userId: string,
   workOrderId: string
-): Promise<{ number: string | undefined; title: string | undefined }> {
-  const cf = await getOrgCache()
-    .from(organizationId, 'customFields')
-    .bySystemAttributes(['work_order_number', 'work_order_title'] as const)
-  const fieldIds = [cf.work_order_number, cf.work_order_title]
-    .filter((f): f is NonNullable<typeof f> => Boolean(f))
-    .map((f) => f.id)
-  if (fieldIds.length === 0) return { number: undefined, title: undefined }
-
-  const fieldValueService = new FieldValueService(organizationId, userId)
-  const values = await fieldValueService.getValues({
-    recordId: toRecordId('work_order', workOrderId),
-    fieldIds,
-  })
-
-  const numberTyped = cf.work_order_number ? values.get(cf.work_order_number.id) : undefined
-  const titleTyped = cf.work_order_title ? values.get(cf.work_order_title.id) : undefined
-  const number =
-    numberTyped && !Array.isArray(numberTyped) ? (extractValue(numberTyped) as string) : undefined
-  const title =
-    titleTyped && !Array.isArray(titleTyped) ? (extractValue(titleTyped) as string) : undefined
-
-  return { number, title }
+): Promise<{ number: string | undefined; title: string | undefined; address: string | undefined }> {
+  const projections = await getWorkOrderProjections(
+    organizationId,
+    userId,
+    [workOrderId],
+    ['number', 'title', 'address']
+  )
+  const info = projections.get(workOrderId)
+  return { number: info?.number, title: info?.title, address: info?.address }
 }
 
 /**
@@ -108,7 +93,14 @@ export async function dispatchVisit(input: DispatchVisitInput): Promise<WorkOrde
     data: { visitId: updated.id },
   })
 
-  if (assignee?.email) {
+  // Plan 19 §4.9: the dispatch email is gated on `notification.dispatch.email` too (default
+  // true — an explicit `false` opts out); the in-app notification above always fires.
+  const emailEnabled = await getUserSetting({
+    organizationId,
+    userId: updated.assigneeUserId!,
+    key: 'notification.dispatch.email',
+  })
+  if (assignee?.email && emailEnabled !== false) {
     await enqueueEmailJob('visit-dispatched', {
       recipient: { email: assignee.email, name: assignee.name ?? undefined },
       workOrderNumber: number ?? '',

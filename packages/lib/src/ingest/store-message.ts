@@ -6,6 +6,8 @@ import type { ParticipantEntity as Participant, ParticipantRole } from '@auxx/da
 import { toRecordId } from '@auxx/types/resource'
 import { and, eq, isNull, sql } from 'drizzle-orm'
 import { touchActivityForThreadLinks } from '../entity-instances/activity'
+import { publisher } from '../events/publisher'
+import type { MessageReceivedEvent } from '../events/types'
 import {
   getRealtimeService,
   publishMessageCreated,
@@ -505,11 +507,13 @@ export async function storeMessage(
     })
     const { thread, isNewThread, messageRecord, flippedUserIds, didReopen } = txResult
 
-    // Reply-detection hook (Sequences plan §3.3/Phase 2) — an inbound message on a
-    // thread with an active SequenceRun exits that run (reason 'reply'). One
-    // indexed lookup on the hot path, no-op on a miss (the vast majority of inbound
-    // mail has no sequence attached). Dynamic import to keep this module free of
-    // any static dependency on the sequences module; best-effort — never let a
+    // Reply-detection hook (Sequences plan §3.3/Phase 2; client-notifications plan §4.4 gates
+    // it on `Sequence.exitOnReply`) — an inbound message on a thread with an active
+    // SequenceRun exits that run (reason 'reply') ONLY when its sequence opted in
+    // (`exitOnReply=true`, the default — a "see you then!" reply to a day-of visit reminder
+    // must not kill it). One indexed lookup on the hot path, no-op on a miss (the vast
+    // majority of inbound mail has no sequence attached). Dynamic import to keep this module
+    // free of any static dependency on the sequences module; best-effort — never let a
     // sequence-exit hiccup fail message ingestion.
     if (messageData.isInbound) {
       try {
@@ -520,16 +524,22 @@ export async function storeMessage(
               eqOp(t.organizationId, messageData.organizationId),
               eqOp(t.status, 'active')
             ),
-          columns: { id: true },
+          columns: { id: true, sequenceId: true },
         })
         if (activeRun) {
-          const { exitSequenceRun } = await import('../sequences/runtime')
-          await exitSequenceRun(ctx.db, {
-            sequenceRunId: activeRun.id,
-            organizationId: messageData.organizationId,
-            reason: 'reply',
-            metadata: { messageId: messageRecord.id },
+          const sequence = await ctx.db.query.Sequence.findFirst({
+            where: (t, { eq: eqOp }) => eqOp(t.id, activeRun.sequenceId),
+            columns: { exitOnReply: true },
           })
+          if (sequence?.exitOnReply) {
+            const { exitSequenceRun } = await import('../sequences/runtime')
+            await exitSequenceRun(ctx.db, {
+              sequenceRunId: activeRun.id,
+              organizationId: messageData.organizationId,
+              reason: 'reply',
+              metadata: { messageId: messageRecord.id },
+            })
+          }
         }
       } catch (error) {
         ctx.logger.error('Sequence reply-detection hook failed (non-fatal)', {
@@ -638,6 +648,44 @@ export async function storeMessage(
         },
         { excludeSocketId: ctx.socketId }
       )
+    }
+
+    // Workflow trigger bus event — fans out to the MESSAGE_RECEIVED workflow
+    // trigger (`triggerMessageWorkflows`) and the contact timeline handler
+    // (`createTimelineEvent`). Gated three ways:
+    //  - inbound only: `storeMessage` is never on the compose/send path (that's
+    //    `MessageComposerService.createPendingMessage`); the only outbound
+    //    traffic here is provider sync echoing our own sent mail, so gating on
+    //    `isInbound` fully covers "a workflow that sends mail must not
+    //    re-trigger itself".
+    //  - genuinely NEW row only: every dedup/reconciliation branch above
+    //    (internetMessageId match, `reconcileMessage` match, duplicate-key
+    //    catch) returns early with `isNew: false` — this line only runs on
+    //    the fresh-insert path, so re-ingest of an already-stored message
+    //    never re-emits.
+    //  - `!ctx.isInitialSync`: a first-connect Gmail/Outlook backfill must not
+    //    fire thousands of workflow runs. Gmail/Outlook set this via
+    //    `MessageStorageService.setInitialSyncMode` on their backfill
+    //    branches (see `sync-messages.ts` / `outlook-provider.ts`); live
+    //    webhook ingest (SES inbound, OpenPhone/Facebook/Instagram routes)
+    //    never touches sync mode, so it stays `false` and always fires.
+    // Best-effort — `publisher.publishLater` swallows its own errors and
+    // never throws, so this can't fail message ingestion.
+    if (messageData.isInbound && !ctx.isInitialSync) {
+      await publisher.publishLater({
+        type: 'message:received',
+        data: {
+          messageId: messageRecord.id,
+          organizationId: messageData.organizationId,
+          ...(senderParticipant.entityInstanceId && {
+            recordId: toRecordId('contact', senderParticipant.entityInstanceId),
+          }),
+          threadId: thread.id,
+          subject: messageData.subject ?? undefined,
+          from: senderParticipant.identifier,
+          snippet: messageData.snippet ?? undefined,
+        },
+      } as MessageReceivedEvent)
     }
 
     ctx.logger.info('Message stored successfully (Revised Schema v2)', {

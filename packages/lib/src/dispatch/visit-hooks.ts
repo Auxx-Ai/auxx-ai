@@ -6,6 +6,7 @@ import { parseRecordId } from '@auxx/types/resource'
 import { and, eq } from 'drizzle-orm'
 import type { EntityFieldChangeHandler } from '../field-hooks/types'
 import { geocode } from '../geocoding'
+import { formatAddressForGeocode } from './address'
 import { ensureVisitForWorkOrder } from './visit-mutations'
 
 /**
@@ -19,20 +20,6 @@ export const ensureVisitOnWorkOrderCreate: EntityFieldChangeHandler = async (eve
   if (event.oldValue !== null) return // not the create write
   const { entityInstanceId } = parseRecordId(event.recordId)
   await ensureVisitForWorkOrder(event.organizationId, entityInstanceId)
-}
-
-/** Single-line join of an `AddressStruct` JSON value — geocoder input, not a display formatter. */
-function formatAddressForGeocode(value: Record<string, unknown>): string {
-  const part = (key: string) => (typeof value[key] === 'string' ? (value[key] as string) : '')
-  const parts = [
-    part('street1'),
-    part('street2'),
-    part('city'),
-    part('state'),
-    part('zipCode'),
-    part('country'),
-  ]
-  return parts.filter(Boolean).join(', ')
 }
 
 /**

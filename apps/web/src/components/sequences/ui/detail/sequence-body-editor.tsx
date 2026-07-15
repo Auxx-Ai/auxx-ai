@@ -13,7 +13,7 @@ import TextStyle from '@tiptap/extension-text-style'
 import Underline from '@tiptap/extension-underline'
 import { type Editor, EditorContent, useEditor } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
-import { Braces } from 'lucide-react'
+import { Braces, Calendar } from 'lucide-react'
 import { useCallback, useMemo, useRef } from 'react'
 import '~/styles/prosemirror.css'
 import { EditorToolbar } from '~/components/editor/editor-button'
@@ -29,6 +29,7 @@ import {
   stripOpenChips,
   useActivePicker,
 } from '~/components/editor/inline-picker'
+import type { RootChoice } from '~/components/editor/placeholders/placeholder-picker-content'
 import { PlaceholderSlashContent } from '~/components/editor/slash-commands/placeholder-slash-content'
 import type { SlashContentHandle } from '~/components/editor/slash-commands/slash-list'
 import { Tooltip } from '~/components/global/tooltip'
@@ -38,12 +39,19 @@ interface SequenceBodyEditorProps {
   bodyJson: Record<string, unknown> | null
   /** Persisted HTML body — seed fallback when no JSON exists yet. */
   bodyHtml: string | null
+  /** Null for manual sequences — offers the visit-token placeholder root only on visit-subject
+   * sequences (client-notifications plan §4.5/§4.7). */
+  subjectKind?: 'visit' | 'work_order' | 'invoice' | null
   /** Fires with the stripped JSON + generated HTML on every doc change. */
   onChange: (bodyJson: JSONContent, bodyHtml: string) => void
   /** Fires when focus leaves the editor — flush pending autosave. */
   onBlur?: () => void
   placeholder?: string
 }
+
+/** The one extra placeholder-picker root this editor ever offers — reused so `extraRoots`
+ * always gets the same array identity when `subjectKind === 'visit'`. */
+const VISIT_ROOTS: RootChoice[] = [{ id: 'visit', label: 'Visit', icon: Calendar }]
 
 /**
  * Email body editor for a sequence step. Composed the snippet-editor way (own
@@ -70,10 +78,13 @@ export function SequenceBodyEditor(props: SequenceBodyEditorProps) {
 function SequenceBodyEditorInner({
   bodyJson,
   bodyHtml,
+  subjectKind,
   onChange,
   onBlur,
   placeholder = 'Write the email… Type { to insert a placeholder',
 }: SequenceBodyEditorProps) {
+  const extraRoots = subjectKind === 'visit' ? VISIT_ROOTS : undefined
+
   // Keyboard forwarded from the open `{` chip to the placeholder picker
   // (focus stays in the editor until the picker's own input takes over).
   const slashRef = useRef<SlashContentHandle | null>(null)
@@ -221,8 +232,16 @@ function SequenceBodyEditorInner({
           <PlaceholderSlashContent
             ref={slashRef}
             onClose={closePicker}
+            extraRoots={extraRoots}
             onSelect={(id) => {
               runWithChipRange((editor, range) => {
+                // Visit tokens (§4.5) are pre-resolved by plain code in the send node, not the
+                // entity placeholder resolver — insert literal `{{visit:*}}` text, not a chip
+                // (a chip would render as an unresolvable "Unknown placeholder" badge).
+                if (id.startsWith('visit:')) {
+                  editor.chain().focus().deleteRange(range).insertContent(`{{${id}}} `).run()
+                  return
+                }
                 editor
                   .chain()
                   .focus()

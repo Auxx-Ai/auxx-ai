@@ -102,6 +102,8 @@ export const DRAWER_CONFIG_REGISTRY: DrawerConfigRegistry = {
       overview: [
         { value: 'schedule', label: 'Schedule', icon: 'calendar-clock' },
         { value: 'invoices', label: 'Invoices', icon: 'receipt' },
+        // Client-notifications plan §4.8/Phase 4 — compact recent-communications card.
+        { value: 'communications', label: 'Communications', icon: 'mail' },
       ],
     },
   },

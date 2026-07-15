@@ -102,6 +102,8 @@ export {
   type PrepareDocumentEmailInput,
   type PrepareDocumentEmailResult,
   prepareDocumentEmail,
+  type RecordDocumentSendSignalInput,
+  recordDocumentSendSignal,
 } from './send-email'
 export { computeDocumentTotals, computeLineTotal, roundCents } from './totals'
 export {

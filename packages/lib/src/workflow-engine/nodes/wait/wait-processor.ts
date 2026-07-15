@@ -1,6 +1,12 @@
 // packages/lib/src/workflow-engine/nodes/wait/wait-processor.ts
 
+import { database as defaultDb } from '@auxx/database'
 import { getQueue, Queues } from '../../../jobs/queues'
+import {
+  computeAnchorTarget,
+  isPastAnchor,
+  resolveSubjectAnchorDate,
+} from '../../../sequences/anchor'
 import { WAIT_CONSTANTS } from '../../constants'
 import type { ExecutionContextManager } from '../../core/execution-context'
 import type {
@@ -13,7 +19,8 @@ import type {
 import { NodeRunningStatus, WorkflowNodeType } from '../../core/types'
 import { BaseNodeProcessor } from '../base-node'
 import { snapToDeliveryWindow } from './delivery-window'
-import { DurationUnit, type WaitNodeConfig, WaitType } from './types'
+import { buildWorkflowResumeJobId } from './resume-job-id'
+import { DurationUnit, type WaitAnchorConfig, type WaitNodeConfig, WaitType } from './types'
 
 /**
  * Wait node configuration
@@ -53,9 +60,10 @@ export class WaitNodeProcessor extends BaseNodeProcessor {
         waitDuration = this.convertToMilliseconds(Number(amount), unit)
       }
 
-      // Zero-duration waits are valid when a delivery window is configured (compiled
-      // sequence step-1 waits carry duration 0 + window; the snap supplies the delay).
-      const minWaitMs = config.deliveryWindow ? 0 : 1
+      // Zero-duration waits are valid when a delivery window OR an anchor supplies the real
+      // delay (compiled sequence anchor steps always carry duration 0; step-1 immediate waits
+      // carry 0 + window — same rule as `validateNodeConfig`).
+      const minWaitMs = config.deliveryWindow || config.anchor ? 0 : 1
       if (
         waitDuration < minWaitMs ||
         waitDuration > WAIT_CONSTANTS.EXECUTION.MAX_WAIT_DURATION_MS
@@ -186,9 +194,24 @@ export class WaitNodeProcessor extends BaseNodeProcessor {
     try {
       let waitDurationMs: number
       let resumeAt: Date
+      // Client-notifications plan §4.2 — an anchor step that resolved to a NULL or
+      // already-past target resolves near-instantly instead of snapping into the delivery
+      // window; the following sequence-send-email node's own guard decides skip vs send,
+      // so this wait must not introduce artificial delay for a step that won't send anyway.
+      let skipDeliveryWindowSnap = false
 
-      // Handle legacy duration field
-      if (!config.waitType && config.duration !== undefined) {
+      // Anchored wait (client-notifications plan §4.2) — takes priority over the legacy
+      // duration/specific-time config; a compiled anchor step never sets `waitType`.
+      if (config.anchor) {
+        const anchorOutcome = await this.resolveAnchorWait(node, contextManager, config.anchor)
+        resumeAt = anchorOutcome.resumeAt
+        waitDurationMs = resumeAt.getTime() - Date.now()
+        skipDeliveryWindowSnap = anchorOutcome.skip
+        if (anchorOutcome.skip) {
+          contextManager.log('INFO', node.name, anchorOutcome.reason)
+        }
+      } else if (!config.waitType && config.duration !== undefined) {
+        // Handle legacy duration field
         waitDurationMs = config.duration * 1000
         resumeAt = new Date(Date.now() + waitDurationMs)
       } else if (config.waitType === WaitType.DURATION) {
@@ -221,7 +244,7 @@ export class WaitNodeProcessor extends BaseNodeProcessor {
       // Sequences plan §3.3: snap the computed resumeAt forward into the configured
       // delivery window (business hours/days), before the dry-run cap so test runs
       // stay fast regardless of the window.
-      if (config.deliveryWindow) {
+      if (config.deliveryWindow && !skipDeliveryWindowSnap) {
         resumeAt = snapToDeliveryWindow(resumeAt, config.deliveryWindow)
         waitDurationMs = resumeAt.getTime() - Date.now()
         // A zero-duration wait already inside the window snaps to "now"; clamp to the
@@ -354,8 +377,80 @@ export class WaitNodeProcessor extends BaseNodeProcessor {
     await workflowDelayQueue.add(
       'resumeWorkflowJob',
       { workflowRunId, resumeFromNodeId: nodeId },
-      { delay, attempts: 3, backoff: { type: 'exponential', delay: 2000 } }
+      {
+        delay,
+        attempts: 3,
+        backoff: { type: 'exponential', delay: 2000 },
+        // Deterministic jobId (client-notifications plan §3/§4.2) — lets `stopWorkflowRun`
+        // and `reanchorSequenceRuns` cancel/replace this exact job in O(1) instead of
+        // scanning the delay queue.
+        jobId: buildWorkflowResumeJobId(workflowRunId, nodeId),
+      }
     )
+  }
+
+  /**
+   * Resolve an anchor-mode wait's target (client-notifications plan §4.2). Looks up the
+   * paused run's subject via `sys.triggerData.sequenceRunId` (the same lookup key the
+   * sequence-send-email node uses), resolves the subject's LIVE anchor date, and computes
+   * `target = anchorDate + offsetDays @ timeOfDay`. A NULL anchor, a missing subject/run, or
+   * an already-past target all resolve the SAME way — near-instantly, with
+   * `skip: true` — because the wait node itself doesn't send anything; the downstream
+   * sequence-send-email node's own guard is what actually decides to skip the send (or exit
+   * the run, for a genuinely deleted subject) — see `evaluateSubjectGuards`.
+   */
+  private async resolveAnchorWait(
+    node: WorkflowNode,
+    contextManager: ExecutionContextManager,
+    anchor: WaitAnchorConfig
+  ): Promise<{ resumeAt: Date; skip: boolean; reason: string }> {
+    const skipNow = (reason: string) => ({
+      resumeAt: new Date(Date.now() + 2000),
+      skip: true,
+      reason,
+    })
+
+    const context = contextManager.getContext()
+    const database = context.db ?? defaultDb
+    const triggerData = (await contextManager.getVariable('sys.triggerData')) as
+      | { sequenceRunId?: string }
+      | undefined
+    if (!triggerData?.sequenceRunId) {
+      return skipNow('Anchored wait has no sys.triggerData.sequenceRunId — skipping the wait')
+    }
+
+    const run = await database.query.SequenceRun.findFirst({
+      where: (t, { eq: eqOp, and: andOp }) =>
+        andOp(
+          eqOp(t.id, triggerData.sequenceRunId!),
+          eqOp(t.organizationId, context.organizationId)
+        ),
+      columns: { subjectId: true },
+    })
+    if (!run?.subjectId) {
+      return skipNow('Anchored wait has no subject on its SequenceRun — skipping the wait')
+    }
+
+    const { anchorDate } = await resolveSubjectAnchorDate(
+      database,
+      context.organizationId,
+      anchor.subjectRef,
+      run.subjectId
+    )
+    const target = computeAnchorTarget(
+      anchorDate,
+      { offsetDays: anchor.offsetDays, timeOfDay: anchor.timeOfDay },
+      anchor.timezone
+    )
+    if (!target || isPastAnchor(target)) {
+      return skipNow(
+        !target
+          ? 'NULL anchor date — skipping the wait'
+          : 'Anchor target already passed — skipping the wait'
+      )
+    }
+
+    return { resumeAt: target, skip: false, reason: '' }
   }
 
   private validateResumeTime(resumeAt: Date, waitDurationMs: number): void {
@@ -419,7 +514,16 @@ export class WaitNodeProcessor extends BaseNodeProcessor {
     if (!config.waitType) {
       errors.push('Wait type is required')
     } else if (config.waitType === WaitType.DURATION) {
-      if (!config.durationAmount) {
+      // Zero-duration waits are valid when a delivery window OR an anchor config supplies the
+      // actual delay (a compiled sequence step-1 wait carries `durationAmount: 0` + one of
+      // these — `preprocessNode`'s `minWaitMs` already encodes this same rule; mirrored here
+      // so validation doesn't reject what execution already treats as legal, client-
+      // notifications plan §4.2/§5 Phase 2). Preserves the original falsy check for every
+      // other case (undefined/null/''/NaN, and the variable-reference string/object forms
+      // stay truthy and pass as before).
+      const isZeroNumber = typeof config.durationAmount === 'number' && config.durationAmount === 0
+      const zeroDurationAllowed = Boolean(config.deliveryWindow) || Boolean(config.anchor)
+      if (!config.durationAmount && !(isZeroNumber && zeroDurationAllowed)) {
         errors.push('Duration amount is required')
       }
       if (!config.durationUnit) {

@@ -12,21 +12,12 @@ import { and, eq, gte, inArray, isNull, lte } from 'drizzle-orm'
 import { resolveAvailability } from '../../availability'
 import { getOrgCache } from '../../cache'
 import { extractFieldValueScalar } from '../../field-values'
+import { formatAddress } from '../address'
 import { listDispatchWorkers } from '../workers'
 import { resolveOrgDepot } from './depot'
 import type { PlannerBoardResult, PlannerDayWindow, PlannerWorker, PlannerWorkOrder } from './types'
 
 type FieldValueRow = typeof schema.FieldValue.$inferSelect
-
-/** Single-line join of an `AddressStruct` JSON value — mirrors `my-schedule.ts`'s private
- * `formatAddress` (not exported from that module, so re-implemented here). */
-function formatAddress(value: Record<string, unknown>): string | null {
-  const part = (key: string) => (typeof value[key] === 'string' ? (value[key] as string) : '')
-  const line1 = [part('street1'), part('street2')].filter(Boolean).join(' ')
-  const line2 = [part('city'), part('state'), part('zipCode')].filter(Boolean).join(', ')
-  const parts = [line1, line2, part('country')].filter(Boolean)
-  return parts.length > 0 ? parts.join(', ') : null
-}
 
 /** `HH:mm` 24h local clock string for minutes-since-midnight, or `null`. */
 function minutesToClock(minutes: number | undefined): string | null {

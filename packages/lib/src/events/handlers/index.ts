@@ -14,6 +14,7 @@ export {
 export { publishToAnalyticsJob } from './publish-to-analytics-job'
 export { sendInvitationUserJob } from './send-invitation-user-job'
 export { triggerAgents } from './trigger-agents'
+export { triggerMessageWorkflows } from './trigger-message-workflows'
 export { triggerResourceDispatch } from './trigger-resource-dispatch'
 export {
   getEventRecordId,
