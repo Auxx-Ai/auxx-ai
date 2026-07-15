@@ -348,7 +348,11 @@ function LineNameCellView({
         onSelectGroup={onSelectGroup}
         onFreeText={onFreeText}
         onCloseFocus={() => inputRef.current?.focus()}>
-        <div className='flex min-w-0 flex-1 items-center gap-1.5'>
+        <div
+          className='flex min-w-0 flex-1 items-center gap-1.5'
+          onClick={() => {
+            if (!focused) setFocused(true)
+          }}>
           {focused ? (
             <input
               ref={inputRef}
@@ -380,7 +384,7 @@ function LineNameCellView({
               data-cell-focusable
               onFocus={() => setFocused(true)}
               onClick={() => setFocused(true)}
-              className='flex h-7 min-w-0 items-center rounded-sm px-1 text-left text-sm outline-none'>
+              className='flex h-7 min-w-0 flex-1 items-center rounded-sm px-1 text-left text-sm outline-none'>
               <span className={cn('min-w-0 truncate', !name && 'text-muted-foreground/50')}>
                 {name || 'Add item'}
               </span>

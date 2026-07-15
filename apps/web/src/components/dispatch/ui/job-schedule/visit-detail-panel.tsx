@@ -1,31 +1,35 @@
 // apps/web/src/components/dispatch/ui/job-schedule/visit-detail-panel.tsx
 'use client'
 
+import { FieldType } from '@auxx/database/enums'
 import { toActorId } from '@auxx/types/actor'
 import { Avatar, AvatarFallback, AvatarImage } from '@auxx/ui/components/avatar'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
-import { Input } from '@auxx/ui/components/input'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { toastError } from '@auxx/ui/components/toast'
 import { format } from 'date-fns'
 import { CalendarClock, ReceiptText, Send, User, XCircle } from 'lucide-react'
 import { useState } from 'react'
+import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
+import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
 import { getInitials } from '~/components/groups/utils/group-utils'
 import { LineBuilder } from '~/components/money/ui/line-builder/line-builder'
 import { TuckedLabel } from '~/components/money/ui/tucked-label'
 import type { RecordDrillContext } from '~/components/records/record-drill-panels'
 import { useActors } from '~/components/resources/hooks/use-actor'
+import { BaseType } from '~/components/workflow/types'
 import { useConfirm } from '~/hooks/use-confirm'
 import { api } from '~/trpc/react'
 import { VISIT_STATUS_LABELS, type VisitStatus } from '../board/types'
 import { SchedulePopover } from '../schedule-popover'
 import {
-  formatVisitWindow,
+  isPastVisit,
   resolveVisitDurationMinutes,
   VISIT_STATUS_BADGE_VARIANT,
 } from './job-schedule-utils'
 import { useJobVisits } from './use-job-visits'
+import { VisitDateBlock } from './visit-date-block'
 import { VisitProofOfWork } from './visit-proof-of-work'
 
 /**
@@ -41,7 +45,7 @@ export function VisitDetailPanel({ recordId, itemId }: RecordDrillContext) {
   const [confirm, ConfirmDialog] = useConfirm()
   // Plan 20 §4.1a — explicit duration write. Never touches the schedule; draft state so a
   // blur/Enter commits and an Escape reverts without re-render churn on every keystroke.
-  const [durationDraft, setDurationDraft] = useState<string | null>(null)
+  const [durationDraft, setDurationDraft] = useState<number | undefined | null>(null)
   const setVisitDuration = api.dispatch.setVisitDuration.useMutation({
     onError: (error) => toastError({ title: 'Error saving duration', description: error.message }),
     onSuccess: refresh,
@@ -60,12 +64,15 @@ export function VisitDetailPanel({ recordId, itemId }: RecordDrillContext) {
 
   const canCancel = visit.status !== 'canceled' && visit.status !== 'done'
   const resolvedDurationMinutes = resolveVisitDurationMinutes(visit)
+  const isHistory = isPastVisit(visit)
+  const start = visit.startTime ? new Date(visit.startTime) : null
+  const end = visit.endTime ? new Date(visit.endTime) : null
+  const isProvisionalTime = Boolean(start) && visit.timeConfirmedAt == null
 
   const commitDuration = () => {
     if (durationDraft === null) return
-    const trimmed = durationDraft.trim()
     setDurationDraft(null)
-    const nextValue = trimmed === '' ? null : Number.parseInt(trimmed, 10)
+    const nextValue = durationDraft ?? null
     if (nextValue !== null && (Number.isNaN(nextValue) || nextValue < 1 || nextValue > 1440)) return
     if (nextValue === (visit.durationMinutes ?? null)) return
     setVisitDuration.mutate({ visitId: visit.id, durationMinutes: nextValue })
@@ -86,29 +93,44 @@ export function VisitDetailPanel({ recordId, itemId }: RecordDrillContext) {
   return (
     <ScrollArea className='h-full' scrollbarClassName='w-1.5 z-20' noFade>
       <div className='flex flex-col gap-4 p-4'>
-        <div className='flex items-center justify-between gap-2'>
-          <div className='flex flex-col gap-1'>
-            <span className='text-sm font-medium'>{formatVisitWindow(visit)}</span>
-            <Badge
-              variant={VISIT_STATUS_BADGE_VARIANT[visit.status] ?? 'default'}
-              size='sm'
-              className='w-fit'>
-              {VISIT_STATUS_LABELS[visit.status as VisitStatus] ?? visit.status}
-            </Badge>
-          </div>
-          {assignee ? (
-            <div className='flex items-center gap-2'>
-              <Avatar className='size-7'>
-                <AvatarImage src={assignee.avatarUrl ?? undefined} />
-                <AvatarFallback className='text-xs'>{getInitials(assignee.name)}</AvatarFallback>
-              </Avatar>
-              <span className='text-sm'>{assignee.name}</span>
+        <div className='flex items-center gap-3'>
+          <VisitDateBlock startTime={visit.startTime} />
+          <div className='min-w-0 flex-1'>
+            <div className='flex items-center gap-2 text-sm font-medium'>
+              <span className='truncate'>
+                {start ? `Visit · ${format(start, 'EEE, MMM d')}` : 'Not scheduled yet'}
+              </span>
+              <Badge variant={VISIT_STATUS_BADGE_VARIANT[visit.status] ?? 'default'} size='sm'>
+                {VISIT_STATUS_LABELS[visit.status as VisitStatus] ?? visit.status}
+              </Badge>
             </div>
-          ) : (
-            <span className='flex items-center gap-1.5 text-sm text-muted-foreground'>
-              <User className='size-4' /> Unassigned
-            </span>
-          )}
+            <div className='flex items-center gap-2 text-sm text-muted-foreground'>
+              {start && (
+                <span
+                  title={
+                    isProvisionalTime ? 'Estimated from route plan — not confirmed' : undefined
+                  }>
+                  {isProvisionalTime && '~'}
+                  {end ? `${format(start, 'p')} – ${format(end, 'p')}` : format(start, 'p')}
+                </span>
+              )}
+              {assignee ? (
+                <span className='flex min-w-0 items-center gap-1.5'>
+                  <Avatar className='size-4 shrink-0'>
+                    <AvatarImage src={assignee.avatarUrl ?? undefined} />
+                    <AvatarFallback className='text-[9px]'>
+                      {getInitials(assignee.name)}
+                    </AvatarFallback>
+                  </Avatar>
+                  <span className='truncate'>{assignee.name}</span>
+                </span>
+              ) : (
+                <span className='flex items-center gap-1'>
+                  <User className='size-3.5' /> Unassigned
+                </span>
+              )}
+            </div>
+          </div>
         </div>
 
         {visit.dispatchedAt && (
@@ -135,47 +157,52 @@ export function VisitDetailPanel({ recordId, itemId }: RecordDrillContext) {
               onScheduled={refresh}
               onUnscheduled={refresh}
             />
-            <Button
-              variant='outline'
-              size='sm'
-              onClick={() => mutations.dispatchVisit.mutate({ visitId: visit.id })}
-              loading={mutations.dispatchVisit.isPending}
-              disabled={!visit.assigneeUserId || !visit.startTime}>
-              <Send /> {visit.dispatchedAt ? 'Re-dispatch' : 'Dispatch'}
-            </Button>
-            {canCancel && (
-              <Button variant='ghost' size='sm' onClick={handleCancel}>
-                <XCircle /> Cancel visit
-              </Button>
+            {!isHistory && (
+              <>
+                <Button
+                  variant='outline'
+                  size='sm'
+                  onClick={() => mutations.dispatchVisit.mutate({ visitId: visit.id })}
+                  loading={mutations.dispatchVisit.isPending}
+                  disabled={!visit.assigneeUserId || !visit.startTime}>
+                  <Send /> {visit.dispatchedAt ? 'Re-dispatch' : 'Dispatch'}
+                </Button>
+                {canCancel && (
+                  <Button variant='ghost' size='sm' onClick={handleCancel}>
+                    <XCircle /> Cancel visit
+                  </Button>
+                )}
+              </>
             )}
           </div>
         )}
 
-        {/* Intended on-site duration (plan 20 §4.1a) — explicit value when set, else an empty
-            input showing the resolved fallback (span, then 60) as a placeholder. Never touches
-            the schedule; planner writes (apply-times, slot-in) only ever consume this. */}
-        <div className='flex items-center justify-between gap-2 text-sm'>
-          <span className='text-muted-foreground'>Duration</span>
-          <div className='flex items-center gap-1.5'>
-            <Input
-              type='number'
-              min={1}
-              max={1440}
-              inputMode='numeric'
-              placeholder={`${resolvedDurationMinutes} (default)`}
-              value={durationDraft ?? (visit.durationMinutes != null ? visit.durationMinutes : '')}
-              onChange={(e) => setDurationDraft(e.target.value)}
-              onBlur={commitDuration}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') e.currentTarget.blur()
-                if (e.key === 'Escape') setDurationDraft(null)
+        {/* Intended on-site duration (plan 20 §4.1a). An explicit value overrides the resolved
+            fallback (scheduled span, then 60 minutes), without changing the schedule itself. */}
+        <FieldPanel className='p-0'>
+          <FieldPanelRow title='Duration' type={BaseType.NUMBER} showIcon>
+            <div
+              onBlur={(event) => {
+                if (!event.currentTarget.contains(event.relatedTarget)) commitDuration()
               }}
-              disabled={!canEdit || setVisitDuration.isPending}
-              className='h-7 w-20 text-right'
-            />
-            <span className='text-xs text-muted-foreground'>min</span>
-          </div>
-        </div>
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') {
+                  event.currentTarget.querySelector<HTMLInputElement>('input')?.blur()
+                }
+                if (event.key === 'Escape') setDurationDraft(null)
+              }}>
+              <FieldInputAdapter
+                fieldType={FieldType.NUMBER}
+                value={
+                  durationDraft === null ? (visit.durationMinutes ?? undefined) : durationDraft
+                }
+                onChange={(value) => setDurationDraft(value as number | undefined)}
+                placeholder={`${resolvedDurationMinutes} min (default)`}
+                disabled={!canEdit || setVisitDuration.isPending}
+              />
+            </div>
+          </FieldPanelRow>
+        </FieldPanel>
 
         {/* Per-visit proof of work — the worker's captured QC checklist (notes + photos),
             read-only dispatcher-side. Authoring stays on the worker surface's Notes tab. */}
