@@ -204,7 +204,7 @@ export function WorkOrderBillingTab({ recordId, variant = 'tab' }: DetailViewTab
             Automatic invoicing is turned off for your organization.
           </div>
         )}
-        <div className='me-4'>
+        <div className='me-3'>
           {/* Block d — invoices */}
           <BlockLabel>Invoices</BlockLabel>
           <div className='bg-primary-100 border rounded-xl mb-4'>

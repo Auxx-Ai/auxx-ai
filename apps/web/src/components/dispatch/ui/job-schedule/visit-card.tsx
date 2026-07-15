@@ -19,6 +19,7 @@ import { VISIT_STATUS_FORWARD_ORDER, VISIT_STATUS_LABELS, type VisitStatus } fro
 import { getVisitDayContext, isExecutionReady } from '../board/utils'
 import { type ExistingVisitForOverlap, SchedulePopover } from '../schedule-popover'
 import type { JobVisit, UseJobVisitsResult } from './use-job-visits'
+import { VisitDateBlock } from './visit-date-block'
 
 export interface VisitCardProps {
   visit: JobVisit | undefined
@@ -106,19 +107,7 @@ export function VisitCard({
   return (
     <div className='group/tree-row space-y-2.5 rounded-2xl border bg-primary-100/50 py-2.5 px-3'>
       <div className='flex items-center gap-3'>
-        {/* Calendar date block — month + day (04 mock), icon when unscheduled. */}
-        <div className='flex size-11 shrink-0 flex-col items-center justify-center rounded-lg border bg-background'>
-          {start ? (
-            <>
-              <span className='text-[10px] font-semibold uppercase leading-none text-muted-foreground'>
-                {format(start, 'MMM')}
-              </span>
-              <span className='text-base font-semibold leading-tight'>{format(start, 'd')}</span>
-            </>
-          ) : (
-            <CalendarClock className='size-5 text-muted-foreground' />
-          )}
-        </div>
+        <VisitDateBlock startTime={visit.startTime} />
 
         <div className='min-w-0 flex-1'>
           <div className='flex items-center gap-2 text-sm font-medium'>

@@ -35,6 +35,9 @@
 //   flight keep mutating local draft state; once it resolves, anything that
 //   changed since the snapshot was sent is flushed via `saveMultipleAsync`
 //   against the real record. An untouched draft simply vanishes on unmount.
+//   An editable builder initially seeds three of these drafts as local loading
+//   placeholders. If persisted rows arrive, they replace only those initial
+//   drafts; they still follow the same no-save-until-edited rule.
 // - Reorder: dnd-kit sortable rows (grip handle) → `api.money.reorderLines`.
 //   Draft rows aren't part of the sortable set — they pin after the real rows.
 // - Delete: real rows → `api.record.delete` + `api.money.recomputeTotals`
@@ -106,6 +109,7 @@ export interface LineBuilderProps {
 
 const LINE_ITEM_SLUG = 'line-items'
 const PAGE_SIZE = 100
+const INITIAL_DRAFT_COUNT = 3
 /** Stable sort ref — `useRecordList` keys its cache off this object. */
 const LINE_SORT = [{ id: 'sortOrder', desc: false }]
 
@@ -175,6 +179,11 @@ export function LineBuilder({
   const [lastAddedDraftId, setLastAddedDraftId] = useState<string | null>(null)
   const draftsRef = useRef<DraftLine[]>([])
   draftsRef.current = drafts
+  // An editable document starts with a small working set of local-only rows.
+  // Track just these initial rows so persisted records can replace them without
+  // hiding drafts the user explicitly added later.
+  const seededInitialDraftsRef = useRef(false)
+  const initialDraftIdsRef = useRef<Set<string>>(new Set())
   /** Rows container — the keydown listener {@link useLineNav} attaches to. */
   const rowsContainerRef = useRef<HTMLDivElement>(null)
   // Last focused line cell (row/col + caret). Committing a draft fires a
@@ -294,6 +303,44 @@ export function LineBuilder({
   const displayIdsRef = useRef<string[]>([])
   displayIdsRef.current = displayRecords.map((r) => r.id)
 
+  // Seed local loading placeholders immediately. Persisted rows replace these
+  // exact drafts below; manually added drafts are never part of this set.
+  useEffect(() => {
+    if (
+      !entityDefinitionId ||
+      readOnly ||
+      seededInitialDraftsRef.current ||
+      displayRecords.length > 0 ||
+      draftsRef.current.length > 0
+    ) {
+      return
+    }
+
+    seededInitialDraftsRef.current = true
+    const initialDrafts = Array.from({ length: INITIAL_DRAFT_COUNT }, () =>
+      freshDraft(generateId())
+    )
+    initialDraftIdsRef.current = new Set(initialDrafts.map((draft) => draft.draftId))
+    setDrafts(initialDrafts)
+    setLastAddedDraftId(initialDrafts[0].draftId)
+  }, [entityDefinitionId, readOnly, displayRecords.length])
+
+  // When persisted lines arrive, hide/remove the initial loading placeholders
+  // in the same render. A draft becomes non-placeholder before its first
+  // `record.create`, so a user edit is never discarded by this cleanup.
+  const visibleDrafts = useMemo(() => {
+    if (displayRecords.length === 0) return drafts
+    return drafts.filter((draft) => !initialDraftIdsRef.current.has(draft.draftId))
+  }, [displayRecords.length, drafts])
+
+  useEffect(() => {
+    if (displayRecords.length === 0 || initialDraftIdsRef.current.size === 0) return
+    const initialDraftIds = initialDraftIdsRef.current
+    initialDraftIdsRef.current = new Set()
+    setDrafts((current) => current.filter((draft) => !initialDraftIds.has(draft.draftId)))
+    setLastAddedDraftId((current) => (current && initialDraftIds.has(current) ? null : current))
+  }, [displayRecords.length])
+
   const lineRecordIds = useMemo(
     () =>
       entityDefinitionId ? displayRecords.map((r) => toRecordId(entityDefinitionId, r.id)) : [],
@@ -352,6 +399,7 @@ export function LineBuilder({
   /** Draft delete (trash icon) — local splice, no network. */
   const deleteDraft = useCallback((draftId: string) => {
     creatingDraftIdsRef.current.delete(draftId)
+    initialDraftIdsRef.current.delete(draftId)
     setDrafts((prev) => prev.filter((d) => d.draftId !== draftId))
   }, [])
 
@@ -374,6 +422,9 @@ export function LineBuilder({
    */
   const createDraft = useCallback(
     async (draftId: string, overrides: Partial<DraftLine> = {}) => {
+      // The first real edit promotes an initial loading placeholder to a normal
+      // draft, so an arriving persisted list cannot remove the user's work.
+      initialDraftIdsRef.current.delete(draftId)
       if (creatingDraftIdsRef.current.has(draftId)) {
         setDrafts((prev) => prev.map((d) => (d.draftId === draftId ? { ...d, ...overrides } : d)))
         return
@@ -722,7 +773,7 @@ export function LineBuilder({
   // Enter / ArrowDown / Tab past the last row calls `addLine` to spawn a draft.
   useLineNav({
     containerRef: rowsContainerRef,
-    rowCount: displayRecords.length + drafts.length,
+    rowCount: displayRecords.length + visibleDrafts.length,
     colCount: 3,
     onAddRow: addLine,
     readOnly,
@@ -756,7 +807,7 @@ export function LineBuilder({
   if (!entityDefinitionId) return null
 
   const isEmpty =
-    !isLoading && !isLoadingRecords && displayRecords.length === 0 && drafts.length === 0
+    !isLoading && !isLoadingRecords && displayRecords.length === 0 && visibleDrafts.length === 0
 
   return (
     <div
@@ -839,7 +890,7 @@ export function LineBuilder({
           {/* Phantom draft rows — pinned after the real rows, never drag-sortable.
               They continue the nav index space (real count + draft index). */}
           {!readOnly &&
-            drafts.map((draft, i) => (
+            visibleDrafts.map((draft, i) => (
               <DraftLineRow
                 key={draft.draftId}
                 draft={draft}
