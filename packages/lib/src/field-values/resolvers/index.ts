@@ -8,3 +8,4 @@ export {
 } from './system-table-resolver'
 export { resolveThreadVirtualFields } from './thread-virtual-fields'
 export { isVirtualField, resolveVirtualFields } from './virtual-field-registry'
+export { resolveVisitVirtualFields } from './visit-virtual-fields'

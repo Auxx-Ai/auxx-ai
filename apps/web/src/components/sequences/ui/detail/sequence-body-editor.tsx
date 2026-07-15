@@ -39,8 +39,7 @@ interface SequenceBodyEditorProps {
   bodyJson: Record<string, unknown> | null
   /** Persisted HTML body — seed fallback when no JSON exists yet. */
   bodyHtml: string | null
-  /** Null for manual sequences — offers the visit-token placeholder root only on visit-subject
-   * sequences (client-notifications plan §4.5/§4.7). */
+  /** Null for manual sequences — offers Visit fields only on visit-subject sequences. */
   subjectKind?: 'visit' | 'work_order' | 'invoice' | null
   /** Fires with the stripped JSON + generated HTML on every doc change. */
   onChange: (bodyJson: JSONContent, bodyHtml: string) => void
@@ -235,13 +234,6 @@ function SequenceBodyEditorInner({
             extraRoots={extraRoots}
             onSelect={(id) => {
               runWithChipRange((editor, range) => {
-                // Visit tokens (§4.5) are pre-resolved by plain code in the send node, not the
-                // entity placeholder resolver — insert literal `{{visit:*}}` text, not a chip
-                // (a chip would render as an unresolvable "Unknown placeholder" badge).
-                if (id.startsWith('visit:')) {
-                  editor.chain().focus().deleteRange(range).insertContent(`{{${id}}} `).run()
-                  return
-                }
                 editor
                   .chain()
                   .focus()

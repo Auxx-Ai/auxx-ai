@@ -11,6 +11,7 @@ import type { FieldOptions } from '../custom-fields/field-options'
 import { FieldValueService } from '../field-values/field-value-service'
 import { formatToDisplayValue } from '../field-values/formatter'
 import { decodeFallback, renderFallbackPayload } from './fallback-codec'
+import { decodePlaceholderFormat, getPlaceholderFormatOptions } from './format-codec'
 import {
   type OrgSlug,
   type ParsedPlaceholder,
@@ -36,12 +37,21 @@ export interface PlaceholderResolutionContext {
   senderUserId?: string
   /** Optional "now" override — defaults to `new Date()`. Useful in tests. */
   now?: Date
+  /** Optional timezone for presentation-only fields such as Visit date and times. */
+  timezone?: string
   /**
    * Root id → RecordId map. Populated by `buildPlaceholderContextForThread`
    * (or any other context builder). Slug-rooted entries use the slug
    * literal; cuid-rooted entries use `EntityDefinition.id`.
    */
   recordIdsByRoot: Map<string, RecordId>
+}
+
+/** Typed field metadata retained until each placeholder span is rendered. */
+interface ResolvedFieldToken {
+  value: TypedFieldValue | TypedFieldValue[]
+  fieldType: FieldType
+  fieldOptions?: FieldOptions
 }
 
 /**
@@ -152,6 +162,7 @@ export async function resolvePlaceholdersInHtml(
 
     const raw = extractAttr(fullMatch, 'data-fallback')
     const fallback = decodeFallback(raw)
+    const format = decodePlaceholderFormat(extractAttr(fullMatch, 'data-format'))
 
     if (parsed.kind === 'org') {
       if (!orgProfile) throw new Error(`Organization profile not found for org: ${id}`)
@@ -173,10 +184,16 @@ export async function resolvePlaceholdersInHtml(
     }
 
     const resolved = fieldValues.get(id)
-    if (resolved === null || resolved === '' || resolved === undefined) {
+    if (resolved === null || resolved === undefined) {
       return fallback ? escapeHtml(renderFallbackPayload(fallback)) : ''
     }
-    return escapeHtml(resolved)
+    const value = formatFieldValueForText(resolved.value, resolved.fieldType, {
+      ...resolved.fieldOptions,
+      ...getPlaceholderFormatOptions(format, resolved.fieldType),
+      ...(ctx.timezone ? { timeZone: ctx.timezone } : {}),
+    })
+    if (value === '') return fallback ? escapeHtml(renderFallbackPayload(fallback)) : ''
+    return escapeHtml(value)
   })
 }
 
@@ -221,7 +238,7 @@ function userColumn(
 async function resolveFieldTokens(
   tokens: { id: string; parsed: Extract<ParsedPlaceholder, { kind: 'field' }> }[],
   ctx: PlaceholderResolutionContext
-): Promise<Map<string, string | null>> {
+): Promise<Map<string, ResolvedFieldToken | null>> {
   if (tokens.length === 0) return new Map()
 
   // Group by starting record id so we can batch per-record.
@@ -240,7 +257,7 @@ async function resolveFieldTokens(
   }
 
   const service = new FieldValueService(ctx.organizationId, ctx.senderUserId, ctx.db)
-  const result = new Map<string, string | null>()
+  const result = new Map<string, ResolvedFieldToken | null>()
 
   for (const [recordId, entries] of byRecordId) {
     const fieldRefs = entries.map((e) => e.fieldRef)
@@ -249,9 +266,9 @@ async function resolveFieldTokens(
       fieldReferences: fieldRefs,
     })
 
-    // Index batch results by fieldRefKey for lookup. Carry `fieldType` /
-    // `fieldOptions` alongside the value so we can format currency, dates,
-    // options, etc. the same way the UI does (not a raw `String()`).
+    // Index batch results by fieldRefKey for lookup. Typed metadata remains
+    // intact until Pass 2 because duplicate spans may apply distinct display
+    // overrides to the same field reference.
     const byKey = new Map<string, (typeof batch.values)[number]>()
     for (const v of batch.values) {
       byKey.set(fieldRefToKey(v.fieldRef), v)
@@ -261,12 +278,16 @@ async function resolveFieldTokens(
       const key = fieldRefToKey(fieldRef)
       const entry = byKey.get(key)
       const raw = entry?.value
-      // Null/undefined → let Pass 2 apply the fallback (or hard-fail).
+      // Null/undefined → let Pass 2 apply the span's fallback (or empty value).
       result.set(
         id,
         raw === undefined || raw === null
           ? null
-          : formatFieldValueForText(raw, entry!.fieldType, entry!.fieldOptions)
+          : {
+              value: raw,
+              fieldType: entry!.fieldType,
+              fieldOptions: entry!.fieldOptions,
+            }
       )
     }
   }
@@ -325,7 +346,7 @@ function formatSingleForText(
 ): string {
   // Human-readable name for links/people — never the raw id.
   if (v.type === 'relationship') return v.displayName ?? v.recordId
-  if (v.type === 'actor') return v.displayName ?? v.actorId
+  if (v.type === 'actor') return v.displayName ?? ''
 
   // Money is integer cents (money-engine convention); the shared converter
   // would multiply by 100 and be off by 100×.

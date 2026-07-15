@@ -21,6 +21,7 @@ import { cn } from '@auxx/ui/lib/utils'
 import { keepPreviousData } from '@tanstack/react-query'
 import { format, startOfMonth, startOfQuarter, startOfYear, subMonths, subWeeks } from 'date-fns'
 import { Activity, CalendarIcon, CheckCircle, Clock, Zap } from 'lucide-react'
+import { useState } from 'react'
 import { CartesianGrid, Line, LineChart, XAxis, YAxis } from 'recharts'
 import { create } from 'zustand'
 import { subscribeWithSelector } from 'zustand/middleware'
@@ -226,6 +227,7 @@ function WorkflowAnalyticsOptions() {
   const dateRange = useAnalyticsStore((state) => state.dateRange)
   const handleTimeFrameChange = useAnalyticsStore((state) => state.handleTimeFrameChange)
   const setDateRange = useAnalyticsStore((state) => state.setDateRange)
+  const [draftDateRange, setDraftDateRange] = useState<CalendarDateRange>(dateRange)
 
   return (
     <div className='flex items-center p-1 bg-primary-150 border-b border-primary-300 rounded-t-lg'>
@@ -258,8 +260,9 @@ function WorkflowAnalyticsOptions() {
             <PopoverContent className='w-auto p-0' align='start'>
               <Calendar
                 mode='range'
-                selected={dateRange}
+                selected={draftDateRange}
                 onSelect={(range: CalendarDateRange) => {
+                  setDraftDateRange(range)
                   if (range.from && range.to) {
                     setDateRange({ from: range.from, to: range.to })
                   }

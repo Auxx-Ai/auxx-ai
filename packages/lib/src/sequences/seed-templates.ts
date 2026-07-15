@@ -79,10 +79,8 @@ interface SeedTemplate {
  * `'there'` fallback, one factual sentence, a closing "any questions" line, no hard-coded
  * sign-off — the composer/send-node appends the sender's signature separately). Entity
  * placeholders (`contact:firstName`, `work_order:number`/`title`, `invoice:number`/`total`/
- * `dueDate`) are per-org `EntityDefinition`-id-keyed spans (§4.5); visit tokens
- * (`{{visit:date}}`, `{{visit:timeWindow}}`, `{{visit:assigneeFirstName}}`) are plain literal
- * text — the send node's visit-token pre-resolution pass substitutes them directly, no span
- * wrapping needed.
+ * `dueDate`) are per-org `EntityDefinition`-id-keyed spans (§4.5). Visit fields are normal
+ * system-resource spans keyed by their stable `visit` root.
  */
 export const SEQUENCE_SEED_TEMPLATES: SeedTemplate[] = [
   {
@@ -101,7 +99,8 @@ export const SEQUENCE_SEED_TEMPLATES: SeedTemplate[] = [
         delayDays: 0,
         bodyHtml: (defs) =>
           `<p>Hi ${placeholderSpan(defs.contact!, 'firstName', FIRST_NAME_FALLBACK)},</p>` +
-          `<p>We've got you down for {{visit:date}} at {{visit:timeWindow}} for ` +
+          `<p>We've got you down for ${placeholderSpan('visit', 'date')} from ` +
+          `${placeholderSpan('visit', 'startTime')} to ${placeholderSpan('visit', 'endTime')} for ` +
           `${placeholderSpan(defs.work_order!, 'title', TITLE_FALLBACK)} ` +
           `(${placeholderSpan(defs.work_order!, 'number')}).</p>${CLOSING}`,
       },
@@ -112,7 +111,8 @@ export const SEQUENCE_SEED_TEMPLATES: SeedTemplate[] = [
         anchorTimeOfDay: '09:00',
         bodyHtml: (defs) =>
           `<p>Hi ${placeholderSpan(defs.contact!, 'firstName', FIRST_NAME_FALLBACK)},</p>` +
-          `<p>Just a reminder — we'll see you on {{visit:date}} at {{visit:timeWindow}}.</p>${CLOSING}`,
+          `<p>Just a reminder — we'll see you on ${placeholderSpan('visit', 'date')} at ` +
+          `${placeholderSpan('visit', 'startTime')}.</p>${CLOSING}`,
       },
       {
         subject: "We'll see you today",
@@ -121,8 +121,8 @@ export const SEQUENCE_SEED_TEMPLATES: SeedTemplate[] = [
         anchorTimeOfDay: '07:30',
         bodyHtml: (defs) =>
           `<p>Hi ${placeholderSpan(defs.contact!, 'firstName', FIRST_NAME_FALLBACK)},</p>` +
-          `<p>Today's the day! We'll be there at {{visit:timeWindow}}. {{visit:assigneeFirstName}} ` +
-          `will be your technician.</p>${CLOSING}`,
+          `<p>Today's the day! We'll be there at ${placeholderSpan('visit', 'startTime')}. ` +
+          `${placeholderSpan('visit', 'assignee')} will be your technician.</p>${CLOSING}`,
       },
     ],
   },
@@ -142,8 +142,8 @@ export const SEQUENCE_SEED_TEMPLATES: SeedTemplate[] = [
         delayDays: 0,
         bodyHtml: (defs) =>
           `<p>Hi ${placeholderSpan(defs.contact!, 'firstName', FIRST_NAME_FALLBACK)},</p>` +
-          `<p>Just a heads up — {{visit:assigneeFirstName}} is on the way and should arrive ` +
-          `around {{visit:timeWindow}}.</p>${CLOSING}`,
+          `<p>Just a heads up — ${placeholderSpan('visit', 'assignee')} is on the way and should arrive ` +
+          `around ${placeholderSpan('visit', 'startTime')}.</p>${CLOSING}`,
       },
     ],
   },
@@ -241,7 +241,7 @@ export const SEQUENCE_SEED_TEMPLATES: SeedTemplate[] = [
         delayDays: 0,
         bodyHtml: (defs) =>
           `<p>Hi ${placeholderSpan(defs.contact!, 'firstName', FIRST_NAME_FALLBACK)},</p>` +
-          `<p>Thank you for having us out on {{visit:date}}. We hope everything went well — see ` +
+          `<p>Thank you for having us out on ${placeholderSpan('visit', 'date')}. We hope everything went well — see ` +
           `you next time!</p>${CLOSING}`,
       },
     ],

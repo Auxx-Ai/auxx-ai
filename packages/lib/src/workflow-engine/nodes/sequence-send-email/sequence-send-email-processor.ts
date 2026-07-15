@@ -1,7 +1,7 @@
 // packages/lib/src/workflow-engine/nodes/sequence-send-email/sequence-send-email-processor.ts
 // Server-registered node processor for a compiled sequence's per-step send
-// (Sequences plan §3.2/§3.3; client-notifications plan §4.4 adds the subject guards, visit
-// tokens, conditional footer, and `EntitySignal` write below) — wraps `MessageSenderService`.
+// (Sequences plan §3.2/§3.3; client-notifications plan §4.4 adds the subject guards,
+// conditional footer, and `EntitySignal` write below) — wraps `MessageSenderService`.
 // NOT added to the user node palette; only `publishSequence` ever writes a node with this
 // `type`.
 
@@ -9,8 +9,6 @@ import { type Database, database as defaultDb, schema } from '@auxx/database'
 import { IdentifierType, SendStatus } from '@auxx/database/enums'
 import type { RecordId } from '@auxx/types/resource'
 import { parseRecordId, toRecordId } from '@auxx/types/resource'
-import { format } from 'date-fns'
-import { toZonedTime } from 'date-fns-tz'
 import { and, eq, isNull } from 'drizzle-orm'
 import { getOrgCache } from '../../../cache'
 import { MessageSenderService } from '../../../messages/message-sender.service'
@@ -67,39 +65,6 @@ function isTerminalSendFailure(errorMessage: string | null | undefined): boolean
     return true // INVALID_RECIPIENTS
   }
   return false
-}
-
-/** Visit tokens (§4.5) — pre-resolved by plain code before the entity placeholder pass, since
- * `WorkOrderVisit` is a plain table (not an `EntityInstance`) and can't ride
- * `resolvePlaceholdersInHtml`. An unscheduled visit (`startTime` null — shouldn't reach here,
- * the subject guard already exits on that) degrades every time token to `''`, never
- * "undefined". */
-function buildVisitTokenMap(
-  visit: { startTime: Date | null; endTime: Date | null },
-  timezone: string,
-  assigneeFirstName: string
-): Record<string, string> {
-  if (!visit.startTime) {
-    return {
-      '{{visit:date}}': '',
-      '{{visit:startTime}}': '',
-      '{{visit:endTime}}': '',
-      '{{visit:timeWindow}}': '',
-      '{{visit:assigneeFirstName}}': assigneeFirstName,
-    }
-  }
-  const zonedStart = toZonedTime(visit.startTime, timezone)
-  const dateStr = format(zonedStart, 'MMMM d, yyyy')
-  const startStr = format(zonedStart, 'h:mm a')
-  const endStr = visit.endTime ? format(toZonedTime(visit.endTime, timezone), 'h:mm a') : ''
-  const timeWindow = endStr ? `${startStr} – ${endStr}` : startStr
-  return {
-    '{{visit:date}}': dateStr,
-    '{{visit:startTime}}': startStr,
-    '{{visit:endTime}}': endStr,
-    '{{visit:timeWindow}}': timeWindow,
-    '{{visit:assigneeFirstName}}': assigneeFirstName,
-  }
 }
 
 export class SequenceSendEmailProcessor extends BaseNodeProcessor {
@@ -278,27 +243,11 @@ export class SequenceSendEmailProcessor extends BaseNodeProcessor {
     }
 
     try {
-      // ── (4) visit-token pre-resolution (§4.5), THEN entity placeholder pass ──
-      let bodyHtml = config.bodyHtml
-      let timeBearingTokenSubstituted = false
-      if (subjectKind === 'visit' && visitRow) {
-        let assigneeFirstName = ''
-        if (visitRow.assigneeUserId) {
-          const assignee = await database.query.User.findFirst({
-            where: eq(schema.User.id, visitRow.assigneeUserId),
-            columns: { firstName: true, name: true },
-          })
-          assigneeFirstName = assignee?.firstName || assignee?.name?.split(' ')[0] || ''
-        }
-        const timezone = sequence.deliveryTimezone ?? 'UTC'
-        const hasTimeToken = /\{\{visit:(date|startTime|timeWindow)\}\}/.test(bodyHtml)
-        const tokens = buildVisitTokenMap(visitRow, timezone, assigneeFirstName)
-        for (const [token, value] of Object.entries(tokens)) {
-          bodyHtml = bodyHtml.split(token).join(value)
-        }
-        timeBearingTokenSubstituted = hasTimeToken && visitRow.startTime !== null
-      }
-
+      // ── (4) generic placeholder resolution with subject record context ──────
+      const includesVisitScheduleField =
+        subjectKind === 'visit' &&
+        visitRow?.startTime != null &&
+        /data-id="visit:(date|startTime|endTime)"/.test(config.bodyHtml)
       const entityDefs = await getOrgCache().get(organizationId, 'entityDefs')
       const recordIdsByRoot = new Map<string, RecordId>()
       if (entityDefs.contact && contactRecordId) {
@@ -310,12 +259,16 @@ export class SequenceSendEmailProcessor extends BaseNodeProcessor {
       if (workOrderInstanceId && entityDefs.work_order) {
         recordIdsByRoot.set(entityDefs.work_order, toRecordId('work_order', workOrderInstanceId))
       }
+      if (subjectKind === 'visit' && visitRow) {
+        recordIdsByRoot.set('visit', toRecordId('visit', visitRow.id))
+      }
       const placeholderCtx: PlaceholderResolutionContext = {
         db: database,
         organizationId,
         recordIdsByRoot,
+        timezone: sequence.deliveryTimezone ?? 'UTC',
       }
-      let resolvedHtml = await resolvePlaceholdersInHtml(bodyHtml, placeholderCtx)
+      let resolvedHtml = await resolvePlaceholdersInHtml(config.bodyHtml, placeholderCtx)
 
       // ── (5) unsubscribe footer — only when the sequence wants one ─────────
       if (sequence.includeUnsubscribeFooter) {
@@ -427,7 +380,7 @@ export class SequenceSendEmailProcessor extends BaseNodeProcessor {
       })
 
       // ── (7) the sent reminder IS the promise — stamp timeConfirmedAt if unset ───
-      if (subjectKind === 'visit' && run.subjectId && timeBearingTokenSubstituted) {
+      if (subjectKind === 'visit' && run.subjectId && includesVisitScheduleField) {
         await database
           .update(schema.WorkOrderVisit)
           .set({ timeConfirmedAt: new Date() })

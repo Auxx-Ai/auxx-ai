@@ -20,7 +20,6 @@ export {
   SEQUENCE_ENROLL_MAX_RECIPIENTS,
   SEQUENCE_TRIGGER_LABELS,
   SEQUENCE_TRIGGER_TYPES,
-  SEQUENCE_VISIT_PLACEHOLDER_TOKENS,
 } from './client'
 export type { UpdateSequenceInput } from './crud'
 // CRUD

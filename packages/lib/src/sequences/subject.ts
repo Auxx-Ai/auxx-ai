@@ -159,9 +159,10 @@ export async function evaluateSubjectGuards(
 export interface SubjectContext {
   contactRecordId?: RecordId
   workOrderInstanceId?: string
-  /** Only populated for a visit subject — the token pre-resolution pass (§4.5) needs the row;
-   * `recurrenceRuleId`/`occurrenceDate` feed the signal metadata (§4.10's future dedup key). */
+  /** Only populated for a visit subject; `recurrenceRuleId`/`occurrenceDate` feed the signal
+   * metadata (§4.10's future dedup key). */
   visit?: {
+    id: string
     startTime: Date | null
     endTime: Date | null
     assigneeUserId: string | null
@@ -215,6 +216,7 @@ export async function resolveSubjectContext(
         eq(schema.WorkOrderVisit.organizationId, organizationId)
       ),
       columns: {
+        id: true,
         workOrderId: true,
         startTime: true,
         endTime: true,
@@ -226,6 +228,7 @@ export async function resolveSubjectContext(
     workOrderInstanceId = row?.workOrderId
     if (row)
       visit = {
+        id: row.id,
         startTime: row.startTime,
         endTime: row.endTime,
         assigneeUserId: row.assigneeUserId,

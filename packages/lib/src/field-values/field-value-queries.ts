@@ -625,14 +625,14 @@ async function fetchVirtualFieldResults(
     if (!recordId) continue
 
     for (const entry of virtualFields) {
-      const value = fieldMap.get(entry.fieldKey)
-      if (value) {
+      const virtualValue = fieldMap.get(entry.fieldKey)
+      if (virtualValue) {
         results.push({
           recordId,
           fieldRef: entry.fieldRef,
-          value,
+          value: virtualValue.value,
           fieldType: entry.fieldType,
-          fieldOptions: entry.fieldOptions,
+          fieldOptions: { ...entry.fieldOptions, ...virtualValue.fieldOptions },
         })
       }
     }
@@ -853,8 +853,8 @@ async function fetchTerminalFieldValues(
     for (const [entityId, fieldMap] of virtualValues) {
       const rid = instanceToRecordId.get(entityId)
       if (!rid) continue
-      const val = fieldMap.get(cachedField.key)
-      if (val) resultMap.set(rid, val)
+      const virtualValue = fieldMap.get(cachedField.key)
+      if (virtualValue) resultMap.set(rid, virtualValue.value)
     }
     return resultMap
   }
