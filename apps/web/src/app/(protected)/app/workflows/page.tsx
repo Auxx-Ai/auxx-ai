@@ -37,6 +37,9 @@ import { WorkflowsStatsCards } from './_components/stats/workflows-stats-cards'
  */
 function WorkflowsPageContent() {
   const [tab, setTab] = useQueryState('t', { defaultValue: 'workflows' })
+  const { hasAccess } = useFeatureFlags()
+  const sequencesEnabled = hasAccess(FeatureKey.sequences)
+  const activeTab = sequencesEnabled && tab === 'sequences' ? 'sequences' : 'workflows'
 
   return (
     <MainPage>
@@ -51,36 +54,40 @@ function WorkflowsPageContent() {
             void setTab('workflows')
           }}
         />
-        <CommandAction
-          label='Go to Sequences'
-          icon='send'
-          keywords='sequences tab view cadence email outreach'
-          priority={1}
-          perform={() => {
-            useCommandPaletteStore.getState().close()
-            void setTab('sequences')
-          }}
-        />
+        {sequencesEnabled && (
+          <CommandAction
+            label='Go to Sequences'
+            icon='send'
+            keywords='sequences tab view cadence email outreach'
+            priority={1}
+            perform={() => {
+              useCommandPaletteStore.getState().close()
+              void setTab('sequences')
+            }}
+          />
+        )}
       </CommandContext>
 
       <MainPageHeader
-        action={tab === 'sequences' ? <CreateSequenceButton /> : <CreateWorkflowButton />}>
+        action={activeTab === 'sequences' ? <CreateSequenceButton /> : <CreateWorkflowButton />}>
         <MainPageBreadcrumb>
           <MainPageBreadcrumbItem title='Automation' href='/app/workflows' last />
         </MainPageBreadcrumb>
       </MainPageHeader>
 
       <MainPageContent>
-        <Tabs value={tab} onValueChange={setTab} className='flex-1 h-full flex flex-col'>
+        <Tabs value={activeTab} onValueChange={setTab} className='flex-1 h-full flex flex-col'>
           <TabsList className='border-b w-full justify-start rounded-b-none bg-primary-150'>
             <TabsTrigger value='workflows' variant='outline'>
               <Workflow />
               Workflows
             </TabsTrigger>
-            <TabsTrigger value='sequences' variant='outline'>
-              <SendHorizonal />
-              Sequences
-            </TabsTrigger>
+            {sequencesEnabled && (
+              <TabsTrigger value='sequences' variant='outline'>
+                <SendHorizonal />
+                Sequences
+              </TabsTrigger>
+            )}
           </TabsList>
 
           <TabsContent value='workflows' className='flex flex-col flex-1 min-h-0'>
@@ -98,9 +105,11 @@ function WorkflowsPageContent() {
             </ListSelectionProvider>
           </TabsContent>
 
-          <TabsContent value='sequences' className='flex flex-col flex-1 min-h-0'>
-            <SequencesList />
-          </TabsContent>
+          {sequencesEnabled && (
+            <TabsContent value='sequences' className='flex flex-col flex-1 min-h-0'>
+              <SequencesList />
+            </TabsContent>
+          )}
         </Tabs>
       </MainPageContent>
     </MainPage>

@@ -11,6 +11,7 @@ import { ResourcePermission } from '@auxx/database/enums'
 import { getOrgCache } from '@auxx/lib/cache'
 import { conditionGroupsSchema } from '@auxx/lib/conditions'
 import { AuxxError } from '@auxx/lib/errors'
+import { FeatureKey, FeaturePermissionService } from '@auxx/lib/permissions'
 import {
   checkSequenceAccess,
   createSequence,
@@ -38,6 +39,15 @@ import { and, asc, eq, inArray } from 'drizzle-orm'
 import type { Result } from 'neverthrow'
 import { z } from 'zod'
 import { createTRPCRouter, protectedProcedure } from '~/server/api/trpc'
+
+/** Protected procedure that requires the organization to have Sequences enabled. */
+const sequenceProcedure = protectedProcedure.use(async ({ ctx, next }) => {
+  await new FeaturePermissionService().requireAccess(
+    ctx.session.organizationId,
+    FeatureKey.sequences
+  )
+  return next()
+})
 
 // ── Shared zod shapes ─────────────────────────────────────────────────────────
 
@@ -173,7 +183,7 @@ async function filterViewableSequences(
 
 export const sequenceRouter = createTRPCRouter({
   /** Sequences the current user can view, newest first, with run counts per status. */
-  list: protectedProcedure.query(async ({ ctx }) => {
+  list: sequenceProcedure.query(async ({ ctx }) => {
     const all = unwrap(await listSequences(ctx.db, { organizationId: ctx.session.organizationId }))
     const visible = await filterViewableSequences(ctx, all)
     if (visible.length === 0) return []
@@ -210,7 +220,7 @@ export const sequenceRouter = createTRPCRouter({
   }),
 
   /** A sequence + its ordered steps in one payload. */
-  get: protectedProcedure.input(z.object({ id: z.string() })).query(async ({ ctx, input }) => {
+  get: sequenceProcedure.input(z.object({ id: z.string() })).query(async ({ ctx, input }) => {
     await requireSequenceAccess(ctx, input.id, ResourcePermission.view)
 
     const sequence = unwrap(
@@ -238,7 +248,7 @@ export const sequenceRouter = createTRPCRouter({
    * `triggerType` (plan §4.7 — defaults to `'manual'` at the schema level when
    * omitted) drives `subjectKind`, derived here so the two columns never desync.
    */
-  create: protectedProcedure
+  create: sequenceProcedure
     .input(z.object({ name: z.string().min(1), triggerType: triggerTypeSchema.optional() }))
     .mutation(async ({ ctx, input }) => {
       // integrationId stays null while drafting — the settings drawer sets the
@@ -261,7 +271,7 @@ export const sequenceRouter = createTRPCRouter({
    * value) and is locked once a sequence carries a `templateKey` — a seeded sequence's trigger
    * identity must stay stable (plan §4.7).
    */
-  update: protectedProcedure
+  update: sequenceProcedure
     .input(z.object({ id: z.string(), fields: updateSequenceFieldsSchema }))
     .mutation(async ({ ctx, input }) => {
       await requireSequenceAccess(ctx, input.id, ResourcePermission.edit)
@@ -317,24 +327,22 @@ export const sequenceRouter = createTRPCRouter({
     }),
 
   /** Delete a sequence (and its hidden workflow) — admin grant required, no active runs. */
-  delete: protectedProcedure
-    .input(z.object({ id: z.string() }))
-    .mutation(async ({ ctx, input }) => {
-      await requireSequenceAccess(ctx, input.id, ResourcePermission.admin)
-      unwrap(
-        await deleteSequence(ctx.db, {
-          sequenceId: input.id,
-          organizationId: ctx.session.organizationId,
-        })
-      )
-      return { success: true }
-    }),
+  delete: sequenceProcedure.input(z.object({ id: z.string() })).mutation(async ({ ctx, input }) => {
+    await requireSequenceAccess(ctx, input.id, ResourcePermission.admin)
+    unwrap(
+      await deleteSequence(ctx.db, {
+        sequenceId: input.id,
+        organizationId: ctx.session.organizationId,
+      })
+    )
+    return { success: true }
+  }),
 
   /**
    * Add an empty step. The domain layer appends at the end; when `afterStepId`
    * is given the new step is immediately reordered to sit right after it.
    */
-  createStep: protectedProcedure
+  createStep: sequenceProcedure
     .input(z.object({ sequenceId: z.string(), afterStepId: z.string().optional() }))
     .mutation(async ({ ctx, input }) => {
       await requireSequenceAccess(ctx, input.sequenceId, ResourcePermission.edit)
@@ -374,7 +382,7 @@ export const sequenceRouter = createTRPCRouter({
     }),
 
   /** Patch a step's content/delays. */
-  updateStep: protectedProcedure
+  updateStep: sequenceProcedure
     .input(z.object({ stepId: z.string(), fields: updateStepFieldsSchema }))
     .mutation(async ({ ctx, input }) => {
       const sequenceId = await getStepSequenceId(ctx, input.stepId)
@@ -390,7 +398,7 @@ export const sequenceRouter = createTRPCRouter({
     }),
 
   /** Remove a step. */
-  deleteStep: protectedProcedure
+  deleteStep: sequenceProcedure
     .input(z.object({ stepId: z.string() }))
     .mutation(async ({ ctx, input }) => {
       const sequenceId = await getStepSequenceId(ctx, input.stepId)
@@ -406,7 +414,7 @@ export const sequenceRouter = createTRPCRouter({
     }),
 
   /** Move a step between two neighbors (fractional sortOrder). */
-  reorderStep: protectedProcedure
+  reorderStep: sequenceProcedure
     .input(
       z.object({
         stepId: z.string(),
@@ -430,7 +438,7 @@ export const sequenceRouter = createTRPCRouter({
     }),
 
   /** Validate + compile the step list into the hidden workflow graph. */
-  publish: protectedProcedure
+  publish: sequenceProcedure
     .input(z.object({ id: z.string() }))
     .mutation(async ({ ctx, input }) => {
       await requireSequenceAccess(ctx, input.id, ResourcePermission.edit)
@@ -444,7 +452,7 @@ export const sequenceRouter = createTRPCRouter({
     }),
 
   /** Enroll up to 50 contacts — returns per-recipient enrolled/skipped outcomes. */
-  enroll: protectedProcedure
+  enroll: sequenceProcedure
     .input(
       z.object({
         sequenceId: z.string(),
@@ -465,7 +473,7 @@ export const sequenceRouter = createTRPCRouter({
     }),
 
   /** Runs (enrollments) for the Recipients tab, optionally filtered by status. */
-  listRuns: protectedProcedure
+  listRuns: sequenceProcedure
     .input(z.object({ sequenceId: z.string(), status: runStatusSchema.optional() }))
     .query(async ({ ctx, input }) => {
       await requireSequenceAccess(ctx, input.sequenceId, ResourcePermission.view)
@@ -480,7 +488,7 @@ export const sequenceRouter = createTRPCRouter({
     }),
 
   /** Manually remove a recipient from a sequence (exit reason 'manual'). */
-  exitRun: protectedProcedure
+  exitRun: sequenceProcedure
     .input(z.object({ sequenceRunId: z.string() }))
     .mutation(async ({ ctx, input }) => {
       const run = await ctx.db.query.SequenceRun.findFirst({
@@ -503,7 +511,7 @@ export const sequenceRouter = createTRPCRouter({
     }),
 
   /** Header stats: enrolled/active/completed/exited/failed, per-step sent, reply/bounce rates. */
-  stats: protectedProcedure
+  stats: sequenceProcedure
     .input(z.object({ sequenceId: z.string() }))
     .query(async ({ ctx, input }) => {
       await requireSequenceAccess(ctx, input.sequenceId, ResourcePermission.view)
@@ -523,7 +531,7 @@ export const sequenceRouter = createTRPCRouter({
    * ResourceAccess check — every member with dispatch settings access already sees the whole
    * template set). Ordered per §4.6's documented table, not `createdAt`.
    */
-  listTemplates: protectedProcedure.query(async ({ ctx }) => {
+  listTemplates: sequenceProcedure.query(async ({ ctx }) => {
     const all = unwrap(await listSequences(ctx.db, { organizationId: ctx.session.organizationId }))
     const templated = all.filter((s): s is SequenceEntity & { templateKey: string } =>
       Boolean(s.templateKey)

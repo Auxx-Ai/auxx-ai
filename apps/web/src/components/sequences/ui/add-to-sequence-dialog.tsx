@@ -1,6 +1,7 @@
 // apps/web/src/components/sequences/ui/add-to-sequence-dialog.tsx
 'use client'
 
+import { FeatureKey } from '@auxx/lib/permissions/client'
 import { SEQUENCE_ENROLL_MAX_RECIPIENTS } from '@auxx/lib/sequences/client'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
@@ -18,6 +19,7 @@ import { toastError } from '@auxx/ui/components/toast'
 import { cn } from '@auxx/ui/lib/utils'
 import { CircleAlert, SendHorizonal, TriangleAlert } from 'lucide-react'
 import { useEffect, useState } from 'react'
+import { useFeatureFlags } from '~/providers/feature-flag-provider'
 import { api } from '~/trpc/react'
 
 interface AddToSequenceDialogProps {
@@ -74,6 +76,8 @@ export function AddToSequenceDialog({
   onOpenChange,
   recipientEntityInstanceIds,
 }: AddToSequenceDialogProps) {
+  const { hasAccess } = useFeatureFlags()
+  const sequencesEnabled = hasAccess(FeatureKey.sequences)
   const [selectedSequenceId, setSelectedSequenceId] = useState<string | null>(null)
   const [results, setResults] = useState<
     { recipientId: string; status: 'enrolled' | 'skipped'; reason?: string }[] | null
@@ -81,7 +85,9 @@ export function AddToSequenceDialog({
 
   const overCap = recipientEntityInstanceIds.length > SEQUENCE_ENROLL_MAX_RECIPIENTS
 
-  const sequences = api.sequence.list.useQuery(undefined, { enabled: open && !overCap })
+  const sequences = api.sequence.list.useQuery(undefined, {
+    enabled: sequencesEnabled && open && !overCap,
+  })
   const eligible = (sequences.data ?? []).filter((s) => s.status === 'enabled' && s.publishedAt)
 
   const enroll = api.sequence.enroll.useMutation({
@@ -105,6 +111,8 @@ export function AddToSequenceDialog({
       setResults(null)
     }
   }, [open])
+
+  if (!sequencesEnabled) return null
 
   const handleEnroll = () => {
     if (!selectedSequenceId) return

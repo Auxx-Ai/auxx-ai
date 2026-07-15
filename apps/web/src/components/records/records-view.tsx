@@ -4,6 +4,7 @@
 import type { FieldType } from '@auxx/database/types'
 import { isAiEligible } from '@auxx/lib/custom-fields/client'
 import { converters } from '@auxx/lib/field-values/client'
+import { FeatureKey } from '@auxx/lib/permissions/client'
 import type { RecordId, ResourceField } from '@auxx/lib/resources/client'
 import type { ActorId } from '@auxx/types/actor'
 import type { AiOptions } from '@auxx/types/custom-field'
@@ -69,6 +70,7 @@ import { AddToSequenceDialog } from '~/components/sequences/ui/add-to-sequence-d
 import { MassWorkflowTriggerDialog } from '~/components/workflow/mass-workflow-trigger-dialog'
 import { useEffectiveDockState } from '~/hooks/use-effective-dock-state'
 import { useEntityInstanceOperations } from '~/hooks/use-entity-instance-operations'
+import { useFeatureFlags } from '~/providers/feature-flag-provider'
 import { useDockStore } from '~/stores/dock-store'
 import { RecordDrawer } from './record-drawer'
 import { searchConditionsToGroup, useRecordsSearchStore } from './records-search-store'
@@ -102,6 +104,8 @@ interface RecordsViewProps {
 export function RecordsView({ slug, basePath, embedded }: RecordsViewProps) {
   const resolvedBasePath = basePath ?? `/app/custom/${slug}`
   const router = useRouter()
+  const { hasAccess } = useFeatureFlags()
+  const sequencesEnabled = hasAccess(FeatureKey.sequences)
 
   // Cross-client saved-view refresh (e.g. Kopilot create/update/set-default).
   useTableViewRealtime()
@@ -338,7 +342,7 @@ export function RecordsView({ slug, basePath, embedded }: RecordsViewProps) {
         },
       },
       // Sequences plan §17 — contacts are the only enrollable recipient type.
-      ...(isContactResource
+      ...(isContactResource && sequencesEnabled
         ? [
             {
               label: 'Add to sequence',
@@ -373,7 +377,7 @@ export function RecordsView({ slug, basePath, embedded }: RecordsViewProps) {
         action: (rows: EntityRow[]) => handleBulkDelete(rows),
       },
     ],
-    [handleBulkArchive, handleBulkDelete, isContactResource]
+    [handleBulkArchive, handleBulkDelete, isContactResource, sequencesEnabled]
   )
 
   const { saveBulkMultipleFields } = useSaveFieldValue()
@@ -990,7 +994,7 @@ export function RecordsView({ slug, basePath, embedded }: RecordsViewProps) {
       )}
 
       {/* Add to Sequence Dialog (contact views only; dialog enforces the 50-recipient cap) */}
-      {isAddToSequenceDialogOpen && (
+      {sequencesEnabled && isAddToSequenceDialogOpen && (
         <AddToSequenceDialog
           open={isAddToSequenceDialogOpen}
           onOpenChange={setIsAddToSequenceDialogOpen}
