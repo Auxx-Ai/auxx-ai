@@ -53,6 +53,10 @@ export function useBoardMutations(range: DateRange) {
         startTime: vars.startTime,
         endTime: vars.endTime,
       }
+      const existing = utils.dispatch.getBoard
+        .getData(range)
+        ?.visits.find((v) => v.id === vars.visitId)
+      if (existing?.status === 'canceled') patch.status = 'scheduled'
       if (vars.assigneeUserId !== undefined) patch.assigneeUserId = vars.assigneeUserId
       return { previous: patchVisit(vars.visitId, patch) }
     },

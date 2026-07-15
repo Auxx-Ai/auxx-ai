@@ -69,7 +69,6 @@ const updateSequenceFieldsSchema = z.object({
 const updateStepFieldsSchema = z.object({
   subject: z.string().nullable().optional(),
   bodyJson: z.record(z.string(), z.unknown()).nullable().optional(),
-  bodyHtml: z.string().nullable().optional(),
   delayDays: z.number().int().min(0).optional(),
   delayHours: z.number().int().min(0).optional(),
   attachmentIds: z.array(z.string()).optional(),

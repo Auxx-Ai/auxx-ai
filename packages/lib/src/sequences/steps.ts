@@ -17,6 +17,9 @@ import type {
   UpdateStepFields,
 } from './types'
 
+/** Empty, valid TipTap body for a newly-created sequence step. */
+const EMPTY_SEQUENCE_BODY = { type: 'doc', content: [{ type: 'paragraph' }] }
+
 /** Mark the parent sequence dirty after a step edit, but only if it's been published. */
 async function markDirtyIfPublished(db: Database, sequenceId: string): Promise<void> {
   const sequence = await db.query.Sequence.findFirst({
@@ -54,8 +57,7 @@ export async function createStep(
       delayDays: fields.delayDays ?? 0,
       delayHours: fields.delayHours ?? 0,
       subject: fields.subject ?? null,
-      bodyJson: fields.bodyJson ?? null,
-      bodyHtml: fields.bodyHtml ?? null,
+      bodyJson: fields.bodyJson ?? EMPTY_SEQUENCE_BODY,
       attachmentIds: fields.attachmentIds ?? [],
       timingMode: fields.timingMode ?? 'relative',
       anchorOffsetDays: fields.anchorOffsetDays ?? 0,
