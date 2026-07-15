@@ -205,7 +205,7 @@ export const WORK_ORDER_FIELDS: Record<string, ResourceField> = {
       filterable: true,
       sortable: true,
       creatable: true,
-      updatable: true,
+      updatable: false,
       configurable: false,
     },
     placeholder: 'Select job type',

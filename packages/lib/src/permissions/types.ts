@@ -48,6 +48,7 @@ export enum FeatureKey {
   mailPermissions = 'mailPermissions',
   dashboards = 'dashboards',
   dispatch = 'dispatch',
+  sequences = 'sequences',
 
   // ── Static limits (count of things, not time-based) ──
   teammates = 'teammates',
@@ -199,6 +200,13 @@ export const FEATURE_REGISTRY: FeatureMetadata[] = [
     label: 'Dispatch',
     description: 'Field-service work orders, scheduling, and dispatching.',
     group: 'Dispatch',
+  },
+  {
+    key: FeatureKey.sequences,
+    type: 'boolean',
+    label: 'Sequences',
+    description: 'Automated outbound email sequences and contact enrollment.',
+    group: 'Automation',
   },
 
   // ── Static limits ──

@@ -1,6 +1,7 @@
 // apps/web/src/components/detail-view/components/detail-view-actions.tsx
 'use client'
 
+import { FeatureKey } from '@auxx/lib/permissions/client'
 import { parseRecordId } from '@auxx/types/resource'
 import { Button } from '@auxx/ui/components/button'
 import { Archive, Ban, Merge, Send, Trash2, Users, Zap } from 'lucide-react'
@@ -8,6 +9,7 @@ import { useState } from 'react'
 import { MergeDialog } from '~/components/merge'
 import { AddToSequenceDialog } from '~/components/sequences/ui/add-to-sequence-dialog'
 import { useConfirm } from '~/hooks/use-confirm'
+import { useFeatureFlags } from '~/providers/feature-flag-provider'
 import type { DetailViewActionsProps } from '../types'
 import { AppRecordActions } from './app-record-actions'
 
@@ -21,6 +23,8 @@ export function DetailViewActions({
   record,
   config,
 }: DetailViewActionsProps) {
+  const { hasAccess } = useFeatureFlags()
+  const sequencesEnabled = hasAccess(FeatureKey.sequences)
   const [confirm, ConfirmDialog] = useConfirm()
   const [isGroupDialogOpen, setIsGroupDialogOpen] = useState(false)
   const [mergeDialogOpen, setMergeDialogOpen] = useState(false)
@@ -103,7 +107,7 @@ export function DetailViewActions({
           </Button>
         )}
 
-        {actions.enableAddToSequence && (
+        {actions.enableAddToSequence && sequencesEnabled && (
           <Button variant='outline' size='sm' onClick={() => setAddToSequenceDialogOpen(true)}>
             <Send /> Add to sequence
           </Button>
@@ -141,7 +145,7 @@ export function DetailViewActions({
         />
       )}
 
-      {addToSequenceDialogOpen && recordId && (
+      {sequencesEnabled && addToSequenceDialogOpen && recordId && (
         <AddToSequenceDialog
           open={addToSequenceDialogOpen}
           onOpenChange={setAddToSequenceDialogOpen}

@@ -85,6 +85,7 @@ const DISPATCH_SETTINGS: SidebarProps[] = [
         label: 'Client notifications',
         slug: 'client-notifications',
         icon: <Bell />,
+        featureKey: 'sequences',
       },
     ],
   },

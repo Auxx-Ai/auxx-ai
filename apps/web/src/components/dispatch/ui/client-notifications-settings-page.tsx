@@ -62,7 +62,7 @@ export function ClientNotificationsSettingsPage() {
   useUser({ requireRoles: ['ADMIN', 'OWNER'] })
   const { hasAccess } = useFeatureFlags()
 
-  if (!hasAccess(FeatureKey.dispatch)) {
+  if (!hasAccess(FeatureKey.dispatch) || !hasAccess(FeatureKey.sequences)) {
     return (
       <SettingsPage
         title='Client notifications'

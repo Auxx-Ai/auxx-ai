@@ -119,7 +119,13 @@ export const SIDEBAR_MENU: SidebarProps[] = [
     featureKey: 'workflows',
   },
   { id: 'tasks', label: 'Tasks', slug: 'tasks', icon: <CheckSquare /> },
-  { id: 'schedule', label: 'Schedule', slug: 'schedule', icon: <CalendarClock /> },
+  {
+    id: 'schedule',
+    label: 'Schedule',
+    slug: 'schedule',
+    icon: <CalendarClock />,
+    featureKey: 'dispatch',
+  },
   {
     id: 'dispatch',
     label: 'Dispatch',
