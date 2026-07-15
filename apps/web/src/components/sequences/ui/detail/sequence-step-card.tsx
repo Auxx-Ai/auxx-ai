@@ -22,7 +22,7 @@ interface SequenceStepCardProps {
   totalSteps: number
   /** Step 1's subject — steps 2+ thread under it ("Re: …"). */
   step1Subject: string | null
-  /** Null for manual sequences — gates the visit-token placeholder root (§4.5/§4.7). */
+  /** Null for manual sequences — gates the Visit placeholder root (§4.5/§4.7). */
   subjectKind: 'visit' | 'work_order' | 'invoice' | null
   onMoveUp?: () => void
   onMoveDown?: () => void

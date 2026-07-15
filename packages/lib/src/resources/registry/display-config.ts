@@ -227,4 +227,13 @@ export const RESOURCE_DISPLAY_CONFIG: Record<TableId, SystemResourceDisplayConfi
     defaultSortDirection: 'desc',
     orgScopingStrategy: 'direct',
   },
+
+  visit: {
+    identifierField: 'id',
+    primaryDisplayFieldId: 'id',
+    searchFields: ['id'],
+    defaultSortField: 'startTime',
+    defaultSortDirection: 'desc',
+    orgScopingStrategy: 'direct',
+  },
 }

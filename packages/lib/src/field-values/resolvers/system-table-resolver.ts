@@ -7,6 +7,7 @@ import { toActorId } from '@auxx/types/actor'
 import { parseResourceFieldId, type ResourceFieldId } from '@auxx/types/field'
 import type { RecordId } from '@auxx/types/resource'
 import { and, eq, inArray } from 'drizzle-orm'
+import { getCachedMembersByUserIds } from '../../cache'
 import type { FieldOptions } from '../../custom-fields/field-options'
 import { RESOURCE_DISPLAY_CONFIG } from '../../resources/registry/display-config'
 import { RESOURCE_TABLE_MAP, type TableId } from '../../resources/registry/field-registry'
@@ -66,8 +67,9 @@ export async function resolveSystemTableFields(
   if (Object.keys(selectedColumns).length === 0) return []
 
   const rows = await querySystemTable(ctx, entityDefId, table, entityIds, selectedColumns)
-
-  return mapRowsToResults(rows, fields, entityDefId)
+  const results = mapRowsToResults(rows, fields, entityDefId)
+  await hydrateActorDisplayNames(ctx, results)
+  return results
 }
 
 /**
@@ -163,7 +165,9 @@ export async function resolveEntityInstanceFields(
     .from(table)
     .where(and(inArray(table.id, entityIds), eq(table.organizationId, ctx.organizationId)))
 
-  return mapRowsToResults(rows, fields, entityDefId)
+  const results = mapRowsToResults(rows, fields, entityDefId)
+  await hydrateActorDisplayNames(ctx, results)
+  return results
 }
 
 /**
@@ -292,4 +296,45 @@ function resolveActorValue(
     id,
     actorId: toActorId(actorTarget, id),
   } as TypedFieldValue
+}
+
+/**
+ * Hydrate names for actor values emitted from system-table columns.
+ *
+ * Values retain their actor discriminator so group/agent hydration can be
+ * added here without changing the resolver's public result shape. Unknown or
+ * deleted actors intentionally keep no display name, allowing the generic
+ * placeholder fallback path to render its configured value.
+ */
+async function hydrateActorDisplayNames(
+  ctx: FieldValueContext,
+  results: TypedFieldValueResult[]
+): Promise<void> {
+  const userIds = new Set<string>()
+  for (const result of results) {
+    const values =
+      result.value === null ? [] : Array.isArray(result.value) ? result.value : [result.value]
+    for (const value of values) {
+      if (value.type === 'actor' && value.actorType === 'user') userIds.add(value.id)
+    }
+  }
+  if (userIds.size === 0) return
+
+  const users = await getCachedMembersByUserIds(ctx.organizationId, [...userIds])
+
+  const displayNameById = new Map<string, string>()
+  for (const user of users) {
+    const displayName = user.user?.name?.trim()
+    if (displayName) displayNameById.set(user.userId, displayName)
+  }
+
+  for (const result of results) {
+    const values =
+      result.value === null ? [] : Array.isArray(result.value) ? result.value : [result.value]
+    for (const value of values) {
+      if (value.type !== 'actor' || value.actorType !== 'user') continue
+      const displayName = displayNameById.get(value.id)
+      if (displayName) value.displayName = displayName
+    }
+  }
 }

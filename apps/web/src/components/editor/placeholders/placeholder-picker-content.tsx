@@ -2,7 +2,6 @@
 
 'use client'
 
-import { SEQUENCE_VISIT_PLACEHOLDER_TOKENS } from '@auxx/lib/sequences/client'
 import type { FieldReference } from '@auxx/types/field'
 import { fieldRefToKey } from '@auxx/types/field'
 import { Button } from '@auxx/ui/components/button'
@@ -96,6 +95,8 @@ interface PlaceholderPickerContentProps {
    * inline-picker hook's `closePicker`.
    */
   onClose?: () => void
+  /** Number of parent navigation entries to ignore before resolving a picker root. */
+  navigationOffset?: number
   /**
    * Extra roots appended after the standard list — opt-in only, so every other consumer (mail
    * composer, tickets, snippets) keeps today's fixed root list. The sequence step editor passes
@@ -135,9 +136,10 @@ function PlaceholderPickerBody({
   onClose,
   backLabel = 'Back',
   extraRoots,
+  navigationOffset = 0,
 }: PlaceholderPickerContentProps) {
-  const { current } = useCommandNavigation<PlaceholderNavItem>()
-  const rootId = current?.id ?? null
+  const { current, stack } = useCommandNavigation<PlaceholderNavItem>()
+  const rootId = stack.length <= navigationOffset ? null : (current?.id ?? null)
 
   if (rootId === 'date') {
     return <DateListContent onSelect={onSelect} />
@@ -145,10 +147,6 @@ function PlaceholderPickerBody({
 
   if (rootId === 'organization') {
     return <OrganizationListContent onSelect={onSelect} />
-  }
-
-  if (rootId === 'visit') {
-    return <VisitTokenListContent onSelect={onSelect} />
   }
 
   if (rootId !== null) {
@@ -326,54 +324,6 @@ function OrganizationListContent({ onSelect }: { onSelect: (id: string) => void 
             <CommandItem key={o.slug} value={o.label} onSelect={() => onSelect(`org:${o.slug}`)}>
               <Braces className='size-4 text-muted-foreground' />
               <span>{o.label}</span>
-            </CommandItem>
-          ))}
-        </CommandGroup>
-      </CommandList>
-    </Command>
-  )
-}
-
-/**
- * Visit tokens (client-notifications plan §4.5) — pre-resolved by plain code in the send node
- * (`WorkOrderVisit` isn't an `EntityInstance`, so these can't ride `FieldPickerContent`'s
- * entity-backed field picker). Inserted as literal `{{visit:*}}` text, not a placeholder chip —
- * see `SequenceBodyEditor`'s `onSelect`.
- */
-function VisitTokenListContent({ onSelect }: { onSelect: (id: string) => void }) {
-  const { pop } = useCommandNavigation<PlaceholderNavItem>()
-  const [search, setSearch] = useState('')
-  const q = search.toLowerCase().trim()
-  const filtered = q
-    ? SEQUENCE_VISIT_PLACEHOLDER_TOKENS.filter((t) => t.label.toLowerCase().includes(q))
-    : SEQUENCE_VISIT_PLACEHOLDER_TOKENS
-
-  return (
-    <Command
-      shouldFilter={false}
-      onKeyDown={(e) => {
-        if (e.key === 'Escape') {
-          e.stopPropagation()
-          pop()
-        } else if ((e.key === 'Backspace' || e.key === 'ArrowLeft') && !search) {
-          e.preventDefault()
-          pop()
-        }
-      }}>
-      <CommandBreadcrumb rootLabel='Placeholder' />
-      <CommandInput
-        placeholder='Search visit fields...'
-        value={search}
-        onValueChange={setSearch}
-        autoFocus
-      />
-      <CommandList>
-        <CommandEmpty>No fields found.</CommandEmpty>
-        <CommandGroup heading='Visit'>
-          {filtered.map((t) => (
-            <CommandItem key={t.id} value={t.label} onSelect={() => onSelect(t.id)}>
-              <Braces className='size-4 text-muted-foreground' />
-              <span>{t.label}</span>
             </CommandItem>
           ))}
         </CommandGroup>

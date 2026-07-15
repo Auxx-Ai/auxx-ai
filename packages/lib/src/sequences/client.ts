@@ -102,17 +102,3 @@ export const SEQUENCE_ANCHOR_LABELS: Record<'visit' | 'invoice', string> = {
   visit: 'the visit time',
   invoice: 'the due date',
 }
-
-/**
- * Visit tokens pre-resolved by plain code in the send node (§4.5 — `WorkOrderVisit` isn't an
- * `EntityInstance`, so these can't ride the entity placeholder resolver). Inserted as literal
- * `{{visit:*}}` text in the step body, not an entity-backed placeholder chip. Offered in the
- * step editor's placeholder picker only on visit-subject sequences.
- */
-export const SEQUENCE_VISIT_PLACEHOLDER_TOKENS: { id: string; label: string }[] = [
-  { id: 'visit:date', label: 'Visit date' },
-  { id: 'visit:startTime', label: 'Start time' },
-  { id: 'visit:endTime', label: 'End time' },
-  { id: 'visit:timeWindow', label: 'Time window' },
-  { id: 'visit:assigneeFirstName', label: "Technician's first name" },
-]

@@ -117,6 +117,7 @@ export const ModelTypeValues = [
   'article',
   'kb',
   'work_order',
+  'visit',
   'service_request',
   'quote',
   'line_item',
@@ -156,6 +157,7 @@ export const ModelTypes = {
   ARTICLE: 'article',
   KB: 'kb',
   WORK_ORDER: 'work_order',
+  VISIT: 'visit',
   SERVICE_REQUEST: 'service_request',
   QUOTE: 'quote',
   LINE_ITEM: 'line_item',
@@ -353,6 +355,15 @@ export const ModelTypeMeta: Record<
     // its fullscreen button and `getRecordLink` starts returning
     // `/app/work-orders/[id]` URLs. `service_request` stays drawer-only.
     hasDetailPage: true,
+  },
+  visit: {
+    label: 'Visit',
+    plural: 'Visits',
+    icon: 'calendar',
+    color: 'sky',
+    apiSlug: 'visits',
+    dbTable: 'WorkOrderVisit',
+    hasDetailPage: false,
   },
   service_request: {
     label: 'Service Request',

@@ -1,6 +1,11 @@
 // apps/web/src/components/editor/inline-picker/nodes/placeholder-node.ts
 
-import { decodeFallback, encodeFallback } from '@auxx/lib/placeholders/client'
+import {
+  decodeFallback,
+  decodePlaceholderFormat,
+  encodeFallback,
+  encodePlaceholderFormat,
+} from '@auxx/lib/placeholders/client'
 import { createInlineNode } from '../core/inline-node'
 import type { InlineNodeBadgeProps, InlineNodeConfig } from '../types'
 
@@ -37,6 +42,12 @@ const placeholderNodeConfig: InlineNodeConfig = {
       dataAttr: 'data-fallback',
       serialize: encodeFallback,
       parse: decodeFallback,
+    },
+    format: {
+      default: null,
+      dataAttr: 'data-format',
+      serialize: encodePlaceholderFormat,
+      parse: decodePlaceholderFormat,
     },
   },
 }

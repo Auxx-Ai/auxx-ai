@@ -6,6 +6,9 @@ import {
   type FallbackPayload,
   type FallbackSupportedType,
   isFallbackSupportedType,
+  isPlaceholderFormatType,
+  normalizePlaceholderFormat,
+  type PlaceholderFormatPayload,
   tryParsePlaceholderId,
 } from '@auxx/lib/placeholders/client'
 import { mapBaseTypeToFieldType } from '@auxx/lib/workflow-engine/client'
@@ -59,9 +62,14 @@ export function PlaceholderBadge({
     usePlaceholderLabel(id)
 
   const fallback = (attrs.fallback as FallbackPayload | null) ?? null
+  const format = (attrs.format as PlaceholderFormatPayload | null) ?? null
 
   const onFallbackChange = (payload: FallbackPayload | null) => {
     updateAttributes({ fallback: payload })
+  }
+
+  const onFormatChange = (payload: PlaceholderFormatPayload | null) => {
+    updateAttributes({ format: payload ? normalizePlaceholderFormat(payload) : null })
   }
 
   const onChangeVariable = (newId: string) => {
@@ -69,7 +77,13 @@ export function PlaceholderBadge({
     // clear it (payload shape is type-specific and won't round-trip).
     const current = (attrs.fallback as FallbackPayload | null) ?? null
     const preserve = current && fieldTypeFromNewId(newId) === current.t
-    updateAttributes({ id: newId, fallback: preserve ? current : null })
+    const currentFormat = (attrs.format as PlaceholderFormatPayload | null) ?? null
+    const preserveFormat = currentFormat && fieldTypeFromNewId(newId) === currentFormat.t
+    updateAttributes({
+      id: newId,
+      fallback: preserve ? current : null,
+      format: preserveFormat ? currentFormat : null,
+    })
   }
 
   const handleOpenChange = (next: boolean) => {
@@ -111,8 +125,11 @@ export function PlaceholderBadge({
           fieldType={fieldType}
           fallbackSupported={fallbackSupported}
           fallback={fallback}
+          format={format}
+          formattingSupported={fieldType !== null && isPlaceholderFormatType(fieldType)}
           onChangeVariable={onChangeVariable}
           onFallbackChange={onFallbackChange}
+          onFormatChange={onFormatChange}
           onDelete={deleteNode}
           onClose={() => setOpen(false)}
         />

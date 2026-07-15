@@ -28,6 +28,7 @@ import { THREAD_FIELDS } from './resources/thread-fields'
 import { TICKET_FIELDS } from './resources/ticket-fields'
 import { USER_FIELDS } from './resources/user-fields'
 import { VENDOR_PART_FIELDS } from './resources/vendor-part-fields'
+import { VISIT_FIELDS } from './resources/visit-fields'
 import { WORK_ORDER_FIELDS } from './resources/work-order-fields'
 
 /** Types excluded from RESOURCE_TABLE_REGISTRY: 'entity' (generic marker) + all EntityDefinition types */
@@ -117,6 +118,7 @@ export const RESOURCE_FIELD_REGISTRY: ResourceFieldRegistry = {
   article: ARTICLE_FIELDS,
   kb: KB_FIELDS,
   work_order: WORK_ORDER_FIELDS,
+  visit: VISIT_FIELDS,
   service_request: SERVICE_REQUEST_FIELDS,
   quote: QUOTE_FIELDS,
   line_item: LINE_ITEM_FIELDS,
