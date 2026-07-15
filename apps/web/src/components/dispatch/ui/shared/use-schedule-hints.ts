@@ -2,7 +2,7 @@
 
 import { format } from 'date-fns'
 import { useMemo } from 'react'
-import { api } from '~/trpc/react'
+import { useResolvedDays } from '../../stores/use-resolved-days'
 import type { ExistingVisitForOverlap } from '../schedule-popover'
 
 export interface UseScheduleHintsParams {
@@ -27,18 +27,15 @@ export function useScheduleHints({
   existingVisits,
 }: UseScheduleHintsParams): string[] {
   const dayIso = startTime ? format(startTime, 'yyyy-MM-dd') : undefined
-  const availabilityQuery = api.availability.resolve.useQuery(
-    {
-      subject: { type: 'worker', userId: assigneeUserId ?? '' },
-      from: dayIso ?? '',
-      to: dayIso ?? '',
-    },
-    { enabled: Boolean(assigneeUserId && dayIso) }
+  const resolvedDays = useResolvedDays(
+    assigneeUserId && dayIso ? { type: 'worker', userId: assigneeUserId } : null,
+    dayIso,
+    dayIso
   )
 
   return useMemo(() => {
     const list: string[] = []
-    const resolvedDay = availabilityQuery.data?.[0]
+    const resolvedDay = resolvedDays[0]
     if (resolvedDay) {
       if (resolvedDay.ranges.length === 0) {
         list.push('Off that day')
@@ -61,5 +58,5 @@ export function useScheduleHints({
       }
     }
     return list
-  }, [availabilityQuery.data, startTime, endTime, assigneeUserId, existingVisits, visitId])
+  }, [resolvedDays, startTime, endTime, assigneeUserId, existingVisits, visitId])
 }

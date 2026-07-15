@@ -9,6 +9,7 @@ import { EmptyState } from '~/components/global/empty-state'
 import SettingsPage, { SettingsSection } from '~/components/global/settings-page'
 import { useUser } from '~/hooks/use-user'
 import { useFeatureFlags } from '~/providers/feature-flag-provider'
+import { ORG_STATIC_STALE_TIME } from '~/trpc/query-client'
 import { api } from '~/trpc/react'
 import { AddWorkerDialog } from './add-worker-dialog'
 import { type DispatchWorkerRow, WorkerCard } from './worker-card'
@@ -40,6 +41,7 @@ export function WorkersSettingsPage() {
 
   const { data: workers, isLoading } = api.dispatch.listWorkers.useQuery(undefined, {
     enabled: dispatchEnabled,
+    staleTime: ORG_STATIC_STALE_TIME,
   })
 
   const [addOpen, setAddOpen] = useState(false)

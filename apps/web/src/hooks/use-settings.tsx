@@ -110,14 +110,8 @@ export function useSettings({ scope }: UseSettingsOptions) {
     if (updateOrgSettingMutation.isSuccess) {
       // Invalidate queries to refresh the data
       utils.setting.getAllUserSettings.invalidate({ scope })
-      utils.setting.getOrganizationSettingsWithMetadata.invalidate({ scope })
     }
-  }, [
-    updateOrgSettingMutation.isSuccess,
-    utils.setting.getAllUserSettings,
-    utils.setting.getOrganizationSettingsWithMetadata,
-    scope,
-  ])
+  }, [updateOrgSettingMutation.isSuccess, utils.setting.getAllUserSettings, scope])
 
   // Effect to handle errors for org setting updates
   useEffect(() => {
@@ -137,18 +131,12 @@ export function useSettings({ scope }: UseSettingsOptions) {
     if (batchUpdateOrgSettingsMutation.isSuccess) {
       // Invalidate queries to refresh the data
       utils.setting.getAllUserSettings.invalidate({ scope })
-      utils.setting.getOrganizationSettingsWithMetadata.invalidate({ scope })
       toastSuccess({
         title: 'Settings updated',
         description: 'Organization settings have been updated successfully',
       })
     }
-  }, [
-    batchUpdateOrgSettingsMutation.isSuccess,
-    utils.setting.getAllUserSettings,
-    utils.setting.getOrganizationSettingsWithMetadata,
-    scope,
-  ])
+  }, [batchUpdateOrgSettingsMutation.isSuccess, utils.setting.getAllUserSettings, scope])
 
   // Effect to handle errors for batch updates
   useEffect(() => {
@@ -159,10 +147,6 @@ export function useSettings({ scope }: UseSettingsOptions) {
       })
     }
   }, [batchUpdateOrgSettingsMutation.isError, batchUpdateOrgSettingsMutation.error])
-
-  // Get organization settings with metadata (for admins)
-  const { data: orgSettingsWithMetadata } =
-    api.setting.getOrganizationSettingsWithMetadata.useQuery({ scope })
 
   // Helper function to get a specific setting
   const getSetting = useCallback(
@@ -234,7 +218,6 @@ export function useSettings({ scope }: UseSettingsOptions) {
     // Data
     settings,
     settingsCatalog,
-    orgSettingsWithMetadata,
     isLoading: false, // Settings are always available from dehydrated state
 
     // Actions

@@ -6,6 +6,7 @@ import { getOptionColorHex } from '@auxx/lib/custom-fields/client'
 import { parseAsStringLiteral, useQueryState } from 'nuqs'
 import { useMemo } from 'react'
 import { useCalendarRange } from '~/components/calendar/core/use-calendar-range'
+import { ORG_STATIC_STALE_TIME } from '~/trpc/query-client'
 import { api } from '~/trpc/react'
 import { useHiddenWorkerIds } from '../../../stores/dispatch-sidebar-store'
 import {
@@ -55,7 +56,7 @@ export function useBoardData() {
 
   const boardQuery = api.dispatch.getBoard.useQuery(
     { from: range.from, to: range.to },
-    { placeholderData: (prev) => prev }
+    { placeholderData: (prev) => prev, staleTime: ORG_STATIC_STALE_TIME }
   )
 
   const allWorkers: BoardWorker[] = boardQuery.data?.workers ?? []
@@ -112,14 +113,24 @@ export function useBoardData() {
   }, [allEvents, view, visibleWorkerUserIds, showUnassigned])
 
   const backlogEvents = useMemo(
-    () => backlog.map((v) => ({ visit: v, workOrder: workOrderById.get(v.workOrderId) })),
+    () =>
+      backlog.map((v) => ({
+        visit: v,
+        workOrder: workOrderById.get(v.workOrderId),
+      })),
     [backlog, workOrderById]
   )
 
   const resources: BoardResourceInput[] = useMemo(
     () => [
       ...(showUnassigned
-        ? [{ id: UNASSIGNED_RESOURCE_ID, label: 'Unassigned', color: UNASSIGNED_COLOR }]
+        ? [
+            {
+              id: UNASSIGNED_RESOURCE_ID,
+              label: 'Unassigned',
+              color: UNASSIGNED_COLOR,
+            },
+          ]
         : []),
       ...workers.map((w) => ({
         id: w.userId,

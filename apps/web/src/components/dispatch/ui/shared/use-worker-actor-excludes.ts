@@ -3,6 +3,7 @@
 import { type ActorId, getActorRawId } from '@auxx/types/actor'
 import { useMemo } from 'react'
 import { useAvailableActors } from '~/components/resources/hooks/use-actor'
+import { ORG_STATIC_STALE_TIME } from '~/trpc/query-client'
 import { api } from '~/trpc/react'
 
 /**
@@ -11,7 +12,9 @@ import { api } from '~/trpc/react'
  * Assignee row, so every other `user` actor is excluded from `ActorPickerContent`.
  */
 export function useWorkerActorExcludes(): ActorId[] {
-  const workersQuery = api.dispatch.listWorkers.useQuery()
+  const workersQuery = api.dispatch.listWorkers.useQuery(undefined, {
+    staleTime: ORG_STATIC_STALE_TIME,
+  })
   const activeWorkers = useMemo(
     () => (workersQuery.data ?? []).filter((w) => w.isActive),
     [workersQuery.data]

@@ -59,7 +59,7 @@ export function DispatchBoard() {
 
   const data = useBoardData()
   const mutations = useBoardMutations(data.range)
-  useBoardRealtime(data.range)
+  useBoardRealtime()
 
   // Route planner data (09-route-planner.md §A) lives here, not inside `RoutePlannerView`
   // itself — the sidebar's Tags group needs the same distinct-tags list and selection the map

@@ -41,7 +41,7 @@ export function useBoardMutations(range: DateRange) {
   )
 
   const settle = useCallback(() => {
-    void utils.dispatch.getBoard.invalidate(range)
+    void utils.dispatch.getBoard.invalidate()
     // v3 sidebar plan §1.4 — keep the mini-calendar's day-marker dots fresh alongside the board.
     void utils.dispatch.getVisitDayMarkers.invalidate()
   }, [range, utils])
@@ -49,13 +49,19 @@ export function useBoardMutations(range: DateRange) {
   const scheduleVisit = api.dispatch.scheduleVisit.useMutation({
     onMutate: async (vars) => {
       await utils.dispatch.getBoard.cancel(range)
-      const patch: Partial<BoardVisit> = { startTime: vars.startTime, endTime: vars.endTime }
+      const patch: Partial<BoardVisit> = {
+        startTime: vars.startTime,
+        endTime: vars.endTime,
+      }
       if (vars.assigneeUserId !== undefined) patch.assigneeUserId = vars.assigneeUserId
       return { previous: patchVisit(vars.visitId, patch) }
     },
     onError: (error, _vars, ctx) => {
       rollback(ctx?.previous)
-      toastError({ title: 'Error scheduling visit', description: error.message })
+      toastError({
+        title: 'Error scheduling visit',
+        description: error.message,
+      })
     },
     onSettled: settle,
   })
@@ -63,11 +69,16 @@ export function useBoardMutations(range: DateRange) {
   const unscheduleVisit = api.dispatch.unscheduleVisit.useMutation({
     onMutate: async (vars) => {
       await utils.dispatch.getBoard.cancel(range)
-      return { previous: patchVisit(vars.visitId, { startTime: null, endTime: null }) }
+      return {
+        previous: patchVisit(vars.visitId, { startTime: null, endTime: null }),
+      }
     },
     onError: (error, _vars, ctx) => {
       rollback(ctx?.previous)
-      toastError({ title: 'Error unscheduling visit', description: error.message })
+      toastError({
+        title: 'Error unscheduling visit',
+        description: error.message,
+      })
     },
     onSettled: settle,
   })
@@ -79,7 +90,10 @@ export function useBoardMutations(range: DateRange) {
     },
     onError: (error, _vars, ctx) => {
       rollback(ctx?.previous)
-      toastError({ title: 'Error updating visit status', description: error.message })
+      toastError({
+        title: 'Error updating visit status',
+        description: error.message,
+      })
     },
     onSettled: settle,
   })
@@ -87,11 +101,16 @@ export function useBoardMutations(range: DateRange) {
   const dispatchVisit = api.dispatch.dispatchVisit.useMutation({
     onMutate: async (vars) => {
       await utils.dispatch.getBoard.cancel(range)
-      return { previous: patchVisit(vars.visitId, { dispatchedAt: new Date() }) }
+      return {
+        previous: patchVisit(vars.visitId, { dispatchedAt: new Date() }),
+      }
     },
     onError: (error, _vars, ctx) => {
       rollback(ctx?.previous)
-      toastError({ title: 'Error dispatching visit', description: error.message })
+      toastError({
+        title: 'Error dispatching visit',
+        description: error.message,
+      })
     },
     onSettled: settle,
   })
@@ -101,7 +120,10 @@ export function useBoardMutations(range: DateRange) {
   // repaints every affected chip once the write lands.
   const applyToSeries = api.dispatch.applyToSeries.useMutation({
     onError: (error) => {
-      toastError({ title: 'Error updating series', description: error.message })
+      toastError({
+        title: 'Error updating series',
+        description: error.message,
+      })
     },
     onSettled: settle,
   })

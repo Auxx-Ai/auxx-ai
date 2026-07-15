@@ -25,6 +25,7 @@ import { SettingsFieldRow } from '~/components/settings/settings-field-row'
 import { useSettings } from '~/hooks/use-settings'
 import { useUser } from '~/hooks/use-user'
 import { useFeatureFlags } from '~/providers/feature-flag-provider'
+import { ORG_STATIC_STALE_TIME } from '~/trpc/query-client'
 import { api } from '~/trpc/react'
 
 const ALL_DAYS = [0, 1, 2, 3, 4, 5, 6] as const
@@ -86,18 +87,26 @@ export function AvailabilitySettingsPage() {
   const { getSetting } = useSettings({ scope: 'GENERAL' })
 
   const utils = api.useUtils()
-  const weeklyQuery = api.availability.getWeeklyHours.useQuery({
-    subject: { type: 'organization' },
-  })
+  const weeklyQuery = api.availability.getWeeklyHours.useQuery(
+    {
+      subject: { type: 'organization' },
+    },
+    { staleTime: ORG_STATIC_STALE_TIME }
+  )
 
   const saveWeeklyHours = api.availability.saveWeeklyHours.useMutation({
     onSuccess: () => {
-      utils.availability.getWeeklyHours.invalidate({ subject: { type: 'organization' } })
+      utils.availability.getWeeklyHours.invalidate({
+        subject: { type: 'organization' },
+      })
       // Org hours drive every column (workers inherit the org default) — drop the whole board cache.
       useAvailabilityCacheStore.getState().invalidateAll()
     },
     onError: (error) =>
-      toastError({ title: 'Error saving weekly hours', description: error.message }),
+      toastError({
+        title: 'Error saving weekly hours',
+        description: error.message,
+      }),
   })
 
   // Rebuilt each render; `useDirtyDraft` reseeds by value, so a background refetch never wipes edits.
@@ -105,7 +114,10 @@ export function AvailabilitySettingsPage() {
   const { draft, patch, setDraft, dirty, save, discard } = useDirtyDraft(server, {
     isSaving: saveWeeklyHours.isPending,
     onSave: (next) =>
-      saveWeeklyHours.mutate({ subject: { type: 'organization' }, weekly: toWeeklyHours(next) }),
+      saveWeeklyHours.mutate({
+        subject: { type: 'organization' },
+        weekly: toWeeklyHours(next),
+      }),
   })
 
   const weekStart = (scalarSetting(getSetting('organization.weekStart')) ?? 'monday') as
@@ -155,7 +167,10 @@ export function AvailabilitySettingsPage() {
                 <TimeZonePicker
                   selected={draft.timezone}
                   onChange={(timezone) => patch({ timezone })}
-                  triggerProps={{ variant: 'transparent', className: 'w-full ps-0 pe-1' }}
+                  triggerProps={{
+                    variant: 'transparent',
+                    className: 'w-full ps-0 pe-1',
+                  }}
                 />
               </FieldPanelRow>
             )}
