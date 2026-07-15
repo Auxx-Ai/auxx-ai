@@ -4,6 +4,8 @@
 // node palette. `publishSequence` (Phase 2) is the sole writer of a compiled
 // step node's `data`; nothing in the UI authors this shape directly.
 
+import type { TiptapDoc } from '../../../tiptap'
+
 /** A compiled sequence step's node config — written by `publishSequence`. */
 export interface SequenceSendEmailNodeConfig {
   sequenceId: string
@@ -12,8 +14,8 @@ export interface SequenceSendEmailNodeConfig {
   stepIndex: number
   /** Used only when this step opens the thread (step 1 / no `threadId` yet). */
   subject?: string | null
-  /** Rendered HTML — carries the `{{token}}` placeholder spans, resolved at send time. */
-  bodyHtml: string
+  /** Immutable TipTap snapshot — placeholder nodes resolve structurally at send time. */
+  bodyJson: TiptapDoc
   attachmentIds: string[]
   /** Pinned sending mailbox (`Sequence.integrationId`). */
   integrationId: string

@@ -13,6 +13,7 @@ import { type Database, schema } from '@auxx/database'
 import { and, asc, eq } from 'drizzle-orm'
 import { err, ok, type Result } from 'neverthrow'
 import { BadRequestError, ConflictError, NotFoundError } from '../errors'
+import type { TiptapDoc } from '../tiptap'
 import type { SequenceEntity, SequenceStepEntity } from './types'
 
 interface GraphNode {
@@ -110,7 +111,7 @@ export function buildSequenceGraph(
       stepId: step.id,
       stepIndex,
       subject: step.subject ?? null,
-      bodyHtml: step.bodyHtml ?? '',
+      bodyJson: step.bodyJson as unknown as TiptapDoc,
       attachmentIds: step.attachmentIds ?? [],
       integrationId: sequence.integrationId,
       signatureId: sequence.signatureEntityInstanceId ?? null,
@@ -165,6 +166,11 @@ export async function publishSequence(
   })
   if (steps.length === 0) {
     return err(new BadRequestError('Sequence must have at least one step to publish'))
+  }
+  if (steps.some((step) => !step.bodyJson)) {
+    return err(
+      new BadRequestError('Every sequence step needs a TipTap email body before publishing')
+    )
   }
 
   const firstStep = steps[0]!

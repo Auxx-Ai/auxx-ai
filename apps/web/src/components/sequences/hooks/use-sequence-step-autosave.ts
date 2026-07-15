@@ -12,7 +12,6 @@ const AUTOSAVE_DELAY_MS = 750
 export interface SequenceUpdateStepFields {
   subject?: string | null
   bodyJson?: Record<string, unknown> | null
-  bodyHtml?: string | null
   delayDays?: number
   delayHours?: number
   attachmentIds?: string[]

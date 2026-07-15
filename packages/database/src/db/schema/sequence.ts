@@ -177,9 +177,9 @@ export const SequenceStep = pgTable(
     channel: text().default('email').notNull(),
     /** Used when this step opens the thread (step 1). */
     subject: text(),
-    /** TipTap document JSON — carries the `{{token}}` placeholder spans. */
+    /** Canonical TipTap document JSON — placeholder nodes resolve structurally at send time. */
     bodyJson: jsonb().$type<Record<string, unknown>>(),
-    /** Rendered HTML (placeholders resolved against the recipient at send time). */
+    /** @deprecated Legacy editor projection. Sequence publication and sends never read this column. */
     bodyHtml: text(),
     attachmentIds: jsonb().$type<string[]>().default([]),
     createdAt: timestamp({ precision: 3 }).defaultNow().notNull(),

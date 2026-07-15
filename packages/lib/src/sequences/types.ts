@@ -95,7 +95,6 @@ export interface CreateStepInput {
   delayHours?: number
   subject?: string | null
   bodyJson?: Record<string, unknown> | null
-  bodyHtml?: string | null
   attachmentIds?: string[]
   /** `'relative'` = existing delayDays/delayHours semantics; `'anchor'` = signed offset from
    * the sequence's subject date. Defaults to `'relative'` at the schema level. */
@@ -116,7 +115,6 @@ export interface UpdateStepFields {
   delayHours?: number
   subject?: string | null
   bodyJson?: Record<string, unknown> | null
-  bodyHtml?: string | null
   attachmentIds?: string[]
   timingMode?: 'relative' | 'anchor'
   anchorOffsetDays?: number

@@ -90,10 +90,11 @@ export async function afterVisitWrite(
 }
 
 /**
- * Schedule (or reschedule) a visit — the single time/assignee writer. Rolls the work order
- * up to `scheduled`; the forward-only guard in `lifecycle.ts` makes rescheduling an
- * already-scheduled-or-later work order a no-op there, so this is safe to call on every
- * drag/drop and popover save alike.
+ * Schedule (or reschedule) a visit — the single time/assignee writer. Rescheduling a canceled
+ * visit explicitly revives it to `scheduled`; it never revives a `done` or in-progress visit.
+ * Rolls the work order up to `scheduled`; the forward-only guard in `lifecycle.ts` makes
+ * rescheduling an already-scheduled-or-later work order a no-op there, so this is safe to call
+ * on every drag/drop and popover save alike.
  *
  * `timeWriteKind` (plan 20 §4.2, default `'confirmed'` — fails toward protecting times):
  * `'confirmed'` stamps `timeConfirmedAt` and, when the span is positive, syncs
@@ -113,7 +114,13 @@ export async function scheduleVisit(input: ScheduleVisitInput): Promise<WorkOrde
       eq(schema.WorkOrderVisit.id, visitId),
       eq(schema.WorkOrderVisit.organizationId, organizationId)
     ),
-    columns: { recurrenceRuleId: true, startTime: true, endTime: true, dispatchedAt: true },
+    columns: {
+      recurrenceRuleId: true,
+      startTime: true,
+      endTime: true,
+      dispatchedAt: true,
+      status: true,
+    },
   })
   if (!existing) throw new NotFoundError('Visit not found')
 
@@ -125,6 +132,7 @@ export async function scheduleVisit(input: ScheduleVisitInput): Promise<WorkOrde
   if (input.assigneeUserId !== undefined) set.assigneeUserId = input.assigneeUserId
   if (timezone !== undefined) set.timezone = timezone
   if (existing.recurrenceRuleId) set.isDetached = true
+  if (existing.status === 'canceled') set.status = 'scheduled'
 
   const kind = input.timeWriteKind ?? 'confirmed'
   if (kind === 'confirmed') {
@@ -173,9 +181,10 @@ export async function scheduleVisit(input: ScheduleVisitInput): Promise<WorkOrde
   }
 
   // Client-notification hooks (plan 19 §4.3/§4.2): enrollment is one-off only — recurring-born
-  // visits are the hourly sweep's job (never through this function). Re-anchor fires on ANY
-  // startTime change, one-off or a detached recurring occurrence, both routed through here.
-  if (!existing.recurrenceRuleId && !existing.startTime) {
+  // visits are the hourly sweep's job (never through this function). A canceled one-off's active
+  // runs were exited at cancellation, so explicitly rescheduling it starts fresh reminders.
+  // Re-anchor fires on every other startTime change, one-off or a detached recurring occurrence.
+  if (!existing.recurrenceRuleId && (!existing.startTime || existing.status === 'canceled')) {
     try {
       await enrollVisitScheduledSequences(organizationId, visitId)
     } catch (error) {

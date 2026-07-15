@@ -18,7 +18,8 @@
 import { type Database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { and, eq } from 'drizzle-orm'
-import { encodeFallback, type FallbackPayload } from '../placeholders/fallback-codec'
+import type { FallbackPayload } from '../placeholders/fallback-codec'
+import type { TiptapDoc, TiptapNode } from '../tiptap'
 import { SystemUserService } from '../users/system-user-service'
 import { createSequence } from './crud'
 import { buildSequenceGraph } from './publish'
@@ -33,26 +34,43 @@ import type {
 
 const logger = createScopedLogger('sequences-seed-templates')
 
-/** `<entityDefId>:<fieldKey>` placeholder span — mirrors `snippets/system-snippets.ts`'s
- * private `placeholderSpan`/`fieldToken` helpers (not exported there, so duplicated here; both
- * builders independently produce the exact HTML `resolvePlaceholdersInHtml` expects). */
-function placeholderSpan(
+/** Build a canonical structural placeholder atom for a seeded sequence body. */
+function placeholder(
   entityDefId: string,
   fieldKey: string,
   fallback?: FallbackPayload
-): string {
-  const id = `${entityDefId}:${fieldKey}`
-  const dataFallback = fallback ? ` data-fallback="${encodeFallback(fallback)}"` : ''
-  return `<span data-type="placeholder" data-id="${id}"${dataFallback}>{{${id}}}</span>`
+): TiptapNode {
+  return {
+    type: 'placeholder',
+    attrs: {
+      id: `${entityDefId}:${fieldKey}`,
+      ...(fallback ? { fallback } : {}),
+    },
+  }
 }
 
-const CLOSING = '<p>Let us know if you have any questions.</p>'
+/** Build one paragraph without serializing any intermediary HTML. */
+function paragraph(...content: Array<string | TiptapNode>): TiptapNode {
+  return {
+    type: 'paragraph',
+    content: content.map((part) =>
+      typeof part === 'string' ? { type: 'text', text: part } : part
+    ),
+  }
+}
+
+/** Build the persisted JSON sequence email document. */
+function sequenceBody(...content: TiptapNode[]): TiptapDoc {
+  return { type: 'doc', content }
+}
+
+const CLOSING = paragraph('Let us know if you have any questions.')
 const FIRST_NAME_FALLBACK: FallbackPayload = { v: 1, t: 'TEXT', d: 'there' }
 const TITLE_FALLBACK: FallbackPayload = { v: 1, t: 'TEXT', d: 'your service' }
 
 interface SeedStep {
   subject: string
-  bodyHtml: (entityDefs: Record<string, string>) => string
+  bodyJson: (entityDefs: Record<string, string>) => TiptapDoc
   timingMode: 'relative' | 'anchor'
   delayDays?: number
   anchorOffsetDays?: number
@@ -97,32 +115,60 @@ export const SEQUENCE_SEED_TEMPLATES: SeedTemplate[] = [
         subject: 'Your visit is booked',
         timingMode: 'relative',
         delayDays: 0,
-        bodyHtml: (defs) =>
-          `<p>Hi ${placeholderSpan(defs.contact!, 'firstName', FIRST_NAME_FALLBACK)},</p>` +
-          `<p>We've got you down for ${placeholderSpan('visit', 'date')} from ` +
-          `${placeholderSpan('visit', 'startTime')} to ${placeholderSpan('visit', 'endTime')} for ` +
-          `${placeholderSpan(defs.work_order!, 'title', TITLE_FALLBACK)} ` +
-          `(${placeholderSpan(defs.work_order!, 'number')}).</p>${CLOSING}`,
+        bodyJson: (defs) =>
+          sequenceBody(
+            paragraph('Hi ', placeholder(defs.contact!, 'firstName', FIRST_NAME_FALLBACK), ','),
+            paragraph(
+              "We've got you down for ",
+              placeholder('visit', 'date'),
+              ' from ',
+              placeholder('visit', 'startTime'),
+              ' to ',
+              placeholder('visit', 'endTime'),
+              ' for ',
+              placeholder(defs.work_order!, 'title', TITLE_FALLBACK),
+              ' (',
+              placeholder(defs.work_order!, 'number'),
+              ').'
+            ),
+            CLOSING
+          ),
       },
       {
         subject: 'Reminder: your visit is coming up',
         timingMode: 'anchor',
         anchorOffsetDays: -2,
         anchorTimeOfDay: '09:00',
-        bodyHtml: (defs) =>
-          `<p>Hi ${placeholderSpan(defs.contact!, 'firstName', FIRST_NAME_FALLBACK)},</p>` +
-          `<p>Just a reminder — we'll see you on ${placeholderSpan('visit', 'date')} at ` +
-          `${placeholderSpan('visit', 'startTime')}.</p>${CLOSING}`,
+        bodyJson: (defs) =>
+          sequenceBody(
+            paragraph('Hi ', placeholder(defs.contact!, 'firstName', FIRST_NAME_FALLBACK), ','),
+            paragraph(
+              "Just a reminder — we'll see you on ",
+              placeholder('visit', 'date'),
+              ' at ',
+              placeholder('visit', 'startTime'),
+              '.'
+            ),
+            CLOSING
+          ),
       },
       {
         subject: "We'll see you today",
         timingMode: 'anchor',
         anchorOffsetDays: 0,
         anchorTimeOfDay: '07:30',
-        bodyHtml: (defs) =>
-          `<p>Hi ${placeholderSpan(defs.contact!, 'firstName', FIRST_NAME_FALLBACK)},</p>` +
-          `<p>Today's the day! We'll be there at ${placeholderSpan('visit', 'startTime')}. ` +
-          `${placeholderSpan('visit', 'assignee')} will be your technician.</p>${CLOSING}`,
+        bodyJson: (defs) =>
+          sequenceBody(
+            paragraph('Hi ', placeholder(defs.contact!, 'firstName', FIRST_NAME_FALLBACK), ','),
+            paragraph(
+              "Today's the day! We'll be there at ",
+              placeholder('visit', 'startTime'),
+              '. ',
+              placeholder('visit', 'assignee'),
+              ' will be your technician.'
+            ),
+            CLOSING
+          ),
       },
     ],
   },
@@ -140,10 +186,18 @@ export const SEQUENCE_SEED_TEMPLATES: SeedTemplate[] = [
         subject: "We're on our way",
         timingMode: 'relative',
         delayDays: 0,
-        bodyHtml: (defs) =>
-          `<p>Hi ${placeholderSpan(defs.contact!, 'firstName', FIRST_NAME_FALLBACK)},</p>` +
-          `<p>Just a heads up — ${placeholderSpan('visit', 'assignee')} is on the way and should arrive ` +
-          `around ${placeholderSpan('visit', 'startTime')}.</p>${CLOSING}`,
+        bodyJson: (defs) =>
+          sequenceBody(
+            paragraph('Hi ', placeholder(defs.contact!, 'firstName', FIRST_NAME_FALLBACK), ','),
+            paragraph(
+              'Just a heads up — ',
+              placeholder('visit', 'assignee'),
+              ' is on the way and should arrive around ',
+              placeholder('visit', 'startTime'),
+              '.'
+            ),
+            CLOSING
+          ),
       },
     ],
   },
@@ -161,21 +215,33 @@ export const SEQUENCE_SEED_TEMPLATES: SeedTemplate[] = [
         subject: 'Thank you!',
         timingMode: 'relative',
         delayDays: 0,
-        bodyHtml: (defs) =>
-          `<p>Hi ${placeholderSpan(defs.contact!, 'firstName', FIRST_NAME_FALLBACK)},</p>` +
-          `<p>Thanks for choosing us for ` +
-          `${placeholderSpan(defs.work_order!, 'title', TITLE_FALLBACK)} ` +
-          `(${placeholderSpan(defs.work_order!, 'number')}). We hope everything went well.</p>${CLOSING}`,
+        bodyJson: (defs) =>
+          sequenceBody(
+            paragraph('Hi ', placeholder(defs.contact!, 'firstName', FIRST_NAME_FALLBACK), ','),
+            paragraph(
+              'Thanks for choosing us for ',
+              placeholder(defs.work_order!, 'title', TITLE_FALLBACK),
+              ' (',
+              placeholder(defs.work_order!, 'number'),
+              '). We hope everything went well.'
+            ),
+            CLOSING
+          ),
       },
       {
         subject: 'How did everything go?',
         timingMode: 'relative',
         delayDays: 10,
-        bodyHtml: (defs) =>
-          `<p>Hi ${placeholderSpan(defs.contact!, 'firstName', FIRST_NAME_FALLBACK)},</p>` +
-          `<p>It's been a little while since we completed ` +
-          `${placeholderSpan(defs.work_order!, 'title', TITLE_FALLBACK)}. We'd love to hear how ` +
-          `everything's holding up — and if you have a minute, a review would mean a lot.</p>${CLOSING}`,
+        bodyJson: (defs) =>
+          sequenceBody(
+            paragraph('Hi ', placeholder(defs.contact!, 'firstName', FIRST_NAME_FALLBACK), ','),
+            paragraph(
+              "It's been a little while since we completed ",
+              placeholder(defs.work_order!, 'title', TITLE_FALLBACK),
+              ". We'd love to hear how everything's holding up — and if you have a minute, a review would mean a lot."
+            ),
+            CLOSING
+          ),
       },
     ],
   },
@@ -194,34 +260,64 @@ export const SEQUENCE_SEED_TEMPLATES: SeedTemplate[] = [
         timingMode: 'anchor',
         anchorOffsetDays: -2,
         anchorTimeOfDay: '09:00',
-        bodyHtml: (defs) =>
-          `<p>Hi ${placeholderSpan(defs.contact!, 'firstName', FIRST_NAME_FALLBACK)},</p>` +
-          `<p>Just a reminder that invoice ${placeholderSpan(defs.invoice!, 'number')} for ` +
-          `${placeholderSpan(defs.invoice!, 'total')} is due ` +
-          `${placeholderSpan(defs.invoice!, 'dueDate', { v: 1, t: 'DATE', d: 'soon' })}.</p>${CLOSING}`,
+        bodyJson: (defs) =>
+          sequenceBody(
+            paragraph('Hi ', placeholder(defs.contact!, 'firstName', FIRST_NAME_FALLBACK), ','),
+            paragraph(
+              'Just a reminder that invoice ',
+              placeholder(defs.invoice!, 'number'),
+              ' for ',
+              placeholder(defs.invoice!, 'total'),
+              ' is due ',
+              placeholder(defs.invoice!, 'dueDate', {
+                v: 1,
+                t: 'DATE',
+                d: 'soon',
+              }),
+              '.'
+            ),
+            CLOSING
+          ),
       },
       {
         subject: 'Your invoice is overdue',
         timingMode: 'anchor',
         anchorOffsetDays: 3,
         anchorTimeOfDay: '09:00',
-        bodyHtml: (defs) =>
-          `<p>Hi ${placeholderSpan(defs.contact!, 'firstName', FIRST_NAME_FALLBACK)},</p>` +
-          `<p>Invoice ${placeholderSpan(defs.invoice!, 'number')} for ` +
-          `${placeholderSpan(defs.invoice!, 'total')} was due ` +
-          `${placeholderSpan(defs.invoice!, 'dueDate', { v: 1, t: 'DATE', d: 'recently' })} and is ` +
-          `now overdue. Please let us know if you have any questions about payment.</p>`,
+        bodyJson: (defs) =>
+          sequenceBody(
+            paragraph('Hi ', placeholder(defs.contact!, 'firstName', FIRST_NAME_FALLBACK), ','),
+            paragraph(
+              'Invoice ',
+              placeholder(defs.invoice!, 'number'),
+              ' for ',
+              placeholder(defs.invoice!, 'total'),
+              ' was due ',
+              placeholder(defs.invoice!, 'dueDate', {
+                v: 1,
+                t: 'DATE',
+                d: 'recently',
+              }),
+              ' and is now overdue. Please let us know if you have any questions about payment.'
+            )
+          ),
       },
       {
         subject: 'Invoice still outstanding',
         timingMode: 'anchor',
         anchorOffsetDays: 10,
         anchorTimeOfDay: '09:00',
-        bodyHtml: (defs) =>
-          `<p>Hi ${placeholderSpan(defs.contact!, 'firstName', FIRST_NAME_FALLBACK)},</p>` +
-          `<p>Invoice ${placeholderSpan(defs.invoice!, 'number')} for ` +
-          `${placeholderSpan(defs.invoice!, 'total')} is still outstanding. Please reach out if ` +
-          `there's anything we can help with.</p>`,
+        bodyJson: (defs) =>
+          sequenceBody(
+            paragraph('Hi ', placeholder(defs.contact!, 'firstName', FIRST_NAME_FALLBACK), ','),
+            paragraph(
+              'Invoice ',
+              placeholder(defs.invoice!, 'number'),
+              ' for ',
+              placeholder(defs.invoice!, 'total'),
+              " is still outstanding. Please reach out if there's anything we can help with."
+            )
+          ),
       },
     ],
   },
@@ -239,10 +335,16 @@ export const SEQUENCE_SEED_TEMPLATES: SeedTemplate[] = [
         subject: 'Thanks — see you next time',
         timingMode: 'relative',
         delayDays: 0,
-        bodyHtml: (defs) =>
-          `<p>Hi ${placeholderSpan(defs.contact!, 'firstName', FIRST_NAME_FALLBACK)},</p>` +
-          `<p>Thank you for having us out on ${placeholderSpan('visit', 'date')}. We hope everything went well — see ` +
-          `you next time!</p>${CLOSING}`,
+        bodyJson: (defs) =>
+          sequenceBody(
+            paragraph('Hi ', placeholder(defs.contact!, 'firstName', FIRST_NAME_FALLBACK), ','),
+            paragraph(
+              'Thank you for having us out on ',
+              placeholder('visit', 'date'),
+              '. We hope everything went well — see you next time!'
+            ),
+            CLOSING
+          ),
       },
     ],
   },
@@ -253,7 +355,10 @@ async function resolveOrgEntityDefs(
   organizationId: string
 ): Promise<Record<string, string>> {
   const defs = await db
-    .select({ entityType: schema.EntityDefinition.entityType, id: schema.EntityDefinition.id })
+    .select({
+      entityType: schema.EntityDefinition.entityType,
+      id: schema.EntityDefinition.id,
+    })
     .from(schema.EntityDefinition)
     .where(eq(schema.EntityDefinition.organizationId, organizationId))
   const map: Record<string, string> = {}
@@ -353,7 +458,7 @@ export async function seedClientNotificationSequences(
         sequenceId: sequence.id,
         organizationId,
         subject: step.subject,
-        bodyHtml: step.bodyHtml(entityDefs),
+        bodyJson: step.bodyJson(entityDefs) as unknown as Record<string, unknown>,
         delayDays: step.timingMode === 'relative' ? (step.delayDays ?? 0) : 0,
         delayHours: 0,
         timingMode: step.timingMode,

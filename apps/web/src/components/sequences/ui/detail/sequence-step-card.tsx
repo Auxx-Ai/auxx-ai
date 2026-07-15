@@ -110,10 +110,9 @@ export function SequenceStepCard({
 
         <SequenceBodyEditor
           bodyJson={step.bodyJson as Record<string, unknown> | null}
-          bodyHtml={step.bodyHtml}
           subjectKind={subjectKind}
-          onChange={(bodyJson, bodyHtml) =>
-            autosave.schedule({ bodyJson: bodyJson as Record<string, unknown>, bodyHtml })
+          onChange={(bodyJson) =>
+            autosave.schedule({ bodyJson: bodyJson as Record<string, unknown> })
           }
           onBlur={autosave.flush}
         />

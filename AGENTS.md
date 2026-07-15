@@ -1,196 +1,406 @@
 # Repository Guidelines
 
-This monorepo uses pnpm workspaces and Turborepo to manage multiple TypeScript apps and packages. Follow these concise guidelines to keep contributions consistent and easy to review.
+## Important Rules
 
-## Project Structure & Module Organization
+- Do not lie to me, that is being dishonest.
+- Do not tell me I'm right when I'm not right.
+- If my idea is inferior to your idea, let me know.
 
-- apps/: Next.js and Node services (e.g., `apps/web`, `apps/admin`, `apps/kb`, `apps/docs`, `apps/api`, `apps/websockets`, `apps/worker`).
-- packages/: Shared code (e.g., `packages/db` Prisma schema + client, `packages/lib`, `packages/ui`, `packages/config`, `packages/eslint-config`, `packages/typescript-config`).
-- infra-cdk/, infra/: Infrastructure definitions and scripts.
-- scripts/: Utility scripts (env, setup, migrations). docs/: Additional project docs.
-- Env files: `.env.example` → copy to `.env` per app/service as needed.
-- Zod 4 is used which deprecated nativeEnum. now its just z.enum
+## Project Overview
 
-## Build, Test, and Development Commands
+Auxx.ai is an open-source AI-powered email support ticket answer service for Shopify businesses. The platform integrates email services (Gmail and Outlook) with Shopify to provide automated customer support solutions.
 
-- Install: `pnpm i` (Node 22; see `.nvmrc`).
-- Develop (all): `pnpm dev` (Turbo parallel dev).
-- Build (all): `pnpm build`; Start (all): `pnpm start`.
-- Lint/Format: `pnpm lint`, `pnpm lint:fix`, `pnpm format`.
-- Test (workspace): `pnpm test`, `pnpm test:run`, `pnpm test:coverage`.
-- Filter per app: `pnpm -F web dev`, `pnpm -F api build`, `pnpm -F worker start`.
-- Docker (optional): `pnpm docker:dev`, `pnpm docker:stop`. S3/CDN dev setup: `pnpm setup:dev`.
+## Tech Stack
 
-## Coding Style & Naming Conventions
+- **Framework**: Next.js v16.1 with React Server Components and app router
+- **API**: tRPC v11 with React Query
+- **Database**: PostgreSQL with Drizzle ORM v0.44, pgvector
+- **Auth**: Better-auth v1.3 (Google, GitHub, Email/Password, Passkey, 2FA)
+- **Frontend**: TailwindCSS v4, shadcn component library
+- **Forms**: react-hook-form v7.54
+- **State**: Zustand
+- **Caching**: Redis
+- **Linting**: Biome (2-space indent, 100-char line width, single quotes). Prefer `pnpm lint:fix` to auto-fix lint issues after making changes.
+- **Build**: Turborepo, pnpm
+- **Infra**: AWS (SST), Docker
 
-- Language: TypeScript across apps/packages. Paths under `src/`.
-- Formatting: Prettier enforced (2 spaces, single quotes, no semicolons). Run `pnpm format`.
-- Linting: ESLint via shared configs in `packages/eslint-config` (+ Next.js rules where relevant).
-- Filenames: kebab-case for files/dirs; React component identifiers use PascalCase.
-- Create reusable and modular components
-- Break large components into smaller ones for better maintainability
-- File naming: use kebab-case for files (e.g., `user-profile.tsx`)
-- At the top of each file, comment the file-path/file-name.file_type
+## Monorepo Structure
+
+### Apps
+
+| App             | Port | Purpose                   |
+| --------------- | ---- | ------------------------- |
+| `apps/web`      | 3000 | Main Next.js application  |
+| `apps/api`      | 3007 | Express REST API          |
+| `apps/worker`   | 3005 | Job/queue worker (BullMQ) |
+| `apps/lambda`   | 3008 | AWS Lambda handlers       |
+| `apps/build`    | 3006 | Build-time utilities      |
+| `apps/homepage` | 3001 | Marketing site            |
+| `apps/kb`       | 3002 | Knowledge base            |
+| `apps/docs`     | 3004 | Documentation             |
+
+### Key Packages
+
+| Package             | Purpose                                     |
+| ------------------- | ------------------------------------------- |
+| `@auxx/database`    | Drizzle schema, models, migrations          |
+| `@auxx/lib`         | Shared business logic (~70 feature modules) |
+| `@auxx/ui`          | Shadcn component library                    |
+| `@auxx/types`       | Shared TypeScript types                     |
+| `@auxx/services`    | Business service layer                      |
+| `@auxx/config`      | Configuration management                    |
+| `@auxx/credentials` | Credential/secret management                |
+| `@auxx/redis`       | Redis client wrapper                        |
+| `@auxx/email`       | Email service (Mailgun, SES, SMTP)          |
+| `@auxx/billing`     | Stripe integration                          |
+| `@auxx/sdk`         | Public SDK                                  |
+| `@auxx/seed`        | Database seeding (CLI + domain seeders)      |
+
+### Package Dependency Rules
+
+**CRITICAL**: Only import from packages listed as dependencies in the importing package's `package.json`. Node.js resolves packages relative to the **importing file**, not the app entry point. A dynamic `import('@auxx/foo')` inside `@auxx/lib` will fail if `@auxx/lib/package.json` doesn't list `@auxx/foo` — even if the calling app has it.
+
+**Dependency tiers** (higher tiers can import lower, never the reverse):
+
+```
+Tier 0 (leaf):  config, logger, deployment, typescript-config
+Tier 1 (infra): database, redis, credentials, utils, types
+Tier 2 (core):  services, email, billing, workflow-nodes
+Tier 3 (biz):   lib  (imports tier 0–2, NEVER seed)
+Tier 4 (seed):  seed (imports lib + database, NEVER imported by lib)
+Tier 5 (apps):  web, worker, api, lambda, build (can import anything)
+```
+
+**Key constraint**: `@auxx/seed` ↔ `@auxx/lib` is a **one-way dependency** (`seed → lib`). Code in `@auxx/lib` must NEVER import from `@auxx/seed`. If lib code needs seed functionality, either:
+1. Move the logic into lib itself, or
+2. Define an interface/stub in lib and implement it in the app layer (worker/web) where both are available
+
+### Key Paths
+
+| What                    | Where                              |
+| ----------------------- | ---------------------------------- |
+| Next.js app routes      | `apps/web/src/app/`                |
+| tRPC routers            | `apps/web/src/server/api/routers/` |
+| tRPC root router        | `apps/web/src/server/api/root.ts`  |
+| tRPC setup & middleware | `apps/web/src/server/api/trpc.ts`  |
+| Auth config             | `apps/web/src/auth/server.ts`      |
+| DB schema files         | `packages/database/src/db/schema/` |
+| DB models               | `packages/database/src/db/models/` |
+| Shared lib modules      | `packages/lib/src/`                |
+| UI components           | `packages/ui/src/components/`      |
+| Infrastructure (SST)    | `infra/`                           |
+| CI/CD workflows         | `.github/workflows/`               |
+| Environment template    | `.env.example`                     |
+
+---
+
+# Coding Standards
+
+## General
+
+- Use TypeScript for all code.
+- Implement responsive designs for all components.
+- This is an early-stage startup. Prioritize simple, readable code with minimal abstraction. Strive for elegant, minimal solutions. No premature optimization. No backward compatibility unless specifically requested.
+- Add JSDoc to exported public APIs. Prefer self-documenting code over inline comments.
+- At the top of each file, comment the file-path/file-name.
+
+## Client vs Server Imports
+
+**CRITICAL**: Never import from `@auxx/lib/<module>` in client-side code. Barrel exports pull in server-only dependencies (bullmq, sharp, etc.) and will break the build.
+
+```typescript
+// WRONG — pulls in server-only deps:
+import { something } from '@auxx/lib/custom-fields'
+
+// CORRECT — client-safe export:
+import { something } from '@auxx/lib/custom-fields/client'
+```
+
+If a constant/type doesn't exist in the `/client` export yet, add it there first, then import from `/client`. See `packages/lib/package.json` exports field for all available subpaths.
+
+## Import Subpaths
+
+Before writing an import, check the target package's `package.json` `exports` field to confirm the subpath exists. Do not guess import paths — e.g. `@auxx/lib/permissions/types` won't work if only `@auxx/lib/permissions` is exported. When in doubt, check what existing code in the same file or router imports.
+
+## Component Architecture
+
+- File naming: kebab-case (e.g., `user-profile.tsx`)
+- Component naming: PascalCase (e.g., `UserProfile`)
 - Add `'use client'` directive for any components using client-side hooks or state
-- Comment every function, interface, type, and global variable
+- Split components when: file exceeds 800 lines, UI is reused, or it has a clear single responsibility
 
-## Testing Guidelines
+## API & Data Handling
 
-- Runner: Vitest with a workspace config (`vitest.workspace.ts`).
-- Web app uses JSDOM and Testing Library; libs/packages use Node environment.
-- Naming: `*.test.ts(x)` or `*.spec.ts(x)` under `src/` or `__tests__/`.
-- Coverage: thresholds enforced in configs (e.g., web ≥70%, lib/workflow-nodes ≥75%). Use `pnpm test:coverage`.
+### tRPC Procedure Types
 
-## Commit & Pull Request Guidelines
+| Procedure             | Use for                                                                  |
+| --------------------- | ------------------------------------------------------------------------ |
+| `publicProcedure`     | Unauthenticated routes                                                   |
+| `protectedProcedure`  | Authenticated routes (verifies session + organization)                   |
+| `adminProcedure`      | Admin/owner only (checks via `OrganizationMemberModel.isAdminOrOwner()`) |
+| `superAdminProcedure` | Super admin only (checks `isSuperAdmin` flag)                            |
 
-- Commits: follow Conventional Commits (`feat:`, `fix:`, `refactor:`, optional scopes).
-- Before PR: `pnpm lint && pnpm test:run && pnpm build` must pass; include migration notes for `packages/db/prisma` changes.
-- PRs: clear description, linked issues, screenshots/GIFs for UI, and notes for env/infra impacts.
+### tRPC Context
 
-## Security & Configuration Tips
+```typescript
+ctx.db        // Drizzle database instance
+ctx.session   // Better-auth session (user, defaultOrganizationId, isSuperAdmin)
+ctx.headers   // Request headers
+```
 
-- Do not commit secrets. Use `.env` (see `.env.example`) and `scripts/fetch-env.ts` for environment sync.
-- AWS/S3/CDN: see `.aws.md` and `scripts/setup-*.js`. Keep keys in your local env/SSM, not VCS.
+### Conventions
 
-## Utility Methods
+- Access DB in protected procedures with `ctx.db.<tableName>` (singular form)
+- Import tRPC client: `import { api } from '~/trpc/react'`
+- Mutation naming — use the action name, not suffixed with "Mutation":
+  ```typescript
+  // Do:
+  const sendReply = api.ticketAttachment.sendTicketReply.useMutation()
+  // Don't:
+  const sendReplyMutation = api.ticketAttachment.sendTicketReply.useMutation()
+  ```
 
-**IMPORTANT**: Before creating any utility functions, check `packages/lib/src/utils` for existing helpers:
+## Error Handling
 
-- **date.ts** - Date formatting and relative time
-- **email.ts** - Email parsing, validation, and formatting
-- **file.ts** - File operations and path utilities
-- **generateId.ts** - Unique ID generation
-- **strings.ts** - String manipulation (titleize, pluralize, whitespace)
-- **contact.ts** - Name, phone, and address formatting
+### AuxxError Classes (`@auxx/lib/errors`)
+
+Use the appropriate error class. All extend `AuxxError`:
+
+| Class                      | Status | Use for            |
+| -------------------------- | ------ | ------------------ |
+| `BadRequestError`          | 400    | Invalid input      |
+| `UnauthorizedError`        | 401    | Not authenticated  |
+| `ForbiddenError`           | 403    | Not authorized     |
+| `NotFoundError`            | 404    | Resource not found |
+| `ConflictError`            | 409    | Duplicate/conflict |
+| `UnprocessableEntityError` | 422    | Validation failure |
+| `RateLimitError`           | 429    | Too many requests  |
+
+### Result Pattern (`@auxx/lib/result`)
+
+Database models return `TypedResult<V, E>` instead of throwing:
+
+```typescript
+const result = await model.findById(id)
+if (result.ok) {
+  const value = result.value
+} else {
+  const error = result.error // Error instance
+}
+
+// Creating results:
+Result.ok(value)
+Result.error(new NotFoundError('Not found'))
+Result.nil() // Ok with undefined value
+```
+
+## Org Cache (read-path first)
+
+Before adding a new DB query for org-scoped data, check `@auxx/lib/cache`. Most hot read paths are already cached per-org and hydrated by providers — re-querying defeats invalidation and wastes a roundtrip.
+
+```typescript
+import {
+  getCachedResource, getCachedResources, getCachedResourceFields,
+  getCachedCustomFields, getCachedFieldMap, getCachedEntityDefId,
+  getCachedMembers, isOrgMember, getCachedGroups,
+  getCachedAgents, getCachedAgentById, getCachedDefaultModel,
+  getOrgCache, // for keys without a helper
+} from '@auxx/lib/cache'
+```
+
+Cached keys (`OrgCacheDataMap`): `entityDefs`, `entityDefSlugs`, `systemUser`, `channelProviders`, `members`, `memberRoleMap`, `features`, `subscription`, `orgProfile`, `resources`, `customFields`, `groups`, `agents`, `inboxes`, `channels`, `overages`, `orgSettings`, `installedApps`, `workflowApps`, `aiProviderConfigs`, `aiCredentials`, `aiDefaultModels`. For anything in this list, prefer `getOrgCache().get(orgId, '<key>')` over a fresh query. Only hit the DB when the data isn't cached or you need a write-after-read consistency guarantee.
+
+## Database Models
+
+Models extend `BaseModel` with typed CRUD operations and org-scoped queries:
+
+```typescript
+export class ApiKeyModel extends BaseModel<typeof ApiKey, CreateInput, Entity, UpdateInput> {
+  get table() { return ApiKey }
+
+  async listActiveByUser(userId: string): Promise<TypedResult<ApiKeyEntity[], Error>> {
+    // Uses this.db, this.scopeFilter, Result.ok/error
+  }
+}
+```
+
+## Database Schema Changes
+
+- **Never write raw SQL migration files.** Always modify the Drizzle schema files in `packages/database/src/db/schema/`.
+- When planning tasks that involve schema changes, show the TypeScript schema file changes, not SQL.
+- After modifying schema files, generate the migration from the `packages/database` folder: `pnpm db:generate --name <descriptive_name>`. From root, use `pnpm db:generate -- --name <descriptive_name>`.
+- Apply the migration: `pnpm db:migrate`
+
+## Module Exports
+
+In `index.ts` files, use explicit named exports:
+
+```typescript
+// Do:
+export { X, Y } from './xy'
+// Don't:
+export * from './xy'
+```
+
+## Zustand Stores
+
+Always use selectors to avoid unnecessary re-renders:
+
+```typescript
+// CORRECT:
+const markDirty = useWorkflowStore((state) => state.markDirty)
+
+// WRONG — causes re-renders on every state change:
+const { markDirty } = useWorkflowStore()
+```
 
 ## UI Components
 
-### **confirmations**: For delete confirmations use, the
+**Before building a settings page, detail page, dialog, or tree list, read
+`docs/ui-design-guide.md`.** It documents the shared layout/form/dialog/tree
+primitives (`MainPage`, `NavStack`, `SettingsPage`/`SettingsSection`, `ListCard`
+placeholders, `FieldPanel`/`FieldPanelRow`/`FieldInputAdapter`, `DialogNav`/
+`DialogNavPages`, `TreeRow`/`TreeRowButton`) with real usage examples — this is
+what keeps AI-generated UI consistent instead of each screen reinventing its
+own card/dialog/form shape.
+
+- Import shadcn components from `'@auxx/ui/components/<component>'`
+- Every `<SelectItem>` must have a `value` prop
+
+### Toast (errors only)
+
+```typescript
+import { toastError } from '@auxx/ui/components/toast'
+
+// No success toasts. Only error:
+toastError({ title: 'Error sending reply', description: error.message })
+```
+
+### Delete Confirmations
 
 ```typescript
 import { useConfirm } from '~/hooks/use-confirm'
+
 const [confirm, ConfirmDialog] = useConfirm()
 const confirmed = await confirm({
-  title: 'TEXT?',
-  description: 'TEXT',
+  title: 'Delete item?',
+  description: 'This action cannot be undone.',
   confirmText: 'Remove',
   cancelText: 'Cancel',
   destructive: true,
 })
-
-if (confirmed) {
-  // do the deleting code
-}
+if (confirmed) { /* delete */ }
 ```
 
-### **Buttons**: For disabling buttons while loading do this:
+### Buttons
 
 ```typescript
-<Button
-  variant="outline"
-  loading={isPending}
-  loadingText="Connecting...">
+// Loading state:
+<Button variant="outline" loading={isPending} loadingText="Connecting...">
   Connect
 </Button>
-```
 
-### **Buttons**: Using icons in buttons. Do NOT add any className to the <Icon />.
-
-```typescript
-<Button
-  variant="outline">
-  <Icon /> // <!-- No h-4 w-4 added. Its handled by Button.
+// Icons — do NOT add className to the icon, Button handles sizing:
+<Button variant="outline">
+  <Icon />
 </Button>
 ```
 
-Abstract patterns
+## Design Patterns
 
-```typescript
-export interface Provider<I, O> {
-  /** Unique id like "local" or "s3" */
-  id: string
+For provider/manager patterns (AI providers, storage, etc.), follow the existing implementations:
 
-  /** Optional warm-up step (e.g., clients, keys) */
-  init?(config?: unknown): Promise<void> | void
+- **AI providers**: `packages/lib/src/ai/providers/provider-manager.ts`
+- **File storage**: `packages/lib/src/files/storage/storage-manager.ts`
 
-  /** Do the thing */
-  execute(input: I): Promise<O> | O
-}
-```
-
-Use of dynamic loaders:
-
-```typescript
-export const loaders = {
-  local: async () => (await import('./local')).default, // => class LocalProvider
-  s3: async () => (await import('./s3')).default, // => class S3Provider
-} as const
-
-export type ProviderId = keyof typeof loaders
-```
-
-Manager pattern:
-
-```typescript
-import { loaders, type ProviderId } from '../providers/manifest'
-import type { Provider } from './types'
-import type { LocalInput, LocalOutput } from '../providers/local'
-import type { S3Input, S3Output } from '../providers/s3'
-
-export type ManagerOptions = {
-  config?: Partial<Record<ProviderId, unknown>>
-}
-
-export class ProviderManager {
-  private cache = new Map<ProviderId, Provider<any, any>>()
-  constructor(private opts: ManagerOptions = {}) {}
-
-  private async get(id: ProviderId): Promise<Provider<any, any>> {
-    let instance = this.cache.get(id)
-    if (instance) return instance
-
-    const Cls = await loaders[id]()
-    instance = new Cls()
-    if (typeof instance.init === 'function') {
-      await instance.init(this.opts.config?.[id])
-    }
-    this.cache.set(id, instance)
-    return instance
-  }
-
-  // ---- Overloads keep types nice but code simple ----
-  async execute(id: 'local', input: LocalInput): Promise<LocalOutput>
-  async execute(id: 's3', input: S3Input): Promise<S3Output>
-  async execute(id: ProviderId, input: any): Promise<any> {
-    const provider = await this.get(id)
-    return provider.execute(input)
-  }
-}
-```
-
-## Railway CLI (production)
-
-The project is linked to Railway via `railway link`. The `.railway` config file is gitignored.
-
-**Workspace:** Auxx.Ai's Projects | **Project:** Auxx Ai | **Environment:** production
-
-**Services:** web, api, worker, build, lambda-server, homepage, docs, Postgres, pgvector, Redis
-
-```bash
-# List all projects
-railway list
-
-# Show all services and their deployment status
-railway service status -a --json
-
-# View variables for a specific service
-railway variables -s <service-name> --json
-
-# View logs for a specific service
-railway service logs -s <service-name>
-
-# Redeploy a service
-railway service redeploy -s <service-name>
-```
+Pattern: Feature modules use a Manager class that lazily loads and caches provider instances, with a `Provider` interface defining `id`, optional `init()`, and `execute()`.
 
 ---
+
+# Development Workflow
+
+## Documentation
+
+For code generation, setup, configuration, or library/API questions, consult the relevant official documentation before making assumptions.
+
+---
+
+# Development Commands
+
+```bash
+# Install dependencies
+pnpm install
+
+# Run tests
+pnpm test
+
+# Lint (Biome) — full repo, errors only (CI uses this on pushes to main)
+pnpm lint
+
+# Lint changed files only vs main branch — errors only (CI uses this on PRs)
+pnpm lint:changed
+
+# Lint + auto-fix (writes changes, includes import sorting)
+pnpm lint:fix
+
+# Format only (writes changes)
+pnpm format
+
+# Generate DB migration (after schema changes)
+pnpm db:generate --name <descriptive_name>
+
+# Apply DB migrations
+pnpm db:migrate
+
+# Run standalone scripts (uses dotenv-cli to load .env with multiline values)
+npx dotenv -- npx tsx path/to/script.ts
+```
+
+### Type Checking (`tsc`)
+
+Every package/app has a scoped `typecheck` script (`tsc --noEmit` run from that
+package's own directory against its own `tsconfig.json`, via `composite: true`
+project references). Run it **per package**, never as a bare `tsc`/`tsc -b`
+from the repo root — there is no root `tsconfig.json`, and a whole-monorepo
+invocation walks every package's sources in one process.
+
+```bash
+# Scope to one package (fast, low memory — most packages finish in seconds)
+pnpm --filter @auxx/utils typecheck
+pnpm --filter @auxx/database typecheck
+
+# apps/web and packages/lib are large enough to hit V8's default ~4GB
+# old-space heap limit even when scoped to just that package. Bump it:
+cd apps/web && NODE_OPTIONS="--max-old-space-size=8192" pnpm exec tsc --noEmit
+cd packages/lib && NODE_OPTIONS="--max-old-space-size=8192" pnpm exec tsc --noEmit
+```
+
+The OOM was never about total errors or physical memory — it's Node/V8's
+default heap ceiling, hit while checking apps/web's ~3.5k files (or lib's
+~2.6k) in a single process. Scoping to a package keeps most invocations well
+under the limit; for web/lib, raising `--max-old-space-size` is enough (~6GB
+peak observed for web).
+
+### Rules
+
+- **Do NOT run a whole-repo `tsc`.** Scope it per-package as shown above.
+- **Do NOT stop or restart the dev server.**
+
+---
+
+# Viewing Logs (dev)
+
+`@auxx/logger` prints to the console AND ships structured logs to a local **OpenObserve** instance that `pnpm dev` starts automatically (dev-only). Use it to search/review log history instead of scrolling the terminal.
+
+- **UI**: http://localhost:5080 → _Logs_ → stream `auxx`
+- **Login**: `root@auxx.dev` / `Complexpass#123` (local dev only — not a secret)
+- Every entry has `level`, `scope`, `app` (`@auxx/web` / `@auxx/worker` / …), `message`, plus any `.with({...})` fields. Filter with SQL, e.g. `level='error'`, `scope='billing'`, `app='@auxx/worker'`, or full-text `match_all('stripe')`.
+- Querying the API directly (Basic auth): `POST http://localhost:5080/api/default/_search?type=logs` with a SQL body.
+
+Full details (how it works, turning it off): `docs/log-history.md`.
+
+---
+
+# Ops Reference (Railway, AWS)
+
+For Railway (production) and AWS (dev) commands — log tailing, service status, RDS, ECS — read `docs/ops-reference.md`. Pull it in when the user asks about deploys, prod logs, or infrastructure debugging.

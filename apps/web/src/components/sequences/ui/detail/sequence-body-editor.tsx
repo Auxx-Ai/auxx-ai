@@ -3,7 +3,7 @@
 
 import { Button } from '@auxx/ui/components/button'
 import { cn } from '@auxx/ui/lib/utils'
-import { generateHTML, type JSONContent } from '@tiptap/core'
+import type { JSONContent } from '@tiptap/core'
 import Color from '@tiptap/extension-color'
 import FontFamily from '@tiptap/extension-font-family'
 import Link from '@tiptap/extension-link'
@@ -37,12 +37,10 @@ import { Tooltip } from '~/components/global/tooltip'
 interface SequenceBodyEditorProps {
   /** Persisted TipTap JSON body (preferred). */
   bodyJson: Record<string, unknown> | null
-  /** Persisted HTML body — seed fallback when no JSON exists yet. */
-  bodyHtml: string | null
   /** Null for manual sequences — offers Visit fields only on visit-subject sequences. */
   subjectKind?: 'visit' | 'work_order' | 'invoice' | null
-  /** Fires with the stripped JSON + generated HTML on every doc change. */
-  onChange: (bodyJson: JSONContent, bodyHtml: string) => void
+  /** Fires with the stripped canonical JSON on every doc change. */
+  onChange: (bodyJson: JSONContent) => void
   /** Fires when focus leaves the editor — flush pending autosave. */
   onBlur?: () => void
   placeholder?: string
@@ -76,7 +74,6 @@ export function SequenceBodyEditor(props: SequenceBodyEditorProps) {
 
 function SequenceBodyEditorInner({
   bodyJson,
-  bodyHtml,
   subjectKind,
   onChange,
   onBlur,
@@ -133,17 +130,14 @@ function SequenceBodyEditorInner({
     ]
   )
 
-  // For the HTML projection — `generateHTML` from the STRIPPED json instead of
-  // `editor.getHTML()`, which would serialize an open chip's markup (+ ZWSP
-  // seed) into the saved step HTML.
-  const extensionsRef = useRef(extensions)
-  extensionsRef.current = extensions
-
   const editor = useEditor(
     {
       extensions,
-      // Seed-once: JSON is canonical; fall back to the HTML projection, then empty.
-      content: (bodyJson as JSONContent | null) ?? bodyHtml ?? '',
+      // Sequence bodies remain TipTap JSON all the way to send-time rendering.
+      content: (bodyJson as JSONContent | null) ?? {
+        type: 'doc',
+        content: [{ type: 'paragraph' }],
+      },
       immediatelyRender: false,
       shouldRerenderOnTransaction: false,
       editorProps: {
@@ -155,7 +149,7 @@ function SequenceBodyEditorInner({
       onUpdate: ({ editor, transaction }) => {
         if (!transaction.docChanged) return
         const json = stripOpenChips(editor.getJSON())
-        onChange(json, generateHTML(json, extensionsRef.current))
+        onChange(json)
       },
     },
     []

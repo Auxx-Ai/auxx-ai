@@ -48,7 +48,8 @@ export interface PlaceholderResolutionContext {
 }
 
 /** Typed field metadata retained until each placeholder span is rendered. */
-interface ResolvedFieldToken {
+/** Typed field metadata retained until a placeholder occurrence is rendered. */
+export interface ResolvedFieldToken {
   value: TypedFieldValue | TypedFieldValue[]
   fieldType: FieldType
   fieldOptions?: FieldOptions
@@ -235,7 +236,12 @@ function userColumn(
   }
 }
 
-async function resolveFieldTokens(
+/**
+ * Batch-resolve field-backed placeholder ids without committing to an output
+ * representation. Both the legacy HTML adapter and structural document
+ * resolver use this so field reads and display metadata stay identical.
+ */
+export async function resolveFieldTokens(
   tokens: { id: string; parsed: Extract<ParsedPlaceholder, { kind: 'field' }> }[],
   ctx: PlaceholderResolutionContext
 ): Promise<Map<string, ResolvedFieldToken | null>> {
@@ -328,7 +334,7 @@ function formatDateOnly(d: Date): string {
  *   converter returns the raw id/object for frontend hydration, which is
  *   useless in an email).
  */
-function formatFieldValueForText(
+export function formatFieldValueForText(
   value: TypedFieldValue | TypedFieldValue[],
   fieldType: FieldType,
   options?: FieldOptions

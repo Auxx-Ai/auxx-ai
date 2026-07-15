@@ -13,5 +13,9 @@ export { collectVariableIds } from './collect-variable-ids'
 export { isNonEmptyDoc, trimTrailingEmptyParagraphs } from './doc-shape'
 export { docToText } from './doc-to-text'
 export { docToHtml, htmlToDoc, stripHtml } from './html'
+export {
+  appendSequenceUnsubscribeFooter,
+  sequenceEmailDocumentToHtml,
+} from './sequence-email-document-to-html'
 export { type TextToDocOptions, textToDoc } from './text-to-doc'
 export type { TiptapDoc, TiptapMark, TiptapNode } from './types'

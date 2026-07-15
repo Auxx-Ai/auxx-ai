@@ -4,6 +4,7 @@ export {
   type BuildContextInput,
   buildPlaceholderContextForThread,
 } from './context'
+export { resolvePlaceholdersInDocument } from './document-resolver'
 export {
   decodeFallback,
   encodeFallback,
@@ -19,6 +20,9 @@ export {
   tryParsePlaceholderId,
 } from './path-parser'
 export {
+  formatFieldValueForText,
   type PlaceholderResolutionContext,
+  type ResolvedFieldToken,
+  resolveFieldTokens,
   resolvePlaceholdersInHtml,
 } from './resolver'

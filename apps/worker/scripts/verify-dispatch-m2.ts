@@ -321,6 +321,28 @@ async function main() {
       (await woStatus(organizationId, woB.instance.id)) === 'new'
     )
 
+    const rescheduledStart = new Date(start1.getTime() + 24 * 60 * 60 * 1000)
+    const rescheduledEnd = new Date(rescheduledStart.getTime() + 60 * 60 * 1000)
+    const rescheduled = await scheduleVisit({
+      organizationId,
+      userId,
+      visitId: visitB0.id,
+      startTime: rescheduledStart,
+      endTime: rescheduledEnd,
+      assigneeUserId: userId,
+    })
+    check(
+      'rescheduling a canceled visit restores scheduled status and the new time',
+      rescheduled.status === 'scheduled' &&
+        rescheduled.startTime?.getTime() === rescheduledStart.getTime() &&
+        rescheduled.endTime?.getTime() === rescheduledEnd.getTime(),
+      rescheduled
+    )
+    check(
+      'rescheduling a canceled visit restores work_order_status scheduled',
+      (await woStatus(organizationId, woB.instance.id)) === 'scheduled'
+    )
+
     const unscheduled = await unscheduleVisit({ organizationId, userId, visitId: visitB0.id })
     check(
       'unscheduleVisit clears startTime/endTime',

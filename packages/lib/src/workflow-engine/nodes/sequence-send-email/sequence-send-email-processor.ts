@@ -13,8 +13,10 @@ import { and, eq, isNull } from 'drizzle-orm'
 import { getOrgCache } from '../../../cache'
 import { MessageSenderService } from '../../../messages/message-sender.service'
 import type { SendMessageInput } from '../../../messages/types/message-sending.types'
-import type { PlaceholderResolutionContext } from '../../../placeholders'
-import { resolvePlaceholdersInHtml } from '../../../placeholders'
+import {
+  type PlaceholderResolutionContext,
+  resolvePlaceholdersInDocument,
+} from '../../../placeholders'
 import { ProviderRegistryService } from '../../../providers/provider-registry-service'
 import { buildSequenceUnsubscribeUrl, exitSequenceRun } from '../../../sequences/runtime'
 import {
@@ -24,6 +26,11 @@ import {
   type SubjectContext,
 } from '../../../sequences/subject'
 import { recordSignal, toSignalRecordKey } from '../../../signals'
+import {
+  appendSequenceUnsubscribeFooter,
+  sequenceEmailDocumentToHtml,
+  type TiptapNode,
+} from '../../../tiptap'
 import { SystemUserService } from '../../../users/system-user-service'
 import type { ExecutionContextManager } from '../../core/execution-context'
 import type { NodeExecutionResult, ValidationResult, WorkflowNode } from '../../core/types'
@@ -67,6 +74,19 @@ function isTerminalSendFailure(errorMessage: string | null | undefined): boolean
   return false
 }
 
+/** Check structural placeholder atoms for a rendered Visit schedule field. */
+function containsVisitSchedulePlaceholder(node: TiptapNode): boolean {
+  if (
+    node.type === 'placeholder' &&
+    (node.attrs?.id === 'visit:date' ||
+      node.attrs?.id === 'visit:startTime' ||
+      node.attrs?.id === 'visit:endTime')
+  ) {
+    return true
+  }
+  return (node.content ?? []).some((child) => containsVisitSchedulePlaceholder(child))
+}
+
 export class SequenceSendEmailProcessor extends BaseNodeProcessor {
   readonly type = 'sequence-send-email'
 
@@ -79,7 +99,7 @@ export class SequenceSendEmailProcessor extends BaseNodeProcessor {
     if (typeof config.stepIndex !== 'number' || config.stepIndex < 1) {
       errors.push('stepIndex must be a positive number')
     }
-    if (!config.bodyHtml) errors.push('bodyHtml is required')
+    if (!config.bodyJson || config.bodyJson.type !== 'doc') errors.push('bodyJson is required')
     if (!config.integrationId) errors.push('integrationId is required')
     if (config.stepIndex === 1 && !config.subject) {
       errors.push('subject is required for step 1')
@@ -244,11 +264,11 @@ export class SequenceSendEmailProcessor extends BaseNodeProcessor {
 
     try {
       // ── (4) generic placeholder resolution with subject record context ──────
+      const entityDefs = await getOrgCache().get(organizationId, 'entityDefs')
       const includesVisitScheduleField =
         subjectKind === 'visit' &&
         visitRow?.startTime != null &&
-        /data-id="visit:(date|startTime|endTime)"/.test(config.bodyHtml)
-      const entityDefs = await getOrgCache().get(organizationId, 'entityDefs')
+        containsVisitSchedulePlaceholder(config.bodyJson)
       const recordIdsByRoot = new Map<string, RecordId>()
       if (entityDefs.contact && contactRecordId) {
         recordIdsByRoot.set(entityDefs.contact, contactRecordId)
@@ -268,13 +288,14 @@ export class SequenceSendEmailProcessor extends BaseNodeProcessor {
         recordIdsByRoot,
         timezone: sequence.deliveryTimezone ?? 'UTC',
       }
-      let resolvedHtml = await resolvePlaceholdersInHtml(config.bodyHtml, placeholderCtx)
+      let resolvedDocument = await resolvePlaceholdersInDocument(config.bodyJson, placeholderCtx)
 
       // ── (5) unsubscribe footer — only when the sequence wants one ─────────
       if (sequence.includeUnsubscribeFooter) {
         const unsubscribeUrl = buildSequenceUnsubscribeUrl(run.unsubscribeToken)
-        resolvedHtml += `<p style="color:#8a8a8a;font-size:12px;margin-top:24px;"><a href="${unsubscribeUrl}" target="_blank" rel="noopener noreferrer" style="color:#8a8a8a;">Unsubscribe</a></p>`
+        resolvedDocument = appendSequenceUnsubscribeFooter(resolvedDocument, unsubscribeUrl)
       }
+      const resolvedHtml = sequenceEmailDocumentToHtml(resolvedDocument)
 
       // ── Subject: step 1 opens the thread; steps 2..N reply into it ─────────
       const subject = await this.resolveSubject(config, run, database)
