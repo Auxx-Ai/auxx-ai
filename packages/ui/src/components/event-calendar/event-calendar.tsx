@@ -76,7 +76,7 @@ export interface EventCalendarProps<T extends EventCalendarItem = EventCalendarI
   onSlotClick?: (startTime: Date, resourceId?: string) => void
   /** The calendar never mutates — every write (move or resize) round-trips through these. */
   onEventDrop?: (event: T, newStart: Date, newEnd: Date, resourceId?: string) => void
-  onEventResize?: (event: T, newEnd: Date) => void
+  onEventResize?: (event: T, newStart: Date, newEnd: Date) => void
   /** Hide the built-in date-nav/view-switcher header when the consumer brings their own toolbar chrome. */
   hideToolbar?: boolean
   /** Month view only — cells where this returns true get a muted background (closed days). */

@@ -7,7 +7,6 @@ import {
   EventDateTimeSection,
   EventPopoverBody,
   EventPopoverFooter,
-  EventPopoverHints,
   EventRepeatSection,
   type SeriesScope,
 } from '@auxx/ui/components/event-calendar'
@@ -192,6 +191,7 @@ export function SchedulePopoverContent({
       <EventDateTimeSection
         start={startTime}
         end={endTime}
+        warnings={hints}
         onChange={handleDateTimeChange}
         onDateToggle={
           isDraft
@@ -201,7 +201,6 @@ export function SchedulePopoverContent({
               }
         }
       />
-      <EventPopoverHints hints={hints} />
       <AssigneeRow value={assigneeUserId} onChange={handleAssigneeChange} />
       {workOrderRecordId && (
         <EventRepeatSection

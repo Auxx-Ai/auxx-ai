@@ -25,8 +25,8 @@ interface DraggableEventProps<T extends EventCalendarItem = EventCalendarItem> {
   /** Active selection — the event whose detail/popover is open. Draws the in-color ring. */
   isSelected?: boolean
   renderEvent?: RenderEvent<T>
-  /** Enables the bottom-edge resize handle — only meaningful in week/day/resource. */
-  onResize?: (event: T, newEnd: Date) => void
+  /** Enables the top/bottom-edge resize handles — only meaningful in week/day/resource. */
+  onResize?: (event: T, newStart: Date, newEnd: Date) => void
 }
 
 export function DraggableEvent<T extends EventCalendarItem = EventCalendarItem>({
@@ -66,7 +66,7 @@ export function DraggableEvent<T extends EventCalendarItem = EventCalendarItem>(
 
   const canResize =
     onResize !== undefined && (view === 'week' || view === 'day' || view === 'resource')
-  const { isResizing, previewHeight, resizeHandleProps } = useEventResize({
+  const { isResizing, previewHeight, previewOffsetY, getResizeHandleProps } = useEventResize({
     event,
     cellHeight: WeekCellsHeight,
     onResize,
@@ -96,10 +96,16 @@ export function DraggableEvent<T extends EventCalendarItem = EventCalendarItem>(
 
   const effectiveHeight = isResizing && previewHeight !== null ? previewHeight : height
 
+  // During a resize the dnd transform is null (resize stops propagation, so no move-drag),
+  // so the top-edge preview translate lives in the else branch alongside the height.
   const style =
     transform && !isDragSource
       ? { transform: CSS.Translate.toString(transform), height: effectiveHeight || 'auto' }
-      : { height: effectiveHeight || 'auto' }
+      : {
+          height: effectiveHeight || 'auto',
+          transform:
+            isResizing && previewOffsetY !== 0 ? `translateY(${previewOffsetY}px)` : undefined,
+        }
 
   return (
     <div
@@ -126,14 +132,18 @@ export function DraggableEvent<T extends EventCalendarItem = EventCalendarItem>(
         renderEvent={renderEvent}
       />
       {canResize && (
-        <div
-          {...resizeHandleProps}
-          className={cn(
-            'absolute inset-x-0 bottom-0 flex h-2 cursor-ns-resize touch-none items-end justify-center opacity-0 transition-opacity group-hover/event:opacity-100',
-            isResizing && 'opacity-100'
-          )}>
-          <span className='mb-0.5 h-1 w-6 rounded-full bg-current opacity-40' />
-        </div>
+        <>
+          {/* Invisible top drag zone — resizes the start time. */}
+          <div
+            {...getResizeHandleProps('top')}
+            className='absolute inset-x-0 top-0 h-2 cursor-ns-resize touch-none'
+          />
+          {/* Invisible bottom drag zone — resizes the end time. */}
+          <div
+            {...getResizeHandleProps('bottom')}
+            className='absolute inset-x-0 bottom-0 h-2 cursor-ns-resize touch-none'
+          />
+        </>
       )}
     </div>
   )

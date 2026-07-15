@@ -31,8 +31,8 @@ export {
   EventDateTimeSection,
   EventPeopleSection,
   EventPopoverFooter,
-  EventPopoverHints,
   EventRepeatSection,
+  type EventTitleAction,
   EventTitleSection,
 } from './event-popover/event-popover-sections'
 export { formatTimeOfDay, parseTimeInput } from './event-popover/parse-time'

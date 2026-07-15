@@ -62,7 +62,6 @@ export function EventDockPanel({
       open={dock.open}
       side={dock.side}
       contentKey={event?.id ?? 'empty'}
-      header={<span className='truncate font-medium text-sm'>{event?.title ?? 'Event'}</span>}
       onClose={() => {
         setEventDockOpen(false)
         onActiveVisitChange(null)
@@ -85,7 +84,12 @@ export function EventDockPanel({
             canEdit={canEdit}
             mutations={mutations}
             existingVisits={existingVisits}
-            onClose={() => onActiveVisitChange(null)}
+            // In dock mode `onClose` is only fired by the record-opening link handlers to
+            // dismiss the *floating* popover before the drawer opens. The dock is sticky
+            // (plan 21 decision #3) — keep the event selected so opening a work order/contact
+            // doesn't clear `activeVisitId` and drop the panel back to the guide. Real
+            // dismissal goes through `DockPanel`'s own `onClose` (X / Esc).
+            onClose={() => {}}
             onOpenRecord={onOpenRecord}
           />
         </EventPopoverBody>

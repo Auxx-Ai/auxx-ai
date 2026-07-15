@@ -33,7 +33,7 @@ interface DayResourceGroupProps<T extends EventCalendarItem = EventCalendarItem>
   backgroundEvents: BackgroundEvent[]
   onEventSelect: (event: T) => void
   onSlotClick?: (startTime: Date, resourceId: string) => void
-  onEventResize?: (event: T, newEnd: Date) => void
+  onEventResize?: (event: T, newStart: Date, newEnd: Date) => void
   renderEvent?: RenderEvent<T>
   /** Id of the actively-selected event (detail/popover open) — draws the in-color ring. */
   selectedEventId?: string | null
