@@ -5,12 +5,13 @@ import type { SelectOption } from '@auxx/types/custom-field'
 import { Badge } from '@auxx/ui/components/badge'
 import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
 import { cn } from '@auxx/ui/lib/utils'
-import { ChevronsUpDown, Star } from 'lucide-react'
+import { Star } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useDefaultChannelId } from '~/components/channels/hooks/use-default-channel'
 import { useEmailChannels } from '~/components/channels/store/channel-store'
 import { Tooltip } from '~/components/global/tooltip'
+import { PickerTrigger, type PickerTriggerOptions } from '~/components/ui/picker-trigger'
 import { useSettings } from '~/hooks/use-settings'
 import { MultiSelectPicker } from './multi-select-picker'
 
@@ -18,11 +19,19 @@ interface ChannelPickerProps {
   value: string
   onChange: (value: string) => void
   disabled?: boolean
+  /** Styling for the shared picker trigger. */
+  triggerProps?: PickerTriggerOptions
   /** className forwarded to PopoverContent (e.g. for z-index override) */
   className?: string
 }
 
-export function ChannelPicker({ value, onChange, disabled, className }: ChannelPickerProps) {
+export function ChannelPicker({
+  value,
+  onChange,
+  disabled,
+  triggerProps,
+  className,
+}: ChannelPickerProps) {
   const router = useRouter()
   const allChannels = useEmailChannels()
   // Example integrations are seeded placeholders — they can't actually send.
@@ -71,25 +80,21 @@ export function ChannelPicker({ value, onChange, disabled, className }: ChannelP
         if (disabled) return
         setOpen(next)
       }}>
-      <PopoverTrigger asChild disabled={disabled}>
-        <div className='inline-block'>
-          <Badge
-            variant='user'
-            className={disabled ? 'cursor-not-allowed opacity-70' : ''}
-            role='combobox'
-            aria-expanded={open}
-            aria-label='Select channel'
-            onClick={(e) => {
-              if (disabled) return
-              e.preventDefault()
-              setOpen(!open)
-            }}>
-            {displayName}
-            <ChevronsUpDown
-              className={`ml-1 h-3 w-3 opacity-50 transition-transform ${open ? 'rotate-180' : ''}`}
-            />
-          </Badge>
-        </div>
+      <PopoverTrigger asChild>
+        <PickerTrigger
+          open={open}
+          disabled={disabled}
+          variant={triggerProps?.variant ?? 'transparent'}
+          size={triggerProps?.size}
+          hasValue={!!selected}
+          placeholder='Select channel'
+          icon={triggerProps?.icon}
+          iconPosition={triggerProps?.iconPosition}
+          hideIcon={triggerProps?.hideIcon}
+          asCombobox
+          className={triggerProps?.className}>
+          <Badge variant='user'>{displayName}</Badge>
+        </PickerTrigger>
       </PopoverTrigger>
       <PopoverContent className={cn('w-auto min-w-[240px] p-0', className)}>
         <MultiSelectPicker

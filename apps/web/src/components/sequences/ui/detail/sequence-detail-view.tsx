@@ -5,6 +5,7 @@ import { SEQUENCE_TRIGGER_LABELS, type SequenceTriggerType } from '@auxx/lib/seq
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import {
+  type DockedPanelConfig,
   MainPage,
   MainPageBreadcrumb,
   MainPageBreadcrumbItem,
@@ -16,10 +17,12 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@auxx/ui/components/ta
 import { toastError } from '@auxx/ui/components/toast'
 import { Mails, Pause, Pencil, Play, Send, Settings, UsersRound } from 'lucide-react'
 import { useQueryState } from 'nuqs'
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { EmptyState } from '~/components/global/empty-state'
 import { LoadingSpinner } from '~/components/global/loading-content'
 import { Tooltip } from '~/components/global/tooltip'
+import { useEffectiveDockState } from '~/hooks/use-effective-dock-state'
+import { useDockStore } from '~/stores/dock-store'
 import { api } from '~/trpc/react'
 import { SequenceRecipients } from './sequence-recipients'
 import { SequenceSettingsDrawer } from './sequence-settings-drawer'
@@ -54,6 +57,11 @@ function Shell({ title, children }: { title: string; children: React.ReactNode }
 export function SequenceDetailView({ sequenceId }: SequenceDetailViewProps) {
   const [tab, setTab] = useQueryState('tab', { defaultValue: 'editor' })
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const isDocked = useEffectiveDockState()
+  const dockedWidth = useDockStore((state) => state.dockedWidth)
+  const setDockedWidth = useDockStore((state) => state.setDockedWidth)
+  const minWidth = useDockStore((state) => state.minWidth)
+  const maxWidth = useDockStore((state) => state.maxWidth)
   const utils = api.useUtils()
 
   const { data, isLoading } = api.sequence.get.useQuery({ id: sequenceId })
@@ -68,6 +76,22 @@ export function SequenceDetailView({ sequenceId }: SequenceDetailViewProps) {
     onError: (error) =>
       toastError({ title: 'Failed to update sequence', description: error.message }),
   })
+
+  const dockedPanels = useMemo<DockedPanelConfig[]>(() => {
+    const sequence = data?.sequence
+    if (!isDocked || !settingsOpen || !sequence) return []
+
+    return [
+      {
+        key: 'sequence-settings',
+        content: <SequenceSettingsDrawer sequence={sequence} open onOpenChange={setSettingsOpen} />,
+        width: dockedWidth,
+        onWidthChange: setDockedWidth,
+        minWidth,
+        maxWidth,
+      },
+    ]
+  }, [data?.sequence, isDocked, settingsOpen, dockedWidth, setDockedWidth, minWidth, maxWidth])
 
   if (isLoading && !data) {
     return (
@@ -166,7 +190,7 @@ export function SequenceDetailView({ sequenceId }: SequenceDetailViewProps) {
         </MainPageBreadcrumb>
       </MainPageHeader>
 
-      <MainPageContent>
+      <MainPageContent dockedPanels={dockedPanels}>
         <div className='flex h-full flex-1 flex-col min-h-0'>
           <SequenceStatsStrip sequenceId={sequenceId} />
 
@@ -201,7 +225,7 @@ export function SequenceDetailView({ sequenceId }: SequenceDetailViewProps) {
         </div>
       </MainPageContent>
 
-      {settingsOpen && (
+      {!isDocked && settingsOpen && (
         <SequenceSettingsDrawer
           sequence={sequence}
           open={settingsOpen}

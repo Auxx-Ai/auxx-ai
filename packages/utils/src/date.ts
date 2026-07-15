@@ -1,3 +1,32 @@
+import { format } from 'date-fns'
+
+/**
+ * Parses a local 24-hour `HH:MM` value onto a date used only as the time picker’s display anchor.
+ * Invalid values return `undefined`.
+ */
+export function parseTimeOfDay(
+  value: string | null | undefined,
+  baseDate: Date = new Date()
+): Date | undefined {
+  if (!value) return undefined
+
+  const match = /^(\d{2}):(\d{2})$/.exec(value)
+  if (!match) return undefined
+
+  const hours = Number(match[1])
+  const minutes = Number(match[2])
+  if (hours > 23 || minutes > 59) return undefined
+
+  const date = new Date(baseDate)
+  date.setHours(hours, minutes, 0, 0)
+  return date
+}
+
+/** Formats a date’s local clock time as a 24-hour `HH:MM` value. */
+export function formatTimeOfDay(date: Date): string {
+  return format(date, 'HH:mm')
+}
+
 /**
  * Returns a relative time string (e.g., "3 hours ago", "in 2 days").
  * Past dates read "<n> <unit> ago", future dates "in <n> <unit>". In `short`

@@ -1,6 +1,7 @@
 // apps/web/src/components/sequences/ui/detail/sequence-settings-drawer.tsx
 'use client'
 
+import { FieldType } from '@auxx/database/enums'
 import type { ConditionGroup } from '@auxx/lib/conditions/client'
 import { getFieldOperators } from '@auxx/lib/resources/client'
 import {
@@ -10,39 +11,13 @@ import {
 } from '@auxx/lib/sequences/client'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
-import { Drawer, DrawerContent, DrawerHeader } from '@auxx/ui/components/drawer'
-import { Input } from '@auxx/ui/components/input'
+import { DockableDrawer } from '@auxx/ui/components/dockable-drawer'
+import { DrawerHeader } from '@auxx/ui/components/drawer'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { Section } from '@auxx/ui/components/section'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@auxx/ui/components/select'
-import { Switch } from '@auxx/ui/components/switch'
 import { toastError } from '@auxx/ui/components/toast'
-import { TreeRow } from '@auxx/ui/components/tree-row'
-import {
-  Building2,
-  CalendarClock,
-  Clock,
-  Filter,
-  Globe,
-  ListFilter,
-  Mail,
-  MailX,
-  PenLine,
-  Plus,
-  Power,
-  Reply,
-  Send,
-  Settings,
-  Trash2,
-  TriangleAlert,
-  Zap,
-} from 'lucide-react'
+import { formatTimeOfDay, parseTimeOfDay } from '@auxx/utils/date'
+import { CalendarClock, ListFilter, Plus, Reply, Send, Settings, Trash2, Zap } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useMemo, useState } from 'react'
 import {
@@ -52,14 +27,18 @@ import {
   type ConditionSystemConfig,
   useConditionActions,
 } from '~/components/conditions'
+import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
+import { DockToggleButton } from '~/components/global/dock-toggle-button'
+import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
 import { ChannelPicker } from '~/components/pickers/channel-picker'
 import { TimeZonePicker } from '~/components/pickers/timezone-picker'
 import { useResourceFields } from '~/components/resources/hooks/use-resource-fields'
 import { useResourceStore } from '~/components/resources/store/resource-store'
-import { useSignature } from '~/components/signatures/hooks/use-signature'
 import { SignaturePicker } from '~/components/signatures/ui/signature-picker'
 import { useConfirm } from '~/hooks/use-confirm'
 import { useDebouncedCallback } from '~/hooks/use-debounced-value'
+import { useEffectiveDockState } from '~/hooks/use-effective-dock-state'
+import { useDockStore } from '~/stores/dock-store'
 import { api, type RouterOutputs } from '~/trpc/react'
 
 type Sequence = RouterOutputs['sequence']['get']['sequence']
@@ -85,9 +64,9 @@ function filterEntityTypeForSubject(subjectKind: string | null): 'work_order' | 
 }
 
 /**
- * Right-side settings drawer: Sending (mailbox + signature), Delivery window
- * (start/end time, timezone, business days), Status (pause/enable), and the
- * Danger zone (delete). Every edit saves immediately via `sequence.update`,
+ * Dockable sequence settings drawer: Sending (mailbox + signature), Delivery window
+ * (start/end time, timezone, business days), and behavior controls. Header
+ * actions handle deletion. Every edit saves immediately via `sequence.update`,
  * optimistically patched into the `sequence.get` cache (no invalidate — the
  * server row reconciles on success, rollback on error).
  */
@@ -99,6 +78,11 @@ export function SequenceSettingsDrawer({
   const router = useRouter()
   const utils = api.useUtils()
   const [confirm, ConfirmDialog] = useConfirm()
+  const isDocked = useEffectiveDockState()
+  const dockedWidth = useDockStore((state) => state.dockedWidth)
+  const setDockedWidth = useDockStore((state) => state.setDockedWidth)
+  const minWidth = useDockStore((state) => state.minWidth)
+  const maxWidth = useDockStore((state) => state.maxWidth)
 
   const update = api.sequence.update.useMutation({
     onMutate: async ({ fields }) => {
@@ -116,7 +100,10 @@ export function SequenceSettingsDrawer({
       ),
     onError: (error, _variables, context) => {
       if (context?.previous) utils.sequence.get.setData({ id: sequence.id }, context.previous)
-      toastError({ title: 'Failed to update sequence', description: error.message })
+      toastError({
+        title: 'Failed to update sequence',
+        description: error.message,
+      })
     },
   })
   const save = (fields: UpdateFields) => update.mutate({ id: sequence.id, fields })
@@ -128,7 +115,10 @@ export function SequenceSettingsDrawer({
       router.push('/app/workflows?t=sequences')
     },
     onError: (error) =>
-      toastError({ title: 'Failed to delete sequence', description: error.message }),
+      toastError({
+        title: 'Failed to delete sequence',
+        description: error.message,
+      }),
   })
 
   const handleDelete = async () => {
@@ -143,10 +133,6 @@ export function SequenceSettingsDrawer({
     if (confirmed) deleteSequence.mutate({ id: sequence.id })
   }
 
-  const { signature } = useSignature(sequence.signatureEntityInstanceId)
-
-  const isEnabled = sequence.status === 'enabled'
-  const canEnable = !!sequence.publishedAt && !!sequence.integrationId
   const isSeededTrigger = !!sequence.templateKey
   const isEventTriggered = sequence.triggerType !== 'manual'
 
@@ -205,269 +191,234 @@ export function SequenceSettingsDrawer({
   )
 
   return (
-    <Drawer direction='right' open={open} onOpenChange={onOpenChange} defaultWidth={440}>
-      <DrawerContent>
-        <ConfirmDialog />
-        <DrawerHeader
-          icon={<Settings className='size-5 text-muted-foreground' />}
-          title='Sequence settings'
-          onClose={() => onOpenChange(false)}
-        />
+    <DockableDrawer
+      open={open}
+      onOpenChange={onOpenChange}
+      isDocked={isDocked}
+      width={dockedWidth}
+      onWidthChange={setDockedWidth}
+      minWidth={minWidth}
+      maxWidth={maxWidth}
+      title='Sequence settings'>
+      <ConfirmDialog />
+      <DrawerHeader
+        icon={<Settings className='size-5 text-muted-foreground' />}
+        title='Sequence settings'
+        actions={
+          <>
+            {!isSeededTrigger && (
+              <Button
+                variant='destructive-hover'
+                size='icon-xs'
+                loading={deleteSequence.isPending}
+                loadingText='Deleting…'
+                aria-label='Delete sequence'
+                onClick={() => void handleDelete()}>
+                <Trash2 />
+              </Button>
+            )}
+            <DockToggleButton />
+          </>
+        }
+        onClose={() => onOpenChange(false)}
+      />
 
-        <ScrollArea className='flex-1' scrollbarClassName='w-1.5'>
-          <Section
-            title='Trigger'
-            icon={<Zap className='size-4' />}
-            description='When this sequence automatically enrolls a subject. Manual sequences only enroll from the Recipients tab.'
-            initialOpen
-            collapsible={false}>
-            <TreeRow
-              icon={<Zap className='size-4 text-muted-foreground' />}
-              title='Event'
-              secondary={
-                isSeededTrigger ? (
+      <ScrollArea className='flex-1' scrollbarClassName='w-1.5'>
+        <Section
+          title='Trigger'
+          icon={<Zap className='size-4' />}
+          description='When this sequence automatically enrolls a subject. Manual sequences only enroll from the Recipients tab.'
+          initialOpen
+          collapsible={false}>
+          <FieldPanel className='p-0'>
+            <FieldPanelRow title='Event'>
+              {isSeededTrigger ? (
+                <div className='flex h-8 items-center'>
                   <Badge variant='outline' size='sm'>
                     {SEQUENCE_TRIGGER_LABELS[sequence.triggerType as SequenceTriggerType] ??
                       sequence.triggerType}
                   </Badge>
-                ) : (
-                  <Select
-                    value={sequence.triggerType}
-                    onValueChange={(v) => save({ triggerType: v as SequenceTriggerType })}>
-                    <SelectTrigger size='xs' className='w-44'>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {SEQUENCE_TRIGGER_TYPES.map((t) => (
-                        <SelectItem key={t} value={t}>
-                          {SEQUENCE_TRIGGER_LABELS[t]}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                )
-              }
-            />
-            {isSeededTrigger && (
-              <div className='ps-9 pb-1 text-xs text-muted-foreground'>
-                Built-in template — the trigger can't be changed.
-              </div>
-            )}
-          </Section>
-
-          <Section
-            title='Sending'
-            icon={<Send className='size-4' />}
-            initialOpen
-            collapsible={false}>
-            <div className='flex flex-col'>
-              <TreeRow
-                icon={<Mail className='size-4 text-muted-foreground' />}
-                title='Mailbox'
-                description='All steps send from this connected email account.'
-                secondaryFill
-                secondary={
-                  <ChannelPicker
-                    value={sequence.integrationId ?? ''}
-                    onChange={(integrationId) => save({ integrationId })}
-                  />
-                }
-              />
-              {!sequence.integrationId && (
-                <div className='ps-9 pb-1 text-xs text-amber-600'>
-                  Choose a mailbox — publishing requires one.
                 </div>
+              ) : (
+                <FieldInputAdapter
+                  fieldType={FieldType.SINGLE_SELECT}
+                  fieldOptions={{
+                    options: SEQUENCE_TRIGGER_TYPES.map((triggerType) => ({
+                      value: triggerType,
+                      label: SEQUENCE_TRIGGER_LABELS[triggerType],
+                    })),
+                  }}
+                  triggerProps={{
+                    variant: 'transparent',
+                    className: 'w-full ps-0 pe-1',
+                  }}
+                  value={[sequence.triggerType]}
+                  onChange={(value) => {
+                    const triggerType = (value as string[])[0] as SequenceTriggerType | undefined
+                    if (triggerType) save({ triggerType })
+                  }}
+                />
               )}
-              <TreeRow
-                icon={<PenLine className='size-4 text-muted-foreground' />}
-                title='Signature'
-                description='Appended to every step. Optional.'
-                secondaryFill
-                secondary={
-                  <SignaturePicker
-                    selected={sequence.signatureEntityInstanceId}
-                    onChange={(signatureId) => save({ signatureEntityInstanceId: signatureId })}>
-                    <Button variant='outline' size='xs'>
-                      {signature?.name ?? 'No signature'}
-                    </Button>
-                  </SignaturePicker>
-                }
-              />
+            </FieldPanelRow>
+          </FieldPanel>
+          {isSeededTrigger && (
+            <div className='pt-1 text-xs text-muted-foreground'>
+              Built-in template — the trigger can't be changed.
             </div>
-          </Section>
-
-          <Section
-            title='Delivery window'
-            icon={<CalendarClock className='size-4' />}
-            description='Emails only send inside this window; out-of-window sends wait for the next opening.'
-            initialOpen
-            collapsible={false}>
-            <div className='flex flex-col'>
-              <TreeRow
-                icon={<Clock className='size-4 text-muted-foreground' />}
-                title='Start time'
-                secondary={
-                  <Input
-                    type='time'
-                    className='h-7 w-28'
-                    defaultValue={sequence.deliveryStartTime ?? ''}
-                    onBlur={(e) => save({ deliveryStartTime: e.target.value || null })}
-                  />
-                }
-              />
-              <TreeRow
-                icon={<Clock className='size-4 text-muted-foreground' />}
-                title='End time'
-                secondary={
-                  <Input
-                    type='time'
-                    className='h-7 w-28'
-                    defaultValue={sequence.deliveryEndTime ?? ''}
-                    onBlur={(e) => save({ deliveryEndTime: e.target.value || null })}
-                  />
-                }
-              />
-              <TreeRow
-                icon={<Globe className='size-4 text-muted-foreground' />}
-                title='Timezone'
-                secondary={
-                  <TimeZonePicker
-                    selected={sequence.deliveryTimezone ?? undefined}
-                    onChange={(tz) => save({ deliveryTimezone: tz || null })}
-                    triggerProps={{ size: 'xs' }}
-                  />
-                }
-              />
-              <TreeRow
-                icon={<Building2 className='size-4 text-muted-foreground' />}
-                title='Business days only'
-                description='Skip Saturday and Sunday.'
-                secondary={
-                  <Switch
-                    checked={sequence.deliveryBusinessDaysOnly}
-                    onCheckedChange={(checked) => save({ deliveryBusinessDaysOnly: checked })}
-                  />
-                }
-              />
-            </div>
-          </Section>
-
-          <Section
-            title='Behavior'
-            icon={<Reply className='size-4' />}
-            initialOpen
-            collapsible={false}>
-            <div className='flex flex-col'>
-              <TreeRow
-                icon={<Reply className='size-4 text-muted-foreground' />}
-                title='Exit when the recipient replies'
-                secondary={
-                  <Switch
-                    checked={sequence.exitOnReply}
-                    onCheckedChange={(checked) => save({ exitOnReply: checked })}
-                  />
-                }
-              />
-              <TreeRow
-                icon={<MailX className='size-4 text-muted-foreground' />}
-                title='Respect unsubscribe / suppression list'
-                secondary={
-                  <Switch
-                    checked={sequence.respectSuppression}
-                    onCheckedChange={(checked) => save({ respectSuppression: checked })}
-                  />
-                }
-              />
-              <TreeRow
-                icon={<Filter className='size-4 text-muted-foreground' />}
-                title='Include unsubscribe footer'
-                secondary={
-                  <Switch
-                    checked={sequence.includeUnsubscribeFooter}
-                    onCheckedChange={(checked) => save({ includeUnsubscribeFooter: checked })}
-                  />
-                }
-              />
-            </div>
-          </Section>
-
-          {isEventTriggered && (
-            <ConditionProvider
-              conditions={EMPTY_CONDITIONS}
-              groups={filterGroups}
-              config={filterConditionConfig}
-              onConditionsChange={() => {}}
-              onGroupsChange={handleFilterGroupsChange}
-              getAvailableFields={() => filterFieldDefinitions}
-              getFieldDefinition={(id) => filterFieldDefinitions.find((f) => f.id === id)}>
-              <Section
-                title='Enrollment filter'
-                icon={<ListFilter className='size-4' />}
-                description='Only enroll subjects that match these conditions. Evaluated once, at enrollment — leave empty to enroll everything.'
-                initialOpen
-                collapsible={false}
-                actions={<AddFilterGroupButton />}>
-                <ConditionContainer
-                  emptyStateText='No conditions — every match enrolls'
-                  showAddButton={false}
-                  showGrouping
-                />
-              </Section>
-            </ConditionProvider>
           )}
+        </Section>
 
-          <Section
-            title='Status'
-            icon={<Power className='size-4' />}
-            initialOpen
-            collapsible={false}>
-            <TreeRow
-              icon={<Power className='size-4 text-muted-foreground' />}
-              title={isEnabled ? 'Enabled' : 'Paused'}
-              description='Pausing blocks new enrollments; in-flight runs finish on their own.'
-              secondary={
-                <Switch
-                  checked={isEnabled}
-                  onCheckedChange={(checked) => save({ status: checked ? 'enabled' : 'disabled' })}
-                  disabled={!isEnabled && !canEnable}
+        <Section title='Sending' icon={<Send className='size-4' />} initialOpen collapsible={false}>
+          <FieldPanel className='p-0'>
+            <FieldPanelRow
+              title='Mailbox'
+              description='All steps send from this connected email account.'>
+              <div className='flex h-8 items-center'>
+                <ChannelPicker
+                  value={sequence.integrationId ?? ''}
+                  onChange={(integrationId) => save({ integrationId })}
+                  triggerProps={{ variant: 'transparent', className: 'w-full ps-0 pe-1' }}
                 />
-              }
-            />
-            {!canEnable && (
-              <div className='ps-9 text-xs text-muted-foreground'>
-                {!sequence.publishedAt
-                  ? 'Publish the sequence before enabling it.'
-                  : 'Choose a sending mailbox before enabling it.'}
+              </div>
+            </FieldPanelRow>
+            {!sequence.integrationId && (
+              <div className='px-2 pb-1 text-xs text-amber-600'>
+                Choose a mailbox — publishing requires one.
               </div>
             )}
-          </Section>
+            <FieldPanelRow title='Signature' description='Appended to every step. Optional.'>
+              <SignaturePicker
+                selected={sequence.signatureEntityInstanceId}
+                onChange={(signatureId) => save({ signatureEntityInstanceId: signatureId })}
+                triggerProps={{ variant: 'transparent', className: 'w-full ps-0 pe-1' }}
+              />
+            </FieldPanelRow>
+          </FieldPanel>
+        </Section>
 
-          <Section
-            title='Danger zone'
-            icon={<TriangleAlert className='size-4' />}
-            initialOpen
-            collapsible={false}>
-            <TreeRow
-              icon={<Trash2 className='size-4 text-bad-500' />}
-              title='Delete sequence'
-              description='Removes the sequence, its steps, and its run history.'
-              secondary={
-                <Button
-                  variant='destructive-hover'
-                  size='xs'
-                  loading={deleteSequence.isPending}
-                  loadingText='Deleting…'
-                  onClick={() => void handleDelete()}>
-                  Delete
-                </Button>
-              }
-            />
-          </Section>
+        <Section
+          title='Delivery window'
+          icon={<CalendarClock className='size-4' />}
+          description='Emails only send inside this window; out-of-window sends wait for the next opening.'
+          initialOpen
+          collapsible={false}>
+          <FieldPanel className='p-0'>
+            <FieldPanelRow title='Start time'>
+              <FieldInputAdapter
+                fieldType={FieldType.TIME}
+                triggerProps={{
+                  variant: 'transparent',
+                  className: 'w-full ps-0 pe-1',
+                }}
+                value={parseTimeOfDay(sequence.deliveryStartTime)?.toISOString()}
+                onChange={(value) =>
+                  save({
+                    deliveryStartTime:
+                      typeof value === 'string' ? formatTimeOfDay(new Date(value)) : null,
+                  })
+                }
+              />
+            </FieldPanelRow>
+            <FieldPanelRow title='End time'>
+              <FieldInputAdapter
+                fieldType={FieldType.TIME}
+                triggerProps={{
+                  variant: 'transparent',
+                  className: 'w-full ps-0 pe-1',
+                }}
+                value={parseTimeOfDay(sequence.deliveryEndTime)?.toISOString()}
+                onChange={(value) =>
+                  save({
+                    deliveryEndTime:
+                      typeof value === 'string' ? formatTimeOfDay(new Date(value)) : null,
+                  })
+                }
+              />
+            </FieldPanelRow>
+            <FieldPanelRow title='Timezone'>
+              <TimeZonePicker
+                selected={sequence.deliveryTimezone ?? undefined}
+                onChange={(timezone) => save({ deliveryTimezone: timezone || null })}
+                triggerProps={{
+                  variant: 'transparent',
+                  className: 'w-full ps-0 pe-1',
+                }}
+              />
+            </FieldPanelRow>
+            <FieldPanelRow title='Business days only' description='Skip Saturday and Sunday.'>
+              <FieldInputAdapter
+                fieldType={FieldType.CHECKBOX}
+                fieldOptions={{ variant: 'switch' }}
+                value={sequence.deliveryBusinessDaysOnly}
+                onChange={(value) => save({ deliveryBusinessDaysOnly: value as boolean })}
+              />
+            </FieldPanelRow>
+          </FieldPanel>
+        </Section>
 
-          <div className='h-8' />
-        </ScrollArea>
-      </DrawerContent>
-    </Drawer>
+        <Section
+          title='Behavior'
+          icon={<Reply className='size-4' />}
+          initialOpen
+          collapsible={false}>
+          <FieldPanel className='p-0'>
+            <FieldPanelRow
+              title='Exit when the recipient replies'
+              description='Stop the sequence after an inbound reply.'>
+              <FieldInputAdapter
+                fieldType={FieldType.CHECKBOX}
+                fieldOptions={{ variant: 'switch' }}
+                value={sequence.exitOnReply}
+                onChange={(value) => save({ exitOnReply: value as boolean })}
+              />
+            </FieldPanelRow>
+            <FieldPanelRow title='Respect unsubscribe / suppression list'>
+              <FieldInputAdapter
+                fieldType={FieldType.CHECKBOX}
+                fieldOptions={{ variant: 'switch' }}
+                value={sequence.respectSuppression}
+                onChange={(value) => save({ respectSuppression: value as boolean })}
+              />
+            </FieldPanelRow>
+            <FieldPanelRow title='Include unsubscribe footer'>
+              <FieldInputAdapter
+                fieldType={FieldType.CHECKBOX}
+                fieldOptions={{ variant: 'switch' }}
+                value={sequence.includeUnsubscribeFooter}
+                onChange={(value) => save({ includeUnsubscribeFooter: value as boolean })}
+              />
+            </FieldPanelRow>
+          </FieldPanel>
+        </Section>
+
+        {isEventTriggered && (
+          <ConditionProvider
+            conditions={EMPTY_CONDITIONS}
+            groups={filterGroups}
+            config={filterConditionConfig}
+            onConditionsChange={() => {}}
+            onGroupsChange={handleFilterGroupsChange}
+            getAvailableFields={() => filterFieldDefinitions}
+            getFieldDefinition={(id) => filterFieldDefinitions.find((f) => f.id === id)}>
+            <Section
+              title='Enrollment filter'
+              icon={<ListFilter className='size-4' />}
+              description='Only enroll subjects that match these conditions. Evaluated once, at enrollment — leave empty to enroll everything.'
+              initialOpen
+              collapsible={false}
+              actions={<AddFilterGroupButton />}>
+              <ConditionContainer
+                emptyStateText='No conditions — every match enrolls'
+                showAddButton={false}
+                showGrouping
+              />
+            </Section>
+          </ConditionProvider>
+        )}
+
+        <div className='h-8' />
+      </ScrollArea>
+    </DockableDrawer>
   )
 }
 

@@ -10,9 +10,10 @@ import {
 } from '@auxx/ui/components/sidebar'
 import { cn } from '@auxx/ui/lib/utils'
 import { useDraggable, useDroppable } from '@dnd-kit/core'
-import { GripVertical } from 'lucide-react'
+import { AlertTriangle, GripVertical } from 'lucide-react'
 import { SidebarGroupHeader } from '~/components/global/sidebar/sidebar-group-header'
 import { SidebarItem } from '~/components/global/sidebar/sidebar-item'
+import { Tooltip } from '~/components/global/tooltip'
 import type { BacklogItem } from '../board/types'
 import { isVisitStatus } from '../board/utils'
 import { STATUS_ACCENT_CLASS } from '../board/visit-chip-content'
@@ -167,9 +168,18 @@ function BacklogRow({ item, dragType, canEdit, onSelectVisit }: BacklogRowProps)
           />
         }
         end={
-          canEdit ? (
-            <GripVertical className='text-muted-foreground size-3 shrink-0 opacity-0 group-hover/item:opacity-100' />
-          ) : undefined
+          <>
+            {/* Map-mode only: `addressText === null` = fetched-but-empty (calendar mode leaves it
+                `undefined`, so this stays silent there). Always visible, left of the hover grip. */}
+            {workOrder?.addressText === null && (
+              <Tooltip content='No service address'>
+                <AlertTriangle className='mr-1 size-3.5 shrink-0 text-amber-500' />
+              </Tooltip>
+            )}
+            {canEdit && (
+              <GripVertical className='text-muted-foreground size-3 shrink-0 opacity-0 group-hover/item:opacity-100' />
+            )}
+          </>
         }
       />
     </SidebarMenuItem>

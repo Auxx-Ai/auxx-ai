@@ -2,11 +2,11 @@
 'use client'
 
 import type { SelectOption } from '@auxx/types/custom-field'
-import { Button } from '@auxx/ui/components/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
 import { cn } from '@auxx/ui/lib/utils'
 import { type ComponentProps, useCallback, useMemo, useState } from 'react'
 import { MultiSelectPicker } from '~/components/pickers/multi-select-picker'
+import { PickerTrigger, type PickerTriggerOptions } from '~/components/ui/picker-trigger'
 import { type SignatureItem, useSignatures } from '../hooks'
 import { SignatureDialog } from './signature-dialog'
 
@@ -19,6 +19,8 @@ interface SignaturePickerProps
   onChange?: (signatureId: string | null) => void
   className?: string
   signatures?: SignatureItem[]
+  /** Styling for the shared picker trigger. */
+  triggerProps?: PickerTriggerOptions
   children?: React.ReactNode
   disabled?: boolean
 }
@@ -34,6 +36,7 @@ export function SignaturePicker({
   onChange,
   className,
   signatures: externalSignatures,
+  triggerProps,
   children,
   disabled = false,
   ...popoverContentProps
@@ -49,6 +52,7 @@ export function SignaturePicker({
   // Fetch signatures if not provided
   const { signatures: fetchedSignatures } = useSignatures()
   const signatures = externalSignatures ?? fetchedSignatures
+  const selectedSignature = signatures.find((signature) => signature.id === selected)
 
   // Convert signatures to SelectOption format
   const options: SelectOption[] = useMemo(() => {
@@ -85,10 +89,32 @@ export function SignaturePicker({
     [onChange, setIsOpen]
   )
 
+  /** Clears the optional signature selection without opening the picker. */
+  const handleClear = useCallback(() => onChange?.(null), [onChange])
+
+  const trigger = children ?? (
+    <PickerTrigger
+      open={isOpen}
+      disabled={disabled}
+      variant={triggerProps?.variant ?? 'transparent'}
+      size={triggerProps?.size}
+      hasValue={!!selectedSignature}
+      placeholder='No signature'
+      showClear={triggerProps?.showClear ?? true}
+      onClear={handleClear}
+      icon={triggerProps?.icon}
+      iconPosition={triggerProps?.iconPosition}
+      hideIcon={triggerProps?.hideIcon}
+      asCombobox
+      className={triggerProps?.className}>
+      <span className='truncate'>{selectedSignature?.name}</span>
+    </PickerTrigger>
+  )
+
   return (
     <Popover open={isOpen} onOpenChange={setIsOpen}>
       <PopoverTrigger asChild disabled={disabled}>
-        {children ?? <Button variant='outline'>Select Signature</Button>}
+        {trigger}
       </PopoverTrigger>
       <PopoverContent className={cn('w-[250px] p-0', className)} {...popoverContentProps}>
         <MultiSelectPicker
