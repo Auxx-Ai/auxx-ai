@@ -6,16 +6,23 @@ import { getInstanceId, type RecordId, toRecordId } from '@auxx/lib/resources/cl
 import { Button } from '@auxx/ui/components/button'
 import {
   EventDateTimeSection,
-  EventPopoverHints,
   EventRepeatSection,
+  type EventTitleAction,
   EventTitleSection,
 } from '@auxx/ui/components/event-calendar'
 import { PanelCard, PanelCardRow } from '@auxx/ui/components/panel-card'
 import { toastError } from '@auxx/ui/components/toast'
 import { useIsMobile } from '@auxx/ui/hooks/use-mobile'
 import { differenceInMinutes } from 'date-fns'
-import { ArrowUpRight, CircleDot, Contact, PanelRight, Send, TriangleAlert } from 'lucide-react'
-import { Tooltip } from '~/components/global/tooltip'
+import {
+  ArrowUpRight,
+  CalendarX2,
+  CircleDot,
+  Contact,
+  PanelRight,
+  Send,
+  TriangleAlert,
+} from 'lucide-react'
 import { useResource } from '~/components/resources'
 import { useConfirm } from '~/hooks/use-confirm'
 import { api } from '~/trpc/react'
@@ -135,176 +142,183 @@ export function VisitPopoverContent({
     if (contactId) onOpenRecord(contactId, {})
   }
 
+  /** The single "event actions" toolbar above the title. Dock is desktop-only (plan 21 decision
+   * #5 — no docked column on mobile) and omitted from the dock panel's own render (no `onDock`);
+   * once docked, `EventTitleSection` appends the dock chrome (flip / pop-out / close) itself. */
+  const titleActions: EventTitleAction[] = [
+    ...(onDock && !isMobile
+      ? [{ icon: <PanelRight />, label: 'Dock panel', onClick: onDock }]
+      : []),
+    {
+      icon: <ArrowUpRight />,
+      label: 'Open work order',
+      onClick: openWorkOrder,
+      href: `/app/work-orders/${event.workOrderId}`,
+    },
+    ...(canEdit
+      ? [
+          {
+            icon: <CalendarX2 />,
+            label: 'Remove from calendar',
+            destructive: true,
+            onClick: () => {
+              mutations.unscheduleVisit.mutate({ visitId: event.id })
+              onClose()
+            },
+          },
+        ]
+      : []),
+  ]
+
   return (
     <>
-      {/* Desktop-only (plan 21 decision #5) — the docked column doesn't exist on mobile. */}
-      {onDock && !isMobile && (
-        <div className='flex justify-end'>
-          <Tooltip content='Dock panel'>
-            <Button variant='ghost' size='icon-xs' aria-label='Dock panel' onClick={onDock}>
-              <PanelRight />
-            </Button>
-          </Tooltip>
-        </div>
-      )}
-
-      <EventTitleSection
-        title={event.title}
-        editable={false}
-        onTitleClick={openWorkOrder}
-        titleHref={`/app/work-orders/${event.workOrderId}`}
-        action={{
-          icon: <ArrowUpRight />,
-          label: 'Open work order',
-          onClick: openWorkOrder,
-          href: `/app/work-orders/${event.workOrderId}`,
-        }}
-        subtitle={
-          <>
-            <div>{VISIT_STATUS_LABELS[event.status]}</div>
-            {isOverdue && (
-              <div className='flex items-center gap-1 text-amber-600 dark:text-amber-500'>
-                <TriangleAlert className='size-3' /> Overdue — not completed
-              </div>
-            )}
-          </>
-        }
-        links={
-          contactDisplayName
-            ? [
-                {
-                  icon: <Contact />,
-                  label: contactDisplayName,
-                  href: contactId ? `/app/contacts/${getInstanceId(contactId)}` : undefined,
-                  onClick: contactId ? openContact : undefined,
-                },
-              ]
-            : undefined
-        }
-      />
-
-      <EventDateTimeSection
-        start={event.start}
-        end={event.end}
-        disabled={!canEdit}
-        onChange={
-          canEdit
-            ? ({ start, end }, scope) => {
-                if (scope === 'this') {
-                  mutations.scheduleVisit.mutate({
-                    visitId: event.id,
-                    startTime: start,
-                    endTime: end,
-                    assigneeUserId: event.assigneeUserId,
-                  })
-                } else {
-                  mutations.applyToSeries.mutate({
-                    visitId: event.id,
-                    scope,
-                    changes: {
-                      startMinute: start.getHours() * 60 + start.getMinutes(),
-                      durationMinutes: differenceInMinutes(end, start),
-                    },
-                  })
-                }
-              }
-            : undefined
-        }
-        onDateToggle={
-          canEdit
-            ? (enabled) => {
-                if (!enabled) mutations.unscheduleVisit.mutate({ visitId: event.id })
-              }
-            : undefined
-        }
-      />
-
-      <EventPopoverHints hints={hints} />
-
-      <AssigneeRow
-        value={event.assigneeUserId}
-        disabled={!canEdit}
-        onChange={(userId, scope) => {
-          if (scope === 'this') {
-            mutations.scheduleVisit.mutate({
-              visitId: event.id,
-              startTime: event.start,
-              endTime: event.end,
-              assigneeUserId: userId,
-            })
-          } else {
-            mutations.applyToSeries.mutate({
-              visitId: event.id,
-              scope,
-              changes: { assigneeUserId: userId },
-            })
+      <div className='space-y-2'>
+        <EventTitleSection
+          title={event.title}
+          editable={false}
+          onTitleClick={openWorkOrder}
+          titleHref={`/app/work-orders/${event.workOrderId}`}
+          actions={titleActions}
+          subtitle={
+            <>
+              <div>{VISIT_STATUS_LABELS[event.status]}</div>
+              {isOverdue && (
+                <div className='flex items-center gap-1 text-amber-600 dark:text-amber-500'>
+                  <TriangleAlert className='size-3' /> Overdue — not completed
+                </div>
+              )}
+            </>
           }
-        }}
-      />
+          links={
+            contactDisplayName
+              ? [
+                  {
+                    icon: <Contact />,
+                    label: contactDisplayName,
+                    href: contactId ? `/app/contacts/${getInstanceId(contactId)}` : undefined,
+                    onClick: contactId ? openContact : undefined,
+                  },
+                ]
+              : undefined
+          }
+        />
 
-      <EventRepeatSection
-        label={editor.repeatLabel}
-        detail={
-          editor.repeatMode === 'custom' ? (editor.recurrenceSummary ?? undefined) : undefined
-        }
-        disabled={!canEdit || !workOrderRecordId}
-        renderEditor={() => <RepeatEditor editor={editor} />}
-        onOpenChange={(open) => {
-          if (!open) commitRecurrence()
-        }}
-      />
+        <EventDateTimeSection
+          start={event.start}
+          end={event.end}
+          disabled={!canEdit}
+          warnings={hints}
+          onChange={
+            canEdit
+              ? ({ start, end }, scope) => {
+                  if (scope === 'this') {
+                    mutations.scheduleVisit.mutate({
+                      visitId: event.id,
+                      startTime: start,
+                      endTime: end,
+                      assigneeUserId: event.assigneeUserId,
+                    })
+                  } else {
+                    mutations.applyToSeries.mutate({
+                      visitId: event.id,
+                      scope,
+                      changes: {
+                        startMinute: start.getHours() * 60 + start.getMinutes(),
+                        durationMinutes: differenceInMinutes(end, start),
+                      },
+                    })
+                  }
+                }
+              : undefined
+          }
+        />
 
-      {canEdit && (
-        <PanelCard divided>
-          <PanelCardRow
-            icon={<CircleDot />}
-            title='Status'
-            description={VISIT_STATUS_LABELS[event.status]}
-            trailing={
-              <div className='flex flex-col items-end gap-1.5'>
-                {next && isExecutionReady(dayContext) && (
-                  <Button
-                    size='sm'
-                    variant='outline'
-                    onClick={() =>
-                      mutations.setVisitStatus.mutate({ visitId: event.id, status: next })
-                    }
-                    loading={mutations.setVisitStatus.isPending}>
-                    Advance to {VISIT_STATUS_LABELS[next]}
-                  </Button>
-                )}
-                {canCancel && (
-                  <Button
-                    size='sm'
-                    variant='ghost'
-                    onClick={() =>
-                      mutations.setVisitStatus.mutate({ visitId: event.id, status: 'canceled' })
-                    }
-                    loading={mutations.setVisitStatus.isPending}>
-                    Cancel visit
-                  </Button>
-                )}
-              </div>
+        <AssigneeRow
+          value={event.assigneeUserId}
+          disabled={!canEdit}
+          onChange={(userId, scope) => {
+            if (scope === 'this') {
+              mutations.scheduleVisit.mutate({
+                visitId: event.id,
+                startTime: event.start,
+                endTime: event.end,
+                assigneeUserId: userId,
+              })
+            } else {
+              mutations.applyToSeries.mutate({
+                visitId: event.id,
+                scope,
+                changes: { assigneeUserId: userId },
+              })
             }
-          />
-          <PanelCardRow
-            icon={<Send />}
-            title='Dispatch'
-            description={event.dispatchedAt ? 'Re-dispatch notifies the assignee again' : undefined}
-            trailing={
-              <Button
-                size='sm'
-                variant='outline'
-                onClick={handleDispatch}
-                loading={mutations.dispatchVisit.isPending}
-                disabled={!event.assigneeUserId}>
-                {event.dispatchedAt ? 'Re-dispatch' : 'Dispatch'}
-              </Button>
-            }
-          />
-        </PanelCard>
-      )}
+          }}
+        />
 
+        <EventRepeatSection
+          label={editor.repeatLabel}
+          detail={
+            editor.repeatMode === 'custom' ? (editor.recurrenceSummary ?? undefined) : undefined
+          }
+          disabled={!canEdit || !workOrderRecordId}
+          renderEditor={() => <RepeatEditor editor={editor} />}
+          onOpenChange={(open) => {
+            if (!open) commitRecurrence()
+          }}
+        />
+
+        {canEdit && (
+          <PanelCard divided>
+            <PanelCardRow
+              icon={<CircleDot />}
+              title='Status'
+              description={VISIT_STATUS_LABELS[event.status]}
+              trailing={
+                <div className='flex flex-col items-end gap-1.5'>
+                  {next && isExecutionReady(dayContext) && (
+                    <Button
+                      size='sm'
+                      variant='outline'
+                      onClick={() =>
+                        mutations.setVisitStatus.mutate({ visitId: event.id, status: next })
+                      }
+                      loading={mutations.setVisitStatus.isPending}>
+                      Advance to {VISIT_STATUS_LABELS[next]}
+                    </Button>
+                  )}
+                  {canCancel && (
+                    <Button
+                      size='sm'
+                      variant='ghost'
+                      onClick={() =>
+                        mutations.setVisitStatus.mutate({ visitId: event.id, status: 'canceled' })
+                      }
+                      loading={mutations.setVisitStatus.isPending}>
+                      Cancel visit
+                    </Button>
+                  )}
+                </div>
+              }
+            />
+            <PanelCardRow
+              icon={<Send />}
+              title='Dispatch'
+              description={
+                event.dispatchedAt ? 'Re-dispatch notifies the assignee again' : undefined
+              }
+              trailing={
+                <Button
+                  size='sm'
+                  variant='outline'
+                  onClick={handleDispatch}
+                  loading={mutations.dispatchVisit.isPending}
+                  disabled={!event.assigneeUserId}>
+                  {event.dispatchedAt ? 'Re-dispatch' : 'Dispatch'}
+                </Button>
+              }
+            />
+          </PanelCard>
+        )}
+      </div>
       <ConfirmDialog />
     </>
   )

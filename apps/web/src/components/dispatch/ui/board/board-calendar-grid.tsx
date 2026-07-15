@@ -34,7 +34,7 @@ interface BoardCalendarGridProps {
   activeVisitId: string | null
   onActiveVisitChange: (visitId: string | null) => void
   onRangeChange: (from: Date, to: Date) => void
-  onEventResize: (event: DispatchVisitEvent, newEnd: Date) => void
+  onEventResize: (event: DispatchVisitEvent, newStart: Date, newEnd: Date) => void
   onOpenRecord: (recordId: RecordId, drill?: { panel?: string; item?: string }) => void
   isNonWorkingDay?: (date: Date) => boolean
   /** Plan 21 (dockable event panel) — sticky mode: while the event dock is open, every event

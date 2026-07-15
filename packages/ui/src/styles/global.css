@@ -211,37 +211,14 @@
   inset: 0;
   flex: none;
 }
+/* The dock opens once (the column's width tween); switching the selected event only swaps the
+   body, so a slide-in would read as a second "opening". A quick cross-fade keeps it a content
+   swap. First mount has no exiting layer, so nothing animates when the panel first opens. */
 .auxx-dock-frame--entering {
-  animation: auxx-dock-frame-slide-in-right 280ms var(--auxx-dock-ease) both;
+  animation: auxx-dock-frame-fade-in 140ms ease-out both;
 }
 .auxx-dock-frame--exiting {
-  animation: auxx-dock-frame-slide-out-left 280ms var(--auxx-dock-ease) both;
-}
-@keyframes auxx-dock-frame-slide-in-right {
-  from {
-    transform: translateX(100%);
-  }
-  to {
-    transform: translateX(0);
-  }
-}
-@keyframes auxx-dock-frame-slide-out-left {
-  from {
-    transform: translateX(0);
-    opacity: 1;
-  }
-  to {
-    transform: translateX(-30%);
-    opacity: 0;
-  }
-}
-@media (prefers-reduced-motion: reduce) {
-  .auxx-dock-frame--entering {
-    animation: auxx-dock-frame-fade-in 120ms ease-out both;
-  }
-  .auxx-dock-frame--exiting {
-    animation: auxx-dock-frame-fade-out 120ms ease-out both;
-  }
+  animation: auxx-dock-frame-fade-out 140ms ease-out both;
 }
 @keyframes auxx-dock-frame-fade-in {
   from {

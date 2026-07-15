@@ -224,10 +224,10 @@ export function DispatchBoard() {
   )
 
   const handleEventResize = useCallback(
-    (event: DispatchVisitEvent, newEnd: Date) => {
+    (event: DispatchVisitEvent, newStart: Date, newEnd: Date) => {
       mutations.scheduleVisit.mutate({
         visitId: event.id,
-        startTime: event.start,
+        startTime: newStart,
         endTime: newEnd,
         assigneeUserId: event.assigneeUserId,
       })

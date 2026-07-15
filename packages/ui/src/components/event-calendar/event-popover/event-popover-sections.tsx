@@ -2,15 +2,26 @@
 
 'use client'
 
+import { cn } from '@auxx/ui/lib/utils'
 import { addMinutes, differenceInMinutes, format } from 'date-fns'
-import { AlertTriangle, CalendarDays, Clock8, RefreshCcw, User } from 'lucide-react'
+import {
+  ArrowLeftRight,
+  CalendarDays,
+  Clock8,
+  PanelRightOpen,
+  RefreshCcw,
+  User,
+  X,
+} from 'lucide-react'
 import * as React from 'react'
 import { AutosizeTextarea } from '../../autosize-textarea'
 import { Avatar, AvatarFallback, AvatarImage } from '../../avatar'
 import { Calendar } from '../../calendar'
 import { useCommandNavigation } from '../../command'
+import { useDockChrome } from '../../dock-panel'
 import { PanelCard, PanelCardRow, PanelRowValue, PanelSectionLabel } from '../../panel-card'
 import { Switch } from '../../switch'
+import { SimpleTooltip } from '../../tooltip'
 import { EventDrillPage } from './event-popover'
 import { formatTimeOfDay } from './parse-time'
 import { useSeriesScope } from './series-scope-chooser'
@@ -64,12 +75,37 @@ interface EventTitleLink {
   onClick?: () => void
 }
 
-interface EventTitleAction {
+export interface EventTitleAction {
   icon: React.ReactNode
-  /** Accessible label for the icon button (e.g. "Open work order"). */
+  /** Accessible label, also shown as the button's tooltip (e.g. "Open work order"). */
   label: string
   href?: string
   onClick?: () => void
+  /** Red hover styling for destructive actions (e.g. delete). */
+  destructive?: boolean
+}
+
+/** One icon button in the `EventTitleSection` actions toolbar — ghost square with a tooltip,
+ * anchor when `href` is set (modified-click → new tab), plain button otherwise. */
+function EventTitleActionButton({ action }: { action: EventTitleAction }) {
+  const className = cn(
+    'shrink-0 rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-foreground [&_svg]:size-4',
+    action.destructive && 'hover:bg-destructive/10 hover:text-destructive'
+  )
+  const inner = action.href ? (
+    <a
+      href={action.href}
+      onClick={(e) => handleAnchorClick(e, action.onClick)}
+      aria-label={action.label}
+      className={className}>
+      {action.icon}
+    </a>
+  ) : (
+    <button type='button' onClick={action.onClick} aria-label={action.label} className={className}>
+      {action.icon}
+    </button>
+  )
+  return <SimpleTooltip content={action.label}>{inner}</SimpleTooltip>
 }
 
 interface EventTitleSectionProps {
@@ -80,27 +116,52 @@ interface EventTitleSectionProps {
    * modified clicks fall back to `titleHref`'s native anchor behavior (new tab). */
   onTitleClick?: () => void
   titleHref?: string
-  /** Trailing icon button in the title row's top-right — the "open record" affordance. */
-  action?: EventTitleAction
+  /** Toolbar of icon actions rendered above the title (open, dock, copy, delete, …) — the single
+   * "event actions" location. Right-aligned; renders nothing when empty. */
+  actions?: EventTitleAction[]
   subtitle?: React.ReactNode
   links?: EventTitleLink[]
 }
 
-/** Top `PanelCard`: borderless autosize title (Notion autosave — commits on blur/Enter),
- * optional subtitle node, optional bordered-top linked-record rows (decision #6). The title can
- * double as a record link (`onTitleClick`/`titleHref`) with a trailing `action` icon button. */
+/** Top `PanelCard`: an optional right-aligned actions toolbar, a borderless autosize title
+ * (Notion autosave — commits on blur/Enter), optional subtitle node, and optional bordered-top
+ * linked-record rows (decision #6). The title can double as a record link
+ * (`onTitleClick`/`titleHref`). */
 export function EventTitleSection({
   title,
   editable = false,
   onCommit,
   onTitleClick,
   titleHref,
-  action,
+  actions,
   subtitle,
   links,
 }: EventTitleSectionProps) {
   const [draft, setDraft] = React.useState(title)
   const skipCommitRef = React.useRef(false)
+
+  // When rendered inside a `DockPanel`, fold the dock's chrome controls (flip-side / pop-out /
+  // close) into this same toolbar so the dock needs no separate header — the event title IS the
+  // header. `useDockChrome()` is null in the floating popover, so nothing is added there.
+  const dock = useDockChrome()
+  const dockActions: EventTitleAction[] = dock
+    ? [
+        ...(dock.onFlipSide
+          ? [
+              {
+                icon: <ArrowLeftRight />,
+                label: 'Flip side',
+                onClick: () => dock.onFlipSide?.(dock.side === 'left' ? 'right' : 'left'),
+              },
+            ]
+          : []),
+        ...(dock.onPopOut
+          ? [{ icon: <PanelRightOpen />, label: 'Pop out', onClick: dock.onPopOut }]
+          : []),
+        ...(dock.onClose ? [{ icon: <X />, label: 'Close', onClick: dock.onClose }] : []),
+      ]
+    : []
+  const allActions = [...(actions ?? []), ...dockActions]
 
   React.useEffect(() => {
     setDraft(title)
@@ -157,28 +218,25 @@ export function EventTitleSection({
   )
 
   return (
-    <PanelCard className={links?.length ? 'space-y-3' : undefined}>
-      <div className='flex items-start justify-between gap-2'>
-        {titleNode}
-        {action &&
-          (action.href ? (
-            <a
-              href={action.href}
-              onClick={(e) => handleAnchorClick(e, action.onClick)}
-              aria-label={action.label}
-              className='shrink-0 rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-foreground [&_svg]:size-4'>
-              {action.icon}
-            </a>
-          ) : (
-            <button
-              type='button'
-              onClick={action.onClick}
-              aria-label={action.label}
-              className='shrink-0 rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-foreground [&_svg]:size-4'>
-              {action.icon}
-            </button>
+    <PanelCard
+      data-slot='event-title'
+      data-docked={dock ? '' : undefined}
+      className={cn(
+        links?.length && 'space-y-3',
+        // Docked: flatten the card into a sticky panel header (no floating-card chrome), full-bleed
+        // over `PanelShell`'s p-2 and pinned to the scroll viewport top so the merged dock chrome
+        // (close / pop-out) never scrolls away. `data-slot`/`data-docked` let consumers restyle.
+        dock &&
+          'sticky top-0 z-10 -mx-2 -mt-2 rounded-none border-0 border-b border-border/50 bg-background px-3 py-2'
+      )}>
+      {allActions.length > 0 && (
+        <div className='-mt-1 -mr-1 flex items-center justify-end gap-0.5'>
+          {allActions.map((action) => (
+            <EventTitleActionButton key={action.label} action={action} />
           ))}
-      </div>
+        </div>
+      )}
+      <div className='flex items-start gap-2'>{titleNode}</div>
       {subtitle && <div className='text-muted-foreground text-sm'>{subtitle}</div>}
       {links?.map((link) => {
         const content = (
@@ -219,11 +277,18 @@ interface EventDateTimeSectionProps {
   start: Date | null
   end: Date | null
   onChange?: (change: { start: Date; end: Date }, scope: SeriesScope) => void
+  /** When set, a trailing toggle on the Date row reflects `start != null`; flipping it off is the
+   * "unschedule" affordance. Omit to hide the toggle (e.g. the board popover, which unschedules
+   * via a title action instead). */
   onDateToggle?: (value: boolean) => void
   allDay?: { value: boolean; onChange: (value: boolean) => void }
   use24Hour?: boolean
   disabled?: boolean
   defaultStartHour?: number
+  /** Availability/overlap hints. When present, the Date row's icon becomes a circular warning
+   * icon and its title is re-tinted amber, with the hints in a hover tooltip — swapped in place,
+   * so a late-arriving async result never shifts layout (replaces the old `EventPopoverHints`). */
+  warnings?: string[]
 }
 
 /** Labeled "Date & Time" `PanelCard divided`: Date row (drills into a `Calendar` page, pops on
@@ -238,6 +303,7 @@ export function EventDateTimeSection({
   use24Hour,
   disabled,
   defaultStartHour = 9,
+  warnings,
 }: EventDateTimeSectionProps) {
   const { gate } = useSeriesScope()
   const { push, pop } = useCommandNavigation<EventDrillItem>()
@@ -288,6 +354,7 @@ export function EventDateTimeSection({
         <PanelCardRow
           icon={<CalendarDays />}
           title='Date'
+          warnings={warnings}
           description={start ? format(start, 'PPP') : 'No date'}
           trailing={
             <div className='flex items-center gap-2'>
@@ -375,7 +442,13 @@ function TimeDrillPage({ start, end, commitTime, use24Hour }: TimeDrillPageProps
   const [local, setLocal] = React.useState({ start, end })
 
   const handleCommit = (which: 'start' | 'end', hours: number, minutes: number) => {
-    setLocal((prev) => commitTime(prev, which, hours, minutes))
+    // `commitTime` is NOT pure — it calls `gate()`, which for a series member does a
+    // `setPendingCommit()` on `SeriesScopeProvider`. Running it here (the TimeInput commit
+    // handler) keeps that side effect in an event handler. Doing it inside a `setLocal`
+    // updater instead ran it during render → "Cannot update a component while rendering a
+    // different component", which can make React drop the render and leave the panel stale.
+    const next = commitTime(local, which, hours, minutes)
+    setLocal(next)
   }
 
   return (
@@ -522,31 +595,6 @@ export function EventPeopleSection({
       />
       <EventDrillPage id='people'>{renderPicker(pop)}</EventDrillPage>
     </PanelCard>
-  )
-}
-
-// ---------------------------------------------------------------------------
-// EventPopoverHints
-// ---------------------------------------------------------------------------
-
-interface EventPopoverHintsProps {
-  hints: string[]
-}
-
-/** Amber availability/overlap hints block rendered under the Date & Time card. `null` when
- * `hints` is empty. */
-export function EventPopoverHints({ hints }: EventPopoverHintsProps) {
-  if (hints.length === 0) return null
-
-  return (
-    <div className='space-y-1 rounded-2xl border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-700 dark:text-amber-400'>
-      {hints.map((hint) => (
-        <div key={hint} className='flex items-center gap-1.5'>
-          <AlertTriangle className='size-3 shrink-0' />
-          {hint}
-        </div>
-      ))}
-    </div>
   )
 }
 
