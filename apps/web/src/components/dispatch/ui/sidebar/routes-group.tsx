@@ -27,7 +27,7 @@ import { useDndContext, useDroppable } from '@dnd-kit/core'
 import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { format } from 'date-fns'
-import { MoreVertical, Route as RouteIcon, Timer, X } from 'lucide-react'
+import { AlertTriangle, MoreVertical, Route as RouteIcon, Timer, X } from 'lucide-react'
 import { useState } from 'react'
 import { SidebarGroupHeader } from '~/components/global/sidebar/sidebar-group-header'
 import { Tooltip } from '~/components/global/tooltip'
@@ -432,6 +432,11 @@ function StopRow({
             <span className='truncate group-data-[collapsible=icon]:hidden'>
               {workOrder?.number ?? 'Work order'}
             </span>
+            {workOrder?.addressText === null && (
+              <Tooltip content='No service address'>
+                <AlertTriangle className='ml-1 size-3.5 shrink-0 text-amber-500 group-data-[collapsible=icon]:hidden' />
+              </Tooltip>
+            )}
           </div>
 
           <div className='flex shrink-0 items-center group-data-[collapsible=icon]:hidden'>

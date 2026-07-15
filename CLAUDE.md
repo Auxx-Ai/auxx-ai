@@ -356,10 +356,35 @@ pnpm db:migrate
 npx dotenv -- npx tsx path/to/script.ts
 ```
 
+### Type Checking (`tsc`)
+
+Every package/app has a scoped `typecheck` script (`tsc --noEmit` run from that
+package's own directory against its own `tsconfig.json`, via `composite: true`
+project references). Run it **per package**, never as a bare `tsc`/`tsc -b`
+from the repo root — there is no root `tsconfig.json`, and a whole-monorepo
+invocation walks every package's sources in one process.
+
+```bash
+# Scope to one package (fast, low memory — most packages finish in seconds)
+pnpm --filter @auxx/utils typecheck
+pnpm --filter @auxx/database typecheck
+
+# apps/web and packages/lib are large enough to hit V8's default ~4GB
+# old-space heap limit even when scoped to just that package. Bump it:
+cd apps/web && NODE_OPTIONS="--max-old-space-size=8192" pnpm exec tsc --noEmit
+cd packages/lib && NODE_OPTIONS="--max-old-space-size=8192" pnpm exec tsc --noEmit
+```
+
+The OOM was never about total errors or physical memory — it's Node/V8's
+default heap ceiling, hit while checking apps/web's ~3.5k files (or lib's
+~2.6k) in a single process. Scoping to a package keeps most invocations well
+under the limit; for web/lib, raising `--max-old-space-size` is enough (~6GB
+peak observed for web).
+
 ### Rules
 
-- **Do NOT run `tsc` type checking.** Too many errors — it will run out of memory.
-- **Do NOT stop the dev server.**
+- **Do NOT run a whole-repo `tsc`.** Scope it per-package as shown above.
+- **Do NOT stop or restart the dev server.**
 
 ---
 

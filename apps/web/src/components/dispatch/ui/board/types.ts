@@ -73,5 +73,10 @@ export interface BoardResourceInput {
  */
 export interface BacklogItem {
   visit: { id: string; workOrderId: string; status: string }
-  workOrder: { number: string | null; displayName: string | null } | undefined
+  /** `addressText` is map-mode-only (`getRoutePlannerBoard`'s `PlannerWorkOrder`) — calendar
+   * mode's `getBoard` never fetches it, so it stays `undefined` there. `null` (explicitly fetched
+   * but empty) is the "missing service address" signal the backlog row flags. */
+  workOrder:
+    | { number: string | null; displayName: string | null; addressText?: string | null }
+    | undefined
 }

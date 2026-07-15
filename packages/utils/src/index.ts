@@ -45,10 +45,12 @@ export {
   formatInTimezone,
   formatRelativeTime,
   formatRelativeTimeWithTimezone,
+  formatTimeOfDay,
   getCurrentTimeInTimezone,
   getEndOfWeek,
   getStartOfWeek,
   isSameWeek,
+  parseTimeOfDay,
 } from './date'
 
 // Email utilities

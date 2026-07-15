@@ -1,7 +1,7 @@
 // packages/utils/src/__tests__/date.test.ts
 
 import { describe, expect, it } from 'vitest'
-import { formatRelativeTime } from '../date'
+import { formatRelativeTime, formatTimeOfDay, parseTimeOfDay } from '../date'
 
 const secondsAgo = (n: number) => new Date(Date.now() - n * 1000)
 const secondsAhead = (n: number) => new Date(Date.now() + n * 1000)
@@ -37,5 +37,24 @@ describe('formatRelativeTime', () => {
   it('accepts strings and epoch numbers', () => {
     expect(formatRelativeTime(secondsAgo(3600).toISOString())).toBe('1 hour ago')
     expect(formatRelativeTime(secondsAgo(3600).getTime())).toBe('1 hour ago')
+  })
+})
+
+describe('time-of-day utilities', () => {
+  it('parses an HH:MM time onto the provided local date', () => {
+    const baseDate = new Date(2025, 0, 1, 0, 0, 0, 0)
+    const result = parseTimeOfDay('14:30', baseDate)
+
+    expect(result).toEqual(new Date(2025, 0, 1, 14, 30, 0, 0))
+  })
+
+  it('rejects invalid time-of-day values', () => {
+    expect(parseTimeOfDay('24:00')).toBeUndefined()
+    expect(parseTimeOfDay('9:30')).toBeUndefined()
+    expect(parseTimeOfDay(null)).toBeUndefined()
+  })
+
+  it('formats a local date as HH:MM', () => {
+    expect(formatTimeOfDay(new Date(2025, 0, 1, 9, 5))).toBe('09:05')
   })
 })
