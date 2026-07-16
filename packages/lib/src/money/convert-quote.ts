@@ -140,7 +140,10 @@ export async function convertQuoteToWorkOrder(input: ConvertQuoteToWorkOrderInpu
   if (contactRecordId) workOrderValues.work_order_contact = contactRecordId
   if (requestRecordId) workOrderValues.work_order_request = requestRecordId
   if (serviceAddress) workOrderValues.work_order_address = serviceAddress
-  if (pricingModel) workOrderValues.work_order_pricing_model = pricingModel
+  if (pricingModel) {
+    workOrderValues.work_order_pricing_model =
+      pricingModel === 'fixed' ? 'fixed_contract' : pricingModel
+  }
   if (invoiceTiming) workOrderValues.work_order_invoice_timing = invoiceTiming
 
   // Events ON (user-triggered): visit auto-create + the WO number hook fire like any

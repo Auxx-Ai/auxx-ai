@@ -2031,6 +2031,13 @@
       "when": 1784070792609,
       "tag": "0289_fix_sequence_trigger_type_text",
       "breakpoints": true
+    },
+    {
+      "idx": 290,
+      "version": "7",
+      "when": 1784169395743,
+      "tag": "0290_work_order_billing_allocations",
+      "breakpoints": true
     }
   ]
 }

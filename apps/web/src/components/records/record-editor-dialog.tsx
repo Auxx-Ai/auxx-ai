@@ -3,6 +3,7 @@
 
 import type { RecordId } from '@auxx/lib/resources/client'
 import { EntityInstanceDialog } from '~/components/custom-fields/ui/entity-instance-dialog'
+import { WorkOrderEditorDialog } from '~/components/dispatch/ui/work-order-editor'
 import { PartFormDialog } from '~/components/manufacturing/parts/part-form-dialog'
 import { useResource } from '~/components/resources/hooks/use-resource'
 
@@ -32,6 +33,11 @@ export interface RecordEditorDialogProps {
  */
 const CUSTOM_EDITORS: Record<string, React.ComponentType<RecordEditorDialogProps>> = {
   part: PartEditorAdapter,
+  work_order: WorkOrderEditorAdapter,
+}
+
+function WorkOrderEditorAdapter(props: RecordEditorDialogProps) {
+  return <WorkOrderEditorDialog {...props} />
 }
 
 /** Adapts {@link PartFormDialog} (uses `onSuccess`, no def id / presets) to the shared shape. */

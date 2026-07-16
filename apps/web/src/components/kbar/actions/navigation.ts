@@ -31,6 +31,17 @@ export function useNavigationActions(): PaletteAction[] {
   return useMemo<PaletteAction[]>(() => {
     const actions: PaletteAction[] = []
 
+    if (hasAccess('dashboards')) {
+      actions.push({
+        id: 'nav.dashboards',
+        label: 'Dashboards',
+        subtitle: 'View your dashboards',
+        icon: 'layout-dashboard',
+        keywords: 'dashboards analytics reports',
+        perform: () => nav('/dashboards'),
+      })
+    }
+
     if (hasAccess('todayInbox')) {
       actions.push({
         id: 'nav.today',
@@ -248,6 +259,16 @@ export function useNavigationActions(): PaletteAction[] {
     )
 
     // ── Feature-gated destinations ───────────────────────────────────────
+    if (hasAccess('dispatch')) {
+      actions.push({
+        id: 'nav.schedule',
+        label: 'Schedule',
+        subtitle: 'View your schedule',
+        icon: 'calendar-clock',
+        keywords: 'schedule calendar dispatch appointments',
+        perform: () => nav('/schedule'),
+      })
+    }
     if (hasAccess('workflows')) {
       actions.push({
         id: 'nav.workflows',

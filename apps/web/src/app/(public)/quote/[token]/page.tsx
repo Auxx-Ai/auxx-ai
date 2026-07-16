@@ -1,8 +1,14 @@
 // apps/web/src/app/(public)/quote/[token]/page.tsx
 
-import { cancelAbandonedDepositCheckout, getPublicQuotePayload } from '@auxx/lib/money'
+import {
+  cancelAbandonedDepositCheckout,
+  getPublicQuotePayload,
+  reconcileStripeDepositCheckoutReturn,
+  resolveQuoteByPublicToken,
+} from '@auxx/lib/money'
+import { createScopedLogger } from '@auxx/logger'
 import type { Metadata } from 'next'
-import { notFound } from 'next/navigation'
+import { notFound, redirect } from 'next/navigation'
 import { PublicQuoteDocument } from '~/components/money/ui/public-quote/public-quote-document'
 
 export const metadata: Metadata = {
@@ -12,8 +18,16 @@ export const metadata: Metadata = {
 
 interface PublicQuotePageProps {
   params: Promise<{ token: string }>
-  searchParams: Promise<{ state?: string; message?: string; checkout?: string; tx?: string }>
+  searchParams: Promise<{
+    state?: string
+    message?: string
+    checkout?: string
+    tx?: string
+    session_id?: string
+  }>
 }
+
+const logger = createScopedLogger('public-quote')
 
 /**
  * Public, unauthenticated quote acceptance page (v5 build spec 01) — `/quote/{token}`. Mirrors
@@ -31,6 +45,29 @@ export default async function PublicQuotePage({ params, searchParams }: PublicQu
   // token; the invoice pay page's `cancelAbandonedCheckout` recipe).
   if (sp.checkout === 'cancel' && sp.tx) {
     await cancelAbandonedDepositCheckout(token, sp.tx)
+  }
+
+  // Webhooks remain the normal settlement path. On Stripe's success redirect, verify the
+  // Checkout Session directly as a recovery path for delayed or temporarily unavailable
+  // webhook delivery, then apply the same idempotent ledger transition as the webhook.
+  if (sp.checkout === 'success' && sp.session_id) {
+    const resolved = await resolveQuoteByPublicToken(token)
+    if (resolved) {
+      let reconciled = false
+      try {
+        await reconcileStripeDepositCheckoutReturn({
+          organizationId: resolved.organizationId,
+          quoteInstanceId: resolved.quoteInstanceId,
+          sessionId: sp.session_id,
+        })
+        reconciled = true
+      } catch (error) {
+        logger.error('Unable to reconcile returned Stripe deposit Checkout', {
+          error: error instanceof Error ? error.message : String(error),
+        })
+      }
+      if (reconciled) redirect(`/quote/${token}`)
+    }
   }
 
   const payload = await getPublicQuotePayload(token)

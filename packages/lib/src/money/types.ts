@@ -153,6 +153,104 @@ export interface CreateInvoiceFromWorkOrderResult {
   instanceId: string
 }
 
+/** Billing basis configured on a work order. */
+export type WorkOrderBillingBasis = 'fixed_contract' | 'per_visit' | 'recurring_flat'
+
+/** Invoice timing controls when configured work becomes eligible, not how it is priced. */
+export type WorkOrderInvoiceTiming =
+  | 'per_visit_completed'
+  | 'on_completion'
+  | 'as_needed'
+  | 'custom_schedule'
+
+/** Read-optimized next-action state projected onto a work order. */
+export type WorkOrderBillingState =
+  | 'attention_required'
+  | 'ready_to_invoice'
+  | 'draft_pending'
+  | 'awaiting_payment'
+  | 'scheduled'
+  | 'paid'
+  | 'not_ready'
+
+/** Why an invoice was produced from a work order. */
+export type InvoiceBillingKind =
+  | 'full_contract'
+  | 'progress'
+  | 'visit'
+  | 'recurring_flat'
+  | 'extra_work'
+  | 'standalone'
+
+/** Explicit amount selection for a fixed-contract invoice. */
+export type FixedContractInvoiceAmount =
+  | { type: 'remaining' }
+  | { type: 'percentage'; value: number }
+  | { type: 'fixed'; amount: number }
+  | { type: 'installment'; installmentId: string }
+
+/** Shared input for allocation-backed work-order billing commands. */
+export interface WorkOrderBillingCommandInput extends MoneyMutationInput {
+  /** EntityInstance id of the work order. */
+  workOrderInstanceId: string
+}
+
+/** Create a full, progress, or scheduled fixed-contract invoice. */
+export interface CreateFixedContractInvoiceInput extends WorkOrderBillingCommandInput {
+  amount: FixedContractInvoiceAmount
+}
+
+/** Create one invoice containing one or more completed visits. */
+export interface CreateVisitInvoiceInput extends WorkOrderBillingCommandInput {
+  visitIds: string[]
+}
+
+/** Create one flat-rate charge for a recurrence occurrence or a manual period. */
+export interface CreateRecurringChargeInput extends WorkOrderBillingCommandInput {
+  occurrenceDate?: string
+}
+
+/** Create a separate invoice for additive visit work. */
+export interface CreateExtraWorkInvoiceInput extends WorkOrderBillingCommandInput {
+  visitIds: string[]
+  sourceLineIds?: string[]
+}
+
+/** Convert unallocated visit additions into fixed-contract source lines. */
+export interface AddVisitExtrasToContractInput extends WorkOrderBillingCommandInput {
+  visitId: string
+}
+
+/** Editable row accepted by the fixed-contract payment-schedule command. */
+export interface BillingInstallmentInput {
+  name: string
+  calculation: 'percentage' | 'fixed'
+  percentageBasisPoints?: number
+  amount?: number
+  trigger: 'manual' | 'date' | 'work_order_completion'
+  scheduledDate?: string
+}
+
+/** Replace the pending portion of a fixed-contract payment schedule. */
+export interface SaveBillingInstallmentsInput extends WorkOrderBillingCommandInput {
+  installments: BillingInstallmentInput[]
+}
+
+/** Allocation-backed billing summary for a work order. All amounts are integer cents. */
+export interface WorkOrderBillingProjection {
+  basis: WorkOrderBillingBasis
+  timing: WorkOrderInvoiceTiming
+  state: WorkOrderBillingState
+  billingAmount: number
+  amountDrafted: number
+  amountInvoiced: number
+  uninvoicedAmount: number
+  balanceDue: number
+  invoiceCount: number
+  nextInvoiceDate: string | null
+  attentionReason?: string
+}
+
 /** Input for `deleteInvoiceLine` (§G.3). */
 export interface DeleteInvoiceLineInput extends MoneyMutationInput {
   /** EntityInstance id of the line item (not the RecordId). */

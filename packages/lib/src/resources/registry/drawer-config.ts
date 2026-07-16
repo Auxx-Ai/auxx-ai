@@ -24,6 +24,9 @@ export const DRAWER_CONFIG_REGISTRY: DrawerConfigRegistry = {
       enableArchive: true,
       enableDelete: true,
     },
+    tabCards: {
+      overview: [{ value: 'billing', label: 'Billing', position: 'after' }],
+    },
   },
 
   company: {
@@ -101,7 +104,7 @@ export const DRAWER_CONFIG_REGISTRY: DrawerConfigRegistry = {
     tabCards: {
       overview: [
         { value: 'schedule', label: 'Schedule', icon: 'calendar-clock' },
-        { value: 'invoices', label: 'Invoices', icon: 'receipt' },
+        { value: 'billing', label: 'Billing', icon: 'credit-card' },
         // Client-notifications plan §4.8/Phase 4 — compact recent-communications card.
         { value: 'communications', label: 'Communications', icon: 'mail' },
       ],
@@ -144,6 +147,7 @@ export const DRAWER_CONFIG_REGISTRY: DrawerConfigRegistry = {
     tabCards: {
       overview: [
         { value: 'lines', label: 'Line items', fullBleed: false },
+        { value: 'billing-context', label: 'Billing context' },
         { value: 'payments', label: 'Payments' },
       ],
     },

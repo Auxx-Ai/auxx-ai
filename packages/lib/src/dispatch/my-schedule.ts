@@ -16,7 +16,8 @@ import { parseRecordId, toRecordId } from '@auxx/types/resource'
 import { and, asc, eq, gte, inArray, lt } from 'drizzle-orm'
 import { getOrgCache } from '../cache'
 import { BadRequestError, ForbiddenError, NotFoundError } from '../errors'
-import { createInvoiceFromWorkOrder, listUninvoicedLines } from '../money/gather'
+import { createVisitInvoice } from '../money/billing-commands'
+import { computeWorkOrderBillingProjection } from '../money/billing-projection'
 import { UnifiedCrudHandler } from '../resources/crud'
 import { formatAddress } from './address'
 import type { VisitStatus } from './types'
@@ -407,10 +408,9 @@ export interface CloseMyVisitResult {
 /**
  * Complete the signed-in worker's own visit via the close chooser (08 §1/§3): always marks the
  * visit `done`; `leave_open` suppresses the work-order roll-up (the visit still completes, the
- * job doesn't); `now` additionally gathers every uninvoiced line onto a draft invoice
- * (MI1's `listUninvoicedLines` → `createInvoiceFromWorkOrder`) — a no-op success when the MI2
- * per-visit auto-draft already consumed the lines, and a soft `no_contact` result (never a
- * thrown error) when the job has no contact yet.
+ * job doesn't); `now` uses the allocation-backed per-visit command. Fixed-contract and
+ * recurring-flat work remain office-controlled because completing a visit is not permission to
+ * choose a progress amount or create a billing-period charge.
  */
 export async function closeMyVisit(input: CloseMyVisitInput): Promise<CloseMyVisitResult> {
   const { organizationId, userId, visitId, invoice } = input
@@ -426,19 +426,29 @@ export async function closeMyVisit(input: CloseMyVisitInput): Promise<CloseMyVis
 
   if (invoice !== 'now') return { invoiced: false }
 
-  const lines = await listUninvoicedLines({
+  const billing = await computeWorkOrderBillingProjection({
     organizationId,
     userId,
     workOrderInstanceId: updated.workOrderId,
   })
-  if (lines.length === 0) return { invoiced: true } // per_visit auto-draft already consumed them
+  if (billing.basis !== 'per_visit') return { invoiced: false }
+  const existingAllocation = await database.query.InvoiceVisitAllocation.findFirst({
+    where: and(
+      eq(schema.InvoiceVisitAllocation.organizationId, organizationId),
+      eq(schema.InvoiceVisitAllocation.visitId, visitId),
+      eq(schema.InvoiceVisitAllocation.kind, 'base'),
+      eq(schema.InvoiceVisitAllocation.status, 'active')
+    ),
+    columns: { id: true },
+  })
+  if (existingAllocation) return { invoiced: true }
 
   try {
-    await createInvoiceFromWorkOrder({
+    await createVisitInvoice({
       organizationId,
       userId,
       workOrderInstanceId: updated.workOrderId,
-      lineInstanceIds: lines.map((line) => line.instanceId),
+      visitIds: [visitId],
     })
     return { invoiced: true }
   } catch (error) {

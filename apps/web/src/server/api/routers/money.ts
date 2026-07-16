@@ -5,20 +5,25 @@ import { database, schema } from '@auxx/database'
 import { renderPreviewQuotePdf } from '@auxx/lib/documents'
 import { NotFoundError } from '@auxx/lib/errors'
 import {
+  addVisitExtrasToContract,
   approveQuote,
   clearInvoiceSchedule,
   convertQuoteToWorkOrder,
-  createInvoiceFromWorkOrder,
+  createExtraWorkInvoice,
+  createFixedContractInvoice,
   createQuoteFromRequest,
+  createRecurringCharge,
+  createVisitInvoice,
   declineQuote,
   deleteInvoice,
   deleteInvoiceLine,
   deleteManualPayment,
   disconnectPaymentAccount,
   ensureQuoteDocumentPdf,
+  getContactBillingOverview,
   getInvoiceSchedule,
   getPaymentAccount,
-  listUninvoicedLines,
+  getWorkOrderBillingState,
   listWorkOrderPayments,
   markInvoiceSent,
   markQuoteSent,
@@ -27,6 +32,7 @@ import {
   recordManualPayment,
   refundTransaction,
   reorderLines,
+  saveBillingInstallments,
   setInvoiceSchedule,
   syncAccountState,
   voidInvoice,
@@ -39,7 +45,6 @@ import {
   recurrencePatternSchema,
 } from '@auxx/lib/recurrence'
 import { getOrganizationSetting } from '@auxx/lib/settings'
-import type { RecordId } from '@auxx/types/resource'
 import { parseRecordId, recordIdSchema, toRecordId } from '@auxx/types/resource'
 import { and, asc, eq } from 'drizzle-orm'
 import { z } from 'zod'
@@ -198,35 +203,124 @@ export const moneyRouter = createTRPCRouter({
 
   // ─── Invoicing (money MI1 build spec §I.2) ──────────────────────────────
 
-  listUninvoicedLines: moneyProcedure
+  getWorkOrderBillingState: moneyProcedure
     .input(z.object({ workOrderRecordId: recordIdSchema }))
     .query(async ({ ctx, input }) => {
-      const { entityInstanceId } = parseRecordId(input.workOrderRecordId)
-      return listUninvoicedLines({
-        organizationId: ctx.session.organizationId,
-        userId: ctx.session.user.id,
-        workOrderInstanceId: entityInstanceId,
-      })
-    }),
-
-  createInvoiceFromWorkOrder: moneyProcedure
-    .input(
-      z.object({
-        workOrderRecordId: recordIdSchema,
-        lineRecordIds: z.array(z.string()),
-      })
-    )
-    .mutation(async ({ ctx, input }) => {
       const { entityInstanceId: workOrderInstanceId } = parseRecordId(input.workOrderRecordId)
-      return createInvoiceFromWorkOrder({
+      return getWorkOrderBillingState({
         organizationId: ctx.session.organizationId,
         userId: ctx.session.user.id,
         workOrderInstanceId,
-        lineInstanceIds: input.lineRecordIds.map(
-          (lineRecordId) => parseRecordId(lineRecordId as RecordId).entityInstanceId
-        ),
       })
     }),
+
+  getContactBillingOverview: moneyProcedure
+    .input(z.object({ contactRecordId: recordIdSchema }))
+    .query(async ({ ctx, input }) => {
+      const { entityInstanceId: contactInstanceId } = parseRecordId(input.contactRecordId)
+      return getContactBillingOverview({
+        organizationId: ctx.session.organizationId,
+        userId: ctx.session.user.id,
+        contactInstanceId,
+      })
+    }),
+
+  createFixedContractInvoice: moneyProcedure
+    .input(
+      z.object({
+        workOrderRecordId: recordIdSchema,
+        amount: z.discriminatedUnion('type', [
+          z.object({ type: z.literal('remaining') }),
+          z.object({ type: z.literal('percentage'), value: z.number().positive().max(100) }),
+          z.object({ type: z.literal('fixed'), amount: z.number().int().positive() }),
+          z.object({ type: z.literal('installment'), installmentId: z.string().min(1) }),
+        ]),
+      })
+    )
+    .mutation(async ({ ctx, input }) =>
+      createFixedContractInvoice({
+        organizationId: ctx.session.organizationId,
+        userId: ctx.session.user.id,
+        workOrderInstanceId: parseRecordId(input.workOrderRecordId).entityInstanceId,
+        amount: input.amount,
+      })
+    ),
+
+  createVisitInvoice: moneyProcedure
+    .input(z.object({ workOrderRecordId: recordIdSchema, visitIds: z.array(z.string()).min(1) }))
+    .mutation(async ({ ctx, input }) =>
+      createVisitInvoice({
+        organizationId: ctx.session.organizationId,
+        userId: ctx.session.user.id,
+        workOrderInstanceId: parseRecordId(input.workOrderRecordId).entityInstanceId,
+        visitIds: input.visitIds,
+      })
+    ),
+
+  createRecurringCharge: moneyProcedure
+    .input(z.object({ workOrderRecordId: recordIdSchema, occurrenceDate: z.string().optional() }))
+    .mutation(async ({ ctx, input }) =>
+      createRecurringCharge({
+        organizationId: ctx.session.organizationId,
+        userId: ctx.session.user.id,
+        workOrderInstanceId: parseRecordId(input.workOrderRecordId).entityInstanceId,
+        occurrenceDate: input.occurrenceDate,
+      })
+    ),
+
+  createExtraWorkInvoice: moneyProcedure
+    .input(
+      z.object({
+        workOrderRecordId: recordIdSchema,
+        visitIds: z.array(z.string()).min(1),
+        sourceLineIds: z.array(z.string()).optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) =>
+      createExtraWorkInvoice({
+        organizationId: ctx.session.organizationId,
+        userId: ctx.session.user.id,
+        workOrderInstanceId: parseRecordId(input.workOrderRecordId).entityInstanceId,
+        visitIds: input.visitIds,
+        sourceLineIds: input.sourceLineIds,
+      })
+    ),
+
+  addVisitExtrasToContract: moneyProcedure
+    .input(z.object({ workOrderRecordId: recordIdSchema, visitId: z.string().min(1) }))
+    .mutation(async ({ ctx, input }) =>
+      addVisitExtrasToContract({
+        organizationId: ctx.session.organizationId,
+        userId: ctx.session.user.id,
+        workOrderInstanceId: parseRecordId(input.workOrderRecordId).entityInstanceId,
+        visitId: input.visitId,
+      })
+    ),
+
+  saveBillingInstallments: moneyAdminProcedure
+    .input(
+      z.object({
+        workOrderRecordId: recordIdSchema,
+        installments: z.array(
+          z.object({
+            name: z.string().trim().min(1),
+            calculation: z.enum(['percentage', 'fixed']),
+            percentageBasisPoints: z.number().int().positive().max(10_000).optional(),
+            amount: z.number().int().positive().optional(),
+            trigger: z.enum(['manual', 'date', 'work_order_completion']),
+            scheduledDate: z.string().optional(),
+          })
+        ),
+      })
+    )
+    .mutation(async ({ ctx, input }) =>
+      saveBillingInstallments({
+        organizationId: ctx.session.organizationId,
+        userId: ctx.session.user.id,
+        workOrderInstanceId: parseRecordId(input.workOrderRecordId).entityInstanceId,
+        installments: input.installments,
+      })
+    ),
 
   markInvoiceSent: moneyProcedure
     .input(z.object({ invoiceRecordId: recordIdSchema }))

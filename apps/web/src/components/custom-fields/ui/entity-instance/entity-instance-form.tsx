@@ -74,6 +74,13 @@ export interface EntityInstanceFormProps {
   /** Host-rendered header. The dialog supplies a `DialogHeader`; the palette omits
    *  it and relies on the breadcrumb. */
   header?: (ctx: EntityInstanceFormHeaderContext) => ReactNode
+  /** Optional create-only content and values supplied by an entity-specific host. */
+  createExtension?: {
+    content: ReactNode
+    values: Record<string, unknown>
+    isDirty?: boolean
+    onReset?: () => void
+  }
 }
 
 /**
@@ -94,6 +101,7 @@ export function EntityInstanceForm({
   onRequestClose,
   onDirtyChange,
   header,
+  createExtension,
 }: EntityInstanceFormProps) {
   // Parse recordId to get instance ID for editing
   const editingInstanceId = recordId ? parseRecordId(recordId).entityInstanceId : undefined
@@ -385,8 +393,8 @@ export function EntityInstanceForm({
   // Surface dirty state to the host so it can guard navigation (Esc / outside
   // click on the dialog, breadcrumb back in the palette).
   useEffect(() => {
-    onDirtyChange?.(isDirty)
-  }, [isDirty, onDirtyChange])
+    onDirtyChange?.(isDirty || createExtension?.isDirty === true)
+  }, [isDirty, createExtension?.isDirty, onDirtyChange])
 
   // Track if dialog has been initialized to prevent re-initialization on dependency changes
   const isInitialized = useRef(false)
@@ -546,7 +554,8 @@ export function EntityInstanceForm({
     setInitial(initValues)
     setErrors({})
     setTouched(new Set())
-  }, [editableFields, presetValues, setInitial])
+    createExtension?.onReset?.()
+  }, [editableFields, presetValues, setInitial, createExtension])
 
   /**
    * Expand NAME field values into their source fields (firstName, lastName).
@@ -611,6 +620,7 @@ export function EntityInstanceForm({
             ([_, value]) => value !== undefined && value !== null && value !== ''
           )
         )
+        Object.assign(formValues, createExtension?.values)
 
         // Create instance with values - hooks run and auto-generate fields like ticket_number
         const result = await createInstance.mutateAsync({
@@ -729,6 +739,7 @@ export function EntityInstanceForm({
                   />
                 ))}
               </FieldPanel>
+              {!isEditing && createExtension?.content}
             </div>
 
             {editableFields.length === 0 && (

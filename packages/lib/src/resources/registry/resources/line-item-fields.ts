@@ -376,34 +376,7 @@ export const LINE_ITEM_FIELDS: Record<string, ResourceField> = {
       inverseName: 'Line Items',
       inverseSystemAttribute: 'invoice_line_items',
     },
-    description:
-      'Double duty (money MI1 build spec §B.3): on an invoice’s OWN lines this is the ' +
-      'parent rel; on WORK-ORDER source lines it is the "invoiced by" stamp (null = ' +
-      'unbilled). Invoice-owned copies always have workOrder NULL — every "invoice’s ' +
-      'lines" read filters invoice = X AND workOrder is empty.',
-  },
-
-  sourceLineId: {
-    id: toFieldId('sourceLineId'),
-    key: 'sourceLineId',
-    label: 'Source Line ID',
-    type: BaseType.STRING,
-    fieldType: FieldType.TEXT,
-    isSystem: true,
-    systemAttribute: 'line_item_source_line_id',
-    systemSortOrder: 'aF',
-    showInPanel: false,
-    nullable: true,
-    capabilities: {
-      filterable: true,
-      sortable: false,
-      creatable: true,
-      updatable: true,
-      configurable: false,
-    },
-    description:
-      'On gather copies, the source (work-order) line’s EntityInstance id (the visitId ' +
-      'plain-text recipe) — what per-line unstamp resolves through (money MI1 decision 5)',
+    description: 'Parent invoice relation for invoice-owned snapshot lines only',
   },
 
   createdAt: {

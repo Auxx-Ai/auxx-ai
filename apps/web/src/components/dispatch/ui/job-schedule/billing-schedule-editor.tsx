@@ -48,7 +48,13 @@ export function BillingScheduleEditor({
   )
   const patternValid = recurrencePatternSchema.safeParse(pattern).success
 
-  const invalidate = () => void utils.money.getInvoiceSchedule.invalidate({ workOrderRecordId })
+  // Also invalidate the composed billing read (work-order invoice flow plan §4.7) so the
+  // Billing tab's "Automation" summary reflects the new/removed schedule immediately, without
+  // waiting for the `work_order_billing_revision` realtime round-trip.
+  const invalidate = () => {
+    void utils.money.getInvoiceSchedule.invalidate({ workOrderRecordId })
+    void utils.money.getWorkOrderBillingState.invalidate({ workOrderRecordId })
+  }
 
   const setSchedule = api.money.setInvoiceSchedule.useMutation({
     onError: (error) =>

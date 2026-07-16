@@ -2,7 +2,12 @@
 
 import type { SystemAttribute } from '@auxx/types/system-attribute'
 import { registerAllHooks } from './register-hooks'
-import type { EntityFieldChangeHandler, EntityPreDeleteHandler, FieldPreHookHandler } from './types'
+import type {
+  EntityFieldChangeHandler,
+  EntityPostDeleteHandler,
+  EntityPreDeleteHandler,
+  FieldPreHookHandler,
+} from './types'
 
 // =============================================================================
 // POST-WRITE TRIGGER REGISTRIES
@@ -26,6 +31,9 @@ const FIELD_PRE_HOOKS: Map<string, FieldPreHookHandler[]> = new Map()
 
 /** Pre-delete entity hooks keyed by entitySlug. */
 const ENTITY_PRE_DELETE_HOOKS: Map<string, EntityPreDeleteHandler[]> = new Map()
+
+/** Post-delete entity hooks keyed by entitySlug. */
+const ENTITY_POST_DELETE_HOOKS: Map<string, EntityPostDeleteHandler[]> = new Map()
 
 /**
  * Per-entity field-change post-hooks. Keyed by entitySlug, with the sentinel
@@ -123,6 +131,22 @@ export function registerEntityPreDeleteHooks(
 export function getEntityPreDeleteHooks(entitySlug: string): EntityPreDeleteHandler[] {
   ensureInitialized()
   return ENTITY_PRE_DELETE_HOOKS.get(entitySlug) ?? []
+}
+
+/** Register post-delete handlers for an entity slug. */
+export function registerEntityPostDeleteHooks(
+  entitySlug: string,
+  handlers: EntityPostDeleteHandler[]
+): void {
+  if (handlers.length === 0) return
+  const existing = ENTITY_POST_DELETE_HOOKS.get(entitySlug) ?? []
+  ENTITY_POST_DELETE_HOOKS.set(entitySlug, [...existing, ...handlers])
+}
+
+/** Get post-delete handlers for an entity slug. */
+export function getEntityPostDeleteHooks(entitySlug: string): EntityPostDeleteHandler[] {
+  ensureInitialized()
+  return ENTITY_POST_DELETE_HOOKS.get(entitySlug) ?? []
 }
 
 // =============================================================================

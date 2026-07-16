@@ -13,8 +13,8 @@
 
 import { EmptySection } from '@auxx/ui/components/section'
 import { TREE_SECONDARY_NOTRUNCATE } from '@auxx/ui/components/tree-row'
+import { TuckedSection } from '@auxx/ui/components/tucked-label'
 import { ClipboardList } from 'lucide-react'
-import { TuckedLabel } from '~/components/money/ui/tucked-label'
 import { QcItemDisplay } from '~/components/schedule/ui/qc/qc-item-display'
 import { api } from '~/trpc/react'
 
@@ -28,8 +28,12 @@ export function VisitProofOfWork({ visitId }: VisitProofOfWorkProps) {
   const items = data?.items ?? []
 
   return (
-    <div className='flex flex-col'>
-      <TuckedLabel icon={<ClipboardList />}>Proof of work</TuckedLabel>
+    // The children (EmptySection / items card) bring their own frame, so the
+    // wrapper card is stripped and the EmptySection's radius is bumped to match.
+    <TuckedSection
+      icon={<ClipboardList />}
+      label='Proof of work'
+      contentClassName='border-0 bg-transparent p-0 [&_[data-slot=empty-section]]:rounded-xl'>
       {isLoading ? (
         <EmptySection loading title='Loading proof of work' />
       ) : items.length === 0 ? (
@@ -39,12 +43,12 @@ export function VisitProofOfWork({ visitId }: VisitProofOfWorkProps) {
           description='Checks, notes and photos the assigned worker captures show up here.'
         />
       ) : (
-        <div className={`rounded-lg border bg-primary-50 p-2 ${TREE_SECONDARY_NOTRUNCATE}`}>
+        <div className={`rounded-xl border bg-primary-50 p-2 ${TREE_SECONDARY_NOTRUNCATE}`}>
           {items.map((item) => (
             <QcItemDisplay key={item.id} item={item} />
           ))}
         </div>
       )}
-    </div>
+    </TuckedSection>
   )
 }

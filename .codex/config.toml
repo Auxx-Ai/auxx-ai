@@ -8,4 +8,8 @@ args = ["dlx", "@upstash/context7-mcp"]
 
 [mcp_servers.postgres]
 command = "sh"
-args = ["-c", "export $(grep ^DATABASE_URL .env | xargs) && pnpm dlx @modelcontextprotocol/server-postgres $DATABASE_URL"]
+args = ["-c", "docker ps --filter ancestor=crystaldba/postgres-mcp --format '{{.ID}} {{.RunningFor}}' | awk '/hour|day|week/ {print $1}' | xargs docker rm -f >/dev/null 2>&1; export $(grep ^DATABASE_URL .env | xargs) && URI=$(echo \"$DATABASE_URL\" | sed 's/localhost/host.docker.internal/;s/127.0.0.1/host.docker.internal/') && exec docker run -i --rm --init -e DATABASE_URI=\"$URI\" crystaldba/postgres-mcp --access-mode=unrestricted"]
+
+[mcp_servers.chrome-devtools]
+command = "npx"
+args = ["chrome-devtools-mcp@latest", "--autoConnect", "--channel=stable"]

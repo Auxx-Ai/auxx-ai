@@ -1,6 +1,6 @@
 // packages/lib/src/money/payments/ledger.ts
 
-import type { PaymentTransactionEntity } from '@auxx/database'
+import type { Database, PaymentTransactionEntity } from '@auxx/database'
 import { database, schema } from '@auxx/database'
 import type { TypedFieldValue } from '@auxx/types'
 import { extractValue } from '@auxx/types'
@@ -43,9 +43,10 @@ function firstTyped(
  */
 async function computeAmountPaid(
   organizationId: string,
-  invoiceInstanceId: string
+  invoiceInstanceId: string,
+  db: Database = database
 ): Promise<number> {
-  const rows = await database.query.PaymentTransaction.findMany({
+  const rows = await db.query.PaymentTransaction.findMany({
     where: and(
       eq(schema.PaymentTransaction.organizationId, organizationId),
       eq(schema.PaymentTransaction.invoiceInstanceId, invoiceInstanceId),
@@ -133,10 +134,13 @@ export async function listWorkOrderPayments(
  * bypasses the `rejectManualLifecycleStatus` system pre-hook — the convert-quote.ts:206-210
  * precedent). Only writes fields that actually changed, to avoid no-op event churn.
  */
-export async function syncInvoicePaymentState(input: SyncInvoicePaymentStateInput): Promise<void> {
+export async function syncInvoicePaymentState(
+  input: SyncInvoicePaymentStateInput & { db?: Database; publishEvents?: boolean }
+): Promise<void> {
   const { organizationId, userId, invoiceInstanceId } = input
+  const db = input.db ?? database
   const invoiceRecordId = toRecordId('invoice', invoiceInstanceId)
-  const handler = new UnifiedCrudHandler(organizationId, userId)
+  const handler = new UnifiedCrudHandler(organizationId, userId, db)
   const cache = getOrgCache()
 
   const cf = await cache
@@ -170,7 +174,7 @@ export async function syncInvoicePaymentState(input: SyncInvoicePaymentStateInpu
     : undefined
   const currentBalance = currentBalanceTyped ? (extractValue(currentBalanceTyped) as number) : null
 
-  const amountPaid = await computeAmountPaid(organizationId, invoiceInstanceId)
+  const amountPaid = await computeAmountPaid(organizationId, invoiceInstanceId, db)
   const balance = total - amountPaid
 
   let nextStatus = status
@@ -189,11 +193,11 @@ export async function syncInvoicePaymentState(input: SyncInvoicePaymentStateInpu
   if (nextStatus !== status) writes.push({ fieldId: 'invoice_status', value: nextStatus })
   if (writes.length === 0) return
 
-  const fieldValueService = new FieldValueService(organizationId, userId)
+  const fieldValueService = new FieldValueService(organizationId, userId, db)
   await fieldValueService.setValuesForEntity({
     recordId: invoiceRecordId,
     values: writes,
-    publishEvents: true,
+    publishEvents: input.publishEvents ?? true,
   })
 }
 
@@ -214,8 +218,11 @@ export async function syncTransaction(params: {
   organizationId: string
   userId: string
   transaction: PaymentTransactionEntity
+  db?: Database
+  publishEvents?: boolean
 }): Promise<void> {
   const { organizationId, userId, transaction } = params
+  const db = params.db ?? database
 
   if (
     transaction.status === 'succeeded' &&
@@ -223,24 +230,28 @@ export async function syncTransaction(params: {
     !transaction.paymentInstanceId &&
     transaction.invoiceInstanceId
   ) {
-    const handler = new UnifiedCrudHandler(organizationId, userId)
+    const handler = new UnifiedCrudHandler(organizationId, userId, db)
     const invoiceRecordId = toRecordId('invoice', transaction.invoiceInstanceId)
     // The ledger row itself has no dedicated "payment date" column — the user-picked date
     // (possibly backdated) rides in `metadata.date`; fall back to the row's createdAt.
     const metadataDate = (transaction.metadata as { date?: string } | null)?.date
     const date = metadataDate ?? transaction.createdAt.toISOString().split('T')[0]
 
-    const created = await handler.create('payment', {
-      payment_amount: transaction.amount,
-      payment_date: date,
-      payment_method: transaction.method ?? 'other',
-      payment_reference: transaction.reference ?? undefined,
-      payment_note: transaction.note ?? undefined,
-      payment_invoice: invoiceRecordId,
-      payment_transaction_id: transaction.id,
-    })
+    const created = await handler.create(
+      'payment',
+      {
+        payment_amount: transaction.amount,
+        payment_date: date,
+        payment_method: transaction.method ?? 'other',
+        payment_reference: transaction.reference ?? undefined,
+        payment_note: transaction.note ?? undefined,
+        payment_invoice: invoiceRecordId,
+        payment_transaction_id: transaction.id,
+      },
+      { skipEvents: params.publishEvents === false }
+    )
 
-    await database
+    await db
       .update(schema.PaymentTransaction)
       .set({ paymentInstanceId: created.instance.id })
       .where(eq(schema.PaymentTransaction.id, transaction.id))
@@ -251,6 +262,8 @@ export async function syncTransaction(params: {
       organizationId,
       userId,
       invoiceInstanceId: transaction.invoiceInstanceId,
+      db,
+      publishEvents: params.publishEvents,
     })
   }
 }
@@ -271,9 +284,12 @@ export async function applyHeldDepositToInvoice(params: {
   userId: string
   workOrderInstanceId: string
   invoiceInstanceId: string
+  db?: Database
+  publishEvents?: boolean
 }): Promise<void> {
   const { organizationId, userId, workOrderInstanceId, invoiceInstanceId } = params
-  const deposit = await database.query.PaymentTransaction.findFirst({
+  const db = params.db ?? database
+  const deposit = await db.query.PaymentTransaction.findFirst({
     where: and(
       eq(schema.PaymentTransaction.organizationId, organizationId),
       eq(schema.PaymentTransaction.workOrderInstanceId, workOrderInstanceId),
@@ -283,12 +299,18 @@ export async function applyHeldDepositToInvoice(params: {
     ),
   })
   if (!deposit) return
-  const [updated] = await database
+  const [updated] = await db
     .update(schema.PaymentTransaction)
     .set({ invoiceInstanceId })
     .where(eq(schema.PaymentTransaction.id, deposit.id))
     .returning()
-  await syncTransaction({ organizationId, userId, transaction: updated! })
+  await syncTransaction({
+    organizationId,
+    userId,
+    transaction: updated!,
+    db,
+    publishEvents: params.publishEvents,
+  })
 }
 
 /**
@@ -394,6 +416,6 @@ export async function deleteManualPayment(input: DeleteManualPaymentInput): Prom
   await syncInvoicePaymentState({
     organizationId,
     userId,
-    invoiceInstanceId: transaction.invoiceInstanceId,
+    invoiceInstanceId: transaction.invoiceInstanceId!,
   })
 }

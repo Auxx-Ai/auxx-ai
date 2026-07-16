@@ -11,9 +11,12 @@ import {
 } from '@auxx/ui/components/dialog'
 import { useState } from 'react'
 import { useUnsavedChangesGuard } from '~/hooks/use-unsaved-changes-guard'
-import { EntityInstanceForm } from './entity-instance/entity-instance-form'
+import {
+  EntityInstanceForm,
+  type EntityInstanceFormProps,
+} from './entity-instance/entity-instance-form'
 
-interface EntityInstanceDialogProps {
+export interface EntityInstanceDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   /** Entity definition ID */
@@ -24,6 +27,8 @@ interface EntityInstanceDialogProps {
   onSaved?: (instanceId: string) => void
   /** Preset field values for CREATE mode. Format: { fieldId: value } */
   presetValues?: Record<string, unknown>
+  /** Domain-neutral create-only extension supplied by a custom record editor. */
+  createExtension?: EntityInstanceFormProps['createExtension']
 }
 
 /**
@@ -40,6 +45,7 @@ export function EntityInstanceDialog({
   recordId,
   onSaved,
   presetValues,
+  createExtension,
 }: EntityInstanceDialogProps) {
   // The form core reports its dirty state up so the guard (Esc / outside click)
   // can intercept a close while there are unsaved changes.
@@ -60,6 +66,7 @@ export function EntityInstanceDialog({
             recordId={recordId}
             onSaved={onSaved}
             presetValues={presetValues}
+            createExtension={createExtension}
             onClose={() => onOpenChange(false)}
             onRequestClose={guardedClose}
             onDirtyChange={setIsDirty}

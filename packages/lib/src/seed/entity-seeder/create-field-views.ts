@@ -47,6 +47,13 @@ export const FIELD_VIEW_CONFIGS: FieldViewSeedConfig[] = [
       'last_name',
       'contact_tickets',
       'contact_meetings',
+      'contact_work_orders',
+      'contact_service_requests',
+      'contact_quotes',
+      'contact_invoices',
+      'contact_balance_due',
+      'contact_uninvoiced_amount',
+      'contact_billing_revision',
     ],
   },
 
@@ -281,12 +288,21 @@ export const FIELD_VIEW_CONFIGS: FieldViewSeedConfig[] = [
       'created_at',
       'updated_at',
       'created_by_id',
-      'work_order_pricing_model', // hidden billing structure (§B) — no UI until invoicing
-      'work_order_invoice_timing',
+      'work_order_pricing_model', // edited with timing in the purpose-built billing-plan flow
+      'work_order_invoice_timing', // edited together in the purpose-built billing-plan flow
       // surfaced via the job view's Origin card + line-items/invoice UI, not field rows
       'work_order_quote',
       'work_order_line_items',
       'work_order_invoices',
+      'work_order_billing_state',
+      'work_order_billing_amount',
+      'work_order_amount_drafted',
+      'work_order_amount_invoiced',
+      'work_order_uninvoiced_amount',
+      'work_order_balance_due',
+      'work_order_invoice_count',
+      'work_order_next_invoice_date',
+      'work_order_billing_revision',
     ],
   },
   {
@@ -300,8 +316,17 @@ export const FIELD_VIEW_CONFIGS: FieldViewSeedConfig[] = [
       'created_by_id',
       'work_order_description',
       'work_order_completion_notes',
-      'work_order_pricing_model', // hidden billing structure (§B) — no UI until invoicing
-      'work_order_invoice_timing',
+      'work_order_pricing_model', // edited with timing in the purpose-built billing-plan flow
+      'work_order_invoice_timing', // edited together in the purpose-built billing-plan flow
+      'work_order_billing_state',
+      'work_order_billing_amount',
+      'work_order_amount_drafted',
+      'work_order_amount_invoiced',
+      'work_order_uninvoiced_amount',
+      'work_order_balance_due',
+      'work_order_invoice_count',
+      'work_order_next_invoice_date',
+      'work_order_billing_revision',
     ],
   },
   {
@@ -490,6 +515,12 @@ export const FIELD_VIEW_CONFIGS: FieldViewSeedConfig[] = [
       'invoice_subtotal',
       'invoice_tax_total',
       'invoice_total',
+      'invoice_billing_kind',
+      'invoice_service_period_start',
+      'invoice_service_period_end',
+      'invoice_visit_count',
+      'invoice_progress_percent',
+      'invoice_installment_name',
     ],
   },
   {
@@ -509,6 +540,12 @@ export const FIELD_VIEW_CONFIGS: FieldViewSeedConfig[] = [
       'invoice_discount_type',
       'invoice_discount_value',
       'invoice_tax_name',
+      'invoice_billing_kind',
+      'invoice_service_period_start',
+      'invoice_service_period_end',
+      'invoice_visit_count',
+      'invoice_progress_percent',
+      'invoice_installment_name',
     ],
   },
   {

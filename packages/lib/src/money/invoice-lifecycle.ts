@@ -1,12 +1,16 @@
 // packages/lib/src/money/invoice-lifecycle.ts
 
+import { database, schema } from '@auxx/database'
 import type { RecordId, TypedFieldValue } from '@auxx/types'
 import { extractValue } from '@auxx/types'
-import { toRecordId } from '@auxx/types/resource'
+import { parseRecordId, toRecordId } from '@auxx/types/resource'
+import { and, eq } from 'drizzle-orm'
 import { getEntityDefIdResolver, getOrgCache } from '../cache'
 import { BadRequestError } from '../errors'
 import { FieldValueService } from '../field-values/field-value-service'
 import { UnifiedCrudHandler } from '../resources/crud'
+import { listInvoiceAllocations, releaseInvoiceAllocations } from './billing-allocations'
+import { syncInvoiceBillingProjection, syncWorkOrderBillingProjection } from './billing-projection'
 import { hasSucceededCharges } from './payments/ledger'
 import type { InvoiceLifecycleInput } from './types'
 
@@ -35,49 +39,18 @@ async function getInvoiceStatus(
 }
 
 /**
- * Clear `line_item_invoice` on every SOURCE line for an invoice — lines where
- * `invoice = X AND workOrder is not empty` (the §B.3 invariant). The invoice's own copies
- * (`workOrder` empty) are never touched here. Shared by `voidInvoice` (decision 5) and the
- * `guardInvoiceDelete` pre-delete hook (`field-hooks/pre/invoice-delete-guard.ts`,
- * plans/dispatch/money/12-delete-safety.md §A).
+ * Release allocation-ledger claims for an invoice. Kept under its legacy exported name while
+ * callers migrate; source-line stamps are no longer billing truth.
  */
 export async function unstampSourceLines(
   organizationId: string,
   userId: string,
   invoiceRecordId: RecordId
 ): Promise<void> {
-  const handler = new UnifiedCrudHandler(organizationId, userId)
-  const { ids } = await handler.listFiltered({
-    entityDefinitionId: 'line_item',
-    filters: [
-      {
-        id: 'invoice-source-lines',
-        logicalOperator: 'AND',
-        conditions: [
-          {
-            id: 'invoice-source-lines-invoice',
-            fieldId: 'line_item:invoice',
-            operator: 'is',
-            value: invoiceRecordId,
-          },
-          {
-            id: 'invoice-source-lines-workorder',
-            fieldId: 'line_item:workOrder',
-            operator: 'not empty',
-            value: null,
-          },
-        ],
-      },
-    ],
-    limit: 1000,
-    mode: 'oneshot',
-  })
-  if (ids.length === 0) return
-
-  const fieldValueService = new FieldValueService(organizationId, userId)
-  await fieldValueService.setBulkValues({
-    recordIds: ids.map((id) => toRecordId('line_item', id)),
-    values: [{ fieldId: 'line_item_invoice', value: null }],
+  const { entityInstanceId: invoiceId } = parseRecordId(invoiceRecordId)
+  await releaseInvoiceAllocations({
+    organizationId,
+    invoiceId,
   })
 }
 
@@ -132,6 +105,16 @@ export async function markInvoiceSent(input: InvoiceLifecycleInput): Promise<voi
     recordId: toRecordId(resolveDefId('invoice'), invoiceInstanceId),
     values: writes,
   })
+  await database
+    .update(schema.WorkOrderBillingInstallment)
+    .set({ status: 'invoiced' })
+    .where(
+      and(
+        eq(schema.WorkOrderBillingInstallment.organizationId, organizationId),
+        eq(schema.WorkOrderBillingInstallment.invoiceId, invoiceInstanceId),
+        eq(schema.WorkOrderBillingInstallment.status, 'drafted')
+      )
+    )
 }
 
 /**
@@ -145,6 +128,11 @@ export async function markInvoiceSent(input: InvoiceLifecycleInput): Promise<voi
 export async function voidInvoice(input: InvoiceLifecycleInput): Promise<void> {
   const { organizationId, userId, invoiceInstanceId } = input
   const invoiceRecordId = toRecordId('invoice', invoiceInstanceId)
+  const allocations = await listInvoiceAllocations({ organizationId, invoiceId: invoiceInstanceId })
+  const workOrderId =
+    allocations.lineAllocations.at(0)?.workOrderId ??
+    allocations.visitAllocations.at(0)?.workOrderId ??
+    allocations.scheduleAllocations.at(0)?.workOrderId
 
   if (await hasSucceededCharges(organizationId, invoiceInstanceId)) {
     throw new BadRequestError('Remove recorded payments before voiding this invoice')
@@ -161,6 +149,14 @@ export async function voidInvoice(input: InvoiceLifecycleInput): Promise<void> {
   })
 
   await unstampSourceLines(organizationId, userId, invoiceRecordId)
+  await syncInvoiceBillingProjection({ organizationId, userId, invoiceInstanceId })
+  if (workOrderId) {
+    await syncWorkOrderBillingProjection({
+      organizationId,
+      userId,
+      workOrderInstanceId: workOrderId,
+    })
+  }
 }
 
 /**
@@ -174,6 +170,7 @@ export async function voidInvoice(input: InvoiceLifecycleInput): Promise<void> {
 export async function deleteInvoice(input: InvoiceLifecycleInput): Promise<void> {
   const { organizationId, userId, invoiceInstanceId } = input
   const handler = new UnifiedCrudHandler(organizationId, userId)
-  const invoiceRecordId = toRecordId('invoice', invoiceInstanceId)
-  await handler.delete(invoiceRecordId)
+  // Work-order projection sync now rides the `invoices` post-delete hook, which fires for
+  // every delete path — no bespoke allocation lookup needed here.
+  await handler.delete(toRecordId('invoice', invoiceInstanceId))
 }

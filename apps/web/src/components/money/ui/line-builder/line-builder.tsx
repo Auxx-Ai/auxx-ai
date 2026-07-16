@@ -818,8 +818,11 @@ export function LineBuilder({
         className
       )}>
       {/* Header + rows share one bordered box, so the grid reads as a single
-          framed table. Totals sit outside the frame, below. */}
-      <div className='rounded-lg border border-primary-200/50 dark:border-[#1e2227]'>
+          framed table. Totals sit outside the frame, below. The `data-slot` lets a
+          parent (e.g. `TuckedSection`) override the frame's radius/border/ring. */}
+      <div
+        data-slot='line-builder-frame'
+        className='rounded-lg border border-primary-200/50 dark:border-[#1e2227]'>
         {/* Header — same grid template as the rows, so the labels sit over their columns.
             The grip lives in the gutter now, so Description starts flush (pl-2). */}
         <div

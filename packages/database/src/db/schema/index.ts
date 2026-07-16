@@ -193,6 +193,26 @@ export * from './visit-qc-item'
 export * from './webhook'
 export * from './webhook-delivery'
 export * from './webhook-endpoint'
+export {
+  InvoiceLineAllocation,
+  type InvoiceLineAllocationEntity,
+  type InvoiceLineAllocationInsert,
+  InvoiceScheduleAllocation,
+  type InvoiceScheduleAllocationEntity,
+  type InvoiceScheduleAllocationInsert,
+  InvoiceVisitAllocation,
+  type InvoiceVisitAllocationEntity,
+  type InvoiceVisitAllocationInsert,
+  invoiceAllocationStatus,
+  invoiceLineAllocationKind,
+  invoiceVisitAllocationKind,
+  WorkOrderBillingInstallment,
+  type WorkOrderBillingInstallmentEntity,
+  type WorkOrderBillingInstallmentInsert,
+  workOrderBillingInstallmentCalculation,
+  workOrderBillingInstallmentStatus,
+  workOrderBillingInstallmentTrigger,
+} from './work-order-billing'
 export * from './work-order-visit'
 export * from './workflow'
 export * from './workflow-app'

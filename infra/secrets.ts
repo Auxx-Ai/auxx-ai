@@ -197,6 +197,10 @@ export const secretsConfig = {
     secret: new sst.Secret('STRIPE_WEBHOOK_SECRET'),
     description: 'Stripe webhook endpoint secret',
   },
+  STRIPE_CONNECT_WEBHOOK_SECRET: {
+    secret: new sst.Secret('STRIPE_CONNECT_WEBHOOK_SECRET'),
+    description: 'Stripe Connect payments webhook endpoint secret',
+  },
   STRIPE_PUBLISHABLE_KEY: {
     secret: new sst.Secret('STRIPE_PUBLISHABLE_KEY'),
     description: 'Stripe publishable key for client-side',

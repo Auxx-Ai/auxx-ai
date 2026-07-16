@@ -165,6 +165,9 @@ export const SYSTEM_ATTRIBUTES = [
   'contact_service_requests',
   'contact_quotes',
   'contact_invoices', // inverse of invoice_contact
+  'contact_balance_due',
+  'contact_uninvoiced_amount',
+  'contact_billing_revision',
 
   // ─── Company fields ────────────────────────────────────────────
   'company_name',
@@ -218,6 +221,15 @@ export const SYSTEM_ATTRIBUTES = [
   'work_order_completion_notes',
   'work_order_pricing_model',
   'work_order_invoice_timing',
+  'work_order_billing_state',
+  'work_order_billing_amount',
+  'work_order_amount_drafted',
+  'work_order_amount_invoiced',
+  'work_order_uninvoiced_amount',
+  'work_order_balance_due',
+  'work_order_invoice_count',
+  'work_order_next_invoice_date',
+  'work_order_billing_revision',
   'work_order_quote', // owning — belongs_to quote (converted-from)
   'work_order_line_items', // inverse of line_item_work_order
   'work_order_invoices', // inverse of invoice_work_order
@@ -274,7 +286,6 @@ export const SYSTEM_ATTRIBUTES = [
   'line_item_quote',
   'line_item_work_order',
   'line_item_invoice',
-  'line_item_source_line_id',
 
   // ─── Catalog Item fields ────────────────────────────────────────
   'catalog_item_name',
@@ -314,7 +325,12 @@ export const SYSTEM_ATTRIBUTES = [
   'invoice_notes',
   'invoice_terms',
   'invoice_pdf_asset',
-  'invoice_visit_id',
+  'invoice_billing_kind',
+  'invoice_service_period_start',
+  'invoice_service_period_end',
+  'invoice_visit_count',
+  'invoice_progress_percent',
+  'invoice_installment_name',
   'invoice_public_token',
   'invoice_line_items', // inverse of line_item_invoice
   'invoice_payments', // inverse of payment_invoice

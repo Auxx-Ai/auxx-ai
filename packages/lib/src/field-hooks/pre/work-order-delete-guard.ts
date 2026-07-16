@@ -1,6 +1,8 @@
 // packages/lib/src/field-hooks/pre/work-order-delete-guard.ts
 
-import { toRecordId } from '@auxx/types/resource'
+import { database, schema } from '@auxx/database'
+import { parseRecordId, toRecordId } from '@auxx/types/resource'
+import { and, eq } from 'drizzle-orm'
 import { getOrgCache } from '../../cache'
 import { BadRequestError, ForbiddenError } from '../../errors'
 import { isAdminOrOwner } from '../../members'
@@ -10,7 +12,7 @@ import type { EntityPreDeleteHandler } from '../types'
 /**
  * Pre-delete guard for `work-orders` (plans/dispatch/money/12-delete-safety.md §C). Blocks
  * deleting a job that still has a linked invoice — either the direct `invoice:workOrder`
- * relationship or a stamped `line_item_work_order`/`line_item_invoice` pair — and points the
+ * relationship or an allocation-ledger row — and points the
  * user at the invoice(s) first. Visit/QC/recurrence cascade at the DB level by design (it's
  * the job's own data); only WO-owned line items need app-side cleanup here, since the guard
  * below guarantees none of them are invoice-stamped by the time cleanup runs.
@@ -51,32 +53,15 @@ export const guardWorkOrderDelete: EntityPreDeleteHandler = async (event) => {
     throw new BadRequestError("Delete or void this job's invoices first")
   }
 
-  const stampedLines = await handler.listFiltered({
-    entityDefinitionId: 'line_item',
-    filters: [
-      {
-        id: 'wo-delete-stamped-lines',
-        logicalOperator: 'AND',
-        conditions: [
-          {
-            id: 'wo-delete-stamped-lines-workorder',
-            fieldId: 'line_item:workOrder',
-            operator: 'is',
-            value: recordId,
-          },
-          {
-            id: 'wo-delete-stamped-lines-invoice',
-            fieldId: 'line_item:invoice',
-            operator: 'not empty',
-            value: null,
-          },
-        ],
-      },
-    ],
-    limit: 1,
-    mode: 'oneshot',
+  const { entityInstanceId: workOrderId } = parseRecordId(recordId)
+  const allocation = await database.query.InvoiceLineAllocation.findFirst({
+    where: and(
+      eq(schema.InvoiceLineAllocation.organizationId, organizationId),
+      eq(schema.InvoiceLineAllocation.workOrderId, workOrderId)
+    ),
+    columns: { id: true },
   })
-  if (stampedLines.ids.length > 0) {
+  if (allocation) {
     throw new BadRequestError("Delete or void this job's invoices first")
   }
 
@@ -102,6 +87,19 @@ export const guardWorkOrderDelete: EntityPreDeleteHandler = async (event) => {
     mode: 'oneshot',
   })
   for (const lineInstanceId of ownLineIds) {
-    await handler.delete(toRecordId('line_item', lineInstanceId))
+    // Suppress the line-level billing post-delete hook — it would re-project the very work
+    // order being deleted, once per line; the work-order post-delete hook syncs the contact.
+    await handler.delete(toRecordId('line_item', lineInstanceId), {
+      suppressPostDeleteHooks: true,
+    })
   }
+
+  await database
+    .delete(schema.WorkOrderBillingInstallment)
+    .where(
+      and(
+        eq(schema.WorkOrderBillingInstallment.organizationId, organizationId),
+        eq(schema.WorkOrderBillingInstallment.workOrderId, workOrderId)
+      )
+    )
 }
