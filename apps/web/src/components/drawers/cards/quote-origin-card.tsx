@@ -3,14 +3,11 @@
 
 import { extractRelationshipRecordIds } from '@auxx/lib/field-values/client'
 import { getInstanceId } from '@auxx/types/resource'
+import { EmptySection } from '@auxx/ui/components/section'
+import { FileText } from 'lucide-react'
 import { useSystemValues } from '~/components/resources/hooks/use-system-values'
 import type { DrawerTabProps } from '../drawer-tab-registry'
-import {
-  EmptyRow,
-  RelatedRecordRow,
-  RowSkeleton,
-  TREE_SECONDARY_NOTRUNCATE,
-} from './related-record-row'
+import { RelatedRecordRow, TREE_SECONDARY_NOTRUNCATE } from './related-record-row'
 
 /**
  * QuoteOriginCard — the linked service request this quote was created from
@@ -30,9 +27,15 @@ export function QuoteOriginCard({ recordId }: DrawerTabProps) {
   const requestRecordIds = extractRelationshipRecordIds(quoteValues.quote_request)
   const requestRecordId = requestRecordIds[0]
 
-  if (quoteLoading) return <RowSkeleton />
+  if (quoteLoading) return <EmptySection loading title='Loading service request' />
   if (!requestRecordId)
-    return <EmptyRow label='Standalone quote — not linked to a service request' />
+    return (
+      <EmptySection
+        icon={<FileText className='size-5' />}
+        title='Standalone quote'
+        description='Not linked to a service request'
+      />
+    )
 
   return (
     <div className={`space-y-0.5 ${TREE_SECONDARY_NOTRUNCATE}`}>

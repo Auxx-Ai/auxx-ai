@@ -18,7 +18,7 @@ import {
   syncInvoiceBillingProjection,
   syncWorkOrderBillingProjection,
 } from './billing-projection'
-import { applyHeldDepositToInvoice } from './payments/ledger'
+import { applyHeldDepositsToInvoice } from './payments/ledger'
 import { recomputeTotals } from './totals-hooks'
 import type {
   CreateInvoiceFromWorkOrderInput,
@@ -285,21 +285,14 @@ export async function createInvoiceShell(input: {
     skipEvents: input.publishEvents === false,
   })
 
-  // MP2 (§B.6 settle): stamp any held (invoice-less) deposit for this work order onto the
-  // invoice that's just been created — a no-op when there's no held deposit. `createInvoiceShell`
-  // is the SOLE `handler.create('invoice', ...)` call site (both the manual gather flow and the
-  // automated `generateInvoiceDraft` funnel through it), so this is the one true settle point.
-  // Left unguarded, matching every other post-create step in this function (`copyLineOntoInvoice`,
-  // `recomputeTotals`) — this file's convention is "let it throw" at the builder level; best-effort
-  // wrapping belongs at the automated caller's orchestration boundary (`auto-invoice.ts`), not here.
-  await applyHeldDepositToInvoice({
-    organizationId,
-    userId,
-    workOrderInstanceId,
-    invoiceInstanceId: createdInvoice.instance.id,
-    db,
-    publishEvents: input.publishEvents,
-  })
+  // NOTE: the money 16-deposit-accounting.md §C.2 deposit-settle call used to live here, but
+  // `invoice_total` is `creatable: false` — it's written exactly once, by `recomputeTotals`,
+  // which runs well AFTER this point in every caller (no lines exist yet at shell-creation
+  // time). It now runs post-totals instead: this file's own `createInvoiceFromWorkOrder` (step
+  // 7, below) and `billing-commands.ts`'s shared `finishInvoice` helper (the convergence point
+  // for `createFixedContractInvoice`/`createVisitInvoice`/`createRecurringCharge`/
+  // `createExtraWorkInvoice`) each call `applyHeldDepositsToInvoice` themselves once their real
+  // total is known.
 
   return {
     handler,
@@ -472,6 +465,26 @@ export async function createInvoiceFromWorkOrder(
     userId,
     documentType: 'invoice',
     documentInstanceId: invoiceInstanceId,
+  })
+
+  // money 16-deposit-accounting.md §C.2 settle — runs AFTER `recomputeTotals` (above), which is
+  // the only place `invoice_total` gets written (it's `creatable: false`, unset at shell-creation
+  // time). Reads the real total back so `applyHeldDepositsToInvoice` caps allocation correctly
+  // instead of overshooting a smaller invoice.
+  const totalsById = await batchReadSystemValues({
+    service: fieldValueService,
+    organizationId,
+    entityType: 'invoice',
+    entityInstanceIds: [invoiceInstanceId],
+    attributes: ['invoice_total'] as const,
+  })
+  const invoiceTotal = Number(totalsById.get(invoiceInstanceId)?.get('invoice_total') ?? 0)
+  await applyHeldDepositsToInvoice({
+    organizationId,
+    userId,
+    workOrderInstanceId,
+    invoiceInstanceId,
+    invoiceTotal,
   })
 
   await syncInvoiceBillingProjection({ organizationId, userId, invoiceInstanceId })

@@ -18,7 +18,8 @@ import type { EntityPreDeleteHandler } from '../types'
  * drawer's bespoke lifecycle delete (`invoice-lifecycle.ts`) enforced these invariants.
  *
  * Order: admin gate → succeeded-charges guard → purge ledger residue (clears the
- * `PaymentTransaction.invoiceInstanceId` RESTRICT FK so the instance delete that follows this
+ * `PaymentTransaction.invoiceInstanceId` RESTRICT FK, then the `PaymentAllocation.invoiceInstanceId`
+ * RESTRICT FK, money 16-deposit-accounting.md §C.6 — so the instance delete that follows this
  * hook can never throw) → unstamp source lines → delete the invoice's own line copies.
  */
 export const guardInvoiceDelete: EntityPreDeleteHandler = async (event) => {
@@ -39,14 +40,32 @@ export const guardInvoiceDelete: EntityPreDeleteHandler = async (event) => {
   }
 
   // Only pending/failed/canceled ledger rows can remain at this point — the guard above
-  // already ruled out any succeeded/disputed charge, and a succeeded refund can't exist
-  // without one. Purge them directly so the instance delete below never trips the RESTRICT FK.
+  // already ruled out any succeeded/disputed charge (allocated to this invoice OR merely
+  // targeting it, money 16-deposit-accounting.md §C.6), and a succeeded refund can't exist
+  // without one. Purge them directly so the instance delete below never trips the
+  // intent-column RESTRICT FK.
   await database
     .delete(schema.PaymentTransaction)
     .where(
       and(
         eq(schema.PaymentTransaction.organizationId, organizationId),
         eq(schema.PaymentTransaction.invoiceInstanceId, invoiceInstanceId)
+      )
+    )
+
+  // `PaymentAllocation.paymentTransactionId` cascades with the purge above, but an allocation
+  // row carries its OWN restrict FK to this invoice (`PaymentAllocation.invoiceInstanceId`),
+  // independent of which transaction it belongs to. The guard above already proves no
+  // succeeded/disputed charge is allocated here — that's exactly what it checks — so no
+  // allocation row should survive the purge; this is a defensive delete to guarantee that
+  // RESTRICT FK never blocks the instance delete that follows this hook, even if that
+  // invariant is ever violated by a future writer.
+  await database
+    .delete(schema.PaymentAllocation)
+    .where(
+      and(
+        eq(schema.PaymentAllocation.organizationId, organizationId),
+        eq(schema.PaymentAllocation.invoiceInstanceId, invoiceInstanceId)
       )
     )
 

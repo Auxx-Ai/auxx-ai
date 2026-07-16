@@ -11,6 +11,7 @@ import type { ConditionGroup } from '../conditions'
 import { formatToDisplayValue } from '../field-values/formatter'
 import type { TypedFieldValueResult } from '../field-values/types'
 import { getPaymentAccount } from '../money/payments/account-state'
+import { getInvoiceDepositApplied } from '../money/payments/allocation-reads'
 import { buildPayUrl, ensureInvoicePublicToken, isPaymentsConnected } from '../money/public-token'
 import { computeDocumentTotals } from '../money/totals'
 import type { DiscountType } from '../money/types'
@@ -126,6 +127,11 @@ export interface InvoicePdfPayload {
   amountPaid: number
   /** Integer cents — the `invoice_balance` mirror. */
   balance: number
+  /** Integer cents — deposit-accounting plan 16 §E. Σ allocation amounts posted against this
+   * invoice from succeeded quote-deposit charges (refund copies net back to zero); `0` when no
+   * deposit was ever applied. Already netted into `amountPaid`/`balance` above — purely the
+   * PDF's labeled "Deposit applied" totals-block line, not additional money. */
+  depositApplied: number
   payments: InvoicePdfPaymentRow[]
   /** Absolute `/pay/{token}` URL, or `null` when the org has no connected, chargesEnabled
    * `PaymentAccount` (money MP1 build spec §J) — printed as a "Pay online" line on the PDF.
@@ -565,15 +571,19 @@ export async function buildInvoicePdfPayload(params: {
   const balance = balanceTyped ? (extractValue(balanceTyped) as number) : totals.total
 
   // ─── Payment history — succeeded ledger rows only (charges positive, refunds negative) ──
-  const paymentRows = await database.query.PaymentTransaction.findMany({
-    where: (t, { and: andOp, eq: eqOp }) =>
-      andOp(
-        eqOp(t.organizationId, organizationId),
-        eqOp(t.invoiceInstanceId, invoiceInstanceId),
-        eqOp(t.status, 'succeeded')
-      ),
-    orderBy: (t, { asc }) => asc(t.createdAt),
-  })
+  const [paymentRows, depositApplied] = await Promise.all([
+    database.query.PaymentTransaction.findMany({
+      where: (t, { and: andOp, eq: eqOp }) =>
+        andOp(
+          eqOp(t.organizationId, organizationId),
+          eqOp(t.invoiceInstanceId, invoiceInstanceId),
+          eqOp(t.status, 'succeeded')
+        ),
+      orderBy: (t, { asc }) => asc(t.createdAt),
+    }),
+    // Deposit-accounting plan 16 §E — same figure the public pay page shows, see the field doc.
+    getInvoiceDepositApplied(organizationId, invoiceInstanceId),
+  ])
   const payments: InvoicePdfPaymentRow[] = paymentRows.map((row) => ({
     // The user-picked (possibly backdated) payment date rides in `metadata.date`
     // (recordManualPayment, ledger.ts) — the row's createdAt is only the fallback.
@@ -617,6 +627,7 @@ export async function buildInvoicePdfPayload(params: {
     total: totals.total,
     amountPaid,
     balance,
+    depositApplied,
     payments,
     payLink,
     settings,

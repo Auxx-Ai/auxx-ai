@@ -2,10 +2,11 @@
 
 import type { Database, PaymentTransactionEntity } from '@auxx/database'
 import { database, schema } from '@auxx/database'
+import { createScopedLogger } from '@auxx/logger'
 import type { TypedFieldValue } from '@auxx/types'
 import { extractValue } from '@auxx/types'
 import { parseRecordId, toRecordId } from '@auxx/types/resource'
-import { and, asc, eq, inArray, isNull, or } from 'drizzle-orm'
+import { and, asc, eq, inArray, isNotNull, or, sql } from 'drizzle-orm'
 import { getOrgCache } from '../../cache'
 import { BadRequestError, ForbiddenError, NotFoundError } from '../../errors'
 import { FieldValueService } from '../../field-values/field-value-service'
@@ -18,6 +19,9 @@ import type {
   RecordManualPaymentInput,
   SyncInvoicePaymentStateInput,
 } from '../types'
+import { type DepositForAllocation, planDepositApplication } from './deposit-allocation'
+
+const logger = createScopedLogger('money-ledger')
 
 /**
  * The `PaymentTransaction` ledger service (money MI1 build spec §E.2–§E.4). Functional
@@ -36,46 +40,79 @@ function firstTyped(
 }
 
 /**
- * Sum succeeded charges minus succeeded refunds for an invoice, in integer cents. `disputed`
- * charge rows count alongside `succeeded` ones (money MP1 build spec §E, `charge.dispute.created`
- * bullet) — a dispute flags the row for admin attention but does NOT reduce `amountPaid` until
- * it resolves into an actual refund.
+ * Sum succeeded (+ disputed) charge allocations minus refund allocations against an invoice, in
+ * integer cents (money 16-deposit-accounting.md §C.1). Reads `PaymentAllocation` joined to its
+ * `PaymentTransaction` — allocations, not the transaction's intent `invoiceInstanceId`, are the
+ * money-math source of truth now (a held deposit has no allocation yet and correctly contributes
+ * 0; a deposit split across two invoices contributes only the slice allocated to THIS one).
+ * `disputed` charge rows count alongside `succeeded` ones (money MP1 build spec §E,
+ * `charge.dispute.created` bullet) — a dispute flags the row for admin attention but does NOT
+ * reduce `amountPaid` until it resolves into an actual refund.
  */
 async function computeAmountPaid(
   organizationId: string,
   invoiceInstanceId: string,
   db: Database = database
 ): Promise<number> {
-  const rows = await db.query.PaymentTransaction.findMany({
-    where: and(
-      eq(schema.PaymentTransaction.organizationId, organizationId),
-      eq(schema.PaymentTransaction.invoiceInstanceId, invoiceInstanceId),
-      inArray(schema.PaymentTransaction.status, ['succeeded', 'disputed'])
-    ),
-    columns: { amount: true, kind: true },
-  })
+  const rows = await db
+    .select({ amount: schema.PaymentAllocation.amount, kind: schema.PaymentTransaction.kind })
+    .from(schema.PaymentAllocation)
+    .innerJoin(
+      schema.PaymentTransaction,
+      eq(schema.PaymentAllocation.paymentTransactionId, schema.PaymentTransaction.id)
+    )
+    .where(
+      and(
+        eq(schema.PaymentAllocation.organizationId, organizationId),
+        eq(schema.PaymentAllocation.invoiceInstanceId, invoiceInstanceId),
+        inArray(schema.PaymentTransaction.status, ['succeeded', 'disputed'])
+      )
+    )
   return rows.reduce((sum, row) => sum + (row.kind === 'refund' ? -row.amount : row.amount), 0)
 }
 
 /**
- * Whether any `succeeded` (or `disputed` — still money-in-flight, MP1) `charge` row exists for
- * an invoice — the void/delete guard (money MI1 build spec §G.4/§G.5, decision 6). Exported so
- * `invoice-lifecycle.ts` can reuse the identical check for both actions.
+ * Whether any `succeeded` (or `disputed` — still money-in-flight, MP1) `charge` row is linked to
+ * an invoice — the void/delete guard (money MI1 build spec §G.4/§G.5, decision 6; re-pointed at
+ * allocations by 16-deposit-accounting.md §C.6). A charge counts if it's either **allocated** to
+ * this invoice (the money-math link) OR its intent `invoiceInstanceId` **targets** it (a
+ * mid-flight checkout that hasn't been allocated yet) — the union keeps a pending→succeeded race
+ * protected: the webhook that inserts the allocation (§C.4) hasn't necessarily landed by the time
+ * a concurrent delete request checks this guard. Exported so `invoice-lifecycle.ts` can reuse the
+ * identical check for both actions.
  */
 export async function hasSucceededCharges(
   organizationId: string,
   invoiceInstanceId: string
 ): Promise<boolean> {
-  const row = await database.query.PaymentTransaction.findFirst({
-    where: and(
-      eq(schema.PaymentTransaction.organizationId, organizationId),
-      eq(schema.PaymentTransaction.invoiceInstanceId, invoiceInstanceId),
-      eq(schema.PaymentTransaction.kind, 'charge'),
-      inArray(schema.PaymentTransaction.status, ['succeeded', 'disputed'])
-    ),
-    columns: { id: true },
-  })
-  return !!row
+  const [allocatedRow, intentRow] = await Promise.all([
+    database
+      .select({ id: schema.PaymentAllocation.id })
+      .from(schema.PaymentAllocation)
+      .innerJoin(
+        schema.PaymentTransaction,
+        eq(schema.PaymentAllocation.paymentTransactionId, schema.PaymentTransaction.id)
+      )
+      .where(
+        and(
+          eq(schema.PaymentAllocation.organizationId, organizationId),
+          eq(schema.PaymentAllocation.invoiceInstanceId, invoiceInstanceId),
+          eq(schema.PaymentTransaction.kind, 'charge'),
+          inArray(schema.PaymentTransaction.status, ['succeeded', 'disputed'])
+        )
+      )
+      .limit(1),
+    database.query.PaymentTransaction.findFirst({
+      where: and(
+        eq(schema.PaymentTransaction.organizationId, organizationId),
+        eq(schema.PaymentTransaction.invoiceInstanceId, invoiceInstanceId),
+        eq(schema.PaymentTransaction.kind, 'charge'),
+        inArray(schema.PaymentTransaction.status, ['succeeded', 'disputed'])
+      ),
+      columns: { id: true },
+    }),
+  ])
+  return allocatedRow.length > 0 || !!intentRow
 }
 
 /**
@@ -202,17 +239,20 @@ export async function syncInvoicePaymentState(
 }
 
 /**
- * Sync a ledger row onto its `payment` entity mirror, then re-project invoice payment state
- * (money MI1 build spec §E.2). On a `succeeded` `charge` with no `paymentInstanceId` yet,
- * creates the mirror via `UnifiedCrudHandler.create` — the ONLY call that satisfies the
- * `requireLedgerProvenance` system hook (it always passes `payment_transaction_id`) — and
- * stamps `paymentInstanceId` back onto the row. Always ends with `syncInvoicePaymentState`.
- * MP1's webhook transitions call this unchanged — the one converging writer (04-payments).
+ * Sync a ledger row's `PaymentAllocation` rows onto their `payment` entity mirrors, then
+ * re-project payment state for every invoice the transaction has allocations against (money
+ * 16-deposit-accounting.md §C.3, superseding MI1 build spec §E.2's single-invoice version). For
+ * a `succeeded` `charge` transaction, every allocation with no `paymentInstanceId` yet gets its
+ * own mirror via `UnifiedCrudHandler.create` — the ONLY call that satisfies the
+ * `requireLedgerProvenance` system hook (it always passes `payment_transaction_id`) — and its
+ * `paymentInstanceId` stamped back (one mirror PER allocation, not per transaction: a deposit
+ * split across two invoices needs two mirrors of the split amounts). Refund transactions never
+ * get mirrors (mirrors stay charge-only — refunds render from the ledger row). Ends with
+ * `syncInvoicePaymentState` for every DISTINCT invoice among the transaction's allocations.
  *
- * MP2 (§B.7): a held deposit charge (`succeeded`, `invoiceInstanceId: null`) is a clean no-op
- * here — the mirror needs an invoice (`payment_invoice` is `nullable: false`) and
- * `syncInvoicePaymentState` needs one to project onto, so both are skipped until
- * `applyHeldDepositToInvoice` stamps the row at settle time and re-calls this function.
+ * A `succeeded` charge with zero allocations (a still-held deposit) is a clean no-op — same
+ * shape as MP2 §B.7, now derived from "no allocation rows" instead of a null `invoiceInstanceId`
+ * check.
  */
 export async function syncTransaction(params: {
   organizationId: string
@@ -224,44 +264,49 @@ export async function syncTransaction(params: {
   const { organizationId, userId, transaction } = params
   const db = params.db ?? database
 
-  if (
-    transaction.status === 'succeeded' &&
-    transaction.kind === 'charge' &&
-    !transaction.paymentInstanceId &&
-    transaction.invoiceInstanceId
-  ) {
+  const allocations = await db.query.PaymentAllocation.findMany({
+    where: eq(schema.PaymentAllocation.paymentTransactionId, transaction.id),
+  })
+
+  if (transaction.status === 'succeeded' && transaction.kind === 'charge') {
     const handler = new UnifiedCrudHandler(organizationId, userId, db)
-    const invoiceRecordId = toRecordId('invoice', transaction.invoiceInstanceId)
     // The ledger row itself has no dedicated "payment date" column — the user-picked date
     // (possibly backdated) rides in `metadata.date`; fall back to the row's createdAt.
     const metadataDate = (transaction.metadata as { date?: string } | null)?.date
     const date = metadataDate ?? transaction.createdAt.toISOString().split('T')[0]
 
-    const created = await handler.create(
-      'payment',
-      {
-        payment_amount: transaction.amount,
-        payment_date: date,
-        payment_method: transaction.method ?? 'other',
-        payment_reference: transaction.reference ?? undefined,
-        payment_note: transaction.note ?? undefined,
-        payment_invoice: invoiceRecordId,
-        payment_transaction_id: transaction.id,
-      },
-      { skipEvents: params.publishEvents === false }
-    )
+    for (const allocation of allocations) {
+      if (allocation.paymentInstanceId) continue
+      const invoiceRecordId = toRecordId('invoice', allocation.invoiceInstanceId)
+      const created = await handler.create(
+        'payment',
+        {
+          payment_amount: allocation.amount,
+          payment_date: date,
+          payment_method: transaction.method ?? 'other',
+          payment_reference: transaction.reference ?? undefined,
+          payment_note: transaction.note ?? undefined,
+          payment_invoice: invoiceRecordId,
+          payment_transaction_id: transaction.id,
+        },
+        { skipEvents: params.publishEvents === false }
+      )
 
-    await db
-      .update(schema.PaymentTransaction)
-      .set({ paymentInstanceId: created.instance.id })
-      .where(eq(schema.PaymentTransaction.id, transaction.id))
+      await db
+        .update(schema.PaymentAllocation)
+        .set({ paymentInstanceId: created.instance.id })
+        .where(eq(schema.PaymentAllocation.id, allocation.id))
+    }
   }
 
-  if (transaction.invoiceInstanceId) {
+  const invoiceInstanceIds = [
+    ...new Set(allocations.map((allocation) => allocation.invoiceInstanceId)),
+  ]
+  for (const invoiceInstanceId of invoiceInstanceIds) {
     await syncInvoicePaymentState({
       organizationId,
       userId,
-      invoiceInstanceId: transaction.invoiceInstanceId,
+      invoiceInstanceId,
       db,
       publishEvents: params.publishEvents,
     })
@@ -269,55 +314,140 @@ export async function syncTransaction(params: {
 }
 
 /**
- * Stamp a held (invoice-less) deposit charge onto the job's first real invoice — the one
- * "apply deposit" operation (money MP2 build spec §B.6). Finds the org's succeeded, still
- * invoice-less `charge` row for this work order, sets its `invoiceInstanceId`, then re-runs
- * `syncTransaction` — which now has both the invoice link AND `succeeded` status, so it takes
- * its normal `payment` mirror + `syncInvoicePaymentState` path. No new settle math.
+ * Apply a work order's succeeded, still-unallocated deposit charge(s) toward an invoice — the
+ * partial-aware "apply deposit" operation (money 16-deposit-accounting.md §C.2, replacing MP2
+ * §B.6's all-or-nothing stamp). Loads every succeeded `charge` row for this work order with
+ * `quoteInstanceId` set (deposit provenance — §J.3 keeps this succeeded-only so a disputed
+ * deposit's remainder never allocates), ordered `createdAt` asc, computes each one's unallocated
+ * remainder, and feeds them through {@link planDepositApplication} against
+ * `invoiceTotal − existing allocations already on this invoice`. Inserts one `PaymentAllocation`
+ * row per planned application (`createdByUserId: null` — system/settle-triggered, matching the
+ * schema's "null = system" convention) then runs {@link syncTransaction} (the mirror + invoice
+ * re-project machinery) once per affected deposit transaction.
  *
- * Self-limiting without extra state: once a deposit's `invoiceInstanceId` is stamped, the
- * `isNull(invoiceInstanceId)` filter excludes it from ever being picked up again on the same
- * job's second invoice. A no-op when the work order has no held deposit.
+ * No `invoiceInstanceId` stamp on the transaction — held-vs-applied is now derived from
+ * allocations (`amount − Σallocated > 0` = still held). Self-limiting the same way the old
+ * stamp was: a fully-allocated deposit has 0 left and is never picked up again; a
+ * PARTIALLY-allocated one correctly offers its remainder to the job's next invoice (the
+ * overshoot bug fix). A no-op when the work order has no succeeded deposit, or the invoice has
+ * no remaining balance to apply toward.
  */
-export async function applyHeldDepositToInvoice(params: {
+export async function applyHeldDepositsToInvoice(params: {
   organizationId: string
   userId: string
   workOrderInstanceId: string
   invoiceInstanceId: string
+  /** Integer cents — the invoice's current total (0 for a freshly-created, line-less invoice —
+   * this call is then a structural no-op, which is correct: there's nothing to apply yet). */
+  invoiceTotal: number
   db?: Database
   publishEvents?: boolean
 }): Promise<void> {
-  const { organizationId, userId, workOrderInstanceId, invoiceInstanceId } = params
+  const { organizationId, userId, workOrderInstanceId, invoiceInstanceId, invoiceTotal } = params
   const db = params.db ?? database
-  const deposit = await db.query.PaymentTransaction.findFirst({
+
+  const existingAllocationsTotal = await computeAmountPaid(organizationId, invoiceInstanceId, db)
+  if (invoiceTotal - existingAllocationsTotal <= 0) return
+
+  const depositCharges = await db.query.PaymentTransaction.findMany({
     where: and(
       eq(schema.PaymentTransaction.organizationId, organizationId),
       eq(schema.PaymentTransaction.workOrderInstanceId, workOrderInstanceId),
       eq(schema.PaymentTransaction.kind, 'charge'),
       eq(schema.PaymentTransaction.status, 'succeeded'),
-      isNull(schema.PaymentTransaction.invoiceInstanceId)
+      isNotNull(schema.PaymentTransaction.quoteInstanceId)
     ),
+    orderBy: asc(schema.PaymentTransaction.createdAt),
   })
-  if (!deposit) return
-  const [updated] = await db
-    .update(schema.PaymentTransaction)
-    .set({ invoiceInstanceId })
-    .where(eq(schema.PaymentTransaction.id, deposit.id))
-    .returning()
-  await syncTransaction({
-    organizationId,
-    userId,
-    transaction: updated!,
-    db,
-    publishEvents: params.publishEvents,
-  })
+  if (depositCharges.length === 0) return
+
+  const allocatedRows = await db
+    .select({
+      paymentTransactionId: schema.PaymentAllocation.paymentTransactionId,
+      amount: sql<number>`coalesce(sum(${schema.PaymentAllocation.amount}), 0)::int`,
+    })
+    .from(schema.PaymentAllocation)
+    .where(
+      inArray(
+        schema.PaymentAllocation.paymentTransactionId,
+        depositCharges.map((charge) => charge.id)
+      )
+    )
+    .groupBy(schema.PaymentAllocation.paymentTransactionId)
+  const allocatedByTransaction = new Map(
+    allocatedRows.map((row) => [row.paymentTransactionId, Number(row.amount)])
+  )
+
+  const deposits: DepositForAllocation[] = depositCharges.map((charge) => ({
+    id: charge.id,
+    amount: charge.amount,
+    allocatedTotal: allocatedByTransaction.get(charge.id) ?? 0,
+  }))
+  const planned = planDepositApplication(deposits, invoiceTotal, existingAllocationsTotal)
+  if (planned.length === 0) return
+
+  for (const plan of planned) {
+    await db
+      .insert(schema.PaymentAllocation)
+      .values({
+        organizationId,
+        paymentTransactionId: plan.transactionId,
+        invoiceInstanceId,
+        amount: plan.amount,
+        createdByUserId: null,
+      })
+      .onConflictDoNothing()
+  }
+
+  const plannedTransactionIds = new Set(planned.map((plan) => plan.transactionId))
+  for (const transaction of depositCharges.filter((charge) =>
+    plannedTransactionIds.has(charge.id)
+  )) {
+    await syncTransaction({
+      organizationId,
+      userId,
+      transaction,
+      db,
+      publishEvents: params.publishEvents,
+    })
+  }
+}
+
+/** Resolve an invoice's contact instance id via `invoice_contact`, for the ledger's
+ * `contactInstanceId` denormalization (money 16-deposit-accounting.md §B/§C.8). Never throws —
+ * a resolution failure must not fail the write it's stamping onto; logs a warning and falls
+ * back to `null` instead. */
+async function resolveInvoiceContactInstanceId(
+  organizationId: string,
+  handler: UnifiedCrudHandler,
+  invoiceRecordId: ReturnType<typeof toRecordId>
+): Promise<string | null> {
+  try {
+    const cf = await getOrgCache()
+      .from(organizationId, 'customFields')
+      .bySystemAttributes(['invoice_contact'] as const)
+    if (!cf.invoice_contact) return null
+    const values = await handler.getFieldValues(invoiceRecordId, [cf.invoice_contact.id])
+    const contactTyped = firstTyped(values.get(cf.invoice_contact.id))
+    const contactRecordId =
+      contactTyped?.type === 'relationship' ? contactTyped.recordId : undefined
+    return contactRecordId ? parseRecordId(contactRecordId).entityInstanceId : null
+  } catch (error) {
+    logger.warn('Failed to resolve invoice contact for ledger row', {
+      organizationId,
+      error: error instanceof Error ? error.message : String(error),
+    })
+    return null
+  }
 }
 
 /**
  * Record a manual (cash/check/card/bank/other) payment against an invoice (money MI1 build
  * spec §E.2, decision 8 — members record payments). Recording on a `draft` invoice is
  * allowed (a cash job never emailed) — `syncInvoicePaymentState` handles the resulting status
- * flip. Inserts a `succeeded` `manual` `charge` row, then syncs.
+ * flip. Inserts a `succeeded` `manual` `charge` row + its full-amount `PaymentAllocation` (money
+ * 16-deposit-accounting.md §C.4 — it's already succeeded at insert time, so the allocation is
+ * the same event, not a later settle step), then syncs.
  */
 export async function recordManualPayment(
   input: RecordManualPaymentInput
@@ -353,10 +483,10 @@ export async function recordManualPayment(
     throw new BadRequestError(`Payment amount exceeds the invoice balance of ${balance}`)
   }
 
-  const currency = (await getOrganizationSetting({
-    organizationId,
-    key: 'organization.currency',
-  })) as string
+  const [currency, contactInstanceId] = await Promise.all([
+    getOrganizationSetting({ organizationId, key: 'organization.currency' }) as Promise<string>,
+    resolveInvoiceContactInstanceId(organizationId, handler, invoiceRecordId),
+  ])
 
   const [transaction] = await database
     .insert(schema.PaymentTransaction)
@@ -368,6 +498,7 @@ export async function recordManualPayment(
       amount,
       currency,
       invoiceInstanceId,
+      contactInstanceId,
       method,
       reference: reference ?? null,
       note: note ?? null,
@@ -377,16 +508,30 @@ export async function recordManualPayment(
     })
     .returning()
 
+  await database.insert(schema.PaymentAllocation).values({
+    organizationId,
+    paymentTransactionId: transaction!.id,
+    invoiceInstanceId,
+    amount,
+    createdByUserId: userId,
+  })
+
   await syncTransaction({ organizationId, userId, transaction: transaction! })
 
   return { transactionId: transaction!.id }
 }
 
 /**
- * Hard-delete a manual ledger row + its `payment` entity mirror (money MI1 build spec §E.2,
- * decision 3 — manual rows are data entry, not money movement, so deleting is honest). Stripe
- * rows are refund-only (MP1) — asserting `provider === 'manual'` here is the MP1-proofing
- * check. Router-gated admin-only (§I.1) — this function itself does not check roles.
+ * Hard-delete a manual ledger row + its `payment` entity mirror(s) (money MI1 build spec §E.2,
+ * decision 3 — manual rows are data entry, not money movement, so deleting is honest; re-pointed
+ * at allocations by 16-deposit-accounting.md §C.6). Stripe rows are refund-only (MP1) —
+ * asserting `provider === 'manual'` here is the MP1-proofing check. Collects the row's
+ * allocations FIRST (a manual payment has exactly one today, but this stays correct if that ever
+ * changes), deletes each allocation's mirror by `paymentInstanceId`, then deletes the
+ * transaction itself — `PaymentAllocation.paymentTransactionId` cascades, so the allocation rows
+ * go with it — and re-projects every invoice the deleted allocations touched (not just
+ * `transaction.invoiceInstanceId!`, which was the intent column, not necessarily where the money
+ * actually landed). Router-gated admin-only (§I.1) — this function itself does not check roles.
  */
 export async function deleteManualPayment(input: DeleteManualPaymentInput): Promise<void> {
   const { organizationId, userId, transactionId } = input
@@ -404,18 +549,23 @@ export async function deleteManualPayment(input: DeleteManualPaymentInput): Prom
     throw new ForbiddenError('Stripe payments can only be refunded')
   }
 
+  const allocations = await database.query.PaymentAllocation.findMany({
+    where: eq(schema.PaymentAllocation.paymentTransactionId, transactionId),
+  })
+
   const handler = new UnifiedCrudHandler(organizationId, userId)
-  if (transaction.paymentInstanceId) {
-    await handler.delete(toRecordId('payment', transaction.paymentInstanceId))
+  for (const allocation of allocations) {
+    if (allocation.paymentInstanceId) {
+      await handler.delete(toRecordId('payment', allocation.paymentInstanceId))
+    }
   }
 
   await database
     .delete(schema.PaymentTransaction)
     .where(eq(schema.PaymentTransaction.id, transactionId))
 
-  await syncInvoicePaymentState({
-    organizationId,
-    userId,
-    invoiceInstanceId: transaction.invoiceInstanceId!,
-  })
+  const invoiceInstanceIds = new Set(allocations.map((allocation) => allocation.invoiceInstanceId))
+  for (const invoiceInstanceId of invoiceInstanceIds) {
+    await syncInvoicePaymentState({ organizationId, userId, invoiceInstanceId })
+  }
 }

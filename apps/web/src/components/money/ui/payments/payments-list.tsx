@@ -46,6 +46,30 @@ function stripeStatusChip(
   return { label: payment.status, variant: 'gray' }
 }
 
+/** A deposit row is any charge/refund with `quoteInstanceId` set (money 16 §D.3) — the deposit
+ * pre-payment leaves no other marker on the client-shaped row. Held/applied state is derived
+ * from the server-computed `allocatedAmount`/`heldAmount` rather than re-summing anything here. */
+function depositBadge(
+  payment: PaymentRow,
+  currencyCode: string
+): { label: string; variant: BadgeVariant; title?: string } | null {
+  if (payment.quoteInstanceId == null) return null
+  if (payment.kind === 'refund') return { label: 'Deposit · refunded', variant: 'gray' }
+  if (payment.kind !== 'charge') return null
+  if (payment.status !== 'succeeded') return { label: 'Deposit', variant: 'outline' }
+
+  const { amount, allocatedAmount, heldAmount } = payment
+  if (heldAmount === amount) return { label: 'Deposit · held', variant: 'blue' }
+  if (heldAmount === 0 && allocatedAmount > 0) {
+    return { label: 'Deposit · applied', variant: 'green' }
+  }
+  return {
+    label: 'Deposit · partially applied',
+    variant: 'amber',
+    title: `${formatCurrency(heldAmount, currencyCode)} still held`,
+  }
+}
+
 export interface PaymentsListProps {
   payments: PaymentRow[] | undefined
   isLoading: boolean
@@ -134,13 +158,26 @@ export function PaymentsList({
                   )
                 })()
 
+        const deposit = depositBadge(payment, currencyCode)
+
         return (
           <TreeRow
             key={payment.id}
             icon={<CreditCard className='size-4' />}
             title={
-              <span className='truncate text-sm'>
-                {paymentMethodLabel(payment.method ?? 'other')}
+              <span className='flex min-w-0 items-center gap-1.5'>
+                <span className='truncate text-sm'>
+                  {paymentMethodLabel(payment.method ?? 'other')}
+                </span>
+                {deposit && (
+                  <Badge
+                    variant={deposit.variant}
+                    size='sm'
+                    title={deposit.title}
+                    className='shrink-0'>
+                    {deposit.label}
+                  </Badge>
+                )}
               </span>
             }
             secondary={

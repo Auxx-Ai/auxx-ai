@@ -7,6 +7,11 @@ import { FieldValueService } from '../field-values/field-value-service'
 import { UnifiedCrudHandler } from '../resources/crud'
 import { batchReadSystemValues, computeWorkOrderBillingProjection } from './billing-projection'
 import { listUninvoicedLines } from './gather'
+import {
+  computeDepositFigures,
+  getAllocationTotalsByTransaction,
+  getContactCreditOnAccount,
+} from './payments/allocation-reads'
 import { listWorkOrderPayments } from './payments/ledger'
 
 const INVOICE_ROW_ATTRS = [
@@ -116,6 +121,21 @@ export async function getWorkOrderBillingState(input: {
       listWorkOrderPayments(input),
       listUninvoicedLines(input),
     ])
+  // Deposit-accounting plan 16 §D.1 — held vs applied over the WO's own succeeded deposit
+  // charges (quote provenance). `payments` is already fetched above (`listWorkOrderPayments`);
+  // batch the allocation totals for just those rows' ids, never N+1.
+  const depositChargeRows = payments.filter(
+    (row) => row.kind === 'charge' && row.status === 'succeeded' && row.quoteInstanceId != null
+  )
+  const depositAllocationTotals = await getAllocationTotalsByTransaction(
+    input.organizationId,
+    depositChargeRows.map((row) => row.id)
+  )
+  const { depositHeld, depositApplied } = computeDepositFigures(
+    depositChargeRows,
+    depositAllocationTotals
+  )
+
   const allocationsByVisit = new Map<string, typeof activeVisits>()
   for (const allocation of activeVisits) {
     const rows = allocationsByVisit.get(allocation.visitId) ?? []
@@ -140,6 +160,10 @@ export async function getWorkOrderBillingState(input: {
       invoiced: projection.amountInvoiced,
       remaining: projection.uninvoicedAmount,
       balanceDue: projection.balanceDue,
+      // Deposit-accounting plan 16 §D.1 — held (unallocated) never touches balanceDue above
+      // (§Decisions: it renders as its own figure); applied is derived, not stamped.
+      depositHeld,
+      depositApplied,
     },
     eligibleVisits,
     extraWork: uninvoicedLines
@@ -211,7 +235,7 @@ export async function getContactBillingOverview(input: {
   // Fixed query count regardless of work-order/invoice counts (plan §4.7): read the projected
   // `work_order_uninvoiced_amount`/`work_order_billing_state` fields the projector already keeps
   // fresh instead of recomputing each work order's ~11-query billing projection here.
-  const [workOrderValuesById, rows] = await Promise.all([
+  const [workOrderValuesById, rows, creditOnAccount] = await Promise.all([
     batchReadSystemValues({
       service: new FieldValueService(input.organizationId, input.userId),
       organizationId: input.organizationId,
@@ -220,6 +244,9 @@ export async function getContactBillingOverview(input: {
       attributes: ['work_order_uninvoiced_amount', 'work_order_billing_state'] as const,
     }),
     invoiceRows({ ...input, invoiceIds: invoices.ids }),
+    // Deposit-accounting plan 16 §D.4 — Σ unallocated remainders of the contact's succeeded
+    // deposit charges, via the new `contactInstanceId` column (a plain query, no FieldValue hops).
+    getContactCreditOnAccount(input.organizationId, input.contactInstanceId),
   ])
   const activeRows = rows.filter((row) => row.status !== 'void')
   const draftRows = activeRows.filter((row) => row.status === 'draft')
@@ -247,5 +274,6 @@ export async function getContactBillingOverview(input: {
     readyWorkOrderCount: readyWorkOrderIds.length,
     readyWorkOrders: readyWorkOrderIds.map((id) => ({ recordId: toRecordId('work_order', id) })),
     recentInvoices: activeRows.slice(0, 5),
+    creditOnAccount,
   }
 }

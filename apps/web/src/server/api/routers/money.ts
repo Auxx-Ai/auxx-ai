@@ -20,6 +20,7 @@ import {
   deleteManualPayment,
   disconnectPaymentAccount,
   ensureQuoteDocumentPdf,
+  getAllocationTotalsByTransaction,
   getContactBillingOverview,
   getInvoiceSchedule,
   getPaymentAccount,
@@ -75,13 +76,24 @@ const moneyAdminProcedure = adminProcedure.use(async ({ ctx, next }) => {
 
 /**
  * Shape a `PaymentTransaction` ledger row for the payments list UI (money MI1 build spec
- * §E.2 row shape) — shared by `listPayments` (per-invoice, invoice-drawer) and
- * `listPaymentsForWorkOrder` (cross-invoice, job page) so the row shape can't drift between
- * the two call sites. `invoiceInstanceId`/`quoteInstanceId`/`workOrderInstanceId` (money MP2
- * §B.9) let the client tell a "held" deposit (`invoiceInstanceId === null`) apart from an
- * "applied" one — today's row shape had no way to.
+ * §E.2 row shape) — shared by `listPayments` (per-invoice, invoice-drawer),
+ * `listPaymentsForWorkOrder` (cross-invoice, job page), and `listPaymentsForQuote` (quote
+ * drawer deposit card) so the row shape can't drift between call sites.
+ * `invoiceInstanceId`/`quoteInstanceId`/`workOrderInstanceId` (money MP2 §B.9) let the client
+ * tell a "held" deposit (`invoiceInstanceId === null`) apart from an "applied" one.
+ *
+ * `allocatedAmount` (deposit-accounting plan 16 §D.3) is server-computed by the caller (batched
+ * via `getAllocationTotalsByTransaction` — never a per-row query) and passed in rather than
+ * read here, so every call site is forced to prove it isn't N+1-ing. `heldAmount` is derived:
+ * `max(0, amount - allocatedAmount)` for a succeeded charge (the only rows a deposit can still
+ * be "held" on), `0` for anything else (refunds, pending/failed/canceled/disputed charges) —
+ * `isDeposit` (`quoteInstanceId != null`) is left for the client to derive, same as today.
  */
-function mapPaymentRow(row: PaymentTransactionEntity) {
+function mapPaymentRow(row: PaymentTransactionEntity, allocatedAmount: number) {
+  const heldAmount =
+    row.kind === 'charge' && row.status === 'succeeded'
+      ? Math.max(0, row.amount - allocatedAmount)
+      : 0
   return {
     id: row.id,
     amount: row.amount,
@@ -98,7 +110,19 @@ function mapPaymentRow(row: PaymentTransactionEntity) {
     invoiceInstanceId: row.invoiceInstanceId,
     quoteInstanceId: row.quoteInstanceId,
     workOrderInstanceId: row.workOrderInstanceId,
+    allocatedAmount,
+    heldAmount,
   }
+}
+
+/** Batch-map a list of ledger rows through {@link mapPaymentRow}, fetching every row's
+ * allocation total in one query (`getAllocationTotalsByTransaction`) instead of per row. */
+async function mapPaymentRows(organizationId: string, rows: PaymentTransactionEntity[]) {
+  const allocationTotals = await getAllocationTotalsByTransaction(
+    organizationId,
+    rows.map((row) => row.id)
+  )
+  return rows.map((row) => mapPaymentRow(row, allocationTotals.get(row.id) ?? 0))
 }
 
 export const moneyRouter = createTRPCRouter({
@@ -512,7 +536,7 @@ export const moneyRouter = createTRPCRouter({
         orderBy: asc(schema.PaymentTransaction.createdAt),
       })
 
-      return rows.map(mapPaymentRow)
+      return mapPaymentRows(ctx.session.organizationId, rows)
     }),
 
   /**
@@ -532,13 +556,36 @@ export const moneyRouter = createTRPCRouter({
         workOrderInstanceId,
       })
 
-      return rows.map((row) => ({
-        ...mapPaymentRow(row),
+      const mapped = await mapPaymentRows(ctx.session.organizationId, rows)
+      const invoiceRecordIdByRow = new Map(rows.map((row) => [row.id, row.invoiceInstanceId]))
+      return mapped.map((row) => ({
+        ...row,
         // Held deposits (money MP2 §B.6/§B.9) have no invoice until settle — null, not a crash.
-        invoiceRecordId: row.invoiceInstanceId
-          ? toRecordId('invoice', row.invoiceInstanceId)
+        invoiceRecordId: invoiceRecordIdByRow.get(row.id)
+          ? toRecordId('invoice', invoiceRecordIdByRow.get(row.id)!)
           : null,
       }))
+    }),
+
+  /**
+   * Quote-scoped payments read for the quote drawer's deposit card (money 16 §D.5) — every
+   * ledger row against a quote (in practice: its held/applied/refunded deposit charge and any
+   * refund copy), `createdAt` asc, mapped through the exact `listPayments`/
+   * `listPaymentsForWorkOrder` row shape so the card doesn't need its own type.
+   */
+  listPaymentsForQuote: moneyProcedure
+    .input(z.object({ quoteRecordId: recordIdSchema }))
+    .query(async ({ ctx, input }) => {
+      const { entityInstanceId: quoteInstanceId } = parseRecordId(input.quoteRecordId)
+      const rows = await database.query.PaymentTransaction.findMany({
+        where: and(
+          eq(schema.PaymentTransaction.organizationId, ctx.session.organizationId),
+          eq(schema.PaymentTransaction.quoteInstanceId, quoteInstanceId)
+        ),
+        orderBy: asc(schema.PaymentTransaction.createdAt),
+      })
+
+      return mapPaymentRows(ctx.session.organizationId, rows)
     }),
 
   // ─── Send flow (money MQ2 build spec §E.5) ──────────────────────────────

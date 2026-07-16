@@ -207,6 +207,14 @@ export function DialogNavPages({ value, children, className }: DialogNavPagesPro
       // the width + height springs.
       className={cn(
         'relative overflow-hidden max-sm:w-full! max-sm:max-w-full! max-sm:h-full! max-sm:min-h-0',
+        // A DialogFooter placed *inside* a DialogNavPage has no surrounding
+        // gutter: the page supplies its own `p-4` around the body content, but
+        // the footer is a sibling of that body, so its buttons sit flush against
+        // the (rounded, overflow-hidden) card edges and get clipped. Re-apply the
+        // dialog's standard `p-4` gutter to any nested footer via its data-slot.
+        // Footers rendered as a *sibling* of DialogNavPages (the common wizard
+        // layout) aren't descendants, so they keep their own padding untouched.
+        '[&_[data-slot=dialog-footer]]:px-4 [&_[data-slot=dialog-footer]]:pb-4',
         className
       )}>
       {/* Stable measuring wrapper: the keyed page below remounts on every change,
