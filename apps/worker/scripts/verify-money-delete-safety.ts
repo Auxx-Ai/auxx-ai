@@ -772,13 +772,15 @@ async function main() {
     )
     for (const transactionId of [...new Set(createdTransactionIds)]) {
       try {
-        const row = await database.query.PaymentTransaction.findFirst({
-          where: (t, { eq }) => eq(t.id, transactionId),
+        // Mirror pointer lives on `PaymentAllocation.paymentInstanceId` now (money
+        // 16-deposit-accounting.md §C.6 moved it off `PaymentTransaction`).
+        const allocations = await database.query.PaymentAllocation.findMany({
+          where: (t, { eq }) => eq(t.paymentTransactionId, transactionId),
         })
-        if (!row) continue
-        if (row.paymentInstanceId) {
+        for (const allocation of allocations) {
+          if (!allocation.paymentInstanceId) continue
           try {
-            await adminHandler.delete(toRecordId('payment', row.paymentInstanceId))
+            await adminHandler.delete(toRecordId('payment', allocation.paymentInstanceId))
           } catch {
             // best-effort — the row delete below is the important part
           }

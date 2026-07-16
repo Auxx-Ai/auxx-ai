@@ -8,6 +8,7 @@ import { UnifiedCrudHandler } from '../resources/crud'
 import { batchReadSystemValues, computeWorkOrderBillingProjection } from './billing-projection'
 import { listUninvoicedLines } from './gather'
 import {
+  collectRefundedChargeIds,
   computeDepositFigures,
   getAllocationTotalsByTransaction,
   getContactCreditOnAccount,
@@ -122,7 +123,8 @@ export async function getWorkOrderBillingState(input: {
       listUninvoicedLines(input),
     ])
   // Deposit-accounting plan 16 §D.1 — held vs applied over the WO's own succeeded deposit
-  // charges (quote provenance). `payments` is already fetched above (`listWorkOrderPayments`);
+  // charges (quote provenance). `payments` is already fetched above (`listWorkOrderPayments`)
+  // and includes refund rows, so refunded-charge exclusion is a pure fold — no extra query;
   // batch the allocation totals for just those rows' ids, never N+1.
   const depositChargeRows = payments.filter(
     (row) => row.kind === 'charge' && row.status === 'succeeded' && row.quoteInstanceId != null
@@ -133,7 +135,8 @@ export async function getWorkOrderBillingState(input: {
   )
   const { depositHeld, depositApplied } = computeDepositFigures(
     depositChargeRows,
-    depositAllocationTotals
+    depositAllocationTotals,
+    collectRefundedChargeIds(payments)
   )
 
   const allocationsByVisit = new Map<string, typeof activeVisits>()

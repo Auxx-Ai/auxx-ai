@@ -48,14 +48,20 @@ function stripeStatusChip(
 
 /** A deposit row is any charge/refund with `quoteInstanceId` set (money 16 §D.3) — the deposit
  * pre-payment leaves no other marker on the client-shaped row. Held/applied state is derived
- * from the server-computed `allocatedAmount`/`heldAmount` rather than re-summing anything here. */
+ * from the server-computed `allocatedAmount`/`heldAmount` rather than re-summing anything here.
+ * A charge whose linked refund SUCCEEDED must not keep reading "held"/"applied" (the charge row
+ * itself stays `succeeded` forever — refunded-ness lives on the refund row), so the caller
+ * passes the linked refund's status; a merely-pending refund keeps the held/applied badge (the
+ * status chip already says "Refund pending"). */
 function depositBadge(
   payment: PaymentRow,
-  currencyCode: string
+  currencyCode: string,
+  linkedRefundStatus?: string
 ): { label: string; variant: BadgeVariant; title?: string } | null {
   if (payment.quoteInstanceId == null) return null
   if (payment.kind === 'refund') return { label: 'Deposit · refunded', variant: 'gray' }
   if (payment.kind !== 'charge') return null
+  if (linkedRefundStatus === 'succeeded') return { label: 'Deposit · refunded', variant: 'gray' }
   if (payment.status !== 'succeeded') return { label: 'Deposit', variant: 'outline' }
 
   const { amount, allocatedAmount, heldAmount } = payment
@@ -158,7 +164,7 @@ export function PaymentsList({
                   )
                 })()
 
-        const deposit = depositBadge(payment, currencyCode)
+        const deposit = depositBadge(payment, currencyCode, refundStatusByCharge.get(payment.id))
 
         return (
           <TreeRow

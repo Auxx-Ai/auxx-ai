@@ -16,6 +16,50 @@ export interface DepositChargeRow {
 }
 
 /**
+ * Charge ids whose refund has SUCCEEDED, derived from a batch of ledger rows already in hand
+ * (money 16 follow-up) — refunds are full-only, and a refunded charge row deliberately keeps
+ * `status: 'succeeded'` (reversal-as-records, never edits), so held/applied/credit figures must
+ * exclude it explicitly or a refunded deposit reads as "held" forever. Pending refunds do NOT
+ * exclude — the money hasn't actually returned yet.
+ */
+export function collectRefundedChargeIds(
+  rows: Array<{ kind: string; status: string; refundedTransactionId: string | null }>
+): Set<string> {
+  const refunded = new Set<string>()
+  for (const row of rows) {
+    if (row.kind === 'refund' && row.status === 'succeeded' && row.refundedTransactionId) {
+      refunded.add(row.refundedTransactionId)
+    }
+  }
+  return refunded
+}
+
+/**
+ * DB variant of {@link collectRefundedChargeIds} for callers that only have charge ids in hand
+ * (the contact credit-on-account read) — one batched query for succeeded refunds pointing at
+ * any of the given charges.
+ */
+export async function getRefundedChargeIds(
+  organizationId: string,
+  chargeIds: string[],
+  db: Database = database
+): Promise<Set<string>> {
+  if (chargeIds.length === 0) return new Set()
+  const rows = await db.query.PaymentTransaction.findMany({
+    where: and(
+      eq(schema.PaymentTransaction.organizationId, organizationId),
+      eq(schema.PaymentTransaction.kind, 'refund'),
+      eq(schema.PaymentTransaction.status, 'succeeded'),
+      inArray(schema.PaymentTransaction.refundedTransactionId, chargeIds)
+    ),
+    columns: { refundedTransactionId: true },
+  })
+  return new Set(
+    rows.flatMap((row) => (row.refundedTransactionId ? [row.refundedTransactionId] : []))
+  )
+}
+
+/**
  * Sum `PaymentAllocation.amount` grouped by `paymentTransactionId`, scoped to one organization
  * and a batch of transaction ids — the shared no-N+1 primitive every deposit-visibility read
  * uses (mirrors `getActiveAllocatedAmounts`'s shape in `billing-allocations.ts`). Missing ids
@@ -52,15 +96,20 @@ export async function getAllocationTotalsByTransaction(
  * can't happen, allocations are capped at insert time, but the clamp is cheap insurance),
  * `depositApplied` = Σ allocated (also capped at the row's own amount). No DB access, so the
  * WO billing state (rows already in hand from `listWorkOrderPayments`) and the contact overview
- * (a fresh query, see {@link listContactDepositCharges}) share the exact same math.
+ * (a fresh query, see {@link listContactDepositCharges}) share the exact same math. Charges in
+ * `refundedChargeIds` contribute to NEITHER figure — the money went back to the customer
+ * (see {@link collectRefundedChargeIds}); their invoice-side netting is the refund row's own
+ * allocation copies, not this fold's concern.
  */
 export function computeDepositFigures(
   rows: DepositChargeRow[],
-  allocationTotals: Map<string, number>
+  allocationTotals: Map<string, number>,
+  refundedChargeIds: ReadonlySet<string> = new Set()
 ): { depositHeld: number; depositApplied: number } {
   let depositHeld = 0
   let depositApplied = 0
   for (const row of rows) {
+    if (refundedChargeIds.has(row.id)) continue
     const allocated = allocationTotals.get(row.id) ?? 0
     depositHeld += Math.max(0, row.amount - allocated)
     depositApplied += Math.min(row.amount, allocated)
@@ -93,7 +142,8 @@ export async function listContactDepositCharges(
 
 /**
  * Σ unallocated remainders of a contact's succeeded deposit charges — "credit on account"
- * (money 16 §D.4). Two batched queries (charges, then their allocation totals), never N+1.
+ * (money 16 §D.4). Three batched queries (charges, their allocation totals, their succeeded
+ * refunds), never N+1. Refunded deposits are excluded — returned money is not credit.
  */
 export async function getContactCreditOnAccount(
   organizationId: string,
@@ -101,12 +151,12 @@ export async function getContactCreditOnAccount(
   db: Database = database
 ): Promise<number> {
   const rows = await listContactDepositCharges(organizationId, contactInstanceId, db)
-  const allocationTotals = await getAllocationTotalsByTransaction(
-    organizationId,
-    rows.map((row) => row.id),
-    db
-  )
-  return computeDepositFigures(rows, allocationTotals).depositHeld
+  const chargeIds = rows.map((row) => row.id)
+  const [allocationTotals, refundedChargeIds] = await Promise.all([
+    getAllocationTotalsByTransaction(organizationId, chargeIds, db),
+    getRefundedChargeIds(organizationId, chargeIds, db),
+  ])
+  return computeDepositFigures(rows, allocationTotals, refundedChargeIds).depositHeld
 }
 
 /**
