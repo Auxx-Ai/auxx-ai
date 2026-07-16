@@ -38,6 +38,11 @@
 //   An editable builder initially seeds three of these drafts as local loading
 //   placeholders. If persisted rows arrive, they replace only those initial
 //   drafts; they still follow the same no-save-until-edited rule.
+// - Group explode: a catalog-group pick fills the picked line (entry #1) and
+//   pushes entries 2…N as pre-filled phantom drafts in the same frame, then
+//   materializes them through the same createDraft → seed pipeline — the
+//   bundle is fully visible (and totaled) before any create resolves, and no
+//   row ever shifts position while the creates land.
 // - Reorder: dnd-kit sortable rows (grip handle) → `api.money.reorderLines`.
 //   Draft rows aren't part of the sortable set — they pin after the real rows.
 // - Delete: real rows → `api.record.delete` + `api.money.recomputeTotals`
@@ -88,6 +93,7 @@ import {
   relKeyForDocumentType,
 } from './line-rows'
 import { TotalsFooter } from './totals-footer'
+import { useLineHotkeys } from './use-line-hotkeys'
 import { useLineNav } from './use-line-nav'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -628,42 +634,42 @@ export function LineBuilder({
    * Steps 2 (append entries 2…N) + 4–5 (document discount/tax set-if-unset)
    * of a catalog-group explode (money 09-product-groups.md "Line-builder
    * consumption") — shared by the real-row and draft-row group-pick paths.
-   * `baseOrder` is the sort order the first of `rest` should land at.
+   * Entries 2…N land as pre-filled phantom drafts IMMEDIATELY — instant
+   * paint, and totals are right on the first frame (`TotalsFooter` already
+   * folds drafts into its math). They then materialize through the normal
+   * `createDraft` → `seedCreatedRecord` pipeline, each draft swapping in
+   * place for its real row with zero refetch — no `refresh()`, so the list
+   * never reshuffles mid-explode. Creates run sequentially: the list cache
+   * appends in completion order, so completion order must equal draft order
+   * to agree with the `line_item_sort_order` stamps (freshDraft's
+   * optional=false / optionalSelected=true defaults are exactly the
+   * "group-exploded lines start required" rule, money plan 18 §3).
    */
   const applyGroupPickRestAndBilling = useCallback(
-    async (pick: CatalogGroupPick, rest: CatalogGroupPickLine[], baseOrder: number) => {
+    (pick: CatalogGroupPick, rest: CatalogGroupPickLine[]) => {
       if (rest.length > 0) {
-        const relKey = relKeyForDocumentType(documentType)
-        try {
-          for (const [index, line] of rest.entries()) {
-            await createMutateAsync({
-              entityDefinitionId: 'line_item',
-              values: {
-                line_item_name: line.name,
-                line_item_description: line.description,
-                line_item_category: line.category,
-                line_item_taxable: line.taxable,
-                line_item_unit_price: line.unitPrice,
-                line_item_unit: line.unit,
-                line_item_qty: line.qty,
-                // Catalog/group-exploded lines start required (money plan 18 §3);
-                // the user marks them optional afterwards.
-                line_item_optional: false,
-                line_item_optional_selected: true,
-                line_item_catalog_item: toRecordId('catalog_item', line.catalogItemId),
-                line_item_sort_order: baseOrder + index,
-                [relKey]: documentRecordId,
-                ...(visitId ? { line_item_visit_id: visitId } : {}),
-              },
-            })
+        const bundleDrafts: DraftLine[] = rest.map((line) => ({
+          ...freshDraft(generateId()),
+          name: line.name,
+          description: line.description,
+          category: line.category,
+          taxable: line.taxable,
+          qty: line.qty,
+          unit: line.unit,
+          unitPriceCents: line.unitPrice,
+          catalogItemRecordId: toRecordId('catalog_item', line.catalogItemId),
+        }))
+        // Write through draftsRef (normally render-synced) so the sequential
+        // createDraft calls below can resolve these drafts before React
+        // re-renders; per-line failures keep the draft editable + toast
+        // inside createDraft, so there's no explode-level error handling.
+        draftsRef.current = [...draftsRef.current, ...bundleDrafts]
+        setDrafts(draftsRef.current)
+        void (async () => {
+          for (const draft of bundleDrafts) {
+            await createDraft(draft.draftId)
           }
-        } catch (error) {
-          toastError({
-            title: 'Error adding group lines',
-            description: error instanceof Error ? error.message : 'Could not add all group lines',
-          })
-        }
-        refresh()
+        })()
       }
 
       // Steps 4–5: document discount/tax set-if-unset — quote/invoice only, never
@@ -713,17 +719,13 @@ export function LineBuilder({
       }
     },
     [
-      documentType,
-      documentRecordId,
       docRecordId,
-      visitId,
       hasBilling,
       billingPrefix,
       billingValues,
       taxRates,
       saveMultipleAsync,
-      createMutateAsync,
-      refresh,
+      createDraft,
     ]
   )
 
@@ -767,7 +769,7 @@ export function LineBuilder({
       ])
 
       // Known v1 edge: picking on a middle line still appends `rest` at the list end.
-      await applyGroupPickRestAndBilling(pick, rest, displayIdsRef.current.length)
+      applyGroupPickRestAndBilling(pick, rest)
     },
     [saveMultipleAsync, applyGroupPickRestAndBilling]
   )
@@ -797,9 +799,7 @@ export function LineBuilder({
         optionalSelected: true,
       })
 
-      // Real records + every current draft occupy a sort-order slot ahead of `rest`.
-      const baseOrder = displayIdsRef.current.length + draftsRef.current.length
-      await applyGroupPickRestAndBilling(pick, rest, baseOrder)
+      applyGroupPickRestAndBilling(pick, rest)
     },
     [createDraft, applyGroupPickRestAndBilling]
   )
@@ -841,6 +841,14 @@ export function LineBuilder({
     rowCount: displayRecords.length + visibleDrafts.length,
     colCount: 3,
     onAddRow: addLine,
+    readOnly,
+  })
+
+  // Row-action shortcuts (description / category / optional / taxable / delete)
+  // on the same container — resolved to whichever row holds focus.
+  useLineHotkeys({
+    containerRef: rowsContainerRef,
+    isQuote: documentType === 'quote',
     readOnly,
   })
 
