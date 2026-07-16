@@ -168,6 +168,11 @@ function sanitizeLogValue(value: unknown, depth: number = 0): unknown {
       stack: value.stack,
     }
   }
+  // Buffers/typed arrays fall through Array.isArray and would enumerate every byte as an
+  // object key — summarize them instead.
+  if (ArrayBuffer.isView(value) || value instanceof ArrayBuffer) {
+    return `[${value.constructor.name} length=${value.byteLength}]`
+  }
 
   if (Array.isArray(value)) {
     return value.map((item) => sanitizeLogValue(item, depth + 1))

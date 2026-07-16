@@ -50,6 +50,10 @@ export interface WorkOrderBillingPaymentsBlockProps {
   workOrderRecordId: RecordId
   candidates: PaymentCandidate[]
   currencyCode: string
+  /** Called after a payment is recorded/deleted/refunded, in addition to this block's own
+   * ledger invalidation — lets the composed `getWorkOrderBillingState` read (balance due,
+   * next-action state) stay in sync without waiting for the realtime revision round-trip. */
+  onSettled?: () => void
 }
 
 /** Payments block — the shared ledger list + "Record payment" (billing tab §D block 5). */
@@ -57,6 +61,7 @@ export function WorkOrderBillingPaymentsBlock({
   workOrderRecordId,
   candidates,
   currencyCode,
+  onSettled,
 }: WorkOrderBillingPaymentsBlockProps) {
   const { allowed: isAdmin } = useAdminGate()
   const [confirm, ConfirmDialog] = useConfirm()
@@ -69,6 +74,7 @@ export function WorkOrderBillingPaymentsBlock({
   const hasPayments = (payments?.length ?? 0) > 0
 
   const invalidateBoth = (invoiceRecordId: RecordId | null) => {
+    onSettled?.()
     void utils.money.listPaymentsForWorkOrder.invalidate({ workOrderRecordId })
     // Held deposits (money MP2) carry no invoice link until settle — nothing to invalidate.
     if (invoiceRecordId) void utils.money.listPayments.invalidate({ invoiceRecordId })

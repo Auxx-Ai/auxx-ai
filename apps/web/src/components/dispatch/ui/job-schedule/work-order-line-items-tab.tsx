@@ -1,10 +1,10 @@
 // apps/web/src/components/dispatch/ui/job-schedule/work-order-line-items-tab.tsx
 'use client'
 
+import { TuckedLabel } from '@auxx/ui/components/tucked-label'
 import { cn } from '@auxx/ui/lib/utils'
 import type { DetailViewTabProps } from '~/components/detail-view'
 import { LineBuilder } from '~/components/money/ui/line-builder/line-builder'
-import { TuckedLabel } from '~/components/money/ui/tucked-label'
 import { useSystemValues } from '~/components/resources/hooks/use-system-values'
 
 /**

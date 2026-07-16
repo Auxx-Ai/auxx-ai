@@ -13,7 +13,7 @@ import { findCachedResource } from '../../cache'
 import { CommentService } from '../../comments'
 import { UnprocessableEntityError } from '../../errors'
 import { publisher } from '../../events/publisher'
-import { getEntityPreDeleteHooks } from '../../field-hooks/registry'
+import { getEntityPostDeleteHooks, getEntityPreDeleteHooks } from '../../field-hooks/registry'
 import type { FieldValueService } from '../../field-values'
 import { getRealtimeService, rooms } from '../../realtime'
 import { invalidateSnapshots } from '../../snapshot'
@@ -50,6 +50,13 @@ export interface CrudOptions {
   skipEvents?: boolean
   /** Skip snapshot invalidation (caller will invalidate once at end) */
   skipSnapshotInvalidation?: boolean
+  /**
+   * Skip post-delete hooks for this delete. Only for cleanup flows that delete child rows on
+   * behalf of a parent operation which guarantees its own projection sync afterward (e.g. the
+   * invoice pre-delete guard removing the invoice's own line copies) — running the child-level
+   * hooks there would recompute a parent that is about to be deleted, once per child.
+   */
+  suppressPostDeleteHooks?: boolean
 }
 
 /** Inferred type for CustomField select */
@@ -336,11 +343,17 @@ export async function createEntity(
 
   // Create EntityInstance. Connector-minted provenance now lives on
   // `DataConnectorItem.mintedInstance`, not on the instance row.
-  const instanceResult = await createEntityInstance({
-    entityDefinitionId: entityDef.id,
-    organizationId: ctx.organizationId,
-    createdById: ctx.userId,
-  })
+  // Pass ctx.db so a transaction-scoped handler (billing invoice builders) creates the row
+  // INSIDE its transaction — a global-pool insert here is invisible to the transaction's
+  // serializable FK checks, so allocation rows referencing the new instance would 23503.
+  const instanceResult = await createEntityInstance(
+    {
+      entityDefinitionId: entityDef.id,
+      organizationId: ctx.organizationId,
+      createdById: ctx.userId,
+    },
+    ctx.db
+  )
 
   const instance = unwrapResult(instanceResult)
 
@@ -671,8 +684,12 @@ export async function deleteEntity(
   // Pre-delete hooks are orthogonal to event publishing — capture is
   // required whenever either consumer is active.
   const preDeleteHooks = entityDef.apiSlug ? getEntityPreDeleteHooks(entityDef.apiSlug) : []
+  const postDeleteHooks =
+    entityDef.apiSlug && !options.suppressPostDeleteHooks
+      ? getEntityPostDeleteHooks(entityDef.apiSlug)
+      : []
   let eventData: Record<string, unknown> = { hardDelete: true }
-  if (!options.skipEvents || preDeleteHooks.length > 0) {
+  if (!options.skipEvents || preDeleteHooks.length > 0 || postDeleteHooks.length > 0) {
     const fields = await ctx.getFields(entityDef.id)
     const captured = await captureEventData(ctx.fieldValueService, recordId, fields)
     eventData = { hardDelete: true, ...captured }
@@ -704,6 +721,29 @@ export async function deleteEntity(
   })
 
   unwrapResult(deleteResult)
+
+  // Post-delete hooks: deletes never fire field-change post-hooks, so this is where
+  // projections that depend on the deleted record refresh (log-and-swallow, matching
+  // field-change post-hook semantics — the delete itself has already committed).
+  for (const hook of postDeleteHooks) {
+    try {
+      await hook({
+        recordId,
+        entityDefinitionId: entityDef.id,
+        entityType: entityDef.entityType,
+        entitySlug: entityDef.apiSlug ?? '',
+        values: eventData,
+        organizationId: ctx.organizationId,
+        userId: ctx.userId,
+      })
+    } catch (error) {
+      logger.error('Post-delete hook failed', {
+        recordId,
+        entitySlug: entityDef.apiSlug,
+        error: error instanceof Error ? error.message : String(error),
+      })
+    }
+  }
 
   if (!options.skipSnapshotInvalidation) {
     await invalidateEntitySnapshots(ctx.organizationId, entityDef.id)

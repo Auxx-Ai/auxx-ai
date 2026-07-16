@@ -9,7 +9,7 @@
  * returns every field the installation owns on the record's entity.
  */
 
-import { FieldValueService, type RecordId } from '@auxx/lib/field-values'
+import { FieldValueService, type RecordId, resolveCalcForRecord } from '@auxx/lib/field-values'
 import { Hono } from 'hono'
 import { z } from 'zod'
 import { verifyCallbackAuth } from '../../lib/callback-auth'
@@ -57,30 +57,49 @@ getValues.post('/get-values', async (c) => {
   }
 
   // Resolve owned fields (explicit keys → refuse unowned; omitted → all owned).
+  // CALC fields are held aside — the plain `getValues` join has no stored row for them,
+  // so they resolve through `resolveCalcForRecord` (the canonical server-side CALC evaluator)
+  // instead of returning null.
   const keyByFieldId = new Map<string, string>()
+  const calcFields: { fieldId: string; key: string }[] = []
+  const noteField = (field: { id: string; type: string }, key: string) => {
+    if (field.type === 'CALC') calcFields.push({ fieldId: field.id, key })
+    else keyByFieldId.set(field.id, key)
+  }
   if (fieldKeys) {
     for (const key of fieldKeys) {
       const field = await resolveOwnedField(scope, key)
       if (!field) {
         return c.json(errorResponse('FORBIDDEN', `Field not owned: ${key}`), 403)
       }
-      keyByFieldId.set(field.id, key)
+      noteField(field, key)
     }
   } else {
     for (const field of await listOwnedFields(scope)) {
-      keyByFieldId.set(field.id, field.appFieldKey!)
+      noteField(field, field.appFieldKey!)
     }
   }
 
   const values: Record<string, unknown> = {}
-  if (keyByFieldId.size > 0) {
+  if (keyByFieldId.size > 0 || calcFields.length > 0) {
     const service = new FieldValueService(auth.organizationId)
-    const result = await service.getValues({
-      recordId: recordId as RecordId,
-      fieldIds: [...keyByFieldId.keys()],
-    })
-    for (const [fieldId, key] of keyByFieldId) {
-      values[key] = projectFieldValue(result.get(fieldId) ?? null)
+
+    if (keyByFieldId.size > 0) {
+      const result = await service.getValues({
+        recordId: recordId as RecordId,
+        fieldIds: [...keyByFieldId.keys()],
+      })
+      for (const [fieldId, key] of keyByFieldId) {
+        values[key] = projectFieldValue(result.get(fieldId) ?? null)
+      }
+    }
+
+    for (const { fieldId, key } of calcFields) {
+      const resolution = await resolveCalcForRecord(service.ctx, {
+        recordId: recordId as RecordId,
+        calcFieldId: fieldId,
+      })
+      values[key] = resolution.value
     }
   }
 

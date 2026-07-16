@@ -4,6 +4,19 @@ import { registerInventoryDeductionRule } from '../data-connectors/inventory-bri
 import { ensureVisitOnWorkOrderCreate, geocodeOnAddressChange } from '../dispatch/visit-hooks'
 import { generateDraftOnCompletion } from '../money/auto-invoice'
 import {
+  BILLING_PROJECTION_ATTRS,
+  guardAllocatedLineDelete,
+  guardAllocatedSourceLineChange,
+  guardBillingConfiguration,
+  guardBillingProjectionWrite,
+  syncBillingAfterInvoiceDelete,
+  syncBillingAfterLineDelete,
+  syncBillingOnInvoiceChange,
+  syncBillingOnLineChange,
+  syncBillingOnWorkOrderChange,
+  syncContactAfterWorkOrderDelete,
+} from '../money/billing-hooks'
+import {
   recomputeOnInvoiceBillingChange,
   recomputeOnLineChange,
   recomputeOnQuoteBillingChange,
@@ -30,6 +43,7 @@ import {
 import { guardWorkOrderDelete } from './pre/work-order-delete-guard'
 import {
   registerEntityFieldChangeHooks,
+  registerEntityPostDeleteHooks,
   registerEntityPreDeleteHooks,
   registerFieldPreHooks,
 } from './registry'
@@ -102,6 +116,7 @@ export function registerAllHooks(): void {
     generateDraftOnCompletion,
     geocodeOnAddressChange,
     enrollJobFollowUpOnCompletion,
+    syncBillingOnWorkOrderChange,
   ])
 
   // Money totals engine (money MQ1 build spec §F.2, generalized to invoices in MI1 build
@@ -110,7 +125,7 @@ export function registerAllHooks(): void {
   // the quote's or invoice's own billing fields (discount type/value, tax rate) change.
   // Keyed by apiSlug — line_item's is 'line-items', quote's is 'quotes', invoice's is
   // 'invoices'.
-  registerEntityFieldChangeHooks('line-items', [recomputeOnLineChange])
+  registerEntityFieldChangeHooks('line-items', [recomputeOnLineChange, syncBillingOnLineChange])
   registerEntityFieldChangeHooks('quotes', [recomputeOnQuoteBillingChange])
   //
   // Client-notifications plan §4.3: enroll the seeded `invoice_reminders` sequence on the
@@ -122,6 +137,7 @@ export function registerAllHooks(): void {
     recomputeOnInvoiceBillingChange,
     enrollInvoiceReminderOnSent,
     reanchorInvoiceOnDueDateChange,
+    syncBillingOnInvoiceChange,
   ])
 
   // ---------------------------------------------------------------------------
@@ -150,6 +166,26 @@ export function registerAllHooks(): void {
   // chain that actually runs.
   registerFieldPreHooks('quotes', 'quote_status', [guardQuoteDraftReturnWithPaidDeposit])
 
+  for (const attribute of BILLING_PROJECTION_ATTRS) {
+    const entitySlug = attribute.startsWith('work_order_')
+      ? 'work-orders'
+      : attribute.startsWith('invoice_')
+        ? 'invoices'
+        : 'contacts'
+    registerFieldPreHooks(entitySlug, attribute, [guardBillingProjectionWrite])
+  }
+  registerFieldPreHooks('work-orders', 'work_order_pricing_model', [guardBillingConfiguration])
+  registerFieldPreHooks('work-orders', 'work_order_invoice_timing', [guardBillingConfiguration])
+  for (const attribute of [
+    'line_item_qty',
+    'line_item_unit_price',
+    'line_item_discount',
+    'line_item_work_order',
+    'line_item_visit_id',
+  ] as const) {
+    registerFieldPreHooks('line-items', attribute, [guardAllocatedSourceLineChange])
+  }
+
   registerFieldPreHooks('tags', 'is_system_tag', [dropUnauthorizedSystemFlag])
   registerFieldPreHooks('tags', 'title', [rejectIfSystemTag])
   registerFieldPreHooks('tags', 'tag_description', [rejectIfSystemTag])
@@ -163,6 +199,14 @@ export function registerAllHooks(): void {
   // sanctioned hook point, so generic `record.delete`/`bulkDelete`, the drawer, and any future
   // Kopilot/API caller all get the same safety net.
   registerEntityPreDeleteHooks('invoices', [guardInvoiceDelete])
+  registerEntityPreDeleteHooks('line-items', [guardAllocatedLineDelete])
   registerEntityPreDeleteHooks('work-orders', [guardWorkOrderDelete])
   registerEntityPreDeleteHooks('quotes', [guardQuoteConvertedDelete])
+
+  // Billing projections after deletes (plan 24 §4.6) — deletes fire no field-change hooks, so
+  // these are the explicit post-cleanup projector calls for every delete path (generic
+  // `record.delete`, bulk delete, Kopilot/API), not just the money lifecycle commands.
+  registerEntityPostDeleteHooks('invoices', [syncBillingAfterInvoiceDelete])
+  registerEntityPostDeleteHooks('line-items', [syncBillingAfterLineDelete])
+  registerEntityPostDeleteHooks('work-orders', [syncContactAfterWorkOrderDelete])
 }

@@ -10,7 +10,7 @@ import { database, schema } from '@auxx/database'
 import type { TypedFieldValue } from '@auxx/types'
 import { extractValue } from '@auxx/types'
 import { parseRecordId, toRecordId } from '@auxx/types/resource'
-import { and, eq, inArray } from 'drizzle-orm'
+import { and, eq, inArray, ne } from 'drizzle-orm'
 import type Stripe from 'stripe'
 import { getOrgCache } from '../../cache'
 import { BadRequestError, NotFoundError } from '../../errors'
@@ -215,9 +215,12 @@ export async function createStripeCheckout(
       },
       metadata: { transactionId: transaction!.id, organizationId, invoiceInstanceId },
       // Stamped return URLs: `success` arms the pay page's processing state through the
-      // webhook race; `cancel` lets the page flip this very row to `canceled` so an abandoned
-      // Checkout never wedges the page in "processing" (see `cancelAbandonedCheckout`).
-      success_url: `${payUrl}?checkout=success`,
+      // webhook race, and carries Stripe's own `session_id` placeholder so the page can
+      // reconcile the return directly if the webhook hasn't landed yet (dev without `stripe
+      // listen`, or a not-yet-set prod webhook secret); `cancel` lets the page flip this very
+      // row to `canceled` so an abandoned Checkout never wedges the page in "processing" (see
+      // `cancelAbandonedCheckout`).
+      success_url: `${payUrl}?checkout=success&session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${payUrl}?checkout=cancel&tx=${transaction!.id}`,
     },
     { stripeAccount: account.stripeAccountId, idempotencyKey: transaction!.id }
@@ -392,7 +395,7 @@ export async function createStripeDepositCheckout(
         metadata: { transactionId: transaction!.id, organizationId, quoteInstanceId },
       },
       metadata: { transactionId: transaction!.id, organizationId, quoteInstanceId },
-      success_url: quoteUrl,
+      success_url: `${quoteUrl}?checkout=success&session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${quoteUrl}?checkout=cancel&tx=${transaction!.id}`,
     },
     { stripeAccount: account.stripeAccountId, idempotencyKey: transaction!.id }
@@ -437,7 +440,13 @@ async function findTransactionForEvent(
 /**
  * Flip a `charge` row to `succeeded` and converge on `syncTransaction` (creates the `payment`
  * mirror + reprojects the invoice). Idempotent — a replayed webhook for an already-`succeeded`
- * row is a no-op.
+ * row is a no-op. The in-memory `transaction.status === 'succeeded'` check alone isn't a safe
+ * idempotency guard: a browser reconcile (`reconcileStripe(Deposit)CheckoutReturn`) can race a
+ * concurrent webhook delivery for the same row, both reading `pending` before either writes,
+ * which would otherwise double-run `syncTransaction` and mint a duplicate `payment` mirror.
+ * The UPDATE itself is therefore status-guarded (`status <> 'succeeded'` in the WHERE) — only
+ * the writer that actually flips the row proceeds to `syncTransaction`; the loser's `.returning()`
+ * comes back empty and it returns without syncing.
  */
 async function markChargeSucceeded(
   transaction: PaymentTransactionEntity,
@@ -460,14 +469,143 @@ async function markChargeSucceeded(
       applicationFeeAmount: updates.applicationFeeAmount ?? transaction.applicationFeeAmount,
       method: updates.method ?? transaction.method ?? 'card',
     })
-    .where(eq(schema.PaymentTransaction.id, transaction.id))
+    .where(
+      and(
+        eq(schema.PaymentTransaction.id, transaction.id),
+        ne(schema.PaymentTransaction.status, 'succeeded')
+      )
+    )
     .returning()
+
+  // No row came back — a concurrent writer (webhook or browser reconcile) already flipped this
+  // transaction to `succeeded` first. It already ran `syncTransaction`; running it again here
+  // would create a duplicate `payment` mirror.
+  if (!updated) return
 
   await syncTransaction({
     organizationId: transaction.organizationId,
     userId: systemUserId,
-    transaction: updated!,
+    transaction: updated,
   })
+}
+
+/** Input for reconciling a successful invoice Checkout browser return. */
+export interface ReconcileStripeCheckoutReturnInput {
+  organizationId: string
+  /** EntityInstance id of the invoice whose balance was paid. */
+  invoiceInstanceId: string
+  /** Stripe Checkout Session id returned through the success URL placeholder. */
+  sessionId: string
+}
+
+/**
+ * Reconcile an invoice Checkout return when the Connect webhook has not landed yet (dev without
+ * `stripe listen`, or a not-yet-set prod webhook secret) — the public pay page's fallback path so
+ * "Payment processing…" doesn't wedge forever waiting on a webhook that may never arrive.
+ *
+ * The browser-provided session id is never trusted by itself: the pending ledger row must match
+ * the organization, invoice, and stored Checkout Session id; Stripe must report the connected-
+ * account Session as complete and paid; and its metadata transaction id must match that row.
+ * Success converges on the same idempotent writer as the webhook reducer (`markChargeSucceeded`),
+ * whose own UPDATE is status-guarded — safe to call even if the webhook wins the race first.
+ */
+export async function reconcileStripeCheckoutReturn(
+  input: ReconcileStripeCheckoutReturnInput
+): Promise<{ reconciled: true }> {
+  const transaction = await database.query.PaymentTransaction.findFirst({
+    where: and(
+      eq(schema.PaymentTransaction.organizationId, input.organizationId),
+      eq(schema.PaymentTransaction.invoiceInstanceId, input.invoiceInstanceId),
+      eq(schema.PaymentTransaction.stripeCheckoutSessionId, input.sessionId),
+      eq(schema.PaymentTransaction.provider, 'stripe'),
+      eq(schema.PaymentTransaction.kind, 'charge')
+    ),
+  })
+  if (!transaction) {
+    throw new NotFoundError('Checkout session not found')
+  }
+
+  const account = await getPaymentAccount(input.organizationId)
+  if (!account?.stripeAccountId || account.disconnectedAt) {
+    throw new NotFoundError('No Stripe account connected for this organization')
+  }
+  if (transaction.paymentAccountId && transaction.paymentAccountId !== account.id) {
+    throw new BadRequestError('Checkout session belongs to a different payment account')
+  }
+
+  const stripe = getStripeConnectClient()
+  const session = await stripe.checkout.sessions.retrieve(input.sessionId, {
+    stripeAccount: account.stripeAccountId,
+  })
+  if (session.status !== 'complete' || session.payment_status !== 'paid') {
+    throw new BadRequestError('Checkout payment is not complete')
+  }
+  if (session.metadata?.transactionId !== transaction.id) {
+    throw new BadRequestError('Checkout transaction metadata does not match')
+  }
+
+  const paymentIntentId =
+    typeof session.payment_intent === 'string' ? session.payment_intent : session.payment_intent?.id
+  await markChargeSucceeded(transaction, { stripePaymentIntentId: paymentIntentId })
+  return { reconciled: true }
+}
+
+/** Input for reconciling a successful quote-deposit Checkout browser return. */
+export interface ReconcileStripeDepositCheckoutReturnInput {
+  organizationId: string
+  /** EntityInstance id of the quote whose deposit was paid. */
+  quoteInstanceId: string
+  /** Stripe Checkout Session id returned through the success URL placeholder. */
+  sessionId: string
+}
+
+/**
+ * Reconcile a quote-deposit Checkout return when the Connect webhook has not landed yet.
+ *
+ * The browser-provided session id is never trusted by itself: the pending ledger row must match
+ * the organization, quote, and stored Checkout Session id; Stripe must report the connected-
+ * account Session as complete and paid; and its metadata transaction id must match that row.
+ * Success converges on the same idempotent writer as the webhook reducer.
+ */
+export async function reconcileStripeDepositCheckoutReturn(
+  input: ReconcileStripeDepositCheckoutReturnInput
+): Promise<{ reconciled: true }> {
+  const transaction = await database.query.PaymentTransaction.findFirst({
+    where: and(
+      eq(schema.PaymentTransaction.organizationId, input.organizationId),
+      eq(schema.PaymentTransaction.quoteInstanceId, input.quoteInstanceId),
+      eq(schema.PaymentTransaction.stripeCheckoutSessionId, input.sessionId),
+      eq(schema.PaymentTransaction.provider, 'stripe'),
+      eq(schema.PaymentTransaction.kind, 'charge')
+    ),
+  })
+  if (!transaction) {
+    throw new NotFoundError('Deposit Checkout session not found')
+  }
+
+  const account = await getPaymentAccount(input.organizationId)
+  if (!account?.stripeAccountId || account.disconnectedAt) {
+    throw new NotFoundError('No Stripe account connected for this organization')
+  }
+  if (transaction.paymentAccountId && transaction.paymentAccountId !== account.id) {
+    throw new BadRequestError('Deposit Checkout session belongs to a different payment account')
+  }
+
+  const stripe = getStripeConnectClient()
+  const session = await stripe.checkout.sessions.retrieve(input.sessionId, {
+    stripeAccount: account.stripeAccountId,
+  })
+  if (session.status !== 'complete' || session.payment_status !== 'paid') {
+    throw new BadRequestError('Deposit Checkout payment is not complete')
+  }
+  if (session.metadata?.transactionId !== transaction.id) {
+    throw new BadRequestError('Deposit Checkout transaction metadata does not match')
+  }
+
+  const paymentIntentId =
+    typeof session.payment_intent === 'string' ? session.payment_intent : session.payment_intent?.id
+  await markChargeSucceeded(transaction, { stripePaymentIntentId: paymentIntentId })
+  return { reconciled: true }
 }
 
 /**

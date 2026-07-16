@@ -140,6 +140,33 @@ async function getRuleFor(subjectType: string, subjectId: string) {
   })
 }
 
+/**
+ * Active `InvoiceLineAllocation` row whose `invoiceLineItemId` is `copyId` — the allocation-
+ * table replacement for reading the removed `line_item_source_line_id` field off a gather copy
+ * (entity migration 043 hard-deleted that field; provenance now lives in
+ * `packages/lib/src/money/billing-allocations.ts`'s tables). Per plan §3.2, EVERY generated
+ * invoice line gets exactly one allocation row now (including template copies, `kind:
+ * 'visit_template'`/`'contract'`) — presence alone no longer distinguishes "template" from
+ * "gathered/addition". Callers must branch on `.kind`, not on whether a row exists.
+ */
+async function activeAllocationForCopy(copyId: string) {
+  return database.query.InvoiceLineAllocation.findFirst({
+    where: (t, { and, eq }) => and(eq(t.invoiceLineItemId, copyId), eq(t.status, 'active')),
+  })
+}
+
+/**
+ * Invoice ids present in `after` but not `before` — the diff-based replacement for filtering
+ * `invoice:visitId` (the removed `invoice_visit_id` field, entity migration 043). Take a
+ * `invoice:workOrder`-filtered snapshot before triggering a visit/occurrence, another after, and
+ * diff — works even though `generateInvoiceDraft`'s per-visit dedup no longer has a dedicated
+ * per-visit field to key off.
+ */
+function newSince(before: string[], after: string[]): string[] {
+  const beforeSet = new Set(before)
+  return after.filter((id) => !beforeSet.has(id))
+}
+
 async function main() {
   const user = await database.query.User.findFirst({
     columns: { id: true },
@@ -260,9 +287,14 @@ async function main() {
     })
     createdLineIds.push(extraLineV1.instance.id)
 
+    // `invoice_visit_id` was hard-deleted by entity migration 043 — there's no per-visit field
+    // left to filter invoices by, so identify "the draft V1's completion created" as whatever's
+    // new in `invoice:workOrder` since the last checkpoint (wo1 has no invoices yet here).
+    const wo1InvoicesBeforeV1 = await listInvoicesFiltered('invoice:workOrder', wo1.recordId)
     await setVisitStatus({ organizationId, userId, visitId: v1.id, status: 'done' })
 
-    const v1Drafts = await listInvoicesFiltered('invoice:visitId', v1.id)
+    const wo1InvoicesAfterV1 = await listInvoicesFiltered('invoice:workOrder', wo1.recordId)
+    const v1Drafts = newSince(wo1InvoicesBeforeV1, wo1InvoicesAfterV1)
     check('case1: exactly 1 draft created for V1', v1Drafts.length === 1, v1Drafts.length)
     const v1DraftInstanceId = v1Drafts[0]!
     createdInvoiceIds.push(v1DraftInstanceId)
@@ -276,17 +308,16 @@ async function main() {
     )
     for (const id of v1OwnedLines) createdLineIds.push(id)
 
+    // Provenance now lives in `InvoiceLineAllocation` (keyed by `invoiceLineItemId`), the
+    // allocation-table replacement for the removed `line_item_source_line_id` field. Every
+    // owned copy gets an allocation now (plan §3.2) — the template copy's is `kind:
+    // 'visit_template'`, the gathered extra's is `kind: 'visit_addition'`.
     let templateCopyId: string | undefined
     let gatheredCopyId: string | undefined
     for (const id of v1OwnedLines) {
-      const src = await fieldValueByAttr(
-        organizationId,
-        'line_item',
-        id,
-        'line_item_source_line_id'
-      )
-      if (src?.valueText) gatheredCopyId = id
-      else templateCopyId = id
+      const allocation = await activeAllocationForCopy(id)
+      if (allocation?.kind === 'visit_addition') gatheredCopyId = id
+      else if (allocation?.kind === 'visit_template') templateCopyId = id
     }
     check(
       'case1: found exactly one template copy + one gathered copy',
@@ -306,16 +337,13 @@ async function main() {
       templateCopyVisitId?.valueText
     )
 
-    const gatheredCopySource = await fieldValueByAttr(
-      organizationId,
-      'line_item',
-      gatheredCopyId!,
-      'line_item_source_line_id'
-    )
+    const gatheredCopyAllocation = gatheredCopyId
+      ? await activeAllocationForCopy(gatheredCopyId)
+      : undefined
     check(
-      'case1: gathered copy sourceLineId points at the extra line',
-      gatheredCopySource?.valueText === extraLineV1.instance.id,
-      gatheredCopySource?.valueText
+      'case1: gathered copy has an active InvoiceLineAllocation pointing at the extra line',
+      gatheredCopyAllocation?.sourceLineItemId === extraLineV1.instance.id,
+      gatheredCopyAllocation?.sourceLineItemId
     )
 
     const jobSetLineInvoiceFv = await fieldValueByAttr(
@@ -329,24 +357,32 @@ async function main() {
       !jobSetLineInvoiceFv?.relatedEntityId
     )
 
-    const extraLineV1InvoiceFv = await fieldValueByAttr(
-      organizationId,
-      'line_item',
-      extraLineV1.instance.id,
-      'line_item_invoice'
-    )
+    // `line_item_invoice` is parent-relation-only now (§B.3) — a gathered source's claim is an
+    // active `InvoiceLineAllocation` row, not a field stamp on the source itself.
+    const extraLineV1Allocation = await database.query.InvoiceLineAllocation.findFirst({
+      where: (t, { and, eq }) =>
+        and(
+          eq(t.sourceLineItemId, extraLineV1.instance.id),
+          eq(t.invoiceId, v1DraftInstanceId),
+          eq(t.status, 'active')
+        ),
+    })
     check(
-      'case1: extra source line IS stamped',
-      extraLineV1InvoiceFv?.relatedEntityId === v1DraftInstanceId
+      'case1: extra source line has an active InvoiceLineAllocation to the draft',
+      !!extraLineV1Allocation
     )
 
-    const v1DraftVisitId = await fieldValueByAttr(
-      organizationId,
-      'invoice',
-      v1DraftInstanceId,
-      'invoice_visit_id'
+    // `invoice_visit_id` (the removed field) used to mark the draft itself as visit-scoped;
+    // the allocation-model replacement is an active InvoiceVisitAllocation(kind='base') row.
+    const v1DraftVisitAllocation = await database.query.InvoiceVisitAllocation.findFirst({
+      where: (t, { and, eq }) =>
+        and(eq(t.invoiceId, v1DraftInstanceId), eq(t.visitId, v1.id), eq(t.status, 'active')),
+    })
+    check(
+      'case1: draft has an active InvoiceVisitAllocation(kind=base) for V1',
+      v1DraftVisitAllocation?.kind === 'base',
+      v1DraftVisitAllocation
     )
-    check('case1: draft invoice_visit_id = V1', v1DraftVisitId?.valueText === v1.id)
 
     const v1DraftTotal = await fieldValueByAttr(
       organizationId,
@@ -383,16 +419,17 @@ async function main() {
     // Re-complete V1: reset to scheduled, then done again -> no second draft (Q6 dedup).
     await setVisitStatus({ organizationId, userId, visitId: v1.id, status: 'scheduled' })
     await setVisitStatus({ organizationId, userId, visitId: v1.id, status: 'done' })
-    const v1DraftsAfterRecomplete = await listInvoicesFiltered('invoice:visitId', v1.id)
+    const wo1InvoicesAfterRecomplete = await listInvoicesFiltered('invoice:workOrder', wo1.recordId)
     check(
       'case1: re-completing V1 does not create a second draft',
-      v1DraftsAfterRecomplete.length === 1,
-      v1DraftsAfterRecomplete.length
+      wo1InvoicesAfterRecomplete.length === wo1InvoicesAfterV1.length,
+      { before: wo1InvoicesAfterV1.length, after: wo1InvoicesAfterRecomplete.length }
     )
 
     // Complete V2 (no extras) -> draft with 1 template line.
     await setVisitStatus({ organizationId, userId, visitId: v2.id, status: 'done' })
-    const v2Drafts = await listInvoicesFiltered('invoice:visitId', v2.id)
+    const wo1InvoicesAfterV2 = await listInvoicesFiltered('invoice:workOrder', wo1.recordId)
+    const v2Drafts = newSince(wo1InvoicesAfterRecomplete, wo1InvoicesAfterV2)
     check('case1: exactly 1 draft created for V2', v2Drafts.length === 1, v2Drafts.length)
     const v2DraftInstanceId = v2Drafts[0]!
     createdInvoiceIds.push(v2DraftInstanceId)
@@ -422,7 +459,7 @@ async function main() {
       zeroLineErr === undefined,
       zeroLineErr
     )
-    const wo2aDrafts = await listInvoicesFiltered('invoice:visitId', wo2aVisit.id)
+    const wo2aDrafts = await listInvoicesFiltered('invoice:workOrder', wo2a.recordId)
     check('case2: zero-line WO produces no draft', wo2aDrafts.length === 0, wo2aDrafts.length)
 
     const wo2b = await handler.create('work_order', {
@@ -510,12 +547,20 @@ async function main() {
     const wo3aOwned = await listOwnedInvoiceLines(toRecordId('invoice', wo3aDraftId))
     check('case3a: draft gathers both lines', wo3aOwned.length === 2, wo3aOwned.length)
     for (const id of wo3aOwned) createdLineIds.push(id)
+    // `line_item_invoice` is parent-relation-only now (§B.3) — a gathered source's claim is an
+    // active `InvoiceLineAllocation` row (invoiceId = the draft), not a field stamp on itself.
     let wo3aSourcesStamped = true
     for (const srcId of [wo3aJobSetLine.instance.id, wo3aExtraLine.instance.id]) {
-      const fv = await fieldValueByAttr(organizationId, 'line_item', srcId, 'line_item_invoice')
-      if (fv?.relatedEntityId !== wo3aDraftId) wo3aSourcesStamped = false
+      const allocation = await database.query.InvoiceLineAllocation.findFirst({
+        where: (t, { and, eq }) =>
+          and(eq(t.sourceLineItemId, srcId), eq(t.invoiceId, wo3aDraftId), eq(t.status, 'active')),
+      })
+      if (!allocation) wo3aSourcesStamped = false
     }
-    check('case3a: both sources stamped (gathered, not templated)', wo3aSourcesStamped)
+    check(
+      'case3a: both sources have an active InvoiceLineAllocation to the draft (gathered, not templated)',
+      wo3aSourcesStamped
+    )
 
     // 3b: manual drawer write also fires the hook.
     const wo3b = await handler.create('work_order', {
@@ -618,7 +663,7 @@ async function main() {
     const wo5 = await handler.create('work_order', {
       work_order_title: '[MI2-verify] Case5 custom_schedule fixed',
       work_order_contact: contactRecordId,
-      work_order_pricing_model: 'fixed',
+      work_order_pricing_model: 'fixed_contract',
       work_order_invoice_timing: 'custom_schedule',
     })
     createdWorkOrderIds.push(wo5.instance.id)
@@ -693,17 +738,12 @@ async function main() {
       for (const id of owned) createdLineIds.push(id)
       if (owned.length !== 2) case5AllFullTemplateCopies = false
       for (const id of owned) {
-        const src = await fieldValueByAttr(
-          organizationId,
-          'line_item',
-          id,
-          'line_item_source_line_id'
-        )
-        if (src?.valueText) case5AllFullTemplateCopies = false
+        const allocation = await activeAllocationForCopy(id)
+        if (allocation) case5AllFullTemplateCopies = false
       }
     }
     check(
-      'case5: every draft is a full (2-line) template copy, no sourceLineId',
+      'case5: every draft is a full (2-line) template copy, no InvoiceLineAllocation',
       case5AllFullTemplateCopies
     )
     let case5SourcesNeverStamped = true
@@ -806,12 +846,20 @@ async function main() {
     const wo6Owned = await listOwnedInvoiceLines(toRecordId('invoice', wo6DraftId))
     check('case6: draft gathers both accrued extras', wo6Owned.length === 2, wo6Owned.length)
     for (const id of wo6Owned) createdLineIds.push(id)
+    // `line_item_invoice` is parent-relation-only now (§B.3) — an accrued source's claim is an
+    // active `InvoiceLineAllocation` row, not a field stamp on itself.
     let wo6SourcesStamped = true
     for (const srcId of [wo6Extra1.instance.id, wo6Extra2.instance.id]) {
-      const fv = await fieldValueByAttr(organizationId, 'line_item', srcId, 'line_item_invoice')
-      if (fv?.relatedEntityId !== wo6DraftId) wo6SourcesStamped = false
+      const allocation = await database.query.InvoiceLineAllocation.findFirst({
+        where: (t, { and, eq }) =>
+          and(eq(t.sourceLineItemId, srcId), eq(t.invoiceId, wo6DraftId), eq(t.status, 'active')),
+      })
+      if (!allocation) wo6SourcesStamped = false
     }
-    check('case6: both accrued sources stamped', wo6SourcesStamped)
+    check(
+      'case6: both accrued sources have an active InvoiceLineAllocation to the draft',
+      wo6SourcesStamped
+    )
 
     await sweepInvoiceDrafts()
     const wo6InvoicesAfter = await listInvoicesFiltered('invoice:workOrder', wo6.recordId)
@@ -828,7 +876,7 @@ async function main() {
     const wo7 = await handler.create('work_order', {
       work_order_title: '[MI2-verify] Case7 recurring pause gate',
       work_order_contact: contactRecordId,
-      work_order_pricing_model: 'fixed',
+      work_order_pricing_model: 'fixed_contract',
     })
     createdWorkOrderIds.push(wo7.instance.id)
     await setRecurrenceRule({
@@ -930,7 +978,7 @@ async function main() {
     const wo7c = await handler.create('work_order', {
       work_order_title: '[MI2-verify] Case7c one_off completed carve-out',
       work_order_contact: contactRecordId,
-      work_order_pricing_model: 'fixed',
+      work_order_pricing_model: 'fixed_contract',
       work_order_invoice_timing: 'custom_schedule',
     })
     createdWorkOrderIds.push(wo7c.instance.id)
@@ -1062,7 +1110,7 @@ async function main() {
     )
 
     // clearInvoiceSchedule deletes the rule, keeps drafts — generate one first.
-    await handler.update(wo8.recordId, { work_order_pricing_model: 'fixed' })
+    await handler.update(wo8.recordId, { work_order_pricing_model: 'fixed_contract' })
     const case8Line = await handler.create('line_item', {
       line_item_name: '[MI2-verify] Case8 contract line',
       line_item_qty: 1,
@@ -1150,7 +1198,7 @@ async function main() {
     createdLineIds.push(wo9Line.instance.id)
 
     await setVisitStatus({ organizationId, userId, visitId: wo9Visit.id, status: 'done' })
-    const wo9Invoices = await listInvoicesFiltered('invoice:visitId', wo9Visit.id)
+    const wo9Invoices = await listInvoicesFiltered('invoice:workOrder', wo9.recordId)
     check(
       'case9: late-completed visit generates a draft',
       wo9Invoices.length === 1,
@@ -1227,15 +1275,15 @@ async function main() {
 
     await deleteInvoiceLine({ organizationId, userId, lineInstanceId: gatheredCopyId! })
     createdLineIds.splice(createdLineIds.indexOf(gatheredCopyId!), 1)
-    const extraLineAfterDelete = await fieldValueByAttr(
-      organizationId,
-      'line_item',
-      extraLineV1.instance.id,
-      'line_item_invoice'
-    )
+    // `line_item_invoice` is parent-relation-only now (§B.3) — "freed" means no active
+    // InvoiceLineAllocation claims the source anymore.
+    const extraLineAllocationAfterDelete = await database.query.InvoiceLineAllocation.findFirst({
+      where: (t, { and, eq }) =>
+        and(eq(t.sourceLineItemId, extraLineV1.instance.id), eq(t.status, 'active')),
+    })
     check(
-      'case9: deleting a gathered copy frees the source',
-      !extraLineAfterDelete?.relatedEntityId
+      'case9: deleting a gathered copy frees the source (no active InvoiceLineAllocation remains)',
+      !extraLineAllocationAfterDelete
     )
 
     // ══════════════════════════════════════════════════════════════════════
@@ -1269,7 +1317,7 @@ async function main() {
     createdLineIds.push(wo12aLine.instance.id)
     const wo12aVisit = (await getVisitsSorted(wo12a.instance.id))[0]!
     await setVisitStatus({ organizationId, userId, visitId: wo12aVisit.id, status: 'done' })
-    const wo12aInvoices = await listInvoicesFiltered('invoice:visitId', wo12aVisit.id)
+    const wo12aInvoices = await listInvoicesFiltered('invoice:workOrder', wo12a.recordId)
     check(
       'case12: per_visit door produces zero drafts while disabled',
       wo12aInvoices.length === 0,
@@ -1313,7 +1361,7 @@ async function main() {
     const wo12c = await handler.create('work_order', {
       work_order_title: '[MI2-verify] Case12c master-switch custom_schedule',
       work_order_contact: contactRecordId,
-      work_order_pricing_model: 'fixed',
+      work_order_pricing_model: 'fixed_contract',
       work_order_invoice_timing: 'custom_schedule',
     })
     createdWorkOrderIds.push(wo12c.instance.id)
@@ -1355,7 +1403,7 @@ async function main() {
     await onCacheEvent('org.settings.changed', { orgId: organizationId, broadcastUserKeys: true })
 
     await setVisitStatus({ organizationId, userId, visitId: wo12aVisit.id, status: 'done' })
-    const wo12aInvoicesAfterFlip = await listInvoicesFiltered('invoice:visitId', wo12aVisit.id)
+    const wo12aInvoicesAfterFlip = await listInvoicesFiltered('invoice:workOrder', wo12a.recordId)
     check(
       'case12: re-triggering after flipping the switch back on generates a draft',
       wo12aInvoicesAfterFlip.length === 1,
@@ -1499,7 +1547,7 @@ async function main() {
     })
     createdLineIds.push(wo14Line.instance.id)
     await setVisitStatus({ organizationId, userId, visitId: wo14Visit.id, status: 'done' })
-    const wo14Invoices = await listInvoicesFiltered('invoice:visitId', wo14Visit.id)
+    const wo14Invoices = await listInvoicesFiltered('invoice:workOrder', wo14.recordId)
     check(
       'case14: creation_date basis generates a draft',
       wo14Invoices.length === 1,
@@ -1553,7 +1601,7 @@ async function main() {
     })
     createdLineIds.push(wo14bLine.instance.id)
     await setVisitStatus({ organizationId, userId, visitId: wo14bVisit.id, status: 'done' })
-    const wo14bInvoices = await listInvoicesFiltered('invoice:visitId', wo14bVisit.id)
+    const wo14bInvoices = await listInvoicesFiltered('invoice:workOrder', wo14b.recordId)
     check(
       'case14b: visit_date basis (restored default) generates a draft',
       wo14bInvoices.length === 1,

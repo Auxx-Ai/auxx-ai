@@ -29,8 +29,7 @@ const logger = createScopedLogger('entity-migrations:035')
  * Migration 035: Money MI1 invoicing entities — `invoice` and `payment`.
  *
  * Def + fields + contact/work_order/line_item inverse relationships + default field/table
- * views. Also adds the `line_item.invoice` (owning, double-duty parent rel / invoiced-by
- * stamp) + `line_item.sourceLineId` (provenance) fields, and the `contact.invoices` /
+ * views. Also adds the `line_item.invoice` owning parent relation and the `contact.invoices` /
  * `work_order.invoices` inverse fields — none of these existed when 032 ran, since the
  * `invoice` def didn't exist yet.
  *
@@ -108,10 +107,9 @@ export const migration035MoneyInvoicing: EntityMigration = {
           organizationId,
           'line_item',
           lineItemDefId,
-          // `invoice` (owning belongs_to / invoiced-by stamp, §B.3) + `sourceLineId`
-          // (provenance) — neither existed when 032 ran, since the invoice def didn't exist
-          // in the registry yet.
-          { invoice: LINE_ITEM_FIELDS.invoice!, sourceLineId: LINE_ITEM_FIELDS.sourceLineId! },
+          // Allocation-backed billing keeps provenance in InvoiceLineAllocation. Only the
+          // invoice-owned line parent relation remains in the clean-cutover registry.
+          { invoice: LINE_ITEM_FIELDS.invoice! },
           existing,
           state
         )

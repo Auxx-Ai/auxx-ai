@@ -18,12 +18,14 @@ import type { PaletteAction, PaletteSection } from './types'
  * can't silently go missing from cmd+k.
  */
 const SIDEBAR_TO_ACTION: Record<string, string> = {
+  dashboards: 'nav.dashboards',
   today: 'nav.today',
   chats: 'nav.chats',
   agents: 'nav.agents',
   calls: 'nav.calls',
   workflows: 'nav.workflows',
   tasks: 'nav.tasks',
+  schedule: 'nav.schedule',
 }
 
 /** Warn (once per render that trips it) about uncovered top-level sidebar items. */

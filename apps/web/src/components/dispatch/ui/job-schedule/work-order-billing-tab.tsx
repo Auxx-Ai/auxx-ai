@@ -1,245 +1,389 @@
 // apps/web/src/components/dispatch/ui/job-schedule/work-order-billing-tab.tsx
 'use client'
 
-// WorkOrderBillingTab — registered as `work_order:billing`
-// (plans/dispatch/money/10-work-order-billing-tab.md §D/§E). The job view's money surface:
-// summary strip, the ready-to-invoice callout (locked decision 4), the invoicing schedule
-// (`BillingScheduleRow`, moved here from the line-items section), the invoices block, and the
-// shared payments block (§B/§C). Follows `WorkOrderLineItemsTab`'s `variant` handling — bounded
-// `max-h` + `overflow-auto` in `section` mode, full-height flex in `tab` mode. The wrapping
-// `<Section>` (`DetailViewSections`) owns the "Billing" heading — this component renders content
-// only.
-
+import { BILLING_BASIS_LABELS, BILLING_TIMING_LABELS } from '@auxx/lib/money/client'
+import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
-import { toastError } from '@auxx/ui/components/toast'
+import { Skeleton } from '@auxx/ui/components/skeleton'
+import { TuckedSection } from '@auxx/ui/components/tucked-label'
 import { cn } from '@auxx/ui/lib/utils'
-import { CalendarClock, RotateCcw, TriangleAlert } from 'lucide-react'
-import { useCallback, useMemo, useState } from 'react'
+import { CreditCard, ExternalLink, ReceiptText } from 'lucide-react'
+import { useMemo, useState } from 'react'
 import type { DetailViewTabProps } from '~/components/detail-view'
-import { useAdminGate } from '~/components/global/admin-gate'
-import type { InvoiceBillingValues } from '~/components/money/hooks/use-work-order-invoices'
-import { useWorkOrderInvoices } from '~/components/money/hooks/use-work-order-invoices'
+import { BillingActionDialog } from '~/components/money/billing/billing-action-dialog'
+import { BillingPlanDialog } from '~/components/money/billing/billing-plan-dialog'
+import { BillingScheduleDialog } from '~/components/money/billing/billing-schedule-dialog'
+import { resolveBillingAction, type WorkOrderBillingView } from '~/components/money/billing/types'
+import { useWorkOrderBillingState } from '~/components/money/billing/use-work-order-billing-state'
 import { formatCurrency } from '~/components/money/ui/line-builder/shared'
-import { TuckedLabel } from '~/components/money/ui/tucked-label'
-import { useSystemValues } from '~/components/resources/hooks/use-system-values'
-import { useConfirm } from '~/hooks/use-confirm'
-import { useSettings } from '~/hooks/use-settings'
+import { useOpenRecord } from '~/components/records/record-drill-panels'
 import { api } from '~/trpc/react'
 import { BillingScheduleRow } from './billing-schedule-row'
-import { WorkOrderBillingInvoicesBlock } from './work-order-billing-invoices-block'
 import type { PaymentCandidate } from './work-order-billing-payments-block'
 import { WorkOrderBillingPaymentsBlock } from './work-order-billing-payments-block'
 
-/** Timings whose invoice drafts are generated automatically (vs `as_needed`, manual). */
-const AUTOMATED_TIMINGS = new Set(['per_visit_completed', 'on_completion', 'custom_schedule'])
-
-/** Quiet sub-block header — the Attio-style tucked label the block below stacks into. */
-function BlockLabel({ children }: { children: React.ReactNode }) {
-  return <TuckedLabel className=' mt-2'>{children}</TuckedLabel>
-}
-
 export function WorkOrderBillingTab({ recordId, variant = 'tab' }: DetailViewTabProps) {
-  const isSection = variant === 'section'
-  const { allowed: isAdmin } = useAdminGate()
-  const [confirm, ConfirmDialog] = useConfirm()
-  const { getSetting } = useSettings({})
-  const currencyCode = (getSetting('organization.currency') as string | null) ?? 'USD'
-  const autoEnabled = (getSetting('documents.invoice.autoEnabled') as boolean | null) ?? true
-
-  // Same fallback the line-items tab used — `per_visit_completed` is the field's static
-  // default, and defaulting to `as_needed` here would flash the ready-to-invoice callout on
-  // automated jobs while the value loads.
-  const { values } = useSystemValues(recordId, ['work_order_invoice_timing', 'work_order_status'], {
-    autoFetch: true,
-  })
-  const invoiceTiming =
-    (values.work_order_invoice_timing as string | undefined) ?? 'per_visit_completed'
-  const workOrderStatus = values.work_order_status as string | undefined
-
-  const { invoiceRecordIds, isLoading: invoicesLoading } = useWorkOrderInvoices(recordId)
-
-  // §B.9/§B.10 — held (invoice-less, succeeded) deposit rows, straight off the ledger. Same
-  // query the payments block below already fires with the same input, so React Query dedupes
-  // this into one network call.
+  const [actionOpen, setActionOpen] = useState(false)
+  const [extraOpen, setExtraOpen] = useState(false)
+  const [planOpen, setPlanOpen] = useState(false)
+  const [scheduleOpen, setScheduleOpen] = useState(false)
+  const { billing, isLoading } = useWorkOrderBillingState(recordId)
   const utils = api.useUtils()
-  const { data: payments } = api.money.listPaymentsForWorkOrder.useQuery({
-    workOrderRecordId: recordId,
-  })
-  const heldDepositRows = useMemo(
+  const isSection = variant === 'section'
+  const paymentCandidates: PaymentCandidate[] = useMemo(
     () =>
-      (payments ?? []).filter(
-        (p) => p.kind === 'charge' && p.status === 'succeeded' && p.invoiceInstanceId == null
-      ),
-    [payments]
-  )
-  const heldDepositTotal = heldDepositRows.reduce((sum, p) => sum + p.amount, 0)
-  const hasHeldDeposit = heldDepositRows.length > 0
-
-  const refundTransaction = api.money.refundTransaction.useMutation({
-    onSuccess: () =>
-      void utils.money.listPaymentsForWorkOrder.invalidate({ workOrderRecordId: recordId }),
-    onError: (error) =>
-      toastError({ title: 'Error refunding payment', description: error.message }),
-  })
-
-  const handleRefundDeposit = async () => {
-    const deposit = heldDepositRows[0]
-    if (!deposit) return
-    const confirmed = await confirm({
-      title: 'Refund the held deposit?',
-      description: 'The platform fee is refunded too. This cannot be undone.',
-      confirmText: 'Refund',
-      cancelText: 'Cancel',
-      destructive: true,
-    })
-    if (!confirmed) return
-    refundTransaction.mutate({ transactionId: deposit.id })
-  }
-
-  const { data: uninvoicedLines } = api.money.listUninvoicedLines.useQuery({
-    workOrderRecordId: recordId,
-  })
-  const { data: visits } = api.dispatch.listVisits.useQuery({ workOrderRecordId: recordId })
-
-  // Per-invoice values map, fed by each `InvoiceBillingRow` as its own read resolves (billing
-  // tab build spec §D.1 — no batch field-value hook exists yet).
-  const [invoiceValuesById, setInvoiceValuesById] = useState<Record<string, InvoiceBillingValues>>(
-    {}
-  )
-  const handleInvoiceValues = useCallback(
-    (invoiceRecordId: string, invoiceValues: InvoiceBillingValues) => {
-      setInvoiceValuesById((prev) => ({ ...prev, [invoiceRecordId]: invoiceValues }))
-    },
-    []
+      billing.invoices
+        .filter((invoice) => invoice.status !== 'void' && invoice.balance > 0)
+        .map((invoice) => ({
+          recordId: invoice.recordId,
+          balance: invoice.balance,
+          displayName: invoice.displayName,
+        })),
+    [billing.invoices]
   )
 
-  const knownInvoiceValues = useMemo(
-    () =>
-      invoiceRecordIds
-        .map((id) => invoiceValuesById[id])
-        .filter((v): v is InvoiceBillingValues => !!v),
-    [invoiceRecordIds, invoiceValuesById]
-  )
-  const nonVoidValues = useMemo(
-    () => knownInvoiceValues.filter((v) => v.status !== 'void'),
-    [knownInvoiceValues]
-  )
-
-  const invoicedTotal = nonVoidValues.reduce((sum, v) => sum + v.total, 0)
-  const paidTotal = nonVoidValues.reduce((sum, v) => sum + v.amountPaid, 0)
-  const balanceTotal = nonVoidValues.reduce((sum, v) => sum + v.balance, 0)
-  const uninvoicedTotal = (uninvoicedLines ?? []).reduce((sum, line) => sum + line.lineTotal, 0)
-
-  // §C candidates — invoices with a positive balance that aren't void.
-  const candidates: PaymentCandidate[] = useMemo(
-    () =>
-      nonVoidValues
-        .filter((v) => v.balance > 0)
-        .map((v) => ({ recordId: v.recordId, balance: v.balance, displayName: v.displayName })),
-    [nonVoidValues]
-  )
-
-  const anyDoneVisit = (visits ?? []).some((v) => v.status === 'done')
-  const hasUninvoicedLines = (uninvoicedLines ?? []).length > 0
-  const effectiveManual = invoiceTiming === 'as_needed' || autoEnabled === false
-  const showReadyToInvoiceCallout = anyDoneVisit && hasUninvoicedLines && effectiveManual
-
-  const showOrgDisabledWarning = autoEnabled === false && AUTOMATED_TIMINGS.has(invoiceTiming)
+  if (isLoading) return <BillingSkeleton />
 
   return (
-    <div className={cn('flex flex-col', isSection ? '' : 'h-full min-h-0')}>
+    <div className={cn('flex flex-col', !isSection && 'h-full min-h-0')}>
       <div
         className={cn(
-          'flex flex-col',
-          isSection ? 'max-h-[70vh] overflow-auto' : 'min-h-0 flex-1'
+          'flex flex-col gap-4 py-2',
+          isSection ? 'max-h-[70vh] overflow-auto' : 'min-h-0 flex-1 overflow-auto'
         )}>
-        {/* Block a — summary strip */}
-        <div className='flex items-stretch gap-6  pt-2 pb-3'>
-          <SummaryCell label='Invoiced' value={formatCurrency(invoicedTotal, currencyCode)} />
-          <SummaryCell label='Paid' value={formatCurrency(paidTotal, currencyCode)} />
-          <SummaryCell label='Balance due' value={formatCurrency(balanceTotal, currencyCode)} />
-          <SummaryCell label='Uninvoiced' value={formatCurrency(uninvoicedTotal, currencyCode)} />
-          {hasHeldDeposit && (
-            <SummaryCell
-              label='Deposit held'
-              value={formatCurrency(heldDepositTotal, currencyCode)}
+        <SummaryStrip billing={billing} />
+        <NextAction billing={billing} onAction={() => setActionOpen(true)} />
+
+        <TuckedSection
+          label='Billing plan'
+          action={
+            <Button variant='ghost' size='xs' onClick={() => setPlanOpen(true)}>
+              Edit billing plan
+            </Button>
+          }>
+          <div className='grid gap-3 p-3 text-sm sm:grid-cols-3'>
+            <PlanValue label='Basis' value={BILLING_BASIS_LABELS[billing.basis]} />
+            <PlanValue label='Timing' value={BILLING_TIMING_LABELS[billing.timing]} />
+            <PlanValue
+              label='Automation'
+              value={
+                billing.nextInvoiceDate
+                  ? `Next ${formatDate(billing.nextInvoiceDate)}`
+                  : 'No date scheduled'
+              }
             />
+          </div>
+          {billing.timing === 'custom_schedule' && (
+            <BillingScheduleRow workOrderRecordId={recordId} invoiceTiming={billing.timing} />
           )}
-        </div>
+        </TuckedSection>
 
-        {/* §B.10 — cancel-with-held-deposit refund action */}
-        {hasHeldDeposit && workOrderStatus === 'canceled' && (
-          <div className='mx-4 mb-2 flex items-center justify-between gap-2 rounded-md bg-amber-500/10 px-3 py-2 text-amber-700 text-xs dark:text-amber-400'>
-            <span>
-              This job was canceled with a held deposit of{' '}
-              {formatCurrency(heldDepositTotal, currencyCode)}.
-            </span>
-            {isAdmin && (
-              <Button
-                variant='outline'
-                size='xs'
-                loading={refundTransaction.isPending}
-                loadingText='Refunding…'
-                onClick={handleRefundDeposit}>
-                <RotateCcw />
-                Refund deposit
+        {billing.basis === 'fixed_contract' && (
+          <TuckedSection
+            label='Payment schedule'
+            action={
+              <Button variant='ghost' size='xs' onClick={() => setScheduleOpen(true)}>
+                {billing.installments.length > 0 ? 'Edit schedule' : 'Set up payment schedule'}
               </Button>
+            }>
+            {billing.installments.length === 0 ? (
+              <p className='p-3 text-sm text-muted-foreground'>No payment schedule configured.</p>
+            ) : (
+              <div className='divide-y'>
+                {billing.installments.map((item) => (
+                  <div
+                    key={item.id}
+                    className='flex items-center justify-between gap-3 px-3 py-2 text-sm'>
+                    <span>
+                      <span className='font-medium'>{item.name}</span>
+                      {item.scheduledDate && (
+                        <span className='ml-2 text-muted-foreground'>
+                          {formatDate(item.scheduledDate)}
+                        </span>
+                      )}
+                    </span>
+                    <span className='flex items-center gap-2'>
+                      <Badge variant='outline' size='sm'>
+                        {item.status}
+                      </Badge>
+                      <span className='tabular-nums'>
+                        {formatCurrency(item.amount, billing.currencyCode)}
+                      </span>
+                    </span>
+                  </div>
+                ))}
+              </div>
             )}
-          </div>
+          </TuckedSection>
         )}
 
-        {/* Block b — ready-to-invoice callout (locked decision 4) */}
-        {showReadyToInvoiceCallout && (
-          <div className='mx-4 mb-2 flex items-center gap-1.5 rounded-md bg-amber-500/10 px-3 py-2 text-amber-700 text-xs dark:text-amber-400'>
-            <TriangleAlert className='size-3.5 shrink-0' />
-            This job has completed work that hasn't been invoiced.
-          </div>
-        )}
+        <TuckedSection label='Uninvoiced work'>
+          <UninvoicedWork
+            billing={billing}
+            onPrimary={() => setActionOpen(true)}
+            onExtra={() => setExtraOpen(true)}
+          />
+        </TuckedSection>
 
-        {/* Block c — invoicing schedule */}
-        <BillingScheduleRow workOrderRecordId={recordId} invoiceTiming={invoiceTiming} />
-        {showOrgDisabledWarning && (
-          <div className='flex items-center gap-1.5  pt-1 pb-2 text-xs text-amber-700 dark:text-amber-400'>
-            <CalendarClock className='size-3.5 shrink-0' />
-            Automatic invoicing is turned off for your organization.
-          </div>
-        )}
-        <div className='me-3'>
-          {/* Block d — invoices */}
-          <BlockLabel>Invoices</BlockLabel>
-          <div className='bg-primary-100 border rounded-xl mb-4'>
-            <WorkOrderBillingInvoicesBlock
-              workOrderRecordId={recordId}
-              invoiceRecordIds={invoiceRecordIds}
-              isLoading={invoicesLoading}
-              currencyCode={currencyCode}
-              onInvoiceValues={handleInvoiceValues}
-            />
-          </div>
+        <TuckedSection label='Invoices'>
+          <InvoiceRows billing={billing} />
+        </TuckedSection>
 
-          {/* Block e — payments */}
-          <BlockLabel>Payments</BlockLabel>
-          <div className='bg-primary-100 border rounded-xl'>
-            <WorkOrderBillingPaymentsBlock
-              workOrderRecordId={recordId}
-              candidates={candidates}
-              currencyCode={currencyCode}
-            />
-          </div>
-        </div>
+        <TuckedSection label='Payments'>
+          <WorkOrderBillingPaymentsBlock
+            workOrderRecordId={recordId}
+            candidates={paymentCandidates}
+            currencyCode={billing.currencyCode}
+            onSettled={() =>
+              void utils.money.getWorkOrderBillingState.invalidate({ workOrderRecordId: recordId })
+            }
+          />
+        </TuckedSection>
       </div>
-      <ConfirmDialog />
+
+      <BillingActionDialog
+        open={actionOpen}
+        onOpenChange={setActionOpen}
+        workOrderRecordId={recordId}
+        billing={billing}
+      />
+      <BillingPlanDialog
+        open={planOpen}
+        onOpenChange={setPlanOpen}
+        workOrderRecordId={recordId}
+        basis={billing.basis}
+        timing={billing.timing}
+      />
+      <BillingScheduleDialog
+        open={scheduleOpen}
+        onOpenChange={setScheduleOpen}
+        workOrderRecordId={recordId}
+        billing={billing}
+      />
+      <BillingActionDialog
+        open={extraOpen}
+        onOpenChange={setExtraOpen}
+        workOrderRecordId={recordId}
+        billing={billing}
+        mode='extra'
+        initialVisitIds={billing.extraWorkVisitIds}
+      />
     </div>
   )
 }
 
-function SummaryCell({ label, value }: { label: string; value: string }) {
+function SummaryStrip({ billing }: { billing: WorkOrderBillingView }) {
+  const firstLabel =
+    billing.basis === 'fixed_contract'
+      ? 'Contract value'
+      : billing.basis === 'per_visit'
+        ? 'Default visit price'
+        : 'Rate per billing period'
+  return (
+    <div className='grid grid-cols-2 gap-3 border-b pb-4 sm:grid-cols-5'>
+      <SummaryCell label={firstLabel} value={billing.billingAmount} billing={billing} />
+      <SummaryCell label='Drafted' value={billing.drafted} billing={billing} />
+      <SummaryCell label='Invoiced' value={billing.invoiced} billing={billing} />
+      <SummaryCell label='Remaining to invoice' value={billing.remaining} billing={billing} />
+      <SummaryCell label='Balance due' value={billing.balanceDue} billing={billing} />
+    </div>
+  )
+}
+
+function SummaryCell({
+  label,
+  value,
+  billing,
+}: {
+  label: string
+  value: number
+  billing: WorkOrderBillingView
+}) {
   return (
     <div className='flex flex-col gap-0.5'>
       <span className='text-xs text-muted-foreground'>{label}</span>
-      <span className='font-medium text-sm tabular-nums'>{value}</span>
+      <span className='font-medium text-sm tabular-nums'>
+        {formatCurrency(value, billing.currencyCode)}
+      </span>
     </div>
   )
+}
+
+function NextAction({
+  billing,
+  onAction,
+}: {
+  billing: WorkOrderBillingView
+  onAction: () => void
+}) {
+  const openRecord = useOpenRecord()
+  const action = resolveBillingAction(billing)
+  const handleClick = () => {
+    if (action.kind === 'create') return onAction()
+    if (action.kind === 'review_draft') {
+      if (action.draftInvoiceRecordId) return openRecord?.(action.draftInvoiceRecordId)
+      return onAction()
+    }
+    if (action.kind === 'view_invoices') {
+      const target = billing.invoices[0]
+      if (target) openRecord?.(target.recordId)
+    }
+  }
+  return (
+    <div className='flex items-center justify-between gap-4 rounded-xl border bg-primary-100 p-3'>
+      <div className='flex min-w-0 items-start gap-3'>
+        <div className='rounded-md border bg-background p-2'>
+          <CreditCard className='size-4' />
+        </div>
+        <div>
+          <div className='flex items-center gap-2'>
+            <span className='font-medium text-sm'>Next action</span>
+            <BillingStateBadge state={billing.state} />
+          </div>
+          <p className='mt-0.5 text-xs text-muted-foreground'>{nextActionDescription(billing)}</p>
+        </div>
+      </div>
+      {action.kind !== 'none' && (
+        <Button variant='outline' size='sm' onClick={handleClick}>
+          {action.label}
+        </Button>
+      )}
+    </div>
+  )
+}
+
+function UninvoicedWork({
+  billing,
+  onPrimary,
+  onExtra,
+}: {
+  billing: WorkOrderBillingView
+  onPrimary: () => void
+  onExtra: () => void
+}) {
+  if (
+    billing.remaining <= 0 &&
+    billing.eligibleVisits.length === 0 &&
+    billing.extraWorkVisitIds.length === 0
+  ) {
+    return (
+      <p className='p-3 text-sm text-muted-foreground'>
+        {billing.basis === 'fixed_contract'
+          ? 'This contract is fully invoiced.'
+          : billing.basis === 'recurring_flat' && billing.nextInvoiceDate
+            ? `The next draft is scheduled for ${formatDate(billing.nextInvoiceDate)}.`
+            : 'No completed visits are ready to invoice.'}
+      </p>
+    )
+  }
+  return (
+    <div className='flex items-center justify-between gap-3 p-3 text-sm'>
+      <div>
+        <div className='font-medium'>
+          {billing.eligibleVisits.length > 0
+            ? `${billing.eligibleVisits.length} eligible visit${billing.eligibleVisits.length === 1 ? '' : 's'}`
+            : formatCurrency(billing.remaining, billing.currencyCode)}
+        </div>
+        <div className='text-xs text-muted-foreground'>
+          {billing.extraWorkVisitIds.length > 0
+            ? `${billing.extraWorkVisitIds.length} visit${billing.extraWorkVisitIds.length === 1 ? '' : 's'} with extra work`
+            : 'Available for the next invoice'}
+        </div>
+      </div>
+      <div className='flex gap-2'>
+        {billing.extraWorkVisitIds.length > 0 && (
+          <Button variant='ghost' size='sm' onClick={onExtra}>
+            Invoice extra work
+          </Button>
+        )}
+        <Button variant='outline' size='sm' onClick={onPrimary}>
+          Create invoice
+        </Button>
+      </div>
+    </div>
+  )
+}
+
+function InvoiceRows({ billing }: { billing: WorkOrderBillingView }) {
+  const openRecord = useOpenRecord()
+  if (billing.invoices.length === 0)
+    return <p className='p-3 text-sm text-muted-foreground'>No invoices yet.</p>
+  return (
+    <div className='divide-y'>
+      {billing.invoices.map((invoice) => (
+        <button
+          type='button'
+          key={invoice.recordId}
+          onClick={() => openRecord?.(invoice.recordId)}
+          className='flex w-full items-center gap-3 px-3 py-2 text-left hover:bg-primary-100'>
+          <ReceiptText className='size-4 text-muted-foreground' />
+          <span className='min-w-0 flex-1'>
+            <span className='block truncate text-sm font-medium'>{invoice.displayName}</span>
+            <span className='text-xs text-muted-foreground'>
+              {invoice.visitCount
+                ? `${invoice.visitCount} visit${invoice.visitCount === 1 ? '' : 's'} · `
+                : ''}
+              {invoice.status}
+            </span>
+          </span>
+          <span className='text-sm tabular-nums'>
+            {formatCurrency(invoice.total, billing.currencyCode)}
+          </span>
+          <ExternalLink className='size-3.5 text-muted-foreground' />
+        </button>
+      ))}
+    </div>
+  )
+}
+
+function PlanValue({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <div className='text-xs text-muted-foreground'>{label}</div>
+      <div className='font-medium'>{value}</div>
+    </div>
+  )
+}
+function BillingStateBadge({ state }: { state: string }) {
+  return (
+    <Badge
+      variant={
+        state === 'attention_required'
+          ? 'destructive'
+          : state === 'ready_to_invoice'
+            ? 'default'
+            : 'outline'
+      }
+      size='sm'>
+      {state.replaceAll('_', ' ')}
+    </Badge>
+  )
+}
+function BillingSkeleton() {
+  return (
+    <div className='space-y-3 py-2'>
+      <Skeleton className='h-12 w-full' />
+      <Skeleton className='h-20 w-full' />
+      <Skeleton className='h-28 w-full' />
+    </div>
+  )
+}
+function nextActionDescription(billing: WorkOrderBillingView) {
+  if (billing.state === 'attention_required')
+    return 'The billing plan needs attention before another invoice can be created.'
+  if (billing.state === 'draft_pending') return 'An editable invoice draft is waiting for review.'
+  if (billing.state === 'awaiting_payment')
+    return `${formatCurrency(billing.balanceDue, billing.currencyCode)} remains due on issued invoices.`
+  if (billing.state === 'scheduled' && billing.nextInvoiceDate)
+    return `The next draft is scheduled for ${formatDate(billing.nextInvoiceDate)}.`
+  if (billing.state === 'ready_to_invoice')
+    return billing.eligibleVisits.length
+      ? `${billing.eligibleVisits.length} completed visit${billing.eligibleVisits.length === 1 ? '' : 's'} can be invoiced.`
+      : `${formatCurrency(billing.remaining, billing.currencyCode)} is ready to invoice.`
+  return 'No billing action is currently required.'
+}
+function formatDate(value: string) {
+  return new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(new Date(value))
 }
 
 export default WorkOrderBillingTab

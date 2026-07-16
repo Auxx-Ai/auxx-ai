@@ -81,6 +81,10 @@ export const guardInvoiceDelete: EntityPreDeleteHandler = async (event) => {
     mode: 'oneshot',
   })
   for (const lineInstanceId of ownLineIds) {
-    await handler.delete(toRecordId('line_item', lineInstanceId))
+    // Suppress the line-level billing post-delete hook — the invoice is being deleted, and
+    // the invoices post-delete hook re-projects its work order once after the delete lands.
+    await handler.delete(toRecordId('line_item', lineInstanceId), {
+      suppressPostDeleteHooks: true,
+    })
   }
 }

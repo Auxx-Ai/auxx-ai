@@ -4,11 +4,10 @@ import { type Database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { and, eq } from 'drizzle-orm'
 import { onCacheEvent } from '../../../cache/invalidate'
-import { INVOICE_FIELDS } from '../../../resources/registry/resources/invoice-fields'
 import { SystemUserService } from '../../../users/system-user-service'
 import { DEFAULT_VIEW_CONFIGS } from '../../default-view-configs'
 import { resolveViewConfig } from '../../entity-seeder/create-default-views'
-import { ensureCustomFields, loadExistingState } from '../helpers'
+import { loadExistingState } from '../helpers'
 import type { EntityMigration, EntityMigrationResult } from '../types'
 
 const logger = createScopedLogger('entity-migrations:038')
@@ -16,13 +15,7 @@ const logger = createScopedLogger('entity-migrations:038')
 /**
  * Migration 038: Money MI2 invoice automation groundwork.
  *
- * 1. Adds the hidden `invoice.visitId` field (`invoice_visit_id`) — the per-visit auto-draft
- *    dedup key + visit→invoice backlink (money MI2 build spec §B/§I, Q6a). Mirrors the 036
- *    `invoice.publicToken` recipe: fresh orgs get it for free via `INVOICE_FIELDS`
- *    (entity-seeder/create-fields.ts); this migration backfills orgs that installed `invoice`
- *    (035) before this field existed.
- *
- * 2. Seeds the "Drafts" saved table view (Q10a) for orgs that already ran 035's
+ * Seeds the "Drafts" saved table view (Q10a) for orgs that already ran 035's
  *    `ensureDefaultTableViews` call. NOTE: `ensureDefaultTableViews` (helpers.ts:459) dedups
  *    per-ENTITY, not per-view — it no-ops entirely the moment ANY TableView exists at
  *    `entity-${invoiceDefId}` (helpers.ts:473-483), which every org that ran 035 already has
@@ -59,16 +52,6 @@ export const migration038InvoiceAutomation: EntityMigration = {
       return { ...state, alreadyUpToDate: true }
     }
 
-    const fieldMap = await ensureCustomFields(
-      db,
-      organizationId,
-      'invoice',
-      invoiceDef.id,
-      { visitId: INVOICE_FIELDS.visitId! },
-      existing,
-      state
-    )
-
     let viewCreated = false
     const tableId = `entity-${invoiceDef.id}`
     const draftsViewDef = DEFAULT_VIEW_CONFIGS.invoice.find((v) => v.name === 'Drafts')
@@ -100,13 +83,6 @@ export const migration038InvoiceAutomation: EntityMigration = {
             })
           }
         }
-        for (const field of fieldMap.values()) {
-          resolvable.set(`invoice:${field.id}`, {
-            id: field.id,
-            systemAttribute: field.systemAttribute,
-          })
-        }
-
         const systemUserId = await SystemUserService.getSystemUserForActions(organizationId)
         const resolvedConfig = resolveViewConfig(
           draftsViewDef.config,

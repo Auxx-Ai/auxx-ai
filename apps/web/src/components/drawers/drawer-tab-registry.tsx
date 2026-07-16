@@ -81,6 +81,10 @@ export const DRAWER_TAB_CARD_COMPONENTS: Record<
     import('./cards/contact-shared-with-card').then((m) => ({
       default: m.ContactSharedWithCard,
     })),
+  'contact:billing': () =>
+    import('./cards/contact-billing-overview-card').then((m) => ({
+      default: m.ContactBillingOverviewCard,
+    })),
 
   // ─────────────────────────────────────────────────────────────────
   // TICKET OVERVIEW CARDS
@@ -138,9 +142,9 @@ export const DRAWER_TAB_CARD_COMPONENTS: Record<
     import('./cards/work-order-related-cards').then((m) => ({
       default: m.WorkOrderScheduleCard,
     })),
-  'work_order:invoices': () =>
+  'work_order:billing': () =>
     import('./cards/work-order-related-cards').then((m) => ({
-      default: m.WorkOrderInvoicesCard,
+      default: m.WorkOrderBillingCard,
     })),
   'work_order:communications': () =>
     import('../signals/ui/work-order-communications-card').then((m) => ({
@@ -158,6 +162,10 @@ export const DRAWER_TAB_CARD_COMPONENTS: Record<
   'invoice:payments': () =>
     import('../money/ui/invoice/invoice-payments-card').then((m) => ({
       default: m.InvoicePaymentsCard,
+    })),
+  'invoice:billing-context': () =>
+    import('../money/ui/invoice/invoice-billing-context-card').then((m) => ({
+      default: m.InvoiceBillingContextCard,
     })),
 
   // ─────────────────────────────────────────────────────────────────

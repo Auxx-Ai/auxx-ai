@@ -359,7 +359,22 @@ export class GoogleProvider
     labelIds?: string[]
   }> {
     await this.ensureInitialized()
-    logger.info('Sending email via Gmail API', { options })
+    logger.info('Sending email via Gmail API', {
+      from: options.from,
+      to: options.to,
+      cc: options.cc,
+      bcc: options.bcc,
+      subject: options.subject,
+      inReplyTo: options.inReplyTo,
+      textLength: options.text?.length,
+      htmlLength: options.html?.length,
+      attachmentIds: options.attachmentIds,
+      attachments: options.attachments?.map((a) => ({
+        filename: a.filename,
+        contentType: a.contentType,
+        size: a.size ?? (typeof a.content === 'string' ? a.content.length : a.content.byteLength),
+      })),
+    })
 
     try {
       // Ensure contacts exist for recipients in selective mode

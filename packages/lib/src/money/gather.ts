@@ -1,17 +1,23 @@
 // packages/lib/src/money/gather.ts
 
-import { database, schema } from '@auxx/database'
+import { type Database, database, schema } from '@auxx/database'
 import type { CustomFieldEntity } from '@auxx/database/types'
 import type { TypedFieldValue } from '@auxx/types'
 import { extractValue } from '@auxx/types'
 import type { RecordId } from '@auxx/types/resource'
 import { parseRecordId, toRecordId } from '@auxx/types/resource'
-import { inArray } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 import { getOrgCache } from '../cache'
 import { BadRequestError } from '../errors'
 import { FieldValueService } from '../field-values/field-value-service'
 import { UnifiedCrudHandler } from '../resources/crud'
 import { getOrganizationSetting } from '../settings/settings-service'
+import { allocateInvoiceLine, getActiveAllocatedAmounts } from './billing-allocations'
+import {
+  batchReadSystemValues,
+  syncInvoiceBillingProjection,
+  syncWorkOrderBillingProjection,
+} from './billing-projection'
 import { applyHeldDepositToInvoice } from './payments/ledger'
 import { recomputeTotals } from './totals-hooks'
 import type {
@@ -39,7 +45,6 @@ const LINE_ROW_ATTRS = [
   'line_item_line_total',
   'line_item_taxable',
   'line_item_visit_id',
-  'line_item_invoice',
 ] as const
 
 /**
@@ -74,7 +79,6 @@ export async function listUninvoicedLines(
 ): Promise<UninvoicedLine[]> {
   const { organizationId, userId, workOrderInstanceId } = input
   const handler = new UnifiedCrudHandler(organizationId, userId)
-  const cache = getOrgCache()
   const workOrderRecordId = toRecordId('work_order', workOrderInstanceId)
 
   const { ids: lineInstanceIds } = await handler.listFiltered({
@@ -99,14 +103,8 @@ export async function listUninvoicedLines(
   })
   if (lineInstanceIds.length === 0) return []
 
-  const cf = await cache.from(organizationId, 'customFields').bySystemAttributes(LINE_ROW_ATTRS)
-  const fieldIds = Object.values(cf)
-    .filter(Boolean)
-    .map((f) => f!.id)
-
   type RawRow = {
     lineInstanceId: string
-    invoiceInstanceId: string | undefined
     name: string
     description: string | undefined
     qty: number
@@ -116,57 +114,36 @@ export async function listUninvoicedLines(
     visitId: string | undefined
   }
 
-  const rawRows: RawRow[] = []
-  for (const lineInstanceId of lineInstanceIds) {
-    const lineRecordId = toRecordId('line_item', lineInstanceId)
-    const values = await handler.getFieldValues(lineRecordId, fieldIds)
-    const get = (f?: { id: string }) => (f ? firstTyped(values.get(f.id)) : undefined)
-
-    const invoiceTyped = get(cf.line_item_invoice)
-    const invoiceRecordId =
-      invoiceTyped?.type === 'relationship' ? invoiceTyped.recordId : undefined
-    const invoiceInstanceId = invoiceRecordId
-      ? parseRecordId(invoiceRecordId).entityInstanceId
-      : undefined
-
-    const nameTyped = get(cf.line_item_name)
-    const descriptionTyped = get(cf.line_item_description)
-    const qtyTyped = get(cf.line_item_qty)
-    const unitPriceTyped = get(cf.line_item_unit_price)
-    const lineTotalTyped = get(cf.line_item_line_total)
-    const taxableTyped = get(cf.line_item_taxable)
-    const visitIdTyped = get(cf.line_item_visit_id)
-
-    rawRows.push({
+  // One batched read for every candidate line instead of a `getFieldValues` call per row — this
+  // sits in the composed work-order billing endpoint's hot path.
+  const valuesById = await batchReadSystemValues({
+    service: new FieldValueService(organizationId, userId),
+    organizationId,
+    entityType: 'line_item',
+    entityInstanceIds: lineInstanceIds,
+    attributes: LINE_ROW_ATTRS,
+  })
+  const rawRows: RawRow[] = lineInstanceIds.map((lineInstanceId) => {
+    const values = valuesById.get(lineInstanceId) ?? new Map<string, unknown>()
+    return {
       lineInstanceId,
-      invoiceInstanceId,
-      name: nameTyped ? (extractValue(nameTyped) as string) : '',
-      description: descriptionTyped ? (extractValue(descriptionTyped) as string) : undefined,
-      qty: qtyTyped ? (extractValue(qtyTyped) as number) : 1,
-      unitPrice: unitPriceTyped ? (extractValue(unitPriceTyped) as number) : null,
-      lineTotal: lineTotalTyped ? (extractValue(lineTotalTyped) as number) : null,
-      taxable: taxableTyped ? (extractValue(taxableTyped) as boolean) : true,
-      visitId: visitIdTyped ? (extractValue(visitIdTyped) as string) : undefined,
-    })
-  }
+      name: (values.get('line_item_name') as string | undefined) ?? '',
+      description: values.get('line_item_description') as string | undefined,
+      qty: (values.get('line_item_qty') as number | undefined) ?? 1,
+      unitPrice: (values.get('line_item_unit_price') as number | undefined) ?? null,
+      lineTotal: (values.get('line_item_line_total') as number | undefined) ?? null,
+      taxable: (values.get('line_item_taxable') as boolean | undefined) ?? true,
+      visitId: values.get('line_item_visit_id') as string | undefined,
+    }
+  })
 
-  // Batch-check which stamped invoice ids still exist — one query for the backstop.
-  const stampedInvoiceIds = [
-    ...new Set(rawRows.map((r) => r.invoiceInstanceId).filter(Boolean)),
-  ] as string[]
-  const existingInvoiceIds = stampedInvoiceIds.length
-    ? new Set(
-        (
-          await database.query.EntityInstance.findMany({
-            where: inArray(schema.EntityInstance.id, stampedInvoiceIds),
-            columns: { id: true },
-          })
-        ).map((row) => row.id)
-      )
-    : new Set<string>()
+  const allocated = await getActiveAllocatedAmounts({
+    organizationId,
+    sourceLineItemIds: rawRows.map((row) => row.lineInstanceId),
+  })
 
   return rawRows
-    .filter((row) => !row.invoiceInstanceId || !existingInvoiceIds.has(row.invoiceInstanceId))
+    .filter((row) => !allocated.has(row.lineInstanceId))
     .map((row) => ({
       recordId: toRecordId('line_item', row.lineInstanceId),
       instanceId: row.lineInstanceId,
@@ -210,9 +187,11 @@ export async function createInvoiceShell(input: {
   workOrderInstanceId: string
   issuedAt?: string
   extraValues?: Record<string, unknown>
+  db?: Database
+  publishEvents?: boolean
 }) {
-  const { organizationId, userId, workOrderInstanceId, issuedAt, extraValues } = input
-  const handler = new UnifiedCrudHandler(organizationId, userId)
+  const { organizationId, userId, workOrderInstanceId, issuedAt, extraValues, db } = input
+  const handler = new UnifiedCrudHandler(organizationId, userId, db)
   const cache = getOrgCache()
   const workOrderRecordId = toRecordId('work_order', workOrderInstanceId)
 
@@ -262,7 +241,7 @@ export async function createInvoiceShell(input: {
       .filter(Boolean)
       .map((f) => f!.id)
     const quoteValues = await handler.getFieldValues(quoteRecordId, quoteFieldIds)
-    const get = (f?: { id: string }) => (f ? firstTyped(quoteValues.get(f.id)) : undefined)
+    const get = (f?: { id: string } | null) => (f ? firstTyped(quoteValues.get(f.id)) : undefined)
 
     const discountTypeTyped = get(quoteCf.quote_discount_type)
     const discountValueTyped = get(quoteCf.quote_discount_value)
@@ -302,7 +281,9 @@ export async function createInvoiceShell(input: {
   if (taxName) invoiceValues.invoice_tax_name = taxName
   if (taxRate !== null) invoiceValues.invoice_tax_rate = taxRate
 
-  const createdInvoice = await handler.create('invoice', invoiceValues)
+  const createdInvoice = await handler.create('invoice', invoiceValues, {
+    skipEvents: input.publishEvents === false,
+  })
 
   // MP2 (§B.6 settle): stamp any held (invoice-less) deposit for this work order onto the
   // invoice that's just been created — a no-op when there's no held deposit. `createInvoiceShell`
@@ -316,6 +297,8 @@ export async function createInvoiceShell(input: {
     userId,
     workOrderInstanceId,
     invoiceInstanceId: createdInvoice.instance.id,
+    db,
+    publishEvents: input.publishEvents,
   })
 
   return {
@@ -324,23 +307,23 @@ export async function createInvoiceShell(input: {
     workOrderRecordId,
     contactRecordId,
     quoteRecordId,
+    discountType,
+    discountValue,
     recordId: createdInvoice.recordId,
     instanceId: createdInvoice.instance.id,
   }
 }
 
 /**
- * Copy one source line onto a draft invoice (money MI1 build spec §G.3 steps 5–6). Consumed
- * by both `createInvoiceFromWorkOrder`'s gather loop (`stampSource: true` — the source line
- * is marked "invoiced by" this invoice so it drops out of `listUninvoicedLines`) and the MI2
- * auto-draft builder's template-copy branch (`stampSource: false` — Q2/Q4's per-visit/
- * recurring "job-set lines are a template" semantics: the copy carries no `sourceLineId` and
- * the source is never stamped, so re-triggering the same source produces fresh copies each
- * time; `deleteInvoiceLine`'s null-`sourceLineId` branch already treats such copies as
- * non-refunding deletes).
+ * Copy one source line onto a draft invoice (money MI1 build spec §G.3 steps 5–6). Consumed by
+ * both `createInvoiceFromWorkOrder`'s gather loop (the source line's allocation, inserted by the
+ * caller, is what marks it "invoiced by" this invoice — see `allocateInvoiceLine` — so it drops
+ * out of `listUninvoicedLines`) and the billing-command builders' template-copy branches (no
+ * allocation-backed source is ever double-consumed because allocation uniqueness is the
+ * idempotency boundary, not the copy itself).
  *
- * `extraValues`, when passed, are merged into the copy's values — the auto-draft builder uses
- * this to stamp `line_item_visit_id` on template copies.
+ * `extraValues`, when passed, are merged into the copy's values — callers use this to stamp
+ * `line_item_visit_id` on template copies.
  */
 export async function copyLineOntoInvoice(input: {
   handler: UnifiedCrudHandler
@@ -349,22 +332,21 @@ export async function copyLineOntoInvoice(input: {
   lineFieldIds: string[]
   lineInstanceId: string
   invoiceRecordId: RecordId
-  stampSource: boolean
   extraValues?: Record<string, unknown>
-}): Promise<void> {
+  publishEvents?: boolean
+}): Promise<{ instanceId: string }> {
   const {
     handler,
-    fieldValueService,
     lineCf,
     lineFieldIds,
     lineInstanceId,
     invoiceRecordId,
-    stampSource,
     extraValues,
+    publishEvents,
   } = input
   const lineRecordId = toRecordId('line_item', lineInstanceId)
   const values = await handler.getFieldValues(lineRecordId, lineFieldIds)
-  const get = (f?: { id: string }) => (f ? firstTyped(values.get(f.id)) : undefined)
+  const get = (f?: { id: string } | null) => (f ? firstTyped(values.get(f.id)) : undefined)
 
   const nameTyped = get(lineCf.line_item_name)
   const descriptionTyped = get(lineCf.line_item_description)
@@ -391,24 +373,14 @@ export async function copyLineOntoInvoice(input: {
     line_item_invoice: invoiceRecordId,
     ...extraValues,
   }
-  if (stampSource) {
-    copyValues.line_item_source_line_id = lineInstanceId
-  }
   if (catalogItemTyped?.type === 'relationship') {
     copyValues.line_item_catalog_item = catalogItemTyped.recordId
   }
 
-  await handler.create('line_item', copyValues)
-
-  if (stampSource) {
-    // Stamp the source ("invoiced by" pointer) — publishEvents ON so visit chips/job view
-    // update live; the §G.1 guard keeps this from recomputing invoice totals (source lines
-    // still carry `line_item_work_order`).
-    await fieldValueService.setValuesForEntity({
-      recordId: lineRecordId,
-      values: [{ fieldId: 'line_item_invoice', value: invoiceRecordId }],
-    })
-  }
+  const created = await handler.create('line_item', copyValues, {
+    skipEvents: publishEvents === false,
+  })
+  return { instanceId: created.instance.id }
 }
 
 /**
@@ -433,16 +405,20 @@ export async function createInvoiceFromWorkOrder(
   // ─── Step 4: re-validate requested lines (concurrency guard) ───────────────
   const lineCf = await cache
     .from(organizationId, 'customFields')
-    .bySystemAttributes(LINE_COPY_ATTRS)
+    .bySystemAttributes([...LINE_COPY_ATTRS])
   const lineFieldIds = Object.values(lineCf)
     .filter(Boolean)
     .map((f) => f!.id)
 
   const validLineInstanceIds: string[] = []
+  // `line_item_line_total` is already in `lineFieldIds` (part of `LINE_COPY_ATTRS`) — captured
+  // here from this same validation read so the copy loop below doesn't re-fetch it a third time
+  // per line just to compute the allocation amount.
+  const lineAmounts = new Map<string, number>()
   for (const lineInstanceId of lineInstanceIds) {
     const lineRecordId = toRecordId('line_item', lineInstanceId)
     const values = await handler.getFieldValues(lineRecordId, lineFieldIds)
-    const get = (f?: { id: string }) => (f ? firstTyped(values.get(f.id)) : undefined)
+    const get = (f?: { id: string } | null) => (f ? firstTyped(values.get(f.id)) : undefined)
 
     // Compare underlying instance ids, not RecordId strings: `getFieldValues` returns
     // relationship values stamped with the target's raw `EntityDefinition.id`, while
@@ -455,24 +431,39 @@ export async function createInvoiceFromWorkOrder(
         : undefined
     if (lineWorkOrderInstanceId !== workOrderInstanceId) continue // not this WO's line
 
-    const invoiceTyped = get(lineCf.line_item_invoice)
-    if (invoiceTyped?.type === 'relationship' && invoiceTyped.recordId) continue // already stamped
-
+    const totalTyped = get(lineCf.line_item_line_total)
+    lineAmounts.set(lineInstanceId, totalTyped ? Number(extractValue(totalTyped)) : 0)
     validLineInstanceIds.push(lineInstanceId)
   }
 
+  const alreadyAllocated = await getActiveAllocatedAmounts({
+    organizationId,
+    sourceLineItemIds: validLineInstanceIds,
+  })
+
   // ─── Steps 5–6: copy each source line, then stamp it as gathered ───────────
   const fieldValueService = new FieldValueService(organizationId, userId)
-  for (const lineInstanceId of validLineInstanceIds) {
-    await copyLineOntoInvoice({
+  for (const lineInstanceId of validLineInstanceIds.filter((id) => !alreadyAllocated.has(id))) {
+    const copied = await copyLineOntoInvoice({
       handler,
       fieldValueService,
       lineCf,
       lineFieldIds,
       lineInstanceId,
       invoiceRecordId,
-      stampSource: true,
     })
+    const amount = lineAmounts.get(lineInstanceId) ?? 0
+    if (amount > 0) {
+      await allocateInvoiceLine({
+        organizationId,
+        workOrderId: workOrderInstanceId,
+        invoiceId: invoiceInstanceId,
+        invoiceLineItemId: copied.instanceId,
+        sourceLineItemId: lineInstanceId,
+        kind: 'contract',
+        amount,
+      })
+    }
   }
 
   // ─── Step 7: totals (also seeds balance = total via the ledger sync) ──────
@@ -482,6 +473,9 @@ export async function createInvoiceFromWorkOrder(
     documentType: 'invoice',
     documentInstanceId: invoiceInstanceId,
   })
+
+  await syncInvoiceBillingProjection({ organizationId, userId, invoiceInstanceId })
+  await syncWorkOrderBillingProjection({ organizationId, userId, workOrderInstanceId })
 
   // ─── Step 8: return ─────────────────────────────────────────────────────────
   return { recordId: invoiceRecordId, instanceId: invoiceInstanceId }
@@ -500,10 +494,8 @@ export async function deleteInvoiceLine(input: DeleteInvoiceLineInput): Promise<
 
   const cf = await cache
     .from(organizationId, 'customFields')
-    .bySystemAttributes(['line_item_invoice', 'line_item_source_line_id'] as const)
-  const fieldIds = [cf.line_item_invoice, cf.line_item_source_line_id]
-    .filter(Boolean)
-    .map((f) => f!.id)
+    .bySystemAttributes(['line_item_invoice'] as const)
+  const fieldIds = [cf.line_item_invoice].filter(Boolean).map((f) => f!.id)
   const values = await handler.getFieldValues(lineRecordId, fieldIds)
 
   const invoiceTyped = cf.line_item_invoice
@@ -530,22 +522,20 @@ export async function deleteInvoiceLine(input: DeleteInvoiceLineInput): Promise<
     )
   }
 
-  const sourceLineIdTyped = cf.line_item_source_line_id
-    ? firstTyped(values.get(cf.line_item_source_line_id.id))
-    : undefined
-  const sourceLineInstanceId = sourceLineIdTyped
-    ? (extractValue(sourceLineIdTyped) as string)
-    : undefined
+  await database
+    .update(schema.InvoiceLineAllocation)
+    .set({ status: 'released', releasedAt: new Date() })
+    .where(
+      and(
+        eq(schema.InvoiceLineAllocation.organizationId, organizationId),
+        eq(schema.InvoiceLineAllocation.invoiceLineItemId, lineInstanceId),
+        eq(schema.InvoiceLineAllocation.status, 'active')
+      )
+    )
 
-  if (sourceLineInstanceId) {
-    const fieldValueService = new FieldValueService(organizationId, userId)
-    await fieldValueService.setValuesForEntity({
-      recordId: toRecordId('line_item', sourceLineInstanceId),
-      values: [{ fieldId: 'line_item_invoice', value: null }],
-    })
-  }
-
-  await handler.delete(lineRecordId)
+  // Suppress the line-level billing post-delete hook — this command performs the same
+  // recompute + projection sync itself right below.
+  await handler.delete(lineRecordId, { suppressPostDeleteHooks: true })
 
   await recomputeTotals({
     organizationId,
@@ -553,4 +543,5 @@ export async function deleteInvoiceLine(input: DeleteInvoiceLineInput): Promise<
     documentType: 'invoice',
     documentInstanceId: invoiceInstanceId,
   })
+  await syncInvoiceBillingProjection({ organizationId, userId, invoiceInstanceId })
 }

@@ -113,6 +113,26 @@ export interface EntityPreDeleteEvent {
 
 export type EntityPreDeleteHandler = (event: EntityPreDeleteEvent) => Promise<void>
 
+/**
+ * Post-delete entity hook — fired after an entity is permanently deleted. Deletes do not fire
+ * field-change post-hooks, so this is the seam for projections that must refresh once a record
+ * is gone (e.g. billing amounts on the parent work order). Failures are logged and swallowed,
+ * matching field-change post-hook semantics; anything that must block the delete belongs in a
+ * pre-delete hook instead.
+ */
+export interface EntityPostDeleteEvent {
+  recordId: RecordId
+  entityDefinitionId: string
+  entityType: string | null
+  entitySlug: string
+  /** Field values captured before the delete (systemAttribute-keyed raw values). */
+  values: Record<string, unknown>
+  organizationId: string
+  userId: string
+}
+
+export type EntityPostDeleteHandler = (event: EntityPostDeleteEvent) => Promise<void>
+
 // =============================================================================
 // POST-WRITE FIELD-CHANGE HOOK TYPES
 // =============================================================================

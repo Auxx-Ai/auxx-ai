@@ -3,20 +3,23 @@
 
 import { FieldType } from '@auxx/database/enums'
 import { toActorId } from '@auxx/types/actor'
+import { type RecordId, toRecordId } from '@auxx/types/resource'
 import { Avatar, AvatarFallback, AvatarImage } from '@auxx/ui/components/avatar'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { toastError } from '@auxx/ui/components/toast'
+import { TuckedSection } from '@auxx/ui/components/tucked-label'
 import { format } from 'date-fns'
-import { CalendarClock, ReceiptText, Send, User, XCircle } from 'lucide-react'
+import { CalendarClock, CircleDollarSign, ReceiptText, Send, User, XCircle } from 'lucide-react'
 import { useState } from 'react'
 import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
 import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
 import { getInitials } from '~/components/groups/utils/group-utils'
+import { BillingActionDialog } from '~/components/money/billing/billing-action-dialog'
+import { useWorkOrderBillingState } from '~/components/money/billing/use-work-order-billing-state'
 import { LineBuilder } from '~/components/money/ui/line-builder/line-builder'
-import { TuckedLabel } from '~/components/money/ui/tucked-label'
-import type { RecordDrillContext } from '~/components/records/record-drill-panels'
+import { type RecordDrillContext, useOpenRecord } from '~/components/records/record-drill-panels'
 import { useActors } from '~/components/resources/hooks/use-actor'
 import { BaseType } from '~/components/workflow/types'
 import { useConfirm } from '~/hooks/use-confirm'
@@ -43,12 +46,22 @@ export function VisitDetailPanel({ recordId, itemId }: RecordDrillContext) {
   const { visits, isLoading, canEdit, mutations, existingVisits, refresh } = useJobVisits(recordId)
   const visit = visits.find((v) => v.id === itemId)
   const [confirm, ConfirmDialog] = useConfirm()
+  const openRecord = useOpenRecord()
   // Plan 20 §4.1a — explicit duration write. Never touches the schedule; draft state so a
   // blur/Enter commits and an Escape reverts without re-render churn on every keystroke.
   const [durationDraft, setDurationDraft] = useState<number | undefined | null>(null)
+  const [billingOpen, setBillingOpen] = useState(false)
+  const { billing } = useWorkOrderBillingState(recordId)
   const setVisitDuration = api.dispatch.setVisitDuration.useMutation({
     onError: (error) => toastError({ title: 'Error saving duration', description: error.message }),
     onSuccess: refresh,
+  })
+  const utils = api.useUtils()
+  const addExtrasToContract = api.money.addVisitExtrasToContract.useMutation({
+    onSuccess: () =>
+      utils.money.getWorkOrderBillingState.invalidate({ workOrderRecordId: recordId }),
+    onError: (error) =>
+      toastError({ title: 'Error adding extras to contract', description: error.message }),
   })
 
   const assigneeActorId = visit?.assigneeUserId ? toActorId('user', visit.assigneeUserId) : null
@@ -68,6 +81,20 @@ export function VisitDetailPanel({ recordId, itemId }: RecordDrillContext) {
   const start = visit.startTime ? new Date(visit.startTime) : null
   const end = visit.endTime ? new Date(visit.endTime) : null
   const isProvisionalTime = Boolean(start) && visit.timeConfirmedAt == null
+  const billingVisit = visit as typeof visit & {
+    invoiceState?: 'uninvoiced' | 'drafted' | 'invoiced'
+    invoiceCount?: number
+    invoiceId?: string
+  }
+  const invoiceState = billingVisit.invoiceState ?? 'uninvoiced'
+  const invoiceLabel =
+    visit.status !== 'done'
+      ? 'Not ready'
+      : invoiceState === 'drafted'
+        ? 'In draft'
+        : invoiceState === 'invoiced'
+          ? 'Invoiced'
+          : 'Ready to invoice'
 
   const commitDuration = () => {
     if (durationDraft === null) return
@@ -208,21 +235,87 @@ export function VisitDetailPanel({ recordId, itemId }: RecordDrillContext) {
             read-only dispatcher-side. Authoring stays on the worker surface's Notes tab. */}
         <VisitProofOfWork visitId={visit.id} />
 
+        <div className='flex items-center justify-between gap-3 rounded-xl border bg-primary-100 p-3'>
+          <div className='flex min-w-0 items-center gap-2'>
+            <CircleDollarSign className='size-4 shrink-0 text-muted-foreground' />
+            <div>
+              <div className='text-sm font-medium'>{invoiceLabel}</div>
+              {(billingVisit.invoiceCount ?? 0) > 1 && (
+                <div className='text-xs text-muted-foreground'>
+                  {billingVisit.invoiceCount} linked invoices
+                </div>
+              )}
+            </div>
+          </div>
+          {billing.basis === 'per_visit' &&
+            visit.status === 'done' &&
+            invoiceState === 'uninvoiced' && (
+              <Button variant='outline' size='sm' onClick={() => setBillingOpen(true)}>
+                Invoice this visit
+              </Button>
+            )}
+          {billingVisit.invoiceId && (billingVisit.invoiceCount ?? 0) === 1 && (
+            <Button
+              variant='ghost'
+              size='sm'
+              onClick={() =>
+                openRecord?.(
+                  billingVisit.invoiceId!.includes(':')
+                    ? (billingVisit.invoiceId as RecordId)
+                    : toRecordId('invoice', billingVisit.invoiceId!)
+                )
+              }>
+              View invoice
+            </Button>
+          )}
+          {billing.basis === 'fixed_contract' &&
+            billing.extraWorkVisitIds.includes(visit.id) &&
+            invoiceState === 'uninvoiced' && (
+              <div className='flex gap-2'>
+                <Button
+                  variant='ghost'
+                  size='sm'
+                  loading={addExtrasToContract.isPending}
+                  loadingText='Adding...'
+                  onClick={() =>
+                    addExtrasToContract.mutate({ workOrderRecordId: recordId, visitId: visit.id })
+                  }>
+                  Add to contract
+                </Button>
+                <Button variant='outline' size='sm' onClick={() => setBillingOpen(true)}>
+                  Bill as extra work
+                </Button>
+              </div>
+            )}
+        </div>
+
         {/* Visit line items (occurrence extras) — money 01-ui #13: the shared LineBuilder
             scoped to this visit via `visitId` (stamps/filters `line_item_visit_id`, the
             plain-text bridge — visits aren't entities). Canceled visits are read-only.
             TuckedLabel + card, matching the proof-of-work block above. */}
-        <div className='flex flex-col'>
-          <TuckedLabel icon={<ReceiptText />}>This visit's extras</TuckedLabel>
+        <TuckedSection
+          icon={<ReceiptText />}
+          label="This visit's extras"
+          // LineBuilder brings its own framed box, so strip the wrapper card and
+          // bump the frame's radius to match the tucked look.
+          contentClassName='border-0 bg-transparent p-0 [&_[data-slot=line-builder-frame]]:rounded-xl'>
           <LineBuilder
             documentRecordId={recordId}
             documentType='work_order'
             visitId={visit.id}
             readOnly={!canEdit || visit.status === 'canceled'}
           />
-        </div>
+        </TuckedSection>
 
         <ConfirmDialog />
+        <BillingActionDialog
+          open={billingOpen}
+          onOpenChange={setBillingOpen}
+          workOrderRecordId={recordId}
+          billing={billing}
+          initialVisitIds={[visit.id]}
+          mode={billing.basis === 'fixed_contract' ? 'extra' : 'primary'}
+        />
       </div>
     </ScrollArea>
   )

@@ -12,10 +12,9 @@ import { database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import type { TypedFieldValue } from '@auxx/types'
 import { extractValue } from '@auxx/types'
-import type { RecordId } from '@auxx/types/resource'
 import { parseRecordId, toRecordId } from '@auxx/types/resource'
 import { fromZonedTime } from 'date-fns-tz'
-import { and, eq, isNull, lt, or } from 'drizzle-orm'
+import { and, asc, eq, isNull, lt, or } from 'drizzle-orm'
 import { getOrgCache } from '../cache'
 import {
   getWorkOrderStatus,
@@ -29,18 +28,16 @@ import { expandOccurrences, type RecurrencePattern, recurrencePatternSchema } fr
 import { UnifiedCrudHandler } from '../resources/crud'
 import { getOrganizationSetting } from '../settings/settings-service'
 import {
-  copyLineOntoInvoice,
-  createInvoiceShell,
-  LINE_COPY_ATTRS,
-  listUninvoicedLines,
-} from './gather'
-import { recomputeTotals } from './totals-hooks'
+  createFixedContractInvoice,
+  createRecurringCharge,
+  createVisitInvoice,
+} from './billing-commands'
+import { syncWorkOrderBillingProjection } from './billing-projection'
 import type {
   GenerateInvoiceDraftInput,
   GenerateInvoiceDraftResult,
   InvoiceScheduleQueryInput,
   SetInvoiceScheduleInput,
-  UninvoicedLine,
 } from './types'
 
 const logger = createScopedLogger('money:auto-invoice')
@@ -61,7 +58,10 @@ function firstTyped(
  * Duplicated locally (not imported) because `dispatch/recurring/materialize.ts` doesn't
  * export it — the M2c files are a pattern to copy, not modify. */
 function localDateStartUtc(dateIso: string, timezone: string): Date {
-  const [year, month, day] = dateIso.split('-').map(Number)
+  const parts = dateIso.split('-')
+  const year = Number(parts[0])
+  const month = Number(parts[1])
+  const day = Number(parts[2])
   return fromZonedTime(new Date(year, month - 1, day), timezone)
 }
 
@@ -94,107 +94,6 @@ const TRIGGER_TO_TIMING: Record<GenerateInvoiceDraftInput['trigger'], string> = 
 }
 
 /**
- * List a work order's "job-set" (template) lines — `line_item_work_order = WO` AND
- * `line_item_visit_id` empty (money MI2 build spec §C step 2, Q2/Q4's "template" content).
- * These are copied fresh (never stamped) by every trigger that needs a recurring charge —
- * distinct from `listUninvoicedLines`'s per-visit/accrued "extras".
- */
-async function listJobSetLineIds(
-  handler: UnifiedCrudHandler,
-  workOrderRecordId: RecordId
-): Promise<string[]> {
-  const { ids } = await handler.listFiltered({
-    entityDefinitionId: 'line_item',
-    filters: [
-      {
-        id: 'job-set-lines',
-        logicalOperator: 'AND',
-        conditions: [
-          {
-            id: 'job-set-lines-wo',
-            fieldId: 'line_item:workOrder',
-            operator: 'is',
-            value: workOrderRecordId,
-          },
-          {
-            id: 'job-set-lines-visit',
-            fieldId: 'line_item:visitId',
-            operator: 'empty',
-            value: null,
-          },
-        ],
-      },
-    ],
-    sorting: [{ id: 'sortOrder', desc: false }],
-    limit: 1000,
-    mode: 'oneshot',
-  })
-  return ids
-}
-
-/**
- * The pricing-model-aware content matrix (money MI2 build spec §C step 2, Q2/Q4) — the one
- * architectural bet in this spec. Returns the job-set line ids to template-copy (never
- * stamped) and the uninvoiced lines to gather-copy (stamped).
- */
-async function selectDraftContent(params: {
-  organizationId: string
-  userId: string
-  handler: UnifiedCrudHandler
-  workOrderRecordId: RecordId
-  workOrderInstanceId: string
-  trigger: GenerateInvoiceDraftInput['trigger']
-  pricingModel: string
-  visitId?: string
-}): Promise<{ templateLineIds: string[]; gatherLines: UninvoicedLine[] }> {
-  const {
-    organizationId,
-    userId,
-    handler,
-    workOrderRecordId,
-    workOrderInstanceId,
-    trigger,
-    pricingModel,
-    visitId,
-  } = params
-
-  if (trigger === 'on_completion') {
-    // Every pricingModel: a normal full gather — a per_visit-priced job's job-set line (if
-    // never gathered before) is picked up here too, exactly like a manual gather would.
-    const gatherLines = await listUninvoicedLines({ organizationId, userId, workOrderInstanceId })
-    return { templateLineIds: [], gatherLines }
-  }
-
-  if (trigger === 'per_visit') {
-    if (pricingModel !== 'per_visit') {
-      // Odd combo (§C step 2's table: fixed × per_visit) — treat as gather extras only.
-      logger.warn('fixed pricingModel with per_visit trigger — gathering extras only', {
-        organizationId,
-        workOrderInstanceId,
-        visitId,
-      })
-      const all = await listUninvoicedLines({ organizationId, userId, workOrderInstanceId })
-      return { templateLineIds: [], gatherLines: all.filter((l) => l.visitId === visitId) }
-    }
-    const templateLineIds = await listJobSetLineIds(handler, workOrderRecordId)
-    const all = await listUninvoicedLines({ organizationId, userId, workOrderInstanceId })
-    return { templateLineIds, gatherLines: all.filter((l) => l.visitId === visitId) }
-  }
-
-  // custom_schedule
-  if (pricingModel === 'fixed') {
-    const templateLineIds = await listJobSetLineIds(handler, workOrderRecordId)
-    const all = await listUninvoicedLines({ organizationId, userId, workOrderInstanceId })
-    // "extras accrued since the last occurrence" — visit-tagged lines only; the job-set
-    // template lines themselves are never stamped so they'd otherwise show up as uninvoiced
-    // forever and get double-billed alongside their fresh template copy above.
-    return { templateLineIds, gatherLines: all.filter((l) => l.visitId !== undefined) }
-  }
-  const gatherLines = await listUninvoicedLines({ organizationId, userId, workOrderInstanceId })
-  return { templateLineIds: [], gatherLines }
-}
-
-/**
  * Generate one automated draft invoice (money MI2 build spec §C) — the automated twin of
  * `createInvoiceFromWorkOrder`. All three triggers (§D/§E/§F) call this; it never throws for
  * expected "nothing to do" outcomes (disabled/not-found/timing-mismatch/no-contact/duplicate/
@@ -205,7 +104,7 @@ async function selectDraftContent(params: {
 export async function generateInvoiceDraft(
   input: GenerateInvoiceDraftInput
 ): Promise<GenerateInvoiceDraftResult> {
-  const { organizationId, workOrderInstanceId, trigger, visitId, occurrenceDate, visitDate } = input
+  const { organizationId, workOrderInstanceId, trigger, visitId, occurrenceDate } = input
 
   // ─── Step 1a: master switch (FIRST check) ───────────────────────────────────
   const autoEnabled = await getOrganizationSetting({
@@ -281,23 +180,16 @@ export async function generateInvoiceDraft(
 
   // ─── Step 1e: per_visit dedup (Q6a) ─────────────────────────────────────────
   if (trigger === 'per_visit' && visitId) {
-    const { ids: existingDraftIds } = await handler.listFiltered({
-      entityDefinitionId: 'invoice',
-      filters: [
-        {
-          id: 'visit-dedup',
-          logicalOperator: 'AND',
-          conditions: [
-            { id: 'visit-dedup-c1', fieldId: 'invoice:visitId', operator: 'is', value: visitId },
-          ],
-        },
-      ],
-      limit: 1,
-      mode: 'oneshot',
+    const existing = await database.query.InvoiceVisitAllocation.findFirst({
+      where: and(
+        eq(schema.InvoiceVisitAllocation.organizationId, organizationId),
+        eq(schema.InvoiceVisitAllocation.visitId, visitId),
+        eq(schema.InvoiceVisitAllocation.kind, 'base'),
+        eq(schema.InvoiceVisitAllocation.status, 'active')
+      ),
+      columns: { id: true },
     })
-    if (existingDraftIds.length > 0) {
-      return { created: false, reason: 'duplicate' }
-    }
+    if (existing) return { created: false, reason: 'duplicate' }
   }
 
   const pricingModelTyped = cf.work_order_pricing_model
@@ -305,100 +197,91 @@ export async function generateInvoiceDraft(
     : undefined
   const pricingModel = pricingModelTyped ? (extractValue(pricingModelTyped) as string) : 'per_visit'
 
-  // ─── Step 2: select content (Q2/Q4 matrix) ──────────────────────────────────
-  const { templateLineIds, gatherLines } = await selectDraftContent({
-    organizationId,
-    userId,
-    handler,
-    workOrderRecordId,
-    workOrderInstanceId,
-    trigger,
-    pricingModel,
-    visitId,
-  })
-
-  // ─── Step 3: empty check (Q5) ────────────────────────────────────────────────
-  if (templateLineIds.length === 0 && gatherLines.length === 0) {
-    logger.debug('Skipping auto-invoice draft — nothing billable', {
+  // Allocation-backed command routing. Manual and automated creation now share the same
+  // serializable builders; allocation uniqueness is the final idempotency boundary.
+  if (pricingModel === 'per_visit') {
+    let visitIds = visitId ? [visitId] : []
+    if (visitIds.length === 0) {
+      const cutoff = occurrenceDate ?? '9999-12-31'
+      const visits = await database.query.WorkOrderVisit.findMany({
+        where: and(
+          eq(schema.WorkOrderVisit.organizationId, organizationId),
+          eq(schema.WorkOrderVisit.workOrderId, workOrderInstanceId),
+          eq(schema.WorkOrderVisit.status, 'done')
+        ),
+      })
+      const allocated = await database.query.InvoiceVisitAllocation.findMany({
+        where: and(
+          eq(schema.InvoiceVisitAllocation.organizationId, organizationId),
+          eq(schema.InvoiceVisitAllocation.workOrderId, workOrderInstanceId),
+          eq(schema.InvoiceVisitAllocation.kind, 'base'),
+          eq(schema.InvoiceVisitAllocation.status, 'active')
+        ),
+        columns: { visitId: true },
+      })
+      const claimed = new Set(allocated.map((row) => row.visitId))
+      visitIds = visits
+        .filter((visit) => {
+          const date =
+            visit.occurrenceDate ?? visit.startTime?.toISOString().split('T')[0] ?? '9999-12-31'
+          return date <= cutoff && !claimed.has(visit.id)
+        })
+        .map((visit) => visit.id)
+    }
+    if (visitIds.length === 0) return { created: false, reason: 'empty' }
+    const created = await createVisitInvoice({
       organizationId,
+      userId,
       workOrderInstanceId,
-      trigger,
-      visitId,
+      visitIds,
+    })
+    return { created: true, ...created }
+  }
+
+  if (pricingModel === 'fixed_contract') {
+    const pendingInstallments = await database.query.WorkOrderBillingInstallment.findMany({
+      where: and(
+        eq(schema.WorkOrderBillingInstallment.organizationId, organizationId),
+        eq(schema.WorkOrderBillingInstallment.workOrderId, workOrderInstanceId),
+        eq(schema.WorkOrderBillingInstallment.status, 'pending')
+      ),
+      orderBy: [asc(schema.WorkOrderBillingInstallment.sortOrder)],
+    })
+    const pendingInstallment = pendingInstallments.find((installment) => {
+      if (trigger === 'on_completion') return installment.trigger === 'work_order_completion'
+      if (trigger !== 'custom_schedule') return installment.trigger === 'manual'
+      return (
+        installment.trigger === 'date' &&
+        !!installment.scheduledDate &&
+        !!occurrenceDate &&
+        installment.scheduledDate <= occurrenceDate
+      )
+    })
+    if (trigger === 'custom_schedule' && !pendingInstallment) {
+      return { created: false, reason: 'empty' }
+    }
+    const created = await createFixedContractInvoice({
+      organizationId,
+      userId,
+      workOrderInstanceId,
+      amount: pendingInstallment
+        ? { type: 'installment', installmentId: pendingInstallment.id }
+        : { type: 'remaining' },
+    })
+    return { created: true, ...created }
+  }
+
+  if (pricingModel === 'recurring_flat' && occurrenceDate) {
+    const created = await createRecurringCharge({
+      organizationId,
+      userId,
+      workOrderInstanceId,
       occurrenceDate,
     })
-    return { created: false, reason: 'empty' }
+    return { created: true, ...created }
   }
 
-  // ─── Step 4: create the shell — issuedAt per documents.invoice.dateBasis ───
-  const dateBasis = await getOrganizationSetting({
-    organizationId,
-    key: 'documents.invoice.dateBasis',
-  })
-  let issuedAt: string | undefined
-  if (dateBasis !== 'creation_date') {
-    // visit_date (default, Q9b) — backdate to the visit's completion date / the occurrence's
-    // scheduled date. on_completion has no such date (it's engagement-level) and stays today.
-    if (trigger === 'per_visit') issuedAt = visitDate
-    else if (trigger === 'custom_schedule') issuedAt = occurrenceDate
-  }
-
-  const shell = await createInvoiceShell({
-    organizationId,
-    userId,
-    workOrderInstanceId,
-    issuedAt,
-    extraValues: trigger === 'per_visit' && visitId ? { invoice_visit_id: visitId } : undefined,
-  })
-  const {
-    handler: shellHandler,
-    cache: shellCache,
-    recordId: invoiceRecordId,
-    instanceId: invoiceInstanceId,
-  } = shell
-
-  // ─── Step 5: copy/stamp per the matrix ──────────────────────────────────────
-  const lineCf = await shellCache
-    .from(organizationId, 'customFields')
-    .bySystemAttributes(LINE_COPY_ATTRS)
-  const lineFieldIds = Object.values(lineCf)
-    .filter(Boolean)
-    .map((f) => f!.id)
-  const fieldValueService = new FieldValueService(organizationId, userId)
-
-  for (const lineInstanceId of templateLineIds) {
-    await copyLineOntoInvoice({
-      handler: shellHandler,
-      fieldValueService,
-      lineCf,
-      lineFieldIds,
-      lineInstanceId,
-      invoiceRecordId,
-      stampSource: false,
-      extraValues: trigger === 'per_visit' && visitId ? { line_item_visit_id: visitId } : undefined,
-    })
-  }
-  for (const line of gatherLines) {
-    await copyLineOntoInvoice({
-      handler: shellHandler,
-      fieldValueService,
-      lineCf,
-      lineFieldIds,
-      lineInstanceId: line.instanceId,
-      invoiceRecordId,
-      stampSource: true,
-    })
-  }
-
-  // ─── Step 6: totals (also seeds balance = total via the ledger sync) ──────
-  await recomputeTotals({
-    organizationId,
-    userId,
-    documentType: 'invoice',
-    documentInstanceId: invoiceInstanceId,
-  })
-
-  // ─── Step 7: return — no send, no status change, draft sits at `draft` ────
-  return { created: true, recordId: invoiceRecordId, instanceId: invoiceInstanceId }
+  return { created: false, reason: 'empty' }
 }
 
 /**
@@ -635,6 +518,7 @@ export async function materializeInvoiceDrafts(rule: RecurrenceRuleRow): Promise
       .update(schema.RecurrenceRule)
       .set({ materializedUntil: now })
       .where(eq(schema.RecurrenceRule.id, rule.id))
+    await repairBillingProjection(rule, userId)
     return
   }
 
@@ -661,14 +545,21 @@ export async function materializeInvoiceDrafts(rule: RecurrenceRuleRow): Promise
     countConsumed,
   })
 
+  // Plan §4.8: the daily sweep must repair projections for every work order it evaluates, even
+  // when it creates no invoice. `generateInvoiceDraft`'s `created: true` path already runs the
+  // post-commit projector (`projectCommittedInvoice` in billing-commands.ts) — this only covers
+  // the "evaluated but nothing generated" outcome (empty/duplicate/timing-mismatch/no-contact, or
+  // a failed occurrence) so a stale projection can't linger between sweeps.
+  let createdAny = false
   for (const occurrence of occurrences) {
     try {
-      await generateInvoiceDraft({
+      const result = await generateInvoiceDraft({
         organizationId: rule.organizationId,
         workOrderInstanceId: rule.subjectId,
         trigger: 'custom_schedule',
         occurrenceDate: occurrence.occurrenceDate,
       })
+      if (result.created) createdAny = true
     } catch (error) {
       logger.error('Failed to generate scheduled invoice draft', {
         ruleId: rule.id,
@@ -684,6 +575,29 @@ export async function materializeInvoiceDrafts(rule: RecurrenceRuleRow): Promise
     .update(schema.RecurrenceRule)
     .set({ materializedUntil: now })
     .where(eq(schema.RecurrenceRule.id, rule.id))
+
+  if (!createdAny) {
+    await repairBillingProjection(rule, userId)
+  }
+}
+
+/** Plan §4.8 sweep repair — logged/swallowed, never blocks the cursor advance above. */
+async function repairBillingProjection(rule: RecurrenceRuleRow, userId: string): Promise<void> {
+  try {
+    await syncWorkOrderBillingProjection({
+      organizationId: rule.organizationId,
+      userId,
+      workOrderInstanceId: rule.subjectId,
+      bumpRevision: false,
+    })
+  } catch (error) {
+    logger.error('Failed to repair billing projection after invoice draft sweep', {
+      ruleId: rule.id,
+      organizationId: rule.organizationId,
+      workOrderInstanceId: rule.subjectId,
+      error: error instanceof Error ? error.message : String(error),
+    })
+  }
 }
 
 /**

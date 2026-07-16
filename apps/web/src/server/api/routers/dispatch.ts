@@ -1,7 +1,7 @@
 // apps/web/src/server/api/routers/dispatch.ts
 
 import { schema } from '@auxx/database'
-import { isOrgMember } from '@auxx/lib/cache'
+import { getOrgCache, isOrgMember } from '@auxx/lib/cache'
 import {
   addMyAdhocQcItem,
   addMyQcItemPhoto,
@@ -45,12 +45,15 @@ import {
   VISIT_STATUS_VALUES,
 } from '@auxx/lib/dispatch'
 import { BadRequestError, ForbiddenError, NotFoundError } from '@auxx/lib/errors'
+import { FieldValueService } from '@auxx/lib/field-values'
 import { isAdminOrOwner } from '@auxx/lib/members'
 import { FeaturePermissionService } from '@auxx/lib/permissions'
 import { FeatureKey } from '@auxx/lib/permissions/client'
 import { recurrencePatternSchema } from '@auxx/lib/recurrence'
-import { parseRecordId, recordIdSchema } from '@auxx/types/resource'
-import { and, eq } from 'drizzle-orm'
+import type { TypedFieldValue } from '@auxx/types'
+import { extractValue } from '@auxx/types'
+import { parseRecordId, recordIdSchema, toRecordId } from '@auxx/types/resource'
+import { and, eq, inArray } from 'drizzle-orm'
 import { z } from 'zod'
 import { createTRPCRouter, protectedProcedure } from '../trpc'
 
@@ -354,7 +357,77 @@ export const dispatchRouter = createTRPCRouter({
     .input(z.object({ workOrderRecordId: recordIdSchema }))
     .query(async ({ ctx, input }) => {
       const { entityInstanceId } = parseRecordId(input.workOrderRecordId)
-      return listVisitsForWorkOrder(ctx.session.organizationId, entityInstanceId)
+      const visits = await listVisitsForWorkOrder(ctx.session.organizationId, entityInstanceId)
+      if (visits.length === 0) return visits
+
+      const allocations = await ctx.db
+        .select({
+          visitId: schema.InvoiceVisitAllocation.visitId,
+          invoiceId: schema.InvoiceVisitAllocation.invoiceId,
+        })
+        .from(schema.InvoiceVisitAllocation)
+        .where(
+          and(
+            eq(schema.InvoiceVisitAllocation.organizationId, ctx.session.organizationId),
+            eq(schema.InvoiceVisitAllocation.workOrderId, entityInstanceId),
+            eq(schema.InvoiceVisitAllocation.status, 'active'),
+            inArray(
+              schema.InvoiceVisitAllocation.visitId,
+              visits.map((visit) => visit.id)
+            )
+          )
+        )
+
+      const invoiceIds = [...new Set(allocations.map((allocation) => allocation.invoiceId))]
+      const statusByInvoiceId = new Map<string, string>()
+      if (invoiceIds.length > 0) {
+        const fields = await getOrgCache()
+          .from(ctx.session.organizationId, 'customFields')
+          .bySystemAttributes(['invoice_status'])
+        const statusField = fields.invoice_status
+        if (statusField) {
+          const service = new FieldValueService(
+            ctx.session.organizationId,
+            ctx.session.user.id,
+            ctx.db
+          )
+          const batch = await service.batchGetValues({
+            recordIds: invoiceIds.map((id) => toRecordId('invoice', id)),
+            fieldReferences: [`invoice:${statusField.id}` as never],
+          })
+          for (const row of batch.values) {
+            const typed = (Array.isArray(row.value) ? row.value[0] : row.value) as
+              | TypedFieldValue
+              | undefined
+            if (typed)
+              statusByInvoiceId.set(
+                parseRecordId(row.recordId).entityInstanceId,
+                String(extractValue(typed))
+              )
+          }
+        }
+      }
+
+      const invoiceIdsByVisit = new Map<string, string[]>()
+      for (const allocation of allocations) {
+        const ids = invoiceIdsByVisit.get(allocation.visitId) ?? []
+        if (!ids.includes(allocation.invoiceId)) ids.push(allocation.invoiceId)
+        invoiceIdsByVisit.set(allocation.visitId, ids)
+      }
+      return visits.map((visit) => {
+        const ids = invoiceIdsByVisit.get(visit.id) ?? []
+        return {
+          ...visit,
+          invoiceState:
+            ids.length === 0
+              ? ('uninvoiced' as const)
+              : ids.some((id) => statusByInvoiceId.get(id) === 'draft')
+                ? ('drafted' as const)
+                : ('invoiced' as const),
+          invoiceCount: ids.length,
+          invoiceId: ids.length === 1 ? ids[0] : undefined,
+        }
+      })
     }),
 
   // 08-worker-surface.md §6 — the worker-scoped path. Member-level (not admin-gated): the

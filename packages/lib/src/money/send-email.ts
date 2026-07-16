@@ -4,11 +4,13 @@ import { database as db } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import type { RecordId, TypedFieldValue } from '@auxx/types'
 import { extractValue } from '@auxx/types'
+import { toResourceFieldId } from '@auxx/types/field'
 import { parseRecordId, toRecordId } from '@auxx/types/resource'
 import { getOrgCache } from '../cache'
 import type { DocumentType } from '../documents'
 import { ensureDocumentPdf, ensureDocumentPdfViaQueue } from '../documents'
 import { BadRequestError } from '../errors'
+import { formatToDisplayValue } from '../field-values/formatter'
 import { extractRelationshipRecordIds } from '../field-values/relationship-field'
 import type { PlaceholderResolutionContext } from '../placeholders'
 import { resolvePlaceholdersInHtml } from '../placeholders'
@@ -157,18 +159,51 @@ export async function prepareDocumentEmail(
   const contactCf = await cache
     .from(organizationId, 'customFields')
     .bySystemAttributes(['full_name', 'primary_email'] as const)
-  const contactFieldIds = [contactCf.full_name, contactCf.primary_email]
-    .filter(Boolean)
-    .map((f) => f!.id)
-  const contactValues = await handler.getFieldValues(contactRecordId, contactFieldIds)
-  const nameTyped = contactCf.full_name
-    ? firstTyped(contactValues.get(contactCf.full_name.id))
+
+  // Resolve through `batchGetValues`, NOT the naive `getFieldValues`: `full_name` is a NAME
+  // field type (first/last composite, no stored FieldValue row), so the plain join returns
+  // nothing for it and the email would go out with a blank recipient name. `batchGetValues`
+  // composes NAME (the same resolver placeholders + the PDF payload use).
+  const { entityDefinitionId: contactDefId } = parseRecordId(contactRecordId)
+  const nameFieldId = contactCf.full_name?.id
+  const emailFieldId = contactCf.primary_email?.id
+  const fieldIdByRef = new Map<string, string>()
+  const fieldReferences = [nameFieldId, emailFieldId]
+    .filter((id): id is string => Boolean(id))
+    .map((id) => {
+      const ref = toResourceFieldId(contactDefId, id)
+      fieldIdByRef.set(ref, id)
+      return ref
+    })
+  const { values } = fieldReferences.length
+    ? await handler.fieldValueService.batchGetValues({
+        recordIds: [contactRecordId],
+        fieldReferences,
+      })
+    : { values: [] }
+  const resolvedByFieldId = new Map<string, (typeof values)[number]>()
+  for (const v of values) {
+    if (Array.isArray(v.fieldRef)) continue
+    const fieldId = fieldIdByRef.get(v.fieldRef)
+    if (fieldId) resolvedByFieldId.set(fieldId, v)
+  }
+
+  const nameHit = nameFieldId ? resolvedByFieldId.get(nameFieldId) : undefined
+  const nameTyped = nameHit
+    ? firstTyped(Array.isArray(nameHit.value) ? nameHit.value[0] : (nameHit.value ?? undefined))
     : undefined
-  const emailTyped = contactCf.primary_email
-    ? firstTyped(contactValues.get(contactCf.primary_email.id))
+  const emailHit = emailFieldId ? resolvedByFieldId.get(emailFieldId) : undefined
+  const emailTyped = emailHit
+    ? firstTyped(Array.isArray(emailHit.value) ? emailHit.value[0] : (emailHit.value ?? undefined))
     : undefined
 
-  const contactName = nameTyped ? (extractValue(nameTyped) as string) : undefined
+  const contactName =
+    nameTyped && nameHit
+      ? (() => {
+          const formatted = formatToDisplayValue(nameTyped, nameHit.fieldType, nameHit.fieldOptions)
+          return formatted === null || formatted === undefined ? undefined : String(formatted)
+        })()
+      : undefined
   const contactEmail = emailTyped ? (extractValue(emailTyped) as string) : undefined
 
   if (!contactEmail) {

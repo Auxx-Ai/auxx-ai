@@ -16,6 +16,35 @@ export {
   setInvoiceSchedule,
   sweepInvoiceDrafts,
 } from './auto-invoice'
+export { allocateProportionally, resolveFixedInvoiceAmount } from './billing-allocation-math'
+export {
+  allocateInvoiceLine,
+  allocateInvoiceVisit,
+  allocateScheduleOccurrence,
+  getActiveAllocatedAmounts,
+  listInvoiceAllocations,
+  releaseInvoiceAllocations,
+} from './billing-allocations'
+export {
+  addVisitExtrasToContract,
+  createExtraWorkInvoice,
+  createFixedContractInvoice,
+  createRecurringCharge,
+  createVisitInvoice,
+} from './billing-commands'
+export {
+  assertBillingConfigurationCompatible,
+  isBillingConfigurationCompatible,
+} from './billing-config'
+export { saveBillingInstallments } from './billing-installments'
+export {
+  computeWorkOrderBillingProjection,
+  rebuildOrganizationBillingProjections,
+  syncContactBillingProjection,
+  syncInvoiceBillingProjection,
+  syncWorkOrderBillingProjection,
+} from './billing-projection'
+export { getContactBillingOverview, getWorkOrderBillingState } from './billing-state'
 export { convertQuoteToWorkOrder } from './convert-quote'
 export { createInvoiceFromWorkOrder, deleteInvoiceLine, listUninvoicedLines } from './gather'
 export { deleteInvoice, markInvoiceSent, voidInvoice } from './invoice-lifecycle'
@@ -55,8 +84,12 @@ export {
   type CreateStripeDepositCheckoutInput,
   createStripeCheckout,
   createStripeDepositCheckout,
+  type ReconcileStripeCheckoutReturnInput,
+  type ReconcileStripeDepositCheckoutReturnInput,
   type RefundTransactionInput,
   type RefundTransactionResult,
+  reconcileStripeCheckoutReturn,
+  reconcileStripeDepositCheckoutReturn,
   refundTransaction,
 } from './payments/stripe-rail'
 export {
@@ -113,10 +146,16 @@ export {
   recomputeTotals,
 } from './totals-hooks'
 export type {
+  AddVisitExtrasToContractInput,
+  BillingInstallmentInput,
   ConvertQuoteToWorkOrderInput,
+  CreateExtraWorkInvoiceInput,
+  CreateFixedContractInvoiceInput,
   CreateInvoiceFromWorkOrderInput,
   CreateInvoiceFromWorkOrderResult,
   CreateQuoteFromRequestInput,
+  CreateRecurringChargeInput,
+  CreateVisitInvoiceInput,
   DeleteInvoiceLineInput,
   DeleteManualPaymentInput,
   DiscountType,
@@ -124,6 +163,7 @@ export type {
   DocumentTotals,
   GenerateInvoiceDraftInput,
   GenerateInvoiceDraftResult,
+  InvoiceBillingKind,
   InvoiceDraftTrigger,
   InvoiceLifecycleInput,
   InvoiceScheduleQueryInput,
@@ -136,7 +176,13 @@ export type {
   RecomputeTotalsInput,
   RecordManualPaymentInput,
   ReorderLinesInput,
+  SaveBillingInstallmentsInput,
   SetInvoiceScheduleInput,
   SyncInvoicePaymentStateInput,
   UninvoicedLine,
+  WorkOrderBillingBasis,
+  WorkOrderBillingCommandInput,
+  WorkOrderBillingProjection,
+  WorkOrderBillingState,
+  WorkOrderInvoiceTiming,
 } from './types'

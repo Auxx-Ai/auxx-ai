@@ -1,5 +1,6 @@
 // packages/lib/src/money/totals-hooks.ts
 
+import type { Database } from '@auxx/database'
 import type { TypedFieldValue } from '@auxx/types'
 import { extractValue } from '@auxx/types'
 import { parseRecordId, toRecordId } from '@auxx/types/resource'
@@ -68,7 +69,9 @@ const INVOICE_TRIGGER_ATTRS = new Set<SystemAttribute>([
  * `{ quoteInstanceId }` shape (no `documentType`/`documentInstanceId`) is still accepted so
  * existing quote call sites keep compiling unchanged.
  */
-export async function recomputeTotals(input: RecomputeTotalsInput): Promise<void> {
+export async function recomputeTotals(
+  input: RecomputeTotalsInput & { db?: Database; publishEvents?: boolean }
+): Promise<void> {
   const { organizationId, userId } = input
   const documentType = input.documentType ?? 'quote'
   const documentInstanceId = input.documentInstanceId ?? input.quoteInstanceId
@@ -79,7 +82,13 @@ export async function recomputeTotals(input: RecomputeTotalsInput): Promise<void
   }
 
   if (documentType === 'invoice') {
-    await recomputeInvoiceTotals({ organizationId, userId, invoiceInstanceId: documentInstanceId })
+    await recomputeInvoiceTotals({
+      organizationId,
+      userId,
+      invoiceInstanceId: documentInstanceId,
+      db: input.db,
+      publishEvents: input.publishEvents,
+    })
     return
   }
 
@@ -192,10 +201,12 @@ async function recomputeInvoiceTotals(params: {
   organizationId: string
   userId: string
   invoiceInstanceId: string
+  db?: Database
+  publishEvents?: boolean
 }): Promise<void> {
-  const { organizationId, userId, invoiceInstanceId } = params
+  const { organizationId, userId, invoiceInstanceId, db, publishEvents = true } = params
   const invoiceRecordId = toRecordId('invoice', invoiceInstanceId)
-  const handler = new UnifiedCrudHandler(organizationId, userId)
+  const handler = new UnifiedCrudHandler(organizationId, userId, db)
   const cache = getOrgCache()
 
   const cf = await cache
@@ -276,7 +287,7 @@ async function recomputeInvoiceTotals(params: {
 
   const totals = computeDocumentTotals(lines, billing)
 
-  const fieldValueService = new FieldValueService(organizationId, userId)
+  const fieldValueService = new FieldValueService(organizationId, userId, db)
   await fieldValueService.setValuesForEntity({
     recordId: invoiceRecordId,
     values: [
@@ -284,10 +295,16 @@ async function recomputeInvoiceTotals(params: {
       { fieldId: 'invoice_tax_total', value: totals.taxTotal },
       { fieldId: 'invoice_total', value: totals.total },
     ],
-    publishEvents: true,
+    publishEvents,
   })
 
-  await syncInvoicePaymentState({ organizationId, userId, invoiceInstanceId })
+  await syncInvoicePaymentState({
+    organizationId,
+    userId,
+    invoiceInstanceId,
+    db,
+    publishEvents,
+  })
 }
 
 /**

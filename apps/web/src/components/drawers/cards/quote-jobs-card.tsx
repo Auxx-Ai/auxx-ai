@@ -15,7 +15,7 @@ import {
  * QuoteJobsCard — the work order(s) this quote was converted into (dispatch v5
  * build spec 01: the public accept page auto-converts, so the resulting job must
  * be visible from the quote). Resolves via the `quote_work_orders` inverse of
- * `work_order_quote` — the WorkOrderInvoicesCard read pattern.
+ * `work_order_quote` — the WorkOrderBillingCard read pattern.
  */
 export function QuoteJobsCard({ recordId }: DrawerTabProps) {
   const { values, isLoading } = useSystemValues(recordId, ['quote_work_orders'], {

@@ -101,6 +101,34 @@ async function instanceExists(instanceId: string): Promise<boolean> {
   return !!row
 }
 
+/**
+ * Active `InvoiceLineAllocation` row whose `invoiceLineItemId` is `copyId` — the allocation-
+ * table replacement for reading the removed `line_item_source_line_id` field off a gather copy
+ * (entity migration 043 hard-deleted that field; provenance now lives in
+ * `packages/lib/src/money/billing-allocations.ts`'s tables).
+ */
+async function activeAllocationForCopy(copyId: string) {
+  return database.query.InvoiceLineAllocation.findFirst({
+    where: (t, { and, eq }) => and(eq(t.invoiceLineItemId, copyId), eq(t.status, 'active')),
+  })
+}
+
+/** Active `InvoiceLineAllocation` row claiming `sourceId` for `invoiceId` — the allocation-table
+ * replacement for reading the removed `line_item_invoice` stamp off a WO source line. */
+async function activeAllocationForSource(sourceId: string, invoiceId: string) {
+  return database.query.InvoiceLineAllocation.findFirst({
+    where: (t, { and, eq }) =>
+      and(eq(t.sourceLineItemId, sourceId), eq(t.invoiceId, invoiceId), eq(t.status, 'active')),
+  })
+}
+
+/** Any active `InvoiceLineAllocation` row for `sourceId`, regardless of invoice. */
+async function anyActiveAllocationForSource(sourceId: string) {
+  return database.query.InvoiceLineAllocation.findFirst({
+    where: (t, { and, eq }) => and(eq(t.sourceLineItemId, sourceId), eq(t.status, 'active')),
+  })
+}
+
 async function main() {
   const user = await database.query.User.findFirst({
     columns: { id: true },
@@ -766,13 +794,11 @@ async function main() {
     ])
     let allCopiesWellFormed = true
     for (const copyId of ownedCopies.ids) {
-      const sourceLineIdFv = await fieldValueByAttr(
-        organizationId,
-        'line_item',
-        copyId,
-        'line_item_source_line_id'
-      )
-      const sourceLineId = sourceLineIdFv?.valueText
+      // Provenance now lives in `InvoiceLineAllocation.sourceLineItemId` (keyed by
+      // `invoiceLineItemId = copyId`) — the removed `line_item_source_line_id` field's
+      // allocation-table replacement.
+      const allocation = await activeAllocationForCopy(copyId)
+      const sourceLineId = allocation?.sourceLineItemId
       const sortOrderFv = await fieldValueByAttr(
         organizationId,
         'line_item',
@@ -791,19 +817,22 @@ async function main() {
       if (expectedSort !== undefined && sortOrderFv?.valueNumber !== expectedSort)
         allCopiesWellFormed = false
     }
-    check('each copy: workOrder empty, sourceLineId set, sortOrder preserved', allCopiesWellFormed)
+    check(
+      'each copy: workOrder empty, InvoiceLineAllocation.sourceLineItemId set, sortOrder preserved',
+      allCopiesWellFormed
+    )
 
+    // Sources are no longer stamped with `line_item_invoice` (that field is parent-relation-only
+    // now, §B.3) — gather claims a source via an active `InvoiceLineAllocation` row instead.
     let allSourcesStamped = true
     for (const sourceId of [lineJob1.instance.id, lineJob2.instance.id, lineVisit1.instance.id]) {
-      const invoiceFv = await fieldValueByAttr(
-        organizationId,
-        'line_item',
-        sourceId,
-        'line_item_invoice'
-      )
-      if (invoiceFv?.relatedEntityId !== gatherResult.instanceId) allSourcesStamped = false
+      const allocation = await activeAllocationForSource(sourceId, gatherResult.instanceId)
+      if (!allocation) allSourcesStamped = false
     }
-    check('all 3 gathered sources stamped with line_item_invoice', allSourcesStamped)
+    check(
+      'all 3 gathered sources have an active InvoiceLineAllocation to the invoice',
+      allSourcesStamped
+    )
 
     const uninvoiced2 = await listUninvoicedLines({
       organizationId,
@@ -919,20 +948,12 @@ async function main() {
     console.log('5: unstamp + void/delete lifecycle')
 
     // deleteInvoiceLine on a gather copy — its source becomes uninvoiced again.
-    // Find the copy whose sourceLineId points at lineJob1.
-    let copyOfJob1Id: string | undefined
-    for (const copyId of ownedCopies.ids) {
-      const sourceLineIdFv = await fieldValueByAttr(
-        organizationId,
-        'line_item',
-        copyId,
-        'line_item_source_line_id'
-      )
-      if (sourceLineIdFv?.valueText === lineJob1.instance.id) {
-        copyOfJob1Id = copyId
-        break
-      }
-    }
+    // Find the copy whose InvoiceLineAllocation.sourceLineItemId points at lineJob1.
+    const job1Allocation = await activeAllocationForSource(
+      lineJob1.instance.id,
+      gatherResult.instanceId
+    )
+    const copyOfJob1Id = job1Allocation?.invoiceLineItemId
     if (!copyOfJob1Id) throw new Error('Could not locate the gather copy of lineJob1')
 
     await deleteInvoiceLine({ organizationId, userId, lineInstanceId: copyOfJob1Id })
@@ -965,21 +986,29 @@ async function main() {
       gatherStatusAfterVoid?.optionId
     )
 
-    const lineJob2InvoiceAfterVoid = await fieldValueByAttr(
-      organizationId,
-      'line_item',
+    const lineJob2AllocationAfterVoid = await activeAllocationForSource(
       lineJob2.instance.id,
-      'line_item_invoice'
+      gatherResult.instanceId
     )
-    const lineVisit1InvoiceAfterVoid = await fieldValueByAttr(
-      organizationId,
-      'line_item',
+    const lineVisit1AllocationAfterVoid = await activeAllocationForSource(
       lineVisit1.instance.id,
-      'line_item_invoice'
+      gatherResult.instanceId
     )
     check(
-      'voidInvoice frees ALL remaining sources',
-      !lineJob2InvoiceAfterVoid?.relatedEntityId && !lineVisit1InvoiceAfterVoid?.relatedEntityId
+      'voidInvoice releases the InvoiceLineAllocation rows for ALL remaining sources',
+      !lineJob2AllocationAfterVoid && !lineVisit1AllocationAfterVoid
+    )
+
+    const uninvoicedAfterVoid = await listUninvoicedLines({
+      organizationId,
+      userId,
+      workOrderInstanceId: woGather.instance.id,
+    })
+    check(
+      'voidInvoice makes the freed sources uninvoiced again (lineJob2 + lineVisit1)',
+      uninvoicedAfterVoid.some((l) => l.instanceId === lineJob2.instance.id) &&
+        uninvoicedAfterVoid.some((l) => l.instanceId === lineVisit1.instance.id),
+      uninvoicedAfterVoid.map((l) => l.instanceId)
     )
 
     const remainingCopyIds = ownedCopies.ids.filter((id) => id !== copyOfJob1Id)
@@ -1050,13 +1079,13 @@ async function main() {
     createdInvoiceIds.splice(createdInvoiceIds.indexOf(noQuoteResult.instanceId), 1)
     createdLineIds.splice(createdLineIds.indexOf(noQuoteCopyId), 1)
 
-    const lineNoQuoteInvoiceAfterDelete = await fieldValueByAttr(
-      organizationId,
-      'line_item',
-      lineNoQuote.instance.id,
-      'line_item_invoice'
+    const lineNoQuoteAllocationAfterDelete = await anyActiveAllocationForSource(
+      lineNoQuote.instance.id
     )
-    check('deleteInvoice frees the source line', !lineNoQuoteInvoiceAfterDelete?.relatedEntityId)
+    check(
+      'deleteInvoice frees the source line (no active InvoiceLineAllocation remains)',
+      !lineNoQuoteAllocationAfterDelete
+    )
     check('deleteInvoice hard-deletes the owned copy', !(await instanceExists(noQuoteCopyId)))
     check(
       'deleteInvoice removes the invoice instance',
@@ -1129,6 +1158,18 @@ async function main() {
         )
       }
     }
+    // Invoices BEFORE lines: `InvoiceLineAllocation.sourceLineItemId` is an `onDelete: 'restrict'`
+    // FK (money/work-order-billing.ts) — a WO source line that was ever gathered (even if its
+    // allocation was later released by `deleteInvoiceLine`/`voidInvoice`) keeps a row referencing
+    // it until the owning invoice is hard-deleted, which cascades the allocation rows away. Line
+    // cleanup first would leave gathered sources undeletable here.
+    for (const id of [...new Set(createdInvoiceIds)]) {
+      try {
+        await handler.delete(toRecordId('invoice', id))
+      } catch (err) {
+        console.log(`  cleanup failed for invoice:${id}:`, err instanceof Error ? err.message : err)
+      }
+    }
     for (const id of [...new Set(createdLineIds)]) {
       try {
         await handler.delete(toRecordId('line_item', id))
@@ -1137,13 +1178,6 @@ async function main() {
           `  cleanup failed for line_item:${id}:`,
           err instanceof Error ? err.message : err
         )
-      }
-    }
-    for (const id of [...new Set(createdInvoiceIds)]) {
-      try {
-        await handler.delete(toRecordId('invoice', id))
-      } catch (err) {
-        console.log(`  cleanup failed for invoice:${id}:`, err instanceof Error ? err.message : err)
       }
     }
     for (const id of [...new Set(createdWorkOrderIds)]) {

@@ -3,10 +3,13 @@
 import { database } from '@auxx/database'
 import type { TypedFieldValue } from '@auxx/types'
 import { extractValue } from '@auxx/types'
+import { toResourceFieldId } from '@auxx/types/field'
 import { parseRecordId, type RecordId, toRecordId } from '@auxx/types/resource'
 import { stableHash } from '@auxx/utils/hash'
 import { getOrgCache } from '../cache'
 import type { ConditionGroup } from '../conditions'
+import { formatToDisplayValue } from '../field-values/formatter'
+import type { TypedFieldValueResult } from '../field-values/types'
 import { getPaymentAccount } from '../money/payments/account-state'
 import { buildPayUrl, ensureInvoicePublicToken, isPaymentsConnected } from '../money/public-token'
 import { computeDocumentTotals } from '../money/totals'
@@ -154,7 +157,7 @@ async function loadPdfContact(
   organizationId: string,
   contactRecordId: RecordId | undefined
 ): Promise<QuotePdfContact> {
-  let contact: QuotePdfContact = {
+  const contact: QuotePdfContact = {
     name: '',
     email: null,
     phone: null,
@@ -174,7 +177,14 @@ async function loadPdfContact(
       'region',
       'country',
     ] as const)
-  const contactFieldIds = [
+
+  // Read through `batchGetValues`, NOT the naive `getFieldValues`/`getValues` path: `full_name`
+  // is a NAME field type (a first/last composite with no stored FieldValue row), so the plain
+  // `FieldValue` join silently returns nothing for it and the billing-party name comes back
+  // empty. `batchGetValues` is the resolver that composes NAME (and system/virtual/relationship)
+  // fields — the same reader the placeholder engine uses. See `resolveNameFieldValues`.
+  const { entityDefinitionId } = parseRecordId(contactRecordId)
+  const fieldIds = [
     contactCf.full_name,
     contactCf.primary_email,
     contactCf.phone,
@@ -184,25 +194,48 @@ async function loadPdfContact(
   ]
     .filter(Boolean)
     .map((f) => f!.id)
-  const contactValues = await handler.getFieldValues(contactRecordId, contactFieldIds)
-  const getContact = (f?: { id: string } | null) =>
-    f ? firstTyped(contactValues.get(f.id)) : undefined
+  if (fieldIds.length === 0) return contact
 
-  const nameTyped = getContact(contactCf.full_name)
-  const emailTyped = getContact(contactCf.primary_email)
-  const phoneTyped = getContact(contactCf.phone)
-  const cityTyped = getContact(contactCf.city)
-  const regionTyped = getContact(contactCf.region)
-  const countryTyped = getContact(contactCf.country)
+  // Build the refs and remember which cache fieldId each maps to — `batchGetValues` echoes the
+  // exact ref we passed on each result, so we match on it rather than re-parsing the id.
+  const fieldIdByRef = new Map<string, string>()
+  const fieldReferences = fieldIds.map((id) => {
+    const ref = toResourceFieldId(entityDefinitionId, id)
+    fieldIdByRef.set(ref, id)
+    return ref
+  })
 
-  contact = {
-    name: nameTyped ? (extractValue(nameTyped) as string) : '',
-    email: emailTyped ? (extractValue(emailTyped) as string) : null,
-    phone: phoneTyped ? (extractValue(phoneTyped) as string) : null,
-    city: cityTyped ? (extractValue(cityTyped) as string) : null,
-    region: regionTyped ? (extractValue(regionTyped) as string) : null,
-    country: countryTyped ? (extractValue(countryTyped) as string) : null,
+  const { values } = await handler.fieldValueService.batchGetValues({
+    recordIds: [contactRecordId],
+    fieldReferences,
+  })
+
+  // Index resolved values by their cache fieldId. Only direct refs here (no relationship paths).
+  const resolvedByFieldId = new Map<string, TypedFieldValueResult>()
+  for (const v of values) {
+    if (Array.isArray(v.fieldRef)) continue
+    const fieldId = fieldIdByRef.get(v.fieldRef)
+    if (fieldId) resolvedByFieldId.set(fieldId, v)
   }
+
+  /** Format a resolved value to its display string — NAME composes "First Last" via its converter. */
+  const displayOf = (f?: { id: string } | null): string | null => {
+    if (!f) return null
+    const hit = resolvedByFieldId.get(f.id)
+    if (!hit) return null
+    const typed = firstTyped(Array.isArray(hit.value) ? hit.value[0] : (hit.value ?? undefined))
+    if (!typed) return null
+    const formatted = formatToDisplayValue(typed, hit.fieldType, hit.fieldOptions)
+    if (formatted === null || formatted === undefined) return null
+    return Array.isArray(formatted) ? formatted.filter(Boolean).join(', ') : String(formatted)
+  }
+
+  contact.name = displayOf(contactCf.full_name) ?? ''
+  contact.email = displayOf(contactCf.primary_email)
+  contact.phone = displayOf(contactCf.phone)
+  contact.city = displayOf(contactCf.city)
+  contact.region = displayOf(contactCf.region)
+  contact.country = displayOf(contactCf.country)
   return contact
 }
 

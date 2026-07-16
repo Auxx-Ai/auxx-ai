@@ -433,9 +433,6 @@ async function main() {
     createdInvoiceIds.push(invUnstamp.instance.id)
     const invUnstampRecordId = toRecordId('invoice', invUnstamp.instance.id)
 
-    await adminHandler.update(toRecordId('line_item', sourceLine.instance.id), {
-      line_item_invoice: invUnstampRecordId,
-    })
     const ownCopy = await adminHandler.create('line_item', {
       line_item_name: '[MDS-verify] Invoice-owned line copy',
       line_item_qty: 1,
@@ -444,6 +441,18 @@ async function main() {
       line_item_invoice: invUnstampRecordId,
     })
     createdLineIds.push(ownCopy.instance.id)
+    // Allocation-model link (plan 24): sources are never field-stamped anymore — the claim
+    // lives in an active InvoiceLineAllocation row bridging source → invoice copy.
+    await database.insert(schema.InvoiceLineAllocation).values({
+      organizationId,
+      workOrderId: woSource.instance.id,
+      invoiceId: invUnstamp.instance.id,
+      invoiceLineItemId: ownCopy.instance.id,
+      sourceLineItemId: sourceLine.instance.id,
+      kind: 'contract',
+      amount: 4000,
+      status: 'active',
+    })
 
     const unstampDeleteErr = await expectThrow(() => adminHandler.delete(invUnstampRecordId))
     check(
@@ -453,12 +462,10 @@ async function main() {
     )
     deletedInvoiceIds.push(invUnstamp.instance.id)
 
-    const sourceInvoiceAfter = await fieldValueByAttr(
-      organizationId,
-      'line_item',
-      sourceLine.instance.id,
-      'line_item_invoice'
-    )
+    const sourceAllocationsAfter = await database.query.InvoiceLineAllocation.findMany({
+      columns: { id: true, status: true },
+      where: (t, { eq }) => eq(t.sourceLineItemId, sourceLine.instance.id),
+    })
     const sourceWorkOrderAfter = await fieldValueByAttr(
       organizationId,
       'line_item',
@@ -466,11 +473,11 @@ async function main() {
       'line_item_work_order'
     )
     check(
-      'source line unstamped (line_item_invoice cleared) but its work order link is untouched',
-      !sourceInvoiceAfter?.relatedEntityId &&
+      'source line freed (allocation rows gone with the invoice) but its work order link is untouched',
+      sourceAllocationsAfter.length === 0 &&
         sourceWorkOrderAfter?.relatedEntityId === woSource.instance.id,
       {
-        invoice: sourceInvoiceAfter?.relatedEntityId,
+        allocations: sourceAllocationsAfter,
         workOrder: sourceWorkOrderAfter?.relatedEntityId,
       }
     )
@@ -496,8 +503,23 @@ async function main() {
     const invVisit = await adminHandler.create('invoice', { invoice_contact: contactRecordId })
     createdInvoiceIds.push(invVisit.instance.id)
     const invVisitRecordId = toRecordId('invoice', invVisit.instance.id)
-    await adminHandler.update(toRecordId('line_item', visitSourceLine.instance.id), {
+    const visitCopyLine = await adminHandler.create('line_item', {
+      line_item_name: '[MDS-verify] Per-visit invoice copy',
+      line_item_qty: 1,
+      line_item_unit_price: 1500,
+      line_item_taxable: false,
       line_item_invoice: invVisitRecordId,
+    })
+    createdLineIds.push(visitCopyLine.instance.id)
+    await database.insert(schema.InvoiceLineAllocation).values({
+      organizationId,
+      workOrderId: woVisit.instance.id,
+      invoiceId: invVisit.instance.id,
+      invoiceLineItemId: visitCopyLine.instance.id,
+      sourceLineItemId: visitSourceLine.instance.id,
+      kind: 'visit_addition',
+      amount: 1500,
+      status: 'active',
     })
 
     await adminHandler.delete(invVisitRecordId)
@@ -608,13 +630,29 @@ async function main() {
     createdLineIds.push(lineForWoLine.instance.id)
     const invForLine = await adminHandler.create('invoice', { invoice_contact: contactRecordId })
     createdInvoiceIds.push(invForLine.instance.id)
-    await adminHandler.update(toRecordId('line_item', lineForWoLine.instance.id), {
+    const copyForWoLine = await adminHandler.create('line_item', {
+      line_item_name: '[MDS-verify] Invoice copy for WO-allocation guard',
+      line_item_qty: 1,
+      line_item_unit_price: 900,
+      line_item_taxable: false,
       line_item_invoice: toRecordId('invoice', invForLine.instance.id),
+    })
+    createdLineIds.push(copyForWoLine.instance.id)
+    // The WO↔invoice link that must block the delete is now an allocation row, not a stamp.
+    await database.insert(schema.InvoiceLineAllocation).values({
+      organizationId,
+      workOrderId: woWithLine.instance.id,
+      invoiceId: invForLine.instance.id,
+      invoiceLineItemId: copyForWoLine.instance.id,
+      sourceLineItemId: lineForWoLine.instance.id,
+      kind: 'contract',
+      amount: 900,
+      status: 'active',
     })
 
     const woLineErr = await expectThrow(() => adminHandler.delete(woWithLineRecordId))
     check(
-      'work order linked only via a stamped line rejected (delete/void invoices first)',
+      'work order linked only via an allocation row rejected (delete/void invoices first)',
       woLineErr instanceof AuxxError && /invoices first/i.test((woLineErr as Error).message),
       woLineErr
     )
@@ -755,6 +793,16 @@ async function main() {
         )
       }
     }
+    // Invoices BEFORE lines: `InvoiceLineAllocation.sourceLineItemId` is a RESTRICT FK, so a
+    // once-allocated source line only becomes hard-deletable after its invoice's cascade
+    // removes the allocation rows.
+    for (const id of [...new Set(createdInvoiceIds)]) {
+      try {
+        await adminHandler.delete(toRecordId('invoice', id))
+      } catch (err) {
+        console.log(`  cleanup failed for invoice:${id}:`, err instanceof Error ? err.message : err)
+      }
+    }
     for (const id of [...new Set(createdLineIds)]) {
       try {
         await adminHandler.delete(toRecordId('line_item', id))
@@ -763,13 +811,6 @@ async function main() {
           `  cleanup failed for line_item:${id}:`,
           err instanceof Error ? err.message : err
         )
-      }
-    }
-    for (const id of [...new Set(createdInvoiceIds)]) {
-      try {
-        await adminHandler.delete(toRecordId('invoice', id))
-      } catch (err) {
-        console.log(`  cleanup failed for invoice:${id}:`, err instanceof Error ? err.message : err)
       }
     }
     for (const id of [...new Set(createdWorkOrderIds)]) {

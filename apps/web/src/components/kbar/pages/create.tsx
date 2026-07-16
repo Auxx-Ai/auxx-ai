@@ -2,6 +2,8 @@
 'use client'
 
 import { EntityInstanceForm } from '~/components/custom-fields/ui/entity-instance/entity-instance-form'
+import { WorkOrderEntityInstanceForm } from '~/components/dispatch/ui/work-order-editor'
+import { useResource } from '~/components/resources/hooks/use-resource'
 import { useRecordStore } from '~/components/resources/store/record-store'
 import { api } from '~/trpc/react'
 import { useCommandPaletteStore } from '../store'
@@ -24,12 +26,16 @@ export function CreatePage({
   const entityDefinitionId = useCommandPaletteStore((s) => s.createEntityId)
   const close = useCommandPaletteStore((s) => s.close)
   const utils = api.useUtils()
+  const { resource } = useResource(entityDefinitionId ?? '')
 
   if (!entityDefinitionId) return null
 
+  const Form =
+    resource?.entityType === 'work_order' ? WorkOrderEntityInstanceForm : EntityInstanceForm
+
   return (
     <div className='flex flex-col gap-4 p-4 max-sm:min-h-0 max-sm:flex-1 max-sm:overflow-y-auto'>
-      <EntityInstanceForm
+      <Form
         open={page === 'create'}
         entityDefinitionId={entityDefinitionId}
         onSaved={() => {
