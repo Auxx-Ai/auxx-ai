@@ -4,7 +4,7 @@
 
 // The document-agnostic line-items builder (money MQ1 build spec §H.1, 01-ui.md #1).
 // Lines render as plain `group/tree-row` grid rows under a matching grid header
-// (Description / Qty / Unit cost / Total / actions): one shared
+// (Description / Qty / Unit cost / Total): one shared
 // `grid-template-columns` keeps the number columns aligned across the header and
 // every row. Line counts are small, so plain rows replace the virtualized
 // `DynamicView` embed this used to be. Row/cell markup lives in `line-rows.tsx`;
@@ -82,7 +82,6 @@ import {
   DraftLineRow,
   freshDraft,
   LINE_COLS,
-  LINE_COLS_READONLY,
   LineRow,
   relKeyForDocumentType,
 } from './line-rows'
@@ -825,7 +824,7 @@ export function LineBuilder({
             The grip lives in the gutter now, so Description starts flush (pl-2). */}
         <div
           className='sticky top-0 z-10 grid rounded-t-lg border-primary-200/50 border-b bg-primary-50 px-1 py-2 text-muted-foreground text-sm dark:border-[#1e2227] dark:bg-background'
-          style={{ gridTemplateColumns: readOnly ? LINE_COLS_READONLY : LINE_COLS }}>
+          style={{ gridTemplateColumns: LINE_COLS }}>
           <div className='flex items-center gap-1 pl-2'>
             Description
             {!readOnly && (
@@ -844,7 +843,6 @@ export function LineBuilder({
           <div className='px-2 text-right'>Qty</div>
           <div className='px-2 text-right'>Unit cost</div>
           <div className='px-2 text-right'>Total</div>
-          {!readOnly && <div />}
         </div>
 
         {/* Rows container — the keydown listener for spreadsheet nav lives here, so

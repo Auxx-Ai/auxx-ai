@@ -17,6 +17,7 @@ import * as React from 'react'
 import { AutosizeTextarea } from '../../autosize-textarea'
 import { Avatar, AvatarFallback, AvatarImage } from '../../avatar'
 import { Calendar } from '../../calendar'
+import { AnimatedCollapsibleContent } from '../../collapsible'
 import { useCommandNavigation } from '../../command'
 import { useDockChrome } from '../../dock-panel'
 import { PanelCard, PanelCardRow, PanelRowValue, PanelSectionLabel } from '../../panel-card'
@@ -289,11 +290,19 @@ interface EventDateTimeSectionProps {
    * icon and its title is re-tinted amber, with the hints in a hover tooltip — swapped in place,
    * so a late-arriving async result never shifts layout (replaces the old `EventPopoverHints`). */
   warnings?: string[]
+  /** App-level time editor injected here so this UI package does not depend on app code. */
+  renderTimeEditor?: (props: EventTimeEditorProps) => React.ReactNode
 }
 
-/** Labeled "Date & Time" `PanelCard divided`: Date row (drills into a `Calendar` page, pops on
- * select), Time row (drills into `TimeDrillPage`'s start/end `TimeInput`s + duration hint),
- * optional All-day row. All `onChange` commits route through `useSeriesScope().gate`. */
+export interface EventTimeEditorProps {
+  start: Date
+  end: Date
+  use24Hour?: boolean
+  onCommit: (which: 'start' | 'end', hours: number, minutes: number) => void
+}
+
+/** Labeled "Date & Time" card with mutually exclusive date/time editors that animate open
+ * directly below their row. All `onChange` commits route through `useSeriesScope().gate`. */
 export function EventDateTimeSection({
   start,
   end,
@@ -304,10 +313,18 @@ export function EventDateTimeSection({
   disabled,
   defaultStartHour = 9,
   warnings,
+  renderTimeEditor,
 }: EventDateTimeSectionProps) {
   const { gate } = useSeriesScope()
-  const { push, pop } = useCommandNavigation<EventDrillItem>()
   const readOnly = disabled || !onChange
+  const [openEditor, setOpenEditor] = React.useState<'date' | 'time' | null>(null)
+  const [localTime, setLocalTime] = React.useState<{ start: Date; end: Date } | null>(() =>
+    start && end ? { start, end } : null
+  )
+
+  React.useEffect(() => {
+    if (openEditor !== 'time' && start && end) setLocalTime({ start, end })
+  }, [end, openEditor, start])
 
   const handleDateSelect = (date: Date) => {
     let newStart: Date
@@ -320,16 +337,15 @@ export function EventDateTimeSection({
       newStart = withTimeOfDay(date, defaultStartHour, 0)
       newEnd = addMinutes(newStart, 60)
     }
-    pop()
+    setOpenEditor(null)
     gate((scope) => onChange?.({ start: newStart, end: newEnd }, scope))
   }
 
   /**
    * Commits a start/end change from a given base (rather than closing over the section's own
-   * `start`/`end` props) — the Time drill page edits repeatedly without popping, and in draft
-   * mode a commit may not round-trip into new props at all, so the page composes successive
-   * edits off its own local `{ start, end }` (see `TimeDrillPage`). Returning the resolved
-   * pair lets the page adopt it immediately.
+   * `start`/`end` props). The inline editor can commit repeatedly, and in draft mode a commit may
+   * not round-trip into new props, so it composes successive edits off local state. Returning the
+   * resolved pair lets the editor adopt it immediately.
    */
   const commitTime = (
     base: { start: Date; end: Date },
@@ -345,6 +361,18 @@ export function EventDateTimeSection({
     if (newEnd <= newStart) newEnd = addMinutes(newStart, prevDuration)
     gate((scope) => onChange?.({ start: newStart, end: newEnd }, scope))
     return { start: newStart, end: newEnd }
+  }
+
+  const handleTimeCommit = (which: 'start' | 'end', hours: number, minutes: number) => {
+    if (!localTime) return
+    const next = commitTime(localTime, which, hours, minutes)
+    setLocalTime(next)
+  }
+
+  const toggleEditor = (editor: 'date' | 'time') => {
+    const next = openEditor === editor ? null : editor
+    if (next === 'time' && start && end) setLocalTime({ start, end })
+    setOpenEditor(next)
   }
 
   return (
@@ -368,13 +396,19 @@ export function EventDateTimeSection({
               {!readOnly && (
                 <PanelRowValue
                   aria-label='Change date'
-                  onClick={() => push({ id: 'date', label: 'Date' })}>
+                  aria-expanded={openEditor === 'date'}
+                  onClick={() => toggleEditor('date')}>
                   {null}
                 </PanelRowValue>
               )}
             </div>
           }
         />
+        <AnimatedCollapsibleContent open={openEditor === 'date'}>
+          <div className='pb-1'>
+            <Calendar mode='single' selected={start ?? undefined} onSelect={handleDateSelect} />
+          </div>
+        </AnimatedCollapsibleContent>
         <PanelCardRow
           icon={<Clock8 />}
           title='Time'
@@ -387,12 +421,32 @@ export function EventDateTimeSection({
             !readOnly && start && end ? (
               <PanelRowValue
                 aria-label='Change time'
-                onClick={() => push({ id: 'time', label: 'Time' })}>
+                aria-expanded={openEditor === 'time'}
+                onClick={() => toggleEditor('time')}>
                 {null}
               </PanelRowValue>
             ) : null
           }
         />
+        <AnimatedCollapsibleContent open={openEditor === 'time'}>
+          {localTime && (
+            <div className='pb-1'>
+              {renderTimeEditor ? (
+                renderTimeEditor({
+                  ...localTime,
+                  use24Hour,
+                  onCommit: handleTimeCommit,
+                })
+              ) : (
+                <InlineTimeEditor
+                  {...localTime}
+                  use24Hour={use24Hour}
+                  onCommit={handleTimeCommit}
+                />
+              )}
+            </div>
+          )}
+        </AnimatedCollapsibleContent>
         {allDay && (
           <PanelCardRow
             title='All day'
@@ -406,75 +460,31 @@ export function EventDateTimeSection({
           />
         )}
       </PanelCard>
-      <EventDrillPage id='date'>
-        <PanelCard>
-          <Calendar mode='single' selected={start ?? undefined} onSelect={handleDateSelect} />
-        </PanelCard>
-      </EventDrillPage>
-      {start && end && (
-        <EventDrillPage id='time'>
-          <TimeDrillPage start={start} end={end} commitTime={commitTime} use24Hour={use24Hour} />
-        </EventDrillPage>
-      )}
     </div>
   )
 }
 
-interface TimeDrillPageProps {
-  start: Date
-  end: Date
-  commitTime: (
-    base: { start: Date; end: Date },
-    which: 'start' | 'end',
-    hours: number,
-    minutes: number
-  ) => { start: Date; end: Date }
-  use24Hour?: boolean
-}
-
-/**
- * Content for the Time drill page — start/end `TimeInput`s + a duration hint. Owns local
- * `{ start, end }` state seeded from props at mount: each commit calls `commitTime` with the
- * current local pair and adopts the returned one, so successive edits compose correctly even
- * when a commit doesn't round-trip into new props (draft staging, series-scope chooser pending).
- */
-function TimeDrillPage({ start, end, commitTime, use24Hour }: TimeDrillPageProps) {
-  const [local, setLocal] = React.useState({ start, end })
-
-  const handleCommit = (which: 'start' | 'end', hours: number, minutes: number) => {
-    // `commitTime` is NOT pure — it calls `gate()`, which for a series member does a
-    // `setPendingCommit()` on `SeriesScopeProvider`. Running it here (the TimeInput commit
-    // handler) keeps that side effect in an event handler. Doing it inside a `setLocal`
-    // updater instead ran it during render → "Cannot update a component while rendering a
-    // different component", which can make React drop the render and leave the panel stale.
-    const next = commitTime(local, which, hours, minutes)
-    setLocal(next)
-  }
-
+function InlineTimeEditor({ start, end, onCommit, use24Hour }: EventTimeEditorProps) {
   return (
-    <PanelCard className='space-y-3'>
+    <div className='space-y-3'>
       <div className='flex items-center gap-2'>
         <div className='flex-1 space-y-1'>
           <div className='text-muted-foreground text-xs'>Start</div>
           <TimeInput
-            value={local.start}
-            onCommit={(h, m) => handleCommit('start', h, m)}
+            value={start}
+            onCommit={(h, m) => onCommit('start', h, m)}
             use24Hour={use24Hour}
           />
         </div>
         <div className='flex-1 space-y-1'>
           <div className='text-muted-foreground text-xs'>End</div>
-          <TimeInput
-            value={local.end}
-            onCommit={(h, m) => handleCommit('end', h, m)}
-            use24Hour={use24Hour}
-          />
+          <TimeInput value={end} onCommit={(h, m) => onCommit('end', h, m)} use24Hour={use24Hour} />
         </div>
       </div>
       <div className='text-muted-foreground text-xs'>
-        {formatDuration(differenceInMinutes(local.end, local.start))}
+        {formatDuration(differenceInMinutes(end, start))}
       </div>
-    </PanelCard>
+    </div>
   )
 }
 

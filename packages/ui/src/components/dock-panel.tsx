@@ -29,8 +29,7 @@ export function useDockChrome(): DockChrome | null {
 }
 
 interface DockPanelProps {
-  /** Whether the panel is open. Closed animates width 0 <-> `width` and takes no layout
-   * space once the tween finishes. */
+  /** Whether the panel is open. Closed takes no layout space. */
   open: boolean
   /** Which side the panel docks to. Render `DockPanel` where a LEFT dock should sit in the
    * flex row (e.g. between a module sidebar and the grid) — `side='left'` keeps that DOM
@@ -54,7 +53,7 @@ const DEFAULT_WIDTH = '20rem'
 /**
  * Notion-Calendar-style dock shell: a flex column that pushes its siblings on desktop, or a
  * bottom sheet on narrow viewports. Content-agnostic — it only owns placement, the width
- * tween, chrome (flip-side / pop-out / close), and the `DockPanelFrame` content cross-fade.
+ * handoff, chrome (flip-side / pop-out / close), and the `DockPanelFrame` content cross-fade.
  * See `plans/dispatch/21-dockable-event-panel.md` for the full design.
  */
 function DockPanel({
@@ -68,13 +67,18 @@ function DockPanel({
   children,
 }: DockPanelProps) {
   const isMobile = useIsMobile()
-
-  // Keep children mounted through the 280ms close tween, then unmount — otherwise the
-  // collapsed column keeps its full content alive at width 0: still in the a11y tree, still
-  // tab-focusable, and (for data-heavy consumers) still running queries in duplicate next to
-  // the floating popover. `inert` covers the closing window itself.
+  // Keep the desktop frame mounted for its compositor-only exit animation. The outer column
+  // reserves/releases its final width once per transition; only this fixed-width inner frame moves.
   const [rendered, setRendered] = React.useState(open)
   if (open && !rendered) setRendered(true)
+
+  React.useEffect(() => {
+    if (open || !rendered) return
+    // Animation events can be suppressed by the browser or test environment. This fallback keeps
+    // the closed panel from remaining mounted/inert indefinitely.
+    const timeout = window.setTimeout(() => setRendered(false), 320)
+    return () => window.clearTimeout(timeout)
+  }, [open, rendered])
 
   if (isMobile) {
     return (
@@ -99,24 +103,25 @@ function DockPanel({
     <div
       className={cn(
         'flex h-full shrink-0 flex-col overflow-hidden',
-        'transition-[width] duration-[280ms] ease-[var(--auxx-dock-ease)]',
         side === 'right' && 'order-[999]'
       )}
-      style={{ width: open ? width : '0px' }}
+      style={{ width: rendered ? width : '0px' }}
       aria-hidden={!open}
-      inert={!open}
-      onTransitionEnd={(e) => {
-        if (e.target === e.currentTarget && e.propertyName === 'width' && !open) {
-          setRendered(false)
-        }
-      }}>
-      {/* Fixed-width inner wrapper so text doesn't reflow mid-tween, and so the border
-       * (grid-facing edge) is clipped away entirely by the outer `overflow-hidden` once
-       * collapsed to 0 width — the column then truly takes no space at rest. */}
+      inert={!open}>
+      {/* Reserve the final width in one layout pass, then animate only this fixed-width frame's
+       * transform. Unlike the old width tween, this never remeasures the calendar per frame. */}
       {rendered && (
         <div
-          className={cn('flex h-full flex-col', side === 'left' ? 'border-r' : 'border-l')}
-          style={{ width }}>
+          className={cn(
+            'auxx-dock-panel-frame flex h-full flex-col',
+            side === 'left' ? 'border-r' : 'border-l'
+          )}
+          style={{ width }}
+          data-side={side}
+          data-state={open ? 'open' : 'closed'}
+          onAnimationEnd={(event) => {
+            if (event.target === event.currentTarget && !open) setRendered(false)
+          }}>
           {/* No header of our own — the content renders one and folds these controls into it
            * via `useDockChrome()`, so the dock chrome and the event title never duplicate. */}
           <DockChromeContext.Provider value={{ side, onClose, onPopOut, onFlipSide }}>

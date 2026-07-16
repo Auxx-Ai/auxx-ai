@@ -205,6 +205,8 @@ export interface DateTimePickerContentProps {
   disabledDates?: (date: Date) => boolean
   /** Filter function for minutes */
   minuteFilter?: (minutes: string[]) => string[]
+  /** Render hours in 24-hour format and hide the AM/PM column. */
+  use24HourTime?: boolean
 
   // Styling
   /** Additional className */

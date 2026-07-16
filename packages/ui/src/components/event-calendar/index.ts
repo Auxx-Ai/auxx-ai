@@ -32,6 +32,7 @@ export {
   EventPeopleSection,
   EventPopoverFooter,
   EventRepeatSection,
+  type EventTimeEditorProps,
   type EventTitleAction,
   EventTitleSection,
 } from './event-popover/event-popover-sections'

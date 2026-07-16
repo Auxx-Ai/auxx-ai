@@ -49,6 +49,7 @@ export function DateTimePickerContent({
   maxDate,
   disabledDates,
   minuteFilter,
+  use24HourTime = false,
   className,
 }: DateTimePickerContentProps) {
   // Current view state
@@ -96,13 +97,13 @@ export function DateTimePickerContent({
   /** Handle hour selection */
   const handleSelectHour = useCallback(
     (hourStr: string) => {
-      const hour12 = parseInt(hourStr, 10)
+      const selectedHour = parseInt(hourStr, 10)
       const currentPeriod = selectedDate ? getPeriod(selectedDate) : Period.AM
-      const hour24 = to24Hour(hour12, currentPeriod)
+      const hour24 = use24HourTime ? selectedHour : to24Hour(selectedHour, currentPeriod)
       const currentMinutes = selectedDate?.getMinutes() ?? 0
       setSelectedDate(createDateWithTime(selectedDate, hour24, currentMinutes))
     },
-    [selectedDate]
+    [selectedDate, use24HourTime]
   )
 
   /** Handle minute selection */
@@ -203,6 +204,7 @@ export function DateTimePickerContent({
         <TimeView
           selectedTime={selectedDate}
           minuteFilter={minuteFilter}
+          use24HourTime={use24HourTime}
           onSelectHour={handleSelectHour}
           onSelectMinute={handleSelectMinute}
           onSelectPeriod={handleSelectPeriod}

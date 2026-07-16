@@ -50,16 +50,9 @@ import { formatCurrency, titleCase } from './shared'
  * Shared `grid-template-columns` for the header row and every line row (the
  * mapping-columns.ts idiom) — one template is what keeps the qty / unit cost /
  * total columns aligned. Columns: description (fills) │ qty │ unit cost │
- * total │ actions.
+ * total.
  */
-export const LINE_COLS = 'minmax(10rem, 1fr) 3rem 5.5rem 6.5rem 3.75rem'
-
-/**
- * Read-only column template — the trailing actions column is dropped (no
- * hover actions when read-only), so `Total` lands flush right and the freed
- * width is absorbed by the `1fr` description column.
- */
-export const LINE_COLS_READONLY = 'minmax(10rem, 1fr) 3rem 5.5rem 6.5rem'
+export const LINE_COLS = 'minmax(10rem, 1fr) 3rem 5.5rem 6.5rem'
 
 // Module-level (stable-reference) attribute lists — `useSystemValues` memoizes
 // on the array identity, so these must never be inline literals.
@@ -118,26 +111,22 @@ export function relKeyForDocumentType(documentType: 'quote' | 'work_order' | 'in
  * `TreeRowButton`s (grip, pick, description, taxable, delete) still fade in on
  * row hover. Owns the shared column template + the `data-line-row`/`col` tags
  * that {@link useLineNav} focus-hops between. Name/qty/price are the three
- * navigable cells (cols 0–2); total + actions ride outside the nav order.
+ * navigable cells (cols 0–2); total rides outside the nav order.
  */
 function LineGridRow({
   rowIndex,
-  readOnly,
   grip,
   name,
   qty,
   price,
   total,
-  actions,
 }: {
   rowIndex: number
-  readOnly: boolean
   grip: ReactNode
   name: ReactNode
   qty: ReactNode
   price: ReactNode
   total: ReactNode
-  actions?: ReactNode
 }) {
   return (
     <div className='group/tree-row relative text-sm'>
@@ -149,7 +138,7 @@ function LineGridRow({
 
       <div
         className='relative grid min-h-9 items-stretch px-1 text-muted-foreground'
-        style={{ gridTemplateColumns: readOnly ? LINE_COLS_READONLY : LINE_COLS }}>
+        style={{ gridTemplateColumns: LINE_COLS }}>
         {/* Col 0 — name input (the grip sits in the gutter, not this column). */}
         <div data-line-row={rowIndex} data-line-col={0} className='flex min-w-0 items-center'>
           {name}
@@ -162,7 +151,6 @@ function LineGridRow({
           {price}
         </div>
         <div className='flex items-center'>{total}</div>
-        {!readOnly && <div className='flex items-center justify-end'>{actions}</div>}
       </div>
     </div>
   )
@@ -244,6 +232,7 @@ function LineNameCellView({
   onSelectGroup,
   onFreeText,
   onCommitDescription,
+  actions,
 }: {
   name: string
   description: string | null
@@ -256,6 +245,7 @@ function LineNameCellView({
   onSelectGroup: (pick: CatalogGroupPick) => void
   onFreeText: (text: string) => void
   onCommitDescription: (value: string | null) => void
+  actions?: ReactNode
 }) {
   const inputRef = useRef<HTMLInputElement>(null)
   const [pickerOpen, setPickerOpen] = useState(false)
@@ -414,6 +404,7 @@ function LineNameCellView({
             onClick={() => setDescriptionDraft(description ?? '')}>
             <AlignLeft />
           </TreeRowButton>
+          {actions}
         </>
       )}
     </div>
@@ -426,11 +417,13 @@ function LineNameCell({
   readOnly,
   currencyCode,
   onSelectGroup,
+  actions,
 }: {
   recordId: RecordId
   readOnly: boolean
   currencyCode: string
   onSelectGroup: (pick: CatalogGroupPick) => void
+  actions?: ReactNode
 }) {
   const { values } = useSystemValues(recordId, NAME_ATTRS, { autoFetch: true })
   const { saveFieldValue, saveMultipleAsync } = useSaveFieldValue()
@@ -469,6 +462,7 @@ function LineNameCell({
       onCommitDescription={(value) =>
         saveFieldValue(recordId, 'line_item_description', value, FieldType.TEXT)
       }
+      actions={actions}
     />
   )
 }
@@ -600,10 +594,8 @@ function LineTotalCell({ recordId, currencyCode }: { recordId: RecordId; currenc
 }
 
 /**
- * Trailing actions cell — taxable toggle (persistent when exempt, so the
- * exemption reads at rest) then delete. Description editing lives in the primary
- * cell ({@link LineNameCellView}); this column holds the two remaining actions
- * for both real rows and drafts.
+ * Inline actions rendered beside the description button in the primary cell:
+ * taxable toggle (persistent when exempt, so the exemption reads at rest), then delete.
  */
 function LineActionsCellView({
   taxable,
@@ -617,17 +609,19 @@ function LineActionsCellView({
   deleteLine: (lineId: string) => void
 }) {
   return (
-    <div className='flex w-full items-center justify-end gap-0.5 pr-1'>
+    <div className='flex items-center gap-0.5'>
       <TreeRowButton
         persistent={!taxable}
         tooltipText={taxable ? 'Taxable — click to exempt' : 'Tax exempt — click to tax'}
         className={cn(!taxable && 'text-muted-foreground/50')}
+        onMouseDown={(e) => e.preventDefault()}
         onClick={() => onToggleTaxable(!taxable)}>
         {taxable ? <CircleCheck /> : <CircleX />}
       </TreeRowButton>
       <TreeRowButton
         variant='destructive'
         tooltipText='Delete line'
+        onMouseDown={(e) => e.preventDefault()}
         onClick={() => deleteLine(rowId)}>
         <Trash2 />
       </TreeRowButton>
@@ -697,7 +691,6 @@ export function LineRow({
       className={cn(isDragging && 'relative z-10 opacity-80')}>
       <LineGridRow
         rowIndex={rowIndex}
-        readOnly={readOnly}
         grip={readOnly ? null : <GripSlot attributes={attributes} listeners={listeners} />}
         name={
           <LineNameCell
@@ -705,6 +698,11 @@ export function LineRow({
             readOnly={readOnly}
             currencyCode={currencyCode}
             onSelectGroup={(pick) => onSelectGroup(recordId, pick)}
+            actions={
+              readOnly ? undefined : (
+                <LineActionsCell recordId={recordId} rowId={record.id} deleteLine={deleteLine} />
+              )
+            }
           />
         }
         qty={
@@ -726,11 +724,6 @@ export function LineRow({
           />
         }
         total={<LineTotalCell recordId={recordId} currencyCode={currencyCode} />}
-        actions={
-          readOnly ? undefined : (
-            <LineActionsCell recordId={recordId} rowId={record.id} deleteLine={deleteLine} />
-          )
-        }
       />
     </div>
   )
@@ -764,7 +757,6 @@ export function DraftLineRow({
   return (
     <LineGridRow
       rowIndex={rowIndex}
-      readOnly={false}
       grip={null}
       name={
         <LineNameCellView
@@ -787,6 +779,14 @@ export function DraftLineRow({
           onSelectGroup={(pick) => onSelectGroup(draft.draftId, pick)}
           onFreeText={(text) => void createDraft(draft.draftId, { name: text })}
           onCommitDescription={(value) => void createDraft(draft.draftId, { description: value })}
+          actions={
+            <LineActionsCellView
+              taxable={draft.taxable}
+              rowId={draft.draftId}
+              onToggleTaxable={(next) => void createDraft(draft.draftId, { taxable: next })}
+              deleteLine={deleteDraft}
+            />
+          }
         />
       }
       qty={
@@ -815,14 +815,6 @@ export function DraftLineRow({
           qty={draft.qty}
           unitPrice={draft.unitPriceCents}
           currencyCode={currencyCode}
-        />
-      }
-      actions={
-        <LineActionsCellView
-          taxable={draft.taxable}
-          rowId={draft.draftId}
-          onToggleTaxable={(next) => void createDraft(draft.draftId, { taxable: next })}
-          deleteLine={deleteDraft}
         />
       }
     />

@@ -90,14 +90,59 @@
   }
 }
 
-/*
-  Dock panel primitive (`@auxx/ui/components/dock-panel`) — shared easing token for the
-  width tween (open/close/flip) and the content-swap frame animation below. Values lifted
-  from `packages/chat` (`--auxx-chat-shell-ease`) per plans/dispatch/21-dockable-event-panel.md
-  — replicated here, not imported, since chat is a separate Preact bundle.
-*/
+/* The dock reserves its final flex width once, then moves only the fixed-width inner frame on the
+   compositor. This uses chat's 280ms shell curve without animating layout beside the calendar. */
 :root {
   --auxx-dock-ease: cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+.auxx-dock-panel-frame {
+  will-change: transform;
+  backface-visibility: hidden;
+}
+.auxx-dock-panel-frame[data-state='open'][data-side='left'] {
+  animation: auxx-dock-panel-in-left 280ms var(--auxx-dock-ease) both;
+}
+.auxx-dock-panel-frame[data-state='open'][data-side='right'] {
+  animation: auxx-dock-panel-in-right 280ms var(--auxx-dock-ease) both;
+}
+.auxx-dock-panel-frame[data-state='closed'][data-side='left'] {
+  animation: auxx-dock-panel-out-left 280ms var(--auxx-dock-ease) both;
+}
+.auxx-dock-panel-frame[data-state='closed'][data-side='right'] {
+  animation: auxx-dock-panel-out-right 280ms var(--auxx-dock-ease) both;
+}
+@keyframes auxx-dock-panel-in-left {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+@keyframes auxx-dock-panel-in-right {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+@keyframes auxx-dock-panel-out-left {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-100%);
+  }
+}
+@keyframes auxx-dock-panel-out-right {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(100%);
+  }
 }
 
 /* 1) Define keyframes */
@@ -211,9 +256,8 @@
   inset: 0;
   flex: none;
 }
-/* The dock opens once (the column's width tween); switching the selected event only swaps the
-   body, so a slide-in would read as a second "opening". A quick cross-fade keeps it a content
-   swap. First mount has no exiting layer, so nothing animates when the panel first opens. */
+/* Docking itself is an instant layout handoff; switching the selected event only swaps the body.
+   A quick cross-fade keeps that change a content swap rather than a second opening. */
 .auxx-dock-frame--entering {
   animation: auxx-dock-frame-fade-in 140ms ease-out both;
 }
@@ -1039,6 +1083,9 @@ body.dnd-dragging * {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .auxx-dock-panel-frame {
+    animation-duration: 1ms !important;
+  }
   .candy-stripes {
     animation: none;
   }

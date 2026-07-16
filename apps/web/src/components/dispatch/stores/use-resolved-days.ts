@@ -1,7 +1,7 @@
 // apps/web/src/components/dispatch/stores/use-resolved-days.ts
 'use client'
 
-import { useEffect, useMemo, useRef } from 'react'
+import { useEffect, useMemo } from 'react'
 import { api } from '~/trpc/react'
 import { chunkRange, type DateRange, subtractRanges } from '../utils/date-ranges'
 import {
@@ -14,6 +14,31 @@ import {
 /** `availability.resolve` hard-caps at 366 days; keep requests comfortably below that limit. */
 const MAX_FETCH_DAYS = 180
 
+// Requests are shared across hook instances (board shading, popover hints, etc.). Treat pending
+// ranges as covered while calculating gaps so a fast-moving calendar window cannot launch several
+// mostly-overlapping resolves before the first response has had a chance to enter the store.
+const pendingRangesBySubject = new Map<string, Map<string, DateRange>>()
+
+function pendingRanges(key: string): DateRange[] {
+  return Array.from(pendingRangesBySubject.get(key)?.values() ?? [])
+}
+
+function reservePendingRange(key: string, range: DateRange): string | null {
+  const tag = `${range.from}:${range.to}`
+  const subjectRanges = pendingRangesBySubject.get(key) ?? new Map<string, DateRange>()
+  if (subjectRanges.has(tag)) return null
+  subjectRanges.set(tag, range)
+  pendingRangesBySubject.set(key, subjectRanges)
+  return tag
+}
+
+function releasePendingRange(key: string, tag: string): void {
+  const subjectRanges = pendingRangesBySubject.get(key)
+  if (!subjectRanges) return
+  subjectRanges.delete(tag)
+  if (subjectRanges.size === 0) pendingRangesBySubject.delete(key)
+}
+
 /** A subject paired with its stable cache key. */
 interface ResolvedDaysSubject {
   key: string
@@ -23,11 +48,6 @@ interface ResolvedDaysSubject {
 /** Creates a cache-addressable subject entry. */
 function toResolvedDaysSubject(subject: AvailabilitySubject): ResolvedDaysSubject {
   return { key: availabilitySubjectKey(subject), subject }
-}
-
-/** Returns a stable signature so equivalent subject arrays do not restart the fetch effect. */
-function subjectSignature(subjects: ResolvedDaysSubject[]): string {
-  return subjects.map(({ key }) => key).join(',')
 }
 
 /**
@@ -42,27 +62,25 @@ export function useResolvedDaysForSubjects(
   const utils = api.useUtils()
   const cacheSubjects = useAvailabilityCacheStore((state) => state.subjects)
   const ingestResolved = useAvailabilityCacheStore((state) => state.ingestResolved)
-  const inFlight = useRef(new Set<string>())
   const range = useMemo<DateRange>(() => ({ from: fromIso, to: toIso }), [fromIso, toIso])
   const entries = useMemo(() => subjects.map(toResolvedDaysSubject), [subjects])
-  const signature = subjectSignature(entries)
 
   useEffect(() => {
     for (const { key, subject } of entries) {
       const loaded = cacheSubjects[key]?.loadedRanges ?? []
-      const gaps = subtractRanges(range, loaded).flatMap((gap) => chunkRange(gap, MAX_FETCH_DAYS))
+      const covered = [...loaded, ...pendingRanges(key)]
+      const gaps = subtractRanges(range, covered).flatMap((gap) => chunkRange(gap, MAX_FETCH_DAYS))
       for (const gap of gaps) {
-        const tag = `${key}:${gap.from}:${gap.to}`
-        if (inFlight.current.has(tag)) continue
-        inFlight.current.add(tag)
+        const tag = reservePendingRange(key, gap)
+        if (!tag) continue
         utils.availability.resolve
           .fetch({ subject, from: gap.from, to: gap.to })
           .then((days) => ingestResolved(key, gap, days))
           .catch(() => {})
-          .finally(() => inFlight.current.delete(tag))
+          .finally(() => releasePendingRange(key, tag))
       }
     }
-  }, [cacheSubjects, entries, ingestResolved, range, signature, utils])
+  }, [cacheSubjects, entries, ingestResolved, range, utils])
 
   return useMemo(
     () =>
