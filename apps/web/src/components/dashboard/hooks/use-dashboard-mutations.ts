@@ -28,6 +28,8 @@ interface UpdateDashboardPatch {
   icon?: { iconId: string; color: string } | null
   visibility?: DashboardVisibility
   position?: number
+  /** Link/unlink the "primary entity" (null unlinks). Forces org visibility server-side when set. */
+  entityDefinitionId?: string | null
 }
 
 interface UseDashboardMutationsResult {

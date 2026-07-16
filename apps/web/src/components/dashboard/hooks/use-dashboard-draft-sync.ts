@@ -23,6 +23,7 @@ export function useDashboardDraftSync(dashboardId: string) {
       draft: query.data.draftLayout,
       versionNumber: query.data.versionNumber,
       hasUnpublishedChanges: query.data.hasUnpublishedChanges,
+      entityDefinitionId: query.data.entityDefinitionId,
     })
   }, [query.data, dashboardId, seed])
 

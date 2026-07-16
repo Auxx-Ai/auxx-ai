@@ -28,9 +28,10 @@ import { Textarea } from '@auxx/ui/components/textarea'
 import { standardSchemaResolver } from '@hookform/resolvers/standard-schema'
 import { Globe, Lock } from 'lucide-react'
 import { useRouter } from 'next/navigation'
-import type { ReactNode } from 'react'
+import { type ReactNode, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
+import { ResourcePicker } from '~/components/pickers/resource-picker/resource-picker'
 import { useDashboardMutations } from '../hooks/use-dashboard-mutations'
 
 const DEFAULT_ICON: IconPickerValue = { icon: 'layout-dashboard', color: 'blue' }
@@ -42,6 +43,8 @@ export type EditableDashboard = {
   description: string | null
   icon: { iconId: string; color: string } | null
   visibility: DashboardVisibility
+  /** Set ⇒ THE dashboard for an entity def — drives the "Primary entity" row + the org-visibility lock. */
+  entityDefinitionId: string | null
 }
 
 const dashboardFormSchema = z.object({
@@ -79,6 +82,15 @@ export function DashboardForm({
   const cancel = onCancel ?? onClose
   const { createDashboard, updateDashboard, isCreating, isUpdating } = useDashboardMutations()
 
+  // "Primary entity" link (plan 02) — an immediate side-effect field (like the
+  // widget config panel's data-source picker), decoupled from the name/
+  // description/visibility submit below. Only meaningful in edit mode; create
+  // mode's picker is a nice-to-have that's out of scope (README §create-dialog).
+  const [entityDefinitionId, setEntityDefinitionId] = useState<string | null>(
+    dashboard?.entityDefinitionId ?? null
+  )
+  const isLinked = isEditing && !!entityDefinitionId
+
   const form = useForm<DashboardFormValues>({
     resolver: standardSchemaResolver(dashboardFormSchema),
     defaultValues: {
@@ -91,6 +103,14 @@ export function DashboardForm({
       visibility: dashboard?.visibility ?? 'org',
     },
   })
+
+  const handleEntityChange = async (id: string | null) => {
+    if (!dashboard) return
+    if (await updateDashboard(dashboard.id, { entityDefinitionId: id })) {
+      setEntityDefinitionId(id)
+      if (id) form.setValue('visibility', 'org')
+    }
+  }
 
   const isPending = isCreating || isUpdating
   const icon = form.watch('icon')
@@ -163,6 +183,25 @@ export function DashboardForm({
             )}
           />
 
+          {isEditing && (
+            <FormItem>
+              <FormLabel>Primary entity</FormLabel>
+              <ResourcePicker
+                value={entityDefinitionId ? [entityDefinitionId] : []}
+                onChange={(ids) => void handleEntityChange(ids[0] ?? null)}
+                onSelectSingle={(id) => void handleEntityChange(id)}
+                entityDefinedOnly
+                disabled={isUpdating}
+                emptyLabel='None — link an entity'
+                triggerProps={{ showClear: true, className: 'w-full ps-0 pe-1' }}
+              />
+              <p className='text-xs text-muted-foreground'>
+                Surfaces this dashboard on the entity's own route (e.g. Tickets → Dashboard) — at
+                most one dashboard per entity.
+              </p>
+            </FormItem>
+          )}
+
           <FormField
             control={form.control}
             name='visibility'
@@ -172,6 +211,7 @@ export function DashboardForm({
                 <RadioGroup
                   value={field.value}
                   onValueChange={field.onChange}
+                  disabled={isLinked}
                   className='grid gap-2 sm:grid-cols-2'>
                   <RadioGroupItemCard
                     value='org'
@@ -186,6 +226,11 @@ export function DashboardForm({
                     description='Only you can see it'
                   />
                 </RadioGroup>
+                {isLinked && (
+                  <p className='text-xs text-muted-foreground'>
+                    Locked to Organization while linked to an entity.
+                  </p>
+                )}
                 <FormMessage />
               </FormItem>
             )}

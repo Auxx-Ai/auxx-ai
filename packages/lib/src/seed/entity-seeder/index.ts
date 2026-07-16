@@ -4,6 +4,7 @@ import { type Database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { eq } from 'drizzle-orm'
 import { SystemUserService } from '../../users/system-user-service'
+import { createDefaultDashboards } from './create-default-dashboards'
 import { createDefaultViews } from './create-default-views'
 import { createEntityDefinitions } from './create-entity-defs'
 import { createFieldViews } from './create-field-views'
@@ -24,7 +25,7 @@ const logger = createScopedLogger('entity-seeder')
  * - Handles `user` as a special entity type
  * - Applies proper default options per field type
  *
- * 7-Pass Architecture:
+ * 8-Pass Architecture:
  * 1. Create EntityDefinitions
  * 2. Create ALL CustomFields (including relationships with inverseResourceFieldId=null)
  * 3. Link Relationship Fields (update inverseResourceFieldId)
@@ -32,6 +33,7 @@ const logger = createScopedLogger('entity-seeder')
  * 5. Link Display Fields to EntityDefinitions
  * 6. Create Default TableViews
  * 7. Create Default Field Views (panel/dialog contexts)
+ * 8. Create Default Entity Dashboards (Dashboards v2 plan 03 — ticket/contact/company only)
  */
 export class EntitySeeder {
   constructor(
@@ -89,6 +91,19 @@ export class EntitySeeder {
     logger.info('Pass 7: Creating default field views')
     await createFieldViews(this.db, this.organizationId, systemUserId, entityDefMap, fieldMap)
     logger.info('Pass 7 complete')
+
+    // Pass 8: Create default entity dashboards (ticket/contact/company only — Dashboards v2
+    // plan 03). Runs after defs + fields + default views/field views exist, reusing the same
+    // field maps, so widget refs resolve against real ids at seed time.
+    logger.info('Pass 8: Creating default entity dashboards')
+    await createDefaultDashboards(
+      this.db,
+      this.organizationId,
+      systemUserId,
+      entityDefMap,
+      fieldMap
+    )
+    logger.info('Pass 8 complete')
 
     logger.info('EntitySeeder complete', { organizationId: this.organizationId })
   }

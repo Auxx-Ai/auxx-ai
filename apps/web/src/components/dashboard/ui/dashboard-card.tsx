@@ -21,6 +21,7 @@ import {
   useListSelection,
   usePendingLabel,
 } from '~/components/list-selection'
+import { useResources } from '~/components/resources'
 import { useConfirm } from '~/hooks/use-confirm'
 import { useDashboardMutations } from '../hooks/use-dashboard-mutations'
 import { DashboardFormDialog } from './dashboard-form-dialog'
@@ -29,6 +30,13 @@ export function DashboardCard({ dashboard }: { dashboard: DashboardSummary }) {
   const router = useRouter()
   const [confirm, ConfirmDialog] = useConfirm()
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const { getResourceById } = useResources()
+  // Entity-linked dashboards (plan 02) show a small badge with the entity's
+  // icon + plural — the second "door" onto this same row (the other is its
+  // own `/app/<entity>/dashboard` route).
+  const linkedEntity = dashboard.entityDefinitionId
+    ? getResourceById(dashboard.entityDefinitionId)
+    : undefined
 
   const bulkMode = useBulkMode()
   const selected = useIsSelected(dashboard.id)
@@ -80,6 +88,20 @@ export function DashboardCard({ dashboard }: { dashboard: DashboardSummary }) {
         badges={renderBadgeChips([
           ...(dashboard.visibility === 'private'
             ? [{ icon: <Lock className='size-3' />, label: 'Private' }]
+            : []),
+          ...(linkedEntity
+            ? [
+                {
+                  icon: (
+                    <EntityIcon
+                      iconId={linkedEntity.icon}
+                      color={linkedEntity.color}
+                      className='size-3'
+                    />
+                  ),
+                  label: linkedEntity.plural,
+                },
+              ]
             : []),
           {
             icon: <Layers className='size-3' />,

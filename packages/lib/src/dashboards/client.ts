@@ -382,6 +382,8 @@ export type DashboardSummary = {
   position: number
   createdById: string | null
   activeVersionId: string | null
+  /** Set ⇒ THE dashboard for this entity def (list-page badge, plan 02). */
+  entityDefinitionId: string | null
   tabCount: number
   widgetCount: number
   createdAt: string
@@ -397,6 +399,8 @@ export type DashboardWithLayout = {
   position: number
   createdById: string | null
   activeVersionId: string | null
+  /** Set ⇒ THE dashboard for this entity def — source-picker prefill (plan 02). */
+  entityDefinitionId: string | null
   /** The published active version's number — what view mode renders. */
   versionNumber: number
   /** The published active version's layout — what viewers / view mode render. */

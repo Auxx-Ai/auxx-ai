@@ -4,6 +4,7 @@ import { type DashboardEntity, type Database, schema } from '@auxx/database'
 import { and, asc, desc, eq, isNull, or, sql } from 'drizzle-orm'
 import { err, ok, type Result } from 'neverthrow'
 import { ForbiddenError, NotFoundError, UnprocessableEntityError } from '../errors'
+import { resolveEntityIdFromCache } from '../resources/crud/unified-handler-queries'
 import { canViewDashboard } from './access'
 import type {
   DashboardLayoutDoc,
@@ -33,6 +34,7 @@ function toSummary(row: DashboardEntity, tabCount: number, widgetCount: number):
     position: row.position,
     createdById: row.createdById,
     activeVersionId: row.activeVersionId,
+    entityDefinitionId: row.entityDefinitionId,
     tabCount,
     widgetCount,
     createdAt: row.createdAt.toISOString(),
@@ -126,16 +128,11 @@ export async function loadDashboardRow(
 }
 
 /** Dashboard row + its active version's validated layout doc + version number. */
-export async function getDashboard(
+async function loadDashboardWithLayout(
   db: Database,
-  orgId: string,
   userId: string,
-  dashboardId: string
+  row: DashboardEntity
 ): Promise<Result<DashboardWithLayout, Error>> {
-  const rowResult = await loadDashboardRow(db, orgId, dashboardId)
-  if (rowResult.isErr()) return err(rowResult.error)
-  const row = rowResult.value
-
   if (!canViewDashboard(row, userId)) return err(new ForbiddenError('Not allowed'))
   if (!row.activeVersionId) return err(new NotFoundError('Dashboard has no active version'))
 
@@ -159,6 +156,7 @@ export async function getDashboard(
     position: row.position,
     createdById: row.createdById,
     activeVersionId: row.activeVersionId,
+    entityDefinitionId: row.entityDefinitionId,
     versionNumber: version.versionNumber,
     layout: docResult.value,
     draftLayout: draftResult.value,
@@ -166,6 +164,66 @@ export async function getDashboard(
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   })
+}
+
+/** Selector for {@link getDashboard} — by known id, or by its linked entity def / apiSlug. */
+export type DashboardSelector = { id: string } | { entityDefinitionId?: string; slug?: string }
+
+/**
+ * Dashboard row + its active version's validated layout doc + version number.
+ *
+ * By `id`: unknown id is `err(NotFoundError)` (existing behavior, non-null result —
+ * every internal caller that already has a concrete dashboard id keeps this branch).
+ *
+ * By entity (`entityDefinitionId` and/or `slug`): resolves the def id via the org
+ * cache, then looks up the org's one LIVE dashboard linked to it. No linked
+ * dashboard is `ok(null)` — the empty-state signal, not an error. An unresolvable
+ * entity key is `err(NotFoundError)`.
+ */
+export async function getDashboard(
+  db: Database,
+  orgId: string,
+  userId: string,
+  selector: { id: string }
+): Promise<Result<DashboardWithLayout, Error>>
+export async function getDashboard(
+  db: Database,
+  orgId: string,
+  userId: string,
+  selector: { entityDefinitionId?: string; slug?: string }
+): Promise<Result<DashboardWithLayout | null, Error>>
+export async function getDashboard(
+  db: Database,
+  orgId: string,
+  userId: string,
+  selector: DashboardSelector
+): Promise<Result<DashboardWithLayout | null, Error>> {
+  if ('id' in selector) {
+    const rowResult = await loadDashboardRow(db, orgId, selector.id)
+    if (rowResult.isErr()) return err(rowResult.error)
+    return loadDashboardWithLayout(db, userId, rowResult.value)
+  }
+
+  let entityDefinitionId: string
+  try {
+    entityDefinitionId = await resolveEntityIdFromCache(orgId, {
+      entityDefinitionId: selector.entityDefinitionId,
+      apiSlug: selector.slug,
+    })
+  } catch {
+    return err(new NotFoundError('Entity not found'))
+  }
+
+  const row = await db.query.Dashboard.findFirst({
+    where: and(
+      eq(schema.Dashboard.organizationId, orgId),
+      eq(schema.Dashboard.entityDefinitionId, entityDefinitionId),
+      isNull(schema.Dashboard.archivedAt)
+    ),
+  })
+  if (!row) return ok(null)
+
+  return loadDashboardWithLayout(db, userId, row)
 }
 
 /** Version history (meta only, newest first). Requires view access. */

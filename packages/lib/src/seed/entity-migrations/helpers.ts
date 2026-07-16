@@ -508,6 +508,35 @@ export async function ensureDefaultTableViews(
   await onCacheEvent('table-view.created', { orgId: organizationId, broadcastUserKeys: true })
 }
 
+// ─── Resolvable field map adapter ────────────────────────────────────────────
+
+/**
+ * Adapt `ExistingState.fields` (keyed by `fieldKey(entityDefinitionId, systemAttribute)`) into
+ * the `${entityType}:${field.id}`-keyed shape `create-default-views.ts`'s `buildFieldIdMap` and
+ * `create-default-dashboards.ts`'s `resolveDashboardLayout` expect (their `ResolvableFieldMap`
+ * contract — same convention `ensureDefaultTableViews` callers already build by hand via
+ * `ensureCustomFields`, but reusable here since migration 045 doesn't create any fields, only
+ * reads what earlier migrations already seeded).
+ */
+export function buildResolvableFieldMap(
+  existing: ExistingState,
+  entityTypes: readonly string[]
+): Map<string, { id: string; systemAttribute: string }> {
+  const defIdToType = new Map<string, string>()
+  for (const entityType of entityTypes) {
+    const def = existing.entityDefs.get(entityType)
+    if (def) defIdToType.set(def.id, entityType)
+  }
+
+  const map = new Map<string, { id: string; systemAttribute: string }>()
+  for (const field of existing.fields.values()) {
+    const entityType = defIdToType.get(field.entityDefinitionId)
+    if (!entityType) continue
+    map.set(`${entityType}:${field.id}`, { id: field.id, systemAttribute: field.systemAttribute })
+  }
+  return map
+}
+
 function findFieldBySystemAttr(
   entityType: string,
   allFieldMaps: Map<string, { id: string; systemAttribute: string; options: any; _fieldDef: any }>,
