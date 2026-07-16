@@ -24,6 +24,7 @@ import { getStripeConnectClient } from './connect-client'
 import { resolveQuoteDeposit } from './deposit'
 import { resolveApplicationFee } from './fees'
 import { syncInvoicePaymentState, syncTransaction } from './ledger'
+import { sendPaymentReceipt } from './receipt-email'
 
 /** Unwrap a `getFieldValues()` map entry — takes the first value if array-returned. */
 function firstTyped(
@@ -31,34 +32,6 @@ function firstTyped(
 ): TypedFieldValue | undefined {
   if (!entry) return undefined
   return Array.isArray(entry) ? entry[0] : entry
-}
-
-/**
- * Resolve a document's linked contact's email for `receipt_email` (money MP2 build spec §D) —
- * reads the RELATIONSHIP field's already-fetched typed value, then the target record's
- * `primary_email`. Mirrors `loadPdfContact`'s billing-party lookup (`documents/payload.ts`)
- * without pulling in that module's full contact shape (name/phone/city/etc — a receipt only
- * needs the address). Returns `undefined` when the document has no contact or the contact has
- * no email — Stripe simply omits the receipt send in that case, no error.
- */
-async function resolveContactEmail(
-  handler: UnifiedCrudHandler,
-  cache: ReturnType<typeof getOrgCache>,
-  organizationId: string,
-  contactFieldValue: TypedFieldValue | TypedFieldValue[] | undefined
-): Promise<string | undefined> {
-  const contactTyped = firstTyped(contactFieldValue)
-  const contactRecordId = contactTyped?.type === 'relationship' ? contactTyped.recordId : undefined
-  if (!contactRecordId) return undefined
-
-  const emailCf = await cache
-    .from(organizationId, 'customFields')
-    .bySystemAttributes(['primary_email'] as const)
-  if (!emailCf.primary_email) return undefined
-
-  const emailValues = await handler.getFieldValues(contactRecordId, [emailCf.primary_email.id])
-  const emailTyped = firstTyped(emailValues.get(emailCf.primary_email.id))
-  return emailTyped ? (extractValue(emailTyped) as string) : undefined
 }
 
 /** Input for `createStripeCheckout`. */
@@ -98,13 +71,8 @@ export async function createStripeCheckout(
 
   const cf = await cache
     .from(organizationId, 'customFields')
-    .bySystemAttributes([
-      'invoice_status',
-      'invoice_number',
-      'invoice_balance',
-      'invoice_contact',
-    ] as const)
-  const fieldIds = [cf.invoice_status, cf.invoice_number, cf.invoice_balance, cf.invoice_contact]
+    .bySystemAttributes(['invoice_status', 'invoice_number', 'invoice_balance'] as const)
+  const fieldIds = [cf.invoice_status, cf.invoice_number, cf.invoice_balance]
     .filter(Boolean)
     .map((f) => f!.id)
   const values = await handler.getFieldValues(invoiceRecordId, fieldIds)
@@ -163,12 +131,6 @@ export async function createStripeCheckout(
     key: 'organization.currency',
   })) as string
   const applicationFeeAmount = resolveApplicationFee(account, chargeAmount)
-  const contactEmail = await resolveContactEmail(
-    handler,
-    cache,
-    organizationId,
-    cf.invoice_contact ? values.get(cf.invoice_contact.id) : undefined
-  )
 
   const [transaction] = await database
     .insert(schema.PaymentTransaction)
@@ -205,9 +167,9 @@ export async function createStripeCheckout(
       ],
       payment_intent_data: {
         application_fee_amount: applicationFeeAmount,
-        // Stripe's standard receipt (money MP2 §D) — free once set, falls through silently
-        // when the invoice has no resolvable contact email.
-        receipt_email: contactEmail ?? undefined,
+        // Customer receipt is sent by Auxx on settlement (branded, both rails) — see
+        // plans/dispatch/money/15-payment-receipt-emails.md. Stripe's own `receipt_email` is
+        // intentionally NOT set (it would double-send).
         // Session metadata is NOT copied onto the PaymentIntent — stamp it there too so
         // `payment_intent.succeeded` can resolve the row even if it arrives before
         // `checkout.session.completed` (webhook ordering is not guaranteed).
@@ -276,15 +238,8 @@ export async function createStripeDepositCheckout(
       'quote_number',
       'quote_total',
       'quote_work_orders',
-      'quote_contact',
     ] as const)
-  const fieldIds = [
-    cf.quote_status,
-    cf.quote_number,
-    cf.quote_total,
-    cf.quote_work_orders,
-    cf.quote_contact,
-  ]
+  const fieldIds = [cf.quote_status, cf.quote_number, cf.quote_total, cf.quote_work_orders]
     .filter(Boolean)
     .map((f) => f!.id)
   const values = await handler.getFieldValues(quoteRecordId, fieldIds)
@@ -333,12 +288,6 @@ export async function createStripeDepositCheckout(
     key: 'organization.currency',
   })) as string
   const applicationFeeAmount = resolveApplicationFee(account, depositAmount)
-  const contactEmail = await resolveContactEmail(
-    handler,
-    cache,
-    organizationId,
-    cf.quote_contact ? values.get(cf.quote_contact.id) : undefined
-  )
 
   // Auto-convert (if `documents.quote.autoConvertOnAccept` is on) runs synchronously on
   // accept, so a work order may already exist by the time the customer reaches this deposit
@@ -388,7 +337,8 @@ export async function createStripeDepositCheckout(
       ],
       payment_intent_data: {
         application_fee_amount: applicationFeeAmount,
-        receipt_email: contactEmail ?? undefined,
+        // Customer receipt is sent by Auxx on settlement — see money/15. Stripe's own
+        // `receipt_email` is intentionally NOT set (it would double-send).
         // Session metadata is NOT copied onto the PaymentIntent — stamp it there too so
         // `payment_intent.succeeded` can resolve the row even if it arrives before
         // `checkout.session.completed` (webhook ordering is not guaranteed).
@@ -487,6 +437,11 @@ async function markChargeSucceeded(
     userId: systemUserId,
     transaction: updated,
   })
+
+  // Branded customer receipt (money/15) — this is the exactly-once flip (the status-guarded
+  // UPDATE above bails for a concurrent loser), and `syncTransaction` has already reprojected the
+  // invoice balance, so the remaining-balance figure is fresh. `sendPaymentReceipt` never throws.
+  await sendPaymentReceipt({ organizationId: updated.organizationId, transaction: updated })
 }
 
 /** Input for reconciling a successful invoice Checkout browser return. */
