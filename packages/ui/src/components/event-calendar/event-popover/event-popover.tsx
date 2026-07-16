@@ -197,6 +197,7 @@ export function EventPopover({
       <PopoverContent
         side={side}
         align={align}
+        updatePositionStrategy='always'
         onOpenAutoFocus={(e) => e.preventDefault()}
         className='w-80 rounded-3xl p-0 shadow-xl'>
         <EventPopoverBody series={series} header={header}>

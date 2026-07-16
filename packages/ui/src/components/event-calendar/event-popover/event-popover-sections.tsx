@@ -378,86 +378,92 @@ export function EventDateTimeSection({
   return (
     <div className='space-y-2'>
       <PanelSectionLabel>Date & Time</PanelSectionLabel>
-      <PanelCard divided>
-        <PanelCardRow
-          icon={<CalendarDays />}
-          title='Date'
-          warnings={warnings}
-          description={start ? format(start, 'PPP') : 'No date'}
-          trailing={
-            <div className='flex items-center gap-2'>
-              {onDateToggle && (
-                <Switch
-                  checked={start != null}
-                  onCheckedChange={onDateToggle}
-                  disabled={disabled}
-                />
-              )}
-              {!readOnly && (
-                <PanelRowValue
-                  aria-label='Change date'
-                  aria-expanded={openEditor === 'date'}
-                  onClick={() => toggleEditor('date')}>
-                  {null}
-                </PanelRowValue>
-              )}
-            </div>
-          }
-        />
-        <AnimatedCollapsibleContent open={openEditor === 'date'}>
-          <div className='pb-1'>
-            <Calendar mode='single' selected={start ?? undefined} onSelect={handleDateSelect} />
-          </div>
-        </AnimatedCollapsibleContent>
-        <PanelCardRow
-          icon={<Clock8 />}
-          title='Time'
-          description={
-            start && end
-              ? `${formatTimeOfDay(start, use24Hour)} – ${formatTimeOfDay(end, use24Hour)}`
-              : 'No time'
-          }
-          trailing={
-            !readOnly && start && end ? (
-              <PanelRowValue
-                aria-label='Change time'
-                aria-expanded={openEditor === 'time'}
-                onClick={() => toggleEditor('time')}>
-                {null}
-              </PanelRowValue>
-            ) : null
-          }
-        />
-        <AnimatedCollapsibleContent open={openEditor === 'time'}>
-          {localTime && (
-            <div className='pb-1'>
-              {renderTimeEditor ? (
-                renderTimeEditor({
-                  ...localTime,
-                  use24Hour,
-                  onCommit: handleTimeCommit,
-                })
-              ) : (
-                <InlineTimeEditor
-                  {...localTime}
-                  use24Hour={use24Hour}
-                  onCommit={handleTimeCommit}
-                />
-              )}
-            </div>
-          )}
-        </AnimatedCollapsibleContent>
-        {allDay && (
+      <PanelCard>
+        <div>
           <PanelCardRow
-            title='All day'
+            icon={<CalendarDays />}
+            title='Date'
+            warnings={warnings}
+            description={start ? format(start, 'PPP') : 'No date'}
             trailing={
-              <Switch
-                checked={allDay.value}
-                onCheckedChange={allDay.onChange}
-                disabled={disabled}
-              />
+              <div className='flex items-center gap-2'>
+                {onDateToggle && (
+                  <Switch
+                    checked={start != null}
+                    onCheckedChange={onDateToggle}
+                    disabled={disabled}
+                  />
+                )}
+                {!readOnly && (
+                  <PanelRowValue
+                    aria-label='Change date'
+                    aria-expanded={openEditor === 'date'}
+                    onClick={() => toggleEditor('date')}>
+                    {null}
+                  </PanelRowValue>
+                )}
+              </div>
             }
           />
+          <AnimatedCollapsibleContent open={openEditor === 'date'}>
+            <div className='pt-3 pb-1'>
+              <Calendar mode='single' selected={start ?? undefined} onSelect={handleDateSelect} />
+            </div>
+          </AnimatedCollapsibleContent>
+        </div>
+        <div className='mt-3 border-t border-border/50 pt-3'>
+          <PanelCardRow
+            icon={<Clock8 />}
+            title='Time'
+            description={
+              start && end
+                ? `${formatTimeOfDay(start, use24Hour)} – ${formatTimeOfDay(end, use24Hour)}`
+                : 'No time'
+            }
+            trailing={
+              !readOnly && start && end ? (
+                <PanelRowValue
+                  aria-label='Change time'
+                  aria-expanded={openEditor === 'time'}
+                  onClick={() => toggleEditor('time')}>
+                  {null}
+                </PanelRowValue>
+              ) : null
+            }
+          />
+          <AnimatedCollapsibleContent open={openEditor === 'time'}>
+            {localTime && (
+              <div className='pt-3 pb-1'>
+                {renderTimeEditor ? (
+                  renderTimeEditor({
+                    ...localTime,
+                    use24Hour,
+                    onCommit: handleTimeCommit,
+                  })
+                ) : (
+                  <InlineTimeEditor
+                    {...localTime}
+                    use24Hour={use24Hour}
+                    onCommit={handleTimeCommit}
+                  />
+                )}
+              </div>
+            )}
+          </AnimatedCollapsibleContent>
+        </div>
+        {allDay && (
+          <div className='mt-3 border-t border-border/50 pt-3'>
+            <PanelCardRow
+              title='All day'
+              trailing={
+                <Switch
+                  checked={allDay.value}
+                  onCheckedChange={allDay.onChange}
+                  disabled={disabled}
+                />
+              }
+            />
+          </div>
         )}
       </PanelCard>
     </div>
