@@ -38,6 +38,7 @@ import {
 } from '~/components/resources/store/field-value-store'
 import { useResourceStore } from '~/components/resources/store/resource-store'
 import { useSettings } from '~/hooks/use-settings'
+import type { DraftLine } from './line-rows'
 import { formatCurrency } from './shared'
 
 /** Org tax rate preset (`documents.taxRates` setting, §G.1). */
@@ -71,36 +72,44 @@ const INVOICE_BILLING_ATTRS = [
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * Subscribe to every line's qty/unitPrice/taxable and shape them as
- * `LineForTotals[]`. Queues its own store fetches — virtualized rows outside
- * the viewport never mount their cells, so the footer can't rely on cell
- * subscriptions alone.
+ * Subscribe to every REAL line's qty/unitPrice/taxable/optional/optionalSelected and shape
+ * them as `LineForTotals[]`, then append local phantom draft lines' equivalent values
+ * (`draftLines` — pure client state, no store fetch needed) so the optimistic footer counts
+ * in-progress rows too. Queues its own store fetches — virtualized rows outside the viewport
+ * never mount their cells, so the footer can't rely on cell subscriptions alone.
  */
-function useLinesForTotals(lineRecordIds: RecordId[]): LineForTotals[] {
+function useLinesForTotals(lineRecordIds: RecordId[], draftLines: DraftLine[]): LineForTotals[] {
   const systemAttributeMap = useResourceStore((s) => s.systemAttributeMap)
   const qtyRef = systemAttributeMap.line_item_qty
   const priceRef = systemAttributeMap.line_item_unit_price
   const taxableRef = systemAttributeMap.line_item_taxable
+  const optionalRef = systemAttributeMap.line_item_optional
+  const optionalSelectedRef = systemAttributeMap.line_item_optional_selected
 
   useEffect(() => {
-    if (!qtyRef || !priceRef || !taxableRef || lineRecordIds.length === 0) return
+    if (!qtyRef || !priceRef || !taxableRef || !optionalRef || !optionalSelectedRef) return
+    if (lineRecordIds.length === 0) return
     fieldValueFetchQueue.queueFetchBatch(
       lineRecordIds.flatMap((recordId) => [
         { recordId, fieldRef: qtyRef },
         { recordId, fieldRef: priceRef },
         { recordId, fieldRef: taxableRef },
+        { recordId, fieldRef: optionalRef },
+        { recordId, fieldRef: optionalSelectedRef },
       ])
     )
-  }, [lineRecordIds, qtyRef, priceRef, taxableRef])
+  }, [lineRecordIds, qtyRef, priceRef, taxableRef, optionalRef, optionalSelectedRef])
 
   const keys = useMemo(() => {
-    if (!qtyRef || !priceRef || !taxableRef) return []
+    if (!qtyRef || !priceRef || !taxableRef || !optionalRef || !optionalSelectedRef) return []
     return lineRecordIds.map((recordId) => ({
       qty: buildFieldValueKey(recordId, qtyRef),
       price: buildFieldValueKey(recordId, priceRef),
       taxable: buildFieldValueKey(recordId, taxableRef),
+      optional: buildFieldValueKey(recordId, optionalRef),
+      optionalSelected: buildFieldValueKey(recordId, optionalSelectedRef),
     }))
-  }, [lineRecordIds, qtyRef, priceRef, taxableRef])
+  }, [lineRecordIds, qtyRef, priceRef, taxableRef, optionalRef, optionalSelectedRef])
   const keysKey = keys.map((k) => k.qty).join(',')
 
   const storeValues = useFieldValueStore(
@@ -113,6 +122,8 @@ function useLinesForTotals(lineRecordIds: RecordId[]): LineForTotals[] {
             result[k.qty] = state.values[k.qty]
             result[k.price] = state.values[k.price]
             result[k.taxable] = state.values[k.taxable]
+            result[k.optional] = state.values[k.optional]
+            result[k.optionalSelected] = state.values[k.optionalSelected]
           }
           return result
         },
@@ -121,7 +132,7 @@ function useLinesForTotals(lineRecordIds: RecordId[]): LineForTotals[] {
     )
   )
 
-  return useMemo(
+  const realLines = useMemo(
     () =>
       keys.map((k) => {
         // formatToRawValue returns arrays for array-stored values — collapse to
@@ -135,10 +146,26 @@ function useLinesForTotals(lineRecordIds: RecordId[]): LineForTotals[] {
         const unitPrice =
           (scalar(storeValues[k.price], FieldType.CURRENCY) as number | null | undefined) ?? null
         const taxable = scalar(storeValues[k.taxable], FieldType.CHECKBOX) !== false
-        return { lineTotal: computeLineTotal(qty, unitPrice), taxable }
+        const optional = scalar(storeValues[k.optional], FieldType.CHECKBOX) === true
+        const optionalSelected =
+          scalar(storeValues[k.optionalSelected], FieldType.CHECKBOX) !== false
+        return { lineTotal: computeLineTotal(qty, unitPrice), taxable, optional, optionalSelected }
       }),
     [keys, storeValues]
   )
+
+  const draftLinesForTotals = useMemo(
+    () =>
+      draftLines.map((draft) => ({
+        lineTotal: computeLineTotal(draft.qty, draft.unitPriceCents),
+        taxable: draft.taxable,
+        optional: draft.optional,
+        optionalSelected: draft.optionalSelected,
+      })),
+    [draftLines]
+  )
+
+  return useMemo(() => [...realLines, ...draftLinesForTotals], [realLines, draftLinesForTotals])
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -151,12 +178,15 @@ export function TotalsFooter({
   readOnly,
   currencyCode,
   lineRecordIds,
+  draftLines,
 }: {
   documentRecordId: RecordId
   documentType: 'quote' | 'work_order' | 'invoice'
   readOnly: boolean
   currencyCode: string
   lineRecordIds: RecordId[]
+  /** Local phantom draft lines not yet persisted — counted optimistically (money plan 18 §3). */
+  draftLines: DraftLine[]
 }) {
   const isQuote = documentType === 'quote'
   const isInvoice = documentType === 'invoice'
@@ -164,7 +194,7 @@ export function TotalsFooter({
   // systemAttribute prefix (money MI1 build spec §J.2) — work_order (M2 job view) has none.
   const hasBilling = isQuote || isInvoice
   const prefix = isInvoice ? 'invoice' : 'quote'
-  const lines = useLinesForTotals(lineRecordIds)
+  const lines = useLinesForTotals(lineRecordIds, draftLines)
   const { saveMultipleAsync } = useSaveFieldValue()
   const { getSetting } = useSettings({})
   const [discountDraft, setDiscountDraft] = useState<string | null>(null)

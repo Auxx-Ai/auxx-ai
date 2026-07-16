@@ -187,6 +187,7 @@ export async function convertQuoteToWorkOrder(input: ConvertQuoteToWorkOrderInpu
       'line_item_name',
       'line_item_description',
       'line_item_qty',
+      'line_item_unit',
       'line_item_unit_price',
       'line_item_line_total',
       'line_item_taxable',
@@ -194,6 +195,8 @@ export async function convertQuoteToWorkOrder(input: ConvertQuoteToWorkOrderInpu
       'line_item_discount',
       'line_item_sort_order',
       'line_item_catalog_item',
+      'line_item_optional',
+      'line_item_optional_selected',
     ] as const)
 
   const { ids: lineInstanceIds } = await handler.listFiltered({
@@ -221,6 +224,7 @@ export async function convertQuoteToWorkOrder(input: ConvertQuoteToWorkOrderInpu
     lineCf.line_item_name,
     lineCf.line_item_description,
     lineCf.line_item_qty,
+    lineCf.line_item_unit,
     lineCf.line_item_unit_price,
     lineCf.line_item_line_total,
     lineCf.line_item_taxable,
@@ -228,6 +232,8 @@ export async function convertQuoteToWorkOrder(input: ConvertQuoteToWorkOrderInpu
     lineCf.line_item_discount,
     lineCf.line_item_sort_order,
     lineCf.line_item_catalog_item,
+    lineCf.line_item_optional,
+    lineCf.line_item_optional_selected,
   ]
     .filter(Boolean)
     .map((f) => f!.id)
@@ -240,6 +246,7 @@ export async function convertQuoteToWorkOrder(input: ConvertQuoteToWorkOrderInpu
     const nameTyped = get(lineCf.line_item_name)
     const descriptionTyped = get(lineCf.line_item_description)
     const qtyTyped = get(lineCf.line_item_qty)
+    const unitTyped = get(lineCf.line_item_unit)
     const unitPriceTyped = get(lineCf.line_item_unit_price)
     const lineTotalTyped = get(lineCf.line_item_line_total)
     const taxableTyped = get(lineCf.line_item_taxable)
@@ -247,11 +254,23 @@ export async function convertQuoteToWorkOrder(input: ConvertQuoteToWorkOrderInpu
     const discountTyped = get(lineCf.line_item_discount)
     const sortOrderTyped = get(lineCf.line_item_sort_order)
     const catalogItemTyped = get(lineCf.line_item_catalog_item)
+    const optionalTyped = get(lineCf.line_item_optional)
+    const optionalSelectedTyped = get(lineCf.line_item_optional_selected)
 
+    // Deselected option (plan 18 §6, decision 5) — stays on the quote only, never becomes work.
+    const optional = optionalTyped ? (extractValue(optionalTyped) as boolean) : false
+    const optionalSelected = optionalSelectedTyped
+      ? (extractValue(optionalSelectedTyped) as boolean)
+      : true
+    if (optional && !optionalSelected) continue
+
+    // Surviving copies are plain required lines (decision 6) — `line_item_optional`/
+    // `line_item_optional_selected` are read above only to decide the skip, never written here.
     const copyValues: Record<string, unknown> = {
       line_item_name: nameTyped ? extractValue(nameTyped) : undefined,
       line_item_description: descriptionTyped ? extractValue(descriptionTyped) : undefined,
       line_item_qty: qtyTyped ? extractValue(qtyTyped) : 1,
+      line_item_unit: unitTyped ? extractValue(unitTyped) : undefined,
       line_item_unit_price: unitPriceTyped ? extractValue(unitPriceTyped) : undefined,
       line_item_line_total: lineTotalTyped ? extractValue(lineTotalTyped) : undefined,
       line_item_taxable: taxableTyped ? extractValue(taxableTyped) : true,

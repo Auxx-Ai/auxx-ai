@@ -2,6 +2,7 @@
 
 import type { RecordId } from '@auxx/types/resource'
 import type { RecurrencePattern } from '../recurrence'
+import type { LineItemUnit } from './units'
 
 /** Percent-of-subtotal vs flat-amount discount (mirrors `QUOTE_DISCOUNT_TYPE_OPTIONS`). */
 export type DiscountType = 'percent' | 'amount'
@@ -14,6 +15,10 @@ export interface LineForTotals {
   /** `qty * unitPrice` in integer cents, already computed (roundCents). `null` when `unitPrice` is null. */
   lineTotal: number | null
   taxable: boolean
+  /** Customer-selectable upsell line (quotes only, plan 18). Absent/`false` = a required line. */
+  optional?: boolean
+  /** Current selection state — meaningful only when `optional` is true. */
+  optionalSelected?: boolean
 }
 
 /** Document-level billing inputs (the quote's own fields) driving discount + tax math. */
@@ -132,6 +137,8 @@ export interface UninvoicedLine {
   name: string
   description?: string
   qty: number
+  /** `null` for a unitless line — preserve today's `qty × unitPrice` rendering (plan 13 §6). */
+  unit: LineItemUnit | null
   unitPrice: number | null
   lineTotal: number | null
   taxable: boolean

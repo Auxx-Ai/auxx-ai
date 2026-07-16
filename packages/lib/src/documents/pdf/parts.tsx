@@ -5,6 +5,7 @@
 import { formatCurrency } from '@auxx/utils/currency'
 import { Image, Text, View } from '@react-pdf/renderer'
 import { format } from 'date-fns'
+import { formatLineItemUnit, type LineItemUnit } from '../../money/units'
 import type { DocumentBusinessSettings } from '../resolve-settings'
 import type { createDocumentStyles } from './theme'
 
@@ -132,8 +133,44 @@ export interface DocumentLineRow {
   name: string
   description?: string | null
   qty: number
+  /** Money plan 13 §1/§6 — `null`/absent renders exactly as an unitless line does today. */
+  unit?: LineItemUnit | null
   unitPrice: number | null
   lineTotal: number | null
+  /** Small muted label under the line name — quote-pdf.tsx uses it to tag a pre-checked
+   * optional line as "Optional · included" in the main list (money plan 18 §7). Absent on
+   * every other row (invoice lines, deselected add-ons rendered in their own block). */
+  tag?: string | null
+}
+
+/** Formats a quantity without trailing zeros, up to 3 decimal places (`2.375`, `5`, `12`) —
+ * mirrors the line-builder's compact quantity cell (money plan 13 §7 decimal rule). */
+function formatDocQty(qty: number): string {
+  return String(Number(qty.toFixed(3)))
+}
+
+/**
+ * `12 hr` or bare `12` when the line has no unit — the document-label qty cell (money plan
+ * 13 §6/§9's explicit multiplication form, split across the Qty/Unit price/Amount columns).
+ */
+function formatDocQtyCell(qty: number, unit: LineItemUnit | null | undefined): string {
+  const suffix = formatLineItemUnit(unit, 'document')
+  return suffix ? `${formatDocQty(qty)} ${suffix}` : formatDocQty(qty)
+}
+
+/**
+ * `$85.00/hr` when priced and unitized, plain `$85.00` when unitized but the existing
+ * unpriced/em-dash state stays untouched — a `null` rate never renders `$0/unit` (money plan
+ * 13 §6).
+ */
+function formatDocUnitPriceCell(
+  unitPrice: number | null,
+  unit: LineItemUnit | null | undefined,
+  currencyCode: string
+): string {
+  const formatted = formatCurrency(unitPrice, { currencyCode })
+  const suffix = formatLineItemUnit(unit, 'document')
+  return suffix && unitPrice !== null ? `${formatted}/${suffix}` : formatted
 }
 
 /**
@@ -163,14 +200,15 @@ export function LineItemsTable(props: {
         <View key={i} style={styles.tableRow}>
           <View style={styles.colDescription}>
             <Text style={styles.lineName}>{line.name}</Text>
+            {line.tag ? <Text style={styles.lineTag}>{line.tag}</Text> : null}
             {showDescriptions && line.description ? (
               <Text style={styles.lineDescription}>{line.description}</Text>
             ) : null}
           </View>
-          {full ? <Text style={styles.colQty}>{line.qty}</Text> : null}
+          {full ? <Text style={styles.colQty}>{formatDocQtyCell(line.qty, line.unit)}</Text> : null}
           {full ? (
             <Text style={styles.colUnitPrice}>
-              {formatCurrency(line.unitPrice, { currencyCode })}
+              {formatDocUnitPriceCell(line.unitPrice, line.unit, currencyCode)}
             </Text>
           ) : null}
           <Text style={styles.colAmount}>{formatCurrency(line.lineTotal, { currencyCode })}</Text>

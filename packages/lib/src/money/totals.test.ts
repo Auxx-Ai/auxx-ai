@@ -144,3 +144,105 @@ describe('computeDocumentTotals', () => {
     expect(result.discountAmount).toBe(0)
   })
 })
+
+describe('computeDocumentTotals — optional lines (money plan 18)', () => {
+  it('excludes a deselected optional line from subtotal, taxable subtotal, and discount base', () => {
+    const lines: LineForTotals[] = [
+      { lineTotal: 5000, taxable: true },
+      { lineTotal: 2000, taxable: true, optional: true, optionalSelected: false },
+    ]
+    const result = computeDocumentTotals(lines, { taxRate: 10 })
+    expect(result.subtotal).toBe(5000)
+    expect(result.taxTotal).toBe(500)
+    expect(result.total).toBe(5500)
+  })
+
+  it('includes a selected optional line normally', () => {
+    const lines: LineForTotals[] = [
+      { lineTotal: 5000, taxable: true },
+      { lineTotal: 2000, taxable: true, optional: true, optionalSelected: true },
+    ]
+    const result = computeDocumentTotals(lines, {})
+    expect(result.subtotal).toBe(7000)
+    expect(result.total).toBe(7000)
+  })
+
+  it('produces byte-for-byte identical output when optional/optionalSelected are absent vs explicitly undefined', () => {
+    const withoutFlags: LineForTotals[] = [
+      { lineTotal: 10_000, taxable: true },
+      { lineTotal: 10_000, taxable: false },
+    ]
+    const withUndefinedFlags: LineForTotals[] = [
+      { lineTotal: 10_000, taxable: true, optional: undefined, optionalSelected: undefined },
+      { lineTotal: 10_000, taxable: false, optional: undefined, optionalSelected: undefined },
+    ]
+    const billing = { discountType: 'percent' as const, discountValue: 50, taxRate: 10 }
+    expect(computeDocumentTotals(withUndefinedFlags, billing)).toEqual(
+      computeDocumentTotals(withoutFlags, billing)
+    )
+  })
+
+  it('matches every pre-existing (required-only) case exactly when optional is unset', () => {
+    // Re-run a sample of the pre-optional-lines cases above through the same assertions —
+    // proves the new exclusion filter is a strict no-op for documents with no optional flags.
+    const flat: LineForTotals[] = [
+      { lineTotal: 10_000, taxable: true },
+      { lineTotal: 10_000, taxable: false },
+    ]
+    expect(
+      computeDocumentTotals(flat, { discountType: 'percent', discountValue: 50, taxRate: 10 })
+    ).toEqual({ subtotal: 20_000, discountAmount: 10_000, taxTotal: 500, total: 10_500 })
+
+    const single: LineForTotals[] = [{ lineTotal: 3333, taxable: true }]
+    expect(computeDocumentTotals(single, { taxRate: 7.25 })).toEqual({
+      subtotal: 3333,
+      discountAmount: 0,
+      taxTotal: 242,
+      total: 3575,
+    })
+  })
+
+  it('returns all-zero totals when every line is an optional deselected line', () => {
+    const lines: LineForTotals[] = [
+      { lineTotal: 5000, taxable: true, optional: true, optionalSelected: false },
+      { lineTotal: 2000, taxable: false, optional: true, optionalSelected: false },
+    ]
+    expect(computeDocumentTotals(lines, { taxRate: 10 })).toEqual({
+      subtotal: 0,
+      discountAmount: 0,
+      taxTotal: 0,
+      total: 0,
+    })
+  })
+
+  it('pro-rates discount + tax across a mixed selection (required, selected option, deselected option)', () => {
+    // required 10000 (taxable) + selected option 5000 (taxable) = subtotal 15000; the
+    // deselected 8000 (taxable) option is excluded entirely, including from taxableSubtotal.
+    // 20% discount -> discountAmount 3000. taxBase = 15000 * (1 - 3000/15000) = 12000.
+    // taxTotal = 12000 * 10% = 1200. total = 15000 - 3000 + 1200 = 13200.
+    const lines: LineForTotals[] = [
+      { lineTotal: 10_000, taxable: true },
+      { lineTotal: 5000, taxable: true, optional: true, optionalSelected: true },
+      { lineTotal: 8000, taxable: true, optional: true, optionalSelected: false },
+    ]
+    const result = computeDocumentTotals(lines, {
+      discountType: 'percent',
+      discountValue: 20,
+      taxRate: 10,
+    })
+    expect(result.subtotal).toBe(15_000)
+    expect(result.discountAmount).toBe(3000)
+    expect(result.taxTotal).toBe(1200)
+    expect(result.total).toBe(13_200)
+  })
+
+  it('contributes normally for optional:true/optionalSelected:true and the nonsensical optional:false/optionalSelected:false combo', () => {
+    const lines: LineForTotals[] = [
+      { lineTotal: 5000, taxable: true, optional: true, optionalSelected: true },
+      { lineTotal: 3000, taxable: true, optional: false, optionalSelected: false },
+    ]
+    const result = computeDocumentTotals(lines, {})
+    expect(result.subtotal).toBe(8000)
+    expect(result.total).toBe(8000)
+  })
+})

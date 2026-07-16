@@ -2,6 +2,7 @@
 
 import { FieldType } from '@auxx/database/enums'
 import { type ResourceFieldId, toFieldId } from '@auxx/types/field'
+import { LINE_ITEM_UNIT_OPTIONS } from '../../../money/units'
 import { BaseType } from '../../types'
 import { CREATED_BY_FIELD } from '../common-fields'
 import type { ResourceField } from '../field-types'
@@ -101,6 +102,29 @@ export const LINE_ITEM_FIELDS: Record<string, ResourceField> = {
     defaultValue: 1,
   },
 
+  unit: {
+    id: toFieldId('unit'),
+    key: 'unit',
+    label: 'Unit',
+    type: BaseType.ENUM,
+    fieldType: FieldType.SINGLE_SELECT,
+    isSystem: true,
+    systemAttribute: 'line_item_unit',
+    systemSortOrder: 'a4',
+    nullable: true,
+    options: { options: [...LINE_ITEM_UNIT_OPTIONS] },
+    capabilities: {
+      filterable: true,
+      sortable: true,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    placeholder: 'Select unit',
+    description:
+      'Immutable-at-copy-time display snapshot; the current editable line may subsequently change it',
+  },
+
   unitPrice: {
     id: toFieldId('unitPrice'),
     key: 'unitPrice',
@@ -109,7 +133,7 @@ export const LINE_ITEM_FIELDS: Record<string, ResourceField> = {
     fieldType: FieldType.CURRENCY,
     isSystem: true,
     systemAttribute: 'line_item_unit_price',
-    systemSortOrder: 'a4',
+    systemSortOrder: 'a5',
     nullable: true,
     options: {
       currencyCode: 'USD',
@@ -134,7 +158,7 @@ export const LINE_ITEM_FIELDS: Record<string, ResourceField> = {
     fieldType: FieldType.CURRENCY,
     isSystem: true,
     systemAttribute: 'line_item_line_total',
-    systemSortOrder: 'a5',
+    systemSortOrder: 'a6',
     nullable: true,
     options: {
       currencyCode: 'USD',
@@ -160,7 +184,7 @@ export const LINE_ITEM_FIELDS: Record<string, ResourceField> = {
     fieldType: FieldType.CHECKBOX,
     isSystem: true,
     systemAttribute: 'line_item_taxable',
-    systemSortOrder: 'a6',
+    systemSortOrder: 'a7',
     nullable: false,
     capabilities: {
       filterable: true,
@@ -172,6 +196,50 @@ export const LINE_ITEM_FIELDS: Record<string, ResourceField> = {
     defaultValue: true,
   },
 
+  optional: {
+    id: toFieldId('optional'),
+    key: 'optional',
+    label: 'Optional',
+    type: BaseType.BOOLEAN,
+    fieldType: FieldType.CHECKBOX,
+    isSystem: true,
+    systemAttribute: 'line_item_optional',
+    systemSortOrder: 'a8',
+    showInPanel: false, // builder-only UI
+    nullable: false,
+    capabilities: {
+      filterable: true,
+      sortable: false,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    defaultValue: false,
+    description: 'True for quote line items the customer can opt in/out of',
+  },
+
+  optionalSelected: {
+    id: toFieldId('optionalSelected'),
+    key: 'optionalSelected',
+    label: 'Optional Selected',
+    type: BaseType.BOOLEAN,
+    fieldType: FieldType.CHECKBOX,
+    isSystem: true,
+    systemAttribute: 'line_item_optional_selected',
+    systemSortOrder: 'a9',
+    showInPanel: false, // builder-only UI
+    nullable: false,
+    capabilities: {
+      filterable: true,
+      sortable: false,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    defaultValue: true,
+    description: 'Meaningful only when optional is true; required lines ignore this',
+  },
+
   category: {
     id: toFieldId('category'),
     key: 'category',
@@ -180,7 +248,7 @@ export const LINE_ITEM_FIELDS: Record<string, ResourceField> = {
     fieldType: FieldType.SINGLE_SELECT,
     isSystem: true,
     systemAttribute: 'line_item_category',
-    systemSortOrder: 'a7',
+    systemSortOrder: 'aA',
     nullable: true,
     options: { options: [...CATALOG_CATEGORY_OPTIONS] },
     capabilities: {
@@ -201,7 +269,7 @@ export const LINE_ITEM_FIELDS: Record<string, ResourceField> = {
     fieldType: FieldType.NUMBER,
     isSystem: true,
     systemAttribute: 'line_item_discount',
-    systemSortOrder: 'a8',
+    systemSortOrder: 'aB',
     showInPanel: false, // line-level discount is a later UI unlock (README); field ships now
     nullable: true,
     capabilities: {
@@ -221,7 +289,7 @@ export const LINE_ITEM_FIELDS: Record<string, ResourceField> = {
     fieldType: FieldType.NUMBER,
     isSystem: true,
     systemAttribute: 'line_item_sort_order',
-    systemSortOrder: 'a9',
+    systemSortOrder: 'aC',
     showInPanel: false,
     nullable: true,
     capabilities: {
@@ -242,7 +310,7 @@ export const LINE_ITEM_FIELDS: Record<string, ResourceField> = {
     fieldType: FieldType.TEXT,
     isSystem: true,
     systemAttribute: 'line_item_visit_id',
-    systemSortOrder: 'aA',
+    systemSortOrder: 'aD',
     showInPanel: false,
     nullable: true,
     capabilities: {
@@ -263,7 +331,7 @@ export const LINE_ITEM_FIELDS: Record<string, ResourceField> = {
     fieldType: FieldType.RELATIONSHIP,
     isSystem: true,
     systemAttribute: 'line_item_catalog_item',
-    systemSortOrder: 'aB',
+    systemSortOrder: 'aE',
     nullable: true,
     capabilities: {
       filterable: true,
@@ -294,7 +362,7 @@ export const LINE_ITEM_FIELDS: Record<string, ResourceField> = {
     fieldType: FieldType.RELATIONSHIP,
     isSystem: true,
     systemAttribute: 'line_item_quote',
-    systemSortOrder: 'aC',
+    systemSortOrder: 'aF',
     nullable: true,
     capabilities: {
       filterable: true,
@@ -325,7 +393,7 @@ export const LINE_ITEM_FIELDS: Record<string, ResourceField> = {
     fieldType: FieldType.RELATIONSHIP,
     isSystem: true,
     systemAttribute: 'line_item_work_order',
-    systemSortOrder: 'aD',
+    systemSortOrder: 'b0',
     nullable: true,
     capabilities: {
       filterable: true,
@@ -356,7 +424,7 @@ export const LINE_ITEM_FIELDS: Record<string, ResourceField> = {
     fieldType: FieldType.RELATIONSHIP,
     isSystem: true,
     systemAttribute: 'line_item_invoice',
-    systemSortOrder: 'aE',
+    systemSortOrder: 'b1',
     nullable: true,
     capabilities: {
       filterable: true,
@@ -387,7 +455,7 @@ export const LINE_ITEM_FIELDS: Record<string, ResourceField> = {
     fieldType: FieldType.DATETIME,
     isSystem: true,
     systemAttribute: 'created_at',
-    systemSortOrder: 'b0',
+    systemSortOrder: 'b2',
     dbColumn: 'createdAt',
     nullable: false,
     capabilities: {
@@ -408,7 +476,7 @@ export const LINE_ITEM_FIELDS: Record<string, ResourceField> = {
     fieldType: FieldType.DATETIME,
     isSystem: true,
     systemAttribute: 'updated_at',
-    systemSortOrder: 'b1',
+    systemSortOrder: 'b3',
     dbColumn: 'updatedAt',
     nullable: false,
     capabilities: {

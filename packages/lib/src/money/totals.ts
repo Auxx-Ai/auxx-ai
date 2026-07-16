@@ -54,16 +54,28 @@ function computeDiscountAmount(
  *   `taxableSubtotal * (1 - discountAmount / subtotal)`
  * - `taxTotal` = `taxBase * taxRate / 100`
  * - `total` = `subtotal - discountAmount + taxTotal`
+ *
+ * Deselected options (money plan 18 §2) — a line with `optional: true` and
+ * `optionalSelected: false` contributes nothing to `subtotal`, `taxableSubtotal`, or (by
+ * extension) the discount/tax base. Absent/undefined flags are equivalent to a required line
+ * and keep today's behavior byte-for-byte.
  */
 export function computeDocumentTotals(
   lines: LineForTotals[],
   billing: DocumentBillingInputs
 ): DocumentTotals {
+  const isExcluded = (line: LineForTotals): boolean =>
+    line.optional === true && line.optionalSelected === false
+
   const subtotal = roundCents(
-    lines.reduce((sum, line) => (line.lineTotal === null ? sum : sum + line.lineTotal), 0)
+    lines.reduce(
+      (sum, line) => (line.lineTotal === null || isExcluded(line) ? sum : sum + line.lineTotal),
+      0
+    )
   )
   const taxableSubtotal = lines.reduce(
-    (sum, line) => (line.lineTotal === null || !line.taxable ? sum : sum + line.lineTotal),
+    (sum, line) =>
+      line.lineTotal === null || !line.taxable || isExcluded(line) ? sum : sum + line.lineTotal,
     0
   )
 

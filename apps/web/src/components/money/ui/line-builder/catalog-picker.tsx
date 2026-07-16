@@ -14,6 +14,7 @@
 // everything with field values in one call" hook fits better than the
 // paginated `useRecordList` used for large lists.
 
+import type { LineItemUnit } from '@auxx/lib/money/client'
 import { toRecordId } from '@auxx/lib/resources/client'
 import type { RecordId } from '@auxx/types/resource'
 import {
@@ -43,6 +44,8 @@ export interface CatalogItemPick {
   category: string | null
   taxable: boolean
   unitPrice: number | null
+  /** Copied exactly, including `null` (money plan 13 §5) — never re-derived. */
+  defaultUnit: LineItemUnit | null
 }
 
 /** One resolved line payload inside a picked group's explode (plans/dispatch/money/09-product-groups.md). */
@@ -52,6 +55,8 @@ export interface CatalogGroupPickLine {
   category: string | null
   taxable: boolean
   unitPrice: number | null
+  /** The resolved catalog item's current unit, snapshotted at explosion time (money plan 13 §5). */
+  unit: LineItemUnit | null
   qty: number
   /** EntityInstance id of the `catalog_item` (NOT the branded RecordId). */
   catalogItemId: string
@@ -77,6 +82,7 @@ interface CatalogItemFieldValues {
   catalog_item_description?: string | null
   catalog_item_category?: unknown
   catalog_item_default_unit_price?: number | null
+  catalog_item_default_unit?: LineItemUnit | LineItemUnit[] | null
   catalog_item_taxable?: boolean
   catalog_item_active?: boolean
   catalog_item_part?: unknown
@@ -148,6 +154,8 @@ function resolveGroup(
       category: firstOf<string>(item.fieldValues.catalog_item_category),
       taxable: entry.taxable ?? item.fieldValues.catalog_item_taxable !== false,
       unitPrice: item.fieldValues.catalog_item_default_unit_price ?? null,
+      // Same snapshot boundary as price — no entry-level override exists for unit.
+      unit: firstOf<LineItemUnit>(item.fieldValues.catalog_item_default_unit),
       qty: entry.qty,
       catalogItemId: entry.catalogItemId,
     })
@@ -268,6 +276,7 @@ export function CatalogPicker({
       category: firstOf<string>(row.fieldValues.catalog_item_category),
       taxable: row.fieldValues.catalog_item_taxable !== false,
       unitPrice: row.fieldValues.catalog_item_default_unit_price ?? null,
+      defaultUnit: firstOf<LineItemUnit>(row.fieldValues.catalog_item_default_unit),
     })
     onOpenChange(false)
   }

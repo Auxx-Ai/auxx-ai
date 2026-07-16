@@ -28,6 +28,7 @@ import type {
   ListUninvoicedLinesInput,
   UninvoicedLine,
 } from './types'
+import type { LineItemUnit } from './units'
 
 /** Unwrap a `getFieldValues()` map entry — takes the first value if array-returned. */
 function firstTyped(
@@ -41,6 +42,7 @@ const LINE_ROW_ATTRS = [
   'line_item_name',
   'line_item_description',
   'line_item_qty',
+  'line_item_unit',
   'line_item_unit_price',
   'line_item_line_total',
   'line_item_taxable',
@@ -56,6 +58,7 @@ export const LINE_COPY_ATTRS = [
   'line_item_name',
   'line_item_description',
   'line_item_qty',
+  'line_item_unit',
   'line_item_unit_price',
   'line_item_line_total',
   'line_item_taxable',
@@ -108,6 +111,7 @@ export async function listUninvoicedLines(
     name: string
     description: string | undefined
     qty: number
+    unit: LineItemUnit | null
     unitPrice: number | null
     lineTotal: number | null
     taxable: boolean
@@ -130,6 +134,7 @@ export async function listUninvoicedLines(
       name: (values.get('line_item_name') as string | undefined) ?? '',
       description: values.get('line_item_description') as string | undefined,
       qty: (values.get('line_item_qty') as number | undefined) ?? 1,
+      unit: (values.get('line_item_unit') as LineItemUnit | undefined) ?? null,
       unitPrice: (values.get('line_item_unit_price') as number | undefined) ?? null,
       lineTotal: (values.get('line_item_line_total') as number | undefined) ?? null,
       taxable: (values.get('line_item_taxable') as boolean | undefined) ?? true,
@@ -150,6 +155,7 @@ export async function listUninvoicedLines(
       name: row.name,
       description: row.description,
       qty: row.qty,
+      unit: row.unit,
       unitPrice: row.unitPrice,
       lineTotal: row.lineTotal,
       taxable: row.taxable,
@@ -344,6 +350,7 @@ export async function copyLineOntoInvoice(input: {
   const nameTyped = get(lineCf.line_item_name)
   const descriptionTyped = get(lineCf.line_item_description)
   const qtyTyped = get(lineCf.line_item_qty)
+  const unitTyped = get(lineCf.line_item_unit)
   const unitPriceTyped = get(lineCf.line_item_unit_price)
   const lineTotalTyped = get(lineCf.line_item_line_total)
   const taxableTyped = get(lineCf.line_item_taxable)
@@ -352,11 +359,13 @@ export async function copyLineOntoInvoice(input: {
   const sortOrderTyped = get(lineCf.line_item_sort_order)
   const catalogItemTyped = get(lineCf.line_item_catalog_item)
 
-  // No `line_item_work_order`, no `line_item_quote` on copies (§B.3 invariant).
+  // No `line_item_work_order`, no `line_item_quote` on copies (§B.3 invariant). Units flow to
+  // invoices (plan 13 §6); optionality does not — invoice/work-order lines never carry it.
   const copyValues: Record<string, unknown> = {
     line_item_name: nameTyped ? extractValue(nameTyped) : undefined,
     line_item_description: descriptionTyped ? extractValue(descriptionTyped) : undefined,
     line_item_qty: qtyTyped ? extractValue(qtyTyped) : 1,
+    line_item_unit: unitTyped ? extractValue(unitTyped) : undefined,
     line_item_unit_price: unitPriceTyped ? extractValue(unitPriceTyped) : undefined,
     line_item_line_total: lineTotalTyped ? extractValue(lineTotalTyped) : undefined,
     line_item_taxable: taxableTyped ? extractValue(taxableTyped) : true,

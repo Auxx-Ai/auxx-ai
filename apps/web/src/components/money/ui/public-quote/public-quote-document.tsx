@@ -17,9 +17,7 @@ import {
   PublicDocumentContact,
   PublicDocumentHeader,
 } from '~/components/money/ui/public-document/public-document-header'
-import { PublicDocumentLineItems } from '~/components/money/ui/public-document/public-document-line-items'
 import { PublicDocumentShell } from '~/components/money/ui/public-document/public-document-shell'
-import { PublicDocumentTotals } from '~/components/money/ui/public-document/public-document-totals'
 import { ProcessingPoller } from '~/components/money/ui/public-invoice/processing-poller'
 import {
   QuoteAcceptForm,
@@ -27,6 +25,7 @@ import {
   QuoteDepositForm,
   QuoteRequestUpdateForm,
 } from '~/components/money/ui/public-quote/public-quote-actions'
+import { QuoteLinesWithSelection } from '~/components/money/ui/public-quote/quote-lines-with-selection'
 
 interface PublicQuoteDocumentProps {
   token: string
@@ -47,12 +46,10 @@ export function PublicQuoteDocument({ token, payload, state, message }: PublicQu
     terms,
     contact,
     lines,
-    subtotal,
-    discountAmount,
+    discountType,
+    discountValue,
     taxName,
     taxRate,
-    taxTotal,
-    total,
     currency,
     business,
     branding,
@@ -97,16 +94,14 @@ export function PublicQuoteDocument({ token, payload, state, message }: PublicQu
 
         <PublicDocumentContact label='Prepared for' name={contact.name} email={contact.email} />
 
-        <PublicDocumentLineItems lines={lines} currency={currency} />
-
-        <PublicDocumentTotals
+        <QuoteLinesWithSelection
+          lines={lines}
           currency={currency}
-          subtotal={subtotal}
-          discountAmount={discountAmount}
+          discountType={discountType}
+          discountValue={discountValue}
           taxName={taxName}
           taxRate={taxRate}
-          taxTotal={taxTotal}
-          total={total}
+          readOnly={!showAcceptDecline}
         />
 
         {terms ? (

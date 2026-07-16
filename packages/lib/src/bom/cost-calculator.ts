@@ -563,6 +563,10 @@ export async function recalculateAllPartCosts(orgId: string): Promise<string[]> 
     changedParts: changedIds.length,
   })
 
+  if (changedIds.length > 0) {
+    await syncCatalogPricingSafely(orgId, changedIds)
+  }
+
   return changedIds
 }
 
@@ -614,7 +618,29 @@ export async function recalculateAffectedParts(
     changedParts: changedIds.length,
   })
 
+  if (changedIds.length > 0) {
+    await syncCatalogPricingSafely(orgId, changedIds)
+  }
+
   return changedIds
+}
+
+/**
+ * Ripple changed part costs into linked catalog items (plan 17 §2) — lazy `import()`
+ * so this bom module doesn't gain a static edge onto `money/` (no existing lazy-import
+ * convention in this file otherwise; new for this call site). Swallows its own errors:
+ * a catalog-pricing bug must never fail the part-cost recalc that triggered it.
+ */
+async function syncCatalogPricingSafely(orgId: string, changedPartIds: string[]): Promise<void> {
+  try {
+    const { syncCatalogItemPricing } = await import('../money/catalog-pricing')
+    await syncCatalogItemPricing(orgId, changedPartIds)
+  } catch (error) {
+    logger.error('Failed to sync catalog item pricing after part cost recalc', {
+      orgId,
+      error: error instanceof Error ? error.message : String(error),
+    })
+  }
 }
 
 // ─── Exported helpers for BomService ─────────────────────────────────

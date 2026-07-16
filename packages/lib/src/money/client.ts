@@ -19,6 +19,15 @@ export type {
   WorkOrderBillingBasis,
   WorkOrderInvoiceTiming,
 } from './types'
+export {
+  formatLineItemUnit,
+  LINE_ITEM_UNIT_OPTIONS,
+  type LineItemQuantityState,
+  type LineItemUnit,
+  type LineItemUnitDisplayMode,
+  type ParseLineItemQuantityResult,
+  parseQuantityWithUnit,
+} from './units'
 
 /**
  * Valid invoice timings for each billing basis (work-order invoice flow plan §1.2) — the single

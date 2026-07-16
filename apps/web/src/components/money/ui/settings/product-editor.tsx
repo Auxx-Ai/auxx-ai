@@ -2,7 +2,9 @@
 'use client'
 
 import { FieldType } from '@auxx/database/enums'
+import { formatLineItemUnit, type LineItemUnit } from '@auxx/lib/money/client'
 import type { RecordId } from '@auxx/lib/resources/client'
+import { Badge } from '@auxx/ui/components/badge'
 import { toastError } from '@auxx/ui/components/toast'
 import { useCallback, useRef, useState } from 'react'
 import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
@@ -15,6 +17,31 @@ import { api } from '~/trpc/react'
 import { type CatalogItem, useCatalogItems } from '../../hooks/use-catalog-items'
 import { useSeedCatalogRecord } from '../../hooks/use-seed-catalog-record'
 import type { CatalogDraftHandle } from './catalog-draft-types'
+import { formatMoney } from './format-money'
+
+/**
+ * Category default unit (money plan 13 §4): applied on a category change ONLY while the
+ * current unit is `null` — never overwrites a non-null unit choice.
+ */
+const CATEGORY_DEFAULT_UNIT: Record<string, LineItemUnit | null> = {
+  labor: 'hour',
+  material: 'each',
+  service: null,
+}
+
+function categoryDefaultUnit(category: string): LineItemUnit | null {
+  return CATEGORY_DEFAULT_UNIT[category] ?? null
+}
+
+/** `Default rate` row label — shows unit context once one is selected (money plan 13 §4). */
+function defaultRateTitle(unit: LineItemUnit | null): string {
+  return unit ? `Default rate / ${formatLineItemUnit(unit, 'compact')}` : 'Default rate'
+}
+
+/** Effective margin on a hand-set, part-linked, non-auto price (money plan 17 §4), as a percent. */
+function effectiveMarginPct(priceCents: number, costCents: number): number {
+  return Math.round(((priceCents - costCents) / priceCents) * 100)
+}
 
 interface ProductEditorProps {
   selectedId: string | null
@@ -80,8 +107,9 @@ function ProductEditorForm({ item }: { item: CatalogItem }) {
   const { fields } = useResourceFields('catalog-items')
   const categoryField = fields.find((f) => f.key === 'category')
   const partField = fields.find((f) => f.key === 'part')
+  const defaultUnitField = fields.find((f) => f.key === 'defaultUnit')
 
-  const { saveFieldValue } = useSaveFieldValue({})
+  const { saveFieldValue, saveMultipleAsync } = useSaveFieldValue({})
 
   const [name, setName] = useState(item.name)
   const [description, setDescription] = useState(item.description ?? '')
@@ -92,6 +120,38 @@ function ProductEditorForm({ item }: { item: CatalogItem }) {
   const commitDescription = useDebouncedCallback((value: string) => {
     saveFieldValue(item.recordId, 'catalog_item_description', value || null, FieldType.TEXT)
   }, 500)
+
+  const commitCategory = useCallback(
+    (category: string) => {
+      // Category default only applies while the unit is unset — never overwrite a chosen unit.
+      const nextUnit = item.defaultUnit === null ? categoryDefaultUnit(category) : item.defaultUnit
+      if (nextUnit !== item.defaultUnit) {
+        void saveMultipleAsync(item.recordId, [
+          { fieldId: 'catalog_item_category', value: category, fieldType: FieldType.SINGLE_SELECT },
+          {
+            fieldId: 'catalog_item_default_unit',
+            value: nextUnit,
+            fieldType: FieldType.SINGLE_SELECT,
+          },
+        ])
+      } else {
+        saveFieldValue(item.recordId, 'catalog_item_category', category, FieldType.SINGLE_SELECT)
+      }
+    },
+    [item.recordId, item.defaultUnit, saveFieldValue, saveMultipleAsync]
+  )
+
+  const hasPart = !!item.partRecordId
+  const showAutoRate = hasPart && item.markup !== null
+  const showMargin =
+    hasPart &&
+    item.markup === null &&
+    item.cost !== null &&
+    item.defaultUnitPriceCents !== null &&
+    item.defaultUnitPriceCents > 0
+  const marginPct = showMargin
+    ? effectiveMarginPct(item.defaultUnitPriceCents as number, item.cost as number)
+    : null
 
   return (
     <div className='p-3'>
@@ -132,27 +192,106 @@ function ProductEditorForm({ item }: { item: CatalogItem }) {
             fieldOptions={categoryField?.options}
             value={item.category}
             triggerProps={{ className: 'w-full ps-0 pe-1' }}
-            onChange={(value) =>
-              saveFieldValue(item.recordId, 'catalog_item_category', value, FieldType.SINGLE_SELECT)
-            }
+            onChange={(value) => commitCategory(value as string)}
             placeholder='Select category'
           />
         </FieldPanelRow>
 
-        <FieldPanelRow title='Default Unit Price' type={BaseType.CURRENCY} showIcon>
+        {item.category === 'material' && partField && (
+          <FieldPanelRow title='Part' type={BaseType.RELATION} showIcon>
+            <FieldInputAdapter
+              fieldType={FieldType.RELATIONSHIP}
+              triggerProps={{ className: 'w-full ps-0 pe-1', showClear: true }}
+              fieldOptions={{
+                relationship: partField.relationship ?? partField.options?.relationship,
+              }}
+              value={item.partRecordId ? [item.partRecordId] : []}
+              onChange={(value) =>
+                saveFieldValue(item.recordId, 'catalog_item_part', value, FieldType.RELATIONSHIP)
+              }
+              placeholder='Link a part'
+            />
+          </FieldPanelRow>
+        )}
+
+        {hasPart && (
+          <FieldPanelRow
+            title='Cost'
+            type={BaseType.CURRENCY}
+            showIcon
+            description="Synced from the linked part's cost.">
+            <div className='px-2 py-1.5 text-sm tabular-nums'>{formatMoney(item.cost, 'USD')}</div>
+          </FieldPanelRow>
+        )}
+
+        {hasPart && (
+          <FieldPanelRow title='Markup %' type={BaseType.NUMBER} showIcon>
+            <FieldInputAdapter
+              fieldType={FieldType.NUMBER}
+              value={item.markup}
+              onChange={(value) =>
+                saveFieldValue(
+                  item.recordId,
+                  'catalog_item_markup',
+                  (value as number | undefined) ?? null,
+                  FieldType.NUMBER
+                )
+              }
+              placeholder='Empty pauses auto-pricing'
+            />
+          </FieldPanelRow>
+        )}
+
+        <FieldPanelRow title='Default unit' type={BaseType.ENUM} showIcon>
           <FieldInputAdapter
-            fieldType={FieldType.CURRENCY}
-            value={item.defaultUnitPriceCents}
+            fieldType={FieldType.SINGLE_SELECT}
+            fieldOptions={defaultUnitField?.options}
+            value={item.defaultUnit ? [item.defaultUnit] : []}
+            triggerProps={{ className: 'w-full ps-0 pe-1', showClear: true }}
             onChange={(value) =>
               saveFieldValue(
                 item.recordId,
-                'catalog_item_default_unit_price',
-                value,
-                FieldType.CURRENCY
+                'catalog_item_default_unit',
+                (value as string[])[0] ?? null,
+                FieldType.SINGLE_SELECT
               )
             }
-            placeholder='0.00'
+            placeholder='No unit'
           />
+        </FieldPanelRow>
+
+        <FieldPanelRow
+          title={defaultRateTitle(item.defaultUnit)}
+          type={BaseType.CURRENCY}
+          showIcon
+          description={
+            showAutoRate ? 'Auto-priced from cost + markup — edit to override.' : undefined
+          }>
+          <div className='flex flex-1 items-center gap-2'>
+            <FieldInputAdapter
+              fieldType={FieldType.CURRENCY}
+              value={item.defaultUnitPriceCents}
+              onChange={(value) =>
+                saveFieldValue(
+                  item.recordId,
+                  'catalog_item_default_unit_price',
+                  value,
+                  FieldType.CURRENCY
+                )
+              }
+              placeholder='0.00'
+            />
+            {showAutoRate && (
+              <Badge variant='blue' size='sm' className='shrink-0'>
+                Auto
+              </Badge>
+            )}
+            {showMargin && (
+              <span className='shrink-0 whitespace-nowrap text-xs text-muted-foreground'>
+                Margin {marginPct}%
+              </span>
+            )}
+          </div>
         </FieldPanelRow>
 
         <FieldPanelRow title='Taxable' type={BaseType.BOOLEAN} showIcon>
@@ -165,23 +304,6 @@ function ProductEditorForm({ item }: { item: CatalogItem }) {
             }
           />
         </FieldPanelRow>
-
-        {item.category === 'material' && partField && (
-          <FieldPanelRow title='Part' type={BaseType.RELATION} showIcon>
-            <FieldInputAdapter
-              fieldType={FieldType.RELATIONSHIP}
-              triggerProps={{ className: 'w-full ps-0 pe-1' }}
-              fieldOptions={{
-                relationship: partField.relationship ?? partField.options?.relationship,
-              }}
-              value={item.partRecordId ? [item.partRecordId] : []}
-              onChange={(value) =>
-                saveFieldValue(item.recordId, 'catalog_item_part', value, FieldType.RELATIONSHIP)
-              }
-              placeholder='Link a part'
-            />
-          </FieldPanelRow>
-        )}
       </FieldPanel>
     </div>
   )
@@ -198,9 +320,14 @@ interface ProductDraftValues {
   description: string | null
   category: string
   defaultUnitPriceCents: number | null
+  defaultUnit: LineItemUnit | null
   taxable: boolean
   active: boolean
   partRecordId: RecordId | null
+  /** Markup rate as a percentage of cost — `null` pauses auto-pricing (money plan 17). Only
+   *  meaningful once a part is linked; `cost` itself has no client-writable counterpart here —
+   *  the pricing engine only syncs it against a real, persisted record. */
+  markup: number | null
 }
 
 function freshProductDraftValues(): ProductDraftValues {
@@ -212,9 +339,11 @@ function freshProductDraftValues(): ProductDraftValues {
     description: null,
     category: 'service',
     defaultUnitPriceCents: null,
+    defaultUnit: null,
     taxable: true,
     active: true,
     partRecordId: null,
+    markup: null,
   }
 }
 
@@ -230,9 +359,11 @@ const PRODUCT_DRAFT_FIELDS: {
     fieldId: 'catalog_item_default_unit_price',
     fieldType: FieldType.CURRENCY,
   },
+  defaultUnit: { fieldId: 'catalog_item_default_unit', fieldType: FieldType.SINGLE_SELECT },
   taxable: { fieldId: 'catalog_item_taxable', fieldType: FieldType.CHECKBOX },
   active: { fieldId: 'catalog_item_active', fieldType: FieldType.CHECKBOX },
   partRecordId: { fieldId: 'catalog_item_part', fieldType: FieldType.RELATIONSHIP },
+  markup: { fieldId: 'catalog_item_markup', fieldType: FieldType.NUMBER },
 }
 const PRODUCT_DRAFT_KEYS = Object.keys(PRODUCT_DRAFT_FIELDS) as (keyof ProductDraftValues)[]
 
@@ -264,6 +395,7 @@ function ProductDraftEditorForm({
   const { fields } = useResourceFields('catalog-items')
   const categoryField = fields.find((f) => f.key === 'category')
   const partField = fields.find((f) => f.key === 'part')
+  const defaultUnitField = fields.find((f) => f.key === 'defaultUnit')
 
   const { saveMultipleAsync } = useSaveFieldValue({})
   const { seedCatalogRecord } = useSeedCatalogRecord()
@@ -296,7 +428,11 @@ function ProductDraftEditorForm({
       if (snapshot.defaultUnitPriceCents !== null) {
         createValues.catalog_item_default_unit_price = snapshot.defaultUnitPriceCents
       }
+      if (snapshot.defaultUnit !== null) {
+        createValues.catalog_item_default_unit = snapshot.defaultUnit
+      }
       if (snapshot.partRecordId) createValues.catalog_item_part = snapshot.partRecordId
+      if (snapshot.markup !== null) createValues.catalog_item_markup = snapshot.markup
 
       try {
         const result = await createRecord.mutateAsync({ entityDefinitionId, values: createValues })
@@ -324,9 +460,11 @@ function ProductDraftEditorForm({
             catalog_item_description: snapshot.description,
             catalog_item_category: snapshot.category,
             catalog_item_default_unit_price: snapshot.defaultUnitPriceCents,
+            catalog_item_default_unit: snapshot.defaultUnit,
             catalog_item_taxable: snapshot.taxable,
             catalog_item_active: snapshot.active,
             catalog_item_part: snapshot.partRecordId,
+            catalog_item_markup: snapshot.markup,
             ...result.values,
           },
         })
@@ -394,6 +532,9 @@ function ProductDraftEditorForm({
     [createNow, entityDefinitionId, onDraftNameChange, saveMultipleAsync]
   )
 
+  const draftHasPart = !!values.partRecordId
+  const draftShowAutoRate = draftHasPart && values.markup !== null
+
   const commitName = useDebouncedCallback((value: string) => {
     commitDraft({ name: value })
   }, 500)
@@ -442,26 +583,16 @@ function ProductDraftEditorForm({
             fieldOptions={categoryField?.options}
             value={values.category}
             triggerProps={{ className: 'w-full ps-0 pe-1' }}
-            onChange={(value) => commitDraft({ category: value as string })}
+            onChange={(value) => {
+              const category = value as string
+              // Category default only applies while the unit is unset (money plan 13 §4).
+              const nextUnit =
+                values.defaultUnit === null ? categoryDefaultUnit(category) : values.defaultUnit
+              commitDraft(
+                nextUnit !== values.defaultUnit ? { category, defaultUnit: nextUnit } : { category }
+              )
+            }}
             placeholder='Select category'
-          />
-        </FieldPanelRow>
-
-        <FieldPanelRow title='Default Unit Price' type={BaseType.CURRENCY} showIcon>
-          <FieldInputAdapter
-            fieldType={FieldType.CURRENCY}
-            value={values.defaultUnitPriceCents}
-            onChange={(value) => commitDraft({ defaultUnitPriceCents: value as number | null })}
-            placeholder='0.00'
-          />
-        </FieldPanelRow>
-
-        <FieldPanelRow title='Taxable' type={BaseType.BOOLEAN} showIcon>
-          <FieldInputAdapter
-            fieldType={FieldType.CHECKBOX}
-            fieldOptions={{ variant: 'switch' }}
-            value={values.taxable}
-            onChange={(value) => commitDraft({ taxable: value as boolean })}
           />
         </FieldPanelRow>
 
@@ -469,7 +600,7 @@ function ProductDraftEditorForm({
           <FieldPanelRow title='Part' type={BaseType.RELATION} showIcon>
             <FieldInputAdapter
               fieldType={FieldType.RELATIONSHIP}
-              triggerProps={{ className: 'w-full ps-0 pe-1' }}
+              triggerProps={{ className: 'w-full ps-0 pe-1', showClear: true }}
               fieldOptions={{
                 relationship: partField.relationship ?? partField.options?.relationship,
               }}
@@ -482,6 +613,72 @@ function ProductDraftEditorForm({
             />
           </FieldPanelRow>
         )}
+
+        {draftHasPart && (
+          <FieldPanelRow
+            title='Cost'
+            type={BaseType.CURRENCY}
+            showIcon
+            description="Synced from the linked part's cost once the item is created.">
+            <div className='px-2 py-1.5 text-sm tabular-nums'>{formatMoney(null, 'USD')}</div>
+          </FieldPanelRow>
+        )}
+
+        {draftHasPart && (
+          <FieldPanelRow title='Markup %' type={BaseType.NUMBER} showIcon>
+            <FieldInputAdapter
+              fieldType={FieldType.NUMBER}
+              value={values.markup}
+              onChange={(value) => commitDraft({ markup: (value as number | undefined) ?? null })}
+              placeholder='Empty pauses auto-pricing'
+            />
+          </FieldPanelRow>
+        )}
+
+        <FieldPanelRow title='Default unit' type={BaseType.ENUM} showIcon>
+          <FieldInputAdapter
+            fieldType={FieldType.SINGLE_SELECT}
+            fieldOptions={defaultUnitField?.options}
+            value={values.defaultUnit ? [values.defaultUnit] : []}
+            triggerProps={{ className: 'w-full ps-0 pe-1', showClear: true }}
+            onChange={(value) => {
+              const ids = value as string[]
+              commitDraft({ defaultUnit: (ids[0] as LineItemUnit | undefined) ?? null })
+            }}
+            placeholder='No unit'
+          />
+        </FieldPanelRow>
+
+        <FieldPanelRow
+          title={defaultRateTitle(values.defaultUnit)}
+          type={BaseType.CURRENCY}
+          showIcon
+          description={
+            draftShowAutoRate ? 'Auto-priced from cost + markup — edit to override.' : undefined
+          }>
+          <div className='flex flex-1 items-center gap-2'>
+            <FieldInputAdapter
+              fieldType={FieldType.CURRENCY}
+              value={values.defaultUnitPriceCents}
+              onChange={(value) => commitDraft({ defaultUnitPriceCents: value as number | null })}
+              placeholder='0.00'
+            />
+            {draftShowAutoRate && (
+              <Badge variant='blue' size='sm' className='shrink-0'>
+                Auto
+              </Badge>
+            )}
+          </div>
+        </FieldPanelRow>
+
+        <FieldPanelRow title='Taxable' type={BaseType.BOOLEAN} showIcon>
+          <FieldInputAdapter
+            fieldType={FieldType.CHECKBOX}
+            fieldOptions={{ variant: 'switch' }}
+            value={values.taxable}
+            onChange={(value) => commitDraft({ taxable: value as boolean })}
+          />
+        </FieldPanelRow>
       </FieldPanel>
     </div>
   )
