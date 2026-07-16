@@ -15,8 +15,17 @@
 
 import type { FieldType } from '@auxx/database/types'
 import type { MetricOp } from '@auxx/lib/dashboards/client'
-import { converters, type FieldOptions } from '@auxx/lib/field-values/client'
-import { type CurrencyDisplayOptions, formatCurrency } from '@auxx/utils'
+import {
+  converters,
+  type FieldOptions,
+  type NumberFieldOptions,
+} from '@auxx/lib/field-values/client'
+import {
+  type CurrencyDisplayOptions,
+  formatCurrency,
+  formatCurrencyCompact,
+  formatNumberCompact,
+} from '@auxx/utils'
 
 /** The metric field's display metadata, resolved via `useMetricFieldMeta`. */
 export type MetricFieldMeta = { fieldType?: FieldType; options?: FieldOptions }
@@ -75,6 +84,43 @@ export function formatMetricValue(value: number, op: MetricOp, meta?: MetricFiel
   }
 
   return new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 }).format(value)
+}
+
+/**
+ * Compact variant of `formatMetricValue` for AXIS TICKS and data labels —
+ * approximate but short: `$12K` / `$2.3M` / `1.2K`. Tooltips, KPIs and the
+ * pie center total keep the full `formatMetricValue` precision; axes trade
+ * precision for room (a fixed-width axis clips `$12,000.00`-style ticks).
+ * Percent/date values and NUMBER fields with a special `displayAs`
+ * (percentage/bytes) are already short, so they delegate to the full formatter.
+ */
+export function formatMetricValueCompact(
+  value: number,
+  op: MetricOp,
+  meta?: MetricFieldMeta
+): string {
+  if (!Number.isFinite(value)) return '—'
+  if (PERCENT_OPS.has(op)) return formatMetricValue(value, op, meta)
+  if (COUNT_OPS.has(op)) return formatNumberCompact(value)
+
+  const { fieldType, options } = meta ?? {}
+
+  if (fieldType === 'CURRENCY') {
+    // Stored as cents — formatCurrencyCompact expects cents.
+    return formatCurrencyCompact(value, options as CurrencyDisplayOptions | undefined)
+  }
+  if (fieldType === 'DATE' || fieldType === 'DATETIME') {
+    return formatMetricValue(value, op, meta)
+  }
+  if (fieldType === 'NUMBER') {
+    const o = (options ?? {}) as NumberFieldOptions
+    if (o.displayAs === 'percentage' || o.displayAs === 'bytes') {
+      return formatMetricValue(value, op, meta)
+    }
+    return `${o.prefix ?? ''}${formatNumberCompact(value)}${o.suffix ?? ''}`
+  }
+
+  return formatNumberCompact(value)
 }
 
 export type TrendDelta = {

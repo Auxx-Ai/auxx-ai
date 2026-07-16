@@ -16,8 +16,9 @@ import {
   ChartTooltipContent,
 } from '@auxx/ui/components/chart'
 import { Bar, BarChart, CartesianGrid, LabelList, XAxis, YAxis } from 'recharts'
+import { axisWidthFor, numericTickLabels } from '../../lib/axis-width'
 import type { ChartRow, SeriesDef } from '../../lib/chart-transform'
-import { toChartConfig } from '../../lib/chart-transform'
+import { seriesExtent, toChartConfig } from '../../lib/chart-transform'
 import { PaginatedChartLegend } from './paginated-chart-legend'
 
 export function BarChartWidget({
@@ -25,19 +26,34 @@ export function BarChartWidget({
   rows,
   series,
   formatValue,
+  formatAxisValue,
 }: {
   config: BarChartConfig
   rows: ChartRow[]
   series: SeriesDef[]
-  /** Formats the numeric axis ticks per the metric field's type/options. */
+  /** Full-precision format (tooltip) per the metric field's type/options. */
   formatValue?: (value: number) => string
+  /** Compact format for axis ticks / data labels (`$12K`); falls back to `formatValue`. */
+  formatAxisValue?: (value: number) => string
 }) {
   const chartConfig = toChartConfig(series, config.color)
   const isHorizontal = config.layout === 'horizontal'
   const stacked = Boolean(config.secondaryGroupBy) && config.stacked
   const showLegend = config.showLegend !== false && series.length > 1
-  const tickFormatter = formatValue ? (v: number) => formatValue(v) : undefined
+  const axisFormat = formatAxisValue ?? formatValue
+  const tickFormatter = axisFormat ? (v: number) => axisFormat(v) : undefined
   const valueFormatter = formatValue ? (v: number | string) => formatValue(Number(v)) : undefined
+
+  // Size the Y axis to its actual tick strings instead of recharts' fixed
+  // default — long ticks (`$12,000.00`) silently clip otherwise.
+  const { min, max } = seriesExtent(
+    rows,
+    series.map((s) => s.id),
+    stacked
+  )
+  const yAxisWidth = isHorizontal
+    ? axisWidthFor(rows.map((r) => String(r.label)))
+    : axisWidthFor(numericTickLabels(min, max, axisFormat ?? String))
 
   return (
     <ChartContainer config={chartConfig} className='h-full w-full'>
@@ -62,9 +78,9 @@ export function BarChartWidget({
           tickLine={false}
           axisLine={false}
           tickMargin={8}
-          // Explicit default: an `undefined`-valued width key would clobber
+          // Always a number: an `undefined`-valued width key would clobber
           // recharts' defaultProps in its {...defaultProps, ...props} merge → NaN layout.
-          width={isHorizontal ? 110 : 60}
+          width={yAxisWidth}
           tickFormatter={isHorizontal ? undefined : tickFormatter}
         />
 
@@ -82,6 +98,7 @@ export function BarChartWidget({
               <LabelList
                 dataKey={def.id}
                 position={isHorizontal ? 'right' : 'top'}
+                formatter={axisFormat ? (v: unknown) => axisFormat(Number(v)) : undefined}
                 className='fill-muted-foreground text-[10px]'
               />
             )}

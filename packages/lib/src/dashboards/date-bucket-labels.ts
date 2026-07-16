@@ -62,6 +62,29 @@ export function parseKeyLocal(key: string): Date | undefined {
 }
 
 /**
+ * Pick a smarter DEFAULT label style from the actual bucket keys on the axis.
+ * Day buckets that all fall in one calendar year drop the redundant year
+ * (`Jul 10` instead of `Jul 10, 2026` repeated across every tick). Only
+ * consulted when the widget has NO explicit `labelFormat` override; every
+ * other granularity keeps its historical default.
+ */
+export function resolveDefaultDateLabelFormat(
+  keys: Array<string | null>,
+  granularity: DateGranularity
+): DateLabelFormat | undefined {
+  if (granularity !== 'day') return undefined
+  let year: string | undefined
+  for (const key of keys) {
+    if (key === null) continue
+    const m = /^(\d{4})-\d{2}-\d{2}$/.exec(key)
+    if (!m) return undefined
+    if (year === undefined) year = m[1]
+    else if (m[1] !== year) return undefined
+  }
+  return year === undefined ? undefined : 'short'
+}
+
+/**
  * Display label for a bucket key. `format` undefined ⇒ the historical default
  * (`2026-07`, `W27 2026`, `Q3 2026`, `Jul`, `Mon`, `Jul 7, 2026`). An explicit
  * `format` restyles per granularity; styles that don't differ for a granularity

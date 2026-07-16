@@ -13,6 +13,7 @@ import {
   isChartConfigured,
   type LineChartConfig,
   type PieChartConfig,
+  resolveDefaultDateLabelFormat,
 } from '@auxx/lib/dashboards/client'
 import { isFieldPath } from '@auxx/types/field'
 import { useField } from '~/components/resources/hooks/use-field'
@@ -20,7 +21,7 @@ import { useChartData } from '../../hooks/use-chart-data'
 import { useMetricFieldMeta } from '../../hooks/use-metric-field'
 import { remapGroupLabels, toChartRows } from '../../lib/chart-transform'
 import { effectiveFieldTypeOf } from '../../lib/field-meta'
-import { formatMetricValue } from '../../lib/format-value'
+import { formatMetricValue, formatMetricValueCompact } from '../../lib/format-value'
 import { BarChartWidget } from './bar-chart-widget'
 import { LineChartWidget } from './line-chart-widget'
 import { PieChartWidget } from './pie-chart-widget'
@@ -67,26 +68,46 @@ export function ChartWidget({
   if (!data || data.groups.length === 0) return <WidgetEmpty />
 
   const cumulative = config.kind !== 'pieChart' ? config.cumulative : undefined
-  // Restyle date-bucket labels off their raw keys when an override is set — pure
-  // client re-render, no re-query. Default (no `labelFormat`) keeps server labels.
-  const displayData =
-    isDateDim && config.labelFormat
-      ? remapGroupLabels(data, (key) =>
-          formatBucketLabel(key, config.groupBy.dateGranularity ?? 'day', config.labelFormat)
-        )
-      : data
+  // Restyle date-bucket labels off their raw keys — pure client re-render, no
+  // re-query. An explicit `labelFormat` override wins; otherwise a smarter
+  // default kicks in (same-year day buckets drop the redundant year: `Jul 10`).
+  const granularity = config.groupBy.dateGranularity ?? 'day'
+  const labelFormat = isDateDim
+    ? (config.labelFormat ??
+      resolveDefaultDateLabelFormat(
+        data.groups.map((g) => g.key),
+        granularity
+      ))
+    : undefined
+  const displayData = labelFormat
+    ? remapGroupLabels(data, (key) => formatBucketLabel(key, granularity, labelFormat))
+    : data
   const { rows, series } = toChartRows(displayData, { cumulative })
-  // Format axis ticks / totals like the metric field displays elsewhere.
+  // Tooltips / pie totals get the full field display; axis ticks + data labels
+  // get the compact variant (`$12K` instead of a clipped `$12,000.00`).
   const formatValue = (n: number) => formatMetricValue(n, config.metric.op, meta)
+  const formatAxisValue = (n: number) => formatMetricValueCompact(n, config.metric.op, meta)
 
   return (
     <div className='flex flex-1 min-h-0 flex-col'>
       <div className='min-h-0 flex-1'>
         {config.kind === 'barChart' && (
-          <BarChartWidget config={config} rows={rows} series={series} formatValue={formatValue} />
+          <BarChartWidget
+            config={config}
+            rows={rows}
+            series={series}
+            formatValue={formatValue}
+            formatAxisValue={formatAxisValue}
+          />
         )}
         {config.kind === 'lineChart' && (
-          <LineChartWidget config={config} rows={rows} series={series} formatValue={formatValue} />
+          <LineChartWidget
+            config={config}
+            rows={rows}
+            series={series}
+            formatValue={formatValue}
+            formatAxisValue={formatAxisValue}
+          />
         )}
         {config.kind === 'pieChart' && (
           <PieChartWidget config={config} result={displayData} formatValue={formatValue} />

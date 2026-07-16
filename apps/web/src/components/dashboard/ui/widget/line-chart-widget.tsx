@@ -13,8 +13,9 @@ import {
   ChartTooltipContent,
 } from '@auxx/ui/components/chart'
 import { Area, AreaChart, CartesianGrid, Line, LineChart, XAxis, YAxis } from 'recharts'
+import { axisWidthFor, numericTickLabels } from '../../lib/axis-width'
 import type { ChartRow, SeriesDef } from '../../lib/chart-transform'
-import { toChartConfig } from '../../lib/chart-transform'
+import { seriesExtent, toChartConfig } from '../../lib/chart-transform'
 import { PaginatedChartLegend } from './paginated-chart-legend'
 
 export function LineChartWidget({
@@ -22,18 +23,32 @@ export function LineChartWidget({
   rows,
   series,
   formatValue,
+  formatAxisValue,
 }: {
   config: LineChartConfig
   rows: ChartRow[]
   series: SeriesDef[]
-  /** Formats the numeric axis ticks per the metric field's type/options. */
+  /** Full-precision format (tooltip) per the metric field's type/options. */
   formatValue?: (value: number) => string
+  /** Compact format for axis ticks (`$12K`); falls back to `formatValue`. */
+  formatAxisValue?: (value: number) => string
 }) {
   const chartConfig = toChartConfig(series, config.color)
   const showLegend = config.showLegend !== false && series.length > 1
   const stacked = Boolean(config.secondaryGroupBy) && config.stacked
-  const tickFormatter = formatValue ? (v: number) => formatValue(v) : undefined
+  const axisFormat = formatAxisValue ?? formatValue
+  const tickFormatter = axisFormat ? (v: number) => axisFormat(v) : undefined
   const valueFormatter = formatValue ? (v: number | string) => formatValue(Number(v)) : undefined
+
+  // Size the Y axis to its actual tick strings instead of recharts' fixed
+  // default 60px — long ticks (`$12,000.00`) silently clip otherwise. Only
+  // areas stack (plain lines ignore `stackId`), so the extent follows suit.
+  const { min, max } = seriesExtent(
+    rows,
+    series.map((s) => s.id),
+    Boolean(config.area) && stacked
+  )
+  const yAxisWidth = axisWidthFor(numericTickLabels(min, max, axisFormat ?? String))
 
   // Array, NOT a fragment: recharts finds axes/grid/tooltip/legend by scanning
   // direct children, and fragments aren't flattened under React 19 (react-is@18
@@ -46,6 +61,7 @@ export function LineChartWidget({
       tickLine={false}
       axisLine={false}
       tickMargin={8}
+      width={yAxisWidth}
       tickFormatter={tickFormatter}
     />,
     <ChartTooltip

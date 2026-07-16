@@ -38,6 +38,7 @@ export {
   centsToDollars,
   convertToCents,
   formatCurrency,
+  formatCurrencyCompact,
   parseToCents,
 } from './currency'
 // Date utilities
@@ -128,6 +129,8 @@ export {
   validateLineLengths,
   validateMimeStructure,
 } from './mime'
+// Number utilities
+export { formatNumberCompact } from './number'
 // OAuth utilities
 export { validateRedirectPath } from './oauth'
 // Object utilities
