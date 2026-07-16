@@ -57,6 +57,8 @@ export interface WorkOrderBillingView {
   invoiced: number
   remaining: number
   balanceDue: number
+  depositHeld: number
+  depositApplied: number
   nextInvoiceDate?: string | null
   eligibleVisits: BillingVisitRow[]
   extraWorkVisitIds: string[]
@@ -87,6 +89,8 @@ const EMPTY_WORK_ORDER_BILLING: WorkOrderBillingView = {
   invoiced: 0,
   remaining: 0,
   balanceDue: 0,
+  depositHeld: 0,
+  depositApplied: 0,
   nextInvoiceDate: null,
   eligibleVisits: [],
   extraWorkVisitIds: [],
@@ -123,6 +127,8 @@ export function normalizeWorkOrderBilling(
     invoiced: data.summary.invoiced,
     remaining: data.summary.remaining,
     balanceDue: data.summary.balanceDue,
+    depositHeld: data.summary.depositHeld,
+    depositApplied: data.summary.depositApplied,
     nextInvoiceDate: data.nextInvoiceDate,
     eligibleVisits: data.eligibleVisits.map(normalizeVisit),
     extraWorkVisitIds: data.extraWork.map((item) => item.visitId).filter(Boolean),

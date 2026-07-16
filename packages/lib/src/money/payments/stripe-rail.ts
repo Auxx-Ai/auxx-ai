@@ -7,6 +7,7 @@
 
 import type { PaymentTransactionEntity } from '@auxx/database'
 import { database, schema } from '@auxx/database'
+import { createScopedLogger } from '@auxx/logger'
 import type { TypedFieldValue } from '@auxx/types'
 import { extractValue } from '@auxx/types'
 import { parseRecordId, toRecordId } from '@auxx/types/resource'
@@ -26,12 +27,26 @@ import { resolveApplicationFee } from './fees'
 import { syncInvoicePaymentState, syncTransaction } from './ledger'
 import { sendPaymentReceipt } from './receipt-email'
 
+const logger = createScopedLogger('money-stripe-rail')
+
 /** Unwrap a `getFieldValues()` map entry — takes the first value if array-returned. */
 function firstTyped(
   entry: TypedFieldValue | TypedFieldValue[] | undefined
 ): TypedFieldValue | undefined {
   if (!entry) return undefined
   return Array.isArray(entry) ? entry[0] : entry
+}
+
+/** Extract an EntityInstance id from a relationship-typed field value, given the raw
+ * `getFieldValues()` map entry for a contact field — the shared resolution shape
+ * `createStripeCheckout`/`createStripeDepositCheckout` use to stamp `contactInstanceId` (money
+ * 16-deposit-accounting.md §B/§C.8). `null` when the field is empty. */
+function resolveContactInstanceId(
+  entry: TypedFieldValue | TypedFieldValue[] | undefined
+): string | null {
+  const contactTyped = firstTyped(entry)
+  const contactRecordId = contactTyped?.type === 'relationship' ? contactTyped.recordId : undefined
+  return contactRecordId ? parseRecordId(contactRecordId).entityInstanceId : null
 }
 
 /** Input for `createStripeCheckout`. */
@@ -71,11 +86,31 @@ export async function createStripeCheckout(
 
   const cf = await cache
     .from(organizationId, 'customFields')
-    .bySystemAttributes(['invoice_status', 'invoice_number', 'invoice_balance'] as const)
-  const fieldIds = [cf.invoice_status, cf.invoice_number, cf.invoice_balance]
+    .bySystemAttributes([
+      'invoice_status',
+      'invoice_number',
+      'invoice_balance',
+      'invoice_contact',
+    ] as const)
+  const fieldIds = [cf.invoice_status, cf.invoice_number, cf.invoice_balance, cf.invoice_contact]
     .filter(Boolean)
     .map((f) => f!.id)
   const values = await handler.getFieldValues(invoiceRecordId, fieldIds)
+
+  // money 16-deposit-accounting.md §B/§C.8 — denormalized contact linkage, stamped at insert.
+  // Resolution failure must never fail checkout — falls back to `null` with a scoped warning.
+  let contactInstanceId: string | null = null
+  try {
+    contactInstanceId = cf.invoice_contact
+      ? resolveContactInstanceId(values.get(cf.invoice_contact.id))
+      : null
+  } catch (error) {
+    logger.warn('Failed to resolve invoice contact for checkout', {
+      organizationId,
+      invoiceInstanceId,
+      error: error instanceof Error ? error.message : String(error),
+    })
+  }
 
   const statusTyped = cf.invoice_status ? firstTyped(values.get(cf.invoice_status.id)) : undefined
   const status = statusTyped ? (extractValue(statusTyped) as string) : undefined
@@ -144,6 +179,7 @@ export async function createStripeCheckout(
       currency,
       applicationFeeAmount,
       invoiceInstanceId,
+      contactInstanceId,
       updatedAt: new Date(),
     })
     .returning()
@@ -238,11 +274,33 @@ export async function createStripeDepositCheckout(
       'quote_number',
       'quote_total',
       'quote_work_orders',
+      'quote_contact',
     ] as const)
-  const fieldIds = [cf.quote_status, cf.quote_number, cf.quote_total, cf.quote_work_orders]
+  const fieldIds = [
+    cf.quote_status,
+    cf.quote_number,
+    cf.quote_total,
+    cf.quote_work_orders,
+    cf.quote_contact,
+  ]
     .filter(Boolean)
     .map((f) => f!.id)
   const values = await handler.getFieldValues(quoteRecordId, fieldIds)
+
+  // money 16-deposit-accounting.md §B/§C.8 — denormalized contact linkage, stamped at insert.
+  // Resolution failure must never fail checkout — falls back to `null` with a scoped warning.
+  let contactInstanceId: string | null = null
+  try {
+    contactInstanceId = cf.quote_contact
+      ? resolveContactInstanceId(values.get(cf.quote_contact.id))
+      : null
+  } catch (error) {
+    logger.warn('Failed to resolve quote contact for deposit checkout', {
+      organizationId,
+      quoteInstanceId,
+      error: error instanceof Error ? error.message : String(error),
+    })
+  }
 
   const statusTyped = cf.quote_status ? firstTyped(values.get(cf.quote_status.id)) : undefined
   const status = statusTyped ? (extractValue(statusTyped) as string) : undefined
@@ -314,6 +372,7 @@ export async function createStripeDepositCheckout(
       invoiceInstanceId: null,
       quoteInstanceId,
       workOrderInstanceId,
+      contactInstanceId,
       updatedAt: new Date(),
     })
     .returning()
@@ -431,6 +490,26 @@ async function markChargeSucceeded(
   // transaction to `succeeded` first. It already ran `syncTransaction`; running it again here
   // would create a duplicate `payment` mirror.
   if (!updated) return
+
+  // money 16-deposit-accounting.md §C.4 — an invoice checkout (this row's intent
+  // `invoiceInstanceId` is set) allocates its full amount the moment it succeeds; a deposit
+  // checkout (`invoiceInstanceId: null`) allocates nothing here — it stays held until
+  // `applyHeldDepositsToInvoice` picks it up at the job's next invoice creation. Insert BEFORE
+  // `syncTransaction` so the mirror-creation loop in there finds the allocation already in place.
+  // `onConflictDoNothing` backstops the (paymentTransactionId, invoiceInstanceId) unique index —
+  // this status-guarded UPDATE already runs exactly once, but belt-and-suspenders is cheap.
+  if (updated.invoiceInstanceId) {
+    await database
+      .insert(schema.PaymentAllocation)
+      .values({
+        organizationId: updated.organizationId,
+        paymentTransactionId: updated.id,
+        invoiceInstanceId: updated.invoiceInstanceId,
+        amount: updated.amount,
+        createdByUserId: null,
+      })
+      .onConflictDoNothing()
+  }
 
   await syncTransaction({
     organizationId: transaction.organizationId,
@@ -685,8 +764,9 @@ export async function applyStripeEvent(event: Stripe.Event): Promise<void> {
         .where(eq(schema.PaymentTransaction.id, transaction.id))
 
       // A disputed held deposit (money MP2 §B.6) has no invoice to reproject yet — the status
-      // flip above is the whole effect until settle (and `applyHeldDepositToInvoice` only picks
-      // up `succeeded` rows, so a disputed deposit never silently settles).
+      // flip above is the whole effect until settle (and `applyHeldDepositsToInvoice`'s loader is
+      // succeeded-only, money 16-deposit-accounting.md §J.3, so a disputed deposit's remainder
+      // never silently allocates).
       if (transaction.invoiceInstanceId) {
         const systemUserId = await getOrgCache().get(transaction.organizationId, 'systemUser')
         await syncInvoicePaymentState({
@@ -805,11 +885,41 @@ export async function refundTransaction(
       // refunded deposit stays queryable by the same `listWorkOrderPayments` extension.
       quoteInstanceId: charge.quoteInstanceId,
       workOrderInstanceId: charge.workOrderInstanceId,
+      // money 16-deposit-accounting.md §C.5 — carry the charge's denormalized contact linkage
+      // onto its refund row too (same posture as the quote/work-order copy above).
+      contactInstanceId: charge.contactInstanceId,
       refundedTransactionId: charge.id,
       createdByUserId: userId,
       updatedAt: new Date(),
     })
     .returning()
+
+  // money 16-deposit-accounting.md §C.5 — copy the charge's allocations onto the refund row
+  // (same invoices, same amounts — full-only refunds make this exact) so `computeAmountPaid`
+  // nets to zero per invoice once this refund succeeds. No mirrors for refund allocations
+  // (mirrors stay charge-only — refunds already render from the ledger row). Refunding a held
+  // deposit (zero allocations) copies nothing and touches no invoice — the null-guard behavior
+  // MP2 had, now structural. The refund row is still `pending` here (the `charge.refunded`
+  // webhook is what flips it to `succeeded` and calls `syncTransaction`), so `computeAmountPaid`
+  // won't count these allocations until then — this sync is a harmless, correctly-computed
+  // no-op today, kept for parity with every other allocation-mutating writer in this module.
+  const chargeAllocations = await database.query.PaymentAllocation.findMany({
+    where: eq(schema.PaymentAllocation.paymentTransactionId, charge.id),
+  })
+  if (chargeAllocations.length > 0) {
+    await database.insert(schema.PaymentAllocation).values(
+      chargeAllocations.map((allocation) => ({
+        organizationId,
+        paymentTransactionId: refundRow!.id,
+        invoiceInstanceId: allocation.invoiceInstanceId,
+        amount: allocation.amount,
+        createdByUserId: userId,
+      }))
+    )
+    for (const invoiceInstanceId of new Set(chargeAllocations.map((a) => a.invoiceInstanceId))) {
+      await syncInvoicePaymentState({ organizationId, userId, invoiceInstanceId })
+    }
+  }
 
   const stripe = getStripeConnectClient()
   const refund = await stripe.refunds.create(

@@ -200,10 +200,16 @@ export function TotalsBlock(props: {
   amountPaid?: number
   /** Integer cents — invoice-only. */
   balance?: number
+  /** Integer cents — invoice-only, deposit-accounting plan 16 §E. Already netted into
+   * `amountPaid`/`balance` above — a labeled breakout, not additional money. When positive,
+   * the "Amount paid" row splits into "Deposit applied" + "Payments" (= `amountPaid` minus
+   * this) so the totals block visibly sums to `balance` without double-counting. */
+  depositApplied?: number
 }) {
   const { styles, currencyCode, subtotal, discountType, discountValue, discountAmount } = props
-  const { taxName, taxRate, taxTotal, total, amountPaid, balance } = props
+  const { taxName, taxRate, taxTotal, total, amountPaid, balance, depositApplied } = props
   const fmt = (cents: number) => formatCurrency(cents, { currencyCode })
+  const paymentsOnly = amountPaid !== undefined ? amountPaid - (depositApplied ?? 0) : undefined
 
   return (
     <View style={styles.totalsBlock}>
@@ -232,10 +238,19 @@ export function TotalsBlock(props: {
         <Text style={[styles.value, styles.bold, styles.accentText]}>Total</Text>
         <Text style={[styles.value, styles.bold, styles.accentText]}>{fmt(total)}</Text>
       </View>
-      {amountPaid !== undefined ? (
+      {depositApplied ? (
         <View style={styles.totalsRow}>
-          <Text style={styles.value}>Amount paid</Text>
-          <Text style={styles.value}>{fmt(amountPaid)}</Text>
+          <Text style={styles.value}>Deposit applied</Text>
+          <Text style={styles.value}>-{fmt(depositApplied)}</Text>
+        </View>
+      ) : null}
+      {paymentsOnly !== undefined && (depositApplied ? paymentsOnly > 0 : true) ? (
+        <View style={styles.totalsRow}>
+          <Text style={styles.value}>{depositApplied ? 'Payments' : 'Amount paid'}</Text>
+          <Text style={styles.value}>
+            {depositApplied ? '-' : ''}
+            {fmt(paymentsOnly)}
+          </Text>
         </View>
       ) : null}
       {balance !== undefined ? (

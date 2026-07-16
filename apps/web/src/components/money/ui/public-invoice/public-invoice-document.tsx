@@ -51,6 +51,7 @@ export function PublicInvoiceDocument({
     total,
     amountPaid,
     balance,
+    depositApplied,
     currency,
     business,
     branding,
@@ -59,6 +60,13 @@ export function PublicInvoiceDocument({
     allowPartialPayments,
     minPaymentAmount,
   } = payload
+
+  // Deposit-accounting plan 16 §E: `amountPaid` already NETS IN the deposit allocations
+  // (`computeAmountPaid` sums every allocation regardless of source), so a plain "Amount
+  // paid" row would double-count the deposit against the "Deposit applied" breakout below.
+  // Split the one line into two — presentation only, same underlying total — so
+  // Total − Deposit applied − Payments visibly sums to Balance due.
+  const paymentsOnly = amountPaid - depositApplied
 
   const isPaid = status === 'paid' || balance <= 0
   const isVoid = status === 'void'
@@ -93,10 +101,18 @@ export function PublicInvoiceDocument({
           taxRate={taxRate}
           taxTotal={taxTotal}
           total={total}
-          footerRows={[
-            ...(amountPaid > 0 ? [{ label: 'Amount paid', value: amountPaid }] : []),
-            { label: 'Balance due', value: Math.max(balance, 0), emphasize: true },
-          ]}
+          footerRows={
+            depositApplied > 0
+              ? [
+                  { label: 'Deposit applied', value: -depositApplied },
+                  ...(paymentsOnly > 0 ? [{ label: 'Payments', value: -paymentsOnly }] : []),
+                  { label: 'Balance due', value: Math.max(balance, 0), emphasize: true },
+                ]
+              : [
+                  ...(amountPaid > 0 ? [{ label: 'Amount paid', value: amountPaid }] : []),
+                  { label: 'Balance due', value: Math.max(balance, 0), emphasize: true },
+                ]
+          }
         />
 
         {/* ─── Payment state / action ─────────────────────────────────────── */}

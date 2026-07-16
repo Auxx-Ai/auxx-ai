@@ -54,7 +54,9 @@ function PaymentHistoryBlock(props: {
 /**
  * The invoice PDF document template (money MI1 build spec §H.1). Composes the same
  * document-agnostic `parts.tsx` building blocks as `quote-pdf.tsx`, plus invoice-only
- * pieces: Amount paid / Balance due rows in the totals block, a payment-history table
+ * pieces: Amount paid / Balance due rows in the totals block (split into "Deposit applied" +
+ * "Payments" when `depositApplied > 0` — deposit-accounting plan 16 §E, presentation only,
+ * see `TotalsBlock`), a payment-history table
  * (rendered when `settings.invoice.showPaymentHistory` and payments exist), a "Pay online"
  * line (`payload.payLink`, money MP1 build spec §J — plain URL v1, only present when the
  * org's Stripe account is connected + chargesEnabled), and payment-instructions text
@@ -104,6 +106,7 @@ export function InvoicePdf(props: { payload: InvoicePdfPayload; logoBytes?: Buff
           total={payload.total}
           amountPaid={payload.amountPaid}
           balance={payload.balance}
+          depositApplied={payload.depositApplied}
         />
 
         {showPaymentHistory ? (

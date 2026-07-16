@@ -49,7 +49,7 @@ export function WorkOrderBillingTab({ recordId, variant = 'tab' }: DetailViewTab
       <div
         className={cn(
           'flex flex-col gap-4 py-2',
-          isSection ? 'max-h-[70vh] overflow-auto' : 'min-h-0 flex-1 overflow-auto'
+          isSection ? 'overflow-auto' : 'min-h-0 flex-1 overflow-auto'
         )}>
         <SummaryStrip billing={billing} />
         <NextAction billing={billing} onAction={() => setActionOpen(true)} />
@@ -179,13 +179,21 @@ function SummaryStrip({ billing }: { billing: WorkOrderBillingView }) {
       : billing.basis === 'per_visit'
         ? 'Default visit price'
         : 'Rate per billing period'
+  const showDepositHeld = billing.depositHeld > 0
   return (
-    <div className='grid grid-cols-2 gap-3 border-b pb-4 sm:grid-cols-5'>
+    <div
+      className={cn(
+        'grid grid-cols-2 gap-3 border-b pb-4',
+        showDepositHeld ? 'sm:grid-cols-6' : 'sm:grid-cols-5'
+      )}>
       <SummaryCell label={firstLabel} value={billing.billingAmount} billing={billing} />
       <SummaryCell label='Drafted' value={billing.drafted} billing={billing} />
       <SummaryCell label='Invoiced' value={billing.invoiced} billing={billing} />
       <SummaryCell label='Remaining to invoice' value={billing.remaining} billing={billing} />
       <SummaryCell label='Balance due' value={billing.balanceDue} billing={billing} />
+      {showDepositHeld && (
+        <SummaryCell label='Deposit held' value={billing.depositHeld} billing={billing} />
+      )}
     </div>
   )
 }

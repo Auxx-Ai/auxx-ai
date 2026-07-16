@@ -56,6 +56,14 @@ export {
   upsertPaymentAccount,
 } from './payments/account-state'
 export {
+  computeDepositFigures,
+  type DepositChargeRow,
+  getAllocationTotalsByTransaction,
+  getContactCreditOnAccount,
+  getInvoiceDepositApplied,
+  listContactDepositCharges,
+} from './payments/allocation-reads'
+export {
   computeDepositAmount,
   type QuoteDepositType,
   type ResolvedQuoteDeposit,

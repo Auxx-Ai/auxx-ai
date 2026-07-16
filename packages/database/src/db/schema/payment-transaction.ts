@@ -69,9 +69,14 @@ export const PaymentTransaction = pgTable(
       onUpdate: 'cascade',
       onDelete: 'restrict',
     }),
-    paymentInstanceId: text().references((): AnyPgColumn => EntityInstance.id, {
+    /** Deposit-accounting plan 16 §B — denormalized from the document's contact, stamped at
+     * insert by every writer (Stripe checkout, manual payment, refund copy). The
+     * accounting-correct home of a customer deposit is the CUSTOMER account; job-scoping via
+     * `workOrderInstanceId`/`quoteInstanceId` is our narrowing. `restrict` — ledger rows are
+     * financial records and must not orphan. */
+    contactInstanceId: text().references((): AnyPgColumn => EntityInstance.id, {
       onUpdate: 'cascade',
-      onDelete: 'set null',
+      onDelete: 'restrict',
     }),
     /** cash/check/card/bank/other (stripe rows stamp from the charge) */
     method: text(),
@@ -109,6 +114,12 @@ export const PaymentTransaction = pgTable(
       table.organizationId.asc().nullsLast(),
       table.workOrderInstanceId.asc().nullsLast()
     ),
+    // Deposit-accounting plan 16 §B — contact-level "credit on account" read.
+    index('PaymentTransaction_organizationId_contactInstanceId_idx').using(
+      'btree',
+      table.organizationId.asc().nullsLast(),
+      table.contactInstanceId.asc().nullsLast()
+    ),
     // PG: multiple NULLs allowed — only enforces uniqueness among rows that carry a value
     uniqueIndex('PaymentTransaction_stripePaymentIntentId_key').using(
       'btree',
@@ -119,3 +130,74 @@ export const PaymentTransaction = pgTable(
 
 export type PaymentTransactionEntity = typeof PaymentTransaction.$inferSelect
 export type PaymentTransactionInsert = typeof PaymentTransaction.$inferInsert
+
+/**
+ * One row per "deposit applied" journal entry — the application-as-record primitive that
+ * replaces the old `PaymentTransaction.invoiceInstanceId` stamp-and-overwrite settle mechanism
+ * (plans/dispatch/money/16-deposit-accounting.md §B). ALL invoice payment math
+ * (`computeAmountPaid`, guards, mirrors) reads these rows, never the transaction's intent
+ * column. Partial application (a deposit split across multiple invoices) falls out for free —
+ * each split is its own row.
+ */
+export const PaymentAllocation = pgTable(
+  'PaymentAllocation',
+  {
+    id: text()
+      .$defaultFn(() => createId())
+      .primaryKey()
+      .notNull(),
+    organizationId: text()
+      .notNull()
+      .references((): AnyPgColumn => Organization.id, { onUpdate: 'cascade', onDelete: 'cascade' }),
+    paymentTransactionId: text()
+      .notNull()
+      .references((): AnyPgColumn => PaymentTransaction.id, {
+        onUpdate: 'cascade',
+        onDelete: 'cascade', // manual-delete path cleans up via cascade
+      }),
+    invoiceInstanceId: text()
+      .notNull()
+      .references((): AnyPgColumn => EntityInstance.id, {
+        onUpdate: 'cascade',
+        onDelete: 'restrict', // the delete-safety FK moves here from PaymentTransaction
+      }),
+    /** cents, always > 0 — sign comes from the transaction's `kind` (`refund` negative). */
+    amount: integer().notNull(),
+    appliedAt: timestamp({ precision: 3 }).defaultNow().notNull(),
+    /** null = system (webhook/settle); set when a human triggers the application. */
+    createdByUserId: text().references((): AnyPgColumn => User.id, {
+      onUpdate: 'cascade',
+      onDelete: 'set null',
+    }),
+    /** Moved off `PaymentTransaction` — one `payment` mirror per allocation
+     * (`payment_amount` = allocation amount), since `payment_invoice` is non-nullable
+     * 1-invoice and a deposit split across two invoices needs two mirrors. */
+    paymentInstanceId: text().references((): AnyPgColumn => EntityInstance.id, {
+      onUpdate: 'cascade',
+      onDelete: 'set null',
+    }),
+    createdAt: timestamp({ precision: 3 }).defaultNow().notNull(),
+    updatedAt: timestamp({ precision: 3 })
+      .notNull()
+      .$onUpdate(() => new Date()),
+  },
+  (table) => [
+    uniqueIndex('PaymentAllocation_paymentTransactionId_invoiceInstanceId_key').using(
+      'btree',
+      table.paymentTransactionId.asc().nullsLast(),
+      table.invoiceInstanceId.asc().nullsLast()
+    ),
+    index('PaymentAllocation_organizationId_invoiceInstanceId_idx').using(
+      'btree',
+      table.organizationId.asc().nullsLast(),
+      table.invoiceInstanceId.asc().nullsLast()
+    ),
+    index('PaymentAllocation_paymentTransactionId_idx').using(
+      'btree',
+      table.paymentTransactionId.asc().nullsLast()
+    ),
+  ]
+)
+
+export type PaymentAllocationEntity = typeof PaymentAllocation.$inferSelect
+export type PaymentAllocationInsert = typeof PaymentAllocation.$inferInsert

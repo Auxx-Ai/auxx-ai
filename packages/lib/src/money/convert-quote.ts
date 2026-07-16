@@ -1,15 +1,21 @@
 // packages/lib/src/money/convert-quote.ts
 
 import { database, schema } from '@auxx/database'
+import { createScopedLogger } from '@auxx/logger'
 import type { TypedFieldValue } from '@auxx/types'
 import { extractValue } from '@auxx/types'
+import { buildFieldValueKey, type FieldId } from '@auxx/types/field'
 import { toRecordId } from '@auxx/types/resource'
 import { and, eq, isNull } from 'drizzle-orm'
 import { getOrgCache } from '../cache'
 import { BadRequestError } from '../errors'
 import { FieldValueService } from '../field-values/field-value-service'
+import { extractRelationshipRecordIds } from '../field-values/relationship-field'
+import { getRealtimeService, publishFieldValueUpdates } from '../realtime'
 import { UnifiedCrudHandler } from '../resources/crud'
 import type { ConvertQuoteToWorkOrderInput } from './types'
+
+const logger = createScopedLogger('money:convert-quote')
 
 /** Unwrap a `getFieldValues()` map entry — takes the first value if array-returned. */
 function firstTyped(
@@ -44,6 +50,7 @@ export async function convertQuoteToWorkOrder(input: ConvertQuoteToWorkOrderInpu
       'quote_request',
       'quote_pricing_model',
       'quote_invoice_timing',
+      'quote_work_orders',
       'service_request_address',
     ] as const)
 
@@ -269,6 +276,39 @@ export async function convertQuoteToWorkOrder(input: ConvertQuoteToWorkOrderInpu
     })
   }
 
-  // ─── Step 6: return the created work order ──────────────────────────────────
+  // ─── Step 6: publish the quote-side realtime update (money 16 §A.2) ─────────
+  // The WO's own creation already inverse-syncs `quote_work_orders` on the quote
+  // (has_many inverse of `work_order_quote`) — the FieldValue row is correct in
+  // the DB — but nothing publishes it, so a client subscribed via
+  // `useSystemValues(quoteRecordId, ['quote_work_orders'])` (Jobs card,
+  // "Convert to job" → "View job" swap) never hears about it and stays stale
+  // until the duplicate-convert guard above errors. Re-read the field so the
+  // published value matches what a refetch would return (not just the one WO
+  // just created — a prior canceled conversion may also still be linked), and
+  // publish WITH that value: `use-resource-sync.ts` drops value-less entries.
+  // Best-effort — a realtime hiccup must never fail a conversion that already
+  // committed.
+  if (cf.quote_work_orders) {
+    const workOrderField = cf.quote_work_orders
+    try {
+      const refreshed = await handler.getFieldValues(quoteRecordId, [workOrderField.id])
+      const recordIds = extractRelationshipRecordIds(refreshed.get(workOrderField.id))
+      await publishFieldValueUpdates(getRealtimeService(), organizationId, [
+        {
+          key: buildFieldValueKey(quoteRecordId, workOrderField.id as FieldId),
+          value: recordIds.map((recordId) => ({ recordId })),
+        },
+      ])
+    } catch (error) {
+      logger.warn('Failed to publish quote_work_orders realtime update after convert', {
+        organizationId,
+        quoteInstanceId,
+        workOrderInstanceId: createdWorkOrder.instance.id,
+        error: error instanceof Error ? error.message : String(error),
+      })
+    }
+  }
+
+  // ─── Step 7: return the created work order ──────────────────────────────────
   return createdWorkOrder
 }

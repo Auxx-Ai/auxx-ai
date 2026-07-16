@@ -283,6 +283,7 @@ function DialogContent({
 function DialogHeader({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
   return (
     <div
+      data-slot='dialog-header'
       className={cn('flex flex-col space-y-1.5 text-center sm:text-left mb-4', className)}
       {...props}
     />
@@ -292,6 +293,7 @@ function DialogHeader({ className, ...props }: React.HTMLAttributes<HTMLDivEleme
 function DialogFooter({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
   return (
     <div
+      data-slot='dialog-footer'
       className={cn(
         // `max-sm:mt-auto` pins the footer to the bottom of a full-height flex
         // card; in a content-height card there's no free space, so it's a no-op.

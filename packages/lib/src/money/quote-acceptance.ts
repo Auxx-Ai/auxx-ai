@@ -137,7 +137,6 @@ export async function acceptQuoteByToken(
   await fieldValueService.setValuesForEntity({
     recordId: toRecordId('quote', quoteInstanceId),
     values,
-    publishEvents: false,
   })
 
   await notifyQuoteCreator({
@@ -211,7 +210,6 @@ export async function declineQuoteByToken(
     await fieldValueService.setValuesForEntity({
       recordId: toRecordId('quote', quoteInstanceId),
       values: [{ fieldId: 'quote_decline_reason', value: reason }],
-      publishEvents: false,
     })
   }
 

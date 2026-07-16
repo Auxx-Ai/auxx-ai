@@ -19,6 +19,7 @@ import { FieldValueService } from '../field-values/field-value-service'
 import { UnifiedCrudHandler } from '../resources/crud'
 import { getOrganizationSetting } from '../settings/settings-service'
 import { getPaymentAccount } from './payments/account-state'
+import { getInvoiceDepositApplied } from './payments/allocation-reads'
 import { resolvePartialPaymentBounds } from './payments/partial'
 
 /**
@@ -185,6 +186,12 @@ export interface PublicInvoicePayload {
   amountPaid: number
   /** Integer cents. */
   balance: number
+  /** Integer cents — deposit-accounting plan 16 §E. Σ allocation amounts posted against this
+   * invoice from succeeded quote-deposit charges (refund copies net back to zero). `0` when no
+   * deposit was ever applied — the "Deposit applied" line only renders when this is positive.
+   * Already netted into `amountPaid`/`balance` above (allocations ARE the payment math, §C.1)
+   * — this is purely the labeled breakout line, not additional money. */
+  depositApplied: number
   currency: string
   business: DocumentBusinessSettings
   branding: DocumentBrandingSettings
@@ -217,29 +224,37 @@ export async function getPublicInvoicePayload(token: string): Promise<PublicInvo
   const systemUserId = await getOrgCache().get(organizationId, 'systemUser')
   const invoiceRecordId = toRecordId('invoice', invoiceInstanceId)
 
-  const [{ payload }, account, pendingCharge, allowPartialPayments, partialPaymentMinPercent] =
-    await Promise.all([
-      buildInvoicePdfPayload({ organizationId, userId: systemUserId, invoiceRecordId }),
-      getPaymentAccount(organizationId),
-      database.query.PaymentTransaction.findFirst({
-        // Time-bounded: a `pending` row is minted at Checkout CREATION, so its bare existence
-        // only means a session was opened, not that money moved. Rows the shopper explicitly
-        // canceled out of get flipped by `cancelAbandonedCheckout`; silently-abandoned tabs
-        // age out of this window instead of wedging the page in "processing" forever. The
-        // webhook remains the truth — a stale session paid after the window still settles.
-        where: and(
-          eq(schema.PaymentTransaction.organizationId, organizationId),
-          eq(schema.PaymentTransaction.invoiceInstanceId, invoiceInstanceId),
-          eq(schema.PaymentTransaction.provider, 'stripe'),
-          eq(schema.PaymentTransaction.kind, 'charge'),
-          eq(schema.PaymentTransaction.status, 'pending'),
-          gt(schema.PaymentTransaction.updatedAt, new Date(Date.now() - PROCESSING_WINDOW_MS))
-        ),
-        columns: { id: true },
-      }),
-      getOrganizationSetting({ organizationId, key: 'documents.invoice.allowPartialPayments' }),
-      getOrganizationSetting({ organizationId, key: 'documents.invoice.partialPaymentMinPercent' }),
-    ])
+  const [
+    { payload },
+    account,
+    pendingCharge,
+    allowPartialPayments,
+    partialPaymentMinPercent,
+    depositApplied,
+  ] = await Promise.all([
+    buildInvoicePdfPayload({ organizationId, userId: systemUserId, invoiceRecordId }),
+    getPaymentAccount(organizationId),
+    database.query.PaymentTransaction.findFirst({
+      // Time-bounded: a `pending` row is minted at Checkout CREATION, so its bare existence
+      // only means a session was opened, not that money moved. Rows the shopper explicitly
+      // canceled out of get flipped by `cancelAbandonedCheckout`; silently-abandoned tabs
+      // age out of this window instead of wedging the page in "processing" forever. The
+      // webhook remains the truth — a stale session paid after the window still settles.
+      where: and(
+        eq(schema.PaymentTransaction.organizationId, organizationId),
+        eq(schema.PaymentTransaction.invoiceInstanceId, invoiceInstanceId),
+        eq(schema.PaymentTransaction.provider, 'stripe'),
+        eq(schema.PaymentTransaction.kind, 'charge'),
+        eq(schema.PaymentTransaction.status, 'pending'),
+        gt(schema.PaymentTransaction.updatedAt, new Date(Date.now() - PROCESSING_WINDOW_MS))
+      ),
+      columns: { id: true },
+    }),
+    getOrganizationSetting({ organizationId, key: 'documents.invoice.allowPartialPayments' }),
+    getOrganizationSetting({ organizationId, key: 'documents.invoice.partialPaymentMinPercent' }),
+    // Deposit-accounting plan 16 §E — labeled breakout, see the field doc on the payload type.
+    getInvoiceDepositApplied(organizationId, invoiceInstanceId),
+  ])
 
   const paymentsEnabled = isPaymentsConnected(account)
   const minPaymentAmount = resolvePartialPaymentBounds(
@@ -265,6 +280,7 @@ export async function getPublicInvoicePayload(token: string): Promise<PublicInvo
     total: payload.total,
     amountPaid: payload.amountPaid,
     balance: payload.balance,
+    depositApplied,
     currency: payload.settings.currency,
     business: payload.settings.business,
     branding: payload.settings.branding,

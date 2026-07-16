@@ -129,6 +129,9 @@ export const DRAWER_CONFIG_REGISTRY: DrawerConfigRegistry = {
         { value: 'customer', label: 'Customer' },
         { value: 'origin', label: 'Origin' },
         { value: 'jobs', label: 'Jobs' },
+        // Deposit visibility (deposit-accounting plan 16 §D.5) — the card itself renders
+        // null when the quote has no deposit charge, so this stays in the list unconditionally.
+        { value: 'deposit', label: 'Deposit' },
       ],
     },
   },

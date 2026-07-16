@@ -113,6 +113,10 @@ export const DRAWER_TAB_CARD_COMPONENTS: Record<
   'quote:origin': () =>
     import('./cards/quote-origin-card').then((m) => ({ default: m.QuoteOriginCard })),
   'quote:jobs': () => import('./cards/quote-jobs-card').then((m) => ({ default: m.QuoteJobsCard })),
+  // Deposit visibility (deposit-accounting plan 16 §D.5) — renders null when the quote has
+  // no deposit charge, so most quotes show nothing extra.
+  'quote:deposit': () =>
+    import('./cards/quote-deposit-card').then((m) => ({ default: m.QuoteDepositCard })),
   // Drawer-only line-items block (the invoice:lines pattern) — the detail page
   // renders its own Line-items section via DETAIL_VIEW_TAB_COMPONENTS instead.
   'quote:lines': () =>

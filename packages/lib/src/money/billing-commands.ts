@@ -22,6 +22,7 @@ import {
   syncWorkOrderBillingProjection,
 } from './billing-projection'
 import { copyLineOntoInvoice, createInvoiceShell, LINE_COPY_ATTRS } from './gather'
+import { applyHeldDepositsToInvoice } from './payments/ledger'
 import { recomputeTotals } from './totals-hooks'
 import type {
   AddVisitExtrasToContractInput,
@@ -135,6 +136,35 @@ async function finishInvoice(input: {
     db: input.db,
     publishEvents: !input.db,
   })
+
+  // money 16-deposit-accounting.md §C.2 settle point — every invoice-creation command
+  // (createFixedContractInvoice/createVisitInvoice/createRecurringCharge/createExtraWorkInvoice)
+  // funnels through this one finish step, right after `recomputeTotals` (above) has written the
+  // invoice's real `invoice_total` — the value `applyHeldDepositsToInvoice` needs to cap
+  // allocation at (moved here from `createInvoiceShell`, which runs before any line is copied
+  // and so never had a real total to cap against). Same `db` (the `withSerializableRetry`
+  // transaction every caller wraps this in) and the same `publishEvents: !input.db` threading as
+  // `recomputeTotals` just above. `workOrderInstanceId` is a required, non-nullable input on
+  // every one of these commands (`WorkOrderBillingCommandInput`) — same guarantee the old
+  // shell-embedded call relied on, no extra guard needed.
+  const totalsById = await batchReadSystemValues({
+    service: new FieldValueService(input.organizationId, input.userId, input.db),
+    organizationId: input.organizationId,
+    entityType: 'invoice',
+    entityInstanceIds: [input.invoiceInstanceId],
+    attributes: ['invoice_total'] as const,
+  })
+  const invoiceTotal = Number(totalsById.get(input.invoiceInstanceId)?.get('invoice_total') ?? 0)
+  await applyHeldDepositsToInvoice({
+    organizationId: input.organizationId,
+    userId: input.userId,
+    workOrderInstanceId: input.workOrderInstanceId,
+    invoiceInstanceId: input.invoiceInstanceId,
+    invoiceTotal,
+    db: input.db,
+    publishEvents: !input.db,
+  })
+
   return { recordId: input.invoiceRecordId, instanceId: input.invoiceInstanceId }
 }
 
