@@ -306,7 +306,11 @@ export function CatalogPicker({
             onValueChange={setQuery}
             placeholder='Search products & services…'
           />
-          <CommandList>
+          <CommandList
+            scrollAreaClassName='max-h-none'
+            scrollAreaStyle={{
+              height: 'min(300px, calc(var(--radix-popover-content-available-height) - 78px))',
+            }}>
             {!(itemsLoading || groupsLoading) && !hasAnyMatch && !query.trim() && (
               <CommandEmpty>No products or services yet</CommandEmpty>
             )}
