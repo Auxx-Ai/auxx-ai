@@ -4,14 +4,14 @@
 
 // The document-agnostic line-items builder (money MQ1 build spec §H.1, 01-ui.md #1).
 // Lines render as plain `group/tree-row` grid rows under a matching grid header
-// (Description / Qty / Unit cost / Total): one shared
+// (Description / Qty / Rate / Total): one shared
 // `grid-template-columns` keeps the number columns aligned across the header and
 // every row. Line counts are small, so plain rows replace the virtualized
 // `DynamicView` embed this used to be. Row/cell markup lives in `line-rows.tsx`;
 // this file owns state, data fetching, and mutations.
 //
 // Keyboard: the rows sit in a container wired to `useLineNav` — spreadsheet-style
-// focus movement across name → qty → unit cost, where Enter / ArrowDown / Tab
+// focus movement across name → qty → rate, where Enter / ArrowDown / Tab
 // past the last row spawns a fresh draft (`addLine`). The name cell is free-text;
 // `/` on an empty cell opens the catalog picker.
 //
@@ -70,6 +70,7 @@ import {
   toRecordId,
   useRecordList,
   useResource,
+  useResourceFields,
 } from '~/components/resources'
 import { useSaveFieldValue } from '~/components/resources/hooks/use-save-field-value'
 import { useSeedCreatedRecord } from '~/components/resources/hooks/use-seed-created-record'
@@ -78,6 +79,7 @@ import { useSettings } from '~/hooks/use-settings'
 import { api } from '~/trpc/react'
 import type { CatalogGroupPick, CatalogGroupPickLine } from './catalog-picker'
 import {
+  type CategoryOption,
   type DraftLine,
   DraftLineRow,
   freshDraft,
@@ -155,6 +157,17 @@ export function LineBuilder({
   const docRecordId = documentRecordId as RecordId
   const { resource } = useResource(LINE_ITEM_SLUG)
   const entityDefinitionId = resource?.id
+  // Category options come from the field definition (not a hardcoded list) so
+  // org-added categories appear in the badge dropdown with their own colors.
+  const { fields: lineItemFields } = useResourceFields(LINE_ITEM_SLUG)
+  const categoryOptions = useMemo<CategoryOption[]>(() => {
+    const field = lineItemFields.find((f) => f.key === 'category')
+    return (field?.options?.options ?? []).map((o) => ({
+      value: o.value,
+      label: o.label,
+      color: o.color,
+    }))
+  }, [lineItemFields])
   const { getSetting } = useSettings({})
   const currencyCode = (getSetting('organization.currency') as string | null) ?? 'USD'
 
@@ -443,7 +456,10 @@ export function LineBuilder({
       const relKey = relKeyForDocumentType(documentType)
       const values: Record<string, unknown> = {
         line_item_qty: snapshot.qty,
+        line_item_unit: snapshot.unit,
         line_item_taxable: snapshot.taxable,
+        line_item_optional: snapshot.optional,
+        line_item_optional_selected: snapshot.optionalSelected,
         line_item_sort_order: displayIdsRef.current.length + draftIndex,
         [relKey]: documentRecordId,
       }
@@ -478,6 +494,11 @@ export function LineBuilder({
             },
             { fieldId: 'line_item_qty', value: snapshot.qty, fieldType: FieldType.NUMBER },
             {
+              fieldId: 'line_item_unit',
+              value: snapshot.unit,
+              fieldType: FieldType.SINGLE_SELECT,
+            },
+            {
               fieldId: 'line_item_unit_price',
               value: snapshot.unitPriceCents,
               fieldType: FieldType.CURRENCY,
@@ -485,6 +506,16 @@ export function LineBuilder({
             {
               fieldId: 'line_item_taxable',
               value: snapshot.taxable,
+              fieldType: FieldType.CHECKBOX,
+            },
+            {
+              fieldId: 'line_item_optional',
+              value: snapshot.optional,
+              fieldType: FieldType.CHECKBOX,
+            },
+            {
+              fieldId: 'line_item_optional_selected',
+              value: snapshot.optionalSelected,
               fieldType: FieldType.CHECKBOX,
             },
           ],
@@ -529,11 +560,32 @@ export function LineBuilder({
             fieldType: FieldType.NUMBER,
           })
         }
+        if (latest.unit !== snapshot.unit) {
+          changed.push({
+            fieldId: 'line_item_unit',
+            value: latest.unit,
+            fieldType: FieldType.SINGLE_SELECT,
+          })
+        }
         if (latest.unitPriceCents !== snapshot.unitPriceCents) {
           changed.push({
             fieldId: 'line_item_unit_price',
             value: latest.unitPriceCents,
             fieldType: FieldType.CURRENCY,
+          })
+        }
+        if (latest.optional !== snapshot.optional) {
+          changed.push({
+            fieldId: 'line_item_optional',
+            value: latest.optional,
+            fieldType: FieldType.CHECKBOX,
+          })
+        }
+        if (latest.optionalSelected !== snapshot.optionalSelected) {
+          changed.push({
+            fieldId: 'line_item_optional_selected',
+            value: latest.optionalSelected,
+            fieldType: FieldType.CHECKBOX,
           })
         }
         if (latest.catalogItemRecordId !== snapshot.catalogItemRecordId) {
@@ -592,7 +644,12 @@ export function LineBuilder({
                 line_item_category: line.category,
                 line_item_taxable: line.taxable,
                 line_item_unit_price: line.unitPrice,
+                line_item_unit: line.unit,
                 line_item_qty: line.qty,
+                // Catalog/group-exploded lines start required (money plan 18 §3);
+                // the user marks them optional afterwards.
+                line_item_optional: false,
+                line_item_optional_selected: true,
                 line_item_catalog_item: toRecordId('catalog_item', line.catalogItemId),
                 line_item_sort_order: baseOrder + index,
                 [relKey]: documentRecordId,
@@ -685,7 +742,9 @@ export function LineBuilder({
       const [first, ...rest] = pick.lines
 
       // Step 1: entry #1 fills the CURRENT line — the handlePick shape (catalog-picker.tsx)
-      // plus qty, which the single-item pick leaves untouched.
+      // plus qty, which the single-item pick leaves untouched. Resets optional/optionalSelected
+      // to required (money plan 18 §3) — same "pick overwrites the line's identity" precedent
+      // as taxable already follows.
       void saveMultipleAsync(recordId, [
         { fieldId: 'line_item_name', value: first.name, fieldType: FieldType.TEXT },
         { fieldId: 'line_item_description', value: first.description, fieldType: FieldType.TEXT },
@@ -696,7 +755,10 @@ export function LineBuilder({
         },
         { fieldId: 'line_item_taxable', value: first.taxable, fieldType: FieldType.CHECKBOX },
         { fieldId: 'line_item_unit_price', value: first.unitPrice, fieldType: FieldType.CURRENCY },
+        { fieldId: 'line_item_unit', value: first.unit, fieldType: FieldType.SINGLE_SELECT },
         { fieldId: 'line_item_qty', value: first.qty, fieldType: FieldType.NUMBER },
+        { fieldId: 'line_item_optional', value: false, fieldType: FieldType.CHECKBOX },
+        { fieldId: 'line_item_optional_selected', value: true, fieldType: FieldType.CHECKBOX },
         {
           fieldId: 'line_item_catalog_item',
           value: toRecordId('catalog_item', first.catalogItemId),
@@ -720,15 +782,19 @@ export function LineBuilder({
 
       const [first, ...rest] = pick.lines
 
-      // Step 1: entry #1's values become THIS draft's create.
+      // Step 1: entry #1's values become THIS draft's create. Catalog/group-exploded
+      // lines start required (money plan 18 §3).
       void createDraft(draftId, {
         name: first.name,
         description: first.description,
         category: first.category,
         taxable: first.taxable,
         unitPriceCents: first.unitPrice,
+        unit: first.unit,
         qty: first.qty,
         catalogItemRecordId: toRecordId('catalog_item', first.catalogItemId),
+        optional: false,
+        optionalSelected: true,
       })
 
       // Real records + every current draft occupy a sort-order slot ahead of `rest`.
@@ -768,7 +834,7 @@ export function LineBuilder({
     [entityDefinitionId, docRecordId, reorderMutate, refresh]
   )
 
-  // Spreadsheet keyboard nav across the rows container (name → qty → unit cost);
+  // Spreadsheet keyboard nav across the rows container (name → qty → rate);
   // Enter / ArrowDown / Tab past the last row calls `addLine` to spawn a draft.
   useLineNav({
     containerRef: rowsContainerRef,
@@ -844,7 +910,7 @@ export function LineBuilder({
             )}
           </div>
           <div className='px-2 text-right'>Qty</div>
-          <div className='px-2 text-right'>Unit cost</div>
+          <div className='px-2 text-right'>Rate</div>
           <div className='px-2 text-right'>Total</div>
         </div>
 
@@ -878,8 +944,10 @@ export function LineBuilder({
                     record={record}
                     rowIndex={index}
                     entityDefinitionId={entityDefinitionId}
+                    categoryOptions={categoryOptions}
                     readOnly={readOnly}
                     currencyCode={currencyCode}
+                    documentType={documentType}
                     deleteLine={deleteLine}
                     onSelectGroup={handleGroupPick}
                   />
@@ -897,7 +965,9 @@ export function LineBuilder({
                 draft={draft}
                 rowIndex={displayRecords.length + i}
                 autoFocus={draft.draftId === lastAddedDraftId}
+                categoryOptions={categoryOptions}
                 currencyCode={currencyCode}
+                documentType={documentType}
                 deleteDraft={deleteDraft}
                 createDraft={createDraft}
                 onSelectGroup={handleGroupPickDraft}
@@ -912,6 +982,7 @@ export function LineBuilder({
         readOnly={readOnly}
         currencyCode={currencyCode}
         lineRecordIds={lineRecordIds}
+        draftLines={visibleDrafts}
       />
     </div>
   )

@@ -45,6 +45,14 @@ export {
   syncWorkOrderBillingProjection,
 } from './billing-projection'
 export { getContactBillingOverview, getWorkOrderBillingState } from './billing-state'
+export {
+  computeMarkupPrice,
+  pauseMarkupOnPriceEdit,
+  recomputePriceOnMarkupChange,
+  shouldPauseMarkup,
+  syncCatalogCostOnPartChange,
+  syncCatalogItemPricing,
+} from './catalog-pricing'
 export { convertQuoteToWorkOrder } from './convert-quote'
 export { createInvoiceFromWorkOrder, deleteInvoiceLine, listUninvoicedLines } from './gather'
 export { deleteInvoice, markInvoiceSent, voidInvoice } from './invoice-lifecycle'
@@ -197,3 +205,12 @@ export type {
   WorkOrderBillingState,
   WorkOrderInvoiceTiming,
 } from './types'
+export {
+  formatLineItemUnit,
+  LINE_ITEM_UNIT_OPTIONS,
+  type LineItemQuantityState,
+  type LineItemUnit,
+  type LineItemUnitDisplayMode,
+  type ParseLineItemQuantityResult,
+  parseQuantityWithUnit,
+} from './units'

@@ -38,6 +38,8 @@ const LINE_TRIGGER_ATTRS = new Set<SystemAttribute>([
   'line_item_unit_price',
   'line_item_taxable',
   'line_item_discount',
+  'line_item_optional', // selection toggles a line's contribution, not its own total (plan 18 §2)
+  'line_item_optional_selected',
   'line_item_quote',
   'line_item_work_order',
   'line_item_invoice', // attach/detach recomputes the invoice (money MI1 build spec §G.1)
@@ -114,6 +116,8 @@ async function recomputeQuoteTotals(params: {
       'quote_tax_rate',
       'line_item_line_total',
       'line_item_taxable',
+      'line_item_optional',
+      'line_item_optional_selected',
     ] as const)
 
   const billingFieldIds = [cf.quote_discount_type, cf.quote_discount_value, cf.quote_tax_rate]
@@ -161,17 +165,29 @@ async function recomputeQuoteTotals(params: {
   if (cf.line_item_line_total && cf.line_item_taxable) {
     const lineTotalFieldId = cf.line_item_line_total.id
     const taxableFieldId = cf.line_item_taxable.id
+    const optionalFieldId = cf.line_item_optional?.id
+    const optionalSelectedFieldId = cf.line_item_optional_selected?.id
     for (const lineInstanceId of lineInstanceIds) {
       const lineRecordId = toRecordId('line_item', lineInstanceId)
-      const lineValues = await handler.getFieldValues(lineRecordId, [
-        lineTotalFieldId,
-        taxableFieldId,
-      ])
+      const fieldIds = [lineTotalFieldId, taxableFieldId, optionalFieldId, optionalSelectedFieldId]
+        .filter(Boolean)
+        .map((id) => id!)
+      const lineValues = await handler.getFieldValues(lineRecordId, fieldIds)
       const lineTotalTyped = firstTyped(lineValues.get(lineTotalFieldId))
       const taxableTyped = firstTyped(lineValues.get(taxableFieldId))
+      const optionalTyped = optionalFieldId
+        ? firstTyped(lineValues.get(optionalFieldId))
+        : undefined
+      const optionalSelectedTyped = optionalSelectedFieldId
+        ? firstTyped(lineValues.get(optionalSelectedFieldId))
+        : undefined
       lines.push({
         lineTotal: lineTotalTyped ? (extractValue(lineTotalTyped) as number) : null,
         taxable: taxableTyped ? (extractValue(taxableTyped) as boolean) : true,
+        optional: optionalTyped ? (extractValue(optionalTyped) as boolean) : undefined,
+        optionalSelected: optionalSelectedTyped
+          ? (extractValue(optionalSelectedTyped) as boolean)
+          : undefined,
       })
     }
   }
@@ -217,6 +233,8 @@ async function recomputeInvoiceTotals(params: {
       'invoice_tax_rate',
       'line_item_line_total',
       'line_item_taxable',
+      'line_item_optional',
+      'line_item_optional_selected',
     ] as const)
 
   const billingFieldIds = [cf.invoice_discount_type, cf.invoice_discount_value, cf.invoice_tax_rate]
@@ -270,17 +288,29 @@ async function recomputeInvoiceTotals(params: {
   if (cf.line_item_line_total && cf.line_item_taxable) {
     const lineTotalFieldId = cf.line_item_line_total.id
     const taxableFieldId = cf.line_item_taxable.id
+    const optionalFieldId = cf.line_item_optional?.id
+    const optionalSelectedFieldId = cf.line_item_optional_selected?.id
     for (const lineInstanceId of lineInstanceIds) {
       const lineRecordId = toRecordId('line_item', lineInstanceId)
-      const lineValues = await handler.getFieldValues(lineRecordId, [
-        lineTotalFieldId,
-        taxableFieldId,
-      ])
+      const fieldIds = [lineTotalFieldId, taxableFieldId, optionalFieldId, optionalSelectedFieldId]
+        .filter(Boolean)
+        .map((id) => id!)
+      const lineValues = await handler.getFieldValues(lineRecordId, fieldIds)
       const lineTotalTyped = firstTyped(lineValues.get(lineTotalFieldId))
       const taxableTyped = firstTyped(lineValues.get(taxableFieldId))
+      const optionalTyped = optionalFieldId
+        ? firstTyped(lineValues.get(optionalFieldId))
+        : undefined
+      const optionalSelectedTyped = optionalSelectedFieldId
+        ? firstTyped(lineValues.get(optionalSelectedFieldId))
+        : undefined
       lines.push({
         lineTotal: lineTotalTyped ? (extractValue(lineTotalTyped) as number) : null,
         taxable: taxableTyped ? (extractValue(taxableTyped) as boolean) : true,
+        optional: optionalTyped ? (extractValue(optionalTyped) as boolean) : undefined,
+        optionalSelected: optionalSelectedTyped
+          ? (extractValue(optionalSelectedTyped) as boolean)
+          : undefined,
       })
     }
   }

@@ -15,15 +15,29 @@
 // (not the tree `GridTreeRow` — we only kept its `TreeRowButton` hover-action
 // primitive). Each navigable cell carries `data-line-row`/`data-line-col` so a
 // single container-level keydown listener can move focus spreadsheet-style
-// across name → qty → unit cost, adding a fresh draft when nav lands past the
+// across name → qty → rate, adding a fresh draft when nav lands past the
 // last row. The name cell is a free-text `<input>`: type any product name, or
 // press `/` on an empty cell (or click the trailing pick icon) to open the
 // catalog picker and drop in a pre-existing product.
 
 import { FieldType } from '@auxx/database/enums'
-import { computeLineTotal } from '@auxx/lib/money/client'
+import {
+  computeLineTotal,
+  formatLineItemUnit,
+  LINE_ITEM_UNIT_OPTIONS,
+  type LineItemUnit,
+  parseQuantityWithUnit,
+} from '@auxx/lib/money/client'
 import { AutosizeTextarea } from '@auxx/ui/components/autosize-textarea'
-import { Badge } from '@auxx/ui/components/badge'
+import { Badge, type Variant } from '@auxx/ui/components/badge'
+import { Checkbox } from '@auxx/ui/components/checkbox'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@auxx/ui/components/dropdown-menu'
 import { SimpleTooltip, TooltipExplanation } from '@auxx/ui/components/tooltip'
 import { TreeRowButton } from '@auxx/ui/components/tree-row'
 import { cn } from '@auxx/ui/lib/utils'
@@ -32,10 +46,14 @@ import { CSS } from '@dnd-kit/utilities'
 import {
   AlignLeft,
   Check,
+  ChevronsUpDown,
   CircleCheck,
   CircleX,
+  Ellipsis,
   GripVertical,
   PackageSearch,
+  Plus,
+  Tag,
   Trash2,
   X,
 } from 'lucide-react'
@@ -48,24 +66,70 @@ import { formatCurrency, titleCase } from './shared'
 
 /**
  * Shared `grid-template-columns` for the header row and every line row (the
- * mapping-columns.ts idiom) — one template is what keeps the qty / unit cost /
- * total columns aligned. Columns: description (fills) │ qty │ unit cost │
- * total.
+ * mapping-columns.ts idiom) — one template is what keeps the qty / rate /
+ * total columns aligned. Columns: description (fills) │ qty (widened for a
+ * smart `2.375 cy` quantity+unit cell, money plan 13 §5) │ rate │ total.
  */
-export const LINE_COLS = 'minmax(10rem, 1fr) 3rem 5.5rem 6.5rem'
+export const LINE_COLS = 'minmax(10rem, 1fr) 7rem 5.5rem 6.5rem'
 
 // Module-level (stable-reference) attribute lists — `useSystemValues` memoizes
 // on the array identity, so these must never be inline literals.
 const NAME_ATTRS = ['line_item_name', 'line_item_description', 'line_item_category']
-const QTY_ATTRS = ['line_item_qty']
+const QTY_ATTRS = ['line_item_qty', 'line_item_unit']
 const PRICE_ATTRS = ['line_item_unit_price']
 const TOTAL_ATTRS = ['line_item_qty', 'line_item_unit_price']
 const TAXABLE_ATTRS = ['line_item_taxable']
+// Optional/optionalSelected (money plan 18 §3) — quotes only; `LineRow` gates the
+// fetch on `documentType === 'quote'` so non-quote surfaces never subscribe.
+const OPTIONAL_ATTRS = ['line_item_optional', 'line_item_optional_selected']
+
+/**
+ * One selectable line category — the builder receives these from the
+ * `line_item.category` field definition (via `useResourceFields` in
+ * line-builder.tsx), so org-added categories show up alongside the seeded
+ * service/material/labor set with their own labels and colors.
+ */
+export interface CategoryOption {
+  value: string
+  label: string
+  color?: string
+}
+
+// Field-option colors are tailwind color names, which the Badge color variants
+// mirror — anything unrecognized falls back to the neutral gray badge.
+const BADGE_COLOR_VARIANTS = new Set([
+  'red',
+  'orange',
+  'amber',
+  'yellow',
+  'lime',
+  'green',
+  'emerald',
+  'teal',
+  'cyan',
+  'sky',
+  'blue',
+  'indigo',
+  'violet',
+  'purple',
+  'fuchsia',
+  'magenta',
+  'pink',
+  'rose',
+  'zinc',
+  'gray',
+])
+
+function badgeVariantForColor(color: string | undefined): Variant {
+  return color && BADGE_COLOR_VARIANTS.has(color) ? (color as Variant) : 'gray'
+}
 
 /**
  * A phantom line row that exists only in local state until its first real
  * commit — no `EntityInstance` behind it yet. `unitPriceCents` mirrors the
  * CURRENCY storage convention (integer cents), matching `line_item_unit_price`.
+ * `unit`/`optional`/`optionalSelected` mirror `line_item_unit`/`line_item_optional`/
+ * `line_item_optional_selected` (money plans 13 §5, 18 §3).
  */
 export interface DraftLine {
   draftId: string
@@ -74,7 +138,12 @@ export interface DraftLine {
   category: string | null
   taxable: boolean
   qty: number
+  unit: LineItemUnit | null
   unitPriceCents: number | null
+  /** Customer-selectable upsell (quotes only) — always `false` outside quote builders. */
+  optional: boolean
+  /** Pre-check state; meaningful only when `optional` is true. */
+  optionalSelected: boolean
   catalogItemRecordId: RecordId | null
   creating: boolean
 }
@@ -87,7 +156,10 @@ export function freshDraft(draftId: string): DraftLine {
     category: null,
     taxable: true,
     qty: 1,
+    unit: 'each',
     unitPriceCents: null,
+    optional: false,
+    optionalSelected: true,
     catalogItemRecordId: null,
     creating: false,
   }
@@ -107,29 +179,36 @@ export function relKeyForDocumentType(documentType: 'quote' | 'work_order' | 'in
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * One line's grid row — a `group/tree-row` so the hover-revealed
- * `TreeRowButton`s (grip, pick, description, taxable, delete) still fade in on
- * row hover. Owns the shared column template + the `data-line-row`/`col` tags
- * that {@link useLineNav} focus-hops between. Name/qty/price are the three
- * navigable cells (cols 0–2); total rides outside the nav order.
+ * One line's grid row — a `group/tree-row` so hover/focus-within-revealed
+ * chrome (grip, `⋯` row menu) fades in on row hover. Owns the shared column
+ * template + the `data-line-row`/`col` tags that {@link useLineNav} focus-hops
+ * between. Name/qty/price are the three navigable cells (cols 0–2); total
+ * rides outside the nav order. `menu` is the row-level `⋯` actions dropdown
+ * ({@link LineRowMenu}), absolutely pinned to the name/qty column seam — the
+ * col-0 wrapper is `relative` so the pin anchors to the column, not the row.
  */
 function LineGridRow({
   rowIndex,
   grip,
   name,
+  menu,
   qty,
   price,
   total,
+  optional = false,
 }: {
   rowIndex: number
   grip: ReactNode
   name: ReactNode
+  menu?: ReactNode
   qty: ReactNode
   price: ReactNode
   total: ReactNode
+  /** Muted/indented treatment for a deselectable quote line (money plan 18 §3). */
+  optional?: boolean
 }) {
   return (
-    <div className='group/tree-row relative text-sm'>
+    <div className={cn('group/tree-row relative text-sm', optional && 'opacity-75')}>
       {/* Drag grip — lives in the left gutter, OUTSIDE the framed grid. */}
       {grip}
 
@@ -137,11 +216,19 @@ function LineGridRow({
       <div className='absolute inset-0 rounded-md transition-colors group-hover/tree-row:bg-background' />
 
       <div
-        className='relative grid min-h-9 items-stretch px-1 text-muted-foreground'
+        className={cn(
+          'relative grid min-h-9 items-stretch px-1 text-muted-foreground',
+          optional && 'pl-3'
+        )}
         style={{ gridTemplateColumns: LINE_COLS }}>
-        {/* Col 0 — name input (the grip sits in the gutter, not this column). */}
-        <div data-line-row={rowIndex} data-line-col={0} className='flex min-w-0 items-center'>
+        {/* Col 0 — name input (the grip sits in the gutter, not this column).
+            `relative` anchors the `⋯` row menu to the column's right edge. */}
+        <div
+          data-line-row={rowIndex}
+          data-line-col={0}
+          className='relative flex min-w-0 items-center'>
           {name}
+          {menu}
         </div>
 
         <div data-line-row={rowIndex} data-line-col={1} className='flex items-center'>
@@ -183,30 +270,135 @@ function GripSlot({
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * Compact category badge — a single-letter pill (S/M) colored per category
- * (service → blue, material → orange), with the full category label revealed
- * on hover. Unknown/org-added categories fall back to a neutral badge showing
- * the title-cased value. Renders nothing when there is no category.
+ * Compact category badge — a single-letter pill (S/M/L…) whose letter and
+ * color derive from the field definition's option list, with the full label in
+ * a tooltip. Editable rows make the badge a dropdown trigger for switching
+ * category (or clearing it); an uncategorized editable line shows a
+ * hover-revealed ghost `+` badge in the same slot so category can be set
+ * without hunting through menus. Values no longer in the option list (an org
+ * removed the option) fall back to a neutral badge with the title-cased value.
  */
-function CategoryBadge({ category }: { category: string | null }) {
-  if (!category) return null
+function CategoryBadge({
+  category,
+  options,
+  readOnly,
+  onCommitCategory,
+}: {
+  category: string | null
+  options: CategoryOption[]
+  readOnly: boolean
+  onCommitCategory: (value: string | null) => void
+}) {
+  const option = options.find((o) => o.value === category) ?? null
+  const label = option?.label ?? (category ? titleCase(category) : null)
+  const letter = label ? label.charAt(0).toUpperCase() : null
 
-  const known: Record<string, { letter: string; variant: 'blue' | 'orange' }> = {
-    service: { letter: 'S', variant: 'blue' },
-    material: { letter: 'M', variant: 'orange' },
+  if (readOnly) {
+    if (!category) return null
+    return (
+      <SimpleTooltip content={label ?? undefined}>
+        <Badge
+          size='xs'
+          variant={badgeVariantForColor(option?.color)}
+          className='shrink-0 font-medium leading-tight'>
+          {letter}
+        </Badge>
+      </SimpleTooltip>
+    )
   }
-  const match = known[category]
-  const label = titleCase(category)
 
   return (
-    <SimpleTooltip content={label}>
-      <Badge
-        size='xs'
-        variant={match?.variant ?? 'gray'}
-        className='shrink-0 font-medium leading-tight'>
-        {match?.letter ?? label}
+    <DropdownMenu>
+      <SimpleTooltip content={label ?? 'Set category'} allowInteraction>
+        <DropdownMenuTrigger asChild>
+          <Badge
+            asChild
+            size='xs'
+            variant={category ? badgeVariantForColor(option?.color) : 'gray'}
+            className={cn(
+              'shrink-0 cursor-pointer font-medium leading-tight',
+              // Ghost `+` for an uncategorized line — only materializes on row
+              // hover/focus (and stays while its own menu is open).
+              !category &&
+                'opacity-0 transition-opacity data-[state=open]:opacity-100 group-focus-within/tree-row:opacity-100 group-hover/tree-row:opacity-100'
+            )}>
+            {/* stopPropagation: the surrounding name-cell wrapper click focuses
+                the name input — a badge click must only open this menu. */}
+            <button type='button' tabIndex={-1} onClick={(e) => e.stopPropagation()}>
+              {category ? letter : <Plus className='size-3' />}
+            </button>
+          </Badge>
+        </DropdownMenuTrigger>
+      </SimpleTooltip>
+      <DropdownMenuContent align='start'>
+        {options.map((o) => (
+          <DropdownMenuItem key={o.value} onSelect={() => onCommitCategory(o.value)}>
+            {o.label}
+            {o.value === category && <Check className='ml-auto size-3.5' />}
+          </DropdownMenuItem>
+        ))}
+        {category && (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onSelect={() => onCommitCategory(null)}>No category</DropdownMenuItem>
+          </>
+        )}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
+}
+
+/** Rest-state marker for a tax-exempt line — a struck-through `T`, tooltip-explained. */
+function TaxExemptBadge({ taxable }: { taxable: boolean }) {
+  if (taxable) return null
+  return (
+    <SimpleTooltip content='Tax exempt'>
+      <Badge size='xs' variant='gray' className='shrink-0 font-medium leading-tight line-through'>
+        T
       </Badge>
     </SimpleTooltip>
+  )
+}
+
+/**
+ * "Optional" state tag for a deselectable quote line (money plan 18 §3) — an `O`
+ * badge (full word in the tooltip, matching the single-letter category badges)
+ * plus an inline pre-check checkbox bound to `optionalSelected`; the checkbox's
+ * tooltip carries the "Recommended" meaning a text label used to. `readOnly`
+ * disables the checkbox instead of hiding it, so a read-only builder still
+ * shows the customer's current selection.
+ */
+function OptionalLineTag({
+  optionalSelected,
+  readOnly,
+  onToggleSelected,
+}: {
+  optionalSelected: boolean
+  readOnly: boolean
+  onToggleSelected: (next: boolean) => void
+}) {
+  return (
+    <span className='flex shrink-0 items-center gap-1.5'>
+      <SimpleTooltip content='Optional — the customer chooses whether to include this line'>
+        <Badge size='xs' variant='sky' className='shrink-0 font-medium leading-tight'>
+          O
+        </Badge>
+      </SimpleTooltip>
+      <SimpleTooltip
+        content={
+          optionalSelected ? 'Recommended — pre-checked for the customer' : 'Not pre-checked'
+        }>
+        {/* Stops row-level click-through (e.g. a future row-click drill) from firing. */}
+        <span className='flex items-center' onClick={(e) => e.stopPropagation()}>
+          <Checkbox
+            checked={optionalSelected}
+            disabled={readOnly}
+            onCheckedChange={(checked) => onToggleSelected(checked === true)}
+            className='size-3.5'
+          />
+        </span>
+      </SimpleTooltip>
+    </span>
   )
 }
 
@@ -215,37 +407,53 @@ function CategoryBadge({ category }: { category: string | null }) {
  * item. Type any product name (an ad-hoc line, no catalog rel); press `/` on an
  * empty cell (or click the trailing pick icon) to open the catalog picker and
  * drop in a pre-existing product, which overwrites name/price/category/taxable
- * and keeps the catalog relationship. The category badge sits inline; a trailing
- * description-edit affordance swaps the input for an autosize textarea in place —
- * the line never grows a permanent second row. Purely presentational: values +
- * commit callbacks are props, so both the store-bound real cell and the
- * local-state draft cell render the exact same markup.
+ * and keeps the catalog relationship. State reads as badges at rest (category —
+ * clickable to change it — tax-exempt, optional); a trailing description-edit
+ * affordance swaps the input for an autosize textarea in place — the line never
+ * grows a permanent second row. While focused, only the two editing actions
+ * (pick, description) render inline; the line-level actions live in the row's
+ * `⋯` menu ({@link LineRowMenu}). Purely presentational: values + commit
+ * callbacks are props, so both the store-bound real cell and the local-state
+ * draft cell render the exact same markup.
  */
 function LineNameCellView({
   name,
   description,
   category,
+  categoryOptions,
+  taxable,
   readOnly,
   currencyCode,
   autoFocus = false,
+  showOptionalControls,
+  optional,
+  optionalSelected,
+  onToggleOptionalSelected,
   onPickCatalogItem,
   onSelectGroup,
   onFreeText,
   onCommitDescription,
-  actions,
+  onCommitCategory,
 }: {
   name: string
   description: string | null
   category: string | null
+  categoryOptions: CategoryOption[]
+  taxable: boolean
   readOnly: boolean
   currencyCode: string
   /** Focus the name input on mount — set for a freshly added draft row. */
   autoFocus?: boolean
+  /** Quotes only (money plan 18 §3) — work-order/invoice builders pass `false`. */
+  showOptionalControls: boolean
+  optional: boolean
+  optionalSelected: boolean
+  onToggleOptionalSelected: (next: boolean) => void
   onPickCatalogItem: (pick: CatalogItemPick) => void
   onSelectGroup: (pick: CatalogGroupPick) => void
   onFreeText: (text: string) => void
   onCommitDescription: (value: string | null) => void
-  actions?: ReactNode
+  onCommitCategory: (value: string | null) => void
 }) {
   const inputRef = useRef<HTMLInputElement>(null)
   const [pickerOpen, setPickerOpen] = useState(false)
@@ -277,9 +485,11 @@ function LineNameCellView({
   // Description edit mode — replaces the input with an autosize textarea in the
   // same slot (single line at rest, grows while typing) + confirm/cancel. The
   // grid nav hook leaves textareas fully native, so Enter confirms here.
+  // `pr-5` clears the `⋯` row menu pinned at the column seam (focus-within
+  // keeps it visible while typing), so it never overlaps the cancel button.
   if (editing) {
     return (
-      <div className='flex min-w-0 flex-1 items-center gap-1 py-1'>
+      <div className='flex min-w-0 flex-1 items-center gap-1 py-1 pr-5'>
         <AutosizeTextarea
           value={descriptionDraft ?? ''}
           onChange={(e) => setDescriptionDraft(e.target.value)}
@@ -317,7 +527,20 @@ function LineNameCellView({
           className={cn('min-w-0 truncate px-1 text-sm', !name && 'text-muted-foreground italic')}>
           {name || 'Untitled line'}
         </span>
-        <CategoryBadge category={category} />
+        <CategoryBadge
+          category={category}
+          options={categoryOptions}
+          readOnly
+          onCommitCategory={onCommitCategory}
+        />
+        <TaxExemptBadge taxable={taxable} />
+        {showOptionalControls && optional && (
+          <OptionalLineTag
+            optionalSelected={optionalSelected}
+            readOnly
+            onToggleSelected={onToggleOptionalSelected}
+          />
+        )}
         {description && <TooltipExplanation text={description} />}
       </div>
     )
@@ -326,7 +549,11 @@ function LineNameCellView({
   const value = nameDraft ?? name
 
   return (
-    <div className='flex min-w-0 flex-1 items-center gap-1.5 py-1'>
+    // `pr-5` while focused clears the `⋯` row menu pinned at the column seam
+    // (focus-within keeps it visible), so it never overlaps the trailing
+    // description button. At rest the content flows edge to edge — the menu
+    // only materializes on hover, over what is normally dead space.
+    <div className={cn('flex min-w-0 flex-1 items-center gap-1.5 py-1', focused && 'pr-5')}>
       {/* CatalogPicker stays mounted across the text↔input swap so its popover
           anchor never detaches; only its inner trigger changes shape. */}
       <CatalogPicker
@@ -380,13 +607,33 @@ function LineNameCellView({
               </span>
             </button>
           )}
-          {/* Category badge sits next to the label; hidden while editing the name. */}
-          {!focused && <CategoryBadge category={category} />}
+          {/* State badges (category, tax-exempt, Optional tag) sit next to the
+              label; hidden while editing. */}
+          {!focused && (
+            <>
+              <CategoryBadge
+                category={category}
+                options={categoryOptions}
+                readOnly={false}
+                onCommitCategory={onCommitCategory}
+              />
+              <TaxExemptBadge taxable={taxable} />
+              {showOptionalControls && optional && (
+                <OptionalLineTag
+                  optionalSelected={optionalSelected}
+                  readOnly={false}
+                  onToggleSelected={onToggleOptionalSelected}
+                />
+              )}
+            </>
+          )}
         </div>
       </CatalogPicker>
 
-      {/* Actions only while focused. `onMouseDown` preventDefault keeps the input
-          from blur-collapsing before the click handler runs. */}
+      {/* Editing actions only while focused — line-level actions (optional,
+          taxable, delete) live in the row's `⋯` menu instead. `onMouseDown`
+          preventDefault keeps the input from blur-collapsing before the click
+          handler runs. */}
       {focused && (
         <>
           <TreeRowButton
@@ -404,7 +651,6 @@ function LineNameCellView({
             onClick={() => setDescriptionDraft(description ?? '')}>
             <AlignLeft />
           </TreeRowButton>
-          {actions}
         </>
       )}
     </div>
@@ -414,16 +660,26 @@ function LineNameCellView({
 /** Store-bound wrapper around {@link LineNameCellView} for real (persisted) line rows. */
 function LineNameCell({
   recordId,
+  categoryOptions,
+  taxable,
   readOnly,
   currencyCode,
+  showOptionalControls,
+  optional,
+  optionalSelected,
+  onToggleOptionalSelected,
   onSelectGroup,
-  actions,
 }: {
   recordId: RecordId
+  categoryOptions: CategoryOption[]
+  taxable: boolean
   readOnly: boolean
   currencyCode: string
+  showOptionalControls: boolean
+  optional: boolean
+  optionalSelected: boolean
+  onToggleOptionalSelected: (next: boolean) => void
   onSelectGroup: (pick: CatalogGroupPick) => void
-  actions?: ReactNode
 }) {
   const { values } = useSystemValues(recordId, NAME_ATTRS, { autoFetch: true })
   const { saveFieldValue, saveMultipleAsync } = useSaveFieldValue()
@@ -434,13 +690,18 @@ function LineNameCell({
 
   const handlePick = (pick: CatalogItemPick) => {
     // COPY the catalog defaults onto the line (snapshot — catalog price changes
-    // never rewrite documents) + keep the provenance relationship.
+    // never rewrite documents) + keep the provenance relationship. A catalog/group
+    // pick always resets the line to required (money plan 18 §3) — the same
+    // "this pick overwrites the line's identity" precedent taxable already follows.
     void saveMultipleAsync(recordId, [
       { fieldId: 'line_item_name', value: pick.name, fieldType: FieldType.TEXT },
       { fieldId: 'line_item_description', value: pick.description, fieldType: FieldType.TEXT },
       { fieldId: 'line_item_category', value: pick.category, fieldType: FieldType.SINGLE_SELECT },
       { fieldId: 'line_item_taxable', value: pick.taxable, fieldType: FieldType.CHECKBOX },
       { fieldId: 'line_item_unit_price', value: pick.unitPrice, fieldType: FieldType.CURRENCY },
+      { fieldId: 'line_item_unit', value: pick.defaultUnit, fieldType: FieldType.SINGLE_SELECT },
+      { fieldId: 'line_item_optional', value: false, fieldType: FieldType.CHECKBOX },
+      { fieldId: 'line_item_optional_selected', value: true, fieldType: FieldType.CHECKBOX },
       {
         fieldId: 'line_item_catalog_item',
         value: pick.recordId,
@@ -454,15 +715,23 @@ function LineNameCell({
       name={name}
       description={description}
       category={category}
+      categoryOptions={categoryOptions}
+      taxable={taxable}
       readOnly={readOnly}
       currencyCode={currencyCode}
+      showOptionalControls={showOptionalControls}
+      optional={optional}
+      optionalSelected={optionalSelected}
+      onToggleOptionalSelected={onToggleOptionalSelected}
       onPickCatalogItem={handlePick}
       onSelectGroup={onSelectGroup}
       onFreeText={(text) => saveFieldValue(recordId, 'line_item_name', text, FieldType.TEXT)}
       onCommitDescription={(value) =>
         saveFieldValue(recordId, 'line_item_description', value, FieldType.TEXT)
       }
-      actions={actions}
+      onCommitCategory={(value) =>
+        saveFieldValue(recordId, 'line_item_category', value, FieldType.SINGLE_SELECT)
+      }
     />
   )
 }
@@ -470,29 +739,23 @@ function LineNameCell({
 /**
  * Chromeless inline number editor view — quiet at rest, editable on click (the
  * cell-treatment lock in 01-ui #1). Commits on blur/Enter, no-ops if the value
- * didn't actually change.
+ * didn't actually change. Handles the rate (`line_item_unit_price`) column only —
+ * quantity moved to the smart {@link QuantityCellView} (money plan 13 §5).
  */
-function InlineNumberCellView({
+function PriceCellView({
   value,
-  attr,
   readOnly,
   currencyCode,
   onCommit,
 }: {
   value: number | null
-  attr: 'line_item_qty' | 'line_item_unit_price'
   readOnly: boolean
   currencyCode: string
   onCommit: (next: number | null) => void
 }) {
   const [draft, setDraft] = useState<string | null>(null)
 
-  const display =
-    attr === 'line_item_unit_price'
-      ? formatCurrency(value ?? null, currencyCode)
-      : value !== null && value !== undefined
-        ? String(value)
-        : ''
+  const display = formatCurrency(value ?? null, currencyCode)
 
   const commit = () => {
     if (draft === null) return
@@ -500,11 +763,8 @@ function InlineNumberCellView({
     const parsed = trimmed === '' ? null : Number(trimmed)
     setDraft(null)
     if (parsed !== null && Number.isNaN(parsed)) return
-    // Qty is non-nullable — an emptied qty keeps its previous value.
-    if (attr === 'line_item_qty' && parsed === null) return
-    // Prices are typed in dollars but stored as integer cents (CURRENCY convention).
-    const next =
-      parsed !== null && attr === 'line_item_unit_price' ? Math.round(parsed * 100) : parsed
+    // Typed in dollars but stored as integer cents (CURRENCY convention).
+    const next = parsed !== null ? Math.round(parsed * 100) : parsed
     if (next === (value ?? null)) return
     onCommit(next)
   }
@@ -517,13 +777,7 @@ function InlineNumberCellView({
     <input
       value={draft ?? display}
       onChange={(e) => setDraft(e.target.value)}
-      onFocus={() =>
-        setDraft(
-          value !== null && value !== undefined
-            ? String(attr === 'line_item_unit_price' ? value / 100 : value)
-            : ''
-        )
-      }
+      onFocus={() => setDraft(value !== null && value !== undefined ? String(value / 100) : '')}
       onBlur={commit}
       onKeyDown={(e) => {
         if (e.key === 'Escape') setDraft(null)
@@ -534,33 +788,175 @@ function InlineNumberCellView({
   )
 }
 
-/** Store-bound wrapper around {@link InlineNumberCellView} for real line rows. */
-function InlineNumberCell({
+/** Store-bound wrapper around {@link PriceCellView} for real line rows. */
+function PriceCell({
   recordId,
-  attr,
-  fieldType,
   readOnly,
   currencyCode,
 }: {
   recordId: RecordId
-  attr: 'line_item_qty' | 'line_item_unit_price'
-  fieldType: FieldType
   readOnly: boolean
   currencyCode: string
 }) {
-  const attrs = attr === 'line_item_qty' ? QTY_ATTRS : PRICE_ATTRS
-  const { values } = useSystemValues(recordId, attrs, { autoFetch: true })
+  const { values } = useSystemValues(recordId, PRICE_ATTRS, { autoFetch: true })
   const { saveFieldValue } = useSaveFieldValue()
 
-  const raw = (values[attr] as number | null | undefined) ?? null
+  const raw = (values.line_item_unit_price as number | null | undefined) ?? null
 
   return (
-    <InlineNumberCellView
+    <PriceCellView
       value={raw}
-      attr={attr}
       readOnly={readOnly}
       currencyCode={currencyCode}
-      onCommit={(next) => saveFieldValue(recordId, attr, next, fieldType)}
+      onCommit={(next) =>
+        saveFieldValue(recordId, 'line_item_unit_price', next, FieldType.CURRENCY)
+      }
+    />
+  )
+}
+
+/** Formats a quantity without trailing zeros, up to 3 decimal places (`2.375`, `5`, `12`). */
+function formatQtyNumber(qty: number): string {
+  return String(Number(qty.toFixed(3)))
+}
+
+/** `12 hr`, `5 sf`, or bare `5` when the line has no unit — money plan 13 §5's compact form. */
+function formatQtyDisplay(qty: number, unit: LineItemUnit | null): string {
+  const suffix = formatLineItemUnit(unit, 'compact')
+  return suffix ? `${formatQtyNumber(qty)} ${suffix}` : formatQtyNumber(qty)
+}
+
+/**
+ * Smart quantity cell (money plan 13 §5) — rests as compact text (`12 hr`, `5 sf`, bare `5`
+ * when unitless). On focus it becomes a raw text input holding the exact compact string;
+ * the input is NEVER rewritten while focused (no caret jumps) — only `parseQuantityWithUnit`
+ * on blur/Enter/Tab can change what's committed. A recognized parse saves quantity + unit
+ * TOGETHER (`onCommit`) so realtime observers never see a half-updated pair; an unrecognized
+ * parse restores the last committed display and flashes a brief destructive tint, persisting
+ * nothing. A hover/click-revealed dropdown trigger (mouse/touch only — not in the Tab order,
+ * the ONLY way to clear a unit) offers "No unit" + every fixed unit; picking one preserves
+ * quantity. Unit-only changes never touch `computeDocumentTotals` — that reads qty/rate only.
+ */
+function QuantityCellView({
+  quantity,
+  unit,
+  readOnly,
+  onCommit,
+}: {
+  quantity: number
+  unit: LineItemUnit | null
+  readOnly: boolean
+  onCommit: (next: { quantity: number; unit: LineItemUnit | null }) => void
+}) {
+  const [draft, setDraft] = useState<string | null>(null)
+  const [invalid, setInvalid] = useState(false)
+  const invalidTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const display = formatQtyDisplay(quantity, unit)
+
+  const flashInvalid = () => {
+    setInvalid(true)
+    if (invalidTimeoutRef.current) clearTimeout(invalidTimeoutRef.current)
+    invalidTimeoutRef.current = setTimeout(() => setInvalid(false), 1200)
+  }
+
+  const commit = () => {
+    if (draft === null) return
+    const raw = draft
+    setDraft(null)
+    const parsed = parseQuantityWithUnit(raw, { quantity, unit })
+    if (!parsed.ok) {
+      flashInvalid()
+      return
+    }
+    const nextQuantity = parsed.quantity ?? quantity
+    const nextUnit = parsed.unit
+    if (nextQuantity === quantity && nextUnit === unit) return
+    onCommit({ quantity: nextQuantity, unit: nextUnit })
+  }
+
+  const pickUnitOnly = (nextUnit: LineItemUnit | null) => {
+    if (nextUnit === unit) return
+    onCommit({ quantity, unit: nextUnit })
+  }
+
+  if (readOnly) {
+    return <div className='w-full px-2 text-right text-sm tabular-nums'>{display}</div>
+  }
+
+  return (
+    <div className='group/qty relative flex h-full w-full items-center'>
+      <input
+        value={draft ?? display}
+        onChange={(e) => setDraft(e.target.value)}
+        onFocus={() => setDraft(display)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === 'Escape') setDraft(null)
+        }}
+        inputMode='text'
+        className={cn(
+          'h-full w-full rounded-sm border-none bg-transparent py-1 pr-5 pl-2 text-right text-sm tabular-nums outline-none transition-colors',
+          invalid && 'bg-destructive/10 ring-1 ring-destructive/60'
+        )}
+      />
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <button
+            type='button'
+            tabIndex={-1}
+            onMouseDown={(e) => e.preventDefault()}
+            className='-translate-y-1/2 absolute top-1/2 right-0.5 rounded-sm p-0.5 text-muted-foreground opacity-0 outline-none hover:bg-primary-100 focus:opacity-100 group-hover/qty:opacity-100'>
+            <ChevronsUpDown className='size-3' />
+          </button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align='end' className='max-h-64 overflow-y-auto'>
+          <DropdownMenuItem onSelect={() => pickUnitOnly(null)}>No unit</DropdownMenuItem>
+          <DropdownMenuSeparator />
+          {LINE_ITEM_UNIT_OPTIONS.map((option) => (
+            <DropdownMenuItem key={option.value} onSelect={() => pickUnitOnly(option.value)}>
+              {option.label}
+            </DropdownMenuItem>
+          ))}
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
+  )
+}
+
+/** Store-bound wrapper around {@link QuantityCellView} for real line rows. */
+function QuantityCell({ recordId, readOnly }: { recordId: RecordId; readOnly: boolean }) {
+  const { values } = useSystemValues(recordId, QTY_ATTRS, { autoFetch: true })
+  const { saveMultipleAsync } = useSaveFieldValue()
+
+  const qty = (values.line_item_qty as number | null | undefined) ?? 1
+  const unit = (values.line_item_unit as LineItemUnit | null | undefined) ?? null
+
+  return (
+    <QuantityCellView
+      quantity={qty}
+      unit={unit}
+      readOnly={readOnly}
+      onCommit={(next) => {
+        // Only the fields that actually changed — a combined save so realtime
+        // observers never see qty/unit half-updated relative to each other.
+        const changed: Array<{ fieldId: string; value: unknown; fieldType: FieldType }> = []
+        if (next.quantity !== qty) {
+          changed.push({
+            fieldId: 'line_item_qty',
+            value: next.quantity,
+            fieldType: FieldType.NUMBER,
+          })
+        }
+        if (next.unit !== unit) {
+          changed.push({
+            fieldId: 'line_item_unit',
+            value: next.unit,
+            fieldType: FieldType.SINGLE_SELECT,
+          })
+        }
+        if (changed.length > 0) void saveMultipleAsync(recordId, changed)
+      }}
     />
   )
 }
@@ -594,65 +990,58 @@ function LineTotalCell({ recordId, currencyCode }: { recordId: RecordId; currenc
 }
 
 /**
- * Inline actions rendered beside the description button in the primary cell:
- * taxable toggle (persistent when exempt, so the exemption reads at rest), then delete.
+ * Row-level `⋯` actions menu, pinned to the name/qty column seam — the one
+ * spot with reliably dead space in a narrow drawer (name text is left-aligned,
+ * qty is right-aligned). Revealed on row hover or focus-within (and while its
+ * own menu is open), mouse/touch only (`tabIndex={-1}`, mirroring the qty
+ * unit-dropdown precedent). Holds the line-level actions: optional toggle
+ * (quotes only), taxable toggle, delete. The drag grip stays drag-only.
  */
-function LineActionsCellView({
+function LineRowMenu({
   taxable,
+  optional,
+  showOptionalToggle,
   rowId,
   onToggleTaxable,
+  onToggleOptional,
   deleteLine,
 }: {
   taxable: boolean
+  optional: boolean
+  showOptionalToggle: boolean
   rowId: string
   onToggleTaxable: (next: boolean) => void
+  onToggleOptional: (next: boolean) => void
   deleteLine: (lineId: string) => void
 }) {
   return (
-    <div className='flex items-center gap-0.5'>
-      <TreeRowButton
-        persistent={!taxable}
-        tooltipText={taxable ? 'Taxable — click to exempt' : 'Tax exempt — click to tax'}
-        className={cn(!taxable && 'text-muted-foreground/50')}
-        onMouseDown={(e) => e.preventDefault()}
-        onClick={() => onToggleTaxable(!taxable)}>
-        {taxable ? <CircleCheck /> : <CircleX />}
-      </TreeRowButton>
-      <TreeRowButton
-        variant='destructive'
-        tooltipText='Delete line'
-        onMouseDown={(e) => e.preventDefault()}
-        onClick={() => deleteLine(rowId)}>
-        <Trash2 />
-      </TreeRowButton>
-    </div>
-  )
-}
-
-/** Store-bound wrapper around {@link LineActionsCellView} for real line rows. */
-function LineActionsCell({
-  recordId,
-  rowId,
-  deleteLine,
-}: {
-  recordId: RecordId
-  rowId: string
-  deleteLine: (lineId: string) => void
-}) {
-  const { values } = useSystemValues(recordId, TAXABLE_ATTRS, { autoFetch: true })
-  const { saveFieldValue } = useSaveFieldValue()
-
-  const taxable = (values.line_item_taxable as boolean | undefined) !== false
-
-  return (
-    <LineActionsCellView
-      taxable={taxable}
-      rowId={rowId}
-      onToggleTaxable={(next) =>
-        saveFieldValue(recordId, 'line_item_taxable', next, FieldType.CHECKBOX)
-      }
-      deleteLine={deleteLine}
-    />
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+          type='button'
+          tabIndex={-1}
+          className='-right-2.5 -translate-y-1/2 absolute top-1/2 z-10 flex h-5 w-5 items-center justify-center rounded-md border bg-background text-muted-foreground opacity-0 shadow-sm transition-opacity data-[state=open]:opacity-100 group-focus-within/tree-row:opacity-100 group-hover/tree-row:opacity-100'>
+          <Ellipsis className='size-3.5' />
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align='end'>
+        {showOptionalToggle && (
+          <DropdownMenuItem onSelect={() => onToggleOptional(!optional)}>
+            <Tag />
+            {optional ? 'Make required' : 'Mark as optional'}
+          </DropdownMenuItem>
+        )}
+        <DropdownMenuItem onSelect={() => onToggleTaxable(!taxable)}>
+          {taxable ? <CircleX /> : <CircleCheck />}
+          {taxable ? 'Mark tax exempt' : 'Mark taxable'}
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem variant='destructive' onSelect={() => deleteLine(rowId)}>
+          <Trash2 />
+          Delete line
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   )
 }
 
@@ -665,24 +1054,47 @@ export function LineRow({
   record,
   rowIndex,
   entityDefinitionId,
+  categoryOptions,
   readOnly,
   currencyCode,
+  documentType,
   deleteLine,
   onSelectGroup,
 }: {
   record: RecordMeta
   rowIndex: number
   entityDefinitionId: string
+  categoryOptions: CategoryOption[]
   readOnly: boolean
   currencyCode: string
+  documentType: 'quote' | 'work_order' | 'invoice'
   deleteLine: (lineId: string) => void
   onSelectGroup: (recordId: RecordId, pick: CatalogGroupPick) => void
 }) {
   const recordId = toRecordId(entityDefinitionId, record.id)
+  const isQuote = documentType === 'quote'
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: record.id,
     disabled: readOnly,
   })
+
+  // Optional/optionalSelected (money plan 18 §3) — read once here so the row's
+  // muted/indented treatment and both cells that expose it (name badge/checkbox,
+  // actions toggle) stay in agreement. Gated on `isQuote`: work-order/invoice
+  // builders never fetch or show any of it.
+  const { values: optionalValues } = useSystemValues(recordId, OPTIONAL_ATTRS, {
+    autoFetch: isQuote,
+    enabled: isQuote,
+  })
+  const { saveFieldValue } = useSaveFieldValue()
+  const optional = isQuote && (optionalValues.line_item_optional as boolean | undefined) === true
+  const optionalSelected =
+    !isQuote || (optionalValues.line_item_optional_selected as boolean | undefined) !== false
+
+  // Taxable is read here (not in a cell) because two surfaces show it: the
+  // name cell's rest badge and the `⋯` row menu's toggle.
+  const { values: taxableValues } = useSystemValues(recordId, TAXABLE_ATTRS, { autoFetch: true })
+  const taxable = (taxableValues.line_item_taxable as boolean | undefined) !== false
 
   return (
     <div
@@ -691,38 +1103,43 @@ export function LineRow({
       className={cn(isDragging && 'relative z-10 opacity-80')}>
       <LineGridRow
         rowIndex={rowIndex}
+        optional={optional}
         grip={readOnly ? null : <GripSlot attributes={attributes} listeners={listeners} />}
         name={
           <LineNameCell
             recordId={recordId}
+            categoryOptions={categoryOptions}
+            taxable={taxable}
             readOnly={readOnly}
             currencyCode={currencyCode}
-            onSelectGroup={(pick) => onSelectGroup(recordId, pick)}
-            actions={
-              readOnly ? undefined : (
-                <LineActionsCell recordId={recordId} rowId={record.id} deleteLine={deleteLine} />
-              )
+            showOptionalControls={isQuote}
+            optional={optional}
+            optionalSelected={optionalSelected}
+            onToggleOptionalSelected={(next) =>
+              saveFieldValue(recordId, 'line_item_optional_selected', next, FieldType.CHECKBOX)
             }
+            onSelectGroup={(pick) => onSelectGroup(recordId, pick)}
           />
         }
-        qty={
-          <InlineNumberCell
-            recordId={recordId}
-            attr='line_item_qty'
-            fieldType={FieldType.NUMBER}
-            readOnly={readOnly}
-            currencyCode={currencyCode}
-          />
+        menu={
+          readOnly ? null : (
+            <LineRowMenu
+              taxable={taxable}
+              optional={optional}
+              showOptionalToggle={isQuote}
+              rowId={record.id}
+              onToggleTaxable={(next) =>
+                saveFieldValue(recordId, 'line_item_taxable', next, FieldType.CHECKBOX)
+              }
+              onToggleOptional={(next) =>
+                saveFieldValue(recordId, 'line_item_optional', next, FieldType.CHECKBOX)
+              }
+              deleteLine={deleteLine}
+            />
+          )
         }
-        price={
-          <InlineNumberCell
-            recordId={recordId}
-            attr='line_item_unit_price'
-            fieldType={FieldType.CURRENCY}
-            readOnly={readOnly}
-            currencyCode={currencyCode}
-          />
-        }
+        qty={<QuantityCell recordId={recordId} readOnly={readOnly} />}
+        price={<PriceCell recordId={recordId} readOnly={readOnly} currencyCode={currencyCode} />}
         total={<LineTotalCell recordId={recordId} currencyCode={currencyCode} />}
       />
     </div>
@@ -740,7 +1157,9 @@ export function DraftLineRow({
   draft,
   rowIndex,
   autoFocus,
+  categoryOptions,
   currencyCode,
+  documentType,
   deleteDraft,
   createDraft,
   onSelectGroup,
@@ -749,23 +1168,36 @@ export function DraftLineRow({
   rowIndex: number
   /** Focus the name input on mount — set for the just-added draft. */
   autoFocus: boolean
+  categoryOptions: CategoryOption[]
   currencyCode: string
+  documentType: 'quote' | 'work_order' | 'invoice'
   deleteDraft: (draftId: string) => void
   createDraft: (draftId: string, overrides?: Partial<DraftLine>) => Promise<void>
   onSelectGroup: (draftId: string, pick: CatalogGroupPick) => void
 }) {
+  const isQuote = documentType === 'quote'
+
   return (
     <LineGridRow
       rowIndex={rowIndex}
+      optional={isQuote && draft.optional}
       grip={null}
       name={
         <LineNameCellView
           name={draft.name}
           description={draft.description}
           category={draft.category}
+          categoryOptions={categoryOptions}
+          taxable={draft.taxable}
           readOnly={false}
           currencyCode={currencyCode}
           autoFocus={autoFocus}
+          showOptionalControls={isQuote}
+          optional={draft.optional}
+          optionalSelected={draft.optionalSelected}
+          onToggleOptionalSelected={(next) =>
+            void createDraft(draft.draftId, { optionalSelected: next })
+          }
           onPickCatalogItem={(pick) =>
             void createDraft(draft.draftId, {
               name: pick.name,
@@ -773,38 +1205,42 @@ export function DraftLineRow({
               category: pick.category,
               taxable: pick.taxable,
               unitPriceCents: pick.unitPrice,
+              unit: pick.defaultUnit,
               catalogItemRecordId: pick.recordId,
+              optional: false,
+              optionalSelected: true,
             })
           }
           onSelectGroup={(pick) => onSelectGroup(draft.draftId, pick)}
           onFreeText={(text) => void createDraft(draft.draftId, { name: text })}
           onCommitDescription={(value) => void createDraft(draft.draftId, { description: value })}
-          actions={
-            <LineActionsCellView
-              taxable={draft.taxable}
-              rowId={draft.draftId}
-              onToggleTaxable={(next) => void createDraft(draft.draftId, { taxable: next })}
-              deleteLine={deleteDraft}
-            />
-          }
+          onCommitCategory={(value) => void createDraft(draft.draftId, { category: value })}
+        />
+      }
+      menu={
+        <LineRowMenu
+          taxable={draft.taxable}
+          optional={draft.optional}
+          showOptionalToggle={isQuote}
+          rowId={draft.draftId}
+          onToggleTaxable={(next) => void createDraft(draft.draftId, { taxable: next })}
+          onToggleOptional={(next) => void createDraft(draft.draftId, { optional: next })}
+          deleteLine={deleteDraft}
         />
       }
       qty={
-        <InlineNumberCellView
-          value={draft.qty}
-          attr='line_item_qty'
+        <QuantityCellView
+          quantity={draft.qty}
+          unit={draft.unit}
           readOnly={false}
-          currencyCode={currencyCode}
-          onCommit={(next) => {
-            if (next === null) return
-            void createDraft(draft.draftId, { qty: next })
-          }}
+          onCommit={(next) =>
+            void createDraft(draft.draftId, { qty: next.quantity, unit: next.unit })
+          }
         />
       }
       price={
-        <InlineNumberCellView
+        <PriceCellView
           value={draft.unitPriceCents}
-          attr='line_item_unit_price'
           readOnly={false}
           currencyCode={currencyCode}
           onCommit={(next) => void createDraft(draft.draftId, { unitPriceCents: next })}

@@ -2,6 +2,7 @@
 
 import { FieldType } from '@auxx/database/enums'
 import { type ResourceFieldId, toFieldId } from '@auxx/types/field'
+import { LINE_ITEM_UNIT_OPTIONS } from '../../../money/units'
 import { BaseType } from '../../types'
 import { CREATED_BY_FIELD } from '../common-fields'
 import type { ResourceField } from '../field-types'
@@ -13,6 +14,7 @@ import type { ResourceField } from '../field-types'
 export const CATALOG_CATEGORY_OPTIONS = [
   { label: 'Service', value: 'service', color: 'blue' },
   { label: 'Material', value: 'material', color: 'orange' },
+  { label: 'Labor', value: 'labor', color: 'green' },
 ] as const
 
 /**
@@ -133,6 +135,27 @@ export const CATALOG_ITEM_FIELDS: Record<string, ResourceField> = {
     placeholder: 'Enter default price',
   },
 
+  defaultUnit: {
+    id: toFieldId('defaultUnit'),
+    key: 'defaultUnit',
+    label: 'Default Unit',
+    type: BaseType.ENUM,
+    fieldType: FieldType.SINGLE_SELECT,
+    isSystem: true,
+    systemAttribute: 'catalog_item_default_unit',
+    systemSortOrder: 'a5',
+    nullable: true,
+    options: { options: [...LINE_ITEM_UNIT_OPTIONS] },
+    capabilities: {
+      filterable: true,
+      sortable: true,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    placeholder: 'Select unit',
+  },
+
   taxable: {
     id: toFieldId('taxable'),
     key: 'taxable',
@@ -141,7 +164,7 @@ export const CATALOG_ITEM_FIELDS: Record<string, ResourceField> = {
     fieldType: FieldType.CHECKBOX,
     isSystem: true,
     systemAttribute: 'catalog_item_taxable',
-    systemSortOrder: 'a5',
+    systemSortOrder: 'a6',
     nullable: false,
     capabilities: {
       filterable: true,
@@ -162,7 +185,7 @@ export const CATALOG_ITEM_FIELDS: Record<string, ResourceField> = {
     fieldType: FieldType.CHECKBOX,
     isSystem: true,
     systemAttribute: 'catalog_item_active',
-    systemSortOrder: 'a6',
+    systemSortOrder: 'a7',
     nullable: false,
     capabilities: {
       filterable: true,
@@ -183,7 +206,7 @@ export const CATALOG_ITEM_FIELDS: Record<string, ResourceField> = {
     fieldType: FieldType.RELATIONSHIP,
     isSystem: true,
     systemAttribute: 'catalog_item_part',
-    systemSortOrder: 'a7',
+    systemSortOrder: 'a8',
     nullable: true,
     capabilities: {
       filterable: true,
@@ -206,6 +229,53 @@ export const CATALOG_ITEM_FIELDS: Record<string, ResourceField> = {
     description: 'Inventory part backing this catalog entry (material items)',
   },
 
+  cost: {
+    id: toFieldId('cost'),
+    key: 'cost',
+    label: 'Cost',
+    type: BaseType.CURRENCY,
+    fieldType: FieldType.CURRENCY,
+    isSystem: true,
+    systemAttribute: 'catalog_item_cost',
+    systemSortOrder: 'a9',
+    nullable: true,
+    options: {
+      currencyCode: 'USD',
+      decimals: 2,
+      useGrouping: true,
+      currencyDisplay: 'symbol',
+    },
+    capabilities: {
+      filterable: true,
+      sortable: true,
+      creatable: false, // the pricing sync engine is the only writer
+      updatable: false,
+      configurable: false,
+    },
+    description: "Synced from the linked part's calculated cost",
+  },
+
+  markup: {
+    id: toFieldId('markup'),
+    key: 'markup',
+    label: 'Markup (%)',
+    type: BaseType.NUMBER,
+    fieldType: FieldType.NUMBER,
+    isSystem: true,
+    systemAttribute: 'catalog_item_markup',
+    systemSortOrder: 'aA',
+    nullable: true,
+    capabilities: {
+      filterable: true,
+      sortable: true,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    placeholder: 'Markup percentage',
+    description: 'Markup rate as a percentage of cost — null pauses auto-pricing',
+  },
+
   lineItems: {
     id: toFieldId('lineItems'),
     key: 'lineItems',
@@ -214,7 +284,7 @@ export const CATALOG_ITEM_FIELDS: Record<string, ResourceField> = {
     fieldType: FieldType.RELATIONSHIP,
     isSystem: true,
     systemAttribute: 'catalog_item_line_items',
-    systemSortOrder: 'a8',
+    systemSortOrder: 'aB',
     showInPanel: false,
     capabilities: {
       filterable: true,

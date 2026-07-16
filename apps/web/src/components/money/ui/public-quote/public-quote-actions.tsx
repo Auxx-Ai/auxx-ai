@@ -23,6 +23,7 @@ export function QuoteAcceptForm({
 
   return (
     <form
+      id='accept-form'
       method='post'
       action={`/quote/${token}/accept`}
       onSubmit={() => setIsPending(true)}

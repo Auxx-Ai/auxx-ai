@@ -71,6 +71,14 @@ export function createDocumentStyles(settings: ResolvedDocumentSettings) {
     colAmount: { flex: 1, paddingHorizontal: 4, textAlign: 'right' },
     lineName: { fontSize: 9 },
     lineDescription: { fontSize: 8, color: '#6b7280', marginTop: 2 },
+    /** Money plan 18 §7 — the "Optional · included" tag under a pre-checked optional line. */
+    lineTag: {
+      fontSize: 7,
+      color: '#6b7280',
+      marginTop: 1,
+      textTransform: 'uppercase',
+      letterSpacing: 0.3,
+    },
     totalsBlock: { marginTop: 16, alignSelf: 'flex-end', width: 220 },
     totalsRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 3 },
     totalsRowFinal: {

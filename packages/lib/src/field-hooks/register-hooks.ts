@@ -17,6 +17,11 @@ import {
   syncContactAfterWorkOrderDelete,
 } from '../money/billing-hooks'
 import {
+  pauseMarkupOnPriceEdit,
+  recomputePriceOnMarkupChange,
+  syncCatalogCostOnPartChange,
+} from '../money/catalog-pricing'
+import {
   recomputeOnInvoiceBillingChange,
   recomputeOnLineChange,
   recomputeOnQuoteBillingChange,
@@ -138,6 +143,19 @@ export function registerAllHooks(): void {
     enrollInvoiceReminderOnSent,
     reanchorInvoiceOnDueDateChange,
     syncBillingOnInvoiceChange,
+  ])
+
+  // Part cost sync + markup pricing (money plan 17 §3) — the three interactive
+  // triggers: linking/unlinking a part syncs (or clears) `cost`; setting a markup
+  // recomputes `price`; hand-editing `price` clears markup (the pause switch). All
+  // writes go through the hook-free writer in `catalog-pricing.ts`, so these can never
+  // recurse into each other. The bulk-recalc ripple (vendor price / BOM composition
+  // changes) chains in separately at the end of `recalculateAllPartCosts` /
+  // `recalculateAffectedParts` (`bom/cost-calculator.ts`), not through this door.
+  registerEntityFieldChangeHooks('catalog-items', [
+    syncCatalogCostOnPartChange,
+    recomputePriceOnMarkupChange,
+    pauseMarkupOnPriceEdit,
   ])
 
   // ---------------------------------------------------------------------------

@@ -1,5 +1,6 @@
 // apps/web/src/components/money/hooks/use-catalog-items.ts
 
+import type { LineItemUnit } from '@auxx/lib/money/client'
 import type { RecordId } from '@auxx/lib/resources/client'
 import { useMemo } from 'react'
 import {
@@ -16,9 +17,12 @@ export interface CatalogItemRecord extends RecordMeta {
     catalog_item_description?: string | null
     catalog_item_category?: string | string[]
     catalog_item_default_unit_price?: number | null
+    catalog_item_default_unit?: string | string[] | null
     catalog_item_taxable?: boolean
     catalog_item_active?: boolean
     catalog_item_part?: RecordId | RecordId[] | null
+    catalog_item_cost?: number | null
+    catalog_item_markup?: number | null
   }
 }
 
@@ -31,9 +35,15 @@ export interface CatalogItem {
   category: string
   /** Stored in cents, matching the CURRENCY field-value convention. */
   defaultUnitPriceCents: number | null
+  /** Fixed unit list (money plan 13 §1) — `null` means unitized pricing is off. */
+  defaultUnit: LineItemUnit | null
   taxable: boolean
   active: boolean
   partRecordId: RecordId | null
+  /** Synced from the linked part's cost by the pricing engine — read-only (money plan 17). */
+  cost: number | null
+  /** Markup rate as a percentage of cost — `null` pauses auto-pricing (money plan 17). */
+  markup: number | null
 }
 
 /**
@@ -54,9 +64,14 @@ function toCatalogItem(record: CatalogItemRecord): CatalogItem {
     description: record.fieldValues.catalog_item_description ?? null,
     category: scalarValue(record.fieldValues.catalog_item_category) ?? 'service',
     defaultUnitPriceCents: record.fieldValues.catalog_item_default_unit_price ?? null,
+    defaultUnit:
+      (scalarValue(record.fieldValues.catalog_item_default_unit) as LineItemUnit | undefined) ??
+      null,
     taxable: record.fieldValues.catalog_item_taxable ?? true,
     active: record.fieldValues.catalog_item_active ?? true,
     partRecordId: scalarValue(record.fieldValues.catalog_item_part) ?? null,
+    cost: record.fieldValues.catalog_item_cost ?? null,
+    markup: record.fieldValues.catalog_item_markup ?? null,
   }
 }
 

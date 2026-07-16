@@ -6,7 +6,7 @@ type UseLineNavOptions = {
   containerRef: React.RefObject<HTMLDivElement | null>
   /** Total navigable rows (real records + phantom drafts). */
   rowCount: number
-  /** Navigable columns per row: 0 = name, 1 = qty, 2 = unit cost. */
+  /** Navigable columns per row: 0 = name, 1 = qty, 2 = rate. */
   colCount: number
   /** Push a fresh phantom draft row. Called when nav lands past the last row. */
   onAddRow: () => void

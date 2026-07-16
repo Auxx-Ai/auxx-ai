@@ -90,6 +90,16 @@ export const SYSTEM_ATTRIBUTES = [
   'tag_is_public',
   'tag_scope',
 
+  // ─── KB fields ──────────────────────────────────────────────────
+  'kb_name',
+  'kb_slug',
+  'kb_description',
+  'kb_publish_status',
+  'kb_visibility',
+  'kb_articles',
+  'kb_published_at',
+  'kb_last_published_at',
+
   // ─── Article fields ─────────────────────────────────────────────
   'article_title',
   'article_slug',
@@ -111,6 +121,7 @@ export const SYSTEM_ATTRIBUTES = [
   // ─── Part fields ────────────────────────────────────────────────
   'part_title',
   'part_description',
+  'part_image',
   'part_sku',
   'category',
   'part_unit_price',
@@ -174,9 +185,11 @@ export const SYSTEM_ATTRIBUTES = [
   'company_logo',
   'company_website',
   'company_domain',
+  'company_x_follower_count',
   'company_industry',
   'company_size',
   'company_annual_revenue',
+  'company_funding_raised',
   'company_founded',
   'company_headquarters',
   'company_notes',
@@ -268,16 +281,26 @@ export const SYSTEM_ATTRIBUTES = [
   'quote_total',
   'quote_notes',
   'quote_terms',
+  'quote_pdf_asset',
   'quote_line_items', // inverse of line_item_quote
   'quote_work_orders', // inverse of work_order_quote
+  'quote_public_token',
+  'quote_accepted_by_name',
+  'quote_accepted_at',
+  'quote_decline_reason',
+  'quote_deposit_type',
+  'quote_deposit_value',
 
   // ─── Line Item fields ──────────────────────────────────────────
   'line_item_name',
   'line_item_description',
   'line_item_qty',
+  'line_item_unit',
   'line_item_unit_price',
   'line_item_line_total',
   'line_item_taxable',
+  'line_item_optional',
+  'line_item_optional_selected',
   'line_item_category',
   'line_item_discount',
   'line_item_sort_order',
@@ -292,9 +315,12 @@ export const SYSTEM_ATTRIBUTES = [
   'catalog_item_description',
   'catalog_item_category',
   'catalog_item_default_unit_price',
+  'catalog_item_default_unit',
   'catalog_item_taxable',
   'catalog_item_active',
   'catalog_item_part',
+  'catalog_item_cost',
+  'catalog_item_markup',
   'catalog_item_line_items', // inverse of line_item_catalog_item
 
   // ─── Catalog Group fields ───────────────────────────────────────

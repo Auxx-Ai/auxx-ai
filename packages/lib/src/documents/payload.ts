@@ -15,20 +15,32 @@ import { getInvoiceDepositApplied } from '../money/payments/allocation-reads'
 import { buildPayUrl, ensureInvoicePublicToken, isPaymentsConnected } from '../money/public-token'
 import { computeDocumentTotals } from '../money/totals'
 import type { DiscountType } from '../money/types'
+import type { LineItemUnit } from '../money/units'
 import { UnifiedCrudHandler } from '../resources/crud'
 import type { ResolvedDocumentSettings } from './resolve-settings'
 import { resolveDocumentSettings } from './resolve-settings'
 
 /** One rendered line on the quote PDF's line-item table. */
 export interface QuotePdfLineItem {
+  /** `line_item` EntityInstance id — the public quote page's optional-line checkbox `value`
+   * (money plan 18 §4/amendment 1). Not present on any other document-payload line before
+   * this. */
+  lineInstanceId: string
   name: string
   description: string | null
   qty: number
+  /** Immutable-at-copy-time display snapshot (money plan 13 §1/§6). `null` = unitless. */
+  unit: LineItemUnit | null
   /** Integer cents. `null` = not yet priced (money MQ1 convention). */
   unitPrice: number | null
   /** Integer cents. */
   lineTotal: number | null
   taxable: boolean
+  /** Customer-selectable upsell line (quotes only, money plan 18). `false` on invoice lines —
+   * optionality never survives conversion (decision 6). */
+  optional: boolean
+  /** Current selection state — meaningful only when `optional` is true. */
+  optionalSelected: boolean
 }
 
 /** Billing-party display fields — no street address on `contact` today (city/region/country only). */
@@ -268,9 +280,12 @@ async function loadPdfLines(
       'line_item_name',
       'line_item_description',
       'line_item_qty',
+      'line_item_unit',
       'line_item_unit_price',
       'line_item_line_total',
       'line_item_taxable',
+      'line_item_optional',
+      'line_item_optional_selected',
     ] as const)
 
   const { ids: lineInstanceIds } = await handler.listFiltered({
@@ -285,9 +300,12 @@ async function loadPdfLines(
     lineCf.line_item_name,
     lineCf.line_item_description,
     lineCf.line_item_qty,
+    lineCf.line_item_unit,
     lineCf.line_item_unit_price,
     lineCf.line_item_line_total,
     lineCf.line_item_taxable,
+    lineCf.line_item_optional,
+    lineCf.line_item_optional_selected,
   ]
     .filter(Boolean)
     .map((f) => f!.id)
@@ -301,17 +319,26 @@ async function loadPdfLines(
     const nameTyped = getLine(lineCf.line_item_name)
     const descriptionTyped = getLine(lineCf.line_item_description)
     const qtyTyped = getLine(lineCf.line_item_qty)
+    const unitTyped = getLine(lineCf.line_item_unit)
     const unitPriceTyped = getLine(lineCf.line_item_unit_price)
     const lineTotalTyped = getLine(lineCf.line_item_line_total)
     const taxableTyped = getLine(lineCf.line_item_taxable)
+    const optionalTyped = getLine(lineCf.line_item_optional)
+    const optionalSelectedTyped = getLine(lineCf.line_item_optional_selected)
 
     lines.push({
+      lineInstanceId,
       name: nameTyped ? (extractValue(nameTyped) as string) : '',
       description: descriptionTyped ? (extractValue(descriptionTyped) as string) : null,
       qty: qtyTyped ? (extractValue(qtyTyped) as number) : 0,
+      unit: unitTyped ? (extractValue(unitTyped) as LineItemUnit) : null,
       unitPrice: unitPriceTyped ? (extractValue(unitPriceTyped) as number) : null,
       lineTotal: lineTotalTyped ? (extractValue(lineTotalTyped) as number) : null,
       taxable: taxableTyped ? (extractValue(taxableTyped) as boolean) : true,
+      optional: optionalTyped ? (extractValue(optionalTyped) as boolean) : false,
+      optionalSelected: optionalSelectedTyped
+        ? (extractValue(optionalSelectedTyped) as boolean)
+        : true,
     })
   }
 
@@ -419,9 +446,16 @@ export async function buildQuotePdfPayload(params: {
     },
   ])
 
-  // ─── Totals (pure function — same math the totals-engine hook writes) ──────
+  // ─── Totals (pure function — same math the totals-engine hook writes). Pass the
+  // optional/optionalSelected flags so a deselected upsell line is excluded from the
+  // recomputed payload total exactly like the stored `quote_total` mirror (decision 4). ──────
   const totals = computeDocumentTotals(
-    lines.map((l) => ({ lineTotal: l.lineTotal, taxable: l.taxable })),
+    lines.map((l) => ({
+      lineTotal: l.lineTotal,
+      taxable: l.taxable,
+      optional: l.optional,
+      optionalSelected: l.optionalSelected,
+    })),
     { discountType, discountValue, taxRate }
   )
 
@@ -664,28 +698,40 @@ export const SAMPLE_QUOTE_PDF_PAYLOAD: QuotePdfPayload = {
   },
   lines: [
     {
+      lineInstanceId: 'sample-line-1',
       name: 'Site inspection',
       description: 'On-site assessment and measurements',
       qty: 1,
+      unit: null,
       unitPrice: 15000,
       lineTotal: 15000,
       taxable: true,
+      optional: false,
+      optionalSelected: true,
     },
     {
+      lineInstanceId: 'sample-line-2',
       name: 'Materials',
       description: 'Parts and supplies per estimate',
       qty: 4,
+      unit: 'each',
       unitPrice: 5000,
       lineTotal: 20000,
       taxable: true,
+      optional: false,
+      optionalSelected: true,
     },
     {
+      lineInstanceId: 'sample-line-3',
       name: 'Labor',
       description: 'Installation and cleanup',
       qty: 3,
+      unit: 'hour',
       unitPrice: 8000,
       lineTotal: 24000,
       taxable: false,
+      optional: false,
+      optionalSelected: true,
     },
   ],
   subtotal: 59000,

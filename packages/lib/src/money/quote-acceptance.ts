@@ -3,14 +3,17 @@
 import { database } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { toRecordId } from '@auxx/types/resource'
-import { getOrgCache } from '../cache'
+import { getOrgCache, requireCachedEntityDefId } from '../cache'
 import { BadRequestError, NotFoundError } from '../errors'
 import { FieldValueService } from '../field-values/field-value-service'
 import { NotificationService } from '../notifications/notification-service'
+import { UnifiedCrudHandler } from '../resources/crud'
+import { batchReadSystemValues } from './billing-projection'
 import { convertQuoteToWorkOrder } from './convert-quote'
 import { approveQuote, declineQuote } from './quote-lifecycle'
 import type { PublicQuotePayload } from './quote-public-token'
 import { getPublicQuotePayload, resolveQuoteByPublicToken } from './quote-public-token'
+import { recomputeTotals } from './totals-hooks'
 
 const logger = createScopedLogger('money:quote-acceptance')
 
@@ -88,6 +91,21 @@ async function notifyQuoteCreator(params: {
 export interface AcceptQuoteByTokenInput {
   /** Typed-signature name — required when `documents.quote.requireSignature` is on. */
   name?: string
+  /**
+   * Public accept-page optional-line selection (plan 18 §5) — the instance ids of every
+   * optional line the customer left checked. Standard HTML checkbox-form semantics: an
+   * unchecked box simply isn't in the submitted set, so a submitted-but-absent optional line
+   * id is treated as deselected.
+   *
+   * `undefined` (the field omitted entirely) means "no selection was submitted" — the
+   * internal/legacy accept path (no public form, or the quote's `acceptancePageEnabled` is
+   * off) takes the seller's pre-checked `optionalSelected` defaults as-is and this input is
+   * never touched.
+   *
+   * `[]` is an EXPLICIT submission that deselects every optional line (an all-unchecked
+   * public form) — it is honored as a real selection, not treated the same as `undefined`.
+   */
+  selectedLineIds?: string[]
 }
 
 /** Result of {@link acceptQuoteByToken}. */
@@ -99,11 +117,137 @@ export interface AcceptQuoteByTokenResult {
 }
 
 /**
+ * Validate a public accept-page selection against a quote's actual optional-line ids (plan 18
+ * §5 step 2). Pure and DB-free so it's unit-testable without a live quote. Every id in
+ * `selectedLineIds` must appear in `optionalLineInstanceIds` — an id that's simply unknown OR
+ * belongs to one of the quote's *required* lines is rejected, never silently ignored (decision:
+ * the plan explicitly calls for a throw, not a drop).
+ *
+ * @throws {BadRequestError} on the first id that isn't one of the quote's optional lines.
+ */
+export function validateSelectedLineIds(
+  optionalLineInstanceIds: readonly string[],
+  selectedLineIds: readonly string[]
+): Set<string> {
+  const optionalSet = new Set(optionalLineInstanceIds)
+  for (const id of selectedLineIds) {
+    if (!optionalSet.has(id)) {
+      throw new BadRequestError(`"${id}" is not a selectable option on this quote`)
+    }
+  }
+  return new Set(selectedLineIds)
+}
+
+/**
+ * Write the public accept-page's optional-line selection onto the quote and recompute its
+ * totals once (plan 18 §5 steps 1–3, amendment 3). Called AFTER the status/expiry/signature
+ * guards and BEFORE `approveQuote` — a second POST against an already-`approved` quote never
+ * reaches here (the idempotent early return in {@link acceptQuoteByToken} sits above it).
+ *
+ * Zero-optional quotes (no `line_item_optional` lines at all) are a total no-op — today's exact
+ * path, `selectedLineIds` or not. See {@link AcceptQuoteByTokenInput.selectedLineIds} for the
+ * `undefined` vs `[]` distinction that governs everything past that point.
+ */
+async function applyOptionalLineSelections(params: {
+  organizationId: string
+  userId: string
+  quoteInstanceId: string
+  selectedLineIds: string[] | undefined
+}): Promise<void> {
+  const { organizationId, userId, quoteInstanceId, selectedLineIds } = params
+  const quoteRecordId = toRecordId('quote', quoteInstanceId)
+  const handler = new UnifiedCrudHandler(organizationId, userId)
+
+  const { ids: optionalLineInstanceIds } = await handler.listFiltered({
+    entityDefinitionId: 'line_item',
+    filters: [
+      {
+        id: 'quote-optional-lines',
+        logicalOperator: 'AND',
+        conditions: [
+          {
+            id: 'quote-optional-lines-quote',
+            fieldId: 'line_item:quote',
+            operator: 'is',
+            value: quoteRecordId,
+          },
+          {
+            id: 'quote-optional-lines-optional',
+            fieldId: 'line_item:optional',
+            operator: 'is',
+            value: true,
+          },
+        ],
+      },
+    ],
+    limit: 1000,
+    mode: 'oneshot',
+  })
+
+  // Zero-optional quote: skip entirely, no matter what the caller submitted.
+  if (optionalLineInstanceIds.length === 0) return
+  // No selection submitted (internal/legacy accept, or acceptancePageEnabled off): the
+  // seller's pre-checked defaults ARE the selection — leave them untouched.
+  if (selectedLineIds === undefined) return
+
+  const selectedSet = validateSelectedLineIds(optionalLineInstanceIds, selectedLineIds)
+
+  const cf = await getOrgCache()
+    .from(organizationId, 'customFields')
+    .bySystemAttributes(['line_item_optional_selected'] as const)
+  const optionalSelectedField = cf.line_item_optional_selected
+  if (!optionalSelectedField) return // pre-migration org — field doesn't exist, nothing to write
+
+  const fieldValueService = new FieldValueService(organizationId, userId)
+  const currentById = await batchReadSystemValues({
+    service: fieldValueService,
+    organizationId,
+    entityType: 'line_item',
+    entityInstanceIds: optionalLineInstanceIds,
+    attributes: ['line_item_optional_selected'] as const,
+  })
+
+  // Def-UUID-form RecordId — `toRecordId('line_item', id)` would stamp the literal string
+  // "line_item" into FieldValue.entityDefinitionId (a known trap: the write looks successful
+  // but the row is orphaned from every query that resolves the real def UUID first).
+  const lineItemDefId = await requireCachedEntityDefId(organizationId, 'line_item')
+
+  for (const lineInstanceId of optionalLineInstanceIds) {
+    const nextSelected = selectedSet.has(lineInstanceId)
+    const currentSelected =
+      (currentById.get(lineInstanceId)?.get('line_item_optional_selected') as
+        | boolean
+        | undefined) ?? true
+    if (currentSelected === nextSelected) continue // stored value already matches — skip the write
+
+    // Hook-free write path (amendment 3) — `setValueWithType` bypasses the field-change hooks
+    // that `setValuesForEntity` fires, so this doesn't trigger N redundant per-line recomputes;
+    // the one explicit `recomputeTotals` call below is the single deterministic recompute.
+    await fieldValueService.setValueWithType({
+      recordId: toRecordId(lineItemDefId, lineInstanceId),
+      fieldId: optionalSelectedField.id,
+      fieldType: optionalSelectedField.type,
+      value: { type: 'boolean', value: nextSelected },
+    })
+  }
+
+  await recomputeTotals({
+    organizationId,
+    userId,
+    documentType: 'quote',
+    documentInstanceId: quoteInstanceId,
+  })
+}
+
+/**
  * Accept a quote from the public `/quote/{token}` page (v5 build spec 01). Flips
  * `quote_status` via `approveQuote` (mirrors the linked service request), stamps
  * `quote_accepted_by_name`/`quote_accepted_at` as acceptance evidence, notifies the quote's
  * creator, then auto-converts to a work order when `documents.quote.autoConvertOnAccept` is on
  * (default). Deposit collection is deferred — no payment/checkout step here.
+ *
+ * Optional-line selections (plan 18 §5), when submitted, are written and priced into totals
+ * BEFORE `approveQuote` — see {@link applyOptionalLineSelections}.
  */
 export async function acceptQuoteByToken(
   token: string,
@@ -126,6 +270,13 @@ export async function acceptQuoteByToken(
   if (payload.requireSignature && !name) {
     throw new BadRequestError('Please type your full name to accept')
   }
+
+  await applyOptionalLineSelections({
+    organizationId,
+    userId: systemUserId,
+    quoteInstanceId,
+    selectedLineIds: input.selectedLineIds,
+  })
 
   await approveQuote({ organizationId, userId: systemUserId, quoteInstanceId })
 

@@ -20,9 +20,18 @@ export async function POST(
   const { token } = await params
   const formData = await request.formData()
   const name = formData.get('name')
+  // The page always renders every optional line's checkbox (money plan 18 §4), so this route
+  // always provides the array — an empty array on an all-unchecked submit correctly means
+  // "deselect every optional line" (standard HTML form semantics), never "leave defaults
+  // untouched" (that's `undefined`, which this route never sends). Zero-optional quotes send
+  // an empty array too; `acceptQuoteByToken` no-ops when the quote has no optional lines.
+  const selectedLineIds = formData.getAll('selectedLineIds').map(String)
 
   try {
-    await acceptQuoteByToken(token, { name: typeof name === 'string' ? name : undefined })
+    await acceptQuoteByToken(token, {
+      name: typeof name === 'string' ? name : undefined,
+      selectedLineIds,
+    })
     const redirectUrl = new URL(`/quote/${token}`, request.url)
     redirectUrl.searchParams.set('state', 'accepted')
     return NextResponse.redirect(redirectUrl, { status: 303 })
