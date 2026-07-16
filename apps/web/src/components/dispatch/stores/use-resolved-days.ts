@@ -66,6 +66,10 @@ export function useResolvedDaysForSubjects(
   const entries = useMemo(() => subjects.map(toResolvedDaysSubject), [subjects])
 
   useEffect(() => {
+    // Compute uncovered gaps per subject, then group subjects that share the same gap so ONE
+    // batched resolve covers all of them (on a date change every subject has the same gap, so
+    // this normally collapses to a single request). Pending bookkeeping stays per subject.
+    const groups = new Map<string, { gap: DateRange; targets: ResolvedDaysSubject[] }>()
     for (const { key, subject } of entries) {
       const loaded = cacheSubjects[key]?.loadedRanges ?? []
       const covered = [...loaded, ...pendingRanges(key)]
@@ -73,12 +77,21 @@ export function useResolvedDaysForSubjects(
       for (const gap of gaps) {
         const tag = reservePendingRange(key, gap)
         if (!tag) continue
-        utils.availability.resolve
-          .fetch({ subject, from: gap.from, to: gap.to })
-          .then((days) => ingestResolved(key, gap, days))
-          .catch(() => {})
-          .finally(() => releasePendingRange(key, tag))
+        const group = groups.get(tag) ?? { gap, targets: [] }
+        group.targets.push({ key, subject })
+        groups.set(tag, group)
       }
+    }
+    for (const [tag, { gap, targets }] of groups) {
+      utils.availability.resolve
+        .fetch({ subjects: targets.map((t) => t.subject), from: gap.from, to: gap.to })
+        .then((daysBySubject) => {
+          targets.forEach(({ key }, i) => ingestResolved(key, gap, daysBySubject[i] ?? []))
+        })
+        .catch(() => {})
+        .finally(() => {
+          for (const { key } of targets) releasePendingRange(key, tag)
+        })
     }
   }, [cacheSubjects, entries, ingestResolved, range, utils])
 

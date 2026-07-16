@@ -5,7 +5,7 @@ import {
   deleteException,
   getWeeklyHours,
   listExceptions,
-  resolveAvailability,
+  resolveAvailabilityForSubjects,
   saveWeeklyHours,
   updateException,
 } from '@auxx/lib/availability'
@@ -129,10 +129,20 @@ export const availabilityRouter = createTRPCRouter({
       return deleteException(subject, input.ids)
     }),
 
+  /**
+   * Batched resolve — one call covers many subjects for the same range (board shading asks for
+   * org + every visible worker per navigation). Result is index-aligned with `subjects`.
+   */
   resolve: protectedProcedure
-    .input(z.object({ subject: subjectInputSchema, from: isoDate, to: isoDate }))
+    .input(
+      z.object({
+        subjects: z.array(subjectInputSchema).min(1).max(100),
+        from: isoDate,
+        to: isoDate,
+      })
+    )
     .query(async ({ ctx, input }) => {
-      const subject = buildSubject(ctx.session.organizationId, input.subject)
-      return resolveAvailability(subject, { from: input.from, to: input.to })
+      const subjects = input.subjects.map((s) => buildSubject(ctx.session.organizationId, s))
+      return resolveAvailabilityForSubjects(subjects, { from: input.from, to: input.to })
     }),
 })
