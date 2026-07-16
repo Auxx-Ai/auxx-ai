@@ -252,12 +252,17 @@ async function main() {
       method: 'cash',
     })
     createdTransactionIds.push(guardPayment.transactionId)
-    const guardTxRow = await database.query.PaymentTransaction.findFirst({
-      where: (t, { eq }) => eq(t.id, guardPayment.transactionId),
+    // Mirror pointer lives on `PaymentAllocation.paymentInstanceId` now (money
+    // 16-deposit-accounting.md §C.6 moved it off `PaymentTransaction`).
+    const guardAllocation = await database.query.PaymentAllocation.findFirst({
+      where: (t, { eq }) => eq(t.paymentTransactionId, guardPayment.transactionId),
     })
-    check('recordManualPayment stamped paymentInstanceId', !!guardTxRow?.paymentInstanceId)
+    check(
+      'recordManualPayment allocation stamped paymentInstanceId',
+      !!guardAllocation?.paymentInstanceId
+    )
 
-    const paymentInstanceId = guardTxRow!.paymentInstanceId!
+    const paymentInstanceId = guardAllocation!.paymentInstanceId!
     const mirrorUpdateErr = await expectThrow(() =>
       handler.update(toRecordId('payment', paymentInstanceId), { payment_amount: 999 })
     )
@@ -513,12 +518,17 @@ async function main() {
         pay1Row?.provider === 'manual' &&
         pay1Row?.kind === 'charge'
     )
-    check('pay1 created a payment mirror', !!pay1Row?.paymentInstanceId)
-    const pay1MirrorAmount = pay1Row?.paymentInstanceId
+    // Mirror pointer lives on `PaymentAllocation.paymentInstanceId` now (money
+    // 16-deposit-accounting.md §C.6 moved it off `PaymentTransaction`).
+    const pay1Allocation = await database.query.PaymentAllocation.findFirst({
+      where: (t, { eq }) => eq(t.paymentTransactionId, pay1.transactionId),
+    })
+    check('pay1 allocation created a payment mirror', !!pay1Allocation?.paymentInstanceId)
+    const pay1MirrorAmount = pay1Allocation?.paymentInstanceId
       ? await fieldValueByAttr(
           organizationId,
           'payment',
-          pay1Row.paymentInstanceId,
+          pay1Allocation.paymentInstanceId,
           'payment_amount'
         )
       : null
@@ -1137,13 +1147,15 @@ async function main() {
     )
     for (const transactionId of [...new Set(createdTransactionIds)]) {
       try {
-        const row = await database.query.PaymentTransaction.findFirst({
-          where: (t, { eq }) => eq(t.id, transactionId),
+        // Mirror pointer lives on `PaymentAllocation.paymentInstanceId` now (money
+        // 16-deposit-accounting.md §C.6 moved it off `PaymentTransaction`).
+        const allocations = await database.query.PaymentAllocation.findMany({
+          where: (t, { eq }) => eq(t.paymentTransactionId, transactionId),
         })
-        if (!row) continue
-        if (row.paymentInstanceId) {
+        for (const allocation of allocations) {
+          if (!allocation.paymentInstanceId) continue
           try {
-            await handler.delete(toRecordId('payment', row.paymentInstanceId))
+            await handler.delete(toRecordId('payment', allocation.paymentInstanceId))
           } catch {
             // best-effort — the row delete below is the important part
           }

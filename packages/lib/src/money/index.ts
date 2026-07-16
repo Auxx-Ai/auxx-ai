@@ -56,11 +56,13 @@ export {
   upsertPaymentAccount,
 } from './payments/account-state'
 export {
+  collectRefundedChargeIds,
   computeDepositFigures,
   type DepositChargeRow,
   getAllocationTotalsByTransaction,
   getContactCreditOnAccount,
   getInvoiceDepositApplied,
+  getRefundedChargeIds,
   listContactDepositCharges,
 } from './payments/allocation-reads'
 export {
