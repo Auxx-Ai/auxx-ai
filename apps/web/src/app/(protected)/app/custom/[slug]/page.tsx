@@ -10,5 +10,5 @@ import { RecordsView } from '~/components/records'
  */
 export default function CustomEntityRecordsPage() {
   const params = useParams<{ slug: string }>()
-  return <RecordsView slug={params.slug} />
+  return <RecordsView slug={params.slug} dashboardHref={`/app/custom/${params.slug}/dashboard`} />
 }

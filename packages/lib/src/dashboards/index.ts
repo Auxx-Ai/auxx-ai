@@ -21,6 +21,7 @@ export {
   type UpdateDashboardPatch,
   updateDashboard,
 } from './dashboard-mutations'
+export type { DashboardSelector } from './dashboard-queries'
 export {
   getDashboard,
   getVersion,

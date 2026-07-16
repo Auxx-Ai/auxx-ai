@@ -50,7 +50,7 @@ export function DetailView({ apiSlug, instanceId, backUrl: backUrlOverride }: De
   const recordId = toRecordId(entityDefinitionId, instanceId)
 
   // Get record data
-  const { record, isLoading, isNotFound } = useRecord({ recordId, enabled: true })
+  const { record, isLoading, isNotFound, hasLoadedOnce } = useRecord({ recordId, enabled: true })
 
   // Get config from registry based on entityType
   const config = getDetailViewConfig(entityType)
@@ -87,8 +87,11 @@ export function DetailView({ apiSlug, instanceId, backUrl: backUrlOverride }: De
 
   const backUrl = backUrlOverride ?? defaultBackUrl
 
-  // Loading state
-  if (isLoading) {
+  // Loading state — on first load the recordId is built with the apiSlug
+  // fallback until `resource.list` hydrates, so "no record yet" (no fetch
+  // attempt completed for the current id) must show the skeleton, not the
+  // not-found screen.
+  if (isLoading || (!record && !hasLoadedOnce)) {
     return <DetailViewSkeleton label={label} backUrl={backUrl} />
   }
 

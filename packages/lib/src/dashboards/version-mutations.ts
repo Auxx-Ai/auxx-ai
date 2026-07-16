@@ -155,7 +155,7 @@ export async function publishDashboard(
 
   if (outcome.isErr()) return err(outcome.error)
 
-  const dashboardResult = await getDashboard(db, orgId, userId, dashboardId)
+  const dashboardResult = await getDashboard(db, orgId, userId, { id: dashboardId })
   if (dashboardResult.isErr()) return err(dashboardResult.error)
   return ok({ dashboard: dashboardResult.value, unchanged: outcome.value.unchanged })
 }
@@ -188,7 +188,7 @@ export async function discardDashboardDraft(
     .set({ draftLayout: active.layout, hasUnpublishedChanges: false })
     .where(eq(schema.Dashboard.id, dashboardId))
 
-  const dashboardResult = await getDashboard(db, orgId, userId, dashboardId)
+  const dashboardResult = await getDashboard(db, orgId, userId, { id: dashboardId })
   if (dashboardResult.isErr()) return err(dashboardResult.error)
   return ok({ dashboard: dashboardResult.value, unchanged: false })
 }
@@ -236,7 +236,7 @@ export async function restoreVersion(
     .set({ draftLayout: target.layout, hasUnpublishedChanges })
     .where(eq(schema.Dashboard.id, dashboardId))
 
-  const dashboardResult = await getDashboard(db, orgId, userId, dashboardId)
+  const dashboardResult = await getDashboard(db, orgId, userId, { id: dashboardId })
   if (dashboardResult.isErr()) return err(dashboardResult.error)
   return ok({ dashboard: dashboardResult.value, unchanged: false })
 }

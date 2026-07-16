@@ -15,7 +15,7 @@ const logger = createScopedLogger('entity-seeder:create-default-views')
  * migration path) satisfy this — same `${entityType}:${field.id}` key convention, just with
  * different extra properties — so `resolveViewConfig` is shared by both rather than ported.
  */
-type ResolvableFieldMap = Map<string, { id: string; systemAttribute: string }>
+export type ResolvableFieldMap = Map<string, { id: string; systemAttribute: string }>
 
 /**
  * Pass 5: Create Default TableViews
@@ -101,9 +101,16 @@ export function assertSingleDefault(
 }
 
 /**
- * Build field mapping from systemAttribute to CustomField
+ * Build field mapping from systemAttribute to CustomField.
+ *
+ * Exported so `entity-seeder/create-default-dashboards.ts`'s `resolveDashboardLayout`
+ * can reuse the exact same `field_${systemAttribute}` → real-id lookup for widget
+ * field refs (the `DEFAULT_VIEW_CONFIGS` grammar, plans/dashboard/v2/03-seeding.md).
  */
-function buildFieldIdMap(entityType: string, fieldMap: ResolvableFieldMap): Map<string, string> {
+export function buildFieldIdMap(
+  entityType: string,
+  fieldMap: ResolvableFieldMap
+): Map<string, string> {
   const map = new Map<string, string>()
 
   for (const [key, field] of fieldMap.entries()) {

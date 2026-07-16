@@ -1,6 +1,5 @@
 // packages/lib/src/tickets/index.ts
 
-export * from './ticket-dashboard-service'
 export { ticketMergeService } from './ticket-merge'
 export type {
   DeleteMultipleTicketsInput,

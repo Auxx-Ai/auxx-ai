@@ -2,6 +2,7 @@
 
 'use client'
 
+import { FeatureKey } from '@auxx/lib/permissions/client'
 import { Button } from '@auxx/ui/components/button'
 import { Kbd, KbdGroup } from '@auxx/ui/components/kbd'
 import {
@@ -11,23 +12,13 @@ import {
   MainPageHeader,
 } from '@auxx/ui/components/main-page'
 import { RadioTab, RadioTabItem } from '@auxx/ui/components/radio-tab'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@auxx/ui/components/select'
 import { ChartColumn, Plus, Settings, Tags } from 'lucide-react'
 import { usePathname, useRouter } from 'next/navigation'
-import { parseAsBoolean, parseAsStringLiteral, useQueryState } from 'nuqs'
+import { parseAsBoolean, useQueryState } from 'nuqs'
+import { useFeatureFlags } from '~/providers/feature-flag-provider'
 
 /** Ticket tab types for navigation */
 type TicketTab = 'list' | 'dashboard' | 'settings'
-
-/** Dashboard period options */
-const PERIOD_OPTIONS = ['day', 'week', 'month', 'year'] as const
-export type DashboardPeriod = (typeof PERIOD_OPTIONS)[number]
 
 /**
  * Header component with RadioTab navigation for tickets section
@@ -36,15 +27,11 @@ export type DashboardPeriod = (typeof PERIOD_OPTIONS)[number]
 function TicketsLayoutHeader() {
   const pathname = usePathname()
   const router = useRouter()
+  const { hasAccess } = useFeatureFlags()
+  const dashboardsEnabled = hasAccess(FeatureKey.dashboards)
 
   // Create dialog state via URL query param
   const [, setCreateDialogOpen] = useQueryState('create', parseAsBoolean.withDefault(false))
-
-  // Dashboard period state (shared via URL)
-  const [period, setPeriod] = useQueryState(
-    'period',
-    parseAsStringLiteral(PERIOD_OPTIONS).withDefault('week')
-  )
 
   /** Determine active tab from current pathname */
   const getActiveTab = (): TicketTab => {
@@ -85,10 +72,12 @@ function TicketsLayoutHeader() {
               <Tags />
               <span className='hidden sm:inline'>Tickets</span>
             </RadioTabItem>
-            <RadioTabItem value='dashboard' size='sm' tooltip='Dashboard'>
-              <ChartColumn />
-              <span className='hidden sm:inline'>Dashboard</span>
-            </RadioTabItem>
+            {dashboardsEnabled && (
+              <RadioTabItem value='dashboard' size='sm' tooltip='Dashboard'>
+                <ChartColumn />
+                <span className='hidden sm:inline'>Dashboard</span>
+              </RadioTabItem>
+            )}
             <RadioTabItem value='settings' size='sm' tooltip='Settings'>
               <Settings />
               <span className='hidden sm:inline'>Settings</span>
@@ -107,19 +96,6 @@ function TicketsLayoutHeader() {
                 <Kbd>t</Kbd>
               </KbdGroup>
             </Button>
-          )}
-          {activeTab === 'dashboard' && (
-            <Select value={period} onValueChange={(value: DashboardPeriod) => setPeriod(value)}>
-              <SelectTrigger className='w-[140px]'>
-                <SelectValue placeholder='Select period' />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value='day'>Today</SelectItem>
-                <SelectItem value='week'>This Week</SelectItem>
-                <SelectItem value='month'>This Month</SelectItem>
-                <SelectItem value='year'>This Year</SelectItem>
-              </SelectContent>
-            </Select>
           )}
         </div>
       }>

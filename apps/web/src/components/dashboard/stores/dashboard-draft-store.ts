@@ -38,10 +38,14 @@ export interface DashboardSeed {
   draft: DashboardLayoutDoc | null
   versionNumber: number
   hasUnpublishedChanges: boolean
+  /** Set ⇒ THE dashboard for this entity def — new widgets default their source to it (plan 02). */
+  entityDefinitionId: string | null
 }
 
 interface DashboardDraftState {
   dashboardId: string | null
+  /** Set ⇒ THE dashboard for this entity def — `addWidget`'s source-picker prefill (plan 02). */
+  entityDefinitionId: string | null
   /** Published active-version snapshot — what VIEW mode renders. */
   persisted: DashboardLayoutDoc | null
   persistedVersionNumber: number | null
@@ -163,6 +167,7 @@ function uniqueTitle(base: string, existing: string[]): string {
 
 const INITIAL = {
   dashboardId: null,
+  entityDefinitionId: null,
   persisted: null,
   persistedVersionNumber: null,
   draft: null,
@@ -193,6 +198,7 @@ export const useDashboardStore = create<DashboardDraftState>()(
           const keep = s.dashboardId === dashboardId && s.isEditMode
           return {
             dashboardId,
+            entityDefinitionId: seed.entityDefinitionId,
             persisted: seed.published,
             persistedVersionNumber: seed.versionNumber,
             draft: keep ? s.draft : (seed.draft ?? cloneDoc(seed.published)),
@@ -249,7 +255,7 @@ export const useDashboardStore = create<DashboardDraftState>()(
         }),
 
       addWidget: (tabId, kind, at) => {
-        const { draft, isEditMode } = get()
+        const { draft, isEditMode, entityDefinitionId } = get()
         if (!isEditMode || !draft) return null
         const tab = draft.tabs.find((t) => t.id === tabId)
         if (!tab) return null
@@ -270,7 +276,7 @@ export const useDashboardStore = create<DashboardDraftState>()(
           ),
           type: kind,
           gridPosition,
-          configuration: defaultWidgetConfiguration(kind),
+          configuration: defaultWidgetConfiguration(kind, entityDefinitionId),
         }
         set({
           draft: editTabs(draft, (tabs) =>

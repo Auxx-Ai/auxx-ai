@@ -24,6 +24,7 @@ import {
 import { useQueryClient } from '@tanstack/react-query'
 import {
   Archive,
+  ChartColumn,
   Combine,
   Database,
   Expand,
@@ -94,6 +95,13 @@ interface RecordsViewProps {
   basePath?: string
   /** When true, RecordsView renders without its own MainPage wrapper (parent provides it) */
   embedded?: boolean
+  /**
+   * When set, shows a feature-gated `ChartColumn` header button linking here —
+   * the entity's dashboard sub-route (plan 02). Opt-in per caller (not derived
+   * from `slug`/`basePath`) since not every entity with a `RecordsView` list
+   * page has a `dashboard/page.tsx` sibling yet.
+   */
+  dashboardHref?: string
 }
 
 /**
@@ -101,11 +109,15 @@ interface RecordsViewProps {
  * Composes DynamicResourceView with the records-specific primary cell,
  * bulk-action set, paste/fill/AI cell selection config, and dialogs.
  */
-export function RecordsView({ slug, basePath, embedded }: RecordsViewProps) {
+export function RecordsView({ slug, basePath, embedded, dashboardHref }: RecordsViewProps) {
   const resolvedBasePath = basePath ?? `/app/custom/${slug}`
   const router = useRouter()
   const { hasAccess } = useFeatureFlags()
   const sequencesEnabled = hasAccess(FeatureKey.sequences)
+  // Dashboard header button (plan 02) — one wiring for contacts/companies'
+  // dedicated routes and every custom entity's `/app/custom/[slug]/dashboard`;
+  // callers without a dashboard sub-route simply don't pass `dashboardHref`.
+  const showDashboardButton = !!dashboardHref && hasAccess(FeatureKey.dashboards)
 
   // Cross-client saved-view refresh (e.g. Kopilot create/update/set-default).
   useTableViewRealtime()
@@ -918,19 +930,31 @@ export function RecordsView({ slug, basePath, embedded }: RecordsViewProps) {
         <MainPage>
           <MainPageHeader
             action={
-              <Button
-                size='sm'
-                className='h-7 rounded-lg'
-                onClick={() => setIsCreateDialogOpen(true)}>
-                <Plus className='size-4' />
-                Create {resource.label}
-                {createHotkey && (
-                  <KbdGroup variant='default' size='sm'>
-                    <Kbd>{createHotkey[0]}</Kbd>
-                    <Kbd>{createHotkey[1]}</Kbd>
-                  </KbdGroup>
+              <div className='flex items-center gap-2'>
+                {showDashboardButton && (
+                  <Button
+                    size='icon-sm'
+                    variant='outline'
+                    className='rounded-lg'
+                    aria-label={`${resource.label} dashboard`}
+                    onClick={() => router.push(dashboardHref as string)}>
+                    <ChartColumn />
+                  </Button>
                 )}
-              </Button>
+                <Button
+                  size='sm'
+                  className='h-7 rounded-lg'
+                  onClick={() => setIsCreateDialogOpen(true)}>
+                  <Plus className='size-4' />
+                  Create {resource.label}
+                  {createHotkey && (
+                    <KbdGroup variant='default' size='sm'>
+                      <Kbd>{createHotkey[0]}</Kbd>
+                      <Kbd>{createHotkey[1]}</Kbd>
+                    </KbdGroup>
+                  )}
+                </Button>
+              </div>
             }>
             <MainPageBreadcrumb>
               <MainPageBreadcrumbItem title={resource.plural} href={resolvedBasePath} last />

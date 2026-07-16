@@ -1,0 +1,3 @@
+ALTER TABLE "Dashboard" ADD COLUMN "entityDefinitionId" text;--> statement-breakpoint
+ALTER TABLE "Dashboard" ADD CONSTRAINT "Dashboard_entityDefinitionId_EntityDefinition_id_fk" FOREIGN KEY ("entityDefinitionId") REFERENCES "public"."EntityDefinition"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+CREATE UNIQUE INDEX "Dashboard_org_entityDef_unique" ON "Dashboard" USING btree ("organizationId","entityDefinitionId") WHERE "entityDefinitionId" is not null and "archivedAt" is null;

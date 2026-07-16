@@ -10,11 +10,18 @@
 // they render the "Configure this widget" CTA (plan 05) and plan 07 fills them
 // in. The shells intentionally omit `source`, matching the `isChartConfigured`
 // guard which treats a missing source as unconfigured.
+//
+// EXCEPTION (plan 02): when the owning dashboard is linked to an entity def
+// (`Dashboard.entityDefinitionId`), new data widgets prefill `source` to that
+// entity — a still-editable default, not a hard requirement. The dashboard
+// draft store passes its seeded `entityDefinitionId` through on every
+// `addWidget` call.
 
 import {
   WIDGET_KIND_LABELS,
   type WidgetConfiguration,
   type WidgetKind,
+  type WidgetSource,
 } from '@auxx/lib/dashboards/client'
 
 /** A new widget's title: the kind label (e.g. "Bar chart"). Uniqueness is the store's job. */
@@ -24,27 +31,33 @@ export function defaultWidgetTitle(kind: WidgetKind): string {
 
 /**
  * Default configuration for a freshly added widget of `kind`. Data-widget
- * configs are unconfigured shells (no `source`) — cast because the config type
- * marks `source` required, but the add-then-configure flow legitimately starts
- * without one (plan 07 sets it).
+ * configs are unconfigured shells (no `source`, unless `entityDefinitionId` is
+ * given) — cast because the config type marks `source` required, but the
+ * add-then-configure flow legitimately starts without one (plan 07 sets it).
  */
-export function defaultWidgetConfiguration(kind: WidgetKind): WidgetConfiguration {
+export function defaultWidgetConfiguration(
+  kind: WidgetKind,
+  entityDefinitionId?: string | null
+): WidgetConfiguration {
+  const source: WidgetSource | undefined = entityDefinitionId
+    ? { kind: 'entity', entityDefinitionId }
+    : undefined
   switch (kind) {
     case 'richText':
       return { kind: 'richText', content: null }
     case 'iframe':
       return { kind: 'iframe', url: null }
     case 'barChart':
-      return { kind: 'barChart', metric: { op: 'count' } } as WidgetConfiguration
+      return { kind: 'barChart', metric: { op: 'count' }, source } as WidgetConfiguration
     case 'lineChart':
-      return { kind: 'lineChart', metric: { op: 'count' } } as WidgetConfiguration
+      return { kind: 'lineChart', metric: { op: 'count' }, source } as WidgetConfiguration
     case 'pieChart':
-      return { kind: 'pieChart', metric: { op: 'count' } } as WidgetConfiguration
+      return { kind: 'pieChart', metric: { op: 'count' }, source } as WidgetConfiguration
     case 'kpi':
-      return { kind: 'kpi', metric: { op: 'count' } } as WidgetConfiguration
+      return { kind: 'kpi', metric: { op: 'count' }, source } as WidgetConfiguration
     case 'gauge':
-      return { kind: 'gauge', metric: { op: 'count' } } as WidgetConfiguration
+      return { kind: 'gauge', metric: { op: 'count' }, source } as WidgetConfiguration
     case 'recordList':
-      return { kind: 'recordList', columns: [] } as WidgetConfiguration
+      return { kind: 'recordList', columns: [], source } as WidgetConfiguration
   }
 }

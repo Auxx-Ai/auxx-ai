@@ -5,7 +5,6 @@ import { TicketPriority, TicketStatus, TicketType } from '@auxx/database/enums'
 import { publisher } from '@auxx/lib/events'
 import {
   addRelation,
-  createTicketDashboardService,
   deleteMultipleTickets,
   removeRelation,
   ticketMergeService,
@@ -37,11 +36,6 @@ const ticketInputSchema = z.object({
   typeData: z.record(z.string(), z.unknown()).optional(),
   typeStatus: z.string().optional(),
 })
-
-/**
- * Allowed periods for ticket dashboard rollups
- */
-const dashboardPeriodSchema = z.enum(['day', 'week', 'month', 'year'])
 
 /**
  * Simplified ticket router using the new service layer
@@ -80,18 +74,6 @@ export const ticketRouter = createTRPCRouter({
     }
     return ticket
   }),
-
-  // Retrieve ticket dashboard summary
-  dashboard: protectedProcedure
-    .input(z.object({ period: dashboardPeriodSchema.default('week') }).optional())
-    .query(async ({ ctx, input }) => {
-      const { organizationId } = ctx.session
-      const dashboardService = createTicketDashboardService(ctx.db)
-      return await dashboardService.getSummary({
-        organizationId,
-        period: input?.period,
-      })
-    }),
 
   // Get all tickets for organization with filters (legacy endpoint)
   all: protectedProcedure

@@ -7,5 +7,11 @@ import { RecordsView } from '~/components/records'
  * Companies page — renders the shared RecordsView for the companies resource
  */
 export default function CompaniesPage() {
-  return <RecordsView slug='companies' basePath='/app/companies' />
+  return (
+    <RecordsView
+      slug='companies'
+      basePath='/app/companies'
+      dashboardHref='/app/companies/dashboard'
+    />
+  )
 }

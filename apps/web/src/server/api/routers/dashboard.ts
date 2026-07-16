@@ -79,7 +79,9 @@ async function prepareWidgetQuery(
   input: WidgetDataInput
 ) {
   unwrap(
-    await getDashboard(ctx.db, ctx.session.organizationId, ctx.session.userId, input.dashboardId)
+    await getDashboard(ctx.db, ctx.session.organizationId, ctx.session.userId, {
+      id: input.dashboardId,
+    })
   )
   const profile = await getUserCache().get(ctx.session.userId, 'userProfile')
   const timezone = profile?.preferredTimezone || 'UTC'
@@ -96,11 +98,35 @@ export const dashboardRouter = createTRPCRouter({
     return unwrap(await listDashboards(ctx.db, ctx.session.organizationId, ctx.session.userId))
   }),
 
-  get: protectedProcedure.input(z.object({ id: z.string() })).query(async ({ ctx, input }) => {
-    return unwrap(
-      await getDashboard(ctx.db, ctx.session.organizationId, ctx.session.userId, input.id)
+  get: protectedProcedure
+    .input(
+      z
+        .object({
+          id: z.string().min(1).optional(),
+          entityDefinitionId: z.string().min(1).optional(),
+          slug: z.string().min(1).optional(),
+        })
+        .refine((i) => i.id || i.entityDefinitionId || i.slug, {
+          message: 'Must provide id, entityDefinitionId, or slug',
+        })
     )
-  }),
+    .query(async ({ ctx, input }) => {
+      // `id` wins when present; otherwise resolve by entity def / apiSlug — that
+      // branch's result is nullable (`null` ⇒ empty-state, not an error).
+      if (input.id) {
+        return unwrap(
+          await getDashboard(ctx.db, ctx.session.organizationId, ctx.session.userId, {
+            id: input.id,
+          })
+        )
+      }
+      return unwrap(
+        await getDashboard(ctx.db, ctx.session.organizationId, ctx.session.userId, {
+          entityDefinitionId: input.entityDefinitionId,
+          slug: input.slug,
+        })
+      )
+    }),
 
   create: protectedProcedure
     .input(
@@ -109,6 +135,7 @@ export const dashboardRouter = createTRPCRouter({
         description: z.string().nullable().optional(),
         icon: iconSchema.optional(),
         visibility: visibilitySchema.optional(),
+        entityDefinitionId: z.string().min(1).optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -126,6 +153,7 @@ export const dashboardRouter = createTRPCRouter({
         icon: iconSchema.nullable().optional(),
         visibility: visibilitySchema.optional(),
         position: z.number().optional(),
+        entityDefinitionId: z.string().min(1).nullable().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {

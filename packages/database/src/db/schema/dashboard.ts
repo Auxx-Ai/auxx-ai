@@ -11,7 +11,9 @@ import {
   sql,
   text,
   timestamp,
+  uniqueIndex,
 } from './_shared'
+import { EntityDefinition } from './entity-definition'
 import { Organization } from './organization'
 import { User } from './user'
 
@@ -97,11 +99,26 @@ export const Dashboard = pgTable(
     position: doublePrecision().notNull().default(0),
 
     archivedAt: timestamp({ precision: 3 }),
+
+    /**
+     * The "primary entity" link (Dashboards v2 plan 01) — marks this row as THE
+     * dashboard for the entity, so entity routes can find it and the widget config
+     * panel can prefill the source picker. `onDelete: 'set null'` — deleting the
+     * def unlinks the dashboard (it survives as a regular org dashboard). At most
+     * one LIVE dashboard per org+def (see `Dashboard_org_entityDef_unique` below);
+     * `duplicateDashboard` never copies this (would violate the unique index).
+     */
+    entityDefinitionId: text().references((): AnyPgColumn => EntityDefinition.id, {
+      onDelete: 'set null',
+    }),
   },
   (table) => [
     index('Dashboard_organizationId_idx').using('btree', table.organizationId.asc().nullsLast()),
     index('Dashboard_createdById_idx').using('btree', table.createdById.asc().nullsLast()),
     index('Dashboard_archivedAt_idx').using('btree', table.archivedAt.asc().nullsLast()),
+    uniqueIndex('Dashboard_org_entityDef_unique')
+      .on(table.organizationId, table.entityDefinitionId)
+      .where(sql`"entityDefinitionId" is not null and "archivedAt" is null`),
   ]
 )
 
