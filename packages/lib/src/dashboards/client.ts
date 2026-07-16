@@ -17,7 +17,7 @@ import type { DateLabelFormat } from './date-bucket-labels'
 export type { DateLabelFormat } from './date-bucket-labels'
 // Client-safe date-bucket label formatting (plan 10) — re-exported here so the
 // chart widgets can format the category axis off the raw bucket key.
-export { formatBucketLabel } from './date-bucket-labels'
+export { formatBucketLabel, resolveDefaultDateLabelFormat } from './date-bucket-labels'
 
 // ── Primitives ──────────────────────────────────────────────────────────────
 

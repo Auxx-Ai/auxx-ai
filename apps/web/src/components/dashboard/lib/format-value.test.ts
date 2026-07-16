@@ -1,7 +1,12 @@
 // apps/web/src/components/dashboard/lib/format-value.test.ts
 
 import { describe, expect, it } from 'vitest'
-import { computeTrendDelta, formatMetricValue, formatTrendPercent } from './format-value'
+import {
+  computeTrendDelta,
+  formatMetricValue,
+  formatMetricValueCompact,
+  formatTrendPercent,
+} from './format-value'
 
 describe('formatMetricValue', () => {
   it('renders count ops as grouped integers', () => {
@@ -46,6 +51,49 @@ describe('formatMetricValue', () => {
     expect(
       formatMetricValue(1234.56, 'sum', { fieldType: 'NUMBER', options: { decimals: 0 } })
     ).toBe('1,235')
+  })
+})
+
+describe('formatMetricValueCompact', () => {
+  it('compacts count ops', () => {
+    expect(formatMetricValueCompact(1234, 'count')).toBe('1.2K')
+    expect(formatMetricValueCompact(42, 'countUnique')).toBe('42')
+  })
+
+  it('compacts a CURRENCY metric from cents, dropping decimals', () => {
+    const meta = { fieldType: 'CURRENCY', options: { currencyCode: 'USD' } } as const
+    expect(formatMetricValueCompact(1_200_000, 'sum', meta)).toBe('$12K')
+    expect(formatMetricValueCompact(36000, 'sum', meta)).toBe('$360')
+    // Contrast: the full formatter keeps grouping + cents.
+    expect(formatMetricValue(1_200_000, 'sum', meta)).toBe('$12,000.00')
+  })
+
+  it('compacts a NUMBER metric, keeping prefix/suffix', () => {
+    expect(formatMetricValueCompact(2_300_000, 'sum', { fieldType: 'NUMBER' })).toBe('2.3M')
+    expect(
+      formatMetricValueCompact(2_300_000, 'sum', {
+        fieldType: 'NUMBER',
+        options: { suffix: ' kg' },
+      })
+    ).toBe('2.3M kg')
+  })
+
+  it('delegates already-short display styles to the full formatter', () => {
+    expect(formatMetricValueCompact(42.5, 'percentNotEmpty')).toBe('42.5%')
+    expect(
+      formatMetricValueCompact(45, 'avg', {
+        fieldType: 'NUMBER',
+        options: { displayAs: 'percentage', decimals: 0 },
+      })
+    ).toBe('45%')
+  })
+
+  it('falls back to a compact plain number without field metadata', () => {
+    expect(formatMetricValueCompact(1234.5, 'sum')).toBe('1.2K')
+  })
+
+  it('renders a dash for non-finite values', () => {
+    expect(formatMetricValueCompact(Number.NaN, 'sum')).toBe('—')
   })
 })
 

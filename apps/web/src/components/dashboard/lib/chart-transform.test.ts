@@ -3,8 +3,10 @@
 import { describe, expect, it } from 'vitest'
 import {
   type ChartAggregateResult,
+  type ChartRow,
   remapGroupLabels,
   SINGLE_SERIES_KEY,
+  seriesExtent,
   toChartConfig,
   toChartRows,
   toPieRows,
@@ -202,5 +204,38 @@ describe('toPieRows', () => {
       'green'
     )
     expect(rows.map((r) => r.fill)).toEqual(['var(--green-4)', 'var(--green-11)'])
+  })
+})
+
+describe('seriesExtent', () => {
+  const rows: ChartRow[] = [
+    { groupKey: 'a', label: 'A', s0: 100, s1: -20 },
+    { groupKey: 'b', label: 'B', s0: 40, s1: 60 },
+  ]
+
+  it('spans 0 and takes per-cell min/max when not stacked', () => {
+    expect(seriesExtent(rows, ['s0', 's1'], false)).toEqual({ min: -20, max: 100 })
+  })
+
+  it('sums signed per-row stacks when stacked', () => {
+    // Row A stacks +100 / -20 → positive stack 100; row B stacks to 100.
+    expect(seriesExtent(rows, ['s0', 's1'], true)).toEqual({ min: -20, max: 100 })
+    expect(
+      seriesExtent([{ groupKey: 'a', label: 'A', s0: 70, s1: 50 }], ['s0', 's1'], true)
+    ).toEqual({ min: 0, max: 120 })
+  })
+
+  it('always includes 0 (all-positive data keeps min 0)', () => {
+    expect(seriesExtent([{ groupKey: 'a', label: 'A', s0: 5 }], ['s0'], false)).toEqual({
+      min: 0,
+      max: 5,
+    })
+    expect(seriesExtent([], ['s0'], false)).toEqual({ min: 0, max: 0 })
+  })
+
+  it('treats non-numeric cells as 0', () => {
+    expect(
+      seriesExtent([{ groupKey: 'a', label: 'A', s0: 'oops' } as ChartRow, ...rows], ['s0'], false)
+    ).toEqual({ min: 0, max: 100 })
   })
 })

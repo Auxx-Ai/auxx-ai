@@ -1,7 +1,7 @@
 // packages/lib/src/dashboards/date-bucket-labels.test.ts
 
 import { describe, expect, it } from 'vitest'
-import { formatBucketLabel } from './date-bucket-labels'
+import { formatBucketLabel, resolveDefaultDateLabelFormat } from './date-bucket-labels'
 
 describe('formatBucketLabel — default (undefined format) reproduces server labels', () => {
   it('matches the historical output per granularity', () => {
@@ -53,5 +53,29 @@ describe('formatBucketLabel — explicit styles', () => {
 
   it('malformed calendar key falls back to the raw key', () => {
     expect(formatBucketLabel('not-a-date', 'month', 'long')).toBe('not-a-date')
+  })
+})
+
+describe('resolveDefaultDateLabelFormat', () => {
+  it("drops the year ('short') when all day buckets share one calendar year", () => {
+    expect(resolveDefaultDateLabelFormat(['2026-07-10', '2026-07-11', '2026-12-31'], 'day')).toBe(
+      'short'
+    )
+  })
+
+  it('keeps the default across a year boundary', () => {
+    expect(resolveDefaultDateLabelFormat(['2025-12-31', '2026-01-01'], 'day')).toBeUndefined()
+  })
+
+  it('ignores null (empty-bucket) keys', () => {
+    expect(resolveDefaultDateLabelFormat([null, '2026-07-10'], 'day')).toBe('short')
+  })
+
+  it('bails on malformed keys, all-null keys, and non-day granularities', () => {
+    expect(resolveDefaultDateLabelFormat(['2026-07-10', 'oops'], 'day')).toBeUndefined()
+    expect(resolveDefaultDateLabelFormat([null], 'day')).toBeUndefined()
+    expect(resolveDefaultDateLabelFormat([], 'day')).toBeUndefined()
+    expect(resolveDefaultDateLabelFormat(['2026-07-01'], 'month')).toBeUndefined()
+    expect(resolveDefaultDateLabelFormat(['2026-06-29'], 'week')).toBeUndefined()
   })
 })

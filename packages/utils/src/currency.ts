@@ -68,6 +68,33 @@ export function formatCurrency(
 }
 
 /**
+ * Compact currency for space-constrained surfaces (chart axes, badges), from
+ * cents: 36000 → "$360", 1200000 → "$12K", 230000000 → "$2.3M". Unlike
+ * `formatCurrency`'s `'compact'` display mode (which keeps two decimals, e.g.
+ * `$12.00K`), this clamps to at most one fraction digit and drops cents.
+ */
+export function formatCurrencyCompact(
+  cents: number | null | undefined,
+  options: Pick<CurrencyDisplayOptions, 'currencyCode'> = {}
+): string {
+  if (cents === null || cents === undefined) return '-'
+  const { currencyCode = 'USD' } = options
+  const dollars = cents / 100
+  try {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: currencyCode,
+      notation: 'compact',
+      compactDisplay: 'short',
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 1,
+    }).format(dollars)
+  } catch {
+    return `${currencyCode} ${dollars.toFixed(0)}`
+  }
+}
+
+/**
  * Parse display value to cents
  * @param value - Display value (string or number)
  * @returns Value in cents (integer)
