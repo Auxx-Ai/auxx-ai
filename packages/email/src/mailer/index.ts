@@ -24,6 +24,9 @@ import {
   PasswordResetNotifyText,
   PaymentFailedEmail,
   PaymentFailedText,
+  PaymentReceiptEmail,
+  type PaymentReceiptEmailProps,
+  PaymentReceiptText,
   ResetPasswordEmail,
   ResetPasswordText,
   SubscriptionCancelledEmail,
@@ -74,6 +77,10 @@ function formatSubject(subject: string) {
 
 interface SendEmailDataProps {
   to: string
+  /** From display name override (e.g. the business name for white-label receipts). The From
+   * ADDRESS always stays the verified `SYSTEM_FROM_EMAIL` — only the friendly name changes. */
+  fromName?: string
+  /** Reply-To override (e.g. the business's own email). Falls back to `EMAIL_REPLY_TO`. */
   replyTo?: string
   subject: string
   text?: string
@@ -90,12 +97,14 @@ export const sendEmail = async (options: SendEmailDataProps): Promise<boolean> =
   const domain = fromEmail.split('@')[1] || 'example.com'
 
   const replyToEmail =
-    configService.get<string>('EMAIL_REPLY_TO') || configService.get<string>('SUPPORT_EMAIL')
+    options.replyTo ||
+    configService.get<string>('EMAIL_REPLY_TO') ||
+    configService.get<string>('SUPPORT_EMAIL')
   const supportName = configService.get<string>('SUPPORT_NAME') || 'Support Team'
 
   try {
     // Set up the from address with a friendly name
-    const from = `${supportName} <${fromEmail}>`
+    const from = `${options.fromName || supportName} <${fromEmail}>`
 
     // Convert attachments to provider format if needed
     const attachments = options.attachments?.map((att) => ({
@@ -1195,6 +1204,44 @@ export const sendTrialConversionEmail = async ({
     })
   } catch (error) {
     logger.error(error, 'Error in sendTrialConversionEmail')
+    throw error
+  }
+}
+
+/**
+ * Customer-facing, org-branded payment receipt (plans/dispatch/money/15-payment-receipt-emails.md).
+ * Unlike the other senders this one passes a per-send `fromName` + `replyTo` so the email reads as
+ * the business, and builds its own subject WITHOUT the "Auxx.ai - " prefix (white-label). The From
+ * address stays the verified `SYSTEM_FROM_EMAIL`.
+ */
+export const sendPaymentReceiptEmail = async ({
+  email,
+  fromName,
+  replyTo,
+  ...templateProps
+}: PaymentReceiptEmailProps & {
+  email: UserEmail
+  fromName: string
+  replyTo?: string
+}): Promise<boolean> => {
+  try {
+    const html = await render(await PaymentReceiptEmail(templateProps))
+    const text = PaymentReceiptText(templateProps)
+    const subject =
+      templateProps.context === 'deposit'
+        ? `Deposit received — Quote ${templateProps.documentNumber}`
+        : `Payment received — Invoice ${templateProps.documentNumber}`
+
+    return await sendEmail({
+      to: email,
+      fromName,
+      replyTo,
+      subject,
+      html,
+      text,
+    })
+  } catch (error) {
+    logger.error(error, 'Error in sendPaymentReceiptEmail')
     throw error
   }
 }

@@ -31,6 +31,7 @@ export const emailTypeSchema = z.enum([
   'visit-canceled',
   'visit-reassigned',
   'visit-daily-digest',
+  'payment-receipt',
 ])
 
 export type EmailType = z.infer<typeof emailTypeSchema>
@@ -41,6 +42,27 @@ export type EmailRecipient = {
 }
 
 type WithRecipient<T> = T & { recipient: EmailRecipient }
+
+/**
+ * White-label sender identity + brand block for customer-facing, org-branded emails
+ * (plans/dispatch/money/15-payment-receipt-emails.md). Composed into any email payload that
+ * should read as the business rather than Auxx. The From ADDRESS always stays the verified
+ * `SYSTEM_FROM_EMAIL` — only the display name (`fromName`) and `replyTo` carry the business.
+ */
+export type EmailBrandIdentity = {
+  /** From display name (business name, fallback org name). */
+  fromName: string
+  /** Reply-To (business email, fallback `EMAIL_REPLY_TO`). */
+  replyTo?: string
+  businessName: string
+  businessAddressLines: string[]
+  businessPhone?: string
+  businessWebsite?: string
+  /** Absolute, publicly-fetchable logo URL (org `documents.logo`); omitted → name-only header. */
+  logoUrl?: string
+  /** Brand accent color (hex) for the CTA button. */
+  accentColor?: string
+}
 
 export type EmailPayloadByType = {
   verification: WithRecipient<{ verificationLink: string }>
@@ -200,6 +222,27 @@ export type EmailPayloadByType = {
     }>
     scheduleUrl: string
   }>
+  /**
+   * Customer-facing, org-branded payment receipt (plans/dispatch/money/15-payment-receipt-emails.md)
+   * — fired on Stripe settlement for a quote deposit (`context: 'deposit'`) or an invoice payment
+   * (`context: 'invoice'`). White-label: the identity/brand block below makes it read as the
+   * business (From display name + Reply-To + logo/footer), while the From address stays the
+   * Auxx-verified SES domain. All amounts are integer cents.
+   */
+  'payment-receipt': WithRecipient<
+    EmailBrandIdentity & {
+      context: 'deposit' | 'invoice'
+      documentNumber: string
+      amountPaid: number
+      currency: string
+      remainingBalance: number
+      /** ISO timestamp or `yyyy-mm-dd`. */
+      paymentDate: string
+      method?: string
+      /** Absolute public link back to the quote-view / pay page. */
+      viewUrl: string
+    }
+  >
 }
 
 export type SendEmailJobData<T extends EmailType = EmailType> = {

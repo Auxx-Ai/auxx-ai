@@ -7,7 +7,7 @@ import type { SettingValue } from '@auxx/lib/settings/client'
 import { getFileRefDownloadUrl, toFileRef } from '@auxx/types/file-ref'
 import { Button } from '@auxx/ui/components/button'
 import { toastError } from '@auxx/ui/components/toast'
-import { Building2, Eye, FileText, Lock, Palette, Receipt } from 'lucide-react'
+import { Building2, Eye, FileText, Lock, Mail, Palette, Receipt } from 'lucide-react'
 import {
   type AddressStruct,
   AddressStructFields,
@@ -86,6 +86,7 @@ const SCALAR_DRAFT_KEYS = [
   'documents.invoice.lineDisplay',
   'documents.invoice.showDescriptions',
   'documents.invoice.showPaymentHistory',
+  'documents.receiptEmail.enabled',
 ] as const
 
 const BUSINESS_KEY = 'documents.business'
@@ -298,6 +299,19 @@ function DocumentsSettingsBody({ breadcrumbs }: { breadcrumbs: { title: string }
                 settingKey='documents.invoice.showPaymentHistory'
                 title='Show payment history'
                 {...controlled('documents.invoice.showPaymentHistory')}
+              />
+            </FieldPanel>
+          </SettingsSection>
+
+          <SettingsSection
+            icon={Mail}
+            title='Payments'
+            description='Emails sent to the customer when they pay online.'>
+            <FieldPanel className='mt-1 p-0' resizeId='documents-settings' defaultLabelWidth={200}>
+              <SettingsFieldRow
+                settingKey='documents.receiptEmail.enabled'
+                title='Email a receipt on payment'
+                {...controlled('documents.receiptEmail.enabled')}
               />
             </FieldPanel>
           </SettingsSection>

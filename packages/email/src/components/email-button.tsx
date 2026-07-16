@@ -8,11 +8,21 @@ interface EmailButtonProps {
   label: string
   href: string
   className?: string
+  /** Inline overrides (e.g. brand accent `backgroundColor`) — win over the default black bg. */
+  style?: React.CSSProperties
 }
 
-export function EmailButton({ label, href, className }: EmailButtonProps): React.JSX.Element {
+export function EmailButton({
+  label,
+  href,
+  className,
+  style,
+}: EmailButtonProps): React.JSX.Element {
   return (
-    <Button className={cn('rounded-md bg-black px-6 py-3 text-white', className)} href={href}>
+    <Button
+      className={cn('rounded-md bg-black px-6 py-3 text-white', className)}
+      href={href}
+      style={style}>
       {label}
     </Button>
   )

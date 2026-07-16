@@ -151,7 +151,12 @@ function firstTyped(
  * Shared billing-party (contact) loader for the quote/invoice PDF payloads — same fields,
  * same "no street address on contact today" shape (§ QuotePdfContact).
  */
-async function loadPdfContact(
+/**
+ * Resolve a document's billing-party contact (name/email/phone/address) via `batchGetValues` so
+ * the NAME field composes correctly (see the reader note below). Exported so the branded
+ * payment-receipt path (money/15) can reuse the exact same contact resolution the PDF uses.
+ */
+export async function loadPdfContact(
   cache: ReturnType<typeof getOrgCache>,
   handler: UnifiedCrudHandler,
   organizationId: string,

@@ -525,6 +525,16 @@ export const SETTINGS_CATALOG = {
       'Org default deposit value — percent (0-100) or a currency amount (50 = $50.00) ' +
       'depending on depositType; prefills new quotes',
   },
+  'documents.receiptEmail.enabled': {
+    scope: 'DOCUMENTS',
+    access: 'org',
+    fieldType: 'CHECKBOX',
+    options: { variant: 'switch' },
+    defaultValue: true,
+    description:
+      'Email an org-branded receipt to the customer when they pay a deposit or invoice online ' +
+      '(plans/dispatch/money/15) — off, no receipt is sent',
+  },
   'documents.invoice.dueDays': {
     scope: 'DOCUMENTS',
     access: 'org',

@@ -77,6 +77,7 @@ export {
   type PartialPaymentBounds,
   resolvePartialPaymentBounds,
 } from './payments/partial'
+export { sendPaymentReceipt } from './payments/receipt-email'
 export {
   applyStripeEvent,
   type CreateStripeCheckoutInput,

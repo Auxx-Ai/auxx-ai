@@ -21,6 +21,7 @@ export {
   type DocumentPdfPayload,
   type InvoicePdfPayload,
   type InvoicePdfPaymentRow,
+  loadPdfContact,
   type QuotePdfContact,
   type QuotePdfLineItem,
   type QuotePdfPayload,
