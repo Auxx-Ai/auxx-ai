@@ -44,18 +44,21 @@ export function EventDockPanel({
   const setEventDockOpen = useDispatchSidebarStore((s) => s.setEventDockOpen)
   const setEventDockSide = useDispatchSidebarStore((s) => s.setEventDockSide)
 
-  // Esc clears the selection (→ guide state) while docked with an event selected. A plain
+  // Esc clears the selection (→ guide state) while docked with an event selected, then closes
+  // the empty guide on the next press. A plain
   // window listener rather than fighting existing dialog/popover Esc handling — nothing else
   // owns Esc here since the floating `EventPopover`/its `Popover` primitive isn't mounted in
   // dock mode (board-calendar-grid.tsx renders a plain click target instead).
   useEffect(() => {
-    if (!dock.open || !event) return
+    if (!dock.open) return
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onActiveVisitChange(null)
+      if (e.key !== 'Escape') return
+      if (event) onActiveVisitChange(null)
+      else setEventDockOpen(false)
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [dock.open, event, onActiveVisitChange])
+  }, [dock.open, event, onActiveVisitChange, setEventDockOpen])
 
   return (
     <DockPanel

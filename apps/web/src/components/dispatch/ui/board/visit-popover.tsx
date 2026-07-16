@@ -28,6 +28,7 @@ import { useConfirm } from '~/hooks/use-confirm'
 import { api } from '~/trpc/react'
 import type { ExistingVisitForOverlap } from '../schedule-popover'
 import { AssigneeRow } from '../shared/assignee-row'
+import { InlineEventTimePicker } from '../shared/inline-event-time-picker'
 import { RepeatEditor } from '../shared/repeat-editor'
 import { useRecurrenceEditor } from '../shared/use-recurrence-editor'
 import { useScheduleHints } from '../shared/use-schedule-hints'
@@ -208,6 +209,7 @@ export function VisitPopoverContent({
           end={event.end}
           disabled={!canEdit}
           warnings={hints}
+          renderTimeEditor={(props) => <InlineEventTimePicker {...props} />}
           onChange={
             canEdit
               ? ({ start, end }, scope) => {

@@ -17,6 +17,7 @@ import { type ReactNode, useState } from 'react'
 import type { RecordId } from '~/components/resources'
 import { api } from '~/trpc/react'
 import { AssigneeRow } from './shared/assignee-row'
+import { InlineEventTimePicker } from './shared/inline-event-time-picker'
 import { RepeatEditor } from './shared/repeat-editor'
 import { useRecurrenceEditor } from './shared/use-recurrence-editor'
 import { useScheduleHints } from './shared/use-schedule-hints'
@@ -192,6 +193,7 @@ export function SchedulePopoverContent({
         start={startTime}
         end={endTime}
         warnings={hints}
+        renderTimeEditor={(props) => <InlineEventTimePicker {...props} />}
         onChange={handleDateTimeChange}
         onDateToggle={
           isDraft

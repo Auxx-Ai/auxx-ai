@@ -10,7 +10,7 @@ import {
   EventPopover,
   type RenderEventContext,
 } from '@auxx/ui/components/event-calendar'
-import { useCallback, useMemo } from 'react'
+import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { useDispatchSidebarStore } from '../../stores/dispatch-sidebar-store'
 import type { ExistingVisitForOverlap } from '../schedule-popover'
 import type { useBoardMutations } from './hooks/use-board-mutations'
@@ -71,6 +71,13 @@ export function BoardCalendarGrid({
   isDockOpen,
 }: BoardCalendarGridProps) {
   const setEventDockOpen = useDispatchSidebarStore((s) => s.setEventDockOpen)
+  // Docking transfers the currently controlled popover into the panel. Radix may report the
+  // floating layer closing during that same commit; ignore that close so it cannot clear the
+  // selected event and make the dock briefly reopen on its empty guide state.
+  const dockingEventIdRef = useRef<string | null>(null)
+  useEffect(() => {
+    if (isDockOpen) dockingEventIdRef.current = null
+  }, [isDockOpen])
 
   const renderEvent = useCallback(
     (event: DispatchVisitEvent, ctx: RenderEventContext) => {
@@ -95,7 +102,10 @@ export function BoardCalendarGrid({
       return (
         <EventPopover
           open={isOpen}
-          onOpenChange={(open) => onActiveVisitChange(open ? event.id : null)}
+          onOpenChange={(open) => {
+            if (!open && dockingEventIdRef.current === event.id) return
+            onActiveVisitChange(open ? event.id : null)
+          }}
           series={{
             isMember: Boolean(event.recurrenceRuleId),
             labels: { this: 'This visit', following: 'This and following', all: 'All visits' },
@@ -108,7 +118,11 @@ export function BoardCalendarGrid({
             existingVisits={existingVisits}
             onClose={() => onActiveVisitChange(null)}
             onOpenRecord={onOpenRecord}
-            onDock={() => setEventDockOpen(true)}
+            onDock={() => {
+              dockingEventIdRef.current = event.id
+              onActiveVisitChange(event.id)
+              setEventDockOpen(true)
+            }}
           />
         </EventPopover>
       )

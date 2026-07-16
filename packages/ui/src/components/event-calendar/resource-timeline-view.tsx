@@ -199,13 +199,19 @@ export function ResourceTimelineView<T extends EventCalendarItem = EventCalendar
   // Set when a scroll-settle emits onDateChange — that date echoing back as the
   // `currentDate` prop must NOT re-scroll (the user is already looking at it).
   const lastEmittedDateRef = useRef<number | null>(null)
+  const lastDayWidthRef = useRef(dayWidth)
+  const lastScrollLeftRef = useRef(0)
 
   useLayoutEffect(() => {
-    if (lastEmittedDateRef.current === currentDateRef.current.getTime()) return
+    const dayWidthChanged = lastDayWidthRef.current !== dayWidth
+    if (!dayWidthChanged && lastEmittedDateRef.current === currentDateRef.current.getTime()) return
     const el = scrollRef.current
     if (!el) return
+    lastDayWidthRef.current = dayWidth
     programmaticScrollRef.current = true
-    el.scrollTo({ left: targetIndex * dayWidth })
+    const targetOffset = targetIndex * dayWidth
+    el.scrollTo({ left: targetOffset })
+    lastScrollLeftRef.current = targetOffset
     const timeout = setTimeout(() => {
       programmaticScrollRef.current = false
     }, 300)
@@ -218,7 +224,6 @@ export function ResourceTimelineView<T extends EventCalendarItem = EventCalendar
   // and skips when unchanged, so a pure vertical (time-axis) scroll never yanks
   // sideways. Snapping is GUARDED by snapEnabled: when a day is wider than the
   // viewport we skip the snap-scroll but still emit the (rounded) leftmost day.
-  const lastScrollLeftRef = useRef(0)
   const settleTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const handleScroll = useCallback(() => {
     clearTimeout(settleTimeoutRef.current)

@@ -317,10 +317,13 @@ export function MonthView<T extends EventCalendarItem = EventCalendarItem>({
 
   // Rows are fixed-height, so the target offset is exact math — scrolling directly
   // (instead of virtualizer.scrollToIndex) sidesteps its measurement-cache staleness.
+  const lastRowHeightRef = useRef(rowHeight)
   useLayoutEffect(() => {
-    if (lastEmittedDateRef.current === currentDateRef.current.getTime()) return
+    const rowHeightChanged = lastRowHeightRef.current !== rowHeight
+    if (!rowHeightChanged && lastEmittedDateRef.current === currentDateRef.current.getTime()) return
     const el = scrollRef.current
     if (!el) return
+    lastRowHeightRef.current = rowHeight
     programmaticScrollRef.current = true
     el.scrollTo({ top: targetIndex * rowHeight })
     const timeout = setTimeout(() => {
