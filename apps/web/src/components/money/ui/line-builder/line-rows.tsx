@@ -12,13 +12,17 @@
 // line-builder.tsx.
 //
 // Keyboard model (use-line-nav.ts): rows are a plain `group/tree-row grid`
-// (not the tree `GridTreeRow` — we only kept its `TreeRowButton` hover-action
-// primitive). Each navigable cell carries `data-line-row`/`data-line-col` so a
-// single container-level keydown listener can move focus spreadsheet-style
-// across name → qty → rate, adding a fresh draft when nav lands past the
-// last row. The name cell is a free-text `<input>`: type any product name, or
-// press `/` on an empty cell (or click the trailing pick icon) to open the
-// catalog picker and drop in a pre-existing product.
+// (not the tree `GridTreeRow` — we only kept its `TreeRowButton` primitive).
+// Each navigable cell carries `data-line-row`/`data-line-col` so a single
+// container-level keydown listener can move focus spreadsheet-style across
+// name → qty → rate, adding a fresh draft when nav lands past the last row.
+//
+// Row anatomy: the name cell owns everything textual about the line — name
+// input (`/` or the pick button opens the catalog picker), state badges
+// (category / tax-exempt / optional, clickable to change), a description
+// button when one exists, and the `⋯` row menu (description, optional,
+// taxable, delete). Qty/rate are chromeless inline editors; total is
+// computed. The drag grip floats in the left gutter, hover-revealed.
 
 import { FieldType } from '@auxx/database/enums'
 import {
@@ -38,6 +42,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
+import { Kbd, KbdGroup } from '@auxx/ui/components/kbd'
 import { SimpleTooltip, TooltipExplanation } from '@auxx/ui/components/tooltip'
 import { TreeRowButton } from '@auxx/ui/components/tree-row'
 import { cn } from '@auxx/ui/lib/utils'
@@ -57,28 +62,35 @@ import {
   Trash2,
   X,
 } from 'lucide-react'
-import { type ReactNode, useRef, useState } from 'react'
+import { type ReactNode, useEffect, useRef, useState } from 'react'
 import { type RecordId, type RecordMeta, toRecordId } from '~/components/resources'
 import { useSaveFieldValue } from '~/components/resources/hooks/use-save-field-value'
 import { useSystemValues } from '~/components/resources/hooks/use-system-values'
 import { type CatalogGroupPick, type CatalogItemPick, CatalogPicker } from './catalog-picker'
 import { formatCurrency, titleCase } from './shared'
+import { LINE_ROW_ACTION_EVENT, type LineRowAction } from './use-line-hotkeys'
 
 /**
  * Shared `grid-template-columns` for the header row and every line row (the
  * mapping-columns.ts idiom) — one template is what keeps the qty / rate /
- * total columns aligned. Columns: description (fills) │ qty (widened for a
+ * total columns aligned. Columns: description (fills) │ qty (sized for a
  * smart `2.375 cy` quantity+unit cell, money plan 13 §5) │ rate │ total.
  */
-export const LINE_COLS = 'minmax(10rem, 1fr) 7rem 5.5rem 6.5rem'
+export const LINE_COLS = 'minmax(10rem, 1fr) 5.5rem 5.5rem 6.5rem'
 
 // Module-level (stable-reference) attribute lists — `useSystemValues` memoizes
-// on the array identity, so these must never be inline literals.
-const NAME_ATTRS = ['line_item_name', 'line_item_description', 'line_item_category']
+// on the array identity, so these must never be inline literals. Taxable rides
+// with the name attrs: everything that shows it (rest badge, `⋯` menu toggle)
+// lives in the name cell.
+const NAME_ATTRS = [
+  'line_item_name',
+  'line_item_description',
+  'line_item_category',
+  'line_item_taxable',
+]
 const QTY_ATTRS = ['line_item_qty', 'line_item_unit']
 const PRICE_ATTRS = ['line_item_unit_price']
 const TOTAL_ATTRS = ['line_item_qty', 'line_item_unit_price']
-const TAXABLE_ATTRS = ['line_item_taxable']
 // Optional/optionalSelected (money plan 18 §3) — quotes only; `LineRow` gates the
 // fetch on `documentType === 'quote'` so non-quote surfaces never subscribe.
 const OPTIONAL_ATTRS = ['line_item_optional', 'line_item_optional_selected']
@@ -179,19 +191,16 @@ export function relKeyForDocumentType(documentType: 'quote' | 'work_order' | 'in
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * One line's grid row — a `group/tree-row` so hover/focus-within-revealed
- * chrome (grip, `⋯` row menu) fades in on row hover. Owns the shared column
- * template + the `data-line-row`/`col` tags that {@link useLineNav} focus-hops
- * between. Name/qty/price are the three navigable cells (cols 0–2); total
- * rides outside the nav order. `menu` is the row-level `⋯` actions dropdown
- * ({@link LineRowMenu}), absolutely pinned to the name/qty column seam — the
- * col-0 wrapper is `relative` so the pin anchors to the column, not the row.
+ * One line's grid row — a `group/tree-row` so hover-revealed chrome (the drag
+ * grip) fades in on row hover. Owns the shared column template + the
+ * `data-line-row`/`col` tags that {@link useLineNav} focus-hops between.
+ * Name/qty/price are the three navigable cells (cols 0–2); total rides
+ * outside the nav order.
  */
 function LineGridRow({
   rowIndex,
   grip,
   name,
-  menu,
   qty,
   price,
   total,
@@ -200,7 +209,6 @@ function LineGridRow({
   rowIndex: number
   grip: ReactNode
   name: ReactNode
-  menu?: ReactNode
   qty: ReactNode
   price: ReactNode
   total: ReactNode
@@ -221,14 +229,9 @@ function LineGridRow({
           optional && 'pl-3'
         )}
         style={{ gridTemplateColumns: LINE_COLS }}>
-        {/* Col 0 — name input (the grip sits in the gutter, not this column).
-            `relative` anchors the `⋯` row menu to the column's right edge. */}
-        <div
-          data-line-row={rowIndex}
-          data-line-col={0}
-          className='relative flex min-w-0 items-center'>
+        {/* Col 0 — name input (the grip sits in the gutter, not this column). */}
+        <div data-line-row={rowIndex} data-line-col={0} className='flex min-w-0 items-center'>
           {name}
-          {menu}
         </div>
 
         <div data-line-row={rowIndex} data-line-col={1} className='flex items-center'>
@@ -272,26 +275,32 @@ function GripSlot({
 /**
  * Compact category badge — a single-letter pill (S/M/L…) whose letter and
  * color derive from the field definition's option list, with the full label in
- * a tooltip. Editable rows make the badge a dropdown trigger for switching
- * category (or clearing it); an uncategorized editable line shows a
- * hover-revealed ghost `+` badge in the same slot so category can be set
- * without hunting through menus. Values no longer in the option list (an org
- * removed the option) fall back to a neutral badge with the title-cased value.
+ * a tooltip. Only rendered when the line HAS a category; editable rows make
+ * the badge a dropdown trigger for switching category (or clearing it).
+ * The menu is controlled (`open`/`onOpenChange`) so the category shortcut and
+ * the `⋯` menu's "Set category" can open it on an uncategorized line — a
+ * transient `+` badge anchors the popover only while it's held open.
+ * Values no longer in the option list (an org removed the option) fall back
+ * to a neutral badge with the title-cased value.
  */
 function CategoryBadge({
   category,
   options,
   readOnly,
+  open,
+  onOpenChange,
   onCommitCategory,
 }: {
   category: string | null
   options: CategoryOption[]
   readOnly: boolean
+  open: boolean
+  onOpenChange: (open: boolean) => void
   onCommitCategory: (value: string | null) => void
 }) {
   const option = options.find((o) => o.value === category) ?? null
   const label = option?.label ?? (category ? titleCase(category) : null)
-  const letter = label ? label.charAt(0).toUpperCase() : null
+  const letter = label?.charAt(0).toUpperCase() ?? null
 
   if (readOnly) {
     if (!category) return null
@@ -307,21 +316,19 @@ function CategoryBadge({
     )
   }
 
+  // No badge at rest without a category — the menu (and its `+` anchor badge)
+  // mounts only while the shortcut / `⋯` action holds it open.
+  if (!category && !open) return null
+
   return (
-    <DropdownMenu>
+    <DropdownMenu open={open} onOpenChange={onOpenChange}>
       <SimpleTooltip content={label ?? 'Set category'} allowInteraction>
         <DropdownMenuTrigger asChild>
           <Badge
             asChild
             size='xs'
             variant={category ? badgeVariantForColor(option?.color) : 'gray'}
-            className={cn(
-              'shrink-0 cursor-pointer font-medium leading-tight',
-              // Ghost `+` for an uncategorized line — only materializes on row
-              // hover/focus (and stays while its own menu is open).
-              !category &&
-                'opacity-0 transition-opacity data-[state=open]:opacity-100 group-focus-within/tree-row:opacity-100 group-hover/tree-row:opacity-100'
-            )}>
+            className='shrink-0 cursor-pointer font-medium leading-tight'>
             {/* stopPropagation: the surrounding name-cell wrapper click focuses
                 the name input — a badge click must only open this menu. */}
             <button type='button' tabIndex={-1} onClick={(e) => e.stopPropagation()}>
@@ -364,26 +371,51 @@ function TaxExemptBadge({ taxable }: { taxable: boolean }) {
  * "Optional" state tag for a deselectable quote line (money plan 18 §3) — an `O`
  * badge (full word in the tooltip, matching the single-letter category badges)
  * plus an inline pre-check checkbox bound to `optionalSelected`; the checkbox's
- * tooltip carries the "Recommended" meaning a text label used to. `readOnly`
- * disables the checkbox instead of hiding it, so a read-only builder still
- * shows the customer's current selection.
+ * tooltip carries the "Recommended" meaning a text label used to. On editable
+ * rows the badge itself toggles the line back to required (the `⋯` menu's
+ * "Mark as optional" is its set-side counterpart). `readOnly` disables
+ * the checkbox instead of hiding it, so a read-only builder still shows the
+ * customer's current selection.
  */
 function OptionalLineTag({
   optionalSelected,
   readOnly,
   onToggleSelected,
+  onToggleOptional,
 }: {
   optionalSelected: boolean
   readOnly: boolean
   onToggleSelected: (next: boolean) => void
+  onToggleOptional: (next: boolean) => void
 }) {
   return (
     <span className='flex shrink-0 items-center gap-1.5'>
-      <SimpleTooltip content='Optional — the customer chooses whether to include this line'>
-        <Badge size='xs' variant='sky' className='shrink-0 font-medium leading-tight'>
-          O
-        </Badge>
-      </SimpleTooltip>
+      {readOnly ? (
+        <SimpleTooltip content='Optional — the customer chooses whether to include this line'>
+          <Badge size='xs' variant='sky' className='shrink-0 font-medium leading-tight'>
+            O
+          </Badge>
+        </SimpleTooltip>
+      ) : (
+        <SimpleTooltip content='Optional — click to make required'>
+          <Badge
+            asChild
+            size='xs'
+            variant='sky'
+            className='shrink-0 cursor-pointer font-medium leading-tight'>
+            {/* stopPropagation: the name-cell wrapper click focuses the input. */}
+            <button
+              type='button'
+              tabIndex={-1}
+              onClick={(e) => {
+                e.stopPropagation()
+                onToggleOptional(false)
+              }}>
+              O
+            </button>
+          </Badge>
+        </SimpleTooltip>
+      )}
       <SimpleTooltip
         content={
           optionalSelected ? 'Recommended — pre-checked for the customer' : 'Not pre-checked'
@@ -403,18 +435,27 @@ function OptionalLineTag({
 }
 
 /**
- * Primary line cell — a free-text name `<input>` that owns everything about the
- * item. Type any product name (an ad-hoc line, no catalog rel); press `/` on an
- * empty cell (or click the trailing pick icon) to open the catalog picker and
- * drop in a pre-existing product, which overwrites name/price/category/taxable
- * and keeps the catalog relationship. State reads as badges at rest (category —
- * clickable to change it — tax-exempt, optional); a trailing description-edit
- * affordance swaps the input for an autosize textarea in place — the line never
- * grows a permanent second row. While focused, only the two editing actions
- * (pick, description) render inline; the line-level actions live in the row's
- * `⋯` menu ({@link LineRowMenu}). Purely presentational: values + commit
- * callbacks are props, so both the store-bound real cell and the local-state
- * draft cell render the exact same markup.
+ * Primary line cell — a free-text name `<input>` that owns everything about
+ * the item. Type any product name (an ad-hoc line, no catalog rel); press `/`
+ * on an empty cell (or click the pick button while editing) to open the
+ * catalog picker and drop in a pre-existing product, which overwrites
+ * name/price/category/taxable and keeps the catalog relationship.
+ *
+ * Cell anatomy, left to right:
+ * - name text (swaps to the input on focus; pick is the one editing-only
+ *   action — it rewrites the line's identity, so it belongs to the name edit)
+ * - state badges at rest — only for states actually set: category (click to
+ *   change), tax-exempt `T`, optional `O` + pre-check checkbox (setting
+ *   category comes from a catalog pick; marking optional lives in the `⋯` menu)
+ * - standing right-edge controls — a description button (only when a
+ *   description exists; ADDING one lives in the `⋯` menu) and the `⋯` row
+ *   menu ({@link LineRowMenu}); both in-flow, so they never overlap the
+ *   editing UI
+ *
+ * Editing a description swaps the cell for an autosize textarea in place —
+ * the line never grows a permanent second row. Purely presentational: values
+ * + commit callbacks are props, so both the store-bound real cell and the
+ * local-state draft cell render the exact same markup.
  */
 function LineNameCellView({
   name,
@@ -428,12 +469,15 @@ function LineNameCellView({
   showOptionalControls,
   optional,
   optionalSelected,
+  onToggleOptional,
   onToggleOptionalSelected,
+  onToggleTaxable,
   onPickCatalogItem,
   onSelectGroup,
   onFreeText,
   onCommitDescription,
   onCommitCategory,
+  onDelete,
 }: {
   name: string
   description: string | null
@@ -448,12 +492,16 @@ function LineNameCellView({
   showOptionalControls: boolean
   optional: boolean
   optionalSelected: boolean
+  onToggleOptional: (next: boolean) => void
   onToggleOptionalSelected: (next: boolean) => void
+  onToggleTaxable: (next: boolean) => void
   onPickCatalogItem: (pick: CatalogItemPick) => void
   onSelectGroup: (pick: CatalogGroupPick) => void
   onFreeText: (text: string) => void
   onCommitDescription: (value: string | null) => void
   onCommitCategory: (value: string | null) => void
+  /** Delete this line (real record or draft). */
+  onDelete: () => void
 }) {
   const inputRef = useRef<HTMLInputElement>(null)
   const [pickerOpen, setPickerOpen] = useState(false)
@@ -482,14 +530,87 @@ function LineNameCellView({
     setDescriptionDraft(null)
   }
 
+  // Category menu open state lives here (not in CategoryBadge) so the row
+  // shortcut can open it programmatically — including on an uncategorized
+  // line, where the badge only mounts while the menu is held open.
+  const [categoryMenuOpen, setCategoryMenuOpen] = useState(false)
+
+  // The badge cluster only renders at rest (`!focused`), so opening the
+  // category menu from a focused input must first commit + collapse the name
+  // edit — otherwise the menu's anchor badge wouldn't be mounted.
+  const openCategoryMenu = () => {
+    commitName()
+    setFocused(false)
+    setCategoryMenuOpen(true)
+  }
+
+  // Row-action shortcuts (use-line-hotkeys.ts) arrive as CustomEvents on the
+  // enclosing name cell (`[data-line-col="0"]`) — every action's state or
+  // callback lives in this view, so one listener handles all five. The
+  // ref-indirection keeps the mount-time listener reading fresh state/props
+  // on every dispatch.
+  const rootRef = useRef<HTMLDivElement>(null)
+  const actionRef = useRef<(action: LineRowAction) => void>(() => {})
+  actionRef.current = (action) => {
+    switch (action) {
+      case 'description':
+        // Already editing the description — don't reset the in-progress text.
+        if (descriptionDraft === null) setDescriptionDraft(description ?? '')
+        break
+      case 'category':
+        openCategoryMenu()
+        break
+      case 'optional':
+        if (showOptionalControls) onToggleOptional(!optional)
+        break
+      case 'taxable':
+        onToggleTaxable(!taxable)
+        break
+      case 'delete':
+        onDelete()
+        break
+    }
+  }
+  useEffect(() => {
+    // The cell node is rendered by LineGridRow and outlives this view's
+    // branch swaps (rest ↔ description editor), so binding once is safe.
+    const cell = rootRef.current?.closest('[data-line-col]')
+    if (!cell) return
+    const onAction = (e: Event) => actionRef.current((e as CustomEvent<LineRowAction>).detail)
+    cell.addEventListener(LINE_ROW_ACTION_EVENT, onAction)
+    return () => cell.removeEventListener(LINE_ROW_ACTION_EVENT, onAction)
+  }, [])
+
+  // The at-rest state-badge cluster — shared verbatim by the read-only and
+  // editable renders below; each badge renders only when its state is set.
+  const stateBadges = (
+    <>
+      <CategoryBadge
+        category={category}
+        options={categoryOptions}
+        readOnly={readOnly}
+        open={categoryMenuOpen}
+        onOpenChange={setCategoryMenuOpen}
+        onCommitCategory={onCommitCategory}
+      />
+      <TaxExemptBadge taxable={taxable} />
+      {showOptionalControls && optional && (
+        <OptionalLineTag
+          optionalSelected={optionalSelected}
+          readOnly={readOnly}
+          onToggleSelected={onToggleOptionalSelected}
+          onToggleOptional={onToggleOptional}
+        />
+      )}
+    </>
+  )
+
   // Description edit mode — replaces the input with an autosize textarea in the
   // same slot (single line at rest, grows while typing) + confirm/cancel. The
   // grid nav hook leaves textareas fully native, so Enter confirms here.
-  // `pr-5` clears the `⋯` row menu pinned at the column seam (focus-within
-  // keeps it visible while typing), so it never overlaps the cancel button.
   if (editing) {
     return (
-      <div className='flex min-w-0 flex-1 items-center gap-1 py-1 pr-5'>
+      <div ref={rootRef} className='flex min-w-0 flex-1 items-center gap-1 py-1'>
         <AutosizeTextarea
           value={descriptionDraft ?? ''}
           onChange={(e) => setDescriptionDraft(e.target.value)}
@@ -527,20 +648,7 @@ function LineNameCellView({
           className={cn('min-w-0 truncate px-1 text-sm', !name && 'text-muted-foreground italic')}>
           {name || 'Untitled line'}
         </span>
-        <CategoryBadge
-          category={category}
-          options={categoryOptions}
-          readOnly
-          onCommitCategory={onCommitCategory}
-        />
-        <TaxExemptBadge taxable={taxable} />
-        {showOptionalControls && optional && (
-          <OptionalLineTag
-            optionalSelected={optionalSelected}
-            readOnly
-            onToggleSelected={onToggleOptionalSelected}
-          />
-        )}
+        {stateBadges}
         {description && <TooltipExplanation text={description} />}
       </div>
     )
@@ -549,11 +657,7 @@ function LineNameCellView({
   const value = nameDraft ?? name
 
   return (
-    // `pr-5` while focused clears the `⋯` row menu pinned at the column seam
-    // (focus-within keeps it visible), so it never overlaps the trailing
-    // description button. At rest the content flows edge to edge — the menu
-    // only materializes on hover, over what is normally dead space.
-    <div className={cn('flex min-w-0 flex-1 items-center gap-1.5 py-1', focused && 'pr-5')}>
+    <div ref={rootRef} className='flex min-w-0 flex-1 items-center gap-1.5 py-1'>
       {/* CatalogPicker stays mounted across the text↔input swap so its popover
           anchor never detaches; only its inner trigger changes shape. */}
       <CatalogPicker
@@ -607,52 +711,52 @@ function LineNameCellView({
               </span>
             </button>
           )}
-          {/* State badges (category, tax-exempt, Optional tag) sit next to the
-              label; hidden while editing. */}
-          {!focused && (
-            <>
-              <CategoryBadge
-                category={category}
-                options={categoryOptions}
-                readOnly={false}
-                onCommitCategory={onCommitCategory}
-              />
-              <TaxExemptBadge taxable={taxable} />
-              {showOptionalControls && optional && (
-                <OptionalLineTag
-                  optionalSelected={optionalSelected}
-                  readOnly={false}
-                  onToggleSelected={onToggleOptionalSelected}
-                />
-              )}
-            </>
-          )}
+          {/* State badges sit next to the label; hidden while editing. */}
+          {!focused && stateBadges}
         </div>
       </CatalogPicker>
 
-      {/* Editing actions only while focused — line-level actions (optional,
-          taxable, delete) live in the row's `⋯` menu instead. `onMouseDown`
-          preventDefault keeps the input from blur-collapsing before the click
-          handler runs. */}
+      {/* Pick is the one editing-only action (it rewrites the line's identity,
+          so it belongs to the name edit). `onMouseDown` preventDefault keeps
+          the input from blur-collapsing before the click handler runs. */}
       {focused && (
-        <>
-          <TreeRowButton
-            persistent
-            className='ml-auto'
-            tooltipText='Pick product'
-            onMouseDown={(e) => e.preventDefault()}
-            onClick={() => setPickerOpen(true)}>
-            <PackageSearch />
-          </TreeRowButton>
-          <TreeRowButton
-            persistent
-            tooltipText={description || 'Add description'}
-            onMouseDown={(e) => e.preventDefault()}
-            onClick={() => setDescriptionDraft(description ?? '')}>
-            <AlignLeft />
-          </TreeRowButton>
-        </>
+        <TreeRowButton
+          persistent
+          className='ml-auto'
+          tooltipText='Pick product'
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => setPickerOpen(true)}>
+          <PackageSearch />
+        </TreeRowButton>
       )}
+
+      {/* Description button — a standing control, but only when the line HAS a
+          description (adding one lives in the `⋯` menu) and only at rest (the
+          focused input already has the pick button beside it). */}
+      {!focused && description && (
+        <TreeRowButton
+          persistent
+          tabIndex={-1}
+          tooltipText={description}
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => setDescriptionDraft(description)}>
+          <AlignLeft />
+        </TreeRowButton>
+      )}
+
+      {/* The `⋯` menu — always the cell's LAST flex child so its slot is
+          stable whether the cell is at rest or editing (React keeps it
+          mounted across the swap, and it can never overlap the editing UI). */}
+      <LineRowMenu
+        taxable={taxable}
+        optional={optional}
+        showOptionalToggle={showOptionalControls}
+        hasDescription={!!description}
+        onEditDescription={() => setDescriptionDraft(description ?? '')}
+        onToggleTaxable={onToggleTaxable}
+        onToggleOptional={onToggleOptional}
+        onDelete={onDelete}
+      />
     </div>
   )
 }
@@ -661,25 +765,27 @@ function LineNameCellView({
 function LineNameCell({
   recordId,
   categoryOptions,
-  taxable,
   readOnly,
   currencyCode,
   showOptionalControls,
   optional,
   optionalSelected,
+  onToggleOptional,
   onToggleOptionalSelected,
   onSelectGroup,
+  onDelete,
 }: {
   recordId: RecordId
   categoryOptions: CategoryOption[]
-  taxable: boolean
   readOnly: boolean
   currencyCode: string
   showOptionalControls: boolean
   optional: boolean
   optionalSelected: boolean
+  onToggleOptional: (next: boolean) => void
   onToggleOptionalSelected: (next: boolean) => void
   onSelectGroup: (pick: CatalogGroupPick) => void
+  onDelete: () => void
 }) {
   const { values } = useSystemValues(recordId, NAME_ATTRS, { autoFetch: true })
   const { saveFieldValue, saveMultipleAsync } = useSaveFieldValue()
@@ -687,6 +793,7 @@ function LineNameCell({
   const name = (values.line_item_name as string | undefined) ?? ''
   const description = (values.line_item_description as string | null | undefined) ?? null
   const category = (values.line_item_category as string | null | undefined) ?? null
+  const taxable = (values.line_item_taxable as boolean | undefined) !== false
 
   const handlePick = (pick: CatalogItemPick) => {
     // COPY the catalog defaults onto the line (snapshot — catalog price changes
@@ -722,7 +829,11 @@ function LineNameCell({
       showOptionalControls={showOptionalControls}
       optional={optional}
       optionalSelected={optionalSelected}
+      onToggleOptional={onToggleOptional}
       onToggleOptionalSelected={onToggleOptionalSelected}
+      onToggleTaxable={(next) =>
+        saveFieldValue(recordId, 'line_item_taxable', next, FieldType.CHECKBOX)
+      }
       onPickCatalogItem={handlePick}
       onSelectGroup={onSelectGroup}
       onFreeText={(text) => saveFieldValue(recordId, 'line_item_name', text, FieldType.TEXT)}
@@ -732,6 +843,7 @@ function LineNameCell({
       onCommitCategory={(value) =>
         saveFieldValue(recordId, 'line_item_category', value, FieldType.SINGLE_SELECT)
       }
+      onDelete={onDelete}
     />
   )
 }
@@ -989,56 +1101,89 @@ function LineTotalCell({ recordId, currencyCode }: { recordId: RecordId; currenc
   return <LineTotalCellView qty={qty} unitPrice={unitPrice} currencyCode={currencyCode} />
 }
 
+/** Right-aligned shortcut hint in a `⋯` menu item — the platform modifier + literal keys. */
+function MenuShortcut({ keys }: { keys: string[] }) {
+  return (
+    <KbdGroup variant='outline' size='sm' className='ml-auto'>
+      <Kbd shortcut='meta' />
+      {keys.map((key) => (
+        <Kbd key={key}>{key}</Kbd>
+      ))}
+    </KbdGroup>
+  )
+}
+
 /**
- * Row-level `⋯` actions menu, pinned to the name/qty column seam — the one
- * spot with reliably dead space in a narrow drawer (name text is left-aligned,
- * qty is right-aligned). Revealed on row hover or focus-within (and while its
- * own menu is open), mouse/touch only (`tabIndex={-1}`, mirroring the qty
- * unit-dropdown precedent). Holds the line-level actions: optional toggle
- * (quotes only), taxable toggle, delete. The drag grip stays drag-only.
+ * Row-level `⋯` actions menu — rendered by {@link LineNameCellView} as the
+ * name cell's last flex child, so it sits at the column's right edge without
+ * ever overlapping the editing buttons. Always visible (it occupies its flex
+ * slot either way), styled like the other row action buttons; mouse/touch
+ * only (`tabIndex={-1}`, mirroring the qty unit-dropdown precedent). Holds
+ * the line-level actions: optional toggle (quotes only), taxable toggle,
+ * delete — each item shows its row shortcut (use-line-hotkeys.ts). The drag
+ * grip stays drag-only.
  */
 function LineRowMenu({
   taxable,
   optional,
   showOptionalToggle,
-  rowId,
+  hasDescription,
+  onEditDescription,
   onToggleTaxable,
   onToggleOptional,
-  deleteLine,
+  onDelete,
 }: {
   taxable: boolean
   optional: boolean
   showOptionalToggle: boolean
-  rowId: string
+  hasDescription: boolean
+  onEditDescription: () => void
   onToggleTaxable: (next: boolean) => void
   onToggleOptional: (next: boolean) => void
-  deleteLine: (lineId: string) => void
+  onDelete: () => void
 }) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <button
-          type='button'
+        {/* `onMouseDown` preventDefault: opening the menu must not blur (and
+            collapse) a focused name input — mirrors the pick/description
+            buttons. Radix opens on pointerdown, which fires before mousedown,
+            so the menu still opens. */}
+        <TreeRowButton
+          persistent
           tabIndex={-1}
-          className='-right-2.5 -translate-y-1/2 absolute top-1/2 z-10 flex h-5 w-5 items-center justify-center rounded-md border bg-background text-muted-foreground opacity-0 shadow-sm transition-opacity data-[state=open]:opacity-100 group-focus-within/tree-row:opacity-100 group-hover/tree-row:opacity-100'>
-          <Ellipsis className='size-3.5' />
-        </button>
+          tooltipText='Line actions'
+          className='ml-auto'
+          onMouseDown={(e) => e.preventDefault()}>
+          <Ellipsis />
+        </TreeRowButton>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align='end'>
+      {/* `onCloseAutoFocus` prevented: the trigger is mouse-only (tabIndex -1),
+          and restoring focus to it would steal the description textarea's
+          autofocus right after "Add description" is selected. */}
+      <DropdownMenuContent align='end' onCloseAutoFocus={(e) => e.preventDefault()}>
+        <DropdownMenuItem onSelect={onEditDescription}>
+          <AlignLeft />
+          {hasDescription ? 'Edit description' : 'Add description'}
+          <MenuShortcut keys={['⇧', 'D']} />
+        </DropdownMenuItem>
         {showOptionalToggle && (
           <DropdownMenuItem onSelect={() => onToggleOptional(!optional)}>
             <Tag />
             {optional ? 'Make required' : 'Mark as optional'}
+            <MenuShortcut keys={['⇧', 'O']} />
           </DropdownMenuItem>
         )}
         <DropdownMenuItem onSelect={() => onToggleTaxable(!taxable)}>
           {taxable ? <CircleX /> : <CircleCheck />}
           {taxable ? 'Mark tax exempt' : 'Mark taxable'}
+          <MenuShortcut keys={['⇧', 'X']} />
         </DropdownMenuItem>
         <DropdownMenuSeparator />
-        <DropdownMenuItem variant='destructive' onSelect={() => deleteLine(rowId)}>
+        <DropdownMenuItem variant='destructive' onSelect={onDelete}>
           <Trash2 />
           Delete line
+          <MenuShortcut keys={['⌫']} />
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
@@ -1091,11 +1236,6 @@ export function LineRow({
   const optionalSelected =
     !isQuote || (optionalValues.line_item_optional_selected as boolean | undefined) !== false
 
-  // Taxable is read here (not in a cell) because two surfaces show it: the
-  // name cell's rest badge and the `⋯` row menu's toggle.
-  const { values: taxableValues } = useSystemValues(recordId, TAXABLE_ATTRS, { autoFetch: true })
-  const taxable = (taxableValues.line_item_taxable as boolean | undefined) !== false
-
   return (
     <div
       ref={setNodeRef}
@@ -1109,34 +1249,20 @@ export function LineRow({
           <LineNameCell
             recordId={recordId}
             categoryOptions={categoryOptions}
-            taxable={taxable}
             readOnly={readOnly}
             currencyCode={currencyCode}
             showOptionalControls={isQuote}
             optional={optional}
             optionalSelected={optionalSelected}
+            onToggleOptional={(next) =>
+              saveFieldValue(recordId, 'line_item_optional', next, FieldType.CHECKBOX)
+            }
             onToggleOptionalSelected={(next) =>
               saveFieldValue(recordId, 'line_item_optional_selected', next, FieldType.CHECKBOX)
             }
             onSelectGroup={(pick) => onSelectGroup(recordId, pick)}
+            onDelete={() => deleteLine(record.id)}
           />
-        }
-        menu={
-          readOnly ? null : (
-            <LineRowMenu
-              taxable={taxable}
-              optional={optional}
-              showOptionalToggle={isQuote}
-              rowId={record.id}
-              onToggleTaxable={(next) =>
-                saveFieldValue(recordId, 'line_item_taxable', next, FieldType.CHECKBOX)
-              }
-              onToggleOptional={(next) =>
-                saveFieldValue(recordId, 'line_item_optional', next, FieldType.CHECKBOX)
-              }
-              deleteLine={deleteLine}
-            />
-          )
         }
         qty={<QuantityCell recordId={recordId} readOnly={readOnly} />}
         price={<PriceCell recordId={recordId} readOnly={readOnly} currencyCode={currencyCode} />}
@@ -1195,9 +1321,11 @@ export function DraftLineRow({
           showOptionalControls={isQuote}
           optional={draft.optional}
           optionalSelected={draft.optionalSelected}
+          onToggleOptional={(next) => void createDraft(draft.draftId, { optional: next })}
           onToggleOptionalSelected={(next) =>
             void createDraft(draft.draftId, { optionalSelected: next })
           }
+          onToggleTaxable={(next) => void createDraft(draft.draftId, { taxable: next })}
           onPickCatalogItem={(pick) =>
             void createDraft(draft.draftId, {
               name: pick.name,
@@ -1215,17 +1343,7 @@ export function DraftLineRow({
           onFreeText={(text) => void createDraft(draft.draftId, { name: text })}
           onCommitDescription={(value) => void createDraft(draft.draftId, { description: value })}
           onCommitCategory={(value) => void createDraft(draft.draftId, { category: value })}
-        />
-      }
-      menu={
-        <LineRowMenu
-          taxable={draft.taxable}
-          optional={draft.optional}
-          showOptionalToggle={isQuote}
-          rowId={draft.draftId}
-          onToggleTaxable={(next) => void createDraft(draft.draftId, { taxable: next })}
-          onToggleOptional={(next) => void createDraft(draft.draftId, { optional: next })}
-          deleteLine={deleteDraft}
+          onDelete={() => deleteDraft(draft.draftId)}
         />
       }
       qty={
