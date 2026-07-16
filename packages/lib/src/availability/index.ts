@@ -5,7 +5,7 @@
 // Functional + Drizzle, no model classes (money/dispatch are the direct siblings).
 
 export { addException, deleteException, listExceptions, updateException } from './exceptions'
-export { resolveAvailability } from './resolve'
+export { resolveAvailability, resolveAvailabilityForSubjects } from './resolve'
 export type {
   AddExceptionInput,
   AvailabilitySubject,

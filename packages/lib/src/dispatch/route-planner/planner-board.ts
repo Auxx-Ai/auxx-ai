@@ -9,7 +9,7 @@
 
 import { database, schema } from '@auxx/database'
 import { and, eq, gte, inArray, isNull, lte } from 'drizzle-orm'
-import { resolveAvailability } from '../../availability'
+import { resolveAvailabilityForSubjects } from '../../availability'
 import { getOrgCache } from '../../cache'
 import { extractFieldValueScalar } from '../../field-values'
 import { formatAddress } from '../address'
@@ -186,13 +186,11 @@ export async function getRoutePlannerBoard(
           eq(schema.WorkOrderVisit.status, 'scheduled')
         )
       ),
-    Promise.all(
-      filteredWorkers.map((w) =>
-        resolveAvailability(
-          { type: 'worker', organizationId, userId: w.userId },
-          { from: dateKey, to: dateKey }
-        )
-      )
+    // One batched resolve for ALL workers (index-aligned with `filteredWorkers`) — constant
+    // 4 OperatingHours queries instead of 4 per worker.
+    resolveAvailabilityForSubjects(
+      filteredWorkers.map((w) => ({ type: 'worker' as const, organizationId, userId: w.userId })),
+      { from: dateKey, to: dateKey }
     ),
     resolveOrgDepot(organizationId),
   ])

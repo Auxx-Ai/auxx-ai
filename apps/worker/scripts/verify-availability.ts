@@ -26,6 +26,7 @@ import {
   getWeeklyHours,
   listExceptions,
   resolveAvailability,
+  resolveAvailabilityForSubjects,
   saveWeeklyHours,
   type TimeRange,
   type WeeklyHours,
@@ -483,6 +484,45 @@ async function main() {
       !!wed10d && rangesEqual(wed10d.ranges, [{ start: 600, end: 840 }]),
       wed10d
     )
+
+    // ── 10e: batched resolve parity ──────────────────────────────────────────
+    // Exercises `resolveAvailabilityForSubjects` against the richest state from step 10:
+    // org weekly + org closed-exception + worker special-hours exception + worker weekly.
+    console.log('10e: resolveAvailabilityForSubjects parity')
+    const [batchOrg, batchWorker] = await resolveAvailabilityForSubjects(
+      [orgSubject, workerSubject],
+      window
+    )
+    const soloOrg = await resolveAvailability(orgSubject, window)
+    const soloWorker = await resolveAvailability(workerSubject, window)
+    check(
+      '10e: batch [org, worker] matches individual org resolve',
+      JSON.stringify(batchOrg) === JSON.stringify(soloOrg),
+      { batchOrg, soloOrg }
+    )
+    check(
+      '10e: batch [org, worker] matches individual worker resolve',
+      JSON.stringify(batchWorker) === JSON.stringify(soloWorker),
+      { batchWorker, soloWorker }
+    )
+    const [orgOnly] = await resolveAvailabilityForSubjects([orgSubject], window)
+    check(
+      '10e: org-only batch matches individual org resolve',
+      JSON.stringify(orgOnly) === JSON.stringify(soloOrg),
+      orgOnly
+    )
+    check(
+      '10e: empty batch returns []',
+      (await resolveAvailabilityForSubjects([], window)).length === 0
+    )
+    const mixedOrgRejected = await resolveAvailabilityForSubjects(
+      [orgSubject, { type: 'organization', organizationId: 'someone-elses-org' }],
+      window
+    ).then(
+      () => false,
+      (err) => err instanceof BadRequestError
+    )
+    check('10e: mixed-organization batch throws BadRequestError', mixedOrgRejected)
 
     // ── 11: getWeeklyHours null ───────────────────────────────────────────────
     console.log('11: getWeeklyHours null for a subject with zero weekly rows')
