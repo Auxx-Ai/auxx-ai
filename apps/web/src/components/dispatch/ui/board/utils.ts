@@ -6,6 +6,8 @@ import {
   addMonths,
   addWeeks,
   endOfWeek,
+  getDaysInMonth,
+  setDate as setDayOfMonth,
   startOfDay,
   startOfMonth,
   startOfWeek,
@@ -121,6 +123,24 @@ export function goToNextDate(view: BoardViewMode, date: Date, weekStartsOn: Week
   if (view === 'day' || view === 'timeline') return addDays(date, 1)
   if (view === 'week') return addWeeks(date, 1)
   return startOfWeek(addMonths(viewedMonthStart(date, weekStartsOn), 1), { weekStartsOn })
+}
+
+/**
+ * Month-view anchor reducer. The month stream re-anchors the board's active `date` on both
+ * chevron paging and scroll-settle (`month-view.tsx` emits the settled row's grid-boundary
+ * top-left day) — neither of which carries the day-of-month the user cares about. This keeps the
+ * previous anchor's day-of-month inside the newly *viewed* month (`startOfMonth(endOfWeek(...))`,
+ * the same "viewed month" rule the month stream uses), clamped to the month's length, so toggling
+ * to Map or Day view returns to that day. Day/week/timeline don't call this — their anchor is just
+ * the emitted first/leftmost day.
+ */
+export function withPreservedDayOfMonth(
+  prev: Date,
+  next: Date,
+  weekStartsOn: WeekStartIndex
+): Date {
+  const viewedMonth = startOfMonth(endOfWeek(next, { weekStartsOn }))
+  return setDayOfMonth(viewedMonth, Math.min(prev.getDate(), getDaysInMonth(viewedMonth)))
 }
 
 /** Only visits with both `startTime`/`endTime` render on the grid. */

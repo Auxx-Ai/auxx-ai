@@ -30,7 +30,11 @@ const RADIO_TAB_ITEM_CLASS = 'px-2'
 
 interface BoardToolbarProps {
   date: Date
+  /** Window navigation (prev/next chevrons) — steps the anchor by the active view's unit. In month
+   * view the board's reducer keeps the anchor's day-of-month; see `use-board-data.ts`. */
   onDateChange: (date: Date) => void
+  /** Absolute day jump (Today) — sets the exact day as the anchor, bypassing the month reducer. */
+  onDateSelect: (date: Date) => void
   view: BoardViewMode
   onViewChange: (view: BoardViewMode) => void
   weekStartsOn: WeekStartIndex
@@ -51,6 +55,7 @@ interface BoardToolbarProps {
 export function BoardToolbar({
   date,
   onDateChange,
+  onDateSelect,
   view,
   onViewChange,
   weekStartsOn,
@@ -99,7 +104,7 @@ export function BoardToolbar({
           variant='ghost'
           size='sm'
           onClick={() =>
-            onDateChange(
+            onDateSelect(
               effectiveView === 'week' ? startOfWeek(new Date(), { weekStartsOn }) : new Date()
             )
           }>

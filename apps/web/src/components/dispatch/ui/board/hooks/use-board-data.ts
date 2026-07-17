@@ -2,10 +2,13 @@
 
 'use client'
 
+import { weekStartToIndex } from '@auxx/lib/availability/client'
 import { getOptionColorHex } from '@auxx/lib/custom-fields/client'
-import { parseAsStringLiteral, useQueryState } from 'nuqs'
-import { useMemo } from 'react'
+import { format, isSameDay, startOfDay } from 'date-fns'
+import { createParser, parseAsStringLiteral, useQueryState } from 'nuqs'
+import { useCallback, useMemo } from 'react'
 import { useCalendarRange } from '~/components/calendar/core/use-calendar-range'
+import { useSettings } from '~/hooks/use-settings'
 import { ORG_STATIC_STALE_TIME } from '~/trpc/query-client'
 import { api } from '~/trpc/react'
 import { useHiddenWorkerIds } from '../../../stores/dispatch-sidebar-store'
@@ -17,11 +20,28 @@ import {
 } from '../types'
 import {
   isWorkerHidden,
+  scalarSetting,
   selectedWorkerIdsFromHidden,
   splitVisits,
   UNASSIGNED_COLOR,
   visitToEvent,
+  withPreservedDayOfMonth,
 } from '../utils'
+
+const BOARD_VIEWS = ['day', 'timeline', 'week', 'month'] as const
+
+/** `?date=` holds a bare local day (`YYYY-MM-DD`) — the board's active anchor, shared by Map and
+ * every board view. Parsed at LOCAL midnight (not `parseAsIsoDate`'s UTC midnight, which would
+ * shift the stored day back a calendar day in western timezones) so the anchor matches the
+ * dispatcher's local day. */
+const parseAsDay = createParser({
+  parse: (raw: string) => {
+    const parsed = new Date(`${raw}T00:00:00`)
+    return Number.isNaN(parsed.getTime()) ? null : startOfDay(parsed)
+  },
+  serialize: (date: Date) => format(date, 'yyyy-MM-dd'),
+  eq: (a: Date, b: Date) => isSameDay(a, b),
+})
 
 /** Re-export of the shared shell's range type — kept here so existing importers of this hook's
  * `DateRange` don't need to repoint (`use-board-mutations.ts`, `use-board-realtime.ts`,
@@ -29,10 +49,11 @@ import {
 export type { DateRange } from '~/components/calendar/core/use-calendar-range'
 
 /**
- * Board date/view/range/filter state + the `dispatch.getBoard` query (D.3). Date/view/range
- * state itself is the shared `useCalendarRange()` (plan §3.2, extracted verbatim from this
- * hook) — `range` is fed by `EventCalendar`'s `onRangeChange` — stored by timestamp so
- * identical ranges (same day/view recomputed) don't churn the query key.
+ * Board date/view/range/filter state + the `dispatch.getBoard` query (D.3). `date` and `view` are
+ * URL-persisted here (nuqs `?date=`/`?view=`, alongside `?mode=`) so a reload/deep-link restores
+ * the board; they're fed CONTROLLED into the shared `useCalendarRange()` (plan §3.2), which derives
+ * `range` from `EventCalendar`'s `onRangeChange` — stored by timestamp so identical ranges (same
+ * day/view recomputed) don't churn the query key.
  *
  * `selectedWorkerIds`/Unassigned-column visibility (v3 sidebar plan §1.1/§1.3) derive from the
  * persisted `dispatch-sidebar` store's Workers group hidden set (`useHiddenWorkerIds`) — the
@@ -41,7 +62,43 @@ export type { DateRange } from '~/components/calendar/core/use-calendar-range'
  * below keep their pre-v3 `Set<string> | null` contract untouched.
  */
 export function useBoardData() {
-  const { date, setDate, view, setView, range, handleRangeChange } = useCalendarRange()
+  const { getSetting } = useSettings({ scope: 'GENERAL' })
+  const weekStartsOn = weekStartToIndex(
+    (scalarSetting(getSetting('organization.weekStart')) ?? 'monday') as
+      | 'monday'
+      | 'sunday'
+      | 'saturday'
+  )
+
+  // Board view + active anchor date, both persisted in the URL (nuqs) so a reload/deep-link lands
+  // the dispatcher back where they were. `date` is a single day shared by Map (day-scoped) and
+  // every board view — each view derives its own window from it (`useCalendarRange` below).
+  const [view, setView] = useQueryState(
+    'view',
+    parseAsStringLiteral(BOARD_VIEWS).withDefault('day')
+  )
+  const [date, setDateParam] = useQueryState('date', parseAsDay.withDefault(startOfDay(new Date())))
+
+  // Two write paths into the anchor. `setDate` = window navigation (calendar scroll-settle +
+  // toolbar chevrons): in month view it keeps the anchor's day-of-month inside the newly viewed
+  // month (`withPreservedDayOfMonth`) so switching back to Map/Day returns to that day; every other
+  // view just takes the emitted first/leftmost day. `setDateAbsolute` = an exact day pick (mini
+  // calendar, Today), which always sets that day verbatim.
+  const setDate = useCallback(
+    (next: Date) =>
+      setDateParam((prev) =>
+        view === 'month'
+          ? withPreservedDayOfMonth(prev ?? next, next, weekStartsOn)
+          : startOfDay(next)
+      ),
+    [view, weekStartsOn, setDateParam]
+  )
+  const setDateAbsolute = useCallback((day: Date) => setDateParam(startOfDay(day)), [setDateParam])
+
+  // `date`/`view` are owned here (URL); the shared range hook is fed them controlled and only
+  // supplies the derived `range` + `handleRangeChange`.
+  const { range, handleRangeChange } = useCalendarRange('day', weekStartsOn, { date, view })
+
   // Board↔Map toggle (09-route-planner.md §A, contract item 7) — sibling state to the sidebar's
   // `open`, deliberately NOT a `BoardViewMode` so the month-view debounce and `view === 'day'`
   // gates stay untouched. Entering map mode doesn't change `view`; the map always renders
@@ -145,8 +202,10 @@ export function useBoardData() {
   return {
     date,
     setDate,
+    setDateAbsolute,
     view,
     setView,
+    weekStartsOn,
     range,
     handleRangeChange,
     allWorkers,

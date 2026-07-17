@@ -14,6 +14,24 @@ export interface DateRange {
   to: Date
 }
 
+/** The covering fetch window for a date in a given view — the day/week/month the calendar renders
+ * around `date`. Used to seed the initial `range` (below) so a deep-linked date+view fetches its
+ * real window on first paint instead of today's day and then correcting on mount. Mirrors
+ * `EventCalendar`'s own `rangeFrom/rangeTo` derivation. */
+function windowFor(date: Date, view: CalendarRangeView, weekStartsOn: 0 | 1 | 2 | 3 | 4 | 5 | 6) {
+  if (view === 'month') {
+    const monthStart = startOfMonth(endOfWeek(date, { weekStartsOn }))
+    return {
+      from: startOfWeek(monthStart, { weekStartsOn }),
+      to: endOfWeek(endOfMonth(monthStart), { weekStartsOn }),
+    }
+  }
+  if (view === 'week') {
+    return { from: startOfWeek(date, { weekStartsOn }), to: endOfWeek(date, { weekStartsOn }) }
+  }
+  return { from: startOfDay(date), to: endOfDay(date) }
+}
+
 /**
  * Date/view/range state shared by every calendar shell consumer, extracted verbatim from
  * `dispatch/ui/board/hooks/use-board-data.ts:41-83` (plan §3.2). `range` is fed by
@@ -28,17 +46,27 @@ export function useCalendarRange(
    * quantize the week stream's fetch window (below) to whole weeks; a mismatched boundary still
    * over-covers the true visible range, it just doesn't align the padding to the org's actual
    * week start. */
-  weekStartsOn: 0 | 1 | 2 | 3 | 4 | 5 | 6 = 1
+  weekStartsOn: 0 | 1 | 2 | 3 | 4 | 5 | 6 = 1,
+  /** Optional controlled `date`/`view` — when a consumer owns these elsewhere (e.g. the dispatch
+   * board persists them in the URL via nuqs), pass them here and this hook reads them instead of
+   * its own state; the returned `setDate`/`setView` then only drive the fallback internal state
+   * (unused by controlled consumers, which write through their own setters). Omit for the internal
+   * state behaviour (schedule page, records calendar view). */
+  controlled?: { date?: Date; view?: CalendarRangeView }
 ) {
-  const [date, setDate] = useState(() => new Date())
-  const [view, setView] = useState<CalendarRangeView>(initialView)
-  // Matches the calendar's own day-view range calc (`startOfDay`/`endOfDay`) so the first
-  // `onRangeChange` firing (in the calendar's mount effect) is a no-op query-key match
-  // instead of a second fetch.
-  const [range, setRange] = useState<DateRange>(() => ({
-    from: startOfDay(new Date()),
-    to: endOfDay(new Date()),
-  }))
+  const [internalDate, setInternalDate] = useState(() => new Date())
+  const [internalView, setInternalView] = useState<CalendarRangeView>(initialView)
+  const date = controlled?.date ?? internalDate
+  const view = controlled?.view ?? internalView
+  const setDate = setInternalDate
+  const setView = setInternalView
+  // Seed the fetch window from the (possibly controlled) date+view so a deep-linked month/week
+  // fetches its real range on first paint. For the default day view this equals the calendar's
+  // own day-view calc, so the first `onRangeChange` (in the calendar's mount effect) is a no-op
+  // query-key match instead of a second fetch.
+  const [range, setRange] = useState<DateRange>(() =>
+    windowFor(controlled?.date ?? new Date(), controlled?.view ?? initialView, weekStartsOn)
+  )
 
   const rangeDebounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   useEffect(() => () => clearTimeout(rangeDebounceRef.current), [])

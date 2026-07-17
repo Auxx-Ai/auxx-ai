@@ -2,7 +2,6 @@
 
 'use client'
 
-import { weekStartToIndex } from '@auxx/lib/availability/client'
 import { FeatureKey } from '@auxx/lib/permissions/client'
 import { isRecordId } from '@auxx/lib/resources/client'
 import { CalendarDndProvider } from '@auxx/ui/components/event-calendar'
@@ -17,7 +16,6 @@ import { EmptyState } from '~/components/global/empty-state'
 import { RecordDrawer } from '~/components/records/record-drawer'
 import { toRecordId, useResource } from '~/components/resources'
 import { useDockedPanels } from '~/hooks/use-docked-panels'
-import { useSettings } from '~/hooks/use-settings'
 import { useUser } from '~/hooks/use-user'
 import { useFeatureFlags } from '~/providers/feature-flag-provider'
 import { useDispatchSidebarStore } from '../../stores/dispatch-sidebar-store'
@@ -35,7 +33,7 @@ import { useBoardMutations } from './hooks/use-board-mutations'
 import { useBoardRealtime } from './hooks/use-board-realtime'
 import type { DispatchVisitEvent } from './types'
 import { UNASSIGNED_RESOURCE_ID } from './types'
-import { computeOverlappingVisitIds, scalarSetting } from './utils'
+import { computeOverlappingVisitIds } from './utils'
 import { VisitChipContent } from './visit-chip-content'
 
 /**
@@ -87,12 +85,9 @@ export function DispatchBoard() {
     planner.setFilters({ workerIds: data.selectedWorkerIds, tags: selectedTagsSet })
   }, [selectedTagsSet, data.selectedWorkerIds, planner.setFilters])
 
-  const { getSetting } = useSettings({ scope: 'GENERAL' })
-  const weekStart = (scalarSetting(getSetting('organization.weekStart')) ?? 'monday') as
-    | 'monday'
-    | 'sunday'
-    | 'saturday'
-  const weekStartsOn = weekStartToIndex(weekStart)
+  // Org week-start (Mon/Sun/Sat) → `date-fns` index, derived once in `useBoardData` (it needs the
+  // same value for the month-anchor reducer) and reused here for the toolbar/grid/sidebar.
+  const weekStartsOn = data.weekStartsOn
 
   const workerUserIds = useMemo(() => data.workers.map((w) => w.userId), [data.workers])
   const { backgroundEvents, isNonWorkingDay } = useAvailabilityShading({
@@ -286,6 +281,7 @@ export function DispatchBoard() {
         <BoardToolbar
           date={data.date}
           onDateChange={data.setDate}
+          onDateSelect={data.setDateAbsolute}
           view={data.view}
           onViewChange={data.setView}
           weekStartsOn={weekStartsOn}
@@ -302,7 +298,7 @@ export function DispatchBoard() {
                 mode='map'
                 canEdit={canEdit}
                 date={data.date}
-                onDateChange={data.setDate}
+                onDateChange={data.setDateAbsolute}
                 visibleRange={data.range}
                 weekStartsOn={weekStartsOn}
                 allWorkers={data.allWorkers}
@@ -335,7 +331,7 @@ export function DispatchBoard() {
                 mode='calendar'
                 canEdit={canEdit}
                 date={data.date}
-                onDateChange={data.setDate}
+                onDateChange={data.setDateAbsolute}
                 visibleRange={data.range}
                 view={data.view}
                 weekStartsOn={weekStartsOn}
