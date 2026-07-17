@@ -61,6 +61,9 @@ export function VisitDetailPanel({ recordId, itemId }: RecordDrillContext) {
   // blur/Enter commits and an Escape reverts without re-render churn on every keystroke.
   const [durationDraft, setDurationDraft] = useState<number | undefined | null>(null)
   const [billingOpen, setBillingOpen] = useState(false)
+  // Which dialog flavor the last-clicked billing button wants: base visit invoice vs
+  // extra-work invoice (plan money/19 §F.2 — per_visit visits need both).
+  const [billingMode, setBillingMode] = useState<'primary' | 'extra'>('primary')
   const { billing } = useWorkOrderBillingState(recordId)
   const setVisitDuration = api.dispatch.setVisitDuration.useMutation({
     onError: (error) => toastError({ title: 'Error saving duration', description: error.message }),
@@ -268,8 +271,31 @@ export function VisitDetailPanel({ recordId, itemId }: RecordDrillContext) {
           {billing.basis === 'per_visit' &&
             visit.status === 'done' &&
             invoiceState === 'uninvoiced' && (
-              <Button variant='outline' size='sm' onClick={() => setBillingOpen(true)}>
+              <Button
+                variant='outline'
+                size='sm'
+                onClick={() => {
+                  setBillingMode('primary')
+                  setBillingOpen(true)
+                }}>
                 Invoice this visit
+              </Button>
+            )}
+          {/* Per-visit extras when the base can't carry them (base already invoiced, or the
+              visit hasn't happened yet) get their own separate-invoice door — the
+              forgotten-material flow (plan money/19 §F.2). Uninvoiced done visits are excluded:
+              their extras ride along with `createVisitInvoice`. */}
+          {billing.basis === 'per_visit' &&
+            billing.extraWorkVisitIds.includes(visit.id) &&
+            !(visit.status === 'done' && invoiceState === 'uninvoiced') && (
+              <Button
+                variant='outline'
+                size='sm'
+                onClick={() => {
+                  setBillingMode('extra')
+                  setBillingOpen(true)
+                }}>
+                Invoice extra work
               </Button>
             )}
           {billingVisit.invoiceId && (billingVisit.invoiceCount ?? 0) === 1 && (
@@ -300,7 +326,13 @@ export function VisitDetailPanel({ recordId, itemId }: RecordDrillContext) {
                   }>
                   Add to contract
                 </Button>
-                <Button variant='outline' size='sm' onClick={() => setBillingOpen(true)}>
+                <Button
+                  variant='outline'
+                  size='sm'
+                  onClick={() => {
+                    setBillingMode('extra')
+                    setBillingOpen(true)
+                  }}>
                   Bill as extra work
                 </Button>
               </div>
@@ -332,7 +364,7 @@ export function VisitDetailPanel({ recordId, itemId }: RecordDrillContext) {
           workOrderRecordId={recordId}
           billing={billing}
           initialVisitIds={[visit.id]}
-          mode={billing.basis === 'fixed_contract' ? 'extra' : 'primary'}
+          mode={billing.basis === 'fixed_contract' ? 'extra' : billingMode}
         />
       </div>
     </ScrollArea>

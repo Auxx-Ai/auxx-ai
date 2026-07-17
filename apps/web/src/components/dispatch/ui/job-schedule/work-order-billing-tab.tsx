@@ -1,7 +1,9 @@
 // apps/web/src/components/dispatch/ui/job-schedule/work-order-billing-tab.tsx
 'use client'
 
+import { extractRelationshipRecordIds } from '@auxx/lib/field-values/client'
 import { BILLING_BASIS_LABELS, BILLING_TIMING_LABELS } from '@auxx/lib/money/client'
+import { toRecordId } from '@auxx/types/resource'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { Skeleton } from '@auxx/ui/components/skeleton'
@@ -17,6 +19,10 @@ import { resolveBillingAction, type WorkOrderBillingView } from '~/components/mo
 import { useWorkOrderBillingState } from '~/components/money/billing/use-work-order-billing-state'
 import { formatCurrency } from '~/components/money/ui/line-builder/shared'
 import { useOpenRecord } from '~/components/records/record-drill-panels'
+import { RecordEditorDialog } from '~/components/records/record-editor-dialog'
+import { useSystemField } from '~/components/resources/hooks/use-field'
+import { useResources } from '~/components/resources/hooks/use-resources'
+import { useSystemValues } from '~/components/resources/hooks/use-system-values'
 import { api } from '~/trpc/react'
 import { BillingScheduleRow } from './billing-schedule-row'
 import type { PaymentCandidate } from './work-order-billing-payments-block'
@@ -27,9 +33,30 @@ export function WorkOrderBillingTab({ recordId, variant = 'tab' }: DetailViewTab
   const [extraOpen, setExtraOpen] = useState(false)
   const [planOpen, setPlanOpen] = useState(false)
   const [scheduleOpen, setScheduleOpen] = useState(false)
+  const [newInvoiceOpen, setNewInvoiceOpen] = useState(false)
   const { billing, isLoading } = useWorkOrderBillingState(recordId)
   const utils = api.useUtils()
+  const openRecord = useOpenRecord()
   const isSection = variant === 'section'
+  // Quick manual invoice (plan money/19 follow-up): the generic invoice create dialog
+  // (contact / work order / due date) with both relations prefilled from this job. The
+  // saved draft opens straight in the invoice drawer so lines can be added immediately.
+  const { getResourceById } = useResources()
+  const invoiceDefId = getResourceById('invoices')?.id
+  const invoiceContactField = useSystemField('invoice_contact')
+  const invoiceWorkOrderField = useSystemField('invoice_work_order')
+  const { values: workOrderValues } = useSystemValues(recordId, ['work_order_contact'], {
+    autoFetch: true,
+  })
+  const newInvoicePresets = useMemo(() => {
+    const presets: Record<string, unknown> = {}
+    if (invoiceWorkOrderField) presets[invoiceWorkOrderField.id] = [recordId]
+    const contactRecordIds = extractRelationshipRecordIds(workOrderValues.work_order_contact)
+    if (invoiceContactField && contactRecordIds.length > 0) {
+      presets[invoiceContactField.id] = contactRecordIds
+    }
+    return presets
+  }, [invoiceContactField, invoiceWorkOrderField, recordId, workOrderValues.work_order_contact])
   const paymentCandidates: PaymentCandidate[] = useMemo(
     () =>
       billing.invoices
@@ -54,7 +81,11 @@ export function WorkOrderBillingTab({ recordId, variant = 'tab' }: DetailViewTab
           isSection ? 'overflow-auto pe-3' : 'min-h-0 flex-1 overflow-auto'
         )}>
         <SummaryStrip billing={billing} />
-        <NextAction billing={billing} onAction={() => setActionOpen(true)} />
+        <NextAction
+          billing={billing}
+          onAction={() => setActionOpen(true)}
+          onExtra={() => setExtraOpen(true)}
+        />
 
         <TuckedSection
           label='Billing plan'
@@ -127,7 +158,15 @@ export function WorkOrderBillingTab({ recordId, variant = 'tab' }: DetailViewTab
           />
         </TuckedSection>
 
-        <TuckedSection label='Invoices'>
+        <TuckedSection
+          label='Invoices'
+          action={
+            invoiceDefId ? (
+              <Button variant='ghost' size='xs' onClick={() => setNewInvoiceOpen(true)}>
+                New invoice
+              </Button>
+            ) : undefined
+          }>
           <InvoiceRows billing={billing} />
         </TuckedSection>
 
@@ -168,8 +207,19 @@ export function WorkOrderBillingTab({ recordId, variant = 'tab' }: DetailViewTab
         workOrderRecordId={recordId}
         billing={billing}
         mode='extra'
-        initialVisitIds={billing.extraWorkVisitIds}
       />
+      {invoiceDefId && (
+        <RecordEditorDialog
+          open={newInvoiceOpen}
+          onOpenChange={setNewInvoiceOpen}
+          entityDefinitionId={invoiceDefId}
+          presetValues={newInvoicePresets}
+          onSaved={(instanceId) => {
+            void utils.money.getWorkOrderBillingState.invalidate({ workOrderRecordId: recordId })
+            if (instanceId) openRecord?.(toRecordId('invoice', instanceId))
+          }}
+        />
+      )}
     </div>
   )
 }
@@ -222,14 +272,17 @@ function SummaryCell({
 function NextAction({
   billing,
   onAction,
+  onExtra,
 }: {
   billing: WorkOrderBillingView
   onAction: () => void
+  onExtra: () => void
 }) {
   const openRecord = useOpenRecord()
   const action = resolveBillingAction(billing)
   const handleClick = () => {
     if (action.kind === 'create') return onAction()
+    if (action.kind === 'create_extra') return onExtra()
     if (action.kind === 'review_draft') {
       if (action.draftInvoiceRecordId) return openRecord?.(action.draftInvoiceRecordId)
       return onAction()
@@ -262,6 +315,9 @@ function NextAction({
   )
 }
 
+/** The two billing streams rendered distinctly (plan money/19 §F): the base
+ * (contract/visit/period) row, a done-visit extra-work row, and a muted hint for extras staged
+ * on visits that haven't happened yet — deliberately billable, never claimed as ready. */
 function UninvoicedWork({
   billing,
   onPrimary,
@@ -271,11 +327,16 @@ function UninvoicedWork({
   onPrimary: () => void
   onExtra: () => void
 }) {
-  if (
-    billing.remaining <= 0 &&
-    billing.eligibleVisits.length === 0 &&
-    billing.extraWorkVisitIds.length === 0
-  ) {
+  const doneExtras = billing.extraWork.filter((row) => row.visitStatus === 'done')
+  const plannedExtras = billing.extraWork.filter((row) => row.visitStatus !== 'done')
+  const doneExtraVisitCount = new Set(doneExtras.map((row) => row.visitId)).size
+  const doneExtraTotal = doneExtras.reduce((sum, row) => sum + row.amount, 0)
+  const plannedExtraTotal = plannedExtras.reduce((sum, row) => sum + row.amount, 0)
+  const showBase =
+    billing.basis === 'per_visit' ? billing.eligibleVisits.length > 0 : billing.remaining > 0
+  const extraIsPrimary = resolveBillingAction(billing).kind === 'create_extra'
+
+  if (!showBase && billing.extraWork.length === 0) {
     return (
       <p className='p-3 text-sm text-muted-foreground'>
         {billing.basis === 'fixed_contract'
@@ -287,29 +348,56 @@ function UninvoicedWork({
     )
   }
   return (
-    <div className='flex items-center justify-between gap-3 p-3 text-sm'>
-      <div>
-        <div className='font-medium'>
-          {billing.eligibleVisits.length > 0
-            ? `${billing.eligibleVisits.length} eligible visit${billing.eligibleVisits.length === 1 ? '' : 's'}`
-            : formatCurrency(billing.remaining, billing.currencyCode)}
+    <div className='divide-y'>
+      {showBase && (
+        <div className='flex items-center justify-between gap-3 p-3 text-sm'>
+          <div>
+            <div className='font-medium'>
+              {billing.basis === 'per_visit'
+                ? `${billing.eligibleVisits.length} eligible visit${billing.eligibleVisits.length === 1 ? '' : 's'}`
+                : formatCurrency(billing.remaining, billing.currencyCode)}
+            </div>
+            <div className='text-xs text-muted-foreground'>
+              {billing.basis === 'per_visit'
+                ? formatCurrency(
+                    billing.eligibleVisits.reduce((sum, visit) => sum + visit.amount, 0),
+                    billing.currencyCode
+                  )
+                : 'Available for the next invoice'}
+            </div>
+          </div>
+          <Button variant='outline' size='sm' onClick={onPrimary}>
+            Create invoice
+          </Button>
         </div>
-        <div className='text-xs text-muted-foreground'>
-          {billing.extraWorkVisitIds.length > 0
-            ? `${billing.extraWorkVisitIds.length} visit${billing.extraWorkVisitIds.length === 1 ? '' : 's'} with extra work`
-            : 'Available for the next invoice'}
-        </div>
-      </div>
-      <div className='flex gap-2'>
-        {billing.extraWorkVisitIds.length > 0 && (
-          <Button variant='ghost' size='sm' onClick={onExtra}>
+      )}
+      {doneExtras.length > 0 && (
+        <div className='flex items-center justify-between gap-3 p-3 text-sm'>
+          <div>
+            <div className='font-medium'>
+              Extra work on {doneExtraVisitCount} visit{doneExtraVisitCount === 1 ? '' : 's'}
+            </div>
+            <div className='text-xs text-muted-foreground'>
+              {formatCurrency(doneExtraTotal, billing.currencyCode)}
+            </div>
+          </div>
+          <Button variant={extraIsPrimary ? 'outline' : 'ghost'} size='sm' onClick={onExtra}>
             Invoice extra work
           </Button>
-        )}
-        <Button variant='outline' size='sm' onClick={onPrimary}>
-          Create invoice
-        </Button>
-      </div>
+        </div>
+      )}
+      {plannedExtras.length > 0 && (
+        <div className='flex items-center justify-between gap-3 p-3 text-sm'>
+          <p className='text-xs text-muted-foreground'>
+            {formatCurrency(plannedExtraTotal, billing.currencyCode)} staged on upcoming visits
+          </p>
+          {doneExtras.length === 0 && (
+            <Button variant='ghost' size='sm' onClick={onExtra}>
+              Invoice extra work
+            </Button>
+          )}
+        </div>
+      )}
     </div>
   )
 }
@@ -386,10 +474,18 @@ function nextActionDescription(billing: WorkOrderBillingView) {
     return `${formatCurrency(billing.balanceDue, billing.currencyCode)} remains due on issued invoices.`
   if (billing.state === 'scheduled' && billing.nextInvoiceDate)
     return `The next draft is scheduled for ${formatDate(billing.nextInvoiceDate)}.`
-  if (billing.state === 'ready_to_invoice')
-    return billing.eligibleVisits.length
-      ? `${billing.eligibleVisits.length} completed visit${billing.eligibleVisits.length === 1 ? '' : 's'} can be invoiced.`
-      : `${formatCurrency(billing.remaining, billing.currencyCode)} is ready to invoice.`
+  if (billing.state === 'ready_to_invoice') {
+    if (billing.eligibleVisits.length) {
+      return `${billing.eligibleVisits.length} completed visit${billing.eligibleVisits.length === 1 ? '' : 's'} can be invoiced.`
+    }
+    const extraVisitCount = new Set(
+      billing.extraWork.filter((row) => row.visitStatus === 'done').map((row) => row.visitId)
+    ).size
+    if (extraVisitCount > 0) {
+      return `Extra work on ${extraVisitCount} visit${extraVisitCount === 1 ? '' : 's'} can be invoiced.`
+    }
+    return `${formatCurrency(billing.remaining, billing.currencyCode)} is ready to invoice.`
+  }
   return 'No billing action is currently required.'
 }
 function formatDate(value: string) {

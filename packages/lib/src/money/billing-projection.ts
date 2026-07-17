@@ -397,9 +397,16 @@ export async function computeWorkOrderBillingProjection(input: {
       0
     )
   } else if (basis === 'per_visit') {
+    // Plan money/19 §A: readiness counts performed work only. `visits` is already the WO's
+    // DONE visits, so extras pinned to scheduled/canceled/dangling visit ids are excluded —
+    // they stay deliberately billable through `createExtraWorkInvoice`, but a planned extra
+    // is not a receivable and must not flip the badge to ready_to_invoice.
+    const doneVisitIds = new Set(visits.map((visit) => visit.id))
     const eligibleVisitCount = visits.filter((visit) => !allocatedVisitIds.has(visit.id)).length
     const additions = lines
-      .filter((line) => line.visitId && !allocatedBySource.has(line.id))
+      .filter(
+        (line) => line.visitId && doneVisitIds.has(line.visitId) && !allocatedBySource.has(line.id)
+      )
       .reduce((total, line) => total + line.amount, 0)
     uninvoicedAmount = eligibleVisitCount * billingAmount + additions
   } else if (basis === 'recurring_flat') {

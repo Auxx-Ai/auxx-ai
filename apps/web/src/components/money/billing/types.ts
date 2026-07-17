@@ -36,6 +36,17 @@ export interface BillingVisitRow {
   invoiceId?: string
 }
 
+/** One billable visit-pinned extra line (plan money/19 §B) — the server already filtered out
+ * unpriced lines and canceled/dangling visits. */
+export interface BillingExtraWorkRow {
+  id: string
+  visitId: string
+  visitStatus: string
+  serviceDate?: string | null
+  name: string
+  amount: number
+}
+
 export interface BillingInstallmentRow {
   id: string
   name: string
@@ -61,6 +72,7 @@ export interface WorkOrderBillingView {
   depositApplied: number
   nextInvoiceDate?: string | null
   eligibleVisits: BillingVisitRow[]
+  extraWork: BillingExtraWorkRow[]
   extraWorkVisitIds: string[]
   installments: BillingInstallmentRow[]
   invoices: BillingInvoiceRow[]
@@ -93,6 +105,7 @@ const EMPTY_WORK_ORDER_BILLING: WorkOrderBillingView = {
   depositApplied: 0,
   nextInvoiceDate: null,
   eligibleVisits: [],
+  extraWork: [],
   extraWorkVisitIds: [],
   installments: [],
   invoices: [],
@@ -131,7 +144,8 @@ export function normalizeWorkOrderBilling(
     depositApplied: data.summary.depositApplied,
     nextInvoiceDate: data.nextInvoiceDate,
     eligibleVisits: data.eligibleVisits.map(normalizeVisit),
-    extraWorkVisitIds: data.extraWork.map((item) => item.visitId).filter(Boolean),
+    extraWork: data.extraWork.map(normalizeExtraWork),
+    extraWorkVisitIds: [...new Set(data.extraWork.map((item) => item.visitId).filter(Boolean))],
     installments: data.installments.map(normalizeInstallment),
     invoices: data.invoices.map(normalizeInvoice),
   }
@@ -167,6 +181,19 @@ function normalizeVisit(visit: WorkOrderBillingVisitData): BillingVisitRow {
   }
 }
 
+function normalizeExtraWork(
+  item: WorkOrderBillingStateData['extraWork'][number]
+): BillingExtraWorkRow {
+  return {
+    id: item.id,
+    visitId: item.visitId,
+    visitStatus: item.visitStatus,
+    serviceDate: item.serviceDate,
+    name: item.name,
+    amount: item.amount,
+  }
+}
+
 function normalizeInstallment(item: WorkOrderBillingInstallmentData): BillingInstallmentRow {
   return {
     id: item.id,
@@ -193,14 +220,15 @@ function normalizeInvoice(invoice: WorkOrderBillingInvoiceData): BillingInvoiceR
   }
 }
 
-// ─── One next-action condition (work-order invoice flow plan §5.3) ─────────────────────────────
+// ─── One next-action condition (work-order invoice flow plan §5.3 + money/19 §D) ───────────────
 // Every billing surface (full Billing tab, work-order drawer card, header "Create invoice"
 // action) must agree on whether an invoice/recurring-charge action is available and what it's
-// called. Building this from `state`/`basis`/`timing`/`summary` — never from `eligibleVisits`
-// counts — keeps it correct even before the server-side eligible-visits gating in the plan lands.
+// called. Server-side gating exists now (plan money/19): `ready_to_invoice` means performed
+// work, `eligibleVisits` lists done unbilled-base visits, and `extraWork` carries visit status —
+// so the router deliberately reads them to pick between the base and extra-work dialogs.
 
 export interface BillingAction {
-  kind: 'create' | 'review_draft' | 'view_invoices' | 'none'
+  kind: 'create' | 'create_extra' | 'review_draft' | 'view_invoices' | 'none'
   label: string
   /** Set for `review_draft` when exactly one draft invoice is linked — surfaces can open it
    * directly instead of re-opening the create dialog. */
@@ -244,6 +272,16 @@ export function resolveBillingAction(billing: WorkOrderBillingView): BillingActi
   }
   if (billing.state === 'ready_to_invoice') {
     const pendingInstallment = billing.installments.some((item) => item.status === 'pending')
+    // Per-visit readiness driven only by extras (base fully billed or extras on an
+    // already-invoiced visit): the base dialog would dead-end, so the extra-work dialog is
+    // the primary action (plan money/19 D1).
+    if (
+      billing.basis === 'per_visit' &&
+      billing.eligibleVisits.length === 0 &&
+      billing.extraWork.some((row) => row.visitStatus === 'done')
+    ) {
+      return { kind: 'create_extra', label: 'Invoice extra work' }
+    }
     return { kind: 'create', label: pendingInstallment ? 'Generate installment' : 'Create invoice' }
   }
   if (billing.state === 'scheduled') {

@@ -119,7 +119,11 @@ export function WorkOrderBillingCard({ recordId, entityInstanceId }: DrawerTabPr
   const openRecord = useOpenRecord()
   const router = useRouter()
   const action = resolveBillingAction(billing)
-  const isActionable = action.kind === 'create' || action.kind === 'review_draft'
+  const doneExtraVisitCount = new Set(
+    billing.extraWork.filter((row) => row.visitStatus === 'done').map((row) => row.visitId)
+  ).size
+  const isActionable =
+    action.kind === 'create' || action.kind === 'create_extra' || action.kind === 'review_draft'
   const handleToggleOpen = () => {
     if (action.kind === 'review_draft' && action.draftInvoiceRecordId) {
       openRecord?.(action.draftInvoiceRecordId)
@@ -154,11 +158,13 @@ export function WorkOrderBillingCard({ recordId, entityInstanceId }: DrawerTabPr
           <span className='text-xs'>
             {billing.eligibleVisits.length
               ? `${billing.eligibleVisits.length} eligible visit${billing.eligibleVisits.length === 1 ? '' : 's'}`
-              : billing.nextInvoiceDate
-                ? new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(
-                    new Date(billing.nextInvoiceDate)
-                  )
-                : 'No action required'}
+              : action.kind === 'create_extra'
+                ? `Extra work on ${doneExtraVisitCount} visit${doneExtraVisitCount === 1 ? '' : 's'}`
+                : billing.nextInvoiceDate
+                  ? new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(
+                      new Date(billing.nextInvoiceDate)
+                    )
+                  : 'No action required'}
           </span>
         }
         trailing={isActionable ? <ArrowRight className='size-4' /> : undefined}
@@ -189,6 +195,7 @@ export function WorkOrderBillingCard({ recordId, entityInstanceId }: DrawerTabPr
         onOpenChange={setDialogOpen}
         workOrderRecordId={recordId}
         billing={billing}
+        mode={action.kind === 'create_extra' ? 'extra' : 'primary'}
       />
     </div>
   )

@@ -4,7 +4,6 @@
 import { FieldType } from '@auxx/database/enums'
 import type { RecordId } from '@auxx/types/resource'
 import { Button } from '@auxx/ui/components/button'
-import { Checkbox } from '@auxx/ui/components/checkbox'
 import { Dialog, DialogContent, DialogFooter } from '@auxx/ui/components/dialog'
 import { DialogNav, DialogNavPage, DialogNavPages } from '@auxx/ui/components/dialog-nav'
 import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
@@ -44,11 +43,19 @@ export function BillingActionDialog({
   const [page, setPage] = useState<Page>('choose')
   const [fixedChoice, setFixedChoice] = useState<FixedChoice>('remaining')
   const [inputValue, setInputValue] = useState<number | null>(null)
-  const defaultVisits = useMemo(
-    () =>
-      initialVisitIds?.length ? initialVisitIds : billing.eligibleVisits.map((visit) => visit.id),
-    [billing.eligibleVisits, initialVisitIds]
-  )
+  const defaultVisits = useMemo(() => {
+    if (initialVisitIds?.length) return initialVisitIds
+    // Extra mode defaults to DONE visits' extras only — upcoming visits' staged extras are
+    // opt-in (plan money/19 §2: pre-billing is deliberate, never the default).
+    if (mode === 'extra') {
+      return [
+        ...new Set(
+          billing.extraWork.filter((row) => row.visitStatus === 'done').map((row) => row.visitId)
+        ),
+      ]
+    }
+    return billing.eligibleVisits.map((visit) => visit.id)
+  }, [billing.eligibleVisits, billing.extraWork, initialVisitIds, mode])
   const [visitIds, setVisitIds] = useState<string[]>(defaultVisits)
   const utils = api.useUtils()
 
@@ -103,8 +110,9 @@ export function BillingActionDialog({
   }, [billing, fixedChoice, inputValue])
 
   const isExtra = mode === 'extra'
-  const canContinue =
-    isExtra || billing.basis === 'per_visit'
+  const canContinue = isExtra
+    ? selectedExtraAmount(billing, visitIds) > 0
+    : billing.basis === 'per_visit'
       ? visitIds.length > 0
       : billing.basis === 'fixed_contract'
         ? amount > 0 && amount <= billing.remaining
@@ -158,7 +166,9 @@ export function BillingActionDialog({
         <DialogNavPages value={page}>
           <DialogNavPage value='choose' size='md'>
             <div className='space-y-4 p-4'>
-              {isExtra || billing.basis === 'per_visit' ? (
+              {isExtra ? (
+                <ExtraWorkPicker billing={billing} value={visitIds} onChange={setVisitIds} />
+              ) : billing.basis === 'per_visit' ? (
                 <VisitPicker billing={billing} value={visitIds} onChange={setVisitIds} />
               ) : billing.basis === 'fixed_contract' ? (
                 <FixedAmountPicker
@@ -197,7 +207,10 @@ export function BillingActionDialog({
                 <PreviewRow
                   label='Amount on this invoice'
                   value={formatCurrency(
-                    amount || selectedVisitAmount(billing, visitIds),
+                    amount ||
+                      (isExtra
+                        ? selectedExtraAmount(billing, visitIds)
+                        : selectedVisitAmount(billing, visitIds)),
                     billing.currencyCode
                   )}
                 />
@@ -361,34 +374,123 @@ function VisitPicker({
           resizeId='billing-action-visits'
           defaultLabelWidth={200}
           className='p-0'>
-          {billing.eligibleVisits.map((visit) => {
-            const selected = value.includes(visit.id)
-            return (
-              <FieldPanelRow
-                key={visit.id}
-                title={visit.label}
-                description={
-                  visit.serviceDate
-                    ? `Service date: ${format(new Date(visit.serviceDate), 'PP')}`
-                    : undefined
-                }>
-                <label className='flex min-h-8 cursor-pointer items-center justify-between gap-3 px-2'>
-                  <span className='text-sm tabular-nums'>
-                    {formatCurrency(visit.amount, billing.currencyCode)}
-                  </span>
-                  <Checkbox
-                    checked={selected}
-                    onCheckedChange={(checked) =>
-                      onChange(
-                        checked ? [...value, visit.id] : value.filter((id) => id !== visit.id)
-                      )
-                    }
-                  />
-                </label>
-              </FieldPanelRow>
-            )
-          })}
+          {billing.eligibleVisits.map((visit) => (
+            <FieldPanelRow
+              key={visit.id}
+              title={visit.label}
+              description={[
+                formatCurrency(visit.amount, billing.currencyCode),
+                visit.serviceDate
+                  ? `Service date: ${format(new Date(visit.serviceDate), 'PP')}`
+                  : undefined,
+              ]
+                .filter(Boolean)
+                .join(' · ')}>
+              <FieldInputAdapter
+                fieldType={FieldType.CHECKBOX}
+                value={value.includes(visit.id)}
+                onChange={(checked) =>
+                  onChange(checked ? [...value, visit.id] : value.filter((id) => id !== visit.id))
+                }
+              />
+            </FieldPanelRow>
+          ))}
         </FieldPanel>
+      )}
+    </div>
+  )
+}
+
+interface ExtraWorkVisitGroup {
+  visitId: string
+  visitStatus: string
+  serviceDate?: string | null
+  amount: number
+  lineNames: string[]
+}
+
+/** Group billable extras by visit, preserving the server's visit-date ordering. */
+function groupExtraWorkByVisit(billing: WorkOrderBillingView): ExtraWorkVisitGroup[] {
+  const groups = new Map<string, ExtraWorkVisitGroup>()
+  for (const row of billing.extraWork) {
+    const group = groups.get(row.visitId) ?? {
+      visitId: row.visitId,
+      visitStatus: row.visitStatus,
+      serviceDate: row.serviceDate,
+      amount: 0,
+      lineNames: [],
+    }
+    group.amount += row.amount
+    if (row.name) group.lineNames.push(row.name)
+    groups.set(row.visitId, group)
+  }
+  return [...groups.values()]
+}
+
+function ExtraWorkPicker({
+  billing,
+  value,
+  onChange,
+}: {
+  billing: WorkOrderBillingView
+  value: string[]
+  onChange: (ids: string[]) => void
+}) {
+  const groups = groupExtraWorkByVisit(billing)
+  const done = groups.filter((group) => group.visitStatus === 'done')
+  const upcoming = groups.filter((group) => group.visitStatus !== 'done')
+
+  if (groups.length === 0) {
+    return (
+      <p className='rounded-lg border border-dashed p-4 text-center text-sm text-muted-foreground'>
+        No extra work is ready to invoice.
+      </p>
+    )
+  }
+
+  const renderRow = (group: ExtraWorkVisitGroup, upcomingRow: boolean) => (
+    <FieldPanelRow
+      key={group.visitId}
+      title={group.serviceDate ? format(new Date(group.serviceDate), 'PP') : 'Unscheduled visit'}
+      description={[
+        formatCurrency(group.amount, billing.currencyCode),
+        upcomingRow ? 'Visit not yet done' : undefined,
+        group.lineNames.join(', ') || undefined,
+      ]
+        .filter(Boolean)
+        .join(' · ')}>
+      <FieldInputAdapter
+        fieldType={FieldType.CHECKBOX}
+        value={value.includes(group.visitId)}
+        onChange={(checked) =>
+          onChange(checked ? [...value, group.visitId] : value.filter((id) => id !== group.visitId))
+        }
+      />
+    </FieldPanelRow>
+  )
+
+  return (
+    <div className='space-y-3'>
+      {done.length > 0 && (
+        <FieldPanel
+          orientation='responsive'
+          resizeId='billing-action-extras'
+          defaultLabelWidth={200}
+          className='p-0'>
+          {done.map((group) => renderRow(group, false))}
+        </FieldPanel>
+      )}
+      {upcoming.length > 0 && (
+        <div className='space-y-1.5'>
+          <p className='px-1 text-xs text-muted-foreground'>Not yet done</p>
+          <FieldPanel
+            orientation='responsive'
+            resizeId='billing-action-extras-upcoming'
+            defaultLabelWidth={200}
+            className='p-0'>
+            {upcoming.map((group) => renderRow(group, true))}
+          </FieldPanel>
+        </div>
       )}
     </div>
   )
@@ -408,6 +510,12 @@ function selectedVisitAmount(billing: WorkOrderBillingView, ids: string[]) {
   return billing.eligibleVisits
     .filter((visit) => ids.includes(visit.id))
     .reduce((sum, visit) => sum + visit.amount, 0)
+}
+
+function selectedExtraAmount(billing: WorkOrderBillingView, ids: string[]) {
+  return billing.extraWork
+    .filter((row) => ids.includes(row.visitId))
+    .reduce((sum, row) => sum + row.amount, 0)
 }
 
 function chooseLabel(billing: WorkOrderBillingView, extra: boolean) {

@@ -56,7 +56,9 @@ export function DispatchBoard() {
   const canEdit = isAdminOrOwner
 
   const data = useBoardData()
-  const mutations = useBoardMutations(data.range)
+  // Optimistic cache surgery targets the `getBoard` query key, which is now the deterministic
+  // `fetchWindow` (not the visible `range`) — pass the same value so patches/rollbacks land.
+  const mutations = useBoardMutations(data.fetchWindow)
   useBoardRealtime()
 
   // Route planner data (09-route-planner.md §A) lives here, not inside `RoutePlannerView`
@@ -94,6 +96,7 @@ export function DispatchBoard() {
   const { backgroundEvents, isNonWorkingDay } = useAvailabilityShading({
     view: data.view,
     range: data.range,
+    fetchWindow: data.fetchWindow,
     workerUserIds,
   })
 

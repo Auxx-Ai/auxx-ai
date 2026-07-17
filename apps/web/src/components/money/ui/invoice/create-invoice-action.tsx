@@ -20,11 +20,14 @@ import { useWorkOrderBillingState } from '~/components/money/billing/use-work-or
 export function CreateInvoiceAction({ recordId }: DrawerActionProps) {
   const [open, setOpen] = useState(false)
   const { billing, isLoading } = useWorkOrderBillingState(recordId)
-  const canCreate = resolveBillingAction(billing).kind === 'create'
+  const action = resolveBillingAction(billing)
+  const canCreate = action.kind === 'create' || action.kind === 'create_extra'
 
   return (
     <>
-      <Tooltip content='Create invoice' allowInteraction>
+      <Tooltip
+        content={action.kind === 'create_extra' ? 'Invoice extra work' : 'Create invoice'}
+        allowInteraction>
         <Button
           variant='ghost'
           size='icon-xs'
@@ -38,6 +41,7 @@ export function CreateInvoiceAction({ recordId }: DrawerActionProps) {
         onOpenChange={setOpen}
         workOrderRecordId={recordId}
         billing={billing}
+        mode={action.kind === 'create_extra' ? 'extra' : 'primary'}
       />
     </>
   )

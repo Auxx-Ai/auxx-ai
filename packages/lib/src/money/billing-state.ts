@@ -78,11 +78,12 @@ export async function getWorkOrderBillingState(input: {
   const handler = new UnifiedCrudHandler(input.organizationId, input.userId)
   const [visits, activeVisits, installments, linkedInvoices, payments, uninvoicedLines] =
     await Promise.all([
+      // All statuses — done visits feed eligibleVisits, the rest feed extra-work enrichment
+      // (plan money/19 §B: the client needs visit status/date to split done vs upcoming extras).
       database.query.WorkOrderVisit.findMany({
         where: and(
           eq(schema.WorkOrderVisit.organizationId, input.organizationId),
-          eq(schema.WorkOrderVisit.workOrderId, input.workOrderInstanceId),
-          eq(schema.WorkOrderVisit.status, 'done')
+          eq(schema.WorkOrderVisit.workOrderId, input.workOrderInstanceId)
         ),
         orderBy: [asc(schema.WorkOrderVisit.startTime)],
       }),
@@ -145,13 +146,35 @@ export async function getWorkOrderBillingState(input: {
     rows.push(allocation)
     allocationsByVisit.set(allocation.visitId, rows)
   }
+  const visitById = new Map(visits.map((visit) => [visit.id, visit]))
+  // Billable extra work (plan money/19 §B): visit-pinned unallocated lines with a real price on
+  // a real, non-canceled visit. Unpriced lines are drafts, not billable work; canceled visits'
+  // extras are excluded everywhere (readiness, list, and the command itself).
+  const billableExtras = uninvoicedLines.filter((line) => {
+    if (!line.visitId || (line.lineTotal ?? 0) <= 0) return false
+    const visit = visitById.get(line.visitId)
+    return visit !== undefined && visit.status !== 'canceled'
+  })
+  const extrasTotalByVisit = new Map<string, number>()
+  for (const line of billableExtras) {
+    extrasTotalByVisit.set(
+      line.visitId!,
+      (extrasTotalByVisit.get(line.visitId!) ?? 0) + (line.lineTotal ?? 0)
+    )
+  }
   const eligibleVisits = visits
-    .filter((visit) => !allocationsByVisit.get(visit.id)?.some((row) => row.kind === 'base'))
+    .filter(
+      (visit) =>
+        visit.status === 'done' &&
+        !allocationsByVisit.get(visit.id)?.some((row) => row.kind === 'base')
+    )
     .map((visit, index) => ({
       id: visit.id,
       label: `Visit ${index + 1}`,
       serviceDate: visit.occurrenceDate ?? visit.startTime?.toISOString().split('T')[0] ?? null,
-      amount: projection.billingAmount,
+      // `createVisitInvoice` copies the job template PLUS this visit's unallocated extras —
+      // the picker/preview must quote what the invoice will actually total (plan money/19 D5).
+      amount: projection.billingAmount + (extrasTotalByVisit.get(visit.id) ?? 0),
       invoiceState: 'uninvoiced' as const,
     }))
   return {
@@ -169,14 +192,18 @@ export async function getWorkOrderBillingState(input: {
       depositApplied,
     },
     eligibleVisits,
-    extraWork: uninvoicedLines
-      .filter((line) => line.visitId)
-      .map((line) => ({
+    extraWork: billableExtras.map((line) => {
+      const visit = visitById.get(line.visitId!)!
+      return {
         id: line.instanceId,
         sourceLineId: line.instanceId,
         visitId: line.visitId!,
+        visitStatus: visit.status,
+        serviceDate: visit.occurrenceDate ?? visit.startTime?.toISOString().split('T')[0] ?? null,
+        name: line.name,
         amount: line.lineTotal ?? 0,
-      })),
+      }
+    }),
     installments,
     invoices: await invoiceRows({
       organizationId: input.organizationId,
