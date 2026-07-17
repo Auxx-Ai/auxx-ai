@@ -9,14 +9,10 @@
 // our option shape (name + price + category + part) doesn't fit the plain
 // Option/OptionGroup shape ComboPicker expects.
 //
-// Data: `useAllRecords({ apiSlug: 'catalog-items' })` — catalog items are an
-// org-scoped small dataset (same shape as tags/inboxes), so the "fetch
-// everything with field values in one call" hook fits better than the
-// paginated `useRecordList` used for large lists.
+// Data is owned by `LineBuilder`: one `useCatalogItems` / `useCatalogGroups`
+// load serves every row. This component only filters the supplied data while
+// open and emits the selected domain object.
 
-import type { LineItemUnit } from '@auxx/lib/money/client'
-import { toRecordId } from '@auxx/lib/resources/client'
-import type { RecordId } from '@auxx/types/resource'
 import {
   Command,
   CommandDetailItem,
@@ -31,86 +27,10 @@ import { cn } from '@auxx/ui/lib/utils'
 import { Boxes, Package, Plus, Settings2 } from 'lucide-react'
 import Link from 'next/link'
 import { type ReactNode, useMemo, useState } from 'react'
-import { parseCatalogGroupEntries } from '~/components/money/catalog-group-types'
-import type { RecordMeta } from '~/components/resources'
-import { useAllRecords } from '~/components/resources/hooks/use-all-records'
+import type { CatalogGroup } from '~/components/money/hooks/use-catalog-groups'
+import type { CatalogItem } from '~/components/money/hooks/use-catalog-items'
 import { useUser } from '~/hooks/use-user'
-
-/** Value copied onto the line when a catalog item is picked. */
-export interface CatalogItemPick {
-  recordId: RecordId
-  name: string
-  description: string | null
-  category: string | null
-  taxable: boolean
-  unitPrice: number | null
-  /** Copied exactly, including `null` (money plan 13 §5) — never re-derived. */
-  defaultUnit: LineItemUnit | null
-}
-
-/** One resolved line payload inside a picked group's explode (plans/dispatch/money/09-product-groups.md). */
-export interface CatalogGroupPickLine {
-  name: string
-  description: string | null
-  category: string | null
-  taxable: boolean
-  unitPrice: number | null
-  /** The resolved catalog item's current unit, snapshotted at explosion time (money plan 13 §5). */
-  unit: LineItemUnit | null
-  qty: number
-  /** EntityInstance id of the `catalog_item` (NOT the branded RecordId). */
-  catalogItemId: string
-}
-
-/**
- * Value handed to the line builder when a group is picked — resolution
- * (entry → catalog item lookup, dangling-id skip) happens here in the picker,
- * where both datasets are already loaded; the builder just writes.
- */
-export interface CatalogGroupPick {
-  name: string
-  taxRateId: string | null
-  discountType: 'percent' | 'amount' | null
-  discountValue: number | null
-  lines: CatalogGroupPickLine[]
-  /** Count of entries whose `catalogItemId` no longer resolves to a catalog item. */
-  skippedCount: number
-}
-
-interface CatalogItemFieldValues {
-  catalog_item_name?: string
-  catalog_item_description?: string | null
-  catalog_item_category?: unknown
-  catalog_item_default_unit_price?: number | null
-  catalog_item_default_unit?: LineItemUnit | LineItemUnit[] | null
-  catalog_item_taxable?: boolean
-  catalog_item_active?: boolean
-  catalog_item_part?: unknown
-}
-
-interface CatalogItemRow extends RecordMeta {
-  fieldValues: CatalogItemFieldValues
-}
-
-interface CatalogGroupFieldValues {
-  catalog_group_name?: string
-  catalog_group_description?: string | null
-  catalog_group_entries?: unknown
-  catalog_group_tax_rate_id?: string | null
-  catalog_group_discount_type?: unknown
-  catalog_group_discount_value?: number | null
-  catalog_group_active?: boolean
-}
-
-interface CatalogGroupRow extends RecordMeta {
-  fieldValues: CatalogGroupFieldValues
-}
-
-/** SINGLE_SELECT values come back as arrays — normalize to the first value. */
-function firstOf<T>(value: T | T[] | null | undefined): T | null {
-  if (Array.isArray(value)) return (value[0] ?? null) as T | null
-  return (value ?? null) as T | null
-}
+import { resolveCatalogGroup, resolvedCatalogGroupTotal } from './catalog-group-resolver'
 
 /** `price` is integer cents (FieldType.CURRENCY storage convention). */
 function formatPrice(price: number | null, currencyCode: string): string {
@@ -121,59 +41,7 @@ function formatPrice(price: number | null, currencyCode: string): string {
 }
 
 function titleCase(value: string): string {
-  return value.length ? value[0].toUpperCase() + value.slice(1) : value
-}
-
-/**
- * Resolve a `catalog_group` row's entries against the already-loaded catalog
- * item records — the explode payload's shape (money 09-product-groups.md
- * "Line-builder consumption" §1). Dangling `catalogItemId`s are skipped and
- * counted (logged by the caller); inactive items still resolve (deliberate
- * group membership).
- */
-function resolveGroup(
-  group: CatalogGroupRow,
-  itemsById: Map<string, CatalogItemRow>
-): CatalogGroupPick {
-  const entries = parseCatalogGroupEntries(group.fieldValues.catalog_group_entries)
-  const lines: CatalogGroupPickLine[] = []
-  let skippedCount = 0
-
-  for (const entry of entries) {
-    const item = itemsById.get(entry.catalogItemId)
-    if (!item) {
-      skippedCount++
-      console.warn(
-        `Catalog group "${group.fieldValues.catalog_group_name ?? group.id}" references a deleted catalog item (${entry.catalogItemId}) — entry skipped.`
-      )
-      continue
-    }
-    lines.push({
-      name: item.fieldValues.catalog_item_name ?? '',
-      description: entry.description ?? item.fieldValues.catalog_item_description ?? null,
-      category: firstOf<string>(item.fieldValues.catalog_item_category),
-      taxable: entry.taxable ?? item.fieldValues.catalog_item_taxable !== false,
-      unitPrice: item.fieldValues.catalog_item_default_unit_price ?? null,
-      // Same snapshot boundary as price — no entry-level override exists for unit.
-      unit: firstOf<LineItemUnit>(item.fieldValues.catalog_item_default_unit),
-      qty: entry.qty,
-      catalogItemId: entry.catalogItemId,
-    })
-  }
-
-  return {
-    name: group.fieldValues.catalog_group_name ?? '',
-    taxRateId: group.fieldValues.catalog_group_tax_rate_id ?? null,
-    discountType: firstOf<'percent' | 'amount'>(group.fieldValues.catalog_group_discount_type),
-    discountValue: group.fieldValues.catalog_group_discount_value ?? null,
-    lines,
-    skippedCount,
-  }
-}
-
-/** Σ resolvable-line `unitPrice × qty` — the picker's group total display. */
-function groupTotal(pick: CatalogGroupPick): number {
-  return pick.lines.reduce((sum, line) => sum + (line.unitPrice ?? 0) * line.qty, 0)
+  return value.length ? value.charAt(0).toUpperCase() + value.slice(1) : value
 }
 
 export interface CatalogPickerProps {
@@ -183,9 +51,14 @@ export interface CatalogPickerProps {
   initialQuery?: string
   /** Org currency code (from `organization.currency`) for price display. */
   currencyCode?: string
-  onSelectCatalogItem: (item: CatalogItemPick) => void
-  /** Picking a group explodes its resolved entries into plain line items. */
-  onSelectGroup: (group: CatalogGroupPick) => void
+  /** Shared catalog data loaded once by `LineBuilder`. */
+  items: CatalogItem[]
+  groups: CatalogGroup[]
+  itemMap: Map<string, CatalogItem>
+  isLoading: boolean
+  onSelectCatalogItem: (item: CatalogItem) => void
+  /** Picking a group lets `LineBuilder` resolve and explode its entries. */
+  onSelectGroup: (group: CatalogGroup) => void
   /** User typed text with no catalog match — add as an ad-hoc line, no catalog rel. */
   onFreeText: (text: string) => void
   /** Return focus to the name input once the picker closes (pick / Escape / outside). */
@@ -206,6 +79,10 @@ export function CatalogPicker({
   onOpenChange,
   initialQuery = '',
   currencyCode = 'USD',
+  items,
+  groups: catalogGroups,
+  itemMap,
+  isLoading,
   onSelectCatalogItem,
   onSelectGroup,
   onFreeText,
@@ -215,41 +92,28 @@ export function CatalogPicker({
   const [query, setQuery] = useState(initialQuery)
   const { isAdminOrOwner } = useUser()
 
-  const { records, isLoading: itemsLoading } = useAllRecords<CatalogItemRow>({
-    apiSlug: 'catalog-items',
-    enabled: open,
-  })
-
-  const { records: groupRecords, isLoading: groupsLoading } = useAllRecords<CatalogGroupRow>({
-    apiSlug: 'catalog-groups',
-    enabled: open,
-  })
-
   const groupPicks = useMemo(() => {
+    if (!open) return []
     const q = query.trim().toLowerCase()
-    const itemsById = new Map(records.map((r) => [r.id, r]))
-    const active = groupRecords.filter((g) => g.fieldValues.catalog_group_active !== false)
-    const filtered = q
-      ? active.filter((g) => (g.fieldValues.catalog_group_name ?? '').toLowerCase().includes(q))
-      : active
+    const active = catalogGroups.filter((group) => group.active)
+    const filtered = q ? active.filter((group) => group.name.toLowerCase().includes(q)) : active
 
     return filtered
-      .map((row) => ({ id: row.id, pick: resolveGroup(row, itemsById) }))
-      .sort((a, b) => a.pick.name.localeCompare(b.pick.name))
-  }, [groupRecords, records, query])
+      .map((group) => ({ group, resolved: resolveCatalogGroup(group, itemMap) }))
+      .sort((a, b) => a.group.name.localeCompare(b.group.name))
+  }, [open, catalogGroups, itemMap, query])
 
-  const groups = useMemo(() => {
+  const itemGroups = useMemo(() => {
+    if (!open) return []
     const q = query.trim().toLowerCase()
-    const active = records.filter((r) => r.fieldValues.catalog_item_active !== false)
-    const filtered = q
-      ? active.filter((r) => (r.fieldValues.catalog_item_name ?? '').toLowerCase().includes(q))
-      : active
+    const active = items.filter((item) => item.active)
+    const filtered = q ? active.filter((item) => item.name.toLowerCase().includes(q)) : active
 
-    const byCategory = new Map<string, CatalogItemRow[]>()
-    for (const row of filtered) {
-      const category = firstOf<string>(row.fieldValues.catalog_item_category) ?? 'other'
+    const byCategory = new Map<string, CatalogItem[]>()
+    for (const item of filtered) {
+      const category = item.category || 'other'
       const bucket = byCategory.get(category) ?? []
-      bucket.push(row)
+      bucket.push(item)
       byCategory.set(category, bucket)
     }
 
@@ -258,31 +122,19 @@ export function CatalogPicker({
       .map(([category, rows]) => ({
         category,
         label: titleCase(category),
-        rows: rows.sort((a, b) =>
-          (a.fieldValues.catalog_item_name ?? '').localeCompare(
-            b.fieldValues.catalog_item_name ?? ''
-          )
-        ),
+        rows: rows.sort((a, b) => a.name.localeCompare(b.name)),
       }))
-  }, [records, query])
+  }, [open, items, query])
 
-  const hasAnyMatch = groups.some((g) => g.rows.length > 0) || groupPicks.length > 0
+  const hasAnyMatch = itemGroups.some((group) => group.rows.length > 0) || groupPicks.length > 0
 
-  const handlePick = (row: CatalogItemRow) => {
-    onSelectCatalogItem({
-      recordId: toRecordId('catalog_item', row.id),
-      name: row.fieldValues.catalog_item_name ?? '',
-      description: row.fieldValues.catalog_item_description ?? null,
-      category: firstOf<string>(row.fieldValues.catalog_item_category),
-      taxable: row.fieldValues.catalog_item_taxable !== false,
-      unitPrice: row.fieldValues.catalog_item_default_unit_price ?? null,
-      defaultUnit: firstOf<LineItemUnit>(row.fieldValues.catalog_item_default_unit),
-    })
+  const handlePick = (item: CatalogItem) => {
+    onSelectCatalogItem(item)
     onOpenChange(false)
   }
 
-  const handlePickGroup = (pick: CatalogGroupPick) => {
-    onSelectGroup(pick)
+  const handlePickGroup = (group: CatalogGroup) => {
+    onSelectGroup(group)
     onOpenChange(false)
   }
 
@@ -320,21 +172,21 @@ export function CatalogPicker({
             scrollAreaStyle={{
               height: 'min(300px, calc(var(--radix-popover-content-available-height) - 78px))',
             }}>
-            {!(itemsLoading || groupsLoading) && !hasAnyMatch && !query.trim() && (
+            {!isLoading && !hasAnyMatch && !query.trim() && (
               <CommandEmpty>No products or services yet</CommandEmpty>
             )}
 
             {groupPicks.length > 0 && (
               <CommandGroup heading='Groups'>
-                {groupPicks.map(({ id, pick }) => {
-                  const count = pick.lines.length + pick.skippedCount
+                {groupPicks.map(({ group, resolved }) => {
+                  const count = group.entries.length
                   return (
                     <CommandDetailItem
-                      key={id}
-                      value={`group-${id}`}
-                      onSelect={() => handlePickGroup(pick)}
+                      key={group.id}
+                      value={`group-${group.id}`}
+                      onSelect={() => handlePickGroup(group)}
                       icon={<Boxes className='size-4' />}
-                      title={pick.name}
+                      title={group.name}
                       secondary={
                         <span className='text-muted-foreground text-xs'>
                           {count} item{count === 1 ? '' : 's'}
@@ -342,7 +194,7 @@ export function CatalogPicker({
                       }
                       trailing={
                         <span className='text-muted-foreground text-xs'>
-                          {formatPrice(groupTotal(pick), currencyCode)}
+                          {formatPrice(resolvedCatalogGroupTotal(resolved), currencyCode)}
                         </span>
                       }
                     />
@@ -351,27 +203,24 @@ export function CatalogPicker({
               </CommandGroup>
             )}
 
-            {groups.map(
+            {itemGroups.map(
               (group) =>
                 group.rows.length > 0 && (
                   <CommandGroup key={group.category} heading={group.label}>
-                    {group.rows.map((row) => (
+                    {group.rows.map((item) => (
                       <CommandDetailItem
-                        key={row.id}
-                        value={row.id}
-                        onSelect={() => handlePick(row)}
-                        title={row.fieldValues.catalog_item_name ?? ''}
+                        key={item.id}
+                        value={item.id}
+                        onSelect={() => handlePick(item)}
+                        title={item.name}
                         secondary={
-                          row.fieldValues.catalog_item_part != null ? (
+                          item.partRecordId ? (
                             <span className='text-muted-foreground text-xs'>Linked part</span>
                           ) : undefined
                         }
                         trailing={
                           <span className='text-muted-foreground text-xs'>
-                            {formatPrice(
-                              row.fieldValues.catalog_item_default_unit_price ?? null,
-                              currencyCode
-                            )}
+                            {formatPrice(item.defaultUnitPriceCents, currencyCode)}
                           </span>
                         }
                       />

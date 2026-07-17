@@ -12,6 +12,7 @@ import type { RecordMeta } from '~/components/resources/store/record-store'
 
 /** Catalog item record shape from `useAllRecords` (systemAttribute-keyed field values). */
 export interface CatalogItemRecord extends RecordMeta {
+  recordId: RecordId
   fieldValues: {
     catalog_item_name?: string
     catalog_item_description?: string | null
@@ -98,11 +99,13 @@ interface UseCatalogItemsResult {
  * shape as `useInboxes`/`useTagHierarchy` — the catalog settings page is the
  * only consumer, so this lives under `money/hooks` rather than `resources`.
  */
-export function useCatalogItems(): UseCatalogItemsResult {
+export function useCatalogItems(options: { enabled?: boolean } = {}): UseCatalogItemsResult {
+  const { enabled = true } = options
   const { records, entityDefinitionId, fields, isLoading, refresh, appendRecord, removeRecord } =
     useAllRecords<CatalogItemRecord>({
       apiSlug: 'catalog-items',
       includeArchived: false,
+      enabled,
     })
 
   const { items, itemMap } = useMemo(() => {

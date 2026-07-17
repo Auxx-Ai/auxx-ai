@@ -15,6 +15,7 @@ import type { RecordMeta } from '~/components/resources/store/record-store'
 
 /** Catalog group record shape from `useAllRecords` (systemAttribute-keyed field values). */
 export interface CatalogGroupRecord extends RecordMeta {
+  recordId: RecordId
   fieldValues: {
     catalog_group_name?: string
     catalog_group_description?: string | null
@@ -91,11 +92,13 @@ interface UseCatalogGroupsResult {
  * entity — plans/dispatch/money/09-product-groups.md) via the generic record
  * system. Same "small dataset, no pagination" shape as `useCatalogItems`.
  */
-export function useCatalogGroups(): UseCatalogGroupsResult {
+export function useCatalogGroups(options: { enabled?: boolean } = {}): UseCatalogGroupsResult {
+  const { enabled = true } = options
   const { records, entityDefinitionId, fields, isLoading, refresh, appendRecord, removeRecord } =
     useAllRecords<CatalogGroupRecord>({
       apiSlug: 'catalog-groups',
       includeArchived: false,
+      enabled,
     })
 
   const { groups, groupMap } = useMemo(() => {
