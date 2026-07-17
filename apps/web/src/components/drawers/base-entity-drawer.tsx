@@ -506,7 +506,9 @@ export function BaseEntityDrawer({
   // (e.g. clicking a different sidebar row without closing the drawer first)
   // — but NOT on initial mount, so a cold-load deep link (?record=…&peek=…)
   // survives. `peek.clear()` resets `tab`/`panel`/`item` too, so a new base
-  // record always lands on a fresh single-frame stack.
+  // record always lands on a fresh single-frame stack. Rendering doesn't wait
+  // for this effect: `useRecordPeekStack` already drops the stale frames at
+  // render time (one 'replace' update), this just syncs the URL params.
   const prevRecordIdRef = React.useRef(recordId)
   React.useEffect(() => {
     const prevRecordId = prevRecordIdRef.current
