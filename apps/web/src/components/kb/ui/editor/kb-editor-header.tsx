@@ -9,7 +9,7 @@ import {
   MainPageBreadcrumbItem,
   MainPageHeader,
 } from '@auxx/ui/components/main-page'
-import { RadioTab, RadioTabItem } from '@auxx/ui/components/radio-tab'
+import { MainPageTabs } from '@auxx/ui/components/main-page-tabs'
 import { Book, Cog, Layout, Sparkles } from 'lucide-react'
 import { parseAsStringLiteral, useQueryState } from 'nuqs'
 import { useEffect, useMemo } from 'react'
@@ -39,7 +39,7 @@ function getInitials(name?: string): string {
 
 /**
  * Persistent KB editor header — breadcrumb [Knowledge Bases ▸ KB-name dropdown],
- * action [KBPublishCluster + RadioTab General/Layout/Articles]. Sits inside
+ * action [KBPublishCluster + MainPageTabs General/Layout/Articles]. Sits inside
  * `MainPage` in the editor route segment layout.
  *
  * The learned KB ("AI Memory") gets trimmed chrome: no settings tabs (the
@@ -86,7 +86,6 @@ export function KBEditorHeader({ knowledgeBaseId, knowledgeBase }: KBEditorHeade
           <MainPageBreadcrumbItem
             title={merged.name ?? 'AI Memory'}
             icon={<Sparkles className='size-4 text-primary' />}
-            last
           />
         ) : (
           <MainPageBreadcrumbDropdown
@@ -98,29 +97,33 @@ export function KBEditorHeader({ knowledgeBaseId, knowledgeBase }: KBEditorHeade
                 </AvatarFallback>
               </Avatar>
             }
-            last
             contentClassName='w-72'>
             <KBSwitcherDropdownContent />
           </MainPageBreadcrumbDropdown>
         )}
       </MainPageBreadcrumb>
       {!isLearned && (
-        <RadioTab value={panel} onValueChange={(v) => setPanel(v as KBEditorPanel)} size='sm'>
-          <RadioTabItem value='general' tooltip='General'>
-            <Cog />
-            <span className='hidden sm:inline'>General</span>
-          </RadioTabItem>
-          {LAYOUT_TAB_ENABLED && (
-            <RadioTabItem value='layout' tooltip='Layout'>
-              <Layout />
-              <span className='hidden sm:inline'>Layout</span>
-            </RadioTabItem>
-          )}
-          <RadioTabItem value='articles' tooltip='Articles' data-kb-articles-tab=''>
-            <Book />
-            <span className='hidden sm:inline'>Articles</span>
-          </RadioTabItem>
-        </RadioTab>
+        <MainPageTabs
+          value={panel}
+          onValueChange={(v) => setPanel(v as KBEditorPanel)}
+          items={[
+            { value: 'general', label: 'General', icon: <Cog />, tooltip: 'General' },
+            {
+              value: 'layout',
+              label: 'Layout',
+              icon: <Layout />,
+              tooltip: 'Layout',
+              hidden: !LAYOUT_TAB_ENABLED,
+            },
+            {
+              value: 'articles',
+              label: 'Articles',
+              icon: <Book />,
+              tooltip: 'Articles',
+              'data-kb-articles-tab': '',
+            },
+          ]}
+        />
       )}
     </MainPageHeader>
   )

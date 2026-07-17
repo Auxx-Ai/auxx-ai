@@ -6,14 +6,12 @@ import {
   MainPage,
   MainPageBreadcrumb,
   MainPageBreadcrumbItem,
-  MainPageContent,
   MainPageHeader,
 } from '@auxx/ui/components/main-page'
 import { AlertTriangle } from 'lucide-react'
 import { use } from 'react'
 import { ConnectorDetailView } from '~/components/data-connectors/ui/connector-detail-view'
-import { EmptyState } from '~/components/global/empty-state'
-import { LoadingSpinner } from '~/components/global/loading-content'
+import { MainPageLoading, MainPageNotFound } from '~/components/global/main-page-states'
 import { api } from '~/trpc/react'
 
 interface ConnectorDetailPageProps {
@@ -35,17 +33,14 @@ export default function ConnectorDetailPage({ params }: ConnectorDetailPageProps
         <MainPageHeader>
           <MainPageBreadcrumb>
             <MainPageBreadcrumbItem title='Connectors' href='/app/connectors' />
-            <MainPageBreadcrumbItem title='Not found' last />
+            <MainPageBreadcrumbItem title='Not found' />
           </MainPageBreadcrumb>
         </MainPageHeader>
-        <MainPageContent>
-          <EmptyState
-            icon={AlertTriangle}
-            title='Connector not found'
-            description='This connector does not exist or you do not have access to it.'
-            button={<div className='h-12' />}
-          />
-        </MainPageContent>
+        <MainPageNotFound
+          icon={AlertTriangle}
+          title='Connector not found'
+          description='This connector does not exist or you do not have access to it.'
+        />
       </MainPage>
     )
   }
@@ -56,12 +51,10 @@ export default function ConnectorDetailPage({ params }: ConnectorDetailPageProps
         <MainPageHeader>
           <MainPageBreadcrumb>
             <MainPageBreadcrumbItem title='Connectors' href='/app/connectors' />
-            <MainPageBreadcrumbItem title='Loading…' last />
+            <MainPageBreadcrumbItem title='Loading…' />
           </MainPageBreadcrumb>
         </MainPageHeader>
-        <MainPageContent>
-          <LoadingSpinner />
-        </MainPageContent>
+        <MainPageLoading />
       </MainPage>
     )
   }

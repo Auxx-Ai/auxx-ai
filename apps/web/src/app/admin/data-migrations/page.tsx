@@ -81,7 +81,7 @@ export default function DataMigrationsPage() {
           }>
           <MainPageBreadcrumb>
             <MainPageBreadcrumbItem title='Admin' href='/admin' />
-            <MainPageBreadcrumbItem title='Data Migrations' href='/admin/data-migrations' last />
+            <MainPageBreadcrumbItem title='Data Migrations' href='/admin/data-migrations' />
           </MainPageBreadcrumb>
         </MainPageHeader>
         <MainPageContent>

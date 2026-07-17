@@ -6,7 +6,7 @@ import { weekStartToIndex } from '@auxx/lib/availability/client'
 import { FeatureKey } from '@auxx/lib/permissions/client'
 import { isRecordId } from '@auxx/lib/resources/client'
 import { CalendarDndProvider } from '@auxx/ui/components/event-calendar'
-import { type DockedPanelConfig, MainPageContent } from '@auxx/ui/components/main-page'
+import { MainPageContent } from '@auxx/ui/components/main-page'
 import type { DragEndEvent } from '@dnd-kit/core'
 import { addMinutes } from 'date-fns'
 import { Lock } from 'lucide-react'
@@ -16,11 +16,10 @@ import { renderAppDragGhost } from '~/components/global/app-drag-overlay'
 import { EmptyState } from '~/components/global/empty-state'
 import { RecordDrawer } from '~/components/records/record-drawer'
 import { toRecordId, useResource } from '~/components/resources'
-import { useEffectiveDockState } from '~/hooks/use-effective-dock-state'
+import { useDockedPanels } from '~/hooks/use-docked-panels'
 import { useSettings } from '~/hooks/use-settings'
 import { useUser } from '~/hooks/use-user'
 import { useFeatureFlags } from '~/providers/feature-flag-provider'
-import { useDockStore } from '~/stores/dock-store'
 import { useDispatchSidebarStore } from '../../stores/dispatch-sidebar-store'
 import { useRoutePlannerData } from '../route-planner/hooks/use-route-planner-data'
 import { PlannerDndProvider } from '../route-planner/planner-dnd-provider'
@@ -107,7 +106,7 @@ export function DispatchBoard() {
   const [activeVisitId, setActiveVisitId] = useState<string | null>(null)
 
   // Dockable event panel (plan 21) — a board-scoped push column, separate from the page-level
-  // `useDockStore`/`DockedPanelConfig` dock further below that drives the record drawer; this
+  // `useDockedPanels` dock further below that drives the record drawer; this
   // one only ever knows about the calendar's selected event. `isEventDockOpen` alone (not the
   // side) is all `BoardCalendarGrid` needs to suppress the floating popover.
   const isEventDockOpen = useDispatchSidebarStore((s) => s.eventDock.open)
@@ -160,37 +159,21 @@ export function DispatchBoard() {
     [setDrawerParams]
   )
 
-  // Dock-aware drawer placement (records-view.tsx's recipe): user's dock preference on →
-  // the drawer renders as a resizable `MainPageContent` docked panel; off (or mobile) →
-  // the overlay `RecordDrawer` at the bottom of this component.
-  const isDocked = useEffectiveDockState()
-  const dockedWidth = useDockStore((state) => state.dockedWidth)
-  const setDockedWidth = useDockStore((state) => state.setDockedWidth)
-  const dockMinWidth = useDockStore((state) => state.minWidth)
-  const dockMaxWidth = useDockStore((state) => state.maxWidth)
-  const dockedPanels = useMemo<DockedPanelConfig[]>(() => {
-    if (!isDocked || !drawerRecordId) return []
-    return [
-      {
-        key: 'record-detail',
-        content: (
-          <RecordDrawer open onOpenChange={handleDrawerOpenChange} recordId={drawerRecordId} />
-        ),
-        width: dockedWidth,
-        onWidthChange: setDockedWidth,
-        minWidth: dockMinWidth,
-        maxWidth: dockMaxWidth,
-      },
-    ]
-  }, [
-    isDocked,
-    drawerRecordId,
-    handleDrawerOpenChange,
-    dockedWidth,
-    setDockedWidth,
-    dockMinWidth,
-    dockMaxWidth,
-  ])
+  // Dock-aware drawer placement: user's dock preference on → the drawer renders
+  // as a resizable `MainPageContent` docked panel; off (or mobile) → overlay.
+  const { dockedPanels, overlays } = useDockedPanels(
+    drawerRecordId
+      ? [
+          {
+            key: 'record-detail',
+            open: true,
+            content: (
+              <RecordDrawer open onOpenChange={handleDrawerOpenChange} recordId={drawerRecordId} />
+            ),
+          },
+        ]
+      : []
+  )
 
   const existingVisits: ExistingVisitForOverlap[] = useMemo(
     () =>
@@ -396,13 +379,7 @@ export function DispatchBoard() {
           </CalendarDndProvider>
         )}
       </div>
-      {!isDocked && (
-        <RecordDrawer
-          open={!!drawerRecordId}
-          onOpenChange={handleDrawerOpenChange}
-          recordId={drawerRecordId ?? undefined}
-        />
-      )}
+      {overlays}
     </MainPageContent>
   )
 }

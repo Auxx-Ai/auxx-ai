@@ -7,7 +7,6 @@ import { toRecordId } from '@auxx/types/resource'
 import { Button } from '@auxx/ui/components/button'
 import { Kbd } from '@auxx/ui/components/kbd'
 import {
-  type DockedPanelConfig,
   MainPage,
   MainPageBreadcrumb,
   MainPageBreadcrumbItem,
@@ -70,11 +69,10 @@ import {
 } from '~/components/threads'
 import { useInboxes } from '~/components/threads/hooks'
 import { useCompose } from '~/hooks/use-compose'
-import { useEffectiveDockState } from '~/hooks/use-effective-dock-state'
+import { useDockedPanels } from '~/hooks/use-docked-panels'
 import { useUser } from '~/hooks/use-user'
 import { safeLocalStorage } from '~/lib/safe-localstorage'
 import { useFeatureFlags } from '~/providers/feature-flag-provider'
-import { useDockStore } from '~/stores/dock-store'
 import { api } from '~/trpc/react'
 import {
   calculateBasePathForList,
@@ -190,13 +188,6 @@ function MailboxInner({
 
   // Get current user ID for personal inbox/assigned filtering
   const { userId } = useUser()
-
-  // Dock state for contact drawer
-  const isDocked = useEffectiveDockState()
-  const dockedWidth = useDockStore((state) => state.dockedWidth)
-  const setDockedWidth = useDockStore((state) => state.setDockedWidth)
-  const minWidth = useDockStore((state) => state.minWidth)
-  const maxWidth = useDockStore((state) => state.maxWidth)
 
   // Contact drawer state from URL (shared with participant-display.tsx)
   const [contactId, setContactId] = useQueryState('contactId', { defaultValue: '' })
@@ -467,79 +458,45 @@ function MailboxInner({
     [participantId, setParticipantId]
   )
 
-  // Build docked panels for contact + ticket drawers
-  const dockedPanels = useMemo<DockedPanelConfig[]>(() => {
-    const panels: DockedPanelConfig[] = []
-
-    if (isDocked && isContactDrawerOpen) {
-      panels.push({
-        key: 'contact',
-        content: (
-          <ContactDrawer
-            contactId={contactId}
-            open={isContactDrawerOpen}
-            onOpenChange={handleContactDrawerClose}
+  // Docked/overlay panels for the contact, ticket, and participant drawers —
+  // stacked in the same array; the hook renders whichever are open into the
+  // right dock slot (or as overlays when not docked).
+  const { dockedPanels, overlays } = useDockedPanels([
+    {
+      key: 'contact',
+      open: isContactDrawerOpen,
+      content: (
+        <ContactDrawer
+          contactId={contactId}
+          open={isContactDrawerOpen}
+          onOpenChange={handleContactDrawerClose}
+        />
+      ),
+    },
+    {
+      key: 'ticket',
+      open: isTicketDrawerOpen,
+      content: (
+        <NestedThreadProvider value={true}>
+          <RecordDrawer
+            recordId={toRecordId('ticket', openTicketId)}
+            open={isTicketDrawerOpen}
+            onOpenChange={handleTicketDrawerClose}
           />
-        ),
-        width: dockedWidth,
-        onWidthChange: setDockedWidth,
-        minWidth,
-        maxWidth,
-      })
-    }
-
-    if (isDocked && isTicketDrawerOpen) {
-      panels.push({
-        key: 'ticket',
-        content: (
-          <NestedThreadProvider value={true}>
-            <RecordDrawer
-              recordId={toRecordId('ticket', openTicketId)}
-              open={isTicketDrawerOpen}
-              onOpenChange={handleTicketDrawerClose}
-            />
-          </NestedThreadProvider>
-        ),
-        width: dockedWidth,
-        onWidthChange: setDockedWidth,
-        minWidth,
-        maxWidth,
-      })
-    }
-
-    if (isDocked && isParticipantDrawerOpen) {
-      panels.push({
-        key: 'participant',
-        content: (
-          <ParticipantDrawer
-            participantId={participantId}
-            open={isParticipantDrawerOpen}
-            onOpenChange={handleParticipantDrawerClose}
-          />
-        ),
-        width: dockedWidth,
-        onWidthChange: setDockedWidth,
-        minWidth,
-        maxWidth,
-      })
-    }
-
-    return panels
-  }, [
-    isDocked,
-    isContactDrawerOpen,
-    contactId,
-    handleContactDrawerClose,
-    isTicketDrawerOpen,
-    openTicketId,
-    handleTicketDrawerClose,
-    isParticipantDrawerOpen,
-    participantId,
-    handleParticipantDrawerClose,
-    dockedWidth,
-    setDockedWidth,
-    minWidth,
-    maxWidth,
+        </NestedThreadProvider>
+      ),
+    },
+    {
+      key: 'participant',
+      open: isParticipantDrawerOpen,
+      content: (
+        <ParticipantDrawer
+          participantId={participantId}
+          open={isParticipantDrawerOpen}
+          onOpenChange={handleParticipantDrawerClose}
+        />
+      ),
+    },
   ])
 
   return (
@@ -584,17 +541,14 @@ function MailboxInner({
                       ? '/app/mail/drafts'
                       : '/app/mail/sent'
                   }
-                  last
                 />
               )}
               {isPersonalContext(contextType) &&
                 contextType !== InternalFilterContextType.DRAFTS &&
                 contextType !== InternalFilterContextType.SENT && (
-                  <MainPageBreadcrumbItem title={breadcrumbTitle} last />
+                  <MainPageBreadcrumbItem title={breadcrumbTitle} />
                 )}
-              {isSharedContext(contextType) && (
-                <MainPageBreadcrumbItem title={breadcrumbTitle} last />
-              )}
+              {isSharedContext(contextType) && <MainPageBreadcrumbItem title={breadcrumbTitle} />}
             </MainPageBreadcrumb>
           </MainPageHeader>
           <MainPageContent dockedPanels={dockedPanels}>
@@ -732,34 +686,7 @@ function MailboxInner({
           </MainPageContent>
         </MainPage>
 
-        {/* Overlay contact drawer when NOT docked */}
-        {!isDocked && (
-          <ContactDrawer
-            contactId={contactId}
-            open={isContactDrawerOpen}
-            onOpenChange={handleContactDrawerClose}
-          />
-        )}
-
-        {/* Overlay ticket drawer when NOT docked */}
-        {!isDocked && isTicketDrawerOpen && (
-          <NestedThreadProvider value={true}>
-            <RecordDrawer
-              recordId={toRecordId('ticket', openTicketId)}
-              open={isTicketDrawerOpen}
-              onOpenChange={handleTicketDrawerClose}
-            />
-          </NestedThreadProvider>
-        )}
-
-        {/* Overlay participant drawer when NOT docked */}
-        {!isDocked && (
-          <ParticipantDrawer
-            participantId={participantId}
-            open={isParticipantDrawerOpen}
-            onOpenChange={handleParticipantDrawerClose}
-          />
-        )}
+        {overlays}
       </DrawerContextProvider>
     </MailFilterProvider>
   )

@@ -12,9 +12,14 @@ import { useThread } from '~/components/threads/hooks/use-thread'
 import { BlockCard } from './block-card'
 import type { BlockRendererProps } from './block-registry'
 import type { ThreadListData, ThreadSnapshotData } from './block-schemas'
+import { useStreamSafeIds } from './use-stream-safe-ids'
 
-export function ThreadListBlock({ data, skipEntrance }: BlockRendererProps<ThreadListData>) {
-  const threadIds = data.threadIds ?? []
+export function ThreadListBlock({
+  data,
+  lastValueTruncated,
+  skipEntrance,
+}: BlockRendererProps<ThreadListData>) {
+  const threadIds = useStreamSafeIds(data.threadIds ?? [], lastValueTruncated)
   const snapshot = data.snapshot
 
   return (

@@ -23,7 +23,7 @@ export function DetailViewSkeleton({ label, backUrl }: DetailViewSkeletonProps) 
       <MainPageHeader>
         <MainPageBreadcrumb>
           <MainPageBreadcrumbItem title={label ?? 'Records'} href={backUrl} />
-          <MainPageBreadcrumbItem title='Loading...' last />
+          <MainPageBreadcrumbItem title='Loading...' />
         </MainPageBreadcrumb>
       </MainPageHeader>
       <MainPageContent

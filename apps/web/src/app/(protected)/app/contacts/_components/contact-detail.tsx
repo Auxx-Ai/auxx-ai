@@ -169,7 +169,7 @@ export function ContactDetail({ id }: { id: string }) {
         }>
         <MainPageBreadcrumb>
           <MainPageBreadcrumbItem title='Contacts' href='/app/contacts' />
-          <MainPageBreadcrumbItem title={customerName} last />
+          <MainPageBreadcrumbItem title={customerName} />
         </MainPageBreadcrumb>
       </MainPageHeader>
 
@@ -233,7 +233,7 @@ function CustomerDetailSkeleton() {
       <MainPageHeader>
         <MainPageBreadcrumb>
           <MainPageBreadcrumbItem title='Contacts' href='/app/contacts' />
-          <MainPageBreadcrumbItem title='Loading...' last />
+          <MainPageBreadcrumbItem title='Loading...' />
         </MainPageBreadcrumb>
       </MainPageHeader>
       <MainPageContent
@@ -279,7 +279,7 @@ function CustomerNotFound({ router }: { router: any }) {
       <MainPageHeader>
         <MainPageBreadcrumb>
           <MainPageBreadcrumbItem title='Contacts' href='/app/contacts' />
-          <MainPageBreadcrumbItem title='Not Found' last />
+          <MainPageBreadcrumbItem title='Not Found' />
         </MainPageBreadcrumb>
       </MainPageHeader>
       <MainPageContent>

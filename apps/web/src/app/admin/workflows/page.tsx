@@ -164,7 +164,7 @@ export default function WorkflowTemplatesPage() {
           }>
           <MainPageBreadcrumb>
             <MainPageBreadcrumbItem title='Admin' href='/admin' />
-            <MainPageBreadcrumbItem title='Workflow Templates' href='/admin/workflows' last />
+            <MainPageBreadcrumbItem title='Workflow Templates' href='/admin/workflows' />
           </MainPageBreadcrumb>
         </MainPageHeader>
         <MainPageContent>

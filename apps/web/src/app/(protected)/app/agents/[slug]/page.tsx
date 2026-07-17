@@ -6,17 +6,18 @@ import {
   MainPage,
   MainPageBreadcrumb,
   MainPageBreadcrumbItem,
-  MainPageContent,
   MainPageHeader,
 } from '@auxx/ui/components/main-page'
-import { Lock } from 'lucide-react'
 import { useParams } from 'next/navigation'
 import { AgentsProvider } from '~/components/agents'
 import { useAgent } from '~/components/agents/hooks/use-agent'
 import { useAgentRealtime } from '~/components/agents/hooks/use-agent-realtime'
 import { AgentDetailView } from '~/components/agents/ui/detail/agent-detail-view'
-import { EmptyState } from '~/components/global/empty-state'
-import { LoadingSpinner } from '~/components/global/loading-content'
+import {
+  MainPageLoading,
+  MainPageNoPermission,
+  MainPageNotFound,
+} from '~/components/global/main-page-states'
 import { useUser } from '~/hooks/use-user'
 import { useFeatureFlags } from '~/providers/feature-flag-provider'
 
@@ -31,12 +32,10 @@ function AgentDetailLoader({ slug }: { slug: string }) {
           <MainPageBreadcrumb>
             <MainPageBreadcrumbItem title='Kopilot' href='/app/kopilot/new' />
             <MainPageBreadcrumbItem title='Agents' href='/app/agents' />
-            <MainPageBreadcrumbItem title='Loading…' last />
+            <MainPageBreadcrumbItem title='Loading…' />
           </MainPageBreadcrumb>
         </MainPageHeader>
-        <MainPageContent>
-          <LoadingSpinner />
-        </MainPageContent>
+        <MainPageLoading />
       </MainPage>
     )
   }
@@ -48,16 +47,10 @@ function AgentDetailLoader({ slug }: { slug: string }) {
           <MainPageBreadcrumb>
             <MainPageBreadcrumbItem title='Kopilot' href='/app/kopilot/new' />
             <MainPageBreadcrumbItem title='Agents' href='/app/agents' />
-            <MainPageBreadcrumbItem title='Not found' last />
+            <MainPageBreadcrumbItem title='Not found' />
           </MainPageBreadcrumb>
         </MainPageHeader>
-        <MainPageContent>
-          <EmptyState
-            title='Agent not found'
-            description='This agent may have been deleted.'
-            button={<div className='h-12' />}
-          />
-        </MainPageContent>
+        <MainPageNotFound title='Agent not found' description='This agent may have been deleted.' />
       </MainPage>
     )
   }
@@ -77,17 +70,13 @@ export default function AgentDetailPage() {
         <MainPageHeader>
           <MainPageBreadcrumb>
             <MainPageBreadcrumbItem title='Kopilot' href='/app/kopilot/new' />
-            <MainPageBreadcrumbItem title='Agents' last />
+            <MainPageBreadcrumbItem title='Agents' />
           </MainPageBreadcrumb>
         </MainPageHeader>
-        <MainPageContent>
-          <EmptyState
-            icon={Lock}
-            title='Agents Not Available'
-            description='Agents are admin-only and require the agents feature on your plan.'
-            button={<div className='h-12' />}
-          />
-        </MainPageContent>
+        <MainPageNoPermission
+          title='Agents Not Available'
+          description='Agents are admin-only and require the agents feature on your plan.'
+        />
       </MainPage>
     )
   }

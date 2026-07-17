@@ -3,7 +3,6 @@
 
 import { FeatureKey } from '@auxx/lib/permissions/client'
 import {
-  type DockedPanelConfig,
   MainPage,
   MainPageBreadcrumb,
   MainPageBreadcrumbItem,
@@ -12,22 +11,15 @@ import {
 } from '@auxx/ui/components/main-page'
 import { Lock } from 'lucide-react'
 import { parseAsString, useQueryState } from 'nuqs'
-import { useCallback, useEffect, useMemo } from 'react'
+import { useCallback, useEffect } from 'react'
 import { FilesManagement } from '~/components/files'
 import { FileDetailDrawer } from '~/components/files/file-detail-drawer'
 import { type FileItem, useFileSystemStore } from '~/components/files/files-store'
 import { EmptyState } from '~/components/global/empty-state'
-import { useEffectiveDockState } from '~/hooks/use-effective-dock-state'
+import { useDockedPanels } from '~/hooks/use-docked-panels'
 import { useFeatureFlags } from '~/providers/feature-flag-provider'
-import { useDockStore } from '~/stores/dock-store'
 
 function FilesPageContent() {
-  const isDocked = useEffectiveDockState()
-  const dockedWidth = useDockStore((state) => state.dockedWidth)
-  const setDockedWidth = useDockStore((state) => state.setDockedWidth)
-  const minWidth = useDockStore((state) => state.minWidth)
-  const maxWidth = useDockStore((state) => state.maxWidth)
-
   // ── URL state ───────────────────────────────────────────────────────────
   // ?folder=<folderId> mirrors the filesystem store's currentFolderId
   // ?id=<fileId> opens the file detail drawer
@@ -89,57 +81,37 @@ function FilesPageContent() {
     [setSelectedFileId]
   )
 
-  // Build docked panels
-  const dockedPanels = useMemo<DockedPanelConfig[]>(() => {
-    if (!isDocked || !isDrawerOpen || !selectedFile) return []
-    return [
-      {
-        key: 'file-detail',
-        content: (
-          <FileDetailDrawer
-            file={selectedFile}
-            setSelectedFile={handleSetSelectedFile}
-            onOpenChange={handleDrawerOpenChange}
-          />
-        ),
-        width: dockedWidth,
-        onWidthChange: setDockedWidth,
-        minWidth,
-        maxWidth,
-      },
-    ]
-  }, [
-    isDocked,
-    isDrawerOpen,
-    selectedFile,
-    handleDrawerOpenChange,
-    handleSetSelectedFile,
-    dockedWidth,
-    setDockedWidth,
-    minWidth,
-    maxWidth,
-  ])
+  const { dockedPanels, overlays } = useDockedPanels(
+    selectedFile
+      ? [
+          {
+            key: 'file-detail',
+            open: isDrawerOpen,
+            content: (
+              <FileDetailDrawer
+                file={selectedFile}
+                setSelectedFile={handleSetSelectedFile}
+                onOpenChange={handleDrawerOpenChange}
+              />
+            ),
+          },
+        ]
+      : []
+  )
 
   return (
     <MainPage>
       <MainPageHeader>
         <MainPageBreadcrumb>
           <MainPageBreadcrumbItem title='Files' href='/app/files' />
-          <MainPageBreadcrumbItem title='Management' last />
+          <MainPageBreadcrumbItem title='Management' />
         </MainPageBreadcrumb>
       </MainPageHeader>
       <MainPageContent dockedPanels={dockedPanels}>
         <FilesManagement onFileSelect={handleFileSelect} />
-
-        {/* Overlay drawer when NOT docked */}
-        {!isDocked && selectedFile && isDrawerOpen && (
-          <FileDetailDrawer
-            file={selectedFile}
-            setSelectedFile={handleSetSelectedFile}
-            onOpenChange={handleDrawerOpenChange}
-          />
-        )}
       </MainPageContent>
+
+      {overlays}
     </MainPage>
   )
 }

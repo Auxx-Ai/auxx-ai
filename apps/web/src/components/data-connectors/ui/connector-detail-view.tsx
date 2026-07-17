@@ -30,8 +30,7 @@ import { AppIcon } from '~/components/apps/ui/app-icon'
 import { Tooltip } from '~/components/global/tooltip'
 import { useResources } from '~/components/resources/hooks/use-resources'
 import { useConfirm } from '~/hooks/use-confirm'
-import { useMedia } from '~/hooks/use-media'
-import { useDockStore } from '~/stores/dock-store'
+import { useDockedPanels } from '~/hooks/use-docked-panels'
 import { api } from '~/trpc/react'
 import { useConnectorMutations } from '../hooks/use-connector-mutations'
 import { useConnectorSyncRealtime } from '../hooks/use-connector-sync-realtime'
@@ -68,11 +67,6 @@ function iconIdForType(type: string): string {
  */
 export function ConnectorDetailView({ connector }: ConnectorDetailViewProps) {
   const router = useRouter()
-  const isDesktop = useMedia('(min-width: 1024px)')
-  const dockedWidth = useDockStore((state) => state.dockedWidth)
-  const setDockedWidth = useDockStore((state) => state.setDockedWidth)
-  const minWidth = useDockStore((state) => state.minWidth)
-  const maxWidth = useDockStore((state) => state.maxWidth)
 
   const [confirm, ConfirmDialog] = useConfirm()
   const [, setTab] = useQueryState('tab')
@@ -235,6 +229,16 @@ export function ConnectorDetailView({ connector }: ConnectorDetailViewProps) {
     />
   )
 
+  // Runs panel — docked-only, no overlay: below the desktop breakpoint (or
+  // undocked) `ConnectorDetailTabs` renders it inline via `mobileRunsPanel`.
+  const { dockedPanels, isDocked } = useDockedPanels([
+    {
+      key: 'connector-runs',
+      open: { docked: true, overlay: false },
+      content: runsPanel,
+    },
+  ])
+
   return (
     <MainPage>
       <ConfirmDialog />
@@ -377,7 +381,6 @@ export function ConnectorDetailView({ connector }: ConnectorDetailViewProps) {
             icon={
               <AppIcon iconId={iconIdForType(connector.type)} fallbackIconId='plug' size='xs' />
             }
-            last
           />
           <ConnectorStatusLine
             status={liveStatus}
@@ -389,24 +392,10 @@ export function ConnectorDetailView({ connector }: ConnectorDetailViewProps) {
         </MainPageBreadcrumb>
       </MainPageHeader>
 
-      <MainPageContent
-        dockedPanels={
-          isDesktop
-            ? [
-                {
-                  key: 'connector-runs',
-                  content: runsPanel,
-                  width: dockedWidth,
-                  onWidthChange: setDockedWidth,
-                  minWidth,
-                  maxWidth,
-                },
-              ]
-            : []
-        }>
+      <MainPageContent dockedPanels={dockedPanels}>
         <ConnectorDetailTabs
           connector={connector}
-          mobileRunsPanel={!isDesktop ? runsPanel : null}
+          mobileRunsPanel={!isDocked ? runsPanel : null}
           sampleReviewBanner={
             // Parked-sample review (trial-sync §5.2): after a sample run pauses the
             // connector, offer to look at the records, then sync everything (resume).

@@ -69,7 +69,7 @@ export default function ConnectorsPage() {
           ) : undefined
         }>
         <MainPageBreadcrumb>
-          <MainPageBreadcrumbItem title='Connectors' href='/app/connectors' last />
+          <MainPageBreadcrumbItem title='Connectors' href='/app/connectors' />
         </MainPageBreadcrumb>
       </MainPageHeader>
       <MainPageContent>

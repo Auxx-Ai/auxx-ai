@@ -12,23 +12,13 @@ import { toFieldId, toResourceFieldId } from '@auxx/types/field'
 import { Button } from '@auxx/ui/components/button'
 import { DropdownMenuItem, DropdownMenuSeparator } from '@auxx/ui/components/dropdown-menu'
 import { Kbd, KbdGroup } from '@auxx/ui/components/kbd'
-import Loader from '@auxx/ui/components/loader'
-import {
-  type DockedPanelConfig,
-  MainPage,
-  MainPageBreadcrumb,
-  MainPageBreadcrumbItem,
-  MainPageContent,
-  MainPageHeader,
-} from '@auxx/ui/components/main-page'
+import { MainPageAction } from '@auxx/ui/components/main-page'
 import { useQueryClient } from '@tanstack/react-query'
 import {
   Archive,
-  ChartColumn,
   Combine,
   Database,
   Expand,
-  FileText,
   Play,
   Plus,
   Send,
@@ -49,6 +39,7 @@ import { useTableViewRealtime } from '~/components/dynamic-table/hooks/use-table
 import { decodeColumnId } from '~/components/dynamic-table/utils/column-id'
 import { FavoriteToggleMenuItem } from '~/components/favorites/ui/favorite-toggle-menu-item'
 import { EmptyState } from '~/components/global/empty-state'
+import { MainPageLoading, MainPageNotFound } from '~/components/global/main-page-states'
 import { getCreateHotkey } from '~/components/global-create/system-hotkeys'
 import { CommandAction, CommandContext } from '~/components/kbar/contextual'
 import { useCommandPaletteStore } from '~/components/kbar/store'
@@ -69,10 +60,9 @@ import { useRelationshipStore } from '~/components/resources/store/relationship-
 import { useResourceStore } from '~/components/resources/store/resource-store'
 import { AddToSequenceDialog } from '~/components/sequences/ui/add-to-sequence-dialog'
 import { MassWorkflowTriggerDialog } from '~/components/workflow/mass-workflow-trigger-dialog'
-import { useEffectiveDockState } from '~/hooks/use-effective-dock-state'
+import { useDockedPanels } from '~/hooks/use-docked-panels'
 import { useEntityInstanceOperations } from '~/hooks/use-entity-instance-operations'
 import { useFeatureFlags } from '~/providers/feature-flag-provider'
-import { useDockStore } from '~/stores/dock-store'
 import { RecordDrawer } from './record-drawer'
 import { searchConditionsToGroup, useRecordsSearchStore } from './records-search-store'
 import { RecordsSearchBar } from './records-searchbar'
@@ -93,41 +83,23 @@ interface RecordsViewProps {
   slug: string
   /** Base URL path for breadcrumbs and import links. Defaults to /app/custom/${slug} */
   basePath?: string
-  /** When true, RecordsView renders without its own MainPage wrapper (parent provides it) */
-  embedded?: boolean
-  /**
-   * When set, shows a feature-gated `ChartColumn` header button linking here —
-   * the entity's dashboard sub-route (plan 02). Opt-in per caller (not derived
-   * from `slug`/`basePath`) since not every entity with a `RecordsView` list
-   * page has a `dashboard/page.tsx` sibling yet.
-   */
-  dashboardHref?: string
 }
 
 /**
  * RecordsView component
  * Composes DynamicResourceView with the records-specific primary cell,
- * bulk-action set, paste/fill/AI cell selection config, and dialogs.
+ * bulk-action set, paste/fill/AI cell selection config, and dialogs. Renders
+ * only `MainPageContent` + contributions (`MainPageAction` for Create) — the
+ * calling route (`EntityRouteLayout`) owns `MainPage`/`MainPageHeader`.
  */
-export function RecordsView({ slug, basePath, embedded, dashboardHref }: RecordsViewProps) {
+export function RecordsView({ slug, basePath }: RecordsViewProps) {
   const resolvedBasePath = basePath ?? `/app/custom/${slug}`
   const router = useRouter()
   const { hasAccess } = useFeatureFlags()
   const sequencesEnabled = hasAccess(FeatureKey.sequences)
-  // Dashboard header button (plan 02) — one wiring for contacts/companies'
-  // dedicated routes and every custom entity's `/app/custom/[slug]/dashboard`;
-  // callers without a dashboard sub-route simply don't pass `dashboardHref`.
-  const showDashboardButton = !!dashboardHref && hasAccess(FeatureKey.dashboards)
 
   // Cross-client saved-view refresh (e.g. Kopilot create/update/set-default).
   useTableViewRealtime()
-
-  // Dock state
-  const isDocked = useEffectiveDockState()
-  const dockedWidth = useDockStore((state) => state.dockedWidth)
-  const setDockedWidth = useDockStore((state) => state.setDockedWidth)
-  const minWidth = useDockStore((state) => state.minWidth)
-  const maxWidth = useDockStore((state) => state.maxWidth)
 
   // Resource is needed in this scope for header/breadcrumb labels and to
   // build the cellSelection config. DynamicResourceView resolves its own
@@ -721,85 +693,38 @@ export function RecordsView({ slug, basePath, embedded, dashboardHref }: Records
   // element stays referentially stable too.
   const emptyStateElement = useMemo(() => <EmptyStateComponent />, [EmptyStateComponent])
 
-  const dockedPanels = useMemo<DockedPanelConfig[]>(() => {
-    if (!isDocked || !isDrawerOpen || !selectedInstanceId || !entityDefinitionId) return []
-    return [
-      {
-        key: 'record-detail',
-        content: (
-          <RecordDrawer
-            open={isDrawerOpen}
-            onOpenChange={handleDrawerOpenChange}
-            recordId={toRecordId(entityDefinitionId, selectedInstanceId)}
-            onDeleteInstance={handleDrawerDelete}
-            onMutationSuccess={refresh}
-          />
-        ),
-        width: dockedWidth,
-        onWidthChange: setDockedWidth,
-        minWidth,
-        maxWidth,
-      },
-    ]
-  }, [
-    isDocked,
-    isDrawerOpen,
-    selectedInstanceId,
-    entityDefinitionId,
-    handleDrawerOpenChange,
-    handleDrawerDelete,
-    refresh,
-    dockedWidth,
-    setDockedWidth,
-    minWidth,
-    maxWidth,
+  const { dockedPanels, overlays } = useDockedPanels([
+    {
+      key: 'record-detail',
+      open: isDrawerOpen,
+      content: (
+        <RecordDrawer
+          open={isDrawerOpen}
+          onOpenChange={handleDrawerOpenChange}
+          recordId={
+            selectedInstanceId && entityDefinitionId
+              ? toRecordId(entityDefinitionId, selectedInstanceId)
+              : undefined
+          }
+          onDeleteInstance={handleDrawerDelete}
+          onMutationSuccess={refresh}
+        />
+      ),
+    },
   ])
 
   // Loading state
   if (isLoading) {
-    const loadingContent = (
-      <MainPageContent>
-        <div className='flex h-full items-center justify-center'>
-          <Loader size='sm' title='Loading records...' subtitle='Please wait' />
-        </div>
-      </MainPageContent>
-    )
-    if (embedded) return loadingContent
-    return (
-      <MainPage>
-        <MainPageHeader>
-          <MainPageBreadcrumb>
-            <MainPageBreadcrumbItem title='Loading...' href={resolvedBasePath} last />
-          </MainPageBreadcrumb>
-        </MainPageHeader>
-        {loadingContent}
-      </MainPage>
-    )
+    return <MainPageLoading title='Loading records...' />
   }
 
   // Error state
   if (!resource) {
-    const errorContent = (
-      <MainPageContent>
-        <div className='flex h-full items-center justify-center'>
-          <EmptyState
-            icon={FileText}
-            title='Entity not found'
-            description={`The entity "${slug}" could not be found or you don't have access to it.`}
-          />
-        </div>
-      </MainPageContent>
-    )
-    if (embedded) return errorContent
     return (
-      <MainPage>
-        <MainPageHeader>
-          <MainPageBreadcrumb>
-            <MainPageBreadcrumbItem title='Not Found' href={resolvedBasePath} last />
-          </MainPageBreadcrumb>
-        </MainPageHeader>
-        {errorContent}
-      </MainPage>
+      <MainPageNotFound
+        title='Entity not found'
+        description={`The entity "${slug}" could not be found or you don't have access to it.`}
+      />
     )
   }
 
@@ -924,45 +849,20 @@ export function RecordsView({ slug, basePath, embedded, dashboardHref }: Records
         </CommandContext>
       )}
 
-      {embedded ? (
-        mainContent
-      ) : (
-        <MainPage>
-          <MainPageHeader
-            action={
-              <div className='flex items-center gap-2'>
-                {showDashboardButton && (
-                  <Button
-                    size='icon-sm'
-                    variant='outline'
-                    className='rounded-lg'
-                    aria-label={`${resource.label} dashboard`}
-                    onClick={() => router.push(dashboardHref as string)}>
-                    <ChartColumn />
-                  </Button>
-                )}
-                <Button
-                  size='sm'
-                  className='h-7 rounded-lg'
-                  onClick={() => setIsCreateDialogOpen(true)}>
-                  <Plus className='size-4' />
-                  Create {resource.label}
-                  {createHotkey && (
-                    <KbdGroup variant='default' size='sm'>
-                      <Kbd>{createHotkey[0]}</Kbd>
-                      <Kbd>{createHotkey[1]}</Kbd>
-                    </KbdGroup>
-                  )}
-                </Button>
-              </div>
-            }>
-            <MainPageBreadcrumb>
-              <MainPageBreadcrumbItem title={resource.plural} href={resolvedBasePath} last />
-            </MainPageBreadcrumb>
-          </MainPageHeader>
-          {mainContent}
-        </MainPage>
-      )}
+      <MainPageAction>
+        <Button size='sm' className='h-7 rounded-lg' onClick={() => setIsCreateDialogOpen(true)}>
+          <Plus className='size-4' />
+          Create {resource.label}
+          {createHotkey && (
+            <KbdGroup variant='default' size='sm'>
+              <Kbd>{createHotkey[0]}</Kbd>
+              <Kbd>{createHotkey[1]}</Kbd>
+            </KbdGroup>
+          )}
+        </Button>
+      </MainPageAction>
+
+      {mainContent}
 
       {/* Create/Edit Dialog — resolves the custom editor per entity type (e.g. Parts). */}
       {entityDefinitionId && isCreateDialogOpen && (
@@ -1029,20 +929,7 @@ export function RecordsView({ slug, basePath, embedded, dashboardHref }: Records
       <ConfirmDeleteDialog />
       <ConfirmArchiveDialog />
 
-      {/* Record Drawer - only render overlay when NOT docked */}
-      {!isDocked && (
-        <RecordDrawer
-          open={isDrawerOpen}
-          onOpenChange={handleDrawerOpenChange}
-          recordId={
-            selectedInstanceId && entityDefinitionId
-              ? toRecordId(entityDefinitionId, selectedInstanceId)
-              : undefined
-          }
-          onDeleteInstance={handleDrawerDelete}
-          onMutationSuccess={refresh}
-        />
-      )}
+      {overlays}
     </>
   )
 }

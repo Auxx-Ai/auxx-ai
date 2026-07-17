@@ -14,8 +14,7 @@ import {
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { RefreshCw } from 'lucide-react'
 import { parseAsString, useQueryState } from 'nuqs'
-import { useEffectiveDockState } from '~/hooks/use-effective-dock-state'
-import { useDockStore } from '~/stores/dock-store'
+import { useDockedPanels } from '~/hooks/use-docked-panels'
 import { api } from '~/trpc/react'
 import { HealthDetailDrawer } from './health-detail-drawer'
 import { HealthServiceCard } from './ui/health-service-card'
@@ -37,13 +36,6 @@ export function HealthView() {
   )
   const isDrawerOpen = !!selectedIndicator
 
-  /** Dock state */
-  const isDocked = useEffectiveDockState()
-  const dockedWidth = useDockStore((state) => state.dockedWidth)
-  const setDockedWidth = useDockStore((state) => state.setDockedWidth)
-  const minWidth = useDockStore((state) => state.minWidth)
-  const maxWidth = useDockStore((state) => state.maxWidth)
-
   /** Open detail drawer for an indicator */
   const handleCardClick = (id: HealthIndicatorId) => {
     setSelectedIndicator(id)
@@ -54,15 +46,19 @@ export function HealthView() {
     if (!open) setSelectedIndicator(null)
   }
 
-  /** Docked panel content */
-  const dockedPanel =
-    isDocked && isDrawerOpen ? (
-      <HealthDetailDrawer
-        indicatorId={selectedIndicator as HealthIndicatorId}
-        open={isDrawerOpen}
-        onOpenChange={handleDrawerOpenChange}
-      />
-    ) : undefined
+  const { dockedPanels, overlays } = useDockedPanels([
+    {
+      key: 'health-detail',
+      open: isDrawerOpen,
+      content: (
+        <HealthDetailDrawer
+          indicatorId={selectedIndicator as HealthIndicatorId}
+          open={isDrawerOpen}
+          onOpenChange={handleDrawerOpenChange}
+        />
+      ),
+    },
+  ])
 
   return (
     <>
@@ -70,15 +66,10 @@ export function HealthView() {
         <MainPageHeader>
           <MainPageBreadcrumb>
             <MainPageBreadcrumbItem title='Admin' href='/admin' />
-            <MainPageBreadcrumbItem title='Health' last />
+            <MainPageBreadcrumbItem title='Health' />
           </MainPageBreadcrumb>
         </MainPageHeader>
-        <MainPageContent
-          dockedPanel={dockedPanel}
-          dockedPanelWidth={dockedWidth}
-          onDockedPanelWidthChange={setDockedWidth}
-          dockedPanelMinWidth={minWidth}
-          dockedPanelMaxWidth={maxWidth}>
+        <MainPageContent dockedPanels={dockedPanels}>
           <MainPageSubheader>
             <Button
               variant='outline'
@@ -112,14 +103,7 @@ export function HealthView() {
         </MainPageContent>
       </MainPage>
 
-      {/* Detail drawer - overlay mode only (docked mode handled by dockedPanel above) */}
-      {!isDocked && (
-        <HealthDetailDrawer
-          indicatorId={selectedIndicator as HealthIndicatorId}
-          open={isDrawerOpen}
-          onOpenChange={handleDrawerOpenChange}
-        />
-      )}
+      {overlays}
     </>
   )
 }

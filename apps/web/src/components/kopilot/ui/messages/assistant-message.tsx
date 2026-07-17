@@ -61,6 +61,7 @@ function buildMarkdownComponents(
         return <AuxxBlock type={auxxType} data={{}} />
       }
       let data: unknown
+      let lastValueTruncated = false
       try {
         data = JSON.parse(raw)
       } catch {
@@ -68,6 +69,10 @@ function buildMarkdownComponents(
         // in row-by-row instead of raw JSON.
         try {
           data = partialJsonParse(raw)
+          // The stream currently ends inside an unterminated string, so the
+          // last parsed string value is a truncated prefix — blocks that fetch
+          // by id use this to withhold the trailing id until it completes.
+          lastValueTruncated = partialJsonParse.lastStringUnterminated === true
         } catch {
           return (
             <pre className='not-prose'>
@@ -76,7 +81,7 @@ function buildMarkdownComponents(
           )
         }
       }
-      return <AuxxBlock type={auxxType} data={data} />
+      return <AuxxBlock type={auxxType} data={data} lastValueTruncated={lastValueTruncated} />
     },
     // Unwrap the <pre> that react-markdown wraps around our custom block so the
     // motion.div / cards aren't nested inside a monospace <pre>.

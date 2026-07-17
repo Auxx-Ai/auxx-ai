@@ -31,7 +31,7 @@ function CallsPageContent() {
         }>
         <MainPageBreadcrumb>
           <MainPageBreadcrumbItem title='Calls' href='/app/calls' />
-          <MainPageBreadcrumbItem title='Recordings' last />
+          <MainPageBreadcrumbItem title='Recordings' />
         </MainPageBreadcrumb>
       </MainPageHeader>
 

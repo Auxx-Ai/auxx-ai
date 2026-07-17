@@ -19,7 +19,7 @@ export default function UsersPage() {
       <MainPageHeader>
         <MainPageBreadcrumb>
           <MainPageBreadcrumbItem title='Admin' href='/admin' />
-          <MainPageBreadcrumbItem title='Users' href='/admin/users' last />
+          <MainPageBreadcrumbItem title='Users' href='/admin/users' />
         </MainPageBreadcrumb>
       </MainPageHeader>
       <MainPageContent>

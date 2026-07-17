@@ -28,7 +28,6 @@ import {
   SelectValue,
 } from '@auxx/ui/components/select'
 import { Separator } from '@auxx/ui/components/separator'
-import { Skeleton } from '@auxx/ui/components/skeleton'
 import { type StatCardData, StatCards } from '@auxx/ui/components/stat-card'
 import { Table, TableBody, TableCell, TableRow } from '@auxx/ui/components/table'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@auxx/ui/components/tabs'
@@ -59,6 +58,7 @@ import {
 import { useParams, useRouter } from 'next/navigation'
 import { useQueryState } from 'nuqs'
 import { useState } from 'react'
+import { MainPageLoading, MainPageNotFound } from '~/components/global/main-page-states'
 import { useConfirm } from '~/hooks/use-confirm'
 import { api } from '~/trpc/react'
 import { ActionHistoryPanel } from './_components/action-history-panel'
@@ -258,23 +258,10 @@ export default function OrganizationDetailsPage() {
           <MainPageBreadcrumb>
             <MainPageBreadcrumbItem title='Admin' href='/admin' />
             <MainPageBreadcrumbItem title='Organizations' href='/admin/organizations' />
-            <MainPageBreadcrumbItem title='Loading...' href='#' last />
+            <MainPageBreadcrumbItem title='Loading...' href='#' />
           </MainPageBreadcrumb>
         </MainPageHeader>
-        <MainPageContent>
-          <div className='grid gap-4 md:grid-cols-2'>
-            <Card className='border-none rounded-none shadow-none'>
-              <CardHeader>
-                <Skeleton className='h-5 w-24' />
-              </CardHeader>
-              <CardContent className='space-y-4'>
-                <Skeleton className='h-4 w-full' />
-                <Skeleton className='h-4 w-full' />
-                <Skeleton className='h-4 w-3/4' />
-              </CardContent>
-            </Card>
-          </div>
-        </MainPageContent>
+        <MainPageLoading />
       </MainPage>
     )
   }
@@ -286,12 +273,13 @@ export default function OrganizationDetailsPage() {
           <MainPageBreadcrumb>
             <MainPageBreadcrumbItem title='Admin' href='/admin' />
             <MainPageBreadcrumbItem title='Organizations' href='/admin/organizations' />
-            <MainPageBreadcrumbItem title='Not Found' href='#' last />
+            <MainPageBreadcrumbItem title='Not Found' href='#' />
           </MainPageBreadcrumb>
         </MainPageHeader>
-        <MainPageContent>
-          <div className='flex flex-col items-center justify-center h-full py-12'>
-            <p className='text-muted-foreground'>Organization not found</p>
+        <MainPageNotFound
+          title='Organization not found'
+          description=''
+          action={
             <Button
               variant='outline'
               className='mt-4'
@@ -299,8 +287,8 @@ export default function OrganizationDetailsPage() {
               <ArrowLeft />
               Back to Organizations
             </Button>
-          </div>
-        </MainPageContent>
+          }
+        />
       </MainPage>
     )
   }
@@ -455,7 +443,6 @@ export default function OrganizationDetailsPage() {
             <MainPageBreadcrumbItem
               title={org.name || org.handle || 'Organization'}
               href={`/admin/organizations/${id}`}
-              last
             />
           </MainPageBreadcrumb>
         </MainPageHeader>

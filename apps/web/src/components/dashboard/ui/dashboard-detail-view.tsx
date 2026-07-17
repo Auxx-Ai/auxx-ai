@@ -10,43 +10,41 @@
 // the server draft (`use-dashboard-autosave`); Publish/Discard drive versioning
 // (`use-dashboard-publish`) — the agent versioning model.
 //
-// Two `variant`s (plan 02):
-//   - 'standalone' (`/app/dashboards/[dashboardId]`) — owns the full `MainPage`
-//     shell: breadcrumb `MainPageHeader` with the action cluster (Edit/Add
-//     widget/Done + publish) as the header action. Unchanged from pre-plan-02.
-//   - 'embedded' (entity routes, via `EntityDashboardPage`) — no MainPage/
-//     breadcrumb (the entity route/layout owns that); the action cluster
-//     renders in a slim toolbar row above the tab strip instead, and this
-//     component renders `MainPageContent` (with `dockedPanels`) itself,
-//     satisfying the entity layout's "child page owns MainPageContent"
-//     contract (mirrors `RecordsView`'s `embedded` prop).
+// One render path (plan 03, MainPage slots migration): this component never
+// owns `MainPage`/`MainPageHeader` — the calling route does, either
+// `/app/dashboards/[dashboardId]/page.tsx` (standalone) or an entity route's
+// `EntityRouteLayout` (via `EntityDashboardPage`). It renders `MainPageContent`
+// (with `dockedPanels`) and contributes the action cluster (Edit/Add widget/
+// Done + publish) via `MainPageAction` and the breadcrumb tail (dashboard
+// switcher + private-lock indicator) via `MainPageCrumbs` — both portal into
+// whichever ancestor shell mounted them, so behavior is identical either way.
 //
-// All store wiring (draft-store seed, autosave, publish) is identical in both
-// variants — the store is keyed by dashboard id, so a tickets-route mount and a
+// All store wiring (draft-store seed, autosave, publish) is identical on every
+// route — the store is keyed by dashboard id, so a tickets-route mount and a
 // dashboards-route mount of the SAME dashboard behave identically.
 //
 // Deferred (plan 08): global filter bar, drill-down, chart refresh.
 
 import type { DashboardWithLayout, WidgetKind } from '@auxx/lib/dashboards/client'
 import type { RecordId } from '@auxx/types/resource'
+import { BreadcrumbItem } from '@auxx/ui/components/breadcrumb'
 import {
-  MainPage,
-  MainPageBreadcrumb,
+  MainPageAction,
   MainPageBreadcrumbDropdown,
-  MainPageBreadcrumbItem,
   MainPageContent,
-  MainPageHeader,
+  MainPageCrumbs,
 } from '@auxx/ui/components/main-page'
 import { Lock } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useQueryState } from 'nuqs'
-import { type ReactNode, useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useFavoriteToggle } from '~/components/favorites/hooks/use-favorite-toggle'
 import { FavoriteStarButton } from '~/components/favorites/ui/favorite-star-button'
 import { CommandAction, CommandContext } from '~/components/kbar/contextual'
 import { useCommandPaletteStore } from '~/components/kbar/store'
 import { RecordDrawer } from '~/components/records/record-drawer'
 import { useConfirm } from '~/hooks/use-confirm'
+import { useDockedPanels } from '~/hooks/use-docked-panels'
 import { useEffectiveDockState } from '~/hooks/use-effective-dock-state'
 import { useDockStore } from '~/stores/dock-store'
 import { useDashboardAutosave } from '../hooks/use-dashboard-autosave'
@@ -68,18 +66,15 @@ import { DashboardWidget } from './widget/dashboard-widget'
 
 export function DashboardDetailView({
   dashboard,
-  variant = 'standalone',
   startInEditMode = false,
 }: {
   dashboard: DashboardWithLayout
-  /** 'standalone' (default) = own MainPage shell; 'embedded' = entity-route mount (plan 02). */
-  variant?: 'standalone' | 'embedded'
   /**
-   * Embedded-only: drop straight into edit mode once this dashboard's draft has
-   * been seeded — the entity dashboard empty-state's "Create" CTA publishes an
-   * empty v1 then wants the user editing it immediately, not viewing it. Gated
-   * on the seed (not just mount) so it can't race `seed()`'s own `isEditMode`
-   * reset for a freshly-seeded dashboard id.
+   * Entity-dashboard-only: drop straight into edit mode once this dashboard's
+   * draft has been seeded — the entity dashboard empty-state's "Create" CTA
+   * publishes an empty v1 then wants the user editing it immediately, not
+   * viewing it. Gated on the seed (not just mount) so it can't race `seed()`'s
+   * own `isEditMode` reset for a freshly-seeded dashboard id.
    */
   startInEditMode?: boolean
 }) {
@@ -191,21 +186,20 @@ export function DashboardDetailView({
 
   // Docked slot hosts the config panel while editing, or the record drawer in
   // view mode — they never overlap (records aren't clickable in edit mode).
-  const dockedPanelEntry = (key: string, content: ReactNode) => ({
-    key,
-    content,
-    width: dockedWidth,
-    onWidthChange: setDockedWidth,
-    minWidth: dockMinWidth,
-    maxWidth: dockMaxWidth,
-  })
-  const dockedPanels = !isDocked
-    ? []
-    : isEditMode
-      ? [dockedPanelEntry('widget-config', configPanel)]
-      : openRecordId
-        ? [dockedPanelEntry('record-detail', recordDrawer)]
-        : []
+  // Overlay mode: config panel opens on select; record drawer uses the same
+  // condition in both modes (RecordDrawer picks docked vs overlay itself).
+  const { dockedPanels, overlays } = useDockedPanels([
+    {
+      key: 'widget-config',
+      open: { docked: isEditMode, overlay: !!configWidgetId },
+      content: configPanel,
+    },
+    {
+      key: 'record-detail',
+      open: !isEditMode && !!openRecordId,
+      content: recordDrawer,
+    },
+  ])
 
   const commandContext = (
     // Command-palette scope for the open dashboard. Edit-only actions mirror
@@ -290,8 +284,8 @@ export function DashboardDetailView({
     </CommandContext>
   )
 
-  // Edit/Add-widget/Done + publish cluster — the header action in 'standalone',
-  // a slim toolbar row above the tab strip in 'embedded' (plan 02).
+  // Edit/Add-widget/Done + publish cluster — contributed into the calling
+  // route's header action cluster via `MainPageAction`.
   const actionCluster = (
     <div className='flex flex-row items-center gap-2'>
       <FavoriteStarButton
@@ -384,60 +378,34 @@ export function DashboardDetailView({
     </div>
   )
 
-  const overlays = (
-    <>
-      {/* Overlay mode (undocked / mobile) — the DockableDrawer renders its own
-          right-side Vaul drawer; docked mode routes these through dockedPanels
-          above. Config panel while editing, record drawer in view mode. */}
-      {!isDocked && configPanel}
-      {!isDocked && recordDrawer}
-    </>
-  )
-
-  if (variant === 'embedded') {
-    return (
-      <>
-        {commandContext}
-        <ConfirmDialog />
-        <MainPageContent dockedPanels={dockedPanels}>
-          <div className='flex min-h-0 flex-1 flex-col gap-2'>
-            <div className='flex shrink-0 items-center justify-end'>{actionCluster}</div>
-            {tabStripAndGrid}
-          </div>
-        </MainPageContent>
-        {overlays}
-      </>
-    )
-  }
-
   return (
-    <MainPage>
+    <>
       {commandContext}
       <ConfirmDialog />
-      <MainPageHeader action={actionCluster}>
-        <MainPageBreadcrumb>
-          <MainPageBreadcrumbItem title='Dashboards' href='/app/dashboards' />
-          <MainPageBreadcrumbDropdown
-            label={<span className='max-w-[24ch] truncate'>{dashboard.name}</span>}
-            last
-            popover
-            contentClassName='w-64'>
-            <DashboardSwitcherList
-              activeDashboardId={dashboard.id}
-              onSelectDashboard={(id) => router.push(`/app/dashboards/${id}`)}
-              onActiveDashboardDeleted={() => router.push('/app/dashboards')}
-            />
-          </MainPageBreadcrumbDropdown>
-        </MainPageBreadcrumb>
+
+      <MainPageAction>{actionCluster}</MainPageAction>
+      <MainPageCrumbs>
+        <MainPageBreadcrumbDropdown
+          label={<span className='max-w-[24ch] truncate'>{dashboard.name}</span>}
+          popover
+          contentClassName='w-64'>
+          <DashboardSwitcherList
+            activeDashboardId={dashboard.id}
+            onSelectDashboard={(id) => router.push(`/app/dashboards/${id}`)}
+            onActiveDashboardDeleted={() => router.push('/app/dashboards')}
+          />
+        </MainPageBreadcrumbDropdown>
         {dashboard.visibility === 'private' && (
-          <Lock className='ml-2 size-3.5 text-muted-foreground' aria-label='Private dashboard' />
+          <BreadcrumbItem>
+            <Lock className='size-3.5 text-muted-foreground' aria-label='Private dashboard' />
+          </BreadcrumbItem>
         )}
-      </MainPageHeader>
+      </MainPageCrumbs>
 
       <MainPageContent dockedPanels={dockedPanels}>{tabStripAndGrid}</MainPageContent>
 
       {overlays}
-    </MainPage>
+    </>
   )
 }
 

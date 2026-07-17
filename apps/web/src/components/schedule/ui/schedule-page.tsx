@@ -20,7 +20,6 @@ import {
   DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
 import {
-  type DockedPanelConfig,
   MainPage,
   MainPageBreadcrumb,
   MainPageBreadcrumbItem,
@@ -38,12 +37,12 @@ import {
   List,
 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
-import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react'
 import { useCalendarRange } from '~/components/calendar/core/use-calendar-range'
 import type { TaskEvent } from '~/components/calendar/sources/tasks-source'
 import { LoadingContent } from '~/components/global/loading-content'
 import { TaskDialog } from '~/components/tasks/ui/task-dialog'
-import { useEffectiveDockState } from '~/hooks/use-effective-dock-state'
+import { useDockedPanels } from '~/hooks/use-docked-panels'
 import { useIsMobile } from '~/hooks/use-mobile'
 import { useDockStore } from '~/stores/dock-store'
 import { useMySchedule } from '../hooks/use-my-schedule'
@@ -69,7 +68,6 @@ export function SchedulePage() {
   const [openTask, setOpenTask] = useState<TaskEvent['task'] | null>(null)
   const router = useRouter()
   const isMobile = useIsMobile()
-  const isDocked = useEffectiveDockState()
   const dockedWidth = useDockStore((state) => state.dockedWidth)
   const setDockedWidth = useDockStore((state) => state.setDockedWidth)
 
@@ -120,23 +118,20 @@ export function SchedulePage() {
     if (!open) setOpenVisitId(null)
   }, [])
 
-  // Standard docked-panel wiring (`files/page.tsx` pattern): when docked, the drawer renders
-  // inside MainPageContent's panel frame; when not, it mounts below as the overlay drawer.
-  const dockedPanels = useMemo<DockedPanelConfig[]>(() => {
-    if (!isDocked || !openVisitId) return []
-    return [
-      {
-        key: 'visit-detail',
-        content: (
-          <VisitDrawer visitId={openVisitId} open onOpenChange={handleVisitDrawerOpenChange} />
-        ),
-        width: dockedWidth,
-        onWidthChange: setDockedWidth,
-        minWidth: 400,
-        maxWidth: 800,
-      },
-    ]
-  }, [isDocked, openVisitId, handleVisitDrawerOpenChange, dockedWidth, setDockedWidth])
+  const { dockedPanels, overlays } = useDockedPanels(
+    openVisitId
+      ? [
+          {
+            key: 'visit-detail',
+            open: true,
+            content: (
+              <VisitDrawer visitId={openVisitId} open onOpenChange={handleVisitDrawerOpenChange} />
+            ),
+            width: { value: dockedWidth, set: setDockedWidth, min: 400, max: 800 },
+          },
+        ]
+      : []
+  )
 
   // Today/prev/next is dual-mode: list view keeps the scroll-list handle calls, a calendar
   // view drives `cal.setDate` by the active view's date-fns unit.
@@ -210,7 +205,7 @@ export function SchedulePage() {
           </div>
         }>
         <MainPageBreadcrumb>
-          <MainPageBreadcrumbItem title='Schedule' href='/app/schedule' last />
+          <MainPageBreadcrumbItem title='Schedule' href='/app/schedule' />
         </MainPageBreadcrumb>
       </MainPageHeader>
 
@@ -249,13 +244,7 @@ export function SchedulePage() {
         }}
       />
 
-      {!isDocked && (
-        <VisitDrawer
-          visitId={openVisitId}
-          open={openVisitId !== null}
-          onOpenChange={handleVisitDrawerOpenChange}
-        />
-      )}
+      {overlays}
 
       <TaskDialog
         open={openTask !== null}

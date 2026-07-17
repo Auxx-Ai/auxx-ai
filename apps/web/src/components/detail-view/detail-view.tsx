@@ -135,7 +135,7 @@ export function DetailView({ apiSlug, instanceId, backUrl: backUrlOverride }: De
         }>
         <MainPageBreadcrumb>
           <MainPageBreadcrumbItem title={plural ?? label ?? 'Records'} href={backUrl} />
-          <MainPageBreadcrumbItem title={displayName} last />
+          <MainPageBreadcrumbItem title={displayName} />
         </MainPageBreadcrumb>
       </MainPageHeader>
 

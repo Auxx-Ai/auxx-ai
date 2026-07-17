@@ -184,7 +184,7 @@ export function ImportPage({
         }>
         <MainPageBreadcrumb>
           <MainPageBreadcrumbItem title={resourceLabel} href={basePath} />
-          <MainPageBreadcrumbItem title='Import' last />
+          <MainPageBreadcrumbItem title='Import' />
         </MainPageBreadcrumb>
       </MainPageHeader>
       <MainPageContent>

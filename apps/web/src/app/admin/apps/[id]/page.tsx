@@ -20,7 +20,6 @@ import {
   MainPageContent,
   MainPageHeader,
 } from '@auxx/ui/components/main-page'
-import { Skeleton } from '@auxx/ui/components/skeleton'
 import { Switch } from '@auxx/ui/components/switch'
 import {
   Table,
@@ -37,6 +36,7 @@ import { ArrowLeft, Ban, CheckCircle, ExternalLink, Trash2, XCircle } from 'luci
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { use, useState } from 'react'
+import { MainPageLoading, MainPageNotFound } from '~/components/global/main-page-states'
 import { useConfirm } from '~/hooks/use-confirm'
 import { api } from '~/trpc/react'
 
@@ -287,60 +287,10 @@ export default function AppDetailPage({ params }: { params: Promise<{ id: string
           <MainPageBreadcrumb>
             <MainPageBreadcrumbItem title='Admin' href='/admin' />
             <MainPageBreadcrumbItem title='Apps' href='/admin/apps' />
-            <MainPageBreadcrumbItem title='Loading...' href='#' last />
+            <MainPageBreadcrumbItem title='Loading...' href='#' />
           </MainPageBreadcrumb>
         </MainPageHeader>
-        <MainPageContent>
-          <div className='flex-1 overflow-hidden flex flex-col min-h-0 relative'>
-            <div className='overflow-auto flex-1 relative'>
-              <div className='grid lg:grid-cols-4'>
-                {/* App Information skeleton */}
-                <div className='col-span-2 p-6 space-y-4'>
-                  <div>
-                    <Skeleton className='h-5 w-32 mb-1' />
-                    <Skeleton className='h-4 w-48' />
-                  </div>
-                  <div className='overflow-hidden rounded-md border'>
-                    {Array.from({ length: 12 }).map((_, i) => (
-                      <div key={i} className='flex border-b last:border-b-0'>
-                        <div className='bg-muted/50 w-40 p-2'>
-                          <Skeleton className='h-4 w-24' />
-                        </div>
-                        <div className='flex-1 p-2'>
-                          <Skeleton className='h-4 w-32' />
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-                {/* Deployments skeleton */}
-                <div className='col-span-2 p-6 space-y-4'>
-                  <div>
-                    <Skeleton className='h-5 w-28 mb-1' />
-                    <Skeleton className='h-4 w-44' />
-                  </div>
-                  <div className='overflow-hidden rounded-md border'>
-                    <div className='flex border-b bg-muted/50 p-2 gap-8'>
-                      <Skeleton className='h-4 w-20' />
-                      <Skeleton className='h-4 w-14' />
-                      <Skeleton className='h-4 w-16' />
-                    </div>
-                    {Array.from({ length: 3 }).map((_, i) => (
-                      <div key={i} className='flex items-center border-b last:border-b-0 p-2 gap-8'>
-                        <div className='space-y-1'>
-                          <Skeleton className='h-4 w-20' />
-                          <Skeleton className='h-3 w-28' />
-                        </div>
-                        <Skeleton className='h-5 w-16 rounded-full' />
-                        <Skeleton className='h-7 w-20 rounded-md' />
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </MainPageContent>
+        <MainPageLoading />
       </MainPage>
     )
   }
@@ -352,18 +302,19 @@ export default function AppDetailPage({ params }: { params: Promise<{ id: string
           <MainPageBreadcrumb>
             <MainPageBreadcrumbItem title='Admin' href='/admin' />
             <MainPageBreadcrumbItem title='Apps' href='/admin/apps' />
-            <MainPageBreadcrumbItem title='Not Found' href='#' last />
+            <MainPageBreadcrumbItem title='Not Found' href='#' />
           </MainPageBreadcrumb>
         </MainPageHeader>
-        <MainPageContent>
-          <div className='flex flex-col items-center justify-center h-full py-12'>
-            <p className='text-muted-foreground'>App not found</p>
+        <MainPageNotFound
+          title='App not found'
+          description=''
+          action={
             <Button variant='outline' className='mt-4' onClick={() => router.push('/admin/apps')}>
               <ArrowLeft />
               Back to Apps
             </Button>
-          </div>
-        </MainPageContent>
+          }
+        />
       </MainPage>
     )
   }
@@ -446,7 +397,7 @@ export default function AppDetailPage({ params }: { params: Promise<{ id: string
           <MainPageBreadcrumb>
             <MainPageBreadcrumbItem title='Admin' href='/admin' />
             <MainPageBreadcrumbItem title='Apps' href='/admin/apps' />
-            <MainPageBreadcrumbItem title={app.title} href={`/admin/apps/${id}`} last />
+            <MainPageBreadcrumbItem title={app.title} href={`/admin/apps/${id}`} />
           </MainPageBreadcrumb>
         </MainPageHeader>
         <MainPageContent>

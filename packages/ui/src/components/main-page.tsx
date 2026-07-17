@@ -20,24 +20,39 @@ import { ChevronDown } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import Link from 'next/link'
 import React from 'react'
+import { createPortal } from 'react-dom'
 import { PanelFrame } from './panel-frame'
 import { PanelResizeHandle } from './panel-resize-handle'
 
 /**
  * apps/web/src/components/ui/main-page.tsx
- * MainPageContext and MainPageProvider for managing main page state (e.g., loading).
+ * MainPageContext and MainPageProvider for managing main page state (e.g., loading,
+ * and the header's action/breadcrumb portal targets).
  */
 interface MainPageContextProps {
   /**
    * Loading state for the main page.
    */
   loading: boolean
+  /** Portal target for `<MainPageAction>` — the header's action cluster, once mounted. */
+  actionsEl: HTMLElement | null
+  /** Portal target for `<MainPageCrumbs>` — the breadcrumb `<ol>`, once mounted. */
+  crumbsEl: HTMLElement | null
+  /** Registers the action cluster element. Pass directly as a ref callback. */
+  setActionsEl: (el: HTMLElement | null) => void
+  /** Registers the breadcrumb list element. Pass directly as a ref callback. */
+  setCrumbsEl: (el: HTMLElement | null) => void
 }
 
 const MainPageContext = React.createContext<MainPageContextProps | undefined>(undefined)
 
+const noopSetEl = (_el: HTMLElement | null) => {}
+
 /**
- * MainPageProvider component to provide MainPageContext to children.
+ * MainPageProvider component to provide MainPageContext to children. Owns the
+ * portal-target elements for `<MainPageAction>`/`<MainPageCrumbs>` as plain
+ * `useState` pairs — no effects needed, the setters double as stable ref
+ * callbacks for `MainPageHeader`/`MainPageBreadcrumb` to register into.
  * @param loading - loading state for the main page
  * @param children - React children
  */
@@ -45,17 +60,42 @@ export const MainPageProvider: React.FC<{ loading: boolean; children: React.Reac
   loading,
   children,
 }) => {
-  return <MainPageContext.Provider value={{ loading }}>{children}</MainPageContext.Provider>
+  const [actionsEl, setActionsEl] = React.useState<HTMLElement | null>(null)
+  const [crumbsEl, setCrumbsEl] = React.useState<HTMLElement | null>(null)
+  return (
+    <MainPageContext.Provider value={{ loading, actionsEl, crumbsEl, setActionsEl, setCrumbsEl }}>
+      {children}
+    </MainPageContext.Provider>
+  )
 }
 
 /**
- * useMainPage hook to access MainPageContext.
+ * useMainPage hook to access MainPageContext. Throws outside a MainPage —
+ * use this when a component requires the shell (e.g. reading `loading`).
  * @returns MainPageContextProps
  */
 export function useMainPage(): MainPageContextProps {
   const context = React.useContext(MainPageContext)
   if (!context) {
     throw new Error('useMainPage must be used within a MainPageProvider')
+  }
+  return context
+}
+
+/**
+ * Soft variant of `useMainPage` for slot-contributing components
+ * (`MainPageAction`, `MainPageCrumbs`, and the header/breadcrumb slot
+ * targets themselves) that may render outside a `MainPage` shell (tests,
+ * storybook, a page mid-migration) — returns nulls/no-ops instead of
+ * throwing so those call sites don't crash.
+ */
+export function useMainPageSlots(): Pick<
+  MainPageContextProps,
+  'actionsEl' | 'crumbsEl' | 'setActionsEl' | 'setCrumbsEl'
+> {
+  const context = React.useContext(MainPageContext)
+  if (!context) {
+    return { actionsEl: null, crumbsEl: null, setActionsEl: noopSetEl, setCrumbsEl: noopSetEl }
   }
   return context
 }
@@ -107,6 +147,7 @@ function MainPageHeader({
 }) {
   const headerRef = React.useRef<HTMLDivElement>(null)
   const triggerWrapperRef = React.useRef<HTMLDivElement>(null)
+  const { setActionsEl } = useMainPageSlots()
 
   React.useEffect(() => {
     const el = headerRef.current
@@ -137,7 +178,9 @@ function MainPageHeader({
         {children && <div className='flex items-center gap-1.5'>{children}</div>}
         {title && <span className='text-base'>{title}</span>}
       </div>
-      {action && <div className='ml-4 shrink-0 space-x-2'>{action}</div>}
+      <div ref={setActionsEl} className='ml-4 flex shrink-0 items-center gap-2'>
+        {action}
+      </div>
     </div>
   )
 }
@@ -145,25 +188,83 @@ MainPageHeader.displayName = 'MainPageHeader'
 
 /**
  * apps/web/src/components/ui/main-page.tsx
- * MainPageBreadcrumbs component - wrapper for shadcn Breadcrumbs.
+ * MainPageAction — portals `children` into `MainPageHeader`'s action cluster
+ * (the same container the `action` prop renders into, at order 0). Lets a
+ * feature component nested under the route's `MainPageHeader` contribute
+ * header actions without owning the header itself. Renders nothing if no
+ * ancestor `MainPage` has mounted the header yet; unmounting removes the
+ * portal automatically — no cleanup code needed.
+ */
+function MainPageAction({
+  children,
+  order = 10,
+}: {
+  children: React.ReactNode
+  /** Flex `order` within the action cluster. Inline `action` prop content defaults to 0. */
+  order?: number
+}) {
+  const { actionsEl } = useMainPageSlots()
+  if (!actionsEl) return null
+  return createPortal(
+    <div style={{ order }} className='flex items-center gap-2'>
+      {children}
+    </div>,
+    actionsEl
+  )
+}
+MainPageAction.displayName = 'MainPageAction'
+
+/**
+ * apps/web/src/components/ui/main-page.tsx
+ * MainPageBreadcrumbs component - wrapper for shadcn Breadcrumbs. Registers
+ * its `<ol>` as the `<MainPageCrumbs>` portal target so a nested component
+ * can append breadcrumb tail items after the page's static crumbs.
+ *
+ * Separators are follower-owned: each `MainPageBreadcrumbItem` /
+ * `MainPageBreadcrumbDropdown` renders its own LEADING separator (tagged
+ * `data-crumb-sep`), and this list hides only the very first one via CSS —
+ * so a crumb never needs to know whether a dynamic tail follows it.
  */
 const MainPageBreadcrumb: React.FC<React.ComponentProps<typeof Breadcrumb>> = ({
   children,
   className,
   ...props
 }) => {
+  const { setCrumbsEl } = useMainPageSlots()
   // Wrapper for shadcn Breadcrumbs for main page usage
   return (
     <Breadcrumb {...props} className={cn('shrink-0', className)}>
-      <BreadcrumbList className='flex-nowrap gap-0.5 sm:gap-0.5'>{children}</BreadcrumbList>
+      <BreadcrumbList
+        ref={setCrumbsEl}
+        className={cn(
+          'flex-nowrap gap-0.5 sm:gap-0.5',
+          '[&>li:first-child[data-crumb-sep]]:hidden'
+        )}>
+        {children}
+      </BreadcrumbList>
     </Breadcrumb>
   )
 }
 
 /**
  * apps/web/src/components/ui/main-page.tsx
+ * MainPageCrumbs — portals `children` (ordinary `MainPageBreadcrumbItem` /
+ * `MainPageBreadcrumbDropdown` elements) into `MainPageBreadcrumb`'s list,
+ * appended in DOM order after the page's static crumbs. Renders nothing if
+ * no ancestor `MainPageBreadcrumb` has mounted yet.
+ */
+function MainPageCrumbs({ children }: { children: React.ReactNode }) {
+  const { crumbsEl } = useMainPageSlots()
+  if (!crumbsEl) return null
+  return createPortal(children, crumbsEl)
+}
+MainPageCrumbs.displayName = 'MainPageCrumbs'
+
+/**
+ * apps/web/src/components/ui/main-page.tsx
  * MainPageBreadcrumbItem component - wrapper for shadcn BreadcrumbItem.
- * Supports href, onClick, title props, and arrow display for all but the last item.
+ * Supports href, onClick, title props. Renders its own leading separator
+ * (see `MainPageBreadcrumb` above).
  */
 interface MainPageBreadcrumbItemProps {
   /**
@@ -179,14 +280,6 @@ interface MainPageBreadcrumbItemProps {
    */
   onClick?: React.MouseEventHandler<HTMLAnchorElement | HTMLSpanElement>
   /**
-   * If true, this is the first breadcrumb item.
-   */
-  first?: boolean
-  /**
-   * If true, this is the last breadcrumb item (no arrow shown).
-   */
-  last?: boolean
-  /**
    * Additional className for the item.
    */
   className?: string
@@ -197,15 +290,15 @@ const MainPageBreadcrumbItem: React.FC<MainPageBreadcrumbItemProps> = ({
   title,
   href,
   onClick,
-  first,
-  last,
   icon,
   className,
   ...props
 }) => {
-  // Show arrow unless this is the last item
+  // Leading separator — hidden by MainPageBreadcrumb's list when this item
+  // is first (see `[&>li:first-child[data-crumb-sep]]:hidden`).
   return (
     <>
+      <BreadcrumbSeparator data-crumb-sep />
       <BreadcrumbItem className={className} {...props}>
         {href ? (
           <BreadcrumbLink href={href} asChild>
@@ -240,15 +333,6 @@ const MainPageBreadcrumbItem: React.FC<MainPageBreadcrumbItemProps> = ({
           </BreadcrumbPage>
         )}
       </BreadcrumbItem>
-      {!last && (
-        <BreadcrumbSeparator />
-        // <span
-        //   role="presentation"
-        //   aria-hidden="true"
-        //   className={cn('[&>svg]:w-3.5 [&>svg]:h-3.5 shrink-0 ')}>
-        //   <ChevronRight />
-        // </span>
-      )}
     </>
   )
 }
@@ -266,8 +350,6 @@ interface MainPageBreadcrumbDropdownProps {
   icon?: React.ReactNode
   /** Dropdown body (rendered inside DropdownMenuContent or PopoverContent). */
   children: React.ReactNode
-  /** If true, no separator chevron is rendered after this item. */
-  last?: boolean
   /** Extra className merged onto the breadcrumb item. */
   className?: string
   /** Extra className merged onto the floating content. */
@@ -286,7 +368,6 @@ const MainPageBreadcrumbDropdown: React.FC<MainPageBreadcrumbDropdownProps> = ({
   label,
   icon,
   children,
-  last,
   className,
   contentClassName,
   align = 'start',
@@ -306,6 +387,7 @@ const MainPageBreadcrumbDropdown: React.FC<MainPageBreadcrumbDropdownProps> = ({
 
   return (
     <>
+      <BreadcrumbSeparator data-crumb-sep />
       <BreadcrumbItem className={className}>
         {popover ? (
           <Popover>
@@ -323,7 +405,6 @@ const MainPageBreadcrumbDropdown: React.FC<MainPageBreadcrumbDropdownProps> = ({
           </DropdownMenu>
         )}
       </BreadcrumbItem>
-      {!last && <BreadcrumbSeparator />}
     </>
   )
 }
@@ -356,51 +437,19 @@ interface MainPageContentProps extends React.ComponentProps<'div'> {
   leftPanels?: DockedPanelConfig[]
   /** Right-docked panels configuration - supports multiple panels side by side */
   dockedPanels?: DockedPanelConfig[]
-
-  /** @deprecated Use dockedPanels instead - Optional docked panel content rendered on the right */
-  dockedPanel?: React.ReactNode
-  /** @deprecated Use dockedPanels instead - Width of docked panel */
-  dockedPanelWidth?: number
-  /** Callback when docked panel width changes via resize (legacy API) */
-  onDockedPanelWidthChange?: (width: number) => void
-  /** Min width for docked panel resize (legacy API) */
-  dockedPanelMinWidth?: number
-  /** Max width for docked panel resize (legacy API) */
-  dockedPanelMaxWidth?: number
 }
 
 /**
  * MainPageContent component with optional docked panel support.
- * Supports both legacy single-panel and new multi-panel configurations.
  */
 function MainPageContent({
   className,
   children,
   leftPanels,
   dockedPanels,
-  // Legacy props
-  dockedPanel,
-  dockedPanelWidth = 450,
-  onDockedPanelWidthChange,
-  dockedPanelMinWidth = 350,
-  dockedPanelMaxWidth = 800,
   ...props
 }: MainPageContentProps) {
-  // Convert legacy props to new format
-  const rightPanels: DockedPanelConfig[] =
-    dockedPanels ??
-    (dockedPanel
-      ? [
-          {
-            key: 'default',
-            content: dockedPanel,
-            width: dockedPanelWidth,
-            onWidthChange: onDockedPanelWidthChange,
-            minWidth: dockedPanelMinWidth,
-            maxWidth: dockedPanelMaxWidth,
-          },
-        ]
-      : [])
+  const rightPanels: DockedPanelConfig[] = dockedPanels ?? []
   const left: DockedPanelConfig[] = leftPanels ?? []
 
   const [isResizing, setIsResizing] = React.useState(false)
@@ -498,9 +547,11 @@ MainPageSubheader.displayName = 'MainPageSubheader'
 export {
   MainPage,
   MainPageHeader,
+  MainPageAction,
   MainPageSubheader,
   MainPageContent,
   MainPageBreadcrumb,
+  MainPageCrumbs,
   MainPageBreadcrumbItem,
   MainPageBreadcrumbDropdown,
   type DockedPanelConfig,

@@ -10,7 +10,7 @@ import {
   MainPageContent,
   MainPageHeader,
 } from '@auxx/ui/components/main-page'
-import { RadioTab, RadioTabItem } from '@auxx/ui/components/radio-tab'
+import { MainPageTabs } from '@auxx/ui/components/main-page-tabs'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { cn } from '@auxx/ui/lib/utils'
 import { ChartColumn, History, MousePointerClick, Settings, Workflow } from 'lucide-react'
@@ -152,25 +152,16 @@ export default function EditWorkflowPage({ params }: EditWorkflowPageProps) {
           className='justify-start'
           action={
             <div className='flex items-center gap-2 shrink-0'>
-              <RadioTab
+              <MainPageTabs
+                items={[
+                  { value: 'editor', label: 'Editor', icon: <Workflow /> },
+                  { value: 'analytics', label: 'Analytics', icon: <ChartColumn /> },
+                  { value: 'executions', label: 'Executions', icon: <History /> },
+                ]}
                 value={mode}
-                onValueChange={setMode}
-                size='sm'
-                radioGroupClassName='grid w-full'
-                className='border border-primary-200 flex flex-1 w-full shrink-0'>
-                <RadioTabItem value='editor' size='sm'>
-                  <Workflow />
-                  <span className='hidden sm:inline'>Editor</span>
-                </RadioTabItem>
-                <RadioTabItem value='analytics' size='sm'>
-                  <ChartColumn />
-                  <span className='hidden sm:inline'>Analytics</span>
-                </RadioTabItem>
-                <RadioTabItem value='executions' size='sm'>
-                  <History />
-                  <span className='hidden sm:inline'>Executions</span>
-                </RadioTabItem>
-              </RadioTab>
+                onValueChange={(v) => setMode(v as 'editor' | 'analytics' | 'executions')}
+                className='flex-1 shrink-0'
+              />
               <Tooltip content='Edit Workflow Details'>
                 <Button
                   variant='ghost'
@@ -187,7 +178,6 @@ export default function EditWorkflowPage({ params }: EditWorkflowPageProps) {
             <MainPageBreadcrumbItem
               title={isLoading ? <Skeleton className='h-4 w-32' /> : workflow.name}
               href={`/app/workflows/${workflowId}`}
-              last
             />
           </MainPageBreadcrumb>
         </MainPageHeader>

@@ -15,9 +15,14 @@ import { useCompose } from '~/hooks/use-compose'
 import { BlockCard } from './block-card'
 import type { BlockRendererProps } from './block-registry'
 import type { DraftListData, DraftSnapshotData } from './block-schemas'
+import { useStreamSafeIds } from './use-stream-safe-ids'
 
-export function DraftListBlock({ data, skipEntrance }: BlockRendererProps<DraftListData>) {
-  const draftIds = data.draftIds ?? []
+export function DraftListBlock({
+  data,
+  lastValueTruncated,
+  skipEntrance,
+}: BlockRendererProps<DraftListData>) {
+  const draftIds = useStreamSafeIds(data.draftIds ?? [], lastValueTruncated)
   const snapshot = data.snapshot
 
   return (

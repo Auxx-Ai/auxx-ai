@@ -222,7 +222,7 @@ export default function PlansPage() {
           }>
           <MainPageBreadcrumb>
             <MainPageBreadcrumbItem title='Admin' href='/admin' />
-            <MainPageBreadcrumbItem title='Plans' href='/admin/plans' last />
+            <MainPageBreadcrumbItem title='Plans' href='/admin/plans' />
           </MainPageBreadcrumb>
         </MainPageHeader>
         <MainPageContent>

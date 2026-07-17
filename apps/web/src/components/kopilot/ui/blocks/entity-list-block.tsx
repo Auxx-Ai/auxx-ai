@@ -9,9 +9,14 @@ import { BlockCard } from './block-card'
 import type { BlockRendererProps } from './block-registry'
 import type { EntityListData } from './block-schemas'
 import { EntityCardItem } from './entity-card-item'
+import { useStreamSafeIds } from './use-stream-safe-ids'
 
-export function EntityListBlock({ data, skipEntrance }: BlockRendererProps<EntityListData>) {
-  const recordIds = data.recordIds ?? []
+export function EntityListBlock({
+  data,
+  lastValueTruncated,
+  skipEntrance,
+}: BlockRendererProps<EntityListData>) {
+  const recordIds = useStreamSafeIds(data.recordIds ?? [], lastValueTruncated)
   const snapshot = data.snapshot
   const firstId = recordIds[0]
   const entityDefId = firstId ? getDefinitionId(firstId) : null

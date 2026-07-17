@@ -35,7 +35,7 @@ export function KBEmptyState() {
     <MainPage>
       <MainPageHeader>
         <MainPageBreadcrumb>
-          <MainPageBreadcrumbItem title='Knowledge base' href='/app/kb' last />
+          <MainPageBreadcrumbItem title='Knowledge base' href='/app/kb' />
         </MainPageBreadcrumb>
       </MainPageHeader>
       <MainPageContent>

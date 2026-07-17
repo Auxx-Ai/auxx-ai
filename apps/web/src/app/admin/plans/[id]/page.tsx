@@ -14,13 +14,13 @@ import {
   MainPageContent,
   MainPageHeader,
 } from '@auxx/ui/components/main-page'
-import { Skeleton } from '@auxx/ui/components/skeleton'
 import { toastError } from '@auxx/ui/components/toast'
 import { ArrowLeft } from 'lucide-react'
 import { useParams, useRouter } from 'next/navigation'
 import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { FeatureLimitsCard } from '~/app/admin/_components/features'
+import { MainPageLoading, MainPageNotFound } from '~/components/global/main-page-states'
 import { api } from '~/trpc/react'
 import { FeaturesListEditor } from '../_components/features-list-editor'
 import { PlanDetailsCard } from '../_components/plan-details-card'
@@ -43,16 +43,10 @@ export default function PlanEditPage() {
           <MainPageBreadcrumb>
             <MainPageBreadcrumbItem title='Admin' href='/admin' />
             <MainPageBreadcrumbItem title='Plans' href='/admin/plans' />
-            <MainPageBreadcrumbItem title='Loading...' href={`/admin/plans/${planId}`} last />
+            <MainPageBreadcrumbItem title='Loading...' href={`/admin/plans/${planId}`} />
           </MainPageBreadcrumb>
         </MainPageHeader>
-        <MainPageContent>
-          <div className='space-y-6 p-6'>
-            <Skeleton className='h-10 w-full' />
-            <Skeleton className='h-20 w-full' />
-            <Skeleton className='h-10 w-full' />
-          </div>
-        </MainPageContent>
+        <MainPageLoading />
       </MainPage>
     )
   }
@@ -64,18 +58,19 @@ export default function PlanEditPage() {
           <MainPageBreadcrumb>
             <MainPageBreadcrumbItem title='Admin' href='/admin' />
             <MainPageBreadcrumbItem title='Plans' href='/admin/plans' />
-            <MainPageBreadcrumbItem title='Not Found' href={`/admin/plans/${planId}`} last />
+            <MainPageBreadcrumbItem title='Not Found' href={`/admin/plans/${planId}`} />
           </MainPageBreadcrumb>
         </MainPageHeader>
-        <MainPageContent>
-          <div className='flex flex-col items-center justify-center py-12 gap-4'>
-            <p className='text-center text-muted-foreground'>Plan not found</p>
+        <MainPageNotFound
+          title='Plan not found'
+          description=''
+          action={
             <Button variant='outline' onClick={() => router.push('/admin/plans')}>
               <ArrowLeft />
               Back to Plans
             </Button>
-          </div>
-        </MainPageContent>
+          }
+        />
       </MainPage>
     )
   }
@@ -178,7 +173,7 @@ function PlanEditForm({ plan }: { plan: any }) {
         <MainPageBreadcrumb>
           <MainPageBreadcrumbItem title='Admin' href='/admin' />
           <MainPageBreadcrumbItem title='Plans' href='/admin/plans' />
-          <MainPageBreadcrumbItem title={plan.name} href={`/admin/plans/${plan.id}`} last />
+          <MainPageBreadcrumbItem title={plan.name} href={`/admin/plans/${plan.id}`} />
         </MainPageBreadcrumb>
       </MainPageHeader>
       <MainPageContent>

@@ -4,8 +4,13 @@ import type React from 'react'
 
 export interface BlockRendererProps<T = unknown> {
   data: T
-  /** True when data is from a partial streaming parse */
-  isPartial?: boolean
+  /**
+   * True when `data` came from a partial streaming parse whose JSON currently
+   * ends inside an unterminated string — the last streamed string value is a
+   * truncated prefix. Blocks that fetch by id should withhold the trailing id
+   * while this is set (see `useStreamSafeIds`).
+   */
+  lastValueTruncated?: boolean
   /** True when this block was already shown — skip entrance animations */
   skipEntrance?: boolean
 }

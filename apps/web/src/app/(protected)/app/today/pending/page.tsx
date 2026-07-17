@@ -23,7 +23,7 @@ export default function PendingSendsRoute() {
         <MainPageHeader>
           <MainPageBreadcrumb>
             <MainPageBreadcrumbItem title='Today' href='/app/today' />
-            <MainPageBreadcrumbItem title='Pending sends' last />
+            <MainPageBreadcrumbItem title='Pending sends' />
           </MainPageBreadcrumb>
         </MainPageHeader>
         <MainPageContent>

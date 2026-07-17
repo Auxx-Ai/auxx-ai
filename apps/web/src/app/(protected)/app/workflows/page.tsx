@@ -71,7 +71,7 @@ function WorkflowsPageContent() {
       <MainPageHeader
         action={activeTab === 'sequences' ? <CreateSequenceButton /> : <CreateWorkflowButton />}>
         <MainPageBreadcrumb>
-          <MainPageBreadcrumbItem title='Automation' href='/app/workflows' last />
+          <MainPageBreadcrumbItem title='Automation' href='/app/workflows' />
         </MainPageBreadcrumb>
       </MainPageHeader>
 

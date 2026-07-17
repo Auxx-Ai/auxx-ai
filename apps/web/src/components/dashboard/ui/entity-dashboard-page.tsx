@@ -13,10 +13,10 @@ import { FeatureKey } from '@auxx/lib/permissions/client'
 import { Button } from '@auxx/ui/components/button'
 import { MainPageContent } from '@auxx/ui/components/main-page'
 import { toastError } from '@auxx/ui/components/toast'
-import { ChartColumn, Lock } from 'lucide-react'
+import { ChartColumn } from 'lucide-react'
 import { useState } from 'react'
 import { EmptyState } from '~/components/global/empty-state'
-import { LoadingSpinner } from '~/components/global/loading-content'
+import { MainPageLoading, MainPageNoPermission } from '~/components/global/main-page-states'
 import { useResources } from '~/components/resources'
 import { useFeatureFlags } from '~/providers/feature-flag-provider'
 import { api } from '~/trpc/react'
@@ -51,30 +51,21 @@ export function EntityDashboardPage({ slug }: { slug: string }) {
 
   if (!hasAccess(FeatureKey.dashboards)) {
     return (
-      <MainPageContent>
-        <EmptyState
-          icon={Lock}
-          title='Dashboards not available'
-          description='Upgrade your plan to build dashboards.'
-          button={<div className='h-12' />}
-        />
-      </MainPageContent>
+      <MainPageNoPermission
+        title='Dashboards not available'
+        description='Upgrade your plan to build dashboards.'
+      />
     )
   }
 
   if (query.isLoading) {
-    return (
-      <MainPageContent>
-        <LoadingSpinner />
-      </MainPageContent>
-    )
+    return <MainPageLoading />
   }
 
   if (query.data) {
     return (
       <DashboardDetailView
         dashboard={query.data}
-        variant='embedded'
         startInEditMode={query.data.id === justCreatedId}
       />
     )

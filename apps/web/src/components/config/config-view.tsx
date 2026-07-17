@@ -22,8 +22,7 @@ import {
 } from '@auxx/ui/components/select'
 import { Search, X } from 'lucide-react'
 import { parseAsString, useQueryState } from 'nuqs'
-import { useEffectiveDockState } from '~/hooks/use-effective-dock-state'
-import { useDockStore } from '~/stores/dock-store'
+import { useDockedPanels } from '~/hooks/use-docked-panels'
 import { api } from '~/trpc/react'
 import { ConfigDrawer } from './config-drawer'
 import { useConfigStore } from './store/config-store'
@@ -36,13 +35,6 @@ import { ConfigTable } from './ui/config-table'
 export function ConfigView() {
   const { data: groups, isLoading } = api.configVariable.getGrouped.useQuery()
   const { data: status } = api.configVariable.getStatus.useQuery()
-
-  /** Dock state */
-  const isDocked = useEffectiveDockState()
-  const dockedWidth = useDockStore((state) => state.dockedWidth)
-  const setDockedWidth = useDockStore((state) => state.setDockedWidth)
-  const minWidth = useDockStore((state) => state.minWidth)
-  const maxWidth = useDockStore((state) => state.maxWidth)
 
   /** Filter state from store */
   const search = useConfigStore((state) => state.search)
@@ -69,16 +61,20 @@ export function ConfigView() {
 
   const isDbEnabled = status?.isDbEnabled ?? false
 
-  /** Docked panel content */
-  const dockedPanel =
-    isDocked && isDrawerOpen ? (
-      <ConfigDrawer
-        variableKey={selectedKey}
-        open={isDrawerOpen}
-        onOpenChange={handleDrawerOpenChange}
-        isDbEnabled={isDbEnabled}
-      />
-    ) : undefined
+  const { dockedPanels, overlays } = useDockedPanels([
+    {
+      key: 'config-detail',
+      open: isDrawerOpen,
+      content: (
+        <ConfigDrawer
+          variableKey={selectedKey}
+          open={isDrawerOpen}
+          onOpenChange={handleDrawerOpenChange}
+          isDbEnabled={isDbEnabled}
+        />
+      ),
+    },
+  ])
 
   return (
     <>
@@ -86,15 +82,10 @@ export function ConfigView() {
         <MainPageHeader>
           <MainPageBreadcrumb>
             <MainPageBreadcrumbItem title='Admin' href='/admin' />
-            <MainPageBreadcrumbItem title='Config' last />
+            <MainPageBreadcrumbItem title='Config' />
           </MainPageBreadcrumb>
         </MainPageHeader>
-        <MainPageContent
-          dockedPanel={dockedPanel}
-          dockedPanelWidth={dockedWidth}
-          onDockedPanelWidthChange={setDockedWidth}
-          dockedPanelMinWidth={minWidth}
-          dockedPanelMaxWidth={maxWidth}>
+        <MainPageContent dockedPanels={dockedPanels}>
           {/* Filters */}
           <MainPageSubheader>
             <Select
@@ -142,15 +133,7 @@ export function ConfigView() {
         </MainPageContent>
       </MainPage>
 
-      {/* Detail drawer - overlay mode only (docked mode handled by dockedPanel above) */}
-      {!isDocked && (
-        <ConfigDrawer
-          variableKey={selectedKey}
-          open={isDrawerOpen}
-          onOpenChange={handleDrawerOpenChange}
-          isDbEnabled={isDbEnabled}
-        />
-      )}
+      {overlays}
     </>
   )
 }

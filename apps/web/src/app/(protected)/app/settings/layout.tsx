@@ -27,7 +27,7 @@ export default function SettingsSidebar({ children }: { children: React.ReactNod
     <MainPage>
       <MainPageHeader>
         <MainPageBreadcrumb>
-          <MainPageBreadcrumbItem title='Settings' href='/app/settings/general' last />
+          <MainPageBreadcrumbItem title='Settings' href='/app/settings/general' />
         </MainPageBreadcrumb>
       </MainPageHeader>
       <MainPageContent className={cn(!isFullWidth && 'max-w-6xl')}>

@@ -15,6 +15,7 @@ import {
   useMemo,
   useRef,
 } from 'react'
+import { MainPageLoading } from '~/components/global/main-page-states'
 import { type RecordMeta, toRecordId, useRecordList, useResource } from '~/components/resources'
 import { useFieldValueSyncer } from '~/components/resources/hooks/use-field-value-syncer'
 import type {
@@ -291,12 +292,14 @@ export function DynamicResourceView<TRow extends RecordMeta = RecordMeta>({
   }, [customFields, resource, createEntityFieldColumn, entityDefinitionId])
 
   if (isLoading) {
-    const loader = (
-      <div className='flex h-full items-center justify-center'>
-        <Loader size='sm' title='Loading records...' subtitle='Please wait' />
-      </div>
-    )
-    return embedded ? loader : <MainPageContent>{loader}</MainPageContent>
+    if (embedded) {
+      return (
+        <div className='flex h-full items-center justify-center'>
+          <Loader size='sm' title='Loading records...' subtitle='Please wait' />
+        </div>
+      )
+    }
+    return <MainPageLoading title='Loading records...' subtitle='Please wait' />
   }
 
   if (!resource || !entityDefinitionId) return null

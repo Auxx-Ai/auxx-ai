@@ -30,7 +30,7 @@ export function VisitDetailPage({ visitId }: VisitDetailPageProps) {
       <MainPageHeader>
         <MainPageBreadcrumb>
           <MainPageBreadcrumbItem title='Schedule' href='/app/schedule' />
-          <MainPageBreadcrumbItem title={title} last />
+          <MainPageBreadcrumbItem title={title} />
         </MainPageBreadcrumb>
       </MainPageHeader>
 

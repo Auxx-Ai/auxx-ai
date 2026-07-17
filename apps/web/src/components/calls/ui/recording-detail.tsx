@@ -4,7 +4,6 @@
 import { type BotStatus, TERMINAL_STATUSES } from '@auxx/lib/recording/client'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
-import { DrawerHeader } from '@auxx/ui/components/drawer'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -19,7 +18,6 @@ import {
   MainPageContent,
   MainPageHeader,
 } from '@auxx/ui/components/main-page'
-import { Skeleton } from '@auxx/ui/components/skeleton'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@auxx/ui/components/tabs'
 import { toastError } from '@auxx/ui/components/toast'
 import {
@@ -40,11 +38,12 @@ import { useRouter } from 'next/navigation'
 import { useQueryState } from 'nuqs'
 import { useEffect, useState } from 'react'
 import { EmptyState } from '~/components/global/empty-state'
+import { MainPageLoading } from '~/components/global/main-page-states'
 import { Tooltip } from '~/components/global/tooltip'
 import { getOrCreateStore, VideoPlayer } from '~/components/video-player'
 import { useConfirm } from '~/hooks/use-confirm'
+import { useDockedPanels } from '~/hooks/use-docked-panels'
 import { useMedia } from '~/hooks/use-media'
-import { useDockStore } from '~/stores/dock-store'
 import { api } from '~/trpc/react'
 import { RecordingMeeting } from './recording-meeting'
 import { RecordingSpeakers } from './recording-speakers'
@@ -317,10 +316,20 @@ export function RecordingDetail({ recordingId }: { recordingId: string }) {
       setTab('transcript')
     }
   }, [isDesktop, tab, setTab])
-  const dockedWidth = useDockStore((state) => state.dockedWidth)
-  const setDockedWidth = useDockStore((state) => state.setDockedWidth)
-  const minWidth = useDockStore((state) => state.minWidth)
-  const maxWidth = useDockStore((state) => state.maxWidth)
+
+  // Summary sidebar — docked-only, no overlay: the mobile Summary tab (above)
+  // already covers the narrow/undocked case.
+  const { dockedPanels } = useDockedPanels([
+    {
+      key: 'summary-sidebar',
+      open: { docked: true, overlay: false },
+      content: (
+        <div className='h-full overflow-y-auto'>
+          <RecordingSummary recordingId={recordingId} />
+        </div>
+      ),
+    },
+  ])
 
   const { data: realRecording, isLoading } = api.recording.getById.useQuery(
     { id: recordingId },
@@ -411,7 +420,7 @@ export function RecordingDetail({ recordingId }: { recordingId: string }) {
           <MainPageBreadcrumb>
             <MainPageBreadcrumbItem title='Calls' href='/app/calls' />
             <MainPageBreadcrumbItem title='Recordings' href='/app/calls' />
-            <MainPageBreadcrumbItem title='Not Found' last />
+            <MainPageBreadcrumbItem title='Not Found' />
           </MainPageBreadcrumb>
         </MainPageHeader>
         <MainPageContent>
@@ -507,29 +516,11 @@ export function RecordingDetail({ recordingId }: { recordingId: string }) {
         <MainPageBreadcrumb>
           <MainPageBreadcrumbItem title='Calls' href='/app/calls' />
           <MainPageBreadcrumbItem title='Recordings' href='/app/calls' />
-          <MainPageBreadcrumbItem title={breadcrumbTitle} last />
+          <MainPageBreadcrumbItem title={breadcrumbTitle} />
         </MainPageBreadcrumb>
       </MainPageHeader>
 
-      <MainPageContent
-        dockedPanels={
-          isDesktop
-            ? [
-                {
-                  key: 'summary-sidebar',
-                  content: (
-                    <div className='h-full overflow-y-auto'>
-                      <RecordingSummary recordingId={recordingId} />
-                    </div>
-                  ),
-                  width: dockedWidth,
-                  onWidthChange: setDockedWidth,
-                  minWidth,
-                  maxWidth,
-                },
-              ]
-            : []
-        }>
+      <MainPageContent dockedPanels={dockedPanels}>
         <ConfirmDialog />
 
         <div className='flex-1 h-full flex flex-col min-h-0'>
@@ -645,46 +636,21 @@ export function RecordingDetail({ recordingId }: { recordingId: string }) {
 }
 
 /**
- * RecordingDetailSkeleton — loading skeleton
+ * RecordingDetailSkeleton — loading state. This component owns its own
+ * `MainPage`/`MainPageHeader` shell (the route mounts `RecordingDetail`
+ * directly with no ancestor shell), so only the body swaps to `MainPageLoading`.
  */
 function RecordingDetailSkeleton() {
-  const isDesktop = useMedia('(min-width: 1024px)')
-  const dockedWidth = useDockStore((state) => state.dockedWidth)
-
   return (
     <MainPage>
       <MainPageHeader>
         <MainPageBreadcrumb>
           <MainPageBreadcrumbItem title='Calls' href='/app/calls' />
           <MainPageBreadcrumbItem title='Recordings' href='/app/calls' />
-          <MainPageBreadcrumbItem title='Loading...' last />
+          <MainPageBreadcrumbItem title='Loading...' />
         </MainPageBreadcrumb>
       </MainPageHeader>
-      <MainPageContent
-        dockedPanels={
-          isDesktop
-            ? [
-                {
-                  key: 'summary-sidebar',
-                  content: (
-                    <div className='p-4 space-y-4'>
-                      <Skeleton className='h-6 w-24' />
-                      <Skeleton className='h-20 w-full' />
-                      <Skeleton className='h-6 w-24' />
-                      <Skeleton className='h-20 w-full' />
-                    </div>
-                  ),
-                  width: dockedWidth,
-                },
-              ]
-            : []
-        }>
-        <div className='p-3 space-y-4'>
-          <Skeleton className='aspect-video w-full rounded-lg' />
-          <Skeleton className='h-10 w-full' />
-          <Skeleton className='h-64 w-full' />
-        </div>
-      </MainPageContent>
+      <MainPageLoading title='Loading recording...' />
     </MainPage>
   )
 }
