@@ -15,6 +15,7 @@ import dynamic from 'next/dynamic'
 import { parseAsArrayOf, parseAsString, useQueryState, useQueryStates } from 'nuqs'
 import * as React from 'react'
 import type { RecordId } from '~/components/resources'
+import { useRecord } from '~/components/resources'
 
 /**
  * Context handed to a `RecordDrillPanel`'s `bar`/`render`/`renderItem`. Shared
@@ -62,6 +63,10 @@ const VisitDetailPanel = dynamic(
   () => import('../dispatch/ui/job-schedule/visit-detail-panel').then((m) => m.VisitDetailPanel),
   { ssr: false, loading: DRILL_LOADING }
 )
+const InvoiceDetailPanel = dynamic(
+  () => import('../money/ui/invoice/invoice-detail-panel').then((m) => m.InvoiceDetailPanel),
+  { ssr: false, loading: DRILL_LOADING }
+)
 
 /** Back button + title — the `ProcedureDetailBar`/`agent-detail-tabs.tsx` shared-bar
  * pattern, kept inline (generic `@auxx/ui` primitives only) so this registry stays
@@ -78,6 +83,14 @@ export function DrillBackBar({ title }: { title: string }) {
   )
 }
 
+/** Nav-bar title for the `invoices` drill — the invoice's own `displayName`
+ * (its invoice number) once loaded, falling back to the generic label. */
+function InvoiceDrillBar({ itemId }: { itemId: string | null }) {
+  const invoiceRecordId = itemId as RecordId | null
+  const { record } = useRecord({ recordId: invoiceRecordId, enabled: Boolean(itemId) })
+  return <DrillBackBar title={record?.displayName ?? 'Invoice'} />
+}
+
 const RECORD_DRILL_PANELS: Record<string, RecordDrillPanel[]> = {
   work_order: [
     {
@@ -85,6 +98,14 @@ const RECORD_DRILL_PANELS: Record<string, RecordDrillPanel[]> = {
       bar: (ctx: RecordDrillContext) => <DrillBackBar title={ctx.itemId ? 'Visit' : 'Visits'} />,
       render: (ctx) => <VisitsListPanel {...ctx} />,
       renderItem: (ctx) => <VisitDetailPanel {...ctx} />,
+    },
+    {
+      // Single-level on purpose (no list panel — surfaces list invoices themselves
+      // and drill straight in): `render` reads the drilled invoice off ctx.itemId,
+      // so `open('invoices', recordId)` always lands a two-level stack.
+      value: 'invoices',
+      bar: (ctx: RecordDrillContext) => <InvoiceDrillBar itemId={ctx.itemId} />,
+      render: (ctx) => <InvoiceDetailPanel {...ctx} />,
     },
   ],
 }
