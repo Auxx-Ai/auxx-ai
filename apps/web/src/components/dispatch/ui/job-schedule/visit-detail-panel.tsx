@@ -27,7 +27,11 @@ import { getInitials } from '~/components/groups/utils/group-utils'
 import { BillingActionDialog } from '~/components/money/billing/billing-action-dialog'
 import { useWorkOrderBillingState } from '~/components/money/billing/use-work-order-billing-state'
 import { LineBuilder } from '~/components/money/ui/line-builder/line-builder'
-import { type RecordDrillContext, useOpenRecord } from '~/components/records/record-drill-panels'
+import {
+  type RecordDrillContext,
+  useOpenRecord,
+  useRecordDrill,
+} from '~/components/records/record-drill-panels'
 import { useActors } from '~/components/resources/hooks/use-actor'
 import { BaseType } from '~/components/workflow/types'
 import { useConfirm } from '~/hooks/use-confirm'
@@ -57,6 +61,7 @@ export function VisitDetailPanel({ recordId, itemId }: RecordDrillContext) {
   const visit = visits.find((v) => v.id === itemId)
   const [confirm, ConfirmDialog] = useConfirm()
   const openRecord = useOpenRecord()
+  const drill = useRecordDrill()
   // Plan 20 §4.1a — explicit duration write. Never touches the schedule; draft state so a
   // blur/Enter commits and an Escape reverts without re-render churn on every keystroke.
   const [durationDraft, setDurationDraft] = useState<number | undefined | null>(null)
@@ -302,13 +307,15 @@ export function VisitDetailPanel({ recordId, itemId }: RecordDrillContext) {
             <Button
               variant='ghost'
               size='sm'
-              onClick={() =>
-                openRecord?.(
-                  billingVisit.invoiceId!.includes(':')
-                    ? (billingVisit.invoiceId as RecordId)
-                    : toRecordId('invoice', billingVisit.invoiceId!)
-                )
-              }>
+              onClick={() => {
+                const invoiceRecordId = billingVisit.invoiceId!.includes(':')
+                  ? (billingVisit.invoiceId as RecordId)
+                  : toRecordId('invoice', billingVisit.invoiceId!)
+                // Drawer: push the full invoice drawer frame (peek stack). Full page has
+                // no peek stack — switch to the in-place `invoices` drill instead.
+                if (openRecord) openRecord(invoiceRecordId)
+                else drill.open('invoices', invoiceRecordId)
+              }}>
               View invoice
             </Button>
           )}

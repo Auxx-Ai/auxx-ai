@@ -2,7 +2,6 @@
 'use client'
 
 import type { FieldViewConfig, ViewContextType } from '@auxx/lib/conditions/client'
-import { createDefaultFieldViewConfig } from '@auxx/lib/conditions/client'
 import { toastError } from '@auxx/ui/components/toast'
 import { useCallback } from 'react'
 import { useDynamicTableStore } from '~/components/dynamic-table/stores/dynamic-table-store'
@@ -111,14 +110,14 @@ export function useToggleFieldVisibility({
           },
         })
       } else {
-        // No view exists - create one with the visibility change
-        const defaultConfig = createDefaultFieldViewConfig(fieldIds)
+        // No view exists - create one storing ONLY this field's choice.
+        // The config is sparse: every other field keeps resolving to its
+        // registry default (showInPanel / dialog rule) via resolveFieldVisible,
+        // so toggling one field no longer snapshots all fields as visible.
         const configWithChange: FieldViewConfig = {
-          ...defaultConfig,
-          fieldVisibility: {
-            ...defaultConfig.fieldVisibility,
-            [resourceFieldId]: visible,
-          },
+          fieldVisibility: { [resourceFieldId]: visible },
+          fieldOrder: fieldIds,
+          showLabels: true,
         }
 
         createView.mutate({

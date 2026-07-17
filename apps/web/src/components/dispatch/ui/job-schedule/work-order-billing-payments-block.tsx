@@ -56,6 +56,9 @@ export interface WorkOrderBillingPaymentsBlockProps {
   onSettled?: () => void
 }
 
+/** How many payments render before the inline "Show more" row collapses the rest. */
+const PAYMENT_PREVIEW_LIMIT = 5
+
 /** Payments block — the shared ledger list + "Record payment" (billing tab §D block 5). */
 export function WorkOrderBillingPaymentsBlock({
   workOrderRecordId,
@@ -131,7 +134,7 @@ export function WorkOrderBillingPaymentsBlock({
   }
 
   return (
-    <div>
+    <div className='p-1.5'>
       <PaymentsList
         payments={payments}
         isLoading={isLoading}
@@ -141,6 +144,7 @@ export function WorkOrderBillingPaymentsBlock({
         onRefund={handleRefund}
         deletePending={deletePayment.isPending}
         refundPending={refundTransaction.isPending}
+        visibleLimit={PAYMENT_PREVIEW_LIMIT}
         renderRowSuffix={(payment) => {
           const invoiceRecordId = invoiceByTransactionId.get(payment.id)
           return invoiceRecordId ? <PaymentInvoiceChip invoiceRecordId={invoiceRecordId} /> : null
