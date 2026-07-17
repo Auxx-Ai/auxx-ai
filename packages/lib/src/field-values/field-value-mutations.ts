@@ -48,7 +48,11 @@ import {
   hasFieldPreHooks,
 } from '../field-hooks/registry'
 import type { FieldPreHookEvent } from '../field-hooks/types'
-import { getRealtimeService, publishFieldValueUpdates } from '../realtime'
+import {
+  type FieldValueUpdateEntry,
+  getRealtimeService,
+  publishFieldValueUpdates,
+} from '../realtime'
 import { getModelType, isRecordId, parseRecordId, toRecordId } from '../resources/resource-id'
 import { applyAiMarker } from './ai-commit'
 import { shortCircuitAiGenerate } from './ai-enqueue'
@@ -104,6 +108,47 @@ import type {
 } from './types'
 
 const logger = createScopedLogger('field-value-mutations')
+
+// =============================================================================
+// REALTIME PUBLISH SHAPING
+// =============================================================================
+
+/**
+ * Shape one field's write result into a `FieldValueUpdateEntry` for realtime
+ * publish. Array-return field types (FILE, TAGS, MULTI_SELECT, RELATIONSHIP,
+ * multi-ACTOR, ...) always publish an array — including an empty array when
+ * `values` is empty, so peer clients can clear the field in their store
+ * instead of keeping a stale value until a manual refetch. Single-value
+ * fields publish the first value, or `null` when the write deleted the only
+ * row (scalar clear).
+ *
+ * Shared by `setBulkValues` and the single-field write path
+ * (`setValueWithBuiltIn`, directly and via `setValuesForEntity`'s collector)
+ * so every caller emits identical entry shapes for the same field type.
+ * `publishRecordId` must already reflect the per-field alias guard (server
+ * callers may pass alias-form record ids; the key is built from the field's
+ * real EntityDefinition id) — this helper only shapes the value, it does not
+ * resolve the alias.
+ */
+export function buildPublishEntry(args: {
+  publishRecordId: RecordId
+  fieldId: FieldId
+  field: CachedField | undefined
+  values: TypedFieldValue[]
+}): FieldValueUpdateEntry {
+  const { publishRecordId, fieldId, field, values } = args
+  const key = buildFieldValueKey(publishRecordId, fieldId)
+  const fieldType = field?.type as FieldType | undefined
+  const fieldOptions = field?.options as
+    | { actor?: { multiple?: boolean }; multi?: boolean }
+    | undefined
+  const isArrayReturn = fieldType ? isArrayReturnFieldType(fieldType, fieldOptions) : false
+
+  if (isArrayReturn) {
+    return { key, value: values }
+  }
+  return { key, value: values.length > 0 ? values[0] : null }
+}
 
 // =============================================================================
 // FIELD PRE-HOOKS
@@ -1755,6 +1800,7 @@ export async function setValueWithBuiltIn(
     value,
     publishEvents = true,
     skipInverseSync = false,
+    collectRealtime,
   } = params
 
   // Parse RecordId to get both parts
@@ -1889,10 +1935,22 @@ export async function setValueWithBuiltIn(
     await deleteValue(ctx, { recordId, fieldId })
     await maybeUpdateDisplayValue(ctx, recordId, field, null)
     if (publishEvents) {
-      const key = buildFieldValueKey(publishRecordId, fieldId as FieldId)
-      publishFieldValueUpdates(getRealtimeService(), ctx.organizationId, [{ key, value: null }], {
-        excludeSocketId: ctx.socketId,
-      }).catch(() => {})
+      // Routed through buildPublishEntry like the set branch below — this
+      // publishes `[]` (not `null`) for array-return fields, matching
+      // setBulkValues' "cleared" signal (see helper doc).
+      const entry = buildPublishEntry({
+        publishRecordId,
+        fieldId: fieldId as FieldId,
+        field,
+        values: [],
+      })
+      if (collectRealtime) {
+        collectRealtime.push(entry)
+      } else {
+        publishFieldValueUpdates(getRealtimeService(), ctx.organizationId, [entry], {
+          excludeSocketId: ctx.socketId,
+        }).catch(() => {})
+      }
     }
     await firePostHook(null)
     return { state: 'complete', performedAt: new Date().toISOString(), values: [] }
@@ -1951,27 +2009,26 @@ export async function setValueWithBuiltIn(
   // directly to the store without guessing. Single-value fields publish the
   // single value.
   if (publishEvents && result.length > 0) {
-    const key = buildFieldValueKey(publishRecordId, fieldId as FieldId)
-    const storeValue = isArrayReturn ? result : result[0]
+    const baseEntry = buildPublishEntry({
+      publishRecordId,
+      fieldId: fieldId as FieldId,
+      field,
+      values: result,
+    })
     // When this write is an AI stage-2 commit, piggyback the `result`
     // marker onto the same realtime so clients see value + AI state in
     // one message. Manual writes carry aiStatus=null to clear any prior
     // marker in peer stores.
-    publishFieldValueUpdates(
-      getRealtimeService(),
-      ctx.organizationId,
-      [
-        params.aiGeneration
-          ? {
-              key,
-              value: storeValue,
-              aiStatus: 'result',
-              aiMetadata: params.aiGeneration,
-            }
-          : { key, value: storeValue, aiStatus: null, aiMetadata: null },
-      ],
-      { excludeSocketId: ctx.socketId }
-    ).catch(() => {})
+    const entry: FieldValueUpdateEntry = params.aiGeneration
+      ? { ...baseEntry, aiStatus: 'result', aiMetadata: params.aiGeneration }
+      : { ...baseEntry, aiStatus: null, aiMetadata: null }
+    if (collectRealtime) {
+      collectRealtime.push(entry)
+    } else {
+      publishFieldValueUpdates(getRealtimeService(), ctx.organizationId, [entry], {
+        excludeSocketId: ctx.socketId,
+      }).catch(() => {})
+    }
   }
 
   // Always return arrays with state and timestamp
@@ -2020,6 +2077,14 @@ export async function setValuesForEntity(
   }
 
   const results: SetValuesResult[] = []
+
+  // Realtime entries collected from each custom-field write below and
+  // flushed as ONE `fieldValues:updated` frame after the loop, instead of
+  // one frame per field. Built-in fields never contribute (no realtime for
+  // those, unchanged). When `publishEvents` is false, the per-field publish
+  // sites inside `setValueWithBuiltIn` are already skipped entirely, so this
+  // simply stays empty and the flush below is a no-op.
+  const collected: FieldValueUpdateEntry[] = []
 
   // Handle built-in fields
   for (const v of builtIns) {
@@ -2102,11 +2167,13 @@ export async function setValuesForEntity(
           value: v.value,
           publishEvents,
           skipInverseSync,
+          collectRealtime: publishEvents ? collected : undefined,
         })
 
         results.push({ fieldId: v.fieldId, ...result })
       } catch (error) {
-        // Log but continue with other fields
+        // Log but continue with other fields — a field that throws
+        // contributes no entry to `collected`; the rest still flush below.
         console.error(`Failed to set field ${v.fieldId}:`, error)
         results.push({
           fieldId: v.fieldId,
@@ -2116,6 +2183,15 @@ export async function setValuesForEntity(
         })
       }
     }
+  }
+
+  if (collected.length > 0) {
+    // Invariant: post-hooks never rewrite input fields (totals-hooks.ts
+    // §no-recursion), so no mid-loop hook frame for these keys can be newer
+    // than the collected entry flushed here.
+    publishFieldValueUpdates(getRealtimeService(), ctx.organizationId, collected, {
+      excludeSocketId: ctx.socketId,
+    }).catch(() => {})
   }
 
   return results
@@ -2302,12 +2378,9 @@ export async function setBulkValues(
   const count = results.filter((r) => r.status === 'fulfilled').length
 
   // Batch publish realtime sync for all successful field value changes.
-  // Shape depends on field type: array-return fields always publish arrays —
-  // including empty arrays so peer clients can clear the field in their
-  // store. Skipping empty results (as the previous implementation did)
-  // silently dropped "cleared" states on array-return fields; peer clients
-  // kept the stale value until a manual refetch.
-  const entries: Array<{ key: ReturnType<typeof buildFieldValueKey>; value: unknown }> = []
+  // Shaping (array-return vs scalar, empty-array clear vs null clear) is
+  // shared with the single-field write path via `buildPublishEntry`.
+  const entries: FieldValueUpdateEntry[] = []
   for (let i = 0; i < results.length; i++) {
     const result = results[i]
     if (result?.status !== 'fulfilled') continue
@@ -2322,23 +2395,14 @@ export async function setBulkValues(
       const publishRecordId = cachedField?.entityDefinitionId
         ? toRecordId(cachedField.entityDefinitionId, entityInstanceIds[i]!)
         : recordId
-      const key = buildFieldValueKey(publishRecordId, fieldResult.fieldId as FieldId)
-      const fieldType = cachedField?.type as FieldType | undefined
-      const fieldOptions = cachedField?.options as
-        | { actor?: { multiple?: boolean }; multi?: boolean }
-        | undefined
-      const isArrayReturn = fieldType ? isArrayReturnFieldType(fieldType, fieldOptions) : false
-
-      // Array-return fields always publish an array (possibly empty = clear).
-      // Single-value fields publish the first value, or `null` when the write
-      // deleted the only row (intentional scalar clear).
-      if (isArrayReturn) {
-        entries.push({ key, value: fieldResult.values })
-      } else if (fieldResult.values.length > 0) {
-        entries.push({ key, value: fieldResult.values[0] })
-      } else {
-        entries.push({ key, value: null })
-      }
+      entries.push(
+        buildPublishEntry({
+          publishRecordId,
+          fieldId: fieldResult.fieldId as FieldId,
+          field: cachedField,
+          values: fieldResult.values,
+        })
+      )
     }
   }
   if (entries.length > 0) {

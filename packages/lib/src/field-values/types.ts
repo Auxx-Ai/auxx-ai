@@ -5,7 +5,7 @@ import type { TypedFieldValue, TypedFieldValueInput } from '@auxx/types'
 import type { FieldPath, FieldReference, ResourceFieldId } from '@auxx/types/field'
 import type { RecordId } from '@auxx/types/resource'
 import type { FieldOptions } from '../custom-fields/field-options'
-import type { AiStatus } from '../realtime/events'
+import type { AiStatus, FieldValueUpdateEntry } from '../realtime/events'
 import type { AiValueMetadata } from './ai-autofill/generation-service'
 
 // Re-export for convenience
@@ -74,6 +74,17 @@ export interface SetValueWithBuiltInInput {
    * present, `ai` wins and `aiGeneration` is ignored.
    */
   aiGeneration?: AiValueMetadata
+  /**
+   * When set, the realtime entry this write would have published is pushed
+   * here instead of being published inline — used by `setValuesForEntity` to
+   * batch every field from one multi-field write into a single
+   * `fieldValues:updated` frame instead of one frame per field. Additive
+   * only: post-hooks and field triggers still fire per field exactly as
+   * today, gated on `publishEvents` as always. `publishEvents: false` still
+   * short-circuits the publish site entirely — this collector is never
+   * consulted in that case.
+   */
+  collectRealtime?: FieldValueUpdateEntry[]
 }
 
 /**
