@@ -17,6 +17,7 @@ import {
   type StoredFieldValue,
   useFieldValueStore,
 } from '~/components/resources/store/field-value-store'
+import { getNormalizedRecordId } from '~/components/resources/utils/normalize-record-id'
 
 /**
  * Info needed to sync inverse relationships.
@@ -61,8 +62,15 @@ export function useRelationshipSync() {
    */
   const syncInverseCache = useCallback(
     (input: SyncInput) => {
-      const { sourceRecordId, oldRelatedRecordIds, newRelatedRecordIds, inverseInfo } = input
+      const { inverseInfo } = input
       const { inverseResourceFieldId, sourceResourceFieldId, inverseRelationshipType } = inverseInfo
+
+      // Canonicalize all record prefixes — stored relationship values can carry
+      // alias-prefixed recordIds (e.g. minted by workflow relation inputs), and
+      // inverse-side keys must hit the canonical field-value slots.
+      const sourceRecordId = getNormalizedRecordId(input.sourceRecordId)
+      const oldRelatedRecordIds = input.oldRelatedRecordIds.map(getNormalizedRecordId)
+      const newRelatedRecordIds = input.newRelatedRecordIds.map(getNormalizedRecordId)
 
       // Parse source ResourceFieldId for entity definition ID
       const { entityDefinitionId: sourceEntityDefinitionId } =
@@ -218,14 +226,15 @@ function normalizeToArray(value: StoredFieldValue): RelationshipFieldValue[] {
 }
 
 /**
- * Extract the related RecordId from a relationship value.
- * Returns the recordId directly from the value.
+ * Extract the related RecordId from a relationship value, canonicalized to the
+ * EntityDefinition-UUID prefix so comparisons against normalized ids match
+ * even when the stored value carries an alias-form prefix.
  */
 function extractRelatedRecordId(value: unknown): RecordId | null {
   if (!value || typeof value !== 'object') return null
   const rel = value as RelationshipFieldValue
   if (!rel.recordId) return null
-  return rel.recordId
+  return getNormalizedRecordId(rel.recordId)
 }
 
 /**

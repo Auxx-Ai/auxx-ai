@@ -2,6 +2,7 @@
 
 'use client'
 
+import { toRecordId } from '@auxx/lib/resources/client'
 import { EntityListBlock } from '~/components/kopilot/ui/blocks/entity-list-block'
 import { ThreadListBlock } from '~/components/kopilot/ui/blocks/thread-list-block'
 import { TraceRawJson } from '~/components/workflow/panels/run/components/trace-render-boundary'
@@ -56,7 +57,7 @@ export function FindTraceRenderer({ execution }: TraceRendererProps) {
         <ThreadListBlock data={{ threadIds: records.map((r) => r.id) }} skipEntrance />
       ) : (
         <EntityListBlock
-          data={{ recordIds: records.map((r) => `${resourceType}:${r.id}`) }}
+          data={{ recordIds: records.map((r) => toRecordId(resourceType, r.id)) }}
           skipEntrance
         />
       )}

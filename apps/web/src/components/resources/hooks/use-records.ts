@@ -3,6 +3,7 @@
 import { parseRecordId, type RecordId } from '@auxx/lib/resources/client'
 import { useEffect, useMemo } from 'react'
 import { type RecordMeta, useRecordStore } from '../store/record-store'
+import { useNormalizedRecordIds } from '../utils/normalize-record-id'
 
 /**
  * Options for the useRecords hook.
@@ -41,12 +42,16 @@ const EMPTY_NOT_FOUND: RecordId[] = []
  * Hook for fetching multiple specific records by RecordId array.
  * Leverages the batch fetcher system for efficient fetching with automatic deduplication.
  *
+ * Input RecordIds are normalized to the canonical EntityDefinition-UUID prefix,
+ * and all returned keys (`recordsByKey`, `notFoundIds`) use the normalized form.
+ *
  * @example
- * // Basic usage
+ * // Basic usage (prefer canonical entityDefinitionId prefixes; alias forms
+ * // like toRecordId('contact', id) are normalized internally)
  * const { records, isLoading } = useRecords({
  *   recordIds: [
- *     toRecordId('contact', 'abc123'),
- *     toRecordId('ticket', 'xyz789'),
+ *     toRecordId(contactResource.id, 'abc123'),
+ *     toRecordId(ticketResource.id, 'xyz789'),
  *   ]
  * })
  *
@@ -63,9 +68,13 @@ const EMPTY_NOT_FOUND: RecordId[] = []
  * })
  */
 export function useRecords<T extends RecordMeta = RecordMeta>({
-  recordIds,
+  recordIds: rawRecordIds,
   enabled = true,
 }: UseRecordsOptions): UseRecordsResult<T> {
+  // Canonicalize prefixes once at the top — all subscriptions, requests, and
+  // returned keys below use the normalized ids.
+  const recordIds = useNormalizedRecordIds(rawRecordIds)
+
   // Create stable key for dependencies
   const recordIdsKey = useMemo(() => recordIds.join(','), [recordIds])
 

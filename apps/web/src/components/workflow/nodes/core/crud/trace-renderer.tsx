@@ -2,6 +2,7 @@
 
 'use client'
 
+import { toRecordId } from '@auxx/lib/resources/client'
 import { Alert, AlertDescription, AlertTitle } from '@auxx/ui/components/alert'
 import { Badge } from '@auxx/ui/components/badge'
 import { AlertCircle, Database } from 'lucide-react'
@@ -66,7 +67,7 @@ export function CrudTraceRenderer({ execution }: TraceRendererProps) {
           <span className='truncate font-mono text-[10px] opacity-70'>{outputs.id}</span>
         </div>
       ) : (
-        <EntityCardItem recordId={`${metadata.resourceType}:${outputs.id}`} />
+        <EntityCardItem recordId={toRecordId(metadata.resourceType, outputs.id)} />
       )}
     </BlockCard>
   )

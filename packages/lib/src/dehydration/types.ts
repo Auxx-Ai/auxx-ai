@@ -19,6 +19,16 @@ export interface DehydratedState {
   settingsCatalog: Record<string, any>
   environment: DehydratedEnvironment
   timestamp: number
+  /**
+   * Slim alias-prefix → EntityDefinition UUID map for the ACTIVE org only.
+   * Carries ONLY org-dynamic mappings: def-backed entityTypes (`contact`,
+   * `work_order`, …), apiSlugs (system-typed + custom), and identity entries
+   * for their def ids. Legacy system types (thread, message, …) resolve via
+   * the static tier bundled with the client and are never included. Seeds
+   * client-side RecordId normalization before `resource.list` hydrates the
+   * resource store, so record fetching never waits on hydration on hard loads.
+   */
+  resourceIdMap?: Record<string, string>
 }
 
 /**

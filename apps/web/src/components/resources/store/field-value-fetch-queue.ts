@@ -2,8 +2,10 @@
 
 import type { AiStatus, AiValueMetadata } from '@auxx/lib/realtime/client'
 import type { RecordId } from '@auxx/lib/resources/client'
-import { isResourceFieldId, type ResourceFieldId } from '@auxx/types/field'
+import { fieldRefToKey, isResourceFieldId, type ResourceFieldId } from '@auxx/types/field'
 import { generateId } from '@auxx/utils/generateId'
+import { buildCanonicalFieldValueKey, canonicalizeFieldRef } from '../utils/canonicalize-field-ref'
+import { getNormalizedRecordId, tryNormalizeRecordId } from '../utils/normalize-record-id'
 import { ensureCalcValue } from './calc-value-computer'
 import { computedFieldRegistry } from './computed-field-registry'
 import {
@@ -14,6 +16,7 @@ import {
   type StoredFieldValue,
   useFieldValueStore,
 } from './field-value-store'
+import { useResourceStore } from './resource-store'
 
 const BATCH_SIZE = 100
 const DEFAULT_DEBOUNCE_MS = 50
@@ -45,18 +48,42 @@ interface QueueEntry {
 /**
  * Singleton fetch queue that batches and deduplicates field value requests.
  * Used by both useFieldValueSyncer (table views) and useFieldValue with autoFetch (single record views).
+ *
+ * Invariants (hardening plan Parts 4/7):
+ * - `pendingByKey` gives O(1) dedupe — no linear scans on enqueue.
+ * - Keys are canonical in BOTH halves (RecordId prefix + fieldRef definition
+ *   segments) whenever the prefix map can resolve them.
+ * - flush() drains per-id: resolvable entries fetch, unresolved entries stay
+ *   pending until the prefix map changes (no timer polling).
+ * - reset() + generation guard: an org switch discards in-flight results so
+ *   they can never write into the next org's stores.
  */
 class FieldValueFetchQueue {
-  private pending: QueueEntry[] = []
+  private pendingByKey = new Map<FieldValueKey, QueueEntry>()
   private timeoutId: ReturnType<typeof setTimeout> | null = null
   private fetchFn: FetchFn | null = null
   private debounceMs = DEFAULT_DEBOUNCE_MS
+  private generation = 0
+
+  constructor() {
+    if (typeof window !== 'undefined') {
+      // Re-attempt a flush when prefix mappings change — this is the ONLY
+      // wake-up source for entries that were unresolvable at enqueue time.
+      useResourceStore.subscribe(
+        (s) => s.definitionIdByPrefix,
+        () => {
+          if (this.pendingByKey.size > 0) this.scheduleFlush()
+        }
+      )
+    }
+  }
 
   /**
    * Set the fetch function (called once when tRPC client is available).
    */
   setFetchFn(fn: FetchFn) {
     this.fetchFn = fn
+    if (this.pendingByKey.size > 0) this.scheduleFlush()
   }
 
   /**
@@ -67,17 +94,31 @@ class FieldValueFetchQueue {
   }
 
   /**
+   * Cancel pending work and invalidate in-flight requests. Called from
+   * `clearResourceCaches()` on logout/org switch, BEFORE stores are cleared.
+   */
+  reset() {
+    if (this.timeoutId) {
+      clearTimeout(this.timeoutId)
+      this.timeoutId = null
+    }
+    this.pendingByKey.clear()
+    this.generation++
+  }
+
+  /**
    * Queue a fetch request. Will be batched and deduplicated automatically.
    * Returns true if the request was queued, false if already loading/cached.
    * For computed fields (CALC, NAME), queues source fields instead since values are computed client-side.
    */
-  queueFetch(recordId: RecordId, fieldRef: FieldReference): boolean {
-    // Normalize fieldRef to ResourceFieldId first so computed field check uses consistent format.
-    // The registry keys are ResourceFieldId (e.g. "contact:abc123"), but callers may pass plain FieldId.
-    const normalizedRef =
-      typeof fieldRef === 'string' && !isResourceFieldId(fieldRef)
-        ? normalizeFieldRef(recordId, fieldRef)
-        : fieldRef
+  queueFetch(rawRecordId: RecordId, rawFieldRef: FieldReference): boolean {
+    // Canonicalize BOTH halves (no-op for unresolvable prefixes pre-hydration;
+    // the flush drain re-keys those before they ever hit the network).
+    const {
+      recordId,
+      fieldRef: normalizedRef,
+      key,
+    } = buildCanonicalFieldValueKey(rawRecordId, rawFieldRef)
 
     // Check if this is a computed field (CALC, NAME) — decompose into source fields
     if (
@@ -104,20 +145,17 @@ class FieldValueFetchQueue {
       }
     }
 
-    const key = buildFieldValueKey(recordId, normalizedRef)
     const store = useFieldValueStore.getState()
 
-    // Skip if already in store or already being fetched
+    // Skip if already in store, already being fetched, or already pending
     if (key in store.values || store.isKeyFetching(key)) {
       return false
     }
-
-    // Skip if already in pending queue
-    if (this.pending.some((e) => e.key === key)) {
+    if (this.pendingByKey.has(key)) {
       return false
     }
 
-    this.pending.push({ recordId, fieldRef: normalizedRef, key })
+    this.pendingByKey.set(key, { recordId, fieldRef: normalizedRef, key })
 
     // Mark as fetching immediately - this triggers skeleton in cells
     store.markFetching([key])
@@ -129,6 +167,8 @@ class FieldValueFetchQueue {
   /**
    * Queue multiple fetch requests at once (more efficient than individual calls).
    * Decomposes computed fields (CALC, NAME) into their source field fetches.
+   * Normalizes each unique RecordId and fieldRef ONCE per batch — cost scales
+   * with unique inputs, not record×field combinations.
    */
   queueFetchBatch(
     requests: Array<{ recordId: RecordId; fieldRef: FieldReference }>
@@ -136,12 +176,35 @@ class FieldValueFetchQueue {
     const store = useFieldValueStore.getState()
     const queued: FieldValueKey[] = []
 
-    for (const { recordId, fieldRef } of requests) {
-      // Normalize fieldRef to ResourceFieldId for consistent registry lookups
-      const normalizedRef =
-        typeof fieldRef === 'string' && !isResourceFieldId(fieldRef)
-          ? normalizeFieldRef(recordId, fieldRef)
-          : fieldRef
+    // Per-batch normalization caches
+    const recordIdCache = new Map<RecordId, RecordId>()
+    const refCache = new Map<string, { ref: FieldReference; refKey: string }>()
+
+    const normalizeRecordIdCached = (raw: RecordId): RecordId => {
+      let normalized = recordIdCache.get(raw)
+      if (normalized === undefined) {
+        normalized = getNormalizedRecordId(raw)
+        recordIdCache.set(raw, normalized)
+      }
+      return normalized
+    }
+
+    for (const { recordId: rawRecordId, fieldRef: rawFieldRef } of requests) {
+      const recordId = normalizeRecordIdCached(rawRecordId)
+
+      // Canonicalize the ref once per unique (recordId-independent) reference.
+      // Plain FieldIds depend on the record prefix, so key those by record too.
+      const rawRefKey =
+        typeof rawFieldRef === 'string' && !isResourceFieldId(rawFieldRef)
+          ? `${recordId}|${rawFieldRef}`
+          : fieldRefToKey(rawFieldRef)
+      let cached = refCache.get(rawRefKey)
+      if (!cached) {
+        const ref = canonicalizeFieldRef(normalizeFieldRef(recordId, rawFieldRef))
+        cached = { ref, refKey: fieldRefToKey(ref) }
+        refCache.set(rawRefKey, cached)
+      }
+      const normalizedRef = cached.ref
 
       // Decompose computed fields (CALC, NAME) into source fields
       if (
@@ -152,11 +215,15 @@ class FieldValueFetchQueue {
         if (config) {
           let queuedForCalc = false
           for (const sourceFieldId of Object.values(config.sourceFields)) {
-            const sourceKey = buildFieldValueKey(recordId, sourceFieldId)
+            const sourceRef = normalizeFieldRef(recordId, sourceFieldId)
+            const sourceKey = `${recordId}:${fieldRefToKey(sourceRef)}` as FieldValueKey
             if (sourceKey in store.values || store.isKeyFetching(sourceKey)) continue
-            if (this.pending.some((e) => e.key === sourceKey)) continue
-            const sourceNormalized = normalizeFieldRef(recordId, sourceFieldId)
-            this.pending.push({ recordId, fieldRef: sourceNormalized, key: sourceKey })
+            if (this.pendingByKey.has(sourceKey)) continue
+            this.pendingByKey.set(sourceKey, {
+              recordId,
+              fieldRef: sourceRef,
+              key: sourceKey,
+            })
             queued.push(sourceKey)
             queuedForCalc = true
           }
@@ -169,13 +236,13 @@ class FieldValueFetchQueue {
         }
       }
 
-      const key = buildFieldValueKey(recordId, normalizedRef)
+      const key = `${recordId}:${cached.refKey}` as FieldValueKey
 
-      // Skip if already in store or already being fetched
+      // Skip if already in store, already being fetched, or already pending
       if (key in store.values || store.isKeyFetching(key)) continue
-      if (this.pending.some((e) => e.key === key)) continue
+      if (this.pendingByKey.has(key)) continue
 
-      this.pending.push({ recordId, fieldRef: normalizedRef, key })
+      this.pendingByKey.set(key, { recordId, fieldRef: normalizedRef, key })
       queued.push(key)
     }
 
@@ -200,7 +267,8 @@ class FieldValueFetchQueue {
   }
 
   /**
-   * Schedule a flush of the pending queue.
+   * Schedule a flush of the pending queue. Only ever one timer; wake-up
+   * sources are: new entries, the prefix map changing, and setFetchFn.
    */
   private scheduleFlush() {
     if (this.timeoutId) {
@@ -208,32 +276,78 @@ class FieldValueFetchQueue {
     }
 
     this.timeoutId = setTimeout(() => {
+      this.timeoutId = null
       this.flush()
     }, this.debounceMs)
   }
 
   /**
-   * Flush the pending queue - executes the batch fetch.
+   * Flush the pending queue - executes the batch fetch for every entry whose
+   * RecordId prefix is resolvable. Unresolved entries stay pending (released
+   * by the prefix-map subscription). Entries queued before their mapping
+   * existed are re-keyed here — BOTH halves — in one pass.
    */
   private async flush() {
-    if (!this.fetchFn || this.pending.length === 0) return
+    if (!this.fetchFn || this.pendingByKey.size === 0) return
 
-    // Take current pending and clear
-    const toFetch = [...this.pending]
-    this.pending = []
-    this.timeoutId = null
+    const generation = this.generation
+    const store = useFieldValueStore.getState()
 
-    const keys = toFetch.map((e) => e.key)
+    // Drain resolvable entries, re-keying pre-hydration aliases. Duplicates
+    // introduced by re-keying collapse into the toFetch map.
+    const toFetch = new Map<FieldValueKey, QueueEntry>()
+    const staleKeys: FieldValueKey[] = []
+    const rekeyedKeys: FieldValueKey[] = []
+
+    for (const [key, entry] of this.pendingByKey) {
+      const canonicalRecordId = tryNormalizeRecordId(entry.recordId)
+      if (!canonicalRecordId) continue // unresolved — stays pending
+
+      this.pendingByKey.delete(key)
+
+      let next = entry
+      if (canonicalRecordId !== entry.recordId) {
+        // The prefix map learned this alias after enqueue — rewrite the
+        // RecordId half AND the fieldRef definition segments.
+        const fieldRef = canonicalizeFieldRef(normalizeFieldRef(canonicalRecordId, entry.fieldRef))
+        const newKey = `${canonicalRecordId}:${fieldRefToKey(fieldRef)}` as FieldValueKey
+        staleKeys.push(key)
+        if (!(newKey in store.values)) rekeyedKeys.push(newKey)
+        next = { recordId: canonicalRecordId, fieldRef, key: newKey }
+      }
+
+      // Merge duplicates; skip keys that already have a value in store
+      // (arrived via realtime/hydration while queued) — clear their marker.
+      if (next.key in store.values) {
+        if (next === entry) staleKeys.push(key)
+        continue
+      }
+      if (!toFetch.has(next.key)) toFetch.set(next.key, next)
+    }
+
+    // Swap stale alias markers for canonical ones in ONE store update.
+    if (staleKeys.length > 0 || rekeyedKeys.length > 0) {
+      store.replaceFetching(staleKeys, rekeyedKeys)
+    }
+
+    if (toFetch.size === 0) return
+
+    const entriesToFetch = [...toFetch.values()]
+    const keys = entriesToFetch.map((e) => e.key)
     const batchId = generateId('batch')
 
     // Mark as loading
     useFieldValueStore.getState().startLoading(batchId, keys)
 
-    // Group by unique recordIds and fieldRefs
-    const recordIds = [...new Set(toFetch.map((e) => e.recordId))]
-    const fieldRefs = [...new Set(toFetch.map((e) => JSON.stringify(e.fieldRef)))].map(
-      (s) => JSON.parse(s) as FieldReference
-    )
+    // Group by unique recordIds and fieldRefs (stable keys, no JSON round-trip)
+    const recordIds = [...new Set(entriesToFetch.map((e) => e.recordId))]
+    const fieldRefsByKey = new Map<string, FieldReference>()
+    for (const entry of entriesToFetch) {
+      // entry.fieldRef is always normalized at enqueue — key it directly
+      const refKey = fieldRefToKey(entry.fieldRef)
+      if (!fieldRefsByKey.has(refKey)) fieldRefsByKey.set(refKey, entry.fieldRef)
+    }
+    const fieldRefs = [...fieldRefsByKey.values()]
 
     try {
       // Chunk recordIds to avoid API limits
@@ -247,6 +361,10 @@ class FieldValueFetchQueue {
           })
         )
       )
+
+      // Org switched while in flight — discard entirely; the new org's stores
+      // must never receive this generation's values or markers.
+      if (generation !== this.generation) return
 
       // Build entries map from results
       const entriesMap = new Map<FieldValueKey, StoredFieldValue>()
@@ -274,7 +392,8 @@ class FieldValueFetchQueue {
         }
       }
 
-      // Compute all requested combinations
+      // Compute all requested combinations (server evaluates the cross
+      // product, so null-backfill must cover it too)
       const allRequestedCombinations = new Set<FieldValueKey>()
       for (const recordId of recordIds) {
         for (const fieldRef of fieldRefs) {
@@ -312,7 +431,9 @@ class FieldValueFetchQueue {
     } catch (error) {
       console.error('[FieldValueFetchQueue] Fetch failed:', error)
     } finally {
-      useFieldValueStore.getState().finishLoading(batchId)
+      if (generation === this.generation) {
+        useFieldValueStore.getState().finishLoading(batchId)
+      }
     }
   }
 

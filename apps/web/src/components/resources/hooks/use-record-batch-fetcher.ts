@@ -7,7 +7,7 @@ import { hydrateMultipleRecords } from '~/components/resources/store/hydrate-fie
 import { api } from '~/trpc/react'
 import { getRecordStoreState, type RecordMeta, useRecordStore } from '../store/record-store'
 import { useResourceStore } from '../store/resource-store'
-import { getNormalizedRecordId } from '../utils/normalize-record-id'
+import { getNormalizedRecordId, usePrefixEpoch } from '../utils/normalize-record-id'
 
 const BATCH_DELAY = 50
 const EMPTY_ITEMS: RecordId[] = []
@@ -28,7 +28,14 @@ export function useRecordBatchFetcher() {
   // Subscribe to pending count (triggers re-render when items are added)
   const pendingCount = useRecordStore((s) => s.pendingFetchIds.size)
 
+  // The per-id gate lives in startBatch(): statically-canonical ids (legacy
+  // system types, definition UUIDs) flush immediately — even with no seed —
+  // while unresolved dynamic aliases stay pending. The prefix epoch retriggers
+  // the drain when mappings arrive (seed → hydration, org switch, new defs).
+  const prefixEpoch = usePrefixEpoch()
+
   // Schedule batch processing when pending items exist
+  // biome-ignore lint/correctness/useExhaustiveDependencies: prefixEpoch retriggers the drain when mappings change
   useEffect(() => {
     if (pendingCount === 0 || currentBatch.length > 0) return
 
@@ -40,7 +47,7 @@ export function useRecordBatchFetcher() {
     }, BATCH_DELAY)
 
     return () => clearTimeout(timer)
-  }, [pendingCount, currentBatch.length])
+  }, [prefixEpoch, pendingCount, currentBatch.length])
 
   // Stable query input
   const queryItems = useMemo<RecordId[]>(() => {
@@ -60,6 +67,14 @@ export function useRecordBatchFetcher() {
   // Handle successful fetch
   useEffect(() => {
     if (!data || currentBatch.length === 0) return
+
+    // Org-switch guard: clearAll() empties loadingIds, so a response that
+    // resolves after clearResourceCaches() must not write the previous org's
+    // records into the fresh store.
+    if (!currentBatch.some((id) => getRecordStoreState().loadingIds.has(id))) {
+      setCurrentBatch([])
+      return
+    }
 
     // Group results by entityDefinitionId for store update
     const byEntityDefinitionId = new Map<string, RecordMeta[]>()

@@ -18,6 +18,7 @@ import { initComputedFieldSync } from '../store/computed-field-registry'
 import { fieldValueFetchQueue } from '../store/field-value-fetch-queue'
 import { useFieldValueStore } from '../store/field-value-store'
 import { getResourceStoreState } from '../store/resource-store'
+import { usePrefixEpoch } from '../utils/normalize-record-id'
 
 /**
  * Component that handles batch fetching of records.
@@ -129,18 +130,22 @@ export function ResourceProvider({ children }: { children: React.ReactNode }) {
   // === RELATIONSHIP ITEMS BATCHING ===
   const [relationshipBatch, setRelationshipBatch] = useState<RecordId[]>([])
   const relationshipPendingSize = useRelationshipStore((s) => s.pendingIds.size)
+  // Retrigger the drain when prefix mappings change — unresolved alias ids
+  // stay pending until their mapping arrives (seed failure, org switch).
+  const prefixEpoch = usePrefixEpoch()
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: prefixEpoch retriggers the drain when mappings change
   useEffect(() => {
     if (relationshipPendingSize === 0 || relationshipBatch.length > 0) return
     const timeout = setTimeout(() => {
-      const state = getRelationshipStoreState()
-      const recordIds = state.getItemsToFetch().slice(0, MAX_RELATIONSHIP_BATCH)
+      // startBatch canonicalizes + dedupes and drains only resolvable ids, so
+      // loading, requested keys, and dataMap slots are always canonical.
+      const recordIds = getRelationshipStoreState().startBatch(MAX_RELATIONSHIP_BATCH)
       if (recordIds.length === 0) return
-      state.markLoading(recordIds)
       setRelationshipBatch(recordIds)
     }, BATCH_DELAY)
     return () => clearTimeout(timeout)
-  }, [relationshipPendingSize, relationshipBatch.length])
+  }, [relationshipPendingSize, relationshipBatch.length, prefixEpoch])
 
   const { data: relationshipData, error: relationshipError } = api.record.getByIds.useQuery(
     { items: relationshipBatch },
@@ -149,8 +154,15 @@ export function ResourceProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (!relationshipData || relationshipBatch.length === 0) return
+    const state = getRelationshipStoreState()
+    // Org-switch guard: reset() empties loadingIds, so a response resolving
+    // after clearResourceCaches() must not publish into the new org's store.
+    if (!relationshipBatch.some((id) => state.loadingIds.has(id))) {
+      setRelationshipBatch([])
+      return
+    }
     // Pass requested keys so missing items (deleted entities) get marked as not found
-    getRelationshipStoreState().addHydratedItems(relationshipData, relationshipBatch)
+    state.addHydratedItems(relationshipData, relationshipBatch)
     setRelationshipBatch([])
   }, [relationshipData, relationshipBatch])
 
@@ -174,6 +186,9 @@ export function ResourceProvider({ children }: { children: React.ReactNode }) {
  * Call on logout or organization switch.
  */
 export function clearResourceCaches() {
+  // Reset singleton queues FIRST: cancels pending timers and bumps the
+  // generation so in-flight batches can't write into the cleared stores.
+  fieldValueFetchQueue.reset()
   getResourceStoreState().reset()
   getRelationshipStoreState().reset()
   getRecordStoreState().clearAll()

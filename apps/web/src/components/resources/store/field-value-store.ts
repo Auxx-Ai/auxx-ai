@@ -1,19 +1,13 @@
 // apps/web/src/stores/custom-field-value-store.ts
 
 import type { AiStatus, AiValueMetadata } from '@auxx/lib/realtime/client'
-import { parseRecordId, type RecordId, toRecordId } from '@auxx/lib/resources/client'
+import { type RecordId, toRecordId } from '@auxx/lib/resources/client'
 import {
-  buildFieldValueKey,
-  type FieldPath,
   type FieldReference,
   type FieldValueKey,
   fieldRefToKey,
-  isFieldPath,
-  isResourceFieldId,
   keyToFieldRef,
-  normalizeFieldRef,
   type ResourceFieldId,
-  toResourceFieldId,
 } from '@auxx/types/field'
 import type { TypedFieldValue } from '@auxx/types/field-value'
 import { create } from 'zustand'
@@ -164,6 +158,16 @@ interface CustomFieldValueState {
 
   /** Mark keys as being fetched (called when queued, cleared when values arrive) */
   markFetching: (keys: FieldValueKey[]) => void
+
+  /** Remove fetching markers without writing values (stale keys after re-normalization) */
+  clearFetching: (keys: FieldValueKey[]) => void
+
+  /**
+   * Atomically swap fetching markers: remove stale (alias) keys and add their
+   * canonical replacements in ONE store update, so subscribers never observe
+   * the intermediate no-marker state during flush re-keying.
+   */
+  replaceFetching: (staleKeys: FieldValueKey[], newKeys: FieldValueKey[]) => void
 
   // ─────────────────────────────────────────────────────────────────
   // INVALIDATION (crucial for correctness)
@@ -479,6 +483,30 @@ export const useFieldValueStore = create<CustomFieldValueState>()(
       set((state) => {
         const newFetchingKeys = { ...state.fetchingKeys }
         for (const key of keys) {
+          newFetchingKeys[key] = true
+        }
+        return { fetchingKeys: newFetchingKeys }
+      })
+    },
+
+    clearFetching: (keys) => {
+      set((state) => {
+        const newFetchingKeys = { ...state.fetchingKeys }
+        for (const key of keys) {
+          delete newFetchingKeys[key]
+        }
+        return { fetchingKeys: newFetchingKeys }
+      })
+    },
+
+    replaceFetching: (staleKeys, newKeys) => {
+      if (staleKeys.length === 0 && newKeys.length === 0) return
+      set((state) => {
+        const newFetchingKeys = { ...state.fetchingKeys }
+        for (const key of staleKeys) {
+          delete newFetchingKeys[key]
+        }
+        for (const key of newKeys) {
           newFetchingKeys[key] = true
         }
         return { fetchingKeys: newFetchingKeys }

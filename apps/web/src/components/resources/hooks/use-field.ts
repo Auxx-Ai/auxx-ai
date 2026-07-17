@@ -3,6 +3,7 @@
 import type { FieldType } from '@auxx/database/types'
 import { getEffectiveFieldType } from '@auxx/lib/custom-fields/client'
 import type { Resource, ResourceField } from '@auxx/lib/resources/client'
+import { resolveStaticPrefix } from '@auxx/lib/resources/client'
 import type { SelectOption } from '@auxx/types/custom-field'
 import { type ResourceFieldId, toFieldId, toResourceFieldId } from '@auxx/types/field'
 import { useMemo } from 'react'
@@ -279,7 +280,13 @@ export function useFieldByKey(
     const sysRfId = state.systemAttributeMap[key]
     if (sysRfId) return sysRfId
     if (!entityDefinitionId) return undefined
-    return toResourceFieldId(entityDefinitionId, toFieldId(key))
+    // Canonicalize the def prefix — fieldMap is keyed by the canonical
+    // definition id only (unlike resourceMap), so an alias arg would miss.
+    const canonicalDefId =
+      resolveStaticPrefix(entityDefinitionId) ??
+      state.definitionIdByPrefix.get(entityDefinitionId) ??
+      entityDefinitionId
+    return toResourceFieldId(canonicalDefId, toFieldId(key))
   })
 
   return useField(resourceFieldId)
