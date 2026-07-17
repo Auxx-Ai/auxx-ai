@@ -26,6 +26,7 @@ import {
 import { useResource } from '~/components/resources'
 import { useConfirm } from '~/hooks/use-confirm'
 import { api } from '~/trpc/react'
+import { isVisitDispatchable } from '../job-schedule/job-schedule-utils'
 import type { ExistingVisitForOverlap } from '../schedule-popover'
 import { AssigneeRow } from '../shared/assignee-row'
 import { InlineEventTimePicker } from '../shared/inline-event-time-picker'
@@ -34,7 +35,7 @@ import { useRecurrenceEditor } from '../shared/use-recurrence-editor'
 import { useScheduleHints } from '../shared/use-schedule-hints'
 import type { useBoardMutations } from './hooks/use-board-mutations'
 import type { DispatchVisitEvent } from './types'
-import { VISIT_STATUS_LABELS } from './types'
+import { VISIT_STATUS_LABELS, visitStatusLabel } from './types'
 import { getVisitDayContext, isExecutionReady, nextVisitStatus } from './utils'
 
 interface VisitPopoverContentProps {
@@ -78,6 +79,14 @@ export function VisitPopoverContent({
   const isOverdue = dayContext === 'past' && event.status !== 'done' && event.status !== 'canceled'
   const next = nextVisitStatus(event.status)
   const canCancel = event.status !== 'canceled' && event.status !== 'done'
+  /** Plan 30 §C.2 — Dispatch (notify-worker) only for a `scheduled` visit starting today or
+   * tomorrow in its own stamped tz (falls back to the browser's tz when unset, e.g. legacy
+   * rows). Canceled/done events never reach this — `isVisitDispatchable` checks status too. */
+  const dispatchable = isVisitDispatchable({
+    status: event.status,
+    startTime: event.start,
+    timezone: event.timezone,
+  })
 
   const contactId = event.workOrder?.contactId ?? null
   const contactDisplayName = event.workOrder?.contactDisplayName
@@ -91,6 +100,7 @@ export function VisitPopoverContent({
     workOrderRecordId,
     initialStartTime: event.start,
     startTime: event.start,
+    recurrenceRuleId: event.recurrenceRuleId,
   })
 
   const setRecurrence = api.dispatch.setRecurrence.useMutation({
@@ -156,7 +166,10 @@ export function VisitPopoverContent({
       onClick: openWorkOrder,
       href: `/app/work-orders/${event.workOrderId}`,
     },
-    ...(canEdit
+    // Plan 30 §D.1 — series visits never go back to the backlog (the server rejects it too);
+    // a series occurrence's exception verbs are Reschedule (Date & Time card) and Skip
+    // (Status card's Cancel, which reads "Skipped" for a series row) only.
+    ...(canEdit && !event.recurrenceRuleId
       ? [
           {
             icon: <CalendarX2 />,
@@ -182,7 +195,7 @@ export function VisitPopoverContent({
           actions={titleActions}
           subtitle={
             <>
-              <div>{VISIT_STATUS_LABELS[event.status]}</div>
+              <div>{visitStatusLabel(event.status, event.recurrenceRuleId)}</div>
               {isOverdue && (
                 <div className='flex items-center gap-1 text-amber-600 dark:text-amber-500'>
                   <TriangleAlert className='size-3' /> Overdue — not completed
@@ -259,9 +272,15 @@ export function VisitPopoverContent({
         <EventRepeatSection
           label={editor.repeatLabel}
           detail={
-            editor.repeatMode === 'custom' ? (editor.recurrenceSummary ?? undefined) : undefined
+            // Plan 30 §F.4 — a rule-less visit on an already-recurring work order can't pick up
+            // a cadence of its own (one rule per job); the hint explains why the row is locked.
+            editor.repeatLocked
+              ? 'This job already repeats — this is an extra visit.'
+              : editor.repeatMode === 'custom'
+                ? (editor.recurrenceSummary ?? undefined)
+                : undefined
           }
-          disabled={!canEdit || !workOrderRecordId}
+          disabled={!canEdit || !workOrderRecordId || editor.repeatLocked}
           renderEditor={() => <RepeatEditor editor={editor} />}
           onOpenChange={(open) => {
             if (!open) commitRecurrence()
@@ -273,7 +292,7 @@ export function VisitPopoverContent({
             <PanelCardRow
               icon={<CircleDot />}
               title='Status'
-              description={VISIT_STATUS_LABELS[event.status]}
+              description={visitStatusLabel(event.status, event.recurrenceRuleId)}
               trailing={
                 <div className='flex flex-col items-end gap-1.5'>
                   {next && isExecutionReady(dayContext) && (
@@ -301,23 +320,25 @@ export function VisitPopoverContent({
                 </div>
               }
             />
-            <PanelCardRow
-              icon={<Send />}
-              title='Dispatch'
-              description={
-                event.dispatchedAt ? 'Re-dispatch notifies the assignee again' : undefined
-              }
-              trailing={
-                <Button
-                  size='sm'
-                  variant='outline'
-                  onClick={handleDispatch}
-                  loading={mutations.dispatchVisit.isPending}
-                  disabled={!event.assigneeUserId}>
-                  {event.dispatchedAt ? 'Re-dispatch' : 'Dispatch'}
-                </Button>
-              }
-            />
+            {dispatchable && (
+              <PanelCardRow
+                icon={<Send />}
+                title='Dispatch'
+                description={
+                  event.dispatchedAt ? 'Re-dispatch notifies the assignee again' : undefined
+                }
+                trailing={
+                  <Button
+                    size='sm'
+                    variant='outline'
+                    onClick={handleDispatch}
+                    loading={mutations.dispatchVisit.isPending}
+                    disabled={!event.assigneeUserId}>
+                    {event.dispatchedAt ? 'Re-dispatch' : 'Dispatch'}
+                  </Button>
+                }
+              />
+            )}
           </PanelCard>
         )}
       </div>

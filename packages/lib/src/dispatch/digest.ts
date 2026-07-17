@@ -61,8 +61,10 @@ function localDayWindowUtc(dateIso: string, timezone: string): { start: Date; en
 
 /** Org's configured timezone — first `OperatingHours` weekly row for the org subject, `'UTC'`
  * fallback (the `availability/resolve.ts` org-timezone convention; there's no dedicated
- * `Organization.timezone` column). */
-async function resolveOrgTimezone(organizationId: string): Promise<string> {
+ * `Organization.timezone` column). Exported for reuse by other dispatch server-side guards
+ * (e.g. `notify.ts`'s dispatch day-window check) that need the same "today" the board/digest
+ * already agree on. */
+export async function resolveOrgTimezone(organizationId: string): Promise<string> {
   const rows = await database.query.OperatingHours.findMany({
     where: and(
       eq(schema.OperatingHours.organizationId, organizationId),

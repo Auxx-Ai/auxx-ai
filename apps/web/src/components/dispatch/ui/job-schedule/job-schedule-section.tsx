@@ -1,13 +1,16 @@
 // apps/web/src/components/dispatch/ui/job-schedule/job-schedule-section.tsx
 'use client'
 
+import { Button } from '@auxx/ui/components/button'
 import { EmptySection } from '@auxx/ui/components/section'
 import { TREE_SECONDARY_NOTRUNCATE } from '@auxx/ui/components/tree-row'
 import { TreeRowList } from '@auxx/ui/components/tree-row-list'
-import { History } from 'lucide-react'
+import { History, Plus } from 'lucide-react'
 import { useQueryState } from 'nuqs'
-import type { DetailViewTabProps } from '~/components/detail-view'
+import { useState } from 'react'
+import { DetailSectionActions, type DetailViewTabProps } from '~/components/detail-view'
 import { useSystemValues } from '~/components/resources/hooks/use-system-values'
+import { SchedulePopover } from '../schedule-popover'
 import { splitJobVisits } from './job-schedule-utils'
 import { RecurringEngagementCard } from './recurring-engagement-card'
 import { ScheduleVisitRow } from './schedule-visit-row'
@@ -33,13 +36,16 @@ export function JobScheduleSection({ recordId }: DetailViewTabProps) {
   })
   const [, setPanel] = useQueryState('panel')
   const [, setItem] = useQueryState('item')
+  const [addOpen, setAddOpen] = useState(false)
   const jobType = (values.work_order_job_type as string | undefined) ?? 'one_off'
   const status = (values.work_order_status as string | undefined) ?? 'new'
 
   const { upcoming } = splitJobVisits(visits)
   // The primary card's target visit — also the recurring engine's "next-upcoming visit"
   // (06-recurring-engine.md §6): one-off has exactly one, so this stays jobType-agnostic.
-  const primaryVisit = upcoming[0] ?? visits[0]
+  // Never falls back into history (plan 30 §G.2) — no upcoming visits is an empty state,
+  // not a "next visit" mislabel on a done/canceled row.
+  const primaryVisit = upcoming[0]
   // The primary visit already renders as the card — preview only the visits after it.
   const laterUpcoming = upcoming.slice(1)
 
@@ -54,6 +60,28 @@ export function JobScheduleSection({ recordId }: DetailViewTabProps) {
 
   return (
     <div className='flex flex-col gap-3'>
+      {canEdit && (
+        <DetailSectionActions>
+          {/* CREATE-mode SchedulePopover (no visitId) — nothing exists until Schedule commits,
+           * which creates + schedules the rule-less extra visit in one addVisit call. */}
+          <SchedulePopover
+            open={addOpen}
+            onOpenChange={setAddOpen}
+            workOrderRecordId={recordId}
+            existingVisits={existingVisits}
+            onScheduled={() => {
+              setAddOpen(false)
+              refresh()
+            }}
+            trigger={
+              <Button variant='outline' size='xs'>
+                <Plus /> Add visit
+              </Button>
+            }
+          />
+        </DetailSectionActions>
+      )}
+
       {jobType === 'recurring' && (
         <RecurringEngagementCard
           recordId={recordId}

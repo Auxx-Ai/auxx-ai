@@ -13,6 +13,10 @@ export type SeriesScope = 'this' | 'following' | 'all'
 export interface EventSeriesConfig {
   isMember: boolean
   labels?: { this?: string; following?: string; all?: string }
+  /** Hide the "All visits" option — the past-occurrence scope-chooser collapse (a past pick's
+   * "all" would behave identically to "following", which is dishonest). Consumers relabel
+   * `labels.following` (e.g. "Future visits") to match when this is set. */
+  hideAll?: boolean
 }
 
 /**

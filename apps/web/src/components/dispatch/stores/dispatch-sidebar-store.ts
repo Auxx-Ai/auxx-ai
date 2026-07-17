@@ -17,6 +17,12 @@ interface DispatchSidebarExtra {
   eventDock: { open: boolean; side: 'left' | 'right' }
   setEventDockOpen: (open: boolean) => void
   setEventDockSide: (side: 'left' | 'right') => void
+  /** Plan 30 §B.1 — the sidebar footer's "Show canceled" toggle. Default OFF (canceled/skipped
+   * visits hidden from the board and its mini-calendar day markers). `getBoard` keeps returning
+   * canceled rows regardless (the toggle is a client-side filter, no refetch); day markers gain
+   * the matching `includeCanceled` input on `dispatch.getVisitDayMarkers`. */
+  showCanceled: boolean
+  setShowCanceled: (show: boolean) => void
 }
 
 /**
@@ -43,6 +49,8 @@ export const useDispatchSidebarStore = createCalendarSidebarStore<DispatchSideba
     eventDock: { open: false, side: 'right' },
     setEventDockOpen: (open) => set((state) => ({ eventDock: { ...state.eventDock, open } })),
     setEventDockSide: (side) => set((state) => ({ eventDock: { ...state.eventDock, side } })),
+    showCanceled: false,
+    setShowCanceled: (show) => set({ showCanceled: show }),
   })
 )
 

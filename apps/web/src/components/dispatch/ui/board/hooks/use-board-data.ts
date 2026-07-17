@@ -11,7 +11,7 @@ import { useCalendarRange } from '~/components/calendar/core/use-calendar-range'
 import { useSettings } from '~/hooks/use-settings'
 import { ORG_STATIC_STALE_TIME } from '~/trpc/query-client'
 import { api } from '~/trpc/react'
-import { useHiddenWorkerIds } from '../../../stores/dispatch-sidebar-store'
+import { useDispatchSidebarStore, useHiddenWorkerIds } from '../../../stores/dispatch-sidebar-store'
 import {
   type BoardResourceInput,
   type BoardWorker,
@@ -110,6 +110,7 @@ export function useBoardData() {
   )
 
   const hiddenWorkerIds = useHiddenWorkerIds()
+  const showCanceled = useDispatchSidebarStore((s) => s.showCanceled)
 
   const boardQuery = api.dispatch.getBoard.useQuery(
     { from: range.from, to: range.to },
@@ -151,9 +152,16 @@ export function useBoardData() {
     [boardQuery.data?.visits]
   )
 
+  // §B.1 "Show canceled" sidebar toggle — `getBoard` keeps returning canceled rows (toggle
+  // stays instant, no refetch); this is the seam that filters them out of the calendar chip
+  // pipeline. Backlog rows are never canceled (the backlog query only selects `status:
+  // 'scheduled'`), so no equivalent filter is needed on `backlogEvents` below.
   const allEvents: DispatchVisitEvent[] = useMemo(
-    () => scheduled.map((v) => visitToEvent(v, workOrderById, colorByUserId)),
-    [scheduled, workOrderById, colorByUserId]
+    () =>
+      scheduled
+        .filter((v) => showCanceled || v.status !== 'canceled')
+        .map((v) => visitToEvent(v, workOrderById, colorByUserId)),
+    [scheduled, workOrderById, colorByUserId, showCanceled]
   )
 
   // The resource views (`day`/`timeline`, plan 18) only show the filtered worker set's + (if

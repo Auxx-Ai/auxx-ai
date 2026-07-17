@@ -5,6 +5,7 @@ import { getOrgCache, isOrgMember } from '@auxx/lib/cache'
 import {
   addMyAdhocQcItem,
   addMyQcItemPhoto,
+  addVisit,
   advanceMyVisit,
   applyRouteTimes,
   assignVisit,
@@ -30,6 +31,7 @@ import {
   removeDispatchWorker,
   removeMyQcItemPhoto,
   reorderQcItemTemplates,
+  restoreVisit,
   resumeEngagement,
   scheduleVisit,
   setMyQcItemChecked,
@@ -230,6 +232,17 @@ export const dispatchRouter = createTRPCRouter({
         excludeSocketId: excludeSocketId(ctx),
       })
     }),
+  // Plan 30 §A.1 — bring a canceled visit back to `scheduled` IN PLACE (never a new time).
+  restoreVisit: dispatchAdminProcedure
+    .input(z.object({ visitId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      return restoreVisit({
+        organizationId: ctx.session.organizationId,
+        userId: ctx.session.user.id,
+        visitId: input.visitId,
+        excludeSocketId: excludeSocketId(ctx),
+      })
+    }),
 
   // §B.6 — the board's single read. Members read it (read-only board interactions).
   getBoard: dispatchProcedure
@@ -243,9 +256,21 @@ export const dispatchRouter = createTRPCRouter({
   // groups these by local day and filters by visible worker itself, so there's no worker param.
   // Member read-only, same gating as `getBoard`.
   getVisitDayMarkers: dispatchProcedure
-    .input(z.object({ from: z.date(), to: z.date() }))
+    .input(
+      z.object({
+        from: z.date(),
+        to: z.date(),
+        // Plan 30 §B.1 — mirrors the sidebar footer's "Show canceled" toggle so the mini-
+        // calendar's dots agree with what the board actually renders. Default false (excluded).
+        includeCanceled: z.boolean().optional(),
+      })
+    )
     .query(async ({ ctx, input }) => {
-      return getVisitDayMarkers(ctx.session.organizationId, { from: input.from, to: input.to })
+      return getVisitDayMarkers(
+        ctx.session.organizationId,
+        { from: input.from, to: input.to },
+        { includeCanceled: input.includeCanceled ?? false }
+      )
     }),
 
   // Route planner (M3, 09-route-planner.md §F) — the planner's single read. Members read it
@@ -350,6 +375,32 @@ export const dispatchRouter = createTRPCRouter({
         excludeSocketId: excludeSocketId(ctx),
       })
       return { success: true }
+    }),
+
+  // Plan 30 §F.1 — "Add visit": an extra rule-less visit on a work order (e.g. extra one-off
+  // work alongside a recurring engagement). With `startTime`/`endTime` (the schedule-picker
+  // create flow) the row is created AND scheduled in one call; without, it lands unscheduled.
+  // Admin-gated like the rest of visit machinery (§B).
+  addVisit: dispatchAdminProcedure
+    .input(
+      z.object({
+        workOrderRecordId: recordIdSchema,
+        startTime: z.coerce.date().optional(),
+        endTime: z.coerce.date().optional(),
+        assigneeUserId: z.string().nullable().optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const { entityInstanceId } = parseRecordId(input.workOrderRecordId)
+      return addVisit({
+        organizationId: ctx.session.organizationId,
+        userId: ctx.session.user.id,
+        workOrderInstanceId: entityInstanceId,
+        startTime: input.startTime,
+        endTime: input.endTime,
+        assigneeUserId: input.assigneeUserId,
+        excludeSocketId: excludeSocketId(ctx),
+      })
     }),
 
   // §F.3 (M2b job view) — visits for one work order, oldest-scheduled-first.

@@ -1,10 +1,12 @@
 // packages/lib/src/dispatch/notify.ts
 //
 // Dispatch (notify) action (07 §B.5) — a separate explicit action, NOT part of scheduling
-// (04-ui §7). Requires a scheduled visit with an assignee; stamps `dispatchedAt`; notifies
-// the assignee in-app (NotificationService has NO email rail — notification-service.ts:102)
-// and via the separate email rail (`enqueueEmailJob`). Re-dispatch is allowed — it re-stamps
-// and re-notifies.
+// (04-ui §7). Requires a `status === 'scheduled'` visit with times and an assignee, whose
+// `startTime` falls today or tomorrow in the ORG's local timezone (plan 30 §1 decision 4/5,
+// §C.1) — `BadRequestError` otherwise; stamps `dispatchedAt`; notifies the assignee in-app
+// (NotificationService has NO email rail — notification-service.ts:102) and via the separate
+// email rail (`enqueueEmailJob`). Re-dispatch is allowed — dispatch never changes `status`, so
+// an already-dispatched visit stays `scheduled` and re-stamps/re-notifies cleanly.
 
 import { WEBAPP_URL } from '@auxx/config/urls'
 import { database, schema } from '@auxx/database'
@@ -14,6 +16,7 @@ import { BadRequestError, NotFoundError } from '../errors'
 import { enqueueEmailJob } from '../jobs/email/enqueue-email-job'
 import { NotificationService } from '../notifications/notification-service'
 import { getUserSetting } from '../settings'
+import { localDateKey, resolveOrgTimezone } from './digest'
 import type { DispatchVisitInput } from './types'
 import { afterVisitWrite } from './visit-mutations'
 import { getWorkOrderProjections } from './work-order-fields'
@@ -58,6 +61,23 @@ export async function dispatchVisit(input: DispatchVisitInput): Promise<WorkOrde
   }
   if (!visit.assigneeUserId) {
     throw new BadRequestError('Visit must have an assignee before it can be dispatched')
+  }
+  if (visit.status !== 'scheduled') {
+    throw new BadRequestError(
+      'Only scheduled visits can be dispatched — canceled, done, or in-progress visits cannot'
+    )
+  }
+
+  // Decision 4/5 (plan 30 §1, §C.1): dispatch is a same-day/next-day worker notification, not
+  // a day-of release — gated to today or tomorrow in the ORG's local timezone (the clock the
+  // board/availability layer already thinks in).
+  const timezone = await resolveOrgTimezone(organizationId)
+  const now = new Date()
+  const todayKey = localDateKey(timezone, now)
+  const tomorrowKey = localDateKey(timezone, new Date(now.getTime() + 24 * 60 * 60 * 1000))
+  const visitDateKey = localDateKey(timezone, visit.startTime)
+  if (visitDateKey !== todayKey && visitDateKey !== tomorrowKey) {
+    throw new BadRequestError('Visits can be dispatched on the day of the visit or the day before')
   }
 
   const [updated] = await database

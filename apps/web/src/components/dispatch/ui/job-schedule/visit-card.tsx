@@ -10,14 +10,20 @@ import { EmptySection } from '@auxx/ui/components/section'
 import { TreeRowButton } from '@auxx/ui/components/tree-row'
 import { cn } from '@auxx/ui/lib/utils'
 import { format } from 'date-fns'
-import { CalendarClock, Send, TriangleAlert, User, XCircle } from 'lucide-react'
+import { CalendarClock, RotateCcw, Send, TriangleAlert, User, XCircle } from 'lucide-react'
 import { getInitials } from '~/components/groups/utils/group-utils'
 import type { RecordId } from '~/components/resources'
 import { useActors } from '~/components/resources/hooks/use-actor'
 import { useConfirm } from '~/hooks/use-confirm'
-import { VISIT_STATUS_FORWARD_ORDER, VISIT_STATUS_LABELS, type VisitStatus } from '../board/types'
+import {
+  VISIT_STATUS_FORWARD_ORDER,
+  VISIT_STATUS_LABELS,
+  type VisitStatus,
+  visitStatusLabel,
+} from '../board/types'
 import { getVisitDayContext, isExecutionReady } from '../board/utils'
 import { type ExistingVisitForOverlap, SchedulePopover } from '../schedule-popover'
+import { isVisitDispatchable, movedFromLabel } from './job-schedule-utils'
 import type { JobVisit, UseJobVisitsResult } from './use-job-visits'
 import { VisitDateBlock } from './visit-date-block'
 
@@ -55,14 +61,17 @@ export function VisitCard({
   const assignee = assigneeActorId ? hydratedAssignee.get(assigneeActorId) : undefined
 
   if (!visit) {
-    return <EmptySection icon={<CalendarClock className='size-5' />} title='No visit yet' />
+    return <EmptySection icon={<CalendarClock className='size-5' />} title='No upcoming visits' />
   }
 
   const isScheduled = Boolean(visit.startTime && visit.endTime)
   const status = visit.status as VisitStatus
   const currentIndex = VISIT_STATUS_FORWARD_ORDER.indexOf(status)
   const canCancel = status !== 'canceled' && status !== 'done'
-  const canDispatch = canEdit && Boolean(visit.assigneeUserId) && isScheduled
+  const canRestore = status === 'canceled'
+  const canDispatch = canEdit && isVisitDispatchable(visit)
+  const statusLabel = visitStatusLabel(visit.status, visit.recurrenceRuleId)
+  const moved = movedFromLabel(visit)
 
   const start = visit.startTime ? new Date(visit.startTime) : null
   const end = visit.endTime ? new Date(visit.endTime) : null
@@ -92,14 +101,28 @@ export function VisitCard({
     mutations.dispatchVisit.mutate({ visitId: visit.id })
   }
 
+  const isSeries = Boolean(visit.recurrenceRuleId)
+
   const handleCancel = async () => {
-    const confirmed = await confirm({
-      title: 'Cancel this visit?',
-      description: 'The visit is removed from the schedule. This does not cancel the job.',
-      confirmText: 'Cancel visit',
-      cancelText: 'Keep visit',
-      destructive: true,
-    })
+    const confirmed = await confirm(
+      isSeries
+        ? {
+            title: 'Skip this visit?',
+            description:
+              "The visit stays in the job's history as skipped and won't be regenerated. This does not affect other visits.",
+            confirmText: 'Skip visit',
+            cancelText: 'Keep visit',
+            destructive: true,
+          }
+        : {
+            title: 'Cancel this visit?',
+            description:
+              "The visit stays in the job's history as canceled. This does not cancel the job.",
+            confirmText: 'Cancel visit',
+            cancelText: 'Keep visit',
+            destructive: true,
+          }
+    )
     if (!confirmed) return
     mutations.setVisitStatus.mutate({ visitId: visit.id, status: 'canceled' })
   }
@@ -116,7 +139,7 @@ export function VisitCard({
             </span>
             {status === 'canceled' && (
               <Badge variant='red' size='xs'>
-                Canceled
+                {statusLabel}
               </Badge>
             )}
           </div>
@@ -145,6 +168,7 @@ export function VisitCard({
               </span>
             )}
           </div>
+          {moved && <div className='text-xs text-muted-foreground'>{moved}</div>}
         </div>
 
         {canEdit && (
@@ -152,15 +176,23 @@ export function VisitCard({
             {canDispatch && (
               <TreeRowButton
                 tooltipText={visit.dispatchedAt ? 'Re-dispatch' : 'Dispatch'}
-                disabled={mutations.dispatchVisit.isPending}
+                disabled={mutations.dispatchVisit.isPending || !visit.assigneeUserId}
                 onClick={handleDispatch}>
                 <Send />
+              </TreeRowButton>
+            )}
+            {canRestore && (
+              <TreeRowButton
+                tooltipText='Restore'
+                disabled={mutations.restoreVisit.isPending}
+                onClick={() => mutations.restoreVisit.mutate({ visitId: visit.id })}>
+                <RotateCcw />
               </TreeRowButton>
             )}
             {canCancel && (
               <TreeRowButton
                 variant='destructive'
-                tooltipText='Cancel visit'
+                tooltipText={isSeries ? 'Skip visit' : 'Cancel visit'}
                 onClick={handleCancel}>
                 <XCircle />
               </TreeRowButton>

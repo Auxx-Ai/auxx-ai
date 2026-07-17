@@ -3,6 +3,13 @@
 'use client'
 
 import { ModuleSidebar } from '@auxx/ui/components/module-sidebar'
+import {
+  SidebarFooter,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+} from '@auxx/ui/components/sidebar'
+import { Switch } from '@auxx/ui/components/switch'
 import { useMemo } from 'react'
 import {
   useDispatchSidebarStore,
@@ -83,6 +90,8 @@ export function DispatchSidebar({
   const toggleWorkerHidden = (workerId: string) => toggleHidden(WORKERS_GROUP, workerId)
   const selectedTags = useDispatchSidebarStore((s) => s.selectedTags)
   const setSelectedTags = useDispatchSidebarStore((s) => s.setSelectedTags)
+  const showCanceled = useDispatchSidebarStore((s) => s.showCanceled)
+  const setShowCanceled = useDispatchSidebarStore((s) => s.setShowCanceled)
 
   const isGroupOpen = (key: string) => groupOpen[key] ?? true
 
@@ -129,7 +138,25 @@ export function DispatchSidebar({
     <ModuleSidebar
       open={open}
       onOpenChange={setOpen}
-      className='py-0 [&_[data-sidebar=content]]:pt-0!'>
+      className='py-0 [&_[data-sidebar=content]]:pt-0!'
+      footer={
+        /* Plan 30 §B.1 — "Show canceled" pinned footer toggle. Default off (canceled/skipped
+         * visits hidden from the board + mini-calendar day markers). Rooted in a `<div>` (not
+         * `SidebarItem`'s own button/link root) so the trailing `Switch` — itself a real
+         * `<button role="switch">` — never nests inside another interactive element. */
+        <SidebarFooter className='p-2'>
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <SidebarMenuButton asChild size='sm' className='h-7'>
+                <div className='flex w-full items-center justify-between'>
+                  <span className='truncate'>Show canceled</span>
+                  <Switch size='xs' checked={showCanceled} onCheckedChange={setShowCanceled} />
+                </div>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          </SidebarMenu>
+        </SidebarFooter>
+      }>
       <MiniCalendarSection
         date={date}
         onDateChange={onDateChange}
@@ -137,6 +164,7 @@ export function DispatchSidebar({
         weekStartsOn={weekStartsOn}
         hiddenWorkerIds={hiddenWorkerIds}
         view={view}
+        includeCanceled={showCanceled}
       />
       <WorkersGroup
         workers={allWorkers}

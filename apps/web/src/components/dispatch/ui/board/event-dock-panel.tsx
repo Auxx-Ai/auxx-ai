@@ -11,6 +11,7 @@ import type { ExistingVisitForOverlap } from '../schedule-popover'
 import { EventDockGuide } from './event-dock-guide'
 import type { useBoardMutations } from './hooks/use-board-mutations'
 import type { DispatchVisitEvent } from './types'
+import { isPastVisitEvent } from './utils'
 import { VisitPopoverContent } from './visit-popover'
 
 interface EventDockPanelProps {
@@ -80,7 +81,14 @@ export function EventDockPanel({
           fill
           series={{
             isMember: Boolean(event.recurrenceRuleId),
-            labels: { this: 'This visit', following: 'This and following', all: 'All visits' },
+            // Plan 30 §D.2 — past-occurrence chooser collapse (see `board-calendar-grid.tsx`'s
+            // floating-popover mirror of this same config).
+            labels: {
+              this: 'This visit',
+              following: isPastVisitEvent(event) ? 'Future visits' : 'This and following',
+              all: 'All visits',
+            },
+            hideAll: isPastVisitEvent(event),
           }}>
           <VisitPopoverContent
             event={event}

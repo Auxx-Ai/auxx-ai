@@ -19,6 +19,9 @@ interface ModuleSidebarProps {
   width?: string
   className?: string
   children: React.ReactNode
+  /** Pinned below the scroll area (a real `SidebarFooter` home) — e.g. the dispatch board's
+   * "Show canceled" toggle. Children scroll; this doesn't. */
+  footer?: React.ReactNode
 }
 
 /**
@@ -52,6 +55,7 @@ function ModuleSidebar({
   width = '16rem',
   className,
   children,
+  footer,
 }: ModuleSidebarProps) {
   return (
     <SidebarProvider
@@ -64,6 +68,7 @@ function ModuleSidebar({
       <ModuleSidebarMobileSync open={open} />
       <Sidebar fixed={false} collapsible='offcanvas' side='left' className={className}>
         <SidebarContent>{children}</SidebarContent>
+        {footer}
       </Sidebar>
     </SidebarProvider>
   )

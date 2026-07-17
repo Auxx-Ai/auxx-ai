@@ -6,7 +6,9 @@ import { useResolvedDays } from '../../stores/use-resolved-days'
 import type { ExistingVisitForOverlap } from '../schedule-popover'
 
 export interface UseScheduleHintsParams {
-  visitId: string
+  /** Excluded from the overlap check (the visit's own slot isn't a conflict). Undefined in the
+   * schedule popover's CREATE mode — nothing exists yet, so nothing to exclude. */
+  visitId?: string
   assigneeUserId: string | null
   startTime: Date | null | undefined
   endTime: Date | null | undefined

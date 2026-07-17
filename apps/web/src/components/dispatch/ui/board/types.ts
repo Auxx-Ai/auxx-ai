@@ -27,6 +27,19 @@ export const VISIT_STATUS_LABELS: Record<VisitStatus, string> = {
   canceled: 'Canceled',
 }
 
+/**
+ * Status label with the plan-30 decision-2 split: one storage state (`canceled`), two labels —
+ * a canceled SERIES occurrence reads "Skipped", a rule-less visit reads "Canceled". Use this
+ * everywhere a visit status is rendered alongside a known `recurrenceRuleId`.
+ */
+export function visitStatusLabel(
+  status: string | null | undefined,
+  recurrenceRuleId: string | null | undefined
+): string {
+  if (status === 'canceled' && recurrenceRuleId) return 'Skipped'
+  return VISIT_STATUS_LABELS[status as VisitStatus] ?? status ?? ''
+}
+
 export type BoardResult = RouterOutputs['dispatch']['getBoard']
 export type BoardWorker = BoardResult['workers'][number]
 export type BoardVisit = BoardResult['visits'][number]
@@ -47,6 +60,10 @@ export interface DispatchVisitEvent extends EventCalendarItem {
    * human) — plan 20 §4.2/§4.3. Non-null = a deliberate human time-write or a customer-facing
    * send confirmed it. */
   timeConfirmedAt: string | null
+  /** IANA zone stamped on the visit at scheduling time (org tz at that moment — `WorkOrderVisit
+   * .timezone`, defaults `'UTC'`) — used to gate the Dispatch action's today/tomorrow window
+   * client-side (plan 30 §C.2) the same way the server resolves it. */
+  timezone: string | null
   /** Intended on-site duration in minutes; null = no explicit intent (read-order falls back to
    * the scheduled span, then 60 — plan 20 §4.1a). */
   durationMinutes: number | null

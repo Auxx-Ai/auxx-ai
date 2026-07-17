@@ -75,9 +75,11 @@ export function SeriesScopeProvider({ series, children }: SeriesScopeProviderPro
               <Button variant='outline' size='sm' onClick={() => resolve('following')}>
                 {labels.following}
               </Button>
-              <Button variant='outline' size='sm' onClick={() => resolve('all')}>
-                {labels.all}
-              </Button>
+              {!series?.hideAll && (
+                <Button variant='outline' size='sm' onClick={() => resolve('all')}>
+                  {labels.all}
+                </Button>
+              )}
               <Button variant='ghost' size='sm' onClick={() => setPendingCommit(null)}>
                 Cancel
               </Button>

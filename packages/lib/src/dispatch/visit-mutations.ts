@@ -8,7 +8,7 @@
 import { database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { and, eq } from 'drizzle-orm'
-import { NotFoundError } from '../errors'
+import { BadRequestError, NotFoundError } from '../errors'
 import { maybeGenerateVisitInvoiceDraft } from '../money/auto-invoice'
 import {
   enrollVisitEnRouteSequences,
@@ -21,7 +21,9 @@ import { publishVisitChanged } from './broadcast'
 import { type LifecycleTrigger, rollUpWorkOrderStatus } from './lifecycle'
 import { mirrorVisitOntoWorkOrder } from './mirror'
 import type {
+  AddVisitInput,
   AssignVisitInput,
+  RestoreVisitInput,
   ScheduleVisitInput,
   SetVisitDurationInput,
   SetVisitStatusInput,
@@ -87,6 +89,23 @@ export async function afterVisitWrite(
     { visitId: visit.id, workOrderId: visit.workOrderId },
     { excludeSocketId: opts.excludeSocketId }
   )
+}
+
+/**
+ * Client-notification enrollment shared by `scheduleVisit`'s canceled-revive path and
+ * `restoreVisit` (plan 19 §4.3/§4.2, plan 30 §A.1): a one-off visit coming back from `canceled`
+ * starts fresh reminders — recurring-born visits are the hourly sweep's job, never through here.
+ * Failures must never fail the mutation that triggered them.
+ */
+async function enrollScheduledSequencesOnRevive(
+  organizationId: string,
+  visitId: string
+): Promise<void> {
+  try {
+    await enrollVisitScheduledSequences(organizationId, visitId)
+  } catch (error) {
+    logger.error('Failed to enroll visit:scheduled sequences', { error, visitId })
+  }
 }
 
 /**
@@ -185,11 +204,7 @@ export async function scheduleVisit(input: ScheduleVisitInput): Promise<WorkOrde
   // runs were exited at cancellation, so explicitly rescheduling it starts fresh reminders.
   // Re-anchor fires on every other startTime change, one-off or a detached recurring occurrence.
   if (!existing.recurrenceRuleId && (!existing.startTime || existing.status === 'canceled')) {
-    try {
-      await enrollVisitScheduledSequences(organizationId, visitId)
-    } catch (error) {
-      logger.error('Failed to enroll visit:scheduled sequences', { error, visitId })
-    }
+    await enrollScheduledSequencesOnRevive(organizationId, visitId)
   } else if (existing.startTime && existing.startTime.getTime() !== startTime.getTime()) {
     try {
       await reanchorSequenceRuns(organizationId, 'visit', visitId, startTime)
@@ -199,6 +214,107 @@ export async function scheduleVisit(input: ScheduleVisitInput): Promise<WorkOrde
   }
 
   return updated
+}
+
+/**
+ * Restore a canceled visit to `scheduled` IN PLACE (plan 30 §A.1) — distinct from
+ * `scheduleVisit`'s canceled-revive path, which restores to a NEW time. Leaves
+ * `startTime`/`endTime`/`isDetached`/`occurrenceDate` untouched (a detached-then-skipped visit
+ * restores to its overridden time, not the template slot) and clears `dispatchedAt` (it was
+ * already cleared at cancel, §A.2 — this is belt-and-suspenders). Never sends a worker
+ * notification — the visit comes back undispatched, "Dispatch" reads fresh again.
+ */
+export async function restoreVisit(input: RestoreVisitInput): Promise<WorkOrderVisitRow> {
+  const { organizationId, userId, visitId, excludeSocketId } = input
+
+  const existing = await database.query.WorkOrderVisit.findFirst({
+    where: and(
+      eq(schema.WorkOrderVisit.id, visitId),
+      eq(schema.WorkOrderVisit.organizationId, organizationId)
+    ),
+  })
+  if (!existing) throw new NotFoundError('Visit not found')
+  if (existing.status !== 'canceled') {
+    throw new BadRequestError('Only a canceled visit can be restored')
+  }
+
+  const [updated] = await database
+    .update(schema.WorkOrderVisit)
+    .set({ status: 'scheduled', dispatchedAt: null, updatedAt: new Date() })
+    .where(
+      and(
+        eq(schema.WorkOrderVisit.id, visitId),
+        eq(schema.WorkOrderVisit.organizationId, organizationId)
+      )
+    )
+    .returning()
+  if (!updated) throw new NotFoundError('Visit not found')
+
+  // Trigger 'scheduled' — same target `work_order_status` + forward-only guard as
+  // `scheduleVisit` (lifecycle.ts): restoring a canceled visit is a forward move, never the
+  // `canceled`/`unscheduled` reset.
+  await afterVisitWrite(updated, { userId, trigger: 'scheduled', excludeSocketId })
+
+  // Client-notification hooks (plan 19 §4.3): one-off only, mirrors the scheduleVisit revive.
+  // Time-less restores (a canceled backlog row) skip enrollment — `visit:scheduled` means a
+  // real null→set startTime transition, which a time-less restore isn't.
+  if (!existing.recurrenceRuleId && existing.startTime) {
+    await enrollScheduledSequencesOnRevive(organizationId, visitId)
+  }
+
+  return updated
+}
+
+/**
+ * Create an extra unscheduled, rule-less visit on a work order (plan 30 §F.1) — e.g. extra
+ * one-off work alongside a recurring engagement. ALWAYS inserts a new row (unlike
+ * `ensureVisitForWorkOrder`, which is idempotent-by-selection); the 1:1 visit invariant is a
+ * one-off-jobType invariant only (01 §10), and an explicit "Add visit" is a deliberate exception
+ * to it even there.
+ */
+export async function addVisit(input: AddVisitInput): Promise<WorkOrderVisitRow> {
+  const { organizationId, userId, workOrderInstanceId, startTime, endTime, assigneeUserId } = input
+  const { excludeSocketId } = input
+
+  const workOrder = await database.query.EntityInstance.findFirst({
+    where: and(
+      eq(schema.EntityInstance.id, workOrderInstanceId),
+      eq(schema.EntityInstance.organizationId, organizationId)
+    ),
+    columns: { id: true },
+  })
+  if (!workOrder) throw new NotFoundError('Work order not found')
+
+  const [created] = await database
+    .insert(schema.WorkOrderVisit)
+    .values({
+      organizationId,
+      workOrderId: workOrderInstanceId,
+      status: 'scheduled',
+      timezone: 'UTC',
+      updatedAt: new Date(),
+    })
+    .returning()
+  if (!created) throw new NotFoundError('Visit not found')
+
+  // Schedule-picker create flow (plan 30 §F.2 follow-up): times picked in the draft popover
+  // commit through `scheduleVisit` so the new row gets the full scheduling semantics —
+  // `timeConfirmedAt`, mirror + roll-up, sequence enrollment, broadcast — in one tRPC call.
+  if (startTime && endTime) {
+    return scheduleVisit({
+      organizationId,
+      userId,
+      visitId: created.id,
+      startTime,
+      endTime,
+      assigneeUserId,
+      excludeSocketId,
+    })
+  }
+
+  await afterVisitWrite(created, { userId, excludeSocketId })
+
+  return created
 }
 
 /**
@@ -260,7 +376,9 @@ export async function assignVisit(input: AssignVisitInput): Promise<WorkOrderVis
 
 /**
  * Clear a visit's schedule — back to the unassigned/unscheduled backlog rail
- * (`startTime`/`endTime` → null). Resets the work order to `new`.
+ * (`startTime`/`endTime` → null). Resets the work order to `new`. Series visits are
+ * rejected (plan 30 decision 6): a recurrence occurrence never enters the backlog — its
+ * exception verbs are Reschedule and Skip.
  */
 export async function unscheduleVisit(input: UnscheduleVisitInput): Promise<WorkOrderVisitRow> {
   const { organizationId, userId, visitId, excludeSocketId } = input
@@ -274,13 +392,25 @@ export async function unscheduleVisit(input: UnscheduleVisitInput): Promise<Work
     ),
   })
   if (!existing) throw new NotFoundError('Visit not found')
+  if (existing.recurrenceRuleId) {
+    throw new BadRequestError(
+      'Recurring visits cannot be removed from the calendar — reschedule or skip this visit instead'
+    )
+  }
 
   const [updated] = await database
     .update(schema.WorkOrderVisit)
     // `durationMinutes` deliberately survives unscheduling (plan 20 §4.1a) — a backlog visit
     // keeps its duration intent for the next slot-in/apply; only the promise (`timeConfirmedAt`)
-    // and the times themselves clear.
-    .set({ startTime: null, endTime: null, timeConfirmedAt: null, updatedAt: new Date() })
+    // and the times themselves clear. `dispatchedAt` clears too (§A.2) — the worker was told
+    // it's off; the cancel notice below still reads `existing`'s PRE-write value.
+    .set({
+      startTime: null,
+      endTime: null,
+      timeConfirmedAt: null,
+      dispatchedAt: null,
+      updatedAt: new Date(),
+    })
     .where(
       and(
         eq(schema.WorkOrderVisit.id, visitId),
@@ -361,9 +491,34 @@ export async function setVisitDuration(input: SetVisitDurationInput): Promise<Wo
 export async function setVisitStatus(input: SetVisitStatusInput): Promise<WorkOrderVisitRow> {
   const { organizationId, userId, visitId, status, suppressRollUp, excludeSocketId } = input
 
+  // §A.3 transition guard (30 §1 rec): loaded first so the same-status no-op and the
+  // `done`/`canceled` terminal checks read the CURRENT status before anything is written.
+  // Also doubles as the PRE-write row the cancel notice needs (§A.2 below).
+  const existing = await database.query.WorkOrderVisit.findFirst({
+    where: and(
+      eq(schema.WorkOrderVisit.id, visitId),
+      eq(schema.WorkOrderVisit.organizationId, organizationId)
+    ),
+  })
+  if (!existing) throw new NotFoundError('Visit not found')
+
+  if (existing.status === status) return existing
+  if (existing.status === 'done') {
+    throw new BadRequestError('Visit is already done')
+  }
+  if (existing.status === 'canceled') {
+    throw new BadRequestError('Use Restore to bring back a canceled visit')
+  }
+
+  const set: Partial<typeof schema.WorkOrderVisit.$inferInsert> = { status, updatedAt: new Date() }
+  // §A.2: cancel clears `dispatchedAt` (the worker was told it's off). The cancel notice below
+  // reads `existing` (loaded before this write), not `updated`, so its own dispatchedAt gate
+  // still sees the PRE-write value.
+  if (status === 'canceled') set.dispatchedAt = null
+
   const [updated] = await database
     .update(schema.WorkOrderVisit)
-    .set({ status, updatedAt: new Date() })
+    .set(set)
     .where(
       and(
         eq(schema.WorkOrderVisit.id, visitId),
@@ -385,7 +540,7 @@ export async function setVisitStatus(input: SetVisitStatusInput): Promise<WorkOr
   // `notifyVisitCanceled` itself. Notification failures must never fail this mutation.
   if (status === 'canceled') {
     try {
-      await notifyVisitCanceled({ organizationId, userId, visit: updated })
+      await notifyVisitCanceled({ organizationId, userId, visit: existing })
     } catch (error) {
       logger.error('Failed to notify visit canceled', { error, visitId })
     }

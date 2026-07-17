@@ -54,11 +54,64 @@ export function resolveVisitDurationMinutes(visit: {
   return 60
 }
 
+/**
+ * Whether the Dispatch (notify-worker) action should be offered for a visit (plan 30 §C):
+ * status must be `scheduled` and the start must land today or tomorrow in the visit's own
+ * timezone (stamped from the org clock at scheduling — decision §C/5; the server guard in
+ * `dispatchVisit` is authoritative, this only gates the affordance). `Intl` is used directly
+ * so no tz library enters the client bundle.
+ */
+export function isVisitDispatchable(visit: {
+  status?: string | null
+  startTime?: Date | string | null
+  timezone?: string | null
+}): boolean {
+  if (visit.status !== 'scheduled' || !visit.startTime) return false
+  const dayKey = (date: Date): string => {
+    try {
+      return new Intl.DateTimeFormat('en-CA', {
+        timeZone: visit.timezone ?? undefined,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+      }).format(date)
+    } catch {
+      return format(date, 'yyyy-MM-dd')
+    }
+  }
+  const startKey = dayKey(new Date(visit.startTime))
+  const now = new Date()
+  return startKey === dayKey(now) || startKey === dayKey(new Date(now.getTime() + 86_400_000))
+}
+
 /** Visits that already ran their course — done/canceled, or a past scheduled window. */
 export function isPastVisit(visit: Pick<JobVisit, 'status' | 'endTime'>): boolean {
   if (visit.status === 'done' || visit.status === 'canceled') return true
   if (!visit.endTime) return false
   return new Date(visit.endTime).getTime() < Date.now()
+}
+
+/**
+ * "Moved from Fri, Jul 4" secondary line for a detached visit whose scheduled local day no
+ * longer matches its original `occurrenceDate` (plan 30 §D.3 — holiday-move presentation, no
+ * engine change). `occurrenceDate` is a plain `YYYY-MM-DD` date string — parsed as a LOCAL date
+ * (not `new Date('YYYY-MM-DD')`, which is UTC) so the day comparison lines up with `startTime`'s
+ * local day. Returns `null` when the visit isn't detached, has no `startTime`, or the days match.
+ */
+export function movedFromLabel(
+  visit: Pick<JobVisit, 'isDetached' | 'occurrenceDate' | 'startTime'>
+): string | null {
+  if (!visit.isDetached || !visit.occurrenceDate || !visit.startTime) return null
+  const [year, month, day] = visit.occurrenceDate.split('-').map(Number)
+  if (!year || !month || !day) return null
+  const occurrence = new Date(year, month - 1, day)
+  const start = new Date(visit.startTime)
+  const sameDay =
+    occurrence.getFullYear() === start.getFullYear() &&
+    occurrence.getMonth() === start.getMonth() &&
+    occurrence.getDate() === start.getDate()
+  if (sameDay) return null
+  return `Moved from ${format(occurrence, 'EEE, MMM d')}`
 }
 
 /** Newest-first split of a work order's visits into "upcoming" and "history" (07 §F.3). */

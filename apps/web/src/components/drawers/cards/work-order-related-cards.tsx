@@ -10,13 +10,18 @@
 // (work-order invoice flow plan §5.3). Scheduling is admin-only, matching both the
 // header action and the server-side `dispatchAdminProcedure` gate.
 
+import { Button } from '@auxx/ui/components/button'
 import { TreeRow } from '@auxx/ui/components/tree-row'
 import { TreeRowList } from '@auxx/ui/components/tree-row-list'
-import { ArrowRight, CreditCard, ExternalLink, Receipt } from 'lucide-react'
+import { ArrowRight, CreditCard, ExternalLink, History, Plus, Receipt } from 'lucide-react'
 import { useRouter } from 'next/navigation'
-import { useState } from 'react'
+import { Fragment, useState } from 'react'
+import { splitJobVisits } from '~/components/dispatch/ui/job-schedule/job-schedule-utils'
 import { ScheduleVisitRow } from '~/components/dispatch/ui/job-schedule/schedule-visit-row'
+import type { JobVisit } from '~/components/dispatch/ui/job-schedule/use-job-visits'
 import { useJobVisits } from '~/components/dispatch/ui/job-schedule/use-job-visits'
+import { SchedulePopover } from '~/components/dispatch/ui/schedule-popover'
+import { DrawerCardActions } from '~/components/drawers/drawer-card-actions'
 import { BillingActionDialog } from '~/components/money/billing/billing-action-dialog'
 import { resolveBillingAction } from '~/components/money/billing/types'
 import { useWorkOrderBillingState } from '~/components/money/billing/use-work-order-billing-state'
@@ -35,29 +40,72 @@ const VISIT_PREVIEW_LIMIT = 5
 export function WorkOrderScheduleCard({ recordId }: DrawerTabProps) {
   const drill = useRecordDrill()
   const { visits, isLoading, canEdit, mutations, existingVisits, refresh } = useJobVisits(recordId)
+  const [historyOpen, setHistoryOpen] = useState(false)
+  const [addOpen, setAddOpen] = useState(false)
 
   const loading = isLoading && visits.length === 0
-  if (!loading && !visits.length) return <EmptyRow label='No visits yet' />
+  const { upcoming, history } = splitJobVisits(visits)
+
+  const renderVisitRow = (visit: JobVisit) => (
+    <ScheduleVisitRow
+      visit={visit}
+      canEdit={canEdit}
+      mutations={mutations}
+      existingVisits={existingVisits}
+      workOrderRecordId={recordId}
+      onRefresh={refresh}
+      onOpen={() => drill.open('visits', visit.id)}
+    />
+  )
 
   return (
-    <TreeRowList
-      items={visits}
-      loading={loading}
-      getKey={(visit) => visit.id}
-      visibleLimit={VISIT_PREVIEW_LIMIT}
-      className={`space-y-0.5 ${TREE_SECONDARY_NOTRUNCATE}`}
-      renderRow={(visit) => (
-        <ScheduleVisitRow
-          visit={visit}
-          canEdit={canEdit}
-          mutations={mutations}
-          existingVisits={existingVisits}
-          workOrderRecordId={recordId}
-          onRefresh={refresh}
-          onOpen={() => drill.open('visits', visit.id)}
+    <div className={`space-y-0.5 ${TREE_SECONDARY_NOTRUNCATE}`}>
+      {canEdit && (
+        <DrawerCardActions>
+          {/* CREATE-mode SchedulePopover (no visitId) — nothing exists until Schedule commits,
+           * which creates + schedules the rule-less extra visit in one addVisit call. */}
+          <SchedulePopover
+            open={addOpen}
+            onOpenChange={setAddOpen}
+            workOrderRecordId={recordId}
+            existingVisits={existingVisits}
+            onScheduled={() => {
+              setAddOpen(false)
+              refresh()
+            }}
+            trigger={
+              <Button variant='ghost' size='xs'>
+                <Plus /> Add visit
+              </Button>
+            }
+          />
+        </DrawerCardActions>
+      )}
+      {!loading && !visits.length ? (
+        <EmptyRow label='No visits yet' />
+      ) : (
+        <TreeRowList
+          items={upcoming}
+          loading={loading}
+          getKey={(visit) => visit.id}
+          visibleLimit={VISIT_PREVIEW_LIMIT}
+          renderRow={renderVisitRow}
         />
       )}
-    />
+      {history.length > 0 && (
+        <TreeRow
+          icon={<History className='size-4' />}
+          rowClassName='hover:bg-primary-100'
+          title={<span className='text-sm text-muted-foreground'>{history.length} in history</span>}
+          expandable
+          isOpen={historyOpen}
+          onToggleOpen={() => setHistoryOpen((open) => !open)}>
+          {history.map((visit) => (
+            <Fragment key={visit.id}>{renderVisitRow(visit)}</Fragment>
+          ))}
+        </TreeRow>
+      )}
+    </div>
   )
 }
 

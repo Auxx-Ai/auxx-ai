@@ -94,10 +94,12 @@ export type {
   RouteStop,
 } from './route-planner/types'
 export type {
+  AddVisitInput,
   AssignVisitInput,
   ConvertRequestToWorkOrderInput,
   CreateFromTicketInput,
   DispatchVisitInput,
+  RestoreVisitInput,
   ScheduleVisitInput,
   SetVisitDurationInput,
   SetVisitStatusInput,
@@ -107,9 +109,11 @@ export type {
 export { resolveVisitDurationMinutes, VISIT_STATUS_VALUES } from './types'
 export { ensureVisitOnWorkOrderCreate } from './visit-hooks'
 export {
+  addVisit,
   afterVisitWrite,
   assignVisit,
   ensureVisitForWorkOrder,
+  restoreVisit,
   scheduleVisit,
   setVisitDuration,
   setVisitStatus,
