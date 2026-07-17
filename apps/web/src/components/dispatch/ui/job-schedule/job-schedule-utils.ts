@@ -1,7 +1,7 @@
 // apps/web/src/components/dispatch/ui/job-schedule/job-schedule-utils.ts
 
 import type { Variant } from '@auxx/ui/components/badge'
-import { format } from 'date-fns'
+import { format, startOfDay } from 'date-fns'
 import type { JobVisit } from './use-job-visits'
 
 /** Badge tone per visit status — mirrors `WORK_ORDER_STATUS_OPTIONS`' color choices. */
@@ -84,11 +84,16 @@ export function isVisitDispatchable(visit: {
   return startKey === dayKey(now) || startKey === dayKey(new Date(now.getTime() + 86_400_000))
 }
 
-/** Visits that already ran their course — done/canceled, or a past scheduled window. */
+/**
+ * Visits that already ran their course — done/canceled, or a scheduled window that ended on
+ * an earlier day. A scheduled visit stays in "upcoming" for the whole of its day: it only
+ * drops into history once its end lands before the start of today, so a visit earlier today
+ * (already elapsed by the clock) is still shown as scheduled rather than filed away.
+ */
 export function isPastVisit(visit: Pick<JobVisit, 'status' | 'endTime'>): boolean {
   if (visit.status === 'done' || visit.status === 'canceled') return true
   if (!visit.endTime) return false
-  return new Date(visit.endTime).getTime() < Date.now()
+  return new Date(visit.endTime).getTime() < startOfDay(new Date()).getTime()
 }
 
 /**

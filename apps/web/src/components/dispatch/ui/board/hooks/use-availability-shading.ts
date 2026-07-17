@@ -3,15 +3,7 @@
 'use client'
 
 import type { BackgroundEvent } from '@auxx/ui/components/event-calendar'
-import {
-  addMonths,
-  addWeeks,
-  endOfMonth,
-  format,
-  startOfMonth,
-  subMonths,
-  subWeeks,
-} from 'date-fns'
+import { format } from 'date-fns'
 import { useCallback, useEffect, useMemo } from 'react'
 import { ORG_STATIC_STALE_TIME } from '~/trpc/query-client'
 import { api } from '~/trpc/react'
@@ -31,20 +23,25 @@ const ORG_KEY = availabilitySubjectKey({ type: 'organization' })
 const workerKey = (userId: string) => availabilitySubjectKey({ type: 'worker', userId })
 /**
  * Availability shading (07 §D.2 · 12-availability-cache.md), redesigned onto a client cache: instead
- * of re-querying `availability.resolve` for each visible window, we over-fetch a 3-month window,
- * record what's loaded in `useAvailabilityCacheStore`, and fetch only the not-yet-loaded gaps — so a
- * month already shown never re-fetches. Non-working days paint immediately from the persisted org
- * weekly-working-days baseline, then refine as resolved (exception-aware) days stream in. Day mode
- * shades each worker column from its own schedule + the Unassigned column from org hours; week mode
- * shades org-wide; month tints non-working days via `isNonWorkingDay`. Hints only — never gates a drop.
+ * of re-querying `availability.resolve` for each visible window, we fetch the deterministic
+ * `fetchWindow` (padded ±1 month/week, owned by `useBoardData`), record what's loaded in
+ * `useAvailabilityCacheStore`, and fetch only the not-yet-loaded gaps — so a month already shown
+ * never re-fetches, and the fetch no longer chases the calendar's noisy visible-range echo (which
+ * churns on scroll/re-measure). `range` is the VISIBLE window and drives painting only. Non-working
+ * days paint immediately from the persisted org weekly-working-days baseline, then refine as resolved
+ * (exception-aware) days stream in. Day mode shades each worker column from its own schedule + the
+ * Unassigned column from org hours; week mode shades org-wide; month tints non-working days via
+ * `isNonWorkingDay`. Hints only — never gates a drop.
  */
 export function useAvailabilityShading({
   view,
   range,
+  fetchWindow: fetchWindowRange,
   workerUserIds,
 }: {
   view: BoardViewMode
   range: DateRange
+  fetchWindow: DateRange
   workerUserIds: string[]
 }): {
   backgroundEvents: BackgroundEvent[]
@@ -67,13 +64,16 @@ export function useAvailabilityShading({
     )
   }, [orgWeekly.data, setWeeklyWorkingDays])
 
-  // 3-month over-fetch window (±1 month around the visible month; ±1 week for day/week) — covers the
-  // month grid's leading/trailing spill days AND adjacent-month scroll in one cache-tracked fetch.
-  const fetchWindow = useMemo<IsoRange>(() => {
-    const from = view === 'month' ? startOfMonth(subMonths(range.from, 1)) : subWeeks(range.from, 1)
-    const to = view === 'month' ? endOfMonth(addMonths(range.to, 1)) : addWeeks(range.to, 1)
-    return { from: format(from, 'yyyy-MM-dd'), to: format(to, 'yyyy-MM-dd') }
-  }, [view, range.from, range.to])
+  // The board's deterministic fetch window (padded ±1 month/week in `useBoardData`), as ISO strings
+  // for the day-granular cache. Only changes when the settled month/week does, so the gap-only
+  // fetch runs once per window instead of re-firing on every scroll-frame range echo.
+  const fetchWindow = useMemo<IsoRange>(
+    () => ({
+      from: format(fetchWindowRange.from, 'yyyy-MM-dd'),
+      to: format(fetchWindowRange.to, 'yyyy-MM-dd'),
+    }),
+    [fetchWindowRange.from, fetchWindowRange.to]
+  )
 
   // Subjects to cover: org always; each visible worker in day view.
   const subjectList = useMemo<Array<{ key: string; subject: AvailabilitySubject }>>(() => {

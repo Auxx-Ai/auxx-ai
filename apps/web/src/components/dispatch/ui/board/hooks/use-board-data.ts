@@ -4,10 +4,22 @@
 
 import { weekStartToIndex } from '@auxx/lib/availability/client'
 import { getOptionColorHex } from '@auxx/lib/custom-fields/client'
-import { format, isSameDay, startOfDay } from 'date-fns'
+import {
+  addMonths,
+  addWeeks,
+  endOfMonth,
+  endOfWeek,
+  format,
+  isSameDay,
+  startOfDay,
+  startOfMonth,
+  startOfWeek,
+  subMonths,
+  subWeeks,
+} from 'date-fns'
 import { createParser, parseAsStringLiteral, useQueryState } from 'nuqs'
 import { useCallback, useMemo } from 'react'
-import { useCalendarRange } from '~/components/calendar/core/use-calendar-range'
+import { type DateRange, useCalendarRange } from '~/components/calendar/core/use-calendar-range'
 import { useSettings } from '~/hooks/use-settings'
 import { ORG_STATIC_STALE_TIME } from '~/trpc/query-client'
 import { api } from '~/trpc/react'
@@ -96,8 +108,33 @@ export function useBoardData() {
   const setDateAbsolute = useCallback((day: Date) => setDateParam(startOfDay(day)), [setDateParam])
 
   // `date`/`view` are owned here (URL); the shared range hook is fed them controlled and only
-  // supplies the derived `range` + `handleRangeChange`.
+  // supplies the derived `range` + `handleRangeChange`. `range` is the VISIBLE (painted) window,
+  // echoed from the calendar's `onRangeChange` — it churns as the virtualized stream scrolls and
+  // re-measures, so it drives painting only, never a fetch.
   const { range, handleRangeChange } = useCalendarRange('day', weekStartsOn, { date, view })
+
+  // The FETCH window — deterministic from `date`+`view`, so it only changes when the settled
+  // month/week actually changes (never on scroll frames or the month stream's mount-time
+  // re-emits). Padded ±1 whole month/week for cache-ahead when scrolling to a neighbor. `getBoard`
+  // and availability both read this, so a month-view load fires each query exactly once instead of
+  // chasing the noisy visible-range echo. Day/timeline are genuine rolling day-streams (plan 18)
+  // whose fetch must follow the scroll, so they keep the visible `range`.
+  const fetchWindow = useMemo<DateRange>(() => {
+    if (view === 'month') {
+      const monthStart = startOfMonth(endOfWeek(date, { weekStartsOn }))
+      return {
+        from: startOfMonth(subMonths(monthStart, 1)),
+        to: endOfMonth(addMonths(monthStart, 1)),
+      }
+    }
+    if (view === 'week') {
+      return {
+        from: startOfWeek(subWeeks(date, 1), { weekStartsOn }),
+        to: endOfWeek(addWeeks(date, 1), { weekStartsOn }),
+      }
+    }
+    return range
+  }, [view, date, weekStartsOn, range])
 
   // Board↔Map toggle (09-route-planner.md §A, contract item 7) — sibling state to the sidebar's
   // `open`, deliberately NOT a `BoardViewMode` so the month-view debounce and `view === 'day'`
@@ -113,7 +150,7 @@ export function useBoardData() {
   const showCanceled = useDispatchSidebarStore((s) => s.showCanceled)
 
   const boardQuery = api.dispatch.getBoard.useQuery(
-    { from: range.from, to: range.to },
+    { from: fetchWindow.from, to: fetchWindow.to },
     { placeholderData: (prev) => prev, staleTime: ORG_STATIC_STALE_TIME }
   )
 
@@ -215,6 +252,7 @@ export function useBoardData() {
     setView,
     weekStartsOn,
     range,
+    fetchWindow,
     handleRangeChange,
     allWorkers,
     workers,

@@ -485,12 +485,33 @@ export async function createExtraWorkInvoice(
         input.visitIds.includes(line.visitId) &&
         (!input.sourceLineIds || input.sourceLineIds.includes(line.id))
     )
+    // Plan money/19 §C: extras on canceled visits are not billable (restore the visit or
+    // re-pin the line first); dangling visit ids drop out via the fetched-visit check.
+    // Future/scheduled visits stay deliberately accepted — pre-billing staged material is
+    // a supported flow. Unpriced lines follow the other builders' `amount > 0` convention.
+    const selectedVisitIds = [...new Set(selected.map((line) => line.visitId!))]
+    const visitRows = selectedVisitIds.length
+      ? await db.query.WorkOrderVisit.findMany({
+          where: and(
+            eq(schema.WorkOrderVisit.organizationId, input.organizationId),
+            eq(schema.WorkOrderVisit.workOrderId, input.workOrderInstanceId),
+            inArray(schema.WorkOrderVisit.id, selectedVisitIds)
+          ),
+          columns: { id: true, status: true },
+        })
+      : []
+    const visitStatusById = new Map(visitRows.map((row) => [row.id, row.status]))
+    if (selected.some((line) => visitStatusById.get(line.visitId!) === 'canceled')) {
+      throw new BadRequestError('Extra work on a canceled visit cannot be invoiced')
+    }
     const allocated = await getActiveAllocatedAmounts({
       db,
       organizationId: input.organizationId,
       sourceLineItemIds: selected.map((line) => line.id),
     })
-    const eligible = selected.filter((line) => !allocated.has(line.id))
+    const eligible = selected.filter(
+      (line) => !allocated.has(line.id) && line.amount > 0 && visitStatusById.has(line.visitId!)
+    )
     if (eligible.length === 0)
       throw new BadRequestError('No selected extra work is ready to invoice')
     const shell = await createInvoiceShell({ ...input, db, publishEvents: false })
