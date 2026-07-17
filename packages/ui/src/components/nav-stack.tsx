@@ -33,19 +33,29 @@ const DIM = 0.6
 //   opacity); exiting = back (parallaxes left, dims).
 // back (pop):     entering = back (slides from the left, dim → full); exiting =
 //   front (slides off to the right, stays full opacity).
+// replace:        no travel — quick crossfade in place. Used when the stack
+//   changes without one being a prefix of the other (e.g. the drawer's base
+//   record swaps under an unchanged depth): semantically a replace, not a
+//   navigation, so it must not read as a push/pop.
 
-type Direction = 'forward' | 'back'
+type Direction = 'forward' | 'back' | 'replace'
 
 const slideVariants = {
-  enter: (dir: Direction) => ({
-    x: dir === 'forward' ? '100%' : PARALLAX,
-    opacity: dir === 'forward' ? 1 : DIM,
-  }),
+  enter: (dir: Direction) =>
+    dir === 'replace'
+      ? { x: '0%', opacity: 0 }
+      : {
+          x: dir === 'forward' ? '100%' : PARALLAX,
+          opacity: dir === 'forward' ? 1 : DIM,
+        },
   center: { x: '0%', opacity: 1 },
-  exit: (dir: Direction) => ({
-    x: dir === 'forward' ? PARALLAX : '100%',
-    opacity: dir === 'forward' ? DIM : 1,
-  }),
+  exit: (dir: Direction) =>
+    dir === 'replace'
+      ? { x: '0%', opacity: 0 }
+      : {
+          x: dir === 'forward' ? PARALLAX : '100%',
+          opacity: dir === 'forward' ? DIM : 1,
+        },
 }
 
 /** Reduced-motion fallback: crossfade only, no horizontal travel (matches `dialog-nav`). */
@@ -57,9 +67,15 @@ const fadeVariants = {
 
 /** Shared-bar content: the iOS title/back-button cross-slide (small travel + fade). */
 const barVariants = {
-  enter: (dir: Direction) => ({ x: dir === 'forward' ? '30%' : '-30%', opacity: 0 }),
+  enter: (dir: Direction) =>
+    dir === 'replace'
+      ? { x: '0%', opacity: 0 }
+      : { x: dir === 'forward' ? '30%' : '-30%', opacity: 0 },
   center: { x: '0%', opacity: 1 },
-  exit: (dir: Direction) => ({ x: dir === 'forward' ? '-30%' : '30%', opacity: 0 }),
+  exit: (dir: Direction) =>
+    dir === 'replace'
+      ? { x: '0%', opacity: 0 }
+      : { x: dir === 'forward' ? '-30%' : '30%', opacity: 0 },
 }
 
 // ── Context ──────────────────────────────────────────────────────────────────
@@ -109,7 +125,9 @@ export interface NavStackProps {
  * iOS-style push/pop navigation stack. Holds a stack of string keys (top = last);
  * declare one `<NavStackPanel value="…">` per level and the stack selects which
  * is on top. Push slides the next screen in from the right while the current one
- * parallaxes left; pop reverses it. Content-agnostic — see `plans/ui/nav-stack.md`.
+ * parallaxes left; pop reverses it. A stack change where neither side extends
+ * the other (a same-depth key swap or full re-base) crossfades in place instead
+ * of sliding. Content-agnostic — see `plans/ui/nav-stack.md`.
  */
 export function NavStack({
   children,
@@ -140,7 +158,16 @@ export function NavStack({
   const dirRef = useRef<Direction>('forward')
   const prev = prevStackRef.current
   if (prev.length !== stack.length || prev.some((k, i) => k !== stack[i])) {
-    dirRef.current = stack.length < prev.length ? 'back' : 'forward'
+    // Push/pop only when one stack extends the other. Anything else — the top
+    // key swapped at the same depth, or the whole stack re-based — is a
+    // 'replace': the content swaps in place instead of sliding.
+    const isPrefixOf = (a: string[], b: string[]) => a.every((k, i) => k === b[i])
+    dirRef.current =
+      stack.length > prev.length && isPrefixOf(prev, stack)
+        ? 'forward'
+        : stack.length < prev.length && isPrefixOf(stack, prev)
+          ? 'back'
+          : 'replace'
     prevStackRef.current = stack
   }
 
@@ -241,7 +268,7 @@ export function NavStackPanels({ className }: NavStackPanelsProps) {
           initial='enter'
           animate='center'
           exit='exit'
-          transition={reduce ? { duration: 0.15 } : SPRING}
+          transition={reduce || direction === 'replace' ? { duration: 0.15 } : SPRING}
           style={{ zIndex: activeIndex }}
           className={cn(
             'relative w-full bg-background shadow-[-8px_0_24px_rgba(0,0,0,0.08)]',
@@ -283,7 +310,7 @@ export function NavStackBar({ className }: NavStackBarProps) {
           initial='enter'
           animate='center'
           exit='exit'
-          transition={reduce ? { duration: 0.15 } : SPRING}>
+          transition={reduce || direction === 'replace' ? { duration: 0.15 } : SPRING}>
           {active?.bar}
         </motion.div>
       </AnimatePresence>

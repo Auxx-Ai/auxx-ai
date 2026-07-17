@@ -203,6 +203,14 @@ export interface RecordPeekStack {
  * Push/pop/clear all write `peek` AND clear `tab`/`panel`/`item` in the SAME
  * `useQueryStates` batch — one history entry, no intermediate render with a
  * new top frame but a stale drill/tab from the frame it replaced.
+ *
+ * When the BASE record changes while mounted (clicking another row with the
+ * drawer open), the URL still carries the previous record's `peek` frames
+ * until the host's clearing effect lands a paint later — long enough for the
+ * frame NavStack to see the stack shrink and slide 'back' from a stale frame.
+ * Stale frames are dropped at RENDER time instead, so the whole stack
+ * re-bases in one update (a NavStack 'replace'); the ref initializes to the
+ * first base, so a cold-load deep link (?id=…&peek=…) still hydrates its stack.
  */
 export function useRecordPeekStack(baseRecordId: RecordId | null): RecordPeekStack {
   const [{ peek }, setState] = useQueryStates({
@@ -212,10 +220,19 @@ export function useRecordPeekStack(baseRecordId: RecordId | null): RecordPeekSta
     item: parseAsString,
   })
 
+  const prevBaseRef = React.useRef(baseRecordId)
+  const peekStaleRef = React.useRef(false)
+  if (prevBaseRef.current !== baseRecordId) {
+    if (prevBaseRef.current !== null && baseRecordId !== null) peekStaleRef.current = true
+    prevBaseRef.current = baseRecordId
+  }
+  if (!peek || peek.length === 0) peekStaleRef.current = false
+  const livePeek = peekStaleRef.current ? null : peek
+
   const frames = React.useMemo<RecordId[]>(() => {
     if (!baseRecordId) return []
-    return [baseRecordId, ...((peek ?? []) as RecordId[])]
-  }, [baseRecordId, peek])
+    return [baseRecordId, ...((livePeek ?? []) as RecordId[])]
+  }, [baseRecordId, livePeek])
 
   const depth = frames.length
   const top = frames[depth - 1] ?? null
