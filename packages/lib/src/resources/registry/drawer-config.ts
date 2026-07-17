@@ -149,9 +149,9 @@ export const DRAWER_CONFIG_REGISTRY: DrawerConfigRegistry = {
     },
     tabCards: {
       overview: [
-        { value: 'lines', label: 'Line items', fullBleed: false },
-        { value: 'billing-context', label: 'Billing context' },
-        { value: 'payments', label: 'Payments' },
+        { value: 'lines', label: 'Line items', fullBleed: false, icon: 'file-text' },
+        { value: 'billing-context', label: 'Billing context', icon: 'calendar-clock' },
+        { value: 'payments', label: 'Payments', icon: 'credit-card' },
       ],
     },
   },

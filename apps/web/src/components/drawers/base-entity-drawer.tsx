@@ -16,6 +16,7 @@ import { OverflowTabsList, type TabDefinition, Tabs, TabsContent } from '@auxx/u
 import {
   CalendarClock,
   Clock,
+  CreditCard,
   ExternalLink,
   FileText,
   HouseIcon,
@@ -698,8 +699,10 @@ function TabCards({
  * A single tab card wrapped in its Section. Owns the Section header's actions-slot
  * element and exposes it to the lazily-loaded card via `DrawerCardActionsProvider`,
  * so the card can portal buttons into the header (see `DrawerCardActions`).
+ * Exported for surfaces that replay a drawer's card list outside the drawer
+ * itself (e.g. `InvoiceDetailPanel`).
  */
-function TabCardSection({
+export function TabCardSection({
   card,
   entityType,
   entityInstanceId,
@@ -799,6 +802,7 @@ function getIconComponent(iconName: string) {
     'file-text': FileText,
     'calendar-clock': CalendarClock,
     receipt: Receipt,
+    'credit-card': CreditCard,
     // Add more as needed
   }
   return icons[iconName] ?? HouseIcon
