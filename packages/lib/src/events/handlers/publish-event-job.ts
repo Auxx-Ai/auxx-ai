@@ -7,8 +7,10 @@ import { Queues } from '../../jobs/queues/types'
 import type { AuxxEvent, IEventsHandlers } from '../types'
 import { createAuditLog } from './create-audit-log'
 import { createTimelineEvent } from './create-timeline-event'
+import { deriveMessageReplySignal, deriveThreadResolvedSignal } from './derive-message-signals'
 import { handleRecordRules } from './handle-record-rules'
 import { handleSyncRecordRules } from './handle-sync-record-rules'
+import { projectSignalToTimeline } from './project-signal-to-timeline'
 import { publishThreadEventToRealtime } from './publish-thread-event-to-realtime'
 import { sendInvitationUserJob } from './send-invitation-user-job'
 import { triggerAgents } from './trigger-agents'
@@ -27,13 +29,13 @@ export const EventHandlers: IEventsHandlers = {
   'ticket:created': [createTimelineEvent, triggerResourceDispatch, handleRecordRules],
   'ticket:updated': [createTimelineEvent, triggerResourceDispatch],
   'ticket:deleted': [triggerResourceDispatch, handleRecordRules],
-  'ticket:status:changed': [createTimelineEvent, triggerAgents],
+  'ticket:status:changed': [createTimelineEvent, triggerAgents, deriveThreadResolvedSignal],
   'ticket:assignee:added': [triggerAgents],
   'ticket:assignee:removed': [triggerAgents],
   'ticket:reply:created': [triggerAgents],
 
   // message events → CREATE TIMELINE + TRIGGER WORKFLOWS
-  'message:received': [createTimelineEvent, triggerMessageWorkflows],
+  'message:received': [createTimelineEvent, triggerMessageWorkflows, deriveMessageReplySignal],
   'message:sent': [createTimelineEvent],
   'message:failed': [],
   'message:comment:created': [],
@@ -104,6 +106,8 @@ export const EventHandlers: IEventsHandlers = {
   'entity:updated': [createTimelineEvent, triggerResourceDispatch],
   'entity:deleted': [createTimelineEvent, triggerResourceDispatch, handleRecordRules],
   'entity:field:updated': [createTimelineEvent],
+
+  'signal:recorded': [projectSignalToTimeline],
 
   // Stock movement events → ENTITY TRIGGERS (inventory QoH recalculation) + WORKFLOWS
   'stock_movement:created': [triggerResourceDispatch, handleRecordRules],

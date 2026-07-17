@@ -348,6 +348,17 @@ export class OutlookProvider
         name: 'X-AuxxAi-Message',
         value: 'true',
       })
+      // List-Unsubscribe / List-Unsubscribe-Post (RFC 8058) — deliberately NOT injected here.
+      // Microsoft Graph's `message` resource docs are explicit: "Add custom headers only
+      // when creating a message, and name them starting with 'x-'"
+      // (learn.microsoft.com/graph/api/resources/message — internetMessageHeaders section).
+      // `List-Unsubscribe`/`List-Unsubscribe-Post` don't have an `x-` prefix, so Graph is
+      // expected to reject or silently drop them; the In-Reply-To/References headers above
+      // already push non-`x-` names today (comment above already flags they're best-effort
+      // and not guaranteed), but a rejected send is a much worse outcome than a missing
+      // threading hint. Deliverability headers matter most for ESP bulk sends anyway —
+      // Outlook 1:1 mail isn't the link-wrapping/bulk-sender-reputation case this protects
+      // against. Revisit if Graph ever allows standard RFC 5322 header names.
       // IMPORTANT: For proper reply threading, consider using:
       // - conversationId if available
       // - Or use /reply endpoint instead of /sendMail for replies

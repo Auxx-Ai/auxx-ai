@@ -988,6 +988,18 @@
       "import": "./dist/signals/index.mjs",
       "default": "./src/signals/index.ts"
     },
+    "./signals/email-events": {
+      "types": "./src/signals/email-events.ts",
+      "source": "./src/signals/email-events.ts",
+      "import": "./dist/signals/email-events.mjs",
+      "default": "./src/signals/email-events.ts"
+    },
+    "./signals/unsubscribe": {
+      "types": "./src/signals/unsubscribe.ts",
+      "source": "./src/signals/unsubscribe.ts",
+      "import": "./dist/signals/unsubscribe.mjs",
+      "default": "./src/signals/unsubscribe.ts"
+    },
     "./signatures": {
       "types": "./src/signatures/index.ts",
       "source": "./src/signatures/index.ts",

@@ -107,6 +107,15 @@ export class EmailForwardingProvider
       cid: a.contentId,
     }))
 
+    // List-Unsubscribe + one-click (RFC 8058) — signals plan 02. `EmailOptions.headers`
+    // already flows straight through to nodemailer's `sendMail`.
+    const headers = params.unsubscribe?.url
+      ? {
+          'List-Unsubscribe': `<${params.unsubscribe.url}>`,
+          'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+        }
+      : undefined
+
     const emailResult = await NodemailerService.getInstance().sendEmail({
       from,
       to: params.to,
@@ -120,6 +129,7 @@ export class EmailForwardingProvider
       references: params.references,
       messageId: params.messageId,
       attachments,
+      headers,
     })
 
     if (!emailResult.success) {

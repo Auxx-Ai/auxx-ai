@@ -1,6 +1,7 @@
 import type { InvitationStatus, SYNC_STATUS, UserEntity as User } from '@auxx/database/types'
 import type { RecordId } from '@auxx/types/resource'
 import type { SystemAttribute } from '@auxx/types/system-attribute'
+import type { SignalKind } from '../signals/types'
 import type { TimelineFieldChangeSnapshotValue } from '../timeline/field-change-snapshot'
 export type Events =
   | 'user:created'
@@ -66,6 +67,7 @@ export type Events =
   | 'entity:updated'
   | 'entity:deleted'
   | 'entity:field:updated'
+  | 'signal:recorded'
   | 'ticket:field:updated'
   | 'stock_movement:created'
   | 'stock_movement:deleted'
@@ -551,6 +553,29 @@ export type EntityInstanceFieldUpdatedEvent = AuxxEventGeneric<
   'entity:field:updated',
   FieldUpdatedData
 >
+
+// Signal Recorded Event — fires after `recordSignal()`/`recordSignals()` writes land and the
+// rollup update runs (plans/signals/01-signal-store.md "Write path"). Everything downstream
+// (timeline projection, record rules, Today nudges, realtime) hangs off this event. The
+// dedupe no-op write path publishes nothing.
+export type SignalRecordedEvent = AuxxEventGeneric<
+  'signal:recorded',
+  {
+    signalId: string
+    organizationId: string
+    kind: SignalKind
+    subtype: string
+    occurredAt: Date
+    contactEntityInstanceId: string | null
+    recordKeys: string[]
+    isBot: boolean
+    /** True for identity-backfill writes — consumers that drive automation must skip these. */
+    backfill?: boolean
+    /** Set for bulk writes (`recordSignals()`): all signal ids in the batch for this contact. */
+    signalIds?: string[]
+  }
+>
+
 // Contact Group Added Event
 export type ContactGroupAddedEvent = AuxxEventGeneric<
   'contact:group:added',
@@ -965,6 +990,7 @@ export type AuxxEvent =
   | EntityInstanceUpdatedEvent
   | EntityInstanceDeletedEvent
   | EntityInstanceFieldUpdatedEvent
+  | SignalRecordedEvent
   | StockMovementCreatedEvent
   | StockMovementDeletedEvent
   | VendorPartCreatedEvent
@@ -1044,6 +1070,7 @@ export interface IEventsHandlers {
   'entity:updated': EventHandler<EntityInstanceUpdatedEvent>[]
   'entity:deleted': EventHandler<EntityInstanceDeletedEvent>[]
   'entity:field:updated': EventHandler<EntityInstanceFieldUpdatedEvent>[]
+  'signal:recorded': EventHandler<SignalRecordedEvent>[]
   'stock_movement:created': EventHandler<StockMovementCreatedEvent>[]
   'stock_movement:deleted': EventHandler<StockMovementDeletedEvent>[]
   'vendor_part:created': EventHandler<VendorPartCreatedEvent>[]

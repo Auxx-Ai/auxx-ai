@@ -1,6 +1,6 @@
 // packages/lib/src/messages/message-sender.service.ts
 import { type Database, database as db, schema } from '@auxx/database'
-import { ParticipantRole, SendStatus } from '@auxx/database/enums'
+import { IntegrationProviderType, ParticipantRole, SendStatus } from '@auxx/database/enums'
 import type { ParticipantRole as ParticipantRoleType } from '@auxx/database/types'
 import { createScopedLogger } from '@auxx/logger'
 import { getRedisClient } from '@auxx/redis'
@@ -16,6 +16,10 @@ import { getThreadLens } from '../permissions/visibility/thread-lens'
 import type { AttachmentFile } from '../providers/message-provider-interface'
 import type { ProviderRegistryService } from '../providers/provider-registry-service'
 import { getRealtimeService, publishMessageCreated } from '../realtime'
+import { Result } from '../result'
+import { isSuppressed } from '../sequences/suppression'
+import { getOrganizationSetting } from '../settings/settings-service'
+import { buildUnsubscribeUrl, issueUnsubscribeToken } from '../signals/unsubscribe'
 import { createUsageGuard } from '../usage/create-usage-guard'
 import { MessageComposerService } from './message-composer.service'
 import { MessageReconcilerService } from './message-reconciler.service'
@@ -34,6 +38,17 @@ import type {
 } from './types/message-sending.types'
 
 const logger = createScopedLogger('message-sender')
+
+/** Providers where "recipient" means an email address — suppression + List-Unsubscribe
+ * apply here and nowhere else (chat/SMS/social DMs have no unsubscribe concept). */
+const EMAIL_PROVIDER_TYPES: ReadonlySet<string> = new Set([
+  IntegrationProviderType.google,
+  IntegrationProviderType.outlook,
+  IntegrationProviderType.email,
+  IntegrationProviderType.mailgun,
+  IntegrationProviderType.imap,
+])
+
 /**
  * Main orchestrator for sending messages
  * Coordinates thread management, composition, sending, and reconciliation
@@ -152,6 +167,27 @@ export class MessageSenderService {
       })
       // Step 2: Process participants
       const participants = await this.processParticipants(input)
+      // Step 2.5: Send-time suppression + List-Unsubscribe context (signals plan 02
+      // "Send-time enforcement", decided 2026-07-13). No-op for non-email providers/chat
+      // or when the primary recipient has no linked contact — cheap early-out before the
+      // one indexed suppression read.
+      const emailContext = this.resolveOutboundEmailContext({
+        provider: capabilities.provider,
+        participants,
+      })
+      const isAutomatedSend = !this.viewer || isSystemViewer(this.viewer)
+      if (emailContext && isAutomatedSend) {
+        const suppressed = await isSuppressed(
+          this.db ?? db,
+          input.organizationId,
+          emailContext.email
+        )
+        if (suppressed) {
+          throw new ForbiddenError(
+            `Recipient ${emailContext.email} is unsubscribed or bounced; automated send blocked`
+          )
+        }
+      }
       // Step 3: Compose message
       composed = await this.composer.composeMessage({
         threadId: threadContext.id,
@@ -191,6 +227,14 @@ export class MessageSenderService {
       if (input.attachmentIds && input.attachmentIds.length > 0) {
         attachmentFiles = await this.prepareAttachments(input.attachmentIds)
       }
+      // Step 5.5: List-Unsubscribe header — best-effort, never blocks the send. On by
+      // default for automated sends; gated behind the org setting for human 1:1 replies.
+      const unsubscribe = await this.buildUnsubscribeHeader({
+        organizationId: input.organizationId,
+        integrationId: input.integrationId,
+        emailContext,
+        automated: isAutomatedSend,
+      })
       // Step 6: Send via provider
       const sendResult = await this.sendViaProvider({
         integrationId: input.integrationId,
@@ -199,6 +243,7 @@ export class MessageSenderService {
         finalContent: finalContent,
         threadContext: threadContext,
         attachments: attachmentFiles,
+        unsubscribe,
       })
       // Step 7: Reconcile with provider response. Per-message bookkeeping
       // (sendStatus, sentAt, externalId) always runs; the thread-level
@@ -353,6 +398,7 @@ export class MessageSenderService {
    * integration's provider string and reads the static capability map.
    */
   private async getCapabilitiesForIntegration(integrationId: string): Promise<{
+    provider: string
     requiresSubject: boolean
     requiresRecipients: boolean
     countsAgainstOutboundEmailsQuota: boolean
@@ -369,6 +415,7 @@ export class MessageSenderService {
     const { getProviderCapabilities } = await import('../providers/provider-capabilities')
     const caps = getProviderCapabilities(integration.provider as any)
     return {
+      provider: integration.provider,
       requiresSubject: caps.requiresSubject,
       requiresRecipients: caps.requiresRecipients,
       countsAgainstOutboundEmailsQuota: caps.countsAgainstOutboundEmailsQuota,
@@ -424,6 +471,70 @@ export class MessageSenderService {
     }
   }
   /**
+   * Resolves the outbound-email context needed for send-time suppression + the
+   * List-Unsubscribe header (signals plan 02). Returns `null` for non-email providers
+   * (chat/SMS/social DMs), or when the primary `to` participant isn't an email identifier
+   * linked to a CRM contact — both suppression and List-Unsubscribe are contact-scoped, so
+   * there's nothing to check/build without one.
+   */
+  private resolveOutboundEmailContext(params: {
+    provider: string
+    participants: ProcessedParticipants
+  }): { email: string; contactEntityInstanceId: string } | null {
+    if (!EMAIL_PROVIDER_TYPES.has(params.provider)) return null
+    const primary = params.participants.to[0]
+    if (!primary || primary.identifierType !== 'EMAIL') return null
+    if (!primary.entityInstanceId) return null
+    return { email: primary.identifier, contactEntityInstanceId: primary.entityInstanceId }
+  }
+
+  /**
+   * Builds the `{ url }` payload for the provider's List-Unsubscribe header. Best-effort —
+   * any failure (token issuance, setting lookup) logs a warning and returns `undefined` so
+   * the send proceeds without the header rather than failing outright.
+   */
+  private async buildUnsubscribeHeader(params: {
+    organizationId: string
+    integrationId: string
+    emailContext: { email: string; contactEntityInstanceId: string } | null
+    automated: boolean
+  }): Promise<{ url: string } | undefined> {
+    if (!params.emailContext) return undefined
+    try {
+      // Automated sends (workflow/scheduled/sequence) always carry the header; human 1:1
+      // replies only do when the org has opted in (support threads shouldn't necessarily
+      // carry an unsubscribe link).
+      if (!params.automated) {
+        const enabled = await getOrganizationSetting({
+          organizationId: params.organizationId,
+          key: 'email.unsubscribeOn1to1Replies',
+        })
+        if (!enabled) return undefined
+      }
+      const tokenResult = await issueUnsubscribeToken({
+        organizationId: params.organizationId,
+        contactEntityInstanceId: params.emailContext.contactEntityInstanceId,
+        email: params.emailContext.email,
+        channelId: params.integrationId,
+      })
+      if (!Result.isOk(tokenResult)) {
+        logger.warn('Failed to issue unsubscribe token; sending without List-Unsubscribe header', {
+          organizationId: params.organizationId,
+          error: tokenResult.error.message,
+        })
+        return undefined
+      }
+      return { url: buildUnsubscribeUrl(tokenResult.value) }
+    } catch (error) {
+      logger.warn('Unsubscribe header build failed; sending without List-Unsubscribe header', {
+        organizationId: params.organizationId,
+        error: error instanceof Error ? error.message : String(error),
+      })
+      return undefined
+    }
+  }
+
+  /**
    * Gets the In-Reply-To header for threading
    */
   private async getInReplyTo(threadId: string): Promise<string | null> {
@@ -464,6 +575,7 @@ export class MessageSenderService {
     }
     threadContext: ThreadContext
     attachments?: AttachmentFile[]
+    unsubscribe?: { url: string }
   }): Promise<ProviderSendResponse> {
     if (!this.providerRegistry) {
       throw new Error('Provider registry not initialized')
@@ -497,6 +609,7 @@ export class MessageSenderService {
         inReplyTo: input.composed.inReplyTo || undefined,
         externalThreadId: sanitizedExternalThreadId, // Use sanitized ID
         attachments: input.attachments, // Pass attachments to provider
+        unsubscribe: input.unsubscribe, // List-Unsubscribe header (email providers only)
       } as any)
       return {
         success: result.success,

@@ -476,7 +476,7 @@ export const ruleType = pgEnum('RuleType', [
   'SHOPIFY_AUTOMATION',
 ])
 export const syncStatus = pgEnum('SYNC_STATUS', ['PENDING', 'IN_PROGRESS', 'COMPLETED', 'FAILED'])
-export const sendStatus = pgEnum('SendStatus', ['PENDING', 'SENT', 'FAILED'])
+export const sendStatus = pgEnum('SendStatus', ['PENDING', 'SENT', 'FAILED', 'BOUNCED'])
 export const senderType = pgEnum('SenderType', [
   'INTERNAL_STAFF',
   'INTERNAL_SYSTEM',

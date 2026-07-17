@@ -26,6 +26,9 @@ export interface CreateEmailMessageInput {
   inReplyTo?: string
   references?: string
   messageId?: string
+  /** List-Unsubscribe / List-Unsubscribe-Post headers (RFC 8058) — shape matches
+   * `SendMessageOptions['unsubscribe']` so it flows through the provider's spread untouched. */
+  unsubscribe?: { url: string }
 }
 
 /**
@@ -48,6 +51,7 @@ export async function createEmailMessage(input: CreateEmailMessageInput): Promis
     inReplyTo,
     references,
     messageId,
+    unsubscribe,
   } = input
 
   // Generate boundaries
@@ -93,6 +97,13 @@ export async function createEmailMessage(input: CreateEmailMessageInput): Promis
       .filter(Boolean)
       .join(' ')
     headers.push(foldMimeHeader(`References: ${refs}`))
+  }
+
+  // List-Unsubscribe + one-click (RFC 8058) — Gmail/Yahoo bulk-sender rules effectively
+  // require this for anything campaign-like (signals plan 02).
+  if (unsubscribe?.url) {
+    headers.push(`List-Unsubscribe: <${unsubscribe.url}>`)
+    headers.push(`List-Unsubscribe-Post: List-Unsubscribe=One-Click`)
   }
 
   headers.push(`X-Mailer: Auxx-AI-Mailer/2.0`)

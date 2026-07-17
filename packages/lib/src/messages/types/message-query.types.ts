@@ -6,7 +6,7 @@ import { MessageType } from '../../providers/types'
 /**
  * Send status enum for outbound messages.
  */
-export type SendStatus = 'PENDING' | 'SENT' | 'FAILED'
+export type SendStatus = 'PENDING' | 'SENT' | 'FAILED' | 'BOUNCED'
 
 /**
  * Re-export MessageType from providers/types for consistent usage.

@@ -315,6 +315,40 @@ export async function setupSchedules() {
     }
   )
 
+  // Signal retention — nightly at 04:10. Age-prunes high-volume EntitySignal rows
+  // (email:opened, web:page_view, email:delivered) older than 180 days in bounded batches;
+  // rollups persist (plans/signals/01-signal-store.md "Retention").
+  await maintenanceQueue.upsertJobScheduler(
+    'signalRetentionJob',
+    { pattern: '10 4 * * *' },
+    {
+      opts: {
+        attempts: 1,
+        priority: 10,
+        removeOnComplete: { count: 14 },
+        removeOnFail: { count: 30 },
+      },
+    }
+  )
+
+  // Signal rollup decay sweep — nightly at 04:25 (after signalRetentionJob, and clear of the
+  // 03:45 record-rules retention run). Recomputes EntitySignalRollup's *Count30d columns from
+  // EntitySignal so a row aging out of its 30-day window decays back down — the inline
+  // recordSignal()/recordSignals() path only ever increments (plans/signals/01-signal-store.md
+  // "Rollups").
+  await maintenanceQueue.upsertJobScheduler(
+    'signalRollupSweepJob',
+    { pattern: '25 4 * * *' },
+    {
+      opts: {
+        attempts: 1,
+        priority: 10,
+        removeOnComplete: { count: 14 },
+        removeOnFail: { count: 30 },
+      },
+    }
+  )
+
   // Dispatch recurring engine daily sweep — every day at 03:00 UTC
   // (plans/dispatch/06-recurring-engine.md §4.4/§5.3). Extends the materialization horizon
   // for active recurring engagements that have fallen behind, and auto-ends engagements

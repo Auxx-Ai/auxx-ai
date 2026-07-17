@@ -50,6 +50,11 @@ export interface SendMessageOptions {
   // Other options
   trackingEnabled?: boolean // Generic tracking flag
   metadata?: Record<string, any> // For provider-specific options (deprecated - for backward compatibility only)
+
+  /** List-Unsubscribe / List-Unsubscribe-Post headers (RFC 8058), built by
+   * `MessageSenderService` for outbound email to a known contact. Providers that can't
+   * honor a non-`x-` custom header (Outlook/Graph) skip it — see outlook-provider.ts. */
+  unsubscribe?: { url: string }
 }
 
 export interface SendEmailOptions {

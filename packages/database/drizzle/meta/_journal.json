@@ -2052,6 +2052,20 @@
       "when": 1784239770453,
       "tag": "0292_dashboard_entity_definition",
       "breakpoints": true
+    },
+    {
+      "idx": 293,
+      "version": "7",
+      "when": 1784327968301,
+      "tag": "0293_signals_rollup_and_indexes",
+      "breakpoints": true
+    },
+    {
+      "idx": 294,
+      "version": "7",
+      "when": 1784331183500,
+      "tag": "0294_message_external_id_idx",
+      "breakpoints": true
     }
   ]
 }

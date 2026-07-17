@@ -46,6 +46,7 @@ import {
 } from '@auxx/lib/jobs'
 import { Queues } from '@auxx/lib/jobs/queues'
 import { recordRuleRunRetentionJob } from '@auxx/lib/record-rules'
+import { signalRetentionJob, signalRollupSweepJob } from '@auxx/lib/signals'
 import { createScopedLogger } from '@auxx/logger'
 import { createWorker } from '../utils/createWorker'
 
@@ -222,6 +223,11 @@ const jobMappings = {
   // Nightly RecordRuleRun retention (age-prunes rule-firing logs older than 60d;
   // sync + system-rule firings multiply these rows)
   recordRuleRunRetentionJob,
+
+  // Signals substrate (plans/signals/01-signal-store.md "Retention" / "Rollups"):
+  // nightly high-volume EntitySignal prune (180d) + EntitySignalRollup *Count30d decay sweep.
+  signalRetentionJob,
+  signalRollupSweepJob,
 }
 
 export function startMaintenanceWorker() {

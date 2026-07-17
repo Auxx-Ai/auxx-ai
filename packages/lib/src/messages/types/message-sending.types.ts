@@ -93,6 +93,11 @@ export interface ProcessedParticipant {
   name?: string | null
   displayName?: string | null
   role: ParticipantRole
+  /** Linked CRM contact, when the participant resolved to one — carried through from the
+   * raw `Participant` row (`ParticipantService.findOrCreateParticipant*`) so send-time
+   * suppression checks + the List-Unsubscribe token (MessageSenderService) don't need a
+   * second lookup. */
+  entityInstanceId?: string | null
 }
 /**
  * Provider send response

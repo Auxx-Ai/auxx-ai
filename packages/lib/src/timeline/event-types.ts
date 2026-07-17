@@ -55,6 +55,12 @@ export enum ContactEventType {
   // Assignment
   ASSIGNED = 'contact:assigned',
   UNASSIGNED = 'contact:unassigned',
+
+  // Signals — `EntitySignal` timeline projection (plans/signals/01-signal-store.md
+  // "Timeline projection"). One event type for every projected `SignalKind`, mirroring
+  // FIELD_UPDATED: `eventData.kind` distinguishes the specific signal for icon/label
+  // rendering instead of minting one enum member per kind.
+  SIGNAL = 'contact:signal',
 }
 
 /** Ticket-specific event types */

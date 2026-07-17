@@ -707,7 +707,7 @@ export const RuleTypeValues = [
 
 export const SYNC_STATUSValues = ['PENDING', 'IN_PROGRESS', 'COMPLETED', 'FAILED'] as const
 
-export const SendStatusValues = ['PENDING', 'SENT', 'FAILED'] as const
+export const SendStatusValues = ['PENDING', 'SENT', 'FAILED', 'BOUNCED'] as const
 
 export const SenderTypeValues = [
   'INTERNAL_STAFF',
@@ -1466,6 +1466,7 @@ export const SendStatus = {
   PENDING: 'PENDING',
   SENT: 'SENT',
   FAILED: 'FAILED',
+  BOUNCED: 'BOUNCED',
 } as const
 
 export const SenderType = {
