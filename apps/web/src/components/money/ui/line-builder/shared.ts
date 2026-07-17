@@ -18,5 +18,5 @@ export function formatCurrency(value: number | null | undefined, currencyCode: s
 
 /** Capitalize a category value for chip display ('service' → 'Service'). */
 export function titleCase(value: string): string {
-  return value.length ? value[0].toUpperCase() + value.slice(1) : value
+  return value.length ? value.charAt(0).toUpperCase() + value.slice(1) : value
 }

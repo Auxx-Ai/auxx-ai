@@ -3,10 +3,9 @@
 'use client'
 
 // Row + cell components for the line-items builder (line-builder.tsx). Split
-// out once the builder file crossed the ~800-line component threshold
-// (CLAUDE.md "Component Architecture"): this file owns the presentational
-// cell views, their store-bound wrappers for real (persisted) rows, and the
-// two row shells (`LineRow` for real records, `DraftLineRow` for phantom
+// out once the builder file crossed the ~800-line component threshold:
+// this file owns presentational cell views and the two row shells (`LineRow`
+// for real records, `DraftLineRow` for phantom
 // draft lines — see line-builder.tsx's file-header comment for the draft
 // lifecycle). `LineBuilder` itself (state, mutations, data fetching) stays in
 // line-builder.tsx.
@@ -24,7 +23,6 @@
 // taxable, delete). Qty/rate are chromeless inline editors; total is
 // computed. The drag grip floats in the left gutter, hover-revealed.
 
-import { FieldType } from '@auxx/database/enums'
 import {
   computeLineTotal,
   formatLineItemUnit,
@@ -63,10 +61,20 @@ import {
   X,
 } from 'lucide-react'
 import { type ReactNode, useEffect, useRef, useState } from 'react'
+import type { CatalogGroup } from '~/components/money/hooks/use-catalog-groups'
+import type { CatalogItem } from '~/components/money/hooks/use-catalog-items'
 import { type RecordId, type RecordMeta, toRecordId } from '~/components/resources'
-import { useSaveFieldValue } from '~/components/resources/hooks/use-save-field-value'
 import { useSystemValues } from '~/components/resources/hooks/use-system-values'
-import { type CatalogGroupPick, type CatalogItemPick, CatalogPicker } from './catalog-picker'
+import { catalogItemToLinePatch } from './catalog-group-resolver'
+import { CatalogPicker } from './catalog-picker'
+import {
+  BASE_LINE_SYSTEM_ATTRIBUTES,
+  DEFAULT_LINE_VALUES,
+  type LinePatch,
+  type LineValues,
+  lineValuesFromSystemValues,
+  QUOTE_LINE_SYSTEM_ATTRIBUTES,
+} from './line-values'
 import { formatCurrency, titleCase } from './shared'
 import { LINE_ROW_ACTION_EVENT, type LineRowAction } from './use-line-hotkeys'
 
@@ -77,23 +85,6 @@ import { LINE_ROW_ACTION_EVENT, type LineRowAction } from './use-line-hotkeys'
  * smart `2.375 cy` quantity+unit cell, money plan 13 §5) │ rate │ total.
  */
 export const LINE_COLS = 'minmax(10rem, 1fr) 5.5rem 5.5rem 6.5rem'
-
-// Module-level (stable-reference) attribute lists — `useSystemValues` memoizes
-// on the array identity, so these must never be inline literals. Taxable rides
-// with the name attrs: everything that shows it (rest badge, `⋯` menu toggle)
-// lives in the name cell.
-const NAME_ATTRS = [
-  'line_item_name',
-  'line_item_description',
-  'line_item_category',
-  'line_item_taxable',
-]
-const QTY_ATTRS = ['line_item_qty', 'line_item_unit']
-const PRICE_ATTRS = ['line_item_unit_price']
-const TOTAL_ATTRS = ['line_item_qty', 'line_item_unit_price']
-// Optional/optionalSelected (money plan 18 §3) — quotes only; `LineRow` gates the
-// fetch on `documentType === 'quote'` so non-quote surfaces never subscribe.
-const OPTIONAL_ATTRS = ['line_item_optional', 'line_item_optional_selected']
 
 /**
  * One selectable line category — the builder receives these from the
@@ -143,36 +134,15 @@ function badgeVariantForColor(color: string | undefined): Variant {
  * `unit`/`optional`/`optionalSelected` mirror `line_item_unit`/`line_item_optional`/
  * `line_item_optional_selected` (money plans 13 §5, 18 §3).
  */
-export interface DraftLine {
+export interface DraftLine extends LineValues {
   draftId: string
-  name: string
-  description: string | null
-  category: string | null
-  taxable: boolean
-  qty: number
-  unit: LineItemUnit | null
-  unitPriceCents: number | null
-  /** Customer-selectable upsell (quotes only) — always `false` outside quote builders. */
-  optional: boolean
-  /** Pre-check state; meaningful only when `optional` is true. */
-  optionalSelected: boolean
-  catalogItemRecordId: RecordId | null
   creating: boolean
 }
 
 export function freshDraft(draftId: string): DraftLine {
   return {
+    ...DEFAULT_LINE_VALUES,
     draftId,
-    name: '',
-    description: null,
-    category: null,
-    taxable: true,
-    qty: 1,
-    unit: 'each',
-    unitPriceCents: null,
-    optional: false,
-    optionalSelected: true,
-    catalogItemRecordId: null,
     creating: false,
   }
 }
@@ -255,8 +225,8 @@ function GripSlot({
   attributes,
   listeners,
 }: {
-  attributes?: Record<string, unknown>
-  listeners?: Record<string, unknown>
+  attributes?: ReturnType<typeof useSortable>['attributes']
+  listeners?: ReturnType<typeof useSortable>['listeners']
 }) {
   return (
     <span
@@ -465,6 +435,10 @@ function LineNameCellView({
   taxable,
   readOnly,
   currencyCode,
+  catalogItems,
+  catalogGroups,
+  catalogItemMap,
+  catalogLoading,
   autoFocus = false,
   showOptionalControls,
   optional,
@@ -486,6 +460,10 @@ function LineNameCellView({
   taxable: boolean
   readOnly: boolean
   currencyCode: string
+  catalogItems: CatalogItem[]
+  catalogGroups: CatalogGroup[]
+  catalogItemMap: Map<string, CatalogItem>
+  catalogLoading: boolean
   /** Focus the name input on mount — set for a freshly added draft row. */
   autoFocus?: boolean
   /** Quotes only (money plan 18 §3) — work-order/invoice builders pass `false`. */
@@ -495,8 +473,8 @@ function LineNameCellView({
   onToggleOptional: (next: boolean) => void
   onToggleOptionalSelected: (next: boolean) => void
   onToggleTaxable: (next: boolean) => void
-  onPickCatalogItem: (pick: CatalogItemPick) => void
-  onSelectGroup: (pick: CatalogGroupPick) => void
+  onPickCatalogItem: (item: CatalogItem) => void
+  onSelectGroup: (group: CatalogGroup) => void
   onFreeText: (text: string) => void
   onCommitDescription: (value: string | null) => void
   onCommitCategory: (value: string | null) => void
@@ -665,6 +643,10 @@ function LineNameCellView({
         onOpenChange={setPickerOpen}
         initialQuery={value}
         currencyCode={currencyCode}
+        items={catalogItems}
+        groups={catalogGroups}
+        itemMap={catalogItemMap}
+        isLoading={catalogLoading}
         onSelectCatalogItem={onPickCatalogItem}
         onSelectGroup={onSelectGroup}
         onFreeText={onFreeText}
@@ -761,93 +743,6 @@ function LineNameCellView({
   )
 }
 
-/** Store-bound wrapper around {@link LineNameCellView} for real (persisted) line rows. */
-function LineNameCell({
-  recordId,
-  categoryOptions,
-  readOnly,
-  currencyCode,
-  showOptionalControls,
-  optional,
-  optionalSelected,
-  onToggleOptional,
-  onToggleOptionalSelected,
-  onSelectGroup,
-  onDelete,
-}: {
-  recordId: RecordId
-  categoryOptions: CategoryOption[]
-  readOnly: boolean
-  currencyCode: string
-  showOptionalControls: boolean
-  optional: boolean
-  optionalSelected: boolean
-  onToggleOptional: (next: boolean) => void
-  onToggleOptionalSelected: (next: boolean) => void
-  onSelectGroup: (pick: CatalogGroupPick) => void
-  onDelete: () => void
-}) {
-  const { values } = useSystemValues(recordId, NAME_ATTRS, { autoFetch: true })
-  const { saveFieldValue, saveMultipleAsync } = useSaveFieldValue()
-
-  const name = (values.line_item_name as string | undefined) ?? ''
-  const description = (values.line_item_description as string | null | undefined) ?? null
-  const category = (values.line_item_category as string | null | undefined) ?? null
-  const taxable = (values.line_item_taxable as boolean | undefined) !== false
-
-  const handlePick = (pick: CatalogItemPick) => {
-    // COPY the catalog defaults onto the line (snapshot — catalog price changes
-    // never rewrite documents) + keep the provenance relationship. A catalog/group
-    // pick always resets the line to required (money plan 18 §3) — the same
-    // "this pick overwrites the line's identity" precedent taxable already follows.
-    void saveMultipleAsync(recordId, [
-      { fieldId: 'line_item_name', value: pick.name, fieldType: FieldType.TEXT },
-      { fieldId: 'line_item_description', value: pick.description, fieldType: FieldType.TEXT },
-      { fieldId: 'line_item_category', value: pick.category, fieldType: FieldType.SINGLE_SELECT },
-      { fieldId: 'line_item_taxable', value: pick.taxable, fieldType: FieldType.CHECKBOX },
-      { fieldId: 'line_item_unit_price', value: pick.unitPrice, fieldType: FieldType.CURRENCY },
-      { fieldId: 'line_item_unit', value: pick.defaultUnit, fieldType: FieldType.SINGLE_SELECT },
-      { fieldId: 'line_item_optional', value: false, fieldType: FieldType.CHECKBOX },
-      { fieldId: 'line_item_optional_selected', value: true, fieldType: FieldType.CHECKBOX },
-      {
-        fieldId: 'line_item_catalog_item',
-        value: pick.recordId,
-        fieldType: FieldType.RELATIONSHIP,
-      },
-    ])
-  }
-
-  return (
-    <LineNameCellView
-      name={name}
-      description={description}
-      category={category}
-      categoryOptions={categoryOptions}
-      taxable={taxable}
-      readOnly={readOnly}
-      currencyCode={currencyCode}
-      showOptionalControls={showOptionalControls}
-      optional={optional}
-      optionalSelected={optionalSelected}
-      onToggleOptional={onToggleOptional}
-      onToggleOptionalSelected={onToggleOptionalSelected}
-      onToggleTaxable={(next) =>
-        saveFieldValue(recordId, 'line_item_taxable', next, FieldType.CHECKBOX)
-      }
-      onPickCatalogItem={handlePick}
-      onSelectGroup={onSelectGroup}
-      onFreeText={(text) => saveFieldValue(recordId, 'line_item_name', text, FieldType.TEXT)}
-      onCommitDescription={(value) =>
-        saveFieldValue(recordId, 'line_item_description', value, FieldType.TEXT)
-      }
-      onCommitCategory={(value) =>
-        saveFieldValue(recordId, 'line_item_category', value, FieldType.SINGLE_SELECT)
-      }
-      onDelete={onDelete}
-    />
-  )
-}
-
 /**
  * Chromeless inline number editor view — quiet at rest, editable on click (the
  * cell-treatment lock in 01-ui #1). Commits on blur/Enter, no-ops if the value
@@ -896,33 +791,6 @@ function PriceCellView({
       }}
       inputMode='decimal'
       className='h-full w-full rounded-sm border-none bg-transparent px-2 text-right text-sm tabular-nums outline-none'
-    />
-  )
-}
-
-/** Store-bound wrapper around {@link PriceCellView} for real line rows. */
-function PriceCell({
-  recordId,
-  readOnly,
-  currencyCode,
-}: {
-  recordId: RecordId
-  readOnly: boolean
-  currencyCode: string
-}) {
-  const { values } = useSystemValues(recordId, PRICE_ATTRS, { autoFetch: true })
-  const { saveFieldValue } = useSaveFieldValue()
-
-  const raw = (values.line_item_unit_price as number | null | undefined) ?? null
-
-  return (
-    <PriceCellView
-      value={raw}
-      readOnly={readOnly}
-      currencyCode={currencyCode}
-      onCommit={(next) =>
-        saveFieldValue(recordId, 'line_item_unit_price', next, FieldType.CURRENCY)
-      }
     />
   )
 }
@@ -1036,43 +904,6 @@ function QuantityCellView({
   )
 }
 
-/** Store-bound wrapper around {@link QuantityCellView} for real line rows. */
-function QuantityCell({ recordId, readOnly }: { recordId: RecordId; readOnly: boolean }) {
-  const { values } = useSystemValues(recordId, QTY_ATTRS, { autoFetch: true })
-  const { saveMultipleAsync } = useSaveFieldValue()
-
-  const qty = (values.line_item_qty as number | null | undefined) ?? 1
-  const unit = (values.line_item_unit as LineItemUnit | null | undefined) ?? null
-
-  return (
-    <QuantityCellView
-      quantity={qty}
-      unit={unit}
-      readOnly={readOnly}
-      onCommit={(next) => {
-        // Only the fields that actually changed — a combined save so realtime
-        // observers never see qty/unit half-updated relative to each other.
-        const changed: Array<{ fieldId: string; value: unknown; fieldType: FieldType }> = []
-        if (next.quantity !== qty) {
-          changed.push({
-            fieldId: 'line_item_qty',
-            value: next.quantity,
-            fieldType: FieldType.NUMBER,
-          })
-        }
-        if (next.unit !== unit) {
-          changed.push({
-            fieldId: 'line_item_unit',
-            value: next.unit,
-            fieldType: FieldType.SINGLE_SELECT,
-          })
-        }
-        if (changed.length > 0) void saveMultipleAsync(recordId, changed)
-      }}
-    />
-  )
-}
-
 /** Read-only computed line total view — `computeLineTotal` over plain values. */
 function LineTotalCellView({
   qty,
@@ -1089,16 +920,6 @@ function LineTotalCellView({
       {formatCurrency(lineTotal, currencyCode)}
     </div>
   )
-}
-
-/** Store-bound wrapper around {@link LineTotalCellView} for real line rows. */
-function LineTotalCell({ recordId, currencyCode }: { recordId: RecordId; currencyCode: string }) {
-  const { values } = useSystemValues(recordId, TOTAL_ATTRS, { autoFetch: true })
-
-  const qty = (values.line_item_qty as number | null | undefined) ?? 1
-  const unitPrice = (values.line_item_unit_price as number | null | undefined) ?? null
-
-  return <LineTotalCellView qty={qty} unitPrice={unitPrice} currencyCode={currencyCode} />
 }
 
 /** Right-aligned shortcut hint in a `⋯` menu item — the platform modifier + literal keys. */
@@ -1203,6 +1024,11 @@ export function LineRow({
   readOnly,
   currencyCode,
   documentType,
+  catalogItems,
+  catalogGroups,
+  catalogItemMap,
+  catalogLoading,
+  onUpdateLine,
   deleteLine,
   onSelectGroup,
 }: {
@@ -1213,28 +1039,23 @@ export function LineRow({
   readOnly: boolean
   currencyCode: string
   documentType: 'quote' | 'work_order' | 'invoice'
+  catalogItems: CatalogItem[]
+  catalogGroups: CatalogGroup[]
+  catalogItemMap: Map<string, CatalogItem>
+  catalogLoading: boolean
+  onUpdateLine: (recordId: RecordId, patch: LinePatch) => void
   deleteLine: (lineId: string) => void
-  onSelectGroup: (recordId: RecordId, pick: CatalogGroupPick) => void
+  onSelectGroup: (recordId: RecordId, group: CatalogGroup) => void
 }) {
   const recordId = toRecordId(entityDefinitionId, record.id)
   const isQuote = documentType === 'quote'
+  const systemAttributes = isQuote ? QUOTE_LINE_SYSTEM_ATTRIBUTES : BASE_LINE_SYSTEM_ATTRIBUTES
+  const { values } = useSystemValues(recordId, systemAttributes, { autoFetch: false })
+  const line = lineValuesFromSystemValues(values, isQuote)
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: record.id,
     disabled: readOnly,
   })
-
-  // Optional/optionalSelected (money plan 18 §3) — read once here so the row's
-  // muted/indented treatment and both cells that expose it (name badge/checkbox,
-  // actions toggle) stay in agreement. Gated on `isQuote`: work-order/invoice
-  // builders never fetch or show any of it.
-  const { values: optionalValues } = useSystemValues(recordId, OPTIONAL_ATTRS, {
-    autoFetch: isQuote,
-    enabled: isQuote,
-  })
-  const { saveFieldValue } = useSaveFieldValue()
-  const optional = isQuote && (optionalValues.line_item_optional as boolean | undefined) === true
-  const optionalSelected =
-    !isQuote || (optionalValues.line_item_optional_selected as boolean | undefined) !== false
 
   return (
     <div
@@ -1243,30 +1064,65 @@ export function LineRow({
       className={cn(isDragging && 'relative z-10 opacity-80')}>
       <LineGridRow
         rowIndex={rowIndex}
-        optional={optional}
+        optional={line.optional}
         grip={readOnly ? null : <GripSlot attributes={attributes} listeners={listeners} />}
         name={
-          <LineNameCell
-            recordId={recordId}
+          <LineNameCellView
+            name={line.name}
+            description={line.description}
+            category={line.category}
             categoryOptions={categoryOptions}
+            taxable={line.taxable}
             readOnly={readOnly}
             currencyCode={currencyCode}
+            catalogItems={catalogItems}
+            catalogGroups={catalogGroups}
+            catalogItemMap={catalogItemMap}
+            catalogLoading={catalogLoading}
             showOptionalControls={isQuote}
-            optional={optional}
-            optionalSelected={optionalSelected}
-            onToggleOptional={(next) =>
-              saveFieldValue(recordId, 'line_item_optional', next, FieldType.CHECKBOX)
+            optional={line.optional}
+            optionalSelected={line.optionalSelected}
+            onToggleOptional={(optional) => onUpdateLine(recordId, { optional })}
+            onToggleOptionalSelected={(optionalSelected) =>
+              onUpdateLine(recordId, { optionalSelected })
             }
-            onToggleOptionalSelected={(next) =>
-              saveFieldValue(recordId, 'line_item_optional_selected', next, FieldType.CHECKBOX)
-            }
-            onSelectGroup={(pick) => onSelectGroup(recordId, pick)}
+            onToggleTaxable={(taxable) => onUpdateLine(recordId, { taxable })}
+            onPickCatalogItem={(item) => onUpdateLine(recordId, catalogItemToLinePatch(item))}
+            onSelectGroup={(group) => onSelectGroup(recordId, group)}
+            onFreeText={(name) => onUpdateLine(recordId, { name })}
+            onCommitDescription={(description) => onUpdateLine(recordId, { description })}
+            onCommitCategory={(category) => onUpdateLine(recordId, { category })}
             onDelete={() => deleteLine(record.id)}
           />
         }
-        qty={<QuantityCell recordId={recordId} readOnly={readOnly} />}
-        price={<PriceCell recordId={recordId} readOnly={readOnly} currencyCode={currencyCode} />}
-        total={<LineTotalCell recordId={recordId} currencyCode={currencyCode} />}
+        qty={
+          <QuantityCellView
+            quantity={line.qty}
+            unit={line.unit}
+            readOnly={readOnly}
+            onCommit={(next) => {
+              const patch: LinePatch = {}
+              if (next.quantity !== line.qty) patch.qty = next.quantity
+              if (next.unit !== line.unit) patch.unit = next.unit
+              onUpdateLine(recordId, patch)
+            }}
+          />
+        }
+        price={
+          <PriceCellView
+            value={line.unitPriceCents}
+            readOnly={readOnly}
+            currencyCode={currencyCode}
+            onCommit={(unitPriceCents) => onUpdateLine(recordId, { unitPriceCents })}
+          />
+        }
+        total={
+          <LineTotalCellView
+            qty={line.qty}
+            unitPrice={line.unitPriceCents}
+            currencyCode={currencyCode}
+          />
+        }
       />
     </div>
   )
@@ -1286,6 +1142,10 @@ export function DraftLineRow({
   categoryOptions,
   currencyCode,
   documentType,
+  catalogItems,
+  catalogGroups,
+  catalogItemMap,
+  catalogLoading,
   deleteDraft,
   createDraft,
   onSelectGroup,
@@ -1297,9 +1157,13 @@ export function DraftLineRow({
   categoryOptions: CategoryOption[]
   currencyCode: string
   documentType: 'quote' | 'work_order' | 'invoice'
+  catalogItems: CatalogItem[]
+  catalogGroups: CatalogGroup[]
+  catalogItemMap: Map<string, CatalogItem>
+  catalogLoading: boolean
   deleteDraft: (draftId: string) => void
-  createDraft: (draftId: string, overrides?: Partial<DraftLine>) => Promise<void>
-  onSelectGroup: (draftId: string, pick: CatalogGroupPick) => void
+  createDraft: (draftId: string, overrides?: LinePatch) => Promise<void>
+  onSelectGroup: (draftId: string, group: CatalogGroup) => void
 }) {
   const isQuote = documentType === 'quote'
 
@@ -1317,6 +1181,10 @@ export function DraftLineRow({
           taxable={draft.taxable}
           readOnly={false}
           currencyCode={currencyCode}
+          catalogItems={catalogItems}
+          catalogGroups={catalogGroups}
+          catalogItemMap={catalogItemMap}
+          catalogLoading={catalogLoading}
           autoFocus={autoFocus}
           showOptionalControls={isQuote}
           optional={draft.optional}
@@ -1326,20 +1194,10 @@ export function DraftLineRow({
             void createDraft(draft.draftId, { optionalSelected: next })
           }
           onToggleTaxable={(next) => void createDraft(draft.draftId, { taxable: next })}
-          onPickCatalogItem={(pick) =>
-            void createDraft(draft.draftId, {
-              name: pick.name,
-              description: pick.description,
-              category: pick.category,
-              taxable: pick.taxable,
-              unitPriceCents: pick.unitPrice,
-              unit: pick.defaultUnit,
-              catalogItemRecordId: pick.recordId,
-              optional: false,
-              optionalSelected: true,
-            })
+          onPickCatalogItem={(item) =>
+            void createDraft(draft.draftId, catalogItemToLinePatch(item))
           }
-          onSelectGroup={(pick) => onSelectGroup(draft.draftId, pick)}
+          onSelectGroup={(group) => onSelectGroup(draft.draftId, group)}
           onFreeText={(text) => void createDraft(draft.draftId, { name: text })}
           onCommitDescription={(value) => void createDraft(draft.draftId, { description: value })}
           onCommitCategory={(value) => void createDraft(draft.draftId, { category: value })}

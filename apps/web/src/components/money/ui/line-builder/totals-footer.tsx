@@ -5,10 +5,12 @@
 // Totals footer for the line builder (money MQ1 build spec §H.1): subtotal →
 // discount → tax → total (the add-line row lives in the builder itself).
 // All amounts are computed client-side with `computeDocumentTotals` from
-// `@auxx/lib/money/client` — the exact function the server-side recompute hook
-// uses — over the same optimistic field-value store the editors write to.
+// `@auxx/lib/money/client` over the same optimistic field-value store the
+// editors write to. `LineBuilder` owns fetching and mutations; this footer is
+// a passive aggregate subscriber plus totals UI.
 
 import { FieldType } from '@auxx/database/enums'
+import type { FieldType as FieldTypeValue } from '@auxx/database/types'
 import { formatToRawValue } from '@auxx/lib/field-values/client'
 import {
   computeDocumentTotals,
@@ -25,47 +27,25 @@ import {
   SelectValue,
 } from '@auxx/ui/components/select'
 import { cn } from '@auxx/ui/lib/utils'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import type { RecordId } from '~/components/resources'
-import { useSaveFieldValue } from '~/components/resources/hooks/use-save-field-value'
-import { useSystemValues } from '~/components/resources/hooks/use-system-values'
-import { fieldValueFetchQueue } from '~/components/resources/store/field-value-fetch-queue'
 import {
   buildFieldValueKey,
   type CustomFieldValueState,
   useFieldValueStore,
 } from '~/components/resources/store/field-value-store'
 import { useResourceStore } from '~/components/resources/store/resource-store'
-import { useSettings } from '~/hooks/use-settings'
 import type { DraftLine } from './line-rows'
 import { formatCurrency } from './shared'
 
 /** Org tax rate preset (`documents.taxRates` setting, §G.1). */
-interface TaxRatePreset {
+export interface TaxRatePreset {
   id: string
   name: string
   rate: number
   isDefault?: boolean
 }
-
-const QUOTE_BILLING_ATTRS = [
-  'quote_discount_type',
-  'quote_discount_value',
-  'quote_tax_name',
-  'quote_tax_rate',
-]
-
-// Invoice mode also reads the ledger-sync mirrors (`invoice_amount_paid`/`invoice_balance`,
-// money MI1 build spec §J.2) — appended to the same billing fetch, one document.
-const INVOICE_BILLING_ATTRS = [
-  'invoice_discount_type',
-  'invoice_discount_value',
-  'invoice_tax_name',
-  'invoice_tax_rate',
-  'invoice_amount_paid',
-  'invoice_balance',
-]
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Totals data — all lines' qty/unitPrice/taxable, reactively from the store
@@ -75,8 +55,7 @@ const INVOICE_BILLING_ATTRS = [
  * Subscribe to every REAL line's qty/unitPrice/taxable/optional/optionalSelected and shape
  * them as `LineForTotals[]`, then append local phantom draft lines' equivalent values
  * (`draftLines` — pure client state, no store fetch needed) so the optimistic footer counts
- * in-progress rows too. Queues its own store fetches — virtualized rows outside the viewport
- * never mount their cells, so the footer can't rely on cell subscriptions alone.
+ * in-progress rows too. `LineBuilder` preloads these keys; the footer only subscribes.
  */
 function useLinesForTotals(lineRecordIds: RecordId[], draftLines: DraftLine[]): LineForTotals[] {
   const systemAttributeMap = useResourceStore((s) => s.systemAttributeMap)
@@ -85,20 +64,6 @@ function useLinesForTotals(lineRecordIds: RecordId[], draftLines: DraftLine[]): 
   const taxableRef = systemAttributeMap.line_item_taxable
   const optionalRef = systemAttributeMap.line_item_optional
   const optionalSelectedRef = systemAttributeMap.line_item_optional_selected
-
-  useEffect(() => {
-    if (!qtyRef || !priceRef || !taxableRef || !optionalRef || !optionalSelectedRef) return
-    if (lineRecordIds.length === 0) return
-    fieldValueFetchQueue.queueFetchBatch(
-      lineRecordIds.flatMap((recordId) => [
-        { recordId, fieldRef: qtyRef },
-        { recordId, fieldRef: priceRef },
-        { recordId, fieldRef: taxableRef },
-        { recordId, fieldRef: optionalRef },
-        { recordId, fieldRef: optionalSelectedRef },
-      ])
-    )
-  }, [lineRecordIds, qtyRef, priceRef, taxableRef, optionalRef, optionalSelectedRef])
 
   const keys = useMemo(() => {
     if (!qtyRef || !priceRef || !taxableRef || !optionalRef || !optionalSelectedRef) return []
@@ -137,7 +102,7 @@ function useLinesForTotals(lineRecordIds: RecordId[], draftLines: DraftLine[]): 
       keys.map((k) => {
         // formatToRawValue returns arrays for array-stored values — collapse to
         // the scalar (the same treatment useSystemValues applies).
-        const scalar = (raw: unknown, fieldType: FieldType): unknown => {
+        const scalar = (raw: unknown, fieldType: FieldTypeValue): unknown => {
           if (raw === undefined) return undefined
           const formatted = formatToRawValue(raw, fieldType)
           return Array.isArray(formatted) ? formatted[0] : formatted
@@ -173,20 +138,27 @@ function useLinesForTotals(lineRecordIds: RecordId[], draftLines: DraftLine[]): 
 // ─────────────────────────────────────────────────────────────────────────────
 
 export function TotalsFooter({
-  documentRecordId,
   documentType,
   readOnly,
   currencyCode,
   lineRecordIds,
   draftLines,
+  billingValues,
+  taxRates,
+  onUpdateDiscount,
+  onUpdateTax,
 }: {
-  documentRecordId: RecordId
   documentType: 'quote' | 'work_order' | 'invoice'
   readOnly: boolean
   currencyCode: string
   lineRecordIds: RecordId[]
   /** Local phantom draft lines not yet persisted — counted optimistically (money plan 18 §3). */
   draftLines: DraftLine[]
+  /** Parent-document billing values fetched once by `LineBuilder`. */
+  billingValues: Record<string, unknown>
+  taxRates: TaxRatePreset[]
+  onUpdateDiscount: (type: DiscountType | null, value: number | null) => void
+  onUpdateTax: (name: string | null, rate: number | null) => void
 }) {
   const isQuote = documentType === 'quote'
   const isInvoice = documentType === 'invoice'
@@ -195,18 +167,7 @@ export function TotalsFooter({
   const hasBilling = isQuote || isInvoice
   const prefix = isInvoice ? 'invoice' : 'quote'
   const lines = useLinesForTotals(lineRecordIds, draftLines)
-  const { saveMultipleAsync } = useSaveFieldValue()
-  const { getSetting } = useSettings({})
   const [discountDraft, setDiscountDraft] = useState<string | null>(null)
-
-  // Billing inputs — the document's own mirrored fields, read through the same optimistic
-  // store the discount/tax editors write to, so the footer recomputes instantly while the
-  // roundtrip (and the §F.2/§G.1 hook) settles.
-  const { values: billingValues } = useSystemValues(
-    documentRecordId,
-    isInvoice ? INVOICE_BILLING_ATTRS : QUOTE_BILLING_ATTRS,
-    { autoFetch: hasBilling, enabled: hasBilling }
-  )
 
   const discountType =
     (billingValues[`${prefix}_discount_type`] as DiscountType | null | undefined) ?? null
@@ -225,27 +186,18 @@ export function TotalsFooter({
   const billing: DocumentBillingInputs = hasBilling ? { discountType, discountValue, taxRate } : {}
   const totals = computeDocumentTotals(lines, billing)
 
-  const taxRates = ((getSetting('documents.taxRates') as TaxRatePreset[] | null) ?? []).filter(
-    (r) => r && typeof r.rate === 'number'
-  )
   const selectedTaxId =
     taxRate !== null
       ? (taxRates.find((r) => r.rate === taxRate && r.name === taxName)?.id ?? '__custom__')
       : '__none__'
 
   const writeDiscount = (type: DiscountType | null, value: number | null) => {
-    void saveMultipleAsync(documentRecordId, [
-      { fieldId: `${prefix}_discount_type`, value: type, fieldType: FieldType.SINGLE_SELECT },
-      { fieldId: `${prefix}_discount_value`, value, fieldType: FieldType.NUMBER },
-    ])
+    onUpdateDiscount(type, value)
   }
 
   const writeTax = (preset: TaxRatePreset | null) => {
     // Snapshot name+rate at pick — editing a preset later never rewrites documents.
-    void saveMultipleAsync(documentRecordId, [
-      { fieldId: `${prefix}_tax_name`, value: preset?.name ?? null, fieldType: FieldType.TEXT },
-      { fieldId: `${prefix}_tax_rate`, value: preset?.rate ?? null, fieldType: FieldType.NUMBER },
-    ])
+    onUpdateTax(preset?.name ?? null, preset?.rate ?? null)
   }
 
   // Amount discounts are stored as integer cents (CURRENCY convention); percent

@@ -16,8 +16,10 @@
 // `/` on an empty cell opens the catalog picker.
 //
 // Data flow:
-// - Line cell reads: `useSystemValues` (field-value store, autoFetch).
-// - Line cell writes: `useSaveFieldValue` with systemAttribute keys — the
+// - `LineBuilder` preloads the displayed line-id × field matrix once through
+//   `useFieldValueSyncer`; each `LineRow` keeps one passive store subscription.
+// - Cells emit semantic patches to the builder's single `useSaveFieldValue`
+//   owner. Optimistic store writes repaint rows/totals immediately; the
 //   server-side field-change hooks (§F.2) recompute lineTotal + quote totals
 //   and publish via realtime back into the same store.
 // - Totals footer: pure client math via `computeDocumentTotals` /
@@ -69,6 +71,9 @@ import { restrictToVerticalAxis } from '@dnd-kit/modifiers'
 import { arrayMove, SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { Plus, ReceiptText } from 'lucide-react'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import type { CatalogGroup } from '~/components/money/hooks/use-catalog-groups'
+import { useCatalogGroups } from '~/components/money/hooks/use-catalog-groups'
+import { useCatalogItems } from '~/components/money/hooks/use-catalog-items'
 import {
   type RecordId,
   type RecordMeta,
@@ -77,12 +82,14 @@ import {
   useResource,
   useResourceFields,
 } from '~/components/resources'
+import { useFieldValueSyncer } from '~/components/resources/hooks/use-field-value-syncer'
 import { useSaveFieldValue } from '~/components/resources/hooks/use-save-field-value'
 import { useSeedCreatedRecord } from '~/components/resources/hooks/use-seed-created-record'
 import { useSystemValues } from '~/components/resources/hooks/use-system-values'
+import { useResourceStore } from '~/components/resources/store/resource-store'
 import { useSettings } from '~/hooks/use-settings'
 import { api } from '~/trpc/react'
-import type { CatalogGroupPick, CatalogGroupPickLine } from './catalog-picker'
+import { type ResolvedCatalogGroup, resolveCatalogGroup } from './catalog-group-resolver'
 import {
   type CategoryOption,
   type DraftLine,
@@ -92,6 +99,14 @@ import {
   LineRow,
   relKeyForDocumentType,
 } from './line-rows'
+import {
+  BASE_LINE_SYSTEM_ATTRIBUTES,
+  diffLineValues,
+  type LinePatch,
+  type LineValues,
+  linePatchToFieldValues,
+  QUOTE_LINE_SYSTEM_ATTRIBUTES,
+} from './line-values'
 import { TotalsFooter } from './totals-footer'
 import { useLineHotkeys } from './use-line-hotkeys'
 import { useLineNav } from './use-line-nav'
@@ -119,10 +134,11 @@ const PAGE_SIZE = 100
 const INITIAL_DRAFT_COUNT = 3
 /** Stable sort ref — `useRecordList` keys its cache off this object. */
 const LINE_SORT = [{ id: 'sortOrder', desc: false }]
+/** Every fixed line-builder field is visible to the shared syncer. */
+const LINE_FIELD_VISIBILITY = {}
 
-// Document billing mirrors read for the group-explode set-if-unset checks (steps 4–5,
-// money 09-product-groups.md "Line-builder consumption") — the same attrs `TotalsFooter`
-// reads, minus the invoice-only ledger-sync mirrors this doesn't need.
+// Document billing mirrors read once for group set-if-unset checks and `TotalsFooter`.
+// Invoice mode also carries its read-only paid/balance ledger mirrors.
 const QUOTE_BILLING_ATTRS = [
   'quote_discount_type',
   'quote_discount_value',
@@ -134,6 +150,8 @@ const INVOICE_BILLING_ATTRS = [
   'invoice_discount_value',
   'invoice_tax_name',
   'invoice_tax_rate',
+  'invoice_amount_paid',
+  'invoice_balance',
 ]
 
 /** Org tax rate preset (`documents.taxRates` setting, money MQ1 build spec §G.1). */
@@ -174,6 +192,18 @@ export function LineBuilder({
       color: o.color,
     }))
   }, [lineItemFields])
+  // Catalog data is shared by every row picker. Editable builders preload it
+  // once so opening a picker or resolving a product group never starts a fetch.
+  const catalogEnabled = !!entityDefinitionId && !readOnly
+  const {
+    items: catalogItems,
+    itemMap: catalogItemMap,
+    isLoading: catalogItemsLoading,
+  } = useCatalogItems({ enabled: catalogEnabled })
+  const { groups: catalogGroups, isLoading: catalogGroupsLoading } = useCatalogGroups({
+    enabled: catalogEnabled,
+  })
+  const catalogLoading = catalogItemsLoading || catalogGroupsLoading
   const { getSetting } = useSettings({})
   const currencyCode = (getSetting('organization.currency') as string | null) ?? 'USD'
 
@@ -186,8 +216,12 @@ export function LineBuilder({
     documentType === 'invoice' ? INVOICE_BILLING_ATTRS : QUOTE_BILLING_ATTRS,
     { autoFetch: hasBilling, enabled: hasBilling }
   )
-  const taxRates = ((getSetting('documents.taxRates') as TaxRatePreset[] | null) ?? []).filter(
-    (r) => r && typeof r.rate === 'number'
+  const taxRates = useMemo(
+    () =>
+      ((getSetting('documents.taxRates') as TaxRatePreset[] | null) ?? []).filter(
+        (rate) => rate && typeof rate.rate === 'number'
+      ),
+    [getSetting]
   )
 
   const [orderOverride, setOrderOverride] = useState<string[] | null>(null)
@@ -340,7 +374,7 @@ export function LineBuilder({
     )
     initialDraftIdsRef.current = new Set(initialDrafts.map((draft) => draft.draftId))
     setDrafts(initialDrafts)
-    setLastAddedDraftId(initialDrafts[0].draftId)
+    setLastAddedDraftId(initialDrafts[0]?.draftId ?? null)
   }, [entityDefinitionId, readOnly, displayRecords.length])
 
   // When persisted lines arrive, hide/remove the initial loading placeholders
@@ -365,6 +399,23 @@ export function LineBuilder({
     [entityDefinitionId, displayRecords]
   )
 
+  // Match records-view's fetch ownership: queue the complete displayed
+  // record-id × line-field matrix once, while rows subscribe passively.
+  const systemAttributeMap = useResourceStore((state) => state.systemAttributeMap)
+  const lineFieldIds = useMemo(() => {
+    const attributes =
+      documentType === 'quote' ? QUOTE_LINE_SYSTEM_ATTRIBUTES : BASE_LINE_SYSTEM_ATTRIBUTES
+    return attributes
+      .map((attribute) => systemAttributeMap[attribute])
+      .filter((fieldId): fieldId is NonNullable<typeof fieldId> => !!fieldId)
+  }, [documentType, systemAttributeMap])
+  useFieldValueSyncer({
+    recordIds: lineRecordIds,
+    columnVisibility: LINE_FIELD_VISIBILITY,
+    resourceFieldIds: lineFieldIds,
+    enabled: lineRecordIds.length > 0 && lineFieldIds.length > 0,
+  })
+
   // Mutations (stable fns destructured — the wrapper objects churn per render).
   const reorderLines = api.money.reorderLines.useMutation()
   const recomputeTotals = api.money.recomputeTotals.useMutation()
@@ -377,8 +428,54 @@ export function LineBuilder({
   const { mutateAsync: deleteInvoiceLineMutateAsync } = deleteInvoiceLine
   const { mutateAsync: createMutateAsync } = createRecord
 
-  const { saveMultipleAsync } = useSaveFieldValue()
+  const { saveFieldValue, saveMultipleAsync } = useSaveFieldValue()
   const { seedCreatedRecord } = useSeedCreatedRecord()
+
+  /** Persist one semantic line patch through the single optimistic save owner. */
+  const updateLine = useCallback(
+    (recordId: RecordId, patch: LinePatch) => {
+      const updates = linePatchToFieldValues(patch)
+      if (updates.length === 0) return
+      if (updates.length === 1) {
+        const update = updates[0]
+        if (!update) return
+        saveFieldValue(recordId, update.fieldId, update.value, update.fieldType)
+        return
+      }
+      void saveMultipleAsync(recordId, updates)
+    },
+    [saveFieldValue, saveMultipleAsync]
+  )
+
+  const updateDiscount = useCallback(
+    (type: 'percent' | 'amount' | null, value: number | null) => {
+      if (!hasBilling) return
+      void saveMultipleAsync(docRecordId, [
+        {
+          fieldId: `${billingPrefix}_discount_type`,
+          value: type,
+          fieldType: FieldType.SINGLE_SELECT,
+        },
+        {
+          fieldId: `${billingPrefix}_discount_value`,
+          value,
+          fieldType: FieldType.NUMBER,
+        },
+      ])
+    },
+    [hasBilling, saveMultipleAsync, docRecordId, billingPrefix]
+  )
+
+  const updateTax = useCallback(
+    (name: string | null, rate: number | null) => {
+      if (!hasBilling) return
+      void saveMultipleAsync(docRecordId, [
+        { fieldId: `${billingPrefix}_tax_name`, value: name, fieldType: FieldType.TEXT },
+        { fieldId: `${billingPrefix}_tax_rate`, value: rate, fieldType: FieldType.NUMBER },
+      ])
+    },
+    [hasBilling, saveMultipleAsync, docRecordId, billingPrefix]
+  )
 
   const deleteLine = useCallback(
     async (lineId: string) => {
@@ -439,7 +536,7 @@ export function LineBuilder({
    * completion handler diffs + flushes them once it resolves.
    */
   const createDraft = useCallback(
-    async (draftId: string, overrides: Partial<DraftLine> = {}) => {
+    async (draftId: string, overrides: LinePatch = {}) => {
       // The first real edit promotes an initial loading placeholder to a normal
       // draft, so an arriving persisted list cannot remove the user's work.
       initialDraftIdsRef.current.delete(draftId)
@@ -449,9 +546,10 @@ export function LineBuilder({
       }
 
       const draftIndex = draftsRef.current.findIndex((d) => d.draftId === draftId)
-      if (draftIndex === -1 || !entityDefinitionId) return
+      const currentDraft = draftsRef.current[draftIndex]
+      if (!currentDraft || !entityDefinitionId) return
       const snapshot: DraftLine = {
-        ...draftsRef.current[draftIndex],
+        ...currentDraft,
         ...overrides,
         creating: true,
       }
@@ -486,121 +584,13 @@ export function LineBuilder({
           recordId: result.recordId,
           listKey,
           instance: result.instance,
-          values: [
-            { fieldId: 'line_item_name', value: snapshot.name, fieldType: FieldType.TEXT },
-            {
-              fieldId: 'line_item_description',
-              value: snapshot.description,
-              fieldType: FieldType.TEXT,
-            },
-            {
-              fieldId: 'line_item_category',
-              value: snapshot.category,
-              fieldType: FieldType.SINGLE_SELECT,
-            },
-            { fieldId: 'line_item_qty', value: snapshot.qty, fieldType: FieldType.NUMBER },
-            {
-              fieldId: 'line_item_unit',
-              value: snapshot.unit,
-              fieldType: FieldType.SINGLE_SELECT,
-            },
-            {
-              fieldId: 'line_item_unit_price',
-              value: snapshot.unitPriceCents,
-              fieldType: FieldType.CURRENCY,
-            },
-            {
-              fieldId: 'line_item_taxable',
-              value: snapshot.taxable,
-              fieldType: FieldType.CHECKBOX,
-            },
-            {
-              fieldId: 'line_item_optional',
-              value: snapshot.optional,
-              fieldType: FieldType.CHECKBOX,
-            },
-            {
-              fieldId: 'line_item_optional_selected',
-              value: snapshot.optionalSelected,
-              fieldType: FieldType.CHECKBOX,
-            },
-          ],
+          values: linePatchToFieldValues(snapshot),
         })
 
         // Diff whatever landed locally while the create was in flight, and
         // flush just the changed fields against the now-real record.
         const latest = draftsRef.current.find((d) => d.draftId === draftId) ?? snapshot
-        const changed: Array<{ fieldId: string; value: unknown; fieldType: FieldType }> = []
-        if (latest.name !== snapshot.name) {
-          changed.push({
-            fieldId: 'line_item_name',
-            value: latest.name,
-            fieldType: FieldType.TEXT,
-          })
-        }
-        if (latest.description !== snapshot.description) {
-          changed.push({
-            fieldId: 'line_item_description',
-            value: latest.description,
-            fieldType: FieldType.TEXT,
-          })
-        }
-        if (latest.category !== snapshot.category) {
-          changed.push({
-            fieldId: 'line_item_category',
-            value: latest.category,
-            fieldType: FieldType.SINGLE_SELECT,
-          })
-        }
-        if (latest.taxable !== snapshot.taxable) {
-          changed.push({
-            fieldId: 'line_item_taxable',
-            value: latest.taxable,
-            fieldType: FieldType.CHECKBOX,
-          })
-        }
-        if (latest.qty !== snapshot.qty) {
-          changed.push({
-            fieldId: 'line_item_qty',
-            value: latest.qty,
-            fieldType: FieldType.NUMBER,
-          })
-        }
-        if (latest.unit !== snapshot.unit) {
-          changed.push({
-            fieldId: 'line_item_unit',
-            value: latest.unit,
-            fieldType: FieldType.SINGLE_SELECT,
-          })
-        }
-        if (latest.unitPriceCents !== snapshot.unitPriceCents) {
-          changed.push({
-            fieldId: 'line_item_unit_price',
-            value: latest.unitPriceCents,
-            fieldType: FieldType.CURRENCY,
-          })
-        }
-        if (latest.optional !== snapshot.optional) {
-          changed.push({
-            fieldId: 'line_item_optional',
-            value: latest.optional,
-            fieldType: FieldType.CHECKBOX,
-          })
-        }
-        if (latest.optionalSelected !== snapshot.optionalSelected) {
-          changed.push({
-            fieldId: 'line_item_optional_selected',
-            value: latest.optionalSelected,
-            fieldType: FieldType.CHECKBOX,
-          })
-        }
-        if (latest.catalogItemRecordId !== snapshot.catalogItemRecordId) {
-          changed.push({
-            fieldId: 'line_item_catalog_item',
-            value: latest.catalogItemRecordId,
-            fieldType: FieldType.RELATIONSHIP,
-          })
-        }
+        const changed = linePatchToFieldValues(diffLineValues(snapshot, latest))
         if (changed.length > 0) {
           await saveMultipleAsync(result.recordId, changed)
         }
@@ -646,18 +636,11 @@ export function LineBuilder({
    * "group-exploded lines start required" rule, money plan 18 §3).
    */
   const applyGroupPickRestAndBilling = useCallback(
-    (pick: CatalogGroupPick, rest: CatalogGroupPickLine[]) => {
+    (pick: ResolvedCatalogGroup, rest: LineValues[]) => {
       if (rest.length > 0) {
         const bundleDrafts: DraftLine[] = rest.map((line) => ({
           ...freshDraft(generateId()),
-          name: line.name,
-          description: line.description,
-          category: line.category,
-          taxable: line.taxable,
-          qty: line.qty,
-          unit: line.unit,
-          unitPriceCents: line.unitPrice,
-          catalogItemRecordId: toRecordId('catalog_item', line.catalogItemId),
+          ...line,
         }))
         // Write through draftsRef (normally render-synced) so the sequential
         // createDraft calls below can resolve these drafts before React
@@ -680,18 +663,7 @@ export function LineBuilder({
           | null
           | undefined
         if (pick.discountType && pick.discountValue !== null && currentDiscountValue == null) {
-          void saveMultipleAsync(docRecordId, [
-            {
-              fieldId: `${billingPrefix}_discount_type`,
-              value: pick.discountType,
-              fieldType: FieldType.SINGLE_SELECT,
-            },
-            {
-              fieldId: `${billingPrefix}_discount_value`,
-              value: pick.discountValue,
-              fieldType: FieldType.NUMBER,
-            },
-          ])
+          updateDiscount(pick.discountType, pick.discountValue)
         }
 
         const currentTaxRate = billingValues[`${billingPrefix}_tax_rate`] as
@@ -701,32 +673,11 @@ export function LineBuilder({
         if (pick.taxRateId && currentTaxRate == null) {
           // A deleted preset id silently no-ops — no tax write.
           const preset = taxRates.find((r) => r.id === pick.taxRateId)
-          if (preset) {
-            void saveMultipleAsync(docRecordId, [
-              {
-                fieldId: `${billingPrefix}_tax_name`,
-                value: preset.name,
-                fieldType: FieldType.TEXT,
-              },
-              {
-                fieldId: `${billingPrefix}_tax_rate`,
-                value: preset.rate,
-                fieldType: FieldType.NUMBER,
-              },
-            ])
-          }
+          if (preset) updateTax(preset.name, preset.rate)
         }
       }
     },
-    [
-      docRecordId,
-      hasBilling,
-      billingPrefix,
-      billingValues,
-      taxRates,
-      saveMultipleAsync,
-      createDraft,
-    ]
+    [hasBilling, billingPrefix, billingValues, taxRates, updateDiscount, updateTax, createDraft]
   )
 
   /**
@@ -735,73 +686,47 @@ export function LineBuilder({
    * entries 2…N append as new lines via {@link applyGroupPickRestAndBilling}.
    */
   const handleGroupPick = useCallback(
-    async (recordId: RecordId, pick: CatalogGroupPick) => {
+    (recordId: RecordId, group: CatalogGroup) => {
+      const pick = resolveCatalogGroup(group, catalogItemMap)
       if (pick.skippedCount > 0) {
         console.warn(`Catalog group "${pick.name}" skipped ${pick.skippedCount} dangling item(s).`)
       }
       if (pick.lines.length === 0) return
 
       const [first, ...rest] = pick.lines
+      if (!first) return
 
       // Step 1: entry #1 fills the CURRENT line — the handlePick shape (catalog-picker.tsx)
       // plus qty, which the single-item pick leaves untouched. Resets optional/optionalSelected
       // to required (money plan 18 §3) — same "pick overwrites the line's identity" precedent
       // as taxable already follows.
-      void saveMultipleAsync(recordId, [
-        { fieldId: 'line_item_name', value: first.name, fieldType: FieldType.TEXT },
-        { fieldId: 'line_item_description', value: first.description, fieldType: FieldType.TEXT },
-        {
-          fieldId: 'line_item_category',
-          value: first.category,
-          fieldType: FieldType.SINGLE_SELECT,
-        },
-        { fieldId: 'line_item_taxable', value: first.taxable, fieldType: FieldType.CHECKBOX },
-        { fieldId: 'line_item_unit_price', value: first.unitPrice, fieldType: FieldType.CURRENCY },
-        { fieldId: 'line_item_unit', value: first.unit, fieldType: FieldType.SINGLE_SELECT },
-        { fieldId: 'line_item_qty', value: first.qty, fieldType: FieldType.NUMBER },
-        { fieldId: 'line_item_optional', value: false, fieldType: FieldType.CHECKBOX },
-        { fieldId: 'line_item_optional_selected', value: true, fieldType: FieldType.CHECKBOX },
-        {
-          fieldId: 'line_item_catalog_item',
-          value: toRecordId('catalog_item', first.catalogItemId),
-          fieldType: FieldType.RELATIONSHIP,
-        },
-      ])
+      updateLine(recordId, first)
 
       // Known v1 edge: picking on a middle line still appends `rest` at the list end.
       applyGroupPickRestAndBilling(pick, rest)
     },
-    [saveMultipleAsync, applyGroupPickRestAndBilling]
+    [catalogItemMap, updateLine, applyGroupPickRestAndBilling]
   )
 
   /** Same explode intent as {@link handleGroupPick}, targeting a phantom draft. */
   const handleGroupPickDraft = useCallback(
-    async (draftId: string, pick: CatalogGroupPick) => {
+    (draftId: string, group: CatalogGroup) => {
+      const pick = resolveCatalogGroup(group, catalogItemMap)
       if (pick.skippedCount > 0) {
         console.warn(`Catalog group "${pick.name}" skipped ${pick.skippedCount} dangling item(s).`)
       }
       if (pick.lines.length === 0) return
 
       const [first, ...rest] = pick.lines
+      if (!first) return
 
       // Step 1: entry #1's values become THIS draft's create. Catalog/group-exploded
       // lines start required (money plan 18 §3).
-      void createDraft(draftId, {
-        name: first.name,
-        description: first.description,
-        category: first.category,
-        taxable: first.taxable,
-        unitPriceCents: first.unitPrice,
-        unit: first.unit,
-        qty: first.qty,
-        catalogItemRecordId: toRecordId('catalog_item', first.catalogItemId),
-        optional: false,
-        optionalSelected: true,
-      })
+      void createDraft(draftId, first)
 
       applyGroupPickRestAndBilling(pick, rest)
     },
-    [createDraft, applyGroupPickRestAndBilling]
+    [catalogItemMap, createDraft, applyGroupPickRestAndBilling]
   )
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }))
@@ -956,6 +881,11 @@ export function LineBuilder({
                     readOnly={readOnly}
                     currencyCode={currencyCode}
                     documentType={documentType}
+                    catalogItems={catalogItems}
+                    catalogGroups={catalogGroups}
+                    catalogItemMap={catalogItemMap}
+                    catalogLoading={catalogLoading}
+                    onUpdateLine={updateLine}
                     deleteLine={deleteLine}
                     onSelectGroup={handleGroupPick}
                   />
@@ -976,6 +906,10 @@ export function LineBuilder({
                 categoryOptions={categoryOptions}
                 currencyCode={currencyCode}
                 documentType={documentType}
+                catalogItems={catalogItems}
+                catalogGroups={catalogGroups}
+                catalogItemMap={catalogItemMap}
+                catalogLoading={catalogLoading}
                 deleteDraft={deleteDraft}
                 createDraft={createDraft}
                 onSelectGroup={handleGroupPickDraft}
@@ -985,12 +919,15 @@ export function LineBuilder({
       </div>
 
       <TotalsFooter
-        documentRecordId={docRecordId}
         documentType={documentType}
         readOnly={readOnly}
         currencyCode={currencyCode}
         lineRecordIds={lineRecordIds}
         draftLines={visibleDrafts}
+        billingValues={billingValues}
+        taxRates={taxRates}
+        onUpdateDiscount={updateDiscount}
+        onUpdateTax={updateTax}
       />
     </div>
   )
