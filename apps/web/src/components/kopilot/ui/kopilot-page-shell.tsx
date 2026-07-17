@@ -90,7 +90,7 @@ export function KopilotPageShell({ sessionId }: KopilotPageShellProps) {
       <MainPage>
         <MainPageHeader>
           <MainPageBreadcrumb>
-            <MainPageBreadcrumbItem title='Chats' href='/app/kopilot/new' first last />
+            <MainPageBreadcrumbItem title='Chats' href='/app/kopilot/new' />
           </MainPageBreadcrumb>
         </MainPageHeader>
         <MainPageContent>
@@ -131,10 +131,9 @@ export function KopilotPageShell({ sessionId }: KopilotPageShellProps) {
           </Button>
         }>
         <MainPageBreadcrumb>
-          <MainPageBreadcrumbItem title='Chats' href='/app/kopilot/new' first />
+          <MainPageBreadcrumbItem title='Chats' href='/app/kopilot/new' />
           <MainPageBreadcrumbDropdown
             label={<span className='max-w-[24ch] truncate'>{breadcrumbLabel}</span>}
-            last
             popover
             contentClassName='w-64'>
             <KopilotSessionList

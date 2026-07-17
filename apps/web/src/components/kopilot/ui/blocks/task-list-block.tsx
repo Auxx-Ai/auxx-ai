@@ -14,10 +14,15 @@ import { BlockCard } from './block-card'
 import type { BlockRendererProps } from './block-registry'
 import type { TaskListData } from './block-schemas'
 import { TaskItemSkeleton, TaskRowLoading, TaskRowUnavailable } from './task-item-skeleton'
+import { useStreamSafeIds } from './use-stream-safe-ids'
 
-export function TaskListBlock({ data, skipEntrance }: BlockRendererProps<TaskListData>) {
+export function TaskListBlock({
+  data,
+  lastValueTruncated,
+  skipEntrance,
+}: BlockRendererProps<TaskListData>) {
   const router = useRouter()
-  const taskIds = data.taskIds ?? []
+  const taskIds = useStreamSafeIds(data.taskIds ?? [], lastValueTruncated)
   const snapshot = data.snapshot
   const { tasksByKey, notFoundIds } = useTasksByIds({ taskIds, enabled: taskIds.length > 0 })
   const notFoundSet = useMemo(() => new Set(notFoundIds), [notFoundIds])

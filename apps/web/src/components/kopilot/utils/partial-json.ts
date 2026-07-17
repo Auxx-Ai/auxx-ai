@@ -147,6 +147,7 @@ export function stripComments(text: string): string {
 }
 
 export function parse(s: string | undefined | null): any {
+  parse.lastStringUnterminated = false
   if (s === undefined) {
     return undefined
   }
@@ -177,6 +178,12 @@ export function parse(s: string | undefined | null): any {
 
 export namespace parse {
   export let lastParseReminding: string | undefined
+  /**
+   * True when the most recent parse() call hit an unterminated string literal —
+   * i.e. the input ends mid-string, so the last parsed string value is a
+   * truncated prefix of whatever is still streaming in.
+   */
+  export let lastStringUnterminated: boolean | undefined
   export const onExtraToken: (text: string, data: any, reminding: string) => void = (
     text,
     data,
@@ -292,6 +299,7 @@ function parseString(s: string): ParseResult<string> {
       return [JSON.parse(str), s]
     }
   }
+  parse.lastStringUnterminated = true
   return [JSON.parse(`${fixEscapedCharacters(s)}"`), '']
 }
 
@@ -314,6 +322,7 @@ function parseSingleQuoteString(s: string): ParseResult<string> {
       return [JSON.parse(`"${str.slice(1, -1)}"`), s]
     }
   }
+  parse.lastStringUnterminated = true
   return [JSON.parse(`"${fixEscapedCharacters(s.slice(1))}"`), '']
 }
 
@@ -342,6 +351,7 @@ function parseBacktickString(s: string): ParseResult<string> {
     }
     buffer.push(c)
   }
+  parse.lastStringUnterminated = true
   return [buffer.join(''), s.slice(1)]
 }
 

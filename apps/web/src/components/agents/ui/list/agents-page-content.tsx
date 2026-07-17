@@ -21,7 +21,7 @@ export function AgentsPageContent() {
       <MainPageHeader action={<CreateAgentButton />}>
         <MainPageBreadcrumb>
           <MainPageBreadcrumbItem title='Kopilot' href='/app/kopilot/new' />
-          <MainPageBreadcrumbItem title='Agents' last />
+          <MainPageBreadcrumbItem title='Agents' />
         </MainPageBreadcrumb>
       </MainPageHeader>
 

@@ -31,7 +31,7 @@ function DashboardsPageContent() {
     <MainPage>
       <MainPageHeader action={<CreateDashboardButton registerShortcut />}>
         <MainPageBreadcrumb>
-          <MainPageBreadcrumbItem title='Dashboards' href='/app/dashboards' last />
+          <MainPageBreadcrumbItem title='Dashboards' href='/app/dashboards' />
         </MainPageBreadcrumb>
       </MainPageHeader>
 
@@ -57,7 +57,7 @@ export function DashboardsListView() {
       <MainPage>
         <MainPageHeader>
           <MainPageBreadcrumb>
-            <MainPageBreadcrumbItem title='Dashboards' href='/app/dashboards' last />
+            <MainPageBreadcrumbItem title='Dashboards' href='/app/dashboards' />
           </MainPageBreadcrumb>
         </MainPageHeader>
         <MainPageContent>

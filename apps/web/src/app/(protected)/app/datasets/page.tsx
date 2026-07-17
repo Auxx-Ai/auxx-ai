@@ -39,7 +39,7 @@ function DatasetsPageContent() {
       <MainPageHeader action={<CreateDatasetButton />}>
         <MainPageBreadcrumb>
           <MainPageBreadcrumbItem title='Datasets' href='/app/datasets' />
-          <MainPageBreadcrumbItem title='Overview' last />
+          <MainPageBreadcrumbItem title='Overview' />
         </MainPageBreadcrumb>
       </MainPageHeader>
       <MainPageContent>

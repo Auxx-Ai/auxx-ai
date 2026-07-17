@@ -27,7 +27,7 @@ export default function NewPlanPage() {
         <MainPageBreadcrumb>
           <MainPageBreadcrumbItem title='Admin' href='/admin' />
           <MainPageBreadcrumbItem title='Plans' href='/admin/plans' />
-          <MainPageBreadcrumbItem title='New Plan' href='/admin/plans/new' last />
+          <MainPageBreadcrumbItem title='New Plan' href='/admin/plans/new' />
         </MainPageBreadcrumb>
       </MainPageHeader>
       <MainPageContent>

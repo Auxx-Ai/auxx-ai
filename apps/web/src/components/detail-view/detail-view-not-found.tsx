@@ -23,7 +23,7 @@ export function DetailViewNotFound({ label, backUrl }: DetailViewNotFoundProps) 
       <MainPageHeader>
         <MainPageBreadcrumb>
           <MainPageBreadcrumbItem title={label ?? 'Records'} href={backUrl} />
-          <MainPageBreadcrumbItem title='Not Found' last />
+          <MainPageBreadcrumbItem title='Not Found' />
         </MainPageBreadcrumb>
       </MainPageHeader>
       <MainPageContent>

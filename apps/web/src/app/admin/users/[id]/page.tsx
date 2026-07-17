@@ -14,7 +14,6 @@ import {
   MainPageHeader,
 } from '@auxx/ui/components/main-page'
 import { Separator } from '@auxx/ui/components/separator'
-import { Skeleton } from '@auxx/ui/components/skeleton'
 import { type StatCardData, StatCards } from '@auxx/ui/components/stat-card'
 import {
   Table,
@@ -42,6 +41,7 @@ import {
 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { use, useState } from 'react'
+import { MainPageLoading, MainPageNotFound } from '~/components/global/main-page-states'
 import { useConfirm } from '~/hooks/use-confirm'
 import { api } from '~/trpc/react'
 /**
@@ -195,87 +195,10 @@ export default function UserDetailPage({ params }: { params: Promise<{ id: strin
           <MainPageBreadcrumb>
             <MainPageBreadcrumbItem title='Admin' href='/admin' />
             <MainPageBreadcrumbItem title='Users' href='/admin/users' />
-            <MainPageBreadcrumbItem title='Loading...' href='#' last />
+            <MainPageBreadcrumbItem title='Loading...' href='#' />
           </MainPageBreadcrumb>
         </MainPageHeader>
-        <MainPageContent>
-          <div className='flex flex-col overflow-y-auto bg-card flex-1'>
-            {/* Stat cards */}
-            <div className='grid grid-cols-3 sticky top-0 z-10'>
-              {Array.from({ length: 3 }).map((_, i) => (
-                <div key={i} className='border-b border-r last:border-r-0 p-4'>
-                  <Skeleton className='h-4 w-20 mb-2' />
-                  <Skeleton className='h-7 w-12' />
-                </div>
-              ))}
-            </div>
-            {/* Two-column cards */}
-            <div className='grid md:grid-cols-2'>
-              {/* User Information skeleton */}
-              <div className='p-6 space-y-4'>
-                <div>
-                  <Skeleton className='h-5 w-36 mb-1' />
-                  <Skeleton className='h-4 w-64' />
-                </div>
-                <div className='overflow-hidden rounded-md border'>
-                  {Array.from({ length: 5 }).map((_, i) => (
-                    <div key={i} className='flex border-b last:border-b-0'>
-                      <div className='bg-muted/50 w-32 p-2'>
-                        <Skeleton className='h-4 w-16' />
-                      </div>
-                      <div className='flex-1 p-2'>
-                        <Skeleton className='h-4 w-32' />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-              {/* Security & Settings skeleton */}
-              <div className='p-6 space-y-4'>
-                <div>
-                  <Skeleton className='h-5 w-40 mb-1' />
-                  <Skeleton className='h-4 w-56' />
-                </div>
-                <div className='overflow-hidden rounded-md border'>
-                  {Array.from({ length: 6 }).map((_, i) => (
-                    <div key={i} className='flex border-b last:border-b-0'>
-                      <div className='bg-muted/50 w-44 p-2'>
-                        <Skeleton className='h-4 w-24' />
-                      </div>
-                      <div className='flex-1 p-2'>
-                        <Skeleton className='h-4 w-16' />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-            <Separator />
-            {/* Organizations skeleton */}
-            <div className='p-6 space-y-4'>
-              <div>
-                <Skeleton className='h-5 w-32 mb-1' />
-                <Skeleton className='h-4 w-72' />
-              </div>
-              <div className='overflow-hidden rounded-md border'>
-                <div className='flex border-b bg-muted/50 p-2 gap-4'>
-                  <Skeleton className='h-4 w-16' />
-                  <Skeleton className='h-4 w-16' />
-                  <Skeleton className='h-4 w-12' />
-                  <Skeleton className='h-4 w-16' />
-                </div>
-                {Array.from({ length: 2 }).map((_, i) => (
-                  <div key={i} className='flex border-b last:border-b-0 p-2 gap-4'>
-                    <Skeleton className='h-4 w-24' />
-                    <Skeleton className='h-4 w-20' />
-                    <Skeleton className='h-5 w-14 rounded-full' />
-                    <Skeleton className='h-4 w-20' />
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        </MainPageContent>
+        <MainPageLoading />
       </MainPage>
     )
   }
@@ -287,18 +210,19 @@ export default function UserDetailPage({ params }: { params: Promise<{ id: strin
           <MainPageBreadcrumb>
             <MainPageBreadcrumbItem title='Admin' href='/admin' />
             <MainPageBreadcrumbItem title='Users' href='/admin/users' />
-            <MainPageBreadcrumbItem title='Not Found' href='#' last />
+            <MainPageBreadcrumbItem title='Not Found' href='#' />
           </MainPageBreadcrumb>
         </MainPageHeader>
-        <MainPageContent>
-          <div className='flex flex-col gap-4 items-center justify-center h-full py-12'>
-            <p className='text-muted-foreground'>User not found</p>
+        <MainPageNotFound
+          title='User not found'
+          description=''
+          action={
             <Button variant='outline' onClick={() => router.push('/admin/users')}>
               <ArrowLeft />
               Back to Users
             </Button>
-          </div>
-        </MainPageContent>
+          }
+        />
       </MainPage>
     )
   }
@@ -343,7 +267,7 @@ export default function UserDetailPage({ params }: { params: Promise<{ id: strin
           <MainPageBreadcrumb>
             <MainPageBreadcrumbItem title='Admin' href='/admin' />
             <MainPageBreadcrumbItem title='Users' href='/admin/users' />
-            <MainPageBreadcrumbItem title={getDisplayName()} href={`/admin/users/${id}`} last />
+            <MainPageBreadcrumbItem title={getDisplayName()} href={`/admin/users/${id}`} />
           </MainPageBreadcrumb>
         </MainPageHeader>
         <MainPageContent>

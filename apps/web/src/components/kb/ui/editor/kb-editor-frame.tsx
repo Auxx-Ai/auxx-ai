@@ -5,7 +5,7 @@ import { MainPage, MainPageContent } from '@auxx/ui/components/main-page'
 import { parseAsStringLiteral, useQueryState } from 'nuqs'
 import type React from 'react'
 import { useMemo } from 'react'
-import { LoadingSpinner } from '~/components/global/loading-content'
+import { MainPageLoading } from '~/components/global/main-page-states'
 import { KopilotContext } from '~/components/kopilot/context/kopilot-context'
 import { useKnowledgeBase } from '../../hooks/use-knowledge-base'
 import { ArticlesTabArrow } from '../preview/articles-tab-arrow'
@@ -46,7 +46,11 @@ export function KBEditorFrame({ knowledgeBaseId, children }: KBEditorFrameProps)
   }, [knowledgeBase, knowledgeBaseId, activePanel])
 
   if (isLoading || !knowledgeBase) {
-    return <LoadingSpinner />
+    return (
+      <MainPage>
+        <MainPageLoading />
+      </MainPage>
+    )
   }
 
   return (

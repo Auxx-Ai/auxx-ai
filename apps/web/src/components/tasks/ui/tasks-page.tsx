@@ -39,7 +39,7 @@ export function TasksPage() {
       <MainPageHeader action={<CreateTaskButton />}>
         <MainPageBreadcrumb>
           <MainPageBreadcrumbItem title='Tasks' href='/app/tasks' />
-          <MainPageBreadcrumbItem title='Overview' last />
+          <MainPageBreadcrumbItem title='Overview' />
         </MainPageBreadcrumb>
       </MainPageHeader>
 

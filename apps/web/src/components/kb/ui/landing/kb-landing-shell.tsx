@@ -83,7 +83,6 @@ export function KBLandingShell() {
           <MainPageBreadcrumbDropdown
             label='Open a knowledge base'
             icon={<Book className='size-3.5' />}
-            last
             contentClassName='w-72'>
             <KBSwitcherDropdownContent />
           </MainPageBreadcrumbDropdown>

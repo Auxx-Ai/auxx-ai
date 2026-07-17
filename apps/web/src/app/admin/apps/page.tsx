@@ -106,7 +106,7 @@ export default function AppsPage() {
         <MainPageHeader>
           <MainPageBreadcrumb>
             <MainPageBreadcrumbItem title='Admin' href='/admin' />
-            <MainPageBreadcrumbItem title='Apps' href='/admin/apps' last />
+            <MainPageBreadcrumbItem title='Apps' href='/admin/apps' />
           </MainPageBreadcrumb>
         </MainPageHeader>
         <MainPageContent>

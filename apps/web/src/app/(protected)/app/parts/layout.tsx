@@ -2,45 +2,21 @@
 
 'use client'
 
-import { Button } from '@auxx/ui/components/button'
-import { Kbd, KbdGroup } from '@auxx/ui/components/kbd'
 import {
   MainPage,
   MainPageBreadcrumb,
   MainPageBreadcrumbItem,
   MainPageHeader,
 } from '@auxx/ui/components/main-page'
-import { Package, Plus } from 'lucide-react'
+import { Package } from 'lucide-react'
 import { usePathname } from 'next/navigation'
-import { parseAsBoolean, useQueryState } from 'nuqs'
 
-function PartsLayoutHeader() {
-  const [, setCreateDialogOpen] = useQueryState('create', parseAsBoolean.withDefault(false))
-
-  return (
-    <MainPageHeader
-      action={
-        <Button size='sm' onClick={() => setCreateDialogOpen(true)}>
-          <Plus />
-          Create Part
-          <KbdGroup variant='default' size='sm'>
-            <Kbd>c</Kbd>
-            <Kbd>p</Kbd>
-          </KbdGroup>
-        </Button>
-      }>
-      <MainPageBreadcrumb>
-        <MainPageBreadcrumbItem
-          title='Parts'
-          href='/app/parts'
-          icon={<Package className='size-4' />}
-          last
-        />
-      </MainPageBreadcrumb>
-    </MainPageHeader>
-  )
-}
-
+/**
+ * Parts layout — a plain breadcrumb shell (not an `EntityRouteLayout`; parts
+ * has no Dashboard tab). `RecordsView` (mounted by `parts/page.tsx`) renders
+ * its own MainPageContent and contributes the Create button via
+ * `MainPageAction`.
+ */
 export default function PartsLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
 
@@ -56,7 +32,15 @@ export default function PartsLayout({ children }: { children: React.ReactNode })
 
   return (
     <MainPage>
-      <PartsLayoutHeader />
+      <MainPageHeader>
+        <MainPageBreadcrumb>
+          <MainPageBreadcrumbItem
+            title='Parts'
+            href='/app/parts'
+            icon={<Package className='size-4' />}
+          />
+        </MainPageBreadcrumb>
+      </MainPageHeader>
       {children}
     </MainPage>
   )

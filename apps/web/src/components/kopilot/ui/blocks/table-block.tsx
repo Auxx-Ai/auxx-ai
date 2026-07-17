@@ -11,7 +11,7 @@ import { VisuallyHidden } from '@auxx/ui/components/visually-hidden'
 import { cn } from '@auxx/ui/lib/utils'
 import { format, formatDistanceToNow } from 'date-fns'
 import { Maximize2, Minimize2 } from 'lucide-react'
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Tooltip } from '~/components/global/tooltip'
 import { ActorBadge } from '~/components/resources/ui/actor-badge'
 import { RecordBadge } from '~/components/resources/ui/record-badge'
@@ -211,11 +211,25 @@ export function ExpandButton({
   )
 }
 
-export function TableBlock({ data }: BlockRendererProps<TableBlockData>) {
+export function TableBlock({ data, lastValueTruncated }: BlockRendererProps<TableBlockData>) {
   // Default to empty arrays so partial streaming data (or a partial-JSON parse
   // result without `columns`/`rows`) renders an empty table instead of crashing.
   const columns = data.columns ?? []
-  const rows = data.rows ?? []
+  const rawRows = data.rows ?? []
+  // While the streaming JSON ends mid-string, the trailing cell's recordId /
+  // actorId may be a half-streamed prefix — render that one cell as plain text
+  // so the badge components don't fetch a truncated id. The cell's text stays
+  // visible; the badge appears once the id completes.
+  const rows = useMemo(() => {
+    if (!lastValueTruncated || rawRows.length === 0) return rawRows
+    const lastRow = rawRows[rawRows.length - 1]!
+    const lastCell = lastRow[lastRow.length - 1]
+    if (!lastCell || (!lastCell.recordId && !lastCell.actorId)) return rawRows
+    return [
+      ...rawRows.slice(0, -1),
+      [...lastRow.slice(0, -1), { ...lastCell, recordId: undefined, actorId: undefined }],
+    ]
+  }, [rawRows, lastValueTruncated])
   const [isExpanded, setIsExpanded] = useState(false)
 
   return (

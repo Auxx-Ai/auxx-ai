@@ -5,7 +5,6 @@
 import type { DocumentEntity as Document } from '@auxx/database/types'
 import { Badge } from '@auxx/ui/components/badge'
 import {
-  type DockedPanelConfig,
   MainPage,
   MainPageBreadcrumb,
   MainPageBreadcrumbItem,
@@ -20,8 +19,7 @@ import { DocumentDetailDrawer } from '~/components/datasets/documents/document-d
 import { DocumentManagement } from '~/components/datasets/documents/document-management'
 import { DatasetSearch } from '~/components/datasets/search/dataset-search'
 import { DatasetSettings } from '~/components/datasets/settings/dataset-settings'
-import { useEffectiveDockState } from '~/hooks/use-effective-dock-state'
-import { useDockStore } from '~/stores/dock-store'
+import { useDockedPanels } from '~/hooks/use-docked-panels'
 import { DatasetActions } from './dataset-actions'
 import { useDatasetDetail } from './dataset-detail-provider'
 import { DatasetHeader } from './dataset-header'
@@ -31,11 +29,6 @@ import { DatasetHeader } from './dataset-header'
  * Includes MainPage, dock logic, and drawer state management.
  */
 export function DatasetDetailContent() {
-  const isDocked = useEffectiveDockState()
-  const dockedWidth = useDockStore((state) => state.dockedWidth)
-  const setDockedWidth = useDockStore((state) => state.setDockedWidth)
-  const minWidth = useDockStore((state) => state.minWidth)
-  const maxWidth = useDockStore((state) => state.maxWidth)
   const { currentTab, setCurrentTab, dataset, documents } = useDatasetDetail()
 
   // Drawer state — synced to URL via ?id= param
@@ -65,39 +58,26 @@ export function DatasetDetailContent() {
     [setSelectedDocumentId]
   )
 
-  // Build docked panels - only show when on documents tab
-  const dockedPanels = useMemo<DockedPanelConfig[]>(() => {
-    if (!isDocked || !isDrawerOpen || !selectedDocument || !dataset || currentTab !== 'documents')
-      return []
-    return [
-      {
-        key: 'document-detail',
-        content: (
-          <DocumentDetailDrawer
-            document={selectedDocument}
-            open={isDrawerOpen}
-            onOpenChange={handleDrawerOpenChange}
-            datasetId={dataset.id}
-          />
-        ),
-        width: dockedWidth,
-        onWidthChange: setDockedWidth,
-        minWidth,
-        maxWidth,
-      },
-    ]
-  }, [
-    isDocked,
-    isDrawerOpen,
-    selectedDocument,
-    currentTab,
-    dataset,
-    handleDrawerOpenChange,
-    dockedWidth,
-    setDockedWidth,
-    minWidth,
-    maxWidth,
-  ])
+  // Docked panel only shows when on the documents tab; overlay (non-docked)
+  // mode shows regardless of tab, matching the pre-hook behavior.
+  const { dockedPanels, overlays } = useDockedPanels(
+    selectedDocument && dataset
+      ? [
+          {
+            key: 'document-detail',
+            open: { docked: isDrawerOpen && currentTab === 'documents', overlay: isDrawerOpen },
+            content: (
+              <DocumentDetailDrawer
+                document={selectedDocument}
+                open={isDrawerOpen}
+                onOpenChange={handleDrawerOpenChange}
+                datasetId={dataset.id}
+              />
+            ),
+          },
+        ]
+      : []
+  )
 
   if (!dataset) return null
 
@@ -109,7 +89,7 @@ export function DatasetDetailContent() {
       <MainPageHeader action={<DatasetActions />}>
         <MainPageBreadcrumb>
           <MainPageBreadcrumbItem title='Datasets' href='/app/datasets' />
-          <MainPageBreadcrumbItem title='Dataset Details' last />
+          <MainPageBreadcrumbItem title='Dataset Details' />
         </MainPageBreadcrumb>
       </MainPageHeader>
       <MainPageContent dockedPanels={dockedPanels}>
@@ -159,17 +139,9 @@ export function DatasetDetailContent() {
             <DatasetSettings dataset={dataset} />
           </TabsContent>
         </Tabs>
-
-        {/* Overlay drawer when NOT docked */}
-        {!isDocked && selectedDocument && isDrawerOpen && (
-          <DocumentDetailDrawer
-            document={selectedDocument}
-            open={isDrawerOpen}
-            onOpenChange={handleDrawerOpenChange}
-            datasetId={dataset.id}
-          />
-        )}
       </MainPageContent>
+
+      {overlays}
     </MainPage>
   )
 }

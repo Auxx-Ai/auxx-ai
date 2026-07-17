@@ -4,7 +4,6 @@
 import { Button } from '@auxx/ui/components/button'
 import { Input } from '@auxx/ui/components/input'
 import {
-  type DockedPanelConfig,
   MainPage,
   MainPageBreadcrumb,
   MainPageBreadcrumbItem,
@@ -24,9 +23,8 @@ import {
 import { formatDistanceToNow } from 'date-fns'
 import { ChevronLeft, ChevronRight, Search } from 'lucide-react'
 import { parseAsString, useQueryState } from 'nuqs'
-import { useMemo, useState } from 'react'
-import { useEffectiveDockState } from '~/hooks/use-effective-dock-state'
-import { useDockStore } from '~/stores/dock-store'
+import { useState } from 'react'
+import { useDockedPanels } from '~/hooks/use-docked-panels'
 import { api } from '~/trpc/react'
 import { DeveloperAccountDrawer } from './_components/developer-account-drawer'
 
@@ -42,12 +40,6 @@ export default function DeveloperAccountsPage() {
     'selectedAccountId',
     parseAsString.withDefault('')
   )
-
-  const isDocked = useEffectiveDockState()
-  const dockedWidth = useDockStore((state) => state.dockedWidth)
-  const setDockedWidth = useDockStore((state) => state.setDockedWidth)
-  const minWidth = useDockStore((state) => state.minWidth)
-  const maxWidth = useDockStore((state) => state.maxWidth)
 
   const { data: accounts, isLoading } = api.admin.getDeveloperAccounts.useQuery({
     limit: PAGE_SIZE,
@@ -81,34 +73,18 @@ export default function DeveloperAccountsPage() {
     if (!open) setSelectedAccountId(null)
   }
 
-  /** Docked panels */
-  const dockedPanels = useMemo<DockedPanelConfig[]>(() => {
-    if (!isDocked || !isDrawerOpen) return []
-    return [
-      {
-        key: 'developer-account',
-        content: (
-          <DeveloperAccountDrawer
-            account={selectedAccount}
-            open={isDrawerOpen}
-            onOpenChange={handleDrawerOpenChange}
-          />
-        ),
-        width: dockedWidth,
-        onWidthChange: setDockedWidth,
-        minWidth,
-        maxWidth,
-      },
-    ]
-  }, [
-    isDocked,
-    isDrawerOpen,
-    selectedAccount,
-    handleDrawerOpenChange,
-    dockedWidth,
-    setDockedWidth,
-    minWidth,
-    maxWidth,
+  const { dockedPanels, overlays } = useDockedPanels([
+    {
+      key: 'developer-account',
+      open: isDrawerOpen,
+      content: (
+        <DeveloperAccountDrawer
+          account={selectedAccount}
+          open={isDrawerOpen}
+          onOpenChange={handleDrawerOpenChange}
+        />
+      ),
+    },
   ])
 
   return (
@@ -117,11 +93,7 @@ export default function DeveloperAccountsPage() {
         <MainPageHeader>
           <MainPageBreadcrumb>
             <MainPageBreadcrumbItem title='Admin' href='/admin' />
-            <MainPageBreadcrumbItem
-              title='Developer Accounts'
-              href='/admin/developer-accounts'
-              last
-            />
+            <MainPageBreadcrumbItem title='Developer Accounts' href='/admin/developer-accounts' />
           </MainPageBreadcrumb>
         </MainPageHeader>
         <MainPageContent dockedPanels={dockedPanels}>
@@ -243,14 +215,7 @@ export default function DeveloperAccountsPage() {
         </MainPageContent>
       </MainPage>
 
-      {/* Drawer - overlay mode only (docked mode handled by dockedPanel above) */}
-      {!isDocked && (
-        <DeveloperAccountDrawer
-          account={selectedAccount}
-          open={isDrawerOpen}
-          onOpenChange={handleDrawerOpenChange}
-        />
-      )}
+      {overlays}
     </>
   )
 }

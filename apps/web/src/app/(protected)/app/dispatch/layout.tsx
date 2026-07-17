@@ -8,47 +8,38 @@ import {
   MainPageBreadcrumbItem,
   MainPageHeader,
 } from '@auxx/ui/components/main-page'
-import { RadioTab, RadioTabItem } from '@auxx/ui/components/radio-tab'
+import { MainPageTabs } from '@auxx/ui/components/main-page-tabs'
 import { CalendarDays, Settings } from 'lucide-react'
-import { usePathname, useRouter } from 'next/navigation'
-
-type DispatchTab = 'board' | 'settings'
 
 /**
- * Module header for `/app/dispatch/*` — the tickets-layout recipe
- * (`TicketsLayoutHeader`): a `RadioTab` switcher (Board · Settings) whose
- * active value is derived from the pathname, `router.push` on change.
+ * Module header for `/app/dispatch/*` — Board · Settings tabs via
+ * `MainPageTabs` in route mode (active tab derived from the pathname,
+ * `router.push` on select).
  */
 function DispatchLayoutHeader() {
-  const pathname = usePathname()
-  const router = useRouter()
-
-  const activeTab: DispatchTab = pathname.includes('/dispatch/settings') ? 'settings' : 'board'
-
-  const handleTabChange = (tab: DispatchTab) => {
-    router.push(tab === 'board' ? '/app/dispatch' : '/app/dispatch/settings')
-  }
-
   return (
     <MainPageHeader className='justify-start'>
       <MainPageBreadcrumb>
-        <MainPageBreadcrumbItem title='Dispatch' href='/app/dispatch' last />
+        <MainPageBreadcrumbItem title='Dispatch' href='/app/dispatch' />
       </MainPageBreadcrumb>
-      <RadioTab
-        value={activeTab}
-        onValueChange={handleTabChange}
-        size='sm'
-        radioGroupClassName='grid w-full'
-        className='border border-primary-200 flex w-full'>
-        <RadioTabItem value='board' size='sm' tooltip='Board'>
-          <CalendarDays />
-          <span className='hidden sm:inline'>Board</span>
-        </RadioTabItem>
-        <RadioTabItem value='settings' size='sm' tooltip='Settings'>
-          <Settings />
-          <span className='hidden sm:inline'>Settings</span>
-        </RadioTabItem>
-      </RadioTab>
+      <MainPageTabs
+        items={[
+          {
+            value: 'board',
+            label: 'Board',
+            icon: <CalendarDays />,
+            href: '/app/dispatch',
+            tooltip: 'Board',
+          },
+          {
+            value: 'settings',
+            label: 'Settings',
+            icon: <Settings />,
+            href: '/app/dispatch/settings',
+            tooltip: 'Settings',
+          },
+        ]}
+      />
     </MainPageHeader>
   )
 }

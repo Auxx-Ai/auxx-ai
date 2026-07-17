@@ -41,11 +41,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           <MainPage>
             <MainPageHeader>
               <MainPageBreadcrumb>
-                <MainPageBreadcrumbItem
-                  title={`Settings`}
-                  href={`/${slug}/settings/general`}
-                  last={true}
-                />
+                <MainPageBreadcrumbItem title={`Settings`} href={`/${slug}/settings/general`} />
               </MainPageBreadcrumb>
             </MainPageHeader>
 

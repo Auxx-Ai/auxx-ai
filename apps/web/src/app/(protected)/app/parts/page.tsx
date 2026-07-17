@@ -5,5 +5,5 @@
 import { RecordsView } from '~/components/records'
 
 export default function PartsPage() {
-  return <RecordsView slug='parts' basePath='/app/parts' embedded />
+  return <RecordsView slug='parts' basePath='/app/parts' />
 }

@@ -5,9 +5,9 @@
 import { RecordsView } from '~/components/records/records-view'
 
 /**
- * Tickets list page
- * Uses RecordsView in embedded mode (layout provides MainPage wrapper with RadioTab header)
+ * Tickets list page — the tickets `layout.tsx` (EntityRouteLayout) owns the
+ * MainPage shell; RecordsView renders its own MainPageContent + contributions.
  */
 export default function TicketsListPage() {
-  return <RecordsView slug='tickets' basePath='/app/tickets' embedded />
+  return <RecordsView slug='tickets' basePath='/app/tickets' />
 }

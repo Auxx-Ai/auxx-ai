@@ -119,7 +119,7 @@ export function SourceWorkspace({ sourceId }: { sourceId: string }) {
             className='hidden sm:inline-flex'
           />
           <MainPageBreadcrumbItem title='Sources' href='/app/kb?t=sources' />
-          <MainPageBreadcrumbItem title={source?.name ?? 'Source'} last />
+          <MainPageBreadcrumbItem title={source?.name ?? 'Source'} />
         </MainPageBreadcrumb>
       </MainPageHeader>
 

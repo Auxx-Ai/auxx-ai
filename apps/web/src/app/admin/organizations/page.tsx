@@ -44,7 +44,7 @@ export default function OrganizationsPage() {
         }>
         <MainPageBreadcrumb>
           <MainPageBreadcrumbItem title='Admin' href='/admin' />
-          <MainPageBreadcrumbItem title='Organizations' href='/admin/organizations' last />
+          <MainPageBreadcrumbItem title='Organizations' href='/admin/organizations' />
         </MainPageBreadcrumb>
       </MainPageHeader>
       <MainPageContent>

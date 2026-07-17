@@ -20,12 +20,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@auxx/ui/components/select'
-import { Skeleton } from '@auxx/ui/components/skeleton'
 import { Textarea } from '@auxx/ui/components/textarea'
 import { toastError } from '@auxx/ui/components/toast'
 import { ArrowLeft, Copy, Download, Save, ScanSearch, Trash2 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { use, useEffect, useState } from 'react'
+import { MainPageLoading } from '~/components/global/main-page-states'
 import CodeEditor, { CodeLanguage } from '~/components/workflow/ui/code-editor'
 import { api } from '~/trpc/react'
 
@@ -566,16 +566,10 @@ export default function WorkflowTemplateEditorPage({
           <MainPageBreadcrumb>
             <MainPageBreadcrumbItem title='Admin' href='/admin' />
             <MainPageBreadcrumbItem title='Workflow Templates' href='/admin/workflows' />
-            <MainPageBreadcrumbItem title='Loading...' last />
+            <MainPageBreadcrumbItem title='Loading...' />
           </MainPageBreadcrumb>
         </MainPageHeader>
-        <MainPageContent>
-          <div className='space-y-6 max-w-2xl'>
-            <Skeleton className='h-10 w-full' />
-            <Skeleton className='h-32 w-full' />
-            <Skeleton className='h-10 w-full' />
-          </div>
-        </MainPageContent>
+        <MainPageLoading />
       </MainPage>
     )
   }
@@ -620,7 +614,7 @@ export default function WorkflowTemplateEditorPage({
         <MainPageBreadcrumb>
           <MainPageBreadcrumbItem title='Admin' href='/admin' />
           <MainPageBreadcrumbItem title='Workflow Templates' href='/admin/workflows' />
-          <MainPageBreadcrumbItem title={isNew ? 'New Template' : template?.name || 'Edit'} last />
+          <MainPageBreadcrumbItem title={isNew ? 'New Template' : template?.name || 'Edit'} />
         </MainPageBreadcrumb>
       </MainPageHeader>
       <MainPageContent>

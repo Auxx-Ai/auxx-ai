@@ -14,8 +14,7 @@ export function AgentBreadcrumbSwitcher({ activeAgent }: AgentBreadcrumbSwitcher
   return (
     <MainPageBreadcrumbDropdown
       label={activeAgent.name ?? 'Untitled agent'}
-      icon={<AgentAvatar agent={activeAgent} size={5} className='mr-1' />}
-      last>
+      icon={<AgentAvatar agent={activeAgent} size={5} className='mr-1' />}>
       <AgentSwitcherDropdownContent activeAgentId={activeAgent.id} />
     </MainPageBreadcrumbDropdown>
   )

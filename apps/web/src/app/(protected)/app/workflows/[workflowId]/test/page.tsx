@@ -14,13 +14,13 @@ import {
   MainPageHeader,
 } from '@auxx/ui/components/main-page'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
-import { Skeleton } from '@auxx/ui/components/skeleton'
 import { Switch } from '@auxx/ui/components/switch'
 import { Textarea } from '@auxx/ui/components/textarea'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 import { ArrowLeft, TestTube2 } from 'lucide-react'
 import Link from 'next/link'
 import { use, useState } from 'react'
+import { MainPageLoading, MainPageNotFound } from '~/components/global/main-page-states'
 import { useAnalytics } from '~/hooks/use-analytics'
 import { api } from '~/trpc/react'
 
@@ -114,16 +114,11 @@ export default function TestWorkflowPage({ params }: TestWorkflowPageProps) {
         <MainPageHeader>
           <MainPageBreadcrumb>
             <MainPageBreadcrumbItem title='Workflows' href='/app/workflows' />
-            <MainPageBreadcrumbItem title={<Skeleton className='h-4 w-32' />} />
-            <MainPageBreadcrumbItem title='Test' last />
+            <MainPageBreadcrumbItem title='Loading…' />
+            <MainPageBreadcrumbItem title='Test' />
           </MainPageBreadcrumb>
         </MainPageHeader>
-        <MainPageContent>
-          <div className='p-6 space-y-4'>
-            <Skeleton className='h-8 w-64' />
-            <Skeleton className='h-64 w-full' />
-          </div>
-        </MainPageContent>
+        <MainPageLoading />
       </MainPage>
     )
   }
@@ -135,24 +130,21 @@ export default function TestWorkflowPage({ params }: TestWorkflowPageProps) {
           <MainPageBreadcrumb>
             <MainPageBreadcrumbItem title='Workflows' href='/app/workflows' />
             <MainPageBreadcrumbItem title='Not Found' />
-            <MainPageBreadcrumbItem title='Test' last />
+            <MainPageBreadcrumbItem title='Test' />
           </MainPageBreadcrumb>
         </MainPageHeader>
-        <MainPageContent>
-          <div className='p-6 text-center'>
-            <h1 className='text-2xl font-bold text-destructive mb-2'>Workflow Not Found</h1>
-            <p className='text-muted-foreground mb-4'>
-              The workflow you're trying to test doesn't exist or you don't have permission to test
-              it.
-            </p>
+        <MainPageNotFound
+          title='Workflow Not Found'
+          description="The workflow you're trying to test doesn't exist or you don't have permission to test it."
+          action={
             <Button asChild>
               <Link href='/app/workflows'>
                 <ArrowLeft className='h-4 w-4 mr-2' />
                 Back to Workflows
               </Link>
             </Button>
-          </div>
-        </MainPageContent>
+          }
+        />
       </MainPage>
     )
   }
@@ -173,7 +165,7 @@ export default function TestWorkflowPage({ params }: TestWorkflowPageProps) {
         <MainPageBreadcrumb>
           <MainPageBreadcrumbItem title='Workflows' href='/app/workflows' />
           <MainPageBreadcrumbItem title={workflow.name} href={`/app/workflows/${workflowId}`} />
-          <MainPageBreadcrumbItem title='Test' last />
+          <MainPageBreadcrumbItem title='Test' />
         </MainPageBreadcrumb>
       </MainPageHeader>
 

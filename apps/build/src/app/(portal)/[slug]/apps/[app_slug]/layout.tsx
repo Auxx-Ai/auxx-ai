@@ -109,11 +109,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                 </div>
               }>
               <MainPageBreadcrumb>
-                <MainPageBreadcrumbItem
-                  title={app.title}
-                  href={`/${slug}/apps/${appSlug}`}
-                  last={true}
-                />
+                <MainPageBreadcrumbItem title={app.title} href={`/${slug}/apps/${appSlug}`} />
               </MainPageBreadcrumb>
             </MainPageHeader>
 

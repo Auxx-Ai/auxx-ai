@@ -12,6 +12,8 @@ interface AuxxBlockProps {
   type: string
   /** Validated block data produced by the tool that emitted this block */
   data: unknown
+  /** Streaming JSON currently ends mid-string — the trailing id may be truncated */
+  lastValueTruncated?: boolean
   /** Skip entrance animation when this block has already been seen (session restore) */
   skipEntrance?: boolean
 }
@@ -21,7 +23,7 @@ interface AuxxBlockProps {
  * Zod schema registered in BLOCK_SCHEMAS; invalid data falls back to a raw JSON
  * preview so the user still sees *something* instead of a silent drop.
  */
-export function AuxxBlock({ type, data, skipEntrance }: AuxxBlockProps) {
+export function AuxxBlock({ type, data, lastValueTruncated, skipEntrance }: AuxxBlockProps) {
   const schema = BLOCK_SCHEMAS[type]
   const Renderer = getBlockRenderer(type)
 
@@ -42,7 +44,11 @@ export function AuxxBlock({ type, data, skipEntrance }: AuxxBlockProps) {
       initial={skipEntrance ? false : { opacity: 0, scale: 0.95, y: 4 }}
       animate={{ opacity: 1, scale: 1, y: 0 }}
       transition={{ type: 'spring', stiffness: 400, damping: 25 }}>
-      <Renderer data={validated} skipEntrance={skipEntrance} />
+      <Renderer
+        data={validated}
+        lastValueTruncated={lastValueTruncated}
+        skipEntrance={skipEntrance}
+      />
     </motion.div>
   )
 }
