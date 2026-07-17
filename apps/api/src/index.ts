@@ -21,6 +21,7 @@ import sdkBundles from './routes/bundles'
 import chat from './routes/chat'
 import deployments from './routes/deployments'
 import developers from './routes/developers'
+import emailEvents from './routes/email-events'
 import entitiesFindByIntegrationId from './routes/entities/find-by-integration-id'
 import entitiesFindByValue from './routes/entities/find-by-value'
 import entitiesFindContactByEmail from './routes/entities/find-contact-by-email'
@@ -37,6 +38,7 @@ import organizations from './routes/organizations'
 import recordingWebhooks from './routes/recording-webhooks'
 import settings from './routes/settings'
 import storage from './routes/storage'
+import unsubscribe from './routes/unsubscribe'
 import webhookHandlers from './routes/webhook-handlers'
 import webhooks from './routes/webhooks'
 import workflows from './routes/workflows'
@@ -98,7 +100,9 @@ async function main() {
   app.route('/api/kb', kb) // Visitor-facing KB browse/read routes (passport-gated)
   app.route('/api/v1/public/free-tool-leads', freeToolLeads) // Public lead capture from /free-tools/*
   app.route('/webhooks/recording', recordingWebhooks) // Recording bot provider webhooks (before generic /webhooks to avoid param collision)
+  app.route('/webhooks/email-events', emailEvents) // SES config-set → SNS delivery target (before generic /webhooks)
   app.route('/webhooks', webhooks) // Public webhook receiver (no /api/v1 prefix)
+  app.route('/u', unsubscribe) // Public List-Unsubscribe landing (GET confirm / RFC 8058 one-click POST)
 
   // 404 handler
   app.notFound((c) => {

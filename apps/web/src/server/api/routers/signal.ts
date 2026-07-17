@@ -3,7 +3,12 @@
 // thin wrapper over `@auxx/lib/signals`' `listSignalsForRecordKeys`; the router only resolves
 // org via `ctx.session` and unwraps the domain layer's `Result`.
 
-import { listSignalsForRecordKeys, SIGNAL_RECORD_KEYS_MAX } from '@auxx/lib/signals'
+import {
+  getSignalRollup,
+  listSignals,
+  listSignalsForRecordKeys,
+  SIGNAL_RECORD_KEYS_MAX,
+} from '@auxx/lib/signals'
 import { TRPCError } from '@trpc/server'
 import { z } from 'zod'
 import { createTRPCRouter, protectedProcedure } from '~/server/api/trpc'
@@ -28,6 +33,64 @@ export const signalRouter = createTRPCRouter({
         input.recordKeys,
         input.limit
       )
+      if (!result.ok) {
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: result.error.message,
+        })
+      }
+      return result.value
+    }),
+
+  /**
+   * General-purpose, keyset-paginated signal feed — optionally scoped to `recordKeys` and/or
+   * filtered by kind/subtype/date range — the read surface behind a future signals inbox/filter
+   * view (plans/signals/01-signal-store.md "Read surfaces (v1)").
+   */
+  list: protectedProcedure
+    .input(
+      z.object({
+        recordKeys: z.array(z.string()).max(SIGNAL_RECORD_KEYS_MAX).optional(),
+        filters: z
+          .object({
+            kinds: z.array(z.string()).optional(),
+            subtypes: z.array(z.string()).optional(),
+            occurredAfter: z.date().optional(),
+            occurredBefore: z.date().optional(),
+            includeBot: z.boolean().optional(),
+            contactEntityInstanceId: z.string().optional(),
+          })
+          .optional(),
+        cursor: z.string().optional(),
+        limit: z.number().int().min(1).max(200).default(50),
+      })
+    )
+    .query(async ({ ctx, input }) => {
+      const result = await listSignals({
+        db: ctx.db,
+        organizationId: ctx.session.organizationId,
+        recordKeys: input.recordKeys,
+        filters: input.filters,
+        cursor: input.cursor,
+        limit: input.limit,
+      })
+      if (!result.ok) {
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: result.error.message,
+        })
+      }
+      return result.value
+    }),
+
+  /**
+   * The `EntitySignalRollup` row for one entity instance (header chips/digest renderer/
+   * suppression checks) — `null` when no signal has ever been recorded for it.
+   */
+  rollup: protectedProcedure
+    .input(z.object({ entityInstanceId: z.string() }))
+    .query(async ({ ctx, input }) => {
+      const result = await getSignalRollup(ctx.session.organizationId, input.entityInstanceId)
       if (!result.ok) {
         throw new TRPCError({
           code: 'INTERNAL_SERVER_ERROR',

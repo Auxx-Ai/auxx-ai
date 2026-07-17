@@ -11,7 +11,7 @@ const BATCH_DELAY = 50
 const MAX_BATCH_SIZE = 100
 
 /** Send status enum for outbound messages */
-export type SendStatus = 'PENDING' | 'SENT' | 'FAILED'
+export type SendStatus = 'PENDING' | 'SENT' | 'FAILED' | 'BOUNCED'
 
 /** Message type enum - determines how the message is rendered */
 export type MessageType = 'EMAIL' | 'FACEBOOK' | 'INSTAGRAM' | 'SMS' | 'WHATSAPP' | 'CALL' | 'CHAT'

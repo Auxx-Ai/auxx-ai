@@ -2,14 +2,16 @@
 // The ONLY writer for `EntitySignal`/`EntitySignalLink` rows (client-notifications plan
 // §4.1 decision #16 — a scoped slice of plans/signals/01-signal-store.md). Every signal
 // writer — the sequence send node, the manual document-send path (a later phase) — must go
-// through `recordSignal()`, never an inline insert, so the full signals plan builds
-// additively on these rows later.
+// through `recordSignal()` (or the `recordSignals()` bulk variant for webhook batches), never
+// an inline insert, so the full signals plan builds additively on these rows later.
 
 import { database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { generateId } from '@auxx/utils'
-import { and, eq } from 'drizzle-orm'
+import { publisher } from '../events/publisher'
 import { Result, type TypedResult } from '../result'
+import { applyRollupForSignal } from './rollup'
+import type { SignalKind } from './types'
 
 const logger = createScopedLogger('signals-record')
 
@@ -44,13 +46,28 @@ export interface RecordSignalInput {
   metadata?: Record<string, unknown>
   /** `toSignalRecordKey(...)` strings — the multi-record fan-out (`EntitySignalLink`). */
   links: string[]
+  /** MPP/proxy/crawler verdict (signals plan 02). Bot-flagged signals still get inserted +
+   * linked (for audit) but skip the rollup update entirely. Defaults to `false`. */
+  isBot?: boolean
+  /** True for identity-backfill writes (rollups still update — a backfilled open should still
+   * move `lastOpenedAt` — but the count only increments when `occurredAt` is inside the
+   * current 30d window, same as any other write). Flows into the published event so
+   * automation consumers (Today nudges, sequence exits) can skip backfilled rows. Defaults
+   * to `false`. */
+  backfill?: boolean
 }
 
 /**
- * Insert an `EntitySignal` + one `EntitySignalLink` per `links` entry. Insert-only — rows are
- * never updated. On a `dedupeKey` conflict (checked up front, and again via the unique index
- * if two writers race), does nothing and returns `Result.ok(null)` — an engine retry that
- * re-runs a send node after its signal write already landed must not double-write.
+ * Insert an `EntitySignal` + one `EntitySignalLink` per `links` entry, then update the
+ * contact's `EntitySignalRollup` row — all inside one transaction — then, once that commits,
+ * publish a `'signal:recorded'` bus event (plans/signals/01-signal-store.md "Write path").
+ * Insert-only — rows are never updated.
+ *
+ * Dedupe is a DB-level `onConflictDoNothing` against the partial unique index on
+ * `(organizationId, dedupeKey) WHERE dedupeKey IS NOT NULL`. A conflicting insert writes
+ * nothing — no links, no rollup, no publish — and returns `Result.ok(null)`: an engine retry
+ * that re-runs a send node after its signal write already landed must not double-write or
+ * re-fire rollups/rules/Today nudges.
  */
 export async function recordSignal(
   input: RecordSignalInput
@@ -67,56 +84,80 @@ export async function recordSignal(
     title,
     metadata,
     links,
+    isBot = false,
+    backfill = false,
   } = input
 
   try {
-    if (dedupeKey) {
-      const existing = await database.query.EntitySignal.findFirst({
-        where: and(
-          eq(schema.EntitySignal.organizationId, organizationId),
-          eq(schema.EntitySignal.dedupeKey, dedupeKey)
-        ),
-        columns: { id: true },
-      })
-      if (existing) return Result.ok(null)
-    }
+    let insertedId: string | null = null
 
-    const signalId = generateId()
     await database.transaction(async (tx) => {
-      await tx.insert(schema.EntitySignal).values({
-        id: signalId,
-        organizationId,
-        kind,
-        subtype,
-        occurredAt,
-        dedupeKey: dedupeKey ?? null,
-        contactEntityInstanceId: contactEntityInstanceId ?? null,
-        messageId: messageId ?? null,
-        threadId: threadId ?? null,
-        title,
-        metadata: metadata ?? null,
-      })
+      const [inserted] = await tx
+        .insert(schema.EntitySignal)
+        .values({
+          organizationId,
+          kind,
+          subtype,
+          occurredAt,
+          dedupeKey: dedupeKey ?? null,
+          isBot,
+          contactEntityInstanceId: contactEntityInstanceId ?? null,
+          messageId: messageId ?? null,
+          threadId: threadId ?? null,
+          title,
+          metadata: metadata ?? null,
+        })
+        .onConflictDoNothing()
+        .returning({ id: schema.EntitySignal.id })
+
+      // Dedupe hit — the partial unique index on (organizationId, dedupeKey) rejected the
+      // insert. Stop here: no links, no rollup, no publish.
+      if (!inserted) return
+
+      insertedId = inserted.id
 
       if (links.length > 0) {
         await tx.insert(schema.EntitySignalLink).values(
           links.map((recordKey) => ({
-            id: generateId(),
             organizationId,
-            signalId,
+            signalId: inserted.id,
             recordKey,
           }))
         )
       }
+
+      if (contactEntityInstanceId && !isBot) {
+        await applyRollupForSignal(tx, {
+          organizationId,
+          entityInstanceId: contactEntityInstanceId,
+          kind,
+          occurredAt,
+          metadata,
+        })
+      }
     })
 
-    return Result.ok({ id: signalId })
+    if (!insertedId) return Result.ok(null)
+
+    // Publish after the transaction commits — rollup state must be visible to any consumer
+    // that reacts to this event and reads the rollup row (e.g. a record-rule condition).
+    await publisher.publishLater({
+      type: 'signal:recorded',
+      data: {
+        signalId: insertedId,
+        organizationId,
+        kind: kind as SignalKind,
+        subtype,
+        occurredAt,
+        contactEntityInstanceId: contactEntityInstanceId ?? null,
+        recordKeys: links,
+        isBot,
+        backfill,
+      },
+    })
+
+    return Result.ok({ id: insertedId })
   } catch (error) {
-    // A dedupeKey race (two concurrent writers passing the pre-check above at the same
-    // time) surfaces as a unique-constraint violation here — treat it the same as the
-    // pre-check hit, not a hard failure.
-    if (dedupeKey && error instanceof Error && /unique|duplicate/i.test(error.message)) {
-      return Result.ok(null)
-    }
     logger.error('recordSignal failed', {
       organizationId,
       kind,
@@ -125,5 +166,152 @@ export async function recordSignal(
       error: error instanceof Error ? error.message : String(error),
     })
     return Result.error(error instanceof Error ? error : new Error('recordSignal failed'))
+  }
+}
+
+/** One prepared row awaiting insertion — id assigned up front so the post-insert `returning()`
+ * set can be correlated back to its originating `RecordSignalInput` (needed to fan out links
+ * and group publishes per contact). */
+interface PreparedSignal {
+  id: string
+  input: RecordSignalInput
+}
+
+/**
+ * Bulk variant of `recordSignal()` for webhook batches (e.g. a single SES/SNS delivery
+ * notification batch touching many recipients). One transaction: bulk-insert every signal
+ * (`onConflictDoNothing().returning()` — dedupe hits simply don't come back), bulk-insert
+ * links for the inserted rows only, then one rollup application per inserted signal (grouped
+ * conceptually per contact, applied in a loop — correctness over cleverness).
+ *
+ * After commit, publishes **one** `'signal:recorded'` event per distinct non-null contact
+ * among the inserted rows (carrying the first inserted signal's fields plus `signalIds` for
+ * the whole group — avoids bus flooding on a large batch), and one event per inserted signal
+ * with a null contact (no grouping key, but its `recordKeys` still matter to consumers).
+ * Deduped rows publish nothing.
+ */
+export async function recordSignals(
+  inputs: RecordSignalInput[]
+): Promise<TypedResult<{ id: string }[], Error>> {
+  if (inputs.length === 0) return Result.ok([])
+
+  const prepared: PreparedSignal[] = inputs.map((input) => ({ id: generateId(), input }))
+
+  try {
+    const insertedIds = new Set<string>()
+
+    await database.transaction(async (tx) => {
+      const rows = await tx
+        .insert(schema.EntitySignal)
+        .values(
+          prepared.map(({ id, input }) => ({
+            id,
+            organizationId: input.organizationId,
+            kind: input.kind,
+            subtype: input.subtype,
+            occurredAt: input.occurredAt ?? new Date(),
+            dedupeKey: input.dedupeKey ?? null,
+            isBot: input.isBot ?? false,
+            contactEntityInstanceId: input.contactEntityInstanceId ?? null,
+            messageId: input.messageId ?? null,
+            threadId: input.threadId ?? null,
+            title: input.title,
+            metadata: input.metadata ?? null,
+          }))
+        )
+        .onConflictDoNothing()
+        .returning({ id: schema.EntitySignal.id })
+
+      for (const row of rows) insertedIds.add(row.id)
+
+      const linkRows = prepared
+        .filter(({ id }) => insertedIds.has(id))
+        .flatMap(({ id, input }) =>
+          input.links.map((recordKey) => ({
+            organizationId: input.organizationId,
+            signalId: id,
+            recordKey,
+          }))
+        )
+      if (linkRows.length > 0) {
+        await tx.insert(schema.EntitySignalLink).values(linkRows)
+      }
+
+      for (const { id, input } of prepared) {
+        if (!insertedIds.has(id)) continue
+        if (!input.contactEntityInstanceId || input.isBot) continue
+        await applyRollupForSignal(tx, {
+          organizationId: input.organizationId,
+          entityInstanceId: input.contactEntityInstanceId,
+          kind: input.kind,
+          occurredAt: input.occurredAt ?? new Date(),
+          metadata: input.metadata,
+        })
+      }
+    })
+
+    const insertedRows = prepared.filter(({ id }) => insertedIds.has(id))
+
+    const byContact = new Map<string, PreparedSignal[]>()
+    const noContact: PreparedSignal[] = []
+    for (const row of insertedRows) {
+      const contactId = row.input.contactEntityInstanceId
+      if (!contactId) {
+        noContact.push(row)
+        continue
+      }
+      const bucket = byContact.get(contactId)
+      if (bucket) bucket.push(row)
+      else byContact.set(contactId, [row])
+    }
+
+    const publishes: Promise<void>[] = []
+    for (const rows of byContact.values()) {
+      const first = rows[0]!
+      publishes.push(
+        publisher.publishLater({
+          type: 'signal:recorded',
+          data: {
+            signalId: first.id,
+            organizationId: first.input.organizationId,
+            kind: first.input.kind as SignalKind,
+            subtype: first.input.subtype,
+            occurredAt: first.input.occurredAt ?? new Date(),
+            contactEntityInstanceId: first.input.contactEntityInstanceId ?? null,
+            recordKeys: [...new Set(rows.flatMap((row) => row.input.links))],
+            isBot: first.input.isBot ?? false,
+            backfill: first.input.backfill ?? false,
+            signalIds: rows.map((row) => row.id),
+          },
+        })
+      )
+    }
+    for (const row of noContact) {
+      publishes.push(
+        publisher.publishLater({
+          type: 'signal:recorded',
+          data: {
+            signalId: row.id,
+            organizationId: row.input.organizationId,
+            kind: row.input.kind as SignalKind,
+            subtype: row.input.subtype,
+            occurredAt: row.input.occurredAt ?? new Date(),
+            contactEntityInstanceId: null,
+            recordKeys: row.input.links,
+            isBot: row.input.isBot ?? false,
+            backfill: row.input.backfill ?? false,
+          },
+        })
+      )
+    }
+    await Promise.all(publishes)
+
+    return Result.ok(insertedRows.map(({ id }) => ({ id })))
+  } catch (error) {
+    logger.error('recordSignals failed', {
+      count: inputs.length,
+      error: error instanceof Error ? error.message : String(error),
+    })
+    return Result.error(error instanceof Error ? error : new Error('recordSignals failed'))
   }
 }

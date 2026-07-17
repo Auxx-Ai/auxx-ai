@@ -219,6 +219,17 @@ export const SETTINGS_CATALOG = {
     defaultValue: null,
     description: 'Default sending channel for new compose drafts',
   },
+  'email.unsubscribeOn1to1Replies': {
+    scope: 'COMMUNICATION',
+    access: 'org',
+    fieldType: 'CHECKBOX',
+    options: { variant: 'switch' },
+    defaultValue: false,
+    description:
+      'Add a List-Unsubscribe header to human-sent 1:1 email replies (off by default — ' +
+      'support threads should not necessarily carry an unsubscribe link). Automated/' +
+      'scheduled/sequence sends always include it.',
+  },
 
   ...sidebarSettings,
 

@@ -83,6 +83,10 @@ export const Message = pgTable(
   },
   (table) => [
     index('Message_createdById_idx').using('btree', table.createdById.asc().nullsLast()),
+    // SES/SNS event ingestion (packages/lib/src/signals/email-events.ts) looks up a Message by
+    // externalId alone (SES events carry no integrationId) — the composite
+    // Message_integrationId_externalId_key index above can't serve that (integrationId leads).
+    index('Message_externalId_idx').using('btree', table.externalId.asc().nullsLast()),
     index('Message_fromId_idx').using('btree', table.fromId.asc().nullsLast()),
     uniqueIndex('Message_integrationId_externalId_key').using(
       'btree',

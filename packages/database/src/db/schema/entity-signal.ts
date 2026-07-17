@@ -61,9 +61,19 @@ export const EntitySignal = pgTable(
   },
   (table) => [
     index('EntitySignal_organizationId_idx').using('btree', table.organizationId.asc().nullsLast()),
-    index('EntitySignal_contactEntityInstanceId_idx').using(
+    // Record timeline/digest reads — replaces the old bare contactEntityInstanceId index.
+    index('EntitySignal_organizationId_contactEntityInstanceId_occurredAt_idx').using(
       'btree',
-      table.contactEntityInstanceId.asc().nullsLast()
+      table.organizationId.asc().nullsLast(),
+      table.contactEntityInstanceId.asc().nullsLast(),
+      table.occurredAt.desc().nullsLast()
+    ),
+    // Org-wide analytics + the rules door.
+    index('EntitySignal_organizationId_kind_occurredAt_idx').using(
+      'btree',
+      table.organizationId.asc().nullsLast(),
+      table.kind.asc().nullsLast(),
+      table.occurredAt.desc().nullsLast()
     ),
     uniqueIndex('EntitySignal_organizationId_dedupeKey_key')
       .using('btree', table.organizationId.asc().nullsLast(), table.dedupeKey.asc().nullsLast())

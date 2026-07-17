@@ -290,7 +290,7 @@ export interface MessageMeta {
   hasAttachments?: boolean
   attachments?: AttachmentMeta[]
   fromId?: string | null
-  sendStatus?: 'PENDING' | 'SENT' | 'FAILED' | null
+  sendStatus?: 'PENDING' | 'SENT' | 'FAILED' | 'BOUNCED' | null
   providerError?: string | null
   attempts?: number
   updatedAt?: string
