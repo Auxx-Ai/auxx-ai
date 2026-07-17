@@ -11,6 +11,7 @@ import {
 } from '~/components/resources/store/field-value-store'
 import { type RecordMeta, useRecordStore } from '~/components/resources/store/record-store'
 import { useResourceStore } from '~/components/resources/store/resource-store'
+import { getNormalizedRecordId } from '~/components/resources/utils/normalize-record-id'
 
 /** Minimal instance shape needed to seed a `RecordMeta` — the fields carried by
  *  `CreateEntityResult.instance` (`@auxx/lib` `unified-handler-mutations.ts`). */
@@ -48,7 +49,9 @@ export function useSeedCreatedRecord() {
       instance: CreatedRecordInstance
       values: SeedFieldValue[]
     }) => {
-      const { entityDefinitionId, recordId, listKey, instance, values } = params
+      const { entityDefinitionId, listKey, instance, values } = params
+      // Guard: canonicalize the prefix so seeded keys match subscriber keys.
+      const recordId = getNormalizedRecordId(params.recordId)
 
       const meta: RecordMeta = {
         id: instance.id,

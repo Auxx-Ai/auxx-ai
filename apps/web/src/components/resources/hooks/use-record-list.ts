@@ -12,12 +12,13 @@ import {
   type RecordMeta,
   useRecordStore,
 } from '../store/record-store'
+import { useNormalizedDefinitionId } from '../utils/normalize-record-id'
 
 /** Stable empty array for default return */
 const EMPTY_IDS: string[] = []
 
 interface UseRecordListOptions {
-  /** Entity definition ID (e.g., 'contact', 'ticket', 'entity_abc') */
+  /** EntityDefinition UUID. Alias forms (entityType/apiSlug) are normalized internally. */
   entityDefinitionId: string
   /** Filter conditions - pass undefined or stable reference, NOT [] */
   filters?: ConditionGroup[]
@@ -70,12 +71,16 @@ interface UseRecordListResult<T = RecordMeta> {
  * IMPORTANT: Do NOT pass [] or {} as defaults - use undefined instead.
  */
 export function useRecordList<T extends RecordMeta = RecordMeta>({
-  entityDefinitionId,
+  entityDefinitionId: rawEntityDefinitionId,
   filters,
   sorting,
   limit = 50,
   enabled = true,
 }: UseRecordListOptions): UseRecordListResult<T> {
+  // Canonicalize the definition prefix once — listKey, requestRecord, and all
+  // records[...] reads below key by the EntityDefinition UUID.
+  const entityDefinitionId = useNormalizedDefinitionId(rawEntityDefinitionId)
+
   // Use stable empty defaults to prevent infinite loops
   const stableFilters = filters ?? EMPTY_FILTERS
   const stableSorting = sorting ?? EMPTY_SORTING

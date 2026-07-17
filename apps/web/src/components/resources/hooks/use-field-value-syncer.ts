@@ -6,11 +6,18 @@ import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { decodeColumnId } from '~/components/dynamic-table/utils/column-id'
 import { fieldValueFetchQueue } from '~/components/resources/store/field-value-fetch-queue'
 import {
-  buildFieldValueKey,
   type FieldReference,
   type StoredFieldValue,
   useFieldValueStore,
 } from '~/components/resources/store/field-value-store'
+import {
+  buildCanonicalFieldValueKey,
+  canonicalizeFieldRef,
+} from '~/components/resources/utils/canonicalize-field-ref'
+import {
+  useNormalizedRecordIds,
+  usePrefixEpoch,
+} from '~/components/resources/utils/normalize-record-id'
 
 interface UseFieldValueSyncerOptions {
   /** RecordIds for the entities being displayed */
@@ -60,24 +67,34 @@ interface SyncerResult {
  */
 export function useFieldValueSyncer(options: UseFieldValueSyncerOptions): SyncerResult {
   const {
-    recordIds,
+    recordIds: rawRecordIds,
     columnVisibility,
     resourceFieldIds,
     enabled = true,
     debounceMs = 150,
   } = options
 
+  // Canonicalize prefixes once — store keys and the fetch queue must only ever
+  // see canonical-definition RecordIds.
+  const recordIds = useNormalizedRecordIds(rawRecordIds)
+  const prefixEpoch = usePrefixEpoch()
+
   const pendingRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  // Convert columnIds to FieldReferences, filtering by visibility
+  // Persisted-ref ingress boundary: saved views store column ids whose
+  // definition segments may be alias-form (entityType/apiSlug) or drill-down
+  // paths — canonicalize each column ONCE here instead of per cell.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: prefixEpoch invalidates store-derived normalization
   const visibleFieldRefs = useMemo((): FieldReference[] => {
     return resourceFieldIds
       .filter((columnId) => columnVisibility[columnId] !== false)
       .map((columnId) => {
         const decoded = decodeColumnId(columnId)
-        return decoded.type === 'path' ? decoded.fieldPath : decoded.resourceFieldId
+        return canonicalizeFieldRef(
+          decoded.type === 'path' ? decoded.fieldPath : decoded.resourceFieldId
+        )
       })
-  }, [resourceFieldIds, columnVisibility])
+  }, [resourceFieldIds, columnVisibility, prefixEpoch])
 
   // Debounced queue trigger - delegates to shared fetch queue
   useEffect(() => {
@@ -101,10 +118,12 @@ export function useFieldValueSyncer(options: UseFieldValueSyncerOptions): Syncer
     }
   }, [enabled, visibleFieldRefs, recordIds, debounceMs])
 
-  // Get value accessor - reads directly from store via getState (stable function)
+  // Get value accessor - reads directly from store via getState (stable
+  // function). Defensive: external selection/copy callers can pass alias
+  // forms, so canonicalize both key halves here too.
   const getValue = useCallback(
     (recordId: RecordId, fieldRef: FieldReference): StoredFieldValue | undefined => {
-      const key = buildFieldValueKey(recordId, fieldRef)
+      const { key } = buildCanonicalFieldValueKey(recordId, fieldRef)
       return useFieldValueStore.getState().values[key]
     },
     []
@@ -112,7 +131,7 @@ export function useFieldValueSyncer(options: UseFieldValueSyncerOptions): Syncer
 
   // Loading state accessor
   const isValueLoading = useCallback((recordId: RecordId, fieldRef: FieldReference): boolean => {
-    const key = buildFieldValueKey(recordId, fieldRef)
+    const { key } = buildCanonicalFieldValueKey(recordId, fieldRef)
     return useFieldValueStore.getState().isKeyLoading(key)
   }, [])
 

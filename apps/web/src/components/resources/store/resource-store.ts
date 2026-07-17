@@ -45,6 +45,19 @@ interface ResourceStoreState {
   /** Map for O(1) lookups by id or apiSlug */
   resourceMap: Map<string, Resource>
 
+  /**
+   * Authoritative prefix → canonical entityDefinitionId map (the dynamic tier
+   * of RecordId normalization; the static tier lives in
+   * `@auxx/lib/resources/static-prefixes`). Contains identity entries for
+   * canonical ids plus alias entries for `id`, `entityType`, and `apiSlug`.
+   * Seeded from the dehydrated-state payload before React hydrates, replaced
+   * by the full projection when `resource.list` lands. `setResources`
+   * preserves the map REFERENCE when mappings are unchanged, so normalization
+   * hooks can subscribe to the reference without field-metadata fan-out.
+   * Cleared on reset (org switch/logout) — never re-seeded there.
+   */
+  definitionIdByPrefix: Map<string, string>
+
   /** Server-confirmed field definitions by ResourceFieldId */
   serverFieldMap: Record<ResourceFieldId, ResourceField>
 
@@ -358,6 +371,58 @@ function buildEffectiveFieldMap(
 }
 
 /**
+ * Seed the prefix→UUID map from the dehydrated-state payload. The
+ * `beforeInteractive` script in the protected layout guarantees
+ * `window.AUXX_DEHYDRATED_STATE` exists before any client module runs.
+ */
+function seedPrefixMap(): Map<string, string> {
+  if (typeof window === 'undefined') return new Map()
+  const seed = window.AUXX_DEHYDRATED_STATE?.resourceIdMap
+  return seed ? new Map(Object.entries(seed)) : new Map()
+}
+
+/**
+ * Build the complete prefix → canonical entityDefinitionId projection from a
+ * resource list: identity entry for the canonical id, plus alias entries for
+ * `id`, `entityType`, and `apiSlug`.
+ */
+function buildPrefixMap(resources: Resource[]): Map<string, string> {
+  const map = new Map<string, string>()
+  for (const resource of resources) {
+    const canonicalId = resource.entityDefinitionId || resource.id
+    map.set(canonicalId, canonicalId)
+    map.set(resource.id, canonicalId)
+    if (resource.entityType) map.set(resource.entityType, canonicalId)
+    if (resource.apiSlug) map.set(resource.apiSlug, canonicalId)
+  }
+  return map
+}
+
+/** Key/value equality for prefix maps (reference-stability check). */
+function prefixMapsEqual(a: Map<string, string>, b: Map<string, string>): boolean {
+  if (a.size !== b.size) return false
+  for (const [key, value] of a) {
+    if (b.get(key) !== value) return false
+  }
+  return true
+}
+
+/**
+ * Return a prefix map extended with one resource's entries — reuses the input
+ * reference when nothing changed (mid-session single-resource confirmations).
+ */
+function withResourcePrefixes(map: Map<string, string>, resource: Resource): Map<string, string> {
+  const canonicalId = resource.entityDefinitionId || resource.id
+  const prefixes = [canonicalId, resource.id, resource.entityType, resource.apiSlug]
+  if (prefixes.every((p) => !p || map.get(p) === canonicalId)) return map
+  const next = new Map(map)
+  for (const prefix of prefixes) {
+    if (prefix) next.set(prefix, canonicalId)
+  }
+  return next
+}
+
+/**
  * Initial state
  */
 const initialState = {
@@ -367,6 +432,7 @@ const initialState = {
   hasLoadedOnce: false,
   lastFetchTimestamp: 0,
   resourceMap: new Map<string, Resource>(),
+  definitionIdByPrefix: seedPrefixMap(),
   serverFieldMap: {} as Record<ResourceFieldId, ResourceField>,
   fieldMap: {} as Record<ResourceFieldId, ResourceField>,
   systemAttributeMap: {} as Record<string, ResourceFieldId>,
@@ -408,6 +474,14 @@ export const useResourceStore = create<ResourceStoreState>()(
           resourceMap.set(r.entityDefinitionId, r)
         }
       })
+
+      // Rebuild the authoritative prefix index, preserving the reference when
+      // mappings are unchanged so RecordId-normalization subscribers don't
+      // re-run on field-metadata-only updates.
+      const nextPrefixMap = buildPrefixMap(resources)
+      const definitionIdByPrefix = prefixMapsEqual(state.definitionIdByPrefix, nextPrefixMap)
+        ? state.definitionIdByPrefix
+        : nextPrefixMap
 
       // Filter custom resources
       const customResources = resources.filter(isCustomResource)
@@ -528,6 +602,7 @@ export const useResourceStore = create<ResourceStoreState>()(
         resources,
         customResources,
         resourceMap,
+        definitionIdByPrefix,
         serverFieldMap,
         fieldMap,
         systemAttributeMap,
@@ -1054,6 +1129,9 @@ export const useResourceStore = create<ResourceStoreState>()(
             resourceMap: newResourceMap,
             resources: newResources,
             customResources: newCustomResources,
+            // A slug/type rename adds a new alias entry (old aliases stay
+            // resolvable until the next full `setResources` rebuild).
+            definitionIdByPrefix: withResourcePrefixes(state.definitionIdByPrefix, serverResource),
           }
         }
 
@@ -1157,6 +1235,7 @@ export const useResourceStore = create<ResourceStoreState>()(
           resourceMap: newResourceMap,
           resources: newResources,
           customResources: newCustomResources,
+          definitionIdByPrefix: withResourcePrefixes(state.definitionIdByPrefix, serverResource),
         }
       })
     },
@@ -1336,6 +1415,7 @@ export const useResourceStore = create<ResourceStoreState>()(
           customResources: newCustomResources,
           serverFieldMap: newServerFieldMap,
           fieldMap,
+          definitionIdByPrefix: withResourcePrefixes(state.definitionIdByPrefix, resource),
         }
       })
     },
@@ -1372,6 +1452,10 @@ export const useResourceStore = create<ResourceStoreState>()(
       set({
         ...initialState,
         resourceMap: new Map<string, Resource>(),
+        // Never re-seed from the dehydrated payload here — after an org switch
+        // the seed belongs to the previous org; unresolved prefixes stay
+        // pending until the new org's `resource.list` lands.
+        definitionIdByPrefix: new Map<string, string>(),
         serverFieldMap: {} as Record<ResourceFieldId, ResourceField>,
         fieldMap: {} as Record<ResourceFieldId, ResourceField>,
         systemAttributeMap: {} as Record<string, ResourceFieldId>,

@@ -10,6 +10,7 @@ import {
   type ResourceField,
 } from '@auxx/lib/resources/client'
 import { parseResourceFieldId, type ResourceFieldId } from '@auxx/types/field'
+import { getNormalizedRecordId } from '../utils/normalize-record-id'
 import { buildFieldValueKey, type StoredFieldValue, useFieldValueStore } from './field-value-store'
 
 /**
@@ -41,7 +42,13 @@ interface HydrationOptions {
  *
  * This is a pure function that can be called from any context (not a hook).
  */
-export function hydrateFieldValues({ resource, recordId, recordData }: HydrationOptions): void {
+export function hydrateFieldValues({
+  resource,
+  recordId: rawRecordId,
+  recordData,
+}: HydrationOptions): void {
+  // Guard: canonicalize the prefix so hydrated keys match subscriber keys.
+  const recordId = getNormalizedRecordId(rawRecordId)
   const entries: Array<{ key: string; value: StoredFieldValue }> = []
 
   // Process all fields (system + custom)
@@ -135,7 +142,10 @@ export function hydrateMultipleRecords(
       })
 
       if (typedValue !== null) {
-        const storeKey = buildFieldValueKey(record.recordId, field.resourceFieldId ?? field.id)
+        const storeKey = buildFieldValueKey(
+          getNormalizedRecordId(record.recordId),
+          field.resourceFieldId ?? field.id
+        )
         allEntries.push({ key: storeKey, value: typedValue as StoredFieldValue })
       }
     }

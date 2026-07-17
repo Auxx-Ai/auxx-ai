@@ -46,6 +46,13 @@ export interface HydrationStoreActions<TValue> {
   /** Mark keys as loading (called when fetch starts) */
   markLoading: (keys: string[]) => void
 
+  /**
+   * Atomically drain queued keys and mark (possibly different) keys as
+   * loading. Used by canonicalizing batchers: pending is drained by the
+   * as-queued (possibly alias) form while loading tracks the canonical form.
+   */
+  drainToLoading: (drainKeys: string[], loadKeys: string[]) => void
+
   /** Add hydrated items to the store. If requestedKeys provided, marks missing keys as not found (null). */
   addItems: (items: Record<string, TValue>, requestedKeys?: string[]) => void
 
@@ -152,6 +159,22 @@ export function createHydrationStore<TValue>(options: HydrationStoreOptions<TVal
 
           for (const key of keys) {
             newPending.delete(key)
+            newLoading.add(key)
+          }
+
+          return { pendingIds: newPending, loadingIds: newLoading }
+        })
+      },
+
+      drainToLoading: (drainKeys, loadKeys) => {
+        set((state) => {
+          const newPending = new Set(state.pendingIds)
+          const newLoading = new Set(state.loadingIds)
+
+          for (const key of drainKeys) {
+            newPending.delete(key)
+          }
+          for (const key of loadKeys) {
             newLoading.add(key)
           }
 

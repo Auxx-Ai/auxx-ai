@@ -132,7 +132,37 @@ export class DehydrationService {
       organizationId = organizations[0]?.id ?? null
     }
 
-    // 4. Assemble (pure function, no DB calls)
+    // 4. Slim alias-prefix → EntityDefinition UUID map for the active org.
+    // Only the org-dynamic mappings ship here: def-backed entityTypes and
+    // apiSlugs (system-typed + custom defs). Legacy system types (thread,
+    // message, …) resolve through the static tier bundled with the client
+    // (`@auxx/lib/resources/static-prefixes`) and never ride the payload.
+    // Best-effort — without it the client falls back to gating unresolved
+    // prefixes on resource hydration.
+    let resourceIdMap: Record<string, string> | undefined
+    if (organizationId) {
+      try {
+        const { entityDefs, entityDefSlugs } = await this.orgCache.getOrRecompute(organizationId, [
+          'entityDefs',
+          'entityDefSlugs',
+        ])
+        resourceIdMap = {}
+        for (const [entityType, defId] of Object.entries(entityDefs)) {
+          resourceIdMap[entityType] = defId
+          resourceIdMap[defId] = defId
+        }
+        for (const [apiSlug, defId] of Object.entries(entityDefSlugs)) {
+          resourceIdMap[apiSlug] = defId
+          resourceIdMap[defId] = defId
+        }
+      } catch (error) {
+        logger.warn('Failed to derive resourceIdMap during dehydration', {
+          error: error instanceof Error ? error.message : String(error),
+        })
+      }
+    }
+
+    // 5. Assemble (pure function, no DB calls)
     return {
       user: userProfile,
       organizationId,
@@ -140,6 +170,7 @@ export class DehydrationService {
       settingsCatalog: SETTINGS_CATALOG,
       environment: buildEnvironment(),
       timestamp: Date.now(),
+      resourceIdMap,
     }
   }
 

@@ -11,6 +11,11 @@ import {
 import { create } from 'zustand'
 import { subscribeWithSelector } from 'zustand/middleware'
 import { immer } from 'zustand/middleware/immer'
+import {
+  getNormalizedDefinitionId,
+  getNormalizedRecordId,
+  tryNormalizeRecordId,
+} from '../utils/normalize-record-id'
 
 // ─────────────────────────────────────────────────────────────────
 // BATCHING CONSTANTS
@@ -217,8 +222,14 @@ export const useRecordStore = create<RecordStoreState>()(
 
       // ─── RECORD ACTIONS ────────────────────────────────────────────
       // With immer: direct mutations, structural sharing preserved
+      //
+      // Every action canonicalizes its definition prefix / RecordId at entry
+      // (UUID | entityType | apiSlug → EntityDefinition UUID) so alias-form
+      // callers can never create or miss a cache slot. No-op before a
+      // translation source exists — the batch flush gate covers that window.
 
-      setRecords: (entityDefinitionId, records) => {
+      setRecords: (rawEntityDefinitionId, records) => {
+        const entityDefinitionId = getNormalizedDefinitionId(rawEntityDefinitionId)
         set((state) => {
           if (!state.records[entityDefinitionId]) {
             state.records[entityDefinitionId] = new Map()
@@ -231,7 +242,8 @@ export const useRecordStore = create<RecordStoreState>()(
         })
       },
 
-      updateRecord: (entityDefinitionId, id, updates) => {
+      updateRecord: (rawEntityDefinitionId, id, updates) => {
+        const entityDefinitionId = getNormalizedDefinitionId(rawEntityDefinitionId)
         set((state) => {
           const record = state.records[entityDefinitionId]?.get(id)
           if (record) {
@@ -241,7 +253,8 @@ export const useRecordStore = create<RecordStoreState>()(
         })
       },
 
-      removeRecord: (entityDefinitionId, id) => {
+      removeRecord: (rawEntityDefinitionId, id) => {
+        const entityDefinitionId = getNormalizedDefinitionId(rawEntityDefinitionId)
         const recordId = toRecordId(entityDefinitionId, id)
         set((state) => {
           // Remove from records
@@ -293,7 +306,11 @@ export const useRecordStore = create<RecordStoreState>()(
 
       // ─── BATCHED RECORD FETCHING (unified across resource types) ───
 
-      requestRecord: (recordId) => {
+      requestRecord: (rawRecordId) => {
+        // Canonicalize BEFORE the dedupe checks so post-hydration callers
+        // dedupe against the canonical slot. Pre-hydration this is a no-op;
+        // the flush gate + startBatch normalization cover that window.
+        const recordId = getNormalizedRecordId(rawRecordId)
         const state = get()
         const { entityDefinitionId, entityInstanceId } = parseRecordId(recordId)
 
@@ -326,12 +343,36 @@ export const useRecordStore = create<RecordStoreState>()(
         const pending = get().pendingFetchIds
         if (pending.size === 0) return []
 
-        const recordIds = Array.from(pending).slice(0, MAX_BATCH_SIZE)
+        // Single authority for draining canonicalizable records (per-id gate):
+        // normalize each queued id ONCE, select up to MAX_BATCH_SIZE unique
+        // canonical ids (dedupe BEFORE capacity so `work_order:X` + `<uuid>:X`
+        // never consume two slots), drain every queued form that maps to a
+        // selected id, and leave unresolved prefixes pending — they release
+        // when the prefix map changes.
+        const canonicalByQueued = new Map<RecordId, RecordId | null>()
+        for (const queuedId of pending) {
+          canonicalByQueued.set(queuedId, tryNormalizeRecordId(queuedId))
+        }
+
+        const recordIds: RecordId[] = []
+        const selected = new Set<RecordId>()
+        for (const canonicalId of canonicalByQueued.values()) {
+          if (!canonicalId || selected.has(canonicalId)) continue
+          if (recordIds.length >= MAX_BATCH_SIZE) break
+          selected.add(canonicalId)
+          recordIds.push(canonicalId)
+        }
+        if (recordIds.length === 0) return []
 
         set((state) => {
-          // Move from pending to loading
+          // Drain every queued alias/canonical form of a selected id; move
+          // only canonical ids into loadingIds and the request.
+          for (const [queuedId, canonicalId] of canonicalByQueued) {
+            if (canonicalId && selected.has(canonicalId)) {
+              state.pendingFetchIds.delete(queuedId)
+            }
+          }
           for (const recordId of recordIds) {
-            state.pendingFetchIds.delete(recordId)
             state.loadingIds.add(recordId)
           }
         })
@@ -360,26 +401,30 @@ export const useRecordStore = create<RecordStoreState>()(
 
       // ─── HELPERS ───────────────────────────────────────────────────
 
-      hasRecord: (recordId) => {
-        const { entityDefinitionId, entityInstanceId } = parseRecordId(recordId)
+      hasRecord: (rawRecordId) => {
+        const { entityDefinitionId, entityInstanceId } = parseRecordId(
+          getNormalizedRecordId(rawRecordId)
+        )
         return get().records[entityDefinitionId]?.has(entityInstanceId) ?? false
       },
 
-      isLoading: (recordId) => {
+      isLoading: (rawRecordId) => {
+        const recordId = getNormalizedRecordId(rawRecordId)
         return get().loadingIds.has(recordId) || get().pendingFetchIds.has(recordId)
       },
 
-      isNotFound: (recordId) => {
-        return get().notFoundIds.has(recordId)
+      isNotFound: (rawRecordId) => {
+        return get().notFoundIds.has(getNormalizedRecordId(rawRecordId))
       },
 
-      hasLoadedOnce: (recordId) => {
-        return get().attemptedIds.has(recordId)
+      hasLoadedOnce: (rawRecordId) => {
+        return get().attemptedIds.has(getNormalizedRecordId(rawRecordId))
       },
 
       // ─── INVALIDATION ──────────────────────────────────────────────
 
-      invalidateRecord: (entityDefinitionId, id) => {
+      invalidateRecord: (rawEntityDefinitionId, id) => {
+        const entityDefinitionId = getNormalizedDefinitionId(rawEntityDefinitionId)
         const recordId = toRecordId(entityDefinitionId, id)
         set((state) => {
           state.records[entityDefinitionId]?.delete(id)
@@ -388,7 +433,8 @@ export const useRecordStore = create<RecordStoreState>()(
         })
       },
 
-      invalidateLists: (entityDefinitionId) => {
+      invalidateLists: (rawEntityDefinitionId) => {
+        const entityDefinitionId = getNormalizedDefinitionId(rawEntityDefinitionId)
         set((state) => {
           const prefix = `${entityDefinitionId}:`
           for (const key of Object.keys(state.lists)) {
@@ -405,7 +451,8 @@ export const useRecordStore = create<RecordStoreState>()(
         })
       },
 
-      invalidateResourceType: (entityDefinitionId) => {
+      invalidateResourceType: (rawEntityDefinitionId) => {
+        const entityDefinitionId = getNormalizedDefinitionId(rawEntityDefinitionId)
         set((state) => {
           delete state.records[entityDefinitionId]
           const prefix = `${entityDefinitionId}:` as const

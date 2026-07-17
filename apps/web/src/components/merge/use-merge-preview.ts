@@ -10,14 +10,18 @@ import {
   buildFieldValueKey,
   useFieldValueStore,
 } from '~/components/resources/store/field-value-store'
+import {
+  useNormalizedRecordId,
+  useNormalizedRecordIds,
+} from '~/components/resources/utils/normalize-record-id'
 
 /**
  * Hook to preview merge results by computing merged field values
  * from target and source entities.
  */
 export function useMergePreview({
-  targetRecordId,
-  sourceRecordIds,
+  targetRecordId: rawTargetRecordId,
+  sourceRecordIds: rawSourceRecordIds,
   fields,
 }: {
   targetRecordId: RecordId
@@ -30,6 +34,11 @@ export function useMergePreview({
     isSystem?: boolean
   }>
 }) {
+  // Canonicalize prefixes — the store is keyed by EntityDefinition-UUID
+  // RecordIds, and this hook builds keys directly (not via the base hooks).
+  const targetRecordId = useNormalizedRecordId(rawTargetRecordId)
+  const sourceRecordIds = useNormalizedRecordIds(rawSourceRecordIds)
+
   const storeValues = useFieldValueStore((state) => state.values)
 
   return useMemo(() => {

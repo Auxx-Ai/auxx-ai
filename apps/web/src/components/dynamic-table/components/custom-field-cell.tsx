@@ -11,7 +11,7 @@ import { memo, useMemo } from 'react'
 import { AiCellOverlay } from '~/components/fields/ai-overlay/ai-cell-overlay'
 import { ConnectorLockBadge } from '~/components/fields/connector-lock-badge'
 import { useField } from '~/components/resources/hooks/use-field'
-import { useFieldManagedState, useFieldValue } from '~/components/resources/hooks/use-field-values'
+import { useFieldCellState } from '~/components/resources/hooks/use-field-values'
 import { decodeColumnId } from '../utils/column-id'
 import { ExpandableCell } from './expandable-cell'
 import { FormattedCell } from './formatted-cell'
@@ -46,9 +46,12 @@ export const CustomFieldCell = memo(function CustomFieldCell({
     return { fieldRef: decoded.resourceFieldId as FieldReference, isPath: false }
   }, [columnId])
 
-  // Direct store subscription using FieldReference
+  // Combined cell state: value, loading, AI, and managed markers through ONE
+  // canonical key + ONE store subscription (hardening plan Part 6).
   // autoFetch ensures isLoading=true on first render (queues synchronously)
-  const { value, isLoading } = useFieldValue(recordId, fieldRef, { autoFetch: true })
+  const { value, isLoading, managedConnectorId } = useFieldCellState(recordId, fieldRef, {
+    autoFetch: true,
+  })
 
   // Get target field metadata (last element for paths)
   const targetResourceFieldId = useMemo(() => {
@@ -64,10 +67,6 @@ export const CustomFieldCell = memo(function CustomFieldCell({
 
   // Use effectiveFieldType for rendering (handles CALC fields automatically)
   const fieldType = field?.effectiveFieldType
-
-  // Contributing data-connector marker (per-cell, still editable). Called
-  // unconditionally to satisfy hook rules; resolves nothing for path columns.
-  const managedConnectorId = useFieldManagedState(recordId, (field?.id ?? '') as FieldId)
 
   if (isLoading && value === undefined) {
     return (

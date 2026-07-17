@@ -124,3 +124,10 @@ export {
   toRecordId,
   toRecordIds,
 } from './resource-id'
+// Static prefix tier for RecordId canonicalization (pure, build-time)
+export {
+  isDynamicAliasPrefix,
+  isStaticCanonicalDefinitionId,
+  LEGACY_SYSTEM_TYPES,
+  resolveStaticPrefix,
+} from './static-prefixes'

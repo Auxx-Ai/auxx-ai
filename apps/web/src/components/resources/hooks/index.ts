@@ -26,7 +26,7 @@ export {
   useSystemField,
 } from './use-field'
 // Field value hooks (extracted from store)
-export { useFieldValue, useFieldValues } from './use-field-values'
+export { useFieldCellState, useFieldValue, useFieldValues } from './use-field-values'
 export { useIsRecordLoading, useIsRecordPending, useRecord } from './use-record'
 export { useRecordBatchFetcher } from './use-record-batch-fetcher'
 // Record hydration hook
