@@ -177,12 +177,14 @@ export function SchedulePopoverContent({
     applyToSeries.mutate({ visitId, scope, changes: { assigneeUserId: userId } })
   }
 
-  /** Fires on the Repeat row's nested editor closing, in scheduled (non-draft) mode only. */
+  /** Scheduled (non-draft) mode's cadence commit — fired by the Repeat editor's explicit Save
+   * button; closing the page without saving discards instead (`resetToRule` below). */
   const commitRecurrence = () => {
     if (!editor.wantsRecurrenceWrite || !editor.patternValid || !startTime || !endTime) return
     const input = editor.buildSetRecurrenceInput(startTime, endTime, assigneeUserId)
     if (!input) return
     setRecurrence.mutate(input)
+    editor.markSaved()
   }
 
   const canSave = Boolean(startTime && endTime) && editor.patternValid
@@ -271,9 +273,25 @@ export function SchedulePopoverContent({
                 : undefined
           }
           disabled={editor.repeatLocked}
-          renderEditor={() => <RepeatEditor editor={editor} />}
+          renderEditor={(close) => (
+            <RepeatEditor
+              editor={editor}
+              // Draft mode has no Save — the staged Repeat commits with the Schedule button.
+              saving={setRecurrence.isPending}
+              onSave={
+                isDraft
+                  ? undefined
+                  : () => {
+                      commitRecurrence()
+                      close()
+                    }
+              }
+            />
+          )}
           onOpenChange={(open) => {
-            if (!open && !isDraft) commitRecurrence()
+            // Non-draft close-without-save = discard (Save cleared `repeatsTouched` already);
+            // draft mode keeps its staged edits for the Schedule commit.
+            if (!open && !isDraft && editor.repeatsTouched) editor.resetToRule()
           }}
         />
       )}

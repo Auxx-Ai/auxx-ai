@@ -7,13 +7,15 @@
 import { database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { toRecordId } from '@auxx/types/resource'
-import { and, eq, gte, or } from 'drizzle-orm'
+import { and, eq, gt, gte, or } from 'drizzle-orm'
 import { getEntityDefIdResolver, getOrgCache } from '../../cache'
-import { NotFoundError } from '../../errors'
+import { BadRequestError, NotFoundError } from '../../errors'
 import { FieldValueService } from '../../field-values/field-value-service'
+import type { RecurrencePattern } from '../../recurrence'
 import { exitRunsForDeadVisitSubjects } from '../../sequences/hooks'
 import { publishVisitChanged } from '../broadcast'
 import { mirrorVisitOntoWorkOrder } from '../mirror'
+import { setVisitStatus } from '../visit-mutations'
 import { materializeVisits, todayLocalDate } from './materialize'
 
 const logger = createScopedLogger('dispatch:recurring:engagement-actions')
@@ -166,4 +168,85 @@ export async function endEngagement(input: EngagementActionInput): Promise<void>
   await writeEngagementStatus(rule, input.userId, 'ended')
   await mirrorAndBroadcast(rule, input.userId, input.excludeSocketId)
   await exitRunsForDeletedRows(rule.organizationId, rule.id, deletedVisitIds)
+}
+
+/** Input for {@link cancelVisitFollowing}. */
+export interface CancelVisitFollowingInput {
+  organizationId: string
+  userId: string
+  /** A series occurrence — must carry `recurrenceRuleId` + `occurrenceDate`. */
+  visitId: string
+  /** Realtime echo-suppression — the acting client's own socket id (07 §B.4). */
+  excludeSocketId?: string
+}
+
+/**
+ * Cancel a series occurrence AND everything after it — the "Skip this and future visits"
+ * choice on the cancel confirm. Three writes:
+ *
+ * 1. Tombstones the target via {@link setVisitStatus} (transition guard, `dispatchedAt`
+ *    clear, worker cancel notice, sequence exits, status roll-up — the full cancel path).
+ * 2. Stamps the rule's pattern with `until = occurrenceDate` so the sweep never generates
+ *    past it. `until` is inclusive, and the fresh tombstone blocks its own date (the
+ *    materializer's ANY-row skip) — so a later Restore revives the target as the series'
+ *    final occurrence. `count` is stripped (`until`/`count` are mutually exclusive).
+ * 3. Deletes the rule's LATER `scheduled` rows, slot-based (`occurrenceDate` strictly
+ *    after the target's) — detached overrides included, their slot is gone with the
+ *    series; `done`/in-flight rows stay as history, existing tombstones stay.
+ *
+ * Unlike {@link endEngagement} this never touches `work_order_status` — occurrences
+ * before the target may still be upcoming, and ending the whole engagement remains an
+ * explicit job-level action. Rule-less "extra" visits on the job are untouched.
+ */
+export async function cancelVisitFollowing(input: CancelVisitFollowingInput): Promise<void> {
+  const { organizationId, userId, visitId, excludeSocketId } = input
+
+  const visit = await database.query.WorkOrderVisit.findFirst({
+    where: and(
+      eq(schema.WorkOrderVisit.id, visitId),
+      eq(schema.WorkOrderVisit.organizationId, organizationId)
+    ),
+  })
+  if (!visit) throw new NotFoundError('Visit not found')
+  if (!visit.recurrenceRuleId || !visit.occurrenceDate) {
+    throw new BadRequestError('Visit is not part of a recurring series')
+  }
+  const rule = await database.query.RecurrenceRule.findFirst({
+    where: and(
+      eq(schema.RecurrenceRule.id, visit.recurrenceRuleId),
+      eq(schema.RecurrenceRule.organizationId, organizationId)
+    ),
+  })
+  if (!rule) throw new NotFoundError('Recurrence rule not found')
+
+  await setVisitStatus({ organizationId, userId, visitId, status: 'canceled', excludeSocketId })
+
+  const { count: _count, ...pattern } = rule.pattern as unknown as RecurrencePattern
+  await database
+    .update(schema.RecurrenceRule)
+    .set({
+      pattern: { ...pattern, until: visit.occurrenceDate } as unknown as Record<string, unknown>,
+      updatedAt: new Date(),
+    })
+    .where(eq(schema.RecurrenceRule.id, rule.id))
+
+  const deleted = await database
+    .delete(schema.WorkOrderVisit)
+    .where(
+      and(
+        eq(schema.WorkOrderVisit.recurrenceRuleId, rule.id),
+        eq(schema.WorkOrderVisit.status, 'scheduled'),
+        gt(schema.WorkOrderVisit.occurrenceDate, visit.occurrenceDate)
+      )
+    )
+    .returning({ id: schema.WorkOrderVisit.id })
+  await exitRunsForDeletedRows(
+    organizationId,
+    rule.id,
+    deleted.map((row) => row.id)
+  )
+
+  // The deletions can change the job's next-visit mirror — mirror + broadcast once more on
+  // top of `setVisitStatus`'s own (which ran before the future rows disappeared).
+  await mirrorAndBroadcast(rule, userId, excludeSocketId)
 }

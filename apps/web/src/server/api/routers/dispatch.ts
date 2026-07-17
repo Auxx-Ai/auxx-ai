@@ -9,6 +9,7 @@ import {
   advanceMyVisit,
   applyRouteTimes,
   assignVisit,
+  cancelVisitFollowing,
   closeMyVisit,
   convertRequestToWorkOrder,
   createQcItemTemplate,
@@ -221,6 +222,20 @@ export const dispatchRouter = createTRPCRouter({
         status: input.status,
         excludeSocketId: excludeSocketId(ctx),
       })
+    }),
+  // "Skip this and future visits" — tombstones the target occurrence AND ends its series
+  // there (`until` stamp + later-scheduled-row cleanup). Single-row cancels keep going
+  // through `setVisitStatus`.
+  cancelVisitFollowing: dispatchAdminProcedure
+    .input(z.object({ visitId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      await cancelVisitFollowing({
+        organizationId: ctx.session.organizationId,
+        userId: ctx.session.user.id,
+        visitId: input.visitId,
+        excludeSocketId: excludeSocketId(ctx),
+      })
+      return { success: true }
     }),
   dispatchVisit: dispatchAdminProcedure
     .input(z.object({ visitId: z.string() }))

@@ -2,6 +2,7 @@
 
 'use client'
 
+import { Button } from '@auxx/ui/components/button'
 import {
   Select,
   SelectContent,
@@ -19,6 +20,14 @@ import type { RecurrenceEditor } from './use-recurrence-editor'
 export interface RepeatEditorProps {
   editor: RecurrenceEditor
   disabled?: boolean
+  /**
+   * Explicit commit affordance — renders a footer Save button (enabled once the cadence was
+   * actually edited and is valid). Consumers that autosave pass "commit + close" here and treat
+   * a close WITHOUT save as discard (`editor.resetToRule`); draft-mode consumers (the schedule
+   * popover's create flow) omit it — their staged Repeat commits with the Schedule button.
+   */
+  onSave?: () => void
+  saving?: boolean
 }
 
 /**
@@ -26,7 +35,7 @@ export interface RepeatEditorProps {
  * (custom) + `RecurrenceEndFields`, driven entirely by `useRecurrenceEditor`. Injected via the
  * base `EventRepeatSection`'s `renderEditor` slot by both the board and schedule popovers.
  */
-export function RepeatEditor({ editor, disabled }: RepeatEditorProps) {
+export function RepeatEditor({ editor, disabled, onSave, saving }: RepeatEditorProps) {
   const {
     repeatMode,
     hasExistingRule,
@@ -98,6 +107,17 @@ export function RepeatEditor({ editor, disabled }: RepeatEditorProps) {
         <p className='px-0.5 text-xs text-destructive'>
           Pick at least one weekday, or fix the end condition, to save this pattern.
         </p>
+      )}
+
+      {onSave && (
+        <Button
+          size='sm'
+          className='w-full'
+          disabled={!wantsRecurrenceWrite || !patternValid}
+          loading={saving}
+          onClick={onSave}>
+          Save
+        </Button>
       )}
     </div>
   )

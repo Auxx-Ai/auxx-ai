@@ -74,6 +74,11 @@ export function useJobVisits(workOrderRecordId: RecordId) {
     onError: onErrorToast('Error restoring visit'),
     onSuccess: invalidate,
   })
+  // "Skip this and future visits" — tombstones the target and ends its series there.
+  const cancelVisitFollowing = api.dispatch.cancelVisitFollowing.useMutation({
+    onError: onErrorToast('Error skipping visits'),
+    onSuccess: invalidate,
+  })
 
   // `SchedulePopoverContent`'s overlap-hint input (07 §D.4) — this job's own
   // other scheduled visits (multi-visit is a planned extension; harmless no-op
@@ -105,6 +110,7 @@ export function useJobVisits(workOrderRecordId: RecordId) {
       setVisitStatus,
       dispatchVisit,
       restoreVisit,
+      cancelVisitFollowing,
     },
     /** Re-fetch this work order's visits — pair with `SchedulePopover`'s `onScheduled`/
      * `onUnscheduled` callbacks, since that component owns its own mutation (not one of

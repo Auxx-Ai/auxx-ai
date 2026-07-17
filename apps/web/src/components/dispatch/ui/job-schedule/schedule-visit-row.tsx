@@ -12,7 +12,12 @@ import { useActors } from '~/components/resources/hooks/use-actor'
 import { useConfirm } from '~/hooks/use-confirm'
 import { visitStatusLabel } from '../board/types'
 import { type ExistingVisitForOverlap, SchedulePopover } from '../schedule-popover'
-import { formatVisitWindow, movedFromLabel, VISIT_STATUS_BADGE_VARIANT } from './job-schedule-utils'
+import {
+  cancelVisitConfirmOptions,
+  formatVisitWindow,
+  movedFromLabel,
+  VISIT_STATUS_BADGE_VARIANT,
+} from './job-schedule-utils'
 import type { JobVisit, UseJobVisitsResult } from './use-job-visits'
 
 export interface ScheduleVisitRowProps {
@@ -60,27 +65,13 @@ export function ScheduleVisitRow({
   const moved = movedFromLabel(visit)
 
   const handleCancel = async () => {
-    const confirmed = await confirm(
-      isSeries
-        ? {
-            title: 'Skip this visit?',
-            description:
-              "The visit stays in the job's history as skipped and won't be regenerated. This does not affect other visits.",
-            confirmText: 'Skip visit',
-            cancelText: 'Keep visit',
-            destructive: true,
-          }
-        : {
-            title: 'Cancel this visit?',
-            description:
-              "The visit stays in the job's history as canceled. This does not cancel the job.",
-            confirmText: 'Cancel visit',
-            cancelText: 'Keep visit',
-            destructive: true,
-          }
-    )
-    if (!confirmed) return
-    mutations.setVisitStatus.mutate({ visitId: visit.id, status: 'canceled' })
+    const choice = await confirm(cancelVisitConfirmOptions(isSeries))
+    if (!choice) return
+    if (choice === 'alternate') {
+      mutations.cancelVisitFollowing.mutate({ visitId: visit.id })
+    } else {
+      mutations.setVisitStatus.mutate({ visitId: visit.id, status: 'canceled' })
+    }
   }
 
   return (

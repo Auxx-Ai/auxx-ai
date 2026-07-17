@@ -7,6 +7,7 @@ import { BadRequestError } from '@auxx/lib/errors'
 import { getDescendantIds } from '@auxx/lib/field-values'
 import { getRecordIdentityViews } from '@auxx/lib/identity'
 import {
+  type CreateEntityResult,
   type LookupCandidate,
   RESOURCE_TABLE_REGISTRY,
   UnifiedCrudHandler,
@@ -121,6 +122,15 @@ const getByIdLegacyInputSchema = z.object({
 const createInputSchema = z.object({
   entityDefinitionId: z.string(),
   values: z.record(z.string(), z.any()).optional(),
+})
+
+/**
+ * Input for createMany mutation. Capped at 50 — the caller is an interactive
+ * bulk add (e.g. a catalog-group explode), not an import pipeline.
+ */
+const createManyInputSchema = z.object({
+  entityDefinitionId: z.string(),
+  records: z.array(z.record(z.string(), z.any())).min(1).max(50),
 })
 
 /**
@@ -445,6 +455,46 @@ export const recordRouter = createTRPCRouter({
       throw new TRPCError({
         code: 'INTERNAL_SERVER_ERROR',
         message: `Failed to create record: ${error.message}`,
+      })
+    }
+  }),
+
+  /**
+   * Create multiple entity instances in one round-trip (plans/dispatch/31 §D).
+   * Runs the exact single-create pipeline per record, in input order, and
+   * returns `{ recordId, instance }` per row in the same order.
+   *
+   * Deliberately NOT wrapped in a DB transaction: the synchronous field-change
+   * hooks (e.g. the money totals recompute, `totals-hooks.ts`) read and write
+   * through pool-scoped services, so rows created inside an open transaction
+   * would be invisible to their reads and their writes would FK-fail against
+   * the uncommitted instances. All-or-nothing is approximated instead: a
+   * mid-loop failure deletes the rows already created, then rethrows.
+   */
+  createMany: protectedProcedure.input(createManyInputSchema).mutation(async ({ ctx, input }) => {
+    const { organizationId, user } = ctx.session
+    const handler = new UnifiedCrudHandler(organizationId, user.id, ctx.db, getSocketId(ctx))
+    const created: Array<Pick<CreateEntityResult, 'recordId' | 'instance'>> = []
+
+    try {
+      for (const values of input.records) {
+        const result = await handler.create(input.entityDefinitionId, values)
+        created.push({ recordId: result.recordId, instance: result.instance })
+      }
+      return created
+    } catch (error: any) {
+      // Compensate best-effort — a failed cleanup delete must not mask the
+      // original error, so each one is swallowed individually.
+      for (const row of [...created].reverse()) {
+        try {
+          await handler.delete(row.recordId)
+        } catch {
+          // Leave the orphan; the original error below is what the user sees.
+        }
+      }
+      throw new TRPCError({
+        code: 'INTERNAL_SERVER_ERROR',
+        message: `Failed to create records: ${error.message}`,
       })
     }
   }),
