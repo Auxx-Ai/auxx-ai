@@ -86,7 +86,7 @@ export function useRecurrenceEditor({
   const repeatLocked = !hasExistingRule && workOrderHasRule
 
   const [repeatMode, setRepeatMode] = useState<RecurrencePreset>('none')
-  const [customPattern, setCustomPattern] = useState<RecurrencePattern>(
+  const [customPattern, setCustomPatternRaw] = useState<RecurrencePattern>(
     defaultCustomPattern(initialStartTime ?? undefined)
   )
   // Ends (until/count) live independently of the preset/custom pattern — both popovers edit
@@ -109,8 +109,19 @@ export function useRecurrenceEditor({
     const preset = classifyPreset(pattern)
     setRepeatMode(preset)
     setEndsRaw({ until: pattern.until, count: pattern.count })
-    if (preset === 'custom') setCustomPattern({ ...pattern, until: undefined, count: undefined })
+    if (preset === 'custom') setCustomPatternRaw({ ...pattern, until: undefined, count: undefined })
   }, [recurrenceQuery.data, recurrenceQuery.isLoading, hasExistingRule])
+
+  /**
+   * Marks Repeats as touched alongside the pattern update — a weekday-chip/interval edit inside
+   * an already-Custom rule is a cadence edit too. The raw setter never engaged
+   * `wantsRecurrenceWrite`, so those edits silently no-oped at commit time (the "We,Th → Tu
+   * does nothing" bug).
+   */
+  const setCustomPattern = (next: RecurrencePattern) => {
+    setRepeatsTouched(true)
+    setCustomPatternRaw(next)
+  }
 
   // Preset patterns anchor on the LIVE start time (the date/time the user has staged/picked
   // this session), falling back to the visit's existing start when nothing's been touched yet.
@@ -169,6 +180,31 @@ export function useRecurrenceEditor({
     setEndsRaw(next)
   }
 
+  /** Call right after firing `setRecurrence` — the staged state now IS the saved state, so a
+   * subsequent close must neither re-commit nor discard it. */
+  const markSaved = () => setRepeatsTouched(false)
+
+  /**
+   * Discard staged Repeats edits — re-seed from the existing rule (same mapping as the init
+   * effect) or back to the 'none' default. Consumers call this when the editor page closes
+   * with unsaved edits, so the collapsed Repeat pill never shows a cadence that was never
+   * written.
+   */
+  const resetToRule = () => {
+    setRepeatsTouched(false)
+    if (!recurrenceQuery.data || !hasExistingRule) {
+      setRepeatMode('none')
+      setEndsRaw({})
+      setCustomPatternRaw(defaultCustomPattern(initialStartTime ?? undefined))
+      return
+    }
+    const pattern = recurrenceQuery.data.pattern as unknown as RecurrencePattern
+    const preset = classifyPreset(pattern)
+    setRepeatMode(preset)
+    setEndsRaw({ until: pattern.until, count: pattern.count })
+    if (preset === 'custom') setCustomPatternRaw({ ...pattern, until: undefined, count: undefined })
+  }
+
   /** The `dispatch.setRecurrence` payload for the current pattern, or `null` if not writable. */
   const buildSetRecurrenceInput = (
     inputStartTime: Date,
@@ -206,6 +242,8 @@ export function useRecurrenceEditor({
     ends,
     setEnds,
     repeatsTouched,
+    markSaved,
+    resetToRule,
     handleRepeatModeChange,
     effectivePattern,
     recurrenceSummary,

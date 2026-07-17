@@ -58,8 +58,14 @@ export {
   setMyQcItemNote,
   updateQcItemTemplate,
 } from './qc'
-export type { EngagementActionInput, RecurrenceTemplate, SetRecurrenceRuleInput } from './recurring'
+export type {
+  CancelVisitFollowingInput,
+  EngagementActionInput,
+  RecurrenceTemplate,
+  SetRecurrenceRuleInput,
+} from './recurring'
 export {
+  cancelVisitFollowing,
   endEngagement,
   getWorkOrderStatus,
   materializeVisits,

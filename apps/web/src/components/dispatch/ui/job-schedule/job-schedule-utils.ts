@@ -114,6 +114,33 @@ export function movedFromLabel(
   return `Moved from ${format(occurrence, 'EEE, MMM d')}`
 }
 
+/**
+ * Confirm-dialog copy for the cancel/skip action — ONE source for the board popover and every
+ * job-schedule surface. Series rows offer the extra "Skip this and future visits" choice
+ * (`alternateText` resolves `'alternate'` from `useConfirm`), which routes to
+ * `dispatch.cancelVisitFollowing` (tombstone + series ends at this occurrence).
+ */
+export function cancelVisitConfirmOptions(isSeries: boolean) {
+  return isSeries
+    ? {
+        title: 'Skip this visit?',
+        description:
+          'The visit stays in the job\'s history as skipped and won\'t be regenerated. "Skip this and future visits" also ends the series after this one.',
+        confirmText: 'Skip visit',
+        alternateText: 'Skip this and future visits',
+        cancelText: 'Keep visit',
+        destructive: true,
+      }
+    : {
+        title: 'Cancel this visit?',
+        description:
+          "The visit stays in the job's history as canceled. This does not cancel the job.",
+        confirmText: 'Cancel visit',
+        cancelText: 'Keep visit',
+        destructive: true,
+      }
+}
+
 /** Newest-first split of a work order's visits into "upcoming" and "history" (07 §F.3). */
 export function splitJobVisits(visits: JobVisit[]): { upcoming: JobVisit[]; history: JobVisit[] } {
   const upcoming: JobVisit[] = []

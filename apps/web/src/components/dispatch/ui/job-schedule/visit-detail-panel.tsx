@@ -35,6 +35,7 @@ import { api } from '~/trpc/react'
 import { visitStatusLabel } from '../board/types'
 import { SchedulePopover } from '../schedule-popover'
 import {
+  cancelVisitConfirmOptions,
   isVisitDispatchable,
   movedFromLabel,
   resolveVisitDurationMinutes,
@@ -117,27 +118,13 @@ export function VisitDetailPanel({ recordId, itemId }: RecordDrillContext) {
   }
 
   const handleCancel = async () => {
-    const confirmed = await confirm(
-      isSeries
-        ? {
-            title: 'Skip this visit?',
-            description:
-              "The visit stays in the job's history as skipped and won't be regenerated. This does not affect other visits.",
-            confirmText: 'Skip visit',
-            cancelText: 'Keep visit',
-            destructive: true,
-          }
-        : {
-            title: 'Cancel this visit?',
-            description:
-              "The visit stays in the job's history as canceled. This does not cancel the job.",
-            confirmText: 'Cancel visit',
-            cancelText: 'Keep visit',
-            destructive: true,
-          }
-    )
-    if (!confirmed) return
-    mutations.setVisitStatus.mutate({ visitId: visit.id, status: 'canceled' })
+    const choice = await confirm(cancelVisitConfirmOptions(isSeries))
+    if (!choice) return
+    if (choice === 'alternate') {
+      mutations.cancelVisitFollowing.mutate({ visitId: visit.id })
+    } else {
+      mutations.setVisitStatus.mutate({ visitId: visit.id, status: 'canceled' })
+    }
   }
 
   return (

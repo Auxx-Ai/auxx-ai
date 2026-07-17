@@ -39,17 +39,30 @@
 //   against the real record. An untouched draft simply vanishes on unmount.
 //   An editable builder initially seeds three of these drafts as local loading
 //   placeholders. If persisted rows arrive, they replace only those initial
-//   drafts; they still follow the same no-save-until-edited rule.
-// - Group explode: a catalog-group pick fills the picked line (entry #1) and
-//   pushes entries 2…N as pre-filled phantom drafts in the same frame, then
-//   materializes them through the same createDraft → seed pipeline — the
-//   bundle is fully visible (and totaled) before any create resolves, and no
-//   row ever shifts position while the creates land.
+//   drafts; they still follow the same no-save-until-edited rule. An editable
+//   builder also never renders zero rows: when the last real row and draft
+//   are gone, one placeholder draft re-seeds automatically.
+//   Every draft-state write goes through `mutateDrafts`, which updates
+//   `draftsRef` synchronously and mirrors it into state — a plain `setDrafts`
+//   built from a stale ref once clobbered a queued functional update and
+//   persisted a blank line (plans/dispatch/31 §1.1), so the ref is the single
+//   source of truth and `setDrafts` is never called directly.
+// - Group explode: a catalog-group pick fills the picked line (entry #1),
+//   stages entries 2…N as pre-filled phantom drafts in the same frame (also
+//   dropping any untouched initial placeholders so the bundle lands directly
+//   under the picked row), then materializes the whole bundle through ONE
+//   `record.createMany` round-trip (`createDrafts`) — the bundle is fully
+//   visible (and totaled) before any create resolves. On the draft-row path
+//   the bundle create waits for entry #1's own create so real rows always
+//   land in visual order.
 // - Reorder: dnd-kit sortable rows (grip handle) → `api.money.reorderLines`.
 //   Draft rows aren't part of the sortable set — they pin after the real rows.
-// - Delete: real rows → `api.record.delete` + `api.money.recomputeTotals`
-//   (delete path doesn't fire field-change hooks, §F.2). Draft rows → local
-//   splice, no network.
+// - Delete: optimistic — `removeRecord` drops the row from the record store
+//   (and every cached list, so `TotalsFooter` repaints in the same frame),
+//   then `api.record.delete` + `api.money.recomputeTotals` (delete path
+//   doesn't fire field-change hooks, §F.2) fire without awaiting; an error
+//   restores the row via `invalidateRecord` + `refresh()`. Draft rows →
+//   local splice, no network.
 
 import { FieldType } from '@auxx/database/enums'
 import type { ConditionGroup } from '@auxx/lib/conditions/client'
@@ -79,6 +92,7 @@ import {
   type RecordMeta,
   toRecordId,
   useRecordList,
+  useRecordStore,
   useResource,
   useResourceFields,
 } from '~/components/resources'
@@ -230,7 +244,16 @@ export function LineBuilder({
   // a keyboard-driven or button-driven "add row" lands the caret ready to type.
   const [lastAddedDraftId, setLastAddedDraftId] = useState<string | null>(null)
   const draftsRef = useRef<DraftLine[]>([])
-  draftsRef.current = drafts
+  /**
+   * Single draft-state writer: applies the update to `draftsRef` synchronously
+   * and mirrors the result into state, so two writers in one tick can never
+   * clobber each other's queued update (the plan-31 §1.1 blank-line bug).
+   * `fn` runs exactly once, synchronously — side effects inside are safe.
+   */
+  const mutateDrafts = useCallback((fn: (prev: DraftLine[]) => DraftLine[]) => {
+    draftsRef.current = fn(draftsRef.current)
+    setDrafts(draftsRef.current)
+  }, [])
   // An editable document starts with a small working set of local-only rows.
   // Track just these initial rows so persisted records can replace them without
   // hiding drafts the user explicitly added later.
@@ -373,9 +396,9 @@ export function LineBuilder({
       freshDraft(generateId())
     )
     initialDraftIdsRef.current = new Set(initialDrafts.map((draft) => draft.draftId))
-    setDrafts(initialDrafts)
+    mutateDrafts(() => initialDrafts)
     setLastAddedDraftId(initialDrafts[0]?.draftId ?? null)
-  }, [entityDefinitionId, readOnly, displayRecords.length])
+  }, [entityDefinitionId, readOnly, displayRecords.length, mutateDrafts])
 
   // When persisted lines arrive, hide/remove the initial loading placeholders
   // in the same render. A draft becomes non-placeholder before its first
@@ -389,9 +412,26 @@ export function LineBuilder({
     if (displayRecords.length === 0 || initialDraftIdsRef.current.size === 0) return
     const initialDraftIds = initialDraftIdsRef.current
     initialDraftIdsRef.current = new Set()
-    setDrafts((current) => current.filter((draft) => !initialDraftIds.has(draft.draftId)))
+    mutateDrafts((current) => current.filter((draft) => !initialDraftIds.has(draft.draftId)))
     setLastAddedDraftId((current) => (current && initialDraftIds.has(current) ? null : current))
-  }, [displayRecords.length])
+  }, [displayRecords.length, mutateDrafts])
+
+  // An editable builder never renders zero rows: when the last real row AND
+  // the last draft are gone (final line deleted, last placeholder trashed),
+  // re-seed one placeholder draft. It shares the initial-placeholder
+  // lifecycle — hidden again if a persisted row (re)appears (e.g. a failed
+  // delete restoring via refresh()), no record until its first edit. The
+  // initial-seed effect above owns the first paint (3 placeholders); this
+  // only re-arms after it.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: re-check on any row-set change; refs hold the truth
+  useEffect(() => {
+    if (!entityDefinitionId || readOnly || !seededInitialDraftsRef.current) return
+    if (displayRecords.length > 0 || draftsRef.current.length > 0) return
+    const draft = freshDraft(generateId())
+    initialDraftIdsRef.current.add(draft.draftId)
+    mutateDrafts(() => [draft])
+    setLastAddedDraftId(draft.draftId)
+  }, [entityDefinitionId, readOnly, displayRecords.length, drafts.length, mutateDrafts])
 
   const lineRecordIds = useMemo(
     () =>
@@ -422,11 +462,13 @@ export function LineBuilder({
   const deleteRecord = api.record.delete.useMutation()
   const deleteInvoiceLine = api.money.deleteInvoiceLine.useMutation()
   const createRecord = api.record.create.useMutation()
+  const createManyRecords = api.record.createMany.useMutation()
   const { mutate: reorderMutate } = reorderLines
   const { mutate: recomputeMutate } = recomputeTotals
   const { mutateAsync: deleteMutateAsync } = deleteRecord
   const { mutateAsync: deleteInvoiceLineMutateAsync } = deleteInvoiceLine
   const { mutateAsync: createMutateAsync } = createRecord
+  const { mutateAsync: createManyMutateAsync } = createManyRecords
 
   const { saveFieldValue, saveMultipleAsync } = useSaveFieldValue()
   const { seedCreatedRecord } = useSeedCreatedRecord()
@@ -478,26 +520,38 @@ export function LineBuilder({
   )
 
   const deleteLine = useCallback(
-    async (lineId: string) => {
+    (lineId: string) => {
       if (!entityDefinitionId) return
-      try {
-        if (documentType === 'invoice') {
-          // Unstamps the gathered source line + recomputes totals server-side
-          // (money MI1 build spec §G.3) — NOT the quote's record.delete + recompute pair.
-          await deleteInvoiceLineMutateAsync({
-            lineRecordId: toRecordId(entityDefinitionId, lineId),
-          })
-        } else {
-          await deleteMutateAsync({ recordId: toRecordId(entityDefinitionId, lineId) })
-          // Deletes don't fire field-change hooks — recompute explicitly (§F.2).
-          if (documentType === 'quote') recomputeMutate({ quoteRecordId: docRecordId })
-        }
+      // Optimistic: drop the record from the store (and every cached list —
+      // `lineRecordIds` shrinks, so the row AND the totals footer repaint in
+      // this frame), then fire the delete without awaiting. No `refresh()` on
+      // success — the store is already correct, and the refetch is what made
+      // deletes feel slow.
+      useRecordStore.getState().removeRecord(entityDefinitionId, lineId)
+      const restoreOnError = (error: unknown) => {
+        // `removeRecord` marked the id not-found, which `requestRecord` would
+        // skip — clear that marker first so the refetched list can resurrect
+        // the row.
+        useRecordStore.getState().invalidateRecord(entityDefinitionId, lineId)
         refresh()
-      } catch (error) {
         toastError({
           title: 'Error deleting line',
           description: error instanceof Error ? error.message : 'Could not delete the line',
         })
+      }
+      if (documentType === 'invoice') {
+        // Unstamps the gathered source line + recomputes totals server-side
+        // (money MI1 build spec §G.3) — NOT the quote's record.delete + recompute pair.
+        deleteInvoiceLineMutateAsync({
+          lineRecordId: toRecordId(entityDefinitionId, lineId),
+        }).catch(restoreOnError)
+      } else {
+        deleteMutateAsync({ recordId: toRecordId(entityDefinitionId, lineId) })
+          .then(() => {
+            // Deletes don't fire field-change hooks — recompute explicitly (§F.2).
+            if (documentType === 'quote') recomputeMutate({ quoteRecordId: docRecordId })
+          })
+          .catch(restoreOnError)
       }
     },
     [
@@ -512,11 +566,14 @@ export function LineBuilder({
   )
 
   /** Draft delete (trash icon) — local splice, no network. */
-  const deleteDraft = useCallback((draftId: string) => {
-    creatingDraftIdsRef.current.delete(draftId)
-    initialDraftIdsRef.current.delete(draftId)
-    setDrafts((prev) => prev.filter((d) => d.draftId !== draftId))
-  }, [])
+  const deleteDraft = useCallback(
+    (draftId: string) => {
+      creatingDraftIdsRef.current.delete(draftId)
+      initialDraftIdsRef.current.delete(draftId)
+      mutateDrafts((prev) => prev.filter((d) => d.draftId !== draftId))
+    },
+    [mutateDrafts]
+  )
 
   /**
    * "+ Add line item" (and keyboard nav past the last row) — pushes a
@@ -525,8 +582,34 @@ export function LineBuilder({
   const addLine = useCallback(() => {
     const draft = freshDraft(generateId())
     setLastAddedDraftId(draft.draftId)
-    setDrafts((prev) => [...prev, draft])
-  }, [])
+    mutateDrafts((prev) => [...prev, draft])
+  }, [mutateDrafts])
+
+  /** Build a draft's `record.create` values payload (shared by the single and bulk paths). */
+  const draftCreateValues = useCallback(
+    (snapshot: DraftLine, sortOrder: number): Record<string, unknown> => {
+      const relKey = relKeyForDocumentType(documentType)
+      const values: Record<string, unknown> = {
+        line_item_qty: snapshot.qty,
+        line_item_unit: snapshot.unit,
+        line_item_taxable: snapshot.taxable,
+        line_item_optional: snapshot.optional,
+        line_item_optional_selected: snapshot.optionalSelected,
+        line_item_sort_order: sortOrder,
+        [relKey]: documentRecordId,
+      }
+      if (visitId) values.line_item_visit_id = visitId
+      if (snapshot.name) values.line_item_name = snapshot.name
+      if (snapshot.description) values.line_item_description = snapshot.description
+      if (snapshot.category) values.line_item_category = snapshot.category
+      if (snapshot.unitPriceCents !== null) values.line_item_unit_price = snapshot.unitPriceCents
+      if (snapshot.catalogItemRecordId) {
+        values.line_item_catalog_item = snapshot.catalogItemRecordId
+      }
+      return values
+    },
+    [documentType, documentRecordId, visitId]
+  )
 
   /**
    * Fire the draft's first `record.create`, carrying every accumulated draft
@@ -541,7 +624,9 @@ export function LineBuilder({
       // draft, so an arriving persisted list cannot remove the user's work.
       initialDraftIdsRef.current.delete(draftId)
       if (creatingDraftIdsRef.current.has(draftId)) {
-        setDrafts((prev) => prev.map((d) => (d.draftId === draftId ? { ...d, ...overrides } : d)))
+        mutateDrafts((prev) =>
+          prev.map((d) => (d.draftId === draftId ? { ...d, ...overrides } : d))
+        )
         return
       }
 
@@ -555,26 +640,9 @@ export function LineBuilder({
       }
 
       creatingDraftIdsRef.current.add(draftId)
-      setDrafts((prev) => prev.map((d) => (d.draftId === draftId ? snapshot : d)))
+      mutateDrafts((prev) => prev.map((d) => (d.draftId === draftId ? snapshot : d)))
 
-      const relKey = relKeyForDocumentType(documentType)
-      const values: Record<string, unknown> = {
-        line_item_qty: snapshot.qty,
-        line_item_unit: snapshot.unit,
-        line_item_taxable: snapshot.taxable,
-        line_item_optional: snapshot.optional,
-        line_item_optional_selected: snapshot.optionalSelected,
-        line_item_sort_order: displayIdsRef.current.length + draftIndex,
-        [relKey]: documentRecordId,
-      }
-      if (visitId) values.line_item_visit_id = visitId
-      if (snapshot.name) values.line_item_name = snapshot.name
-      if (snapshot.description) values.line_item_description = snapshot.description
-      if (snapshot.category) values.line_item_category = snapshot.category
-      if (snapshot.unitPriceCents !== null) values.line_item_unit_price = snapshot.unitPriceCents
-      if (snapshot.catalogItemRecordId) {
-        values.line_item_catalog_item = snapshot.catalogItemRecordId
-      }
+      const values = draftCreateValues(snapshot, displayIdsRef.current.length + draftIndex)
 
       try {
         const result = await createMutateAsync({ entityDefinitionId: 'line_item', values })
@@ -596,10 +664,10 @@ export function LineBuilder({
         }
 
         creatingDraftIdsRef.current.delete(draftId)
-        setDrafts((prev) => prev.filter((d) => d.draftId !== draftId))
+        mutateDrafts((prev) => prev.filter((d) => d.draftId !== draftId))
       } catch (error) {
         creatingDraftIdsRef.current.delete(draftId)
-        setDrafts((prev) =>
+        mutateDrafts((prev) =>
           prev.map((d) => (d.draftId === draftId ? { ...d, creating: false } : d))
         )
         toastError({
@@ -610,9 +678,8 @@ export function LineBuilder({
     },
     [
       entityDefinitionId,
-      documentType,
-      documentRecordId,
-      visitId,
+      draftCreateValues,
+      mutateDrafts,
       createMutateAsync,
       saveMultipleAsync,
       seedCreatedRecord,
@@ -621,42 +688,126 @@ export function LineBuilder({
   )
 
   /**
-   * Steps 2 (append entries 2…N) + 4–5 (document discount/tax set-if-unset)
-   * of a catalog-group explode (money 09-product-groups.md "Line-builder
-   * consumption") — shared by the real-row and draft-row group-pick paths.
-   * Entries 2…N land as pre-filled phantom drafts IMMEDIATELY — instant
-   * paint, and totals are right on the first frame (`TotalsFooter` already
-   * folds drafts into its math). They then materialize through the normal
-   * `createDraft` → `seedCreatedRecord` pipeline, each draft swapping in
-   * place for its real row with zero refetch — no `refresh()`, so the list
-   * never reshuffles mid-explode. Creates run sequentially: the list cache
-   * appends in completion order, so completion order must equal draft order
-   * to agree with the `line_item_sort_order` stamps (freshDraft's
-   * optional=false / optionalSelected=true defaults are exactly the
-   * "group-exploded lines start required" rule, money plan 18 §3).
+   * Materialize a staged bundle of pre-filled drafts through ONE
+   * `record.createMany` round-trip (plan 31 §D). Marks every draft
+   * `creating`, calls `createMany` (all-or-nothing server-side), then per
+   * result — in input order, so the list cache appends agree with the
+   * `line_item_sort_order` stamps — seeds the record + field-value caches and
+   * diff-flushes anything the user edited while the create was in flight.
+   * On error, every bundle draft resets to editable with one toast.
    */
-  const applyGroupPickRestAndBilling = useCallback(
-    (pick: ResolvedCatalogGroup, rest: LineValues[]) => {
-      if (rest.length > 0) {
-        const bundleDrafts: DraftLine[] = rest.map((line) => ({
-          ...freshDraft(generateId()),
-          ...line,
-        }))
-        // Write through draftsRef (normally render-synced) so the sequential
-        // createDraft calls below can resolve these drafts before React
-        // re-renders; per-line failures keep the draft editable + toast
-        // inside createDraft, so there's no explode-level error handling.
-        draftsRef.current = [...draftsRef.current, ...bundleDrafts]
-        setDrafts(draftsRef.current)
-        void (async () => {
-          for (const draft of bundleDrafts) {
-            await createDraft(draft.draftId)
-          }
-        })()
+  const createDrafts = useCallback(
+    async (bundleDrafts: DraftLine[]) => {
+      if (!entityDefinitionId || bundleDrafts.length === 0) return
+      const draftIds = new Set(bundleDrafts.map((d) => d.draftId))
+      for (const draftId of draftIds) {
+        initialDraftIdsRef.current.delete(draftId)
+        creatingDraftIdsRef.current.add(draftId)
       }
 
-      // Steps 4–5: document discount/tax set-if-unset — quote/invoice only, never
-      // overwriting a value the document already has.
+      // Snapshot each draft's CURRENT values (edits may have landed since
+      // staging) while marking them all `creating` in one write.
+      const snapshots = new Map<string, DraftLine>()
+      mutateDrafts((prev) =>
+        prev.map((d) => {
+          if (!draftIds.has(d.draftId)) return d
+          const snapshot: DraftLine = { ...d, creating: true }
+          snapshots.set(d.draftId, snapshot)
+          return snapshot
+        })
+      )
+
+      const orderedDrafts = bundleDrafts.filter((d) => snapshots.has(d.draftId))
+      const records = orderedDrafts.map((draft) => {
+        const draftIndex = draftsRef.current.findIndex((d) => d.draftId === draft.draftId)
+        return draftCreateValues(
+          snapshots.get(draft.draftId)!,
+          displayIdsRef.current.length + draftIndex
+        )
+      })
+      if (records.length === 0) return
+
+      try {
+        const results = await createManyMutateAsync({ entityDefinitionId: 'line_item', records })
+
+        const flushes: Promise<unknown>[] = []
+        results.forEach((result, i) => {
+          const draft = orderedDrafts[i]
+          const snapshot = draft ? snapshots.get(draft.draftId) : undefined
+          if (!draft || !snapshot) return
+          seedCreatedRecord({
+            entityDefinitionId,
+            recordId: result.recordId,
+            listKey,
+            instance: result.instance,
+            values: linePatchToFieldValues(snapshot),
+          })
+          const latest = draftsRef.current.find((d) => d.draftId === draft.draftId) ?? snapshot
+          const changed = linePatchToFieldValues(diffLineValues(snapshot, latest))
+          if (changed.length > 0) flushes.push(saveMultipleAsync(result.recordId, changed))
+        })
+
+        for (const draftId of draftIds) creatingDraftIdsRef.current.delete(draftId)
+        mutateDrafts((prev) => prev.filter((d) => !draftIds.has(d.draftId)))
+        await Promise.all(flushes)
+      } catch (error) {
+        for (const draftId of draftIds) creatingDraftIdsRef.current.delete(draftId)
+        mutateDrafts((prev) =>
+          prev.map((d) => (draftIds.has(d.draftId) ? { ...d, creating: false } : d))
+        )
+        toastError({
+          title: 'Error adding lines',
+          description: error instanceof Error ? error.message : 'Could not add the lines',
+        })
+      }
+    },
+    [
+      entityDefinitionId,
+      draftCreateValues,
+      mutateDrafts,
+      createManyMutateAsync,
+      saveMultipleAsync,
+      seedCreatedRecord,
+      listKey,
+    ]
+  )
+
+  /**
+   * Step 2 of a catalog-group explode (money 09-product-groups.md
+   * "Line-builder consumption"): stage entries 2…N as pre-filled phantom
+   * drafts IMMEDIATELY — instant paint, and totals are right on the first
+   * frame (`TotalsFooter` already folds drafts into its math). The same write
+   * drops any untouched initial placeholder drafts (plan 31 §C) so the bundle
+   * lands directly under the picked row instead of below empty warm-up rows.
+   * Returns the staged drafts for {@link createDrafts} to materialize
+   * (freshDraft's optional=false / optionalSelected=true defaults are exactly
+   * the "group-exploded lines start required" rule, money plan 18 §3).
+   */
+  const stageBundleDrafts = useCallback(
+    (rest: LineValues[]): DraftLine[] => {
+      if (rest.length === 0) return []
+      const bundleDrafts: DraftLine[] = rest.map((line) => ({
+        ...freshDraft(generateId()),
+        ...line,
+      }))
+      const initialDraftIds = initialDraftIdsRef.current
+      initialDraftIdsRef.current = new Set()
+      mutateDrafts((prev) => [
+        ...prev.filter((d) => !initialDraftIds.has(d.draftId)),
+        ...bundleDrafts,
+      ])
+      setLastAddedDraftId((current) => (current && initialDraftIds.has(current) ? null : current))
+      return bundleDrafts
+    },
+    [mutateDrafts]
+  )
+
+  /**
+   * Steps 4–5 of a catalog-group explode: document discount/tax set-if-unset —
+   * quote/invoice only, never overwriting a value the document already has.
+   */
+  const applyGroupBilling = useCallback(
+    (pick: ResolvedCatalogGroup) => {
       if (hasBilling) {
         const currentDiscountValue = billingValues[`${billingPrefix}_discount_value`] as
           | number
@@ -677,13 +828,14 @@ export function LineBuilder({
         }
       }
     },
-    [hasBilling, billingPrefix, billingValues, taxRates, updateDiscount, updateTax, createDraft]
+    [hasBilling, billingPrefix, billingValues, taxRates, updateDiscount, updateTax]
   )
 
   /**
    * Explode a picked catalog group onto a REAL line (money 09-product-groups.md
    * "Line-builder consumption"): entry #1 fills the line whose picker was open,
-   * entries 2…N append as new lines via {@link applyGroupPickRestAndBilling}.
+   * entries 2…N are staged in the same frame and materialized through one
+   * `record.createMany`.
    */
   const handleGroupPick = useCallback(
     (recordId: RecordId, group: CatalogGroup) => {
@@ -703,9 +855,11 @@ export function LineBuilder({
       updateLine(recordId, first)
 
       // Known v1 edge: picking on a middle line still appends `rest` at the list end.
-      applyGroupPickRestAndBilling(pick, rest)
+      const bundleDrafts = stageBundleDrafts(rest)
+      applyGroupBilling(pick)
+      void createDrafts(bundleDrafts)
     },
-    [catalogItemMap, updateLine, applyGroupPickRestAndBilling]
+    [catalogItemMap, updateLine, stageBundleDrafts, applyGroupBilling, createDrafts]
   )
 
   /** Same explode intent as {@link handleGroupPick}, targeting a phantom draft. */
@@ -721,12 +875,22 @@ export function LineBuilder({
       if (!first) return
 
       // Step 1: entry #1's values become THIS draft's create. Catalog/group-exploded
-      // lines start required (money plan 18 §3).
-      void createDraft(draftId, first)
+      // lines start required (money plan 18 §3). Called BEFORE staging so its
+      // synchronous prefix promotes the picked draft out of the initial
+      // placeholder set — otherwise the §C cleanup below would drop it.
+      const firstCreate = createDraft(draftId, first)
 
-      applyGroupPickRestAndBilling(pick, rest)
+      const bundleDrafts = stageBundleDrafts(rest)
+      applyGroupBilling(pick)
+
+      // Materialize the bundle only after entry #1's create settles: real rows
+      // append to the list cache in completion order, so entry #1 must land
+      // first for the persisted rows to match the on-screen (and sort_order)
+      // order. The bundle rows are already painted as drafts, so this costs
+      // nothing visually. `createDraft` never rejects (it toasts internally).
+      void firstCreate.then(() => createDrafts(bundleDrafts))
     },
-    [catalogItemMap, createDraft, applyGroupPickRestAndBilling]
+    [catalogItemMap, createDraft, stageBundleDrafts, applyGroupBilling, createDrafts]
   )
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }))

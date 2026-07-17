@@ -18,10 +18,17 @@ interface ConfirmOptions {
   description?: string
   confirmText?: string
   cancelText?: string
+  /** Optional third choice between Cancel and Confirm (e.g. "Skip this and future visits") —
+   * resolves the promise with `'alternate'`. Both truthy results mean the user proceeded;
+   * callers that never pass this keep the plain boolean contract. */
+  alternateText?: string
   destructive?: boolean
 }
 
-type ConfirmCallback = (value: boolean) => void
+/** `true` = primary confirm, `'alternate'` = the optional third button, `false` = canceled. */
+export type ConfirmResult = boolean | 'alternate'
+
+type ConfirmCallback = (value: ConfirmResult) => void
 
 /**
  * Hook for creating confirmation dialogs before performing destructive actions
@@ -36,13 +43,14 @@ export function useConfirm() {
   // put `confirm` in callback dep arrays; an unstable identity there cascades
   // into the records-table column defs (primaryCellRender) and re-renders the
   // whole grid on unrelated updates.
-  const confirm = useCallback((options: ConfirmOptions = {}): Promise<boolean> => {
+  const confirm = useCallback((options: ConfirmOptions = {}): Promise<ConfirmResult> => {
     return new Promise((resolve) => {
       setOptions({
         title: options.title || 'Confirm',
         description: options.description || 'Are you sure?',
         confirmText: options.confirmText || 'Confirm',
         cancelText: options.cancelText || 'Cancel',
+        alternateText: options.alternateText,
         destructive: options.destructive || false,
       })
 
@@ -51,17 +59,14 @@ export function useConfirm() {
     })
   }, [])
 
-  const handleConfirm = () => {
+  const resolveWith = (value: ConfirmResult) => {
     setOpen(false)
-    callback?.(true)
+    callback?.(value)
     setCallback(null)
   }
 
-  const handleCancel = () => {
-    setOpen(false)
-    callback?.(false)
-    setCallback(null)
-  }
+  const handleConfirm = () => resolveWith(true)
+  const handleCancel = () => resolveWith(false)
 
   const ConfirmDialog = () => (
     <Dialog open={open} onOpenChange={(open) => !open && handleCancel()}>
@@ -82,6 +87,15 @@ export function useConfirm() {
             data-testid='confirmation-modal-cancel-button'>
             {options.cancelText} <Kbd shortcut='esc' variant='ghost' size='sm' />
           </Button>
+          {options.alternateText && (
+            <Button
+              size='sm'
+              variant='outline'
+              onClick={() => resolveWith('alternate')}
+              data-testid='confirmation-modal-alternate-button'>
+              {options.alternateText}
+            </Button>
+          )}
           <Button
             data-dialog-submit
             size='sm'

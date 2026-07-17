@@ -132,11 +132,29 @@ export function useBoardMutations(range: DateRange) {
     onSettled: settle,
   })
 
+  // "Skip this and future visits" — the target's own tombstone is patched optimistically; the
+  // deleted later siblings sweep away on the settle invalidate (the `applyToSeries` rationale).
+  const cancelVisitFollowing = api.dispatch.cancelVisitFollowing.useMutation({
+    onMutate: async (vars) => {
+      await utils.dispatch.getBoard.cancel(range)
+      return { previous: patchVisit(vars.visitId, { status: 'canceled' }) }
+    },
+    onError: (error, _vars, ctx) => {
+      rollback(ctx?.previous)
+      toastError({
+        title: 'Error skipping visits',
+        description: error.message,
+      })
+    },
+    onSettled: settle,
+  })
+
   return {
     scheduleVisit,
     unscheduleVisit,
     setVisitStatus,
     dispatchVisit,
     applyToSeries,
+    cancelVisitFollowing,
   }
 }

@@ -26,7 +26,7 @@ import {
 import { useResource } from '~/components/resources'
 import { useConfirm } from '~/hooks/use-confirm'
 import { api } from '~/trpc/react'
-import { isVisitDispatchable } from '../job-schedule/job-schedule-utils'
+import { cancelVisitConfirmOptions, isVisitDispatchable } from '../job-schedule/job-schedule-utils'
 import type { ExistingVisitForOverlap } from '../schedule-popover'
 import { AssigneeRow } from '../shared/assignee-row'
 import { InlineEventTimePicker } from '../shared/inline-event-time-picker'
@@ -114,11 +114,14 @@ export function VisitPopoverContent({
   })
 
   /** Repeat-row commits never go through the scope chooser and always re-anchor from the
-   * chip's current start (decision #3 / plan §4.2). */
+   * chip's current start (decision #3 / plan §4.2). Fired by the editor's explicit Save
+   * button only — closing the page without saving discards instead (`resetToRule` below). */
   const commitRecurrence = () => {
     if (!editor.wantsRecurrenceWrite || !editor.patternValid) return
     const input = editor.buildSetRecurrenceInput(event.start, event.end, event.assigneeUserId)
-    if (input) setRecurrence.mutate(input)
+    if (!input) return
+    setRecurrence.mutate(input)
+    editor.markSaved()
   }
 
   const hints = useScheduleHints({
@@ -128,6 +131,18 @@ export function VisitPopoverContent({
     endTime: event.end,
     existingVisits,
   })
+
+  /** Confirmed cancel with the series-scope choice: primary = this visit only (the existing
+   * tombstone), alternate = "Skip this and future visits" (tombstone + series ends here). */
+  const handleCancel = async () => {
+    const choice = await confirm(cancelVisitConfirmOptions(Boolean(event.recurrenceRuleId)))
+    if (!choice) return
+    if (choice === 'alternate') {
+      mutations.cancelVisitFollowing.mutate({ visitId: event.id })
+    } else {
+      mutations.setVisitStatus.mutate({ visitId: event.id, status: 'canceled' })
+    }
+  }
 
   const handleDispatch = async () => {
     if (event.dispatchedAt) {
@@ -281,9 +296,20 @@ export function VisitPopoverContent({
                 : undefined
           }
           disabled={!canEdit || !workOrderRecordId || editor.repeatLocked}
-          renderEditor={() => <RepeatEditor editor={editor} />}
+          renderEditor={(close) => (
+            <RepeatEditor
+              editor={editor}
+              saving={setRecurrence.isPending}
+              onSave={() => {
+                commitRecurrence()
+                close()
+              }}
+            />
+          )}
           onOpenChange={(open) => {
-            if (!open) commitRecurrence()
+            // Save already cleared `repeatsTouched`, so this only fires on close-without-save:
+            // discard the staged edits so the collapsed pill never shows an unwritten cadence.
+            if (!open && editor.repeatsTouched) editor.resetToRule()
           }}
         />
 
@@ -310,11 +336,12 @@ export function VisitPopoverContent({
                     <Button
                       size='sm'
                       variant='ghost'
-                      onClick={() =>
-                        mutations.setVisitStatus.mutate({ visitId: event.id, status: 'canceled' })
-                      }
-                      loading={mutations.setVisitStatus.isPending}>
-                      Cancel visit
+                      onClick={handleCancel}
+                      loading={
+                        mutations.setVisitStatus.isPending ||
+                        mutations.cancelVisitFollowing.isPending
+                      }>
+                      {event.recurrenceRuleId ? 'Skip visit' : 'Cancel visit'}
                     </Button>
                   )}
                 </div>

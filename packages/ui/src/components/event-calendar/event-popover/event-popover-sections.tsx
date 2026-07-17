@@ -321,6 +321,12 @@ export function EventDateTimeSection({
   const [localTime, setLocalTime] = React.useState<{ start: Date; end: Date } | null>(() =>
     start && end ? { start, end } : null
   )
+  // The just-picked date, shown until the commit round-trips into new props — without it the
+  // Date row snaps back to the old value the moment the calendar closes. Tagged with the
+  // `start` it was staged against so it self-invalidates once props actually move.
+  const [pending, setPending] = React.useState<{ baseMs: number | null; start: Date } | null>(null)
+  const startMs = start?.getTime() ?? null
+  const pendingStart = pending && pending.baseMs === startMs ? pending.start : null
 
   React.useEffect(() => {
     if (openEditor !== 'time' && start && end) setLocalTime({ start, end })
@@ -338,7 +344,12 @@ export function EventDateTimeSection({
       newEnd = addMinutes(newStart, 60)
     }
     setOpenEditor(null)
-    gate((scope) => onChange?.({ start: newStart, end: newEnd }, scope))
+    setPending({ baseMs: startMs, start: newStart })
+    // A calendar pick moves THIS occurrence to another day, so it never opens the scope
+    // chooser: series scopes can't express a day move (the rule's pattern owns weekdays —
+    // `applyToSeries` carries only time-of-day/duration, so a gated day move would silently
+    // no-op). Cadence/day changes for the whole series live in the Repeat editor.
+    onChange?.({ start: newStart, end: newEnd }, 'this')
   }
 
   /**
@@ -384,7 +395,9 @@ export function EventDateTimeSection({
             icon={<CalendarDays />}
             title='Date'
             warnings={warnings}
-            description={start ? format(start, 'PPP') : 'No date'}
+            description={
+              pendingStart ? format(pendingStart, 'PPP') : start ? format(start, 'PPP') : 'No date'
+            }
             trailing={
               <div className='flex items-center gap-2'>
                 {onDateToggle && (
@@ -407,7 +420,11 @@ export function EventDateTimeSection({
           />
           <AnimatedCollapsibleContent open={openEditor === 'date'}>
             <div className='pt-3 pb-1'>
-              <Calendar mode='single' selected={start ?? undefined} onSelect={handleDateSelect} />
+              <Calendar
+                mode='single'
+                selected={pendingStart ?? start ?? undefined}
+                onSelect={handleDateSelect}
+              />
             </div>
           </AnimatedCollapsibleContent>
         </div>

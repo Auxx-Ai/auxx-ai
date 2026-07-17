@@ -37,7 +37,9 @@
 import { database } from '@auxx/database'
 import {
   addVisit,
+  cancelVisitFollowing,
   dispatchVisit,
+  materializeVisits,
   restoreVisit,
   scheduleVisit,
   setRecurrenceRule,
@@ -650,6 +652,94 @@ async function main() {
       'unscheduleVisit rejected on a series-linked visit',
       errSeriesUnschedule instanceof BadRequestError,
       errSeriesUnschedule
+    )
+
+    // ══════════════════════════════════════════════════════════════════════
+    // 8. cancelVisitFollowing ("Skip this and future visits"): tombstones the target, stamps
+    //    pattern.until = its occurrenceDate (count stripped), deletes LATER scheduled series
+    //    rows, leaves earlier/done rows + rule-less extras alone, and a re-materialize never
+    //    regenerates past the stamp.
+    // ══════════════════════════════════════════════════════════════════════
+    console.log('8: cancel this-and-following')
+    const wo8 = await createWO('cancel following')
+    await setRecurrenceRule({
+      organizationId,
+      userId,
+      workOrderInstanceId: wo8.instance.id,
+      // Daily + count so the window holds several rows and the count-strip is provable.
+      pattern: { frequency: 'daily', interval: 1, count: 10 },
+      template: { startMinute: 540, durationMinutes: 60 },
+      timezone: 'UTC',
+      effectiveFrom: todayIso,
+    })
+    const wo8Rows = await getVisitsSorted(wo8.instance.id)
+    const seriesRows8 = wo8Rows.filter((r) => r.recurrenceRuleId != null)
+    check('setup: several series rows materialized', seriesRows8.length >= 4, seriesRows8.length)
+    const [first8, target8] = seriesRows8
+    if (!first8 || !target8) throw new Error('section 8 setup failed')
+
+    // Earlier occurrence goes done — must survive the cut untouched.
+    await setVisitStatus({ organizationId, userId, visitId: first8.id, status: 'done' })
+    // Deliberate rule-less extra — must survive too.
+    const extra8 = await addVisit({ organizationId, userId, workOrderInstanceId: wo8.instance.id })
+
+    // Rule-less rows are rejected before anything is written.
+    const errCancelExtra = await expectThrow(() =>
+      cancelVisitFollowing({ organizationId, userId, visitId: extra8.id })
+    )
+    check(
+      'cancelVisitFollowing rejected on a rule-less visit',
+      errCancelExtra instanceof BadRequestError,
+      errCancelExtra
+    )
+
+    await cancelVisitFollowing({ organizationId, userId, visitId: target8.id })
+    const rowsAfter8 = await getVisitsSorted(wo8.instance.id)
+    const targetAfter8 = rowsAfter8.find((r) => r.id === target8.id)
+    check('target occurrence is tombstoned (canceled)', targetAfter8?.status === 'canceled')
+    const laterScheduled8 = rowsAfter8.filter(
+      (r) =>
+        r.recurrenceRuleId != null &&
+        r.status === 'scheduled' &&
+        r.occurrenceDate != null &&
+        target8.occurrenceDate != null &&
+        r.occurrenceDate > target8.occurrenceDate
+    )
+    check('all later scheduled series rows deleted', laterScheduled8.length === 0, laterScheduled8)
+    check(
+      'earlier done occurrence untouched',
+      rowsAfter8.find((r) => r.id === first8.id)?.status === 'done'
+    )
+    check(
+      'rule-less extra visit untouched',
+      rowsAfter8.some((r) => r.id === extra8.id)
+    )
+
+    const rule8 = await database.query.RecurrenceRule.findFirst({
+      where: (t, { eq }) => eq(t.subjectId, wo8.instance.id),
+    })
+    const pattern8 = rule8?.pattern as RecurrencePattern | undefined
+    check(
+      'pattern.until stamped with the target occurrenceDate',
+      pattern8?.until === target8.occurrenceDate,
+      pattern8
+    )
+    check('pattern.count stripped (until/count are exclusive)', pattern8?.count === undefined)
+
+    // The sweep path must not resurrect anything past the stamp.
+    if (rule8) await materializeVisits(rule8, { userId })
+    const rowsReswept8 = await getVisitsSorted(wo8.instance.id)
+    const regenerated8 = rowsReswept8.filter(
+      (r) =>
+        r.recurrenceRuleId != null &&
+        r.occurrenceDate != null &&
+        target8.occurrenceDate != null &&
+        r.occurrenceDate > target8.occurrenceDate
+    )
+    check('re-materialize regenerates nothing past until', regenerated8.length === 0, regenerated8)
+    check(
+      'tombstone still blocks its own date after re-materialize (no duplicate row)',
+      rowsReswept8.filter((r) => r.occurrenceDate === target8.occurrenceDate).length === 1
     )
   } finally {
     // ── Cleanup ──
