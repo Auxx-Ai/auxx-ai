@@ -6,6 +6,7 @@ import { FeatureKey } from '@auxx/lib/permissions/client'
 import { isRecordId } from '@auxx/lib/resources/client'
 import { CalendarDndProvider } from '@auxx/ui/components/event-calendar'
 import { MainPageContent } from '@auxx/ui/components/main-page'
+import { toastError } from '@auxx/ui/components/toast'
 import type { DragEndEvent } from '@dnd-kit/core'
 import { addMinutes } from 'date-fns'
 import { Lock } from 'lucide-react'
@@ -227,6 +228,16 @@ export function DispatchBoard() {
         | undefined
 
       if (activeData?.event && overData?.type === 'sidebar-backlog') {
+        // Plan 30 §D.1 — series visits never go back to the backlog (server rejects it too);
+        // this gesture only makes sense for a rule-less visit. Silently no-op with a toast
+        // rather than firing a mutation the server will bounce.
+        if (activeData.event.recurrenceRuleId) {
+          toastError({
+            title: "Can't move to backlog",
+            description: "Recurring visits can't move to the backlog — reschedule or skip instead.",
+          })
+          return
+        }
         mutations.unscheduleVisit.mutate({ visitId: activeData.event.id })
         return
       }

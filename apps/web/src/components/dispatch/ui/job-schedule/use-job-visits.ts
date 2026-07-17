@@ -67,6 +67,13 @@ export function useJobVisits(workOrderRecordId: RecordId) {
     onError: onErrorToast('Error dispatching visit'),
     onSuccess: invalidate,
   })
+  // Plan 30 §A.5 — bring a canceled/skipped visit back to `scheduled` in place (never a new time).
+  // (Add-visit creation lives in `SchedulePopover`'s CREATE mode, not here — the picker commits
+  // `dispatch.addVisit` itself.)
+  const restoreVisit = api.dispatch.restoreVisit.useMutation({
+    onError: onErrorToast('Error restoring visit'),
+    onSuccess: invalidate,
+  })
 
   // `SchedulePopoverContent`'s overlap-hint input (07 §D.4) — this job's own
   // other scheduled visits (multi-visit is a planned extension; harmless no-op
@@ -92,7 +99,13 @@ export function useJobVisits(workOrderRecordId: RecordId) {
     isLoading: query.isLoading,
     canEdit,
     existingVisits,
-    mutations: { scheduleVisit, unscheduleVisit, setVisitStatus, dispatchVisit },
+    mutations: {
+      scheduleVisit,
+      unscheduleVisit,
+      setVisitStatus,
+      dispatchVisit,
+      restoreVisit,
+    },
     /** Re-fetch this work order's visits — pair with `SchedulePopover`'s `onScheduled`/
      * `onUnscheduled` callbacks, since that component owns its own mutation (not one of
      * `mutations` above) and the acting tab's own realtime echo is server-suppressed. */

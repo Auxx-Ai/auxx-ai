@@ -28,9 +28,16 @@ export function ScheduleWorkOrderAction({ recordId }: DrawerActionProps) {
 
   if (!isAdminOrOwner || isLoading) return null
 
-  // Oldest-scheduled-first with unscheduled last (§B.6) — the first non-terminal
-  // row is the one dispatchers act on; v1 is one-off (exactly one visit per job).
-  const visit = visits?.find((v) => v.status !== 'canceled' && v.status !== 'done') ?? visits?.[0]
+  // Plan 30 §G.1 — target the next upcoming non-terminal visit (startTime >= now); else the
+  // first unscheduled non-terminal row; else the first non-terminal row. Never falls back to
+  // an all-terminal (done/canceled) visit — the header action hides instead (recovery on an
+  // all-canceled job is §A.5 Restore, not this button).
+  const nonTerminal = visits?.filter((v) => v.status !== 'canceled' && v.status !== 'done') ?? []
+  const now = Date.now()
+  const visit =
+    nonTerminal.find((v) => v.startTime && new Date(v.startTime).getTime() >= now) ??
+    nonTerminal.find((v) => !v.startTime) ??
+    nonTerminal[0]
   if (!visit) return null
 
   const refresh = () => void utils.dispatch.listVisits.invalidate({ workOrderRecordId: recordId })

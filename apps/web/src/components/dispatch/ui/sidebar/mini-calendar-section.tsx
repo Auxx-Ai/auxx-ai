@@ -20,6 +20,9 @@ interface MiniCalendarSectionProps {
   /** Week view narrows the band to the visible week (13-week-view-horizontal-stream.md §2.4);
    * unset (map mode) falls back to `visibleRange`. `timeline` (plan 18) uses `visibleRange`. */
   view?: 'day' | 'week' | 'month' | 'timeline'
+  /** Sidebar footer's "Show canceled" toggle (plan 30 §B.1) — mirrors the board's own filter so
+   * the day-marker dots agree with what the calendar actually renders. Default false upstream. */
+  includeCanceled?: boolean
 }
 
 /**
@@ -35,9 +38,15 @@ export function MiniCalendarSection({
   weekStartsOn,
   hiddenWorkerIds,
   view,
+  includeCanceled,
 }: MiniCalendarSectionProps) {
   const [displayMonth, setDisplayMonth] = useState(date)
-  const { density } = useMiniCalendarDensity(displayMonth, weekStartsOn, hiddenWorkerIds)
+  const { density } = useMiniCalendarDensity(
+    displayMonth,
+    weekStartsOn,
+    hiddenWorkerIds,
+    includeCanceled
+  )
 
   return (
     <GenericMiniCalendarSection

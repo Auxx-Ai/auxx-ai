@@ -20,7 +20,8 @@ import { isWorkerHidden } from '../../board/utils'
 export function useMiniCalendarDensity(
   displayMonth: Date,
   weekStartsOn: WeekStartIndex,
-  hiddenWorkerIds: string[]
+  hiddenWorkerIds: string[],
+  includeCanceled = false
 ) {
   const from = useMemo(
     () => startOfWeek(startOfMonth(displayMonth), { weekStartsOn }),
@@ -32,7 +33,7 @@ export function useMiniCalendarDensity(
   }, [displayMonth, weekStartsOn])
 
   const query = api.dispatch.getVisitDayMarkers.useQuery(
-    { from, to },
+    { from, to, includeCanceled },
     { staleTime: ORG_STATIC_STALE_TIME }
   )
 

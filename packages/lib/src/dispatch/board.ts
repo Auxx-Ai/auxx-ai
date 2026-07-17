@@ -6,7 +6,7 @@
 
 import { database, schema } from '@auxx/database'
 import { type RecordId, toRecordId } from '@auxx/types/resource'
-import { and, eq, gte, inArray, isNull, lt, lte, sql } from 'drizzle-orm'
+import { and, eq, gte, inArray, isNull, lt, lte, ne, sql } from 'drizzle-orm'
 import { getOrgCache } from '../cache'
 import { extractFieldValueScalar } from '../field-values'
 import { type DispatchWorkerWithUser, listDispatchWorkers } from './workers'
@@ -17,6 +17,13 @@ type WorkOrderVisitRow = typeof schema.WorkOrderVisit.$inferSelect
 export interface GetBoardRange {
   from: Date
   to: Date
+}
+
+export interface GetVisitDayMarkersOptions {
+  /** Plan 30 §B.1 — mirrors the sidebar footer's "Show canceled" toggle. Default false
+   * (canceled rows excluded), so the mini-calendar's dots agree with the board's own
+   * client-side canceled filter. */
+  includeCanceled?: boolean
 }
 
 /** Slim work-order projection for the visible visit set — display fields only. */
@@ -190,14 +197,17 @@ export async function getBoard(organizationId: string, range: GetBoardRange): Pr
  * computed (the `getBoard`/`listMyVisits` convention — the server stays timezone-naive), so this
  * intentionally returns un-bucketed rows rather than a `Record<dateKey, number>`. "Scheduled"
  * means `startTime` is set — the `gte`/`lt` filter on `startTime` excludes backlog rows without
- * needing an explicit `isNull` check. No status exclusion, matching `getBoard`'s range visit
- * query above (`rangeVisits`, line 139) which also doesn't filter by `status` — canceled visits
- * still show a marker, same as they still show on the board grid. `dispatch.getVisitDayMarkers`
- * (member read-only, same gating as `getBoard`) is the only tRPC caller.
+ * needing an explicit `isNull` check. `options.includeCanceled` (plan 30 §B.1, default false)
+ * excludes canceled visits to match the board's own client-side "Show canceled" filter — unlike
+ * `getBoard`'s range visit query above (`rangeVisits`, line 139), which never filters by `status`
+ * (the board keeps fetching canceled rows so the sidebar toggle stays instant, no refetch).
+ * `dispatch.getVisitDayMarkers` (member read-only, same gating as `getBoard`) is the only tRPC
+ * caller.
  */
 export async function getVisitDayMarkers(
   organizationId: string,
-  range: GetBoardRange
+  range: GetBoardRange,
+  options: GetVisitDayMarkersOptions = {}
 ): Promise<VisitDayMarker[]> {
   const rows = await database
     .select({
@@ -210,7 +220,8 @@ export async function getVisitDayMarkers(
       and(
         eq(schema.WorkOrderVisit.organizationId, organizationId),
         gte(schema.WorkOrderVisit.startTime, range.from),
-        lt(schema.WorkOrderVisit.startTime, range.to)
+        lt(schema.WorkOrderVisit.startTime, range.to),
+        options.includeCanceled ? undefined : ne(schema.WorkOrderVisit.status, 'canceled')
       )
     )
 

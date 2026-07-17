@@ -11,7 +11,15 @@ import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { toastError } from '@auxx/ui/components/toast'
 import { TuckedSection } from '@auxx/ui/components/tucked-label'
 import { format } from 'date-fns'
-import { CalendarClock, CircleDollarSign, ReceiptText, Send, User, XCircle } from 'lucide-react'
+import {
+  CalendarClock,
+  CircleDollarSign,
+  ReceiptText,
+  RotateCcw,
+  Send,
+  User,
+  XCircle,
+} from 'lucide-react'
 import { useState } from 'react'
 import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
 import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
@@ -24,10 +32,11 @@ import { useActors } from '~/components/resources/hooks/use-actor'
 import { BaseType } from '~/components/workflow/types'
 import { useConfirm } from '~/hooks/use-confirm'
 import { api } from '~/trpc/react'
-import { VISIT_STATUS_LABELS, type VisitStatus } from '../board/types'
+import { visitStatusLabel } from '../board/types'
 import { SchedulePopover } from '../schedule-popover'
 import {
-  isPastVisit,
+  isVisitDispatchable,
+  movedFromLabel,
   resolveVisitDurationMinutes,
   VISIT_STATUS_BADGE_VARIANT,
 } from './job-schedule-utils'
@@ -75,9 +84,11 @@ export function VisitDetailPanel({ recordId, itemId }: RecordDrillContext) {
     return <div className='p-6 text-sm text-muted-foreground'>Visit not found.</div>
   }
 
+  const isSeries = Boolean(visit.recurrenceRuleId)
   const canCancel = visit.status !== 'canceled' && visit.status !== 'done'
+  const canRestore = visit.status === 'canceled'
   const resolvedDurationMinutes = resolveVisitDurationMinutes(visit)
-  const isHistory = isPastVisit(visit)
+  const moved = movedFromLabel(visit)
   const start = visit.startTime ? new Date(visit.startTime) : null
   const end = visit.endTime ? new Date(visit.endTime) : null
   const isProvisionalTime = Boolean(start) && visit.timeConfirmedAt == null
@@ -106,13 +117,25 @@ export function VisitDetailPanel({ recordId, itemId }: RecordDrillContext) {
   }
 
   const handleCancel = async () => {
-    const confirmed = await confirm({
-      title: 'Cancel this visit?',
-      description: 'The visit is removed from the schedule. This does not cancel the job.',
-      confirmText: 'Cancel visit',
-      cancelText: 'Keep visit',
-      destructive: true,
-    })
+    const confirmed = await confirm(
+      isSeries
+        ? {
+            title: 'Skip this visit?',
+            description:
+              "The visit stays in the job's history as skipped and won't be regenerated. This does not affect other visits.",
+            confirmText: 'Skip visit',
+            cancelText: 'Keep visit',
+            destructive: true,
+          }
+        : {
+            title: 'Cancel this visit?',
+            description:
+              "The visit stays in the job's history as canceled. This does not cancel the job.",
+            confirmText: 'Cancel visit',
+            cancelText: 'Keep visit',
+            destructive: true,
+          }
+    )
     if (!confirmed) return
     mutations.setVisitStatus.mutate({ visitId: visit.id, status: 'canceled' })
   }
@@ -128,7 +151,7 @@ export function VisitDetailPanel({ recordId, itemId }: RecordDrillContext) {
                 {start ? `Visit · ${format(start, 'EEE, MMM d')}` : 'Not scheduled yet'}
               </span>
               <Badge variant={VISIT_STATUS_BADGE_VARIANT[visit.status] ?? 'default'} size='sm'>
-                {VISIT_STATUS_LABELS[visit.status as VisitStatus] ?? visit.status}
+                {visitStatusLabel(visit.status, visit.recurrenceRuleId)}
               </Badge>
             </div>
             <div className='flex items-center gap-2 text-sm text-muted-foreground'>
@@ -157,6 +180,7 @@ export function VisitDetailPanel({ recordId, itemId }: RecordDrillContext) {
                 </span>
               )}
             </div>
+            {moved && <div className='text-xs text-muted-foreground'>{moved}</div>}
           </div>
         </div>
 
@@ -184,22 +208,29 @@ export function VisitDetailPanel({ recordId, itemId }: RecordDrillContext) {
               onScheduled={refresh}
               onUnscheduled={refresh}
             />
-            {!isHistory && (
-              <>
-                <Button
-                  variant='outline'
-                  size='sm'
-                  onClick={() => mutations.dispatchVisit.mutate({ visitId: visit.id })}
-                  loading={mutations.dispatchVisit.isPending}
-                  disabled={!visit.assigneeUserId || !visit.startTime}>
-                  <Send /> {visit.dispatchedAt ? 'Re-dispatch' : 'Dispatch'}
-                </Button>
-                {canCancel && (
-                  <Button variant='ghost' size='sm' onClick={handleCancel}>
-                    <XCircle /> Cancel visit
-                  </Button>
-                )}
-              </>
+            {canRestore && (
+              <Button
+                variant='outline'
+                size='sm'
+                loading={mutations.restoreVisit.isPending}
+                onClick={() => mutations.restoreVisit.mutate({ visitId: visit.id })}>
+                <RotateCcw /> Restore
+              </Button>
+            )}
+            {isVisitDispatchable(visit) && (
+              <Button
+                variant='outline'
+                size='sm'
+                onClick={() => mutations.dispatchVisit.mutate({ visitId: visit.id })}
+                loading={mutations.dispatchVisit.isPending}
+                disabled={!visit.assigneeUserId}>
+                <Send /> {visit.dispatchedAt ? 'Re-dispatch' : 'Dispatch'}
+              </Button>
+            )}
+            {canCancel && (
+              <Button variant='ghost' size='sm' onClick={handleCancel}>
+                <XCircle /> {isSeries ? 'Skip visit' : 'Cancel visit'}
+              </Button>
             )}
           </div>
         )}

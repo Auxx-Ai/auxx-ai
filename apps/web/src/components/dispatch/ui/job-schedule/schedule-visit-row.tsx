@@ -5,14 +5,14 @@ import { toActorId } from '@auxx/types/actor'
 import { Avatar, AvatarFallback, AvatarImage } from '@auxx/ui/components/avatar'
 import { Badge } from '@auxx/ui/components/badge'
 import { TreeRow, TreeRowButton } from '@auxx/ui/components/tree-row'
-import { CalendarClock, XCircle } from 'lucide-react'
+import { CalendarClock, Repeat, RotateCcw, XCircle } from 'lucide-react'
 import { getInitials } from '~/components/groups/utils/group-utils'
 import type { RecordId } from '~/components/resources'
 import { useActors } from '~/components/resources/hooks/use-actor'
 import { useConfirm } from '~/hooks/use-confirm'
-import { VISIT_STATUS_LABELS, type VisitStatus } from '../board/types'
+import { visitStatusLabel } from '../board/types'
 import { type ExistingVisitForOverlap, SchedulePopover } from '../schedule-popover'
-import { formatVisitWindow, VISIT_STATUS_BADGE_VARIANT } from './job-schedule-utils'
+import { formatVisitWindow, movedFromLabel, VISIT_STATUS_BADGE_VARIANT } from './job-schedule-utils'
 import type { JobVisit, UseJobVisitsResult } from './use-job-visits'
 
 export interface ScheduleVisitRowProps {
@@ -53,17 +53,32 @@ export function ScheduleVisitRow({
   const hydratedAssignee = useActors(assigneeActorId ? [assigneeActorId] : [])
   const assignee = assigneeActorId ? hydratedAssignee.get(assigneeActorId) : undefined
 
+  const isSeries = Boolean(visit.recurrenceRuleId)
   const canCancel = visit.status !== 'canceled' && visit.status !== 'done'
-  const statusLabel = VISIT_STATUS_LABELS[visit.status as VisitStatus] ?? visit.status
+  const canRestore = visit.status === 'canceled'
+  const statusLabel = visitStatusLabel(visit.status, visit.recurrenceRuleId)
+  const moved = movedFromLabel(visit)
 
   const handleCancel = async () => {
-    const confirmed = await confirm({
-      title: 'Cancel this visit?',
-      description: 'The visit is removed from the schedule. This does not cancel the job.',
-      confirmText: 'Cancel visit',
-      cancelText: 'Keep visit',
-      destructive: true,
-    })
+    const confirmed = await confirm(
+      isSeries
+        ? {
+            title: 'Skip this visit?',
+            description:
+              "The visit stays in the job's history as skipped and won't be regenerated. This does not affect other visits.",
+            confirmText: 'Skip visit',
+            cancelText: 'Keep visit',
+            destructive: true,
+          }
+        : {
+            title: 'Cancel this visit?',
+            description:
+              "The visit stays in the job's history as canceled. This does not cancel the job.",
+            confirmText: 'Cancel visit',
+            cancelText: 'Keep visit',
+            destructive: true,
+          }
+    )
     if (!confirmed) return
     mutations.setVisitStatus.mutate({ visitId: visit.id, status: 'canceled' })
   }
@@ -74,7 +89,15 @@ export function ScheduleVisitRow({
         depth={depth}
         rowClassName='hover:bg-primary-100'
         icon={<CalendarClock className='size-4' />}
-        title={<span className='truncate text-sm'>{formatVisitWindow(visit)}</span>}
+        title={
+          <span className='flex min-w-0 flex-col'>
+            <span className='inline-flex items-center gap-1 truncate text-sm'>
+              {isSeries && <Repeat className='size-3 shrink-0 text-muted-foreground' />}
+              <span className='truncate'>{formatVisitWindow(visit)}</span>
+            </span>
+            {moved && <span className='truncate text-xs text-muted-foreground'>{moved}</span>}
+          </span>
+        }
         secondary={
           <span className='inline-flex items-center gap-1.5'>
             {assignee ? (
@@ -115,10 +138,18 @@ export function ScheduleVisitRow({
                 onScheduled={onRefresh}
                 onUnscheduled={onRefresh}
               />
+              {canRestore && (
+                <TreeRowButton
+                  tooltipText='Restore'
+                  disabled={mutations.restoreVisit.isPending}
+                  onClick={() => mutations.restoreVisit.mutate({ visitId: visit.id })}>
+                  <RotateCcw />
+                </TreeRowButton>
+              )}
               {canCancel && (
                 <TreeRowButton
                   variant='destructive'
-                  tooltipText='Cancel visit'
+                  tooltipText={isSeries ? 'Skip visit' : 'Cancel visit'}
                   onClick={handleCancel}>
                   <XCircle />
                 </TreeRowButton>

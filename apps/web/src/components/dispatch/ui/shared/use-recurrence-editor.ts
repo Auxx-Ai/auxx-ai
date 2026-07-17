@@ -27,6 +27,13 @@ export interface UseRecurrenceEditorParams {
   initialStartTime?: Date | null
   /** The LIVE start-time value the popover currently has staged/committed, if any. */
   startTime?: Date | null
+  /**
+   * The TARGET VISIT's own `recurrenceRuleId` (plan 30 §F.4), distinct from
+   * `workOrderRecordId`'s `getRecurrence` (the work order's rule, if any). One rule per work
+   * order is a hard constraint, so a rule-less visit on an already-recurring job can only ever
+   * show/edit "Does not repeat" — never the sibling series' cadence.
+   */
+  recurrenceRuleId?: string | null
 }
 
 /** The `dispatch.setRecurrence` mutation payload shape, or `null` when there's nothing to save. */
@@ -52,6 +59,7 @@ export function useRecurrenceEditor({
   workOrderRecordId,
   initialStartTime,
   startTime,
+  recurrenceRuleId,
 }: UseRecurrenceEditorParams) {
   const utils = api.useUtils()
   const { getSetting } = useSettings({ scope: 'GENERAL' })
@@ -65,7 +73,17 @@ export function useRecurrenceEditor({
     { workOrderRecordId: workOrderRecordId as RecordId },
     { enabled: Boolean(workOrderRecordId), staleTime: ORG_STATIC_STALE_TIME }
   )
-  const hasExistingRule = Boolean(recurrenceQuery.data)
+  const workOrderHasRule = Boolean(recurrenceQuery.data)
+  /** Display convergence (plan 30 §F.4) — keyed off the VISIT's own rule membership, not the
+   * work order's `getRecurrence` presence. A visit that IS a series occurrence shows/edits the
+   * WO's cadence (case a); a rule-less visit never does, even when the WO already has a rule for
+   * its OTHER occurrences (case b) — one rule per work order, so that visit's Repeat row can
+   * only ever mean "does this extra visit get its own new rule" (case c, rule-less WO). */
+  const hasExistingRule = Boolean(recurrenceRuleId)
+  /** Case (b): a rule-less visit on an already-recurring work order — Repeat is locked to "Does
+   * not repeat" (one rule per job is a hard constraint); only Reschedule/Skip apply to the
+   * visit's own placement, cadence edits happen on a true series occurrence instead. */
+  const repeatLocked = !hasExistingRule && workOrderHasRule
 
   const [repeatMode, setRepeatMode] = useState<RecurrencePreset>('none')
   const [customPattern, setCustomPattern] = useState<RecurrencePattern>(
@@ -79,17 +97,20 @@ export function useRecurrenceEditor({
 
   // Initialize Repeats state from the existing rule ONCE — later realtime refetches of
   // `getRecurrence` (another tab editing the same series) must not clobber an in-progress edit.
+  // Only seeds when the VISIT itself is a rule member (`hasExistingRule`, case a) — a rule-less
+  // visit on an already-recurring WO (case b, `repeatLocked`) must stay at the 'none' default so
+  // its locked Repeat row reads "Does not repeat", not the sibling series' cadence.
   useEffect(() => {
     if (initializedFromRuleRef.current) return
     if (recurrenceQuery.isLoading) return
     initializedFromRuleRef.current = true
-    if (!recurrenceQuery.data) return
+    if (!recurrenceQuery.data || !hasExistingRule) return
     const pattern = recurrenceQuery.data.pattern as unknown as RecurrencePattern
     const preset = classifyPreset(pattern)
     setRepeatMode(preset)
     setEndsRaw({ until: pattern.until, count: pattern.count })
     if (preset === 'custom') setCustomPattern({ ...pattern, until: undefined, count: undefined })
-  }, [recurrenceQuery.data, recurrenceQuery.isLoading])
+  }, [recurrenceQuery.data, recurrenceQuery.isLoading, hasExistingRule])
 
   // Preset patterns anchor on the LIVE start time (the date/time the user has staged/picked
   // this session), falling back to the visit's existing start when nothing's been touched yet.
@@ -134,6 +155,10 @@ export function useRecurrenceEditor({
   // Only an intentional Repeats edit this session writes the rule — an incidental
   // time/duration/assignee edit must never silently rewrite the series cadence.
   const wantsRecurrenceWrite = repeatsTouched && repeatMode !== 'none'
+  /** Case (c) convergence (plan 30 §1 "rec" sub-decision) — a rule-less visit on a rule-less
+   * work order picking a cadence is about to flip the WHOLE job recurring (the existing
+   * `jobType` convergence), not just this one visit. Cheap honesty, no confirm dialog. */
+  const showsRecurringNote = wantsRecurrenceWrite && !hasExistingRule && !workOrderHasRule
   const patternValid =
     !wantsRecurrenceWrite ||
     (effectivePattern != null && recurrencePatternSchema.safeParse(effectivePattern).success)
@@ -170,6 +195,8 @@ export function useRecurrenceEditor({
 
   return {
     hasExistingRule,
+    repeatLocked,
+    showsRecurringNote,
     repeatMode,
     // Short label for the collapsed Repeat row's pill ("Weekly", "Custom", …); the full
     // `recurrenceSummary` renders below the row so a long custom cadence never stretches the pill.

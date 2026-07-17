@@ -15,6 +15,7 @@ import { useDispatchSidebarStore } from '../../stores/dispatch-sidebar-store'
 import type { ExistingVisitForOverlap } from '../schedule-popover'
 import type { useBoardMutations } from './hooks/use-board-mutations'
 import type { BoardResourceInput, BoardViewMode, DispatchVisitEvent } from './types'
+import { isPastVisitEvent } from './utils'
 import { VisitChipContent, VisitChipMonthContent } from './visit-chip-content'
 import { VisitPopoverContent } from './visit-popover'
 import { WorkerColumnHeader } from './worker-column-header'
@@ -108,7 +109,14 @@ export function BoardCalendarGrid({
           }}
           series={{
             isMember: Boolean(event.recurrenceRuleId),
-            labels: { this: 'This visit', following: 'This and following', all: 'All visits' },
+            // Plan 30 §D.2 — past-occurrence chooser collapse: "All visits" behaving identically
+            // to "following" once the target's own window has passed is dishonest.
+            labels: {
+              this: 'This visit',
+              following: isPastVisitEvent(event) ? 'Future visits' : 'This and following',
+              all: 'All visits',
+            },
+            hideAll: isPastVisitEvent(event),
           }}
           anchor={<div className='h-full w-full'>{chip}</div>}>
           <VisitPopoverContent

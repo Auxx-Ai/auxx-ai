@@ -83,6 +83,31 @@ export interface DispatchVisitInput {
   excludeSocketId?: string
 }
 
+/** Input for {@link restoreVisit} — bring a canceled visit back to `scheduled` in place
+ * (plan 30 §A.1). Never touches `startTime`/`endTime`/`isDetached`/`occurrenceDate`. */
+export interface RestoreVisitInput {
+  organizationId: string
+  userId: string
+  visitId: string
+  excludeSocketId?: string
+}
+
+/** Input for {@link addVisit} — create an extra rule-less visit on a work order (plan 30
+ * §F.1), e.g. extra one-off work alongside a recurring engagement. When `startTime`/`endTime`
+ * are provided (the schedule-picker create flow) the new row is scheduled in the same call via
+ * {@link scheduleVisit}, so all scheduling side effects stay uniform; without times it lands
+ * unscheduled. */
+export interface AddVisitInput {
+  organizationId: string
+  userId: string
+  /** EntityInstance id of the work order (not the RecordId). */
+  workOrderInstanceId: string
+  startTime?: Date | null
+  endTime?: Date | null
+  assigneeUserId?: string | null
+  excludeSocketId?: string
+}
+
 /** Input for {@link setVisitDuration} — a standalone `durationMinutes` write (plan 20 §4.1a),
  * e.g. the visit detail panel's explicit duration field. Never touches `startTime`/`endTime`
  * or `timeConfirmedAt`. */

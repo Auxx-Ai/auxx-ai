@@ -32,7 +32,14 @@ export interface ExistingVisitForOverlap {
 }
 
 export interface SchedulePopoverContentProps {
-  visitId: string
+  /**
+   * Omit for CREATE mode (plan 30 §F.2 follow-up — the "Add visit" flow): the popover opens
+   * as a pure draft and nothing exists until the Schedule button commits, which then creates
+   * AND schedules the new rule-less visit in one `dispatch.addVisit` call. Requires
+   * `workOrderRecordId`. After a create-commit the caller should close the popover
+   * (`onScheduled` fires) — the content stays in draft mode and never autosaves without an id.
+   */
+  visitId?: string
   initialStartTime?: Date | null
   initialEndTime?: Date | null
   initialAssigneeUserId?: string | null
@@ -81,7 +88,9 @@ export function SchedulePopoverContent({
   recurrenceRuleId,
 }: SchedulePopoverContentProps) {
   const [scheduledYet, setScheduledYet] = useState(false)
-  const isDraft = initialStartTime == null && !scheduledYet
+  // CREATE mode (no visitId) is permanently a draft — the commit creates the row and the
+  // caller closes the popover; there is nothing to autosave against.
+  const isDraft = visitId == null || (initialStartTime == null && !scheduledYet)
 
   // Staged values — track props initially, then the last committed values in scheduled mode so
   // later commits (e.g. an assignee change after a time change) compose off current state.
@@ -89,12 +98,25 @@ export function SchedulePopoverContent({
   const [startTime, setStartTime] = useState<Date | null>(initialStartTime ?? null)
   const [endTime, setEndTime] = useState<Date | null>(initialEndTime ?? null)
 
-  const editor = useRecurrenceEditor({ workOrderRecordId, initialStartTime, startTime })
+  const editor = useRecurrenceEditor({
+    workOrderRecordId,
+    initialStartTime,
+    startTime,
+    recurrenceRuleId,
+  })
+  /** Plan 30 §D.2 — the series-scope chooser collapses to This visit / Future visits once the
+   * target occurrence's own window has passed ("All visits" behaving identically to "following"
+   * for a past pick is dishonest). Derived from the LIVE end time, not visit status (unavailable
+   * here) — matches `isPastVisit`'s date-comparison half. */
+  const isPast = Boolean(endTime && endTime.getTime() < Date.now())
   const hints = useScheduleHints({ visitId, assigneeUserId, startTime, endTime, existingVisits })
 
   const scheduleVisit = api.dispatch.scheduleVisit.useMutation({
     onError: (error) => toastError({ title: 'Error scheduling visit', description: error.message }),
     onSuccess: () => onScheduled?.(),
+  })
+  const addVisit = api.dispatch.addVisit.useMutation({
+    onError: (error) => toastError({ title: 'Error adding visit', description: error.message }),
   })
   const unscheduleVisit = api.dispatch.unscheduleVisit.useMutation({
     onError: (error) =>
@@ -120,7 +142,7 @@ export function SchedulePopoverContent({
   const handleDateTimeChange = (change: { start: Date; end: Date }, scope: SeriesScope) => {
     setStartTime(change.start)
     setEndTime(change.end)
-    if (isDraft) return
+    if (isDraft || !visitId) return
 
     if (scope === 'this') {
       scheduleVisit.mutate({
@@ -143,7 +165,7 @@ export function SchedulePopoverContent({
 
   const handleAssigneeChange = (userId: string | null, scope: SeriesScope) => {
     setAssigneeUserId(userId)
-    if (isDraft) return
+    if (isDraft || !visitId) return
 
     if (scope === 'this') {
       // Times unchanged — only fire when the visit actually has times to schedule with.
@@ -170,6 +192,29 @@ export function SchedulePopoverContent({
   const handleSchedule = () => {
     if (!startTime || !endTime) return
 
+    // CREATE mode — nothing exists yet: one `addVisit` call creates + schedules the new
+    // rule-less visit. A staged Repeat then fires `setRecurrence` after the create — the rule's
+    // create-time adoption (plan 30 §E.1) folds the fresh visit in as the first occurrence.
+    if (!visitId) {
+      if (!workOrderRecordId) return
+      addVisit.mutate(
+        { workOrderRecordId, startTime, endTime, assigneeUserId },
+        {
+          onSuccess: () => {
+            if (editor.wantsRecurrenceWrite) {
+              const input = editor.buildSetRecurrenceInput(startTime, endTime, assigneeUserId)
+              if (input) {
+                setRecurrence.mutate(input)
+                return
+              }
+            }
+            onScheduled?.()
+          },
+        }
+      )
+      return
+    }
+
     if (editor.wantsRecurrenceWrite) {
       const input = editor.buildSetRecurrenceInput(startTime, endTime, assigneeUserId)
       if (!input) return
@@ -186,7 +231,12 @@ export function SchedulePopoverContent({
     <EventPopoverBody
       series={{
         isMember: !isDraft && Boolean(recurrenceRuleId),
-        labels: { this: 'This visit', following: 'This and following', all: 'All visits' },
+        labels: {
+          this: 'This visit',
+          following: isPast ? 'Future visits' : 'This and following',
+          all: 'All visits',
+        },
+        hideAll: isPast,
       }}
       className={className}>
       <EventDateTimeSection
@@ -195,8 +245,12 @@ export function SchedulePopoverContent({
         warnings={hints}
         renderTimeEditor={(props) => <InlineEventTimePicker {...props} />}
         onChange={handleDateTimeChange}
+        // Plan 30 §D.1 — series visits never go back to the backlog (server rejects it too);
+        // the clear-date toggle is a series visit's disguised unschedule affordance, so hide it
+        // once `recurrenceRuleId` is set. Reschedule (this same card's date/time picker) and
+        // Skip (Status card, elsewhere) are the only exception verbs.
         onDateToggle={
-          isDraft
+          isDraft || recurrenceRuleId || !visitId
             ? undefined
             : (enabled) => {
                 if (!enabled) unscheduleVisit.mutate({ visitId })
@@ -208,8 +262,15 @@ export function SchedulePopoverContent({
         <EventRepeatSection
           label={editor.repeatLabel}
           detail={
-            editor.repeatMode === 'custom' ? (editor.recurrenceSummary ?? undefined) : undefined
+            // Plan 30 §F.4 — a rule-less visit on an already-recurring work order can't pick up
+            // a cadence of its own (one rule per job); the hint explains why the row is locked.
+            editor.repeatLocked
+              ? 'This job already repeats — this is an extra visit.'
+              : editor.repeatMode === 'custom'
+                ? (editor.recurrenceSummary ?? undefined)
+                : undefined
           }
+          disabled={editor.repeatLocked}
           renderEditor={() => <RepeatEditor editor={editor} />}
           onOpenChange={(open) => {
             if (!open && !isDraft) commitRecurrence()
@@ -221,7 +282,7 @@ export function SchedulePopoverContent({
           <Button
             size='sm'
             className='w-full'
-            loading={scheduleVisit.isPending || setRecurrence.isPending}
+            loading={scheduleVisit.isPending || addVisit.isPending || setRecurrence.isPending}
             disabled={!canSave}
             onClick={handleSchedule}>
             Schedule

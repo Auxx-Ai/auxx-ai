@@ -56,6 +56,18 @@ export function isExecutionReady(context: VisitDayContext): boolean {
   return context === 'today' || context === 'past'
 }
 
+/**
+ * Whether a board event's own window has already passed — done/canceled, or a past scheduled
+ * span. Mirrors `job-schedule-utils.ts`'s `isPastVisit` (that helper's `Pick<JobVisit, ...>`
+ * param isn't structurally identical to `DispatchVisitEvent`, so this is a board-local twin
+ * rather than an import). Drives the past-occurrence series-scope chooser collapse (plan 30
+ * §D.2) at the popover's two mount sites (`board-calendar-grid.tsx`, `event-dock-panel.tsx`).
+ */
+export function isPastVisitEvent(event: Pick<DispatchVisitEvent, 'status' | 'end'>): boolean {
+  if (event.status === 'done' || event.status === 'canceled') return true
+  return event.end.getTime() < Date.now()
+}
+
 /** Fallback chip color when a worker has none set. */
 export const DEFAULT_WORKER_COLOR = '#6366f1'
 /** Color for the always-first "Unassigned" column's chips. */
@@ -187,6 +199,7 @@ export function visitToEvent(
     // is just null-vs-not, so this only needs a wire-safe (string) shape, not a parsed Date.
     timeConfirmedAt: visit.timeConfirmedAt ? new Date(visit.timeConfirmedAt).toISOString() : null,
     durationMinutes: visit.durationMinutes ?? null,
+    timezone: visit.timezone ?? null,
   }
 }
 

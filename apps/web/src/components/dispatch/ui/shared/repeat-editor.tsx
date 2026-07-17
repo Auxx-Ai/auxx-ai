@@ -30,6 +30,7 @@ export function RepeatEditor({ editor, disabled }: RepeatEditorProps) {
   const {
     repeatMode,
     hasExistingRule,
+    showsRecurringNote,
     handleRepeatModeChange,
     customPattern,
     setCustomPattern,
@@ -61,6 +62,12 @@ export function RepeatEditor({ editor, disabled }: RepeatEditorProps) {
         </SelectContent>
       </Select>
 
+      {/* Plan 30 §1 "rec" sub-decision — a rule-less job's first cadence pick converges it onto
+          the recurring `jobType` (04-ui §7); cheap honesty instead of a confirm dialog. */}
+      {showsRecurringNote && (
+        <p className='px-0.5 text-xs text-muted-foreground'>This makes the job recurring.</p>
+      )}
+
       {repeatMode === 'custom' && (
         <RecurrencePatternFields
           value={customPattern}
@@ -73,6 +80,13 @@ export function RepeatEditor({ editor, disabled }: RepeatEditorProps) {
       {repeatMode !== 'none' && (
         <div className='rounded-md border p-2'>
           <RecurrenceEndFields value={ends} onChange={setEnds} className='flex flex-col gap-2' />
+          {/* Plan 30 §H (decision 9) — `count` counts GENERATED occurrences, matching the engine:
+              a skipped visit still consumes a slot. */}
+          {ends.count != null && (
+            <p className='px-0.5 pt-1 text-xs text-muted-foreground'>
+              Includes skipped visits in the count.
+            </p>
+          )}
         </div>
       )}
 
