@@ -46,10 +46,12 @@ export function WorkOrderBillingTab({ recordId, variant = 'tab' }: DetailViewTab
 
   return (
     <div className={cn('flex flex-col', !isSection && 'h-full min-h-0')}>
+      {/* Section variant: `pe-3` matches the Line-items section's right inset so
+          the whole page column shares one right edge, clear of the scrollbar. */}
       <div
         className={cn(
           'flex flex-col gap-4 py-2',
-          isSection ? 'overflow-auto' : 'min-h-0 flex-1 overflow-auto'
+          isSection ? 'overflow-auto pe-3' : 'min-h-0 flex-1 overflow-auto'
         )}>
         <SummaryStrip billing={billing} />
         <NextAction billing={billing} onAction={() => setActionOpen(true)} />

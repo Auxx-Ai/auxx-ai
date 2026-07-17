@@ -26,11 +26,18 @@ export function WorkOrderLineItemsTab({ recordId, variant = 'tab' }: DetailViewT
 
   return (
     <div className={cn('flex flex-col ', isSection ? ' pe-3' : 'h-full min-h-0')}>
-      {jobType === 'recurring' && <TuckedLabel className='ms-4'>Billed each visit</TuckedLabel>}
+      {/* No inset — the label bar shares both edges with the builder frame below
+          (the frame overlaps its bottom via the label's -mb-3 tuck). */}
+      {jobType === 'recurring' && <TuckedLabel>Billed each visit</TuckedLabel>}
+      {/* `-ms-3 ps-3`: bleed the scroll container's clip edge 12px into the
+          section's own padding, then pad it back — the builder frame stays
+          visually aligned while the row drag grips (absolutely positioned
+          10px OUTSIDE the frame, GripSlot's `-left-2.5`) stay inside the
+          clip box instead of being cut off by `overflow-auto`. */}
       <div
         className={cn(
           'flex flex-col',
-          isSection ? 'max-h-[60vh] overflow-auto' : 'min-h-0 flex-1'
+          isSection ? '-ms-3 max-h-[60vh] overflow-auto ps-3' : 'min-h-0 flex-1'
         )}>
         <LineBuilder documentRecordId={recordId} documentType='work_order' />
       </div>

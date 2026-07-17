@@ -3,11 +3,11 @@
 
 import { Button } from '@auxx/ui/components/button'
 import { EmptySection } from '@auxx/ui/components/section'
-import { TREE_SECONDARY_NOTRUNCATE } from '@auxx/ui/components/tree-row'
+import { TREE_SECONDARY_NOTRUNCATE, TreeRow } from '@auxx/ui/components/tree-row'
 import { TreeRowList } from '@auxx/ui/components/tree-row-list'
 import { History, Plus } from 'lucide-react'
 import { useQueryState } from 'nuqs'
-import { useState } from 'react'
+import { Fragment, useState } from 'react'
 import { DetailSectionActions, type DetailViewTabProps } from '~/components/detail-view'
 import { useSystemValues } from '~/components/resources/hooks/use-system-values'
 import { SchedulePopover } from '../schedule-popover'
@@ -17,7 +17,7 @@ import { ScheduleVisitRow } from './schedule-visit-row'
 import { useJobVisits } from './use-job-visits'
 import { VisitCard } from './visit-card'
 
-/** Preview-row cap for the upcoming rows under the visit card and the History section. */
+/** Preview-row cap for the upcoming rows under the visit card. */
 const PREVIEW_LIMIT = 3
 
 /**
@@ -25,9 +25,9 @@ const PREVIEW_LIMIT = 3
  * spec §F.2/§F.3, 04 mock layout). One Schedule section carrying, top to bottom:
  * the recurrence row (recurring jobs — `RecurringEngagementCard`, which also
  * portals the engagement badge + Pause/Edit into the Section header), the
- * "Next visit" card, and the remaining upcoming visits as `ScheduleVisitRow`s
- * with an inline "Show more" expand. History stays its own section
- * (`VisitHistorySection`).
+ * "Next visit" card, the remaining upcoming visits as `ScheduleVisitRow`s
+ * with an inline "Show more" expand, and past visits collapsed behind an
+ * "N in history" disclosure row (the work-order drawer pattern).
  */
 export function JobScheduleSection({ recordId }: DetailViewTabProps) {
   const { visits, isLoading, canEdit, mutations, existingVisits, refresh } = useJobVisits(recordId)
@@ -37,10 +37,11 @@ export function JobScheduleSection({ recordId }: DetailViewTabProps) {
   const [, setPanel] = useQueryState('panel')
   const [, setItem] = useQueryState('item')
   const [addOpen, setAddOpen] = useState(false)
+  const [historyOpen, setHistoryOpen] = useState(false)
   const jobType = (values.work_order_job_type as string | undefined) ?? 'one_off'
   const status = (values.work_order_status as string | undefined) ?? 'new'
 
-  const { upcoming } = splitJobVisits(visits)
+  const { upcoming, history } = splitJobVisits(visits)
   // The primary card's target visit — also the recurring engine's "next-upcoming visit"
   // (06-recurring-engine.md §6): one-off has exactly one, so this stays jobType-agnostic.
   // Never falls back into history (plan 30 §G.2) — no upcoming visits is an empty state,
@@ -59,7 +60,9 @@ export function JobScheduleSection({ recordId }: DetailViewTabProps) {
   }
 
   return (
-    <div className='flex flex-col gap-3'>
+    // `pe-3` matches the Line-items/Billing/Communications sections' right inset
+    // so every job-page section shares one right edge, clear of the scrollbar.
+    <div className='flex flex-col gap-3 pe-3'>
       {canEdit && (
         <DetailSectionActions>
           {/* CREATE-mode SchedulePopover (no visitId) — nothing exists until Schedule commits,
@@ -121,58 +124,35 @@ export function JobScheduleSection({ recordId }: DetailViewTabProps) {
           )}
         />
       )}
-    </div>
-  )
-}
 
-/**
- * Registered as `work_order:history` — standalone visit History section: the
- * same `ScheduleVisitRow`s capped at PREVIEW_LIMIT, with the rest revealed by an
- * inline "Show more" expand. The section heading comes from the surrounding
- * `<Section>` — no block header here.
- */
-export function VisitHistorySection({ recordId }: DetailViewTabProps) {
-  const { visits, isLoading, canEdit, mutations, existingVisits, refresh } = useJobVisits(recordId)
-  const [, setPanel] = useQueryState('panel')
-  const [, setItem] = useQueryState('item')
-
-  const { history } = splitJobVisits(visits)
-
-  const openItem = (visitId: string) => {
-    void setPanel('visits')
-    void setItem(visitId)
-  }
-
-  const loading = isLoading && visits.length === 0
-  if (loading || history.length === 0) {
-    return (
-      <EmptySection
-        loading={loading}
-        icon={<History className='size-5' />}
-        title='No past visits yet'
-        description='Completed and canceled visits show up here.'
-      />
-    )
-  }
-
-  return (
-    <TreeRowList
-      items={history}
-      getKey={(visit) => visit.id}
-      visibleLimit={PREVIEW_LIMIT}
-      className={`space-y-0.5 ${TREE_SECONDARY_NOTRUNCATE}`}
-      renderRow={(visit) => (
-        <ScheduleVisitRow
-          visit={visit}
-          canEdit={canEdit}
-          mutations={mutations}
-          existingVisits={existingVisits}
-          workOrderRecordId={recordId}
-          onRefresh={refresh}
-          onOpen={() => openItem(visit.id)}
-        />
+      {history.length > 0 && (
+        <div className={`space-y-0.5 ${TREE_SECONDARY_NOTRUNCATE}`}>
+          <TreeRow
+            icon={<History className='size-4' />}
+            rowClassName='hover:bg-primary-100'
+            title={
+              <span className='text-sm text-muted-foreground'>{history.length} in history</span>
+            }
+            expandable
+            isOpen={historyOpen}
+            onToggleOpen={() => setHistoryOpen((open) => !open)}>
+            {history.map((visit) => (
+              <Fragment key={visit.id}>
+                <ScheduleVisitRow
+                  visit={visit}
+                  canEdit={canEdit}
+                  mutations={mutations}
+                  existingVisits={existingVisits}
+                  workOrderRecordId={recordId}
+                  onRefresh={refresh}
+                  onOpen={() => openItem(visit.id)}
+                />
+              </Fragment>
+            ))}
+          </TreeRow>
+        </div>
       )}
-    />
+    </div>
   )
 }
 
