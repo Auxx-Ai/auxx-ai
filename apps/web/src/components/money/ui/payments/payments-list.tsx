@@ -10,6 +10,7 @@
 import { Badge, type Variant as BadgeVariant } from '@auxx/ui/components/badge'
 import { EmptySection } from '@auxx/ui/components/section'
 import { TreeRow, TreeRowButton } from '@auxx/ui/components/tree-row'
+import { TreeRowList } from '@auxx/ui/components/tree-row-list'
 import { format } from 'date-fns'
 import { CreditCard, RotateCcw, Trash2 } from 'lucide-react'
 import type { ReactNode } from 'react'
@@ -88,6 +89,9 @@ export interface PaymentsListProps {
   /** Optional slot rendered at the end of each row, after the action button/chip — e.g. the
    * work-order billing section's invoice chip/link. */
   renderRowSuffix?: (payment: PaymentRow) => ReactNode
+  /** Cap the always-visible rows behind `TreeRowList`'s inline "Show N more" collapse.
+   * Omit to show all. */
+  visibleLimit?: number
 }
 
 /** Presentational payments ledger list — rows, loading + empty states, and the admin-gated
@@ -103,6 +107,7 @@ export function PaymentsList({
   deletePending,
   refundPending,
   renderRowSuffix,
+  visibleLimit,
 }: PaymentsListProps) {
   // Charge id → its open/succeeded refund's status. A charge with a linked refund is no longer
   // refundable (the server would reject it) — it renders a chip instead of the Refund action.
@@ -131,8 +136,11 @@ export function PaymentsList({
   }
 
   return (
-    <div className='flex flex-col'>
-      {payments.map((payment) => {
+    <TreeRowList
+      items={payments}
+      getKey={(payment) => payment.id}
+      visibleLimit={visibleLimit}
+      renderRow={(payment) => {
         const action =
           payment.provider === 'manual'
             ? isAdmin && (
@@ -168,7 +176,6 @@ export function PaymentsList({
 
         return (
           <TreeRow
-            key={payment.id}
             icon={<CreditCard className='size-4' />}
             title={
               <span className='flex min-w-0 items-center gap-1.5'>
@@ -203,7 +210,7 @@ export function PaymentsList({
             }
           />
         )
-      })}
-    </div>
+      }}
+    />
   )
 }

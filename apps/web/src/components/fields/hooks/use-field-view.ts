@@ -2,7 +2,6 @@
 'use client'
 
 import type { FieldViewConfig, ViewContextType } from '@auxx/lib/conditions/client'
-import { createDefaultFieldViewConfig } from '@auxx/lib/conditions/client'
 import type { ResourceField } from '@auxx/lib/resources/client'
 import { useCallback, useMemo } from 'react'
 import {
@@ -56,6 +55,30 @@ export function isFieldDefaultHiddenInDialogs(
 }
 
 /**
+ * Resolve a field's effective visibility for a context.
+ *
+ * An explicit `fieldVisibility` entry (a real user/org choice) always wins.
+ * When there is no explicit entry, fall back to the registry default for the
+ * context: `showInPanel === false` hides in the panel, and the dialog
+ * default-hidden rule applies in create/edit dialogs. This is the single source
+ * of truth used by BOTH the rendered panel list and the edit-mode toggle switch,
+ * so they can never disagree (previously `isFieldVisible` ignored `showInPanel`
+ * and reported every field as "on" in edit mode for the default view).
+ */
+export function resolveFieldVisible(
+  field: ResourceField,
+  contextType: ViewContextType,
+  fieldVisibility: Record<string, boolean>
+): boolean {
+  const fieldId = field.resourceFieldId ?? field.id ?? field.key
+  const explicit = fieldVisibility[fieldId]
+  if (explicit !== undefined) return explicit
+  if (contextType === 'panel' && field.showInPanel === false) return false
+  if (isFieldDefaultHiddenInDialogs(field, contextType)) return false
+  return true
+}
+
+/**
  * Hook for consuming org-wide field view configuration from the store.
  * Returns default config if no org view exists.
  */
@@ -77,21 +100,23 @@ export function useFieldView({
   // Loading if store not initialized yet
   const isLoading = !initialized
 
-  // Compute effective config (from store or default)
+  // Compute effective config (from store or default). The default is SPARSE —
+  // an empty `fieldVisibility` so each field resolves to its registry default
+  // (showInPanel / dialog rule) via resolveFieldVisible, rather than being
+  // forced visible. `fieldOrder` still lists every field for ordering.
   const config = useMemo((): FieldViewConfig => {
     if (storedConfig) return storedConfig
-    return createDefaultFieldViewConfig(fieldIds)
+    return { fieldVisibility: {}, fieldOrder: fieldIds, showLabels: true }
   }, [storedConfig, fieldIds])
 
   // Whether we're using a stored org view or the generated default
   const hasOrgView = !!view
 
-  // Fields with no explicit `fieldVisibility` entry fall back to the dialog
-  // default-hidden rule (see isFieldDefaultHiddenInDialogs) — table/kanban/panel
-  // contexts are unaffected.
-  const defaultHiddenInDialogs = useCallback(
-    (field: ResourceField): boolean => isFieldDefaultHiddenInDialogs(field, contextType),
-    [contextType]
+  // Fast lookup for isFieldVisible
+  const fieldById = useMemo(
+    () =>
+      new Map<string, ResourceField>(fields.map((f) => [f.resourceFieldId ?? f.id ?? f.key, f])),
+    [fields]
   )
 
   // Get visible fields in configured order.
@@ -101,7 +126,9 @@ export function useFieldView({
     const { fieldVisibility, fieldOrder } = config
 
     // Create a map of fields by their ID
-    const fieldMap = new Map(fields.map((f) => [f.resourceFieldId ?? f.id ?? f.key, f]))
+    const fieldMap = new Map<string, ResourceField>(
+      fields.map((f) => [f.resourceFieldId ?? f.id ?? f.key, f])
+    )
 
     // Return fields in order, filtering by visibility
     const orderedFields: ResourceField[] = []
@@ -111,27 +138,20 @@ export function useFieldView({
       const field = fieldMap.get(fieldId)
       if (!field) continue
       if (field.capabilities.hidden) continue
-      // When no org view exists, also respect showInPanel from field definitions
-      if (fieldVisibility[fieldId] === false) continue
-      if (!hasOrgView && field.showInPanel === false) continue
-      // No explicit visibility entry for this field — fall back to the
-      // dialog default-hidden rule (explicit entries above already won).
-      if (fieldVisibility[fieldId] === undefined && defaultHiddenInDialogs(field)) continue
+      if (!resolveFieldVisible(field, contextType, fieldVisibility)) continue
       orderedFields.push(field)
       fieldMap.delete(fieldId)
     }
 
     // Then add any remaining fields not in order (new fields added after view was configured)
-    for (const [fieldId, field] of fieldMap) {
+    for (const [, field] of fieldMap) {
       if (field.capabilities.hidden) continue
-      if (fieldVisibility[fieldId] === false) continue
-      if (!hasOrgView && field.showInPanel === false) continue
-      if (fieldVisibility[fieldId] === undefined && defaultHiddenInDialogs(field)) continue
+      if (!resolveFieldVisible(field, contextType, fieldVisibility)) continue
       orderedFields.push(field)
     }
 
     return orderedFields
-  }, [config, fields, hasOrgView, defaultHiddenInDialogs])
+  }, [config, fields, contextType])
 
   // Get all fields in configured order (for edit mode — includes fields the
   // user has toggled off but NOT registry-hidden fields).
@@ -139,7 +159,7 @@ export function useFieldView({
     const { fieldOrder } = config
 
     // Create a map of fields by their ID — exclude registry-hidden up front
-    const fieldMap = new Map(
+    const fieldMap = new Map<string, ResourceField>(
       fields
         .filter((f) => !f.capabilities.hidden)
         .map((f) => [f.resourceFieldId ?? f.id ?? f.key, f])
@@ -164,12 +184,16 @@ export function useFieldView({
     return orderedFields
   }, [config, fields])
 
-  // Check if a field is visible
+  // Check if a field is visible — mirrors getVisibleFields exactly so the
+  // edit-mode toggle switch reflects the field's real effective visibility
+  // (registry default when there's no explicit user choice), not a blanket "on".
   const isFieldVisible = useCallback(
     (fieldId: string): boolean => {
-      return config.fieldVisibility[fieldId] !== false
+      const field = fieldById.get(fieldId)
+      if (!field) return config.fieldVisibility[fieldId] !== false
+      return resolveFieldVisible(field, contextType, config.fieldVisibility)
     },
-    [config]
+    [fieldById, config, contextType]
   )
 
   return {
