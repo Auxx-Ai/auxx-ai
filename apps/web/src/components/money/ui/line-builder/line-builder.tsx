@@ -52,7 +52,11 @@
 //   dropping any untouched initial placeholders so the bundle lands directly
 //   under the picked row), then materializes the whole bundle through ONE
 //   `record.createMany` round-trip (`createDrafts`) — the bundle is fully
-//   visible (and totaled) before any create resolves. On the draft-row path
+//   visible (and totaled) before any create resolves. The bundle stays
+//   together in place: on a middle REAL row the staged drafts carry an
+//   `anchorRecordId` (rendered interleaved under that row via `visualRows`)
+//   and the createMany completion reorders the persisted rows to match; on
+//   the draft-row path the drafts splice in right after the picked draft, and
 //   the bundle create waits for entry #1's own create so real rows always
 //   land in visual order.
 // - Reorder: dnd-kit sortable rows (grip handle) → `api.money.reorderLines`.
@@ -88,6 +92,7 @@ import type { CatalogGroup } from '~/components/money/hooks/use-catalog-groups'
 import { useCatalogGroups } from '~/components/money/hooks/use-catalog-groups'
 import { useCatalogItems } from '~/components/money/hooks/use-catalog-items'
 import {
+  parseRecordId,
   type RecordId,
   type RecordMeta,
   toRecordId,
@@ -433,6 +438,38 @@ export function LineBuilder({
     setLastAddedDraftId(draft.draftId)
   }, [entityDefinitionId, readOnly, displayRecords.length, drafts.length, mutateDrafts])
 
+  // Visual row list — each real row followed by any bundle drafts anchored to
+  // it (a catalog-group pick on a middle row), then unanchored drafts pinned
+  // at the tail. Nav row indexes are sequential across the interleaved list,
+  // so `useLineNav` and the focus-restore selector keep working unchanged.
+  const visualRows = useMemo(() => {
+    const anchored = new Map<string, DraftLine[]>()
+    const tailDrafts: DraftLine[] = []
+    const recordIds = new Set(displayRecords.map((r) => r.id))
+    for (const draft of visibleDrafts) {
+      // A dangling anchor (row deleted mid-flight) falls back to the tail.
+      if (draft.anchorRecordId && recordIds.has(draft.anchorRecordId)) {
+        const bucket = anchored.get(draft.anchorRecordId)
+        if (bucket) bucket.push(draft)
+        else anchored.set(draft.anchorRecordId, [draft])
+      } else {
+        tailDrafts.push(draft)
+      }
+    }
+    const rows: Array<
+      | { kind: 'record'; record: RecordMeta; rowIndex: number }
+      | { kind: 'draft'; draft: DraftLine; rowIndex: number }
+    > = []
+    for (const record of displayRecords) {
+      rows.push({ kind: 'record', record, rowIndex: rows.length })
+      for (const draft of anchored.get(record.id) ?? []) {
+        rows.push({ kind: 'draft', draft, rowIndex: rows.length })
+      }
+    }
+    for (const draft of tailDrafts) rows.push({ kind: 'draft', draft, rowIndex: rows.length })
+    return rows
+  }, [displayRecords, visibleDrafts])
+
   const lineRecordIds = useMemo(
     () =>
       entityDefinitionId ? displayRecords.map((r) => toRecordId(entityDefinitionId, r.id)) : [],
@@ -694,6 +731,8 @@ export function LineBuilder({
    * result — in input order, so the list cache appends agree with the
    * `line_item_sort_order` stamps — seeds the record + field-value caches and
    * diff-flushes anything the user edited while the create was in flight.
+   * Anchored bundles (a middle-row group pick) finish with one `reorderLines`
+   * that splices the created rows in directly after their anchor row.
    * On error, every bundle draft resets to editable with one toast.
    */
   const createDrafts = useCallback(
@@ -749,6 +788,32 @@ export function LineBuilder({
 
         for (const draftId of draftIds) creatingDraftIdsRef.current.delete(draftId)
         mutateDrafts((prev) => prev.filter((d) => !draftIds.has(d.draftId)))
+
+        // Anchored bundle (group pick on a middle row): the creates append at
+        // the list end, so splice the new rows in directly after their anchor
+        // and persist that order — otherwise the bundle tears apart on the
+        // next refetch. Anchor gone (deleted mid-flight) or already the last
+        // row → the natural append order is already correct.
+        const anchorRecordId = orderedDrafts[0]?.anchorRecordId
+        if (anchorRecordId) {
+          const createdIds = results.map((result) => result.instance.id)
+          const createdIdSet = new Set(createdIds)
+          const existing = displayIdsRef.current.filter((id) => !createdIdSet.has(id))
+          const anchorIndex = existing.indexOf(anchorRecordId)
+          if (anchorIndex !== -1 && anchorIndex < existing.length - 1) {
+            const nextOrder = [
+              ...existing.slice(0, anchorIndex + 1),
+              ...createdIds,
+              ...existing.slice(anchorIndex + 1),
+            ]
+            setOrderOverride(nextOrder)
+            reorderMutate({
+              documentRecordId: docRecordId,
+              orderedLineRecordIds: nextOrder.map((id) => toRecordId(entityDefinitionId, id)),
+            })
+          }
+        }
+
         await Promise.all(flushes)
       } catch (error) {
         for (const draftId of draftIds) creatingDraftIdsRef.current.delete(draftId)
@@ -763,11 +828,13 @@ export function LineBuilder({
     },
     [
       entityDefinitionId,
+      docRecordId,
       draftCreateValues,
       mutateDrafts,
       createManyMutateAsync,
       saveMultipleAsync,
       seedCreatedRecord,
+      reorderMutate,
       listKey,
     ]
   )
@@ -779,23 +846,35 @@ export function LineBuilder({
    * frame (`TotalsFooter` already folds drafts into its math). The same write
    * drops any untouched initial placeholder drafts (plan 31 §C) so the bundle
    * lands directly under the picked row instead of below empty warm-up rows.
+   * `position` keeps the bundle together on a middle-row pick: `anchorRecordId`
+   * pins the drafts under that real row (see `visualRows`), `afterDraftId`
+   * splices them into the drafts array right after the picked draft.
    * Returns the staged drafts for {@link createDrafts} to materialize
    * (freshDraft's optional=false / optionalSelected=true defaults are exactly
    * the "group-exploded lines start required" rule, money plan 18 §3).
    */
   const stageBundleDrafts = useCallback(
-    (rest: LineValues[]): DraftLine[] => {
+    (
+      rest: LineValues[],
+      position?: { anchorRecordId?: string; afterDraftId?: string }
+    ): DraftLine[] => {
       if (rest.length === 0) return []
       const bundleDrafts: DraftLine[] = rest.map((line) => ({
         ...freshDraft(generateId()),
         ...line,
+        anchorRecordId: position?.anchorRecordId,
       }))
       const initialDraftIds = initialDraftIdsRef.current
       initialDraftIdsRef.current = new Set()
-      mutateDrafts((prev) => [
-        ...prev.filter((d) => !initialDraftIds.has(d.draftId)),
-        ...bundleDrafts,
-      ])
+      mutateDrafts((prev) => {
+        const kept = prev.filter((d) => !initialDraftIds.has(d.draftId))
+        const at = position?.afterDraftId
+          ? kept.findIndex((d) => d.draftId === position.afterDraftId)
+          : -1
+        return at === -1
+          ? [...kept, ...bundleDrafts]
+          : [...kept.slice(0, at + 1), ...bundleDrafts, ...kept.slice(at + 1)]
+      })
       setLastAddedDraftId((current) => (current && initialDraftIds.has(current) ? null : current))
       return bundleDrafts
     },
@@ -854,8 +933,12 @@ export function LineBuilder({
       // as taxable already follows.
       updateLine(recordId, first)
 
-      // Known v1 edge: picking on a middle line still appends `rest` at the list end.
-      const bundleDrafts = stageBundleDrafts(rest)
+      // Anchor the staged drafts to the picked row so the bundle renders (and
+      // persists — createDrafts reorders after the createMany) directly under
+      // it instead of appending at the list end.
+      const bundleDrafts = stageBundleDrafts(rest, {
+        anchorRecordId: parseRecordId(recordId).entityInstanceId,
+      })
       applyGroupBilling(pick)
       void createDrafts(bundleDrafts)
     },
@@ -880,7 +963,9 @@ export function LineBuilder({
       // placeholder set — otherwise the §C cleanup below would drop it.
       const firstCreate = createDraft(draftId, first)
 
-      const bundleDrafts = stageBundleDrafts(rest)
+      // Splice the bundle right after the picked draft (not the drafts tail)
+      // so it stays together even with user-added drafts below.
+      const bundleDrafts = stageBundleDrafts(rest, { afterDraftId: draftId })
       applyGroupBilling(pick)
 
       // Materialize the bundle only after entry #1's create settles: real rows
@@ -948,7 +1033,12 @@ export function LineBuilder({
   useLayoutEffect(() => {
     const target = focusedCellRef.current
     if (!target || document.activeElement !== document.body) return
-    const sel = `[data-line-row="${target.row}"][data-line-col="${target.col}"]`
+    const totalRows = displayRecords.length + visibleDrafts.length
+    if (totalRows === 0) return
+    // Deleting the bottom row leaves the remembered index past the end — clamp
+    // it so focus lands on the row above instead of dropping out of the grid.
+    const row = Math.min(target.row, totalRows - 1)
+    const sel = `[data-line-row="${row}"][data-line-col="${target.col}"]`
     // The name cell rests as a `[data-cell-focusable]` text button (no <input>
     // until focused), so match that too — otherwise focus is lost after a
     // draft→real swap on the name column.
@@ -1035,50 +1125,51 @@ export function LineBuilder({
                 items={displayIdsRef.current}
                 strategy={verticalListSortingStrategy}
                 disabled={readOnly}>
-                {displayRecords.map((record, index) => (
-                  <LineRow
-                    key={record.id}
-                    record={record}
-                    rowIndex={index}
-                    entityDefinitionId={entityDefinitionId}
-                    categoryOptions={categoryOptions}
-                    readOnly={readOnly}
-                    currencyCode={currencyCode}
-                    documentType={documentType}
-                    catalogItems={catalogItems}
-                    catalogGroups={catalogGroups}
-                    catalogItemMap={catalogItemMap}
-                    catalogLoading={catalogLoading}
-                    onUpdateLine={updateLine}
-                    deleteLine={deleteLine}
-                    onSelectGroup={handleGroupPick}
-                  />
-                ))}
+                {/* Interleaved real rows + phantom drafts (`visualRows`): anchored
+                    bundle drafts render directly under their picked row, tail
+                    drafts after every real row. Drafts are never drag-sortable —
+                    only real record ids are in the SortableContext. */}
+                {visualRows.map((row) =>
+                  row.kind === 'record' ? (
+                    <LineRow
+                      key={row.record.id}
+                      record={row.record}
+                      rowIndex={row.rowIndex}
+                      entityDefinitionId={entityDefinitionId}
+                      categoryOptions={categoryOptions}
+                      readOnly={readOnly}
+                      currencyCode={currencyCode}
+                      documentType={documentType}
+                      catalogItems={catalogItems}
+                      catalogGroups={catalogGroups}
+                      catalogItemMap={catalogItemMap}
+                      catalogLoading={catalogLoading}
+                      onUpdateLine={updateLine}
+                      deleteLine={deleteLine}
+                      onSelectGroup={handleGroupPick}
+                    />
+                  ) : (
+                    <DraftLineRow
+                      key={row.draft.draftId}
+                      draft={row.draft}
+                      rowIndex={row.rowIndex}
+                      autoFocus={row.draft.draftId === lastAddedDraftId}
+                      categoryOptions={categoryOptions}
+                      currencyCode={currencyCode}
+                      documentType={documentType}
+                      catalogItems={catalogItems}
+                      catalogGroups={catalogGroups}
+                      catalogItemMap={catalogItemMap}
+                      catalogLoading={catalogLoading}
+                      deleteDraft={deleteDraft}
+                      createDraft={createDraft}
+                      onSelectGroup={handleGroupPickDraft}
+                    />
+                  )
+                )}
               </SortableContext>
             </DndContext>
           )}
-
-          {/* Phantom draft rows — pinned after the real rows, never drag-sortable.
-              They continue the nav index space (real count + draft index). */}
-          {!readOnly &&
-            visibleDrafts.map((draft, i) => (
-              <DraftLineRow
-                key={draft.draftId}
-                draft={draft}
-                rowIndex={displayRecords.length + i}
-                autoFocus={draft.draftId === lastAddedDraftId}
-                categoryOptions={categoryOptions}
-                currencyCode={currencyCode}
-                documentType={documentType}
-                catalogItems={catalogItems}
-                catalogGroups={catalogGroups}
-                catalogItemMap={catalogItemMap}
-                catalogLoading={catalogLoading}
-                deleteDraft={deleteDraft}
-                createDraft={createDraft}
-                onSelectGroup={handleGroupPickDraft}
-              />
-            ))}
         </div>
       </div>
 

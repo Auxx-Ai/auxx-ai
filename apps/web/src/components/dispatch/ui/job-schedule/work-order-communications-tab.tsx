@@ -42,7 +42,12 @@ export function WorkOrderCommunicationsTab({
   }, [entityInstanceId, visits, invoiceRecordIds, quoteRecordIds])
 
   return (
-    <div className={cn(isSection ? 'max-h-[70vh] overflow-auto' : 'flex h-full min-h-0 flex-col')}>
+    // Section variant: `pe-3` matches the Line-items section's right inset so the
+    // list clears its own scrollbar and shares the page column's right edge.
+    <div
+      className={cn(
+        isSection ? 'max-h-[70vh] overflow-auto pe-3' : 'flex h-full min-h-0 flex-col'
+      )}>
       <CommunicationsList recordKeys={recordKeys} />
     </div>
   )

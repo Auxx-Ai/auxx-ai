@@ -57,6 +57,7 @@ import {
   PackageSearch,
   Plus,
   Tag,
+  Tags,
   Trash2,
   X,
 } from 'lucide-react'
@@ -137,6 +138,12 @@ function badgeVariantForColor(color: string | undefined): Variant {
 export interface DraftLine extends LineValues {
   draftId: string
   creating: boolean
+  /**
+   * Real row this draft renders directly under — set on catalog-group bundle
+   * drafts staged from a middle row's pick, so the bundle stays together
+   * instead of pinning to the list tail. Absent → tail (the default).
+   */
+  anchorRecordId?: string
 }
 
 export function freshDraft(draftId: string): DraftLine {
@@ -232,7 +239,9 @@ function GripSlot({
     <span
       {...attributes}
       {...listeners}
-      className='-left-2.5 -translate-y-1/2 absolute top-1/2 flex h-5 w-5 cursor-grab items-center justify-center rounded-md border bg-background text-muted-foreground opacity-0 shadow-sm transition-opacity group-hover/tree-row:opacity-100'>
+      // z-10: the row's grid div is a later positioned sibling — without a
+      // z-index it hit-tests above the grip's inner half, eating drag starts.
+      className='-left-2.5 -translate-y-1/2 absolute top-1/2 z-10 flex h-5 w-5 cursor-grab items-center justify-center rounded-md border bg-background text-muted-foreground opacity-0 shadow-sm transition-opacity group-hover/tree-row:opacity-100'>
       <GripVertical className='size-3.5' />
     </span>
   )
@@ -734,7 +743,12 @@ function LineNameCellView({
         optional={optional}
         showOptionalToggle={showOptionalControls}
         hasDescription={!!description}
+        hasCategory={!!category}
         onEditDescription={() => setDescriptionDraft(description ?? '')}
+        // Deferred one frame: the category menu is a second Radix dropdown —
+        // opening it while the `⋯` menu is still tearing down would let the
+        // closing layer's dismiss handling swallow it.
+        onSetCategory={() => requestAnimationFrame(openCategoryMenu)}
         onToggleTaxable={onToggleTaxable}
         onToggleOptional={onToggleOptional}
         onDelete={onDelete}
@@ -940,16 +954,18 @@ function MenuShortcut({ keys }: { keys: string[] }) {
  * ever overlapping the editing buttons. Always visible (it occupies its flex
  * slot either way), styled like the other row action buttons; mouse/touch
  * only (`tabIndex={-1}`, mirroring the qty unit-dropdown precedent). Holds
- * the line-level actions: optional toggle (quotes only), taxable toggle,
- * delete — each item shows its row shortcut (use-line-hotkeys.ts). The drag
- * grip stays drag-only.
+ * the line-level actions: description, category, optional toggle (quotes
+ * only), taxable toggle, delete — each item shows its row shortcut
+ * (use-line-hotkeys.ts). The drag grip stays drag-only.
  */
 function LineRowMenu({
   taxable,
   optional,
   showOptionalToggle,
   hasDescription,
+  hasCategory,
   onEditDescription,
+  onSetCategory,
   onToggleTaxable,
   onToggleOptional,
   onDelete,
@@ -958,7 +974,9 @@ function LineRowMenu({
   optional: boolean
   showOptionalToggle: boolean
   hasDescription: boolean
+  hasCategory: boolean
   onEditDescription: () => void
+  onSetCategory: () => void
   onToggleTaxable: (next: boolean) => void
   onToggleOptional: (next: boolean) => void
   onDelete: () => void
@@ -987,6 +1005,11 @@ function LineRowMenu({
           <AlignLeft />
           {hasDescription ? 'Edit description' : 'Add description'}
           <MenuShortcut keys={['⇧', 'D']} />
+        </DropdownMenuItem>
+        <DropdownMenuItem onSelect={onSetCategory}>
+          <Tags />
+          {hasCategory ? 'Change category' : 'Add category'}
+          <MenuShortcut keys={['⇧', 'L']} />
         </DropdownMenuItem>
         {showOptionalToggle && (
           <DropdownMenuItem onSelect={() => onToggleOptional(!optional)}>
