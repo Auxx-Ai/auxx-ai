@@ -5,6 +5,7 @@ import type { ParticipantRole as ParticipantRoleType } from '@auxx/database/type
 import { createScopedLogger } from '@auxx/logger'
 import { getRedisClient } from '@auxx/redis'
 import { and, asc, desc, eq, sql } from 'drizzle-orm'
+import { getOrgCache } from '../cache'
 import { touchActivityForThreadLinks } from '../entity-instances/activity'
 import { ForbiddenError, UsageLimitError } from '../errors'
 import { FileService } from '../files/core/file-service'
@@ -19,6 +20,7 @@ import { getRealtimeService, publishMessageCreated } from '../realtime'
 import { Result } from '../result'
 import { isSuppressed } from '../sequences/suppression'
 import { getOrganizationSetting } from '../settings/settings-service'
+import { instrumentEmailHtml } from '../signals/email/instrument-html'
 import { buildUnsubscribeUrl, issueUnsubscribeToken } from '../signals/unsubscribe'
 import { createUsageGuard } from '../usage/create-usage-guard'
 import { MessageComposerService } from './message-composer.service'
@@ -235,6 +237,19 @@ export class MessageSenderService {
         emailContext,
         automated: isAutomatedSend,
       })
+      // Step 5.6: Email open/click tracking instrumentation (signals plan 02 "Open + click
+      // tracking", Phase 2). ALL outbound email gets tracking, not just automated sends —
+      // `isAutomatedSend` is unrelated. Best-effort — never blocks or fails the send.
+      if (finalContent.html) {
+        finalContent.html = await this.applyEmailTracking({
+          organizationId: input.organizationId,
+          integrationId: input.integrationId,
+          messageId: composed.id,
+          html: finalContent.html,
+          emailContext,
+          unsubscribeUrl: unsubscribe?.url,
+        })
+      }
       // Step 6: Send via provider
       const sendResult = await this.sendViaProvider({
         integrationId: input.integrationId,
@@ -531,6 +546,59 @@ export class MessageSenderService {
         error: error instanceof Error ? error.message : String(error),
       })
       return undefined
+    }
+  }
+
+  /**
+   * Instruments outbound HTML with open/click tracking (signals plan 02, Phase 2). No-op
+   * (returns `html` unchanged) when there's no linked contact — a signal with no contact is
+   * worthless in v1 — or when the channel's provider type / tracking settings resolve to
+   * both `opens` and `clicks` off. Reads channel settings + provider type off the org cache
+   * (`channels`), never a fresh query. Best-effort: any failure (cache read, token issuance)
+   * logs a warning and returns the original `html` so tracking can never block or fail a send.
+   */
+  private async applyEmailTracking(params: {
+    organizationId: string
+    integrationId: string
+    messageId: string
+    html: string
+    emailContext: { email: string; contactEntityInstanceId: string } | null
+    unsubscribeUrl?: string
+  }): Promise<string> {
+    if (!params.emailContext?.contactEntityInstanceId) return params.html
+    try {
+      const channels = await getOrgCache().get(params.organizationId, 'channels')
+      const channel = channels.find((c) => c.id === params.integrationId)
+      if (!channel) return params.html
+      const providerType = channel.provider
+      if (
+        providerType !== IntegrationProviderType.google &&
+        providerType !== IntegrationProviderType.outlook &&
+        providerType !== IntegrationProviderType.email
+      ) {
+        return params.html
+      }
+      const opens = channel.settings?.tracking?.opens ?? true
+      const clicks =
+        channel.settings?.tracking?.clicks ?? providerType === IntegrationProviderType.email
+      if (!opens && !clicks) return params.html
+      return await instrumentEmailHtml({
+        html: params.html,
+        organizationId: params.organizationId,
+        messageId: params.messageId,
+        contactEntityInstanceId: params.emailContext.contactEntityInstanceId,
+        channelId: params.integrationId,
+        opens,
+        clicks,
+        skipUrls: params.unsubscribeUrl ? [params.unsubscribeUrl] : [],
+      })
+    } catch (error) {
+      logger.warn('Email tracking instrumentation failed; sending untracked', {
+        organizationId: params.organizationId,
+        messageId: params.messageId,
+        error: error instanceof Error ? error.message : String(error),
+      })
+      return params.html
     }
   }
 

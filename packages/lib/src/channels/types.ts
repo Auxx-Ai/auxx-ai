@@ -30,4 +30,16 @@ export interface ChannelSettings {
    * `supportsBidirectionalStatusSync`.
    */
   bidirectionalSyncEnabled?: boolean
+  /**
+   * Email open-pixel and link-click tracking on outgoing mail. Defaults when
+   * unset:
+   * - `opens`: `true` for all email channel types.
+   * - `clicks`: `true` for the `email` (forwarding) provider type only;
+   *   `false` for `google`/`outlook` — link-wrapping 1:1 personal mail is a
+   *   deliverability risk, so it's opt-in there.
+   */
+  tracking?: {
+    opens?: boolean
+    clicks?: boolean
+  }
 }

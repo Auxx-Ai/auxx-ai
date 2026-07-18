@@ -3,6 +3,19 @@
 // plans/signals/01-signal-store.md). Explicit named exports only — see CLAUDE.md's "Module
 // Exports" convention.
 
+export type { TrackingHitClassification, TrackingHitContext } from './email/bot-detection'
+export { classifyTrackingHit } from './email/bot-detection'
+export type { InstrumentEmailHtmlInput } from './email/instrument-html'
+export { instrumentEmailHtml } from './email/instrument-html'
+export type { TrackingTokenPayload } from './email/tracking-tokens'
+export {
+  buildClickTrackingUrl,
+  buildOpenPixelUrl,
+  issueClickToken,
+  issueOpenToken,
+  verifyClickUrl,
+  verifyTrackingToken,
+} from './email/tracking-tokens'
 export type {
   ListSignalsFilters,
   ListSignalsParams,
