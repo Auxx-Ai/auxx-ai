@@ -52,7 +52,13 @@ export class ImapSmtpSendService {
         html: options.html,
         inReplyTo: options.inReplyTo,
         references: options.references,
-        headers: options.messageId ? { 'Message-ID': options.messageId } : undefined,
+        headers: {
+          ...(options.messageId ? { 'Message-ID': options.messageId } : {}),
+          // RFC 3834 loop prevention for automated sends (machine-mail plan Phase 2)
+          ...(options.automated
+            ? { 'Auto-Submitted': 'auto-replied', 'X-Auto-Response-Suppress': 'All' }
+            : {}),
+        },
       })
 
       logger.info('SMTP message sent', { messageId: result.messageId })

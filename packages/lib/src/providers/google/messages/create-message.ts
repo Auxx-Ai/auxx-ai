@@ -29,6 +29,8 @@ export interface CreateEmailMessageInput {
   /** List-Unsubscribe / List-Unsubscribe-Post headers (RFC 8058) — shape matches
    * `SendMessageOptions['unsubscribe']` so it flows through the provider's spread untouched. */
   unsubscribe?: { url: string }
+  /** RFC 3834 loop-prevention headers — matches `SendMessageOptions['automated']`. */
+  automated?: boolean
 }
 
 /**
@@ -52,6 +54,7 @@ export async function createEmailMessage(input: CreateEmailMessageInput): Promis
     references,
     messageId,
     unsubscribe,
+    automated,
   } = input
 
   // Generate boundaries
@@ -104,6 +107,13 @@ export async function createEmailMessage(input: CreateEmailMessageInput): Promis
   if (unsubscribe?.url) {
     headers.push(`List-Unsubscribe: <${unsubscribe.url}>`)
     headers.push(`List-Unsubscribe-Post: List-Unsubscribe=One-Click`)
+  }
+
+  // RFC 3834 loop prevention (machine-mail plan Phase 2) — `auto-replied`, not
+  // `auto-generated`: our own inbound detector tiers auto-generated as hard machine mail.
+  if (automated) {
+    headers.push(`Auto-Submitted: auto-replied`)
+    headers.push(`X-Auto-Response-Suppress: All`)
   }
 
   headers.push(`X-Mailer: Auxx-AI-Mailer/2.0`)
