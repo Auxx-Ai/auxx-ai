@@ -9,6 +9,37 @@ import type { NodeExecutionResult, ValidationResult, WorkflowNode } from '../../
 import { NodeRunningStatus, TEST_RECORD_ID, WorkflowNodeType } from '../../core/types'
 import { BaseNodeProcessor } from '../base-node'
 
+/**
+ * Static filter conditions for the MESSAGE_RECEIVED trigger, matched against the
+ * inbound message at run time inside `MessageReceivedProcessor.applyFilters`.
+ */
+export interface MessageReceivedTriggerFilters {
+  fromDomain?: string
+  fromEmail?: string
+  subjectContains?: string
+  subjectMatches?: string
+  bodyContains?: string
+  isInbound?: boolean
+  hasAttachments?: boolean
+  integrationId?: string
+}
+
+/**
+ * Config (`node.data`) for the MESSAGE_RECEIVED trigger node.
+ */
+export interface MessageReceivedTriggerConfig {
+  filters?: MessageReceivedTriggerFilters
+  /**
+   * Soft-tier machine-mail handling (OOO auto-replies, list/notification mail).
+   * `'exclude'` (the default when absent) skips this workflow for soft machine
+   * mail; `'include'` opts it in. Hard-tier machine mail (bounces/NDRs) is always
+   * skipped at the dispatcher regardless of this setting. Read by
+   * `triggerMessageWorkflows` off the published graph — the runtime processor
+   * does not re-check it (the dispatcher is the gate).
+   */
+  machineMail?: 'exclude' | 'include'
+}
+
 /** Output shape for the `message.attachments` node variable. */
 interface MessageAttachmentOutput {
   name: string

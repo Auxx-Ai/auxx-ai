@@ -35,8 +35,8 @@ export const SEQUENCE_EXIT_REASONS = [
 ] as const
 export type SequenceExitReason = (typeof SEQUENCE_EXIT_REASONS)[number]
 
-/** `SequenceSuppression.reason`. */
-export const SEQUENCE_SUPPRESSION_REASONS = ['unsubscribe', 'manual'] as const
+/** `SequenceSuppression.reason` — `'bounce'` = permanent delivery failure (SES event or parsed NDR). */
+export const SEQUENCE_SUPPRESSION_REASONS = ['unsubscribe', 'manual', 'bounce'] as const
 export type SequenceSuppressionReason = (typeof SEQUENCE_SUPPRESSION_REASONS)[number]
 
 /** Bulk-enroll cap per action (plan §15). */

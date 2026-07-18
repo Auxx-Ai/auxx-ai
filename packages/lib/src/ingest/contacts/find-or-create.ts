@@ -26,6 +26,11 @@ import { hasOrganizationSentToParticipant } from './has-sent-to'
  * find-or-create). Used by the user-initiated "create ticket from thread" flow
  * where the click itself is the explicit intent.
  *
+ * Pass `options.skipCreation = true` for hard-tier machine mail (bounces/NDRs):
+ * this returns `null` without touching the contact graph, so a daemon sender
+ * never becomes a Contact (which would fire `contact:created` automations — the
+ * transitive backscatter loop).
+ *
  * When a contact is created (or matched), this also auto-links the contact
  * to a company keyed by email domain. Linking failures are swallowed and
  * logged — contact creation must succeed regardless.
@@ -34,9 +39,17 @@ export async function findOrCreateContactForParticipant(
   ctx: IngestContext,
   participant: Participant,
   messageContext?: { isInbound: boolean; role: ParticipantRole },
-  options?: { force?: boolean }
+  options?: { force?: boolean; skipCreation?: boolean }
 ): Promise<string | null> {
   try {
+    if (options?.skipCreation) {
+      ctx.logger.debug('Skipping contact creation for hard-tier machine mail participant', {
+        participantId: participant.id,
+        identifier: participant.identifier,
+      })
+      return null
+    }
+
     const mode = ctx.integrationSettings?.recordCreation?.mode || 'selective'
     const handler = ctx.crudHandler
     const force = options?.force ?? false

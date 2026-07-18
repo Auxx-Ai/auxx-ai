@@ -157,17 +157,33 @@ export class AnswerProcessor extends BaseNodeProcessor {
           resolvedSubject = await this.interpolateVariables(config.subject, contextManager)
         }
 
+        // Look up the latest inbound message once. It backs both the machine-mail refusal
+        // backstop (which applies regardless of To auto/manual) and participant auto-resolution
+        // (which only runs when To/Cc are auto) — so the query never runs twice.
+        const latestInbound = await this.getLatestInboundMessage(threadId, context.db)
+
+        // Hard-tier refusal backstop: never auto-reply into a thread whose latest inbound
+        // message is machine-generated mail (bounces/NDRs). This runs before composing or
+        // sending on BOTH the auto-To and manual-To paths, and regardless of any
+        // trigger-level machine-mail opt-in. You can run a workflow on a bounce; you can't
+        // answer one.
+        const machineMail = (
+          latestInbound?.metadata as { machineMail?: { tier?: string; reason?: string } } | null
+        )?.machineMail
+        if (machineMail?.tier === 'hard') {
+          throw new Error(
+            `Refusing to auto-reply to machine-generated mail (${machineMail.reason ?? 'unknown'}) — bounces/NDRs must not be answered`
+          )
+        }
+
         // Auto-resolve recipients from thread
         if (
           config.toIsAuto !== false ||
           (messageType === 'replyAll' && config.ccIsAuto !== false)
         ) {
-          const participants = await this.getThreadParticipants(
-            threadId,
-            integrationId,
-            context.organizationId,
-            context.db
-          )
+          const participants = latestInbound
+            ? await this.getThreadParticipants(latestInbound.id, integrationId, context.db)
+            : { sender: null, otherRecipients: [] }
 
           if (config.toIsAuto !== false) {
             resolvedTo = participants.sender ? [participants.sender] : []
@@ -591,14 +607,37 @@ export class AnswerProcessor extends BaseNodeProcessor {
   }
 
   /**
-   * Get thread participants for auto-resolving recipients.
-   * Finds the latest inbound message in the thread and extracts sender + other recipients,
-   * filtering out the integration's own email address.
+   * Find the latest inbound message in a thread, returning its id and metadata.
+   *
+   * Selecting `metadata` here lets the caller enforce the hard-tier machine-mail refusal
+   * backstop (`metadata.machineMail.tier === 'hard'`) without a second query, on both the
+   * auto-To and manual-To reply paths.
+   */
+  private async getLatestInboundMessage(
+    threadId: string,
+    db: any
+  ): Promise<{ id: string; metadata: unknown } | null> {
+    const latestMessage = await db
+      .select({ id: schema.Message.id, metadata: schema.Message.metadata })
+      .from(schema.Message)
+      .where(and(eq(schema.Message.threadId, threadId), eq(schema.Message.isInbound, true)))
+      .orderBy(desc(schema.Message.receivedAt))
+      .limit(1)
+
+    return latestMessage[0] ?? null
+  }
+
+  /**
+   * Extract the reply recipients from a message's participants.
+   *
+   * `sender` prefers the `REPLY_TO` participant and falls back to `FROM` — honoring a
+   * sender's explicit Reply-To header (e.g. `support@` on an automated notification). The
+   * integration's own email is filtered out of every role, so a Reply-To pointing back at
+   * us falls through to `FROM`. The chosen sender is never duplicated into `otherRecipients`.
    */
   private async getThreadParticipants(
-    threadId: string,
+    messageId: string,
     integrationId: string,
-    organizationId: string,
     db: any
   ): Promise<{
     sender: string | null
@@ -613,18 +652,6 @@ export class AnswerProcessor extends BaseNodeProcessor {
 
     const integrationEmail = integration[0]?.email?.toLowerCase()
 
-    // Get the latest inbound message in this thread
-    const latestMessage = await db
-      .select({ id: schema.Message.id })
-      .from(schema.Message)
-      .where(and(eq(schema.Message.threadId, threadId), eq(schema.Message.isInbound, true)))
-      .orderBy(desc(schema.Message.receivedAt))
-      .limit(1)
-
-    if (!latestMessage[0]) {
-      return { sender: null, otherRecipients: [] }
-    }
-
     // Get all participants on this message with their roles
     const messageParticipants = await db
       .select({
@@ -636,24 +663,41 @@ export class AnswerProcessor extends BaseNodeProcessor {
         schema.Participant,
         eq(schema.MessageParticipant.participantId, schema.Participant.id)
       )
-      .where(eq(schema.MessageParticipant.messageId, latestMessage[0].id))
+      .where(eq(schema.MessageParticipant.messageId, messageId))
 
-    let sender: string | null = null
-    const otherRecipients: string[] = []
-    const seen = new Set<string>()
+    let fromEmail: string | null = null
+    let replyToEmail: string | null = null
+    const recipientCandidates: string[] = []
 
     for (const p of messageParticipants) {
-      const email = p.identifier?.toLowerCase()
-      if (!email || seen.has(email)) continue
-      // Skip the integration's own email
+      const identifier = p.identifier
+      const email = identifier?.toLowerCase()
+      if (!email) continue
+      // Skip the integration's own email in every role (also handles a Reply-To that
+      // points back at us — it's dropped and sender falls back to FROM).
       if (integrationEmail && email === integrationEmail) continue
-      seen.add(email)
 
-      if (p.role === ParticipantRole.FROM) {
-        sender = p.identifier
+      if (p.role === ParticipantRole.REPLY_TO) {
+        if (!replyToEmail) replyToEmail = identifier
+      } else if (p.role === ParticipantRole.FROM) {
+        if (!fromEmail) fromEmail = identifier
       } else if (p.role === ParticipantRole.TO || p.role === ParticipantRole.CC) {
-        otherRecipients.push(p.identifier)
+        recipientCandidates.push(identifier)
       }
+    }
+
+    // Prefer Reply-To, fall back to From
+    const sender = replyToEmail ?? fromEmail
+
+    // Build otherRecipients from TO/CC, deduped and excluding the chosen sender
+    const seen = new Set<string>()
+    if (sender) seen.add(sender.toLowerCase())
+    const otherRecipients: string[] = []
+    for (const identifier of recipientCandidates) {
+      const email = identifier.toLowerCase()
+      if (seen.has(email)) continue
+      seen.add(email)
+      otherRecipients.push(identifier)
     }
 
     return { sender, otherRecipients }

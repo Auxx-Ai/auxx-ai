@@ -41,6 +41,17 @@ export const deriveMessageReplySignal = async ({ data: event }: { data: AuxxEven
 
   if (!message.isInbound) return
 
+  // Machine mail (both tiers) must not count as "contact replied" — an NDR or
+  // OOO auto-reply is not the contact re-engaging. `metadata.machineMail` is the
+  // `{ tier, reason }` object set at ingest (truthy for hard and soft alike).
+  if ((message.metadata as any)?.machineMail) {
+    logger.debug('Skipping message:replied signal for machine mail', {
+      messageId,
+      organizationId,
+    })
+    return
+  }
+
   const sender = message.from
   if (!sender || sender.isInternal) return
 

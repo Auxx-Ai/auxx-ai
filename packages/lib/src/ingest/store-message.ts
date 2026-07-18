@@ -16,6 +16,7 @@ import {
 } from '../realtime'
 import { applyMailCountDeltas } from '../threads/mail-counts'
 import type { IngestContext } from './context'
+import { detectMachineMail } from './filtering/machine-mail'
 import { shouldIgnoreMessage } from './filtering/should-ignore'
 import { storeIgnoredMessage } from './filtering/store-ignored'
 import { isPersonalInbox } from './inbox-meta'
@@ -68,6 +69,7 @@ export async function storeMessage(
               externalId: schema.Message.externalId,
               textPlain: schema.Message.textPlain,
               textHtml: schema.Message.textHtml,
+              metadata: schema.Message.metadata,
             })
             .from(schema.Message)
             .where(
@@ -87,6 +89,17 @@ export async function storeMessage(
         incomingExternalId: messageData.externalId,
       })
 
+      // Preserve the machine-mail flag through this wholesale metadata overwrite:
+      // it was computed from headers at first insert (inbound path) and the
+      // incoming reconcile payload — a provider re-pull or outbound echo — won't
+      // carry it. Losing it here would silently un-gate the consumers downstream.
+      const existingMachineMail = (existingByMsgId.metadata as any)?.machineMail
+      const incomingMetadata = (messageData.metadata ?? {}) as Record<string, unknown>
+      const reconciledMetadata =
+        existingMachineMail && incomingMetadata.machineMail === undefined
+          ? { ...incomingMetadata, machineMail: existingMachineMail }
+          : incomingMetadata
+
       await ctx.db
         .update(schema.Message)
         .set({
@@ -99,7 +112,7 @@ export async function storeMessage(
           snippet: messageData.snippet ?? null,
           htmlBodyStorageLocationId: messageData.htmlBodyStorageLocationId ?? undefined,
           hasAttachments: messageData.hasAttachments,
-          metadata: messageData.metadata ?? {},
+          metadata: reconciledMetadata,
           receivedAt: messageData.receivedAt,
           sentAt: messageData.sentAt,
           historyId: messageData.historyId ? BigInt(messageData.historyId) : null,
@@ -204,6 +217,36 @@ export async function storeMessage(
       return storeIgnoredMessage(ctx, messageData)
     }
 
+    // Machine-mail detection (backscatter-loop prevention): header-only signals
+    // (DSN content-type, null return-path, daemon senders, auto-submitted,
+    // list/precedence/no-reply) computed once here so the `{ tier, reason }` flag
+    // lands in the same write as the message insert below, and rides along on the
+    // `message:received` event payload for the consumer gates to read (those gates
+    // live in the event handlers — this only detects + flags). Inbound-only:
+    // storeMessage's outbound traffic is provider sync echoing our own sent mail,
+    // which is never machine mail.
+    const machineMailResult = messageData.isInbound
+      ? detectMachineMail({
+          headers: (messageData.metadata as any)?.headers,
+          fromEmail: messageData.from?.identifier ?? null,
+        })
+      : null
+    if (machineMailResult) {
+      ctx.logger.info('Flagged inbound message as machine mail', {
+        externalId: messageData.externalId,
+        tier: machineMailResult.tier,
+        reason: machineMailResult.reason,
+      })
+    }
+    const messageMetadata = machineMailResult
+      ? { ...(messageData.metadata ?? {}), machineMail: machineMailResult }
+      : messageData.metadata
+
+    // Hard-tier machine mail (bounces/NDRs) must never grow the contact graph —
+    // an NDR from mailer-daemon@ becoming a Contact fires `contact:created`
+    // automations (the transitive backscatter loop). Participant rows are fine.
+    const skipMachineMailContact = machineMailResult?.tier === 'hard'
+
     // Ingest guarantee (mail-permissions Phase 0): every thread must carry an
     // inboxId so it can't fall into the null-inbox visibility class. Resolve it
     // from the integration's InboxIntegration mapping when the caller didn't
@@ -272,7 +315,8 @@ export async function storeMessage(
         data,
         identifierType,
         messageContext,
-        resolvedInboxId
+        resolvedInboxId,
+        skipMachineMailContact
       )
       participantCache.set(cacheKey, participantRecord)
       return participantRecord
@@ -420,7 +464,7 @@ export async function storeMessage(
           textPlain: messageData.textPlain,
           snippet: messageData.snippet,
           htmlBodyStorageLocationId: messageData.htmlBodyStorageLocationId ?? null,
-          metadata: messageData.metadata || null,
+          metadata: messageMetadata || null,
           isInbound: messageData.isInbound,
           isFirstInThread: isNewThread,
           fromId: senderParticipantId,
@@ -440,7 +484,7 @@ export async function storeMessage(
             textPlain: messageData.textPlain,
             snippet: messageData.snippet,
             htmlBodyStorageLocationId: messageData.htmlBodyStorageLocationId ?? null,
-            metadata: messageData.metadata || null,
+            metadata: messageMetadata || null,
             isInbound: messageData.isInbound,
             fromId: senderParticipantId,
             replyToId: firstReplyToParticipantId,
@@ -684,6 +728,7 @@ export async function storeMessage(
           subject: messageData.subject ?? undefined,
           from: senderParticipant.identifier,
           snippet: messageData.snippet ?? undefined,
+          ...(machineMailResult && { machineMail: machineMailResult }),
         },
       } as MessageReceivedEvent)
     }

@@ -7,6 +7,7 @@ export { createTimelineEvent } from './create-timeline-event'
 export { deriveMessageReplySignal, deriveThreadResolvedSignal } from './derive-message-signals'
 export { handleRecordRules } from './handle-record-rules'
 export { handleSyncRecordRules } from './handle-sync-record-rules'
+export { ingestBounceMessage } from './ingest-bounce-message'
 export { projectSignalToTimeline } from './project-signal-to-timeline'
 export { EventHandlers, publishEventJob } from './publish-event-job'
 export {

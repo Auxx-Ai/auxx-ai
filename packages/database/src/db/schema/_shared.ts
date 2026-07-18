@@ -420,6 +420,7 @@ export const sequenceExitReason = pgEnum('SequenceExitReason', [
 export const sequenceSuppressionReason = pgEnum('SequenceSuppressionReason', [
   'unsubscribe',
   'manual',
+  'bounce',
 ])
 // Sequence.triggerType is deliberately text(), not pgEnum — new event triggers must be
 // addable without a migration. See `SequenceTriggerType` in `./sequence.ts`.

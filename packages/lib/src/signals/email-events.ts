@@ -381,11 +381,10 @@ async function processBounce(
         email: recipient.emailAddress,
         contactEntityInstanceId:
           message.participantsByEmail.get(normalizeEmail(recipient.emailAddress)) ?? null,
-        // `SequenceSuppression.reason` (packages/lib/src/sequences/suppression.ts) has no
-        // dedicated 'bounce' value — its enum is only 'unsubscribe' | 'manual'. 'unsubscribe'
-        // is the closest existing value: both mean "stop sending to this address
-        // automatically," which is exactly what a hard bounce implies.
-        reason: 'unsubscribe',
+        // Aligned with the Gmail/Outlook NDR path (plans/signals/05-machine-mail-bounce.md §4):
+        // both SES hard bounces and inbound-NDR permanent failures suppress under the dedicated
+        // 'bounce' reason. (Phase 1 shipped these under 'unsubscribe' as a documented deviation.)
+        reason: 'bounce',
       })
     }
   }
