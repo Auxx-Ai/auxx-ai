@@ -547,6 +547,8 @@ export const JobStatusValues = [
 
 export const LabelTypeValues = ['system', 'user'] as const
 
+export const MachineMailTierValues = ['hard', 'soft'] as const
+
 export const MEDIA_CONTENT_TYPEValues = ['EXTERNAL_VIDEO', 'IMAGE', 'MODEL_3D', 'VIDEO'] as const
 
 export const MeetingMessageMethodValues = [
@@ -1240,6 +1242,11 @@ export const JobStatus = {
 export const LabelType = {
   system: 'system',
   user: 'user',
+} as const
+
+export const MachineMailTier = {
+  hard: 'hard',
+  soft: 'soft',
 } as const
 
 export const MEDIA_CONTENT_TYPE = {

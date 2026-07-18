@@ -337,7 +337,7 @@ export class WorkflowTestRunner {
       integrationId: 'test-integration',
       messageType: 'EMAIL',
       isInbound: true,
-      isAutoReply: false,
+      machineMailTier: null,
       isFirstInThread: true,
       isAIGenerated: false,
       subject: 'Test Subject',

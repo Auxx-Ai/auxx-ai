@@ -19,6 +19,7 @@ import {
   MessageStorageService,
   type ParticipantInputData, // Use this for participant info
 } from '../../email/email-storage' // Adjust path
+import { pickMachineMailHeaders } from '../../ingest/filtering/machine-mail'
 import {
   type ChannelProvider,
   type MessageListResult,
@@ -846,13 +847,14 @@ export class OutlookProvider
                 : undefined,
             snippet: message.bodyPreview || '',
             isInbound: isInbound,
-            isAutoReply: message.inferenceClassification?.toLowerCase() === 'other', // Basic check
             metadata: {
               conversationId: message.conversationId,
               parentFolderId: message.parentFolderId,
               isRead: message.isRead,
               inferenceClassification: message.inferenceClassification,
-              // internetMessageHeaders: message.internetMessageHeaders, // Avoid storing large headers unless needed
+              // Full headers stay unpersisted (large); machine-mail detection only
+              // needs this allowlisted subset (machine-mail plan Phase 1).
+              headers: pickMachineMailHeaders(message.internetMessageHeaders),
             },
             keywords: message.categories || [], // Use categories as keywords
             labelIds: [], // Outlook uses folder IDs, not labels like Gmail

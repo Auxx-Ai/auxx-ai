@@ -64,7 +64,6 @@ export interface MessageData {
   threadIndex?: string | null
   folderId?: string | null
   internetHeaders?: JsonArray | null
-  isAutoReply?: boolean | null
   isFirstInThread?: boolean | null
   isAIGenerated?: boolean | null
 

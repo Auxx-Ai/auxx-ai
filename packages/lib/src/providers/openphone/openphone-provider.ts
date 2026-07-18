@@ -451,7 +451,6 @@ export class OpenPhoneProvider
         labelIds: [],
         emailLabel: EmailLabel.inbox,
         // Fields from Message model defaults
-        isAutoReply: false, // Assume false
         isFirstInThread: false, // Cannot easily determine from single message
         isAIGenerated: false, // Assume false
         internetMessageId: undefined,

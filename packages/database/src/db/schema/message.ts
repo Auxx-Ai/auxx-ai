@@ -9,6 +9,7 @@ import {
   index,
   integer,
   jsonb,
+  machineMailTier,
   pgTable,
   sendStatus,
   sql,
@@ -80,6 +81,9 @@ export const Message = pgTable(
     providerError: text(),
     sendStatus: sendStatus().default('SENT'),
     sendToken: text(),
+    // Machine-mail tier, set at ingest for inbound mail (machine-mail plan Phase 1).
+    // Null = ordinary human mail. The detection reason stays in metadata.machineMail.
+    machineMailTier: machineMailTier(),
   },
   (table) => [
     index('Message_createdById_idx').using('btree', table.createdById.asc().nullsLast()),
@@ -94,6 +98,14 @@ export const Message = pgTable(
       table.externalId.asc().nullsLast()
     ),
     index('Message_integrationId_idx').using('btree', table.integrationId.asc().nullsLast()),
+    // Flagged messages only (tiny partial index) — backs future inbox "automated" filters.
+    index('Message_machineMailTier_idx')
+      .using(
+        'btree',
+        table.organizationId.asc().nullsLast(),
+        table.machineMailTier.asc().nullsLast()
+      )
+      .where(sql`("machineMailTier" IS NOT NULL)`),
     index('Message_organizationId_idx').using('btree', table.organizationId.asc().nullsLast()),
     uniqueIndex('Message_organizationId_internetMessageId_key')
       .using(

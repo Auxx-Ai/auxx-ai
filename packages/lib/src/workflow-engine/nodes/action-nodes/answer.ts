@@ -167,12 +167,11 @@ export class AnswerProcessor extends BaseNodeProcessor {
         // sending on BOTH the auto-To and manual-To paths, and regardless of any
         // trigger-level machine-mail opt-in. You can run a workflow on a bounce; you can't
         // answer one.
-        const machineMail = (
-          latestInbound?.metadata as { machineMail?: { tier?: string; reason?: string } } | null
-        )?.machineMail
-        if (machineMail?.tier === 'hard') {
+        if (latestInbound?.machineMailTier === 'hard') {
+          const reason = (latestInbound.metadata as { machineMail?: { reason?: string } } | null)
+            ?.machineMail?.reason
           throw new Error(
-            `Refusing to auto-reply to machine-generated mail (${machineMail.reason ?? 'unknown'}) — bounces/NDRs must not be answered`
+            `Refusing to auto-reply to machine-generated mail (${reason ?? 'unknown'}) — bounces/NDRs must not be answered`
           )
         }
 
@@ -607,18 +606,22 @@ export class AnswerProcessor extends BaseNodeProcessor {
   }
 
   /**
-   * Find the latest inbound message in a thread, returning its id and metadata.
+   * Find the latest inbound message in a thread, returning its id, machine-mail tier,
+   * and metadata (which carries the detection reason).
    *
-   * Selecting `metadata` here lets the caller enforce the hard-tier machine-mail refusal
-   * backstop (`metadata.machineMail.tier === 'hard'`) without a second query, on both the
-   * auto-To and manual-To reply paths.
+   * Selecting these here lets the caller enforce the hard-tier machine-mail refusal
+   * backstop without a second query, on both the auto-To and manual-To reply paths.
    */
   private async getLatestInboundMessage(
     threadId: string,
     db: any
-  ): Promise<{ id: string; metadata: unknown } | null> {
+  ): Promise<{ id: string; machineMailTier: 'hard' | 'soft' | null; metadata: unknown } | null> {
     const latestMessage = await db
-      .select({ id: schema.Message.id, metadata: schema.Message.metadata })
+      .select({
+        id: schema.Message.id,
+        machineMailTier: schema.Message.machineMailTier,
+        metadata: schema.Message.metadata,
+      })
       .from(schema.Message)
       .where(and(eq(schema.Message.threadId, threadId), eq(schema.Message.isInbound, true)))
       .orderBy(desc(schema.Message.receivedAt))

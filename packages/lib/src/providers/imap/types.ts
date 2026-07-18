@@ -50,6 +50,8 @@ export interface ParsedEmail {
   messageId: string | undefined
   inReplyTo: string | undefined
   references: string | undefined
+  /** Allowlisted machine-mail header subset (lowercased map) — see `pickMachineMailHeaders`. */
+  headers: Record<string, string> | undefined
   date: string | undefined
   subject: string | undefined
   from: { address: string; name: string }[]
