@@ -1,14 +1,12 @@
 // apps/web/src/components/dispatch/ui/job-schedule/work-order-billing-tab.tsx
 'use client'
 
-import { extractRelationshipRecordIds } from '@auxx/lib/field-values/client'
 import { BILLING_BASIS_LABELS, BILLING_TIMING_LABELS } from '@auxx/lib/money/client'
-import { toRecordId } from '@auxx/types/resource'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { EmptySection } from '@auxx/ui/components/section'
 import { Skeleton } from '@auxx/ui/components/skeleton'
-import { TREE_SECONDARY_NOTRUNCATE, TreeRow } from '@auxx/ui/components/tree-row'
+import { TREE_SECONDARY_NOTRUNCATE } from '@auxx/ui/components/tree-row'
 import { TreeRowList } from '@auxx/ui/components/tree-row-list'
 import { TuckedSection } from '@auxx/ui/components/tucked-label'
 import { cn } from '@auxx/ui/lib/utils'
@@ -18,14 +16,13 @@ import type { DetailViewTabProps } from '~/components/detail-view'
 import { BillingActionDialog } from '~/components/money/billing/billing-action-dialog'
 import { BillingPlanDialog } from '~/components/money/billing/billing-plan-dialog'
 import { BillingScheduleDialog } from '~/components/money/billing/billing-schedule-dialog'
+import { BillingSummaryStrip } from '~/components/money/billing/billing-summary-strip'
+import { InvoiceTreeRow } from '~/components/money/billing/invoice-tree-row'
+import { NewWorkOrderInvoiceButton } from '~/components/money/billing/new-work-order-invoice-button'
 import { resolveBillingAction, type WorkOrderBillingView } from '~/components/money/billing/types'
 import { useWorkOrderBillingState } from '~/components/money/billing/use-work-order-billing-state'
 import { formatCurrency } from '~/components/money/ui/line-builder/shared'
 import { useRecordDrill } from '~/components/records/record-drill-panels'
-import { RecordEditorDialog } from '~/components/records/record-editor-dialog'
-import { useSystemField } from '~/components/resources/hooks/use-field'
-import { useResources } from '~/components/resources/hooks/use-resources'
-import { useSystemValues } from '~/components/resources/hooks/use-system-values'
 import { api } from '~/trpc/react'
 import { BillingScheduleRow } from './billing-schedule-row'
 import type { PaymentCandidate } from './work-order-billing-payments-block'
@@ -36,32 +33,12 @@ export function WorkOrderBillingTab({ recordId, variant = 'tab' }: DetailViewTab
   const [extraOpen, setExtraOpen] = useState(false)
   const [planOpen, setPlanOpen] = useState(false)
   const [scheduleOpen, setScheduleOpen] = useState(false)
-  const [newInvoiceOpen, setNewInvoiceOpen] = useState(false)
   const { billing, isLoading } = useWorkOrderBillingState(recordId)
   const utils = api.useUtils()
   // In-place invoice drill (the schedule-visit pattern) — `?panel=invoices&item=<recordId>`
   // pushes the InvoiceDetailPanel over this page/drawer surface.
   const drill = useRecordDrill()
   const isSection = variant === 'section'
-  // Quick manual invoice (plan money/19 follow-up): the generic invoice create dialog
-  // (contact / work order / due date) with both relations prefilled from this job. The
-  // saved draft opens straight in the invoice drawer so lines can be added immediately.
-  const { getResourceById } = useResources()
-  const invoiceDefId = getResourceById('invoices')?.id
-  const invoiceContactField = useSystemField('invoice_contact')
-  const invoiceWorkOrderField = useSystemField('invoice_work_order')
-  const { values: workOrderValues } = useSystemValues(recordId, ['work_order_contact'], {
-    autoFetch: true,
-  })
-  const newInvoicePresets = useMemo(() => {
-    const presets: Record<string, unknown> = {}
-    if (invoiceWorkOrderField) presets[invoiceWorkOrderField.id] = [recordId]
-    const contactRecordIds = extractRelationshipRecordIds(workOrderValues.work_order_contact)
-    if (invoiceContactField && contactRecordIds.length > 0) {
-      presets[invoiceContactField.id] = contactRecordIds
-    }
-    return presets
-  }, [invoiceContactField, invoiceWorkOrderField, recordId, workOrderValues.work_order_contact])
   const paymentCandidates: PaymentCandidate[] = useMemo(
     () =>
       billing.invoices
@@ -85,7 +62,7 @@ export function WorkOrderBillingTab({ recordId, variant = 'tab' }: DetailViewTab
           'flex flex-col gap-4 py-2',
           isSection ? 'overflow-auto pe-3' : 'min-h-0 flex-1 overflow-auto'
         )}>
-        <SummaryStrip billing={billing} />
+        <BillingSummaryStrip billing={billing} className='border-b pb-4' />
         <NextAction
           billing={billing}
           onAction={() => setActionOpen(true)}
@@ -166,11 +143,10 @@ export function WorkOrderBillingTab({ recordId, variant = 'tab' }: DetailViewTab
         <TuckedSection
           label='Invoices'
           action={
-            invoiceDefId ? (
-              <Button variant='ghost' size='xs' onClick={() => setNewInvoiceOpen(true)}>
-                New invoice
-              </Button>
-            ) : undefined
+            <NewWorkOrderInvoiceButton
+              workOrderRecordId={recordId}
+              onOpenInvoice={(invoiceRecordId) => drill.open('invoices', invoiceRecordId)}
+            />
           }>
           <InvoiceRows billing={billing} />
         </TuckedSection>
@@ -213,63 +189,6 @@ export function WorkOrderBillingTab({ recordId, variant = 'tab' }: DetailViewTab
         billing={billing}
         mode='extra'
       />
-      {invoiceDefId && (
-        <RecordEditorDialog
-          open={newInvoiceOpen}
-          onOpenChange={setNewInvoiceOpen}
-          entityDefinitionId={invoiceDefId}
-          presetValues={newInvoicePresets}
-          onSaved={(instanceId) => {
-            void utils.money.getWorkOrderBillingState.invalidate({ workOrderRecordId: recordId })
-            if (instanceId) drill.open('invoices', toRecordId('invoice', instanceId))
-          }}
-        />
-      )}
-    </div>
-  )
-}
-
-function SummaryStrip({ billing }: { billing: WorkOrderBillingView }) {
-  const firstLabel =
-    billing.basis === 'fixed_contract'
-      ? 'Contract value'
-      : billing.basis === 'per_visit'
-        ? 'Default visit price'
-        : 'Rate per billing period'
-  const showDepositHeld = billing.depositHeld > 0
-  return (
-    <div
-      className={cn(
-        'grid grid-cols-2 gap-3 border-b pb-4',
-        showDepositHeld ? 'sm:grid-cols-6' : 'sm:grid-cols-5'
-      )}>
-      <SummaryCell label={firstLabel} value={billing.billingAmount} billing={billing} />
-      <SummaryCell label='Drafted' value={billing.drafted} billing={billing} />
-      <SummaryCell label='Invoiced' value={billing.invoiced} billing={billing} />
-      <SummaryCell label='Remaining to invoice' value={billing.remaining} billing={billing} />
-      <SummaryCell label='Balance due' value={billing.balanceDue} billing={billing} />
-      {showDepositHeld && (
-        <SummaryCell label='Deposit held' value={billing.depositHeld} billing={billing} />
-      )}
-    </div>
-  )
-}
-
-function SummaryCell({
-  label,
-  value,
-  billing,
-}: {
-  label: string
-  value: number
-  billing: WorkOrderBillingView
-}) {
-  return (
-    <div className='flex flex-col gap-0.5'>
-      <span className='text-xs text-muted-foreground'>{label}</span>
-      <span className='font-medium text-sm tabular-nums'>
-        {formatCurrency(value, billing.currencyCode)}
-      </span>
     </div>
   )
 }
@@ -431,16 +350,10 @@ function InvoiceRows({ billing }: { billing: WorkOrderBillingView }) {
         visibleLimit={INVOICE_PREVIEW_LIMIT}
         className={`space-y-0.5 ${TREE_SECONDARY_NOTRUNCATE}`}
         renderRow={(invoice) => (
-          <TreeRow
-            rowClassName='hover:bg-primary-100'
-            icon={<Receipt className='size-4' />}
-            title={<span className='text-sm'>{invoice.displayName}</span>}
-            secondary={
-              <span className='text-xs'>
-                {invoice.status} · {formatCurrency(invoice.total, billing.currencyCode)}
-              </span>
-            }
-            onDrill={() => drill.open('invoices', invoice.recordId)}
+          <InvoiceTreeRow
+            invoice={invoice}
+            currencyCode={billing.currencyCode}
+            onOpen={() => drill.open('invoices', invoice.recordId)}
           />
         )}
       />
