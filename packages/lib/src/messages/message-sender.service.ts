@@ -23,6 +23,7 @@ import { getOrganizationSetting } from '../settings/settings-service'
 import { instrumentEmailHtml } from '../signals/email/instrument-html'
 import { buildUnsubscribeUrl, issueUnsubscribeToken } from '../signals/unsubscribe'
 import { createUsageGuard } from '../usage/create-usage-guard'
+import { checkAutomatedSendLimits, notifyAdminsOfSendBreakerTrip } from './automated-send-guard'
 import { MessageComposerService } from './message-composer.service'
 import { MessageReconcilerService } from './message-reconciler.service'
 import { ThreadManagerService } from './thread-manager.service'
@@ -187,6 +188,27 @@ export class MessageSenderService {
         if (suppressed) {
           throw new ForbiddenError(
             `Recipient ${emailContext.email} is unsubscribed or bounced; automated send blocked`
+          )
+        }
+        // Rate limits for automated sends (machine-mail plan Phase 3) — per-recipient
+        // cooldown + org circuit breaker. Defense-in-depth behind machine-mail detection.
+        const rateLimit = await checkAutomatedSendLimits({
+          organizationId: input.organizationId,
+          recipientEmail: emailContext.email,
+        })
+        if (!rateLimit.allowed) {
+          if (rateLimit.scope === 'org' && rateLimit.firstTrip) {
+            await notifyAdminsOfSendBreakerTrip({
+              organizationId: input.organizationId,
+              limit: rateLimit.limit,
+            })
+          }
+          throw new ForbiddenError(
+            rateLimit.scope === 'recipient'
+              ? `Automated send to ${emailContext.email} blocked: recipient received ` +
+                  `${rateLimit.limit} automated emails in the last hour (possible loop)`
+              : `Automated send blocked: organization exceeded ${rateLimit.limit} automated ` +
+                  'emails in 15 minutes (circuit breaker tripped, admins notified)'
           )
         }
       }

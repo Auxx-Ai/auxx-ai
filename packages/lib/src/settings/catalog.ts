@@ -230,6 +230,26 @@ export const SETTINGS_CATALOG = {
       'support threads should not necessarily carry an unsubscribe link). Automated/' +
       'scheduled/sequence sends always include it.',
   },
+  // Automated-send rate limits (machine-mail plan Phase 3) — guardrails against
+  // auto-reply loops. Human sends are never limited.
+  'email.automation.maxPerRecipientPerHour': {
+    scope: 'COMMUNICATION',
+    access: 'org',
+    fieldType: 'NUMBER',
+    defaultValue: 2,
+    description:
+      'Max automated emails to a single recipient per hour (0 disables). Loops hop ' +
+      'threads, so this per-address cooldown is the primary loop breaker.',
+  },
+  'email.automation.maxPerOrgPer15Min': {
+    scope: 'COMMUNICATION',
+    access: 'org',
+    fieldType: 'NUMBER',
+    defaultValue: 30,
+    description:
+      'Circuit breaker: max automated emails across the organization per 15 minutes ' +
+      '(0 disables). Tripping it blocks automated sends and notifies admins.',
+  },
 
   ...sidebarSettings,
 
