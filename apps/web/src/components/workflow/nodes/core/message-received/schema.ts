@@ -52,6 +52,7 @@ export const messageReceivedNodeDataSchema = z.object({
       body_contains: z.array(z.string()).optional(),
     })
     .optional(),
+  machineMail: z.enum(['exclude', 'include']).optional(),
   message_filter: z
     .object({
       enabled: z.boolean(),

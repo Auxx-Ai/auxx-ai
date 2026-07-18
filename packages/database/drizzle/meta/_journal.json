@@ -2066,6 +2066,13 @@
       "when": 1784331183500,
       "tag": "0294_message_external_id_idx",
       "breakpoints": true
+    },
+    {
+      "idx": 295,
+      "version": "7",
+      "when": 1784340079953,
+      "tag": "0295_suppression_bounce_reason",
+      "breakpoints": true
     }
   ]
 }

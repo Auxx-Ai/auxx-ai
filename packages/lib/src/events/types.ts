@@ -162,6 +162,12 @@ export type MessageReceivedEvent = AuxxEventGeneric<
     subject?: string
     from?: string
     snippet?: string
+    /** Set when ingest-time header analysis flagged this as machine-generated mail.
+     * `hard` = loop-forming (bounces/NDRs/daemon senders) — automated consumers must
+     * never answer; `soft` = automated but possibly wanted (OOO, list/notification
+     * mail) — excluded from workflows by default, per-trigger opt-in. The same object
+     * is persisted at `Message.metadata.machineMail`. */
+    machineMail?: { tier: 'hard' | 'soft'; reason: string }
   }
 >
 export type MessageSentEvent = AuxxEventGeneric<

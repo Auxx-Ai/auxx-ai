@@ -96,7 +96,12 @@ export async function findOrCreateParticipantRecord(
    * to that inbox's lens channels (mail-permissions §6.2). Null/undefined
    * falls back to the admin-only `none` channel.
    */
-  inboxId?: string | null
+  inboxId?: string | null,
+  /**
+   * Hard-tier machine mail (bounces/NDRs) — upsert the Participant row but never
+   * find-or-create a Contact EntityInstance from it (backscatter-loop guard).
+   */
+  skipContactCreation = false
 ): Promise<Participant> {
   if (!participantInput.identifier) {
     throw new Error('Participant identifier cannot be empty.')
@@ -225,7 +230,8 @@ export async function findOrCreateParticipantRecord(
       const entityInstanceId = await findOrCreateContactForParticipant(
         ctx,
         participant,
-        messageContext
+        messageContext,
+        { skipCreation: skipContactCreation }
       )
       if (entityInstanceId) {
         const updatedParticipants = await ctx.db

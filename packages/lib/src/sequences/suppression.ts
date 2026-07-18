@@ -31,7 +31,7 @@ export interface UpsertSuppressionInput {
   organizationId: string
   email: string
   contactEntityInstanceId?: string | null
-  reason: 'unsubscribe' | 'manual'
+  reason: 'unsubscribe' | 'manual' | 'bounce'
   /** Provenance — the run whose unsubscribe click/action triggered this. */
   sequenceRunId?: string | null
 }

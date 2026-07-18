@@ -92,6 +92,13 @@ const MessageReceivedPanelComponent: React.FC<MessageReceivedPanelProps> = ({ no
     setNodeData(newData)
   }
 
+  const setMachineMail = (value: 'exclude' | 'include') => {
+    const newData = produce(nodeData, (draft) => {
+      draft.machineMail = value
+    })
+    setNodeData(newData)
+  }
+
   return (
     <BasePanel nodeId={nodeId} data={data}>
       <Section
@@ -162,6 +169,31 @@ const MessageReceivedPanelComponent: React.FC<MessageReceivedPanelProps> = ({ no
             disabled={isReadOnly}>
             <Plus /> Add Condition
           </Button>
+        </div>
+      </Section>
+
+      <Section
+        title='Automated emails'
+        description='Controls whether out-of-office replies, newsletters, and notification emails can start this workflow.'
+        initialOpen={false}>
+        <div className='space-y-2'>
+          <Select
+            value={nodeData.machineMail ?? 'exclude'}
+            onValueChange={(value: 'exclude' | 'include') => setMachineMail(value)}
+            disabled={isReadOnly}>
+            <SelectTrigger className='w-full'>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value='exclude'>
+                Skip automated emails (out-of-office replies, newsletters, notification emails)
+              </SelectItem>
+              <SelectItem value='include'>Also trigger on automated emails</SelectItem>
+            </SelectContent>
+          </Select>
+          <p className='text-xs text-muted-foreground'>
+            Bounce and delivery-failure emails never trigger workflows, regardless of this setting.
+          </p>
         </div>
       </Section>
 

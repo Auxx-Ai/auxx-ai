@@ -10,6 +10,7 @@ import { createTimelineEvent } from './create-timeline-event'
 import { deriveMessageReplySignal, deriveThreadResolvedSignal } from './derive-message-signals'
 import { handleRecordRules } from './handle-record-rules'
 import { handleSyncRecordRules } from './handle-sync-record-rules'
+import { ingestBounceMessage } from './ingest-bounce-message'
 import { projectSignalToTimeline } from './project-signal-to-timeline'
 import { publishThreadEventToRealtime } from './publish-thread-event-to-realtime'
 import { sendInvitationUserJob } from './send-invitation-user-job'
@@ -35,7 +36,12 @@ export const EventHandlers: IEventsHandlers = {
   'ticket:reply:created': [triggerAgents],
 
   // message events → CREATE TIMELINE + TRIGGER WORKFLOWS
-  'message:received': [createTimelineEvent, triggerMessageWorkflows, deriveMessageReplySignal],
+  'message:received': [
+    createTimelineEvent,
+    triggerMessageWorkflows,
+    deriveMessageReplySignal,
+    ingestBounceMessage,
+  ],
   'message:sent': [createTimelineEvent],
   'message:failed': [],
   'message:comment:created': [],

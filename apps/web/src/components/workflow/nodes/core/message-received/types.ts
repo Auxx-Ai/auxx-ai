@@ -9,6 +9,15 @@ import type { BaseNodeData, SpecificNode } from '~/components/workflow/types/nod
 export interface MessageReceivedNodeData extends BaseNodeData {
   desc?: string // Legacy field, prefer description
   filters?: { from?: string[]; subject_contains?: string[]; body_contains?: string[] }
+  /**
+   * Soft-tier machine-mail handling (out-of-office replies, mailing-list /
+   * notification mail). `'exclude'` (the default when absent) skips this
+   * workflow for soft machine mail; `'include'` opts it in. Read off the
+   * published graph by the `triggerMessageWorkflows` dispatcher. Hard-tier
+   * machine mail (bounces / delivery-failure NDRs) is always skipped
+   * regardless of this setting.
+   */
+  machineMail?: 'exclude' | 'include'
   message_filter?: {
     enabled: boolean
     conditions: Array<{

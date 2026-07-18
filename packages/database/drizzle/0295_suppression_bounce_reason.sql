@@ -1,0 +1,1 @@
+ALTER TYPE "public"."SequenceSuppressionReason" ADD VALUE 'bounce';
