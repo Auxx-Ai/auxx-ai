@@ -55,6 +55,13 @@ export interface SendMessageOptions {
    * `MessageSenderService` for outbound email to a known contact. Providers that can't
    * honor a non-`x-` custom header (Outlook/Graph) skip it — see outlook-provider.ts. */
   unsubscribe?: { url: string }
+
+  /** RFC 3834 loop-prevention headers for automated sends (Answer node, Kopilot tools,
+   * sequences — `MessageSenderService.isAutomatedSend`). Email providers stamp
+   * `Auto-Submitted: auto-replied` + `X-Auto-Response-Suppress: All` so compliant remote
+   * systems (incl. Google/Microsoft NDR logic) don't re-reply to us; Outlook/Graph can
+   * only carry the `x-` header (machine-mail plan Phase 2). */
+  automated?: boolean
 }
 
 export interface SendEmailOptions {

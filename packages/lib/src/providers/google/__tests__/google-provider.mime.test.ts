@@ -90,4 +90,30 @@ describe('GoogleProvider MIME building', () => {
     // Inline attachment should have Content-ID
     expect(raw).toContain('Content-ID: <cid123>')
   })
+
+  it('stamps RFC 3834 loop-prevention headers on automated sends', async () => {
+    const raw: string = await createEmailMessage({
+      from: 'sender@example.com',
+      to: 'to@example.com',
+      subject: 'Automated reply',
+      text: 'hello',
+      automated: true,
+    })
+
+    const headerSection = raw.split('\r\n\r\n')[0]
+    expect(headerSection).toContain('Auto-Submitted: auto-replied')
+    expect(headerSection).toContain('X-Auto-Response-Suppress: All')
+  })
+
+  it('omits RFC 3834 headers on human sends', async () => {
+    const raw: string = await createEmailMessage({
+      from: 'sender@example.com',
+      to: 'to@example.com',
+      subject: 'Human reply',
+      text: 'hello',
+    })
+
+    expect(raw).not.toContain('Auto-Submitted')
+    expect(raw).not.toContain('X-Auto-Response-Suppress')
+  })
 })

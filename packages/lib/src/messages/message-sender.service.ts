@@ -259,6 +259,7 @@ export class MessageSenderService {
         threadContext: threadContext,
         attachments: attachmentFiles,
         unsubscribe,
+        automated: isAutomatedSend,
       })
       // Step 7: Reconcile with provider response. Per-message bookkeeping
       // (sendStatus, sentAt, externalId) always runs; the thread-level
@@ -644,6 +645,7 @@ export class MessageSenderService {
     threadContext: ThreadContext
     attachments?: AttachmentFile[]
     unsubscribe?: { url: string }
+    automated?: boolean
   }): Promise<ProviderSendResponse> {
     if (!this.providerRegistry) {
       throw new Error('Provider registry not initialized')
@@ -678,6 +680,7 @@ export class MessageSenderService {
         externalThreadId: sanitizedExternalThreadId, // Use sanitized ID
         attachments: input.attachments, // Pass attachments to provider
         unsubscribe: input.unsubscribe, // List-Unsubscribe header (email providers only)
+        automated: input.automated, // RFC 3834 loop-prevention headers (email providers only)
       } as any)
       return {
         success: result.success,

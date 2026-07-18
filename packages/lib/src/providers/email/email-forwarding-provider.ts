@@ -107,14 +107,23 @@ export class EmailForwardingProvider
       cid: a.contentId,
     }))
 
-    // List-Unsubscribe + one-click (RFC 8058) — signals plan 02. `EmailOptions.headers`
-    // already flows straight through to nodemailer's `sendMail`.
-    const headers = params.unsubscribe?.url
-      ? {
-          'List-Unsubscribe': `<${params.unsubscribe.url}>`,
-          'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
-        }
-      : undefined
+    // List-Unsubscribe + one-click (RFC 8058) — signals plan 02 — and RFC 3834
+    // loop-prevention headers for automated sends (machine-mail plan Phase 2).
+    // `EmailOptions.headers` flows straight through to nodemailer's `sendMail`.
+    const headers: Record<string, string> = {
+      ...(params.unsubscribe?.url
+        ? {
+            'List-Unsubscribe': `<${params.unsubscribe.url}>`,
+            'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+          }
+        : {}),
+      ...(params.automated
+        ? {
+            'Auto-Submitted': 'auto-replied',
+            'X-Auto-Response-Suppress': 'All',
+          }
+        : {}),
+    }
 
     const emailResult = await NodemailerService.getInstance().sendEmail({
       from,
@@ -129,7 +138,7 @@ export class EmailForwardingProvider
       references: params.references,
       messageId: params.messageId,
       attachments,
-      headers,
+      headers: Object.keys(headers).length > 0 ? headers : undefined,
     })
 
     if (!emailResult.success) {

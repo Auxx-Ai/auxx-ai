@@ -348,6 +348,16 @@ export class OutlookProvider
         name: 'X-AuxxAi-Message',
         value: 'true',
       })
+      // RFC 3834 loop prevention for automated sends (machine-mail plan Phase 2). Graph
+      // only accepts `x-` custom headers (see the List-Unsubscribe note below), so
+      // `Auto-Submitted` can't ride along — but X-Auto-Response-Suppress is Microsoft's
+      // own loop-prevention header, the one that matters most for Exchange recipients.
+      if (options.automated) {
+        message.internetMessageHeaders.push({
+          name: 'X-Auto-Response-Suppress',
+          value: 'All',
+        })
+      }
       // List-Unsubscribe / List-Unsubscribe-Post (RFC 8058) — deliberately NOT injected here.
       // Microsoft Graph's `message` resource docs are explicit: "Add custom headers only
       // when creating a message, and name them starting with 'x-'"
