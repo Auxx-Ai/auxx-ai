@@ -323,6 +323,7 @@ export const QUOTE_FIELDS: Record<string, ResourceField> = {
     isSystem: true,
     systemAttribute: 'quote_tax_name',
     systemSortOrder: 'aB',
+    showInTable: false, // shown in the panel, hidden from default table columns
     nullable: true,
     capabilities: {
       filterable: true,
@@ -445,6 +446,7 @@ export const QUOTE_FIELDS: Record<string, ResourceField> = {
     isSystem: true,
     systemAttribute: 'quote_notes',
     systemSortOrder: 'aG',
+    showInTable: false, // long-form; shown in the panel, hidden from default table columns
     nullable: true,
     capabilities: {
       filterable: false,
@@ -466,6 +468,7 @@ export const QUOTE_FIELDS: Record<string, ResourceField> = {
     isSystem: true,
     systemAttribute: 'quote_terms',
     systemSortOrder: 'aH',
+    showInTable: false, // shown in the panel, hidden from default table columns
     nullable: true,
     capabilities: {
       filterable: false,

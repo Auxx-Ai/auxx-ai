@@ -26,6 +26,7 @@ import { CustomFieldCell } from './components/custom-field-cell'
 import { DynamicTableFooter } from './components/dynamic-table-footer'
 import { getIconForFieldType } from './custom-field-column-factory'
 import { DynamicView } from './dynamic-view'
+import { useDefaultTablePersistence } from './hooks/use-default-table-persistence'
 import { useColumnVisibility, useTableFilters, useTableSorting } from './stores/store-selectors'
 import type { BulkAction, CellSelectionConfig, ExtendedColumnDef } from './types'
 
@@ -228,7 +229,7 @@ export function DynamicResourceView<TRow extends RecordMeta = RecordMeta>({
         accessorFn: () => undefined,
         header: field.name ?? field.label,
         fieldType: field.fieldType as FieldType,
-        defaultVisible: field.showInPanel !== false,
+        defaultVisible: field.showInTable ?? field.showInPanel !== false,
         icon: getIconForFieldType(field.fieldType!),
         enableSorting: field.fieldType !== 'RELATIONSHIP' && field.capabilities.sortable !== false,
         enableFiltering:
@@ -290,6 +291,14 @@ export function DynamicResourceView<TRow extends RecordMeta = RecordMeta>({
 
     return primaryColumn ? [primaryColumn, ...otherColumns] : otherColumns
   }, [customFields, resource, createEntityFieldColumn, entityDefinitionId])
+
+  // Persist per-user personalization (column widths/order/pinning + sparse
+  // visibility delta) of the default (unnamed) table. No-ops for named views.
+  useDefaultTablePersistence({
+    tableId,
+    columns,
+    enabled: !!entityDefinitionId && isConfigReady,
+  })
 
   if (isLoading) {
     if (embedded) {

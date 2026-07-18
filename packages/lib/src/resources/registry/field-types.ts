@@ -258,6 +258,18 @@ export interface ResourceField {
   showInPanel?: boolean
 
   /**
+   * Whether to show this field as a column in the default (list) table view.
+   * When unset, the table default resolves to `showInPanel !== false` — i.e. the
+   * table mirrors the panel default. Set this explicitly only when the table
+   * default must diverge from the panel: e.g. a long-form description shown in
+   * the panel but hidden from the table (`showInPanel` unset/true, `showInTable:
+   * false`), or a computed column hidden from the panel but useful as a table
+   * column (`showInPanel: false`, `showInTable: true`). Read live by the table's
+   * `defaultVisible` — no per-org materialization.
+   */
+  showInTable?: boolean
+
+  /**
    * When false, the field is hidden from the default create/update dialogs
    * unless an org view explicitly enables it. Defaults to true.
    */

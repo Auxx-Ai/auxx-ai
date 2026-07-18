@@ -48,6 +48,7 @@ import { migration042QuoteDepositFields } from './migrations/042-quote-deposit-f
 import { migration043WorkOrderBillingAllocations } from './migrations/043-work-order-billing-allocations'
 import { migration044LinePricingFields } from './migrations/044-line-pricing-fields'
 import { migration045DefaultEntityDashboards } from './migrations/045-default-entity-dashboards'
+import { migration046LayeredDefaultViews } from './migrations/046-layered-default-views'
 import type { EntityMigration, MigrationRunResult } from './types'
 
 const logger = createScopedLogger('entity-migrations')
@@ -101,6 +102,7 @@ const ALL_MIGRATIONS: EntityMigration[] = [
   migration043WorkOrderBillingAllocations,
   migration044LinePricingFields,
   migration045DefaultEntityDashboards,
+  migration046LayeredDefaultViews,
 ]
 
 /**

@@ -265,6 +265,8 @@ export const PART_FIELDS: Record<string, ResourceField> = {
     isSystem: true,
     systemAttribute: 'part_quantity_on_hand',
     systemSortOrder: 'a6a',
+    showInPanel: false, // shown in the drawer's stock section, not as a panel field row
+    showInTable: true, // but useful as a default column in the parts list
     nullable: true,
     capabilities: {
       filterable: true,
@@ -286,6 +288,8 @@ export const PART_FIELDS: Record<string, ResourceField> = {
     isSystem: true,
     systemAttribute: 'part_stock_status',
     systemSortOrder: 'a6b',
+    showInPanel: false, // shown in the drawer's stock section, not as a panel field row
+    showInTable: true, // but useful as a default column in the parts list
     nullable: true,
     options: { options: StockStatus.values },
     capabilities: {

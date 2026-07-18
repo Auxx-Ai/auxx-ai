@@ -202,6 +202,7 @@ export const MEETING_FIELDS: Record<string, ResourceField> = {
     isSystem: true,
     systemAttribute: 'meeting_agenda',
     systemSortOrder: 'a8',
+    showInTable: false, // long-form; shown in the panel, hidden from default table columns
     nullable: true,
     capabilities: {
       filterable: false,
@@ -222,6 +223,7 @@ export const MEETING_FIELDS: Record<string, ResourceField> = {
     isSystem: true,
     systemAttribute: 'meeting_notes',
     systemSortOrder: 'a9',
+    showInTable: false, // long-form; shown in the panel, hidden from default table columns
     nullable: true,
     capabilities: {
       filterable: false,
@@ -242,6 +244,7 @@ export const MEETING_FIELDS: Record<string, ResourceField> = {
     isSystem: true,
     systemAttribute: 'meeting_action_items',
     systemSortOrder: 'aA',
+    showInTable: false, // long-form; shown in the panel, hidden from default table columns
     nullable: true,
     capabilities: {
       filterable: false,

@@ -145,6 +145,7 @@ export const WORK_ORDER_FIELDS: Record<string, ResourceField> = {
     isSystem: true,
     systemAttribute: 'work_order_description',
     systemSortOrder: 'a4',
+    showInTable: false, // long-form; shown in the panel, hidden from default table columns
     nullable: true,
     capabilities: {
       filterable: false,
@@ -441,6 +442,7 @@ export const WORK_ORDER_FIELDS: Record<string, ResourceField> = {
     isSystem: true,
     systemAttribute: 'work_order_completion_notes',
     systemSortOrder: 'aF',
+    showInTable: false, // long-form; shown in the panel, hidden from default table columns
     nullable: true,
     capabilities: {
       filterable: false,
