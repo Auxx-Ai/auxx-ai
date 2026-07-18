@@ -4,7 +4,9 @@
 // the org regardless of which sequence originally triggered it.
 
 import { type Database, schema } from '@auxx/database'
-import { and, eq } from 'drizzle-orm'
+import { and, desc, eq, ilike, lt } from 'drizzle-orm'
+
+export type SequenceSuppressionRow = typeof schema.SequenceSuppression.$inferSelect
 
 /** Lowercase + trim — the normalization applied before every suppression read/write. */
 export function normalizeEmail(email: string): string {
@@ -25,6 +27,56 @@ export async function isSuppressed(
     columns: { id: true },
   })
   return !!row
+}
+
+export interface ListSuppressionsInput {
+  organizationId: string
+  /** Case-insensitive substring match on the email. */
+  search?: string
+  limit: number
+  /** Cursor — only rows created strictly before this instant. */
+  before?: Date
+}
+
+/** Newest-first page of the org's suppression rows (Suppressions settings tab). */
+export async function listSuppressions(
+  db: Database,
+  input: ListSuppressionsInput
+): Promise<SequenceSuppressionRow[]> {
+  const search = input.search
+    ?.trim()
+    .toLowerCase()
+    .replace(/[%_\\]/g, '\\$&')
+  return db.query.SequenceSuppression.findMany({
+    where: and(
+      eq(schema.SequenceSuppression.organizationId, input.organizationId),
+      search ? ilike(schema.SequenceSuppression.email, `%${search}%`) : undefined,
+      input.before ? lt(schema.SequenceSuppression.createdAt, input.before) : undefined
+    ),
+    orderBy: desc(schema.SequenceSuppression.createdAt),
+    limit: input.limit,
+  })
+}
+
+/**
+ * Delete a suppression row (= resubscribe the address). Returns false when the
+ * row doesn't exist in this org.
+ */
+export async function deleteSuppression(
+  db: Database,
+  organizationId: string,
+  id: string
+): Promise<boolean> {
+  const deleted = await db
+    .delete(schema.SequenceSuppression)
+    .where(
+      and(
+        eq(schema.SequenceSuppression.organizationId, organizationId),
+        eq(schema.SequenceSuppression.id, id)
+      )
+    )
+    .returning({ id: schema.SequenceSuppression.id })
+  return deleted.length > 0
 }
 
 export interface UpsertSuppressionInput {

@@ -81,6 +81,7 @@ import { shopifyRouter } from './routers/shopify'
 import { signalRouter } from './routers/signal'
 import { signatureRouter } from './routers/signature'
 import { snippetsRouter } from './routers/snippet'
+import { suppressionRouter } from './routers/suppression'
 import { syncHistoryRouter } from './routers/sync-history'
 import { tableViewRouter } from './routers/tableView'
 import { tagRouter } from './routers/tag'
@@ -177,6 +178,7 @@ export const appRouter = createTRPCRouter({
   signal: signalRouter,
   signature: signatureRouter,
   snippet: snippetsRouter,
+  suppression: suppressionRouter,
   syncHistory: syncHistoryRouter,
   tableView: tableViewRouter,
   tag: tagRouter,

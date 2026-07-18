@@ -90,9 +90,19 @@ export type {
 // Subject enrollment internals (client-notifications plan §4.3) — shared by the event-trigger
 // hooks + the hourly enrollment sweep
 export { enrollSubjectInSequence } from './subject-enroll'
-export type { UpsertSuppressionInput } from './suppression'
+export type {
+  ListSuppressionsInput,
+  SequenceSuppressionRow,
+  UpsertSuppressionInput,
+} from './suppression'
 // Suppression
-export { isSuppressed, normalizeEmail, upsertSuppression } from './suppression'
+export {
+  deleteSuppression,
+  isSuppressed,
+  listSuppressions,
+  normalizeEmail,
+  upsertSuppression,
+} from './suppression'
 // Hourly enrollment sweep (client-notifications plan §4.3, decision #13)
 export { computeSweepLookaheadDays, runSequenceEnrollmentSweep } from './sweep'
 // Per-org enabled-trigger lookup (client-notifications plan §4.3/§7 open question #3)
