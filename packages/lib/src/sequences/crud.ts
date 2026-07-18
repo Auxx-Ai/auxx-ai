@@ -12,7 +12,7 @@ import { createScopedLogger } from '@auxx/logger'
 import { generateId } from '@auxx/utils'
 import { and, count, eq } from 'drizzle-orm'
 import { err, ok, type Result } from 'neverthrow'
-import { ConflictError, NotFoundError } from '../errors'
+import { ConflictError, ForbiddenError, NotFoundError } from '../errors'
 import { grantSequenceCreatorAccess } from './access'
 import { exitActiveRunsForSequence } from './runtime'
 import type { CreateSequenceInput, SequenceEntity, UpdateSequenceFields } from './types'
@@ -209,8 +209,10 @@ export async function getSequence(
 }
 
 /**
- * Delete a sequence and everything under it. Forbidden while any run is
- * still active (in-flight enrollments must exit/complete first). Deleting
+ * Delete a sequence and everything under it. Forbidden for seeded template
+ * sequences (`templateKey` set — they're only ever created at org seed, so a
+ * delete is permanent) and while any run is still active (in-flight
+ * enrollments must exit/complete first). Deleting
  * the hidden `WorkflowApp` cascades onto its `Workflow` row (FK) AND onto the
  * `Sequence` row itself (`Sequence.workflowAppId` FK is `onDelete: 'cascade'`),
  * which in turn cascades onto `SequenceStep`/`SequenceRun` — one delete call
@@ -228,6 +230,12 @@ export async function deleteSequence(
     ),
   })
   if (!sequence) return err(new NotFoundError('Sequence not found'))
+
+  if (sequence.templateKey) {
+    return err(
+      new ForbiddenError("Built-in notification sequences can't be deleted — disable them instead")
+    )
+  }
 
   const [{ activeCount }] = await db
     .select({ activeCount: count() })

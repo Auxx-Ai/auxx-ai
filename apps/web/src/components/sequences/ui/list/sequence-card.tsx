@@ -19,6 +19,7 @@ export interface SequenceCardData {
   status: SequenceStatus
   publishedAt: Date | string | null
   hasUnpublishedChanges: boolean
+  templateKey: string | null
   createdAt: Date | string
   updatedAt: Date | string
 }
@@ -88,10 +89,12 @@ export function SequenceCard({ sequence, onDelete }: SequenceCardProps) {
               <FileText />
               Open
             </DropdownMenuItem>
-            <DropdownMenuItem variant='destructive' onClick={wrap(() => void handleDelete())}>
-              <Trash2 />
-              Delete
-            </DropdownMenuItem>
+            {!sequence.templateKey && (
+              <DropdownMenuItem variant='destructive' onClick={wrap(() => void handleDelete())}>
+                <Trash2 />
+                Delete
+              </DropdownMenuItem>
+            )}
           </>
         }
       />
