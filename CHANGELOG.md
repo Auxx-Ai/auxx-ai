@@ -1,5 +1,50 @@
 # Changelog
 
+## [0.1.183](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.182...auxx-v0.1.183) (2026-07-18)
+
+
+### Features
+
+* **dashboards:** compact axis labels + measured axis width ([#1195](https://github.com/Auxx-Ai/auxx-ai/issues/1195)) ([c1e0114](https://github.com/Auxx-Ai/auxx-ai/commit/c1e011433f8654fcbffd3638b8912cbae85a9e39))
+* **dashboards:** entity dashboards + seeded defaults, drop hardcoded ticket dashboard (v2) ([#1197](https://github.com/Auxx-Ai/auxx-ai/issues/1197)) ([6b80cfb](https://github.com/Auxx-Ai/auxx-ai/commit/6b80cfb893cedb6db28cbf508da52041329ba305))
+* **dispatch:** fold visit history into schedule disclosure + in-place line bundles ([#1206](https://github.com/Auxx-Ai/auxx-ai/issues/1206)) ([45c0428](https://github.com/Auxx-Ai/auxx-ai/commit/45c0428a42e34828dda02acc8ab1232b11281c0f))
+* **dispatch:** persist board view + active date in the URL (nuqs) ([#1202](https://github.com/Auxx-Ai/auxx-ai/issues/1202)) ([cfdd232](https://github.com/Auxx-Ai/auxx-ai/commit/cfdd2323659d186f767b262d560014dfd2141b66))
+* **dispatch:** scheduling, recurrence, cancel and dispatch lifecycle fixes ([#1203](https://github.com/Auxx-Ai/auxx-ai/issues/1203)) ([3fddeb6](https://github.com/Auxx-Ai/auxx-ai/commit/3fddeb6ed60ca2f88ba795c64adee11217039b62))
+* **dispatch:** skip-this-and-future visits + instant line-builder adds/deletes ([#1205](https://github.com/Auxx-Ai/auxx-ai/issues/1205)) ([afe30a5](https://github.com/Auxx-Ai/auxx-ai/commit/afe30a5b982b9b544a68cde1c275f5bd3b99f2c9))
+* **ingest:** machine-mail phase 1 — tier column, outlook/imap header coverage ([#1217](https://github.com/Auxx-Ai/auxx-ai/issues/1217)) ([c7b21b3](https://github.com/Auxx-Ai/auxx-ai/commit/c7b21b39dcf89dad4804c213cd3183679cd864a3))
+* **messages:** automated-send rate limits — recipient cooldown + org circuit breaker ([#1216](https://github.com/Auxx-Ai/auxx-ai/issues/1216)) ([0f5b25d](https://github.com/Auxx-Ai/auxx-ai/commit/0f5b25df40d447c82dc74168305941b3042d4756))
+* **messages:** rfc 3834 loop-prevention headers on automated sends ([#1215](https://github.com/Auxx-Ai/auxx-ai/issues/1215)) ([b290a28](https://github.com/Auxx-Ai/auxx-ai/commit/b290a28d689030f199b260a5c897d253baa4ecf9))
+* **money:** branded customer payment receipt emails on settlement ([#1191](https://github.com/Auxx-Ai/auxx-ai/issues/1191)) ([e047b4d](https://github.com/Auxx-Ai/auxx-ai/commit/e047b4d3ebc245089f711195aecf5bfa74c8f938))
+* **money:** cap payments list rows + invoice-drill fallback for full page ([#1209](https://github.com/Auxx-Ai/auxx-ai/issues/1209)) ([efff025](https://github.com/Auxx-Ai/auxx-ai/commit/efff02588daa6678d14a07f306c3e7eff6799f15))
+* **money:** deposit accounting via payment allocations + acceptance realtime ([#1192](https://github.com/Auxx-Ai/auxx-ai/issues/1192)) ([475c173](https://github.com/Auxx-Ai/auxx-ai/commit/475c1730a292ddc5f61cd0ae1d68f33565265bfe))
+* **money:** durable work-order billing allocations ([#1189](https://github.com/Auxx-Ai/auxx-ai/issues/1189)) ([5b38c70](https://github.com/Auxx-Ai/auxx-ai/commit/5b38c7027a9c4e4c476d3a8a86c196d78c69a86f))
+* **money:** line-builder row shortcuts + optimistic bundle explode ([#1196](https://github.com/Auxx-Ai/auxx-ai/issues/1196)) ([8288b28](https://github.com/Auxx-Ai/auxx-ai/commit/8288b28bec8ca88bc9ed5f2d79923bf151dffad5))
+* **money:** show invoice number in drill nav bar + section icons ([#1208](https://github.com/Auxx-Ai/auxx-ai/issues/1208)) ([3d54623](https://github.com/Auxx-Ai/auxx-ai/commit/3d546238bd8731fcfdc28a66a20921c765c62c13))
+* **money:** standalone new-invoice in work-order drawer + shared billing ui ([#1212](https://github.com/Auxx-Ai/auxx-ai/issues/1212)) ([8fff65d](https://github.com/Auxx-Ai/auxx-ai/commit/8fff65d75e5e2482ce09f727a691e6a449ece52e))
+* **money:** surface extra-work invoicing across billing states ([#1207](https://github.com/Auxx-Ai/auxx-ai/issues/1207)) ([e9f98f3](https://github.com/Auxx-Ai/auxx-ai/commit/e9f98f3ab47c8f5eb3b19383788c2d275741cb95))
+* **money:** unit pricing + part markup + optional quote lines (plans 13/17/18) ([#1194](https://github.com/Auxx-Ai/auxx-ai/issues/1194)) ([6cbc1f8](https://github.com/Auxx-Ai/auxx-ai/commit/6cbc1f863f593524bf4d6449f40cc59ba1e5ee9b))
+* **sequences:** block deleting seeded template sequences ([#1219](https://github.com/Auxx-Ai/auxx-ai/issues/1219)) ([84f8f0a](https://github.com/Auxx-Ai/auxx-ai/commit/84f8f0a8870783f28658a17ca71993b8b27a2c40))
+* **sequences:** suppression list tab on channels settings ([#1218](https://github.com/Auxx-Ai/auxx-ai/issues/1218)) ([ebe3983](https://github.com/Auxx-Ai/auxx-ai/commit/ebe39833aa0d41867f3f4f3f657b54cf730b40d8))
+* **signals:** machine-mail guard — tiered gates, ndr bounce suppression, answer-node reply-to ([#1214](https://github.com/Auxx-Ai/auxx-ai/issues/1214)) ([b1cb243](https://github.com/Auxx-Ai/auxx-ai/commit/b1cb243ee3840014797fe5714ef30f8a9d6bafde))
+* **signals:** phase 0+1 — substrate, ses ingestion, unsubscribe + send suppression ([#1210](https://github.com/Auxx-Ai/auxx-ai/issues/1210)) ([99a74d5](https://github.com/Auxx-Ai/auxx-ai/commit/99a74d51f1f27532425f904f3b40f0371456f6ed))
+* **signals:** phase 2 — email open pixel + click wrapping ([#1211](https://github.com/Auxx-Ai/auxx-ai/issues/1211)) ([dc76da3](https://github.com/Auxx-Ai/auxx-ai/commit/dc76da3d7b92ae074c8b8ece89d7bafcd6e806e2))
+* **ui:** main-page slot portals, tabs primitive, useDockedPanels + entity route shells ([#1199](https://github.com/Auxx-Ai/auxx-ai/issues/1199)) ([a5fe47a](https://github.com/Auxx-Ai/auxx-ai/commit/a5fe47aae0a0d5222333d36f1ebc8961cf5c3c8c))
+* **view-config:** drive panel defaults from registry, stop seeding panel views ([#1213](https://github.com/Auxx-Ai/auxx-ai/issues/1213)) ([0b0cd3d](https://github.com/Auxx-Ai/auxx-ai/commit/0b0cd3d0457b07378fe73760676e11a3776dc755))
+
+
+### Bug Fixes
+
+* **dispatch:** improve event popover date/time layout and catalog picker scroll ([#1187](https://github.com/Auxx-Ai/auxx-ai/issues/1187)) ([9abd181](https://github.com/Auxx-Ai/auxx-ai/commit/9abd1811eef6f5a86d5c7777e54931089f09166a))
+* **money:** net refunds out of deposit figures + land allocation verify harness ([#1193](https://github.com/Auxx-Ai/auxx-ai/issues/1193)) ([3451d2f](https://github.com/Auxx-Ai/auxx-ai/commit/3451d2f3fd8335745479aede0dc435d340b8e501))
+* **records:** canonicalize RecordId prefixes across record/field-value/relationship caches ([#1198](https://github.com/Auxx-Ai/auxx-ai/issues/1198)) ([997c43c](https://github.com/Auxx-Ai/auxx-ai/commit/997c43c6bff19cbd0a58f07d0ad9d0f99b6bbb9c))
+* **ui:** crossfade same-depth NavStack swaps via new 'replace' direction ([#1200](https://github.com/Auxx-Ai/auxx-ai/issues/1200)) ([d5c8ba8](https://github.com/Auxx-Ai/auxx-ai/commit/d5c8ba8c9dc18580a92ec7598b53683ab3d20ed3))
+
+
+### Performance Improvements
+
+* **availability:** batch resolve across subjects in one query set ([#1190](https://github.com/Auxx-Ai/auxx-ai/issues/1190)) ([9d336f1](https://github.com/Auxx-Ai/auxx-ai/commit/9d336f1bbde8e27bdee9f65f976751393f806f00))
+* **realtime:** batch fieldValues:updated frames in setValuesForEntity ([#1204](https://github.com/Auxx-Ai/auxx-ai/issues/1204)) ([b6cd3dd](https://github.com/Auxx-Ai/auxx-ai/commit/b6cd3dd797d81f6b0b228ab0e20f618f5558e2b1))
+
 ## [0.1.182](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.181...auxx-v0.1.182) (2026-07-15)
 
 
