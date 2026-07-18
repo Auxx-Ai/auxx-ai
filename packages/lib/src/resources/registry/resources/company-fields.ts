@@ -130,6 +130,7 @@ export const COMPANY_FIELDS: Record<string, ResourceField> = {
     isSystem: true,
     systemAttribute: 'company_x_follower_count',
     systemSortOrder: 'a3c',
+    showInTable: false, // panel shows it; hidden from the default table columns
     nullable: true,
     capabilities: {
       filterable: true,
@@ -235,6 +236,7 @@ export const COMPANY_FIELDS: Record<string, ResourceField> = {
     isSystem: true,
     systemAttribute: 'company_funding_raised',
     systemSortOrder: 'a6a',
+    showInPanel: false, // excluded from both the panel and table default views
     nullable: true,
     options: {
       currencyCode: 'USD',

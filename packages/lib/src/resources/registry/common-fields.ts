@@ -20,6 +20,10 @@ export const CREATED_BY_FIELD: ResourceField = {
   systemAttribute: CREATED_BY_FIELD_CONFIG.systemAttribute,
   systemSortOrder: 'az',
   dbColumn: CREATED_BY_FIELD_CONFIG.dbColumn,
+  // Hidden by default in both the panel and the default table — every seeded
+  // panel/table default view excluded `created_by_id`. This is the live
+  // registry default now that those default views are no longer materialized.
+  showInPanel: false,
   nullable: true,
   capabilities: {
     filterable: true,

@@ -26,6 +26,17 @@ import type { ColumnFormatting, SortOption, TableView } from '../types'
 // ============================================================================
 
 export const EMPTY_VIEWS: TableView[] = []
+
+/**
+ * Sentinel name for the per-user override row that backs the DEFAULT (unnamed)
+ * table. It stores this user's column sizing/order/pinning (full maps) plus a
+ * SPARSE columnVisibility delta (only columns they explicitly toggled), keyed by
+ * `entity-${entityDefinitionId}` (the id the table actually reads). It is
+ * `isShared:false, isDefault:false` and is filtered out of the named-view picker
+ * (`useTableViews`) — it is not a saved view, just personalization for the
+ * live-default table. See `use-default-table-persistence.ts`.
+ */
+export const PERSONAL_TABLE_VIEW_NAME = '__personal_table__'
 export const EMPTY_FILTERS: ConditionGroup[] = []
 export const EMPTY_SORTING: SortingState = []
 export const EMPTY_COLUMN_ORDER: ColumnOrderState = []

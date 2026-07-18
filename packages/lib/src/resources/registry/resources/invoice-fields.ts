@@ -258,6 +258,7 @@ export const INVOICE_FIELDS: Record<string, ResourceField> = {
     isSystem: true,
     systemAttribute: 'invoice_tax_name',
     systemSortOrder: 'a9',
+    showInTable: false, // shown in the panel, hidden from default table columns
     nullable: true,
     capabilities: {
       filterable: true,
@@ -432,6 +433,7 @@ export const INVOICE_FIELDS: Record<string, ResourceField> = {
     isSystem: true,
     systemAttribute: 'invoice_notes',
     systemSortOrder: 'aG',
+    showInTable: false, // long-form; shown in the panel, hidden from default table columns
     nullable: true,
     capabilities: {
       filterable: false,
@@ -453,6 +455,7 @@ export const INVOICE_FIELDS: Record<string, ResourceField> = {
     isSystem: true,
     systemAttribute: 'invoice_terms',
     systemSortOrder: 'aH',
+    showInTable: false, // shown in the panel, hidden from default table columns
     nullable: true,
     capabilities: {
       filterable: false,

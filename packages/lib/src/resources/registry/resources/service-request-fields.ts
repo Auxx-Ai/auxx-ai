@@ -116,6 +116,7 @@ export const SERVICE_REQUEST_FIELDS: Record<string, ResourceField> = {
     isSystem: true,
     systemAttribute: 'service_request_description',
     systemSortOrder: 'a5',
+    showInTable: false, // long-form; shown in the panel, hidden from default table columns
     nullable: true,
     capabilities: {
       filterable: false,

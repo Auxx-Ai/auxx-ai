@@ -25,47 +25,27 @@ interface FieldViewSeedConfig {
 }
 
 /**
- * Default field view configs for core entities.
+ * Default field view configs for core entities — DIALOG CONTEXTS ONLY.
+ *
+ * Panel and table default views are NO LONGER seeded. Their field visibility and
+ * order are computed live from the registry (`showInPanel` / `showInTable` /
+ * `systemSortOrder`), so changing a default is a code-only change with no per-org
+ * entity migration (see `use-field-view.ts` / `dynamic-resource-view.tsx`). Only
+ * create/edit dialog defaults remain materialized here — create dialogs are
+ * allowlists (`includeFields`), awkward to express as per-field registry flags.
+ *
  * Uses systemAttribute (from field definitions) for reliable field identification.
  */
 export const FIELD_VIEW_CONFIGS: FieldViewSeedConfig[] = [
   // ============================================================================
-  // CONTACT FIELD VIEWS
+  // CONTACT DIALOGS
   // ============================================================================
-
-  // Contact panel view - shows most fields except system internals
-  {
-    entityType: 'contact',
-    contextType: 'panel',
-    name: 'Default Panel View',
-    excludeFields: [
-      'id',
-      'created_at',
-      'updated_at',
-      'created_by_id',
-      'first_name',
-      'last_name',
-      'contact_tickets',
-      'contact_meetings',
-      'contact_work_orders',
-      'contact_service_requests',
-      'contact_quotes',
-      'contact_invoices',
-      'contact_balance_due',
-      'contact_uninvoiced_amount',
-      'contact_billing_revision',
-    ],
-  },
-
-  // Contact create dialog - minimal fields for quick creation
   {
     entityType: 'contact',
     contextType: 'dialog_create',
     name: 'Default Create Dialog',
     includeFields: ['full_name', 'primary_email', 'phone'],
   },
-
-  // Contact edit dialog - editable fields (excludes auto-generated)
   {
     entityType: 'contact',
     contextType: 'dialog_edit',
@@ -81,25 +61,8 @@ export const FIELD_VIEW_CONFIGS: FieldViewSeedConfig[] = [
   },
 
   // ============================================================================
-  // TICKET FIELD VIEWS
+  // TICKET DIALOGS
   // ============================================================================
-
-  // Ticket panel view - shows most fields except system internals
-  {
-    entityType: 'ticket',
-    contextType: 'panel',
-    name: 'Default Panel View',
-    excludeFields: [
-      'id',
-      'created_at',
-      'updated_at',
-      'created_by_id',
-      'parent_ticket_id',
-      'ticket_child_tickets',
-    ],
-  },
-
-  // Ticket create dialog - essential fields for ticket creation
   {
     entityType: 'ticket',
     contextType: 'dialog_create',
@@ -112,8 +75,6 @@ export const FIELD_VIEW_CONFIGS: FieldViewSeedConfig[] = [
       'ticket_description',
     ],
   },
-
-  // Ticket edit dialog - editable fields (excludes auto-generated)
   {
     entityType: 'ticket',
     contextType: 'dialog_edit',
@@ -127,31 +88,10 @@ export const FIELD_VIEW_CONFIGS: FieldViewSeedConfig[] = [
       'ticket_child_tickets',
     ],
   },
-  // ============================================================================
-  // PART FIELD VIEWS
-  // ============================================================================
 
-  // Part panel view — hide relationship fields (managed by drawer tabs) + system internals
-  {
-    entityType: 'part',
-    contextType: 'panel',
-    name: 'Default Panel View',
-    excludeFields: [
-      'id',
-      'created_at',
-      'updated_at',
-      'created_by_id',
-      'part_quantity_on_hand',
-      'part_stock_status',
-      // Relationship fields — dedicated drawer tabs exist for these
-      'part_vendor_parts',
-      'part_subparts',
-      'part_used_in_assemblies',
-      'part_stock_movements',
-    ],
-  },
-
-  // Part create dialog — minimal fields for quick creation
+  // ============================================================================
+  // PART DIALOG
+  // ============================================================================
   {
     entityType: 'part',
     contextType: 'dialog_create',
@@ -160,18 +100,8 @@ export const FIELD_VIEW_CONFIGS: FieldViewSeedConfig[] = [
   },
 
   // ============================================================================
-  // VENDOR PART FIELD VIEWS
+  // VENDOR PART DIALOG
   // ============================================================================
-
-  // Vendor Part panel view — show all fields except system internals
-  {
-    entityType: 'vendor_part',
-    contextType: 'panel',
-    name: 'Default Panel View',
-    excludeFields: ['id', 'created_at', 'updated_at', 'created_by_id', 'vendor_part_part'],
-  },
-
-  // Vendor Part create dialog — essential fields only
   {
     entityType: 'vendor_part',
     contextType: 'dialog_create',
@@ -186,41 +116,8 @@ export const FIELD_VIEW_CONFIGS: FieldViewSeedConfig[] = [
   },
 
   // ============================================================================
-  // COMPANY FIELD VIEWS
+  // COMPANY DIALOG
   // ============================================================================
-
-  // Company panel view — show most fields except system internals
-  {
-    entityType: 'company',
-    contextType: 'panel',
-    name: 'Default Panel View',
-    excludeFields: [
-      'id',
-      'created_at',
-      'updated_at',
-      'created_by_id',
-      'company_meetings',
-      'company_funding_raised',
-    ],
-  },
-
-  // Company table view — hide logo (avatar shown inline in table row)
-  {
-    entityType: 'company',
-    contextType: 'table',
-    name: 'Default Table View',
-    excludeFields: [
-      'id',
-      'created_at',
-      'updated_at',
-      'created_by_id',
-      'company_logo',
-      'company_funding_raised',
-      'company_x_follower_count',
-    ],
-  },
-
-  // Company create dialog — minimal fields for quick creation
   {
     entityType: 'company',
     contextType: 'dialog_create',
@@ -234,34 +131,8 @@ export const FIELD_VIEW_CONFIGS: FieldViewSeedConfig[] = [
   },
 
   // ============================================================================
-  // MEETING FIELD VIEWS
+  // MEETING DIALOG
   // ============================================================================
-
-  // Meeting panel view — show most fields except system internals
-  {
-    entityType: 'meeting',
-    contextType: 'panel',
-    name: 'Default Panel View',
-    excludeFields: ['id', 'created_at', 'updated_at', 'created_by_id'],
-  },
-
-  // Meeting table view — hide long-form note fields in the default list
-  {
-    entityType: 'meeting',
-    contextType: 'table',
-    name: 'Default Table View',
-    excludeFields: [
-      'id',
-      'created_at',
-      'updated_at',
-      'created_by_id',
-      'meeting_agenda',
-      'meeting_notes',
-      'meeting_action_items',
-    ],
-  },
-
-  // Meeting create dialog — essential scheduling fields only
   {
     entityType: 'meeting',
     contextType: 'dialog_create',
@@ -277,58 +148,8 @@ export const FIELD_VIEW_CONFIGS: FieldViewSeedConfig[] = [
   },
 
   // ============================================================================
-  // WORK ORDER FIELD VIEWS
+  // WORK ORDER DIALOG
   // ============================================================================
-  {
-    entityType: 'work_order',
-    contextType: 'panel',
-    name: 'Default Panel View',
-    excludeFields: [
-      'id',
-      'created_at',
-      'updated_at',
-      'created_by_id',
-      'work_order_pricing_model', // edited with timing in the purpose-built billing-plan flow
-      'work_order_invoice_timing', // edited together in the purpose-built billing-plan flow
-      // surfaced via the job view's Origin card + line-items/invoice UI, not field rows
-      'work_order_quote',
-      'work_order_line_items',
-      'work_order_invoices',
-      'work_order_billing_state',
-      'work_order_billing_amount',
-      'work_order_amount_drafted',
-      'work_order_amount_invoiced',
-      'work_order_uninvoiced_amount',
-      'work_order_balance_due',
-      'work_order_invoice_count',
-      'work_order_next_invoice_date',
-      'work_order_billing_revision',
-    ],
-  },
-  {
-    entityType: 'work_order',
-    contextType: 'table',
-    name: 'Default Table View',
-    excludeFields: [
-      'id',
-      'created_at',
-      'updated_at',
-      'created_by_id',
-      'work_order_description',
-      'work_order_completion_notes',
-      'work_order_pricing_model', // edited with timing in the purpose-built billing-plan flow
-      'work_order_invoice_timing', // edited together in the purpose-built billing-plan flow
-      'work_order_billing_state',
-      'work_order_billing_amount',
-      'work_order_amount_drafted',
-      'work_order_amount_invoiced',
-      'work_order_uninvoiced_amount',
-      'work_order_balance_due',
-      'work_order_invoice_count',
-      'work_order_next_invoice_date',
-      'work_order_billing_revision',
-    ],
-  },
   {
     entityType: 'work_order',
     contextType: 'dialog_create',
@@ -345,34 +166,8 @@ export const FIELD_VIEW_CONFIGS: FieldViewSeedConfig[] = [
   },
 
   // ============================================================================
-  // SERVICE REQUEST FIELD VIEWS
+  // SERVICE REQUEST DIALOG
   // ============================================================================
-  {
-    entityType: 'service_request',
-    contextType: 'panel',
-    name: 'Default Panel View',
-    // work_orders + quotes render as dedicated overview blocks, not field rows
-    excludeFields: [
-      'id',
-      'created_at',
-      'updated_at',
-      'created_by_id',
-      'service_request_work_orders',
-      'service_request_quotes',
-    ],
-  },
-  {
-    entityType: 'service_request',
-    contextType: 'table',
-    name: 'Default Table View',
-    excludeFields: [
-      'id',
-      'created_at',
-      'updated_at',
-      'created_by_id',
-      'service_request_description',
-    ],
-  },
   {
     entityType: 'service_request',
     contextType: 'dialog_create',
@@ -390,46 +185,8 @@ export const FIELD_VIEW_CONFIGS: FieldViewSeedConfig[] = [
   },
 
   // ============================================================================
-  // QUOTE FIELD VIEWS
+  // QUOTE DIALOG
   // ============================================================================
-  {
-    entityType: 'quote',
-    contextType: 'panel',
-    name: 'Default Panel View',
-    // money totals (discount/tax/subtotal/total) live in the line-items card below
-    excludeFields: [
-      'id',
-      'created_at',
-      'updated_at',
-      'created_by_id',
-      'quote_line_items',
-      'quote_work_orders',
-      'quote_discount_type',
-      'quote_discount_value',
-      'quote_tax_rate',
-      'quote_subtotal',
-      'quote_tax_total',
-      'quote_total',
-    ],
-  },
-  {
-    entityType: 'quote',
-    contextType: 'table',
-    name: 'Default Table View',
-    excludeFields: [
-      'id',
-      'created_at',
-      'updated_at',
-      'created_by_id',
-      'quote_line_items',
-      'quote_work_orders',
-      'quote_notes',
-      'quote_terms',
-      'quote_discount_type',
-      'quote_discount_value',
-      'quote_tax_name',
-    ],
-  },
   {
     entityType: 'quote',
     contextType: 'dialog_create',
@@ -438,144 +195,22 @@ export const FIELD_VIEW_CONFIGS: FieldViewSeedConfig[] = [
   },
 
   // ============================================================================
-  // LINE ITEM FIELD VIEWS (no dialog_create — never created via generic dialog)
+  // INVOICE DIALOG
   // ============================================================================
-  {
-    entityType: 'line_item',
-    contextType: 'panel',
-    name: 'Default Panel View',
-    excludeFields: ['id', 'created_at', 'updated_at', 'created_by_id'],
-  },
-  {
-    entityType: 'line_item',
-    contextType: 'table',
-    name: 'Default Table View',
-    excludeFields: [
-      'id',
-      'created_at',
-      'updated_at',
-      'created_by_id',
-      'line_item_discount',
-      'line_item_sort_order',
-      'line_item_visit_id',
-    ],
-  },
-
-  // ============================================================================
-  // CATALOG ITEM FIELD VIEWS (no dialog_create — never created via generic dialog)
-  // ============================================================================
-  {
-    entityType: 'catalog_item',
-    contextType: 'panel',
-    name: 'Default Panel View',
-    excludeFields: ['id', 'created_at', 'updated_at', 'created_by_id'],
-  },
-  {
-    entityType: 'catalog_item',
-    contextType: 'table',
-    name: 'Default Table View',
-    excludeFields: ['id', 'created_at', 'updated_at', 'created_by_id', 'catalog_item_line_items'],
-  },
-
-  // ============================================================================
-  // CATALOG GROUP FIELD VIEWS (no dialog_create — never created via generic dialog)
-  // ============================================================================
-  {
-    entityType: 'catalog_group',
-    contextType: 'panel',
-    name: 'Default Panel View',
-    excludeFields: ['id', 'created_at', 'updated_at', 'created_by_id'],
-  },
-  {
-    entityType: 'catalog_group',
-    contextType: 'table',
-    name: 'Default Table View',
-    excludeFields: ['id', 'created_at', 'updated_at', 'created_by_id', 'catalog_group_entries'],
-  },
-
-  // ============================================================================
-  // INVOICE FIELD VIEWS
-  // ============================================================================
-  {
-    entityType: 'invoice',
-    contextType: 'panel',
-    name: 'Default Panel View',
-    // money totals (discount/tax/subtotal/total) live in the line-items card below
-    excludeFields: [
-      'id',
-      'created_at',
-      'updated_at',
-      'created_by_id',
-      'invoice_line_items',
-      'invoice_payments',
-      'invoice_pdf_asset',
-      'invoice_discount_type',
-      'invoice_discount_value',
-      'invoice_tax_rate',
-      'invoice_subtotal',
-      'invoice_tax_total',
-      'invoice_total',
-      'invoice_billing_kind',
-      'invoice_service_period_start',
-      'invoice_service_period_end',
-      'invoice_visit_count',
-      'invoice_progress_percent',
-      'invoice_installment_name',
-    ],
-  },
-  {
-    entityType: 'invoice',
-    contextType: 'table',
-    name: 'Default Table View',
-    excludeFields: [
-      'id',
-      'created_at',
-      'updated_at',
-      'created_by_id',
-      'invoice_line_items',
-      'invoice_payments',
-      'invoice_pdf_asset',
-      'invoice_notes',
-      'invoice_terms',
-      'invoice_discount_type',
-      'invoice_discount_value',
-      'invoice_tax_name',
-      'invoice_billing_kind',
-      'invoice_service_period_start',
-      'invoice_service_period_end',
-      'invoice_visit_count',
-      'invoice_progress_percent',
-      'invoice_installment_name',
-    ],
-  },
   {
     entityType: 'invoice',
     contextType: 'dialog_create',
     name: 'Default Create Dialog',
     includeFields: ['invoice_contact', 'invoice_work_order', 'invoice_due_date'],
   },
-
-  // ============================================================================
-  // PAYMENT FIELD VIEWS (no dialog_create — the requireLedgerProvenance guard blocks
-  // generic creates; the ledger's recordManualPayment is the only writer, §F.3)
-  // ============================================================================
-  {
-    entityType: 'payment',
-    contextType: 'panel',
-    name: 'Default Panel View',
-    excludeFields: ['id', 'created_at', 'updated_at', 'created_by_id'],
-  },
-  {
-    entityType: 'payment',
-    contextType: 'table',
-    name: 'Default Table View',
-    excludeFields: ['id', 'created_at', 'updated_at', 'created_by_id'],
-  },
 ]
 
 /**
  * Pass 7: Create Default Field Views
- * Create default field views for panel and dialog contexts with resolved field IDs.
+ * Seeds default field views for the create/edit DIALOG contexts only, with
+ * resolved field IDs. Panel and table defaults are computed live from the
+ * registry (`showInPanel` / `showInTable` / `systemSortOrder`) and are no longer
+ * materialized — see `FIELD_VIEW_CONFIGS`.
  */
 export async function createFieldViews(
   db: Database,

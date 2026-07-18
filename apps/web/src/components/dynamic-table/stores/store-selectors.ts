@@ -23,14 +23,42 @@ import {
   EMPTY_FILTERS,
   EMPTY_SORTING,
   EMPTY_VIEWS,
+  PERSONAL_TABLE_VIEW_NAME,
 } from '../utils/constants'
 import { useDynamicTableStore } from './dynamic-table-store'
 
+/** True for the per-user default-table override row (not a named/saved view). */
+function isPersonalTableView(view: TableView): boolean {
+  return view.name === PERSONAL_TABLE_VIEW_NAME && !view.isShared && !view.isDefault
+}
+
 // ─── View Selectors ───────────────────────────────────────────────────────────
 
-/** Get all views for a table */
+/**
+ * Get all named/saved views for a table. The per-user default-table override row
+ * (sentinel name, personal, non-default) is excluded — it is not a saved view and
+ * must never appear in the view picker or be auto-selected as the default view.
+ */
 export function useTableViews(tableId: string): TableView[] {
-  return useDynamicTableStore((s) => s.viewsByTableId[tableId] ?? EMPTY_VIEWS)
+  return useDynamicTableStore(
+    useShallow((s) => {
+      const views = s.viewsByTableId[tableId] ?? EMPTY_VIEWS
+      const named = views.filter((v) => !isPersonalTableView(v))
+      // Preserve the stable empty ref when nothing is filtered/empty.
+      return named.length === views.length ? views : named
+    })
+  )
+}
+
+/**
+ * Get the per-user override row backing the DEFAULT (unnamed) table, if any.
+ * Keyed by the same `tableId` the table reads (`entity-${entityDefinitionId}`).
+ */
+export function usePersonalTableView(tableId: string): TableView | null {
+  return useDynamicTableStore((s) => {
+    const views = s.viewsByTableId[tableId] ?? EMPTY_VIEWS
+    return views.find(isPersonalTableView) ?? null
+  })
 }
 
 /** Get active view for a table */

@@ -43,6 +43,8 @@ export const VENDOR_PART_FIELDS: Record<string, ResourceField> = {
     isSystem: true,
     systemAttribute: 'vendor_part_part',
     systemSortOrder: 'a1',
+    showInPanel: false, // vendor parts are viewed in the context of their part (drawer tab)
+    showInTable: true, // keep the part column in the (internal) vendor-part list
     nullable: false,
     capabilities: {
       filterable: true,
