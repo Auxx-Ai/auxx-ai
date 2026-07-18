@@ -13,7 +13,7 @@
 import { Button } from '@auxx/ui/components/button'
 import { TreeRow } from '@auxx/ui/components/tree-row'
 import { TreeRowList } from '@auxx/ui/components/tree-row-list'
-import { ArrowRight, CreditCard, ExternalLink, History, Plus, Receipt } from 'lucide-react'
+import { ArrowRight, CreditCard, ExternalLink, History, Plus } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { Fragment, useState } from 'react'
 import { splitJobVisits } from '~/components/dispatch/ui/job-schedule/job-schedule-utils'
@@ -23,9 +23,11 @@ import { useJobVisits } from '~/components/dispatch/ui/job-schedule/use-job-visi
 import { SchedulePopover } from '~/components/dispatch/ui/schedule-popover'
 import { DrawerCardActions } from '~/components/drawers/drawer-card-actions'
 import { BillingActionDialog } from '~/components/money/billing/billing-action-dialog'
+import { BillingSummaryStrip } from '~/components/money/billing/billing-summary-strip'
+import { InvoiceTreeRow } from '~/components/money/billing/invoice-tree-row'
+import { NewWorkOrderInvoiceButton } from '~/components/money/billing/new-work-order-invoice-button'
 import { resolveBillingAction } from '~/components/money/billing/types'
 import { useWorkOrderBillingState } from '~/components/money/billing/use-work-order-billing-state'
-import { formatCurrency } from '~/components/money/ui/line-builder/shared'
 import { useOpenRecord, useRecordDrill } from '~/components/records/record-drill-panels'
 import type { DrawerTabProps } from '../drawer-tab-registry'
 import { EmptyRow, RowSkeleton, TREE_SECONDARY_NOTRUNCATE } from './related-record-row'
@@ -136,20 +138,13 @@ export function WorkOrderBillingCard({ recordId, entityInstanceId }: DrawerTabPr
 
   return (
     <div className={`space-y-0.5 ${TREE_SECONDARY_NOTRUNCATE}`}>
-      <div className='grid grid-cols-2 gap-2 pb-2 text-xs'>
-        <div>
-          <span className='block text-muted-foreground'>Balance due</span>
-          <span className='font-medium tabular-nums'>
-            {formatCurrency(billing.balanceDue, billing.currencyCode)}
-          </span>
-        </div>
-        <div>
-          <span className='block text-muted-foreground'>Uninvoiced</span>
-          <span className='font-medium tabular-nums'>
-            {formatCurrency(billing.remaining, billing.currencyCode)}
-          </span>
-        </div>
-      </div>
+      <DrawerCardActions>
+        <NewWorkOrderInvoiceButton
+          workOrderRecordId={recordId}
+          onOpenInvoice={(invoiceRecordId) => openRecord?.(invoiceRecordId)}
+        />
+      </DrawerCardActions>
+      <BillingSummaryStrip billing={billing} className='pb-2' />
       <TreeRow
         rowClassName='hover:bg-primary-100'
         icon={<CreditCard className='size-4' />}
@@ -171,17 +166,11 @@ export function WorkOrderBillingCard({ recordId, entityInstanceId }: DrawerTabPr
         onToggleOpen={isActionable ? handleToggleOpen : undefined}
       />
       {billing.invoices.slice(0, 3).map((invoice) => (
-        <TreeRow
+        <InvoiceTreeRow
           key={invoice.recordId}
-          rowClassName='hover:bg-primary-100'
-          icon={<Receipt className='size-4' />}
-          title={<span className='text-sm'>{invoice.displayName}</span>}
-          secondary={
-            <span className='text-xs'>
-              {invoice.status} · {formatCurrency(invoice.total, billing.currencyCode)}
-            </span>
-          }
-          onToggleOpen={() => openRecord?.(invoice.recordId)}
+          invoice={invoice}
+          currencyCode={billing.currencyCode}
+          onOpen={() => openRecord?.(invoice.recordId)}
         />
       ))}
       <TreeRow
