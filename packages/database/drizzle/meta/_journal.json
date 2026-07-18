@@ -2073,6 +2073,13 @@
       "when": 1784340079953,
       "tag": "0295_suppression_bounce_reason",
       "breakpoints": true
+    },
+    {
+      "idx": 296,
+      "version": "7",
+      "when": 1784343507709,
+      "tag": "0296_message_machine_mail_tier",
+      "breakpoints": true
     }
   ]
 }

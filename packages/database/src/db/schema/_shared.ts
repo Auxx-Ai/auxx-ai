@@ -314,6 +314,9 @@ export const nodeExecutionStatus = pgEnum('NodeExecutionStatus', [
   'stopped',
   'waiting',
 ])
+// Machine-mail tier (machine-mail plan Phase 1): hard = loop-forming (bounces/NDRs,
+// daemon senders), soft = automated but possibly wanted (OOO, list/notification mail).
+export const machineMailTier = pgEnum('MachineMailTier', ['hard', 'soft'])
 export const nodeTriggerSource = pgEnum('NodeTriggerSource', ['SINGLE_STEP', 'WORKFLOW_RUN'])
 export const notificationType = pgEnum('NotificationType', [
   'COMMENT_MENTION',

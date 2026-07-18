@@ -130,7 +130,11 @@ describe('AnswerProcessor.getLatestInboundMessage', () => {
   })
 
   it('returns the message id and metadata', async () => {
-    const latestMessage = { id: 'm1', metadata: { machineMail: { tier: 'hard', reason: 'x' } } }
+    const latestMessage = {
+      id: 'm1',
+      machineMailTier: 'hard',
+      metadata: { machineMail: { tier: 'hard', reason: 'x' } },
+    }
     const db = makeMockDb({ latestMessage })
     const result = await (processor as any).getLatestInboundMessage('t1', db)
     expect(result).toEqual(latestMessage)
@@ -180,6 +184,7 @@ describe('AnswerProcessor hard-tier machine-mail refusal backstop', () => {
     const db = makeMockDb({
       latestMessage: {
         id: 'm1',
+        machineMailTier: 'hard',
         metadata: { machineMail: { tier: 'hard', reason: 'delivery-status' } },
       },
     })
@@ -192,6 +197,7 @@ describe('AnswerProcessor hard-tier machine-mail refusal backstop', () => {
     const db = makeMockDb({
       latestMessage: {
         id: 'm1',
+        machineMailTier: 'hard',
         metadata: { machineMail: { tier: 'hard', reason: 'null-return-path' } },
       },
     })
@@ -203,7 +209,11 @@ describe('AnswerProcessor hard-tier machine-mail refusal backstop', () => {
 
   it('does NOT refuse on soft-tier machine mail', async () => {
     const db = makeMockDb({
-      latestMessage: { id: 'm1', metadata: { machineMail: { tier: 'soft', reason: 'list-id' } } },
+      latestMessage: {
+        id: 'm1',
+        machineMailTier: 'soft',
+        metadata: { machineMail: { tier: 'soft', reason: 'list-id' } },
+      },
     })
     // Manual To + dry_run so we exercise the refusal gate but stop before a real send.
     const node = replyNode({

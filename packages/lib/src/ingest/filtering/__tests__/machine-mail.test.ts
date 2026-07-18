@@ -1,7 +1,7 @@
 // packages/lib/src/ingest/filtering/__tests__/machine-mail.test.ts
 
 import { describe, expect, it } from 'vitest'
-import { detectMachineMail } from '../machine-mail'
+import { detectMachineMail, pickMachineMailHeaders } from '../machine-mail'
 
 describe('detectMachineMail', () => {
   describe('hard tier', () => {
@@ -258,5 +258,48 @@ describe('detectMachineMail', () => {
       })
       expect(result).toEqual({ tier: 'soft', reason: 'auto-response-suppress' })
     })
+  })
+})
+
+describe('pickMachineMailHeaders', () => {
+  it('picks the allowlisted subset from Graph-shaped {name, value} entries', () => {
+    const picked = pickMachineMailHeaders([
+      { name: 'Return-Path', value: '<>' },
+      { name: 'X-Auto-Response-Suppress', value: 'All' },
+      { name: 'Received', value: 'from mx.example.com' },
+      { name: 'Subject', value: 'Undeliverable: hi' },
+    ])
+    expect(picked).toEqual({ 'return-path': '<>', 'x-auto-response-suppress': 'All' })
+  })
+
+  it('picks from postal-mime-shaped {key, value} entries', () => {
+    const picked = pickMachineMailHeaders([
+      { key: 'list-unsubscribe', value: '<mailto:unsub@example.com>' },
+      { key: 'x-spam-score', value: '0.1' },
+    ])
+    expect(picked).toEqual({ 'list-unsubscribe': '<mailto:unsub@example.com>' })
+  })
+
+  it('keeps the first occurrence of a duplicated header', () => {
+    const picked = pickMachineMailHeaders([
+      { name: 'Precedence', value: 'bulk' },
+      { name: 'Precedence', value: 'list' },
+    ])
+    expect(picked).toEqual({ precedence: 'bulk' })
+  })
+
+  it('returns undefined when nothing allowlisted is present', () => {
+    expect(pickMachineMailHeaders([{ name: 'Subject', value: 'hello' }])).toBeUndefined()
+    expect(pickMachineMailHeaders([])).toBeUndefined()
+    expect(pickMachineMailHeaders(undefined)).toBeUndefined()
+  })
+
+  it('round-trips into detectMachineMail (Outlook NDR shape)', () => {
+    const headers = pickMachineMailHeaders([
+      { name: 'Content-Type', value: 'multipart/report; report-type=delivery-status' },
+      { name: 'Auto-Submitted', value: 'auto-replied' },
+    ])
+    const result = detectMachineMail({ headers, fromEmail: 'postmaster@outlook.com' })
+    expect(result?.tier).toBe('hard')
   })
 })

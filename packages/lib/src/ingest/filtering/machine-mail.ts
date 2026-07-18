@@ -41,6 +41,41 @@ const SOFT_MACHINE_LOCALPART_PREFIXES = ['no-reply+', 'noreply+']
 
 const BULK_PRECEDENCE_VALUES = new Set(['bulk', 'list', 'junk'])
 
+/**
+ * The header subset machine-mail detection needs. Providers that don't persist full
+ * headers (Outlook, IMAP) store exactly this subset in `Message.metadata.headers`
+ * (machine-mail plan Phase 1) — Gmail keeps persisting everything it already did.
+ */
+export const MACHINE_MAIL_HEADER_ALLOWLIST = [
+  'auto-submitted',
+  'x-auto-response-suppress',
+  'precedence',
+  'list-id',
+  'list-unsubscribe',
+  'return-path',
+  'content-type',
+] as const
+
+/**
+ * Picks the machine-mail header subset out of a provider's name/value header list
+ * (Graph's `internetMessageHeaders` use `name`, postal-mime uses `key`) into the
+ * lowercased map shape `detectMachineMail` reads. First occurrence wins. Returns
+ * `undefined` when none of the allowlisted headers are present.
+ */
+export function pickMachineMailHeaders(
+  entries: Array<{ name?: string | null; key?: string | null; value?: string | null }> | undefined
+): Record<string, string> | undefined {
+  if (!entries?.length) return undefined
+  const allowed = new Set<string>(MACHINE_MAIL_HEADER_ALLOWLIST)
+  const picked: Record<string, string> = {}
+  for (const entry of entries) {
+    const name = (entry.name ?? entry.key)?.toLowerCase().trim()
+    if (!name || !allowed.has(name) || picked[name] !== undefined) continue
+    picked[name] = entry.value ?? ''
+  }
+  return Object.keys(picked).length > 0 ? picked : undefined
+}
+
 /** Pulls the first value out of a header that may be a string, string[], or absent, trimmed. */
 function headerValue(headers: MachineMailCheckInput['headers'], name: string): string | undefined {
   if (!headers) return undefined

@@ -255,7 +255,6 @@ export function convertMessagesToMessageData(
           references: message.headers['references'],
           metadata: { headers: message.headers },
           isInbound,
-          isAutoReply: !!message.headers['auto-submitted'],
         } as MessageData
       } catch (error: any) {
         logger.error('Error converting Gmail message to MessageData:', {

@@ -75,6 +75,8 @@ export type JobStatus = (typeof Enums.JobStatusValues)[number]
 
 export type LabelType = (typeof Enums.LabelTypeValues)[number]
 
+export type MachineMailTier = (typeof Enums.MachineMailTierValues)[number]
+
 export type MEDIA_CONTENT_TYPE = (typeof Enums.MEDIA_CONTENT_TYPEValues)[number]
 
 export type MeetingMessageMethod = (typeof Enums.MeetingMessageMethodValues)[number]

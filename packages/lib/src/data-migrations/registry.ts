@@ -14,6 +14,7 @@ import { migration033InboxVisibilityToDefaultLens } from './migrations/033-inbox
 import { migration034RetireInboxVisibility } from './migrations/034-retire-inbox-visibility'
 import { migration035UserSettingRekeyBackfill } from './migrations/035-usersetting-rekey-backfill'
 import { migration036DocumentsTaxRatesScope } from './migrations/036-documents-taxrates-scope'
+import { migration037BackfillMessageMachineMailTier } from './migrations/037-backfill-message-machine-mail-tier'
 import { assertUniqueMigrationIds } from './plan'
 import type { DataMigrationDef } from './types'
 import { wrapEntityMigration } from './wrap-entity-migration'
@@ -44,6 +45,7 @@ function buildRegistry(): DataMigrationDef[] {
     migration034RetireInboxVisibility,
     migration035UserSettingRekeyBackfill,
     migration036DocumentsTaxRatesScope,
+    migration037BackfillMessageMachineMailTier,
   ]
 
   all.sort((a, b) => a.id.localeCompare(b.id))

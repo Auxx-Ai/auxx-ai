@@ -88,7 +88,7 @@ export class ImapGetMessagesService {
               textHtml: parsed.html || null,
               textPlain: cleanText || null,
               snippet: cleanText ? cleanText.substring(0, 200) : null,
-              metadata: null,
+              metadata: parsed.headers ? { headers: parsed.headers } : null,
               createdTime: sentAt,
               sentAt,
               receivedAt: sentAt,
