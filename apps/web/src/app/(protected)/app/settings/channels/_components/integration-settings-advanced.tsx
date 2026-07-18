@@ -5,15 +5,30 @@
 import { RadioGroup } from '@auxx/ui/components/radio-group'
 import { RadioGroupItemCard } from '@auxx/ui/components/radio-group-item'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
-import { Ban, MailMinus, MailPlus, ShieldCheck, UserCheck, Users, UserX } from 'lucide-react'
+import { ToggleCard } from '@auxx/ui/components/toggle-card'
+import {
+  Ban,
+  Eye,
+  MailMinus,
+  MailPlus,
+  MousePointerClick,
+  ShieldCheck,
+  UserCheck,
+  Users,
+  UserX,
+} from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { SettingsSection } from '~/components/global/settings-page'
 import { api } from '~/trpc/react'
 import { EmailFilterSection } from './email-list-dialog'
 
+/** Provider types that can send outgoing email and support open/click tracking. */
+const EMAIL_TRACKING_PROVIDERS = new Set(['google', 'outlook', 'email'])
+
 interface IntegrationSettingsAdvancedProps {
   integration: {
     id: string
+    provider: string
     settings?: {
       recordCreation?: {
         mode: 'all' | 'selective' | 'none'
@@ -21,6 +36,10 @@ interface IntegrationSettingsAdvancedProps {
       excludeSenders?: string[]
       excludeRecipients?: string[]
       onlyProcessRecipients?: string[]
+      tracking?: {
+        opens?: boolean
+        clicks?: boolean
+      }
     }
     [key: string]: any
   }
@@ -78,6 +97,36 @@ export default function IntegrationSettingsAdvanced({
     })
   }
 
+  // Email open/click tracking — only meaningful for channels that send outgoing
+  // email. Defaults: opens on for all email providers; clicks on only for the
+  // `email` (forwarding) provider — link-wrapping 1:1 personal mail (google/
+  // outlook) is a deliverability risk, so it's opt-in there.
+  const showTracking = EMAIL_TRACKING_PROVIDERS.has(integration.provider)
+  const [trackOpens, setTrackOpens] = useState<boolean>(
+    integration.settings?.tracking?.opens ?? true
+  )
+  const [trackClicks, setTrackClicks] = useState<boolean>(
+    integration.settings?.tracking?.clicks ?? integration.provider === 'email'
+  )
+
+  // updateSettings merges shallowly at the top level, so a partial `tracking`
+  // object would overwrite (not merge into) the previously saved one. Always
+  // send both fields together to avoid clobbering the sibling toggle.
+  const handleTrackOpensChange = (next: boolean) => {
+    setTrackOpens(next)
+    updateSettings.mutate({
+      integrationId: integration.id,
+      settings: { tracking: { opens: next, clicks: trackClicks } },
+    })
+  }
+  const handleTrackClicksChange = (next: boolean) => {
+    setTrackClicks(next)
+    updateSettings.mutate({
+      integrationId: integration.id,
+      settings: { tracking: { opens: trackOpens, clicks: next } },
+    })
+  }
+
   return (
     <div className='space-y-4 sm:space-y-10 p-3 sm:p-6'>
       {/* Record Creation */}
@@ -109,6 +158,33 @@ export default function IntegrationSettingsAdvanced({
           />
         </RadioGroup>
       </SettingsSection>
+
+      {/* Email Tracking — only for channels that send outgoing email */}
+      {showTracking && (
+        <SettingsSection
+          icon={Eye}
+          title='Email Tracking'
+          description='Track engagement on outgoing emails sent from this channel.'>
+          <div className='space-y-2'>
+            <ToggleCard
+              icon={<Eye className='size-3.5' />}
+              title='Track email opens'
+              description='Add an invisible open-tracking pixel to outgoing emails.'
+              checked={trackOpens}
+              onCheckedChange={handleTrackOpensChange}
+              disabled={!canManage || updateSettings.isPending}
+            />
+            <ToggleCard
+              icon={<MousePointerClick className='size-3.5' />}
+              title='Track link clicks'
+              description='Rewrite links in outgoing emails through a tracking redirect.'
+              checked={trackClicks}
+              onCheckedChange={handleTrackClicksChange}
+              disabled={!canManage || updateSettings.isPending}
+            />
+          </div>
+        </SettingsSection>
+      )}
 
       {/* Email Filtering Rules */}
       <EmailFilterSection

@@ -212,6 +212,11 @@ export class MessageReconcilerService {
       externalId: providerData.externalId,
     })
 
+    const existing = await this.db.query.Message.findFirst({
+      where: (messages, { eq }) => eq(messages.id, existingMessageId),
+      columns: { threadId: true, textPlain: true, textHtml: true, snippet: true },
+    })
+
     // Update the message with provider data
     await this.db
       .update(schema.Message)
@@ -223,10 +228,12 @@ export class MessageReconcilerService {
         // Update status
         sendStatus: SendStatus.SENT,
 
-        // Fill in any missing content
-        textPlain: providerData.textPlain || undefined,
-        textHtml: providerData.textHtml || undefined,
-        snippet: providerData.snippet || undefined,
+        // Fill in any missing content — never overwrite what we composed. The provider's
+        // Sent-folder copy carries the tracking pixel/wrapped links injected at send time;
+        // the stored row must keep the clean HTML or the app UI would fire self-opens.
+        textPlain: existing?.textPlain ? undefined : providerData.textPlain || undefined,
+        textHtml: existing?.textHtml ? undefined : providerData.textHtml || undefined,
+        snippet: existing?.snippet ? undefined : providerData.snippet || undefined,
 
         // Update timestamps
         sentAt: providerData.sentAt,

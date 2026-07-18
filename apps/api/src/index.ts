@@ -38,6 +38,7 @@ import organizations from './routes/organizations'
 import recordingWebhooks from './routes/recording-webhooks'
 import settings from './routes/settings'
 import storage from './routes/storage'
+import tracking from './routes/tracking'
 import unsubscribe from './routes/unsubscribe'
 import webhookHandlers from './routes/webhook-handlers'
 import webhooks from './routes/webhooks'
@@ -103,6 +104,7 @@ async function main() {
   app.route('/webhooks/email-events', emailEvents) // SES config-set → SNS delivery target (before generic /webhooks)
   app.route('/webhooks', webhooks) // Public webhook receiver (no /api/v1 prefix)
   app.route('/u', unsubscribe) // Public List-Unsubscribe landing (GET confirm / RFC 8058 one-click POST)
+  app.route('/t', tracking) // Public email open-pixel / click-redirect tracking (no auth — signed token)
 
   // 404 handler
   app.notFound((c) => {

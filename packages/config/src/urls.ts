@@ -269,6 +269,14 @@ export const API_URL = resolveAppUrl('api')
 export const LAMBDA_URL = resolveAppUrl('lambda')
 export const KB_URL = resolveAppUrl('kb')
 
+/**
+ * Public email-tracking URL (open pixel + click-redirect links).
+ * Defaults to `API_URL` — a dedicated `TRACK_URL` env var lets a tracking domain be split
+ * off from the API later (e.g. for deliverability / domain-reputation isolation) without
+ * touching any call site.
+ */
+export const TRACK_URL = readEnv('TRACK_URL') || API_URL
+
 // ─── Internal URL exports (service-to-service) ──────────
 
 /** Internal API URL for server-to-server calls. Falls back to public API_URL. */
