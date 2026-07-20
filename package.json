@@ -88,6 +88,9 @@
     ]
   },
   "pnpm": {
+    "overrides": {
+      "dompurify": "^3.4.0"
+    },
     "onlyBuiltDependencies": [
       "deno"
     ],
