@@ -3,7 +3,7 @@
 import type { Database } from '@auxx/database'
 import { schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import { eq, inArray, isNull, or } from 'drizzle-orm'
+import { inArray } from 'drizzle-orm'
 import { getOrgCache } from '../../cache'
 import type { DataMigrationDef } from '../types'
 
@@ -18,44 +18,23 @@ const DEAD_APPEARANCE_KEYS = [
 ]
 
 /**
- * Settings v2 `UserSetting` re-key (plans/settings/v2/README.md §Service
- * refactor): backfills the new `organizationId`/`key` columns on `UserSetting`
- * from each row's parent `OrganizationSetting`, still reachable at this point
- * via the (not-yet-dropped) `organizationSettingId` FK — a second schema
- * migration tightens the new columns to NOT NULL and drops that FK once this
- * backfill has run. Also deletes stored `OrganizationSetting` rows for the
- * four dead `appearance.*` keys; any surviving `UserSetting` children
- * cascade-delete via the (still-present) FK.
+ * Settings v2 dead-key cleanup (plans/settings/v2/README.md §Deletions):
+ * deletes stored `OrganizationSetting` and `UserSetting` rows for the four
+ * removed `appearance.*` keys.
  *
- * Idempotent: only backfills rows still missing `organizationId`/`key`; the
- * appearance-key delete is a no-op once already removed.
+ * The `UserSetting` re-key this migration originally performed now happens
+ * inline in drizzle migration `0273_settings_v2_rekey_drop_legacy_fk.sql` —
+ * that file also drops the legacy `organizationSettingId` FK (from the DB and
+ * the schema), so the join-based backfill is no longer expressible here. The
+ * FK cascade the original delete relied on is gone with it, hence the explicit
+ * `UserSetting` delete by key.
+ *
+ * Idempotent: both deletes are no-ops once the rows are gone.
  */
 export const migration035UserSettingRekeyBackfill: DataMigrationDef = {
   id: '035-usersetting-rekey-backfill',
-  description: 'Backfill UserSetting.organizationId/key + delete dead appearance.* settings',
+  description: 'Delete dead appearance.* organization/user settings (settings v2)',
   async run(db: Database): Promise<void> {
-    const rows = await db
-      .select({
-        id: schema.UserSetting.id,
-        organizationId: schema.OrganizationSetting.organizationId,
-        key: schema.OrganizationSetting.key,
-      })
-      .from(schema.UserSetting)
-      .innerJoin(
-        schema.OrganizationSetting,
-        eq(schema.UserSetting.organizationSettingId, schema.OrganizationSetting.id)
-      )
-      .where(or(isNull(schema.UserSetting.organizationId), isNull(schema.UserSetting.key)))
-
-    for (const row of rows) {
-      await db
-        .update(schema.UserSetting)
-        .set({ organizationId: row.organizationId, key: row.key })
-        .where(eq(schema.UserSetting.id, row.id))
-    }
-
-    logger.info('Backfilled UserSetting organizationId/key', { rowsBackfilled: rows.length })
-
     const deadOrgSettings = await db
       .select({
         id: schema.OrganizationSetting.id,
@@ -72,6 +51,8 @@ export const migration035UserSettingRekeyBackfill: DataMigrationDef = {
         )
       )
     }
+
+    await db.delete(schema.UserSetting).where(inArray(schema.UserSetting.key, DEAD_APPEARANCE_KEYS))
 
     const affectedOrgs = new Set(deadOrgSettings.map((s) => s.organizationId))
     for (const orgId of affectedOrgs) {
