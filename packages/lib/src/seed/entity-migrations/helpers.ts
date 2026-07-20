@@ -5,7 +5,7 @@ import { FieldType as FieldTypeEnum } from '@auxx/database/enums'
 import { createScopedLogger } from '@auxx/logger'
 import { toFieldId, toResourceFieldId } from '@auxx/types/field'
 import type { SystemAttribute } from '@auxx/types/system-attribute'
-import { and, eq } from 'drizzle-orm'
+import { and, eq, isNull } from 'drizzle-orm'
 import { onCacheEvent } from '../../cache/invalidate'
 import {
   createDefaultFieldViewConfig,
@@ -108,9 +108,23 @@ export async function loadExistingState(
 
 // ─── Ensure EntityDefinitions ────────────────────────────────────────
 
+/** First slug not in `takenSlugs`: `base`, then `base-2`, `base-3`, … */
+function resolveFreeSlug(base: string, takenSlugs: Set<string>): string {
+  if (!takenSlugs.has(base)) return base
+  let n = 2
+  while (takenSlugs.has(`${base}-${n}`)) n++
+  return `${base}-${n}`
+}
+
 /**
  * Create missing EntityDefinitions. Returns a map of entityType → id for all
  * entities (both existing and newly created).
+ *
+ * A migrated org may already hold a user-created custom entity (entityType
+ * NULL, so invisible to `ExistingState.entityDefs`) on the same apiSlug — the
+ * `(apiSlug, organizationId)` unique index only covers non-archived rows, so
+ * the system def falls back to a suffixed free slug instead of failing the
+ * whole migration.
  */
 export async function ensureEntityDefinitions(
   db: Database,
@@ -122,6 +136,9 @@ export async function ensureEntityDefinitions(
   const entityDefIds = new Map<string, string>()
   const now = new Date()
 
+  // Loaded on first insert only — already-migrated orgs skip the query.
+  let takenSlugs: Set<string> | undefined
+
   for (const entity of entities) {
     const existingDef = existing.entityDefs.get(entity.entityType)
     if (existingDef) {
@@ -129,12 +146,36 @@ export async function ensureEntityDefinitions(
       continue
     }
 
+    takenSlugs ??= new Set(
+      (
+        await db
+          .select({ apiSlug: schema.EntityDefinition.apiSlug })
+          .from(schema.EntityDefinition)
+          .where(
+            and(
+              eq(schema.EntityDefinition.organizationId, organizationId),
+              isNull(schema.EntityDefinition.archivedAt)
+            )
+          )
+      ).map((d) => d.apiSlug)
+    )
+
+    const apiSlug = resolveFreeSlug(entity.apiSlug, takenSlugs)
+    if (apiSlug !== entity.apiSlug) {
+      logger.warn(
+        `apiSlug '${entity.apiSlug}' already taken — creating '${entity.entityType}' as '${apiSlug}'`,
+        {
+          organizationId,
+        }
+      )
+    }
+
     const [created] = await db
       .insert(schema.EntityDefinition)
       .values({
         organizationId,
         entityType: entity.entityType,
-        apiSlug: entity.apiSlug,
+        apiSlug,
         singular: entity.singular,
         plural: entity.plural,
         icon: entity.icon,
@@ -146,6 +187,7 @@ export async function ensureEntityDefinitions(
 
     if (!created) throw new Error(`Failed to create EntityDefinition: ${entity.entityType}`)
 
+    takenSlugs.add(apiSlug)
     entityDefIds.set(entity.entityType, created.id)
     state.entityDefsCreated++
     logger.info(`Created EntityDefinition: ${entity.entityType}`, { id: created.id })
