@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.184](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.183...auxx-v0.1.184) (2026-07-20)
+
+
+### Bug Fixes
+
+* **build:** unblock web/kb/build docker images via bundler-opaque resvg load ([#1220](https://github.com/Auxx-Ai/auxx-ai/issues/1220)) ([bccc776](https://github.com/Auxx-Ai/auxx-ai/commit/bccc7768e1cd88cde53c5581a93e086cd536ab5b))
+
 ## [0.1.183](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.182...auxx-v0.1.183) (2026-07-18)
 
 
