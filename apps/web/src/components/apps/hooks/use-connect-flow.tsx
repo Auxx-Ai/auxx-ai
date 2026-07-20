@@ -88,6 +88,13 @@ export interface ConnectFlowArgs {
    * `personal=1`, read by the authorize route's `supportsPersonalChannelConnection` gate.
    */
   personal?: boolean
+  /**
+   * Custom authoritative verify for the OAuth popup (see `useOAuthPopup`), replacing the default
+   * connection-list snapshot verify. Required when the credential isn't visible in
+   * `connections.list` / `apps.listConnections` — e.g. channel credentials, which only the
+   * `channelReauth` router can observe — where the default verify polls `null` forever.
+   */
+  verify?: () => Promise<string | boolean | null>
 }
 
 export interface UseConnectFlow {
@@ -266,7 +273,7 @@ export function useConnectFlow(options: UseConnectFlowOptions = {}): UseConnectF
         popupUrl: `${baseUrl}?${popupParams}`,
         fallbackUrl,
         channelName: 'oauth-app-connect',
-        verify: buildConnectionVerify(utils, a),
+        verify: a.verify ?? buildConnectionVerify(utils, a),
         onDone: (ok, credId) => {
           invalidateForOwner(owner)
           setArgs(null)

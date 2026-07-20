@@ -136,6 +136,7 @@ export async function proxy(req: NextRequest) {
       maxAge: 60,
       path: '/',
       httpOnly: false, // client JS needs to read this
+      secure: true,
       sameSite: 'lax',
     })
 
@@ -146,7 +147,8 @@ export async function proxy(req: NextRequest) {
     response.cookies.set('auxx-org-deep-link', pathname + search, {
       maxAge: 300, // 5 minutes — enough to complete login
       path: '/',
-      httpOnly: false,
+      httpOnly: true, // only read server-side, in (protected)/layout.tsx
+      secure: true,
       sameSite: 'lax',
     })
 
@@ -157,7 +159,7 @@ export async function proxy(req: NextRequest) {
 export const config = {
   matcher: [
     // Skip Next.js internals and all static files, unless found in search params
-    '/((?!_next|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest|mp3|mp4|webm|ogg|wav|m4a|aac)).*)',
+    '/((?!_next|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest|mp3|mp4|webm|ogg|wav|m4a|aac|txt|xml)).*)',
     // Always run for API routes
     '/(api|trpc)(.*)',
   ],
