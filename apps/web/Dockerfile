@@ -81,6 +81,11 @@ RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
   SKIP_ENV_VALIDATION=1 \
   pnpm --filter=web run build:prod
 
+# resvg is loaded via a bundler-opaque require (packages/lib image-processing.ts),
+# so Next's file tracing can't see it. Stage the resolved packages (JS wrapper +
+# native platform binding) for the runner to place next to the standalone output.
+RUN mkdir -p /resvg && cp -RL /app/node_modules/.pnpm/@resvg+resvg-js@*/node_modules/@resvg /resvg/@resvg
+
 # ──────────────────────────────────────────────
 # Stage 4: MIGRATE-DEPS — flat node_modules for database migrations
 # ──────────────────────────────────────────────
@@ -128,6 +133,9 @@ RUN mkdir -p apps/web/.next apps/web/.next/cache && \
 # Copy the standalone server and static assets
 COPY --from=builder --chown=nextjs:nodejs /app/apps/web/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/apps/web/.next/static ./apps/web/.next/static
+
+# resvg packages staged in the builder (untraceable by Next, see above)
+COPY --from=builder --chown=nextjs:nodejs /resvg/@resvg ./node_modules/@resvg
 
 # Copy packages/database with flat node_modules for migrations (pre-deploy / migrate service)
 COPY --from=migrate-deps --chown=nextjs:nodejs /database-deploy /app/packages/database

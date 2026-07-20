@@ -1219,7 +1219,7 @@
     "@microsoft/microsoft-graph-client": "^3.0.7",
     "@modelcontextprotocol/sdk": "1.29.0",
     "@react-pdf/renderer": "^4.5.1",
-    "@resvg/resvg-js": "^2.6.2",
+    "@resvg/resvg-js": "catalog:",
     "@shopify/admin-api-client": "catalog:",
     "@shopify/shopify-api": "catalog:",
     "@trpc/server": "catalog:",

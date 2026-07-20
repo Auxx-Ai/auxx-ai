@@ -60,6 +60,11 @@ RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
   NODE_OPTIONS="--max-old-space-size=4096" \
   pnpm --filter=@auxx/build run build
 
+# resvg is loaded via a bundler-opaque require (packages/lib image-processing.ts),
+# so Next's file tracing can't see it. Stage the resolved packages (JS wrapper +
+# native platform binding) for the runner to place next to the standalone output.
+RUN mkdir -p /resvg && cp -RL /app/node_modules/.pnpm/@resvg+resvg-js@*/node_modules/@resvg /resvg/@resvg
+
 # PRODUCTION
 FROM slim AS runner
 
@@ -95,6 +100,9 @@ RUN chown nextjs:nodejs apps/build/.next/cache
 # Copy the standalone server and static assets
 COPY --from=builder --chown=nextjs:nodejs /app/apps/build/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/apps/build/.next/static ./apps/build/.next/static
+
+# resvg packages staged in the builder (untraceable by Next, see above)
+COPY --from=builder --chown=nextjs:nodejs /resvg/@resvg ./node_modules/@resvg
 
 # Copy the docker entrypoint for runtime env replacement
 COPY --chown=nextjs:nodejs docker-entrypoint.sh ./docker-entrypoint.sh

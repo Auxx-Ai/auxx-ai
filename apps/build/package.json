@@ -18,6 +18,7 @@
     "@auxx/ui": "workspace:*",
     "@auxx/utils": "workspace:*",
     "@hookform/resolvers": "^4.1.0",
+    "@resvg/resvg-js": "catalog:",
     "@tanstack/react-query": "catalog:",
     "@trpc/client": "^11.0.0-rc.446",
     "@trpc/react-query": "^11.0.0-rc.446",
