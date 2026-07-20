@@ -10,6 +10,7 @@ import IntegrationHero from './_components/integration-hero'
 import MarketplaceSection from './_components/marketplace-section'
 
 export const metadata: Metadata = {
+  alternates: { canonical: '/platform/integration' },
   title: `Integrations & API | ${config.shortName}`,
   description: `Connect ${config.shortName} with Shopify, email, and internal tools using prebuilt connectors and a flexible API to automate customer operations end-to-end.`,
 }

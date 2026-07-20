@@ -8,6 +8,7 @@ import ManufacturingFeature from './_components/manufacturing-feature'
 import ManufacturingHero from './_components/manufacturing-hero'
 
 export const metadata: Metadata = {
+  alternates: { canonical: '/platform/manufacturing' },
   title: `Manufacturing Support | ${config.shortName}`,
   description: `${config.shortName} helps manufacturing teams coordinate parts requests, warranty claims, and dealer communications with AI-powered workflows.`,
 }

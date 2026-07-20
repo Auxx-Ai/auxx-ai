@@ -10,6 +10,7 @@ import TicketingFeature from './_components/ticketing-feature'
 import TicketingHero from './_components/ticketing-hero'
 
 export const metadata: Metadata = {
+  alternates: { canonical: '/platform/ticketing' },
   title: `Ticketing System | ${config.shortName}`,
   description: `Route, prioritize, and resolve high-volume tickets with ${config.shortName}'s AI-suggested replies, automations, and real-time Shopify context.`,
 }

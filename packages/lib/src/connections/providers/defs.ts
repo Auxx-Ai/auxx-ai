@@ -32,7 +32,9 @@ export const PLATFORM_PROVIDER_DEFS: PlatformProviderDef[] = [
     oauth2AccessTokenUrl: 'https://oauth2.googleapis.com/token',
     oauth2Scopes: [
       'https://www.googleapis.com/auth/gmail.modify',
-      'https://www.googleapis.com/auth/drive',
+      // drive.file (per-file, non-sensitive) instead of full `drive` — full Drive
+      // is a Google "restricted" scope and would pull Drive into the CASA audit.
+      'https://www.googleapis.com/auth/drive.file',
       'https://www.googleapis.com/auth/spreadsheets',
       'https://www.googleapis.com/auth/calendar',
       'https://www.googleapis.com/auth/userinfo.email',
@@ -77,9 +79,10 @@ export const PLATFORM_PROVIDER_DEFS: PlatformProviderDef[] = [
   },
   // ────────────────────────────────────────────────────────────────────────
   // Mail-centric channel providers (org-shared). Distinct from the kitchen-sink
-  // googleOAuth2Api/outlookOAuth2Api: scopes match exactly what the live
-  // GoogleOAuthService/OutlookOAuthService request (incl. Gmail pubsub `watch`)
-  // so existing grants keep working without re-consent. Channels fold onto these.
+  // googleOAuth2Api/outlookOAuth2Api. Channels fold onto these. Gmail scopes are
+  // the minimal set for Google OAuth verification: gmail.modify already includes
+  // read/send/labels, and `users.watch` needs no pubsub scope (the platform topic
+  // grants publish to gmail-api-push). Existing broader grants stay valid.
   // ────────────────────────────────────────────────────────────────────────
   {
     providerKey: 'gmail',
@@ -90,10 +93,6 @@ export const PLATFORM_PROVIDER_DEFS: PlatformProviderDef[] = [
     oauth2AccessTokenUrl: 'https://oauth2.googleapis.com/token',
     oauth2Scopes: [
       'https://www.googleapis.com/auth/gmail.modify',
-      'https://www.googleapis.com/auth/gmail.send',
-      'https://www.googleapis.com/auth/gmail.labels',
-      'https://www.googleapis.com/auth/gmail.readonly',
-      'https://www.googleapis.com/auth/pubsub', // Gmail watch
       'https://www.googleapis.com/auth/userinfo.email',
       'https://www.googleapis.com/auth/userinfo.profile',
     ],

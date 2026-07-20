@@ -60,6 +60,7 @@ const faqs: FaqItem[] = [
 ]
 
 export const metadata: Metadata = {
+  alternates: { canonical: '/faq' },
   title: `Frequently Asked Questions | ${config.shortName}`,
   description:
     'Find answers to common questions about Auxx.ai, the open-source AI-powered customer support platform for Shopify. Learn about pricing, integrations, self-hosting, and more.',

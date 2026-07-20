@@ -30,6 +30,7 @@ export async function generateMetadata({
   return {
     title: `${category.title} | Blog | ${config.shortName}`,
     description: `Browse ${category.title} articles on the ${config.shortName} blog.`,
+    alternates: { canonical: `/blog/category/${slug}` },
   }
 }
 

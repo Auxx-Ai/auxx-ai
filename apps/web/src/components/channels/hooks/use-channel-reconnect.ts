@@ -62,6 +62,23 @@ export function useChannelReconnect() {
 
         integrationByCredential.current.set(status.credentialId, integrationId)
 
+        // Channel credentials never appear in `connections.list`, so `useConnectFlow`'s default
+        // snapshot verify can't observe this reconnect (it polls null forever — which used to let
+        // the popup's cancel heuristic win and kill the window mid-login). Poll the channel's own
+        // auth status instead: a successful OAuth callback clears `requiresReauth`. Only usable
+        // when the flag is set going in — otherwise there is no flip to observe and the popup's
+        // message channel is the sole settle signal.
+        const credentialId = status.credentialId
+        const verify = status.requiresReauth
+          ? async () => {
+              const fresh = await utils.channelReauth.getAuthStatus.fetch(
+                { integrationId },
+                { staleTime: 0 }
+              )
+              return fresh.requiresReauth ? null : credentialId
+            }
+          : undefined
+
         const def: ConnectFlowDefinition = { connectionType: 'oauth2-code' }
         flow.start({
           target: {
@@ -79,6 +96,7 @@ export function useChannelReconnect() {
           scope: 'organization',
           connectionId: status.credentialId,
           returnTo: RETURN_TO,
+          verify,
         })
       } catch (error) {
         toastError({

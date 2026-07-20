@@ -97,11 +97,28 @@ export function useOAuthPopup() {
 
       let settled = false
 
-      /** Settle exactly once: a toast only on explicit failure (not on cancel/timeout). */
-      const finish = (ok: boolean, credId?: string | null, error?: string | null) => {
+      /**
+       * Settle exactly once: a toast only on explicit failure (not on cancel/timeout).
+       * The popup is closed only on an authoritative settle (callback message / verify success) —
+       * the cancel and timeout heuristics can fire while the user is still mid-consent in the
+       * popup, and closing it there kills a login the user is actively completing.
+       */
+      const finish = (
+        ok: boolean,
+        credId?: string | null,
+        error?: string | null,
+        opts?: { closePopup?: boolean }
+      ) => {
         if (settled) return
         settled = true
         teardown()
+        if (opts?.closePopup !== false) {
+          try {
+            if (!popup.closed) popup.close()
+          } catch {
+            // COOP-severed popups block the close — the termination page closes itself instead.
+          }
+        }
         if (!ok && error) {
           toastError({ title: 'Failed to connect', description: error })
         }
@@ -175,11 +192,16 @@ export function useOAuthPopup() {
             }
             if (settled) return
           }
-          finish(false)
+          // Heuristic cancel — never close the popup here: the focus-return signal can fire while
+          // the user is still authenticating in it (macOS focus bounce, a stray click on the
+          // opener), and killing the window mid-login is unrecoverable.
+          finish(false, null, null, { closePopup: false })
         }, cancelGraceMs)
       }
 
-      // `sawBlur` gates the focus-return so the initial open (opener still focused) isn't read as a return.
+      // `sawBlur` gates the focus-return (both the watchdog and the focus event) so the initial
+      // open — opener still focused, or a stray focus event before the popup ever took focus —
+      // isn't read as a return.
       let sawBlur = false
       const watchdog = setInterval(() => {
         if (settled) return
@@ -189,12 +211,20 @@ export function useOAuthPopup() {
         }
         if (sawBlur) scheduleCancelCheck()
       }, 400)
-      const onFocus = () => scheduleCancelCheck()
+      const onFocus = () => {
+        if (sawBlur) scheduleCancelCheck()
+      }
       window.addEventListener('focus', onFocus)
 
       // Hard ceiling so an undetectable user-cancel doesn't spin forever / leave the UI disabled.
-      const giveUpTimer = setTimeout(() => finish(false), timeoutMs)
+      const giveUpTimer = setTimeout(
+        () => finish(false, null, null, { closePopup: false }),
+        timeoutMs
+      )
 
+      // Teardown never closes the popup — `cancel()` and unmount reach here directly, and both
+      // can race a login the user is still completing. `finish` owns the close on an
+      // authoritative settle.
       teardownRef.current = () => {
         window.removeEventListener('message', onMessage)
         window.removeEventListener('focus', onFocus)
@@ -203,11 +233,6 @@ export function useOAuthPopup() {
         if (verifyInterval) clearInterval(verifyInterval)
         if (cancelTimer) clearTimeout(cancelTimer)
         clearTimeout(giveUpTimer)
-        try {
-          if (!popup.closed) popup.close()
-        } catch {
-          // ignore
-        }
         setPending(false)
       }
     },

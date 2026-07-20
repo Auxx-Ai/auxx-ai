@@ -12,6 +12,7 @@ import NoMissedMessages from './_components/no-missed-messages'
 import ProviderIntegrationsSection from './_components/provider-integration'
 
 export const metadata: Metadata = {
+  alternates: { canonical: '/platform/messaging' },
   title: `Omnichannel Messaging | ${config.shortName}`,
   description: `Unify email, chat, SMS, and social messages with ${config.shortName}'s AI-driven routing to ensure no customer inquiry slips through the cracks.`,
 }

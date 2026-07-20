@@ -14,6 +14,7 @@ import KopilotPromptLibrary from './_components/kopilot-prompt-library'
 import KopilotTestimonial from './_components/kopilot-testimonial'
 
 export const metadata: Metadata = {
+  alternates: { canonical: '/platform/ai/kopilot' },
   title: `Kopilot — Workspace AI | ${config.shortName}`,
   description: `${config.shortName} Kopilot searches, updates, and creates across mail, contacts, tickets, and knowledge. Grounded in your data and powered by your own model.`,
 }

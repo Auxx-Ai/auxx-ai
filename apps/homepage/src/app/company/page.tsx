@@ -7,6 +7,7 @@ import { ImageIllustration } from '../_components/sections/image-illustration'
 import HowCanWeHelp from './_components/how-can-we-help'
 
 export const metadata: Metadata = {
+  alternates: { canonical: '/company' },
   title: `About ${config.shortName} | AI Customer Support Innovators`,
   description: `${config.shortName} helps CX leaders automate support with AI-driven workflows, deep Shopify alignment, and a human-approved customer experience team focused on faster resolutions.`,
 }

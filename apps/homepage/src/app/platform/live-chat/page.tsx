@@ -9,6 +9,7 @@ import LiveChatFeature from './_components/live-chat-feature'
 import LiveChatHero from './_components/live-chat-hero'
 
 export const metadata: Metadata = {
+  alternates: { canonical: '/platform/live-chat' },
   title: `Live Chat Suite | ${config.shortName}`,
   description: `${config.shortName} delivers real-time live chat, AI suggestions, and proactive prompts that convert browsing shoppers into loyal customers.`,
 }

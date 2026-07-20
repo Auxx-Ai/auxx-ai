@@ -7,6 +7,7 @@ import TestimonialsSection from '../../_components/sections/testimonials-section
 import { BreadcrumbJsonLd } from '../../_components/seo/breadcrumb-json-ld'
 
 export const metadata: Metadata = {
+  alternates: { canonical: '/solutions/customers' },
   title: `Customer Stories | ${config.shortName}`,
   description: `See how growth-minded brands use ${config.shortName} to automate customer conversations, drive retention, and deliver premium experiences across every channel.`,
 }

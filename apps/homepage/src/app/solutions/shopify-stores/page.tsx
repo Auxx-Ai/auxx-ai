@@ -13,6 +13,7 @@ import ShopifyHero from './_components/shopify-hero'
 import TestimonialsSection from './_components/testimonials'
 
 export const metadata: Metadata = {
+  alternates: { canonical: '/solutions/shopify-stores' },
   title: `Shopify Store Support | ${config.shortName}`,
   description: `${config.shortName} connects directly to Shopify to resolve tickets, automate refunds, and deliver upsell-ready responses that turn support into a profit center.`,
 }

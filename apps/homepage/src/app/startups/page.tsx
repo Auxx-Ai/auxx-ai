@@ -11,6 +11,7 @@ import StartupHero from './_components/startup-hero'
 import StartupsFaq from './_components/startups-faq'
 
 export const metadata: Metadata = {
+  alternates: { canonical: '/startups' },
   title: `Startup Program | ${config.shortName}`,
   description: `Early-stage teams get up to 90% off the ${config.shortName} platform fee — a founder-friendly discount that steps down as you grow. CRM and helpdesk in one, from day one.`,
 }

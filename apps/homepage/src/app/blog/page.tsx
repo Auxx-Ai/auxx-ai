@@ -10,6 +10,7 @@ import { BlogListWithPagination } from './_components/blog-list-with-pagination'
 export const revalidate = 3600
 
 export const metadata: Metadata = {
+  alternates: { canonical: '/blog' },
   title: `Blog | ${config.shortName}`,
   description:
     'Insights on AI-powered customer support, e-commerce automation, and growing your Shopify business.',
