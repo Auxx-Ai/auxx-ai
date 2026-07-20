@@ -3,7 +3,7 @@
 import { schema } from '@auxx/database'
 import { eq } from 'drizzle-orm'
 import type { DehydratedUser } from '../../dehydration/types'
-import { MediaAssetService } from '../../files'
+import { MediaAssetService } from '../../files/core/media-asset-service'
 import { createScopedLogger } from '../../logger'
 import type { CacheProvider } from '../org-cache-provider'
 

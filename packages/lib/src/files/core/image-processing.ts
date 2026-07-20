@@ -1,5 +1,6 @@
 // packages/lib/src/files/core/image-processing.ts
 
+import { createRequire } from 'node:module'
 import { fileTypeFromBuffer } from 'file-type'
 import { createScopedLogger } from '../../logger'
 import type { PresetKey, ProcessedThumbnail } from './thumbnail-types'
@@ -126,7 +127,15 @@ async function rasterizeSvgToPng(buffer: Buffer): Promise<Buffer> {
     throw new UnsupportedImageError('SVG had no renderable content after sanitization')
   }
 
-  const { Resvg } = await import('@resvg/resvg-js')
+  // Bundler-opaque load: Turbopack can't place resvg's native .node binding in
+  // ESM chunks, and externalizing it via serverExternalPackages trips a
+  // separate Turbopack bug. The joined specifier keeps the require invisible
+  // to static analysis (tsdown AND Turbopack), which also hides it from file
+  // tracing — the app Dockerfiles copy the package into the runtime image.
+  const nodeRequire = createRequire(import.meta.url)
+  const { Resvg } = nodeRequire(
+    ['@resvg', 'resvg-js'].join('/')
+  ) as typeof import('@resvg/resvg-js')
 
   // Probe intrinsic size so we can constrain the larger side (keeps aspect
   // ratio and prevents an extreme viewBox from blowing up the raster).

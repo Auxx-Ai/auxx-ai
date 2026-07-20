@@ -51,6 +51,11 @@ RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
   NEXT_TELEMETRY_DISABLED=1 \
   pnpm turbo build --filter="${PROJECT}..."
 
+# resvg is loaded via a bundler-opaque require (packages/lib image-processing.ts),
+# so Next's file tracing can't see it. Stage the resolved packages (JS wrapper +
+# native platform binding) BEFORE prune --no-optional strips the binding.
+RUN mkdir -p /resvg && cp -RL /app/node_modules/.pnpm/@resvg+resvg-js@*/node_modules/@resvg /resvg/@resvg
+
 # Prune dev dependencies
 RUN --mount=type=cache,id=pnpm,target=/pnpm/store CI=true pnpm prune --prod --no-optional --ignore-scripts
 
@@ -76,6 +81,9 @@ RUN chown nextjs:nodejs ${PROJECT_PATH}/.next
 # Copy standalone build
 COPY --from=builder --chown=nextjs:nodejs /app/${PROJECT_PATH}/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/${PROJECT_PATH}/.next/static ./${PROJECT_PATH}/.next/static
+
+# resvg packages staged in the builder (untraceable by Next, see above)
+COPY --from=builder --chown=nextjs:nodejs /resvg/@resvg ./node_modules/@resvg
 
 # Copy package dependencies if standalone doesn't include them
 COPY --from=builder --chown=nextjs:nodejs /app/packages ./packages

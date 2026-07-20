@@ -17,6 +17,7 @@
     "@auxx/lib": "workspace:*",
     "@auxx/redis": "workspace:*",
     "@auxx/ui": "workspace:*",
+    "@resvg/resvg-js": "catalog:",
     "drizzle-orm": "catalog:",
     "imapflow": "^1.2.13",
     "lucide-react": "catalog:",
