@@ -48,7 +48,10 @@ concurrency:
 jobs:
   build-and-publish:
     name: ${{ matrix.name }}
-    runs-on: ubuntu-latest
+    # web compiles most of the monorepo through Turbopack — it alone gets a paid
+    # 8-core larger runner (billed even on public repos); everything else stays on
+    # the free standard runner. See plans/docker/web-image-build-speed.md.
+    runs-on: ${{ matrix.runner || 'ubuntu-latest' }}
     strategy:
       fail-fast: false
       matrix:
@@ -56,6 +59,7 @@ jobs:
           - name: web
             file: apps/web/Dockerfile
             image: ghcr.io/auxx-ai/web
+            runner: ubuntu-8-core
           - name: api
             file: apps/api/Dockerfile
             image: ghcr.io/auxx-ai/api

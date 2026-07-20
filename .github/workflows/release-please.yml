@@ -29,7 +29,9 @@ jobs:
     name: Docker ${{ matrix.name }}
     needs: release-please
     if: ${{ needs.release-please.outputs.release_created == 'true' }}
-    runs-on: ubuntu-latest
+    # web alone gets the paid 8-core larger runner; see
+    # plans/docker/web-image-build-speed.md.
+    runs-on: ${{ matrix.runner || 'ubuntu-latest' }}
     strategy:
       fail-fast: false
       matrix:
@@ -37,6 +39,7 @@ jobs:
           - name: web
             file: apps/web/Dockerfile
             image: ghcr.io/auxx-ai/web
+            runner: ubuntu-8-core
           - name: api
             file: apps/api/Dockerfile
             image: ghcr.io/auxx-ai/api
