@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.186](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.185...auxx-v0.1.186) (2026-07-20)
+
+
+### Bug Fixes
+
+* google oauth scopes, oauth popup lifecycle, ci build tuning, per-page canonicals ([#1224](https://github.com/Auxx-Ai/auxx-ai/issues/1224)) ([7f0e4ed](https://github.com/Auxx-Ai/auxx-ai/commit/7f0e4ed67c5adbb877f689afd192c4c05b111e01))
+* migration 035 dropped-column ref, entity apiSlug collisions, dompurify dedupe ([#1226](https://github.com/Auxx-Ai/auxx-ai/issues/1226)) ([e8a830f](https://github.com/Auxx-Ai/auxx-ai/commit/e8a830f5227591b5326e478fee298871721e2935))
+
 ## [0.1.185](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.184...auxx-v0.1.185) (2026-07-20)
 
 
