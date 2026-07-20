@@ -7,6 +7,7 @@ import FooterSection from '../_components/main/footer-section'
 import Header from '../_components/main/header'
 
 export const metadata: Metadata = {
+  alternates: { canonical: '/what-is-auxx-ai' },
   title: `What is Auxx.ai? | ${config.shortName}`,
   description: `${config.shortName} is an open-source, AI-powered customer support platform built for Shopify businesses. It connects email, live chat, and Shopify data to automate ticket resolution and streamline support workflows.`,
 }

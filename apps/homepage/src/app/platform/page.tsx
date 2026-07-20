@@ -14,6 +14,7 @@ import { IntegrationsAndApiSection } from './_components/integrations-and-api-se
 import { TestimonialsAndProofSection } from './_components/testimonials-and-proof-section'
 
 export const metadata: Metadata = {
+  alternates: { canonical: '/platform' },
   title: `Platform Overview | ${config.shortName}`,
   description: `Explore ${config.shortName}'s AI platform—shared inbox, automation builder, and analytics that help ecommerce teams deliver five-star support at scale.`,
 }

@@ -14,6 +14,7 @@ import SmallBusinessHero from './_components/small-business-hero'
 import TestimonialsSection from './_components/testimonials'
 
 export const metadata: Metadata = {
+  alternates: { canonical: '/solutions/small-business' },
   title: `Small Business Automation | ${config.shortName}`,
   description: `${config.shortName} equips lean teams with AI-powered support, proactive Shopify insights, and automation that keeps response times fast without growing headcount.`,
 }

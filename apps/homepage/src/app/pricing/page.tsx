@@ -9,6 +9,7 @@ import PlansSection from '../_components/sections/plans-section'
 import PricingSection from '../_components/sections/pricing-section'
 
 export const metadata: Metadata = {
+  alternates: { canonical: '/pricing' },
   title: `Pricing | ${config.shortName}`,
   description: `Choose a ${config.shortName} plan that scales with your support volume, from AI-assisted agents to fully automated Shopify customer care with transparent ROI benchmarks.`,
 }

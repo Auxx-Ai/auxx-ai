@@ -58,9 +58,6 @@ export const metadata: Metadata = {
       'Documentation, guides, and API reference for Auxx.ai — AI-powered email support for Shopify businesses',
     creator: '@auxxlift',
   },
-  alternates: {
-    canonical: 'https://docs.auxx.ai',
-  },
 }
 
 export default function Layout({ children }: { children: React.ReactNode }) {

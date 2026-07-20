@@ -20,6 +20,7 @@ import BuildDashboardsSection from './platform/reporting/_components/build-dashb
 import WorkflowContent from './platform/workflow/_components/workflow-content'
 
 export const metadata: Metadata = {
+  alternates: { canonical: '/' },
   title: `AI Customer Support Platform | ${config.shortName}`,
   description: `Scale delightful support with ${config.shortName}'s AI-powered inbox, instant Shopify insights, and automated workflows that convert every customer interaction into revenue.`,
 }

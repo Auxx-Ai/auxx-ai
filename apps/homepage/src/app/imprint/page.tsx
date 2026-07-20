@@ -7,6 +7,7 @@ import Header from '../_components/main/header'
 
 // metadata configures the imprint page title and description for search engines and social previews.
 export const metadata: Metadata = {
+  alternates: { canonical: '/imprint' },
   title: `Imprint | ${config.shortName}`,
   description: `${config.shortName} legal disclosure outlining company details, contact information, and statutory notices in accordance with § 5 TMG.`,
 }

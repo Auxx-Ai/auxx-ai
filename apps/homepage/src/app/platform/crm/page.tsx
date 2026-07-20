@@ -11,6 +11,7 @@ import CustomerProfilesSection from './_components/customer-profiles-section'
 import HowItWorksSection from './_components/how-it-works-section'
 
 export const metadata: Metadata = {
+  alternates: { canonical: '/platform/crm' },
   title: `AI-Powered CRM | ${config.shortName}`,
   description: `Centralize customer history, automate follow-ups, and surface revenue opportunities with ${config.shortName}'s CRM built for modern support teams.`,
 }

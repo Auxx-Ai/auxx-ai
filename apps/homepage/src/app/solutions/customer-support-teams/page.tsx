@@ -13,6 +13,7 @@ import ShopifyHero from './_components/support-hero'
 import TestimonialsSection from './_components/testimonials'
 
 export const metadata: Metadata = {
+  alternates: { canonical: '/solutions/customer-support-teams' },
   title: `Customer Support Teams | ${config.shortName}`,
   description: `Empower customer support teams with ${config.shortName}'s AI workflows, unified inbox, and Shopify automations that shrink resolution times and lift CSAT scores.`,
 }

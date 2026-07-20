@@ -6,6 +6,7 @@ import FooterSection from '../_components/main/footer-section'
 import Header from '../_components/main/header'
 
 export const metadata: Metadata = {
+  alternates: { canonical: '/terms-of-service' },
   title: `Terms of Service | ${config.shortName}`,
   description: `Review the ${config.shortName} Terms of Service covering subscriptions, AI-generated output, acceptable use, liability, and dispute resolution.`,
 }

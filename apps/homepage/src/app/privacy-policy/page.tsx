@@ -6,6 +6,7 @@ import FooterSection from '../_components/main/footer-section'
 import Header from '../_components/main/header'
 
 export const metadata: Metadata = {
+  alternates: { canonical: '/privacy-policy' },
   title: `Privacy Policy | ${config.shortName}`,
   description: `Understand how ${config.shortName} protects customer data, email content, and Shopify information with enterprise-grade security and compliance.`,
 }

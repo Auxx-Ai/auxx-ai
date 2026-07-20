@@ -14,6 +14,7 @@ import KbEditorSection from './_components/kb-editor-section'
 import KnowledgeBaseSection from './_components/knowledge-base-section'
 
 export const metadata: Metadata = {
+  alternates: { canonical: '/platform/data-model' },
   title: `Data Model — Knowledge Base & Datasets | ${config.shortName}`,
   description: `Author articles in the ${config.shortName} knowledge base or upload your own PDFs and docs as datasets. Both feed Kopilot and AI replies with grounded, cited answers.`,
 }

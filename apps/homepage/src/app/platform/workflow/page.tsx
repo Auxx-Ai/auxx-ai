@@ -11,6 +11,7 @@ import WorkflowContent from './_components/workflow-content'
 import WorkflowHero from './_components/workflow-hero'
 
 export const metadata: Metadata = {
+  alternates: { canonical: '/platform/workflow' },
   title: `Workflow Automation | ${config.shortName}`,
   description: `Build drag-and-drop automations with ${config.shortName} to triage tickets, trigger order actions, and scale customer support without sacrificing quality.`,
 }

@@ -68,9 +68,6 @@ export const metadata: Metadata = {
     creator: '@auxxlift',
   },
   manifest: '/site.webmanifest',
-  alternates: {
-    canonical: config.urls.homepage,
-  },
 }
 
 function OrganizationJsonLd() {

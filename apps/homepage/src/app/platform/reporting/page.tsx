@@ -15,6 +15,7 @@ import ReportingFinalCta from './_components/reporting-final-cta'
 import ReportingHero from './_components/reporting-hero'
 
 export const metadata: Metadata = {
+  alternates: { canonical: '/platform/reporting' },
   title: `Reporting & Dashboards | ${config.shortName}`,
   description: `Build live dashboards over every ticket, contact, and conversation. ${config.shortName} turns your support and CRM data into charts, KPIs, and shareable reports.`,
 }

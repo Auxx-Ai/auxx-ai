@@ -9,6 +9,7 @@ import KBHero from './_components/kb-hero'
 import PublishArticle from './_components/publish-article'
 
 export const metadata: Metadata = {
+  alternates: { canonical: '/platform/knowledge-base' },
   title: `Knowledge Base Builder | ${config.shortName}`,
   description: `Launch self-service libraries with ${config.shortName}, repurpose support answers into SEO-ready articles, and keep help content synced automatically.`,
 }
