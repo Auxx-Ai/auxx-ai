@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.185](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.184...auxx-v0.1.185) (2026-07-20)
+
+
+### Bug Fixes
+
+* **database:** inline usersetting rekey backfill + web 8-core docker runner ([#1222](https://github.com/Auxx-Ai/auxx-ai/issues/1222)) ([db75597](https://github.com/Auxx-Ai/auxx-ai/commit/db75597edff36eced13ff883936295c3c377e1d2))
+
 ## [0.1.184](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.183...auxx-v0.1.184) (2026-07-20)
 
 
