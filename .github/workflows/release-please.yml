@@ -29,7 +29,7 @@ jobs:
     name: Docker ${{ matrix.name }}
     needs: release-please
     if: ${{ needs.release-please.outputs.release_created == 'true' }}
-    # web alone gets the paid 8-core larger runner; see
+    # web alone gets the paid 16-core larger runner; see
     # plans/docker/web-image-build-speed.md.
     runs-on: ${{ matrix.runner || 'ubuntu-latest' }}
     strategy:
@@ -39,7 +39,7 @@ jobs:
           - name: web
             file: apps/web/Dockerfile
             image: ghcr.io/auxx-ai/web
-            runner: ubuntu-8-core
+            runner: ubuntu-16-core
           - name: api
             file: apps/api/Dockerfile
             image: ghcr.io/auxx-ai/api
@@ -94,7 +94,6 @@ jobs:
           context: .
           file: ${{ matrix.file }}
           platforms: linux/amd64
-          pull: true
           push: true
           tags: |
             ${{ matrix.image }}:latest
@@ -106,8 +105,11 @@ jobs:
             BUILD_TIME=${{ steps.build_time.outputs.build_time }}
             POSTHOG_KEY=${{ vars.POSTHOG_KEY }}
             POSTHOG_HOST=${{ vars.POSTHOG_HOST }}
+          # mode=min caches only final-stage layers — the mode=max multi-GB
+          # buildcache push was the job's network tail; the Next compile was
+          # never cacheable anyway. See plans/docker/web-image-build-speed.md.
           cache-from: type=registry,ref=${{ matrix.image }}:buildcache
-          cache-to: type=registry,ref=${{ matrix.image }}:buildcache,mode=max
+          cache-to: type=registry,ref=${{ matrix.image }}:buildcache,mode=min
 
   sst-platform-deploy:
     needs: release-please

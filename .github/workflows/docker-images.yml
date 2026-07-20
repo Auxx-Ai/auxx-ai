@@ -48,10 +48,10 @@ concurrency:
 jobs:
   build-and-publish:
     name: ${{ matrix.name }}
-    # web compiles most of the monorepo through Turbopack — it alone gets a paid
-    # 8-core larger runner (billed even on public repos); everything else stays on
-    # the free standard runner. See plans/docker/web-image-build-speed.md.
-    runs-on: ${{ matrix.runner || 'ubuntu-latest' }}
+    # PR builds are async can-it-build checks — everything stays on free standard
+    # runners here. Only the release build (release-please.yml) pays for the
+    # 16-core runner on web. See plans/docker/web-image-build-speed.md.
+    runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
@@ -59,7 +59,6 @@ jobs:
           - name: web
             file: apps/web/Dockerfile
             image: ghcr.io/auxx-ai/web
-            runner: ubuntu-8-core
           - name: api
             file: apps/api/Dockerfile
             image: ghcr.io/auxx-ai/api
@@ -169,7 +168,6 @@ jobs:
           context: .
           file: ${{ matrix.file }}
           platforms: linux/amd64
-          pull: true
           push: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.publish == 'true' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
@@ -179,5 +177,8 @@ jobs:
             BUILD_TIME=${{ steps.build_time.outputs.build_time }}
             POSTHOG_KEY=${{ vars.POSTHOG_KEY }}
             POSTHOG_HOST=${{ vars.POSTHOG_HOST }}
+          # mode=min caches only final-stage layers — the mode=max multi-GB
+          # buildcache push was the job's network tail; the Next compile was
+          # never cacheable anyway. See plans/docker/web-image-build-speed.md.
           cache-from: type=registry,ref=${{ matrix.image }}:buildcache
-          cache-to: type=registry,ref=${{ matrix.image }}:buildcache,mode=max
+          cache-to: type=registry,ref=${{ matrix.image }}:buildcache,mode=min
