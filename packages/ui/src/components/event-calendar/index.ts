@@ -22,6 +22,8 @@ export {
   TimelineRailWidthMax,
   TimelineRailWidthMin,
   WeekCellsHeight,
+  WeekCellsHeightMax,
+  WeekCellsHeightMin,
 } from './constants'
 export { CurrentTimeGutterLabel, CurrentTimeLine } from './current-time-line'
 export { DayView, DayViewHeader } from './day-view'

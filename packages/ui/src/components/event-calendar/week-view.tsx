@@ -63,6 +63,8 @@ interface WeekViewProps<T extends EventCalendarItem = EventCalendarItem> {
   onDateChange?: (date: Date) => void
   /** Fires with the rendered (visible + overscan) day window — consumers fetch this. */
   onVisibleRangeChange?: (from: Date, to: Date) => void
+  /** Px-per-hour of the timed grid — the zoomable vertical scale. Defaults to `WeekCellsHeight`. */
+  hourHeight?: number
 }
 
 /**
@@ -93,6 +95,7 @@ export function WeekView<T extends EventCalendarItem = EventCalendarItem>({
   selectedEventId,
   onDateChange,
   onVisibleRangeChange,
+  hourHeight = WeekCellsHeight,
 }: WeekViewProps<T>) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const gutterRef = useRef<HTMLDivElement>(null)
@@ -279,7 +282,7 @@ export function WeekView<T extends EventCalendarItem = EventCalendarItem>({
           className='relative'
           style={{
             width: gutterWidth + totalSize,
-            minHeight: headerHeight + hours.length * WeekCellsHeight,
+            minHeight: headerHeight + hours.length * hourHeight,
           }}>
           {/* Sticky header strip: day labels + always-visible all-day lane. */}
           <div
@@ -419,6 +422,7 @@ export function WeekView<T extends EventCalendarItem = EventCalendarItem>({
               renderEvent={renderEvent}
               selectedEventId={selectedEventId}
               currentTimePosition={currentTimePosition}
+              hourHeight={hourHeight}
             />
           ))}
         </div>

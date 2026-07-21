@@ -7,7 +7,7 @@ import { isSameDay, isToday } from 'date-fns'
 import { memo } from 'react'
 
 import { BackgroundEventsLayer } from './background-events'
-import { StartHour, WeekCellsHeight } from './constants'
+import { StartHour } from './constants'
 import { CurrentTimeLine } from './current-time-line'
 import { DraggableEvent } from './draggable-event'
 import { DropPreview } from './drop-preview'
@@ -39,6 +39,8 @@ interface DayResourceGroupProps<T extends EventCalendarItem = EventCalendarItem>
   selectedEventId?: string | null
   /** Current-time line position (% of the hour grid) — shared math, rendered only when `isToday(day)`. */
   currentTimePosition: number
+  /** Px-per-hour of the timed grid — the zoomable vertical scale (scroll-stable; changes only on zoom). */
+  hourHeight: number
 }
 
 /**
@@ -71,6 +73,7 @@ function DayResourceGroupInner<T extends EventCalendarItem = EventCalendarItem>(
   renderEvent,
   selectedEventId,
   currentTimePosition,
+  hourHeight,
 }: DayResourceGroupProps<T>) {
   const day = dayAt(index)
   const today = isToday(day)
@@ -96,7 +99,7 @@ function DayResourceGroupInner<T extends EventCalendarItem = EventCalendarItem>(
         top,
         left: 0,
         width: dayWidth,
-        height: hours.length * WeekCellsHeight,
+        height: hours.length * hourHeight,
         transform: `translateX(${x}px)`,
         display: 'grid',
         gridTemplateColumns: `repeat(${resources.length}, minmax(0, 1fr))`,
@@ -105,7 +108,7 @@ function DayResourceGroupInner<T extends EventCalendarItem = EventCalendarItem>(
       {resources.map((resource) => {
         const resourceEvents = dayEvents.filter((event) => event.resourceId === resource.id)
         const positioned = positionEventsForDay(resourceEvents, day, {
-          cellHeight: WeekCellsHeight,
+          cellHeight: hourHeight,
           startHour: StartHour,
         })
         return (
@@ -114,7 +117,7 @@ function DayResourceGroupInner<T extends EventCalendarItem = EventCalendarItem>(
               events={backgroundEvents}
               day={day}
               resourceId={resource.id}
-              cellHeight={WeekCellsHeight}
+              cellHeight={hourHeight}
             />
 
             {positioned.map((p) => (
@@ -137,6 +140,7 @@ function DayResourceGroupInner<T extends EventCalendarItem = EventCalendarItem>(
                     showTime
                     height={p.height}
                     onResize={onEventResize}
+                    cellSize={hourHeight}
                     renderEvent={renderEvent}
                     isSelected={p.event.id === selectedEventId}
                   />
@@ -144,7 +148,7 @@ function DayResourceGroupInner<T extends EventCalendarItem = EventCalendarItem>(
               </div>
             ))}
 
-            <DropPreview day={day} resourceId={resource.id} />
+            <DropPreview day={day} resourceId={resource.id} cellHeight={hourHeight} />
 
             {today && <CurrentTimeLine position={currentTimePosition} />}
 

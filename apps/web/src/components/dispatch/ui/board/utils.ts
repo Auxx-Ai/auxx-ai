@@ -244,7 +244,8 @@ export function offHoursBackgroundEvents(
     start.setHours(0, startMin, 0, 0)
     const end = new Date(date)
     end.setHours(0, endMin, 0, 0)
-    events.push({ resourceId, date, start, end, className: 'bg-muted/60' })
+    // Match the month view's off-day tint — `muted`-based tints disappear on white.
+    events.push({ resourceId, date, start, end, className: 'bg-muted-foreground/6' })
   }
 
   for (const range of sorted) {

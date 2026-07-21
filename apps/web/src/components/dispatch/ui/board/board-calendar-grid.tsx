@@ -167,6 +167,9 @@ export function BoardCalendarGrid({
   const timelineRailWidth = useTimelineViewStore((s) => s.railWidth)
   const setTimelineHourWidth = useTimelineViewStore((s) => s.setHourWidth)
   const setTimelineRailWidth = useTimelineViewStore((s) => s.setRailWidth)
+  // Vertical week/day grid zoom — same per-device persistence, committed by ctrl+wheel/pinch.
+  const gridHourHeight = useTimelineViewStore((s) => s.gridHourHeight)
+  const setGridHourHeight = useTimelineViewStore((s) => s.setGridHourHeight)
 
   const calendarResources: CalendarResource[] = useMemo(
     () =>
@@ -196,6 +199,8 @@ export function BoardCalendarGrid({
       onTimelineHourWidthChange={setTimelineHourWidth}
       timelineRailWidth={timelineRailWidth}
       onTimelineRailWidthChange={setTimelineRailWidth}
+      gridHourHeight={gridHourHeight}
+      onGridHourHeightChange={setGridHourHeight}
       backgroundEvents={backgroundEvents}
       events={events}
       renderEvent={renderEvent}
