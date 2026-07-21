@@ -15,6 +15,12 @@ export {
   MinEventDurationMinutes,
   SnapMinutes,
   StartHour,
+  TimelineHourWidth,
+  TimelineHourWidthMax,
+  TimelineHourWidthMin,
+  TimelineRailWidth,
+  TimelineRailWidthMax,
+  TimelineRailWidthMin,
   WeekCellsHeight,
 } from './constants'
 export { CurrentTimeGutterLabel, CurrentTimeLine } from './current-time-line'
@@ -52,6 +58,7 @@ export { MonthView } from './month-view'
 // Positioning util (day/week/resource share this — see position-events.ts)
 export { type PositionedEvent, positionEventsForDay } from './position-events'
 export { ResourceTimelineView } from './resource-timeline-view'
+export { TimeRangePill } from './time-range-pill'
 // Types
 export type {
   BackgroundEvent,

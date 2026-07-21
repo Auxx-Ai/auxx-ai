@@ -63,11 +63,19 @@ export const SnapMinutes = 15
 export const CurrentTimeLineClass = 'bg-rose-600 dark:bg-rose-500'
 export const CurrentTimeLabelClass = 'bg-rose-600 text-white dark:bg-rose-500'
 
-/** Pixels per hour on the horizontal timeline view's x-axis (plan 33). */
+/** Default pixels per hour on the horizontal timeline view's x-axis (plan 33; zoomable, plan 35). */
 export const TimelineHourWidth = 96
+
+/** Zoom clamps (px per hour) for the horizontal timeline's scale gestures (plan 35). */
+export const TimelineHourWidthMin = 40
+export const TimelineHourWidthMax = 240
 
 /** Height (px) of one event lane within a timeline worker row (plan 33). */
 export const TimelineLaneHeight = 28
 
-/** Width (px) of the sticky-left worker rail in the horizontal timeline view (plan 33). */
+/** Default width (px) of the sticky-left worker rail in the horizontal timeline view (plan 33). */
 export const TimelineRailWidth = 160
+
+/** Drag-resize clamps (px) for the timeline's worker rail (plan 35). */
+export const TimelineRailWidthMin = 120
+export const TimelineRailWidthMax = 320

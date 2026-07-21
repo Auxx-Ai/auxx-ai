@@ -4,7 +4,7 @@
 
 import { cn } from '@auxx/ui/lib/utils'
 import type { DraggableAttributes, SyntheticListenerMap } from '@dnd-kit/core'
-import { differenceInMinutes, format, getMinutes } from 'date-fns'
+import { differenceInMinutes } from 'date-fns'
 import { useMemo } from 'react'
 import type { CalendarView, EventCalendarItem, RenderEvent } from './types'
 import {
@@ -14,12 +14,9 @@ import {
   eventTintBgClass,
   eventTintBgStrongClass,
   eventTintTextClass,
+  formatTimeWithOptionalMinutes,
   getBorderRadiusClasses,
 } from './utils'
-
-const formatTimeWithOptionalMinutes = (date: Date) => {
-  return format(date, getMinutes(date) === 0 ? 'ha' : 'h:mma').toLowerCase()
-}
 
 interface EventWrapperProps {
   event: EventCalendarItem

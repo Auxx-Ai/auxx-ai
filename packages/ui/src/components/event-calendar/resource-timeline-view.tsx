@@ -30,6 +30,7 @@ import { DayResourceGroup } from './day-resource-group'
 import { EventItem } from './event-item'
 import { useCurrentTimeIndicator } from './hooks/use-current-time-indicator'
 import { HourGutter } from './hour-gutter'
+import { StickyRailShadow } from './sticky-rail-shadow'
 import type { BackgroundEvent, CalendarResource, EventCalendarItem, RenderEvent } from './types'
 import { getAllEventsForDay, isMultiDayEvent } from './utils'
 
@@ -320,7 +321,7 @@ export function ResourceTimelineView<T extends EventCalendarItem = EventCalendar
             style={{ height: headerHeight }}>
             {/* Corner — sticky on both axes: pinned left within the (already sticky-top) strip. */}
             <div
-              className='bg-background border-border/70 sticky left-0 z-10 flex flex-col border-r'
+              className='bg-background sticky left-0 z-10 flex flex-col'
               style={{ width: gutterWidth, height: headerHeight }}>
               <div
                 className='text-muted-foreground/70 flex items-center justify-center text-sm'
@@ -332,6 +333,7 @@ export function ResourceTimelineView<T extends EventCalendarItem = EventCalendar
                   All day
                 </span>
               </div>
+              <StickyRailShadow />
             </div>
 
             {/* Full-width hairline between the worker sub-headers and the all-day lane. */}
@@ -466,6 +468,7 @@ export function ResourceTimelineView<T extends EventCalendarItem = EventCalendar
                   : undefined
               }
             />
+            <StickyRailShadow />
           </div>
 
           {virtualItems.map((v) => (

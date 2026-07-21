@@ -12,6 +12,7 @@ import {
 } from '@auxx/ui/components/event-calendar'
 import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { useDispatchSidebarStore } from '../../stores/dispatch-sidebar-store'
+import { useTimelineViewStore } from '../../stores/timeline-view-store'
 import type { ExistingVisitForOverlap } from '../schedule-popover'
 import type { useBoardMutations } from './hooks/use-board-mutations'
 import { useTimelineHourWindow } from './hooks/use-timeline-hour-window'
@@ -161,6 +162,12 @@ export function BoardCalendarGrid({
 
   const hourWindow = useTimelineHourWindow()
 
+  // Per-device timeline zoom + rail width (plan 35) — persisted, gesture commits write back.
+  const timelineHourWidth = useTimelineViewStore((s) => s.hourWidth)
+  const timelineRailWidth = useTimelineViewStore((s) => s.railWidth)
+  const setTimelineHourWidth = useTimelineViewStore((s) => s.setHourWidth)
+  const setTimelineRailWidth = useTimelineViewStore((s) => s.setRailWidth)
+
   const calendarResources: CalendarResource[] = useMemo(
     () =>
       resources.map((r) => ({
@@ -185,6 +192,10 @@ export function BoardCalendarGrid({
       weekStartsOn={weekStartsOn}
       resources={view === 'day' || view === 'timeline' ? calendarResources : undefined}
       hourWindow={hourWindow}
+      timelineHourWidth={timelineHourWidth}
+      onTimelineHourWidthChange={setTimelineHourWidth}
+      timelineRailWidth={timelineRailWidth}
+      onTimelineRailWidthChange={setTimelineRailWidth}
       backgroundEvents={backgroundEvents}
       events={events}
       renderEvent={renderEvent}

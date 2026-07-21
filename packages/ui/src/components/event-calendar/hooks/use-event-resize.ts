@@ -44,8 +44,46 @@ export interface UseEventResizeResult {
    * the chip grows/shrinks. Always 0 while dragging the end handle (its start edge never moves).
    */
   previewOffset: number
+  /**
+   * The snapped/clamped start–end a release right now would commit — computed with the SAME math
+   * as `finishResize`, so a time pill rendered from these can never disagree with the write.
+   * `null` while idle.
+   */
+  previewTimes: { start: Date; end: Date } | null
+  /** Which edge the active gesture is dragging — `null` while idle. Anchors the time pill. */
+  resizeEdge: ResizeEdge | null
   /** Returns the pointer handlers for one edge; the handler captures that edge on pointerdown. */
   getResizeHandleProps: (edge: ResizeEdge) => ResizeHandleProps
+}
+
+/**
+ * The single source of the resize commit math (15-min snap + min-duration clamp), shared by the
+ * live `previewTimes` and `finishResize` so the pill always shows exactly what release writes.
+ */
+function computeResizeTimes(
+  event: EventCalendarItem,
+  edge: ResizeEdge,
+  deltaMinutes: number
+): { start: Date; end: Date } {
+  const start = new Date(event.start)
+  const end = new Date(event.end)
+  const duration = differenceInMinutes(end, start)
+
+  if (edge === 'end') {
+    const newDuration = Math.max(
+      MinEventDurationMinutes,
+      Math.round((duration + deltaMinutes) / SnapMinutes) * SnapMinutes
+    )
+    return { start, end: addMinutes(start, newDuration) }
+  }
+
+  const snappedDelta = Math.round(deltaMinutes / SnapMinutes) * SnapMinutes
+  // Clamp so the remaining duration never drops below the minimum: newStart can be no later
+  // than `end - MinEventDurationMinutes`.
+  const maxStart = addMinutes(end, -MinEventDurationMinutes)
+  let newStart = addMinutes(start, snappedDelta)
+  if (newStart > maxStart) newStart = maxStart
+  return { start: newStart, end }
 }
 
 /**
@@ -70,6 +108,8 @@ export function useEventResize<T extends EventCalendarItem>({
   const [isResizing, setIsResizing] = useState(false)
   const [previewSize, setPreviewSize] = useState<number | null>(null)
   const [previewOffset, setPreviewOffset] = useState(0)
+  const [previewTimes, setPreviewTimes] = useState<{ start: Date; end: Date } | null>(null)
+  const [resizeEdge, setResizeEdge] = useState<ResizeEdge | null>(null)
   const startRef = useRef<{ pointerPos: number; startSize: number; edge: ResizeEdge } | null>(null)
 
   const pixelsPerMinute = cellSize / 60
@@ -91,6 +131,8 @@ export function useEventResize<T extends EventCalendarItem>({
       setIsResizing(true)
       setPreviewSize(startSize)
       setPreviewOffset(0)
+      setPreviewTimes({ start: new Date(event.start), end: new Date(event.end) })
+      setResizeEdge(edge)
     },
     [event.start, event.end, pixelsPerMinute, readPointerPos]
   )
@@ -111,8 +153,17 @@ export function useEventResize<T extends EventCalendarItem>({
         setPreviewSize(nextSize)
         setPreviewOffset(startSize - nextSize)
       }
+      const next = computeResizeTimes(event, edge, delta / pixelsPerMinute)
+      // Snapped times only move at 15-min steps — skip the state write between steps.
+      setPreviewTimes((prev) =>
+        prev &&
+        prev.start.getTime() === next.start.getTime() &&
+        prev.end.getTime() === next.end.getTime()
+          ? prev
+          : next
+      )
     },
-    [minSize, readPointerPos]
+    [minSize, readPointerPos, event, pixelsPerMinute]
   )
 
   const finishResize = useCallback(
@@ -121,35 +172,19 @@ export function useEventResize<T extends EventCalendarItem>({
       e.stopPropagation()
       const { pointerPos, edge } = startRef.current
       const delta = readPointerPos(e) - pointerPos
-      const deltaMinutes = delta / pixelsPerMinute
-      const start = new Date(event.start)
-      const end = new Date(event.end)
-      const duration = differenceInMinutes(end, start)
 
       startRef.current = null
       setIsResizing(false)
       setPreviewSize(null)
       setPreviewOffset(0)
+      setPreviewTimes(null)
+      setResizeEdge(null)
 
-      if (edge === 'end') {
-        const newDuration = Math.max(
-          MinEventDurationMinutes,
-          Math.round((duration + deltaMinutes) / SnapMinutes) * SnapMinutes
-        )
-        if (newDuration !== duration) {
-          onResize?.(event, start, addMinutes(start, newDuration))
-        }
-      } else {
-        const snappedDelta = Math.round(deltaMinutes / SnapMinutes) * SnapMinutes
-        // Clamp so the remaining duration never drops below the minimum: newStart can be no
-        // later than `end - MinEventDurationMinutes`.
-        const maxStart = addMinutes(end, -MinEventDurationMinutes)
-        let newStart = addMinutes(start, snappedDelta)
-        if (newStart > maxStart) newStart = maxStart
-        if (newStart.getTime() !== start.getTime()) {
-          onResize?.(event, newStart, end)
-        }
-      }
+      const { start, end } = computeResizeTimes(event, edge, delta / pixelsPerMinute)
+      const changed =
+        start.getTime() !== new Date(event.start).getTime() ||
+        end.getTime() !== new Date(event.end).getTime()
+      if (changed) onResize?.(event, start, end)
     },
     [event, pixelsPerMinute, onResize, readPointerPos]
   )
@@ -161,6 +196,8 @@ export function useEventResize<T extends EventCalendarItem>({
     setIsResizing(false)
     setPreviewSize(null)
     setPreviewOffset(0)
+    setPreviewTimes(null)
+    setResizeEdge(null)
   }, [])
 
   const getResizeHandleProps = useCallback(
@@ -177,6 +214,8 @@ export function useEventResize<T extends EventCalendarItem>({
     isResizing,
     previewSize,
     previewOffset,
+    previewTimes,
+    resizeEdge,
     getResizeHandleProps,
   }
 }

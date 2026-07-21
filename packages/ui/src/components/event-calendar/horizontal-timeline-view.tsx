@@ -14,7 +14,15 @@ import {
   isToday,
   startOfDay,
 } from 'date-fns'
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import {
+  type CSSProperties,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 
 import { assignLanes } from './assign-lanes'
 import {
@@ -22,10 +30,15 @@ import {
   StreamEndYear,
   StreamStartYear,
   TimelineHourWidth,
+  TimelineHourWidthMax,
+  TimelineHourWidthMin,
   TimelineLaneHeight,
   TimelineRailWidth,
+  TimelineRailWidthMax,
+  TimelineRailWidthMin,
 } from './constants'
-import { TimelineDaySection } from './timeline-day-section'
+import { StickyRailShadow } from './sticky-rail-shadow'
+import { type DayLaneAssignment, TimelineDaySection } from './timeline-day-section'
 import type {
   BackgroundEvent,
   CalendarResource,
@@ -44,8 +57,41 @@ const HourTickHeight = 24
 /** Extra padding (px) added on top of `maxLanes * TimelineLaneHeight` when sizing a worker row. */
 const RowPadding = 8
 
+/** Below this px-per-hour, hour-tick labels thin to every 2nd hour (borders stay hourly). */
+const HourLabelThinningWidth = 56
+
+/** Multiplicative zoom gain per wheel `deltaY` unit (ctrl+wheel / trackpad pinch). */
+const WheelZoomGain = 0.01
+
+/** Idle time (ms) after the last ctrl+wheel event before the zoom commits. */
+const WheelCommitDelayMs = 160
+
 /** Stable empty default — an inline `[]` would break `TimelineDaySection`'s memo every scroll frame. */
 const NoBackgroundEvents: BackgroundEvent[] = []
+
+const clampHourWidth = (px: number) =>
+  Math.min(TimelineHourWidthMax, Math.max(TimelineHourWidthMin, px))
+const clampRailWidth = (px: number) =>
+  Math.min(TimelineRailWidthMax, Math.max(TimelineRailWidthMin, px))
+
+interface ZoomGesture {
+  /** Live px-per-hour — flushed to `--tl-day-width` per move, committed to state on release. */
+  hourWidth: number
+  /** Live anchor compensation (px) — added into every day-section/header `translateX` calc so
+   * the anchor point stays put visually while `scrollLeft` stays untouched (plan 35 §5.4). */
+  comp: number
+  /** Hours-from-stream-origin of the drag anchor — fixed for a border drag, `null` for wheel
+   * (each wheel event re-derives its anchor from the pointer, drift-free). */
+  anchorH: number | null
+  startHourWidth: number
+  startClientX: number
+}
+
+interface RailGesture {
+  width: number
+  startWidth: number
+  startClientX: number
+}
 
 interface HorizontalTimelineViewProps<T extends EventCalendarItem = EventCalendarItem> {
   /** Scroll target = the literal leftmost visible day (no `startOfWeek` normalization). */
@@ -58,6 +104,14 @@ interface HorizontalTimelineViewProps<T extends EventCalendarItem = EventCalenda
   backgroundEvents?: BackgroundEvent[]
   /** Visible hour range — `dayWidth` derives from this, not from a viewport clamp. */
   hourWindow: TimelineHourWindow
+  /** Controlled px-per-hour zoom (plan 35) — clamped to [`TimelineHourWidthMin`, `TimelineHourWidthMax`].
+   * Omit for internal state. Gestures report commits via `onHourWidthChange`. */
+  hourWidth?: number
+  onHourWidthChange?: (px: number) => void
+  /** Controlled worker-rail width (plan 35) — clamped to [`TimelineRailWidthMin`, `TimelineRailWidthMax`].
+   * Omit for internal state. Drags report commits via `onRailWidthChange`. */
+  railWidth?: number
+  onRailWidthChange?: (px: number) => void
   onEventSelect: (event: T) => void
   onEventResize?: (event: T, newStart: Date, newEnd: Date) => void
   renderEvent?: RenderEvent<T>
@@ -75,12 +129,22 @@ interface HorizontalTimelineViewProps<T extends EventCalendarItem = EventCalenda
  * `ResourceTimelineView`'s architecture, just rotated 90°): the virtualizer still counts days,
  * the sizing/settle-snap/scroll-anchor machinery is lifted near-verbatim. The differences are all
  * in what a rendered "day" looks like: instead of K vertical worker sub-columns inside an hour
- * grid, each day is `windowHours × TimelineHourWidth` wide and contains K horizontal worker rows
- * whose lane stacks (see `assignLanes`) can grow taller when visits overlap.
+ * grid, each day is `windowHours × hourWidth` wide and contains K horizontal worker rows whose
+ * lane stacks (see `assignLanes`) can grow taller when visits overlap.
  *
- * `dayWidth` is window-derived (`windowHours × TimelineHourWidth`), NOT clamp-derived — the
- * sizing effect only measures how much width is available (`avail`) to decide whether a full day
- * fits (`snapEnabled`); it never shrinks `dayWidth` itself the way `ResourceTimelineView`'s hybrid
+ * **Zoom + rail resize (plan 35)**: `hourWidth` (px/hour) and `railWidth` are controlled props
+ * with gesture support — hour-border drag and ctrl+wheel (trackpad pinch) rescale time, the
+ * rail's right border drags its width. Gestures never setState per frame: all horizontal
+ * geometry hangs off three CSS variables on the scroll container (`--tl-day-width`,
+ * `--tl-rail-width`, `--tl-zoom-comp`) and day sections position themselves from their stream
+ * `index` via `calc()`, so a gesture frame is two style-property writes. `--tl-zoom-comp` is the
+ * anchor trick: instead of chasing `scrollLeft` (whose jumps would thrash the virtualizer's
+ * mount set mid-gesture), the whole content plane is translated so the grabbed border / pointer
+ * anchor stays put; release folds the compensation into one committed `scrollLeft` write.
+ *
+ * `dayWidth` is window-derived (`windowHours × hourWidth`), NOT clamp-derived — the sizing
+ * effect only measures how much width is available (`avail`) to decide whether a full day fits
+ * (`snapEnabled`); it never shrinks `dayWidth` itself the way `ResourceTimelineView`'s hybrid
  * clamp does.
  */
 export function HorizontalTimelineView<T extends EventCalendarItem = EventCalendarItem>({
@@ -90,6 +154,10 @@ export function HorizontalTimelineView<T extends EventCalendarItem = EventCalend
   weekStartsOn: _weekStartsOn,
   backgroundEvents = NoBackgroundEvents,
   hourWindow,
+  hourWidth: hourWidthProp,
+  onHourWidthChange,
+  railWidth: railWidthProp,
+  onRailWidthChange,
   onEventSelect,
   onEventResize,
   renderEvent,
@@ -101,10 +169,17 @@ export function HorizontalTimelineView<T extends EventCalendarItem = EventCalend
   const [snapEnabled, setSnapEnabled] = useState(true)
   const [viewportHeight, setViewportHeight] = useState(0)
 
+  // Controlled-or-internal zoom/rail state — web passes the persisted store values; standalone
+  // usage still gets working gestures.
+  const [internalHourWidth, setInternalHourWidth] = useState(TimelineHourWidth)
+  const [internalRailWidth, setInternalRailWidth] = useState(TimelineRailWidth)
+  const hourWidth = clampHourWidth(hourWidthProp ?? internalHourWidth)
+  const railWidth = clampRailWidth(railWidthProp ?? internalRailWidth)
+
   const windowStart = hourWindow.start
   const windowEnd = hourWindow.end
   const windowHours = Math.max(0, windowEnd - windowStart)
-  const dayWidth = Math.max(1, windowHours * TimelineHourWidth)
+  const dayWidth = Math.max(1, windowHours * hourWidth)
 
   const { epoch, dayCount } = useMemo(() => {
     const start = startOfDay(new Date(StreamStartYear, 0, 1))
@@ -119,21 +194,72 @@ export function HorizontalTimelineView<T extends EventCalendarItem = EventCalend
     [epoch, dayCount]
   )
 
+  // The virtualizer reads day size through a ref so a throttle-free `measure()` after a zoom
+  // commit sees the new width without waiting for a state-closure refresh (plan 35 §5.5).
+  const dayWidthRef = useRef(dayWidth)
+  dayWidthRef.current = dayWidth
+
   const virtualizer = useVirtualizer({
     horizontal: true,
     count: dayCount,
     getScrollElement: () => scrollRef.current,
-    estimateSize: useCallback(() => dayWidth, [dayWidth]),
+    estimateSize: useCallback(() => dayWidthRef.current, []),
     overscan: 1,
   })
 
+  // ── gesture plumbing (plan 35) ───────────────────────────────────────────
+  // Live gesture state lives in refs; committed values live in props/state. `applyCssVars` is
+  // idempotent and re-run as a layout effect on EVERY render, so an unrelated re-render
+  // mid-gesture (the 60s now-tick, a realtime event update) can never clobber gesture geometry —
+  // React writes the committed style attr, then this re-asserts the live values pre-paint.
+  const zoomGestureRef = useRef<ZoomGesture | null>(null)
+  const railGestureRef = useRef<RailGesture | null>(null)
+  const pendingScrollLeftRef = useRef<number | null>(null)
+  const wheelCommitTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+
+  // Committed geometry + commit callbacks behind refs so the stable wheel listener and
+  // timer-fired commits never read stale closures.
+  const geoRef = useRef({ hourWidth, railWidth, windowHours })
+  geoRef.current = { hourWidth, railWidth, windowHours }
+  const commitCallbacksRef = useRef({ onHourWidthChange, onRailWidthChange })
+  commitCallbacksRef.current = { onHourWidthChange, onRailWidthChange }
+
+  const applyCssVars = useCallback(() => {
+    const el = scrollRef.current
+    if (!el) return
+    const liveHourWidth = zoomGestureRef.current?.hourWidth ?? geoRef.current.hourWidth
+    const liveRailWidth = railGestureRef.current?.width ?? geoRef.current.railWidth
+    const comp = zoomGestureRef.current?.comp ?? 0
+    el.style.setProperty(
+      '--tl-day-width',
+      `${Math.max(1, geoRef.current.windowHours * liveHourWidth)}px`
+    )
+    el.style.setProperty('--tl-rail-width', `${liveRailWidth}px`)
+    el.style.setProperty('--tl-zoom-comp', `${comp}px`)
+  }, [])
+
+  // No dependency array — deliberately runs every render (see above).
+  useLayoutEffect(applyCssVars)
+
+  const commitHourWidth = useCallback((px: number) => {
+    const cb = commitCallbacksRef.current.onHourWidthChange
+    if (cb) cb(px)
+    else setInternalHourWidth(px)
+  }, [])
+
+  const commitRailWidth = useCallback((px: number) => {
+    const cb = commitCallbacksRef.current.onRailWidthChange
+    if (cb) cb(px)
+    else setInternalRailWidth(px)
+  }, [])
+
   // ── sizing: dayWidth is window-derived (see above) — this effect only measures how much width
-  // is available beside the fixed-width rail, to decide whether a full day fits (snapEnabled).
+  // is available beside the rail, to decide whether a full day fits (snapEnabled).
   useLayoutEffect(() => {
     const el = scrollRef.current
     if (!el) return
     const applySize = () => {
-      const avail = Math.max(1, el.clientWidth - TimelineRailWidth)
+      const avail = Math.max(1, el.clientWidth - railWidth)
       setSnapEnabled(dayWidth <= avail)
       // Body min-height: the row/day grid stretches to fill the viewport even with few workers.
       setViewportHeight(el.clientHeight)
@@ -142,7 +268,7 @@ export function HorizontalTimelineView<T extends EventCalendarItem = EventCalend
     const observer = new ResizeObserver(applySize)
     observer.observe(el)
     return () => observer.disconnect()
-  }, [dayWidth])
+  }, [dayWidth, railWidth])
 
   // Layout effect, declared BEFORE the scroll-to effect below: the virtualizer's measurement
   // cache must reflect the new day width before anything scrolls by it.
@@ -163,10 +289,26 @@ export function HorizontalTimelineView<T extends EventCalendarItem = EventCalend
   const lastScrollLeftRef = useRef(0)
 
   useLayoutEffect(() => {
-    const dayWidthChanged = lastDayWidthRef.current !== dayWidth
-    if (!dayWidthChanged && lastEmittedDateRef.current === currentDateRef.current.getTime()) return
     const el = scrollRef.current
     if (!el) return
+    // Zoom-commit path (plan 35 §5.5): the gesture already computed the anchor-correct
+    // scrollLeft (current scroll minus the folded-away `--tl-zoom-comp`) — consume it INSTEAD
+    // of the hour-window re-anchor below, which would yank the view to `currentDate`'s left
+    // edge on every zoom release.
+    if (pendingScrollLeftRef.current !== null) {
+      const target = pendingScrollLeftRef.current
+      pendingScrollLeftRef.current = null
+      lastDayWidthRef.current = dayWidth
+      programmaticScrollRef.current = true
+      el.scrollTo({ left: target })
+      lastScrollLeftRef.current = target
+      const timeout = setTimeout(() => {
+        programmaticScrollRef.current = false
+      }, 300)
+      return () => clearTimeout(timeout)
+    }
+    const dayWidthChanged = lastDayWidthRef.current !== dayWidth
+    if (!dayWidthChanged && lastEmittedDateRef.current === currentDateRef.current.getTime()) return
     lastDayWidthRef.current = dayWidth
     programmaticScrollRef.current = true
     const targetOffset = targetIndex * dayWidth
@@ -189,6 +331,8 @@ export function HorizontalTimelineView<T extends EventCalendarItem = EventCalend
     clearTimeout(settleTimeoutRef.current)
     settleTimeoutRef.current = setTimeout(() => {
       if (programmaticScrollRef.current) return
+      // Gesture scroll writes (rail drags nudge scrollLeft live) must not settle-snap.
+      if (zoomGestureRef.current || railGestureRef.current) return
       const el = scrollRef.current
       if (!el) return
       const { scrollLeft } = el
@@ -213,6 +357,218 @@ export function HorizontalTimelineView<T extends EventCalendarItem = EventCalend
 
   useEffect(() => () => clearTimeout(settleTimeoutRef.current), [])
 
+  // ── zoom gestures (plan 35 §5) ───────────────────────────────────────────
+
+  /** Ends the active zoom gesture: folds `--tl-zoom-comp` into one committed scrollLeft. */
+  const finishZoomGesture = useCallback(() => {
+    const gesture = zoomGestureRef.current
+    if (!gesture) return
+    clearTimeout(wheelCommitTimerRef.current)
+    zoomGestureRef.current = null
+    const el = scrollRef.current
+    if (!el) return
+
+    // The committed value is an INTEGER while the live gesture value (wheel path: ×e^Δ) is
+    // fractional. The fold-away scrollLeft must be derived for the width actually committed —
+    // a naive `scrollLeft − comp` assumes the live width sticks, and the mismatch is
+    // (live − committed) × hoursFromStreamOrigin ≈ THOUSANDS of px (days) per 0.5px/hr of
+    // rounding. Anchor instead on the time-point at the viewport's left edge, computed from the
+    // LIVE visual state, and re-project it at the committed width — exact for any rounding.
+    const finalHourWidth = clampHourWidth(Math.round(gesture.hourWidth))
+    const rail = railGestureRef.current?.width ?? geoRef.current.railWidth
+    const hoursAtViewportLeft = (el.scrollLeft - gesture.comp - rail) / gesture.hourWidth
+    const target = rail + finalHourWidth * hoursAtViewportLeft
+
+    if (finalHourWidth === geoRef.current.hourWidth) {
+      // Rounds back to the already-committed width — no re-render will consume a pending
+      // scrollLeft, so fold the (possibly non-zero) comp imperatively: committed vars + the
+      // re-projected scrollLeft in the same frame. Skipping this and just re-asserting vars
+      // would discard comp and jump the view by days.
+      programmaticScrollRef.current = true
+      applyCssVars()
+      el.scrollLeft = target
+      lastScrollLeftRef.current = target
+      setTimeout(() => {
+        programmaticScrollRef.current = false
+      }, 200)
+      return
+    }
+
+    pendingScrollLeftRef.current = target
+    commitHourWidth(finalHourWidth)
+  }, [applyCssVars, commitHourWidth])
+
+  /** Border drag: the grabbed hour's LEFT edge is the anchor, so the dragged border tracks the
+   * pointer exactly (`hourWidth' = start + dx` puts it one hour-width right of the anchor). */
+  const beginBorderZoom = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>, dayIndex: number, hourIndex: number) => {
+      const { hourWidth: committed, windowHours: wh } = geoRef.current
+      // A commit is mid-flight (pending scrollLeft not yet consumed by the re-render) —
+      // starting a gesture now would seed from stale committed values. Next attempt re-enters.
+      if (wh <= 0 || pendingScrollLeftRef.current !== null) return
+      e.preventDefault()
+      e.stopPropagation()
+      e.currentTarget.setPointerCapture(e.pointerId)
+      zoomGestureRef.current = {
+        hourWidth: committed,
+        comp: 0,
+        anchorH: dayIndex * wh + hourIndex - 1,
+        startHourWidth: committed,
+        startClientX: e.clientX,
+      }
+    },
+    []
+  )
+
+  const moveBorderZoom = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      const gesture = zoomGestureRef.current
+      if (!gesture || gesture.anchorH === null) return
+      e.stopPropagation()
+      const next = clampHourWidth(gesture.startHourWidth + (e.clientX - gesture.startClientX))
+      if (next === gesture.hourWidth) return
+      gesture.hourWidth = next
+      gesture.comp = (gesture.startHourWidth - next) * gesture.anchorH
+      applyCssVars()
+    },
+    [applyCssVars]
+  )
+
+  const endBorderZoom = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      if (!zoomGestureRef.current || zoomGestureRef.current.anchorH === null) return
+      e.stopPropagation()
+      finishZoomGesture()
+    },
+    [finishZoomGesture]
+  )
+
+  /** Double-click an hour border → reset to the default scale, keeping that border stationary. */
+  const resetZoom = useCallback(
+    (dayIndex: number, hourIndex: number) => {
+      const { hourWidth: committed, windowHours: wh } = geoRef.current
+      if (wh <= 0 || committed === TimelineHourWidth) return
+      if (pendingScrollLeftRef.current !== null) return
+      const el = scrollRef.current
+      if (!el) return
+      const anchorH = dayIndex * wh + hourIndex
+      pendingScrollLeftRef.current = el.scrollLeft + (TimelineHourWidth - committed) * anchorH
+      commitHourWidth(TimelineHourWidth)
+    },
+    [commitHourWidth]
+  )
+
+  // Ctrl+wheel / trackpad pinch — non-passive so `preventDefault` can stop the browser's page
+  // zoom. Each event re-derives its anchor (the time under the pointer) from LIVE values, so
+  // continuous pinches stay drift-free; the commit debounces behind the last event.
+  useEffect(() => {
+    const el = scrollRef.current
+    if (!el) return
+    const onWheel = (e: WheelEvent) => {
+      if (!e.ctrlKey) return
+      const { railWidth: committedRail, windowHours: wh } = geoRef.current
+      if (wh <= 0) return
+      e.preventDefault()
+      // A commit is mid-flight — swallow this event (still prevented from page-zooming); the
+      // next one starts a fresh gesture from the settled committed state.
+      if (pendingScrollLeftRef.current !== null) return
+      let gesture = zoomGestureRef.current
+      if (!gesture) {
+        gesture = {
+          hourWidth: geoRef.current.hourWidth,
+          comp: 0,
+          anchorH: null,
+          startHourWidth: geoRef.current.hourWidth,
+          startClientX: 0,
+        }
+        zoomGestureRef.current = gesture
+      }
+      const liveRail = railGestureRef.current?.width ?? committedRail
+      const pointerX = e.clientX - el.getBoundingClientRect().left
+      // Hours-from-stream-origin of the content point under the pointer, in live scale.
+      const anchorH = (el.scrollLeft + pointerX - liveRail - gesture.comp) / gesture.hourWidth
+      const next = clampHourWidth(gesture.hourWidth * Math.exp(-e.deltaY * WheelZoomGain))
+      gesture.comp += (gesture.hourWidth - next) * anchorH
+      gesture.hourWidth = next
+      applyCssVars()
+      clearTimeout(wheelCommitTimerRef.current)
+      wheelCommitTimerRef.current = setTimeout(finishZoomGesture, WheelCommitDelayMs)
+    }
+    el.addEventListener('wheel', onWheel, { passive: false })
+    return () => {
+      el.removeEventListener('wheel', onWheel)
+      clearTimeout(wheelCommitTimerRef.current)
+    }
+  }, [applyCssVars, finishZoomGesture])
+
+  // ── rail resize gesture (plan 35 §4) ─────────────────────────────────────
+  // Growing the rail shifts all content right by Δ; a matching scrollLeft nudge keeps the same
+  // time under the viewport edge (the rail expands over the seam, sidebar-style). scrollLeft
+  // moves live here (small, bounded deltas — no virtualizer hazard), guarded from the settle
+  // handler by the gesture-ref check above.
+  const beginRailResize = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    if (pendingScrollLeftRef.current !== null) return
+    e.preventDefault()
+    e.stopPropagation()
+    e.currentTarget.setPointerCapture(e.pointerId)
+    const committed = geoRef.current.railWidth
+    railGestureRef.current = { width: committed, startWidth: committed, startClientX: e.clientX }
+  }, [])
+
+  const moveRailResize = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      const gesture = railGestureRef.current
+      if (!gesture) return
+      e.stopPropagation()
+      const next = clampRailWidth(gesture.startWidth + (e.clientX - gesture.startClientX))
+      const delta = next - gesture.width
+      if (delta === 0) return
+      gesture.width = next
+      applyCssVars()
+      const el = scrollRef.current
+      if (el) el.scrollLeft += delta
+    },
+    [applyCssVars]
+  )
+
+  const endRailResize = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      const gesture = railGestureRef.current
+      if (!gesture) return
+      e.stopPropagation()
+      railGestureRef.current = null
+      const el = scrollRef.current
+      if (el) lastScrollLeftRef.current = el.scrollLeft
+      if (gesture.width !== geoRef.current.railWidth) commitRailWidth(gesture.width)
+      else applyCssVars()
+    },
+    [applyCssVars, commitRailWidth]
+  )
+
+  /** Double-click the rail border → reset to the default width, content staying anchored. */
+  const resetRail = useCallback(() => {
+    const committed = geoRef.current.railWidth
+    if (committed === TimelineRailWidth) return
+    const el = scrollRef.current
+    if (el) {
+      programmaticScrollRef.current = true
+      el.scrollLeft += TimelineRailWidth - committed
+      lastScrollLeftRef.current = el.scrollLeft
+      setTimeout(() => {
+        programmaticScrollRef.current = false
+      }, 200)
+    }
+    commitRailWidth(TimelineRailWidth)
+  }, [commitRailWidth])
+
+  const railResizeHandleProps = {
+    onPointerDown: beginRailResize,
+    onPointerMove: moveRailResize,
+    onPointerUp: endRailResize,
+    onPointerCancel: endRailResize,
+    onDoubleClick: resetRail,
+  }
+
   // ── visible window → consumer fetch range ────────────────────────────────
   const virtualItems = virtualizer.getVirtualItems()
   const firstIndex = virtualItems[0]?.index
@@ -231,11 +587,12 @@ export function HorizontalTimelineView<T extends EventCalendarItem = EventCalend
   // while scrolling within it (it may still shift when scrolling INTO a differently-stacked day
   // — same accepted-v1 precedent as the vertical streams' all-day lane).
   //
-  // Lane maps are keyed `${resourceId}|${dayISOString}` (not just `resourceId`): a multi-day
-  // event can land in a different lane on each day segment it spans, so the day must be part of
-  // the key — see `TimelineDaySection`'s doc comment.
+  // Lane assignments are keyed `${resourceId}|${dayISOString}` (not just `resourceId`): a
+  // multi-day event can land in a different lane on each day segment it spans, so the day must
+  // be part of the key — see `TimelineDaySection`'s doc comment. Each value carries `laneCount`
+  // too, which the section needs to center that day's stack in the row (plan 35 §1).
   const { rowHeights, rowTops, laneMapsByResource } = useMemo(() => {
-    const laneMapsByResource = new Map<string, Map<string, number>>()
+    const laneMapsByResource = new Map<string, DayLaneAssignment>()
     const rowHeights: number[] = []
 
     for (const resource of resources) {
@@ -274,7 +631,7 @@ export function HorizontalTimelineView<T extends EventCalendarItem = EventCalend
           }))
 
           const { lanes, laneCount } = assignLanes([...dayTimedEvents, ...daySpanningEvents])
-          laneMapsByResource.set(`${resource.id}|${day.toISOString()}`, lanes)
+          laneMapsByResource.set(`${resource.id}|${day.toISOString()}`, { lanes, laneCount })
           if (laneCount > maxLanes) maxLanes = laneCount
         }
       }
@@ -316,16 +673,34 @@ export function HorizontalTimelineView<T extends EventCalendarItem = EventCalend
 
   const nowLabel = useMemo(() => format(now, 'h:mm a'), [now])
 
-  const totalSize = virtualizer.getTotalSize()
   const hourTicks = windowHours > 0 ? Math.round(windowHours) : 0
+  // Tick-label thinning at small scales — every hour still gets its border (the grab surface).
+  const hourLabelStep = hourWidth < HourLabelThinningWidth ? 2 : 1
+
+  // Shared calc() for the per-day x offset — headers and day sections use the same expression
+  // so gestures move them in lockstep.
+  const dayTranslateX = (index: number) =>
+    `translateX(calc(var(--tl-rail-width) + ${index} * var(--tl-day-width) + var(--tl-zoom-comp, 0px)))`
 
   return (
     <div data-slot='horizontal-timeline-view' className='flex min-h-0 flex-1 flex-col'>
-      <div ref={scrollRef} onScroll={handleScroll} className='min-h-0 flex-1 overflow-auto'>
+      <div
+        ref={scrollRef}
+        onScroll={handleScroll}
+        className='min-h-0 flex-1 overflow-auto'
+        style={
+          {
+            // Committed geometry — the always-run layout effect re-asserts live gesture values
+            // on top of these pre-paint (see `applyCssVars`).
+            '--tl-day-width': `${dayWidth}px`,
+            '--tl-rail-width': `${railWidth}px`,
+            '--tl-zoom-comp': '0px',
+          } as CSSProperties
+        }>
         <div
           className='relative'
           style={{
-            width: TimelineRailWidth + totalSize,
+            width: `calc(var(--tl-rail-width) + ${dayCount} * var(--tl-day-width))`,
             minHeight: headerHeight + bodyHeight,
           }}>
           {/* Two-tier sticky header: date labels + hour ticks. */}
@@ -334,15 +709,20 @@ export function HorizontalTimelineView<T extends EventCalendarItem = EventCalend
             style={{ height: headerHeight }}>
             {/* Corner — sticky on both axes: pinned left within the (already sticky-top) strip. */}
             <div
-              className='bg-background border-border/70 text-muted-foreground/70 sticky left-0 z-10 flex items-center justify-center border-r text-sm'
-              style={{ width: TimelineRailWidth, height: headerHeight }}>
+              className='bg-background text-muted-foreground/70 sticky left-0 z-10 flex items-center justify-center text-sm'
+              style={{ width: 'var(--tl-rail-width)', height: headerHeight }}>
               <span className='max-[479px]:sr-only'>{format(new Date(), 'O')}</span>
+              {/* Rail-width drag handle (corner segment) — one continuous strip with the rail's. */}
+              <div
+                {...railResizeHandleProps}
+                className='hover:bg-border/70 absolute inset-y-0 right-0 z-20 w-[5px] cursor-col-resize touch-none select-none'
+              />
+              <StickyRailShadow />
             </div>
 
             {/* Row 1 — per-day date label, spanning the whole day-section width, centered. */}
             {virtualItems.map((v) => {
               const day = dayAt(v.index)
-              const x = TimelineRailWidth + v.start
               const today = isToday(day)
               return (
                 <div
@@ -351,29 +731,29 @@ export function HorizontalTimelineView<T extends EventCalendarItem = EventCalend
                   style={{
                     top: 0,
                     left: 0,
-                    width: dayWidth,
+                    width: 'var(--tl-day-width)',
                     height: DateLabelHeight,
-                    transform: `translateX(${x}px)`,
+                    transform: dayTranslateX(v.index),
                   }}>
                   <span className='uppercase'>{format(day, 'EEE')}</span>
-                  {/* Today's date sits in a filled badge (Notion look); other days stay plain. */}
+                  {/* Today's date sits in a filled pill (Notion look); other days stay plain. */}
                   <span
                     className={cn(
-                      'flex h-6 min-w-6 items-center justify-center rounded-full px-1 tabular-nums',
+                      'flex h-6 items-center justify-center rounded-full px-2 whitespace-nowrap tabular-nums',
                       today
                         ? 'bg-primary text-primary-foreground font-semibold'
                         : 'text-foreground font-medium'
                     )}>
-                    {format(day, 'd')}
+                    {format(day, 'MMM d')}
                   </span>
                 </div>
               )
             })}
 
-            {/* Row 2 — hour tick labels every `TimelineHourWidth` px, plus the now-pill on today. */}
+            {/* Row 2 — hour tick labels, the zoom grab strips on each hour border, and the
+                now-pill on today. */}
             {virtualItems.map((v) => {
               const day = dayAt(v.index)
-              const x = TimelineRailWidth + v.start
               const today = isToday(day)
               return (
                 <div
@@ -382,9 +762,9 @@ export function HorizontalTimelineView<T extends EventCalendarItem = EventCalend
                   style={{
                     top: DateLabelHeight,
                     left: 0,
-                    width: dayWidth,
+                    width: 'var(--tl-day-width)',
                     height: HourTickHeight,
-                    transform: `translateX(${x}px)`,
+                    transform: dayTranslateX(v.index),
                   }}>
                   {Array.from({ length: hourTicks }, (_, hourIndex) => {
                     const tickDate = addHours(startOfDay(day), windowStart + hourIndex)
@@ -392,11 +772,29 @@ export function HorizontalTimelineView<T extends EventCalendarItem = EventCalend
                       <div
                         key={hourIndex}
                         className='border-border/50 text-muted-foreground/70 absolute top-0 h-full border-l pl-1 font-medium first:border-l-0'
-                        style={{ left: hourIndex * TimelineHourWidth, width: TimelineHourWidth }}>
-                        {format(tickDate, 'h a')}
+                        style={{
+                          left: `${(hourIndex / windowHours) * 100}%`,
+                          width: `${100 / windowHours}%`,
+                        }}>
+                        {hourIndex % hourLabelStep === 0 ? format(tickDate, 'h a') : null}
                       </div>
                     )
                   })}
+                  {/* Zoom grab strips — one per hour border (incl. the day boundary at index 0).
+                      Drag = rescale px-per-hour anchored so the border tracks the pointer;
+                      double-click = reset to the default scale. */}
+                  {Array.from({ length: hourTicks }, (_, hourIndex) => (
+                    <div
+                      key={`zoom-${hourIndex}`}
+                      onPointerDown={(e) => beginBorderZoom(e, v.index, hourIndex)}
+                      onPointerMove={moveBorderZoom}
+                      onPointerUp={endBorderZoom}
+                      onPointerCancel={endBorderZoom}
+                      onDoubleClick={() => resetZoom(v.index, hourIndex)}
+                      className='absolute inset-y-0 z-10 w-[7px] cursor-ew-resize touch-none select-none'
+                      style={{ left: `calc(${(hourIndex / windowHours) * 100}% - 3px)` }}
+                    />
+                  ))}
                   {today && nowPosition !== null && (
                     <div
                       className='pointer-events-none absolute top-0 z-20 -translate-x-1/2'
@@ -418,22 +816,26 @@ export function HorizontalTimelineView<T extends EventCalendarItem = EventCalend
           {/* Sticky-left worker rail — pinned left only (no `top`: it scrolls vertically with
               the rows below; its flow position already starts below the sticky header). */}
           <div
-            className='bg-background sticky left-0 z-20 w-fit'
-            style={{ width: TimelineRailWidth }}>
+            className='bg-background sticky left-0 z-20'
+            style={{ width: 'var(--tl-rail-width)' }}>
             <div className='relative' style={{ height: bodyHeight }}>
               {resources.map((resource, ri) => (
                 <div
                   key={resource.id}
-                  className='border-border/70 text-muted-foreground/80 absolute flex items-center border-b px-2 text-sm'
+                  className='border-border/70 text-muted-foreground/80 absolute right-0 left-0 flex items-center border-b px-2 text-sm'
                   style={{
                     top: rowTops[ri] ?? 0,
-                    left: 0,
-                    width: TimelineRailWidth,
                     height: rowHeights[ri] ?? TimelineLaneHeight,
                   }}>
                   {resource.header ?? resource.label}
                 </div>
               ))}
+              {/* Rail-width drag handle (body segment). */}
+              <div
+                {...railResizeHandleProps}
+                className='hover:bg-border/70 absolute inset-y-0 right-0 z-20 w-[5px] cursor-col-resize touch-none select-none'
+              />
+              <StickyRailShadow />
             </div>
           </div>
 
@@ -441,14 +843,13 @@ export function HorizontalTimelineView<T extends EventCalendarItem = EventCalend
             <TimelineDaySection
               key={v.key}
               index={v.index}
-              x={TimelineRailWidth + v.start}
-              dayWidth={dayWidth}
               top={headerHeight}
               dayAt={dayAt}
               resources={resources}
               events={events}
               backgroundEvents={backgroundEvents}
               hourWindow={hourWindow}
+              hourWidth={hourWidth}
               rowHeights={rowHeights}
               rowTops={rowTops}
               bodyHeight={bodyHeight}
