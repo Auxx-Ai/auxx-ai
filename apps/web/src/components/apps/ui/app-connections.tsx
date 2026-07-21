@@ -94,6 +94,9 @@ function AppConnections({ app, returnTo, scope, onConnectionCreated }: Props) {
       connectionType: m.connectionType,
       description: m.description ?? undefined,
       connectionVariables: m.connectionVariables,
+      requiresOwnClient: m.requiresOwnClient,
+      ownClientOptional: m.ownClientOptional,
+      ownClientReason: m.ownClientReason,
     })),
   }
   const personalMethods = methods.filter((m) => !m.global)

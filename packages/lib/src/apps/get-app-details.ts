@@ -8,6 +8,10 @@ import {
   listAppConnectionDefinitions,
 } from '@auxx/services/app-connections'
 import { getCachedAppBySlug } from '../cache/app-cache-helpers'
+import {
+  gateConnectionVariables,
+  resolveOwnClientRequirement,
+} from '../connections/resolve-connection-definition'
 
 /**
  * Input parameters for getAppWithInstallationStatus
@@ -41,6 +45,22 @@ export interface AppCapabilitySummary {
   /** Derived connection descriptor, or null when the app needs no connection. */
   connection: { label: string } | null
 }
+
+/**
+ * Own-client gate flags (§3.1) attached to every method/definition the connect UI renders.
+ * `@auxx/services` can't import `@auxx/lib` (tier rule), so the gate is computed here —
+ * mirroring the installed-apps cache provider so both read paths agree.
+ */
+export interface OwnClientGate {
+  /** BYO client id/secret are mandatory (def has no platform client). */
+  requiresOwnClient: boolean
+  /** Platform client pending verification — BYO offered as an optional alternative. */
+  ownClientOptional: boolean
+  ownClientReason: 'no-platform-client' | 'pending-approval' | null
+}
+
+export type GatedConnectionMethod = ConnectionMethod & OwnClientGate
+export type GatedConnectionDefinitionSummary = ConnectionDefinitionSummary & OwnClientGate
 
 /**
  * App details with installation status
@@ -78,11 +98,11 @@ export interface AppWithStatusOutput {
     installedAt?: Date
     currentDeploymentId?: string
     // Every connection method the app exposes — the connect picker appears when length > 1.
-    methods: ConnectionMethod[]
+    methods: GatedConnectionMethod[]
     // Derived two-slot view (first method per scope) kept for presence/scope consumers.
     connectionDefinitions: {
-      user?: ConnectionDefinitionSummary
-      organization?: ConnectionDefinitionSummary
+      user?: GatedConnectionDefinitionSummary
+      organization?: GatedConnectionDefinitionSummary
     }
   }
   availableDeployments: Array<{
@@ -171,15 +191,91 @@ export async function getAppWithInstallationStatus(
   // apps. The per-scope two-slot view stays installed-only (only meaningful once connected).
   const connectionDefinitions: AppWithStatusOutput['installation']['connectionDefinitions'] = {}
   const methodsResult = await listAppConnectionDefinitions(cachedApp.id)
-  const methods: ConnectionMethod[] = methodsResult.isOk() ? methodsResult.value : []
+  const rawMethods: ConnectionMethod[] = methodsResult.isOk() ? methodsResult.value : []
+
+  // Own-client gate (§3.1): fetch the client/approval columns the services listing omits and
+  // shape each method's variables (inject/require/drop the BYO client fields). Without this,
+  // a pending-approval OAuth method with no declared variables connects one-click and the
+  // user never sees the platform-or-BYO choice.
+  const gateRows = rawMethods.length
+    ? await db.query.ConnectionDefinition.findMany({
+        where: (d, { inArray }) =>
+          inArray(
+            d.id,
+            rawMethods.map((m) => m.id)
+          ),
+        columns: {
+          id: true,
+          global: true,
+          oauth2ClientId: true,
+          oauth2ClientSecret: true,
+          platformClientApproved: true,
+        },
+      })
+    : []
+  const gateRowById = new Map(gateRows.map((r) => [r.id, r]))
+  const NO_GATE: OwnClientGate = {
+    requiresOwnClient: false,
+    ownClientOptional: false,
+    ownClientReason: null,
+  }
+  const gateFor = (row: (typeof gateRows)[number] | undefined, connectionType: string) => {
+    if (!row || connectionType !== 'oauth2-code') return NO_GATE
+    const gate = resolveOwnClientRequirement(row)
+    return {
+      requiresOwnClient: gate.requiresOwnClient,
+      ownClientOptional: gate.ownClientOptional,
+      ownClientReason: gate.reason,
+    }
+  }
+
+  const methods: GatedConnectionMethod[] = rawMethods.map((m) => {
+    const gate = gateFor(gateRowById.get(m.id), m.connectionType)
+    return {
+      ...m,
+      ...gate,
+      connectionVariables: gateConnectionVariables(m.connectionType, m.connectionVariables, gate),
+    }
+  })
+
   if (installation) {
     const [userConnDef, orgConnDef] = await Promise.all([
       getAppConnectionDefinition(cachedApp.id, false),
       getAppConnectionDefinition(cachedApp.id, true),
     ])
-    if (userConnDef.isOk() && userConnDef.value) connectionDefinitions.user = userConnDef.value
+    // The two-slot summaries carry no row id — match their gate row by scope. (`findFirst`
+    // per scope and this `find` can only disagree when an app has >1 method in one scope,
+    // which no app does today; the flow resolves by method id in that case anyway.)
+    const gateForScope = (global: boolean, connectionType: string) =>
+      gateFor(
+        gateRows.find((r) => r.global === global),
+        connectionType
+      )
+    if (userConnDef.isOk() && userConnDef.value) {
+      const def = userConnDef.value
+      const gate = gateForScope(false, def.connectionType)
+      connectionDefinitions.user = {
+        ...def,
+        ...gate,
+        connectionVariables: gateConnectionVariables(
+          def.connectionType,
+          def.connectionVariables ?? [],
+          gate
+        ),
+      }
+    }
     if (orgConnDef.isOk() && orgConnDef.value) {
-      connectionDefinitions.organization = orgConnDef.value
+      const def = orgConnDef.value
+      const gate = gateForScope(true, def.connectionType)
+      connectionDefinitions.organization = {
+        ...def,
+        ...gate,
+        connectionVariables: gateConnectionVariables(
+          def.connectionType,
+          def.connectionVariables ?? [],
+          gate
+        ),
+      }
     }
   }
 
