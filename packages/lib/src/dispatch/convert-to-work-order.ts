@@ -43,9 +43,9 @@ export async function convertRequestToWorkOrder(input: ConvertRequestToWorkOrder
 
   // Money MQ1 (01-ui #5): if an approved quote already exists for this request, convert
   // THROUGH the quote instead — same request status flip, but lines come along too.
-  // Delegates to `convertQuoteToWorkOrder`, which does its own approved-status assertion
-  // and request→'converted' mirror, so we return early rather than falling through to the
-  // plain (line-less) path below.
+  // Delegates to `convertQuoteToWorkOrder`, which does its own status allowlist + active-job
+  // guard and request→'converted' mirror, so we return early rather than falling through to
+  // the plain (line-less) path below.
   const approvedQuotes = await handler.listFiltered({
     entityDefinitionId: 'quote',
     filters: [

@@ -43,6 +43,9 @@ const EXPIRABLE_STATUSES = new Set(['draft', 'sent'])
 const SENDABLE_STATUSES = new Set(['draft', 'sent'])
 /** Post-draft statuses that can be returned to draft for editing (mirrors invoice SENT_STATUSES). */
 const REVERTIBLE_STATUSES = new Set(['sent', 'approved', 'declined', 'canceled'])
+/** Statuses a job can be created from (money plan 20 §2.1) — mirrors the server allowlist
+ * in `convertQuoteToWorkOrder`; pre-approval converts get a confirm dialog first. */
+const CONVERTIBLE_STATUSES = new Set(['draft', 'sent', 'approved'])
 
 export function QuoteLineItemsTab({ recordId, variant = 'tab' }: DetailViewTabProps) {
   const router = useRouter()
@@ -87,6 +90,17 @@ export function QuoteLineItemsTab({ recordId, variant = 'tab' }: DetailViewTabPr
   })
 
   const handleConvert = async () => {
+    // Early convert (money plan 20 §F): allowed pre-acceptance, but confirmed — the
+    // customer hasn't formally said yes yet.
+    if (status !== 'approved') {
+      const confirmed = await confirm({
+        title: 'Create job before acceptance?',
+        description: "This quote hasn't been accepted yet. Create the job anyway?",
+        confirmText: 'Create job',
+        cancelText: 'Cancel',
+      })
+      if (!confirmed) return
+    }
     try {
       const result = await convertToWorkOrder.mutateAsync({ quoteRecordId: recordId })
       // work_order now has a detail page (dispatch M2 build spec §F.2) — land on
@@ -175,7 +189,7 @@ export function QuoteLineItemsTab({ recordId, variant = 'tab' }: DetailViewTabPr
             </>
           )}
 
-          {status === 'approved' && !convertedWorkOrderRecordId && (
+          {CONVERTIBLE_STATUSES.has(status) && !convertedWorkOrderRecordId && (
             <DropdownMenuItem onClick={handleConvert}>
               <SquareArrowOutUpRight /> Convert to job
             </DropdownMenuItem>

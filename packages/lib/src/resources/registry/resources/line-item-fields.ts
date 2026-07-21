@@ -323,6 +323,28 @@ export const LINE_ITEM_FIELDS: Record<string, ResourceField> = {
     description: 'Plain text bridge to WorkOrderVisit — visits are not entities (dispatch lock)',
   },
 
+  sourceLine: {
+    id: toFieldId('sourceLine'),
+    key: 'sourceLine',
+    label: 'Source Line',
+    type: BaseType.STRING,
+    fieldType: FieldType.TEXT,
+    isSystem: true,
+    systemAttribute: 'line_item_source_line',
+    systemSortOrder: 'aD1',
+    showInPanel: false,
+    nullable: true,
+    capabilities: {
+      filterable: true,
+      sortable: false,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    description:
+      'Quote-line instance id this line was copied from at convert (money plan 20 §E) — provenance only, no reader yet',
+  },
+
   catalogItem: {
     id: toFieldId('catalogItem'),
     key: 'catalogItem',

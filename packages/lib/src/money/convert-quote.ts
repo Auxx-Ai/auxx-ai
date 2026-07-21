@@ -17,12 +17,84 @@ import type { ConvertQuoteToWorkOrderInput } from './types'
 
 const logger = createScopedLogger('money:convert-quote')
 
+/** Quote statuses a job can be created from (money plan 20 §2.1) — every pre-terminal
+ * stage. Early converts (draft/sent) are the "customer said yes on the phone" flow; the
+ * client shows a confirm dialog before them. */
+const CONVERTIBLE_QUOTE_STATUSES = new Set(['draft', 'sent', 'approved'])
+
 /** Unwrap a `getFieldValues()` map entry — takes the first value if array-returned. */
 function firstTyped(
   entry: TypedFieldValue | TypedFieldValue[] | undefined
 ): TypedFieldValue | undefined {
   if (!entry) return undefined
   return Array.isArray(entry) ? entry[0] : entry
+}
+
+/**
+ * The active (non-canceled) work order already converted from a quote, or undefined.
+ * Shared by the convert guard below and the accept path (money plan 20 §C) — the quote
+ * stays `approved` after conversion (there is no `converted` quote status), so this
+ * lookup is the only duplicate-job defense. Canceled jobs don't count: a canceled
+ * conversion can be redone.
+ */
+export async function findActiveJobForQuote(
+  handler: UnifiedCrudHandler,
+  quoteRecordId: string
+): Promise<string | undefined> {
+  const existingJobs = await handler.listFiltered({
+    entityDefinitionId: 'work_order',
+    filters: [
+      {
+        id: 'converted-job-guard',
+        logicalOperator: 'AND',
+        conditions: [
+          {
+            id: 'converted-job-guard-quote',
+            fieldId: 'work_order:quote',
+            operator: 'is',
+            value: quoteRecordId,
+          },
+          {
+            id: 'converted-job-guard-status',
+            fieldId: 'work_order:status',
+            operator: 'not in',
+            value: ['canceled'],
+          },
+        ],
+      },
+    ],
+    limit: 1,
+    mode: 'oneshot',
+  })
+  return existingJobs.ids[0]
+}
+
+/**
+ * Stamp succeeded deposit charges for a quote onto its work order (MP2 §B.6). Covers a
+ * deposit paid before any work order existed — at auto-convert, at manual convert, or
+ * (money plan 20 §C) at accept time when an early-converted job already exists.
+ * Idempotent via `isNull(workOrderInstanceId)`. A direct write, not routed through
+ * `ledger.ts` — the plan sanctions this as the one exception to that file being the sole
+ * PaymentTransaction writer, since it's stamping linkage, not settling money.
+ */
+export async function stampQuoteDepositsOnWorkOrder(params: {
+  organizationId: string
+  quoteInstanceId: string
+  workOrderInstanceId: string
+}): Promise<void> {
+  const { organizationId, quoteInstanceId, workOrderInstanceId } = params
+  await database
+    .update(schema.PaymentTransaction)
+    .set({ workOrderInstanceId })
+    .where(
+      and(
+        eq(schema.PaymentTransaction.organizationId, organizationId),
+        eq(schema.PaymentTransaction.quoteInstanceId, quoteInstanceId),
+        eq(schema.PaymentTransaction.kind, 'charge'),
+        eq(schema.PaymentTransaction.status, 'succeeded'),
+        isNull(schema.PaymentTransaction.workOrderInstanceId)
+      )
+    )
 }
 
 /**
@@ -40,7 +112,7 @@ export async function convertQuoteToWorkOrder(input: ConvertQuoteToWorkOrderInpu
   const cache = getOrgCache()
   const quoteRecordId = toRecordId('quote', quoteInstanceId)
 
-  // ─── Step 1: assert approved ────────────────────────────────────────────────
+  // ─── Step 1: assert convertible ─────────────────────────────────────────────
   const cf = await cache
     .from(organizationId, 'customFields')
     .bySystemAttributes([
@@ -68,43 +140,14 @@ export async function convertQuoteToWorkOrder(input: ConvertQuoteToWorkOrderInpu
 
   const statusTyped = cf.quote_status ? firstTyped(quoteValues.get(cf.quote_status.id)) : undefined
   const status = statusTyped ? (extractValue(statusTyped) as string) : undefined
-  if (status !== 'approved') {
-    throw new BadRequestError(
-      `Cannot convert to work order — quote must be 'approved' (currently '${status ?? 'unknown'}')`
-    )
+  if (!status || !CONVERTIBLE_QUOTE_STATUSES.has(status)) {
+    throw new BadRequestError(`Cannot convert to work order — quote is '${status ?? 'unknown'}'`)
   }
 
-  // One-job-per-quote guard: the quote stays `approved` after conversion (there is
-  // no `converted` quote status), so without this a second convert — e.g. the admin
-  // clicking "Convert to job" after the public accept page already auto-converted —
-  // would silently duplicate the job. Canceled jobs don't count: a canceled
-  // conversion can be redone.
-  const existingJobs = await handler.listFiltered({
-    entityDefinitionId: 'work_order',
-    filters: [
-      {
-        id: 'converted-job-guard',
-        logicalOperator: 'AND',
-        conditions: [
-          {
-            id: 'converted-job-guard-quote',
-            fieldId: 'work_order:quote',
-            operator: 'is',
-            value: quoteRecordId,
-          },
-          {
-            id: 'converted-job-guard-status',
-            fieldId: 'work_order:status',
-            operator: 'not in',
-            value: ['canceled'],
-          },
-        ],
-      },
-    ],
-    limit: 1,
-    mode: 'oneshot',
-  })
-  if (existingJobs.ids.length > 0) {
+  // One-ACTIVE-job-per-quote guard — e.g. the admin clicking "Convert to job" after the
+  // public accept page already auto-converted would silently duplicate the job.
+  const existingJobInstanceId = await findActiveJobForQuote(handler, quoteRecordId)
+  if (existingJobInstanceId) {
     throw new BadRequestError('This quote has already been converted to a job')
   }
 
@@ -158,25 +201,15 @@ export async function convertQuoteToWorkOrder(input: ConvertQuoteToWorkOrderInpu
   const createdWorkOrder = await handler.create('work_order', workOrderValues)
   const workOrderRecordId = createdWorkOrder.recordId
 
-  // MP2 (§B.6): stamp any pre-paid deposit for this quote onto the newly created work order —
-  // covers a deposit paid before `documents.quote.autoConvertOnAccept` ran (or the setting is
-  // off), where the checkout-time write (`createStripeDepositCheckout`) couldn't resolve a work
-  // order yet. `isNull(workOrderInstanceId)` makes this idempotent against a second manual
-  // convert attempt. A direct write, not routed through `ledger.ts` — the plan sanctions this as
-  // the one exception to that file being the sole PaymentTransaction writer, since it's stamping
-  // linkage, not settling money.
-  await database
-    .update(schema.PaymentTransaction)
-    .set({ workOrderInstanceId: createdWorkOrder.instance.id })
-    .where(
-      and(
-        eq(schema.PaymentTransaction.organizationId, organizationId),
-        eq(schema.PaymentTransaction.quoteInstanceId, quoteInstanceId),
-        eq(schema.PaymentTransaction.kind, 'charge'),
-        eq(schema.PaymentTransaction.status, 'succeeded'),
-        isNull(schema.PaymentTransaction.workOrderInstanceId)
-      )
-    )
+  // Stamp any pre-paid deposit for this quote onto the newly created work order — covers a
+  // deposit paid before `documents.quote.autoConvertOnAccept` ran (or the setting is off),
+  // where the checkout-time write (`createStripeDepositCheckout`) couldn't resolve a work
+  // order yet.
+  await stampQuoteDepositsOnWorkOrder({
+    organizationId,
+    quoteInstanceId,
+    workOrderInstanceId: createdWorkOrder.instance.id,
+  })
 
   // ─── Step 4: copy lines, ordered by sortOrder ───────────────────────────────
   // No `line_item_quote` on the copies — the quote keeps its own lines untouched;
@@ -197,6 +230,7 @@ export async function convertQuoteToWorkOrder(input: ConvertQuoteToWorkOrderInpu
       'line_item_catalog_item',
       'line_item_optional',
       'line_item_optional_selected',
+      'line_item_source_line',
     ] as const)
 
   const { ids: lineInstanceIds } = await handler.listFiltered({
@@ -281,6 +315,11 @@ export async function convertQuoteToWorkOrder(input: ConvertQuoteToWorkOrderInpu
     }
     if (catalogItemTyped?.type === 'relationship') {
       copyValues.line_item_catalog_item = catalogItemTyped.recordId
+    }
+    // Provenance back to the source quote line (money plan 20 §E) — enables a future
+    // accept-time auto-reconcile. Gated on the field existing (pre-migration-047 orgs).
+    if (lineCf.line_item_source_line) {
+      copyValues.line_item_source_line = lineInstanceId
     }
 
     await handler.create('line_item', copyValues)
