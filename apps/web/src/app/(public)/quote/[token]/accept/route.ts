@@ -1,7 +1,7 @@
 // apps/web/src/app/(public)/quote/[token]/accept/route.ts
 
 import { AuxxError } from '@auxx/lib/errors'
-import { acceptQuoteByToken } from '@auxx/lib/money'
+import { acceptQuoteByToken, buildQuoteViewUrl } from '@auxx/lib/money'
 import { createScopedLogger } from '@auxx/logger'
 import { type NextRequest, NextResponse } from 'next/server'
 
@@ -32,13 +32,13 @@ export async function POST(
       name: typeof name === 'string' ? name : undefined,
       selectedLineIds,
     })
-    const redirectUrl = new URL(`/quote/${token}`, request.url)
+    const redirectUrl = new URL(buildQuoteViewUrl(token))
     redirectUrl.searchParams.set('state', 'accepted')
     return NextResponse.redirect(redirectUrl, { status: 303 })
   } catch (error) {
     const message = error instanceof AuxxError ? error.message : 'Unable to accept this quote'
     logger.error('Quote accept failed', { token, error: message })
-    const redirectUrl = new URL(`/quote/${token}`, request.url)
+    const redirectUrl = new URL(buildQuoteViewUrl(token))
     redirectUrl.searchParams.set('state', 'error')
     redirectUrl.searchParams.set('message', message)
     return NextResponse.redirect(redirectUrl, { status: 303 })

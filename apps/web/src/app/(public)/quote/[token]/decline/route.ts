@@ -1,7 +1,7 @@
 // apps/web/src/app/(public)/quote/[token]/decline/route.ts
 
 import { AuxxError } from '@auxx/lib/errors'
-import { declineQuoteByToken } from '@auxx/lib/money'
+import { buildQuoteViewUrl, declineQuoteByToken } from '@auxx/lib/money'
 import { createScopedLogger } from '@auxx/logger'
 import { type NextRequest, NextResponse } from 'next/server'
 
@@ -22,13 +22,13 @@ export async function POST(
 
   try {
     await declineQuoteByToken(token, { reason: typeof reason === 'string' ? reason : undefined })
-    const redirectUrl = new URL(`/quote/${token}`, request.url)
+    const redirectUrl = new URL(buildQuoteViewUrl(token))
     redirectUrl.searchParams.set('state', 'declined')
     return NextResponse.redirect(redirectUrl, { status: 303 })
   } catch (error) {
     const message = error instanceof AuxxError ? error.message : 'Unable to decline this quote'
     logger.error('Quote decline failed', { token, error: message })
-    const redirectUrl = new URL(`/quote/${token}`, request.url)
+    const redirectUrl = new URL(buildQuoteViewUrl(token))
     redirectUrl.searchParams.set('state', 'error')
     redirectUrl.searchParams.set('message', message)
     return NextResponse.redirect(redirectUrl, { status: 303 })
