@@ -2,9 +2,11 @@
 import {
   BarChart3,
   BookOpen,
+  Bug,
   Cloud,
   Code,
   Database,
+  Fan,
   GitBranch,
   Headset,
   HelpCircle,
@@ -16,7 +18,9 @@ import {
   Shield,
   ShoppingBag,
   Sparkles,
+  Truck,
   Users,
+  Wrench,
   X,
 } from 'lucide-react'
 import Link from 'next/link'
@@ -122,6 +126,12 @@ const platformGroups: PlatformGroup[] = [
         description: 'Parts, vendors & production',
         icon: <Shield className='stroke-foreground fill-blue-500/15' />,
       },
+      {
+        href: '/platform/dispatch',
+        name: 'Dispatch',
+        description: 'Field service scheduling & jobs',
+        icon: <Truck className='stroke-foreground fill-orange-500/15' />,
+      },
     ],
   },
   {
@@ -180,6 +190,27 @@ const useCases: FeatureLink[] = [
     name: 'For Support Teams',
     description: 'Reduce workload by 70%',
     icon: <Headset className='stroke-foreground fill-indigo-500/15' />,
+  },
+]
+
+const industryLinks: FeatureLink[] = [
+  {
+    href: '/industries/hvac',
+    name: 'HVAC',
+    description: 'Dispatch & equipment records',
+    icon: <Fan className='stroke-foreground fill-orange-500/15' />,
+  },
+  {
+    href: '/industries/plumbing',
+    name: 'Plumbing',
+    description: 'Same-day dispatch & invoicing',
+    icon: <Wrench className='stroke-foreground fill-sky-500/15' />,
+  },
+  {
+    href: '/industries/pest-control',
+    name: 'Pest Control',
+    description: 'Recurring treatments & routes',
+    icon: <Bug className='stroke-foreground fill-emerald-500/15' />,
   },
 ]
 
@@ -332,6 +363,10 @@ const MobileMenu = ({
     {
       groupName: 'Solutions',
       links: useCases,
+    },
+    {
+      groupName: 'Industries',
+      links: industryLinks,
     },
     {
       groupName: 'Resources',
@@ -489,7 +524,7 @@ const NavMenu = ({ docsUrl }: { docsUrl: string }) => {
             <Link href='/solutions/shopify-stores'>Solutions</Link>
           </NavigationMenuTrigger>
           <NavigationMenuContent className='origin-top pb-1.5 pl-1 pr-4 pt-1 backdrop-blur '>
-            <div className='min-w-2xl w-full grid grid-cols-2 gap-1'>
+            <div className='min-w-3xl w-full grid grid-cols-3 gap-1'>
               <div className='bg-card col-span-1 row-span-2 grid grid-rows-subgrid gap-1 rounded-xl border p-1 pt-3'>
                 <span className='text-muted-foreground ml-2 text-xs'>Use Cases</span>
                 <ul className=''>
@@ -500,6 +535,20 @@ const NavMenu = ({ docsUrl }: { docsUrl: string }) => {
                       title={useCase.name}
                       description={useCase.description}>
                       {useCase.icon}
+                    </ListItem>
+                  ))}
+                </ul>
+              </div>
+              <div className='bg-card col-span-1 row-span-2 grid grid-rows-subgrid gap-1 rounded-xl border p-1 pt-3'>
+                <span className='text-muted-foreground ml-2 text-xs'>Industries</span>
+                <ul className=''>
+                  {industryLinks.map((industry, index) => (
+                    <ListItem
+                      key={index}
+                      href={industry.href}
+                      title={industry.name}
+                      description={industry.description}>
+                      {industry.icon}
                     </ListItem>
                   ))}
                 </ul>
