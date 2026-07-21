@@ -5,7 +5,8 @@
  * Exercises the REAL `@auxx/lib/dispatch/route-planner/*` + `@auxx/lib/geocoding` write/read
  * paths added in Phase 1: the pure `suggestRouteOrder` NN+2-opt heuristic, `setRouteOrder`'s
  * bulk write + removed-stop null-out, `applyRouteTimes`' chained ETA math (contract item 12),
- * the `geocodeOnAddressChange` field-change hook (env-gated MapTiler + a test-only fetch
+ * address-set-time visit pinning (the ADDRESS_STRUCT normalize hook + the
+ * `syncVisitPinsOnAddressNormalized` listener; env-gated MapTiler + a test-only fetch
  * override), `getRoutePlannerBoard`'s day/backlog/projection split, `getRouteLegs`' Mapbox-less
  * fallback + content-addressed Redis cache, and entity migration 039 (`work_order.tags`).
  *
@@ -35,12 +36,15 @@
  * (packages/lib/src/resources/hooks/work-order-hooks.ts) appended `work_order_number` to the
  * values map via `{ ...values, [field.id]: recordNumber }` — LAST in iteration order. Because
  * post-write field-change hooks fire in per-field iteration order during the same create call,
- * `work_order_address`'s hook (`geocodeOnAddressChange`, which UPDATEs existing `WorkOrderVisit`
- * rows) fired BEFORE `work_order_number`'s hook (`ensureVisitOnWorkOrderCreate`, which CREATES
- * the visit row) whenever a work order was created with both an address and any other field in
- * one `handler.create` call — the geocode UPDATE silently matched zero rows and the pin was
- * lost. Fixed by flipping the spread order so the number (and its visit-creation hook) always
- * fires first. Section 4's `4c` sub-test exercises exactly this combined-create path.
+ * `work_order_address`'s hook (then `geocodeOnAddressChange`, which UPDATEs existing
+ * `WorkOrderVisit` rows) fired BEFORE `work_order_number`'s hook (`ensureVisitOnWorkOrderCreate`,
+ * which CREATES the visit row) whenever a work order was created with both an address and any
+ * other field in one `handler.create` call — the geocode UPDATE silently matched zero rows and
+ * the pin was lost. Fixed by flipping the spread order so the number (and its visit-creation
+ * hook) always fires first. The pin write has since moved to the address-normalize listener
+ * (`syncVisitPinsOnAddressNormalized`), which fires strictly after the address field's hook
+ * dispatch, so the same ordering guarantee still protects it. Section 4's `4c` sub-test
+ * exercises exactly this combined-create path.
  *
  * Run (from repo root) under the worker runtime:
  *   cd apps/worker && npx dotenv -e ../../.env -- node --conditions source --import tsx/esm \
@@ -251,6 +255,24 @@ async function getVisitById(visitId: string) {
     where: (t, { eq }) => eq(t.id, visitId),
   })
   if (!visit) throw new Error(`No visit row found for ${visitId}`)
+  return visit
+}
+
+/**
+ * Visit pins now land via the address-normalize listener's fire-and-forget chain
+ * (`syncVisitPinsOnAddressNormalized`, visit-hooks.ts) — strictly AFTER the save response, not
+ * inline in it — so section 4's coord assertions poll briefly instead of reading immediately.
+ */
+async function waitForVisitCoords(visitId: string, expected: LatLng, timeoutMs = 5_000) {
+  const deadline = Date.now() + timeoutMs
+  let visit = await getVisitById(visitId)
+  while (
+    (visit.latitude !== expected.lat || visit.longitude !== expected.lng) &&
+    Date.now() < deadline
+  ) {
+    await new Promise((resolve) => setTimeout(resolve, 100))
+    visit = await getVisitById(visitId)
+  }
   return visit
 }
 
@@ -650,9 +672,10 @@ async function main() {
     })
 
     // ══════════════════════════════════════════════════════════════════════
-    // 4. geocodeOnAddressChange — env-gated, injectable-fetch stub, all-visit-rows fan-out
+    // 4. address-geocode visit pinning (normalize hook + syncVisitPinsOnAddressNormalized
+    //    listener) — env-gated, injectable-fetch stub, all-visit-rows fan-out
     // ══════════════════════════════════════════════════════════════════════
-    console.log('4: geocodeOnAddressChange hook')
+    console.log('4: address-geocode visit pinning')
 
     // 4a: no MAPTILER_API_KEY -> address write leaves coords null, never throws.
     await withoutEnv('MAPTILER_API_KEY', async () => {
@@ -711,7 +734,10 @@ async function main() {
             country: 'US',
           },
         })
-        const [afterK1a, afterK2a] = await Promise.all([getVisitById(vK1.id), getVisitById(vK2.id)])
+        const [afterK1a, afterK2a] = await Promise.all([
+          waitForVisitCoords(vK1.id, stub1),
+          waitForVisitCoords(vK2.id, stub1),
+        ])
         check(
           '4b (address create): visit 1 latitude/longitude = stubbed coords',
           afterK1a.latitude === stub1.lat && afterK1a.longitude === stub1.lng,
@@ -733,7 +759,10 @@ async function main() {
             country: 'US',
           },
         })
-        const [afterK1b, afterK2b] = await Promise.all([getVisitById(vK1.id), getVisitById(vK2.id)])
+        const [afterK1b, afterK2b] = await Promise.all([
+          waitForVisitCoords(vK1.id, stub2),
+          waitForVisitCoords(vK2.id, stub2),
+        ])
         check(
           '4b (address change): visit 1 updated to the NEW stubbed coords',
           afterK1b.latitude === stub2.lat && afterK1b.longitude === stub2.lng,
@@ -760,7 +789,7 @@ async function main() {
           },
         })
         createdRecordIds.push(woL.recordId)
-        const vL = await getVisit(woL.instance.id)
+        const vL = await waitForVisitCoords((await getVisit(woL.instance.id)).id, stub3)
         check(
           '4c: address set in the SAME create() call still geocodes the auto-created visit row',
           vL.latitude === stub3.lat && vL.longitude === stub3.lng,

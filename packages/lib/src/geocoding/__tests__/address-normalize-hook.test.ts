@@ -43,13 +43,24 @@ vi.mock('../../field-values/field-value-queries', () => ({ getValue: vi.fn() }))
 import { setValueWithBuiltIn } from '../../field-values/field-value-mutations'
 import { getValue } from '../../field-values/field-value-queries'
 import { publishFieldValueUpdates } from '../../realtime/publish-helpers'
-import { normalizeAddressOnChange } from '../address-normalize-hook'
+import {
+  normalizeAddressOnChange,
+  registerAddressNormalizedListener,
+} from '../address-normalize-hook'
 import { geocodeStructured } from '../geocoder'
 
 const mockedGeocode = geocodeStructured as unknown as ReturnType<typeof vi.fn>
 const mockedSetValue = setValueWithBuiltIn as unknown as ReturnType<typeof vi.fn>
 const mockedGetValue = getValue as unknown as ReturnType<typeof vi.fn>
 const mockedPublish = publishFieldValueUpdates as unknown as ReturnType<typeof vi.fn>
+
+// There is no unregister (production never needs one), so both listeners stay subscribed for the
+// whole suite and are reset per test. `failingListener` is registered FIRST to prove a throwing
+// listener never starves the ones after it.
+const failingListener = vi.fn()
+const listener = vi.fn()
+registerAddressNormalizedListener(failingListener)
+registerAddressNormalizedListener(listener)
 
 const recordId: RecordId = toRecordId('contact', 'inst-1')
 
@@ -105,6 +116,9 @@ describe('normalizeAddressOnChange', () => {
     mockedSetValue.mockReset()
     mockedPublish.mockReset()
     mockedGetValue.mockReset()
+    failingListener.mockReset()
+    listener.mockReset()
+    failingListener.mockResolvedValue(undefined)
     mockedPublish.mockResolvedValue(undefined)
     mockedSetValue.mockResolvedValue({
       state: 'complete',
@@ -382,6 +396,91 @@ describe('normalizeAddressOnChange', () => {
     expect(organizationId).toBe('org-1')
     expect(entries).toHaveLength(1)
     expect(entries[0].value).not.toBeNull()
+  })
+
+  describe('normalized-address listeners', () => {
+    it('fire with the merged struct after a successful geocode + write-back', async () => {
+      mockedGeocode.mockResolvedValue({
+        lat: 30.1,
+        lng: -97.1,
+        placeName: 'x',
+        relevance: 1,
+        components: {},
+      })
+      const event = buildEvent({
+        newValue: jsonValue({ street1: '123 Main St', city: 'Austin', _source: 'single' }),
+      })
+      await normalizeAddressOnChange(event)
+      await flush()
+      expect(listener).toHaveBeenCalledTimes(1)
+      const [listenerEvent, struct] = listener.mock.calls[0]!
+      expect(listenerEvent).toBe(event)
+      expect(struct).toMatchObject({ street1: '123 Main St', lat: 30.1, lng: -97.1 })
+      expect(struct._source).toBeUndefined()
+    })
+
+    it('do not fire when the geocoder returns null', async () => {
+      mockedGeocode.mockResolvedValue(null)
+      await normalizeAddressOnChange(
+        buildEvent({ newValue: jsonValue({ street1: '123 Main St', _source: 'single' }) })
+      )
+      await flush()
+      expect(listener).not.toHaveBeenCalled()
+    })
+
+    it('do not fire when the stale-write guard skips the write-back', async () => {
+      mockedGeocode.mockResolvedValue({
+        lat: 1,
+        lng: 2,
+        placeName: 'x',
+        relevance: 1,
+        components: {},
+      })
+      const event = buildEvent({
+        newValue: jsonValue({ street1: '123 Main St', city: 'Austin' }),
+      })
+      mockedGetValue.mockResolvedValue(jsonValue({ street1: '456 Oak Ave', city: 'Dallas' }))
+      await normalizeAddressOnChange(event)
+      await flush()
+      expect(listener).not.toHaveBeenCalled()
+    })
+
+    it('fire with the already-stamped coords on the idempotence-guard path, without geocoding', async () => {
+      const stamped = {
+        street1: '123 Main St',
+        city: 'Austin',
+        state: 'TX',
+        zipCode: '78701',
+        country: 'US',
+        lat: 30.1,
+        lng: -97.1,
+        geocodedAt: '2026-01-01T00:00:00.000Z',
+      }
+      await normalizeAddressOnChange(
+        buildEvent({ oldValue: jsonValue(stamped), newValue: jsonValue({ ...stamped }) })
+      )
+      await flush()
+      expect(mockedGeocode).not.toHaveBeenCalled()
+      expect(listener).toHaveBeenCalledTimes(1)
+      expect(listener.mock.calls[0]![1]).toMatchObject({ lat: 30.1, lng: -97.1 })
+    })
+
+    it('a throwing listener is isolated — later listeners still fire', async () => {
+      failingListener.mockRejectedValue(new Error('boom'))
+      mockedGeocode.mockResolvedValue({
+        lat: 1,
+        lng: 2,
+        placeName: 'x',
+        relevance: 1,
+        components: {},
+      })
+      await normalizeAddressOnChange(
+        buildEvent({ newValue: jsonValue({ street1: '123 Main St', _source: 'structured' }) })
+      )
+      await flush()
+      expect(failingListener).toHaveBeenCalledTimes(1)
+      expect(listener).toHaveBeenCalledTimes(1)
+    })
   })
 
   it('does not publish realtime when the quiet write produced no values', async () => {

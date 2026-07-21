@@ -2,8 +2,14 @@
 
 import { FieldType as FieldTypeEnum } from '@auxx/database/enums'
 import { registerInventoryDeductionRule } from '../data-connectors/inventory-bridge-rule-action'
-import { ensureVisitOnWorkOrderCreate, geocodeOnAddressChange } from '../dispatch/visit-hooks'
-import { normalizeAddressOnChange } from '../geocoding/address-normalize-hook'
+import {
+  ensureVisitOnWorkOrderCreate,
+  syncVisitPinsOnAddressNormalized,
+} from '../dispatch/visit-hooks'
+import {
+  normalizeAddressOnChange,
+  registerAddressNormalizedListener,
+} from '../geocoding/address-normalize-hook'
 import { generateDraftOnCompletion } from '../money/auto-invoice'
 import {
   BILLING_PROJECTION_ATTRS,
@@ -108,21 +114,19 @@ export function registerAllHooks(): void {
   // `work_order_status` lands on `completed`/`ended` — catches the visit roll-up, M2c's
   // `endEngagement`, kanban drags, and manual drawer edits, all through this one hook.
   //
-  // Route planner build contract item 8 (09-route-planner.md §B): geocode the work order's
-  // address the instant it's set (create AND update), writing straight onto its visit row(s) —
-  // unscheduled backlog jobs need pins too, not just scheduled ones.
-  //
   // `registerEntityFieldChangeHooks` appends per-call (registry.ts:137-144), so this could
-  // also be a second/third call — combined into one array here since all three handlers share
+  // also be separate calls — combined into one array here since all these handlers share
   // the 'work-orders' slug and read more naturally listed together.
   //
   // Client-notifications plan §4.3: enroll the seeded `job_follow_up` sequence on the same
   // completion door (`enrollJobFollowUpOnCompletion` — independent handler, no recursion risk,
   // never writes `work_order_status` itself).
+  //
+  // (Route planner item 8's visit-pin geocode used to be a third handler here — it now rides
+  // the ADDRESS_STRUCT normalize hook via `registerAddressNormalizedListener` below.)
   registerEntityFieldChangeHooks('work-orders', [
     ensureVisitOnWorkOrderCreate,
     generateDraftOnCompletion,
-    geocodeOnAddressChange,
     enrollJobFollowUpOnCompletion,
     syncBillingOnWorkOrderChange,
   ])
@@ -164,10 +168,15 @@ export function registerAllHooks(): void {
   // Address field (plans/address-field/01-single-input-address-field.md §5 items 2-3,
   // decision #5/#13): field-type-keyed (NOT entity-scoped) so it runs for every ADDRESS_STRUCT
   // field on every entity without flipping `hasEntityFieldChangeHooks` on for entities that have
-  // no address fields. On `work_order_address` this dispatches AFTER the entity-chain's own
-  // `geocodeOnAddressChange` (visit-hooks, still registered above) — two MapTiler calls per
-  // write there, accepted for v1 (§5 item 5).
+  // no address fields.
   registerFieldTypeChangeHooks(FieldTypeEnum.ADDRESS_STRUCT, [normalizeAddressOnChange])
+
+  // Route planner build contract item 8 (09-route-planner.md §B): pin the work order's visit
+  // row(s) whenever its address geocodes — unscheduled backlog jobs need pins too. Rides the
+  // normalize hook's geocode via the listener seam instead of an entity-scoped hook making its
+  // own MapTiler call, retiring the v1 double-geocode on `work_order_address` writes
+  // (plans/address-field §9 follow-up 2).
+  registerAddressNormalizedListener(syncVisitPinsOnAddressNormalized)
 
   // ---------------------------------------------------------------------------
   // PRE-WRITE HOOKS

@@ -116,7 +116,8 @@ export async function materializeVisits(
   // Coord inheritance (route planner build contract item 9, plans/dispatch/09-route-planner.md
   // §B): a newly materialized visit copies latitude/longitude/geocodedAt from any already-
   // geocoded sibling visit of this same recurring series — never re-geocoded here, the
-  // address-set-time hook (`geocodeOnAddressChange`) is the only geocoder writer.
+  // address-normalize listener (`syncVisitPinsOnAddressNormalized`, visit-hooks.ts) is the
+  // only geocoder writer.
   const geocodedSibling = existingRows.find((r) => r.latitude !== null && r.longitude !== null)
   // §4.4: consumed = existing rows (any status, detached included — a skip consumes its
   // occurrence), derived from rows, not a counter column. Only rows STRICTLY BEFORE the
