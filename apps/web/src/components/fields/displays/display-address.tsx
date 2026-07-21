@@ -1,3 +1,5 @@
+import { type AddressStructValue, formatAddress } from '@auxx/utils/address'
+import { useSettings } from '~/hooks/use-settings'
 import { useFieldContext } from './display-field'
 import DisplayWrapper from './display-wrapper'
 
@@ -17,11 +19,13 @@ export function DisplayAddress() {
 
 /**
  * DisplayAddressStruct component
- * Renders a structured address from a JSON string or object
+ * Renders a structured address from a JSON string or object via the shared canonical
+ * formatter (plans/address-field/01-single-input-address-field.md decision #10). The
+ * org's business-address country is omitted from the rendered line when it matches.
  */
 export function DisplayAddressStruct() {
   const { value } = useFieldContext()
-  let address: Record<string, string> = {}
+  let address: Partial<AddressStructValue> = {}
   if (typeof value === 'string') {
     try {
       address = JSON.parse(value)
@@ -29,23 +33,13 @@ export function DisplayAddressStruct() {
       address = {}
     }
   } else if (typeof value === 'object' && value !== null) {
-    address = value as Record<string, string>
+    address = value as Partial<AddressStructValue>
   }
 
-  const street1 = address.street1 || ''
-  const street2 = address.street2 || ''
-  const city = address.city || ''
-  const state = address.state || ''
-  const zipCode = address.zipCode || ''
-  const country = address.country || ''
-
-  // Format: street1, street2, city, state zipCode, country
-  const streetPart = [street1, street2].filter(Boolean).join(', ')
-  const cityStatePart = [city, [state, zipCode].filter(Boolean).join(' ')]
-    .filter(Boolean)
-    .join(', ')
-  const parts = [streetPart, cityStatePart, country].filter(Boolean)
-  const formattedAddress = parts.join(', ')
+  const { getSetting } = useSettings({})
+  const business = getSetting('documents.business') as { address?: { country?: string } } | null
+  const domesticCountry = business?.address?.country
+  const formattedAddress = formatAddress(address, { domesticCountry })
 
   return (
     <DisplayWrapper copyValue={formattedAddress || null}>

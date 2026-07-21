@@ -3,8 +3,10 @@
 import { FieldType as FieldTypeEnum } from '@auxx/database/enums'
 import type { FieldType } from '@auxx/database/types'
 import type { ReactNode } from 'react'
+import { usePropertyContext } from '../property-provider'
 import { ActorInputField } from './actor-input-field'
 import { AddressInputField } from './address-input-field'
+import { AddressSingleInputField } from './address-single-input-field'
 import { AddressStructInputField } from './address-struct-input-field'
 import { CheckboxInputField } from './checkbox-input-field'
 import { CurrencyInputField } from './currency-input-field'
@@ -20,6 +22,20 @@ import { RichTextInputField } from './rich-text-input-field'
 import { SelectInputField } from './select-input-field'
 import { TextInputField } from './text-input-field'
 import { UrlInputField } from './url-input-field'
+
+/**
+ * ADDRESS_STRUCT branches on the field's `inputMode` option (absent ⇒ `'single'`, decision
+ * #4 in plans/address-field/01-single-input-address-field.md): the single free-text input
+ * (parsed + geocoder-normalized) or the legacy separate structured sub-fields.
+ */
+function AddressStructOrSingleInput() {
+  const { field } = usePropertyContext()
+  return field.options?.inputMode === 'structured' ? (
+    <AddressStructInputField />
+  ) : (
+    <AddressSingleInputField />
+  )
+}
 
 /**
  * Returns the appropriate input component for a field type.
@@ -56,7 +72,7 @@ export function getInputComponentForFieldType(fieldType: FieldType): ReactNode {
     case FieldTypeEnum.ADDRESS:
       return <AddressInputField />
     case FieldTypeEnum.ADDRESS_STRUCT:
-      return <AddressStructInputField />
+      return <AddressStructOrSingleInput />
     case FieldTypeEnum.NAME:
       return <NameInputField />
     case FieldTypeEnum.RELATIONSHIP:

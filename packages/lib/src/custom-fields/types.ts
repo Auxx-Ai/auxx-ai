@@ -436,6 +436,9 @@ export const selectFieldOptionsSchema = baseFieldOptionsSchema.extend({
 })
 export const addressFieldOptionsSchema = baseFieldOptionsSchema.extend({
   addressComponents: z.array(z.string()).optional(),
+  /** Editor variant: single free-text input (parsed + geocoder-normalized) vs.
+   *  the separate structured sub-fields. Absent ⇒ `'single'`. */
+  inputMode: z.enum(['single', 'structured']).optional(),
 })
 /**
  * Shared by DATE, DATETIME, and TIME. The `ai` block is schema-permissive

@@ -127,7 +127,13 @@ export const fieldValueSchemas = {
       message: 'NAME requires at least firstName or lastName',
     }),
 
-  // ADDRESS_STRUCT JSON — shape matches AddressStruct in custom-fields/types.ts
+  // ADDRESS_STRUCT JSON — shape matches AddressStruct in custom-fields/types.ts, plus the
+  // address-field-plan enrichment keys (plans/address-field/01-single-input-address-field.md
+  // §4 decisions #6/#7, §5 item 4): `raw`/`lat`/`lng`/`geocodedAt` are optional persisted
+  // enrichment, `_source` is a transient write-time marker the geocoder normalize hook reads and
+  // always strips on write-back — all five MUST stay in this schema (not `.passthrough()`, to
+  // keep the shape closed) or they're silently dropped here before the value ever reaches
+  // storage or the post-write hook.
   addressStructJson: z
     .object({
       street1: z.string().optional(),
@@ -136,6 +142,11 @@ export const fieldValueSchemas = {
       state: z.string().optional(),
       zipCode: z.string().optional(),
       country: z.string().optional(),
+      raw: z.string().optional(),
+      lat: z.number().optional(),
+      lng: z.number().optional(),
+      geocodedAt: z.string().optional(),
+      _source: z.enum(['single', 'structured']).optional(),
     })
     .refine((v) => v.street1 || v.street2 || v.city || v.state || v.zipCode || v.country, {
       message: 'ADDRESS_STRUCT requires at least one address field',

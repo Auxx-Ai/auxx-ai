@@ -2,10 +2,11 @@
 
 import { Combobox } from '@auxx/ui/components/combobox'
 import { Input, inputVariants } from '@auxx/ui/components/input'
+import { InputGroup, InputGroupAddon, InputGroupInput } from '@auxx/ui/components/input-group'
 import { cn } from '@auxx/ui/lib/utils'
 import { ChevronsUpDown } from 'lucide-react'
 // apps/web/src/components/fields/inputs/address-struct-input-field.tsx
-import { useCallback, useEffect, useState } from 'react'
+import { type ReactNode, useCallback, useEffect, useState } from 'react'
 import { countries } from '~/constants/countries'
 import { usePropertyContext } from '../property-provider'
 
@@ -38,6 +39,12 @@ interface AddressStructFieldsProps {
   className?: string
   /** Input variant for address sub-fields */
   inputVariant?: 'default' | 'transparent'
+  /**
+   * Optional addon rendered inside the street-address input (right-aligned) — the
+   * single-input variant passes its expand/collapse toggle button here so it lives in the
+   * street line rather than floating above the fields.
+   */
+  street1Addon?: ReactNode
 }
 
 /**
@@ -51,6 +58,7 @@ export function AddressStructFields({
   autoFocus = false,
   className = 'flex w-[350px] flex-col gap-2 p-2',
   inputVariant,
+  street1Addon,
 }: AddressStructFieldsProps) {
   /** Handle field change */
   const handleFieldChange = useCallback(
@@ -61,16 +69,34 @@ export function AddressStructFields({
   )
   return (
     <div className={className}>
-      {/* Street Address - full width */}
-      <Input
-        size='sm'
-        variant={inputVariant}
-        placeholder='Street address'
-        value={value.street1}
-        onChange={(e) => handleFieldChange('street1', e.target.value)}
-        disabled={disabled}
-        autoFocus={autoFocus}
-      />
+      {/* Street Address - full width; with an addon it becomes an InputGroup so the addon
+          button sits inside the input's right edge */}
+      {street1Addon ? (
+        <InputGroup
+          size='sm'
+          className={cn(
+            inputVariant === 'transparent' && 'border-transparent bg-transparent shadow-none'
+          )}>
+          <InputGroupInput
+            placeholder='Street address'
+            value={value.street1}
+            onChange={(e) => handleFieldChange('street1', e.target.value)}
+            disabled={disabled}
+            autoFocus={autoFocus}
+          />
+          <InputGroupAddon align='inline-end'>{street1Addon}</InputGroupAddon>
+        </InputGroup>
+      ) : (
+        <Input
+          size='sm'
+          variant={inputVariant}
+          placeholder='Street address'
+          value={value.street1}
+          onChange={(e) => handleFieldChange('street1', e.target.value)}
+          disabled={disabled}
+          autoFocus={autoFocus}
+        />
+      )}
 
       {/* Apartment/Suite - full width */}
       <Input
@@ -192,11 +218,16 @@ export function AddressStructInputField() {
   const initialAddress = parseAddressValue(value)
   const [fields, setFields] = useState<AddressStruct>(initialAddress)
 
-  // Register save handler for popover close - fire-and-forget
+  // Register save handler for popover close - fire-and-forget. `_source: 'structured'` marks
+  // this as an authoritative structured-editor commit (decision #11 in
+  // plans/address-field/01-single-input-address-field.md) — the server-side normalize hook
+  // only adds lat/lng and never overwrites these components. `raw` is never part of `fields`
+  // (AddressStruct has no such key), so it's already dropped here rather than going stale next
+  // to a manual correction (decision #6).
   useEffect(() => {
     onBeforeClose.current = () => {
       if (hasAddressChanged(fields, initialAddress)) {
-        commitValue(fields)
+        commitValue({ ...fields, _source: 'structured' })
       }
     }
     return () => {

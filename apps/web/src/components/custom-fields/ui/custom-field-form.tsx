@@ -55,7 +55,14 @@ import {
   getDefaultActorOptions,
   parseActorOptions,
 } from './actor-options-editor'
-import { AddressComponentsEditor, parseAddressComponents } from './address-component-editor'
+import {
+  AddressComponentsEditor,
+  type AddressInputMode,
+  AddressInputModeEditor,
+  formatAddressInputMode,
+  parseAddressComponents,
+  parseAddressInputMode,
+} from './address-component-editor'
 import {
   AiOptionsSection,
   type AiSectionState,
@@ -199,6 +206,9 @@ export function CustomFieldForm({
   // States for complex field options (use parse helpers for defaults)
   const [selectOptions, setSelectOptions] = useState<SelectOption[]>([])
   const [addressComponents, setAddressComponents] = useState<string[]>(parseAddressComponents())
+  const [addressInputMode, setAddressInputMode] = useState<AddressInputMode>(
+    parseAddressInputMode()
+  )
   const [fileOptions, setFileOptions] = useState<FileOptions>(parseFileOptions())
   const [relationshipOptions, setRelationshipOptions] = useState<RelationshipOptions>({
     relatedResourceId: 'contact',
@@ -264,6 +274,7 @@ export function CustomFieldForm({
   const [initialExtraState, setInitialExtraState] = useState<{
     selectOptions: SelectOption[]
     addressComponents: string[]
+    addressInputMode: AddressInputMode
     fileOptions: FileOptions
     relationshipOptions: RelationshipOptions
     displayOptions: DisplayOptions
@@ -280,6 +291,7 @@ export function CustomFieldForm({
       JSON.stringify(selectOptions) !== JSON.stringify(initialExtraState.selectOptions)
     const addressChanged =
       JSON.stringify(addressComponents) !== JSON.stringify(initialExtraState.addressComponents)
+    const addressInputModeChanged = addressInputMode !== initialExtraState.addressInputMode
     const fileChanged =
       JSON.stringify(fileOptions) !== JSON.stringify(initialExtraState.fileOptions)
     const relationshipChanged =
@@ -295,6 +307,7 @@ export function CustomFieldForm({
     return (
       selectOptionsChanged ||
       addressChanged ||
+      addressInputModeChanged ||
       fileChanged ||
       relationshipChanged ||
       displayOptionsChanged ||
@@ -306,6 +319,7 @@ export function CustomFieldForm({
   }, [
     selectOptions,
     addressComponents,
+    addressInputMode,
     fileOptions,
     relationshipOptions,
     displayOptions,
@@ -331,6 +345,7 @@ export function CustomFieldForm({
       // Use parse helpers for defaults
       let initSelectOptions: SelectOption[] = []
       let initAddressComponents: string[] = parseAddressComponents()
+      let initAddressInputMode: AddressInputMode = parseAddressInputMode()
       let initFileOptions: FileOptions = parseFileOptions()
       const initRelationshipOptions: RelationshipOptions = {
         relatedResourceId: 'contact',
@@ -364,6 +379,9 @@ export function CustomFieldForm({
 
         initAddressComponents = parseAddressComponents(editingField.options as FieldOptions)
         setAddressComponents(initAddressComponents)
+
+        initAddressInputMode = parseAddressInputMode(editingField.options as FieldOptions)
+        setAddressInputMode(initAddressInputMode)
 
         initFileOptions = parseFileOptions(editingField.options as FieldOptions)
         setFileOptions(initFileOptions)
@@ -406,6 +424,7 @@ export function CustomFieldForm({
         })
         setSelectOptions(initSelectOptions)
         setAddressComponents(initAddressComponents)
+        setAddressInputMode(initAddressInputMode)
         setFileOptions(initFileOptions)
         setRelationshipOptions(initRelationshipOptions)
         setDisplayOptions(initDisplayOptions)
@@ -421,6 +440,7 @@ export function CustomFieldForm({
       setInitialExtraState({
         selectOptions: initSelectOptions,
         addressComponents: initAddressComponents,
+        addressInputMode: initAddressInputMode,
         fileOptions: initFileOptions,
         relationshipOptions: initRelationshipOptions,
         displayOptions: initDisplayOptions,
@@ -514,6 +534,7 @@ export function CustomFieldForm({
 
     if (values.type === FieldType.ADDRESS_STRUCT) {
       submitObj.addressComponents = addressComponents
+      Object.assign(submitObj, formatAddressInputMode(addressInputMode))
     }
 
     if (values.type === FieldType.FILE) {
@@ -596,6 +617,7 @@ export function CustomFieldForm({
         })
         setSelectOptions([])
         setAddressComponents(parseAddressComponents())
+        setAddressInputMode(parseAddressInputMode())
         setFileOptions(parseFileOptions())
         setRelationshipOptions({
           relatedResourceId: 'contact',
@@ -625,7 +647,13 @@ export function CustomFieldForm({
         return <OptionsEditor options={selectOptions} onChange={setSelectOptions} />
       case FieldType.ADDRESS_STRUCT:
         return (
-          <AddressComponentsEditor components={addressComponents} onChange={setAddressComponents} />
+          <>
+            <AddressInputModeEditor mode={addressInputMode} onChange={setAddressInputMode} />
+            <AddressComponentsEditor
+              components={addressComponents}
+              onChange={setAddressComponents}
+            />
+          </>
         )
       case FieldType.FILE:
         return <FileOptionsEditor options={fileOptions} onChange={setFileOptions} />

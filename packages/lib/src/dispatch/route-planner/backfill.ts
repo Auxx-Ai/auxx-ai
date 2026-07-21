@@ -10,9 +10,9 @@
 
 import { database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
+import { type AddressStructValue, formatAddressForGeocode } from '@auxx/utils/address'
 import { and, eq, inArray, isNull } from 'drizzle-orm'
 import { geocode } from '../../geocoding'
-import { formatAddressForGeocode } from '../address'
 
 const logger = createScopedLogger('dispatch:route-planner:backfill')
 
@@ -93,7 +93,7 @@ export async function backfillGeocodeVisits(
         and(eq(schema.FieldValue.entityId, workOrderId), eq(schema.FieldValue.fieldId, fieldId))
       )
       .limit(1)
-    const address = row?.valueJson as Record<string, unknown> | null | undefined
+    const address = row?.valueJson as Partial<AddressStructValue> | null | undefined
     const line = address ? formatAddressForGeocode(address) : ''
     if (!line) {
       result.noAddress++

@@ -3,6 +3,13 @@
 import type { FieldOptions } from '@auxx/lib/field-values/client'
 import { Checkbox } from '@auxx/ui/components/checkbox'
 import { Label } from '@auxx/ui/components/label'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@auxx/ui/components/select'
 
 /** Available address component definitions */
 const ADDRESS_COMPONENTS = [
@@ -38,6 +45,60 @@ export function parseAddressComponents(fieldOptions?: FieldOptions): string[] {
  */
 export function formatAddressComponents(components: string[]): { addressComponents: string[] } {
   return { addressComponents: components }
+}
+
+/**
+ * Address field input variant: a single free-text input (parsed locally and
+ * normalized server-side by the geocoder — see
+ * plans/address-field/01-single-input-address-field.md) vs. the separate
+ * structured sub-fields. Absent on the stored field options ⇒ `'single'`.
+ */
+export type AddressInputMode = 'single' | 'structured'
+
+/**
+ * Parse stored field options into the input-mode editor state.
+ * Anything other than `'structured'` (including absent) resolves to `'single'`.
+ */
+export function parseAddressInputMode(fieldOptions?: FieldOptions): AddressInputMode {
+  return fieldOptions?.inputMode === 'structured' ? 'structured' : 'single'
+}
+
+/**
+ * Format editor state into the submit payload. Always carries the current
+ * mode (mirrors `addressComponents`, which is always sent as an array) — the
+ * service layer is what omits the key from storage for the default `'single'`
+ * mode (and clears a stale `'structured'` on revert); see
+ * packages/services/src/custom-fields/{create,update}-field.ts.
+ */
+export function formatAddressInputMode(mode: AddressInputMode): { inputMode: AddressInputMode } {
+  return { inputMode: mode }
+}
+
+/** Props for AddressInputModeEditor component */
+interface AddressInputModeEditorProps {
+  mode: AddressInputMode
+  onChange: (mode: AddressInputMode) => void
+}
+
+/**
+ * Select control for the address field's input style — single free-text line
+ * (default) or the separate structured sub-fields.
+ */
+export function AddressInputModeEditor({ mode, onChange }: AddressInputModeEditorProps) {
+  return (
+    <div className='mb-3'>
+      <Label className='ps-1 mb-1.5 block'>Input Style</Label>
+      <Select value={mode} onValueChange={(v) => onChange(v as AddressInputMode)}>
+        <SelectTrigger>
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value='single'>Single line</SelectItem>
+          <SelectItem value='structured'>Separate fields</SelectItem>
+        </SelectContent>
+      </Select>
+    </div>
+  )
 }
 
 /** Props for AddressComponentsEditor component */

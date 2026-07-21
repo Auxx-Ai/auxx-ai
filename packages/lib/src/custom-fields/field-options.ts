@@ -139,6 +139,9 @@ export interface FieldOptions {
   address?: AddressFieldOptions
   /** Structured address components stored for ADDRESS_STRUCT fields */
   addressComponents?: string[]
+  /** Editor variant: single free-text input (default, absent) vs. separate
+   *  structured sub-fields. Mirrors `addressFieldOptionsSchema.inputMode`. */
+  inputMode?: 'single' | 'structured'
 
   // ─────────────────────────────────────────────────────────────
   // NAME (composite name field)

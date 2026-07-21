@@ -8,35 +8,16 @@ import { Avatar, AvatarFallback } from '@auxx/ui/components/avatar'
 import { Button } from '@auxx/ui/components/button'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { getFullName, getInitials } from '@auxx/utils'
+import { type AddressStructValue, formatAddress } from '@auxx/utils/address'
 import { ExternalLink, Mail, MapPin, Phone } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useOpenRecord } from '~/components/records/record-drill-panels'
 import { useSystemValues } from '~/components/resources/hooks/use-system-values'
+import { useSettings } from '~/hooks/use-settings'
 import type { DrawerTabProps } from '../drawer-tab-registry'
 
 const WORK_ORDER_ATTRS = ['work_order_contact', 'work_order_address'] as const
 const CONTACT_ATTRS = ['first_name', 'last_name', 'primary_email', 'phone'] as const
-
-/** ADDRESS_STRUCT shape (see `dispatch.ts` router's `addressStructSchema`). */
-interface AddressStructValue {
-  street1?: string
-  street2?: string
-  city?: string
-  state?: string
-  zipCode?: string
-  country?: string
-}
-
-/** `display-address.tsx`'s `DisplayAddressStruct` formatting, inlined for this card. */
-function formatAddress(address: AddressStructValue | null | undefined): string | null {
-  if (!address) return null
-  const streetPart = [address.street1, address.street2].filter(Boolean).join(', ')
-  const cityStatePart = [address.city, [address.state, address.zipCode].filter(Boolean).join(' ')]
-    .filter(Boolean)
-    .join(', ')
-  const parts = [streetPart, cityStatePart, address.country].filter(Boolean)
-  return parts.length > 0 ? parts.join(', ') : null
-}
 
 /**
  * WorkOrderCustomerSiteCard — the job view's "Customer & site" sidebar card
@@ -50,8 +31,15 @@ export function WorkOrderCustomerSiteCard({ recordId }: DrawerTabProps) {
 
   const contactRecordIds = extractRelationshipRecordIds(values.work_order_contact)
   const contactRecordId = contactRecordIds[0]
-  const address = unwrap(values.work_order_address) as AddressStructValue | null | undefined
-  const addressLine = formatAddress(address)
+  const address = unwrap(values.work_order_address) as
+    | Partial<AddressStructValue>
+    | null
+    | undefined
+  const { getSetting } = useSettings({})
+  const business = getSetting('documents.business') as { address?: { country?: string } } | null
+  const addressLine = address
+    ? formatAddress(address, { domesticCountry: business?.address?.country }) || null
+    : null
 
   if (isLoading) {
     return (

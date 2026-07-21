@@ -13,13 +13,14 @@ import type { TypedFieldValue } from '@auxx/types'
 import { extractValue } from '@auxx/types'
 import { parseResourceFieldId, toResourceFieldId } from '@auxx/types/field'
 import { parseRecordId, toRecordId } from '@auxx/types/resource'
+import { type AddressStructValue, formatAddress } from '@auxx/utils/address'
 import { and, asc, eq, gte, inArray, lt } from 'drizzle-orm'
 import { getOrgCache } from '../cache'
+import { resolveDocumentSettings } from '../documents'
 import { BadRequestError, ForbiddenError, NotFoundError } from '../errors'
 import { createVisitInvoice } from '../money/billing-commands'
 import { computeWorkOrderBillingProjection } from '../money/billing-projection'
 import { UnifiedCrudHandler } from '../resources/crud'
-import { formatAddress } from './address'
 import type { VisitStatus } from './types'
 import { setVisitStatus } from './visit-mutations'
 import { getWorkOrderProjections } from './work-order-fields'
@@ -206,7 +207,7 @@ export async function getMyVisitDetail(input: GetMyVisitDetailInput): Promise<My
   const cache = getOrgCache()
   const workOrderRecordId = toRecordId('work_order', visit.workOrderId)
 
-  const [instance, cf] = await Promise.all([
+  const [instance, cf, documentSettings] = await Promise.all([
     database.query.EntityInstance.findFirst({
       where: eq(schema.EntityInstance.id, visit.workOrderId),
       columns: { displayName: true },
@@ -219,6 +220,9 @@ export async function getMyVisitDetail(input: GetMyVisitDetailInput): Promise<My
         'work_order_contact',
         'work_order_address',
       ] as const),
+    // Org's business-address country (decision #10) — omitted from the rendered address line;
+    // cache-backed via `getAllOrganizationSettings`, so this is cheap.
+    resolveDocumentSettings(organizationId),
   ])
 
   const woFieldIds = [
@@ -240,7 +244,12 @@ export async function getMyVisitDetail(input: GetMyVisitDetailInput): Promise<My
   const number = numberTyped ? (extractValue(numberTyped) as string) : null
   const instructions = descriptionTyped ? (extractValue(descriptionTyped) as string) : null
   const contactRecordId = contactTyped?.type === 'relationship' ? contactTyped.recordId : undefined
-  const serviceAddress = addressTyped?.type === 'json' ? formatAddress(addressTyped.value) : null
+  const domesticCountry = documentSettings.business.address?.country
+  const serviceAddress =
+    addressTyped?.type === 'json'
+      ? formatAddress(addressTyped.value as Partial<AddressStructValue>, { domesticCountry }) ||
+        null
+      : null
 
   let contactDisplayName: string | null = null
   if (contactRecordId) {
