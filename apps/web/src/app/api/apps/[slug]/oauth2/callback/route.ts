@@ -4,6 +4,7 @@ import { WEBAPP_URL } from '@auxx/config/urls'
 import { database as db } from '@auxx/database'
 import { saveAppConnection } from '@auxx/lib/apps'
 import { resolveAppSlug } from '@auxx/lib/cache'
+import { resolveOAuth2Client } from '@auxx/lib/connections'
 import { createScopedLogger } from '@auxx/logger'
 import { getRedisClient } from '@auxx/redis'
 import { interpolateConnectionFields } from '@auxx/services/app-connections'
@@ -210,12 +211,18 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     // Interpolate connection fields with stored variables
     const connectionVariables: Record<string, string> = metadata.connectionVariables ?? {}
     const resolved = interpolateConnectionFields(connDef, connectionVariables)
+    // Client id/secret follow §3.2 precedence: a per-connection BYO client wins over the
+    // app's platform client (matches the authorize route + token refresh).
+    const { clientId: oauthClientId, clientSecret: oauthClientSecret } = resolveOAuth2Client(
+      connDef,
+      connectionVariables
+    )
 
     // Exchange authorization code for access token
     const tokenRequestBody: Record<string, string> = {
       code,
-      client_id: resolved.clientId,
-      client_secret: resolved.clientSecret,
+      client_id: oauthClientId,
+      client_secret: oauthClientSecret,
       redirect_uri: `${callbackBase}/api/apps/${slug}/oauth2/callback`,
       grant_type: 'authorization_code',
     }
@@ -228,7 +235,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     // Append additional token params from connection definition
     if (features.additionalTokenParams) {
       for (const [key, value] of Object.entries(features.additionalTokenParams)) {
-        tokenRequestBody[key] = value
+        tokenRequestBody[key] = value as string
       }
     }
 
@@ -240,9 +247,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     }
 
     if (connDef.oauth2TokenRequestAuthMethod === 'basic-auth') {
-      const basicAuth = Buffer.from(`${resolved.clientId}:${resolved.clientSecret}`).toString(
-        'base64'
-      )
+      const basicAuth = Buffer.from(`${oauthClientId}:${oauthClientSecret}`).toString('base64')
       tokenRequestHeaders['Authorization'] = `Basic ${basicAuth}`
       // Don't include client_id and client_secret in body for basic auth
       delete tokenRequestBody.client_id

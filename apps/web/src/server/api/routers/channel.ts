@@ -143,6 +143,7 @@ export const channelRouter = createTRPCRouter({
         connectionDefinitionId: def.id,
         authorizeUrl: `/api/connections/${providerKey}/oauth2/authorize`,
         requiresOwnClient: gate.requiresOwnClient,
+        ownClientOptional: gate.ownClientOptional,
         ownClientReason: gate.reason,
         supportsPersonalConnection: supportsPersonal,
       }

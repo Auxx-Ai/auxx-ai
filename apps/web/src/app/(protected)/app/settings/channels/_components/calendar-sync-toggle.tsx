@@ -125,7 +125,7 @@ export function CalendarSyncToggle({ integrationId, disabled }: CalendarSyncTogg
             <span className='text-xs text-muted-foreground'>
               {integrationStatus?.lastCalendarSyncAt
                 ? `Last synced ${new Date(integrationStatus.lastCalendarSyncAt).toLocaleString()}`
-                : 'Grant calendar.readonly access to keep meetings in sync'}
+                : 'Grant calendar access to keep meetings in sync'}
             </span>
             {integrationStatus?.requiresReauth && integrationStatus.lastAuthError && (
               <span className='text-xs text-destructive'>{integrationStatus.lastAuthError}</span>

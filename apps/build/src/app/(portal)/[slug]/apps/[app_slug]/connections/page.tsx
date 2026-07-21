@@ -118,6 +118,9 @@ const connectionFormSchema = z
     oauth2TokenRequestAuthMethod: z.enum(['request-body', 'basic-auth']).optional(),
     oauth2RefreshSchedule: z.enum(['none', 'hourly', 'daily', 'weekly']).optional(),
     oauth2Pkce: z.boolean().optional(),
+    // When true, the platform OAuth client is pending verification, so organizations may
+    // connect with it OR bring their own client id/secret (persisted as platformClientApproved=false).
+    oauth2AllowOwnClient: z.boolean().optional(),
     oauth2CallbackBaseUrl: z
       .string()
       .refine((val) => !val || val === '' || z.string().url().safeParse(val).success, {
@@ -369,6 +372,7 @@ function MethodEditor({
       oauth2TokenRequestAuthMethod: 'request-body',
       oauth2RefreshSchedule: 'none',
       oauth2Pkce: false,
+      oauth2AllowOwnClient: false,
       oauth2CallbackBaseUrl: '',
       oauth2ScopeSeparator: '',
       oauth2AdditionalAuthorizeParams: '',
@@ -447,6 +451,7 @@ function MethodEditor({
           'request-body',
         oauth2RefreshSchedule: scheduleValue,
         oauth2Pkce: (features.pkce as boolean) ?? false,
+        oauth2AllowOwnClient: connection.platformClientApproved === false,
         oauth2CallbackBaseUrl: (features.callbackBaseUrl as string) ?? '',
         oauth2ScopeSeparator: (features.scopeSeparator as string) ?? '',
         oauth2AdditionalAuthorizeParams: features.additionalAuthorizeParams
@@ -478,7 +483,8 @@ function MethodEditor({
         features.scopeSeparator ||
         features.additionalAuthorizeParams ||
         features.additionalTokenParams ||
-        (features.callbackMetadataParams as string[])?.length
+        (features.callbackMetadataParams as string[])?.length ||
+        connection.platformClientApproved === false
       ) {
         setShowAdvanced(true)
       }
@@ -589,6 +595,9 @@ function MethodEditor({
       // Browser-redirect fields — oauth2-code only (client-credentials has no authorize step).
       ...(data.connectionType === 'oauth2-code' && {
         oauth2AuthorizeUrl: data.oauth2AuthorizeUrl,
+        // Own-client gate: "allow own client" toggles the platform client into pending-approval,
+        // which the connect flow renders as platform-login OR bring-your-own.
+        platformClientApproved: !data.oauth2AllowOwnClient,
         oauth2Features: {
           ...(data.oauth2Pkce && { pkce: true }),
           ...(data.oauth2CallbackBaseUrl && { callbackBaseUrl: data.oauth2CallbackBaseUrl }),
@@ -1033,6 +1042,30 @@ function MethodEditor({
                             <FieldDescription>
                               Enable Proof Key for Code Exchange (RFC 7636). Required by Airtable,
                               Zoom, Twitter/X, Linear, Figma, and other providers.
+                            </FieldDescription>
+                          </Field>
+                          <Field>
+                            <div className='flex items-center gap-3'>
+                              <Controller
+                                name='oauth2AllowOwnClient'
+                                control={control}
+                                render={({ field }) => (
+                                  <Switch
+                                    id='app-organization-allow-own-client'
+                                    checked={field.value ?? false}
+                                    onCheckedChange={field.onChange}
+                                  />
+                                )}
+                              />
+                              <FieldLabel htmlFor='app-organization-allow-own-client'>
+                                Let organizations use their own OAuth client
+                              </FieldLabel>
+                            </div>
+                            <FieldDescription>
+                              Turn on while the platform OAuth client is pending provider
+                              verification. Organizations can then connect with the platform client
+                              (they may see an unverified-app warning) or paste their own Client ID
+                              and Secret in the connect dialog's advanced section.
                             </FieldDescription>
                           </Field>
                           <Field>

@@ -35,6 +35,8 @@ type Method = {
   connectionVariables: AppInstallation['methods'][number]['connectionVariables']
   /** OAuth approval gate (§3.1): this connection must bring its own client id/secret. */
   requiresOwnClient?: boolean
+  /** Platform client works but is pending verification — BYO offered as an optional alternative. */
+  ownClientOptional?: boolean
   ownClientReason?: 'no-platform-client' | 'pending-approval' | null
 }
 
@@ -199,9 +201,11 @@ export function CredentialTemplateDialog({
         connectionType: p.connectionType,
         global: p.global ?? false,
         // `connectionVariables` are already gated server-side (§3.1): BYO client fields
-        // dropped when the platform client is usable, forced required when it must BYO.
+        // dropped when the platform client is usable, forced required when it must BYO,
+        // kept-but-optional when the platform client is pending approval.
         connectionVariables: p.connectionVariables ?? [],
         requiresOwnClient: p.requiresOwnClient,
+        ownClientOptional: p.ownClientOptional,
         ownClientReason: p.ownClientReason,
       },
     ]

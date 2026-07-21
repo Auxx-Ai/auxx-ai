@@ -9,9 +9,9 @@ import {
   splitSensitiveFields,
   updateCredential,
 } from '@auxx/credentials/store'
-import type { ConnectionVariable } from '@auxx/database'
 import { getOrgCache } from '@auxx/lib/cache'
 import {
+  gateConnectionVariables,
   mintClientCredentialToken,
   refreshCredentialTokens,
   resolveOwnClientRequirement,
@@ -36,27 +36,6 @@ const credentialKindSchema = z.enum(['app', 'mcp', 'connection'])
  * `expired` so a uniform status applies across every kind.
  */
 const CONNECTION_CIRCUIT_OPEN_THRESHOLD = 5
-
-/** The BYO OAuth client variable keys (§3.2). */
-const BYO_CLIENT_KEYS = new Set(['clientId', 'clientSecret'])
-
-/**
- * Project a provider's connect-form variables through the approval gate (§3.1). For
- * OAuth providers: drop the BYO client fields when the platform client is usable (so the
- * connect is one-click), keeping any other vars (e.g. Shopify's `shop`); force the client
- * fields required when the connection must bring its own. Non-OAuth defs pass through.
- */
-function gateConnectionVariables(
-  provider: { connectionType: string; connectionVariables?: ConnectionVariable[] },
-  requiresOwnClient: boolean
-): ConnectionVariable[] {
-  const vars = provider.connectionVariables ?? []
-  if (provider.connectionType !== 'oauth2-code') return vars
-  if (requiresOwnClient) {
-    return vars.map((v) => (BYO_CLIENT_KEYS.has(v.key) ? { ...v, required: true } : v))
-  }
-  return vars.filter((v) => !BYO_CLIENT_KEYS.has(v.key))
-}
 
 /**
  * The single connection surface over the `Credential` table. Covers listing,
@@ -204,6 +183,7 @@ export const connectionsRouter = createTRPCRouter({
       // gate would wrongly read as `no-platform-client` — only consult it for oauth2-code.
       const gate = p.connectionType === 'oauth2-code' ? gateByKey.get(p.providerKey) : undefined
       const requiresOwnClient = gate?.requiresOwnClient ?? false
+      const ownClientOptional = gate?.ownClientOptional ?? false
       return {
         providerKey: p.providerKey,
         label: p.label,
@@ -211,15 +191,26 @@ export const connectionsRouter = createTRPCRouter({
         connectionType: p.connectionType,
         global: p.global ?? false,
         // Gate the connect-form variables (§3.1): for OAuth providers, drop the optional
-        // BYO client fields when the platform client is usable (→ one-click connect), and
-        // force them required when the connection must bring its own. The server reads the
-        // ungated def for the authorize/callback exchange — this only shapes the UI form.
-        connectionVariables: gateConnectionVariables(p, requiresOwnClient),
+        // BYO client fields when the platform client is usable (→ one-click connect), force
+        // them required when the connection must bring its own, and keep-but-optional when
+        // the platform client is pending approval (user may try platform login OR BYO). The
+        // server reads the ungated def for the authorize/callback exchange — this only
+        // shapes the UI form.
+        connectionVariables: gateConnectionVariables(
+          p.connectionType,
+          p.connectionVariables ?? [],
+          {
+            requiresOwnClient,
+            ownClientOptional,
+          }
+        ),
         icon: p.uiMetadata?.icon ?? null,
         category: p.uiMetadata?.category ?? null,
-        // OAuth-only: whether this connection must bring its own client id/secret, and why.
-        // `false`/`null` for non-OAuth providers (no DB gate) and secret defs.
+        // OAuth-only: whether this connection must bring its own client id/secret, whether
+        // BYO is offered as an optional alternative, and why. `false`/`null` for non-OAuth
+        // providers (no DB gate) and secret defs.
         requiresOwnClient,
+        ownClientOptional,
         ownClientReason: gate?.reason ?? null,
       }
     })

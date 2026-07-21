@@ -8,7 +8,7 @@ import { KbdSubmit } from '@auxx/ui/components/kbd'
 import { RadioGroup } from '@auxx/ui/components/radio-group'
 import { RadioGroupItemCard } from '@auxx/ui/components/radio-group-item'
 import { toastError } from '@auxx/ui/components/toast'
-import { Lock, Users, Waypoints } from 'lucide-react'
+import { ChevronDown, ChevronRight, Lock, Users, Waypoints } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useMemo, useState } from 'react'
 import {
@@ -77,6 +77,8 @@ export function ChannelGalleryDialog({
   const [scope, setScope] = useState<'shared' | 'personal'>(defaultScope)
   const [clientId, setClientId] = useState('')
   const [clientSecret, setClientSecret] = useState('')
+  // Opt-in to BYO client from the optional "advanced" section (pending-approval case).
+  const [useOwnClient, setUseOwnClient] = useState(false)
   const [chatName, setChatName] = useState('')
 
   const isOAuth = selected?.kind === 'oauth-email' || selected?.kind === 'social'
@@ -109,11 +111,18 @@ export function ChannelGalleryDialog({
     setScope(defaultScope)
     setClientId('')
     setClientSecret('')
+    setUseOwnClient(false)
     setChatName('')
   }
 
+  // `requiresOwnClient` → BYO mandatory (no platform client). `ownClientOptional` →
+  // platform login works but the app is pending Google verification, so BYO is offered
+  // as an alternative the user can opt into via the advanced section.
   const needsOwnClient = !!prep.data?.requiresOwnClient
-  const ownClientReady = !needsOwnClient || (!!clientId.trim() && !!clientSecret.trim())
+  const ownClientOptional = !!prep.data?.ownClientOptional
+  // BYO fields are active (must be filled to connect) when mandatory, or opted-in.
+  const byoActive = needsOwnClient || (ownClientOptional && useOwnClient)
+  const ownClientReady = !byoActive || (!!clientId.trim() && !!clientSecret.trim())
 
   // ── Connect actions ────────────────────────────────────────────────────────
 
@@ -149,7 +158,11 @@ export function ChannelGalleryDialog({
           returnTo: RETURN_TO,
         },
         {
-          values: prep.data.requiresOwnClient
+          // Submit BYO client id/secret only when the user is actually using their own
+          // client (mandatory, or opted in via the advanced section). Otherwise start the
+          // platform-client flow (which, while pending verification, shows Google's
+          // "unverified app" warning and is limited to test users for restricted scopes).
+          values: byoActive
             ? { clientId: clientId.trim(), clientSecret: clientSecret.trim() }
             : undefined,
         }
@@ -200,39 +213,71 @@ export function ChannelGalleryDialog({
 
   // ── Detail steps ────────────────────────────────────────────────────────────
 
-  /** BYO OAuth-client rows (client id/secret) shown when the platform client is unusable. */
-  function renderOwnClientFields() {
-    if (!prep.data?.requiresOwnClient) return null
+  /** The client id/secret input rows — shared by the mandatory and optional BYO paths. */
+  function renderClientCredFields() {
     return (
-      <>
-        <p className='text-xs text-muted-foreground'>
-          {prep.data.ownClientReason === 'pending-approval'
-            ? 'Our platform app is pending verification — connect with your own OAuth client for now.'
-            : 'No platform app is configured — enter your own OAuth client credentials.'}
-        </p>
-        <FieldPanel orientation='responsive' resizeId={RESIZE_ID} className='p-0'>
-          <FieldPanelRow title='Client ID' type={BaseType.STRING} showIcon isRequired>
-            <FieldInputAdapter
-              fieldType={FieldType.TEXT}
-              value={clientId}
-              onChange={(v) => setClientId((v as string) ?? '')}
-              placeholder='Your OAuth client id'
-              disabled={flow.pending}
-            />
-          </FieldPanelRow>
-          <FieldPanelRow title='Client Secret' type={BaseType.STRING} showIcon isRequired>
-            <FieldInputAdapter
-              fieldType={FieldType.TEXT}
-              fieldOptions={{ secret: true }}
-              value={clientSecret}
-              onChange={(v) => setClientSecret((v as string) ?? '')}
-              placeholder='Your OAuth client secret'
-              disabled={flow.pending}
-            />
-          </FieldPanelRow>
-        </FieldPanel>
-      </>
+      <FieldPanel orientation='responsive' resizeId={RESIZE_ID} className='p-0'>
+        <FieldPanelRow title='Client ID' type={BaseType.STRING} showIcon isRequired>
+          <FieldInputAdapter
+            fieldType={FieldType.TEXT}
+            value={clientId}
+            onChange={(v) => setClientId((v as string) ?? '')}
+            placeholder='Your OAuth client id'
+            disabled={flow.pending}
+          />
+        </FieldPanelRow>
+        <FieldPanelRow title='Client Secret' type={BaseType.STRING} showIcon isRequired>
+          <FieldInputAdapter
+            fieldType={FieldType.TEXT}
+            fieldOptions={{ secret: true }}
+            value={clientSecret}
+            onChange={(v) => setClientSecret((v as string) ?? '')}
+            placeholder='Your OAuth client secret'
+            disabled={flow.pending}
+          />
+        </FieldPanelRow>
+      </FieldPanel>
     )
+  }
+
+  /**
+   * BYO OAuth-client section. Mandatory (`requiresOwnClient`, no platform client) renders the
+   * fields inline. Optional (`ownClientOptional`, platform app pending Google verification)
+   * keeps the platform login primary and tucks the fields behind an advanced disclosure.
+   */
+  function renderOwnClientFields() {
+    if (needsOwnClient) {
+      return (
+        <>
+          <p className='text-xs text-muted-foreground'>
+            No platform app is configured — enter your own OAuth client credentials.
+          </p>
+          {renderClientCredFields()}
+        </>
+      )
+    }
+    if (ownClientOptional) {
+      return (
+        <div className='flex flex-col gap-2'>
+          <p className='text-xs text-muted-foreground'>
+            This app's platform OAuth client is pending provider verification — during sign-in you
+            may see an "unverified app" warning (and access can be limited to test accounts). You
+            can continue with it, or use your own OAuth client below.
+          </p>
+          <Button
+            type='button'
+            variant='ghost'
+            size='sm'
+            className='h-auto w-fit gap-1 px-1 py-0.5 text-xs text-muted-foreground'
+            onClick={() => setUseOwnClient((v) => !v)}>
+            {useOwnClient ? <ChevronDown /> : <ChevronRight />}
+            Use your own OAuth client (advanced)
+          </Button>
+          {useOwnClient && renderClientCredFields()}
+        </div>
+      )
+    }
+    return null
   }
 
   function renderOAuthDetail(item: ChannelCatalogItem) {
