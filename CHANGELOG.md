@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.189](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.188...auxx-v0.1.189) (2026-07-21)
+
+
+### Features
+
+* **dispatch:** onboarding setup wizard + getting-started checklist ([#1235](https://github.com/Auxx-Ai/auxx-ai/issues/1235)) ([dddebf7](https://github.com/Auxx-Ai/auxx-ai/commit/dddebf74649d292fab468ef1501e8b6751eeb87c))
+
 ## [0.1.188](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.187...auxx-v0.1.188) (2026-07-21)
 
 
