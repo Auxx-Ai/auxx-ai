@@ -6,10 +6,14 @@ export type {
   BotStatus,
   BotWebhookEventType,
   MeetingPlatform,
+  RecordingOutcome,
 } from '../bot/types'
 export {
   BOT_PROVIDER_IDS,
   BOT_STATUSES,
+  deriveRecordingOutcome,
+  FAILURE_TERMINAL_STATUSES,
+  formatRecordingFailure,
   MEETING_PLATFORMS,
   TERMINAL_STATUSES,
 } from '../bot/types'

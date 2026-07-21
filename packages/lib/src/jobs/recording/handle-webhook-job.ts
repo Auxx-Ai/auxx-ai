@@ -4,6 +4,7 @@ import { createScopedLogger } from '@auxx/logger'
 import type { Job } from 'bullmq'
 import { handleBotStatusChange } from '../../recording/bot'
 import type { BotStatus, BotWebhookEventType } from '../../recording/bot/types'
+import { FAILURE_TERMINAL_STATUSES } from '../../recording/bot/types'
 import { findRecording } from '../../recording/recording-queries'
 import { getQueue, Queues } from '../queues'
 import type { JobContext } from '../types'
@@ -93,6 +94,15 @@ async function onRecordingReady(job: Job<HandleRecordingWebhookJobData>, externa
     return
   }
 
+  if (FAILURE_TERMINAL_STATUSES.includes(recording.status as BotStatus)) {
+    logger.info('Skipping recording processing — bot ended without a recording', {
+      jobId: job.id,
+      recordingId: recording.id,
+      status: recording.status,
+    })
+    return
+  }
+
   const queue = getQueue(Queues.recordingProcessingQueue)
   await queue.add(
     'processRecordingJob',
@@ -115,6 +125,15 @@ async function onTranscriptReady(job: Job<HandleRecordingWebhookJobData>, extern
 
   if (!recording) {
     logger.error('Recording not found for transcript_ready event', { externalBotId })
+    return
+  }
+
+  if (FAILURE_TERMINAL_STATUSES.includes(recording.status as BotStatus)) {
+    logger.info('Skipping transcription — bot ended without a recording', {
+      jobId: job.id,
+      recordingId: recording.id,
+      status: recording.status,
+    })
     return
   }
 

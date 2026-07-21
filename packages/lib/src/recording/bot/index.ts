@@ -22,10 +22,14 @@ export type {
   ExternalTranscriptData,
   ExternalUtterance,
   MeetingPlatform,
+  RecordingOutcome,
 } from './types'
 export {
   BOT_PROVIDER_IDS,
   BOT_STATUSES,
+  deriveRecordingOutcome,
+  FAILURE_TERMINAL_STATUSES,
+  formatRecordingFailure,
   MEETING_PLATFORMS,
   STATUS_ORDINAL,
   TERMINAL_STATUSES,

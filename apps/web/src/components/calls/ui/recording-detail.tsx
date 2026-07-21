@@ -1,8 +1,12 @@
 // apps/web/src/components/calls/ui/recording-detail.tsx
 'use client'
 
-import { type BotStatus, TERMINAL_STATUSES } from '@auxx/lib/recording/client'
-import { Badge } from '@auxx/ui/components/badge'
+import {
+  type BotStatus,
+  deriveRecordingOutcome,
+  formatRecordingFailure,
+  TERMINAL_STATUSES,
+} from '@auxx/lib/recording/client'
 import { Button } from '@auxx/ui/components/button'
 import {
   DropdownMenu,
@@ -49,22 +53,8 @@ import { RecordingMeeting } from './recording-meeting'
 import { RecordingSpeakers } from './recording-speakers'
 import { RecordingSummary } from './recording-summary'
 import { RecordingTranscript } from './recording-transcript'
+import { RecordingStatusBadge } from './recordings/recording-status-badge'
 import { useRecordingPlayer } from './use-recording-player'
-
-const STATUS_BADGE_VARIANT: Record<string, 'default' | 'secondary' | 'destructive' | 'outline'> = {
-  created: 'outline',
-  joining: 'secondary',
-  waiting: 'secondary',
-  admitted: 'secondary',
-  recording: 'default',
-  processing: 'secondary',
-  completed: 'default',
-  failed: 'destructive',
-  kicked: 'destructive',
-  denied: 'destructive',
-  timeout: 'destructive',
-  cancelled: 'outline',
-}
 
 // TODO: Remove mock data once real recordings exist
 export type MockRecordingParticipant = {
@@ -317,12 +307,22 @@ export function RecordingDetail({ recordingId }: { recordingId: string }) {
     }
   }, [isDesktop, tab, setTab])
 
+  const { data: realRecording, isLoading } = api.recording.getById.useQuery(
+    { id: recordingId },
+    { enabled: !USE_MOCK_DATA }
+  )
+  const recording = USE_MOCK_DATA ? (MOCK_RECORDINGS[recordingId] ?? null) : realRecording
+
+  // 'no_recording' = the bot ended without capturing anything — no video, no
+  // transcript, no AI content. One empty state instead of dead-end AI panels.
+  const outcome = recording ? deriveRecordingOutcome(recording) : 'scheduled'
+
   // Summary sidebar — docked-only, no overlay: the mobile Summary tab (above)
   // already covers the narrow/undocked case.
   const { dockedPanels } = useDockedPanels([
     {
       key: 'summary-sidebar',
-      open: { docked: true, overlay: false },
+      open: { docked: outcome !== 'no_recording', overlay: false },
       content: (
         <div className='h-full overflow-y-auto'>
           <RecordingSummary recordingId={recordingId} />
@@ -330,12 +330,6 @@ export function RecordingDetail({ recordingId }: { recordingId: string }) {
       ),
     },
   ])
-
-  const { data: realRecording, isLoading } = api.recording.getById.useQuery(
-    { id: recordingId },
-    { enabled: !USE_MOCK_DATA }
-  )
-  const recording = USE_MOCK_DATA ? (MOCK_RECORDINGS[recordingId] ?? null) : realRecording
 
   const { data: videoSession } = api.recording.getVideoSession.useQuery(
     { id: recordingId },
@@ -435,12 +429,7 @@ export function RecordingDetail({ recordingId }: { recordingId: string }) {
       <MainPageHeader
         action={
           <div className='flex items-center gap-2'>
-            <Badge variant={STATUS_BADGE_VARIANT[recording.status] ?? 'outline'}>
-              {isActive && (
-                <span className='mr-1.5 inline-block size-1.5 animate-pulse rounded-full bg-current' />
-              )}
-              {recording.status}
-            </Badge>
+            <RecordingStatusBadge status={recording.status as BotStatus} />
 
             {isActive && (
               <Button
@@ -461,36 +450,40 @@ export function RecordingDetail({ recordingId }: { recordingId: string }) {
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align='end'>
-                <DropdownMenuItem
-                  onSelect={async (e) => {
-                    e.preventDefault()
-                    const confirmed = await confirm({
-                      title: 'Regenerate transcript?',
-                      description:
-                        'This will re-fetch the transcript from the provider and re-run all AI analysis.',
-                      confirmText: 'Regenerate',
-                      cancelText: 'Cancel',
-                    })
-                    if (confirmed) {
-                      regenerateTranscript.mutate({ recordingId })
-                    }
-                  }}>
-                  <RefreshCw /> Regenerate transcript
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  onSelect={() => regenerateAi.mutate({ recordingId, scope: 'summary' })}>
-                  <Sparkles /> Regenerate summary
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onSelect={() => regenerateAi.mutate({ recordingId, scope: 'chapters' })}>
-                  <Sparkles /> Regenerate chapters
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onSelect={() => regenerateAi.mutate({ recordingId, scope: 'all' })}>
-                  <Sparkles /> Regenerate all AI
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
+                {outcome !== 'no_recording' && (
+                  <>
+                    <DropdownMenuItem
+                      onSelect={async (e) => {
+                        e.preventDefault()
+                        const confirmed = await confirm({
+                          title: 'Regenerate transcript?',
+                          description:
+                            'This will re-fetch the transcript from the provider and re-run all AI analysis.',
+                          confirmText: 'Regenerate',
+                          cancelText: 'Cancel',
+                        })
+                        if (confirmed) {
+                          regenerateTranscript.mutate({ recordingId })
+                        }
+                      }}>
+                      <RefreshCw /> Regenerate transcript
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      onSelect={() => regenerateAi.mutate({ recordingId, scope: 'summary' })}>
+                      <Sparkles /> Regenerate summary
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      onSelect={() => regenerateAi.mutate({ recordingId, scope: 'chapters' })}>
+                      <Sparkles /> Regenerate chapters
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      onSelect={() => regenerateAi.mutate({ recordingId, scope: 'all' })}>
+                      <Sparkles /> Regenerate all AI
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                  </>
+                )}
                 <DropdownMenuItem
                   className='text-destructive focus:text-destructive'
                   onSelect={async (e) => {
@@ -523,113 +516,128 @@ export function RecordingDetail({ recordingId }: { recordingId: string }) {
       <MainPageContent dockedPanels={dockedPanels}>
         <ConfirmDialog />
 
-        <div className='flex-1 h-full flex flex-col min-h-0'>
-          {/* Video Player — 16:9 placeholder with collapse animation */}
-          <AnimatePresence initial={false}>
-            {showVideo && (
-              <motion.div
-                initial={{ height: 0, opacity: 0, filter: 'blur(3px)', overflow: 'hidden' }}
-                animate={{
-                  height: 'auto',
-                  opacity: 1,
-                  filter: 'blur(0px)',
-                  overflow: 'hidden',
-                  transitionEnd: { overflow: 'visible' },
-                }}
-                exit={{ height: 0, opacity: 0, filter: 'blur(3px)', overflow: 'hidden' }}
-                transition={{ type: 'spring', stiffness: 300, damping: 30 }}>
-                <div className='p-3'>
-                  {recording.status === 'completed' && videoSession?.url ? (
-                    <div className='overflow-hidden rounded-lg'>
-                      <VideoPlayer
-                        videoId={recordingId}
-                        sourceUrl={videoSession.url}
-                        thumbnailStoryboardUrl={videoSession.storyboardUrl ?? undefined}
-                        previewThumbnailUrl={videoSession.previewUrl ?? undefined}
-                        borderRadius='8'
-                        hasBorder={false}
-                        chapters={chapters?.map((c) => ({
-                          start: c.startMs / 1000,
-                          end: c.endMs / 1000,
-                          title: c.title,
-                        }))}
-                      />
-                    </div>
-                  ) : (
-                    <div className='flex items-center justify-center rounded-lg border bg-muted aspect-video'>
-                      <div className='flex flex-col items-center gap-2 text-muted-foreground'>
-                        <Video className='size-10' />
-                        <span className='text-sm'>
-                          {recording.status === 'processing'
-                            ? 'Recording is being processed...'
-                            : recording.status === 'completed' && !recording.videoAssetId
-                              ? 'Video not yet available'
-                              : 'Video player'}
-                        </span>
+        {outcome === 'no_recording' ? (
+          <div className='flex-1 h-full flex flex-col min-h-0 overflow-y-auto'>
+            <EmptyState
+              icon={VideoOff}
+              title='No recording was captured'
+              description={formatRecordingFailure(recording.failureReason)}
+              className='py-12'
+            />
+            <RecordingMeeting recording={recording} />
+          </div>
+        ) : (
+          <div className='flex-1 h-full flex flex-col min-h-0'>
+            {/* Video Player — 16:9 placeholder with collapse animation */}
+            <AnimatePresence initial={false}>
+              {showVideo && (
+                <motion.div
+                  initial={{ height: 0, opacity: 0, filter: 'blur(3px)', overflow: 'hidden' }}
+                  animate={{
+                    height: 'auto',
+                    opacity: 1,
+                    filter: 'blur(0px)',
+                    overflow: 'hidden',
+                    transitionEnd: { overflow: 'visible' },
+                  }}
+                  exit={{ height: 0, opacity: 0, filter: 'blur(3px)', overflow: 'hidden' }}
+                  transition={{ type: 'spring', stiffness: 300, damping: 30 }}>
+                  <div className='p-3'>
+                    {recording.status === 'completed' && videoSession?.url ? (
+                      <div className='overflow-hidden rounded-lg'>
+                        <VideoPlayer
+                          videoId={recordingId}
+                          sourceUrl={videoSession.url}
+                          thumbnailStoryboardUrl={videoSession.storyboardUrl ?? undefined}
+                          previewThumbnailUrl={videoSession.previewUrl ?? undefined}
+                          borderRadius='8'
+                          hasBorder={false}
+                          chapters={chapters?.map((c) => ({
+                            start: c.startMs / 1000,
+                            end: c.endMs / 1000,
+                            title: c.title,
+                          }))}
+                        />
                       </div>
-                    </div>
-                  )}
-                </div>
+                    ) : (
+                      <div className='flex items-center justify-center rounded-lg border bg-muted aspect-video'>
+                        <div className='flex flex-col items-center gap-2 text-muted-foreground'>
+                          <Video className='size-10' />
+                          <span className='text-sm'>
+                            {recording.status === 'processing'
+                              ? 'Recording is being processed...'
+                              : recording.status === 'completed' && !recording.videoAssetId
+                                ? 'Video not yet available'
+                                : 'Video player'}
+                          </span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            {/* Tabs */}
+            <Tabs
+              value={tab ?? 'transcript'}
+              onValueChange={setTab}
+              className='flex-1 flex flex-col min-h-0'>
+              <motion.div
+                initial={false}
+                animate={{
+                  borderTopLeftRadius: showVideo ? 0 : 8,
+                  borderTopRightRadius: showVideo ? 0 : 8,
+                  borderTopWidth: showVideo ? 1 : 0,
+                }}
+                style={{ borderTopStyle: 'solid', borderTopColor: 'var(--border)' }}
+                transition={{ type: 'spring', stiffness: 300, damping: 30 }}>
+                <TabsList className='border-b w-full justify-start rounded-none bg-primary-150 px-2'>
+                  <TabsTrigger value='summary' variant='outline' className='lg:hidden'>
+                    <BookOpen /> Summary
+                  </TabsTrigger>
+                  <TabsTrigger value='transcript' variant='outline'>
+                    <FileText /> Transcript
+                  </TabsTrigger>
+                  <TabsTrigger value='speakers' variant='outline'>
+                    <Users /> Speakers
+                  </TabsTrigger>
+                  <TabsTrigger value='meeting' variant='outline'>
+                    <CalendarDays /> Meeting
+                  </TabsTrigger>
+
+                  {/* Video toggle */}
+                  <div className='ml-auto flex items-center'>
+                    <Tooltip content={showVideo ? 'Hide video' : 'Show video'}>
+                      <Button
+                        variant='ghost'
+                        size='icon-sm'
+                        onClick={() => setShowVideo((v) => !v)}>
+                        {showVideo ? <VideoOff /> : <Video />}
+                      </Button>
+                    </Tooltip>
+                  </div>
+                </TabsList>
               </motion.div>
-            )}
-          </AnimatePresence>
 
-          {/* Tabs */}
-          <Tabs
-            value={tab ?? 'transcript'}
-            onValueChange={setTab}
-            className='flex-1 flex flex-col min-h-0'>
-            <motion.div
-              initial={false}
-              animate={{
-                borderTopLeftRadius: showVideo ? 0 : 8,
-                borderTopRightRadius: showVideo ? 0 : 8,
-                borderTopWidth: showVideo ? 1 : 0,
-              }}
-              style={{ borderTopStyle: 'solid', borderTopColor: 'var(--border)' }}
-              transition={{ type: 'spring', stiffness: 300, damping: 30 }}>
-              <TabsList className='border-b w-full justify-start rounded-none bg-primary-150 px-2'>
-                <TabsTrigger value='summary' variant='outline' className='lg:hidden'>
-                  <BookOpen /> Summary
-                </TabsTrigger>
-                <TabsTrigger value='transcript' variant='outline'>
-                  <FileText /> Transcript
-                </TabsTrigger>
-                <TabsTrigger value='speakers' variant='outline'>
-                  <Users /> Speakers
-                </TabsTrigger>
-                <TabsTrigger value='meeting' variant='outline'>
-                  <CalendarDays /> Meeting
-                </TabsTrigger>
+              <TabsContent value='summary' className='flex flex-col flex-1 min-h-0 overflow-y-auto'>
+                <RecordingSummary recordingId={recordingId} />
+              </TabsContent>
 
-                {/* Video toggle */}
-                <div className='ml-auto flex items-center'>
-                  <Tooltip content={showVideo ? 'Hide video' : 'Show video'}>
-                    <Button variant='ghost' size='icon-sm' onClick={() => setShowVideo((v) => !v)}>
-                      {showVideo ? <VideoOff /> : <Video />}
-                    </Button>
-                  </Tooltip>
-                </div>
-              </TabsList>
-            </motion.div>
+              <TabsContent value='transcript' className='flex flex-col flex-1 min-h-0'>
+                <RecordingTranscript recordingId={recordingId} />
+              </TabsContent>
 
-            <TabsContent value='summary' className='flex flex-col flex-1 min-h-0 overflow-y-auto'>
-              <RecordingSummary recordingId={recordingId} />
-            </TabsContent>
+              <TabsContent value='speakers' className='flex flex-col flex-1 min-h-0'>
+                <RecordingSpeakers recordingId={recordingId} />
+              </TabsContent>
 
-            <TabsContent value='transcript' className='flex flex-col flex-1 min-h-0'>
-              <RecordingTranscript recordingId={recordingId} />
-            </TabsContent>
-
-            <TabsContent value='speakers' className='flex flex-col flex-1 min-h-0'>
-              <RecordingSpeakers recordingId={recordingId} />
-            </TabsContent>
-
-            <TabsContent value='meeting' className='flex flex-col flex-1 min-h-0 overflow-y-auto'>
-              <RecordingMeeting recording={recording} />
-            </TabsContent>
-          </Tabs>
-        </div>
+              <TabsContent value='meeting' className='flex flex-col flex-1 min-h-0 overflow-y-auto'>
+                <RecordingMeeting recording={recording} />
+              </TabsContent>
+            </Tabs>
+          </div>
+        )}
       </MainPageContent>
     </MainPage>
   )

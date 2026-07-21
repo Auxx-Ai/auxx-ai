@@ -40,6 +40,79 @@ export const TERMINAL_STATUSES: BotStatus[] = [
   'cancelled',
 ]
 
+/** Terminal statuses where the bot ended without a usable recording */
+export const FAILURE_TERMINAL_STATUSES: BotStatus[] = [
+  'failed',
+  'kicked',
+  'denied',
+  'timeout',
+  'cancelled',
+]
+
+/**
+ * Recall sub_codes (attached to call_ended/done/fatal status changes) that mean
+ * the bot ended without ever recording. Maps to the truthful terminal status.
+ * See https://docs.recall.ai/docs/sub-codes
+ */
+export const FAILURE_SUB_CODE_STATUS: Record<string, BotStatus> = {
+  timeout_exceeded_waiting_room: 'timeout',
+  call_ended_by_platform_waiting_room_timeout: 'timeout',
+  timeout_exceeded_noone_joined: 'timeout',
+  google_meet_bot_blocked: 'denied',
+  zoom_bot_blocked: 'denied',
+  meeting_not_accessible: 'denied',
+  meeting_not_found: 'failed',
+  meeting_not_started: 'failed',
+  bot_errored: 'failed',
+}
+
+/** Human-readable failure reasons keyed by sub_code (fallbacks by BotStatus). */
+export const FAILURE_REASONS: Record<string, string> = {
+  timeout_exceeded_waiting_room: 'The notetaker was never admitted to the meeting',
+  call_ended_by_platform_waiting_room_timeout: 'The notetaker was never admitted to the meeting',
+  timeout_exceeded_noone_joined: 'No one joined the meeting',
+  google_meet_bot_blocked: 'The notetaker was blocked from joining the meeting',
+  zoom_bot_blocked: 'The notetaker was blocked from joining the meeting',
+  meeting_not_accessible: 'The meeting was not accessible to the notetaker',
+  meeting_not_found: 'The meeting could not be found',
+  meeting_not_started: 'The meeting never started',
+  bot_errored: 'The notetaker encountered an unexpected error',
+  // Status-level fallbacks
+  timeout: 'The notetaker was never admitted to the meeting',
+  denied: 'The notetaker was denied entry to the meeting',
+  kicked: 'The notetaker was removed from the meeting',
+  failed: 'The notetaker failed to record the meeting',
+  cancelled: 'The recording was cancelled',
+}
+
+/** Best human-readable copy for a stored failureReason / sub_code / status. */
+export function formatRecordingFailure(reason: string | null | undefined): string {
+  if (!reason) return 'The meeting ended without a recording'
+  return FAILURE_REASONS[reason] ?? reason
+}
+
+// --- Recording Outcome (derived, drives UI states) ---
+
+export type RecordingOutcome = 'scheduled' | 'live' | 'ready' | 'no_recording'
+
+/**
+ * Collapse bot status + captured artifacts into the single outcome the UI
+ * should render: pre-meeting, in-progress, usable recording, or nothing captured.
+ */
+export function deriveRecordingOutcome(recording: {
+  status: BotStatus | string
+  hasTranscript?: boolean
+  videoAssetId?: string | null
+}): RecordingOutcome {
+  const status = recording.status as BotStatus
+  if (FAILURE_TERMINAL_STATUSES.includes(status)) return 'no_recording'
+  if (status === 'completed') {
+    return recording.hasTranscript || recording.videoAssetId ? 'ready' : 'no_recording'
+  }
+  if (status === 'created' || status === 'joining') return 'scheduled'
+  return 'live'
+}
+
 /** Ordered status progression for forward-transition enforcement */
 export const STATUS_ORDINAL: Record<BotStatus, number> = {
   created: 0,
