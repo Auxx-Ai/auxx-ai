@@ -166,6 +166,19 @@ export async function setupSchedules() {
   const calendarSyncQueue = getQueue(Queues.calendarSyncQueue)
   const datasetMaintenanceQueue = getQueue(Queues.datasetMaintenanceQueue)
 
+  // Schedulers whose job function was removed/renamed. `upsertJobScheduler` under a new id
+  // never deletes the old schedule from Redis, so a retired id keeps firing forever and each
+  // tick fails with "Job function not found". Explicit tombstones (not a remove-anything-unknown
+  // sweep — org-scoped reconcilers create dynamic ids we don't statically know).
+  const retiredSchedulerIds = [
+    // Renamed to webhookRenewalScannerJob in #920 (token refresh moved to the unified
+    // oauth2TokenRefreshScannerJob).
+    'integrationTokenRefreshScannerJob',
+  ]
+  for (const id of retiredSchedulerIds) {
+    await maintenanceQueue.removeJobScheduler(id).catch(() => {})
+  }
+
   await calendarSyncQueue.upsertJobScheduler(
     'calendarSyncScannerJob',
     { pattern: '*/5 * * * *' },

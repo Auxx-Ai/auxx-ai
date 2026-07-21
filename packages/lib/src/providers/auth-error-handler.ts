@@ -98,7 +98,16 @@ export class AuthErrorHandler {
         type = AuthErrorType.INVALID_GRANT
         requiresReauth = true
         retryable = false
-      } else if (errorMessage.includes('unauthorized') || errorCode === 'unauthorized') {
+      } else if (
+        // A 401 that reaches this handler means the grant is dead: google-auth-library
+        // auto-refreshes expired access tokens transparently, so an unrecoverable
+        // UNAUTHENTICATED ("Invalid Credentials") is a revoked grant, not a stale token.
+        error?.response?.status === 401 ||
+        error?.code === 401 ||
+        errorMessage.includes('Invalid Credentials') ||
+        errorMessage.includes('unauthorized') ||
+        errorCode === 'unauthorized'
+      ) {
         type = AuthErrorType.REVOKED_ACCESS
         requiresReauth = true
         retryable = false
