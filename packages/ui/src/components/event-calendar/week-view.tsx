@@ -343,15 +343,11 @@ export function WeekView<T extends EventCalendarItem = EventCalendarItem>({
             {virtualItems.map((v) => {
               const day = dayAt(v.index)
               const x = gutterWidth + v.start
-              const isWeekBoundary = day.getDay() === weekStartsOn
               const dayAllDayEvents = getAllEventsForDay(allDayEvents, day)
               return (
                 <div
                   key={`allday-${v.key}`}
-                  className={cn(
-                    'bg-muted/50 absolute space-y-1 overflow-hidden border-l border-border/40 p-1',
-                    isWeekBoundary && 'border-l-2 border-border'
-                  )}
+                  className='bg-muted/50 absolute space-y-1 overflow-hidden border-l border-border/40 p-1'
                   style={{
                     top: HeaderLabelHeight,
                     left: 0,

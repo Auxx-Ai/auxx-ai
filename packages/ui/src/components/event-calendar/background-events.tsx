@@ -14,6 +14,17 @@ interface BackgroundEventsLayerProps {
   /** When set, only background events matching this resource (or with no `resourceId`) render. */
   resourceId?: string
   cellHeight: number
+  /**
+   * Layout orientation. `'y'` (default) positions segments as `top`/`height` against
+   * `StartHour..24` — week/day/resource's vertical grids. `'x'` positions them as `left`/`width`
+   * (percent of `windowStartHour..windowEndHour`) and spans full row height — the horizontal
+   * timeline view.
+   */
+  orientation?: 'x' | 'y'
+  /** Visible hour window start — `orientation: 'x'` only. */
+  windowStartHour?: number
+  /** Visible hour window end — `orientation: 'x'` only. */
+  windowEndHour?: number
 }
 
 /**
@@ -27,6 +38,9 @@ export function BackgroundEventsLayer({
   day,
   resourceId,
   cellHeight,
+  orientation = 'y',
+  windowStartHour,
+  windowEndHour,
 }: BackgroundEventsLayerProps) {
   const dayEvents = events.filter((bg) => {
     if (bg.resourceId !== undefined && bg.resourceId !== resourceId) return false
@@ -37,6 +51,41 @@ export function BackgroundEventsLayer({
   })
 
   if (dayEvents.length === 0) return null
+
+  if (orientation === 'x') {
+    const winStart = windowStartHour ?? StartHour
+    const winEnd = windowEndHour ?? 24
+    const windowHours = winEnd - winStart
+    if (windowHours <= 0) return null
+
+    return (
+      <>
+        {dayEvents.map((bg, index) => {
+          const start = new Date(bg.start)
+          const end = new Date(bg.end)
+          const startHour = isSameDay(day, start) ? getHours(start) + getMinutes(start) / 60 : 0
+          const endHour = isSameDay(day, end) ? getHours(end) + getMinutes(end) / 60 : 24
+          // Clamp to the visible hour window — segments entirely outside it collapse to nothing.
+          const clampedStart = Math.min(Math.max(startHour, winStart), winEnd)
+          const clampedEnd = Math.min(Math.max(endHour, winStart), winEnd)
+          if (clampedEnd <= clampedStart) return null
+          const left = ((clampedStart - winStart) / windowHours) * 100
+          const width = ((clampedEnd - clampedStart) / windowHours) * 100
+
+          return (
+            <div
+              key={index}
+              className={cn(
+                'pointer-events-none absolute inset-y-0 z-0',
+                bg.className ?? 'bg-muted/40'
+              )}
+              style={{ left: `${left}%`, width: `${width}%` }}
+            />
+          )
+        })}
+      </>
+    )
+  }
 
   return (
     <>

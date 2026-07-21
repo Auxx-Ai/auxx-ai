@@ -3,7 +3,7 @@
 
 import { FeatureKey } from '@auxx/lib/permissions/client'
 import type { SettingValue } from '@auxx/lib/settings/client'
-import { Lock, Route as RouteIcon } from 'lucide-react'
+import { Clock, Lock, Route as RouteIcon } from 'lucide-react'
 import { EmptyState } from '~/components/global/empty-state'
 import { FieldPanel } from '~/components/global/forms/field-panel'
 import { FormSaveBar } from '~/components/global/forms/form-save-bar'
@@ -47,7 +47,11 @@ export function DispatchGeneralSettingsPage() {
 /** Scalar catalog keys this page's draft owns — `useSettings({scope:'GENERAL'})` returns every
  * `'GENERAL'`-scope setting across the whole app, so the draft/save must stay scoped to exactly
  * these keys or a save here would clobber unrelated GENERAL settings. */
-const DRAFT_KEYS = ['dispatch.routes.autoApplyTimes'] as const
+const DRAFT_KEYS = [
+  'dispatch.routes.autoApplyTimes',
+  'dispatch.board.timelineStartHour',
+  'dispatch.board.timelineEndHour',
+] as const
 
 function DispatchGeneralSettingsBody() {
   const { getSetting, batchUpdateOrganizationSettings, isBatchUpdatingOrgSettings } = useSettings({
@@ -63,7 +67,7 @@ function DispatchGeneralSettingsBody() {
     onSave: (next) => {
       const changed = DRAFT_KEYS.filter((key) => next[key] !== server[key]).map((key) => ({
         key,
-        value: next[key],
+        value: next[key] ?? null,
       }))
       if (changed.length > 0) batchUpdateOrganizationSettings(changed)
     },
@@ -71,7 +75,10 @@ function DispatchGeneralSettingsBody() {
 
   const controlled = (key: (typeof DRAFT_KEYS)[number]) => ({
     value: draft[key],
-    onChange: (value: unknown) => patch({ [key]: value as SettingValue }),
+    // NUMBER inputs report a clear as `undefined` (the node-input convention), not `null` —
+    // normalize here since `SettingValue`/the server normalizer only accept `null` for "unset".
+    onChange: (value: unknown) =>
+      patch({ [key]: (value === undefined ? null : value) as SettingValue }),
   })
 
   return (
@@ -93,6 +100,31 @@ function DispatchGeneralSettingsBody() {
               title='Auto-apply times on reorder'
               description='Reordering a route automatically re-chains provisional stop times. Confirmed (promised) times stay fixed — reordering around them surfaces a conflict instead of moving them.'
               {...controlled('dispatch.routes.autoApplyTimes')}
+            />
+          </FieldPanel>
+        </SettingsSection>
+
+        <SettingsSection
+          icon={Clock}
+          title='Board'
+          description='Dispatch board timeline view behavior.'>
+          <FieldPanel
+            className='mt-1 p-0'
+            resizeId='dispatch-general-settings-board'
+            defaultLabelWidth={260}>
+            <SettingsFieldRow
+              settingKey='dispatch.board.timelineStartHour'
+              title='Timeline start hour'
+              description='Automatic — working hours ± 2h buffer. Set both start and end to override.'
+              placeholder='Automatic'
+              {...controlled('dispatch.board.timelineStartHour')}
+            />
+            <SettingsFieldRow
+              settingKey='dispatch.board.timelineEndHour'
+              title='Timeline end hour'
+              description='Automatic — working hours ± 2h buffer. Set both start and end to override.'
+              placeholder='Automatic'
+              {...controlled('dispatch.board.timelineEndHour')}
             />
           </FieldPanel>
         </SettingsSection>

@@ -62,3 +62,12 @@ export const SnapMinutes = 15
 /** Current-time indicator accent — a fixed brand accent, not tied to any event color. */
 export const CurrentTimeLineClass = 'bg-rose-600 dark:bg-rose-500'
 export const CurrentTimeLabelClass = 'bg-rose-600 text-white dark:bg-rose-500'
+
+/** Pixels per hour on the horizontal timeline view's x-axis (plan 33). */
+export const TimelineHourWidth = 96
+
+/** Height (px) of one event lane within a timeline worker row (plan 33). */
+export const TimelineLaneHeight = 28
+
+/** Width (px) of the sticky-left worker rail in the horizontal timeline view (plan 33). */
+export const TimelineRailWidth = 160

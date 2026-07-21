@@ -32,6 +32,7 @@ import { AgendaView } from './agenda-view'
 import { CalendarDndProvider, useCalendarDnd } from './calendar-dnd-context'
 import {
   AgendaDaysToShow,
+  EndHour,
   EventGap,
   EventHeight,
   GridAllDayChipHeight,
@@ -40,8 +41,10 @@ import {
   GridHeaderHeight,
   GridTickHeight,
   GridTickMinutes,
+  StartHour,
 } from './constants'
 import { DayView, DayViewHeader } from './day-view'
+import { HorizontalTimelineView } from './horizontal-timeline-view'
 import { MonthView } from './month-view'
 import { ResourceTimelineView } from './resource-timeline-view'
 import type {
@@ -50,8 +53,12 @@ import type {
   CalendarView,
   EventCalendarItem,
   RenderEvent,
+  TimelineHourWindow,
 } from './types'
 import { WeekView } from './week-view'
+
+/** Module-level default — an inline `{}` default would break `TimelineDaySection`'s memo every render. */
+const DefaultHourWindow: TimelineHourWindow = { start: StartHour, end: EndHour }
 
 export interface EventCalendarProps<T extends EventCalendarItem = EventCalendarItem> {
   events?: T[]
@@ -68,6 +75,8 @@ export interface EventCalendarProps<T extends EventCalendarItem = EventCalendarI
   resources?: CalendarResource[]
   /** Resource timeline only — how many days to aim for across the viewport (Day=1, Timeline=3). */
   resourceDaysVisible?: number
+  /** Horizontal timeline (`view='timeline'`) only — visible hour range. Defaults to the full day. */
+  hourWindow?: TimelineHourWindow
   backgroundEvents?: BackgroundEvent[]
   renderEvent?: RenderEvent<T>
   /** Id of the actively-selected event (its detail/popover open) — draws the in-color ring. */
@@ -101,6 +110,7 @@ function EventCalendarInner<T extends EventCalendarItem = EventCalendarItem>({
   weekStartsOn = 1,
   resources,
   resourceDaysVisible = 1,
+  hourWindow = DefaultHourWindow,
   backgroundEvents,
   renderEvent,
   selectedEventId,
@@ -138,7 +148,8 @@ function EventCalendarInner<T extends EventCalendarItem = EventCalendarItem>({
     if (view === 'month')
       onDateChange(startOfWeek(subMonths(viewedMonthStart, 1), { weekStartsOn }))
     else if (view === 'week') onDateChange(subWeeks(date, 1))
-    else if (view === 'day' || view === 'resource') onDateChange(addDays(date, -1))
+    else if (view === 'day' || view === 'resource' || view === 'timeline')
+      onDateChange(addDays(date, -1))
     else if (view === 'agenda') onDateChange(addDays(date, -AgendaDaysToShow))
   }
 
@@ -146,7 +157,8 @@ function EventCalendarInner<T extends EventCalendarItem = EventCalendarItem>({
     if (view === 'month')
       onDateChange(startOfWeek(addMonths(viewedMonthStart, 1), { weekStartsOn }))
     else if (view === 'week') onDateChange(addWeeks(date, 1))
-    else if (view === 'day' || view === 'resource') onDateChange(addDays(date, 1))
+    else if (view === 'day' || view === 'resource' || view === 'timeline')
+      onDateChange(addDays(date, 1))
     else if (view === 'agenda') onDateChange(addDays(date, AgendaDaysToShow))
   }
 
@@ -180,7 +192,7 @@ function EventCalendarInner<T extends EventCalendarItem = EventCalendarItem>({
       // Placeholder — the week stream reports its own visible range (skipped below).
       return [date, addDays(date, 6)]
     }
-    if (view === 'day' || view === 'resource') {
+    if (view === 'day' || view === 'resource' || view === 'timeline') {
       return [startOfDay(date), endOfDay(date)]
     }
     // agenda
@@ -188,8 +200,8 @@ function EventCalendarInner<T extends EventCalendarItem = EventCalendarItem>({
   }, [date, view, weekStartsOn])
 
   useEffect(() => {
-    // The month/week/resource streams drive their own range via onVisibleRangeChange.
-    if (view === 'month' || view === 'week' || view === 'resource') return
+    // The month/week/resource/timeline streams drive their own range via onVisibleRangeChange.
+    if (view === 'month' || view === 'week' || view === 'resource' || view === 'timeline') return
     onRangeChange?.(rangeFrom, rangeTo)
   }, [view, rangeFrom, rangeTo, onRangeChange])
 
@@ -204,7 +216,7 @@ function EventCalendarInner<T extends EventCalendarItem = EventCalendarItem>({
         ? format(start, 'MMMM yyyy')
         : `${format(start, 'MMM')} - ${format(end, 'MMM yyyy')}`
     }
-    if (view === 'day' || view === 'resource') {
+    if (view === 'day' || view === 'resource' || view === 'timeline') {
       return <DayViewHeader currentDate={date} />
     }
     if (view === 'agenda') {
@@ -283,8 +295,8 @@ function EventCalendarInner<T extends EventCalendarItem = EventCalendarItem>({
       <div
         className={cn(
           'flex min-h-0 flex-1 flex-col',
-          // The month/week/resource streams own their own (snap) scroll containers.
-          view === 'month' || view === 'week' || view === 'resource'
+          // The month/week/resource/timeline streams own their own (snap) scroll containers.
+          view === 'month' || view === 'week' || view === 'resource' || view === 'timeline'
             ? 'overflow-hidden'
             : 'overflow-y-auto'
         )}>
@@ -340,6 +352,23 @@ function EventCalendarInner<T extends EventCalendarItem = EventCalendarItem>({
               backgroundEvents={backgroundEvents}
               onEventSelect={handleEventSelect}
               onSlotClick={handleSlotClick}
+              onEventResize={onEventResize}
+              renderEvent={renderEvent}
+              selectedEventId={selectedEventId}
+              onDateChange={onDateChange}
+              onVisibleRangeChange={onRangeChange}
+            />
+          ) : null)}
+        {view === 'timeline' &&
+          (resources ? (
+            <HorizontalTimelineView
+              currentDate={date}
+              events={events}
+              resources={resources}
+              weekStartsOn={weekStartsOn}
+              backgroundEvents={backgroundEvents}
+              hourWindow={hourWindow}
+              onEventSelect={handleEventSelect}
               onEventResize={onEventResize}
               renderEvent={renderEvent}
               selectedEventId={selectedEventId}
