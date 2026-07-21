@@ -3,7 +3,7 @@
 // descriptions, icons and CTAs live here (web concerns); the canonical key set
 // + persisted state shapes come from @auxx/lib/getting-started/client.
 
-import { GOAL_KEYS, type GoalKey } from '@auxx/lib/getting-started/client'
+import { type GoalKey, MAIN_GOAL_KEYS, type MainGoalKey } from '@auxx/lib/getting-started/client'
 
 /** Chrome Web Store listing for the browser extension (published unlisted). */
 export const EXTENSION_STORE_URL =
@@ -30,7 +30,7 @@ export type GettingStartedGoal = {
   markOnClick?: boolean
 }
 
-const GOALS: Record<GoalKey, Omit<GettingStartedGoal, 'key'>> = {
+const GOALS: Record<MainGoalKey, Omit<GettingStartedGoal, 'key'>> = {
   'connect-email': {
     label: 'Connect your inbox',
     description: 'Link a Gmail or Outlook mailbox so Auxx can read and reply to support email.',
@@ -89,8 +89,8 @@ const GOALS: Record<GoalKey, Omit<GettingStartedGoal, 'key'>> = {
   },
 }
 
-/** Ordered display catalog (display order = GOAL_KEYS order). */
-export const GETTING_STARTED_GOALS: GettingStartedGoal[] = GOAL_KEYS.map((key) => ({
+/** Ordered display catalog (display order = MAIN_GOAL_KEYS order). */
+export const GETTING_STARTED_GOALS: GettingStartedGoal[] = MAIN_GOAL_KEYS.map((key) => ({
   key,
   ...GOALS[key],
 }))

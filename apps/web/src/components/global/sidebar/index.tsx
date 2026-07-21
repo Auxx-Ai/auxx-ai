@@ -10,6 +10,7 @@ import {
   SidebarRail,
 } from '@auxx/ui/components/sidebar'
 import type * as React from 'react'
+import { GETTING_STARTED_GOALS } from '~/components/getting-started/client'
 import { GettingStartedGroup } from '~/components/getting-started/ui/getting-started-group'
 import { MailSidebar } from '~/components/global/sidebar/mail-sidebar'
 import { SIDEBAR_MENU } from '~/constants/menu'
@@ -55,7 +56,7 @@ export default function AppSidebar({ user, ...props }: Prop) {
           <EntitySidebarNav />
         </SidebarContent>
         <SidebarFooter>
-          <GettingStartedGroup />
+          <GettingStartedGroup checklistId='main' catalog={GETTING_STARTED_GOALS} />
           <AppFooter />
         </SidebarFooter>
         <SidebarRail />

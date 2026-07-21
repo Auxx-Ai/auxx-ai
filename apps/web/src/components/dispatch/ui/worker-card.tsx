@@ -23,7 +23,8 @@ function workerStatus(worker: DispatchWorkerRow): ListCardStatus {
 
 interface WorkerCardProps {
   worker: DispatchWorkerRow
-  onClick: (worker: DispatchWorkerRow) => void
+  /** Omit to render a read-only tile (e.g. the dispatch setup wizard's already-added list). */
+  onClick?: (worker: DispatchWorkerRow) => void
 }
 
 /**
@@ -53,7 +54,7 @@ export function WorkerCard({ worker, onClick }: WorkerCardProps) {
           </Badge>
         ) : undefined
       }
-      onClick={() => onClick(worker)}
+      onClick={onClick ? () => onClick(worker) : undefined}
     />
   )
 }
