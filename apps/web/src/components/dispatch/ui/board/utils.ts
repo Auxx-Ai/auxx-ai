@@ -1,6 +1,11 @@
 // apps/web/src/components/dispatch/ui/board/utils.ts
 
-import type { BackgroundEvent } from '@auxx/ui/components/event-calendar'
+import {
+  getOptionColor,
+  type OptionColor,
+  type SelectOptionColor,
+} from '@auxx/lib/custom-fields/client'
+import type { BackgroundEvent, EventColorClasses } from '@auxx/ui/components/event-calendar'
 import {
   addDays,
   addMonths,
@@ -72,6 +77,18 @@ export function isPastVisitEvent(event: Pick<DispatchVisitEvent, 'status' | 'end
 export const DEFAULT_WORKER_COLOR = '#6366f1'
 /** Color for the always-first "Unassigned" column's chips. */
 export const UNASSIGNED_COLOR = '#94a3b8'
+/** Palette-id twins of the two hex fallbacks above, for the badge-look chip classes. */
+const DEFAULT_WORKER_COLOR_ID: SelectOptionColor = 'indigo'
+const UNASSIGNED_COLOR_ID: SelectOptionColor = 'gray'
+
+/** Project an `OPTION_COLORS` entry onto the calendar chip's badge-look class contract. */
+function toEventColorClasses(color: OptionColor): EventColorClasses {
+  return {
+    badge: color.badgeClasses,
+    selectedBorder: color.selectedBorderClasses,
+    solid: color.swatch,
+  }
+}
 
 export function isVisitStatus(value: string): value is VisitStatus {
   return (VISIT_STATUS_VALUES as readonly string[]).includes(value)
@@ -172,15 +189,19 @@ export function splitVisits(visits: BoardVisit[]) {
 export function visitToEvent(
   visit: BoardVisit & { startTime: Date; endTime: Date },
   workOrderById: Map<string, BoardWorkOrder>,
-  colorByUserId: Map<string, string>
+  colorByUserId: Map<string, OptionColor>
 ): DispatchVisitEvent {
   const workOrder = workOrderById.get(visit.workOrderId)
   const title = workOrder
     ? `${workOrder.number ? `${workOrder.number} · ` : ''}${workOrder.displayName ?? 'Work order'}`
     : 'Work order'
-  const color = visit.assigneeUserId
-    ? (colorByUserId.get(visit.assigneeUserId) ?? DEFAULT_WORKER_COLOR)
-    : UNASSIGNED_COLOR
+  // Chip coloring is the badge look (plan 11 follow-up): the assigned worker's stored palette
+  // entry supplies `colorClasses`; the resolved hex is still stamped on `color` for non-chip
+  // consumers (sidebar dots, map pins).
+  const optionColor = visit.assigneeUserId
+    ? (colorByUserId.get(visit.assigneeUserId) ?? getOptionColor(DEFAULT_WORKER_COLOR_ID))
+    : getOptionColor(UNASSIGNED_COLOR_ID)
+  const color = visit.assigneeUserId ? optionColor.hex : UNASSIGNED_COLOR
 
   return {
     id: visit.id,
@@ -188,6 +209,7 @@ export function visitToEvent(
     start: visit.startTime,
     end: visit.endTime,
     color,
+    colorClasses: toEventColorClasses(optionColor),
     resourceId: visit.assigneeUserId ?? UNASSIGNED_RESOURCE_ID,
     workOrderId: visit.workOrderId,
     assigneeUserId: visit.assigneeUserId,

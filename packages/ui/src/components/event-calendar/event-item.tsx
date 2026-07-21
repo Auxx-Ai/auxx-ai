@@ -58,8 +58,9 @@ function EventWrapper({
         'focus-visible:border-ring focus-visible:ring-ring/50 flex h-full w-full overflow-hidden text-left font-medium transition outline-none select-none focus-visible:ring-[3px] data-dragging:cursor-grabbing data-dragging:shadow-lg',
         getBorderRadiusClasses(isFirstDay, isLastDay),
         // Selected ring last so it wins over the resting look (but focus-visible:ring-[3px]
-        // still layers on top when the chip is keyboard-focused).
-        isSelected && eventSelectedRingClass,
+        // still layers on top when the chip is keyboard-focused). Badge-look chips signal
+        // selection via their darker border instead (folded into `tintBg` below).
+        isSelected && !event.colorClasses && eventSelectedRingClass,
         className
       )}
       style={eventColorVar(event.color)}
@@ -136,10 +137,21 @@ export function EventItem<T extends EventCalendarItem = EventCalendarItem>({
     [displayStart, displayEnd]
   )
 
-  // Dragged chips get an emphasized fill so they read as visibly "darker" than the
-  // solid origin left behind. Swapped in for `eventTintBgClass` (never both) to avoid
-  // two competing `background-color` utilities.
-  const tintBg = isDragging ? eventTintBgStrongClass : eventTintBgClass
+  // Badge-look path: `colorClasses` (OPTION_COLORS-style) replaces the `--ec-color` tint —
+  // bg/text/border come from `badge`, and selected/dragging swaps in the darker
+  // `selectedBorder` (later in the cn() call, so tailwind-merge lets it win the border-color
+  // conflict). Text classes stay undefined so inner nodes inherit the badge's text color.
+  // Hex path: dragged chips get an emphasized fill so they read as visibly "darker" than the
+  // solid origin left behind. Swapped in for `eventTintBgClass` (never both) to avoid two
+  // competing `background-color` utilities.
+  const colorClasses = event.colorClasses
+  const tintBg = colorClasses
+    ? cn('border', colorClasses.badge, (isDragging || isSelected) && colorClasses.selectedBorder)
+    : isDragging
+      ? eventTintBgStrongClass
+      : eventTintBgClass
+  const tintText = colorClasses ? undefined : eventTintTextClass
+  const solidBg = colorClasses ? colorClasses.solid : eventSolidBgClass
 
   const getEventTime = () => {
     if (event.allDay) return 'All day'
@@ -182,11 +194,11 @@ export function EventItem<T extends EventCalendarItem = EventCalendarItem>({
             <span
               className={cn(
                 'flex size-4 shrink-0 items-center justify-center rounded-full',
-                eventSolidBgClass
+                solidBg
               )}>
               <span className='size-1.5 rounded-full bg-black/40' />
             </span>
-            <span className={cn('truncate font-semibold', eventTintTextClass)}>{event.title}</span>
+            <span className={cn('truncate font-semibold', tintText)}>{event.title}</span>
             {event.badge && <span className='ml-auto shrink-0 opacity-70'>{event.badge}</span>}
           </>
         )}
@@ -209,7 +221,7 @@ export function EventItem<T extends EventCalendarItem = EventCalendarItem>({
         className={cn(
           'mt-[var(--event-gap)] h-[var(--event-height)] items-center gap-1.5 rounded-md px-1 text-[10px] sm:px-1.5 sm:text-xs',
           tintBg,
-          eventTintTextClass,
+          tintText,
           'hover:brightness-105 dark:hover:brightness-110',
           className
         )}
@@ -219,7 +231,7 @@ export function EventItem<T extends EventCalendarItem = EventCalendarItem>({
         onTouchStart={onTouchStart}>
         {resolveContent(
           <>
-            <span className={cn('h-full w-1 shrink-0 rounded-full', eventSolidBgClass)} />
+            <span className={cn('h-full w-1 shrink-0 rounded-full', solidBg)} />
             <span className='min-w-0 flex-1 truncate font-semibold'>{event.title}</span>
             {!event.allDay && (
               <span className='shrink-0 font-normal opacity-70'>
@@ -254,7 +266,7 @@ export function EventItem<T extends EventCalendarItem = EventCalendarItem>({
         onTouchStart={onTouchStart}>
         {resolveContent(
           durationMinutes < 45 ? (
-            <div className={cn('truncate font-semibold', eventTintTextClass)}>
+            <div className={cn('truncate font-semibold', tintText)}>
               {event.title}{' '}
               {showTime && (
                 <span className='font-normal opacity-70'>
@@ -264,10 +276,9 @@ export function EventItem<T extends EventCalendarItem = EventCalendarItem>({
             </div>
           ) : (
             <>
-              <div className={cn('truncate font-semibold', eventTintTextClass)}>{event.title}</div>
+              <div className={cn('truncate font-semibold', tintText)}>{event.title}</div>
               {showTime && (
-                <div
-                  className={cn('truncate text-[11px] font-normal opacity-70', eventTintTextClass)}>
+                <div className={cn('truncate text-[11px] font-normal opacity-70', tintText)}>
                   {getEventTime()}
                 </div>
               )}
@@ -284,8 +295,8 @@ export function EventItem<T extends EventCalendarItem = EventCalendarItem>({
       type='button'
       className={cn(
         'focus-visible:border-ring focus-visible:ring-ring/50 flex w-full flex-col gap-1 rounded-xl p-2 text-left transition outline-none focus-visible:ring-[3px]',
-        eventTintBgClass,
-        isSelected && eventSelectedRingClass,
+        tintBg,
+        isSelected && !colorClasses && eventSelectedRingClass,
         className
       )}
       style={eventColorVar(event.color)}
@@ -297,7 +308,7 @@ export function EventItem<T extends EventCalendarItem = EventCalendarItem>({
       {...dndAttributes}>
       {resolveContent(
         <>
-          <div className={cn('text-sm font-semibold', eventTintTextClass)}>{event.title}</div>
+          <div className={cn('text-sm font-semibold', tintText)}>{event.title}</div>
           <div className='text-muted-foreground text-xs'>
             {event.allDay ? (
               <span>All day</span>

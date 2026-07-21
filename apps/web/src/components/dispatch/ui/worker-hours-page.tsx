@@ -5,10 +5,11 @@ import { detectTimezone } from '@auxx/config/client'
 import type { WeeklyHours } from '@auxx/lib/availability/client'
 import { Button } from '@auxx/ui/components/button'
 import { DialogFooter } from '@auxx/ui/components/dialog'
-import { KbdSubmit } from '@auxx/ui/components/kbd'
+import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { toastError } from '@auxx/ui/components/toast'
 import { ToggleCard } from '@auxx/ui/components/toggle-card'
+import { useEffect } from 'react'
 import {
   validateWeeklyDraft,
   type WeeklyHoursDraft,
@@ -70,6 +71,10 @@ interface WorkerHoursPageProps {
   userId: string
   weekStartsOn: 0 | 1 | 6
   use24HourTime: boolean
+  /** Close request (Cancel button) — the dialog guards it against unsaved changes. */
+  onCancel: () => void
+  /** Reports the draft's dirty state up to the dialog's unsaved-changes guard. */
+  onDirtyChange: (dirty: boolean) => void
 }
 
 /**
@@ -80,7 +85,13 @@ interface WorkerHoursPageProps {
  * with an empty set (deletes them), returning to inherited. Draft/save run on the shared
  * {@link useDirtyDraft} + a dialog footer (10-settings-forms-unification.md).
  */
-export function WorkerHoursPage({ userId, weekStartsOn, use24HourTime }: WorkerHoursPageProps) {
+export function WorkerHoursPage({
+  userId,
+  weekStartsOn,
+  use24HourTime,
+  onCancel,
+  onDirtyChange,
+}: WorkerHoursPageProps) {
   const utils = api.useUtils()
   const [confirm, ConfirmDialog] = useConfirm()
 
@@ -113,7 +124,7 @@ export function WorkerHoursPage({ userId, weekStartsOn, use24HourTime }: WorkerH
     weekly: hasWorkerRows ? buildDraftFromResponse(workerQuery.data, detectTimezone()) : null,
   }
 
-  const { draft, patch, dirty, save, discard } = useDirtyDraft(server, {
+  const { draft, patch, dirty, save } = useDirtyDraft(server, {
     isSaving: saveWeeklyHours.isPending,
     onSave: (next) => {
       if (next.useOrgDefault) {
@@ -131,6 +142,11 @@ export function WorkerHoursPage({ userId, weekStartsOn, use24HourTime }: WorkerH
       saveWeeklyHours.mutate({ subject, weekly: toWeeklyHours(next.weekly) })
     },
   })
+
+  useEffect(() => {
+    onDirtyChange(dirty)
+    return () => onDirtyChange(false)
+  }, [dirty, onDirtyChange])
 
   async function handleToggleUseOrgDefault(nextOn: boolean) {
     if (nextOn) {
@@ -154,36 +170,38 @@ export function WorkerHoursPage({ userId, weekStartsOn, use24HourTime }: WorkerH
     !draft.useOrgDefault && draft.weekly != null && !validateWeeklyDraft(draft.weekly)
 
   return (
-    <div className='flex flex-col gap-4 p-4'>
-      <ToggleCard
-        title='Use organization default'
-        description="Follow the org's weekly hours, or set custom hours for this worker."
-        checked={draft.useOrgDefault}
-        onCheckedChange={handleToggleUseOrgDefault}
-        switchSize='default'
-        disabled={loading}
-      />
-
-      {loading ? (
-        <Skeleton className='h-48 w-full rounded-xl' />
-      ) : (
-        <WeeklyHoursEditor
-          value={editorValue}
-          onChange={(weekly) => patch({ weekly })}
-          weekStartsOn={weekStartsOn}
-          use24HourTime={use24HourTime}
-          readOnly={draft.useOrgDefault}
+    <div className='flex flex-col'>
+      <div className='flex flex-col gap-4 p-4'>
+        <ToggleCard
+          title='Use organization default'
+          description="Follow the org's weekly hours, or set custom hours for this worker."
+          checked={draft.useOrgDefault}
+          onCheckedChange={handleToggleUseOrgDefault}
+          switchSize='default'
+          disabled={loading}
         />
-      )}
 
-      <DialogFooter className='border-t pt-3'>
+        {loading ? (
+          <Skeleton className='h-48 w-full rounded-xl' />
+        ) : (
+          <WeeklyHoursEditor
+            value={editorValue}
+            onChange={(weekly) => patch({ weekly })}
+            weekStartsOn={weekStartsOn}
+            use24HourTime={use24HourTime}
+            readOnly={draft.useOrgDefault}
+          />
+        )}
+      </div>
+
+      <DialogFooter className='mt-0 border-t px-4 py-3'>
         <Button
           type='button'
           variant='ghost'
           size='sm'
-          onClick={discard}
-          disabled={!dirty || saveWeeklyHours.isPending}>
-          Discard
+          onClick={onCancel}
+          disabled={saveWeeklyHours.isPending}>
+          Cancel <Kbd shortcut='esc' variant='ghost' size='sm' />
         </Button>
         <Button
           type='button'

@@ -2,6 +2,7 @@
 
 'use client'
 
+import type { OptionColor } from '@auxx/lib/custom-fields/client'
 import { ModuleSidebar } from '@auxx/ui/components/module-sidebar'
 import {
   SidebarFooter,
@@ -42,7 +43,7 @@ interface DispatchSidebarProps {
   view?: 'day' | 'week' | 'month' | 'timeline'
   weekStartsOn: WeekStartIndex
   allWorkers: BoardWorker[]
-  colorByUserId: Map<string, string>
+  colorByUserId: Map<string, OptionColor>
   /** Calendar mode's flat backlog list (`use-board-data.ts`'s `backlogEvents`). */
   backlogEvents: BacklogItem[]
   /** Map mode's route planner read — all four are required together (map mode only). */

@@ -6,6 +6,21 @@ import type { ReactNode } from 'react'
 export type CalendarView = 'month' | 'week' | 'day' | 'agenda' | 'resource' | 'timeline'
 
 /**
+ * Class-based chip coloring (the app's badge look). When an event carries this, the chip
+ * renders these Tailwind classes instead of deriving a tint from `color` via
+ * `--ec-color`/`color-mix`. The calendar ships no palette — consumers stamp these from their
+ * own source (e.g. `OPTION_COLORS` in `@auxx/lib/custom-fields/client`).
+ */
+export interface EventColorClasses {
+  /** Resting chip: bg + text + border-color classes (an `OptionColor.badgeClasses` string). */
+  badge: string
+  /** Darker border-color classes swapped in for the selected/dragging chip. */
+  selectedBorder: string
+  /** Solid swatch bg class (e.g. `bg-amber-500`) for the color dot / month-chip left bar. */
+  solid: string
+}
+
+/**
  * Base event shape the calendar renders. Consumers extend this with their own
  * fields (e.g. a dispatch visit's `workOrderId`/`assigneeUserId`) via the `T`
  * generic on `EventCalendar`/`CalendarDndProvider` and the view components.
@@ -22,6 +37,8 @@ export interface EventCalendarItem {
   allDay?: boolean
   /** Raw class name (or inline-style-friendly token) — the calendar no longer ships a fixed color palette. */
   color?: string
+  /** Badge-look coloring — takes precedence over the `color` tint when present. */
+  colorClasses?: EventColorClasses
   location?: string
   /** Set when the event belongs to a `resources` day-view column. */
   resourceId?: string

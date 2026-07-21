@@ -58,6 +58,7 @@ export type {
   CalendarResource,
   CalendarView,
   EventCalendarItem,
+  EventColorClasses,
   RenderEvent,
   RenderEventContext,
   TimelineHourWindow,
