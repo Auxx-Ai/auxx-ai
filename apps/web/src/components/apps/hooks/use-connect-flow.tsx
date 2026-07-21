@@ -35,6 +35,10 @@ export interface ConnectFlowDefinition {
   connectionType: string
   description?: string | null
   connectionVariables?: ConnectionVariable[] | null
+  /** OAuth own-client gate (§3.1) — threaded into the connect dialog's banner + fields. */
+  requiresOwnClient?: boolean
+  ownClientOptional?: boolean
+  ownClientReason?: 'no-platform-client' | 'pending-approval' | null
 }
 
 export interface ConnectTarget {
@@ -461,6 +465,9 @@ export function useConnectFlow(options: UseConnectFlowOptions = {}): UseConnectF
       connectionType: activeDef.connectionType,
       global: args.scope === 'organization',
       connectionVariables: activeDef.connectionVariables ?? [],
+      requiresOwnClient: activeDef.requiresOwnClient,
+      ownClientOptional: activeDef.ownClientOptional,
+      ownClientReason: activeDef.ownClientReason,
     }
   }, [args, activeDef])
 
