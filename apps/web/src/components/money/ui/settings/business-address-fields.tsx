@@ -58,10 +58,11 @@ export interface BusinessAddressFieldsProps {
 }
 
 /**
- * The shared `documents.business.address` form row — used by both the Documents settings page
- * (`documents-page.tsx`) and the dispatch setup wizard's Business address page, so the two
- * surfaces stay in lockstep on the same `AddressStruct` shape. Presentational only: the caller
- * owns reading/writing the `documents.business` setting and passes just the `address` slice.
+ * The shared `documents.business.address` form row — used by both the dispatch General settings
+ * page (`dispatch-general-settings-page.tsx`) and the dispatch setup wizard's Business address
+ * page, so the two surfaces stay in lockstep on the same `AddressStruct` shape. Presentational
+ * only: the caller owns reading/writing the `documents.business` setting and passes just the
+ * `address` slice.
  */
 export function BusinessAddressFields({ value, onChange }: BusinessAddressFieldsProps) {
   return (

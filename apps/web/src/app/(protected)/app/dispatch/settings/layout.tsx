@@ -19,7 +19,10 @@ import { usePathname } from 'next/navigation'
 import SidebarSecondary from '~/components/global/sidebar-secondary'
 import type { SidebarProps } from '~/constants/menu'
 
-/** Settings navigation items (04-ui.md §9). */
+/**
+ * Settings navigation items (34-settings-reorg.md) — two header groups: org-wide "Settings"
+ * and the money cluster ("Money"), one page per object (Quotes / Invoicing / Payments).
+ */
 const DISPATCH_SETTINGS: SidebarProps[] = [
   {
     id: 'dispatch-settings',
@@ -33,28 +36,16 @@ const DISPATCH_SETTINGS: SidebarProps[] = [
         icon: <SlidersHorizontal />,
       },
       {
+        id: 'dispatch-settings-scheduling',
+        label: 'Scheduling',
+        slug: 'scheduling',
+        icon: <Clock />,
+      },
+      {
         id: 'dispatch-settings-workers',
         label: 'Workers',
         slug: 'workers',
         icon: <Users />,
-      },
-      {
-        id: 'dispatch-settings-products',
-        label: 'Products & Services',
-        slug: 'products',
-        icon: <Tags />,
-      },
-      {
-        id: 'dispatch-settings-number-formats',
-        label: 'Number Formats',
-        slug: 'number-formats',
-        icon: <Hash />,
-      },
-      {
-        id: 'dispatch-settings-availability',
-        label: 'Availability',
-        slug: 'availability',
-        icon: <Clock />,
       },
       {
         id: 'dispatch-settings-quality-checks',
@@ -63,29 +54,48 @@ const DISPATCH_SETTINGS: SidebarProps[] = [
         icon: <ClipboardCheck />,
       },
       {
-        id: 'dispatch-settings-documents',
-        label: 'Documents',
-        slug: 'documents',
-        icon: <FileText />,
-      },
-      {
-        id: 'dispatch-settings-invoicing',
-        label: 'Invoicing & Quoting',
-        slug: 'invoicing',
-        icon: <Receipt />,
-      },
-      {
-        id: 'dispatch-settings-payments',
-        label: 'Payments',
-        slug: 'payments',
-        icon: <CreditCard />,
-      },
-      {
         id: 'dispatch-settings-client-notifications',
         label: 'Client notifications',
         slug: 'client-notifications',
         icon: <Bell />,
         featureKey: 'sequences',
+      },
+      {
+        id: 'dispatch-settings-number-formats',
+        label: 'Number Formats',
+        slug: 'number-formats',
+        icon: <Hash />,
+      },
+    ],
+  },
+  {
+    id: 'dispatch-money',
+    label: 'Money',
+    type: 'header',
+    items: [
+      {
+        id: 'dispatch-money-products',
+        label: 'Products & Services',
+        slug: 'products',
+        icon: <Tags />,
+      },
+      {
+        id: 'dispatch-money-quotes',
+        label: 'Quotes',
+        slug: 'quotes',
+        icon: <FileText />,
+      },
+      {
+        id: 'dispatch-money-invoicing',
+        label: 'Invoicing',
+        slug: 'invoicing',
+        icon: <Receipt />,
+      },
+      {
+        id: 'dispatch-money-payments',
+        label: 'Payments',
+        slug: 'payments',
+        icon: <CreditCard />,
       },
     ],
   },

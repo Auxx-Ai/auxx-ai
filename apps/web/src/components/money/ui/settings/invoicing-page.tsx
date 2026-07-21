@@ -3,8 +3,7 @@
 
 import { FeatureKey } from '@auxx/lib/permissions/client'
 import type { SettingValue } from '@auxx/lib/settings/client'
-import { cn } from '@auxx/ui/lib/utils'
-import { CreditCard, FileCheck2, Lock, Receipt } from 'lucide-react'
+import { FileText, Lock, Receipt } from 'lucide-react'
 import { EmptyState } from '~/components/global/empty-state'
 import { FieldPanel } from '~/components/global/forms/field-panel'
 import { FormSaveBar } from '~/components/global/forms/form-save-bar'
@@ -16,10 +15,12 @@ import { useUser } from '~/hooks/use-user'
 import { useFeatureFlags } from '~/providers/feature-flag-provider'
 
 /**
- * Invoicing settings page (money MI2 build spec §O.3) — the master switch,
- * default timing, and date basis for automated invoice drafts. Admin-gated,
- * plain form page (availability-page recipe): one `useSettings({scope:
- * 'DOCUMENTS'})` instance via `SettingsFieldRow`, no tabs.
+ * Invoicing settings page (money MI2 build spec §O.3, retitled "Invoicing" per
+ * 34-settings-reorg.md) — the master switch, default timing, and date basis for automated
+ * invoice drafts, plus invoice PDF defaults (moved from the old Documents page). Quote
+ * acceptance and partial payments moved out to the Quotes and Payments pages respectively.
+ * Admin-gated, plain form page: one `useSettings({scope: 'DOCUMENTS'})` instance via
+ * `SettingsFieldRow`, no tabs.
  *
  * `defaultTiming` also write-throughs onto the two `quote_invoice_timing`/
  * `work_order_invoice_timing` `CustomField.defaultValue` rows on save — see
@@ -29,13 +30,13 @@ export function InvoicingSettingsPage() {
   useUser({ requireRoles: ['ADMIN', 'OWNER'] })
   const { hasAccess } = useFeatureFlags()
 
-  const breadcrumbs = [{ title: 'Dispatch Settings' }, { title: 'Invoicing & Quoting' }]
+  const breadcrumbs = [{ title: 'Dispatch Settings' }, { title: 'Invoicing' }]
 
   if (!hasAccess(FeatureKey.dispatch)) {
     return (
       <SettingsPage
-        title='Invoicing & Quoting'
-        description='Configure automated invoice drafts for completed jobs and visits.'
+        title='Invoicing'
+        description='Configure automated invoice drafts and PDF defaults for completed jobs and visits.'
         breadcrumbs={breadcrumbs}>
         <EmptyState
           icon={Lock}
@@ -50,19 +51,17 @@ export function InvoicingSettingsPage() {
   return <InvoicingSettingsBody breadcrumbs={breadcrumbs} />
 }
 
-/** Scalar catalog keys the Invoicing & Quoting draft owns. */
+/** Scalar catalog keys the Invoicing draft owns. */
 const DRAFT_KEYS = [
   'documents.invoice.autoEnabled',
   'documents.invoice.defaultTiming',
   'documents.invoice.dateBasis',
-  'documents.invoice.allowPartialPayments',
-  'documents.invoice.partialPaymentMinPercent',
-  'documents.quote.acceptancePageEnabled',
-  'documents.quote.allowDecline',
-  'documents.quote.requireSignature',
-  'documents.quote.autoConvertOnAccept',
-  'documents.quote.depositType',
-  'documents.quote.depositValue',
+  'documents.invoice.dueDays',
+  'documents.invoice.paymentInstructions',
+  'documents.invoice.footerText',
+  'documents.invoice.lineDisplay',
+  'documents.invoice.showDescriptions',
+  'documents.invoice.showPaymentHistory',
 ] as const
 
 function InvoicingSettingsBody({ breadcrumbs }: { breadcrumbs: { title: string }[] }) {
@@ -92,13 +91,10 @@ function InvoicingSettingsBody({ breadcrumbs }: { breadcrumbs: { title: string }
     onChange: (value: unknown) => patch({ [key]: value as SettingValue }),
   })
 
-  const acceptancePageEnabled = !!draft['documents.quote.acceptancePageEnabled']
-  const allowPartialPayments = !!draft['documents.invoice.allowPartialPayments']
-
   return (
     <SettingsPage
-      title='Invoicing & Quoting'
-      description='Configure automated invoice drafts for completed jobs and visits.'
+      title='Invoicing'
+      description='Configure automated invoice drafts and PDF defaults for completed jobs and visits.'
       breadcrumbs={breadcrumbs}>
       <div className='flex flex-col gap-8 p-3 sm:p-6'>
         <SettingsSection
@@ -128,84 +124,43 @@ function InvoicingSettingsBody({ breadcrumbs }: { breadcrumbs: { title: string }
         </SettingsSection>
 
         <SettingsSection
-          icon={CreditCard}
-          title='Partial payments'
-          description='Let customers pay a custom amount on the public pay page instead of only the full balance.'>
+          icon={FileText}
+          title='Invoice PDF defaults'
+          description='Defaults for invoice PDFs — these apply once invoicing ships (MI1); the settings save now so they are ready.'>
           <FieldPanel
             className='mt-1 p-0'
-            resizeId='partial-payments-settings'
+            resizeId='invoicing-pdf-settings'
             defaultLabelWidth={220}>
             <SettingsFieldRow
-              settingKey='documents.invoice.allowPartialPayments'
-              title='Allow partial payments'
-              description='Applies to invoice payments; deposits are always paid in full.'
-              {...controlled('documents.invoice.allowPartialPayments')}
+              settingKey='documents.invoice.dueDays'
+              title='Due (days)'
+              {...controlled('documents.invoice.dueDays')}
             />
-            <div
-              className={cn(
-                'flex flex-col',
-                !allowPartialPayments && 'pointer-events-none opacity-50'
-              )}>
-              <SettingsFieldRow
-                settingKey='documents.invoice.partialPaymentMinPercent'
-                title='Minimum payment percent'
-                description='Smallest payment a customer can submit, as a percent of the current balance.'
-                {...controlled('documents.invoice.partialPaymentMinPercent')}
-              />
-            </div>
-          </FieldPanel>
-        </SettingsSection>
-
-        <SettingsSection
-          icon={FileCheck2}
-          title='Quote acceptance'
-          description='Configure the customer-facing quote acceptance page and what happens when a customer accepts.'>
-          <FieldPanel
-            className='mt-1 p-0'
-            resizeId='quote-acceptance-settings'
-            defaultLabelWidth={220}>
             <SettingsFieldRow
-              settingKey='documents.quote.acceptancePageEnabled'
-              title='Online quote acceptance page'
-              description='Let customers view and accept or decline quotes from a public link included in the quote email.'
-              {...controlled('documents.quote.acceptancePageEnabled')}
+              settingKey='documents.invoice.paymentInstructions'
+              title='Payment instructions'
+              {...controlled('documents.invoice.paymentInstructions')}
             />
-            <div
-              className={cn(
-                'flex flex-col',
-                !acceptancePageEnabled && 'pointer-events-none opacity-50'
-              )}>
-              <SettingsFieldRow
-                settingKey='documents.quote.allowDecline'
-                title='Allow customers to decline'
-                description='Show a Decline option on the quote acceptance page.'
-                {...controlled('documents.quote.allowDecline')}
-              />
-              <SettingsFieldRow
-                settingKey='documents.quote.requireSignature'
-                title='Require typed signature to accept'
-                description='Require the customer to type their name to confirm acceptance.'
-                {...controlled('documents.quote.requireSignature')}
-              />
-              <SettingsFieldRow
-                settingKey='documents.quote.autoConvertOnAccept'
-                title='Convert to job on acceptance'
-                description='Automatically convert the quote to a work order when the customer accepts.'
-                {...controlled('documents.quote.autoConvertOnAccept')}
-              />
-              <SettingsFieldRow
-                settingKey='documents.quote.depositType'
-                title='Deposit type'
-                description="Org default deposit required to accept a quote — a quote's own deposit fields override this. None = no deposit requested."
-                {...controlled('documents.quote.depositType')}
-              />
-              <SettingsFieldRow
-                settingKey='documents.quote.depositValue'
-                title='Deposit value'
-                description='Percent (0-100) or a fixed currency amount (50 = $50.00), depending on deposit type.'
-                {...controlled('documents.quote.depositValue')}
-              />
-            </div>
+            <SettingsFieldRow
+              settingKey='documents.invoice.footerText'
+              title='Footer text'
+              {...controlled('documents.invoice.footerText')}
+            />
+            <SettingsFieldRow
+              settingKey='documents.invoice.lineDisplay'
+              title='Line item display'
+              {...controlled('documents.invoice.lineDisplay')}
+            />
+            <SettingsFieldRow
+              settingKey='documents.invoice.showDescriptions'
+              title='Show descriptions'
+              {...controlled('documents.invoice.showDescriptions')}
+            />
+            <SettingsFieldRow
+              settingKey='documents.invoice.showPaymentHistory'
+              title='Show payment history'
+              {...controlled('documents.invoice.showPaymentHistory')}
+            />
           </FieldPanel>
         </SettingsSection>
 

@@ -88,7 +88,7 @@ export interface ResolvedDocumentSettings {
   branding: DocumentBrandingSettings
   quote: DocumentQuoteSettings
   invoice: DocumentInvoiceSettings
-  /** `organization.currency` — GENERAL scope, edited on the Documents page regardless. */
+  /** `organization.currency` — GENERAL scope, edited on the General page regardless. */
   currency: string
 }
 

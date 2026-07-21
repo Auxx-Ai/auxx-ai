@@ -26,7 +26,7 @@ import {
 
 const ALL_DAYS = [0, 1, 2, 3, 4, 5, 6] as const
 
-/** Same draft-builder as `AvailabilitySettingsPage` — a day present w/ ranges → enabled. */
+/** Same draft-builder as `SchedulingSettingsPage` — a day present w/ ranges → enabled. */
 function buildDraftFromResponse(
   weekly: WeeklyHours | null,
   timezoneFallback: string
