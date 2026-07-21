@@ -8,10 +8,6 @@ import { getFileRefDownloadUrl, toFileRef } from '@auxx/types/file-ref'
 import { Button } from '@auxx/ui/components/button'
 import { toastError } from '@auxx/ui/components/toast'
 import { Building2, Eye, FileText, Lock, Mail, Palette, Receipt } from 'lucide-react'
-import {
-  type AddressStruct,
-  AddressStructFields,
-} from '~/components/fields/inputs/address-struct-input-field'
 import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
 import { EmptyState } from '~/components/global/empty-state'
 import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
@@ -24,50 +20,12 @@ import { useSettings } from '~/hooks/use-settings'
 import { useUser } from '~/hooks/use-user'
 import { useFeatureFlags } from '~/providers/feature-flag-provider'
 import { api } from '~/trpc/react'
+import {
+  BusinessAddressFields,
+  type BusinessInfo,
+  normalizeBusiness,
+} from './business-address-fields'
 import { type DocumentsLogo, DocumentsLogoCell } from './documents-logo-cell'
-
-interface BusinessTaxId {
-  label: string
-  value: string
-}
-
-/** `documents.business` JSON blob shape — address is the canonical `AddressStruct`. */
-interface BusinessInfo {
-  companyName: string
-  address: AddressStruct
-  phone: string
-  email: string
-  website: string
-  taxId: BusinessTaxId
-}
-
-const EMPTY_TAX_ID: BusinessTaxId = { label: '', value: '' }
-
-/** Map a stored address blob (new `AddressStruct` or the legacy `{line1,line2,region,zip}`) to `AddressStruct`. */
-function normalizeAddress(raw: unknown): AddressStruct {
-  const s = (raw && typeof raw === 'object' ? raw : {}) as Record<string, string>
-  return {
-    street1: s.street1 ?? s.line1 ?? '',
-    street2: s.street2 ?? s.line2 ?? '',
-    city: s.city ?? '',
-    state: s.state ?? s.region ?? '',
-    zipCode: s.zipCode ?? s.zip ?? '',
-    country: s.country ?? '',
-  }
-}
-
-/** Merge a stored (possibly partial/old-shape) value with defaults so the form never crashes on a fresh org. */
-function normalizeBusiness(raw: unknown): BusinessInfo {
-  const source = (raw && typeof raw === 'object' ? raw : {}) as Partial<BusinessInfo>
-  return {
-    companyName: source.companyName ?? '',
-    address: normalizeAddress(source.address),
-    phone: source.phone ?? '',
-    email: source.email ?? '',
-    website: source.website ?? '',
-    taxId: { ...EMPTY_TAX_ID, ...(source.taxId ?? {}) },
-  }
-}
 
 /** Scalar catalog keys the page draft owns (`documents.business` is handled separately as a blob). */
 const SCALAR_DRAFT_KEYS = [
@@ -368,15 +326,10 @@ function BusinessInfoSection({ business, onPatchBusiness, currency }: BusinessIn
           />
         </FieldPanelRow>
 
-        <FieldPanelRow title='Address' type={BaseType.ADDRESS} showIcon>
-          <div className='py-2'>
-            <AddressStructFields
-              value={business.address}
-              onChange={(address) => onPatchBusiness({ address })}
-              className='flex flex-col gap-2'
-            />
-          </div>
-        </FieldPanelRow>
+        <BusinessAddressFields
+          value={business.address}
+          onChange={(address) => onPatchBusiness({ address })}
+        />
 
         <FieldPanelRow title='Phone' type={BaseType.PHONE} showIcon>
           <FieldInputAdapter

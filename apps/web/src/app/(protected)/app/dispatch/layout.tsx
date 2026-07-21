@@ -10,6 +10,7 @@ import {
 } from '@auxx/ui/components/main-page'
 import { MainPageTabs } from '@auxx/ui/components/main-page-tabs'
 import { CalendarDays, Settings } from 'lucide-react'
+import { DispatchSetupWizardGate } from '~/components/dispatch/ui/setup-wizard/setup-wizard-gate'
 
 /**
  * Module header for `/app/dispatch/*` — Board · Settings tabs via
@@ -48,13 +49,16 @@ function DispatchLayoutHeader() {
  * Module shell for `/app/dispatch/*` — `MainPage` chrome + the Board·Settings
  * header (M2a, 07-m2-build.md §D.1). The board is the module home now; the
  * settings sub-tree (`dispatch/settings/*`) keeps its own secondary sidebar
- * layout untouched.
+ * layout untouched. `DispatchSetupWizardGate` (32-onboarding.md Part C) mounts
+ * here so the setup wizard can auto-open on first visit anywhere under this
+ * route tree; it renders nothing until its own gating conditions are met.
  */
 export default function DispatchLayout({ children }: { children: React.ReactNode }) {
   return (
     <MainPage>
       <DispatchLayoutHeader />
       {children}
+      <DispatchSetupWizardGate />
     </MainPage>
   )
 }

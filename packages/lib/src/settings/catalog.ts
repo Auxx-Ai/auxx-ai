@@ -132,6 +132,15 @@ export const SETTINGS_CATALOG = {
     description: 'Getting-started checklist state (dismissal + manual completions)',
   },
 
+  'onboarding.dispatchGettingStarted': {
+    scope: 'ONBOARDING',
+    access: 'org',
+    fieldType: 'JSON',
+    // GettingStartedState — { dismissedAt, manualCompletions, wizardCompletedAt }
+    defaultValue: { dismissedAt: null, manualCompletions: [], wizardCompletedAt: null },
+    description: 'Dispatch getting-started state (wizard + checklist dismissal/completions)',
+  },
+
   'notification.emailDigest': {
     scope: 'NOTIFICATION',
     access: 'user',

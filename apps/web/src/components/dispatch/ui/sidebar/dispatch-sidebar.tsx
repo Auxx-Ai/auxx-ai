@@ -11,6 +11,8 @@ import {
 } from '@auxx/ui/components/sidebar'
 import { Switch } from '@auxx/ui/components/switch'
 import { useMemo } from 'react'
+import { DISPATCH_GETTING_STARTED_GOALS } from '~/components/dispatch/getting-started'
+import { GettingStartedGroup } from '~/components/getting-started/ui/getting-started-group'
 import {
   useDispatchSidebarStore,
   useHiddenWorkerIds,
@@ -145,6 +147,11 @@ export function DispatchSidebar({
          * `SidebarItem`'s own button/link root) so the trailing `Switch` — itself a real
          * `<button role="switch">` — never nests inside another interactive element. */
         <SidebarFooter className='p-2'>
+          <GettingStartedGroup
+            checklistId='dispatch'
+            catalog={DISPATCH_GETTING_STARTED_GOALS}
+            title='Dispatch setup'
+          />
           <SidebarMenu>
             <SidebarMenuItem>
               <SidebarMenuButton asChild size='sm' className='h-7'>

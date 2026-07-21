@@ -1,6 +1,7 @@
 // apps/web/src/components/getting-started/ui/getting-started-group.tsx
 'use client'
 
+import type { ChecklistId } from '@auxx/lib/getting-started/client'
 import { Button } from '@auxx/ui/components/button'
 import { CollapsibleChevron } from '@auxx/ui/components/collapsible'
 import {
@@ -28,7 +29,7 @@ import type { GettingStartedGoal } from '../client'
 import { useGettingStarted } from '../hooks/use-getting-started'
 import { GettingStartedStep } from './getting-started-step'
 
-const SECTION_ID = 'getting-started'
+const SECTION_ID_PREFIX = 'getting-started'
 
 /** Stop a nested control's click from toggling the accordion header. */
 function stop(e: MouseEvent) {
@@ -36,17 +37,31 @@ function stop(e: MouseEvent) {
   e.preventDefault()
 }
 
+type Props = {
+  /** Which checklist's state this instance reads/writes (`main` or `dispatch`). */
+  checklistId: ChecklistId
+  /** Display catalog for this checklist (labels, icons, CTAs). */
+  catalog: GettingStartedGoal[]
+  /** Sidebar section header text. Defaults to "Getting started". */
+  title?: string
+}
+
 /**
- * Inline, animated getting-started checklist pinned in the sidebar footer. The
+ * Inline, animated getting-started checklist pinned in a sidebar footer. The
  * header accordions the step list open/closed (height spring via
  * `SidebarGroupCollapse`). Hovering the list reveals a fixed side panel —
  * anchored to the list, matching its height — that shows the hovered step's
  * description + CTA. Auto-hides once every goal is complete or dismissed.
+ * Generic over checklist (`main` in the app sidebar, `dispatch` in the
+ * dispatch module sidebar) — pass the checklist id and its display catalog.
  */
-export function GettingStartedGroup() {
+export function GettingStartedGroup({ checklistId, catalog, title = 'Getting started' }: Props) {
   const router = useRouter()
   const { docsUrl } = useEnv()
   const { getSectionOpen, toggleSection } = useSidebarState()
+  // Scoped per checklist so the main + dispatch widgets (visible together on
+  // dispatch pages) don't share one accordion open/closed state.
+  const sectionId = `${SECTION_ID_PREFIX}:${checklistId}`
   const {
     isLoading,
     goals,
@@ -58,7 +73,7 @@ export function GettingStartedGroup() {
     markGoalComplete,
     completeAll,
     dismiss,
-  } = useGettingStarted()
+  } = useGettingStarted(checklistId, catalog)
 
   const observerRef = useRef<ResizeObserver | null>(null)
   const [panelHeight, setPanelHeight] = useState<number>()
@@ -81,7 +96,7 @@ export function GettingStartedGroup() {
   // Hidden while loading, once dismissed, or all done. (Footer = post-onboarding.)
   if (isLoading || dismissed || allComplete || total === 0) return null
 
-  const isOpen = getSectionOpen(SECTION_ID, true)
+  const isOpen = getSectionOpen(sectionId, true)
 
   // Default the panel to the first incomplete step until the user hovers one.
   const activeGoal =
@@ -102,12 +117,12 @@ export function GettingStartedGroup() {
         <HoverCard openDelay={250} closeDelay={200}>
           <HoverCardTrigger asChild>
             <div ref={measureRef}>
-              <SidebarMenuButton asChild tooltip='Getting started'>
+              <SidebarMenuButton asChild tooltip={title}>
                 <div
-                  onClick={() => toggleSection(SECTION_ID)}
+                  onClick={() => toggleSection(sectionId)}
                   className='group/gs relative h-7 cursor-pointer'>
                   <Rocket className='size-4' />
-                  <span className='group-data-[collapsible=icon]:hidden'>Getting started</span>
+                  <span className='group-data-[collapsible=icon]:hidden'>{title}</span>
                   <CollapsibleChevron open={isOpen} className='ms-1 text-muted-foreground' />
 
                   <div className='ms-auto flex items-center gap-1 group-data-[collapsible=icon]:hidden'>
