@@ -9,6 +9,15 @@ export {
   pauseEngagement,
   resumeEngagement,
 } from './engagement-actions'
-export { getWorkOrderStatus, materializeVisits, sweepRecurringVisits } from './materialize'
-export type { RecurrenceTemplate, SetRecurrenceRuleInput } from './rule-mutations'
-export { setRecurrenceRule } from './rule-mutations'
+export {
+  getWorkOrderStatus,
+  materializeVisits,
+  maybeEndExhaustedEngagement,
+  sweepRecurringVisits,
+} from './materialize'
+export type {
+  RecurrenceTemplate,
+  SetRecurrenceRuleInput,
+  SetSeriesEndInput,
+} from './rule-mutations'
+export { setRecurrenceRule, setSeriesEnd } from './rule-mutations'

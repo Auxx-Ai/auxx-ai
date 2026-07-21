@@ -183,19 +183,25 @@ export async function materializeVisits(
 }
 
 /**
- * Auto-end an exhausted recurring engagement (§4.1/§4.4): exhausted = the pattern has an
- * `until`/`count` end condition AND that end is consumed (`until` before today, or `count`
- * reached by existing rows) AND no future `scheduled` visits remain. Writes
- * `work_order_status` → `ended` via plain `FieldValueService` (the sanctioned engine writer)
- * then mirrors + broadcasts.
+ * Auto-end an exhausted recurring engagement (§4.1/§4.4, plan 36 §A.3): exhausted = the
+ * pattern has an `until`/`count` end condition AND that end is consumed — `until` before
+ * today, `until` before `effectiveFrom` (an empty generation window: a scope edit re-anchored
+ * the pattern past its own end, so nothing can ever generate), or `count` reached by existing
+ * rows — AND no future `scheduled` visits remain. Writes `work_order_status` → `ended` via
+ * plain `FieldValueService` (the sanctioned engine writer) then mirrors + broadcasts.
+ *
+ * Exported (plan 36) so the mutations that can end a series (`cancelVisitFollowing`,
+ * `setSeriesEnd`, `setRecurrenceRule`) run it synchronously instead of leaving a dead rule
+ * claiming Active until the daily sweep catches it.
  */
-async function maybeEndExhaustedEngagement(rule: RecurrenceRuleRow): Promise<void> {
+export async function maybeEndExhaustedEngagement(rule: RecurrenceRuleRow): Promise<void> {
   const pattern = rule.pattern as unknown as RecurrencePattern
   if (pattern.until === undefined && pattern.count === undefined) return // never-ending
 
   const todayIso = todayLocalDate(rule.timezone)
 
-  const untilExhausted = pattern.until !== undefined && pattern.until < todayIso
+  const untilExhausted =
+    pattern.until !== undefined && (pattern.until < todayIso || pattern.until < rule.effectiveFrom)
   let countExhausted = false
   if (pattern.count !== undefined) {
     const [row] = await database

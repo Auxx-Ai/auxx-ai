@@ -63,15 +63,18 @@ export type {
   EngagementActionInput,
   RecurrenceTemplate,
   SetRecurrenceRuleInput,
+  SetSeriesEndInput,
 } from './recurring'
 export {
   cancelVisitFollowing,
   endEngagement,
   getWorkOrderStatus,
   materializeVisits,
+  maybeEndExhaustedEngagement,
   pauseEngagement,
   resumeEngagement,
   setRecurrenceRule,
+  setSeriesEnd,
   sweepRecurringVisits,
 } from './recurring'
 export type {

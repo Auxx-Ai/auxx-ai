@@ -14,6 +14,7 @@ import { SchedulePopover } from '../schedule-popover'
 import { splitJobVisits } from './job-schedule-utils'
 import { RecurringEngagementCard } from './recurring-engagement-card'
 import { ScheduleVisitRow } from './schedule-visit-row'
+import { SeriesEndRow } from './series-end'
 import { useJobVisits } from './use-job-visits'
 import { VisitCard } from './visit-card'
 
@@ -92,6 +93,7 @@ export function JobScheduleSection({ recordId }: DetailViewTabProps) {
           canEdit={canEdit}
           primaryVisit={primaryVisit}
           existingVisits={existingVisits}
+          visits={visits}
           onRefresh={refresh}
         />
       )}
@@ -123,6 +125,19 @@ export function JobScheduleSection({ recordId }: DetailViewTabProps) {
             />
           )}
         />
+      )}
+
+      {/* Terminator row (plan 36 §B.3): "Series ends after Aug 18 — Extend". Makes the
+       * absence of visits past the end date self-answering; renders nothing when open-ended. */}
+      {jobType === 'recurring' && (
+        <div className={TREE_SECONDARY_NOTRUNCATE}>
+          <SeriesEndRow
+            workOrderRecordId={recordId}
+            canEdit={canEdit && status !== 'ended'}
+            visits={visits}
+            onChanged={refresh}
+          />
+        </div>
       )}
 
       {history.length > 0 && (

@@ -39,6 +39,7 @@ import {
   setMyQcItemNote,
   setRecurrenceRule,
   setRouteOrder,
+  setSeriesEnd,
   setVisitDuration,
   setVisitStatus,
   setWorkerActive,
@@ -248,13 +249,16 @@ export const dispatchRouter = createTRPCRouter({
       })
     }),
   // Plan 30 §A.1 — bring a canceled visit back to `scheduled` IN PLACE (never a new time).
+  // `resumeSeries` (plan 36 §A.2): on the series boundary visit only, also clears the
+  // pattern's `until` and regenerates the tail — the symmetric undo of "Skip this and future".
   restoreVisit: dispatchAdminProcedure
-    .input(z.object({ visitId: z.string() }))
+    .input(z.object({ visitId: z.string(), resumeSeries: z.boolean().optional() }))
     .mutation(async ({ ctx, input }) => {
       return restoreVisit({
         organizationId: ctx.session.organizationId,
         userId: ctx.session.user.id,
         visitId: input.visitId,
+        resumeSeries: input.resumeSeries,
         excludeSocketId: excludeSocketId(ctx),
       })
     }),
@@ -665,6 +669,28 @@ export const dispatchRouter = createTRPCRouter({
         template: input.template,
         timezone: input.timezone,
         effectiveFrom: input.effectiveFrom,
+        excludeSocketId: excludeSocketId(ctx),
+      })
+    }),
+  // Plan 36 §A.1 — set, move, or clear the series end date in place (the engagement card's
+  // "Ends" control and the terminator row's Extend). `null` clears it (open-ended).
+  setSeriesEnd: dispatchAdminProcedure
+    .input(
+      z.object({
+        workOrderRecordId: recordIdSchema,
+        until: z
+          .string()
+          .regex(/^\d{4}-\d{2}-\d{2}$/)
+          .nullable(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const { entityInstanceId } = parseRecordId(input.workOrderRecordId)
+      return setSeriesEnd({
+        organizationId: ctx.session.organizationId,
+        userId: ctx.session.user.id,
+        workOrderInstanceId: entityInstanceId,
+        until: input.until,
         excludeSocketId: excludeSocketId(ctx),
       })
     }),

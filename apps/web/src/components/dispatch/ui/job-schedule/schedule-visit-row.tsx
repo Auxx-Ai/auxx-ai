@@ -16,8 +16,10 @@ import {
   cancelVisitConfirmOptions,
   formatVisitWindow,
   movedFromLabel,
+  restoreSeriesBoundaryConfirmOptions,
   VISIT_STATUS_BADGE_VARIANT,
 } from './job-schedule-utils'
+import { useSeriesRule } from './series-end'
 import type { JobVisit, UseJobVisitsResult } from './use-job-visits'
 
 export interface ScheduleVisitRowProps {
@@ -64,6 +66,13 @@ export function ScheduleVisitRow({
   const statusLabel = visitStatusLabel(visit.status, visit.recurrenceRuleId)
   const moved = movedFromLabel(visit)
 
+  // Plan 36 §B.1 — boundary detection: this skipped occurrence is where the series ends
+  // (a "Skip this and future" stamped its date as the pattern's `until`), so restoring it
+  // asks visit-only vs resume. Non-boundary rows restore directly.
+  const { until: seriesUntil } = useSeriesRule(workOrderRecordId, canRestore && isSeries)
+  const isSeriesBoundary =
+    canRestore && isSeries && Boolean(visit.occurrenceDate) && seriesUntil === visit.occurrenceDate
+
   const handleCancel = async () => {
     const choice = await confirm(cancelVisitConfirmOptions(isSeries))
     if (!choice) return
@@ -72,6 +81,16 @@ export function ScheduleVisitRow({
     } else {
       mutations.setVisitStatus.mutate({ visitId: visit.id, status: 'canceled' })
     }
+  }
+
+  const handleRestore = async () => {
+    if (!isSeriesBoundary) {
+      mutations.restoreVisit.mutate({ visitId: visit.id })
+      return
+    }
+    const choice = await confirm(restoreSeriesBoundaryConfirmOptions())
+    if (!choice) return
+    mutations.restoreVisit.mutate({ visitId: visit.id, resumeSeries: choice === 'alternate' })
   }
 
   return (
@@ -133,7 +152,7 @@ export function ScheduleVisitRow({
                 <TreeRowButton
                   tooltipText='Restore'
                   disabled={mutations.restoreVisit.isPending}
-                  onClick={() => mutations.restoreVisit.mutate({ visitId: visit.id })}>
+                  onClick={() => void handleRestore()}>
                   <RotateCcw />
                 </TreeRowButton>
               )}

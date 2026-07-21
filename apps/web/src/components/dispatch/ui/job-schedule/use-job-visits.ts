@@ -32,6 +32,9 @@ export function useJobVisits(workOrderRecordId: RecordId) {
 
   const invalidate = useCallback(() => {
     void utils.dispatch.listVisits.invalidate({ workOrderRecordId })
+    // Skip-future / restore-resume / series-end edits change the rule's `until` — keep the
+    // series summary + terminator row (plan 36 §B) in step with the visit list.
+    void utils.dispatch.getRecurrence.invalidate({ workOrderRecordId })
   }, [utils, workOrderRecordId])
 
   const onEvent = useCallback(
