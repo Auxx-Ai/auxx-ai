@@ -43,8 +43,10 @@ import {
   isVisitDispatchable,
   movedFromLabel,
   resolveVisitDurationMinutes,
+  restoreSeriesBoundaryConfirmOptions,
   VISIT_STATUS_BADGE_VARIANT,
 } from './job-schedule-utils'
+import { useSeriesRule } from './series-end'
 import { useJobVisits } from './use-job-visits'
 import { VisitDateBlock } from './visit-date-block'
 import { VisitProofOfWork } from './visit-proof-of-work'
@@ -85,6 +87,13 @@ export function VisitDetailPanel({ recordId, itemId }: RecordDrillContext) {
   const assigneeActorId = visit?.assigneeUserId ? toActorId('user', visit.assigneeUserId) : null
   const hydratedAssignee = useActors(assigneeActorId ? [assigneeActorId] : [])
   const assignee = assigneeActorId ? hydratedAssignee.get(assigneeActorId) : undefined
+
+  // Plan 36 §B.1 — boundary detection for the Restore chooser (before the early returns:
+  // hooks must run unconditionally).
+  const { until: seriesUntil } = useSeriesRule(
+    recordId,
+    Boolean(visit && visit.status === 'canceled' && visit.recurrenceRuleId)
+  )
 
   if (isLoading && !visit) {
     return <div className='p-6 text-sm text-muted-foreground'>Loading visit...</div>
@@ -133,6 +142,21 @@ export function VisitDetailPanel({ recordId, itemId }: RecordDrillContext) {
     } else {
       mutations.setVisitStatus.mutate({ visitId: visit.id, status: 'canceled' })
     }
+  }
+
+  // This skipped occurrence is where the series ends — restoring it asks visit-only vs
+  // resume (plan 36 §B.1); non-boundary rows restore directly.
+  const isSeriesBoundary =
+    canRestore && isSeries && Boolean(visit.occurrenceDate) && seriesUntil === visit.occurrenceDate
+
+  const handleRestore = async () => {
+    if (!isSeriesBoundary) {
+      mutations.restoreVisit.mutate({ visitId: visit.id })
+      return
+    }
+    const choice = await confirm(restoreSeriesBoundaryConfirmOptions())
+    if (!choice) return
+    mutations.restoreVisit.mutate({ visitId: visit.id, resumeSeries: choice === 'alternate' })
   }
 
   return (
@@ -208,7 +232,7 @@ export function VisitDetailPanel({ recordId, itemId }: RecordDrillContext) {
                 variant='outline'
                 size='sm'
                 loading={mutations.restoreVisit.isPending}
-                onClick={() => mutations.restoreVisit.mutate({ visitId: visit.id })}>
+                onClick={() => void handleRestore()}>
                 <RotateCcw /> Restore
               </Button>
             )}

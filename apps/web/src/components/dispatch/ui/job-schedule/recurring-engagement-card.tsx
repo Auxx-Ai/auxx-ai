@@ -1,25 +1,26 @@
 // apps/web/src/components/dispatch/ui/job-schedule/recurring-engagement-card.tsx
 'use client'
 
-import { describeRecurrenceParts, type RecurrencePattern } from '@auxx/lib/recurrence/client'
+import { describeRecurrenceParts } from '@auxx/lib/recurrence/client'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { toastError } from '@auxx/ui/components/toast'
 import { TREE_SECONDARY_NOTRUNCATE, TreeRow, TreeRowButton } from '@auxx/ui/components/tree-row'
-import { Pause, Pencil, Play, Repeat, XCircle } from 'lucide-react'
+import { CalendarOff, Pause, Pencil, Play, Repeat, XCircle } from 'lucide-react'
 import { useMemo } from 'react'
 import { DetailSectionActions, DetailSectionTitleExtra } from '~/components/detail-view'
 import type { RecordId } from '~/components/resources'
 import { useConfirm } from '~/hooks/use-confirm'
 import { useSettings } from '~/hooks/use-settings'
-import { ORG_STATIC_STALE_TIME } from '~/trpc/query-client'
 import { api } from '~/trpc/react'
 import { scalarSetting } from '../recurrence/recurrence-utils'
 import { type ExistingVisitForOverlap, SchedulePopover } from '../schedule-popover'
+import { SeriesEndEditor, useSeriesRule } from './series-end'
 import type { JobVisit } from './use-job-visits'
 
+const DEFAULT_ENGAGEMENT_BADGE = { label: 'Active', variant: 'green' } as const
 const ENGAGEMENT_BADGE: Record<string, { label: string; variant: 'green' | 'amber' | 'gray' }> = {
-  active: { label: 'Active', variant: 'green' },
+  active: DEFAULT_ENGAGEMENT_BADGE,
   paused: { label: 'Paused', variant: 'amber' },
   ended: { label: 'Ended', variant: 'gray' },
 }
@@ -33,6 +34,8 @@ export interface RecurringEngagementCardProps {
   /** The next-upcoming visit — the Edit action reschedules/re-configures through it. */
   primaryVisit: JobVisit | undefined
   existingVisits: ExistingVisitForOverlap[]
+  /** All of the job's visits — skip count + the end editor's shorten-confirm count (plan 36). */
+  visits: JobVisit[]
   onRefresh: () => void
 }
 
@@ -52,6 +55,7 @@ export function RecurringEngagementCard({
   canEdit,
   primaryVisit,
   existingVisits,
+  visits,
   onRefresh,
 }: RecurringEngagementCardProps) {
   const utils = api.useUtils()
@@ -62,17 +66,12 @@ export function RecurringEngagementCard({
     | 'sunday'
     | 'saturday'
 
-  const ruleQuery = api.dispatch.getRecurrence.useQuery(
-    { workOrderRecordId: recordId },
-    { staleTime: ORG_STATIC_STALE_TIME }
-  )
+  const { rule, pattern, until, windowEmpty } = useSeriesRule(recordId)
 
   const summary = useMemo(() => {
-    if (!ruleQuery.data) return null
-    return describeRecurrenceParts(ruleQuery.data.pattern as unknown as RecurrencePattern, {
-      weekStart,
-    })
-  }, [ruleQuery.data, weekStart])
+    if (!pattern) return null
+    return describeRecurrenceParts(pattern, { weekStart })
+  }, [pattern, weekStart])
 
   const invalidate = () => {
     void utils.dispatch.getRecurrence.invalidate({
@@ -106,9 +105,23 @@ export function RecurringEngagementCard({
     onSuccess: invalidate,
   })
 
-  if (!ruleQuery.data) return null
+  if (!rule) return null
 
-  const badge = ENGAGEMENT_BADGE[status] ?? ENGAGEMENT_BADGE.active
+  const badge = ENGAGEMENT_BADGE[status] ?? DEFAULT_ENGAGEMENT_BADGE
+  // Plan 36 §B.2/§B.4 — the always-visible series state: end date, skip count, and the
+  // dead-window read-time guard ("Series ended" when a scope edit re-anchored the pattern
+  // past its own end — nothing can generate even though the status may still read Active).
+  const skipped = visits.filter(
+    (visit) => visit.status === 'canceled' && visit.recurrenceRuleId
+  ).length
+  const endsLine = windowEmpty
+    ? 'Series ended — no further visits will be generated'
+    : [
+        summary?.ends ?? (canEdit && status !== 'ended' ? 'no end date' : null),
+        skipped > 0 ? `${skipped} skipped` : null,
+      ]
+        .filter(Boolean)
+        .join(' · ')
 
   const handlePause = async () => {
     const confirmed = await confirm({
@@ -193,19 +206,34 @@ export function RecurringEngagementCard({
         icon={<Repeat className='size-4' />}
         title={<span className='text-sm'>{summary?.frequency}</span>}
         secondary={
-          summary?.ends ? (
-            <span className='text-xs text-muted-foreground'>{summary.ends}</span>
-          ) : undefined
+          endsLine ? <span className='text-xs text-muted-foreground'>{endsLine}</span> : undefined
         }
         actions={
           canEdit && status !== 'ended' ? (
-            <TreeRowButton
-              variant='destructive'
-              tooltipText='End engagement'
-              disabled={endEngagement.isPending}
-              onClick={handleEnd}>
-              <XCircle />
-            </TreeRowButton>
+            <>
+              {/* Plan 36 §B.2 — the series end date is ownable here: set, move, or clear. */}
+              <SeriesEndEditor
+                workOrderRecordId={recordId}
+                until={until}
+                visits={visits}
+                onChanged={() => {
+                  invalidate()
+                  onRefresh()
+                }}
+                trigger={
+                  <TreeRowButton tooltipText={until ? 'Change end date' : 'Set end date'}>
+                    <CalendarOff />
+                  </TreeRowButton>
+                }
+              />
+              <TreeRowButton
+                variant='destructive'
+                tooltipText='End engagement'
+                disabled={endEngagement.isPending}
+                onClick={handleEnd}>
+                <XCircle />
+              </TreeRowButton>
+            </>
           ) : undefined
         }
       />

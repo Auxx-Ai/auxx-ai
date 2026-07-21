@@ -16,7 +16,7 @@ import { exitRunsForDeadVisitSubjects } from '../../sequences/hooks'
 import { publishVisitChanged } from '../broadcast'
 import { mirrorVisitOntoWorkOrder } from '../mirror'
 import { setVisitStatus } from '../visit-mutations'
-import { materializeVisits, todayLocalDate } from './materialize'
+import { materializeVisits, maybeEndExhaustedEngagement, todayLocalDate } from './materialize'
 
 const logger = createScopedLogger('dispatch:recurring:engagement-actions')
 
@@ -222,13 +222,14 @@ export async function cancelVisitFollowing(input: CancelVisitFollowingInput): Pr
   await setVisitStatus({ organizationId, userId, visitId, status: 'canceled', excludeSocketId })
 
   const { count: _count, ...pattern } = rule.pattern as unknown as RecurrencePattern
-  await database
+  const [updatedRule] = await database
     .update(schema.RecurrenceRule)
     .set({
       pattern: { ...pattern, until: visit.occurrenceDate } as unknown as Record<string, unknown>,
       updatedAt: new Date(),
     })
     .where(eq(schema.RecurrenceRule.id, rule.id))
+    .returning()
 
   const deleted = await database
     .delete(schema.WorkOrderVisit)
@@ -249,4 +250,9 @@ export async function cancelVisitFollowing(input: CancelVisitFollowingInput): Pr
   // The deletions can change the job's next-visit mirror — mirror + broadcast once more on
   // top of `setVisitStatus`'s own (which ran before the future rows disappeared).
   await mirrorAndBroadcast(rule, userId, excludeSocketId)
+
+  // Plan 36 §A.3: this skip may have killed the whole remaining series (target was the only
+  // upcoming occurrence, or the rule window is now empty) — check synchronously instead of
+  // leaving the engagement claiming Active until the daily sweep catches it.
+  if (updatedRule) await maybeEndExhaustedEngagement(updatedRule)
 }

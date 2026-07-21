@@ -130,7 +130,7 @@ export function cancelVisitConfirmOptions(isSeries: boolean) {
     ? {
         title: 'Skip this visit?',
         description:
-          'The visit stays in the job\'s history as skipped and won\'t be regenerated. "Skip this and future visits" also ends the series after this one.',
+          'The visit stays in the job\'s history as skipped and won\'t be regenerated. "Skip this and future visits" also ends the series after this one — you can restore the last skipped visit or extend the series later.',
         confirmText: 'Skip visit',
         alternateText: 'Skip this and future visits',
         cancelText: 'Keep visit',
@@ -144,6 +144,25 @@ export function cancelVisitConfirmOptions(isSeries: boolean) {
         cancelText: 'Keep visit',
         destructive: true,
       }
+}
+
+/**
+ * Confirm-dialog copy for restoring the series BOUNDARY visit — the skipped occurrence a
+ * "Skip this and future visits" ended the series at (plan 36 §B.1). Mirrors the skip dialog's
+ * two-choice shape: primary restores the visit in place (it stays the series' final
+ * occurrence), `alternateText` resolves `'alternate'` → `restoreVisit` with
+ * `resumeSeries: true` (clears the end date, regenerates the tail). Non-boundary skipped
+ * rows restore directly, no dialog.
+ */
+export function restoreSeriesBoundaryConfirmOptions() {
+  return {
+    title: 'Restore this visit?',
+    description:
+      'This visit is where the series ends. "Restore and resume future visits" also removes the end date and regenerates future visits from the schedule — customized visits removed by the skip are not restored.',
+    confirmText: 'Restore visit',
+    alternateText: 'Restore and resume future visits',
+    cancelText: 'Keep skipped',
+  }
 }
 
 /** Newest-first split of a work order's visits into "upcoming" and "history" (07 §F.3). */

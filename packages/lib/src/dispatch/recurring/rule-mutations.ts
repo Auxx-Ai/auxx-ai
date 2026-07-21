@@ -13,12 +13,20 @@ import { extractValue } from '@auxx/types'
 import { toRecordId } from '@auxx/types/resource'
 import { addDays, format } from 'date-fns'
 import { fromZonedTime, toZonedTime } from 'date-fns-tz'
-import { and, asc, eq, gte, inArray, isNotNull, isNull } from 'drizzle-orm'
+import { and, asc, eq, gt, gte, inArray, isNotNull, isNull } from 'drizzle-orm'
 import { getOrgCache } from '../../cache'
+import { BadRequestError, NotFoundError } from '../../errors'
 import { FieldValueService } from '../../field-values/field-value-service'
 import { expandOccurrences, type RecurrencePattern } from '../../recurrence'
 import { exitRunsForDeadVisitSubjects } from '../../sequences/hooks'
-import { getWorkOrderStatus, materializeVisits, todayLocalDate } from './materialize'
+import { publishVisitChanged } from '../broadcast'
+import { mirrorVisitOntoWorkOrder } from '../mirror'
+import {
+  getWorkOrderStatus,
+  materializeVisits,
+  maybeEndExhaustedEngagement,
+  todayLocalDate,
+} from './materialize'
 
 const logger = createScopedLogger('dispatch:recurring:rule-mutations')
 
@@ -353,5 +361,124 @@ export async function setRecurrenceRule(input: SetRecurrenceRuleInput): Promise<
   }
 
   await materializeVisits(rule, { userId, excludeSocketId })
+
+  // Plan 36 §A.3/§A.4: a scope edit can legally re-anchor `effectiveFrom` past the pattern's
+  // own `until` (the tail segment is simply empty) — but then the series may be fully dead.
+  // Run the exhaustion check synchronously so the engagement never silently claims Active
+  // over a rule that can't generate; cheap no-op for a never-ending pattern.
+  await maybeEndExhaustedEngagement(rule)
   return rule
+}
+
+/** Input for {@link setSeriesEnd}. */
+export interface SetSeriesEndInput {
+  organizationId: string
+  userId: string
+  /** EntityInstance id of the work order (not the RecordId). */
+  workOrderInstanceId: string
+  /** Inclusive local ISO end date (`YYYY-MM-DD`); `null` clears the end (open-ended). */
+  until: string | null
+  /** Realtime echo-suppression — the acting client's own socket id (07 §B.4). */
+  excludeSocketId?: string
+}
+
+/**
+ * Set, move, or clear a series' end date IN PLACE (plan 36 §A.1) — the engagement card's
+ * "Ends" control, and the explicit reverse of `cancelVisitFollowing`'s `until` stamp. Pattern
+ * and template stay untouched (`count` is stripped — `until`/`count` are mutually exclusive).
+ *
+ * Shortening deletes the rule's later `scheduled` rows slot-based (`occurrenceDate` strictly
+ * after the new end) — detached overrides included, their slot is gone with the series;
+ * `done`/in-flight rows stay as history, existing tombstones stay. Extending or clearing
+ * re-materializes the tail (template occurrences only — overrides a previous shorten deleted
+ * are NOT resurrected). A paused engagement only gets the rule write (resume owns
+ * regeneration); an ended engagement is rejected (terminal — plan 06 §8).
+ */
+export async function setSeriesEnd(input: SetSeriesEndInput): Promise<RecurrenceRuleRow> {
+  const { organizationId, userId, workOrderInstanceId, until, excludeSocketId } = input
+
+  const rule = await database.query.RecurrenceRule.findFirst({
+    where: and(
+      eq(schema.RecurrenceRule.organizationId, organizationId),
+      eq(schema.RecurrenceRule.subjectType, 'work_order_visits'),
+      eq(schema.RecurrenceRule.subjectId, workOrderInstanceId)
+    ),
+  })
+  if (!rule) throw new NotFoundError('No recurrence rule for this work order')
+
+  const status = await getWorkOrderStatus(organizationId, userId, workOrderInstanceId)
+  if (status === 'ended') {
+    throw new BadRequestError('This engagement has ended — create a new job to schedule again')
+  }
+
+  if (until !== null) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(until)) {
+      throw new BadRequestError('End date must be a YYYY-MM-DD date')
+    }
+    // Ending in the past is `endEngagement`'s job; a window-empty write (`until` before
+    // `effectiveFrom`) is only ever legal as a scope-edit side effect (§A.4), never manually.
+    if (until < todayLocalDate(rule.timezone)) {
+      throw new BadRequestError('The end date cannot be in the past — end the engagement instead')
+    }
+    if (until < rule.effectiveFrom) {
+      throw new BadRequestError(
+        'The end date cannot come before the date the current schedule takes effect'
+      )
+    }
+  }
+
+  const { count: _count, until: _until, ...rest } = rule.pattern as unknown as RecurrencePattern
+  const pattern = (until === null ? rest : { ...rest, until }) as RecurrencePattern
+
+  const [updated] = await database
+    .update(schema.RecurrenceRule)
+    .set({ pattern: pattern as unknown as Record<string, unknown>, updatedAt: new Date() })
+    .where(eq(schema.RecurrenceRule.id, rule.id))
+    .returning()
+  if (!updated) throw new NotFoundError('Recurrence rule not found')
+
+  if (until !== null) {
+    const deleted = await database
+      .delete(schema.WorkOrderVisit)
+      .where(
+        and(
+          eq(schema.WorkOrderVisit.recurrenceRuleId, rule.id),
+          eq(schema.WorkOrderVisit.status, 'scheduled'),
+          gt(schema.WorkOrderVisit.occurrenceDate, until)
+        )
+      )
+      .returning({ id: schema.WorkOrderVisit.id })
+    if (deleted.length > 0) {
+      try {
+        await exitRunsForDeadVisitSubjects(
+          organizationId,
+          deleted.map((row) => row.id),
+          'canceled'
+        )
+      } catch (error) {
+        logger.error('Failed to exit sequence runs for series-end-deleted visits', {
+          error,
+          ruleId: rule.id,
+        })
+      }
+    }
+  }
+
+  if (status === 'paused') {
+    // Pause already deleted the future rows — never regenerate them here (resume owns that).
+    // Mirror + broadcast directly so other tabs still refresh the rule state.
+    await mirrorVisitOntoWorkOrder(organizationId, userId, rule.subjectId)
+    await publishVisitChanged(
+      organizationId,
+      { visitId: rule.id, workOrderId: rule.subjectId },
+      { excludeSocketId }
+    )
+  } else {
+    // Extend/clear regenerates the tail; a shorten rides the same call for its
+    // mirror + broadcast (nothing new inserts past `until` — the expansion stops there).
+    await materializeVisits(updated, { userId, excludeSocketId })
+  }
+
+  await maybeEndExhaustedEngagement(updated)
+  return updated
 }

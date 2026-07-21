@@ -89,6 +89,14 @@ export interface RestoreVisitInput {
   organizationId: string
   userId: string
   visitId: string
+  /**
+   * Plan 36 §A.2 — also resume the series: only legal on the series' boundary visit (the
+   * canceled occurrence whose `occurrenceDate` equals the rule pattern's `until`, i.e. the
+   * visit a "Skip this and future" ended the series at). Clears the pattern's `until` and
+   * re-materializes the tail (template occurrences only — overrides the skip deleted are
+   * NOT resurrected).
+   */
+  resumeSeries?: boolean
   excludeSocketId?: string
 }
 

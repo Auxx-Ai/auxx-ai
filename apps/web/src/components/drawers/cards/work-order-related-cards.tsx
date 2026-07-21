@@ -18,6 +18,7 @@ import { useRouter } from 'next/navigation'
 import { Fragment, useState } from 'react'
 import { splitJobVisits } from '~/components/dispatch/ui/job-schedule/job-schedule-utils'
 import { ScheduleVisitRow } from '~/components/dispatch/ui/job-schedule/schedule-visit-row'
+import { SeriesEndRow, SeriesSummaryRow } from '~/components/dispatch/ui/job-schedule/series-end'
 import type { JobVisit } from '~/components/dispatch/ui/job-schedule/use-job-visits'
 import { useJobVisits } from '~/components/dispatch/ui/job-schedule/use-job-visits'
 import { SchedulePopover } from '~/components/dispatch/ui/schedule-popover'
@@ -83,6 +84,14 @@ export function WorkOrderScheduleCard({ recordId }: DrawerTabProps) {
           />
         </DrawerCardActions>
       )}
+      {/* Series state, always visible (plan 36 §B.4) — the drawer previously showed nothing:
+       * "Weekly on Wed, Thu · ends Aug 18 · 3 skipped". Renders nothing for rule-less jobs. */}
+      <SeriesSummaryRow
+        workOrderRecordId={recordId}
+        canEdit={canEdit}
+        visits={visits}
+        onChanged={refresh}
+      />
       {!loading && !visits.length ? (
         <EmptyRow label='No visits yet' />
       ) : (
@@ -94,6 +103,13 @@ export function WorkOrderScheduleCard({ recordId }: DrawerTabProps) {
           renderRow={renderVisitRow}
         />
       )}
+      {/* Terminator row (plan 36 §B.3) — where the upcoming list stops and why. */}
+      <SeriesEndRow
+        workOrderRecordId={recordId}
+        canEdit={canEdit}
+        visits={visits}
+        onChanged={refresh}
+      />
       {history.length > 0 && (
         <TreeRow
           icon={<History className='size-4' />}

@@ -10,6 +10,7 @@ import { createScopedLogger } from '@auxx/logger'
 import { and, eq } from 'drizzle-orm'
 import { BadRequestError, NotFoundError } from '../errors'
 import { maybeGenerateVisitInvoiceDraft } from '../money/auto-invoice'
+import type { RecurrencePattern } from '../recurrence'
 import {
   enrollVisitEnRouteSequences,
   enrollVisitScheduledSequences,
@@ -20,6 +21,9 @@ import { reanchorSequenceRuns } from '../sequences/reanchor'
 import { publishVisitChanged } from './broadcast'
 import { type LifecycleTrigger, rollUpWorkOrderStatus } from './lifecycle'
 import { mirrorVisitOntoWorkOrder } from './mirror'
+// Direct module import (not the ./recurring barrel) — the barrel pulls engagement-actions,
+// which imports this file back (the lib barrel-cycle gotcha).
+import { getWorkOrderStatus, materializeVisits } from './recurring/materialize'
 import type {
   AddVisitInput,
   AssignVisitInput,
@@ -223,9 +227,14 @@ export async function scheduleVisit(input: ScheduleVisitInput): Promise<WorkOrde
  * restores to its overridden time, not the template slot) and clears `dispatchedAt` (it was
  * already cleared at cancel, §A.2 — this is belt-and-suspenders). Never sends a worker
  * notification — the visit comes back undispatched, "Dispatch" reads fresh again.
+ *
+ * With `resumeSeries` (plan 36 §A.2 — only legal on the series boundary visit, the occurrence
+ * a "Skip this and future" ended the series at): also clears the rule pattern's `until` and
+ * re-materializes the tail, making restore the symmetric undo of skip-future. Without it, the
+ * restored visit stays the series' final occurrence.
  */
 export async function restoreVisit(input: RestoreVisitInput): Promise<WorkOrderVisitRow> {
-  const { organizationId, userId, visitId, excludeSocketId } = input
+  const { organizationId, userId, visitId, resumeSeries, excludeSocketId } = input
 
   const existing = await database.query.WorkOrderVisit.findFirst({
     where: and(
@@ -236,6 +245,30 @@ export async function restoreVisit(input: RestoreVisitInput): Promise<WorkOrderV
   if (!existing) throw new NotFoundError('Visit not found')
   if (existing.status !== 'canceled') {
     throw new BadRequestError('Only a canceled visit can be restored')
+  }
+
+  // Verify the boundary condition server-side before any write — the client should never
+  // offer "resume" elsewhere, and a stale client must not clear an unrelated end date.
+  let seriesRule: typeof schema.RecurrenceRule.$inferSelect | undefined
+  if (resumeSeries) {
+    if (!existing.recurrenceRuleId || !existing.occurrenceDate) {
+      throw new BadRequestError('Visit is not part of a recurring series')
+    }
+    seriesRule = await database.query.RecurrenceRule.findFirst({
+      where: and(
+        eq(schema.RecurrenceRule.id, existing.recurrenceRuleId),
+        eq(schema.RecurrenceRule.organizationId, organizationId)
+      ),
+    })
+    if (!seriesRule) throw new NotFoundError('Recurrence rule not found')
+    const pattern = seriesRule.pattern as unknown as RecurrencePattern
+    if (pattern.until !== existing.occurrenceDate) {
+      throw new BadRequestError('Visit is not the end of its series')
+    }
+    const status = await getWorkOrderStatus(organizationId, userId, existing.workOrderId)
+    if (status === 'ended') {
+      throw new BadRequestError('This engagement has ended — create a new job to schedule again')
+    }
   }
 
   const [updated] = await database
@@ -254,6 +287,22 @@ export async function restoreVisit(input: RestoreVisitInput): Promise<WorkOrderV
   // `scheduleVisit` (lifecycle.ts): restoring a canceled visit is a forward move, never the
   // `canceled`/`unscheduled` reset.
   await afterVisitWrite(updated, { userId, trigger: 'scheduled', excludeSocketId })
+
+  // Plan 36 §A.2 — resume: clear the pattern's `until` (back to open-ended; the pre-skip
+  // value isn't stored anywhere) and regenerate the tail. A paused engagement only gets the
+  // rule write — pause deleted the future rows and resume owns regeneration.
+  if (resumeSeries && seriesRule) {
+    const { until: _until, ...pattern } = seriesRule.pattern as unknown as RecurrencePattern
+    const [updatedRule] = await database
+      .update(schema.RecurrenceRule)
+      .set({ pattern: pattern as unknown as Record<string, unknown>, updatedAt: new Date() })
+      .where(eq(schema.RecurrenceRule.id, seriesRule.id))
+      .returning()
+    const status = await getWorkOrderStatus(organizationId, userId, existing.workOrderId)
+    if (updatedRule && status !== 'paused') {
+      await materializeVisits(updatedRule, { userId, excludeSocketId })
+    }
+  }
 
   // Client-notification hooks (plan 19 §4.3): one-off only, mirrors the scheduleVisit revive.
   // Time-less restores (a canceled backlog row) skip enrollment — `visit:scheduled` means a
