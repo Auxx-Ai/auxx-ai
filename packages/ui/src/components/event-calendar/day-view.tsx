@@ -29,6 +29,8 @@ interface DayViewProps<T extends EventCalendarItem = EventCalendarItem> {
   renderEvent?: RenderEvent<T>
   /** Id of the actively-selected event (detail/popover open) — draws the in-color ring. */
   selectedEventId?: string | null
+  /** Px-per-hour of the timed grid — the zoomable vertical scale. Defaults to `WeekCellsHeight`. */
+  hourHeight?: number
 }
 
 /** Big date header — day + month bold, year regular, weekday name below. */
@@ -53,6 +55,7 @@ export function DayView<T extends EventCalendarItem = EventCalendarItem>({
   onEventResize,
   renderEvent,
   selectedEventId,
+  hourHeight = WeekCellsHeight,
 }: DayViewProps<T>) {
   const hours = useMemo(() => {
     const dayStart = startOfDay(currentDate)
@@ -88,10 +91,10 @@ export function DayView<T extends EventCalendarItem = EventCalendarItem>({
   const positionedEvents = useMemo(
     () =>
       positionEventsForDay(timeEvents, currentDate, {
-        cellHeight: WeekCellsHeight,
+        cellHeight: hourHeight,
         startHour: StartHour,
       }),
-    [currentDate, timeEvents]
+    [currentDate, timeEvents, hourHeight]
   )
 
   const handleEventClick = (event: T, e: React.MouseEvent) => {
@@ -153,7 +156,7 @@ export function DayView<T extends EventCalendarItem = EventCalendarItem>({
           <BackgroundEventsLayer
             events={backgroundEvents}
             day={currentDate}
-            cellHeight={WeekCellsHeight}
+            cellHeight={hourHeight}
           />
 
           {positionedEvents.map((positioned) => (
@@ -176,6 +179,7 @@ export function DayView<T extends EventCalendarItem = EventCalendarItem>({
                   showTime
                   height={positioned.height}
                   onResize={onEventResize}
+                  cellSize={hourHeight}
                   renderEvent={renderEvent}
                   isSelected={positioned.event.id === selectedEventId}
                 />
@@ -183,7 +187,7 @@ export function DayView<T extends EventCalendarItem = EventCalendarItem>({
             </div>
           ))}
 
-          <DropPreview day={currentDate} />
+          <DropPreview day={currentDate} cellHeight={hourHeight} />
 
           {currentTimeVisible && <CurrentTimeLine position={currentTimePosition} />}
 

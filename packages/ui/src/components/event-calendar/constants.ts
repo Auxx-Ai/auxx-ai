@@ -31,6 +31,10 @@ const MinutesPerHour = 60
  */
 export const WeekCellsHeight = GridTickHeight * (MinutesPerHour / GridTickMinutes)
 
+/** Zoom clamps (px per hour) for the vertical week/day/resource grids' scale gesture. */
+export const WeekCellsHeightMin = 24
+export const WeekCellsHeightMax = 144
+
 /** Height (px) of the sticky day-header row (weekday + date). Mirrors Notion's `--grid-header-height`. */
 export const GridHeaderHeight = 53
 

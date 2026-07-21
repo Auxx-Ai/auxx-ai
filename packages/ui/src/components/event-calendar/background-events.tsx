@@ -77,7 +77,7 @@ export function BackgroundEventsLayer({
               key={index}
               className={cn(
                 'pointer-events-none absolute inset-y-0 z-0',
-                bg.className ?? 'bg-muted/40'
+                bg.className ?? 'bg-muted-foreground/6'
               )}
               style={{ left: `${left}%`, width: `${width}%` }}
             />
@@ -102,7 +102,7 @@ export function BackgroundEventsLayer({
             key={index}
             className={cn(
               'pointer-events-none absolute inset-x-0 z-0',
-              bg.className ?? 'bg-muted/40'
+              bg.className ?? 'bg-muted-foreground/6'
             )}
             style={{ top: `${top}px`, height: `${height}px` }}
           />

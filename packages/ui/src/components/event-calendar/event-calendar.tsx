@@ -26,7 +26,15 @@ import {
   subWeeks,
 } from 'date-fns'
 import { CalendarCheck, ChevronDownIcon, ChevronLeftIcon, ChevronRightIcon } from 'lucide-react'
-import { type CSSProperties, type ReactNode, useEffect, useMemo } from 'react'
+import {
+  type CSSProperties,
+  type ReactNode,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 
 import { AgendaView } from './agenda-view'
 import { CalendarDndProvider, useCalendarDnd } from './calendar-dnd-context'
@@ -39,9 +47,11 @@ import {
   GridAllDayChipSpacing,
   GridAllDayPaddingTop,
   GridHeaderHeight,
-  GridTickHeight,
   GridTickMinutes,
   StartHour,
+  WeekCellsHeight,
+  WeekCellsHeightMax,
+  WeekCellsHeightMin,
 } from './constants'
 import { DayView, DayViewHeader } from './day-view'
 import { HorizontalTimelineView } from './horizontal-timeline-view'
@@ -59,6 +69,30 @@ import { WeekView } from './week-view'
 
 /** Module-level default — an inline `{}` default would break `TimelineDaySection`'s memo every render. */
 const DefaultHourWindow: TimelineHourWindow = { start: StartHour, end: EndHour }
+
+const clampHourHeight = (px: number) =>
+  Math.min(WeekCellsHeightMax, Math.max(WeekCellsHeightMin, px))
+
+/** Multiplicative zoom gain per wheel `deltaY` unit (ctrl+wheel / trackpad pinch). */
+const WheelZoomGain = 0.01
+
+/** Idle time (ms) after the last ctrl+wheel event before the vertical-grid zoom commits. */
+const WheelZoomCommitDelay = 160
+
+/**
+ * Nearest ancestor (up to and including `root`) whose computed overflow-y scrolls — the vertical
+ * grids' scroll container differs per view (day scrolls the shell's own container; week/resource
+ * own an inner two-axis scroller).
+ */
+function findScrollContainer(from: HTMLElement | null, root: HTMLElement): HTMLElement {
+  let el: HTMLElement | null = from
+  while (el && el !== root) {
+    const { overflowY } = getComputedStyle(el)
+    if (overflowY === 'auto' || overflowY === 'scroll') return el
+    el = el.parentElement
+  }
+  return root
+}
 
 export interface EventCalendarProps<T extends EventCalendarItem = EventCalendarItem> {
   events?: T[]
@@ -85,6 +119,10 @@ export interface EventCalendarProps<T extends EventCalendarItem = EventCalendarI
   timelineRailWidth?: number
   /** Fires when the timeline rail-width drag commits a new width. */
   onTimelineRailWidthChange?: (px: number) => void
+  /** Vertical-grid zoom: controlled px-per-hour for week/day/resource views. Omit for internal state. */
+  gridHourHeight?: number
+  /** Fires when a vertical-grid zoom gesture (ctrl+wheel / pinch) commits a new px-per-hour. */
+  onGridHourHeightChange?: (px: number) => void
   backgroundEvents?: BackgroundEvent[]
   renderEvent?: RenderEvent<T>
   /** Id of the actively-selected event (its detail/popover open) — draws the in-color ring. */
@@ -123,6 +161,8 @@ function EventCalendarInner<T extends EventCalendarItem = EventCalendarItem>({
   onTimelineHourWidthChange,
   timelineRailWidth,
   onTimelineRailWidthChange,
+  gridHourHeight,
+  onGridHourHeightChange,
   backgroundEvents,
   renderEvent,
   selectedEventId,
@@ -244,6 +284,179 @@ function EventCalendarInner<T extends EventCalendarItem = EventCalendarItem>({
   const dndContext = useCalendarDnd()
   const withinAmbientProvider = dndContext.isCalendarDndContext
 
+  // ── vertical-grid zoom (week/day/resource) ────────────────────────────────
+  // Same controlled-or-internal shape as the timeline's hourWidth, but a far simpler gesture:
+  // there is no virtualized stream on the y-axis, so keeping the time under the cursor
+  // stationary is just a scrollTop adjustment — no CSS-var compensation machinery. Live wheel
+  // frames render through React state; the (rounded) commit debounces behind the last event.
+  const viewContainerRef = useRef<HTMLDivElement>(null)
+  const [internalGridHourHeight, setInternalGridHourHeight] = useState(WeekCellsHeight)
+  const committedGridHourHeight = clampHourHeight(gridHourHeight ?? internalGridHourHeight)
+  const [liveGridHourHeight, setLiveGridHourHeight] = useState<number | null>(null)
+  const effectiveGridHourHeight = liveGridHourHeight ?? committedGridHourHeight
+
+  const gridZoomRef = useRef<{
+    scroller: HTMLElement
+    /** Grid-origin Y in the scroller's content space — zoom-invariant (header chrome is fixed). */
+    gridTop: number
+    /** Live fractional px-per-hour — the JS-space source the DOM follows. */
+    hourHeight: number
+    /** Virtual scrollTop paired with `hourHeight` — applied to the DOM after each render. */
+    scrollTop: number
+  } | null>(null)
+  const gridZoomCommitTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  const pendingGridScrollRef = useRef<{ scroller: HTMLElement; top: number } | null>(null)
+  const gridZoomGeoRef = useRef({ view, committedGridHourHeight, onGridHourHeightChange })
+  gridZoomGeoRef.current = { view, committedGridHourHeight, onGridHourHeightChange }
+
+  // The wheel handler mutates the gesture's virtual scrollTop in JS-space; the DOM catches up
+  // here, after React has re-rendered the grid at the new height. No dependency array —
+  // deliberately runs every render while a gesture (or a commit's scroll) is pending.
+  useLayoutEffect(() => {
+    const gesture = gridZoomRef.current
+    if (gesture) gesture.scroller.scrollTop = gesture.scrollTop
+    const pending = pendingGridScrollRef.current
+    if (pending) {
+      pendingGridScrollRef.current = null
+      pending.scroller.scrollTop = pending.top
+    }
+  })
+
+  useEffect(() => {
+    const root = viewContainerRef.current
+    if (!root) return
+
+    const isVerticalGridView = () => {
+      const { view: currentView } = gridZoomGeoRef.current
+      return currentView === 'week' || currentView === 'day' || currentView === 'resource'
+    }
+
+    /** Scroller + zoom-invariant grid-origin Y for the view under `target`. */
+    const resolveGeometry = (target: HTMLElement) => {
+      const scroller = findScrollContainer(target, root)
+      const gutter = scroller.querySelector('[data-slot="hour-gutter"]')
+      if (!gutter) return null
+      const gridTop =
+        gutter.getBoundingClientRect().top -
+        scroller.getBoundingClientRect().top +
+        scroller.scrollTop
+      return { scroller, gridTop }
+    }
+
+    /** Ends the active gesture: commits the rounded height + the re-anchored scrollTop. */
+    const commitGridZoom = () => {
+      const g = gridZoomRef.current
+      if (!g) return
+      gridZoomRef.current = null
+      const finalHeight = clampHourHeight(Math.round(g.hourHeight))
+      // Re-anchor at the scroller's top edge for the (≤0.5px/hour) rounding delta.
+      const topHours = (g.scrollTop - g.gridTop) / g.hourHeight
+      pendingGridScrollRef.current = {
+        scroller: g.scroller,
+        top: Math.max(0, g.scrollTop + topHours * (finalHeight - g.hourHeight)),
+      }
+      const commit = gridZoomGeoRef.current.onGridHourHeightChange
+      if (commit) commit(finalHeight)
+      else setInternalGridHourHeight(finalHeight)
+      setLiveGridHourHeight(null)
+    }
+
+    // Non-passive so `preventDefault` can stop the browser's page zoom.
+    const onWheel = (e: WheelEvent) => {
+      const { committedGridHourHeight: committed } = gridZoomGeoRef.current
+      if (!e.ctrlKey || !isVerticalGridView()) return
+      e.preventDefault()
+
+      let gesture = gridZoomRef.current
+      if (!gesture) {
+        const geo = resolveGeometry(e.target as HTMLElement)
+        if (!geo) return
+        gesture = { ...geo, hourHeight: committed, scrollTop: geo.scroller.scrollTop }
+        gridZoomRef.current = gesture
+      }
+
+      const oldHeight = gesture.hourHeight
+      const newHeight = clampHourHeight(oldHeight * Math.exp(-e.deltaY * WheelZoomGain))
+      // Anchor: the time under the cursor stays put — scrollTop absorbs the anchor's growth.
+      const cursorOffset = e.clientY - gesture.scroller.getBoundingClientRect().top
+      const anchorHours = (gesture.scrollTop + cursorOffset - gesture.gridTop) / oldHeight
+      gesture.hourHeight = newHeight
+      gesture.scrollTop = Math.max(0, gesture.scrollTop + anchorHours * (newHeight - oldHeight))
+      setLiveGridHourHeight(newHeight)
+
+      clearTimeout(gridZoomCommitTimerRef.current)
+      gridZoomCommitTimerRef.current = setTimeout(commitGridZoom, WheelZoomCommitDelay)
+    }
+
+    // Border drag on the gutter's `data-hour-zoom-handle` strips (parity with the timeline's
+    // draggable hour borders): the grabbed hour rule tracks the pointer — height' = start + dy —
+    // while the hour above it stays anchored via the same virtual-scrollTop plumbing.
+    const onPointerDown = (e: PointerEvent) => {
+      const { committedGridHourHeight: committed } = gridZoomGeoRef.current
+      if (e.button !== 0 || !isVerticalGridView() || gridZoomRef.current) return
+      const handle = (e.target as HTMLElement | null)?.closest?.('[data-hour-zoom-handle]')
+      if (!(handle instanceof HTMLElement)) return
+      const borderIndex = Number(handle.dataset.hourZoomHandle)
+      if (!Number.isFinite(borderIndex)) return
+      const geo = resolveGeometry(handle)
+      if (!geo) return
+      e.preventDefault()
+
+      gridZoomRef.current = { ...geo, hourHeight: committed, scrollTop: geo.scroller.scrollTop }
+      const startClientY = e.clientY
+      // Anchor the grabbed hour's TOP edge, so the dragged border sits exactly one (new)
+      // hour-height below it and tracks the pointer.
+      const anchorHours = borderIndex - 1
+
+      const onMove = (me: PointerEvent) => {
+        const g = gridZoomRef.current
+        if (!g) return
+        const newHeight = clampHourHeight(committed + (me.clientY - startClientY))
+        if (newHeight === g.hourHeight) return
+        g.scrollTop = Math.max(0, g.scrollTop + anchorHours * (newHeight - g.hourHeight))
+        g.hourHeight = newHeight
+        setLiveGridHourHeight(newHeight)
+      }
+      const onUp = () => {
+        window.removeEventListener('pointermove', onMove)
+        window.removeEventListener('pointerup', onUp)
+        window.removeEventListener('pointercancel', onUp)
+        commitGridZoom()
+      }
+      window.addEventListener('pointermove', onMove)
+      window.addEventListener('pointerup', onUp)
+      window.addEventListener('pointercancel', onUp)
+    }
+
+    /** Double-click a gutter handle → reset to the default scale, keeping that border put. */
+    const onDoubleClick = (e: MouseEvent) => {
+      const { committedGridHourHeight: committed } = gridZoomGeoRef.current
+      if (!isVerticalGridView() || committed === WeekCellsHeight || gridZoomRef.current) return
+      const handle = (e.target as HTMLElement | null)?.closest?.('[data-hour-zoom-handle]')
+      if (!(handle instanceof HTMLElement)) return
+      const geo = resolveGeometry(handle)
+      if (!geo) return
+      const anchorHours = Number(handle.dataset.hourZoomHandle) - 1
+      pendingGridScrollRef.current = {
+        scroller: geo.scroller,
+        top: Math.max(0, geo.scroller.scrollTop + anchorHours * (WeekCellsHeight - committed)),
+      }
+      const commit = gridZoomGeoRef.current.onGridHourHeightChange
+      if (commit) commit(WeekCellsHeight)
+      else setInternalGridHourHeight(WeekCellsHeight)
+    }
+
+    root.addEventListener('wheel', onWheel, { passive: false })
+    root.addEventListener('pointerdown', onPointerDown)
+    root.addEventListener('dblclick', onDoubleClick)
+    return () => {
+      root.removeEventListener('wheel', onWheel)
+      root.removeEventListener('pointerdown', onPointerDown)
+      root.removeEventListener('dblclick', onDoubleClick)
+      clearTimeout(gridZoomCommitTimerRef.current)
+    }
+  }, [])
+
   const body = (
     <>
       {!hideToolbar && (
@@ -305,6 +518,7 @@ function EventCalendarInner<T extends EventCalendarItem = EventCalendarItem>({
       )}
 
       <div
+        ref={viewContainerRef}
         className={cn(
           'flex min-h-0 flex-1 flex-col',
           // The month/week/resource/timeline streams own their own (snap) scroll containers.
@@ -339,6 +553,7 @@ function EventCalendarInner<T extends EventCalendarItem = EventCalendarItem>({
             selectedEventId={selectedEventId}
             onDateChange={onDateChange}
             onVisibleRangeChange={onRangeChange}
+            hourHeight={effectiveGridHourHeight}
           />
         )}
         {view === 'day' && (
@@ -351,6 +566,7 @@ function EventCalendarInner<T extends EventCalendarItem = EventCalendarItem>({
             onEventResize={onEventResize}
             renderEvent={renderEvent}
             selectedEventId={selectedEventId}
+            hourHeight={effectiveGridHourHeight}
           />
         )}
         {view === 'resource' &&
@@ -369,6 +585,7 @@ function EventCalendarInner<T extends EventCalendarItem = EventCalendarItem>({
               selectedEventId={selectedEventId}
               onDateChange={onDateChange}
               onVisibleRangeChange={onRangeChange}
+              hourHeight={effectiveGridHourHeight}
             />
           ) : null)}
         {view === 'timeline' &&
@@ -413,8 +630,9 @@ function EventCalendarInner<T extends EventCalendarItem = EventCalendarItem>({
           '--event-height': `${EventHeight}px`,
           '--event-gap': `${EventGap}px`,
           // Notion-style tick grid: the hour-row height derives from the 5-minute
-          // tick, so every timed cell/position scales off one knob.
-          '--grid-tick-height': `${GridTickHeight}px`,
+          // tick, so every timed cell/position scales off one knob — here fed by
+          // the (zoomable) grid hour height instead of the static constant.
+          '--grid-tick-height': `${(effectiveGridHourHeight * GridTickMinutes) / 60}px`,
           '--grid-tick-minutes': `${GridTickMinutes}`,
           '--week-cells-height': `calc(var(--grid-tick-height) * 60 / var(--grid-tick-minutes))`,
           '--grid-header-height': `${GridHeaderHeight}px`,

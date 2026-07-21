@@ -72,6 +72,8 @@ interface ResourceTimelineViewProps<T extends EventCalendarItem = EventCalendarI
   onDateChange?: (date: Date) => void
   /** Fires with the rendered (visible + overscan) day window — consumers fetch this. */
   onVisibleRangeChange?: (from: Date, to: Date) => void
+  /** Px-per-hour of the timed grid — the zoomable vertical scale. Defaults to `WeekCellsHeight`. */
+  hourHeight?: number
 }
 
 /**
@@ -104,6 +106,7 @@ export function ResourceTimelineView<T extends EventCalendarItem = EventCalendar
   selectedEventId,
   onDateChange,
   onVisibleRangeChange,
+  hourHeight = WeekCellsHeight,
 }: ResourceTimelineViewProps<T>) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const gutterRef = useRef<HTMLDivElement>(null)
@@ -313,7 +316,7 @@ export function ResourceTimelineView<T extends EventCalendarItem = EventCalendar
           className='relative'
           style={{
             width: gutterWidth + totalSize,
-            minHeight: headerHeight + hours.length * WeekCellsHeight,
+            minHeight: headerHeight + hours.length * hourHeight,
           }}>
           {/* Two-tier sticky header: date labels + worker sub-headers + always-visible all-day lane. */}
           <div
@@ -489,6 +492,7 @@ export function ResourceTimelineView<T extends EventCalendarItem = EventCalendar
               renderEvent={renderEvent}
               selectedEventId={selectedEventId}
               currentTimePosition={currentTimePosition}
+              hourHeight={hourHeight}
             />
           ))}
         </div>

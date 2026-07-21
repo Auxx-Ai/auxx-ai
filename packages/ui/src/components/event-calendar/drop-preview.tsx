@@ -12,6 +12,8 @@ interface DropPreviewProps {
   day: Date
   /** Resource column id (resource view only) — the outline shows only when the hovered cell matches. */
   resourceId?: string
+  /** Px-per-hour of the column's grid — pass when the grid is zoomed. Defaults to `WeekCellsHeight`. */
+  cellHeight?: number
 }
 
 /**
@@ -22,7 +24,7 @@ interface DropPreviewProps {
  * nothing unless a timed drag is in progress and its target resolves to this
  * exact column.
  */
-export function DropPreview({ day, resourceId }: DropPreviewProps) {
+export function DropPreview({ day, resourceId, cellHeight = WeekCellsHeight }: DropPreviewProps) {
   const { activeEvent, currentTime, activeView, currentResourceId } = useCalendarDnd()
 
   // No timed drag in flight, or a month drag (whole-day, no time slot to outline).
@@ -36,9 +38,9 @@ export function DropPreview({ day, resourceId }: DropPreviewProps) {
     new Date(activeEvent.end),
     new Date(activeEvent.start)
   )
-  const top = (startMinutes / 60) * WeekCellsHeight
+  const top = (startMinutes / 60) * cellHeight
   // Floor a zero/negative duration to a single quarter-hour so the outline is always visible.
-  const height = Math.max((durationMinutes / 60) * WeekCellsHeight, WeekCellsHeight / 4)
+  const height = Math.max((durationMinutes / 60) * cellHeight, cellHeight / 4)
 
   return (
     <div
