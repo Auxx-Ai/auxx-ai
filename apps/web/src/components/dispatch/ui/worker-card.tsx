@@ -8,7 +8,12 @@ import {
 } from '@auxx/lib/custom-fields/client'
 import { Avatar, AvatarFallback, AvatarImage } from '@auxx/ui/components/avatar'
 import { Badge } from '@auxx/ui/components/badge'
-import { ListCard, type ListCardStatus } from '@auxx/ui/components/list-card'
+import {
+  ListCard,
+  type ListCardMenuItem,
+  type ListCardStatus,
+  renderBadgeChips,
+} from '@auxx/ui/components/list-card'
 import { cn } from '@auxx/ui/lib/utils'
 import type { RouterOutputs } from '~/trpc/react'
 
@@ -25,13 +30,15 @@ interface WorkerCardProps {
   worker: DispatchWorkerRow
   /** Omit to render a read-only tile (e.g. the dispatch setup wizard's already-added list). */
   onClick?: (worker: DispatchWorkerRow) => void
+  /** Kebab-menu actions (settings grid) — omitted in read-only contexts. */
+  menuItems?: ListCardMenuItem[]
 }
 
 /**
  * One dispatch worker tile: avatar, name/email, active status dot, board-color
  * chip. Click opens the Workers dialog (07-m2-build.md §E.1).
  */
-export function WorkerCard({ worker, onClick }: WorkerCardProps) {
+export function WorkerCard({ worker, onClick, menuItems }: WorkerCardProps) {
   const name = worker.user?.name || worker.user?.email || 'Unknown member'
   const initial = name.charAt(0).toUpperCase()
 
@@ -46,6 +53,11 @@ export function WorkerCard({ worker, onClick }: WorkerCardProps) {
       title={name}
       subtitle={worker.user?.email ?? undefined}
       status={workerStatus(worker)}
+      headerEnd={renderBadgeChips([
+        worker.isActive
+          ? { label: 'Active', variant: 'green', description: 'Shown on the board' }
+          : { label: 'Inactive', variant: 'gray', description: 'Hidden from the board' },
+      ])}
       badges={
         worker.color ? (
           <Badge variant='gray' size='sm' className='gap-1.5'>
@@ -55,6 +67,7 @@ export function WorkerCard({ worker, onClick }: WorkerCardProps) {
         ) : undefined
       }
       onClick={onClick ? () => onClick(worker) : undefined}
+      menuItems={menuItems}
     />
   )
 }
