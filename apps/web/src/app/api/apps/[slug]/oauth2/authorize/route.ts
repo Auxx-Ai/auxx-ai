@@ -5,6 +5,7 @@ import type { OAuth2Features } from '@auxx/database'
 import { database as db } from '@auxx/database'
 import { resolveAppConnectionForRuntime } from '@auxx/lib/apps'
 import { resolveAppSlug } from '@auxx/lib/cache'
+import { resolveOAuth2Client, resolveOwnClientRequirement } from '@auxx/lib/connections'
 import { createScopedLogger } from '@auxx/logger'
 import { getRedisClient } from '@auxx/redis'
 import { interpolateConnectionFields } from '@auxx/services/app-connections'
@@ -173,8 +174,28 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       if (value) connectionVariables[varDef.key] = value
     }
 
-    // Interpolate all connection fields with variables
+    // Own-client gate (§3.1): only a genuinely absent platform client forces BYO id/secret.
+    // A platform client pending verification is optional-BYO — the platform kickoff proceeds
+    // and the provider (e.g. Google) applies its own unverified-app gating.
+    const ownClient = resolveOwnClientRequirement(connDef)
+    if (
+      ownClient.requiresOwnClient &&
+      !(connectionVariables.clientId && connectionVariables.clientSecret)
+    ) {
+      return NextResponse.json(
+        {
+          error: 'This connection requires your own OAuth client id and secret',
+          reason: ownClient.reason,
+        },
+        { status: 400 }
+      )
+    }
+
+    // Interpolate all connection fields with variables (for authorize URL + non-client fields).
     const resolved = interpolateConnectionFields(connDef, connectionVariables)
+    // Client id follows §3.2 precedence: a per-connection BYO `clientId` var wins over the
+    // app's platform client. Same resolver the provider authorize route + token refresh use.
+    const { clientId: resolvedClientId } = resolveOAuth2Client(connDef, connectionVariables)
 
     // Store state in Redis with metadata (expires in 10 minutes)
     const redis = await getRedisClient()
@@ -206,7 +227,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
     // Build OAuth authorization URL
     const authUrl = new URL(resolved.authorizeUrl)
-    authUrl.searchParams.set('client_id', resolved.clientId)
+    authUrl.searchParams.set('client_id', resolvedClientId)
     authUrl.searchParams.set('redirect_uri', `${callbackBase}/api/apps/${slug}/oauth2/callback`)
     const scopeSeparator = features.scopeSeparator || ' '
     authUrl.searchParams.set('scope', scopes.join(scopeSeparator))

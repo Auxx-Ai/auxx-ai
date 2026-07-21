@@ -4,7 +4,7 @@
 // `kind`-branch in refreshCredentialTokens — every credential resolves its
 // definition the same way, by connectionDefinitionId or by owner.
 
-import { type AuthApply, database as db, schema } from '@auxx/database'
+import { type AuthApply, type ConnectionVariable, database as db, schema } from '@auxx/database'
 import { interpolateConnectionFields } from '@auxx/services/app-connections'
 import { and, eq } from 'drizzle-orm'
 
@@ -99,15 +99,19 @@ export async function loadDefinitionForCredential(
 }
 
 /**
- * Decide whether a connection MUST bring its own OAuth client, and why (§3.1).
- * "Force BYO" fires for either reason, collapsed into one signal:
- *  - `no-platform-client` — the def has no platform client (its env var was unset at
+ * Decide how a connection may obtain its OAuth client (§3.1). Two signals:
+ *  - `requiresOwnClient` — BYO client id/secret are MANDATORY. Fires only for
+ *    `no-platform-client`: the def has no platform client (its env var was unset at
  *    seed time, so the column is blank); a column null-check IS the env-presence check.
- *  - `pending-approval`   — a platform client exists but its app is not yet verified
- *    (`platformClientApproved=false`, e.g. Google restricted scopes).
+ *  - `ownClientOptional` — BYO is OFFERED as an alternative but not required. Fires for
+ *    `pending-approval`: a platform client exists but its app is not yet Google-verified
+ *    (`platformClientApproved=false`, e.g. Google restricted scopes). The user may try
+ *    the platform login (Google shows an "unverified app" warning and, for restricted
+ *    scopes, only lets test users through) OR supply their own OAuth client.
  *
- * The gate decides *required vs optional*; `resolveOAuth2Client` decides *which client
- * is used*. No per-provider code — works for any OAuth2 def.
+ * The gate decides *required / optional / neither*; `resolveOAuth2Client` decides *which
+ * client is used* (per-credential vars win over the platform client). No per-provider
+ * code — works for any OAuth2 def.
  */
 export function resolveOwnClientRequirement(def: {
   oauth2ClientId: string | null
@@ -115,12 +119,60 @@ export function resolveOwnClientRequirement(def: {
   platformClientApproved: boolean
 }): {
   requiresOwnClient: boolean
+  ownClientOptional: boolean
   reason: 'no-platform-client' | 'pending-approval' | null
 } {
   const platformClientPresent = !!def.oauth2ClientId && !!def.oauth2ClientSecret
-  if (!platformClientPresent) return { requiresOwnClient: true, reason: 'no-platform-client' }
-  if (!def.platformClientApproved) return { requiresOwnClient: true, reason: 'pending-approval' }
-  return { requiresOwnClient: false, reason: null }
+  if (!platformClientPresent)
+    return { requiresOwnClient: true, ownClientOptional: false, reason: 'no-platform-client' }
+  if (!def.platformClientApproved)
+    return { requiresOwnClient: false, ownClientOptional: true, reason: 'pending-approval' }
+  return { requiresOwnClient: false, ownClientOptional: false, reason: null }
+}
+
+/** The BYO OAuth client variable keys (§3.2) — provider-agnostic. */
+export const BYO_CLIENT_KEYS = new Set(['clientId', 'clientSecret'])
+
+/**
+ * Canonical BYO client var descriptors, injected into the connect form when a connection
+ * offers/requires an own client and the def didn't declare them itself. Keeps every
+ * OAuth2 connection (platform provider, channel, or app) uniform — a provider/app opts in
+ * purely via `platformClientApproved`, without hand-authoring these two variables.
+ */
+export const BYO_CLIENT_VARS: ConnectionVariable[] = [
+  { key: 'clientId', label: 'Client ID', placeholder: 'Your OAuth client id' },
+  {
+    key: 'clientSecret',
+    label: 'Client Secret',
+    secret: true,
+    placeholder: 'Your OAuth client secret',
+  },
+]
+
+/**
+ * Shape an OAuth2 connection's connect-form variables per the own-client gate (§3.1),
+ * provider-agnostic:
+ *  - `requiresOwnClient` → BYO client fields present + required (no platform client).
+ *  - `ownClientOptional` → BYO client fields present + optional (platform client pending
+ *    verification; user may use it OR their own).
+ *  - neither            → BYO client fields removed (one-click platform connect).
+ * BYO fields are injected when the def didn't declare them. Non-`oauth2-code` defs pass
+ * through untouched.
+ */
+export function gateConnectionVariables(
+  connectionType: string,
+  vars: ConnectionVariable[],
+  gate: { requiresOwnClient: boolean; ownClientOptional: boolean }
+): ConnectionVariable[] {
+  if (connectionType !== 'oauth2-code') return vars
+  if (gate.requiresOwnClient || gate.ownClientOptional) {
+    const hasByo = vars.some((v) => BYO_CLIENT_KEYS.has(v.key))
+    const base = hasByo ? vars : [...vars, ...BYO_CLIENT_VARS]
+    return base.map((v) =>
+      BYO_CLIENT_KEYS.has(v.key) ? { ...v, required: gate.requiresOwnClient } : v
+    )
+  }
+  return vars.filter((v) => !BYO_CLIENT_KEYS.has(v.key))
 }
 
 /**

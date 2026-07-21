@@ -106,7 +106,7 @@ export const calendarRouter = createTRPCRouter({
     }),
 
   /**
-   * Start the incremental Google OAuth flow for calendar.readonly.
+   * Start the incremental Google OAuth flow for calendar.events.
    */
   enableSync: protectedProcedure
     .input(z.object({ integrationId: z.string() }))
@@ -132,7 +132,8 @@ export const calendarRouter = createTRPCRouter({
       const params = new URLSearchParams({
         connectionId: integration.credentialId,
         returnTo: `/app/settings/channels/${integration.id}?tab=settings`,
-        scope_add: 'https://www.googleapis.com/auth/calendar',
+        // calendar.events (not full calendar): sync only lists/inserts events on `primary`.
+        scope_add: 'https://www.googleapis.com/auth/calendar.events',
         pc_calendarGrant: '1',
       })
 

@@ -36,7 +36,8 @@ export const PLATFORM_PROVIDER_DEFS: PlatformProviderDef[] = [
       // is a Google "restricted" scope and would pull Drive into the CASA audit.
       'https://www.googleapis.com/auth/drive.file',
       'https://www.googleapis.com/auth/spreadsheets',
-      'https://www.googleapis.com/auth/calendar',
+      'https://www.googleapis.com/auth/calendar.events',
+      'https://www.googleapis.com/auth/calendar.readonly',
       'https://www.googleapis.com/auth/userinfo.email',
       'https://www.googleapis.com/auth/userinfo.profile',
     ],

@@ -15,6 +15,8 @@ import { migration034RetireInboxVisibility } from './migrations/034-retire-inbox
 import { migration035UserSettingRekeyBackfill } from './migrations/035-usersetting-rekey-backfill'
 import { migration036DocumentsTaxRatesScope } from './migrations/036-documents-taxrates-scope'
 import { migration037BackfillMessageMachineMailTier } from './migrations/037-backfill-message-machine-mail-tier'
+import { migration038ReseedPlatformProvidersScopeTrim } from './migrations/038-reseed-platform-providers-scope-trim'
+import { migration039GoogleAppClientPendingApproval } from './migrations/039-google-app-client-pending-approval'
 import { assertUniqueMigrationIds } from './plan'
 import type { DataMigrationDef } from './types'
 import { wrapEntityMigration } from './wrap-entity-migration'
@@ -46,6 +48,8 @@ function buildRegistry(): DataMigrationDef[] {
     migration035UserSettingRekeyBackfill,
     migration036DocumentsTaxRatesScope,
     migration037BackfillMessageMachineMailTier,
+    migration038ReseedPlatformProvidersScopeTrim,
+    migration039GoogleAppClientPendingApproval,
   ]
 
   all.sort((a, b) => a.id.localeCompare(b.id))

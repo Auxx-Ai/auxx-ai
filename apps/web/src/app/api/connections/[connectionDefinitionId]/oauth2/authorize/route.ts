@@ -152,9 +152,12 @@ export async function GET(
       if (value) connectionVariables[varDef.key] = value
     }
 
-    // Approval gate (§3.1): when the platform client is unusable (absent or pending
-    // verification), the connection MUST bring its own client id/secret. Enforce
-    // server-side — the connect dialog already requires the fields, but never trust it.
+    // Approval gate (§3.1): only a genuinely absent platform client (`requiresOwnClient`,
+    // reason `no-platform-client`) forces BYO id/secret — enforce that server-side, never
+    // trusting the dialog. A platform client pending verification yields
+    // `requiresOwnClient: false` (BYO is optional), so the platform kickoff proceeds here
+    // and Google shows its own unverified-app gating; BYO vars, when supplied, still win in
+    // `resolveOAuth2Client`.
     const ownClient = resolveOwnClientRequirement(connDef)
     if (
       ownClient.requiresOwnClient &&

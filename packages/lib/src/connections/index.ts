@@ -29,8 +29,11 @@ export {
   runPostConnectHook,
 } from './post-connect-hooks'
 export {
+  BYO_CLIENT_KEYS,
+  BYO_CLIENT_VARS,
   type ConnectionDefinitionForRefresh,
   type CredentialOwner,
+  gateConnectionVariables,
   loadDefinitionForCredential,
   resolveOAuth2Client,
   resolveOAuth2RefreshConfig,

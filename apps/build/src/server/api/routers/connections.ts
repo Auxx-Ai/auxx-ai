@@ -117,6 +117,9 @@ const methodFields = {
   oauth2RefreshUrl: z.string().optional(),
   oauth2ClientId: z.string().optional(),
   oauth2ClientSecret: z.string().optional(),
+  // Own-client gate (§3.1): false = platform OAuth client is pending verification, so the
+  // connect flow offers platform-login OR bring-your-own client. Default true (one-click platform).
+  platformClientApproved: z.boolean().optional(),
   oauth2Scopes: z
     .array(z.string())
     .optional()
@@ -193,6 +196,7 @@ function toColumnValues(input: MethodFieldsInput, oauth2ClientSecret: string | n
       ? encryptValue(input.oauth2ClientId)
       : input.oauth2ClientId,
     oauth2ClientSecret,
+    platformClientApproved: input.platformClientApproved ?? true,
     oauth2Scopes: input.oauth2Scopes || [],
     oauth2TokenRequestAuthMethod: input.oauth2TokenRequestAuthMethod || 'request-body',
     oauth2RefreshTokenIntervalSeconds: input.oauth2RefreshTokenIntervalSeconds,

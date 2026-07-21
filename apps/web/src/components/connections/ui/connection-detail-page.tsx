@@ -22,10 +22,12 @@ export interface DetailMethod {
   connectionVariables?: ConnectionVariable[] | null
   /** OAuth approval gate (§3.1): this connection must bring its own client id/secret. */
   requiresOwnClient?: boolean
+  /** Platform client works but is pending verification — BYO offered as an optional alternative. */
+  ownClientOptional?: boolean
   ownClientReason?: 'no-platform-client' | 'pending-approval' | null
 }
 
-/** Reason-specific copy for the BYO-client requirement banner (§3.1). */
+/** Copy for the mandatory BYO-client banner (§3.1) — shown only when `requiresOwnClient`. */
 const OWN_CLIENT_COPY: Record<NonNullable<DetailMethod['ownClientReason']>, string> = {
   'pending-approval':
     'Our platform app for this provider is pending verification — connect with your own OAuth app for now.',
@@ -148,6 +150,13 @@ export function ConnectionDetailPage({
       {chosen?.requiresOwnClient && chosen.ownClientReason && (
         <div className='rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-400'>
           {OWN_CLIENT_COPY[chosen.ownClientReason]}
+        </div>
+      )}
+      {chosen?.ownClientOptional && !chosen.requiresOwnClient && (
+        <div className='rounded-md border px-3 py-2 text-xs text-muted-foreground'>
+          This app's platform OAuth client is pending provider verification — you can connect with
+          it (you may see an "unverified app" warning during sign-in) or enter your own OAuth client
+          credentials below.
         </div>
       )}
       {chosen && methodNeedsFields(chosen) && (

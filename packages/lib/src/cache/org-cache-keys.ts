@@ -374,6 +374,10 @@ export interface CachedInstalledApp {
     connectionType: string
     global: boolean
     connectionVariables: ConnectionVariable[]
+    /** OAuth own-client gate (§3.1): whether BYO client id/secret is required or offered. */
+    requiresOwnClient: boolean
+    ownClientOptional: boolean
+    ownClientReason: 'no-platform-client' | 'pending-approval' | null
   }[]
 
   /**

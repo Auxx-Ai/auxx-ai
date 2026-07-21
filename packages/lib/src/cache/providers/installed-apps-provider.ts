@@ -4,6 +4,10 @@ import { schema } from '@auxx/database'
 import { and, eq, inArray, isNull } from 'drizzle-orm'
 import { getBuiltinAuxxInstalledRow } from '../../agents/builtin-installed-row'
 import { getRegisteredToolName } from '../../ai/kopilot/capabilities/apps/tool-naming'
+import {
+  gateConnectionVariables,
+  resolveOwnClientRequirement,
+} from '../../connections/resolve-connection-definition'
 import type { CachedAction, CachedAgentTool, CachedInstalledApp } from '../org-cache-keys'
 import type { CacheProvider } from '../org-cache-provider'
 
@@ -50,6 +54,11 @@ export const installedAppsProvider: CacheProvider<CachedInstalledApp[]> = {
               connectionType: true,
               oauth2Features: true,
               connectionVariables: true,
+              // Own-client gate (§3.1): a pending-verification platform client lets the app
+              // offer platform-login OR bring-your-own client.
+              oauth2ClientId: true,
+              oauth2ClientSecret: true,
+              platformClientApproved: true,
             },
           })
         : []
@@ -152,15 +161,31 @@ export const installedAppsProvider: CacheProvider<CachedInstalledApp[]> = {
               createdAt: inst.currentDeployment.createdAt.toISOString(),
             }
           : null,
-        methods: (methodsByAppId.get(inst.app.id) ?? []).map((def) => ({
-          id: def.id,
-          key: def.key,
-          label: def.label,
-          description: def.description,
-          connectionType: def.connectionType,
-          global: def.global ?? false,
-          connectionVariables: def.connectionVariables ?? [],
-        })),
+        methods: (methodsByAppId.get(inst.app.id) ?? []).map((def) => {
+          // Own-client gate (§3.1): reused verbatim from the platform-provider path so the
+          // connect dialog renders the same platform-primary + optional-BYO UI for apps.
+          const gate = resolveOwnClientRequirement({
+            oauth2ClientId: def.oauth2ClientId,
+            oauth2ClientSecret: def.oauth2ClientSecret,
+            platformClientApproved: def.platformClientApproved,
+          })
+          return {
+            id: def.id,
+            key: def.key,
+            label: def.label,
+            description: def.description,
+            connectionType: def.connectionType,
+            global: def.global ?? false,
+            connectionVariables: gateConnectionVariables(
+              def.connectionType,
+              def.connectionVariables ?? [],
+              gate
+            ),
+            requiresOwnClient: gate.requiresOwnClient,
+            ownClientOptional: gate.ownClientOptional,
+            ownClientReason: gate.reason,
+          }
+        }),
         connectionDefinitions: (() => {
           const defs = connDefsByAppId.get(inst.app.id) ?? {}
           const toCached = (def: (typeof connectionDefs)[0] | undefined) =>
