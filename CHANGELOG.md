@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.1.187](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.186...auxx-v0.1.187) (2026-07-21)
+
+
+### Features
+
+* **connections:** offer platform login or bring-your-own oauth client ([#1228](https://github.com/Auxx-Ai/auxx-ai/issues/1228)) ([d7cfff5](https://github.com/Auxx-Ai/auxx-ai/commit/d7cfff5e7dffe0b42eb217623ea8340667cb1f3e))
+
+
+### Bug Fixes
+
+* **worker:** register missing event-handler jobs (message signals, bounce) ([#1227](https://github.com/Auxx-Ai/auxx-ai/issues/1227)) ([a0968c6](https://github.com/Auxx-Ai/auxx-ai/commit/a0968c65e8da564bbe76b505ddee6e96adf0fc16))
+
 ## [0.1.186](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.185...auxx-v0.1.186) (2026-07-20)
 
 
