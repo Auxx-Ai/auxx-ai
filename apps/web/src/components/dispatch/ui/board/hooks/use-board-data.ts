@@ -206,18 +206,22 @@ export function useBoardData() {
     [scheduled, workOrderById, colorByUserId, showCanceled]
   )
 
-  // The resource views (`day`/`timeline`, plan 18) only show the filtered worker set's + (if
-  // visible) Unassigned's visits — the other columns don't exist on the grid. Week/month show
-  // everything regardless of filter (no columns to hide behind), so this is a resource-view lens.
-  const visibleWorkerUserIds = useMemo(() => new Set(workers.map((w) => w.userId)), [workers])
-  const events = useMemo(() => {
-    if (view !== 'day' && view !== 'timeline') return allEvents
-    return allEvents.filter(
-      (e) =>
-        (showUnassigned && e.resourceId === UNASSIGNED_RESOURCE_ID) ||
-        visibleWorkerUserIds.has(e.resourceId!)
-    )
-  }, [allEvents, view, visibleWorkerUserIds, showUnassigned])
+  // Sidebar worker toggles hide that worker's visits in EVERY view — the checkbox means
+  // "show/hide this person's work", not just "configure the resource grid". Resource views
+  // (`day`/`timeline`) additionally drop the column itself via `resources` below. Filters by
+  // the *hidden* list (fail-open) so visits assigned to a deactivated worker — absent from
+  // `getBoard`'s active-only worker set — stay visible in week/month.
+  const events = useMemo(
+    () =>
+      allEvents.filter(
+        (e) =>
+          !isWorkerHidden(
+            hiddenWorkerIds,
+            e.resourceId === UNASSIGNED_RESOURCE_ID ? null : (e.resourceId ?? null)
+          )
+      ),
+    [allEvents, hiddenWorkerIds]
+  )
 
   const backlogEvents = useMemo(
     () =>
