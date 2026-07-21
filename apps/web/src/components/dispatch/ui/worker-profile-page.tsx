@@ -5,9 +5,10 @@ import { FieldType } from '@auxx/database/enums'
 import type { SelectOptionColor } from '@auxx/lib/custom-fields/client'
 import { Button } from '@auxx/ui/components/button'
 import { DialogFooter } from '@auxx/ui/components/dialog'
-import { KbdSubmit } from '@auxx/ui/components/kbd'
+import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import { toastError } from '@auxx/ui/components/toast'
 import { Trash2 } from 'lucide-react'
+import { useEffect } from 'react'
 import type { AddressStruct } from '~/components/fields/inputs/address-struct-input-field'
 import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
 import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
@@ -44,6 +45,10 @@ interface WorkerProfileDraft {
 interface WorkerProfilePageProps {
   worker: DispatchWorkerRow
   onRemoved: () => void
+  /** Close request (Cancel button) — the dialog guards it against unsaved changes. */
+  onCancel: () => void
+  /** Reports the draft's dirty state up to the dialog's unsaved-changes guard. */
+  onDirtyChange: (dirty: boolean) => void
 }
 
 /**
@@ -53,7 +58,12 @@ interface WorkerProfilePageProps {
  * field (10-settings-forms-unification.md). Save fans out to `upsertWorker` (color + home base +
  * route flags) and `setWorkerActive` (only when the toggle changed).
  */
-export function WorkerProfilePage({ worker, onRemoved }: WorkerProfilePageProps) {
+export function WorkerProfilePage({
+  worker,
+  onRemoved,
+  onCancel,
+  onDirtyChange,
+}: WorkerProfilePageProps) {
   const utils = api.useUtils()
   const [confirm, ConfirmDialog] = useConfirm()
 
@@ -89,7 +99,7 @@ export function WorkerProfilePage({ worker, onRemoved }: WorkerProfilePageProps)
     routeEndAtHome: worker.routeEndAtHome,
   }
 
-  const { draft, patch, dirty, save, discard } = useDirtyDraft(server, {
+  const { draft, patch, dirty, save } = useDirtyDraft(server, {
     isSaving,
     onSave: (next) => {
       const addressChanged = JSON.stringify(next.homeBase) !== JSON.stringify(server.homeBase)
@@ -111,6 +121,11 @@ export function WorkerProfilePage({ worker, onRemoved }: WorkerProfilePageProps)
     },
   })
 
+  useEffect(() => {
+    onDirtyChange(dirty)
+    return () => onDirtyChange(false)
+  }, [dirty, onDirtyChange])
+
   async function handleRemove() {
     const confirmed = await confirm({
       title: 'Remove worker?',
@@ -123,84 +138,86 @@ export function WorkerProfilePage({ worker, onRemoved }: WorkerProfilePageProps)
   }
 
   return (
-    <div className='flex flex-col gap-4 p-4'>
-      <FieldPanel
-        orientation='responsive'
-        breakpoint='md'
-        resizeId='worker-profile'
-        defaultLabelWidth={140}
-        className='p-0'>
-        <FieldPanelRow title='Board color' type={BaseType.ENUM} showIcon>
-          <div className='py-2'>
-            <ColorTagPicker
-              value={draft.color}
-              onChange={(color) => patch({ color })}
-              disabled={isSaving}
-            />
-          </div>
-        </FieldPanelRow>
+    <div className='flex flex-col'>
+      <div className='flex flex-col gap-4 p-4 '>
+        <FieldPanel
+          orientation='responsive'
+          breakpoint='md'
+          resizeId='worker-profile'
+          defaultLabelWidth={140}
+          className='p-0'>
+          <FieldPanelRow title='Board color' type={BaseType.ENUM} showIcon>
+            <div className='py-2'>
+              <ColorTagPicker
+                value={draft.color}
+                onChange={(color) => patch({ color })}
+                disabled={isSaving}
+              />
+            </div>
+          </FieldPanelRow>
 
-        <FieldPanelRow
-          title='Home base'
-          type={BaseType.STRING}
-          showIcon
-          description='Used for routing on the live map (M3).'>
-          <div className='py-2'>
+          <FieldPanelRow
+            title='Home base'
+            type={BaseType.STRING}
+            showIcon
+            description='Used for routing on the live map (M3).'>
+            <div className='py-2'>
+              <FieldInputAdapter
+                fieldType={FieldType.ADDRESS_STRUCT}
+                value={draft.homeBase}
+                onChange={(homeBase) => patch({ homeBase: homeBase as AddressStruct })}
+                disabled={isSaving}
+              />
+            </div>
+          </FieldPanelRow>
+
+          <FieldPanelRow
+            title='Active'
+            type={BaseType.BOOLEAN}
+            showIcon
+            description='Inactive workers are hidden from the board.'>
             <FieldInputAdapter
-              fieldType={FieldType.ADDRESS_STRUCT}
-              value={draft.homeBase}
-              onChange={(homeBase) => patch({ homeBase: homeBase as AddressStruct })}
+              fieldType={FieldType.CHECKBOX}
+              fieldOptions={{ variant: 'switch' }}
+              value={draft.isActive}
+              onChange={(isActive) => patch({ isActive: isActive as boolean })}
               disabled={isSaving}
             />
-          </div>
-        </FieldPanelRow>
+          </FieldPanelRow>
 
-        <FieldPanelRow
-          title='Active'
-          type={BaseType.BOOLEAN}
-          showIcon
-          description='Inactive workers are hidden from the board.'>
-          <FieldInputAdapter
-            fieldType={FieldType.CHECKBOX}
-            fieldOptions={{ variant: 'switch' }}
-            value={draft.isActive}
-            onChange={(isActive) => patch({ isActive: isActive as boolean })}
-            disabled={isSaving}
-          />
-        </FieldPanelRow>
+          <FieldPanelRow
+            title='Start at home'
+            type={BaseType.BOOLEAN}
+            showIcon
+            description='Route begins at the business address.'>
+            <FieldInputAdapter
+              fieldType={FieldType.CHECKBOX}
+              fieldOptions={{ variant: 'switch' }}
+              value={draft.routeStartAtHome}
+              onChange={(routeStartAtHome) =>
+                patch({ routeStartAtHome: routeStartAtHome as boolean })
+              }
+              disabled={isSaving}
+            />
+          </FieldPanelRow>
 
-        <FieldPanelRow
-          title='Start at home'
-          type={BaseType.BOOLEAN}
-          showIcon
-          description='Route begins at the business address.'>
-          <FieldInputAdapter
-            fieldType={FieldType.CHECKBOX}
-            fieldOptions={{ variant: 'switch' }}
-            value={draft.routeStartAtHome}
-            onChange={(routeStartAtHome) =>
-              patch({ routeStartAtHome: routeStartAtHome as boolean })
-            }
-            disabled={isSaving}
-          />
-        </FieldPanelRow>
+          <FieldPanelRow
+            title='End at home'
+            type={BaseType.BOOLEAN}
+            showIcon
+            description='Route ends at the business address.'>
+            <FieldInputAdapter
+              fieldType={FieldType.CHECKBOX}
+              fieldOptions={{ variant: 'switch' }}
+              value={draft.routeEndAtHome}
+              onChange={(routeEndAtHome) => patch({ routeEndAtHome: routeEndAtHome as boolean })}
+              disabled={isSaving}
+            />
+          </FieldPanelRow>
+        </FieldPanel>
+      </div>
 
-        <FieldPanelRow
-          title='End at home'
-          type={BaseType.BOOLEAN}
-          showIcon
-          description='Route ends at the business address.'>
-          <FieldInputAdapter
-            fieldType={FieldType.CHECKBOX}
-            fieldOptions={{ variant: 'switch' }}
-            value={draft.routeEndAtHome}
-            onChange={(routeEndAtHome) => patch({ routeEndAtHome: routeEndAtHome as boolean })}
-            disabled={isSaving}
-          />
-        </FieldPanelRow>
-      </FieldPanel>
-
-      <DialogFooter className='border-t pt-3 sm:justify-between'>
+      <DialogFooter className='border-t py-2! sm:justify-between'>
         <Button
           type='button'
           variant='ghost'
@@ -211,13 +228,8 @@ export function WorkerProfilePage({ worker, onRemoved }: WorkerProfilePageProps)
           <Trash2 /> Remove worker
         </Button>
         <div className='flex items-center gap-2'>
-          <Button
-            type='button'
-            variant='ghost'
-            size='sm'
-            onClick={discard}
-            disabled={!dirty || isSaving}>
-            Discard
+          <Button type='button' variant='ghost' size='sm' onClick={onCancel} disabled={isSaving}>
+            Cancel <Kbd shortcut='esc' variant='ghost' size='sm' />
           </Button>
           <Button
             type='button'

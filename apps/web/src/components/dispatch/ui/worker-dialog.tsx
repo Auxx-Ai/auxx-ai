@@ -7,6 +7,7 @@ import { DialogNav, DialogNavPage, DialogNavPages } from '@auxx/ui/components/di
 import { useEffect, useState } from 'react'
 import { ExceptionListEditor } from '~/components/availability/ui/exception-list-editor'
 import { useSettings } from '~/hooks/use-settings'
+import { useUnsavedChangesGuard } from '~/hooks/use-unsaved-changes-guard'
 import type { DispatchWorkerRow } from './worker-card'
 import { WorkerHoursPage } from './worker-hours-page'
 import { WorkerProfilePage } from './worker-profile-page'
@@ -34,6 +35,14 @@ export function WorkerDialog({ open, onOpenChange, worker }: WorkerDialogProps) 
   const [page, setPage] = useState<WorkerDialogPage>('profile')
   const { getSetting } = useSettings({ scope: 'GENERAL' })
 
+  // The active page reports its draft's dirty state up; closing (Esc, outside click, Cancel)
+  // goes through the guard so unsaved edits always get a discard confirmation.
+  const [isDirty, setIsDirty] = useState(false)
+  const { guardProps, guardedClose, ConfirmDialog } = useUnsavedChangesGuard({
+    isDirty,
+    onConfirmedClose: () => onOpenChange(false),
+  })
+
   // Always reopen on Profile — never mid-page from a previous session.
   useEffect(() => {
     if (open) setPage('profile')
@@ -51,42 +60,57 @@ export function WorkerDialog({ open, onOpenChange, worker }: WorkerDialogProps) 
   const name = worker.user?.name || worker.user?.email || 'Worker'
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent size='content' position='tc' innerClassName='p-0'>
-        <DialogNav
-          title={name}
-          description='Manage this dispatch worker.'
-          heading={name}
-          crumbs={[
-            { label: 'Profile', active: page === 'profile', onClick: () => setPage('profile') },
-            { label: 'Time off', active: page === 'time-off', onClick: () => setPage('time-off') },
-            { label: 'Hours', active: page === 'hours', onClick: () => setPage('hours') },
-          ]}
-        />
+    <>
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent size='content' position='tc' innerClassName='p-0' {...guardProps}>
+          <DialogNav
+            title={name}
+            description='Manage this dispatch worker.'
+            heading={name}
+            crumbs={[
+              { label: 'Profile', active: page === 'profile', onClick: () => setPage('profile') },
+              {
+                label: 'Time off',
+                active: page === 'time-off',
+                onClick: () => setPage('time-off'),
+              },
+              { label: 'Hours', active: page === 'hours', onClick: () => setPage('hours') },
+            ]}
+          />
 
-        <DialogNavPages value={page}>
-          <DialogNavPage value='profile' size='md'>
-            <WorkerProfilePage worker={worker} onRemoved={() => onOpenChange(false)} />
-          </DialogNavPage>
-
-          <DialogNavPage value='time-off' size='md'>
-            <div className='p-4'>
-              <ExceptionListEditor
-                subject={{ type: 'worker', userId: worker.userId }}
-                use24HourTime={use24HourTime}
+          <DialogNavPages value={page}>
+            <DialogNavPage value='profile' size='md'>
+              <WorkerProfilePage
+                worker={worker}
+                onRemoved={() => onOpenChange(false)}
+                onCancel={guardedClose}
+                onDirtyChange={setIsDirty}
               />
-            </div>
-          </DialogNavPage>
+            </DialogNavPage>
 
-          <DialogNavPage value='hours' size='md'>
-            <WorkerHoursPage
-              userId={worker.userId}
-              weekStartsOn={weekStartsOn}
-              use24HourTime={use24HourTime}
-            />
-          </DialogNavPage>
-        </DialogNavPages>
-      </DialogContent>
-    </Dialog>
+            <DialogNavPage value='time-off' size='md'>
+              <div className='p-4'>
+                <ExceptionListEditor
+                  subject={{ type: 'worker', userId: worker.userId }}
+                  use24HourTime={use24HourTime}
+                />
+              </div>
+            </DialogNavPage>
+
+            <DialogNavPage value='hours' size='md'>
+              <WorkerHoursPage
+                userId={worker.userId}
+                weekStartsOn={weekStartsOn}
+                use24HourTime={use24HourTime}
+                onCancel={guardedClose}
+                onDirtyChange={setIsDirty}
+              />
+            </DialogNavPage>
+          </DialogNavPages>
+        </DialogContent>
+      </Dialog>
+
+      <ConfirmDialog />
+    </>
   )
 }
