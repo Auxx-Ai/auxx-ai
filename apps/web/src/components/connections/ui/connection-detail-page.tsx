@@ -2,12 +2,13 @@
 'use client'
 
 import type { ConnectionVariable } from '@auxx/database'
+import { Button } from '@auxx/ui/components/button'
 import { Field, FieldError, FieldLabel } from '@auxx/ui/components/field'
 import { Input } from '@auxx/ui/components/input'
 import { RadioGroup } from '@auxx/ui/components/radio-group'
 import { RadioGroupItemCard } from '@auxx/ui/components/radio-group-item'
 import { cn } from '@auxx/ui/lib/utils'
-import { KeyRound, Plug } from 'lucide-react'
+import { ChevronDown, ChevronRight, KeyRound, Plug } from 'lucide-react'
 import { ConnectionVariableFields } from '~/components/connections/ui/connection-variable-fields'
 import { FieldPanel } from '~/components/global/forms/field-panel'
 
@@ -58,6 +59,13 @@ interface ConnectionDetailPageProps {
   savedSecrets?: Set<string>
   /** Editing: the bare token has a stored value (enables its revert button). */
   tokenSaved?: boolean
+  /**
+   * BYO disclosure state for an `ownClientOptional` method (§3.1): the parent reshapes the
+   * method via {@link applyOwnClientDisclosure} and owns this state; the page renders the
+   * "Use your own OAuth client (advanced)" toggle. Omit to render the client fields inline.
+   */
+  byoOpen?: boolean
+  onByoOpenChange?: (open: boolean) => void
   /** Override the root padding/layout (e.g. the dialog drops the gallery's `px-4 py-5`). */
   className?: string
 }
@@ -72,6 +80,35 @@ const TYPE_LABEL: Record<string, string> = {
 /** A secret/variable method needs the field step; bare OAuth connects one-click. */
 export function methodNeedsFields(method: DetailMethod): boolean {
   return method.connectionType === 'secret' || (method.connectionVariables?.length ?? 0) > 0
+}
+
+/** The BYO OAuth-client variable keys (client-side mirror of the server gate's set). */
+const BYO_CLIENT_KEYS = new Set(['clientId', 'clientSecret'])
+
+/** The platform client works and BYO is offered only as an opt-in alternative (§3.1). */
+export function methodOffersOwnClient(method: DetailMethod): boolean {
+  return (
+    method.connectionType === 'oauth2-code' &&
+    !!method.ownClientOptional &&
+    !method.requiresOwnClient
+  )
+}
+
+/**
+ * Apply the BYO-client disclosure to an `ownClientOptional` method: closed → the optional
+ * client fields are dropped so the platform login connects one-click; open → they render and
+ * become required (a half-filled client pair must never reach the OAuth kickoff). Mandatory
+ * (`requiresOwnClient`) and non-OAuth methods pass through untouched.
+ */
+export function applyOwnClientDisclosure<M extends DetailMethod>(method: M, byoOpen: boolean): M {
+  if (!methodOffersOwnClient(method)) return method
+  const vars = method.connectionVariables ?? []
+  return {
+    ...method,
+    connectionVariables: byoOpen
+      ? vars.map((v) => (BYO_CLIENT_KEYS.has(v.key) ? { ...v, required: true } : v))
+      : vars.filter((v) => !BYO_CLIENT_KEYS.has(v.key)),
+  }
 }
 
 /** A single-secret method (API key) with no structured variables. */
@@ -98,6 +135,8 @@ export function ConnectionDetailPage({
   disabled,
   savedSecrets,
   tokenSaved,
+  byoOpen,
+  onByoOpenChange,
   className,
   showName,
   name = '',
@@ -152,11 +191,25 @@ export function ConnectionDetailPage({
           {OWN_CLIENT_COPY[chosen.ownClientReason]}
         </div>
       )}
-      {chosen?.ownClientOptional && !chosen.requiresOwnClient && (
-        <div className='rounded-md border px-3 py-2 text-xs text-muted-foreground'>
-          This app's platform OAuth client is pending provider verification — you can connect with
-          it (you may see an "unverified app" warning during sign-in) or enter your own OAuth client
-          credentials below.
+      {chosen && methodOffersOwnClient(chosen) && (
+        <div className='flex flex-col gap-2'>
+          <div className='rounded-md border px-3 py-2 text-xs text-muted-foreground'>
+            This app's platform OAuth client is pending provider verification — you can continue
+            with it (you may see an "unverified app" warning during sign-in), or use your own OAuth
+            client.
+          </div>
+          {onByoOpenChange && (
+            <Button
+              type='button'
+              variant='ghost'
+              size='sm'
+              className='h-auto w-fit gap-1 px-1 py-0.5 text-xs text-muted-foreground'
+              onClick={() => onByoOpenChange(!byoOpen)}
+              disabled={disabled}>
+              {byoOpen ? <ChevronDown /> : <ChevronRight />}
+              Use your own OAuth client (advanced)
+            </Button>
+          )}
         </div>
       )}
       {chosen && methodNeedsFields(chosen) && (

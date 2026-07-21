@@ -10,9 +10,11 @@ import type { AppInstallation } from '~/components/apps/providers/apps-context'
 import { AppIcon } from '~/components/apps/ui/app-icon'
 import { type TemplateGalleryCategory, TemplateGalleryDialog } from '~/components/templates/ui'
 import {
+  applyOwnClientDisclosure,
   ConnectionDetailPage,
   methodIsBareSecret,
   methodNeedsFields,
+  methodOffersOwnClient,
 } from './connection-detail-page'
 import { appTarget, type ProviderRow, platformTarget } from './connection-targets'
 import { validateConnectionVariables } from './connection-variable-validation'
@@ -141,6 +143,9 @@ export function CredentialTemplateDialog({
   const [connectingId, setConnectingId] = useState<string | null>(null)
   // The method chosen on the detail page when an item exposes >1 (null until picked).
   const [selectedMethodId, setSelectedMethodId] = useState<string | null>(null)
+  // BYO disclosure (§3.1, ownClientOptional): platform login is primary; the client fields
+  // only render — and only become required — once the user opens the advanced section.
+  const [byoOpen, setByoOpen] = useState(false)
 
   const flow = useConnectFlow({
     onConnected: (credId) => {
@@ -242,6 +247,7 @@ export function CredentialTemplateDialog({
     setToken('')
     setName(restrictedItem.name)
     setErrors({})
+    setByoOpen(false)
   }, [open, restrictedItem])
 
   /** Resolve a row + chosen method to its connect target, scope, and the chosen method. */
@@ -262,6 +268,7 @@ export function CredentialTemplateDialog({
     setErrors({})
     setConnectingId(null)
     setSelectedMethodId(null)
+    setByoOpen(false)
   }
 
   /**
@@ -300,11 +307,18 @@ export function CredentialTemplateDialog({
   function handleConnect(item: CatalogItem) {
     const { target, scope, chosen } = resolve(item, selectedMethodId)
     if (!chosen) return
-    if (methodNeedsFields(chosen) && !validate(chosen)) return
+    // Disclosure-shaped view (§3.1): closed drops the optional BYO fields (platform login),
+    // open renders them as required — so validation and the submitted values match what's visible.
+    const effective = applyOwnClientDisclosure(chosen, byoOpen)
+    if (methodNeedsFields(effective) && !validate(effective)) return
     setConnectingId(item.id)
+    const visible = new Set((effective.connectionVariables ?? []).map((v) => v.key))
+    const visibleValues = Object.fromEntries(
+      Object.entries(values).filter(([key]) => visible.has(key))
+    )
     flow.connectWith(
       { target, scope, definitionId: chosen.id, name },
-      (chosen.connectionVariables?.length ?? 0) > 0 ? { values } : { secret: token }
+      visible.size > 0 ? { values: visibleValues } : { secret: token }
     )
   }
 
@@ -358,17 +372,24 @@ export function CredentialTemplateDialog({
       detailBusy={flow.pending}
       onDetailExit={resetFields}
       renderDetail={(item) => {
-        const { chosen } = resolve(item, selectedMethodId)
+        const { methods, chosen } = resolve(item, selectedMethodId)
         return (
           <ConnectionDetailPage
-            methods={resolve(item, selectedMethodId).methods}
+            // Disclosure-shaped (§3.1): the chosen method's optional BYO fields render only
+            // once the advanced section is open; other methods reset to closed on pick.
+            methods={methods.map((m) =>
+              applyOwnClientDisclosure(m, m.id === chosen?.id && byoOpen)
+            )}
             selectedMethodId={selectedMethodId}
             onMethodChange={(id) => {
               setSelectedMethodId(id)
               setValues({})
               setToken('')
               setErrors({})
+              setByoOpen(false)
             }}
+            byoOpen={byoOpen}
+            onByoOpenChange={chosen && methodOffersOwnClient(chosen) ? setByoOpen : undefined}
             values={values}
             onValueChange={(key, value) => setValues((prev) => ({ ...prev, [key]: value }))}
             token={token}

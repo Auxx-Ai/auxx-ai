@@ -17,10 +17,13 @@ import { useEffect, useMemo, useState } from 'react'
 import { useCredentialForm } from '~/components/connections/hooks/use-credential-form'
 import { api } from '~/trpc/react'
 import {
+  applyOwnClientDisclosure,
   ConnectionDetailPage,
   type DetailMethod,
   methodIsBareSecret,
+  methodOffersOwnClient,
 } from './connection-detail-page'
+import { validateConnectionVariables } from './connection-variable-validation'
 
 interface ConnectionDetailDialogProps {
   open: boolean
@@ -85,10 +88,26 @@ export function ConnectionDetailDialog({
 }: ConnectionDetailDialogProps) {
   const [token, setToken] = useState('')
   const [name, setName] = useState('')
+  // BYO disclosure (§3.1, ownClientOptional): platform login is primary; the client fields
+  // only render — and only become required — once the user opens the advanced section.
+  const [byoOpen, setByoOpen] = useState(false)
 
   // Stable across renders so the seed effect only fires on open / method change, not every render
-  // (a bare method's `?? []` would otherwise re-seed and wipe input on each render).
+  // (a bare method's `?? []` would otherwise re-seed and wipe input on each render). Kept as the
+  // FULL gated set (incl. optional BYO fields) so toggling the disclosure never reseeds the form.
   const variables = useMemo(() => method.connectionVariables ?? [], [method.connectionVariables])
+
+  // The disclosure-shaped view of the method: closed drops the BYO fields (one-click platform
+  // login), open renders them as required. Rendering/validation/submit all use this view.
+  const offersOwnClient = methodOffersOwnClient(method)
+  const effectiveMethod = useMemo(
+    () => applyOwnClientDisclosure(method, byoOpen),
+    [method, byoOpen]
+  )
+  const effectiveVariables = useMemo(
+    () => effectiveMethod.connectionVariables ?? [],
+    [effectiveMethod.connectionVariables]
+  )
 
   // Editing: load the masked stored values (secrets as the sentinel, plain vars real). Skipped for
   // a fresh connect, so "+ New connection" still starts blank and requires every secret entered.
@@ -100,7 +119,7 @@ export function ConnectionDetailDialog({
   const loaded = editLoad.data
 
   // Shared form lifecycle — field values/errors, seed-on-open, set-secret derivation, validation.
-  const { values, setValue, errors, savedSecrets, validate } = useCredentialForm({
+  const { values, setValue, errors, setErrors, savedSecrets } = useCredentialForm({
     open,
     variables,
     existingValues: loaded?.values,
@@ -109,30 +128,45 @@ export function ConnectionDetailDialog({
   })
 
   // Token + name are connection-specific (a bare API-key row, the editable connection name), so
-  // they seed alongside the shared values effect on open / load.
+  // they seed alongside the shared values effect on open / load. The BYO disclosure re-opens when
+  // editing a connection that was made with its own client (stored clientId), else starts closed.
   useEffect(() => {
     if (!open) return
     if (needsLoad && !loaded) return
     setToken(loaded?.tokenSet ? HIDDEN_VALUE : '')
     setName(initialName ?? method.label)
+    setByoOpen(!!loaded?.values?.clientId)
   }, [open, needsLoad, loaded, initialName, method.label])
 
   const bareSecret = methodIsBareSecret(method)
   const formPending = pending || (needsLoad && !loaded)
 
   // A bare-OAuth method has neither a token row nor variables — its edit dialog is name-only.
-  const hasFields = bareSecret || variables.length > 0
+  // Uses the disclosure-shaped set: a closed optional-BYO method is one-click platform login.
+  const hasFields = bareSecret || effectiveVariables.length > 0
 
   function handleSubmit(e: FormEvent) {
     e.preventDefault()
-    const next = validate({ requireToken: bareSecret, token })
+    // Validate only the visible fields — with the disclosure open the BYO pair is required.
+    const next = validateConnectionVariables({
+      variables: effectiveVariables,
+      values,
+      requireToken: bareSecret,
+      token,
+    })
+    setErrors(next)
     if (Object.keys(next).length > 0) return
     const payload: { values?: Record<string, string>; secret?: string; name?: string } = {}
     if (showName) payload.name = name.trim()
     // Only the currently-visible fields ride along; a bare API-key method submits the token.
     if (hasFields) {
       if (bareSecret) payload.secret = token
-      else payload.values = values
+      else {
+        const visible = new Set(effectiveVariables.map((v) => v.key))
+        payload.values = Object.fromEntries(
+          Object.entries(values).filter(([key]) => visible.has(key))
+        )
+      }
     }
     onSubmit(payload)
   }
@@ -152,14 +186,18 @@ export function ConnectionDetailDialog({
             <DialogDescription>
               {description ??
                 method.description ??
-                `Provide the following details to connect ${method.label}.`}
+                (hasFields
+                  ? `Provide the following details to connect ${method.label}.`
+                  : `Sign in to connect ${method.label}.`)}
             </DialogDescription>
           </DialogHeader>
 
           <ConnectionDetailPage
-            methods={[method]}
+            methods={[effectiveMethod]}
             selectedMethodId={method.id}
             onMethodChange={() => {}}
+            byoOpen={byoOpen}
+            onByoOpenChange={offersOwnClient ? setByoOpen : undefined}
             values={values}
             onValueChange={setValue}
             token={token}

@@ -9,7 +9,7 @@
 import { database as db, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { Client } from '@microsoft/microsoft-graph-client'
-import { and, eq } from 'drizzle-orm'
+import { and, eq, isNull } from 'drizzle-orm'
 import { google } from 'googleapis'
 import { onCacheEvent } from '../cache'
 import type { PostConnectHook, PostConnectHookContext } from '../connections/post-connect-hooks'
@@ -119,6 +119,10 @@ async function upsertIntegration(args: {
 }): Promise<{ id: string; isNew: boolean }> {
   const { organizationId, provider, credentialId, email, metadataPatch } = args
 
+  // Live rows only: a disconnected channel is soft-deleted, and reconnecting the same mailbox
+  // must INSERT a fresh row (the partial unique index allows it) so it gets the full `isNew`
+  // provisioning — relinking the soft-deleted row would skip the backfill and leave `deletedAt`
+  // set, i.e. a channel that connects fine but never appears or syncs.
   const [existing] = await db
     .select({ id: schema.Integration.id, metadata: schema.Integration.metadata })
     .from(schema.Integration)
@@ -126,7 +130,8 @@ async function upsertIntegration(args: {
       and(
         eq(schema.Integration.organizationId, organizationId),
         eq(schema.Integration.provider, provider),
-        eq(schema.Integration.email, email)
+        eq(schema.Integration.email, email),
+        isNull(schema.Integration.deletedAt)
       )
     )
     .limit(1)

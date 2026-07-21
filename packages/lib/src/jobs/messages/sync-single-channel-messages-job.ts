@@ -3,7 +3,7 @@
 import { type Database, database as db, schema } from '@auxx/database'
 import { SYNC_STATUS } from '@auxx/database/enums'
 import { createScopedLogger } from '@auxx/logger'
-import { and, eq } from 'drizzle-orm'
+import { and, eq, inArray } from 'drizzle-orm'
 import { type ChannelProviderType, MessageService } from '../../email/message-service'
 import { publisher } from '../../events/publisher'
 import type { MessageSyncProcessingEvent } from '../../events/types'
@@ -69,16 +69,13 @@ export const syncSingleChannelMessagesJob = async (
   }) // Log parent syncJobId
 
   try {
-    // Update SyncJob status to IN_PROGRESS before starting the sync
-    await db
-      .update(schema.SyncJob)
-      .set({ status: 'IN_PROGRESS', startTime: new Date() })
-      .where(
-        and(eq(schema.SyncJob.id, syncJobId), eq(schema.SyncJob.organizationId, organizationId))
-      )
-
-    // Set integration sync state to SYNCING
-    await db
+    // Atomically claim the integration's sync stage. This single-phase sync (webhook push,
+    // manual "Sync now", scheduled sweep) must never run over the two-phase polling pipeline:
+    // it once stomped a fresh connect's `MESSAGES_IMPORT_PENDING` back to `IDLE`, orphaning the
+    // backfill's cached message ids so the channel never imported anything. Claim only from a
+    // stage no pipeline owns (`IDLE`/`FAILED`); anything else means list-fetch/import is queued
+    // or running and the poll will pick the new mail up — skip instead of clobbering.
+    const [claimed] = await db
       .update(schema.Integration)
       .set({
         syncStatus: 'SYNCING',
@@ -86,7 +83,41 @@ export const syncSingleChannelMessagesJob = async (
         syncStageStartedAt: new Date(),
         updatedAt: new Date(),
       })
-      .where(eq(schema.Integration.id, integrationId))
+      .where(
+        and(
+          eq(schema.Integration.id, integrationId),
+          inArray(schema.Integration.syncStage, ['IDLE', 'FAILED'])
+        )
+      )
+      .returning({ id: schema.Integration.id })
+
+    if (!claimed) {
+      logger.info('Skipping sync — polling pipeline owns the integration sync stage', {
+        bullmqJobId: job.id,
+        syncJobId,
+        integrationId,
+      })
+      await db
+        .update(schema.SyncJob)
+        .set({
+          status: SYNC_STATUS.COMPLETED,
+          endTime: new Date(),
+          error: 'Skipped: a polling sync was already in progress',
+          updatedAt: new Date(),
+        })
+        .where(
+          and(eq(schema.SyncJob.id, syncJobId), eq(schema.SyncJob.organizationId, organizationId))
+        )
+      return
+    }
+
+    // Update SyncJob status to IN_PROGRESS before starting the sync
+    await db
+      .update(schema.SyncJob)
+      .set({ status: 'IN_PROGRESS', startTime: new Date() })
+      .where(
+        and(eq(schema.SyncJob.id, syncJobId), eq(schema.SyncJob.organizationId, organizationId))
+      )
 
     // Publish processing event
     await publisher.publishLater({
@@ -103,7 +134,8 @@ export const syncSingleChannelMessagesJob = async (
     const isCancelled = await checkIfCancelled(db, syncJobId, organizationId)
     if (isCancelled) {
       logger.info(`Job ${job.id} was cancelled, exiting gracefully`, { syncJobId })
-      // Reset integration sync state on cancellation
+      // Reset integration sync state on cancellation (only the stage this job claimed —
+      // if the polling pipeline has since taken over, leave its stage untouched).
       await db
         .update(schema.Integration)
         .set({
@@ -112,14 +144,20 @@ export const syncSingleChannelMessagesJob = async (
           syncStageStartedAt: null,
           updatedAt: new Date(),
         })
-        .where(eq(schema.Integration.id, integrationId))
+        .where(
+          and(
+            eq(schema.Integration.id, integrationId),
+            eq(schema.Integration.syncStage, 'MESSAGE_LIST_FETCH')
+          )
+        )
       return
     }
 
     const messageService = new MessageService(organizationId)
     await messageService.syncMessages(integrationType, integrationId, since)
 
-    // On success: set integration to ACTIVE and reset throttle
+    // On success: set integration to ACTIVE and reset throttle. Conditional on the stage this
+    // job claimed, so a concurrently (re)started polling pipeline is never reset to IDLE.
     await db
       .update(schema.Integration)
       .set({
@@ -130,7 +168,12 @@ export const syncSingleChannelMessagesJob = async (
         throttleRetryAfter: null,
         updatedAt: new Date(),
       })
-      .where(eq(schema.Integration.id, integrationId))
+      .where(
+        and(
+          eq(schema.Integration.id, integrationId),
+          eq(schema.Integration.syncStage, 'MESSAGE_LIST_FETCH')
+        )
+      )
 
     // Mark parent SyncJob as COMPLETED
     await db
@@ -161,7 +204,12 @@ export const syncSingleChannelMessagesJob = async (
           syncStageStartedAt: null,
           updatedAt: new Date(),
         })
-        .where(eq(schema.Integration.id, integrationId))
+        .where(
+          and(
+            eq(schema.Integration.id, integrationId),
+            eq(schema.Integration.syncStage, 'MESSAGE_LIST_FETCH')
+          )
+        )
       return
     }
 
@@ -178,7 +226,8 @@ export const syncSingleChannelMessagesJob = async (
     const isFinalAttempt = job.attemptsMade + 1 >= maxAttempts
 
     if (!isFinalAttempt) {
-      // Keep integration marked as syncing while BullMQ retries
+      // Keep integration marked as syncing while BullMQ retries (only while this job still
+      // owns the stage — never re-stamp over a polling pipeline that has taken over).
       await db
         .update(schema.Integration)
         .set({
@@ -186,7 +235,12 @@ export const syncSingleChannelMessagesJob = async (
           syncStage: 'MESSAGE_LIST_FETCH',
           updatedAt: new Date(),
         })
-        .where(eq(schema.Integration.id, integrationId))
+        .where(
+          and(
+            eq(schema.Integration.id, integrationId),
+            eq(schema.Integration.syncStage, 'MESSAGE_LIST_FETCH')
+          )
+        )
       throw error
     }
 
@@ -213,7 +267,12 @@ export const syncSingleChannelMessagesJob = async (
         throttleRetryAfter: new Date(Date.now() + backoffMs),
         updatedAt: new Date(),
       })
-      .where(eq(schema.Integration.id, integrationId))
+      .where(
+        and(
+          eq(schema.Integration.id, integrationId),
+          eq(schema.Integration.syncStage, 'MESSAGE_LIST_FETCH')
+        )
+      )
 
     // Mark parent SyncJob as FAILED
     await db
