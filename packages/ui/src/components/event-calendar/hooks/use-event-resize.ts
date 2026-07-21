@@ -8,13 +8,22 @@ import { useCallback, useRef, useState } from 'react'
 import { MinEventDurationMinutes, SnapMinutes } from '../constants'
 import type { EventCalendarItem } from '../types'
 
-/** Which edge of the chip the active resize gesture is dragging. */
-export type ResizeEdge = 'top' | 'bottom'
+/**
+ * Which edge of the chip the active resize gesture is dragging. `'start'` is the top edge on a
+ * vertical (`axis: 'y'`) chip or the left edge on a horizontal (`axis: 'x'`) chip; `'end'` is the
+ * bottom/right edge respectively.
+ */
+export type ResizeEdge = 'start' | 'end'
 
 interface UseEventResizeOptions<T extends EventCalendarItem> {
   event: T
-  /** Pixels per hour (`WeekCellsHeight`) — used to translate pointer delta into minutes. */
-  cellHeight: number
+  /**
+   * Pixels per hour along the resize axis — used to translate pointer delta into minutes.
+   * `WeekCellsHeight` for `axis: 'y'`, `TimelineHourWidth` for `axis: 'x'`.
+   */
+  cellSize: number
+  /** Which pointer axis drives the resize — `'y'` reads `clientY` (default), `'x'` reads `clientX`. */
+  axis?: 'x' | 'y'
   onResize?: (event: T, newStart: Date, newEnd: Date) => void
 }
 
@@ -27,23 +36,26 @@ interface ResizeHandleProps {
 
 export interface UseEventResizeResult {
   isResizing: boolean
-  /** Live preview height (px) while dragging a handle — falls back to the chip's own height when idle. */
-  previewHeight: number | null
+  /** Live preview chip size (px) along the resize axis while dragging a handle — falls back to the chip's own size when idle. */
+  previewSize: number | null
   /**
-   * Live preview vertical offset (px) while dragging the TOP handle — the chip's top edge moves
-   * up/down (negative = up) so the bottom edge stays visually fixed. Always 0 for the bottom handle.
+   * Live preview offset (px) along the resize axis while dragging the START handle — shifts the
+   * chip's start edge (negative = toward the origin) so the END edge stays visually fixed while
+   * the chip grows/shrinks. Always 0 while dragging the end handle (its start edge never moves).
    */
-  previewOffsetY: number
+  previewOffset: number
   /** Returns the pointer handlers for one edge; the handler captures that edge on pointerdown. */
   getResizeHandleProps: (edge: ResizeEdge) => ResizeHandleProps
 }
 
 /**
- * Two-edge resize handles for week/day/resource event chips: the top handle drags the start
- * time, the bottom handle drags the end time — in both cases the OPPOSITE edge stays visually
- * fixed.
+ * Two-edge resize handles for timed event chips: the start handle drags the start time, the end
+ * handle drags the end time — in both cases the OPPOSITE edge stays visually fixed. `axis`
+ * selects the pointer/orientation: `'y'` (default) for week/day/resource's vertical chips,
+ * `'x'` for the horizontal timeline's chips. The date math (15-min snap, min-duration clamp) is
+ * identical on both axes.
  *
- * Deliberately NOT routed through dnd-kit — resize needs its own vertical-only drag rooted at a
+ * Deliberately NOT routed through dnd-kit — resize needs its own single-axis drag rooted at a
  * chip edge, and layering a second dnd-kit draggable on top of `DraggableEvent`'s existing
  * move-drag is more fragile than a plain pointer-capture handler scoped to the handle element.
  * The handle calls `e.stopPropagation()` on pointerdown so it never bubbles into the parent
@@ -51,16 +63,22 @@ export interface UseEventResizeResult {
  */
 export function useEventResize<T extends EventCalendarItem>({
   event,
-  cellHeight,
+  cellSize,
+  axis = 'y',
   onResize,
 }: UseEventResizeOptions<T>): UseEventResizeResult {
   const [isResizing, setIsResizing] = useState(false)
-  const [previewHeight, setPreviewHeight] = useState<number | null>(null)
-  const [previewOffsetY, setPreviewOffsetY] = useState(0)
-  const startRef = useRef<{ pointerY: number; startHeight: number; edge: ResizeEdge } | null>(null)
+  const [previewSize, setPreviewSize] = useState<number | null>(null)
+  const [previewOffset, setPreviewOffset] = useState(0)
+  const startRef = useRef<{ pointerPos: number; startSize: number; edge: ResizeEdge } | null>(null)
 
-  const pixelsPerMinute = cellHeight / 60
-  const minHeight = MinEventDurationMinutes * pixelsPerMinute
+  const pixelsPerMinute = cellSize / 60
+  const minSize = MinEventDurationMinutes * pixelsPerMinute
+
+  const readPointerPos = useCallback(
+    (e: { clientX: number; clientY: number }) => (axis === 'x' ? e.clientX : e.clientY),
+    [axis]
+  )
 
   const handlePointerDown = useCallback(
     (edge: ResizeEdge, e: React.PointerEvent<HTMLDivElement>) => {
@@ -68,51 +86,52 @@ export function useEventResize<T extends EventCalendarItem>({
       e.preventDefault()
       e.currentTarget.setPointerCapture(e.pointerId)
       const duration = differenceInMinutes(new Date(event.end), new Date(event.start))
-      const startHeight = duration * pixelsPerMinute
-      startRef.current = { pointerY: e.clientY, startHeight, edge }
+      const startSize = duration * pixelsPerMinute
+      startRef.current = { pointerPos: readPointerPos(e), startSize, edge }
       setIsResizing(true)
-      setPreviewHeight(startHeight)
-      setPreviewOffsetY(0)
+      setPreviewSize(startSize)
+      setPreviewOffset(0)
     },
-    [event.start, event.end, pixelsPerMinute]
+    [event.start, event.end, pixelsPerMinute, readPointerPos]
   )
 
   const handlePointerMove = useCallback(
     (e: React.PointerEvent<HTMLDivElement>) => {
       if (!startRef.current) return
       e.stopPropagation()
-      const { pointerY, startHeight, edge } = startRef.current
-      const deltaY = e.clientY - pointerY
-      if (edge === 'bottom') {
-        setPreviewHeight(Math.max(minHeight, startHeight + deltaY))
-        setPreviewOffsetY(0)
+      const { pointerPos, startSize, edge } = startRef.current
+      const delta = readPointerPos(e) - pointerPos
+      if (edge === 'end') {
+        setPreviewSize(Math.max(minSize, startSize + delta))
+        setPreviewOffset(0)
       } else {
-        // Top edge: growing the chip means its top moves up (negative offset), bottom stays put.
-        const nextHeight = Math.max(minHeight, startHeight - deltaY)
-        setPreviewHeight(nextHeight)
-        setPreviewOffsetY(startHeight - nextHeight)
+        // Start edge: growing the chip means its start moves toward the origin (negative
+        // offset), the end edge stays put.
+        const nextSize = Math.max(minSize, startSize - delta)
+        setPreviewSize(nextSize)
+        setPreviewOffset(startSize - nextSize)
       }
     },
-    [minHeight]
+    [minSize, readPointerPos]
   )
 
   const finishResize = useCallback(
     (e: React.PointerEvent<HTMLDivElement>) => {
       if (!startRef.current) return
       e.stopPropagation()
-      const { pointerY, edge } = startRef.current
-      const deltaY = e.clientY - pointerY
-      const deltaMinutes = deltaY / pixelsPerMinute
+      const { pointerPos, edge } = startRef.current
+      const delta = readPointerPos(e) - pointerPos
+      const deltaMinutes = delta / pixelsPerMinute
       const start = new Date(event.start)
       const end = new Date(event.end)
       const duration = differenceInMinutes(end, start)
 
       startRef.current = null
       setIsResizing(false)
-      setPreviewHeight(null)
-      setPreviewOffsetY(0)
+      setPreviewSize(null)
+      setPreviewOffset(0)
 
-      if (edge === 'bottom') {
+      if (edge === 'end') {
         const newDuration = Math.max(
           MinEventDurationMinutes,
           Math.round((duration + deltaMinutes) / SnapMinutes) * SnapMinutes
@@ -132,7 +151,7 @@ export function useEventResize<T extends EventCalendarItem>({
         }
       }
     },
-    [event, pixelsPerMinute, onResize]
+    [event, pixelsPerMinute, onResize, readPointerPos]
   )
 
   const cancelResize = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
@@ -140,8 +159,8 @@ export function useEventResize<T extends EventCalendarItem>({
     e.stopPropagation()
     startRef.current = null
     setIsResizing(false)
-    setPreviewHeight(null)
-    setPreviewOffsetY(0)
+    setPreviewSize(null)
+    setPreviewOffset(0)
   }, [])
 
   const getResizeHandleProps = useCallback(
@@ -156,8 +175,8 @@ export function useEventResize<T extends EventCalendarItem>({
 
   return {
     isResizing,
-    previewHeight,
-    previewOffsetY,
+    previewSize,
+    previewOffset,
     getResizeHandleProps,
   }
 }

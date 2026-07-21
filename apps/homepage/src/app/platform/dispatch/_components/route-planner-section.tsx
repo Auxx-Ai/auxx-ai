@@ -1,7 +1,7 @@
 // apps/homepage/src/app/platform/dispatch/_components/route-planner-section.tsx
 
 import { CheckCheck, GripVertical, Route } from 'lucide-react'
-import { MockRouteMap } from '../_mocks/route-map-mock'
+import { MockRoutePlanner } from '../_mocks/route-map-mock'
 
 const beats = [
   {
@@ -34,7 +34,7 @@ export default function RoutePlannerSection() {
             to the board.
           </p>
         </div>
-        <MockRouteMap className='mx-auto mt-12 max-w-5xl' />
+        <MockRoutePlanner className='mx-auto mt-12 max-w-5xl text-left' />
         <ul className='mx-auto mt-12 grid max-w-4xl gap-x-6 gap-y-8 sm:grid-cols-3'>
           {beats.map((beat) => (
             <li key={beat.name} className='space-y-2'>

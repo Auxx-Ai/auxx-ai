@@ -46,6 +46,7 @@ export {
   useCurrentTimeIndicator,
 } from './hooks/use-current-time-indicator'
 export { type UseEventResizeResult, useEventResize } from './hooks/use-event-resize'
+export { HorizontalTimelineView } from './horizontal-timeline-view'
 export { HourGutter } from './hour-gutter'
 export { MonthView } from './month-view'
 // Positioning util (day/week/resource share this — see position-events.ts)
@@ -59,6 +60,7 @@ export type {
   EventCalendarItem,
   RenderEvent,
   RenderEventContext,
+  TimelineHourWindow,
 } from './types'
 // Utils
 export {

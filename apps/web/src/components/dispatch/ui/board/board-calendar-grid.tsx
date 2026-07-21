@@ -14,6 +14,7 @@ import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { useDispatchSidebarStore } from '../../stores/dispatch-sidebar-store'
 import type { ExistingVisitForOverlap } from '../schedule-popover'
 import type { useBoardMutations } from './hooks/use-board-mutations'
+import { useTimelineHourWindow } from './hooks/use-timeline-hour-window'
 import type { BoardResourceInput, BoardViewMode, DispatchVisitEvent } from './types'
 import { isPastVisitEvent } from './utils'
 import { VisitChipContent, VisitChipMonthContent } from './visit-chip-content'
@@ -153,9 +154,12 @@ export function BoardCalendarGrid({
     [onActiveVisitChange]
   )
 
-  // Both `day` and `timeline` render the same resource day-stream (plan 18); they differ only by
-  // `resourceDaysVisible` (1 vs 3), passed to `EventCalendar` below.
-  const calendarView = view === 'day' || view === 'timeline' ? 'resource' : view
+  // `day` maps onto the shared vertical resource day-stream (plan 18, `resourceDaysVisible=1`).
+  // `timeline` is its own horizontal worker-rows-by-hour calendar view (plan 33) — it passes
+  // through unchanged and no longer shares `resource`'s rendering.
+  const calendarView = view === 'day' ? 'resource' : view
+
+  const hourWindow = useTimelineHourWindow()
 
   const calendarResources: CalendarResource[] = useMemo(
     () =>
@@ -180,7 +184,7 @@ export function BoardCalendarGrid({
       onRangeChange={onRangeChange}
       weekStartsOn={weekStartsOn}
       resources={view === 'day' || view === 'timeline' ? calendarResources : undefined}
-      resourceDaysVisible={view === 'timeline' ? 3 : 1}
+      hourWindow={hourWindow}
       backgroundEvents={backgroundEvents}
       events={events}
       renderEvent={renderEvent}

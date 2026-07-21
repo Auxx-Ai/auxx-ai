@@ -348,7 +348,7 @@ export function ResourceTimelineView<T extends EventCalendarItem = EventCalendar
               return (
                 <div
                   key={`label-${v.key}`}
-                  className='text-muted-foreground/80 border-border absolute flex items-center justify-center gap-1.5 border-l-2 text-sm'
+                  className='text-muted-foreground/80 border-border/70 absolute flex items-center justify-center gap-1.5 border-l text-sm'
                   style={{
                     top: 0,
                     left: 0,
@@ -377,7 +377,7 @@ export function ResourceTimelineView<T extends EventCalendarItem = EventCalendar
               return (
                 <div
                   key={`workers-${v.key}`}
-                  className='border-border absolute grid border-l-2'
+                  className='border-border/70 absolute grid border-l'
                   style={{
                     top: DateLabelHeight,
                     left: 0,
@@ -404,7 +404,7 @@ export function ResourceTimelineView<T extends EventCalendarItem = EventCalendar
               return (
                 <div
                   key={`allday-${v.key}`}
-                  className='bg-muted/50 border-border absolute grid border-l-2'
+                  className='bg-muted/50 border-border/70 absolute grid border-l'
                   style={{
                     top: DateLabelHeight + WorkerHeaderHeight,
                     left: 0,

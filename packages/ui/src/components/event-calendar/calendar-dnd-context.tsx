@@ -37,6 +37,8 @@ interface CalendarDndContextValue<T extends EventCalendarItem = EventCalendarIte
   /** Resource id of the hovered cell (resource view) — lets the drop outline pick its column. */
   currentResourceId: string | null
   eventHeight: number | null
+  /** Chip width (px) of the drag source — set only for horizontal (timeline) chips. */
+  eventWidth: number | null
 }
 
 const CalendarDndContext = createContext<CalendarDndContextValue>({
@@ -48,6 +50,7 @@ const CalendarDndContext = createContext<CalendarDndContextValue>({
   currentTime: null,
   currentResourceId: null,
   eventHeight: null,
+  eventWidth: null,
 })
 
 export const useCalendarDnd = () => useContext(CalendarDndContext)
@@ -93,6 +96,7 @@ export function CalendarDndProvider<T extends EventCalendarItem = EventCalendarI
   const [currentTime, setCurrentTime] = useState<Date | null>(null)
   const [currentResourceId, setCurrentResourceId] = useState<string | null>(null)
   const [eventHeight, setEventHeight] = useState<number | null>(null)
+  const [eventWidth, setEventWidth] = useState<number | null>(null)
   const [foreignActive, setForeignActive] = useState<Active | null>(null)
 
   const sensors = useSensors(
@@ -123,7 +127,7 @@ export function CalendarDndProvider<T extends EventCalendarItem = EventCalendarI
   const handleDragStart = (event: DragStartEvent) => {
     const { active } = event
     const data = active.data.current as
-      | { event?: T; view?: DraggableView; height?: number }
+      | { event?: T; view?: DraggableView; height?: number; width?: number }
       | undefined
     if (!data?.event) {
       setForeignActive(active)
@@ -136,6 +140,7 @@ export function CalendarDndProvider<T extends EventCalendarItem = EventCalendarI
     setActiveView(data.view ?? null)
     setCurrentTime(new Date(data.event.start))
     setEventHeight(data.height ?? null)
+    setEventWidth(data.width ?? null)
   }
 
   const handleDragOver = (event: DragOverEvent) => {
@@ -182,6 +187,7 @@ export function CalendarDndProvider<T extends EventCalendarItem = EventCalendarI
     setCurrentTime(null)
     setCurrentResourceId(null)
     setEventHeight(null)
+    setEventWidth(null)
     setForeignActive(null)
   }
 
@@ -241,6 +247,7 @@ export function CalendarDndProvider<T extends EventCalendarItem = EventCalendarI
           currentTime,
           currentResourceId,
           eventHeight,
+          eventWidth,
         }}>
         {children}
 
@@ -256,7 +263,11 @@ export function CalendarDndProvider<T extends EventCalendarItem = EventCalendarI
           {activeEvent && activeView ? (
             <div
               className='opacity-80'
-              style={{ width: '100%', height: eventHeight ? `${eventHeight}px` : 'auto' }}>
+              style={
+                eventWidth
+                  ? { width: `${eventWidth}px`, height: eventHeight ? `${eventHeight}px` : '100%' }
+                  : { width: '100%', height: eventHeight ? `${eventHeight}px` : 'auto' }
+              }>
               <EventItem
                 event={activeEvent}
                 view={activeView as CalendarView}

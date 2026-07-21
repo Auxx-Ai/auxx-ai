@@ -58,7 +58,7 @@ function WeekDayColumnInner<T extends EventCalendarItem = EventCalendarItem>({
   dayWidth,
   top,
   dayAt,
-  weekStartsOn,
+  weekStartsOn: _weekStartsOn,
   hours,
   events,
   backgroundEvents,
@@ -70,7 +70,6 @@ function WeekDayColumnInner<T extends EventCalendarItem = EventCalendarItem>({
   currentTimePosition,
 }: WeekDayColumnProps<T>) {
   const day = dayAt(index)
-  const isWeekBoundary = day.getDay() === weekStartsOn
 
   const dayEvents = events.filter((event) => {
     if (event.allDay || isMultiDayEvent(event)) return false
@@ -92,10 +91,7 @@ function WeekDayColumnInner<T extends EventCalendarItem = EventCalendarItem>({
 
   return (
     <div
-      className={cn(
-        'absolute border-l border-border/40',
-        isWeekBoundary && 'border-l-2 border-border'
-      )}
+      className='absolute border-l border-border/40'
       style={{
         top,
         left: 0,

@@ -1,141 +1,228 @@
 // apps/homepage/src/app/platform/dispatch/_mocks/worker-phone-mock.tsx
 
-import { Camera, Check, Plus } from 'lucide-react'
+import {
+  Camera,
+  Check,
+  ChevronRight,
+  Image as ImageIcon,
+  MapPin,
+  MoreVertical,
+  Plus,
+} from 'lucide-react'
 import { cn } from '~/lib/utils'
 
-interface AgendaItem {
-  time: string
-  job: string
-  status: string
-  tone: 'emerald' | 'amber' | 'sky'
-  active?: boolean
-}
-
-const AGENDA: AgendaItem[] = [
-  { time: '8:30', job: 'Furnace tune-up — Alder Grove HOA', status: 'Done', tone: 'emerald' },
-  {
-    time: '10:00',
-    job: 'Water heater install — Nguyen residence',
-    status: 'En route',
-    tone: 'amber',
-    active: true,
-  },
-  { time: '1:00', job: 'Drain clearing — Hilltop Cafe', status: 'Scheduled', tone: 'sky' },
-]
-
-const STATUS_CLASS: Record<AgendaItem['tone'], string> = {
-  emerald: 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400',
-  amber: 'bg-amber-500/15 text-amber-600 dark:text-amber-400',
-  sky: 'bg-sky-500/15 text-sky-600 dark:text-sky-400',
-}
-
-const CHECKLIST = [
-  { label: 'Water heater installed', done: true },
-  { label: 'Area cleaned', done: true },
-  { label: 'Customer walkthrough', done: false },
-]
-
 /**
- * A phone-frame mock of the worker's mobile schedule: an agenda of today's
- * visits, the active visit expanded with an advancing status button, a
- * quality checklist, and photo attachments.
+ * The worker's mobile surface — a static facsimile of the real visit page
+ * (`apps/web/src/components/schedule/ui/visit-detail-content.tsx`, the same content the
+ * desktop `VisitDrawer` hosts): Schedule breadcrumb, Visit/Notes outline tabs, the General
+ * section with the one-tap advancing status button, and the Notes tab's quality checklist
+ * with notes and photo capture. Rendered as two phones, one per tab.
  */
 export function MockWorkerPhone({ className }: { className?: string }) {
   return (
-    <div className={cn('mx-auto w-64 sm:w-72', className)}>
-      <div className='border-foreground/10 bg-foreground/[0.03] rounded-[2rem] border p-1.5 shadow-xl shadow-black/10'>
-        <div className='bg-card rounded-[1.5rem] pb-4'>
+    <div className={cn('mx-auto flex w-fit items-start', className)}>
+      <PhoneFrame className='z-10 -rotate-1'>
+        <VisitTabScreen />
+      </PhoneFrame>
+      <PhoneFrame className='-ml-8 mt-10 hidden rotate-2 sm:block'>
+        <NotesTabScreen />
+      </PhoneFrame>
+    </div>
+  )
+}
+
+function PhoneFrame({ className, children }: { className?: string; children: React.ReactNode }) {
+  return (
+    <div className={cn('w-60', className)}>
+      <div className='rounded-[2rem] border border-foreground/10 bg-foreground/[0.03] p-1.5 shadow-xl shadow-black/10'>
+        <div className='overflow-hidden rounded-[1.5rem] bg-mock-window pb-3 text-mock-window-foreground'>
           <div className='flex justify-center pt-2.5'>
-            <div className='bg-foreground/15 h-1 w-10 rounded-full' />
+            <div className='h-1 w-10 rounded-full bg-foreground/15' />
           </div>
-
-          <div className='px-3.5 pt-3'>
-            <div className='text-foreground text-sm font-semibold'>Today</div>
-            <div className='text-muted-foreground text-[10px]'>Tue, Jul 21 · Dana K.</div>
-          </div>
-
-          <ul className='mt-3 space-y-1.5 px-3.5'>
-            {AGENDA.map((item) => (
-              <li
-                key={item.job}
-                className={cn(
-                  'rounded-lg px-2 py-1.5',
-                  item.active
-                    ? 'bg-violet-500/[0.07] ring-violet-500/25 ring-1'
-                    : 'text-muted-foreground'
-                )}>
-                <div className='flex items-center gap-2'>
-                  <span className='text-muted-foreground w-9 shrink-0 text-[10px]'>
-                    {item.time}
-                  </span>
-                  <span
-                    className={cn(
-                      'flex-1 truncate text-[11px]',
-                      item.active ? 'text-foreground font-medium' : undefined
-                    )}>
-                    {item.job}
-                  </span>
-                  <span
-                    className={cn(
-                      'shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-medium',
-                      STATUS_CLASS[item.tone]
-                    )}>
-                    {item.status}
-                  </span>
-                </div>
-
-                {item.active && (
-                  <div className='mt-2.5 space-y-3'>
-                    <div className='text-muted-foreground text-[10px]'>418 Alder Grove Ln</div>
-
-                    <button
-                      type='button'
-                      className='bg-violet-500/90 w-full rounded-lg py-2 text-center text-[11px] font-medium text-white'>
-                      Arrived on site →
-                    </button>
-
-                    <div className='space-y-1'>
-                      {CHECKLIST.map((check) => (
-                        <div key={check.label} className='flex items-center gap-1.5'>
-                          <span
-                            className={cn(
-                              'flex size-3.5 shrink-0 items-center justify-center rounded-[4px]',
-                              check.done
-                                ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'
-                                : 'border-muted-foreground/40 border'
-                            )}>
-                            {check.done && <Check className='size-2.5' />}
-                          </span>
-                          <span
-                            className={cn(
-                              'text-[10px]',
-                              check.done ? 'text-foreground' : 'text-muted-foreground'
-                            )}>
-                            {check.label}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-
-                    <div className='flex gap-1.5'>
-                      <div className='from-muted to-muted-foreground/20 relative flex h-10 w-10 items-center justify-center rounded-md bg-gradient-to-br'>
-                        <Camera className='text-background/70 size-3.5' />
-                      </div>
-                      <div className='from-muted to-muted-foreground/20 relative flex h-10 w-10 items-center justify-center rounded-md bg-gradient-to-br'>
-                        <Camera className='text-background/70 size-3.5' />
-                      </div>
-                      <div className='border-muted-foreground/30 text-muted-foreground/70 flex h-10 w-10 flex-col items-center justify-center gap-0.5 rounded-md border border-dashed'>
-                        <Plus className='size-3' />
-                        <span className='text-[8px]'>Photo</span>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </li>
-            ))}
-          </ul>
+          {children}
         </div>
       </div>
     </div>
+  )
+}
+
+/** Breadcrumb header — facsimile of the mobile `MainPageHeader` on the visit page. */
+function BreadcrumbHeader() {
+  return (
+    <div className='flex items-center gap-1 px-3.5 pt-2.5 text-[10px]'>
+      <span className='text-muted-foreground'>Schedule</span>
+      <ChevronRight className='size-2.5 text-muted-foreground/60' />
+      <span className='truncate font-medium'>Water heater install</span>
+    </div>
+  )
+}
+
+/** Visit/Notes tab bar — facsimile of the `outline` TabsList (`@auxx/ui` tabs). */
+function TabBar({ active }: { active: 'visit' | 'notes' }) {
+  return (
+    <div className='mt-2 flex w-full items-center gap-1 border-b border-foreground/10 bg-muted/50 px-2 py-1'>
+      {(['visit', 'notes'] as const).map((tab) => (
+        <span
+          key={tab}
+          className={cn(
+            'relative rounded-md px-2.5 py-0.5 text-[10px] font-medium capitalize',
+            tab === active
+              ? 'text-foreground after:absolute after:inset-x-0 after:-bottom-1 after:h-0.5 after:bg-foreground'
+              : 'text-muted-foreground'
+          )}>
+          {tab}
+        </span>
+      ))}
+    </div>
+  )
+}
+
+/** Uppercase section header — facsimile of `@auxx/ui` `Section`'s title row. */
+function SectionTitle({ icon, title }: { icon?: React.ReactNode; title: string }) {
+  return (
+    <div className='flex items-center gap-1 pb-1.5 text-[9px] font-medium uppercase tracking-wide text-muted-foreground'>
+      {icon}
+      {title}
+    </div>
+  )
+}
+
+const LINE_ITEMS = [
+  { name: '50 gal water heater', qty: 1 },
+  { name: 'Install labor (hrs)', qty: 3 },
+]
+
+function VisitTabScreen() {
+  return (
+    <>
+      <BreadcrumbHeader />
+      <TabBar active='visit' />
+
+      <div className='border-b border-foreground/10 p-3'>
+        <SectionTitle icon={<MapPin className='size-3' />} title='General' />
+        <div className='flex flex-col gap-2'>
+          <div>
+            <div className='text-[11px] font-medium'>Nguyen Residence</div>
+            <div className='text-[10px] text-sky-600 underline underline-offset-2 dark:text-sky-400'>
+              418 Alder Grove Ln, Portland
+            </div>
+          </div>
+          <div className='text-[10px] text-muted-foreground'>Mon, Jul 20 · 10:00 AM – 12:00 PM</div>
+          <div className='text-[10px]'>#WO-1047 · Water heater install</div>
+          <div className='flex items-center gap-1.5'>
+            <span className='flex-1 rounded-md bg-foreground py-1.5 text-center text-[10px] font-medium text-background'>
+              Arrived
+            </span>
+            <span className='flex size-6 items-center justify-center rounded-md text-muted-foreground'>
+              <MoreVertical className='size-3' />
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <div className='border-b border-foreground/10 p-3'>
+        <SectionTitle title='Instructions' />
+        <p className='text-[10px] text-muted-foreground'>
+          Gate code 4482. Shut off the water main before the swap — valve is in the garage.
+        </p>
+      </div>
+
+      <div className='p-3 pb-1'>
+        <SectionTitle title='Line items' />
+        <ul className='flex flex-col gap-1.5'>
+          {LINE_ITEMS.map((line) => (
+            <li
+              key={line.name}
+              className='flex items-center justify-between gap-2 rounded-md border border-foreground/10 p-1.5 text-[10px]'>
+              <span className='truncate font-medium'>{line.name}</span>
+              <span className='shrink-0 text-muted-foreground'>Qty {line.qty}</span>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </>
+  )
+}
+
+const CHECKLIST = [
+  { label: 'Old unit hauled away', done: true },
+  { label: 'Pressure valve tested', done: true, photos: 2 },
+  { label: 'Customer walkthrough', done: false, required: true, expanded: true },
+]
+
+function QcCheckbox({ done }: { done: boolean }) {
+  return (
+    <span
+      className={cn(
+        'flex size-3.5 shrink-0 items-center justify-center rounded-[4px]',
+        done ? 'bg-foreground text-background' : 'border border-muted-foreground/40'
+      )}>
+      {done && <Check className='size-2.5' />}
+    </span>
+  )
+}
+
+function NotesTabScreen() {
+  return (
+    <>
+      <BreadcrumbHeader />
+      <TabBar active='notes' />
+
+      <div className='flex flex-col gap-0.5 p-3'>
+        {CHECKLIST.map((item) => (
+          <div key={item.label} className='rounded-md px-1 py-1'>
+            <div className='flex items-center gap-2'>
+              <QcCheckbox done={item.done} />
+              <span
+                className={cn(
+                  'flex-1 truncate text-[10px]',
+                  item.done && 'text-muted-foreground line-through'
+                )}>
+                {item.label}
+              </span>
+              {item.required && (
+                <span className='shrink-0 rounded-full bg-amber-500/15 px-1.5 py-px text-[8px] font-medium text-amber-600 dark:text-amber-400'>
+                  Required
+                </span>
+              )}
+              {item.photos && (
+                <span className='flex shrink-0 items-center gap-0.5 text-[9px] text-muted-foreground'>
+                  <ImageIcon className='size-2.5' />
+                  {item.photos}
+                </span>
+              )}
+            </div>
+
+            {item.expanded && (
+              <div className='mt-1.5 space-y-1.5 pl-5'>
+                <div className='rounded-md border border-foreground/10 px-1.5 py-1 text-[9px] text-muted-foreground/70'>
+                  Add a note…
+                </div>
+                <div className='flex items-center gap-1.5'>
+                  <div className='flex size-9 items-center justify-center rounded-md bg-gradient-to-br from-muted to-muted-foreground/20'>
+                    <Camera className='size-3 text-background/70' />
+                  </div>
+                  <div className='flex size-9 items-center justify-center rounded-md bg-gradient-to-br from-muted to-muted-foreground/20'>
+                    <Camera className='size-3 text-background/70' />
+                  </div>
+                  <div className='flex size-9 items-center justify-center rounded-md border border-dashed border-muted-foreground/30 text-muted-foreground/70'>
+                    <Camera className='size-3' />
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        ))}
+
+        <div className='mt-1.5 flex items-center gap-1.5'>
+          <div className='flex-1 rounded-md border border-foreground/10 px-1.5 py-1 text-[9px] text-muted-foreground/70'>
+            Add a check…
+          </div>
+          <span className='flex size-6 items-center justify-center rounded-md border border-foreground/10 text-muted-foreground'>
+            <Plus className='size-3' />
+          </span>
+        </div>
+      </div>
+    </>
   )
 }

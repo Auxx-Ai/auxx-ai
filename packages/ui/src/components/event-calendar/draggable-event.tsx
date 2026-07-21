@@ -9,7 +9,7 @@ import { differenceInDays } from 'date-fns'
 import { useRef, useState } from 'react'
 
 import { useCalendarDnd } from './calendar-dnd-context'
-import { WeekCellsHeight } from './constants'
+import { TimelineHourWidth, WeekCellsHeight } from './constants'
 import { EventItem } from './event-item'
 import { useEventResize } from './hooks/use-event-resize'
 import type { CalendarView, EventCalendarItem, RenderEvent } from './types'
@@ -20,6 +20,8 @@ interface DraggableEventProps<T extends EventCalendarItem = EventCalendarItem> {
   showTime?: boolean
   onClick?: (e: React.MouseEvent) => void
   height?: number
+  /** Chip width (px) — only meaningful with `orientation: 'x'` (the horizontal timeline). */
+  width?: number
   isFirstDay?: boolean
   isLastDay?: boolean
   /** Active selection — the event whose detail/popover is open. Draws the in-color ring. */
@@ -27,6 +29,12 @@ interface DraggableEventProps<T extends EventCalendarItem = EventCalendarItem> {
   renderEvent?: RenderEvent<T>
   /** Enables the top/bottom-edge resize handles — only meaningful in week/day/resource. */
   onResize?: (event: T, newStart: Date, newEnd: Date) => void
+  /**
+   * Resize/handle axis. `'y'` (default) is today's week/day/resource chip: top/bottom handles,
+   * height-driven preview. `'x'` is the horizontal timeline's chip: left/right handles,
+   * width-driven preview, full-height (`100%`).
+   */
+  orientation?: 'x' | 'y'
 }
 
 export function DraggableEvent<T extends EventCalendarItem = EventCalendarItem>({
@@ -35,11 +43,13 @@ export function DraggableEvent<T extends EventCalendarItem = EventCalendarItem>(
   showTime,
   onClick,
   height,
+  width,
   isFirstDay = true,
   isLastDay = true,
   isSelected,
   renderEvent,
   onResize,
+  orientation = 'y',
 }: DraggableEventProps<T>) {
   const { activeId, hasDropHandler } = useCalendarDnd()
   const elementRef = useRef<HTMLDivElement>(null)
@@ -57,6 +67,7 @@ export function DraggableEvent<T extends EventCalendarItem = EventCalendarItem>(
       event,
       view,
       height: height || elementRef.current?.offsetHeight || null,
+      width: width || elementRef.current?.offsetWidth || null,
       isMultiDay: isMultiDayEvent,
       dragHandlePosition,
       isFirstDay,
@@ -66,9 +77,10 @@ export function DraggableEvent<T extends EventCalendarItem = EventCalendarItem>(
 
   const canResize =
     onResize !== undefined && (view === 'week' || view === 'day' || view === 'resource')
-  const { isResizing, previewHeight, previewOffsetY, getResizeHandleProps } = useEventResize({
+  const { isResizing, previewSize, previewOffset, getResizeHandleProps } = useEventResize({
     event,
-    cellHeight: WeekCellsHeight,
+    axis: orientation,
+    cellSize: orientation === 'x' ? TimelineHourWidth : WeekCellsHeight,
     onResize,
   })
 
@@ -94,18 +106,29 @@ export function DraggableEvent<T extends EventCalendarItem = EventCalendarItem>(
   // pointer `transform` to it (that would make the origin chase the cursor as a second ghost).
   const isDragSource = isDragging || activeId === `${event.id}-${view}`
 
-  const effectiveHeight = isResizing && previewHeight !== null ? previewHeight : height
+  const effectiveSize =
+    isResizing && previewSize !== null ? previewSize : orientation === 'x' ? width : height
+
+  // 'y' (default): height-driven chip, unchanged from pre-orientation behavior.
+  // 'x': full-height chip, width-driven by the resize preview.
+  const sizeStyle =
+    orientation === 'x'
+      ? { height: '100%', width: effectiveSize || 'auto' }
+      : { height: effectiveSize || 'auto' }
+
+  const previewTransform =
+    isResizing && previewOffset !== 0
+      ? orientation === 'x'
+        ? `translateX(${previewOffset}px)`
+        : `translateY(${previewOffset}px)`
+      : undefined
 
   // During a resize the dnd transform is null (resize stops propagation, so no move-drag),
-  // so the top-edge preview translate lives in the else branch alongside the height.
+  // so the start-edge preview translate lives in the else branch alongside the size.
   const style =
     transform && !isDragSource
-      ? { transform: CSS.Translate.toString(transform), height: effectiveHeight || 'auto' }
-      : {
-          height: effectiveHeight || 'auto',
-          transform:
-            isResizing && previewOffsetY !== 0 ? `translateY(${previewOffsetY}px)` : undefined,
-        }
+      ? { transform: CSS.Translate.toString(transform), ...sizeStyle }
+      : { ...sizeStyle, transform: previewTransform }
 
   return (
     <div
@@ -131,20 +154,34 @@ export function DraggableEvent<T extends EventCalendarItem = EventCalendarItem>(
         dndAttributes={hasDropHandler ? attributes : undefined}
         renderEvent={renderEvent}
       />
-      {canResize && (
-        <>
-          {/* Invisible top drag zone — resizes the start time. */}
-          <div
-            {...getResizeHandleProps('top')}
-            className='absolute inset-x-0 top-0 h-2 cursor-ns-resize touch-none'
-          />
-          {/* Invisible bottom drag zone — resizes the end time. */}
-          <div
-            {...getResizeHandleProps('bottom')}
-            className='absolute inset-x-0 bottom-0 h-2 cursor-ns-resize touch-none'
-          />
-        </>
-      )}
+      {canResize &&
+        (orientation === 'x' ? (
+          <>
+            {/* Invisible left drag zone — resizes the start time. */}
+            <div
+              {...getResizeHandleProps('start')}
+              className='absolute inset-y-0 left-0 w-2 cursor-ew-resize touch-none'
+            />
+            {/* Invisible right drag zone — resizes the end time. */}
+            <div
+              {...getResizeHandleProps('end')}
+              className='absolute inset-y-0 right-0 w-2 cursor-ew-resize touch-none'
+            />
+          </>
+        ) : (
+          <>
+            {/* Invisible top drag zone — resizes the start time. */}
+            <div
+              {...getResizeHandleProps('start')}
+              className='absolute inset-x-0 top-0 h-2 cursor-ns-resize touch-none'
+            />
+            {/* Invisible bottom drag zone — resizes the end time. */}
+            <div
+              {...getResizeHandleProps('end')}
+              className='absolute inset-x-0 bottom-0 h-2 cursor-ns-resize touch-none'
+            />
+          </>
+        ))}
     </div>
   )
 }

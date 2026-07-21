@@ -3,7 +3,7 @@
 import type { ReactNode } from 'react'
 
 /** Which grid the calendar shell is currently rendering. */
-export type CalendarView = 'month' | 'week' | 'day' | 'agenda' | 'resource'
+export type CalendarView = 'month' | 'week' | 'day' | 'agenda' | 'resource' | 'timeline'
 
 /**
  * Base event shape the calendar renders. Consumers extend this with their own
@@ -34,6 +34,16 @@ export interface CalendarResource {
   id: string
   label: string
   header?: ReactNode
+}
+
+/**
+ * Visible hour range for the horizontal timeline view (`HorizontalTimelineView`) — start/end are
+ * fractional hours (0–24). Defaults to `{ start: StartHour, end: EndHour }` (the full day) when a
+ * consumer doesn't derive a narrower working-hours window.
+ */
+export interface TimelineHourWindow {
+  start: number
+  end: number
 }
 
 /**

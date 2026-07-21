@@ -52,7 +52,7 @@ interface DayResourceGroupProps<T extends EventCalendarItem = EventCalendarItem>
  *
  * Computes its own `day` and does its own per-worker event filtering — the
  * caller never slices `events` per day, which is what keeps a single memoized
- * group stable across scroll frames. The group's left edge carries the strong
+ * group stable across scroll frames. The group's left edge carries a hairline
  * day-boundary border; worker sub-columns keep the hairline inner border.
  */
 function DayResourceGroupInner<T extends EventCalendarItem = EventCalendarItem>({
@@ -91,7 +91,7 @@ function DayResourceGroupInner<T extends EventCalendarItem = EventCalendarItem>(
 
   return (
     <div
-      className='border-border absolute border-l-2'
+      className='border-border/70 absolute border-l'
       style={{
         top,
         left: 0,

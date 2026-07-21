@@ -387,6 +387,26 @@ export const SETTINGS_CATALOG = {
       'When on, reordering a route automatically re-chains scheduled times for provisional ' +
       'stops (confirmed times hold as anchors)',
   },
+  // Dispatch board timeline view (plan 33 §2.3) — hour-window override for the horizontal
+  // timeline; unset (null) = auto-derive from the org weekly working-hours template ± 2h buffer.
+  'dispatch.board.timelineStartHour': {
+    scope: 'GENERAL',
+    access: 'org',
+    fieldType: 'NUMBER',
+    defaultValue: null,
+    description:
+      'Timeline board view start hour (0-24). Unset = automatic — derived from working hours ' +
+      '± 2h buffer.',
+  },
+  'dispatch.board.timelineEndHour': {
+    scope: 'GENERAL',
+    access: 'org',
+    fieldType: 'NUMBER',
+    defaultValue: null,
+    description:
+      'Timeline board view end hour (0-24). Unset = automatic — derived from working hours ' +
+      '± 2h buffer.',
+  },
 
   // ── DOCUMENTS (quote/invoice PDF + email settings, money MQ2 build spec §A) ──────────────
   // `documents.taxRates` moved here from GENERAL (money MQ1 §G.1 shipped it under GENERAL —
