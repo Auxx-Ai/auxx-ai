@@ -355,7 +355,7 @@ export function QualityChecksPage() {
       title='Quality Checks'
       description='Manage the quality-check checklist workers complete on every visit.'
       breadcrumbs={BREADCRUMBS}>
-      <div className='grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_420px]'>
+      <div className='grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[minmax(0,1fr)_420px]'>
         <div className='min-w-0'>
           <div className='flex flex-col gap-3 p-3'>
             <div className='flex items-center justify-end'>

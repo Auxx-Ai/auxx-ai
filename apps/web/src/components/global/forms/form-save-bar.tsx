@@ -21,10 +21,13 @@ export interface FormSaveBarProps {
 }
 
 /**
- * The shared unsaved-changes bar (10-settings-forms-unification.md) — a sticky, full-width bottom
- * bar that springs into view while a {@link useDirtyDraft} is dirty (or a save is in flight) and
- * springs away when clean. Replaces the five hand-rolled Save/Discard idioms across the money and
- * dispatch settings surfaces.
+ * The shared unsaved-changes bar (10-settings-forms-unification.md) — a sticky bottom bar that
+ * springs into view while a {@link useDirtyDraft} is dirty (or a save is in flight) and springs
+ * away when clean. Designed as the last child of a settings page's `flex flex-1 flex-col gap-8
+ * p-3 sm:p-6` content wrapper: `mt-auto` keeps it at the page bottom even when content is short,
+ * and the negative margins cancel the wrapper padding so it spans the full page width, flush
+ * with the bottom edge. Pairs with `noFade` on the SettingsPage ScrollArea — the viewport's
+ * bottom fade mask would otherwise wash out the pinned bar.
  */
 export function FormSaveBar({
   dirty,
@@ -42,13 +45,14 @@ export function FormSaveBar({
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: 16 }}
           transition={SPRING}
-          className='sticky bottom-0 z-10 flex items-center justify-end gap-3 border-t bg-background/95 py-3 backdrop-blur'>
+          className='sticky bottom-0 z-10 mt-auto -mx-3 -mb-3 flex items-center justify-end gap-3 border-t bg-background/95 px-3 py-2 backdrop-blur sm:-mx-6 sm:-mb-6 sm:px-3 rounded-br-xl'>
           <span className='mr-auto text-xs text-muted-foreground'>{label}</span>
-          <Button type='button' variant='outline' size='sm' onClick={onDiscard} disabled={isSaving}>
+          <Button type='button' variant='ghost' size='sm' onClick={onDiscard} disabled={isSaving}>
             Discard
           </Button>
           <Button
             type='button'
+            variant='outline'
             size='sm'
             onClick={onSave}
             loading={isSaving}

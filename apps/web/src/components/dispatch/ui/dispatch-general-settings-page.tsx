@@ -21,6 +21,7 @@ import {
   DocumentsLogoCell,
 } from '~/components/money/ui/settings/documents-logo-cell'
 import { SettingsFieldRow } from '~/components/settings/settings-field-row'
+import { ColorField } from '~/components/ui/color-field'
 import { BaseType } from '~/components/workflow/types'
 import { useSettings } from '~/hooks/use-settings'
 import { useUser } from '~/hooks/use-user'
@@ -124,7 +125,7 @@ function DispatchGeneralSettingsBody() {
       title='General'
       description='Business identity, regional defaults, and document branding.'
       breadcrumbs={BREADCRUMBS}>
-      <div className='flex flex-col gap-8 p-3 sm:p-6'>
+      <div className='flex flex-1 flex-col gap-8 p-3 sm:p-6'>
         <div className='grid grid-cols-1 items-start gap-8 lg:grid-cols-2'>
           <SettingsSection
             icon={Building2}
@@ -239,11 +240,15 @@ function DispatchGeneralSettingsBody() {
                   className='mt-1 p-0'
                   resizeId='general-branding'
                   defaultLabelWidth={200}>
-                  <SettingsFieldRow
-                    settingKey='documents.accentColor'
-                    title='Accent color'
-                    {...controlled('documents.accentColor')}
-                  />
+                  <SettingsFieldRow settingKey='documents.accentColor' title='Accent color'>
+                    <ColorField
+                      value={(draft['documents.accentColor'] as string) || ''}
+                      onChange={(value) =>
+                        patch({ 'documents.accentColor': value === '' ? null : value })
+                      }
+                      clearable
+                    />
+                  </SettingsFieldRow>
                   <SettingsFieldRow
                     settingKey='documents.paperSize'
                     title='Paper size'

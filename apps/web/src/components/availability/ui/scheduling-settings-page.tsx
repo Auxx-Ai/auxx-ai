@@ -197,7 +197,7 @@ export function SchedulingSettingsPage() {
       title='Scheduling'
       description='Set business hours, holiday exceptions, and route/board behavior used across dispatch.'
       breadcrumbs={breadcrumbs}>
-      <div className='flex flex-col gap-8 p-3 sm:p-6'>
+      <div className='flex flex-1 flex-col gap-8 p-3 sm:p-6'>
         <div className='grid grid-cols-1 items-start gap-8 lg:grid-cols-2'>
           <SettingsSection
             icon={Clock}
@@ -222,21 +222,12 @@ export function SchedulingSettingsPage() {
               )}
             </FieldPanel>
             {weeklyQuery.isSuccess ? (
-              <div className='flex flex-col gap-3'>
-                <WeeklyHoursEditor
-                  value={draft}
-                  onChange={setDraft}
-                  weekStartsOn={weekStartsOn}
-                  use24HourTime={use24HourTime}
-                />
-                <FormSaveBar
-                  dirty={dirty}
-                  isSaving={saveWeeklyHours.isPending}
-                  onSave={save}
-                  onDiscard={discard}
-                  saveDisabled={!validateWeeklyDraft(draft)}
-                />
-              </div>
+              <WeeklyHoursEditor
+                value={draft}
+                onChange={setDraft}
+                weekStartsOn={weekStartsOn}
+                use24HourTime={use24HourTime}
+              />
             ) : (
               <Skeleton className='h-48 w-full rounded-xl' />
             )}
@@ -288,11 +279,20 @@ export function SchedulingSettingsPage() {
           </SettingsSection>
         </div>
 
+        {/* One page-level bar covering both drafts (weekly hours + routes/board) — each
+            save/discard only touches the draft that is actually dirty. */}
         <FormSaveBar
-          dirty={routesBoardDirty}
-          isSaving={isBatchUpdatingOrgSettings}
-          onSave={saveRoutesBoard}
-          onDiscard={discardRoutesBoard}
+          dirty={dirty || routesBoardDirty}
+          isSaving={saveWeeklyHours.isPending || isBatchUpdatingOrgSettings}
+          onSave={() => {
+            if (dirty) save()
+            if (routesBoardDirty) saveRoutesBoard()
+          }}
+          onDiscard={() => {
+            if (dirty) discard()
+            if (routesBoardDirty) discardRoutesBoard()
+          }}
+          saveDisabled={dirty && !validateWeeklyDraft(draft)}
         />
       </div>
     </SettingsPage>
