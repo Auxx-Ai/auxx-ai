@@ -41,6 +41,7 @@ export class GoogleOAuth2Api implements ICredentialType {
     scopes: [
       'https://www.googleapis.com/auth/gmail.modify', // Gmail read/write
       'https://www.googleapis.com/auth/drive.file', // Drive per-file access (full `drive` is restricted)
+      'https://www.googleapis.com/auth/drive.metadata.readonly', // List files (restricted; needed for spreadsheet pickers)
       'https://www.googleapis.com/auth/spreadsheets', // Google Sheets
       'https://www.googleapis.com/auth/calendar.events', // Calendar events read/write
       'https://www.googleapis.com/auth/calendar.readonly', // Calendar list/read

@@ -32,9 +32,12 @@ export const PLATFORM_PROVIDER_DEFS: PlatformProviderDef[] = [
     oauth2AccessTokenUrl: 'https://oauth2.googleapis.com/token',
     oauth2Scopes: [
       'https://www.googleapis.com/auth/gmail.modify',
-      // drive.file (per-file, non-sensitive) instead of full `drive` — full Drive
-      // is a Google "restricted" scope and would pull Drive into the CASA audit.
+      // drive.file (per-file, non-sensitive) instead of full `drive`. Listing the
+      // user's spreadsheets needs drive.metadata.readonly — a Google "restricted"
+      // scope, accepted deliberately: gmail.modify already puts us through the
+      // CASA audit, and metadata-only is the narrowest scope files.list accepts.
       'https://www.googleapis.com/auth/drive.file',
+      'https://www.googleapis.com/auth/drive.metadata.readonly',
       'https://www.googleapis.com/auth/spreadsheets',
       'https://www.googleapis.com/auth/calendar.events',
       'https://www.googleapis.com/auth/calendar.readonly',

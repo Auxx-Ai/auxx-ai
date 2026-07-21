@@ -133,14 +133,6 @@ import type { GlobalThisExtensions } from './types.ts'
 export function injectServerRuntimeHelpers(context: RuntimeContext): void {
   console.log('[RuntimeHelpers] Injecting server runtime helpers')
 
-  // DEBUG: Log what connections we received
-  console.log('[RuntimeHelpers] Context connections:', {
-    hasUserConnection: !!context.userConnection,
-    hasOrgConnection: !!context.organizationConnection,
-    userConnection: context.userConnection,
-    orgConnection: context.organizationConnection,
-  })
-
   const g = globalThis as typeof globalThis & GlobalThisExtensions
 
   // 1. Inject registerSettingsSchema as global function
