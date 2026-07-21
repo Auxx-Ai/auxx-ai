@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.1.188](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.187...auxx-v0.1.188) (2026-07-21)
+
+
+### Bug Fixes
+
+* **apps:** apply own-client gate to app connect methods in getBySlug ([#1231](https://github.com/Auxx-Ai/auxx-ai/issues/1231)) ([ca5c90a](https://github.com/Auxx-Ai/auxx-ai/commit/ca5c90a50eacd9da4aea15ef004355cd141c881e))
+* **connections:** flag revoked oauth grants for reauth, clean stale scheduler ([#1233](https://github.com/Auxx-Ai/auxx-ai/issues/1233)) ([9d5a419](https://github.com/Auxx-Ai/auxx-ai/commit/9d5a41981fd8955bb2518a000321e8368a5f618b))
+* **recording:** truthful bot outcomes, ai pipeline guards, no-recording ui ([#1234](https://github.com/Auxx-Ai/auxx-ai/issues/1234)) ([a2b9b83](https://github.com/Auxx-Ai/auxx-ai/commit/a2b9b83154a58d4bac93dbf612e1a9306811b259))
+
 ## [0.1.187](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.186...auxx-v0.1.187) (2026-07-21)
 
 
