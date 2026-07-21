@@ -3,7 +3,11 @@
 'use client'
 
 import { weekStartToIndex } from '@auxx/lib/availability/client'
-import { getOptionColorHex } from '@auxx/lib/custom-fields/client'
+import {
+  getOptionColor,
+  type OptionColor,
+  type SelectOptionColor,
+} from '@auxx/lib/custom-fields/client'
 import {
   addMonths,
   addWeeks,
@@ -168,13 +172,14 @@ export function useBoardData() {
     [allWorkers, selectedWorkerIds]
   )
 
-  // Resolve the stored `SelectOptionColor` id (e.g. 'amber', 'forest') to a real hex — the
-  // calendar feeds this straight into `--ec-color`/`color-mix`, where several ids aren't valid
-  // CSS color names and would render as no color at all.
+  // Resolve the stored `SelectOptionColor` id (e.g. 'amber', 'forest') to its full
+  // `OPTION_COLORS` entry — chips render its badge/border classes (badge look), while
+  // hex-consuming surfaces (sidebar dots, map pins) read `.hex` (several ids aren't valid CSS
+  // color names, so the raw id must never reach a CSS color slot).
   const colorByUserId = useMemo(() => {
-    const map = new Map<string, string>()
+    const map = new Map<string, OptionColor>()
     for (const w of allWorkers) {
-      if (w.color) map.set(w.userId, getOptionColorHex(w.color))
+      if (w.color) map.set(w.userId, getOptionColor(w.color as SelectOptionColor))
     }
     return map
   }, [allWorkers])

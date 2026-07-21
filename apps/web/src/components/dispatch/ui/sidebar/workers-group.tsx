@@ -2,6 +2,7 @@
 
 'use client'
 
+import type { OptionColor } from '@auxx/lib/custom-fields/client'
 import { DropdownMenuItem } from '@auxx/ui/components/dropdown-menu'
 import { SidebarGroup, SidebarGroupCollapse, SidebarMenu } from '@auxx/ui/components/sidebar'
 import { cn } from '@auxx/ui/lib/utils'
@@ -16,10 +17,10 @@ import { DEFAULT_WORKER_COLOR, UNASSIGNED_COLOR } from '../board/utils'
 
 interface WorkersGroupProps {
   workers: BoardWorker[]
-  /** Hex-resolved per-worker color (`use-board-data.ts`'s `colorByUserId` — the stored
-   * `SelectOptionColor` id already resolved to a real hex via `getOptionColorHex`, not the raw
-   * `worker.color` field, which several ids can't render directly as a CSS color). */
-  colorByUserId: Map<string, string>
+  /** Per-worker `OPTION_COLORS` entry (`use-board-data.ts`'s `colorByUserId` — the stored
+   * `SelectOptionColor` id resolved to its palette entry; this row's dot reads `.hex`, since
+   * several palette ids can't render directly as a CSS color). */
+  colorByUserId: Map<string, OptionColor>
   hiddenWorkerIds: string[]
   onToggleWorker: (workerId: string) => void
   open: boolean
@@ -136,7 +137,7 @@ export function WorkersGroup({
               id={worker.id}
               userId={worker.userId}
               label={worker.user?.name ?? worker.user?.email ?? 'Worker'}
-              color={colorByUserId.get(worker.userId) ?? DEFAULT_WORKER_COLOR}
+              color={colorByUserId.get(worker.userId)?.hex ?? DEFAULT_WORKER_COLOR}
               visible={!hidden.has(worker.userId)}
               onToggle={() => onToggleWorker(worker.userId)}
               mode={mode}
