@@ -24,7 +24,7 @@ const GOALS: Record<DispatchGoalKey, Omit<GettingStartedGoal, 'key'>> = {
     iconId: 'map-pin',
     color: 'blue',
     ctaText: 'Set address',
-    href: '/app/dispatch/settings/documents',
+    href: '/app/dispatch/settings/general',
     docsPath: '/help/dispatch/set-address',
   },
   'set-hours': {
@@ -33,7 +33,7 @@ const GOALS: Record<DispatchGoalKey, Omit<GettingStartedGoal, 'key'>> = {
     iconId: 'clock',
     color: 'amber',
     ctaText: 'Set hours',
-    href: '/app/dispatch/settings/availability',
+    href: '/app/dispatch/settings/scheduling',
     docsPath: '/help/dispatch/set-hours',
   },
   'create-request': {

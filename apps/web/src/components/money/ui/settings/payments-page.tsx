@@ -6,18 +6,34 @@
 // disconnect are admin-gated writes (the invoice-payments-card delete precedent).
 
 import { FeatureKey } from '@auxx/lib/permissions/client'
+import type { SettingValue } from '@auxx/lib/settings/client'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { toastError } from '@auxx/ui/components/toast'
-import { CreditCard, Lock } from 'lucide-react'
+import { cn } from '@auxx/ui/lib/utils'
+import { Banknote, CreditCard, Lock, Mail } from 'lucide-react'
 import { useSearchParams } from 'next/navigation'
 import { useEffect, useRef } from 'react'
 import { AdminGate } from '~/components/global/admin-gate'
 import { EmptyState } from '~/components/global/empty-state'
+import { FieldPanel } from '~/components/global/forms/field-panel'
+import { FormSaveBar } from '~/components/global/forms/form-save-bar'
+import { useDirtyDraft } from '~/components/global/forms/use-dirty-draft'
 import SettingsPage, { SettingsSection } from '~/components/global/settings-page'
+import { SettingsFieldRow } from '~/components/settings/settings-field-row'
 import { useConfirm } from '~/hooks/use-confirm'
+import { useSettings } from '~/hooks/use-settings'
 import { useFeatureFlags } from '~/providers/feature-flag-provider'
 import { api } from '~/trpc/react'
+
+/** Scalar `DOCUMENTS`-scope catalog keys the Payments page's own draft owns — partial payments
+ * (moved from the old "Invoicing & Quoting" page) and the receipt-email toggle (moved from the
+ * old Documents page). Independent of the Stripe connect state above, which mutates immediately. */
+const DRAFT_KEYS = [
+  'documents.invoice.allowPartialPayments',
+  'documents.invoice.partialPaymentMinPercent',
+  'documents.receiptEmail.enabled',
+] as const
 
 /** Where the Stripe hosted-provision flow returns after connect/finish-setup (money MP1
  * build spec §G — `hosted-provision` connect flow for the `stripeConnect` def). */
@@ -60,6 +76,38 @@ function PaymentsSettingsBody({ breadcrumbs }: { breadcrumbs: { title: string }[
 
   const utils = api.useUtils()
   const { data: account, isLoading } = api.money.getPaymentAccount.useQuery()
+
+  const { getSetting, batchUpdateOrganizationSettings, isBatchUpdatingOrgSettings } = useSettings({
+    scope: 'DOCUMENTS',
+  })
+
+  // Rebuilt each render; `useDirtyDraft` compares by value so a fresh identity never reseeds.
+  const settingsServer: Record<string, SettingValue> = {}
+  for (const key of DRAFT_KEYS) settingsServer[key] = getSetting(key)
+
+  const {
+    draft: settingsDraft,
+    patch: patchSettings,
+    dirty: settingsDirty,
+    save: saveSettings,
+    discard: discardSettings,
+  } = useDirtyDraft(settingsServer, {
+    isSaving: isBatchUpdatingOrgSettings,
+    onSave: (next) => {
+      const changed = DRAFT_KEYS.filter((key) => next[key] !== settingsServer[key]).map((key) => ({
+        key,
+        value: next[key],
+      }))
+      if (changed.length > 0) batchUpdateOrganizationSettings(changed)
+    },
+  })
+
+  const controlledSetting = (key: (typeof DRAFT_KEYS)[number]) => ({
+    value: settingsDraft[key],
+    onChange: (value: unknown) => patchSettings({ [key]: value as SettingValue }),
+  })
+
+  const allowPartialPayments = !!settingsDraft['documents.invoice.allowPartialPayments']
 
   // Handle the return trip from the hosted-provision flow (§G — `?connected=1` /
   // `?connect_error=...`) once per mount: refetch state on success, toast on failure. The
@@ -208,6 +256,58 @@ function PaymentsSettingsBody({ breadcrumbs }: { breadcrumbs: { title: string }[
             </div>
           )}
         </SettingsSection>
+
+        <SettingsSection
+          icon={Banknote}
+          title='Partial payments'
+          description='Let customers pay a custom amount on the public pay page instead of only the full balance.'>
+          <FieldPanel
+            className='mt-1 p-0'
+            resizeId='partial-payments-settings'
+            defaultLabelWidth={220}>
+            <SettingsFieldRow
+              settingKey='documents.invoice.allowPartialPayments'
+              title='Allow partial payments'
+              description='Applies to invoice payments; deposits are always paid in full.'
+              {...controlledSetting('documents.invoice.allowPartialPayments')}
+            />
+            <div
+              className={cn(
+                'flex flex-col',
+                !allowPartialPayments && 'pointer-events-none opacity-50'
+              )}>
+              <SettingsFieldRow
+                settingKey='documents.invoice.partialPaymentMinPercent'
+                title='Minimum payment percent'
+                description='Smallest payment a customer can submit, as a percent of the current balance.'
+                {...controlledSetting('documents.invoice.partialPaymentMinPercent')}
+              />
+            </div>
+          </FieldPanel>
+        </SettingsSection>
+
+        <SettingsSection
+          icon={Mail}
+          title='Receipt email'
+          description='Emails sent to the customer when they pay online.'>
+          <FieldPanel
+            className='mt-1 p-0'
+            resizeId='receipt-email-settings'
+            defaultLabelWidth={220}>
+            <SettingsFieldRow
+              settingKey='documents.receiptEmail.enabled'
+              title='Email a receipt on payment'
+              {...controlledSetting('documents.receiptEmail.enabled')}
+            />
+          </FieldPanel>
+        </SettingsSection>
+
+        <FormSaveBar
+          dirty={settingsDirty}
+          isSaving={isBatchUpdatingOrgSettings}
+          onSave={saveSettings}
+          onDiscard={discardSettings}
+        />
       </div>
       <ConfirmDialog />
     </SettingsPage>
