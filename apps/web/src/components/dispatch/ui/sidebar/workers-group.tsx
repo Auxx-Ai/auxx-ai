@@ -11,9 +11,9 @@ import { UserPlus } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { SourceToggleRow } from '~/components/calendar/ui/source-toggle-group'
 import { SidebarGroupHeader } from '~/components/global/sidebar/sidebar-group-header'
-import { AddWorkerDialog } from '../add-worker-dialog'
 import { type BoardWorker, UNASSIGNED_RESOURCE_ID } from '../board/types'
 import { DEFAULT_WORKER_COLOR, UNASSIGNED_COLOR } from '../board/utils'
+import { WorkerDialog } from '../worker-dialog'
 
 interface WorkersGroupProps {
   workers: BoardWorker[]
@@ -90,7 +90,7 @@ function DroppableWorkerRow({
  * (`UNASSIGNED_RESOURCE_ID`), mirroring the deleted `WorkerFilterPopover`'s exact selection
  * semantics: toggling writes the store's `hiddenWorkerIds` (inverse set — see `board/utils.ts`'s
  * `selectedWorkerIdsFromHidden` adapter for how consumers read it back as `Set<string> | null`).
- * The header's `additionalOptions` opens `AddWorkerDialog` ("New worker").
+ * The header's `additionalOptions` opens `WorkerDialog` in create mode ("New worker").
  *
  * In map mode, worker rows become droppable targets for backlog items and route stops; in
  * calendar mode, drops are handled by handleForeignDragEnd which doesn't target worker rows.
@@ -154,12 +154,7 @@ export function WorkersGroup({
           />
         </SidebarMenu>
       </SidebarGroupCollapse>
-      <AddWorkerDialog
-        open={addOpen}
-        onOpenChange={setAddOpen}
-        excludeUserIds={workers.map((w) => w.userId)}
-        onAdded={() => {}}
-      />
+      <WorkerDialog open={addOpen} onOpenChange={setAddOpen} workerId={null} />
     </SidebarGroup>
   )
 }

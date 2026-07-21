@@ -11,8 +11,8 @@ import { WorkerCard } from '../worker-card'
 
 /**
  * Page 2 of `DispatchSetupWizard` — the same member picker + upsert mutation as
- * `AddWorkerDialog`, rendered inline as a wizard page instead of a nested dialog, plus a
- * read-only grid of already-added workers. Each pick immediately upserts a `DispatchWorker`
+ * `WorkerDialog`'s create-mode member page, rendered inline as a wizard page instead of a
+ * nested dialog, plus a read-only grid of already-added workers. Each pick immediately upserts a `DispatchWorker`
  * row — there's no page-local draft, so leaving the page (forward or back) never loses anything.
  */
 export function WizardWorkersPage() {
